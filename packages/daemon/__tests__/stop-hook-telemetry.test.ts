@@ -51,8 +51,8 @@ test("#356 — save_eval_call carries the payload session_id, not a synthetic on
           },
           // Unreachable on purpose: the drift fetch must fail fast, not find a
           // real daemon. It is best-effort, so the lane still completes.
-          "http://127.0.0.1:1",
-        ),
+          "http://127.0.0.1:1"
+        )
     );
     assert.equal(out, "{}", "the Stop lane stays silent on stdout");
 
@@ -78,7 +78,7 @@ test("#369 — the event gates return `{}` without writing anything", async () =
       assert.equal(
         await runStopLane({ hook_event_name: "Stop", stop_hook_active: true }, "http://127.0.0.1:1"),
         "{}",
-        "a Stop raised by a Stop hook must not re-evaluate",
+        "a Stop raised by a Stop hook must not re-evaluate"
       );
     });
     assert.equal((await readdir(logDir)).length, 0, "a gated call writes no telemetry");

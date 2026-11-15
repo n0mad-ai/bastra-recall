@@ -43,7 +43,7 @@ const RESTART_CLIENTS =
 /** The restart-step report and the closing line, as ONE story. */
 export function describeLiveRevision(
   v: LiveRevision,
-  i: { state: SourceBuildState; daemonRevision: string | null },
+  i: { state: SourceBuildState; daemonRevision: string | null }
 ): { report: string; closing: string } {
   const head = i.state.revision;
   const running = shortRevision(i.daemonRevision) ?? "an unknown build";
@@ -56,8 +56,7 @@ export function describeLiveRevision(
     case "no-daemon":
       return {
         report: "  · no daemon is answering — nothing is holding old code either\n\n",
-        closing:
-          `→ done — HEAD ${head} is registered everywhere and goes live on the next daemon start.\n  ${RESTART_CLIENTS}`,
+        closing: `→ done — HEAD ${head} is registered everywhere and goes live on the next daemon start.\n  ${RESTART_CLIENTS}`,
       };
     case "other-build":
       return {
@@ -82,8 +81,7 @@ export function describeLiveRevision(
       return {
         report: "",
         closing:
-          "→ done — no revision is claimed: this checkout's build is not tied to a commit.\n" +
-          `  ${RESTART_CLIENTS}`,
+          "→ done — no revision is claimed: this checkout's build is not tied to a commit.\n" + `  ${RESTART_CLIENTS}`,
       };
   }
 }
@@ -98,7 +96,7 @@ export async function liveRevisionOfDaemon(
     probe?: () => Promise<DaemonProbe>;
     attempts?: number;
     sleep?: (ms: number) => Promise<void>;
-  } = {},
+  } = {}
 ): Promise<{ verdict: LiveRevision; daemonRevision: string | null }> {
   const probe = io.probe ?? probeDaemon;
   const attempts = io.attempts ?? 5;

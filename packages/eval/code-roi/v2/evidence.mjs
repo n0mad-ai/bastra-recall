@@ -22,8 +22,14 @@ const accepted = readFileSync(join(OUT, "candidates.jsonl"), "utf8")
   .filter((c) => c.accepted);
 const done = new Set(
   existsSync(EVIDENCE)
-    ? readFileSync(EVIDENCE, "utf8").split("\n").filter(Boolean).map((l) => { const e = JSON.parse(l); return `${e.commit}:${e.file}`; })
-    : [],
+    ? readFileSync(EVIDENCE, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => {
+          const e = JSON.parse(l);
+          return `${e.commit}:${e.file}`;
+        })
+    : []
 );
 const todo = accepted.filter((c) => !done.has(`${c.commit}:${c.file}`));
 const worktrees = Array.from({ length: WORKERS }, (_, i) => join(OUT, `ev-${i}`));
@@ -36,8 +42,12 @@ await Promise.all(
       const c = todo[next++];
       const [r] = await analyze(c.commit, [c.file], wt, { evidence: true });
       const same = JSON.stringify(r.truth) === JSON.stringify(c.truth);
-      appendFileSync(EVIDENCE, JSON.stringify({ commit: c.commit, file: c.file, truth: r.truth, reproduced: same, newErrors: r.newErrors }) + "\n");
+      appendFileSync(
+        EVIDENCE,
+        JSON.stringify({ commit: c.commit, file: c.file, truth: r.truth, reproduced: same, newErrors: r.newErrors }) +
+          "\n"
+      );
       process.stdout.write(`${c.commit.slice(0, 7)} ${c.file} reproduced=${same}\n`);
     }
-  }),
+  })
 );

@@ -46,12 +46,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Vault } from "@bastra-recall/core";
 import type { Memory } from "@bastra-recall/core";
-import {
-  buildIndex,
-  rankOf,
-  topScore,
-  TREATMENT_RECALL_WHEN_BOOST,
-} from "./index-config.js";
+import { buildIndex, rankOf, topScore, TREATMENT_RECALL_WHEN_BOOST } from "./index-config.js";
 
 // ── Case fixtures ──────────────────────────────────────────────
 
@@ -115,7 +110,7 @@ function parseArgs(argv: string[]): Args {
           "  --cases <path>  paraphrased + anti cases JSON\n" +
           "  --boost <n>     treatment recall_when weight (default 5)\n" +
           "  --k <n>         Recall@k (default 3)\n" +
-          "  --out <path>    also write a JSON report",
+          "  --out <path>    also write a JSON report"
       );
       process.exit(0);
     } else {
@@ -255,22 +250,18 @@ async function main(): Promise<void> {
   lines.push("# recall_when — Marginal-Lift Ablation\n");
   lines.push(
     `Vault: **${loaded}** memorys  ·  paraphrased queries: **${treat.queries}**  ·  ` +
-      `treatment boost: **x${args.boost}**  ·  k = **${args.k}**\n`,
+      `treatment boost: **x${args.boost}**  ·  k = **${args.k}**\n`
   );
   lines.push("## Recall (paraphrased held-out queries)\n");
   lines.push("| metric | control (stripped) | treatment (x" + args.boost + ") | marginal lift |");
   lines.push("|---|---|---|---|");
-  lines.push(
-    `| Recall@1 | ${pct(ctrl.recallAt1)} | ${pct(treat.recallAt1)} | **${signed(lift1)}** |`,
-  );
-  lines.push(
-    `| Recall@${args.k} | ${pct(ctrl.recallAtK)} | ${pct(treat.recallAtK)} | **${signed(liftK)}** |`,
-  );
+  lines.push(`| Recall@1 | ${pct(ctrl.recallAt1)} | ${pct(treat.recallAt1)} | **${signed(lift1)}** |`);
+  lines.push(`| Recall@${args.k} | ${pct(ctrl.recallAtK)} | ${pct(treat.recallAtK)} | **${signed(liftK)}** |`);
   lines.push(`| MRR | ${ctrl.mrr.toFixed(3)} | ${treat.mrr.toFixed(3)} | ${signedRaw(treat.mrr - ctrl.mrr)} |`);
   lines.push("");
   lines.push(
     `**marginal-lift@${args.k} = ${signed(liftK)}** ` +
-      `(${rescued.length}/${treat.queries} queries rescued from outside top-${args.k})\n`,
+      `(${rescued.length}/${treat.queries} queries rescued from outside top-${args.k})\n`
   );
 
   lines.push("## False-positive band (no-trigger control)\n");
@@ -278,7 +269,7 @@ async function main(): Promise<void> {
     `Median top-1 score on ${caseFile.anti.length} off-vault queries — ` +
       `control: **${antiCtrlMed.toFixed(1)}**, treatment: **${antiTreatMed.toFixed(1)}**. ` +
       `Adding the trigger field ${antiTreatMed > antiCtrlMed + 1 ? "RAISES" : "does not raise"} ` +
-      `false-positive surfacing.\n`,
+      `false-positive surfacing.\n`
   );
 
   if (rescued.length > 0) {
@@ -292,9 +283,7 @@ async function main(): Promise<void> {
   }
 
   if (unknownIds.length > 0) {
-    lines.push(
-      `> ⚠️ ${unknownIds.length} case id(s) not in vault (skipped): ${unknownIds.join(", ")}\n`,
-    );
+    lines.push(`> ⚠️ ${unknownIds.length} case id(s) not in vault (skipped): ${unknownIds.join(", ")}\n`);
   }
 
   const report = lines.join("\n");

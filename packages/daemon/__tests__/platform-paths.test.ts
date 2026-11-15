@@ -20,20 +20,28 @@ test("macOS host paths retain the pre-Windows layout", () => {
 });
 
 test("Windows paths use relocated AppData and native separators, preserving dotfile client conventions", () => {
-  assert.deepEqual(hostPaths({ platform: "win32", home: "C:\\Users\\A Person", env: {
-    APPDATA: "D:\\Roaming Data", LOCALAPPDATA: "D:\\Local Data",
-  } }), {
-    dataDir: "D:\\Local Data\\Bastra",
-    claudeDesktopDir: "D:\\Roaming Data\\Claude",
-    claudeDesktopConfig: "D:\\Roaming Data\\Claude\\claude_desktop_config.json",
-    claudeCodeConfig: "C:\\Users\\A Person\\.claude.json",
-    claudeCodeSettings: "C:\\Users\\A Person\\.claude\\settings.json",
-    cursorDir: "C:\\Users\\A Person\\.cursor",
-    cursorConfig: "C:\\Users\\A Person\\.cursor\\mcp.json",
-    codexDir: "C:\\Users\\A Person\\.codex",
-    codexConfig: "C:\\Users\\A Person\\.codex\\config.toml",
-    codexHooks: "C:\\Users\\A Person\\.codex\\hooks.json",
-  });
+  assert.deepEqual(
+    hostPaths({
+      platform: "win32",
+      home: "C:\\Users\\A Person",
+      env: {
+        APPDATA: "D:\\Roaming Data",
+        LOCALAPPDATA: "D:\\Local Data",
+      },
+    }),
+    {
+      dataDir: "D:\\Local Data\\Bastra",
+      claudeDesktopDir: "D:\\Roaming Data\\Claude",
+      claudeDesktopConfig: "D:\\Roaming Data\\Claude\\claude_desktop_config.json",
+      claudeCodeConfig: "C:\\Users\\A Person\\.claude.json",
+      claudeCodeSettings: "C:\\Users\\A Person\\.claude\\settings.json",
+      cursorDir: "C:\\Users\\A Person\\.cursor",
+      cursorConfig: "C:\\Users\\A Person\\.cursor\\mcp.json",
+      codexDir: "C:\\Users\\A Person\\.codex",
+      codexConfig: "C:\\Users\\A Person\\.codex\\config.toml",
+      codexHooks: "C:\\Users\\A Person\\.codex\\hooks.json",
+    }
+  );
 });
 
 test("Windows AppData fallback and Codex override", () => {
@@ -56,19 +64,34 @@ test("Windows detection covers exactly installed adapters and never probes macOS
   const traces = surfaceTraces({ ...opts, home: "C:\\Users\\person" });
   assert.deepEqual(Object.keys(traces).sort(), Object.keys(ADAPTERS).sort());
   const seen: string[] = [];
-  const detected = detectSurfaces("C:\\Users\\person", { ...opts, exists: (path) => {
-    seen.push(path);
-    return new Set(["R:\\Profile\\Claude", "C:\\Users\\person\\.claude", "C:\\Users\\person\\.codex", "C:\\Users\\person\\.cursor"]).has(path);
-  } });
+  const detected = detectSurfaces("C:\\Users\\person", {
+    ...opts,
+    exists: (path) => {
+      seen.push(path);
+      return new Set([
+        "R:\\Profile\\Claude",
+        "C:\\Users\\person\\.claude",
+        "C:\\Users\\person\\.codex",
+        "C:\\Users\\person\\.cursor",
+      ]).has(path);
+    },
+  });
   assert.ok(Object.values(detected).every(Boolean));
-  assert.ok(seen.every(path => !path.includes("/Applications") && !path.includes("Library")));
+  assert.ok(seen.every((path) => !path.includes("/Applications") && !path.includes("Library")));
   assert.deepEqual(detectSurfaces("C:\\Users\\person", { ...opts, exists: () => false }), {
-    "claude-code": false, codex: false, "claude-desktop": false, cursor: false,
+    "claude-code": false,
+    codex: false,
+    "claude-desktop": false,
+    cursor: false,
   });
 });
 
 test("macOS preserves application detection for Claude, Cursor and ChatGPT/Codex", () => {
-  const detected = detectSurfaces("/Users/person", { platform: "darwin", env: {}, exists: path => path.startsWith("/Applications/") });
+  const detected = detectSurfaces("/Users/person", {
+    platform: "darwin",
+    env: {},
+    exists: (path) => path.startsWith("/Applications/"),
+  });
   assert.deepEqual(detected, { "claude-code": false, codex: true, "claude-desktop": true, cursor: true });
 });
 
@@ -96,7 +119,6 @@ test("host data consumers follow LocalAppData while macOS paths remain unchanged
     else process.env.LOCALAPPDATA = previous;
   }
 });
-
 
 test("Windows custom vault input expands either tilde separator and preserves drive paths", () => {
   assert.equal(expandUserPath("~\\Vault", "C:\\Users\\person", "win32"), "C:\\Users\\person\\Vault");

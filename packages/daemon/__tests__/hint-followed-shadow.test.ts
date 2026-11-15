@@ -114,7 +114,10 @@ test("being shown is not a load: no usage moment is emitted for a hint", async (
     // `hint-suppression.ts:93` reads revision_loaded and revision_acted_on.
     // Package 2 delivers a number, not a behaviour change — so neither may
     // appear here, however strongly the hint matched.
-    assert.deepEqual(h.usage.filter((u) => u.kind === "loaded" || u.kind === "acted_on"), []);
+    assert.deepEqual(
+      h.usage.filter((u) => u.kind === "loaded" || u.kind === "acted_on"),
+      []
+    );
   } finally {
     await h.cleanup();
   }
@@ -156,7 +159,10 @@ test("the raw top-k opens no window — a hint cannot match the input that produ
     });
 
     assert.deepEqual(episodes, []);
-    assert.deepEqual((await h.events()).filter((e) => e.kind === "hint_followed_shadow"), []);
+    assert.deepEqual(
+      (await h.events()).filter((e) => e.kind === "hint_followed_shadow"),
+      []
+    );
   } finally {
     await h.cleanup();
   }
@@ -172,7 +178,10 @@ test("a hint without distinctive tokens opens no window", async () => {
       tool_input_excerpt: "anything at all",
       session_id: "sess-5",
     });
-    assert.deepEqual((await h.events()).filter((e) => e.kind === "hint_followed_shadow"), []);
+    assert.deepEqual(
+      (await h.events()).filter((e) => e.kind === "hint_followed_shadow"),
+      []
+    );
   } finally {
     await h.cleanup();
   }
@@ -185,18 +194,31 @@ test("the breaker's used condition is untouched — Package 2 delivers a number,
   assert.equal(
     used!.trim(),
     "const used = (entry?.revision_loaded ?? 0) > 0 || (entry?.revision_acted_on ?? 0) > 0;",
-    "#484 stays open until 10.09.: the shadow signal must not feed the breaker",
+    "#484 stays open until 10.09.: the shadow signal must not feed the breaker"
   );
 });
 
 function memoryMarkdown(id: string, body: string): string {
   const ts = new Date().toISOString();
   return [
-    "---", `id: ${id}`, `title: ${id}`, "type: lesson",
+    "---",
+    `id: ${id}`,
+    `title: ${id}`,
+    "type: lesson",
     "summary: prevent duplicate daemon startup when the port is taken",
-    "topic_path:", "  - test", "tags:", "  - test", "scope: hint-shadow-test",
-    "recall_when:", `  - ${id}`, `created: ${ts}`, `updated: ${ts}`, "---",
-    "", body, "",
+    "topic_path:",
+    "  - test",
+    "tags:",
+    "  - test",
+    "scope: hint-shadow-test",
+    "recall_when:",
+    `  - ${id}`,
+    `created: ${ts}`,
+    `updated: ${ts}`,
+    "---",
+    "",
+    body,
+    "",
   ].join("\n");
 }
 
@@ -204,9 +226,17 @@ function httpPost(port: number, path: string, payload: unknown): Promise<number>
   return new Promise((resolve, reject) => {
     const body = JSON.stringify(payload);
     const req = request(
-      { hostname: "127.0.0.1", port, path, method: "POST",
-        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body).toString() } },
-      (res) => { res.on("data", () => undefined); res.on("end", () => resolve(res.statusCode ?? 0)); },
+      {
+        hostname: "127.0.0.1",
+        port,
+        path,
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body).toString() },
+      },
+      (res) => {
+        res.on("data", () => undefined);
+        res.on("end", () => resolve(res.statusCode ?? 0));
+      }
     );
     req.on("error", reject);
     req.write(body);
@@ -217,14 +247,22 @@ function httpPost(port: number, path: string, payload: unknown): Promise<number>
 test("POST /hook/hinted opens the window with tokens the daemon derived itself", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-hintshadow-vault-"));
   const logDir = await mkdtemp(join(tmpdir(), "bastra-hintshadow-logs-"));
-  await writeFile(join(dir, "m1.md"), memoryMarkdown("m1", "Body words nobody ever sees: portrace eaddrinuse kickstart."), "utf8");
+  await writeFile(
+    join(dir, "m1.md"),
+    memoryMarkdown("m1", "Body words nobody ever sees: portrace eaddrinuse kickstart."),
+    "utf8"
+  );
   const vault = new Vault(dir);
   await vault.init();
   const search = new SearchIndex(vault);
   search.start();
   const telemetry = new Telemetry({ logDir });
   const handle = await startHttpServer({
-    port: 0, vault, search, telemetry, version: "test",
+    port: 0,
+    vault,
+    search,
+    telemetry,
+    version: "test",
     toolDeps: { vault, search, telemetry, vaultPath: dir },
     documentWriteEnabled: false,
     embedding: { on: false, providerId: null, source: "none" },
@@ -276,7 +314,7 @@ test("review find 1: no session id, no window — a parallel session must not cl
     assert.deepEqual(
       (await h.events()).filter((e) => e.kind === "hint_followed_shadow"),
       [],
-      "an entry on an inferred turn is closable by any session — better no number than a wrong one",
+      "an entry on an inferred turn is closable by any session — better no number than a wrong one"
     );
   } finally {
     await h.cleanup();
@@ -307,7 +345,7 @@ test("review find 3: a hint that is loaded leaves the shadow population", async 
     assert.deepEqual(
       (await h.events()).filter((e) => e.kind === "hint_followed_shadow"),
       [],
-      "'followed without ever being loaded' must not count a memory that was loaded",
+      "'followed without ever being loaded' must not count a memory that was loaded"
     );
   } finally {
     await h.cleanup();
@@ -329,7 +367,10 @@ test("second review find 1: a session id without a turn opens no window", async 
       session_id: "some-other-session",
     });
 
-    assert.deepEqual((await h.events()).filter((e) => e.kind === "hint_followed_shadow"), []);
+    assert.deepEqual(
+      (await h.events()).filter((e) => e.kind === "hint_followed_shadow"),
+      []
+    );
   } finally {
     await h.cleanup();
   }
@@ -358,7 +399,7 @@ test("second review find 3: a body without tokens still leaves the shadow popula
     assert.deepEqual(
       (await h.events()).filter((e) => e.kind === "hint_followed_shadow"),
       [],
-      "it was loaded — the early return on an empty body must not keep it in the count",
+      "it was loaded — the early return on an empty body must not keep it in the count"
     );
   } finally {
     await h.cleanup();
@@ -370,19 +411,41 @@ test("second review find 2: the visible id matches, the hidden title does not", 
   const logDir = await mkdtemp(join(tmpdir(), "bastra-hintshadow-vislogs-"));
   // What the lanes print is `id (type): summary` — never the title, never the body.
   const ts = new Date().toISOString();
-  await writeFile(join(dir, "portrace-eaddrinuse.md"), [
-    "---", "id: portrace-eaddrinuse", "title: Daemon startup race", "type: lesson",
-    "summary: Exit before initialization", "topic_path:", "  - test", "tags:", "  - test",
-    "scope: hint-shadow-test", "recall_when:", "  - portrace", `created: ${ts}`, `updated: ${ts}`,
-    "---", "", "Body words nobody sees: kickstart bootstrap.", "",
-  ].join("\n"), "utf8");
+  await writeFile(
+    join(dir, "portrace-eaddrinuse.md"),
+    [
+      "---",
+      "id: portrace-eaddrinuse",
+      "title: Daemon startup race",
+      "type: lesson",
+      "summary: Exit before initialization",
+      "topic_path:",
+      "  - test",
+      "tags:",
+      "  - test",
+      "scope: hint-shadow-test",
+      "recall_when:",
+      "  - portrace",
+      `created: ${ts}`,
+      `updated: ${ts}`,
+      "---",
+      "",
+      "Body words nobody sees: kickstart bootstrap.",
+      "",
+    ].join("\n"),
+    "utf8"
+  );
   const vault = new Vault(dir);
   await vault.init();
   const search = new SearchIndex(vault);
   search.start();
   const telemetry = new Telemetry({ logDir });
   const handle = await startHttpServer({
-    port: 0, vault, search, telemetry, version: "test",
+    port: 0,
+    vault,
+    search,
+    telemetry,
+    version: "test",
     toolDeps: { vault, search, telemetry, vaultPath: dir },
     documentWriteEnabled: false,
     embedding: { on: false, providerId: null, source: "none" },
@@ -499,7 +562,7 @@ test("fourth review find: a load without a session clears every window for that 
     assert.deepEqual(
       (await h.events()).filter((e) => e.kind === "hint_followed_shadow"),
       [],
-      "it was loaded — a sessionless load must not leave the claim standing",
+      "it was loaded — a sessionless load must not leave the claim standing"
     );
   } finally {
     await h.cleanup();
@@ -525,11 +588,7 @@ test("#485 defect 1: BASTRA_TELEMETRY=off writes no shadow event", async () => {
       session_id: "sess-off",
     });
 
-    assert.deepEqual(
-      await h.events(),
-      [],
-      "with telemetry off nothing may reach disk — not even a shadow event",
-    );
+    assert.deepEqual(await h.events(), [], "with telemetry off nothing may reach disk — not even a shadow event");
   } finally {
     await h.cleanup();
   }
@@ -552,7 +611,7 @@ test("#485 defect 2: an unregistered parallel session cannot close A's window", 
     assert.deepEqual(
       (await h.events()).filter((e) => e.kind === "hint_followed_shadow"),
       [],
-      "B never saw the hint — it must not report it as followed",
+      "B never saw the hint — it must not report it as followed"
     );
 
     // And the window is still A's to close: the foreign act left it open.
@@ -584,7 +643,7 @@ test("#485 defect 2: a registered parallel session cannot close A's window", asy
 
     assert.deepEqual(
       (await h.events()).filter((e) => e.kind === "hint_followed_shadow"),
-      [],
+      []
     );
   } finally {
     await h.cleanup();
@@ -605,7 +664,7 @@ test("#485 defect 2: an act without a session id cannot close a hint window", as
     assert.deepEqual(
       (await h.events()).filter((e) => e.kind === "hint_followed_shadow"),
       [],
-      "unknown identity must not borrow the hinted session's turn",
+      "unknown identity must not borrow the hinted session's turn"
     );
   } finally {
     await h.cleanup();
@@ -638,12 +697,12 @@ test("#485 defect 3: a load BEFORE the hint keeps it out of the shadow populatio
     assert.equal(episodes[0]!.acted_on, true);
     assert.deepEqual(
       h.usage.map((u) => u.kind),
-      ["loaded", "acted_on"],
+      ["loaded", "acted_on"]
     );
     assert.deepEqual(
       (await h.events()).filter((e) => e.kind === "hint_followed_shadow"),
       [],
-      "it was loaded in this session — it cannot have been followed without a load",
+      "it was loaded in this session — it cannot have been followed without a load"
     );
   } finally {
     await h.cleanup();
@@ -673,7 +732,7 @@ test("#485 defect 3: a prior load without distinctive tokens excludes it too", a
 
     assert.deepEqual(
       (await h.events()).filter((e) => e.kind === "hint_followed_shadow"),
-      [],
+      []
     );
   } finally {
     await h.cleanup();

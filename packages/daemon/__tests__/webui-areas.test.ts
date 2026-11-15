@@ -20,9 +20,12 @@ async function makeVault(): Promise<string> {
   await mkdir(join(root, "memories", "user"), { recursive: true });
   await writeFile(
     join(root, "memories", "projects", "carnexus", "fact-one.md"),
-    "---\nid: fact-one\ntitle: T\ntype: reference\nsummary: s\ntopic_path:\n  - t\ntags:\n  - t\nscope: carnexus\nrecall_when:\n  - t\ncreated: 2026-07-17\nupdated: 2026-07-17\n---\n\nBody.\n",
+    "---\nid: fact-one\ntitle: T\ntype: reference\nsummary: s\ntopic_path:\n  - t\ntags:\n  - t\nscope: carnexus\nrecall_when:\n  - t\ncreated: 2026-07-17\nupdated: 2026-07-17\n---\n\nBody.\n"
   );
-  await writeFile(join(root, "memories", "people", "someone.md"), "---\nid: someone\ntitle: P\ntype: project-fact\nsummary: s\ntopic_path:\n  - people\ntags:\n  - person\nscope: bastra-recall\nrecall_when:\n  - p\ncreated: 2026-07-17\nupdated: 2026-07-17\n---\n\nP.\n");
+  await writeFile(
+    join(root, "memories", "people", "someone.md"),
+    "---\nid: someone\ntitle: P\ntype: project-fact\nsummary: s\ntopic_path:\n  - people\ntags:\n  - person\nscope: bastra-recall\nrecall_when:\n  - p\ncreated: 2026-07-17\nupdated: 2026-07-17\n---\n\nP.\n"
+  );
   return root;
 }
 
@@ -124,12 +127,12 @@ async function makeMixedCaseVault(): Promise<string> {
   await mkdir(join(root, "memories", "projects", "carnexus"), { recursive: true });
   await writeFile(
     join(root, "memories", "projects", "carnexus", "fact-case.md"),
-    "---\nid: fact-case\ntitle: T\ntype: reference\nsummary: s\ntopic_path:\n  - t\ntags:\n  - t\nscope: CarNexus\nrecall_when:\n  - t\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nBody.\n",
+    "---\nid: fact-case\ntitle: T\ntype: reference\nsummary: s\ntopic_path:\n  - t\ntags:\n  - t\nscope: CarNexus\nrecall_when:\n  - t\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nBody.\n"
   );
   await mkdir(join(root, "dokumentationen", "carnexus"), { recursive: true });
   await writeFile(
     join(root, "dokumentationen", "carnexus", "doku-carnexus-area.md"),
-    "---\nid: doku-carnexus-area\ntitle: D\ntype: doc\nsummary: s\ntopic_path:\n  - doku\n  - CarNexus\n  - area\ntags:\n  - product-doc\n  - carnexus\nscope: carnexus\nrecall_when:\n  - d\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nDoc.\n",
+    "---\nid: doku-carnexus-area\ntitle: D\ntype: doc\nsummary: s\ntopic_path:\n  - doku\n  - CarNexus\n  - area\ntags:\n  - product-doc\n  - carnexus\nscope: carnexus\nrecall_when:\n  - d\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nDoc.\n"
   );
   return root;
 }
@@ -140,10 +143,7 @@ test("renameArea: scope rewrite is case-folded — CarNexus counts as carnexus",
     const r = await renameArea(v, "project", "carnexus", "new-project");
     // 1x memory (scope: CarNexus) + 1x product doc (scope: carnexus)
     assert.equal(r.scopesRewritten, 2);
-    const raw = await readFile(
-      join(v, "memories", "projects", "new-project", "fact-case.md"),
-      "utf8",
-    );
+    const raw = await readFile(join(v, "memories", "projects", "new-project", "fact-case.md"), "utf8");
     assert.equal(matter(raw).data.scope, "new-project");
   } finally {
     await rm(v, { recursive: true, force: true });
@@ -180,29 +180,29 @@ async function makeVaultWithForeignNotes(): Promise<string> {
   await mkdir(join(root, "memories", "projects", "carnexus"), { recursive: true });
   await writeFile(
     join(root, "memories", "projects", "carnexus", "fact-one.md"),
-    "---\nid: fact-one\ntitle: T\ntype: reference\nsummary: s\ntopic_path:\n  - t\ntags:\n  - t\nscope: carnexus\nrecall_when:\n  - t\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nBody.\n",
+    "---\nid: fact-one\ntitle: T\ntype: reference\nsummary: s\ntopic_path:\n  - t\ntags:\n  - t\nscope: carnexus\nrecall_when:\n  - t\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nBody.\n"
   );
   // Eine gewöhnliche Obsidian-Notiz, die zufällig ein Feld `scope:` trägt.
   // Kein `type:` → der Vault würde sie NIE als Memory indexieren.
   await writeFile(
     join(root, "memories", "projects", "carnexus", "Meine Notiz.md"),
-    "---\nscope: carnexus\nauthor: daniel\n---\n\nGanz normale Notiz.\n",
+    "---\nscope: carnexus\nauthor: daniel\n---\n\nGanz normale Notiz.\n"
   );
   await mkdir(join(root, "dokumentationen", "carnexus"), { recursive: true });
   await writeFile(
     join(root, "dokumentationen", "carnexus", "doku-carnexus-area.md"),
-    "---\nid: doku-carnexus-area\ntitle: D\ntype: doc\nsummary: s\ntopic_path:\n  - doku\n  - carnexus\n  - area\ntags:\n  - product-doc\n  - carnexus\nscope: carnexus\nrecall_when:\n  - d\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nDoc.\n",
+    "---\nid: doku-carnexus-area\ntitle: D\ntype: doc\nsummary: s\ntopic_path:\n  - doku\n  - carnexus\n  - area\ntags:\n  - product-doc\n  - carnexus\nscope: carnexus\nrecall_when:\n  - d\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nDoc.\n"
   );
   // Sieht einer Produktdoku ähnlich (Tags + topic_path), ist aber keine:
   // `type: reference`, und der Vault kennt sie nicht als Doku.
   await writeFile(
     join(root, "dokumentationen", "carnexus", "notiz-mit-tags.md"),
-    "---\nid: notiz-mit-tags\ntitle: N\ntype: reference\nsummary: s\ntopic_path:\n  - doku\n  - carnexus\n  - area\ntags:\n  - carnexus\nscope: carnexus\nrecall_when:\n  - n\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nN.\n",
+    "---\nid: notiz-mit-tags\ntitle: N\ntype: reference\nsummary: s\ntopic_path:\n  - doku\n  - carnexus\n  - area\ntags:\n  - carnexus\nscope: carnexus\nrecall_when:\n  - n\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nN.\n"
   );
   // Und eine reine Notiz ohne jede Memory-Signatur.
   await writeFile(
     join(root, "dokumentationen", "carnexus", "lose-notiz.md"),
-    "---\ntags:\n  - carnexus\ntopic_path:\n  - doku\n  - carnexus\n  - area\n---\n\nLose.\n",
+    "---\ntags:\n  - carnexus\ntopic_path:\n  - doku\n  - carnexus\n  - area\n---\n\nLose.\n"
   );
   return root;
 }
@@ -214,14 +214,11 @@ test("renameArea: eine fremde Notiz mit `scope:` wird nicht umgeschrieben", asyn
     // 1 Memory + 1 Produktdoku + 1 doku-Notiz mit type: reference und scope:
     // carnexus — alles echte Memories. Die fremde Notiz zählt NICHT mit.
     assert.equal(r.scopesRewritten, 3);
-    const foreign = await readFile(
-      join(v, "memories", "projects", "new-project", "Meine Notiz.md"),
-      "utf8",
-    );
+    const foreign = await readFile(join(v, "memories", "projects", "new-project", "Meine Notiz.md"), "utf8");
     assert.equal(
       matter(foreign).data.scope,
       "carnexus",
-      "eine Notiz, die der Vault nicht als Memory führt, darf ein Rename nicht anfassen",
+      "eine Notiz, die der Vault nicht als Memory führt, darf ein Rename nicht anfassen"
     );
   } finally {
     await rm(v, { recursive: true, force: true });
@@ -255,10 +252,7 @@ test("renameArea: kollidierendes Doku-Regal bricht ab, bevor irgendetwas bewegt 
   try {
     await mkdir(join(v, "dokumentationen", "new-project"), { recursive: true });
     await writeFile(join(v, "dokumentationen", "new-project", "fremd.md"), "# fremd\n");
-    await assert.rejects(
-      renameArea(v, "project", "carnexus", "new-project"),
-      /docs folder already exists/,
-    );
+    await assert.rejects(renameArea(v, "project", "carnexus", "new-project"), /docs folder already exists/);
     // Nichts halb erledigt: das Projektregal liegt noch am alten Platz.
     const projects = await readdir(join(v, "memories", "projects"));
     assert.deepEqual(projects, ["carnexus"]);
@@ -318,7 +312,10 @@ test("renameArea: scheitert der Doku-Zug, bleibt die Area ungeteilt", async () =
   const v = await makeVault();
   try {
     await mkdir(join(v, "dokumentationen", "carnexus"), { recursive: true });
-    await writeFile(join(v, "dokumentationen", "carnexus", "doku-a.md"), "---\nid: doku-a\ntitle: A\ntype: doc\nsummary: s\ntopic_path:\n  - doku\n  - carnexus\n  - area\ntags:\n  - carnexus\nscope: carnexus\nrecall_when:\n  - a\ncreated: 2026-07-17\nupdated: 2026-07-17\n---\n\nA.\n");
+    await writeFile(
+      join(v, "dokumentationen", "carnexus", "doku-a.md"),
+      "---\nid: doku-a\ntitle: A\ntype: doc\nsummary: s\ntopic_path:\n  - doku\n  - carnexus\n  - area\ntags:\n  - carnexus\nscope: carnexus\nrecall_when:\n  - a\ncreated: 2026-07-17\nupdated: 2026-07-17\n---\n\nA.\n"
+    );
     // Der Preflight kennt nur „Zielordner existiert schon". Hier liegt am
     // Zielpfad eine DATEI: isDir() sagt nein, der rename scheitert trotzdem.
     await writeFile(join(v, "dokumentationen", "new-project"), "im Weg", "utf8");
@@ -366,7 +363,7 @@ test("ein Projektregal, das als Symlink nach außen zeigt, ist kein Regal dieses
   try {
     await writeFile(
       join(outside, "fremd.md"),
-      "---\nid: fremd\ntitle: F\ntype: reference\nsummary: s\ntopic_path:\n  - t\ntags:\n  - t\nscope: geliehen\nrecall_when:\n  - t\ncreated: 2026-07-17\nupdated: 2026-07-17\n---\n\nF.\n",
+      "---\nid: fremd\ntitle: F\ntype: reference\nsummary: s\ntopic_path:\n  - t\ntags:\n  - t\nscope: geliehen\nrecall_when:\n  - t\ncreated: 2026-07-17\nupdated: 2026-07-17\n---\n\nF.\n"
     );
     await symlink(outside, join(v, "memories", "projects", "geliehen"));
 
@@ -391,7 +388,7 @@ test("renameArea: ein unlesbares Memory lässt den Rename scheitern statt still 
     await chmod(locked, 0o000);
     await assert.rejects(
       renameArea(v, "project", "carnexus", "neuer-name"),
-      /konnten nicht umgeschrieben werden|rename failed/,
+      /konnten nicht umgeschrieben werden|rename failed/
     );
     // Und zurückgerollt: das Projekt liegt wieder unter dem alten Namen.
     const projects = await readdir(join(v, "memories", "projects"));
@@ -412,10 +409,7 @@ test("ein Projektregal, das INNERHALB des Vaults woanders hinzeigt, ist trotzdem
   const v = await makeVault();
   try {
     await symlink(join(v, "memories", "people"), join(v, "memories", "projects", "geliehen"));
-    await assert.rejects(
-      renameArea(v, "project", "geliehen", "neu"),
-      /outside memories\/projects/,
-    );
+    await assert.rejects(renameArea(v, "project", "geliehen", "neu"), /outside memories\/projects/);
     const fm = matter(await readFile(join(v, "memories", "people", "someone.md"), "utf8")).data;
     assert.equal(fm.scope, "bastra-recall", "die fremde Datei bleibt unangetastet");
   } finally {
@@ -433,10 +427,7 @@ test("auch das Doku-Regal einer Area darf nicht woanders hinzeigen", async () =>
   try {
     await mkdir(join(v, "dokumentationen"), { recursive: true });
     await symlink(join(v, "memories", "people"), join(v, "dokumentationen", "carnexus"));
-    await assert.rejects(
-      renameArea(v, "project", "carnexus", "neuer-name"),
-      /outside dokumentationen/,
-    );
+    await assert.rejects(renameArea(v, "project", "carnexus", "neuer-name"), /outside dokumentationen/);
   } finally {
     await rm(v, { recursive: true, force: true });
   }
@@ -462,13 +453,10 @@ test("renameArea: ein Save, der während des Renames die alte Area schreibt, lä
     for (let i = 0; i < 60; i++) {
       await writeFile(
         join(v, "dokumentationen", "carnexus", `doku-carnexus-${i}.md`),
-        `---\nid: doku-carnexus-${i}\ntitle: D${i}\ntype: doc\nsummary: s\ntopic_path:\n  - doku\n  - carnexus\n  - area\ntags:\n  - product-doc\n  - carnexus\nscope: carnexus\nrecall_when:\n  - d\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nDoc ${i}.\n`,
+        `---\nid: doku-carnexus-${i}\ntitle: D${i}\ntype: doc\nsummary: s\ntopic_path:\n  - doku\n  - carnexus\n  - area\ntags:\n  - product-doc\n  - carnexus\nscope: carnexus\nrecall_when:\n  - d\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nDoc ${i}.\n`
       );
     }
-    const stale = await readFile(
-      join(v, "memories", "projects", "carnexus", "fact-one.md"),
-      "utf8",
-    );
+    const stale = await readFile(join(v, "memories", "projects", "carnexus", "fact-one.md"), "utf8");
     const target = join(v, "memories", "projects", "neu", "fact-one.md");
 
     let settled = false;
@@ -497,9 +485,7 @@ test("renameArea: ein Save, der während des Renames die alte Area schreibt, lä
     // Und die Area ist wieder ganz: zurückgerollt statt halb umgezogen.
     const projects = await readdir(join(v, "memories", "projects"));
     assert.deepEqual(projects, ["carnexus"]);
-    const fm = matter(
-      await readFile(join(v, "memories", "projects", "carnexus", "fact-one.md"), "utf8"),
-    ).data;
+    const fm = matter(await readFile(join(v, "memories", "projects", "carnexus", "fact-one.md"), "utf8")).data;
     assert.equal(fm.scope, "carnexus");
   } finally {
     await rm(v, { recursive: true, force: true });
@@ -519,18 +505,18 @@ test("renameArea: der Rollback verschweigt nicht, was er nicht zurückschreiben 
     await chmod(locked, 0o000);
     const err = await renameArea(v, "project", "carnexus", "neuer-name").then(
       () => null,
-      (e: Error) => e,
+      (e: Error) => e
     );
     assert.ok(err, "der Rename muss scheitern");
     assert.match(
       err!.message,
       /nicht zurückgeschrieben/,
-      "der Rollback muss nennen, was er nicht zurückschreiben konnte",
+      "der Rollback muss nennen, was er nicht zurückschreiben konnte"
     );
     assert.doesNotMatch(
       err!.message,
       /nothing was changed/,
-      "„nichts wurde geändert“ ist eine Behauptung, die der Rollback hier nicht belegen kann",
+      "„nichts wurde geändert“ ist eine Behauptung, die der Rollback hier nicht belegen kann"
     );
     assert.match(err!.message, /fact-one\.md/, "pfadgenau, wie im stuck-Pfad");
   } finally {
@@ -550,10 +536,7 @@ test("deleteArea: ein .bastra, das auf ein aktives Regal zeigt, ist kein Trash",
   const v = await makeVault();
   try {
     await symlink(join(v, "memories", "people"), join(v, ".bastra"));
-    await assert.rejects(
-      deleteArea(v, "project", "carnexus"),
-      /own \.bastra|Private daemon state/,
-    );
+    await assert.rejects(deleteArea(v, "project", "carnexus"), /own \.bastra|Private daemon state/);
     // Die Area steht noch, und im aktiven Regal ist kein Trash entstanden.
     const projects = await readdir(join(v, "memories", "projects"));
     assert.ok(projects.includes("carnexus"));

@@ -27,7 +27,7 @@ async function vaultWithTrigger(): Promise<{ search: SearchIndex; close: () => P
   await mkdir(join(dir, "memories", "projects", "proj"), { recursive: true });
   await writeFile(
     join(dir, "memories", "projects", "proj", "ziel.md"),
-    "---\nid: ziel\ntitle: Ziel\ntype: lesson\nsummary: Über Kaninchen\ntopic_path:\n  - t\ntags:\n  - t\nscope: proj\nrecall_when:\n  - wenn es um Kaninchen geht\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nKaninchen.\n",
+    "---\nid: ziel\ntitle: Ziel\ntype: lesson\nsummary: Über Kaninchen\ntopic_path:\n  - t\ntags:\n  - t\nscope: proj\nrecall_when:\n  - wenn es um Kaninchen geht\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nKaninchen.\n"
   );
   const vault = new Vault(dir);
   await vault.init();

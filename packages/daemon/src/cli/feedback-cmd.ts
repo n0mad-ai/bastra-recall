@@ -87,7 +87,7 @@ export async function cmdFeedback(args: ParsedArgs): Promise<number> {
       "usage: bastra feedback <bug|idea>\n" +
         "  bug   open a prefilled bug report (includes the diagnostics below — nothing else)\n" +
         "  idea  open a feature-request form\n\n" +
-        `Other channels: ${REPO}/discussions (questions) · ${REPO}/issues (all reports)\n`,
+        `Other channels: ${REPO}/discussions (questions) · ${REPO}/issues (all reports)\n`
     );
     return 2;
   }
@@ -102,7 +102,7 @@ export async function cmdFeedback(args: ParsedArgs): Promise<number> {
     "This diagnostics block is prefilled into the report — and nothing else\n" +
       "(no vault content, no paths). Edit or remove it in the form as you like:\n\n" +
       formatDiagnostics(diagnostics) +
-      "\n\nopening bug-report form…\n",
+      "\n\nopening bug-report form…\n"
   );
   openInBrowser(buildFeedbackUrl("bug", diagnostics));
   return 0;

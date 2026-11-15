@@ -9,16 +9,31 @@ import { SaveMemoryInput } from "../src/save-schema.js";
 import { saveMemory } from "../src/save.js";
 
 const validator = { tool: "validate_artifact", channel: "invented-channel", limit: 500, unit: "codepoints" } as const;
-const input = { id: "invented-convention", title: "Invented convention", type: "workflow" as const,
-  summary: "An invented rule", body: "Check the approved copy.", topic_path: ["fixture"], tags: ["fixture"],
-  scope: "all-projects", write_origin: "user-directed" as const, recall_when: ["invented copy"] };
+const input = {
+  id: "invented-convention",
+  title: "Invented convention",
+  type: "workflow" as const,
+  summary: "An invented rule",
+  body: "Check the approved copy.",
+  topic_path: ["fixture"],
+  tags: ["fixture"],
+  scope: "all-projects",
+  write_origin: "user-directed" as const,
+  recall_when: ["invented copy"],
+};
 const fm = { ...input, created: "2026-10-29", updated: "2026-10-29" };
 
 test("optional validator keeps old memories valid; lenient malformed metadata drops only that field", () => {
   assert.equal(FrontmatterSchema.parse(fm).validator, undefined);
   assert.equal(SaveMemoryInput.parse(input).validator, undefined);
-  for (const invalid of [{ ...validator, tool: "shell" }, { ...validator, limit: 0 },
-    { ...validator, limit: 1.5 }, { ...validator, channel: " " }, { ...validator, unit: "bytes" }, null]) {
+  for (const invalid of [
+    { ...validator, tool: "shell" },
+    { ...validator, limit: 0 },
+    { ...validator, limit: 1.5 },
+    { ...validator, channel: " " },
+    { ...validator, unit: "bytes" },
+    null,
+  ]) {
     assert.equal(ConventionValidatorSchema.safeParse(invalid).success, false);
     const raw = matter.stringify(input.body, { ...fm, validator: invalid });
     const memory = parseMemoryWith(matter, raw, "invented.md", Date.now());
@@ -33,18 +48,23 @@ test("save/load roundtrip preserves metadata on ordinary overwrite, replaces it 
   const root = await mkdtemp(join(tmpdir(), "bastra-validator-save-"));
   try {
     const saved = await saveMemory(root, SaveMemoryInput.parse({ ...input, validator }));
-    const load = async () => parseMemoryWith(matter, await readFile(saved.file_path, "utf8"), saved.file_path, Date.now()).fm;
+    const load = async () =>
+      parseMemoryWith(matter, await readFile(saved.file_path, "utf8"), saved.file_path, Date.now()).fm;
     assert.deepEqual((await load()).validator, validator);
     await saveMemory(root, SaveMemoryInput.parse({ ...input, overwrite: true }));
     assert.deepEqual((await load()).validator, validator);
-    await saveMemory(root, SaveMemoryInput.parse({ ...input, overwrite: true, validator: { ...validator, limit: 1000, unit: "utf16" } }));
+    await saveMemory(
+      root,
+      SaveMemoryInput.parse({ ...input, overwrite: true, validator: { ...validator, limit: 1000, unit: "utf16" } })
+    );
     assert.equal((await load()).validator?.limit, 1000);
     await saveMemory(root, SaveMemoryInput.parse({ ...input, overwrite: true, validator: null }));
     assert.equal((await load()).validator, undefined);
     assert.equal(Object.hasOwn(matter(await readFile(saved.file_path, "utf8")).data, "validator"), false);
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
-
 
 test("parseMemory keeps gray-matter cache pristine across file-specific lenient fallbacks", () => {
   const raw = "---\ntype: workflow\nvalidator: {tool: invalid}\n---\nAn invented cache isolation rule.\n";

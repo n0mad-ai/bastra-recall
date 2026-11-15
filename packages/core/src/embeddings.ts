@@ -25,11 +25,7 @@ import { RRF_K, RRF_SCALE, rrfVectorWeight } from "./rrf.js";
 // damit jeder bestehende Import aus `embeddings.js` unverändert weiterläuft.
 import type { EmbeddingProvider } from "./embedding-providers.js";
 import { PROVIDER_COLD_LOAD_MS } from "./embedding-providers.js";
-export {
-  OpenAIEmbeddingProvider,
-  OllamaEmbeddingProvider,
-  PROVIDER_COLD_LOAD_MS,
-} from "./embedding-providers.js";
+export { OpenAIEmbeddingProvider, OllamaEmbeddingProvider, PROVIDER_COLD_LOAD_MS } from "./embedding-providers.js";
 import { ensureVaultDir } from "./vault-root-guard.js";
 export type { EmbeddingProvider, EmbedWithMeta } from "./embedding-providers.js";
 
@@ -38,10 +34,7 @@ export type { EmbeddingProvider, EmbedWithMeta } from "./embedding-providers.js"
 /** Max gleichzeitige Embed-Batches in flight. Default 2.
  *  Provider-Calls (OpenAI/Ollama) sind teils sehr fett — wir wollen
  *  Burst-Schutz, aber nicht so streng dass Backfill ewig dauert. */
-const MAX_CONCURRENT_BATCHES = Math.max(
-  1,
-  Number(process.env.BASTRA_EMBED_MAX_CONCURRENT ?? "2"),
-);
+const MAX_CONCURRENT_BATCHES = Math.max(1, Number(process.env.BASTRA_EMBED_MAX_CONCURRENT ?? "2"));
 
 /** Queue-Länge ab der `enqueue()` ein kurzes Sleep einbaut, damit Aufrufer
  *  (z.B. bulk-Import von 1000 Memories) blockieren bis die Queue abebbt.
@@ -55,7 +48,6 @@ function backpressureLimit(): number {
 function backpressureStallMs(): number {
   return Math.max(0, Number(process.env.BASTRA_EMBED_BACKPRESSURE_STALL_MS ?? "100"));
 }
-
 
 // ─── Embedding Hit ───────────────────────────────────────────────
 
@@ -138,17 +130,11 @@ export class EmbeddingIndex {
     private readonly vault: Vault,
     private readonly provider: EmbeddingProvider,
     private readonly persistPath: string,
-    cachePath?: string,
+    cachePath?: string
   ) {
     // Cache liegt neben persistPath: `<vault>/.bastra/embed-cache.json`
-    const resolvedCachePath =
-      cachePath ?? path.join(path.dirname(persistPath), "embed-cache.json");
-    this.cache = new EmbedCache(
-      vault.root,
-      resolvedCachePath,
-      provider.id,
-      provider.dim,
-    );
+    const resolvedCachePath = cachePath ?? path.join(path.dirname(persistPath), "embed-cache.json");
+    this.cache = new EmbedCache(vault.root, resolvedCachePath, provider.id, provider.dim);
   }
 
   /** Lädt persistierte Vectors, subscribed an vault.on, backfillt fehlende. */
@@ -164,9 +150,7 @@ export class EmbeddingIndex {
     const orphans = [...this.vectors.keys()].filter((id) => !this.vault.get(id));
     for (const id of orphans) this.vectors.delete(id);
     if (orphans.length > 0) {
-      console.error(
-        `[bastra.embeddings] pruned ${orphans.length} orphan vector(s) with no memory in the vault`,
-      );
+      console.error(`[bastra.embeddings] pruned ${orphans.length} orphan vector(s) with no memory in the vault`);
       this.schedulePersist();
     }
     this.detach = this.vault.on((e) => this.handle(e));
@@ -184,9 +168,7 @@ export class EmbeddingIndex {
       }
     }
     if (this.pendingQueue.size > 0) {
-      console.error(
-        `[bastra.embeddings] backfilling ${this.pendingQueue.size} memories…`,
-      );
+      console.error(`[bastra.embeddings] backfilling ${this.pendingQueue.size} memories…`);
       void this.flushQueue();
     }
   }
@@ -328,10 +310,12 @@ export class EmbeddingIndex {
   /** Current-content vectors only. Automatic writers must not use an old
    * vector while a note's changed text is waiting in the embedding queue. */
   currentSnapshot(): ReadonlyMap<string, Float32Array> {
-    return new Map([...this.vectors].filter(([id]) => {
-      const memory = this.vault.get(id);
-      return memory !== undefined && !this.cache.isStale(id, hashEmbedContent(memory));
-    }));
+    return new Map(
+      [...this.vectors].filter(([id]) => {
+        const memory = this.vault.get(id);
+        return memory !== undefined && !this.cache.isStale(id, hashEmbedContent(memory));
+      })
+    );
   }
 
   /** Anzahl Memories die noch auf Embedding warten (Backfill-Queue). */
@@ -351,15 +335,13 @@ export class EmbeddingIndex {
       };
       if (data.dim !== this.provider.dim || data.provider !== this.provider.id) {
         console.error(
-          `[bastra.embeddings] provider/dim changed (was ${data.provider}/${data.dim}, now ${this.provider.id}/${this.provider.dim}) — reindexing all`,
+          `[bastra.embeddings] provider/dim changed (was ${data.provider}/${data.dim}, now ${this.provider.id}/${this.provider.dim}) — reindexing all`
         );
         return;
       }
       for (const [id, b64] of Object.entries(data.vectors)) {
         const buf = Buffer.from(b64, "base64");
-        const f32 = new Float32Array(
-          buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
-        );
+        const f32 = new Float32Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
         this.vectors.set(id, f32);
       }
       console.error(`[bastra.embeddings] loaded ${this.vectors.size} vectors`);
@@ -512,9 +494,7 @@ export class EmbeddingIndex {
         for (const id of batch) this.pendingQueue.delete(id);
         const memories = batch
           .map((id) => ({ id, m: this.vault.get(id) }))
-          .filter(
-            (x): x is { id: string; m: Memory } => x.m !== undefined,
-          );
+          .filter((x): x is { id: string; m: Memory } => x.m !== undefined);
         if (memories.length === 0) continue;
 
         // Content-Hash-Cache: Items rausfiltern deren Hash sich nicht geändert
@@ -612,13 +592,7 @@ export class EmbeddingIndex {
  *  (#631, siehe `embedBody`), auf 4000 chars limitiert (Token-Budget). */
 function buildEmbedText(m: Memory): string {
   const fm = m.fm;
-  const parts = [
-    fm.title,
-    fm.tags.join(" "),
-    fm.recall_when.join(" "),
-    fm.summary,
-    embedBody(m),
-  ];
+  const parts = [fm.title, fm.tags.join(" "), fm.recall_when.join(" "), fm.summary, embedBody(m)];
   return parts.filter((p) => p && p.length > 0).join("\n");
 }
 
@@ -670,7 +644,7 @@ export function fuseRRF(
   bm25Ids: string[],
   vectorIds: string[],
   k: number = RRF_K,
-  vectorWeight: number = rrfVectorWeight(),
+  vectorWeight: number = rrfVectorWeight()
 ): Map<string, FusedEntry> {
   const fused = new Map<string, FusedEntry>();
   // #641: weights normalised to sum 2, so w=1 is exactly the unweighted sum

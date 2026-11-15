@@ -10,21 +10,34 @@ import * as ss from "../src/session-state.js";
 import { FAST_LANE_P90_TARGET_MS } from "../src/hook-budgets.js";
 import { isThrottled, markThrottle } from "../src/bash-fail-lane.js";
 
-afterEach(() => { delete process.env.BASTRA_HOOK_STATE_DIR; });
+afterEach(() => {
+  delete process.env.BASTRA_HOOK_STATE_DIR;
+});
 async function root(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "hook-state-db-"));
   process.env.BASTRA_HOOK_STATE_DIR = dir;
   return dir;
 }
 function child(source: string): string {
-  return execFileSync(process.execPath, ["--import", "tsx", "--import", "./scripts/test-env.mjs", "--input-type=module", "-e",
-    `import * as ss from ${JSON.stringify(new URL("../src/session-state.ts", import.meta.url).href)}; ${source}`],
-  { env: process.env, encoding: "utf8", timeout: 10_000 });
+  return execFileSync(
+    process.execPath,
+    [
+      "--import",
+      "tsx",
+      "--import",
+      "./scripts/test-env.mjs",
+      "--input-type=module",
+      "-e",
+      `import * as ss from ${JSON.stringify(new URL("../src/session-state.ts", import.meta.url).href)}; ${source}`,
+    ],
+    { env: process.env, encoding: "utf8", timeout: 10_000 }
+  );
 }
 
 test("#1339 stage2: old hook state and load markers migrate once with originals preserved", async () => {
   const dir = await root();
-  const raw = '{"shown":{"memo":{"count":2,"at":100}},"sources":{"todo":{"streak":2,"at":100,"ids":["memo"],"skipped":0}},"constants":{"kernel":"revision"},"pendingMustLoad":[{"id":"memo","block":"must-load","at":100}],"touched":{"/repo":{"a.ts":{"at":100,"last":100,"hits":[],"unplaced":false,"truncated":false}}}}';
+  const raw =
+    '{"shown":{"memo":{"count":2,"at":100}},"sources":{"todo":{"streak":2,"at":100,"ids":["memo"],"skipped":0}},"constants":{"kernel":"revision"},"pendingMustLoad":[{"id":"memo","block":"must-load","at":100}],"touched":{"/repo":{"a.ts":{"at":100,"last":100,"hits":[],"unplaced":false,"truncated":false}}}}';
   await writeFile(join(dir, "legacy.json"), raw);
   await writeFile(join(dir, "other-session.json"), raw);
   await writeFile(join(dir, "loaded-memo.touch"), "100");
@@ -35,7 +48,9 @@ test("#1339 stage2: old hook state and load markers migrate once with originals 
       const insert = sharedDb.sqlite.prepare("INSERT INTO app_records(namespace,key,value) VALUES('other-store',?,?)");
       for (let i = 0; i < 100; i++) insert.run(String(i), JSON.stringify({ fixture: i }));
     });
-  } finally { sharedDb.close(); }
+  } finally {
+    sharedDb.close();
+  }
   const markerAt = (await stat(join(dir, "loaded-memo.touch"))).mtimeMs;
   const state = await ss.loadSessionState("legacy");
   assert.equal((await ss.loadSessionState("other-session")).shown.memo.count, 2);
@@ -45,15 +60,22 @@ test("#1339 stage2: old hook state and load markers migrate once with originals 
   assert.equal(await ss.getLoadedMarkerMtime("memo"), markerAt);
   assert.equal(await readFile(join(dir, "legacy.json.pre-sqlite"), "utf8"), raw);
   await assert.rejects(stat(join(dir, "legacy.json")), { code: "ENOENT" });
-  await ss.mutateSessionState("legacy", value => ss.bumpShown(value, "new", 200));
+  await ss.mutateSessionState("legacy", (value) => ss.bumpShown(value, "new", 200));
   assert.equal((await ss.loadSessionState("legacy")).shown.new.count, 1);
   assert.equal(await readFile(join(dir, "legacy.json.pre-sqlite"), "utf8"), raw);
   const db = openAppDatabase({ path: join(dir, "recall.db") });
   try {
-    assert.ok(db.sqlite.prepare("SELECT value FROM app_records WHERE namespace LIKE 'hook-session:%' AND key='legacy'").get());
-    assert.equal(Number(db.sqlite.prepare("SELECT COUNT(*) AS n FROM app_records WHERE namespace='other-store'").get()?.n), 100);
-    assert.ok((await readdir(`${db.path}.backups`)).some(name => name.startsWith("before-hook-state-")));
-  } finally { db.close(); }
+    assert.ok(
+      db.sqlite.prepare("SELECT value FROM app_records WHERE namespace LIKE 'hook-session:%' AND key='legacy'").get()
+    );
+    assert.equal(
+      Number(db.sqlite.prepare("SELECT COUNT(*) AS n FROM app_records WHERE namespace='other-store'").get()?.n),
+      100
+    );
+    assert.ok((await readdir(`${db.path}.backups`)).some((name) => name.startsWith("before-hook-state-")));
+  } finally {
+    db.close();
+  }
 });
 
 test("#1339 stage2: warm reads stay in memory and state snapshots do not alias", async () => {
@@ -67,28 +89,37 @@ test("#1339 stage2: warm reads stay in memory and state snapshots do not alias",
   const probe = openAppDatabase({ path: join(dir, "recall.db") });
   const prototype = Object.getPrototypeOf(probe.sqlite) as { prepare: typeof probe.sqlite.prepare };
   const originals = { prepare: prototype.prepare, readFile: fs.readFile, readdir: fs.readdir, stat: fs.stat };
-  const forbidden = () => { throw new Error("Warm reads must not access disk or SQLite"); };
+  const forbidden = () => {
+    throw new Error("Warm reads must not access disk or SQLite");
+  };
   prototype.prepare = forbidden;
-  fs.readFile = forbidden; fs.readdir = forbidden; fs.stat = forbidden;
+  fs.readFile = forbidden;
+  fs.readdir = forbidden;
+  fs.stat = forbidden;
   try {
     assert.equal((await ss.loadSessionState("warm")).shown.memo.count, 1);
     assert.equal(await ss.getLoadedMarkerMtime("missing"), null);
   } finally {
     prototype.prepare = originals.prepare;
-    fs.readFile = originals.readFile; fs.readdir = originals.readdir; fs.stat = originals.stat;
+    fs.readFile = originals.readFile;
+    fs.readdir = originals.readdir;
+    fs.stat = originals.stat;
     probe.close();
   }
   const timings: number[] = [];
   for (let i = 0; i < 120; i++) {
     const start = performance.now();
-    await ss.mutateSessionState("warm", value => ss.bumpShown(value, `m${i}`));
+    await ss.mutateSessionState("warm", (value) => ss.bumpShown(value, `m${i}`));
     await ss.loadSessionState("warm");
     await ss.touchLoadedMarker(`m${i}`);
     await ss.getLoadedMarkerMtime(`m${i}`);
     timings.push(performance.now() - start);
   }
   timings.sort((a, b) => a - b);
-  assert.ok(timings[108] < FAST_LANE_P90_TARGET_MS, `state p90 ${timings[108]} exceeds fast lane ${FAST_LANE_P90_TARGET_MS}ms`);
+  assert.ok(
+    timings[108] < FAST_LANE_P90_TARGET_MS,
+    `state p90 ${timings[108]} exceeds fast lane ${FAST_LANE_P90_TARGET_MS}ms`
+  );
 });
 
 test("#1339 stage2: restart finishes post-commit renames and never reimports stale state", async () => {
@@ -99,11 +130,17 @@ test("#1339 stage2: restart finishes post-commit renames and never reimports sta
   // Simulate a process that committed the import but died before renaming.
   await rename(join(dir, "restart.json.pre-sqlite"), join(dir, "restart.json"));
   const resultPath = join(dir, "restart-result.txt");
-  child(`import {writeFileSync} from "node:fs"; writeFileSync(${JSON.stringify(resultPath)},JSON.stringify(await ss.loadSessionState("restart")));`);
+  child(
+    `import {writeFileSync} from "node:fs"; writeFileSync(${JSON.stringify(resultPath)},JSON.stringify(await ss.loadSessionState("restart")));`
+  );
   const state = JSON.parse(await readFile(resultPath, "utf8")) as ss.SessionState;
   assert.equal(state.shown.new.count, 1, "the stale original never overwrites a committed update");
   await assert.rejects(stat(join(dir, "restart.json")), { code: "ENOENT" });
-  assert.deepEqual(await readdir(join(dir, "recall.db.backups")), backups, "second hydrate does not rerun the data migration");
+  assert.deepEqual(
+    await readdir(join(dir, "recall.db.backups")),
+    backups,
+    "second hydrate does not rerun the data migration"
+  );
 });
 
 test("#1339 stage2: a foreign process update survives a local mutation and stale-cache cleanup", async () => {
@@ -111,7 +148,7 @@ test("#1339 stage2: a foreign process update survives a local mutation and stale
   await ss.saveSessionState("shared", { shown: { first: { count: 1, at: 1 } } });
   child('await ss.mutateSessionState("shared",s=>ss.bumpShown(s,"foreign",2));');
   await ss.persistDraftHintClaims("shared", ["draft"], dir);
-  await ss.mutateSessionState("shared", state => ss.bumpShown(state, "local", 3));
+  await ss.mutateSessionState("shared", (state) => ss.bumpShown(state, "local", 3));
   const updated = await ss.loadSessionState("shared");
   assert.ok(updated.shown.foreign);
   assert.ok(updated.shown.local);
@@ -119,13 +156,24 @@ test("#1339 stage2: a foreign process update survives a local mutation and stale
   // The cached timestamp can be old while another process refreshed the row.
   const db = openAppDatabase({ path: join(dir, "recall.db") });
   try {
-    const row = db.sqlite.prepare("SELECT namespace,key,value FROM app_records WHERE namespace LIKE 'hook-session:%' AND key='shared'").get()!;
+    const row = db.sqlite
+      .prepare("SELECT namespace,key,value FROM app_records WHERE namespace LIKE 'hook-session:%' AND key='shared'")
+      .get()!;
     const persisted = JSON.parse(String(row.value)) as { raw: string; at: number };
     persisted.at = Date.now() + 60_000;
-    db.sqlite.prepare("UPDATE app_records SET value=? WHERE namespace=? AND key=?").run(JSON.stringify(persisted), String(row.namespace), String(row.key));
+    db.sqlite
+      .prepare("UPDATE app_records SET value=? WHERE namespace=? AND key=?")
+      .run(JSON.stringify(persisted), String(row.namespace), String(row.key));
     await ss.cleanupOldStates(-1);
-    assert.ok(db.sqlite.prepare("SELECT 1 FROM app_records WHERE namespace=? AND key=?").get(String(row.namespace), String(row.key)), "fresh foreign state cannot be deleted using a stale cache timestamp");
-  } finally { db.close(); }
+    assert.ok(
+      db.sqlite
+        .prepare("SELECT 1 FROM app_records WHERE namespace=? AND key=?")
+        .get(String(row.namespace), String(row.key)),
+      "fresh foreign state cannot be deleted using a stale cache timestamp"
+    );
+  } finally {
+    db.close();
+  }
 });
 
 test("#1339 stage2: a contended DB writer never blocks a hook claim", async () => {
@@ -135,11 +183,17 @@ test("#1339 stage2: a contended DB writer never blocks a hook claim", async () =
   writer.sqlite.exec("BEGIN IMMEDIATE");
   try {
     const start = performance.now();
-    const saved = await ss.mutateSessionState("busy", state => ss.bumpShown(state, "denied"), { noQueue: true, deadline: Date.now() + 100 });
+    const saved = await ss.mutateSessionState("busy", (state) => ss.bumpShown(state, "denied"), {
+      noQueue: true,
+      deadline: Date.now() + 100,
+    });
     assert.equal(saved, false);
     assert.ok(performance.now() - start < 100, "no SQLite busy wait on hook path");
     assert.equal((await ss.loadSessionState("busy")).shown.denied, undefined, "failed claim never reaches cache");
-  } finally { writer.sqlite.exec("ROLLBACK"); writer.close(); }
+  } finally {
+    writer.sqlite.exec("ROLLBACK");
+    writer.close();
+  }
 });
 
 test("#1339 stage2: Bash failure throttle migrates with its original 30s timestamp", async () => {

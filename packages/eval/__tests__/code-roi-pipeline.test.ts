@@ -27,7 +27,17 @@ const { ARM_IDS, shuffled, rng, excludedPilotCommits, pooledCandidates, fileKey 
   // @ts-expect-error — plain .mjs script, no declarations (#542).
   "../code-roi/v2/select.mjs"
 );
-const { ARMS, firstSymlink, scenarioComplete, helpingSize, treeDirOf, legacyTreeDirOf, treeIsReusable, treeMarkerOf, GRAPH_TOOLS } = await import(
+const {
+  ARMS,
+  firstSymlink,
+  scenarioComplete,
+  helpingSize,
+  treeDirOf,
+  legacyTreeDirOf,
+  treeIsReusable,
+  treeMarkerOf,
+  GRAPH_TOOLS,
+} = await import(
   // @ts-expect-error — plain .mjs script, no declarations (#542).
   "../code-roi/v2/run-arms-v3.mjs"
 );
@@ -68,9 +78,7 @@ function transcript(shape: ArmShape): string {
       type: "assistant",
       message: {
         model: "claude-sonnet-5",
-        content: [
-          { type: "tool_use", id: `aff${i}`, name: "mcp__code__find_affected_files", input: {} },
-        ],
+        content: [{ type: "tool_use", id: `aff${i}`, name: "mcp__code__find_affected_files", input: {} }],
       },
     });
     lines.push({
@@ -133,8 +141,11 @@ function transcript(shape: ArmShape): string {
 /** One scenario plus the three arms it was run through. */
 function sample(
   n: number,
-  shape: (i: number, arm: string) => ArmShape,
-): { scenarios: Array<{ id: string; file: string; truth: string[] }>; read: (s: { id: string }, arm: string) => string | null } {
+  shape: (i: number, arm: string) => ArmShape
+): {
+  scenarios: Array<{ id: string; file: string; truth: string[] }>;
+  read: (s: { id: string }, arm: string) => string | null;
+} {
   const scenarios = Array.from({ length: n }, (_, i) => ({
     id: `S${String(i + 1).padStart(2, "0")}`,
     file: `packages/core/src/f${i}.ts`,
@@ -223,8 +234,7 @@ describe("select hands the runner arm names it knows", () => {
 // ─── Pooling several repositories ────────────────────────────────
 
 describe("a pooled sample follows the registration, not the results", () => {
-  const cands = (repo: string, n: number) =>
-    Array.from({ length: n }, (_, i) => ({ repo, file: `src/f${i}.ts` }));
+  const cands = (repo: string, n: number) => Array.from({ length: n }, (_, i) => ({ repo, file: `src/f${i}.ts` }));
 
   test("repositories are drawn in the REGISTERED order", () => {
     const byRepo = new Map([
@@ -257,7 +267,10 @@ describe("a pooled sample follows the registration, not the results", () => {
   test("the cap cuts the TAIL, it does not choose among scenarios", () => {
     const byRepo = new Map([["/r/a", cands("/r/a", 10)]]);
     const { pooled } = pooledCandidates(byRepo, ["/r/a"], 4, 40);
-    assert.deepEqual(pooled.map((c: any) => c.file), ["src/f0.ts", "src/f1.ts", "src/f2.ts", "src/f3.ts"]);
+    assert.deepEqual(
+      pooled.map((c: any) => c.file),
+      ["src/f0.ts", "src/f1.ts", "src/f2.ts", "src/f3.ts"]
+    );
   });
 
   test("the same path in two repositories is two different files", () => {
@@ -268,15 +281,24 @@ describe("a pooled sample follows the registration, not the results", () => {
   test("the cap does not shrink a sufficient single-repository sample", () => {
     // The amendment of 2026-09-19: bastra-io alone mined 40, and an
     // unconditional cap of 30 would have turned that into `underpowered`.
-    const byRepo = new Map([["/r/a", cands("/r/a", 40)], ["/r/b", cands("/r/b", 7)]]);
+    const byRepo = new Map([
+      ["/r/a", cands("/r/a", 40)],
+      ["/r/b", cands("/r/b", 7)],
+    ]);
     const enough = (byRepo.get("/r/a") ?? []).length >= 40;
     const { pooled } = pooledCandidates(byRepo, enough ? ["/r/a"] : ["/r/a", "/r/b"], enough ? Infinity : 30, 40);
     assert.equal(pooled.length, 40);
-    assert.ok(pooled.every((c: any) => c.repo === "/r/a"), "no pooling where none is needed");
+    assert.ok(
+      pooled.every((c: any) => c.repo === "/r/a"),
+      "no pooling where none is needed"
+    );
   });
 
   test("drawing stops once the target is reached", () => {
-    const byRepo = new Map([["/r/a", cands("/r/a", 100)], ["/r/b", cands("/r/b", 100)]]);
+    const byRepo = new Map([
+      ["/r/a", cands("/r/a", 100)],
+      ["/r/b", cands("/r/b", 100)],
+    ]);
     const { pooled, takenPerRepo } = pooledCandidates(byRepo, ["/r/a", "/r/b"], 30, 40);
     assert.equal(pooled.length, 40);
     assert.equal(takenPerRepo.get("/r/a"), 30);
@@ -300,10 +322,7 @@ describe("tool calls are counted per tool", () => {
 
   test("an empty answer from the tool is counted separately", () => {
     const ok = parseArm(transcript({ files: [], affectedCalls: 2 }), "");
-    const empty = parseArm(
-      transcript({ files: [], affectedCalls: 2, affectedStatus: "unavailable" }),
-      "",
-    );
+    const empty = parseArm(transcript({ files: [], affectedCalls: 2, affectedStatus: "unavailable" }), "");
     assert.equal(ok.affectedEmpty, 0);
     assert.equal(empty.affectedEmpty, 2);
   });
@@ -330,10 +349,7 @@ describe("tool calls are counted per tool", () => {
 
 describe("context is the input tokens the run really read", () => {
   test("input, cache read and cache creation are all summed", () => {
-    const t = parseArm(
-      transcript({ files: [], inputTokens: 100, cacheRead: 1000, cacheCreation: 500 }),
-      "",
-    );
+    const t = parseArm(transcript({ files: [], inputTokens: 100, cacheRead: 1000, cacheCreation: 500 }), "");
     assert.equal(t.inputTokens, 1600);
     assert.equal(t.usageFallback, false);
   });
@@ -346,7 +362,7 @@ describe("context is the input tokens the run really read", () => {
   test("a run without modelUsage falls back to the run-level usage and says so", () => {
     const { tokens, fallback } = inputTokensOf(
       { usage: { input_tokens: 7, cache_read_input_tokens: 11, cache_creation_input_tokens: 2 } },
-      "claude-sonnet-5",
+      "claude-sonnet-5"
     );
     assert.equal(tokens, 20);
     assert.equal(fallback, true);
@@ -363,7 +379,7 @@ describe("context is the input tokens the run really read", () => {
     const report = buildReport(scenarios, read);
     assert.ok(
       report.means.prefilled.inputTokensMedian > report.means.A.inputTokensMedian,
-      "the arm that was handed a block of JSON must read more tokens than the one that was not",
+      "the arm that was handed a block of JSON must read more tokens than the one that was not"
     );
     assert.equal(report.checks.context.pass, false, "and that cost is gated");
   });
@@ -381,7 +397,11 @@ describe("the cross-package mechanism gate", () => {
       { id: "S3", file: "apps/web/y.ts", truth: ["apps/web/z.ts"], excluded: "pilot" },
     ];
     const rows = gateRows(scenarios);
-    assert.deepEqual(rows.map((r: any) => r.id), ["S1"], "only a scenario that crosses a boundary");
+    assert.deepEqual(
+      rows.map((r: any) => r.id),
+      ["S1"],
+      "only a scenario that crosses a boundary"
+    );
     assert.deepEqual(rows[0].crossTruth, ["apps/web/x.ts"], "and only the crossing file of it");
 
     assert.deepEqual(gateScore([{ crossTruth: ["a", "b"], named: ["a"] }]), {
@@ -473,9 +493,7 @@ describe("the historical gate reads real source through its root", () => {
   };
 
   test("a graph-only root falls back to whole_file; the joined root narrows to what the diff touched", async () => {
-    const { loadGraph, graphDirOf, GRAPH_FILE_NAME } = await import(
-      "../../daemon/src/code-graph/reader.js"
-    );
+    const { loadGraph, graphDirOf, GRAPH_FILE_NAME } = await import("../../daemon/src/code-graph/reader.js");
     // @ts-expect-error — plain .mjs script, no declarations (#542).
     const { scenarioRoot } = await import("../code-roi/v2/scenario-root.mjs");
     // @ts-expect-error — plain .mjs script, no declarations (#542).
@@ -503,7 +521,7 @@ describe("the historical gate reads real source through its root", () => {
       assert.deepEqual(
         brokenFiles,
         [FILE_B, FILE_C],
-        "symbolSpans finds no source -> null -> whole_file, so the untouched unrelated() drags consumer.ts in too",
+        "symbolSpans finds no source -> null -> whole_file, so the untouched unrelated() drags consumer.ts in too"
       );
 
       // NEW (fixed): tree and graph joined through the same symlink root the
@@ -515,7 +533,7 @@ describe("the historical gate reads real source through its root", () => {
       assert.deepEqual(
         fixedFiles,
         [FILE_B],
-        "symbolSpans reads the real source, the diff narrows to touched() alone, and consumer.ts drops out",
+        "symbolSpans reads the real source, the diff narrows to touched() alone, and consumer.ts drops out"
       );
     } finally {
       rmSync(tree, { recursive: true, force: true });
@@ -592,7 +610,11 @@ describe("the mutation gate makes breakage mechanically", () => {
     const items = Array.from({ length: 20 }, (_, i) => i);
     assert.deepEqual(drawOrder(items, 7), drawOrder(items, 7));
     assert.notDeepEqual(drawOrder(items, 7), drawOrder(items, 8));
-    assert.deepEqual([...drawOrder(items, 7)].sort((a, b) => a - b), items, "a permutation, nothing lost");
+    assert.deepEqual(
+      [...drawOrder(items, 7)].sort((a, b) => a - b),
+      items,
+      "a permutation, nothing lost"
+    );
   });
 
   test("every file/symbol/operator triple is offered, deterministically", async () => {
@@ -600,7 +622,10 @@ describe("the mutation gate makes breakage mechanically", () => {
     const { candidateMutations, OPERATORS } = await import("../code-roi/v2/mutation-gate.mjs");
     const cands = candidateMutations(["a.ts"], () => FIXTURE);
     assert.equal(cands.length, 3 * OPERATORS.length, "three exports x every operator");
-    assert.deepEqual(cands, candidateMutations(["a.ts"], () => FIXTURE));
+    assert.deepEqual(
+      cands,
+      candidateMutations(["a.ts"], () => FIXTURE)
+    );
   });
 });
 
@@ -617,7 +642,7 @@ describe("the registration's thresholds decide", () => {
     id: string,
     a: { recall: number; precision: number; inputTokens: number },
     p: { recall: number; precision: number; inputTokens: number },
-    bCalls: number,
+    bCalls: number
   ) => ({
     id,
     file: `f${id}.ts`,
@@ -632,8 +657,8 @@ describe("the registration's thresholds decide", () => {
         `S${i}`,
         { recall: 0.85, precision: 0.9, inputTokens: 10_000 },
         { recall: 0.85 + gain, precision: 0.9 + dPrecision, inputTokens: 10_000 * ctx },
-        1,
-      ),
+        1
+      )
     );
 
   test("a run that clears every threshold passes BOTH verdicts", () => {
@@ -672,8 +697,8 @@ describe("the registration's thresholds decide", () => {
         `S${i}`,
         { recall: 0.5, precision: 0.9, inputTokens: 10_000 },
         { recall: i % 2 === 0 ? 1 : 0.06, precision: 0.9, inputTokens: 10_000 },
-        1,
-      ),
+        1
+      )
     );
     const v = judge(rows, thresholds, 40);
     assert.equal(v.effect.checks.recall_ci_lower.pass, false);
@@ -766,8 +791,16 @@ describe("the arms cannot reach their own answer sheet", () => {
     const b = treeDirOf({ id: "S01" }, "/Volumes/ext/code-roi-v4");
     assert.notEqual(a, b);
     assert.ok(a.includes("code-roi-v4-"), `the basename is still readable in ${a}`);
-    assert.equal(treeDirOf({ id: "S01" }, "/Users/x/.bastra/eval/code-roi-v4/"), a, "a trailing slash is the same archive");
-    assert.equal(legacyTreeDirOf({ id: "S01" }, "/Volumes/ext/code-roi-v4"), legacyTreeDirOf({ id: "S01" }, "/Users/x/.bastra/eval/code-roi-v4"), "the legacy layout is the one that collided");
+    assert.equal(
+      treeDirOf({ id: "S01" }, "/Users/x/.bastra/eval/code-roi-v4/"),
+      a,
+      "a trailing slash is the same archive"
+    );
+    assert.equal(
+      legacyTreeDirOf({ id: "S01" }, "/Volumes/ext/code-roi-v4"),
+      legacyTreeDirOf({ id: "S01" }, "/Users/x/.bastra/eval/code-roi-v4"),
+      "the legacy layout is the one that collided"
+    );
   });
 
   test("a tree is only reused when its marker names this archive and this parent (#593)", () => {
@@ -782,7 +815,11 @@ describe("the arms cannot reach their own answer sheet", () => {
       const { path, expected } = treeMarkerOf(s, out);
       writeFileSync(path, JSON.stringify(expected));
       assert.equal(treeIsReusable(s, out), true);
-      assert.equal(treeIsReusable({ ...s, parent: "def456" }, out), false, "the same scenario at another parent is a different tree");
+      assert.equal(
+        treeIsReusable({ ...s, parent: "def456" }, out),
+        false,
+        "the same scenario at another parent is a different tree"
+      );
       writeFileSync(path, JSON.stringify({ ...expected, archive: join(box, "other") }));
       assert.equal(treeIsReusable(s, out), false, "another archive's tree is not this one's");
       writeFileSync(path, "{not json");
@@ -802,11 +839,7 @@ describe("each arm is the thing it claims to be", () => {
 
   test("prefilled is the ANSWER alone — no MCP server, no product surface", () => {
     assert.equal(ARMS.prefilled.prefill, true);
-    assert.equal(
-      ARMS.prefilled.graph,
-      false,
-      "with the server attached, a gain could not be told apart from arm B's",
-    );
+    assert.equal(ARMS.prefilled.graph, false, "with the server attached, a gain could not be told apart from arm B's");
   });
 
   test("B is offered the product's WHOLE surface, not just the code half", () => {
@@ -814,7 +847,7 @@ describe("each arm is the thing it claims to be", () => {
     assert.ok(GRAPH_TOOLS.includes("mcp__code__find_affected_files"));
     assert.ok(
       GRAPH_TOOLS.includes("mcp__code__recall"),
-      "the instructions ask for a recall first — an arm denied it is not the product",
+      "the instructions ask for a recall first — an arm denied it is not the product"
     );
     assert.ok(GRAPH_TOOLS.length >= 10, `expected the full tool list, got ${GRAPH_TOOLS.length}`);
   });
@@ -915,7 +948,7 @@ describe("the report covers three arms", () => {
   test("a missing arm keeps the scenario out and is named", () => {
     const { scenarios } = sample(3, () => ({ files: [] }));
     const report = buildReport(scenarios, (s: any, arm: any) =>
-      arm === "prefilled" && s.id === "S02" ? null : transcript({ files: [] }),
+      arm === "prefilled" && s.id === "S02" ? null : transcript({ files: [] })
     );
     assert.equal(report.n, 2);
     assert.deepEqual(report.missing, ["S02/prefilled"]);
@@ -923,16 +956,15 @@ describe("the report covers three arms", () => {
 
   test("B against A is reported but carries no threshold", () => {
     const { scenarios, read } = sample(40, (i, arm) => ({
-      files: arm === "A" ? [`packages/daemon/src/a${i}.ts`] : [`packages/daemon/src/a${i}.ts`, `packages/daemon/src/b${i}.ts`],
+      files:
+        arm === "A"
+          ? [`packages/daemon/src/a${i}.ts`]
+          : [`packages/daemon/src/a${i}.ts`, `packages/daemon/src/b${i}.ts`],
       affectedCalls: arm === "B" ? 1 : 0,
     }));
     const report = buildReport(scenarios, read);
     assert.ok(report.notGated.b_vs_a_recall > 0);
-    assert.equal(
-      Object.keys(report.checks).includes("b_vs_a"),
-      false,
-      "B vs A must never become a gate",
-    );
+    assert.equal(Object.keys(report.checks).includes("b_vs_a"), false, "B vs A must never become a gate");
   });
 
   test("a pooled sample is broken down per repository, and that is not gated", () => {
@@ -943,12 +975,16 @@ describe("the report covers three arms", () => {
       truth: [`packages/y/src/a${i}.ts`],
     }));
     const report = buildReport(scenarios, (s: any, arm: any) =>
-      transcript({ files: [`packages/y/src/a${s.id.slice(1)}.ts`], affectedCalls: arm === "B" ? 1 : 0 }),
+      transcript({ files: [`packages/y/src/a${s.id.slice(1)}.ts`], affectedCalls: arm === "B" ? 1 : 0 })
     );
     assert.equal(report.byRepo["/r/io"].n, 4);
     assert.equal(report.byRepo["/r/rec"].n, 2);
     assert.equal(report.byRepo["/r/io"].adoptionShare, 1);
-    assert.equal(Object.keys(report.checks).some((k) => k.includes("repo")), false, "no per-repo gate");
+    assert.equal(
+      Object.keys(report.checks).some((k) => k.includes("repo")),
+      false,
+      "no per-repo gate"
+    );
   });
 
   test("an answer without a FILES: line scores zero recall rather than crashing", () => {
@@ -1037,7 +1073,7 @@ describe("the mutation gate cannot mix two trees under one seed", () => {
     const diff = mutationDiff(
       "packages/db/src/index.ts",
       "export function q(a: string) {\n  return a;\n}\n",
-      "export function q(__mutation: never, a: string) {\n  return a;\n}\n",
+      "export function q(__mutation: never, a: string) {\n  return a;\n}\n"
     );
     assert.match(diff, /^diff --git a\/packages\/db\/src\/index\.ts b\/packages\/db\/src\/index\.ts$/m);
     assert.match(diff, /^--- a\/packages\/db\/src\/index\.ts$/m);

@@ -19,10 +19,7 @@ import type { RecallHit, RecallOptions } from "./search-types.js";
  * via `storeFields` die gespeicherten Doc-Properties als beliebige
  * Keys mit-trägt — daher das `Record<string, unknown>`-Typing hier.
  */
-export function passesRecallFilters(
-  r: Record<string, unknown>,
-  opts: RecallOptions,
-): boolean {
+export function passesRecallFilters(r: Record<string, unknown>, opts: RecallOptions): boolean {
   if (r.obsolete) return false;
   if (opts.scope && !scopeEquals(r.scope as string, opts.scope)) return false;
   if (opts.type && r.type !== opts.type) return false;
@@ -94,7 +91,7 @@ const QUERY_CACHE_TTL_MS = 30_000;
  */
 export function lookupQueryCache(
   queryCache: Map<string, QueryCacheEntry>,
-  key: string,
+  key: string
 ): { hits: RecallHit[]; pool: RecallHit[]; degraded?: string } | undefined {
   const cached = queryCache.get(key);
   if (!cached) return undefined;
@@ -131,7 +128,7 @@ export function storeQueryCache(
   key: string,
   hits: RecallHit[],
   pool: RecallHit[],
-  degraded?: string,
+  degraded?: string
 ): void {
   if (queryCache.size >= QUERY_CACHE_MAX) {
     // Oldest first — Map preserved insertion order.
@@ -167,14 +164,13 @@ export function collectOneHopNeighbors(
   vault: Vault,
   seeds: RecallHit[],
   opts: RecallOptions,
-  exclude: Set<string>,
+  exclude: Set<string>
 ): RecallHit[] {
   if (seeds.length === 0) return [];
   const best = new Map<string, RecallHit>();
   for (const seed of seeds) {
     const mem = vault.get(seed.id);
-    const related = (mem?.fm as { related_via?: { id: string; reason: string; score: number }[] })
-      ?.related_via;
+    const related = (mem?.fm as { related_via?: { id: string; reason: string; score: number }[] })?.related_via;
     if (!related?.length) continue;
     for (const link of related) {
       if (exclude.has(link.id)) continue;
@@ -183,10 +179,7 @@ export function collectOneHopNeighbors(
       if (neigh.fm.obsolete === true) continue;
       if (opts.scope && !scopeEquals(neigh.fm.scope, opts.scope)) continue;
       if (opts.type && neigh.fm.type !== opts.type) continue;
-      if (
-        !opts.allow_private &&
-        (neigh.fm as { sensitivity?: string }).sensitivity === "private"
-      ) {
+      if (!opts.allow_private && (neigh.fm as { sensitivity?: string }).sensitivity === "private") {
         continue;
       }
       const score = round(seed.score * 0.5 * link.score);

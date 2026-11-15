@@ -36,27 +36,64 @@ test("P2 claim: `asked` is only noted where there is no note for this recommenda
 });
 
 test("P2 race: a decision racing the catch-up is never turned back into asked", async () => {
-  for(const dismissFirst of [true,false]) await withDir(async(dir,path)=>{
-    let enter!:()=>void,release!:()=>void,questions=0;
-    const entered=new Promise<void>(resolve=>enter=resolve),gate=new Promise<void>(resolve=>release=resolve);
-    const held=withPathLock(path,async()=>{enter();await gate;},{crossProcess:true,requireLock:true});
-    await entered;
-    const ask=()=>quiet(()=>modelNoticeAfterCommand(ARGS,deps(path,{interactive:true,ask:async()=>{questions++;return null;},shownPath:join(dir,"shown.txt")})));
-    let asking:Promise<unknown>,dismissing:Promise<unknown>;
-    if(dismissFirst){dismissing=recordModelAnswer("fixture-rec","dismissed",path);asking=ask();}
-    else {asking=ask();dismissing=recordModelAnswer("fixture-rec","dismissed",path);}
-    release();await Promise.all([held,asking,dismissing]);
-    const stored=JSON.parse(await readSettingsFixture(path));
-    assert.equal(stored.modelRecommendation.answer,"dismissed");assert.ok(questions<=1);
-    assert.equal(await pendingModelNotice(deps(path)),null);
-  });
+  for (const dismissFirst of [true, false])
+    await withDir(async (dir, path) => {
+      let enter!: () => void,
+        release!: () => void,
+        questions = 0;
+      const entered = new Promise<void>((resolve) => (enter = resolve)),
+        gate = new Promise<void>((resolve) => (release = resolve));
+      const held = withPathLock(
+        path,
+        async () => {
+          enter();
+          await gate;
+        },
+        { crossProcess: true, requireLock: true }
+      );
+      await entered;
+      const ask = () =>
+        quiet(() =>
+          modelNoticeAfterCommand(
+            ARGS,
+            deps(path, {
+              interactive: true,
+              ask: async () => {
+                questions++;
+                return null;
+              },
+              shownPath: join(dir, "shown.txt"),
+            })
+          )
+        );
+      let asking: Promise<unknown>, dismissing: Promise<unknown>;
+      if (dismissFirst) {
+        dismissing = recordModelAnswer("fixture-rec", "dismissed", path);
+        asking = ask();
+      } else {
+        asking = ask();
+        dismissing = recordModelAnswer("fixture-rec", "dismissed", path);
+      }
+      release();
+      await Promise.all([held, asking, dismissing]);
+      const stored = JSON.parse(await readSettingsFixture(path));
+      assert.equal(stored.modelRecommendation.answer, "dismissed");
+      assert.ok(questions <= 1);
+      assert.equal(await pendingModelNotice(deps(path)), null);
+    });
 });
 
 test("P2 race: two commands finishing together put the question once", async () => {
   await withDir(async (_dir, path) => {
     let questions = 0;
-    const ask = async () => { questions++; await new Promise((r) => setTimeout(r, 20)); return null; };
-    const { result } = await quiet(() => Promise.all([1, 2, 3].map(() => maybeAskModelCatchUp(deps(path, { interactive: true, ask })))));
+    const ask = async () => {
+      questions++;
+      await new Promise((r) => setTimeout(r, 20));
+      return null;
+    };
+    const { result } = await quiet(() =>
+      Promise.all([1, 2, 3].map(() => maybeAskModelCatchUp(deps(path, { interactive: true, ask }))))
+    );
     assert.deepEqual([...result].sort(), [false, false, true]);
     assert.equal(questions, 1);
   });
@@ -65,8 +102,12 @@ test("P2 race: two commands finishing together put the question once", async () 
 test("P2: `bastra update` does not ask over a decision either, and still re-asks an open question", async () => {
   await withDir(async (_dir, path) => {
     const asked: number[] = [];
-    const ask = async () => { asked.push(1); return null; };
-    const update = () => quiet(() => cmdModels({ sub: "ask", settingsPath: path, deps: deps(path, { interactive: true, ask }) }));
+    const ask = async () => {
+      asked.push(1);
+      return null;
+    };
+    const update = () =>
+      quiet(() => cmdModels({ sub: "ask", settingsPath: path, deps: deps(path, { interactive: true, ask }) }));
     await update();
     await update();
     assert.equal(asked.length, 2, "an unanswered question is open: the updater asks again");
@@ -81,9 +122,17 @@ test("P2 claim: a settings file that is not valid JSON takes no note — and is 
   await withDir(async (_dir, path) => {
     const CORRUPT = '{"api":{"token":"invented-token"},BROKEN';
     await writeSettingsFixture(path, CORRUPT);
-    await assert.rejects(quiet(() => claimModelQuestion("fixture-rec", path)), /not valid JSON/);
+    await assert.rejects(
+      quiet(() => claimModelQuestion("fixture-rec", path)),
+      /not valid JSON/
+    );
     assert.equal(await readSettingsFixture(path, "utf8"), CORRUPT);
-    assert.equal(await quiet(() => maybeAskModelCatchUp(deps(path, { interactive: true, ask: async () => "s" }))).then((r) => r.result), false);
+    assert.equal(
+      await quiet(() => maybeAskModelCatchUp(deps(path, { interactive: true, ask: async () => "s" }))).then(
+        (r) => r.result
+      ),
+      false
+    );
   });
 });
 
@@ -105,14 +154,19 @@ test("P2 lock: while the settings lock cannot be had, the question is not put an
   await withDir(async (_dir, path) => {
     await orphanedLock(path);
     let questions = 0;
-    const ask = async () => { questions++; return null; };
+    const ask = async () => {
+      questions++;
+      return null;
+    };
     // One after the other, so neither result depends on which came first.
     const catchUp = await quiet(() => maybeAskModelCatchUp(deps(path, { interactive: true, ask })));
     assert.equal(catchUp.result, false, "no claim without the lock");
     assert.equal(questions, 0, "…so no question; it comes back with the next command");
     assert.equal(await readSettingsFixture(path, "utf8"), ORIGINAL);
     await orphanedLock(path); // a fresh one: the first has aged towards takeover while the catch-up waited
-    const later = await quiet(() => cmdModels({ sub: "later", positional: ["models", "later", "fixture-rec"], settingsPath: path, deps: deps(path) }));
+    const later = await quiet(() =>
+      cmdModels({ sub: "later", positional: ["models", "later", "fixture-rec"], settingsPath: path, deps: deps(path) })
+    );
     assert.equal(later.result, 1, "an answer is refused, not written unserialized");
     assert.match(later.out, /could not get the lock on the settings file/);
     assert.match(later.out, /Nothing was changed/);
@@ -124,8 +178,13 @@ test("P2 lock: a lock old enough to be orphaned is taken over — then one quest
   await withDir(async (_dir, path) => {
     await orphanedLock(path, 60_000);
     let questions = 0;
-    const ask = async () => { questions++; return null; };
-    const { result } = await quiet(() => Promise.all([1, 2, 3].map(() => maybeAskModelCatchUp(deps(path, { interactive: true, ask })))));
+    const ask = async () => {
+      questions++;
+      return null;
+    };
+    const { result } = await quiet(() =>
+      Promise.all([1, 2, 3].map(() => maybeAskModelCatchUp(deps(path, { interactive: true, ask }))))
+    );
     assert.deepEqual([...result].sort(), [false, false, true]);
     assert.equal(questions, 1);
     assert.equal((await readSettings(path)).modelRecommendation?.answer, "asked");

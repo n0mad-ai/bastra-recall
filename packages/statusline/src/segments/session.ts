@@ -56,8 +56,7 @@ function convertToSessionEntry(entry: ParsedEntry): SessionUsageEntry {
       usage: {
         input_tokens: entry.message?.usage?.input_tokens || 0,
         output_tokens: entry.message?.usage?.output_tokens || 0,
-        cache_creation_input_tokens:
-          entry.message?.usage?.cache_creation_input_tokens,
+        cache_creation_input_tokens: entry.message?.usage?.cache_creation_input_tokens,
         cache_read_input_tokens: entry.message?.usage?.cache_read_input_tokens,
       },
     },
@@ -80,10 +79,7 @@ export class SessionProvider {
 
       const parsedEntries = await readJsonlFile(transcriptPath);
       const projectPath = dirname(transcriptPath);
-      const agentTranscripts = await findAgentTranscripts(
-        sessionId,
-        projectPath,
-      );
+      const agentTranscripts = await findAgentTranscripts(sessionId, projectPath);
 
       debug(`Found ${agentTranscripts.length} agent transcripts for session`);
 
@@ -107,7 +103,7 @@ export class SessionProvider {
 
       if (dedupedEntries.length !== parsedEntries.length) {
         debug(
-          `Session usage: dropped ${parsedEntries.length - dedupedEntries.length} duplicate entries (retries/reconnects logged twice)`,
+          `Session usage: dropped ${parsedEntries.length - dedupedEntries.length} duplicate entries (retries/reconnects logged twice)`
         );
       }
 
@@ -130,9 +126,7 @@ export class SessionProvider {
         }
       }
 
-      debug(
-        `Parsed ${entries.length} usage entries, total cost: $${totalCost.toFixed(4)}`,
-      );
+      debug(`Parsed ${entries.length} usage entries, total cost: $${totalCost.toFixed(4)}`);
       return { totalCost, entries };
     } catch (error) {
       debug(`Error reading session usage for ${sessionId}:`, error);
@@ -145,21 +139,14 @@ export class SessionProvider {
       (breakdown, entry) => ({
         input: breakdown.input + (entry.message.usage.input_tokens || 0),
         output: breakdown.output + (entry.message.usage.output_tokens || 0),
-        cacheCreation:
-          breakdown.cacheCreation +
-          (entry.message.usage.cache_creation_input_tokens || 0),
-        cacheRead:
-          breakdown.cacheRead +
-          (entry.message.usage.cache_read_input_tokens || 0),
+        cacheCreation: breakdown.cacheCreation + (entry.message.usage.cache_creation_input_tokens || 0),
+        cacheRead: breakdown.cacheRead + (entry.message.usage.cache_read_input_tokens || 0),
       }),
-      { input: 0, output: 0, cacheCreation: 0, cacheRead: 0 },
+      { input: 0, output: 0, cacheCreation: 0, cacheRead: 0 }
     );
   }
 
-  async getSessionInfo(
-    sessionId: string,
-    hookData?: ClaudeHookData,
-  ): Promise<SessionInfo> {
+  async getSessionInfo(sessionId: string, hookData?: ClaudeHookData): Promise<SessionInfo> {
     const sessionUsage = await this.getSessionUsage(sessionId);
 
     if (!sessionUsage) {
@@ -174,10 +161,7 @@ export class SessionProvider {
 
     const tokenBreakdown = this.calculateTokenBreakdown(sessionUsage.entries);
     const totalTokens =
-      tokenBreakdown.input +
-      tokenBreakdown.output +
-      tokenBreakdown.cacheCreation +
-      tokenBreakdown.cacheRead;
+      tokenBreakdown.input + tokenBreakdown.output + tokenBreakdown.cacheCreation + tokenBreakdown.cacheRead;
 
     const calculatedCost = sessionUsage.totalCost;
     const hookDataCost = hookData?.cost?.total_cost_usd ?? null;
@@ -200,17 +184,11 @@ export class SessionProvider {
 export class UsageProvider {
   private sessionProvider = new SessionProvider();
 
-  async getUsageInfo(
-    sessionId: string,
-    hookData?: ClaudeHookData,
-  ): Promise<UsageInfo> {
+  async getUsageInfo(sessionId: string, hookData?: ClaudeHookData): Promise<UsageInfo> {
     try {
       debug(`Starting usage info retrieval for session: ${sessionId}`);
 
-      const sessionInfo = await this.sessionProvider.getSessionInfo(
-        sessionId,
-        hookData,
-      );
+      const sessionInfo = await this.sessionProvider.getSessionInfo(sessionId, hookData);
 
       return {
         session: sessionInfo,

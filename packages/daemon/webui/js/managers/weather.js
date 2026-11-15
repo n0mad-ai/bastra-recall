@@ -169,10 +169,10 @@ export function createWeather(onChange) {
             new Error(
               err.code === err.PERMISSION_DENIED
                 ? "location denied — search for a place instead"
-                : "location unavailable — search for a place instead",
-            ),
+                : "location unavailable — search for a place instead"
+            )
           ),
-        { maximumAge: REFRESH_MS, timeout: 10000, enableHighAccuracy: false },
+        { maximumAge: REFRESH_MS, timeout: 10000, enableHighAccuracy: false }
       );
     });
 
@@ -232,7 +232,7 @@ export function createWeather(onChange) {
         cur.relative_humidity_2m,
         cur.temperature_2m,
         cur.wind_speed_10m,
-        cur.wind_gusts_10m,
+        cur.wind_gusts_10m
       );
       lastError = "";
     } catch (err) {
@@ -284,9 +284,7 @@ export function createWeather(onChange) {
     getPlace: () => place,
     /** What the topbar chip renders: temperature, condition icon, place. */
     readout: () =>
-      place
-        ? { temp: conditions.temp, icon: conditions.icon, label: conditions.label, place: place.name }
-        : null,
+      place ? { temp: conditions.temp, icon: conditions.icon, label: conditions.label, place: place.name } : null,
     /** Tooltip detail — the error wins, because it explains a dead chip. */
     status: () => (!place ? "" : lastError || conditions.label),
     useGps,

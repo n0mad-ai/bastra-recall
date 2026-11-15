@@ -66,7 +66,7 @@ export class SelfImportError extends Error {
     super(
       "this carries bastra's own staging format (import-review.md or a copy of it) — " +
         "it is never an import source. To work the open candidates off, open an AI " +
-        'session and say "let\'s distill the import list".',
+        'session and say "let\'s distill the import list".'
     );
   }
 }
@@ -79,7 +79,7 @@ export class ConversationExportError extends Error {
       "this looks like a conversation export (chat history) — run " +
         "`bastra import <path/to/conversations.json>` in a terminal to queue it for " +
         "chunk-wise mining. To paste a memory LIST instead: ChatGPT → Settings → " +
-        "Personalization → Manage memories; Claude → Settings → memory text.",
+        "Personalization → Manage memories; Claude → Settings → memory text."
     );
   }
 }
@@ -178,11 +178,7 @@ export interface StageResult {
  *  dialog — and two `bastra import` invocations are two processes as well. A
  *  promise chain cannot see either of them: 20 concurrent stageImport()
  *  PROCESSES all exited 0 and left 10 of 20 candidates on disk. */
-export async function stageImport(
-  vaultPath: string,
-  source: ImportSource,
-  candidates: string[],
-): Promise<StageResult> {
+export async function stageImport(vaultPath: string, source: ImportSource, candidates: string[]): Promise<StageResult> {
   const filePath = join(vaultPath, IMPORT_FILE);
   // #892: the path lock makes its file's directory — here the vault root
   // itself — so the root has to be there first, never created from here.
@@ -222,7 +218,7 @@ export async function stageImport(
       const openTotal = parseImportFile(content).filter((e) => !e.done).length;
       return { staged, skippedDuplicates: skipped, openTotal, filePath };
     },
-    { crossProcess: true },
+    { crossProcess: true }
   );
 }
 
@@ -251,7 +247,7 @@ export async function handleUiImport(
   req: IncomingMessage,
   res: ServerResponse,
   vaultPath: string,
-  settingsPath?: string,
+  settingsPath?: string
 ): Promise<void> {
   if (!(await getUiEnabled(settingsPath))) {
     sendJsonPlain(res, 404, { error: "ui disabled" });

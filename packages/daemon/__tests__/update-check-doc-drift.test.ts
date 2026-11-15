@@ -57,10 +57,6 @@ test("doc-lint: the body really does stage in auto mode (#81) — the premise of
 
 test("doc-lint: the docstring no longer sends the reader to the SessionStart hook instead", async () => {
   const { doc } = await startBackgroundCheckSource();
-  assert.doesNotMatch(
-    doc,
-    /not here/i,
-    "the auto-apply does live here as well — see the #81 branch in the body",
-  );
+  assert.doesNotMatch(doc, /not here/i, "the auto-apply does live here as well — see the #81 branch in the body");
   assert.match(doc, /#81/, "the docstring names the issue that put staging here");
 });

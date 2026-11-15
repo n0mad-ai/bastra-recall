@@ -108,7 +108,10 @@ describe("applies_to candidates (#578 acceptance)", () => {
   it("surfaces a memory whose affects_files names the edited file", () => {
     const index = new AppliesToIndex(memories);
     const got = appliesToCandidates(index, SAVE, graph);
-    const direct = got.filter((c) => c.hop === "direct").map((c) => c.memoryId).sort();
+    const direct = got
+      .filter((c) => c.hop === "direct")
+      .map((c) => c.memoryId)
+      .sort();
     assert.deepEqual(direct, ["m-save", "m-symbol"]);
   });
 
@@ -143,7 +146,10 @@ describe("applies_to candidates (#578 acceptance)", () => {
   it("drops the one-hop half without a graph, keeps the direct half", () => {
     const index = new AppliesToIndex(memories);
     const got = appliesToCandidates(index, SAVE, null);
-    assert.deepEqual(got.map((c) => c.hop), ["direct", "direct"]);
+    assert.deepEqual(
+      got.map((c) => c.hop),
+      ["direct", "direct"]
+    );
   });
 
   it("does not follow INFERRED edges", () => {
@@ -197,7 +203,7 @@ describe("unresolved entries for bastra doctor", () => {
         exists: () => true,
         graph,
       }),
-      [],
+      []
     );
   });
 
@@ -207,9 +213,7 @@ describe("unresolved entries for bastra doctor", () => {
   });
 
   it("does not break retrieval: a stale entry costs only itself", () => {
-    const memories: AppliesToMemory[] = [
-      { id: "m-mixed", affects_files: ["packages/core/src/gone.ts", SAVE] },
-    ];
+    const memories: AppliesToMemory[] = [{ id: "m-mixed", affects_files: ["packages/core/src/gone.ts", SAVE] }];
     assert.equal(unresolvedEntries(memories, { exists, graph }).length, 1);
     const ids = appliesToCandidates(new AppliesToIndex(memories), SAVE, graph).map((c) => c.memoryId);
     assert.deepEqual(ids, ["m-mixed"]);
@@ -232,9 +236,7 @@ describe("save-time suggestion", () => {
 
 describe("the bastra doctor note", () => {
   const io = (over: Partial<AffectsFilesIo> = {}): AffectsFilesIo => ({
-    memories: async () => [
-      { id: "m-old", scope: "bastra-recall", affects_files: ["packages/core/src/gone.ts"] },
-    ],
+    memories: async () => [{ id: "m-old", scope: "bastra-recall", affects_files: ["packages/core/src/gone.ts"] }],
     repoRoot: async () => "/nowhere",
     exists: () => false,
     project: () => "bastra-recall",
@@ -282,10 +284,8 @@ describe("the bastra doctor note", () => {
   it("checks a memory in a scope family of this project", async () => {
     const lines = await affectsFilesLines(
       io({
-        memories: async () => [
-          { id: "m-sub", scope: "bastra-recall-daemon", affects_files: ["src/gone.ts"] },
-        ],
-      }),
+        memories: async () => [{ id: "m-sub", scope: "bastra-recall-daemon", affects_files: ["src/gone.ts"] }],
+      })
     );
     assert.equal(lines.length, 1);
     assert.match(lines[0] ?? "", /m-sub/);
@@ -320,21 +320,22 @@ describe("the bastra doctor note", () => {
             ],
           },
         ],
-      }),
+      })
     );
     assert.equal(lines.length, 2);
     assert.match(lines[0] ?? "", /gone\.ts — no such file/);
     assert.equal(lines[1], "2 further entries name absolute or home paths — not repository paths, nothing to resolve");
-    assert.equal(lines.some((l) => l.includes("LaunchAgents")), false);
+    assert.equal(
+      lines.some((l) => l.includes("LaunchAgents")),
+      false
+    );
   });
 
   it("says nothing when the only entries were never repository paths", async () => {
     const lines = await affectsFilesLines(
       io({
-        memories: async () => [
-          { id: "m-sys", scope: "bastra-recall", affects_files: ["~/Library/x.plist"] },
-        ],
-      }),
+        memories: async () => [{ id: "m-sys", scope: "bastra-recall", affects_files: ["~/Library/x.plist"] }],
+      })
     );
     assert.deepEqual(lines, []);
   });

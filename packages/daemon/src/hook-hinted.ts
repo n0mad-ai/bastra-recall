@@ -23,10 +23,10 @@ export function reportHinted(
    *  report the ids for the usage sidecar as before, but open no window. */
   sessionId: string | null = null,
   timeoutMs = 120,
-  drafts?: { ids: string[]; input: string },
+  drafts?: { ids: string[]; input: string }
 ): Promise<void> {
   return new Promise((resolve) => {
-    if (!Array.isArray(ids) || ids.length === 0 && !drafts?.ids.length) {
+    if (!Array.isArray(ids) || (ids.length === 0 && !drafts?.ids.length)) {
       resolve();
       return;
     }
@@ -37,7 +37,14 @@ export function reportHinted(
       resolve();
       return;
     }
-    const payload = Buffer.from(JSON.stringify({ ids, session_id: sessionId, ...(drafts?.ids.length ? { draft_ids: drafts.ids.slice(0, 2), draft_input: drafts.input } : {}) }), "utf8");
+    const payload = Buffer.from(
+      JSON.stringify({
+        ids,
+        session_id: sessionId,
+        ...(drafts?.ids.length ? { draft_ids: drafts.ids.slice(0, 2), draft_input: drafts.input } : {}),
+      }),
+      "utf8"
+    );
     const req = request(
       {
         method: "POST",
@@ -53,7 +60,7 @@ export function reportHinted(
       (res) => {
         res.resume();
         res.on("end", () => resolve());
-      },
+      }
     );
     req.on("timeout", () => {
       req.destroy();

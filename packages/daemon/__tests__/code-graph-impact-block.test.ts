@@ -9,16 +9,8 @@ import { fileURLToPath } from "node:url";
 import { CodeGraphCache } from "../src/code-graph/cache.js";
 import { graphDirOf, graphFileOf, GRAPH_FILE_NAME } from "../src/code-graph/reader.js";
 import { writeManifest, type CodeGraphManifest } from "../src/code-graph/manifest.js";
-import {
-  impactNote,
-  impactDedupeKey,
-  MAX_IMPACT_FILES,
-} from "../src/code-graph/impact-block.js";
-import {
-  applyPatchBody,
-  pendingText,
-  unifiedDiff,
-} from "../src/code-graph/pending-diff.js";
+import { impactNote, impactDedupeKey, MAX_IMPACT_FILES } from "../src/code-graph/impact-block.js";
+import { applyPatchBody, pendingText, unifiedDiff } from "../src/code-graph/pending-diff.js";
 import type { ReadonlySessionState } from "../src/session-state.js";
 import { coverageMapFileOf } from "../src/code-graph/coverage-map.js";
 
@@ -181,17 +173,19 @@ describe("pending diff: the change that has not happened yet", () => {
 
   it("applies an Edit, a replace_all Edit and a MultiEdit in order", () => {
     assert.equal(pendingText("Edit", { old_string: "a", new_string: "b" }, "a a"), "b a");
-    assert.equal(
-      pendingText("Edit", { old_string: "a", new_string: "b", replace_all: true }, "a a"),
-      "b b",
-    );
+    assert.equal(pendingText("Edit", { old_string: "a", new_string: "b", replace_all: true }, "a a"), "b b");
     assert.equal(
       pendingText(
         "MultiEdit",
-        { edits: [{ old_string: "a", new_string: "b" }, { old_string: "c", new_string: "d" }] },
-        "a c",
+        {
+          edits: [
+            { old_string: "a", new_string: "b" },
+            { old_string: "c", new_string: "d" },
+          ],
+        },
+        "a c"
       ),
-      "b d",
+      "b d"
     );
   });
 
@@ -252,7 +246,7 @@ describe("delivered change-impact block: what the agent sees", () => {
     assert.equal(out.booking?.file, SAVE);
     assert.deepEqual(
       out.booking?.hits?.map((h) => h.file),
-      ["packages/core/__tests__/save.test.ts", "packages/core/src/audit-save.ts"],
+      ["packages/core/__tests__/save.test.ts", "packages/core/src/audit-save.ts"]
     );
   });
 
@@ -365,7 +359,7 @@ describe("delivered change-impact block: what the agent sees", () => {
           "packages/core/__tests__/loads.test.ts": { [SAVE]: ["validateMemory"] },
         },
       }),
-      "utf8",
+      "utf8"
     );
     // Switch off: the map on disk is not even read — no line.
     const before = process.env.BASTRA_COVERAGE_MAP;
@@ -385,7 +379,10 @@ describe("delivered change-impact block: what the agent sees", () => {
     assert.ok(withMap.note);
     const line = withMap.note.note.split("\n").find((l) => l.includes("coverage map"));
     assert.ok(line, withMap.note.note);
-    assert.match(line, /^Tests that ran the changed functions \(coverage map, \d+ min old\): packages\/daemon\/__tests__\/runtime\.test\.ts\.$/);
+    assert.match(
+      line,
+      /^Tests that ran the changed functions \(coverage map, \d+ min old\): packages\/daemon\/__tests__\/runtime\.test\.ts\.$/
+    );
     // The map adds a line, never a candidate: the listed files are the graph's alone.
     assert.deepEqual(withMap.note.listed, without.note.listed);
   });
@@ -535,7 +532,7 @@ describe("delivered block: dedupe per session, file AND symbol set", () => {
     repo: string,
     cache: CodeGraphCache,
     toolInput: Record<string, unknown>,
-    session: ReadonlySessionState,
+    session: ReadonlySessionState
   ) {
     return impactNote({
       filePath: join(repo, SAVE),
@@ -579,7 +576,7 @@ describe("delivered block: dedupe per session, file AND symbol set", () => {
       repo,
       cache,
       { old_string: "  return TOP_LEVEL;", new_string: "  return TOP_LEVEL + 1;" },
-      shown,
+      shown
     );
     assert.ok(second.note, "a different symbol is a different answer");
     assert.deepEqual(second.note.changedSymbols, ["validateMemory"]);

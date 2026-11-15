@@ -38,11 +38,7 @@ const PUBLISH = join(REPO, "scripts", "publish-release-set.mjs");
 const VERSION = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")).version;
 
 /** What a complete release carries — the real list, plus the versioned bundle. */
-const COMPLETE_ASSETS = [
-  ...REQUIRED_ASSETS,
-  `bastra-recall-${VERSION}.mcpb`,
-  `bastra-recall-${VERSION}.mcpb.sha256`,
-];
+const COMPLETE_ASSETS = [...REQUIRED_ASSETS, `bastra-recall-${VERSION}.mcpb`, `bastra-recall-${VERSION}.mcpb.sha256`];
 
 /** A stub `gh`: `release view <tag> --json assets --jq …` → $ASSETS, one per line. */
 const GH_STUB = `#!/usr/bin/env bash
@@ -119,9 +115,7 @@ test("#549 release assets: the required set covers binaries, checksums, extensio
   for (const name of REQUIRED_ASSETS) {
     assert.deepEqual(missingAssets(COMPLETE_ASSETS.filter((a) => a !== name)), [name]);
   }
-  assert.deepEqual(missingAssets(COMPLETE_ASSETS.filter((a) => !a.endsWith(".mcpb"))), [
-    "*.mcpb",
-  ]);
+  assert.deepEqual(missingAssets(COMPLETE_ASSETS.filter((a) => !a.endsWith(".mcpb"))), ["*.mcpb"]);
 });
 
 test("#549 publish set: a late job that has not delivered its asset stops the publish", async () => {
@@ -181,7 +175,7 @@ test("#549 publish set: a publish that dies part-way leaves the documented insta
   assert.notEqual(code, 0, `a failed publish reported success:\n${out}`);
   assert.ok(
     !publishedWorkspaces(npm).includes("bastra-recall"),
-    `the unscoped wrapper's latest moved despite a failed set:\n${npm}`,
+    `the unscoped wrapper's latest moved despite a failed set:\n${npm}`
   );
   assert.match(out, /Rerun this script/);
 });
@@ -192,6 +186,9 @@ test("#549 publish set: --verify still needs no tag and still publishes nothing"
   const { code, npm } = await runPublish(["--verify"], {});
   assert.notEqual(code, 0); // the stub registry has nothing published
   assert.deepEqual(publishedWorkspaces(npm), []);
-  assert.equal(npm.split("\n").filter((line) => line.startsWith("npm view")).length, 4,
-    "the deliberately empty stub registry needs one read per package, not production retries");
+  assert.equal(
+    npm.split("\n").filter((line) => line.startsWith("npm view")).length,
+    4,
+    "the deliberately empty stub registry needs one read per package, not production retries"
+  );
 });

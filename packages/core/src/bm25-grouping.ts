@@ -55,7 +55,7 @@ export interface GroupedQuery {
 export function groupQueryTerms(
   query: string,
   tokenize: (text: string) => string[],
-  processTerm: (term: string) => string = foldTerm,
+  processTerm: (term: string) => string = foldTerm
 ): GroupedQuery {
   const terms = tokenize(query);
   const counts = new Map<string, number>();

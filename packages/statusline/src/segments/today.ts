@@ -33,12 +33,7 @@ function formatDate(date: Date): string {
 }
 
 function getTotalTokens(usage: TodayUsageEntry["usage"]): number {
-  return (
-    usage.inputTokens +
-    usage.outputTokens +
-    usage.cacheCreationInputTokens +
-    usage.cacheReadInputTokens
-  );
+  return usage.inputTokens + usage.outputTokens + usage.cacheCreationInputTokens + usage.cacheReadInputTokens;
 }
 
 function convertToTodayEntry(entry: ParsedEntry): TodayUsageEntry {
@@ -47,8 +42,7 @@ function convertToTodayEntry(entry: ParsedEntry): TodayUsageEntry {
     usage: {
       inputTokens: entry.message?.usage?.input_tokens || 0,
       outputTokens: entry.message?.usage?.output_tokens || 0,
-      cacheCreationInputTokens:
-        entry.message?.usage?.cache_creation_input_tokens || 0,
+      cacheCreationInputTokens: entry.message?.usage?.cache_creation_input_tokens || 0,
       cacheReadInputTokens: entry.message?.usage?.cache_read_input_tokens || 0,
     },
     costUSD: entry.costUSD || 0,
@@ -65,16 +59,10 @@ export class TodayProvider {
 
     const latestMtime = await CacheManager.getLatestTranscriptMtime();
 
-    const sharedCached = (await CacheManager.getUsageCache(
-      "today",
-      latestMtime,
-    )) as TodayUsageEntry[] | null;
+    const sharedCached = (await CacheManager.getUsageCache("today", latestMtime)) as TodayUsageEntry[] | null;
     // The disk cache is keyed on transcript mtime only, so after midnight it
     // still holds yesterday's entries until a transcript is touched.
-    if (
-      sharedCached &&
-      sharedCached.every((e) => formatDate(e.timestamp) === todayDateString)
-    ) {
+    if (sharedCached && sharedCached.every((e) => formatDate(e.timestamp) === todayDateString)) {
       debug("Using shared today usage cache");
       return sharedCached;
     }
@@ -94,11 +82,7 @@ export class TodayProvider {
       return entry.timestamp >= todayMidnight;
     };
 
-    const parsedEntries = await loadEntriesFromProjects(
-      timeFilter,
-      fileFilter,
-      true,
-    );
+    const parsedEntries = await loadEntriesFromProjects(timeFilter, fileFilter, true);
     const todayEntries: TodayUsageEntry[] = [];
 
     let entriesFound = 0;
@@ -110,9 +94,7 @@ export class TodayProvider {
         const todayEntry = convertToTodayEntry(entry);
 
         if (!todayEntry.costUSD && entry.raw) {
-          todayEntry.costUSD = await PricingService.calculateCostForEntry(
-            entry.raw,
-          );
+          todayEntry.costUSD = await PricingService.calculateCostForEntry(entry.raw);
         }
 
         todayEntries.push(todayEntry);
@@ -120,9 +102,7 @@ export class TodayProvider {
       }
     }
 
-    debug(
-      `Today segment: Found ${entriesFound} entries for today (${todayDateString})`,
-    );
+    debug(`Today segment: Found ${entriesFound} entries for today (${todayDateString})`);
 
     await CacheManager.setUsageCache("today", todayEntries, latestMtime);
 
@@ -145,17 +125,13 @@ export class TodayProvider {
       }
 
       const totalCost = entries.reduce((sum, entry) => sum + entry.costUSD, 0);
-      const totalTokens = entries.reduce(
-        (sum, entry) => sum + getTotalTokens(entry.usage),
-        0,
-      );
+      const totalTokens = entries.reduce((sum, entry) => sum + getTotalTokens(entry.usage), 0);
 
       const tokenBreakdown = entries.reduce(
         (breakdown, entry) => ({
           input: breakdown.input + entry.usage.inputTokens,
           output: breakdown.output + entry.usage.outputTokens,
-          cacheCreation:
-            breakdown.cacheCreation + entry.usage.cacheCreationInputTokens,
+          cacheCreation: breakdown.cacheCreation + entry.usage.cacheCreationInputTokens,
           cacheRead: breakdown.cacheRead + entry.usage.cacheReadInputTokens,
         }),
         {
@@ -163,12 +139,10 @@ export class TodayProvider {
           output: 0,
           cacheCreation: 0,
           cacheRead: 0,
-        },
+        }
       );
 
-      debug(
-        `Today segment: $${totalCost.toFixed(2)}, ${totalTokens} tokens total`,
-      );
+      debug(`Today segment: $${totalCost.toFixed(2)}, ${totalTokens} tokens total`);
 
       return {
         cost: totalCost,

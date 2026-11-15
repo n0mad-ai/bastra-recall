@@ -82,8 +82,7 @@ async function startListener(file: string, ...args: string[]): Promise<Listener>
  * `<dir>/pkg/daemon/dist/index.js` is therefore the ONLY process the
  * uninstaller may stop in these tests.
  */
-const installedDaemonScript = (dir: string): string =>
-  join(dir, "pkg", "daemon", "dist", "index.js");
+const installedDaemonScript = (dir: string): string => join(dir, "pkg", "daemon", "dist", "index.js");
 
 /** Sealed HOME + stub PATH; returns what the script printed. */
 async function runUninstaller(dir: string, port: number): Promise<string> {
@@ -146,11 +145,7 @@ test("#527 — an unrelated listener on the daemon port survives the Finder unin
     try {
       const out = await runUninstaller(dir, listener.port);
       await settle();
-      assert.equal(
-        listener.alive(),
-        true,
-        `the uninstaller stopped a process it never identified as Bastra:\n${out}`,
-      );
+      assert.equal(listener.alive(), true, `the uninstaller stopped a process it never identified as Bastra:\n${out}`);
       assert.match(out, /NOT the Bastra daemon/);
       // …and it must say so in the summary rather than claiming a clean stop.
       assert.match(out, /daemon was NOT stopped/);
@@ -171,11 +166,7 @@ test("#527 — an inert argv substring is not identity: the listener survives", 
     try {
       const out = await runUninstaller(dir, listener.port);
       await settle();
-      assert.equal(
-        listener.alive(),
-        true,
-        `an inert argument was accepted as daemon identity:\n${out}`,
-      );
+      assert.equal(listener.alive(), true, `an inert argument was accepted as daemon identity:\n${out}`);
       assert.match(out, /NOT the Bastra daemon/);
       assert.match(out, /daemon was NOT stopped/);
     } finally {

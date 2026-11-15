@@ -12,9 +12,7 @@ const RESETS = Math.floor(Date.now() / 1000) + 3 * 24 * 3600;
 
 async function render(rateLimits) {
   const config = structuredClone(DEFAULT_CONFIG);
-  config.display.lines = [
-    { segments: { weekly: { enabled: true, displayStyle: "text" } } },
-  ];
+  config.display.lines = [{ segments: { weekly: { enabled: true, displayStyle: "text" } } }];
   const renderer = new PowerlineRenderer(config);
   return (
     await renderer.generateStatusline({

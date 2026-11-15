@@ -26,12 +26,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import matter from "gray-matter";
-import {
-  saveMemory,
-  MEMORY_WRITE_CONFLICT,
-  type SaveMemoryInput,
-  type Located,
-} from "../src/index.js";
+import { saveMemory, MEMORY_WRITE_CONFLICT, type SaveMemoryInput, type Located } from "../src/index.js";
 
 const ID = "umzug";
 
@@ -69,10 +64,7 @@ test("ein Re-Filing trasht die Quelle unter derselben Transaktion", async (t) =>
   const first = await saveMemory(root, input());
   assert.equal(first.created, true);
 
-  const moved = await saveMemory(
-    root,
-    input({ overwrite: true, folder: "memories/people" }),
-  );
+  const moved = await saveMemory(root, input({ overwrite: true, folder: "memories/people" }));
   assert.match(moved.file_path, /people/);
   assert.equal(moved.created, false, "ein Umzug erschafft nichts");
   assert.equal(moved.refiled_from, first.file_path);
@@ -80,12 +72,9 @@ test("ein Re-Filing trasht die Quelle unter derselben Transaktion", async (t) =>
   assert.deepEqual(
     await activeFiles(root),
     [moved.file_path],
-    "die alte Datei darf nicht als zweite aktive Datei stehenbleiben",
+    "die alte Datei darf nicht als zweite aktive Datei stehenbleiben"
   );
-  assert.ok(
-    existsSync(join(root, ".bastra", "trash", `${ID}.md`)),
-    "sie liegt im Trash, nicht im Nichts",
-  );
+  assert.ok(existsSync(join(root, ".bastra", "trash", `${ID}.md`)), "sie liegt im Trash, nicht im Nichts");
 });
 
 test("ein veralteter Locator verschiebt das Memory nicht", async (t) => {
@@ -106,16 +95,12 @@ test("ein veralteter Locator verschiebt das Memory nicht", async (t) => {
     locate: (): Located => ({ kind: "unique", filePath: first.file_path }),
   };
 
-  const updated = await saveMemory(
-    root,
-    input({ overwrite: true, summary: "neu" }),
-    { locator: staleLocator },
-  );
+  const updated = await saveMemory(root, input({ overwrite: true, summary: "neu" }), { locator: staleLocator });
 
   assert.deepEqual(
     await activeFiles(root),
     [elsewhere],
-    "ohne ausdrücklichen folder darf kein zweites File am veralteten Pfad entstehen",
+    "ohne ausdrücklichen folder darf kein zweites File am veralteten Pfad entstehen"
   );
   assert.equal(updated.file_path, elsewhere);
   assert.equal(updated.refiled_from, undefined, "das war kein Umzug");
@@ -127,11 +112,9 @@ test("ein AUSDRÜCKLICHER folder bleibt ein Re-File-Auftrag", async (t) => {
   t.after(() => rm(root, { recursive: true, force: true }));
 
   const first = await saveMemory(root, input());
-  const moved = await saveMemory(
-    root,
-    input({ overwrite: true, folder: "memories/people" }),
-    { locator: { locate: (): Located => ({ kind: "unique", filePath: first.file_path }) } },
-  );
+  const moved = await saveMemory(root, input({ overwrite: true, folder: "memories/people" }), {
+    locator: { locate: (): Located => ({ kind: "unique", filePath: first.file_path }) },
+  });
 
   assert.match(moved.file_path, /people/, "der Auftrag des Callers gewinnt");
   assert.equal(moved.refiled_from, first.file_path);
@@ -169,25 +152,20 @@ test("eine extern geänderte QUELLE bricht das Re-File ab, statt sie zu überhol
       },
     }),
     (err: unknown) =>
-      (err as { code?: string }).code === MEMORY_WRITE_CONFLICT &&
-      /source file changed/.test((err as Error).message),
-    "eine überholte Vorlage ist ein Write-Conflict, kein Erfolg",
+      (err as { code?: string }).code === MEMORY_WRITE_CONFLICT && /source file changed/.test((err as Error).message),
+    "eine überholte Vorlage ist ein Write-Conflict, kein Erfolg"
   );
   assert.equal(fired, true, "der externe Writer muss im Fenster gelandet sein");
 
   assert.deepEqual(
     await activeFiles(root),
     [first.file_path],
-    "nichts veröffentlicht — das Ziel darf gar nicht erst entstehen",
+    "nichts veröffentlicht — das Ziel darf gar nicht erst entstehen"
   );
   assert.equal(
     await readFile(first.file_path, "utf8"),
     externalRaw,
-    "die neuere Fassung steht unangetastet im aktiven Bestand",
+    "die neuere Fassung steht unangetastet im aktiven Bestand"
   );
-  assert.equal(
-    existsSync(join(root, ".bastra", "trash", `${ID}.md`)),
-    false,
-    "und nichts wurde getrasht",
-  );
+  assert.equal(existsSync(join(root, ".bastra", "trash", `${ID}.md`)), false, "und nichts wurde getrasht");
 });

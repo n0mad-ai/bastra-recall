@@ -95,7 +95,7 @@ test("archive_memory without superseded_by keeps the file byte-comparable and er
     await assert.rejects(
       archiveMemoryHandler(deps, { id: "does-not-exist" }),
       /unknown memory/,
-      "unknown id is a hard error, not a silent no-op",
+      "unknown id is a hard error, not a silent no-op"
     );
     await assert.rejects(archiveMemoryHandler(deps, {}), /invalid archive_memory args/);
   } finally {
@@ -115,10 +115,7 @@ test("#464: archive_memory hides a private memory from an external caller exactl
     // #464: Auch ein Caller, der sich die Erlaubnis in die ARGUMENTE schreibt,
     // bekommt sie nicht — sie ist kein Feld mehr, sondern eine Eigenschaft des
     // Transports.
-    await assert.rejects(
-      archiveMemoryHandler(deps, { id: "priv-1", allow_private: true }),
-      /unknown memory: priv-1/,
-    );
+    await assert.rejects(archiveMemoryHandler(deps, { id: "priv-1", allow_private: true }), /unknown memory: priv-1/);
     await stat(join(dir, "priv-1.md"));
 
     // Der vertrauenswürdige lokale Transport (Mac-App) darf weiterhin archivieren.

@@ -25,7 +25,11 @@ async function writeSrc(dir: string, rel: string, content: string): Promise<void
   await writeFile(full, content, "utf8");
 }
 
-async function readMem(vault: string, folder: string, id: string): Promise<{ data: Record<string, unknown>; body: string }> {
+async function readMem(
+  vault: string,
+  folder: string,
+  id: string
+): Promise<{ data: Record<string, unknown>; body: string }> {
   const raw = await readFile(join(vault, folder, `${id}.md`), "utf8");
   const { data, content } = matter(raw);
   return { data: data as Record<string, unknown>, body: content };
@@ -38,7 +42,7 @@ test("CC flat type: maps name/description/type into an isolated namespaced memor
     await writeSrc(
       src,
       "feedback_no_double_borders.md",
-      "---\nname: Keine doppelten Borders\ndescription: IMMER prüfen dass keine doppelten Borders entstehen\ntype: feedback\n---\nBody text here.",
+      "---\nname: Keine doppelten Borders\ndescription: IMMER prüfen dass keine doppelten Borders entstehen\ntype: feedback\n---\nBody text here."
     );
     const r = await importVault(vault, src, { label: "ccmem" });
     assert.equal(r.scanned, 1);
@@ -68,7 +72,7 @@ test("CC nested metadata.type is honored too (format variance)", async () => {
     await writeSrc(
       src,
       "project_windows.md",
-      "---\nname: Windows strategy\ndescription: Ship the windows build via CI\nmetadata:\n  type: project\n---\nDetails.",
+      "---\nname: Windows strategy\ndescription: Ship the windows build via CI\nmetadata:\n  type: project\n---\nDetails."
     );
     const r = await importVault(vault, src, { label: "x" });
     const { data } = await readMem(vault, r.folder, r.ids[0]);
@@ -121,7 +125,7 @@ test("isolation: MEMORY.md is skipped and body wikilinks are namespaced (no bare
     await writeSrc(
       src,
       "a.md",
-      "---\nname: Alpha\ndescription: links to beta\ntype: project\n---\nSee [[beta]] for details.",
+      "---\nname: Alpha\ndescription: links to beta\ntype: project\n---\nSee [[beta]] for details."
     );
     const r = await importVault(vault, src, { label: "iso" });
     assert.equal(r.scanned, 1); // MEMORY.md not counted
@@ -167,7 +171,7 @@ test("frontmatter-less index hub is skipped as navigation, prose note still impo
     await writeSrc(
       src,
       "supabase-details.md",
-      "# Supabase setup\n\nWe use Supabase for auth, see [[project-auth]].\n\nStorage buckets are documented in [docs](docs.md). The service key rotates monthly.\nBackups run nightly via cron.\n",
+      "# Supabase setup\n\nWe use Supabase for auth, see [[project-auth]].\n\nStorage buckets are documented in [docs](docs.md). The service key rotates monthly.\nBackups run nightly via cron.\n"
     );
     const r = await importVault(vault, src, { label: "hub" });
     assert.equal(r.scanned, 2);
@@ -187,7 +191,11 @@ test("a file WITH declared frontmatter is never treated as an index hub", async 
   const vault = await tmp("iv-vault-");
   try {
     const links = Array.from({ length: 15 }, (_, i) => `- [[target-${i}]]`).join("\n");
-    await writeSrc(src, "linkheavy.md", `---\nname: Link heavy\ndescription: a legit memory full of links\ntype: project\n---\n${links}\n`);
+    await writeSrc(
+      src,
+      "linkheavy.md",
+      `---\nname: Link heavy\ndescription: a legit memory full of links\ntype: project\n---\n${links}\n`
+    );
     const r = await importVault(vault, src, { label: "lh" });
     assert.equal(r.imported, 1); // declared frontmatter wins
     assert.equal(r.skipped.length, 0);
@@ -207,7 +215,10 @@ test("listSubdirs: dirs only, dotdirs after visible ones, md counts, parent chai
     await writeFile(join(root, "a-vault", "note.md"), "# n");
     await writeFile(join(root, "loose-file.md"), "# f"); // files never listed
     const r = await listSubdirs(root);
-    assert.deepEqual(r.dirs.map((d) => d.name), ["a-vault", "b-visible", ".claude"]);
+    assert.deepEqual(
+      r.dirs.map((d) => d.name),
+      ["a-vault", "b-visible", ".claude"]
+    );
     assert.equal(r.dirs[0].md, 1);
     assert.equal(r.dirs[1].md, 0);
     assert.ok(r.parent);
@@ -220,7 +231,11 @@ test("re-import is idempotent (stable id, overwrite in place)", async () => {
   const src = await tmp("iv-src-");
   const vault = await tmp("iv-vault-");
   try {
-    await writeSrc(src, "reference_cookies.md", "---\nname: Cookies\ndescription: akamai cookies\ntype: reference\n---\nx");
+    await writeSrc(
+      src,
+      "reference_cookies.md",
+      "---\nname: Cookies\ndescription: akamai cookies\ntype: reference\n---\nx"
+    );
     const first = await importVault(vault, src, { label: "r" });
     const second = await importVault(vault, src, { label: "r" });
     assert.deepEqual(first.ids, second.ids);
@@ -282,21 +297,18 @@ test("#219 slug twins: link targets get the SAME slugify as minted ids (undersco
     await writeSrc(
       src,
       "feedback_gate_catalog.md",
-      "---\nname: Gate catalog\ndescription: Catalog of gates\ntype: feedback\n---\nGate body.",
+      "---\nname: Gate catalog\ndescription: Catalog of gates\ntype: feedback\n---\nGate body."
     );
     await writeSrc(
       src,
       "linker.md",
-      "---\nname: Linker\ndescription: Links the catalog\ntype: reference\n---\nSee [[feedback_gate_catalog]] for details.",
+      "---\nname: Linker\ndescription: Links the catalog\ntype: reference\n---\nSee [[feedback_gate_catalog]] for details."
     );
     const r = await importVault(vault, src, { label: "ccx" });
     assert.equal(r.imported, 2);
     assert.ok(r.ids.includes("ccx-feedback-gate-catalog"), "id minting slugifies underscores to dashes");
     const { body } = await readMem(vault, r.folder, "ccx-linker");
-    assert.ok(
-      body.includes("[[ccx-feedback-gate-catalog]]"),
-      `link target must match the minted id, got: ${body}`,
-    );
+    assert.ok(body.includes("[[ccx-feedback-gate-catalog]]"), `link target must match the minted id, got: ${body}`);
     assert.ok(!body.includes("feedback_gate_catalog]]"), "no underscored ghost twin left behind");
   } finally {
     await rm(src, { recursive: true, force: true });
@@ -322,7 +334,7 @@ test("#312 index node is counted and predicted: breakdown sums to the total, dry
     await writeSrc(
       src,
       "MEMORY.md",
-      "# Memory Index\n\n## Projekte\n- [Alpha](alpha.md) — das Alpha-Projekt\n- [Beta](beta.md) — die Beta-Notiz\n",
+      "# Memory Index\n\n## Projekte\n- [Alpha](alpha.md) — das Alpha-Projekt\n- [Beta](beta.md) — die Beta-Notiz\n"
     );
     await writeSrc(src, "alpha.md", "---\nname: Alpha\ndescription: Alpha-Projekt\ntype: project\n---\nAlpha body.");
     await writeSrc(src, "beta.md", "# Beta\n\nDie Beta-Notiz ohne Frontmatter.\n");
@@ -335,7 +347,7 @@ test("#312 index node is counted and predicted: breakdown sums to the total, dry
       assert.equal(
         r.byAdapter.claudeCode + r.byAdapter.generic + r.byAdapter.index,
         r.imported,
-        `breakdown must sum to imported (${JSON.stringify(r.byAdapter)} vs ${r.imported})`,
+        `breakdown must sum to imported (${JSON.stringify(r.byAdapter)} vs ${r.imported})`
       );
       assert.equal(r.imported, r.ids.length);
       assert.equal(r.byAdapter.claudeCode, 1);
@@ -407,7 +419,7 @@ test(
       assert.equal(
         r.byAdapter.claudeCode + r.byAdapter.generic + r.byAdapter.index,
         r.imported,
-        `breakdown must sum to imported (${JSON.stringify(r.byAdapter)} vs ${r.imported})`,
+        `breakdown must sum to imported (${JSON.stringify(r.byAdapter)} vs ${r.imported})`
       );
       assert.equal(r.skipped.length, 2, "content that did not land is reported as skipped");
       for (const sk of r.skipped) assert.match(sk.reason, /save failed/);
@@ -416,14 +428,18 @@ test(
       await rm(src, { recursive: true, force: true });
       await rm(vault, { recursive: true, force: true });
     }
-  },
+  }
 );
 
 test("#710: a type: feedback memory gets no recall_when entry 'feedback'; the type stays in tags", async () => {
   const src = await tmp("iv-src-");
   const vault = await tmp("iv-vault-");
   try {
-    await writeSrc(src, "feedback_borders.md", "---\nname: Keine doppelten Borders\ndescription: prüfen dass keine doppelten Borders entstehen\ntype: feedback\n---\nBody.");
+    await writeSrc(
+      src,
+      "feedback_borders.md",
+      "---\nname: Keine doppelten Borders\ndescription: prüfen dass keine doppelten Borders entstehen\ntype: feedback\n---\nBody."
+    );
     const r = await importVault(vault, src, { label: "ccmem" });
     const { data } = await readMem(vault, r.folder, r.ids[0]);
     const rw = data.recall_when as string[];
@@ -452,14 +468,26 @@ test("#710: an over-long description is cut in recall_when (summary keeps it), a
   const vault = await tmp("iv-vault-");
   try {
     const long = "Wenn ein Deployment auf dem Staging-Server hängt, ".repeat(10).trim();
-    await writeSrc(src, "project_deploy.md", `---\nname: Deploy hängt\ndescription: ${long}\ntype: project\n---\nBody.`);
+    await writeSrc(
+      src,
+      "project_deploy.md",
+      `---\nname: Deploy hängt\ndescription: ${long}\ntype: project\n---\nBody.`
+    );
     await writeSrc(src, "reference_x.md", "---\nname: Referenz X\ndescription: reference\ntype: reference\n---\nBody.");
     const r = await importVault(vault, src, { label: "ccmem" });
     assert.equal(r.imported, 2, "a warning never blocks the import");
-    const deploy = await readMem(vault, r.folder, r.ids.find((id) => id.includes("deploy"))!);
+    const deploy = await readMem(
+      vault,
+      r.folder,
+      r.ids.find((id) => id.includes("deploy"))!
+    );
     assert.ok((deploy.data.summary as string).length > 200, "summary keeps the description beyond the trigger cap");
     for (const e of deploy.data.recall_when as string[]) assert.ok(e.length <= 200, `entry capped: ${e.length}`);
-    const ref = await readMem(vault, r.folder, r.ids.find((id) => id.includes("reference"))!);
+    const ref = await readMem(
+      vault,
+      r.folder,
+      r.ids.find((id) => id.includes("reference"))!
+    );
     assert.deepEqual(ref.data.recall_when, ["Referenz X"], "a description that is only a type word is dropped");
     assert.equal(r.warnings.length, 2);
     assert.ok(r.warnings.some((w) => /cut to 200/.test(w.reason)));
@@ -472,9 +500,15 @@ test("#710: an over-long description is cut in recall_when (summary keeps it), a
 
 test("recall_when: a title that is itself a bare type word is never the trigger — the note's body supplies one, and the log says so", () => {
   // The filter drops bare type words; nothing may put one back, in any spelling.
-  const { recall_when, warnings } = cleanRecallWhen(["reference", "Reference"], "# reference\n\n---\nWhere the API tokens live\nmore");
+  const { recall_when, warnings } = cleanRecallWhen(
+    ["reference", "Reference"],
+    "# reference\n\n---\nWhere the API tokens live\nmore"
+  );
   assert.deepEqual(recall_when, ["Where the API tokens live"]);
-  assert.ok(warnings.some((w) => /taken from the note's body: 'Where the API tokens live'/.test(w)), JSON.stringify(warnings));
+  assert.ok(
+    warnings.some((w) => /taken from the note's body: 'Where the API tokens live'/.test(w)),
+    JSON.stringify(warnings)
+  );
   // A body-derived trigger gets the same surrogate-safe cut as any other entry.
   const cut = cleanRecallWhen(["reference"], "a" + "𠮷".repeat(150)).recall_when[0];
   assert.equal(cut, "a" + "𠮷".repeat(99));
@@ -487,14 +521,21 @@ test("#781: a note titled with a bare type word imports under a body line; one w
   const src = await tmp("iv-src-");
   const vault = await tmp("iv-vault-");
   try {
-    await writeSrc(src, "tokens.md", "---\nname: reference\ndescription: reference\ntype: reference\n---\n# reference\nWhere the API tokens live");
+    await writeSrc(
+      src,
+      "tokens.md",
+      "---\nname: reference\ndescription: reference\ntype: reference\n---\n# reference\nWhere the API tokens live"
+    );
     await writeSrc(src, "bare.md", "---\nname: feedback\ndescription: feedback\ntype: feedback\n---\n");
     const r = await importVault(vault, src, { label: "ccmem" });
     assert.equal(r.imported, 1);
     const { data } = await readMem(vault, r.folder, r.ids[0]);
     assert.deepEqual(data.recall_when, ["Where the API tokens live"]);
     assert.ok(!JSON.stringify(data.recall_when).includes("(imported)"), "no fixed literal in user data");
-    assert.ok(r.warnings.some((w) => /tokens\.md$/.test(w.path) && /taken from the note's body/.test(w.reason)), JSON.stringify(r.warnings));
+    assert.ok(
+      r.warnings.some((w) => /tokens\.md$/.test(w.path) && /taken from the note's body/.test(w.reason)),
+      JSON.stringify(r.warnings)
+    );
     assert.equal(r.skipped.length, 1);
     assert.match(r.skipped[0].path, /bare\.md$/);
     assert.match(r.skipped[0].reason, /nothing but a memory type word/);

@@ -19,12 +19,7 @@ import {
   GATE_HOOK_BIN,
   STOP_HOOK_BIN,
 } from "../paths.js";
-import {
-  atomicWriteJson,
-  backupConfig,
-  fileExists,
-  readJsonConfig,
-} from "../helpers.js";
+import { atomicWriteJson, backupConfig, fileExists, readJsonConfig } from "../helpers.js";
 import { checkForwarderRegistration } from "../stable-runtime.js";
 import { SAVE_NOTICE_MATCHER } from "../../save-notice-lane.js";
 import {
@@ -43,13 +38,7 @@ import {
 // ─── Hook helpers (claude-code-only surface) ─────────────────────
 
 type HookEventName =
-  | "SessionStart"
-  | "UserPromptSubmit"
-  | "PreToolUse"
-  | "PostToolUse"
-  | "PostToolUseFailure"
-  | "Stop"
-  | "SessionEnd";
+  "SessionStart" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "PostToolUseFailure" | "Stop" | "SessionEnd";
 
 export interface HookDef {
   event: HookEventName;
@@ -70,7 +59,11 @@ export interface HookDef {
 // Stop hook still needs its definition — to refresh an already-registered one
 // (see planHookEntries).
 const STOP_HOOK_DEF: HookDef = {
-  event: "Stop", bin: STOP_HOOK_BIN, timeout: 3, note: "bastra-recall Stop hook (optional autonomous save-eval, #35)", stubSubcommand: "stop",
+  event: "Stop",
+  bin: STOP_HOOK_BIN,
+  timeout: 3,
+  note: "bastra-recall Stop hook (optional autonomous save-eval, #35)",
+  stubSubcommand: "stop",
 };
 
 // #675: the Stop lane's end-of-session signal. Same client and daemon route as
@@ -80,10 +73,18 @@ const STOP_HOOK_DEF: HookDef = {
 // hooks 1.5 s together unless one asks for more; 2 s covers the stop client's
 // own 1 s budget.
 const SESSION_END_HOOK_DEF: HookDef = {
-  event: "SessionEnd", bin: STOP_HOOK_BIN, timeout: 2, note: "bastra-recall SessionEnd hook (after-session harvest, #675)", stubSubcommand: "stop",
+  event: "SessionEnd",
+  bin: STOP_HOOK_BIN,
+  timeout: 2,
+  note: "bastra-recall SessionEnd hook (after-session harvest, #675)",
+  stubSubcommand: "stop",
 };
 const CHAT_SESSION_END_HOOK_DEF: HookDef = {
-  event: "SessionEnd", bin: SESSION_HOOK_BIN, timeout: 2, note: "bastra-recall chat endpoint lifecycle (#1421)", stubSubcommand: "session",
+  event: "SessionEnd",
+  bin: SESSION_HOOK_BIN,
+  timeout: 2,
+  note: "bastra-recall chat endpoint lifecycle (#1421)",
+  stubSubcommand: "session",
 };
 
 // Single source of truth for the reflex layer. The Stop hook is ON by default
@@ -96,9 +97,29 @@ export function hookDefinitions(opts: { includeStop?: boolean } = {}): HookDef[]
     CHAT_SESSION_END_HOOK_DEF,
     // #1303: `fork` too — a forked session is a new session id that starts
     // from a copied transcript (code.claude.com/docs/en/hooks, SessionStart).
-    { event: "SessionStart", matcher: "startup|resume|clear|compact|fork", bin: SESSION_HOOK_BIN, timeout: 3, note: "bastra-recall SessionStart hook", stubSubcommand: "session" },
-    { event: "UserPromptSubmit", bin: PROMPT_HOOK_BIN, timeout: 2, note: "bastra-recall UserPromptSubmit hook (lookup-mode, #33)", stubSubcommand: "prompt" },
-    { event: "PreToolUse", matcher: "Write|Edit|MultiEdit|NotebookEdit", bin: PRE_TOOL_HOOK_BIN, timeout: 2, note: "bastra-recall PreToolUse hook", stubSubcommand: "write" },
+    {
+      event: "SessionStart",
+      matcher: "startup|resume|clear|compact|fork",
+      bin: SESSION_HOOK_BIN,
+      timeout: 3,
+      note: "bastra-recall SessionStart hook",
+      stubSubcommand: "session",
+    },
+    {
+      event: "UserPromptSubmit",
+      bin: PROMPT_HOOK_BIN,
+      timeout: 2,
+      note: "bastra-recall UserPromptSubmit hook (lookup-mode, #33)",
+      stubSubcommand: "prompt",
+    },
+    {
+      event: "PreToolUse",
+      matcher: "Write|Edit|MultiEdit|NotebookEdit",
+      bin: PRE_TOOL_HOOK_BIN,
+      timeout: 2,
+      note: "bastra-recall PreToolUse hook",
+      stubSubcommand: "write",
+    },
     // #506: `TodoWrite` alone was a dead matcher. Claude Code 2.1.268 replaced
     // the batched todo tool with per-task `TaskCreate` / `TaskUpdate` /
     // `TaskGet` / `TaskList`; `TodoWrite` is emitted only when a session sets
@@ -118,21 +139,63 @@ export function hookDefinitions(opts: { includeStop?: boolean } = {}): HookDef[]
     // is ever called, and the lane saw 0 Claude Code calls in the #305
     // window. The plan a current session writes goes through plan mode:
     // `ExitPlanMode` carries it as `plan` (markdown) when it is presented.
-    { event: "PreToolUse", matcher: "TodoWrite|TaskCreate|ExitPlanMode", bin: TODO_HOOK_BIN, timeout: 2, note: "bastra-recall plan hook (topology-recall, #36/#506/#698)", stubSubcommand: "todo" },
-    { event: "PreToolUse", matcher: "Bash", bin: BASH_PRE_HOOK_BIN, timeout: 2, note: "bastra-recall Bash-pre hook (safety, #34)", stubSubcommand: "bash-pre" },
+    {
+      event: "PreToolUse",
+      matcher: "TodoWrite|TaskCreate|ExitPlanMode",
+      bin: TODO_HOOK_BIN,
+      timeout: 2,
+      note: "bastra-recall plan hook (topology-recall, #36/#506/#698)",
+      stubSubcommand: "todo",
+    },
+    {
+      event: "PreToolUse",
+      matcher: "Bash",
+      bin: BASH_PRE_HOOK_BIN,
+      timeout: 2,
+      note: "bastra-recall Bash-pre hook (safety, #34)",
+      stubSubcommand: "bash-pre",
+    },
     // #1303: the catch-all gate. `"*"` matches every tool ("`*`, `""`, or
     // omitted — Match all", code.claude.com/docs/en/hooks). It runs in
     // parallel with the lanes above; a deny wins over their allow
     // (precedence deny > defer > ask > allow, same page).
-    { event: "PreToolUse", matcher: "*", bin: GATE_HOOK_BIN, timeout: 2, note: "bastra-recall gate hook (one-time must-load and reflex deny, #1303)", stubSubcommand: "gate" },
-    { event: "PostToolUse", matcher: "Bash", bin: BASH_FAIL_HOOK_BIN, timeout: 2, note: "bastra-recall Bash post hook (act-signal #144 + lesson recall on fail #37)", stubSubcommand: "bash-fail" },
-    { event: "PostToolUseFailure", matcher: "Bash", bin: BASH_FAIL_HOOK_BIN, timeout: 2, note: "bastra-recall Bash failure hook (act-signal #144 + lesson recall on fail #37)", stubSubcommand: "bash-fail" },
+    {
+      event: "PreToolUse",
+      matcher: "*",
+      bin: GATE_HOOK_BIN,
+      timeout: 2,
+      note: "bastra-recall gate hook (one-time must-load and reflex deny, #1303)",
+      stubSubcommand: "gate",
+    },
+    {
+      event: "PostToolUse",
+      matcher: "Bash",
+      bin: BASH_FAIL_HOOK_BIN,
+      timeout: 2,
+      note: "bastra-recall Bash post hook (act-signal #144 + lesson recall on fail #37)",
+      stubSubcommand: "bash-fail",
+    },
+    {
+      event: "PostToolUseFailure",
+      matcher: "Bash",
+      bin: BASH_FAIL_HOOK_BIN,
+      timeout: 2,
+      note: "bastra-recall Bash failure hook (act-signal #144 + lesson recall on fail #37)",
+      stubSubcommand: "bash-fail",
+    },
     // The line that says what was saved or edited, right under the collapsed
     // MCP call. Same post-tool client as the two Bash entries: it forwards any
     // payload unread, and the daemon route tells a Recall write tool from Bash
     // — so the lane needs no subcommand a host's compiled stub may not have
     // yet. PostToolUse only: a refused save gets no line.
-    { event: "PostToolUse", matcher: SAVE_NOTICE_MATCHER, bin: BASH_FAIL_HOOK_BIN, timeout: 2, note: "bastra-recall save notice (one line after save_memory / edit_memory)", stubSubcommand: "bash-fail" },
+    {
+      event: "PostToolUse",
+      matcher: SAVE_NOTICE_MATCHER,
+      bin: BASH_FAIL_HOOK_BIN,
+      timeout: 2,
+      note: "bastra-recall save notice (one line after save_memory / edit_memory)",
+      stubSubcommand: "bash-fail",
+    },
   ];
   if (opts.includeStop) defs.push(STOP_HOOK_DEF, SESSION_END_HOOK_DEF);
   return defs;
@@ -154,13 +217,11 @@ function buildHookEntry(
   def: HookDef,
   stubPresent: boolean = existsSync(HOOK_STUB_BIN),
   wrap: HookWrapper = { prefix: "", suffix: "" },
-  platform: string = process.platform,
+  platform: string = process.platform
 ): Record<string, unknown> {
   const token = platform === "win32" ? windowsHookToken : (s: string) => s;
   const runner =
-    def.stubSubcommand && stubPresent
-      ? `${token(HOOK_STUB_BIN)} ${def.stubSubcommand}`
-      : `node ${token(def.bin)}`;
+    def.stubSubcommand && stubPresent ? `${token(HOOK_STUB_BIN)} ${def.stubSubcommand}` : `node ${token(def.bin)}`;
   // #647: a user's wrapper around the runner survives the rewrite. The
   // client marker is ours and written fresh (#657/#650: the bash-pre lane
   // rewrites a command only for a call that proves it is Claude Code), so it
@@ -170,26 +231,35 @@ function buildHookEntry(
   // shell operator (`cd /dir && node …`) the marker goes after the last one —
   // in front of the runner it is for — instead of onto `cd`.
   const cut = lastShellOperatorCut(prefix);
-  const command = platform === "win32"
-    ? `${prefix}${runner} --client=claude-code${wrap.suffix}`
-    : `${prefix.slice(0, cut)}${CLIENT_MARKER}${prefix.slice(cut)}${runner}${wrap.suffix}`;
+  const command =
+    platform === "win32"
+      ? `${prefix}${runner} --client=claude-code${wrap.suffix}`
+      : `${prefix.slice(0, cut)}${CLIENT_MARKER}${prefix.slice(cut)}${runner}${wrap.suffix}`;
   const entry: Record<string, unknown> = {};
   if (def.matcher) entry.matcher = def.matcher;
-  entry.hooks = [{
-    type: "command",
-    command,
-    timeout: def.timeout,
-    __bastraRecall: true,
-    __note: def.note,
-  }];
+  entry.hooks = [
+    {
+      type: "command",
+      command,
+      timeout: def.timeout,
+      __bastraRecall: true,
+      __note: def.note,
+    },
+  ];
   return entry;
 }
 
 // Hook bin filenames we own — recognised even on entries missing the
 // __bastraRecall marker (e.g. older hand-added ones).
 export const OUR_HOOK_FILES = [
-  "hook.js", "session-hook.js", "prompt-hook.js", "todo-hook.js",
-  "bash-pre-hook.js", "bash-fail-hook.js", "stop-hook.js", "gate-hook.js",
+  "hook.js",
+  "session-hook.js",
+  "prompt-hook.js",
+  "todo-hook.js",
+  "bash-pre-hook.js",
+  "bash-fail-hook.js",
+  "stop-hook.js",
+  "gate-hook.js",
 ];
 export const REQUIRED_HOOK_FILES = OUR_HOOK_FILES.filter((f) => f !== "stop-hook.js");
 
@@ -199,7 +269,10 @@ export const REQUIRED_HOOK_FILES = OUR_HOOK_FILES.filter((f) => f !== "stop-hook
  * table: a lane's file and its subcommand drifting apart is exactly how the
  * detection below would go quietly blind again.
  */
-export function stubSubcommandForFile(file: string, defs: HookDef[] = hookDefinitions({ includeStop: true })): string | null {
+export function stubSubcommandForFile(
+  file: string,
+  defs: HookDef[] = hookDefinitions({ includeStop: true })
+): string | null {
   for (const def of defs) {
     if (fileOf(def.bin) === file && def.stubSubcommand) return def.stubSubcommand;
   }
@@ -223,8 +296,11 @@ export function stubLaneCommandPath(cmd: string, sub: string, home: string = hom
   const tokens = hookCommandTokens(cmd);
   for (let i = 0; i + 1 < tokens.length; i++) {
     const base = fileOf(tokens[i].value);
-    if ((base === "bastra-hook" || base === "bastra-hook.exe") &&
-      tokens[i + 1].group === tokens[i].group && tokens[i + 1].value === sub) {
+    if (
+      (base === "bastra-hook" || base === "bastra-hook.exe") &&
+      tokens[i + 1].group === tokens[i].group &&
+      tokens[i + 1].value === sub
+    ) {
       const path = tokens[i].value;
       return path.startsWith("~/") ? join(home, path.slice(2)) : path;
     }
@@ -261,7 +337,13 @@ const lookedOurs = (cmd: string): boolean =>
   (cmd.includes("bastra-recall") || cmd.includes("nexus-recall")) && cmd.includes("hook");
 
 const HOOK_EVENTS: HookEventName[] = [
-  "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "SessionEnd",
+  "SessionStart",
+  "UserPromptSubmit",
+  "PreToolUse",
+  "PostToolUse",
+  "PostToolUseFailure",
+  "Stop",
+  "SessionEnd",
 ];
 
 /**
@@ -272,11 +354,7 @@ const HOOK_EVENTS: HookEventName[] = [
  * still run a replaced runtime (#321). `~` is expanded because the check it
  * feeds compares against `~/.bastra/runtime/<version>/` as a real path.
  */
-export function hookCommandPath(
-  cmd: string,
-  file: string,
-  home: string = homedir(),
-): string | null {
+export function hookCommandPath(cmd: string, file: string, home: string = homedir()): string | null {
   const suffix = `/${file}`;
   const expand = (p: string) => (p.startsWith("~/") ? join(home, p.slice(2)) : p);
   for (const token of hookCommandTokens(cmd)) {
@@ -305,16 +383,14 @@ export async function checkHookPaths(
     exists?: (p: string) => Promise<boolean>;
     running?: string;
     home?: string;
-  } = {},
+  } = {}
 ): Promise<string[]> {
   const exists = io.exists ?? fileExists;
   const home = io.home ?? homedir();
   const problems: string[] = [];
   for (const [file, cmd] of found) {
     const sub = stubSubcommandForFile(file);
-    const path =
-      hookCommandPath(cmd, file, home)
-      ?? (sub ? stubLaneCommandPath(cmd, sub, home) : null);
+    const path = hookCommandPath(cmd, file, home) ?? (sub ? stubLaneCommandPath(cmd, sub, home) : null);
     if (path === null) {
       problems.push(`${file}: no path in '${cmd}'`);
       continue;
@@ -343,9 +419,10 @@ export function registeredHookCommands(hooks: Record<string, unknown>): Array<[s
       const hs = (entry as Record<string, unknown>).hooks;
       if (!Array.isArray(hs)) continue;
       for (const h of hs) {
-        const cmd = typeof (h as Record<string, unknown>)?.command === "string"
-          ? ((h as Record<string, unknown>).command as string)
-          : "";
+        const cmd =
+          typeof (h as Record<string, unknown>)?.command === "string"
+            ? ((h as Record<string, unknown>).command as string)
+            : "";
         for (const f of OUR_HOOK_FILES) {
           if (slashes(cmd).includes(`/${f}`)) {
             found.push([f, cmd]);
@@ -367,10 +444,13 @@ export function registeredHookCommands(hooks: Record<string, unknown>): Array<[s
  * binary must be registered on both PostToolUse and PostToolUseFailure: an old
  * seven-entry install otherwise still looks like 7/7 healthy to doctor.
  */
-export function missingRequiredHookRegistrations(hooks: Record<string, unknown>, defs: HookDef[] = hookDefinitions()): string[] {
+export function missingRequiredHookRegistrations(
+  hooks: Record<string, unknown>,
+  defs: HookDef[] = hookDefinitions()
+): string[] {
   const missing: string[] = [];
   for (const def of defs) {
-    const entries = Array.isArray(hooks[def.event]) ? hooks[def.event] as unknown[] : [];
+    const entries = Array.isArray(hooks[def.event]) ? (hooks[def.event] as unknown[]) : [];
     const file = fileOf(def.bin);
     const found = entries.some((entry) => {
       if (!entry || typeof entry !== "object") return false;
@@ -383,7 +463,12 @@ export function missingRequiredHookRegistrations(hooks: Record<string, unknown>,
         const command = h.command;
         if (h.type !== "command" || typeof command !== "string") return false;
         const marked = h.__bastraRecall === true || h.__nexusRecall === true;
-        return runsOurHookRunner(marked ? CLIENT_MARKER + command : command, [file], CLIENT_MARKER.trim(), def.stubSubcommand);
+        return runsOurHookRunner(
+          marked ? CLIENT_MARKER + command : command,
+          [file],
+          CLIENT_MARKER.trim(),
+          def.stubSubcommand
+        );
       });
     });
     if (!found) missing.push(`${def.event}${def.matcher ? `:${def.matcher}` : ""}`);
@@ -391,7 +476,8 @@ export function missingRequiredHookRegistrations(hooks: Record<string, unknown>,
   return missing;
 }
 
-type HookStepStatus = "installed" | "already-installed" | "would-install" | "removed" | "not-present" | "would-remove" | "error";
+type HookStepStatus =
+  "installed" | "already-installed" | "would-install" | "removed" | "not-present" | "would-remove" | "error";
 
 export interface HookPlan {
   before: Record<HookEventName, unknown[]>;
@@ -415,13 +501,12 @@ export function planHookEntries(
     /** Test seam — see buildHookEntry. Omitted in production. */
     stubPresent?: boolean;
     platform?: string;
-  },
+  }
 ): HookPlan {
   // Register the stable-runtime copy of each bin when active (#180) — hooks
   // pointing into the npx cache break on eviction just like the forwarder.
   // On non-npx installs mapBin is the identity (byte-identical no-op).
-  const withBin = (def: HookDef): HookDef =>
-    opts.mapBin ? { ...def, bin: opts.mapBin(def.bin) } : def;
+  const withBin = (def: HookDef): HookDef => (opts.mapBin ? { ...def, bin: opts.mapBin(def.bin) } : def);
   const defs = hookDefinitions({ includeStop: opts.includeStop }).map(withBin);
   const stopDef = withBin(STOP_HOOK_DEF);
   const sessionEndDef = withBin(SESSION_END_HOOK_DEF);
@@ -433,7 +518,7 @@ export function planHookEntries(
       def.matcher,
       fileOf(def.bin),
       def.stubSubcommand,
-      isOurHookEntry,
+      isOurHookEntry
     );
 
   // Per event: keep all foreign entries, append our (possibly re-built) entries.
@@ -453,7 +538,11 @@ export function planHookEntries(
     // is re-built from the current def, in place; foreign ones stay verbatim.
     if (action === "install" && !opts.includeStop && ev === "Stop") {
       stopPreserved = cur.some((m) => isOurHookEntry(m));
-      after[ev] = cur.flatMap((m) => (isOurHookEntry(m) ? [buildHookEntry(stopDef, stubPresent, wrapOf(stopDef), opts.platform), ...foreignRemainder(m)] : [m]));
+      after[ev] = cur.flatMap((m) =>
+        isOurHookEntry(m)
+          ? [buildHookEntry(stopDef, stubPresent, wrapOf(stopDef), opts.platform), ...foreignRemainder(m)]
+          : [m]
+      );
     } else {
       after[ev] = cur.flatMap((m) => (isOurHookEntry(m) ? foreignRemainder(m) : [m]));
     }
@@ -461,9 +550,15 @@ export function planHookEntries(
   if (action === "install") {
     for (const def of defs) after[def.event].push(buildHookEntry(def, stubPresent, wrapOf(def), opts.platform));
     // #675: a preserved Stop opt-in brings its SessionEnd companion along.
-    if (stopPreserved && !defs.some(d => d.event === "SessionEnd" && d.bin === STOP_HOOK_BIN)) after.SessionEnd.push(buildHookEntry(sessionEndDef, stubPresent, wrapOf(sessionEndDef), opts.platform));
+    if (stopPreserved && !defs.some((d) => d.event === "SessionEnd" && d.bin === STOP_HOOK_BIN))
+      after.SessionEnd.push(buildHookEntry(sessionEndDef, stubPresent, wrapOf(sessionEndDef), opts.platform));
   }
-  return { before, after, stopPreserved, leftAlone: lookalikeHookCommands(hooks, HOOK_EVENTS, isOurHookEntry, lookedOurs) };
+  return {
+    before,
+    after,
+    stopPreserved,
+    leftAlone: lookalikeHookCommands(hooks, HOOK_EVENTS, isOurHookEntry, lookedOurs),
+  };
 }
 
 export async function patchClaudeCodeHooks(
@@ -474,7 +569,7 @@ export async function patchClaudeCodeHooks(
     mapBin?: (bin: string) => string;
     /** #537 — the client the install step selected; undefined probes the disk. */
     stubPresent?: boolean;
-  },
+  }
 ): Promise<{ status: HookStepStatus; detail: string; backupPath?: string; note?: string }> {
   const sourceDefs = hookDefinitions({ includeStop: opts.includeStop });
   const includeStop = opts.includeStop === true;
@@ -493,9 +588,10 @@ export async function patchClaudeCodeHooks(
   if ("error" in read) return { status: "error", detail: read.error };
 
   const data = read.data;
-  const hooks = (data.hooks && typeof data.hooks === "object" && !Array.isArray(data.hooks))
-    ? data.hooks as Record<string, unknown>
-    : {};
+  const hooks =
+    data.hooks && typeof data.hooks === "object" && !Array.isArray(data.hooks)
+      ? (data.hooks as Record<string, unknown>)
+      : {};
 
   const { before, after, stopPreserved, leftAlone } = planHookEntries(action, hooks, {
     includeStop,
@@ -509,19 +605,25 @@ export async function patchClaudeCodeHooks(
       ? " (existing Stop hook kept at current path)"
       : " (Stop hook optional/off)";
 
-  const currentMatches = HOOK_EVENTS.every(
-    (ev) => JSON.stringify(before[ev]) === JSON.stringify(after[ev]),
-  );
+  const currentMatches = HOOK_EVENTS.every((ev) => JSON.stringify(before[ev]) === JSON.stringify(after[ev]));
 
   if (currentMatches) {
     return action === "install"
-      ? { status: "already-installed", detail: `${sourceDefs.length} hooks already registered with matching paths${installNote}`, note }
+      ? {
+          status: "already-installed",
+          detail: `${sourceDefs.length} hooks already registered with matching paths${installNote}`,
+          note,
+        }
       : { status: "not-present", detail: "no bastra-recall hooks present", note };
   }
 
   if (opts.dryRun) {
     return action === "install"
-      ? { status: "would-install", detail: `would (re)register ${sourceDefs.length} hooks across ${HOOK_EVENTS.length} events${installNote}`, note }
+      ? {
+          status: "would-install",
+          detail: `would (re)register ${sourceDefs.length} hooks across ${HOOK_EVENTS.length} events${installNote}`,
+          note,
+        }
       : { status: "would-remove", detail: "would strip bastra-recall hook entries", note };
   }
 

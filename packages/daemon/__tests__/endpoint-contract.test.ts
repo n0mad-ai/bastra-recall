@@ -61,10 +61,24 @@ import type { ParsedArgs } from "../src/cli/types.js";
 function memoryMarkdown(id: string): string {
   const ts = new Date().toISOString();
   return [
-    "---", `id: ${id}`, `title: ${id}`, "type: reference", `summary: ${id}`,
-    "topic_path:", "  - t", "tags:", "  - t", "scope: endpoint-531",
-    "recall_when:", `  - ${id}`, `created: ${ts}`, `updated: ${ts}`, "---",
-    "", `Body ${id}.`, "",
+    "---",
+    `id: ${id}`,
+    `title: ${id}`,
+    "type: reference",
+    `summary: ${id}`,
+    "topic_path:",
+    "  - t",
+    "tags:",
+    "  - t",
+    "scope: endpoint-531",
+    "recall_when:",
+    `  - ${id}`,
+    `created: ${ts}`,
+    `updated: ${ts}`,
+    "---",
+    "",
+    `Body ${id}.`,
+    "",
   ].join("\n");
 }
 
@@ -143,9 +157,7 @@ interface TwoDaemons {
  * size, different version, different port. `BASTRA_HTTP_PORT` names the first.
  * HOME is redirected so nothing reads or writes the developer's own settings.
  */
-async function twoDaemons(t: {
-  after: (fn: () => unknown | Promise<unknown>) => void;
-}): Promise<TwoDaemons> {
+async function twoDaemons(t: { after: (fn: () => unknown | Promise<unknown>) => void }): Promise<TwoDaemons> {
   const configured = await startDaemon(2, "0.0.0-configured");
   const other = await startDaemon(7, "0.0.0-other");
   const home = await mkdtemp(join(tmpdir(), "bastra-531-home-"));
@@ -184,17 +196,17 @@ function mentionsNothingOf(text: string, other: LiveDaemon, where: string): void
   assert.equal(
     text.includes(String(other.port)),
     false,
-    `${where} names the other daemon's port ${other.port}: ${text}`,
+    `${where} names the other daemon's port ${other.port}: ${text}`
   );
   assert.equal(
     text.includes(other.version),
     false,
-    `${where} names the other daemon's version ${other.version}: ${text}`,
+    `${where} names the other daemon's version ${other.version}: ${text}`
   );
   assert.equal(
     text.includes(`vault_size=${other.vaultSize}`),
     false,
-    `${where} reports the other daemon's vault size: ${text}`,
+    `${where} reports the other daemon's vault size: ${text}`
   );
 }
 
@@ -255,7 +267,7 @@ test("#531 status --json reports the configured daemon only — never the other 
   mentionsNothingOf(
     JSON.stringify({ endpoint: parsed.endpoint, daemon: parsed.daemon, vaultMap: parsed.vaultMap }),
     other,
-    "status --json",
+    "status --json"
   );
 });
 
@@ -272,9 +284,7 @@ test("#531 the health probe carries the endpoint it spoke to, so no caller has t
   // And the same call, aimed at the other instance, must report ITS numbers —
   // proof that the two are distinguishable at all and the test is not just
   // reading one server twice.
-  const otherProbe = await probeDaemon(
-    resolveDaemonEndpoint({ BASTRA_HTTP_PORT: String(other.port) }),
-  );
+  const otherProbe = await probeDaemon(resolveDaemonEndpoint({ BASTRA_HTTP_PORT: String(other.port) }));
   assert.equal(otherProbe.version, other.version);
   assert.match(otherProbe.detail, new RegExp(`vault_size=${other.vaultSize}\\b`));
 });
@@ -332,21 +342,29 @@ test("#531 the update hint probes the configured endpoint and never the default 
         done({
           port: (srv.address() as AddressInfo).port,
           close: () => new Promise<void>((r) => srv.close(() => r())),
-        }),
+        })
       );
     });
   const configured = await make("configured");
   const decoy = await make("decoy");
   const home = await mkdtemp(join(tmpdir(), "bastra-531-hint-"));
-  const saved = { url: process.env.BASTRA_DAEMON_URL, port: process.env.BASTRA_HTTP_PORT, home: process.env.HOME, check: process.env.BASTRA_UPDATE_CHECK };
+  const saved = {
+    url: process.env.BASTRA_DAEMON_URL,
+    port: process.env.BASTRA_HTTP_PORT,
+    home: process.env.HOME,
+    check: process.env.BASTRA_UPDATE_CHECK,
+  };
   process.env.BASTRA_DAEMON_URL = `http://127.0.0.1:${configured.port}`;
   process.env.BASTRA_HTTP_PORT = String(configured.port);
   process.env.HOME = home;
   delete process.env.BASTRA_UPDATE_CHECK;
   t.after(async () => {
-    if (saved.url === undefined) delete process.env.BASTRA_DAEMON_URL; else process.env.BASTRA_DAEMON_URL = saved.url;
-    if (saved.port === undefined) delete process.env.BASTRA_HTTP_PORT; else process.env.BASTRA_HTTP_PORT = saved.port;
-    if (saved.home === undefined) delete process.env.HOME; else process.env.HOME = saved.home;
+    if (saved.url === undefined) delete process.env.BASTRA_DAEMON_URL;
+    else process.env.BASTRA_DAEMON_URL = saved.url;
+    if (saved.port === undefined) delete process.env.BASTRA_HTTP_PORT;
+    else process.env.BASTRA_HTTP_PORT = saved.port;
+    if (saved.home === undefined) delete process.env.HOME;
+    else process.env.HOME = saved.home;
     if (saved.check !== undefined) process.env.BASTRA_UPDATE_CHECK = saved.check;
     await configured.close();
     await decoy.close();
@@ -373,16 +391,16 @@ test("#531 a chosen endpoint survives registration — and a hand-set one surviv
   // instead of resetting it to the default.
   const plain = resolveDaemonEndpoint({ HOME: "/tmp" });
   assert.equal(plain.configured, false);
-  assert.equal(
-    endpointToPersist(fresh.env.BASTRA_DAEMON_URL, plain),
-    "http://127.0.0.1:26723",
-  );
+  assert.equal(endpointToPersist(fresh.env.BASTRA_DAEMON_URL, plain), "http://127.0.0.1:26723");
   const again = buildServerBlock("/v", "/fwd.js", "write", endpointToPersist(fresh.env.BASTRA_DAEMON_URL, plain));
   assert.equal(again.env.BASTRA_DAEMON_URL, "http://127.0.0.1:26723");
 
   // With nothing configured anywhere the block stays as short as it was —
   // the ordinary single-daemon install gains no noise.
-  assert.equal("BASTRA_DAEMON_URL" in buildServerBlock("/v", "/fwd.js", "write", endpointToPersist(null, plain)).env, false);
+  assert.equal(
+    "BASTRA_DAEMON_URL" in buildServerBlock("/v", "/fwd.js", "write", endpointToPersist(null, plain)).env,
+    false
+  );
 });
 
 test("#531 serverBlockEndpoint reads the endpoint an existing registration already carries", () => {
@@ -396,7 +414,8 @@ test("#531 serverBlockEndpoint reads the endpoint an existing registration alrea
     assert.equal(serverBlockEndpoint({ env: {} }), null);
     assert.equal(serverBlockEndpoint(null), null);
   } finally {
-    if (url === undefined) delete process.env.BASTRA_DAEMON_URL; else process.env.BASTRA_DAEMON_URL = url;
+    if (url === undefined) delete process.env.BASTRA_DAEMON_URL;
+    else process.env.BASTRA_DAEMON_URL = url;
     if (saved !== undefined) process.env.BASTRA_HTTP_PORT = saved;
   }
 });
@@ -436,7 +455,14 @@ test("#531 the managed LaunchAgent freezes the port the daemon must bind, and ke
   }
 
   // No configured endpoint and an explicitly empty shell leave the port unset.
-  const bare = autostartEnv("/vault", "/opt/homebrew/bin/node", endpointToPersist(null, resolveDaemonEndpoint({ HOME: "/tmp" })), "darwin", {}, {});
+  const bare = autostartEnv(
+    "/vault",
+    "/opt/homebrew/bin/node",
+    endpointToPersist(null, resolveDaemonEndpoint({ HOME: "/tmp" })),
+    "darwin",
+    {},
+    {}
+  );
   assert.equal("BASTRA_HTTP_PORT" in bare, false);
 });
 
@@ -445,12 +471,25 @@ test("#531 the managed LaunchAgent freezes the port the daemon must bind, and ke
 test("#531 no CLI surface carries its own copy of the daemon address", async () => {
   const here = new URL("../src/", import.meta.url);
   const files = [
-    "cli/helpers.ts", "cli/status.ts", "cli/panel.ts", "cli/map-cmd.ts",
-    "cli/update-hint.ts", "cli/daemon-processes.ts", "cli/daemon-start.ts",
-    "cli/embeddings-cmd.ts", "cli/autostart.ts", "cli/config-cmd.ts",
-    "cli/adapters/claude-code.ts", "cli/adapters/claude-code-hooks.ts", "cli/adapters/claude-desktop.ts",
-    "cli/adapters/cursor.ts", "cli/adapters/codex.ts",
-    "thin-client.ts", "hook.ts", "prompt-hook.ts", "bridge.ts",
+    "cli/helpers.ts",
+    "cli/status.ts",
+    "cli/panel.ts",
+    "cli/map-cmd.ts",
+    "cli/update-hint.ts",
+    "cli/daemon-processes.ts",
+    "cli/daemon-start.ts",
+    "cli/embeddings-cmd.ts",
+    "cli/autostart.ts",
+    "cli/config-cmd.ts",
+    "cli/adapters/claude-code.ts",
+    "cli/adapters/claude-code-hooks.ts",
+    "cli/adapters/claude-desktop.ts",
+    "cli/adapters/cursor.ts",
+    "cli/adapters/codex.ts",
+    "thin-client.ts",
+    "hook.ts",
+    "prompt-hook.ts",
+    "bridge.ts",
     "forwarder-daemon-client.ts",
   ];
   for (const rel of files) {
@@ -464,12 +503,8 @@ test("#531 no CLI surface carries its own copy of the daemon address", async () 
     assert.equal(
       /127\.0\.0\.1:\$\{|"http:\/\/127\.0\.0\.1:6723|127\.0\.0\.1:\d+\/health/.test(code),
       false,
-      `${rel} builds a daemon address of its own — use resolveDaemonEndpoint()`,
+      `${rel} builds a daemon address of its own — use resolveDaemonEndpoint()`
     );
-    assert.equal(
-      /daemon-on-6723/.test(code),
-      false,
-      `${rel} still names a fixed port in a diagnostic key`,
-    );
+    assert.equal(/daemon-on-6723/.test(code), false, `${rel} still names a fixed port in a diagnostic key`);
   }
 });

@@ -52,11 +52,7 @@ const WORKFLOW = join(REPO, ".github", "workflows", "publish-npm.yml");
 const VERSION = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")).version;
 
 /** A release that carries everything — the precondition #549 added to publishing. */
-const COMPLETE_ASSETS = [
-  ...REQUIRED_ASSETS,
-  `bastra-recall-${VERSION}.mcpb`,
-  `bastra-recall-${VERSION}.mcpb.sha256`,
-];
+const COMPLETE_ASSETS = [...REQUIRED_ASSETS, `bastra-recall-${VERSION}.mcpb`, `bastra-recall-${VERSION}.mcpb.sha256`];
 
 /* ------------------------------------------------------------------ bump.mjs */
 
@@ -70,10 +66,7 @@ async function bump(version) {
 
 test("#524 bump.mjs: a stable version gets a stable release command", async () => {
   const out = await bump("99.0.0");
-  assert.ok(
-    !out.includes("--prerelease"),
-    `stable bump still recommends a prerelease:\n${out}`,
-  );
+  assert.ok(!out.includes("--prerelease"), `stable bump still recommends a prerelease:\n${out}`);
   assert.match(out, /gh release create v99\.0\.0 .*--generate-notes/);
 });
 
@@ -85,7 +78,7 @@ test("#524 bump.mjs: the staging release is a draft, not a public page held back
   assert.match(out, /gh release create v99\.0\.0 --draft\b/);
   assert.ok(
     !out.includes("--latest=false"),
-    `the staging release is still a published one merely held back from Latest:\n${out}`,
+    `the staging release is still a published one merely held back from Latest:\n${out}`
   );
 });
 
@@ -104,7 +97,10 @@ test("bump.mjs: a hyphen in +build metadata is not a prerelease", async () => {
   // 1.0.0+2026-09-28 is a stable version (the accepted grammar lets build
   // metadata carry hyphens); only a hyphen before the `+` marks a prerelease.
   const stable = await bump("99.0.0+2026-09-28");
-  assert.ok(!stable.includes("--prerelease"), `a stable version with dashed build metadata is staged as a prerelease:\n${stable}`);
+  assert.ok(
+    !stable.includes("--prerelease"),
+    `a stable version with dashed build metadata is staged as a prerelease:\n${stable}`
+  );
   assert.match(stable, /gh release create v99\.0\.0\+2026-09-28 --draft --generate-notes/);
 
   const pre = await bump("99.0.0-rc.1+build-5");
@@ -231,10 +227,7 @@ test("#524 publish set: a rerun after a partial publish skips what is already on
     PUBLISHED: "@bastra-recall/core @bastra-recall/statusline",
   });
   assert.equal(code, 0, `rerun failed on an already-published package:\n${out}`);
-  assert.deepEqual(publishedWorkspaces(calls), [
-    "@bastra-recall/daemon",
-    "bastra-recall",
-  ]);
+  assert.deepEqual(publishedWorkspaces(calls), ["@bastra-recall/daemon", "bastra-recall"]);
 });
 
 test("#524 publish set: the unscoped wrapper is published last", async () => {
@@ -245,7 +238,7 @@ test("#524 publish set: the unscoped wrapper is published last", async () => {
   assert.equal(order.at(-1), "bastra-recall");
   assert.ok(
     order.indexOf("@bastra-recall/core") < order.indexOf("@bastra-recall/daemon"),
-    `core must precede the daemon: ${order.join(", ")}`,
+    `core must precede the daemon: ${order.join(", ")}`
   );
 });
 
@@ -296,7 +289,7 @@ test("#524 publish set: the skip is taken only after the candidate has actually 
   assert.match(
     calls,
     /npm pack --dry-run --json --workspace=@bastra-recall\/core/,
-    `the already-published package was skipped without comparing bytes:\n${calls}`,
+    `the already-published package was skipped without comparing bytes:\n${calls}`
   );
 });
 
@@ -346,20 +339,29 @@ test("#1076 verify: a package can appear beyond the old twelve-attempt slot", as
   });
   assert.equal(code, 0, out);
   assert.deepEqual(publishedWorkspaces(calls), []);
-  assert.ok(calls.split("\n").filter(line => line.startsWith("npm view ")).every(line => line.includes("--prefer-online")), "verification must revalidate registry data rather than reuse a stale npm cache");
+  assert.ok(
+    calls
+      .split("\n")
+      .filter((line) => line.startsWith("npm view "))
+      .every((line) => line.includes("--prefer-online")),
+    "verification must revalidate registry data rather than reuse a stale npm cache"
+  );
 });
 
 test("#1076 verify: pending packages are polled together and visible packages are not re-polled", async () => {
   const { code, out, calls } = await runPublish(["--verify"], {
     PUBLISHED: "@bastra-recall/statusline bastra-recall",
-    LATE_PACKAGE: "@bastra-recall/core", LATE_AFTER: "3",
-    LATE_PACKAGE_TWO: "@bastra-recall/daemon", LATE_TWO_AFTER: "2",
+    LATE_PACKAGE: "@bastra-recall/core",
+    LATE_AFTER: "3",
+    LATE_PACKAGE_TWO: "@bastra-recall/daemon",
+    LATE_TWO_AFTER: "2",
     BASTRA_VERIFY_ATTEMPTS: "5",
   });
   assert.equal(code, 0, out);
   const lines = calls.trim().split("\n");
-  const reads = name => lines.flatMap((line, i) => line.startsWith(`npm view ${name}@`) ? [i] : []);
-  const core = reads("@bastra-recall/core"), daemon = reads("@bastra-recall/daemon");
+  const reads = (name) => lines.flatMap((line, i) => (line.startsWith(`npm view ${name}@`) ? [i] : []));
+  const core = reads("@bastra-recall/core"),
+    daemon = reads("@bastra-recall/daemon");
   assert.ok(daemon[1] < core[2], "daemon must be checked again before core's third poll");
   assert.equal(reads("@bastra-recall/statusline").length, 1);
   assert.equal(reads("bastra-recall").length, 1);
@@ -369,7 +371,9 @@ test("#1076 verify: pending packages are polled together and visible packages ar
 test("#1076 verify: a late-visible manifest is still validated, never just accepted as present", async () => {
   const { code, out, calls } = await runPublish(["--verify"], {
     PUBLISHED: "@bastra-recall/core @bastra-recall/statusline @bastra-recall/daemon",
-    LATE_PACKAGE: "bastra-recall", LATE_AFTER: "2", BAD_PIN_PACKAGE: "bastra-recall",
+    LATE_PACKAGE: "bastra-recall",
+    LATE_AFTER: "2",
+    BAD_PIN_PACKAGE: "bastra-recall",
   });
   assert.notEqual(code, 0);
   assert.match(out, /NOT this release: dependency/);
@@ -379,11 +383,14 @@ test("#1076 verify: a late-visible manifest is still validated, never just accep
 test("#1076 verify: the global deadline bounds an npm lookup and lists every unfinished package", async () => {
   const start = performance.now();
   const { code, out, calls } = await runPublish(["--verify"], {
-    SLOW_VIEW: "1", BASTRA_VERIFY_ATTEMPTS: "2", BASTRA_VERIFY_INTERVAL_MS: "40",
+    SLOW_VIEW: "1",
+    BASTRA_VERIFY_ATTEMPTS: "2",
+    BASTRA_VERIFY_INTERVAL_MS: "40",
   });
   assert.notEqual(code, 0);
   assert.ok(performance.now() - start < 1000, "a slow registry request must not occupy one slot per package");
-  for (const name of ["@bastra-recall/core", "@bastra-recall/statusline", "@bastra-recall/daemon", "bastra-recall"]) assert.ok(out.includes(`✗ ${name}@`), out);
+  for (const name of ["@bastra-recall/core", "@bastra-recall/statusline", "@bastra-recall/daemon", "bastra-recall"])
+    assert.ok(out.includes(`✗ ${name}@`), out);
   assert.deepEqual(publishedWorkspaces(calls), []);
 });
 
@@ -410,8 +417,7 @@ test("#524 publish set: --verify fails while any package of the set is missing",
 
 test("#524 publish set: --verify fails while the registry still serves an older `latest`", async () => {
   const { code, out } = await runPublish(["--verify"], {
-    PUBLISHED:
-      "@bastra-recall/core @bastra-recall/statusline @bastra-recall/daemon bastra-recall",
+    PUBLISHED: "@bastra-recall/core @bastra-recall/statusline @bastra-recall/daemon bastra-recall",
     LATEST_TAG: "0.0.1",
   });
   assert.notEqual(code, 0, `a stale dist-tag verified as promoted:\n${out}`);
@@ -420,8 +426,7 @@ test("#524 publish set: --verify fails while the registry still serves an older 
 
 test("#524 publish set: --verify passes on a complete, promoted set and publishes nothing", async () => {
   const { code, out, calls } = await runPublish(["--verify"], {
-    PUBLISHED:
-      "@bastra-recall/core @bastra-recall/statusline @bastra-recall/daemon bastra-recall",
+    PUBLISHED: "@bastra-recall/core @bastra-recall/statusline @bastra-recall/daemon bastra-recall",
   });
   assert.equal(code, 0, out);
   assert.deepEqual(publishedWorkspaces(calls), []);
@@ -442,7 +447,7 @@ test("#524 workflow: the release set is published only after the whole set is ve
   // And the old split-brain publish steps must be gone.
   assert.ok(
     !/npm publish --workspace=/.test(yml),
-    "the workflow still publishes packages in independent, non-resumable steps",
+    "the workflow still publishes packages in independent, non-resumable steps"
   );
 });
 
@@ -453,9 +458,7 @@ test("#552 workflow: every job that touches the draft may actually read it", asy
   // `contents: read`, and this was found the expensive way: the gate was fixed
   // alone, the dispatch then got one job further and `publish` failed on the
   // same cause. So the assertion is over ALL jobs, not the two that failed.
-  const heads = [...yml.matchAll(/^ {2}([a-z][a-z0-9-]*):\s*$/gm)].filter(
-    (m) => m.index > yml.indexOf("\njobs:"),
-  );
+  const heads = [...yml.matchAll(/^ {2}([a-z][a-z0-9-]*):\s*$/gm)].filter((m) => m.index > yml.indexOf("\njobs:"));
   const offenders = [];
   for (let i = 0; i < heads.length; i++) {
     const body = yml.slice(heads[i].index, heads[i + 1]?.index ?? yml.length);
@@ -483,13 +486,10 @@ test("#524 workflow: nothing is driven by a public release event", async () => {
   // A `release:` trigger can only fire for a release that is already public —
   // page and tag — while the set is still being assembled. The run is started
   // explicitly against the staged draft instead.
-  assert.ok(
-    !/^\s{2}release:/m.test(yml),
-    "the workflow still hangs off a public release event",
-  );
+  assert.ok(!/^\s{2}release:/m.test(yml), "the workflow still hangs off a public release event");
   assert.ok(
     !/github\.event\.release/.test(yml),
-    "the workflow still reads release-event data, so it needs a public release",
+    "the workflow still reads release-event data, so it needs a public release"
   );
   assert.match(yml, /workflow_dispatch:/);
   assert.match(yml, /tag:/);
@@ -508,13 +508,10 @@ test("#524 workflow: the gate refuses to run against a staging release that is n
   assert.match(binding, /is not a draft/);
   // Every job that attaches, publishes or promotes hangs off this decision.
   for (const job of ["stub", "publish", "desktop-extension", "installer-scripts", "promote"]) {
-    assert.ok(
-      new RegExp(`\\n  ${job}:`).test(yml),
-      `job ${job} disappeared from the publish workflow`,
-    );
+    assert.ok(new RegExp(`\\n  ${job}:`).test(yml), `job ${job} disappeared from the publish workflow`);
   }
   assert.ok(
     yml.split("needs.gate.outputs.publish == 'true'").length - 1 >= 5,
-    "not every publishing step is gated on the draft check",
+    "not every publishing step is gated on the draft check"
   );
 });

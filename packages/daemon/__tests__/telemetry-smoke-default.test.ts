@@ -32,7 +32,7 @@ test("telemetry-smoke never assigns the telemetry switch before asserting the de
     t[k] = v;
     return true;
   },
-});\n`,
+});\n`
     );
     const res = spawnSync(process.execPath, ["--import", "tsx", "--import", preload, SCRIPT], {
       encoding: "utf8",
@@ -48,17 +48,16 @@ test("telemetry-smoke never assigns the telemetry switch before asserting the de
 });
 
 test("concurrent smoke runs use separate temporary log directories and clean them", async () => {
-  const roots = [
-    mkdtempSync(join(tmpdir(), "bastra-smoke-one-")),
-    mkdtempSync(join(tmpdir(), "bastra-smoke-two-")),
-  ];
+  const roots = [mkdtempSync(join(tmpdir(), "bastra-smoke-one-")), mkdtempSync(join(tmpdir(), "bastra-smoke-two-"))];
   try {
-    const runs = await Promise.all(roots.map((root) =>
-      exec(process.execPath, ["--import", "tsx", SCRIPT], {
-        timeout: 60_000,
-        env: { ...process.env, TMPDIR: root, TMP: root, TEMP: root, HOME: root },
-      }),
-    ));
+    const runs = await Promise.all(
+      roots.map((root) =>
+        exec(process.execPath, ["--import", "tsx", SCRIPT], {
+          timeout: 60_000,
+          env: { ...process.env, TMPDIR: root, TMP: root, TEMP: root, HOME: root },
+        })
+      )
+    );
     const logDirs = runs.map(({ stderr }, i) => {
       const match = /log-dir: (.+)/.exec(stderr);
       assert.ok(match, `run ${i + 1} did not report its temporary log directory: ${stderr}`);

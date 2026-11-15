@@ -176,9 +176,7 @@ export function decideStale(i: {
 }): CuratorDecision {
   const t = i.thresholds ?? DEFAULT_THRESHOLDS;
   const decision: CuratorDecision = { demote: {}, reactivate: [], pendingObservation: {} };
-  const windowMature =
-    i.observedSinceMs !== undefined &&
-    i.nowMs - i.observedSinceMs >= t.staleAfterDays * 86_400_000;
+  const windowMature = i.observedSinceMs !== undefined && i.nowMs - i.observedSinceMs >= t.staleAfterDays * 86_400_000;
 
   // Ghost pruning: a stale entry whose memory left the vault (deleted,
   // trashed, re-filed under a new id) must not linger as a demotion forever.
@@ -226,11 +224,7 @@ export function decideStale(i: {
 }
 
 /** Apply a decision to state (pure). */
-export function applyDecision(
-  state: CuratorState,
-  decision: CuratorDecision,
-  nowIso: string,
-): CuratorState {
+export function applyDecision(state: CuratorState, decision: CuratorDecision, nowIso: string): CuratorState {
   const stale: Record<string, StaleEntry> = { ...state.stale };
   for (const id of decision.reactivate) delete stale[id];
   for (const [id, reason] of Object.entries(decision.demote)) {

@@ -49,7 +49,7 @@ async function runStats(logDir: string, extraArgs: string[] = []): Promise<strin
   const { stdout } = await exec(
     process.execPath,
     ["--import", "tsx", join(REPO_ROOT, "packages/daemon/scripts/stats.ts"), ...extraArgs],
-    { cwd: REPO_ROOT, env: { ...process.env, BASTRA_LOG_PATH: logDir } },
+    { cwd: REPO_ROOT, env: { ...process.env, BASTRA_LOG_PATH: logDir } }
   );
   return stdout;
 }
@@ -60,7 +60,7 @@ test("#619: the default context-tax report excludes eval-marked rows and states 
     await writeFile(
       join(logDir, "events-2026-09-09.jsonl"),
       EVENTS.map((e) => JSON.stringify(e)).join("\n") + "\n",
-      "utf8",
+      "utf8"
     );
 
     const stdout = await runStats(logDir);
@@ -68,7 +68,7 @@ test("#619: the default context-tax report excludes eval-marked rows and states 
     assert.match(
       stdout,
       /excluded as eval\/synthetic \(#619\): 1 events, ~5000 context-tax tokens — rerun with --include-eval to include them/,
-      `expected an explicit exclusion line:\n${stdout}`,
+      `expected an explicit exclusion line:\n${stdout}`
     );
     // The production emission's 200 tokens must be the whole context-tax
     // total — the eval row's 5000 must not have leaked in.
@@ -85,7 +85,7 @@ test("#619: --include-eval brings the excluded rows back into every total", asyn
     await writeFile(
       join(logDir, "events-2026-09-09.jsonl"),
       EVENTS.map((e) => JSON.stringify(e)).join("\n") + "\n",
-      "utf8",
+      "utf8"
     );
 
     const stdout = await runStats(logDir, ["--include-eval"]);
@@ -93,7 +93,7 @@ test("#619: --include-eval brings the excluded rows back into every total", asyn
     assert.match(
       stdout,
       /eval\/synthetic traffic included \(#619\): 1 events, ~5000 context-tax tokens/,
-      `expected an inclusion note, not an exclusion line:\n${stdout}`,
+      `expected an inclusion note, not an exclusion line:\n${stdout}`
     );
     assert.match(stdout, /total \(known parts\):\s+5200 tokens across 2 emissions/, stdout);
   } finally {

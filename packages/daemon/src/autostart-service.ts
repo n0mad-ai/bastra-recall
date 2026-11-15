@@ -13,7 +13,9 @@ export function managedAutostartPlistPath(home = homedir()): string {
 /** bastra writes XML plists with string env values. Foreign/unreadable files
  * are not an installed bastra service. This hint runs only after failed health.
  * Options make the macOS path testable on other runners without a user flag. */
-export async function managedAutostartInstalled(opts: { platform?: NodeJS.Platform; home?: string } = {}): Promise<boolean> {
+export async function managedAutostartInstalled(
+  opts: { platform?: NodeJS.Platform; home?: string } = {}
+): Promise<boolean> {
   if ((opts.platform ?? process.platform) !== "darwin") return false;
   try {
     const file = await open(managedAutostartPlistPath(opts.home), "r");
@@ -24,8 +26,14 @@ export async function managedAutostartInstalled(opts: { platform?: NodeJS.Platfo
       // them could construct a marker/key that was not present in the file.
       const xml = (await file.readFile("utf8")).replace(/<!--[\s\S]*?-->/g, " ");
       const env = /<key>\s*EnvironmentVariables\s*<\/key>\s*<dict>([\s\S]*?)<\/dict>/.exec(xml)?.[1] ?? "";
-      const marker = new RegExp(`<key>\\s*${MANAGED_AUTOSTART_MARKER}\\s*</key>\\s*<string>([^<]*)</string>`).exec(env)?.[1];
+      const marker = new RegExp(`<key>\\s*${MANAGED_AUTOSTART_MARKER}\\s*</key>\\s*<string>([^<]*)</string>`).exec(
+        env
+      )?.[1];
       return typeof marker === "string" && isOnValue(marker);
-    } finally { await file.close(); }
-  } catch { return false; }
+    } finally {
+      await file.close();
+    }
+  } catch {
+    return false;
+  }
 }

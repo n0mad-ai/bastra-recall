@@ -5,9 +5,9 @@
 export function visitSupersession<T extends { id: string }>(
   hits: readonly T[],
   successorId: (hit: T) => string | undefined,
-  onEdge: (predecessor: T, successor: T) => void,
+  onEdge: (predecessor: T, successor: T) => void
 ): void {
-  const byId = new Map(hits.map(h => [h.id, h]));
+  const byId = new Map(hits.map((h) => [h.id, h]));
   const edges: [T, T][] = [];
   const state = new Map<string, "visiting" | boolean>();
   const visit = (hit: T): boolean => {

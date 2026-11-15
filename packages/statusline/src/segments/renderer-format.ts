@@ -4,12 +4,7 @@
 
 import type { TokenBreakdown } from ".";
 import type { BudgetItemConfig } from "../config/loader";
-import {
-  formatCost,
-  formatTokens,
-  formatTokenCount,
-  formatTokenBreakdown,
-} from "../utils/formatters";
+import { formatCost, formatTokens, formatTokenCount, formatTokenBreakdown } from "../utils/formatters";
 import { resolveBudgetDisplay } from "../utils/budget";
 
 /** "1 call" / "2 calls" — the counter is visible in every session, so the
@@ -18,20 +13,14 @@ export function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-export function getDisplayDirectoryName(
-  currentDir: string,
-  projectDir?: string,
-): string {
+export function getDisplayDirectoryName(currentDir: string, projectDir?: string): string {
   if (currentDir.startsWith("~")) {
     return currentDir;
   }
 
   if (projectDir && projectDir !== currentDir) {
     const base = projectDir.replace(/[\\/]+$/, "");
-    if (
-      currentDir.startsWith(base) &&
-      /[\\/]/.test(currentDir.charAt(base.length))
-    ) {
+    if (currentDir.startsWith(base) && /[\\/]/.test(currentDir.charAt(base.length))) {
       const relativePath = currentDir.slice(base.length + 1);
       return relativePath || projectDir.split(/[\\/]/).pop() || "project";
     }
@@ -45,11 +34,9 @@ export function formatUsageDisplay(
   tokens: number | null,
   tokenBreakdown: TokenBreakdown | null,
   type: string,
-  showUnits: boolean,
+  showUnits: boolean
 ): string {
-  const tokenStr = showUnits
-    ? formatTokens(tokens)
-    : formatTokenCount(tokens);
+  const tokenStr = showUnits ? formatTokens(tokens) : formatTokenCount(tokens);
   switch (type) {
     case "cost":
       return formatCost(cost);
@@ -70,20 +57,12 @@ export function formatUsageWithBudget(
   tokenBreakdown: TokenBreakdown | null,
   type: string,
   budget: BudgetItemConfig | undefined,
-  showUnits: boolean,
+  showUnits: boolean
 ): string | null {
   const state = resolveBudgetDisplay(cost, tokens, budget);
   if (state.suppressAll) return null;
   if (!state.showBase) return state.percentText;
 
-  const baseDisplay = formatUsageDisplay(
-    cost,
-    tokens,
-    tokenBreakdown,
-    type,
-    showUnits,
-  );
-  return state.percentText
-    ? `${baseDisplay} ${state.percentText}`
-    : baseDisplay;
+  const baseDisplay = formatUsageDisplay(cost, tokens, tokenBreakdown, type, showUnits);
+  return state.percentText ? `${baseDisplay} ${state.percentText}` : baseDisplay;
 }

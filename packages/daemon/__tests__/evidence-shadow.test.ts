@@ -34,24 +34,47 @@ const GEHEIM = "Hausratversicherung Allianz Police 4711";
 
 function memo(id: string, title: string, trigger: string, body: string): string {
   return [
-    "---", `id: ${id}`, `title: ${title}`, "type: reference", `summary: ${title}`,
-    "topic_path:", "  - test", "tags:", "  - test", "scope: evidence-test",
-    "recall_when:", `  - ${trigger}`, "created: 2026-01-01", "updated: 2026-01-01",
-    "---", "", body, "",
+    "---",
+    `id: ${id}`,
+    `title: ${title}`,
+    "type: reference",
+    `summary: ${title}`,
+    "topic_path:",
+    "  - test",
+    "tags:",
+    "  - test",
+    "scope: evidence-test",
+    "recall_when:",
+    `  - ${trigger}`,
+    "created: 2026-01-01",
+    "updated: 2026-01-01",
+    "---",
+    "",
+    body,
+    "",
   ].join("\n");
 }
 
-function httpPost(port: number, path: string, payload: unknown): Promise<{ status: number; json: Record<string, unknown> }> {
+function httpPost(
+  port: number,
+  path: string,
+  payload: unknown
+): Promise<{ status: number; json: Record<string, unknown> }> {
   const body = JSON.stringify(payload);
   return new Promise((resolve, reject) => {
     const req = request(
-      { host: "127.0.0.1", port, path, method: "POST",
-        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) } },
+      {
+        host: "127.0.0.1",
+        port,
+        path,
+        method: "POST",
+        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+      },
       (res) => {
         let raw = "";
         res.on("data", (c) => (raw += c));
         res.on("end", () => resolve({ status: res.statusCode ?? 0, json: JSON.parse(raw || "{}") }));
-      },
+      }
     );
     req.on("error", reject);
     req.end(body);
@@ -62,7 +85,11 @@ async function readEvents(logDir: string, kind: string): Promise<Record<string, 
   for (let i = 0; i < 25; i++) {
     await new Promise((r) => setTimeout(r, 40));
     let files: string[];
-    try { files = await readdir(logDir); } catch { continue; }
+    try {
+      files = await readdir(logDir);
+    } catch {
+      continue;
+    }
     const out: Record<string, unknown>[] = [];
     for (const f of files.filter((n) => n.startsWith("events-"))) {
       const raw = await readFile(join(logDir, f), "utf8");
@@ -78,7 +105,11 @@ async function readEvents(logDir: string, kind: string): Promise<Record<string, 
 async function daemon(t: { after: (fn: () => unknown) => void }) {
   const dir = await mkdtemp(join(tmpdir(), "bastra-evid-vault-"));
   const logDir = await mkdtemp(join(tmpdir(), "bastra-evid-logs-"));
-  await writeFile(join(dir, "a.md"), memo("a", "Deployment-Strategie", "wenn wir deployen", "Text über deployen."), "utf8");
+  await writeFile(
+    join(dir, "a.md"),
+    memo("a", "Deployment-Strategie", "wenn wir deployen", "Text über deployen."),
+    "utf8"
+  );
   await writeFile(join(dir, "b.md"), memo("b", GEHEIM, "wenn die Police faellig ist", "Police 4711."), "utf8");
   const vault = new Vault(dir);
   await vault.init();
@@ -90,7 +121,11 @@ async function daemon(t: { after: (fn: () => unknown) => void }) {
   if (prev === undefined) delete process.env.BASTRA_LOG_PATH;
   else process.env.BASTRA_LOG_PATH = prev;
   const handle = await startHttpServer({
-    port: 0, vault, search, telemetry, version: "test",
+    port: 0,
+    vault,
+    search,
+    telemetry,
+    version: "test",
     toolDeps: { vault, search, telemetry, vaultPath: dir },
     documentWriteEnabled: false,
     embedding: { on: false, providerId: null, source: "none" },
@@ -120,7 +155,7 @@ test("die Antwort ist dieselbe, ob der Entscheid läuft oder nicht — er filter
   assert.deepEqual(
     decisions.map((x) => x.memory_id),
     hits.map((h) => h.id),
-    "je Treffer eine Entscheidung, in derselben Reihenfolge — und kein Treffer weniger",
+    "je Treffer eine Entscheidung, in derselben Reihenfolge — und kein Treffer weniger"
   );
   assert.equal(events[0].shadow, true, "ein Leser muss Schatten von Wirkbetrieb trennen können");
 });
@@ -135,12 +170,12 @@ test("auch ein `no_answer` entfernt keinen Treffer aus der Antwort", async (t) =
   const decisions = events[0].decisions as { decision: string }[];
   assert.ok(
     decisions.some((x) => x.decision === "no_answer" || x.decision === "optional"),
-    "die Anfrage trägt keine Pflicht",
+    "die Anfrage trägt keine Pflicht"
   );
   assert.equal(
     (events[0].decisions as unknown[]).length,
     hits.length,
-    "die Antwort behält jeden Treffer — der Entscheid ist Beobachtung, nicht Filter",
+    "die Antwort behält jeden Treffer — der Entscheid ist Beobachtung, nicht Filter"
   );
 });
 
@@ -152,13 +187,7 @@ test("das Event trägt die Evidenzmerkmale und die Zählung", async (t) => {
   const [e] = await readEvents(d.logDir, "evidence_decision");
   const first = (e.decisions as Record<string, unknown>[])[0];
   const ev = first.evidence as Record<string, unknown>;
-  for (const key of [
-    "exact_identifier",
-    "recall_when_coverage",
-    "arm_agreement",
-    "scope_match",
-    "temporal_status",
-  ]) {
+  for (const key of ["exact_identifier", "recall_when_coverage", "arm_agreement", "scope_match", "temporal_status"]) {
     assert.ok(key in ev, `${key} fehlt`);
   }
   assert.ok(!("source_confidence" in ev), "C-049: bleibt abwesend");
@@ -166,7 +195,7 @@ test("das Event trägt die Evidenzmerkmale und die Zählung", async (t) => {
   assert.equal(
     counts.required + counts.optional + counts.no_answer,
     (e.decisions as unknown[]).length,
-    "die Zählung deckt jede Entscheidung ab — Grundlage der Shadow-Acceptance",
+    "die Zählung deckt jede Entscheidung ab — Grundlage der Shadow-Acceptance"
   );
 });
 
@@ -185,7 +214,11 @@ test("kein Query-Rohtext und kein Vault-Inhalt im Event (#377)", async (t) => {
 test("die #263-Dimensionen laufen automatisch mit", async (t) => {
   const d = await daemon(t);
   await httpPost(d.port, "/hook/recall", {
-    query: "deployen", k: 5, session_id: "s-264", client: "claude-code", hook_source: "pre-tool",
+    query: "deployen",
+    k: 5,
+    session_id: "s-264",
+    client: "claude-code",
+    hook_source: "pre-tool",
   });
   const [e] = await readEvents(d.logDir, "evidence_decision");
   const dims = e.dimensions as Record<string, unknown>;
@@ -230,8 +263,16 @@ import type { RecallDecisionHit } from "@bastra-recall/core";
 
 async function vaultFixture(t: { after: (fn: () => unknown) => void }) {
   const dir = await mkdtemp(join(tmpdir(), "bastra-gate-"));
-  await writeFile(join(dir, "a.md"), memo("a", "Deployment-Strategie", "wenn wir deployen", "Text über deployen."), "utf8");
-  await writeFile(join(dir, "b.md"), memo("b", "Kochbuch", "wenn wir kochen", "Text über deployen und kochen."), "utf8");
+  await writeFile(
+    join(dir, "a.md"),
+    memo("a", "Deployment-Strategie", "wenn wir deployen", "Text über deployen."),
+    "utf8"
+  );
+  await writeFile(
+    join(dir, "b.md"),
+    memo("b", "Kochbuch", "wenn wir kochen", "Text über deployen und kochen."),
+    "utf8"
+  );
   const vault = new Vault(dir);
   await vault.init();
   const search = new SearchIndex(vault);
@@ -245,8 +286,7 @@ async function vaultFixture(t: { after: (fn: () => unknown) => void }) {
   return { vault, search, telemetry };
 }
 
-const ids = (payload: Record<string, unknown>): string[] =>
-  (payload.hits as { id: string }[]).map((h) => h.id);
+const ids = (payload: Record<string, unknown>): string[] => (payload.hits as { id: string }[]).map((h) => h.id);
 
 test("Flag aus: die Antwort ist die heutige — der Entscheid wirkt auf nichts", async (t) => {
   const f = await vaultFixture(t);

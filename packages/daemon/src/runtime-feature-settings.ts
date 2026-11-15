@@ -18,14 +18,19 @@ export function readLegacySettings(path: string): string | null | undefined {
     return readFileSync(fd, "utf8");
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "ENOENT" ? undefined : null;
-  } finally { if (fd !== undefined) closeSync(fd); }
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
 }
 
 const snapshots = new Map<string, { tasks?: boolean; telemetry?: boolean }>();
 export function runtimeFeatureSetting(feature: "tasks" | "telemetry", fallback: boolean): boolean {
-  const data = process.platform === "win32" ? join(process.env.LOCALAPPDATA || join(homedir(),"AppData","Local"),"Bastra") : join(homedir(),".bastra");
-  const path = resolve(process.env.BASTRA_DB_PATH ?? join(data,"recall.db"));
-  const key = resolve(join(data,"cli-settings.json"));
+  const data =
+    process.platform === "win32"
+      ? join(process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local"), "Bastra")
+      : join(homedir(), ".bastra");
+  const path = resolve(process.env.BASTRA_DB_PATH ?? join(data, "recall.db"));
+  const key = resolve(join(data, "cli-settings.json"));
   const cacheKey = `${path}\0${key}`;
   let settings = snapshots.get(cacheKey);
   if (!settings) {
@@ -47,10 +52,12 @@ export function runtimeFeatureSetting(feature: "tasks" | "telemetry", fallback: 
             }
             if (typeof stored.telemetry?.enabled === "boolean") settings.telemetry = stored.telemetry.enabled;
           }
-        } catch { /* Corrupt settings keep tasks closed. */ }
+        } catch {
+          /* Corrupt settings keep tasks closed. */
+        }
       }
     }
-    snapshots.set(cacheKey,settings);
+    snapshots.set(cacheKey, settings);
   }
   return settings[feature] ?? fallback;
 }

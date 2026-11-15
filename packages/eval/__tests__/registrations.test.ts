@@ -27,9 +27,18 @@ import {
 } from "../src/registrations.js";
 
 const base: ForeignFigure = {
-  id: "x", system: "X", claim: "1%", evidence_class: "peer_reviewed",
-  source: "doi:10.0/x", version: "v1", locus: "Table 1", retrieved: "2026-07-25",
-  reader: "gpt-4o", judge: "gpt-4o", top_k: "10", context_budget: "128k",
+  id: "x",
+  system: "X",
+  claim: "1%",
+  evidence_class: "peer_reviewed",
+  source: "doi:10.0/x",
+  version: "v1",
+  locus: "Table 1",
+  retrieved: "2026-07-25",
+  reader: "gpt-4o",
+  judge: "gpt-4o",
+  top_k: "10",
+  context_budget: "128k",
 };
 
 test("the committed foreign-figure registry passes its own rules", () => {
@@ -64,12 +73,12 @@ test("unknown configuration blocks a shared ranking — it never counts as a mat
   assert.match(
     rankingBlocker(base, { ...base, id: "y", top_k: "200" }) ?? "",
     /`top_k` differs/,
-    "Top 50 and Top 200 are two retrieval depths, not one ranking",
+    "Top 50 and Top 200 are two retrieval depths, not one ranking"
   );
   assert.match(
     rankingBlocker(base, { ...base, id: "y", judge: null }) ?? "",
     /does not state `judge`/,
-    "an unstated judge cannot be asserted to match",
+    "an unstated judge cannot be asserted to match"
   );
 });
 
@@ -83,7 +92,7 @@ test("the real registry is mostly unrankable, and that is the finding", () => {
 
   // §29.3: of nineteen measurements, three name all four quantities. So almost
   // no pair is comparable — the check should say so rather than quietly allow it.
-  const pairs = figures.length * (figures.length - 1) / 2;
+  const pairs = (figures.length * (figures.length - 1)) / 2;
   let blocked = 0;
   for (let i = 0; i < figures.length; i++) {
     for (let j = i + 1; j < figures.length; j++) if (rankingBlocker(figures[i], figures[j])) blocked++;
@@ -159,7 +168,9 @@ test("unsatisfied preconditions block the numbers stage, however complete the nu
         min_n_per_condition: 255,
         contamination_guard: {
           mode: "selection_holdout_split",
-          selection_share: 0.3, holdout_share: 0.7, split_seed: 20260828,
+          selection_share: 0.3,
+          holdout_share: 0.7,
+          split_seed: 20260828,
           stratify_by: ["origin_type", "lang"],
         },
       },
@@ -168,8 +179,10 @@ test("unsatisfied preconditions block the numbers stage, however complete the nu
     evaluation_rule: "paired McNemar on the holdout",
   };
   assert.match(
-    checkCueRegistration("numbers_registered", filled).map((i) => i.problem).join(" | "),
-    /not buildable yet/,
+    checkCueRegistration("numbers_registered", filled)
+      .map((i) => i.problem)
+      .join(" | "),
+    /not buildable yet/
   );
 
   // Satisfy it and the same registration clears.
@@ -190,7 +203,9 @@ test("a design that contradicts §18.3 is rejected even when fully filled in", (
       },
     },
   };
-  const issues = checkCueRegistration("structure_registered", wrongA).map((i) => i.problem).join(" | ");
+  const issues = checkCueRegistration("structure_registered", wrongA)
+    .map((i) => i.problem)
+    .join(" | ");
   assert.match(issues, /exactly two conditions/, "four cells belong to the cue-axis experiment, not to A");
   assert.match(issues, /may not evaluate interactions/);
   assert.match(issues, /selection\/holdout split or a nested evaluation/);
@@ -202,14 +217,18 @@ test("a design that contradicts §18.3 is rejected even when fully filled in", (
     admissible_designs: { B: { cell_count: 4 } },
   };
   assert.match(
-    checkCueRegistration("structure_registered", wrongB).map((i) => i.problem).join(" | "),
-    /eight cells/,
+    checkCueRegistration("structure_registered", wrongB)
+      .map((i) => i.problem)
+      .join(" | "),
+    /eight cells/
   );
 
   const noThird = { status: "structure_registered", design: "C", admissible_designs: {} };
   assert.match(
-    checkCueRegistration("structure_registered", noThird).map((i) => i.problem).join(" | "),
-    /no third design/,
+    checkCueRegistration("structure_registered", noThird)
+      .map((i) => i.problem)
+      .join(" | "),
+    /no third design/
   );
 });
 
@@ -228,8 +247,14 @@ test("an M2 run additionally requires the numbers, separately for main effects a
     power_assumption: { main_effects: { min_n: 120 }, interaction: { min_n: null } },
     evaluation_rule: null,
   };
-  const issues = checkCueRegistration("numbers_registered", structureOnly).map((i) => i.problem).join(" | ");
-  assert.match(issues, /minimum N is required/, "the interaction N is missing and the interaction needs the larger one");
+  const issues = checkCueRegistration("numbers_registered", structureOnly)
+    .map((i) => i.problem)
+    .join(" | ");
+  assert.match(
+    issues,
+    /minimum N is required/,
+    "the interaction N is missing and the interaction needs the larger one"
+  );
   assert.match(issues, /not chosen after seeing the data/, "the evaluation rule is missing");
 });
 
@@ -250,24 +275,30 @@ test("a named split is not a registered split until it is quantified", () => {
     evaluation_rule: "paired comparison of Recall@3 on the holdout",
   });
 
-  const unquantified = checkCueRegistration("numbers_registered", withSplit({})).map((i) => i.problem).join(" | ");
+  const unquantified = checkCueRegistration("numbers_registered", withSplit({}))
+    .map((i) => i.problem)
+    .join(" | ");
   assert.match(unquantified, /selection_share and holdout_share are part of the registration/);
 
   const lopsided = checkCueRegistration(
     "numbers_registered",
-    withSplit({ selection_share: 0.3, holdout_share: 0.6, split_seed: 1 }),
-  ).map((i) => i.problem).join(" | ");
+    withSplit({ selection_share: 0.3, holdout_share: 0.6, split_seed: 1 })
+  )
+    .map((i) => i.problem)
+    .join(" | ");
   assert.match(lopsided, /must cover the case set exactly/, "a gap between the parts silently drops cases");
 
-  const unseeded = checkCueRegistration(
-    "numbers_registered",
-    withSplit({ selection_share: 0.3, holdout_share: 0.7 }),
-  ).map((i) => i.problem).join(" | ");
+  const unseeded = checkCueRegistration("numbers_registered", withSplit({ selection_share: 0.3, holdout_share: 0.7 }))
+    .map((i) => i.problem)
+    .join(" | ");
   assert.match(unseeded, /needs a seed/);
 
   assert.deepEqual(
-    checkCueRegistration("numbers_registered", withSplit({ selection_share: 0.3, holdout_share: 0.7, split_seed: 20260726 })),
-    [],
+    checkCueRegistration(
+      "numbers_registered",
+      withSplit({ selection_share: 0.3, holdout_share: 0.7, split_seed: 20260726 })
+    ),
+    []
   );
 
   // A seed alone only makes an unbalanced split reproducible. Recall@3 per gold
@@ -275,8 +306,10 @@ test("a named split is not a registered split until it is quantified", () => {
   // the comparison baseline further than the effect under test.
   const unstratified = checkCueRegistration(
     "numbers_registered",
-    withSplit({ selection_share: 0.3, holdout_share: 0.7, split_seed: 20260726, stratify_by: [] }),
-  ).map((i) => i.problem).join(" | ");
+    withSplit({ selection_share: 0.3, holdout_share: 0.7, split_seed: 20260726, stratify_by: [] })
+  )
+    .map((i) => i.problem)
+    .join(" | ");
   assert.match(unstratified, /what it stratifies by/);
 });
 
@@ -305,9 +338,11 @@ test("the chosen design carries its own N — the power assumption is a differen
     evaluation_rule: "paired McNemar on the holdout",
   };
   assert.match(
-    checkCueRegistration("numbers_registered", withoutPerCondition).map((i) => i.problem).join(" | "),
+    checkCueRegistration("numbers_registered", withoutPerCondition)
+      .map((i) => i.problem)
+      .join(" | "),
     /min_n_per_condition is required/,
-    "a full power assumption does not size design A",
+    "a full power assumption does not size design A"
   );
 
   // Design B is sized per cell instead, and only its own field is demanded.
@@ -321,7 +356,7 @@ test("the chosen design carries its own N — the power assumption is a differen
 
 test("the M1 tolerances are versioned, derived, and above their own noise band", () => {
   const tol = JSON.parse(
-    readFileSync(join(import.meta.dirname, "..", "registrations", "m1-tolerances.json"), "utf8"),
+    readFileSync(join(import.meta.dirname, "..", "registrations", "m1-tolerances.json"), "utf8")
   ) as Record<string, Record<string, unknown>>;
 
   // §26.1 makes the numeric M1 tolerances a release condition, and §18.1 puts
@@ -341,9 +376,12 @@ test("the M1 tolerances are versioned, derived, and above their own noise band",
   for (const m of [measured, ...confirming]) {
     assert.ok(
       (rl.tolerance as number) > m.wilson_95_ci[1],
-      `tolerance ${String(rl.tolerance)} must sit above the upper bound ${m.wilson_95_ci[1]} of every recorded run`,
+      `tolerance ${String(rl.tolerance)} must sit above the upper bound ${m.wilson_95_ci[1]} of every recorded run`
     );
-    assert.ok(m.value > m.wilson_95_ci[0] && m.value < m.wilson_95_ci[1], "each point estimate lies inside its own interval");
+    assert.ok(
+      m.value > m.wilson_95_ci[0] && m.value < m.wilson_95_ci[1],
+      "each point estimate lies inside its own interval"
+    );
   }
   assert.ok(confirming.length >= 1, "a raised tolerance names the runs that forced the raise");
   assert.deepEqual(rl.report_separately, ["origin_type", "kind"]);
@@ -360,10 +398,14 @@ test("the M1 tolerances are versioned, derived, and above their own noise band",
   // And the set is checkable: the ids are committed, and their hash is the one
   // the tolerance cites. A silent edit to either file breaks this.
   const refFile = JSON.parse(
-    readFileSync(join(import.meta.dirname, "..", "registrations", "m1-reference-set.json"), "utf8"),
+    readFileSync(join(import.meta.dirname, "..", "registrations", "m1-reference-set.json"), "utf8")
   ) as { case_ids: string[]; case_ids_sha256: string };
   assert.equal(refFile.case_ids.length, 365);
-  assert.deepEqual(refFile.case_ids, [...refFile.case_ids].sort(), "the ids are stored sorted, so the hash is reproducible");
+  assert.deepEqual(
+    refFile.case_ids,
+    [...refFile.case_ids].sort(),
+    "the ids are stored sorted, so the hash is reproducible"
+  );
   assert.equal(new Set(refFile.case_ids).size, 365, "no duplicates");
   const digest = createHash("sha256").update(refFile.case_ids.join(",")).digest("hex");
   assert.equal(digest, refFile.case_ids_sha256, "the reference set hashes to what it says it does");
@@ -376,7 +418,7 @@ test("the M1 tolerances are versioned, derived, and above their own noise band",
   const faMeasured = fa.measured as { value: number; wilson_95_ci: [number, number] };
   assert.ok(
     (fa.tolerance as number) > faMeasured.wilson_95_ci[1],
-    "the tolerance must sit above the upper bound of the measured interval, zero count or not",
+    "the tolerance must sit above the upper bound of the measured interval, zero count or not"
   );
   assert.ok(String((fa.derived_from as Record<string, string>).run_artifact).includes("eval-runs"));
 
@@ -419,7 +461,10 @@ test("beide Armpaare sind benannt — auch die blockierten", () => {
 });
 
 test("ein fehlendes Armpaar wird bemängelt", () => {
-  const reg = { ...loadPresentationRegistration(), arms: { A_wording: (loadPresentationRegistration().arms as Record<string, unknown>).A_wording } };
+  const reg = {
+    ...loadPresentationRegistration(),
+    arms: { A_wording: (loadPresentationRegistration().arms as Record<string, unknown>).A_wording },
+  };
   const issues = checkPresentationRegistration("structure_registered", reg);
   assert.ok(issues.some((i) => i.where === "arms.B_gate"));
 });
@@ -432,13 +477,17 @@ test("die Zuweisungsfunktion gehört versioniert in die Registrierung", () => {
   assert.ok(fn.registered_at_commit, "§17.4: Zuweisungsfunktion und Konfiguration versioniert abgelegt");
 
   const ohne = { ...reg, unit_of_randomisation: { unit: "pseudonymous_session" } };
-  assert.ok(
-    checkPresentationRegistration("structure_registered", ohne).some((i) => i.where === "assignment_function"),
-  );
+  assert.ok(checkPresentationRegistration("structure_registered", ohne).some((i) => i.where === "assignment_function"));
 });
 
 test("die Session ist die Versuchseinheit — nicht das Ereignis", () => {
-  const falsch = { ...loadPresentationRegistration(), unit_of_randomisation: { unit: "event", assignment_function: { name: "x", source: "y", registered_at_commit: "z" } } };
+  const falsch = {
+    ...loadPresentationRegistration(),
+    unit_of_randomisation: {
+      unit: "event",
+      assignment_function: { name: "x", source: "y", registered_at_commit: "z" },
+    },
+  };
   const issues = checkPresentationRegistration("structure_registered", falsch);
   assert.ok(issues.some((i) => i.where === "unit_of_randomisation"));
 });
@@ -448,7 +497,7 @@ test("ohne Mindest-N verlangt der Validator die Messung, die das begründet", ()
   const issues = checkPresentationRegistration("structure_registered", ohne);
   assert.ok(
     issues.some((i) => i.where === "min_n_per_arm"),
-    "eine fehlende Zahl ohne Begründung ist eine Lücke, kein Befund",
+    "eine fehlende Zahl ohne Begründung ist eine Lücke, kein Befund"
   );
 });
 
@@ -463,7 +512,7 @@ test("und die Berichtsregel aus §18.1 muss darin stehen", () => {
 
   const ohneRegel = { ...reg, underpowered_fallback: { ...fb, conclusion: { verdict: "x" } } };
   assert.ok(
-    checkPresentationRegistration("structure_registered", ohneRegel).some((i) => i.where === "underpowered_fallback"),
+    checkPresentationRegistration("structure_registered", ohneRegel).some((i) => i.where === "underpowered_fallback")
   );
 });
 
@@ -475,11 +524,11 @@ test("eine leere oder inhaltsfremde Berichtsregel zählt nicht als Regel (#442)"
     const mitRegel = { ...reg, underpowered_fallback: { ...fb, conclusion: { ...conclusion, reporting_rule: rule } } };
     assert.ok(
       checkPresentationRegistration("structure_registered", mitRegel).some((i) => i.where === "underpowered_fallback"),
-      `reporting_rule ${JSON.stringify(rule)} must be rejected`,
+      `reporting_rule ${JSON.stringify(rule)} must be rejected`
     );
   }
   assert.ok(
-    !checkPresentationRegistration("structure_registered", reg).some((i) => i.where === "underpowered_fallback"),
+    !checkPresentationRegistration("structure_registered", reg).some((i) => i.where === "underpowered_fallback")
   );
 });
 
@@ -595,7 +644,10 @@ test("a registration without a primary endpoint is refused", () => {
   const reg = { ...loadRerankDecisionRegistration() };
   delete (reg as Record<string, unknown>).primary_endpoint;
   const issues = checkRerankDecisionRegistration(reg);
-  assert.ok(issues.some((i) => i.problem.includes("no primary_endpoint")), JSON.stringify(issues));
+  assert.ok(
+    issues.some((i) => i.problem.includes("no primary_endpoint")),
+    JSON.stringify(issues)
+  );
 });
 
 test("a partly specified primary endpoint is refused — it leaves the choice open", () => {
@@ -603,7 +655,10 @@ test("a partly specified primary endpoint is refused — it leaves the choice op
   const primary = { ...(reg.primary_endpoint as Record<string, unknown>) };
   delete primary.n;
   const issues = checkRerankDecisionRegistration({ ...reg, primary_endpoint: primary });
-  assert.ok(issues.some((i) => i.problem.includes("primary_endpoint.n")), JSON.stringify(issues));
+  assert.ok(
+    issues.some((i) => i.problem.includes("primary_endpoint.n")),
+    JSON.stringify(issues)
+  );
 });
 
 test("'close first' without excluding the conditional shapes is refused", () => {
@@ -615,7 +670,7 @@ test("'close first' without excluding the conditional shapes is refused", () => 
   const issues = checkRerankDecisionRegistration({ ...reg, decision_bars: bars });
   assert.ok(
     issues.some((i) => i.problem.includes("structurally unreachable")),
-    JSON.stringify(issues),
+    JSON.stringify(issues)
   );
 });
 
@@ -624,19 +679,28 @@ test("a hedging word left in a decision bar is refused", () => {
   const bars = { ...(reg.decision_bars as Record<string, unknown>) };
   bars.always_on = { all_of: ["the lift is essentially already there at N=10"] };
   const issues = checkRerankDecisionRegistration({ ...reg, decision_bars: bars });
-  assert.ok(issues.some((i) => i.problem.includes("hedging word")), JSON.stringify(issues));
+  assert.ok(
+    issues.some((i) => i.problem.includes("hedging word")),
+    JSON.stringify(issues)
+  );
 });
 
 test("a shape in the precedence order with no bar behind it is refused", () => {
   const reg = loadRerankDecisionRegistration();
   const order = [...(reg.precedence as { order: string[] }).order, "invented_shape"];
   const issues = checkRerankDecisionRegistration({ ...reg, precedence: { order } });
-  assert.ok(issues.some((i) => i.problem.includes("invented_shape")), JSON.stringify(issues));
+  assert.ok(
+    issues.some((i) => i.problem.includes("invented_shape")),
+    JSON.stringify(issues)
+  );
 });
 
 test("an amended registration must say that no run preceded the amendment", () => {
   const reg = { ...loadRerankDecisionRegistration() };
   delete (reg as Record<string, unknown>).$comment_amendment;
   const issues = checkRerankDecisionRegistration(reg);
-  assert.ok(issues.some((i) => i.problem.includes("$comment_amendment")), JSON.stringify(issues));
+  assert.ok(
+    issues.some((i) => i.problem.includes("$comment_amendment")),
+    JSON.stringify(issues)
+  );
 });

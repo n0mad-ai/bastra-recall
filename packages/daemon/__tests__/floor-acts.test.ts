@@ -36,11 +36,11 @@ test("out-of-order drain: the later-arriving, older-intent act does not win", as
     // drained T2 first and T1 second. Both are real historical affirms.
     await appendAct(
       { memory_id: "m1", occurred_at: "2026-07-20T12:00:00.000Z", affirmed_by: "sweep", why: "still pending (T2)" },
-      actsPath,
+      actsPath
     );
     await appendAct(
       { memory_id: "m1", occurred_at: "2026-07-10T09:00:00.000Z", affirmed_by: "sweep", why: "still pending (T1)" },
-      actsPath,
+      actsPath
     );
 
     const live = liveIntent("m1", FLOORED_AT, await readActs(actsPath), fallback);
@@ -93,7 +93,7 @@ test("zwei Acts in derselben Millisekunde: die spätere Zeile gewinnt, nicht die
       actsPath,
       `${JSON.stringify({ ...base, why: "erste", recorded })}\n` +
         `${JSON.stringify({ ...base, why: "zweite", recorded })}\n`,
-      "utf8",
+      "utf8"
     );
 
     const acts = await readActs(actsPath);
@@ -102,7 +102,7 @@ test("zwei Acts in derselben Millisekunde: die spätere Zeile gewinnt, nicht die
     assert.equal(
       live.why,
       "zweite",
-      "bei gleicher Millisekunde entscheidet die Append-Reihenfolge — der Log ist die Ordnung, die die Uhr nicht mehr hergibt",
+      "bei gleicher Millisekunde entscheidet die Append-Reihenfolge — der Log ist die Ordnung, die die Uhr nicht mehr hergibt"
     );
   } finally {
     await cleanup();
@@ -156,7 +156,7 @@ test("a replay carrying a pre-release intent time does not resurrect the dead fl
     // later. The replay lands now but carries the old intent time.
     await appendAct(
       { memory_id: "m1", occurred_at: "2026-07-05T00:00:00.000Z", affirmed_by: "sweep", why: "old handle" },
-      actsPath,
+      actsPath
     );
     const reFlooredAt = "2026-07-18T00:00:00.000Z";
 
@@ -173,14 +173,32 @@ test("intent times with a UTC offset are compared as time, not as strings", () =
   const flooredAt = "2026-09-28T09:00:00.000Z";
   // 11:30+03:00 is 08:30Z — before the floor, so it must be filtered out.
   const preFloor = [
-    { memory_id: "m1", occurred_at: "2026-09-28T11:30:00+03:00", recorded: "2026-09-28T09:05:00.000Z", affirmed_by: "x", why: "pre-floor" },
+    {
+      memory_id: "m1",
+      occurred_at: "2026-09-28T11:30:00+03:00",
+      recorded: "2026-09-28T09:05:00.000Z",
+      affirmed_by: "x",
+      why: "pre-floor",
+    },
   ];
   assert.equal(liveIntent("m1", flooredAt, preFloor, { last_affirmed: flooredAt }).source, "registry_fallback");
 
   // Same instant format, different precision: the later intent wins.
   const two = [
-    { memory_id: "m1", occurred_at: "2026-09-28T10:00:00.900Z", recorded: "2026-09-28T10:00:01.000Z", affirmed_by: "a", why: "later" },
-    { memory_id: "m1", occurred_at: "2026-09-28T10:00:00Z", recorded: "2026-09-28T10:00:02.000Z", affirmed_by: "b", why: "earlier" },
+    {
+      memory_id: "m1",
+      occurred_at: "2026-09-28T10:00:00.900Z",
+      recorded: "2026-09-28T10:00:01.000Z",
+      affirmed_by: "a",
+      why: "later",
+    },
+    {
+      memory_id: "m1",
+      occurred_at: "2026-09-28T10:00:00Z",
+      recorded: "2026-09-28T10:00:02.000Z",
+      affirmed_by: "b",
+      why: "earlier",
+    },
   ];
   assert.equal(liveIntent("m1", flooredAt, two, { last_affirmed: flooredAt }).why, "later");
 });
@@ -190,7 +208,7 @@ test("acts are per memory: one floor's history never leaks into another's", asyn
   try {
     await appendAct(
       { memory_id: "m1", occurred_at: "2026-07-20T00:00:00.000Z", affirmed_by: "s", why: "for m1" },
-      actsPath,
+      actsPath
     );
     const acts = await readActs(actsPath);
 
@@ -236,8 +254,15 @@ test("a rewrite-as-affirm through addFloor lands in the log too", async () => {
     assert.equal((await readActs(actsPath)).length, 0, "a plain add is not an affirm");
 
     await addFloor(
-      { memory_id: "m1", condition: "c2", reason: "r2", affirmed_by: "surface", why: "rewrite-as-affirm", acts_path: actsPath },
-      path,
+      {
+        memory_id: "m1",
+        condition: "c2",
+        reason: "r2",
+        affirmed_by: "surface",
+        why: "rewrite-as-affirm",
+        acts_path: actsPath,
+      },
+      path
     );
 
     const acts = await readActs(actsPath);

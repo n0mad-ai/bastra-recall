@@ -49,7 +49,10 @@ function q(over: Partial<LongMemEvalQuestion> = {}): LongMemEvalQuestion {
     question_date: "2023/04/10 (Mon) 23:07",
     haystack_session_ids: ["s_1", "s_2"],
     haystack_sessions: [
-      [{ role: "user", content: "I booked the flight in March" }, { role: "assistant", content: "noted" }],
+      [
+        { role: "user", content: "I booked the flight in March" },
+        { role: "assistant", content: "noted" },
+      ],
       [{ role: "user", content: "unrelated chatter about cats" }],
     ],
     haystack_dates: ["2023/03/01 (Wed) 10:00", "2023/03/02 (Thu) 11:00"],
@@ -68,7 +71,10 @@ test("the committed fixture loads and maps one memory per session", () => {
     // Every gold session must be reachable as a memory id, or the run would
     // score a guaranteed miss and call it a retrieval result.
     for (const gid of question.answer_session_ids) {
-      assert.ok(memories.some((m) => m.session_id === gid), `${gid} has no memory`);
+      assert.ok(
+        memories.some((m) => m.session_id === gid),
+        `${gid} has no memory`
+      );
     }
     for (const m of memories) {
       assert.equal(m.id, slug(m.session_id));
@@ -81,10 +87,7 @@ test("the committed fixture loads and maps one memory per session", () => {
 
 test("a session flattens either with both roles or with the user turns only", () => {
   const turns = q().haystack_sessions[0];
-  assert.equal(
-    sessionText(turns, "all"),
-    "user: I booked the flight in March\nassistant: noted",
-  );
+  assert.equal(sessionText(turns, "all"), "user: I booked the flight in March\nassistant: noted");
   assert.equal(sessionText(turns, "user"), "I booked the flight in March");
 });
 
@@ -100,7 +103,10 @@ test("a repeated session id collapses, a slug collision stops the run", () => {
   });
   const { memories, duplicates } = haystackMemories(repeated, "all");
   assert.equal(duplicates, 1);
-  assert.deepEqual(memories.map((m) => m.session_id), ["s_1", "s_2"]);
+  assert.deepEqual(
+    memories.map((m) => m.session_id),
+    ["s_1", "s_2"]
+  );
 
   // Two DIFFERENT sessions sharing one slug would silently merge a gold session
   // into a distractor — a wrong number, not a missing one.
@@ -138,17 +144,14 @@ test("the dataset hash covers the turn mode, because it changes the documents", 
   assert.notEqual(
     longMemEvalDatasetHash(one, "all"),
     longMemEvalDatasetHash(one, "user"),
-    "the same file flattened two ways is two datasets",
+    "the same file flattened two ways is two datasets"
   );
   // File order must not move the identity, a rewritten question must.
   const two = [q({ question_id: "a" }), q({ question_id: "b" })];
-  assert.equal(
-    longMemEvalDatasetHash(two, "all"),
-    longMemEvalDatasetHash([...two].reverse(), "all"),
-  );
+  assert.equal(longMemEvalDatasetHash(two, "all"), longMemEvalDatasetHash([...two].reverse(), "all"));
   assert.notEqual(
     longMemEvalDatasetHash(two, "all"),
-    longMemEvalDatasetHash([two[0], q({ question_id: "b", question: "different" })], "all"),
+    longMemEvalDatasetHash([two[0], q({ question_id: "b", question: "different" })], "all")
   );
 });
 
@@ -178,13 +181,15 @@ test("every figure we compare against has a configuration built to match it", ()
   const reg = loadLongMemEvalRegistration();
   const configs = reg.configurations as { matches: string }[];
   for (const id of reg.compared_against as string[]) {
-    assert.ok(configs.some((c) => c.matches === id), `${id} has no matched configuration`);
+    assert.ok(
+      configs.some((c) => c.matches === id),
+      `${id} has no matched configuration`
+    );
   }
 
   const orphan = { ...reg, configurations: [configs[0]], compared_against: ["mempalace-longmemeval-r5"] };
   assert.ok(
-    checkLongMemEvalRegistration("structure_registered", orphan)
-      .some((i) => /not a comparison/.test(i.problem)),
+    checkLongMemEvalRegistration("structure_registered", orphan).some((i) => /not a comparison/.test(i.problem))
   );
 });
 
@@ -193,7 +198,7 @@ test("a registration that hides the variant or the archive rule is rejected", ()
   const noVariant = { ...reg, corpus: { ...(reg.corpus as object), variant: null } };
   assert.ok(
     checkLongMemEvalRegistration("structure_registered", noVariant).some((i) => /variant/.test(i.problem)),
-    "Oracle, S and M are three different tasks",
+    "Oracle, S and M are three different tasks"
   );
 
   // #446: the private archive holds the registered M0/M1 baselines that
@@ -207,8 +212,9 @@ test("a registration that hides the variant or the archive rule is rejected", ()
     ],
   };
   assert.ok(
-    checkLongMemEvalRegistration("structure_registered", archived)
-      .some((i) => /private eval-run archive/.test(i.problem)),
+    checkLongMemEvalRegistration("structure_registered", archived).some((i) =>
+      /private eval-run archive/.test(i.problem)
+    )
   );
 
   // Numbers do not clear without the identity of the run that produced them:
@@ -225,7 +231,7 @@ test("a registration that hides the variant or the archive rule is rejected", ()
   for (const field of ["dataset_hash", "code_hash", "results"]) {
     assert.ok(
       issues.some((i) => i.where === `configurations.default.measurement.${field}`),
-      `${field} must block the stage`,
+      `${field} must block the stage`
     );
   }
 });
@@ -247,7 +253,7 @@ test("each configuration is comparable to the figure it was built for", () => {
   assert.equal(
     byConfig.get("mempalace-matched")!.blocker,
     null,
-    "the second configuration exists to remove this blocker by measuring, not by noting it",
+    "the second configuration exists to remove this blocker by measuring, not by noting it"
   );
 
   // The blocker is real, not vacuous: the default configuration's own figure
@@ -273,7 +279,7 @@ test("every registered number names the engine that produced it (#500 follow-up)
   ] as (Record<string, unknown> | undefined)[];
 
   assert.equal(blocks.length, 4);
-  const legacy = blocks.filter(e => e?.backfilled === true);
+  const legacy = blocks.filter((e) => e?.backfilled === true);
   assert.equal(legacy.length, 3);
   for (const e of legacy) {
     assert.ok(e, "every measured result carries an engine identity");
@@ -289,8 +295,9 @@ test("every registered number names the engine that produced it (#500 follow-up)
   // All three ran on one engine, so one hash covers them.
   const hashes = new Set(legacy.map((e) => String(e!.core_src_sha256)));
   assert.equal(hashes.size, 1, "the three legacy runs share one engine revision");
-  const current = (reg.configurations as { id: string; measurement: Record<string, unknown> }[])
-    .find(c => c.id === reg.shipped_default_configuration)!.measurement;
+  const current = (reg.configurations as { id: string; measurement: Record<string, unknown> }[]).find(
+    (c) => c.id === reg.shipped_default_configuration
+  )!.measurement;
   const engine = current.engine as Record<string, unknown>;
   assert.match(String(engine.repo_commit), /^[0-9a-f]{40}$/);
   assert.match(String(engine.core_src_sha256), /^[0-9a-f]{64}$/);
@@ -323,7 +330,7 @@ test("a protocol match is not a retriever match (#500 follow-up)", () => {
   assert.equal(
     mp.like_for_like,
     "mempalace-longmemeval-hybrid-r5",
-    "the honest counterpart is their hybrid row, which stands ABOVE us",
+    "the honest counterpart is their hybrid row, which stands ABOVE us"
   );
 
   // A configuration that names a row of the wrong class is refused.
@@ -335,8 +342,9 @@ test("a protocol match is not a retriever match (#500 follow-up)", () => {
     compared_against: ["mempalace-longmemeval-r5"],
   };
   assert.ok(
-    checkLongMemEvalRegistration("structure_registered", wrong)
-      .some((i) => /does not share our retriever class/.test(i.problem)),
+    checkLongMemEvalRegistration("structure_registered", wrong).some((i) =>
+      /does not share our retriever class/.test(i.problem)
+    )
   );
 
   // And one that names none at all is refused too.
@@ -344,8 +352,7 @@ test("a protocol match is not a retriever match (#500 follow-up)", () => {
   delete (none as { same_retriever_class?: unknown }).same_retriever_class;
   const missing = { ...reg, configurations: [none], compared_against: ["agentmemory-longmemeval-r5"] };
   assert.ok(
-    checkLongMemEvalRegistration("structure_registered", missing)
-      .some((i) => /same_retriever_class/.test(i.problem)),
+    checkLongMemEvalRegistration("structure_registered", missing).some((i) => /same_retriever_class/.test(i.problem))
   );
 });
 
@@ -354,8 +361,10 @@ test("the committed excerpt matches the registered figures", () => {
   // excerpt is what keeps the published numbers checkable, so it must not be
   // able to drift from the registration it summarises.
   const excerpt = JSON.parse(
-    readFileSync(join(import.meta.dirname, "..", "registrations", "longmemeval-results.json"), "utf8"),
-  ) as { runs: { id: string; dataset_hash: string; code_hash: string; summary: Record<string, Record<string, number>> }[] };
+    readFileSync(join(import.meta.dirname, "..", "registrations", "longmemeval-results.json"), "utf8")
+  ) as {
+    runs: { id: string; dataset_hash: string; code_hash: string; summary: Record<string, Record<string, number>> }[];
+  };
   const reg = loadLongMemEvalRegistration();
 
   for (const c of reg.configurations as { id: string; measurement: Record<string, unknown> }[]) {
@@ -369,7 +378,7 @@ test("the committed excerpt matches the registered figures", () => {
         // The registration rounds to four places; the excerpt carries the raw value.
         assert.ok(
           Math.abs(row!.summary[arm][k] - registered[arm][k]) < 5e-5,
-          `${c.id}/${arm}/${k}: excerpt ${row!.summary[arm][k]} vs registered ${registered[arm][k]}`,
+          `${c.id}/${arm}/${k}: excerpt ${row!.summary[arm][k]} vs registered ${registered[arm][k]}`
         );
       }
     }
@@ -390,20 +399,27 @@ test("the arm writes nothing into the private eval-run archive (#446)", () => {
     // BUILT from them, the way the retired cue pre-question script did.
     assert.ok(
       !/join\([^)]*homedir\(\)[^)]*bastra/.test(src) && !/BASTRA_EVAL_RUNS_DIR/.test(src),
-      `${f} must not resolve the archive directory`,
+      `${f} must not resolve the archive directory`
     );
   }
 });
 
 test("shipped baseline per-type rank-1 counts recover the aggregate and pin their derivation", () => {
-  const excerpt = JSON.parse(readFileSync(join(import.meta.dirname, "..", "registrations", "longmemeval-results.json"), "utf8"));
+  const excerpt = JSON.parse(
+    readFileSync(join(import.meta.dirname, "..", "registrations", "longmemeval-results.json"), "utf8")
+  );
   const row = excerpt.runs.find((r: { id: string }) => r.id === "shipped-default-v1.1.0");
   assert.equal(row.by_type_derivation.source_artifact_sha256, row.file_sha256);
   const script = readFileSync(join(import.meta.dirname, "..", "scripts", "extract-longmemeval-types.py"));
   assert.equal(createHash("sha256").update(script).digest("hex"), row.by_type_derivation.derivation_code_sha256);
-  let n = 0, hits = 0;
-  for (const type of Object.values(row.by_type_r_at_1) as { n: number; arms: Record<string, { hits: number; value: number }> }[]) {
-    n += type.n; hits += type.arms.hybrid.hits;
+  let n = 0,
+    hits = 0;
+  for (const type of Object.values(row.by_type_r_at_1) as {
+    n: number;
+    arms: Record<string, { hits: number; value: number }>;
+  }[]) {
+    n += type.n;
+    hits += type.arms.hybrid.hits;
     for (const arm of Object.values(type.arms)) assert.equal(arm.value, arm.hits / type.n);
   }
   assert.equal(n, row.n_questions);

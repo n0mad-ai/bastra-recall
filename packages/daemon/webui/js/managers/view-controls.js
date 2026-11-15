@@ -8,17 +8,8 @@ import { CORES } from "./orbit-core.js";
 const $ = (sel) => document.querySelector(sel);
 
 export function createViewControls(deps) {
-  const {
-    sim,
-    renderer,
-    boltDemo,
-    semanticView,
-    orbitView,
-    getInteractions,
-    getCurrentView,
-    isBusy,
-    setTransition,
-  } = deps;
+  const { sim, renderer, boltDemo, semanticView, orbitView, getInteractions, getCurrentView, isBusy, setTransition } =
+    deps;
 
   // Semantic 2D/3D (zzallirog): dritter PCA-Kanal + vorhandene Kamera. Der
   // Umschalter sitzt an der Structure-Stelle, die im Semantic-View frei ist.
@@ -39,7 +30,6 @@ export function createViewControls(deps) {
     getInteractions().flyToBounds([...to.values()], { padding: 90, maxScale: 1.6, ms: 700 });
     setTransition({ t0: performance.now(), ms: 700, from, to, noFit: true });
   });
-
 
   // ── Mindspace-Modus: universe (Default) / galactic — plus Galaxie-Optionen.
   // Der galaktische Umbau (User-Wolke als schwarzes Loch im Zentrum) ist
@@ -107,8 +97,6 @@ export function createViewControls(deps) {
     orbitView.setDrift(b.dataset.mdrift === "on");
     renderMindspaceControls();
   });
-
-
 
   // ── Activity: how a live flare travels its connections (bolt-styles.js).
   // Unlike the switches above this one is view-independent — flares happen in

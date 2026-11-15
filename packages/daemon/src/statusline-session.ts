@@ -95,9 +95,11 @@ export function claudeSessionPid(): number {
  */
 export function claudeSessionPidFrom(startPid: number, processTable?: string): number {
   try {
-    const out = processTable ?? execFileSync("ps", ["-axo", "pid=,ppid=,comm="], {
-      encoding: "utf8",
-    });
+    const out =
+      processTable ??
+      execFileSync("ps", ["-axo", "pid=,ppid=,comm="], {
+        encoding: "utf8",
+      });
     const procs = new Map<number, { ppid: number; comm: string }>();
     for (const line of out.split("\n")) {
       const m = line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/);
@@ -116,8 +118,7 @@ export function claudeSessionPidFrom(startPid: number, processTable?: string): n
       // to borrow the launching Claude session. Environment variables can be inherited.
       if (/^codex(?:$|[-.])/i.test(path.basename(e.comm))) return startPid;
       // comm is typically a basename like "claude"; match defensively.
-      if (/(^|\/)claude\b/i.test(e.comm) || e.comm.toLowerCase().includes("claude"))
-        return pid;
+      if (/(^|\/)claude\b/i.test(e.comm) || e.comm.toLowerCase().includes("claude")) return pid;
       if (e.ppid === pid) break;
       pid = e.ppid;
     }

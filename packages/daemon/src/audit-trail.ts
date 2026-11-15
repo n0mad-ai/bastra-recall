@@ -104,7 +104,7 @@ export async function recordAudit(input: AuditTrailInput): Promise<string | unde
     });
   } catch (err) {
     console.error(
-      `[bastra-recall] audit: could not record ${input.operation} of ${input.memoryId}: ${(err as Error).message}`,
+      `[bastra-recall] audit: could not record ${input.operation} of ${input.memoryId}: ${(err as Error).message}`
     );
     // #377: stderr ist im Moment des Fehlers da und zwei Wochen später nicht.
     // Genau dieser Pfad trägt JEDEN Agentenschreibvorgang über MCP und REST —
@@ -164,9 +164,7 @@ export interface SaveMemoryWithAuditTrailInput {
  * `sessionId` is caller-owned deliberately: batch callers allocate it once per
  * invocation and reuse it across every memory in that run.
  */
-export async function saveMemoryWithAuditTrail(
-  args: SaveMemoryWithAuditTrailInput,
-): Promise<SaveMemoryResult> {
+export async function saveMemoryWithAuditTrail(args: SaveMemoryWithAuditTrailInput): Promise<SaveMemoryResult> {
   // Codex-Gegenreview (P1): Das Vorbild wurde hier aus dem aufgelösten
   // ZIELPFAD gelesen. Bei einem Re-File existiert dieses Ziel aber noch gar
   // nicht — die Vorlage ist die Quelldatei. Nachgestellt: ein gewöhnliches

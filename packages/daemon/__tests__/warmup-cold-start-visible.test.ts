@@ -78,7 +78,7 @@ test("#495: ein Warmup auf kaltem Modell meldet seine Ladezeit und den Kaltstart
   assert.equal(
     s.sessionStartCallId,
     "sess-start-1",
-    "die #493-Klammer reist mit — sonst ist der Kaltstart keinem Start zuzuordnen",
+    "die #493-Klammer reist mit — sonst ist der Kaltstart keinem Start zuzuordnen"
   );
 
   // Und der Ladevorgang ist danach GRUNDWAHRHEIT, keine Schätzung.
@@ -123,11 +123,7 @@ test("#495: ein Provider ohne Ladeangabe meldet `null` — nicht `0`", async () 
   await warmup.warming();
 
   assert.equal(settles[0]!.ok, true);
-  assert.equal(
-    settles[0]!.providerLoadMs,
-    null,
-    "keine Angabe ist nicht dasselbe wie kein Ladevorgang",
-  );
+  assert.equal(settles[0]!.providerLoadMs, null, "keine Angabe ist nicht dasselbe wie kein Ladevorgang");
   assert.equal(settles[0]!.coldStartObserved, false);
 });
 
@@ -151,7 +147,7 @@ test("#495: das Profil verwirft Stichproben aus der Zeit vor #493", async (t) =>
       version: 1,
       profiles: { [KEY]: { updated_at: c.now(), buckets: { "warm|xs|1": alt } } },
     }) + "\n",
-    "utf8",
+    "utf8"
   );
 
   const profile = createLatencyProfile({ path, now: c.now });
@@ -170,7 +166,7 @@ test("#495: das Profil verwirft Stichproben aus der Zeit vor #493", async (t) =>
   assert.equal(
     derived.cap_reason,
     "profile-empty",
-    "ein leerer Eimer ist ehrlicher als ein aus der alten Welt geerbter",
+    "ein leerer Eimer ist ehrlicher als ein aus der alten Welt geerbter"
   );
 });
 

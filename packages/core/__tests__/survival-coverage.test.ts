@@ -35,12 +35,9 @@ import * as auditSave from "../src/audit-save.js";
  *  (the test proving the cell survives the transition by id), then pin the
  *  export here. */
 const PINNED_CELL_ARMS: Record<string, string> = {
-  auditedSave:
-    "create/update — the write path replaces content, never resolution (survival-by-id.test.ts)",
-  auditedSoftDelete:
-    "soft-delete arm — trash + append-only audit record, recoverable (survival-by-id.test.ts)",
-  auditedRestore:
-    "restore arm — the trash file returns, the delete record persists (survival-by-id.test.ts)",
+  auditedSave: "create/update — the write path replaces content, never resolution (survival-by-id.test.ts)",
+  auditedSoftDelete: "soft-delete arm — trash + append-only audit record, recoverable (survival-by-id.test.ts)",
+  auditedRestore: "restore arm — the trash file returns, the delete record persists (survival-by-id.test.ts)",
 };
 
 test("#194: every audited cell-mutation export carries a pinned survival arm", () => {
@@ -53,7 +50,7 @@ test("#194: every audited cell-mutation export carries a pinned survival arm", (
     "the audited* surface of audit-save.ts drifted from the pinned survival arms. " +
       "A NEW export means a new cell-mutation path: write its survival arm (by-id " +
       "resolution survives the transition), then pin it in PINNED_CELL_ARMS. A " +
-      "REMOVED export means an arm pins a path that no longer exists — retire the pin.",
+      "REMOVED export means an arm pins a path that no longer exists — retire the pin."
   );
 });
 
@@ -109,7 +106,7 @@ test("#194: every score assignment lives in the pinned gateway files", () => {
     "a score assignment exists outside the pinned gateway sites. Route the new " +
       "multiplier through applyStaleness (search-staleness.ts) so every ranking effect stays " +
       "score-only and survival-guarded — or, if it genuinely needs its own path, " +
-      "write its survival arm and pin the site here.",
+      "write its survival arm and pin the site here."
   );
 });
 
@@ -129,6 +126,6 @@ test("#194: the legacy freestanding multiplier is bench-only — no src module i
     [],
     "applyStalenessMultiplier is the pre-gateway path kept only as the bench " +
       "baseline (scripts/bench-cache.ts). Serving code must use the SearchIndex " +
-      "gateway — two live multiplier implementations is exactly the drift #194 closes.",
+      "gateway — two live multiplier implementations is exactly the drift #194 closes."
   );
 });

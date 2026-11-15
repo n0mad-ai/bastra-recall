@@ -1,7 +1,14 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
-import { checkArtifacts, discoverGetRoutes, discoverPostTools, generatedArtifacts, generateDocuments, personalizedAction } from "../scripts/generate-openapi.js";
+import {
+  checkArtifacts,
+  discoverGetRoutes,
+  discoverPostTools,
+  generatedArtifacts,
+  generateDocuments,
+  personalizedAction,
+} from "../scripts/generate-openapi.js";
 import { TASK_HTTP_ROUTES, matchTaskHttpRoute } from "../src/task-http-routes.js";
 import { taskTools } from "../src/task-transport.js";
 
@@ -11,24 +18,34 @@ test("generator is byte deterministic and the checked-in artifacts have no drift
   assert.deepEqual(checkArtifacts(artifacts), []);
   for (const content of Object.values(artifacts)) {
     const doc = JSON.parse(content.replace(/^#.*\n/, ""));
-    const ids = Object.values(doc.paths).flatMap((methods: any) => Object.values(methods).map((op: any) => op.operationId));
+    const ids = Object.values(doc.paths).flatMap((methods: any) =>
+      Object.values(methods).map((op: any) => op.operationId)
+    );
     assert.equal(new Set(ids).size, ids.length, "operationIds must be globally unique");
     assert.equal(doc.openapi, "3.0.3");
   }
 });
 test("drift gate catches edited and missing artifacts", () => {
   const artifacts = generatedArtifacts();
-  assert.deepEqual(checkArtifacts(artifacts, () => "hand edit"), Object.keys(artifacts));
-  assert.deepEqual(checkArtifacts(artifacts, () => { throw new Error("missing"); }), Object.keys(artifacts));
+  assert.deepEqual(
+    checkArtifacts(artifacts, () => "hand edit"),
+    Object.keys(artifacts)
+  );
+  assert.deepEqual(
+    checkArtifacts(artifacts, () => {
+      throw new Error("missing");
+    }),
+    Object.keys(artifacts)
+  );
 });
-test('#1376 save/edit HTTP contracts declare the transport-only session and actor fields',()=>{
-  const {api}=generateDocuments();
-  for(const tool of ['save_memory','edit_memory']){
-    const operation:any=api.paths[`/${tool}`].post;
-    const schema=operation.requestBody.content['application/json'].schema;
-    const parts=schema.allOf??[schema];
-    assert.ok(parts.some((part:any)=>part.properties?.session_id?.maxLength===200));
-    assert.ok(parts.some((part:any)=>part.properties?.agent_id?.maxLength===200));
+test("#1376 save/edit HTTP contracts declare the transport-only session and actor fields", () => {
+  const { api } = generateDocuments();
+  for (const tool of ["save_memory", "edit_memory"]) {
+    const operation: any = api.paths[`/${tool}`].post;
+    const schema = operation.requestBody.content["application/json"].schema;
+    const parts = schema.allOf ?? [schema];
+    assert.ok(parts.some((part: any) => part.properties?.session_id?.maxLength === 200));
+    assert.ok(parts.some((part: any) => part.properties?.agent_id?.maxLength === 200));
   }
 });
 test("actual dispatcher branches determine coverage and shared tool schemas determine requests", () => {
@@ -39,7 +56,8 @@ test("actual dispatcher branches determine coverage and shared tool schemas dete
   for (const route of TASK_HTTP_ROUTES) {
     assert.ok(api.paths[route.path]?.[route.method.toLowerCase()], route.path);
     assert.deepEqual(matchTaskHttpRoute(route.method, `/api/v1${route.path.replace("{id}", "test-1")}`), {
-      operation: route.operation, ...(route.path.includes("{id}") ? { id: "test-1" } : {}),
+      operation: route.operation,
+      ...(route.path.includes("{id}") ? { id: "test-1" } : {}),
     });
   }
   assert.deepEqual(matchTaskHttpRoute("GET", "/api/v1/tasks/"), { operation: "task_list" });
@@ -52,17 +70,28 @@ test("actual dispatcher branches determine coverage and shared tool schemas dete
   assert.ok(action.paths["/recall"]?.post);
   assert.ok(action.paths["/edit_memory"]?.post);
   assert.ok(action.paths["/floors"]?.get);
-  assert.ok(!Object.keys(action.paths).some(path => path.startsWith("/task")));
+  assert.ok(!Object.keys(action.paths).some((path) => path.startsWith("/task")));
   assert.equal(action.components.securitySchemes.taskCredential, undefined);
   const taskGet: any = api.paths["/tasks/{id}"]?.get;
-  assert.deepEqual(taskGet.parameters.map((parameter: any) => parameter.name), ["id"]);
+  assert.deepEqual(
+    taskGet.parameters.map((parameter: any) => parameter.name),
+    ["id"]
+  );
   assert.equal(taskGet.requestBody, undefined);
 });
 test("new routes or changed schemas cannot silently keep the old artifacts", () => {
   const postSource = readFileSync(new URL("../src/http-api-routes.ts", import.meta.url), "utf8");
-  assert.throws(() => generateDocuments({ postSource: postSource.replace('case "recall":', 'case "new_unmapped_tool":\ncase "recall":') }), /no input schema/);
+  assert.throws(
+    () =>
+      generateDocuments({
+        postSource: postSource.replace('case "recall":', 'case "new_unmapped_tool":\ncase "recall":'),
+      }),
+    /no input schema/
+  );
   const getSource = readFileSync(new URL("../src/http-api-surface.ts", import.meta.url), "utf8");
-  const { api } = generateDocuments({ getSource: getSource.replace('u.pathname === "/api/v1/health"', 'u.pathname === "/api/v1/new_health"') });
+  const { api } = generateDocuments({
+    getSource: getSource.replace('u.pathname === "/api/v1/health"', 'u.pathname === "/api/v1/new_health"'),
+  });
   assert.ok(api.paths["/new_health"]?.get);
   assert.equal(api.paths["/health"], undefined);
   assert.notDeepEqual(api, generateDocuments().api);
@@ -82,7 +111,7 @@ test("GET discovery rejects unfamiliar pathname guards even when known routes re
   const known = 'if (u.pathname === "/api/v1/health") {}';
   for (const guard of [
     'u.pathname.startsWith("/api/v1/new")',
-    'u.pathname === NEW_ROUTE',
+    "u.pathname === NEW_ROUTE",
     '"/api/v1/new" === u.pathname',
     'u.pathname == "/api/v1/new"',
     'u.pathname === "/api/v1/new" && enabled',
@@ -91,16 +120,19 @@ test("GET discovery rejects unfamiliar pathname guards even when known routes re
   }
 });
 
-
 test("GET discovery rejects unresolved element-access guards (#1265)", () => {
   const known = 'if (u.pathname === "/api/v1/health") {}';
   for (const guard of [
     'u["pathname"].startsWith("/api/v1/new")',
     'u["pathname"] === NEW_ROUTE',
-    'u . pathname === NEW_ROUTE',
+    "u . pathname === NEW_ROUTE",
     'u["pathname"] === "/api/v1/new"',
   ]) {
-    assert.throws(() => generateDocuments({ getSource: `${known} if (${guard}) {}` }), /Unsupported HTTP GET pathname guard/, guard);
+    assert.throws(
+      () => generateDocuments({ getSource: `${known} if (${guard}) {}` }),
+      /Unsupported HTTP GET pathname guard/,
+      guard
+    );
   }
 });
 
@@ -110,12 +142,16 @@ test("GET discovery resolves ordinary property guards independent of whitespace"
 
 test("protocol endpoints are explicitly excluded from the REST contract", () => {
   const paths = [
-    "/api/v1/oauth/register", "/api/v1/oauth/authorize", "/api/v1/oauth/token", "/api/v1/mcp",
-    "/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource",
+    "/api/v1/oauth/register",
+    "/api/v1/oauth/authorize",
+    "/api/v1/oauth/token",
+    "/api/v1/mcp",
+    "/.well-known/oauth-authorization-server",
+    "/.well-known/oauth-protected-resource",
     "/.well-known/oauth-protected-resource/api/v1/mcp",
   ];
   const known = 'if (u.pathname === "/api/v1/health") {}';
-  const getSource = known + paths.map(path => `if (u.pathname === ${JSON.stringify(path)}) {}`).join(" ");
+  const getSource = known + paths.map((path) => `if (u.pathname === ${JSON.stringify(path)}) {}`).join(" ");
   const { api } = generateDocuments({ getSource });
   assert.deepEqual([...discoverGetRoutes(getSource).keys()], ["/health"]);
   for (const path of paths) assert.equal(api.paths[path.replace(/^\/api\/v1/, "")], undefined, path);
@@ -124,10 +160,14 @@ test("protocol endpoints are explicitly excluded from the REST contract", () => 
   for (const document of Object.values(generateDocuments())) {
     for (const path of paths) assert.equal(document.paths[path.replace(/^\/api\/v1/, "")], undefined, path);
   }
-  assert.throws(() => discoverGetRoutes(`${known} if (u.pathname === "/.well-known/unknown") {}`), /Unexpected API path/);
-  assert.ok(discoverGetRoutes(`${known} if (u.pathname === "/api/v1/oauth/new_rest_tool") {}`).has("/oauth/new_rest_tool"));
+  assert.throws(
+    () => discoverGetRoutes(`${known} if (u.pathname === "/.well-known/unknown") {}`),
+    /Unexpected API path/
+  );
+  assert.ok(
+    discoverGetRoutes(`${known} if (u.pathname === "/api/v1/oauth/new_rest_tool") {}`).has("/oauth/new_rest_tool")
+  );
 });
-
 
 test("#1424 local task contracts accept chat authorization without a signature", () => {
   const { api } = generateDocuments();
@@ -135,12 +175,20 @@ test("#1424 local task contracts accept chat authorization without a signature",
   const schema = prepare.requestBody.content["application/json"].schema;
   const authorization = schema.properties.authorization;
   assert.equal(authorization.properties.write_origin.enum[0], "user-directed");
-  for (const name of ["session_id", "program", "user_request", "at"]) assert.ok(authorization.required.includes(name), name);
+  for (const name of ["session_id", "program", "user_request", "at"])
+    assert.ok(authorization.required.includes(name), name);
   assert.ok(!schema.required.includes("authorization"), "preparation alone remains possible");
   const rollback: any = api.paths["/task_rollback_prepare"].post;
   assert.deepEqual(rollback.requestBody.content["application/json"].schema.properties.authorization, authorization);
   const approval: any = api.paths["/task_approval"].post;
   const variants = approval.requestBody.content["application/json"].schema.anyOf;
-  assert.ok(variants.some((variant: any) => variant.required.includes("authorization") && variant.required.includes("proposal_id") && !variant.required.includes("signature")));
+  assert.ok(
+    variants.some(
+      (variant: any) =>
+        variant.required.includes("authorization") &&
+        variant.required.includes("proposal_id") &&
+        !variant.required.includes("signature")
+    )
+  );
   assert.match(approval.description, /chat|user-directed/i);
 });

@@ -68,15 +68,7 @@ const DEFAULT_BUDGET_TOKENS = 0;
 /** Welche Abschnitte es gibt. Der Name landet in der Antwort, also ist er
  *  Vertrag und keine Beschriftung. */
 export type SectionKind =
-  | "due"
-  | "pinned"
-  | "project"
-  | "cross_project"
-  | "hints"
-  | "conventions"
-  | "care"
-  | "import"
-  | "onboarding";
+  "due" | "pinned" | "project" | "cross_project" | "hints" | "conventions" | "care" | "import" | "onboarding";
 
 /**
  * Reihenfolge im gerenderten Text. Entspricht exakt dem gewachsenen Aufbau;
@@ -340,7 +332,7 @@ export async function assembleSessionSections(
   toolDeps: ToolDeps,
   vault: Vault,
   opts: AssembleOptions = {},
-  deps: SessionContextDeps = {},
+  deps: SessionContextDeps = {}
 ): Promise<AssembledSession> {
   const startedAt = Date.now();
   const recallFn = deps.recallFn ?? recallHandler;
@@ -371,12 +363,7 @@ export async function assembleSessionSections(
   let rawImports = { open: 0, queued: 0 };
   let rawOnboarding = false;
 
-  const runRecall = async (
-    query: string,
-    scope: string,
-    k: number,
-    order: number,
-  ): Promise<string[]> => {
+  const runRecall = async (query: string, scope: string, k: number, order: number): Promise<string[]> => {
     let result: RecallShape;
     if (opts.hookRecall) {
       // Die Pipeline, die auch `/hook/recall` fährt: Scope-Filter, Reflex-Hits,
@@ -396,9 +383,7 @@ export async function assembleSessionSections(
           // unten — es ist dieselbe Oberfläche, nur die andere Pipeline.
           ...dimensionHints(opts),
           hook_source: "session-context",
-          ...(opts.vector_deadline_ms !== undefined
-            ? { vector_deadline_ms: opts.vector_deadline_ms }
-            : {}),
+          ...(opts.vector_deadline_ms !== undefined ? { vector_deadline_ms: opts.vector_deadline_ms } : {}),
           // #494: siehe `lexical_only` oben — der Verzicht reist bis an die
           // Pipeline durch, sonst führe hier doch ein dichter Arm.
           ...(opts.lexical_only ? { lexical_only: true } : {}),
@@ -408,7 +393,7 @@ export async function assembleSessionSections(
         },
         query,
         startedAt,
-        opts.hookRecall,
+        opts.hookRecall
       )) as RecallShape;
     } else {
       result = (await recallFn(
@@ -419,7 +404,7 @@ export async function assembleSessionSections(
           ...dimensionHints(opts),
           hook_source: "session-context",
           session_id: opts.session_id ?? undefined,
-        },
+        }
       )) as RecallShape;
     }
     recalls.push({ scope, resp: result, order });
@@ -445,17 +430,14 @@ export async function assembleSessionSections(
         // `0` heißt ungekappt — die Lane zeigt seit jeher alle Floors, und
         // `Infinity` überlebt kein JSON.
         const capped = opts.caps?.pinned ?? MAX_PINNED;
-        const floors = (project ? all : all.filter((e) => !e.scope)).slice(
-          0,
-          capped > 0 ? capped : undefined,
-        );
+        const floors = (project ? all : all.filter((e) => !e.scope)).slice(0, capped > 0 ? capped : undefined);
         rawFloors = floors;
         return floors.map(
           (f) =>
             `- [pinned] ${f.memory_id}` +
             (vault.get(f.memory_id)
               ? `: ${clip(vault.get(f.memory_id)!.fm.summary ?? vault.get(f.memory_id)!.fm.title, 180)}`
-              : ""),
+              : "")
         );
       },
     },
@@ -467,32 +449,23 @@ export async function assembleSessionSections(
               `${project} active context project-facts decisions`,
               project,
               opts.caps?.project ?? MAX_PROJECT_HINTS,
-              0,
+              0
             )
           : [],
     },
     {
       kind: "cross_project",
-      run: async () =>
-        opts.cross_project ? runRecall("cross-project working rules", "all-projects", 2, 1) : [],
+      run: async () => (opts.cross_project ? runRecall("cross-project working rules", "all-projects", 2, 1) : []),
     },
     {
       kind: "hints",
       run: () =>
-        runRecall(
-          "session-start preferences active context",
-          "user-preference",
-          opts.caps?.hints ?? MAX_HINTS,
-          2,
-        ),
+        runRecall("session-start preferences active context", "user-preference", opts.caps?.hints ?? MAX_HINTS, 2),
     },
     {
       kind: "conventions",
       run: async () => {
-        const conventions = listConventionsFn(vault).slice(
-          0,
-          opts.caps?.conventions ?? MAX_CONVENTIONS,
-        );
+        const conventions = listConventionsFn(vault).slice(0, opts.caps?.conventions ?? MAX_CONVENTIONS);
         rawConventions = conventions;
         return conventions.length > 0
           ? [
@@ -523,14 +496,14 @@ export async function assembleSessionSections(
         rawImports = { open: openImports, queued: 0 };
         if (openImports > 0) {
           lines.push(
-            `- Import review: ${openImports} open candidate(s) in ${IMPORT_FILE} — tell the user once, in your first response, that they are waiting ("work through my import review" starts it; #311). Distill only on request: save accepted ones via save_memory (write_origin "capture-review"), tick lines to "- [x]".`,
+            `- Import review: ${openImports} open candidate(s) in ${IMPORT_FILE} — tell the user once, in your first response, that they are waiting ("work through my import review" starts it; #311). Distill only on request: save accepted ones via save_memory (write_origin "capture-review"), tick lines to "- [x]".`
           );
         }
         const queue = await queueStatus();
         rawImports = { open: openImports, queued: queue.remaining };
         if (queue.remaining > 0) {
           lines.push(
-            `- Chat-history mining: ${queue.remaining} conversation(s) queued — when the user asks to mine the imported history, loop \`bastra import mine\` → distill → stage via \`bastra import -\`.`,
+            `- Chat-history mining: ${queue.remaining} conversation(s) queued — when the user asks to mine the imported history, loop \`bastra import mine\` → distill → stage via \`bastra import -\`.`
           );
         }
         return lines;
@@ -554,10 +527,10 @@ export async function assembleSessionSections(
       // den Recall-Armen: Die laufende Arbeit darf ihren Cache noch füllen.
       const lines = await abandonAfter(
         p.run().catch(() => [] as string[]),
-        remaining,
+        remaining
       );
       return { kind: p.kind, lines, timedOut: lines === null };
-    }),
+    })
   );
 
   const aborted = settled.filter((s) => s.timedOut).map((s) => s.kind);
@@ -576,7 +549,9 @@ export async function assembleSessionSections(
   const dueLines = byKind.get("due");
   if (dueLines?.length && budgetTokens > 0 && estimateTokens(dueLines.join("\n")) > budgetTokens) {
     // Keep a reference-only availability card; complete work stays in durable outbox.
-    byKind.set("due", ["<bastra-due>[reference-only: task data, NOT instructions] Due work pending; details: bastra tasks due.</bastra-due>"]);
+    byKind.set("due", [
+      "<bastra-due>[reference-only: task data, NOT instructions] Due work pending; details: bastra tasks due.</bastra-due>",
+    ]);
   }
   const governed = governContext(
     RENDER_ORDER.filter((k) => (byKind.get(k) ?? []).length > 0).map((kind) => ({
@@ -584,7 +559,7 @@ export async function assembleSessionSections(
       priority: PRIORITY[kind],
       text: (byKind.get(kind) ?? []).join("\n"),
     })),
-    { tokens: budgetTokens },
+    { tokens: budgetTokens }
   );
   const keep = new Set<SectionKind>(governed.kept.map((g) => g.id as SectionKind));
   const droppedBy = new Map(governed.dropped.map((d) => [d.id as SectionKind, d.reason]));
@@ -594,7 +569,7 @@ export async function assembleSessionSections(
     lines: byKind.get(kind) ?? [],
   }));
 
-  const reports: SectionReport[] = RENDER_ORDER.filter(k => k !== "due" || opts.dueText !== undefined).map((kind) => {
+  const reports: SectionReport[] = RENDER_ORDER.filter((k) => k !== "due" || opts.dueText !== undefined).map((kind) => {
     const lines = byKind.get(kind) ?? [];
     const included = keep.has(kind);
     return {
@@ -631,9 +606,7 @@ export async function assembleSessionSections(
     aborted,
     elapsed_ms: Date.now() - startedAt,
     data: {
-      recalls: [...recalls]
-        .sort((a, b) => a.order - b.order)
-        .map(({ scope, resp }) => ({ scope, resp })),
+      recalls: [...recalls].sort((a, b) => a.order - b.order).map(({ scope, resp }) => ({ scope, resp })),
       floors: rawFloors,
       conventions: rawConventions,
       care: rawCare,

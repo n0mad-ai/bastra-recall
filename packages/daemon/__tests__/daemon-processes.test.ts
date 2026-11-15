@@ -22,7 +22,10 @@ const PS = `  PID     ELAPSED COMMAND
 
 test("finds the daemons and nothing else", () => {
   const procs = parseDaemonProcesses(PS, 15445);
-  assert.deepEqual(procs.map((p) => p.pid), [15445, 86207]);
+  assert.deepEqual(
+    procs.map((p) => p.pid),
+    [15445, 86207]
+  );
   // The forwarder runs once per client session and is not a daemon; the
   // statusline and postgres are not ours to report on at all.
 });
@@ -42,19 +45,28 @@ test("#527 — an inert argument that merely mentions the entry point is not a d
   // The same weak criterion the Finder uninstaller used: a substring anywhere
   // in argv. What counts is the script the process executes, not what it was
   // handed as data.
-  const withDecoy =
-    `${PS}\n77777       00:05 node /Users/x/tool/worker.js note:/some/daemon/dist/index.js`;
-  assert.deepEqual(parseDaemonProcesses(withDecoy, 15445).map((p) => p.pid), [15445, 86207]);
+  const withDecoy = `${PS}\n77777       00:05 node /Users/x/tool/worker.js note:/some/daemon/dist/index.js`;
+  assert.deepEqual(
+    parseDaemonProcesses(withDecoy, 15445).map((p) => p.pid),
+    [15445, 86207]
+  );
 });
 
 test("#527 — the entry point as argv[0] (a bin shim) still counts", () => {
-  const shim = "  PID ELAPSED COMMAND\n31000 00:10 /opt/homebrew/Cellar/bastra-recall/1.0.0/libexec/packages/daemon/dist/index.js";
-  assert.deepEqual(parseDaemonProcesses(shim, null).map((p) => p.pid), [31000]);
+  const shim =
+    "  PID ELAPSED COMMAND\n31000 00:10 /opt/homebrew/Cellar/bastra-recall/1.0.0/libexec/packages/daemon/dist/index.js";
+  assert.deepEqual(
+    parseDaemonProcesses(shim, null).map((p) => p.pid),
+    [31000]
+  );
 });
 
 test("#527 — node options before the script do not hide it", () => {
   const opts = "  PID ELAPSED COMMAND\n31001 00:10 node --enable-source-maps /x/packages/daemon/dist/index.js";
-  assert.deepEqual(parseDaemonProcesses(opts, null).map((p) => p.pid), [31001]);
+  assert.deepEqual(
+    parseDaemonProcesses(opts, null).map((p) => p.pid),
+    [31001]
+  );
 });
 
 test("a grep line for the same pattern is not a process", () => {
@@ -75,7 +87,7 @@ test("no listener known → nothing is primary, and the report stays honest", ()
 test("one daemon says nothing", () => {
   const single = parseDaemonProcesses(
     "  PID ELAPSED COMMAND\n15445 30:00 node /x/packages/daemon/dist/index.js",
-    15445,
+    15445
   );
   assert.equal(formatExtraDaemons(single), null);
 });
@@ -104,7 +116,8 @@ test("daemonPort honours the env, falls back to 6723", () => {
     process.env.BASTRA_HTTP_PORT = "nonsense";
     assert.equal(daemonPort(), 6723);
   } finally {
-    if (url === undefined) delete process.env.BASTRA_DAEMON_URL; else process.env.BASTRA_DAEMON_URL = url;
+    if (url === undefined) delete process.env.BASTRA_DAEMON_URL;
+    else process.env.BASTRA_DAEMON_URL = url;
     if (before === undefined) delete process.env.BASTRA_HTTP_PORT;
     else process.env.BASTRA_HTTP_PORT = before;
   }

@@ -75,7 +75,7 @@ export class RelatedEnricher {
   constructor(
     private readonly vault: Vault,
     private readonly embeddings: EmbeddingIndex,
-    opts: RelatedEnricherOptions = {},
+    opts: RelatedEnricherOptions = {}
   ) {
     this.topN = opts.topN ?? 5;
     this.threshold = opts.threshold ?? 0.7;
@@ -164,8 +164,7 @@ export class RelatedEnricher {
     // Enricher stellt die eigene id als Alias auf jedem Doc-Sidecar sicher,
     // das er anfasst — inkrementeller Backfill statt Big-Bang-Migration.
     const aliasId = memory.fm.type === "doc" ? id : undefined;
-    const missingAlias =
-      aliasId !== undefined && !(memory.fm.aliases ?? []).includes(aliasId);
+    const missingAlias = aliasId !== undefined && !(memory.fm.aliases ?? []).includes(aliasId);
 
     if (sameVia && sameBody && !missingAlias) return null;
 
@@ -173,14 +172,7 @@ export class RelatedEnricher {
 
     // Ein Hintergrundlauf darf jederzeit ausfallen — ein Save nicht. `raced`
     // heißt: ein anderer Writer war schneller, seine Fassung bleibt stehen.
-    const outcome = await rewriteFile(
-      this.vault.root,
-      memory.filePath,
-      id,
-      filtered,
-      expectedBody,
-      aliasId,
-    );
+    const outcome = await rewriteFile(this.vault.root, memory.filePath, id, filtered, expectedBody, aliasId);
     if (outcome.kind !== "written") return null;
     await this.vault.reindexFile(memory.filePath);
     return filtered;
@@ -237,10 +229,7 @@ function autoRelatedEquivalent(current: string, expected: string): boolean {
  * leerer Liste wird die Section komplett entfernt — der „kein guter
  * Nachbar"-Zustand soll keinen toten Block hinterlassen.
  */
-function rebuildBodyWithAutoSection(
-  body: string,
-  entries: RelatedViaEntry[],
-): string {
+function rebuildBodyWithAutoSection(body: string, entries: RelatedViaEntry[]): string {
   const stripped = stripAutoRelatedSection(body).replace(/\n+$/, "");
   if (entries.length === 0) {
     return stripped.length > 0 ? stripped + "\n" : "";
@@ -272,7 +261,7 @@ async function rewriteFile(
   id: string,
   related_via: RelatedViaEntry[],
   newBody: string,
-  ensureAlias?: string,
+  ensureAlias?: string
 ): Promise<MutateOutcome> {
   try {
     return await mutateMemoryFile(
@@ -303,10 +292,9 @@ async function rewriteFile(
         // die zuletzt wirklich editierte Kopie. Führende und abschließende
         // Leerzeilen zählen nicht: die normalisiert `rebuildBodyWithAutoSection`
         // selbst, sie wären sonst eine Inhaltsänderung, die keine ist.
-        authoredContent: (body) =>
-          stripAutoRelatedSection(body).replace(/^\n+/, "").replace(/\n+$/, ""),
+        authoredContent: (body) => stripAutoRelatedSection(body).replace(/^\n+/, "").replace(/\n+$/, ""),
       },
-      { vaultRoot },
+      { vaultRoot }
     );
   } catch (err) {
     // Zwei Anreicherungen desselben Memories treffen sich jetzt am id-Lock,

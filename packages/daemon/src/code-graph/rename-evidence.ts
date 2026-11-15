@@ -116,7 +116,10 @@ export async function renamesSince(repoRoot: string, since: string | null): Prom
   try {
     const range = since === null ? "HEAD" : `${since}..HEAD`;
     const out = await git(repoRoot, ["rev-list", "--reverse", `--max-count=${MAX_COMMITS_WALKED}`, range]);
-    commits = out.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+    commits = out
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
   } catch {
     // A revision git does not know is a bad range, not a broken git: the
     // caller asked about a commit that is not in this repository.
@@ -126,15 +129,7 @@ export async function renamesSince(repoRoot: string, since: string | null): Prom
   const renames: RenameEvidence[] = [];
   for (const commit of commits) {
     try {
-      const out = await git(repoRoot, [
-        "diff-tree",
-        "-M",
-        "-r",
-        "--no-commit-id",
-        "--name-status",
-        "--root",
-        commit,
-      ]);
+      const out = await git(repoRoot, ["diff-tree", "-M", "-r", "--no-commit-id", "--name-status", "--root", commit]);
       renames.push(...parseNameStatus(out, commit));
     } catch {
       return { available: false, reason: "git-unavailable" };
@@ -171,7 +166,7 @@ export function parseNameStatus(stdout: string, commit: string): RenameEvidence[
  */
 export function resolvePath(
   path: string,
-  renames: readonly RenameEvidence[],
+  renames: readonly RenameEvidence[]
 ): { to: string; similarity: number | null; commit: string } | null {
   let current = path;
   let last: { to: string; similarity: number | null; commit: string } | null = null;
@@ -195,10 +190,7 @@ export function resolvePath(
  * a path git could have moved, and the second names a file that is still
  * there, so a rename is not what happened to it.
  */
-export function renameOffers(
-  unresolved: readonly UnresolvedEntry[],
-  lookup: RenameLookup,
-): RenameOffer[] {
+export function renameOffers(unresolved: readonly UnresolvedEntry[], lookup: RenameLookup): RenameOffer[] {
   if (!lookup.available) return [];
   const out: RenameOffer[] = [];
   for (const u of unresolved) {

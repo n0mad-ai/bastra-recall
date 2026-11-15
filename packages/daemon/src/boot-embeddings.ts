@@ -25,7 +25,12 @@ import {
 } from "@bastra-recall/core";
 import * as path from "node:path";
 import type { Telemetry } from "./telemetry.js";
-import { embeddingStatusLine, cloudConsentNotice, type EmbeddingStatus, type EmbeddingSource } from "./embedding-status.js";
+import {
+  embeddingStatusLine,
+  cloudConsentNotice,
+  type EmbeddingStatus,
+  type EmbeddingSource,
+} from "./embedding-status.js";
 import { cloudEmbeddingProvider } from "./embedding-cloud.js";
 import { resolveEmbeddingChoice, resolveGenerationModel, getBatterySaver } from "./settings.js";
 import { batterySaverEnabled, createPowerMonitor, type PowerMonitor } from "./power-source.js";
@@ -108,7 +113,10 @@ export async function startEmbeddings(opts: {
   // polls and never defers anything.
   const power = createPowerMonitor({
     enabled: batterySaverEnabled(await getBatterySaver()),
-    onChange: (source) => console.error(`[bastra-recall] power source: ${source}${source === "battery" ? " — battery saver defers background model work" : ""}`),
+    onChange: (source) =>
+      console.error(
+        `[bastra-recall] power source: ${source}${source === "battery" ? " — battery saver defers background model work" : ""}`
+      ),
   });
   power.start();
   const warmupEmbedding = createEmbeddingWarmup({
@@ -176,10 +184,7 @@ export async function startEmbeddings(opts: {
       // der Warmup. Vorher zählte der Recall-Pfad die wartenden Aufrufer, ließ
       // beim Timeout los, während der Embed weiterlief, und sah von den anderen
       // dreien nichts.
-      const provider = new BreakerGuardedProvider(
-        countingProvider(rawProvider, latencyProfile),
-        embeddingBreaker,
-      );
+      const provider = new BreakerGuardedProvider(countingProvider(rawProvider, latencyProfile), embeddingBreaker);
       guardedProvider = provider;
       const persistPath = path.join(vaultPath, ".bastra", "embeddings.json");
       const embIdx = new EmbeddingIndex(vault, provider, persistPath);
@@ -222,7 +227,7 @@ export async function startEmbeddings(opts: {
           const lifecycleOutcome = outcome === "fired" ? (fired ? "fired" : "failed") : outcome;
           const ok = lifecycleOutcome !== "failed";
           console.error(
-            `[bastra-recall] ollama prewarm: ${ollama.model} ${fired ? "loaded" : `not warmed (${outcome})`}`,
+            `[bastra-recall] ollama prewarm: ${ollama.model} ${fired ? "loaded" : `not warmed (${outcome})`}`
           );
           // #493: Ein geglücktes Prewarm ist ein BEOBACHTETER Ladevorgang. Die
           // Residenz las nach dem Boot sonst `unknown`, obwohl das Modell
@@ -253,7 +258,7 @@ export async function startEmbeddings(opts: {
           if (envBool("BASTRA_AUTO_RELATED", true)) {
             enricher.start();
             console.error(
-              `[bastra-recall] auto-related: enabled (top ${envInt("BASTRA_RELATED_TOP_N", 5)} ≥ ${envFloat("BASTRA_RELATED_THRESHOLD", 0.7)})`,
+              `[bastra-recall] auto-related: enabled (top ${envInt("BASTRA_RELATED_TOP_N", 5)} ≥ ${envFloat("BASTRA_RELATED_THRESHOLD", 0.7)})`
             );
           }
           // doc2query Trigger-Expander (#117): paraphrasiert recall_when offline
@@ -287,7 +292,7 @@ export async function startEmbeddings(opts: {
             console.error(`[bastra-recall] trigger-expand: enabled (doc2query, model ${expandModel})`);
           }
           console.error(
-            `[bastra-recall] embeddings ready provider=${provider.id} (${embIdx.size()} vectors, ${embIdx.pendingSize()} pending)`,
+            `[bastra-recall] embeddings ready provider=${provider.id} (${embIdx.size()} vectors, ${embIdx.pendingSize()} pending)`
           );
         })
         .catch((err) => {
@@ -331,7 +336,7 @@ async function resolveEmbedding(): Promise<{
   const choice = await resolveEmbeddingChoice({
     onInvalidEnv: (raw) =>
       console.error(
-        `[bastra-recall] ignoring invalid BASTRA_EMBEDDING_PROVIDER ${JSON.stringify(raw)} — falling through to cli-settings`,
+        `[bastra-recall] ignoring invalid BASTRA_EMBEDDING_PROVIDER ${JSON.stringify(raw)} — falling through to cli-settings`
       ),
   });
   if (choice.provider === "ollama") return ollamaEmbedding(choice.source);

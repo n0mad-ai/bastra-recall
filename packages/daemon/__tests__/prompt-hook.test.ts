@@ -41,14 +41,16 @@ function startMockDaemon(handler: (req: IncomingMessage, res: ServerResponse) =>
   });
 }
 
-function runHook(
-  payload: object,
-  env: Record<string, string>,
-): Promise<{ stdout: string; code: number }> {
+function runHook(payload: object, env: Record<string, string>): Promise<{ stdout: string; code: number }> {
   return new Promise((ok, ko) => {
     const child = spawn("npx", ["tsx", HOOK_PATH], {
       // Exercise HTTP_URL precedence directly, without the inherited test default.
-      env: { ...process.env, ...(env.BASTRA_HTTP_URL && !env.BASTRA_DAEMON_URL ? { BASTRA_DAEMON_URL: "" } : {}), ...env, BASTRA_TELEMETRY: "off" },
+      env: {
+        ...process.env,
+        ...(env.BASTRA_HTTP_URL && !env.BASTRA_DAEMON_URL ? { BASTRA_DAEMON_URL: "" } : {}),
+        ...env,
+        BASTRA_TELEMETRY: "off",
+      },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -63,7 +65,8 @@ function runHook(
 test("thin client: response body reaches stdout verbatim, request carries payload + client_ppid", async () => {
   // Deliberately non-canonical JSON (spacing) — byte-identical passthrough is
   // the assertion, so any parse/re-stringify in the client would fail it.
-  const daemonDoc = '{"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": "<recall-hints>x</recall-hints>"} }';
+  const daemonDoc =
+    '{"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": "<recall-hints>x</recall-hints>"} }';
   // #542: named rather than inline so the cast below doesn't go through
   // `typeof received` — received is only ever assigned inside the mock
   // daemon's request handler (a separate control-flow container), so TS's
@@ -88,7 +91,7 @@ test("thin client: response body reaches stdout verbatim, request carries payloa
   try {
     const { stdout, code } = await runHook(
       { hook_event_name: "UserPromptSubmit", prompt: "such mal meinen Strafzettel" },
-      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}` },
+      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}` }
     );
     assert.equal(code, 0);
     assert.equal(stdout, daemonDoc, "body must reach stdout verbatim — no parse, no reserialize");
@@ -99,7 +102,7 @@ test("thin client: response body reaches stdout verbatim, request carries payloa
     assert.equal(r.body.payload?.prompt, "such mal meinen Strafzettel", "original payload rides inside `payload`");
     assert.ok(
       Number.isInteger(r.body.client_ppid) && (r.body.client_ppid as number) > 1,
-      `client_ppid must be the hook's real ppid, got ${String(r.body.client_ppid)}`,
+      `client_ppid must be the hook's real ppid, got ${String(r.body.client_ppid)}`
     );
   } finally {
     await daemon.close();
@@ -110,7 +113,7 @@ test("thin client: daemon down → {} and exit 0 (fail-open)", async () => {
   // Port 1 refuses connections without a server — the ECONNREFUSED path.
   const { stdout, code } = await runHook(
     { hook_event_name: "UserPromptSubmit", prompt: "such mal meinen Strafzettel" },
-    { BASTRA_HTTP_URL: "http://127.0.0.1:1" },
+    { BASTRA_HTTP_URL: "http://127.0.0.1:1" }
   );
   assert.equal(code, 0, "a hook must never fail the turn");
   assert.equal(stdout.trim(), "{}");
@@ -124,7 +127,7 @@ test("thin client: HTTP error from the daemon degrades to {} (never forwards an 
   try {
     const { stdout, code } = await runHook(
       { hook_event_name: "UserPromptSubmit", prompt: "such mal meinen Strafzettel" },
-      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}` },
+      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}` }
     );
     assert.equal(code, 0);
     assert.equal(stdout.trim(), "{}", "an error body must never reach Claude Code's stdout parser");

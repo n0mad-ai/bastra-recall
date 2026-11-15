@@ -28,11 +28,7 @@
 import { dirname, join } from "node:path";
 import { assertInsideDir, assertInsideVault, assertOwnSubdir } from "./file-identity.js";
 import { scanVaultForIdAsync, type IdScanStats, type Located } from "./memory-locator.js";
-import {
-  acquireCommitClaim,
-  commitLockPathFor,
-  releaseCommitClaim,
-} from "./save-commit.js";
+import { acquireCommitClaim, commitLockPathFor, releaseCommitClaim } from "./save-commit.js";
 import { ensureVaultDir } from "./vault-root-guard.js";
 
 /**
@@ -163,7 +159,7 @@ export function assertRealClaim(claim: IdClaim, op: string): void {
   if (claim?.[ID_CLAIM] !== true) {
     throw new Error(
       `${op} requires a real id claim from withIdClaim() — the object passed was not one. ` +
-        `Wrap the call in withIdClaim({ vaultRoot, id, filePath }, (claim) => …).`,
+        `Wrap the call in withIdClaim({ vaultRoot, id, filePath }, (claim) => …).`
     );
   }
 }
@@ -195,10 +191,7 @@ export interface IdClaimOptions {
  * auf dieselbe id ist immer ein Denkfehler im Aufrufer, und ein Fehler ist
  * besser als ein Deadlock.
  */
-export async function withIdClaim<T>(
-  opts: IdClaimOptions,
-  fn: (claim: IdClaim) => Promise<T>,
-): Promise<T> {
+export async function withIdClaim<T>(opts: IdClaimOptions, fn: (claim: IdClaim) => Promise<T>): Promise<T> {
   assertInsideVault(opts.vaultRoot, opts.filePath);
   const lockPath = commitLockPathFor(opts.vaultRoot, opts.id);
   // Sicherheitsrunde: Der Lock lag bisher nur „irgendwo im Vault". Zeigt

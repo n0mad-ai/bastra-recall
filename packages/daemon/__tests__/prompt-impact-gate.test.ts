@@ -49,12 +49,7 @@ const FIXTURE = {
   hyperedges: [],
 };
 
-const SAVE_SOURCE = [
-  "export function saveMemory(input) {",
-  "  return input;",
-  "}",
-  "",
-].join("\n");
+const SAVE_SOURCE = ["export function saveMemory(input) {", "  return input;", "}", ""].join("\n");
 
 const MANIFEST: CodeGraphManifest = {
   graphifyVersion: "0.9.63",
@@ -99,7 +94,7 @@ async function writeCliSettings(promptImpact: { enabled: boolean } | undefined):
   await writeSettingsFixture(
     join(home, ".bastra", "cli-settings.json"),
     JSON.stringify({ code: { repos: [repo] }, ...(promptImpact ? { promptImpact } : {}) }),
-    "utf8",
+    "utf8"
   );
 }
 
@@ -127,9 +122,9 @@ async function runLane(sessionId: string, logDir: string, stateDir: string): Pro
       return runPromptLane(
         { hook_event_name: "UserPromptSubmit", prompt: PROMPT, session_id: sessionId, cwd: repo },
         null,
-        "http://127.0.0.1:1",
+        "http://127.0.0.1:1"
       );
-    },
+    }
   );
 }
 
@@ -170,7 +165,7 @@ describe("#607: prompt-lane delivery defaults to off", () => {
       assert.equal(
         events.find((e) => e.kind === "code_tool_call" && e.surface === "delivered" && e.delivered_lane === "prompt"),
         undefined,
-        "no delivered/prompt telemetry row when the opt-in is off",
+        "no delivered/prompt telemetry row when the opt-in is off"
       );
     });
   });
@@ -189,13 +184,13 @@ describe("#607: prompt-lane delivery defaults to off", () => {
     await writeCliSettings({ enabled: true });
     await inScratch(async (logDir, stateDir) => {
       const stdout = await withEnv({ BASTRA_PROMPT_IMPACT: undefined }, () =>
-        runLane("gate-file-on", logDir, stateDir),
+        runLane("gate-file-on", logDir, stateDir)
       );
       assert.match(stdout, /code-impact/, "stored opt-in restores delivery");
       const events = await readTelemetryEvents(logDir);
       assert.ok(
         events.find((e) => e.kind === "code_tool_call" && e.surface === "delivered" && e.delivered_lane === "prompt"),
-        "delivered/prompt telemetry row must be written once opted in",
+        "delivered/prompt telemetry row must be written once opted in"
       );
     });
   });
@@ -203,9 +198,7 @@ describe("#607: prompt-lane delivery defaults to off", () => {
   it("BASTRA_PROMPT_IMPACT=on overrides a stored false", async () => {
     await writeCliSettings({ enabled: false });
     await inScratch(async (logDir, stateDir) => {
-      const stdout = await withEnv({ BASTRA_PROMPT_IMPACT: "on" }, () =>
-        runLane("gate-env-on", logDir, stateDir),
-      );
+      const stdout = await withEnv({ BASTRA_PROMPT_IMPACT: "on" }, () => runLane("gate-env-on", logDir, stateDir));
       assert.match(stdout, /code-impact/, "env wins over the file");
     });
   });

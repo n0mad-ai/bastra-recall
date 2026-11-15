@@ -71,10 +71,12 @@ async function writeClaudeHooks(home: string, binary: string): Promise<void> {
     JSON.stringify({
       hooks: {
         UserPromptSubmit: [{ hooks: [{ type: "command", command: `${binary} prompt`, __bastraRecall: true }] }],
-        SessionStart: [{ matcher: "startup", hooks: [{ type: "command", command: `${binary} session`, __bastraRecall: true }] }],
+        SessionStart: [
+          { matcher: "startup", hooks: [{ type: "command", command: `${binary} session`, __bastraRecall: true }] },
+        ],
       },
       statusLine: { type: "command", command: `${binary} statusline --style=powerline` },
-    }),
+    })
   );
 }
 
@@ -88,7 +90,7 @@ async function writeCodexHooks(home: string, binary: string): Promise<void> {
       hooks: {
         UserPromptSubmit: [{ command: `BASTRA_HOOK_CLIENT=codex '${binary}' prompt`, timeout: 2 }],
       },
-    }),
+    })
   );
 }
 
@@ -101,9 +103,10 @@ async function writeCodexHooks(home: string, binary: string): Promise<void> {
 async function fakeStub(dir: string, stamp: Record<string, unknown> | null): Promise<string> {
   await mkdir(dir, { recursive: true });
   const path = join(dir, "bastra-hook");
-  const body = stamp === null
-    ? "#!/bin/sh\nexit 3\n"
-    : `#!/bin/sh\n[ "$1" = version ] && echo '${JSON.stringify(stamp)}' && exit 0\nexit 0\n`;
+  const body =
+    stamp === null
+      ? "#!/bin/sh\nexit 3\n"
+      : `#!/bin/sh\n[ "$1" = version ] && echo '${JSON.stringify(stamp)}' && exit 0\nexit 0\n`;
   await writeFile(path, body);
   await chmod(path, 0o755);
   return path;
@@ -173,7 +176,13 @@ test("#546: a binary from other sources is a finding, and says what to do about 
 test("#546: a binary with no stamp is its own state, not 'stale' and not 'ok'", async () => {
   const home = await tempHome();
   // A binary from before #546: it answers `version`, it just has no digest.
-  const binary = await fakeStub(join(home, "install", "stub"), { stub_version: "0.9.1-stub", source_digest: "", revision: null, dirty: false, built_at: null });
+  const binary = await fakeStub(join(home, "install", "stub"), {
+    stub_version: "0.9.1-stub",
+    source_digest: "",
+    revision: null,
+    dirty: false,
+    built_at: null,
+  });
   await writeClaudeHooks(home, binary);
 
   const report = await stubFreshness({ home, ownBinary: binary });
@@ -202,7 +211,7 @@ test("#546: without a source checkout the answer is 'cannot be decided here', no
   assert.ok(line.includes("cannot be decided here"), "the non-statement must be stated");
   assert.ok(
     !line.includes(STUB_REBUILD_HINT),
-    "advice that cannot be carried out here teaches people to skip the message",
+    "advice that cannot be carried out here teaches people to skip the message"
   );
 });
 
@@ -254,9 +263,11 @@ test("#546: hosts on the node thin client have nothing to report", async () => {
     join(home, ".claude", "settings.json"),
     JSON.stringify({
       hooks: {
-        UserPromptSubmit: [{ hooks: [{ type: "command", command: "node /opt/bastra/dist/prompt-hook.js", __bastraRecall: true }] }],
+        UserPromptSubmit: [
+          { hooks: [{ type: "command", command: "node /opt/bastra/dist/prompt-hook.js", __bastraRecall: true }] },
+        ],
       },
-    }),
+    })
   );
   const report = await stubFreshness({ home, ownBinary: join(home, "nope", "bastra-hook") });
   assert.deepEqual(report.findings, [], "the node client ships inside dist and cannot drift from it");
@@ -269,17 +280,17 @@ test("#546: the binary is read out of both registered command shapes", () => {
   assert.equal(
     registeredStubBinary("BASTRA_HOOK_CLIENT=codex '/opt/b/stub/bastra-hook' write", home),
     "/opt/b/stub/bastra-hook",
-    "the codex env prefix must not hide the binary",
+    "the codex env prefix must not hide the binary"
   );
   assert.equal(
     registeredStubBinary('"/opt/my stuff/stub/bastra-hook" stop', home),
     "/opt/my stuff/stub/bastra-hook",
-    "a quoted path with spaces is the only way such a path can be registered",
+    "a quoted path with spaces is the only way such a path can be registered"
   );
   assert.equal(
     registeredStubBinary("~/.bastra/stub/bastra-hook statusline --style=powerline", home),
     "/home/x/.bastra/stub/bastra-hook",
-    "the statusline entry runs the same binary (#347) and is registered without a lane",
+    "the statusline entry runs the same binary (#347) and is registered without a lane"
   );
   assert.equal(registeredStubBinary("node /opt/b/dist/prompt-hook.js", home), null);
   assert.equal(registeredStubBinary("/usr/bin/some-other-hook run", home), null);
@@ -304,7 +315,7 @@ test("#546: the digest comes from the one module the build stamps with", async (
   assert.equal(
     await localStubSourceDigest(await rootWithoutSources()),
     null,
-    "an installation without stub sources has no reference digest, and must say null rather than invent one",
+    "an installation without stub sources has no reference digest, and must say null rather than invent one"
   );
 });
 
@@ -400,7 +411,7 @@ test("#547: the bundle digest hashes the very file the binary embeds, and the st
 
   assert.ok(
     !stubSourceFiles().includes(STATUSLINE_BUNDLE),
-    "the boundary #547 kept: a build artifact stays out of the hook-lane digest",
+    "the boundary #547 kept: a build artifact stays out of the hook-lane digest"
   );
 
   const digest = statuslineBundleDigest();
@@ -419,6 +430,6 @@ test("#546: a registration file that is absent or unparseable contributes nothin
   assert.deepEqual(
     await collectRegisteredStubs(home),
     [],
-    "a broken registration is the surface adapter's finding, not this check's",
+    "a broken registration is the surface adapter's finding, not this check's"
   );
 });

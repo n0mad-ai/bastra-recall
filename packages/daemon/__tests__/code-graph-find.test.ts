@@ -5,13 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { graphDirOf, GRAPH_FILE_NAME } from "../src/code-graph/reader.js";
 import { CodeGraphCache } from "../src/code-graph/cache.js";
-import {
-  codeTools,
-  findCode,
-  MAX_DEPENDENTS,
-  MAX_HITS,
-  type FindCodeResult,
-} from "../src/code-graph/find-code.js";
+import { codeTools, findCode, MAX_DEPENDENTS, MAX_HITS, type FindCodeResult } from "../src/code-graph/find-code.js";
 import { ALL_TOOL_DEFS, isToolAllowed } from "../src/tool-defs.js";
 
 /**
@@ -118,7 +112,7 @@ describe("find_code: the exact lane", () => {
     const callers = r.hits[0]?.dependents ?? [];
     assert.ok(
       callers.some((d) => d.location === `${AUDIT}:41` && d.symbol === "auditedSave"),
-      `expected auditedSave among ${JSON.stringify(callers)}`,
+      `expected auditedSave among ${JSON.stringify(callers)}`
     );
     for (const d of callers) assert.equal(d.depth, 1, "one hop is the budget");
   });
@@ -126,10 +120,7 @@ describe("find_code: the exact lane", () => {
   it("does not hop twice unless asked", () => {
     const r = findCode(cache, { query: "saveMemory", mode: "affected", repo });
     const callers = r.hits[0]?.dependents ?? [];
-    assert.ok(
-      !callers.some((d) => d.symbol === "saveMemoryHandler"),
-      "the second hop must not appear at depth 1",
-    );
+    assert.ok(!callers.some((d) => d.symbol === "saveMemoryHandler"), "the second hop must not appear at depth 1");
   });
 
   it("matches a callable with or without Graphify's parentheses", () => {
@@ -209,7 +200,7 @@ describe("find_code: affected mode", () => {
     const second = (r.hits[0]?.dependents ?? []).filter((d) => d.depth === 2);
     assert.ok(
       second.some((d) => d.symbol === "saveMemoryHandler"),
-      `expected the second hop, got ${JSON.stringify(second)}`,
+      `expected the second hop, got ${JSON.stringify(second)}`
     );
   });
 

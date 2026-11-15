@@ -69,7 +69,8 @@ const denoArgs = [
   "--allow-write",
   "--allow-sys",
   windows ? "--allow-run=cmd,cmd.exe,mode,mode.com" : "--allow-run=sh,/bin/sh,ps",
-  "--output", stagedOutput,
+  "--output",
+  stagedOutput,
   "stub/bastra-hook.ts",
 ];
 
@@ -116,7 +117,7 @@ const info = {
 const placeholder = readFileSync(STUB_BUILD_INFO, "utf8");
 const stamped = placeholder.replace(
   /export const STUB_BUILD_INFO: StubBuildInfo = \{[\s\S]*?\n\};/,
-  "export const STUB_BUILD_INFO: StubBuildInfo = " + JSON.stringify(info, null, 2) + ";",
+  "export const STUB_BUILD_INFO: StubBuildInfo = " + JSON.stringify(info, null, 2) + ";"
 );
 if (stamped === placeholder) {
   console.error("error: could not stamp stub/build-info.ts — its STUB_BUILD_INFO declaration moved");
@@ -133,7 +134,9 @@ let r;
 // not stop deno; preserve that signal as the eventual exit status too.
 let interrupted = null;
 for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"]) {
-  process.on(sig, () => { interrupted ??= sig; });
+  process.on(sig, () => {
+    interrupted ??= sig;
+  });
 }
 try {
   writeFileSync(STUB_BUILD_INFO, stamped, "utf8");
@@ -157,16 +160,27 @@ if (r.error) {
 try {
   if (r.status !== 0) process.exitCode = r.status ?? 1;
   else {
-    if (!statSync(stagedOutput).isFile() || statSync(stagedOutput).size === 0) throw new Error("compiler produced no usable binary");
+    if (!statSync(stagedOutput).isFile() || statSync(stagedOutput).size === 0)
+      throw new Error("compiler produced no usable binary");
     // Cross-target executables cannot run here. Release CI verifies its native
     // target independently before upload; every native publication is stamped.
     const hostTarget = `${process.arch === "arm64" ? "aarch64" : "x86_64"}-${process.platform === "darwin" ? "apple-darwin" : process.platform === "win32" ? "pc-windows-msvc" : "unknown-linux-gnu"}`;
     if (!target || target === hostTarget) {
       const check = spawnSync(stagedOutput, ["version"], { encoding: "utf8", timeout: 5000 });
       let stamp;
-      try { stamp = JSON.parse(check.stdout); } catch { /* invalid binary */ }
-      if (check.error || check.status !== 0 || !stamp || stamp.source_digest !== info.source_digest ||
-          info.statusline_digest === null || stamp.statusline_digest !== info.statusline_digest) {
+      try {
+        stamp = JSON.parse(check.stdout);
+      } catch {
+        /* invalid binary */
+      }
+      if (
+        check.error ||
+        check.status !== 0 ||
+        !stamp ||
+        stamp.source_digest !== info.source_digest ||
+        info.statusline_digest === null ||
+        stamp.statusline_digest !== info.statusline_digest
+      ) {
         throw new Error("compiled hook does not contain the current hook and statusline");
       }
     }

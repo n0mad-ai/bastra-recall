@@ -90,10 +90,7 @@ export function refreshStatusLines(s: RepoStatus, now: Date = new Date()): strin
     ];
   }
   const failures = s.failures > 0 ? ` after ${s.failures} failed build${s.failures === 1 ? "" : "s"}` : "";
-  return [
-    `refresh stopped${failures}${error}`,
-    "no automatic retry — run 'bastra code index' to retry",
-  ];
+  return [`refresh stopped${failures}${error}`, "no automatic retry — run 'bastra code index' to retry"];
 }
 
 function describeDue(iso: string, now: Date): string {

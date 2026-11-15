@@ -15,7 +15,8 @@ test("today's pre-DB tasks migrate unchanged with backup, recurrence, journal an
   const raw = await readFile(new URL("./fixtures/tasks-pre-db-e1191a2a.json", import.meta.url), "utf8");
   const expected = decodeTaskStore(raw);
   const previous = JSON.stringify({ ...expected, revision: 16 });
-  await writeFile(path, raw); await writeFile(`${path}.backup`, previous);
+  await writeFile(path, raw);
+  await writeFile(`${path}.backup`, previous);
   assert.deepEqual(await readTaskStore(path), expected);
   assert.equal(await readFile(`${path}.pre-db`, "utf8"), raw);
   assert.equal(await readFile(`${path}.backup.pre-db`, "utf8"), previous);
@@ -23,10 +24,15 @@ test("today's pre-DB tasks migrate unchanged with backup, recurrence, journal an
   const names = await readdir(root);
   assert.deepEqual(await readTaskStore(path), expected);
   assert.deepEqual(await readdir(root), names, "second read creates no migration artifacts");
-  const changed = await transactTaskStore(path, expected, store => { store.controls.muted = true; });
-  assert.equal(changed.revision, 18); assert.equal(changed.tasks[0].revision, 3);
-  assert.equal(changed.tasks[0].generation, 1); assert.deepEqual(changed.receipts, expected.receipts);
+  const changed = await transactTaskStore(path, expected, (store) => {
+    store.controls.muted = true;
+  });
+  assert.equal(changed.revision, 18);
+  assert.equal(changed.tasks[0].revision, 3);
+  assert.equal(changed.tasks[0].generation, 1);
+  assert.deepEqual(changed.receipts, expected.receipts);
   assert.equal(JSON.parse(readAppRecord("tasks", `${path}.backup`)).revision, 17);
-  const exported = join(root, "rollback.json"); exportAppRecord("tasks", path, exported);
+  const exported = join(root, "rollback.json");
+  exportAppRecord("tasks", path, exported);
   assert.deepEqual(decodeTaskStore(await readFile(exported, "utf8")), changed);
 });

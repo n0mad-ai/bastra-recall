@@ -39,9 +39,10 @@ function referenceIsClientRow(e: Record<string, unknown>): boolean {
 function referenceSessionOf(e: Record<string, unknown>): string | null {
   return typeof e.session_id === "string" && e.session_id.length > 0 ? e.session_id : null;
 }
-function referenceFoldClientDuplicates(
-  events: Array<Record<string, unknown>>,
-): { events: Array<Record<string, unknown>>; folded: number } {
+function referenceFoldClientDuplicates(events: Array<Record<string, unknown>>): {
+  events: Array<Record<string, unknown>>;
+  folded: number;
+} {
   const clients = events.filter(referenceIsClientRow);
   if (clients.length === 0) return { events, folded: 0 };
   const dropped = new Set<Record<string, unknown>>();
@@ -130,9 +131,31 @@ test("#615: the indexed fold matches the pre-#615 nested-loop fold, ties include
   // that order inside its bucket, not just get the right row by luck.
   const tieAt = Date.parse("2026-09-06T05:30:00.000Z");
   events.push(
-    { kind: "prompt_hook_call", ts: new Date(tieAt - 250).toISOString(), session_id: "session-tie", status: "ok", hint_count: 1, latency_ms_total: 100 },
-    { kind: "prompt_hook_call", ts: new Date(tieAt + 250).toISOString(), session_id: "session-tie", status: "ok", hint_count: 2, latency_ms_total: 120 },
-    { kind: "prompt_hook_call", ts: new Date(tieAt).toISOString(), session_id: "session-tie", hook_version: "0.6.0-stub", status: "timeout", hint_count: 0, latency_ms_total: 500 },
+    {
+      kind: "prompt_hook_call",
+      ts: new Date(tieAt - 250).toISOString(),
+      session_id: "session-tie",
+      status: "ok",
+      hint_count: 1,
+      latency_ms_total: 100,
+    },
+    {
+      kind: "prompt_hook_call",
+      ts: new Date(tieAt + 250).toISOString(),
+      session_id: "session-tie",
+      status: "ok",
+      hint_count: 2,
+      latency_ms_total: 120,
+    },
+    {
+      kind: "prompt_hook_call",
+      ts: new Date(tieAt).toISOString(),
+      session_id: "session-tie",
+      hook_version: "0.6.0-stub",
+      status: "timeout",
+      hint_count: 0,
+      latency_ms_total: 500,
+    }
   );
 
   const expected = referenceFoldClientDuplicates(events);
@@ -140,7 +163,10 @@ test("#615: the indexed fold matches the pre-#615 nested-loop fold, ties include
 
   assert.equal(actual.folded, expected.folded);
   assert.deepEqual(actual.events, expected.events);
-  assert.ok(expected.folded > 200, "the generated set must actually exercise a lot of real folds, or this proves little");
+  assert.ok(
+    expected.folded > 200,
+    "the generated set must actually exercise a lot of real folds, or this proves little"
+  );
 
   const winner = actual.events.find((e) => e.session_id === "session-tie" && e.latency_ms_total === 100);
   assert.equal(winner?.status, "timeout", "the earlier row in `events` order must win the tie");
@@ -163,7 +189,7 @@ test("#615: 40,000 client rows fold against 40,000 daemon rows in well under 2s"
   // safety margin, not the claim; the claim is the ~96s-vs-~0.7s measurement.
   assert.ok(
     elapsedMs < 4000,
-    `indexed fold took ${elapsedMs.toFixed(0)}ms for 80,000 events — expected well under 2s (measured ~700ms on the reference host)`,
+    `indexed fold took ${elapsedMs.toFixed(0)}ms for 80,000 events — expected well under 2s (measured ~700ms on the reference host)`
   );
   assert.ok(folded > 30_000, "an ~85% pairing rate over 40,000 calls must fold most of them");
 });
@@ -174,7 +200,13 @@ test("#615: one dense session stays fast as its daemon rows are consumed", () =>
   const events: Array<Record<string, unknown>> = [];
   for (let i = 0; i < count; i++) {
     events.push({ kind: "prompt_hook_call", ts, session_id: "one-long-session", status: "ok", call: i });
-    events.push({ kind: "prompt_hook_call", ts, session_id: "one-long-session", hook_version: "0.6.0-stub", status: "timeout" });
+    events.push({
+      kind: "prompt_hook_call",
+      ts,
+      session_id: "one-long-session",
+      hook_version: "0.6.0-stub",
+      status: "timeout",
+    });
   }
   const start = performance.now();
   const result = foldClientDuplicates(events);
@@ -190,7 +222,13 @@ test("#731: equal earlier timestamps keep the reference loop's first-row tie bre
   const events: Array<Record<string, unknown>> = [
     { kind: "prompt_hook_call", ts: new Date(ts - 1).toISOString(), session_id: "dense-tie", status: "ok", order: 1 },
     { kind: "prompt_hook_call", ts: new Date(ts - 1).toISOString(), session_id: "dense-tie", status: "ok", order: 2 },
-    { kind: "prompt_hook_call", ts: new Date(ts).toISOString(), session_id: "dense-tie", hook_version: "0.6.0-stub", status: "timeout" },
+    {
+      kind: "prompt_hook_call",
+      ts: new Date(ts).toISOString(),
+      session_id: "dense-tie",
+      hook_version: "0.6.0-stub",
+      status: "timeout",
+    },
   ];
   const expected = referenceFoldClientDuplicates(events);
   const actual = foldClientDuplicates(events);

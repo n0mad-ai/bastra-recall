@@ -22,10 +22,16 @@ test("frontmatter reads and roundtrips stay byte-identical without loading the Y
       else if (path.endsWith(".md")) fixtures.push(path);
     }
   };
-  for (const dir of ["fixtures/sample-vault", "packages/eval/fixtures/eval-vault", "packages/eval/fixtures/eval-vault-de"]) walk(join(root, dir));
+  for (const dir of [
+    "fixtures/sample-vault",
+    "packages/eval/fixtures/eval-vault",
+    "packages/eval/fixtures/eval-vault-de",
+  ])
+    walk(join(root, dir));
   const load = Module._load;
   Module._load = function (request, ...args) {
-    if (request === "argparse" || request === "sprintf-js") throw new Error(`Frontmatter reached CLI dependency ${request}`);
+    if (request === "argparse" || request === "sprintf-js")
+      throw new Error(`Frontmatter reached CLI dependency ${request}`);
     return load.call(this, request, ...args);
   };
   try {

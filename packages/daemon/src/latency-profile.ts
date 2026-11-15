@@ -213,11 +213,7 @@ export function concurrencyBucket(inFlight: number): ConcurrencyBucket {
   return "4+";
 }
 
-export function bucketKey(
-  residency: Residency,
-  chars: number,
-  inFlight: number,
-): string {
+export function bucketKey(residency: Residency, chars: number, inFlight: number): string {
   return `${residency}|${lengthBucket(chars)}|${concurrencyBucket(inFlight)}`;
 }
 
@@ -269,13 +265,7 @@ export function bucketKey(
  *                       nicht. Genau diese beiden Dinge waren vor #493 eine
  *                       Zahl.
  */
-export type CapReason =
-  | "profile-empty"
-  | "lane-wall-clock"
-  | "lane-too-short"
-  | "floor"
-  | "max-deadline"
-  | "none";
+export type CapReason = "profile-empty" | "lane-wall-clock" | "lane-too-short" | "floor" | "max-deadline" | "none";
 
 export interface DerivedDeadline {
   /** Die Zahl, die gegolten HÄTTE. Ändert in diesem Auftrag nichts. `0` heißt
@@ -493,7 +483,7 @@ export function createLatencyProfile(opts: LatencyProfileOptions = {}): LatencyP
         // Laut, aber überlebt — dieselbe Politik wie `floors.json`: Die nächste
         // Stichprobe schreibt die Datei neu.
         process.stderr.write(
-          `[bastra-recall] latency-profile.json is corrupt (${(e as Error).message}) — starting a fresh profile. ${path}\n`,
+          `[bastra-recall] latency-profile.json is corrupt (${(e as Error).message}) — starting a fresh profile. ${path}\n`
         );
         return;
       }
@@ -507,8 +497,7 @@ export function createLatencyProfile(opts: LatencyProfileOptions = {}): LatencyP
           if (!Array.isArray(samples)) continue;
           const clean = samples.filter(
             (s): s is StoredSample =>
-              Array.isArray(s) && s.length === 2 &&
-              Number.isFinite(s[0]) && Number.isFinite(s[1]) && s[1] >= 0,
+              Array.isArray(s) && s.length === 2 && Number.isFinite(s[0]) && Number.isFinite(s[1]) && s[1] >= 0
           );
           if (clean.length > 0) buckets.set(bucket, clean.slice(-SAMPLES_PER_BUCKET));
         }
@@ -541,8 +530,7 @@ export function createLatencyProfile(opts: LatencyProfileOptions = {}): LatencyP
       // `lane-too-short` in {@link CapReason}. Der Arm selbst ist zu diesem
       // Zeitpunkt schon unterwegs. Einmal oben festgestellt, weil beide
       // Ausgänge unten (leeres Profil und die Deckelung) daran hängen.
-      const laneTooShort =
-        Number.isFinite(input.laneRemainingMs) && input.laneRemainingMs < MIN_DEADLINE_MS;
+      const laneTooShort = Number.isFinite(input.laneRemainingMs) && input.laneRemainingMs < MIN_DEADLINE_MS;
       const buckets = profiles.get(input.key);
       let values = fresh(buckets?.get(bk));
       let basis: DerivedDeadline["basis"] = "bucket";
@@ -698,10 +686,7 @@ export interface DeadlineShadow {
  * Der Wrapper liegt INNERHALB des Breakers (`index.ts`): Ein Call, den der
  * Breaker gar nicht erst durchlässt, beschäftigt den Provider nicht.
  */
-export function countingProvider(
-  inner: EmbeddingProvider,
-  profile: LatencyProfile,
-): EmbeddingProvider {
+export function countingProvider(inner: EmbeddingProvider, profile: LatencyProfile): EmbeddingProvider {
   const count = async <T>(texts: string[], run: () => Promise<T>): Promise<T> => {
     // Ein leerer Batch geht ohne Providerkontakt zurück (siehe
     // `BreakerGuardedProvider`) — er ist keine Providerarbeit.

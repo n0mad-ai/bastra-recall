@@ -120,7 +120,7 @@ export async function cmdInstallExtension(args: ParsedArgs): Promise<number> {
     process.stdout.write(
       `~ would install the skill, locate bastra-recall-${version}.mcpb (local build → release asset → ` +
         `latest release), offer to remove an existing config registration, and open the bundle in ` +
-        `Claude Desktop (dry-run)\n`,
+        `Claude Desktop (dry-run)\n`
     );
     return 0;
   }
@@ -155,7 +155,7 @@ export async function cmdInstallExtension(args: ParsedArgs): Promise<number> {
       process.stderr.write(
         "✗ could not fetch a .mcpb bundle from GitHub releases — build one locally with\n" +
           "  `npm run build:mcpb:local --workspace=@bastra-recall/daemon` and re-run, or use the\n" +
-          "  config install instead: bastra install claude-desktop\n",
+          "  config install instead: bastra install claude-desktop\n"
       );
       return 1;
     }
@@ -177,7 +177,7 @@ export async function cmdInstallExtension(args: ParsedArgs): Promise<number> {
     } else {
       process.stdout.write(
         "  · keeping the config-file registration — expect the tools twice until you remove one\n" +
-          "    (bastra uninstall claude-desktop)\n",
+          "    (bastra uninstall claude-desktop)\n"
       );
     }
   }
@@ -188,7 +188,7 @@ export async function cmdInstallExtension(args: ParsedArgs): Promise<number> {
     `✓ handed ${mcpbPath} to Claude Desktop\n` +
       `  Click "Install" in the Desktop dialog and pick your vault folder.\n` +
       `  Then make Desktop use memory on its own (2 min): ` +
-      `https://github.com/${REPO}/wiki/Claude-Desktop\n`,
+      `https://github.com/${REPO}/wiki/Claude-Desktop\n`
   );
   return 0;
 }

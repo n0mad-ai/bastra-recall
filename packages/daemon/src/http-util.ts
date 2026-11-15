@@ -29,11 +29,7 @@ export function writeSseEvent(res: ServerResponse, event: string, data: unknown)
 
 // ─── helpers ─────────────────────────────────────────────────────
 
-export function sendCors(
-  res: ServerResponse,
-  origin: string | null,
-  opts?: { allowPrivateNetwork?: boolean },
-): void {
+export function sendCors(res: ServerResponse, origin: string | null, opts?: { allowPrivateNetwork?: boolean }): void {
   // Nur spiegeln, wenn die Origin erlaubt ist (null = nicht erlaubt → kein
   // ACAO-Header, der Browser blockt die Response selbst). Vary: Origin, damit
   // Caches/Proxies die per-Origin-Antwort nicht über Origins hinweg vermischen.
@@ -42,10 +38,7 @@ export function sendCors(
     res.setHeader("Vary", "Origin");
   }
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Bastra-Task-Authorization",
-  );
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Bastra-Task-Authorization");
   res.setHeader("Access-Control-Max-Age", "600");
   // Private Network Access: Chrome verlangt bei einem Preflight von öffentlicher
   // HTTPS-Origin auf eine private/localhost-Ressource diesen Antwort-Header,
@@ -84,10 +77,7 @@ export function sendJson(res: ServerResponse, status: number, body: unknown): vo
  * normal JSON error, and the caller learns that the body was too long instead
  * of that the daemon was gone.
  */
-export function readJsonBody(
-  req: IncomingMessage,
-  maxBytes: number,
-): Promise<Record<string, unknown>> {
+export function readJsonBody(req: IncomingMessage, maxBytes: number): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     let total = 0;
     let refused = false;
@@ -102,8 +92,8 @@ export function readJsonBody(
           new Error(
             `body too large: over ${maxBytes} bytes. Nothing was saved or changed. ` +
               `This is a size limit, not a transport or daemon failure — shorten the payload ` +
-              `(a shorter body, fewer array entries, or several smaller saves) and try once more.`,
-          ),
+              `(a shorter body, fewer array entries, or several smaller saves) and try once more.`
+          )
         );
         return;
       }
@@ -124,12 +114,7 @@ export function readJsonBody(
   });
 }
 
-export function clampInt(
-  raw: unknown,
-  min: number,
-  max: number,
-  fallback: number,
-): number {
+export function clampInt(raw: unknown, min: number, max: number, fallback: number): number {
   if (typeof raw !== "number" || !Number.isFinite(raw)) return fallback;
   const i = Math.round(raw);
   return Math.min(max, Math.max(min, i));

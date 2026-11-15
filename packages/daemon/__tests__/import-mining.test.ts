@@ -61,7 +61,10 @@ test("parseConversationExport: ChatGPT mapping tree — user turns only, in time
           message: {
             author: { role: "user" },
             create_time: 1750000010,
-            content: { content_type: "multimodal_text", parts: [{ asset: "img" }, "I prefer dark mode in every tool I use daily"] },
+            content: {
+              content_type: "multimodal_text",
+              parts: [{ asset: "img" }, "I prefer dark mode in every tool I use daily"],
+            },
           },
         },
         c: {
@@ -95,7 +98,11 @@ test("parseConversationExport: Claude chat_messages — human only, content-arra
       chat_messages: [
         { sender: "human", text: "Let us keep the daemon on port 6723 for every install" },
         { sender: "assistant", text: "Noted — 6723 it is, I will pin that for you." },
-        { sender: "human", text: "", content: [{ type: "text", text: "Also: never auto-save memories without my accept" }] },
+        {
+          sender: "human",
+          text: "",
+          content: [{ type: "text", text: "Also: never auto-save memories without my accept" }],
+        },
       ],
     },
   ]);
@@ -191,20 +198,20 @@ test("#529: overlapping buildQueue writers keep every conversation and report du
   try {
     const writers = 40;
     const results = await Promise.all(
-      Array.from({ length: writers }, (_, i) => buildQueue([rec(`conv ${i}`, "2026-03-01", 40, 1)], dir)),
+      Array.from({ length: writers }, (_, i) => buildQueue([rec(`conv ${i}`, "2026-03-01", 40, 1)], dir))
     );
     assert.equal(
       results.reduce((n, r) => n + r.queued, 0),
-      writers,
+      writers
     );
     assert.deepEqual(await queueStatus(dir), { total: writers, remaining: writers });
 
     // The union is on disk, not just in the counts: every title is there once.
     const titles = new Set(
-      (readAppRecord("import-queue", join(dir, QUEUE_FILE)))
+      readAppRecord("import-queue", join(dir, QUEUE_FILE))
         .split("\n")
         .filter((l) => l.trim())
-        .map((l) => (JSON.parse(l) as ConversationRecord).title),
+        .map((l) => (JSON.parse(l) as ConversationRecord).title)
     );
     assert.equal(titles.size, writers);
   } finally {

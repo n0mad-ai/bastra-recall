@@ -23,35 +23,88 @@ interface ToolDef {
 /** Read tools: no vault mutation, safe to run unsupervised. */
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false } as const;
 
-import {VALIDATOR_INPUT,RULE_CATEGORIES_INPUT,RULEBOOK_INPUT,APPLIES_WHEN_INPUT,RULEBOOK_PROPOSED_INPUT} from './tool-defs-rulebook.js';
+import {
+  VALIDATOR_INPUT,
+  RULE_CATEGORIES_INPUT,
+  RULEBOOK_INPUT,
+  APPLIES_WHEN_INPUT,
+  RULEBOOK_PROPOSED_INPUT,
+} from "./tool-defs-rulebook.js";
 
 export const MEMORY_TOOL_DEFS: ToolDef[] = [
   {
-    name: "rulebook_check", annotations: READ_ONLY,
-    description: "Record an honest self-report that you checked the rulebook index for this round. Read applicable rules with load_memory first. " +
+    name: "rulebook_check",
+    annotations: READ_ONLY,
+    description:
+      "Record an honest self-report that you checked the rulebook index for this round. Read applicable rules with load_memory first. " +
       "Pass applicable: [IDs] or applicable: [] when none applies. No approval, full-catalog receipt or action binding required. " +
       "Valid only for the caller session, current context and round; subagents use their own agent_id. " +
       "When transport attribution is missing, session_id must be the exact hook session. Missing actor IDs default to main; callers must supply their worker agent_id. A Claude subagent that omits its ID cannot be distinguished from main. " +
       "task optionally reports the workflow stage: translate-only, draft-for-review, approved-copy or none. Only this explicit main-agent report creates, changes or ends the stage; prompt wording never does. This is a self-report, may be wrong and does not prove user approval or permission to send. Fences and quotes are size-checked in every stage when validators apply. Ordinary prose is checked only in reported approved-copy, and only in the final assistant text. Unmarked long final prose without approved-copy is not measured (#1351). A validation receipt is required for approved-copy; receipts remain task/generation-bound, not proof of later delivered bytes (#1325). " +
-      "When the current round actually handles correspondence (reported stage, structurally measured copy under an applied validator, or a native external message/draft tool call), every correspondence rule (validator or correspondence category) needs an explicit current-round decision: applicable IDs, actual full loads, or not_applicable entries with at least 10 substantive characters for each remaining ID. An empty applicable list alone is insufficient. One call can declare every unprotected correspondence rule using not_applicable:[{category:\"correspondence\",reason}]. Rules loaded/declared applicable in this round cannot be dismissed. Prior-round task bindings, loads and reflexes can be dismissed in later rounds; a retained stage does not replace the current round declaration. Category exceptions exclude current-round protected rules and all concrete action-required IDs. Only an exact {id,reason} exception can discharge an action-required ID. Explicit attempts are ignored and counted as violations; other valid declarations in the same check are retained. Declared validators also check oversized fenced/quoted copy without a task; no approval is inferred. Codex records violations only, without same-turn length repair. Concrete action-required IDs cannot be discharged by applicable:[] or by listing IDs. Load each exact rule with load_memory. Alternatively provide not_applicable:[{id,reason}] for the exact outstanding ID; the reason is audited and counted as a visible exception. " +
+      'When the current round actually handles correspondence (reported stage, structurally measured copy under an applied validator, or a native external message/draft tool call), every correspondence rule (validator or correspondence category) needs an explicit current-round decision: applicable IDs, actual full loads, or not_applicable entries with at least 10 substantive characters for each remaining ID. An empty applicable list alone is insufficient. One call can declare every unprotected correspondence rule using not_applicable:[{category:"correspondence",reason}]. Rules loaded/declared applicable in this round cannot be dismissed. Prior-round task bindings, loads and reflexes can be dismissed in later rounds; a retained stage does not replace the current round declaration. Category exceptions exclude current-round protected rules and all concrete action-required IDs. Only an exact {id,reason} exception can discharge an action-required ID. Explicit attempts are ignored and counted as violations; other valid declarations in the same check are retained. Declared validators also check oversized fenced/quoted copy without a task; no approval is inferred. Codex records violations only, without same-turn length repair. Concrete action-required IDs cannot be discharged by applicable:[] or by listing IDs. Load each exact rule with load_memory. Alternatively provide not_applicable:[{id,reason}] for the exact outstanding ID; the reason is audited and counted as a visible exception. ' +
       "Non-applicability exceptions expire at the next user round; actual full loads and pending action obligations retain their own lifecycle. " +
       "Workers omit task. Hookless clients remain advisory; self-reports do not attest user approval or authorize sending.",
-    inputSchema: { type: "object", additionalProperties: false, required: ["applicable"], properties: {
-      applicable: { type: "array", maxItems: 10000, items: { type: "string", minLength: 1 } },
-      not_applicable: {type:"array",maxItems:10000,items:{anyOf:[{type:"object",additionalProperties:false,properties:{id:{type:"string",minLength:1,maxLength:2048},reason:{type:"string",minLength:10,maxLength:500}},required:["id","reason"]},{type:"object",additionalProperties:false,properties:{category:{type:"string",enum:["correspondence"]},reason:{type:"string",minLength:10,maxLength:500}},required:["category","reason"]}]}},
-      task: { type: "string", enum: ["translate-only", "draft-for-review", "approved-copy", "none"] },
-      agent_id: { type: "string", minLength: 1, maxLength: 200 }, session_id: { type: "string", minLength: 1, maxLength: 200 }
-    } },
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["applicable"],
+      properties: {
+        applicable: { type: "array", maxItems: 10000, items: { type: "string", minLength: 1 } },
+        not_applicable: {
+          type: "array",
+          maxItems: 10000,
+          items: {
+            anyOf: [
+              {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  id: { type: "string", minLength: 1, maxLength: 2048 },
+                  reason: { type: "string", minLength: 10, maxLength: 500 },
+                },
+                required: ["id", "reason"],
+              },
+              {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  category: { type: "string", enum: ["correspondence"] },
+                  reason: { type: "string", minLength: 10, maxLength: 500 },
+                },
+                required: ["category", "reason"],
+              },
+            ],
+          },
+        },
+        task: { type: "string", enum: ["translate-only", "draft-for-review", "approved-copy", "none"] },
+        agent_id: { type: "string", minLength: 1, maxLength: 200 },
+        session_id: { type: "string", minLength: 1, maxLength: 200 },
+      },
+    },
   },
   {
-    name: "list_rules", annotations: READ_ONLY,
-    description: "Read the complete scoped rulebook catalog without search or relevance filtering. " +
+    name: "list_rules",
+    annotations: READ_ONLY,
+    description:
+      "Read the complete scoped rulebook catalog without search or relevance filtering. " +
       "Returns total, catalog_hash, rule IDs/titles/applies_when, next_cursor and an explicit end marker. " +
       "Continue with the returned cursor until end=true. A changed catalog restarts at page one with restarted=true. " +
       "Descriptions are facts; decide applicability yourself and read bodies with load_memory(id). " +
       "Unconfirmed legacy candidates are counted, never silently promoted. Set proposals:true to list pending proposals in the same scope; load_memory(id) gives the complete proposed text and current revision. No write or approval is involved.",
-    inputSchema: { type: "object", properties: { proposals: { type: "boolean", description: "List pending proposals instead of binding rules. Continue with proposals:true on every page." }, cursor: { type: "string", maxLength: 2048,
-      description: "Opaque next_cursor from the preceding page or rulebook hook; omit for the first page." } } },
+    inputSchema: {
+      type: "object",
+      properties: {
+        proposals: {
+          type: "boolean",
+          description: "List pending proposals instead of binding rules. Continue with proposals:true on every page.",
+        },
+        cursor: {
+          type: "string",
+          maxLength: 2048,
+          description: "Opaque next_cursor from the preceding page or rulebook hook; omit for the first page.",
+        },
+      },
+    },
   },
   {
     name: "recall",
@@ -75,12 +128,12 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "WHAT TO DO WITH HITS:\n" +
       "READ `score_kind` FIRST — the bands below only exist on the fused " +
       "scale.\n" +
-      "- `score_kind: \"rrf\"` (fused rank sum, bounded): score >= ~100 with " +
+      '- `score_kind: "rrf"` (fused rank sum, bounded): score >= ~100 with ' +
       "title/recall_when match: load_memory and apply the lesson before " +
       "acting. score 30-100: read the summary, load if directly relevant. " +
       "score < 30: usually noise; skip unless the summary is a perfect " +
       "topic match.\n" +
-      "- `score_kind: \"bm25\"` (also flagged `unfused: true`): the vector " +
+      '- `score_kind: "bm25"` (also flagged `unfused: true`): the vector ' +
       "arm did not run — no embedding model, a cold-start timeout, or an " +
       "open circuit breaker (`degraded` names which). These are raw " +
       "MiniSearch scores on an OPEN scale — six figures on a real vault — " +
@@ -91,11 +144,11 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "Two scores are comparable only within the same `score_arms` (and the " +
       "same `score_version`): the fused scale reaches 163.934 with the two " +
       "personal arms and 241.803 once the Bastra Commons contribute a third. " +
-      "Under `score_version: \"rrf-2\"` rank 1 in both arms is 163.934, rank " +
+      'Under `score_version: "rrf-2"` rank 1 in both arms is 163.934, rank ' +
       "1 in the BM25 arm only ≈ 65.6, in the vector arm only ≈ 98.4 " +
       "(`rrf-1`: 81.967 for either). " +
       "A batch response whose phrasings disagreed on that reports " +
-      "`merged_by: \"query-rank-fusion\"` and drops back to `unfused` — its " +
+      '`merged_by: "query-rank-fusion"` and drops back to `unfused` — its ' +
       "order is meaningful, its numbers are not a band.\n" +
       "On the hybrid (BM25 + vector) path the score is a scaled rank sum, " +
       "not a similarity — a top hit is high by construction. When the " +
@@ -160,15 +213,11 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         },
         scope: {
           type: "string",
-          description:
-            "Optional exact-match filter, e.g. 'carnexus', " +
-            "'user-preference', 'all-projects'.",
+          description: "Optional exact-match filter, e.g. 'carnexus', " + "'user-preference', 'all-projects'.",
         },
         type: {
           type: "string",
-          description:
-            "Optional exact-match filter on memory type, e.g. 'lesson', " +
-            "'preference', 'project-fact'.",
+          description: "Optional exact-match filter on memory type, e.g. 'lesson', " + "'preference', 'project-fact'.",
         },
         verbosity: {
           type: "string",
@@ -211,8 +260,8 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
     inputSchema: {
       type: "object",
       properties: {
-        session_id:{type:"string",minLength:1,maxLength:200},
-        agent_id:{type:"string",minLength:1,maxLength:200},
+        session_id: { type: "string", minLength: 1, maxLength: 200 },
+        agent_id: { type: "string", minLength: 1, maxLength: 200 },
         id: {
           type: "string",
           description: "Memory id (the slug, no .md extension).",
@@ -394,8 +443,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         topic_path: {
           type: "array",
           items: { type: "string" },
-          description:
-            "Hierarchical topic path, e.g. ['bastra-recall','search','ranking'].",
+          description: "Hierarchical topic path, e.g. ['bastra-recall','search','ranking'].",
         },
         tags: {
           type: "array",
@@ -432,7 +480,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
             "Name the situation, not the content.",
         },
         rulebook: RULEBOOK_INPUT,
-            rule_categories: RULE_CATEGORIES_INPUT,
+        rule_categories: RULE_CATEGORIES_INPUT,
         applies_when: APPLIES_WHEN_INPUT,
         rulebook_proposed: RULEBOOK_PROPOSED_INPUT,
         validator: VALIDATOR_INPUT,
@@ -545,8 +593,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         },
         valid_until: {
           type: "string",
-          description:
-            "Explizites Ablaufdatum (YYYY-MM-DD). Überschreibt expires_after_days.",
+          description: "Explizites Ablaufdatum (YYYY-MM-DD). Überschreibt expires_after_days.",
         },
         expires_after_days: {
           type: "number",
@@ -556,30 +603,25 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         },
         last_reviewed_at: {
           type: "string",
-          description:
-            "ISO-Datum des letzten 'noch aktuell'-Checks. Resetet Staleness.",
+          description: "ISO-Datum des letzten 'noch aktuell'-Checks. Resetet Staleness.",
         },
         affects_files: {
           type: "array",
           items: { type: "string" },
-          description:
-            "Optionale Liste von Repo-Pfaden, die diese Lesson/Decision betrifft.",
+          description: "Optionale Liste von Repo-Pfaden, die diese Lesson/Decision betrifft.",
         },
         issues: {
           type: "array",
           items: { type: "string" },
-          description:
-            "Optionale Liste verknüpfter Issue-IDs (z.B. '#42').",
+          description: "Optionale Liste verknüpfter Issue-IDs (z.B. '#42').",
         },
         source: {
           type: "string",
-          description:
-            "Optional provenance, e.g. 'the user, 2026-05-01 after retro'.",
+          description: "Optional provenance, e.g. 'the user, 2026-05-01 after retro'.",
         },
         confidence: {
           type: "number",
-          description:
-            "0-1, default 1. Lower if the lesson is tentative.",
+          description: "0-1, default 1. Lower if the lesson is tentative.",
         },
         salience: {
           type: "number",
@@ -611,14 +653,12 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         },
         id: {
           type: "string",
-          description:
-            "Optional explicit id/slug. Default: slugified title.",
+          description: "Optional explicit id/slug. Default: slugified title.",
         },
         overwrite: {
           type: "boolean",
           description:
-            "If true, replace an existing memory with the same id. " +
-            "Default false (errors on collision).",
+            "If true, replace an existing memory with the same id. " + "Default false (errors on collision).",
         },
         write_origin: {
           type: "string",
@@ -638,16 +678,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
             "Optional: the last ~40 characters of `body`, copied verbatim — if the body arrives truncated the save fails with nothing written (#544).",
         },
       },
-      required: [
-        "title",
-        "type",
-        "summary",
-        "body",
-        "topic_path",
-        "tags",
-        "scope",
-        "recall_when",
-      ],
+      required: ["title", "type", "summary", "body", "topic_path", "tags", "scope", "recall_when"],
     },
   },
   {
@@ -746,9 +777,15 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
           },
         },
         rulebook_decision: {
-          type: "object", additionalProperties: false, required: ["decision", "write_origin"],
-          properties: { decision: { type: "string", enum: ["accept", "reject"] }, write_origin: { type: "string", enum: ["user-directed"] } },
-          description: "The user's explicit decision on the exact proposal loaded. Requires expected_revision. Never infer consent or accept your own proposal. Legacy archive:true proposals use archive_memory separately.",
+          type: "object",
+          additionalProperties: false,
+          required: ["decision", "write_origin"],
+          properties: {
+            decision: { type: "string", enum: ["accept", "reject"] },
+            write_origin: { type: "string", enum: ["user-directed"] },
+          },
+          description:
+            "The user's explicit decision on the exact proposal loaded. Requires expected_revision. Never infer consent or accept your own proposal. Legacy archive:true proposals use archive_memory separately.",
         },
         expected_revision: {
           type: "string",
@@ -769,7 +806,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "delete). This is the closing step of INTAKE ADOPTION: after an " +
       "imported intake memory has been converted into a full-format memory " +
       "(save_memory with real type/scope/recall_when and source: " +
-      "\"migrated:<label>:<original-id>\"), archive the original so the " +
+      '"migrated:<label>:<original-id>"), archive the original so the ' +
       "intake area shrinks and the vault holds ONE canonical version. " +
       "Pass superseded_by with the new memory's id — it is stamped into " +
       "the archived copy so the adoption stays auditable from both sides. " +

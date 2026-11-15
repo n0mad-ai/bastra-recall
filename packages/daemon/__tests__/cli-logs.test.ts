@@ -91,7 +91,14 @@ test("#565: a hook_reflex row with a near-miss trace still renders", () => {
     ts: "x",
     served: [],
     near_miss: [
-      { id: "nachrichtenkonvention", phrase: "Antwort an zzalli", reason: "tokens-missing", matched_tokens: 1, phrase_tokens: 2, missing_tokens: ["antwort"] },
+      {
+        id: "nachrichtenkonvention",
+        phrase: "Antwort an zzalli",
+        reason: "tokens-missing",
+        matched_tokens: 1,
+        phrase_tokens: 2,
+        missing_tokens: ["antwort"],
+      },
     ],
     latency_ms: 3,
   });

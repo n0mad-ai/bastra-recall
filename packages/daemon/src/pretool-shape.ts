@@ -90,7 +90,7 @@ export function formatCompactHint(
   hit: ShapeHit,
   project: string | null,
   surface: string,
-  reason: "first-touch" | "binding-anchored",
+  reason: "first-touch" | "binding-anchored"
 ): string {
   const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
   const head = `<recall-hints surface="${escapeAttr(surface)}" trigger="${reason}"${projAttr}>`;
@@ -99,8 +99,7 @@ export function formatCompactHint(
     reason === "first-touch"
       ? "First edit in this area this session — one vault candidate that may bear on it (a pointer, not the rule; load_memory(id) for the full body):"
       : "A rule whose own trigger matched this edit — load_memory(id) for the full body:";
-  const render = (line: string) =>
-    [head, HINT_FRAME_NOTE, stripFenceMarkers(`${headline}\n${line}`), tail].join("\n");
+  const render = (line: string) => [head, HINT_FRAME_NOTE, stripFenceMarkers(`${headline}\n${line}`), tail].join("\n");
   const title = hit.title.length > TITLE_MAX ? hit.title.slice(0, TITLE_MAX - 1) + "…" : hit.title;
   const base = `- ${hit.id} (${hit.type}): ${title}`;
   const rule = ruleLine(hit.summary, RULE_LINE_MAX);

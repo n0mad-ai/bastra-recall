@@ -23,9 +23,7 @@ interface TranscriptEntry {
 }
 
 export class CacheTimerProvider {
-  async getCacheTimerInfo(
-    hookData: ClaudeHookData,
-  ): Promise<CacheTimerInfo | null> {
+  async getCacheTimerInfo(hookData: ClaudeHookData): Promise<CacheTimerInfo | null> {
     const path = hookData?.transcript_path;
     if (!path) {
       debug("CacheTimer: no transcript_path in hookData");
@@ -33,17 +31,11 @@ export class CacheTimerProvider {
     }
 
     const lines = await this.readTranscriptLines(path);
-    const anchor =
-      (lines && this.lastUserTimestamp(lines)) ?? (await this.fileMtime(path));
+    const anchor = (lines && this.lastUserTimestamp(lines)) ?? (await this.fileMtime(path));
     if (anchor === null) return null;
 
-    const elapsedSeconds = Math.max(
-      0,
-      Math.floor((Date.now() - anchor) / 1000),
-    );
-    const detectedTtlSeconds = lines
-      ? (this.detectTtlSeconds(lines) ?? undefined)
-      : undefined;
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - anchor) / 1000));
+    const detectedTtlSeconds = lines ? (this.detectTtlSeconds(lines) ?? undefined) : undefined;
     return { elapsedSeconds, detectedTtlSeconds };
   }
 
@@ -63,8 +55,7 @@ export class CacheTimerProvider {
       if (!line) continue;
       try {
         const entry = JSON.parse(line) as TranscriptEntry;
-        const messageType =
-          entry.type || entry.message?.role || entry.message?.type;
+        const messageType = entry.type || entry.message?.role || entry.message?.type;
         if (messageType !== "user") continue;
         if (!entry.timestamp) continue;
         const t = Date.parse(entry.timestamp);

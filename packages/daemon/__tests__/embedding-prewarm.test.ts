@@ -15,11 +15,7 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  createEmbeddingPrewarmer,
-  PREWARM_DEBOUNCE_MS,
-  type PrewarmOutcome,
-} from "../src/embedding-prewarm.js";
+import { createEmbeddingPrewarmer, PREWARM_DEBOUNCE_MS, type PrewarmOutcome } from "../src/embedding-prewarm.js";
 import { runPromptLane } from "../src/prompt-lane.js";
 
 // ─── pure: gate, debounce, error containment ─────────────────────────────
@@ -239,15 +235,13 @@ test("lane — a warm call that never resolves does not delay the response", asy
   });
 
   try {
-    const stdout = await withEnv(
-      { BASTRA_TELEMETRY: "off" },
-      () =>
-        runPromptLane(
-          { hook_event_name: "UserPromptSubmit", prompt: "lass uns das implementieren", cwd: process.cwd() },
-          null,
-          `http://127.0.0.1:${daemon.port}`,
-          prewarm,
-        ),
+    const stdout = await withEnv({ BASTRA_TELEMETRY: "off" }, () =>
+      runPromptLane(
+        { hook_event_name: "UserPromptSubmit", prompt: "lass uns das implementieren", cwd: process.cwd() },
+        null,
+        `http://127.0.0.1:${daemon.port}`,
+        prewarm
+      )
     );
     assert.equal(stdout.trim(), "{}");
     assert.equal(warmSettled, false, "the lane returned while the warm call was still in flight");
@@ -282,7 +276,7 @@ test("lane — the outcome lands on prompt_hook_call, gated prompts included", a
         { hook_event_name: "UserPromptSubmit", prompt: "/review", cwd: process.cwd() },
         null,
         `http://127.0.0.1:${daemon.port}`,
-        traced,
+        traced
       );
       assert.equal(stdout.trim(), "{}");
     });
@@ -307,7 +301,7 @@ test("lane — the outcome lands on prompt_hook_call, gated prompts included", a
         { hook_event_name: "UserPromptSubmit", prompt: "refactor the daemon please", cwd: process.cwd() },
         null,
         `http://127.0.0.1:${daemon2.port}`,
-        traced,
+        traced
       );
     });
     const event = await readPromptEvent(logDir2);
@@ -327,7 +321,7 @@ test("lane — no prewarmer wired: the field stays absent, the lane is unchanged
       const stdout = await runPromptLane(
         { hook_event_name: "UserPromptSubmit", prompt: "refactor the daemon please", cwd: process.cwd() },
         null,
-        `http://127.0.0.1:${daemon.port}`,
+        `http://127.0.0.1:${daemon.port}`
       );
       assert.equal(stdout.trim(), "{}");
     });
@@ -351,7 +345,7 @@ test("lane — a non-UserPromptSubmit payload never warms", async () => {
     { hook_event_name: "PreToolUse", prompt: "such mal meinen Strafzettel" },
     null,
     "http://127.0.0.1:1",
-    prewarm,
+    prewarm
   );
   assert.equal(stdout.trim(), "{}");
   assert.equal(calls, 0, "no turn started — nothing to warm");

@@ -23,7 +23,9 @@ export function parseRecord(line: string): Record<string, unknown> | null {
   if (!line.trim()) return null;
   try {
     const parsed: unknown = JSON.parse(line);
-    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
   } catch {
     return null;
   }
@@ -62,7 +64,10 @@ export function transcriptSession(jsonl: string, fileName: string): string {
 /** The text parts of a user record, or null when it is a tool result. */
 function textParts(content: unknown): string[] | null {
   if (typeof content === "string") return [content];
-  if (!Array.isArray(content) || content.some((part) => typeof part === "object" && part !== null && "tool_use_id" in part)) {
+  if (
+    !Array.isArray(content) ||
+    content.some((part) => typeof part === "object" && part !== null && "tool_use_id" in part)
+  ) {
     return null;
   }
   return content
@@ -137,8 +142,9 @@ function userTurn(record: Record<string, unknown>): UserTurn {
 function toolUses(record: Record<string, unknown>): ToolUse[] {
   const content = (record.message as { content?: unknown } | undefined)?.content;
   if (!Array.isArray(content)) return [];
-  return content.filter((part): part is ToolUse & { type: "tool_use" } =>
-    typeof part === "object" && part !== null && (part as { type?: unknown }).type === "tool_use",
+  return content.filter(
+    (part): part is ToolUse & { type: "tool_use" } =>
+      typeof part === "object" && part !== null && (part as { type?: unknown }).type === "tool_use"
   );
 }
 
@@ -150,7 +156,9 @@ function isEvidenceRead(tool: ToolUse): boolean {
   // Same MCP-prefix rule as `isRecall`: a real transcript names the tool
   // `mcp__bastra-recall__find_document`, never the bare name. Tool names are
   // identifiers, matched in the case the client writes them.
-  return typeof tool.name === "string" && /(?:^|__)(Read|Glob|Grep|Search|find_document|read_document)$/.test(tool.name);
+  return (
+    typeof tool.name === "string" && /(?:^|__)(Read|Glob|Grep|Search|find_document|read_document)$/.test(tool.name)
+  );
 }
 
 function sourceRef(tool: ToolUse): string | null {
@@ -178,10 +186,12 @@ function resultText(part: Record<string, unknown>): string | null {
 function matchingResults(record: Record<string, unknown>, toolIds: Set<string>): Record<string, unknown>[] {
   const content = (record.message as { content?: unknown } | undefined)?.content;
   if (!Array.isArray(content)) return [];
-  return content.filter((part): part is Record<string, unknown> =>
-    typeof part === "object" && part !== null &&
-    typeof (part as { tool_use_id?: unknown }).tool_use_id === "string" &&
-    toolIds.has((part as { tool_use_id: string }).tool_use_id),
+  return content.filter(
+    (part): part is Record<string, unknown> =>
+      typeof part === "object" &&
+      part !== null &&
+      typeof (part as { tool_use_id?: unknown }).tool_use_id === "string" &&
+      toolIds.has((part as { tool_use_id: string }).tool_use_id)
   );
 }
 
@@ -211,7 +221,9 @@ function leadingJsonObject(text: string): Record<string, unknown> | null {
       if (depth === 0) {
         try {
           const parsed: unknown = JSON.parse(text.slice(start, index + 1));
-          return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+          return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+            ? (parsed as Record<string, unknown>)
+            : null;
         } catch {
           return null;
         }
@@ -257,7 +269,6 @@ function readEnvelope(text: string | null): Envelope {
     servedIds,
   };
 }
-
 
 /**
  * The chain a raw session proves on its own: human intent, the Recall calls
@@ -322,8 +333,14 @@ function isBash(tool: ToolUse): boolean {
  */
 function evidenceOf(tool: ToolUse, cwd: string | null): ReviewedMissEvidence {
   const input = (tool.input && typeof tool.input === "object" ? tool.input : {}) as Record<string, unknown>;
-  if (isLoadMemory(tool) && typeof input.id === "string" && input.id) return { kind: "load-memory", memoryId: input.id };
-  if (typeof tool.name === "string" && /^Read$/.test(tool.name) && typeof input.file_path === "string" && input.file_path) {
+  if (isLoadMemory(tool) && typeof input.id === "string" && input.id)
+    return { kind: "load-memory", memoryId: input.id };
+  if (
+    typeof tool.name === "string" &&
+    /^Read$/.test(tool.name) &&
+    typeof input.file_path === "string" &&
+    input.file_path
+  ) {
     if (isAbsolute(input.file_path)) return { kind: "file-read", path: input.file_path };
     if (cwd !== null && isAbsolute(cwd)) return { kind: "file-read", path: resolve(cwd, input.file_path) };
   }
@@ -420,7 +437,11 @@ export interface RecallCallStats {
   withRecallId: number;
 }
 
-export function extractReviewedMissChains(jsonl: string, session: string, stats?: RecallCallStats): ReviewedMissChain[] {
+export function extractReviewedMissChains(
+  jsonl: string,
+  session: string,
+  stats?: RecallCallStats
+): ReviewedMissChain[] {
   const chains: ReviewedMissChain[] = [];
   let intent: string | null = null;
   /**
@@ -509,7 +530,15 @@ export function extractReviewedMissChains(jsonl: string, session: string, stats?
         // still waiting for one is joined, not replaced.
         if (pending === null || evidence !== null || opaque !== null) {
           close();
-          pending = { query: intent, toolIds: new Set(), resulted: new Set(), misses: 0, recallIds: [], servedIds: [], resultTs: null };
+          pending = {
+            query: intent,
+            toolIds: new Set(),
+            resulted: new Set(),
+            misses: 0,
+            recallIds: [],
+            servedIds: [],
+            resultTs: null,
+          };
         }
         if (typeof tool.id === "string") pending.toolIds.add(tool.id);
       } else if (resultSeen && (isEvidenceRead(tool) || isLoadMemory(tool)) && evidence === null) {
@@ -532,11 +561,12 @@ export function extractReviewedMissChains(jsonl: string, session: string, stats?
 
 /** The pathless v1 queue record: hashed identities, the redacted query, no payload. */
 export function toCandidate(chain: ReviewedMissChain): ReviewedMissCandidate {
-  const ref = chain.evidence.kind === "load-memory"
-    ? hash("id:" + chain.evidence.memoryId)
-    : chain.evidence.kind === "file-read" || chain.evidence.kind === "bash-read"
-      ? hash("file_path:" + chain.evidence.path)
-      : chain.evidence.sourceRef;
+  const ref =
+    chain.evidence.kind === "load-memory"
+      ? hash("id:" + chain.evidence.memoryId)
+      : chain.evidence.kind === "file-read" || chain.evidence.kind === "bash-read"
+        ? hash("file_path:" + chain.evidence.path)
+        : chain.evidence.sourceRef;
   return {
     kind: "reviewed-recall-miss-candidate/v1",
     status: chain.explicitMiss ? "candidate" : "needs-relevance-label",

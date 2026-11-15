@@ -3,22 +3,12 @@
  * Pfad-Auflösung, Sidecar-Veröffentlichung per Compare-and-Swap, Frontmatter
  * und Sidecar-Identität. Aus documents-write-handler.ts herausgelöst (#680).
  */
-import {
-  writeFile,
-  readFile,
-  unlink,
-  rename,
-  access,
-  link,
-} from "node:fs/promises";
+import { writeFile, readFile, unlink, rename, access, link } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join, resolve, sep } from "node:path";
 import matter from "gray-matter";
 import type { Vault } from "@bastra-recall/core";
-import {
-  assertInsideDir,
-  assertOwnSubdir,
-} from "@bastra-recall/core";
+import { assertInsideDir, assertOwnSubdir } from "@bastra-recall/core";
 import { scopeEquals } from "@bastra-recall/core/scope";
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -181,7 +171,7 @@ export async function publishSidecar(
     preimage: string | null;
     /** `undefined`: dieser Aufrufer kennt kein `force` (save, move). */
     force?: boolean;
-  },
+  }
 ): Promise<void> {
   const preimage = opts.preimage;
   /**
@@ -199,9 +189,7 @@ export async function publishSidecar(
           `was written here, so that edit is still intact. Read the document again ` +
           `(read_document ${opts.id}), redo your change on top of what you get, and ` +
           `write again` +
-          (opts.force === false
-            ? `. If you mean to discard the external edit, pass force=true.`
-            : `.`),
+          (opts.force === false ? `. If you mean to discard the external edit, pass force=true.` : `.`)
       );
     }
     // Auch spät gilt: `force` heißt „überschreib die fremde BEARBEITUNG", nie
@@ -215,7 +203,7 @@ export async function publishSidecar(
           (current === null ? ` — it is gone` : ``) +
           `. force overrides an external EDIT of this document, not a different file ` +
           `at its path. Move that file out of the way, or run without force to see ` +
-          `the conflict.`,
+          `the conflict.`
       );
     }
     return current;
@@ -234,7 +222,7 @@ export async function publishSidecar(
         if ((err as NodeJS.ErrnoException)?.code === "EEXIST") {
           throw new Error(
             `${path} was created by someone else during commit — nothing was written. ` +
-              `Read the document again (read_document ${opts.id}) and repeat the change.`,
+              `Read the document again (read_document ${opts.id}) and repeat the change.`
           );
         }
         throw err;
@@ -301,9 +289,7 @@ export function buildFrontmatter(args: {
   // [[<doc-id>]]-Cross-Links des RelatedEnrichers in Obsidian unauflösbar
   // und ein Klick legt eine leere Stray-Note an (#188).
   const existingAliases = args.aliases ?? [];
-  const aliases = existingAliases.includes(args.id)
-    ? existingAliases
-    : [...existingAliases, args.id];
+  const aliases = existingAliases.includes(args.id) ? existingAliases : [...existingAliases, args.id];
   return {
     id: args.id,
     title: args.title,
@@ -322,9 +308,7 @@ export function buildFrontmatter(args: {
     document_category: args.category,
     linked_file: args.linkedFile,
     folder_path: args.folderPath,
-    ...(args.injectionFlags && args.injectionFlags.length > 0
-      ? { injection_flags: args.injectionFlags }
-      : {}),
+    ...(args.injectionFlags && args.injectionFlags.length > 0 ? { injection_flags: args.injectionFlags } : {}),
   };
 }
 
@@ -372,10 +356,8 @@ export function isDocumentSidecar(fm: unknown, expectedId?: string): boolean {
   // Gefaltet über die zentrale Scope-Identität: ein von Hand auf
   // `scope: Documents` gesetztes Sidecar war sich mit `!==` selbst fremd —
   // der Hub verweigerte seinem eigenen Dokument Move und Recategorize.
-  if (typeof f.scope !== "string" || !scopeEquals(f.scope, "documents"))
-    return false;
-  if (typeof f.original_path !== "string" || f.original_path.length === 0)
-    return false;
+  if (typeof f.scope !== "string" || !scopeEquals(f.scope, "documents")) return false;
+  if (typeof f.original_path !== "string" || f.original_path.length === 0) return false;
   if (typeof f.folder_path !== "string") return false;
   if (isProductDoc(f)) return false;
   if (expectedId !== undefined && f.id !== expectedId) return false;
@@ -388,7 +370,7 @@ export function isDocumentSidecar(fm: unknown, expectedId?: string): boolean {
  * nicht kennt, sind die, die ein Metadaten-Patch nicht verlieren darf.
  */
 export async function readSidecarRaw(
-  path: string,
+  path: string
 ): Promise<{ data: Record<string, unknown>; body: string; raw: string }> {
   // `raw` ist nicht Dekoration: Genau diese Bytes sind das Preimage des
   // Compare-and-Swap in {@link publishSidecar}. Ein aus `data`/`body` neu
@@ -415,7 +397,7 @@ export async function readSidecarRaw(
  */
 export function patchSidecarFrontmatter(
   existing: Record<string, unknown>,
-  patch: Record<string, unknown>,
+  patch: Record<string, unknown>
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries({ ...existing, ...patch })) {
@@ -447,7 +429,7 @@ export function renderPatched(fm: Record<string, unknown>, body: string): string
  */
 export function metadataPatch(
   existing: Record<string, unknown>,
-  rebuilt: DocumentFrontmatter,
+  rebuilt: DocumentFrontmatter
 ): Record<string, unknown> {
   const patch: Record<string, unknown> = {
     id: rebuilt.id,
@@ -466,12 +448,7 @@ export function metadataPatch(
   if (rebuilt.injection_flags) patch.injection_flags = rebuilt.injection_flags;
   // Pflichtfelder, die ein hand-editiertes Sidecar verloren haben kann: der
   // Vault repariert sie beim Indexieren, die Datei kennt sie dann nicht.
-  for (const field of [
-    "summary",
-    "recall_when",
-    "created",
-    "confidence",
-  ] as const) {
+  for (const field of ["summary", "recall_when", "created", "confidence"] as const) {
     if (existing[field] === undefined) patch[field] = rebuilt[field];
   }
   return patch;
@@ -489,10 +466,7 @@ export function metadataPatch(
  * {@link metadataPatch} wie bei Recategorize/Move — er lässt genau diese
  * Felder in Ruhe.
  */
-export function savePatch(
-  existing: Record<string, unknown>,
-  rebuilt: DocumentFrontmatter,
-): Record<string, unknown> {
+export function savePatch(existing: Record<string, unknown>, rebuilt: DocumentFrontmatter): Record<string, unknown> {
   const patch = metadataPatch(existing, rebuilt);
   // Anders als ein Ordnerwechsel bringt der Save beides mit (oder hat es
   // oben aus dem Bestand übernommen) — in jedem Fall der gemeinte Wert.

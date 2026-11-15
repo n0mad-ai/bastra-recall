@@ -18,7 +18,12 @@ import { getUiEnabled } from "./settings.js";
 import { sendJsonPlain } from "./webui.js";
 import { logDirFor } from "./telemetry.js";
 import { resolveRetentionDays } from "./log-retention.js";
-import { buildTelemetryReport, readEventWindow, type ReportThresholds, type TelemetryReport } from "./telemetry-report.js";
+import {
+  buildTelemetryReport,
+  readEventWindow,
+  type ReportThresholds,
+  type TelemetryReport,
+} from "./telemetry-report.js";
 import { telemetryDayStore, type TelemetryDayStore } from "./telemetry-day-store.js";
 
 export const TELEMETRY_DEFAULT_DAYS = 7;
@@ -44,7 +49,7 @@ export async function handleUiTelemetry(
   _req: IncomingMessage,
   res: ServerResponse,
   url: string,
-  opts: { logDir?: string; settingsPath?: string; retentionDays?: number; store?: () => TelemetryDayStore } = {},
+  opts: { logDir?: string; settingsPath?: string; retentionDays?: number; store?: () => TelemetryDayStore } = {}
 ): Promise<void> {
   if (!(await getUiEnabled(opts.settingsPath))) {
     sendJsonPlain(res, 404, { error: "ui disabled" });

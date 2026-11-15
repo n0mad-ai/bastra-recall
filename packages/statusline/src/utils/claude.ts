@@ -73,9 +73,7 @@ export interface ClaudeHookData {
 
 // A rate-limit window whose percentage is not a finite number carries no
 // usage data; drop it so no renderer reads null as 0%.
-export function dropUnreadableRateLimits(
-  hookData: ClaudeHookData,
-): ClaudeHookData {
+export function dropUnreadableRateLimits(hookData: ClaudeHookData): ClaudeHookData {
   const limits = hookData.rate_limits;
   if (!limits) return hookData;
   const readable = (w?: { used_percentage: number }) =>
@@ -128,9 +126,7 @@ export function getClaudePaths(): string[] {
   return paths;
 }
 
-export async function findProjectPaths(
-  claudePaths: string[],
-): Promise<string[]> {
+export async function findProjectPaths(claudePaths: string[]): Promise<string[]> {
   const projectPaths: string[] = [];
 
   for (const claudePath of claudePaths) {
@@ -173,9 +169,7 @@ export async function canReadProjects(): Promise<boolean> {
   return readable;
 }
 
-export async function findTranscriptFile(
-  sessionId: string,
-): Promise<string | null> {
+export async function findTranscriptFile(sessionId: string): Promise<string | null> {
   const claudePaths = getClaudePaths();
   const projectPaths = await findProjectPaths(claudePaths);
 
@@ -189,19 +183,14 @@ export async function findTranscriptFile(
   return null;
 }
 
-export async function findAgentTranscripts(
-  sessionId: string,
-  projectPath: string,
-): Promise<string[]> {
+export async function findAgentTranscripts(sessionId: string, projectPath: string): Promise<string[]> {
   const agentFiles: string[] = [];
 
   const subagentsDir = join(projectPath, sessionId, "subagents");
 
   try {
     const files = await readdir(subagentsDir);
-    const agentFileNames = files.filter(
-      (f) => f.startsWith("agent-") && f.endsWith(".jsonl"),
-    );
+    const agentFileNames = files.filter((f) => f.startsWith("agent-") && f.endsWith(".jsonl"));
 
     for (const fileName of agentFileNames) {
       const filePath = join(subagentsDir, fileName);
@@ -225,9 +214,7 @@ export async function findAgentTranscripts(
   return agentFiles;
 }
 
-export async function getEarliestTimestamp(
-  filePath: string,
-): Promise<Date | null> {
+export async function getEarliestTimestamp(filePath: string): Promise<Date | null> {
   try {
     const content = await readFile(filePath, "utf-8");
     const lines = content.trim().split("\n");
@@ -257,15 +244,12 @@ export async function getEarliestTimestamp(
   }
 }
 
-export async function sortFilesByTimestamp(
-  files: string[],
-  oldestFirst = true,
-): Promise<string[]> {
+export async function sortFilesByTimestamp(files: string[], oldestFirst = true): Promise<string[]> {
   const filesWithTimestamps = await Promise.all(
     files.map(async (file) => ({
       file,
       timestamp: await getEarliestTimestamp(file),
-    })),
+    }))
   );
 
   return filesWithTimestamps
@@ -279,9 +263,7 @@ export async function sortFilesByTimestamp(
     .map((item) => item.file);
 }
 
-export async function getFileModificationDate(
-  filePath: string,
-): Promise<Date | null> {
+export async function getFileModificationDate(filePath: string): Promise<Date | null> {
   try {
     const stats = await stat(filePath);
     return stats.mtime;
@@ -310,13 +292,10 @@ export interface ParsedEntry {
 export function createUniqueHash(entry: ParsedEntry): string | null {
   const messageId =
     entry.message?.id ||
-    (typeof entry.raw.message === "object" &&
-    entry.raw.message !== null &&
-    "id" in entry.raw.message
+    (typeof entry.raw.message === "object" && entry.raw.message !== null && "id" in entry.raw.message
       ? (entry.raw.message.id as string)
       : undefined);
-  const requestId =
-    "requestId" in entry.raw ? (entry.raw.requestId as string) : undefined;
+  const requestId = "requestId" in entry.raw ? (entry.raw.requestId as string) : undefined;
 
   if (!messageId || !requestId) {
     return null;
@@ -344,9 +323,7 @@ export async function readJsonlFile(filePath: string): Promise<ParsedEntry[]> {
   let entries: ParsedEntry[];
 
   if (fileSizeBytes > STREAMING_THRESHOLD_BYTES) {
-    debug(
-      `Using streaming parser for large file ${filePath} (${Math.round(fileSizeBytes / 1024)}KB)`,
-    );
+    debug(`Using streaming parser for large file ${filePath} (${Math.round(fileSizeBytes / 1024)}KB)`);
     entries = await parseJsonlFileStreaming(filePath);
   } else {
     entries = await parseJsonlFileInMemory(filePath);
@@ -357,9 +334,7 @@ export async function readJsonlFile(filePath: string): Promise<ParsedEntry[]> {
   return entries;
 }
 
-async function parseJsonlFileInMemory(
-  filePath: string,
-): Promise<ParsedEntry[]> {
+async function parseJsonlFileInMemory(filePath: string): Promise<ParsedEntry[]> {
   const content = await readFile(filePath, "utf-8");
   const lines = content
     .trim()
@@ -390,9 +365,7 @@ async function parseJsonlFileInMemory(
   return entries;
 }
 
-async function parseJsonlFileStreaming(
-  filePath: string,
-): Promise<ParsedEntry[]> {
+async function parseJsonlFileStreaming(filePath: string): Promise<ParsedEntry[]> {
   return new Promise((resolve, reject) => {
     const entries: ParsedEntry[] = [];
     const fileStream = createReadStream(filePath, { encoding: "utf8" });
@@ -455,7 +428,7 @@ async function statFile(filePath: string): Promise<FileStat | null> {
 
 async function collectProjectFiles(
   projectPath: string,
-  fileFilter?: (filePath: string, modTime: Date) => boolean,
+  fileFilter?: (filePath: string, modTime: Date) => boolean
 ): Promise<FileStat[]> {
   try {
     const entries = await readdir(projectPath, { withFileTypes: true });
@@ -484,8 +457,7 @@ async function collectProjectFiles(
     ]);
 
     return [...sessionResults, ...subagentResults].filter(
-      (s): s is FileStat =>
-        s !== null && (!fileFilter || fileFilter(s.filePath, s.mtime)),
+      (s): s is FileStat => s !== null && (!fileFilter || fileFilter(s.filePath, s.mtime))
     );
   } catch (dirError) {
     debug(`Failed to read project directory ${projectPath}:`, dirError);
@@ -506,15 +478,13 @@ async function collectProjectFiles(
 export async function loadEntriesFromProjects(
   timeFilter?: (entry: ParsedEntry) => boolean,
   fileFilter?: (filePath: string, modTime: Date) => boolean,
-  sortFiles = false,
+  sortFiles = false
 ): Promise<ParsedEntry[]> {
   const claudePaths = getClaudePaths();
   const projectPaths = await findProjectPaths(claudePaths);
   const processedHashes = new Set<string>();
 
-  const allFilesPromises = projectPaths.map((projectPath) =>
-    collectProjectFiles(projectPath, fileFilter),
-  );
+  const allFilesPromises = projectPaths.map((projectPath) => collectProjectFiles(projectPath, fileFilter));
 
   const allFileResults = await Promise.all(allFilesPromises);
   const allFilesWithMtime = allFileResults

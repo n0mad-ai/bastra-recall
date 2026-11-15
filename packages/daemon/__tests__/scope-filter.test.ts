@@ -40,7 +40,7 @@ test("passesScopeFilter (#148): strong, deliberate cross-scope hits pass; tag/to
   assert.equal(
     passesScopeFilter({ scope: "bastra-io", score: 150, matched_recall_when: true }, p, MUST_LOAD),
     true,
-    "foreign scope + recall_when match + REQUIRED band → passes (the Discord #dev case)",
+    "foreign scope + recall_when match + REQUIRED band → passes (the Discord #dev case)"
   );
 
   // ── The #110 noise case MUST stay filtered: a foreign-scope hit that scored
@@ -49,12 +49,12 @@ test("passesScopeFilter (#148): strong, deliberate cross-scope hits pass; tag/to
   assert.equal(
     passesScopeFilter({ scope: "bastra-io", score: 159, matched_recall_when: false }, p, MUST_LOAD),
     false,
-    "foreign scope, high score, but no recall_when match → still filtered (#110)",
+    "foreign scope, high score, but no recall_when match → still filtered (#110)"
   );
   assert.equal(
     passesScopeFilter({ scope: "bastra-io", score: 159 }, p, MUST_LOAD),
     false,
-    "missing matched_recall_when is treated as no-match → filtered",
+    "missing matched_recall_when is treated as no-match → filtered"
   );
 
   // ── A recall_when match BELOW the REQUIRED band does not pass — deliberate
@@ -62,7 +62,7 @@ test("passesScopeFilter (#148): strong, deliberate cross-scope hits pass; tag/to
   assert.equal(
     passesScopeFilter({ scope: "bastra-io", score: 80, matched_recall_when: true }, p, MUST_LOAD),
     false,
-    "recall_when match but below REQUIRED band → filtered",
+    "recall_when match but below REQUIRED band → filtered"
   );
 });
 
@@ -77,28 +77,24 @@ test("passesScopeFilter (P0): a weak anchor no longer buys a cross-scope pass", 
   assert.equal(
     passesScopeFilter({ ...foreign, anchor_strength: "weak" }, p, MUST_LOAD),
     false,
-    "one common trigger term must not open a foreign scope",
+    "one common trigger term must not open a foreign scope"
   );
   assert.equal(
     passesScopeFilter({ ...foreign, anchor_strength: "strong" }, p, MUST_LOAD),
     true,
-    "a rare identifier or two authored terms still pass — the #148 case is intact",
+    "a rare identifier or two authored terms still pass — the #148 case is intact"
   );
 
   // Rückwärtskompatibilität: Eine Antwort ohne das Feld (älterer Daemon,
   // fremder Aufrufer) darf nicht STRENGER behandelt werden als vorher —
   // sonst verschwinden absichtliche Cross-Scope-Hits still.
-  assert.equal(
-    passesScopeFilter(foreign, p, MUST_LOAD),
-    true,
-    "an absent field keeps the pre-P0 behaviour",
-  );
+  assert.equal(passesScopeFilter(foreign, p, MUST_LOAD), true, "an absent field keeps the pre-P0 behaviour");
 
   // Und die Score-Bedingung bleibt eine UND-Bedingung.
   assert.equal(
     passesScopeFilter({ ...foreign, score: 40, anchor_strength: "strong" }, p, MUST_LOAD),
     false,
-    "a strong anchor below the REQUIRED band still does not pass",
+    "a strong anchor below the REQUIRED band still does not pass"
   );
 });
 

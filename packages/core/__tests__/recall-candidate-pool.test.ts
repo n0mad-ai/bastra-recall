@@ -69,7 +69,10 @@ test("recall exposes a deeper candidate pool than the returned top-k", async () 
     assert.ok(pool.length > hits.length, `pool (${pool.length}) must be deeper than k (${hits.length})`);
     assert.equal(pool.length, 8, "pool reaches all 8 below-k candidates (HOP_SEED_POOL = max(k*4, 20))");
     // The returned hits are the head of the pool (same ids, same order).
-    assert.deepEqual(hits.map((h) => h.id), pool.slice(0, 2).map((h) => h.id));
+    assert.deepEqual(
+      hits.map((h) => h.id),
+      pool.slice(0, 2).map((h) => h.id)
+    );
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
@@ -101,7 +104,7 @@ class PoolProvider implements EmbeddingProvider {
 
 async function makeHybrid(
   n: number,
-  opts: { failFromStart?: boolean } = {},
+  opts: { failFromStart?: boolean } = {}
 ): Promise<{ idx: SearchIndex; close: () => Promise<void> }> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-pool-hybrid-"));
   for (let i = 0; i < n; i++) {
@@ -140,7 +143,7 @@ test("#365/5: a BM25 cache hit replays the deep pool instead of firing nothing",
     assert.deepEqual(
       depths,
       [8, 8],
-      "the warm call must expose the same depth as the cold one — it fired nothing at all before",
+      "the warm call must expose the same depth as the cold one — it fired nothing at all before"
     );
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
@@ -168,7 +171,10 @@ test("#365/5: a degraded-hybrid cache hit replays the deep pool too", async () =
     const depths: number[] = [];
     const opts = { k: 2, onCandidatePool: (p: RecallHit[]) => depths.push(p.length) };
     const first = await idx.recallHybrid("alpha", opts);
-    assert.ok(first.every((h) => h.mode === "bm25"), "precondition: degraded to BM25");
+    assert.ok(
+      first.every((h) => h.mode === "bm25"),
+      "precondition: degraded to BM25"
+    );
     await idx.recallHybrid("alpha", opts);
     assert.deepEqual(depths, [8, 8]);
   } finally {
@@ -195,21 +201,17 @@ test("#365/16: the pool carries the damped scores in the served order", async ()
     const dampedM0 = pool.find((h) => h.id === "m0")?.score;
     assert.ok(
       dampedM0 !== undefined && dampedM0 < rawM0,
-      `the pool must show the damped score for a demoted memory (raw ${rawM0}, pool ${dampedM0})`,
+      `the pool must show the damped score for a demoted memory (raw ${rawM0}, pool ${dampedM0})`
     );
 
     const poolScores = new Map(pool.map((h) => [h.id, h.score]));
     for (const h of hits) {
-      assert.equal(
-        poolScores.get(h.id),
-        h.score,
-        `served hit ${h.id} and its pool entry must carry the same score`,
-      );
+      assert.equal(poolScores.get(h.id), h.score, `served hit ${h.id} and its pool entry must carry the same score`);
     }
     assert.deepEqual(
       hits.map((h) => h.id),
       pool.slice(0, 3).map((h) => h.id),
-      "the damping re-sorts, so the pool order must follow the served one",
+      "the damping re-sorts, so the pool order must follow the served one"
     );
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });

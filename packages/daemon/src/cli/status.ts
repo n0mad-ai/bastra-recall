@@ -104,9 +104,7 @@ export async function cmdStatus(options: StatusOptions): Promise<number> {
   const tokenSet = (await getApiToken()) !== undefined;
   statusResult.apiToken = { set: tokenSet };
   if (!options.quiet && !options.json) {
-    printLine(
-      `${"api token".padEnd(15)} ${tokenSet ? "✓ set (browser/REST enabled)" : "· not set (loopback only)"}`,
-    );
+    printLine(`${"api token".padEnd(15)} ${tokenSet ? "✓ set (browser/REST enabled)" : "· not set (loopback only)"}`);
   }
 
   // Local patch series (#269). Only reported when there is one — a user without
@@ -180,7 +178,11 @@ async function formatSemanticRecall(configured: EmbeddingProviderName | undefine
     // it directly so "installed but daemon down" vs "model missing" is visible.
     if (configured === "ollama") {
       const o = await probeOllama();
-      const detail = o.ok ? (o.hasModel ? "ollama ready" : "model embeddinggemma MISSING — fix: bastra embeddings on") : o.detail;
+      const detail = o.ok
+        ? o.hasModel
+          ? "ollama ready"
+          : "model embeddinggemma MISSING — fix: bastra embeddings on"
+        : o.detail;
       return `· daemon not reachable; configured=ollama (${detail})`;
     }
     return `· daemon not reachable; configured=${configured ?? "unset"}`;

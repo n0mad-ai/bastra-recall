@@ -43,7 +43,9 @@ test("#704 hook_recall rows carry the origin of their lane", async () => {
   const hookRecall = (query: string, hints: Record<string, unknown>) =>
     ({ recall_id: query, query, hits: [], ...hints }) as unknown as Parameters<Telemetry["logHookRecall"]>[0];
   const rows = await rowsWritten(async (t) => {
-    await t.logHookRecall(hookRecall("why does the panel close", { hook_source: "prompt", tool_name: "UserPromptSubmit" }));
+    await t.logHookRecall(
+      hookRecall("why does the panel close", { hook_source: "prompt", tool_name: "UserPromptSubmit" })
+    );
     await t.logHookRecall(hookRecall(TASK_NOTIFICATION, { hook_source: "prompt" }));
     await t.logHookRecall(hookRecall("panel dismiss", { hook_source: "mcp", tool_name: "mcp-forwarder" }));
     await t.logHookRecall(hookRecall("src/panel.swift", { hook_source: "pre-tool", tool_name: "Edit" }));
@@ -57,7 +59,7 @@ test("#704 hook_recall rows carry the origin of their lane", async () => {
       ["panel dismiss", "agent"],
       ["src/panel.swift", "tool"],
       ["no lane named", undefined],
-    ],
+    ]
   );
   // The reader takes what the writer wrote.
   for (const r of rows) {
@@ -72,13 +74,20 @@ test("#704 recall rows: the MCP tool is the agent, the session assembler a tool 
     await t.logRecall(recall("panel dismiss", {}));
     await t.logRecall(recall("project context", { hook_source: "session-context" }));
   });
-  assert.deepEqual(rows.map((r) => r.origin), ["agent", "tool"]);
+  assert.deepEqual(
+    rows.map((r) => r.origin),
+    ["agent", "tool"]
+  );
 });
 
 test("#704 recallOrigin: every tool lane maps to tool, an unnamed hook lane has no origin", () => {
   assert.equal(
-    recallOrigin("hook_recall", "prompt", 'Another Claude session sent a message:\n<teammate-message teammate_id="a">hi'),
-    "system",
+    recallOrigin(
+      "hook_recall",
+      "prompt",
+      'Another Claude session sent a message:\n<teammate-message teammate_id="a">hi'
+    ),
+    "system"
   );
   for (const source of ["pre-tool", "session", "stop", "bash-pre", "bash-fail", "todo", "session-context"] as const) {
     assert.equal(recallOrigin("hook_recall", source, "x"), "tool", source);
@@ -88,7 +97,11 @@ test("#704 recallOrigin: every tool lane maps to tool, an unnamed hook lane has 
 });
 
 test("#704 a prompt-lane row without the field is not the owner and teaches no bridge", () => {
-  const ev = (fields: Record<string, unknown>): TelemetryEvent => ({ kind: "hook_recall", ts: "2026-09-20T10:00:00.000Z", ...fields });
+  const ev = (fields: Record<string, unknown>): TelemetryEvent => ({
+    kind: "hook_recall",
+    ts: "2026-09-20T10:00:00.000Z",
+    ...fields,
+  });
   // A bot's persona prompt reads like typed text: no wrapper to check for.
   const persona = "You are Mira, the support assistant of the garden shop. Answer briefly and kindly.";
   for (const legacy of [
@@ -98,5 +111,8 @@ test("#704 a prompt-lane row without the field is not the owner and teaches no b
     assert.equal(queryOrigin(legacy), "unknown");
     assert.equal(teachesBridges(legacy), false);
   }
-  assert.equal(teachesBridges(ev({ query: "why does the panel close", origin: "owner", dimensions: { hook_source: "prompt" } })), true);
+  assert.equal(
+    teachesBridges(ev({ query: "why does the panel close", origin: "owner", dimensions: { hook_source: "prompt" } })),
+    true
+  );
 });

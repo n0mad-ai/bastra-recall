@@ -33,7 +33,11 @@ import { COMMAND_FLAGS, VALUE_FLAGS, validateArgs } from "../src/cli/flag-spec.j
 const here = dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = resolve(here, "..", "src", "cli.ts");
 
-interface Run { stdout: string; stderr: string; code: number }
+interface Run {
+  stdout: string;
+  stderr: string;
+  code: number;
+}
 
 function runCli(args: string[], home: string): Promise<Run> {
   return new Promise((ok, ko) => {
@@ -67,14 +71,16 @@ async function isolatedHome(): Promise<{ home: string; cursorConfig: string }> {
     `${JSON.stringify(
       { mcpServers: { "bastra-recall": { command: "node", args: ["/opt/bastra/mcp-forwarder.js"] } } },
       null,
-      2,
-    )}\n`,
+      2
+    )}\n`
   );
   return { home, cursorConfig };
 }
 
 async function sha256(path: string): Promise<string> {
-  return createHash("sha256").update(await readFile(path)).digest("hex");
+  return createHash("sha256")
+    .update(await readFile(path))
+    .digest("hex");
 }
 
 // ─── behaviour gate ──────────────────────────────────────────────────────────
@@ -112,7 +118,7 @@ for (const { argv, why } of REJECTED) {
     assert.deepEqual(
       (await readdir(join(home, ".cursor"))).sort(),
       ["mcp.json"],
-      "a backup file proves the mutating path ran",
+      "a backup file proves the mutating path ran"
     );
   });
 }
@@ -187,7 +193,7 @@ test("#536 — every valueless option rejects an attached value, on every comman
       assert.deepEqual(
         validateArgs([command, `${flag}=x`]),
         [`option '${flag}' takes no value — write '${flag}'`],
-        `'bastra ${command} ${flag}=x' was not rejected`,
+        `'bastra ${command} ${flag}=x' was not rejected`
       );
     }
   }
@@ -201,7 +207,7 @@ test("#536 — every value-taking option reads its equals form and rejects an em
       assert.deepEqual(
         validateArgs([command, `${flag}=`]),
         [`option '${flag}' needs a value`],
-        `'bastra ${command} ${flag}=' was accepted as a value`,
+        `'bastra ${command} ${flag}=' was accepted as a value`
       );
     }
   }
@@ -216,6 +222,6 @@ test("#536 — every dispatched command has a flag list (drift gate)", async () 
   assert.deepEqual(
     missing,
     [],
-    `these commands dispatch but have no flag list — add them to COMMAND_FLAGS in cli/flag-spec.ts: ${missing.join(", ")}`,
+    `these commands dispatch but have no flag list — add them to COMMAND_FLAGS in cli/flag-spec.ts: ${missing.join(", ")}`
   );
 });

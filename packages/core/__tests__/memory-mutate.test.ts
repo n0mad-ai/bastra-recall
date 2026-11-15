@@ -34,13 +34,16 @@ test("schreibt Frontmatter und Body, atomar und ohne tmp-Leiche", async () => {
         frontmatter: (fm) => ({ ...fm, superseded_by: "neu" }),
         body: (b) => `${b.trimEnd()}\n\nANGEHÄNGT\n`,
       },
-      { vaultRoot: dir },
+      { vaultRoot: dir }
     );
     assert.equal(out.kind, "written");
     const raw = await readFile(file, "utf8");
     assert.equal(matter(raw).data.superseded_by, "neu");
     assert.match(raw, /ANGEHÄNGT/);
-    assert.deepEqual((await readdir(dir)).filter((f) => f.endsWith(".tmp")), []);
+    assert.deepEqual(
+      (await readdir(dir)).filter((f) => f.endsWith(".tmp")),
+      []
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -58,7 +61,7 @@ test("eine fremde Datei am erwarteten Pfad wird nicht angefasst", async () => {
         file,
         "m",
         { frontmatter: (fm) => ({ ...fm, obsolete: true }) },
-        { vaultRoot: dir },
+        { vaultRoot: dir }
       );
       assert.equal(out.kind, "identity-mismatch", label);
       assert.equal(out.kind === "identity-mismatch" ? out.found : "", expectFound, label);
@@ -83,12 +86,15 @@ test("wer zwischendurch schreibt, gewinnt — die Mutation gibt nach", async () 
           return { ...fm, obsolete: true };
         },
       },
-      { vaultRoot: dir },
+      { vaultRoot: dir }
     );
     // Der Vergleich vor dem Rename sieht die Änderung.
     assert.equal(out.kind, "raced");
     assert.match(await readFile(file, "utf8"), /NEU VON JEMAND ANDEREM/);
-    assert.deepEqual((await readdir(dir)).filter((f) => f.endsWith(".tmp")), []);
+    assert.deepEqual(
+      (await readdir(dir)).filter((f) => f.endsWith(".tmp")),
+      []
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -133,12 +139,15 @@ test("#341: ein Rewrite mit gleichem authored content behält die mtime", async 
         frontmatter: (fm) => ({ ...fm, recall_when_expanded: ["a", "b"] }),
         authoredContent: (body) => body,
       },
-      { vaultRoot: dir },
+      { vaultRoot: dir }
     );
     assert.equal(out.kind, "written");
     assert.deepEqual(matter(await readFile(file, "utf8")).data.recall_when_expanded, ["a", "b"]);
     assert.equal((await stat(file)).mtimeMs, before, "mtime unverändert");
-    assert.deepEqual((await readdir(dir)).filter((f) => f.endsWith(".tmp")), []);
+    assert.deepEqual(
+      (await readdir(dir)).filter((f) => f.endsWith(".tmp")),
+      []
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -155,7 +164,7 @@ test("#341: eine echte Inhaltsänderung bekommt eine neue mtime — auch mit aut
         body: (b) => `${b.trimEnd()}\n\nVOM MENSCHEN\n`,
         authoredContent: (body) => body,
       },
-      { vaultRoot: dir },
+      { vaultRoot: dir }
     );
     assert.equal(out.kind, "written");
     assert.ok((await stat(file)).mtimeMs > before, "mtime neu");
@@ -172,7 +181,7 @@ test("#341: ohne authoredContent bleibt die mtime-Erhaltung aus — der Save-/Ed
       file,
       "m",
       { frontmatter: (fm) => ({ ...fm, superseded_by: "neu" }) },
-      { vaultRoot: dir },
+      { vaultRoot: dir }
     );
     assert.equal(out.kind, "written");
     assert.ok((await stat(file)).mtimeMs > before, "mtime neu (kein Opt-in)");

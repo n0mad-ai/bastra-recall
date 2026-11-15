@@ -134,7 +134,11 @@ export function stubSourceFiles({ entry = STUB_ENTRY, root = PACKAGE_ROOT } = {}
   const seen = new Set();
   const mapFile = resolve(root, "stub", "import-map.json");
   let mapped = {};
-  try { mapped = JSON.parse(readFileSync(mapFile, "utf8")).imports ?? {}; } catch { /* fixture or old checkout */ }
+  try {
+    mapped = JSON.parse(readFileSync(mapFile, "utf8")).imports ?? {};
+  } catch {
+    /* fixture or old checkout */
+  }
   const queue = [entry, ...(isFile(mapFile) ? [mapFile] : [])];
   while (queue.length > 0) {
     const file = queue.pop();
@@ -208,11 +212,11 @@ export function stubSourceDigest({ read } = {}) {
  */
 export function stubSourcesDirty() {
   try {
-    const out = execFileSync(
-      "git",
-      ["-C", PACKAGE_ROOT, "status", "--porcelain", "--", ...stubSourceFiles()],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 15_000 },
-    );
+    const out = execFileSync("git", ["-C", PACKAGE_ROOT, "status", "--porcelain", "--", ...stubSourceFiles()], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 15_000,
+    });
     return out.trim() !== "";
   } catch {
     return false;

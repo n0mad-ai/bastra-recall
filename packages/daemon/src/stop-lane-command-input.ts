@@ -79,10 +79,7 @@ export function codexFunctionCallCommands(payload: Record<string, unknown>): str
 export function codexCustomExecCommands(payload: Record<string, unknown>): string[] {
   if (payload.name !== "exec" || typeof payload.input !== "string") return [];
   if (!/\btools\.exec_command\s*\(/.test(payload.input)) return [];
-  return [
-    ...jsStringPropertyValues(payload.input, "cmd"),
-    ...jsStringPropertyValues(payload.input, "command"),
-  ];
+  return [...jsStringPropertyValues(payload.input, "cmd"), ...jsStringPropertyValues(payload.input, "command")];
 }
 
 function jsStringPropertyValues(source: string, property: string): string[] {

@@ -34,8 +34,7 @@ See example config at: https://github.com/Owloops/claude-powerline/blob/main/.cl
 
 async function main(): Promise<void> {
   try {
-    const showHelp =
-      process.argv.includes("--help") || process.argv.includes("-h");
+    const showHelp = process.argv.includes("--help") || process.argv.includes("-h");
 
     if (showHelp) {
       showHelpText();

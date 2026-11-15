@@ -63,10 +63,22 @@ export function lastShellOperatorCut(prefix: string): number {
   let cut = 0;
   for (let i = 0; i < prefix.length; i++) {
     const ch = prefix[i];
-    if (escaped) { escaped = false; continue; }
-    if (ch === "\\" && quote !== "'") { escaped = true; continue; }
-    if (quote) { if (ch === quote) quote = null; continue; }
-    if (ch === "'" || ch === '"') { quote = ch; continue; }
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\" && quote !== "'") {
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      continue;
+    }
     let end = i;
     if (ch === ";" || ch === "|") end = i + 1 + (ch === "|" && prefix[i + 1] === "|" ? 1 : 0);
     else if (ch === "&" && prefix[i + 1] === "&") end = i + 2;
@@ -100,12 +112,16 @@ export function hookWrapper(cmd: string, file: string, sub?: string): HookWrappe
     const t = tokens[i].value;
     if (!rooted(t)) continue;
     if (slashes(t).endsWith(`/${file}`)) {
-      const node = i > 0 && tokens[i - 1].group === tokens[i].group &&
-        /^node(\.exe)?$/.test(fileOf(tokens[i - 1].value));
+      const node =
+        i > 0 && tokens[i - 1].group === tokens[i].group && /^node(\.exe)?$/.test(fileOf(tokens[i - 1].value));
       start = node ? i - 1 : i;
       end = i;
-    } else if (sub && /^bastra-hook(\.exe)?$/.test(fileOf(t)) &&
-      tokens[i + 1]?.group === tokens[i].group && tokens[i + 1]?.value === sub) {
+    } else if (
+      sub &&
+      /^bastra-hook(\.exe)?$/.test(fileOf(t)) &&
+      tokens[i + 1]?.group === tokens[i].group &&
+      tokens[i + 1]?.value === sub
+    ) {
       start = i;
       end = i + 1;
     }
@@ -130,7 +146,7 @@ export function existingHookWrapper(
   matcher: string | undefined,
   file: string,
   sub: string | undefined,
-  isOurs: (entry: unknown) => boolean,
+  isOurs: (entry: unknown) => boolean
 ): HookWrapper {
   for (const exact of [true, false]) {
     for (const entry of entries) {
@@ -159,7 +175,12 @@ export function existingHookWrapper(
  * the rename), or one of our hook scripts — under `…/daemon/dist/`, or in any
  * directory when the command carries the installer's client marker.
  */
-export function runsOurHookRunner(cmd: string, files: string[], clientMarker: string, stubSubcommand?: string): boolean {
+export function runsOurHookRunner(
+  cmd: string,
+  files: string[],
+  clientMarker: string,
+  stubSubcommand?: string
+): boolean {
   const words = [...cmd.matchAll(/"[^"]*"|'[^']*'|\S+/g)].map((m) => m[0]);
   const pathAt = (at: number): string => slashes(unquote(words[at] ?? ""));
   const baseAt = (at: number): string => fileOf(pathAt(at));
@@ -186,11 +207,18 @@ export function runsOurHookRunner(cmd: string, files: string[], clientMarker: st
   const program = baseAt(at);
   if (/^node(\.exe)?$/.test(program)) {
     const script = pathAt(at + 1);
-    return files.includes(fileOf(script)) && (marked || words[at + 2] === `--client=${clientMarker.split("=")[1]}` || script.includes("/daemon/dist/"));
+    return (
+      files.includes(fileOf(script)) &&
+      (marked || words[at + 2] === `--client=${clientMarker.split("=")[1]}` || script.includes("/daemon/dist/"))
+    );
   }
   if (/^bastra-hook(\.exe)?$/.test(program)) {
-    return new Set(["session", "prompt", "write", "todo", "bash-pre", "bash-fail", "stop", "gate"]).has(words[at + 1] ?? "") &&
-      (stubSubcommand === undefined || words[at + 1] === stubSubcommand);
+    return (
+      new Set(["session", "prompt", "write", "todo", "bash-pre", "bash-fail", "stop", "gate"]).has(
+        words[at + 1] ?? ""
+      ) &&
+      (stubSubcommand === undefined || words[at + 1] === stubSubcommand)
+    );
   }
   const bin = /^(?:bastra|nexus)-recall-(.+?)(?:\.cmd)?$/.exec(program);
   if (bin && files.includes(`${bin[1]}.js`)) return true;
@@ -206,11 +234,11 @@ export function lookalikeHookCommands(
   hooks: Record<string, unknown>,
   events: readonly string[],
   isOurs: (entry: unknown) => boolean,
-  lookedOurs: (cmd: string) => boolean,
+  lookedOurs: (cmd: string) => boolean
 ): string[] {
   const found: string[] = [];
   for (const event of events) {
-    const entries = Array.isArray(hooks[event]) ? hooks[event] as unknown[] : [];
+    const entries = Array.isArray(hooks[event]) ? (hooks[event] as unknown[]) : [];
     for (const entry of entries) {
       if (isOurs(entry)) continue;
       const handlers = (entry as Record<string, unknown> | null)?.hooks;

@@ -34,7 +34,10 @@ export interface DaemonProcess {
  * bin shim) or the first non-option argument (the runtime's script argument).
  */
 function runsDaemonEntryPoint(command: string): boolean {
-  const tokens = command.trim().split(/\s+/).filter((t) => t.length > 0);
+  const tokens = command
+    .trim()
+    .split(/\s+/)
+    .filter((t) => t.length > 0);
   if (tokens.length === 0) return false;
   const script = tokens.slice(1).find((t) => !t.startsWith("-"));
   return [tokens[0], script].some((t) => t !== undefined && /(^|\/)daemon\/dist\/index\.js$/.test(t));

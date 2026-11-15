@@ -51,7 +51,12 @@ test("the control arm feeds the pool hook, so regions are computed the same way 
 
   let pool: RecallHit[] | undefined;
   const control = makeControlRecaller(vault, 1);
-  const hits = await control("q", { k: 10, onCandidatePool: (p) => { pool = p; } });
+  const hits = await control("q", {
+    k: 10,
+    onCandidatePool: (p) => {
+      pool = p;
+    },
+  });
 
   assert.ok(pool, "a control arm that ignored the hook would report every case as oop");
   assert.deepEqual(pool, hits, "the pool it exposes is the ranking it returned");
@@ -62,12 +67,11 @@ const twoMemVault = {
   list: () => [{ fm: { id: "m1" } }],
 } as unknown as Vault;
 
-const alwaysFinds: (id: string) => (q: string, o?: RecallOptions) => Promise<RecallHit[]> =
-  (id) => async (_q, o) => {
-    const hits = [{ id, score: 10 } as RecallHit];
-    o?.onCandidatePool?.(hits);
-    return hits;
-  };
+const alwaysFinds: (id: string) => (q: string, o?: RecallOptions) => Promise<RecallHit[]> = (id) => async (_q, o) => {
+  const hits = [{ id, score: 10 } as RecallHit];
+  o?.onCandidatePool?.(hits);
+  return hits;
+};
 
 test("a gold id missing from the vault is separated into unknown vs retired", async () => {
   const cases = [

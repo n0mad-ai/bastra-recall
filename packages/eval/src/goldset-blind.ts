@@ -76,13 +76,13 @@ function parseArgs(argv: string[]): Args {
   if (!BLIND_ORIGINS.includes(a.origin)) {
     throw new Error(
       `--origin ${a.origin} describes a harvested source, not a written one. ` +
-        `Use goldset-harvest for those; this tool is for ${BLIND_ORIGINS.join(", ")}.`,
+        `Use goldset-harvest for those; this tool is for ${BLIND_ORIGINS.join(", ")}.`
     );
   }
   if (!a.by?.trim()) throw new Error("--by is required — a blind batch is only as good as who vouches for it");
   if (!a.mode?.trim()) {
     throw new Error(
-      "--mode is required (§19 `authoring_mode`): say how the queries were obtained without opening the target memories",
+      "--mode is required (§19 `authoring_mode`): say how the queries were obtained without opening the target memories"
     );
   }
   return a as Args;
@@ -127,7 +127,9 @@ function main(): void {
   writeFileSync(args.out, JSON.stringify({ schema_version: 1, staged }, null, 2) + "\n", { mode: 0o600 });
   const langs = staged.reduce<Record<string, number>>((a, s) => ({ ...a, [s.lang]: (a[s.lang] ?? 0) + 1 }), {});
   console.error(`[goldset] staged ${staged.length} blind queries as ${args.origin}, authored by ${args.by}`);
-  console.error(`[goldset] languages: ${JSON.stringify(langs)}  with identifier: ${staged.filter((s) => s.has_identifier).length}`);
+  console.error(
+    `[goldset] languages: ${JSON.stringify(langs)}  with identifier: ${staged.filter((s) => s.has_identifier).length}`
+  );
   console.error(`[goldset] wrote ${args.out} — NOT labelled. Step 2 assigns gold ids.`);
 }
 

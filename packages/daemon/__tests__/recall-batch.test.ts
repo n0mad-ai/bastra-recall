@@ -41,8 +41,16 @@ function memoryMd(id: string, title: string, trigger: string): string {
 test("recallHandler (#351): queries[] merges per-phrasing results, deduped by best score", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-batch-"));
   try {
-    await writeFile(join(dir, "a.md"), memoryMd("panel-lesson", "NSPanel resignKey dismissal", "panel closes on resignKey observer"), "utf8");
-    await writeFile(join(dir, "b.md"), memoryMd("scroll-lesson", "NSScrollView trailing inset", "scrollview trailing inset macos"), "utf8");
+    await writeFile(
+      join(dir, "a.md"),
+      memoryMd("panel-lesson", "NSPanel resignKey dismissal", "panel closes on resignKey observer"),
+      "utf8"
+    );
+    await writeFile(
+      join(dir, "b.md"),
+      memoryMd("scroll-lesson", "NSScrollView trailing inset", "scrollview trailing inset macos"),
+      "utf8"
+    );
     const vault = new Vault(dir);
     await vault.init();
     const search = new SearchIndex(vault);
@@ -51,7 +59,10 @@ test("recallHandler (#351): queries[] merges per-phrasing results, deduped by be
 
     const rows: Record<string, unknown>[] = [];
     const logRecall = deps.telemetry.logRecall.bind(deps.telemetry);
-    deps.telemetry.logRecall = async (payload) => { rows.push(payload); await logRecall(payload); };
+    deps.telemetry.logRecall = async (payload) => {
+      rows.push(payload);
+      await logRecall(payload);
+    };
 
     const single = await recallHandler(deps, { query: "panel resignKey observer", min_score: 0 });
     assert.ok(single.hits.length > 0, "single-query path still works");
@@ -73,7 +84,6 @@ test("recallHandler (#351): queries[] merges per-phrasing results, deduped by be
     assert.ok(!("batch_id" in batched), "internal telemetry id is not an MCP response field");
     await recallHandler(deps, { queries: ["panel resignKey observer", "scrollview trailing inset"], min_score: 0 });
     assert.notEqual(rows[1]!.batch_id, rows[3]!.batch_id, "separate calls receive separate ids");
-
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
@@ -95,9 +105,15 @@ test("mergeBatchResults: unfused Phrasierungen fusionieren über die Ränge, wea
     ["q1", "q2"],
     [
       { hits: [{ id: "x", score: 50 }], recall_id: "r1", weak_result: true },
-      { hits: [{ id: "x", score: 120 }, { id: "y", score: 40 }], recall_id: "r2" },
+      {
+        hits: [
+          { id: "x", score: 120 },
+          { id: "y", score: 40 },
+        ],
+        recall_id: "r2",
+      },
     ],
-    5,
+    5
   );
   assert.equal(merged.merged_by, "query-rank-fusion");
   assert.equal(merged.hits[0]!.id, "x", "in beiden Listen vorn — das ist das Rang-Signal");
@@ -109,7 +125,14 @@ test("mergeBatchResults: unfused Phrasierungen fusionieren über die Ränge, wea
   assert.equal(merged.weak_result, undefined, "one anchored phrasing clears the batch");
   assert.deepEqual(merged.recall_ids, ["r1", "r2"]);
 
-  const allWeak = mergeBatchResults(["q1", "q2"], [{ hits: [], weak_result: true, no_home: true }, { hits: [], weak_result: true, no_home: true }], 5);
+  const allWeak = mergeBatchResults(
+    ["q1", "q2"],
+    [
+      { hits: [], weak_result: true, no_home: true },
+      { hits: [], weak_result: true, no_home: true },
+    ],
+    5
+  );
   assert.equal(allWeak.weak_result, true);
   assert.equal(allWeak.no_home, true);
 });
@@ -143,7 +166,11 @@ test("dedupeQueries (zzalli's report): concept remixes collapse, real paraphrase
 test("recallHandler (#351 guard): a duplicate query is collapsed, the result says so, telemetry counts it", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-batch-guard-"));
   try {
-    await writeFile(join(dir, "a.md"), memoryMd("panel-lesson", "NSPanel resignKey dismissal", "panel closes on resignKey observer"), "utf8");
+    await writeFile(
+      join(dir, "a.md"),
+      memoryMd("panel-lesson", "NSPanel resignKey dismissal", "panel closes on resignKey observer"),
+      "utf8"
+    );
     const vault = new Vault(dir);
     await vault.init();
     const search = new SearchIndex(vault);

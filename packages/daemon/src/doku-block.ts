@@ -33,11 +33,7 @@ export function isDokuProject(confidence: DetectedProject["confidence"]): boolea
   return confidence === "git-root";
 }
 
-export function formatDokuBlock(
-  mode: Exclude<DocsMode, "off">,
-  language: string,
-  project: string,
-): string {
+export function formatDokuBlock(mode: Exclude<DocsMode, "off">, language: string, project: string): string {
   const modeLine =
     mode === "auto"
       ? `Mode is "auto": update the doc autonomously, then ack in one line (→ doc updated: <area>).`

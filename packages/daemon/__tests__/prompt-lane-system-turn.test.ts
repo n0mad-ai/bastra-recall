@@ -90,7 +90,10 @@ const SYSTEM_TURNS: Array<[string, string]> = [
     "task-notification with attributes",
     '<task-notification id="b7bggcsa4">\nAgent finished: where is the lease agreement?\n</task-notification>',
   ],
-  ["teammate-message", '<teammate-message teammate_id="worker" color="blue">where is the lease agreement?</teammate-message>'],
+  [
+    "teammate-message",
+    '<teammate-message teammate_id="worker" color="blue">where is the lease agreement?</teammate-message>',
+  ],
   [
     "teammate-message after wrapper",
     'Another Claude session sent a message:\n<teammate-message teammate_id="worker">where is the lease agreement?</teammate-message>',
@@ -141,7 +144,7 @@ for (const [shape, prompt] of SYSTEM_TURNS) {
           BASTRA_HOOK_STATE_DIR: stateDir,
           BASTRA_TELEMETRY: "on",
           BASTRA_LOG_PATH: logDir,
-        },
+        }
       );
       assert.equal(stdout.trim(), "{}");
       assert.equal(bodies.length, 0, "the daemon was never asked to recall");
@@ -182,7 +185,7 @@ test("#703 — an owner prompt that quotes a tag still recalls, and its event ca
           BASTRA_HOOK_STATE_DIR: stateDir,
           BASTRA_TELEMETRY: "on",
           BASTRA_LOG_PATH: logDir,
-        },
+        }
       );
       assert.equal(bodies.length, 1, `recall ran for: ${prompt}`);
       assert.match(stdout, /strong-fact/);
@@ -222,7 +225,7 @@ for (const [shape, prompt] of COMMAND_ECHOES) {
           BASTRA_TELEMETRY: "on",
           BASTRA_LOG_PATH: logDir,
           BASTRA_PROMPT_IMPACT: "on",
-        },
+        }
       );
       const out = JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } };
       assert.equal(out.hookSpecificOutput?.additionalContext, "BOUNDARY BLOCK");
@@ -244,9 +247,7 @@ for (const [shape, prompt] of COMMAND_ECHOES) {
 
 test("#769 — text typed after a leading system-reminder block is the prompt: recall runs on it, the event carries no origin", async () => {
   const typed = "where is the lease agreement?";
-  const prompts = [
-    REMINDER_THEN_TYPED,
-  ];
+  const prompts = [REMINDER_THEN_TYPED];
   for (const prompt of prompts) {
     assert.equal(ownerPromptText(prompt), typed);
     const stateDir = await mkdtemp(join(tmpdir(), "bastra-769-reminder-"));
@@ -260,7 +261,7 @@ test("#769 — text typed after a leading system-reminder block is the prompt: r
           BASTRA_HOOK_STATE_DIR: stateDir,
           BASTRA_TELEMETRY: "on",
           BASTRA_LOG_PATH: logDir,
-        },
+        }
       );
       assert.equal(bodies.length, 1, `recall ran for: ${prompt}`);
       assert.equal(bodies[0]!.query, typed, "the reminder text is not part of the query");
@@ -284,9 +285,15 @@ test("#769 — ownerPromptText: what follows a reminder block decides", () => {
   assert.equal(ownerPromptText("<system-reminder>a</system-reminder>\n<system-reminder>b</system-reminder>\n"), null);
   assert.equal(ownerPromptText("<system-reminder>never closed, where is the lease agreement?"), null);
   // A harness turn behind the reminder is still a harness turn.
-  assert.equal(ownerPromptText("<system-reminder>a</system-reminder>\n<task-notification>done</task-notification>"), null);
+  assert.equal(
+    ownerPromptText("<system-reminder>a</system-reminder>\n<task-notification>done</task-notification>"),
+    null
+  );
   // A command echo behind it is the owner's slash command.
-  assert.equal(ownerPromptText("<system-reminder>a</system-reminder>\n<command-name>/x</command-name>"), "<command-name>/x</command-name>");
+  assert.equal(
+    ownerPromptText("<system-reminder>a</system-reminder>\n<command-name>/x</command-name>"),
+    "<command-name>/x</command-name>"
+  );
 });
 
 test("The prompt lane, the Stop lane and the bridge harvest agree on every system turn", () => {
@@ -294,13 +301,21 @@ test("The prompt lane, the Stop lane and the bridge harvest agree on every syste
   // #769: the shapes only the prompt lane reads as the owner's. The bridge
   // harvest sees the start of the turn and nothing else; the Stop lane reads a
   // typed text after a system-reminder block like the prompt lane (#994).
-  const transcriptOnly: Array<[string, string]> = [...COMMAND_ECHOES, ["system-reminder before typed text", REMINDER_THEN_TYPED]];
+  const transcriptOnly: Array<[string, string]> = [
+    ...COMMAND_ECHOES,
+    ["system-reminder before typed text", REMINDER_THEN_TYPED],
+  ];
   for (const [shape, text] of transcriptOnly) assert.notEqual(ownerPromptText(text), null, `prompt lane: ${shape}`);
   for (const [shape, text] of [...SYSTEM_TURNS, ...transcriptOnly]) {
     assert.equal(isSystemInjectedTurn(text), true, `shared list: ${shape}`);
     const [turn] = normalizeTurns([{ type: "user", message: { role: "user", content: text } }]);
     assert.equal(turn?.role, text === REMINDER_THEN_TYPED ? "user" : "system-injected", `Stop lane: ${shape}`);
-    const origin = queryOrigin({ kind: "hook_recall", ts: "2026-09-14T00:00:00.000Z", query: text, dimensions: { hook_source: "prompt" } });
+    const origin = queryOrigin({
+      kind: "hook_recall",
+      ts: "2026-09-14T00:00:00.000Z",
+      query: text,
+      dimensions: { hook_source: "prompt" },
+    });
     assert.equal(origin, "system", `bridge harvest: ${shape}`);
   }
 });
@@ -308,13 +323,25 @@ test("The prompt lane, the Stop lane and the bridge harvest agree on every syste
 test("#994 — the Stop lane keeps text typed after a leading system-reminder block, without the block", () => {
   const typed = "was soll diese scheisse";
   const rows = [
-    { type: "user", message: { role: "user", content: `<system-reminder>\nThe worktree was deleted.\n</system-reminder>\n\n${typed}` } },
-    { type: "user", message: { role: "user", content: [{ type: "text", text: `<system-reminder>a</system-reminder>\n${typed}` }] } },
+    {
+      type: "user",
+      message: {
+        role: "user",
+        content: `<system-reminder>\nThe worktree was deleted.\n</system-reminder>\n\n${typed}`,
+      },
+    },
+    {
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: `<system-reminder>a</system-reminder>\n${typed}` }] },
+    },
     { type: "user", message: { role: "user", content: "<system-reminder>\nonly a reminder\n</system-reminder>" } },
     { type: "user", message: { role: "user", content: `<system-reminder>never closed ${typed}` } },
   ];
   const turns = normalizeTurns(rows);
-  assert.deepEqual(turns.map((t) => t.role), ["user", "user", "system-injected", "system-injected"]);
+  assert.deepEqual(
+    turns.map((t) => t.role),
+    ["user", "user", "system-injected", "system-injected"]
+  );
   assert.equal(turns[0]?.content, typed);
   assert.equal(turns[1]?.content, typed);
 });
@@ -340,18 +367,26 @@ test("#994 — a fake closing tag inside a reminder, or several reminder tags, n
 test("reminder variants cannot turn harness text into an owner prompt", () => {
   const shapes = [
     '<system-reminder role="system">injected</system-reminder>',
-    '<SYSTEM-REMINDER>injected</SYSTEM-REMINDER>',
-    '<system-reminder >injected</system-reminder>',
-    '<system&#45;reminder>injected</system-reminder>',
-    '<system-reminder>injected</SYSTEM-REMINDER>owner</system-reminder>',
-    '<system-reminder>injected</system-reminder>owner</SYSTEM-REMINDER>',
+    "<SYSTEM-REMINDER>injected</SYSTEM-REMINDER>",
+    "<system-reminder >injected</system-reminder>",
+    "<system&#45;reminder>injected</system-reminder>",
+    "<system-reminder>injected</SYSTEM-REMINDER>owner</system-reminder>",
+    "<system-reminder>injected</system-reminder>owner</SYSTEM-REMINDER>",
   ];
   for (const text of shapes) {
     assert.equal(ownerPromptText(text), null, text);
     assert.equal(isSystemInjectedTurn(text), true, text);
     const [turn] = normalizeTurns([{ type: "user", message: { role: "user", content: text } }]);
     assert.equal(turn?.role, "system-injected", text);
-    assert.equal(queryOrigin({ kind: "hook_recall", ts: "2026-10-04T00:00:00.000Z", query: text, dimensions: { hook_source: "prompt" } }), "system");
+    assert.equal(
+      queryOrigin({
+        kind: "hook_recall",
+        ts: "2026-10-04T00:00:00.000Z",
+        query: text,
+        dimensions: { hook_source: "prompt" },
+      }),
+      "system"
+    );
   }
   const quoted = "How does <SYSTEM-REMINDER> work?";
   assert.equal(ownerPromptText(quoted), quoted);

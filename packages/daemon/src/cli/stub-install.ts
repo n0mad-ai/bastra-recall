@@ -37,8 +37,7 @@ const REPO = "n0mad-ai/bastra-recall";
 /** Shown in the prompt — the deno runtime plus ~150 KB of our code; the arm64
  *  macOS binary is 68 MB, the others are in the same range. */
 export const STUB_SIZE_HINT = "~70 MB";
-export const STUB_QUESTION =
-  `Download the compiled hook client (${STUB_SIZE_HINT}, one-time) so hooks start faster than on node?`;
+export const STUB_QUESTION = `Download the compiled hook client (${STUB_SIZE_HINT}, one-time) so hooks start faster than on node?`;
 
 /** The deno target triples the release workflow builds (publish-npm.yml). */
 export const STUB_TARGETS = [
@@ -203,7 +202,7 @@ export async function downloadVerified(
   url: string,
   expectedSha256: string,
   dest: string,
-  io: { fetch?: typeof fetch } = {},
+  io: { fetch?: typeof fetch } = {}
 ): Promise<{ ok: true; bytes: number } | { ok: false; reason: string }> {
   const partial = `${dest}.partial`;
   try {
@@ -221,7 +220,7 @@ export async function downloadVerified(
           yield chunk;
         }
       },
-      createWriteStream(partial),
+      createWriteStream(partial)
     );
     if (hash.digest("hex") !== expectedSha256) {
       await rm(partial, { force: true });
@@ -271,7 +270,7 @@ export async function ensureHookStub(
     ask?: (question: string, opts: { defaultYes?: boolean }) => Promise<boolean>;
     fetch?: typeof fetch;
     log?: (line: string) => void;
-  } = {},
+  } = {}
 ): Promise<StubStepResult> {
   const stubBin = i.stubBin ?? HOOK_STUB_BIN;
   const markerPath = i.markerPath ?? stubMarkerPath();
@@ -297,7 +296,12 @@ export async function ensureHookStub(
       // no-op: persist it, or the next unattended `bastra update` would read
       // the stale no and put the hooks back on the node client (#537).
       if (i.mode === "yes" && !i.dryRun) {
-        await writeStubMarker(markerPath, { optIn: true, decidedAt: new Date().toISOString(), target: target ?? undefined, version });
+        await writeStubMarker(markerPath, {
+          optIn: true,
+          decidedAt: new Date().toISOString(),
+          target: target ?? undefined,
+          version,
+        });
       }
       return { status: "present", detail: `compiled hook client present (${stubBin})`, useStub: true };
     case "skip":
@@ -322,25 +326,46 @@ export async function ensureHookStub(
         detail: `no stub manifest in this package (source checkout? build it with \`npm run build:stub\`); ${onNode}`,
       };
     case "unsupported":
-      return { status: "skipped", useStub: false, detail: `no compiled hook client for ${process.platform}/${process.arch}; ${onNode}` };
+      return {
+        status: "skipped",
+        useStub: false,
+        detail: `no compiled hook client for ${process.platform}/${process.arch}; ${onNode}`,
+      };
     case "dry-run":
-      return { status: "skipped", useStub: false, detail: `~ would offer the compiled hook client for ${target} (${STUB_SIZE_HINT}) (dry-run)` };
+      return {
+        status: "skipped",
+        useStub: false,
+        detail: `~ would offer the compiled hook client for ${target} (${STUB_SIZE_HINT}) (dry-run)`,
+      };
     case "declined":
-      return { status: "skipped", useStub: false, detail: `compiled hook client declined earlier; ${onNode} (pass --stub to download)` };
+      return {
+        status: "skipped",
+        useStub: false,
+        detail: `compiled hook client declined earlier; ${onNode} (pass --stub to download)`,
+      };
     case "non-interactive":
-      return { status: "skipped", useStub: false, detail: `non-interactive: pass --stub to download the compiled hook client; ${onNode}` };
+      return {
+        status: "skipped",
+        useStub: false,
+        detail: `non-interactive: pass --stub to download the compiled hook client; ${onNode}`,
+      };
     case "ask": {
       const accepted = await (io.ask ?? confirm)(STUB_QUESTION, { defaultYes: true });
       if (!accepted) {
         await writeStubMarker(markerPath, { optIn: false, decidedAt: new Date().toISOString() });
-        return { status: "skipped", useStub: false, detail: `declined; ${onNode} (re-run with --stub to download later)` };
+        return {
+          status: "skipped",
+          useStub: false,
+          detail: `declined; ${onNode} (re-run with --stub to download later)`,
+        };
       }
       break;
     }
     case "download":
       break;
   }
-  if (!target || !asset) return { status: "skipped", useStub: false, detail: `no compiled hook client for this host; ${onNode}` };
+  if (!target || !asset)
+    return { status: "skipped", useStub: false, detail: `no compiled hook client for this host; ${onNode}` };
 
   // The decision is the user's, not the download's: remembered before the
   // fetch, so a transient failure retries on the next install instead of
@@ -349,7 +374,12 @@ export async function ensureHookStub(
   const log = io.log ?? ((line: string) => process.stdout.write(line));
   log(`  · hook client: downloading ${asset.file} (${STUB_SIZE_HINT}) from GitHub releases…\n`);
   const r = await downloadVerified(stubAssetUrl(version, asset.file), asset.sha256, stubBin, { fetch: io.fetch });
-  if (!r.ok) return { status: "failed", useStub: false, detail: `could not fetch the compiled hook client (${r.reason}); ${onNode}` };
+  if (!r.ok)
+    return {
+      status: "failed",
+      useStub: false,
+      detail: `could not fetch the compiled hook client (${r.reason}); ${onNode}`,
+    };
   return {
     status: "installed",
     useStub: true,

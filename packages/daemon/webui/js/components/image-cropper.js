@@ -53,9 +53,11 @@ export function openImageCropper(file) {
       const nw = target.naturalWidth;
       const nh = target.naturalHeight;
       if (iy > 0) c.drawImage(target, 0, 0, nw, 1, ix, 0, drawW, iy + 0.5);
-      if (iy + drawH < dim) c.drawImage(target, 0, nh - 1, nw, 1, ix, iy + drawH - 0.5, drawW, dim - (iy + drawH) + 0.5);
+      if (iy + drawH < dim)
+        c.drawImage(target, 0, nh - 1, nw, 1, ix, iy + drawH - 0.5, drawW, dim - (iy + drawH) + 0.5);
       if (ix > 0) c.drawImage(target, 0, 0, 1, nh, 0, iy, ix + 0.5, drawH);
-      if (ix + drawW < dim) c.drawImage(target, nw - 1, 0, 1, nh, ix + drawW - 0.5, iy, dim - (ix + drawW) + 0.5, drawH);
+      if (ix + drawW < dim)
+        c.drawImage(target, nw - 1, 0, 1, nh, ix + drawW - 0.5, iy, dim - (ix + drawW) + 0.5, drawH);
       c.drawImage(target, ix, iy, drawW, drawH);
       c.restore();
     }

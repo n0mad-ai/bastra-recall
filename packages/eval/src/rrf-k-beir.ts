@@ -33,13 +33,7 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import {
-  Vault,
-  SearchIndex,
-  EmbeddingIndex,
-  OllamaEmbeddingProvider,
-  fuseRRF,
-} from "@bastra-recall/core";
+import { Vault, SearchIndex, EmbeddingIndex, OllamaEmbeddingProvider, fuseRRF } from "@bastra-recall/core";
 
 const argv = process.argv.slice(2);
 const arg = (n: string, d: string): string => {
@@ -48,7 +42,11 @@ const arg = (n: string, d: string): string => {
 };
 
 /** BEIR ids are arbitrary strings; memory ids have to be path-safe slugs. */
-const slug = (id: string): string => id.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const slug = (id: string): string =>
+  id
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 
 async function readJsonl<T>(p: string): Promise<T[]> {
   const text = await fs.readFile(p, "utf8");
@@ -104,9 +102,7 @@ async function main(): Promise<void> {
     qrels.get(qid)!.set(slug(did), g);
   }
 
-  const corpus = await readJsonl<{ _id: string; title: string; text: string }>(
-    path.join(data, "corpus.jsonl"),
-  );
+  const corpus = await readJsonl<{ _id: string; title: string; text: string }>(path.join(data, "corpus.jsonl"));
   const queries = await readJsonl<{ _id: string; text: string }>(path.join(data, "queries.jsonl"));
   const judged = queries.filter((q) => qrels.has(q._id));
   const testQueries = limit > 0 ? judged.slice(0, limit) : judged;
@@ -142,7 +138,7 @@ async function main(): Promise<void> {
       keepAlive: "10m",
     }),
     path.join(work, "embeddings.json"),
-    path.join(work, "cache.json"),
+    path.join(work, "cache.json")
   );
   await emb.start();
   // start() kicks the backfill off without awaiting it; the arms are only
@@ -162,7 +158,7 @@ async function main(): Promise<void> {
     if (Date.now() - stalledSince > 120_000 || Date.now() > embedDeadline) {
       console.error(
         `\nFATAL: embedding stalled at ${emb.size()}/${loaded}. Is Ollama reachable at ` +
-          `${process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434"}?`,
+          `${process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434"}?`
       );
       process.exit(3);
     }
@@ -202,17 +198,17 @@ async function main(): Promise<void> {
     const n = arms.length;
     rows.push({ k, ndcg10: nd / n, recall10: rc / n, hit5: h5 / n, hit10: h10 / n });
     console.log(
-      `   ${String(k).padStart(4)} |  ${(nd / n).toFixed(4)} |    ${(rc / n).toFixed(4)} | ${((h5 / n) * 100).toFixed(1)}% | ${((h10 / n) * 100).toFixed(1)}%`,
+      `   ${String(k).padStart(4)} |  ${(nd / n).toFixed(4)} |    ${(rc / n).toFixed(4)} | ${((h5 / n) * 100).toFixed(1)}% | ${((h10 / n) * 100).toFixed(1)}%`
     );
   }
 
   // ── paired comparison, because a table of means can hide a coin flip ──────
-  const [ka, kb] = arg("--paired", "5,60").split(",").map((s) => Number.parseInt(s, 10));
+  const [ka, kb] = arg("--paired", "5,60")
+    .split(",")
+    .map((s) => Number.parseInt(s, 10));
   if (Number.isFinite(ka) && Number.isFinite(kb)) {
     const rankFor = (a: (typeof arms)[number], k: number): string[] =>
-      [...fuseRRF(a.bm25, a.dense, k).entries()]
-        .sort((x, y) => y[1].score - x[1].score)
-        .map(([id]) => id);
+      [...fuseRRF(a.bm25, a.dense, k).entries()].sort((x, y) => y[1].score - x[1].score).map(([id]) => id);
     const diffs = arms.map((a) => {
       const rel = qrels.get(a.qid)!;
       return ndcg(rankFor(a, ka), rel, 10) - ndcg(rankFor(a, kb), rel, 10);
@@ -259,7 +255,9 @@ async function main(): Promise<void> {
     }
     const pPerm = (ge + 1) / 10_001;
     console.log(`\n── paired: k=${ka} vs k=${kb}, per-query nDCG@10 (n=${diffs.length}) ──`);
-    console.log(`   mean Δ ${mean >= 0 ? "+" : ""}${mean.toFixed(4)}   95% CI [${lo.toFixed(4)}, ${hi.toFixed(4)}]   bootstrap p=${p.toFixed(4)}   sign-flip p=${pPerm.toFixed(4)}`);
+    console.log(
+      `   mean Δ ${mean >= 0 ? "+" : ""}${mean.toFixed(4)}   95% CI [${lo.toFixed(4)}, ${hi.toFixed(4)}]   bootstrap p=${p.toFixed(4)}   sign-flip p=${pPerm.toFixed(4)}`
+    );
     console.log(`   better on ${wins} queries · worse on ${losses} · unchanged on ${ties}`);
     if (arg("--dump-diffs", "")) {
       await fs.writeFile(arg("--dump-diffs", ""), JSON.stringify(diffs));

@@ -106,8 +106,7 @@ function add(target: LedgerPart, tokens: number | null): void {
   else target.tokens += tokens;
 }
 
-const numberOrNull = (v: unknown): number | null =>
-  typeof v === "number" && Number.isFinite(v) ? v : null;
+const numberOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 /** Der Schlüssel, unter dem ein Ereignis seiner Session zugerechnet wird.
  *  Hook-Lanes tragen die echte Client-Session in `session_id`; die

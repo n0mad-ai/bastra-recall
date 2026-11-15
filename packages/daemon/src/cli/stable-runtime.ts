@@ -48,7 +48,12 @@ export function homebrewKeg(p: string): { prefix: string; keg: string; version: 
     if (parts[i] === "Cellar" && parts[i + 1] === "bastra-recall" && parts[i + 2]) {
       // `1.0.0_1` is a formula revision of 1.0.0 — the same package version.
       const keg = parts[i + 2];
-      return { prefix: parts.slice(0, i).join("/"), keg, version: keg.replace(/_\d+$/, ""), rest: parts.slice(i + 3).join("/") };
+      return {
+        prefix: parts.slice(0, i).join("/"),
+        keg,
+        version: keg.replace(/_\d+$/, ""),
+        rest: parts.slice(i + 3).join("/"),
+      };
     }
   }
   return null;
@@ -117,7 +122,7 @@ export function resolveNodeModulesRoot(packageRoot: string): string | null {
 export async function copyRuntimeTree(
   sourceNodeModules: string,
   target: RuntimeTarget,
-  version: string,
+  version: string
 ): Promise<void> {
   const staging = `${target.rootDir}.tmp-${process.pid}`;
   try {
@@ -158,7 +163,7 @@ export interface ForwarderResolution {
  */
 export function mapBinToStableRuntime(
   bin: string,
-  res: Pick<ForwarderResolution, "rootDir" | "sourceNodeModules">,
+  res: Pick<ForwarderResolution, "rootDir" | "sourceNodeModules">
 ): string {
   if (!res.rootDir || !res.sourceNodeModules) return homebrewStablePath(bin);
   const rel = relative(res.sourceNodeModules, bin);
@@ -213,7 +218,7 @@ export async function removeRuntimeBase(home: string = homedir()): Promise<boole
  */
 export async function ensureStableForwarder(
   opts: { dryRun: boolean },
-  io: { forwarderPath?: string; version?: string; home?: string; stablePath?: (p: string) => string } = {},
+  io: { forwarderPath?: string; version?: string; home?: string; stablePath?: (p: string) => string } = {}
 ): Promise<ForwarderResolution> {
   const fwd = io.forwarderPath ?? FORWARDER_SCRIPT_PATH;
   if (!isEphemeralInstallPath(fwd)) return { path: (io.stablePath ?? homebrewStablePath)(fwd), action: "native" };
@@ -226,25 +231,53 @@ export async function ensureStableForwarder(
   // its hook/statusline bins into the copy (#180 — see mapBinToStableRuntime).
   const stable = { rootDir: target.rootDir, sourceNodeModules: nmRoot ?? undefined };
   if ((await fileExists(target.markerPath)) && (await fileExists(target.forwarderPath))) {
-    return { path: target.forwarderPath, action: "reused", note: `stable runtime ${version} reused (${target.rootDir})`, ...stable };
+    return {
+      path: target.forwarderPath,
+      action: "reused",
+      note: `stable runtime ${version} reused (${target.rootDir})`,
+      ...stable,
+    };
   }
   if (opts.dryRun) {
-    return { path: target.forwarderPath, action: "would-copy", note: `would copy runtime to ${target.rootDir} (npx cache is ephemeral)`, ...stable };
+    return {
+      path: target.forwarderPath,
+      action: "would-copy",
+      note: `would copy runtime to ${target.rootDir} (npx cache is ephemeral)`,
+      ...stable,
+    };
   }
 
   if (!nmRoot) {
-    return { path: fwd, action: "fallback", note: "npx cache detected but package layout unexpected — registering the cache path (prefer a permanent install: npm i -g)" };
+    return {
+      path: fwd,
+      action: "fallback",
+      note: "npx cache detected but package layout unexpected — registering the cache path (prefer a permanent install: npm i -g)",
+    };
   }
   try {
     await copyRuntimeTree(nmRoot, target, version);
     await pruneOldRuntimes(target);
-    return { path: target.forwarderPath, action: "copied", note: `copied to ${target.rootDir} (npx cache is ephemeral — registrations now survive cache eviction)`, ...stable };
+    return {
+      path: target.forwarderPath,
+      action: "copied",
+      note: `copied to ${target.rootDir} (npx cache is ephemeral — registrations now survive cache eviction)`,
+      ...stable,
+    };
   } catch (e) {
     // Concurrent install may have won the rename race — the copy is there.
     if (await fileExists(target.forwarderPath)) {
-      return { path: target.forwarderPath, action: "reused", note: `stable runtime ${version} reused (${target.rootDir})`, ...stable };
+      return {
+        path: target.forwarderPath,
+        action: "reused",
+        note: `stable runtime ${version} reused (${target.rootDir})`,
+        ...stable,
+      };
     }
-    return { path: fwd, action: "fallback", note: `runtime copy failed (${(e as Error).message}) — registering the npx cache path` };
+    return {
+      path: fwd,
+      action: "fallback",
+      note: `runtime copy failed (${(e as Error).message}) — registering the npx cache path`,
+    };
   }
 }
 
@@ -295,7 +328,7 @@ export function checkForwarderRegistration(
   surface: string,
   runningVersion: string = VERSION,
   home: string = homedir(),
-  stablePath: (p: string) => string = homebrewStablePath,
+  stablePath: (p: string) => string = homebrewStablePath
 ): ForwarderPathCheck {
   if (!exists) {
     return { detail: `${fwd} (MISSING — re-run 'bastra install ${surface}')`, broken: true };

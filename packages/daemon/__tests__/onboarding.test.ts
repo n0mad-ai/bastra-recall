@@ -28,15 +28,15 @@ import {
 test("questionsFor: persona steers the catalog, mixed gets one follow-up per persona", () => {
   assert.deepEqual(
     questionsFor("developer").map((q) => q.id),
-    ["identity", "rules", "stack", "projects", "workflow", "conventions_size", "conventions_structure", "freeform"],
+    ["identity", "rules", "stack", "projects", "workflow", "conventions_size", "conventions_structure", "freeform"]
   );
   assert.deepEqual(
     questionsFor("mixed").map((q) => q.id),
-    ["identity", "rules", "stack", "role", "world", "freeform"],
+    ["identity", "rules", "stack", "role", "world", "freeform"]
   );
   assert.deepEqual(
     questionsFor("personal").map((q) => q.id),
-    ["identity", "rules", "world", "remember", "goals", "freeform"],
+    ["identity", "rules", "world", "remember", "goals", "freeform"]
   );
 });
 
@@ -48,7 +48,7 @@ test("buildOnboardingMemories: usage-profile always, one memory per answer, all 
   });
   assert.deepEqual(
     memories.map((m) => m.id),
-    ["profile-recall-usage", "profile-how-to-address-me", "profile-stack"],
+    ["profile-recall-usage", "profile-how-to-address-me", "profile-stack"]
   );
   for (const m of memories) {
     assert.equal(m.write_origin, "user-directed");
@@ -72,11 +72,14 @@ test("saveOnboardingMemories: CLI answers share one user-authored audit run", as
     const entries = raw
       .trim()
       .split("\n")
-      .map((line) => JSON.parse(line) as {
-        actor: string;
-        actor_detail?: string;
-        session_id?: string;
-      });
+      .map(
+        (line) =>
+          JSON.parse(line) as {
+            actor: string;
+            actor_detail?: string;
+            session_id?: string;
+          }
+      );
     assert.equal(entries.length, memories.length);
     assert.ok(entries.every((entry) => entry.actor === "user"));
     assert.ok(entries.every((entry) => entry.actor_detail === "cli:onboard"));
@@ -114,14 +117,20 @@ test("GET/POST /ui/onboarding: gated on ui.enabled, saves user-directed memories
   const call = (method: string, body?: unknown): Promise<{ status: number; json: Record<string, unknown> }> =>
     new Promise((resolve, reject) => {
       const req = request(
-        { hostname: "127.0.0.1", port, path: "/ui/onboarding", method, headers: { "Content-Type": "application/json" } },
+        {
+          hostname: "127.0.0.1",
+          port,
+          path: "/ui/onboarding",
+          method,
+          headers: { "Content-Type": "application/json" },
+        },
         (res) => {
           let raw = "";
           res.on("data", (c) => (raw += c));
           res.on("end", () =>
-            resolve({ status: res.statusCode ?? 0, json: JSON.parse(raw) as Record<string, unknown> }),
+            resolve({ status: res.statusCode ?? 0, json: JSON.parse(raw) as Record<string, unknown> })
           );
-        },
+        }
       );
       req.on("error", reject);
       req.end(body === undefined ? undefined : JSON.stringify(body));
@@ -146,10 +155,7 @@ test("GET/POST /ui/onboarding: gated on ui.enabled, saves user-directed memories
     });
     assert.equal(saved.status, 200);
     assert.equal(saved.json.saved, 3, "usage-profile + 2 answers");
-    const profile = await readFile(
-      join(vaultDir, "memories", "user", "profile-how-to-address-me.md"),
-      "utf8",
-    );
+    const profile = await readFile(join(vaultDir, "memories", "user", "profile-how-to-address-me.md"), "utf8");
     assert.match(profile, /write_origin: user-directed/);
     assert.equal(await isOnboardingDone(vaultDir), true);
 
@@ -157,12 +163,15 @@ test("GET/POST /ui/onboarding: gated on ui.enabled, saves user-directed memories
     const audit = auditRaw
       .trim()
       .split("\n")
-      .map((line) => JSON.parse(line) as {
-        actor: string;
-        actor_detail?: string;
-        operation: string;
-        session_id?: string;
-      });
+      .map(
+        (line) =>
+          JSON.parse(line) as {
+            actor: string;
+            actor_detail?: string;
+            operation: string;
+            session_id?: string;
+          }
+      );
     assert.equal(audit.length, 3, "every onboarding memory needs one audit entry");
     assert.ok(audit.every((entry) => entry.actor === "user"));
     assert.ok(audit.every((entry) => entry.actor_detail === "ui:onboarding"));
@@ -170,7 +179,7 @@ test("GET/POST /ui/onboarding: gated on ui.enabled, saves user-directed memories
     assert.equal(
       new Set(audit.map((entry) => entry.session_id)).size,
       1,
-      "one onboarding submission is one reconstructable audit run",
+      "one onboarding submission is one reconstructable audit run"
     );
     assert.ok(audit[0].session_id);
 
@@ -197,11 +206,17 @@ test("POST /ui/onboarding skip: marker without any saved memory", async () => {
   try {
     const status = await new Promise<number>((resolve, reject) => {
       const req = request(
-        { hostname: "127.0.0.1", port, path: "/ui/onboarding", method: "POST", headers: { "Content-Type": "application/json" } },
+        {
+          hostname: "127.0.0.1",
+          port,
+          path: "/ui/onboarding",
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        },
         (res) => {
           res.resume();
           res.on("end", () => resolve(res.statusCode ?? 0));
-        },
+        }
       );
       req.on("error", reject);
       req.end(JSON.stringify({ skip: true }));
@@ -250,7 +265,7 @@ test("persistLanguageSetting: explicit language in identity beats answer-text de
         identity: "Daniel · Deutsch, Du-Form · terse",
         stack: "I write TypeScript and Node with a lot of tests and small reviews",
       },
-      settingsPath,
+      settingsPath
     );
     assert.equal(await getPrimaryLanguage(settingsPath), "de", "explicit 'Deutsch' beats the English body");
   } finally {
@@ -293,7 +308,7 @@ test("persistLanguageSetting: falls back to detection over all answers when no n
         identity: "Sam, bitte kurz und technisch",
         world: "Ich habe zwei Kinder und wohne in Berlin, das ist mir sehr wichtig",
       },
-      settingsPath,
+      settingsPath
     );
     assert.equal(await getPrimaryLanguage(settingsPath), "de", "detected from German function words");
   } finally {
@@ -311,7 +326,7 @@ test("persistLanguageSetting: no language signal leaves an existing value untouc
     // Code-shaped answers, no language name, no function words → detector abstains.
     await persistLanguageSetting(
       { identity: "Sam", stack: "TypeScript Node Postgres Docker Kubernetes" },
-      settingsPath,
+      settingsPath
     );
     assert.equal(await getPrimaryLanguage(settingsPath), "fr", "no signal → previous value kept, never cleared");
   } finally {
@@ -327,7 +342,11 @@ test("file-size-check reads the onboarded guide value from cli-settings", async 
     await writeFile(settingsPath, JSON.stringify({ size: { guide: 300 } }), "utf8");
     const s = await readSizeSettings(settingsPath);
     assert.deepEqual(thresholdsFor("/x/app.js", s), { guide: 300, critical: 800 });
-    assert.deepEqual(thresholdsFor("/x/a.test.ts", s), { guide: 700, critical: 1000 }, "tests keep the fixed convention");
+    assert.deepEqual(
+      thresholdsFor("/x/a.test.ts", s),
+      { guide: 700, critical: 1000 },
+      "tests keep the fixed convention"
+    );
     assert.deepEqual(await readSizeSettings(join(dir, "missing.json")), {}, "missing file → empty, never throws");
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });

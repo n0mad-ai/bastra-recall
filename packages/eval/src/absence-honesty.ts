@@ -59,10 +59,47 @@ import {
  *  wrong makes the baseline weaker, i.e. flatters recall — so it is worth
  *  getting right before quoting the comparison. */
 const STOP = new Set([
-  "the", "and", "for", "with", "that", "this", "not", "but", "was", "are", "its",
-  "from", "into", "when", "what", "which", "you", "your", "has", "had", "have",
-  "der", "die", "das", "und", "oder", "aber", "nicht", "ist", "sind", "war",
-  "eine", "einen", "einem", "einer", "den", "dem", "des", "mit", "auf", "für",
+  "the",
+  "and",
+  "for",
+  "with",
+  "that",
+  "this",
+  "not",
+  "but",
+  "was",
+  "are",
+  "its",
+  "from",
+  "into",
+  "when",
+  "what",
+  "which",
+  "you",
+  "your",
+  "has",
+  "had",
+  "have",
+  "der",
+  "die",
+  "das",
+  "und",
+  "oder",
+  "aber",
+  "nicht",
+  "ist",
+  "sind",
+  "war",
+  "eine",
+  "einen",
+  "einem",
+  "einer",
+  "den",
+  "dem",
+  "des",
+  "mit",
+  "auf",
+  "für",
 ]);
 
 /** Extra stopwords from `--stopwords <file>`, one per line. */
@@ -81,7 +118,7 @@ function contentTerms(q: string): string[] {
         .toLowerCase()
         .split(/[^\p{L}\p{N}_.-]+/u)
         .map((t) => t.replace(/^[.-]+|[.-]+$/g, ""))
-        .filter((t) => t.length >= 3 && !STOP.has(t)),
+        .filter((t) => t.length >= 3 && !STOP.has(t))
     ),
   ];
 }
@@ -123,11 +160,7 @@ function grepBaseline(corpus: Map<string, string>, query: string, k: number): Gr
  *  not a file. Restricting to vector-carrying memories keeps EmbeddingIndex
  *  from backfilling — a backfill would re-embed on every round and the arms
  *  would not share a dense leg. */
-async function stageCorpus(
-  vaultRoot: string,
-  workRoot: string,
-  keepIds: Set<string>,
-): Promise<Map<string, string>> {
+async function stageCorpus(vaultRoot: string, workRoot: string, keepIds: Set<string>): Promise<Map<string, string>> {
   await fs.rm(workRoot, { recursive: true, force: true });
   await fs.mkdir(path.join(workRoot, "memories"), { recursive: true });
   const corpus = new Map<string, string>();
@@ -142,7 +175,10 @@ async function stageCorpus(
       }
       if (!d.name.endsWith(".md")) continue;
       const text = await fs.readFile(path.join(vaultRoot, childRel), "utf8");
-      const id = /^id:\s*(.+)$/m.exec(text)?.[1]?.trim().replace(/^['"]|['"]$/g, "");
+      const id = /^id:\s*(.+)$/m
+        .exec(text)?.[1]
+        ?.trim()
+        .replace(/^['"]|['"]$/g, "");
       if (!id || !keepIds.has(id)) continue;
       await fs.mkdir(path.join(workRoot, path.dirname(childRel)), { recursive: true });
       const src = path.join(vaultRoot, childRel);
@@ -184,7 +220,7 @@ async function runRecall(
   embWork: string,
   query: string,
   goldId: string,
-  k: number,
+  k: number
 ): Promise<Arm> {
   await fs.copyFile(embSrc, embWork);
   const vault = new Vault(workRoot);
@@ -229,10 +265,7 @@ async function main(): Promise<void> {
     const i = argv.indexOf(name);
     return i === -1 ? def : (argv[i + 1] ?? def);
   };
-  const vaultRoot = (process.env.BASTRA_VAULT_PATH ?? arg("--vault", "")).replace(
-    /^~/,
-    os.homedir(),
-  );
+  const vaultRoot = (process.env.BASTRA_VAULT_PATH ?? arg("--vault", "")).replace(/^~/, os.homedir());
   if (!vaultRoot) {
     console.error("FATAL: set BASTRA_VAULT_PATH or pass --vault");
     process.exit(1);
@@ -271,7 +304,7 @@ async function main(): Promise<void> {
         keepAlive: "10m",
       }),
       embSrc,
-      path.join(seedDir, "cache.json"),
+      path.join(seedDir, "cache.json")
     );
     await fs.writeFile(embSrc, JSON.stringify({ dim: 0, provider: "seed", vectors: {} }));
     await seedIdx.start();
@@ -340,10 +373,18 @@ async function main(): Promise<void> {
     // in words the memory does not contain. Without them this falls back to a
     // sentence from the body, which is a QUOTATION — a literal search wins it
     // by construction, so that fallback is a plumbing check, not a result.
-    const body = text.split(/^---\s*$/m).slice(2).join("---");
+    const body = text
+      .split(/^---\s*$/m)
+      .slice(2)
+      .join("---");
     const fallbackQuery = body
       .split(/\n/)
-      .map((l) => l.replace(/^[#>\-*\s]+/, "").replace(/[`*_[\]]/g, "").trim())
+      .map((l) =>
+        l
+          .replace(/^[#>\-*\s]+/, "")
+          .replace(/[`*_[\]]/g, "")
+          .trim()
+      )
       .filter((l) => l.length > 40 && !l.startsWith("id:") && !/^\w+:/.test(l))
       .slice(0, 1)
       .join(" ")
@@ -359,9 +400,7 @@ async function main(): Promise<void> {
 
     const present = await runRecall(corpusRoot, embSrc, embWork, trigger, goldId, k);
     const paraphrase =
-      bodyQuery.length >= 20
-        ? await runRecall(corpusRoot, embSrc, embWork, bodyQuery, goldId, k)
-        : null;
+      bodyQuery.length >= 20 ? await runRecall(corpusRoot, embSrc, embWork, bodyQuery, goldId, k) : null;
 
     const backup = `${file}.held`;
     await fs.rename(file, backup);
@@ -400,7 +439,7 @@ async function main(): Promise<void> {
     process.stderr.write(
       `${picked}/${n} ${goldId.slice(0, 42).padEnd(42)} present:r${present.gold_rank ?? "-"} ` +
         `absent:${absent.no_home ? "no_home" : absent.weak_result ? "weak" : "SILENT"} ` +
-        `grep-and:${grepAbsent.and.length}\n`,
+        `grep-and:${grepAbsent.and.length}\n`
     );
   }
 
@@ -438,24 +477,44 @@ async function main(): Promise<void> {
   console.log("\n── absence honesty ──────────────────────────────────────────");
   console.log(`n = ${total} leave-one-out pairs, k = ${k}, corpus ${corpus.size}`);
   console.log("\nPRESENT (control — the memory IS in the vault):");
-  console.log(`  recall  gold in top-${k}      ${summary.present.recall_hit_at_k}/${total}  ${pct(summary.present.recall_hit_at_k)}`);
-  console.log(`  grep    gold in ranked top-${k} ${summary.present.grep_ranked_hit}/${total}  ${pct(summary.present.grep_ranked_hit)}`);
-  console.log(`  grep    gold in AND set      ${summary.present.grep_and_hit}/${total}  ${pct(summary.present.grep_and_hit)}`);
+  console.log(
+    `  recall  gold in top-${k}      ${summary.present.recall_hit_at_k}/${total}  ${pct(summary.present.recall_hit_at_k)}`
+  );
+  console.log(
+    `  grep    gold in ranked top-${k} ${summary.present.grep_ranked_hit}/${total}  ${pct(summary.present.grep_ranked_hit)}`
+  );
+  console.log(
+    `  grep    gold in AND set      ${summary.present.grep_and_hit}/${total}  ${pct(summary.present.grep_and_hit)}`
+  );
   console.log(`  weak_result false positives  ${summary.present.recall_flag_false_positive}/${total}`);
   console.log("\nABSENT (the memory is held out — the fact has no home):");
-  console.log(`  grep    said nothing matched ${summary.absent.grep_and_empty}/${total}  ${pct(summary.absent.grep_and_empty)}`);
-  console.log(`  recall  weak_result fired    ${summary.absent.weak_result_fired}/${total}  ${pct(summary.absent.weak_result_fired)}`);
-  console.log(`  recall  no_home fired        ${summary.absent.no_home_fired}/${total}  ${pct(summary.absent.no_home_fired)}`);
-  console.log(`  recall  SILENT (claims hits) ${summary.absent.recall_silent}/${total}  ${pct(summary.absent.recall_silent)}`);
+  console.log(
+    `  grep    said nothing matched ${summary.absent.grep_and_empty}/${total}  ${pct(summary.absent.grep_and_empty)}`
+  );
+  console.log(
+    `  recall  weak_result fired    ${summary.absent.weak_result_fired}/${total}  ${pct(summary.absent.weak_result_fired)}`
+  );
+  console.log(
+    `  recall  no_home fired        ${summary.absent.no_home_fired}/${total}  ${pct(summary.absent.no_home_fired)}`
+  );
+  console.log(
+    `  recall  SILENT (claims hits) ${summary.absent.recall_silent}/${total}  ${pct(summary.absent.recall_silent)}`
+  );
   const pn = summary.paraphrase.n || 1;
   const ppct = (x: number): string => `${((x / pn) * 100).toFixed(1)}%`;
   console.log(
-    `\nPARAPHRASE (same memory, asked ${casesPath ? "with a hand-written held-out query" : "with a sentence from its body — a quotation, not a paraphrase"}):`,
+    `\nPARAPHRASE (same memory, asked ${casesPath ? "with a hand-written held-out query" : "with a sentence from its body — a quotation, not a paraphrase"}):`
   );
   console.log(`  n = ${summary.paraphrase.n}`);
-  console.log(`  recall  gold in top-${k}      ${summary.paraphrase.recall_hit_at_k}/${pn}  ${ppct(summary.paraphrase.recall_hit_at_k)}`);
-  console.log(`  grep    gold in ranked top-${k} ${summary.paraphrase.grep_ranked_hit}/${pn}  ${ppct(summary.paraphrase.grep_ranked_hit)}`);
-  console.log(`  grep    gold in AND set      ${summary.paraphrase.grep_and_hit}/${pn}  ${ppct(summary.paraphrase.grep_and_hit)}`);
+  console.log(
+    `  recall  gold in top-${k}      ${summary.paraphrase.recall_hit_at_k}/${pn}  ${ppct(summary.paraphrase.recall_hit_at_k)}`
+  );
+  console.log(
+    `  grep    gold in ranked top-${k} ${summary.paraphrase.grep_ranked_hit}/${pn}  ${ppct(summary.paraphrase.grep_ranked_hit)}`
+  );
+  console.log(
+    `  grep    gold in AND set      ${summary.paraphrase.grep_and_hit}/${pn}  ${ppct(summary.paraphrase.grep_and_hit)}`
+  );
   console.log(`  weak_result false positives  ${summary.paraphrase.recall_flag_false_positive}/${pn}`);
 
   if (outPath) {
@@ -484,7 +543,10 @@ async function findFile(root: string, id: string): Promise<string | null> {
       }
       if (!d.name.endsWith(".md")) continue;
       const text = await fs.readFile(p, "utf8");
-      const fid = /^id:\s*(.+)$/m.exec(text)?.[1]?.trim().replace(/^['"]|['"]$/g, "");
+      const fid = /^id:\s*(.+)$/m
+        .exec(text)?.[1]
+        ?.trim()
+        .replace(/^['"]|['"]$/g, "");
       if (fid === id) return p;
     }
     return null;

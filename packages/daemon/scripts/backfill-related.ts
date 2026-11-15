@@ -90,9 +90,7 @@ async function main(): Promise<void> {
       updatedA++;
       console.error(`  A  ${mem.fm.id}: +${merged.length - existing.length} link(s)`);
     }
-    console.error(
-      `[bastra-recall.backfill] Pass A: ${updatedA} files updated, ${deadLinks} dead wikilinks dropped`,
-    );
+    console.error(`[bastra-recall.backfill] Pass A: ${updatedA} files updated, ${deadLinks} dead wikilinks dropped`);
   } else {
     console.error("[bastra-recall.backfill] Pass A: skipped");
   }
@@ -108,7 +106,7 @@ async function main(): Promise<void> {
   if (!provider) {
     console.error(
       "[bastra-recall.backfill] Pass B: kein EmbeddingProvider verfügbar — abort. " +
-        "Setz BASTRA_EMBEDDING_PROVIDER=ollama oder openai.",
+        "Setz BASTRA_EMBEDDING_PROVIDER=ollama oder openai."
     );
     await vault.stop();
     process.exit(1);
@@ -117,9 +115,7 @@ async function main(): Promise<void> {
   const persistPath = path.join(VAULT!, ".bastra", "embeddings.json");
   const embIdx = new EmbeddingIndex(vault, provider, persistPath);
   await embIdx.start();
-  console.error(
-    `[bastra-recall.backfill] embeddings: ${embIdx.size()} ready, ${embIdx.pendingSize()} pending`,
-  );
+  console.error(`[bastra-recall.backfill] embeddings: ${embIdx.size()} ready, ${embIdx.pendingSize()} pending`);
 
   // Warten, bis jede Memory einen Vektor trägt. `pendingSize()` reicht nicht:
   // start() nimmt den Batch aus der Queue, bevor die Vektoren im Index liegen,
@@ -133,7 +129,7 @@ async function main(): Promise<void> {
   if (embIdx.size() < want) {
     console.error(
       `[bastra-recall.backfill] Pass B: nur ${embIdx.size()}/${want} Memories tragen einen Vektor nach dem Warten — abort, ` +
-        "ein Teil-Index würde bestehende related_via-Kanten löschen. Später erneut starten.",
+        "ein Teil-Index würde bestehende related_via-Kanten löschen. Später erneut starten."
     );
     embIdx.stop();
     await vault.stop();
@@ -150,11 +146,15 @@ async function main(): Promise<void> {
       const filtered = similar.filter((h) => h.score >= THRESHOLD).slice(0, TOP_N);
       if (filtered.length === 0) continue;
       const existing = (mem.fm as { related_via?: { id: string }[] }).related_via ?? [];
-      if (sameStringSet(existing.map((e) => e.id), filtered.map((f) => f.id))) continue;
+      if (
+        sameStringSet(
+          existing.map((e) => e.id),
+          filtered.map((f) => f.id)
+        )
+      )
+        continue;
       updatedB++;
-      console.error(
-        `  B  ${mem.fm.id}: → ${filtered.map((f) => `${f.id}(${f.score.toFixed(2)})`).join(", ")}`,
-      );
+      console.error(`  B  ${mem.fm.id}: → ${filtered.map((f) => `${f.id}(${f.score.toFixed(2)})`).join(", ")}`);
     }
   } else {
     const enricher = new RelatedEnricher(vault, embIdx, {
@@ -166,7 +166,7 @@ async function main(): Promise<void> {
       if (result === null) continue;
       updatedB++;
       console.error(
-        `  B  ${mem.fm.id}: → ${result.map((r) => `${r.id}(${r.score.toFixed(2)})`).join(", ") || "(geleert)"}`,
+        `  B  ${mem.fm.id}: → ${result.map((r) => `${r.id}(${r.score.toFixed(2)})`).join(", ") || "(geleert)"}`
       );
     }
   }
@@ -179,19 +179,12 @@ async function main(): Promise<void> {
 
 // ─── helpers ───────────────────────────────────────────────────
 
-async function rewriteFrontmatterField(
-  filePath: string,
-  field: string,
-  value: unknown,
-): Promise<void> {
+async function rewriteFrontmatterField(filePath: string, field: string, value: unknown): Promise<void> {
   const raw = await readFile(filePath, "utf8");
   const parsed = matter(raw);
   const fm = parsed.data as Record<string, unknown>;
   fm[field] = value;
-  const next = matter.stringify(
-    parsed.content.startsWith("\n") ? parsed.content : `\n${parsed.content}`,
-    fm,
-  );
+  const next = matter.stringify(parsed.content.startsWith("\n") ? parsed.content : `\n${parsed.content}`, fm);
   await writeFile(filePath, next, "utf8");
 }
 

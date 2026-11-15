@@ -1,0 +1,45 @@
+# Concurrent UI work; format after it lands.
+packages/daemon/webui/v22/
+# Dependencies, output, and upstream sources.
+**/node_modules/
+**/dist/
+**/build/
+**/coverage/
+**/vendor/
+# Generated artifacts; their generators own the bytes.
+docs/openapi.yaml
+docs/gpt-action.json
+packages/daemon/stub/build-info.ts
+packages/eval/registrations/rerank-results.json
+packages/eval/code-roi/report*.json
+# Fixture and measurement bytes are evidence, not formatting input.
+**/fixtures/
+**/__fixtures__/
+**/stress-fixtures/
+**/goldset/
+tools/model-compare/data/
+tools/model-compare/results/
+tools/probes/convention-e2e/fixtures.mjs
+**/*snapshot*
+**/*golden*
+# Prose is outside this mechanical pass.
+**/*.md
+**/*.mdx
+# Frozen inline secret-redaction corpus.
+packages/core/__tests__/redact-secrets-corpus.test.ts
+# Strict HTML mode still inserts text whitespace nodes: keep DOM bytes intact.
+packages/daemon/webui/index.html
+scripts/mindspace-perf/page.html
+# tool-surface-parity.test.ts asserts this exact single-line dispatch fragment.
+packages/daemon/src/boot-stdio.ts
+# Frozen registration/evaluation evidence has byte-hash contracts.
+packages/eval/registrations/
+tools/probes/**/result*.json
+packages/eval/code-roi/scenarios.json
+tools/draft-judge-eval/cases.json
+# Wrapping the import detaches @ts-expect-error (TS2578/TS7016).
+packages/daemon/__tests__/binary/hook-stub-binary-parity-546.test.ts
+# D3 test mutates the exact numeric spelling DRAFT_REPEAT_COSINE_MIN = 0.70.
+packages/daemon/src/draft-promote.ts
+# webui-csp.test.ts compares declarations textually with unformatted vendor CSS.
+packages/daemon/webui/css/overlays.css

@@ -52,10 +52,13 @@ export function parseSince(input: string): number | null {
   const n = Number(m[1]);
   if (!Number.isFinite(n) || n < 0) return null;
   const unit = (m[2] ?? "min").toLowerCase();
-  const factor = unit.startsWith("s") ? 1_000
-    : unit.startsWith("h") ? 3_600_000
-    : unit.startsWith("d") ? 86_400_000
-    : 60_000;
+  const factor = unit.startsWith("s")
+    ? 1_000
+    : unit.startsWith("h")
+      ? 3_600_000
+      : unit.startsWith("d")
+        ? 86_400_000
+        : 60_000;
   return n * factor;
 }
 

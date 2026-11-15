@@ -177,7 +177,7 @@ export function scoreSaveQuality(
   deps: ToolDeps,
   input: SaveMemoryInput,
   excludeId: string,
-  supersededIds: ReadonlySet<string> = new Set(),
+  supersededIds: ReadonlySet<string> = new Set()
 ): SaveQualityResult {
   const excluded = (id: string): boolean => id === excludeId || supersededIds.has(id);
   const issues: string[] = [];
@@ -212,7 +212,7 @@ export function scoreSaveQuality(
   ) {
     issues.push("negative capability claim without a fix — hardens into a standing refusal");
     suggestions.push(
-      "capture the FIX (install step, config, env var) instead of the failure as a constraint — or add the fix to the body",
+      "capture the FIX (install step, config, env var) instead of the failure as a constraint — or add the fix to the body"
     );
     score -= 12;
   }
@@ -236,10 +236,10 @@ export function scoreSaveQuality(
   const restating = input.recall_when.filter((trigger) => triggerRestatesSummary(trigger, input.summary));
   if (restating.length > 0) {
     issues.push(
-      `recall_when restates the summary: ${restating.map((t) => `'${t}'`).join(", ")} — the weight-5 trigger field carries text already indexed at weight 2`,
+      `recall_when restates the summary: ${restating.map((t) => `'${t}'`).join(", ")} — the weight-5 trigger field carries text already indexed at weight 2`
     );
     suggestions.push(
-      "author each trigger as a SITUATION where this should surface ('about to write a Tailwind grid'), not a paraphrase of the summary",
+      "author each trigger as a SITUATION where this should surface ('about to write a Tailwind grid'), not a paraphrase of the summary"
     );
     // Small nudge, like its advisory siblings. This is an authoring hint, not
     // a defect: the memory still works, it just spends its best field badly.
@@ -259,7 +259,7 @@ export function scoreSaveQuality(
   if (primaryLang && primaryLang !== "en" && detectLanguage(input.recall_when.join(" ")).lang === "en") {
     issues.push(`recall_when reads as English but your primary language is '${primaryLang}'`);
     suggestions.push(
-      `author triggers in '${primaryLang}', keeping only genuine English tech terms (daemon, deploy, hook, …) as cross-lingual anchors`,
+      `author triggers in '${primaryLang}', keeping only genuine English tech terms (daemon, deploy, hook, …) as cross-lingual anchors`
     );
     score -= 8;
   }
@@ -273,12 +273,12 @@ export function scoreSaveQuality(
       ...containsInjectedBlock(input.title),
       ...containsInjectedBlock(input.summary),
       ...containsInjectedBlock(input.body),
-    ]),
+    ])
   );
   if (injectedTags.length > 0) {
     issues.push(`injected context blocks in content: <${injectedTags.join(">, <")}>`);
     suggestions.push(
-      "remove quoted hook/context blocks (<recall-hints>, <session-context>, <system-reminder>, …) — they are conversation scaffolding, not memory content",
+      "remove quoted hook/context blocks (<recall-hints>, <session-context>, <system-reminder>, …) — they are conversation scaffolding, not memory content"
     );
     score -= 20;
   }
@@ -292,7 +292,7 @@ export function scoreSaveQuality(
   if (injectionAdvisory) {
     issues.push(injectionAdvisory);
     suggestions.push(
-      "review the flagged spans — quoted third-party material keeps the flag as provenance; if it is your own phrasing, reword it",
+      "review the flagged spans — quoted third-party material keeps the flag as provenance; if it is your own phrasing, reword it"
     );
     score -= 15;
   }
@@ -310,7 +310,12 @@ export function scoreSaveQuality(
   const duplicateQuery = [
     ...new Set(words([input.title, ...input.tags, ...input.recall_when, input.summary].join(" "))),
   ].join(" ");
-  const asFields = (m: { title: string; summary: string; tags?: string[]; recall_when?: string[] }): SimilarityFields => ({
+  const asFields = (m: {
+    title: string;
+    summary: string;
+    tags?: string[];
+    recall_when?: string[];
+  }): SimilarityFields => ({
     title: m.title,
     summary: m.summary,
     tags: m.tags ?? [],
@@ -334,7 +339,7 @@ export function scoreSaveQuality(
             summary: stored?.summary ?? hit.summary,
             tags: stored?.tags,
             recall_when: stored?.recall_when,
-          }),
+          })
         ),
       };
     })
@@ -368,7 +373,7 @@ export function scoreSaveQuality(
         m.fm.type === input.type &&
         !excluded(m.fm.id) &&
         !m.fm.obsolete &&
-        m.fm.sensitivity !== "private",
+        m.fm.sensitivity !== "private"
     ).length;
   const triggerCollisions = input.recall_when
     .map((trigger) => {
@@ -428,14 +433,14 @@ export function scoreSaveQuality(
     const top = triggerCollisions[0];
     const howMany = `${top.at_least ? "at least " : ""}${top.count} of ${top.admitted_pool}`;
     issues.push(
-      `trigger collision: '${top.trigger}' names a situation ${top.examples[0]} already declares ('${top.claim}') — ${howMany} in this scope`,
+      `trigger collision: '${top.trigger}' names a situation ${top.examples[0]} already declares ('${top.claim}') — ${howMany} in this scope`
     );
     // The old advice ("make it include a concrete action, subsystem, …") pointed
     // at the author's own wording, which is not where the conflict is: the other
     // memory will surface in this situation no matter how this trigger is
     // phrased, unless one of the two moves.
     suggestions.push(
-      `consider load_memory('${top.examples[0]}') — either update that memory instead, or narrow this trigger to what is genuinely different from its situation`,
+      `consider load_memory('${top.examples[0]}') — either update that memory instead, or narrow this trigger to what is genuinely different from its situation`
     );
     // Unchanged from #239's shape: 12 per affected trigger, capped at 30. There
     // is no strength gradient left to follow — every reported collision sits at

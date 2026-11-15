@@ -49,7 +49,7 @@ test("save_memory refuses to recreate a vault root that vanished", async (t) => 
       scope: "testproj",
       recall_when: ["when the vault mount is gone"],
     }),
-    /missing/,
+    /missing/
   );
   assert.equal(existsSync(root), false, "the vault root must not be recreated");
 });
@@ -58,7 +58,7 @@ test("save_product_doc refuses to recreate a vault root that vanished", async (t
   const { deps, root } = await vanishedVault(t);
   await assert.rejects(
     saveProductDocHandler(deps, { project: "demo", area: "ops", title: "Mount check", summary: "s", body: "Body." }),
-    /missing/,
+    /missing/
   );
   assert.equal(existsSync(root), false, "the vault root must not be recreated");
 });

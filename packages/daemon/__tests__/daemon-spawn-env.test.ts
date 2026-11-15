@@ -38,7 +38,10 @@ test("#684: a remote or TLS endpoint never triggers local daemon auto-spawn", ()
 });
 
 test("client-only keys are dropped; vault, endpoint and the rest pass through", () => {
-  const { env, origin, pinned } = daemonSpawnEnv({ ...CLIENT_ENV, BASTRA_MCP_SESSION_CONTEXT: "0", BASTRA_HOOK_CLIENT: "codex", BASTRA_FORWARDER_SPAWN: "1" }, undefined);
+  const { env, origin, pinned } = daemonSpawnEnv(
+    { ...CLIENT_ENV, BASTRA_MCP_SESSION_CONTEXT: "0", BASTRA_HOOK_CLIENT: "codex", BASTRA_FORWARDER_SPAWN: "1" },
+    undefined
+  );
   for (const k of CLIENT_ONLY_ENV_KEYS) assert.equal(env[k], undefined, k);
   assert.equal(env.BASTRA_VAULT_PATH, "/v");
   assert.equal(env.BASTRA_DAEMON_URL, "http://127.0.0.1:6723");
@@ -52,7 +55,7 @@ test("client-only keys are dropped; vault, endpoint and the rest pass through", 
 test("daemon.env pins win over the client's value and fill what the client lacks", () => {
   const { env, origin, pinned } = daemonSpawnEnv(
     { ...CLIENT_ENV, BASTRA_PROMPT_HOOK_MODE: "off" },
-    { BASTRA_TRIGGER_EXPAND: "0", BASTRA_PROMPT_HOOK_MODE: "all" },
+    { BASTRA_TRIGGER_EXPAND: "0", BASTRA_PROMPT_HOOK_MODE: "all" }
   );
   assert.equal(env.BASTRA_TRIGGER_EXPAND, "0");
   assert.equal(env.BASTRA_PROMPT_HOOK_MODE, "all");
@@ -64,12 +67,26 @@ test("acceptance: with a temp HOME, a key the client lacks comes from cli-settin
   const home = await mkdtemp(join(tmpdir(), "bastra-spawn-env-"));
   t.after(() => rm(home, { recursive: true, force: true }));
   const file = join(home, "cli-settings.json");
-  await writeFile(file, JSON.stringify({
-    daemon: { env: { BASTRA_TRIGGER_EXPAND: "0", BASTRA_DOCUMENT_WRITE: "1", BASTRA_RM_ARCHIVES: "1", BASTRA_HOOK_TIMEOUT_MS: "9", BASTRA_OLLAMA_URL: 5 } },
-  }));
+  await writeFile(
+    file,
+    JSON.stringify({
+      daemon: {
+        env: {
+          BASTRA_TRIGGER_EXPAND: "0",
+          BASTRA_DOCUMENT_WRITE: "1",
+          BASTRA_RM_ARCHIVES: "1",
+          BASTRA_HOOK_TIMEOUT_MS: "9",
+          BASTRA_OLLAMA_URL: 5,
+        },
+      },
+    })
+  );
   const settings = await readSettings(file);
-  assert.deepEqual(settings.daemon?.env, { BASTRA_TRIGGER_EXPAND: "0", BASTRA_DOCUMENT_WRITE: "1", BASTRA_RM_ARCHIVES: "1" },
-    "only documented daemon keys with string values survive");
+  assert.deepEqual(
+    settings.daemon?.env,
+    { BASTRA_TRIGGER_EXPAND: "0", BASTRA_DOCUMENT_WRITE: "1", BASTRA_RM_ARCHIVES: "1" },
+    "only documented daemon keys with string values survive"
+  );
   const { env } = daemonSpawnEnv(CLIENT_ENV, settings.daemon?.env);
   assert.equal(env.BASTRA_TRIGGER_EXPAND, "0");
   assert.equal(env.BASTRA_DOCUMENT_WRITE, "1");
@@ -78,9 +95,14 @@ test("acceptance: with a temp HOME, a key the client lacks comes from cli-settin
 });
 
 test("daemonOrigin reads the starter's markers", () => {
-  assert.deepEqual(daemonOrigin({ BASTRA_DAEMON_STARTED_BY: "forwarder", BASTRA_DAEMON_ENV_ORIGIN: "client+settings" }),
-    { startedBy: "forwarder", envOrigin: "client+settings" });
-  assert.deepEqual(daemonOrigin({ BASTRA_DAEMON_STARTED_BY: "forwarder" }), { startedBy: "forwarder", envOrigin: "client" });
+  assert.deepEqual(
+    daemonOrigin({ BASTRA_DAEMON_STARTED_BY: "forwarder", BASTRA_DAEMON_ENV_ORIGIN: "client+settings" }),
+    { startedBy: "forwarder", envOrigin: "client+settings" }
+  );
+  assert.deepEqual(daemonOrigin({ BASTRA_DAEMON_STARTED_BY: "forwarder" }), {
+    startedBy: "forwarder",
+    envOrigin: "client",
+  });
   assert.deepEqual(daemonOrigin({ BASTRA_AUTOSTART_MANAGED: "1" }), { startedBy: "launchagent", envOrigin: "own" });
   assert.deepEqual(daemonOrigin({ INVOCATION_ID: "abc" }), { startedBy: "systemd", envOrigin: "own" });
   assert.deepEqual(daemonOrigin({}), { startedBy: "direct", envOrigin: "own" });
@@ -104,8 +126,14 @@ test("doctor names a forwarder-owned daemon and the way out; nothing for an olde
   assert.match(fwd, /started by an MCP client's forwarder \(auto-spawn\)/);
   assert.match(fwd, /no daemon\.env pins/);
   assert.match(fwd, /BASTRA_FORWARDER_SPAWN=0/);
-  assert.match(daemonOriginLines({ ...base, startedBy: "forwarder", envOrigin: "client+settings" }).join("\n"), /plus daemon\.env/);
-  assert.match(daemonOriginLines({ ...base, startedBy: "launchagent", envOrigin: "own" }).join("\n"), /the bastra LaunchAgent; env: its own/);
+  assert.match(
+    daemonOriginLines({ ...base, startedBy: "forwarder", envOrigin: "client+settings" }).join("\n"),
+    /plus daemon\.env/
+  );
+  assert.match(
+    daemonOriginLines({ ...base, startedBy: "launchagent", envOrigin: "own" }).join("\n"),
+    /the bastra LaunchAgent; env: its own/
+  );
   assert.deepEqual(daemonOriginLines(base), []);
   assert.deepEqual(daemonOriginLines({ ok: false, endpoint: base.endpoint, detail: "down" }), []);
 });

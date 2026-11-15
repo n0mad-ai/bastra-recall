@@ -28,11 +28,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  capBm25Query,
-  BM25_QUERY_MAX_CHARS,
-  BM25_QUERY_MAX_TERMS,
-} from "../src/bm25-query-cap.js";
+import { capBm25Query, BM25_QUERY_MAX_CHARS, BM25_QUERY_MAX_TERMS } from "../src/bm25-query-cap.js";
 import { capAtWordBoundary, tokenizeWithIdentifiers } from "../src/query-normalize.js";
 import { DocFreqMiniSearch } from "../src/doc-freq-index.js";
 import { Vault } from "../src/vault.js";
@@ -90,7 +86,7 @@ test("#362: over the budget the RAREST words survive, not the first ones", () =>
       q
         .split(/\s+/)
         .map((w) => [w.toLowerCase(), 700])
-        .filter(([w]) => !String(w).startsWith("nshosting")),
+        .filter(([w]) => !String(w).startsWith("nshosting"))
     ),
     // … der Identifier und seine Teile sind selten
     "nshostingcontroller.sizingoptions": 1,
@@ -103,20 +99,30 @@ test("#362: over the budget the RAREST words survive, not the first ones", () =>
   assert.ok(termCount(out) <= BM25_QUERY_MAX_TERMS, `over budget: ${termCount(out)} terms`);
   assert.ok(
     out.includes("NSHostingController.sizingOptions"),
-    `the discriminating identifier must survive — got: ${out}`,
+    `the discriminating identifier must survive — got: ${out}`
   );
   assert.ok(
     !capAtWordBoundary(q, BM25_QUERY_MAX_CHARS).includes("NSHostingController"),
-    "control: prefix truncation would have dropped it — that is what this cap exists for",
+    "control: prefix truncation would have dropped it — that is what this cap exists for"
   );
 });
 
 test("#362: rarity ordering is strict — the two rarest words win a tiny budget", () => {
   const q = "the quick brown fox jumps over the very lazy dog near abandonAfter and fuseRRF";
   const df = dfFrom({
-    the: 900, quick: 400, brown: 500, fox: 300, jumps: 600, over: 800,
-    very: 850, lazy: 450, dog: 350, near: 700, and: 950,
-    abandonafter: 1, fuserrf: 2,
+    the: 900,
+    quick: 400,
+    brown: 500,
+    fox: 300,
+    jumps: 600,
+    over: 800,
+    very: 850,
+    lazy: 450,
+    dog: 350,
+    near: 700,
+    and: 950,
+    abandonafter: 1,
+    fuserrf: 2,
   });
   const out = capBm25Query(q, df, { maxChars: 20, maxTerms: 2 });
   assert.equal(out, "abandonAfter fuseRRF", "rarest two, in original order");
@@ -142,7 +148,7 @@ test("#362: words with no index term at all fill the leftover budget — they ne
   assert.ok(roomy.includes("zzunknownword"), "with budget left over it still comes along");
   assert.ok(
     roomy.indexOf("zzunknownword") < roomy.indexOf("abandonAfter"),
-    "output keeps the original word order regardless of selection order",
+    "output keeps the original word order regardless of selection order"
   );
 });
 
@@ -212,7 +218,7 @@ test("#362: DocFreqMiniSearch reads document frequency out of the index that alr
   assert.equal(mini.docFreq("nosuchterm"), 0, "0 means: not in the index");
   assert.ok(
     mini.docFreq("common") > mini.docFreq("alpha"),
-    "the ordering is the only thing the cap needs from this number",
+    "the ordering is the only thing the cap needs from this number"
   );
 });
 
@@ -244,14 +250,15 @@ test("#362: on a real index the capped query returns the same top hit as the unc
 
   // 12 Memories, die alle dasselbe Füllvokabular tragen (hohe DF) — eines
   // trägt zusätzlich den seltenen Identifier.
-  const filler = "hallo kurz eine frage zu dem thema von gestern bitte anschauen sagen davon haeltst grundsaetzlich stelle code besprochen genau danach rest text nichts beitraegt";
+  const filler =
+    "hallo kurz eine frage zu dem thema von gestern bitte anschauen sagen davon haeltst grundsaetzlich stelle code besprochen genau danach rest text nichts beitraegt";
   for (let i = 0; i < 11; i++) {
     await writeFile(path.join(dir, `n${i}.md`), memoryMd(`note-${i}`, filler), "utf8");
   }
   await writeFile(
     path.join(dir, "rare.md"),
     memoryMd("note-rare", `${filler} NSHostingController.sizingOptions`, "sizingOptions"),
-    "utf8",
+    "utf8"
   );
 
   const vault = new Vault(dir);
@@ -273,7 +280,7 @@ test("#362: on a real index the capped query returns the same top hit as the unc
   assert.deepEqual(
     capped.map((h) => h.id),
     uncapped.map((h) => h.id),
-    "same top-k, same order — the cap dropped cost, not signal",
+    "same top-k, same order — the cap dropped cost, not signal"
   );
 
   // Kontrolle: präfix-getrunkiert verliert der Arm genau diesen Treffer.
@@ -283,6 +290,6 @@ test("#362: on a real index the capped query returns the same top hit as the unc
   assert.notEqual(
     prefixHits[0]?.id,
     "note-rare",
-    "prefix truncation would have lost the discriminating hit — the reason for rarity selection",
+    "prefix truncation would have lost the discriminating hit — the reason for rarity selection"
   );
 });

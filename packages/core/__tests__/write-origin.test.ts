@@ -44,14 +44,14 @@ test("write_origin: default agent-session, explicit user-directed, overwrite pre
     // must not silently turn a user-directed memory into a curation candidate
     const refreshed = await saveMemory(
       dir,
-      input({ id: "dictated-probe", summary: "User prefers refreshed probes.", overwrite: true }),
+      input({ id: "dictated-probe", summary: "User prefers refreshed probes.", overwrite: true })
     );
     assert.equal((await fmOf(refreshed.file_path)).write_origin, "user-directed");
 
     // overwrite WITH the field: explicit value wins
     const reclassified = await saveMemory(
       dir,
-      input({ id: "auto-probe", write_origin: "user-directed", overwrite: true }),
+      input({ id: "auto-probe", write_origin: "user-directed", overwrite: true })
     );
     assert.equal((await fmOf(reclassified.file_path)).write_origin, "user-directed");
   } finally {

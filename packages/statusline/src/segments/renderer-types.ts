@@ -34,17 +34,7 @@ export interface UsageSegmentConfig extends SegmentConfig {
 export interface TmuxSegmentConfig extends SegmentConfig {}
 
 export type BarDisplayStyle =
-  | "text"
-  | "ball"
-  | "bar"
-  | "blocks"
-  | "blocks-line"
-  | "capped"
-  | "dots"
-  | "filled"
-  | "geometric"
-  | "line"
-  | "squares";
+  "text" | "ball" | "bar" | "blocks" | "blocks-line" | "capped" | "dots" | "filled" | "geometric" | "line" | "squares";
 
 export interface ContextSegmentConfig extends SegmentConfig {
   showPercentageOnly?: boolean;

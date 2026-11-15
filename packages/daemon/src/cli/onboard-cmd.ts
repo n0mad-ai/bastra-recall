@@ -39,7 +39,7 @@ export async function cmdOnboard(args: ParsedArgs): Promise<number> {
     process.stdout.write(
       args.surface === "skip"
         ? "✓ onboarding dismissed — run `bastra onboard` anytime to do the interview later\n"
-        : "✓ onboarding marked done\n",
+        : "✓ onboarding marked done\n"
     );
     return 0;
   }
@@ -53,7 +53,9 @@ export async function cmdOnboard(args: ParsedArgs): Promise<number> {
     if (loaded.ignored.length > 0) {
       process.stderr.write(
         `ignored (not a ${loaded.persona} question): ${loaded.ignored.join(", ")} — ` +
-          `known ids: ${questionsFor(loaded.persona).map((q) => q.id).join(", ")}\n`,
+          `known ids: ${questionsFor(loaded.persona)
+            .map((q) => q.id)
+            .join(", ")}\n`
       );
     }
     return saveInterview(vault.path, loaded.persona, loaded.answers);
@@ -63,7 +65,7 @@ export async function cmdOnboard(args: ParsedArgs): Promise<number> {
     process.stderr.write(
       "usage: bastra onboard                   run the interview (interactive)\n" +
         "       bastra onboard --answers <file>  save answers from a JSON/YAML file (no TTY needed)\n" +
-        "       bastra onboard skip             stop the onboarding nudge without answering\n",
+        "       bastra onboard skip             stop the onboarding nudge without answering\n"
     );
     return 2;
   }
@@ -90,7 +92,7 @@ export async function cmdOnboard(args: ParsedArgs): Promise<number> {
  * dropped is an error, because that file was meant to answer something.
  */
 export async function loadAnswersFile(
-  path: string,
+  path: string
 ): Promise<{ persona: Persona; answers: Record<string, string>; ignored: string[] } | { error: string }> {
   let raw: string;
   try {
@@ -113,9 +115,10 @@ export async function loadAnswersFile(
   const ignored = Object.keys(parsed.answers).filter((id) => !asked.has(id));
   // Entries parseOnboardingAnswers dropped because their value is not text.
   const given = (data as { answers?: unknown }).answers;
-  const notText = typeof given === "object" && given !== null
-    ? Object.keys(given).filter((id) => !Object.hasOwn(parsed.answers, id))
-    : [];
+  const notText =
+    typeof given === "object" && given !== null
+      ? Object.keys(given).filter((id) => !Object.hasOwn(parsed.answers, id))
+      : [];
   // A file that tried to answer and got nothing through is a failed run, not
   // a finished onboarding: a typo in the only id, or answers that are not
   // text, must not set the done marker. Only the persona (or blank answers,
@@ -144,7 +147,7 @@ async function saveInterview(vaultPath: string, persona: Persona, answers: Recor
   process.stdout.write(
     `\n✓ ${memories.length} profile memories saved — your AI knows you from the next session on.\n` +
       `  Refine anytime: just tell your AI, or re-run \`bastra onboard\` (answers overwrite).\n` +
-      `  Got memories in other AI tools? \`bastra import\` brings them along too.\n`,
+      `  Got memories in other AI tools? \`bastra import\` brings them along too.\n`
   );
   // #702 step 5: how recall will behave on this vault with this user's own
   // prompts — a replay when transcripts exist, otherwise when to come back.
@@ -163,7 +166,7 @@ async function saveInterview(vaultPath: string, persona: Persona, answers: Recor
  */
 export async function runInterview(
   input: Readable,
-  output: Writable,
+  output: Writable
 ): Promise<{ persona: Persona; answers: Record<string, string> } | null> {
   const rl = createInterface({ input, output });
   // Create the iterator before the first prompt so no early line is lost.
@@ -181,7 +184,7 @@ export async function runInterview(
     output.write(
       "Seed your vault in ~5 minutes — a handful of questions, every answer becomes a memory\n" +
         "your AI recalls from day one. Enter skips an optional question; Ctrl-C aborts.\n\n" +
-        "What will your memory mainly hold?\n",
+        "What will your memory mainly hold?\n"
     );
     PERSONAS.forEach((p, i) => output.write(`  ${i + 1}. ${PERSONA_LABELS[p]}\n`));
     let persona: Persona | null = null;

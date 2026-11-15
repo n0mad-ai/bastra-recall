@@ -32,8 +32,21 @@ const results = JSON.parse(readFileSync(join(REG_DIR, "rerank-results.json"), "u
     id: string;
     file: string;
     file_sha256: string;
-    primary_result?: { delta: number; ci95: [number, number]; p: number; n: number; better: number; worse: number; unchanged: number };
-    best_exploratory?: { delta: number; ci95: [number, number]; clears_point_threshold: boolean; ci_lower_above_zero: boolean };
+    primary_result?: {
+      delta: number;
+      ci95: [number, number];
+      p: number;
+      n: number;
+      better: number;
+      worse: number;
+      unchanged: number;
+    };
+    best_exploratory?: {
+      delta: number;
+      ci95: [number, number];
+      clears_point_threshold: boolean;
+      ci_lower_above_zero: boolean;
+    };
     floor_effect?: { cells_differing: number; cells_total: number; by_n: Record<string, number> };
     all_rows_ci_below_zero?: boolean;
     robustness?: { weak_result: { n: number } };
@@ -45,7 +58,15 @@ const decision = loadRerankDecisionRegistration() as {
   outcome: {
     recommendation: string;
     classification: string;
-    primary: { delta_pp: number; ci95_pp: [number, number]; p: number; n: number; better: number; worse: number; unchanged: number };
+    primary: {
+      delta_pp: number;
+      ci95_pp: [number, number];
+      p: number;
+      n: number;
+      better: number;
+      worse: number;
+      unchanged: number;
+    };
   };
 };
 
@@ -115,12 +136,16 @@ test("weak_result fired on nothing, and that is written down rather than left ou
   assert.equal(gold.robustness!.weak_result.n, 0);
 });
 
-test("the archived files match their recorded hashes", { skip: !existsSync(join(homedir(), ".bastra", "rerank-501-runs", "2026-09-09")) }, () => {
-  const dir = join(homedir(), ".bastra", "rerank-501-runs", "2026-09-09");
-  for (const r of results.runs) {
-    const p = join(dir, r.file);
-    assert.ok(existsSync(p), `${r.file} is missing from the archive`);
-    const actual = execFileSync("shasum", ["-a", "256", p], { encoding: "utf8" }).split(" ")[0];
-    assert.equal(actual, r.file_sha256, `${r.file} does not match its recorded hash`);
+test(
+  "the archived files match their recorded hashes",
+  { skip: !existsSync(join(homedir(), ".bastra", "rerank-501-runs", "2026-09-09")) },
+  () => {
+    const dir = join(homedir(), ".bastra", "rerank-501-runs", "2026-09-09");
+    for (const r of results.runs) {
+      const p = join(dir, r.file);
+      assert.ok(existsSync(p), `${r.file} is missing from the archive`);
+      const actual = execFileSync("shasum", ["-a", "256", p], { encoding: "utf8" }).split(" ")[0];
+      assert.equal(actual, r.file_sha256, `${r.file} does not match its recorded hash`);
+    }
   }
-});
+);

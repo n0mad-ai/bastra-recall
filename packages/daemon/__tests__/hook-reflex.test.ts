@@ -11,7 +11,14 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { request } from "node:http";
-import { Vault, SearchIndex, TriggerExpander, buildInflectPrompt, tokenizeWithIdentifiers, foldTerm } from "@bastra-recall/core";
+import {
+  Vault,
+  SearchIndex,
+  TriggerExpander,
+  buildInflectPrompt,
+  tokenizeWithIdentifiers,
+  foldTerm,
+} from "@bastra-recall/core";
 import { phraseMatchesContext, collectReflexHits } from "../src/reflex.js";
 import { startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
@@ -25,7 +32,7 @@ function memoryMarkdown(
     salience?: number;
     sensitivity?: string;
     obsolete?: boolean;
-  },
+  }
 ): string {
   const ts = new Date().toISOString();
   return [
@@ -65,7 +72,7 @@ test("phraseMatchesContext: token-AND, stopwords dropped, no prefix matching", (
   assert.equal(
     phraseMatchesContext("about to write a tailwind grid", context),
     true,
-    "function words (about/to/a) must not block the match",
+    "function words (about/to/a) must not block the match"
   );
   assert.equal(phraseMatchesContext("tailwind flexbox", context), false, "one missing token → no match");
   assert.equal(phraseMatchesContext("tailwind gri", context), false, "no prefix matching");
@@ -77,7 +84,11 @@ test("#707 phraseMatchesContext: a language without a stopword list takes the ne
   // Russian, Turkish, Greek: no word is dropped as a function word, so every
   // token of the phrase must be in the context — and then it matches.
   assert.equal(phraseMatchesContext("перезапуск сервера", ctx("нужен перезапуск сервера сейчас")), true);
-  assert.equal(phraseMatchesContext("перезапуск сервера", ctx("нужен перезапуск базы")), false, "one missing token → no match");
+  assert.equal(
+    phraseMatchesContext("перезапуск сервера", ctx("нужен перезапуск базы")),
+    false,
+    "one missing token → no match"
+  );
   assert.equal(phraseMatchesContext("veritabanı şifresi", ctx("veritabanı şifresi nerede")), true);
   assert.equal(phraseMatchesContext("επανεκκίνηση διακομιστή", ctx("χρειάζεται επανεκκίνηση διακομιστή")), true);
 });
@@ -101,7 +112,7 @@ async function makeVault(): Promise<{ dir: string; vault: Vault }> {
       recall_when: ["tailwind grid layout bauen", "css specificity fight"],
       recall_mode: "reflex",
       salience: 0.4,
-    }),
+    })
   );
   await writeFile(
     join(mem, "reflex-hot.md"),
@@ -109,13 +120,13 @@ async function makeVault(): Promise<{ dir: string; vault: Vault }> {
       recall_when: ["tailwind grid layout bauen"],
       recall_mode: "reflex",
       salience: 0.9,
-    }),
+    })
   );
   await writeFile(
     join(mem, "plain.md"),
     memoryMarkdown("plain", {
       recall_when: ["tailwind grid layout bauen"],
-    }),
+    })
   );
   await writeFile(
     join(mem, "private-reflex.md"),
@@ -123,7 +134,7 @@ async function makeVault(): Promise<{ dir: string; vault: Vault }> {
       recall_when: ["tailwind grid layout bauen"],
       recall_mode: "reflex",
       sensitivity: "private",
-    }),
+    })
   );
   await writeFile(
     join(mem, "obsolete-reflex.md"),
@@ -131,7 +142,7 @@ async function makeVault(): Promise<{ dir: string; vault: Vault }> {
       recall_when: ["tailwind grid layout bauen"],
       recall_mode: "reflex",
       obsolete: true,
-    }),
+    })
   );
   const vault = new Vault(dir);
   await vault.init();
@@ -141,16 +152,12 @@ async function makeVault(): Promise<{ dir: string; vault: Vault }> {
 test("collectReflexHits: subset filter, hard match, budget with salience ordering", async () => {
   const { dir, vault } = await makeVault();
   try {
-    const { pool, matched, served } = collectReflexHits(
-      vault,
-      "bitte das tailwind grid layout bauen und testen",
-      2,
-    );
+    const { pool, matched, served } = collectReflexHits(vault, "bitte das tailwind grid layout bauen und testen", 2);
     assert.equal(pool, 2, "only non-private, non-obsolete reflex memories in the pool");
     assert.deepEqual(
       matched.map((m) => m.memory.fm.id).sort(),
       ["reflex-css", "reflex-hot"],
-      "plain/private/obsolete never match",
+      "plain/private/obsolete never match"
     );
     // gleiche #Matches → höhere salience zuerst
     assert.equal(served[0].memory.fm.id, "reflex-hot");
@@ -162,11 +169,7 @@ test("collectReflexHits: subset filter, hard match, budget with salience orderin
     assert.equal(capped.matched.length, 2, "matched behält alle Treffer fürs Tracing");
 
     // zwei matchende Phrasen schlagen eine
-    const twoPhrases = collectReflexHits(
-      vault,
-      "css specificity fight beim tailwind grid layout bauen",
-      2,
-    );
+    const twoPhrases = collectReflexHits(vault, "css specificity fight beim tailwind grid layout bauen", 2);
     assert.equal(twoPhrases.served[0].memory.fm.id, "reflex-css");
 
     // kein Kontext-Match → leer
@@ -192,7 +195,7 @@ function httpPost(port: number, path: string, payload: unknown): Promise<{ statu
         let b = "";
         res.on("data", (c) => (b += c));
         res.on("end", () => resolve({ status: res.statusCode ?? 0, body: b }));
-      },
+      }
     );
     req.on("error", reject);
     req.end(body);
@@ -255,19 +258,19 @@ test("phraseMatchesContext: 'oder'/'or' splits a phrase into alternatives (19.08
   assert.equal(
     phraseMatchesContext("Nachricht oder Antwort entwerfen", context),
     true,
-    "one satisfied alternative is enough",
+    "one satisfied alternative is enough"
   );
   assert.equal(
     phraseMatchesContext("Nachricht oder Antwort entwerfen", ctx("wir bauen das feature fertig")),
     false,
-    "no alternative satisfied → no match",
+    "no alternative satisfied → no match"
   );
   // Jede Alternative spielt nach den normalen Regeln: ein einzelnes
   // Freitext-Wort bleibt auch als Alternative ein Streutrigger und feuert nie.
   assert.equal(
     phraseMatchesContext("deployment oder rollout", ctx("das deployment läuft")),
     false,
-    "single free-text alternatives stay muted",
+    "single free-text alternatives stay muted"
   );
 });
 
@@ -282,18 +285,14 @@ test("collectReflexHits: recall_when_expanded counts — inflection survives via
       recall_when_expanded: ["entwurf einer antwort erstellen"],
       recall_mode: "reflex",
       salience: 0.9,
-    }),
+    })
   );
   const vault = new Vault(dir);
   await vault.init();
   try {
     // Der Prompt trifft keine Original-Phrase (Flexion: „entwirfst" statt
     // „entwerfen"), aber eine expandierte Variante.
-    const { matched, served } = collectReflexHits(
-      vault,
-      "bitte den entwurf der antwort an zzalli erstellen",
-      2,
-    );
+    const { matched, served } = collectReflexHits(vault, "bitte den entwurf der antwort an zzalli erstellen", 2);
     assert.equal(matched.length, 1, "the expanded variant fires");
     assert.equal(served[0].memory.fm.id, "konvention");
     assert.equal(served[0].phrase, "entwurf einer antwort erstellen");
@@ -311,8 +310,16 @@ test("phraseMatchesContext: a user-authored phrase that collapses to one content
   // „bitte" is a stopword: the phrase used to collapse to one token and be dropped silently.
   assert.equal(phraseMatchesContext("antwortentwurf bitte", context, sequence), true, "the literal phrase fires");
   assert.equal(phraseMatchesContext("antwortentwurf bitte", context), false, "without a sequence the old rule holds");
-  assert.equal(phraseMatchesContext("antwortentwurf", context, sequence), false, "a bare single word stays a scatter trigger");
-  assert.equal(phraseMatchesContext("bitte antwortentwurf", context, sequence), false, "literal means literal — token order counts");
+  assert.equal(
+    phraseMatchesContext("antwortentwurf", context, sequence),
+    false,
+    "a bare single word stays a scatter trigger"
+  );
+  assert.equal(
+    phraseMatchesContext("bitte antwortentwurf", context, sequence),
+    false,
+    "literal means literal — token order counts"
+  );
   assert.equal(phraseMatchesContext("deployment", ctx("das deployment läuft"), " das deployment läuft "), false);
 });
 
@@ -322,7 +329,7 @@ test("collectReflexHits: the literal-phrase fallback reaches the served list end
   await mkdir(mem, { recursive: true });
   await writeFile(
     join(mem, "konvention.md"),
-    memoryMarkdown("konvention", { recall_when: ["antwortentwurf bitte"], recall_mode: "reflex", salience: 0.9 }),
+    memoryMarkdown("konvention", { recall_when: ["antwortentwurf bitte"], recall_mode: "reflex", salience: 0.9 })
   );
   const vault = new Vault(dir);
   await vault.init();
@@ -348,15 +355,15 @@ async function nearMissVault(): Promise<{ dir: string; vault: Vault }> {
   await mkdir(mem, { recursive: true });
   await writeFile(
     join(mem, "grid.md"),
-    memoryMarkdown("grid", { recall_when: ["tailwind grid layout bauen"], recall_mode: "reflex", salience: 0.5 }),
+    memoryMarkdown("grid", { recall_when: ["tailwind grid layout bauen"], recall_mode: "reflex", salience: 0.5 })
   );
   await writeFile(
     join(mem, "literal.md"),
-    memoryMarkdown("literal", { recall_when: ["antwortentwurf bitte"], recall_mode: "reflex", salience: 0.5 }),
+    memoryMarkdown("literal", { recall_when: ["antwortentwurf bitte"], recall_mode: "reflex", salience: 0.5 })
   );
   await writeFile(
     join(mem, "elsewhere.md"),
-    memoryMarkdown("elsewhere", { recall_when: ["postgres migration schreiben"], recall_mode: "reflex" }),
+    memoryMarkdown("elsewhere", { recall_when: ["postgres migration schreiben"], recall_mode: "reflex" })
   );
   const vault = new Vault(dir);
   await vault.init();
@@ -378,7 +385,7 @@ test("#565 near miss: a phrase whose token-AND fails names the trigger and the m
     assert.equal(
       nearMisses.some((n) => n.id === "elsewhere"),
       false,
-      "a trigger with no token in the prompt is another topic, not a near miss",
+      "a trigger with no token in the prompt is another topic, not a near miss"
     );
   } finally {
     await vault.stop?.();
@@ -430,7 +437,7 @@ test("#565 near miss: the trace is capped and carries no memory body", async () 
   for (let i = 0; i < 5; i++) {
     await writeFile(
       join(mem, `near-${i}.md`),
-      memoryMarkdown(`near-${i}`, { recall_when: [`tailwind grid layout bauen ${i}00`], recall_mode: "reflex" }),
+      memoryMarkdown(`near-${i}`, { recall_when: [`tailwind grid layout bauen ${i}00`], recall_mode: "reflex" })
     );
   }
   const vault = new Vault(dir);
@@ -464,7 +471,7 @@ test("#565 inflection: the 2026-09-15 prompt fires the convention — by the wor
       ],
       recall_mode: "reflex",
       salience: 0.9,
-    }),
+    })
   );
   const vault = new Vault(dir);
   await vault.init();
@@ -495,8 +502,10 @@ test("#565 inflection: the 2026-09-15 prompt fires the convention — by the wor
     const after = collectReflexHits(vault, prompt, 2);
     assert.equal(after.served[0]?.memory.fm.id, "nachrichtenkonvention", "the convention fires");
     assert.ok(
-      ["antworten zzalli", "Antwort an zzalli oder einen anderen Contributor draften"].includes(after.served[0]?.phrase ?? ""),
-      `what fired is readable in the memory: ${after.served[0]?.phrase}`,
+      ["antworten zzalli", "Antwort an zzalli oder einen anderen Contributor draften"].includes(
+        after.served[0]?.phrase ?? ""
+      ),
+      `what fired is readable in the memory: ${after.served[0]?.phrase}`
     );
   } finally {
     await vault.stop?.();
@@ -510,9 +519,18 @@ test("fold: an NFD prompt (macOS), a capital Turkish İ and a German ß fire the
   const dir = await mkdtemp(join(tmpdir(), "bastra-reflex-fold-"));
   const mem = join(dir, "memories");
   await mkdir(mem, { recursive: true });
-  await writeFile(join(mem, "cafe-menu.md"), memoryMarkdown("cafe-menu", { recall_when: ["café menu prices"], recall_mode: "reflex" }));
-  await writeFile(join(mem, "istanbul-host.md"), memoryMarkdown("istanbul-host", { recall_when: ["istanbul sunucusu"], recall_mode: "reflex" }));
-  await writeFile(join(mem, "strasse.md"), memoryMarkdown("strasse", { recall_when: ["STRASSE sperren"], recall_mode: "reflex" }));
+  await writeFile(
+    join(mem, "cafe-menu.md"),
+    memoryMarkdown("cafe-menu", { recall_when: ["café menu prices"], recall_mode: "reflex" })
+  );
+  await writeFile(
+    join(mem, "istanbul-host.md"),
+    memoryMarkdown("istanbul-host", { recall_when: ["istanbul sunucusu"], recall_mode: "reflex" })
+  );
+  await writeFile(
+    join(mem, "strasse.md"),
+    memoryMarkdown("strasse", { recall_when: ["STRASSE sperren"], recall_mode: "reflex" })
+  );
   const vault = new Vault(dir);
   await vault.init();
   try {

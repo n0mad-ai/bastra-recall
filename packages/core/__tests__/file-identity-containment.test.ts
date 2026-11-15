@@ -19,13 +19,7 @@ import { chmod, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  readOccupant,
-  sameFile,
-  saveMemory,
-  scanVaultForId,
-  snapshotLocator,
-} from "../src/index.js";
+import { readOccupant, sameFile, saveMemory, scanVaultForId, snapshotLocator } from "../src/index.js";
 
 const base = {
   title: "T",
@@ -110,10 +104,7 @@ test("Befund 3: ein unlesbarer ORDNER macht den Scan unvollständig", { skip: as
     assert.equal(snapshotLocator(v).locate("egal").kind, "incomplete");
 
     // …und der Save darf daneben kein zweites File mit derselben id anlegen.
-    await assert.rejects(
-      saveMemory(v, { ...base, id: "versteckt" }),
-      /cannot verify where memory/,
-    );
+    await assert.rejects(saveMemory(v, { ...base, id: "versteckt" }), /cannot verify where memory/);
   } finally {
     await chmod(locked, 0o700).catch(() => {});
     await rm(v, { recursive: true, force: true });
@@ -181,24 +172,20 @@ test("Befund 4: Re-Filing nur der Schreibweise nach trasht die geschriebene Date
         assert.equal(
           sameFile(existing, result.file_path),
           true,
-          "case-insensitiv: beide Pfade sind dieselbe Datei, der Stringvergleich log",
+          "case-insensitiv: beide Pfade sind dieselbe Datei, der Stringvergleich log"
         );
       }
       assert.equal(
         existsSync(join(v, ".bastra", "trash", "case-id.md")),
         false,
-        "hier wurde nichts verschoben, also darf auch nichts im Trash liegen",
+        "hier wurde nichts verschoben, also darf auch nichts im Trash liegen"
       );
     } else {
       // ZWEI Regale: ein gewöhnliches Re-File. Die Quelle gehört in den Trash,
       // und danach darf es genau eine aktive Datei mit dieser id geben.
       assert.equal(sameFile(existing, result.file_path), false);
       assert.equal(existsSync(existing), false, "die Quelle ist umgezogen");
-      assert.equal(
-        existsSync(join(v, ".bastra", "trash", "case-id.md")),
-        true,
-        "und liegt wiederherstellbar im Trash",
-      );
+      assert.equal(existsSync(join(v, ".bastra", "trash", "case-id.md")), true, "und liegt wiederherstellbar im Trash");
     }
     assert.ok(existsSync(result.file_path), "die geschriebene Datei existiert");
     assert.match(await readFile(result.file_path, "utf8"), /NEU/);
@@ -216,10 +203,7 @@ test("Befund 5: ein Symlink im folder führt nicht aus dem Vault heraus", async 
     await mkdir(join(v, "memories"), { recursive: true });
     await symlink(outside, join(v, "memories", "linked"));
 
-    await assert.rejects(
-      saveMemory(v, { ...base, id: "escaped", folder: "memories/linked" }),
-      /outside the vault/,
-    );
+    await assert.rejects(saveMemory(v, { ...base, id: "escaped", folder: "memories/linked" }), /outside the vault/);
     assert.equal(existsSync(join(outside, "escaped.md")), false, "nichts außerhalb geschrieben");
   } finally {
     await rm(v, { recursive: true, force: true });

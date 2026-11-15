@@ -58,12 +58,12 @@ async function roiLine(events: unknown[]): Promise<string> {
     await writeFile(
       join(logDir, "events-2026-09-15.jsonl"),
       events.map((e) => JSON.stringify(e)).join("\n") + "\n",
-      "utf8",
+      "utf8"
     );
     const { stdout } = await exec(
       process.execPath,
       ["--import", "tsx", join(REPO_ROOT, "packages/daemon/scripts/stats.ts")],
-      { cwd: REPO_ROOT, env: { ...process.env, BASTRA_LOG_PATH: logDir } },
+      { cwd: REPO_ROOT, env: { ...process.env, BASTRA_LOG_PATH: logDir } }
     );
     const line = stdout.split("\n").find((l) => l.includes("tokens per acted-on load"));
     assert.ok(line, `expected a tokens-per-acted-on-load line:\n${stdout}`);
@@ -76,13 +76,7 @@ async function roiLine(events: unknown[]): Promise<string> {
 test("tokens per acted-on load divides by the numerator's own lanes only", async () => {
   // 1000 tokens were spent by the pre-tool lane; one of the two acted-on loads
   // came from it, the other from the prompt lane whose tokens are not counted.
-  const line = await roiLine([
-    spend,
-    recall("r1", "pre-tool"),
-    recall("r2", "prompt"),
-    acted("r1"),
-    acted("r2"),
-  ]);
+  const line = await roiLine([spend, recall("r1", "pre-tool"), recall("r2", "prompt"), acted("r1"), acted("r2")]);
   assert.match(line, /~1000\b/, line);
   assert.match(line, /1 of 2/, line);
 });

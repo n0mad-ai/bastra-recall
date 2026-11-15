@@ -24,10 +24,7 @@ import {
   planPlanToolRemoval,
 } from "../src/cli/adapters/codex-plan-tool.js";
 
-async function withConfig(
-  initial: string | null,
-  body: (configPath: string) => Promise<void>,
-): Promise<void> {
+async function withConfig(initial: string | null, body: (configPath: string) => Promise<void>): Promise<void> {
   const home = await mkdtemp(join(tmpdir(), "bastra-506-codex-"));
   const configPath = join(home, ".codex", "config.toml");
   try {
@@ -160,14 +157,11 @@ test("#506 config shapes bastra will not rewrite are reported instead of guessed
   assert.equal(planPlanToolEnable("[tools]\nupdate_plan = { other = 1 }\n").status, "unsupported");
   assert.equal(inspectPlanTool('tools.update_plan.enabled = "yes"\n').state, "unsupported");
   assert.equal(inspectPlanTool("tools.update_plan.enabled = true\n").state, "enabled");
-  assert.equal(inspectPlanTool('[tools.update_plan]\nenabled = false # off\n').state, "disabled");
+  assert.equal(inspectPlanTool("[tools.update_plan]\nenabled = false # off\n").state, "disabled");
 });
 
 test("#506 the Codex adapter wires the plan-tool opt-in into install, uninstall and doctor", async () => {
-  const source = await readFile(
-    fileURLToPath(new URL("../src/cli/adapters/codex.ts", import.meta.url)),
-    "utf8",
-  );
+  const source = await readFile(fileURLToPath(new URL("../src/cli/adapters/codex.ts", import.meta.url)), "utf8");
   assert.match(source, /ensureCodexPlanTool\("install", \{ dryRun: false/);
   assert.match(source, /ensureCodexPlanTool\("uninstall", \{ dryRun: false/);
   assert.match(source, /describePlanTool/);

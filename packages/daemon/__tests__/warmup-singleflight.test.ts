@@ -43,10 +43,23 @@ const KEY = "ollama-embeddinggemma";
 
 function memo(id: string): string {
   return [
-    "---", `id: ${id}`, "title: Deployment-Strategie", "type: reference",
-    "summary: Deployment-Strategie", "topic_path:", "  - test", "tags:", "  - test",
-    "recall_when:", "  - wenn wir deployen", "created: 2026-01-01", "updated: 2026-01-01",
-    "---", "", "Text über deployen.", "",
+    "---",
+    `id: ${id}`,
+    "title: Deployment-Strategie",
+    "type: reference",
+    "summary: Deployment-Strategie",
+    "topic_path:",
+    "  - test",
+    "tags:",
+    "  - test",
+    "recall_when:",
+    "  - wenn wir deployen",
+    "created: 2026-01-01",
+    "updated: 2026-01-01",
+    "---",
+    "",
+    "Text über deployen.",
+    "",
   ].join("\n");
 }
 
@@ -54,13 +67,18 @@ function httpPost(port: number, path: string, payload: unknown): Promise<Record<
   const body = JSON.stringify(payload);
   return new Promise((resolve, reject) => {
     const req = request(
-      { host: "127.0.0.1", port, path, method: "POST",
-        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) } },
+      {
+        host: "127.0.0.1",
+        port,
+        path,
+        method: "POST",
+        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+      },
       (res) => {
         let raw = "";
         res.on("data", (c) => (raw += c));
         res.on("end", () => resolve(JSON.parse(raw || "{}") as Record<string, unknown>));
-      },
+      }
     );
     req.on("error", reject);
     req.end(body);
@@ -71,7 +89,11 @@ async function readEvents(logDir: string, kind: string, mindestens = 1): Promise
   for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 40));
     let files: string[];
-    try { files = await readdir(logDir); } catch { continue; }
+    try {
+      files = await readdir(logDir);
+    } catch {
+      continue;
+    }
     const out: Record<string, unknown>[] = [];
     for (const f of files.filter((n) => n.startsWith("events-"))) {
       for (const line of (await readFile(join(logDir, f), "utf8")).split("\n")) {
@@ -122,7 +144,12 @@ function armUeber(provider: EmbeddingProvider) {
     runtimeHealth: () => ({ errorCount: 0 }),
     searchDetailed: async (q: string) => {
       await provider.embed([q]);
-      return { outcome: "hits" as const, hits: [{ id: "a", score: 0.9 }], providerLoadMs: null, coldStartObserved: false };
+      return {
+        outcome: "hits" as const,
+        hits: [{ id: "a", score: 0.9 }],
+        providerLoadMs: null,
+        coldStartObserved: false,
+      };
     },
   } as never;
 }
@@ -130,7 +157,7 @@ function armUeber(provider: EmbeddingProvider) {
 async function daemonMit(
   t: { after: (fn: () => unknown) => void },
   arm: ReturnType<typeof armUeber>,
-  shadow?: DeadlineShadow,
+  shadow?: DeadlineShadow
 ) {
   const dir = await mkdtemp(join(tmpdir(), "bastra-sf-vault-"));
   const logDir = await mkdtemp(join(tmpdir(), "bastra-sf-logs-"));
@@ -146,7 +173,11 @@ async function daemonMit(
   if (prev === undefined) delete process.env.BASTRA_LOG_PATH;
   else process.env.BASTRA_LOG_PATH = prev;
   const handle = await startHttpServer({
-    port: 0, vault, search, telemetry, version: "test",
+    port: 0,
+    vault,
+    search,
+    telemetry,
+    version: "test",
     toolDeps: { vault, search, telemetry, vaultPath: dir, deadlineShadow: shadow },
     documentWriteEnabled: false,
     embedding: { on: true, providerId: "test", source: "none" },
@@ -193,7 +224,7 @@ test("#494: ein kalter SessionStart erzeugt GENAU EINEN Providercall", async (t)
     await runSessionLane(
       { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-494" },
       `http://127.0.0.1:${d.port}`,
-      warmup,
+      warmup
     );
   } finally {
     if (vorher.tel === undefined) delete process.env.BASTRA_TELEMETRY;
@@ -205,7 +236,7 @@ test("#494: ein kalter SessionStart erzeugt GENAU EINEN Providercall", async (t)
   assert.equal(
     p.calls(),
     1,
-    `bis zu fünf Embeds beim kalten Start sind einer geworden — waren ${p.calls()}: ${JSON.stringify(p.texte())}`,
+    `bis zu fünf Embeds beim kalten Start sind einer geworden — waren ${p.calls()}: ${JSON.stringify(p.texte())}`
   );
   assert.deepEqual(p.texte(), [["warm"]], "und der eine ist der Warmup, nicht ein aufgegebener Arm");
 
@@ -244,7 +275,7 @@ test("#494: auf WARMEM Modell laufen die dichten Arme sehr wohl — die Null obe
     await runSessionLane(
       { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-494-warm" },
       `http://127.0.0.1:${d.port}`,
-      warmup,
+      warmup
     );
   } finally {
     if (vorher === undefined) delete process.env.BASTRA_TELEMETRY;
@@ -352,7 +383,10 @@ test("#494: unter der Mindestfrist prognostiziert der Schatten KEINEN Arm — un
     size: () => 1,
     runtimeHealth: () => ({ errorCount: 0 }),
     searchDetailed: async () => ({
-      outcome: "hits" as const, hits: [{ id: "a", score: 0.9 }], providerLoadMs: null, coldStartObserved: false,
+      outcome: "hits" as const,
+      hits: [{ id: "a", score: 0.9 }],
+      providerLoadMs: null,
+      coldStartObserved: false,
     }),
   } as never;
   const d = await daemonMit(t, arm, shadow);

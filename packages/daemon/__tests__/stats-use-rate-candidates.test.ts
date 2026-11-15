@@ -26,7 +26,11 @@ const EVENTS = [
     ts: "2026-09-15T10:00:00.000Z",
     session_id: "s1",
     recall_id: "r1",
-    hits: [{ id: "a", score: 120 }, { id: "b", score: 50 }, { id: "c", score: 5 }],
+    hits: [
+      { id: "a", score: 120 },
+      { id: "b", score: 50 },
+      { id: "c", score: 5 },
+    ],
   },
 ];
 
@@ -36,12 +40,12 @@ test("USE-rate labels the raw top-k population `candidates`, not `surfaced`", as
     await writeFile(
       join(logDir, "events-2026-09-15.jsonl"),
       EVENTS.map((e) => JSON.stringify(e)).join("\n") + "\n",
-      "utf8",
+      "utf8"
     );
     const { stdout } = await exec(
       process.execPath,
       ["--import", "tsx", join(REPO_ROOT, "packages/daemon/scripts/stats.ts")],
-      { cwd: REPO_ROOT, env: { ...process.env, BASTRA_LOG_PATH: logDir } },
+      { cwd: REPO_ROOT, env: { ...process.env, BASTRA_LOG_PATH: logDir } }
     );
 
     const start = stdout.indexOf("## USE-rate");

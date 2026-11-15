@@ -4,17 +4,8 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
-import {
-  loadGraph,
-  graphDirOf,
-  GRAPH_FILE_NAME,
-  type LoadedGraph,
-} from "../src/code-graph/reader.js";
-import {
-  boundaryImpact,
-  type BookedHit,
-  type BoundaryTouch,
-} from "../src/code-graph/boundary-impact.js";
+import { loadGraph, graphDirOf, GRAPH_FILE_NAME, type LoadedGraph } from "../src/code-graph/reader.js";
+import { boundaryImpact, type BookedHit, type BoundaryTouch } from "../src/code-graph/boundary-impact.js";
 import { MIN_BOUNDARY_MISSED_FILES, boundaryNote } from "../src/code-graph/boundary-block.js";
 import {
   MAX_TOUCHED_CHARS,
@@ -153,7 +144,7 @@ describe("boundary impact — the pure sum", () => {
       [
         ["src/audit.ts", "saveMemory", "edit_time", "src/save.ts"],
         ["src/report.ts", "saveMemory", "edit_time", "src/save.ts"],
-      ],
+      ]
     );
     assert.equal(result.truncated, false);
   });
@@ -163,7 +154,7 @@ describe("boundary impact — the pure sum", () => {
 
     assert.deepEqual(
       result.missed.map((m) => m.file),
-      ["src/report.ts"],
+      ["src/report.ts"]
     );
   });
 
@@ -180,7 +171,7 @@ describe("boundary impact — the pure sum", () => {
     // Late and whole-file, and it says so — but not silence.
     assert.deepEqual(
       result.missed.map((m) => [m.file, m.basis]),
-      [["src/user.ts", "whole_file_now"]],
+      [["src/user.ts", "whole_file_now"]]
     );
   });
 
@@ -216,7 +207,7 @@ describe("boundary impact — the pure sum", () => {
 
     assert.deepEqual(
       result.missed.map((m) => m.file),
-      ["src/audit.ts"],
+      ["src/audit.ts"]
     );
     assert.deepEqual(result.seen, ["src/report.ts"]);
   });
@@ -232,7 +223,7 @@ describe("boundary impact — the pure sum", () => {
 
     assert.deepEqual(
       result.missed.map((m) => m.relation),
-      ["package_import"],
+      ["package_import"]
     );
   });
 
@@ -300,7 +291,7 @@ describe("boundary block — what the Stop lane parks", () => {
           runs: 1,
           tests: { "t/runtime.test.ts": { "src/save.ts": ["saveMemory"] } },
         }),
-        "utf8",
+        "utf8"
       );
       const s: SessionState = { shown: {} };
       recordTouched(s, repo, "src/save.ts", BOOKED_FOUR, false, T0);
@@ -398,7 +389,7 @@ describe("boundary block — what the Stop lane parks", () => {
         "src/other.ts",
         [{ file: "src/far.ts", location: "src/far.ts:9", via: "other", relation: "calls" }],
         false,
-        T0,
+        T0
       );
     });
     const again = await boundaryNote({ session: grown, cache, mtimeOf: written });
@@ -516,7 +507,7 @@ describe("recordTouched — the accumulator", () => {
     const entry = s.touched!.get("/r")!.get("a.ts")!;
     assert.deepEqual(
       entry.hits.map((h) => h.file),
-      ["src/audit.ts", "src/report.ts"],
+      ["src/audit.ts", "src/report.ts"]
     );
     assert.equal(entry.at, 1);
     assert.equal(entry.last, 2);

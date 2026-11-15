@@ -24,14 +24,21 @@ interface Seen {
 }
 
 /** An Ollama with `running` in memory; `psStatus` other than 200 breaks /api/ps. */
-async function stubOllama(running: string[], psStatus = 200): Promise<{ url: string; seen: Seen[]; close: () => Promise<void> }> {
+async function stubOllama(
+  running: string[],
+  psStatus = 200
+): Promise<{ url: string; seen: Seen[]; close: () => Promise<void> }> {
   const seen: Seen[] = [];
   const server: Server = createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on("data", (c) => chunks.push(c as Buffer));
     req.on("end", () => {
       const raw = Buffer.concat(chunks).toString("utf8");
-      seen.push({ method: req.method ?? "", url: req.url ?? "", body: raw ? (JSON.parse(raw) as Record<string, unknown>) : null });
+      seen.push({
+        method: req.method ?? "",
+        url: req.url ?? "",
+        body: raw ? (JSON.parse(raw) as Record<string, unknown>) : null,
+      });
       res.setHeader("content-type", "application/json");
       if (req.method === "GET" && req.url === "/api/ps") {
         res.writeHead(psStatus).end(JSON.stringify({ models: running.map((name) => ({ name, model: name })) }));
@@ -58,7 +65,10 @@ test("a model Ollama already evicted counts as unloaded — and gets no request 
   try {
     assert.equal(await unloadOllamaModel(ollama.url, "bge-m3"), true);
     assert.deepEqual(posts(ollama.seen), [], "nothing is posted for a model that is not in memory");
-    assert.deepEqual(ollama.seen.map((s) => `${s.method} ${s.url}`), ["GET /api/ps"]);
+    assert.deepEqual(
+      ollama.seen.map((s) => `${s.method} ${s.url}`),
+      ["GET /api/ps"]
+    );
   } finally {
     await ollama.close();
   }
@@ -69,7 +79,9 @@ test("a loaded model is unloaded the documented way: /api/generate with keep_ali
   try {
     // The configured name carries no tag; /api/ps always lists `model:tag`.
     assert.equal(await unloadOllamaModel(`${ollama.url}/`, "bge-m3"), true);
-    assert.deepEqual(posts(ollama.seen), [{ method: "POST", url: "/api/generate", body: { model: "bge-m3", keep_alive: 0 } }]);
+    assert.deepEqual(posts(ollama.seen), [
+      { method: "POST", url: "/api/generate", body: { model: "bge-m3", keep_alive: 0 } },
+    ]);
   } finally {
     await ollama.close();
   }

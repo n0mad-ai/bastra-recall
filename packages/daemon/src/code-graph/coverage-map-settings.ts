@@ -22,7 +22,7 @@ export const COVERAGE_MAP_DEFAULT = false;
 
 export async function getCoverageMapEnabled(
   path: string = settingsFilePath(),
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = process.env
 ): Promise<boolean> {
   if (isOnValue(env.BASTRA_COVERAGE_MAP)) return true;
   if (isOffValue(env.BASTRA_COVERAGE_MAP)) return false;

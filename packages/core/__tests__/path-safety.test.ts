@@ -42,14 +42,8 @@ test("isPathSafeComponent: rejects separators, dotdot, NUL, leading dot", () => 
 // ── SaveMemoryInput: Zod-Schicht ─────────────────────────────────────
 test("SaveMemoryInput: rejects traversal in id and scope", () => {
   assert.equal(SaveMemoryInput.safeParse(VALID_INPUT).success, true);
-  assert.equal(
-    SaveMemoryInput.safeParse({ ...VALID_INPUT, id: "../../evil" }).success,
-    false,
-  );
-  assert.equal(
-    SaveMemoryInput.safeParse({ ...VALID_INPUT, scope: "../../../tmp" }).success,
-    false,
-  );
+  assert.equal(SaveMemoryInput.safeParse({ ...VALID_INPUT, id: "../../evil" }).success, false);
+  assert.equal(SaveMemoryInput.safeParse({ ...VALID_INPUT, scope: "../../../tmp" }).success, false);
 });
 
 // ── saveMemory: Containment-Guard (auch ohne Zod-Parse) ──────────────
@@ -63,7 +57,7 @@ test("saveMemory: refuses to write outside the vault even when the schema is byp
         ...VALID_INPUT,
         id: "../../../../evil",
       } as unknown as SaveMemoryInput),
-      /outside the vault/,
+      /outside the vault/
     );
     // Nichts wurde angelegt — auch nicht eine Ebene über dem Vault.
     await assert.rejects(access(join(vault, "..", "evil.md")));

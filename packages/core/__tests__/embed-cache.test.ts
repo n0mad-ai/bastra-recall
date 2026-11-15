@@ -66,11 +66,7 @@ test("embed-cache: identical content re-save does NOT trigger provider call", as
     await vault.init();
 
     const provider = new CountingMockProvider();
-    const idx = new EmbeddingIndex(
-      vault,
-      provider,
-      path.join(dir, ".bastra", "embeddings.json"),
-    );
+    const idx = new EmbeddingIndex(vault, provider, path.join(dir, ".bastra", "embeddings.json"));
     await idx.start();
     await waitFor(() => idx.size() === 1);
     const baselineCalls = provider.totalTexts;
@@ -83,11 +79,7 @@ test("embed-cache: identical content re-save does NOT trigger provider call", as
     // Geben der Queue Zeit zu prozessieren
     await new Promise((r) => setTimeout(r, 200));
 
-    assert.equal(
-      provider.totalTexts,
-      baselineCalls,
-      "no additional embed calls on identical content",
-    );
+    assert.equal(provider.totalTexts, baselineCalls, "no additional embed calls on identical content");
     await idx.stop();
   } finally {
     await rmSettled(dir);
@@ -103,11 +95,7 @@ test("embed-cache: title change invalidates cache and triggers re-embed", async 
     await vault.init();
 
     const provider = new CountingMockProvider();
-    const idx = new EmbeddingIndex(
-      vault,
-      provider,
-      path.join(dir, ".bastra", "embeddings.json"),
-    );
+    const idx = new EmbeddingIndex(vault, provider, path.join(dir, ".bastra", "embeddings.json"));
     await idx.start();
     await waitFor(() => idx.size() === 1);
     assert.equal(provider.totalTexts, 1);
@@ -158,11 +146,7 @@ test("embed-cache: cache persists across EmbeddingIndex instances", async () => 
       // Backfill startet nur wenn Vectors fehlen — bei warmem Cache + persistierten
       // Vectors sollte gar nichts in der Queue landen.
       await new Promise((r) => setTimeout(r, 200));
-      assert.equal(
-        provider2.totalTexts,
-        0,
-        "second start with warm persist + cache must not re-embed",
-      );
+      assert.equal(provider2.totalTexts, 0, "second start with warm persist + cache must not re-embed");
       assert.equal(idx2.size(), 1);
       idx2.stop();
     }
@@ -175,7 +159,9 @@ test("embed-cache: an incompatible cache (version / provider / dim) is dropped W
   const dir = await mkdtemp(path.join(tmpdir(), "bastra-cache-4-"));
   const lines: string[] = [];
   const orig = console.error;
-  console.error = (...args: unknown[]) => { lines.push(args.map(String).join(" ")); };
+  console.error = (...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  };
   try {
     const entries = { m1: { hash: "h", dim: 4, vector: [1, 0, 0, 0] } };
     const cases: Array<[string, Record<string, unknown>]> = [
@@ -192,8 +178,16 @@ test("embed-cache: an incompatible cache (version / provider / dim) is dropped W
       assert.equal(cache.size(), 0, `${label}: incompatible cache must not be used`);
       // Filtered, not counted raw: an unrelated console.error in the same window must not flake this.
       const ignored = lines.filter((l) => /embed-cache ignored/.test(l));
-      assert.equal(ignored.length, 1, `${label}: exactly one "embed-cache ignored" line expected, got ${ignored.length}`);
-      assert.match(ignored[0], new RegExp(cachePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `${label}: line names the file`);
+      assert.equal(
+        ignored.length,
+        1,
+        `${label}: exactly one "embed-cache ignored" line expected, got ${ignored.length}`
+      );
+      assert.match(
+        ignored[0],
+        new RegExp(cachePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+        `${label}: line names the file`
+      );
     }
     // control: a compatible file loads silently
     const okPath = path.join(dir, "ok.json");
@@ -202,7 +196,11 @@ test("embed-cache: an incompatible cache (version / provider / dim) is dropped W
     const ok = new EmbedCache(dir, okPath, "mock-counting", 4);
     await ok.load();
     assert.equal(ok.size(), 1);
-    assert.deepEqual(lines.filter((l) => /embed-cache/.test(l)), [], "compatible cache must not log");
+    assert.deepEqual(
+      lines.filter((l) => /embed-cache/.test(l)),
+      [],
+      "compatible cache must not log"
+    );
   } finally {
     console.error = orig;
     await rmSettled(dir);
@@ -213,28 +211,41 @@ test("currentSnapshot withholds a changed note's old vector until the new conten
   const dir = await mkdtemp(path.join(tmpdir(), "bastra-current-vectors-"));
   const filePath = path.join(dir, "mem.md");
   await writeFile(filePath, memoryMd("mem", "Original Title"));
-  const vault = new Vault(dir); await vault.init();
+  const vault = new Vault(dir);
+  await vault.init();
   let hold = false;
   let release: (() => void) | undefined;
   const provider: EmbeddingProvider = {
-    id: "fixture-current", dim: 2,
+    id: "fixture-current",
+    dim: 2,
     async embed(texts) {
-      if (hold) await new Promise<void>(resolve => { release = resolve; });
+      if (hold)
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
       return texts.map(() => new Float32Array([1, 0]));
     },
   };
   const idx = new EmbeddingIndex(vault, provider, path.join(dir, ".bastra", "embeddings.json"));
   try {
-    await idx.start(); await waitFor(() => idx.size() === 1);
+    await idx.start();
+    await waitFor(() => idx.size() === 1);
     assert.equal(idx.currentSnapshot().has("mem"), true);
     hold = true;
-    await writeFile(filePath, memoryMd("mem", "Changed Title")); await vault.reindexFile(filePath);
+    await writeFile(filePath, memoryMd("mem", "Changed Title"));
+    await vault.reindexFile(filePath);
     await waitFor(() => release !== undefined);
     assert.equal(idx.snapshot().has("mem"), true);
     assert.equal(idx.currentSnapshot().has("mem"), false);
-    hold = false; release!(); release = undefined;
+    hold = false;
+    release!();
+    release = undefined;
     await waitFor(() => idx.currentSnapshot().has("mem"));
   } finally {
-    hold = false; release?.(); await idx.stop(); await vault.stop(); await rmSettled(dir);
+    hold = false;
+    release?.();
+    await idx.stop();
+    await vault.stop();
+    await rmSettled(dir);
   }
 });

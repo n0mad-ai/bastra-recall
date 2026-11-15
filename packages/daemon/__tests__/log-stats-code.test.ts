@@ -110,9 +110,12 @@ describe("code search ROI: dependents_block_followed_by_edit (#588)", () => {
       aggregateCodeRoi([
         block("2026-09-18T10:00:00Z", "s1", ["/r/src/a.ts"]),
         edit("2026-09-18T10:01:00Z", "s1", "/r/src/a.ts"),
-      ]),
+      ])
     );
-    assert.ok(lines.some((l) => l.includes("followed: 1 of 1 blocks")), lines.join("\n"));
+    assert.ok(
+      lines.some((l) => l.includes("followed: 1 of 1 blocks")),
+      lines.join("\n")
+    );
   });
 });
 
@@ -123,9 +126,9 @@ describe("code search ROI: rendering", () => {
   });
 
   it("never presents cost as saving", () => {
-    const lines = renderCodeRoi(
-      aggregateCodeRoi([call({ code_block_tokens_est: 100, code_dependents: 5 })]),
-    ).join("\n");
+    const lines = renderCodeRoi(aggregateCodeRoi([call({ code_block_tokens_est: 100, code_dependents: 5 })])).join(
+      "\n"
+    );
     assert.match(lines, /cost:/);
     assert.match(lines, /what it SAVED needs the control arm/);
     // The words that would turn a cost ledger into a claim.
@@ -134,20 +137,18 @@ describe("code search ROI: rendering", () => {
   });
 
   it("puts the code cost in proportion to Write/Edit injection", () => {
-    const lines = renderCodeRoi(
-      aggregateCodeRoi([call({ hint_tokens_est: 1000, code_block_tokens_est: 250 })]),
-    ).join("\n");
+    const lines = renderCodeRoi(aggregateCodeRoi([call({ hint_tokens_est: 1000, code_block_tokens_est: 250 })])).join(
+      "\n"
+    );
     assert.match(lines, /25% of Write\/Edit injection/);
   });
 
   it("reports the stale share only when there is one", () => {
-    const withStale = renderCodeRoi(
-      aggregateCodeRoi([call({ code_block_tokens_est: 10, code_stale: true })]),
-    ).join("\n");
+    const withStale = renderCodeRoi(aggregateCodeRoi([call({ code_block_tokens_est: 10, code_stale: true })])).join(
+      "\n"
+    );
     assert.match(withStale, /out of date/);
-    const withoutStale = renderCodeRoi(
-      aggregateCodeRoi([call({ code_block_tokens_est: 10 })]),
-    ).join("\n");
+    const withoutStale = renderCodeRoi(aggregateCodeRoi([call({ code_block_tokens_est: 10 })])).join("\n");
     assert.doesNotMatch(withoutStale, /out of date/);
   });
 });

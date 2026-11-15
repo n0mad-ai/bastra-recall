@@ -64,7 +64,13 @@ const NEAR_REG_MAX = 0; // ...and no net near-regression on the held-out near sl
  */
 export function canonicalLogHash(entries: CandidatePoolEntry[]): string {
   const lines = entries
-    .map((e) => `${e.query}\t${e.pool.map((p) => p.id).sort().join(",")}`)
+    .map(
+      (e) =>
+        `${e.query}\t${e.pool
+          .map((p) => p.id)
+          .sort()
+          .join(",")}`
+    )
     .sort();
   return createHash("sha256").update(lines.join("\n")).digest("hex");
 }
@@ -79,8 +85,14 @@ export function foldOf(query: string, nFolds = N_FOLDS): number {
 // ── modeled bridge + gate (Tier A, --synthetic) ─────────────────────────────────────────────────
 
 type Kind = "far" | "near";
-interface LabeledQuery { query: string; kind: Kind; }
-interface Bridge { farLift: number; nearReg: number; }
+interface LabeledQuery {
+  query: string;
+  kind: Kind;
+}
+interface Bridge {
+  farLift: number;
+  nearReg: number;
+}
 
 /** Δ the bridge applies to a query's gold rank: <0 = rescued (good on far), >0 = buried (bad on near). */
 function bridgeDelta(kind: Kind, b: Bridge): number {
@@ -90,7 +102,8 @@ function bridgeDelta(kind: Kind, b: Bridge): number {
 /** Score a bridge on the HELD-OUT fold of a log. The gate can only see regressions on near queries
  *  PRESENT in `log` — omit them and nearReg reads ~0. That is the whole leak. */
 function scoreOnLog(log: LabeledQuery[], b: Bridge, heldOutFold: number): { farLift: number; nearReg: number } {
-  const far: number[] = [], near: number[] = [];
+  const far: number[] = [],
+    near: number[] = [];
   for (const { query, kind } of log) {
     if (foldOf(query) !== heldOutFold) continue;
     (kind === "far" ? far : near).push(bridgeDelta(kind, b));
@@ -116,7 +129,7 @@ function committedGate(
   shippedHash: string,
   recipientLog: LabeledQuery[],
   b: Bridge,
-  fold: number,
+  fold: number
 ): boolean {
   if (canonicalLogHash(authorEntries) !== shippedHash) return false; // corpus shifted → reject outright
   const { farLift, nearReg } = scoreOnLog(recipientLog, b, fold);
@@ -156,7 +169,12 @@ function synthetic(): void {
     // byte-identical output. This bridge would PASS both gates on its own merits (positive,
     // no near-regression to leak) — the shipped hash is deliberately wrong, so a FAIL here can
     // only come from the hash comparison itself, not from the recipient re-score.
-    { name: "TAMPERED (a fine bridge, wrong shipped hash)", bridge: { farLift: 1, nearReg: 0 }, expect: "PASS / FAIL  <- caught by hash check", tamperShippedHash: true },
+    {
+      name: "TAMPERED (a fine bridge, wrong shipped hash)",
+      bridge: { farLift: 1, nearReg: 0 },
+      expect: "PASS / FAIL  <- caught by hash check",
+      tamperShippedHash: true,
+    },
   ];
 
   console.log("control                     | naive | committed | what should happen");
@@ -166,7 +184,9 @@ function synthetic(): void {
     const authorLog = bridge.nearReg > 0 ? fullLog.filter((q) => q.kind !== "near") : fullLog;
     // The tampered control ships the hash of a DIFFERENT log (extra fold) than the one it scored
     // on, so canonicalLogHash(asEntries(authorLog)) can never equal it by construction.
-    const shippedHash = tamperShippedHash ? canonicalLogHash(asEntries(makeLog(1, 1))) : canonicalLogHash(asEntries(authorLog));
+    const shippedHash = tamperShippedHash
+      ? canonicalLogHash(asEntries(makeLog(1, 1)))
+      : canonicalLogHash(asEntries(authorLog));
 
     const naive = naiveGate(authorLog, bridge, fold);
     const committed = committedGate(asEntries(authorLog), shippedHash, recipientLog, bridge, fold);
@@ -177,7 +197,7 @@ function synthetic(): void {
     "\nThe commitment flips the harmful-bridge verdict via the recipient re-check (naive PASS →\n" +
       "committed FAIL) AND catches a shipped hash that names a different log than the one actually\n" +
       "scored (TAMPERED). Magnitudes illustrative; the claim is the discrimination, not the number.\n" +
-      "Tier B = real reaches + #121 log on a production vault.",
+      "Tier B = real reaches + #121 log on a production vault."
   );
 }
 
@@ -202,7 +222,7 @@ async function commitRealLog(days: number | null): Promise<void> {
     "\nThis is the artifact you publish BEFORE scoring a bridge. A contributed bridge then ships\n" +
       "{committedLogHash, foldMap, farLift, nearRegression}; the recipient re-hashes this log and\n" +
       "re-checks the bridge on its own pool. Closure is proven at the trust boundary — run\n" +
-      "--synthetic for that; a single vault has no contribute boundary to leak across.",
+      "--synthetic for that; a single vault has no contribute boundary to leak across."
   );
 }
 

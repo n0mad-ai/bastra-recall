@@ -8,9 +8,9 @@ import { applyDaemonSettingsEnv } from "./daemon-spawn-env.js";
 // contain import-time env reads. The passive runtime reader never creates or
 // migrates app state, including when index delegates a CLI invocation.
 try {
-  const path=join(bastraDataDir(), "cli-settings.json");
-  const record=readRuntimeSettingsRecord(path);
-  const text=record===undefined?readLegacySettings(path):record;
+  const path = join(bastraDataDir(), "cli-settings.json");
+  const record = readRuntimeSettingsRecord(path);
+  const text = record === undefined ? readLegacySettings(path) : record;
   const raw = JSON.parse(text ?? "{}") as { daemon?: { env?: Record<string, unknown> } };
   applyDaemonSettingsEnv(raw?.daemon?.env ?? {});
 } catch {

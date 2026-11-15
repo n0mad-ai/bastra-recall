@@ -56,7 +56,7 @@ export function canonicalRepoPath(repoRoot: string): string {
 export async function enabledRepos(
   path: string = settingsFilePath(),
   env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
+  platform: NodeJS.Platform = process.platform
 ): Promise<string[]> {
   if (codeAwarenessDisabledByEnv(env) || !platformSupported(platform)) return [];
   const raw = (await readSettings(path)).code?.repos;
@@ -89,7 +89,7 @@ export function isRepoEnabledSync(
   repoRoot: string,
   path: string = settingsFilePath(),
   env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
+  platform: NodeJS.Platform = process.platform
 ): boolean {
   if (codeAwarenessDisabledByEnv(env) || !platformSupported(platform)) return false;
   return enabledSnapshot(path).has(canonicalRepoPath(repoRoot));
@@ -106,7 +106,9 @@ function reposFromText(text: string): Set<string> {
         if (typeof entry === "string" && entry.trim().length > 0) repos.add(canonicalRepoPath(entry.trim()));
       }
     }
-  } catch { /* Unreadable or corrupt settings never enable a repository. */ }
+  } catch {
+    /* Unreadable or corrupt settings never enable a repository. */
+  }
   return repos;
 }
 
@@ -137,8 +139,11 @@ function enabledSnapshot(path: string): Set<string> {
       return snapshot.repos;
     }
     let repos: Set<string>;
-    try { repos = reposFromText(readFileSync(fd, "utf8")); }
-    catch { repos = new Set(); }
+    try {
+      repos = reposFromText(readFileSync(fd, "utf8"));
+    } catch {
+      repos = new Set();
+    }
     snapshot = { path, mtimeMs: st.mtimeMs, size: st.size, repos };
     return repos;
   } finally {
@@ -151,7 +156,7 @@ export async function isRepoEnabled(
   repoRoot: string,
   path: string = settingsFilePath(),
   env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
+  platform: NodeJS.Platform = process.platform
 ): Promise<boolean> {
   return (await enabledRepos(path, env, platform)).includes(canonicalRepoPath(repoRoot));
 }
@@ -174,7 +179,7 @@ export async function isRepoEnabled(
 export async function setRepoEnabled(
   repoRoot: string,
   on: boolean,
-  path: string = settingsFilePath(),
+  path: string = settingsFilePath()
 ): Promise<boolean> {
   const target = canonicalRepoPath(repoRoot);
   let changed = false;

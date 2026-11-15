@@ -3,13 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  controlRecaller,
-  gatedHybridRecaller,
-  metricsFor,
-  scoreCases,
-  type CaseResult,
-} from "../src/goldset-run.js";
+import { controlRecaller, gatedHybridRecaller, metricsFor, scoreCases, type CaseResult } from "../src/goldset-run.js";
 import { datasetHash, loadGoldFiles, unknownGoldIds } from "../src/goldset-dataset.js";
 import type { RecallHit, StageListener } from "@bastra-recall/core";
 import { originRefHash, stagedId, type GoldCase } from "../src/goldset.js";
@@ -169,7 +163,7 @@ test("the dataset hash moves with query and labels, not only with the ids (#430)
     assert.notEqual(
       datasetHash(sources, relabelled),
       h,
-      `relabelling ${Object.keys(over)[0]} must change the dataset identity`,
+      `relabelling ${Object.keys(over)[0]} must change the dataset identity`
     );
   }
 
@@ -215,11 +209,15 @@ test("the control draw follows the case, not its position in the input (#426)", 
 
   // The seed is still what makes the control arm reproducible.
   const other = controlRecaller(VAULT_IDS, 1);
-  assert.notDeepEqual((await other("q", "c1")).map((h) => h.id), forward.c1);
+  assert.notDeepEqual(
+    (await other("q", "c1")).map((h) => h.id),
+    forward.c1
+  );
 });
 
 /** A `recallHybrid` stand-in that emits the stages the real one emits. */
-const fakeHybrid = (hits: RecallHit[], degraded?: string) =>
+const fakeHybrid =
+  (hits: RecallHit[], degraded?: string) =>
   async (_q: string, o: { k: number; onStage: StageListener }): Promise<RecallHit[]> => {
     o.onStage({ name: "bm25.search", startedAtMs: 0, meta: { raw_hit_count: hits.length } });
     o.onStage({
@@ -230,12 +228,14 @@ const fakeHybrid = (hits: RecallHit[], degraded?: string) =>
     return hits;
   };
 
-const hit = (id: string, score: number, mode = "hybrid"): RecallHit =>
-  ({ id, score, mode } as RecallHit);
+const hit = (id: string, score: number, mode = "hybrid"): RecallHit => ({ id, score, mode }) as RecallHit;
 
 test("a per-query fallback to BM25 stops the run instead of entering a hybrid artifact (#428)", async () => {
   const healthy = gatedHybridRecaller(fakeHybrid([hit("m01", 120)]));
-  assert.deepEqual((await healthy("q", "c1")).map((h) => h.id), ["m01"]);
+  assert.deepEqual(
+    (await healthy("q", "c1")).map((h) => h.id),
+    ["m01"]
+  );
 
   // A fused hit that only one arm carried is NOT a degradation — `top_mode`
   // alone could never tell the two apart.

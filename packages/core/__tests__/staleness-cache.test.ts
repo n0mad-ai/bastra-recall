@@ -76,9 +76,11 @@ test("staleness-cache: zweiter Recall verwendet Cache (kein Re-Compute)", async 
     assert.ok(a.length >= 2, "beide Memorys finden");
 
     // Internen Cache anzapfen (private — Test-Only über cast).
-    const cache = (idx as unknown as {
-      stalenessCache: Map<string, { touchTs: number; status: string; computedAt: number }>;
-    }).stalenessCache;
+    const cache = (
+      idx as unknown as {
+        stalenessCache: Map<string, { touchTs: number; status: string; computedAt: number }>;
+      }
+    ).stalenessCache;
     assert.equal(cache.size, 2, "Cache hat einen Eintrag pro Hit");
 
     // Stempel mutieren: wenn der zweite Recall den staleness-Cache wirklich
@@ -92,11 +94,7 @@ test("staleness-cache: zweiter Recall verwendet Cache (kein Re-Compute)", async 
     const b = idx.recall("alter", { k: 5 });
     assert.ok(b.length >= 1);
     for (const [id, v] of cache.entries()) {
-      assert.equal(
-        v.computedAt,
-        stamp,
-        `computedAt für ${id} bleibt stabil bei Cache-Hit`,
-      );
+      assert.equal(v.computedAt, stamp, `computedAt für ${id} bleibt stabil bei Cache-Hit`);
     }
 
     await idx.stop();
@@ -107,17 +105,17 @@ test("staleness-cache: zweiter Recall verwendet Cache (kein Re-Compute)", async 
 });
 
 test("staleness-cache: Vault-Change invalidiert den Eintrag", async () => {
-  const { vault, dir } = await makeVault([
-    { id: "change-test", title: "change me", type: "lesson", summary: "x" },
-  ]);
+  const { vault, dir } = await makeVault([{ id: "change-test", title: "change me", type: "lesson", summary: "x" }]);
   try {
     const idx = new SearchIndex(vault);
     idx.start();
 
     idx.recall("change", { k: 5 });
-    const cache = (idx as unknown as {
-      stalenessCache: Map<string, unknown>;
-    }).stalenessCache;
+    const cache = (
+      idx as unknown as {
+        stalenessCache: Map<string, unknown>;
+      }
+    ).stalenessCache;
     assert.ok(cache.has("change-test"), "Cache hat Eintrag nach erstem Recall");
 
     // Force-reindex über Vault — feuert ein `change`-Event → handle() löscht
@@ -130,7 +128,7 @@ test("staleness-cache: Vault-Change invalidiert den Eintrag", async () => {
         type: "lesson",
         summary: "x v2",
       }),
-      "utf8",
+      "utf8"
     );
     await vault.reindexFile(join(dir, "change-test.md"));
 
@@ -145,9 +143,7 @@ test("staleness-cache: Vault-Change invalidiert den Eintrag", async () => {
 
 test("staleness-cache: 12h TTL rechnet alten Eintrag neu", async () => {
   // touch-ts „heute" — Status fresh.
-  const { vault, dir } = await makeVault([
-    { id: "ttl-test", title: "ttl probe", type: "lesson", summary: "x" },
-  ]);
+  const { vault, dir } = await makeVault([{ id: "ttl-test", title: "ttl probe", type: "lesson", summary: "x" }]);
   try {
     const idx = new SearchIndex(vault);
     idx.start();
@@ -155,9 +151,11 @@ test("staleness-cache: 12h TTL rechnet alten Eintrag neu", async () => {
     // Erster Call: Cache fresh, computedAt = now0.
     const now0 = Date.now();
     idx.recall("ttl", { k: 5 });
-    const cache = (idx as unknown as {
-      stalenessCache: Map<string, { touchTs: number; status: string; computedAt: number }>;
-    }).stalenessCache;
+    const cache = (
+      idx as unknown as {
+        stalenessCache: Map<string, { touchTs: number; status: string; computedAt: number }>;
+      }
+    ).stalenessCache;
     const e0 = cache.get("ttl-test");
     assert.ok(e0, "Cache-Eintrag vorhanden");
     assert.ok(e0!.computedAt >= now0 - 1000, "computedAt frisch");
@@ -172,10 +170,7 @@ test("staleness-cache: 12h TTL rechnet alten Eintrag neu", async () => {
     idx.recall("probe", { k: 5 });
     const e1 = cache.get("ttl-test");
     assert.ok(e1, "Cache-Eintrag noch da");
-    assert.ok(
-      e1!.computedAt > stampedAt,
-      `computedAt wurde aktualisiert (was ${stampedAt}, now ${e1!.computedAt})`,
-    );
+    assert.ok(e1!.computedAt > stampedAt, `computedAt wurde aktualisiert (was ${stampedAt}, now ${e1!.computedAt})`);
 
     await idx.stop();
   } finally {

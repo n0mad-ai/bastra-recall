@@ -67,11 +67,21 @@ test("letterCount: letters, not code points", () => {
 
 // Independent counterexamples from the #1191 review; both directions matter.
 const unrelatedPairs: [string, string][] = [
-  ["backup", "backdoor"], ["server", "service"], ["auth", "auto"],
-  ["delete", "delegate"], ["publish", "public"], ["file", "film"],
-  ["plane", "plant"], ["model", "modem"], ["folder", "folded"],
-  ["thread", "threat"], ["lease", "least"], ["sale", "salt"],
-  ["station", "static"], ["script", "scribble"], ["cancel", "cancerous"],
+  ["backup", "backdoor"],
+  ["server", "service"],
+  ["auth", "auto"],
+  ["delete", "delegate"],
+  ["publish", "public"],
+  ["file", "film"],
+  ["plane", "plant"],
+  ["model", "modem"],
+  ["folder", "folded"],
+  ["thread", "threat"],
+  ["lease", "least"],
+  ["sale", "salt"],
+  ["station", "static"],
+  ["script", "scribble"],
+  ["cancel", "cancerous"],
 ];
 for (const [a, b] of unrelatedPairs) {
   test(`sameWordForm rejects unrelated words: ${a}/${b}`, () => {
@@ -82,7 +92,10 @@ for (const [a, b] of unrelatedPairs) {
 }
 
 test("sameWordForm keeps ordinary English inflections", () => {
-  for (const [a, b] of [["backup", "backups"], ["delete", "deleted"]]) {
+  for (const [a, b] of [
+    ["backup", "backups"],
+    ["delete", "deleted"],
+  ]) {
     assert.equal(sameWordForm(a, b), true);
     assert.equal(sameWordForm(b, a), true);
   }
@@ -90,10 +103,14 @@ test("sameWordForm keeps ordinary English inflections", () => {
 
 test("word-form families stay closed and respect canonical spellings", () => {
   for (const [a, b] of [
-    ["قالب", "زقالب"], ["חשבונית", "זחשבונית"],
-    ["kiolezo", "xiolezo"], ["청구서", "청구서xyz"],
-    ["切り替え", "切り替えxyz"], ["antwort", "antwortxyz"],
-    ["şablonu", "şablonxyz"], ["арка", "аркеxyz"],
+    ["قالب", "زقالب"],
+    ["חשבונית", "זחשבונית"],
+    ["kiolezo", "xiolezo"],
+    ["청구서", "청구서xyz"],
+    ["切り替え", "切り替えxyz"],
+    ["antwort", "antwortxyz"],
+    ["şablonu", "şablonxyz"],
+    ["арка", "аркеxyz"],
     ["देवनागरी", "देवनागरु"],
   ]) {
     assert.equal(sameWordForm(a, b), false, `${a} ≁ ${b}`);
@@ -106,10 +123,17 @@ test("word-form families stay closed and respect canonical spellings", () => {
 
 test("hasWordForm prefilter preserves every family and canonical spelling in both directions", () => {
   for (const [a, b] of [
-    ["antwort", "antworten"], ["delete", "deleted"], ["laskun", "laskuissa"],
-    ["şablonu", "şablonlarında"], ["снял", "снять"], ["切り替え", "切り替える"],
-    ["청구서", "청구서들을"], ["قالب", "بالقالب"], ["חשבונית", "החשבוניות"],
-    ["kiolezo", "violezo"], ["café", "cafe\u0301"],
+    ["antwort", "antworten"],
+    ["delete", "deleted"],
+    ["laskun", "laskuissa"],
+    ["şablonu", "şablonlarında"],
+    ["снял", "снять"],
+    ["切り替え", "切り替える"],
+    ["청구서", "청구서들을"],
+    ["قالب", "بالقالب"],
+    ["חשבונית", "החשבוניות"],
+    ["kiolezo", "violezo"],
+    ["café", "cafe\u0301"],
     ["şablonu".normalize("NFD"), "şablonlarında"],
     ["청구서".normalize("NFD"), "청구서들을"],
   ]) {
@@ -120,8 +144,12 @@ test("hasWordForm prefilter preserves every family and canonical spelling in bot
 
 test("hasWordForm miss scan avoids expensive comparisons across a long prompt", () => {
   // 1239 different letters-only tokens, 77 phrases' worth of fallback misses.
-  const tokens = new Set(Array.from({ length: 1239 }, (_, i) =>
-    `context${String.fromCharCode(97 + Math.floor(i / 676), 97 + Math.floor(i / 26) % 26, 97 + i % 26)}`));
+  const tokens = new Set(
+    Array.from(
+      { length: 1239 },
+      (_, i) => `context${String.fromCharCode(97 + Math.floor(i / 676), 97 + (Math.floor(i / 26) % 26), 97 + (i % 26))}`
+    )
+  );
   const word = "antworten";
   const measure = (fn: () => boolean) => {
     const start = performance.now();
@@ -131,23 +159,23 @@ test("hasWordForm miss scan avoids expensive comparisons across a long prompt", 
   // Use the best of several runs to tolerate scheduler/CPU contention in CI.
   // Only an absolute generous budget is asserted; relative timings are noisy.
   measure(() => hasWordForm(tokens, word));
-  const filtered = Math.min(...Array.from({ length: 5 }, () =>
-    measure(() => hasWordForm(tokens, word))));
+  const filtered = Math.min(...Array.from({ length: 5 }, () => measure(() => hasWordForm(tokens, word))));
   assert.ok(filtered < 500, `77 misses took ${filtered}ms (best of 5)`);
 });
 
-test("reused Cyrillic context tokens normalize once and mutable Sets remain correct", t => {
+test("reused Cyrillic context tokens normalize once and mutable Sets remain correct", (t) => {
   const token = "неповторимыйконтекст";
   const normalize = String.prototype.normalize;
   let calls = 0;
-  t.mock.method(String.prototype, "normalize", function(this: string, form?: string) {
+  t.mock.method(String.prototype, "normalize", function (this: string, form?: string) {
     if (String(this) === token) calls++;
     return normalize.call(this, form);
   });
   const tokens = new Set([token]);
   for (const word of ["сервера", "портала", "токены"]) assert.equal(hasWordForm(tokens, word), false);
   assert.equal(calls, 1);
-  tokens.delete(token); tokens.add("сервера");
+  tokens.delete(token);
+  tokens.add("сервера");
   assert.equal(hasWordForm(tokens, "серверы"), true);
 });
 

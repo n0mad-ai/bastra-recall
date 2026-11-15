@@ -43,7 +43,7 @@ test("every reference file is pointed at from somewhere — no orphans", async (
   const adoption = formatAdoptionCandidateBlock({ id: "x", title: "T", count: 3 });
   const sessionHook = await readFile(
     join(dirname(fileURLToPath(import.meta.url)), "..", "src", "session-hook.ts"),
-    "utf8",
+    "utf8"
   );
   const surfaces = `${body}\n${adoption}\n${sessionHook}`;
   for (const name of REFERENCES) {
@@ -53,7 +53,10 @@ test("every reference file is pointed at from somewhere — no orphans", async (
 
 test("the skill payload is exactly SKILL.md, its references and generated startup projection", async () => {
   const entries = await readdir(SKILL_DIR, { withFileTypes: true });
-  const markdown = entries.filter((e) => e.isFile() && e.name.endsWith(".md")).map((e) => e.name).sort();
+  const markdown = entries
+    .filter((e) => e.isFile() && e.name.endsWith(".md"))
+    .map((e) => e.name)
+    .sort();
   assert.deepEqual(markdown, ["SKILL.md", ...REFERENCES, ...GENERATED_PROJECTIONS].sort());
 });
 
@@ -68,11 +71,11 @@ test("gated subsystems name their reference file inside the gate signal", async 
   // in session-format.ts.
   const sessionLane = await readFile(
     join(dirname(fileURLToPath(import.meta.url)), "..", "src", "session-format.ts"),
-    "utf8",
+    "utf8"
   );
   const taxonomyBlock = sessionLane.slice(
     sessionLane.indexOf("<vault-taxonomy>"),
-    sessionLane.indexOf("</vault-taxonomy>"),
+    sessionLane.indexOf("</vault-taxonomy>")
   );
   assert.ok(taxonomyBlock.length > 0, "the vault-taxonomy block moved — update this test");
   assert.match(taxonomyBlock, /taxonomy\.md/);

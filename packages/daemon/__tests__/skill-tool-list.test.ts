@@ -43,10 +43,10 @@ test("the skill lists default-on local task tools conditionally, matching the en
   const body = await readFile(join(REPO, "packages/skill/SKILL.md"), "utf8");
   const optional = body.match(/additional write tools available: ([^.]+)\./);
   assert.ok(optional, "local task tools must be distinguished from the remote-capable tool list");
-  assert.deepEqual(optional[1].split(", ").sort(), taskTools.map(t => t.name).sort());
+  assert.deepEqual(optional[1].split(", ").sort(), taskTools.map((t) => t.name).sort());
   assert.match(body, /Only when the server lists `task_\*` tools/);
   assert.match(body, /tasks are on by default/);
   assert.match(body, /Remote MCP never exposes task_\* tools/);
-  assert.ok(taskTools.every(tool => (toolNamesForSurface("write") ?? []).includes(tool.name)));
-  assert.ok(!(toolNamesForSurface("search") ?? []).some(name => name.startsWith("task_")));
+  assert.ok(taskTools.every((tool) => (toolNamesForSurface("write") ?? []).includes(tool.name)));
+  assert.ok(!(toolNamesForSurface("search") ?? []).some((name) => name.startsWith("task_")));
 });

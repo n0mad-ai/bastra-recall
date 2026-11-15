@@ -97,11 +97,7 @@ test("eine externe Änderung nach dem Ziel-Publish landet nicht still im Trash",
 
   // Die externe Fassung ist der aktive Bestand — nicht das, was der Save
   // veröffentlicht hätte, und nicht nur eine Trash-Kopie.
-  assert.deepEqual(
-    await activeFiles(root),
-    [first.file_path],
-    "die Quelle bleibt aktiv, das Ziel wird zurückgerollt",
-  );
+  assert.deepEqual(await activeFiles(root), [first.file_path], "die Quelle bleibt aktiv, das Ziel wird zurückgerollt");
   assert.match(await readFile(first.file_path, "utf8"), /EXTERN/);
 });
 
@@ -138,14 +134,11 @@ test("zwei parallele Trash-Bewegungen derselben id verlieren keine Fassung", asy
   // die Frage dieses Tests — belegt die Zielpfadwahl atomar? Ein nachgebauter
   // Claim geht seit der Nominalisierung nicht mehr.
   const settled = await withIdClaim({ vaultRoot: root, id: "victim", filePath: a }, (claim) =>
-    Promise.allSettled([
-      moveToTrashUnderClaim(root, a, claim),
-      moveToTrashUnderClaim(root, b, claim),
-    ]),
+    Promise.allSettled([moveToTrashUnderClaim(root, a, claim), moveToTrashUnderClaim(root, b, claim)])
   );
   assert.deepEqual(
     settled.map((s) => s.status),
-    ["fulfilled", "fulfilled"],
+    ["fulfilled", "fulfilled"]
   );
 
   const trashDir = join(root, ".bastra", "trash");
@@ -168,9 +161,9 @@ test("moveToTrashUnderClaim bewegt nichts, wenn die Datei nicht mehr die erwarte
   await assert.rejects(
     () =>
       withIdClaim({ vaultRoot: root, id: "m", filePath: file }, (claim) =>
-        moveToTrashUnderClaim(root, file, claim, "ALT"),
+        moveToTrashUnderClaim(root, file, claim, "ALT")
       ),
-    (err: Error & { code?: string }) => err.code === MEMORY_WRITE_CONFLICT,
+    (err: Error & { code?: string }) => err.code === MEMORY_WRITE_CONFLICT
   );
   assert.equal(await readFile(file, "utf8"), neu, "die Datei bleibt, wo sie ist");
   assert.equal(existsSync(join(root, ".bastra", "trash")), false);
@@ -189,11 +182,8 @@ test("ein Claim beweist keinen Besitz an einem beliebigen Pfad", async (t) => {
   await writeFile(b, mem("b", "MEMORY-B"), "utf8");
 
   await assert.rejects(
-    () =>
-      withIdClaim({ vaultRoot: root, id: "a", filePath: a }, (claim) =>
-        moveToTrashUnderClaim(root, b, claim),
-      ),
-    /does not hold memory 'a'/,
+    () => withIdClaim({ vaultRoot: root, id: "a", filePath: a }, (claim) => moveToTrashUnderClaim(root, b, claim)),
+    /does not hold memory 'a'/
   );
   assert.ok(existsSync(b), "B bleibt im Bestand");
   assert.equal(existsSync(join(root, ".bastra", "trash")), false);
@@ -210,14 +200,11 @@ test("saveMemory reicht das unter dem Claim gelesene Vor- und Nachbild heraus", 
   assert.equal(created.audit_after.source, "version-0.4");
 
   // Re-File: Die Vorlage ist die QUELLE, nicht der (noch leere) Zielpfad.
-  const moved = await saveMemory(
-    root,
-    input({ overwrite: true, folder: "memories/people", body: "Neuer Body." }),
-  );
+  const moved = await saveMemory(root, input({ overwrite: true, folder: "memories/people", body: "Neuer Body." }));
   assert.equal(
     moved.audit_before?.source,
     "version-0.4",
-    "das Vorbild muss die Quelldatei beschreiben, nicht das leere Ziel",
+    "das Vorbild muss die Quelldatei beschreiben, nicht das leere Ziel"
   );
   assert.equal(moved.audit_after.source, "version-0.4");
 });
@@ -252,10 +239,7 @@ test("ein Save mit dem Scope einer umbenannten Area schreibt nichts", async (t) 
 
   await markAreaRenamed(root, "proj", "proj-neu");
 
-  await assert.rejects(
-    () => saveMemory(root, input({ scope: "proj" })),
-    /renamed to 'proj-neu'/,
-  );
+  await assert.rejects(() => saveMemory(root, input({ scope: "proj" })), /renamed to 'proj-neu'/);
   assert.deepEqual(await activeFiles(root), [], "das weggezogene Regal darf nicht neu entstehen");
 });
 

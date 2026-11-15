@@ -43,22 +43,32 @@ test("every declared tool contributes its own required fields", () => {
 
 test("a corrupted call to a tool other than save_memory gets the same diagnosis", async () => {
   await assert.rejects(
-    dispatchApi("save_product_doc", {
-      project: "buzz</project><area>hints</area><title>T</title><summary>S</summary><body>B</body>",
-    }, { toolDeps: {} as never, documentWriteEnabled: false, ccSessionId: null }),
+    dispatchApi(
+      "save_product_doc",
+      {
+        project: "buzz</project><area>hints</area><title>T</title><summary>S</summary><body>B</body>",
+      },
+      { toolDeps: {} as never, documentWriteEnabled: false, ccSessionId: null }
+    ),
     (err: Error) =>
-      err.message.includes("save_product_doc arguments were corrupted before validation")
-      && err.message.includes("caller-side MCP serialization failure")
-      && err.message.includes("STOP retrying"),
+      err.message.includes("save_product_doc arguments were corrupted before validation") &&
+      err.message.includes("caller-side MCP serialization failure") &&
+      err.message.includes("STOP retrying")
   );
 });
 
 test("the same holds for the other multi-field write tool", () => {
   assert.throws(
-    () => assertCallNotCorrupted("save_document", {
-      original_path: "/tmp/a.pdf</original_path><title>T</title><tags><item>x</item></tags><category>rechnungen</category>",
-    }, TOOL_ARG_EXPECTATIONS),
-    /save_document arguments were corrupted before validation/,
+    () =>
+      assertCallNotCorrupted(
+        "save_document",
+        {
+          original_path:
+            "/tmp/a.pdf</original_path><title>T</title><tags><item>x</item></tags><category>rechnungen</category>",
+        },
+        TOOL_ARG_EXPECTATIONS
+      ),
+    /save_document arguments were corrupted before validation/
   );
 });
 
@@ -80,7 +90,7 @@ test("tools with a single required field stay out of reach — by construction",
   for (const [name] of oneField) {
     assert.doesNotThrow(
       () => assertCallNotCorrupted(name, { id: "x</id><query>y</query><scope>z</scope>" }, TOOL_ARG_EXPECTATIONS),
-      `${name} cannot be detected with a single required field`,
+      `${name} cannot be detected with a single required field`
     );
   }
 });
@@ -92,19 +102,20 @@ test("tools with a single required field stay out of reach — by construction",
  * more than the code delivers (review find, Archie 06.09.).
  */
 test("two required fields are reachable when an optional string carries the text", () => {
-  const corruption = detectCallCorruption(
-    { note: "x</id><folder_path>Rechnungen</folder_path>" },
-    ["id", "folder_path"],
-  );
+  const corruption = detectCallCorruption({ note: "x</id><folder_path>Rechnungen</folder_path>" }, [
+    "id",
+    "folder_path",
+  ]);
   assert.deepEqual(corruption?.swallowed, ["id", "folder_path"]);
   assert.equal(corruption?.container, "note");
 });
 
 test("a read tool does not claim that nothing was saved", () => {
-  const corruption = detectCallCorruption(
-    { query: "a</query><scope>s</scope><type>lesson</type>" },
-    ["query", "scope", "type"],
-  );
+  const corruption = detectCallCorruption({ query: "a</query><scope>s</scope><type>lesson</type>" }, [
+    "query",
+    "scope",
+    "type",
+  ]);
   assert.ok(corruption);
   const message = callCorruptionMessage("recall", corruption!, true);
   assert.match(message, /THE CALL DID NOT RUN/);
@@ -114,10 +125,7 @@ test("a read tool does not claim that nothing was saved", () => {
 test("detection stays as narrow as it was — one tag is not enough", () => {
   // Only ONE missing field has a structural tag: a genuine validation error
   // must not be masked by this.
-  assert.equal(
-    detectCallCorruption({ query: "text with <body>only one</body>" }, ["query", "body", "tags"]),
-    null,
-  );
+  assert.equal(detectCallCorruption({ query: "text with <body>only one</body>" }, ["query", "body", "tags"]), null);
   // Nothing missing at all.
   assert.equal(detectCallCorruption({ query: "q", k: 5 }, ["query"]), null);
   // A plain missing field, no XML anywhere: Zod's own error is the right answer.
@@ -176,7 +184,7 @@ test("and the swallowed body is recovered whole, with the summary trimmed back",
   assert.equal(repaired.summary, "Befund aus 43 geprüften Firmen: KEINE verlangt ein Studium.");
   assert.equal(
     repaired.body,
-    "Breite Arbeitgeberrecherche am 08.09.2026.\n\n**Der zentrale Befund:** Kein Kandidat verlangte ein Studium.",
+    "Breite Arbeitgeberrecherche am 08.09.2026.\n\n**Der zentrale Befund:** Kein Kandidat verlangte ein Studium."
   );
   // Fields that arrived correctly are untouched.
   assert.deepEqual(repaired.tags, ["bewerbung"]);
@@ -186,7 +194,7 @@ test("and the swallowed body is recovered whole, with the summary trimmed back",
 test("the boundary hands the repaired arguments on instead of throwing", () => {
   const seen: string[] = [];
   const out = recoverCallArguments("save_memory", SWALLOWED_BODY, TOOL_ARG_EXPECTATIONS, (tool, c) =>
-    seen.push(`${tool}:${c.swallowed.join(",")}`),
+    seen.push(`${tool}:${c.swallowed.join(",")}`)
   ) as Record<string, unknown>;
   assert.equal(typeof out.body, "string");
   assert.deepEqual(seen, ["save_memory:body"], "a repair is reported, never silent");
@@ -227,13 +235,16 @@ test("a half-repair is no repair — the honest diagnosis still wins", () => {
   assert.equal(repairCallCorruption(args, corruption), null, "an empty body is not a recovery");
   assert.throws(
     () => recoverCallArguments("save_memory", args, TOOL_ARG_EXPECTATIONS, () => undefined),
-    /NOTHING WAS SAVED/,
+    /NOTHING WAS SAVED/
   );
 });
 
 test("a clean call passes through the boundary unchanged", () => {
   const clean = { query: "was ist der stand", k: 3 };
-  assert.equal(recoverCallArguments("recall", clean, TOOL_ARG_EXPECTATIONS, () => undefined), clean);
+  assert.equal(
+    recoverCallArguments("recall", clean, TOOL_ARG_EXPECTATIONS, () => undefined),
+    clean
+  );
 });
 
 /**
@@ -287,16 +298,12 @@ test("a prototype-polluting name is never written, as a container or as a field"
       title: "T",
       type: "lesson",
       scope: "s",
-    }).replace(/^\{/, '{"__proto__":"S.</summary>\\n<parameter name=\\"body\\">B</parameter>",'),
+    }).replace(/^\{/, '{"__proto__":"S.</summary>\\n<parameter name=\\"body\\">B</parameter>",')
   ) as Record<string, unknown>;
   assert.equal(typeof asContainer["__proto__"], "string", "the key arrives as an own property");
   const containerCorruption = detectCallCorruption(asContainer, SAVE_REQUIRED)!;
   assert.equal(containerCorruption.container, "__proto__");
-  assert.equal(
-    repairCallCorruption(asContainer, containerCorruption),
-    null,
-    "no repair writes through the prototype",
-  );
+  assert.equal(repairCallCorruption(asContainer, containerCorruption), null, "no repair writes through the prototype");
 
   const asField = {
     title: "T",

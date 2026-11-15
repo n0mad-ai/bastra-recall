@@ -30,13 +30,19 @@ function stagedTree(): { root: string; skill: string; staged: string; run: () =>
   mkdirSync(join(skill, "agents"), { recursive: true });
   mkdirSync(join(root, "scripts"), { recursive: true });
   copyFileSync(SCRIPT, join(daemonScripts, "prepare-package-assets.mjs"));
-  writeFileSync(join(root, "scripts", "build-skill-projections.mjs"), "export async function buildSkillProjections() {}\n");
+  writeFileSync(
+    join(root, "scripts", "build-skill-projections.mjs"),
+    "export async function buildSkillProjections() {}\n"
+  );
   writeFileSync(join(skill, "SKILL.md"), "skill\n");
   writeFileSync(join(skill, "intake.md"), "intake\n");
   writeFileSync(join(skill, "cursor-rules.mdc"), "rules\n");
   writeFileSync(join(skill, "agents", "openai.yaml"), "name: x\n");
   const run = () =>
-    spawnSync(process.execPath, [join(daemonScripts, "prepare-package-assets.mjs")], { encoding: "utf8", timeout: 60_000 });
+    spawnSync(process.execPath, [join(daemonScripts, "prepare-package-assets.mjs")], {
+      encoding: "utf8",
+      timeout: 60_000,
+    });
   return { root, skill, staged: join(root, "packages", "daemon", "skill"), run };
 }
 
@@ -47,7 +53,10 @@ test("a reference file deleted from packages/skill/ does not linger in the stage
     assert.ok(existsSync(join(t.staged, "intake.md")));
     rmSync(join(t.skill, "intake.md"));
     assert.equal(t.run().status, 0);
-    assert.deepEqual(readdirSync(t.staged).filter((n) => n.endsWith(".md")), ["SKILL.md"]);
+    assert.deepEqual(
+      readdirSync(t.staged).filter((n) => n.endsWith(".md")),
+      ["SKILL.md"]
+    );
   } finally {
     rmSync(t.root, { recursive: true, force: true });
   }
@@ -60,7 +69,10 @@ test("dotfiles in packages/skill/ are not staged, and an older stray one is remo
     mkdirSync(t.staged, { recursive: true });
     writeFileSync(join(t.staged, ".old-scratch.md"), "left by an older build\n");
     assert.equal(t.run().status, 0);
-    assert.deepEqual(readdirSync(t.staged).filter((n) => n.startsWith(".")), []);
+    assert.deepEqual(
+      readdirSync(t.staged).filter((n) => n.startsWith(".")),
+      []
+    );
     assert.ok(existsSync(join(t.staged, "cursor-rules.mdc")));
     assert.ok(existsSync(join(t.staged, "agents", "openai.yaml")));
   } finally {

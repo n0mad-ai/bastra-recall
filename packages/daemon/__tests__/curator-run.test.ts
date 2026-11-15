@@ -56,7 +56,14 @@ function memories(): Array<Record<string, unknown>> {
     { id: "floored", title: "Floored state", created: iso(120), topic_path: ["ops"], related: [] },
     // User-directed (#158): same context-tax profile, exempt from lifecycle
     // passes by provenance — must never show up as candidate or demotion.
-    { id: "dictated", title: "User-dictated preference", created: iso(120), topic_path: ["prefs"], related: [], write_origin: "user-directed" },
+    {
+      id: "dictated",
+      title: "User-dictated preference",
+      created: iso(120),
+      topic_path: ["prefs"],
+      related: [],
+      write_origin: "user-directed",
+    },
     // Young: same usage profile, grace period.
     { id: "young", title: "Fresh lesson", created: iso(3), topic_path: ["css", "grid"], related: [] },
     // Engaged recently.
@@ -78,7 +85,7 @@ async function seedUsage(root: string): Promise<void> {
 }
 
 async function withFixture<T>(
-  fn: (root: string, deps: CuratorRunDeps, demotionCalls: string[][]) => Promise<T>,
+  fn: (root: string, deps: CuratorRunDeps, demotionCalls: string[][]) => Promise<T>
 ): Promise<T> {
   const root = await mkdtemp(join(tmpdir(), "bastra-curator-run-"));
   const floorsPath = join(root, "floors.json");
@@ -93,7 +100,7 @@ async function withFixture<T>(
         last_affirmed: iso(60),
       },
     ]),
-    "utf8",
+    "utf8"
   );
   await seedUsage(root);
   const demotionCalls: string[][] = [];
@@ -214,7 +221,10 @@ test("HTTP boundary: exception detail never reaches the response (CodeQL alert #
     staleTotal: 0,
     reportWritten: false,
   };
-  const failed = sanitizeRunResultForHttp({ ...base, error: "ENOSPC: no space left on device, write '/Users/x/.bastra/x'" });
+  const failed = sanitizeRunResultForHttp({
+    ...base,
+    error: "ENOSPC: no space left on device, write '/Users/x/.bastra/x'",
+  });
   assert.equal(failed.status, 500);
   assert.equal(failed.body.error, "curator run failed — see daemon log");
   assert.ok(!JSON.stringify(failed.body).includes("ENOSPC"), "no exception detail in the payload");
@@ -272,24 +282,28 @@ test("reflex promotion (#217): repeated acted_on recalls become candidates, cool
   ];
 
   const cands = await collectReflexCandidates(vault, { stale: {} }, NOW, events);
-  assert.deepEqual(cands, [{ id: "hot", title: "Hot memory", count: 3 }],
-    "3× acted_on → Kandidat; reflex-markiert und <3× nie");
-
-  const cooled = await collectReflexCandidates(
-    vault, { stale: {}, reflex_suggested: { hot: iso(5) } }, NOW, events,
+  assert.deepEqual(
+    cands,
+    [{ id: "hot", title: "Hot memory", count: 3 }],
+    "3× acted_on → Kandidat; reflex-markiert und <3× nie"
   );
+
+  const cooled = await collectReflexCandidates(vault, { stale: {}, reflex_suggested: { hot: iso(5) } }, NOW, events);
   assert.equal(cooled.length, 0, "innerhalb 30d nicht erneut vorschlagen");
 
-  const matured = await collectReflexCandidates(
-    vault, { stale: {}, reflex_suggested: { hot: iso(45) } }, NOW, events,
-  );
+  const matured = await collectReflexCandidates(vault, { stale: {}, reflex_suggested: { hot: iso(45) } }, NOW, events);
   assert.equal(matured.length, 1, "nach Ablauf des Cooldowns wieder vorschlagbar");
 });
 
 function frustrationMemory(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    id: "frustration", title: "Stop repeating this", created: iso(60), related: [],
-    write_origin: "user-directed", salience: 0.8, emotion: "frustration",
+    id: "frustration",
+    title: "Stop repeating this",
+    created: iso(60),
+    related: [],
+    write_origin: "user-directed",
+    salience: 0.8,
+    emotion: "frustration",
     ...overrides,
   };
 }
@@ -298,22 +312,36 @@ test("reflex promotion (#1308): all frustration criteria are required, without t
   for (const salience of [0.8, 0.9, 1]) {
     const vault = fakeVault([frustrationMemory({ salience })]);
     const candidates = await collectReflexCandidates(vault, { stale: {} }, NOW, []);
-    assert.deepEqual(candidates, [{
-      id: "frustration", title: "Stop repeating this", count: 0, reason: "user-directed-frustration",
-    }]);
+    assert.deepEqual(candidates, [
+      {
+        id: "frustration",
+        title: "Stop repeating this",
+        count: 0,
+        reason: "user-directed-frustration",
+      },
+    ]);
     const block = formatReflexCandidateBlock(candidates[0]);
-    assert.doesNotMatch(block,/Ask the user/);
+    assert.doesNotMatch(block, /Ask the user/);
     assert.ok(block.includes('<reflex-candidate memory-id="frustration" evidence="user-directed-frustration">'));
     assert.ok(block.includes("When authorized by the user's request: load_memory"));
     assert.ok(block.includes("Never promote without user authorization."));
     assert.equal(vault.get("frustration")?.fm.recall_mode, undefined);
   }
   const exclusions: Array<Record<string, unknown>> = [
-    { write_origin: undefined }, { write_origin: "agent-inferred" },
-    { salience: undefined }, { salience: 0.79 }, { salience: "0.9" }, { salience: NaN },
-    { emotion: undefined }, { emotion: "success" }, { emotion: "neutral" }, { emotion: "risk" },
-    { recall_mode: "reflex" }, { recall_mode: "deliberate" },
-    { superseded_by: "replacement" }, { obsolete: true },
+    { write_origin: undefined },
+    { write_origin: "agent-inferred" },
+    { salience: undefined },
+    { salience: 0.79 },
+    { salience: "0.9" },
+    { salience: NaN },
+    { emotion: undefined },
+    { emotion: "success" },
+    { emotion: "neutral" },
+    { emotion: "risk" },
+    { recall_mode: "reflex" },
+    { recall_mode: "deliberate" },
+    { superseded_by: "replacement" },
+    { obsolete: true },
   ];
   for (const overrides of exclusions) {
     const candidates = await collectReflexCandidates(fakeVault([frustrationMemory(overrides)]), { stale: {} }, NOW, []);
@@ -323,7 +351,7 @@ test("reflex promotion (#1308): all frustration criteria are required, without t
 
 test("reflex promotion (#1308): overlapping sources retain frustration reason and permanent dedup", async () => {
   const vault = fakeVault([frustrationMemory()]);
-  const events: TelemetryEvent[] = [1, 2, 3].flatMap(n => [
+  const events: TelemetryEvent[] = [1, 2, 3].flatMap((n) => [
     { kind: "hook_recall", ts: iso(0), recall_id: `fr-${n}`, query: "stop repeating" },
     { kind: "recall_episode", ts: iso(0), recall_id: `fr-${n}`, memory_id: "frustration", acted_on: true },
   ]);
@@ -331,7 +359,10 @@ test("reflex promotion (#1308): overlapping sources retain frustration reason an
   assert.equal(candidates.length, 1);
   assert.equal(candidates[0].reason, "user-directed-frustration");
   const deduped = await collectReflexCandidates(
-    vault, { stale: {}, reflex_suggested: { frustration: iso(90) } }, NOW, events,
+    vault,
+    { stale: {}, reflex_suggested: { frustration: iso(90) } },
+    NOW,
+    events
   );
   assert.deepEqual(deduped, [], "previous proposals never reappear through the telemetry source");
 });
@@ -414,16 +445,25 @@ test("intake adoption (#217): repeatedly used imported memories become candidate
   ];
 
   const cands = await collectAdoptionCandidates(vault, { stale: {} }, NOW, events);
-  assert.deepEqual(cands, [{ id: "intake-hot", title: "Imported hot", count: 2 }],
-    "2× acted_on Intake → Kandidat; natives Memory nie (das ist Reflex-Territorium)");
+  assert.deepEqual(
+    cands,
+    [{ id: "intake-hot", title: "Imported hot", count: 2 }],
+    "2× acted_on Intake → Kandidat; natives Memory nie (das ist Reflex-Territorium)"
+  );
 
   const cooled = await collectAdoptionCandidates(
-    vault, { stale: {}, adoption_suggested: { "intake-hot": iso(5) } }, NOW, events,
+    vault,
+    { stale: {}, adoption_suggested: { "intake-hot": iso(5) } },
+    NOW,
+    events
   );
   assert.equal(cooled.length, 0, "innerhalb 30d nicht erneut vorschlagen");
 
   const matured = await collectAdoptionCandidates(
-    vault, { stale: {}, adoption_suggested: { "intake-hot": iso(45) } }, NOW, events,
+    vault,
+    { stale: {}, adoption_suggested: { "intake-hot": iso(45) } },
+    NOW,
+    events
   );
   assert.equal(matured.length, 1, "nach Ablauf des Cooldowns wieder vorschlagbar");
 });
@@ -459,7 +499,7 @@ test("consolidation (#217): ≥3 old same-topic project-facts cluster once, prot
   const cooled = collectConsolidationCandidates(
     vault,
     { stale: {}, consolidation_suggested: { "bastra\u0000webui\u0000areas": iso(5) } },
-    NOW,
+    NOW
   );
   assert.equal(cooled.length, 0, "Cluster-Cooldown verhindert Re-Nag");
 });
@@ -472,9 +512,21 @@ test("demand gaps (#140): repeated empty recalls from the log land in REPORT.md;
     const day = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
     const rows = [
       { kind: "recall", ts: day(2), recall_id: "g1", query: "where is the boiler manual", hit_count: 0, hits: [] },
-      { kind: "recall", ts: day(1), recall_id: "g2", query: "where is the boiler manual", hit_count: 1, weak_result: true, hits: [] },
+      {
+        kind: "recall",
+        ts: day(1),
+        recall_id: "g2",
+        query: "where is the boiler manual",
+        hit_count: 1,
+        weak_result: true,
+        hits: [],
+      },
     ];
-    await writeFile(join(logs, `events-${day(0).slice(0, 10)}.jsonl`), rows.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf8");
+    await writeFile(
+      join(logs, `events-${day(0).slice(0, 10)}.jsonl`),
+      rows.map((r) => JSON.stringify(r)).join("\n") + "\n",
+      "utf8"
+    );
     await withEnv("BASTRA_LOG_PATH", logs, async () => {
       await runCuratorPass(deps, { force: true, dryRun: true, nowMs: NOW });
       const report = await readFile(join(root, "REPORT.md"), "utf8");
@@ -496,16 +548,18 @@ test("demand gaps: unreadable log directories are unavailable; readable empty lo
     await writeFile(logs, "not a directory");
     assert.deepEqual(await readEventLog(logs, 30), [], "legacy callers keep their tolerant default");
     await assert.rejects(readEventLog(logs, 30, { strict: true }));
-    await withEnv("BASTRA_TELEMETRY", "on", () => withEnv("BASTRA_LOG_PATH", logs, async () => {
-      await runCuratorPass(deps, { force: true, dryRun: true, nowMs: NOW });
-      let report = await readFile(join(root, "REPORT.md"), "utf8");
-      assert.ok(report.includes("Not available"));
-      assert.ok(!report.includes("None. No question"));
-      await rm(logs);
-      await mkdir(logs);
-      await runCuratorPass(deps, { force: true, dryRun: true, nowMs: NOW });
-      report = await readFile(join(root, "REPORT.md"), "utf8");
-      assert.ok(report.includes("None. No question"));
-    }));
+    await withEnv("BASTRA_TELEMETRY", "on", () =>
+      withEnv("BASTRA_LOG_PATH", logs, async () => {
+        await runCuratorPass(deps, { force: true, dryRun: true, nowMs: NOW });
+        let report = await readFile(join(root, "REPORT.md"), "utf8");
+        assert.ok(report.includes("Not available"));
+        assert.ok(!report.includes("None. No question"));
+        await rm(logs);
+        await mkdir(logs);
+        await runCuratorPass(deps, { force: true, dryRun: true, nowMs: NOW });
+        report = await readFile(join(root, "REPORT.md"), "utf8");
+        assert.ok(report.includes("None. No question"));
+      })
+    );
   });
 });

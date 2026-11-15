@@ -57,7 +57,6 @@ export interface SaveMemoryResult {
   note?: string;
 }
 
-
 // ─── #150: anti-thrash — consecutive-failure cap on save_memory ─────────
 // A repeatedly failing save (schema retry loop, path issue) must never eat
 // the turn: after SAVE_FAILURE_CAP consecutive failures the error turns
@@ -86,7 +85,7 @@ export async function saveMemoryHandler(
   deps: ToolDeps,
   rawArgs: unknown,
   /** #464: transportgebunden — siehe private-access.ts. */
-  access?: PrivateAccess,
+  access?: PrivateAccess
 ): Promise<SaveMemoryResult | ClaimGateResult> {
   // Claude/Opus can switch from native JSON arguments into legacy XML inside
   // the first multiline value. Retrying the generated call cannot help — it
@@ -99,7 +98,7 @@ export async function saveMemoryHandler(
   // gets the same answer.
   const corruption = detectCallCorruption(
     rawArgs,
-    requiredFieldsOf(MEMORY_TOOL_DEFS.find((def) => def.name === "save_memory")),
+    requiredFieldsOf(MEMORY_TOOL_DEFS.find((def) => def.name === "save_memory"))
   );
   if (corruption) {
     // 08.09.: the framing is recoverable more often than not — see
@@ -125,7 +124,7 @@ export async function saveMemoryHandler(
       throw new Error(
         `save_memory failed ${failures} times in a row — STOP retrying this save. ` +
           `Continue with the user's actual task and report the failed save in your reply instead. ` +
-          `(last error: ${(err as Error).message})`,
+          `(last error: ${(err as Error).message})`
       );
     }
     throw err;
@@ -147,7 +146,7 @@ function noteSaveHold(
   reason: SaveHoldEvent["reason"],
   id: string,
   data: { type: string; scope: string; overwrite?: boolean },
-  claimedCount = 0,
+  claimedCount = 0
 ): void {
   fireAndForget(
     deps.telemetry.logSaveHold({
@@ -158,14 +157,14 @@ function noteSaveHold(
       claimed_count: claimedCount,
       overwrite: data.overwrite ?? false,
       follows_recall: deps.telemetry.recentRecallId(),
-    }),
+    })
   );
 }
 
 async function saveMemoryInner(
   deps: ToolDeps,
   rawArgs: unknown,
-  access?: PrivateAccess,
+  access?: PrivateAccess
 ): Promise<SaveMemoryResult | ClaimGateResult> {
   const parsed = SaveMemoryInput.safeParse(rawArgs);
   if (!parsed.success) throw new Error(parsed.error.message);
@@ -231,8 +230,8 @@ async function saveMemoryInner(
   // steht längst im Frontmatter des Memories, das hier neu geschrieben wird.
   // Ohne diesen Rückgriff meldete ausgerechnet die Aktualisierung eines
   // Nachfolgers wieder die Kollision mit dem Vorgänger, den sie abgelöst hat.
-  const declaredReplaces = parsed.data.replaces
-    ?? (parsed.data.overwrite ? asString(deps.vault.get(finalId)?.fm.replaces) : undefined);
+  const declaredReplaces =
+    parsed.data.replaces ?? (parsed.data.overwrite ? asString(deps.vault.get(finalId)?.fm.replaces) : undefined);
 
   const saveQuality = scoreSaveQuality(deps, parsed.data, finalId, supersededChain(declaredReplaces));
 
@@ -254,7 +253,7 @@ async function saveMemoryInner(
         const m = deps.vault.get(id);
         return m ? { summary: m.fm.summary, body: m.body } : undefined;
       },
-      supersededChain,
+      supersededChain
     );
     if (claimed.length > 0) {
       noteSaveHold(deps, "claim_gate", finalId, parsed.data, claimed.length);
@@ -280,7 +279,7 @@ async function saveMemoryInner(
       noteSaveHold(deps, "unresolved_replaces", finalId, parsed.data);
       throw new Error(
         `replaces: unknown memory '${supersedes}' — it must exist in the vault. ` +
-          `Note that an archived memory is no longer in the living vault and cannot be superseded.`,
+          `Note that an archived memory is no longer in the living vault and cannot be superseded.`
       );
     }
   }
@@ -295,7 +294,7 @@ async function saveMemoryInner(
     noteSaveHold(deps, "id_exists", finalId, parsed.data);
     throw new Error(
       `memory already exists: ${finalId} (at ${previous.filePath}). ` +
-        `Pass overwrite=true to replace it — a changed folder/scope moves the file.`,
+        `Pass overwrite=true to replace it — a changed folder/scope moves the file.`
     );
   }
 
@@ -367,13 +366,13 @@ async function saveMemoryInner(
             },
             frontmatter: (fm) => ({ ...fm, superseded_by: result.id }),
           },
-          { vaultRoot: deps.vaultPath },
+          { vaultRoot: deps.vaultPath }
         );
         if (stamped.kind !== "written") {
           throw new Error(
             stamped.kind === "raced"
               ? `'${supersedes}' changed while the supersede edge was being stamped`
-              : `${target.filePath} does not hold memory '${supersedes}'`,
+              : `${target.filePath} does not hold memory '${supersedes}'`
           );
         }
         await deps.vault.reindexFile(target.filePath);
@@ -400,7 +399,7 @@ async function saveMemoryInner(
       overwrite: parsed.data.overwrite ?? false,
       created: result.created,
       follows_recall: deps.telemetry.recentRecallId(),
-    }),
+    })
   );
 
   // #206: the audit trail existed but covered only the Mac-app bridge — the
@@ -438,6 +437,11 @@ async function saveMemoryInner(
   // gehen, der `save_memory` ruft.
   const { audit_before: _b, audit_after: _a, ...payload } = result;
   // #1395: from the frontmatter this save wrote, not from the index a later writer may have changed.
-  return { ...payload, save_quality: saveQuality, rule_text_review: ruleTextReview(result.audit_after as Memory["fm"]), delivery: rulebookDelivery(result.audit_after as Memory["fm"]),
-    ...(warning ? { warning } : {}) };
+  return {
+    ...payload,
+    save_quality: saveQuality,
+    rule_text_review: ruleTextReview(result.audit_after as Memory["fm"]),
+    delivery: rulebookDelivery(result.audit_after as Memory["fm"]),
+    ...(warning ? { warning } : {}),
+  };
 }

@@ -13,14 +13,19 @@ function fixture(owned = true, pendingInitially = true) {
       launchAgentOwned: owned,
       isStagedRestartPending: () => pending,
       getLastActivity: () => activity,
-      clearStagedRestartPending: () => { pending = false; clears++; },
-      shutdown: async () => { shutdowns++; },
+      clearStagedRestartPending: () => {
+        pending = false;
+        clears++;
+      },
+      shutdown: async () => {
+        shutdowns++;
+      },
     },
     state: () => ({ pending, shutdowns, clears }),
   };
 }
 
-test("Windows managed task stays warm with a pending staged update after the idle deadline", t => {
+test("Windows managed task stays warm with a pending staged update after the idle deadline", (t) => {
   t.mock.timers.enable({ apis: ["Date", "setInterval"], now: 1_000_000 });
   const f = fixture();
   startStagedRestart(f.deps, "win32");
@@ -28,7 +33,7 @@ test("Windows managed task stays warm with a pending staged update after the idl
   assert.deepEqual(f.state(), { pending: true, shutdowns: 0, clears: 0 });
 });
 
-test("macOS KeepAlive service cleanly restarts only after 15 minutes idle with a pending update", t => {
+test("macOS KeepAlive service cleanly restarts only after 15 minutes idle with a pending update", (t) => {
   t.mock.timers.enable({ apis: ["Date", "setInterval"], now: 1_000_000 });
   t.mock.method(console, "error", () => {});
   const f = fixture();
@@ -41,7 +46,7 @@ test("macOS KeepAlive service cleanly restarts only after 15 minutes idle with a
   assert.equal(f.state().shutdowns, 1, "cleared pending flag prevents repeated shutdown");
 });
 
-test("macOS service without a pending update stays warm beyond the idle deadline", t => {
+test("macOS service without a pending update stays warm beyond the idle deadline", (t) => {
   t.mock.timers.enable({ apis: ["Date", "setInterval"], now: 1_000_000 });
   const f = fixture(true, false);
   startStagedRestart(f.deps, "darwin");
@@ -50,7 +55,7 @@ test("macOS service without a pending update stays warm beyond the idle deadline
 });
 
 for (const platform of ["darwin", "win32"] as const) {
-  test(`${platform} forwarder is unaffected by the managed-service staged-restart job`, t => {
+  test(`${platform} forwarder is unaffected by the managed-service staged-restart job`, (t) => {
     t.mock.timers.enable({ apis: ["Date", "setInterval"], now: 1_000_000 });
     const f = fixture(false);
     startStagedRestart(f.deps, platform);

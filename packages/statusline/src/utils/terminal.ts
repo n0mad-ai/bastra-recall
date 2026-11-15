@@ -16,7 +16,10 @@ export function stripAnsi(str: string): string {
 export function codePointWidth(cp: number): number {
   if (
     (cp >= 0xfe00 && cp <= 0xfe0f) || // variation selectors
-    cp === 0x200b || cp === 0x200c || cp === 0x200d || cp === 0xfeff ||
+    cp === 0x200b ||
+    cp === 0x200c ||
+    cp === 0x200d ||
+    cp === 0xfeff ||
     // Unicode mark categories avoid a fixed list of scripts. Mc spacing
     // marks still occupy a column; Mn/Me marks do not.
     (cp >= 0x0300 && cp <= 0x10ffff && COMBINING_MARK.test(String.fromCodePoint(cp)))

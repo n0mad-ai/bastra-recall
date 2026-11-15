@@ -150,7 +150,7 @@ test("#370: the dense arm is already in flight when the lexical arm starts", asy
   assert.equal(
     dispatchedAtBm25Start,
     true,
-    "the embed must be dispatched before BM25 begins — otherwise the arms cannot overlap",
+    "the embed must be dispatched before BM25 begins — otherwise the arms cannot overlap"
   );
 });
 
@@ -186,8 +186,15 @@ test("#370: the wall clock pays max(bm25, dense), not their sum", async (t) => {
   });
 
   assert.equal(releasedDuringBm25, true, "the dense arm must be in flight while BM25 still holds the loop");
-  assert.equal(degraded, undefined, "an arm that finished inside the BM25 window must not cost the caller a timer tick");
-  assert.ok(typeof vectorHits === "number" && vectorHits > 0, `the dense arm's hits are fused — got ${String(vectorHits)}`);
+  assert.equal(
+    degraded,
+    undefined,
+    "an arm that finished inside the BM25 window must not cost the caller a timer tick"
+  );
+  assert.ok(
+    typeof vectorHits === "number" && vectorHits > 0,
+    `the dense arm's hits are fused — got ${String(vectorHits)}`
+  );
 });
 
 // ─── 3. Deadline ab dem Warten ─────────────────────────────────────────────
@@ -240,7 +247,10 @@ test("#466: an arm still slower than its budget after the await keeps timing out
 
   assert.equal(degraded, "vector-arm-timeout");
   assert.ok(hits.length > 0, "the cheap arm's answer is still served");
-  assert.ok(elapsed < 1000, `≈ 150 + 100 ms expected, must not wait for an arm that never answers — took ${elapsed} ms`);
+  assert.ok(
+    elapsed < 1000,
+    `≈ 150 + 100 ms expected, must not wait for an arm that never answers — took ${elapsed} ms`
+  );
 });
 
 // ─── 4. Telemetrie und Progress ─────────────────────────────────────────────
@@ -261,7 +271,7 @@ test("#370: stop events keep the canonical order and vector.search declares the 
   const names = stops.map((s) => s.name);
   assert.ok(
     names.indexOf("bm25.search") < names.indexOf("vector.search"),
-    `bm25 must still STOP first — got ${names.join(" → ")}`,
+    `bm25 must still STOP first — got ${names.join(" → ")}`
   );
   const idx = names.map(progressIndexFor);
   for (let i = 1; i < idx.length; i++) {
@@ -272,6 +282,6 @@ test("#370: stop events keep the canonical order and vector.search declares the 
   assert.equal(
     vec?.meta?.overlapped,
     true,
-    "the stage timers no longer partition the total — that has to be readable from the event",
+    "the stage timers no longer partition the total — that has to be readable from the event"
   );
 });

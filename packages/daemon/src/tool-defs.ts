@@ -100,7 +100,7 @@ const WRITE_SURFACE_TOOLS = [
   // #1309: validate_artifact reads nothing and writes nothing; it belongs
   // wherever an agent delivers copy-ready text, which is the write surface.
   "validate_artifact",
-  ...(tasksEnabled() ? taskTools.map(t => t.name) : []),
+  ...(tasksEnabled() ? taskTools.map((t) => t.name) : []),
 ] as const;
 
 export function toolSurfaceFrom(raw: string | undefined): ToolSurface {
@@ -121,10 +121,7 @@ export function isToolAllowed(name: string, surface: ToolSurface): boolean {
   return allowed === null || allowed.includes(name);
 }
 
-export function filterToolDefsForSurface<T extends { name: string }>(
-  defs: readonly T[],
-  surface: ToolSurface,
-): T[] {
+export function filterToolDefsForSurface<T extends { name: string }>(defs: readonly T[], surface: ToolSurface): T[] {
   return defs.filter((d) => isToolAllowed(d.name, surface));
 }
 
@@ -152,13 +149,12 @@ export function toolSurfaceDenial(name: string, surface: ToolSurface): string {
  * Derived from the definitions above rather than a hand-kept constant, so a
  * new tool is covered the moment it is declared.
  */
-export const TOOL_ARG_EXPECTATIONS: ReadonlyMap<string, { required: readonly string[]; readOnly: boolean }> =
-  new Map(
-    ALL_TOOL_DEFS.map((def) => [
-      def.name,
-      {
-        required: requiredFieldsOf(def),
-        readOnly: (def as { annotations?: { readOnlyHint?: boolean } }).annotations?.readOnlyHint === true,
-      },
-    ]),
-  );
+export const TOOL_ARG_EXPECTATIONS: ReadonlyMap<string, { required: readonly string[]; readOnly: boolean }> = new Map(
+  ALL_TOOL_DEFS.map((def) => [
+    def.name,
+    {
+      required: requiredFieldsOf(def),
+      readOnly: (def as { annotations?: { readOnlyHint?: boolean } }).annotations?.readOnlyHint === true,
+    },
+  ])
+);

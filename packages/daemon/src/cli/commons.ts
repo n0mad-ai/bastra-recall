@@ -9,7 +9,17 @@ import { bastraDataDir } from "../platform-paths.js";
  * persönlichen Memories gerankt. Es wird NIE in das Repo geschrieben;
  * Beiträge laufen über PRs (siehe Commons-CONTRIBUTING).
  */
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { arch, homedir, platform } from "node:os";
@@ -64,11 +74,7 @@ function parseRemote(rawUrl: string): { host: string; owner: string; repo: strin
 export function commonsRepoRefusal(rawUrl: string): string | null {
   if (isOnValue(process.env[COMMONS_OPT_IN_ENV])) return null;
   const parsed = parseRemote(rawUrl);
-  if (
-    parsed &&
-    parsed.host === COMMONS_ALLOWED_HOST &&
-    parsed.owner.toLowerCase() === COMMONS_ALLOWED_OWNER
-  )
+  if (parsed && parsed.host === COMMONS_ALLOWED_HOST && parsed.owner.toLowerCase() === COMMONS_ALLOWED_OWNER)
     return null;
   const shown = parsed ? `${parsed.host}/${parsed.owner}/${parsed.repo}` : rawUrl || "(empty)";
   return (
@@ -119,7 +125,9 @@ export async function cmdCommons(opts: { sub: string | null; positional?: string
     case "status": {
       const enabled = await getCommonsEnabled();
       const cloned = existsSync(join(commonsPath(), "recipes"));
-      process.stdout.write(`commons: ${enabled ? "enabled" : "disabled"} · clone: ${cloned ? commonsPath() : "not cloned"}\n`);
+      process.stdout.write(
+        `commons: ${enabled ? "enabled" : "disabled"} · clone: ${cloned ? commonsPath() : "not cloned"}\n`
+      );
       return 0;
     }
     default:
@@ -148,7 +156,7 @@ export function buildVerificationRecord(
   result: "works" | "fails",
   note: string | null,
   verifier: string,
-  date: string = new Date().toISOString().slice(0, 10),
+  date: string = new Date().toISOString().slice(0, 10)
 ): VerificationRecord {
   return {
     recipe_id: recipeId,
@@ -211,7 +219,7 @@ export function commonsRankFactor(works: number, fails: number): number {
 
 async function cmdVerify(recipeId: string | null, result: string | null, note: string | null): Promise<number> {
   if (!recipeId || (result !== "works" && result !== "fails")) {
-    process.stderr.write("usage: bastra commons verify <recipe-id> <works|fails> [\"environment note\"]\n");
+    process.stderr.write('usage: bastra commons verify <recipe-id> <works|fails> ["environment note"]\n');
     return 2;
   }
   const root = commonsPath();
@@ -267,7 +275,22 @@ async function cmdVerify(recipeId: string | null, result: string | null, note: s
   }
   const repoSlug = commonsRepoSlug(COMMONS_REPO_URL);
   if (gh && repoSlug) {
-    const pr = spawnSync(gh, ["pr", "create", "--repo", repoSlug, "--head", branch, "--title", `verify: ${recipeId} → ${result}`, "--body", `Verification record from \`bastra commons verify\`:\n\n\`\`\`json\n${JSON.stringify(record, null, 2)}\n\`\`\``], { stdio: ["ignore", "pipe", "pipe"], timeout: 30_000 });
+    const pr = spawnSync(
+      gh,
+      [
+        "pr",
+        "create",
+        "--repo",
+        repoSlug,
+        "--head",
+        branch,
+        "--title",
+        `verify: ${recipeId} → ${result}`,
+        "--body",
+        `Verification record from \`bastra commons verify\`:\n\n\`\`\`json\n${JSON.stringify(record, null, 2)}\n\`\`\``,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"], timeout: 30_000 }
+    );
     if (pr.status === 0) process.stdout.write(`✓ verification PR opened: ${String(pr.stdout).trim()}\n`);
     else process.stdout.write(`→ branch '${branch}' pushed — open the PR manually (gh pr create failed)\n`);
   } else {
@@ -300,7 +323,11 @@ async function cloneOrPull(): Promise<number> {
   const path = commonsPath();
   if (existsSync(join(path, ".git"))) {
     process.stdout.write(`→ updating commons (${path})\n`);
-    const r = run(git, ["-C", path, "pull", "--ff-only"], { timeoutMs: 120_000, showProgress: true, env: { GIT_TERMINAL_PROMPT: "0" } });
+    const r = run(git, ["-C", path, "pull", "--ff-only"], {
+      timeoutMs: 120_000,
+      showProgress: true,
+      env: { GIT_TERMINAL_PROMPT: "0" },
+    });
     if (!r.ok) {
       process.stderr.write(`✗ git pull failed (${r.detail})\n`);
       return 1;
@@ -337,24 +364,35 @@ export function cloneIntoRoot(
   git: string,
   url: string,
   path: string,
-  io: { move?: typeof renameSync } = {},
+  io: { move?: typeof renameSync } = {}
 ): { ok: true } | { ok: false; detail: string } {
   const unreachable = " — is the repo reachable (public, or your account has access)?";
   const occupied = existsSync(path) && readdirSync(path).length > 0;
   if (!occupied) {
-    const r = run(git, ["clone", "--depth", "1", url, path], { timeoutMs: 300_000, showProgress: true, env: { GIT_TERMINAL_PROMPT: "0" } });
+    const r = run(git, ["clone", "--depth", "1", url, path], {
+      timeoutMs: 300_000,
+      showProgress: true,
+      env: { GIT_TERMINAL_PROMPT: "0" },
+    });
     return r.ok ? { ok: true } : { ok: false, detail: `git clone failed (${r.detail})${unreachable}` };
   }
   const staging = mkdtempSync(join(dirname(path), `.${basename(path)}-clone-`));
   let preserveStaging = false;
   try {
     const checkout = join(staging, "checkout");
-    const r = run(git, ["clone", "--depth", "1", url, checkout], { timeoutMs: 300_000, showProgress: true, env: { GIT_TERMINAL_PROMPT: "0" } });
+    const r = run(git, ["clone", "--depth", "1", url, checkout], {
+      timeoutMs: 300_000,
+      showProgress: true,
+      env: { GIT_TERMINAL_PROMPT: "0" },
+    });
     if (!r.ok) return { ok: false, detail: `git clone failed (${r.detail})${unreachable}` };
     const entries = readdirSync(checkout);
     const clash = entries.filter((name) => existsSync(join(path, name)));
     if (clash.length > 0) {
-      return { ok: false, detail: `${path} already holds ${clash.join(", ")}, which the Commons checkout also has — move them aside and run 'bastra commons enable' again` };
+      return {
+        ok: false,
+        detail: `${path} already holds ${clash.join(", ")}, which the Commons checkout also has — move them aside and run 'bastra commons enable' again`,
+      };
     }
     // `.git` last: the root only counts as cloned once `.git` is in, so a move that stops
     // midway leaves visible clashes for the next run instead of a half tree it would pull into.
@@ -372,7 +410,13 @@ export function cloneIntoRoot(
         const dest = join(path, item.name);
         try {
           const st = lstatSync(dest);
-          if (st.dev !== item.dev || st.ino !== item.ino || st.size !== item.size || st.mtimeMs !== item.mtimeMs || st.ctimeMs !== item.ctimeMs) {
+          if (
+            st.dev !== item.dev ||
+            st.ino !== item.ino ||
+            st.size !== item.size ||
+            st.mtimeMs !== item.mtimeMs ||
+            st.ctimeMs !== item.ctimeMs
+          ) {
             stuck.push(item.name);
             continue;
           }
@@ -382,9 +426,12 @@ export function cloneIntoRoot(
         }
       }
       preserveStaging = stuck.length > 0;
-      return { ok: false, detail: preserveStaging
-        ? `clone move failed (${(err as Error).message}); partial checkout in ${path}, remaining staging in ${staging}; inspect ${stuck.join(", ")} before retrying`
-        : `clone move failed (${(err as Error).message}); checkout move rolled back, local files unchanged` };
+      return {
+        ok: false,
+        detail: preserveStaging
+          ? `clone move failed (${(err as Error).message}); partial checkout in ${path}, remaining staging in ${staging}; inspect ${stuck.join(", ")} before retrying`
+          : `clone move failed (${(err as Error).message}); checkout move rolled back, local files unchanged`,
+      };
     }
     return { ok: true };
   } finally {

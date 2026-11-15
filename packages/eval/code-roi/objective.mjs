@@ -24,8 +24,11 @@ const cache = { get: () => graph };
 const chars = (s) => s.length;
 
 async function grep(args) {
-  try { return (await run("grep", args, { cwd: REPO, maxBuffer: 64 * 1024 * 1024 })).stdout; }
-  catch (e) { return e.stdout ?? ""; }
+  try {
+    return (await run("grep", args, { cwd: REPO, maxBuffer: 64 * 1024 * 1024 })).stdout;
+  } catch (e) {
+    return e.stdout ?? "";
+  }
 }
 
 const rows = [];
@@ -44,13 +47,30 @@ for (const s of scen) {
   });
 }
 const sum = (k) => rows.reduce((a, r) => a + r[k], 0);
-const med = (k) => { const v = rows.map((r) => r[k]).sort((a, b) => a - b); return v[Math.floor(v.length / 2)]; };
-console.log(JSON.stringify({
-  scenarios: rows.length,
-  grep_targeted_hits: rows.filter((r) => r.grep_targeted_hit).length,
-  find_code_hits: rows.filter((r) => r.find_code_hit).length,
-  totals: { grep_targeted: sum("grep_targeted_chars"), grep_broad: sum("grep_broad_chars"), find_code: sum("find_code_chars") },
-  medians: { grep_targeted: med("grep_targeted_chars"), grep_broad: med("grep_broad_chars"), find_code: med("find_code_chars") },
-  find_code_cheaper_than_targeted: rows.filter((r) => r.find_code_chars < r.grep_targeted_chars).length,
-  find_code_cheaper_than_broad: rows.filter((r) => r.find_code_chars < r.grep_broad_chars).length,
-}, null, 2));
+const med = (k) => {
+  const v = rows.map((r) => r[k]).sort((a, b) => a - b);
+  return v[Math.floor(v.length / 2)];
+};
+console.log(
+  JSON.stringify(
+    {
+      scenarios: rows.length,
+      grep_targeted_hits: rows.filter((r) => r.grep_targeted_hit).length,
+      find_code_hits: rows.filter((r) => r.find_code_hit).length,
+      totals: {
+        grep_targeted: sum("grep_targeted_chars"),
+        grep_broad: sum("grep_broad_chars"),
+        find_code: sum("find_code_chars"),
+      },
+      medians: {
+        grep_targeted: med("grep_targeted_chars"),
+        grep_broad: med("grep_broad_chars"),
+        find_code: med("find_code_chars"),
+      },
+      find_code_cheaper_than_targeted: rows.filter((r) => r.find_code_chars < r.grep_targeted_chars).length,
+      find_code_cheaper_than_broad: rows.filter((r) => r.find_code_chars < r.grep_broad_chars).length,
+    },
+    null,
+    2
+  )
+);

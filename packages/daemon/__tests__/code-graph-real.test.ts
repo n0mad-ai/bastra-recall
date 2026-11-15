@@ -55,10 +55,7 @@ describe("code graph: the real graph of this repository", { skip: !HAVE_GRAPH },
     // `packages/core/src/audit-save.ts:69` by hand.
     const g = await real();
     const deps = dependentFilesOf(g, "packages/core/src/save.ts");
-    assert.ok(
-      deps.includes("packages/core/src/audit-save.ts"),
-      `audit-save.ts missing from ${deps.length} dependents`,
-    );
+    assert.ok(deps.includes("packages/core/src/audit-save.ts"), `audit-save.ts missing from ${deps.length} dependents`);
   });
 
   it("finds saveMemory at its real location", async () => {

@@ -152,8 +152,7 @@ function reportRefresh(event: RefreshEvent): void {
   // `external nodes / resolved` is what `bastra doctor` prints per repository
   // and the one number that goes quiet when Graphify changes its id spelling
   // (#582). Carried on a successful build, where it has just been re-derived.
-  const stats =
-    event.outcome === "ok" ? (codeGraphCache().get(event.repoRoot)?.externalStats ?? null) : null;
+  const stats = event.outcome === "ok" ? (codeGraphCache().get(event.repoRoot)?.externalStats ?? null) : null;
   const detail = detailCode(event.detail);
   try {
     refreshObserver({
@@ -161,12 +160,8 @@ function reportRefresh(event: RefreshEvent): void {
       reason: event.reason,
       outcome: event.outcome,
       ...(detail !== undefined ? { detail } : {}),
-      ...(event.outcome !== "started" && began !== undefined
-        ? { duration_ms: Date.now() - began }
-        : {}),
-      ...(stats !== null
-        ? { external_total: stats.total, external_resolved: stats.resolved }
-        : {}),
+      ...(event.outcome !== "started" && began !== undefined ? { duration_ms: Date.now() - began } : {}),
+      ...(stats !== null ? { external_total: stats.total, external_resolved: stats.resolved } : {}),
     });
   } catch {
     /* a refresh must never fail because nobody could write it down */
@@ -215,7 +210,7 @@ export async function startCodeAwareness(
    * the configuration.
    */
   repoList: () => Promise<string[]> = enabledRepos,
-  syncIntervalMs: number = SYNC_INTERVAL_MS,
+  syncIntervalMs: number = SYNC_INTERVAL_MS
 ): Promise<CodeAwarenessHandle> {
   let stopped = false;
   const sync = async (): Promise<void> => {
@@ -306,13 +301,12 @@ function track(repoRoot: string, w: WatchHandle): void {
  * Watch the working tree. Every change enqueues one debounced refresh; the
  * refresher collapses a burst into a single run and at most one follow-up.
  */
-function watchRepo(
-  repoRoot: string,
-  refresh: CodeGraphRefresher,
-  onEvent?: (line: string) => void,
-): void {
+function watchRepo(repoRoot: string, refresh: CodeGraphRefresher, onEvent?: (line: string) => void): void {
   if (process.platform === "linux") {
-    track(repoRoot, watchRepoDirectories(repoRoot, () => refresh.enqueue(repoRoot, "watcher"), onEvent));
+    track(
+      repoRoot,
+      watchRepoDirectories(repoRoot, () => refresh.enqueue(repoRoot, "watcher"), onEvent)
+    );
     return;
   }
   try {
@@ -335,11 +329,7 @@ function watchRepo(
 const MAX_REPO_DIRECTORY_WATCHES = 8_192;
 
 /** Linux: never descend into an ignored tree or follow a directory symlink. */
-function watchRepoDirectories(
-  repoRoot: string,
-  changed: () => void,
-  onEvent?: (line: string) => void,
-): WatchHandle {
+function watchRepoDirectories(repoRoot: string, changed: () => void, onEvent?: (line: string) => void): WatchHandle {
   const dirs = new Map<string, FSWatcher>();
   let closed = false;
   let limited = false;
@@ -368,8 +358,7 @@ function watchRepoDirectories(
     // register again without a timer or an unbounded ENOSPC retry loop.
     if (dirs.size < before) limited = false;
   };
-  const ignoredDirectory = (dir: string): boolean =>
-    dir !== repoRoot && isIgnored(join(relative(repoRoot, dir), "_"));
+  const ignoredDirectory = (dir: string): boolean => dir !== repoRoot && isIgnored(join(relative(repoRoot, dir), "_"));
 
   const walk = (dir: string): void => {
     if (closed || limited || ignoredDirectory(dir)) return;
@@ -395,7 +384,11 @@ function watchRepoDirectories(
           const rel = relative(repoRoot, path);
           if (isIgnored(rel)) return;
           let directory = false;
-          try { directory = lstatSync(path).isDirectory(); } catch { /* removed */ }
+          try {
+            directory = lstatSync(path).isDirectory();
+          } catch {
+            /* removed */
+          }
           if (directory && ignoredDirectory(path)) return;
           if (event === "rename") {
             // A moved/deleted tree keeps its inotify handles until we close it.
@@ -406,7 +399,7 @@ function watchRepoDirectories(
           changed();
         });
         dirs.set(dir, watcher);
-        watcher.on("error", error => {
+        watcher.on("error", (error) => {
           if (closed || dirs.get(dir) !== watcher) return;
           remove(dir);
           failed(error);
@@ -422,7 +415,12 @@ function watchRepoDirectories(
     }
   };
   walk(repoRoot);
-  return { close: () => { closed = true; remove(repoRoot); } };
+  return {
+    close: () => {
+      closed = true;
+      remove(repoRoot);
+    },
+  };
 }
 
 /**
@@ -437,7 +435,7 @@ function watchRepoDirectories(
 async function watchGit(
   repoRoot: string,
   refresh: CodeGraphRefresher,
-  onEvent?: (line: string) => void,
+  onEvent?: (line: string) => void
 ): Promise<void> {
   let paths: string[];
   try {
@@ -445,9 +443,7 @@ async function watchGit(
     // `packed-refs` is watched too: a fetch or a gc rewrites refs THERE rather
     // than under refs/, so watching only the directory misses exactly the
     // updates that follow a pull.
-    paths = [p.head, p.refs, p.packedRefs].filter(
-      (v): v is string => typeof v === "string" && v.length > 0,
-    );
+    paths = [p.head, p.refs, p.packedRefs].filter((v): v is string => typeof v === "string" && v.length > 0);
   } catch {
     return; // not a git repository, or git is unavailable — the file watcher covers it
   }
@@ -479,9 +475,7 @@ export function isIgnored(relativePath: string): boolean {
   if (segments.length === 0) return false;
   const last = segments[segments.length - 1]!;
   if (IGNORED_SEGMENTS.has(last)) return true;
-  return segments
-    .slice(0, -1)
-    .some((s) => IGNORED_SEGMENTS.has(s) || (s.startsWith(".") && s !== "." && s !== ".."));
+  return segments.slice(0, -1).some((s) => IGNORED_SEGMENTS.has(s) || (s.startsWith(".") && s !== "." && s !== ".."));
 }
 
 /**

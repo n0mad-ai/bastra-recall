@@ -13,13 +13,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { request } from "node:http";
-import {
-  Vault,
-  SearchIndex,
-  buildSemanticLayout,
-  type VaultGraph,
-  type GraphNode,
-} from "@bastra-recall/core";
+import { Vault, SearchIndex, buildSemanticLayout, type VaultGraph, type GraphNode } from "@bastra-recall/core";
 import { startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
 
@@ -81,12 +75,8 @@ test("buildSemanticLayout: positions, unwritten edges, missing vectors skipped",
 
   // the projection keeps semantic clusters together
   const at = (id: string) => layout.positions.find((p) => p.id === id)!;
-  const d = (a: { x: number; y: number }, b: { x: number; y: number }) =>
-    Math.hypot(a.x - b.x, a.y - b.y);
-  assert.ok(
-    d(at("n1"), at("n2")) < d(at("n1"), at("n4")),
-    "semantic siblings sit closer than strangers",
-  );
+  const d = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+  assert.ok(d(at("n1"), at("n2")) < d(at("n1"), at("n4")), "semantic siblings sit closer than strangers");
 });
 
 test("buildSemanticLayout: empty and single-vector vaults don't blow up", async () => {
@@ -95,10 +85,7 @@ test("buildSemanticLayout: empty and single-vector vaults don't blow up", async 
   assert.deepEqual(empty.positions, []);
   assert.deepEqual(empty.edges, []);
 
-  const one = await buildSemanticLayout(
-    mkGraph(["solo"], []),
-    new Map([["solo", vec([1, 0, 0, 0])]]),
-  );
+  const one = await buildSemanticLayout(mkGraph(["solo"], []), new Map([["solo", vec([1, 0, 0, 0])]]));
   assert.equal(one.count, 1);
   assert.deepEqual(one.positions, [{ id: "solo", x: 0.5, y: 0.5, z: 0.5 }]);
 });
@@ -184,9 +171,7 @@ test("GET /api/v1/graph/semantic: layout with vectors, 503 without, private excl
     assert.equal(layout.count, 3);
     const ids = layout.positions.map((p: { id: string }) => p.id).sort();
     assert.deepEqual(ids, ["a1", "a2", "a3"], "private note never gets a position");
-    const pairs = new Set(
-      layout.edges.map((e: { source: string; target: string }) => pair(e.source, e.target)),
-    );
+    const pairs = new Set(layout.edges.map((e: { source: string; target: string }) => pair(e.source, e.target)));
     assert.ok(pairs.has(pair("a1", "a3")) && pairs.has(pair("a2", "a3")));
     assert.ok(!pairs.has(pair("a1", "a2")), "written edge filtered");
     assert.ok(![...pairs].some((p) => (p as string).includes("secret")));
@@ -252,7 +237,10 @@ test("GET /api/v1/graph/semantic: concurrent requests share one layout build", a
   });
   try {
     const got = await Promise.all([1, 2, 3].map(() => httpGet(handle.port!, "/api/v1/graph/semantic")));
-    assert.deepEqual(got.map((r) => r.status), [200, 200, 200]);
+    assert.deepEqual(
+      got.map((r) => r.status),
+      [200, 200, 200]
+    );
     assert.equal(builds, 1, `three concurrent requests built the layout ${builds} times`);
     assert.equal(new Set(got.map((r) => r.body)).size, 1, "all three get the same layout");
   } finally {

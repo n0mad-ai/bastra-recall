@@ -14,7 +14,12 @@
  * `findReceipt` is the read side for the Stop lane (#1311).
  */
 import type { CopyBlocksResult } from "@bastra-recall/core";
-import { mutateSessionState, type ArtifactReceipt, type ReadonlySessionState, type SessionState } from "./session-state.js";
+import {
+  mutateSessionState,
+  type ArtifactReceipt,
+  type ReadonlySessionState,
+  type SessionState,
+} from "./session-state.js";
 
 /** Bound on receipts one session keeps; the oldest go first. */
 export const RECEIPTS_CAP = 20;
@@ -22,7 +27,7 @@ export const RECEIPTS_CAP = 20;
 /** The newest receipt of task `taskId` in `generation` (and of artifact `hash`, when given), or null. */
 export function findReceipt(
   state: ReadonlySessionState | SessionState,
-  query: { taskId: string; generation: number; hash?: string },
+  query: { taskId: string; generation: number; hash?: string }
 ): Readonly<ArtifactReceipt> | null {
   const receipts = state.receipts ?? [];
   for (let i = receipts.length - 1; i >= 0; i--) {
@@ -69,7 +74,7 @@ export async function storeReceipt(
   sessionId: string,
   result: Pick<CopyBlocksResult, "artifact_sha256" | "channel" | "limit" | "unit_applied"> & { receipt: string },
   task: { kind: string; generation: number } | undefined,
-  now: number = Date.now(),
+  now: number = Date.now()
 ): Promise<StoreOutcome> {
   let outcome: StoreOutcome = "not_persisted";
   const persisted = await mutateSessionState(sessionId, (s) => {

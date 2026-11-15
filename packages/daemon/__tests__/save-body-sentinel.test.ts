@@ -95,10 +95,7 @@ const baseInput = (over: Record<string, unknown> = {}) => ({
 test("#544: a correct body_ends_with lets the save through", async (t) => {
   const { deps, vaultRoot } = await fixture(t);
 
-  const result = (await saveMemoryHandler(
-    deps,
-    baseInput({ body_ends_with: tailOf(BODY) }),
-  )) as SaveMemoryResult;
+  const result = (await saveMemoryHandler(deps, baseInput({ body_ends_with: tailOf(BODY) }))) as SaveMemoryResult;
 
   assert.equal(result.created, true);
   const mem = deps.vault.get("trunc-test");
@@ -118,11 +115,11 @@ test("#544: a body missing its declared ending fails, writes nothing, logs no au
   await assert.rejects(
     () => saveMemoryHandler(deps, baseInput({ body: truncated, body_ends_with: tailOf(BODY) })),
     (err: Error) =>
-      /body_ends_with: the body that arrived does not end with the declared tail/.test(err.message)
-      && err.message.includes("NOTHING was written")
-      && err.message.includes("resend save_memory with the COMPLETE body")
-      && err.message.includes("must survive")
-      && err.message.includes("Line one"),
+      /body_ends_with: the body that arrived does not end with the declared tail/.test(err.message) &&
+      err.message.includes("NOTHING was written") &&
+      err.message.includes("resend save_memory with the COMPLETE body") &&
+      err.message.includes("must survive") &&
+      err.message.includes("Line one")
   );
 
   assert.equal(deps.vault.get("trunc-test"), undefined, "no memory may be indexed");
@@ -157,7 +154,7 @@ test("#544: trailing whitespace and CRLF do not fail an intact body", async (t) 
       // stray blanks are not damage.
       body: crlfBody,
       body_ends_with: "Second line, the one that ends this memory.   \n\n",
-    }),
+    })
   )) as SaveMemoryResult;
 
   assert.equal(result.created, true);
@@ -172,12 +169,12 @@ test("#544: a sentinel that proves nothing is refused, and a short body stays pr
   // "ends with a full stop" would match almost every truncation too.
   await assert.rejects(
     () => saveMemoryHandler(deps, baseInput({ body_ends_with: "." })),
-    /body_ends_with must repeat at least 12 characters/,
+    /body_ends_with must repeat at least 12 characters/
   );
   // Whitespace only normalises to nothing — it must not pass trivially.
   await assert.rejects(
     () => saveMemoryHandler(deps, baseInput({ body_ends_with: "   \n " })),
-    /body_ends_with must repeat at least/,
+    /body_ends_with must repeat at least/
   );
 
   // The floor yields to the body: a sentinel is never required to be longer
@@ -185,7 +182,7 @@ test("#544: a sentinel that proves nothing is refused, and a short body stays pr
   const shortBody = "Port 8080.";
   const result = (await saveMemoryHandler(
     deps,
-    baseInput({ id: "trunc-short", body: shortBody, body_ends_with: shortBody }),
+    baseInput({ id: "trunc-short", body: shortBody, body_ends_with: shortBody })
   )) as SaveMemoryResult;
   assert.equal(result.created, true);
 });
@@ -194,13 +191,11 @@ test("#544: a sentinel that proves nothing is refused, and a short body stays pr
 
 test("#544: a large body with a correct sentinel saves unaffected", async (t) => {
   const { deps, vaultRoot } = await fixture(t);
-  const bigBody = Array.from({ length: 400 }, (_, i) => `Paragraph ${i}: some multiline content here.`).join(
-    "\n\n",
-  );
+  const bigBody = Array.from({ length: 400 }, (_, i) => `Paragraph ${i}: some multiline content here.`).join("\n\n");
 
   const result = (await saveMemoryHandler(
     deps,
-    baseInput({ id: "trunc-test-large", body: bigBody, body_ends_with: tailOf(bigBody) }),
+    baseInput({ id: "trunc-test-large", body: bigBody, body_ends_with: tailOf(bigBody) })
   )) as SaveMemoryResult;
 
   assert.equal(result.created, true);
@@ -236,14 +231,14 @@ test("#544 × #482: the sentinel CONFIRMS a repair that only cut framing garbage
 
   const result = (await saveMemoryHandler(
     deps,
-    framed(authored, { body_ends_with: tailOf(authored) }),
+    framed(authored, { body_ends_with: tailOf(authored) })
   )) as SaveMemoryResult;
 
   assert.equal(result.created, true);
   assert.equal(
     deps.vault.get("trunc-repair")?.body.trim(),
     authored,
-    "the repair kept the authored body, and the sentinel proved it",
+    "the repair kept the authored body, and the sentinel proved it"
   );
 });
 
@@ -256,7 +251,7 @@ test("#544 × #482: a repair that cut real content is caught by the sentinel", a
 
   await assert.rejects(
     () => saveMemoryHandler(deps, framed(arrived, { body_ends_with: tailOf(intended) })),
-    /body_ends_with: the body that arrived does not end with the declared tail/,
+    /body_ends_with: the body that arrived does not end with the declared tail/
   );
   assert.equal(deps.vault.get("trunc-repair"), undefined, "nothing was written");
 });
@@ -267,7 +262,7 @@ test("#544: a conflict_with save with a wrong sentinel writes no conflict block"
   const { deps } = await fixture(t);
   const existing = (await saveMemoryHandler(
     deps,
-    baseInput({ id: "conflict-host", body: "The server listens on port 80." }),
+    baseInput({ id: "conflict-host", body: "The server listens on port 80." })
   )) as SaveMemoryResult;
 
   await assert.rejects(
@@ -279,9 +274,9 @@ test("#544: a conflict_with save with a wrong sentinel writes no conflict block"
           body: "The server listens on port 443.",
           conflict_with: existing.id,
           body_ends_with: "port 443, and a tail that never arrived.",
-        }),
+        })
       ),
-    /body_ends_with: the body that arrived does not end with the declared tail/,
+    /body_ends_with: the body that arrived does not end with the declared tail/
   );
 
   const raw = await readFile(filePath(deps.vaultPath, "test-544", "conflict-host"), "utf8");
@@ -316,7 +311,7 @@ test("#544: auditedSave — the Mac-App transport — inherits the guard", async
         input,
         context: { actor: "user", actor_detail: "test", reason: "bridge save" },
       }),
-    /body_ends_with: the body that arrived does not end with the declared tail/,
+    /body_ends_with: the body that arrived does not end with the declared tail/
   );
   await assert.rejects(() => stat(filePath(vaultRoot, "test-544", "bridge-save")), "no file may exist");
 
@@ -344,10 +339,10 @@ test("#544: repeated sentinel failures never escalate into 'STOP retrying this s
       (err: Error) => {
         assert.ok(
           !err.message.includes("STOP retrying"),
-          `attempt ${i + 1} escalated, though resending the complete body is the right move`,
+          `attempt ${i + 1} escalated, though resending the complete body is the right move`
         );
         return /body_ends_with/.test(err.message);
-      },
+      }
     );
   }
 
@@ -355,6 +350,6 @@ test("#544: repeated sentinel failures never escalate into 'STOP retrying this s
   // still counts as the FIRST one.
   await assert.rejects(
     () => saveMemoryHandler(deps, baseInput({ replaces: "does-not-exist" })),
-    (err: Error) => /unknown memory 'does-not-exist'/.test(err.message) && !err.message.includes("STOP retrying"),
+    (err: Error) => /unknown memory 'does-not-exist'/.test(err.message) && !err.message.includes("STOP retrying")
   );
 });

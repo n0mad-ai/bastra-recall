@@ -37,8 +37,7 @@ test("an index may open with one line of explanation and stay an index", () => {
 function preamble(n: number): string[] {
   return Array.from(
     { length: n },
-    (_, i) =>
-      `Absatz ${i + 1}: Diese Datei hält die beiden Gedächtniszonen auseinander und erklärt, wofür sie da ist.`,
+    (_, i) => `Absatz ${i + 1}: Diese Datei hält die beiden Gedächtniszonen auseinander und erklärt, wofür sie da ist.`
   );
 }
 

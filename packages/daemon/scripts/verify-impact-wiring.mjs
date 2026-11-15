@@ -13,8 +13,12 @@ let clock = 1000;
 globalThis.performance = { now: () => clock };
 globalThis.localStorage = {
   _d: new Map(),
-  getItem(k) { return this._d.has(k) ? this._d.get(k) : null; },
-  setItem(k, v) { this._d.set(k, String(v)); },
+  getItem(k) {
+    return this._d.has(k) ? this._d.get(k) : null;
+  },
+  setItem(k, v) {
+    this._d.set(k, String(v));
+  },
 };
 globalThis.devicePixelRatio = 1;
 
@@ -24,26 +28,57 @@ function makeCtx() {
   const rec = (op, extra = {}) => sink.push({ op, alpha, ...extra });
   return {
     canvas: { width: 1200, height: 800 },
-    get globalAlpha() { return alpha; },
-    set globalAlpha(v) { alpha = v; },
-    lineWidth: 1, strokeStyle: "", fillStyle: "", font: "", textAlign: "",
-    lineJoin: "", lineCap: "", globalCompositeOperation: "",
-    save() {}, restore() {}, translate() {}, scale() {}, setLineDash() {},
-    beginPath() {}, closePath() {},
-    moveTo() {}, lineTo() {}, quadraticCurveTo() {}, bezierCurveTo() {},
-    arc(x, y, r) { rec("arc", { x, y, r }); },
-    stroke() { rec("stroke"); },
+    get globalAlpha() {
+      return alpha;
+    },
+    set globalAlpha(v) {
+      alpha = v;
+    },
+    lineWidth: 1,
+    strokeStyle: "",
+    fillStyle: "",
+    font: "",
+    textAlign: "",
+    lineJoin: "",
+    lineCap: "",
+    globalCompositeOperation: "",
+    save() {},
+    restore() {},
+    translate() {},
+    scale() {},
+    setLineDash() {},
+    beginPath() {},
+    closePath() {},
+    moveTo() {},
+    lineTo() {},
+    quadraticCurveTo() {},
+    bezierCurveTo() {},
+    arc(x, y, r) {
+      rec("arc", { x, y, r });
+    },
+    stroke() {
+      rec("stroke");
+    },
     fill() {},
-    fillRect() {}, clearRect() {}, strokeRect() {},
-    fillText() {}, strokeText() {},
+    fillRect() {},
+    clearRect() {},
+    strokeRect() {},
+    fillText() {},
+    strokeText() {},
     measureText: () => ({ width: 10 }),
-    drawImage(_s, x, y, w) { rec("drawImage", { x, y, w }); },
+    drawImage(_s, x, y, w) {
+      rec("drawImage", { x, y, w });
+    },
     createRadialGradient: () => ({ addColorStop() {} }),
     createLinearGradient: () => ({ addColorStop() {} }),
   };
 }
 const canvasEl = {
-  width: 1200, height: 800, clientWidth: 1200, clientHeight: 800, style: {},
+  width: 1200,
+  height: 800,
+  clientWidth: 1200,
+  clientHeight: 800,
+  style: {},
   getContext: () => makeCtx(),
   getBoundingClientRect: () => ({ width: 1200, height: 800, left: 0, top: 0 }),
   addEventListener() {},
@@ -52,7 +87,8 @@ globalThis.document = {
   createElement: () => ({ width: 0, height: 0, getContext: () => makeCtx(), style: {} }),
   documentElement: { classList: { contains: () => false }, style: {}, dataset: {} },
   body: { classList: { contains: () => false } },
-  addEventListener() {}, querySelector: () => null,
+  addEventListener() {},
+  querySelector: () => null,
 };
 globalThis.window = { addEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }) };
 globalThis.getComputedStyle = () => ({ getPropertyValue: () => "#888888" });
@@ -74,7 +110,7 @@ function buildSim() {
   const hub = mk("hub", 0, 0);
   const ring1 = [...Array(6).keys()].map((i) => mk(`n${i}`, Math.cos(i) * 300, Math.sin(i) * 300));
   const ring2 = ring1.flatMap((p, i) =>
-    [...Array(3).keys()].map((j) => mk(`f${i}_${j}`, p.x + 60 + j * 40, p.y + 60 + j * 40)),
+    [...Array(3).keys()].map((j) => mk(`f${i}_${j}`, p.x + 60 + j * 40, p.y + 60 + j * 40))
   );
   const edges = [
     ...ring1.map((n) => ({ s: hub, t: n })),
@@ -82,7 +118,9 @@ function buildSim() {
   ];
   return {
     sim: { nodes, edges, byId: new Map(nodes.map((n) => [n.id, n])), centers: new Map(), alpha: 0 },
-    hub, ring1, ring2,
+    hub,
+    ring1,
+    ring2,
   };
 }
 
@@ -94,7 +132,11 @@ const rB = createRenderer(canvasEl, B.sim, hues);
 
 // draw() takes the clock as an argument — calling it bare makes every
 // time-dependent branch NaN and silently draws nothing.
-const capture = (r) => { sink = []; r.draw(clock); return sink; };
+const capture = (r) => {
+  sink = [];
+  r.draw(clock);
+  return sink;
+};
 const near = (o, n) => o.x !== undefined && Math.hypot(o.x - n.x, o.y - n.y) < 1e-6;
 
 rA.flashNode("hub", "#ff0000", 3000);
@@ -110,8 +152,7 @@ function extraOps(t) {
 // ── 1. the discharge produces marks at all ─────────────────────────────────
 const timeline = [...Array(80).keys()].map((i) => ({ t: i * 15, ...extraOps(i * 15) }));
 const peak = timeline.reduce((x, y) => (y.extra > x.extra ? y : x));
-ok("a flash draws more than the same graph at rest", peak.extra > 0,
-   `+${peak.extra} ops at +${peak.t}ms`);
+ok("a flash draws more than the same graph at rest", peak.extra > 0, `+${peak.extra} ops at +${peak.t}ms`);
 
 // ── 2. impacts land ON the first-level neighbours ──────────────────────────
 // Counted as: arcs at a neighbour's exact position that the quiet renderer
@@ -130,8 +171,7 @@ for (const fr of timeline) {
   }
 }
 ok("the discharge strikes its neighbours", struck.size > 0, `${struck.size}/6 struck`);
-ok("every first-level neighbour is struck", struck.size === A.ring1.length,
-   `[${[...struck].sort().join(", ")}]`);
+ok("every first-level neighbour is struck", struck.size === A.ring1.length, `[${[...struck].sort().join(", ")}]`);
 
 // ── 3. the strike stays under the origin's own flare ───────────────────────
 const originAlpha = [];
@@ -142,17 +182,24 @@ for (const fr of timeline) {
 }
 const iMax = impactAlpha.length ? Math.max(...impactAlpha) : 0;
 const oMax = originAlpha.length ? Math.max(...originAlpha) : 0;
-ok("impact rings stay dimmer than the origin flare", iMax > 0 && oMax > 0 && iMax < oMax,
-   `impact ${iMax.toFixed(2)} vs origin ${oMax.toFixed(2)}`);
+ok(
+  "impact rings stay dimmer than the origin flare",
+  iMax > 0 && oMax > 0 && iMax < oMax,
+  `impact ${iMax.toFixed(2)} vs origin ${oMax.toFixed(2)}`
+);
 
 // ── 4. the spill reaches strands beyond the chain ──────────────────────────
 // Second-level nodes are not struck at hop 1, but strands leaving a struck
 // neighbour toward them should glow faintly. Detected as extra strokes while
 // no extra arc sits on those far nodes.
-const extraStrokes = timeline.map((f) =>
-  f.a.filter((o) => o.op === "stroke").length - f.b.filter((o) => o.op === "stroke").length);
-ok("strands light up around the impact", Math.max(...extraStrokes) > A.ring1.length,
-   `${Math.max(...extraStrokes)} extra strokes vs ${A.ring1.length} chain legs`);
+const extraStrokes = timeline.map(
+  (f) => f.a.filter((o) => o.op === "stroke").length - f.b.filter((o) => o.op === "stroke").length
+);
+ok(
+  "strands light up around the impact",
+  Math.max(...extraStrokes) > A.ring1.length,
+  `${Math.max(...extraStrokes)} extra strokes vs ${A.ring1.length} chain legs`
+);
 
 // ── 5. it ends ──────────────────────────────────────────────────────────────
 const late = extraOps(9000);
@@ -168,7 +215,8 @@ rC.flashNode("hub", "#ff0000", 3000);
 let offStruck = 0;
 for (let i = 0; i < 80; i++) {
   clock = 1000 + i * 15;
-  const a = capture(rC), b = capture(rD);
+  const a = capture(rC),
+    b = capture(rD);
   for (const n of C.ring1) {
     const inA = a.filter((o) => o.op === "arc" && near(o, n)).length;
     const inB = b.filter((o) => o.op === "arc" && near(o, D.sim.byId.get(n.id))).length;
@@ -190,14 +238,16 @@ localStorage.setItem("bastra-vault-map-bolt-style", "bolt");
 const spillSeen = {};
 for (const ms of [300, 420, 1000, 2000, 4000]) {
   localStorage.setItem("bastra-vault-map-bolt-ms", String(ms));
-  const P = buildSim(), Q = buildSim();
+  const P = buildSim(),
+    Q = buildSim();
   const rP = createRenderer(canvasEl, P.sim, hues);
   const rQ = createRenderer(canvasEl, Q.sim, hues);
   rP.flashNode("hub", "#ff0000", ms * 4 + 2000);
   let best = 0;
   for (let k = 0; k * 16 < ms * 4 + 1500; k++) {
     clock = 1000 + k * 16;
-    const a = capture(rP), b = capture(rQ);
+    const a = capture(rP),
+      b = capture(rQ);
     // more lit strands than the chain has legs ⇒ spill is on screen
     const extra = a.filter((o) => o.op === "stroke").length - b.filter((o) => o.op === "stroke").length;
     best = Math.max(best, extra - P.ring1.length);
@@ -205,8 +255,13 @@ for (const ms of [300, 420, 1000, 2000, 4000]) {
   spillSeen[ms] = best;
 }
 console.log("   surplus lit strands beyond the chain:", JSON.stringify(spillSeen));
-ok("spill strands appear at every slider position",
-   Object.values(spillSeen).every((v) => v > 0), JSON.stringify(spillSeen));
-ok("the shortest duration is not the poorest",
-   spillSeen[300] >= Math.max(...Object.values(spillSeen)) * 0.5,
-   `300ms: ${spillSeen[300]} vs best ${Math.max(...Object.values(spillSeen))}`);
+ok(
+  "spill strands appear at every slider position",
+  Object.values(spillSeen).every((v) => v > 0),
+  JSON.stringify(spillSeen)
+);
+ok(
+  "the shortest duration is not the poorest",
+  spillSeen[300] >= Math.max(...Object.values(spillSeen)) * 0.5,
+  `300ms: ${spillSeen[300]} vs best ${Math.max(...Object.values(spillSeen))}`
+);

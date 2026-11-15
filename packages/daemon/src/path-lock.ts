@@ -63,7 +63,19 @@
  * NOT covered: a state file on a network share where O_EXCL is not atomic.
  * That would need a lease with a heartbeat, which these files are not worth.
  */
-import { openSync, writeFileSync, closeSync, statSync, unlinkSync, readFileSync, renameSync, lstatSync, fstatSync, constants, type Stats } from "node:fs";
+import {
+  openSync,
+  writeFileSync,
+  closeSync,
+  statSync,
+  unlinkSync,
+  readFileSync,
+  renameSync,
+  lstatSync,
+  fstatSync,
+  constants,
+  type Stats,
+} from "node:fs";
 import { mkdir, open, readFile, stat, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
@@ -110,7 +122,9 @@ export interface PathLockOptions {
 /** The cross-process lock was required (`requireLock`) and not acquired. */
 export class PathLockUnavailableError extends Error {
   constructor() {
-    super("could not get the lock on the settings file — another bastra process holds it, or one was interrupted; nothing was written. Try again in a few seconds");
+    super(
+      "could not get the lock on the settings file — another bastra process holds it, or one was interrupted; nothing was written. Try again in a few seconds"
+    );
     this.name = "PathLockUnavailableError";
   }
 }
@@ -141,7 +155,11 @@ interface LockBody {
  * lock files can carry the same pid+host+ts down to the millisecond, but never
  * the same random token.
  */
-async function acquireFileLock(path: string, giveUp = "writing unserialized", strictLocal = false): Promise<string | null> {
+async function acquireFileLock(
+  path: string,
+  giveUp = "writing unserialized",
+  strictLocal = false
+): Promise<string | null> {
   const lockPath = pathLockFilePath(path);
   const token = randomUUID();
   const body = JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token });
@@ -154,8 +172,11 @@ async function acquireFileLock(path: string, giveUp = "writing unserialized", st
       if (!strictLocal) {
         const acquired = mutateLock(lockPath, () => {
           const fd = openSync(lockPath, "wx", 0o600);
-          try { writeFileSync(fd, body, "utf8"); }
-          finally { closeSync(fd); }
+          try {
+            writeFileSync(fd, body, "utf8");
+          } finally {
+            closeSync(fd);
+          }
           return true;
         });
         if (acquired) return token;
@@ -172,7 +193,7 @@ async function acquireFileLock(path: string, giveUp = "writing unserialized", st
       if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") {
         // No writable directory or similar — then without the lock, as before.
         process.stderr.write(
-          `[bastra-recall] cannot create lock ${strictLocal ? "[private store]" : lockPath} (${strictLocal ? "unavailable" : (err as Error).message}) — ${giveUp}\n`,
+          `[bastra-recall] cannot create lock ${strictLocal ? "[private store]" : lockPath} (${strictLocal ? "unavailable" : (err as Error).message}) — ${giveUp}\n`
         );
         return null;
       }
@@ -194,7 +215,7 @@ async function acquireFileLock(path: string, giveUp = "writing unserialized", st
     }
     if (Date.now() >= deadline) {
       process.stderr.write(
-        `[bastra-recall] lock ${strictLocal ? "[private store]" : lockPath} busy for ${LOCK_WAIT_MS}ms — ${giveUp}\n`,
+        `[bastra-recall] lock ${strictLocal ? "[private store]" : lockPath} busy for ${LOCK_WAIT_MS}ms — ${giveUp}\n`
       );
       return null;
     }
@@ -208,22 +229,27 @@ async function acquireFileLock(path: string, giveUp = "writing unserialized", st
 function mutateLock<T>(lockPath: string, fn: () => T): T | undefined {
   const guard = `${lockPath}.mutation`;
   let fd: number;
-  try { fd = openSync(guard, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600); }
-  catch (err) {
+  try {
+    fd = openSync(guard, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+  } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "EEXIST") {
       if (!recoverMutationGuard(guard)) return undefined;
-      try { fd = openSync(guard, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600); }
-      catch (retry) {
+      try {
+        fd = openSync(guard, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+      } catch (retry) {
         if ((retry as NodeJS.ErrnoException).code === "EEXIST") return undefined;
         throw retry;
       }
     } else throw err;
   }
   try {
-    writeFileSync(fd, JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token: randomUUID() }), "utf8");
+    writeFileSync(
+      fd,
+      JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token: randomUUID() }),
+      "utf8"
+    );
     return fn();
-  }
-  finally {
+  } finally {
     releaseMutationGuard(guard, fd);
   }
 }
@@ -238,20 +264,24 @@ function releaseMutationGuard(path: string, fd: number): void {
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
-  } finally { closeSync(fd); }
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /** Read metadata and contents through the same open descriptor. */
 function mutationSnapshot(path: string): { raw: string; st: Stats } {
   // Read-only: mode is unused by Node, but explicit for temp-file analyzers.
   const fd = openSync(path, "r", 0o600);
-  try { return { raw: readFileSync(fd, "utf8"), st: fstatSync(fd) }; }
-  finally { closeSync(fd); }
+  try {
+    return { raw: readFileSync(fd, "utf8"), st: fstatSync(fd) };
+  } finally {
+    closeSync(fd);
+  }
 }
 
 function sameMutationSnapshot(a: { raw: string; st: Stats }, b: { raw: string; st: Stats }): boolean {
-  return a.st.ino === b.st.ino && a.st.dev === b.st.dev
-    && a.st.mtimeMs === b.st.mtimeMs && a.raw === b.raw;
+  return a.st.ino === b.st.ino && a.st.dev === b.st.dev && a.st.mtimeMs === b.st.mtimeMs && a.raw === b.raw;
 }
 
 function expiredMutation(snapshot: { raw: string; st: Stats }): boolean {
@@ -263,8 +293,8 @@ function removeObservedMutation(path: string, observed: { raw: string; st: Stats
   const current = mutationSnapshot(path);
   if (!sameMutationSnapshot(observed, current) || !expiredMutation(current)) return false;
   const named = lstatSync(path);
-  if (named.ino !== current.st.ino || named.dev !== current.st.dev
-    || named.mtimeMs !== current.st.mtimeMs) return false;
+  if (named.ino !== current.st.ino || named.dev !== current.st.dev || named.mtimeMs !== current.st.mtimeMs)
+    return false;
   unlinkSync(path);
   return true;
 }
@@ -277,8 +307,9 @@ function recoverMutationGuard(guard: string): boolean {
     if (!expiredMutation(observed)) return false;
     const recovery = `${guard}.recover`;
     let fd: number;
-    try { fd = openSync(recovery, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600); }
-    catch (err) {
+    try {
+      fd = openSync(recovery, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+    } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") return false;
       // An interrupted recovery must not wedge the next recovery forever.
       // Back off after cleanup; contenders still acquire this marker via wx.
@@ -286,21 +317,31 @@ function recoverMutationGuard(guard: string): boolean {
       return false;
     }
     try {
-      writeFileSync(fd, JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token: randomUUID() }), "utf8");
+      writeFileSync(
+        fd,
+        JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token: randomUUID() }),
+        "utf8"
+      );
       return removeObservedMutation(guard, observed);
-    } finally { releaseMutationGuard(recovery, fd); }
-  } catch { return false; } // Real filesystem failures remain conservative.
+    } finally {
+      releaseMutationGuard(recovery, fd);
+    }
+  } catch {
+    return false;
+  } // Real filesystem failures remain conservative.
 }
 
 function removeStaleLock(lockPath: string, observed: string): boolean {
-  return mutateLock(lockPath, () => {
-    // Exact bytes bind the age decision to the token as well as every other
-    // field. Keep age recovery of legacy/empty bodies, too, as before.
-    if (readFileSync(lockPath, "utf8") !== observed
-      || Date.now() - statSync(lockPath).mtimeMs <= LOCK_STALE_MS) return false;
-    unlinkSync(lockPath);
-    return true;
-  }) === true;
+  return (
+    mutateLock(lockPath, () => {
+      // Exact bytes bind the age decision to the token as well as every other
+      // field. Keep age recovery of legacy/empty bodies, too, as before.
+      if (readFileSync(lockPath, "utf8") !== observed || Date.now() - statSync(lockPath).mtimeMs <= LOCK_STALE_MS)
+        return false;
+      unlinkSync(lockPath);
+      return true;
+    }) === true
+  );
 }
 
 /** Strict local reclaim has no age-only live-owner takeover. The existing
@@ -310,31 +351,53 @@ function deadLocal(raw: string): boolean {
   try {
     const body = JSON.parse(raw) as LockBody;
     if (body.host !== hostnameSafe() || !Number.isSafeInteger(body.pid) || body.pid <= 0 || !body.token) return false;
-    try { process.kill(body.pid, 0); return false; }
-    catch (err) { return (err as NodeJS.ErrnoException).code === "ESRCH"; }
-  } catch { return false; }
+    try {
+      process.kill(body.pid, 0);
+      return false;
+    } catch (err) {
+      return (err as NodeJS.ErrnoException).code === "ESRCH";
+    }
+  } catch {
+    return false;
+  }
 }
 
 function reclaimDeadLocal(lockPath: string, replacement: string): boolean {
   let stale: string;
-  try { stale = readFileSync(lockPath, "utf8"); } catch { return false; }
+  try {
+    stale = readFileSync(lockPath, "utf8");
+  } catch {
+    return false;
+  }
   if (!deadLocal(stale)) return false;
   const mark = `${lockPath}.reclaim`;
   let fd: number;
-  try { fd = openSync(mark, "wx", 0o600); }
-  catch {
+  try {
+    fd = openSync(mark, "wx", 0o600);
+  } catch {
     const cleanup = `${mark}.cleanup`;
     let cleanupFd: number;
-    try { cleanupFd = openSync(cleanup, "wx", 0o600); } catch { return false; }
+    try {
+      cleanupFd = openSync(cleanup, "wx", 0o600);
+    } catch {
+      return false;
+    }
     // Recover the *same* marker inode only when its local owner provably died.
     // Once removed, this contender backs off; the next acquisition retries.
     try {
       const original = statSync(mark);
       const raw = readFileSync(mark, "utf8");
-      if (deadLocal(raw) && statSync(mark).ino === original.ino && readFileSync(mark, "utf8") === raw)
-        unlinkSync(mark);
-    } catch { /* unknown marker stays blocked for explicit operator recovery */ }
-    finally { closeSync(cleanupFd); try { unlinkSync(cleanup); } catch { /* fail closed */ } }
+      if (deadLocal(raw) && statSync(mark).ino === original.ino && readFileSync(mark, "utf8") === raw) unlinkSync(mark);
+    } catch {
+      /* unknown marker stays blocked for explicit operator recovery */
+    } finally {
+      closeSync(cleanupFd);
+      try {
+        unlinkSync(cleanup);
+      } catch {
+        /* fail closed */
+      }
+    }
     return false;
   }
   const tmp = `${mark}.${randomUUID()}.tmp`;
@@ -345,11 +408,20 @@ function reclaimDeadLocal(lockPath: string, replacement: string): boolean {
     // No empty-lock interval; all other strict reclaimers see the marker.
     renameSync(tmp, lockPath);
     return true;
-  } catch { return false; }
-  finally {
+  } catch {
+    return false;
+  } finally {
     closeSync(fd);
-    try { unlinkSync(tmp); } catch { /* not created or already renamed */ }
-    try { unlinkSync(mark); } catch { /* ownership stays in the lock */ }
+    try {
+      unlinkSync(tmp);
+    } catch {
+      /* not created or already renamed */
+    }
+    try {
+      unlinkSync(mark);
+    } catch {
+      /* ownership stays in the lock */
+    }
   }
 }
 
@@ -358,7 +430,9 @@ function ownershipCheck(path: string, token: string): () => void {
     try {
       const current = JSON.parse(readFileSync(pathLockFilePath(path), "utf8")) as LockBody;
       if (current.token === token && current.pid === process.pid && current.host === hostnameSafe()) return;
-    } catch { /* unknown is not ours */ }
+    } catch {
+      /* unknown is not ours */
+    }
     throw new PathLockUnavailableError();
   };
 }
@@ -384,7 +458,9 @@ async function releaseFileLock(path: string, token: string, strictLocal = false)
           return true;
         });
         if (released) return;
-      } catch { return; } // Missing/unknown lock is never ours to remove.
+      } catch {
+        return;
+      } // Missing/unknown lock is never ours to remove.
       if (Date.now() >= deadline) return;
       await delay(5 + Math.floor(Math.random() * 10));
     } while (true);
@@ -408,33 +484,39 @@ async function releaseFileLock(path: string, token: string, strictLocal = false)
  * `fn` must do its whole read-modify-write inside; a snapshot taken before the
  * call is exactly the stale read this exists to prevent.
  */
-export function withPathLock<T>(path: string, fn: (assertOwnership: () => void) => Promise<T>, opts: PathLockOptions = {}): Promise<T> {
-  if(opts.noQueue && (depths.get(path) ?? 0)>0)return Promise.reject(new PathLockUnavailableError());
+export function withPathLock<T>(
+  path: string,
+  fn: (assertOwnership: () => void) => Promise<T>,
+  opts: PathLockOptions = {}
+): Promise<T> {
+  if (opts.noQueue && (depths.get(path) ?? 0) > 0) return Promise.reject(new PathLockUnavailableError());
   const required = opts.requireLock || opts.strictLocal;
-  const guarded = opts.crossProcess || opts.strictLocal
-    ? async (): Promise<T> => {
-        const token = await acquireFileLock(path, required ? "not writing" : undefined, opts.strictLocal);
-        if (token === null && required) throw new PathLockUnavailableError();
-        try {
-          return await fn(token && opts.strictLocal ? ownershipCheck(path, token) : () => {});
-        } finally {
-          if (token) await releaseFileLock(path, token, opts.strictLocal);
+  const guarded =
+    opts.crossProcess || opts.strictLocal
+      ? async (): Promise<T> => {
+          const token = await acquireFileLock(path, required ? "not writing" : undefined, opts.strictLocal);
+          if (token === null && required) throw new PathLockUnavailableError();
+          try {
+            return await fn(token && opts.strictLocal ? ownershipCheck(path, token) : () => {});
+          } finally {
+            if (token) await releaseFileLock(path, token, opts.strictLocal);
+          }
         }
-      }
-    : () => fn(() => {});
+      : () => fn(() => {});
   depths.set(path, (depths.get(path) ?? 0) + 1);
   const prev = chains.get(path) ?? Promise.resolve();
   const next = prev.then(guarded, guarded).finally(() => {
     const depth = (depths.get(path) ?? 1) - 1;
-    if (depth === 0) depths.delete(path); else depths.set(path, depth);
+    if (depth === 0) depths.delete(path);
+    else depths.set(path, depth);
   });
   // Keep the chain alive but never hand a rejection to the next waiter.
   chains.set(
     path,
     next.then(
       () => undefined,
-      () => undefined,
-    ),
+      () => undefined
+    )
   );
   return next;
 }
@@ -445,34 +527,49 @@ export function withPathLock<T>(path: string, fn: (assertOwnership: () => void) 
 function tryFileLock(path: string, takeOverStale: boolean): string | null {
   const lockPath = pathLockFilePath(path);
   try {
-    return mutateLock(lockPath, () => {
-      if (takeOverStale) {
+    return (
+      mutateLock(lockPath, () => {
+        if (takeOverStale) {
+          try {
+            // The guard protects this whole age check and removal, including
+            // legacy bodies without tokens. No acquisition can replace it.
+            if (Date.now() - statSync(lockPath).mtimeMs > LOCK_STALE_MS) unlinkSync(lockPath);
+          } catch {
+            /* Missing/unknown stays subject to the exclusive create. */
+          }
+        }
+        const token = randomUUID();
+        const fd = openSync(lockPath, "wx", 0o600);
         try {
-          // The guard protects this whole age check and removal, including
-          // legacy bodies without tokens. No acquisition can replace it.
-          if (Date.now() - statSync(lockPath).mtimeMs > LOCK_STALE_MS)
-            unlinkSync(lockPath);
-        } catch { /* Missing/unknown stays subject to the exclusive create. */ }
-      }
-      const token = randomUUID();
-      const fd = openSync(lockPath, "wx", 0o600);
-      try { writeFileSync(fd, JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token }), "utf8"); }
-      finally { closeSync(fd); }
-      return token;
-    }) ?? null;
-  } catch { return null; }
+          writeFileSync(fd, JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token }), "utf8");
+        } finally {
+          closeSync(fd);
+        }
+        return token;
+      }) ?? null
+    );
+  } catch {
+    return null;
+  }
 }
 
 /** Advisory feedback normally queues off the response path. `noQueue` skips a
  * busy local chain immediately. An aged lease is left alone unless the caller
  * explicitly opts into age-only takeover. Never writes without the
  * cross-process lock; busy/unwritable means no mutation. */
-export function tryWithPathLock<T>(path: string, fn: () => Promise<T>, opts: PathLockOptions & { takeOverStale?: boolean } = {}): Promise<T | undefined> {
+export function tryWithPathLock<T>(
+  path: string,
+  fn: () => Promise<T>,
+  opts: PathLockOptions & { takeOverStale?: boolean } = {}
+): Promise<T | undefined> {
   if (opts.noQueue && (depths.get(path) ?? 0) > 0) return Promise.resolve(undefined);
   return withPathLock(path, async () => {
     const token = opts.crossProcess ? tryFileLock(path, opts.takeOverStale === true) : null;
     if (opts.crossProcess && token === null) return undefined;
-    try { return await fn(); }
-    finally { if (token) await releaseFileLock(path, token); }
+    try {
+      return await fn();
+    } finally {
+      if (token) await releaseFileLock(path, token);
+    }
   });
 }

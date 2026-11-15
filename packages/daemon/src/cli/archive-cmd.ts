@@ -3,7 +3,16 @@
  * of the archiving `rm` (rm-archive.ts): put a path in by hand, what went
  * where, put it back, and let the archive go of what it no longer needs to keep.
  */
-import { applyReconcile, archiveCap, archiveMaxItem, manifestRows, reconcilePlan, restore, retainDays, runRmShim } from "../rm-archive.js";
+import {
+  applyReconcile,
+  archiveCap,
+  archiveMaxItem,
+  manifestRows,
+  reconcilePlan,
+  restore,
+  retainDays,
+  runRmShim,
+} from "../rm-archive.js";
 import { getArchiveCap, getArchiveMaxItem, getArchiveRetain } from "../settings.js";
 import type { ParsedArgs } from "./types.js";
 

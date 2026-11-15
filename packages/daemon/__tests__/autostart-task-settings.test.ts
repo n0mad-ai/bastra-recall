@@ -16,7 +16,8 @@ test("#1422 autostart compares persisted task settings consistently and retains 
     const db = new DatabaseSync(dbPath);
     db.exec("CREATE TABLE app_records(namespace TEXT,key TEXT,value TEXT)");
     db.prepare("INSERT INTO app_records VALUES('settings',?,?)").run(
-      join(data, "cli-settings.json"), JSON.stringify({ text: JSON.stringify({ tasks: { enabled } }) }),
+      join(data, "cli-settings.json"),
+      JSON.stringify({ text: JSON.stringify({ tasks: { enabled } }) })
     );
     db.close();
     const before = await readFile(dbPath);
@@ -58,9 +59,9 @@ test("#1422 autostart compares persisted task settings consistently and retains 
     const outcome = await new Promise<{ status: number | null; stderr: string }>((resolve, reject) => {
       const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code], { env });
       let stderr = "";
-      child.stderr.on("data", chunk => stderr += chunk);
+      child.stderr.on("data", (chunk) => (stderr += chunk));
       child.on("error", reject);
-      child.on("close", status => resolve({ status, stderr }));
+      child.on("close", (status) => resolve({ status, stderr }));
     });
     assert.equal(outcome.status, 0, `stored tasks.enabled=${enabled}: ${outcome.stderr}`);
     assert.deepEqual(await readFile(dbPath), before, "diagnostics never modify authoritative settings");

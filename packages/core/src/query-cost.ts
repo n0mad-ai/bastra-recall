@@ -72,11 +72,7 @@ export function estimateBm25Ms(uniqueTerms: number): number {
  * Node ein längst fertiges Ollama-Ergebnis nicht entgegennehmen — die 646 ms
  * oben sind überwiegend Wartezeit auf den lexikalischen Arm, keine Rechenzeit.
  */
-export function lexicalFitsBudget(
-  uniqueTerms: number,
-  budgetMs: number,
-  denseReservedMs: number,
-): boolean {
+export function lexicalFitsBudget(uniqueTerms: number, budgetMs: number, denseReservedMs: number): boolean {
   if (budgetMs <= 0) return true; // kein Budget gesetzt = keine Beschränkung
   const lexical = estimateBm25Ms(uniqueTerms);
   // Der teurere Arm bestimmt die Wanduhr; der dichte kostet nur dann etwas

@@ -46,52 +46,92 @@ const SCAN_ROOTS = ["packages/daemon/src", "packages/core/src"];
 
 /** file :: finding → why it may stay (must reference an issue). */
 const ALLOWLIST: Readonly<Record<string, string>> = {
-  "packages/core/src/scrub-psk.ts :: words /psk|keyMaterial|pre-shared-key/": "#1113 XML credential element names, not conversation vocabulary or intent classification",
-  "packages/daemon/src/system-turn.ts :: words /teammate|agent|cross-session/": "#1105 structural protocol tags, not conversation vocabulary",
-  "packages/daemon/src/system-turn.ts :: words /agent|teammate|cross-session/": "#1105 structural protocol tags, not conversation vocabulary",
-  "packages/core/src/scrub.ts :: words /true|false|[01]/": "#1107 boolean and protocol-mode control values are not credential disclosures",
-  "packages/daemon/src/system-turn.ts :: words /local-command-stdout|local-command-stderr|bash-input/": "#1106 transcript protocol tags, not natural-language authorship cues",
-  "packages/daemon/src/lexicon.ts :: name DEFAULT_PREVIOUS_CONVENTION_CUES_BY_LANGUAGE": "#1307 user-extensible per-language data; unlisted languages retain ordinary score-gated recall",
-  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_PREVIOUS_CONVENTION_CUES_BY_LANGUAGE": "#1307 per-language data with a neutral path (score-gated recall)",
+  "packages/core/src/scrub-psk.ts :: words /psk|keyMaterial|pre-shared-key/":
+    "#1113 XML credential element names, not conversation vocabulary or intent classification",
+  "packages/daemon/src/system-turn.ts :: words /teammate|agent|cross-session/":
+    "#1105 structural protocol tags, not conversation vocabulary",
+  "packages/daemon/src/system-turn.ts :: words /agent|teammate|cross-session/":
+    "#1105 structural protocol tags, not conversation vocabulary",
+  "packages/core/src/scrub.ts :: words /true|false|[01]/":
+    "#1107 boolean and protocol-mode control values are not credential disclosures",
+  "packages/daemon/src/system-turn.ts :: words /local-command-stdout|local-command-stderr|bash-input/":
+    "#1106 transcript protocol tags, not natural-language authorship cues",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_PREVIOUS_CONVENTION_CUES_BY_LANGUAGE":
+    "#1307 user-extensible per-language data; unlisted languages retain ordinary score-gated recall",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_PREVIOUS_CONVENTION_CUES_BY_LANGUAGE":
+    "#1307 per-language data with a neutral path (score-gated recall)",
   // ── #707: detection only FILES a bridge (bridges/<lang>/, else "und"); mint and fire are language-neutral ──
-  "packages/daemon/src/learned-recall/language.ts :: name SUPPORTED_LANGUAGES": "#707 names the filing folder and the override values; an unknown language files under und and still mints/fires",
-  "packages/daemon/src/learned-recall/language.ts :: name DE_STOPWORDS": "#707 filing-folder detection only, never a gate",
-  "packages/daemon/src/learned-recall/language.ts :: name EN_STOPWORDS": "#707 filing-folder detection only, never a gate",
-  "packages/daemon/src/learned-recall/language.ts :: latin [^a-zäöüß]": "#707 filing-folder detection only (a non-Latin query abstains → und)",
+  "packages/daemon/src/learned-recall/language.ts :: name SUPPORTED_LANGUAGES":
+    "#707 names the filing folder and the override values; an unknown language files under und and still mints/fires",
+  "packages/daemon/src/learned-recall/language.ts :: name DE_STOPWORDS":
+    "#707 filing-folder detection only, never a gate",
+  "packages/daemon/src/learned-recall/language.ts :: name EN_STOPWORDS":
+    "#707 filing-folder detection only, never a gate",
+  "packages/daemon/src/learned-recall/language.ts :: latin [^a-zäöüß]":
+    "#707 filing-folder detection only (a non-Latin query abstains → und)",
 
   // ── #707: per-language data with a documented neutral path — allowed shape ──
-  "packages/core/src/stopwords.ts :: name PHRASE_STOPWORDS": "#707 union of the per-language data below; an unlisted language drops no word (neutral)",
-  "packages/core/src/stopwords.ts :: name PHRASE_STOPWORDS_BY_LANGUAGE": "#707 per-language data; neutral path documented and tested (ru/tr/el)",
+  "packages/core/src/stopwords.ts :: name PHRASE_STOPWORDS":
+    "#707 union of the per-language data below; an unlisted language drops no word (neutral)",
+  "packages/core/src/stopwords.ts :: name PHRASE_STOPWORDS_BY_LANGUAGE":
+    "#707 per-language data; neutral path documented and tested (ru/tr/el)",
   "packages/core/src/stopwords.ts :: keyed PHRASE_STOPWORDS_BY_LANGUAGE": "#707 per-language data with a neutral path",
-  "packages/daemon/src/prompt-classify.ts :: name TRIVIAL_ACKS": "#707 union of per-language data; an unlisted ack runs one score-gated recall (neutral)",
-  "packages/daemon/src/prompt-classify.ts :: keyed TRIVIAL_ACKS_BY_LANGUAGE": "#707 per-language data; structural no-letter/≤2-char rule covers every script",
-  "packages/daemon/src/lexicon.ts :: name DEFAULT_DECISION_CUES_BY_LANGUAGE": "#707 per-language data; stop-lane-choice.ts option pick is the neutral fallback",
-  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_DECISION_CUES_BY_LANGUAGE": "#707 per-language data with a neutral fallback (option pick)",
-  "packages/daemon/src/lexicon.ts :: name DEFAULT_DECISION_CUES": "#707 flattened decision cues, neutral fallback exists",
-  "packages/core/src/stopwords.ts :: keyed FUNCTION_WORDS_BY_LANGUAGE": "#707 per-language data for similarity/todo/acted-on; an unlisted language drops no word (neutral, tested with ru)",
-  "packages/core/src/stopwords.ts :: keyed ALTERNATIVE_WORDS_BY_LANGUAGE": "#707 per-language data; a free-standing / or | splits alternatives in any script (tested with el)",
-  "packages/daemon/src/todo-lane.ts :: keyed TODO_VERBS_BY_LANGUAGE": "#707 per-language data; an unlisted language keeps every content word as a topic (tested with ru)",
-  "packages/daemon/src/lexicon.ts :: name DEFAULT_NEGATIVE_CLAIM_CUES_BY_LANGUAGE": "#707 per-language data, user-extensible; an unlisted language gets no advisory penalty",
-  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_NEGATIVE_CLAIM_CUES_BY_LANGUAGE": "#707 per-language data with a neutral path (no penalty)",
-  "packages/daemon/src/lexicon.ts :: name DEFAULT_FIX_MARKER_CUES_BY_LANGUAGE": "#707 per-language data; a code span/fenced block counts as the fix in any script",
-  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_FIX_MARKER_CUES_BY_LANGUAGE": "#707 per-language data with a structural fallback (code span)",
-  "packages/daemon/src/lexicon.ts :: name DEFAULT_IMPERATIVE_LEAD_CUES_BY_LANGUAGE": "#707 per-language data, user-extensible; an unlisted language gets no advisory penalty",
-  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_IMPERATIVE_LEAD_CUES_BY_LANGUAGE": "#707 per-language data with a neutral path (no penalty)",
-  "packages/daemon/src/lexicon.ts :: name DEFAULT_COMPOSE_VERB_CUES_BY_LANGUAGE": "#707 assertion label, per-language data, user-extensible; an unlisted language recalls as an ordinary prompt (tested with el)",
-  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_COMPOSE_VERB_CUES_BY_LANGUAGE": "#707 per-language data with a neutral path (score-gated recall)",
-  "packages/daemon/src/lexicon.ts :: name DEFAULT_OUTWARD_ARTIFACT_CUES_BY_LANGUAGE": "#707 assertion label, per-language data, user-extensible; an issue reference counts in any script",
-  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_OUTWARD_ARTIFACT_CUES_BY_LANGUAGE": "#707 per-language data with a structural half (#123) and a neutral path",
-  "packages/daemon/src/lexicon.ts :: name DEFAULT_STATE_QUESTION_CUES_BY_LANGUAGE": "#707 assertion label, per-language data, user-extensible; an unlisted language recalls as an ordinary prompt",
-  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_STATE_QUESTION_CUES_BY_LANGUAGE": "#707 per-language data with a neutral path (score-gated recall)",
-  "packages/daemon/src/lexicon.ts :: name DEFAULT_PROJECT_STATE_CUES_BY_LANGUAGE": "#707 assertion label, per-language data, user-extensible; an unlisted language recalls as an ordinary prompt",
-  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_PROJECT_STATE_CUES_BY_LANGUAGE": "#707 per-language data with a neutral path (score-gated recall)",
-  "packages/daemon/src/lexicon.ts :: name DEFAULT_RETRIEVAL_LEAD_CUES_BY_LANGUAGE": "#765 retrieval label (floor 50 instead of 100, k=5, no backoff, delivers unfused), per-language data, user-extensible; an unlisted language recalls as an ordinary prompt (tested with tr)",
-  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_RETRIEVAL_LEAD_CUES_BY_LANGUAGE": "#765 per-language data with a neutral path (score-gated recall, #677)",
+  "packages/daemon/src/prompt-classify.ts :: name TRIVIAL_ACKS":
+    "#707 union of per-language data; an unlisted ack runs one score-gated recall (neutral)",
+  "packages/daemon/src/prompt-classify.ts :: keyed TRIVIAL_ACKS_BY_LANGUAGE":
+    "#707 per-language data; structural no-letter/≤2-char rule covers every script",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_DECISION_CUES_BY_LANGUAGE":
+    "#707 per-language data; stop-lane-choice.ts option pick is the neutral fallback",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_DECISION_CUES_BY_LANGUAGE":
+    "#707 per-language data with a neutral fallback (option pick)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_DECISION_CUES":
+    "#707 flattened decision cues, neutral fallback exists",
+  "packages/core/src/stopwords.ts :: keyed FUNCTION_WORDS_BY_LANGUAGE":
+    "#707 per-language data for similarity/todo/acted-on; an unlisted language drops no word (neutral, tested with ru)",
+  "packages/core/src/stopwords.ts :: keyed ALTERNATIVE_WORDS_BY_LANGUAGE":
+    "#707 per-language data; a free-standing / or | splits alternatives in any script (tested with el)",
+  "packages/daemon/src/todo-lane.ts :: keyed TODO_VERBS_BY_LANGUAGE":
+    "#707 per-language data; an unlisted language keeps every content word as a topic (tested with ru)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_NEGATIVE_CLAIM_CUES_BY_LANGUAGE":
+    "#707 per-language data, user-extensible; an unlisted language gets no advisory penalty",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_NEGATIVE_CLAIM_CUES_BY_LANGUAGE":
+    "#707 per-language data with a neutral path (no penalty)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_FIX_MARKER_CUES_BY_LANGUAGE":
+    "#707 per-language data; a code span/fenced block counts as the fix in any script",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_FIX_MARKER_CUES_BY_LANGUAGE":
+    "#707 per-language data with a structural fallback (code span)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_IMPERATIVE_LEAD_CUES_BY_LANGUAGE":
+    "#707 per-language data, user-extensible; an unlisted language gets no advisory penalty",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_IMPERATIVE_LEAD_CUES_BY_LANGUAGE":
+    "#707 per-language data with a neutral path (no penalty)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_COMPOSE_VERB_CUES_BY_LANGUAGE":
+    "#707 assertion label, per-language data, user-extensible; an unlisted language recalls as an ordinary prompt (tested with el)",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_COMPOSE_VERB_CUES_BY_LANGUAGE":
+    "#707 per-language data with a neutral path (score-gated recall)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_OUTWARD_ARTIFACT_CUES_BY_LANGUAGE":
+    "#707 assertion label, per-language data, user-extensible; an issue reference counts in any script",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_OUTWARD_ARTIFACT_CUES_BY_LANGUAGE":
+    "#707 per-language data with a structural half (#123) and a neutral path",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_STATE_QUESTION_CUES_BY_LANGUAGE":
+    "#707 assertion label, per-language data, user-extensible; an unlisted language recalls as an ordinary prompt",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_STATE_QUESTION_CUES_BY_LANGUAGE":
+    "#707 per-language data with a neutral path (score-gated recall)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_PROJECT_STATE_CUES_BY_LANGUAGE":
+    "#707 assertion label, per-language data, user-extensible; an unlisted language recalls as an ordinary prompt",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_PROJECT_STATE_CUES_BY_LANGUAGE":
+    "#707 per-language data with a neutral path (score-gated recall)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_RETRIEVAL_LEAD_CUES_BY_LANGUAGE":
+    "#765 retrieval label (floor 50 instead of 100, k=5, no backoff, delivers unfused), per-language data, user-extensible; an unlisted language recalls as an ordinary prompt (tested with tr)",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_RETRIEVAL_LEAD_CUES_BY_LANGUAGE":
+    "#765 per-language data with a neutral path (score-gated recall, #677)",
 
   // ── #676: per-language data with a neutral fallback (#678) — allowed shape ──
-  "packages/daemon/src/lexicon.ts :: name DEFAULT_FRUSTRATION_CUES_BY_LANGUAGE": "#678 per-language data; the stop lane's neutral repeated-correction check covers other languages",
-  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_FRUSTRATION_CUES_BY_LANGUAGE": "#678 per-language data with a neutral fallback",
-  "packages/daemon/src/lexicon.ts :: name DEFAULT_FRUSTRATION_CUES": "#678 flattened frustration cues, neutral fallback exists",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_FRUSTRATION_CUES_BY_LANGUAGE":
+    "#678 per-language data; the stop lane's neutral repeated-correction check covers other languages",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_FRUSTRATION_CUES_BY_LANGUAGE":
+    "#678 per-language data with a neutral fallback",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_FRUSTRATION_CUES":
+    "#678 flattened frustration cues, neutral fallback exists",
 
   // ── #676: impact intent stays with the Experimental milestone ──
   "packages/daemon/src/code-graph/impact-intent.ts :: name IMPACT_DE": "#676 experimental impact intent, decided there",
@@ -108,34 +148,49 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
   "packages/daemon/src/code-graph/impact-intent.ts :: words /stop|no longer|won't/": "#676 experimental impact intent",
   "packages/daemon/src/code-graph/impact-intent.ts :: words /call|caller|usage/": "#676 experimental impact intent",
 
-  "packages/core/src/scrub.ts :: words /mysql|mariadb|sshpass/": "#1084 CLI command names define the meaning of -p; technical syntax, not conversation language",
+  "packages/core/src/scrub.ts :: words /mysql|mariadb|sshpass/":
+    "#1084 CLI command names define the meaning of -p; technical syntax, not conversation language",
 
   // ── #679: detector false positives — not natural language, or not user text ──
-  "packages/core/src/recall-banter.ts :: keyed STAGE_PHRASES": "#679 output phrases the product writes, never matched against user text",
-  "packages/core/src/recall-banter.ts :: keyed SLOW_PHRASES": "#679 output phrases the product writes, never matched against user text",
-  "packages/core/src/recall-banter.ts :: keyed VERY_SLOW_PHRASES": "#679 output phrases the product writes, never matched against user text",
-  "packages/core/src/recall-banter.ts :: keyed TOOL_PHRASES": "#679 output phrases the product writes, never matched against user text",
-  "packages/core/src/recall-banter.ts :: keyed DEFAULT_TOOL_PHRASES": "#679 output phrases the product writes, never matched against user text",
-  "packages/daemon/src/bash-fail-lane.ts :: words /exit(?:ed)?(?:\\s+with)?(?:\\s+(?:non-zero\\s+)?status)?(?:\\s+code)?|status\\s+code|exit_code/": "#679 reads tool output (exit status), not user text",
+  "packages/core/src/recall-banter.ts :: keyed STAGE_PHRASES":
+    "#679 output phrases the product writes, never matched against user text",
+  "packages/core/src/recall-banter.ts :: keyed SLOW_PHRASES":
+    "#679 output phrases the product writes, never matched against user text",
+  "packages/core/src/recall-banter.ts :: keyed VERY_SLOW_PHRASES":
+    "#679 output phrases the product writes, never matched against user text",
+  "packages/core/src/recall-banter.ts :: keyed TOOL_PHRASES":
+    "#679 output phrases the product writes, never matched against user text",
+  "packages/core/src/recall-banter.ts :: keyed DEFAULT_TOOL_PHRASES":
+    "#679 output phrases the product writes, never matched against user text",
+  "packages/daemon/src/bash-fail-lane.ts :: words /exit(?:ed)?(?:\\s+with)?(?:\\s+(?:non-zero\\s+)?status)?(?:\\s+code)?|status\\s+code|exit_code/":
+    "#679 reads tool output (exit status), not user text",
   "packages/daemon/src/boot-observers.ts :: words /CloudStorage|Dropbox|iCloud/": "#679 sync-folder path names",
-  "packages/daemon/src/app-database.ts :: words /CloudStorage|Google Drive|GoogleDrive[^\\\\/]*/": "#1339 technical sync-provider directory names protect the local DB path; not conversation language",
-  "packages/daemon/src/app-record-store.ts :: words /CloudStorage|Google Drive|GoogleDrive[^\\\\/]*/": "#1339 technical sync-provider directory names protect legacy state sources; not conversation language",
-  "packages/daemon/src/task-chat-registry.ts :: words /CloudStorage|Google Drive|GoogleDrive[^\\\\/]*/": "#1421 technical OS sync-folder names keep private inbox tokens outside synced storage; never matched against user text",
+  "packages/daemon/src/app-database.ts :: words /CloudStorage|Google Drive|GoogleDrive[^\\\\/]*/":
+    "#1339 technical sync-provider directory names protect the local DB path; not conversation language",
+  "packages/daemon/src/app-record-store.ts :: words /CloudStorage|Google Drive|GoogleDrive[^\\\\/]*/":
+    "#1339 technical sync-provider directory names protect legacy state sources; not conversation language",
+  "packages/daemon/src/task-chat-registry.ts :: words /CloudStorage|Google Drive|GoogleDrive[^\\\\/]*/":
+    "#1421 technical OS sync-folder names keep private inbox tokens outside synced storage; never matched against user text",
   "packages/daemon/src/documents-write-shared.ts :: words /CloudStorage|Dropbox|iCloud/": "#679 sync-folder path names",
   "packages/core/src/vault.ts :: words /CloudStorage|Dropbox|iCloud/": "#679 sync-folder path names",
   "packages/daemon/src/pending-suggestions.ts :: words /eval|test|synthetic/": "#679 fixture/session-id markers",
   "packages/core/src/topics.ts :: words /jwt|bearer|oauth/": "#679 technical topic vocabulary",
   "packages/core/src/topics.ts :: words /\\bbcrypt|argon2|sha-?256/": "#679 technical topic vocabulary",
-  "packages/core/src/injection-scan.ts :: words /previous|prior|above/": "#679 prompt-injection signatures (English attack phrasing), not an intent gate",
+  "packages/core/src/injection-scan.ts :: words /previous|prior|above/":
+    "#679 prompt-injection signatures (English attack phrasing), not an intent gate",
   "packages/core/src/injection-scan.ts :: words /previous|prior|your/": "#679 prompt-injection signatures",
   "packages/core/src/injection-scan.ts :: words /instructions?|prompts?|rules?/": "#679 prompt-injection signatures",
   "packages/core/src/injection-scan.ts :: words /approved|authorized|instructed/": "#679 prompt-injection signatures",
-  "packages/core/src/injection-scan.ts :: words /(?:this|it|them)(?:\\s+\\w+)?|the\\s+\\w+|all\\s+\\w+/": "#679 prompt-injection signatures",
-  "packages/core/src/injection-scan.ts :: words /api[\\s_-]?keys?|passwords?|credentials?/": "#679 prompt-injection signatures",
+  "packages/core/src/injection-scan.ts :: words /(?:this|it|them)(?:\\s+\\w+)?|the\\s+\\w+|all\\s+\\w+/":
+    "#679 prompt-injection signatures",
+  "packages/core/src/injection-scan.ts :: words /api[\\s_-]?keys?|passwords?|credentials?/":
+    "#679 prompt-injection signatures",
   "packages/core/src/injection-scan.ts :: words /send|post|include/": "#679 prompt-injection signatures",
-  "packages/core/src/injection-scan.ts :: words /unrestricted|jailbroken|developer/": "#679 prompt-injection signatures",
+  "packages/core/src/injection-scan.ts :: words /unrestricted|jailbroken|developer/":
+    "#679 prompt-injection signatures",
   "packages/core/src/injection-scan.ts :: words /tell|inform|alert/": "#679 prompt-injection signatures",
-  "packages/core/src/injection-scan.ts :: words /pre-?approved|pre-?authorized|authorized\\s+by/": "#679 prompt-injection signatures",
+  "packages/core/src/injection-scan.ts :: words /pre-?approved|pre-?authorized|authorized\\s+by/":
+    "#679 prompt-injection signatures",
   "packages/core/src/injection-scan.ts :: words /developer|creator|administrator/": "#679 prompt-injection signatures",
   "packages/core/src/injection-scan.ts :: words /run|execute|send/": "#679 prompt-injection signatures",
   "packages/core/src/injection-scan.ts :: words /send|post|upload/": "#679 prompt-injection signatures",
@@ -151,7 +206,8 @@ const LANGUAGE_NAME = /(?:^|_)(?:DE|EN|RU)(?:_|$)|_CUES(?:_|$)|STOPWORDS|_ACKS$|
 const KEYED = /^\s*(?:de|en|ru)\s*:\s*(?:\[|\/|new Set)/gm;
 const ANY_DECL = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g;
 // A regex literal: after an operator/opening token, `return`, or at line start.
-const REGEX_LITERAL = /(?<=[(,=:\[!&|?{};]\s*|return\s+|^\s*)\/((?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n[])+)\/([dgimsuyv]*)/gm;
+const REGEX_LITERAL =
+  /(?<=[(,=:\[!&|?{};]\s*|return\s+|^\s*)\/((?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n[])+)\/([dgimsuyv]*)/gm;
 const LATIN_CLASS = /\[\^?(?=[^\]\n]*a-z)(?=[^\]\n]*[äöüß])[^\]\n]*\]/g;
 
 /** Top-level alternatives of every group (and of the whole body) in a regex source. */
@@ -161,8 +217,14 @@ function alternations(body: string): string[][] {
   let inClass = false;
   for (let i = 0; i < body.length; i++) {
     const c = body[i];
-    if (c === "\\") { i++; continue; }
-    if (inClass) { if (c === "]") inClass = false; continue; }
+    if (c === "\\") {
+      i++;
+      continue;
+    }
+    if (inClass) {
+      if (c === "]") inClass = false;
+      continue;
+    }
     if (c === "[") inClass = true;
     else if (c === "(") stack.push({ start: i, cuts: [] });
     else if (c === "|") stack[stack.length - 1].cuts.push(i);
@@ -240,14 +302,18 @@ test("#679: no new language-bound matcher in daemon/core sources", () => {
     `New language-bound matcher(s):\n  ${unlisted.join("\n  ")}\n` +
       `Recall is multilingual (#676): make it language-neutral (\\p{L} with the u flag, score-gated recall, ` +
       `embeddings) or per-language data with a neutral fallback (lexicon.ts, #678). Only a detector false ` +
-      `positive (not natural language, not user text) belongs in ALLOWLIST, with an issue reference.`,
+      `positive (not natural language, not user text) belongs in ALLOWLIST, with an issue reference.`
   );
 });
 
 test("#679: every allowlist entry still exists (a fixed place leaves the list)", () => {
   const found = scan();
   const stale = Object.keys(ALLOWLIST).filter((k) => !found.has(k));
-  assert.deepEqual(stale, [], `Allowlist entries no longer found — remove them from ALLOWLIST:\n  ${stale.join("\n  ")}`);
+  assert.deepEqual(
+    stale,
+    [],
+    `Allowlist entries no longer found — remove them from ALLOWLIST:\n  ${stale.join("\n  ")}`
+  );
 });
 
 test("#679: every allowlist entry names an issue", () => {

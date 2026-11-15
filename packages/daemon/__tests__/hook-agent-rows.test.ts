@@ -40,13 +40,15 @@ type Row = Record<string, unknown>;
 
 /** Dimensioned kinds no hook payload reaches — each with the reason. */
 const NOT_HOOK_REACHABLE: Record<string, string> = {
-  recall: "recallHandler: MCP `recall` and the GET session-context of hookless clients; no hook payload, no agent evidence",
+  recall:
+    "recallHandler: MCP `recall` and the GET session-context of hookless clients; no hook payload, no agent evidence",
 };
 
 /** Kinds a hook path writes that carry no `dimensions` at all — no client,
  *  no hook_source, so no agent either. */
 const UNDIMENSIONED: Record<string, string> = {
-  convention_shown: "/hook/hinted acknowledges session + delivered memory IDs only; feedback carries no agent/client evidence, so attribution stays unknown",
+  convention_shown:
+    "/hook/hinted acknowledges session + delivered memory IDs only; feedback carries no agent/client evidence, so attribution stays unknown",
   hook_reflex: "reflex fast-lane row (#217): has never carried dimensions",
   recall_episode: "closes a load that may come from another caller (MCP load_memory); the act does not own it",
   hint_followed_shadow: "join shadow over an earlier hint; same ownership question as recall_episode",
@@ -102,10 +104,23 @@ async function probeDimensionedKinds(): Promise<Map<string, Row>> {
 
 function memo(id: string): string {
   return [
-    "---", `id: ${id}`, "title: Session store migration", "type: reference",
-    "summary: How the session store migration runs", "topic_path:", "  - test", "tags:", "  - test",
-    "recall_when:", "  - session store migration", "created: 2026-01-01", "updated: 2026-01-01",
-    "---", "", "npm test, rm -rf, the session store migration and its deployment notes.", "",
+    "---",
+    `id: ${id}`,
+    "title: Session store migration",
+    "type: reference",
+    "summary: How the session store migration runs",
+    "topic_path:",
+    "  - test",
+    "tags:",
+    "  - test",
+    "recall_when:",
+    "  - session store migration",
+    "created: 2026-01-01",
+    "updated: 2026-01-01",
+    "---",
+    "",
+    "npm test, rm -rf, the session store migration and its deployment notes.",
+    "",
   ].join("\n");
 }
 
@@ -116,7 +131,16 @@ function lateArm() {
     runtimeHealth: () => ({ errorCount: 0 }),
     searchDetailed: () =>
       new Promise((resolve) =>
-        setTimeout(() => resolve({ outcome: "hits", hits: [{ id: "a", score: 0.9 }], providerLoadMs: null, coldStartObserved: false }), 2000),
+        setTimeout(
+          () =>
+            resolve({
+              outcome: "hits",
+              hits: [{ id: "a", score: 0.9 }],
+              providerLoadMs: null,
+              coldStartObserved: false,
+            }),
+          2000
+        )
       ),
   } as never;
 }
@@ -131,7 +155,11 @@ async function withDaemon(logDir: string, fn: (base: string) => Promise<void>): 
   search.useEmbeddings(lateArm());
   const telemetry = new Telemetry({ logDir });
   const handle = await startHttpServer({
-    port: 0, vault, search, telemetry, version: "test",
+    port: 0,
+    vault,
+    search,
+    telemetry,
+    version: "test",
     toolDeps: { vault, search, telemetry, vaultPath: vaultDir },
     documentWriteEnabled: false,
     embedding: { on: true, providerId: "test", source: "none" },
@@ -162,12 +190,74 @@ const TODOS = {
 type Lane = { name: string; run: (payload: Row, base: string) => Promise<unknown> };
 
 const LANES: Lane[] = [
-  { name: "bash-pre", run: (x, b) => runBashPreLane({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "rm -rf /tmp/session-store" }, ...x } as never, b) },
-  { name: "bash-fail", run: (x, b) => runBashFailLane({ hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command: "npm test session store migration" }, tool_response: { exit_code: 1, stderr: "session store migration failed" }, ...x } as never, b) },
-  { name: "prompt", run: (x, b) => runPromptLane({ hook_event_name: "UserPromptSubmit", prompt: "How did we run the session store migration last time?", cwd: "/tmp", ...x } as never, null, b) },
-  { name: "session", run: (x, b) => runSessionLane({ hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", ...x } as never, b) },
-  { name: "todo", run: (x, b) => runTodoLane({ hook_event_name: "PreToolUse", tool_name: "TodoWrite", cwd: "/tmp", tool_input: TODOS, ...x } as never, b) },
-  { name: "write (pre-tool)", run: (x, b) => runWriteLane({ hook_event_name: "PreToolUse", tool_name: "Edit", cwd: "/tmp", tool_input: { file_path: "/tmp/session-store/migrate.ts", old_string: "a", new_string: "b" }, ...x } as never, b) },
+  {
+    name: "bash-pre",
+    run: (x, b) =>
+      runBashPreLane(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          tool_input: { command: "rm -rf /tmp/session-store" },
+          ...x,
+        } as never,
+        b
+      ),
+  },
+  {
+    name: "bash-fail",
+    run: (x, b) =>
+      runBashFailLane(
+        {
+          hook_event_name: "PostToolUse",
+          tool_name: "Bash",
+          tool_input: { command: "npm test session store migration" },
+          tool_response: { exit_code: 1, stderr: "session store migration failed" },
+          ...x,
+        } as never,
+        b
+      ),
+  },
+  {
+    name: "prompt",
+    run: (x, b) =>
+      runPromptLane(
+        {
+          hook_event_name: "UserPromptSubmit",
+          prompt: "How did we run the session store migration last time?",
+          cwd: "/tmp",
+          ...x,
+        } as never,
+        null,
+        b
+      ),
+  },
+  {
+    name: "session",
+    run: (x, b) =>
+      runSessionLane({ hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", ...x } as never, b),
+  },
+  {
+    name: "todo",
+    run: (x, b) =>
+      runTodoLane(
+        { hook_event_name: "PreToolUse", tool_name: "TodoWrite", cwd: "/tmp", tool_input: TODOS, ...x } as never,
+        b
+      ),
+  },
+  {
+    name: "write (pre-tool)",
+    run: (x, b) =>
+      runWriteLane(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Edit",
+          cwd: "/tmp",
+          tool_input: { file_path: "/tmp/session-store/migrate.ts", old_string: "a", new_string: "b" },
+          ...x,
+        } as never,
+        b
+      ),
+  },
 ];
 
 describe("hook agent: every row a hook call causes carries the payload's agent", () => {
@@ -190,16 +280,27 @@ describe("hook agent: every row a hook call causes carries the payload's agent",
     const logDir = await mkdtemp(join(tmpdir(), "bastra-agent-rows-"));
     try {
       await withDaemon(logDir, (base) =>
-        withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir, BASTRA_HOOK_STATE_DIR: logDir, BASTRA_SESSION_STATE_DIR: logDir }, () =>
-          lane.run(payload, base).then(() => undefined),
-        ),
+        withEnv(
+          {
+            BASTRA_TELEMETRY: "on",
+            BASTRA_LOG_PATH: logDir,
+            BASTRA_HOOK_STATE_DIR: logDir,
+            BASTRA_SESSION_STATE_DIR: logDir,
+          },
+          () => lane.run(payload, base).then(() => undefined)
+        )
       );
       const rows = await readRows(logDir);
       // Without a loopback row the lane check below would pass on the lane's own row alone.
-      assert.ok(rows.some((r) => r.kind === "hook_recall"), `precondition: ${lane.name} reached /hook/recall`);
+      assert.ok(
+        rows.some((r) => r.kind === "hook_recall"),
+        `precondition: ${lane.name} reached /hook/recall`
+      );
       for (const r of rows) {
-        assert.ok(r.dimensions || String(r.kind) in UNDIMENSIONED,
-          `${lane.name}: ${String(r.kind)} is written on a hook path without dimensions — split it or name it in UNDIMENSIONED`);
+        assert.ok(
+          r.dimensions || String(r.kind) in UNDIMENSIONED,
+          `${lane.name}: ${String(r.kind)} is written on a hook path without dimensions — split it or name it in UNDIMENSIONED`
+        );
       }
       return rows.filter((r) => r.dimensions);
     } finally {
@@ -209,8 +310,16 @@ describe("hook agent: every row a hook call causes carries the payload's agent",
 
   for (const lane of LANES) {
     it(`${lane.name}: a subagent payload books agent=subagent on every row it causes`, async () => {
-      for (const r of await rowsOf(lane, { session_id: `rows-${lane.name}`, agent_id: "a1b2c3", agent_type: "Explore" })) {
-        assert.equal((r.dimensions as Row).agent, "subagent", `${lane.name}: ${String(r.kind)} lost the payload's agent`);
+      for (const r of await rowsOf(lane, {
+        session_id: `rows-${lane.name}`,
+        agent_id: "a1b2c3",
+        agent_type: "Explore",
+      })) {
+        assert.equal(
+          (r.dimensions as Row).agent,
+          "subagent",
+          `${lane.name}: ${String(r.kind)} lost the payload's agent`
+        );
         seen.set(String(r.kind), [...(seen.get(String(r.kind)) ?? []), lane.name]);
       }
     });
@@ -226,7 +335,10 @@ describe("hook agent: every row a hook call causes carries the payload's agent",
   it("every dimensioned kind is reached by some hook lane, or named as not hook-reachable", () => {
     for (const kind of dimensioned.keys()) {
       if (kind in NOT_HOOK_REACHABLE) continue;
-      assert.ok(seen.has(kind), `${kind} carries dimensions but no hook lane produced it here — cover it or name it in NOT_HOOK_REACHABLE`);
+      assert.ok(
+        seen.has(kind),
+        `${kind} carries dimensions but no hook lane produced it here — cover it or name it in NOT_HOOK_REACHABLE`
+      );
     }
   });
 });

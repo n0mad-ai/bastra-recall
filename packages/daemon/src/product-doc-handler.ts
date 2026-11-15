@@ -74,11 +74,7 @@ export interface SaveProductDocResult {
  * Mehrere Treffer sind kein Auswahlproblem, sondern ein Defekt: Wer sie
  * auflöst, muss es wissentlich tun.
  */
-function findDocFor(
-  deps: ToolDeps,
-  projectKey: string,
-  areaSlug: string,
-): { fm: { id: string } } | undefined {
+function findDocFor(deps: ToolDeps, projectKey: string, areaSlug: string): { fm: { id: string } } | undefined {
   const matches: { fm: { id: string } }[] = [];
   for (const m of deps.vault.list()) {
     const fm = m.fm as { id: string; type?: unknown; scope?: unknown; topic_path?: unknown };
@@ -96,7 +92,7 @@ function findDocFor(
       `${matches.length} product docs claim ${projectKey}/${areaSlug}: ` +
         `${matches.map((m) => m.fm.id).join(", ")}. ` +
         `Merge or re-file all but one — saving now would update one of them and leave ` +
-        `the other standing as a second document for the same area.`,
+        `the other standing as a second document for the same area.`
     );
   }
   return matches[0];
@@ -106,7 +102,7 @@ export async function saveProductDocHandler(
   deps: ToolDeps,
   rawArgs: unknown,
   /** #464: transportgebunden — siehe private-access.ts. */
-  access?: PrivateAccess,
+  access?: PrivateAccess
 ): Promise<SaveProductDocResult> {
   const parsed = SaveProductDocArgs.safeParse(rawArgs);
   if (!parsed.success) throw new Error(parsed.error.message);
@@ -151,10 +147,7 @@ export async function saveProductDocHandler(
       topic_path: ["doku", projectKey, areaSlug],
       tags: parsed.data.tags ?? ["product-doc", projectKey],
       scope: projectKey,
-      recall_when: parsed.data.recall_when ?? [
-        `how to use ${title}`,
-        `${project} ${area} user guide`,
-      ],
+      recall_when: parsed.data.recall_when ?? [`how to use ${title}`, `${project} ${area} user guide`],
       overwrite: true,
     },
     {
@@ -166,7 +159,7 @@ export async function saveProductDocHandler(
       precondition: (prevFm) => {
         if (hiddenFromCaller(access, prevFm)) throw new Error(`memory not found: ${id}`);
       },
-    },
+    }
   );
   // Watcher is unreliable on cloud mounts — index now so find_document sees it.
   await deps.vault.reindexFile(result.file_path);
@@ -227,8 +220,7 @@ export const productDocTools = [
         project: {
           type: "string",
           description:
-            "Project the doc belongs to, e.g. 'bastra-recall' — becomes the " +
-            "folder dokumentationen/<project>/.",
+            "Project the doc belongs to, e.g. 'bastra-recall' — becomes the " + "folder dokumentationen/<project>/.",
         },
         area: {
           type: "string",
@@ -242,8 +234,7 @@ export const productDocTools = [
         },
         summary: {
           type: "string",
-          description:
-            "One sentence: what this doc covers. Appears in find_document hits.",
+          description: "One sentence: what this doc covers. Appears in find_document hits.",
         },
         body: {
           type: "string",

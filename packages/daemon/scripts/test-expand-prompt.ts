@@ -26,7 +26,10 @@ async function* walk(dir: string): AsyncGenerator<string> {
 }
 
 async function main(): Promise<void> {
-  if (!VAULT) { process.stderr.write("set BASTRA_VAULT_PATH\n"); process.exit(2); }
+  if (!VAULT) {
+    process.stderr.write("set BASTRA_VAULT_PATH\n");
+    process.exit(2);
+  }
   const chat = ollamaChat({ model: MODEL, timeoutMs: 60_000 });
 
   const files: string[] = [];
@@ -44,7 +47,11 @@ async function main(): Promise<void> {
     const oldExp = Array.isArray(fm.recall_when_expanded) ? (fm.recall_when_expanded as string[]) : [];
 
     let raw = "";
-    try { raw = await chat(buildExpandPrompt(m)); } catch (e) { raw = `<chat error: ${(e as Error).message}>`; }
+    try {
+      raw = await chat(buildExpandPrompt(m));
+    } catch (e) {
+      raw = `<chat error: ${(e as Error).message}>`;
+    }
     const fresh = parseExpansions(raw, recall_when, 5);
 
     process.stdout.write(`\n● ${String(fm.title).slice(0, 70)}\n`);
@@ -55,4 +62,7 @@ async function main(): Promise<void> {
   process.stdout.write("\n[done — nothing written to any memory]\n");
 }
 
-main().catch((e) => { process.stderr.write(`fatal: ${(e as Error).stack ?? e}\n`); process.exit(1); });
+main().catch((e) => {
+  process.stderr.write(`fatal: ${(e as Error).stack ?? e}\n`);
+  process.exit(1);
+});

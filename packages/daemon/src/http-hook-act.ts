@@ -1,4 +1,4 @@
-import { cleanDraftField } from './draft-text.js';
+import { cleanDraftField } from "./draft-text.js";
 /** Loopback-only `/hook/act`: closes loaded-memory episodes after Bash. */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { recordDraftUse } from "./draft-use.js";
@@ -9,14 +9,12 @@ import { dimensionHints } from "./telemetry-dimensions.js";
 export function handleHookAct(req: IncomingMessage, res: ServerResponse, telemetry: Telemetry): void {
   readJsonBody(req, MAX_BODY_BYTES)
     .then(async (body) => {
-      const excerpt = typeof body.tool_input_excerpt === "string"
-        ? body.tool_input_excerpt.slice(0, 4096)
-        : "";
+      const excerpt = typeof body.tool_input_excerpt === "string" ? body.tool_input_excerpt.slice(0, 4096) : "";
       if (!excerpt) {
         sendJson(res, 400, { error: "tool_input_excerpt is required" });
         return;
       }
-      const toolName = typeof body.tool_name === "string" ? cleanDraftField(body.tool_name,80) : null;
+      const toolName = typeof body.tool_name === "string" ? cleanDraftField(body.tool_name, 80) : null;
       const sessionId = typeof body.session_id === "string" ? cleanDraftField(body.session_id) : null;
       const exitCode = typeof body.exit_code === "number" ? body.exit_code : null;
       const episodes = telemetry.matchLoadedMemories({
@@ -26,14 +24,16 @@ export function handleHookAct(req: IncomingMessage, res: ServerResponse, telemet
         closeOnMiss: false,
       });
       for (const episode of episodes) fireAndForget(telemetry.logRecallEpisode(episode));
-      fireAndForget(telemetry.logHookAct({
-        tool_name: toolName,
-        excerpt_chars: excerpt.length,
-        matched_episodes: episodes.length,
-        exit_code: exitCode,
-        ...(sessionId ? { session_id: sessionId } : {}),
-        ...dimensionHints(body),
-      }));
+      fireAndForget(
+        telemetry.logHookAct({
+          tool_name: toolName,
+          excerpt_chars: excerpt.length,
+          matched_episodes: episodes.length,
+          exit_code: exitCode,
+          ...(sessionId ? { session_id: sessionId } : {}),
+          ...dimensionHints(body),
+        })
+      );
       const draftsUsed = await recordDraftUse({ sessionId, toolName, excerpt, exitCode });
       sendJson(res, 200, { matched: episodes.length, ...(draftsUsed > 0 ? { drafts_used: draftsUsed } : {}) });
     })

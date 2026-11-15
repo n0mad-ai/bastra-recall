@@ -37,13 +37,14 @@ import { OPERATORS, mutationDiff } from "./mutation-gate.mjs";
 
 const DIST = new URL("../../../daemon/dist/code-graph/", import.meta.url).pathname;
 const { loadGraph } = await import(`${DIST}reader.js`);
-const { affectedHits, affectedResult, changedSymbolsOf, narrowPackageHits, symbolsNamed } =
-  await import(`${DIST}affected.js`);
+const { affectedHits, affectedResult, changedSymbolsOf, narrowPackageHits, symbolsNamed } = await import(
+  `${DIST}affected.js`
+);
 const { buildCodeGraph } = await import(`${DIST}build.js`);
 
 const OUT = writableOut();
 const REG = JSON.parse(
-  readFileSync(new URL("../../registrations/code-awareness-change-impact.json", import.meta.url), "utf8"),
+  readFileSync(new URL("../../registrations/code-awareness-change-impact.json", import.meta.url), "utf8")
 );
 const GATE = REG.mechanism_gate?.mutation ?? {};
 const TREE = join(OUT, "mut-tree");
@@ -56,7 +57,7 @@ async function namedFor(graph, file, symbols) {
   const hits = await narrowPackageHits(
     TREE,
     affectedHits(graph, file, symbols, 1),
-    symbols.filter((s) => s.kind !== "file").map((s) => s.name),
+    symbols.filter((s) => s.kind !== "file").map((s) => s.name)
   );
   return affectedResult(symbols, hits).files;
 }
@@ -76,7 +77,7 @@ function diffOf(m) {
   if (mutated === null) {
     throw new Error(
       `${m.file}:${m.symbol}:${m.operator}: the operator no longer applies to the tree, so its ` +
-        `diff cannot be re-derived. Re-run mutation-gate.mjs against the pinned commit.`,
+        `diff cannot be re-derived. Re-run mutation-gate.mjs against the pinned commit.`
     );
   }
   return mutationDiff(m.file, original, mutated);
@@ -97,7 +98,13 @@ function score(rows, key, threshold, minFiles) {
           : share >= threshold
             ? "pass"
             : "fail";
-  return { found, total, share, required: typeof threshold === "number" ? `>= ${threshold}` : String(threshold), status };
+  return {
+    found,
+    total,
+    share,
+    required: typeof threshold === "number" ? `>= ${threshold}` : String(threshold),
+    status,
+  };
 }
 
 /** Per operator, for one of the two ways. */

@@ -25,8 +25,20 @@ import { envOff } from "./env.js";
 import { escapeAttr } from "./escape-attr.js";
 
 const CODE_EXTS = new Set([
-  ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx",
-  ".py", ".swift", ".rs", ".go", ".css", ".scss", ".vue", ".svelte",
+  ".js",
+  ".mjs",
+  ".cjs",
+  ".jsx",
+  ".ts",
+  ".tsx",
+  ".py",
+  ".swift",
+  ".rs",
+  ".go",
+  ".css",
+  ".scss",
+  ".vue",
+  ".svelte",
 ]);
 /** Generated blobs / bundles are none of the convention's business. */
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -109,7 +121,7 @@ export interface SizeThresholds {
 export function thresholdsFor(
   filePath: string,
   settings: { guide?: number; critical?: number; exemptPaths?: string[] } = {},
-  cwd?: string,
+  cwd?: string
 ): SizeThresholds | null {
   const ext = extname(filePath).toLowerCase();
   if (!CODE_EXTS.has(ext)) return null;
@@ -136,11 +148,13 @@ function envNum(name: string, fallback: number): number {
  *  Mini-Read (pure stdlib, DB zuerst) statt settings.ts-Import: der Hook hat 250 ms
  *  Budget und braucht exakt zwei Zahlen. Fehler → leeres Objekt. */
 export async function readSizeSettings(
-  settingsPath: string = join(bastraDataDir(), "cli-settings.json"),
+  settingsPath: string = join(bastraDataDir(), "cli-settings.json")
 ): Promise<{ guide?: number; critical?: number; exemptPaths?: string[] }> {
   try {
     const fromDatabase = readRuntimeSettingsRecord(settingsPath);
-    const parsed = JSON.parse(fromDatabase === undefined ? await readFile(settingsPath, "utf8") : fromDatabase ?? "{}") as {
+    const parsed = JSON.parse(
+      fromDatabase === undefined ? await readFile(settingsPath, "utf8") : (fromDatabase ?? "{}")
+    ) as {
       size?: { guide?: unknown; critical?: unknown; exemptPaths?: unknown };
     };
     // Non-strings and blanks are dropped rather than rejected: a broken entry
@@ -173,11 +187,7 @@ export function formatSizeNote(filePath: string, lines: number, t: SizeThreshold
 
 /** Measure + format in one step — the hook's entry point. Never throws:
  *  a new/unreadable file simply has nothing to warn about. */
-export async function fileSizeNote(
-  filePath: string,
-  settingsPath?: string,
-  cwd?: string,
-): Promise<string | null> {
+export async function fileSizeNote(filePath: string, settingsPath?: string, cwd?: string): Promise<string | null> {
   if (envOff("BASTRA_SIZE_CHECK")) return null;
   const t = thresholdsFor(filePath, await readSizeSettings(settingsPath), cwd);
   if (!t) return null;

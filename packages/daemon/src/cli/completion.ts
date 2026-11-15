@@ -192,7 +192,7 @@ function fishScript(): string {
     "",
     "complete -c bastra -n '__fish_seen_subcommand_from logs' -l source -a 'daemon hook all'",
     `complete -c bastra -n '__fish_seen_subcommand_from completion' -a '${SHELLS.join(" ")}'`,
-    "",
+    ""
   );
   return lines.join("\n");
 }
@@ -210,15 +210,11 @@ export function completionScript(shell: Shell): string {
 
 export function cmdCompletion(shell: string | null): number {
   if (!shell) {
-    process.stderr.write(
-      `error: which shell? usage: bastra completion <${SHELLS.join("|")}>\n`,
-    );
+    process.stderr.write(`error: which shell? usage: bastra completion <${SHELLS.join("|")}>\n`);
     return 2;
   }
   if (!isShell(shell)) {
-    process.stderr.write(
-      `error: no completion for '${shell}' — supported shells: ${SHELLS.join(", ")}\n`,
-    );
+    process.stderr.write(`error: no completion for '${shell}' — supported shells: ${SHELLS.join(", ")}\n`);
     return 2;
   }
   process.stdout.write(completionScript(shell));

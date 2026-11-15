@@ -233,7 +233,7 @@ export function harvestFromEvents(files: string[], max: number, minLen: number):
         // The reference stays local: the hash covers the file and the event's
         // own ids, so a case can be traced back on this machine and nowhere else.
         origin_ref_hash: originRefHash(
-          `${file}\0${String(ev.recall_id ?? "")}\0${String(ev.session_id ?? "")}\0${String(ev.ts ?? "")}`,
+          `${file}\0${String(ev.recall_id ?? "")}\0${String(ev.session_id ?? "")}\0${String(ev.ts ?? "")}`
         ),
         lang: detectLang(query),
         has_identifier: hasIdentifier(query),
@@ -246,9 +246,7 @@ export function harvestFromEvents(files: string[], max: number, minLen: number):
   // frequency would over-weight whatever the hook happened to fire on.
   const staged = [...byId.values()].sort((a, b) => a.id.localeCompare(b.id)).slice(0, max);
   const kept = new Set(staged.map((s) => s.id));
-  const noAnswerCandidates = [...emptyResult]
-    .filter((id) => kept.has(id) && !everAnswered.has(id))
-    .sort();
+  const noAnswerCandidates = [...emptyResult].filter((id) => kept.has(id) && !everAnswered.has(id)).sort();
   return { staged, scanned, skippedShort, skippedDuplicate, skippedTemplate, noAnswerCandidates };
 }
 
@@ -261,8 +259,11 @@ function main(): void {
     .map((f) => join(dir, f));
   if (files.length === 0) throw new Error(`no event logs under ${dir}`);
 
-  const { staged, scanned, skippedShort, skippedDuplicate, skippedTemplate, noAnswerCandidates } =
-    harvestFromEvents(files, args.max, args.minLen);
+  const { staged, scanned, skippedShort, skippedDuplicate, skippedTemplate, noAnswerCandidates } = harvestFromEvents(
+    files,
+    args.max,
+    args.minLen
+  );
   const issues = checkStaged(staged);
   if (issues.length) {
     for (const i of issues) console.error(`[goldset] ${i.where}: ${i.problem}`);
@@ -290,20 +291,25 @@ function main(): void {
         miss_candidates: noAnswerCandidates,
       },
       null,
-      2,
+      2
     ) + "\n",
-    { mode: 0o600 },
+    { mode: 0o600 }
   );
 
   const langs = staged.reduce<Record<string, number>>((a, s) => ({ ...a, [s.lang]: (a[s.lang] ?? 0) + 1 }), {});
-  const origins = staged.reduce<Record<string, number>>((a, s) => ({ ...a, [s.origin_type]: (a[s.origin_type] ?? 0) + 1 }), {});
+  const origins = staged.reduce<Record<string, number>>(
+    (a, s) => ({ ...a, [s.origin_type]: (a[s.origin_type] ?? 0) + 1 }),
+    {}
+  );
   console.error(
     `[goldset] ${scanned} query events → ${staged.length} staged ` +
-      `(${skippedDuplicate} duplicates, ${skippedShort} too short, ${skippedTemplate} hook templates)`,
+      `(${skippedDuplicate} duplicates, ${skippedShort} too short, ${skippedTemplate} hook templates)`
   );
   console.error(`[goldset] languages: ${JSON.stringify(langs)}  origins: ${JSON.stringify(origins)}`);
   console.error(`[goldset] with identifier: ${staged.filter((s) => s.has_identifier).length}`);
-  console.error(`[goldset] known retrieval misses: ${noAnswerCandidates.length} (in ${aidPath}, for the baseline run — NOT for labelling)`);
+  console.error(
+    `[goldset] known retrieval misses: ${noAnswerCandidates.length} (in ${aidPath}, for the baseline run — NOT for labelling)`
+  );
   console.error(`[goldset] wrote ${args.out} — NOT labelled. Step 2 assigns gold ids.`);
 }
 

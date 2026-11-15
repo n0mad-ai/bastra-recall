@@ -16,10 +16,7 @@ import path from "node:path";
  * Concurrent writes are best-effort: a lost entry re-resolves on the next tick.
  */
 
-const CACHE_FILE = path.join(bastraDataDir(),
-  "statusline",
-  "tick-cache.json",
-);
+const CACHE_FILE = path.join(bastraDataDir(), "statusline", "tick-cache.json");
 
 /** Reserved for session-only data. All current fields depend on the parent. */
 export function setTickCacheSession(_sessionId: unknown): void {}
@@ -73,7 +70,7 @@ export function writeTickCache(patch: TickCacheEntry): void {
       if (k === key) continue;
       const entry = all[k];
       const pid = k.startsWith("session:")
-        ? entry?.claudePid ?? entry?.fallbackPid ?? entry?.parentPid
+        ? (entry?.claudePid ?? entry?.fallbackPid ?? entry?.parentPid)
         : parseInt(k, 10);
       if (typeof pid !== "number" || !Number.isFinite(pid) || !pidAlive(pid)) delete all[k];
     }

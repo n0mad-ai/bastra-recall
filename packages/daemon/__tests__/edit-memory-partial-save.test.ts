@@ -148,11 +148,11 @@ test("#519: der Frontmatter-Patch ist eine Whitelist — scope/type/id werden ab
 
   await assert.rejects(
     () => editMemoryHandler(deps, { id: "hooks-lesson", frontmatter: { scope: "anderes-regal" } }),
-    /invalid edit_memory args/,
+    /invalid edit_memory args/
   );
   await assert.rejects(
     () => editMemoryHandler(deps, { id: "hooks-lesson", frontmatter: { sensitivity: "public" } }),
-    /invalid edit_memory args/,
+    /invalid edit_memory args/
   );
 
   assert.equal(await bytes(path), before, "ein abgelehnter Patch darf die Datei nicht anfassen");
@@ -235,7 +235,7 @@ test("#519: str_replace mit fehlendem old_str schreibt NICHTS und sagt warum", a
         id: "hooks-lesson",
         str_replace: { old_str: "steht so nicht da", new_str: "X" },
       }),
-    /does not occur in the body.*NOTHING was written/s,
+    /does not occur in the body.*NOTHING was written/s
   );
 
   assert.equal(await bytes(path), before);
@@ -252,7 +252,7 @@ test("#519: str_replace mit mehrdeutigem old_str schreibt NICHTS und sagt, wie o
         id: "hooks-lesson",
         str_replace: { old_str: "Zeile.", new_str: "Andere Zeile." },
       }),
-    /occurs 2 times.*NOTHING was written/s,
+    /occurs 2 times.*NOTHING was written/s
   );
 
   assert.equal(await bytes(path), before);
@@ -280,7 +280,7 @@ test("#519: expected_revision hält eine Änderung, die auf einem veralteten Sta
 
   await assert.rejects(
     () => editMemoryHandler(deps, { id: "hooks-lesson", append: "zu spät", expected_revision: "sha256:deadbeef" }),
-    /expected_revision.*NOTHING was written/s,
+    /expected_revision.*NOTHING was written/s
   );
 
   assert.equal(await bytes(path), before);
@@ -322,7 +322,7 @@ test("#519: zwei taggleiche Edits auf demselben beobachteten Stand — der zweit
         frontmatter: { tags: ["second"] },
         expected_revision: observed,
       }),
-    /expected_revision.*NOTHING was written/s,
+    /expected_revision.*NOTHING was written/s
   );
 
   const raw = await bytes(path);
@@ -350,7 +350,7 @@ test("#519: eine Handbearbeitung im Vault bewegt das Token ebenfalls", async (t)
 
   await assert.rejects(
     () => editMemoryHandler(deps, { id: "hooks-lesson", append: "auf altem Stand", expected_revision: observed }),
-    /expected_revision.*NOTHING was written/s,
+    /expected_revision.*NOTHING was written/s
   );
 });
 
@@ -361,7 +361,7 @@ test("#519: der alte Feldname expected_updated wird laut abgelehnt, nicht still 
 
   await assert.rejects(
     () => editMemoryHandler(deps, { id: "hooks-lesson", append: "zu spät", expected_updated: TODAY }),
-    /expected_updated is gone.*expected_revision/s,
+    /expected_updated is gone.*expected_revision/s
   );
   assert.equal(await bytes(path), before);
 });
@@ -405,7 +405,7 @@ test("#519: der Index wird über den Schreibpfad aktualisiert, nicht dem Watcher
   assert.equal(
     deps.search.recall("Sofort sichtbar", { k: 5 }).some((h) => h.id === "hooks-lesson"),
     true,
-    "der Suchindex kennt den neuen Text im selben Zug",
+    "der Suchindex kennt den neuen Text im selben Zug"
   );
 });
 
@@ -439,7 +439,7 @@ test("#519: nebenläufige Teiländerungen verlieren nichts", async (t) => {
       assert.match(
         (outcome.reason as Error).message,
         /NOTHING was written|changed while the edit|memory write conflict/,
-        `${marker} wurde abgelehnt, aber nicht als wiederholbarer Konflikt`,
+        `${marker} wurde abgelehnt, aber nicht als wiederholbarer Konflikt`
       );
     }
   }
@@ -470,7 +470,7 @@ test("#519/#464: ein abgelehnter privater Zugriff lässt die Originalbytes unver
   // Ohne Capability — so rufen der REST-Dispatcher und der stdio-Server auf.
   await assert.rejects(
     () => editMemoryHandler(deps, { id: "hooks-lesson", append: "heimlich" }),
-    /^Error: memory not found: hooks-lesson$/,
+    /^Error: memory not found: hooks-lesson$/
   );
   assert.equal(await bytes(path), before, "ein abgelehnter privater Schreibzugriff darf nichts anfassen");
 
@@ -478,7 +478,7 @@ test("#519/#464: ein abgelehnter privater Zugriff lässt die Originalbytes unver
   // Request-Body ist genau der Fehler, den #464 schließt.
   await assert.rejects(
     () => editMemoryHandler(deps, { id: "hooks-lesson", append: "heimlich", allow_private: true }),
-    /memory not found: hooks-lesson/,
+    /memory not found: hooks-lesson/
   );
   assert.equal(await bytes(path), before);
 
@@ -487,7 +487,7 @@ test("#519/#464: ein abgelehnter privater Zugriff lässt die Originalbytes unver
   const ok = (await editMemoryHandler(
     deps,
     { id: "hooks-lesson", append: "Nachtrag der App." },
-    TRUSTED_LOCAL_APP,
+    TRUSTED_LOCAL_APP
   )) as EditMemoryResult;
   assert.equal(ok.created, false);
   assert.match(deps.vault.get("hooks-lesson")?.body ?? "", /Nachtrag der App\./);
@@ -503,7 +503,7 @@ test("#519: append landet VOR dem Auto-Related-Block, str_replace kann ihn nicht
   // Den Block so anhängen, wie der Background-Pass ihn schreibt.
   const withBlock = (await bytes(path)).replace(
     /\n*$/,
-    `\n\n## Auto-Related ${AUTO_RELATED_START}\n- [[andere-lesson]]\n${AUTO_RELATED_END}\n`,
+    `\n\n## Auto-Related ${AUTO_RELATED_START}\n- [[andere-lesson]]\n${AUTO_RELATED_END}\n`
   );
   await writeFile(path, withBlock, "utf8");
   await deps.vault.reindexFile(path);
@@ -513,7 +513,7 @@ test("#519: append landet VOR dem Auto-Related-Block, str_replace kann ihn nicht
   const body = deps.vault.get("hooks-lesson")?.body ?? "";
   assert.ok(
     body.indexOf("Nachtrag.") < body.indexOf(AUTO_RELATED_START),
-    "der Nachtrag muss vor dem generierten Block stehen",
+    "der Nachtrag muss vor dem generierten Block stehen"
   );
   assert.match(body, /\[\[andere-lesson\]\]/, "der Block selbst bleibt unangetastet");
 
@@ -525,7 +525,7 @@ test("#519: append landet VOR dem Auto-Related-Block, str_replace kann ihn nicht
         id: "hooks-lesson",
         str_replace: { old_str: "[[andere-lesson]]", new_str: "[[x]]" },
       }),
-    /does not occur in the body/,
+    /does not occur in the body/
   );
   assert.equal(await bytes(path), before);
 });
@@ -538,10 +538,10 @@ test("#519: ein unbekanntes Memory und ein Edit ohne Operation schreiben nichts"
 
   await assert.rejects(
     () => editMemoryHandler(deps, { id: "gibt-es-nicht", append: "x" }),
-    /memory not found: gibt-es-nicht/,
+    /memory not found: gibt-es-nicht/
   );
   await assert.rejects(
     () => editMemoryHandler(deps, { id: "hooks-lesson" }),
-    /at least one of str_replace, append or frontmatter/,
+    /at least one of str_replace, append or frontmatter/
   );
 });

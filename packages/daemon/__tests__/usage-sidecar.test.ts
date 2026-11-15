@@ -11,13 +11,7 @@ import { mkdtemp, readFile, rm, writeFile, appendFile, mkdir, stat } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-  recordUsage,
-  readUsage,
-  compactUsage,
-  maybeCompactUsage,
-  type UsageEvent,
-} from "../src/usage-sidecar.js";
+import { recordUsage, readUsage, compactUsage, maybeCompactUsage, type UsageEvent } from "../src/usage-sidecar.js";
 
 const USAGE = join(".bastra", "usage");
 
@@ -82,7 +76,7 @@ test("#479 revision-local counters reset on content change without losing lifeti
         revision_surfaced: 1,
         revision_loaded: 0,
         revision_seen_at: "2026-09-03T10:00:00Z",
-      },
+      }
     );
   });
 });
@@ -122,7 +116,7 @@ test("crash recovery: a rotated-but-unfolded file is counted by readUsage and fo
     await writeFile(
       join(root, USAGE, "events.compacting.jsonl"),
       JSON.stringify(ev("a", "surfaced", "2026-07-01T10:00:00Z")) + "\n",
-      "utf8",
+      "utf8"
     );
     // New events arrived after the crash.
     await recordUsage(root, [ev("a", "surfaced", "2026-07-02T10:00:00Z")]);
@@ -164,10 +158,7 @@ test("corrupt aggregate.json degrades to events-only instead of failing", async 
 
 test("replayed older event never regresses last_*_at (max, not last-write)", async () => {
   await withVault(async (root) => {
-    await recordUsage(root, [
-      ev("a", "acted_on", "2026-07-02T10:00:00Z"),
-      ev("a", "acted_on", "2026-07-01T10:00:00Z"),
-    ]);
+    await recordUsage(root, [ev("a", "acted_on", "2026-07-02T10:00:00Z"), ev("a", "acted_on", "2026-07-01T10:00:00Z")]);
     const agg = await readUsage(root);
     assert.equal(agg["a"].acted_on, 2);
     assert.equal(agg["a"].last_acted_on_at, "2026-07-02T10:00:00Z");
@@ -180,7 +171,7 @@ test("unknown kinds and empty ids are ignored, not counted and not fatal", async
     await appendFile(
       join(root, USAGE, "events.jsonl"),
       '{"id":"a","kind":"emitted","ts":"2026-07-01T10:00:00Z"}\n{"id":"","kind":"loaded","ts":"2026-07-01T10:00:00Z"}\n',
-      "utf8",
+      "utf8"
     );
     const agg = await readUsage(root);
     assert.deepEqual(agg, {});

@@ -71,11 +71,7 @@ export async function logDeliveredBlock(row: DeliveredBlockRow): Promise<void> {
       ...(row.tokensEst !== undefined ? { tokens_est: row.tokensEst } : {}),
       ...(row.dedupeHit ? { dedupe_hit: true } : {}),
     };
-    await appendFile(
-      join(logDir, `events-${ts.slice(0, 10)}.jsonl`),
-      JSON.stringify(event) + "\n",
-      "utf8",
-    );
+    await appendFile(join(logDir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify(event) + "\n", "utf8");
   } catch {
     // Telemetry must never break the lane.
   }

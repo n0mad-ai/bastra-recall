@@ -17,14 +17,7 @@
 import * as path from "node:path";
 import { closeSync, openSync, readSync } from "node:fs";
 
-const SKIP_EXTENSIONS = new Set<string>([
-  ".txt",
-  ".rst",
-  ".log",
-  ".tmp",
-  ".cache",
-  ".lock",
-]);
+const SKIP_EXTENSIONS = new Set<string>([".txt", ".rst", ".log", ".tmp", ".cache", ".lock"]);
 
 const SKIP_BASENAME_PATTERNS: RegExp[] = [
   /^issue-/i,
@@ -98,11 +91,7 @@ export function pendingWriteHead(filePath: string, toolInput?: Record<string, un
  * vault-location check can run. Looked at lazily, only on the branch that
  * would otherwise skip.
  */
-export function shouldSkipPath(
-  filePath: string,
-  _cwd?: string,
-  toolInput?: Record<string, unknown>,
-): boolean {
+export function shouldSkipPath(filePath: string, _cwd?: string, toolInput?: Record<string, unknown>): boolean {
   if (!filePath) return true;
   const norm = filePath.replace(/\\/g, "/");
   const ext = path.extname(norm).toLowerCase();

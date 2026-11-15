@@ -42,19 +42,29 @@ async function doctor(scenario: string): Promise<DoctorResult> {
       process.stdout.write(JSON.stringify(result));
     `;
     const result = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", program], {
-      encoding: "utf8", timeout: 10_000,
-      env: { ...process.env, HOME: home, USERPROFILE: home, DOCTOR_SCENARIO: scenario, BASTRA_DAEMON_URL: "http://127.0.0.1:1" },
+      encoding: "utf8",
+      timeout: 10_000,
+      env: {
+        ...process.env,
+        HOME: home,
+        USERPROFILE: home,
+        DOCTOR_SCENARIO: scenario,
+        BASTRA_DAEMON_URL: "http://127.0.0.1:1",
+      },
     });
     assert.equal(result.status, 0, result.stderr);
     return JSON.parse(result.stdout);
-  } finally { await rm(home, { recursive: true, force: true }); }
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 }
 
 test("Claude doctor keeps recall healthy when only the save notice is absent", async () => {
   for (const scenario of ["missing-notice", "optional-stop", "wrong-matcher"]) {
     const result = await doctor(scenario);
     assert.equal(result.status, "ok", JSON.stringify(result));
-    assert.ok(result.features); assert.ok(result.details);
+    assert.ok(result.features);
+    assert.ok(result.details);
     assert.equal(result.features.recallHooks, true);
     assert.equal(result.features.stopHook, scenario !== "optional-stop");
     assert.match(result.message, /save notice missing.*bastra install claude-code/);
@@ -64,7 +74,8 @@ test("Claude doctor keeps recall healthy when only the save notice is absent", a
 
 test("Claude doctor still refuses missing recall registrations and malformed settings", async () => {
   const healthy = await doctor("healthy");
-  assert.equal(healthy.status, "ok"); assert.equal(healthy.features?.recallHooks, true);
+  assert.equal(healthy.status, "ok");
+  assert.equal(healthy.features?.recallHooks, true);
   assert.equal(healthy.details?.["save-notice-hook"], "registered");
   for (const scenario of ["missing-recall", "missing-bash", "malformed"]) {
     const result = await doctor(scenario);

@@ -116,15 +116,19 @@ test("#707 taxonomy: a convention title in Cyrillic covers its cluster", async (
       "",
     ].join("\n");
   await mkdir(join(dir, "memories/taxonomy"), { recursive: true });
-  await writeFile(join(dir, "memories/taxonomy/conv.md"), file("conv", "конвенция логистика", "taxonomy", ["convention"]));
-  for (const i of [1, 2, 3]) await writeFile(join(dir, `m${i}.md`), file(`m${i}`, `заметка ${i}`, "proj", ["логистика"]));
+  await writeFile(
+    join(dir, "memories/taxonomy/conv.md"),
+    file("conv", "конвенция логистика", "taxonomy", ["convention"])
+  );
+  for (const i of [1, 2, 3])
+    await writeFile(join(dir, `m${i}.md`), file(`m${i}`, `заметка ${i}`, "proj", ["логистика"]));
   const vault = new Vault(dir);
   await vault.init();
   try {
     assert.deepEqual(
       detectTaxonomyDrift(vault).map((c) => c.key),
       [],
-      "the Cyrillic title word must count as covered",
+      "the Cyrillic title word must count as covered"
     );
   } finally {
     await vault.stop?.();
@@ -143,7 +147,11 @@ test("#707 reflex: Russian 'или' splits alternatives (per-language data)", ()
 test("#707 reflex: a free-standing '/' splits alternatives in an unlisted language", () => {
   const phrase = "μήνυμα γράψιμο / απάντηση γράψιμο";
   assert.equal(phraseMatchesContext(phrase, ctx("γράψιμο μήνυμα τώρα")), true);
-  assert.equal(phraseMatchesContext("μήνυμα απάντηση γράψιμο", ctx("γράψιμο μήνυμα τώρα")), false, "without '/' every token is required");
+  assert.equal(
+    phraseMatchesContext("μήνυμα απάντηση γράψιμο", ctx("γράψιμο μήνυμα τώρα")),
+    false,
+    "without '/' every token is required"
+  );
 });
 
 // ── save-quality (#159 admission flags) ──────────────────────────────
@@ -200,11 +208,21 @@ test("#707 save-quality: shipped Russian cues flag a negative claim without a fi
   t.after(close);
   await withLexiconDir({}, async () => {
     const broken = scoreSaveQuality(deps, input("сервер", "Сервер не работает после деплоя.", "Пока без идей."), "x");
-    assert.ok(broken.issues.some((i) => i.includes(NEGATIVE)), JSON.stringify(broken.issues));
-    const fixed = scoreSaveQuality(deps, input("сервер", "Сервер не работает после деплоя.", "Решение: перезапуск."), "x");
+    assert.ok(
+      broken.issues.some((i) => i.includes(NEGATIVE)),
+      JSON.stringify(broken.issues)
+    );
+    const fixed = scoreSaveQuality(
+      deps,
+      input("сервер", "Сервер не работает после деплоя.", "Решение: перезапуск."),
+      "x"
+    );
     assert.ok(!fixed.issues.some((i) => i.includes(NEGATIVE)), JSON.stringify(fixed.issues));
     const lead = scoreSaveQuality(deps, input("Всегда перезапускать сервер", "Сервер после деплоя.", "…"), "x");
-    assert.ok(lead.issues.some((i) => i.includes(IMPERATIVE)), JSON.stringify(lead.issues));
+    assert.ok(
+      lead.issues.some((i) => i.includes(IMPERATIVE)),
+      JSON.stringify(lead.issues)
+    );
   });
 });
 
@@ -212,7 +230,11 @@ test("#707 save-quality: a code span in the body counts as the captured fix in a
   const { deps, close } = await makeDeps();
   t.after(close);
   await withLexiconDir({}, async () => {
-    const res = scoreSaveQuality(deps, input("сервер", "Сервер не работает после деплоя.", "`systemctl restart app`"), "x");
+    const res = scoreSaveQuality(
+      deps,
+      input("сервер", "Сервер не работает после деплоя.", "`systemctl restart app`"),
+      "x"
+    );
     assert.ok(!res.issues.some((i) => i.includes(NEGATIVE)), JSON.stringify(res.issues));
   });
 });
@@ -227,6 +249,9 @@ test("#707 save-quality: an unlisted language gets no guessed penalty, and a lex
   });
   await withLexiconDir({ "negative-claim.txt": "δεν\\s+λειτουργεί\n" }, async () => {
     const res = scoreSaveQuality(deps, greek, "x");
-    assert.ok(res.issues.some((i) => i.includes(NEGATIVE)), JSON.stringify(res.issues));
+    assert.ok(
+      res.issues.some((i) => i.includes(NEGATIVE)),
+      JSON.stringify(res.issues)
+    );
   });
 });

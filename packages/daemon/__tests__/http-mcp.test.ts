@@ -25,10 +25,24 @@ process.env.BASTRA_API_TOKEN = TOKEN;
 function memoryMarkdown(id: string, title: string): string {
   const ts = new Date().toISOString();
   return [
-    "---", `id: ${id}`, `title: ${title}`, "type: reference", `summary: ${title}`,
-    "topic_path:", "  - test", "tags:", "  - test", "scope: mcp-test",
-    "recall_when:", `  - ${title}`, `created: ${ts}`, `updated: ${ts}`, "---",
-    "", `Body for ${title}.`, "",
+    "---",
+    `id: ${id}`,
+    `title: ${title}`,
+    "type: reference",
+    `summary: ${title}`,
+    "topic_path:",
+    "  - test",
+    "tags:",
+    "  - test",
+    "scope: mcp-test",
+    "recall_when:",
+    `  - ${title}`,
+    `created: ${ts}`,
+    `updated: ${ts}`,
+    "---",
+    "",
+    `Body for ${title}.`,
+    "",
   ].join("\n");
 }
 
@@ -94,7 +108,7 @@ test("mcp http: a tunnelled caller with the token gets through", async () => {
       port,
       "/api/v1/mcp",
       { ...MCP_HEADERS, Host: "recall.example.com", Authorization: `Bearer ${TOKEN}` },
-      INIT,
+      INIT
     );
     assert.equal(status, 200);
   });
@@ -140,8 +154,17 @@ test("mcp http: GET is refused — the stateless door has no event stream", asyn
   await withServer(async (port) => {
     const status = await new Promise<number>((resolve, reject) => {
       const req = request(
-        { hostname: "127.0.0.1", port, path: "/api/v1/mcp", method: "GET", headers: { Authorization: `Bearer ${TOKEN}` } },
-        (res) => { res.resume(); res.on("end", () => resolve(res.statusCode ?? 0)); },
+        {
+          hostname: "127.0.0.1",
+          port,
+          path: "/api/v1/mcp",
+          method: "GET",
+          headers: { Authorization: `Bearer ${TOKEN}` },
+        },
+        (res) => {
+          res.resume();
+          res.on("end", () => resolve(res.statusCode ?? 0));
+        }
       );
       req.on("error", reject);
       req.end();

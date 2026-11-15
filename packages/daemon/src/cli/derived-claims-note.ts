@@ -49,13 +49,15 @@ export async function derivedClaimsLines(io: DerivedClaimsIo): Promise<string[]>
 
   const lines = [
     `${total} claim${total === 1 ? "" : "s"} in ${memories.length} memor${memories.length === 1 ? "y" : "ies"}` +
-      (findings.length === 0 ? " — none out of step with its source" : `, ${findings.length} out of step with its source`),
+      (findings.length === 0
+        ? " — none out of step with its source"
+        : `, ${findings.length} out of step with its source`),
     ...findings.slice(0, MAX_LISTED),
   ];
   if (findings.length > MAX_LISTED) lines.push(`… and ${findings.length - MAX_LISTED} more`);
   if (unverifiable > 0) {
     lines.push(
-      `${unverifiable} claim${unverifiable === 1 ? "" : "s"} could not be checked (source missing, outside the vault, not a file or over 1 MB)`,
+      `${unverifiable} claim${unverifiable === 1 ? "" : "s"} could not be checked (source missing, outside the vault, not a file or over 1 MB)`
     );
   }
   return lines;

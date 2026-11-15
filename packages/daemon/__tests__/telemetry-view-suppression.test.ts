@@ -38,7 +38,10 @@ test("shadow only never claims a removal or a saving", () => {
 });
 
 test("mixed window names both halves and lists every mode", () => {
-  const l = hintSuppressionLabels([{ mode: "live", calls: 5 }, { mode: "shadow", calls: 2 }]);
+  const l = hintSuppressionLabels([
+    { mode: "live", calls: 5 },
+    { mode: "shadow", calls: 2 },
+  ]);
   assert.equal(l.verb, "removed or would have been removed");
   assert.equal(l.tokensLabel, "hook payload");
   assert.equal(l.modeLine, "mode: live×5, shadow×2");

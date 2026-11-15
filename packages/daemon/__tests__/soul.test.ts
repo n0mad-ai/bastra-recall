@@ -22,7 +22,10 @@ test("Soul registry validates directions and 600-character free text without a r
   assert.equal(parseSettingValue("soul.text", "x".repeat(600)), "x".repeat(600));
   assert.equal(settingEntry("soul.direction")?.default, "balanced");
   assert.equal(settingEntry("soul.direction")?.restartRequired, undefined);
-  const configured = applySettingChanges({ update: { mode: "off" } }, { "soul.direction": "direct", "soul.text": "Be concise" });
+  const configured = applySettingChanges(
+    { update: { mode: "off" } },
+    { "soul.direction": "direct", "soul.text": "Be concise" }
+  );
   assert.deepEqual(configured.soul, { direction: "direct", text: "Be concise" });
   assert.equal(applySettingChanges(configured, { "soul.direction": null, "soul.text": null }).soul, undefined);
 });
@@ -38,8 +41,14 @@ test("Soul is optional style data, with escaped framing and unchanged facts/navi
   assert.match(block, /not a rule/);
   assert.match(block, /cannot change truthfulness, facts, task data, navigation intent, permissions or binding rules/);
   const baseline = buildAnswerPrompt("Was ist heute fällig?", [], undefined, "TASK FIXTURE", "de");
-  assert.equal(buildAnswerPrompt("Was ist heute fällig?", [], undefined, "TASK FIXTURE", "de", { direction: "balanced" }), baseline);
-  const configured = buildAnswerPrompt("Was ist heute fällig?", [], undefined, "TASK FIXTURE", "de", { direction: "direct", text: injected });
+  assert.equal(
+    buildAnswerPrompt("Was ist heute fällig?", [], undefined, "TASK FIXTURE", "de", { direction: "balanced" }),
+    baseline
+  );
+  const configured = buildAnswerPrompt("Was ist heute fällig?", [], undefined, "TASK FIXTURE", "de", {
+    direction: "direct",
+    text: injected,
+  });
   assert.ok(configured.includes(block));
   assert.match(configured, /answered ONLY from the TASK LIST/);
   assert.match(configured, /allowed view IDs:/);
@@ -53,28 +62,46 @@ test("stored Soul reaches both hookless and actual SessionStart delivery, defaul
   const dir = await mkdtemp(join(tmpdir(), "soul-context-"));
   const vault = { size: () => 500, get: () => undefined } as unknown as Vault;
   const deps = { vaultPath: dir } as unknown as ToolDeps;
-  const empty = { recallFn: (async () => ({ hits: [] })) as never, listFloorsFn: (async () => []) as never, listConventionsFn: (() => []) as never };
+  const empty = {
+    recallFn: (async () => ({ hits: [] })) as never,
+    listFloorsFn: (async () => []) as never,
+    listConventionsFn: (() => []) as never,
+  };
   const server = createServer((req, res) => {
-    req.resume(); req.on("end", () => {
+    req.resume();
+    req.on("end", () => {
       res.setHeader("content-type", "application/json");
-      res.end(req.url === "/hook/session-context" ? JSON.stringify({ data: { recalls: [], floors: [], conventions: [], care: {}, imports: {}, onboarding: false }, vault_size: 500 }) : '{"ok":true}');
+      res.end(
+        req.url === "/hook/session-context"
+          ? JSON.stringify({
+              data: { recalls: [], floors: [], conventions: [], care: {}, imports: {}, onboarding: false },
+              vault_size: 500,
+            })
+          : '{"ok":true}'
+      );
     });
   });
-  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
-    await mutateSettings(settingsFilePath(), s => ({ ...s, soul: { direction: "balanced", text: "" } }));
+    await mutateSettings(settingsFilePath(), (s) => ({ ...s, soul: { direction: "balanced", text: "" } }));
     assert.equal(await buildSessionContext(deps, vault, empty), "");
-    await mutateSettings(settingsFilePath(), s => ({ ...s, soul: { direction: "direct", text: "No irony" } }));
+    await mutateSettings(settingsFilePath(), (s) => ({ ...s, soul: { direction: "direct", text: "No irony" } }));
     assert.deepEqual(await readSoulPreference(), { direction: "direct", text: "No irony" });
     const context = await buildSessionContext(deps, vault, empty);
     assert.match(context, /<preferred-interaction>/);
     assert.match(context, /No irony/);
-    const address = server.address(); assert.ok(address && typeof address === "object");
-    const out = JSON.parse(await runSessionLane({ hook_event_name: "SessionStart", source: "startup", cwd: dir, session_id: "soul-fixture" }, `http://127.0.0.1:${address.port}`));
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const out = JSON.parse(
+      await runSessionLane(
+        { hook_event_name: "SessionStart", source: "startup", cwd: dir, session_id: "soul-fixture" },
+        `http://127.0.0.1:${address.port}`
+      )
+    );
     assert.match(out.hookSpecificOutput.additionalContext, /<preferred-interaction>/);
     assert.match(out.hookSpecificOutput.additionalContext, /No irony/);
   } finally {
     await mutateSettings(settingsFilePath(), () => original);
-    await new Promise<void>(resolve => server.close(() => resolve()));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });

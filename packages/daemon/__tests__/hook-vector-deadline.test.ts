@@ -64,7 +64,7 @@ class SlowProvider implements EmbeddingProvider {
 function hookRecall(
   port: number,
   query: string,
-  extra: Record<string, unknown> = {},
+  extra: Record<string, unknown> = {}
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify({ query, k: 3, tool_name: "Write", session_id: "deadline-test", ...extra });
@@ -80,7 +80,7 @@ function hookRecall(
         let body = "";
         res.on("data", (c) => (body += c));
         res.on("end", () => resolve({ status: res.statusCode ?? 0, body: JSON.parse(body || "{}") }));
-      },
+      }
     );
     req.on("error", reject);
     req.end(payload);
@@ -141,15 +141,11 @@ test("#342: a dense arm past its deadline returns hits, names the reason, and ma
   assert.equal(status, 200);
   assert.ok(
     Array.isArray(body.hits) && (body.hits as unknown[]).length > 0,
-    "the cheap arm's answer is served rather than the call expiring silently",
+    "the cheap arm's answer is served rather than the call expiring silently"
   );
   assert.ok(elapsed < 350, `returned on the deadline, not the dense arm (${elapsed}ms against a 400ms arm)`);
   assert.equal(body.degraded, "vector-arm-timeout", "the reason travels on the wire");
-  assert.equal(
-    body.unfused,
-    true,
-    "no RRF ran, so the bands do not apply — leaving this off revives the #302 defect",
-  );
+  assert.equal(body.unfused, true, "no RRF ran, so the bands do not apply — leaving this off revives the #302 defect");
   // P0: `unfused` sagt es indirekt, über eine Abwesenheit. `score_kind` sagt es
   // direkt — ein Konsument soll den Score-Raum lesen können, statt ihn aus der
   // Höhe der Zahl zu erraten. Genau dieses Raten war der Incident.
@@ -181,11 +177,7 @@ test("#342: the deadline is read per call, so the kill switch needs no restart",
   // Same server, same slow arm — only the env changed.
   process.env.BASTRA_VECTOR_DEADLINE_MS = "0";
   const waited = await hookRecall(port, "ANCHORWORD");
-  assert.equal(
-    waited.body.degraded,
-    undefined,
-    "0 restores the pre-#342 wait without a daemon restart",
-  );
+  assert.equal(waited.body.degraded, undefined, "0 restores the pre-#342 wait without a daemon restart");
 });
 
 test("20.08.: a caller's vector_deadline_ms widens the dense arm past the hook default", async (t) => {

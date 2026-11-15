@@ -96,14 +96,11 @@ export function readHookRecallInput(body: Record<string, unknown>) {
   // Wanduhr, die es für ihn nie gab. Der Forwarder schickt seitdem sein
   // eigenes Budget; die Spalte sagt, ob ein Aufrufer das getan hat.
   const budgetSource: "caller" | "endpoint-default" =
-    typeof body.hook_budget_ms === "number" && Number.isFinite(body.hook_budget_ms)
-      ? "caller"
-      : "endpoint-default";
+    typeof body.hook_budget_ms === "number" && Number.isFinite(body.hook_budget_ms) ? "caller" : "endpoint-default";
   // #493: Die Klammer um die (bis zu drei) Recalls EINES Sitzungsstarts.
   // Ohne sie ist ein Sitzungsstart mit drei kalten Armen von drei
   // Sitzungsstarts nicht zu unterscheiden — siehe HookRecallEvent.
-  const sessionStartCallId =
-    typeof body.session_start_call_id === "string" ? body.session_start_call_id : null;
+  const sessionStartCallId = typeof body.session_start_call_id === "string" ? body.session_start_call_id : null;
   return {
     k,
     hookSessionId,

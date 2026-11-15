@@ -42,7 +42,7 @@ async function cursorInstall(opts: InstallOpts): Promise<InstallResult> {
     // carries — a GUI client inherits no shell export.
     serverBlockEndpoint(servers[SERVER_KEY]),
     // #647: env keys the user added (BASTRA_FORWARDER_SPAWN=0, …) survive.
-    foreignEnv(servers[SERVER_KEY]),
+    foreignEnv(servers[SERVER_KEY])
   );
 
   if (blocksMatch(servers[SERVER_KEY], block)) {
@@ -146,17 +146,28 @@ async function cursorDoctor(): Promise<DoctorResult> {
   details["cursor-rule"] = await cursorRuleState(process.cwd());
 
   if (!registered) return { status: "missing", message: "not registered with Cursor", details };
-  const broken =
-    forwarderBroken ||
-    details["vault-path"]?.includes("MISSING") === true;
-  if (broken) return { status: "broken", message: "registered but referenced paths need repair — re-run 'bastra install cursor'", details };
-  return { status: "ok", message: "registered (project rule: see cursor-rule below — 'bastra rules cursor' installs or refreshes it)", details };
+  const broken = forwarderBroken || details["vault-path"]?.includes("MISSING") === true;
+  if (broken)
+    return {
+      status: "broken",
+      message: "registered but referenced paths need repair — re-run 'bastra install cursor'",
+      details,
+    };
+  return {
+    status: "ok",
+    message: "registered (project rule: see cursor-rule below — 'bastra rules cursor' installs or refreshes it)",
+    details,
+  };
 }
 
 /** `.cursor/rules/bastra-recall.mdc` of one project against the shipped rule. */
-export async function cursorRuleState(projectDir: string, sourcePath: string | null = CURSOR_RULES_SOURCE_PATH): Promise<string> {
+export async function cursorRuleState(
+  projectDir: string,
+  sourcePath: string | null = CURSOR_RULES_SOURCE_PATH
+): Promise<string> {
   const target = resolve(projectDir, CURSOR_RULES_RELATIVE);
-  if (!(await fileExists(target))) return `not in this project (${CURSOR_RULES_RELATIVE}) — 'bastra rules cursor' installs it`;
+  if (!(await fileExists(target)))
+    return `not in this project (${CURSOR_RULES_RELATIVE}) — 'bastra rules cursor' installs it`;
   if (!sourcePath) return "present (shipped rule not found, cannot compare)";
   const [installed, shipped] = await Promise.all([readFile(target, "utf8"), readFile(sourcePath, "utf8")]);
   return installed === shipped

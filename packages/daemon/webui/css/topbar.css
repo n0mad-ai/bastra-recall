@@ -1,7 +1,9 @@
 /* ── topbar ────────────────────────────────────────────────────── */
 #topbar {
   position: fixed;
-  top: 0; left: 0; right: 0;
+  top: 0;
+  left: 0;
+  right: 0;
   height: 58px;
   display: flex;
   align-items: center;
@@ -10,11 +12,20 @@
   z-index: 30;
   pointer-events: none;
 }
-#topbar > * { pointer-events: auto; }
+#topbar > * {
+  pointer-events: auto;
+}
 
-.wordmark { display: flex; align-items: baseline; gap: 8px; user-select: none; }
+.wordmark {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  user-select: none;
+}
 .wordmark-dot {
-  width: 9px; height: 9px; border-radius: 50%;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 0 12px var(--accent);
   align-self: center;
@@ -40,4 +51,7 @@
   border-radius: 3px;
 }
 
-#view-switch button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#view-switch button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

@@ -29,28 +29,33 @@ async function dir(t: { after: (fn: () => unknown) => void }): Promise<string> {
 }
 
 test("der plist-Pfad hängt am Label, das der Rest des Codes kennt", () => {
-  assert.equal(
-    plistPath("/Users/x"),
-    "/Users/x/Library/LaunchAgents/ai.n0mad.bastra-recall.plist",
-  );
+  assert.equal(plistPath("/Users/x"), "/Users/x/Library/LaunchAgents/ai.n0mad.bastra-recall.plist");
 });
 
-test("was bastra schreibt, ist ein gültiger plist — auch mit Sonderzeichen im Vault-Pfad", { skip: !onMac }, async (t) => {
-  const d = await dir(t);
-  const p = join(d, "own.plist");
-  // Ein Vault-Pfad mit `&` und `<` ist erlaubt und war der klassische Weg,
-  // eine XML-Datei kaputtzuschreiben.
-  const vault = join(d, "Ablage & <Notizen>");
-  await writeFile(p, renderPlist(autostartEnv(vault, "/opt/homebrew/bin/node"), ["/opt/homebrew/bin/node", p]), "utf8");
+test(
+  "was bastra schreibt, ist ein gültiger plist — auch mit Sonderzeichen im Vault-Pfad",
+  { skip: !onMac },
+  async (t) => {
+    const d = await dir(t);
+    const p = join(d, "own.plist");
+    // Ein Vault-Pfad mit `&` und `<` ist erlaubt und war der klassische Weg,
+    // eine XML-Datei kaputtzuschreiben.
+    const vault = join(d, "Ablage & <Notizen>");
+    await writeFile(
+      p,
+      renderPlist(autostartEnv(vault, "/opt/homebrew/bin/node"), ["/opt/homebrew/bin/node", p]),
+      "utf8"
+    );
 
-  const lint = spawnSync("/usr/bin/plutil", ["-lint", p], { encoding: "utf8" });
-  assert.equal(lint.status, 0, `plutil -lint: ${lint.stdout}${lint.stderr}`);
+    const lint = spawnSync("/usr/bin/plutil", ["-lint", p], { encoding: "utf8" });
+    assert.equal(lint.status, 0, `plutil -lint: ${lint.stdout}${lint.stderr}`);
 
-  const state = await readState(p);
-  assert.equal(state.exists, true);
-  assert.equal(state.managed, true, "der eigene plist trägt die Marke");
-  assert.deepEqual(state.program, ["/opt/homebrew/bin/node", p]);
-});
+    const state = await readState(p);
+    assert.equal(state.exists, true);
+    assert.equal(state.managed, true, "der eigene plist trägt die Marke");
+    assert.deepEqual(state.program, ["/opt/homebrew/bin/node", p]);
+  }
+);
 
 test("ein handgeschriebener plist gilt als fremd", { skip: !onMac }, async (t) => {
   const d = await dir(t);
@@ -72,7 +77,7 @@ test("ein handgeschriebener plist gilt als fremd", { skip: !onMac }, async (t) =
 </dict>
 </plist>
 `,
-    "utf8",
+    "utf8"
   );
 
   const state = await readState(p);
@@ -88,11 +93,7 @@ test("ein unlesbarer plist gilt als fremd, nicht als eigener", { skip: !onMac },
 
   const state = await readState(p);
   assert.equal(state.exists, true);
-  assert.equal(
-    state.managed,
-    false,
-    "fail-closed: was nicht gelesen werden kann, darf nicht überschrieben werden",
-  );
+  assert.equal(state.managed, false, "fail-closed: was nicht gelesen werden kann, darf nicht überschrieben werden");
 });
 
 test("ein fehlender plist ist einfach 'aus'", async (t) => {
@@ -105,8 +106,24 @@ test("ein fehlender plist ist einfach 'aus'", async (t) => {
 
 test("#1329: doctor distinguishes explicit tasks environment drift between plist, launchd and client", async () => {
   const { autostartWarning } = await import("../src/cli/autostart.js");
-  const state = { exists: true, managed: true, loaded: true, path: "fixture", program: [], env: { BASTRA_TASKS: "1" }, loadedEnv: { BASTRA_TASKS: "0" } as Record<string, string>, endpoint: null, danglingProgram: false, missingProgramPath: null };
-  const service = { status: async () => state, install: async () => ({ ok: true, detail: "" }), uninstall: async () => ({ ok: true, detail: "" }), kickstart: async () => ({ ok: true, detail: "" }) };
+  const state = {
+    exists: true,
+    managed: true,
+    loaded: true,
+    path: "fixture",
+    program: [],
+    env: { BASTRA_TASKS: "1" },
+    loadedEnv: { BASTRA_TASKS: "0" } as Record<string, string>,
+    endpoint: null,
+    danglingProgram: false,
+    missingProgramPath: null,
+  };
+  const service = {
+    status: async () => state,
+    install: async () => ({ ok: true, detail: "" }),
+    uninstall: async () => ({ ok: true, detail: "" }),
+    kickstart: async () => ({ ok: true, detail: "" }),
+  };
   assert.match((await autostartWarning(service, { BASTRA_TASKS: "1" }))!, /BASTRA_TASKS.*bootout.*bootstrap/);
   state.loadedEnv = { BASTRA_TASKS: "1" };
   assert.equal(await autostartWarning(service, { BASTRA_TASKS: "1" }), null);

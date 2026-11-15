@@ -79,11 +79,7 @@ test("#231: deutsche Fragen treffen deutsche Trigger, und der Anker feuert", asy
   for (const [frage, erwartet] of faelle) {
     const hits = search.recall(frage, { k: 3 });
     assert.equal(hits[0]?.id, erwartet, `„${frage}" muss ${erwartet} zuerst finden`);
-    assert.equal(
-      hits[0]?.matched_recall_when,
-      true,
-      `„${frage}" muss den deutschen Trigger als Anker erkennen`,
-    );
+    assert.equal(hits[0]?.matched_recall_when, true, `„${frage}" muss den deutschen Trigger als Anker erkennen`);
   }
 });
 
@@ -124,7 +120,7 @@ test("#231: das alte englische Template zieht den Störtreffer nach oben — die
   const stoererNeutral = platz(neutral, "imported-english-style-guide");
   assert.ok(
     stoererNeutral === -1 || stoererNeutral > 0,
-    "mit der sprachneutralen Query darf der englische Import nicht führen",
+    "mit der sprachneutralen Query darf der englische Import nicht führen"
   );
 
   // Mit dem alten Template: Der Import übernimmt den ersten Platz, allein wegen
@@ -133,17 +129,14 @@ test("#231: das alte englische Template zieht den Störtreffer nach oben — die
   assert.equal(
     englisch[0]?.id,
     "imported-english-style-guide",
-    "das alte Template muss den Störtreffer nach oben ziehen — sonst prüft dieser Test nichts mehr",
+    "das alte Template muss den Störtreffer nach oben ziehen — sonst prüft dieser Test nichts mehr"
   );
 
   // Und die Größenordnung, weil sie die Aussage trägt: Der Störtreffer steht
   // mit dem alten Template um ein Vielfaches über seinem heutigen Wert.
   const heute = neutral.find((h) => h.id === "imported-english-style-guide")?.score ?? 0;
   const damals = englisch[0]?.score ?? 0;
-  assert.ok(
-    damals > heute * 10,
-    `der Sprung muss deutlich sein: heute ${heute}, mit altem Template ${damals}`,
-  );
+  assert.ok(damals > heute * 10, `der Sprung muss deutlich sein: heute ${heute}, mit altem Template ${damals}`);
 });
 
 test("#231: der Störtreffer bleibt auch bei deutschen Fragen unten", async (t) => {
@@ -154,10 +147,6 @@ test("#231: der Störtreffer bleibt auch bei deutschen Fragen unten", async (t) 
   // es gar nicht erst auf.
   for (const frage of ["bevor wir das Deployment starten", "bevor ich das Schema ändere"]) {
     const hits = search.recall(frage, { k: 5 });
-    assert.notEqual(
-      hits[0]?.id,
-      "imported-english-style-guide",
-      `„${frage}" darf nicht beim englischen Import landen`,
-    );
+    assert.notEqual(hits[0]?.id, "imported-english-style-guide", `„${frage}" darf nicht beim englischen Import landen`);
   }
 });

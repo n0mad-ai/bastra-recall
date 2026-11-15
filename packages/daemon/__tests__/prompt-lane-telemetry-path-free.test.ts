@@ -67,10 +67,7 @@ const FIXTURE = {
     node("audit_auditsave", "auditSave()", "packages/core/src/audit-save.ts", 69),
     node("checks_run", "runChecks()", "packages/core/src/checks.ts", 8),
   ],
-  links: [
-    edge("audit_auditsave", "save_savememory", "calls"),
-    edge("checks_run", "save_validate", "calls"),
-  ],
+  links: [edge("audit_auditsave", "save_savememory", "calls"), edge("checks_run", "save_validate", "calls")],
   hyperedges: [],
 };
 
@@ -135,11 +132,7 @@ before(async () => {
   await utimes(abs, secs, secs);
   await writeManifest(dir, { ...MANIFEST, repoRoot: repo, builtAt: new Date(built).toISOString() });
 
-  await writeFile(
-    join(home, ".bastra", "cli-settings.json"),
-    JSON.stringify({ code: { repos: [repo] } }),
-    "utf8",
-  );
+  await writeFile(join(home, ".bastra", "cli-settings.json"), JSON.stringify({ code: { repos: [repo] } }), "utf8");
 });
 
 after(async () => {
@@ -195,12 +188,12 @@ describe("prompt lane: delivered change-impact telemetry stays path-free", () =>
               cwd: repo,
             },
             null,
-            "http://127.0.0.1:1",
+            "http://127.0.0.1:1"
           );
           // Precondition: the block actually went out, or the rows below would
           // be silence and every assertion after this would pass vacuously.
           assert.match(stdout, /code-impact/, "expected a delivered change-impact block");
-        },
+        }
       );
 
       const events = await readTelemetryEvents(logDir);
@@ -218,7 +211,7 @@ describe("prompt lane: delivered change-impact telemetry stays path-free", () =>
       assert.equal(
         Object.prototype.hasOwnProperty.call(promptEv, "code_listed"),
         false,
-        "167ff0a removed code_listed from the prompt lane's own row — a regression reintroducing it must fail here",
+        "167ff0a removed code_listed from the prompt lane's own row — a regression reintroducing it must fail here"
       );
       const promptText = JSON.stringify(promptEv);
       assert.doesNotMatch(promptText, /\/Users\//, "no absolute path in the prompt_hook_call row");
@@ -231,7 +224,7 @@ describe("prompt lane: delivered change-impact telemetry stays path-free", () =>
       assert.equal(
         Object.prototype.hasOwnProperty.call(deliveredEv, "code_listed"),
         false,
-        "logDeliveredBlock never receives `listed` — the delivered row must not carry paths either",
+        "logDeliveredBlock never receives `listed` — the delivered row must not carry paths either"
       );
       const deliveredText = JSON.stringify(deliveredEv);
       assert.doesNotMatch(deliveredText, /\/Users\//, "no absolute path in the delivered row");
@@ -265,10 +258,10 @@ describe("write lane: the followed-by-edit join still has its data", () => {
               cwd: repo,
               tool_input: { file_path: join(repo, SAVE), ...EDIT_SAVE },
             },
-            "http://127.0.0.1:1",
+            "http://127.0.0.1:1"
           );
           assert.match(stdout, /code-impact/, "expected a delivered change-impact block");
-        },
+        }
       );
 
       const events = await readTelemetryEvents(logDir);

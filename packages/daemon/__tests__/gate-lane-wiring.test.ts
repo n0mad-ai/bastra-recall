@@ -57,10 +57,12 @@ after(async () => {
 });
 
 async function listen(server: Server): Promise<number> {
-  return new Promise((ok) => server.listen(0, "127.0.0.1", () => {
-    const addr = server.address();
-    ok(typeof addr === "object" && addr ? addr.port : 0);
-  }));
+  return new Promise((ok) =>
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address();
+      ok(typeof addr === "object" && addr ? addr.port : 0);
+    })
+  );
 }
 
 /** Run one gate client; `hangStdin` keeps stdin open so only the kill switch can end it. */
@@ -69,7 +71,12 @@ async function runClient(argv: string[], port: number, sessionId: string, hangSt
   const logDir = join(root, "logs");
   await mkdir(logDir);
   const started = Date.now();
-  const result = await new Promise<{ stdout: string; stderr: string; code: number | null; signal: NodeJS.Signals | null }>((ok, ko) => {
+  const result = await new Promise<{
+    stdout: string;
+    stderr: string;
+    code: number | null;
+    signal: NodeJS.Signals | null;
+  }>((ok, ko) => {
     const child = spawn(process.execPath, ["--import", "tsx", ...(preload ? ["--import", preload] : []), ...argv], {
       env: {
         ...process.env,
@@ -87,22 +94,35 @@ async function runClient(argv: string[], port: number, sessionId: string, hangSt
     child.stderr.on("data", (c) => (stderr += c));
     child.on("error", ko);
     child.on("close", (code, signal) => ok({ stdout, stderr, code, signal }));
-    child.stdin.write(JSON.stringify({ session_id: sessionId, hook_event_name: "PreToolUse", tool_name: "Read", tool_input: { file_path: "/x" } }));
+    child.stdin.write(
+      JSON.stringify({
+        session_id: sessionId,
+        hook_event_name: "PreToolUse",
+        tool_name: "Read",
+        tool_input: { file_path: "/x" },
+      })
+    );
     if (!hangStdin) child.stdin.end();
   });
   const rows: Array<Record<string, unknown>> = [];
   for (const name of await readdir(logDir)) {
-    for (const line of (await readFile(join(logDir, name), "utf8")).split("\n")) if (line.trim()) rows.push(JSON.parse(line));
+    for (const line of (await readFile(join(logDir, name), "utf8")).split("\n"))
+      if (line.trim()) rows.push(JSON.parse(line));
   }
   await rm(root, { recursive: true, force: true });
   return { ...result, rows, ms: Date.now() - started };
 }
 
 describe("#1303 gate clients fail open with a non-conformance row", () => {
-  const shapes = [["node", [join(SRC, "gate-hook.ts")]], ["stub", [STUB, "gate"]]] as const;
+  const shapes = [
+    ["node", [join(SRC, "gate-hook.ts")]],
+    ["stub", [STUB, "gate"]],
+  ] as const;
 
   it("a daemon that does not answer in budget: `{}` and gate_timeout, on both client shapes", async () => {
-    const hung = createServer(() => { /* never answers */ });
+    const hung = createServer(() => {
+      /* never answers */
+    });
     const port = await listen(hung);
     try {
       for (const [shape, argv] of shapes) {
@@ -121,22 +141,25 @@ describe("#1303 gate clients fail open with a non-conformance row", () => {
     }
   });
 
-  it("#1433 the kill switch lets an in-flight timeout row finish", async t => {
-    const hung = createServer(() => { /* never answers */ });
+  it("#1433 the kill switch lets an in-flight timeout row finish", async (t) => {
+    const hung = createServer(() => {
+      /* never answers */
+    });
     const port = await listen(hung);
     try {
-      for (const [shape, argv] of shapes) await t.test(shape, async () => {
-        const r = await runClient([...argv], port, `gate-overlap-${shape}`, false, OVERLAP);
-        const evidence = `${shape}: ${JSON.stringify(r)}`;
-        assert.match(r.stderr, /kill-switch during failure spool/, evidence);
-        assert.equal(r.code, 0, evidence);
-        assert.equal(r.stdout, "{}", evidence);
-        assert.equal(r.rows.length, 1, evidence);
-        assert.equal(r.rows[0]!.session_id, `gate-overlap-${shape}`, evidence);
-        assert.equal(r.rows[0]!.status, "timeout", evidence);
-        assert.equal(r.rows[0]!.non_conformance, "gate_timeout", evidence);
-        assert.equal(r.rows[0]!.error, null, evidence);
-      });
+      for (const [shape, argv] of shapes)
+        await t.test(shape, async () => {
+          const r = await runClient([...argv], port, `gate-overlap-${shape}`, false, OVERLAP);
+          const evidence = `${shape}: ${JSON.stringify(r)}`;
+          assert.match(r.stderr, /kill-switch during failure spool/, evidence);
+          assert.equal(r.code, 0, evidence);
+          assert.equal(r.stdout, "{}", evidence);
+          assert.equal(r.rows.length, 1, evidence);
+          assert.equal(r.rows[0]!.session_id, `gate-overlap-${shape}`, evidence);
+          assert.equal(r.rows[0]!.status, "timeout", evidence);
+          assert.equal(r.rows[0]!.non_conformance, "gate_timeout", evidence);
+          assert.equal(r.rows[0]!.error, null, evidence);
+        });
     } finally {
       hung.closeAllConnections();
       await new Promise<void>((ok) => hung.close(() => ok()));
@@ -171,7 +194,7 @@ describe("#1303 registration", () => {
     const gates = hookDefinitions().filter((d) => d.stubSubcommand === "gate");
     assert.equal(gates.length, 1);
     assert.equal(gates[0]!.event, "PreToolUse");
-    assert.equal(gates[0]!.matcher, "*", "code.claude.com/docs/en/hooks: `*`, \"\" or omitted match all");
+    assert.equal(gates[0]!.matcher, "*", 'code.claude.com/docs/en/hooks: `*`, "" or omitted match all');
     assert.ok(gates[0]!.bin.endsWith("gate-hook.js"));
     assert.ok(OUR_HOOK_FILES.includes("gate-hook.js"));
     assert.ok(REQUIRED_HOOK_FILES.includes("gate-hook.js"));
@@ -190,7 +213,10 @@ describe("#1303 registration", () => {
     const old = JSON.parse(JSON.stringify(plan.after)) as Record<string, Array<{ matcher?: string }>>;
     old.SessionStart![0]!.matcher = "startup|resume|clear|compact";
     old.PreToolUse = old.PreToolUse!.filter((e) => e.matcher !== "*");
-    assert.deepEqual(missingRequiredHookRegistrations(old).sort(), ["PreToolUse:*", "SessionStart:startup|resume|clear|compact|fork"]);
+    assert.deepEqual(missingRequiredHookRegistrations(old).sort(), [
+      "PreToolUse:*",
+      "SessionStart:startup|resume|clear|compact|fork",
+    ]);
     assert.deepEqual(missingRequiredHookRegistrations(plan.after as Record<string, unknown>), []);
   });
 });
@@ -210,8 +236,26 @@ describe("#1303 which hints are gated, and how they read", () => {
     const hit = (id: string) => ({ id, title: id, type: "workflow", scope: "s", summary: `sum ${id}`, score: 150 });
     const gated = new Set(["a"]);
     const lineOf = (block: string, id: string) => block.split("\n").find((l) => l.startsWith(`- ${id} `)) ?? "";
-    const prompt = formatHintBlock([hit("a"), hit("b")], null, "generic", false, false, "claude-code", undefined, undefined, gated);
-    const reflex = formatReflexBlock([{ ...hit("a"), matched_phrase: "p" }, { ...hit("b"), matched_phrase: "p" }], null, "claude-code", gated);
+    const prompt = formatHintBlock(
+      [hit("a"), hit("b")],
+      null,
+      "generic",
+      false,
+      false,
+      "claude-code",
+      undefined,
+      undefined,
+      gated
+    );
+    const reflex = formatReflexBlock(
+      [
+        { ...hit("a"), matched_phrase: "p" },
+        { ...hit("b"), matched_phrase: "p" },
+      ],
+      null,
+      "claude-code",
+      gated
+    );
     const session = formatBlock([hit("a"), hit("b")], null, "fork", false, false, "claude-code", "off", gated);
     for (const block of [prompt, reflex, session]) {
       assert.ok(lineOf(block, "a").endsWith(MUST_LOAD_MARK), block);
@@ -223,15 +267,38 @@ describe("#1303 which hints are gated, and how they read", () => {
 
 /** A loopback daemon serving what the two lanes ask for. */
 async function mockDaemon(hits: Array<Record<string, unknown>>) {
-  const recall = { hits, vault_size: hits.length, recall_id: "r", latency_ms: 1, score_kind: "rrf", score_arms: ["bm25", "vector"] };
+  const recall = {
+    hits,
+    vault_size: hits.length,
+    recall_id: "r",
+    latency_ms: 1,
+    score_kind: "rrf",
+    score_arms: ["bm25", "vector"],
+  };
   const server = createServer(async (req, res) => {
-    for await (const _ of req) { /* drain */ }
+    for await (const _ of req) {
+      /* drain */
+    }
     const url = req.url ?? "";
-    const body = url === "/hook/recall" ? recall
-      : url === "/hook/reflex" ? { hits: [], recall_id: null }
-      : url === "/hook/session-context" ? { data: { recalls: [{ scope: "user-preference", resp: recall }], floors: [], conventions: [], care: { open: 0, queued: 0 }, imports: { open: 0, queued: 0 }, onboarding: false } }
-      : url === "/health" ? { ok: true, update_available: null }
-      : {};
+    const body =
+      url === "/hook/recall"
+        ? recall
+        : url === "/hook/reflex"
+          ? { hits: [], recall_id: null }
+          : url === "/hook/session-context"
+            ? {
+                data: {
+                  recalls: [{ scope: "user-preference", resp: recall }],
+                  floors: [],
+                  conventions: [],
+                  care: { open: 0, queued: 0 },
+                  imports: { open: 0, queued: 0 },
+                  onboarding: false,
+                },
+              }
+            : url === "/health"
+              ? { ok: true, update_available: null }
+              : {};
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify(body));
   });
@@ -240,10 +307,45 @@ async function mockDaemon(hits: Array<Record<string, unknown>>) {
 }
 
 const HITS = [
-  { id: "pref-trigger", title: "t", type: "user-preference", scope: "all-projects", summary: "s1", score: 150, matched_recall_when: true, anchor_strength: "strong" },
-  { id: "work-user", title: "t", type: "meta-working", scope: "all-projects", summary: "s2", score: 150, matched_recall_when: false, write_origin: "user-directed" },
-  { id: "work-agent", title: "t", type: "meta-working", scope: "all-projects", summary: "s3", score: 150, matched_recall_when: false, write_origin: "agent-session" },
-  { id: "fact", title: "t", type: "project-fact", scope: "all-projects", summary: "s4", score: 150, matched_recall_when: true },
+  {
+    id: "pref-trigger",
+    title: "t",
+    type: "user-preference",
+    scope: "all-projects",
+    summary: "s1",
+    score: 150,
+    matched_recall_when: true,
+    anchor_strength: "strong",
+  },
+  {
+    id: "work-user",
+    title: "t",
+    type: "meta-working",
+    scope: "all-projects",
+    summary: "s2",
+    score: 150,
+    matched_recall_when: false,
+    write_origin: "user-directed",
+  },
+  {
+    id: "work-agent",
+    title: "t",
+    type: "meta-working",
+    scope: "all-projects",
+    summary: "s3",
+    score: 150,
+    matched_recall_when: false,
+    write_origin: "agent-session",
+  },
+  {
+    id: "fact",
+    title: "t",
+    type: "project-fact",
+    scope: "all-projects",
+    summary: "s4",
+    score: 150,
+    matched_recall_when: true,
+  },
 ];
 const GATED = ["pref-trigger", "work-user"];
 
@@ -252,13 +354,26 @@ describe("#1303 the prompt and session lanes book pending ids beside the shown-s
     const d = await mockDaemon(HITS);
     try {
       const sid = "gate-prompt-book";
-      const out = JSON.parse(await runPromptLane(
-        { hook_event_name: "UserPromptSubmit", session_id: sid, prompt: "Bitte kurz weiterarbeiten", cwd: stateDir } as never,
-        null, d.base, undefined, () => [],
-      )) as { hookSpecificOutput?: { additionalContext?: string } };
+      const out = JSON.parse(
+        await runPromptLane(
+          {
+            hook_event_name: "UserPromptSubmit",
+            session_id: sid,
+            prompt: "Bitte kurz weiterarbeiten",
+            cwd: stateDir,
+          } as never,
+          null,
+          d.base,
+          undefined,
+          () => []
+        )
+      ) as { hookSpecificOutput?: { additionalContext?: string } };
       const text = out.hookSpecificOutput?.additionalContext ?? "";
       for (const h of HITS) assert.ok(text.includes(h.id), `setup: ${h.id} must be emitted`);
-      const marked = text.split("\n").filter((l) => l.endsWith(MUST_LOAD_MARK)).map((l) => l.slice(2).split(" ")[0]);
+      const marked = text
+        .split("\n")
+        .filter((l) => l.endsWith(MUST_LOAD_MARK))
+        .map((l) => l.slice(2).split(" ")[0]);
       assert.deepEqual(marked.sort(), [...GATED].sort());
       const state = await loadSessionState(sid);
       assert.deepEqual(state.pendingMustLoad?.map((e) => e.id).sort(), [...GATED].sort());
@@ -273,8 +388,17 @@ describe("#1303 the prompt and session lanes book pending ids beside the shown-s
     try {
       const sid = "gate-prompt-codex";
       const out = await runPromptLane(
-        { hook_event_name: "UserPromptSubmit", session_id: sid, prompt: "Bitte kurz weiterarbeiten", cwd: stateDir, bastra_client: "codex" } as never,
-        null, d.base, undefined, () => [],
+        {
+          hook_event_name: "UserPromptSubmit",
+          session_id: sid,
+          prompt: "Bitte kurz weiterarbeiten",
+          cwd: stateDir,
+          bastra_client: "codex",
+        } as never,
+        null,
+        d.base,
+        undefined,
+        () => []
       );
       assert.ok(!out.includes("must-load"));
       assert.equal((await loadSessionState(sid)).pendingMustLoad, undefined);
@@ -289,19 +413,33 @@ describe("#1303 the prompt and session lanes book pending ids beside the shown-s
         const d = await mockDaemon(HITS);
         try {
           const sid = `codex-${lane}-${version}`;
-          const payload = {session_id: sid, cwd: stateDir, bastra_client: "codex", bastra_codex_version: version};
-          const out = lane === "prompt"
-            ? await runPromptLane({...payload, hook_event_name: "UserPromptSubmit", prompt: "Bitte kurz weiterarbeiten"} as never, null, d.base, undefined, () => [])
-            : await runSessionLane({...payload, hook_event_name: "SessionStart", source: "fork"} as never, d.base, undefined, async () => null);
+          const payload = { session_id: sid, cwd: stateDir, bastra_client: "codex", bastra_codex_version: version };
+          const out =
+            lane === "prompt"
+              ? await runPromptLane(
+                  { ...payload, hook_event_name: "UserPromptSubmit", prompt: "Bitte kurz weiterarbeiten" } as never,
+                  null,
+                  d.base,
+                  undefined,
+                  () => []
+                )
+              : await runSessionLane(
+                  { ...payload, hook_event_name: "SessionStart", source: "fork" } as never,
+                  d.base,
+                  undefined,
+                  async () => null
+                );
           const state = await loadSessionState(sid);
           if (version === "0.162.1") {
             assert.match(out, /must-load/);
-            assert.deepEqual(state.pendingMustLoad?.map(e => e.id).sort(), [...GATED].sort());
+            assert.deepEqual(state.pendingMustLoad?.map((e) => e.id).sort(), [...GATED].sort());
           } else {
             assert.ok(!out.includes("must-load"));
             assert.equal(state.pendingMustLoad, undefined);
           }
-        } finally { await d.close(); }
+        } finally {
+          await d.close();
+        }
       });
     }
   }
@@ -312,11 +450,18 @@ describe("#1303 the prompt and session lanes book pending ids beside the shown-s
       const sid = "gate-session-fork";
       const out = await runSessionLane(
         { hook_event_name: "SessionStart", session_id: sid, source: "fork", cwd: stateDir },
-        d.base, undefined, async () => null,
+        d.base,
+        undefined,
+        async () => null
       );
-      const text = (JSON.parse(out) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput?.additionalContext ?? "";
+      const text =
+        (JSON.parse(out) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput
+          ?.additionalContext ?? "";
       assert.match(text, /source="fork"/);
-      const marked = text.split("\n").filter((l) => l.endsWith(MUST_LOAD_MARK)).map((l) => l.slice(2).split(" ")[0]);
+      const marked = text
+        .split("\n")
+        .filter((l) => l.endsWith(MUST_LOAD_MARK))
+        .map((l) => l.slice(2).split(" ")[0]);
       assert.deepEqual(marked.sort(), [...GATED].sort());
       assert.deepEqual((await loadSessionState(sid)).pendingMustLoad?.map((e) => e.id).sort(), [...GATED].sort());
     } finally {
@@ -325,7 +470,6 @@ describe("#1303 the prompt and session lanes book pending ids beside the shown-s
   });
 });
 
-
 describe("release 1.1.8 full-load revision wiring", () => {
   for (const lane of ["prompt", "session"] as const) {
     it(`${lane}: a loaded current revision is not rebooked; a changed revision is`, async () => {
@@ -333,14 +477,32 @@ describe("release 1.1.8 full-load revision wiring", () => {
       const daemon = await mockDaemon(hits);
       try {
         const sid = `loaded-revision-${lane}`;
-        for (const hit of hits) await recordRulebookLoad(sid, hit.id, null, { revision: "r1", rulebookMetadata: { rulebook: "on-demand" } });
+        for (const hit of hits)
+          await recordRulebookLoad(sid, hit.id, null, { revision: "r1", rulebookMetadata: { rulebook: "on-demand" } });
         const payload = { session_id: sid, cwd: stateDir, bastra_client: "claude-code" };
-        const out = lane === "prompt"
-          ? await runPromptLane({ ...payload, hook_event_name: "UserPromptSubmit", prompt: "Bitte kurz weiterarbeiten" } as never, null, daemon.base, undefined, () => [])
-          : await runSessionLane({ ...payload, hook_event_name: "SessionStart", source: "resume" } as never, daemon.base, undefined, async () => null);
+        const out =
+          lane === "prompt"
+            ? await runPromptLane(
+                { ...payload, hook_event_name: "UserPromptSubmit", prompt: "Bitte kurz weiterarbeiten" } as never,
+                null,
+                daemon.base,
+                undefined,
+                () => []
+              )
+            : await runSessionLane(
+                { ...payload, hook_event_name: "SessionStart", source: "resume" } as never,
+                daemon.base,
+                undefined,
+                async () => null
+              );
         for (const hit of hits) assert.ok(out.includes(hit.id), `${hit.id} must actually be delivered`);
-        assert.deepEqual((await loadSessionState(sid)).pendingMustLoad?.map(e => e.id), ["work-user"]);
-      } finally { await daemon.close(); }
+        assert.deepEqual(
+          (await loadSessionState(sid)).pendingMustLoad?.map((e) => e.id),
+          ["work-user"]
+        );
+      } finally {
+        await daemon.close();
+      }
     });
   }
 });

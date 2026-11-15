@@ -17,11 +17,13 @@ import { type Memory, parseMemoryWith, NotAMemoryFile } from "./schema.js";
 export class VaultIOError extends Error {
   constructor(
     public readonly filePath: string,
-    public readonly cause: Error,
+    public readonly cause: Error
   ) {
-    super(isCloudPlaceholderError(cause)
-      ? `could not read ${filePath}: only in the cloud (not downloaded). ${CLOUD_OFFLINE_GUIDANCE}`
-      : `could not read ${filePath}: ${cause.message}`);
+    super(
+      isCloudPlaceholderError(cause)
+        ? `could not read ${filePath}: only in the cloud (not downloaded). ${CLOUD_OFFLINE_GUIDANCE}`
+        : `could not read ${filePath}: ${cause.message}`
+    );
     this.name = "VaultIOError";
   }
 }
@@ -100,13 +102,21 @@ export class Vault {
     return changed;
   }
 
-  cloudOnlyPaths(): string[] { return [...this.cloudOnlyFiles]; }
+  cloudOnlyPaths(): string[] {
+    return [...this.cloudOnlyFiles];
+  }
 
   availability(): { not_loaded: number; cloud_only: number; warning: string | null } {
     const count = this.scanBlindSpots().length;
     const cloud = this.cloudOnlyFiles.size;
-    return { not_loaded: count, cloud_only: cloud, warning: count === 0 ? null :
-      `${count} vault files not loaded; ${cloud ? `${cloud} are only in the cloud (not downloaded). ${CLOUD_OFFLINE_GUIDANCE}` : "check unreadable files and folders."}` };
+    return {
+      not_loaded: count,
+      cloud_only: cloud,
+      warning:
+        count === 0
+          ? null
+          : `${count} vault files not loaded; ${cloud ? `${cloud} are only in the cloud (not downloaded). ${CLOUD_OFFLINE_GUIDANCE}` : "check unreadable files and folders."}`,
+    };
   }
 
   constructor(public readonly root: string) {}
@@ -134,9 +144,7 @@ export class Vault {
     const results: (Loaded | Skipped | Failed)[] = new Array(files.length);
     for (let i = 0; i < files.length; i += BATCH) {
       const chunk = files.slice(i, i + BATCH);
-      const settled = await Promise.allSettled(
-        chunk.map((f) => this.read(f)),
-      );
+      const settled = await Promise.allSettled(chunk.map((f) => this.read(f)));
       for (let j = 0; j < settled.length; j++) {
         const s = settled[j];
         const f = chunk[j];
@@ -217,9 +225,7 @@ export class Vault {
         // `startsWith("..")` would wave it past the dot filter below.
         if (rel === "" || /^\.\.([/\\]|$)/.test(rel)) return false;
         const segments = rel.split(/[/\\]/);
-        return segments.some(
-          (s) => (s.startsWith(".") && s.length > 1) || s === "node_modules",
-        );
+        return segments.some((s) => (s.startsWith(".") && s.length > 1) || s === "node_modules");
       },
     });
     this.watcher.on("add", (p) => {
@@ -237,9 +243,7 @@ export class Vault {
     // daemon down: EMFILE is reachable for a launchd-spawned daemon at the
     // macOS default of 256 descriptors.
     this.watcher.on("error", (err) => {
-      console.error(
-        `[vault] watcher error — falling back to periodic reconcile: ${(err as Error).message}`,
-      );
+      console.error(`[vault] watcher error — falling back to periodic reconcile: ${(err as Error).message}`);
     });
   }
 
@@ -273,7 +277,7 @@ export class Vault {
     this.unreadablePaths = scan.unreadable;
     const onDisk = new Set(scan.files);
     for (const file of this.unreadableFiles) {
-      if (!onDisk.has(file) && !scan.unreadable.some(dir => file.startsWith(dir + sep))) this.handleRemove(file);
+      if (!onDisk.has(file) && !scan.unreadable.some((dir) => file.startsWith(dir + sep))) this.handleRemove(file);
     }
     // Drop index entries whose file is gone (missed unlink/move) — aber nur,
     // wenn der Scan überhaupt überall hinsehen konnte. Codex-Gegenreview (P0):
@@ -297,9 +301,7 @@ export class Vault {
     // Read files not yet indexed (handleAddOrChange silently skips non-memory).
     const toAdd = [...onDisk].filter((p) => !this.filePathToId.has(p));
     for (let i = 0; i < toAdd.length; i += BATCH) {
-      await Promise.all(
-        toAdd.slice(i, i + BATCH).map((p) => this.handleAddOrChange(p, "add")),
-      );
+      await Promise.all(toAdd.slice(i, i + BATCH).map((p) => this.handleAddOrChange(p, "add")));
     }
     // Heal in-place edits: stat-compare every indexed file against the values
     // remembered at read time; on drift, re-read. Freshly added files above
@@ -317,7 +319,7 @@ export class Vault {
           } catch {
             /* vanished between walk and stat — the next reconcile drops it */
           }
-        }),
+        })
       );
     }
     return this.memorys.size;
@@ -448,12 +450,7 @@ export class Vault {
     } catch (err) {
       throw new VaultIOError(filePath, err as Error);
     }
-    const m = parseMemoryWith(
-      (input) => matter(input),
-      raw,
-      filePath,
-      st.mtimeMs,
-    );
+    const m = parseMemoryWith((input) => matter(input), raw, filePath, st.mtimeMs);
     m.revision = memoryRevision(raw);
     // only stamped for real memories (parse throws on plain notes) — the
     // drift check in reconcile() runs over indexed files exclusively
@@ -461,10 +458,7 @@ export class Vault {
     return m;
   }
 
-  private async handleAddOrChange(
-    filePath: string,
-    kind: "add" | "change",
-  ): Promise<void> {
+  private async handleAddOrChange(filePath: string, kind: "add" | "change"): Promise<void> {
     try {
       const m = await this.read(filePath);
       // #240/A2.3 add-half: init quarantines a second path with the same id.
@@ -488,8 +482,7 @@ export class Vault {
         if (!this.duplicateSkipLogged.has(filePath)) {
           this.duplicateSkipLogged.add(filePath);
           console.warn(
-            `[vault] ${kind} skipped (${basename(filePath)}): ` +
-              duplicateIdSkipMessage(m.fm.id, claimed.filePath),
+            `[vault] ${kind} skipped (${basename(filePath)}): ` + duplicateIdSkipMessage(m.fm.id, claimed.filePath)
           );
         }
         return;
@@ -532,10 +525,11 @@ export class Vault {
       // last-known-good node and let the watcher or the periodic reconcile
       // retry; a real deletion still arrives as `unlink` → handleRemove.
       if (err instanceof VaultIOError) {
-        if (this.noteReadFailure(filePath, err)) console.error(
-          `[vault] ${kind} could not read ${basename(filePath)} (${err.message}) — ` +
-            `keeping the last indexed version, will retry`,
-        );
+        if (this.noteReadFailure(filePath, err))
+          console.error(
+            `[vault] ${kind} could not read ${basename(filePath)} (${err.message}) — ` +
+              `keeping the last indexed version, will retry`
+          );
         return;
       }
       this.unreadableFiles.delete(filePath);
@@ -556,15 +550,13 @@ export class Vault {
         console.error(
           `[vault] ${basename(filePath)} no longer parses as a memory — ` +
             `dropped '${staleId}' from the index until it is valid again` +
-            (err instanceof NotAMemoryFile ? "" : `: ${(err as Error).message}`),
+            (err instanceof NotAMemoryFile ? "" : `: ${(err as Error).message}`)
         );
         return;
       }
       // Silent on plain notes; loud only on actual schema breakage.
       if (err instanceof NotAMemoryFile) return;
-      console.error(
-        `[vault] ${kind} skipped (${basename(filePath)}): ${(err as Error).message}`,
-      );
+      console.error(`[vault] ${kind} skipped (${basename(filePath)}): ${(err as Error).message}`);
     }
   }
 

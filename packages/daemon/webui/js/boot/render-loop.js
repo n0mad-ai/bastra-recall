@@ -57,7 +57,10 @@ export function createRenderLoop({
   let started = false;
   const noteInput = () => (lastInput = performance.now());
 
-  addEventListener("resize", () => { renderer.resize(); noteInput(); });
+  addEventListener("resize", () => {
+    renderer.resize();
+    noteInput();
+  });
   canvas.addEventListener("pointerdown", () => (userTouched = true));
   canvas.addEventListener("wheel", () => (userTouched = true), { passive: true });
   for (const type of ["pointerdown", "pointermove", "pointerup", "pointercancel", "wheel"]) {
@@ -86,7 +89,7 @@ export function createRenderLoop({
       !getInteractions().isFlying() &&
       !renderer.hasLiveEffects() &&
       // Clouds never calls renderBursts(), which prunes the orbit burst map.
-      !orbitView.listBursts().some(b => now - b.born < BURST_LIFE * 1000) &&
+      !orbitView.listBursts().some((b) => now - b.born < BURST_LIFE * 1000) &&
       now - lastInput > IDLE_AFTER_INPUT_MS
     );
   }

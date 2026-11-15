@@ -64,7 +64,7 @@ async function isInside(root: string, filePath: string): Promise<boolean> {
 export async function memoryLocationNote(
   filePath: string,
   toolInput: Record<string, unknown>,
-  vaultRoot: string | null,
+  vaultRoot: string | null
 ): Promise<string | null> {
   if (!vaultRoot) return null;
   if (path.extname(filePath).toLowerCase() !== ".md") return null;

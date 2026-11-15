@@ -26,14 +26,7 @@ import type { BlockInfo } from "./segments/block";
 import type { TodayInfo } from "./segments/today";
 import type { CacheTimerInfo } from "./segments/cacheTimer";
 
-import {
-  UsageProvider,
-  ContextProvider,
-  GitService,
-  TmuxService,
-  MetricsProvider,
-  SegmentRenderer,
-} from "./segments";
+import { UsageProvider, ContextProvider, GitService, TmuxService, MetricsProvider, SegmentRenderer } from "./segments";
 import { BlockProvider } from "./segments/block";
 import { TodayProvider } from "./segments/today";
 import { CacheTimerProvider } from "./segments/cacheTimer";
@@ -59,7 +52,7 @@ export class PowerlineSegments {
 
   constructor(
     private readonly config: PowerlineConfig,
-    private readonly symbols: PowerlineSymbols,
+    private readonly symbols: PowerlineSymbols
   ) {}
 
   get usageProvider(): UsageProvider {
@@ -133,9 +126,7 @@ export class PowerlineSegments {
   }
 
   needsSegmentInfo(segmentType: keyof LineConfig["segments"]): boolean {
-    return this.config.display.lines.some(
-      (line) => line.segments[segmentType]?.enabled,
-    );
+    return this.config.display.lines.some((line) => line.segments[segmentType]?.enabled);
   }
 
   async renderSegment(
@@ -148,43 +139,26 @@ export class PowerlineSegments {
     metricsInfo: MetricsInfo | null,
     cacheTimerInfo: CacheTimerInfo | null,
     colors: PowerlineColors,
-    currentDir: string,
+    currentDir: string
   ) {
     if (segment.type === "directory") {
-      return this.segmentRenderer.renderDirectory(
-        hookData,
-        colors,
-        segment.config as DirectorySegmentConfig,
-      );
+      return this.segmentRenderer.renderDirectory(hookData, colors, segment.config as DirectorySegmentConfig);
     }
     if (segment.type === "model") {
       return this.segmentRenderer.renderModel(hookData, colors, segment.config);
     }
 
     if (segment.type === "git") {
-      return await this.renderGitSegment(
-        segment.config as GitSegmentConfig,
-        hookData,
-        colors,
-        currentDir,
-      );
+      return await this.renderGitSegment(segment.config as GitSegmentConfig, hookData, colors, currentDir);
     }
 
     if (segment.type === "session") {
-      return this.renderSessionSegment(
-        segment.config as UsageSegmentConfig,
-        usageInfo,
-        colors,
-      );
+      return this.renderSessionSegment(segment.config as UsageSegmentConfig, usageInfo, colors);
     }
 
     if (segment.type === "sessionId") {
       return hookData.session_id
-        ? this.segmentRenderer.renderSessionId(
-            hookData.session_id,
-            colors,
-            segment.config as SessionIdSegmentConfig,
-          )
+        ? this.segmentRenderer.renderSessionId(hookData.session_id, colors, segment.config as SessionIdSegmentConfig)
         : null;
     }
 
@@ -193,93 +167,49 @@ export class PowerlineSegments {
     }
 
     if (segment.type === "context") {
-      return this.renderContextSegment(
-        segment.config as ContextSegmentConfig,
-        contextInfo,
-        colors,
-      );
+      return this.renderContextSegment(segment.config as ContextSegmentConfig, contextInfo, colors);
     }
 
     if (segment.type === "metrics") {
-      return this.renderMetricsSegment(
-        segment.config as MetricsSegmentConfig,
-        metricsInfo,
-        blockInfo,
-        colors,
-      );
+      return this.renderMetricsSegment(segment.config as MetricsSegmentConfig, metricsInfo, blockInfo, colors);
     }
 
     if (segment.type === "block") {
-      return this.renderBlockSegment(
-        segment.config as BlockSegmentConfig,
-        blockInfo,
-        colors,
-      );
+      return this.renderBlockSegment(segment.config as BlockSegmentConfig, blockInfo, colors);
     }
 
     if (segment.type === "today") {
-      return this.renderTodaySegment(
-        segment.config as TodaySegmentConfig,
-        todayInfo,
-        colors,
-      );
+      return this.renderTodaySegment(segment.config as TodaySegmentConfig, todayInfo, colors);
     }
 
     if (segment.type === "version") {
-      return this.renderVersionSegment(
-        segment.config as VersionSegmentConfig,
-        hookData,
-        colors,
-      );
+      return this.renderVersionSegment(segment.config as VersionSegmentConfig, hookData, colors);
     }
 
     if (segment.type === "env") {
-      return this.segmentRenderer.renderEnv(
-        colors,
-        segment.config as EnvSegmentConfig,
-      );
+      return this.segmentRenderer.renderEnv(colors, segment.config as EnvSegmentConfig);
     }
 
     if (segment.type === "weekly") {
-      return this.segmentRenderer.renderWeekly(
-        hookData,
-        colors,
-        segment.config as WeeklySegmentConfig,
-      );
+      return this.segmentRenderer.renderWeekly(hookData, colors, segment.config as WeeklySegmentConfig);
     }
 
     if (segment.type === "agent") {
-      return this.segmentRenderer.renderAgent(
-        hookData,
-        colors,
-        segment.config as AgentSegmentConfig,
-      );
+      return this.segmentRenderer.renderAgent(hookData, colors, segment.config as AgentSegmentConfig);
     }
 
     if (segment.type === "thinking") {
-      return this.segmentRenderer.renderThinking(
-        hookData,
-        colors,
-        segment.config as ThinkingSegmentConfig,
-      );
+      return this.segmentRenderer.renderThinking(hookData, colors, segment.config as ThinkingSegmentConfig);
     }
 
     if (segment.type === "cacheTimer") {
       if (!cacheTimerInfo) return null;
-      return this.segmentRenderer.renderCacheTimer(
-        cacheTimerInfo,
-        colors,
-        segment.config as CacheTimerSegmentConfig,
-      );
+      return this.segmentRenderer.renderCacheTimer(cacheTimerInfo, colors, segment.config as CacheTimerSegmentConfig);
     }
 
     if (segment.type === "bastra") {
       const info = this.bastraProvider.getBastraInfo();
-      return this.segmentRenderer.renderBastra(
-        info,
-        colors,
-        segment.config as BastraSegmentConfig,
-      );
+      return this.segmentRenderer.renderBastra(info, colors, segment.config as BastraSegmentConfig);
     }
 
     return null;
@@ -289,7 +219,7 @@ export class PowerlineSegments {
     config: GitSegmentConfig,
     hookData: ClaudeHookData,
     colors: PowerlineColors,
-    currentDir: string,
+    currentDir: string
   ) {
     if (!this.needsSegmentInfo("git")) return null;
 
@@ -305,19 +235,13 @@ export class PowerlineSegments {
         showUpstream: config?.showUpstream,
         showRepoName: config?.showRepoName,
       },
-      hookData.workspace?.project_dir,
+      hookData.workspace?.project_dir
     );
 
-    return gitInfo
-      ? this.segmentRenderer.renderGit(gitInfo, colors, config)
-      : null;
+    return gitInfo ? this.segmentRenderer.renderGit(gitInfo, colors, config) : null;
   }
 
-  private renderSessionSegment(
-    config: UsageSegmentConfig,
-    usageInfo: UsageInfo | null,
-    colors: PowerlineColors,
-  ) {
+  private renderSessionSegment(config: UsageSegmentConfig, usageInfo: UsageInfo | null, colors: PowerlineColors) {
     if (!usageInfo) return null;
     return this.segmentRenderer.renderSession(usageInfo, colors, config);
   }
@@ -328,11 +252,7 @@ export class PowerlineSegments {
     return this.segmentRenderer.renderTmux(tmuxSessionId, colors);
   }
 
-  private renderContextSegment(
-    config: ContextSegmentConfig,
-    contextInfo: ContextInfo | null,
-    colors: PowerlineColors,
-  ) {
+  private renderContextSegment(config: ContextSegmentConfig, contextInfo: ContextInfo | null, colors: PowerlineColors) {
     if (!this.needsSegmentInfo("context")) return null;
     return this.segmentRenderer.renderContext(contextInfo, colors, config);
   }
@@ -341,34 +261,22 @@ export class PowerlineSegments {
     config: MetricsSegmentConfig,
     metricsInfo: MetricsInfo | null,
     _blockInfo: BlockInfo | null,
-    colors: PowerlineColors,
+    colors: PowerlineColors
   ) {
     return this.segmentRenderer.renderMetrics(metricsInfo, colors, config);
   }
 
-  private renderBlockSegment(
-    config: BlockSegmentConfig,
-    blockInfo: BlockInfo | null,
-    colors: PowerlineColors,
-  ) {
+  private renderBlockSegment(config: BlockSegmentConfig, blockInfo: BlockInfo | null, colors: PowerlineColors) {
     if (!blockInfo) return null;
     return this.segmentRenderer.renderBlock(blockInfo, colors, config);
   }
 
-  private renderTodaySegment(
-    config: TodaySegmentConfig,
-    todayInfo: TodayInfo | null,
-    colors: PowerlineColors,
-  ) {
+  private renderTodaySegment(config: TodaySegmentConfig, todayInfo: TodayInfo | null, colors: PowerlineColors) {
     if (!todayInfo) return null;
     return this.segmentRenderer.renderToday(todayInfo, colors, config);
   }
 
-  private renderVersionSegment(
-    config: VersionSegmentConfig,
-    hookData: ClaudeHookData,
-    colors: PowerlineColors,
-  ) {
+  private renderVersionSegment(config: VersionSegmentConfig, hookData: ClaudeHookData, colors: PowerlineColors) {
     return this.segmentRenderer.renderVersion(hookData, colors, config);
   }
 }

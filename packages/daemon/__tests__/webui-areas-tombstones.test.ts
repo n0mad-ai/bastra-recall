@@ -26,17 +26,17 @@ async function makeVault(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "area-marks-"));
   await mkdir(join(root, "memories", "projects", "carnexus"), { recursive: true });
   await mkdir(join(root, "memories", "people"), { recursive: true });
-  await writeFile(
-    join(root, "memories", "projects", "carnexus", "fact-one.md"),
-    memory("fact-one", "carnexus"),
-  );
+  await writeFile(join(root, "memories", "projects", "carnexus", "fact-one.md"), memory("fact-one", "carnexus"));
   return root;
 }
 
 /** Ein Doku-Regal, dessen Elternordner sich gleich sperren lässt. */
 async function withDocsShelf(root: string): Promise<void> {
   await mkdir(join(root, "dokumentationen", "carnexus"), { recursive: true });
-  await writeFile(join(root, "dokumentationen", "carnexus", "doku-carnexus-area.md"), memory("doku-carnexus-area", "carnexus"));
+  await writeFile(
+    join(root, "dokumentationen", "carnexus", "doku-carnexus-area.md"),
+    memory("doku-carnexus-area", "carnexus")
+  );
 }
 
 /**
@@ -104,14 +104,14 @@ test("renameArea: ein vollständiger Rollback räumt den Grabstein wieder ab", a
     await chmod(docsParent, 0o555);
     const err = await renameArea(v, "project", "carnexus", "neu").then(
       () => null,
-      (e: Error) => e,
+      (e: Error) => e
     );
     assert.ok(err, "der Rename muss scheitern");
     assert.match(err!.message, /nothing was changed/, "der Rollback war vollständig");
     assert.equal(
       await readAreaMark(v, "carnexus"),
       null,
-      "nach vollständigem Rollback ist der alte Name wieder der richtige",
+      "nach vollständigem Rollback ist der alte Name wieder der richtige"
     );
     await assertAreaWritable(v, "carnexus");
     const projects = await readdir(join(v, "memories", "projects"));
@@ -186,10 +186,7 @@ test("deleteArea: ein vollständiger Rollback räumt den Grabstein wieder ab", a
   const docsParent = join(v, "dokumentationen");
   try {
     await chmod(docsParent, 0o555);
-    await assert.rejects(
-      deleteArea(v, "project", "carnexus"),
-      /delete failed, nothing was changed/,
-    );
+    await assert.rejects(deleteArea(v, "project", "carnexus"), /delete failed, nothing was changed/);
     assert.equal(await readAreaMark(v, "carnexus"), null);
     await assertAreaWritable(v, "carnexus");
     const projects = await readdir(join(v, "memories", "projects"));
@@ -264,17 +261,10 @@ test("deleteArea: ein .bastra/trash, das auf die Locks zeigt, ist kein Trash", a
   try {
     await mkdir(join(v, ".bastra", "locks"), { recursive: true });
     await symlink(join(v, ".bastra", "locks"), join(v, ".bastra", "trash"));
-    await assert.rejects(
-      deleteArea(v, "project", "carnexus"),
-      /Private daemon state must not be a symlink/,
-    );
+    await assert.rejects(deleteArea(v, "project", "carnexus"), /Private daemon state must not be a symlink/);
     const projects = await readdir(join(v, "memories", "projects"));
     assert.ok(projects.includes("carnexus"), "die Area steht noch");
-    assert.deepEqual(
-      await readdir(join(v, ".bastra", "locks")),
-      [],
-      "und liegt nicht zwischen den Lock-Dateien",
-    );
+    assert.deepEqual(await readdir(join(v, ".bastra", "locks")), [], "und liegt nicht zwischen den Lock-Dateien");
   } finally {
     await rm(v, { recursive: true, force: true });
   }
@@ -285,10 +275,7 @@ test("deleteArea: ein .bastra/trash/areas, das auf den Trash selbst zeigt, ist k
   try {
     await mkdir(join(v, ".bastra", "trash"), { recursive: true });
     await symlink(join(v, ".bastra", "trash"), join(v, ".bastra", "trash", "areas"));
-    await assert.rejects(
-      deleteArea(v, "project", "carnexus"),
-      /Private daemon state must not be a symlink/,
-    );
+    await assert.rejects(deleteArea(v, "project", "carnexus"), /Private daemon state must not be a symlink/);
     const projects = await readdir(join(v, "memories", "projects"));
     assert.ok(projects.includes("carnexus"));
   } finally {

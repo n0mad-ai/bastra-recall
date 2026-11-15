@@ -21,20 +21,14 @@ import {
 } from "../src/statusline-feed.js";
 
 /** Mirror the forwarder's recall-start mutation: adopt the turn, then count. */
-function recallStart(
-  current: StatuslineState,
-  onDisk: Partial<StatuslineState>,
-): StatuslineState {
+function recallStart(current: StatuslineState, onDisk: Partial<StatuslineState>): StatuslineState {
   const s = adoptTurn(current, onDisk);
   return { ...s, state: "running", recall_count: s.recall_count + 1 };
 }
 
 /** The OLD (buggy) reset trigger, kept here only to prove the regression:
  *  reset whenever the disk shows state "idle". */
-function recallStartOld(
-  current: StatuslineState,
-  onDisk: Partial<StatuslineState>,
-): StatuslineState {
+function recallStartOld(current: StatuslineState, onDisk: Partial<StatuslineState>): StatuslineState {
   let s = current;
   if (onDisk.state === "idle") {
     s = {

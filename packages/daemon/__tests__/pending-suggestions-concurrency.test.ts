@@ -87,7 +87,7 @@ test("#532 — a concurrent consume destroys no suggestion it did not read", asy
     assert.deepEqual(
       attempted.filter((b) => !seen.has(b)),
       [],
-      "every written suggestion must be either consumed or still pending — none may vanish",
+      "every written suggestion must be either consumed or still pending — none may vanish"
     );
   } finally {
     if (prev === undefined) delete process.env.BASTRA_PENDING_SUGGESTIONS_PATH;

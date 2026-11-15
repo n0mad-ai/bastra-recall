@@ -31,11 +31,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  observeDeadlineShadow,
-  recordLateSettleSample,
-  sampleResidency,
-} from "../src/deadline-shadow-row.js";
+import { observeDeadlineShadow, recordLateSettleSample, sampleResidency } from "../src/deadline-shadow-row.js";
 import { createLatencyProfile, type DeadlineShadow } from "../src/latency-profile.js";
 import type { ResidencyReading } from "../src/embedding-warmup.js";
 
@@ -119,23 +115,15 @@ test("#499: eine Zeile ohne Restbudget ist von einer ohne Arm unterscheidbar", a
     assert.equal(
       ohneRestbudget.shadow_would_run,
       true,
-      "der Arm lief — er wurde vor BM25 abgefeuert und war hier in Flug",
+      "der Arm lief — er wurde vor BM25 abgefeuert und war hier in Flug"
     );
-    assert.equal(
-      ohneRestbudget.shadow_would_wait,
-      false,
-      "gewartet hätte die gelernte Politik nicht mehr",
-    );
+    assert.equal(ohneRestbudget.shadow_would_wait, false, "gewartet hätte die gelernte Politik nicht mehr");
     assert.equal(
       ohneRestbudget.shadow_timeout,
       true,
-      "6 ms Wartezeit gegen „nicht weiter warten“ — diese Fusion wäre verloren",
+      "6 ms Wartezeit gegen „nicht weiter warten“ — diese Fusion wäre verloren"
     );
-    assert.equal(
-      ohneRestbudget.actual_settle_ms,
-      279,
-      "die Wirklichkeit trägt die Zeile weiter für Kriterium 4",
-    );
+    assert.equal(ohneRestbudget.actual_settle_ms, 279, "die Wirklichkeit trägt die Zeile weiter für Kriterium 4");
   } finally {
     await s.aufraeumen();
   }
@@ -177,11 +165,7 @@ test("#499: mit Restbudget bleibt der Vergleich der normale", async () => {
 
     assert.notEqual(mitRestbudget.cap_reason, "lane-too-short");
     assert.equal(mitRestbudget.shadow_would_wait, true);
-    assert.equal(
-      mitRestbudget.shadow_timeout,
-      false,
-      "6 ms Wartezeit gegen eine Frist um 300 ms",
-    );
+    assert.equal(mitRestbudget.shadow_timeout, false, "6 ms Wartezeit gegen eine Frist um 300 ms");
   } finally {
     await s.aufraeumen();
   }
@@ -226,7 +210,7 @@ test("#499: ein warm belegter Call landet nie im kalten Eimer", async () => {
     assert.deepEqual(
       Object.keys(eimer),
       ["warm|xs|2-3"],
-      "die Stichprobe gehört unter die Grundwahrheit des Providers",
+      "die Stichprobe gehört unter die Grundwahrheit des Providers"
     );
     assert.equal(eimer["warm|xs|2-3"][0][1], 85);
   } finally {
@@ -280,7 +264,7 @@ test("#499: auch der Late-Settle-Pfad klassifiziert aus dem Providerergebnis", a
     assert.equal(
       eimer["cold|xs|1"][0][1],
       525 + row.overlap_ms,
-      "ein echter Kaltstart bleibt kalt — Gesamtzeit aus Überlapp und Settle",
+      "ein echter Kaltstart bleibt kalt — Gesamtzeit aus Überlapp und Settle"
     );
   } finally {
     await s.aufraeumen();
@@ -292,16 +276,10 @@ test("#499: ohne gemeldete Ladezeit bleibt es bei der Vorab-Lesung", () => {
   // das laden könnte.
   assert.equal(sampleResidency(GESCHAETZT_KALT, null), "cold");
   assert.equal(sampleResidency(GESCHAETZT_KALT, undefined), "cold");
-  assert.equal(
-    sampleResidency({ state: "hosted", source: "hosted", estimated: false }, 400),
-    "hosted",
-  );
+  assert.equal(sampleResidency({ state: "hosted", source: "hosted", estimated: false }, 400), "hosted");
   // Die Schwelle ist dieselbe wie bei `cold_start_observed` (200 ms).
   assert.equal(sampleResidency(GESCHAETZT_KALT, 199), "warm");
-  assert.equal(
-    sampleResidency({ state: "warm", source: "last-ok", estimated: true }, 200),
-    "cold",
-  );
+  assert.equal(sampleResidency({ state: "warm", source: "last-ok", estimated: true }, 200), "cold");
 });
 
 // ── 3. Der vergiftete Alteintrag überlebt den Versionssprung nicht ──
@@ -323,14 +301,14 @@ test("#499: das Profil der ersten Nacht wird beim Laden verworfen", async () => 
           },
         },
       }) + "\n",
-      "utf8",
+      "utf8"
     );
 
     await s.shadow.profile.load();
     assert.equal(
       s.shadow.profile.sampleCount(KEY),
       0,
-      "Version 2 hieß: Stichprobe unter der Schätzung abgelegt — nichts davon zählt weiter",
+      "Version 2 hieß: Stichprobe unter der Schätzung abgelegt — nichts davon zählt weiter"
     );
   } finally {
     await s.aufraeumen();

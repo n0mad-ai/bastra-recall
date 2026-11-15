@@ -48,23 +48,25 @@ export function collectPoolReflexHits(
   candidatePool: ReadonlyArray<{ id: string; score: number }>,
   servedIds: ReadonlySet<string>,
   vault: Pick<Vault, "get">,
-  minScore = 0,
+  minScore = 0
 ): PoolReflexHit[] {
   return candidatePool.flatMap((c) => {
     if (servedIds.has(c.id) || c.score < minScore) return [];
     const mem = vault.get(c.id);
     if (mem?.fm.recall_mode !== "reflex" || mem.fm.sensitivity === "private") return [];
-    return [{
-      id: c.id,
-      title: mem.fm.title,
-      type: mem.fm.type,
-      scope: mem.fm.scope,
-      summary: truncateSummary(mem.fm.summary),
-      score: c.score,
-      matched_recall_when: false as const,
-      recall_mode: "reflex" as const,
-      ...(mem.fm.validator ? { validator: mem.fm.validator } : {}),
-    }];
+    return [
+      {
+        id: c.id,
+        title: mem.fm.title,
+        type: mem.fm.type,
+        scope: mem.fm.scope,
+        summary: truncateSummary(mem.fm.summary),
+        score: c.score,
+        matched_recall_when: false as const,
+        recall_mode: "reflex" as const,
+        ...(mem.fm.validator ? { validator: mem.fm.validator } : {}),
+      },
+    ];
   });
 }
 
@@ -101,7 +103,9 @@ export interface CallerScopeFilterTelemetry {
  * `matched_recall_when` und `anchor_strength`, die die schlanke MCP-Form nicht
  * trägt, und `recall_mode` aus dem Vault.
  */
-export function applyCallerScopeFilter<H extends Pick<RecallHit, "id" | "scope" | "score" | "matched_recall_when" | "anchor_strength">>(
+export function applyCallerScopeFilter<
+  H extends Pick<RecallHit, "id" | "scope" | "score" | "matched_recall_when" | "anchor_strength">,
+>(
   hits: H[],
   opts: {
     /** Das Projekt des Aufrufers, bereits durch das Konfidenz-Gate
@@ -112,7 +116,7 @@ export function applyCallerScopeFilter<H extends Pick<RecallHit, "id" | "scope" 
     unfused: boolean;
     vault: Pick<Vault, "get" | "list">;
     mode?: ScopeFilterMode;
-  },
+  }
 ): { hits: H[]; telemetry: CallerScopeFilterTelemetry } {
   const mode = opts.mode ?? laneScopeFilterMode();
   if (opts.explicitScope) {
@@ -144,7 +148,7 @@ export function applyCallerScopeFilter<H extends Pick<RecallHit, "id" | "scope" 
       exemptReflex: true,
       projectKnown: opts.project ? vaultKnowsProject(opts.vault, opts.project) : undefined,
     },
-    mode,
+    mode
   );
   return {
     hits: result.hits.map((t) => t.hit),

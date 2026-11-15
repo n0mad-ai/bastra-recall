@@ -24,8 +24,7 @@ import { effectiveUpdateMode } from "./settings.js";
 import { isOffValue } from "./env.js";
 import { readBlockedUpdate } from "./update-blocked.js";
 
-export const GITHUB_RELEASES_LATEST_URL =
-  "https://api.github.com/repos/n0mad-ai/bastra-recall/releases/latest";
+export const GITHUB_RELEASES_LATEST_URL = "https://api.github.com/repos/n0mad-ai/bastra-recall/releases/latest";
 export const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 export const FETCH_TIMEOUT_MS = 5000;
 const USER_AGENT = "bastra-recall update-check";
@@ -181,15 +180,14 @@ export async function getLatestVersion(): Promise<LatestRelease | null> {
             resolve_({
               tag: data.tag_name,
               html_url: typeof data.html_url === "string" ? data.html_url : "",
-              published_at:
-                typeof data.published_at === "string" ? data.published_at : "",
+              published_at: typeof data.published_at === "string" ? data.published_at : "",
               body: typeof data.body === "string" ? data.body : "",
             });
           } catch {
             resolve_(null);
           }
         });
-      },
+      }
     );
     req.on("timeout", () => {
       req.destroy();
@@ -303,7 +301,7 @@ export function startBackgroundCheck(
     /** Called after an auto-mode staged update was spawned (#81) — the daemon
      *  uses it to schedule an idle self-restart so the new code goes live. */
     onAutoStaged?: () => void;
-  },
+  }
 ): void {
   const runOnce = async (): Promise<void> => {
     if (isOptedOut()) return;
@@ -322,9 +320,7 @@ export function startBackgroundCheck(
     // clears the record; until then this stays a report, not a retry loop.
     if (mode === "auto" && state?.hasUpdate && !(await stagedToday()) && !(await readBlockedUpdate())) {
       await markStagedToday();
-      console.error(
-        `[bastra-recall] update ${state.latest} available (mode=auto) — staging in background (#81)`,
-      );
+      console.error(`[bastra-recall] update ${state.latest} available (mode=auto) — staging in background (#81)`);
       spawnStagedUpdate();
       opts?.onAutoStaged?.();
     }
@@ -335,9 +331,12 @@ export function startBackgroundCheck(
   // Long-running daemons (LaunchAgent mode never idle-restarts, #78) need a
   // periodic re-check — the boot-time check alone would freeze their world
   // view. The 24h disk cache throttles actual GitHub hits.
-  const recheck = setInterval(() => {
-    void runOnce().catch(() => {});
-  }, 6 * 60 * 60 * 1000);
+  const recheck = setInterval(
+    () => {
+      void runOnce().catch(() => {});
+    },
+    6 * 60 * 60 * 1000
+  );
   recheck.unref();
 }
 
@@ -382,8 +381,15 @@ export async function markStagedToday(): Promise<void> {
     const path = stagedMarkerPath();
     await mkdir(dirname(path), { recursive: true });
     let existing = "";
-    try { existing = await readFile(path, "utf8"); } catch { /* may not exist */ }
-    const lines = existing.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+    try {
+      existing = await readFile(path, "utf8");
+    } catch {
+      /* may not exist */
+    }
+    const lines = existing
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
     if (!lines.includes(todayISO())) lines.push(todayISO());
     await writeFile(path, lines.slice(-30).join("\n") + "\n", "utf8"); // bounded growth
   } catch {

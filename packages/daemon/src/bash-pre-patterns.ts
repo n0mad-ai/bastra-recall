@@ -46,28 +46,28 @@ const gitShimUndo = (what: string): Undo => ({
 });
 export const GIT_SHIM: Readonly<Record<string, Undo>> = {
   "git clean -f": gitShimUndo(
-    "the files git clean would remove (same list as \`git clean -n\`) move to ~/.bastra/archive instead of being unlinked — same end state.",
+    "the files git clean would remove (same list as \`git clean -n\`) move to ~/.bastra/archive instead of being unlinked — same end state."
   ),
   "git reset --hard": gitShimUndo(
-    "uncommitted changes to tracked files are saved first (\`git stash create\`, pinned under refs/bastra-archive/; the stash list is untouched), an untracked file the reset would overwrite moves to ~/.bastra/archive, then the reset runs as typed.",
+    "uncommitted changes to tracked files are saved first (\`git stash create\`, pinned under refs/bastra-archive/; the stash list is untouched), an untracked file the reset would overwrite moves to ~/.bastra/archive, then the reset runs as typed."
   ),
   "git checkout --": gitShimUndo(
-    "uncommitted changes are saved first (pinned under refs/bastra-archive/), then the checkout runs as typed.",
+    "uncommitted changes are saved first (pinned under refs/bastra-archive/), then the checkout runs as typed."
   ),
   "git checkout <tree> --": gitShimUndo(
-    "staged and unstaged changes are saved first (pinned under refs/bastra-archive/), an untracked file the checkout would overwrite moves to ~/.bastra/archive, then the checkout runs as typed.",
+    "staged and unstaged changes are saved first (pinned under refs/bastra-archive/), an untracked file the checkout would overwrite moves to ~/.bastra/archive, then the checkout runs as typed."
   ),
   "git restore": gitShimUndo(
-    "uncommitted changes are saved first (pinned under refs/bastra-archive/), then the restore runs as typed.",
+    "uncommitted changes are saved first (pinned under refs/bastra-archive/), then the restore runs as typed."
   ),
   "git restore --source": gitShimUndo(
-    "staged and unstaged changes are saved first (pinned under refs/bastra-archive/), an untracked file the restore would overwrite moves to ~/.bastra/archive, then the restore runs as typed.",
+    "staged and unstaged changes are saved first (pinned under refs/bastra-archive/), an untracked file the restore would overwrite moves to ~/.bastra/archive, then the restore runs as typed."
   ),
   "git branch -D": gitShimUndo(
-    "the branch's commit is pinned under refs/bastra-archive/ first (gc cannot take it), then the delete runs as typed.",
+    "the branch's commit is pinned under refs/bastra-archive/ first (gc cannot take it), then the delete runs as typed."
   ),
   "git stash drop": gitShimUndo(
-    "the dropped stash's commit is pinned under refs/bastra-archive/ first, then the drop runs as typed.",
+    "the dropped stash's commit is pinned under refs/bastra-archive/ first, then the drop runs as typed."
   ),
 };
 
@@ -116,7 +116,8 @@ const DROP_PLUS_REFSPEC: Undo = {
 const git = (rest: string): RegExp => new RegExp(String.raw`\bgit(?:\s+-[Cc]\s+\S+)*\s+` + rest);
 
 /** The rest of one command has this flag (`restore`'s rows are told apart by three). */
-const flag = (long: string, short: string): string => String.raw`[^\n;&|]*\s(?:--${long}\b|-[a-zA-Z]*${short}(?![a-zA-Z]*-))`;
+const flag = (long: string, short: string): string =>
+  String.raw`[^\n;&|]*\s(?:--${long}\b|-[a-zA-Z]*${short}(?![a-zA-Z]*-))`;
 const SOURCE = flag("source", "s");
 const STAGED = flag("staged", "S");
 const WORKTREE = flag("worktree", "W");
@@ -228,7 +229,9 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
     // `-D` in any cluster and behind other flags (`-q -D`, `-Dr`), or a
     // delete together with a force (`-d -f`, `--delete --force`).
     label: "git branch -D",
-    re: git(String.raw`branch\b(?:(?=[^\n;&|]*\s-[a-zA-Z]*D(?![a-zA-Z]*-))|(?=${flag("delete", "d")})(?=${flag("force", "f")}))`),
+    re: git(
+      String.raw`branch\b(?:(?=[^\n;&|]*\s-[a-zA-Z]*D(?![a-zA-Z]*-))|(?=${flag("delete", "d")})(?=${flag("force", "f")}))`
+    ),
     undo: {
       kind: "reversible-form",
       text:
@@ -243,7 +246,11 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
   // lease that deletes (`--force-with-lease origin :x`) is weighed as this.
   // `--prune(?!=)`: push's `--prune` takes no value; `--prune=now` in the same
   // segment belongs to `git gc` (#658) and is weighed as that row.
-  { label: "git push --delete", re: git(String.raw`push\b[^\n]*\s(?:--delete|-d|--prune(?!=)|--mirror|\+?:\S)`), undo: null },
+  {
+    label: "git push --delete",
+    re: git(String.raw`push\b[^\n]*\s(?:--delete|-d|--prune(?!=)|--mirror|\+?:\S)`),
+    undo: null,
+  },
   // A `+` refspec forces that ref and overrides the lease: `git push
   // --force-with-lease origin +main` overwrites commits never fetched, and
   // their tip is in no local reflog. Listed before the lease row so the
@@ -300,7 +307,10 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
   },
   {
     label: "git config gc.*Expire",
-    re: new RegExp(git(String.raw`config\b[^\n]*\sgc\.(?:reflogexpire(?:unreachable)?|pruneexpire)\s+(?!never\b)\S`).source, "i"),
+    re: new RegExp(
+      git(String.raw`config\b[^\n]*\sgc\.(?:reflogexpire(?:unreachable)?|pruneexpire)\s+(?!never\b)\S`).source,
+      "i"
+    ),
     undo: null,
   },
   { label: "gh repo delete", re: /\bgh\s+repo\s+delete\b/, undo: null },

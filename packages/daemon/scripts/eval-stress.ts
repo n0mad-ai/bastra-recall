@@ -127,7 +127,7 @@ Flags:
 
 Env:
   BASTRA_VAULT_PATH (required)         path to the markdown vault
-`,
+`
   );
 }
 
@@ -152,7 +152,7 @@ function assertOutsideGitTree(target: string): void {
           `The JSON carries every paraphrase query and gold id; only aggregated reports without ` +
           `vault-derived query text belong in a repository (§18.1, C-025).\n` +
           `The same data is already in the run artifact under ~/.bastra/eval-runs/<date>-<hash>/results.json — ` +
-          `pass a path outside the checkout if you need a second copy.`,
+          `pass a path outside the checkout if you need a second copy.`
       );
     }
     const up = dirname(dir);
@@ -173,9 +173,7 @@ function truncate(s: string, n: number): string {
 
 function printParaphrased(s: ParaphrasedSummary): void {
   console.log("\n## Slice 1 — Paraphrased\n");
-  console.log(
-    `Cases: **${s.total}** across ${s.perMemory.size} memories  ·  Pass criterion: Recall@3 ≥ 0.7`,
-  );
+  console.log(`Cases: **${s.total}** across ${s.perMemory.size} memories  ·  Pass criterion: Recall@3 ≥ 0.7`);
   if (s.retiredIds.length) {
     console.log(`\n_Skipped ${s.retiredIds.length} retired gold ids (on the record, not scored as misses):_`);
     for (const id of s.retiredIds) console.log(`  - ${id}`);
@@ -203,17 +201,20 @@ function printParaphrased(s: ParaphrasedSummary): void {
   // run never had, and makes the two arms' oop shares look comparable.
   const observedDepth = s.rows.reduce((m, r) => Math.max(m, r.poolLen), 0);
   console.log(
-    `\n### Region split (observation k=${EVAL_POOL_K}; deepest pool actually observed: ${observedDepth} candidates)\n`,
+    `\n### Region split (observation k=${EVAL_POOL_K}; deepest pool actually observed: ${observedDepth} candidates)\n`
   );
   console.log("| region | cases | share |");
   console.log("|---|---:|---:|");
   for (const region of ["near", "far_in_pool", "oop", "unobserved"] as const) {
     const n = s.regions[region];
     const label =
-      region === "near" ? `rank ≤ ${NEAR_RANK}`
-      : region === "far_in_pool" ? `${NEAR_RANK} < rank ≤ pool`
-      : region === "oop" ? "never surfaced"
-      : "pool hook did not fire — instrumentation gap, not a result";
+      region === "near"
+        ? `rank ≤ ${NEAR_RANK}`
+        : region === "far_in_pool"
+          ? `${NEAR_RANK} < rank ≤ pool`
+          : region === "oop"
+            ? "never surfaced"
+            : "pool hook did not fire — instrumentation gap, not a result";
     console.log(`| ${region} (${label}) | ${n} | ${s.total ? pct(n / s.total) : "—"} |`);
   }
 
@@ -227,7 +228,7 @@ function printParaphrased(s: ParaphrasedSummary): void {
   console.log("|---|---|---|---|---:|");
   for (const r of misses) {
     console.log(
-      `| ${r.rank || "—"} | \`${r.goldId}\` | ${truncate(r.paraphrase, 60)} | \`${r.topId}\` | ${r.topScore.toFixed(1)} |`,
+      `| ${r.rank || "—"} | \`${r.goldId}\` | ${truncate(r.paraphrase, 60)} | \`${r.topId}\` | ${r.topScore.toFixed(1)} |`
     );
   }
 }
@@ -241,7 +242,7 @@ function printCross(s: CrossSummary): void {
     console.log(`_${s.retiredIds.length} retired expected ids on the record:_ ${s.retiredIds.join(", ")}\n`);
   }
   console.log(
-    `Cases: **${s.total}**  ·  Passed: **${s.passed}/${s.total}**  ·  Recall@k: **${pct(s.recallAtK)}**  ·  Verdict: ${s.pass ? "PASS" : "FAIL"}`,
+    `Cases: **${s.total}**  ·  Passed: **${s.passed}/${s.total}**  ·  Recall@k: **${pct(s.recallAtK)}**  ·  Verdict: ${s.pass ? "PASS" : "FAIL"}`
   );
   console.log("\n| pass | query | expected | found | missing | 1-hop missing |");
   console.log("|:---:|---|---:|---:|---|---|");
@@ -251,11 +252,7 @@ function printCross(s: CrossSummary): void {
     console.log(
       `| ${r.pass ? "✓" : "×"} | ${truncate(r.query, 60)} | ${e} | ${f}/${e} | ${
         r.missing.length === 0 ? "—" : r.missing.map((id) => `\`${id}\``).join(" ")
-      } | ${
-        r.oneHopMissing.length === 0
-          ? "—"
-          : r.oneHopMissing.map((id) => `\`${id}\``).join(" ")
-      } |`,
+      } | ${r.oneHopMissing.length === 0 ? "—" : r.oneHopMissing.map((id) => `\`${id}\``).join(" ")} |`
     );
   }
 }
@@ -269,11 +266,9 @@ function antiVerdictText(s: AntiSummary): string {
 function printAnti(s: AntiSummary): void {
   console.log("\n## Slice 3 — Anti-Hallucination\n");
   console.log(
-    `Cases: **${s.total}**  ·  Cutoff: **<${s.cutoff}**  ·  Median top-score: **${s.median.toFixed(1)}**  ·  Verdict: ${antiVerdictText(s)}`,
+    `Cases: **${s.total}**  ·  Cutoff: **<${s.cutoff}**  ·  Median top-score: **${s.median.toFixed(1)}**  ·  Verdict: ${antiVerdictText(s)}`
   );
-  console.log(
-    `\nIndividual cases under cutoff: **${s.underCutoff}/${s.total}** (${pct(s.underCutoff / s.total)}).`,
-  );
+  console.log(`\nIndividual cases under cutoff: **${s.underCutoff}/${s.total}** (${pct(s.underCutoff / s.total)}).`);
   console.log("\n### Top-score histogram\n");
   console.log("| bucket | count |");
   console.log("|---|---:|");
@@ -286,7 +281,7 @@ function printAnti(s: AntiSummary): void {
   console.log("|---|---:|---|:---:|");
   for (const r of s.rows) {
     console.log(
-      `| ${truncate(r.query, 55)} | ${r.topScore.toFixed(1)} | \`${truncate(r.topId, 50)}\` | ${r.underCutoff ? "✓" : "×"} |`,
+      `| ${truncate(r.query, 55)} | ${r.topScore.toFixed(1)} | \`${truncate(r.topId, 50)}\` | ${r.underCutoff ? "✓" : "×"} |`
     );
   }
 }
@@ -328,8 +323,7 @@ interface ReportInput {
 function buildMarkdownReport(r: ReportInput): string {
   const now = new Date().toISOString();
   const home = process.env.HOME ?? "";
-  const displayPath =
-    home && r.vaultPath.startsWith(home) ? "~" + r.vaultPath.slice(home.length) : r.vaultPath;
+  const displayPath = home && r.vaultPath.startsWith(home) ? "~" + r.vaultPath.slice(home.length) : r.vaultPath;
   const lines: string[] = [];
   lines.push(`# Bastra Recall — Stress Eval Report`);
   lines.push("");
@@ -345,7 +339,7 @@ function buildMarkdownReport(r: ReportInput): string {
   if (r.unknownGold.length) {
     lines.push(
       `- **M0 gate failure:** ${r.unknownGold.length} unknown gold id(s) — ` +
-        `${r.unknownGold.join(", ")}. Every number below is computed over a reduced case set.`,
+        `${r.unknownGold.join(", ")}. Every number below is computed over a reduced case set.`
     );
   }
   lines.push("");
@@ -353,7 +347,7 @@ function buildMarkdownReport(r: ReportInput): string {
   lines.push("");
   lines.push(
     "M0 used each memory's own first `recall_when` as the query (trivial). " +
-      "Stress-eval uses paraphrased queries with zero literal-token overlap.",
+      "Stress-eval uses paraphrased queries with zero literal-token overlap."
   );
   lines.push("");
   // #261 / C-029: the M0 column is a foreign figure relative to this run and
@@ -364,10 +358,12 @@ function buildMarkdownReport(r: ReportInput): string {
     `> The M0 column is a **historic own measurement** (${M0_BASELINE.date}, ` +
       `${M0_BASELINE.vaultSize} memories, ${M0_BASELINE.cases} own-trigger cases). ` +
       `This run is ${r.vaultSize} memories with paraphrased queries. Different corpus and ` +
-      `different query construction — read the columns separately, not as one series.`,
+      `different query construction — read the columns separately, not as one series.`
   );
   lines.push("");
-  lines.push(`| metric | M0 (own trigger, ${M0_BASELINE.vaultSize} memories) | Stress (paraphrased, ${r.vaultSize} memories) |`);
+  lines.push(
+    `| metric | M0 (own trigger, ${M0_BASELINE.vaultSize} memories) | Stress (paraphrased, ${r.vaultSize} memories) |`
+  );
   lines.push("|---|---:|---:|");
   lines.push(`| Recall@1 | ${pct(M0_BASELINE.recallAt1)} | ${r.para ? pct(r.para.recallAt1) : "—"} |`);
   lines.push(`| Recall@3 | ${pct(M0_BASELINE.recallAt3)} | ${r.para ? pct(r.para.recallAt3) : "—"} |`);
@@ -378,18 +374,26 @@ function buildMarkdownReport(r: ReportInput): string {
   // ausgewiesen". They existed only on stdout.
   lines.push("## Baselines");
   lines.push("");
-  lines.push(`Seed \`${r.seed}\`. Control = random ranking at the same k. Null = same arm, gold labels permuted. The null is informational only and never gates the verdict.`);
+  lines.push(
+    `Seed \`${r.seed}\`. Control = random ranking at the same k. Null = same arm, gold labels permuted. The null is informational only and never gates the verdict.`
+  );
   lines.push("");
   lines.push("| slice | measured | control arm | label-shuffle null |");
   lines.push("|---|---:|---:|---:|");
   if (r.para) {
-    lines.push(`| paraphrased Recall@3 | ${pct(r.para.recallAt3)} | ${r.controlPara ? pct(r.controlPara.recallAt3) : "—"} | ${r.nullPara ? pct(r.nullPara.recallAt3) : "—"} |`);
+    lines.push(
+      `| paraphrased Recall@3 | ${pct(r.para.recallAt3)} | ${r.controlPara ? pct(r.controlPara.recallAt3) : "—"} | ${r.nullPara ? pct(r.nullPara.recallAt3) : "—"} |`
+    );
   }
   if (r.cross) {
-    lines.push(`| cross Recall@k | ${pct(r.cross.recallAtK)} | ${r.controlCross ? pct(r.controlCross.recallAtK) : "—"} | ${r.nullCross ? pct(r.nullCross.recallAtK) : "—"} |`);
+    lines.push(
+      `| cross Recall@k | ${pct(r.cross.recallAtK)} | ${r.controlCross ? pct(r.controlCross.recallAtK) : "—"} | ${r.nullCross ? pct(r.nullCross.recallAtK) : "—"} |`
+    );
   }
   if (r.anti) {
-    lines.push(`| anti-hallucination | median ${r.anti.median.toFixed(1)} | n/a — the control emits synthetic ranks, not BM25 scores | n/a — no gold labels to permute |`);
+    lines.push(
+      `| anti-hallucination | median ${r.anti.median.toFixed(1)} | n/a — the control emits synthetic ranks, not BM25 scores | n/a — no gold labels to permute |`
+    );
   }
   lines.push("");
   if (r.para) {
@@ -406,9 +410,7 @@ function buildMarkdownReport(r: ReportInput): string {
   if (r.para) {
     lines.push("## Slice 1 — Paraphrased");
     lines.push("");
-    lines.push(
-      `- Cases: ${r.para.total} across ${r.para.perMemory.size} memories`,
-    );
+    lines.push(`- Cases: ${r.para.total} across ${r.para.perMemory.size} memories`);
     lines.push(`- Recall@1: **${pct(r.para.recallAt1)}**`);
     lines.push(`- Recall@3: **${pct(r.para.recallAt3)}**`);
     lines.push(`- MRR: **${r.para.mrr.toFixed(3)}**`);
@@ -422,9 +424,7 @@ function buildMarkdownReport(r: ReportInput): string {
       lines.push("| rank | gold | paraphrase | top hit (won) |");
       lines.push("|---|---|---|---|");
       for (const m of misses) {
-        lines.push(
-          `| ${m.rank || "—"} | \`${m.goldId}\` | ${truncate(m.paraphrase, 60)} | \`${m.topId}\` |`,
-        );
+        lines.push(`| ${m.rank || "—"} | \`${m.goldId}\` | ${truncate(m.paraphrase, 60)} | \`${m.topId}\` |`);
       }
     }
     if (r.para.unknownIds.length) {
@@ -450,7 +450,7 @@ function buildMarkdownReport(r: ReportInput): string {
       lines.push(
         `| ${row.pass ? "✓" : "×"} | ${truncate(row.query, 60)} | ${e} | ${f}/${e} | ${
           row.missing.length === 0 ? "—" : row.missing.map((id) => `\`${id}\``).join(" ")
-        } |`,
+        } |`
       );
     }
     lines.push("");
@@ -463,7 +463,7 @@ function buildMarkdownReport(r: ReportInput): string {
     lines.push(`- Noise cutoff: <${r.anti.cutoff}`);
     lines.push(`- Median top-score: **${r.anti.median.toFixed(1)}**`);
     lines.push(
-      `- Under-cutoff cases: **${r.anti.underCutoff}/${r.anti.total}** (${pct(r.anti.underCutoff / r.anti.total)})`,
+      `- Under-cutoff cases: **${r.anti.underCutoff}/${r.anti.total}** (${pct(r.anti.underCutoff / r.anti.total)})`
     );
     lines.push(`- **Verdict: ${antiVerdictText(r.anti)}**`);
     lines.push("");
@@ -480,9 +480,7 @@ function buildMarkdownReport(r: ReportInput): string {
     lines.push("| query | top score | top hit |");
     lines.push("|---|---:|---|");
     for (const row of r.anti.rows) {
-      lines.push(
-        `| ${truncate(row.query, 60)} | ${row.topScore.toFixed(1)} | \`${truncate(row.topId, 50)}\` |`,
-      );
+      lines.push(`| ${truncate(row.query, 60)} | ${row.topScore.toFixed(1)} | \`${truncate(row.topId, 50)}\` |`);
     }
     lines.push("");
   }
@@ -540,12 +538,8 @@ async function main(): Promise<void> {
   const provider = arm ? arm.provider : "BM25-only";
   console.error(`[stress] provider: ${provider}`);
 
-  const para = args.slices.includes("paraphrased")
-    ? await runParaphrased(vault, recall)
-    : undefined;
-  const cross = args.slices.includes("cross")
-    ? await runCrossMemory(vault, recall)
-    : undefined;
+  const para = args.slices.includes("paraphrased") ? await runParaphrased(vault, recall) : undefined;
+  const cross = args.slices.includes("cross") ? await runCrossMemory(vault, recall) : undefined;
   const anti = args.slices.includes("anti")
     ? await runAntiHallucination(vault, recall, args.cutoff, args.hybrid)
     : undefined;
@@ -563,9 +557,7 @@ async function main(): Promise<void> {
   const controlPara = args.slices.includes("paraphrased")
     ? await runParaphrased(vault, control, undefined, false)
     : undefined;
-  const controlCross = args.slices.includes("cross")
-    ? await runCrossMemory(vault, control)
-    : undefined;
+  const controlCross = args.slices.includes("cross") ? await runCrossMemory(vault, control) : undefined;
   const nullPara = args.slices.includes("paraphrased")
     ? await runParaphrased(vault, recall, shuffleParaphrasedLabels(PARAPHRASED_CASES, args.seed), false)
     : undefined;
@@ -581,7 +573,7 @@ async function main(): Promise<void> {
   // next to the pool it was measured in.
   console.log(
     `Candidate pool per slice (production formula \`max(k*4, 20)\`): ` +
-      `paraphrased k=10 → 40  ·  cross k=max(4, |expected|) → ≥20  ·  anti k=3 → 20`,
+      `paraphrased k=10 → 40  ·  cross k=max(4, |expected|) → ≥20  ·  anti k=3 → 20`
   );
   if (para) printParaphrased(para);
   if (cross) printCross(cross);
@@ -590,18 +582,18 @@ async function main(): Promise<void> {
   console.log("\n## Baselines\n");
   console.log(
     `Seed: \`${args.seed}\`  ·  Control = random ranking, same k  ·  ` +
-      `Null = same arm, gold labels permuted across queries. The null is informational only and never gates the verdict.`,
+      `Null = same arm, gold labels permuted across queries. The null is informational only and never gates the verdict.`
   );
   console.log("\n| slice | measured | control arm | label-shuffle null |");
   console.log("|---|---:|---:|---:|");
   if (para) {
     console.log(
-      `| paraphrased Recall@3 | ${pct(para.recallAt3)} | ${controlPara ? pct(controlPara.recallAt3) : "—"} | ${nullPara ? pct(nullPara.recallAt3) : "—"} |`,
+      `| paraphrased Recall@3 | ${pct(para.recallAt3)} | ${controlPara ? pct(controlPara.recallAt3) : "—"} | ${nullPara ? pct(nullPara.recallAt3) : "—"} |`
     );
   }
   if (cross) {
     console.log(
-      `| cross Recall@k | ${pct(cross.recallAtK)} | ${controlCross ? pct(controlCross.recallAtK) : "—"} | ${nullCross ? pct(nullCross.recallAtK) : "—"} |`,
+      `| cross Recall@k | ${pct(cross.recallAtK)} | ${controlCross ? pct(controlCross.recallAtK) : "—"} | ${nullCross ? pct(nullCross.recallAtK) : "—"} |`
     );
   }
   if (anti) {

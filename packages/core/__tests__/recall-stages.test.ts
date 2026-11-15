@@ -80,7 +80,7 @@ test("recall: emits stages in expected order", async () => {
         "staleness.rank:stop",
         "done:stop",
       ],
-      `unexpected stage sequence: ${names.join(", ")}`,
+      `unexpected stage sequence: ${names.join(", ")}`
     );
 
     // done-Event trägt hit_count + vault_size
@@ -124,9 +124,7 @@ test("recall: hops.expand stage fires only when expand_hops=1", async () => {
 });
 
 test("recall: backwards-compat — no onStage means no stage overhead and same hits", async () => {
-  const { vault, dir } = await makeVault([
-    { id: "bc-1", title: "india juliet" },
-  ]);
+  const { vault, dir } = await makeVault([{ id: "bc-1", title: "india juliet" }]);
   try {
     const idx = new SearchIndex(vault);
     idx.start();
@@ -138,7 +136,7 @@ test("recall: backwards-compat — no onStage means no stage overhead and same h
     assert.deepEqual(
       aStaged.map((h) => h.id),
       aBare.map((h) => h.id),
-      "hits identical with and without onStage",
+      "hits identical with and without onStage"
     );
     assert.ok(withStages.length > 0, "onStage was actually called");
 

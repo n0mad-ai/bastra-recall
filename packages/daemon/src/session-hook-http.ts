@@ -82,7 +82,7 @@ export interface SessionContextResponse {
 export function postSessionContext(
   baseUrl: string,
   body: Record<string, unknown>,
-  timeoutMs: number,
+  timeoutMs: number
 ): Promise<SessionContextResponse> {
   return new Promise((resolve, reject) => {
     let url: URL;
@@ -120,7 +120,7 @@ export function postSessionContext(
             reject(new Error("invalid JSON response from daemon"));
           }
         });
-      },
+      }
     );
     req.on("timeout", () => {
       req.destroy(new Error("timeout"));
@@ -131,11 +131,7 @@ export function postSessionContext(
   });
 }
 
-export function postRecall(
-  baseUrl: string,
-  body: RecallRequestBody,
-  timeoutMs: number,
-): Promise<RecallResponse> {
+export function postRecall(baseUrl: string, body: RecallRequestBody, timeoutMs: number): Promise<RecallResponse> {
   return new Promise((resolve, reject) => {
     let url: URL;
     try {
@@ -173,7 +169,7 @@ export function postRecall(
             reject(new Error("invalid JSON response from daemon"));
           }
         });
-      },
+      }
     );
     req.on("timeout", () => {
       req.destroy(new Error("timeout"));
@@ -217,7 +213,7 @@ export function fetchOpenCounts(baseUrl: string, timeoutMs: number, path = "/hoo
             resolve_({ open: 0, queued: 0 });
           }
         });
-      },
+      }
     );
     req.on("timeout", () => req.destroy(new Error("timeout")));
     req.on("error", () => resolve_({ open: 0, queued: 0 }));
@@ -249,7 +245,7 @@ export function fetchOnboardingNeeded(baseUrl: string, timeoutMs: number): Promi
             resolve_(false);
           }
         });
-      },
+      }
     );
     req.on("timeout", () => {
       req.destroy();
@@ -287,10 +283,12 @@ export function fetchTaxonomy(baseUrl: string, timeoutMs: number): Promise<Conve
               resolve_(data.conventions);
               return;
             }
-          } catch { /* fallthrough */ }
+          } catch {
+            /* fallthrough */
+          }
           resolve_([]);
         });
-      },
+      }
     );
     req.on("timeout", () => {
       req.destroy();
@@ -339,10 +337,12 @@ export function fetchFloors(baseUrl: string, project: string | null, timeoutMs: 
               resolve_(data.floors);
               return;
             }
-          } catch { /* fallthrough */ }
+          } catch {
+            /* fallthrough */
+          }
           resolve_([]);
         });
-      },
+      }
     );
     req.on("timeout", () => {
       req.destroy();
@@ -380,12 +380,17 @@ export function probeHealth(baseUrl: string, timeoutMs: number): Promise<HealthR
               resolve_(data);
               return;
             }
-          } catch { /* fallthrough */ }
+          } catch {
+            /* fallthrough */
+          }
           resolve_(null);
         });
-      },
+      }
     );
-    req.on("timeout", () => { req.destroy(); resolve_(null); });
+    req.on("timeout", () => {
+      req.destroy();
+      resolve_(null);
+    });
     req.on("error", () => resolve_(null));
     req.end();
   });

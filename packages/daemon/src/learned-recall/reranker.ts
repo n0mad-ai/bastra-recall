@@ -57,7 +57,7 @@ export const DEFAULT_NUM_CTX = 4096;
 
 /** A live Ollama chat client (POST /api/chat, non-streaming). */
 export function ollamaChat(
-  opts: { baseURL?: string; model?: string; timeoutMs?: number; numCtx?: number; redirect?: "follow" | "error" } = {},
+  opts: { baseURL?: string; model?: string; timeoutMs?: number; numCtx?: number; redirect?: "follow" | "error" } = {}
 ): ChatFn {
   const baseURL = (opts.baseURL ?? process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434").replace(/\/+$/, "");
   assertLocalOrOptIn(baseURL);

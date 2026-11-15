@@ -89,10 +89,7 @@ test("ein vollständiger Cue landet in der Projektion", () => {
 
 test("mehrere Cues desselben Memorys sammeln sich", () => {
   const m = memory("m1");
-  const p = projectCues(
-    [record(m), record(m, { cue: "Haftpflicht" })],
-    targets(m),
-  );
+  const p = projectCues([record(m), record(m, { cue: "Haftpflicht" })], targets(m));
   assert.equal(p.accepted, 2);
   assert.deepEqual(p.byMemory.get("m1"), ["Versicherungsunterlagen", "Haftpflicht"]);
 });
@@ -147,12 +144,7 @@ test("eine unbekannte Cue-Familie wird abgewiesen", () => {
 
 test("alle vier Vertragsfamilien sind zulässig — der Typ schließt keine aus", () => {
   const m = memory("m1");
-  for (const family of [
-    "descriptive_entity",
-    "associative_bridge",
-    "descriptive_scene",
-    "associative_horizon",
-  ]) {
+  for (const family of ["descriptive_entity", "associative_bridge", "descriptive_scene", "associative_horizon"]) {
     const p = projectCues([record(m, { family })], targets(m));
     assert.equal(p.accepted, 1, `${family} steht in der Tabelle in §11.4`);
   }

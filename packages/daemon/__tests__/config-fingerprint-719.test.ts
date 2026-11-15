@@ -34,7 +34,11 @@ test("same config, same fingerprint — key order, empty values and non-behaviou
   const fp = configFingerprint(SERVICE_ENV);
   assert.match(fp, /^[0-9a-f]{12}$/);
   assert.equal(configFingerprint(Object.fromEntries(Object.entries(SERVICE_ENV).reverse())), fp, "key order");
-  assert.equal(configFingerprint({ ...SERVICE_ENV, BASTRA_QUERY_ROUTER: "", BASTRA_BANTER: undefined }), fp, "unset and empty are the same");
+  assert.equal(
+    configFingerprint({ ...SERVICE_ENV, BASTRA_QUERY_ROUTER: "", BASTRA_BANTER: undefined }),
+    fp,
+    "unset and empty are the same"
+  );
   assert.equal(configFingerprint({ ...SERVICE_ENV, BASTRA_TRIGGER_EXPAND: " 0 " }), fp, "surrounding whitespace");
   assert.equal(
     configFingerprint({
@@ -63,17 +67,25 @@ test("same config, same fingerprint — key order, empty values and non-behaviou
       BASTRA_EMBEDDING_KEY: "sk-secret",
     }),
     fp,
-    "paths, secrets, start markers and client-only keys are not part of it",
+    "paths, secrets, start markers and client-only keys are not part of it"
   );
 });
 
 test("a changed behaviour setting changes the fingerprint", () => {
   const fp = configFingerprint(SERVICE_ENV);
   assert.notEqual(configFingerprint({ ...SERVICE_ENV, BASTRA_TRIGGER_EXPAND: "1" }), fp, "a changed value");
-  assert.notEqual(configFingerprint({ ...SERVICE_ENV, BASTRA_QUERY_ROUTER: "shadow" }), fp, "an added setting, pinnable or not");
+  assert.notEqual(
+    configFingerprint({ ...SERVICE_ENV, BASTRA_QUERY_ROUTER: "shadow" }),
+    fp,
+    "an added setting, pinnable or not"
+  );
   const { BASTRA_RM_ARCHIVES: _dropped, ...without } = SERVICE_ENV;
   assert.notEqual(configFingerprint(without), fp, "a missing setting");
-  assert.notEqual(configFingerprint({ ...SERVICE_ENV, NEXUS_DOCUMENT_WRITE: "1" }), fp, "the legacy prefix is read by the daemon too");
+  assert.notEqual(
+    configFingerprint({ ...SERVICE_ENV, NEXUS_DOCUMENT_WRITE: "1" }),
+    fp,
+    "the legacy prefix is read by the daemon too"
+  );
   assert.notEqual(configFingerprint({}), fp);
 });
 
@@ -84,7 +96,13 @@ test("a URL value counts without its credentials", () => {
 });
 
 test("the #684 case: a spawn from the client's env differs from the service; with the pins it does not", () => {
-  const client = { PATH: "/usr/bin", BASTRA_DAEMON_URL: "http://127.0.0.1:6723", BASTRA_HOOK_TIMEOUT_MS: "5000", BASTRA_TOOL_SURFACE: "search", BASTRA_VAULT_PATH: "/v" };
+  const client = {
+    PATH: "/usr/bin",
+    BASTRA_DAEMON_URL: "http://127.0.0.1:6723",
+    BASTRA_HOOK_TIMEOUT_MS: "5000",
+    BASTRA_TOOL_SURFACE: "search",
+    BASTRA_VAULT_PATH: "/v",
+  };
   const service = configFingerprint({ ...SERVICE_ENV, BASTRA_VAULT_PATH: "/v", INVOCATION_ID: "abc" });
   assert.notEqual(configFingerprint(daemonSpawnEnv(client, undefined).env), service);
   assert.equal(configFingerprint(daemonSpawnEnv(client, SERVICE_ENV).env), service);
@@ -100,7 +118,10 @@ test("/health carries config_fingerprint when wired, and not otherwise", () => {
   const fp = configFingerprint(SERVICE_ENV);
   const p = buildHealthPayload({ ...deps, origin: { startedBy: "systemd", envOrigin: "own", configFingerprint: fp } });
   assert.equal(p.config_fingerprint, fp);
-  assert.equal("config_fingerprint" in buildHealthPayload({ ...deps, origin: { startedBy: "direct", envOrigin: "own" } }), false);
+  assert.equal(
+    "config_fingerprint" in buildHealthPayload({ ...deps, origin: { startedBy: "direct", envOrigin: "own" } }),
+    false
+  );
   assert.equal("config_fingerprint" in buildHealthPayload(deps), false);
 });
 
@@ -133,8 +154,15 @@ test("configured state: LaunchAgent env with the daemon.env pins on top; nothing
   assert.equal(agent?.fingerprint, configFingerprint({}));
   assert.deepEqual(agent?.sources, ["the bastra LaunchAgent env"]);
 
-  const both = configuredState({ BASTRA_TRIGGER_EXPAND: "0" }, { ...agentEnv, BASTRA_TRIGGER_EXPAND: "1", BASTRA_BANTER: "0" });
-  assert.equal(both?.fingerprint, configFingerprint({ BASTRA_TRIGGER_EXPAND: "0", BASTRA_BANTER: "0" }), "a pin wins over the plist's value");
+  const both = configuredState(
+    { BASTRA_TRIGGER_EXPAND: "0" },
+    { ...agentEnv, BASTRA_TRIGGER_EXPAND: "1", BASTRA_BANTER: "0" }
+  );
+  assert.equal(
+    both?.fingerprint,
+    configFingerprint({ BASTRA_TRIGGER_EXPAND: "0", BASTRA_BANTER: "0" }),
+    "a pin wins over the plist's value"
+  );
   assert.equal(both?.sources.length, 2);
 });
 
@@ -144,8 +172,14 @@ test("the plist's env is read back for the comparison", { skip: process.platform
   const plist = join(dir, "agent.plist");
   await writeFile(
     plist,
-    renderPlist({ ...autostartEnv("/Users/a/vault", "/opt/homebrew/bin/node", null, "darwin", {}, {}), BASTRA_TRIGGER_EXPAND: "0" }, ["/opt/homebrew/bin/node", plist]),
-    "utf8",
+    renderPlist(
+      {
+        ...autostartEnv("/Users/a/vault", "/opt/homebrew/bin/node", null, "darwin", {}, {}),
+        BASTRA_TRIGGER_EXPAND: "0",
+      },
+      ["/opt/homebrew/bin/node", plist]
+    ),
+    "utf8"
   );
   const state = await readState(plist);
   assert.equal(state.managed, true);
@@ -155,16 +189,28 @@ test("the plist's env is read back for the comparison", { skip: process.platform
 });
 
 test("doctor flags a daemon whose fingerprint differs and stays quiet on a match", () => {
-  const base = { ok: true, endpoint: {} as DaemonProbe["endpoint"], detail: "", startedBy: "forwarder", envOrigin: "client" } as DaemonProbe;
+  const base = {
+    ok: true,
+    endpoint: {} as DaemonProbe["endpoint"],
+    detail: "",
+    startedBy: "forwarder",
+    envOrigin: "client",
+  } as DaemonProbe;
   const configured = configuredState(SERVICE_ENV, null);
   assert.ok(configured);
 
   const differs = daemonOriginLines({ ...base, configFingerprint: configFingerprint({}) }, configured).join("\n");
-  assert.match(differs, new RegExp(`⚠ config fingerprint: running ${configFingerprint({})}, configured ${configured.fingerprint}`));
+  assert.match(
+    differs,
+    new RegExp(`⚠ config fingerprint: running ${configFingerprint({})}, configured ${configured.fingerprint}`)
+  );
   assert.match(differs, /differ from daemon\.env in ~\/\.bastra\/cli-settings\.json/);
   assert.match(differs, /then restart the daemon/);
 
-  const same = daemonOriginLines({ ...base, envOrigin: "client+settings", configFingerprint: configured.fingerprint }, configured).join("\n");
+  const same = daemonOriginLines(
+    { ...base, envOrigin: "client+settings", configFingerprint: configured.fingerprint },
+    configured
+  ).join("\n");
   assert.match(same, new RegExp(`· config fingerprint: ${configured.fingerprint} — matches daemon\\.env`));
   assert.doesNotMatch(same, /⚠|differ/);
 

@@ -42,7 +42,7 @@ async function main(): Promise<void> {
   const toDir = path.join(VAULT!, "memories", "projects", TO_SCOPE);
   console.error(
     `[bastra-recall.migrate-scope] ${fromDir}\n` +
-      `                          → ${toDir}${DRY_RUN ? "   (dry-run)" : ""}`,
+      `                          → ${toDir}${DRY_RUN ? "   (dry-run)" : ""}`
   );
 
   let entries: string[];
@@ -60,7 +60,7 @@ async function main(): Promise<void> {
   const otherFiles = entries.filter((f) => !f.endsWith(".md"));
   console.error(
     `[bastra-recall.migrate-scope] found ${mdFiles.length} .md file(s)` +
-      (otherFiles.length > 0 ? ` + ${otherFiles.length} non-md (untouched)` : ""),
+      (otherFiles.length > 0 ? ` + ${otherFiles.length} non-md (untouched)` : "")
   );
 
   if (!DRY_RUN) {
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
     if (currentScope !== FROM_SCOPE) {
       scopeMismatch++;
       console.error(
-        `  WARN (scope=${JSON.stringify(currentScope)}, expected ${FROM_SCOPE}): ${file} — migrating anyway`,
+        `  WARN (scope=${JSON.stringify(currentScope)}, expected ${FROM_SCOPE}): ${file} — migrating anyway`
       );
     }
 
@@ -101,10 +101,7 @@ async function main(): Promise<void> {
     }
 
     fm.scope = TO_SCOPE;
-    const next = matter.stringify(
-      parsed.content.startsWith("\n") ? parsed.content : `\n${parsed.content}`,
-      fm,
-    );
+    const next = matter.stringify(parsed.content.startsWith("\n") ? parsed.content : `\n${parsed.content}`, fm);
 
     if (DRY_RUN) {
       console.error(`  WOULD migrate: ${file}  (scope ${currentScope} → ${TO_SCOPE})`);
@@ -121,7 +118,7 @@ async function main(): Promise<void> {
 
   console.error(
     `[bastra-recall.migrate-scope] migrated: ${migrated}, already-migrated: ${alreadyMigrated}, ` +
-      `scope-mismatch: ${scopeMismatch}, dest-collisions: ${dstCollisions}`,
+      `scope-mismatch: ${scopeMismatch}, dest-collisions: ${dstCollisions}`
   );
 
   if (!DRY_RUN) {
@@ -132,7 +129,7 @@ async function main(): Promise<void> {
         console.error(`[bastra-recall.migrate-scope] removed empty source dir: ${fromDir}`);
       } else {
         console.error(
-          `[bastra-recall.migrate-scope] source dir not empty (${remaining.length} item(s) left): ${remaining.join(", ")} — kept.`,
+          `[bastra-recall.migrate-scope] source dir not empty (${remaining.length} item(s) left): ${remaining.join(", ")} — kept.`
         );
       }
     } catch (err: unknown) {

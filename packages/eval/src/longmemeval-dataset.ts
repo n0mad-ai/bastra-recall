@@ -79,7 +79,10 @@ export const ABSTENTION_TYPES: ReadonlySet<string> = new Set([
 
 /** Session ids are arbitrary strings; memory ids have to be path-safe slugs. */
 export const slug = (id: string): string =>
-  id.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  id
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 
 /**
  * How a session's turns become one document's text.
@@ -129,7 +132,10 @@ export function isoDate(raw: string): string | null {
  */
 export function sessionText(turns: LongMemEvalTurn[], mode: TurnMode): string {
   if (mode === "user") {
-    return turns.filter((t) => t.role === "user").map((t) => t.content).join("\n");
+    return turns
+      .filter((t) => t.role === "user")
+      .map((t) => t.content)
+      .join("\n");
   }
   return turns.map((t) => `${t.role}: ${t.content}`).join("\n");
 }
@@ -144,7 +150,10 @@ export function sessionText(turns: LongMemEvalTurn[], mode: TurnMode): string {
  * happen somewhere and it happens here, counted, rather than as a silent last
  * write in the caller.
  */
-export function haystackMemories(q: LongMemEvalQuestion, mode: TurnMode): {
+export function haystackMemories(
+  q: LongMemEvalQuestion,
+  mode: TurnMode
+): {
   memories: SessionMemory[];
   duplicates: number;
 } {
@@ -160,9 +169,7 @@ export function haystackMemories(q: LongMemEvalQuestion, mode: TurnMode): {
       // slug would silently merge a gold session into a distractor, so that one
       // stops the run instead.
       if (prior !== sessionId) {
-        throw new Error(
-          `${q.question_id}: session ids \`${prior}\` and \`${sessionId}\` both slug to \`${id}\``,
-        );
+        throw new Error(`${q.question_id}: session ids \`${prior}\` and \`${sessionId}\` both slug to \`${id}\``);
       }
       duplicates++;
       continue;
@@ -259,8 +266,7 @@ export function loadLongMemEval(path: string): {
   if (issues.length) {
     for (const i of issues.slice(0, 10)) console.error(`[longmemeval] ${i.where}: ${i.problem}`);
     throw new Error(
-      `${issues.length} question(s) in ${path} cannot be scored`
-        + ` (first: ${issues[0].where}: ${issues[0].problem})`,
+      `${issues.length} question(s) in ${path} cannot be scored` + ` (first: ${issues[0].where}: ${issues[0].problem})`
     );
   }
   return { questions, dropped: all.length - questions.length };
@@ -276,21 +282,20 @@ export function loadLongMemEval(path: string): {
  * two must not be able to share one identity. Sorted by question id, so file
  * order cannot move it.
  */
-export function longMemEvalDatasetHash(
-  questions: LongMemEvalQuestion[],
-  turns: TurnMode,
-): string {
+export function longMemEvalDatasetHash(questions: LongMemEvalQuestion[], turns: TurnMode): string {
   const canonical = [...questions]
     .sort((a, b) => a.question_id.localeCompare(b.question_id))
     // JSON, not a joined string: a question may carry the separator itself.
-    .map((q) => JSON.stringify([
-      q.question_id,
-      q.question_type,
-      q.question,
-      [...q.answer_session_ids].sort().join(","),
-      [...q.haystack_session_ids].sort().join(","),
-      String(q.haystack_sessions.reduce((n, s) => n + s.length, 0)),
-    ]))
+    .map((q) =>
+      JSON.stringify([
+        q.question_id,
+        q.question_type,
+        q.question,
+        [...q.answer_session_ids].sort().join(","),
+        [...q.haystack_session_ids].sort().join(","),
+        String(q.haystack_sessions.reduce((n, s) => n + s.length, 0)),
+      ])
+    )
     .join("\n");
   return sha256(`v${LONGMEMEVAL_SCHEMA_VERSION}\nturns:${turns}\nn:${questions.length}\n${canonical}`);
 }

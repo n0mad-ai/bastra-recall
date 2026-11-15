@@ -73,7 +73,7 @@ test("repeating a term cannot inflate the similarity — the property raw BM25 l
   assert.equal(
     fieldSimilarity(CORS_FIX, once),
     fieldSimilarity(CORS_FIX, twenty),
-    "20× the same term must score exactly like 1×",
+    "20× the same term must score exactly like 1×"
   );
 });
 
@@ -121,7 +121,7 @@ test("a shared word counts by its WEAKER role — trigger on one side, prose on 
   const asProse = mem({ summary: "telemetrie auswerten" });
   assert.ok(
     fieldSimilarity(asTrigger, asProse) < fieldSimilarity(asTrigger, alsoTrigger),
-    "trigger↔prose overlap must be weaker than trigger↔trigger overlap",
+    "trigger↔prose overlap must be weaker than trigger↔trigger overlap"
   );
 });
 
@@ -149,10 +149,7 @@ test("#238: a verbatim copy of the summary is flagged", () => {
 });
 
 test("#238: a near-verbatim copy (leading clause) is flagged", () => {
-  assert.equal(
-    triggerRestatesSummary("Der Daemon lehnte OPTIONS-Preflights vom Browser ab", SUMMARY),
-    true,
-  );
+  assert.equal(triggerRestatesSummary("Der Daemon lehnte OPTIONS-Preflights vom Browser ab", SUMMARY), true);
 });
 
 test("#238: a real trigger — a situation, not a paraphrase — is NOT flagged", () => {
@@ -168,7 +165,7 @@ test("#238: a short trigger never fires — three shared words is a coincidence"
   assert.equal(
     triggerRestatesSummary("Origin-Header fehlt", SUMMARY),
     false,
-    "below the content-token floor the ratio is noise",
+    "below the content-token floor the ratio is noise"
   );
 });
 

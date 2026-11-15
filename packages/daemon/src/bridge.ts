@@ -55,7 +55,12 @@ import {
 } from "@bastra-recall/core";
 import { envFirst, envInt, envFloat, envBool } from "./env.js";
 import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
-import { embeddingStatusLine, cloudConsentNotice, type EmbeddingStatus, type EmbeddingSource } from "./embedding-status.js";
+import {
+  embeddingStatusLine,
+  cloudConsentNotice,
+  type EmbeddingStatus,
+  type EmbeddingSource,
+} from "./embedding-status.js";
 import { cloudEmbeddingProvider } from "./embedding-cloud.js";
 import {
   getDocsMode,
@@ -105,7 +110,7 @@ async function attachEmbeddings(search: SearchIndex, vault: Vault): Promise<void
   await idx.start();
   search.useEmbeddings(idx);
   process.stderr.write(
-    `[bastra-recall.bridge] embeddings ready (${idx.size()} vectors, ${idx.pendingSize()} pending)\n`,
+    `[bastra-recall.bridge] embeddings ready (${idx.size()} vectors, ${idx.pendingSize()} pending)\n`
   );
   // Auto-Related-Enricher: pflegt frontmatter.related_via nach jedem Embed-
   // Batch. Im Bridge-Pfad (Mac-App) gleicher Default-Status wie im MCP-Pfad.
@@ -122,7 +127,7 @@ async function attachEmbeddings(search: SearchIndex, vault: Vault): Promise<void
     });
     enricher.start();
     process.stderr.write(
-      `[bastra-recall.bridge] auto-related: enabled (top ${envInt("BASTRA_RELATED_TOP_N", 5)} ≥ ${envFloat("BASTRA_RELATED_THRESHOLD", 0.7)}, defers to daemon)\n`,
+      `[bastra-recall.bridge] auto-related: enabled (top ${envInt("BASTRA_RELATED_TOP_N", 5)} ≥ ${envFloat("BASTRA_RELATED_THRESHOLD", 0.7)}, defers to daemon)\n`
     );
   }
   // doc2query Trigger-Expander (#117) läuft bewusst NUR im Daemon (index.ts),
@@ -178,7 +183,7 @@ async function resolveEmbedding(): Promise<{ provider: EmbeddingProvider | null;
   const choice = await resolveEmbeddingChoice({
     onInvalidEnv: (raw) =>
       process.stderr.write(
-        `[bastra-recall.bridge] ignoring invalid BASTRA_EMBEDDING_PROVIDER ${JSON.stringify(raw)} — falling through to cli-settings\n`,
+        `[bastra-recall.bridge] ignoring invalid BASTRA_EMBEDDING_PROVIDER ${JSON.stringify(raw)} — falling through to cli-settings\n`
       ),
   });
   if (choice.provider === "ollama") return ollamaE(choice.source);
@@ -218,7 +223,10 @@ interface Request {
 let passiveTaskContext: TaskServiceContext | undefined;
 function send(payload: object): void {
   const write = (value: object) => process.stdout.write(JSON.stringify(value) + "\n");
-  if (!passiveTaskContext || !("result" in payload)) { write(payload); return; }
+  if (!passiveTaskContext || !("result" in payload)) {
+    write(payload);
+    return;
+  }
   void (async () => {
     const attachment = await taskAttachment(passiveTaskContext!, await taskClientAuthorization(), "bridge", "http");
     write(attachment ? { ...payload, proactive_due: attachment.due } : payload);
@@ -232,7 +240,7 @@ async function main(): Promise<void> {
   process.stderr.write(
     `[bastra-recall.bridge] vault loaded: ${loaded} memorys` +
       (skipped.length ? `, ${skipped.length} skipped` : "") +
-      "\n",
+      "\n"
   );
   vault.startWatching();
   // #368: the bridge is long-lived (spawned once by the Mac app's Tauri
@@ -244,9 +252,12 @@ async function main(): Promise<void> {
   // so it never keeps this process alive; cleared below on stdin close.
   const reconcileTimer = startVaultReconcile(vault);
   // Dedicated mapping is required even on this trusted legacy transport.
-  passiveTaskContext = await processOwnsVault(vault.root) ? defaultTaskContext({ vault, vaultPath: VAULT_PATH! }) : undefined;
+  passiveTaskContext = (await processOwnsVault(vault.root))
+    ? defaultTaskContext({ vault, vaultPath: VAULT_PATH! })
+    : undefined;
   if (passiveTaskContext) await ensureLocalTaskAgent().catch(() => undefined);
-  const proactiveJob = passiveTaskContext && (await taskClientAuthorization()) ? startProactiveTaskJob(passiveTaskContext) : undefined;
+  const proactiveJob =
+    passiveTaskContext && (await taskClientAuthorization()) ? startProactiveTaskJob(passiveTaskContext) : undefined;
   const search = new SearchIndex(vault);
   search.start();
   const auditLog = new AuditLog(VAULT_PATH!);
@@ -305,8 +316,18 @@ async function main(): Promise<void> {
     try {
       let result: unknown;
       if (isTaskTool(method)) {
-        if (!tasksEnabled()) throw Object.assign(new Error("Tasks disabled; enable in Settings or with BASTRA_TASKS=1"), { code: "feature_disabled" });
-        const result = isTaskExecution(method) ? await forwardTaskExecution(method, params ?? {}, await taskClientAuthorization()) : await callTaskCrud(defaultTaskContext({ vault, vaultPath: VAULT_PATH! }), await taskClientAuthorization(), method, params ?? {});
+        if (!tasksEnabled())
+          throw Object.assign(new Error("Tasks disabled; enable in Settings or with BASTRA_TASKS=1"), {
+            code: "feature_disabled",
+          });
+        const result = isTaskExecution(method)
+          ? await forwardTaskExecution(method, params ?? {}, await taskClientAuthorization())
+          : await callTaskCrud(
+              defaultTaskContext({ vault, vaultPath: VAULT_PATH! }),
+              await taskClientAuthorization(),
+              method,
+              params ?? {}
+            );
         process.stdout.write(JSON.stringify({ id, result }) + "\n");
         return;
       }
@@ -413,8 +434,8 @@ async function main(): Promise<void> {
         case "delete_memory": {
           const targetId = String(params?.id ?? "").trim();
           if (!targetId) throw new Error("id is required");
-          const ctxRaw = (params as Record<string, unknown> | undefined)
-            ?.audit_context as Record<string, unknown> | undefined;
+          const ctxRaw = (params as Record<string, unknown> | undefined)?.audit_context as
+            Record<string, unknown> | undefined;
           const ctx = AuditContext.parse(ctxRaw ?? { actor: "user" });
           auditedSoftDelete({
             vault,
@@ -443,12 +464,11 @@ async function main(): Promise<void> {
         case "restore_memory": {
           const targetId = String(params?.id ?? "").trim();
           if (!targetId) throw new Error("id is required");
-          const ctxRaw = (params as Record<string, unknown> | undefined)
-            ?.audit_context as Record<string, unknown> | undefined;
+          const ctxRaw = (params as Record<string, unknown> | undefined)?.audit_context as
+            Record<string, unknown> | undefined;
           const ctx = AuditContext.parse(ctxRaw ?? { actor: "user" });
           const destOverride =
-            typeof (params as Record<string, unknown> | undefined)?.dest_file_path
-              === "string"
+            typeof (params as Record<string, unknown> | undefined)?.dest_file_path === "string"
               ? ((params as Record<string, unknown>).dest_file_path as string)
               : undefined;
           auditedRestore({
@@ -483,7 +503,8 @@ async function main(): Promise<void> {
           // Recall-Konsistenz zu erzwingen (Document-Hub Phase 1.4).
           const filePath = String(params?.file_path ?? "").trim();
           if (!filePath) throw new Error("file_path is required");
-          vault.reindexFile(filePath)
+          vault
+            .reindexFile(filePath)
             .then(() => send({ id, result: { reindexed: true, file_path: filePath } }))
             .catch((err: Error) => send({ id, error: { message: err.message } }));
           return;
@@ -522,12 +543,15 @@ async function main(): Promise<void> {
         case "audit_history": {
           const memoryID = String(params?.memory_id ?? "").trim();
           if (!memoryID) throw new Error("memory_id is required");
-          auditLog.forMemory(memoryID)
+          auditLog
+            .forMemory(memoryID)
             .then((entries) => send({ id, result: entries }))
-            .catch((err: Error) => send({
-              id,
-              error: { message: err.message },
-            }));
+            .catch((err: Error) =>
+              send({
+                id,
+                error: { message: err.message },
+              })
+            );
           return;
         }
         case "audit_recent": {
@@ -541,10 +565,12 @@ async function main(): Promise<void> {
               operation: filterOp as never,
             })
             .then((entries) => send({ id, result: entries }))
-            .catch((err: Error) => send({
-              id,
-              error: { message: err.message },
-            }));
+            .catch((err: Error) =>
+              send({
+                id,
+                error: { message: err.message },
+              })
+            );
           return;
         }
         default:
@@ -554,7 +580,9 @@ async function main(): Promise<void> {
     } catch (err) {
       send({
         id,
-        error: isTaskTool(method) ? taskFailure(err).body : { message: err instanceof Error ? err.message : String(err) },
+        error: isTaskTool(method)
+          ? taskFailure(err).body
+          : { message: err instanceof Error ? err.message : String(err) },
       });
     }
   });

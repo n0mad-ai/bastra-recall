@@ -34,8 +34,7 @@ const ENABLE_HINT = "bastra embeddings on";
 
 /** #520: what the EXPLICIT cloud choice actually does with your data — stated
  *  plainly wherever the effective provider is reported. */
-const CLOUD_EGRESS_NOTE =
-  "your recall queries and the memory text being indexed are sent to api.openai.com";
+const CLOUD_EGRESS_NOTE = "your recall queries and the memory text being indexed are sent to api.openai.com";
 /** #520: why a bare OPENAI_API_KEY no longer turns cloud embeddings on, and
  *  the two ways out (local by default, cloud only on purpose). */
 const CLOUD_CONSENT_NOTE =
@@ -85,7 +84,9 @@ export function paraphrasingNotice(model: string, pulled: boolean | null): strin
     "  Leave it off: BASTRA_TRIGGER_EXPAND=0 in the daemon's environment, then restart the daemon.",
   ];
   if (pulled === false) {
-    lines.push(`  ⚠ ${model} is not pulled, so every paraphrase would fail: ollama pull ${model}  (or switch it off as above)`);
+    lines.push(
+      `  ⚠ ${model} is not pulled, so every paraphrase would fail: ollama pull ${model}  (or switch it off as above)`
+    );
   }
   return lines;
 }
@@ -169,10 +170,14 @@ async function cmdStatus(settingsPath?: string, probe: typeof probeDaemon = prob
       daemonOn = p.semanticRecall === "on";
       // #531 — name the instance this came from; "the running daemon" used to
       // mean "whatever answered 6723", which need not be the configured one.
-      write(`  running daemon at ${p.endpoint?.label ?? "the configured endpoint"}: semantic recall ${p.semanticRecall}` +
-        (p.embeddingMode ? ` (${p.embeddingMode}, source: ${p.embeddingSource ?? "?"})` : ""));
+      write(
+        `  running daemon at ${p.endpoint?.label ?? "the configured endpoint"}: semantic recall ${p.semanticRecall}` +
+          (p.embeddingMode ? ` (${p.embeddingMode}, source: ${p.embeddingSource ?? "?"})` : "")
+      );
       if (choice.provider === "none" && daemonOn) {
-        write("  note: the daemon runs with its own environment (e.g. LaunchAgent plist) — this shell's view only governs newly spawned daemons.");
+        write(
+          "  note: the daemon runs with its own environment (e.g. LaunchAgent plist) — this shell's view only governs newly spawned daemons."
+        );
       }
     }
   } catch {
@@ -182,7 +187,9 @@ async function cmdStatus(settingsPath?: string, probe: typeof probeDaemon = prob
   if (choice.source === "api-key") {
     write(`  ⚠ ${CLOUD_CONSENT_NOTE}`);
   } else if (choice.requested === "openai" && choice.provider === "none") {
-    write("  ⚠ openai is requested but no API key is set (OPENAI_API_KEY / BASTRA_EMBEDDING_KEY) — falling back to none");
+    write(
+      "  ⚠ openai is requested but no API key is set (OPENAI_API_KEY / BASTRA_EMBEDDING_KEY) — falling back to none"
+    );
   }
   if (choice.provider === "openai") {
     write(`  egress: ${CLOUD_EGRESS_NOTE}`);
@@ -190,7 +197,9 @@ async function cmdStatus(settingsPath?: string, probe: typeof probeDaemon = prob
     write("  egress: none — embeddings run on your machine via Ollama (loopback only)");
   }
   if (choice.source === "env" && fileProvider && envRaw && envRaw.toLowerCase() !== fileProvider) {
-    write(`  note: BASTRA_EMBEDDING_PROVIDER=${envRaw} (env) overrides embedding.provider=${fileProvider} (cli-settings)`);
+    write(
+      `  note: BASTRA_EMBEDDING_PROVIDER=${envRaw} (env) overrides embedding.provider=${fileProvider} (cli-settings)`
+    );
   }
 
   if (choice.provider === "ollama") {
@@ -199,7 +208,9 @@ async function cmdStatus(settingsPath?: string, probe: typeof probeDaemon = prob
       write(`  ⚠ ${o.detail} — recall falls back to BM25. Fix: ${ENABLE_HINT}`);
     } else {
       write(`  ollama: ${o.detail}`);
-      write(`  model embeddinggemma: ${o.hasModel ? "present" : `MISSING — recall falls back to BM25. Fix: ${ENABLE_HINT}`}`);
+      write(
+        `  model embeddinggemma: ${o.hasModel ? "present" : `MISSING — recall falls back to BM25. Fix: ${ENABLE_HINT}`}`
+      );
     }
   } else if (choice.provider === "none" && !daemonOn) {
     // Suppressed when the running daemon is semantic — an OFF hint right
@@ -213,7 +224,7 @@ function sourceLabel(
   choice: EmbeddingChoice,
   fileProvider: EmbeddingProviderName | undefined,
   envRaw: string | undefined,
-  settingsPath?: string,
+  settingsPath?: string
 ): string {
   switch (choice.source) {
     case "env":
@@ -353,7 +364,7 @@ export function formatEmbeddingDoctorLines(i: {
     if (i.daemon?.semanticRecall === "on") {
       lines.push(
         `  ✓ ok: running daemon uses ${i.daemon.embeddingMode ?? "semantic recall"}` +
-        ` (source: ${i.daemon.embeddingSource ?? "daemon environment"})`,
+          ` (source: ${i.daemon.embeddingSource ?? "daemon environment"})`
       );
     } else {
       lines.push(`  note: ${RECALL_OFF_NOTE}`);
@@ -361,15 +372,23 @@ export function formatEmbeddingDoctorLines(i: {
     if (choice.source === "api-key") {
       lines.push(`  note: ${CLOUD_CONSENT_NOTE}`);
     } else if (choice.requested === "openai") {
-      lines.push(`  note: openai is requested (source: ${choice.source}) but no API key is set (OPENAI_API_KEY / BASTRA_EMBEDDING_KEY)`);
+      lines.push(
+        `  note: openai is requested (source: ${choice.source}) but no API key is set (OPENAI_API_KEY / BASTRA_EMBEDDING_KEY)`
+      );
     }
   } else if (choice.provider === "ollama") {
     if (i.probe && !i.probe.ok) {
-      lines.push(`  ⚠ configured (ollama, source: ${choice.source}) but ${i.probe.detail} — recall falls back to BM25. Fix: ${ENABLE_HINT}`);
+      lines.push(
+        `  ⚠ configured (ollama, source: ${choice.source}) but ${i.probe.detail} — recall falls back to BM25. Fix: ${ENABLE_HINT}`
+      );
     } else if (i.probe && !i.probe.hasModel) {
-      lines.push(`  ⚠ configured (ollama, source: ${choice.source}) but the embeddinggemma model is missing — recall falls back to BM25. Fix: ${ENABLE_HINT}`);
+      lines.push(
+        `  ⚠ configured (ollama, source: ${choice.source}) but the embeddinggemma model is missing — recall falls back to BM25. Fix: ${ENABLE_HINT}`
+      );
     } else {
-      lines.push(`  ✓ ok: ollama ${i.probe?.detail ?? "configured"}, model embeddinggemma present (source: ${choice.source})`);
+      lines.push(
+        `  ✓ ok: ollama ${i.probe?.detail ?? "configured"}, model embeddinggemma present (source: ${choice.source})`
+      );
     }
   } else {
     lines.push(`  ✓ ok: openai (source: ${choice.source}) — ${CLOUD_EGRESS_NOTE}`);
@@ -378,18 +397,16 @@ export function formatEmbeddingDoctorLines(i: {
   if ((i.platform ?? process.platform) === "win32") {
     lines.push(
       "  note: Windows includes no bundled Ollama or automatic model setup (#84). " +
-      "Install and start external Ollama, run `ollama pull embeddinggemma`, then `bastra embeddings on`; " +
-      "or explicitly configure OpenAI with `bastra config set embedding.provider openai` and OPENAI_API_KEY / BASTRA_EMBEDDING_KEY. " +
-      "Without a working embedding provider, recall is keyword-only (BM25).",
+        "Install and start external Ollama, run `ollama pull embeddinggemma`, then `bastra embeddings on`; " +
+        "or explicitly configure OpenAI with `bastra config set embedding.provider openai` and OPENAI_API_KEY / BASTRA_EMBEDDING_KEY. " +
+        "Without a working embedding provider, recall is keyword-only (BM25)."
     );
   }
 
-  if (
-    i.envValue &&
-    i.fileProvider &&
-    i.envValue.toLowerCase() !== i.fileProvider
-  ) {
-    lines.push(`  note: BASTRA_EMBEDDING_PROVIDER=${i.envValue} (env) overrides embedding.provider=${i.fileProvider} (cli-settings)`);
+  if (i.envValue && i.fileProvider && i.envValue.toLowerCase() !== i.fileProvider) {
+    lines.push(
+      `  note: BASTRA_EMBEDDING_PROVIDER=${i.envValue} (env) overrides embedding.provider=${i.fileProvider} (cli-settings)`
+    );
   }
   return lines;
 }

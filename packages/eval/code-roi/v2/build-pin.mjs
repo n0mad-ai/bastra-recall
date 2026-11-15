@@ -172,8 +172,10 @@ export function distArtifactHashes(distDaemonDir = DIST_DAEMON_DIR) {
   return Object.fromEntries(
     files.map((rel) => [
       rel,
-      createHash("sha256").update(readFileSync(join(distDaemonDir, rel))).digest("hex"),
-    ]),
+      createHash("sha256")
+        .update(readFileSync(join(distDaemonDir, rel)))
+        .digest("hex"),
+    ])
   );
 }
 

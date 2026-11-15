@@ -95,7 +95,10 @@ mkdirSync(OUT, { recursive: true });
 const EXCLUSIONS =
   TRUTH === "tsc+tests"
     ? buildExclusions({
-        extraFiles: (process.env.CODE_ROI_EXCLUDE_FILES ?? "").split(",").map((f) => f.trim()).filter(Boolean),
+        extraFiles: (process.env.CODE_ROI_EXCLUDE_FILES ?? "")
+          .split(",")
+          .map((f) => f.trim())
+          .filter(Boolean),
       })
     : { files: [], commits: [], prefixes: [], reasons: {}, sources: [] };
 
@@ -143,7 +146,7 @@ export async function errorSignatures(dir) {
       ...BUF,
     }).then(
       (r) => r.stdout,
-      (e) => `${e.stdout ?? ""}`,
+      (e) => `${e.stdout ?? ""}`
     );
     for (const line of out.split("\n")) {
       const m = /^(.+?)\(\d+,\d+\): error (TS\d+): (.*)$/.exec(line);
@@ -198,7 +201,7 @@ async function candidatesOf(sha) {
         status === "M" &&
         isScenarioFile(profile, path ?? "") &&
         !isExcludedFile(EXCLUSIONS, path ?? "") &&
-        (FILE_PREFIX === "" || (path ?? "").startsWith(FILE_PREFIX)),
+        (FILE_PREFIX === "" || (path ?? "").startsWith(FILE_PREFIX))
     )
     .map(([, path]) => path)
     .sort();
@@ -238,7 +241,13 @@ async function testBaseline(tree, dir, selected) {
   const run = await runSuite(dir, profile.testRunner, { files: selected, timeoutMs: TEST_TIMEOUT_MS });
   const record =
     run.status === "ok"
-      ? { key, tree, tests: selected.length, status: "ok", passing: [...run.cases].filter(([, s]) => s === "pass").map(([id]) => id) }
+      ? {
+          key,
+          tree,
+          tests: selected.length,
+          status: "ok",
+          passing: [...run.cases].filter(([, s]) => s === "pass").map(([id]) => id),
+        }
       : { key, tree, tests: selected.length, status: run.status, detail: run.detail ?? "", passing: [] };
   testBaselines.set(key, record);
   appendFileSync(TEST_BASELINE_CACHE, JSON.stringify(record) + "\n");
@@ -260,7 +269,7 @@ async function typeOnlyCandidate(record, file, diff, dir, parent, typeBaseline) 
   writeFileSync(patch, diff);
   const applied = await run("git", ["apply", patch], { cwd: dir, ...BUF }).then(
     () => true,
-    () => false,
+    () => false
   );
   if (!applied) {
     rmSync(patch, { force: true });
@@ -269,7 +278,7 @@ async function typeOnlyCandidate(record, file, diff, dir, parent, typeBaseline) 
   const afterTypes = usesTypes(TRUTH) ? await errorSignatures(dir) : null;
   const reverted = await run("git", ["apply", "-R", patch], { cwd: dir, ...BUF }).then(
     () => true,
-    () => false,
+    () => false
   );
   rmSync(patch, { force: true });
   if (!reverted) await extract(parent, dir);
@@ -363,7 +372,7 @@ export async function analyzeTests(commit, files, dir, { evidence = false } = {}
     writeFileSync(patch, diff);
     const applied = await run("git", ["apply", patch], { cwd: dir, ...BUF }).then(
       () => true,
-      () => false,
+      () => false
     );
     if (!applied) {
       rmSync(patch, { force: true });
@@ -385,7 +394,7 @@ export async function analyzeTests(commit, files, dir, { evidence = false } = {}
       ...new Set(broke.map((id) => testFileOfCase(id, dir, after.files)).filter((f) => f !== null)),
     ].sort();
     const attributions = new Map(
-      brokenFiles.map((t) => [t, attribute(dir, t, file, { packageNames: profile.packageNames })]),
+      brokenFiles.map((t) => [t, attribute(dir, t, file, { packageNames: profile.packageNames })])
     );
     const mutatedConfirmation = await confirmCases(
       dir,
@@ -394,12 +403,12 @@ export async function analyzeTests(commit, files, dir, { evidence = false } = {}
       broke,
       (id) => testFileOfCase(id, dir, after.files),
       "fail",
-      { timeoutMs: TEST_TIMEOUT_MS },
+      { timeoutMs: TEST_TIMEOUT_MS }
     );
 
     const reverted = await run("git", ["apply", "-R", patch], { cwd: dir, ...BUF }).then(
       () => true,
-      () => false,
+      () => false
     );
     rmSync(patch, { force: true });
     if (!reverted) await extract(parent, dir);
@@ -428,7 +437,7 @@ export async function analyzeTests(commit, files, dir, { evidence = false } = {}
       broke,
       (id) => testFileOfCase(id, dir, after.files),
       "pass",
-      { timeoutMs: TEST_TIMEOUT_MS },
+      { timeoutMs: TEST_TIMEOUT_MS }
     );
     if (cleanConfirmation.status !== "ok") {
       results.push({
@@ -455,9 +464,7 @@ export async function analyzeTests(commit, files, dir, { evidence = false } = {}
     // The v3 rule, unchanged: a file that carries a type error it did not
     // carry before. The two truths are a UNION — a change can break a type
     // without breaking a test, and break a test without breaking a type.
-    const fromTypes = usesTypes(TRUTH)
-      ? [...newErrorFiles(typeBaseline, afterTypes)].filter((f) => f !== file)
-      : [];
+    const fromTypes = usesTypes(TRUTH) ? [...newErrorFiles(typeBaseline, afterTypes)].filter((f) => f !== file) : [];
     const truth = [...new Set([...fromTypes, ...fromTests])].sort();
     const entry = {
       ...record,
@@ -505,7 +512,7 @@ export async function analyze(commit, files, dir, { evidence = false } = {}) {
     writeFileSync(patch, diff);
     const applied = await run("git", ["apply", patch], { cwd: dir, ...BUF }).then(
       () => true,
-      () => false,
+      () => false
     );
     if (!applied) {
       rmSync(patch, { force: true });
@@ -515,7 +522,7 @@ export async function analyze(commit, files, dir, { evidence = false } = {}) {
     const after = await errorSignatures(dir);
     const reverted = await run("git", ["apply", "-R", patch], { cwd: dir, ...BUF }).then(
       () => true,
-      () => false,
+      () => false
     );
     rmSync(patch, { force: true });
     if (!reverted) await extract(parent, dir);
@@ -668,7 +675,7 @@ async function main() {
   }
   if (usesTests(TRUTH) && profile.testRunner === null) {
     throw new Error(
-      `${REPO}: no test runner found in package.json — a repository without a suite cannot carry test-based truth`,
+      `${REPO}: no test runner found in package.json — a repository without a suite cannot carry test-based truth`
     );
   }
   if (usesTests(TRUTH)) loadTestBaselines();
@@ -685,7 +692,7 @@ async function main() {
       (EXCLUSIONS.files.length > 0
         ? `  excluded: ${EXCLUSIONS.files.length} burned files, ${EXCLUSIONS.commits.length} pilot commits, ` +
           `prefixes ${EXCLUSIONS.prefixes.join(" ")} (${exclusionsHash(EXCLUSIONS).slice(0, 12)})\n`
-        : ""),
+        : "")
   );
 
   const since = argOf("--since") ?? process.env.CODE_ROI_RANGE_END ?? "HEAD";
@@ -707,7 +714,7 @@ async function main() {
     process.stdout.write(
       `pass: ${accepted}/${STOP_AT} accepted, ${decisions.length} decided` +
         (TRUTH === "tests" ? `, ${decisions.filter((d) => d.blindSpots?.length > 0).length} with blind spots` : "") +
-        `\n`,
+        `\n`
     );
     if (blockedAt === null) break;
 
@@ -734,14 +741,14 @@ async function main() {
               // not be judged, so a crashed candidate is counted as what it is
               // rather than as evidence that the change breaks nothing.
               reason: `not evaluable: analysis failed: ${String(e?.message ?? e).slice(0, 200)}`,
-            })),
+            }))
           );
           for (const r of results) {
             cache.set(`${r.repo ?? REPO}:${r.commit}:${r.file}`, r);
             appendFileSync(CACHE, JSON.stringify(r) + "\n");
           }
         }
-      }),
+      })
     );
   }
 }

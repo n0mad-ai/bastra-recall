@@ -62,11 +62,11 @@ async function runNested(files, dir) {
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT;
   try {
-    const { stdout, stderr } = await execFileAsync(
-      process.execPath,
-      ["--import", SHIM, "--test", ...files],
-      { cwd: dir, encoding: "utf8", env },
-    );
+    const { stdout, stderr } = await execFileAsync(process.execPath, ["--import", SHIM, "--test", ...files], {
+      cwd: dir,
+      encoding: "utf8",
+      env,
+    });
     return { code: 0, out: stdout + stderr };
   } catch (err) {
     return { code: err.code ?? 1, out: (err.stdout ?? "") + (err.stderr ?? "") };
@@ -86,16 +86,13 @@ test("a child's raw non-ASCII stdout never reaches the frame pipe", async (t) =>
   const run = await runNested(["noisy.test.mjs"], dir);
 
   assert.equal(run.code, 0, `the run must pass:\n${run.out}`);
-  assert.ok(
-    !run.out.includes("Regel 0 übernommen"),
-    "the raw status lines must be capped in the child",
-  );
+  assert.ok(!run.out.includes("Regel 0 übernommen"), "the raw status lines must be capped in the child");
   assert.ok(!run.out.includes("auch über console.log"), "console.log too");
   // Without the shim the same fixture puts 201 raw lines on the pipe; with it,
   // what remains is the reporter's own output.
   assert.ok(
     run.out.includes("prints raw non-ASCII status lines on stdout"),
-    `the runner's frames must still arrive:\n${run.out}`,
+    `the runner's frames must still arrive:\n${run.out}`
   );
   assert.ok(run.out.includes("a second test in the same child"), "every frame, not just the first");
   assert.match(run.out, /pass 2/, "individual tests are counted, not files");
@@ -108,10 +105,7 @@ test("capping stdout does not cost the failure its name and diff", async (t) => 
   assert.notEqual(run.code, 0, "a failing fixture must fail the nested run");
   assert.ok(!run.out.includes("noise before the failure"), "the noise is still capped");
   // The regression a blunt no-op would introduce: red, but unreadable.
-  assert.ok(
-    run.out.includes("this failure must stay legible"),
-    `the failing test must be named:\n${run.out}`,
-  );
+  assert.ok(run.out.includes("this failure must stay legible"), `the failing test must be named:\n${run.out}`);
   assert.match(run.out, /1 !== 2/, "and its assertion must survive");
 });
 
@@ -132,6 +126,6 @@ test("the shim leaves the parent's own reporter output alone", async (t) => {
   assert.match(run.out, /fail 1/, "the failure counted");
   assert.ok(
     run.out.includes("this failure must stay legible"),
-    `the failure must be named in the parent's report:\n${run.out}`,
+    `the failure must be named in the parent's report:\n${run.out}`
   );
 });

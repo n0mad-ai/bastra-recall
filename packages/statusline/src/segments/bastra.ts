@@ -97,10 +97,8 @@ export class BastraProvider {
         recallCount: numOr(d.recall_count, 0),
         totalHits: numOr(d.total_hits, 0),
         totalMs: numOr(d.total_ms, 0),
-        currentStage:
-          typeof d.current_stage === "string" ? d.current_stage : null,
-        currentMessage:
-          typeof d.current_message === "string" ? d.current_message : null,
+        currentStage: typeof d.current_stage === "string" ? d.current_stage : null,
+        currentMessage: typeof d.current_message === "string" ? d.current_message : null,
         currentStageStartedAt: numOrNull(d.current_stage_started_at),
         currentRecallStartedAt: numOrNull(d.current_recall_started_at),
         lastPhrase: typeof d.last_phrase === "string" ? d.last_phrase : null,

@@ -102,8 +102,7 @@ export async function buildGraph(tree, graphRoot) {
 function runArm(arm, s, tree, graphRoot, dir) {
   const transcript = join(dir, `${arm}.jsonl`);
   const mcpConfig = join(dir, `${arm}-mcp.json`);
-  const servers =
-    arm === "treatment" ? { code: { command: process.execPath, args: [MCP_SERVER, graphRoot] } } : {};
+  const servers = arm === "treatment" ? { code: { command: process.execPath, args: [MCP_SERVER, graphRoot] } } : {};
   writeFileSync(mcpConfig, JSON.stringify({ mcpServers: servers }));
   const allowed = arm === "treatment" ? [...ALLOWED_TOOLS, "mcp__code__find_code"] : ALLOWED_TOOLS;
   const args = [
@@ -143,7 +142,7 @@ function runArm(arm, s, tree, graphRoot, dir) {
         renameSync(`${transcript}.partial`, transcript);
         writeFileSync(
           join(dir, `${arm}.meta.json`),
-          JSON.stringify({ arm, exitCode: code, wallMs: Date.now() - startedAt, stderr: stderr.slice(-4000) }, null, 2),
+          JSON.stringify({ arm, exitCode: code, wallMs: Date.now() - startedAt, stderr: stderr.slice(-4000) }, null, 2)
         );
         resolve(code);
       });
@@ -162,7 +161,9 @@ async function main() {
     mkdirSync(dir, { recursive: true });
     const { tree, graphRoot } = prepareTree(s, dir);
     await buildGraph(tree, graphRoot);
-    const graphHash = createHash("sha256").update(readFileSync(join(graphRoot, "graphify-out", "graph.json"))).digest("hex");
+    const graphHash = createHash("sha256")
+      .update(readFileSync(join(graphRoot, "graphify-out", "graph.json")))
+      .digest("hex");
     writeFileSync(join(dir, "graph.sha256"), graphHash + "\n");
     for (const arm of s.armOrder) {
       if (existsSync(join(dir, `${arm}.jsonl`))) continue;

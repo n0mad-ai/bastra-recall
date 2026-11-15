@@ -42,26 +42,44 @@ import { join } from "node:path";
  */
 export const DEFAULT_FRUSTRATION_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
   de: [
-    "schon\\s+wieder", "immer\\s+wieder", "wieder\\s+und\\s+wieder",
+    "schon\\s+wieder",
+    "immer\\s+wieder",
+    "wieder\\s+und\\s+wieder",
     "wieder\\s+(?:nicht|kaputt|falsch|dasselbe|derselbe|das\\s+gleiche|der\\s+gleiche)",
-    "wie\\s+oft", "verdammt", "schei(?:ss|ß)e",
+    "wie\\s+oft",
+    "verdammt",
+    "schei(?:ss|ß)e",
   ],
   en: [
-    "yet\\s+again", "not\\s+again", "again\\s+and\\s+again", "again\\s+the\\s+same",
+    "yet\\s+again",
+    "not\\s+again",
+    "again\\s+and\\s+again",
+    "again\\s+the\\s+same",
     "(?:broken|wrong|failed|failing|fails)\\s+again",
-    "how\\s+(?:often|many\\s+times)", "damn", "fuck", "shit",
+    "how\\s+(?:often|many\\s+times)",
+    "damn",
+    "fuck",
+    "shit",
   ],
   ru: [
-    "(?:снова|опять)\\s+не", "(?:снова|опять)\\s+то\\s+же", "(?:снова|опять)\\s{1,8}слома\\p{L}*",
-    "сколько\\s+раз", "ч[её]рт", "бл(?:ин|ять)",
+    "(?:снова|опять)\\s+не",
+    "(?:снова|опять)\\s+то\\s+же",
+    "(?:снова|опять)\\s{1,8}слома\\p{L}*",
+    "сколько\\s+раз",
+    "ч[её]рт",
+    "бл(?:ин|ять)",
   ],
 };
 
 export const DEFAULT_DECISION_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
   de: ["ok\\s+dann", "lass\\s+uns", "entschieden", "gehen\\s+wir\\s+mit"],
   en: [
-    "ok(?:ay)?\\s+then", "let['’]?s\\s+(?:go\\s+with|use)", "we['’]ll\\s+go\\s+with", "we\\s+will\\s+go\\s+with",
-    "decided", "settled\\s+on",
+    "ok(?:ay)?\\s+then",
+    "let['’]?s\\s+(?:go\\s+with|use)",
+    "we['’]ll\\s+go\\s+with",
+    "we\\s+will\\s+go\\s+with",
+    "decided",
+    "settled\\s+on",
   ],
   ru: ["решено", "остановимся\\s+на", "договорились"],
   // language-neutral
@@ -307,28 +325,68 @@ export function cueRegex(cues: readonly string[], anchored = false): RegExp {
 export const DEFAULT_COMPOSE_VERB_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
   en: ["draft", "write", "compose", "announce", "reply", "respond", "publish"],
   de: [
-    "schreib\\p{L}*", "verfass\\p{L}*", "formulier\\p{L}*", "entwirf", "entwerfe", "antworte\\p{L}*",
-    "beantworte", "ver(?:ö|oe)ffentlich\\p{L}*",
+    "schreib\\p{L}*",
+    "verfass\\p{L}*",
+    "formulier\\p{L}*",
+    "entwirf",
+    "entwerfe",
+    "antworte\\p{L}*",
+    "beantworte",
+    "ver(?:ö|oe)ffentlich\\p{L}*",
   ],
   ru: [
-    "напиши\\p{L}*", "написать", "составь\\p{L}*", "подготовь\\p{L}*", "сформулируй\\p{L}*", "ответь\\p{L}*",
-    "ответить", "опубликуй\\p{L}*", "опубликовать",
+    "напиши\\p{L}*",
+    "написать",
+    "составь\\p{L}*",
+    "подготовь\\p{L}*",
+    "сформулируй\\p{L}*",
+    "ответь\\p{L}*",
+    "ответить",
+    "опубликуй\\p{L}*",
+    "опубликовать",
   ],
 };
 
 export const DEFAULT_OUTWARD_ARTIFACT_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
   en: [
-    "release[- ]?notes?", "changelog", "announcement", "blog\\p{L}*", "newsletter", "readme", "docs?",
-    "documentation", "issue", "pr", "pull[- ]?requests?", "comment", "reply", "thread", "discord", "mail",
-    "e-?mail", "posting", "tweet",
+    "release[- ]?notes?",
+    "changelog",
+    "announcement",
+    "blog\\p{L}*",
+    "newsletter",
+    "readme",
+    "docs?",
+    "documentation",
+    "issue",
+    "pr",
+    "pull[- ]?requests?",
+    "comment",
+    "reply",
+    "thread",
+    "discord",
+    "mail",
+    "e-?mail",
+    "posting",
+    "tweet",
   ],
   de: [
-    "release-?notizen", "(?:ä|ae)nderungsprotokoll", "ank(?:ü|ue)ndigung", "dokumentation", "kommentar",
-    "antwort", "beitrag",
+    "release-?notizen",
+    "(?:ä|ae)nderungsprotokoll",
+    "ank(?:ü|ue)ndigung",
+    "dokumentation",
+    "kommentar",
+    "antwort",
+    "beitrag",
   ],
   ru: [
-    "анонс\\p{L}*", "блог\\p{L}*", "рассылк\\p{L}*", "документаци\\p{L}*", "комментари\\p{L}*", "ответ(?:а|у|ом|е|ы|ов)?",
-    "тред\\p{L}*", "письм\\p{L}*",
+    "анонс\\p{L}*",
+    "блог\\p{L}*",
+    "рассылк\\p{L}*",
+    "документаци\\p{L}*",
+    "комментари\\p{L}*",
+    "ответ(?:а|у|ом|е|ы|ов)?",
+    "тред\\p{L}*",
+    "письм\\p{L}*",
   ],
 };
 
@@ -340,13 +398,33 @@ export const DEFAULT_STATE_QUESTION_CUES_BY_LANGUAGE: Readonly<Record<string, re
 
 export const DEFAULT_PROJECT_STATE_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
   en: [
-    "measured?", "measurement", "benchmark", "eval", "recall@\\w*", "numbers?", "metrics?", "coverage",
-    "latency", "ceiling", "milestone", "roadmap", "release", "version", "tests?",
+    "measured?",
+    "measurement",
+    "benchmark",
+    "eval",
+    "recall@\\w*",
+    "numbers?",
+    "metrics?",
+    "coverage",
+    "latency",
+    "ceiling",
+    "milestone",
+    "roadmap",
+    "release",
+    "version",
+    "tests?",
   ],
   de: ["zahlen", "gemessen", "messung", "kennzahl\\p{L}*"],
   ru: [
-    "замер\\p{L}*", "измерен\\p{L}*", "бенчмарк\\p{L}*", "метрик\\p{L}*", "цифр\\p{L}*", "покрыти\\p{L}*",
-    "релиз\\p{L}*", "верси\\p{L}*", "тест\\p{L}*",
+    "замер\\p{L}*",
+    "измерен\\p{L}*",
+    "бенчмарк\\p{L}*",
+    "метрик\\p{L}*",
+    "цифр\\p{L}*",
+    "покрыти\\p{L}*",
+    "релиз\\p{L}*",
+    "верси\\p{L}*",
+    "тест\\p{L}*",
   ],
 };
 
@@ -388,18 +466,30 @@ export function projectStateCues(): string[] {
  */
 export const DEFAULT_RETRIEVAL_LEAD_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
   de: [
-    "such(?:e|en|t|)", "finde(?:n|t|)", "wo\\s+(?:ist|sind)", "wann\\s+(?:war|waren|hatte|hatten)", "wieviel",
-    "wie\\s+viele?", "was\\s+hab(?:e|en|)", "was\\s+war(?:en|)",
+    "such(?:e|en|t|)",
+    "finde(?:n|t|)",
+    "wo\\s+(?:ist|sind)",
+    "wann\\s+(?:war|waren|hatte|hatten)",
+    "wieviel",
+    "wie\\s+viele?",
+    "was\\s+hab(?:e|en|)",
+    "was\\s+war(?:en|)",
   ],
   en: ["find", "search", "where\\s+(?:is|are)", "when\\s+(?:was|did)", "how\\s+much", "what\\s+(?:did|was)"],
   ru: [
-    "найди(?:те|)", "найти", "ищи(?:те|)", "поищи(?:те|)",
+    "найди(?:те|)",
+    "найти",
+    "ищи(?:те|)",
+    "поищи(?:те|)",
     "где\\s+(?:лежит|лежат|находится|находятся|был[аио]?|были)",
-    "когда\\s+(?:был[аио]?|были)", "когда\\s+я\\s{1,4}\\p{L}+(?:л|ла|лся|лась)",
+    "когда\\s+(?:был[аио]?|были)",
+    "когда\\s+я\\s{1,4}\\p{L}+(?:л|ла|лся|лась)",
     "когда\\s+мы\\s{1,4}\\p{L}+(?:ли|лись)",
-    "сколько\\s+(?:стоил[аио]?|стоили|было)", "сколько\\s+я\\s{1,4}\\p{L}+(?:л|ла)",
+    "сколько\\s+(?:стоил[аио]?|стоили|было)",
+    "сколько\\s+я\\s{1,4}\\p{L}+(?:л|ла)",
     "сколько\\s+мы\\s{1,4}\\p{L}+ли",
-    "что\\s+(?:я|мы)\\s{1,4}(?:делал|писал|решил|говорил)(?:а|и|)", "что\\s+было",
+    "что\\s+(?:я|мы)\\s{1,4}(?:делал|писал|решил|говорил)(?:а|и|)",
+    "что\\s+было",
   ],
 };
 
@@ -411,8 +501,23 @@ export function retrievalLeadCues(): string[] {
 /** #1307: previous-convention references, per-language data. An unlisted
  * language retains ordinary score-gated recall; users can extend this list. */
 const DEFAULT_PREVIOUS_CONVENTION_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
-  de: ["wie beim letzten Mal", "wie vorher", "wie wir es gemacht haben", "du hast ein Gedächtnis", "muss ich das wieder erklären"],
-  en: ["like last time", "like we did before", "as last time", "as before", "as we did", "you have a memory", "do I have to explain this again", "do I have to explain everything again"],
+  de: [
+    "wie beim letzten Mal",
+    "wie vorher",
+    "wie wir es gemacht haben",
+    "du hast ein Gedächtnis",
+    "muss ich das wieder erklären",
+  ],
+  en: [
+    "like last time",
+    "like we did before",
+    "as last time",
+    "as before",
+    "as we did",
+    "you have a memory",
+    "do I have to explain this again",
+    "do I have to explain everything again",
+  ],
 };
 
 /** Extended by ~/.bastra/lexicon/previous-convention.txt. */

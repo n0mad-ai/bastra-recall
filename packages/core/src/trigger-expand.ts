@@ -92,7 +92,7 @@ export class TriggerExpander {
   constructor(
     private readonly vault: Vault,
     private readonly embeddings: EmbeddingIndex,
-    opts: TriggerExpanderOptions,
+    opts: TriggerExpanderOptions
   ) {
     this.chat = opts.chat;
     this.selfTest = opts.selfTest;
@@ -149,7 +149,7 @@ export class TriggerExpander {
       // remaining ~900 either, and the sweep runs on every daemon start (#367).
       if (this.consecutiveGenFailures >= MAX_CONSECUTIVE_GEN_FAILURES) {
         console.error(
-          `[bastra.expand] backfill stopped after ${MAX_CONSECUTIVE_GEN_FAILURES} consecutive generation failures — check the generation model`,
+          `[bastra.expand] backfill stopped after ${MAX_CONSECUTIVE_GEN_FAILURES} consecutive generation failures — check the generation model`
         );
         break;
       }
@@ -209,9 +209,7 @@ export class TriggerExpander {
           console.error(`[bastra.expand] empty inflection generation for ${id} — not written, will retry`);
           return null;
         }
-        candidates.push(
-          ...parseExpansions(inflected, [...memory.fm.recall_when, ...candidates], MAX_INFLECTIONS),
-        );
+        candidates.push(...parseExpansions(inflected, [...memory.fm.recall_when, ...candidates], MAX_INFLECTIONS));
       }
       this.consecutiveGenFailures = 0;
       const kept: string[] = [];
@@ -382,7 +380,7 @@ async function rewriteFile(
   filePath: string,
   id: string,
   expanded: string[],
-  srcHash: string,
+  srcHash: string
 ): Promise<MutateOutcome> {
   try {
     return await mutateMemoryFile(
@@ -401,7 +399,7 @@ async function rewriteFile(
         // leading blank line is gray-matter's formatting, not content.
         authoredContent: (content) => content.replace(/^\n+/, ""),
       },
-      { vaultRoot },
+      { vaultRoot }
     );
   } catch (err) {
     if ((err as { code?: string })?.code === MEMORY_WRITE_CONFLICT) return { kind: "raced" };

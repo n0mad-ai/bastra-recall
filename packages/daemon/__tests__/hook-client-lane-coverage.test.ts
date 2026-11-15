@@ -132,7 +132,7 @@ test("#543: every gate lane writes one client row on both client shapes, with it
   for (const kind of Object.keys(GATE_LANE_BY_KIND)) {
     assert.ok(
       covered.has(kind),
-      `gate lane \`${GATE_LANE_BY_KIND[kind]}\` (${kind}) is not covered here — a new lane must write a client row on both client shapes`,
+      `gate lane \`${GATE_LANE_BY_KIND[kind]}\` (${kind}) is not covered here — a new lane must write a client row on both client shapes`
     );
   }
 
@@ -141,7 +141,7 @@ test("#543: every gate lane writes one client row on both client shapes, with it
     { lane, kind, shape: "node", argv: [resolve(SRC, nodeClient)], session: `s543-node-${lane}` },
   ]);
   const results = await Promise.all(
-    shapes.map(async (s) => ({ ...s, rows: await runClient(s.argv, s.lane, s.session) })),
+    shapes.map(async (s) => ({ ...s, rows: await runClient(s.argv, s.lane, s.session) }))
   );
 
   for (const { lane, kind, shape, session, rows } of results) {
@@ -157,11 +157,11 @@ test("#543: every gate lane writes one client row on both client shapes, with it
     assert.match(
       String(row.hook_version),
       /-(stub|thin)$/,
-      `${shape}/${lane}: the row must declare itself a client row, or it cannot be folded`,
+      `${shape}/${lane}: the row must declare itself a client row, or it cannot be folded`
     );
     assert.ok(
       ["daemon-unreachable", "timeout", "error"].includes(String(row.status)),
-      `${shape}/${lane}: a dead daemon must be recorded as a failure, got ${String(row.status)}`,
+      `${shape}/${lane}: a dead daemon must be recorded as a failure, got ${String(row.status)}`
     );
     assert.equal(row.daemon_reachable, false, `${shape}/${lane}: the POST went out and got no answer`);
   }
@@ -189,7 +189,7 @@ test("#543: a client-side failure can turn its own lane's gate red", async () =>
       assert.match(
         rendered,
         new RegExp(`${gateLane}\\s+\\d+ms budget[^\\n]*— FAIL: 40/40 calls returned nothing`),
-        `${shape}/${lane}: a client-side failure must be able to fail the ${gateLane} gate`,
+        `${shape}/${lane}: a client-side failure must be able to fail the ${gateLane} gate`
       );
       assert.match(rendered, /gate: NOT MET/);
     }
@@ -220,7 +220,7 @@ test("#543: every gate lane has a client row shape and a client that writes it",
     assert.match(
       src,
       new RegExp(`writeClientTelemetry\\(\\s*\\n?\\s*(\\{[\\s\\S]{0,400}?)?"${lane}"`),
-      `${nodeClient} does not write a client row for the ${lane} lane`,
+      `${nodeClient} does not write a client row for the ${lane} lane`
     );
   }
 });

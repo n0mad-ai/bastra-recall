@@ -11,11 +11,22 @@ Socket.prototype.connect = function (...args) {
   const normalized = Array.isArray(args[0]) ? args[0] : args;
   const first = normalized[0];
   const port = typeof first === "object" && first !== null ? first.port : first;
-  const host = typeof first === "object" && first !== null ? first.host : typeof normalized[1] === "string" ? normalized[1] : "localhost";
+  const host =
+    typeof first === "object" && first !== null
+      ? first.host
+      : typeof normalized[1] === "string"
+        ? normalized[1]
+        : "localhost";
   if (Number(port) === 6723) {
     const root = process.env.BASTRA_TEST_RUN_ROOT;
-    if (root) appendFileSync(join(root, "blocked-daemon-connections.jsonl"), JSON.stringify({ pid: process.pid, host, port: 6723 }) + "\n");
-    const error = Object.assign(new Error("test isolation: refusing the operator daemon on port 6723"), { code: "ECONNREFUSED" });
+    if (root)
+      appendFileSync(
+        join(root, "blocked-daemon-connections.jsonl"),
+        JSON.stringify({ pid: process.pid, host, port: 6723 }) + "\n"
+      );
+    const error = Object.assign(new Error("test isolation: refusing the operator daemon on port 6723"), {
+      code: "ECONNREFUSED",
+    });
     queueMicrotask(() => this.destroy(error));
     return this;
   }

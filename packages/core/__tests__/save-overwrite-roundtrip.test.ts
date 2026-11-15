@@ -132,7 +132,7 @@ test("an explicitly passed value still overrides the stored one", async (t) => {
       confidence: 1,
       affects_files: [],
       issues: [],
-    }),
+    })
   );
   const fm = matter(await readFile(file, "utf8")).data;
 
@@ -166,7 +166,7 @@ test("a sequential overwrite is atomic and leaves no commit artifacts behind", a
   const raw = await readFile(file, "utf8");
   assert.doesNotThrow(() => matter(raw), "published file must always parse");
   const leftovers = (await readdir(path.dirname(file))).filter(
-    (f) => f.endsWith(".tmp") || f.endsWith(".bastra-write.lock"),
+    (f) => f.endsWith(".tmp") || f.endsWith(".bastra-write.lock")
   );
   assert.deepEqual(leftovers, [], "no temp or commit-lock files may survive");
 });
@@ -194,11 +194,11 @@ test("bare YAML dates survive a refresh the same way quoted ones do", async (t) 
       .replace(/^created: .*$/m, "created: 2020-01-01")
       .replace(/^valid_until: .*$/m, "valid_until: 2030-01-01")
       .replace(/^last_reviewed_at: .*$/m, "last_reviewed_at: 2024-06-01"),
-    "utf8",
+    "utf8"
   );
   assert.ok(
     matter(await readFile(file, "utf8")).data.created instanceof Date,
-    "precondition: the bare date must reach the save as a Date, or this proves nothing",
+    "precondition: the bare date must reach the save as a Date, or this proves nothing"
   );
 
   await saveMemory(dir, minimalRefresh());
@@ -236,10 +236,7 @@ test("the save does not mutate gray-matter's cached parse of the file", async (t
 
   await saveMemory(dir, minimalRefresh());
 
-  assert.ok(
-    cached.created instanceof Date,
-    "the cached parse must still hold a Date — the save coerced it in place",
-  );
+  assert.ok(cached.created instanceof Date, "the cached parse must still hold a Date — the save coerced it in place");
   assert.equal(matter(raw).data.created instanceof Date, true, "and a re-parse agrees");
 });
 
@@ -275,7 +272,7 @@ test("saved_at survives a bookmark overwrite that does not send it", async (t) =
       og_image: "https://modelcontextprotocol.io/og.png",
       read_status: "read",
       categories: ["ai", "protocol"],
-    }),
+    })
   );
 
   // A refresh of the summary alone — the shape the skill prescribes.
@@ -301,7 +298,7 @@ test("saved_at survives a bookmark overwrite that does not send it", async (t) =
       read_status: "archived",
       categories: [],
       overwrite: true,
-    }),
+    })
   );
   const patched = matter(await readFile(res.file_path, "utf8")).data;
   assert.equal(patched.saved_at, "2026-01-01T00:00:00.000Z");
@@ -326,10 +323,7 @@ test("re-filing into another shelf carries the metadata along", async (t) => {
   t.after(() => rm(dir, { recursive: true, force: true }));
   await seed(dir);
 
-  const result = await saveMemory(
-    dir,
-    minimalRefresh({ folder: "memories/projects/elsewhere" }),
-  );
+  const result = await saveMemory(dir, minimalRefresh({ folder: "memories/projects/elsewhere" }));
   assert.match(result.file_path, /elsewhere/, "das Memory muss umgezogen sein");
 
   const fm = matter(await readFile(result.file_path, "utf8")).data;

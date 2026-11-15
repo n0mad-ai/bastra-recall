@@ -33,12 +33,12 @@ test("buildSessionContext: assembles pinned + hints + conventions + open workflo
     await writeFile(
       join(dir, "vault-care.md"),
       "# Vault Care\n\n- [ ] 2026-07-01 · delete · [[stale-memory]]\n- [x] 2026-07-01 · edit · [[done-memory]] — fixed\n",
-      "utf8",
+      "utf8"
     );
     await writeFile(
       join(dir, "import-review.md"),
       "# Import Review\n\n- [ ] 2026-07-17 · chatgpt · Prefers dark mode everywhere\n",
-      "utf8",
+      "utf8"
     );
     const vault = fakeVault(42, {
       "pinned-rule": { title: "Pinned rule", summary: "Never push without explicit instruction" },

@@ -54,7 +54,7 @@ test("#529 — concurrent stageImport PROCESSES keep every staged candidate", as
       `const [vault, i] = process.argv.slice(2);\n` +
         `const { stageImport } = await import(${JSON.stringify(REVIEW_SRC)});\n` +
         `await stageImport(vault, "text", ["independent import candidate number " + i]);\n`,
-      "utf8",
+      "utf8"
     );
     await Promise.all(Array.from({ length: WRITERS }, (_, i) => runChild(script, [vault, String(i)])));
 
@@ -67,7 +67,7 @@ test("#529 — concurrent stageImport PROCESSES keep every staged candidate", as
     assert.deepEqual(
       survived,
       Array.from({ length: WRITERS }, (_, i) => String(i)).sort(),
-      `every staging process must survive: got ${survived.length} of ${WRITERS} candidates`,
+      `every staging process must survive: got ${survived.length} of ${WRITERS} candidates`
     );
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
@@ -84,7 +84,7 @@ test("#529 — concurrent buildQueue PROCESSES keep every queued conversation", 
       `const [queueDir, i] = process.argv.slice(2);\n` +
         `const { buildQueue } = await import(${JSON.stringify(MINING_SRC)});\n` +
         `await buildQueue([{ title: "conv " + i, date: "2026-03-01", source: "chatgpt", messages: ["m" + i] }], queueDir);\n`,
-      "utf8",
+      "utf8"
     );
     await Promise.all(Array.from({ length: WRITERS }, (_, i) => runChild(script, [queueDir, String(i)])));
 
@@ -97,7 +97,7 @@ test("#529 — concurrent buildQueue PROCESSES keep every queued conversation", 
     assert.deepEqual(
       titles,
       Array.from({ length: WRITERS }, (_, i) => `conv ${i}`).sort(),
-      `every queueing process must survive: got ${titles.length} of ${WRITERS} conversations`,
+      `every queueing process must survive: got ${titles.length} of ${WRITERS} conversations`
     );
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });

@@ -52,17 +52,47 @@ export const COMMAND_FLAGS: Record<string, readonly string[]> = {
   help: [],
   version: [],
   install: [
-    "--dry-run", "--vault", "--yes", "-y", "--ollama", "--no-ollama",
-    "--with-bootstrap", "--no-bootstrap", "--with-stop-hook", "--no-stop-hook", "--stub", "--no-stub", "--extension",
+    "--dry-run",
+    "--vault",
+    "--yes",
+    "-y",
+    "--ollama",
+    "--no-ollama",
+    "--with-bootstrap",
+    "--no-bootstrap",
+    "--with-stop-hook",
+    "--no-stop-hook",
+    "--stub",
+    "--no-stub",
+    "--extension",
   ],
   uninstall: ["--dry-run"],
   doctor: [
-    "--fix", "--dry-run", "--vault", "--yes", "-y", "--with-stop-hook", "--no-stop-hook",
-    "--replay", "--days", "--compare", "--json",
+    "--fix",
+    "--dry-run",
+    "--vault",
+    "--yes",
+    "-y",
+    "--with-stop-hook",
+    "--no-stop-hook",
+    "--replay",
+    "--days",
+    "--compare",
+    "--json",
   ],
   update: [
-    "--staged", "--force", "--dry-run", "--vault", "--yes", "-y",
-    "--ollama", "--no-ollama", "--with-stop-hook", "--no-stop-hook", "--stub", "--no-stub",
+    "--staged",
+    "--force",
+    "--dry-run",
+    "--vault",
+    "--yes",
+    "-y",
+    "--ollama",
+    "--no-ollama",
+    "--with-stop-hook",
+    "--no-stop-hook",
+    "--stub",
+    "--no-stub",
   ],
   autostart: ["--dry-run", "--force", "--json", "--vault"],
   status: ["--json", "--quiet", "-q"],
@@ -94,10 +124,7 @@ export const COMMAND_FLAGS: Record<string, readonly string[]> = {
 };
 
 /** Every option the CLI knows at all — used to tell "unknown" from "misplaced". */
-const KNOWN_FLAGS: ReadonlySet<string> = new Set([
-  ...GLOBAL_FLAGS,
-  ...Object.values(COMMAND_FLAGS).flat(),
-]);
+const KNOWN_FLAGS: ReadonlySet<string> = new Set([...GLOBAL_FLAGS, ...Object.values(COMMAND_FLAGS).flat()]);
 
 function isOption(token: string): boolean {
   return token.length > 1 && token.startsWith("-");
@@ -173,7 +200,7 @@ export function validateArgs(argv: string[]): string[] {
       errors.push(
         command === null
           ? `option '${name}' needs a command — run 'bastra help'`
-          : `option '${name}' is not valid for 'bastra ${command}'`,
+          : `option '${name}' is not valid for 'bastra ${command}'`
       );
     }
   }

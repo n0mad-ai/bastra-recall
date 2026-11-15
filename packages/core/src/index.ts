@@ -12,36 +12,17 @@ export { SearchIndex, salienceRankCap, computeStaleness } from "./search.js";
 export { visitSupersession } from "./supersession.js";
 export type { RecallHit, RecallOptions, CueIndexOptions, StaleStatus } from "./search.js";
 
-export {
-  normalizeQuery,
-  tokenizeWithIdentifiers,
-  capAtWordBoundary,
-  QUERY_MAX_CHARS,
-} from "./query-normalize.js";
+export { normalizeQuery, tokenizeWithIdentifiers, capAtWordBoundary, QUERY_MAX_CHARS } from "./query-normalize.js";
 export { PHRASE_STOPWORDS, MIN_SIGNIFICANT_TOKEN_LEN, FUNCTION_WORDS, ALTERNATIVE_WORDS } from "./stopwords.js";
 export { segmentWords, hasSpacelessScript } from "./segment.js";
 export { normalizeText, foldTerm } from "./fold.js";
 export { letterCount, sameWordForm, hasWordForm, WORD_FORM_MIN_LEN } from "./word-form.js";
-export {
-  capBm25Query,
-  BM25_QUERY_MAX_CHARS,
-  BM25_QUERY_MAX_TERMS,
-} from "./bm25-query-cap.js";
+export { capBm25Query, BM25_QUERY_MAX_CHARS, BM25_QUERY_MAX_TERMS } from "./bm25-query-cap.js";
 export type { DocFreqFn, Bm25QueryCap } from "./bm25-query-cap.js";
 export { rareTermFuzzy, BM25_FUZZY_RARE_DF_MAX, BM25_FUZZY } from "./bm25-expansion.js";
 export { groupQueryTerms, groupedTokenize, type GroupedQuery } from "./bm25-grouping.js";
-export {
-  estimateBm25Ms,
-  lexicalFitsBudget,
-  BM25_COST_BASE_MS,
-  BM25_COST_PER_UNIQUE_TERM_MS,
-} from "./query-cost.js";
-export {
-  routeRetrieval,
-  type RetrievalMode,
-  type RouteInput,
-  type RouteDecision,
-} from "./retrieval-mode.js";
+export { estimateBm25Ms, lexicalFitsBudget, BM25_COST_BASE_MS, BM25_COST_PER_UNIQUE_TERM_MS } from "./query-cost.js";
+export { routeRetrieval, type RetrievalMode, type RouteInput, type RouteDecision } from "./retrieval-mode.js";
 export {
   routeQueryArms,
   isIdentifierTerm,
@@ -58,7 +39,16 @@ export { pickPhrase, pickToolPhrase, banterModeFromEnv } from "./recall-banter.j
 export type { BanterMode, BanterLang } from "./recall-banter.js";
 
 export { saveMemory, deleteMemoryFile } from "./save.js";
-export { ensureVaultDir, assertVaultRootHistory, VaultRootMissingError, VaultRootHistoryError, vaultRootFirstSeen, vaultRootPresent, noteVaultRootPresent, vaultRootsPath } from "./vault-root-guard.js";
+export {
+  ensureVaultDir,
+  assertVaultRootHistory,
+  VaultRootMissingError,
+  VaultRootHistoryError,
+  vaultRootFirstSeen,
+  vaultRootPresent,
+  noteVaultRootPresent,
+  vaultRootsPath,
+} from "./vault-root-guard.js";
 export type { DeleteMemoryResult } from "./save.js";
 export {
   SaveMemoryInput,
@@ -109,15 +99,42 @@ export type { SemanticLayout } from "./graph-semantic.js";
 export { scrubInjectedBlocks, containsInjectedBlock, INJECTED_BLOCK_TAGS, redactSecrets } from "./scrub.js";
 export type { ScrubResult, InjectedBlockTag, SecretRedactionResult } from "./scrub.js";
 
-export { detectTopics, detectProject, detectProjectDetailed, extractContentExcerpt, hookQueryVocabulary } from "./topics.js";
+export {
+  detectTopics,
+  detectProject,
+  detectProjectDetailed,
+  extractContentExcerpt,
+  hookQueryVocabulary,
+} from "./topics.js";
 export type { ToolIntent, TopicResult, DetectedProject, HookQueryVocabulary } from "./topics.js";
 
 export { isMarkdownFile } from "./markdown-file.js";
 export { mutateMemoryFile, memoryRevision } from "./memory-mutate.js";
-export { loadStore, planReconcile, applyReconcile, authoredContent, authoredKey, backupStamp } from "./store-reconcile.js";
-export type { StoreSnapshot, StoreFile, ReconcilePlan, PlanItem, ApplyResult, ConflictReason } from "./store-reconcile.js";
+export {
+  loadStore,
+  planReconcile,
+  applyReconcile,
+  authoredContent,
+  authoredKey,
+  backupStamp,
+} from "./store-reconcile.js";
+export type {
+  StoreSnapshot,
+  StoreFile,
+  ReconcilePlan,
+  PlanItem,
+  ApplyResult,
+  ConflictReason,
+} from "./store-reconcile.js";
 export type { MutateOutcome, MemoryMutation } from "./memory-mutate.js";
-export { readOccupant, occupantOfRaw, scanVaultForId, scanVaultForIdAsync, snapshotLocator, vaultRelative } from "./memory-locator.js";
+export {
+  readOccupant,
+  occupantOfRaw,
+  scanVaultForId,
+  scanVaultForIdAsync,
+  snapshotLocator,
+  vaultRelative,
+} from "./memory-locator.js";
 export { withIdClaim, diskAuthority, onIdScan } from "./id-transaction.js";
 export { onMutationIncident, newOperationId, reportMutationIncident } from "./mutation-incident.js";
 export type { MutationIncident, MutationStatus } from "./mutation-incident.js";
@@ -178,7 +195,13 @@ export type { AreaMark } from "./area-claim.js";
 export type { IdAuthority, IdClaim, IdClaimOptions, IdScanObservation } from "./id-transaction.js";
 export type { IdScanStats } from "./memory-locator.js";
 export type { Occupant, Located, MemoryLocator } from "./memory-locator.js";
-export { sameFile, assertInsideVault, assertInsideDir, assertOwnSubdir, realpathOfNearestExisting } from "./file-identity.js";
+export {
+  sameFile,
+  assertInsideVault,
+  assertInsideDir,
+  assertOwnSubdir,
+  realpathOfNearestExisting,
+} from "./file-identity.js";
 export { normalizeScopeKey, scopeEquals, isScopeCompatible, GLOBAL_SCOPES } from "./scope.js";
 
 export {
@@ -202,12 +225,7 @@ export {
   type ConflictClaim,
 } from "./conflict.js";
 
-export {
-  AuditContext,
-  auditedSave,
-  auditedSoftDelete,
-  auditedRestore,
-} from "./audit-save.js";
+export { AuditContext, auditedSave, auditedSoftDelete, auditedRestore } from "./audit-save.js";
 
 export { assertLocalOrOptIn } from "./ollama-egress.js";
 export { isOffValue, isOnValue } from "./env-switch.js";
@@ -240,7 +258,13 @@ export type { EmbedCacheEntry, EmbedCacheFile } from "./embed-cache.js";
 export { RelatedEnricher } from "./related-enrich.js";
 export type { RelatedEnricherOptions } from "./related-enrich.js";
 
-export { TriggerExpander, buildExpandPrompt, buildInflectPrompt, parseExpansions, sourceHash } from "./trigger-expand.js";
+export {
+  TriggerExpander,
+  buildExpandPrompt,
+  buildInflectPrompt,
+  parseExpansions,
+  sourceHash,
+} from "./trigger-expand.js";
 export {
   scanForInjection,
   injectionCategories,

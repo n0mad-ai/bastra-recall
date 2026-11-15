@@ -10,8 +10,7 @@
 
 import { fetchNode, HEAT_MIN_WEIGHT } from "./graph-data.js";
 
-const esc = (s) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /** inline markdown on an already-escaped string */
 function inline(s, known) {
@@ -130,7 +129,10 @@ export function createInspector(el, contentEl, { knownIds, onNavigate, clusterCo
     const open = (getCare?.(node.id) ?? []).filter((a) => !a.done);
     const existing = open.length
       ? `<ul class="care-list">${open
-          .map((a) => `<li><span class="care-badge">${esc(a.kind)}</span><span>${esc(a.note || "—")}</span><span class="care-date">${esc(a.date)}</span></li>`)
+          .map(
+            (a) =>
+              `<li><span class="care-badge">${esc(a.kind)}</span><span>${esc(a.note || "—")}</span><span class="care-date">${esc(a.date)}</span></li>`
+          )
           .join("")}</ul>`
       : "";
     const kinds = node.kind === "ghost" ? ["write", "note"] : ["delete", "edit", "note"];
@@ -164,9 +166,7 @@ export function createInspector(el, contentEl, { knownIds, onNavigate, clusterCo
     if (r.acted_on) parts.push(`${r.acted_on}× angewendet`);
     if (r.last_at) {
       const days = (Date.now() - Date.parse(r.last_at)) / 86400000;
-      parts.push(
-        days < 1 ? "zuletzt heute" : days < 2 ? "zuletzt gestern" : `zuletzt vor ${Math.round(days)} Tagen`,
-      );
+      parts.push(days < 1 ? "zuletzt heute" : days < 2 ? "zuletzt gestern" : `zuletzt vor ${Math.round(days)} Tagen`);
     }
     // Der Anteil nur, wenn die Karte ihn auch zeichnet — sonst erklärt die
     // Zeile ein Leuchten, das gar nicht da ist.
@@ -195,7 +195,10 @@ export function createInspector(el, contentEl, { knownIds, onNavigate, clusterCo
   function linkList(title, ids) {
     if (!ids?.length) return "";
     const lis = ids
-      .map((id) => `<li><button class="wikilink${knownIds.has(id) ? "" : " dead"}" data-link="${esc(id)}">${esc(id)}</button></li>`)
+      .map(
+        (id) =>
+          `<li><button class="wikilink${knownIds.has(id) ? "" : " dead"}" data-link="${esc(id)}">${esc(id)}</button></li>`
+      )
       .join("");
     return `<div class="insp-section-title">${title}</div><ul class="link-list">${lis}</ul>`;
   }

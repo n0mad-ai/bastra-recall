@@ -34,12 +34,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm, readFile, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  Vault,
-  AuditLog,
-  auditedSoftDelete,
-  auditedRestore,
-} from "../src/index.js";
+import { Vault, AuditLog, auditedSoftDelete, auditedRestore } from "../src/index.js";
 import { computeStaleness } from "../src/search.js";
 
 interface MemorySpec {
@@ -92,7 +87,7 @@ test("survival-by-id: demote (staleness) degrades score only — id resolves, fi
   await writeFile(
     file,
     memoryMarkdown({ id: "demoted", title: "demote probe", type: "lesson", summary: "x", updated: oldDate }),
-    "utf8",
+    "utf8"
   );
   const vault = new Vault(dir);
   await vault.init();
@@ -119,11 +114,7 @@ test("survival-by-id: demote (staleness) degrades score only — id resolves, fi
 test("survival-by-id: soft-delete trashes append-only — id leaves the active index but is recoverable", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-survival-"));
   const file = join(dir, "trashed.md");
-  await writeFile(
-    file,
-    memoryMarkdown({ id: "trashed", title: "trash probe", type: "lesson", summary: "x" }),
-    "utf8",
-  );
+  await writeFile(file, memoryMarkdown({ id: "trashed", title: "trash probe", type: "lesson", summary: "x" }), "utf8");
   const vault = new Vault(dir);
   await vault.init();
   const auditLog = new AuditLog(dir);
@@ -167,10 +158,7 @@ test("survival-by-id: soft-delete trashes append-only — id leaves the active i
     // The delete record SURVIVES the restore — the log is append-only.
     const history = await auditLog.forMemory("trashed");
     const ops = history.map((e) => e.operation);
-    assert.ok(
-      ops.includes("delete") && ops.includes("restore"),
-      "audit keeps both delete and restore (append-only)",
-    );
+    assert.ok(ops.includes("delete") && ops.includes("restore"), "audit keeps both delete and restore (append-only)");
   } finally {
     await vault.stop();
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
@@ -184,5 +172,5 @@ test("survival-by-id: soft-delete trashes append-only — id leaves the active i
 // after flooring (drop-to-ranked, never delete). Signpost only; core does not
 // import daemon.
 test.todo(
-  "survival-by-id: retire/unpin drops to ranked without delete — pinned in packages/daemon/__tests__/floors.test.ts (#142/#153)",
+  "survival-by-id: retire/unpin drops to ranked without delete — pinned in packages/daemon/__tests__/floors.test.ts (#142/#153)"
 );

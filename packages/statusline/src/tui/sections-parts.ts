@@ -16,13 +16,8 @@ import { resolveBudgetDisplay } from "../utils/budget";
 import { getEffortLevel, getThinkingEnabled } from "../utils/claude";
 import { getDirectoryDisplay } from "./sections-shared";
 
-export function formatContextParts(
-  data: TuiData,
-  sym: SymbolSet,
-  iconVisible = true,
-): Record<string, string> {
-  if (!data.contextInfo)
-    return { icon: "", label: "context", bar: "", pct: "", tokens: "" };
+export function formatContextParts(data: TuiData, sym: SymbolSet, iconVisible = true): Record<string, string> {
+  if (!data.contextInfo) return { icon: "", label: "context", bar: "", pct: "", tokens: "" };
 
   const usedPct = data.contextInfo.usablePercentage;
   const tokenStr = formatTokenCount(data.contextInfo.totalTokens);
@@ -41,7 +36,7 @@ export function formatBlockParts(
   blockInfo: TuiData["blockInfo"] & {},
   sym: SymbolSet,
   _config: PowerlineConfig,
-  iconVisible = true,
+  iconVisible = true
 ): Record<string, string> {
   const value = `${Math.round(blockInfo.nativeUtilization)}%`;
   const time = formatTimeRemaining(blockInfo.timeRemaining);
@@ -60,7 +55,7 @@ export function formatBlockSegment(
   blockInfo: TuiData["blockInfo"] & {},
   sym: SymbolSet,
   config: PowerlineConfig,
-  iconVisible = true,
+  iconVisible = true
 ): string {
   const parts = formatBlockParts(blockInfo, sym, config, iconVisible);
   let text = parts.icon ? `${parts.icon} ${parts.value}` : (parts.value ?? "");
@@ -72,7 +67,7 @@ export function formatBlockSegment(
 export function formatWeeklyParts(
   sevenDay: { used_percentage: number; resets_at: number },
   sym: SymbolSet,
-  iconVisible = true,
+  iconVisible = true
 ): Record<string, string> {
   const pct = `${Math.round(sevenDay.used_percentage)}%`;
   const time = formatLongTimeRemaining(minutesUntilReset(sevenDay.resets_at));
@@ -88,7 +83,7 @@ export function formatWeeklyParts(
 export function formatWeeklySegment(
   sevenDay: { used_percentage: number; resets_at: number },
   sym: SymbolSet,
-  iconVisible = true,
+  iconVisible = true
 ): string {
   const parts = formatWeeklyParts(sevenDay, sym, iconVisible);
   let text = parts.icon ? `${parts.icon} ${parts.pct}` : (parts.pct ?? "");
@@ -100,23 +95,16 @@ export function formatSessionParts(
   usageInfo: TuiData["usageInfo"] & {},
   sym: SymbolSet,
   config: PowerlineConfig,
-  iconVisible = true,
+  iconVisible = true
 ): Record<string, string> {
-  const state = resolveBudgetDisplay(
-    usageInfo.session.cost,
-    usageInfo.session.tokens,
-    config.budget?.session,
-  );
+  const state = resolveBudgetDisplay(usageInfo.session.cost, usageInfo.session.tokens, config.budget?.session);
 
   if (state.suppressAll) {
     return { icon: "", label: "", cost: "", tokens: "", budget: "" };
   }
 
   const sessionTokens = usageInfo.session.tokens;
-  const tokenStr =
-    state.showBase && sessionTokens !== null && sessionTokens > 0
-      ? formatTokenCount(sessionTokens)
-      : "";
+  const tokenStr = state.showBase && sessionTokens !== null && sessionTokens > 0 ? formatTokenCount(sessionTokens) : "";
 
   return {
     icon: iconVisible ? sym.session_cost : "",
@@ -131,13 +119,9 @@ export function formatSessionSegment(
   usageInfo: TuiData["usageInfo"] & {},
   sym: SymbolSet,
   config: PowerlineConfig,
-  iconVisible = true,
+  iconVisible = true
 ): string {
-  const state = resolveBudgetDisplay(
-    usageInfo.session.cost,
-    usageInfo.session.tokens,
-    config.budget?.session,
-  );
+  const state = resolveBudgetDisplay(usageInfo.session.cost, usageInfo.session.tokens, config.budget?.session);
   if (state.suppressAll) return "";
 
   const icon = iconVisible ? sym.session_cost : "";
@@ -160,13 +144,9 @@ export function formatTodayParts(
   todayInfo: TuiData["todayInfo"] & {},
   sym: SymbolSet,
   config: PowerlineConfig,
-  iconVisible = true,
+  iconVisible = true
 ): Record<string, string> {
-  const state = resolveBudgetDisplay(
-    todayInfo.cost,
-    todayInfo.tokens,
-    config.budget?.today,
-  );
+  const state = resolveBudgetDisplay(todayInfo.cost, todayInfo.tokens, config.budget?.today);
 
   if (state.suppressAll) {
     return { icon: "", label: "", cost: "", budget: "" };
@@ -184,13 +164,9 @@ export function formatTodaySegment(
   todayInfo: TuiData["todayInfo"] & {},
   sym: SymbolSet,
   config: PowerlineConfig,
-  iconVisible = true,
+  iconVisible = true
 ): string {
-  const state = resolveBudgetDisplay(
-    todayInfo.cost,
-    todayInfo.tokens,
-    config.budget?.today,
-  );
+  const state = resolveBudgetDisplay(todayInfo.cost, todayInfo.tokens, config.budget?.today);
   if (state.suppressAll) return "";
 
   const icon = iconVisible ? sym.today_cost : "";
@@ -205,10 +181,7 @@ export function formatTodaySegment(
   return text;
 }
 
-export function formatMetricsParts(
-  data: TuiData,
-  sym: SymbolSet,
-): Record<string, string> {
+export function formatMetricsParts(data: TuiData, sym: SymbolSet): Record<string, string> {
   const empty = {
     response: "",
     responseIcon: "",
@@ -229,33 +202,25 @@ export function formatMetricsParts(
     data.metricsInfo.responseTime !== null &&
     !isNaN(data.metricsInfo.responseTime) &&
     data.metricsInfo.responseTime > 0;
-  const responseValStr = hasResponse
-    ? formatResponseTime(data.metricsInfo.responseTime!)
-    : "";
+  const responseValStr = hasResponse ? formatResponseTime(data.metricsInfo.responseTime!) : "";
 
   const hasLast =
     data.metricsInfo.lastResponseTime !== null &&
     !isNaN(data.metricsInfo.lastResponseTime) &&
     data.metricsInfo.lastResponseTime > 0;
-  const lastValStr = hasLast
-    ? formatResponseTime(data.metricsInfo.lastResponseTime!)
-    : "";
+  const lastValStr = hasLast ? formatResponseTime(data.metricsInfo.lastResponseTime!) : "";
 
-  const hasAdded =
-    data.metricsInfo.linesAdded !== null && data.metricsInfo.linesAdded > 0;
+  const hasAdded = data.metricsInfo.linesAdded !== null && data.metricsInfo.linesAdded > 0;
   const addedValStr = hasAdded ? `${data.metricsInfo.linesAdded}` : "";
 
-  const hasRemoved =
-    data.metricsInfo.linesRemoved !== null && data.metricsInfo.linesRemoved > 0;
+  const hasRemoved = data.metricsInfo.linesRemoved !== null && data.metricsInfo.linesRemoved > 0;
   const removedValStr = hasRemoved ? `${data.metricsInfo.linesRemoved}` : "";
 
   return {
     response: hasResponse ? `${sym.metrics_response} ${responseValStr}` : "",
     responseIcon: hasResponse ? sym.metrics_response : "",
     responseVal: responseValStr,
-    lastResponse: hasLast
-      ? `${sym.metrics_last_response} ${lastValStr}`
-      : `${sym.metrics_last_response} --`,
+    lastResponse: hasLast ? `${sym.metrics_last_response} ${lastValStr}` : `${sym.metrics_last_response} --`,
     lastResponseIcon: sym.metrics_last_response,
     lastResponseVal: hasLast ? lastValStr : "--",
     added: hasAdded ? `${sym.metrics_lines_added}${addedValStr}` : "",
@@ -269,19 +234,11 @@ export function formatMetricsParts(
 
 export function formatMetricsSegment(data: TuiData, sym: SymbolSet): string {
   const parts = formatMetricsParts(data, sym);
-  const filled = [
-    parts.response,
-    parts.lastResponse,
-    parts.added,
-    parts.removed,
-  ].filter(Boolean);
+  const filled = [parts.response, parts.lastResponse, parts.added, parts.removed].filter(Boolean);
   return filled.length > 0 ? filled.join(" · ") : "";
 }
 
-export function formatActivityParts(
-  data: TuiData,
-  sym: SymbolSet,
-): Record<string, string> {
+export function formatActivityParts(data: TuiData, sym: SymbolSet): Record<string, string> {
   const empty = {
     icon: "",
     duration: "",
@@ -293,15 +250,10 @@ export function formatActivityParts(
   };
   if (!data.metricsInfo) return empty;
 
-  const hasDuration =
-    data.metricsInfo.sessionDuration !== null &&
-    data.metricsInfo.sessionDuration > 0;
-  const durationValStr = hasDuration
-    ? formatDuration(data.metricsInfo.sessionDuration!)
-    : "";
+  const hasDuration = data.metricsInfo.sessionDuration !== null && data.metricsInfo.sessionDuration > 0;
+  const durationValStr = hasDuration ? formatDuration(data.metricsInfo.sessionDuration!) : "";
 
-  const hasMessages =
-    data.metricsInfo.messageCount !== null && data.metricsInfo.messageCount > 0;
+  const hasMessages = data.metricsInfo.messageCount !== null && data.metricsInfo.messageCount > 0;
   const messagesValStr = hasMessages ? `${data.metricsInfo.messageCount}` : "";
 
   return {
@@ -321,11 +273,7 @@ export function formatActivitySegment(data: TuiData, sym: SymbolSet): string {
   return filled.length > 0 ? filled.join(" · ") : "";
 }
 
-export function formatGitParts(
-  data: TuiData,
-  sym: SymbolSet,
-  iconVisible = true,
-): Record<string, string> {
+export function formatGitParts(data: TuiData, sym: SymbolSet, iconVisible = true): Record<string, string> {
   if (!data.gitInfo)
     return {
       icon: "",
@@ -349,18 +297,13 @@ export function formatGitParts(
     statusIcon = sym.git_clean;
   }
 
-  const ahead =
-    data.gitInfo.ahead > 0 ? `${sym.git_ahead}${data.gitInfo.ahead}` : "";
-  const behind =
-    data.gitInfo.behind > 0 ? `${sym.git_behind}${data.gitInfo.behind}` : "";
+  const ahead = data.gitInfo.ahead > 0 ? `${sym.git_ahead}${data.gitInfo.ahead}` : "";
+  const behind = data.gitInfo.behind > 0 ? `${sym.git_behind}${data.gitInfo.behind}` : "";
 
   const counts: string[] = [];
-  if (data.gitInfo.staged && data.gitInfo.staged > 0)
-    counts.push(`+${data.gitInfo.staged}`);
-  if (data.gitInfo.unstaged && data.gitInfo.unstaged > 0)
-    counts.push(`~${data.gitInfo.unstaged}`);
-  if (data.gitInfo.untracked && data.gitInfo.untracked > 0)
-    counts.push(`?${data.gitInfo.untracked}`);
+  if (data.gitInfo.staged && data.gitInfo.staged > 0) counts.push(`+${data.gitInfo.staged}`);
+  if (data.gitInfo.unstaged && data.gitInfo.unstaged > 0) counts.push(`~${data.gitInfo.unstaged}`);
+  if (data.gitInfo.untracked && data.gitInfo.untracked > 0) counts.push(`?${data.gitInfo.untracked}`);
   const working = counts.length > 0 ? `(${counts.join(" ")})` : "";
 
   const headParts: string[] = [];
@@ -385,16 +328,10 @@ export function formatGitParts(
   };
 }
 
-export function formatGitSegment(
-  data: TuiData,
-  sym: SymbolSet,
-  iconVisible = true,
-): string {
+export function formatGitSegment(data: TuiData, sym: SymbolSet, iconVisible = true): string {
   const parts = formatGitParts(data, sym, iconVisible);
   if (!parts.branch) return "";
-  let text = parts.icon
-    ? `${parts.icon} ${parts.branch} ${parts.status}`
-    : `${parts.branch} ${parts.status}`;
+  let text = parts.icon ? `${parts.icon} ${parts.branch} ${parts.status}` : `${parts.branch} ${parts.status}`;
   if (parts.ahead) text += ` ${parts.ahead}`;
   if (parts.behind) text += `${parts.behind}`;
   if (parts.working) text += ` ${parts.working}`;
@@ -405,7 +342,7 @@ export function formatDirParts(
   data: TuiData,
   config: PowerlineConfig,
   sym: SymbolSet,
-  iconVisible = true,
+  iconVisible = true
 ): Record<string, string> {
   return {
     icon: iconVisible ? sym.dir : "",
@@ -415,11 +352,8 @@ export function formatDirParts(
 
 export function formatDirValue(data: TuiData, config: PowerlineConfig): string {
   const raw = getDirectoryDisplay(data.hookData);
-  const dirConfig = config.display.lines
-    .map((line) => line.segments.directory)
-    .find((d) => d?.enabled);
-  const style =
-    dirConfig?.style ?? (dirConfig?.showBasename ? "basename" : "fish");
+  const dirConfig = config.display.lines.map((line) => line.segments.directory).find((d) => d?.enabled);
+  const style = dirConfig?.style ?? (dirConfig?.showBasename ? "basename" : "fish");
   if (style === "basename") {
     const sep = raw.includes("/") ? "/" : "\\";
     return raw.split(sep).pop() || raw;
@@ -428,11 +362,7 @@ export function formatDirValue(data: TuiData, config: PowerlineConfig): string {
   return abbreviateFishStyle(raw);
 }
 
-export function formatVersionParts(
-  data: TuiData,
-  sym: SymbolSet,
-  iconVisible = true,
-): Record<string, string> {
+export function formatVersionParts(data: TuiData, sym: SymbolSet, iconVisible = true): Record<string, string> {
   if (!data.hookData.version) return { icon: "", value: "" };
   return {
     icon: iconVisible ? sym.version : "",
@@ -440,21 +370,13 @@ export function formatVersionParts(
   };
 }
 
-export function formatVersionSegment(
-  data: TuiData,
-  sym: SymbolSet,
-  iconVisible = true,
-): string {
+export function formatVersionSegment(data: TuiData, sym: SymbolSet, iconVisible = true): string {
   const parts = formatVersionParts(data, sym, iconVisible);
   if (!parts.value) return "";
   return parts.icon ? `${parts.icon} ${parts.value}` : parts.value;
 }
 
-export function formatAgentParts(
-  data: TuiData,
-  sym: SymbolSet,
-  iconVisible = true,
-): Record<string, string> {
+export function formatAgentParts(data: TuiData, sym: SymbolSet, iconVisible = true): Record<string, string> {
   const raw = data.hookData.agent?.name;
   if (typeof raw !== "string") return { icon: "", name: "" };
   const name = raw.trim();
@@ -465,24 +387,17 @@ export function formatAgentParts(
   };
 }
 
-export function formatAgentSegment(
-  data: TuiData,
-  sym: SymbolSet,
-  config: PowerlineConfig,
-  iconVisible = true,
-): string {
+export function formatAgentSegment(data: TuiData, sym: SymbolSet, config: PowerlineConfig, iconVisible = true): string {
   const parts = formatAgentParts(data, sym, iconVisible);
   if (!parts.name) return "";
-  const agentConfig = config.display.lines
-    .map((line) => line.segments.agent)
-    .find((a) => a?.enabled);
+  const agentConfig = config.display.lines.map((line) => line.segments.agent).find((a) => a?.enabled);
   const body = agentConfig?.showLabel ? `agent: ${parts.name}` : parts.name;
   return parts.icon ? `${parts.icon} ${body}` : body;
 }
 
 function buildThinkingBody(
   data: TuiData,
-  thinkingConfig: { showEnabled?: boolean; showEffort?: boolean } | undefined,
+  thinkingConfig: { showEnabled?: boolean; showEffort?: boolean } | undefined
 ): string {
   const showEnabled = thinkingConfig?.showEnabled ?? true;
   const showEffort = thinkingConfig?.showEffort ?? true;
@@ -501,7 +416,7 @@ export function formatThinkingParts(
   data: TuiData,
   sym: SymbolSet,
   thinkingConfig: { showEnabled?: boolean; showEffort?: boolean } | undefined,
-  iconVisible = true,
+  iconVisible = true
 ): Record<string, string> {
   const showEnabled = thinkingConfig?.showEnabled ?? true;
   const showEffort = thinkingConfig?.showEffort ?? true;
@@ -522,18 +437,14 @@ export function formatThinkingSegment(
   data: TuiData,
   sym: SymbolSet,
   thinkingConfig: { showEnabled?: boolean; showEffort?: boolean } | undefined,
-  iconVisible = true,
+  iconVisible = true
 ): string {
   const body = buildThinkingBody(data, thinkingConfig);
   if (!body) return "";
   return iconVisible ? `${sym.thinking} ${body}` : body;
 }
 
-export function formatCacheTimerParts(
-  data: TuiData,
-  sym: SymbolSet,
-  iconVisible = true,
-): Record<string, string> {
+export function formatCacheTimerParts(data: TuiData, sym: SymbolSet, iconVisible = true): Record<string, string> {
   if (!data.cacheTimerInfo) return { icon: "", value: "" };
   return {
     icon: iconVisible ? sym.cache_timer : "",
@@ -541,11 +452,7 @@ export function formatCacheTimerParts(
   };
 }
 
-export function formatCacheTimerSegment(
-  data: TuiData,
-  sym: SymbolSet,
-  iconVisible = true,
-): string {
+export function formatCacheTimerSegment(data: TuiData, sym: SymbolSet, iconVisible = true): string {
   const parts = formatCacheTimerParts(data, sym, iconVisible);
   if (!parts.value) return "";
   return parts.icon ? `${parts.icon} ${parts.value}` : parts.value;
@@ -554,16 +461,14 @@ export function formatCacheTimerSegment(
 /** The TTL the timer colors against: configured, else detected, else the 300s default
  * of cacheTimerStyle — the same order the classic renderer uses. */
 export function cacheTimerTtl(config: PowerlineConfig, data: TuiData): number | undefined {
-  const configured = config.display.lines
-    .map((line) => line.segments.cacheTimer)
-    .find((t) => t?.enabled)?.ttlSeconds;
+  const configured = config.display.lines.map((line) => line.segments.cacheTimer).find((t) => t?.enabled)?.ttlSeconds;
   return configured ?? data.cacheTimerInfo?.detectedTtlSeconds;
 }
 
 export function cacheTimerStyle(
   elapsed: number,
   colors: PowerlineColors,
-  ttlSeconds = 300,
+  ttlSeconds = 300
 ): { fg: string; bold: boolean } {
   if (elapsed >= ttlSeconds) {
     return { fg: colors.contextCriticalFg, bold: colors.contextCriticalBold };
@@ -586,9 +491,7 @@ export function formatTmuxSegment(data: TuiData): string {
 }
 
 export function formatEnvParts(config: PowerlineConfig): Record<string, string> {
-  const envConfig = config.display.lines
-    .map((line) => line.segments.env)
-    .find((env) => env?.enabled);
+  const envConfig = config.display.lines.map((line) => line.segments.env).find((env) => env?.enabled);
 
   if (!envConfig || !envConfig.variable) return { prefix: "", value: "" };
   const envVal = globalThis.process?.env?.[envConfig.variable];

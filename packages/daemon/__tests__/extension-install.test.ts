@@ -15,7 +15,7 @@ test("release asset URL and local path are version-locked and consistent", async
   assert.match(version, /^\d+\.\d+\.\d+/);
   assert.equal(
     releaseDownloadUrl(version),
-    `https://github.com/n0mad-ai/bastra-recall/releases/download/v${version}/bastra-recall-${version}.mcpb`,
+    `https://github.com/n0mad-ai/bastra-recall/releases/download/v${version}/bastra-recall-${version}.mcpb`
   );
   assert.match(localMcpbPath(version, "/tmp/pkg"), /^\/tmp\/pkg\/mcpb\/bastra-recall-.+\.mcpb$/);
 });

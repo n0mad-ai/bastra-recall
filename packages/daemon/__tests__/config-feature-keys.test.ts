@@ -34,7 +34,8 @@ async function withHome(t: test.TestContext): Promise<string> {
 }
 
 const run = (...argv: string[]) => cmdConfig(parseArgs(["config", ...argv]));
-const stored = async (home: string) => JSON.parse(await readSettingsFixture(join(home, ".bastra", "cli-settings.json"), "utf8"));
+const stored = async (home: string) =>
+  JSON.parse(await readSettingsFixture(join(home, ".bastra", "cli-settings.json"), "utf8"));
 
 test("reflex.enabled: set off/true lands in the file and keeps maxPerTurn", async (t) => {
   // Revert-check: drop "reflex.enabled" from KNOWN_KEYS → exit 2.

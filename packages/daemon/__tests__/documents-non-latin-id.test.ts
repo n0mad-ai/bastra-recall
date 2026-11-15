@@ -54,7 +54,10 @@ for (const [label, a, b] of [
 ] as const) {
   test(`two ${label}-named files in one folder get distinct doc ids`, async () => {
     const r = await twoDocs(a, b);
-    assert.ok(r.every((x) => x.startsWith("ok:")), r.join(" | "));
+    assert.ok(
+      r.every((x) => x.startsWith("ok:")),
+      r.join(" | ")
+    );
     assert.notEqual(r[0], r[1], r.join(" | "));
   });
 }
@@ -72,7 +75,10 @@ test("accented Latin filenames still fold the accent, composed or decomposed", a
 
 test("marks on non-Latin letters are kept, so и and й do not collide", async () => {
   const r = await twoDocs("и.pdf", "й.pdf");
-  assert.ok(r.every((x) => x.startsWith("ok:")), r.join(" | "));
+  assert.ok(
+    r.every((x) => x.startsWith("ok:")),
+    r.join(" | ")
+  );
   assert.notEqual(r[0], r[1]);
 });
 
@@ -102,10 +108,7 @@ test("overwrite retains an existing id from before the Unicode change", async ()
     assert.equal(first.id, "doc-inbox-resume-pdf");
     const before = matter(await readFile(first.sidecar_path, "utf8"));
     const legacyId = "doc-inbox-r-sum-pdf";
-    await writeFile(
-      first.sidecar_path,
-      matter.stringify(before.content, { ...before.data, id: legacyId }),
-    );
+    await writeFile(first.sidecar_path, matter.stringify(before.content, { ...before.data, id: legacyId }));
     await vault.reindexFile(first.sidecar_path);
 
     await writeFile(src, "new bytes");

@@ -59,7 +59,11 @@ test("throwaway contexts are exempt, ordinary source of the same shape is not (#
   assert.deepEqual(thresholdsFor("/x/labels/view.tsx"), { guide: 500, critical: 800 });
   assert.deepEqual(thresholdsFor("/x/collab-view.ts"), { guide: 500, critical: 800 });
   assert.deepEqual(thresholdsFor("/x/foo-labels.ts"), { guide: 500, critical: 800 });
-  assert.deepEqual(thresholdsFor("/x/prototype-utils.ts"), { guide: 500, critical: 800 }, "Object.prototype is production code");
+  assert.deepEqual(
+    thresholdsFor("/x/prototype-utils.ts"),
+    { guide: 500, critical: 800 },
+    "Object.prototype is production code"
+  );
 });
 
 test("throwaway directories count only BELOW the project anchor, never above it", () => {
@@ -71,7 +75,7 @@ test("throwaway directories count only BELOW the project anchor, never above it"
   assert.deepEqual(
     thresholdsFor("/users/x/scratch/myapp/src/view.tsx", {}, "/users/x/scratch/myapp/"),
     { guide: 500, critical: 800 },
-    "a trailing slash on the anchor changes nothing",
+    "a trailing slash on the anchor changes nothing"
   );
   // Project-INTERNAL throwaway dirs stay exempt, and so does the reported case.
   assert.equal(thresholdsFor(`${cwd}/labs/anims.js`, {}, cwd), null);

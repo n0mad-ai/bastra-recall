@@ -7,7 +7,13 @@
  * and this block is read together. `telemetry-events.ts` re-exports
  * everything, so every import path stays valid.
  */
-import type { BaseEvent, BridgeExpansion, DimensionedEvent, RecallStageBuckets, TurnSource } from "./telemetry-events.js";
+import type {
+  BaseEvent,
+  BridgeExpansion,
+  DimensionedEvent,
+  RecallStageBuckets,
+  TurnSource,
+} from "./telemetry-events.js";
 import type { CallerScopeFilterTelemetry } from "./recall-pipeline.js";
 import type { SalienceShadow } from "./salience-shadow.js";
 import type { TrustShadow } from "./trust-shadow.js";

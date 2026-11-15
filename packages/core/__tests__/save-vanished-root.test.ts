@@ -47,10 +47,7 @@ test("save refuses to recreate a vault root that was present at init", async () 
     // The mount goes away under the running daemon.
     await rm(root, { recursive: true, force: true });
 
-    await assert.rejects(
-      saveMemory(root, input()),
-      /missing/,
-    );
+    await assert.rejects(saveMemory(root, input()), /missing/);
     assert.equal(existsSync(root), false, "the vault root must not be recreated");
   } finally {
     await rm(parent, { recursive: true, force: true });
@@ -89,7 +86,7 @@ test("the bridge's audited save refuses a vanished root too", async () => {
         input: input(),
         context: { actor: "user" },
       }),
-      /missing/,
+      /missing/
     );
     assert.equal(existsSync(root), false, "the vault root must not be recreated");
   } finally {

@@ -44,7 +44,11 @@ const rec = (id: string, model: string, sizeGB = 1): ModelRecommendation => {
 };
 const REC_A = rec("release-A", "shown-A:4b");
 const REC_B = rec("release-B", "unseen-B:12b", 8);
-const EXISTING = JSON.stringify({ embedding: { provider: "ollama" }, generation: { model: "old:4b" }, api: { token: "invented-token" } });
+const EXISTING = JSON.stringify({
+  embedding: { provider: "ollama" },
+  generation: { model: "old:4b" },
+  api: { token: "invented-token" },
+});
 
 let server: Server;
 let redirectTarget: Server;
@@ -54,7 +58,12 @@ let dir: string;
 let cmdModels: typeof import("../src/cli/models-cmd.js").cmdModels;
 let enableGenerationModel: typeof import("../src/cli/ollama.js").enableGenerationModel;
 let ollamaUrl: string;
-const fakeCli = { find: () => "/fake/bin/ollama", pull: () => { throw new Error("no pull in these fixtures"); } };
+const fakeCli = {
+  find: () => "/fake/bin/ollama",
+  pull: () => {
+    throw new Error("no pull in these fixtures");
+  },
+};
 
 before(async () => {
   redirectTarget = createServer((req, res) => {
@@ -73,9 +82,17 @@ before(async () => {
       if (req.url === "/api/version") {
         res.end('{"version":"0.0.0-fake"}');
       } else if (req.url === "/api/tags") {
-        res.end(JSON.stringify({ models: ["old:4b", "new:4b", "shown-A:4b", "unseen-B:12b", "fixture-A:4b", "fixture-B:4b"].map((name) => ({ name })) }));
+        res.end(
+          JSON.stringify({
+            models: ["old:4b", "new:4b", "shown-A:4b", "unseen-B:12b", "fixture-A:4b", "fixture-B:4b"].map((name) => ({
+              name,
+            })),
+          })
+        );
       } else if (req.url === "/api/chat" && chatMode === "redirect") {
-        res.writeHead(307, { location: `http://127.0.0.1:${(redirectTarget.address() as { port: number }).port}/api/chat` });
+        res.writeHead(307, {
+          location: `http://127.0.0.1:${(redirectTarget.address() as { port: number }).port}/api/chat`,
+        });
         res.end();
       } else {
         res.end(JSON.stringify({ message: { content: "ok" } }));
@@ -111,7 +128,11 @@ async function quiet<T>(fn: () => Promise<T>): Promise<{ result: T; out: string 
   const real = { out: process.stdout.write, err: process.stderr.write };
   let out = "";
   const capture = (stream: NodeJS.WriteStream, write: typeof process.stdout.write): typeof process.stdout.write =>
-    function (chunk: string | Uint8Array, encoding?: BufferEncoding | ((error?: Error | null) => void), callback?: (error?: Error | null) => void) {
+    function (
+      chunk: string | Uint8Array,
+      encoding?: BufferEncoding | ((error?: Error | null) => void),
+      callback?: (error?: Error | null) => void
+    ) {
       // The runner's serialized result frames share stdout with CLI strings.
       // Preserve frames and write callbacks while capturing only display text.
       if (typeof chunk !== "string") return Reflect.apply(write, stream, [chunk, encoding, callback]);
@@ -138,11 +159,20 @@ function shownCommand(text: string, verb: "switch" | "later" | "dismiss"): strin
 }
 
 const shownOffer = (r: ModelRecommendation): ModelOffer => ({
-  id: r.id, ...r.models.baseline!, current: "old:4b", envOverride: null,
+  id: r.id,
+  ...r.models.baseline!,
+  current: "old:4b",
+  envOverride: null,
 });
 
 /** Runs what the user was shown for recommendation `shown`, on a CLI that ships `shipped`. */
-function runShown(verb: "switch" | "later" | "dismiss", shown: ModelRecommendation, shipped: ModelRecommendation | null, path: string, extra: Partial<ModelsDeps> = {}) {
+function runShown(
+  verb: "switch" | "later" | "dismiss",
+  shown: ModelRecommendation,
+  shipped: ModelRecommendation | null,
+  path: string,
+  extra: Partial<ModelsDeps> = {}
+) {
   const positional = shownCommand(formatModelSessionBlock(shownOffer(shown)), verb);
   const enabled: string[] = [];
   return quiet(() =>
@@ -153,10 +183,13 @@ function runShown(verb: "switch" | "later" | "dismiss", shown: ModelRecommendati
       deps: {
         recommendation: shipped,
         ramGB: 16,
-        enable: (async (m: string, o: never, p: string) => { enabled.push(m); return enableGenerationModel(m, o, p, fakeCli); }) as never,
+        enable: (async (m: string, o: never, p: string) => {
+          enabled.push(m);
+          return enableGenerationModel(m, o, p, fakeCli);
+        }) as never,
         ...extra,
       },
-    }),
+    })
   ).then((r) => ({ ...r, enabled }));
 }
 
@@ -189,17 +222,37 @@ test("P1 stale consent: a bare `bastra models switch` names no recommendation an
   for (const verb of ["switch", "later", "dismiss"]) {
     const path = await settingsFile();
     const { result, out } = await quiet(() =>
-      cmdModels({ sub: verb, positional: ["models", verb], settingsPath: path, deps: { recommendation: REC_B, ramGB: 16, enable: (async () => { throw new Error("must not switch"); }) as never } }),
+      cmdModels({
+        sub: verb,
+        positional: ["models", verb],
+        settingsPath: path,
+        deps: {
+          recommendation: REC_B,
+          ramGB: 16,
+          enable: (async () => {
+            throw new Error("must not switch");
+          }) as never,
+        },
+      })
     );
     assert.equal(result, 2);
-    assert.match(out, new RegExp(`bastra models ${verb} release-B`), "the refusal names the full command for the current recommendation");
+    assert.match(
+      out,
+      new RegExp(`bastra models ${verb} release-B`),
+      "the refusal names the full command for the current recommendation"
+    );
     assert.equal(await readSettingsFixture(path, "utf8"), EXISTING);
   }
 });
 
 test("P1: the same recommendation on both sides goes through, bound by id and model", async () => {
   const path = await settingsFile();
-  assert.deepEqual(shownCommand(formatModelSessionBlock(shownOffer(REC_A)), "switch"), ["models", "switch", "release-A", "shown-A:4b"]);
+  assert.deepEqual(shownCommand(formatModelSessionBlock(shownOffer(REC_A)), "switch"), [
+    "models",
+    "switch",
+    "release-A",
+    "shown-A:4b",
+  ]);
   assert.deepEqual(shownCommand(formatModelNotice(shownOffer(REC_A)), "dismiss"), ["models", "dismiss", "release-A"]);
   const { result, enabled } = await runShown("switch", REC_A, REC_A, path);
   assert.equal(result, 0);
@@ -216,20 +269,24 @@ test("P1: the same recommendation on both sides goes through, bound by id and mo
 test("P1 half switch: a full disk on the commit leaves the old model AND no answer", async () => {
   const path = await settingsFile();
   const originalPrepare = DatabaseSync.prototype.prepare;
-  DatabaseSync.prototype.prepare = function(sql: string) {
-    const statement = originalPrepare.call(this,sql);
-    if(sql.startsWith("INSERT INTO app_records")) {
-      const originalRun=statement.run;
-      statement.run=function(...params:any[]) {
-        if(params[0] === "settings" && typeof params[2] === "string" && params[2].includes("switched")) throw Object.assign(new Error("fixture: disk full"),{code:"ENOSPC"});
-        return Reflect.apply(originalRun,this,params);
+  DatabaseSync.prototype.prepare = function (sql: string) {
+    const statement = originalPrepare.call(this, sql);
+    if (sql.startsWith("INSERT INTO app_records")) {
+      const originalRun = statement.run;
+      statement.run = function (...params: any[]) {
+        if (params[0] === "settings" && typeof params[2] === "string" && params[2].includes("switched"))
+          throw Object.assign(new Error("fixture: disk full"), { code: "ENOSPC" });
+        return Reflect.apply(originalRun, this, params);
       };
     }
     return statement;
   };
   let run;
-  try { run = await runShown("switch", REC_A, REC_A, path); }
-  finally { DatabaseSync.prototype.prepare = originalPrepare; }
+  try {
+    run = await runShown("switch", REC_A, REC_A, path);
+  } finally {
+    DatabaseSync.prototype.prepare = originalPrepare;
+  }
   assert.equal(run.result, 1, "reported as a failure, not thrown");
   assert.match(run.out, /could not be saved \(ENOSPC\)/);
   assert.match(run.out, /Nothing was changed/);
@@ -243,7 +300,9 @@ test("P1 two overlapping processes end in one consistent pair of model and answe
   const gate = join(dir, `gate-${n++}`);
   const worker = fileURLToPath(new URL("./fixtures/model-switch-worker.mts", import.meta.url));
   const run = (role: string) => {
-    const p = spawn(process.execPath, ["--import", "tsx", worker, path, ollamaUrl, role, gate], { stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn(process.execPath, ["--import", "tsx", worker, path, ollamaUrl, role, gate], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     let log = "";
     p.stdout.on("data", (x) => (log += x));
     p.stderr.on("data", (x) => (log += x));
@@ -252,7 +311,13 @@ test("P1 two overlapping processes end in one consistent pair of model and answe
   const a = run("A");
   for (let i = 0; ; i++) {
     assert.ok(i < 1500, "process A never reached the gate");
-    if (await access(`${gate}.ready`).then(() => true, () => false)) break;
+    if (
+      await access(`${gate}.ready`).then(
+        () => true,
+        () => false
+      )
+    )
+      break;
     await new Promise((r) => setTimeout(r, 20));
   }
   const b = await run("B");
@@ -274,7 +339,9 @@ test("P2 redirect: a redirected test call is a failed test call — nothing is s
   chatMode = "redirect";
   redirectedPosts = 0;
   try {
-    const { result: r } = await quiet(() => enableGenerationModel("new:4b", { dryRun: false, verify: true }, path, fakeCli));
+    const { result: r } = await quiet(() =>
+      enableGenerationModel("new:4b", { dryRun: false, verify: true }, path, fakeCli)
+    );
     assert.equal(r.activated, false);
     assert.match(r.message, /did not answer a test call/);
     assert.equal(redirectedPosts, 0, "the redirect target never sees the request");
@@ -287,7 +354,10 @@ test("P2 redirect: a redirected test call is a failed test call — nothing is s
 test("P2: the test call runs against a local Ollama only", async () => {
   const { testCallFailure } = await import("../src/cli/ollama.js");
   // Refused before any request is made — the hostname is never resolved.
-  assert.match((await testCallFailure("new:4b", "http://ollama.example.invalid:11434")) ?? "", /only runs against a local Ollama/);
+  assert.match(
+    (await testCallFailure("new:4b", "http://ollama.example.invalid:11434")) ?? "",
+    /only runs against a local Ollama/
+  );
   assert.equal(await testCallFailure("new:4b", ollamaUrl), null);
 });
 
@@ -314,8 +384,10 @@ test("a configured URL with credentials or a token never reaches a message, in a
     assert.equal(typeof message, "string", `${spelled}: not a working test call`);
     assert.doesNotMatch(message ?? "", SECRETS, spelled);
   }
-  assert.equal(await testCallFailure("new:4b", "http://ollama.example.invalid:11434/?token=tok-9f3a"),
-    "the test call only runs against a local Ollama, not ollama.example.invalid:11434");
+  assert.equal(
+    await testCallFailure("new:4b", "http://ollama.example.invalid:11434/?token=tok-9f3a"),
+    "the test call only runs against a local Ollama, not ollama.example.invalid:11434"
+  );
   // A token in the query of a LOCAL URL: the request is built from origin and
   // path, so the call works and the token is neither sent nor shown.
   assert.equal(await testCallFailure("new:4b", `${ollamaUrl}/?token=tok-9f3a`), null);
@@ -330,13 +402,21 @@ test("a configured URL with credentials or a token never reaches a message, in a
 
 test("a refused switch quotes neither the settings file's content nor its path", async () => {
   const path = await settingsFile('{"api":{"token":"invented-token"},BROKEN');
-  const { result: r } = await quiet(() => enableGenerationModel("new:4b", { dryRun: false, verify: true }, path, fakeCli));
-  assert.equal(r.message, "the settings file is not valid JSON — fix or delete it first (bastra names the file on every run)");
+  const { result: r } = await quiet(() =>
+    enableGenerationModel("new:4b", { dryRun: false, verify: true }, path, fakeCli)
+  );
+  assert.equal(
+    r.message,
+    "the settings file is not valid JSON — fix or delete it first (bastra names the file on every run)"
+  );
   const { out } = await runShown("dismiss", REC_A, REC_A, path);
   assert.doesNotMatch(out, /invented-token|BROKEN/);
   // (The settings reader's own, older warning names the file on stderr — that
   // is where "bastra names the file" points. The refusal itself does not.)
-  const refusal = out.split("\n").filter((l) => !l.startsWith("[bastra-recall]")).join("\n");
+  const refusal = out
+    .split("\n")
+    .filter((l) => !l.startsWith("[bastra-recall]"))
+    .join("\n");
   assert.ok(!refusal.includes(dir), "no path in the refusal");
 });
 
@@ -351,7 +431,11 @@ test("P2 env split: the model is pinned in this shell, the daemon asked — the 
     assert.equal((await pendingModelNotice(daemonView))?.current, "old:4b", "the daemon (no env) offers the switch");
     process.env.BASTRA_EXPAND_MODEL = "shown-A:4b";
     try {
-      assert.equal(await currentModelOffer(daemonView), null, "in this shell the recommended model is already in effect");
+      assert.equal(
+        await currentModelOffer(daemonView),
+        null,
+        "in this shell the recommended model is already in effect"
+      );
       const { result } = await runShown(verb, REC_A, REC_A, path);
       assert.equal(result, 0);
     } finally {
@@ -359,7 +443,8 @@ test("P2 env split: the model is pinned in this shell, the daemon asked — the 
     }
     const s = await readSettings(path);
     assert.equal(s.modelRecommendation?.answer, verb === "switch" ? "switched" : "dismissed");
-    if (verb === "switch") assert.equal(s.generation?.model, "shown-A:4b", "the stored choice is what the daemon reads");
+    if (verb === "switch")
+      assert.equal(s.generation?.model, "shown-A:4b", "the stored choice is what the daemon reads");
     assert.equal(await pendingModelNotice(daemonView), null, "the daemon stops asking");
   }
   if (saved !== undefined) process.env.BASTRA_EXPAND_MODEL = saved;
@@ -370,7 +455,9 @@ test("P2 env split: the model is pinned in this shell, the daemon asked — the 
 test("corrupt settings: the safe switch and the answers refuse instead of overwriting the file", async () => {
   const CORRUPT = '{"generation":{"model":"old:4b"},"api":{"token":"invented-token"},BROKEN';
   const path = await settingsFile(CORRUPT);
-  const { result: r } = await quiet(() => enableGenerationModel("new:4b", { dryRun: false, verify: true }, path, fakeCli));
+  const { result: r } = await quiet(() =>
+    enableGenerationModel("new:4b", { dryRun: false, verify: true }, path, fakeCli)
+  );
   assert.equal(r.activated, false);
   assert.match(r.message, /not valid JSON/);
   assert.equal(await readSettingsFixture(path, "utf8"), CORRUPT);
@@ -387,5 +474,8 @@ test("a recommendation without an entry for this tier is no offer, not a crash",
   const partial = { id: "partial", models: { baseline: REC_A.models.baseline } } as ModelRecommendation;
   assert.equal(await currentModelOffer({ recommendation: partial, ramGB: 32, settingsPath: path }), null);
   assert.equal(await pendingModelNotice({ recommendation: partial, ramGB: 24, settingsPath: path }), null);
-  assert.equal((await currentModelOffer({ recommendation: partial, ramGB: 16, settingsPath: path }))?.model, "shown-A:4b");
+  assert.equal(
+    (await currentModelOffer({ recommendation: partial, ramGB: 16, settingsPath: path }))?.model,
+    "shown-A:4b"
+  );
 });

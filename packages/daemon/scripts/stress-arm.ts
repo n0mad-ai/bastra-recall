@@ -91,7 +91,7 @@ export async function attachHybrid(vault: Vault, search: SearchIndex, vaultPath:
     await cleanup();
     throw new Error(
       `--hybrid: the embedding provider is unreachable (${provider.id} at ${baseURL}): ${(e as Error).message}\n` +
-        `The hybrid arm cannot be built, and a BM25 run must not be reported as hybrid.`,
+        `The hybrid arm cannot be built, and a BM25 run must not be reported as hybrid.`
     );
   }
 
@@ -119,7 +119,7 @@ export async function attachHybrid(vault: Vault, search: SearchIndex, vaultPath:
       `--hybrid: only ${loaded}/${want} memories carry a vector after ` +
         `${Math.round(HYBRID_BACKFILL_TIMEOUT_MS / 1000)}s. The dense leg would be blind for the rest, ` +
         `so the arm is not hybrid for the whole vault.\n` +
-        `Let the daemon finish embedding the vault, then run again — a partially embedded arm is not a measurement.`,
+        `Let the daemon finish embedding the vault, then run again — a partially embedded arm is not a measurement.`
     );
   }
 
@@ -131,7 +131,8 @@ export async function attachHybrid(vault: Vault, search: SearchIndex, vaultPath:
   }
 
   return {
-    provider: `Hybrid (BM25 + Vector RRF) · ${provider.id} · dim ${provider.dim} · ` +
+    provider:
+      `Hybrid (BM25 + Vector RRF) · ${provider.id} · dim ${provider.dim} · ` +
       `store ${hadStore ? "copied from vault" : "embedded fresh"}` +
       (loaded > atStart ? ` · ${loaded - atStart} backfilled for this run` : ""),
     loadedVectors: loaded,
@@ -222,4 +223,3 @@ export function makeControlRecaller(vault: Vault, seed: number): Recaller {
     return ranked;
   };
 }
-

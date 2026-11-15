@@ -43,7 +43,7 @@ export async function isDir(p: string): Promise<boolean> {
     if (code === "ENOENT" || code === "ENOTDIR") return false;
     throw new Error(
       `cannot tell whether ${p} exists (${code ?? String(err)}) — refusing to continue: ` +
-        `treating it as absent would leave the area half moved.`,
+        `treating it as absent would leave the area half moved.`
     );
   }
 }

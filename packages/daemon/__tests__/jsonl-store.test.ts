@@ -20,8 +20,7 @@ interface Rec {
   n: number;
 }
 const isRec = (v: unknown): v is Rec =>
-  !!v && typeof v === "object" &&
-  typeof (v as Rec).id === "string" && typeof (v as Rec).n === "number";
+  !!v && typeof v === "object" && typeof (v as Rec).id === "string" && typeof (v as Rec).n === "number";
 
 async function tmp(): Promise<string> {
   return await mkdtemp(join(tmpdir(), "jsonl-store-"));
@@ -59,10 +58,13 @@ test("a read error that is not ENOENT throws instead of degrading to empty", asy
   try {
     // A directory in the file's place: readFile fails with EISDIR, which the
     // floors registry would swallow as "corrupt → treat as empty".
-    await assert.rejects(() => readJsonl(dir, isRec), (e: NodeJS.ErrnoException) => {
-      assert.notEqual(e.code, "ENOENT");
-      return true;
-    });
+    await assert.rejects(
+      () => readJsonl(dir, isRec),
+      (e: NodeJS.ErrnoException) => {
+        assert.notEqual(e.code, "ENOENT");
+        return true;
+      }
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

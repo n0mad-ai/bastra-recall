@@ -176,7 +176,7 @@ export function computeReach(usage: UsageAggregate): Record<string, UsageReach> 
     const loaded = e.loaded ?? 0;
     const acted = e.acted_on ?? 0;
     const stamps = [e.last_acted_on_at, e.last_loaded_at, e.last_surfaced_at].filter(
-      (s): s is string => typeof s === "string" && s.length > 0,
+      (s): s is string => typeof s === "string" && s.length > 0
     );
     stamps.sort();
     out[id] = {
@@ -238,7 +238,7 @@ export function sampleRotThresholdMs(): number {
 export function isSampleDue(
   entry: UsageEntry | undefined,
   now: number = Date.now(),
-  thresholdMs: number = sampleRotThresholdMs(),
+  thresholdMs: number = sampleRotThresholdMs()
 ): boolean {
   const stamp = entry?.last_sampled_at;
   if (typeof stamp !== "string" || stamp === "") return true;
@@ -278,7 +278,7 @@ export function dueForSampling(
    */
   ids: Iterable<string>,
   now: number = Date.now(),
-  thresholdMs: number = sampleRotThresholdMs(),
+  thresholdMs: number = sampleRotThresholdMs()
 ): string[] {
   const due: Array<{ id: string; at: number }> = [];
   const seen = new Set<string>();
@@ -363,7 +363,6 @@ async function readAggregateRaw(vaultRoot: string): Promise<{ agg: UsageAggregat
   }
   return { agg: {}, meta: {} };
 }
-
 
 /**
  * Current per-memory usage: compacted aggregate + every not-yet-compacted

@@ -6,8 +6,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  parseDiff, parseLcov, normalizeSource, select, headline, testFiles, testScript, INERT, codeLinesOf, gitDiff,
-  build, loadMap, MapError, DIRTY, parseCli,
+  parseDiff,
+  parseLcov,
+  normalizeSource,
+  select,
+  headline,
+  testFiles,
+  testScript,
+  INERT,
+  codeLinesOf,
+  gitDiff,
+  build,
+  loadMap,
+  MapError,
+  DIRTY,
+  parseCli,
 } from "../test-map.mjs";
 
 // Revert-checks added below, one per bug found in review (each names what to break to
@@ -30,7 +43,16 @@ const map = {
     { file: "packages/daemon/__tests__/blind.test.ts", tests: 2, wall_ms: 900, src_lines: 0 },
   ],
   sources: {
-    "packages/daemon/src/x.ts": { lines: [[1, 40]], by: { 0: [[1, 10]], 1: [[1, 3], [20, 30]] } },
+    "packages/daemon/src/x.ts": {
+      lines: [[1, 40]],
+      by: {
+        0: [[1, 10]],
+        1: [
+          [1, 3],
+          [20, 30],
+        ],
+      },
+    },
   },
 };
 
@@ -49,7 +71,10 @@ describe("test-map: diff → the tests that executed the changed lines", () => {
 
   it("a change to one line of a file picks only the test files that ran that line", () => {
     const r = select(map, diff("packages/daemon/src/x.ts", "@@ -25 +25 @@", "-if (a) f()\n+if (!a) f()"));
-    assert.deepEqual(r.files.map((f) => f.file), ["packages/daemon/__tests__/b.test.ts", "packages/daemon/__tests__/blind.test.ts"]);
+    assert.deepEqual(
+      r.files.map((f) => f.file),
+      ["packages/daemon/__tests__/b.test.ts", "packages/daemon/__tests__/blind.test.ts"]
+    );
     assert.equal(r.full_suite, false);
   });
 
@@ -66,8 +91,14 @@ describe("test-map: diff → the tests that executed the changed lines", () => {
     assert.equal(r.vouched, false);
     assert.match(r.doubts[0], /^packages\/daemon\/__tests__\/a\.test\.ts: failed during the map build/);
     // A lost coverage report is exit 1 with nothing failed — not a failure.
-    const lost = { ...map, tests: map.tests.map((t, i) => ({ ...t, exit: i === 0 ? 1 : 0, ...(i === 0 ? { coverage_lost: true } : {}) })) };
-    assert.equal(select(lost, diff("packages/daemon/src/x.ts", "@@ -25 +25 @@", "-if (a) f()\n+if (!a) f()")).vouched, true);
+    const lost = {
+      ...map,
+      tests: map.tests.map((t, i) => ({ ...t, exit: i === 0 ? 1 : 0, ...(i === 0 ? { coverage_lost: true } : {}) })),
+    };
+    assert.equal(
+      select(lost, diff("packages/daemon/src/x.ts", "@@ -25 +25 @@", "-if (a) f()\n+if (!a) f()")).vouched,
+      true
+    );
   });
 
   // #660 — revert-check: go back to indexOf-based flag reading → `--jobs` alone is NaN
@@ -116,7 +147,10 @@ describe("test-map: diff → the tests that executed the changed lines", () => {
 
 describe("test-map: coverage input", () => {
   it("a source reached through another checkout maps back to this repo's path", () => {
-    assert.equal(normalizeSource("../../other/checkout/packages/core/src/scrub.ts", "/repo"), "packages/core/src/scrub.ts");
+    assert.equal(
+      normalizeSource("../../other/checkout/packages/core/src/scrub.ts", "/repo"),
+      "packages/core/src/scrub.ts"
+    );
   });
 
   // Revert-check: drop the `if (!rel.startsWith("..")) return rel;` early return (go
@@ -148,7 +182,8 @@ describe("test-map: parseDiff against real git diff output", () => {
   const repo = mkdtempSync(join(tmpdir(), "test-map-diff-"));
   const git = (...args) => execFileSync("git", args, { cwd: repo, encoding: "utf8" });
   let diffText;
-  { // one commit, then a rename+edit, a binary change, and an edit to a spaced filename
+  {
+    // one commit, then a rename+edit, a binary change, and an edit to a spaced filename
     git("init", "-q");
     git("config", "user.email", "a@a.com");
     git("config", "user.name", "a");
@@ -188,7 +223,10 @@ describe("test-map: parseDiff against real git diff output", () => {
       sources: { "old.ts": { lines: [[1, 3]], by: { 0: [[1, 3]] } } },
     };
     const r = select(m, diffText);
-    assert.ok(r.files.some((f) => f.file === "__tests__/a.test.ts"), JSON.stringify(r));
+    assert.ok(
+      r.files.some((f) => f.file === "__tests__/a.test.ts"),
+      JSON.stringify(r)
+    );
     assert.ok(!r.unmapped.includes("renamed.ts"));
   });
 
@@ -208,25 +246,51 @@ describe("test-map: parseDiff against real git diff output", () => {
 // is red. This is the pair the line-local regex cannot hold at the same time.
 describe("test-map: comment or code is decided on the whole file", () => {
   it("codeLinesOf: JSDoc body is not code, a `* 2` continuation is, a regex cannot open a comment", () => {
-    const t = ["/**", " * Explains the thing.", " * @param x", " */", "const a = b", "  * 2;", "const r = /[/*]/;", "after();", "const s = `x", "  // inside a template", "`;", "// c"].join("\n");
+    const t = [
+      "/**",
+      " * Explains the thing.",
+      " * @param x",
+      " */",
+      "const a = b",
+      "  * 2;",
+      "const r = /[/*]/;",
+      "after();",
+      "const s = `x",
+      "  // inside a template",
+      "`;",
+      "// c",
+    ].join("\n");
     assert.deepEqual([...codeLinesOf(t)], [5, 6, 7, 8, 9, 10, 11]);
   });
 
   const file = "packages/daemon/src/x.ts";
   const oldText = ["/**", " * Old wording.", " */", "export const k = a", "  * 2;"].join("\n");
-  const m = { commit: "c0ffee", tests: [{ file: "packages/daemon/__tests__/a.test.ts", tests: 1, wall_ms: 1, src_lines: 2 }], sources: { [file]: { lines: [[4, 5]], by: { 0: [[1, 5]] } } } };
+  const m = {
+    commit: "c0ffee",
+    tests: [{ file: "packages/daemon/__tests__/a.test.ts", tests: 1, wall_ms: 1, src_lines: 2 }],
+    sources: { [file]: { lines: [[4, 5]], by: { 0: [[1, 5]] } } },
+  };
 
   it("a JSDoc-only edit selects nothing", () => {
     const newText = oldText.replace("Old wording.", "New wording.");
-    const r = select(m, diff(file, "@@ -2 +2 @@", "- * Old wording.\n+ * New wording."), { readOld: () => oldText, readNew: () => newText });
+    const r = select(m, diff(file, "@@ -2 +2 @@", "- * Old wording.\n+ * New wording."), {
+      readOld: () => oldText,
+      readNew: () => newText,
+    });
     assert.equal(r.files.length, 0, JSON.stringify(r));
     assert.equal(r.inert.length, 1);
   });
 
   it("an edit to a `* 2` continuation line is code and selects its tests", () => {
     const newText = oldText.replace("* 2;", "* 3;");
-    const r = select(m, diff(file, "@@ -5 +5 @@", "-  * 2;\n+  * 3;"), { readOld: () => oldText, readNew: () => newText });
-    assert.deepEqual(r.files.map((f) => f.file), ["packages/daemon/__tests__/a.test.ts"]);
+    const r = select(m, diff(file, "@@ -5 +5 @@", "-  * 2;\n+  * 3;"), {
+      readOld: () => oldText,
+      readNew: () => newText,
+    });
+    assert.deepEqual(
+      r.files.map((f) => f.file),
+      ["packages/daemon/__tests__/a.test.ts"]
+    );
   });
 });
 
@@ -250,7 +314,10 @@ describe("test-map: the npm test glob is matched literally, not as a regex", () 
 // headers read `--- c/x.ts` / `+++ w/x.ts`, under diff.noprefix `--- x.ts`; parseDiff
 // matches neither and returns {} → both cases red.
 describe("test-map: the diff select reads does not depend on the user's git config", () => {
-  for (const [key, value] of [["diff.mnemonicPrefix", "true"], ["diff.noprefix", "true"]]) {
+  for (const [key, value] of [
+    ["diff.mnemonicPrefix", "true"],
+    ["diff.noprefix", "true"],
+  ]) {
     it(`${key}=${value} still yields the changed file`, () => {
       const repo = mkdtempSync(join(tmpdir(), "test-map-cfg-"));
       const git = (...args) => execFileSync("git", args, { cwd: repo, encoding: "utf8" });
@@ -317,9 +384,16 @@ describe("test-map: parseDiff reads git's quoted paths", () => {
 
   it("a rename into a quoted name keeps its old path, so select finds its tests", () => {
     assert.equal(parseDiff(diffText)["rén.ts"]?.renameFrom, "old.ts");
-    const m = { commit: "c0ffee", tests: [{ file: "__tests__/a.test.ts", tests: 1, wall_ms: 1, src_lines: 3 }], sources: { "old.ts": { lines: [[1, 3]], by: { 0: [[1, 3]] } } } };
+    const m = {
+      commit: "c0ffee",
+      tests: [{ file: "__tests__/a.test.ts", tests: 1, wall_ms: 1, src_lines: 3 }],
+      sources: { "old.ts": { lines: [[1, 3]], by: { 0: [[1, 3]] } } },
+    };
     const r = select(m, diffText, { readOld: () => null, readNew: () => null });
-    assert.deepEqual(r.files.map((f) => f.file), ["__tests__/a.test.ts"]);
+    assert.deepEqual(
+      r.files.map((f) => f.file),
+      ["__tests__/a.test.ts"]
+    );
   });
 });
 
@@ -327,12 +401,32 @@ describe("test-map: parseDiff reads git's quoted paths", () => {
 // no bucket at all (no files, not uncovered, not inert) → red.
 describe("test-map: a code change on lines the map dropped as comments is reported", () => {
   const file = "packages/daemon/src/x.ts";
-  const m = { commit: "c0ffee", tests: [{ file: "packages/daemon/__tests__/a.test.ts", tests: 1, wall_ms: 1, src_lines: 2 }], sources: { [file]: { lines: [[1, 1], [4, 4]], by: { 0: [[1, 1], [4, 4]] } } } };
+  const m = {
+    commit: "c0ffee",
+    tests: [{ file: "packages/daemon/__tests__/a.test.ts", tests: 1, wall_ms: 1, src_lines: 2 }],
+    sources: {
+      [file]: {
+        lines: [
+          [1, 1],
+          [4, 4],
+        ],
+        by: {
+          0: [
+            [1, 1],
+            [4, 4],
+          ],
+        },
+      },
+    },
+  };
   const oldText = ["a();", "// b();", "// c();", "d();"].join("\n");
 
   it("uncommenting a call is a code change no test ran", () => {
     const newText = oldText.replace("// b();", "b();");
-    const r = select(m, diff(file, "@@ -2 +2 @@", "-// b();\n+b();"), { readOld: () => oldText, readNew: () => newText });
+    const r = select(m, diff(file, "@@ -2 +2 @@", "-// b();\n+b();"), {
+      readOld: () => oldText,
+      readNew: () => newText,
+    });
     assert.deepEqual(r.uncovered, [`${file}:2-2`], JSON.stringify(r));
   });
 
@@ -348,19 +442,32 @@ describe("test-map: a code change on lines the map dropped as comments is report
 // a missing file) → red; drop the untracked loop in gitDiff → the untracked files are
 // absent → red.
 describe("test-map: test files written or deleted since the map", () => {
-  const add = (f) => `diff --git a/${f} b/${f}\nnew file mode 100644\n--- /dev/null\n+++ b/${f}\n@@ -0,0 +1 @@\n+it("x", () => {});\n`;
-  const del = (f) => `diff --git a/${f} b/${f}\ndeleted file mode 100644\n--- a/${f}\n+++ /dev/null\n@@ -1 +0,0 @@\n-it("x", () => {});\n`;
+  const add = (f) =>
+    `diff --git a/${f} b/${f}\nnew file mode 100644\n--- /dev/null\n+++ b/${f}\n@@ -0,0 +1 @@\n+it("x", () => {});\n`;
+  const del = (f) =>
+    `diff --git a/${f} b/${f}\ndeleted file mode 100644\n--- a/${f}\n+++ /dev/null\n@@ -1 +0,0 @@\n-it("x", () => {});\n`;
 
   it("a new test file the npm test globs pick up is selected, not just 'not in map'", () => {
     const f = "packages/daemon/__tests__/new.test.ts";
-    const r = select(map, add(f), { script: { setup: [], files: [f] }, readOld: () => "", readNew: () => 'it("x", () => {});' });
-    assert.ok(r.files.some((x) => x.file === f && x.new), JSON.stringify(r));
+    const r = select(map, add(f), {
+      script: { setup: [], files: [f] },
+      readOld: () => "",
+      readNew: () => 'it("x", () => {});',
+    });
+    assert.ok(
+      r.files.some((x) => x.file === f && x.new),
+      JSON.stringify(r)
+    );
     assert.ok(!r.unmapped.includes(f));
   });
 
   it("a deleted test file is not selected", () => {
     const f = "packages/daemon/__tests__/a.test.ts";
-    const r = select(map, del(f), { script: { setup: [], files: [] }, readOld: () => 'it("x", () => {});', readNew: () => "" });
+    const r = select(map, del(f), {
+      script: { setup: [], files: [] },
+      readOld: () => 'it("x", () => {});',
+      readNew: () => "",
+    });
     assert.ok(!r.files.some((x) => x.file === f), JSON.stringify(r.files));
   });
 
@@ -397,7 +504,9 @@ describe("test-map: the test setup is read from the npm test script, once", () =
   });
 
   it("a change to a setup file the script preloads runs the full suite", () => {
-    const r = select(map, diff("t/setup.mjs", "@@ -1 +1 @@", "-a()\n+b()"), { script: { setup: ["t/setup.mjs"], files: [] } });
+    const r = select(map, diff("t/setup.mjs", "@@ -1 +1 @@", "-a()\n+b()"), {
+      script: { setup: ["t/setup.mjs"], files: [] },
+    });
     assert.equal(r.full_suite, true);
     assert.deepEqual(r.full_why, ["t/setup.mjs: a global file"]);
   });
@@ -409,14 +518,18 @@ describe("test-map: the test setup is read from the npm test script, once", () =
 // the headline case is red.
 describe("test-map: a file coverage cannot see is never passed as safe", () => {
   it("test data under fixtures/ or __tests__/ runs the full suite, and says why", () => {
-    for (const f of ["packages/eval/fixtures/eval-vault/memories/a.md", "fixtures/sample-vault/x.json", "packages/daemon/__tests__/snap.txt"]) {
+    for (const f of [
+      "packages/eval/fixtures/eval-vault/memories/a.md",
+      "fixtures/sample-vault/x.json",
+      "packages/daemon/__tests__/snap.txt",
+    ]) {
       const r = select(map, diff(f, "@@ -1 +1 @@", "-a\n+b"));
       assert.equal(r.full_suite, true, f);
       assert.match(headline(r), /^FULL SUITE — .*test data/);
     }
   });
 
-  it("any other non-code file selects nothing and is NOT VOUCHED, not \"0 tests, fine\"", () => {
+  it('any other non-code file selects nothing and is NOT VOUCHED, not "0 tests, fine"', () => {
     const r = select(map, diff("README.md", "@@ -1 +1 @@", "-a\n+b"));
     assert.equal(r.files.length, 0);
     assert.equal(r.vouched, false);
@@ -436,28 +549,55 @@ describe("test-map: a file coverage cannot see is never passed as safe", () => {
 describe("test-map: select over a real repo and a real map", () => {
   const TOOL = fileURLToPath(new URL("../test-map.mjs", import.meta.url));
   const SRC = [
-    "/**", " * add and twice are run by every test; pick(1) by b only.", " */",
-    "export function add(a, b) {", "  return a + b;", "}", "",
-    "// a line comment", "export function pick(x) {", "  if (x > 0) {", '    return "pos";', "  }",
-    '  return "neg"; // no test takes this branch', "}", "",
-    "export function twice(x) {", "  const y = x", "    * 2;", "  return y;", "}", "",
-    "export function unused() {", "  return 42;", "}", "",
+    "/**",
+    " * add and twice are run by every test; pick(1) by b only.",
+    " */",
+    "export function add(a, b) {",
+    "  return a + b;",
+    "}",
+    "",
+    "// a line comment",
+    "export function pick(x) {",
+    "  if (x > 0) {",
+    '    return "pos";',
+    "  }",
+    '  return "neg"; // no test takes this branch',
+    "}",
+    "",
+    "export function twice(x) {",
+    "  const y = x",
+    "    * 2;",
+    "  return y;",
+    "}",
+    "",
+    "export function unused() {",
+    "  return 42;",
+    "}",
+    "",
   ].join("\n");
   const repo = mkdtempSync(join(tmpdir(), "test-map-real-"));
   const git = (...args) => execFileSync("git", args, { cwd: repo, encoding: "utf8" });
-  const put = (f, text) => { mkdirSync(join(repo, f, ".."), { recursive: true }); writeFileSync(join(repo, f), text); };
-  const cli = (...args) => spawnSync(process.execPath, [join(repo, "tools", "test-map.mjs"), ...args], { cwd: repo, encoding: "utf8" });
+  const put = (f, text) => {
+    mkdirSync(join(repo, f, ".."), { recursive: true });
+    writeFileSync(join(repo, f), text);
+  };
+  const cli = (...args) =>
+    spawnSync(process.execPath, [join(repo, "tools", "test-map.mjs"), ...args], { cwd: repo, encoding: "utf8" });
   let m;
 
   before(async () => {
     put("package.json", JSON.stringify({ type: "module", scripts: { test: "node --test t/*.test.mjs" } }));
     put(".gitignore", ".test-map/\n");
     put("src/m.mjs", SRC);
-    const imp = 'import { it } from "node:test";\nimport { strict as assert } from "node:assert";\nimport { add, pick, twice } from "../src/m.mjs";\n';
+    const imp =
+      'import { it } from "node:test";\nimport { strict as assert } from "node:assert";\nimport { add, pick, twice } from "../src/m.mjs";\n';
     put("t/a.test.mjs", `${imp}it("a", () => { assert.equal(add(1, 2), 3); assert.equal(twice(2), 4); });\n`);
     put("t/b.test.mjs", `${imp}it("b", () => { assert.equal(pick(1), "pos"); assert.equal(add(0, 0), 0); });\n`);
-    put("t/c.test.mjs", `${imp}import { readFileSync } from "node:fs";\n` +
-      'it("c", () => { assert.equal(add(JSON.parse(readFileSync(new URL("fixtures/data.json", import.meta.url), "utf8")).n, 1), 2); });\n');
+    put(
+      "t/c.test.mjs",
+      `${imp}import { readFileSync } from "node:fs";\n` +
+        'it("c", () => { assert.equal(add(JSON.parse(readFileSync(new URL("fixtures/data.json", import.meta.url), "utf8")).n, 1), 2); });\n'
+    );
     put("t/fixtures/data.json", '{ "n": 1 }\n');
     put("tools/test-map.mjs", readFileSync(TOOL, "utf8"));
     git("init", "-q");
@@ -470,16 +610,30 @@ describe("test-map: select over a real repo and a real map", () => {
   after(() => rmSync(repo, { recursive: true, force: true }));
 
   const selectNow = () => select(m, gitDiff(m.commit, repo), { root: repo });
-  const ran = (t, line) => Object.entries(m.sources["src/m.mjs"].by).some(([i, rs]) => m.tests[i].file === t && rs.some(([x, y]) => x <= line && line <= y));
+  const ran = (t, line) =>
+    Object.entries(m.sources["src/m.mjs"].by).some(
+      ([i, rs]) => m.tests[i].file === t && rs.some(([x, y]) => x <= line && line <= y)
+    );
   const at = (text) => SRC.split("\n").indexOf(text) + 1;
 
   it("the map is real: each test ran what it calls, none ran the untaken branch, no one sees the fixture", () => {
-    assert.deepEqual(m.tests.map((t) => [t.file, t.exit]), [["t/a.test.mjs", 0], ["t/b.test.mjs", 0], ["t/c.test.mjs", 0]]);
+    assert.deepEqual(
+      m.tests.map((t) => [t.file, t.exit]),
+      [
+        ["t/a.test.mjs", 0],
+        ["t/b.test.mjs", 0],
+        ["t/c.test.mjs", 0],
+      ]
+    );
     assert.ok(ran("t/a.test.mjs", at("    * 2;")) && !ran("t/c.test.mjs", at("    * 2;")));
     assert.ok(ran("t/b.test.mjs", at('    return "pos";')) && !ran("t/a.test.mjs", at('    return "pos";')));
-    for (const t of ["t/a.test.mjs", "t/b.test.mjs", "t/c.test.mjs"]) assert.ok(!ran(t, at('  return "neg"; // no test takes this branch')));
+    for (const t of ["t/a.test.mjs", "t/b.test.mjs", "t/c.test.mjs"])
+      assert.ok(!ran(t, at('  return "neg"; // no test takes this branch')));
     // The inherited isolation preload also executes in these fixture children.
-    assert.deepEqual(Object.keys(m.sources).filter(f => !f.endsWith("/test-network-guard.mjs")), ["src/m.mjs"]);
+    assert.deepEqual(
+      Object.keys(m.sources).filter((f) => !f.endsWith("/test-network-guard.mjs")),
+      ["src/m.mjs"]
+    );
   });
 
   // The invariant, over seeded random edits of real lines: every test the map says
@@ -492,7 +646,10 @@ describe("test-map: select over a real repo and a real map", () => {
     const old = SRC.split("\n").slice(0, -1); // the trailing "" is the final newline
     const oldCode = codeLinesOf(SRC);
     let rnd = 0x9e3779b9;
-    const next = (n) => { rnd = (Math.imul(rnd ^ (rnd >>> 15), 0x2c1b3c6d) + 0x6d2b79f5) >>> 0; return rnd % n; };
+    const next = (n) => {
+      rnd = (Math.imul(rnd ^ (rnd >>> 15), 0x2c1b3c6d) + 0x6d2b79f5) >>> 0;
+      return rnd % n;
+    };
     const seen = { edits: 0, required: 0, emptyUnvouched: 0, inertOnly: 0 };
     for (let trial = 0; trial < 100; trial++) {
       // Edits at least 3 lines apart, one hunk each. Two adjacent edits merge into one
@@ -509,17 +666,28 @@ describe("test-map: select over a real repo and a real map", () => {
       const required = new Set();
       const ops = [];
       let codeTouched = false;
-      for (const k of lines) { // bottom-up, so each k is still an old line number
+      for (const k of lines) {
+        // bottom-up, so each k is still an old line number
         const op = ["modify", "delete", "insert"][next(3)];
         ops.push(`${op}@${k}`);
         const around = op === "insert" ? [k, k + 1] : [k];
         for (const t of m.tests) if (around.some((l) => ran(t.file, l))) required.add(t.file);
-        if (op === "modify") { text[k - 1] += " 0"; codeTouched ||= oldCode.has(k); }
-        if (op === "delete") { text.splice(k - 1, 1); codeTouched ||= oldCode.has(k); }
+        if (op === "modify") {
+          text[k - 1] += " 0";
+          codeTouched ||= oldCode.has(k);
+        }
+        if (op === "delete") {
+          text.splice(k - 1, 1);
+          codeTouched ||= oldCode.has(k);
+        }
         if (op === "insert") text.splice(k, 0, "globalThis.__e = 1; // INS");
       }
       const now = text.join("\n") + "\n";
-      try { new Function(now.replace(/^export /gm, "")); } catch { continue; } // a syntax error is not an edit
+      try {
+        new Function(now.replace(/^export /gm, ""));
+      } catch {
+        continue;
+      } // a syntax error is not an edit
       codeTouched ||= now.split("\n").some((l, i) => l.includes("// INS") && codeLinesOf(now).has(i + 1));
       put("src/m.mjs", now);
       seen.edits++;
@@ -535,7 +703,10 @@ describe("test-map: select over a real repo and a real map", () => {
     }
     put("src/m.mjs", SRC);
     // Guard against a property that held by testing nothing: each branch was exercised.
-    assert.ok(seen.edits >= 50 && seen.required >= 20 && seen.emptyUnvouched >= 1 && seen.inertOnly >= 1, JSON.stringify(seen));
+    assert.ok(
+      seen.edits >= 50 && seen.required >= 20 && seen.emptyUnvouched >= 1 && seen.inertOnly >= 1,
+      JSON.stringify(seen)
+    );
   });
 
   it("the untaken branch alone: zero files, NOT VOUCHED, and --run exits 3 after running nothing", () => {
@@ -543,10 +714,15 @@ describe("test-map: select over a real repo and a real map", () => {
     try {
       const r = selectNow();
       assert.deepEqual(r.files, []);
-      assert.deepEqual(r.uncovered, [`src/m.mjs:${at('  return "neg"; // no test takes this branch')}-${at('  return "neg"; // no test takes this branch')}`]);
+      assert.deepEqual(r.uncovered, [
+        `src/m.mjs:${at('  return "neg"; // no test takes this branch')}-${at('  return "neg"; // no test takes this branch')}`,
+      ]);
       const out = cli("select", "--run");
       assert.equal(out.status, 3, out.stdout + out.stderr);
-      assert.match(out.stdout, /^0 test files, .* — NOT VOUCHED for 1 change:\n {2}src\/m\.mjs:\d+-\d+: code no test executes$/m);
+      assert.match(
+        out.stdout,
+        /^0 test files, .* — NOT VOUCHED for 1 change:\n {2}src\/m\.mjs:\d+-\d+: code no test executes$/m
+      );
     } finally {
       put("src/m.mjs", SRC);
     }
@@ -597,9 +773,15 @@ describe("test-map: select over a real repo and a real map", () => {
   it("build --only writes a partial map elsewhere and leaves the full map alone", async () => {
     const full = readFileSync(join(repo, ".test-map", "map.json"), "utf8");
     const part = await build({ root: repo, jobs: 1, only: "a.test" });
-    assert.deepEqual(part.tests.map((t) => t.file), ["t/a.test.mjs"]);
+    assert.deepEqual(
+      part.tests.map((t) => t.file),
+      ["t/a.test.mjs"]
+    );
     assert.equal(readFileSync(join(repo, ".test-map", "map.json"), "utf8"), full);
-    assert.deepEqual(JSON.parse(readFileSync(join(repo, ".test-map", "map-only.json"), "utf8")).tests.map((t) => t.file), ["t/a.test.mjs"]);
+    assert.deepEqual(
+      JSON.parse(readFileSync(join(repo, ".test-map", "map-only.json"), "utf8")).tests.map((t) => t.file),
+      ["t/a.test.mjs"]
+    );
   });
 
   // Regression: pass NODE_OPTIONS through unchanged to the map-build child → Node refuses
@@ -610,7 +792,10 @@ describe("test-map: select over a real repo and a real map", () => {
     try {
       const again = await build({ root: repo, jobs: 3 });
       assert.equal(again.tests.length, m.tests.length);
-      assert.deepEqual(again.tests.filter((t) => "exit" in t && t.exit !== 0).map((t) => t.file), []);
+      assert.deepEqual(
+        again.tests.filter((t) => "exit" in t && t.exit !== 0).map((t) => t.file),
+        []
+      );
     } finally {
       if (prev === undefined) delete process.env.NODE_OPTIONS;
       else process.env.NODE_OPTIONS = prev;
@@ -628,7 +813,11 @@ describe("test-map: select over a real repo and a real map", () => {
         process.env.NODE_OPTIONS = `--test-reporter=spec ${option}`;
         const again = await build({ root: repo, jobs: 3 });
         assert.equal(again.tests.length, m.tests.length);
-        assert.deepEqual(again.tests.filter((t) => "exit" in t && t.exit !== 0).map((t) => t.file), [], option);
+        assert.deepEqual(
+          again.tests.filter((t) => "exit" in t && t.exit !== 0).map((t) => t.file),
+          [],
+          option
+        );
       }
     } finally {
       if (prev === undefined) delete process.env.NODE_OPTIONS;
@@ -641,7 +830,9 @@ describe("test-map: select over a real repo and a real map", () => {
     put("src/m.mjs", SRC.replace('return "pos";', 'return "pos" ;'));
     try {
       const out = spawnSync(process.execPath, [join(repo, "tools", "test-map.mjs"), "select", "--run"], {
-        cwd: repo, encoding: "utf8", env: { ...process.env, NODE_OPTIONS: "--test-reporter=tap" },
+        cwd: repo,
+        encoding: "utf8",
+        env: { ...process.env, NODE_OPTIONS: "--test-reporter=tap" },
       });
       assert.equal(out.status, 0, out.stdout + out.stderr);
       assert.match(out.stdout, /^TAP version 13$/m);
@@ -662,10 +853,16 @@ describe("test-map: select over a real repo and a real map", () => {
     const gone = { ...m, commit: "0123456789abcdef0123456789abcdef01234567" };
     writeFileSync(join(repo, ".test-map", "map.json"), JSON.stringify(gone));
     try {
-      assert.throws(() => loadMap(repo), (e) => e instanceof MapError && /rebuild the map/.test(e.message));
+      assert.throws(
+        () => loadMap(repo),
+        (e) => e instanceof MapError && /rebuild the map/.test(e.message)
+      );
       const out = cli("select");
       assert.equal(out.status, 2);
-      assert.equal(out.stderr, "test-map: the map's commit 01234567 is not in this repository any more (rebased or garbage-collected) — rebuild the map: run `node tools/test-map.mjs build`\n");
+      assert.equal(
+        out.stderr,
+        "test-map: the map's commit 01234567 is not in this repository any more (rebased or garbage-collected) — rebuild the map: run `node tools/test-map.mjs build`\n"
+      );
     } finally {
       writeFileSync(join(repo, ".test-map", "map.json"), JSON.stringify(m));
     }
@@ -673,7 +870,9 @@ describe("test-map: select over a real repo and a real map", () => {
 });
 
 describe("test-map: what the map cannot see and select cannot say", () => {
-  it.todo("a source line run only inside a child process a test spawns: whether Node's coverage follows the child is not measured here; if it does not, a change there is `uncovered` (said), but a test spawning it is not selected");
+  it.todo(
+    "a source line run only inside a child process a test spawns: whether Node's coverage follows the child is not measured here; if it does not, a change there is `uncovered` (said), but a test spawning it is not selected"
+  );
 });
 
 // Revert-checks: drop REGEX_AFTER_WORD from codeLinesOf → `return /^\/*/` opens a block
@@ -686,8 +885,16 @@ describe("test-map: regex after a keyword, and hunk bodies that look like header
   });
 
   it("a removed line that reads `-- a/y` is hunk body, not a file header", () => {
-    const d = parseDiff("diff --git a/x.ts b/x.ts\n--- a/x.ts\n+++ b/x.ts\n@@ -1,2 +1 @@\n--- a/y\n-z\n+q\n@@ -9 +8 @@\n-a\n+b\n");
-    assert.deepEqual(d["x.ts"].hunks.map((h) => [...h]), [[1, 2], [9, 9]]);
+    const d = parseDiff(
+      "diff --git a/x.ts b/x.ts\n--- a/x.ts\n+++ b/x.ts\n@@ -1,2 +1 @@\n--- a/y\n-z\n+q\n@@ -9 +8 @@\n-a\n+b\n"
+    );
+    assert.deepEqual(
+      d["x.ts"].hunks.map((h) => [...h]),
+      [
+        [1, 2],
+        [9, 9],
+      ]
+    );
   });
 });
 
@@ -698,11 +905,15 @@ describe("test-map: a zero-test build and a zero-source heatmap are not success-
   const TOOL = fileURLToPath(new URL("../test-map.mjs", import.meta.url));
   const repo = mkdtempSync(join(tmpdir(), "test-map-zero-"));
   const git = (...args) => execFileSync("git", args, { cwd: repo, encoding: "utf8" });
-  const cli = (...args) => spawnSync(process.execPath, [join(repo, "tools", "test-map.mjs"), ...args], { cwd: repo, encoding: "utf8" });
+  const cli = (...args) =>
+    spawnSync(process.execPath, [join(repo, "tools", "test-map.mjs"), ...args], { cwd: repo, encoding: "utf8" });
 
   before(() => {
     // A quoted glob: the whitespace/glob parser in testScript() cannot follow it, so it lists no test file.
-    writeFileSync(join(repo, "package.json"), JSON.stringify({ type: "module", scripts: { test: 'node --test "t/*.test.mjs"' } }));
+    writeFileSync(
+      join(repo, "package.json"),
+      JSON.stringify({ type: "module", scripts: { test: 'node --test "t/*.test.mjs"' } })
+    );
     writeFileSync(join(repo, ".gitignore"), ".test-map/\n");
     mkdirSync(join(repo, "tools"));
     writeFileSync(join(repo, "tools", "test-map.mjs"), readFileSync(TOOL, "utf8"));
@@ -717,7 +928,11 @@ describe("test-map: a zero-test build and a zero-source heatmap are not success-
   it("build with 0 parsed test files leaves a previous full map untouched", () => {
     mkdirSync(join(repo, ".test-map"), { recursive: true });
     const mapPath = join(repo, ".test-map", "map.json");
-    const previous = JSON.stringify({ commit: git("rev-parse", "HEAD").trim(), tests: [{ file: "t/old.test.mjs" }], sources: {} });
+    const previous = JSON.stringify({
+      commit: git("rev-parse", "HEAD").trim(),
+      tests: [{ file: "t/old.test.mjs" }],
+      sources: {},
+    });
     writeFileSync(mapPath, previous);
     const out = cli("build");
     assert.equal(out.status, 2, out.stderr);
@@ -728,10 +943,14 @@ describe("test-map: a zero-test build and a zero-source heatmap are not success-
   it("heatmap on a map with no /src/ source prints 0.0 %, not NaN", () => {
     mkdirSync(join(repo, ".test-map"), { recursive: true });
     const commit = git("rev-parse", "HEAD").trim();
-    writeFileSync(join(repo, ".test-map", "map.json"), JSON.stringify({
-      commit, tests: [{ file: "t/a.test.mjs", tests: 1, wall_ms: 5, src_lines: 1, exit: 0 }],
-      sources: { "lib/x.mjs": { lines: [[1, 4]], by: { 0: [[1, 2]] } } },
-    }));
+    writeFileSync(
+      join(repo, ".test-map", "map.json"),
+      JSON.stringify({
+        commit,
+        tests: [{ file: "t/a.test.mjs", tests: 1, wall_ms: 5, src_lines: 1, exit: 0 }],
+        sources: { "lib/x.mjs": { lines: [[1, 4]], by: { 0: [[1, 2]] } } },
+      })
+    );
     const out = cli("heatmap");
     assert.equal(out.status, 0, out.stderr);
     assert.doesNotMatch(out.stdout, /NaN/);

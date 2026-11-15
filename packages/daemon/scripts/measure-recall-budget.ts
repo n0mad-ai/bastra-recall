@@ -76,7 +76,11 @@ async function main(): Promise<void> {
     const ranked = full.hits as unknown[];
     const fullTokens = measurePayload(full).tokens;
     for (const budget of BUDGETS) {
-      const res = (await recallHandler(deps, { query, k: K, max_tokens: budget }, { client: "eval" })) as unknown as Record<string, unknown>;
+      const res = (await recallHandler(
+        deps,
+        { query, k: K, max_tokens: budget },
+        { client: "eval" }
+      )) as unknown as Record<string, unknown>;
       const tokens = measurePayload(res).tokens;
       const emitted = (res.hits as unknown[]).length;
       checked++;
@@ -113,8 +117,8 @@ async function main(): Promise<void> {
         saved_pct: +((100 * (baselineTokens - emittedTokens)) / baselineTokens).toFixed(1),
       },
       null,
-      2,
-    ),
+      2
+    )
   );
   search.stop();
   await vault.stop?.();

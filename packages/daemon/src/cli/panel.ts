@@ -41,8 +41,6 @@ interface HealthResponse {
 /** A rendered box row: label column, value column. */
 export type PanelRow = [label: string, value: string];
 
-
-
 function getJson<T>(url: string, timeoutMs: number): Promise<T | null> {
   return new Promise((resolve_) => {
     const req = httpRequest(url, { method: "GET", timeout: timeoutMs }, (res) => {
@@ -54,20 +52,23 @@ function getJson<T>(url: string, timeoutMs: number): Promise<T | null> {
             resolve_(JSON.parse(Buffer.concat(chunks).toString("utf8")) as T);
             return;
           }
-        } catch { /* fallthrough */ }
+        } catch {
+          /* fallthrough */
+        }
         resolve_(null);
       });
     });
-    req.on("timeout", () => { req.destroy(); resolve_(null); });
+    req.on("timeout", () => {
+      req.destroy();
+      resolve_(null);
+    });
     req.on("error", () => resolve_(null));
     req.end();
   });
 }
 
 function probeHealth(baseUrl: string): Promise<HealthResponse | null> {
-  return getJson<HealthResponse>(`${baseUrl}/health`, 1200).then(
-    (d) => (d && d.ok ? d : null),
-  );
+  return getJson<HealthResponse>(`${baseUrl}/health`, 1200).then((d) => (d && d.ok ? d : null));
 }
 
 /**
@@ -77,8 +78,8 @@ function probeHealth(baseUrl: string): Promise<HealthResponse | null> {
  * tree. Null on any failure; the panel then falls back to /health's size.
  */
 function probeCount(baseUrl: string): Promise<number | null> {
-  return getJson<{ count: number }>(`${baseUrl}/vault/count`, 4000).then(
-    (d) => (d && typeof d.count === "number" ? d.count : null),
+  return getJson<{ count: number }>(`${baseUrl}/vault/count`, 4000).then((d) =>
+    d && typeof d.count === "number" ? d.count : null
   );
 }
 
@@ -175,17 +176,16 @@ export async function cmdPanel(_args: ParsedArgs): Promise<number> {
   // provider lookup: sequencing the two would add its latency to the panel,
   // while here it stays inside the 4 s /vault/count probe it runs beside. With
   // no ollama binary on PATH it returns without touching the network at all.
-  const [health, freshCount, mode, docsMode, docsLanguage, apiToken, embedding, ollama] =
-    await Promise.all([
-      probeHealth(endpoint.baseUrl),
-      probeCount(endpoint.baseUrl),
-      getUpdateMode(),
-      getDocsMode(),
-      getDocsLanguage(),
-      getApiToken(),
-      resolveEmbeddingChoice(),
-      probeOllama(),
-    ]);
+  const [health, freshCount, mode, docsMode, docsLanguage, apiToken, embedding, ollama] = await Promise.all([
+    probeHealth(endpoint.baseUrl),
+    probeCount(endpoint.baseUrl),
+    getUpdateMode(),
+    getDocsMode(),
+    getDocsLanguage(),
+    getApiToken(),
+    resolveEmbeddingChoice(),
+    probeOllama(),
+  ]);
 
   const versionRows = formatVersionRows({
     cliVersion: VERSION,
@@ -199,9 +199,7 @@ export async function cmdPanel(_args: ParsedArgs): Promise<number> {
     ollamaReachable: ollama.ok,
   });
 
-  const daemonRow = health
-    ? `✓ running (${endpoint.label})`
-    : "✗ not running (auto-spawns on next MCP call)";
+  const daemonRow = health ? `✓ running (${endpoint.label})` : "✗ not running (auto-spawns on next MCP call)";
   // Prefer the reconciled count; fall back to /health's (possibly stale) size.
   const count = freshCount ?? health?.vault_size ?? null;
   const vaultRow = count != null ? `${count} memories` : "—";

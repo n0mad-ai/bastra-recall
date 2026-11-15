@@ -37,12 +37,12 @@ async function exposureSection(extraArgs: string[]): Promise<string> {
     await writeFile(
       join(logDir, `events-${now.toISOString().slice(0, 10)}.jsonl`),
       JSON.stringify(event) + "\n",
-      "utf8",
+      "utf8"
     );
     const { stdout } = await exec(
       process.execPath,
       ["--import", "tsx", join(REPO_ROOT, "packages/daemon/scripts/stats.ts"), ...extraArgs],
-      { cwd: REPO_ROOT, env: { ...process.env, BASTRA_LOG_PATH: logDir, BASTRA_VAULT_PATH: vault } },
+      { cwd: REPO_ROOT, env: { ...process.env, BASTRA_LOG_PATH: logDir, BASTRA_VAULT_PATH: vault } }
     );
     const start = stdout.indexOf("## Exposure-normalised use");
     assert.notEqual(start, -1, `expected the exposure section:\n${stdout}`);

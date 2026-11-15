@@ -149,7 +149,7 @@ export async function resolveEmbeddingChoice(
     env?: Record<string, string | undefined>;
     /** Called with the raw value when BASTRA_EMBEDDING_PROVIDER is set but invalid (typo). */
     onInvalidEnv?: (raw: string) => void;
-  } = {},
+  } = {}
 ): Promise<EmbeddingChoice> {
   const env = opts.env ?? process.env;
   const envRaw = env.BASTRA_EMBEDDING_PROVIDER ?? "";
@@ -160,9 +160,7 @@ export async function resolveEmbeddingChoice(
   if (envProvider === "none") return { provider: "none", source: "env" };
   if (envProvider === "ollama") return { provider: "ollama", source: "env" };
   if (envProvider === "openai") {
-    return hasApiKey
-      ? { provider: "openai", source: "env" }
-      : { provider: "none", source: "env", requested: "openai" };
+    return hasApiKey ? { provider: "openai", source: "env" } : { provider: "none", source: "env", requested: "openai" };
   }
   // A typo'd env value must NOT silently disable embeddings and shadow a valid
   // file choice — surface it and fall through (treat as "no opinion").
@@ -193,7 +191,10 @@ export async function resolveEmbeddingChoice(
 }
 
 /** Persists the embedding provider atomically, merging into existing settings. */
-export async function setEmbeddingProvider(provider: EmbeddingProviderName, path: string = settingsFilePath()): Promise<void> {
+export async function setEmbeddingProvider(
+  provider: EmbeddingProviderName,
+  path: string = settingsFilePath()
+): Promise<void> {
   await mutateSettings(path, (current) => ({ ...current, embedding: { provider } }));
 }
 
@@ -231,7 +232,7 @@ export async function addCorsOrigin(url: string, path: string = settingsFilePath
   const origin = normalizeCorsOrigin(url);
   if (origin === null) {
     process.stderr.write(
-      `[bastra-recall] ignoring invalid --origin ${JSON.stringify(url)} — expected an origin like https://your.host (scheme + host, no path)\n`,
+      `[bastra-recall] ignoring invalid --origin ${JSON.stringify(url)} — expected an origin like https://your.host (scheme + host, no path)\n`
     );
     return;
   }
@@ -282,7 +283,11 @@ export async function getSharedRecallLive(path?: string): Promise<boolean> {
 export async function setSharedRecallLive(on: boolean, path: string = settingsFilePath()): Promise<void> {
   await mutateSettings(path, (current) => ({
     ...current,
-    sharedRecall: { ...current.sharedRecall, enabled: current.sharedRecall?.enabled ?? SETTINGS_REGISTRY.sharedRecall.enabled.default, live: on },
+    sharedRecall: {
+      ...current.sharedRecall,
+      enabled: current.sharedRecall?.enabled ?? SETTINGS_REGISTRY.sharedRecall.enabled.default,
+      live: on,
+    },
   }));
 }
 
@@ -312,7 +317,7 @@ export async function getEvidenceGateEnabled(path?: string): Promise<boolean> {
     if (isOffValue(env)) return false;
     console.error(
       `[bastra-recall] BASTRA_EVIDENCE_GATE=${JSON.stringify(process.env.BASTRA_EVIDENCE_GATE)} is not ` +
-        `one of 1|true|on|yes|0|false|off|no — ignored, using the settings value (#443)`,
+        `one of 1|true|on|yes|0|false|off|no — ignored, using the settings value (#443)`
     );
   }
   return (await readSettings(path)).evidenceGate?.enabled ?? EVIDENCE_GATE_DEFAULT;
@@ -325,9 +330,7 @@ export async function getEvidenceGateEnabled(path?: string): Promise<boolean> {
  * unvollständige Konfiguration ergibt ebenfalls `null` — und sagt es, statt
  * still ein halbes Experiment zu fahren.
  */
-export async function getExperimentConfig(
-  path?: string,
-): Promise<{
+export async function getExperimentConfig(path?: string): Promise<{
   experiment: string;
   arms: string[];
   registration: string;
@@ -340,7 +343,7 @@ export async function getExperimentConfig(
   // gibt es nichts zu vergleichen.
   if (cfg.arms.length < 2) {
     console.error(
-      "[bastra-recall] experiment config incomplete (needs name, >=2 arms, registration + registration_version) — no arm assignment (#267)",
+      "[bastra-recall] experiment config incomplete (needs name, >=2 arms, registration + registration_version) — no arm assignment (#267)"
     );
     return null;
   }
@@ -356,10 +359,7 @@ export async function getExperimentConfig(
   };
 }
 
-export async function setEvidenceGateEnabled(
-  on: boolean,
-  path: string = settingsFilePath(),
-): Promise<void> {
+export async function setEvidenceGateEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
   await mutateSettings(path, (current) => ({ ...current, evidenceGate: { enabled: on } }));
 }
 
@@ -375,7 +375,11 @@ export async function getSharedRecallLanguage(path?: string): Promise<string | u
 export async function setSharedRecallLanguage(language: string, path: string = settingsFilePath()): Promise<void> {
   await mutateSettings(path, (current) => ({
     ...current,
-    sharedRecall: { ...current.sharedRecall, enabled: current.sharedRecall?.enabled ?? SETTINGS_REGISTRY.sharedRecall.enabled.default, language: language.trim().toLowerCase() },
+    sharedRecall: {
+      ...current.sharedRecall,
+      enabled: current.sharedRecall?.enabled ?? SETTINGS_REGISTRY.sharedRecall.enabled.default,
+      language: language.trim().toLowerCase(),
+    },
   }));
 }
 
@@ -406,7 +410,10 @@ export async function getDocsLanguage(path?: string): Promise<string> {
 }
 
 export async function setDocsLanguage(language: string, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({ ...current, docs: { ...current.docs, language: language.trim().toLowerCase() } }));
+  await mutateSettings(path, (current) => ({
+    ...current,
+    docs: { ...current.docs, language: language.trim().toLowerCase() },
+  }));
 }
 
 /** Datei-Größen-Richtwert (Zeilen) für Quellcode; undefined = Default 500. */
@@ -478,7 +485,10 @@ export async function getPrimaryLanguage(path?: string): Promise<string | undefi
 
 /** Persists the primary authoring language, normalized to a lowercase 2-letter code. */
 export async function setPrimaryLanguage(code: string, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({ ...current, language: { ...current.language, primary: code.trim().toLowerCase() } }));
+  await mutateSettings(path, (current) => ({
+    ...current,
+    language: { ...current.language, primary: code.trim().toLowerCase() },
+  }));
 }
 
 /**
@@ -488,7 +498,7 @@ export async function setPrimaryLanguage(code: string, path: string = settingsFi
  */
 export async function ensureApiToken(
   opts: { rotate?: boolean } = {},
-  path: string = settingsFilePath(),
+  path: string = settingsFilePath()
 ): Promise<string> {
   let token = "";
   await mutateSettings(path, (current) => {

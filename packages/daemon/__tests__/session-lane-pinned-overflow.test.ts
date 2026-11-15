@@ -70,7 +70,7 @@ test("a pin truncated out of the pinned block still gets its ranked hint slot", 
   try {
     const out = await runSessionLane(
       { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "s-overflow" },
-      `http://127.0.0.1:${port}`,
+      `http://127.0.0.1:${port}`
     );
     const ctx = (JSON.parse(out) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput
       .additionalContext;

@@ -47,7 +47,7 @@ export class EmbeddingBreaker {
 
   constructor(
     private readonly failureThreshold: number = BREAKER_FAILURE_THRESHOLD,
-    private readonly cooldownMs: number = BREAKER_COOLDOWN_MS,
+    private readonly cooldownMs: number = BREAKER_COOLDOWN_MS
   ) {}
 
   /** May this call hit the provider? Claims the half-open probe slot as a
@@ -134,7 +134,7 @@ export class BreakerOpenError extends Error {
   constructor(lastError?: string | null) {
     super(
       "embedding breaker open — provider call skipped, recall degraded to BM25-only until the cooldown probe succeeds" +
-        (lastError ? ` (last error: ${lastError})` : ""),
+        (lastError ? ` (last error: ${lastError})` : "")
     );
     this.name = "BreakerOpenError";
   }
@@ -158,7 +158,7 @@ export class BreakerGuardedProvider implements EmbeddingProvider {
   constructor(
     private readonly inner: EmbeddingProvider,
     private readonly breaker: EmbeddingBreaker,
-    private readonly now: () => number = Date.now,
+    private readonly now: () => number = Date.now
   ) {
     this.id = inner.id;
     this.dim = inner.dim;

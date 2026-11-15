@@ -21,7 +21,7 @@ test("#562: no counter is interpolated straight in front of a hard-coded plural"
     assert.deepEqual(
       offenders.map((m) => m[0]),
       [],
-      `${path} still hard-codes a plural after a counter`,
+      `${path} still hard-codes a plural after a counter`
     );
   }
 });

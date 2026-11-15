@@ -56,11 +56,12 @@ export function collectDemandGaps(events: readonly TelemetryEvent[], limit = DEM
   for (const batch of batches.values()) {
     const expected = Number(batch[0]!.query_count) - Number(batch[0]!.batch_collapsed ?? 0);
     // Incomplete writes cannot establish that every phrasing missed.
-    if (new Set(batch.map(e => e.recall_id)).size !== expected) continue;
-    const phrasings = [...new Map(batch.map(e => [normalize(e.query as string), e.query as string])).entries()]
-      .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, query]) => query);
-    const latest = batch.reduce((a, b) => a.ts > b.ts ? a : b);
-    const missed = batch.every(e => e.hit_count === 0 || e.weak_result === true);
+    if (new Set(batch.map((e) => e.recall_id)).size !== expected) continue;
+    const phrasings = [...new Map(batch.map((e) => [normalize(e.query as string), e.query as string])).entries()]
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([, query]) => query);
+    const latest = batch.reduce((a, b) => (a.ts > b.ts ? a : b));
+    const missed = batch.every((e) => e.hit_count === 0 || e.weak_result === true);
     // Identity is structural and namespaced, never derived from display text:
     // a literal separator inside a phrasing must not create a sibling query.
     asks.push({

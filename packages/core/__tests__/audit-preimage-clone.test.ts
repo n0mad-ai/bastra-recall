@@ -65,7 +65,7 @@ test("das Vorbild eines Soft-Deletes hängt nicht am gray-matter-Cache", async (
   assert.deepEqual(
     audit.diff_before?.tags,
     ["eins", "zwei"],
-    "ein protokolliertes Vorbild darf sich nicht nachträglich ändern lassen",
+    "ein protokolliertes Vorbild darf sich nicht nachträglich ändern lassen"
   );
   assert.equal(audit.diff_before?.title, "Löschling");
 });

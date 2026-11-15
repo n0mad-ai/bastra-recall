@@ -78,10 +78,13 @@ export function summarizeQuality(events: ReportEvent[], t: ReportThresholds): Qu
   // #71: Tripwire-Hints (bash-pre-hook) getrennt von Write/Edit-Hints.
   const recallTool = new Map<string, string>();
   for (const r of hookRecalls) recallTool.set(String(r.recall_id), String(r.tool_name ?? ""));
-  const src = { "bash-tripwire": { candidates: 0, loaded: 0, acted: 0 }, "write-edit": { candidates: 0, loaded: 0, acted: 0 } };
+  const src = {
+    "bash-tripwire": { candidates: 0, loaded: 0, acted: 0 },
+    "write-edit": { candidates: 0, loaded: 0, acted: 0 },
+  };
   for (const r of hookRecalls) {
     const k = String(r.tool_name ?? "") === "Bash" ? "bash-tripwire" : "write-edit";
-    src[k].candidates +=(r.hits as unknown[]).length;
+    src[k].candidates += (r.hits as unknown[]).length;
   }
   for (const e of surfacedEpisodes) {
     const k = recallTool.get(String(e.recall_id)) === "Bash" ? "bash-tripwire" : "write-edit";
@@ -112,9 +115,7 @@ export function summarizeQuality(events: ReportEvent[], t: ReportThresholds): Qu
       fromHint: fromHint.length,
       hookRecallsWithHits: hookRecalls.filter((r) => (r.hits as unknown[]).length > 0).length,
       hookRecallsConsumed: new Set(fromHint.map((l) => String(l.from_hook_recall))).size,
-      ranks: [...rankCounts]
-        .map(([rank, count]) => ({ rank: Number(rank), count }))
-        .sort((a, b) => a.rank - b.rank),
+      ranks: [...rankCounts].map(([rank, count]) => ({ rank: Number(rank), count })).sort((a, b) => a.rank - b.rank),
     },
   };
 }
@@ -202,7 +203,10 @@ export function summarizeEvidence(events: ReportEvent[], t: ReportThresholds): E
       minSessions: ACCEPT_MIN_SESSIONS,
       maxSessionShare: ACCEPT_MAX_SESSION_SHARE,
     },
-    decisions: ["required", "optional", "no_answer"].map((decision) => ({ decision, count: byDecision.get(decision) ?? 0 })),
+    decisions: ["required", "optional", "no_answer"].map((decision) => ({
+      decision,
+      count: byDecision.get(decision) ?? 0,
+    })),
     abstainReasons: [...reasons].map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count),
     requiredByHop: [...byHop].map(([hop, count]) => ({ hop, count })).sort((a, b) => b.count - a.count),
     divergence,

@@ -30,12 +30,7 @@ import {
   type RecallHit,
 } from "../src/prompt-lane.js";
 import { classifyPromptMode, detectPreviousConvention } from "../src/prompt-classify.js";
-import {
-  clearShown,
-  decideBackoff,
-  touchLoadedMarker,
-  type SourceBackoff,
-} from "../src/session-state.js";
+import { clearShown, decideBackoff, touchLoadedMarker, type SourceBackoff } from "../src/session-state.js";
 
 // ─── Pure unit tests ─────────────────────────────────────────────────────
 
@@ -144,7 +139,12 @@ test("detectAssertion — a bare composing verb is not a trigger", () => {
 test("#707: a Russian request gets the mode of its DE/EN twin; an unlisted language stays generic", () => {
   // Without the ru data these fell to generic mode and the MUST_LOAD floor
   // while "wo ist die nginx config" did not.
-  for (const c of ["где лежит конфиг nginx", "найди заметку про деплой", "когда мы обновляли сертификаты", "сколько стоил сервер"]) {
+  for (const c of [
+    "где лежит конфиг nginx",
+    "найди заметку про деплой",
+    "когда мы обновляли сертификаты",
+    "сколько стоил сервер",
+  ]) {
     assert.equal(detectRetrieval(c), true, `expected retrieval match for: ${c}`);
   }
   assert.equal(detectRetrieval("постгрес упал"), false);
@@ -211,7 +211,7 @@ test("formatHintBlock — retrieval mode includes lookup instruction", () => {
   assert.match(block, /<\/recall-hints>/);
 });
 
-test("#620: the prompt block carries recall-step=\"done\" and the originating recall_id", () => {
+test('#620: the prompt block carries recall-step="done" and the originating recall_id', () => {
   const hits: RecallHit[] = [
     { id: "test-memory", title: "Test", type: "lesson", scope: "user", summary: "Summary", score: 120 },
   ];
@@ -294,7 +294,7 @@ async function runHook(
   env: Record<string, string>,
   /** #371: the wired reflex pool the route injects in production. Omitted =
    *  the pre-#371 lane, which recalls on every non-trivial prompt. */
-  reflexPool?: () => string[],
+  reflexPool?: () => string[]
 ): Promise<{ stdout: string }> {
   const applied: Record<string, string | undefined> = {};
   const withDefaults: Record<string, string> = { BASTRA_TELEMETRY: "off", ...env };
@@ -309,7 +309,7 @@ async function runHook(
       null,
       baseUrl,
       undefined,
-      reflexPool,
+      reflexPool
     );
     return { stdout };
   } finally {
@@ -350,7 +350,7 @@ test("integration — retrieval prompt yields recall-hints block", async () => {
           vault_size: 100,
           latency_ms: 12,
           recall_id: "test-recall",
-        }),
+        })
       );
     });
   });
@@ -362,7 +362,7 @@ test("integration — retrieval prompt yields recall-hints block", async () => {
         prompt: "such mal meinen Strafzettel",
         cwd: process.cwd(),
       },
-      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}` },
+      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}` }
     );
 
     const parsed = JSON.parse(stdout) as {
@@ -400,13 +400,11 @@ test("integration — retrieval-only opt-out: a non-retrieval prompt emits empty
     // Ein starker, aber NICHT reflex-verdrahteter Hit — darf nicht durch.
     res.end(
       JSON.stringify({
-        hits: [
-          { id: "ordinary-fact", title: "T", type: "project-fact", scope: "p", summary: "s", score: 150 },
-        ],
+        hits: [{ id: "ordinary-fact", title: "T", type: "project-fact", scope: "p", summary: "s", score: 150 }],
         vault_size: 1,
         latency_ms: 1,
         recall_id: "x",
-      }),
+      })
     );
   });
   try {
@@ -416,7 +414,7 @@ test("integration — retrieval-only opt-out: a non-retrieval prompt emits empty
         prompt: "lass uns das implementieren",
         cwd: process.cwd(),
       },
-      { BASTRA_PROMPT_HOOK_MODE: "retrieval-only", BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}` },
+      { BASTRA_PROMPT_HOOK_MODE: "retrieval-only", BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}` }
     );
     assert.equal(stdout.trim(), "{}");
     assert.equal(recallCalled, true, "the none lane now recalls — the filter, not the skip, keeps it quiet");
@@ -459,7 +457,7 @@ test("integration — semantic reflex: a reflex-wired REQUIRED hit injects on a 
         vault_size: 2,
         latency_ms: 1,
         recall_id: "x",
-      }),
+      })
     );
   });
   try {
@@ -469,7 +467,11 @@ test("integration — semantic reflex: a reflex-wired REQUIRED hit injects on a 
       prompt: "dann möchte ich dass du mir eine Nachricht entwirfst, kurz und knapp",
       cwd: process.cwd(),
     };
-    const env = { BASTRA_PROMPT_HOOK_MODE: "retrieval-only", BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir };
+    const env = {
+      BASTRA_PROMPT_HOOK_MODE: "retrieval-only",
+      BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
+      BASTRA_HOOK_STATE_DIR: stateDir,
+    };
     const { stdout } = await runHook(payload, env);
     const parsed = JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } };
     const ctx = parsed.hookSpecificOutput?.additionalContext ?? "";
@@ -505,7 +507,12 @@ test("integration — semantic reflex: a wired convention below the top-k cut ar
     res.end(
       JSON.stringify({
         hits: Array.from({ length: 5 }, (_, i) => ({
-          id: `unrelated-${i}`, title: "T", type: "project-fact", scope: "p", summary: "s", score: 150 - i,
+          id: `unrelated-${i}`,
+          title: "T",
+          type: "project-fact",
+          scope: "p",
+          summary: "s",
+          score: 150 - i,
         })),
         reflex_hits: [
           {
@@ -521,7 +528,7 @@ test("integration — semantic reflex: a wired convention below the top-k cut ar
         vault_size: 6,
         latency_ms: 1,
         recall_id: "x",
-      }),
+      })
     );
   });
   try {
@@ -531,7 +538,11 @@ test("integration — semantic reflex: a wired convention below the top-k cut ar
       prompt: "antwortentwurf bitte. ich freue mich das komplett zu testen sobald ich die freie zeit finde",
       cwd: process.cwd(),
     };
-    const env = { BASTRA_PROMPT_HOOK_MODE: "retrieval-only", BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir };
+    const env = {
+      BASTRA_PROMPT_HOOK_MODE: "retrieval-only",
+      BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
+      BASTRA_HOOK_STATE_DIR: stateDir,
+    };
     const { stdout } = await runHook(payload, env);
     const parsed = JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } };
     const ctx = parsed.hookSpecificOutput?.additionalContext ?? "";
@@ -568,7 +579,7 @@ test("integration — reflex hit fires without a retrieval signal (#217)", async
               },
             ],
             recall_id: "reflex-1",
-          }),
+          })
         );
         return;
       }
@@ -586,7 +597,7 @@ test("integration — reflex hit fires without a retrieval signal (#217)", async
       {
         BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
         BASTRA_HOOK_STATE_DIR: stateDir,
-      },
+      }
     );
     const parsed = JSON.parse(stdout) as {
       hookSpecificOutput?: { additionalContext?: string };
@@ -613,7 +624,7 @@ test("integration — wrong hook_event_name emits empty object", async () => {
   try {
     const { stdout } = await runHook(
       { hook_event_name: "PreToolUse", prompt: "such mal meinen Strafzettel" },
-      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}` },
+      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}` }
     );
     assert.equal(stdout.trim(), "{}");
   } finally {
@@ -631,7 +642,8 @@ test("isTrivialPrompt gates bare acks DE+EN (trailing punctuation tolerated)", (
 
 test("#707 isTrivialPrompt: structural rules hold in every script; an unlisted ack takes the neutral path", () => {
   // no list needed: at most two characters, or no letter/digit at all
-  for (const p of ["да", "ok", "👍👍", "!!!", "…", "🙏 🙏"]) assert.equal(isTrivialPrompt(p), true, `should gate: ${p}`);
+  for (const p of ["да", "ok", "👍👍", "!!!", "…", "🙏 🙏"])
+    assert.equal(isTrivialPrompt(p), true, `should gate: ${p}`);
   // an ack in a language without a list runs one score-gated recall — the
   // neutral direction, never a lost prompt
   for (const p of ["спасибо", "tamam", "ευχαριστώ"]) assert.equal(isTrivialPrompt(p), false, `neutral path: ${p}`);
@@ -670,7 +682,7 @@ test("#161 — generic mode floors at MUST_LOAD_SCORE: suppression impossible by
   // Every hit surviving the generic floor sits in the REQUIRED band …
   assert.ok(
     effectiveScoreFloor("generic") >= MUST_LOAD_SCORE,
-    "generic floor must be >= MUST_LOAD_SCORE — this is what makes the invariant hold",
+    "generic floor must be >= MUST_LOAD_SCORE — this is what makes the invariant hold"
   );
   // … so hasRequired is true for any non-empty generic emission, and the
   // shared decideBackoff can never suppress it — whatever the streak says.
@@ -700,7 +712,7 @@ test("integration — #161: retrieval lookup is NEVER suppressed, even in a hot 
         "prompt-lookup": { streak: 6, at: Date.now() - 1000, ids: ["old-hit"], skipped: 0 },
       },
     }),
-    "utf8",
+    "utf8"
   );
 
   const daemon = await startMockDaemon((req, res) => {
@@ -723,7 +735,7 @@ test("integration — #161: retrieval lookup is NEVER suppressed, even in a hot 
           vault_size: 50,
           latency_ms: 5,
           recall_id: "t",
-        }),
+        })
       );
     } else {
       res.end("{}");
@@ -741,7 +753,7 @@ test("integration — #161: retrieval lookup is NEVER suppressed, even in a hot 
       {
         BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
         BASTRA_HOOK_STATE_DIR: stateDir,
-      },
+      }
     );
     const parsed = JSON.parse(stdout) as {
       hookSpecificOutput?: { additionalContext?: string };
@@ -791,7 +803,7 @@ test("#356 — prompt_hook_call carries the payload session_id and the injected 
           vault_size: 100,
           latency_ms: 12,
           recall_id: "test-recall",
-        }),
+        })
       );
       return;
     }
@@ -812,7 +824,7 @@ test("#356 — prompt_hook_call carries the payload session_id and the injected 
         BASTRA_HOOK_STATE_DIR: stateDir,
         BASTRA_TELEMETRY: "on",
         BASTRA_LOG_PATH: logDir,
-      },
+      }
     );
     assert.match(stdout, /parkticket-2025/, "the hint must have been injected");
 
@@ -875,7 +887,7 @@ test("#371 — a reflex-wired hit injects in mode none, with the pool gate exact
         vault_size: 2,
         latency_ms: 1,
         recall_id: "x",
-      }),
+      })
     );
   });
   try {
@@ -888,12 +900,12 @@ test("#371 — a reflex-wired hit injects in mode none, with the pool gate exact
 
     const pre = await runHook(
       { ...payload, session_id: "s371-before" },
-      { BASTRA_PROMPT_HOOK_MODE: "retrieval-only", BASTRA_HTTP_URL: url, BASTRA_HOOK_STATE_DIR: before },
+      { BASTRA_PROMPT_HOOK_MODE: "retrieval-only", BASTRA_HTTP_URL: url, BASTRA_HOOK_STATE_DIR: before }
     );
     const post = await runHook(
       { ...payload, session_id: "s371-after" },
       { BASTRA_PROMPT_HOOK_MODE: "retrieval-only", BASTRA_HTTP_URL: url, BASTRA_HOOK_STATE_DIR: after },
-      () => ["nachrichtenkonvention"],
+      () => ["nachrichtenkonvention"]
     );
 
     assert.match(pre.stdout, /nachrichtenkonvention/, "pre-#371 lane injects the wired convention");
@@ -923,14 +935,12 @@ test("#371 — a NON-wired hit never injected in mode none, before or after the 
     }
     res.end(
       JSON.stringify({
-        hits: [
-          { id: "ordinary-fact", title: "T", type: "project-fact", scope: "p", summary: "s", score: 150 },
-        ],
+        hits: [{ id: "ordinary-fact", title: "T", type: "project-fact", scope: "p", summary: "s", score: 150 }],
         reflex_hits: [],
         vault_size: 1,
         latency_ms: 1,
         recall_id: "x",
-      }),
+      })
     );
   });
   try {
@@ -943,7 +953,7 @@ test("#371 — a NON-wired hit never injected in mode none, before or after the 
 
     const pre = await runHook(
       { ...payload, session_id: "s371-nw-before" },
-      { BASTRA_PROMPT_HOOK_MODE: "retrieval-only", BASTRA_HTTP_URL: url, BASTRA_HOOK_STATE_DIR: before },
+      { BASTRA_PROMPT_HOOK_MODE: "retrieval-only", BASTRA_HTTP_URL: url, BASTRA_HOOK_STATE_DIR: before }
     );
     assert.equal(pre.stdout.trim(), "{}", "a non-wired hit never reached the agent in mode none");
     assert.equal(recallCalls, 1, "…and the pre-#371 lane paid a full recall to learn that");
@@ -951,7 +961,7 @@ test("#371 — a NON-wired hit never injected in mode none, before or after the 
     const post = await runHook(
       { ...payload, session_id: "s371-nw-after" },
       { BASTRA_PROMPT_HOOK_MODE: "retrieval-only", BASTRA_HTTP_URL: url, BASTRA_HOOK_STATE_DIR: after },
-      () => ["nachrichtenkonvention"],
+      () => ["nachrichtenkonvention"]
     );
     assert.equal(post.stdout.trim(), "{}", "still nothing — the filter, not the gate, keeps it out");
     assert.equal(recallCalls, 2, "an eligible wired memory means the recall runs, hit or no hit");
@@ -996,7 +1006,7 @@ test("#371 — an empty reflex pool skips the recall entirely", async () => {
         vault_size: 1,
         latency_ms: 1,
         recall_id: "x",
-      }),
+      })
     );
   });
   try {
@@ -1014,7 +1024,7 @@ test("#371 — an empty reflex pool skips the recall entirely", async () => {
         BASTRA_TELEMETRY: "on",
         BASTRA_LOG_PATH: logDir,
       },
-      () => [],
+      () => []
     );
     assert.equal(stdout.trim(), "{}");
     assert.equal(recallCalled, false, "no wired memory exists — the recall must not be paid for");
@@ -1072,7 +1082,7 @@ test("#371 — once every wired memory is session-suppressed, the recall stops r
         vault_size: 1,
         latency_ms: 1,
         recall_id: "x",
-      }),
+      })
     );
   });
   try {
@@ -1099,9 +1109,7 @@ test("#371 — once every wired memory is session-suppressed, the recall stops r
     assert.equal(second.stdout.trim(), "{}", "the dedup verdict is unchanged: no re-injection");
     assert.equal(recallCalls, 1, "…and it is now reached WITHOUT a recall");
 
-    const ev = (await readTelemetryEvents(logDir))
-      .filter((e) => e.kind === "prompt_hook_call")
-      .at(-1);
+    const ev = (await readTelemetryEvents(logDir)).filter((e) => e.kind === "prompt_hook_call").at(-1);
     assert.equal(ev?.recall_skipped, "reflex-all-suppressed");
     assert.equal(ev?.detected_mode, "none");
   } finally {
@@ -1143,9 +1151,7 @@ test("formatHintBlock — unfused shows no REQUIRED band and no score number", (
 });
 
 test("formatHintBlock — the fused path keeps its bands and its number", () => {
-  const hits: RecallHit[] = [
-    { id: "fused", title: "F", type: "lesson", scope: "p", summary: "s", score: 152.4 },
-  ];
+  const hits: RecallHit[] = [{ id: "fused", title: "F", type: "lesson", scope: "p", summary: "s", score: 152.4 }];
   const block = formatHintBlock(hits, "bastra-recall", "generic", false, false);
   assert.match(block, /both search paths agreed/);
   assert.match(block, /score 152/, "on the fused scale the number is comparable and stays");
@@ -1170,7 +1176,7 @@ test("integration — P0: an unfused recall gets no REQUIRED bypass out of the b
         "prompt-lookup": { streak: 6, at: Date.now() - 1000, ids: ["old-hit"], skipped: 0 },
       },
     }),
-    "utf8",
+    "utf8"
   );
 
   const daemon = await startMockDaemon((req, res) => {
@@ -1193,7 +1199,7 @@ test("integration — P0: an unfused recall gets no REQUIRED bypass out of the b
           recall_id: "t",
           unfused: true,
           degraded: "vector-arm-timeout",
-        }),
+        })
       );
     } else {
       res.end("{}");
@@ -1214,7 +1220,7 @@ test("integration — P0: an unfused recall gets no REQUIRED bypass out of the b
         BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
         BASTRA_HOOK_STATE_DIR: stateDir,
         BASTRA_PROMPT_HINTS: "all",
-      },
+      }
     );
     const parsed = JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } };
     const ctx = parsed.hookSpecificOutput?.additionalContext ?? "";
@@ -1266,7 +1272,7 @@ test("#541 — an assertion-mode hit injects once per session, and the reset sig
         vault_size: 1,
         latency_ms: 1,
         recall_id: "x",
-      }),
+      })
     );
   });
   try {
@@ -1287,11 +1293,7 @@ test("#541 — an assertion-mode hit injects once per session, and the reset sig
 
     for (let i = 0; i < 4; i++) {
       const again = await runHook(payload, env);
-      assert.equal(
-        again.stdout.trim(),
-        "{}",
-        `re-injection ${i + 1}: the text still stands in the transcript`,
-      );
+      assert.equal(again.stdout.trim(), "{}", `re-injection ${i + 1}: the text still stands in the transcript`);
     }
 
     // The load marker still resets the counter — an agent that consumed the
@@ -1352,7 +1354,7 @@ test("#539 — a suppressed prompt-lane emission books `skipped` into the saved 
       // injection-worthy event and expects `skipped` to climb 1 → 2 → 3.
       sources: { "prompt-lookup": { streak: 3, at: emitAt, ids: ["old-hit"], skipped: 0 } },
     }),
-    "utf8",
+    "utf8"
   );
 
   const daemon = await startMockDaemon((req, res) => {
@@ -1375,7 +1377,7 @@ test("#539 — a suppressed prompt-lane emission books `skipped` into the saved 
           vault_size: 50,
           latency_ms: 5,
           recall_id: "t539",
-        }),
+        })
       );
     } else {
       res.end("{}");
@@ -1390,14 +1392,19 @@ test("#539 — a suppressed prompt-lane emission books `skipped` into the saved 
         session_id: sessionId,
         cwd: process.cwd(),
       },
-      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir },
+      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir }
     );
     assert.equal(stdout, "{}", "precondition: this emission must be suppressed");
 
     const database = openAppDatabase({ path: j(stateDir, "recall.db") });
     let persisted;
-    try { persisted = database.sqlite.prepare("SELECT value FROM app_records WHERE namespace LIKE 'hook-session:%' AND key=?").get(sessionId); }
-    finally { database.close(); }
+    try {
+      persisted = database.sqlite
+        .prepare("SELECT value FROM app_records WHERE namespace LIKE 'hook-session:%' AND key=?")
+        .get(sessionId);
+    } finally {
+      database.close();
+    }
     assert.ok(persisted, "the session delta must reach SQLite");
     const saved = JSON.parse(JSON.parse(String(persisted.value)).raw) as {
       sources?: Record<string, SourceBackoff>;
@@ -1425,7 +1432,7 @@ test("#539 — the suppression window re-opens: three skips, then a probe emit",
       shown: {},
       sources: { "prompt-lookup": { streak: 3, at: Date.now() - 1000, ids: ["old-hit"], skipped: 0 } },
     }),
-    "utf8",
+    "utf8"
   );
 
   const daemon = await startMockDaemon((req, res) => {
@@ -1446,7 +1453,7 @@ test("#539 — the suppression window re-opens: three skips, then a probe emit",
           vault_size: 50,
           latency_ms: 5,
           recall_id: "t539c",
-        }),
+        })
       );
     } else {
       res.end("{}");
@@ -1463,7 +1470,7 @@ test("#539 — the suppression window re-opens: three skips, then a probe emit",
           session_id: sessionId,
           cwd: process.cwd(),
         },
-        { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir },
+        { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir }
       );
       emitted.push(stdout !== "{}");
     }
@@ -1519,7 +1526,7 @@ test("integration — #565: a reflex hit the session dedupe held back is booked,
               },
             ],
             recall_id: "reflex-1",
-          }),
+          })
         );
         return;
       }
@@ -1555,7 +1562,7 @@ test("integration — #565: a reflex hit the session dedupe held back is booked,
     assert.deepEqual(
       lane[1].reflex_deduped_ids,
       ["reflex-css-lesson"],
-      "a suppressed reflex must not read like a reflex that never matched",
+      "a suppressed reflex must not read like a reflex that never matched"
     );
     assert.equal(lane[1].reflex_hint_count, 0);
   } finally {
@@ -1600,7 +1607,7 @@ test("#677 — Russian, French and Polish lookup prompts each reach recall and i
       const { stdout } = await runHook(
         { hook_event_name: "UserPromptSubmit", session_id: "s677", prompt, cwd: process.cwd() },
         { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir },
-        () => [],
+        () => []
       );
       assert.equal(bodies.length, 1, `recall ran for: ${prompt}`);
       assert.equal(bodies[0]!.query, prompt);
@@ -1635,8 +1642,13 @@ test("#677 — the default gate is the score: a sub-MUST_LOAD ordinary hit stays
   });
   try {
     const { stdout } = await runHook(
-      { hook_event_name: "UserPromptSubmit", session_id: "s677g", prompt: "napisz odpowiedź do zzalli", cwd: process.cwd() },
-      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir },
+      {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "s677g",
+        prompt: "napisz odpowiedź do zzalli",
+        cwd: process.cwd(),
+      },
+      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir }
     );
     const ctx =
       (JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput
@@ -1668,8 +1680,13 @@ test("unfused: a wired memory outside a question needs a strong anchor, not a ra
   });
   try {
     const { stdout } = await runHook(
-      { hook_event_name: "UserPromptSubmit", session_id: "s-unfused-wired", prompt: "rota los logs en la máquina de build", cwd: process.cwd() },
-      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir },
+      {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "s-unfused-wired",
+        prompt: "rota los logs en la máquina de build",
+        cwd: process.cwd(),
+      },
+      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir }
     );
     const ctx =
       (JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput
@@ -1685,14 +1702,30 @@ test("unfused: a wired memory outside a question needs a strong anchor, not a ra
 test("unfused: an explicit lookup keeps the normal floor for a wired memory, anchored or not", async () => {
   const stateDir = await mkdtemp(join(tmpdir(), "bastra-unfused-wired-lookup-"));
   const { daemon } = await startRecallMock({
-    hits: [{ id: "weakly-anchored", title: "C", type: "lesson", scope: "all-projects", summary: "c", score: 212, recall_mode: "reflex", anchor_strength: "weak" }],
+    hits: [
+      {
+        id: "weakly-anchored",
+        title: "C",
+        type: "lesson",
+        scope: "all-projects",
+        summary: "c",
+        score: 212,
+        recall_mode: "reflex",
+        anchor_strength: "weak",
+      },
+    ],
     unfused: true,
     degraded: "vector-arm-timeout",
   });
   try {
     const { stdout } = await runHook(
-      { hook_event_name: "UserPromptSubmit", session_id: "s-unfused-wired-lookup", prompt: "find the build log rotation notes", cwd: process.cwd() },
-      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir },
+      {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "s-unfused-wired-lookup",
+        prompt: "find the build log rotation notes",
+        cwd: process.cwd(),
+      },
+      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir }
     );
     const ctx =
       (JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput
@@ -1713,8 +1746,13 @@ test("#677 — unfused, the generic score gate cannot be read: no ordinary hit i
   });
   try {
     const { stdout } = await runHook(
-      { hook_event_name: "UserPromptSubmit", session_id: "s677u", prompt: "où est ma contravention ?", cwd: process.cwd() },
-      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir },
+      {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "s677u",
+        prompt: "où est ma contravention ?",
+        cwd: process.cwd(),
+      },
+      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir }
     );
     assert.equal(stdout.trim(), "{}");
   } finally {
@@ -1728,13 +1766,18 @@ test("#677 — BASTRA_PROMPT_HOOK_MODE=retrieval-only keeps the old regex gate a
   const { daemon, bodies } = await startRecallMock({ hits: [STRONG_HIT] });
   try {
     const { stdout } = await runHook(
-      { hook_event_name: "UserPromptSubmit", session_id: "s677o", prompt: "où est ma contravention ?", cwd: process.cwd() },
+      {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "s677o",
+        prompt: "où est ma contravention ?",
+        cwd: process.cwd(),
+      },
       {
         BASTRA_PROMPT_HOOK_MODE: "retrieval-only",
         BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
         BASTRA_HOOK_STATE_DIR: stateDir,
       },
-      () => [],
+      () => []
     );
     assert.equal(stdout.trim(), "{}");
     assert.equal(bodies.length, 0, "mode none with an empty reflex pool skips the recall (#371)");
@@ -1744,9 +1787,19 @@ test("#677 — BASTRA_PROMPT_HOOK_MODE=retrieval-only keeps the old regex gate a
   }
 });
 
-
 test("#1307 previous-convention cues force retrieval with floor 50 in every hook mode", () => {
-  for (const cue of ["wie beim letzten Mal", "wie vorher", "wie wir es gemacht haben", "du hast ein Gedächtnis", "muss ich das wieder erklären", "like last time", "as before", "as we did", "you have a memory", "do I have to explain this again"]) {
+  for (const cue of [
+    "wie beim letzten Mal",
+    "wie vorher",
+    "wie wir es gemacht haben",
+    "du hast ein Gedächtnis",
+    "muss ich das wieder erklären",
+    "like last time",
+    "as before",
+    "as we did",
+    "you have a memory",
+    "do I have to explain this again",
+  ]) {
     const prompt = `Bitte arbeite ${cue}, danke`;
     assert.equal(detectRetrieval(prompt), true, cue);
     for (const hookMode of ["all", "retrieval-only"] as const) {
@@ -1768,7 +1821,9 @@ test("#1307 forced retrieval reports a missing rule even with no hits, but match
   const requests: object[] = [];
   const daemon = await startMockDaemon((req, res) => {
     let body = "";
-    req.on("data", (c: Buffer) => { body += c.toString(); });
+    req.on("data", (c: Buffer) => {
+      body += c.toString();
+    });
     req.on("end", () => {
       res.writeHead(failed && req.url === "/hook/recall" ? 500 : 200, { "Content-Type": "application/json" });
       if (req.url === "/hook/recall") {
@@ -1779,10 +1834,23 @@ test("#1307 forced retrieval reports a missing rule even with no hits, but match
   });
   const stateDir = await mkdtemp(join(tmpdir(), "bastra-forced-"));
   try {
-    const env = { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_PROMPT_HOOK_MODE: "retrieval-only", BASTRA_HOOK_STATE_DIR: stateDir };
-    const payload = { hook_event_name: "UserPromptSubmit", prompt: "Baue den Ablauf wie beim letzten Mal", cwd: process.cwd() };
-    const run = async (session_id: string) => JSON.parse((await runHook({ ...payload, session_id }, env, () => [])).stdout).hookSpecificOutput?.additionalContext ?? "";
-    assert.match(await run("forced-empty"), /<recall-hints[\s\S]*no stored rule matched; save one when the user explains[\s\S]*<\/recall-hints>/);
+    const env = {
+      BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
+      BASTRA_PROMPT_HOOK_MODE: "retrieval-only",
+      BASTRA_HOOK_STATE_DIR: stateDir,
+    };
+    const payload = {
+      hook_event_name: "UserPromptSubmit",
+      prompt: "Baue den Ablauf wie beim letzten Mal",
+      cwd: process.cwd(),
+    };
+    const run = async (session_id: string) =>
+      JSON.parse((await runHook({ ...payload, session_id }, env, () => [])).stdout).hookSpecificOutput
+        ?.additionalContext ?? "";
+    assert.match(
+      await run("forced-empty"),
+      /<recall-hints[\s\S]*no stored rule matched; save one when the user explains[\s\S]*<\/recall-hints>/
+    );
     hits = [{ id: "unrelated", title: "unrelated", type: "workflow", scope: "test", summary: "candidate", score: 60 }];
     assert.match(await run("forced-unmatched"), /no stored rule matched/);
     hits = [{ ...hits[0], id: "matching", matched_recall_when: true }];
@@ -1790,11 +1858,24 @@ test("#1307 forced retrieval reports a missing rule even with no hits, but match
     assert.match(matched, /matching/);
     assert.doesNotMatch(matched, /no stored rule matched/);
     hits = [];
-    reflexHits = [{ id: "wired-rule", title: "Wired rule", type: "workflow", scope: "test", summary: "previous rule", matched_phrase: "wie beim letzten Mal" }];
+    reflexHits = [
+      {
+        id: "wired-rule",
+        title: "Wired rule",
+        type: "workflow",
+        scope: "test",
+        summary: "previous rule",
+        matched_phrase: "wie beim letzten Mal",
+      },
+    ];
     const reflex = await run("forced-reflex");
     assert.match(reflex, /wired-rule/);
     assert.doesNotMatch(reflex, /no stored rule matched/);
-    assert.doesNotMatch(await run("forced-reflex"), /no stored rule matched/, "a deduped reflex is still an existing rule");
+    assert.doesNotMatch(
+      await run("forced-reflex"),
+      /no stored rule matched/,
+      "a deduped reflex is still an existing rule"
+    );
     reflexHits = [];
     malformed = true;
     assert.doesNotMatch(await run("forced-malformed"), /no stored rule matched/);

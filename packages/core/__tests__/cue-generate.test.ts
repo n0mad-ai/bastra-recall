@@ -65,7 +65,8 @@ function mockChat(reply: string): { chat: CueBatchOptions["chat"]; prompts: stri
 }
 
 /** Selbsttest, der jeden Cue auf einem festen Rang zurückholt. */
-const rankAlways = (rank: number | null): CueBatchOptions["selfTest"] =>
+const rankAlways =
+  (rank: number | null): CueBatchOptions["selfTest"] =>
   async () => ({ rank });
 
 const baseOpts = (over: Partial<CueBatchOptions> = {}): CueBatchOptions => ({
@@ -85,10 +86,7 @@ test("der Prompt liest den autorisierten Inhalt — und recall_when NICHT", () =
   assert.match(prompt, /versicherung, allianz/, "Tags");
   assert.match(prompt, /finanzen \/ versicherungen/, "topic_path");
   assert.match(prompt, /Police 4711 bei der Allianz/, "Body");
-  assert.ok(
-    !prompt.includes("GEHEIMTRIGGER"),
-    "§11.4: die handgeschriebenen Trigger sind die andere Vertrauensklasse",
-  );
+  assert.ok(!prompt.includes("GEHEIMTRIGGER"), "§11.4: die handgeschriebenen Trigger sind die andere Vertrauensklasse");
 });
 
 test("der Prompt fragt nach dem Oberbegriff, nicht nach einer Paraphrase", () => {
@@ -144,25 +142,16 @@ test("ein Cue, der sein eigenes Memory nicht zurückholt, wird verworfen und gez
 });
 
 test("die Konfidenzschwelle ist ein freier Parameter und greift", async () => {
-  const unter = await generateCuesFor(
-    memory(),
-    baseOpts({ selfTest: rankAlways(4), minConfidence: 0.5 }),
-  );
+  const unter = await generateCuesFor(memory(), baseOpts({ selfTest: rankAlways(4), minConfidence: 0.5 }));
   assert.equal(unter.cues.length, 0);
   assert.equal(unter.dropped.lowConfidence, 2);
 
-  const drueber = await generateCuesFor(
-    memory(),
-    baseOpts({ selfTest: rankAlways(1), minConfidence: 0.5 }),
-  );
+  const drueber = await generateCuesFor(memory(), baseOpts({ selfTest: rankAlways(1), minConfidence: 0.5 }));
   assert.equal(drueber.cues.length, 2);
 });
 
 test("die Obergrenze pro Memory ist ein freier Parameter und greift", async () => {
-  const r = await generateCuesFor(
-    memory(),
-    baseOpts({ chat: mockChat("A\nB\nC\nD").chat, maxCues: 2 }),
-  );
+  const r = await generateCuesFor(memory(), baseOpts({ chat: mockChat("A\nB\nC\nD").chat, maxCues: 2 }));
   assert.equal(r.cues.length, 2);
 });
 
@@ -184,7 +173,7 @@ test("jeder Cue trägt die vollständige Provenienz und übersteht den eigenen P
   assert.equal(
     cue.evidence.source_fingerprint,
     cueSourceFingerprint(m),
-    "der Evidenzbezug zeigt auf den Inhalt, aus dem der Cue kam",
+    "der Evidenzbezug zeigt auf den Inhalt, aus dem der Cue kam"
   );
   // Der Kreis muss sich schließen: Was der Erzeuger schreibt, muss der Leser
   // aus 152c61d akzeptieren — sonst erzeugt der Batch eine Datei, die die
@@ -209,12 +198,8 @@ function fakeVault(memories: Memory[]): Vault {
 test("der Sweep überspringt obsolete Memories und zählt, was er tat", async () => {
   const cues: string[] = [];
   const report = await generateCueBatch(
-    fakeVault([
-      memory({ id: "a" }),
-      memory({ id: "b", obsolete: true } as Partial<Memory["fm"]>),
-      memory({ id: "c" }),
-    ]),
-    { ...baseOpts(), onCue: (c) => void cues.push(c.memory_id) },
+    fakeVault([memory({ id: "a" }), memory({ id: "b", obsolete: true } as Partial<Memory["fm"]>), memory({ id: "c" })]),
+    { ...baseOpts(), onCue: (c) => void cues.push(c.memory_id) }
   );
   assert.equal(report.memories_seen, 2, "obsolete zählt nicht mit");
   assert.equal(report.memories_with_cues, 2);
@@ -235,19 +220,16 @@ test("ein Modell, das nur schweigt, stoppt den Sweep statt ihn zu Ende zu quäle
 
 test("ein einzelner Fehlschlag stoppt den Sweep nicht", async () => {
   let call = 0;
-  const report = await generateCueBatch(
-    fakeVault([memory({ id: "a" }), memory({ id: "b" }), memory({ id: "c" })]),
-    {
-      ...baseOpts({
-        chat: async () => {
-          call++;
-          if (call === 1) throw new Error("Modell hat gehustet");
-          return "Versicherungsunterlagen";
-        },
-      }),
-      onCue: () => {},
-    },
-  );
+  const report = await generateCueBatch(fakeVault([memory({ id: "a" }), memory({ id: "b" }), memory({ id: "c" })]), {
+    ...baseOpts({
+      chat: async () => {
+        call++;
+        if (call === 1) throw new Error("Modell hat gehustet");
+        return "Versicherungsunterlagen";
+      },
+    }),
+    onCue: () => {},
+  });
   assert.equal(report.stopped_early, false);
   assert.equal(report.generation_failures, 1);
   assert.equal(report.cues_written, 2, "die beiden folgenden Memories laufen durch");

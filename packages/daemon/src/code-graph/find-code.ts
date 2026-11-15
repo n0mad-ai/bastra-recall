@@ -175,11 +175,11 @@ export const codeTools = [
       "\n" +
       "Matching is exact first: a symbol name (with or without `()`) or a " +
       "repo-relative path. A substring fallback runs only when both come back " +
-      "empty and reports itself as `lane: \"lexical\"`. Nothing matches → " +
-      "`status: \"no_answer\"` and an empty list: the tool does not return " +
+      'empty and reports itself as `lane: "lexical"`. Nothing matches → ' +
+      '`status: "no_answer"` and an empty list: the tool does not return ' +
       "near-misses.\n" +
       "\n" +
-      "`status: \"unavailable\"` means the graph for this repository is not " +
+      '`status: "unavailable"` means the graph for this repository is not ' +
       "in memory (loading, not indexed, degraded, or code awareness is off " +
       "for it). It is not an error and " +
       "says nothing about whether the symbol exists — use Grep for this turn.",
@@ -324,7 +324,7 @@ export function findCode(cache: CodeGraphCache, args: FindCodeInput): FindCodeRe
   // `find` asks where something is; `affected` asks what leans on it. Only
   // the second one gets the dependents list (#579: it was 36 % of the answer).
   const hits = capped.map((s) =>
-    files === null ? hitFor(graph, s, depth, mode === "affected") : anchorOnly(graph, s),
+    files === null ? hitFor(graph, s, depth, mode === "affected") : anchorOnly(graph, s)
   );
 
   return done({
@@ -410,12 +410,7 @@ function anchorOnly(graph: LoadedGraph, symbol: CodeSymbol): FindCodeHit {
  * `withDependents` is false for `mode: "find"`: that caller asked where a
  * symbol IS. Measured, the list it did not ask for was 36 % of the answer.
  */
-function hitFor(
-  graph: LoadedGraph,
-  symbol: CodeSymbol,
-  depth: number,
-  withDependents = true,
-): FindCodeHit {
+function hitFor(graph: LoadedGraph, symbol: CodeSymbol, depth: number, withDependents = true): FindCodeHit {
   if (!withDependents) return location(graph, symbol);
   const first = ranked(dependentSymbolsOf(graph, symbol.id));
   const dependents = first.slice(0, MAX_DEPENDENTS).map((d) => location(graph, d, 1));

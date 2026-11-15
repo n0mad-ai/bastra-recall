@@ -12,7 +12,16 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault, SearchIndex } from "@bastra-recall/core";
-import { parseQueries, parseAnswer, runSearchCopilot, buildAnswerPrompt, buildTaskContext, tasksFromList, handleUiChat, CHAT_NAVIGATION } from "../src/webui-chat.js";
+import {
+  parseQueries,
+  parseAnswer,
+  runSearchCopilot,
+  buildAnswerPrompt,
+  buildTaskContext,
+  tasksFromList,
+  handleUiChat,
+  CHAT_NAVIGATION,
+} from "../src/webui-chat.js";
 
 test("parseQueries: strips bullets, dedupes, always leads with the raw message", () => {
   const q = parseQueries("- browser view\n2) Browser View\n* ring wheel drill\n{json}", "warum browser?");
@@ -71,8 +80,14 @@ test("runSearchCopilot: fans out queries, grounds the answer, honors the model's
   const dir = await mkdtemp(join(tmpdir(), "bastra-copilot-test-"));
   const folder = join(dir, "memories", "knowledge");
   await mkdir(folder, { recursive: true });
-  await writeFile(join(folder, "wheel.md"), memoryMarkdown("wheel", "Ring wheel browser", "Drill-down wheel for the vault map."));
-  await writeFile(join(folder, "clouds.md"), memoryMarkdown("clouds", "Cloud force layout", "Physics clouds with anchors."));
+  await writeFile(
+    join(folder, "wheel.md"),
+    memoryMarkdown("wheel", "Ring wheel browser", "Drill-down wheel for the vault map.")
+  );
+  await writeFile(
+    join(folder, "clouds.md"),
+    memoryMarkdown("clouds", "Cloud force layout", "Physics clouds with anchors.")
+  );
   const vault = new Vault(dir);
   await vault.init();
   const search = new SearchIndex(vault);
@@ -88,7 +103,11 @@ test("runSearchCopilot: fans out queries, grounds the answer, honors the model's
     };
     const result = await runSearchCopilot("warum habe ich den browser gebaut?", [], { search, chat });
     assert.equal(result.reply, "Du hast den Ring-Browser gebaut.");
-    assert.deepEqual(result.hits.map((h) => h.id), ["wheel"], "only the model-picked hit surfaces");
+    assert.deepEqual(
+      result.hits.map((h) => h.id),
+      ["wheel"],
+      "only the model-picked hit surfaces"
+    );
     assert.match(prompts[1], /Ring wheel browser/, "answer prompt carries the found notes");
 
     // unparseable second call → strongest hits fall back instead of nothing
@@ -119,8 +138,14 @@ test("tasks area: the answer prompt carries the real tasks, bucketed by local da
   assert.equal(tasks.length, 4);
   const ctx = buildTaskContext(tasks, now, tz);
   assert.match(ctx, /Current local date and time: Saturday 2026-11-14 13:00/);
-  assert.match(ctx, /DUE TODAY \(1\):\n- Call the garage — due Saturday 2026-11-14 17:30; status: planned, not due yet/);
-  assert.match(ctx, /OVERDUE[^\n]*\(1\):\n- Revoke old token — due Thursday 2026-11-05 10:00; status: due, waiting for the user/);
+  assert.match(
+    ctx,
+    /DUE TODAY \(1\):\n- Call the garage — due Saturday 2026-11-14 17:30; status: planned, not due yet/
+  );
+  assert.match(
+    ctx,
+    /OVERDUE[^\n]*\(1\):\n- Revoke old token — due Thursday 2026-11-05 10:00; status: due, waiting for the user/
+  );
   assert.match(ctx, /Plan trip[^\n]*draft, not approved yet/);
   assert.match(ctx, /Finished or cancelled tasks: 1\./);
   assert.ok(!ctx.includes("Old reminder") && !ctx.includes("Archived"));
@@ -128,7 +153,9 @@ test("tasks area: the answer prompt carries the real tasks, bucketed by local da
   const empty = buildTaskContext([], now, tz);
   assert.match(empty, /DUE TODAY \(0\):\n\(none\)/);
   assert.match(buildTaskContext(null, now, tz), /TASK LIST: unavailable/);
-  const long = tasksFromList([{ goal: `Remind "Daniel" ${"to revoke the old token on the server ".repeat(4)}`, state: "due" }])[0];
+  const long = tasksFromList([
+    { goal: `Remind "Daniel" ${"to revoke the old token on the server ".repeat(4)}`, state: "due" },
+  ])[0];
   assert.ok(long.title.length <= 91 && long.title.endsWith("…") && !long.title.includes('"'), long.title);
 
   const prompt = buildAnswerPrompt("Was ist heute fällig?", [], undefined, ctx, "de");
@@ -141,13 +168,17 @@ test("tasks area: the answer prompt carries the real tasks, bucketed by local da
   assert.match(buildAnswerPrompt("x", []), /TASK LIST: unavailable/);
 });
 
-
 test("task context: paused due tasks are not active; every truncated group reports its omitted count", () => {
   const now = Date.parse("2026-11-14T12:00:00Z");
   const tasks = tasksFromList([
     { goal: "Paused yesterday", state: "due", armed: true, paused: true, schedule: { at: now - 86400000 } },
     ...Array.from({ length: 28 }, (_, i) => ({ goal: `Today ${i}`, state: "due", armed: true, schedule: { at: now } })),
-    ...Array.from({ length: 26 }, (_, i) => ({ goal: `Old ${i}`, state: "due", armed: true, schedule: { at: now - 86400000 } })),
+    ...Array.from({ length: 26 }, (_, i) => ({
+      goal: `Old ${i}`,
+      state: "due",
+      armed: true,
+      schedule: { at: now - 86400000 },
+    })),
     ...Array.from({ length: 27 }, (_, i) => ({ goal: `Later ${i}`, state: "pending", armed: true })),
   ]);
   assert.equal(tasks[0].paused, true);
@@ -161,11 +192,16 @@ test("task context: paused due tasks are not active; every truncated group repor
 });
 
 test("navigation: only exact allowed IDs survive parsed model JSON", () => {
-  for (const id of CHAT_NAVIGATION) assert.equal(parseAnswer(JSON.stringify({ reply: "Opening.", navigate: id })).navigate, id);
+  for (const id of CHAT_NAVIGATION)
+    assert.equal(parseAnswer(JSON.stringify({ reply: "Opening.", navigate: id })).navigate, id);
   for (const value of ["https://example.com", "../tasks", "TASKS", "tasks ", "import", "unknown", {}, 5, null]) {
     assert.equal(parseAnswer(JSON.stringify({ reply: "Okay", navigate: value })).navigate, undefined);
   }
-  assert.equal(parseAnswer('{"reply":"Opening", "navigate":"tasks"').navigate, undefined, "malformed replies never navigate");
+  assert.equal(
+    parseAnswer('{"reply":"Opening", "navigate":"tasks"').navigate,
+    undefined,
+    "malformed replies never navigate"
+  );
   const prompt = buildAnswerPrompt("Open Clouds", [], undefined, undefined, "de");
   assert.match(prompt, /language of the user's question, even when the UI uses a different language/);
   assert.match(prompt, /ignore the task block/);
@@ -179,24 +215,42 @@ test("POST chat: real tasks reach every area, navigation round-trips, vault note
   await writeFile(settingsPath, JSON.stringify({ ui: { enabled: true } }));
   const prompts: string[] = [];
   let reads = 0;
-  const search = { recallHybrid: async () => [{ id: "note", title: "Vault knowledge", type: "reference", score: 1, summary: "Known decision" }] } as unknown as SearchIndex;
-  const server = createServer((req, res) => { void handleUiChat(req, res, {
-    search,
-    listTasks: async () => { reads++; return [{ goal: "Real task", state: "due", armed: true }]; },
-    chat: async (prompt) => {
-      if (!prompt.includes("STRICT JSON")) return "query";
-      prompts.push(prompt);
-      return '{"reply":"Opening tasks.","relevant":[],"navigate":"tasks"}';
-    },
-  }, settingsPath); });
+  const search = {
+    recallHybrid: async () => [
+      { id: "note", title: "Vault knowledge", type: "reference", score: 1, summary: "Known decision" },
+    ],
+  } as unknown as SearchIndex;
+  const server = createServer((req, res) => {
+    void handleUiChat(
+      req,
+      res,
+      {
+        search,
+        listTasks: async () => {
+          reads++;
+          return [{ goal: "Real task", state: "due", armed: true }];
+        },
+        chat: async (prompt) => {
+          if (!prompt.includes("STRICT JSON")) return "query";
+          prompts.push(prompt);
+          return '{"reply":"Opening tasks.","relevant":[],"navigate":"tasks"}';
+        },
+      },
+      settingsPath
+    );
+  });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
     const address = server.address();
     assert.ok(address && typeof address === "object");
     for (const area of ["dashboard", "mindspace", "tasks", "settings"]) {
-      const response = await fetch(`http://127.0.0.1:${address.port}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Bring me to tasks", area, lang: "de" }) });
+      const response = await fetch(`http://127.0.0.1:${address.port}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "Bring me to tasks", area, lang: "de" }),
+      });
       assert.equal(response.status, 200);
-      assert.equal((await response.json() as { navigate?: string }).navigate, "tasks");
+      assert.equal(((await response.json()) as { navigate?: string }).navigate, "tasks");
     }
     assert.equal(reads, 4);
     for (const prompt of prompts) {

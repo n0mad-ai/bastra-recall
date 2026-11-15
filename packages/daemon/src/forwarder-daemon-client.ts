@@ -24,8 +24,7 @@ export const SPAWN_ENABLED = !envOff("BASTRA_FORWARDER_SPAWN");
 /** The packaged daemon binds local plain HTTP. A remote or TLS endpoint is
  * somebody else's service; starting a local daemon cannot repair its health. */
 export function canAutoSpawnAt(endpoint: DaemonEndpoint): boolean {
-  return endpoint.baseUrl.startsWith("http://") &&
-    ["127.0.0.1", "localhost", "[::1]"].includes(endpoint.host);
+  return endpoint.baseUrl.startsWith("http://") && ["127.0.0.1", "localhost", "[::1]"].includes(endpoint.host);
 }
 
 /** Cold Ollama load can take a while on first boot — generous on purpose. */
@@ -58,11 +57,7 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function fetchWithTimeout(
-  url: string,
-  init: RequestInit,
-  timeoutMs: number,
-): Promise<Response> {
+export async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -83,7 +78,9 @@ export async function probeHealth(timeoutMs = 1500): Promise<boolean> {
     return body.ok === true;
   } catch {
     return false;
-  } finally { clearTimeout(tid); }
+  } finally {
+    clearTimeout(tid);
+  }
 }
 
 async function spawnDaemon(): Promise<void> {
@@ -94,7 +91,7 @@ async function spawnDaemon(): Promise<void> {
   // on a missing or broken file (it returns the defaults).
   const { env, origin, pinned } = daemonSpawnEnv(process.env, (await readSettings()).daemon?.env);
   console.error(
-    `[bastra-recall-mcp] spawn env: ${origin}${pinned.length > 0 ? ` (daemon.env: ${pinned.join(", ")})` : ""}`,
+    `[bastra-recall-mcp] spawn env: ${origin}${pinned.length > 0 ? ` (daemon.env: ${pinned.join(", ")})` : ""}`
   );
   const child = spawn(process.execPath, [daemonScript], {
     detached: true,
@@ -115,18 +112,23 @@ async function waitForHealth(timeoutMs = HEALTH_TIMEOUT_MS): Promise<boolean> {
 }
 
 /** Test options only; no new user setting or environment variable. */
-export interface DaemonStartOptions { platform?: NodeJS.Platform; serviceWaitMs?: number }
+export interface DaemonStartOptions {
+  platform?: NodeJS.Platform;
+  serviceWaitMs?: number;
+}
 let serviceFallbackReported = false;
 export async function ensureDaemonRunning(opts: DaemonStartOptions = {}): Promise<boolean> {
   if (await probeHealth()) return true;
   if (!SPAWN_ENABLED) {
     console.error(
-      "[bastra-recall-mcp] daemon not running and auto-spawn disabled (BASTRA_FORWARDER_SPAWN=0). Returning errors for tool calls until daemon is up.",
+      "[bastra-recall-mcp] daemon not running and auto-spawn disabled (BASTRA_FORWARDER_SPAWN=0). Returning errors for tool calls until daemon is up."
     );
     return false;
   }
   if (!canAutoSpawnAt(ENDPOINT)) {
-    console.error(`[bastra-recall-mcp] ${DAEMON_URL} is not a local plain-HTTP endpoint; not spawning a different local daemon`);
+    console.error(
+      `[bastra-recall-mcp] ${DAEMON_URL} is not a local plain-HTTP endpoint; not spawning a different local daemon`
+    );
     return false;
   }
   if (await managedAutostartInstalled({ platform: opts.platform })) {
@@ -136,7 +138,9 @@ export async function ensureDaemonRunning(opts: DaemonStartOptions = {}): Promis
       serviceFallbackReported = true;
       // Same stderr debug-log channel as existing boot diagnostics, never a
       // protocol error or a failed tool response while boot is held.
-      console.error(`[bastra-recall-mcp] managed service not healthy after ${waitMs}ms; falling back to a client-started daemon`);
+      console.error(
+        `[bastra-recall-mcp] managed service not healthy after ${waitMs}ms; falling back to a client-started daemon`
+      );
     }
   }
   console.error("[bastra-recall-mcp] daemon not running, spawning…");
@@ -144,7 +148,7 @@ export async function ensureDaemonRunning(opts: DaemonStartOptions = {}): Promis
   const ready = await waitForHealth();
   if (!ready) {
     console.error(
-      `[bastra-recall-mcp] daemon did not become healthy within ${HEALTH_TIMEOUT_MS}ms. Tool calls will error.`,
+      `[bastra-recall-mcp] daemon did not become healthy within ${HEALTH_TIMEOUT_MS}ms. Tool calls will error.`
     );
   }
   return ready;

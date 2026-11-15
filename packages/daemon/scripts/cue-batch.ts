@@ -103,10 +103,7 @@ const BACKFILL_TIMEOUT_MS = 15 * 60 * 1000;
  * und `recallHybrid()` fällt bei leerem Arm still auf BM25 zurück — ohne das
  * Warten wären die ersten Selbsttests lexikalisch gewesen.
  */
-async function attachVectors(
-  vault: Vault,
-  search: SearchIndex,
-): Promise<{ cleanup: () => Promise<void> }> {
+async function attachVectors(vault: Vault, search: SearchIndex): Promise<{ cleanup: () => Promise<void> }> {
   const provider = new OllamaEmbeddingProvider({
     baseURL: process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434",
     model: process.env.BASTRA_EMBEDDING_MODEL ?? "embeddinggemma",
@@ -146,14 +143,14 @@ async function attachVectors(
   if (loaded < want) {
     await cleanup();
     throw new Error(
-      `nur ${loaded}/${want} Memories tragen einen Vektor — ein Teil-Arm ist kein semantischer Selbsttest`,
+      `nur ${loaded}/${want} Memories tragen einen Vektor — ein Teil-Arm ist kein semantischer Selbsttest`
     );
   }
   search.useEmbeddings(idx);
   if (!search.hasEmbeddings()) {
     await cleanup();
     throw new Error(
-      "der Vektorarm ist nicht aktiv — ein rein lexikalischer Selbsttest würde jeden Oberbegriff verwerfen",
+      "der Vektorarm ist nicht aktiv — ein rein lexikalischer Selbsttest würde jeden Oberbegriff verwerfen"
     );
   }
   return { cleanup };
@@ -172,7 +169,7 @@ async function main(): Promise<void> {
   if (!dryRun && (await exists(out)) && !overwrite) {
     console.error(
       `${TAG} ${out} existiert bereits. Die beiden Bedingungen aus Anlage A liegen ` +
-        `nebeneinander — setze BASTRA_CUES_OUT oder BASTRA_CUE_OVERWRITE=1.`,
+        `nebeneinander — setze BASTRA_CUES_OUT oder BASTRA_CUE_OVERWRITE=1.`
     );
     process.exit(2);
   }
@@ -180,7 +177,7 @@ async function main(): Promise<void> {
   console.error(`${TAG} vault: ${VAULT}${dryRun ? "  (dry-run)" : ""}`);
   console.error(
     `${TAG} ${CUE_GENERATOR_VERSION} · prompt ${CUE_PROMPT_VERSION} · model ${model} · ` +
-      `max=${maxCues} min_confidence=${minConfidence} selftest_k=${selfTestK}`,
+      `max=${maxCues} min_confidence=${minConfidence} selftest_k=${selfTestK}`
   );
 
   const vault = new Vault(VAULT!);

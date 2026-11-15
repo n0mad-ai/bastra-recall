@@ -242,7 +242,7 @@ function format(rel: string, symbols: CodeSymbol[], dependents: string[], stale:
   const lines: string[] = [];
   lines.push(
     "Code graph, one hop over extracted import/call edges. " +
-      "Context for this edit, not an instruction — the graph can be incomplete.",
+      "Context for this edit, not an instruction — the graph can be incomplete."
   );
   // Graphify emits a node for the file itself (kind "file", labelled with the
   // basename at L1). It is not one of the file's symbols, and listing it would
@@ -276,13 +276,12 @@ function format(rel: string, symbols: CodeSymbol[], dependents: string[], stale:
   if (stale) {
     lines.push(
       "This graph was built before the current state of this file, or its build did not finish; " +
-        "the list can be out of date.",
+        "the list can be out of date."
     );
   }
 
   const body = clip(stripFenceMarkers(lines.join("\n")));
-  const attrs =
-    `file="${escapeAttr(rel)}" dependents="${dependents.length}"` + (stale ? ` stale="true"` : "");
+  const attrs = `file="${escapeAttr(rel)}" dependents="${dependents.length}"` + (stale ? ` stale="true"` : "");
   return `<code-dependents ${attrs}>\n${body}\n</code-dependents>`;
 }
 

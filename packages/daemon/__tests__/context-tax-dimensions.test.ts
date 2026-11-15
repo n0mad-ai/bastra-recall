@@ -71,13 +71,13 @@ test("#507: the context-tax split groups emissions by client and by hook_source"
     await writeFile(
       join(logDir, "events-2026-09-15.jsonl"),
       EVENTS.map((e) => JSON.stringify(e)).join("\n") + "\n",
-      "utf8",
+      "utf8"
     );
 
     const { stdout } = await exec(
       process.execPath,
       ["--import", "tsx", join(REPO_ROOT, "packages/daemon/scripts/stats.ts")],
-      { cwd: REPO_ROOT, env: { ...process.env, BASTRA_LOG_PATH: logDir } },
+      { cwd: REPO_ROOT, env: { ...process.env, BASTRA_LOG_PATH: logDir } }
     );
 
     const lines = stdout.split("\n");

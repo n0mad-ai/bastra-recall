@@ -66,7 +66,7 @@ async function main(): Promise<void> {
       console.log(
         `${query.slice(0, 24).padEnd(24)} | ${String(k).padStart(2)} | ` +
           `${String(lb).padStart(6)} (${String(approxTokens(lb)).padStart(5)}) | ` +
-          `${String(fb).padStart(6)} (${String(approxTokens(fb)).padStart(5)}) | ${saving}%`,
+          `${String(fb).padStart(6)} (${String(approxTokens(fb)).padStart(5)}) | ${saving}%`
       );
     }
   }
@@ -76,7 +76,7 @@ async function main(): Promise<void> {
   console.log(
     `  lean total: ${totals.lean} B (~${approxTokens(totals.lean)} tok)\n` +
       `  full total: ${totals.full} B (~${approxTokens(totals.full)} tok)\n` +
-      `  average lean saving: ${avgSaving}%`,
+      `  average lean saving: ${avgSaving}%`
   );
 
   search.stop();

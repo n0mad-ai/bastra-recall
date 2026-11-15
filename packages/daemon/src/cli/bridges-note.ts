@@ -61,7 +61,7 @@ export function bridgeLearningLines(input: { enabled: boolean; live?: boolean; r
     lines.push(
       `· ${demoted} bridge(s) demoted, ${archived} archived in the last ${BRIDGE_STALL_WINDOW_DAYS} days — ` +
         "fired without leading to a load or acted-on episode (#129), or minted from machine text (#704); " +
-        "see bridges/archive/log.jsonl in the Commons clone, move a file back to restore it",
+        "see bridges/archive/log.jsonl in the Commons clone, move a file back to restore it"
     );
   }
   // Owner decision 2026-09-29: say whether bridges change the ranking at all.
@@ -69,7 +69,7 @@ export function bridgeLearningLines(input: { enabled: boolean; live?: boolean; r
     input.live
       ? "· query expansion: live — bridges widen recall queries ('bastra bridges live off' returns to shadow)"
       : "· query expansion: shadow — fires are logged (bridge_expansion, applied: false), the ranking is unchanged; " +
-          "'bastra bridges live on' once 'bastra bridges verify' passes a bridge",
+          "'bastra bridges live on' once 'bastra bridges verify' passes a bridge"
   );
   return lines;
 }
@@ -88,7 +88,9 @@ function learningLines(input: { runs: MintRun[]; now: Date }): string[] {
   const last = runs[runs.length - 1];
   const anyWritten = runs.some((r) => r.written > 0);
   if (anyWritten) {
-    return [`✓ ok: bridges learned in the last ${days} days (${runs.length} mint run(s), last: ${last.written} written)`];
+    return [
+      `✓ ok: bridges learned in the last ${days} days (${runs.length} mint run(s), last: ${last.written} written)`,
+    ];
   }
   if (runs.some((r) => r.minted > 0)) {
     return [
@@ -104,7 +106,9 @@ function learningLines(input: { runs: MintRun[]; now: Date }): string[] {
   }
   // Reaches, but none far enough to mint from: recall already found every
   // memory with the words used. Nothing to learn is not a fault.
-  return [`✓ ok: ${runs.length} mint run(s) in ${days} days, no recall needed a bridge (last: ${last.reaches} acted-on reach(es))`];
+  return [
+    `✓ ok: ${runs.length} mint run(s) in ${days} days, no recall needed a bridge (last: ${last.reaches} acted-on reach(es))`,
+  ];
 }
 
 /**
@@ -117,13 +121,15 @@ export async function readMintRuns(
   logDir: string,
   lastMint: LastMintRecord | null,
   now: Date,
-  days: number = BRIDGE_STALL_WINDOW_DAYS,
+  days: number = BRIDGE_STALL_WINDOW_DAYS
 ): Promise<MintRun[]> {
   const runs: MintRun[] = [];
   const firstDay = new Date(now.getTime() - days * DAY_MS).toISOString().slice(0, 10);
   let files: string[] = [];
   try {
-    files = (await readdir(logDir)).filter((f) => /^events-\d{4}-\d{2}-\d{2}\.jsonl$/.test(f) && f.slice(7, 17) >= firstDay);
+    files = (await readdir(logDir)).filter(
+      (f) => /^events-\d{4}-\d{2}-\d{2}\.jsonl$/.test(f) && f.slice(7, 17) >= firstDay
+    );
   } catch {
     /* no log dir → only last-mint.json can speak */
   }

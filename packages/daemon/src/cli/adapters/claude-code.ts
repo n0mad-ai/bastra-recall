@@ -69,11 +69,13 @@ export type { HookDef, HookPlan } from "./claude-code-hooks.js";
 // #537: `stubPresent` is the selection made by the install step, not a disk
 // probe — `--no-stub` has to move the statusLine back to the node client too,
 // or the opt-out would be half taken.
-export function statuslineCommand(bin: string, stubPresent: boolean = existsSync(HOOK_STUB_BIN), platform: string = process.platform): string {
+export function statuslineCommand(
+  bin: string,
+  stubPresent: boolean = existsSync(HOOK_STUB_BIN),
+  platform: string = process.platform
+): string {
   const token = platform === "win32" ? windowsHookToken : (s: string) => s;
-  return stubPresent
-    ? `${token(HOOK_STUB_BIN)} statusline --style=powerline`
-    : `node ${token(bin)} --style=powerline`;
+  return stubPresent ? `${token(HOOK_STUB_BIN)} statusline --style=powerline` : `node ${token(bin)} --style=powerline`;
 }
 
 function buildStatuslineBlock(command: string): Record<string, unknown> {
@@ -107,19 +109,22 @@ export function isOurStatusline(sl: unknown): boolean {
 function statuslineMatches(sl: unknown, command: string): boolean {
   if (typeof sl !== "object" || sl === null) return false;
   const s = sl as Record<string, unknown>;
-  return (
-    s.command === command &&
-    s.type === "command"
-  );
+  return s.command === command && s.type === "command";
 }
 
 type StatuslineStepStatus =
-  | "installed" | "already-installed" | "would-install" | "foreign-kept"
-  | "removed" | "not-present" | "would-remove" | "error";
+  | "installed"
+  | "already-installed"
+  | "would-install"
+  | "foreign-kept"
+  | "removed"
+  | "not-present"
+  | "would-remove"
+  | "error";
 
 export async function patchClaudeCodeStatusline(
   action: "install" | "uninstall",
-  opts: { dryRun: boolean; force: boolean; bin?: string; stubPresent?: boolean; settingsPath?: string },
+  opts: { dryRun: boolean; force: boolean; bin?: string; stubPresent?: boolean; settingsPath?: string }
 ): Promise<{ status: StatuslineStepStatus; detail: string; backupPath?: string }> {
   // opts.bin: the path to REGISTER (stable-runtime copy when active, #180).
   // Build/existence is still checked against the source STATUSLINE_BIN — the
@@ -140,7 +145,10 @@ export async function patchClaudeCodeStatusline(
     // A different statusLine is configured → never clobber it without --yes.
     if (present && !isOurStatusline(existing)) {
       if (!opts.force) {
-        return { status: "foreign-kept", detail: "a different statusLine is configured — kept it (pass --yes to use bastra's)" };
+        return {
+          status: "foreign-kept",
+          detail: "a different statusLine is configured — kept it (pass --yes to use bastra's)",
+        };
       }
     } else if (statuslineMatches(existing, command)) {
       return { status: "already-installed", detail: "bastra statusLine already configured" };
@@ -152,16 +160,23 @@ export async function patchClaudeCodeStatusline(
     }
 
     if (present && !isOurStatusline(existing)) {
-      console.log(`replacing foreign statusLine ${(existing as Record<string, unknown>).command ?? "(unknown command)"}`);
+      console.log(
+        `replacing foreign statusLine ${(existing as Record<string, unknown>).command ?? "(unknown command)"}`
+      );
     }
     const backupPath = await backupConfig(settingsPath);
     // An update owns the command, but the user owns their refresh cadence.
     // Also preserve an omitted interval (event-driven rendering).
-    data.statusLine = present && isOurStatusline(existing)
-      ? { ...(existing as Record<string, unknown>), type: "command", command, __bastraRecall: true }
-      : buildStatuslineBlock(command);
+    data.statusLine =
+      present && isOurStatusline(existing)
+        ? { ...(existing as Record<string, unknown>), type: "command", command, __bastraRecall: true }
+        : buildStatuslineBlock(command);
     await atomicWriteJson(settingsPath, data);
-    const how = !present ? "powerline, refreshInterval 1s" : isOurStatusline(existing) ? "path updated" : "replaced foreign";
+    const how = !present
+      ? "powerline, refreshInterval 1s"
+      : isOurStatusline(existing)
+        ? "path updated"
+        : "replaced foreign";
     return { status: "installed", detail: `statusLine registered (${how})`, backupPath: backupPath ?? undefined };
   }
 
@@ -204,7 +219,7 @@ async function claudeCodeInstall(opts: InstallOpts): Promise<InstallResult> {
     // carries — a GUI client inherits no shell export.
     serverBlockEndpoint(servers[SERVER_KEY]),
     // #647: env keys the user added (BASTRA_FORWARDER_SPAWN=0, …) survive.
-    foreignEnv(servers[SERVER_KEY]),
+    foreignEnv(servers[SERVER_KEY])
   );
 
   const mcpMatches = blocksMatch(servers[SERVER_KEY], block);
@@ -226,7 +241,8 @@ async function claudeCodeInstall(opts: InstallOpts): Promise<InstallResult> {
 
   if (skillResult.status === "error") return { status: "error", message: `skill: ${skillResult.detail}`, configPath };
   if (hookResult.status === "error") return { status: "error", message: `hooks: ${hookResult.detail}`, configPath };
-  if (statuslineResult.status === "error") return { status: "error", message: `statusline: ${statuslineResult.detail}`, configPath };
+  if (statuslineResult.status === "error")
+    return { status: "error", message: `statusline: ${statuslineResult.detail}`, configPath };
 
   const bootstrap = await ensureBootstrap("claude-code", "install", opts);
   if (bootstrap.error) return { status: "error", message: bootstrap.detail, configPath };
@@ -240,13 +256,19 @@ async function claudeCodeInstall(opts: InstallOpts): Promise<InstallResult> {
     mcpMatches &&
     skillResult.status === "already-installed" &&
     hookResult.status === "already-installed" &&
-    statuslineSettled && !bootstrap.changed;
+    statuslineSettled &&
+    !bootstrap.changed;
   if (allAlreadyInstalled) {
-    const msg = statuslineResult.status === "foreign-kept"
-      ? "MCP, skill, hooks in place; statusLine: foreign one kept (pass --yes to use bastra's)"
-      : "MCP server, skill, hooks, and statusLine all already in place";
+    const msg =
+      statuslineResult.status === "foreign-kept"
+        ? "MCP, skill, hooks in place; statusLine: foreign one kept (pass --yes to use bastra's)"
+        : "MCP server, skill, hooks, and statusLine all already in place";
     // #683: an entry that was left alone is named on every run, this one too.
-    return { status: "already-installed", message: [msg, hookResult.note, `bootstrap: ${bootstrap.detail}`].filter(Boolean).join("\n  · "), configPath };
+    return {
+      status: "already-installed",
+      message: [msg, hookResult.note, `bootstrap: ${bootstrap.detail}`].filter(Boolean).join("\n  · "),
+      configPath,
+    };
   }
 
   if (opts.dryRun) {
@@ -306,8 +328,17 @@ async function claudeCodeUninstall(opts: { dryRun: boolean }): Promise<Uninstall
 
   const bootstrap = await ensureBootstrap("claude-code", "uninstall", opts);
   if (bootstrap.error) return { status: "error", message: bootstrap.detail, configPath };
-  if (!bootstrap.changed && !mcpPresent && hookResult.status === "not-present" && statuslineResult.status === "not-present") {
-    return { status: "not-present", message: "nothing to remove (skill: shared file — final sweep decides)", configPath };
+  if (
+    !bootstrap.changed &&
+    !mcpPresent &&
+    hookResult.status === "not-present" &&
+    statuslineResult.status === "not-present"
+  ) {
+    return {
+      status: "not-present",
+      message: "nothing to remove (skill: shared file — final sweep decides)",
+      configPath,
+    };
   }
 
   if (opts.dryRun) {
@@ -393,22 +424,19 @@ async function claudeCodeDoctor(): Promise<DoctorResult> {
     details["hooks"] = `settings.json broken: ${settingsRead.error}`;
     requiredHooksMissing = true;
   } else {
-    const hooks = (settingsRead.data.hooks && typeof settingsRead.data.hooks === "object")
-      ? settingsRead.data.hooks as Record<string, unknown>
-      : {};
+    const hooks =
+      settingsRead.data.hooks && typeof settingsRead.data.hooks === "object"
+        ? (settingsRead.data.hooks as Record<string, unknown>)
+        : {};
     const found = registeredHookBins(hooks);
     const registeredCommands = registeredHookCommands(hooks);
     const requiredMissing = REQUIRED_HOOK_FILES.filter((f) => !found.has(f));
     const allMissing = missingRequiredHookRegistrations(hooks);
     const noticeRegistration = `PostToolUse:${SAVE_NOTICE_MATCHER}`;
     saveNoticeMissing = allMissing.includes(noticeRegistration);
-    const registrationMissing = allMissing.filter(registration => registration !== noticeRegistration);
-    details["save-notice-hook"] = saveNoticeMissing
-      ? "MISSING — re-run bastra install claude-code"
-      : "registered";
-    const optionalMissing = OUR_HOOK_FILES
-      .filter((f) => !REQUIRED_HOOK_FILES.includes(f))
-      .filter((f) => !found.has(f));
+    const registrationMissing = allMissing.filter((registration) => registration !== noticeRegistration);
+    details["save-notice-hook"] = saveNoticeMissing ? "MISSING — re-run bastra install claude-code" : "registered";
+    const optionalMissing = OUR_HOOK_FILES.filter((f) => !REQUIRED_HOOK_FILES.includes(f)).filter((f) => !found.has(f));
     requiredHooksMissing = requiredMissing.length > 0 || registrationMissing.length > 0;
     stopHookRegistered = found.has("stop-hook.js");
     // Claude Code's own off switch — user file only; a project file can override it.
@@ -427,8 +455,13 @@ async function claudeCodeDoctor(): Promise<DoctorResult> {
     // #650: the archive opt-in (its state is in the features block) acts
     // only on a Bash hook call that carries the Claude Code marker.
     const bashPre = registeredCommands.find(([f]) => f === "bash-pre-hook.js")?.[1];
-    if (archiveMode(await getArchiveEnabled().catch(() => false)) !== "off" && bashPre !== undefined && !bashPre.includes(CLIENT_MARKER.trim())) {
-      details["archive"] = "opted in, but the Bash hook carries no Claude Code marker, so nothing is rewritten — re-run 'bastra install claude-code'";
+    if (
+      archiveMode(await getArchiveEnabled().catch(() => false)) !== "off" &&
+      bashPre !== undefined &&
+      !bashPre.includes(CLIENT_MARKER.trim())
+    ) {
+      details["archive"] =
+        "opted in, but the Bash hook carries no Claude Code marker, so nothing is rewritten — re-run 'bastra install claude-code'";
     }
 
     const hookPathProblems = await checkHookPaths(registeredCommands);
@@ -437,11 +470,12 @@ async function claudeCodeDoctor(): Promise<DoctorResult> {
 
     // Statusline (optional/cosmetic — never marks the surface as broken).
     const sl = settingsRead.data.statusLine;
-    details["statusline"] = sl === undefined || sl === null
-      ? "missing (run 'bastra install' to add it)"
-      : isOurStatusline(sl)
-        ? "present (bastra)"
-        : `present (foreign: ${(sl as Record<string, unknown>).command ?? "unknown command"})`;
+    details["statusline"] =
+      sl === undefined || sl === null
+        ? "missing (run 'bastra install' to add it)"
+        : isOurStatusline(sl)
+          ? "present (bastra)"
+          : `present (foreign: ${(sl as Record<string, unknown>).command ?? "unknown command"})`;
   }
 
   // Daemon
@@ -463,8 +497,15 @@ async function claudeCodeDoctor(): Promise<DoctorResult> {
     details["vault-path"]?.includes("MISSING") === true ||
     requiredHooksMissing ||
     hookPathBroken ||
-    (details["skill"] === "missing" || details["skill"].startsWith("STALE"));
-  if (broken) return { status: "broken", message: "registered but some pieces need repair — re-run 'bastra install claude-code'", details, features };
+    details["skill"] === "missing" ||
+    details["skill"].startsWith("STALE");
+  if (broken)
+    return {
+      status: "broken",
+      message: "registered but some pieces need repair — re-run 'bastra install claude-code'",
+      details,
+      features,
+    };
   return {
     status: "ok",
     message: saveNoticeMissing

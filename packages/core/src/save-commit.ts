@@ -13,7 +13,19 @@
  * looks alive too. Details on each rule are at the function that implements it.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, access, open, link, lstat, mkdir, readdir, rmdir, unlink, writeFile, utimes } from "node:fs/promises";
+import {
+  readFile,
+  access,
+  open,
+  link,
+  lstat,
+  mkdir,
+  readdir,
+  rmdir,
+  unlink,
+  writeFile,
+  utimes,
+} from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { MemoryWriteConflictError } from "./save-schema.js";
@@ -109,7 +121,9 @@ async function inspectCommitClaim(lockPath: string): Promise<{ raw: string | nul
       const [content, info] = await Promise.all([handle.readFile("utf8"), handle.stat()]);
       raw = content;
       ageMs = Date.now() - info.mtimeMs;
-    } finally { await handle.close(); }
+    } finally {
+      await handle.close();
+    }
   } catch (err) {
     // No checked generation remains to reclaim. Unknown is never free.
     return { raw: null, abandoned: (err as NodeJS.ErrnoException)?.code === "ENOENT" };
@@ -156,11 +170,7 @@ export async function claimIsAbandoned(lockPath: string): Promise<boolean> {
  * documented outcome for contention and costs no data — the compare-and-swap
  * below still has to agree before anything is published.
  */
-export async function acquireCommitClaim(
-  lockPath: string,
-  id: string,
-  filePath: string,
-): Promise<string> {
+export async function acquireCommitClaim(lockPath: string, id: string, filePath: string): Promise<string> {
   const token = randomUUID();
   const body = JSON.stringify({
     pid: process.pid,
@@ -168,21 +178,29 @@ export async function acquireCommitClaim(
     ts: Date.now(),
     token,
   } satisfies CommitClaim);
-  return withPreparedClaim(lockPath, body, id, filePath, async prepared => {
+  return withPreparedClaim(lockPath, body, id, filePath, async (prepared) => {
     try {
       await publishPrepared(prepared, lockPath, body);
       return token;
     } catch (error) {
       // Same shared-container race as in withPreparedClaim: the preparation
       // can vanish before link(). Report it as the conflict it is.
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") throw writeConflict(id, filePath, "another save is preparing this claim");
+      if ((error as NodeJS.ErrnoException).code === "ENOENT")
+        throw writeConflict(id, filePath, "another save is preparing this claim");
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       const checked = await inspectCommitClaim(lockPath);
-      if (checked.abandoned && checked.raw !== null
-        && await reclaimStaleClaim(lockPath, prepared, body, checked.raw)) {
+      if (
+        checked.abandoned &&
+        checked.raw !== null &&
+        (await reclaimStaleClaim(lockPath, prepared, body, checked.raw))
+      ) {
         reportMutationIncident({
-          operation_id: newOperationId(), op: "claim_reclaim", status: "reclaimed",
-          phase: "claim-reclaim", memory_id: id, detail: "abandoned claim taken over",
+          operation_id: newOperationId(),
+          op: "claim_reclaim",
+          status: "reclaimed",
+          phase: "claim-reclaim",
+          memory_id: id,
+          detail: "abandoned claim taken over",
         });
         return token;
       }
@@ -196,18 +214,29 @@ export async function acquireCommitClaim(
  * complete publication and does not claim the hardlink safety guarantee. */
 const LINK_UNSUPPORTED = new Set(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EPERM", "EXDEV", "EINVAL", "EMLINK"]);
 async function publishPrepared(prepared: string, target: string, raw: string): Promise<void> {
-  try { await link(prepared, target); return; }
-  catch (error) {
+  try {
+    await link(prepared, target);
+    return;
+  } catch (error) {
     if (!LINK_UNSUPPORTED.has((error as NodeJS.ErrnoException).code ?? "")) throw error;
   }
   const handle = await open(target, "wx", 0o600);
-  try { await handle.writeFile(raw, "utf8"); }
-  finally { await handle.close(); }
+  try {
+    await handle.writeFile(raw, "utf8");
+  } finally {
+    await handle.close();
+  }
 }
 
 /** Complete regular bytes precede publication. Helpers live only in this ID's
  * directory, so interrupted preparations never require a lock-directory scan. */
-async function withPreparedClaim<T>(lockPath: string, raw: string, id: string, filePath: string, run: (prepared: string) => Promise<T>): Promise<T> {
+async function withPreparedClaim<T>(
+  lockPath: string,
+  raw: string,
+  id: string,
+  filePath: string,
+  run: (prepared: string) => Promise<T>
+): Promise<T> {
   const directory = `${lockPath}.publish`;
   const name = `${Date.now()}-${process.pid}-${(JSON.parse(raw) as CommitClaim).token}.tmp`;
   const prepared = join(directory, name);
@@ -219,8 +248,11 @@ async function withPreparedClaim<T>(lockPath: string, raw: string, id: string, f
         directoryChecked = true;
         if (!created) await cleanupPreparations(directory, lockPath);
         const handle = await open(prepared, "wx", 0o600);
-        try { await handle.writeFile(raw, "utf8"); }
-        finally { await handle.close(); }
+        try {
+          await handle.writeFile(raw, "utf8");
+        } finally {
+          await handle.close();
+        }
         break;
       } catch (error) {
         // Another preparation can remove the now-empty shared container.
@@ -237,8 +269,12 @@ async function withPreparedClaim<T>(lockPath: string, raw: string, id: string, f
 }
 
 async function ensureDirectory(path: string): Promise<boolean> {
-  try { await mkdir(path, { mode: 0o700 }); return true; }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+  try {
+    await mkdir(path, { mode: 0o700 });
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  }
   const info = await lstat(path);
   if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("invalid claim helper directory");
   return false;
@@ -250,14 +286,15 @@ async function removeOwnFile(path: string): Promise<void> {
 }
 
 function reservationOwner(name: string, helper = false): { ts: number; pid: number; token: string } | null {
-  const match = (helper
-    ? /^(\d+)-(\d+)-([0-9a-f-]{36})\.tmp$/
-    : /^(\d+)-(\d+)-([0-9a-f-]{36})$/).exec(name);
+  const match = (helper ? /^(\d+)-(\d+)-([0-9a-f-]{36})\.tmp$/ : /^(\d+)-(\d+)-([0-9a-f-]{36})$/).exec(name);
   return match ? { ts: Number(match[1]), pid: Number(match[2]), token: match[3]! } : null;
 }
 function ownerExpired(owner: { ts: number; pid: number }, ceiling: number): boolean {
-  try { process.kill(owner.pid, 0); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") return true; }
+  try {
+    process.kill(owner.pid, 0);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return true;
+  }
   return Date.now() - owner.ts > ceiling;
 }
 async function cleanupPreparations(directory: string, lockPath: string): Promise<void> {
@@ -265,13 +302,17 @@ async function cleanupPreparations(directory: string, lockPath: string): Promise
     const owner = reservationOwner(name, true);
     if (!owner || !ownerExpired(owner, COMMIT_CLAIM_LIVE_OWNER_MAX_MS)) continue;
     const prepared = join(directory, name);
-    const raw = await readFile(prepared, "utf8").catch(error => {
+    const raw = await readFile(prepared, "utf8").catch((error) => {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw error; // Keep the durable pointer for a later retry on I/O failure.
     });
     if (raw === null) continue;
     let claim: CommitClaim | undefined;
-    try { claim = JSON.parse(raw) as CommitClaim; } catch { /* incomplete preparation never published */ }
+    try {
+      claim = JSON.parse(raw) as CommitClaim;
+    } catch {
+      /* incomplete preparation never published */
+    }
     // main may already have replaced the crashed public claim, losing its
     // pointer. The still-owned preparation carries the same durable cleanup key.
     if (claim?.token === owner.token && claim.reclaimed_from && /^[0-9a-f]{16}$/.test(claim.reclaimed_from)) {
@@ -294,13 +335,14 @@ const RECLAIM_MARK_STALE_MS = COMMIT_CLAIM_STALE_MS * 2;
  * Only marker expiry needs reservations. An unmodified main process still has
  * its own blind stale-marker deletion race; new code cannot fence that reader. */
 async function reclaimStaleClaim(lockPath: string, prepared: string, body: string, checked: string): Promise<boolean> {
-  if (await readFile(lockPath, "utf8").catch(() => null) !== checked) return false;
+  if ((await readFile(lockPath, "utf8").catch(() => null)) !== checked) return false;
   const digest = createHash("sha256").update(checked).digest("hex").slice(0, 16);
   const claim = JSON.parse(body) as CommitClaim;
   const updated = JSON.stringify({ ...claim, reclaimed_from: digest });
   await writeFile(prepared, updated, "utf8");
   const marker = `${lockPath}.reclaim-${digest}`;
-  let owned = false, publicationAttempted = false;
+  let owned = false,
+    publicationAttempted = false;
   try {
     owned = await takeReclaimMark(lockPath, marker, prepared, updated);
     if (!owned) return false;
@@ -311,12 +353,16 @@ async function reclaimStaleClaim(lockPath: string, prepared: string, body: strin
     // A predecessor killed after publication may still own its earlier marker.
     // Retire that exact token while its cleanup pointer remains durable here.
     let predecessor: CommitClaim | undefined;
-    try { predecessor = JSON.parse(checked) as CommitClaim; } catch { /* empty main claim */ }
+    try {
+      predecessor = JSON.parse(checked) as CommitClaim;
+    } catch {
+      /* empty main claim */
+    }
     if (predecessor?.reclaimed_from && /^[0-9a-f]{16}$/.test(predecessor.reclaimed_from)) {
       await removeOwnedMarker(`${lockPath}.reclaim-${predecessor.reclaimed_from}`, predecessor.token);
-      if (await readFile(lockPath, "utf8").catch(() => null) !== checked) return false;
+      if ((await readFile(lockPath, "utf8").catch(() => null)) !== checked) return false;
     }
-    if (!await markerOwnedBy(marker, claim.token)) return false;
+    if (!(await markerOwnedBy(marker, claim.token))) return false;
     await unlink(lockPath);
     publicationAttempted = true;
     await publishPrepared(prepared, lockPath, updated);
@@ -324,7 +370,7 @@ async function reclaimStaleClaim(lockPath: string, prepared: string, body: strin
     // Do not report acquisition after observable lease loss or replacement.
     const [stillOwned, published] = await Promise.all([
       markerOwnedBy(marker, claim.token),
-      readFile(lockPath, "utf8").then(raw => (JSON.parse(raw) as CommitClaim).token === claim.token),
+      readFile(lockPath, "utf8").then((raw) => (JSON.parse(raw) as CommitClaim).token === claim.token),
     ]);
     if (!stillOwned || !published) {
       await releaseCommitClaim(lockPath, claim.token);
@@ -334,13 +380,17 @@ async function reclaimStaleClaim(lockPath: string, prepared: string, body: strin
   } catch {
     if (publicationAttempted) await releaseCommitClaim(lockPath, claim.token);
     return false;
+  } finally {
+    if (owned) await removeOwnedMarker(marker, claim.token);
   }
-  finally { if (owned) await removeOwnedMarker(marker, claim.token); }
 }
 
 async function markerOwnedBy(marker: string, token: string): Promise<boolean> {
-  try { return (JSON.parse(await readFile(marker, "utf8")) as CommitClaim).token === token; }
-  catch { return false; }
+  try {
+    return (JSON.parse(await readFile(marker, "utf8")) as CommitClaim).token === token;
+  } catch {
+    return false;
+  }
 }
 
 async function removeOwnedMarker(marker: string, token: string): Promise<void> {
@@ -349,7 +399,9 @@ async function removeOwnedMarker(marker: string, token: string): Promise<void> {
       if ((JSON.parse(await readFile(marker, "utf8")) as CommitClaim).token !== token) return;
       await unlink(marker);
       return;
-    } catch { /* One-shot errors retry; abandoned markers expire after 60s. */ }
+    } catch {
+      /* One-shot errors retry; abandoned markers expire after 60s. */
+    }
   }
 }
 
@@ -358,20 +410,29 @@ async function markerSnapshot(path: string): Promise<{ raw: string; mtimeMs: num
   try {
     const [raw, info] = await Promise.all([handle.readFile("utf8"), handle.stat()]);
     return { raw, mtimeMs: info.mtimeMs };
-  } finally { await handle.close(); }
+  } finally {
+    await handle.close();
+  }
 }
 
 async function takeReclaimMark(lockPath: string, marker: string, prepared: string, raw: string): Promise<boolean> {
   // main uses marker mtime, so refresh the private record before linking it.
   const now = new Date(Date.now());
   await utimes(prepared, now, now);
-  try { await publishPrepared(prepared, marker, raw); return true; }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") return false; }
+  try {
+    await publishPrepared(prepared, marker, raw);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") return false;
+  }
   let seen: string, age: number;
   try {
     const snapshot = await markerSnapshot(marker);
-    seen = snapshot.raw; age = Date.now() - snapshot.mtimeMs;
-  } catch { return false; }
+    seen = snapshot.raw;
+    age = Date.now() - snapshot.mtimeMs;
+  } catch {
+    return false;
+  }
   if (age <= RECLAIM_MARK_STALE_MS) return false;
   const recovery = `${lockPath}.recovery`;
   const phase = join(recovery, marker.slice(marker.lastIndexOf(".reclaim-") + 9));
@@ -380,7 +441,8 @@ async function takeReclaimMark(lockPath: string, marker: string, prepared: strin
   try {
     await ensureDirectory(recovery);
     await ensureDirectory(phase);
-    await mkdir(reservation, { mode: 0o700 }); reserved = true;
+    await mkdir(reservation, { mode: 0o700 });
+    reserved = true;
     for (const name of await readdir(phase)) {
       if (join(phase, name) === reservation) continue;
       const owner = reservationOwner(name);
@@ -395,8 +457,9 @@ async function takeReclaimMark(lockPath: string, marker: string, prepared: strin
     await unlink(marker);
     await publishPrepared(prepared, marker, raw);
     return true;
-  } catch { return false; }
-  finally {
+  } catch {
+    return false;
+  } finally {
     if (reserved) await rmdir(reservation).catch(() => rmdir(reservation).catch(() => {}));
     await rmdir(phase).catch(() => {});
     await rmdir(recovery).catch(() => {});
@@ -422,7 +485,9 @@ async function cleanupReservations(lockPath: string): Promise<void> {
       await rmdir(phase).catch(() => {});
     }
     await rmdir(recovery).catch(() => {});
-  } catch { /* A later release can retire bounded dead reservations. */ }
+  } catch {
+    /* A later release can retire bounded dead reservations. */
+  }
 }
 
 /**
@@ -440,12 +505,17 @@ export async function releaseCommitClaim(lockPath: string, token: string): Promi
   try {
     claim = JSON.parse(await readFile(lockPath, "utf8")) as CommitClaim;
     if (claim.token !== token) return;
-  } catch { return; }
+  } catch {
+    return;
+  }
   if (claim.reclaimed_from && /^[0-9a-f]{16}$/.test(claim.reclaimed_from)) {
     await removeOwnedMarker(`${lockPath}.reclaim-${claim.reclaimed_from}`, token);
     // Preserve the final token-read/unlink boundary after the rare cleanup.
-    try { if ((JSON.parse(await readFile(lockPath, "utf8")) as CommitClaim).token !== token) return; }
-    catch { return; }
+    try {
+      if ((JSON.parse(await readFile(lockPath, "utf8")) as CommitClaim).token !== token) return;
+    } catch {
+      return;
+    }
   }
   await unlink(lockPath).catch(() => {});
   await cleanupReservations(lockPath);

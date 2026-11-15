@@ -38,7 +38,7 @@ test("BM25: a fullwidth query finds the note written in ASCII, and back", async 
   const note = (id: string, title: string) =>
     writeFile(
       join(dir, "memories", `${id}.md`),
-      `---\nid: ${id}\ntitle: "${title}"\ntype: reference\nsummary: "${title}"\ntopic_path: [t]\ntags: [t]\nscope: s\nrecall_when:\n  - "${title}"\ncreated: 2026-10-01\nupdated: 2026-10-01\n---\n\n${title}.\n`,
+      `---\nid: ${id}\ntitle: "${title}"\ntype: reference\nsummary: "${title}"\ntopic_path: [t]\ntags: [t]\nscope: s\nrecall_when:\n  - "${title}"\ncreated: 2026-10-01\nupdated: 2026-10-01\n---\n\n${title}.\n`
     );
   await note("api-key-rotation", "Rotate the API key every quarter");
   await note("ime-note", "ｓｔａｇｉｎｇ ｓｅｒｖｅｒ ｐａｓｓｗｏｒｄ");
@@ -62,7 +62,6 @@ test("BM25: a fullwidth query finds the note written in ASCII, and back", async 
   }
 });
 
-
 test("BM25: non-Latin apostrophe variants share boundaries on index and query", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-apostrophe-"));
   const vault = new Vault(dir);
@@ -71,21 +70,27 @@ test("BM25: non-Latin apostrophe variants share boundaries on index and query", 
     await mkdir(join(dir, "memories"), { recursive: true });
     const variants = ["об'єкт", "об’єкт", "обʼєкт", "п'ятниця", "пʼятниця"];
     for (const [i, title] of variants.entries()) {
-      await writeFile(join(dir, "memories", `apostrophe-${i}.md`),
-        `---\nid: apostrophe-${i}\ntitle: "${title}"\ntype: reference\nsummary: "${title}"\ntopic_path: [t]\ntags: [t]\nscope: s\nrecall_when: ["${title}"]\ncreated: 2026-10-01\nupdated: 2026-10-01\n---\n${title}\n`);
+      await writeFile(
+        join(dir, "memories", `apostrophe-${i}.md`),
+        `---\nid: apostrophe-${i}\ntitle: "${title}"\ntype: reference\nsummary: "${title}"\ntopic_path: [t]\ntags: [t]\nscope: s\nrecall_when: ["${title}"]\ncreated: 2026-10-01\nupdated: 2026-10-01\n---\n${title}\n`
+      );
     }
     for (let i = 0; i < 10; i++) {
-      await writeFile(join(dir, "memories", `filler-${i}.md`),
-        `---\nid: filler-${i}\ntitle: unrelated gardening\ntype: reference\nsummary: unrelated gardening\ntopic_path: [t]\ntags: [t]\nscope: s\nrecall_when: [gardening]\ncreated: 2026-10-01\nupdated: 2026-10-01\n---\ngardening\n`);
+      await writeFile(
+        join(dir, "memories", `filler-${i}.md`),
+        `---\nid: filler-${i}\ntitle: unrelated gardening\ntype: reference\nsummary: unrelated gardening\ntopic_path: [t]\ntags: [t]\nscope: s\nrecall_when: [gardening]\ncreated: 2026-10-01\nupdated: 2026-10-01\n---\ngardening\n`
+      );
     }
     await vault.init();
     search = new SearchIndex(vault);
     search.start();
     for (const query of variants) {
-      const expected = query.startsWith("об") ? ["apostrophe-0", "apostrophe-1", "apostrophe-2"] : ["apostrophe-3", "apostrophe-4"];
+      const expected = query.startsWith("об")
+        ? ["apostrophe-0", "apostrophe-1", "apostrophe-2"]
+        : ["apostrophe-3", "apostrophe-4"];
       const hits = search.recall(query, { k: 10 });
-      assert.deepEqual(hits.map(h => h.id).sort(), expected, query);
-      assert.equal(new Set(hits.map(h => h.score)).size, 1, "equivalent notes score equally");
+      assert.deepEqual(hits.map((h) => h.id).sort(), expected, query);
+      assert.equal(new Set(hits.map((h) => h.score)).size, 1, "equivalent notes score equally");
     }
     // Latin contractions/elisions and surrounding quotation marks still split.
     assert.deepEqual(tokenizeWithIdentifiers("don't l’état 'об’єкт'"), ["don", "t", "l", "état", "обєкт"]);

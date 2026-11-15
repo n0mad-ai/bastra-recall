@@ -7,16 +7,20 @@ export const LEGACY_AUTOSTART_CREDENTIALS = ["BASTRA_API_TOKEN", "BASTRA_EMBEDDI
 
 export function cleanManagedEnv(env: Record<string, string>, write?: (s: string) => void): Record<string, string> {
   const clean = { ...env };
-  const removed = LEGACY_AUTOSTART_CREDENTIALS.filter(key => Object.hasOwn(clean, key));
+  const removed = LEGACY_AUTOSTART_CREDENTIALS.filter((key) => Object.hasOwn(clean, key));
   for (const key of removed) delete clean[key];
   if (removed.length) write?.(`  ⚠ omitting legacy credential keys from managed environment: ${removed.join(", ")}\n`);
   return clean;
 }
 
 /** Preserve exact backups normally; redact only known legacy env keys when present. */
-export async function safeLaunchAgentSnapshot(path: string, env: Record<string, string>, plutil: string): Promise<Buffer> {
+export async function safeLaunchAgentSnapshot(
+  path: string,
+  env: Record<string, string>,
+  plutil: string
+): Promise<Buffer> {
   const raw = await readFile(path);
-  const removed = LEGACY_AUTOSTART_CREDENTIALS.filter(key => Object.hasOwn(env, key));
+  const removed = LEGACY_AUTOSTART_CREDENTIALS.filter((key) => Object.hasOwn(env, key));
   if (!removed.length) return raw;
   let xml = raw.toString("utf8");
   if (!xml.includes("<plist")) {
@@ -29,7 +33,8 @@ export async function safeLaunchAgentSnapshot(path: string, env: Record<string, 
   const sanitized = xml.replace(block, (_all, open: string, body: string, close: string) => {
     for (const key of removed) {
       body = body.replace(new RegExp(`\\s*<key>\\s*${key}\\s*</key>\\s*<string>[\\s\\S]*?</string>`, "gu"), "");
-      if (new RegExp(`<key>\\s*${key}\\s*</key>`, "u").test(body)) throw new Error("could not sanitize legacy credential snapshot");
+      if (new RegExp(`<key>\\s*${key}\\s*</key>`, "u").test(body))
+        throw new Error("could not sanitize legacy credential snapshot");
     }
     return open + body + close;
   });

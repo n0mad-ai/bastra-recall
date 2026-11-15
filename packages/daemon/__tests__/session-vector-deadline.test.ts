@@ -77,10 +77,7 @@ async function probeRoute(body: Record<string, unknown>, vaultPath: string): Pro
   const routes: Array<Record<string, unknown>> = [];
   const search = {
     hasEmbeddings: () => true,
-    recallHybrid: async (
-      _q: string,
-      opts: { vector_deadline_ms?: number; onStage?: (s: unknown) => void },
-    ) => {
+    recallHybrid: async (_q: string, opts: { vector_deadline_ms?: number; onStage?: (s: unknown) => void }) => {
       deadlines.push(opts.vector_deadline_ms as number);
       // Ohne eine bm25-Stage mit `terms_unique` rechnet die Route den
       // Schatten gar nicht erst — der Router braucht den Kostentreiber.
@@ -131,7 +128,7 @@ async function probeRoute(body: Record<string, unknown>, vaultPath: string): Pro
         (res) => {
           res.on("data", () => {});
           res.on("end", () => resolve());
-        },
+        }
       );
       req.on("error", reject);
       req.end(payload);
@@ -148,14 +145,10 @@ test("die Session-Route reicht vector_deadline_ms bis an den dichten Arm durch",
   const dir = await mkdtemp(join(tmpdir(), "bastra-session-deadline-"));
   try {
     const { deadlines: seen } = await withEnv({ BASTRA_VECTOR_DEADLINE_MS: "150" }, () =>
-      probeRoute({ project: null, vector_deadline_ms: 350 }, dir),
+      probeRoute({ project: null, vector_deadline_ms: 350 }, dir)
     );
     assert.ok(seen.length > 0, "die Route hat überhaupt einen Recall gefahren");
-    assert.deepEqual(
-      [...new Set(seen)],
-      [350],
-      "jeder Recall dieses Aufrufs bekommt die 350 ms — nicht nur der erste",
-    );
+    assert.deepEqual([...new Set(seen)], [350], "jeder Recall dieses Aufrufs bekommt die 350 ms — nicht nur der erste");
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
@@ -165,7 +158,7 @@ test("ohne vector_deadline_ms bleibt es beim hookweiten Default — die anderen 
   const dir = await mkdtemp(join(tmpdir(), "bastra-session-deadline-default-"));
   try {
     const { deadlines: seen } = await withEnv({ BASTRA_VECTOR_DEADLINE_MS: "150" }, () =>
-      probeRoute({ project: null }, dir),
+      probeRoute({ project: null }, dir)
     );
     assert.ok(seen.length > 0, "die Route hat überhaupt einen Recall gefahren");
     assert.deepEqual([...new Set(seen)], [150], "der Default gilt weiter, wenn niemand etwas sagt");
@@ -190,7 +183,7 @@ test("das Schatten-Budget des Aufrufs entscheidet den Router-Modus — 500 macht
   const dir = await mkdtemp(join(tmpdir(), "bastra-session-budget-"));
   try {
     const { routes } = await withEnv({ BASTRA_HOOK_BUDGET_MS: "200" }, () =>
-      probeRoute({ project: null, vector_deadline_ms: 350, hook_budget_ms: 500 }, dir),
+      probeRoute({ project: null, vector_deadline_ms: 350, hook_budget_ms: 500 }, dir)
     );
     assert.ok(routes.length > 0, "die Route hat überhaupt einen Schatten gerechnet");
     for (const r of routes) {
@@ -207,7 +200,7 @@ test("ohne hook_budget_ms gilt der hookweite Wert — und der kippt den Modus", 
   const dir = await mkdtemp(join(tmpdir(), "bastra-session-budget-default-"));
   try {
     const { routes } = await withEnv({ BASTRA_HOOK_BUDGET_MS: "200" }, () =>
-      probeRoute({ project: null, vector_deadline_ms: 350 }, dir),
+      probeRoute({ project: null, vector_deadline_ms: 350 }, dir)
     );
     assert.ok(routes.length > 0, "die Route hat überhaupt einen Schatten gerechnet");
     for (const r of routes) {
@@ -225,7 +218,7 @@ test("ohne hook_budget_ms gilt der hookweite Wert — und der kippt den Modus", 
  *  liefert — genug für die Lane, die daraus ihren Block baut. */
 async function withDaemon(
   resp: Record<string, unknown> | null,
-  fn: (baseUrl: string, bodies: Record<string, unknown>[]) => Promise<void>,
+  fn: (baseUrl: string, bodies: Record<string, unknown>[]) => Promise<void>
 ): Promise<void> {
   const seenBodies: Record<string, unknown>[] = [];
   const sessionContext = JSON.stringify({
@@ -253,11 +246,7 @@ async function withDaemon(
         }
       }
       const body =
-        path === "/hook/session-context"
-          ? sessionContext
-          : path === "/health"
-            ? JSON.stringify({ ok: true })
-            : "{}";
+        path === "/hook/session-context" ? sessionContext : path === "/health" ? JSON.stringify({ ok: true }) : "{}";
       res.writeHead(200, { "content-type": "application/json" });
       res.end(body);
     });
@@ -295,8 +284,8 @@ test("die SessionStart-Lane fordert 350 ms für den dichten Arm und nennt ihr Bu
       await withEnv({ BASTRA_TELEMETRY: "off", BASTRA_LOG_PATH: logDir }, () =>
         runSessionLane(
           { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-deadline" },
-          base,
-        ),
+          base
+        )
       );
       assert.equal(bodies.length, 1, "genau ein Assembler-Aufruf (#265)");
       assert.equal(bodies[0].vector_deadline_ms, 350);
@@ -324,10 +313,10 @@ test("ein einarmiger SessionStart meldet den ausgefallenen Arm statt nur ok", as
         await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir }, () =>
           runSessionLane(
             { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-degraded" },
-            base,
-          ),
+            base
+          )
         );
-      },
+      }
     );
     const ev = (await readEvents(logDir)).find((e) => e.kind === "session_hook_call");
     assert.ok(ev, "eine session_hook_call-Zeile muss geschrieben werden");
@@ -346,8 +335,8 @@ test("ein zweiarmiger SessionStart meldet keinen Grund — das Feld beschreibt d
       await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir }, () =>
         runSessionLane(
           { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-fused" },
-          base,
-        ),
+          base
+        )
       );
     });
     const ev = (await readEvents(logDir)).find((e) => e.kind === "session_hook_call");

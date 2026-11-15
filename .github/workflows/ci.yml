@@ -43,6 +43,9 @@ jobs:
       - name: Install (clean, from lockfile)
         run: npm ci
 
+      - name: Formatting
+        run: npm run format:check
+
       # Build first: it compiles each workspace and emits the .d.ts files
       # (e.g. packages/core/dist) that the other workspaces' type-check
       # step resolves @bastra-recall/core against. Type-checking before

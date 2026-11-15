@@ -80,7 +80,7 @@ async function vaultWith(rel: string, frontmatterId: string, scope: string): Pro
   await mkdir(join(full, ".."), { recursive: true });
   await writeFile(
     full,
-    `---\nid: ${frontmatterId}\ntitle: T\ntype: reference\nsummary: s\ntopic_path:\n  - t\ntags:\n  - t\nscope: ${scope}\nrecall_when:\n  - t\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nAlt.\n`,
+    `---\nid: ${frontmatterId}\ntitle: T\ntype: reference\nsummary: s\ntopic_path:\n  - t\ntags:\n  - t\nscope: ${scope}\nrecall_when:\n  - t\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nAlt.\n`
   );
   return v;
 }
@@ -153,7 +153,7 @@ for (const [label, rel, scope, folder] of [
       await mkdir(join(full, ".."), { recursive: true });
       await writeFile(
         full,
-        `---\nid: Upper-ID\ntitle: T\ntype: reference\nsummary: s\ntopic_path:\n  - t\ntags:\n  - t\nscope: ${scope}\nrecall_when:\n  - t\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nAlt.\n`,
+        `---\nid: Upper-ID\ntitle: T\ntype: reference\nsummary: s\ntopic_path:\n  - t\ntags:\n  - t\nscope: ${scope}\nrecall_when:\n  - t\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nAlt.\n`
       );
       const r = await saveMemory(v, {
         ...base,
@@ -203,7 +203,7 @@ test("ein Bestands-Memory wird über seine Frontmatter-id gefunden, nicht über 
     const file = join(v, "notes", "legacy-name.md");
     await writeFile(
       file,
-      "---\nid: Upper-ID\ntitle: T\ntype: reference\nsummary: s\ntopic_path:\n  - t\ntags:\n  - t\nscope: proj\nrecall_when:\n  - t\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nAlt.\n",
+      "---\nid: Upper-ID\ntitle: T\ntype: reference\nsummary: s\ntopic_path:\n  - t\ntags:\n  - t\nscope: proj\nrecall_when:\n  - t\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nAlt.\n"
     );
 
     const r = await saveMemory(v, {

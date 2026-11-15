@@ -12,16 +12,11 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  createStalenessMonitor,
-  decideStale,
-  describeStale,
-  type StalenessIo,
-} from "../src/code-staleness.js";
+import { createStalenessMonitor, decideStale, describeStale, type StalenessIo } from "../src/code-staleness.js";
 import { buildHealthPayload } from "../src/http-health.js";
 import { formatVersionRows } from "../src/cli/panel.js";
 
-const BOOT = Date.UTC(2026, 7, 2, 13, 34) ;
+const BOOT = Date.UTC(2026, 7, 2, 13, 34);
 const REBUILT = Date.UTC(2026, 7, 2, 16, 45);
 
 test("a rebuild under the running process is reported", () => {
@@ -68,15 +63,12 @@ test("an untouched installation reports nothing", () => {
   assert.equal(
     decideStale({ running: "0.9.0", diskVersion: "0.9.0", bootMtimeMs: BOOT, currentMtimeMs: BOOT }),
     null,
-    "no rebuild, no drift — there must be no false alarm",
+    "no rebuild, no drift — there must be no false alarm"
   );
 });
 
 test("no readable build is no finding (running from source via tsx)", () => {
-  assert.equal(
-    decideStale({ running: "0.9.0", diskVersion: "0.9.0", bootMtimeMs: null, currentMtimeMs: null }),
-    null,
-  );
+  assert.equal(decideStale({ running: "0.9.0", diskVersion: "0.9.0", bootMtimeMs: null, currentMtimeMs: null }), null);
 });
 
 // ─── monitor: throttle and log-once ──────────────────────────────────────────
@@ -218,12 +210,11 @@ test("a rebuild at the same version names the build, not the version twice", () 
 });
 
 test("without the finding the panel is exactly as it was", () => {
-  assert.deepEqual(
-    formatVersionRows({ cliVersion: "0.9.0", daemonVersion: "0.9.0", updateLatest: null }),
-    [["version", "0.9.0  ✓ up to date"]],
-  );
+  assert.deepEqual(formatVersionRows({ cliVersion: "0.9.0", daemonVersion: "0.9.0", updateLatest: null }), [
+    ["version", "0.9.0  ✓ up to date"],
+  ]);
   assert.deepEqual(
     formatVersionRows({ cliVersion: "0.9.0", daemonVersion: "0.9.0", updateLatest: null, codeStale: null }),
-    [["version", "0.9.0  ✓ up to date"]],
+    [["version", "0.9.0  ✓ up to date"]]
   );
 });

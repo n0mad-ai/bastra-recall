@@ -1,6 +1,6 @@
 import { identifySaveSuggestions, visibleSaveSuggestions } from "./save-suggestion-review.js";
 import { projectForFilter } from "./scope-filter.js";
-import {refreshStopValidators} from './stop-validator-source.js';
+import { refreshStopValidators } from "./stop-validator-source.js";
 import { catalogFor, rulebookBoundary, takeDeferredRulebookStop, type CatalogProvider } from "./rulebook-check.js";
 import { spoolRulebookFailure } from "./rulebook-spool.js";
 /**
@@ -39,13 +39,25 @@ import { boundaryNote } from "./code-graph/boundary-block.js";
 import { getPromptImpactEnabled } from "./code-graph/prompt-impact-settings.js";
 import { loadSessionState, mutateSessionState, parkBoundary } from "./session-state.js";
 import { noteSessionForHarvest } from "./session-harvest.js";
-import { emptyTranscriptReason, loadTranscript, type ClaudeStopPayload, type TranscriptTurn } from "./stop-transcript.js";
-import { appendProductDocHint, currentCorrectionReminderSuggestions, dropSuggestionsAfterSave, evaluateHeuristics, formatSuggestion, type SaveSuggestion } from "./stop-heuristics.js";
+import {
+  emptyTranscriptReason,
+  loadTranscript,
+  type ClaudeStopPayload,
+  type TranscriptTurn,
+} from "./stop-transcript.js";
+import {
+  appendProductDocHint,
+  currentCorrectionReminderSuggestions,
+  dropSuggestionsAfterSave,
+  evaluateHeuristics,
+  formatSuggestion,
+  type SaveSuggestion,
+} from "./stop-heuristics.js";
 import { formatRepairBlock, formatSameTurnBlock, repairNotice, sameTurnNotice } from "./stop-lane-same-turn.js";
 import { checkStopRepair, REPAIR_MAX_ATTEMPTS } from "./stop-repair.js";
-import {currentVaultWriteIds} from "./stop-evidence.js";
-import {currentExecutedVaultWrites} from './executed-vault-write.js';
-import {dropSuggestionsAfterExecutedSave} from './stop-heuristics.js';
+import { currentVaultWriteIds } from "./stop-evidence.js";
+import { currentExecutedVaultWrites } from "./executed-vault-write.js";
+import { dropSuggestionsAfterExecutedSave } from "./stop-heuristics.js";
 
 // 0.1.0 = unchanged event contract; the lane moved, the shape did not (#369).
 const HOOK_VERSION = "0.1.0";
@@ -58,7 +70,10 @@ const HOOK_VERSION = "0.1.0";
 export async function runStopLane(
   payload: ClaudeStopPayload,
   selfBaseUrl: string,
-  deps: { kernel?: CatalogProvider; conventionOf?: (id:string)=>Promise<import('./convention-source.js').ConventionSource> } = {},
+  deps: {
+    kernel?: CatalogProvider;
+    conventionOf?: (id: string) => Promise<import("./convention-source.js").ConventionSource>;
+  } = {}
 ): Promise<string> {
   const startedAt = Date.now();
 
@@ -79,16 +94,25 @@ export async function runStopLane(
   if (payload.hook_event_name !== "Stop") return "{}";
   // Read once: the rulebook boundary must see current-round structural evidence.
   let turns: TranscriptTurn[] | null = null;
-  try { turns = await loadTranscript(payload); } catch { turns = null; }
-  if(deps.conventionOf&&payload.session_id)await refreshStopValidators(payload.session_id,deps.conventionOf,startedAt+150,payload);
+  try {
+    turns = await loadTranscript(payload);
+  } catch {
+    turns = null;
+  }
+  if (deps.conventionOf && payload.session_id)
+    await refreshStopValidators(payload.session_id, deps.conventionOf, startedAt + 150, payload);
   if (deps.kernel) {
     try {
-      const decision = await rulebookBoundary(payload, await catalogFor(payload, deps.kernel), "stop", {stopTurns:turns??[]});
+      const decision = await rulebookBoundary(payload, await catalogFor(payload, deps.kernel), "stop", {
+        stopTurns: turns ?? [],
+      });
       if (decision) {
         const output = JSON.parse(decision);
         if (output.decision === "block" || output.hookSpecificOutput?.additionalContext) return decision;
       }
-    } catch { void spoolRulebookFailure(payload.session_id ?? null).catch(() => {}); }
+    } catch {
+      void spoolRulebookFailure(payload.session_id ?? null).catch(() => {});
+    }
   }
   const deferredRulebookStop = await takeDeferredRulebookStop(payload).catch(() => false);
   // #1311: bounded repair for an approved-copy task without a valid receipt.
@@ -97,11 +121,17 @@ export async function runStopLane(
   // non-conformance row. An ordinary Stop must still book harvest, park its
   // boundary and evaluate saves; only hook-active follow-ups skip that work.
   const repair = await checkStopRepair(payload, turns ?? []).catch(() => null);
-  let repairOutput: { systemMessage: string; hookSpecificOutput: { hookEventName: string; additionalContext: string } } | null = null;
+  let repairOutput: {
+    systemMessage: string;
+    hookSpecificOutput: { hookEventName: string; additionalContext: string };
+  } | null = null;
   if (repair?.action === "request") {
     repairOutput = {
       systemMessage: repairNotice(await getPrimaryLanguage().catch(() => undefined), repair),
-      hookSpecificOutput: { hookEventName: "Stop", additionalContext: formatRepairBlock(repair.attempt, REPAIR_MAX_ATTEMPTS, repair) },
+      hookSpecificOutput: {
+        hookEventName: "Stop",
+        additionalContext: formatRepairBlock(repair.attempt, REPAIR_MAX_ATTEMPTS, repair),
+      },
     };
   }
   if (repair?.action === "exhausted") {
@@ -109,15 +139,21 @@ export async function runStopLane(
       session_id: payload.session_id ?? null,
       session_known: typeof payload.session_id === "string" && payload.session_id.length > 0,
       reason: "repair_exhausted",
-      ...(repair.roundId?{round_id:repair.roundId}:{task_id:repair.taskId,generation:repair.generation}),
+      ...(repair.roundId ? { round_id: repair.roundId } : { task_id: repair.taskId, generation: repair.generation }),
       attempts: repair.attempts,
       latency_ms_total: Date.now() - startedAt,
     });
   }
-  if(repair?.action==="observed")await appendStopEvent("non_conformance",{
-    session_id:payload.session_id??null,session_known:!!payload.session_id,reason:"copy_oversize_codex",round_id:repair.roundId,latency_ms_total:Date.now()-startedAt,
-  });
-  if (payload.stop_hook_active === true && !deferredRulebookStop) return repairOutput ? JSON.stringify(repairOutput) : "{}";
+  if (repair?.action === "observed")
+    await appendStopEvent("non_conformance", {
+      session_id: payload.session_id ?? null,
+      session_known: !!payload.session_id,
+      reason: "copy_oversize_codex",
+      round_id: repair.roundId,
+      latency_ms_total: Date.now() - startedAt,
+    });
+  if (payload.stop_hook_active === true && !deferredRulebookStop)
+    return repairOutput ? JSON.stringify(repairOutput) : "{}";
 
   // Code awareness (#581): the end of a turn is a good moment to refresh the
   // graph, so the next turn starts from a current one.
@@ -181,12 +217,20 @@ export async function runStopLane(
   if (!repairOutput) return normalOutput;
   // Both messages share Claude Code's existing same-turn channel. Preserve the
   // save hint and its persistence rather than replacing it with repair alone.
-  const normal = JSON.parse(normalOutput) as { systemMessage?: string; hookSpecificOutput?: { additionalContext?: string } };
+  const normal = JSON.parse(normalOutput) as {
+    systemMessage?: string;
+    hookSpecificOutput?: { additionalContext?: string };
+  };
   return JSON.stringify({
     systemMessage: [normal.systemMessage, repairOutput.systemMessage].filter(Boolean).join("\n"),
     hookSpecificOutput: {
       hookEventName: "Stop",
-      additionalContext: [normal.hookSpecificOutput?.additionalContext, repairOutput.hookSpecificOutput.additionalContext].filter(Boolean).join("\n\n"),
+      additionalContext: [
+        normal.hookSpecificOutput?.additionalContext,
+        repairOutput.hookSpecificOutput.additionalContext,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
     },
   });
 }
@@ -225,8 +269,8 @@ async function parkBoundaryNote(payload: ClaudeStopPayload, turns: TranscriptTur
     parkBoundary(
       s,
       built === null ? null : { note: built.note, dedupeKey: built.dedupeKey, files: built.files },
-      builtFrom,
-    ),
+      builtFrom
+    )
   );
 }
 
@@ -234,7 +278,7 @@ async function evaluateStop(
   payload: ClaudeStopPayload,
   selfBaseUrl: string,
   startedAt: number,
-  loaded: TranscriptTurn[] | null,
+  loaded: TranscriptTurn[] | null
 ): Promise<string> {
   const turns = loaded ?? (await loadTranscript(payload));
   if (turns.length === 0) {
@@ -268,12 +312,15 @@ async function evaluateStop(
     suggestions = currentCorrectionReminderSuggestions(last30, suggestions);
   }
   const proposalProject = payload.cwd ? projectForFilter(payload.cwd) : null;
-  suggestions = await visibleSaveSuggestions(proposalProject, await identifySaveSuggestions(proposalProject, suggestions, JSON.stringify(last30)));
+  suggestions = await visibleSaveSuggestions(
+    proposalProject,
+    await identifySaveSuggestions(proposalProject, suggestions, JSON.stringify(last30))
+  );
   // #1376: a save after a suggestion's evidence already did what it asks.
   const proposed = suggestions;
   suggestions = dropSuggestionsAfterSave(last30, suggestions);
-  const executedWrites=await currentExecutedVaultWrites(payload);
-  suggestions = dropSuggestionsAfterExecutedSave(last30,suggestions,executedWrites);
+  const executedWrites = await currentExecutedVaultWrites(payload);
+  suggestions = dropSuggestionsAfterExecutedSave(last30, suggestions, executedWrites);
   const answered = proposed.filter((s) => !suggestions.includes(s));
 
   // Produkt-Doku (docs.mode): feature-completion ist auch der Trigger für
@@ -289,11 +336,11 @@ async function evaluateStop(
   // jüngste Memories ein wiederkehrendes Cluster ohne Taxonomie-Konvention
   // bilden. Best-effort mit hartem Budget; Daemon weg → still.
   const observedDrift = await fetchDrift(selfBaseUrl, 250);
-  const writtenIds=currentVaultWriteIds(turns);
-  for(const write of executedWrites)writtenIds.add(write.id);
+  const writtenIds = currentVaultWriteIds(turns);
+  for (const write of executedWrites) writtenIds.add(write.id);
   // Global monitoring remains available; Stop requests only cluster work
   // directly connected to a successfully written memory in this round.
-  const drift=observedDrift.filter(cluster=>cluster.examples.some(id=>writtenIds.has(id)));
+  const drift = observedDrift.filter((cluster) => cluster.examples.some((id) => writtenIds.has(id)));
 
   let stdout = "{}";
   let delivery: SaveEvalDelivery | null = null;
@@ -375,7 +422,7 @@ type SaveEvalDelivery = "same-turn" | "pending" | "already-delivered" | "already
 async function takeSameTurnSuggestions(
   payload: ClaudeStopPayload,
   suggestions: SaveSuggestion[],
-  answered: SaveSuggestion[] = [],
+  answered: SaveSuggestion[] = []
 ): Promise<SaveSuggestion[] | null> {
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : "";
   if (!sessionId) return null;
@@ -408,7 +455,7 @@ function formatDriftBlock(clusters: DriftCluster[]): string {
   const lines = clusters.map(
     (c) =>
       `- ${c.count} recent memories share the ${c.kind} '${c.key}' with no ` +
-      `taxonomy convention covering it (e.g. ${c.examples.join(", ")}).`,
+      `taxonomy convention covering it (e.g. ${c.examples.join(", ")}).`
   );
   return (
     `<taxonomy-drift>\n` +
@@ -457,10 +504,12 @@ function fetchDrift(baseUrl: string, timeoutMs: number): Promise<DriftCluster[]>
               resolve_(data.clusters);
               return;
             }
-          } catch { /* fallthrough */ }
+          } catch {
+            /* fallthrough */
+          }
           resolve_([]);
         });
-      },
+      }
     );
     req.on("timeout", () => {
       req.destroy();
@@ -497,9 +546,9 @@ interface StopHookTelemetry {
 }
 
 /** #1311: the approved-copy repair gave up — two requests, still no receipt. */
-type StopNonConformance = {session_id?:string|null;session_known:boolean;latency_ms_total:number} & (
- {reason:"repair_exhausted";task_id?:string;generation?:number;round_id?:string;attempts:number} |
- {reason:"copy_oversize_codex";round_id:string}
+type StopNonConformance = { session_id?: string | null; session_known: boolean; latency_ms_total: number } & (
+  | { reason: "repair_exhausted"; task_id?: string; generation?: number; round_id?: string; attempts: number }
+  | { reason: "copy_oversize_codex"; round_id: string }
 );
 
 function writeTelemetry(payload: StopHookTelemetry): Promise<void> {

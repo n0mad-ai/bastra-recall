@@ -14,22 +14,13 @@
  *   `save_memory`-Pattern. Damit ist `save+find im selben Turn` zuverlässig.
  *   Triage-Acceptance: erfüllt.
  */
-import {
-  stat,
-} from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { z } from "zod";
 import type { Vault } from "@bastra-recall/core";
 
 // ─── Argument schemas ───────────────────────────────────────────
 
-const documentCategoryEnum = z.enum([
-  "vertrag",
-  "rechnung",
-  "notiz",
-  "code",
-  "bild",
-  "sonstiges",
-]);
+const documentCategoryEnum = z.enum(["vertrag", "rechnung", "notiz", "code", "bild", "sonstiges"]);
 
 export const SaveDocumentArgs = z.object({
   /** Absoluter Pfad der Original-Datei (z.B. ~/Downloads/Vertrag.pdf). */
@@ -97,8 +88,7 @@ export const documentWriteTools = [
         },
         folder_path: {
           type: "string",
-          description:
-            "Target folder relative to documents-root (e.g. 'Verträge/2026'). Empty = root.",
+          description: "Target folder relative to documents-root (e.g. 'Verträge/2026'). Empty = root.",
         },
         title: { type: "string", description: "Concise human-readable title." },
         tags: {
@@ -186,10 +176,7 @@ export { moveDocument, type MoveRollbackResult } from "./documents-write-move.js
  * Wenn die Datei seit dem letzten Vault-Read jünger ist, signalisieren wir
  * einen Conflict — der Caller (UI) entscheidet ob er trotzdem überschreibt.
  */
-export async function detectExternalEdit(
-  vault: Vault,
-  id: string,
-): Promise<{ conflict: boolean; reason?: string }> {
+export async function detectExternalEdit(vault: Vault, id: string): Promise<{ conflict: boolean; reason?: string }> {
   const m = vault.get(id);
   if (!m) return { conflict: false };
   const fm = m.fm as typeof m.fm & { original_path?: string };

@@ -47,10 +47,11 @@ export function detectHardware(): HardwareInfo {
   let chip: string | null = null;
   if (process.platform === "darwin") {
     try {
-      chip = execFileSync("sysctl", ["-n", "machdep.cpu.brand_string"], {
-        encoding: "utf8",
-        timeout: 2000,
-      }).trim() || null;
+      chip =
+        execFileSync("sysctl", ["-n", "machdep.cpu.brand_string"], {
+          encoding: "utf8",
+          timeout: 2000,
+        }).trim() || null;
     } catch {
       /* best-effort; RAM is what drives the recommendation */
     }
@@ -157,7 +158,7 @@ export const MODEL_RECOMMENDATION: ModelRecommendation | null = {
  */
 export function recommendTextModel(
   ramGB: number,
-  recommendation: ModelRecommendation | null = MODEL_RECOMMENDATION,
+  recommendation: ModelRecommendation | null = MODEL_RECOMMENDATION
 ): TextModelRec {
   const ladder = ladderTextModel(ramGB);
   if (!recommendation || ladder.tier === "keyword-only") return ladder;
@@ -198,7 +199,11 @@ function ladderTextModel(ramGB: number): TextModelRec {
       sizeGB: 4.5,
       tier: "enhanced",
       note: `${ramGB} GB — tev1:4b is the suggestion; gemma4:12b was more accurate in our comparison at about three times the answer time. Both ran on a 24 GB machine there.`,
-      alt: { model: "gemma4:12b", sizeGB: 8.1, note: "12B, more accurate in our comparison, about three times the answer time" },
+      alt: {
+        model: "gemma4:12b",
+        sizeGB: 8.1,
+        note: "12B, more accurate in our comparison, about three times the answer time",
+      },
     };
   }
   return {

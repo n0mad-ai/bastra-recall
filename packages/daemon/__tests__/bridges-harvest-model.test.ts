@@ -88,10 +88,7 @@ async function runHarvest(): Promise<{ rc: number; out: string }> {
   }
 }
 
-async function withHarvestEnv(
-  env: Record<string, string | undefined>,
-  fn: () => Promise<void>,
-): Promise<void> {
+async function withHarvestEnv(env: Record<string, string | undefined>, fn: () => Promise<void>): Promise<void> {
   const logDir = await mkdtemp(join(tmpdir(), "bhm-logs-"));
   const vaultDir = await mkdtemp(join(tmpdir(), "bhm-vault-"));
   const ollama = await emptyOllama();
@@ -140,13 +137,9 @@ test("harvest asks for the model the shared resolution picks, not the rerank def
     assert.match(
       out,
       /harvest-probe:12b/,
-      "harvest must resolve its judge through resolveGenerationModel() — the configured model, not DEFAULT_RERANK_MODEL",
+      "harvest must resolve its judge through resolveGenerationModel() — the configured model, not DEFAULT_RERANK_MODEL"
     );
-    assert.doesNotMatch(
-      out,
-      /gemma3:4b/,
-      "the pull hint must never name a model the user configured away",
-    );
+    assert.doesNotMatch(out, /gemma3:4b/, "the pull hint must never name a model the user configured away");
   });
 });
 
@@ -159,19 +152,16 @@ test("BASTRA_RERANK_MODEL on its own still pins the judge — no regress for exi
 });
 
 test("both env vars set: BASTRA_EXPAND_MODEL outranks BASTRA_RERANK_MODEL, as it does in the daemon", async () => {
-  await withHarvestEnv(
-    { BASTRA_EXPAND_MODEL: "expand-wins:12b", BASTRA_RERANK_MODEL: "rerank-loses:7b" },
-    async () => {
-      const { rc, out } = await runHarvest();
-      assert.equal(rc, 1);
-      // The deliberate part of the change: the old expression read only
-      // BASTRA_RERANK_MODEL, so this collision used to resolve the other way.
-      assert.match(out, /expand-wins:12b/, "settings.ts precedence: BASTRA_EXPAND_MODEL first");
-      assert.doesNotMatch(
-        out,
-        /rerank-loses:7b/,
-        "the CLI must not diverge from the daemon on a collision the daemon already decides",
-      );
-    },
-  );
+  await withHarvestEnv({ BASTRA_EXPAND_MODEL: "expand-wins:12b", BASTRA_RERANK_MODEL: "rerank-loses:7b" }, async () => {
+    const { rc, out } = await runHarvest();
+    assert.equal(rc, 1);
+    // The deliberate part of the change: the old expression read only
+    // BASTRA_RERANK_MODEL, so this collision used to resolve the other way.
+    assert.match(out, /expand-wins:12b/, "settings.ts precedence: BASTRA_EXPAND_MODEL first");
+    assert.doesNotMatch(
+      out,
+      /rerank-loses:7b/,
+      "the CLI must not diverge from the daemon on a collision the daemon already decides"
+    );
+  });
 });

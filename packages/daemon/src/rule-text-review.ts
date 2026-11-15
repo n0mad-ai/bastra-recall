@@ -20,7 +20,8 @@ export function ruleTextReview(fm: Memory["fm"]): RuleTextReview | undefined {
   return {
     status: "not-assessed",
     fields: ["title", "summary", "body", "applies_when"],
-    advice: "Review the complete resulting memory, not just the incoming fragment: title and summary should state the lasting rule; " +
+    advice:
+      "Review the complete resulting memory, not just the incoming fragment: title and summary should state the lasting rule; " +
       "body should integrate rule, why and how to apply instead of accumulating addenda. Keep temporary release, milestone and progress state in a work-state note or issue. " +
       "Preserve decided content, incident dates, quoted examples and explicit owner time bounds. This is a review request, not a detected defect; " +
       "the agent decides whether any edit is needed. Do not repeat a successful write merely to acknowledge this advice.",

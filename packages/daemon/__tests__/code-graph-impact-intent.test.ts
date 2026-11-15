@@ -50,10 +50,7 @@ const FIXTURE = {
     node("audit_auditsave", "auditSave()", "packages/core/src/audit-save.ts", 69),
     node("checks_run", "runChecks()", "packages/core/src/checks.ts", 8),
   ],
-  links: [
-    edge("audit_auditsave", "save_savememory", "calls"),
-    edge("checks_run", "save_validate", "calls"),
-  ],
+  links: [edge("audit_auditsave", "save_savememory", "calls"), edge("checks_run", "save_validate", "calls")],
   hyperedges: [],
 };
 
@@ -173,9 +170,7 @@ describe("change-impact intent gate: the phrasing half", () => {
   });
 
   it("extracts the file and the symbol a question names", () => {
-    const intent = changeImpactIntent(
-      "Was bricht, wenn ich `saveMemory` in packages/core/src/save.ts ändere?",
-    );
+    const intent = changeImpactIntent("Was bricht, wenn ich `saveMemory` in packages/core/src/save.ts ändere?");
     assert.deepEqual(intent.paths, ["packages/core/src/save.ts"]);
     assert.ok(intent.symbols.includes("saveMemory"));
   });
@@ -200,7 +195,7 @@ describe("change-impact block on a prompt: the resolution half", () => {
     assert.equal(
       "listed" in out.note,
       false,
-      "the prompt lane must not carry absolute candidate paths into hook telemetry",
+      "the prompt lane must not carry absolute candidate paths into hook telemetry"
     );
     assert.equal(out.note.basis, "symbols");
     assert.equal(out.note.file, SAVE);
@@ -232,18 +227,19 @@ describe("change-impact block on a prompt: the resolution half", () => {
     const ambiguousRepo = join(root, "ambiguous");
     const dir = graphDirOf(ambiguousRepo);
     await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, GRAPH_FILE_NAME), JSON.stringify({
-      ...FIXTURE,
-      nodes: [
-        ...FIXTURE.nodes,
-        node("other_savememory", "saveMemory()", "packages/other/src/save.ts", 3),
-        node("other_caller", "otherCaller()", "packages/other/src/caller.ts", 8),
-      ],
-      links: [
-        ...FIXTURE.links,
-        edge("other_caller", "other_savememory", "calls"),
-      ],
-    }), "utf8");
+    await writeFile(
+      join(dir, GRAPH_FILE_NAME),
+      JSON.stringify({
+        ...FIXTURE,
+        nodes: [
+          ...FIXTURE.nodes,
+          node("other_savememory", "saveMemory()", "packages/other/src/save.ts", 3),
+          node("other_caller", "otherCaller()", "packages/other/src/caller.ts", 8),
+        ],
+        links: [...FIXTURE.links, edge("other_caller", "other_savememory", "calls")],
+      }),
+      "utf8"
+    );
     await writeManifest(dir, { ...MANIFEST, repoRoot: ambiguousRepo });
     const ambiguousCache = new CodeGraphCache();
     await ambiguousCache.ensureLoaded(ambiguousRepo);

@@ -10,7 +10,9 @@
 }
 /* renamed: the Filters section merged into "Filters & Options" (#opts-section)
    when the stacked control blocks became the two popover buttons */
-#opts-section { padding-bottom: 14px; }
+#opts-section {
+  padding-bottom: 14px;
+}
 
 /* ── minimap ────────────────────────────────────────────────────── */
 #minimap {
@@ -28,5 +30,11 @@
   cursor: crosshair;
   transition: left 0.25s var(--ease-fly);
 }
-body.inspector-open #minimap { left: 432px; }
-@media (max-width: 900px) { #minimap { display: none; } }
+body.inspector-open #minimap {
+  left: 432px;
+}
+@media (max-width: 900px) {
+  #minimap {
+    display: none;
+  }
+}

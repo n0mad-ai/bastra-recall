@@ -23,7 +23,11 @@ import {
 import { loadTranscript, parseTranscriptFile, runStopLane } from "../src/stop-lane.js";
 
 const u = (content: string): HarvestTurn => ({ role: "user", content });
-const a = (content: string, tools?: string[]): HarvestTurn => ({ role: "assistant", content, ...(tools ? { tools } : {}) });
+const a = (content: string, tools?: string[]): HarvestTurn => ({
+  role: "assistant",
+  content,
+  ...(tools ? { tools } : {}),
+});
 
 test("answer: a substantive reply to the agent's question is a candidate, a bare yes is not", () => {
   const turns = [
@@ -70,7 +74,10 @@ test("restated and correction: re-explaining and interrupting are candidates, ra
     u("again: keep the changelog entries in English, this repository is public!"),
   ];
   const c = harvestCandidates(turns);
-  assert.deepEqual(c.map((x) => x.kind), ["restated", "correction"]);
+  assert.deepEqual(
+    c.map((x) => x.kind),
+    ["restated", "correction"]
+  );
   assert.equal(c[0].turn, 7);
   assert.equal(c[1].turn, 5);
 });
@@ -97,7 +104,10 @@ test("pastes and system-injected turns are never candidates", () => {
 });
 
 test("#701 — a row the client injected (isMeta) is not quoted as the user", () => {
-  const question = { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Should staging share the production database?" }] } };
+  const question = {
+    type: "assistant",
+    message: { role: "assistant", content: [{ type: "text", text: "Should staging share the production database?" }] },
+  };
   const feedback =
     "Stop hook feedback:\nbastra-recall memory check. Judge each line from this conversation and save it via save_memory if it holds.";
   const jsonl = (isMeta: boolean): string =>
@@ -118,7 +128,9 @@ test("#701 — Codex harness wrappers are not quoted as the user", () => {
     payload: { type: "message", role, content: [{ type: role === "user" ? "input_text" : "output_text", text }] },
   });
   const rollout = (userText: string): string =>
-    [codex("assistant", "Which database should staging use?"), codex("user", userText)].map((r) => JSON.stringify(r)).join("\n");
+    [codex("assistant", "Which database should staging use?"), codex("user", userText)]
+      .map((r) => JSON.stringify(r))
+      .join("\n");
   const wrappers = [
     "<environment_context>\n  <current_date>2026-09-14</current_date>\n  <timezone>Europe/Berlin</timezone>\n  <filesystem><workspace_roots><root>/work/repo</root></workspace_roots></filesystem>\n</environment_context>",
     '<send_user_message_question_reply>\n[{"questionItemId":"[\\"request_user_input_async\\",\\"call_1\\",0]","question":"Which database should staging use?","answer":"Its own one, never the production database"}]\n</send_user_message_question_reply>',
@@ -173,21 +185,28 @@ test("end to end: Stop books, the job waits for quiet, relays once, and never re
         { role: "assistant", content: [{ type: "text", text: "Should the script tag the release too?" }] },
         { role: "user", content: "Yes, and it must always sign the tag with the release key, never unsigned." },
         { role: "assistant", content: [{ type: "text", text: "Done." }] },
-      ]),
+      ])
     );
     // The Stop lane books the session (no suggestion fires on this transcript).
     const out = await runStopLane(
       { hook_event_name: "Stop", session_id: "harvest-e2e-1", transcript_path: transcript, cwd: "/work/release-tool" },
-      "http://127.0.0.1:1",
+      "http://127.0.0.1:1"
     );
     assert.equal(out, "{}");
-    const queue = JSON.parse(await readFile(join(dir, "queue.json"), "utf8")) as { session_id: string; last_stop: number }[];
+    const queue = JSON.parse(await readFile(join(dir, "queue.json"), "utf8")) as {
+      session_id: string;
+      last_stop: number;
+    }[];
     assert.equal(queue[0].session_id, "harvest-e2e-1");
     const booked = queue[0].last_stop;
 
     const loadTurns = (p: string) => loadTranscript({ transcript_path: p });
     // Too early: the session is still active.
-    assert.deepEqual(await runSessionHarvest({ loadTurns, now: booked + 1000 }), { harvested: 0, candidates: 0, stored: 0 });
+    assert.deepEqual(await runSessionHarvest({ loadTurns, now: booked + 1000 }), {
+      harvested: 0,
+      candidates: 0,
+      stored: 0,
+    });
     assert.equal(existsSync(join(dir, "pending.json")), false);
 
     // Quiet for the idle window, transcript untouched as long.
@@ -195,7 +214,10 @@ test("end to end: Stop books, the job waits for quiet, relays once, and never re
     const old = new Date(booked - 1000);
     await utimes(transcript, old, old);
     assert.deepEqual(await runSessionHarvest({ loadTurns, now: later }), { harvested: 1, candidates: 1, stored: 0 });
-    const pending = JSON.parse(readAppRecord("pending-suggestions", join(dir, "pending.json"))) as { blocks: string; lane?: string }[];
+    const pending = JSON.parse(readAppRecord("pending-suggestions", join(dir, "pending.json"))) as {
+      blocks: string;
+      lane?: string;
+    }[];
     assert.equal(pending.length, 1);
     assert.equal(pending[0].lane, undefined, "recency lane (#513)");
     assert.match(pending[0].blocks, /<session-harvest session="harvest-" project="release-tool">/);
@@ -203,16 +225,23 @@ test("end to end: Stop books, the job waits for quiet, relays once, and never re
     assert.match(pending[0].blocks, /always sign the tag/);
 
     // A second pass finds nothing new to do.
-    assert.deepEqual(await runSessionHarvest({ loadTurns, now: later + 1000 }), { harvested: 0, candidates: 0, stored: 0 });
+    assert.deepEqual(await runSessionHarvest({ loadTurns, now: later + 1000 }), {
+      harvested: 0,
+      candidates: 0,
+      stored: 0,
+    });
 
     // The session resumes: the new Stop re-books it, only new turns are harvested.
     await noteSessionForHarvest({ session_id: "harvest-e2e-1", transcript_path: transcript, now: later + 2000 });
-    assert.deepEqual(
-      await runSessionHarvest({ loadTurns, now: later + 2000 + HARVEST_IDLE_MS }),
-      { harvested: 1, candidates: 0, stored: 0 },
-    );
+    assert.deepEqual(await runSessionHarvest({ loadTurns, now: later + 2000 + HARVEST_IDLE_MS }), {
+      harvested: 1,
+      candidates: 0,
+      stored: 0,
+    });
 
-    const events = (await readFile(join(dir, "logs", (await import("node:fs")).readdirSync(join(dir, "logs"))[0]), "utf8"))
+    const events = (
+      await readFile(join(dir, "logs", (await import("node:fs")).readdirSync(join(dir, "logs"))[0]), "utf8")
+    )
       .split("\n")
       .filter(Boolean)
       .map((l) => JSON.parse(l) as Record<string, unknown>)
@@ -255,7 +284,11 @@ test("a booked session whose transcript this host cannot read leaves a harvest r
   // A remote daemon gets the client host's transcript_path: not on this disk.
   await sandbox(async (dir) => {
     const t0 = Date.now() - 2 * HARVEST_IDLE_MS;
-    await noteSessionForHarvest({ session_id: "remote-1", transcript_path: join(dir, "elsewhere", "remote-1.jsonl"), now: t0 });
+    await noteSessionForHarvest({
+      session_id: "remote-1",
+      transcript_path: join(dir, "elsewhere", "remote-1.jsonl"),
+      now: t0,
+    });
     await runSessionHarvest({ loadTurns: async () => [], now: Date.now() });
     const rows = await logRows(dir, "session_harvest");
     assert.equal(rows.length, 1, "the skipped session is visible in telemetry");
@@ -271,8 +304,13 @@ test("a booked session whose transcript this host cannot read leaves a harvest r
 test("the Stop lane writes a row for a transcript it cannot read, with the reason", async () => {
   await sandbox(async (dir) => {
     const out = await runStopLane(
-      { hook_event_name: "Stop", session_id: "stop-unreadable", transcript_path: join(dir, "elsewhere", "s.jsonl"), cwd: "/work" },
-      "http://127.0.0.1:1",
+      {
+        hook_event_name: "Stop",
+        session_id: "stop-unreadable",
+        transcript_path: join(dir, "elsewhere", "s.jsonl"),
+        cwd: "/work",
+      },
+      "http://127.0.0.1:1"
     );
     assert.equal(out, "{}");
     const rows = (await logRows(dir, "save_eval_call")).filter((e) => e.session_id === "stop-unreadable");
@@ -286,7 +324,10 @@ test("the Stop lane writes a row for a transcript it cannot read, with the reaso
     // A genuinely empty transcript is a row too, without an error.
     const empty = join(dir, "empty.jsonl");
     await writeFile(empty, "");
-    await runStopLane({ hook_event_name: "Stop", session_id: "stop-empty", transcript_path: empty, cwd: "/work" }, "http://127.0.0.1:1");
+    await runStopLane(
+      { hook_event_name: "Stop", session_id: "stop-empty", transcript_path: empty, cwd: "/work" },
+      "http://127.0.0.1:1"
+    );
     const emptyRows = (await logRows(dir, "save_eval_call")).filter((e) => e.session_id === "stop-empty");
     assert.equal(emptyRows.length, 1);
     assert.equal(emptyRows[0].error, undefined);
@@ -301,7 +342,10 @@ test("#993: the Stop lane records a transcript that exists but cannot be opened 
     await writeFile(locked, '{"type":"user","message":{"role":"user","content":"hi"}}\n');
     await chmod(locked, 0o000);
     try {
-      await runStopLane({ hook_event_name: "Stop", session_id: "stop-locked", transcript_path: locked, cwd: "/work" }, "http://127.0.0.1:1");
+      await runStopLane(
+        { hook_event_name: "Stop", session_id: "stop-locked", transcript_path: locked, cwd: "/work" },
+        "http://127.0.0.1:1"
+      );
     } finally {
       await chmod(locked, 0o600);
     }

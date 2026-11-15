@@ -1,8 +1,16 @@
 /** Complete, scoped rule catalog. No relevance search, embeddings or top-k. */
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { computeStaleness, resolveRulebook, stripAutoRelatedSection,
-  type Memory, type Vault, type StaleStatus, type RulebookDeclaration, type RulebookLegacyContext } from "@bastra-recall/core";
+import {
+  computeStaleness,
+  resolveRulebook,
+  stripAutoRelatedSection,
+  type Memory,
+  type Vault,
+  type StaleStatus,
+  type RulebookDeclaration,
+  type RulebookLegacyContext,
+} from "@bastra-recall/core";
 import { stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { GLOBAL_SCOPES, isScopeCompatible, normalizeScopeKey } from "@bastra-recall/core/scope";
 import { listFloors, type FloorEntry } from "./floors.js";
@@ -13,48 +21,99 @@ import type { ToolDeps } from "./tool-deps.js";
 
 export type KernelGroup = "active-convention" | "floor" | "reflex" | "user-directed" | "explicit";
 export interface KernelEntry {
-  id: string; title: string; group: KernelGroup; revision: string | null;
-  updated: string | null; stale_status: StaleStatus | "unknown"; body: string;
-  rule_categories?: Memory["fm"]["rule_categories"]; write_origin?: Memory["fm"]["write_origin"]; type?: string; summary?: string;
-  rulebook?: "always" | "on-demand"; applies_when?: string; applies_when_derived?: true;
-  source_unavailable?: boolean; binding_hash?: string; scope?: string; validator?: Memory["fm"]["validator"];
+  id: string;
+  title: string;
+  group: KernelGroup;
+  revision: string | null;
+  updated: string | null;
+  stale_status: StaleStatus | "unknown";
+  body: string;
+  rule_categories?: Memory["fm"]["rule_categories"];
+  write_origin?: Memory["fm"]["write_origin"];
+  type?: string;
+  summary?: string;
+  rulebook?: "always" | "on-demand";
+  applies_when?: string;
+  applies_when_derived?: true;
+  source_unavailable?: boolean;
+  binding_hash?: string;
+  scope?: string;
+  validator?: Memory["fm"]["validator"];
 }
 export interface KernelCandidates {
-  entries: KernelEntry[]; omitted: number; ids_only?: true; fallback?: true;
-  catalog_hash?: string; unconfirmed_legacy?: number; unavailable_sources?: number; project?: string | null;
+  entries: KernelEntry[];
+  omitted: number;
+  ids_only?: true;
+  fallback?: true;
+  catalog_hash?: string;
+  unconfirmed_legacy?: number;
+  unavailable_sources?: number;
+  project?: string | null;
 }
 export const RULEBOOK_INDEX_CHAR_BUDGET = 8000;
-export const cleanRuleText = (s: string): string => stripFenceMarkers(s.replace(/\r\n?/g, "\n")
-  .replace(/\t/g, "    ").replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, ""));
+export const cleanRuleText = (s: string): string =>
+  stripFenceMarkers(
+    s
+      .replace(/\r\n?/g, "\n")
+      .replace(/\t/g, "    ")
+      .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, "")
+  );
 export const oneLine = (s: string): string => cleanRuleText(s).replace(/\s+/g, " ").trim();
 const servable = (m: Memory): boolean => !m.fm.obsolete && m.fm.sensitivity !== "private" && !m.fm.superseded_by;
-const possibleLegacy = (m: Memory): boolean => !m.fm.validator && !m.fm.rule_categories?.includes("correspondence") && m.fm.write_origin !== "user-directed" && !m.fm.rulebook &&
+const possibleLegacy = (m: Memory): boolean =>
+  !m.fm.validator &&
+  !m.fm.rule_categories?.includes("correspondence") &&
+  m.fm.write_origin !== "user-directed" &&
+  !m.fm.rulebook &&
   (m.fm.type === "user-preference" || m.fm.type === "meta-working" || m.fm.recall_mode === "reflex");
 const hash = (value: unknown): string => createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 24);
 export function catalogHash(c: KernelCandidates): string {
   // Proposal metadata and incidental file revisions are deliberately excluded.
-  return c.catalog_hash ?? hash(c.entries.map(e => e.binding_hash ?? [e.id, e.rulebook, e.title, e.scope, e.applies_when, e.body, e.validator]));
+  return (
+    c.catalog_hash ??
+    hash(
+      c.entries.map((e) => e.binding_hash ?? [e.id, e.rulebook, e.title, e.scope, e.applies_when, e.body, e.validator])
+    )
+  );
 }
 
 export type RulebookCatalogMode = "content" | "ids";
 export interface RulebookCatalogOptions {
-  project: string | null; active: readonly ActiveConvention[];
-  floors?: (project: string | null) => Promise<FloorEntry[]>; allProjects?: boolean;
-  mode?: RulebookCatalogMode; budgetMs?: number;
+  project: string | null;
+  active: readonly ActiveConvention[];
+  floors?: (project: string | null) => Promise<FloorEntry[]>;
+  allProjects?: boolean;
+  mode?: RulebookCatalogMode;
+  budgetMs?: number;
 }
 /** The declaration under which a memory enters the catalog, or undefined for a recall-only note. */
-export function catalogDeclaration(fm: Memory["fm"], context: RulebookLegacyContext = {}): RulebookDeclaration | undefined {
+export function catalogDeclaration(
+  fm: Memory["fm"],
+  context: RulebookLegacyContext = {}
+): RulebookDeclaration | undefined {
   // #1398: fallback membership must respect the same lifecycle as resolveRulebook.
   if (fm.obsolete || fm.superseded_by) return undefined;
-  return resolveRulebook(fm, context) ??
-    (fm.validator || fm.rule_categories?.includes("correspondence") ? {rulebook:"on-demand" as const,applies_when:fm.applies_when??fm.summary,...(fm.applies_when===undefined?{applies_when_derived:true as const}:{})} : undefined);
+  return (
+    resolveRulebook(fm, context) ??
+    (fm.validator || fm.rule_categories?.includes("correspondence")
+      ? {
+          rulebook: "on-demand" as const,
+          applies_when: fm.applies_when ?? fm.summary,
+          ...(fm.applies_when === undefined ? { applies_when_derived: true as const } : {}),
+        }
+      : undefined)
+  );
 }
 async function projectIndex(memories: Memory[], opts: RulebookCatalogOptions): Promise<KernelCandidates> {
-  const active = new Set(opts.active.map(a => a.id));
-  const floors = await (opts.floors ? opts.floors(opts.project) : listFloors(opts.project ?? undefined)).catch(() => []);
-  const pinned = new Set(floors.filter(f => opts.allProjects || opts.project || !f.scope).map(f => f.memory_id));
-  const inScope = (m: Memory) => opts.allProjects || !m.fm.scope || (opts.project
-    ? isScopeCompatible(m.fm.scope, opts.project) : GLOBAL_SCOPES.has(normalizeScopeKey(m.fm.scope)));
+  const active = new Set(opts.active.map((a) => a.id));
+  const floors = await (opts.floors ? opts.floors(opts.project) : listFloors(opts.project ?? undefined)).catch(
+    () => []
+  );
+  const pinned = new Set(floors.filter((f) => opts.allProjects || opts.project || !f.scope).map((f) => f.memory_id));
+  const inScope = (m: Memory) =>
+    opts.allProjects ||
+    !m.fm.scope ||
+    (opts.project ? isScopeCompatible(m.fm.scope, opts.project) : GLOBAL_SCOPES.has(normalizeScopeKey(m.fm.scope)));
   let unconfirmed = 0;
   const entries: KernelEntry[] = [];
   for (const m of memories) {
@@ -64,40 +123,93 @@ async function projectIndex(memories: Memory[], opts: RulebookCatalogOptions): P
     const declaration = catalogDeclaration(m.fm, { activeConvention: active.has(m.fm.id), floor: pinned.has(m.fm.id) });
     if (!declaration) continue;
     if (opts.mode === "ids") {
-      entries.push({ id: m.fm.id, rulebook: declaration.rulebook, title: "", body: "", group: "explicit", binding_hash: hash([m.revision ?? [m.fm, m.body], declaration]), revision: null, updated: null, stale_status: "unknown", rule_categories:m.fm.rule_categories, validator:m.fm.validator });
+      entries.push({
+        id: m.fm.id,
+        rulebook: declaration.rulebook,
+        title: "",
+        body: "",
+        group: "explicit",
+        binding_hash: hash([m.revision ?? [m.fm, m.body], declaration]),
+        revision: null,
+        updated: null,
+        stale_status: "unknown",
+        rule_categories: m.fm.rule_categories,
+        validator: m.fm.validator,
+      });
       continue;
     }
     const body = cleanRuleText(stripAutoRelatedSection(m.body ?? "")).trim();
-    entries.push({ id: m.fm.id, title: oneLine(m.fm.title), rule_categories:m.fm.rule_categories, write_origin:m.fm.write_origin, type:m.fm.type, summary:m.fm.summary, scope: m.fm.scope, ...(m.fm.validator ? { validator: m.fm.validator } : {}),
-      group: active.has(m.fm.id) ? "active-convention" : pinned.has(m.fm.id) ? "floor" :
-        m.fm.rulebook ? "explicit" : m.fm.recall_mode === "reflex" ? "reflex" : m.fm.write_origin === "user-directed" ? "user-directed" : "explicit",
-      revision: m.revision ?? null, updated: m.fm.updated ?? null, stale_status: computeStaleness(m.fm),
+    entries.push({
+      id: m.fm.id,
+      title: oneLine(m.fm.title),
+      rule_categories: m.fm.rule_categories,
+      write_origin: m.fm.write_origin,
+      type: m.fm.type,
+      summary: m.fm.summary,
+      scope: m.fm.scope,
+      ...(m.fm.validator ? { validator: m.fm.validator } : {}),
+      group: active.has(m.fm.id)
+        ? "active-convention"
+        : pinned.has(m.fm.id)
+          ? "floor"
+          : m.fm.rulebook
+            ? "explicit"
+            : m.fm.recall_mode === "reflex"
+              ? "reflex"
+              : m.fm.write_origin === "user-directed"
+                ? "user-directed"
+                : "explicit",
+      revision: m.revision ?? null,
+      updated: m.fm.updated ?? null,
+      stale_status: computeStaleness(m.fm),
       body: declaration.rulebook === "always" ? body : "",
-      binding_hash: hash([m.fm.id, m.fm.title, m.fm.scope, declaration, body, m.fm.validator, m.fm.rule_categories]), ...declaration });
+      binding_hash: hash([m.fm.id, m.fm.title, m.fm.scope, declaration, body, m.fm.validator, m.fm.rule_categories]),
+      ...declaration,
+    });
   }
-  entries.sort((a, b) => Number(b.rulebook === "always") - Number(a.rulebook === "always") || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  const c: KernelCandidates = { entries, omitted: 0, unconfirmed_legacy: unconfirmed, unavailable_sources: 0, project: opts.project,
-    ...(opts.mode === "ids" ? { ids_only: true as const } : {}) };
+  entries.sort(
+    (a, b) =>
+      Number(b.rulebook === "always") - Number(a.rulebook === "always") || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  );
+  const c: KernelCandidates = {
+    entries,
+    omitted: 0,
+    unconfirmed_legacy: unconfirmed,
+    unavailable_sources: 0,
+    project: opts.project,
+    ...(opts.mode === "ids" ? { ids_only: true as const } : {}),
+  };
   if (!c.ids_only) c.catalog_hash = catalogHash(c);
   return c;
 }
-export async function collectRulebookCatalog(vault: Pick<Vault, "get" | "list">, opts: RulebookCatalogOptions): Promise<KernelCandidates> {
+export async function collectRulebookCatalog(
+  vault: Pick<Vault, "get" | "list">,
+  opts: RulebookCatalogOptions
+): Promise<KernelCandidates> {
   return cachedRulebookCatalog(vault, opts);
 }
 
 /** Shared bound for every hook-side catalog consumer, including injected providers.
  * Timed-out optional lookups/providers may finish later; callers must not chain late writes. */
 export const RULEBOOK_CATALOG_BUDGET_MS = 150;
-export async function withRulebookDeadline<T>(work: () => Promise<T>, deadline = Date.now() + RULEBOOK_CATALOG_BUDGET_MS): Promise<T> {
+export async function withRulebookDeadline<T>(
+  work: () => Promise<T>,
+  deadline = Date.now() + RULEBOOK_CATALOG_BUDGET_MS
+): Promise<T> {
   if (Date.now() >= deadline) throw new Error("rulebook_catalog_timeout");
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const result = await Promise.race([Promise.resolve().then(work), new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => reject(new Error("rulebook_catalog_timeout")), Math.max(0, deadline - Date.now()));
-    })]);
+    const result = await Promise.race([
+      Promise.resolve().then(work),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("rulebook_catalog_timeout")), Math.max(0, deadline - Date.now()));
+      }),
+    ]);
     if (Date.now() >= deadline) throw new Error("rulebook_catalog_timeout");
     return result;
-  } finally { if (timer) clearTimeout(timer); }
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /** Cache only the synchronous index view, invalidated by Vault.on. Projection
@@ -108,47 +220,62 @@ function indexView(vault: Pick<Vault, "list"> & Partial<Pick<Vault, "on">>) {
   if (!vault.on) return { memories: vault.list(), isCurrent: () => true };
   let view = indexViews.get(vault);
   if (!view) {
-    view = { generation: 0 }; indexViews.set(vault, view);
+    view = { generation: 0 };
+    indexViews.set(vault, view);
     const own = view;
-    vault.on(() => { own.generation++; own.memories = undefined; });
+    vault.on(() => {
+      own.generation++;
+      own.memories = undefined;
+    });
   }
-  const generation = view.generation, own = view;
-  return { memories: view.memories ??= vault.list(), isCurrent: () => generation === own.generation };
+  const generation = view.generation,
+    own = view;
+  return { memories: (view.memories ??= vault.list()), isCurrent: () => generation === own.generation };
 }
 export const RULEBOOK_TOOL_BUDGET_MS = 5000;
 export const RULEBOOK_STARTUP_BUDGET_MS = 800;
 export async function cachedRulebookCatalog(
-  vault: Pick<Vault, "get" | "list"> & Partial<Pick<Vault, "on">>, opts: RulebookCatalogOptions,
+  vault: Pick<Vault, "get" | "list"> & Partial<Pick<Vault, "on">>,
+  opts: RulebookCatalogOptions
 ): Promise<KernelCandidates> {
   const deadline = Date.now() + (opts.budgetMs ?? RULEBOOK_TOOL_BUDGET_MS);
   let abandoned = false;
-  try { return await withRulebookDeadline(async () => {
-    while (!abandoned) {
-      if (Date.now() >= deadline) throw new Error("rulebook_catalog_timeout");
-      const view = indexView(vault);
-      const projected = await projectIndex(view.memories, opts);
-      if (view.isCurrent()) return projected;
-      await new Promise<void>(resolve => setImmediate(resolve));
-    }
-    throw new Error("rulebook_catalog_timeout");
-  }, deadline); } finally { abandoned = true; }
+  try {
+    return await withRulebookDeadline(async () => {
+      while (!abandoned) {
+        if (Date.now() >= deadline) throw new Error("rulebook_catalog_timeout");
+        const view = indexView(vault);
+        const projected = await projectIndex(view.memories, opts);
+        if (view.isCurrent()) return projected;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+      throw new Error("rulebook_catalog_timeout");
+    }, deadline);
+  } finally {
+    abandoned = true;
+  }
 }
 /** Restore indexed rules even if optional floor lookup fails. The fallback
  * is labelled incomplete and shares the caller's remaining session budget. */
 export async function startupRulebookCatalog(
-  vault: Pick<Vault, "get" | "list"> & Partial<Pick<Vault, "on">>, opts: RulebookCatalogOptions,
+  vault: Pick<Vault, "get" | "list"> & Partial<Pick<Vault, "on">>,
+  opts: RulebookCatalogOptions
 ): Promise<KernelCandidates> {
   const total = Math.max(0, Math.min(opts.budgetMs ?? 1200, 1200) - 50);
   const deadline = Date.now() + total;
   const primary = Math.min(RULEBOOK_STARTUP_BUDGET_MS, total * 0.7);
-  try { return await cachedRulebookCatalog(vault, { ...opts, mode: "content", budgetMs: primary }); }
-  catch {
+  try {
+    return await cachedRulebookCatalog(vault, { ...opts, mode: "content", budgetMs: primary });
+  } catch {
     try {
       const result = await withRulebookDeadline(
         () => collectRulebookCatalog(vault, { ...opts, mode: "content", floors: async () => [] }),
-        Math.min(deadline, Date.now() + 300));
+        Math.min(deadline, Date.now() + 300)
+      );
       return { ...result, fallback: true };
-    } catch { return { entries: [], omitted: 0, unavailable_sources: 1, fallback: true }; }
+    } catch {
+      return { entries: [], omitted: 0, unavailable_sources: 1, fallback: true };
+    }
   }
 }
 
@@ -161,64 +288,126 @@ export function ruleIndexLine(e: KernelEntry): string {
   return `${e.id} — ${title} — ${when}`;
 }
 export function rulebookCursor(c: KernelCandidates, offset: number): string {
-  return Buffer.from(JSON.stringify({ hash: catalogHash(c), offset, project: c.project ?? null }), "utf8").toString("base64url");
+  return Buffer.from(JSON.stringify({ hash: catalogHash(c), offset, project: c.project ?? null }), "utf8").toString(
+    "base64url"
+  );
 }
 export function rulebookPage(c: KernelCandidates, cursor?: string, maxChars = RULEBOOK_INDEX_CHAR_BUDGET) {
   if (c.ids_only) throw new Error("IDs-only catalog cannot be delivered as content");
-  let offset = 0, restarted = false;
+  let offset = 0,
+    restarted = false;
   if (cursor) {
     try {
       const decoded = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
-      if (decoded.hash === catalogHash(c) && Number.isInteger(decoded.offset) && decoded.offset >= 0 && decoded.offset <= c.entries.length) offset = decoded.offset;
+      if (
+        decoded.hash === catalogHash(c) &&
+        Number.isInteger(decoded.offset) &&
+        decoded.offset >= 0 &&
+        decoded.offset <= c.entries.length
+      )
+        offset = decoded.offset;
       else restarted = true;
-    } catch { restarted = true; }
+    } catch {
+      restarted = true;
+    }
   }
   const start = offset;
   let used = 0;
   while (offset < c.entries.length) {
     const cost = ruleIndexLine(c.entries[offset]).length + 1;
     if (offset > start && used + cost > maxChars) break;
-    used += cost; offset++;
+    used += cost;
+    offset++;
   }
-  return { catalog_hash: catalogHash(c), total: c.entries.length, offset: start,
-    unconfirmed_legacy: c.unconfirmed_legacy ?? 0, unavailable_sources: c.unavailable_sources ?? 0,
-    rules: c.entries.slice(start, offset).map(e => ({ id: e.id, title: e.title, scope: e.scope,
-      rulebook: e.rulebook ?? "always", applies_when: e.applies_when ?? "", ...(e.rule_categories?{rule_categories:e.rule_categories}:{}),
-      ...(e.applies_when_derived ? { applies_when_derived: true as const } : {}), revision: e.revision,
-      ...(e.source_unavailable ? { source_unavailable: true } : {}) })),
+  return {
+    catalog_hash: catalogHash(c),
+    total: c.entries.length,
+    offset: start,
+    unconfirmed_legacy: c.unconfirmed_legacy ?? 0,
+    unavailable_sources: c.unavailable_sources ?? 0,
+    rules: c.entries.slice(start, offset).map((e) => ({
+      id: e.id,
+      title: e.title,
+      scope: e.scope,
+      rulebook: e.rulebook ?? "always",
+      applies_when: e.applies_when ?? "",
+      ...(e.rule_categories ? { rule_categories: e.rule_categories } : {}),
+      ...(e.applies_when_derived ? { applies_when_derived: true as const } : {}),
+      revision: e.revision,
+      ...(e.source_unavailable ? { source_unavailable: true } : {}),
+    })),
     ...(offset < c.entries.length ? { next_cursor: rulebookCursor(c, offset) } : {}),
-    end: offset === c.entries.length, ...(restarted ? { restarted: true as const } : {}) };
+    end: offset === c.entries.length,
+    ...(restarted ? { restarted: true as const } : {}),
+  };
 }
 export const ListRulesArgs = z.object({ cursor: z.string().max(2048).optional(), proposals: z.boolean().optional() });
-export async function listRulesHandler(deps: ToolDeps, args: unknown, ctx: { sessionId?: string | null; project?: string | null } = {}) {
+export async function listRulesHandler(
+  deps: ToolDeps,
+  args: unknown,
+  ctx: { sessionId?: string | null; project?: string | null } = {}
+) {
   const input = ListRulesArgs.parse(args ?? {});
   const sid = ctx.sessionId ?? callerSessionStore.getStore();
   const state = sid ? await loadSessionState(sid) : undefined;
   const indexed = sessionRulebookProject(state);
-  let project = indexed !== undefined ? indexed : ctx.project ?? null;
+  let project = indexed !== undefined ? indexed : (ctx.project ?? null);
   if (input.cursor) {
     try {
       // Scope is caller-selectable, including through the cursor. It is a
       // retrieval filter, not authorization; private entries remain excluded.
       const decoded = JSON.parse(Buffer.from(input.cursor, "base64url").toString("utf8"));
       if (decoded.project === null || typeof decoded.project === "string") project = decoded.project;
-    } catch { /* malformed cursor restarts from the caller scope */ }
+    } catch {
+      /* malformed cursor restarts from the caller scope */
+    }
   }
   if (input.proposals) {
-    const memories = deps.vault.list().filter(m => servable(m) && m.fm.rulebook_proposed &&
-      (!m.fm.scope || (project ? isScopeCompatible(m.fm.scope, project) : GLOBAL_SCOPES.has(normalizeScopeKey(m.fm.scope)))))
+    const memories = deps.vault
+      .list()
+      .filter(
+        (m) =>
+          servable(m) &&
+          m.fm.rulebook_proposed &&
+          (!m.fm.scope ||
+            (project ? isScopeCompatible(m.fm.scope, project) : GLOBAL_SCOPES.has(normalizeScopeKey(m.fm.scope))))
+      )
       .sort((a, b) => a.fm.id.localeCompare(b.fm.id));
-    const pending: KernelCandidates = { project, omitted: 0, entries: memories.map(m => ({
-      id: m.fm.id, title: m.fm.title, scope: m.fm.scope, group: "explicit", revision: m.revision ?? null,
-      updated: m.fm.updated ?? null, stale_status: "unknown", body: "",
-      rulebook: m.fm.rulebook_proposed!.rulebook, applies_when: m.fm.rulebook_proposed!.applies_when,
-      rule_categories: m.fm.rulebook_proposed!.rule_categories,
-      binding_hash: hash(["proposal", m.fm.id, m.revision, m.fm.rulebook_proposed]),
-    })) };
+    const pending: KernelCandidates = {
+      project,
+      omitted: 0,
+      entries: memories.map((m) => ({
+        id: m.fm.id,
+        title: m.fm.title,
+        scope: m.fm.scope,
+        group: "explicit",
+        revision: m.revision ?? null,
+        updated: m.fm.updated ?? null,
+        stale_status: "unknown",
+        body: "",
+        rulebook: m.fm.rulebook_proposed!.rulebook,
+        applies_when: m.fm.rulebook_proposed!.applies_when,
+        rule_categories: m.fm.rulebook_proposed!.rule_categories,
+        binding_hash: hash(["proposal", m.fm.id, m.revision, m.fm.rulebook_proposed]),
+      })),
+    };
     const page = rulebookPage(pending, input.cursor);
-    return { ...page, proposals: true, rules: page.rules.map(rule => ({ ...rule,
-      rulebook_proposed: memories.find(m => m.fm.id === rule.id)!.fm.rulebook_proposed })) };
+    return {
+      ...page,
+      proposals: true,
+      rules: page.rules.map((rule) => ({
+        ...rule,
+        rulebook_proposed: memories.find((m) => m.fm.id === rule.id)!.fm.rulebook_proposed,
+      })),
+    };
   }
-  return rulebookPage(await cachedRulebookCatalog(deps.vault, { project,
-    active: state?.activeConventions ?? [], mode: "content", budgetMs: RULEBOOK_TOOL_BUDGET_MS }), input.cursor);
+  return rulebookPage(
+    await cachedRulebookCatalog(deps.vault, {
+      project,
+      active: state?.activeConventions ?? [],
+      mode: "content",
+      budgetMs: RULEBOOK_TOOL_BUDGET_MS,
+    }),
+    input.cursor
+  );
 }

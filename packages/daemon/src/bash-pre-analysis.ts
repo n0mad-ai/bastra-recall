@@ -201,8 +201,14 @@ function joinShellLines(cmd: string): string {
   for (let i = 0; i < cmd.length; i++) {
     const ch = cmd[i];
     if (ch === "\\" && quote !== "'") {
-      if (cmd[i + 1] === "\n") { i++; continue; }
-      if (cmd[i + 1] === "\r" && cmd[i + 2] === "\n") { i += 2; continue; }
+      if (cmd[i + 1] === "\n") {
+        i++;
+        continue;
+      }
+      if (cmd[i + 1] === "\r" && cmd[i + 2] === "\n") {
+        i += 2;
+        continue;
+      }
       out += ch + (cmd[++i] ?? "");
       continue;
     }
@@ -415,16 +421,16 @@ function commandWordAt(texts: string[]): number {
 
 /** Candidate command identity only. A successful matching tool result is still
  * required before Stop may call a commit completed. Reuses the existing scanner. */
-export function hasGitCommitCommand(source:string):boolean{
- const commands=simpleCommands(source);
- // A successful compound shell result cannot say which branch executed.
- if(commands?.length!==1)return false;
- const {words,piped,background}=commands[0];
- if(piped||background)return false;
- const texts=words.map(w=>unquote(w.text));
- if(texts[0]?.split('/').pop()!=='git')return false;
- const command=parseGit(texts.slice(1));
- return command?.sub==='commit'&&!command.rest.some(a=>a==='--dry-run');
+export function hasGitCommitCommand(source: string): boolean {
+  const commands = simpleCommands(source);
+  // A successful compound shell result cannot say which branch executed.
+  if (commands?.length !== 1) return false;
+  const { words, piped, background } = commands[0];
+  if (piped || background) return false;
+  const texts = words.map((w) => unquote(w.text));
+  if (texts[0]?.split("/").pop() !== "git") return false;
+  const command = parseGit(texts.slice(1));
+  return command?.sub === "commit" && !command.rest.some((a) => a === "--dry-run");
 }
 
 /**
@@ -474,9 +480,10 @@ function redefinesRm(cmd: string, depth = 0): boolean | "path" {
     // behind `export`/`declare`/…, `printf -v X`, `read X`, a nameref onto X
     // (`declare -n p=X`), and a `for`/`select` loop variable (`for X in …`,
     // `for X;`, `for X do`, zsh `for X Y in …`, #1047).
-    const vars = [...texts.slice(0, k), ...(/^(?:export|declare|typeset|local|readonly)$/.test(texts[k]) ? args : [])].map(
-      (t) => /^(\w+)(?:\[[^\]]*\])?\+?=/.exec(t)?.[1],
-    );
+    const vars = [
+      ...texts.slice(0, k),
+      ...(/^(?:export|declare|typeset|local|readonly)$/.test(texts[k]) ? args : []),
+    ].map((t) => /^(\w+)(?:\[[^\]]*\])?\+?=/.exec(t)?.[1]);
     // `path[1]=…` above writes one element of the zsh array; `unset` drops it (#1047).
     if (texts[k] === "unset") vars.push(...args.map((t) => /^(\w+)/.exec(t)?.[1]));
     if (texts[k] === "printf") vars.push(...args.filter((_, j) => args[j - 1] === "-v"));
@@ -689,13 +696,15 @@ function hintCore(cmd: string, surface: string, setting = false, ignorePath = fa
   if (archivingRm && !rmRunsThroughPath(cmd, 0, ignorePath)) {
     // Name the variable only when it is the whole reason: weighed without it,
     // the command must reach a receipt.
-    const pathVar = !ignorePath && redefinesRm(cmd) === "path" && hintCore(cmd, surface, setting, true)?.undo?.kind === "receipt";
+    const pathVar =
+      !ignorePath && redefinesRm(cmd) === "path" && hintCore(cmd, surface, setting, true)?.undo?.kind === "receipt";
     return pathVar ? { ...stop(first.label), pathVar } : stop(first.label);
   }
   const viaShim = acts.some((a) => a.undo === RM_SHIM || a.undo?.viaGitShim);
   // bastra's shims only run where the lane may rewrite: a command made of
   // their acts. Anywhere else the real `rm`/`git` runs, and the hint says so.
-  if (viaShim && !shimOnly(cmd, { rm: rmShim(surface, setting), git: gitShim(surface, setting) })) return stop(first.label);
+  if (viaShim && !shimOnly(cmd, { rm: rmShim(surface, setting), git: gitShim(surface, setting) }))
+    return stop(first.label);
   // Every act here is a receipt (or the single act has an undo): say each
   // distinct receipt, not only the first (#658).
   const viaGit = acts.some((a) => a.undo?.viaGitShim);
@@ -783,12 +792,20 @@ export function shimOffLine(command: string, settings: BashVerdict, family: "rm"
       "saves what it discards first (files git clean removes → ~/.bastra/archive; uncommitted changes, a deleted branch's or stash's commit → pinned under refs/bastra-archive/, restorable) and then runs as typed";
     const on =
       "They refuse in a repository that runs its own code on the act. Turn them on: unset BASTRA_GIT_SHIM (on with the archive opt-in) — the user's call, tell them.";
-    if (settings.verdict === "ask") return `${lead} would still be asked about (your settings: \`${settings.rule}\`); once approved it ${saved}. ${on}`;
-    if (settings.verdict === "allow") return `${lead} — which your settings allow (\`${settings.rule}\`), so it discards for real now — ${saved}. ${on}`;
+    if (settings.verdict === "ask")
+      return `${lead} would still be asked about (your settings: \`${settings.rule}\`); once approved it ${saved}. ${on}`;
+    if (settings.verdict === "allow")
+      return `${lead} — which your settings allow (\`${settings.rule}\`), so it discards for real now — ${saved}. ${on}`;
     return `${lead} needs no confirmation: it ${saved}. ${on}`;
   }
   const t = rmTargets(command);
-  const what = t.length === 0 ? "its targets" : t.slice(0, 3).map((x) => `\`${x}\``).join(", ") + (t.length > 3 ? ` and ${t.length - 3} more` : "");
+  const what =
+    t.length === 0
+      ? "its targets"
+      : t
+          .slice(0, 3)
+          .map((x) => `\`${x}\``)
+          .join(", ") + (t.length > 3 ? ` and ${t.length - 3} more` : "");
   const moved = `would have moved ${what} to ~/.bastra/archive (restorable: \`bastra archive restore <path>\`; temp dirs really removed)`;
   const on = "Turn it on: unset BASTRA_RM_SHIM (on with the archive opt-in) — the user's call, tell them.";
   const lead = "bastra's archiving rm is switched off here (BASTRA_RM_SHIM=0). With it on, this exact command";
@@ -802,4 +819,4 @@ export function shimOffLine(command: string, settings: BashVerdict, family: "rm"
 }
 
 /** #1330: portable syntax-aware action analysis, separate from warning patterns. */
-export {githubWriteActions} from "./github-shell-actions.js";
+export { githubWriteActions } from "./github-shell-actions.js";

@@ -49,7 +49,7 @@ const yieldToEventLoop = (): Promise<void> => new Promise((resolve) => setImmedi
 
 export async function buildSemanticLayout(
   graph: VaultGraph,
-  vectors: ReadonlyMap<string, Float32Array>,
+  vectors: ReadonlyMap<string, Float32Array>
 ): Promise<SemanticLayout> {
   const ids: string[] = [];
   const mat: Float32Array[] = [];
@@ -119,9 +119,7 @@ async function project3d(mat: Float32Array[]): Promise<Array<[number, number, nu
   const pc1 = await powerIteration(centered, []);
   const pc2 = await powerIteration(centered, [pc1]);
   const pc3 = await powerIteration(centered, [pc1, pc2]);
-  const raw = centered.map(
-    (r) => [dot(r, pc1), dot(r, pc2), dot(r, pc3)] as [number, number, number],
-  );
+  const raw = centered.map((r) => [dot(r, pc1), dot(r, pc2), dot(r, pc3)] as [number, number, number]);
 
   const min = [Infinity, Infinity, Infinity];
   const max = [-Infinity, -Infinity, -Infinity];
@@ -136,18 +134,12 @@ async function project3d(mat: Float32Array[]): Promise<Array<[number, number, nu
   const span = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]);
   if (span < 1e-9) return raw.map(() => [0.5, 0.5, 0.5]);
   const pad = [0, 1, 2].map((a) => (span - (max[a] - min[a])) / 2);
-  return raw.map(
-    (p) =>
-      [0, 1, 2].map((a) => round3((p[a] - min[a] + pad[a]) / span)) as [number, number, number],
-  );
+  return raw.map((p) => [0, 1, 2].map((a) => round3((p[a] - min[a] + pad[a]) / span)) as [number, number, number]);
 }
 
 /** Dominant eigenvector of Xᵀ·X without materializing the (dim×dim) matrix:
  *  v ← Σᵢ (xᵢ·v)·xᵢ, re-orthogonalized against every `deflates` entry. */
-async function powerIteration(
-  centered: Float64Array[],
-  deflates: Float64Array[],
-): Promise<Float64Array> {
+async function powerIteration(centered: Float64Array[], deflates: Float64Array[]): Promise<Float64Array> {
   const dim = centered[0].length;
   let v = new Float64Array(dim);
   for (let d = 0; d < dim; d++) v[d] = Math.sin(d + 1); // fixed, non-degenerate start

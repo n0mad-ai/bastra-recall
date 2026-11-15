@@ -40,11 +40,7 @@ export const MAX_DIFF_SOURCE_BYTES = 2 * 1024 * 1024;
  *
  * `current` is the working-tree text, "" for a file that does not exist yet.
  */
-export function pendingText(
-  toolName: string,
-  toolInput: Record<string, unknown>,
-  current: string,
-): string | null {
+export function pendingText(toolName: string, toolInput: Record<string, unknown>, current: string): string | null {
   if (toolName === "Write") {
     return typeof toolInput.content === "string" ? toolInput.content : null;
   }
@@ -110,11 +106,7 @@ export function unifiedDiff(file: string, oldText: string, newText: string): str
   const oldStart = removed.length === 0 ? prefix : prefix + 1;
   const newStart = added.length === 0 ? prefix : prefix + 1;
 
-  const lines = [
-    `--- a/${file}`,
-    `+++ b/${file}`,
-    `@@ -${oldStart},${removed.length} +${newStart},${added.length} @@`,
-  ];
+  const lines = [`--- a/${file}`, `+++ b/${file}`, `@@ -${oldStart},${removed.length} +${newStart},${added.length} @@`];
   for (const line of removed) lines.push(`-${line}`);
   for (const line of added) lines.push(`+${line}`);
   return lines.join("\n");

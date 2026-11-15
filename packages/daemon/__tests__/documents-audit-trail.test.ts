@@ -69,7 +69,7 @@ test("#452: save_document, recategorize_document und move_document schreiben je 
       ["update", "mcp:save_document"],
       ["update", "mcp:recategorize_document"],
       ["update", "mcp:move_document"],
-    ],
+    ]
   );
   assert.ok(entries.every((e) => e.actor === "assistant"));
 

@@ -20,10 +20,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import {
   ALL_TOOL_DEFS,
   INSTALL_TOOL_SURFACE,
@@ -45,7 +42,7 @@ function remoteAllows(name: string): boolean {
 function buildServer(ctx: DispatchCtx): Server {
   const server = new Server(
     { name: "bastra-recall", title: "Bastra Recall", version: DAEMON_VERSION },
-    { capabilities: { tools: {} }, instructions: serverInstructions(false) },
+    { capabilities: { tools: {} }, instructions: serverInstructions(false) }
   );
 
   server.setRequestHandler(ListToolsRequestSchema, () => ({
@@ -72,12 +69,7 @@ function buildServer(ctx: DispatchCtx): Server {
 }
 
 /** Handles /api/v1/mcp after the auth gate has passed. */
-export function handleMcpHttp(
-  req: IncomingMessage,
-  res: ServerResponse,
-  method: string,
-  ctx: DispatchCtx,
-): void {
+export function handleMcpHttp(req: IncomingMessage, res: ServerResponse, method: string, ctx: DispatchCtx): void {
   // Stateless: no standalone SSE stream (GET) and no session to end (DELETE).
   if (method !== "POST") {
     res.setHeader("Allow", "POST");

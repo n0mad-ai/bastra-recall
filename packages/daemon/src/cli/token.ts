@@ -17,7 +17,7 @@ import { ensureApiToken, clearApiToken, addCorsOrigin, normalizeCorsOrigin } fro
 export async function cmdToken(args: { sub: string | null; json: boolean; origin?: string | null }): Promise<number> {
   if (args.sub && args.sub !== "rotate" && args.sub !== "show" && args.sub !== "clear") {
     process.stderr.write(
-      `error: unknown 'token' subcommand '${args.sub}' — use 'bastra token', 'bastra token rotate', or 'bastra token clear'\n`,
+      `error: unknown 'token' subcommand '${args.sub}' — use 'bastra token', 'bastra token rotate', or 'bastra token clear'\n`
     );
     return 2;
   }
@@ -30,9 +30,7 @@ export async function cmdToken(args: { sub: string | null; json: boolean; origin
     }
     if (cleared) {
       process.stdout.write("✗ token cleared — browser/REST clients are now locked out.\n");
-      process.stderr.write(
-        "Restart the daemon so it drops the token (the next recall respawns it): bastra update\n",
-      );
+      process.stderr.write("Restart the daemon so it drops the token (the next recall respawns it): bastra update\n");
     } else {
       process.stdout.write("no token was set — nothing to clear.\n");
     }
@@ -54,7 +52,7 @@ export async function cmdToken(args: { sub: string | null; json: boolean; origin
 
   if (args.json) {
     process.stdout.write(
-      JSON.stringify({ token, rotated: rotate, ...(args.origin != null ? { origin: allowedOrigin } : {}) }) + "\n",
+      JSON.stringify({ token, rotated: rotate, ...(args.origin != null ? { origin: allowedOrigin } : {}) }) + "\n"
     );
     return 0;
   }
@@ -63,7 +61,7 @@ export async function cmdToken(args: { sub: string | null; json: boolean; origin
     (rotate ? "↻ rotated — the previous token no longer works.\n" : "") +
       (allowedOrigin ? `✓ allowed origin ${allowedOrigin} for the browser bridge.\n` : "") +
       "Paste into bastra.io → Settings → Recall, then restart the daemon so it\n" +
-      "loads the token (the next recall respawns it): bastra update\n",
+      "loads the token (the next recall respawns it): bastra update\n"
   );
   return 0;
 }

@@ -31,7 +31,12 @@ import { resolveGenerationModel } from "./settings.js";
 import { draftHintsEnabled } from "./draft-search.js";
 import { startDraftVocabulary } from "./draft-vocabulary.js";
 import { startDraftSearchCache, expireDrafts } from "./draft-store.js";
-import { sessionHarvestEnabled, runSessionHarvest, formatHarvestBlock, type HarvestCandidate } from "./session-harvest.js";
+import {
+  sessionHarvestEnabled,
+  runSessionHarvest,
+  formatHarvestBlock,
+  type HarvestCandidate,
+} from "./session-harvest.js";
 import { settleProvisionalSuggestions, writePendingSuggestion } from "./pending-suggestions.js";
 import { storedQuoteMatcher } from "./harvest-vault-match.js";
 import { loadTranscript } from "./stop-lane.js";
@@ -92,12 +97,16 @@ export function startBackgroundJobs(deps: BackgroundJobDeps): void {
 // goes to the pending relay as suggestions. Off the hook path entirely; the
 // capture is vault-read-only; explicit sharp promotion can write a derived note.
 export async function runSessionHarvestTick(
-  deps: Pick<BackgroundJobDeps, "vault" | "search" | "embIdx" | "ollama" | "rawProvider"> & { draftJudge?: DraftJudge | null },
-  now = Date.now(),
+  deps: Pick<BackgroundJobDeps, "vault" | "search" | "embIdx" | "ollama" | "rawProvider"> & {
+    draftJudge?: DraftJudge | null;
+  },
+  now = Date.now()
 ) {
   if (!sessionHarvestEnabled()) return null;
   const endpointOptions = {
-    provider: deps.rawProvider ?? null, ollama: deps.ollama, vault: deps.vault,
+    provider: deps.rawProvider ?? null,
+    ollama: deps.ollama,
+    vault: deps.vault,
     vaultVectors: () => {
       const index = deps.embIdx();
       if (!index) return null;
@@ -106,17 +115,26 @@ export async function runSessionHarvestTick(
     },
   };
   const canBeSharp = await draftPromotionReady(endpointOptions);
-  const relayToken=canBeSharp ? randomUUID() : null;
+  const relayToken = canBeSharp ? randomUUID() : null;
   const relays: { block: string; count: number; captured: boolean }[] = [];
   const harvest = await runSessionHarvest({
     // Probe/unavailable modes use the original harvest relay at its old seam.
     // Sharp mode uses that same durable write before advancing the queue cursor.
-    ...(canBeSharp ? { relay: async (entry: { session_id: string; cwd?: string }, candidates: HarvestCandidate[], captured: boolean) => {
-      const block = formatHarvestBlock(entry, candidates);
-      await writePendingSuggestion(block,{provisional:relayToken!}); relays.push({ block, count: candidates.length, captured });
-    } } : {}),
+    ...(canBeSharp
+      ? {
+          relay: async (
+            entry: { session_id: string; cwd?: string },
+            candidates: HarvestCandidate[],
+            captured: boolean
+          ) => {
+            const block = formatHarvestBlock(entry, candidates);
+            await writePendingSuggestion(block, { provisional: relayToken! });
+            relays.push({ block, count: candidates.length, captured });
+          },
+        }
+      : {}),
     vaultId: await draftVaultId(deps.vault.root).catch(() => undefined),
-    loadTurns: transcript_path => loadTranscript({ transcript_path }),
+    loadTurns: (transcript_path) => loadTranscript({ transcript_path }),
     storedIn: () => storedQuoteMatcher(deps.vault, deps.search),
     now,
   });
@@ -124,48 +142,60 @@ export async function runSessionHarvestTick(
   // before the expiry below can drop a draft.
   const training: TrainingTick | null = await runTrainingCaptureTick(now);
   try {
-  await deps.vault.reconcile();
-  await expireDrafts({ now });
-  const shadow = await runDraftShadow({
-    provider: deps.rawProvider ?? null, ollama: deps.ollama, vault: deps.vault, now,
-    capturePair: training?.pair, // #1128-capture
-    vaultVectors: () => {
-      const index = deps.embIdx();
-      if (!index) return null;
-      const identity = index.providerIdentity();
-      return { provider: identity.id, dim: identity.dim, vectors: index.snapshot() };
-    },
-  });
-  const promoteOptions = {
-    provider: deps.rawProvider ?? null, ollama: deps.ollama, vault: deps.vault, now,
-    allowSharp: shadow.enabled && shadow.errors === 0, judge: deps.draftJudge,
-    onVerdict: training?.verdict, // #1128-capture
-    vaultVectors: () => {
-      const index = deps.embIdx();
-      if (!index) return null;
-      const identity = index.providerIdentity();
-      return { provider: identity.id, dim: identity.dim, vectors: index.currentSnapshot() };
-    },
-  };
-  const promotion = await runDraftPromote(promoteOptions);
-  let relayed = harvest.candidates;
-  if (relayToken) {
-    const withdraw=new Set(!promotion.probeOnly && promotion.errors===0 && promotion.wouldPromote===0 && promotion.unjudged===0 ? relays.filter(row=>row.captured).map(row=>row.block) : []);
-    const removed=await settleProvisionalSuggestions(relayToken,withdraw);
-    for(const relay of relays)if(removed.has(relay.block))relayed-=relay.count;
-  }
-  if (await draftPromotionReady(promoteOptions)) await expireDrafts({ now, memoryExists: async id => deps.vault.get(id) !== undefined });
-  await training?.finish(deps.draftJudge ?? null); // #1128-capture
-  return { harvest, shadow, promotion, relayed };
-  } catch(error) {
-    if(relayToken)await settleProvisionalSuggestions(relayToken,new Set());
+    await deps.vault.reconcile();
+    await expireDrafts({ now });
+    const shadow = await runDraftShadow({
+      provider: deps.rawProvider ?? null,
+      ollama: deps.ollama,
+      vault: deps.vault,
+      now,
+      capturePair: training?.pair, // #1128-capture
+      vaultVectors: () => {
+        const index = deps.embIdx();
+        if (!index) return null;
+        const identity = index.providerIdentity();
+        return { provider: identity.id, dim: identity.dim, vectors: index.snapshot() };
+      },
+    });
+    const promoteOptions = {
+      provider: deps.rawProvider ?? null,
+      ollama: deps.ollama,
+      vault: deps.vault,
+      now,
+      allowSharp: shadow.enabled && shadow.errors === 0,
+      judge: deps.draftJudge,
+      onVerdict: training?.verdict, // #1128-capture
+      vaultVectors: () => {
+        const index = deps.embIdx();
+        if (!index) return null;
+        const identity = index.providerIdentity();
+        return { provider: identity.id, dim: identity.dim, vectors: index.currentSnapshot() };
+      },
+    };
+    const promotion = await runDraftPromote(promoteOptions);
+    let relayed = harvest.candidates;
+    if (relayToken) {
+      const withdraw = new Set(
+        !promotion.probeOnly && promotion.errors === 0 && promotion.wouldPromote === 0 && promotion.unjudged === 0
+          ? relays.filter((row) => row.captured).map((row) => row.block)
+          : []
+      );
+      const removed = await settleProvisionalSuggestions(relayToken, withdraw);
+      for (const relay of relays) if (removed.has(relay.block)) relayed -= relay.count;
+    }
+    if (await draftPromotionReady(promoteOptions))
+      await expireDrafts({ now, memoryExists: async (id) => deps.vault.get(id) !== undefined });
+    await training?.finish(deps.draftJudge ?? null); // #1128-capture
+    return { harvest, shadow, promotion, relayed };
+  } catch (error) {
+    if (relayToken) await settleProvisionalSuggestions(relayToken, new Set());
     throw error;
   }
 }
 
 function startSessionHarvest(deps: BackgroundJobDeps): void {
   if (draftHintsEnabled()) startDraftVocabulary(deps.vault);
-  if(draftHintsEnabled()||!envOff("BASTRA_SAVE_NOTICE"))startDraftSearchCache();
+  if (draftHintsEnabled() || !envOff("BASTRA_SAVE_NOTICE")) startDraftSearchCache();
   let running = false;
   setInterval(() => {
     if (running || !sessionHarvestEnabled()) return;
@@ -173,19 +203,32 @@ function startSessionHarvest(deps: BackgroundJobDeps): void {
     // The meaning check is background model work: on battery (saver on) it
     // gives no verdict, so nothing is promoted until AC is back (#632).
     void resolveGenerationModel()
-      .then(model => runSessionHarvestTick({ ...deps, draftJudge: deps.power?.saving() ? null : localDraftJudge(deps.ollama, model) }))
-      .then(result => {
+      .then((model) =>
+        runSessionHarvestTick({
+          ...deps,
+          draftJudge: deps.power?.saving() ? null : localDraftJudge(deps.ollama, model),
+        })
+      )
+      .then((result) => {
         if (result && result.harvest.harvested > 0) {
           const r = result.harvest;
-          console.error(`[bastra-recall] session harvest: ${r.harvested} session(s), ${result.relayed} candidate(s) relayed, ${r.stored} already stored`);
+          console.error(
+            `[bastra-recall] session harvest: ${r.harvested} session(s), ${result.relayed} candidate(s) relayed, ${r.stored} already stored`
+          );
         }
         if (result && (result.shadow.embedded > 0 || result.shadow.errors > 0)) {
           const r = result.shadow;
-          console.error(`[bastra-recall] draft shadow: ${r.embedded} vector(s), ${r.pairs} pair(s), ${r.vaultMatches} note comparison(s), ${r.errors} error(s)`);
+          console.error(
+            `[bastra-recall] draft shadow: ${r.embedded} vector(s), ${r.pairs} pair(s), ${r.vaultMatches} note comparison(s), ${r.errors} error(s)`
+          );
         }
       })
-      .catch(err => console.error(`[bastra-recall] session harvest error (non-fatal): ${(err as Error)?.message ?? err}`))
-      .finally(() => { running = false; });
+      .catch((err) =>
+        console.error(`[bastra-recall] session harvest error (non-fatal): ${(err as Error)?.message ?? err}`)
+      )
+      .finally(() => {
+        running = false;
+      });
   }, 5 * 60_000).unref();
 }
 
@@ -211,9 +254,7 @@ function startCodeGraph(deps: BackgroundJobDeps): void {
       }
     })
     .catch((err) => {
-      console.error(
-        `[bastra-recall] code awareness failed to start (non-fatal): ${(err as Error)?.message ?? err}`,
-      );
+      console.error(`[bastra-recall] code awareness failed to start (non-fatal): ${(err as Error)?.message ?? err}`);
     });
 }
 
@@ -269,7 +310,7 @@ function startMintSchedule(deps: BackgroundJobDeps): void {
           live: deps.toolDeps.learnedBridges?.live ?? false,
         });
         console.error(
-          `[bastra-recall] in-band mint (${trigger}): ${outcome.minted} bridge(s) from ${outcome.reaches} acted-on reach(es), ${outcome.pruned} expired, ${outcome.demoted ?? 0} demoted, ${outcome.archived ?? 0} archived — pool reloaded (${deps.toolDeps.learnedBridges.size()} bridges)`,
+          `[bastra-recall] in-band mint (${trigger}): ${outcome.minted} bridge(s) from ${outcome.reaches} acted-on reach(es), ${outcome.pruned} expired, ${outcome.demoted ?? 0} demoted, ${outcome.archived ?? 0} archived — pool reloaded (${deps.toolDeps.learnedBridges.size()} bridges)`
         );
       }
     } catch (err) {
@@ -293,21 +334,17 @@ function startIdleWatchdog(deps: BackgroundJobDeps): void {
   const idleEnvSet = (process.env.BASTRA_DAEMON_IDLE_SHUTDOWN_MS ?? "") !== "";
   if (idleShutdownMs > 0 && !idleEnvSet && deps.launchAgentOwned) {
     console.error(
-      "[bastra-recall] LaunchAgent registered — idle self-shutdown disabled (launchd owns the lifecycle, #78)",
+      "[bastra-recall] LaunchAgent registered — idle self-shutdown disabled (launchd owns the lifecycle, #78)"
     );
     return;
   }
   if (idleShutdownMs <= 0) return;
   const tick = Math.min(idleShutdownMs, 60_000);
   const idleLabel =
-    idleShutdownMs >= 60_000
-      ? `${Math.round(idleShutdownMs / 60000)}min`
-      : `${Math.round(idleShutdownMs / 1000)}s`;
+    idleShutdownMs >= 60_000 ? `${Math.round(idleShutdownMs / 60000)}min` : `${Math.round(idleShutdownMs / 1000)}s`;
   setInterval(() => {
     if (Date.now() - deps.getLastActivity() >= idleShutdownMs) {
-      console.error(
-        `[bastra-recall] idle for ${idleLabel} — self-terminating (respawns on next recall)`,
-      );
+      console.error(`[bastra-recall] idle for ${idleLabel} — self-terminating (respawns on next recall)`);
       void deps.shutdown();
     }
   }, tick).unref();
@@ -318,8 +355,11 @@ function startIdleWatchdog(deps: BackgroundJobDeps): void {
 // Inaktivität sauber beenden; launchd (KeepAlive) respawnt sofort mit dem
 // neuen Code. Im Forwarder-Mode erledigt das der Idle-Self-Shutdown.
 export function startStagedRestart(
-  deps: Pick<BackgroundJobDeps, "launchAgentOwned" | "isStagedRestartPending" | "getLastActivity" | "clearStagedRestartPending" | "shutdown">,
-  platform: NodeJS.Platform = process.platform,
+  deps: Pick<
+    BackgroundJobDeps,
+    "launchAgentOwned" | "isStagedRestartPending" | "getLastActivity" | "clearStagedRestartPending" | "shutdown"
+  >,
+  platform: NodeJS.Platform = process.platform
 ): void {
   // Windows Task Scheduler's RestartOnFailure does not restart a clean exit.
   // Leave its warm process running until explicit restart or the next login;
@@ -329,7 +369,7 @@ export function startStagedRestart(
     if (deps.isStagedRestartPending() && Date.now() - deps.getLastActivity() >= 15 * 60 * 1000) {
       deps.clearStagedRestartPending();
       console.error(
-        "[bastra-recall] staged update applied — idle restart to load the new code (#81); launchd respawns",
+        "[bastra-recall] staged update applied — idle restart to load the new code (#81); launchd respawns"
       );
       void deps.shutdown();
     }
@@ -386,20 +426,22 @@ function startCuratorTick(deps: BackgroundJobDeps): void {
   setInterval(() => {
     void runCuratorPass(
       { vaultRoot: deps.vaultRoot, vault: deps.vault, setDemotions: (ids) => deps.search.setDemotions(ids) },
-      { lastActivityMs: deps.getLastActivity(), dryRun: false },
-    ).then((r) => {
-      if (r.error) {
-        console.error(`[bastra-recall] curator pass failed (non-fatal): ${r.error}`);
-      } else if (r.ran) {
-        console.error(
-          `[bastra-recall] curator pass (${r.mode}): ${r.demoted.length} demoted, ${r.reactivated.length} reactivated, ${r.pendingObservation.length} watching, ${r.staleTotal} stale total`,
-        );
-      }
-    }).catch((err) => {
-      // Belt + suspenders: runCuratorPass is never-throw by contract, but a
-      // background tick must never be able to kill the daemon regardless.
-      console.error(`[bastra-recall] curator tick error (non-fatal): ${(err as Error)?.message ?? err}`);
-    });
+      { lastActivityMs: deps.getLastActivity(), dryRun: false }
+    )
+      .then((r) => {
+        if (r.error) {
+          console.error(`[bastra-recall] curator pass failed (non-fatal): ${r.error}`);
+        } else if (r.ran) {
+          console.error(
+            `[bastra-recall] curator pass (${r.mode}): ${r.demoted.length} demoted, ${r.reactivated.length} reactivated, ${r.pendingObservation.length} watching, ${r.staleTotal} stale total`
+          );
+        }
+      })
+      .catch((err) => {
+        // Belt + suspenders: runCuratorPass is never-throw by contract, but a
+        // background tick must never be able to kill the daemon regardless.
+        console.error(`[bastra-recall] curator tick error (non-fatal): ${(err as Error)?.message ?? err}`);
+      });
   }, 15 * 60_000).unref();
 }
 
@@ -413,7 +455,7 @@ function startLogRetention(): void {
         if (r.removed.length > 0) {
           const mb = (r.freedBytes / 1024 / 1024).toFixed(1);
           console.error(
-            `[bastra-recall] log retention: removed ${r.removed.length} event log(s) older than ${r.keptDays}d (${mb} MB)`,
+            `[bastra-recall] log retention: removed ${r.removed.length} event log(s) older than ${r.keptDays}d (${mb} MB)`
           );
         }
       })
@@ -426,9 +468,15 @@ function startLogRetention(): void {
 }
 
 /** Same background-job host as all daemon periodic work; no OS wakeup claimed. */
-export function startProactiveTaskJob(ctx: TaskServiceContext, cadence = 60000): { runtime: TaskRuntime; stop: () => void } {
+export function startProactiveTaskJob(
+  ctx: TaskServiceContext,
+  cadence = 60000
+): { runtime: TaskRuntime; stop: () => void } {
   const runtime = startTaskRuntime(ctx);
-  const timer = setInterval(() => { void runtime.tick(); }, cadence); timer.unref();
+  const timer = setInterval(() => {
+    void runtime.tick();
+  }, cadence);
+  timer.unref();
   runtime.onStop(() => clearInterval(timer));
   return { runtime, stop: () => runtime.stop() };
 }

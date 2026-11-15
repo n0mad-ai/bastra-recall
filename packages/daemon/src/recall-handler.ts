@@ -8,7 +8,13 @@ import { missingVaultReason } from "./vault-presence.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { scopeEquals } from "@bastra-recall/core/scope";
-import { truncateSummaryTo, hasUnresolvedConflict, type StageListener, type RecallStage, type RecallHit } from "@bastra-recall/core";
+import {
+  truncateSummaryTo,
+  hasUnresolvedConflict,
+  type StageListener,
+  type RecallStage,
+  type RecallHit,
+} from "@bastra-recall/core";
 import { envInt } from "./env.js";
 import { fireAndForget } from "./telemetry.js";
 import { telemetryCandidatePool, type TelemetryPoolCandidate } from "./training-signal.js"; // #1128-capture
@@ -180,7 +186,8 @@ export type RecallStageTimings = RecallStageBuckets;
 
 /** Stage-Namen → ms-Bucket in `RecallStageTimings`. `cache_hit` ist
  *  bewusst nicht hier — der ist ein boolean und wird separat gesetzt. */
-type StageMsKey = "query_parse_ms" | "bm25_search_ms" | "vector_search_ms" | "rrf_fuse_ms" | "hops_expand_ms" | "staleness_rank_ms";
+type StageMsKey =
+  "query_parse_ms" | "bm25_search_ms" | "vector_search_ms" | "rrf_fuse_ms" | "hops_expand_ms" | "staleness_rank_ms";
 
 const STAGE_TO_TIMING_KEY: Partial<Record<RecallStage["name"], StageMsKey>> = {
   "query.parse": "query_parse_ms",
@@ -246,15 +253,13 @@ function makeStageCollector(forward?: StageListener): {
  *  zurückgegeben. Spiegelt `SCORE_FLOOR` aus hook.ts + die SKILL.md-Linie. */
 const RECALL_FLOOR = envInt("BASTRA_RECALL_FLOOR", 30);
 
-
 /** Max-Länge der `summary` im lean-Modus (#50). Lang genug zum Validieren,
  *  kurz genug um Context zu sparen. `verbosity:"full"` umgeht das. */
 const LEAN_SUMMARY_MAX = 160;
 
 /** Kürzt auf max. `LEAN_SUMMARY_MAX` Zeichen an der letzten Wortgrenze und
  *  hängt „…" an. Nie mitten im Wort. Kürzere Summaries bleiben unverändert. */
-export const truncateSummary = (summary: string): string =>
-  truncateSummaryTo(summary, LEAN_SUMMARY_MAX);
+export const truncateSummary = (summary: string): string => truncateSummaryTo(summary, LEAN_SUMMARY_MAX);
 
 /** Schlanke Pro-Hit-Projektion (#50): nur die Felder, die das Modell zum
  *  Validieren braucht. Dropt `matched_terms` (größter variabler Fresser),
@@ -271,11 +276,10 @@ export function toLeanHit(hit: RecallHit): Pick<RecallHit, "id" | "title" | "typ
   };
 }
 
-
 export async function recallHandler(
   deps: ToolDeps,
   rawArgs: unknown,
-  options: Parameters<typeof recallAgainstVault>[2] = {},
+  options: Parameters<typeof recallAgainstVault>[2] = {}
 ): Promise<RecallResult & { stages?: RecallStageTimings }> {
   const result = await recallAgainstVault(deps, rawArgs, options);
   const missing = missingVaultReason(deps.vault.root);
@@ -300,7 +304,8 @@ async function recallAgainstVault(
      *  cwd —, nie aus den Tool-Argumenten. Fehlt es, läuft der Scope-Filter
      *  nicht (`scope_filter_skipped: "no-project"`). */
     project?: string | null;
-  } & DimensionHints & PrivateAccess = {},
+  } & DimensionHints &
+    PrivateAccess = {}
 ): Promise<RecallResult & { stages?: RecallStageTimings }> {
   const parsed = RecallArgs.safeParse(rawArgs);
   if (!parsed.success) throw new Error(parsed.error.message);
@@ -323,52 +328,70 @@ async function recallAgainstVault(
     // Teil-Recall.
     // #421: das Aufrufer-Projekt ebenso — es ist eine Eigenschaft des
     // Transports wie die Capability, nicht des gemergten Aufrufs.
-    const subOptions = { batchId: randomUUID(), trustedPrivate: options.trustedPrivate, project: options.project, session_id: options.session_id,
+    const subOptions = {
+      batchId: randomUUID(),
+      trustedPrivate: options.trustedPrivate,
+      project: options.project,
+      session_id: options.session_id,
       // #1128-capture: a measurement run stays one — its rows are written by the sub-recalls.
-      ...(options.client === "eval" ? { client: "eval" } : {}) };
+      ...(options.client === "eval" ? { client: "eval" } : {}),
+    };
     const subs = await Promise.all(
       kept.map((q) =>
-        recallHandler(deps, {
-          ...rest,
-          query: q,
-          batch_of: queries.length,
-          batch_overlap: max_overlap,
-          batch_collapsed: collapsed.length,
-        }, subOptions),
-      ),
+        recallHandler(
+          deps,
+          {
+            ...rest,
+            query: q,
+            batch_of: queries.length,
+            batch_overlap: max_overlap,
+            batch_collapsed: collapsed.length,
+          },
+          subOptions
+        )
+      )
     );
-    const merged = mergeBatchResults(
-      kept,
-      subs as Parameters<typeof mergeBatchResults>[1],
-      parsed.data.k ?? 5,
-    );
+    const merged = mergeBatchResults(kept, subs as Parameters<typeof mergeBatchResults>[1], parsed.data.k ?? 5);
     // #487: dieselbe Regel wie einarmig, angewandt auf die gemergte Liste —
     // die Hits sind hier bereits projiziert, die Rangfolge steht.
     // #421: Reflex-Treffer bleiben im Batch erhalten — sonst verlöre ein
     // Modell, das mehrere Phrasierungen schickt, genau die Verdrahtung, die
     // eine Einzelquery liefert.
     const { draft_hits: batchDrafts, ...notesOnly } = merged;
-    const batchPayload = fitRecallWithReflexToBudget(merged.hits, merged.reflex_hits ?? [], max_tokens, (emitted, emittedReflex, dropped) => ({
-      ...notesOnly,
-      hits: emitted,
-      reflex_hits: emittedReflex.length > 0 ? emittedReflex : undefined,
-      query_count: queries.length,
-      recall_id: merged.recall_id ?? "",
-      vault_size: merged.vault_size ?? deps.vault.size(),
-      ...(deps.vault.availability().not_loaded ? { vault_availability: deps.vault.availability() } : {}),
-      latency_ms: subs.reduce((m, s) => Math.max(m, s.latency_ms ?? 0), 0),
-      ...(collapsed.length > 0
-        ? { queries_collapsed: collapsed.length, note: batchDuplicateNote(collapsed.length, queries.length) }
-        : {}),
-      ...(dropped > 0 ? { truncated_by_budget: true, dropped_by_budget: dropped } : {}),
-    })).payload;
+    const batchPayload = fitRecallWithReflexToBudget(
+      merged.hits,
+      merged.reflex_hits ?? [],
+      max_tokens,
+      (emitted, emittedReflex, dropped) => ({
+        ...notesOnly,
+        hits: emitted,
+        reflex_hits: emittedReflex.length > 0 ? emittedReflex : undefined,
+        query_count: queries.length,
+        recall_id: merged.recall_id ?? "",
+        vault_size: merged.vault_size ?? deps.vault.size(),
+        ...(deps.vault.availability().not_loaded ? { vault_availability: deps.vault.availability() } : {}),
+        latency_ms: subs.reduce((m, s) => Math.max(m, s.latency_ms ?? 0), 0),
+        ...(collapsed.length > 0
+          ? { queries_collapsed: collapsed.length, note: batchDuplicateNote(collapsed.length, queries.length) }
+          : {}),
+        ...(dropped > 0 ? { truncated_by_budget: true, dropped_by_budget: dropped } : {}),
+      })
+    ).payload;
     // #1128-capture: what the caller finally received, each note under the
     // phrasing that ranked it best — the sub-recalls record nothing themselves.
-    deps.telemetry.recordRecallHits(options.session_id ?? callerSessionStore.getStore() ?? null, (batchPayload.hits as { id: string }[]).flatMap((hit) => {
-      const ranked = subs.map((sub) => ({ recall_id: sub.recall_id, rank: (sub.hits as { id: string }[]).findIndex((h) => h.id === hit.id) + 1 })).filter((r) => r.recall_id && r.rank > 0);
-      const best = ranked.sort((x, y) => x.rank - y.rank)[0];
-      return best ? [{ id: hit.id, recall_id: best.recall_id!, rank: best.rank }] : [];
-    }));
+    deps.telemetry.recordRecallHits(
+      options.session_id ?? callerSessionStore.getStore() ?? null,
+      (batchPayload.hits as { id: string }[]).flatMap((hit) => {
+        const ranked = subs
+          .map((sub) => ({
+            recall_id: sub.recall_id,
+            rank: (sub.hits as { id: string }[]).findIndex((h) => h.id === hit.id) + 1,
+          }))
+          .filter((r) => r.recall_id && r.rank > 0);
+        const best = ranked.sort((x, y) => x.rank - y.rank)[0];
+        return best ? [{ id: hit.id, recall_id: best.recall_id!, rank: best.rank }] : [];
+      })
+    );
     return withDraftBudget(batchPayload, batchDrafts ?? [], max_tokens);
   }
   const query = parsed.data.query;
@@ -425,8 +448,7 @@ async function recallAgainstVault(
   // „liegen die persönlichen Scores schon auf der RRF-Skala?", um zwischen
   // Addieren und Rang-Kollaps zu wählen (commons-fusion.ts).
   const degradedDuringCall = collector.degraded();
-  const hybridActive =
-    deps.search.hasEmbeddings() && !embeddingDegraded && degradedDuringCall === undefined;
+  const hybridActive = deps.search.hasEmbeddings() && !embeddingDegraded && degradedDuringCall === undefined;
   // #121: der geloggte Kandidaten-Pool kommt aus der PERSÖNLICHEN Suche, also
   // aus deren Raum — die Commons-Runde unten schreibt ihn nicht mit um.
   const candidatePoolKind: "rrf" | "bm25" = hybridActive ? "rrf" : "bm25";
@@ -466,7 +488,7 @@ async function recallAgainstVault(
           const v = deps.commonsVerifications?.get(id) ?? { works: 0, fails: 0 };
           return commonsRankFactor(v.works, v.fails);
         },
-        { personalFused: hybridActive },
+        { personalFused: hybridActive }
       ).slice(0, recallOpts.k ?? 5);
       commonsFused = true;
     }
@@ -506,12 +528,19 @@ async function recallAgainstVault(
   });
   hits = scopeFilter.hits;
   // #421: die Pool-Reflexe, mit demselben Floor wie die gerankten Treffer.
-  const sources = await readCurrentRulebookSources(deps.vault,
-    [...hits.map(h => h.id), ...candidatePool.map(h => h.id)], options.session_id ?? callerSessionStore.getStore());
+  const sources = await readCurrentRulebookSources(
+    deps.vault,
+    [...hits.map((h) => h.id), ...candidatePool.map((h) => h.id)],
+    options.session_id ?? callerSessionStore.getStore()
+  );
   const visible = (id: string) => options.trustedPrivate || sources.get(id)?.hiddenFromPublic !== true;
-  hits = hits.filter(h => visible(h.id));
-  const reflexHits = collectPoolReflexHits(candidatePool.filter(h => visible(h.id)), new Set(hits.map((h) => h.id)), deps.vault, floor)
-    .map(h => withSupersession(h, deps.vault, sources.get(h.id)));
+  hits = hits.filter((h) => visible(h.id));
+  const reflexHits = collectPoolReflexHits(
+    candidatePool.filter((h) => visible(h.id)),
+    new Set(hits.map((h) => h.id)),
+    deps.vault,
+    floor
+  ).map((h) => withSupersession(h, deps.vault, sources.get(h.id)));
   // Codex-Gegenreview (P0): `score_kind: "rrf"` bezeichnet inzwischen MEHRERE
   // verschiedene Zahlen — BM25+Vector (≤163.934), BM25+Vector+Commons
   // (≤241.803) und den Kollaps-Pfad aus persönlichem Listenrang + Commons
@@ -527,7 +556,7 @@ async function recallAgainstVault(
   // #217: would-be Salience-Reihenfolge (shadow-only, servierte Hits bleiben).
   const salienceShadow = computeSalienceShadow(
     hits,
-    (id) => deps.vault.get(id)?.fm as Record<string, unknown> | undefined,
+    (id) => deps.vault.get(id)?.fm as Record<string, unknown> | undefined
   );
 
   const recallId = deps.telemetry.newRecallId();
@@ -536,9 +565,7 @@ async function recallAgainstVault(
   // telemetry event is written exactly as promptly as before — see
   // `usageForShadow` for why awaiting the read here would be the worse trade.
   const trustShadow =
-    trustRankMode() === "shadow"
-      ? computeTrustShadow(hits, (id) => usageForShadow(deps.vaultPath)[id])
-      : undefined;
+    trustRankMode() === "shadow" ? computeTrustShadow(hits, (id) => usageForShadow(deps.vaultPath)[id]) : undefined;
 
   // Prong 1 (#50): lean-by-default. `verbosity: "full"` liefert alle
   // Felder + den stages-Block (Mac-App / Debug).
@@ -551,120 +578,135 @@ async function recallAgainstVault(
   // #487: die projizierten Treffer in Rangfolge — was das Budget gleich
   // beschneidet, ist genau das, was der Aufrufer sonst bekäme.
   const projected = (full ? hits : hits.map(toLeanHit))
-    .map(hit => withSupersession(hit, deps.vault, sources.get(hit.id))).map(flagConflict);
-  const budgeted = fitRecallWithReflexToBudget(projected, reflexHits, parsed.data.max_tokens, (emitted, emittedReflex, dropped) => ({
-    query: query,
-    vault_size: deps.vault.size(),
-    ...(deps.vault.availability().not_loaded ? { vault_availability: deps.vault.availability() } : {}),
-    hits: emitted,
-    ...(emittedReflex.length > 0 ? { reflex_hits: emittedReflex } : {}),
-    recall_id: recallId,
-    latency_ms: latencyMs,
-    // #230: nur setzen wenn true — Abwesenheit = nicht weak, hält lean schlank.
-    ...(weakResult ? { weak_result: true } : {}),
-    ...(noHome ? { no_home: true } : {}),
-    // P0: Kein Caller darf den Score-Raum aus der Höhe der Zahl erraten.
-    score_kind: scoreKind,
-    // `score_arms` beschreibt auch eine rohe Liste ehrlich („nur der
-    // BM25-Arm lief"). `score_version` dagegen NICHT: Codex-Gegenreview (P0)
-    // — eine Formelversion auf einer unfusionierten Zahl behauptet eine
-    // Vergleichbarkeit, die es dort nicht gibt. Rohe BM25-Werte sind nicht
-    // einmal untereinander vergleichbar.
-    score_arms: scoreArms,
-    ...(scoreKind === "rrf" ? { score_version: currentScoreVersion() } : { unfused: true }),
-    ...(degradedDuringCall ? { degraded: degradedDuringCall } : {}),
-    ...(full ? { stages: collector.timings } : {}),
-    // #487: nur gesetzt, wenn das Budget wirklich gestrichen hat — ohne
-    // `max_tokens` ist `dropped` immer 0 und die Antwort unverändert.
-    ...(dropped > 0 ? { truncated_by_budget: true, dropped_by_budget: dropped } : {}),
-  }));
+    .map((hit) => withSupersession(hit, deps.vault, sources.get(hit.id)))
+    .map(flagConflict);
+  const budgeted = fitRecallWithReflexToBudget(
+    projected,
+    reflexHits,
+    parsed.data.max_tokens,
+    (emitted, emittedReflex, dropped) => ({
+      query: query,
+      vault_size: deps.vault.size(),
+      ...(deps.vault.availability().not_loaded ? { vault_availability: deps.vault.availability() } : {}),
+      hits: emitted,
+      ...(emittedReflex.length > 0 ? { reflex_hits: emittedReflex } : {}),
+      recall_id: recallId,
+      latency_ms: latencyMs,
+      // #230: nur setzen wenn true — Abwesenheit = nicht weak, hält lean schlank.
+      ...(weakResult ? { weak_result: true } : {}),
+      ...(noHome ? { no_home: true } : {}),
+      // P0: Kein Caller darf den Score-Raum aus der Höhe der Zahl erraten.
+      score_kind: scoreKind,
+      // `score_arms` beschreibt auch eine rohe Liste ehrlich („nur der
+      // BM25-Arm lief"). `score_version` dagegen NICHT: Codex-Gegenreview (P0)
+      // — eine Formelversion auf einer unfusionierten Zahl behauptet eine
+      // Vergleichbarkeit, die es dort nicht gibt. Rohe BM25-Werte sind nicht
+      // einmal untereinander vergleichbar.
+      score_arms: scoreArms,
+      ...(scoreKind === "rrf" ? { score_version: currentScoreVersion() } : { unfused: true }),
+      ...(degradedDuringCall ? { degraded: degradedDuringCall } : {}),
+      ...(full ? { stages: collector.timings } : {}),
+      // #487: nur gesetzt, wenn das Budget wirklich gestrichen hat — ohne
+      // `max_tokens` ist `dropped` immer 0 und die Antwort unverändert.
+      ...(dropped > 0 ? { truncated_by_budget: true, dropped_by_budget: dropped } : {}),
+    })
+  );
   const result = budgeted.payload;
   // #1128-capture: only what this caller finally received, after the budget cut.
   // One phrasing of a batch records nothing; the batch does, for the merged answer.
   if (parsed.data.batch_of === undefined) {
-    deps.telemetry.recordRecallHits(options.session_id ?? callerSessionStore.getStore() ?? null,
-      (result.hits as { id: string }[]).map((hit, i) => ({ id: hit.id, recall_id: recallId, rank: i + 1 })));
+    deps.telemetry.recordRecallHits(
+      options.session_id ?? callerSessionStore.getStore() ?? null,
+      (result.hits as { id: string }[]).map((hit, i) => ({ id: hit.id, recall_id: recallId, rank: i + 1 }))
+    );
   }
   // #457: Größe erst NACH dem Bau des Ergebnisses — das Ereignis beschreibt
   // den gelieferten Payload, nicht die interne Trefferliste.
   const payloadChars = JSON.stringify(result, null, 2).length;
   fireAndForget(
     deps.telemetry.logRecall({
-        recall_id: recallId,
-        query: query,
-        // #263/#265: von der aufrufenden Oberfläche durchgereicht.
-        ...dimensionHints(options),
-        session_id: options.session_id ?? undefined,
-        // #351: batch width when this recall is one phrasing of a batch.
-        query_count: parsed.data.batch_of,
-        batch_id: options.batchId,
-        batch_overlap: parsed.data.batch_overlap,
-        batch_collapsed: parsed.data.batch_collapsed,
-        k: parsed.data.k ?? null,
-        scope: parsed.data.scope ?? null,
-        type: parsed.data.type ?? null,
-        vault_size: deps.vault.size(),
-        hit_count: hits.length,
-        top_score: hits[0]?.score ?? null,
-        hits: hits.map((h) => ({
-            id: h.id,
-            score: h.score,
-            type: h.type,
-            // #263: die Hop-Herkunft, die §18.2 fürs M1-Gate braucht.
-            ...(h.hop ? { hop: h.hop } : {}),
-          })),
-        latency_ms: latencyMs,
-        recall_stages: collector.timings,
-        dropped_below_floor: droppedBelowFloor,
-        // #421: Filterstufe und Messung, dieselben Felder wie auf hook_recall —
-        // nur auf Aufrufen, deren Transport überhaupt ein Projekt kennt.
-        ...(options.project !== undefined ? scopeFilter.telemetry : {}),
-        // #249: the flag has to be recorded on every path, not only returned.
-        weak_result: weakResult || undefined,
-        no_home: noHome || undefined,
-        bridge_expansion:
-          expansion.lang && expansion.added.length > 0
-            ? { lang: expansion.lang, added: expansion.added, applied: expansion.applied }
-            : undefined,
-        candidate_pool: candidatePool.length > 0 ? candidatePool : undefined,
-        // Zweiter Gegenreview: `top_score` und `candidate_pool` sind Zahlen,
-        // und eine Zahl ohne ihren Raum ist in der Auswertung wertlos. Bei
-        // aktiven Commons stammen die beiden sogar aus VERSCHIEDENEN Räumen —
-        // der Pool aus der persönlichen Suche, `top_score` aus der Liste nach
-        // der Commons-Runde. Ohne diese Felder lernte die Floor-Kalibrierung
-        // und das Bridge-Harvesting „schwache" Fälle aus rohen BM25-Werten.
-        score_kind: scoreKind,
-        score_arms: scoreArms,
-        // Ohne die Version wäre eine spätere Formeländerung historisch nicht
-        // auswertbar — zwei Zeilen mit derselben Armmenge sähen vergleichbar
-        // aus, obwohl die Zahl dazwischen ihre Bedeutung geändert hat.
-        score_version: scoreKind === "rrf" ? currentScoreVersion() : undefined,
-        candidate_pool_score_kind: candidatePool.length > 0 ? candidatePoolKind : undefined,
-        candidate_pool_score_arms: candidatePool.length > 0 ? candidatePoolArms : undefined,
-        // Dieselbe Regel wie beim Haupt-Score: eine Formelversion NUR auf der
-        // fusionierten Skala. Auf rohem BM25 gibt es keine Formel, deren
-        // Version etwas bedeutet.
-        candidate_pool_score_version:
-          candidatePool.length > 0 && candidatePoolKind === "rrf" ? currentScoreVersion() : undefined,
-        embedding_degraded: embeddingDegraded ? true : undefined,
-        // Codex-Gegenreview (P1): Der Grund stand in der ANTWORT, aber nicht im
-        // Telemetrie-Eintrag — `embedding_degraded` unterscheidet nur „Breaker
-        // offen", nicht „Vektor-Arm lief in seine Deadline". Genau die beiden
-        // haben verschiedene Ursachen und verschiedene Fixes.
-        degraded_reason: degradedDuringCall,
-        salience_shadow: salienceShadow,
-        trust_shadow: trustShadow,
-        // #457: was der Aufrufer wirklich bekommt — serialisiert wie MCP und
-        // Forwarder es in den Transkript-Text schreiben (pretty JSON).
-        payload_chars: payloadChars,
-        payload_tokens_est: Math.ceil(payloadChars / 4),
-        presentation: full ? "full" : "lean",
-        // #487: das ANGEFORDERTE Budget neben dem AUSGELIEFERTEN Payload —
-        // ohne beide Zahlen kann #457 die Ersparnis niemandem zuordnen.
-        max_tokens: parsed.data.max_tokens,
-        dropped_by_budget: budgeted.dropped > 0 ? budgeted.dropped : undefined,
-    }),
+      recall_id: recallId,
+      query: query,
+      // #263/#265: von der aufrufenden Oberfläche durchgereicht.
+      ...dimensionHints(options),
+      session_id: options.session_id ?? undefined,
+      // #351: batch width when this recall is one phrasing of a batch.
+      query_count: parsed.data.batch_of,
+      batch_id: options.batchId,
+      batch_overlap: parsed.data.batch_overlap,
+      batch_collapsed: parsed.data.batch_collapsed,
+      k: parsed.data.k ?? null,
+      scope: parsed.data.scope ?? null,
+      type: parsed.data.type ?? null,
+      vault_size: deps.vault.size(),
+      hit_count: hits.length,
+      top_score: hits[0]?.score ?? null,
+      hits: hits.map((h) => ({
+        id: h.id,
+        score: h.score,
+        type: h.type,
+        // #263: die Hop-Herkunft, die §18.2 fürs M1-Gate braucht.
+        ...(h.hop ? { hop: h.hop } : {}),
+      })),
+      latency_ms: latencyMs,
+      recall_stages: collector.timings,
+      dropped_below_floor: droppedBelowFloor,
+      // #421: Filterstufe und Messung, dieselben Felder wie auf hook_recall —
+      // nur auf Aufrufen, deren Transport überhaupt ein Projekt kennt.
+      ...(options.project !== undefined ? scopeFilter.telemetry : {}),
+      // #249: the flag has to be recorded on every path, not only returned.
+      weak_result: weakResult || undefined,
+      no_home: noHome || undefined,
+      bridge_expansion:
+        expansion.lang && expansion.added.length > 0
+          ? { lang: expansion.lang, added: expansion.added, applied: expansion.applied }
+          : undefined,
+      candidate_pool: candidatePool.length > 0 ? candidatePool : undefined,
+      // Zweiter Gegenreview: `top_score` und `candidate_pool` sind Zahlen,
+      // und eine Zahl ohne ihren Raum ist in der Auswertung wertlos. Bei
+      // aktiven Commons stammen die beiden sogar aus VERSCHIEDENEN Räumen —
+      // der Pool aus der persönlichen Suche, `top_score` aus der Liste nach
+      // der Commons-Runde. Ohne diese Felder lernte die Floor-Kalibrierung
+      // und das Bridge-Harvesting „schwache" Fälle aus rohen BM25-Werten.
+      score_kind: scoreKind,
+      score_arms: scoreArms,
+      // Ohne die Version wäre eine spätere Formeländerung historisch nicht
+      // auswertbar — zwei Zeilen mit derselben Armmenge sähen vergleichbar
+      // aus, obwohl die Zahl dazwischen ihre Bedeutung geändert hat.
+      score_version: scoreKind === "rrf" ? currentScoreVersion() : undefined,
+      candidate_pool_score_kind: candidatePool.length > 0 ? candidatePoolKind : undefined,
+      candidate_pool_score_arms: candidatePool.length > 0 ? candidatePoolArms : undefined,
+      // Dieselbe Regel wie beim Haupt-Score: eine Formelversion NUR auf der
+      // fusionierten Skala. Auf rohem BM25 gibt es keine Formel, deren
+      // Version etwas bedeutet.
+      candidate_pool_score_version:
+        candidatePool.length > 0 && candidatePoolKind === "rrf" ? currentScoreVersion() : undefined,
+      embedding_degraded: embeddingDegraded ? true : undefined,
+      // Codex-Gegenreview (P1): Der Grund stand in der ANTWORT, aber nicht im
+      // Telemetrie-Eintrag — `embedding_degraded` unterscheidet nur „Breaker
+      // offen", nicht „Vektor-Arm lief in seine Deadline". Genau die beiden
+      // haben verschiedene Ursachen und verschiedene Fixes.
+      degraded_reason: degradedDuringCall,
+      salience_shadow: salienceShadow,
+      trust_shadow: trustShadow,
+      // #457: was der Aufrufer wirklich bekommt — serialisiert wie MCP und
+      // Forwarder es in den Transkript-Text schreiben (pretty JSON).
+      payload_chars: payloadChars,
+      payload_tokens_est: Math.ceil(payloadChars / 4),
+      presentation: full ? "full" : "lean",
+      // #487: das ANGEFORDERTE Budget neben dem AUSGELIEFERTEN Payload —
+      // ohne beide Zahlen kann #457 die Ersparnis niemandem zuordnen.
+      max_tokens: parsed.data.max_tokens,
+      dropped_by_budget: budgeted.dropped > 0 ? budgeted.dropped : undefined,
+    })
   );
 
-  return withDraftBudget(result, await searchDrafts(query, hits.map(hit => ({ ...hit, body: deps.vault.get(hit.id)?.body }))), parsed.data.max_tokens);
+  return withDraftBudget(
+    result,
+    await searchDrafts(
+      query,
+      hits.map((hit) => ({ ...hit, body: deps.vault.get(hit.id)?.body }))
+    ),
+    parsed.data.max_tokens
+  );
 }

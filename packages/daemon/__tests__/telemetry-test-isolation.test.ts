@@ -69,16 +69,16 @@ test("the ambient log dir under test is never the developer's real one", () => {
   const configured = process.env.BASTRA_LOG_PATH;
   assert.ok(
     configured,
-    "BASTRA_LOG_PATH must be set for a test process — scripts/test-env.mjs does this via --import in the root test script",
+    "BASTRA_LOG_PATH must be set for a test process — scripts/test-env.mjs does this via --import in the root test script"
   );
   assert.notEqual(
     resolve(configured),
     REAL_LOG_DIR,
-    "a test run pointed at ~/.bastra/logs would mint fixture bridges and skew `bastra logs --stats`",
+    "a test run pointed at ~/.bastra/logs would mint fixture bridges and skew `bastra logs --stats`"
   );
   assert.ok(
     resolve(configured).startsWith(resolve(tmpdir())),
-    `the test log dir should be disposable, got ${configured}`,
+    `the test log dir should be disposable, got ${configured}`
   );
 });
 
@@ -111,7 +111,7 @@ test("a default-constructed Telemetry writes an acted-on episode to the throwawa
   const written = await readdir(process.env.BASTRA_LOG_PATH as string);
   assert.ok(
     written.includes(`events-${today}.jsonl`),
-    `the episode should be in the throwaway dir, found ${JSON.stringify(written)}`,
+    `the episode should be in the throwaway dir, found ${JSON.stringify(written)}`
   );
 
   // And the real dir must not have grown a row for this probe. Reading it is safe:
@@ -129,7 +129,7 @@ test("a default-constructed Telemetry writes an acted-on episode to the throwawa
   assert.deepEqual(
     leaked,
     [],
-    `this run wrote ${leaked.length} probe event(s) into the developer's real telemetry log`,
+    `this run wrote ${leaked.length} probe event(s) into the developer's real telemetry log`
   );
 });
 
@@ -141,14 +141,23 @@ test("the guard reports only probe events this run could have written (#374)", (
     { ts: "2026-08-29T06:23:00.000Z", kind: "recall_episode", memory_id: PROBE_MEMORY_ID, recall_id: PROBE_RECALL_ID },
     // 2. Legitimate telemetry that merely QUOTES the string: a hook recall whose
     //    prompt discussed this very test failure. Talking about it reproduced it.
-    { ts: "2026-08-29T11:00:00.000Z", kind: "hook_recall", query: `why does ${PROBE_MEMORY_ID} keep failing`, memory_id: "some-other-memory" },
+    {
+      ts: "2026-08-29T11:00:00.000Z",
+      kind: "hook_recall",
+      query: `why does ${PROBE_MEMORY_ID} keep failing`,
+      memory_id: "some-other-memory",
+    },
     // 3. A half-written line — a torn write is not evidence of anything.
     "{not json",
   ]
     .map((r) => (typeof r === "string" ? r : JSON.stringify(r)))
     .join("\n");
 
-  assert.deepEqual(probeEventsSince(rows, startedAt), [], "neither an old row nor a mention is contamination by this run");
+  assert.deepEqual(
+    probeEventsSince(rows, startedAt),
+    [],
+    "neither an old row nor a mention is contamination by this run"
+  );
 
   // What the guard must still catch: a probe event written after this run began.
   const fresh = { ts: "2026-08-29T10:00:01.000Z", kind: "recall_episode", memory_id: PROBE_MEMORY_ID, acted_on: true };

@@ -16,7 +16,7 @@ const TIMEOUT_MS = 1_500;
 
 /** Per repository, or null when no daemon answered. */
 export async function fetchRefreshStatus(
-  baseUrl: string = resolveDaemonEndpoint().baseUrl,
+  baseUrl: string = resolveDaemonEndpoint().baseUrl
 ): Promise<Map<string, RepoStatus> | null> {
   try {
     const res = await fetch(`${baseUrl}/code/refresh`, { signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -33,7 +33,7 @@ export async function fetchRefreshStatus(
  */
 export async function requestManualRefresh(
   repoRoot: string,
-  baseUrl: string = resolveDaemonEndpoint().baseUrl,
+  baseUrl: string = resolveDaemonEndpoint().baseUrl
 ): Promise<boolean> {
   try {
     const res = await fetch(`${baseUrl}/code/refresh`, {
@@ -55,7 +55,7 @@ export async function requestManualRefresh(
  */
 export async function resumeRefreshIfGivenUp(
   repoRoot: string,
-  baseUrl: string = resolveDaemonEndpoint().baseUrl,
+  baseUrl: string = resolveDaemonEndpoint().baseUrl
 ): Promise<boolean> {
   const seen = (await fetchRefreshStatus(baseUrl))?.get(repoRoot);
   return seen?.givenUp === true && (await requestManualRefresh(repoRoot, baseUrl));

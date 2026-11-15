@@ -138,7 +138,7 @@ export async function handleUiSearch(
   res: ServerResponse,
   url: string,
   search: SearchIndex,
-  settingsPath?: string,
+  settingsPath?: string
 ): Promise<void> {
   if (!(await getUiEnabled(settingsPath))) {
     sendJsonPlain(res, 404, { error: "ui disabled" });
@@ -226,7 +226,7 @@ export async function handleUiVaultImagePost(
   res: ServerResponse,
   url: string,
   vaultPath: string,
-  settingsPath?: string,
+  settingsPath?: string
 ): Promise<void> {
   if (!(await getUiEnabled(settingsPath))) {
     sendJsonPlain(res, 404, { error: "ui disabled" });
@@ -290,7 +290,7 @@ export async function handleHookCare(res: ServerResponse, vaultPath: string): Pr
 export async function handleUiAnnotations(
   res: ServerResponse,
   vaultPath: string,
-  settingsPath?: string,
+  settingsPath?: string
 ): Promise<void> {
   if (!(await getUiEnabled(settingsPath))) {
     sendJsonPlain(res, 404, { error: "ui disabled" });
@@ -309,7 +309,7 @@ export async function handleUiAnnotate(
   req: IncomingMessage,
   res: ServerResponse,
   vaultPath: string,
-  settingsPath?: string,
+  settingsPath?: string
 ): Promise<void> {
   if (!(await getUiEnabled(settingsPath))) {
     sendJsonPlain(res, 404, { error: "ui disabled" });
@@ -333,7 +333,12 @@ export async function handleUiAnnotate(
   const id = typeof body.id === "string" ? body.id.replace(/[[\]\n\r]/g, "").trim() : "";
   const kind = typeof body.kind === "string" ? body.kind : "";
   const note =
-    typeof body.note === "string" ? body.note.replace(/[\n\r]+/g, " ").trim().slice(0, 500) : "";
+    typeof body.note === "string"
+      ? body.note
+          .replace(/[\n\r]+/g, " ")
+          .trim()
+          .slice(0, 500)
+      : "";
   if (!id || !(CARE_KINDS as readonly string[]).includes(kind)) {
     sendJsonPlain(res, 400, { error: "need id and kind (delete|edit|write|note)" });
     return;
@@ -368,7 +373,7 @@ export async function handleWebUi(
   res: ServerResponse,
   url: string,
   webUiDir: string = resolveWebUiDir(),
-  settingsPath?: string,
+  settingsPath?: string
 ): Promise<void> {
   if (!(await getUiEnabled(settingsPath))) {
     sendPlain(res, 404, "vault map UI is disabled — enable with: bastra config set ui.enabled true");
@@ -406,19 +411,27 @@ export async function handleWebUi(
       // Bind validation and reading to one descriptor (#1238, CodeQL).
       const file = await open(target, "r");
       try {
-        if (!(await file.stat()).isFile()) { sendPlain(res, 404, "not found"); return; }
+        if (!(await file.stat()).isFile()) {
+          sendPlain(res, 404, "not found");
+          return;
+        }
         // Resolve before first paint; disabled clients never wire the Tasks view.
         const enabled = tasksEnabled();
         // UI language follows language.primary: "de" → German, anything else → English.
         const lang = (await getPrimaryLanguage(settingsPath)) === "de" ? "de" : "en";
         html = (await file.readFile("utf8"))
-          .replace('<html', `<html data-tasks-enabled="${enabled}" data-lang="${lang}"`)
+          .replace("<html", `<html data-tasks-enabled="${enabled}" data-lang="${lang}"`)
           .replace('data-view="tasks" hidden', enabled ? 'data-view="tasks"' : 'data-view="tasks" hidden');
         contentLength = Buffer.byteLength(html);
-      } finally { await file.close(); }
+      } finally {
+        await file.close();
+      }
     } else {
       const st = await stat(target);
-      if (!st.isFile()) { sendPlain(res, 404, "not found"); return; }
+      if (!st.isFile()) {
+        sendPlain(res, 404, "not found");
+        return;
+      }
       contentLength = st.size;
     }
     res.writeHead(200, {
@@ -431,7 +444,10 @@ export async function handleWebUi(
       // would just suggest a protection that isn't happening.
       ...(type.startsWith("text/html") ? { "Content-Security-Policy": CSP } : {}),
     });
-    if (html !== undefined) { res.end(html); return; }
+    if (html !== undefined) {
+      res.end(html);
+      return;
+    }
     createReadStream(target)
       .on("error", () => res.destroy())
       .pipe(res);

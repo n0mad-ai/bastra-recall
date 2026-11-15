@@ -20,11 +20,10 @@ import { evalRunMark } from "./training-signal.js"; // #1128-capture
 export function eventLogFile(
   logDir: string,
   ts: string,
-  row: { session_id?: unknown; dimensions?: { client?: unknown } | null },
+  row: { session_id?: unknown; dimensions?: { client?: unknown } | null }
 ): string {
   const replay =
-    row.dimensions?.client === "replay" ||
-    (typeof row.session_id === "string" && row.session_id.startsWith("replay-"));
+    row.dimensions?.client === "replay" || (typeof row.session_id === "string" && row.session_id.startsWith("replay-"));
   return join(logDir, `${replay ? "replay" : "events"}-${ts.slice(0, 10)}.jsonl`);
 }
 

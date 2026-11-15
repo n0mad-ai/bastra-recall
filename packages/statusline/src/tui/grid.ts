@@ -1,10 +1,4 @@
-import type {
-  GridCell,
-  AlignValue,
-  TuiGridBreakpoint,
-  TuiGridConfig,
-  BoxChars,
-} from "./types";
+import type { GridCell, AlignValue, TuiGridBreakpoint, TuiGridConfig, BoxChars } from "./types";
 import { visibleLength } from "../utils/terminal";
 import { truncateAnsi, padRight, padLeft, padCenter } from "./primitives";
 
@@ -13,12 +7,7 @@ export const EMPTY_CELL = ".";
 
 // Segments whose content is resolved after column widths are known (lateResolve).
 // Auto-width measurement must skip these to avoid locking columns to placeholder widths.
-export const LATE_RESOLVE_SEGMENTS = new Set([
-  "context",
-  "context.bar",
-  "block.bar",
-  "weekly.bar",
-]);
+export const LATE_RESOLVE_SEGMENTS = new Set(["context", "context.bar", "block.bar", "weekly.bar"]);
 
 function isDividerRow(row: GridCell[]): boolean {
   return row.length === 1 && row[0]!.segment === DIVIDER;
@@ -30,11 +19,7 @@ function parseFr(colDef: string): number {
   return !isNaN(fr) && fr > 0 ? fr : 0;
 }
 
-function distributeExact(
-  total: number,
-  targets: number[],
-  widths: number[],
-): void {
+function distributeExact(total: number, targets: number[], widths: number[]): void {
   const base = Math.floor(total / targets.length);
   let extra = total - base * targets.length;
   for (const idx of targets) {
@@ -43,12 +28,7 @@ function distributeExact(
   }
 }
 
-function spanCellWidth(
-  colWidths: number[],
-  startIdx: number,
-  spanSize: number,
-  sepWidth: number,
-): number {
+function spanCellWidth(colWidths: number[], startIdx: number, spanSize: number, sepWidth: number): number {
   let width = 0;
   for (let j = 0; j < spanSize; j++) {
     width += colWidths[startIdx + j] ?? 0;
@@ -66,10 +46,7 @@ export interface GridResult {
 
 // --- Breakpoint Selection ---
 
-export function selectBreakpoint(
-  breakpoints: TuiGridBreakpoint[],
-  panelWidth: number,
-): TuiGridBreakpoint {
+export function selectBreakpoint(breakpoints: TuiGridBreakpoint[], panelWidth: number): TuiGridBreakpoint {
   let best: TuiGridBreakpoint | undefined;
   for (const bp of breakpoints) {
     if (panelWidth >= bp.minWidth) {
@@ -136,10 +113,7 @@ export function parseAreas(areas: string[]): GridCell[][] {
 
 // --- Matrix Culling ---
 
-export function cullMatrix(
-  matrix: GridCell[][],
-  resolvedData: Record<string, string>,
-): GridCell[][] {
+export function cullMatrix(matrix: GridCell[][], resolvedData: Record<string, string>): GridCell[][] {
   // Phase 1: Replace cells whose segment has no data with "."
   const processed = matrix.map((row) => {
     if (isDividerRow(row)) return row;
@@ -223,7 +197,7 @@ function measureAutoWidths(
   colCount: number,
   matrix: GridCell[][],
   resolvedData: Record<string, string>,
-  lateResolveNames?: ReadonlySet<string>,
+  lateResolveNames?: ReadonlySet<string>
 ): number[] {
   const widths = Array.from<number>({ length: colCount }).fill(0);
   for (const row of matrix) {
@@ -250,15 +224,10 @@ export function calculateColumnWidths(
   resolvedData: Record<string, string>,
   contentWidth: number,
   separatorWidth: number,
-  lateResolveNames?: ReadonlySet<string>,
+  lateResolveNames?: ReadonlySet<string>
 ): number[] {
   const colCount = columns.length;
-  const autoWidths = measureAutoWidths(
-    colCount,
-    matrix,
-    resolvedData,
-    lateResolveNames,
-  );
+  const autoWidths = measureAutoWidths(colCount, matrix, resolvedData, lateResolveNames);
   const widths = Array.from<number>({ length: colCount }).fill(0);
 
   // Phase 1: Apply auto widths
@@ -324,15 +293,10 @@ export function solveFitContentLayout(
   resolvedData: Record<string, string>,
   separatorWidth: number,
   horizontalPadding: number,
-  lateResolveNames?: ReadonlySet<string>,
+  lateResolveNames?: ReadonlySet<string>
 ): { panelWidth: number; colWidths: number[] } {
   const colCount = columns.length;
-  const autoWidths = measureAutoWidths(
-    colCount,
-    matrix,
-    resolvedData,
-    lateResolveNames,
-  );
+  const autoWidths = measureAutoWidths(colCount, matrix, resolvedData, lateResolveNames);
 
   // Seed from intrinsic non-spanning content and fixed widths
   const widths = Array.from<number>({ length: colCount });
@@ -351,8 +315,7 @@ export function solveFitContentLayout(
     if (isDividerRow(row)) continue;
     for (let i = 0; i < row.length; i++) {
       const cell = row[i]!;
-      if (!cell.spanStart || cell.spanSize <= 1 || cell.segment === EMPTY_CELL)
-        continue;
+      if (!cell.spanStart || cell.spanSize <= 1 || cell.segment === EMPTY_CELL) continue;
 
       const content = resolvedData[cell.segment] || "";
       const contentLen = visibleLength(content);
@@ -416,7 +379,7 @@ export function renderGridRow(
   resolvedData: Record<string, string>,
   separator: string,
   horizontalPadding = 0,
-  padShrink?: number[],
+  padShrink?: number[]
 ): string {
   const parts: string[] = [];
   const sepWidth = visibleLength(separator);
@@ -431,8 +394,7 @@ export function renderGridRow(
     // Compute per-cell padding from column shrink values
     const lastCol = i + cell.spanSize - 1;
     const leftShrink = align[i] === "right" ? (padShrink?.[i] ?? 0) : 0;
-    const rightShrink =
-      align[lastCol] === "left" ? (padShrink?.[lastCol] ?? 0) : 0;
+    const rightShrink = align[lastCol] === "left" ? (padShrink?.[lastCol] ?? 0) : 0;
     const leftPad = hPad - leftShrink;
     const rightPad = hPad - rightShrink;
 
@@ -463,11 +425,7 @@ export function renderGridRow(
 
 // --- Divider Rendering ---
 
-export function renderGridDivider(
-  box: BoxChars,
-  innerWidth: number,
-  dividerChar?: string,
-): string {
+export function renderGridDivider(box: BoxChars, innerWidth: number, dividerChar?: string): string {
   const ch = dividerChar || box.horizontal;
   return box.teeLeft + ch.repeat(innerWidth) + box.teeRight;
 }
@@ -479,7 +437,7 @@ export function renderGrid(
   resolvedData: Record<string, string>,
   box: BoxChars,
   rawTerminalWidth: number,
-  lateResolve?: (segment: string, cellWidth: number) => string | undefined,
+  lateResolve?: (segment: string, cellWidth: number) => string | undefined
 ): GridResult {
   const minWidth = gridConfig.minWidth ?? 32;
   const maxWidth = gridConfig.maxWidth ?? Infinity;
@@ -491,19 +449,13 @@ export function renderGrid(
 
   // Breakpoint selection always uses available width (terminal - reserve)
   const widthReserve = gridConfig.widthReserve ?? 45;
-  const availableWidth = Math.min(
-    maxWidth,
-    Math.max(minWidth, rawTerminalWidth - widthReserve),
-  );
+  const availableWidth = Math.min(maxWidth, Math.max(minWidth, rawTerminalWidth - widthReserve));
   const bp = selectBreakpoint(gridConfig.breakpoints, availableWidth);
 
   // Panel width for rendering
   let panelWidth: number;
   if (fitContent) {
-    panelWidth =
-      maxWidth !== Infinity
-        ? Math.min(rawTerminalWidth, maxWidth)
-        : rawTerminalWidth;
+    panelWidth = maxWidth !== Infinity ? Math.min(rawTerminalWidth, maxWidth) : rawTerminalWidth;
   } else {
     panelWidth = availableWidth;
   }
@@ -529,14 +481,7 @@ export function renderGrid(
   }
 
   if (fitContent) {
-    const solved = solveFitContentLayout(
-      bp.columns,
-      matrix,
-      resolvedData,
-      sepWidth,
-      hPad,
-      lateNames,
-    );
+    const solved = solveFitContentLayout(bp.columns, matrix, resolvedData, sepWidth, hPad, lateNames);
     panelWidth = Math.min(maxWidth, Math.max(minWidth, solved.panelWidth));
     colWidths = solved.colWidths;
 
@@ -568,14 +513,7 @@ export function renderGrid(
     const innerW = panelWidth - 2;
     const ewp = Math.max(0, 1 - hPad);
     const contentW = innerW - ewp * 2 - bp.columns.length * hPad * 2;
-    colWidths = calculateColumnWidths(
-      bp.columns,
-      matrix,
-      resolvedData,
-      contentW,
-      sepWidth,
-      lateNames,
-    );
+    colWidths = calculateColumnWidths(bp.columns, matrix, resolvedData, contentW, sepWidth, lateNames);
   }
 
   const innerWidth = panelWidth - 2;
@@ -586,8 +524,7 @@ export function renderGrid(
   const contentWidth = innerWidth - extraWallPad * 2;
 
   // Alignment defaults
-  const align: AlignValue[] =
-    bp.align || bp.columns.map(() => "left" as AlignValue);
+  const align: AlignValue[] = bp.align || bp.columns.map(() => "left" as AlignValue);
 
   // Adaptive padding: absorb alignment gaps into padding, redistribute savings to fr columns.
   // padShrink[col] = how much of hPad is absorbed by existing alignment gap on the aligned side.
@@ -658,12 +595,7 @@ export function renderGrid(
       if (isDividerRow(row)) continue;
       for (let i = 0; i < row.length; i++) {
         const cell = row[i]!;
-        if (
-          !cell.spanStart ||
-          cell.segment === EMPTY_CELL ||
-          cell.segment === DIVIDER
-        )
-          continue;
+        if (!cell.spanStart || cell.segment === EMPTY_CELL || cell.segment === DIVIDER) continue;
         if (seen.has(cell.segment)) continue;
         seen.add(cell.segment);
 
@@ -691,20 +623,10 @@ export function renderGrid(
     if (isDividerRow(row)) {
       lines.push(renderGridDivider(box, innerWidth, dividerChar));
     } else {
-      const rowStr = renderGridRow(
-        row,
-        colWidths,
-        align,
-        resolvedData,
-        colSep,
-        hPad,
-        padShrink,
-      );
+      const rowStr = renderGridRow(row, colWidths, align, resolvedData, colSep, hPad, padShrink);
       const truncated = truncateAnsi(rowStr, contentWidth);
       const padded = padRight(truncated, contentWidth);
-      lines.push(
-        box.vertical + wallPadStr + padded + wallPadStr + box.vertical,
-      );
+      lines.push(box.vertical + wallPadStr + padded + wallPadStr + box.vertical);
     }
   }
 

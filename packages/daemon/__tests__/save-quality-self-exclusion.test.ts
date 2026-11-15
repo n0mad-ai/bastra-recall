@@ -49,10 +49,7 @@ const REFRESH = {
   topic_path: ["ops", "deploy"],
   tags: ["deploy", "rollback"],
   scope: "selftest",
-  recall_when: [
-    "about to roll back a failed ingest deploy",
-    "deploy of the ingest worker went wrong",
-  ],
+  recall_when: ["about to roll back a failed ingest deploy", "deploy of the ingest worker went wrong"],
   body: "Roll back with the previous image tag, then drain the queue.",
 };
 
@@ -71,13 +68,13 @@ test("overwrite without an explicit id does not flag the memory as its own dupli
   const dupIds = second.save_quality.duplicate_candidates.map((c) => c.id);
   assert.ok(
     !dupIds.includes(second.id),
-    `the memory must not be its own duplicate candidate, got ${JSON.stringify(dupIds)}`,
+    `the memory must not be its own duplicate candidate, got ${JSON.stringify(dupIds)}`
   );
 
   for (const collision of second.save_quality.trigger_collisions) {
     assert.ok(
       !collision.examples.includes(second.id),
-      `trigger '${collision.trigger}' must not collide with the memory itself`,
+      `trigger '${collision.trigger}' must not collide with the memory itself`
     );
   }
 });
@@ -116,6 +113,6 @@ test("a genuinely different memory is still reported as a candidate", async (t) 
   const dupIds = sibling.save_quality.duplicate_candidates.map((c) => c.id);
   assert.ok(
     dupIds.includes("deploy-runbook-rollback-steps"),
-    `the near-identical sibling must still be surfaced, got ${JSON.stringify(dupIds)}`,
+    `the near-identical sibling must still be surfaced, got ${JSON.stringify(dupIds)}`
   );
 });

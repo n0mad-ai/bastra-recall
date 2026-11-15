@@ -63,9 +63,7 @@ function parseArgs(argv: string[]): Args {
     else if (f === "--out") a.out = argv[++i] ?? "";
     else if (f === "--gold") a.gold = argv[++i] ?? "";
     else if (f === "-h" || f === "--help") {
-      console.log(
-        "goldset-label --template|--check|--merge --staged S [--labels L] [--out O] [--gold G]",
-      );
+      console.log("goldset-label --template|--check|--merge --staged S [--labels L] [--out O] [--gold G]");
       process.exit(0);
     } else throw new Error(`unknown flag: ${f}`);
   }
@@ -127,11 +125,7 @@ function differingFields(a: GoldCase, b: GoldCase): string[] {
  * was `--merge` heute schriebe. Was hier abweicht, ist genau der Drift, den
  * bisher niemand gemeldet hat.
  */
-export function checkGoldAgainstLabels(
-  goldDoc: unknown,
-  expected: GoldCase[],
-  provenance: MergedFrom,
-): GoldIssue[] {
+export function checkGoldAgainstLabels(goldDoc: unknown, expected: GoldCase[], provenance: MergedFrom): GoldIssue[] {
   const issues: GoldIssue[] = [];
   const doc = (goldDoc ?? {}) as { cases?: GoldCase[]; merged_from?: Partial<MergedFrom> };
   const have = new Map((doc.cases ?? []).map((c) => [c.id, c]));
@@ -246,20 +240,16 @@ function main(): void {
     // zusammen" gelesen werden — das hat er nie geprüft.
     if (!args.gold) {
       console.error(
-        `[goldset] NOT CHECKED: no --gold given, so no merged gold was revalidated against these labels (#447).`,
+        `[goldset] NOT CHECKED: no --gold given, so no merged gold was revalidated against these labels (#447).`
       );
       return;
     }
     const goldDoc = JSON.parse(readFileSync(args.gold, "utf8")) as unknown;
-    const drift = checkGoldAgainstLabels(
-      goldDoc,
-      mergeCases(staged, labels),
-      mergedFrom(args.staged, args.labels),
-    );
+    const drift = checkGoldAgainstLabels(goldDoc, mergeCases(staged, labels), mergedFrom(args.staged, args.labels));
     if (drift.length) {
       for (const d of drift) console.error(`[goldset] gold ${d.where}: ${d.problem}`);
       throw new Error(
-        `${args.gold} has drifted from ${args.labels} in ${drift.length} place(s) — re-merge before using it as measurement evidence`,
+        `${args.gold} has drifted from ${args.labels} in ${drift.length} place(s) — re-merge before using it as measurement evidence`
       );
     }
     console.error(`[goldset] ${args.gold} still matches these labels exactly.`);
@@ -282,9 +272,9 @@ function main(): void {
           cases,
         },
         null,
-        2,
+        2
       ) + "\n",
-      { mode: 0o600 },
+      { mode: 0o600 }
     );
     console.error(`[goldset] wrote ${cases.length} gold cases to ${args.out}`);
     console.error(`[goldset] coverage: ${JSON.stringify(cov)}`);
@@ -293,7 +283,7 @@ function main(): void {
       // the file's case count would otherwise take the larger one as the set.
       console.error(
         `[goldset] ${cov.probes} of ${cov.total_with_probes} cases are probes ` +
-          `(${JSON.stringify(cov.by_probe_group)}) — main denominator is ${cov.total}`,
+          `(${JSON.stringify(cov.by_probe_group)}) — main denominator is ${cov.total}`
       );
     }
     // §19 lists the categories the set must reach. Naming the empty ones is the

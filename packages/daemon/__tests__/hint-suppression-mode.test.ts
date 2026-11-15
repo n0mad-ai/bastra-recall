@@ -28,24 +28,47 @@ import { primeUsageShadowCache, resetUsageShadowCache } from "../src/trust-shado
 
 function memo(id: string, title: string, trigger: string, body: string): string {
   return [
-    "---", `id: ${id}`, `title: ${title}`, "type: lesson", `summary: ${title}`,
-    "topic_path:", "  - test", "tags:", "  - test", "scope: suppression-test",
-    "recall_when:", `  - ${trigger}`, "created: 2026-01-01", "updated: 2026-01-01",
-    "---", "", body, "",
+    "---",
+    `id: ${id}`,
+    `title: ${title}`,
+    "type: lesson",
+    `summary: ${title}`,
+    "topic_path:",
+    "  - test",
+    "tags:",
+    "  - test",
+    "scope: suppression-test",
+    "recall_when:",
+    `  - ${trigger}`,
+    "created: 2026-01-01",
+    "updated: 2026-01-01",
+    "---",
+    "",
+    body,
+    "",
   ].join("\n");
 }
 
-function httpPost(port: number, path: string, payload: unknown): Promise<{ status: number; json: Record<string, unknown> }> {
+function httpPost(
+  port: number,
+  path: string,
+  payload: unknown
+): Promise<{ status: number; json: Record<string, unknown> }> {
   const body = JSON.stringify(payload);
   return new Promise((resolve, reject) => {
     const req = request(
-      { host: "127.0.0.1", port, path, method: "POST",
-        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) } },
+      {
+        host: "127.0.0.1",
+        port,
+        path,
+        method: "POST",
+        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+      },
       (res) => {
         let raw = "";
         res.on("data", (c) => (raw += c));
         res.on("end", () => resolve({ status: res.statusCode ?? 0, json: JSON.parse(raw || "{}") }));
-      },
+      }
     );
     req.on("error", reject);
     req.end(body);
@@ -56,7 +79,11 @@ async function readHookRecall(logDir: string): Promise<Record<string, unknown>[]
   for (let i = 0; i < 25; i++) {
     await new Promise((r) => setTimeout(r, 40));
     let files: string[];
-    try { files = await readdir(logDir); } catch { continue; }
+    try {
+      files = await readdir(logDir);
+    } catch {
+      continue;
+    }
     const out: Record<string, unknown>[] = [];
     for (const f of files.filter((n) => n.startsWith("events-"))) {
       const raw = await readFile(join(logDir, f), "utf8");
@@ -78,11 +105,15 @@ async function readHookRecall(logDir: string): Promise<Record<string, unknown>[]
 async function daemon(
   t: { after: (fn: () => unknown) => void },
   mode: string | undefined,
-  armed?: HintSuppressionMode,
+  armed?: HintSuppressionMode
 ) {
   const dir = await mkdtemp(join(tmpdir(), "bastra-suppress-vault-"));
   const logDir = await mkdtemp(join(tmpdir(), "bastra-suppress-logs-"));
-  await writeFile(join(dir, "a.md"), memo("a", "Deployment-Strategie", "wenn wir deployen", "Text über deployen."), "utf8");
+  await writeFile(
+    join(dir, "a.md"),
+    memo("a", "Deployment-Strategie", "wenn wir deployen", "Text über deployen."),
+    "utf8"
+  );
   const vault = new Vault(dir);
   await vault.init();
   const search = new SearchIndex(vault);
@@ -103,14 +134,22 @@ async function daemon(
   resetUsageShadowCache();
   primeUsageShadowCache(dir, {
     a: {
-      surfaced: 8, loaded: 0, acted_on: 0,
+      surfaced: 8,
+      loaded: 0,
+      acted_on: 0,
       revision: hintRevision(vault.get("a")),
-      revision_surfaced: 8, revision_loaded: 0, revision_acted_on: 0,
+      revision_surfaced: 8,
+      revision_loaded: 0,
+      revision_acted_on: 0,
     },
   });
 
   const handle = await startHttpServer({
-    port: 0, vault, search, telemetry, version: "test",
+    port: 0,
+    vault,
+    search,
+    telemetry,
+    version: "test",
     toolDeps: { vault, search, telemetry, vaultPath: dir },
     documentWriteEnabled: false,
     embedding: { on: false, providerId: null, source: "none" },
@@ -133,11 +172,19 @@ test("Voreinstellung: der Treffer bleibt in der Antwort, das Event zählt ihn al
   const d = await daemon(t, undefined);
   const res = await httpPost(d.port, "/hook/recall", { query: "deployen", k: 5 });
   assert.equal(res.status, 200);
-  assert.deepEqual((res.json.hits as { id: string }[]).map((h) => h.id), ["a"], "kein Treffer weniger");
+  assert.deepEqual(
+    (res.json.hits as { id: string }[]).map((h) => h.id),
+    ["a"],
+    "kein Treffer weniger"
+  );
 
   const [event] = await readHookRecall(d.logDir);
   const suppressed = event.usage_suppressed as { id: string; surfaced: number }[];
-  assert.deepEqual(suppressed.map((s) => s.id), ["a"], "die Zählung läuft weiter");
+  assert.deepEqual(
+    suppressed.map((s) => s.id),
+    ["a"],
+    "die Zählung läuft weiter"
+  );
   assert.equal(suppressed[0].surfaced, 8);
   assert.equal(event.usage_suppressed_mode, "shadow", "ein Report muss Schatten von Wirkbetrieb trennen können");
   assert.equal(typeof event.usage_suppressed_tokens_est, "number");
@@ -149,14 +196,20 @@ test("live über die Naht: dieselbe Liste, aber der Treffer verlässt die Antwor
   const res = await httpPost(d.port, "/hook/recall", { query: "deployen", k: 5 });
   assert.deepEqual(res.json.hits, [], "im Wirkbetrieb wird geschnitten");
   const [event] = await readHookRecall(d.logDir);
-  assert.deepEqual((event.usage_suppressed as { id: string }[]).map((s) => s.id), ["a"]);
+  assert.deepEqual(
+    (event.usage_suppressed as { id: string }[]).map((s) => s.id),
+    ["a"]
+  );
   assert.equal(event.usage_suppressed_mode, "live");
 });
 
 test("off: der Durchlauf entfällt ganz, das Event trägt keine Liste", async (t) => {
   const d = await daemon(t, "off");
   const res = await httpPost(d.port, "/hook/recall", { query: "deployen", k: 5 });
-  assert.deepEqual((res.json.hits as { id: string }[]).map((h) => h.id), ["a"]);
+  assert.deepEqual(
+    (res.json.hits as { id: string }[]).map((h) => h.id),
+    ["a"]
+  );
   const [event] = await readHookRecall(d.logDir);
   assert.equal(event.usage_suppressed, undefined);
   assert.equal(event.usage_suppressed_mode, undefined);
@@ -175,10 +228,14 @@ test("#484: BASTRA_HINT_SUPPRESS=live schaltet nichts scharf — der Treffer ble
   assert.deepEqual(
     (res.json.hits as { id: string }[]).map((h) => h.id),
     ["a"],
-    "aus der Umgebung darf der Breaker nicht mehr schneiden",
+    "aus der Umgebung darf der Breaker nicht mehr schneiden"
   );
 
   const [event] = await readHookRecall(d.logDir);
-  assert.deepEqual((event.usage_suppressed as { id: string }[]).map((s) => s.id), ["a"], "die Schattenmessung bleibt");
+  assert.deepEqual(
+    (event.usage_suppressed as { id: string }[]).map((s) => s.id),
+    ["a"],
+    "die Schattenmessung bleibt"
+  );
   assert.equal(event.usage_suppressed_mode, "shadow", "`live` aus der Umgebung ist Schatten");
 });

@@ -19,11 +19,7 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { Vault } from "../src/vault.js";
 import { AuditLog } from "../src/audit-log.js";
-import {
-  auditedSave,
-  auditedSoftDelete,
-  auditedRestore,
-} from "../src/audit-save.js";
+import { auditedSave, auditedSoftDelete, auditedRestore } from "../src/audit-save.js";
 import type { SaveMemoryInput } from "../src/save-schema.js";
 
 const CONTEXT = { actor: "assistant", reason: "test mutation" } as const;
@@ -178,10 +174,7 @@ test("an unchanged ledger still serves from the cache", async (t) => {
  */
 
 /** stat() inside a 0o000 directory fails with EACCES — unless we are root. */
-async function withUnreadableAuditDir(
-  dir: string,
-  fn: () => Promise<void>,
-): Promise<void> {
+async function withUnreadableAuditDir(dir: string, fn: () => Promise<void>): Promise<void> {
   const bastraDir = path.join(dir, ".bastra");
   await chmod(bastraDir, 0o000);
   try {
@@ -234,10 +227,13 @@ test("a stat error on a cold instance throws instead of reporting an empty ledge
     // Cold instance: nothing cached, and the ledger is not missing — it is
     // unreadable. Claiming "no entries" here is the lie this guards against.
     const cold = new AuditLog(dir);
-    await assert.rejects(() => cold.readAll(), (err: NodeJS.ErrnoException) => {
-      assert.equal(err.code, "EACCES");
-      return true;
-    });
+    await assert.rejects(
+      () => cold.readAll(),
+      (err: NodeJS.ErrnoException) => {
+        assert.equal(err.code, "EACCES");
+        return true;
+      }
+    );
   });
 });
 

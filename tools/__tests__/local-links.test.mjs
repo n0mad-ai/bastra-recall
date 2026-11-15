@@ -24,7 +24,7 @@ test("every local markdown link in the repository resolves", () => {
   assert.deepEqual(
     problems,
     [],
-    `broken local links:\n${problems.map((p) => `  ${p.file}: ${p.kind} ${p.target}`).join("\n")}`,
+    `broken local links:\n${problems.map((p) => `  ${p.file}: ${p.kind} ${p.target}`).join("\n")}`
   );
 });
 
@@ -55,7 +55,7 @@ test("the checker reports the two shapes the review found", () => {
       "",
       "[0.9.1]: https://example.invalid/v0.9.1",
       "",
-    ].join("\n"),
+    ].join("\n")
   );
 
   const problems = checkFile(file, root);

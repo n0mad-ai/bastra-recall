@@ -128,11 +128,13 @@ export function platformSupported(platform: NodeJS.Platform = process.platform):
  * `lookupExternal` is injected so the probe stays testable without a PATH
  * search; in production it is `whichGraphify`.
  */
-export async function probeTool(options: {
-  home?: string;
-  platform?: NodeJS.Platform;
-  lookupExternal?: () => Promise<string | null>;
-} = {}): Promise<ToolStatus> {
+export async function probeTool(
+  options: {
+    home?: string;
+    platform?: NodeJS.Platform;
+    lookupExternal?: () => Promise<string | null>;
+  } = {}
+): Promise<ToolStatus> {
   const platform = options.platform ?? process.platform;
   if (!platformSupported(platform)) {
     return { usable: null, external: null, reason: "unsupported-platform" };
@@ -153,9 +155,7 @@ export async function probeTool(options: {
   // A binary that is not the pinned version is refused, not used with a
   // warning: the parser, the relation allowlist and the license statement are
   // all tied to a specific release.
-  return pinned
-    ? { usable: probe, external, reason: "ok" }
-    : { usable: null, external, reason: "version-mismatch" };
+  return pinned ? { usable: probe, external, reason: "ok" } : { usable: null, external, reason: "version-mismatch" };
 }
 
 /**
@@ -196,9 +196,7 @@ export const FORBIDDEN_SUBCOMMANDS: ReadonlyMap<string, string> = new Map([
 export function assertNoInstaller(args: readonly string[]): void {
   const first = args[0];
   if (first !== undefined && FORBIDDEN_SUBCOMMANDS.has(first)) {
-    throw new Error(
-      `refusing to run \`graphify ${first}\`: ${FORBIDDEN_SUBCOMMANDS.get(first)!} (#573)`,
-    );
+    throw new Error(`refusing to run \`graphify ${first}\`: ${FORBIDDEN_SUBCOMMANDS.get(first)!} (#573)`);
   }
 }
 

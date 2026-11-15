@@ -85,7 +85,10 @@ test("a hook run from the npx cache is reported as ephemeral", async () => {
     running: "0.8.9",
     home: HOME,
   });
-  assert.ok(problems.some((p) => p.startsWith("hook.js") && /EPHEMERAL/.test(p)), problems.join(" | "));
+  assert.ok(
+    problems.some((p) => p.startsWith("hook.js") && /EPHEMERAL/.test(p)),
+    problems.join(" | ")
+  );
 });
 
 test("every registered hook is checked, not just the first one", async () => {
@@ -113,37 +116,30 @@ test("both event registrations of the shared bash-fail binary are path-checked",
   assert.equal(
     commands.filter(([file]) => file === "bash-fail-hook.js").length,
     2,
-    "the two event registrations must not collapse before path validation",
+    "the two event registrations must not collapse before path validation"
   );
   const problems = await checkHookPaths(commands, { exists: allExist, running: "0.8.9", home: HOME });
   assert.ok(
     problems.some((problem) => problem.startsWith("bash-fail-hook.js") && /STALE PIN/.test(problem)),
-    problems.join(" | "),
+    problems.join(" | ")
   );
 });
 
 // ─── path extraction ─────────────────────────────────────────────────────────
 
 test("the executed path is pulled out of the command in every form we write", () => {
-  assert.equal(
-    hookCommandPath(`node ${CURRENT}/hook.js`, "hook.js", HOME),
-    `${CURRENT}/hook.js`,
-  );
+  assert.equal(hookCommandPath(`node ${CURRENT}/hook.js`, "hook.js", HOME), `${CURRENT}/hook.js`);
   assert.equal(
     hookCommandPath(`node "/Users/t/My Vault/dist/hook.js"`, "hook.js", HOME),
     "/Users/t/My Vault/dist/hook.js",
-    "a quoted path with spaces must survive intact",
+    "a quoted path with spaces must survive intact"
   );
   assert.equal(
     hookCommandPath("node ~/.bastra/runtime/0.8.8/dist/stop-hook.js", "stop-hook.js", HOME),
     join(HOME, ".bastra/runtime/0.8.8/dist/stop-hook.js"),
-    "~ must expand — the stale-pin check compares against a real path",
+    "~ must expand — the stale-pin check compares against a real path"
   );
-  assert.equal(
-    hookCommandPath("node /some/other/thing.js", "hook.js", HOME),
-    null,
-    "no match is null, never a guess",
-  );
+  assert.equal(hookCommandPath("node /some/other/thing.js", "hook.js", HOME), null, "no match is null, never a guess");
 });
 
 test("a command with no resolvable path is a problem, not a silent pass", async () => {
@@ -161,14 +157,18 @@ test("a command with no resolvable path is a problem, not a silent pass", async 
 // `broken — 0/7 lanes registered`. Every matcher compared against `/${file}`
 // while the installer had written `C:\…\dist\session-hook.js`.
 
-const WIN_DIST = "C:\\Users\\tester\\AppData\\Roaming\\npm\\node_modules\\bastra-recall\\node_modules\\@bastra-recall\\daemon\\dist";
+const WIN_DIST =
+  "C:\\Users\\tester\\AppData\\Roaming\\npm\\node_modules\\bastra-recall\\node_modules\\@bastra-recall\\daemon\\dist";
 
 /** settings.json exactly as the installer writes it on Windows: every definition, backslash paths. */
 function windowsSettings(): Record<string, unknown> {
   const settings: Record<string, unknown[]> = {};
   for (const def of hookDefinitions({ includeStop: true })) {
     const file = def.bin.split(/[\\/]/).pop();
-    const entry = { ...(def.matcher ? { matcher: def.matcher } : {}), hooks: [{ type: "command", command: `node ${WIN_DIST}\\${file}`, __bastraRecall: true }] };
+    const entry = {
+      ...(def.matcher ? { matcher: def.matcher } : {}),
+      hooks: [{ type: "command", command: `node ${WIN_DIST}\\${file}`, __bastraRecall: true }],
+    };
     (settings[def.event] ??= []).push(entry);
   }
   return settings;
@@ -184,11 +184,19 @@ test("the executed path of a Windows command comes back native, so the #321 chec
   const cmd = `node ${WIN_DIST}\\stop-hook.js`;
   assert.equal(hookCommandPath(cmd, "stop-hook.js"), `${WIN_DIST}\\stop-hook.js`);
   assert.equal(hookCommandPath(`node "${WIN_DIST}\\stop-hook.js"`, "stop-hook.js"), `${WIN_DIST}\\stop-hook.js`);
-  const problems = await checkHookPaths(registeredHookCommands(windowsSettings()), { exists: allExist, running: "1.0.0", home: "C:\\Users\\tester" });
+  const problems = await checkHookPaths(registeredHookCommands(windowsSettings()), {
+    exists: allExist,
+    running: "1.0.0",
+    home: "C:\\Users\\tester",
+  });
   assert.deepEqual(problems, []);
 });
 
 test("a Windows hook whose file is gone is reported, not skipped", async () => {
-  const problems = await checkHookPaths(registeredHookCommands(windowsSettings()), { exists: async () => false, running: "1.0.0", home: "C:\\Users\\tester" });
+  const problems = await checkHookPaths(registeredHookCommands(windowsSettings()), {
+    exists: async () => false,
+    running: "1.0.0",
+    home: "C:\\Users\\tester",
+  });
   assert.ok(problems.length >= 7 && problems.every((p) => /MISSING/.test(p)), problems.join(" | "));
 });

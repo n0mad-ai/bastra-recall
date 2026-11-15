@@ -5,12 +5,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Vault } from "@bastra-recall/core";
-import {
-  buildIndex,
-  rankOf,
-  TREATMENT_RECALL_WHEN_BOOST,
-  EXPANDED_RECALL_WHEN_BOOST,
-} from "../src/index-config.js";
+import { buildIndex, rankOf, TREATMENT_RECALL_WHEN_BOOST, EXPANDED_RECALL_WHEN_BOOST } from "../src/index-config.js";
 
 /**
  * Arm-plumbing guard for the three-arm survival harness (#103).
@@ -95,7 +90,7 @@ test("CLI --arms lexical,expanded: multi-arm report with a consistent far-split"
         assert.equal(
           s.inPool + s.notRetrieved,
           a.slices.far.n,
-          `${arm}/${side}: in-pool + not-retrieved must equal far n`,
+          `${arm}/${side}: in-pool + not-retrieved must equal far n`
         );
       }
       assert.equal(Object.keys(a.personaRecall).length, 10);

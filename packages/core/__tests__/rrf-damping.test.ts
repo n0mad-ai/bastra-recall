@@ -41,7 +41,7 @@ test("a rank-1 hit in one arm beats a rank-20 hit in both", () => {
   assert.ok(
     solo.score > pair.score,
     `rank 1 in one arm (${solo.score}) must outrank rank 20 in both (${pair.score}) — ` +
-      "otherwise the fusion is scoring arm agreement, not relevance",
+      "otherwise the fusion is scoring arm agreement, not relevance"
   );
 });
 
@@ -50,7 +50,7 @@ test("the TREC default is what inverted it — same lists, k=60", () => {
   const old = fuseRRF(bm25, vector, 60);
   assert.ok(
     old.get("pair")!.score > old.get("solo")!.score,
-    "documents the regression this constant fixes: at k=60 the deep pair wins",
+    "documents the regression this constant fixes: at k=60 the deep pair wins"
   );
 });
 
@@ -86,7 +86,7 @@ test("the score at an intermediate rank is pinned, because the anchors cannot be
   assert.ok(
     deepPair < 100,
     `rank 20 in both arms scores ${deepPair.toFixed(1)}; above the MUST_LOAD band (100) it is ` +
-      "arm agreement being read as relevance",
+      "arm agreement being read as relevance"
   );
 
   // …and it must still clear the noise floor, or the fusion has stopped
@@ -101,7 +101,10 @@ test("the score at an intermediate rank is pinned, because the anchors cannot be
   assert.ok(
     soloDeep < 50,
     `one-armed rank 10 scores ${soloDeep.toFixed(1)} and clears the 50 floor — ` +
-      "the interrupting hooks would fire on one arm's tenth guess",
+      "the interrupting hooks would fire on one arm's tenth guess"
   );
-  assert.ok(soloDeep > 20, `one-armed rank 10 scores ${soloDeep.toFixed(1)}, so deep single-arm hits are gone entirely`);
+  assert.ok(
+    soloDeep > 20,
+    `one-armed rank 10 scores ${soloDeep.toFixed(1)}, so deep single-arm hits are gone entirely`
+  );
 });

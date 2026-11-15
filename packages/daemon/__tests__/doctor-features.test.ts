@@ -111,10 +111,17 @@ test("every core feature that is off carries the command that turns it on", () =
 
 test("hooks switched off in the client itself are named, even when every lane is registered", () => {
   const state = allOn();
-  state.clients = [{
-    surface: "claude-code",
-    features: { recallHooks: true, stopHook: true, skill: true, hooksDisabledBy: '"disableAllHooks": true in ~/.claude/settings.json' },
-  }];
+  state.clients = [
+    {
+      surface: "claude-code",
+      features: {
+        recallHooks: true,
+        stopHook: true,
+        skill: true,
+        hooksDisabledBy: '"disableAllHooks": true in ~/.claude/settings.json',
+      },
+    },
+  ];
   const line = lineFor(featureLines(state), "claude-code: recall hooks");
   assert.match(line, /off \("disableAllHooks": true/);
   assert.doesNotMatch(line, /✓/);
@@ -156,7 +163,10 @@ test("everything on: one on-line per feature and no hints anywhere", () => {
   const lines = featureLines(allOn());
   const { core } = split(lines);
   for (const line of core.slice(1)) assert.match(line, /✓/, line);
-  assert.ok(lines.every((l) => !l.includes("→ bastra")), lines.join("\n"));
+  assert.ok(
+    lines.every((l) => !l.includes("→ bastra")),
+    lines.join("\n")
+  );
   assert.match(lineFor(lines, "memory language"), /: de$/);
   assert.match(lineFor(lines, "code awareness (experimental)"), /on for 2 repositories/);
 });
@@ -250,14 +260,17 @@ test("collectFeatureState reads settings, the vault marker and the env switches"
   assert.equal(empty.coverageMap, false);
   assert.equal(empty.docsMode, "off");
 
-  await writeFile(join(home, ".bastra", "cli-settings.json"), JSON.stringify({
-    update: { mode: "notify" },
-    language: { primary: "de" },
-    embedding: { provider: "ollama" },
-    reflex: { enabled: false },
-    docs: { mode: "suggest" },
-    commons: { enabled: true },
-  }));
+  await writeFile(
+    join(home, ".bastra", "cli-settings.json"),
+    JSON.stringify({
+      update: { mode: "notify" },
+      language: { primary: "de" },
+      embedding: { provider: "ollama" },
+      reflex: { enabled: false },
+      docs: { mode: "suggest" },
+      commons: { enabled: true },
+    })
+  );
   await writeFile(join(vault, ".onboarding-done"), "onboarded via test\n");
   const set = await collectFeatureState([], vault, { BASTRA_CODE_AWARENESS: "off" });
   assert.equal(set.primaryLanguage, "de");
@@ -272,7 +285,6 @@ test("collectFeatureState reads settings, the vault marker and the env switches"
   assert.equal(set.commons, true);
 });
 
-
 /**
  * The Claude Code adapter fills the per-client row. Its paths are resolved
  * from HOME at import time, so it runs in a child with a temp HOME — the
@@ -282,8 +294,13 @@ function claudeCodeFeaturesIn(home: string): unknown {
   const adapter = new URL("../src/cli/adapters/claude-code.ts", import.meta.url).href;
   const r = spawnSync(
     process.execPath,
-    ["--import", "tsx", "-e", `import(${JSON.stringify(adapter)}).then(async (m) => { const r = await m.claudeCodeAdapter.doctor(); process.stdout.write(JSON.stringify(r.features ?? null)); })`],
-    { env: { ...process.env, HOME: home, BASTRA_DAEMON_URL: "http://127.0.0.1:1" }, encoding: "utf8" },
+    [
+      "--import",
+      "tsx",
+      "-e",
+      `import(${JSON.stringify(adapter)}).then(async (m) => { const r = await m.claudeCodeAdapter.doctor(); process.stdout.write(JSON.stringify(r.features ?? null)); })`,
+    ],
+    { env: { ...process.env, HOME: home, BASTRA_DAEMON_URL: "http://127.0.0.1:1" }, encoding: "utf8" }
   );
   assert.equal(r.status, 0, r.stderr);
   return JSON.parse(r.stdout);
@@ -293,26 +310,37 @@ test("claude-code: disableAllHooks, a missing Stop hook and a missing skill reac
   const home = await mkdtemp(join(tmpdir(), "bastra-doctor-features-cc-"));
   t.after(() => rm(home, { recursive: true, force: true }));
   await mkdir(join(home, ".claude"), { recursive: true });
-  await writeFile(join(home, ".claude.json"), JSON.stringify({
-    mcpServers: { "bastra-recall": { command: "node", args: [join(home, "forwarder.js")] } },
-  }));
-  const lane = (sub: string) => ({ hooks: [{ type: "command", command: `${join(home, "bastra-hook")} ${sub}`, __bastraRecall: true }] });
-  await writeFile(join(home, ".claude", "settings.json"), JSON.stringify({
-    disableAllHooks: true,
-    hooks: {
-      SessionStart: [{ matcher: "startup|resume|clear|compact|fork", ...lane("session") }],
-      SessionEnd: [lane("session")],
-      UserPromptSubmit: [lane("prompt")],
-      PreToolUse: [
-        { matcher: "Write|Edit|MultiEdit|NotebookEdit", ...lane("write") },
-        { matcher: "TodoWrite|TaskCreate|ExitPlanMode", ...lane("todo") },
-        { matcher: "Bash", ...lane("bash-pre") },
-        { matcher: "*", ...lane("gate") },
-      ],
-      PostToolUse: [{ matcher: "Bash", ...lane("bash-fail") }, { matcher: SAVE_NOTICE_MATCHER, ...lane("bash-fail") }],
-      PostToolUseFailure: [{ matcher: "Bash", ...lane("bash-fail") }],
-    },
-  }));
+  await writeFile(
+    join(home, ".claude.json"),
+    JSON.stringify({
+      mcpServers: { "bastra-recall": { command: "node", args: [join(home, "forwarder.js")] } },
+    })
+  );
+  const lane = (sub: string) => ({
+    hooks: [{ type: "command", command: `${join(home, "bastra-hook")} ${sub}`, __bastraRecall: true }],
+  });
+  await writeFile(
+    join(home, ".claude", "settings.json"),
+    JSON.stringify({
+      disableAllHooks: true,
+      hooks: {
+        SessionStart: [{ matcher: "startup|resume|clear|compact|fork", ...lane("session") }],
+        SessionEnd: [lane("session")],
+        UserPromptSubmit: [lane("prompt")],
+        PreToolUse: [
+          { matcher: "Write|Edit|MultiEdit|NotebookEdit", ...lane("write") },
+          { matcher: "TodoWrite|TaskCreate|ExitPlanMode", ...lane("todo") },
+          { matcher: "Bash", ...lane("bash-pre") },
+          { matcher: "*", ...lane("gate") },
+        ],
+        PostToolUse: [
+          { matcher: "Bash", ...lane("bash-fail") },
+          { matcher: SAVE_NOTICE_MATCHER, ...lane("bash-fail") },
+        ],
+        PostToolUseFailure: [{ matcher: "Bash", ...lane("bash-fail") }],
+      },
+    })
+  );
   const features = claudeCodeFeaturesIn(home) as Record<string, unknown>;
   assert.equal(features.recallHooks, true);
   assert.equal(features.stopHook, false);
@@ -330,8 +358,15 @@ test("/health says which generation model the paraphraser runs, and null when no
   // doctor can only name the model the daemon actually started when the
   // daemon says it: the switch and the model live in its service environment.
   // Revert-check: drop the trigger_expand spread from buildHealthPayload.
-  const base = { vaultSize: () => 0, version: "t", embedding: { on: true, source: "test" } as never, updateState: () => null };
-  assert.deepEqual(buildHealthPayload({ ...base, triggerExpand: () => ({ model: "gemma3:4b" }) }).trigger_expand, { model: "gemma3:4b" });
+  const base = {
+    vaultSize: () => 0,
+    version: "t",
+    embedding: { on: true, source: "test" } as never,
+    updateState: () => null,
+  };
+  assert.deepEqual(buildHealthPayload({ ...base, triggerExpand: () => ({ model: "gemma3:4b" }) }).trigger_expand, {
+    model: "gemma3:4b",
+  });
   assert.equal(buildHealthPayload({ ...base, triggerExpand: () => null }).trigger_expand, null);
   assert.ok(!("trigger_expand" in buildHealthPayload(base)), "a daemon that does not wire it does not claim a value");
 });
@@ -339,10 +374,19 @@ test("/health says which generation model the paraphraser runs, and null when no
 test("#635: a search-only tool surface and a disabled session context show as off, with the edit that restores them", () => {
   // Revert-check: drop the toolSurface / sessionContextOff rows from featureLines.
   const state = allOn();
-  state.clients = [{
-    surface: "codex",
-    features: { recallHooks: true, stopHook: true, skill: true, toolSurface: "search", sessionContextOff: true, mcpConfig: "/h/.codex/config.toml" },
-  }];
+  state.clients = [
+    {
+      surface: "codex",
+      features: {
+        recallHooks: true,
+        stopHook: true,
+        skill: true,
+        toolSurface: "search",
+        sessionContextOff: true,
+        mcpConfig: "/h/.codex/config.toml",
+      },
+    },
+  ];
   const lines = featureLines(state);
   const surface = lineFor(lines, "codex: saving from the agent");
   assert.match(surface, /○ .*off \(BASTRA_TOOL_SURFACE=search/);
@@ -355,9 +399,23 @@ test("#635: a search-only tool surface and a disabled session context show as of
 });
 
 test("#635: mcpEnvFeatures reads a Codex transport and a JSON server block alike, and only non-defaults", () => {
-  const codexTransport = { type: "stdio", command: "node", args: ["/f.js"], env: { BASTRA_TOOL_SURFACE: " Search ", BASTRA_MCP_SESSION_CONTEXT: "0" } };
-  assert.deepEqual(mcpEnvFeatures(codexTransport, "/c.toml"), { toolSurface: "search", sessionContextOff: true, mcpConfig: "/c.toml" });
-  for (const env of [{ BASTRA_TOOL_SURFACE: "write" }, { BASTRA_TOOL_SURFACE: "full" }, { BASTRA_MCP_SESSION_CONTEXT: "1" }, {}]) {
+  const codexTransport = {
+    type: "stdio",
+    command: "node",
+    args: ["/f.js"],
+    env: { BASTRA_TOOL_SURFACE: " Search ", BASTRA_MCP_SESSION_CONTEXT: "0" },
+  };
+  assert.deepEqual(mcpEnvFeatures(codexTransport, "/c.toml"), {
+    toolSurface: "search",
+    sessionContextOff: true,
+    mcpConfig: "/c.toml",
+  });
+  for (const env of [
+    { BASTRA_TOOL_SURFACE: "write" },
+    { BASTRA_TOOL_SURFACE: "full" },
+    { BASTRA_MCP_SESSION_CONTEXT: "1" },
+    {},
+  ]) {
     assert.deepEqual(mcpEnvFeatures({ command: "node", args: [], env }, "/x.json"), {}, JSON.stringify(env));
   }
   assert.deepEqual(mcpEnvFeatures(undefined, "/x.json"), {});
@@ -366,9 +424,18 @@ test("#635: mcpEnvFeatures reads a Codex transport and a JSON server block alike
 test("#635 claude-code: both env keys in ~/.claude.json reach the features row", async (t) => {
   const home = await mkdtemp(join(tmpdir(), "bastra-doctor-features-cc-"));
   t.after(() => rm(home, { recursive: true, force: true }));
-  await writeFile(join(home, ".claude.json"), JSON.stringify({
-    mcpServers: { "bastra-recall": { command: "node", args: [join(home, "forwarder.js")], env: { BASTRA_TOOL_SURFACE: "search", BASTRA_MCP_SESSION_CONTEXT: "0" } } },
-  }));
+  await writeFile(
+    join(home, ".claude.json"),
+    JSON.stringify({
+      mcpServers: {
+        "bastra-recall": {
+          command: "node",
+          args: [join(home, "forwarder.js")],
+          env: { BASTRA_TOOL_SURFACE: "search", BASTRA_MCP_SESSION_CONTEXT: "0" },
+        },
+      },
+    })
+  );
   const features = claudeCodeFeaturesIn(home) as Record<string, unknown>;
   assert.equal(features.toolSurface, "search");
   assert.equal(features.sessionContextOff, true);

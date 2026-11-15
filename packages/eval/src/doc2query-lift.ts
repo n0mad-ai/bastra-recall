@@ -156,7 +156,7 @@ async function writeVectorsJson(
   persistPath: string,
   provider: OllamaEmbeddingProvider,
   ids: string[],
-  vectors: Float32Array[],
+  vectors: Float32Array[]
 ): Promise<void> {
   const out: Record<string, string> = {};
   for (let i = 0; i < ids.length; i++) {
@@ -173,7 +173,7 @@ async function embedAll(
   provider: OllamaEmbeddingProvider,
   memories: Memory[],
   expansionFor: (m: Memory) => string[],
-  label: string,
+  label: string
 ): Promise<{ ids: string[]; vectors: Float32Array[] }> {
   const ids: string[] = [];
   const vectors: Float32Array[] = [];
@@ -199,7 +199,7 @@ function applyArmPolicy(
   vault: Vault,
   arm: Arm,
   expandedById: Map<string, string[]>,
-  foreignSourceFor: Map<string, string>,
+  foreignSourceFor: Map<string, string>
 ): void {
   for (const m of vault.list()) {
     (m.fm as { recall_when: string[] }).recall_when = [];
@@ -208,7 +208,7 @@ function applyArmPolicy(
       expanded = expandedById.get(m.fm.id) ?? [];
     } else if (arm === "foreign") {
       const src = foreignSourceFor.get(m.fm.id);
-      expanded = src ? expandedById.get(src) ?? [] : [];
+      expanded = src ? (expandedById.get(src) ?? []) : [];
     }
     (m.fm as { recall_when_expanded?: string[] }).recall_when_expanded = expanded;
   }
@@ -256,9 +256,7 @@ async function main(): Promise<void> {
 
   // Foreign permutation over the WHOLE vault (every memory, gold + distractor,
   // gets a foreign-paraphrase source). Deterministic (i+7)%N over sorted ids.
-  const allSorted = refVault
-    .list()
-    .sort((a, b) => (a.fm.id < b.fm.id ? -1 : a.fm.id > b.fm.id ? 1 : 0));
+  const allSorted = refVault.list().sort((a, b) => (a.fm.id < b.fm.id ? -1 : a.fm.id > b.fm.id ? 1 : 0));
   const N = allSorted.length;
   const foreignSourceFor = new Map<string, string>();
   for (let i = 0; i < N; i++) {
@@ -271,7 +269,7 @@ async function main(): Promise<void> {
   // differ only in BM25. --embed-expansion: per-arm vectors that DO carry the arm's
   // paraphrases (the hypothetical both-legs lever production does not ship).
   process.stderr.write(
-    `[dense] re-embedding ${vaultSize} memories (recall_when stripped${embedExpansion ? ", per-arm paraphrases appended" : ", shared/no paraphrases — production-faithful"})…\n`,
+    `[dense] re-embedding ${vaultSize} memories (recall_when stripped${embedExpansion ? ", per-arm paraphrases appended" : ", shared/no paraphrases — production-faithful"})…\n`
   );
   const armPersist: Record<Arm, string> = {
     off: path.join(tmpRoot, "vec-off.json"),
@@ -293,7 +291,7 @@ async function main(): Promise<void> {
       provider,
       memsForEmbed,
       (m) => expandedOf(foreignSourceFor.get(m.fm.id) ?? ""),
-      "foreign",
+      "foreign"
     );
     await writeVectorsJson(armPersist.foreign, provider, foreignVecs.ids, foreignVecs.vectors);
   }
@@ -322,7 +320,7 @@ async function main(): Promise<void> {
   for (const a of ["off", "own", "foreign"] as Arm[]) {
     if (arms[a].emb.size() < vaultSize) {
       process.stderr.write(
-        `⚠ arm ${a}: only ${arms[a].emb.size()}/${vaultSize} vectors loaded — injection may have missed memories\n`,
+        `⚠ arm ${a}: only ${arms[a].emb.size()}/${vaultSize} vectors loaded — injection may have missed memories\n`
       );
     }
   }
@@ -420,17 +418,23 @@ async function main(): Promise<void> {
   console.log(" (recall_when-phrase drift — NOT real acted_on traffic)");
   console.log("════════════════════════════════════════════════════════════════════");
   console.log("");
-  console.log(`  dense-leg mode : ${embedExpansion ? "--embed-expansion (paraphrases embedded too — HYPOTHETICAL both-legs)" : "production-faithful (doc2query BM25-ONLY; dense leg shared/identical across arms)"}`);
+  console.log(
+    `  dense-leg mode : ${embedExpansion ? "--embed-expansion (paraphrases embedded too — HYPOTHETICAL both-legs)" : "production-faithful (doc2query BM25-ONLY; dense leg shared/identical across arms)"}`
+  );
   console.log("  buildEmbedText finding : production embeddings.ts:buildEmbedText does NOT include");
   console.log("    recall_when_expanded → in shipped #117 the dense leg never sees the paraphrases.");
   console.log("");
   console.log(`  vault size (memories indexed) : ${vaultSize}`);
-  console.log(`  eligible memories (≥2 recall_when AND has recall_when_expanded) : ${n}${full ? " [--full]" : ` [--sample ${sample}]`}`);
+  console.log(
+    `  eligible memories (≥2 recall_when AND has recall_when_expanded) : ${n}${full ? " [--full]" : ` [--sample ${sample}]`}`
+  );
   console.log(`  eval queries (held-out phrase[1..]) : ${cases.length}`);
   console.log(`  arms : off (no expansion) · own (own paraphrases) · foreign ((i+${FOREIGN_OFFSET})%N paraphrases)`);
   console.log("");
   console.log(`  S (serving k / NEAR boundary) : ${S}`);
-  console.log(`  P (candidate-pool length, median/used) : ${num(usedP)}  [pool = max(k*4,20); per-query P = its own pool length]`);
+  console.log(
+    `  P (candidate-pool length, median/used) : ${num(usedP)}  [pool = max(k*4,20); per-query P = its own pool length]`
+  );
   console.log(`  Infinity-rank cap : ${RANK_CAP} (= used P + 1)`);
   console.log("");
   console.log("  per-slice n (by OFF-arm baseline gold rank):");
@@ -459,20 +463,28 @@ async function main(): Promise<void> {
   console.log("  arm        meanΔrank   crossed-in   near-regression");
   console.log("  ────────   ─────────   ──────────   ───────────────");
   console.log(
-    `  own        ${num(ownArm.meanDeltaRank).padStart(9)}   ${pct(ownArm.crossedIn).padStart(10)}   ${pct(ownArm.nearRegression).padStart(15)}`,
+    `  own        ${num(ownArm.meanDeltaRank).padStart(9)}   ${pct(ownArm.crossedIn).padStart(10)}   ${pct(ownArm.nearRegression).padStart(15)}`
   );
   console.log(
-    `  foreign    ${num(foreignArm.meanDeltaRank).padStart(9)}   ${pct(foreignArm.crossedIn).padStart(10)}   ${pct(foreignArm.nearRegression).padStart(15)}`,
+    `  foreign    ${num(foreignArm.meanDeltaRank).padStart(9)}   ${pct(foreignArm.crossedIn).padStart(10)}   ${pct(foreignArm.nearRegression).padStart(15)}`
   );
   console.log("");
   console.log("  (meanΔrank: negative = lift. Infinity ranks capped at P+1.)");
   console.log("");
   console.log("  ── VERDICT (#117) ─────────────────────────────────────────────────");
   console.log(`    own shows OOP lift           : ${ownShowsLift ? "yes" : "no"}`);
-  console.log(`    near-reg ≤ null              : ${nearWithinNull ? "yes" : "no"} (own ${pct(ownArm.nearRegression)} vs null ${pct(foreignArm.nearRegression)})`);
-  console.log(`    own beats foreign (crossed-in): ${beatsForeignCrossed ? "yes" : "no"} (own ${pct(ownArm.crossedIn)} vs foreign ${pct(foreignArm.crossedIn)})`);
-  console.log(`    own beats foreign (meanΔrank) : ${beatsForeignDelta ? "yes" : "no"} (own ${num(ownArm.meanDeltaRank)} vs foreign ${num(foreignArm.meanDeltaRank)})`);
-  console.log(`    sanity checks clean           : ${!dataStarved && !holdoutSanityFailed && !armDivergenceSanityFailed ? "yes" : "no"}${dataStarved ? " (DATA-STARVED)" : ""}${holdoutSanityFailed ? " (HOLDOUT SANITY)" : ""}${armDivergenceSanityFailed ? " (ARM-DIVERGENCE SANITY)" : ""}`);
+  console.log(
+    `    near-reg ≤ null              : ${nearWithinNull ? "yes" : "no"} (own ${pct(ownArm.nearRegression)} vs null ${pct(foreignArm.nearRegression)})`
+  );
+  console.log(
+    `    own beats foreign (crossed-in): ${beatsForeignCrossed ? "yes" : "no"} (own ${pct(ownArm.crossedIn)} vs foreign ${pct(foreignArm.crossedIn)})`
+  );
+  console.log(
+    `    own beats foreign (meanΔrank) : ${beatsForeignDelta ? "yes" : "no"} (own ${num(ownArm.meanDeltaRank)} vs foreign ${num(foreignArm.meanDeltaRank)})`
+  );
+  console.log(
+    `    sanity checks clean           : ${!dataStarved && !holdoutSanityFailed && !armDivergenceSanityFailed ? "yes" : "no"}${dataStarved ? " (DATA-STARVED)" : ""}${holdoutSanityFailed ? " (HOLDOUT SANITY)" : ""}${armDivergenceSanityFailed ? " (ARM-DIVERGENCE SANITY)" : ""}`
+  );
   console.log("");
   console.log(`    >>> ${promote ? "PROMOTE" : "DO NOT PROMOTE"} <<<`);
   console.log("");

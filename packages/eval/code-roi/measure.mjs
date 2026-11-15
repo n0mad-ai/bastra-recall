@@ -41,16 +41,21 @@ async function grep(args) {
 }
 
 const graph = (await loadGraph(REPO)).graph;
-if (!graph) { console.error("no graph"); process.exit(1); }
+if (!graph) {
+  console.error("no graph");
+  process.exit(1);
+}
 
 /** Scenarios: real symbols from this repo, with their real location. */
 function buildScenarios(n) {
   const out = [];
   const seen = new Set();
   for (const [, node] of graph.nodes) {
-    if (node.kind !== undefined) { /* SafeNode has no kind; use label shape */ }
+    if (node.kind !== undefined) {
+      /* SafeNode has no kind; use label shape */
+    }
     const label = node.label;
-    if (!label.endsWith("()")) continue;            // functions only
+    if (!label.endsWith("()")) continue; // functions only
     const name = label.slice(0, -2);
     if (name.length < 6 || seen.has(name)) continue; // skip trivially short names
     if (findSymbol(graph, name).length !== 1) continue; // unambiguous only
@@ -69,8 +74,10 @@ for (const s of scenarios) {
   // ---- control arm: what a grep puts in front of the agent
   const naive = await grep(["-rn", s.symbol, "packages/", "--include=*.ts"]);
   const targeted = await grep([
-    "-rnE", `(export (async )?function|export const|function) ${s.symbol}\\b`,
-    "packages/", "--include=*.ts",
+    "-rnE",
+    `(export (async )?function|export const|function) ${s.symbol}\\b`,
+    "packages/",
+    "--include=*.ts",
   ]);
   const controlFound = targeted.includes(s.expectFile) || naive.includes(s.expectFile);
   const controlOut = targeted.trim().length > 0 ? targeted : naive;
@@ -93,7 +100,10 @@ for (const s of scenarios) {
 
 const both = rows.filter((r) => r.control_found && r.graph_found);
 const sum = (k) => both.reduce((a, r) => a + r[k], 0);
-const med = (k) => { const v = both.map((r) => r[k]).sort((a, b) => a - b); return v[Math.floor(v.length / 2)]; };
+const med = (k) => {
+  const v = both.map((r) => r[k]).sort((a, b) => a - b);
+  return v[Math.floor(v.length / 2)];
+};
 
 const report = {
   generated_at: new Date().toISOString(),
@@ -106,11 +116,9 @@ const report = {
   totals: {
     control_targeted_tokens: sum("control_tokens"),
     graph_tokens: sum("graph_tokens"),
-    reduction_vs_targeted:
-      +((1 - sum("graph_tokens") / sum("control_tokens")) * 100).toFixed(1) + "%",
+    reduction_vs_targeted: +((1 - sum("graph_tokens") / sum("control_tokens")) * 100).toFixed(1) + "%",
     control_naive_tokens: sum("control_naive_tokens"),
-    reduction_vs_naive:
-      +((1 - sum("graph_tokens") / sum("control_naive_tokens")) * 100).toFixed(1) + "%",
+    reduction_vs_naive: +((1 - sum("graph_tokens") / sum("control_naive_tokens")) * 100).toFixed(1) + "%",
   },
   medians: {
     control_targeted: med("control_tokens"),

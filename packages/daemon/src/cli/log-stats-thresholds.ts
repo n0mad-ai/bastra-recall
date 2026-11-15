@@ -261,7 +261,7 @@ export function laneVerdict(lane: LaneStats): LaneVerdict {
   const reasons: string[] = [];
   if (failureRate > threshold.maxFailureRate) {
     reasons.push(
-      `${failures}/${lane.calls} calls returned nothing (${(failureRate * 100).toFixed(1)}% > ${(threshold.maxFailureRate * 100).toFixed(0)}%)`,
+      `${failures}/${lane.calls} calls returned nothing (${(failureRate * 100).toFixed(1)}% > ${(threshold.maxFailureRate * 100).toFixed(0)}%)`
     );
   }
   if (p90 !== null && threshold.p90TargetMs !== null && p90 > threshold.p90TargetMs) {
@@ -332,7 +332,7 @@ export function renderReleaseGate(verdicts: LaneVerdict[]): string[] {
       out.push(`${head} — NOT EVALUABLE (${prompt.calls} call(s) of the min-N ${MIN_CALLS_FOR_VERDICT})`);
     } else {
       out.push(
-        `${head} — ${prompt.verdict.toUpperCase()}${prompt.reasons.length > 0 ? `: ${prompt.reasons.join("; ")}` : ""}`,
+        `${head} — ${prompt.verdict.toUpperCase()}${prompt.reasons.length > 0 ? `: ${prompt.reasons.join("; ")}` : ""}`
       );
     }
   }

@@ -64,7 +64,7 @@ test("a metadata refresh of an already-imported document does not destroy it", a
   assert.equal(
     await readFile(refreshed.original_path, "utf8"),
     "IRREPLACEABLE ORIGINAL BYTES",
-    "the document must survive a pure round-trip",
+    "the document must survive a pure round-trip"
   );
 });
 
@@ -87,14 +87,14 @@ test("a sidecar collision leaves no copied original behind", async (t) => {
         original_path: src,
         folder_path: "rechnungen",
       } as unknown as Parameters<typeof saveDocument>[1]),
-    /sidecar already exists/,
+    /sidecar already exists/
   );
 
   const entries = await readdir(folder);
   assert.deepEqual(
     entries.sort(),
     ["Rechnung.pdf.md"],
-    `a rejected save must not leave a copy behind, found ${JSON.stringify(entries)}`,
+    `a rejected save must not leave a copy behind, found ${JSON.stringify(entries)}`
   );
   assert.equal(await readFile(src, "utf8"), "PDF BYTES", "the source is untouched");
 });
@@ -117,10 +117,7 @@ test("a move that collides on the sidecar does not half-apply", async (t) => {
   await mkdir(to, { recursive: true });
   await writeFile(join(to, "Akte.pdf.md"), "blocking sidecar", "utf8");
 
-  await assert.rejects(
-    () => moveDocument(vault, { id: doc.id, folder_path: "neu" }),
-    /already exists/,
-  );
+  await assert.rejects(() => moveDocument(vault, { id: doc.id, folder_path: "neu" }), /already exists/);
 
   // Both files must still be where they started — no split state.
   const from = join(dir, "documents", "alt");

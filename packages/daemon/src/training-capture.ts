@@ -33,7 +33,14 @@ import { logDirFor } from "./telemetry.js";
 import { withPathLock } from "./path-lock.js";
 import { storedDrafts } from "./draft-store.js";
 import { openOwnFile, warnRefusedFile, RefusedFile } from "./training-signal.js";
-import { parseVerdict, relationPrompt, statementPrompt, RELATIONS, STATEMENT_KINDS, type DraftJudge } from "./draft-judge.js";
+import {
+  parseVerdict,
+  relationPrompt,
+  statementPrompt,
+  RELATIONS,
+  STATEMENT_KINDS,
+  type DraftJudge,
+} from "./draft-judge.js";
 
 export const TRAINING_CAPTURE_FILE = "training-capture.jsonl";
 /** Model calls per harvest tick; the rest waits for the next tick. */
@@ -42,13 +49,26 @@ export const TRAINING_JUDGE_MAX_PER_TICK = 20;
 export type TrainingItem =
   | { type: "statement"; quote: string; draft_kind?: string; context?: string }
   | {
-    type: "relation"; a: string; b: string; b_is: "statement" | "note";
-    source: "draft_repeat_shadow" | "draft_vault_shadow" | "promotion";
-    note_id?: string; cosine?: number; dice?: number; containment?: number;
-  };
-export interface TrainingVerdict { item: TrainingItem; verdict: string; model: string }
+      type: "relation";
+      a: string;
+      b: string;
+      b_is: "statement" | "note";
+      source: "draft_repeat_shadow" | "draft_vault_shadow" | "promotion";
+      note_id?: string;
+      cosine?: number;
+      dice?: number;
+      containment?: number;
+    };
+export interface TrainingVerdict {
+  item: TrainingItem;
+  verdict: string;
+  model: string;
+}
 type StoredItem = TrainingItem & { v: 1; key: string; ts: string };
-interface Store { items: Map<string, StoredItem>; judged: Set<string> }
+interface Store {
+  items: Map<string, StoredItem>;
+  judged: Set<string>;
+}
 
 export function trainingCaptureEnabled(): boolean {
   return isOnValue(process.env.BASTRA_TRAINING_CAPTURE);
@@ -72,12 +92,21 @@ function prepare(item: TrainingItem, now: number): StoredItem | null {
   const clean = (text: string): string => redactSecrets(text, homedir()).text;
   const ts = new Date(now).toISOString();
   if (item.type === "statement") {
-    const quote = clean(item.quote), context = item.context ? clean(item.context) : "";
+    const quote = clean(item.quote),
+      context = item.context ? clean(item.context) : "";
     if (!quote.trim() || scanForInjection(`${quote}\n${context}`).length) return null;
-    return { v: 1, key: hash(`statement\n${quote}`).slice(0, 24), ts, type: "statement", quote,
-      ...(item.draft_kind ? { draft_kind: item.draft_kind } : {}), ...(context ? { context } : {}) };
+    return {
+      v: 1,
+      key: hash(`statement\n${quote}`).slice(0, 24),
+      ts,
+      type: "statement",
+      quote,
+      ...(item.draft_kind ? { draft_kind: item.draft_kind } : {}),
+      ...(context ? { context } : {}),
+    };
   }
-  const a = clean(item.a), b = clean(item.b);
+  const a = clean(item.a),
+    b = clean(item.b);
   if (!a.trim() || !b.trim() || scanForInjection(`${a}\n${b}`).length) return null;
   // A and B keep their order: the question is asked as A against B, and a
   // verdict belongs to that direction. The reverse order is its own item.
@@ -93,7 +122,10 @@ const judgedKey = (key: string, model: string, promptVersion: string): string =>
  */
 async function openStore(path: string, write: boolean): Promise<FileHandle | null> {
   try {
-    return await openOwnFile(path, write ? constants.O_RDWR | constants.O_APPEND | constants.O_CREAT : constants.O_RDONLY);
+    return await openOwnFile(
+      path,
+      write ? constants.O_RDWR | constants.O_APPEND | constants.O_CREAT : constants.O_RDONLY
+    );
   } catch (error) {
     if (!write && (error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
@@ -101,20 +133,34 @@ async function openStore(path: string, write: boolean): Promise<FileHandle | nul
 }
 
 async function readStore(path: string): Promise<Store> {
-  const items = new Map<string, StoredItem>(), judged = new Set<string>();
+  const items = new Map<string, StoredItem>(),
+    judged = new Set<string>();
   const handle = await openStore(path, false);
   if (!handle) return { items, judged };
   let raw: string;
-  try { raw = await handle.readFile("utf8"); } finally { await handle.close(); }
+  try {
+    raw = await handle.readFile("utf8");
+  } finally {
+    await handle.close();
+  }
   let n = 0;
   for (const line of raw.split("\n")) {
     if (++n % 256 === 0) await setImmediate();
     if (!line) continue;
     let row: Record<string, unknown>;
-    try { row = JSON.parse(line) as Record<string, unknown>; } catch { continue; } // a torn last line
+    try {
+      row = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    } // a torn last line
     if (typeof row?.key !== "string") continue;
-    if (row.type === "verdict" && typeof row.model === "string" && typeof row.prompt_version === "string") judged.add(judgedKey(row.key, row.model, row.prompt_version));
-    else if (row.type === "statement" && typeof row.quote === "string" || row.type === "relation" && typeof row.a === "string" && typeof row.b === "string") items.set(row.key, row as unknown as StoredItem);
+    if (row.type === "verdict" && typeof row.model === "string" && typeof row.prompt_version === "string")
+      judged.add(judgedKey(row.key, row.model, row.prompt_version));
+    else if (
+      (row.type === "statement" && typeof row.quote === "string") ||
+      (row.type === "relation" && typeof row.a === "string" && typeof row.b === "string")
+    )
+      items.set(row.key, row as unknown as StoredItem);
   }
   return { items, judged };
 }
@@ -134,13 +180,17 @@ async function append(path: string, records: object[]): Promise<void> {
       await handle.read(last, 0, 1, info.size - 1);
       if (last[0] !== 10) lead = "\n";
     }
-    await handle.appendFile(lead + records.map(record => JSON.stringify(record) + "\n").join(""), "utf8");
-  } finally { await handle.close(); }
+    await handle.appendFile(lead + records.map((record) => JSON.stringify(record) + "\n").join(""), "utf8");
+  } finally {
+    await handle.close();
+  }
 }
 
 /** A refused store costs this one write, with one text-free line; the daemon goes on. */
 async function unlessRefused<T>(fallback: T, work: () => Promise<T>): Promise<T> {
-  try { return await work(); } catch (error) {
+  try {
+    return await work();
+  } catch (error) {
     if (!(error instanceof RefusedFile)) throw error;
     warnRefusedFile(TRAINING_CAPTURE_FILE);
     return fallback;
@@ -150,11 +200,28 @@ async function unlessRefused<T>(fallback: T, work: () => Promise<T>): Promise<T>
 /** Read and append as one step: the same process and other processes wait their turn. */
 function transact<T>(fallback: T, work: (store: Store, path: string) => Promise<T>): Promise<T> {
   const path = trainingCapturePath();
-  return unlessRefused(fallback, () => withPathLock(path, async () => work(await readStore(path), path), { crossProcess: true }));
+  return unlessRefused(fallback, () =>
+    withPathLock(path, async () => work(await readStore(path), path), { crossProcess: true })
+  );
 }
 
-function verdictRecord(item: StoredItem, verdict: string, model: string, source: "shadow" | "promotion", now: number): object {
-  return { v: 1, type: "verdict", key: item.key, ts: new Date(now).toISOString(), verdict, model, prompt_version: trainingPromptVersion(item), source };
+function verdictRecord(
+  item: StoredItem,
+  verdict: string,
+  model: string,
+  source: "shadow" | "promotion",
+  now: number
+): object {
+  return {
+    v: 1,
+    type: "verdict",
+    key: item.key,
+    ts: new Date(now).toISOString(),
+    verdict,
+    model,
+    prompt_version: trainingPromptVersion(item),
+    source,
+  };
 }
 
 /** Keep the texts: every item not stored yet is appended once. Returns how many were new. */
@@ -180,10 +247,15 @@ export async function recordTrainingVerdicts(verdicts: TrainingVerdict[], now = 
     for (const { item, verdict, model } of verdicts) {
       const stored = prepare(item, now);
       if (!stored) continue;
-      if (!store.items.has(stored.key)) { store.items.set(stored.key, stored); records.push(stored); }
+      if (!store.items.has(stored.key)) {
+        store.items.set(stored.key, stored);
+        records.push(stored);
+      }
       const seen = judgedKey(stored.key, model, trainingPromptVersion(stored));
       if (store.judged.has(seen)) continue;
-      store.judged.add(seen); records.push(verdictRecord(stored, verdict, model, "promotion", now)); added++;
+      store.judged.add(seen);
+      records.push(verdictRecord(stored, verdict, model, "promotion", now));
+      added++;
     }
     await append(path, records);
     return added;
@@ -202,34 +274,55 @@ const judging = new Set<string>();
  * "none" and not asked again. One pass at a time per process; a verdict that
  * another process wrote meanwhile is not written a second time.
  */
-export async function judgeTrainingBacklog(judge: DraftJudge | null, opts: { now?: number; max?: number } = {}): Promise<{ judged: number; pending: number }> {
+export async function judgeTrainingBacklog(
+  judge: DraftJudge | null,
+  opts: { now?: number; max?: number } = {}
+): Promise<{ judged: number; pending: number }> {
   const idle = { judged: 0, pending: 0 };
   if (!trainingCaptureEnabled() || !judge) return idle;
-  const path = trainingCapturePath(), now = opts.now ?? Date.now(), max = opts.max ?? TRAINING_JUDGE_MAX_PER_TICK;
+  const path = trainingCapturePath(),
+    now = opts.now ?? Date.now(),
+    max = opts.max ?? TRAINING_JUDGE_MAX_PER_TICK;
   if (judging.has(path)) return idle;
   judging.add(path);
   try {
     return await unlessRefused(idle, async () => {
-      const unjudged = (store: Store, item: StoredItem): boolean => !store.judged.has(judgedKey(item.key, judge.model, trainingPromptVersion(item)));
+      const unjudged = (store: Store, item: StoredItem): boolean =>
+        !store.judged.has(judgedKey(item.key, judge.model, trainingPromptVersion(item)));
       const before = await readStore(path);
-      const open = [...before.items.values()].filter(item => unjudged(before, item));
+      const open = [...before.items.values()].filter((item) => unjudged(before, item));
       const answers: { item: StoredItem; verdict: string }[] = [];
       for (const item of open.slice(0, max)) {
         let reply: string;
-        try { reply = await judge.chat(item.type === "statement" ? statementPrompt(item.quote) : relationPrompt(item.a, item.b, item.b_is)); } catch { break; }
-        const verdict = item.type === "statement" ? parseVerdict(reply, STATEMENT_KINDS) : parseVerdict(reply, RELATIONS);
+        try {
+          reply = await judge.chat(
+            item.type === "statement" ? statementPrompt(item.quote) : relationPrompt(item.a, item.b, item.b_is)
+          );
+        } catch {
+          break;
+        }
+        const verdict =
+          item.type === "statement" ? parseVerdict(reply, STATEMENT_KINDS) : parseVerdict(reply, RELATIONS);
         answers.push({ item, verdict: verdict ?? "none" });
       }
       if (!answers.length) return { judged: 0, pending: open.length };
-      const written = await withPathLock(path, async () => {
-        const current = await readStore(path);
-        const records = answers.filter(({ item }) => unjudged(current, item)).map(({ item, verdict }) => verdictRecord(item, verdict, judge.model, "shadow", now));
-        await append(path, records);
-        return records.length;
-      }, { crossProcess: true });
+      const written = await withPathLock(
+        path,
+        async () => {
+          const current = await readStore(path);
+          const records = answers
+            .filter(({ item }) => unjudged(current, item))
+            .map(({ item, verdict }) => verdictRecord(item, verdict, judge.model, "shadow", now));
+          await append(path, records);
+          return records.length;
+        },
+        { crossProcess: true }
+      );
       return { judged: written, pending: open.length - answers.length };
     });
-  } finally { judging.delete(path); }
+  } finally {
+    judging.delete(path);
+  }
 }
 
 export interface TrainingTick {
@@ -247,20 +340,40 @@ export interface TrainingTick {
  */
 export async function runTrainingCaptureTick(now: number): Promise<TrainingTick | null> {
   if (!trainingCaptureEnabled()) return null;
-  const pairs: TrainingItem[] = [], verdicts: TrainingVerdict[] = [];
+  const pairs: TrainingItem[] = [],
+    verdicts: TrainingVerdict[] = [];
   const quiet = async (work: () => Promise<unknown>): Promise<void> => {
-    try { await work(); } catch (error) { console.error(`[bastra-recall] training capture error (non-fatal): ${(error as NodeJS.ErrnoException)?.code ?? "unknown"}`); }
+    try {
+      await work();
+    } catch (error) {
+      console.error(
+        `[bastra-recall] training capture error (non-fatal): ${(error as NodeJS.ErrnoException)?.code ?? "unknown"}`
+      );
+    }
   };
-  await quiet(async () => captureTrainingItems((await storedDrafts(now)).map(draft => ({
-    type: "statement" as const, quote: draft.quote, draft_kind: draft.kind, ...(draft.context ? { context: draft.context } : {}),
-  })), now));
+  await quiet(async () =>
+    captureTrainingItems(
+      (await storedDrafts(now)).map((draft) => ({
+        type: "statement" as const,
+        quote: draft.quote,
+        draft_kind: draft.kind,
+        ...(draft.context ? { context: draft.context } : {}),
+      })),
+      now
+    )
+  );
   return {
-    pair: item => { pairs.push(item); },
-    verdict: verdict => { verdicts.push(verdict); },
-    finish: judge => quiet(async () => {
-      await captureTrainingItems(pairs, now);
-      await recordTrainingVerdicts(verdicts, now);
-      await judgeTrainingBacklog(judge, { now });
-    }),
+    pair: (item) => {
+      pairs.push(item);
+    },
+    verdict: (verdict) => {
+      verdicts.push(verdict);
+    },
+    finish: (judge) =>
+      quiet(async () => {
+        await captureTrainingItems(pairs, now);
+        await recordTrainingVerdicts(verdicts, now);
+        await judgeTrainingBacklog(judge, { now });
+      }),
   };
 }

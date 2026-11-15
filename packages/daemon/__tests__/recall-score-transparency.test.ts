@@ -126,7 +126,7 @@ test("verbosity:full exposes the rrf rank pair; lean omits it", async () => {
     // Both fields are number|null and at least one arm ranked the hit.
     assert.ok(
       fullHit.rrf!.rank_bm25 !== null || fullHit.rrf!.rank_vector !== null,
-      "at least one arm must have a rank",
+      "at least one arm must have a rank"
     );
     assert.equal(typeof fullHit.rrf!.raw, "number", "raw RRF value present");
     assert.ok(fullHit.rrf!.raw > 0, "raw RRF value is positive");

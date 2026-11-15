@@ -39,7 +39,7 @@ function tokenize(s: string): Set<string> {
       .toLowerCase()
       .replace(/[^\p{L}\p{N}\s]/gu, " ")
       .split(/\s+/)
-      .filter((t) => t.length >= 2),
+      .filter((t) => t.length >= 2)
   );
 }
 
@@ -71,9 +71,7 @@ async function main(): Promise<void> {
     const rank = rankOf(hits, m.fm.id);
     const top = hits[0];
 
-    const matched = (hits.find((h) => h.id === m.fm.id)?.matched_terms ??
-      top?.matched_terms ??
-      []) as string[];
+    const matched = (hits.find((h) => h.id === m.fm.id)?.matched_terms ?? top?.matched_terms ?? []) as string[];
 
     const recallWhenTokens = tokenize(m.fm.recall_when.join(" "));
     const titleTokens = tokenize(m.fm.title);
@@ -92,23 +90,19 @@ async function main(): Promise<void> {
 
   const total = rows.length;
   if (total === 0) {
-    console.error(`[eval] FATAL: 0 eval cases (${memories.length} non-obsolete of ${loaded} loaded) — check the vault path and eval inputs`);
+    console.error(
+      `[eval] FATAL: 0 eval cases (${memories.length} non-obsolete of ${loaded} loaded) — check the vault path and eval inputs`
+    );
     process.exit(1);
   }
   const top1 = rows.filter((r) => r.rank === 1).length;
   const top3 = rows.filter((r) => r.rank >= 1 && r.rank <= 3).length;
-  const mrr =
-    rows.reduce((acc, r) => acc + (r.rank > 0 ? 1 / r.rank : 0), 0) / total;
+  const mrr = rows.reduce((acc, r) => acc + (r.rank > 0 ? 1 / r.rank : 0), 0) / total;
 
   const matchedAny = rows.filter((r) => r.matchedTerms.length > 0);
-  const recallWhenSteered = matchedAny.filter(
-    (r) => r.triggeredByRecallWhen,
-  ).length;
-  const titleOnlySteered = matchedAny.filter(
-    (r) => !r.triggeredByRecallWhen && r.triggeredByTitle,
-  ).length;
-  const otherSteered =
-    matchedAny.length - recallWhenSteered - titleOnlySteered;
+  const recallWhenSteered = matchedAny.filter((r) => r.triggeredByRecallWhen).length;
+  const titleOnlySteered = matchedAny.filter((r) => !r.triggeredByRecallWhen && r.triggeredByTitle).length;
+  const otherSteered = matchedAny.length - recallWhenSteered - titleOnlySteered;
 
   const misses = rows.filter((r) => r.rank === 0 || r.rank > 3);
 
@@ -122,30 +116,22 @@ async function main(): Promise<void> {
   console.log("\n## What steered retrieval");
   console.log(
     `- recall_when terms matched: **${pct(recallWhenSteered, matchedAny.length)}** ` +
-      `(${recallWhenSteered}/${matchedAny.length})`,
+      `(${recallWhenSteered}/${matchedAny.length})`
   );
-  console.log(
-    `- title-only (no recall_when overlap): **${pct(titleOnlySteered, matchedAny.length)}**`,
-  );
-  console.log(
-    `- other fields only (tags/body/topic_path): **${pct(otherSteered, matchedAny.length)}**`,
-  );
+  console.log(`- title-only (no recall_when overlap): **${pct(titleOnlySteered, matchedAny.length)}**`);
+  console.log(`- other fields only (tags/body/topic_path): **${pct(otherSteered, matchedAny.length)}**`);
   console.log(
     "\n_Note: recall_when phrases naturally share tokens with the title for " +
       "many well-written memorys — these counts overlap. The signal we care " +
-      "about is whether recall_when terms are present in matched_terms at all._",
+      "about is whether recall_when terms are present in matched_terms at all._"
   );
 
   if (misses.length > 0) {
-    console.log(
-      `\n## Misses (rank > 3 or not found) — ${misses.length}/${total}\n`,
-    );
+    console.log(`\n## Misses (rank > 3 or not found) — ${misses.length}/${total}\n`);
     console.log("| rank | id | query | top hit |");
     console.log("|---|---|---|---|");
     for (const m of misses.slice(0, 30)) {
-      console.log(
-        `| ${m.rank || "—"} | ${m.id} | ${truncate(m.query, 50)} | ${m.topHit} |`,
-      );
+      console.log(`| ${m.rank || "—"} | ${m.id} | ${truncate(m.query, 50)} | ${m.topHit} |`);
     }
     if (misses.length > 30) {
       console.log(`\n_…and ${misses.length - 30} more_`);
@@ -160,9 +146,7 @@ async function main(): Promise<void> {
     console.log("| rank | id (gold) | query | top hit (won) |");
     console.log("|---|---|---|---|");
     for (const r of nonTop1) {
-      console.log(
-        `| ${r.rank} | ${r.id} | ${truncate(r.query, 60)} | ${r.topHit} |`,
-      );
+      console.log(`| ${r.rank} | ${r.id} | ${truncate(r.query, 60)} | ${r.topHit} |`);
     }
   }
 

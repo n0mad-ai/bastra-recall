@@ -30,13 +30,11 @@ import { scenarioRoot } from "./scenario-root.mjs";
 
 const DIST = new URL("../../../daemon/dist/code-graph/", import.meta.url).pathname;
 const { loadGraph } = await import(`${DIST}reader.js`);
-const { affectedHits, affectedResult, changedSymbolsOf, narrowPackageHits } = await import(
-  `${DIST}affected.js`
-);
+const { affectedHits, affectedResult, changedSymbolsOf, narrowPackageHits } = await import(`${DIST}affected.js`);
 
 const OUT = writableOut();
 const REG = JSON.parse(
-  readFileSync(new URL("../../registrations/code-awareness-change-impact.json", import.meta.url), "utf8"),
+  readFileSync(new URL("../../registrations/code-awareness-change-impact.json", import.meta.url), "utf8")
 );
 const GATE = REG.mechanism_gate;
 

@@ -12,13 +12,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  ensureApiToken,
-  getApiToken,
-  clearApiToken,
-  readSettings,
-  setUpdateMode,
-} from "../src/settings.js";
+import { ensureApiToken, getApiToken, clearApiToken, readSettings, setUpdateMode } from "../src/settings.js";
 
 async function withTempSettings(fn: (path: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-token-test-"));

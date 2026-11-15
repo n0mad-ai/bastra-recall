@@ -74,8 +74,11 @@ export function storedQuoteMatcher(vault: Vault, search: SearchIndex): (quote: s
   };
 }
 
-
-export function vaultWords(vault: Vault): { sets: Map<string, Set<string>>; df: Map<string, number>; idf: (token: string) => number } {
+export function vaultWords(vault: Vault): {
+  sets: Map<string, Set<string>>;
+  df: Map<string, number>;
+  idf: (token: string) => number;
+} {
   const sets = new Map<string, Set<string>>();
   const df = new Map<string, number>();
   for (const memory of vault.list()) {
@@ -83,7 +86,7 @@ export function vaultWords(vault: Vault): { sets: Map<string, Set<string>>; df: 
     sets.set(memory.fm.id, words);
     for (const word of words) df.set(word, (df.get(word) ?? 0) + 1);
   }
-  return { sets, df, idf: token => Math.log((sets.size + 1) / ((df.get(token) ?? 0) + 1)) };
+  return { sets, df, idf: (token) => Math.log((sets.size + 1) / ((df.get(token) ?? 0) + 1)) };
 }
 
 /** The existing word measure for a specific note, beside semantic shadow scores. */

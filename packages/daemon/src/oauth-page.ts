@@ -46,7 +46,7 @@ ${p.error ? `<p class="err">${esc(p.error)}</p>` : ""}
 <input id="t" type="password" name="api_token" autocomplete="off" autofocus>
 <button type="submit" name="action" value="approve">Approve</button>
 <button type="submit" name="action" value="deny">Deny</button>
-</form>`,
+</form>`
   );
 }
 

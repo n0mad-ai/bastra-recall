@@ -84,7 +84,7 @@ function resolveAgainstExisting(
   input: MemoryTargetInput,
   canonicalId: string,
   canonicalSubdir: string,
-  locator: MemoryLocator | undefined,
+  locator: MemoryLocator | undefined
 ): { id: string; relPath: string; displacedPath?: string } {
   const canonical = { id: canonicalId, relPath: `${canonicalSubdir}/${canonicalId}.md` };
   // Der Fund, den ein ausdrücklicher `folder` unten VERWIRFT: Genau der ist
@@ -150,10 +150,7 @@ function existsExactPath(root: string, relPath: string): boolean {
   return true;
 }
 
-export type MemoryTargetInput = Pick<
-  SaveMemoryInput,
-  "title" | "type" | "scope" | "id" | "folder"
->;
+export type MemoryTargetInput = Pick<SaveMemoryInput, "title" | "type" | "scope" | "id" | "folder">;
 
 export interface MemoryTarget {
   id: string;
@@ -188,7 +185,7 @@ export interface MemoryTarget {
 export function resolveMemoryTarget(
   vaultRoot: string,
   input: MemoryTargetInput,
-  locator?: MemoryLocator,
+  locator?: MemoryLocator
 ): MemoryTarget {
   const canonicalId = canonicalMemoryId(input.id, input.title);
   // #360-Folgefund D: `scope` wird hier zum ORDNERNAMEN. Ein roher
@@ -198,7 +195,13 @@ export function resolveMemoryTarget(
   // `save.ts` schreibt denselben Key ins Frontmatter, damit Ordner und
   // `scope:` nie auseinanderlaufen.
   const canonicalSubdir = input.folder ?? subfolderFor(normalizeScopeKey(input.scope), input.type);
-  const { id, relPath, displacedPath } = resolveAgainstExisting(vaultRoot, input, canonicalId, canonicalSubdir, locator);
+  const { id, relPath, displacedPath } = resolveAgainstExisting(
+    vaultRoot,
+    input,
+    canonicalId,
+    canonicalSubdir,
+    locator
+  );
   const canonicalRelPath = `${canonicalSubdir}/${canonicalId}.md`;
   const scope = relPath === canonicalRelPath ? normalizeScopeKey(input.scope) : input.scope;
   const filePath = join(vaultRoot, ...relPath.split("/"));
@@ -213,8 +216,6 @@ export function resolveMemoryTarget(
     id,
     filePath,
     scope,
-    ...(displacedPath !== undefined && displacedPath !== filePath
-      ? { existingPath: displacedPath }
-      : {}),
+    ...(displacedPath !== undefined && displacedPath !== filePath ? { existingPath: displacedPath } : {}),
   };
 }

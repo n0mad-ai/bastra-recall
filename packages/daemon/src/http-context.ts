@@ -88,7 +88,7 @@ export async function createHttpServerContext(opts: HttpOptions): Promise<HttpSe
   const corsAllow = resolveCorsAllowlist(fromEnv, await getCorsOrigins());
   if (corsAllow.includes("*") && apiToken) {
     console.error(
-      "[bastra-recall] WARNING: BASTRA_CORS_ORIGIN=* with a minted API token — ANY website that obtains the token can call /api/v1/* from the browser. Set an explicit allowlist: BASTRA_CORS_ORIGIN=https://your.host",
+      "[bastra-recall] WARNING: BASTRA_CORS_ORIGIN=* with a minted API token — ANY website that obtains the token can call /api/v1/* from the browser. Set an explicit allowlist: BASTRA_CORS_ORIGIN=https://your.host"
     );
   }
   // Zusätzliche Hosts für das Rebinding-Gate (Tunnel-Setups, die auch die

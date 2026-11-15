@@ -73,8 +73,7 @@ export interface CodeRoiStats {
   blocksFollowed: number;
 }
 
-const num = (v: unknown): number | null =>
-  typeof v === "number" && Number.isFinite(v) ? v : null;
+const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 function median(values: number[]): number {
   if (values.length === 0) return 0;
@@ -137,8 +136,7 @@ export function aggregateCodeRoi(rows: readonly CodeRoiRow[]): CodeRoiStats {
   };
 }
 
-const strings = (v: unknown): string[] =>
-  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 
 /**
  * `dependents_block_followed_by_edit` (#588): per session, in time order, did
@@ -187,41 +185,35 @@ export function renderCodeRoi(s: CodeRoiStats): string[] {
 
   const lines = ["", "code search ROI"];
   lines.push(
-    `  dependents block: ${s.withCodeBlock} of ${s.calls} write/edit calls (${pct(s.withCodeBlock, s.calls)})`,
+    `  dependents block: ${s.withCodeBlock} of ${s.calls} write/edit calls (${pct(s.withCodeBlock, s.calls)})`
   );
   if (s.withCodeBlock > 0) {
     lines.push(
       `    cost: ${s.codeTokensTotal} tokens total, ${s.codeTokensMedian} median` +
-        (s.hintTokensTotal > 0
-          ? ` — ${pct(s.codeTokensTotal, s.hintTokensTotal)} of Write/Edit injection`
-          : ""),
+        (s.hintTokensTotal > 0 ? ` — ${pct(s.codeTokensTotal, s.hintTokensTotal)} of Write/Edit injection` : "")
     );
-    lines.push(
-      `    reach: ${s.dependentsTotal} dependants named, ${s.dependentsMedian} median per block`,
-    );
+    lines.push(`    reach: ${s.dependentsTotal} dependants named, ${s.dependentsMedian} median per block`);
     if (s.blocksWithListed > 0) {
       lines.push(
         `    followed: ${s.blocksFollowed} of ${s.blocksWithListed} blocks (${pct(s.blocksFollowed, s.blocksWithListed)}) ` +
-          "were followed by an edit to a file they named, same session",
+          "were followed by an edit to a file they named, same session"
       );
     }
     if (s.staleBlocks > 0) {
       lines.push(
-        `    ${s.staleBlocks} of them (${pct(s.staleBlocks, s.withCodeBlock)}) were marked possibly out of date`,
+        `    ${s.staleBlocks} of them (${pct(s.staleBlocks, s.withCodeBlock)}) were marked possibly out of date`
       );
     }
   }
   if (s.withAppliesTo > 0) {
     lines.push(
       `  affects_files block: ${s.withAppliesTo} calls, ${s.appliesToTokensTotal} tokens, ` +
-        `${s.appliesToCount} memories attached`,
+        `${s.appliesToCount} memories attached`
     );
   }
   // Said every time the section renders, because the number above is the cost
   // and reads like a benefit if nothing says otherwise.
-  lines.push(
-    "    (cost and reach — what it SAVED needs the control arm in packages/eval/code-roi)",
-  );
+  lines.push("    (cost and reach — what it SAVED needs the control arm in packages/eval/code-roi)");
   return lines;
 }
 
@@ -238,7 +230,7 @@ export function renderCodeAwareness(s: CodeAwarenessStats): string[] {
   for (const t of s.tools) {
     lines.push(
       `  ${t.tool}: ${t.calls} call(s) — ${t.ok} answered (${pct(t.ok, t.calls)}), ` +
-        `${t.noAnswer} nothing found, ${t.unavailable} unavailable`,
+        `${t.noAnswer} nothing found, ${t.unavailable} unavailable`
     );
     if (t.byKind.length > 0) {
       lines.push(`    by ${t.tool === "find_code" ? "lane" : "basis"}: ${list(t.byKind)}`);
@@ -256,21 +248,21 @@ export function renderCodeAwareness(s: CodeAwarenessStats): string[] {
   const d = s.delivered;
   if (d.blocks > 0 || d.dedupeHits > 0) {
     lines.push(
-      `  delivered blocks: ${d.blocks} injected, ${d.dedupeHits} suppressed as already delivered this session`,
+      `  delivered blocks: ${d.blocks} injected, ${d.dedupeHits} suppressed as already delivered this session`
     );
     if (d.byLane.length > 0) lines.push(`    by lane: ${list(d.byLane)}`);
     if (d.byBasis.length > 0) lines.push(`    by basis: ${list(d.byBasis)}`);
-    lines.push(
-      `    cost: ${d.tokensTotal} tokens total, ${d.tokensMedian} median · ${d.filesNamed} file(s) named`,
-    );
+    lines.push(`    cost: ${d.tokensTotal} tokens total, ${d.tokensMedian} median · ${d.filesNamed} file(s) named`);
     lines.push(`    latency: p50 ${latency(d.p50)}, p90 ${latency(d.p90)}`);
   }
   if (s.refresh.started > 0 || s.refresh.ok > 0) {
     lines.push(
       `  graph refresh: ${s.refresh.started} run(s) — ${s.refresh.ok} ok, ${s.refresh.failed} failed, ` +
-        `${s.refresh.locked} locked, ${s.refresh.interrupted} interrupted, ${s.refresh.skipped} skipped, ${s.refresh.givenUp} given up`,
+        `${s.refresh.locked} locked, ${s.refresh.interrupted} interrupted, ${s.refresh.skipped} skipped, ${s.refresh.givenUp} given up`
     );
-    lines.push(`    build duration (successful or failed): p50 ${latency(s.refresh.p50)}, p90 ${latency(s.refresh.p90)}`);
+    lines.push(
+      `    build duration (successful or failed): p50 ${latency(s.refresh.p50)}, p90 ${latency(s.refresh.p90)}`
+    );
     if (s.refresh.byReason.length > 0) lines.push(`    triggered by: ${list(s.refresh.byReason)}`);
     if (s.refresh.failures.length > 0) lines.push(`    failures: ${list(s.refresh.failures)}`);
   }
@@ -278,9 +270,7 @@ export function renderCodeAwareness(s: CodeAwarenessStats): string[] {
     lines.push(`  repositories active: ${s.repos.length}`);
     for (const r of s.repos.slice(0, 6)) {
       const ext =
-        r.externalTotal !== null
-          ? ` · ${r.externalTotal} external nodes, ${r.externalResolved ?? 0} resolved`
-          : "";
+        r.externalTotal !== null ? ` · ${r.externalTotal} external nodes, ${r.externalResolved ?? 0} resolved` : "";
       lines.push(`    ${r.repo}: ${r.toolCalls} tool call(s), ${r.refreshes} refresh(es)${ext}`);
     }
   }

@@ -40,7 +40,7 @@ test("save_memory declares body as a required string (#132 guarantee)", () => {
   assert.equal(save.inputSchema.properties?.body?.type, "string", "body must be a string property");
   assert.ok(
     save.inputSchema.required?.includes("body"),
-    "body must be in the required list — this is exactly the field that arrived undefined in #132",
+    "body must be in the required list — this is exactly the field that arrived undefined in #132"
   );
 });
 
@@ -52,7 +52,7 @@ test("save_memory declares valence + reflex params as optional (#217)", () => {
   for (const field of ["salience", "emotion", "recall_mode"]) {
     assert.ok(
       !save.inputSchema.required?.includes(field),
-      `${field} must stay optional — valence is capture-rule-driven, never mandatory`,
+      `${field} must stay optional — valence is capture-rule-driven, never mandatory`
     );
   }
 });
@@ -90,8 +90,7 @@ test("the search surface lists exactly the read tools", () => {
     ],
     // #576: find_code reads a code index and writes nothing — it belongs with
     // the read tools, not behind the full surface.
-    "search is read-only: recall, load_memory, find_document, read_document, " +
-      "find_code, find_affected_files",
+    "search is read-only: recall, load_memory, find_document, read_document, " + "find_code, find_affected_files"
   );
   for (const t of [...LIFECYCLE_TOOLS, "save_memory"]) {
     assert.equal(isToolAllowed(t, "search"), false, `${t} must not be reachable on search`);
@@ -118,13 +117,13 @@ test("the write surface adds save and draft review tools and keeps lifecycle out
       "save_memory",
       "save_product_doc",
       "validate_artifact",
-      ...taskTools.map(tool => tool.name),
+      ...taskTools.map((tool) => tool.name),
     ].sort(),
     // #519: edit_memory joined the save tools. It changes one memory in place
     // and moves nothing, so it is not lifecycle — and leaving it out of the
     // surface a fresh install gets would push agents back to editing vault
     // files by hand, which is the hole it closes.
-    "write is search + save, draft review and local task tools",
+    "write is search + save, draft review and local task tools"
   );
   for (const t of LIFECYCLE_TOOLS) {
     assert.equal(isToolAllowed(t, "write"), false, `${t} is full-only — it reshapes the vault`);
@@ -165,6 +164,7 @@ test("#1238: a task tool denied by the preview switch says how to opt in, not to
     assert.doesNotMatch(text, /BASTRA_TOOL_SURFACE/);
     assert.match(toolSurfaceDenial("save_memory", "search"), /BASTRA_TOOL_SURFACE/);
   } finally {
-    if (prev === undefined) delete process.env.BASTRA_TASKS; else process.env.BASTRA_TASKS = prev;
+    if (prev === undefined) delete process.env.BASTRA_TASKS;
+    else process.env.BASTRA_TASKS = prev;
   }
 });

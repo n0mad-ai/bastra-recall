@@ -140,28 +140,17 @@ export class PricingService {
   private static readonly GITHUB_PRICING_URL =
     "https://raw.githubusercontent.com/Owloops/claude-powerline/main/pricing.json";
 
-  private static async loadDiskCache(): Promise<Record<
-    string,
-    ModelPricing
-  > | null> {
+  private static async loadDiskCache(): Promise<Record<string, ModelPricing> | null> {
     const TTL_24H = 24 * 60 * 60 * 1000;
     const minValidTime = Date.now() - TTL_24H;
-    return (await CacheManager.getUsageCache(
-      "pricing",
-      minValidTime,
-    )) as Record<string, ModelPricing> | null;
+    return (await CacheManager.getUsageCache("pricing", minValidTime)) as Record<string, ModelPricing> | null;
   }
 
-  private static async saveDiskCache(
-    data: Record<string, ModelPricing>,
-  ): Promise<void> {
+  private static async saveDiskCache(data: Record<string, ModelPricing>): Promise<void> {
     await CacheManager.setUsageCache("pricing", data);
   }
 
-  private static async fetchPricingData(): Promise<Record<
-    string,
-    ModelPricing
-  > | null> {
+  private static async fetchPricingData(): Promise<Record<string, ModelPricing> | null> {
     return new Promise((resolve) => {
       const parsedUrl = new URL(this.GITHUB_PRICING_URL);
 
@@ -211,9 +200,7 @@ export class PricingService {
               }
 
               if (this.validatePricingData(pricingData)) {
-                debug(
-                  `Fetched fresh pricing from GitHub for ${Object.keys(pricingData).length} models`,
-                );
+                debug(`Fetched fresh pricing from GitHub for ${Object.keys(pricingData).length} models`);
                 debug(`Pricing last updated: ${meta?.updated || "unknown"}`);
                 resolve(pricingData);
               } else {
@@ -230,7 +217,7 @@ export class PricingService {
             debug("Response error:", error);
             resolve(null);
           });
-        },
+        }
       );
 
       request.on("error", (error) => {
@@ -250,50 +237,34 @@ export class PricingService {
 
   static async getCurrentPricing(): Promise<Record<string, ModelPricing>> {
     if (this.executionCache !== null) {
-      debug(
-        `[CACHE-HIT] Pricing execution cache: ${Object.keys(this.executionCache).length} models`,
-      );
+      debug(`[CACHE-HIT] Pricing execution cache: ${Object.keys(this.executionCache).length} models`);
       return this.executionCache;
     }
 
     const diskCached = await this.loadDiskCache();
     if (diskCached) {
-      debug(
-        `[CACHE-HIT] Pricing disk cache: ${Object.keys(diskCached).length} models`,
-      );
+      debug(`[CACHE-HIT] Pricing disk cache: ${Object.keys(diskCached).length} models`);
       this.executionCache = diskCached;
-      debug(
-        `[CACHE-SET] Pricing execution cache stored: ${Object.keys(diskCached).length} models`,
-      );
+      debug(`[CACHE-SET] Pricing execution cache stored: ${Object.keys(diskCached).length} models`);
       return diskCached;
     }
 
     const freshData = await this.fetchPricingData();
     if (freshData) {
       await this.saveDiskCache(freshData);
-      debug(
-        `[CACHE-SET] Pricing disk cache stored: ${Object.keys(freshData).length} models`,
-      );
+      debug(`[CACHE-SET] Pricing disk cache stored: ${Object.keys(freshData).length} models`);
       this.executionCache = freshData;
-      debug(
-        `[CACHE-SET] Pricing execution cache stored: ${Object.keys(freshData).length} models`,
-      );
+      debug(`[CACHE-SET] Pricing execution cache stored: ${Object.keys(freshData).length} models`);
       return freshData;
     }
 
-    debug(
-      `[CACHE-FALLBACK] Using offline pricing data: ${Object.keys(OFFLINE_PRICING_DATA).length} models`,
-    );
+    debug(`[CACHE-FALLBACK] Using offline pricing data: ${Object.keys(OFFLINE_PRICING_DATA).length} models`);
     this.executionCache = OFFLINE_PRICING_DATA;
-    debug(
-      `[CACHE-SET] Pricing execution cache stored: ${Object.keys(OFFLINE_PRICING_DATA).length} models`,
-    );
+    debug(`[CACHE-SET] Pricing execution cache stored: ${Object.keys(OFFLINE_PRICING_DATA).length} models`);
     return OFFLINE_PRICING_DATA;
   }
 
-  private static validatePricingData(
-    data: unknown,
-  ): data is Record<string, ModelPricing> {
+  private static validatePricingData(data: unknown): data is Record<string, ModelPricing> {
     if (!data || typeof data !== "object") return false;
 
     for (const [, value] of Object.entries(data)) {
@@ -339,10 +310,7 @@ export class PricingService {
    * against its own generation instead of falling through to an older,
    * differently-priced generation via the static pattern list below.
    */
-  private static matchLiveTable(
-    lowerModelId: string,
-    allPricing: Record<string, ModelPricing>,
-  ): ModelPricing | null {
+  private static matchLiveTable(lowerModelId: string, allPricing: Record<string, ModelPricing>): ModelPricing | null {
     const tierMatch = lowerModelId.match(/(opus|sonnet|haiku)/);
     const tier = tierMatch?.[1];
     if (!tier) return null;
@@ -370,14 +338,10 @@ export class PricingService {
 
     if (candidates.length === 0) return null;
 
-    const sameVersion = candidates.find(
-      (c) => c.major === targetMajor && c.minor === targetMinor,
-    );
+    const sameVersion = candidates.find((c) => c.major === targetMajor && c.minor === targetMinor);
     if (sameVersion) return sameVersion.pricing;
 
-    const sameMajor = candidates
-      .filter((c) => c.major === targetMajor)
-      .sort((a, b) => b.minor - a.minor);
+    const sameMajor = candidates.filter((c) => c.major === targetMajor).sort((a, b) => b.minor - a.minor);
     if (sameMajor.length > 0) {
       return sameMajor[0]!.pricing;
     }
@@ -386,10 +350,7 @@ export class PricingService {
     return candidates[0]!.pricing;
   }
 
-  private static fuzzyMatchModel(
-    modelId: string,
-    allPricing: Record<string, ModelPricing>,
-  ): ModelPricing {
+  private static fuzzyMatchModel(modelId: string, allPricing: Record<string, ModelPricing>): ModelPricing {
     const lowerModelId = modelId.toLowerCase();
 
     for (const [key, pricing] of Object.entries(allPricing)) {
@@ -461,9 +422,7 @@ export class PricingService {
     );
   }
 
-  static async calculateCostForEntry(
-    entry: Record<string, unknown>,
-  ): Promise<number> {
+  static async calculateCostForEntry(entry: Record<string, unknown>): Promise<number> {
     const message = entry.message as Record<string, unknown> | undefined;
     const usage = message?.usage as Record<string, number> | undefined;
     if (!usage) {
@@ -487,18 +446,12 @@ export class PricingService {
     const outputCost = (outputTokens / 1_000_000) * pricing.output;
     const cacheReadCost = (cacheReadTokens / 1_000_000) * pricing.cache_read;
     // The 1h share of cache writes bills at the 1h rate; the rest at 5m.
-    const cacheWrite1hTokens = Math.min(
-      cacheCreationTokens,
-      breakdown?.ephemeral_1h_input_tokens || 0,
-    );
+    const cacheWrite1hTokens = Math.min(cacheCreationTokens, breakdown?.ephemeral_1h_input_tokens || 0);
     // The live pricing table may omit the 1h field for a model. Keep the
     // estimate numeric using the known 5m rate instead of spreading NaN.
-    const cacheWrite1hRate = Number.isFinite(pricing.cache_write_1h)
-      ? pricing.cache_write_1h
-      : pricing.cache_write_5m;
+    const cacheWrite1hRate = Number.isFinite(pricing.cache_write_1h) ? pricing.cache_write_1h : pricing.cache_write_5m;
     const cacheCreationCost =
-      ((cacheCreationTokens - cacheWrite1hTokens) / 1_000_000) *
-        pricing.cache_write_5m +
+      ((cacheCreationTokens - cacheWrite1hTokens) / 1_000_000) * pricing.cache_write_5m +
       (cacheWrite1hTokens / 1_000_000) * cacheWrite1hRate;
 
     return inputCost + outputCost + cacheCreationCost + cacheReadCost;
@@ -516,10 +469,7 @@ export class PricingService {
         return model;
       }
       const modelObj = model as Record<string, unknown> | undefined;
-      return (
-        (typeof modelObj?.id === "string" ? modelObj.id : null) ||
-        "claude-sonnet-4-5-20250929"
-      );
+      return (typeof modelObj?.id === "string" ? modelObj.id : null) || "claude-sonnet-4-5-20250929";
     }
 
     if (entry.model_id && typeof entry.model_id === "string") {

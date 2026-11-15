@@ -35,7 +35,7 @@ updated: 2026-07-01
 
 body of ${e.id}
 `,
-      "utf8",
+      "utf8"
     );
   }
   const vault = new Vault(dir);

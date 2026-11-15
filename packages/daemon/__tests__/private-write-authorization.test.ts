@@ -52,11 +52,7 @@ import {
   type ToolDeps,
 } from "../src/tool-handlers.js";
 import { editMemoryHandler } from "../src/edit-memory-handler.js";
-import {
-  saveDocument,
-  recategorizeDocument,
-  moveDocument,
-} from "../src/documents-write-handler.js";
+import { saveDocument, recategorizeDocument, moveDocument } from "../src/documents-write-handler.js";
 import { dispatchApi } from "../src/http-api-routes.js";
 import { TRUSTED_LOCAL_APP } from "../src/private-access.js";
 import { Telemetry } from "../src/telemetry.js";
@@ -106,7 +102,7 @@ interface HarnessOptions {
 
 async function harness(
   t: { after: (fn: () => unknown) => void },
-  { indexed = "private", onDisk = indexed }: HarnessOptions = {},
+  { indexed = "private", onDisk = indexed }: HarnessOptions = {}
 ): Promise<{
   dir: string;
   deps: ToolDeps;
@@ -120,7 +116,7 @@ async function harness(
   await writeFile(
     join(dir, "note-secret-id.md"),
     memoryFile("note-secret-id", indexed, PRIVATE_BODY, "Note secret-id"),
-    "utf8",
+    "utf8"
   );
   const vault = new Vault(dir);
   await vault.init();
@@ -132,7 +128,7 @@ async function harness(
     await writeFile(
       join(dir, "note-secret-id.md"),
       memoryFile("note-secret-id", onDisk, PRIVATE_BODY, "Note secret-id"),
-      "utf8",
+      "utf8"
     );
   }
   const search = new SearchIndex(vault);
@@ -166,11 +162,7 @@ async function snapshot(dir: string): Promise<Map<string, string>> {
 }
 
 function assertUnchanged(before: Map<string, string>, after: Map<string, string>, what: string): void {
-  assert.deepEqual(
-    [...after.keys()].sort(),
-    [...before.keys()].sort(),
-    `${what}: no file may appear, vanish or move`,
-  );
+  assert.deepEqual([...after.keys()].sort(), [...before.keys()].sort(), `${what}: no file may appear, vanish or move`);
   for (const [path, bytes] of before) {
     assert.equal(after.get(path), bytes, `${what}: ${path} must be byte-identical`);
   }
@@ -184,13 +176,13 @@ test("#464: a REST caller cannot grant itself private read access through the re
   await assert.rejects(
     dispatchApi("load_memory", { id: "secret-id" }, restCtx(deps)),
     /memory not found: secret-id/,
-    "baseline: the read path hides it",
+    "baseline: the read path hides it"
   );
   // The review's reproduction: the very same dispatch with the flag set.
   await assert.rejects(
     dispatchApi("load_memory", { id: "secret-id", allow_private: true }, restCtx(deps)),
     /memory not found: secret-id/,
-    "allow_private in the body is not a capability",
+    "allow_private in the body is not a capability"
   );
 
   // The public memory still loads — the gate is about sensitivity, not about
@@ -206,7 +198,7 @@ test("#464: a stdio MCP caller cannot grant itself private read access either", 
   // index.ts passes the client's tool arguments into the handler verbatim.
   await assert.rejects(
     loadMemoryHandler(deps, { id: "secret-id", allow_private: true }),
-    /memory not found: secret-id/,
+    /memory not found: secret-id/
   );
   const hits = (await recallHandler(deps, {
     query: "authorization probe",
@@ -214,10 +206,7 @@ test("#464: a stdio MCP caller cannot grant itself private read access either", 
     min_score: 0,
     allow_private: true,
   })) as { hits: { id: string }[] };
-  assert.ok(
-    !hits.hits.some((h) => h.id === "secret-id"),
-    "recall stays filtered however the arguments are decorated",
-  );
+  assert.ok(!hits.hits.some((h) => h.id === "secret-id"), "recall stays filtered however the arguments are decorated");
 });
 
 test("#464: the trusted local-app transport still reaches the private memory", async (t) => {
@@ -248,12 +237,12 @@ test("#464: save_memory(overwrite) on a hidden private memory is refused and cha
   await assert.rejects(
     dispatchApi("save_memory", { ...OVERWRITE_PAYLOAD }, restCtx(deps)),
     /memory not found: secret-id/,
-    "the write answers exactly like the read — no id-existence oracle",
+    "the write answers exactly like the read — no id-existence oracle"
   );
   await assert.rejects(
     saveMemoryHandler(deps, { ...OVERWRITE_PAYLOAD, allow_private: true }),
     /memory not found: secret-id/,
-    "and a self-granted flag does not change that",
+    "and a self-granted flag does not change that"
   );
 
   assertUnchanged(before, await snapshot(dir), "refused save_memory(overwrite)");
@@ -278,10 +267,7 @@ test("#464: an implicit slug collision with a private memory is refused too", as
   // No explicit id: the title folds onto the existing private id.
   const { id: _id, ...withoutId } = OVERWRITE_PAYLOAD;
   void _id;
-  await assert.rejects(
-    dispatchApi("save_memory", { ...withoutId }, restCtx(deps)),
-    /memory not found: note-secret-id/,
-  );
+  await assert.rejects(dispatchApi("save_memory", { ...withoutId }, restCtx(deps)), /memory not found: note-secret-id/);
   assertUnchanged(before, await snapshot(dir), "refused implicit-collision save");
 });
 
@@ -293,7 +279,7 @@ test("#464: archive_memory cannot be authorized from the request body", async (t
 
   await assert.rejects(
     dispatchApi("archive_memory", { id: "secret-id", allow_private: true }, restCtx(deps)),
-    /unknown memory: secret-id/,
+    /unknown memory: secret-id/
   );
   assertUnchanged(before, await snapshot(dir), "refused archive_memory");
   assert.ok(deps.vault.get("secret-id"), "still indexed");
@@ -313,7 +299,7 @@ test("#464: save_product_doc cannot replace a private memory under the derived i
   await writeFile(
     join(dir, "doku-testlabel-hints.md"),
     memoryFile("doku-testlabel-hints", "private", PRIVATE_BODY, "Testlabel — Hints"),
-    "utf8",
+    "utf8"
   );
   await deps.vault.reindexFile(join(dir, "doku-testlabel-hints.md"));
   const before = await snapshot(dir);
@@ -322,9 +308,9 @@ test("#464: save_product_doc cannot replace a private memory under the derived i
     dispatchApi(
       "save_product_doc",
       { project: "testlabel", area: "hints", title: "T", summary: "S", body: "B" },
-      restCtx(deps),
+      restCtx(deps)
     ),
-    /memory not found: doku-testlabel-hints/,
+    /memory not found: doku-testlabel-hints/
   );
   assertUnchanged(before, await snapshot(dir), "refused save_product_doc");
 });
@@ -348,9 +334,9 @@ test("#464: a private memory cannot be superseded by a caller that may not read 
         overwrite: false,
         replaces: "secret-id",
       },
-      restCtx(deps),
+      restCtx(deps)
     ),
-    /replaces: unknown memory 'secret-id'/,
+    /replaces: unknown memory 'secret-id'/
   );
   assertUnchanged(before, await snapshot(dir), "refused supersede of a private predecessor");
 });
@@ -371,11 +357,7 @@ async function stampSensitivity(path: string, sensitivity: Sensitivity): Promise
   const parsed = matter(await readFile(path, "utf8"));
   const { sensitivity: _drop, ...rest } = parsed.data as Record<string, unknown>;
   void _drop;
-  await writeFile(
-    path,
-    matter.stringify(parsed.content, sensitivity ? { ...rest, sensitivity } : rest),
-    "utf8",
-  );
+  await writeFile(path, matter.stringify(parsed.content, sensitivity ? { ...rest, sensitivity } : rest), "utf8");
 }
 
 /**
@@ -385,7 +367,7 @@ async function stampSensitivity(path: string, sensitivity: Sensitivity): Promise
 async function privateDocument(
   dir: string,
   vault: Vault,
-  { indexed = "private", onDisk = indexed }: HarnessOptions = {},
+  { indexed = "private", onDisk = indexed }: HarnessOptions = {}
 ): Promise<{
   id: string;
   sidecarPath: string;
@@ -412,12 +394,12 @@ test("#464: recategorize_document refuses a private sidecar and leaves it byte-i
 
   await assert.rejects(
     dispatchApi("recategorize_document", { id: doc.id, title: "Umbenannt", force: true }, restCtx(deps)),
-    new RegExp(`document not found: ${doc.id}`),
+    new RegExp(`document not found: ${doc.id}`)
   );
   await assert.rejects(
     recategorizeDocument(vault, { id: doc.id, title: "Umbenannt", force: true }),
     new RegExp(`document not found: ${doc.id}`),
-    "the stdio surface gets the same answer",
+    "the stdio surface gets the same answer"
   );
   assertUnchanged(before, await snapshot(dir), "refused recategorize_document");
 
@@ -435,7 +417,7 @@ test("#464: move_document refuses a private sidecar — sidecar and original sta
 
   await assert.rejects(
     dispatchApi("move_document", { id: doc.id, folder_path: "woanders" }, restCtx(deps)),
-    new RegExp(`document not found: ${doc.id}`),
+    new RegExp(`document not found: ${doc.id}`)
   );
   assertUnchanged(before, await snapshot(dir), "refused move_document");
   await stat(doc.sidecarPath);
@@ -460,9 +442,9 @@ test("#464: save_document(overwrite) refuses a private sidecar and keeps its byt
         original_path: doc.originalPath,
         overwrite: true,
       },
-      restCtx(deps),
+      restCtx(deps)
     ),
-    /document not found|refusing to overwrite/,
+    /document not found|refusing to overwrite/
   );
   assertUnchanged(before, await snapshot(dir), "refused save_document(overwrite)");
   const sidecar = matter(await readFile(doc.sidecarPath, "utf8")).data as Record<string, unknown>;
@@ -475,12 +457,16 @@ test("#464: a document write the caller may not see is not a Pro-feature questio
   // With document write disabled the flag still answers first — the point is
   // only that enabling it never becomes the authorization.
   await assert.rejects(
-    dispatchApi("move_document", { id: "doc-vertraege-vertrag-pdf", folder_path: "x" }, {
-      toolDeps: deps,
-      documentWriteEnabled: false,
-      ccSessionId: null,
-    }),
-    /Pro feature/,
+    dispatchApi(
+      "move_document",
+      { id: "doc-vertraege-vertrag-pdf", folder_path: "x" },
+      {
+        toolDeps: deps,
+        documentWriteEnabled: false,
+        ccSessionId: null,
+      }
+    ),
+    /Pro feature/
   );
 });
 
@@ -497,7 +483,7 @@ test("#464: refused private mutations leave the vault index entry intact", async
   await assert.rejects(dispatchApi("archive_memory", { id: "secret-id" }, restCtx(deps)), /unknown memory/);
   await assert.rejects(
     dispatchApi("move_document", { id: doc.id, folder_path: "x" }, restCtx(deps)),
-    /document not found/,
+    /document not found/
   );
 
   assert.equal(vault.get("secret-id")?.filePath, beforeMemory.filePath);
@@ -522,7 +508,7 @@ test("#464: save_memory(overwrite) asks the bytes, not the stale index", async (
 
   await assert.rejects(
     dispatchApi("save_memory", { ...OVERWRITE_PAYLOAD }, restCtx(deps)),
-    /memory not found: secret-id/,
+    /memory not found: secret-id/
   );
   assertUnchanged(before, await snapshot(dir), "refused save_memory over a stale public index");
   const still = await readFile(join(dir, "secret-id.md"), "utf8");
@@ -534,10 +520,7 @@ test("#464: an implicit slug collision is refused on the bytes too", async (t) =
   const before = await snapshot(dir);
   const { id: _id, ...withoutId } = OVERWRITE_PAYLOAD;
   void _id;
-  await assert.rejects(
-    dispatchApi("save_memory", { ...withoutId }, restCtx(deps)),
-    /memory not found: note-secret-id/,
-  );
+  await assert.rejects(dispatchApi("save_memory", { ...withoutId }, restCtx(deps)), /memory not found: note-secret-id/);
   assertUnchanged(before, await snapshot(dir), "refused implicit collision over a stale index");
 });
 
@@ -545,10 +528,7 @@ test("#464: archive_memory does not trash a file the index only believes is publ
   const { dir, deps } = await harness(t, STALE);
   const before = await snapshot(dir);
 
-  await assert.rejects(
-    dispatchApi("archive_memory", { id: "secret-id" }, restCtx(deps)),
-    /unknown memory: secret-id/,
-  );
+  await assert.rejects(dispatchApi("archive_memory", { id: "secret-id" }, restCtx(deps)), /unknown memory: secret-id/);
   // The sharpest assertion of the suite: the review's run moved the private
   // file AND its content into the trash, so "nothing appeared, nothing
   // vanished, nothing moved" is exactly the claim under test.
@@ -562,7 +542,7 @@ test("#464: edit_memory patches nothing when the bytes on disk are private", asy
 
   await assert.rejects(
     dispatchApi("edit_memory", { id: "secret-id", append: "APPENDED BY AN OUTSIDER" }, restCtx(deps)),
-    /memory not found: secret-id/,
+    /memory not found: secret-id/
   );
   assertUnchanged(before, await snapshot(dir), "refused edit_memory over a stale public index");
 });
@@ -581,9 +561,9 @@ test("#464: save_product_doc asks the bytes under its hard-wired overwrite", asy
     dispatchApi(
       "save_product_doc",
       { project: "testlabel", area: "hints", title: "T", summary: "S", body: "B" },
-      restCtx(deps),
+      restCtx(deps)
     ),
-    /memory not found: doku-testlabel-hints/,
+    /memory not found: doku-testlabel-hints/
   );
   assertUnchanged(before, await snapshot(dir), "refused save_product_doc over a stale public index");
 });
@@ -606,13 +586,13 @@ test("#464: a stale-public predecessor is not stamped with superseded_by", async
       overwrite: false,
       replaces: "secret-id",
     },
-    restCtx(deps),
+    restCtx(deps)
   );
   const after = await snapshot(dir);
   assert.equal(
     after.get("secret-id.md"),
     before.get("secret-id.md"),
-    "the private predecessor is byte-identical — no superseded_by was stamped",
+    "the private predecessor is byte-identical — no superseded_by was stamped"
   );
 });
 
@@ -624,11 +604,11 @@ test("#464: recategorize_document and move_document ask the bytes", async (t) =>
 
   await assert.rejects(
     dispatchApi("recategorize_document", { id: doc.id, title: "Umbenannt", force: true }, restCtx(deps)),
-    new RegExp(`document not found: ${doc.id}`),
+    new RegExp(`document not found: ${doc.id}`)
   );
   await assert.rejects(
     dispatchApi("move_document", { id: doc.id, folder_path: "woanders" }, restCtx(deps)),
-    new RegExp(`document not found: ${doc.id}`),
+    new RegExp(`document not found: ${doc.id}`)
   );
   assertUnchanged(before, await snapshot(dir), "refused document writes over a stale public index");
   await stat(doc.sidecarPath);
@@ -650,9 +630,9 @@ test("#464: save_document(overwrite) already read the sidecar from disk — and 
         original_path: doc.originalPath,
         overwrite: true,
       },
-      restCtx(deps),
+      restCtx(deps)
     ),
-    /document not found|refusing to overwrite/,
+    /document not found|refusing to overwrite/
   );
   assertUnchanged(before, await snapshot(dir), "refused save_document over a stale public index");
 });
@@ -680,15 +660,12 @@ test("#464: index private and disk public still refuses — the gate is fail-clo
 
   await assert.rejects(
     dispatchApi("save_memory", { ...OVERWRITE_PAYLOAD }, restCtx(deps)),
-    /memory not found: secret-id/,
+    /memory not found: secret-id/
   );
-  await assert.rejects(
-    dispatchApi("archive_memory", { id: "secret-id" }, restCtx(deps)),
-    /unknown memory: secret-id/,
-  );
+  await assert.rejects(dispatchApi("archive_memory", { id: "secret-id" }, restCtx(deps)), /unknown memory: secret-id/);
   await assert.rejects(
     dispatchApi("edit_memory", { id: "secret-id", append: "X" }, restCtx(deps)),
-    /memory not found: secret-id/,
+    /memory not found: secret-id/
   );
   assertUnchanged(before, await snapshot(dir), "refused writes while the index still says private");
 });
@@ -716,7 +693,7 @@ test("#464: the local app still writes through, whatever the index and the disk 
   const edited = (await editMemoryHandler(
     deps,
     { id: "secret-id", append: "APPENDED BY THE APP" },
-    TRUSTED_LOCAL_APP,
+    TRUSTED_LOCAL_APP
   )) as { created: false };
   assert.equal(edited.created, false);
   assert.match(await readFile(join(dir, "secret-id.md"), "utf8"), /APPENDED BY THE APP/);

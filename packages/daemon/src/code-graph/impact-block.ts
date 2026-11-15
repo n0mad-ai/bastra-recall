@@ -240,11 +240,7 @@ export async function impactNote(opts: ImpactNoteOptions): Promise<ImpactResult>
 
   const names = selection.symbols.filter((s) => s.kind !== "file").map((s) => s.name);
 
-  const hits = await narrowPackageHits(
-    opts.repoRoot,
-    affectedHits(graph, rel, selection.symbols, 1),
-    names,
-  );
+  const hits = await narrowPackageHits(opts.repoRoot, affectedHits(graph, rel, selection.symbols, 1), names);
   const result = affectedResult(selection.symbols, hits);
   const booking = { file: rel, hits: result.hits, truncated: result.truncated };
   if (result.files.length === 0) return { note: null, dedupeHit: false, booking };
@@ -260,7 +256,7 @@ export async function impactNote(opts: ImpactNoteOptions): Promise<ImpactResult>
   const coverage = coverageTestsLine(
     (await getCoverageMapEnabled().catch(() => false)) ? readCoverageMapSync(opts.repoRoot) : null,
     new Map([[rel, names]]),
-    new Set(shown.map((h) => h.file)),
+    new Set(shown.map((h) => h.file))
   );
   const note = renderImpactBlock({
     file: rel,
@@ -308,11 +304,7 @@ interface Selection {
  * OBJECT, so a rebuilt graph starts with an empty cache and no stale selection
  * can survive a reindex.
  */
-async function changedSymbols(
-  graph: LoadedGraph,
-  rel: string,
-  opts: ImpactNoteOptions,
-): Promise<Selection | null> {
+async function changedSymbols(graph: LoadedGraph, rel: string, opts: ImpactNoteOptions): Promise<Selection | null> {
   if (opts.toolName === "apply_patch") {
     const body = applyPatchBody(opts.toolInput.command, rel);
     if (body === null || body.length === 0) return null;
@@ -358,12 +350,8 @@ function fromDiff(graph: LoadedGraph, rel: string, diff: string): Selection {
  */
 function fromNames(graph: LoadedGraph, rel: string, body: string): Selection {
   const own = allSymbolsOf(graph, rel);
-  const hit = own.filter(
-    (s) => s.kind !== "file" && s.name.length > 2 && mentions(body, s.name),
-  );
-  return hit.length > 0
-    ? { basis: "diff", symbols: hit }
-    : { basis: "whole_file", symbols: own };
+  const hit = own.filter((s) => s.kind !== "file" && s.name.length > 2 && mentions(body, s.name));
+  return hit.length > 0 ? { basis: "diff", symbols: hit } : { basis: "whole_file", symbols: own };
 }
 
 /** Largest number of selections held per graph. Beyond this the cache resets. */
@@ -371,12 +359,7 @@ const MAX_CACHED_SELECTIONS = 256;
 
 const selectionCache = new WeakMap<LoadedGraph, Map<string, Selection>>();
 
-function cached(
-  graph: LoadedGraph,
-  rel: string,
-  content: string,
-  build: () => Selection,
-): Selection {
+function cached(graph: LoadedGraph, rel: string, content: string, build: () => Selection): Selection {
   let perGraph = selectionCache.get(graph);
   if (perGraph === undefined) {
     perGraph = new Map();
@@ -489,13 +472,13 @@ export function renderImpactBlock(input: ImpactBlockInput): string {
   if (input.stale) {
     lines.push(
       "This graph was built before the current state of this file, or its build " +
-        "did not finish; the list can be out of date.",
+        "did not finish; the list can be out of date."
     );
   }
   lines.push(
     "A listed file may survive the change, and a call site reached through " +
       "reflection or a string-keyed table is not listed at all — grep the names " +
-      "to confirm.",
+      "to confirm."
   );
 
   const body = clip(stripFenceMarkers(lines.join("\n")));

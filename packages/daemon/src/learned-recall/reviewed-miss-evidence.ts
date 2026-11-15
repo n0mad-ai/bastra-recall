@@ -107,7 +107,7 @@ export function observeHookLane(
    * the MCP recall's id, so without this one load after an MCP recall is
    * counted once per lane and proposes itself twice.
    */
-  coveredByTranscript: ReadonlySet<string> = new Set(),
+  coveredByTranscript: ReadonlySet<string> = new Set()
 ): HookLaneResult {
   const records: HookLaneRecord[] = [];
   const chains: ReviewedMissChain[] = [];
@@ -162,7 +162,12 @@ export function observeHookLane(
     };
     const label = engines.labels.get(frozenPool.recallRef) ?? null;
     const target = resolveTarget(chain, engines.vaultRoot, engines.snapshot, frozen, pool.ts, label);
-    const observation: ReviewedMissObservation = { kind: "reviewed-miss-observation/v1", frozen, pool: frozenPool, target };
+    const observation: ReviewedMissObservation = {
+      kind: "reviewed-miss-observation/v1",
+      frozen,
+      pool: frozenPool,
+      target,
+    };
     records.push({
       ...toCandidate(chain),
       lane: "hook",
@@ -208,7 +213,18 @@ export function heatmap(telemetry: Telemetry, options: HeatmapOptions = { hubSes
   const row = (id: string): HeatmapRow => {
     let r = rows.get(id);
     if (!r) {
-      r = { memoryId: id, surfaced: 0, surfacedSessions: 0, inPoolBelowServed: 0, loaded: 0, loadedSessions: 0, servedHit: 0, loadedAtRank: [], hub: false, surfacedNeverLoaded: false };
+      r = {
+        memoryId: id,
+        surfaced: 0,
+        surfacedSessions: 0,
+        inPoolBelowServed: 0,
+        loaded: 0,
+        loadedSessions: 0,
+        servedHit: 0,
+        loadedAtRank: [],
+        hub: false,
+        surfacedNeverLoaded: false,
+      };
       rows.set(id, r);
     }
     return r;
@@ -224,7 +240,10 @@ export function heatmap(telemetry: Telemetry, options: HeatmapOptions = { hubSes
   for (const load of telemetry.loads) {
     const r = row(load.memoryId);
     r.loaded += 1;
-    if (load.session) (loadedSessions.get(load.memoryId) ?? loadedSessions.set(load.memoryId, new Set()).get(load.memoryId)!).add(load.session);
+    if (load.session)
+      (loadedSessions.get(load.memoryId) ?? loadedSessions.set(load.memoryId, new Set()).get(load.memoryId)!).add(
+        load.session
+      );
     const recallId = load.fromHookRecall ?? load.followsRecall;
     const pool = recallId ? telemetry.pools.get(recallId) : undefined;
     if (!pool) continue;
@@ -241,7 +260,9 @@ export function heatmap(telemetry: Telemetry, options: HeatmapOptions = { hubSes
     r.surfacedNeverLoaded = r.surfaced > 0 && r.loaded === 0;
     r.loadedAtRank.sort((a, b) => a - b);
   }
-  return [...rows.values()].sort((a, b) => b.surfaced - a.surfaced || b.loaded - a.loaded || a.memoryId.localeCompare(b.memoryId));
+  return [...rows.values()].sort(
+    (a, b) => b.surfaced - a.surfaced || b.loaded - a.loaded || a.memoryId.localeCompare(b.memoryId)
+  );
 }
 
 // ─── hot paths ───────────────────────────────────────────────────
@@ -263,7 +284,10 @@ export interface HotPathOptions {
   establishSessions: number;
 }
 
-export function hotPaths(loads: TelemetryLoad[], options: HotPathOptions = { maxGapMs: 30 * 60_000, establishSessions: 2 }): HotPath[] {
+export function hotPaths(
+  loads: TelemetryLoad[],
+  options: HotPathOptions = { maxGapMs: 30 * 60_000, establishSessions: 2 }
+): HotPath[] {
   const bySession = new Map<string, TelemetryLoad[]>();
   for (const load of loads) {
     if (!load.session || !load.found) continue;
@@ -278,7 +302,12 @@ export function hotPaths(loads: TelemetryLoad[], options: HotPathOptions = { max
       if (from.memoryId === to.memoryId) continue;
       if (Date.parse(to.ts) - Date.parse(from.ts) > options.maxGapMs) continue;
       const key = from.memoryId + "\0" + to.memoryId;
-      const edge = edges.get(key) ?? { fromId: from.memoryId, toId: to.memoryId, observations: 0, sessions: new Set<string>() };
+      const edge = edges.get(key) ?? {
+        fromId: from.memoryId,
+        toId: to.memoryId,
+        observations: 0,
+        sessions: new Set<string>(),
+      };
       edge.observations += 1;
       edge.sessions.add(sessionId);
       edges.set(key, edge);
@@ -311,13 +340,19 @@ export interface DenRow {
 }
 
 const GAP_EXITS: Record<GapKind, string> = {
-  "envelope-without-recall-id": "served envelope had no recall_id or recall_ids: an error result, or text that is not an envelope — unjoinable",
-  "load-without-recall-link": "daemon did not join this load to a recall (join store lost across idle respawn, or a direct load) — see telemetry-join-store",
-  "link-without-pool": "load links a recall_id with no recorded candidate_pool — event outside the window or pool not captured on that path",
-  "batch-link-without-sibling-pools": "load links one of several phrasings a batch recall ran (query_count minus batch_collapsed > 1); telemetry names that count, not the other phrasings — the session's transcript carries them (recall_ids), a batch id on the events would",
+  "envelope-without-recall-id":
+    "served envelope had no recall_id or recall_ids: an error result, or text that is not an envelope — unjoinable",
+  "load-without-recall-link":
+    "daemon did not join this load to a recall (join store lost across idle respawn, or a direct load) — see telemetry-join-store",
+  "link-without-pool":
+    "load links a recall_id with no recorded candidate_pool — event outside the window or pool not captured on that path",
+  "batch-link-without-sibling-pools":
+    "load links one of several phrasings a batch recall ran (query_count minus batch_collapsed > 1); telemetry names that count, not the other phrasings — the session's transcript carries them (recall_ids), a batch id on the events would",
   "load-not-found": "load_memory for an id the vault did not hold — moved or deleted memory; nothing to classify",
-  "unresolved-evidence": "the evidence step had no inspectable identity (Grep/Glob/find_document) — nothing to check against the vault",
-  "chain-without-pool": "the evidence step named a vault object, but its recalls joined no pool to judge it against: no --events, an envelope without recall_id, a recall with no recorded pool, or recalls in two score spaces",
+  "unresolved-evidence":
+    "the evidence step had no inspectable identity (Grep/Glob/find_document) — nothing to check against the vault",
+  "chain-without-pool":
+    "the evidence step named a vault object, but its recalls joined no pool to judge it against: no --events, an envelope without recall_id, a recall with no recorded pool, or recalls in two score spaces",
   "no-vault-snapshot": "no --vault given: vault membership cannot be proven, hook-lane loads stay unclassified",
 };
 
@@ -331,10 +366,12 @@ export const DEN_MIN_SESSIONS = 2;
  */
 const GAP_RECOUNT: Record<GapKind, string> = {
   "envelope-without-recall-id": "harvester only: transcript_recalls - transcript_recalls_with_recall_id",
-  "load-without-recall-link": "grep -h '\"kind\":\"load_memory\"' {events}/events-*.jsonl | grep -vc 'from_hook_recall\\|follows_recall'",
+  "load-without-recall-link":
+    "grep -h '\"kind\":\"load_memory\"' {events}/events-*.jsonl | grep -vc 'from_hook_recall\\|follows_recall'",
   "link-without-pool": "harvester only: linked recall_id with no candidate_pool event in the window",
-  "batch-link-without-sibling-pools": "harvester only: linked recall_id whose event has query_count - batch_collapsed > 1",
-  "load-not-found": "grep -h '\"kind\":\"load_memory\"' {events}/events-*.jsonl | grep -c '\"found\":false'",
+  "batch-link-without-sibling-pools":
+    "harvester only: linked recall_id whose event has query_count - batch_collapsed > 1",
+  "load-not-found": 'grep -h \'"kind":"load_memory"\' {events}/events-*.jsonl | grep -c \'"found":false\'',
   "unresolved-evidence": "harvester only: chains whose evidence step had no file_path or memory id",
   "chain-without-pool": "harvester only: chains with a load_memory or an in-vault read whose recalls joined no pool",
   "no-vault-snapshot": "harvester only: --vault not given",
@@ -346,7 +383,14 @@ export function dens(gaps: GapEvent[], eventsDir = "<events>"): DenRow[] {
     const hits = gaps.filter((gap) => gap.kind === kind);
     const witnesses = new Set(hits.map((gap) => gap.witness).filter((ref): ref is string => ref !== null)).size;
     const verdict: DenRow["verdict"] = hits.length === 0 ? "none" : witnesses >= DEN_MIN_SESSIONS ? "den" : "noise";
-    return { kind, count: hits.length, witnesses, verdict, exit: GAP_EXITS[kind], recount: GAP_RECOUNT[kind].replace("{events}", eventsDir) };
+    return {
+      kind,
+      count: hits.length,
+      witnesses,
+      verdict,
+      exit: GAP_EXITS[kind],
+      recount: GAP_RECOUNT[kind].replace("{events}", eventsDir),
+    };
   });
 }
 
@@ -371,12 +415,17 @@ export interface EvidenceReport {
     vault_ids: number | null;
   };
   observed: {
-    by_class: { transcript: Record<ReviewedMissClassification, number>; hook: Record<ReviewedMissClassification, number> };
+    by_class: {
+      transcript: Record<ReviewedMissClassification, number>;
+      hook: Record<ReviewedMissClassification, number>;
+    };
     /** Classes with ≥ OBSERVED_MIN specimens in this run. */
     live_classes: ReviewedMissClassification[];
     /** Classes seen 1..OBSERVED_MIN-1 times: observed thin, never a verdict. */
     observed_thin: ReviewedMissClassification[];
-    heatmap_top: Array<Pick<HeatmapRow, "memoryId" | "surfaced" | "surfacedSessions" | "loaded" | "hub" | "surfacedNeverLoaded">>;
+    heatmap_top: Array<
+      Pick<HeatmapRow, "memoryId" | "surfaced" | "surfacedSessions" | "loaded" | "hub" | "surfacedNeverLoaded">
+    >;
     hubs: number;
     surfaced_never_loaded: number;
     hot_paths_established: number;
@@ -390,7 +439,9 @@ export function emptyClassCounts(): Record<ReviewedMissClassification, number> {
   return Object.fromEntries(REVIEWED_MISS_CLASSES.map((cls) => [cls, 0])) as Record<ReviewedMissClassification, number>;
 }
 
-export function countClasses(records: Array<{ classification: ReviewedMissClassification }>): Record<ReviewedMissClassification, number> {
+export function countClasses(
+  records: Array<{ classification: ReviewedMissClassification }>
+): Record<ReviewedMissClassification, number> {
   const counts = emptyClassCounts();
   for (const record of records) counts[record.classification] += 1;
   return counts;
@@ -399,11 +450,15 @@ export function countClasses(records: Array<{ classification: ReviewedMissClassi
 /** Specimens a class needs before it is "live"; below that it is observed thin (ported from the owner's bench rule: < 3 bites = not observed, never a verdict). */
 export const OBSERVED_MIN = 3;
 
-export function liveClasses(...counts: Array<Record<ReviewedMissClassification, number>>): ReviewedMissClassification[] {
+export function liveClasses(
+  ...counts: Array<Record<ReviewedMissClassification, number>>
+): ReviewedMissClassification[] {
   return REVIEWED_MISS_CLASSES.filter((cls) => counts.reduce((n, c) => n + c[cls], 0) >= OBSERVED_MIN);
 }
 
-export function thinClasses(...counts: Array<Record<ReviewedMissClassification, number>>): ReviewedMissClassification[] {
+export function thinClasses(
+  ...counts: Array<Record<ReviewedMissClassification, number>>
+): ReviewedMissClassification[] {
   return REVIEWED_MISS_CLASSES.filter((cls) => {
     const n = counts.reduce((sum, c) => sum + c[cls], 0);
     return n > 0 && n < OBSERVED_MIN;
@@ -427,8 +482,14 @@ export interface Specimen {
 }
 
 export function specimensOf(
-  records: Array<{ lane: "transcript" | "hook"; classification: ReviewedMissClassification; observation: ReviewedMissObservation; sessionRef: string; recallRef: string | null }>,
-  provenance: { harvested_at: string; window_days: number | null },
+  records: Array<{
+    lane: "transcript" | "hook";
+    classification: ReviewedMissClassification;
+    observation: ReviewedMissObservation;
+    sessionRef: string;
+    recallRef: string | null;
+  }>,
+  provenance: { harvested_at: string; window_days: number | null }
 ): Specimen[] {
   const seen = new Set<string>();
   const out: Specimen[] = [];
@@ -493,7 +554,7 @@ export function observeLanes(
   transcripts: TranscriptInput[],
   telemetry: Telemetry | null,
   engines: ObservationEngines,
-  options: { hookLane: boolean; hubSessions: number; now?: Date },
+  options: { hookLane: boolean; hubSessions: number; now?: Date }
 ): LanesResult {
   const stats: RecallCallStats = { recalls: 0, withRecallId: 0 };
   const gaps: GapEvent[] = [];
@@ -505,7 +566,8 @@ export function observeLanes(
     const chains = extractReviewedMissChains(jsonl, session, perFile);
     stats.recalls += perFile.recalls;
     stats.withRecallId += perFile.withRecallId;
-    for (let n = perFile.recalls - perFile.withRecallId; n > 0; n -= 1) gaps.push({ kind: "envelope-without-recall-id", witness });
+    for (let n = perFile.recalls - perFile.withRecallId; n > 0; n -= 1)
+      gaps.push({ kind: "envelope-without-recall-id", witness });
     for (const chain of chains) {
       const record = observeChain(chain, engines);
       if (record.observation.target.kind === "unresolved") gaps.push({ kind: unresolvedGap(chain, engines), witness });
@@ -514,13 +576,18 @@ export function observeLanes(
   }
   // The daemon links a load to the most recent recall before it, which for a
   // batch or a group is any one of the chain's recalls.
-  const covered = new Set(transcript.flatMap(({ chain }) => {
-    const evidence = chain.evidence;
-    return evidence.kind === "load-memory" ? chain.recallIds.map((recallId) => loadKey(recallId, evidence.memoryId)) : [];
-  }));
-  const hook = options.hookLane && telemetry
-    ? observeHookLane(telemetry, engines, covered)
-    : { records: [], chains: [], gaps: [], coveredByTranscript: 0 };
+  const covered = new Set(
+    transcript.flatMap(({ chain }) => {
+      const evidence = chain.evidence;
+      return evidence.kind === "load-memory"
+        ? chain.recallIds.map((recallId) => loadKey(recallId, evidence.memoryId))
+        : [];
+    })
+  );
+  const hook =
+    options.hookLane && telemetry
+      ? observeHookLane(telemetry, engines, covered)
+      : { records: [], chains: [], gaps: [], coveredByTranscript: 0 };
   gaps.push(...hook.gaps);
   const heat = telemetry ? heatmap(telemetry, { hubSessions: options.hubSessions }) : [];
   const hubs = new Set(heat.filter((row) => row.hub).map((row) => row.memoryId));

@@ -271,7 +271,11 @@ test("decideHits entscheidet je Treffer und lässt die Liste unangetastet", () =
     scope: "projekt-a",
     memoryOf: () => memory({ recall_when: ["wenn wir deployen"] }),
   });
-  assert.deepEqual(out.map((d) => d.id), ["a", "b", "c"], "Reihenfolge und Anzahl unverändert");
+  assert.deepEqual(
+    out.map((d) => d.id),
+    ["a", "b", "c"],
+    "Reihenfolge und Anzahl unverändert"
+  );
   assert.equal(out[0].decision, "required");
   assert.equal(out[1].decision, "optional", "der Hop-Treffer");
   assert.equal(out[2].decision, "required");

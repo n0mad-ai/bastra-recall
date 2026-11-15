@@ -18,10 +18,16 @@ const scorer: PairScorer = {
 };
 const memoryOf = (id: string): Memory => ({ fm: { id, title: id, summary: id }, body: id }) as unknown as Memory;
 const row = (poolSize: number): CaseRow =>
-  ({ id: "c", query: "q", baseline: Array.from({ length: poolSize }, (_, i) => ({ id: `m${i}` })) }) as unknown as CaseRow;
+  ({
+    id: "c",
+    query: "q",
+    baseline: Array.from({ length: poolSize }, (_, i) => ({ id: `m${i}` })),
+  }) as unknown as CaseRow;
 
 test("an N deeper than every pool reports null percentiles with samples 0", async () => {
-  const [r] = await measureLatency(scorer, "short", [row(3), row(3)], memoryOf, "fake", [10], { scoredAnything: false });
+  const [r] = await measureLatency(scorer, "short", [row(3), row(3)], memoryOf, "fake", [10], {
+    scoredAnything: false,
+  });
   assert.equal(r.samples, 0);
   assert.equal(r.warm_p50_ms, null);
   assert.equal(r.warm_p95_ms, null);

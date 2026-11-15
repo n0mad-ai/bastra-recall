@@ -12,14 +12,39 @@ for (const sub of ["keys", "approve", "deny"]) {
   test(`#1428: retired ${sub} command reports chat authorization without credentials or writes`, async () => {
     const root = await mkdtemp(join(tmpdir(), "task-retired-signing-"));
     for (const agent of [false, true]) {
-      const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e",
-        `import { cmdTasks } from './packages/daemon/src/cli/tasks-cmd.ts'; process.exitCode = await cmdTasks(${JSON.stringify({ sub, positional: [], argv: ["tasks", sub, ...(agent ? ["agent"] : []), "x", "y", "z", "--json"], json: true })});`], {
-        env: { ...process.env, BASTRA_TASKS_PATH: join(root, "tasks.json"), BASTRA_TASK_TOKEN: "", BASTRA_TASK_AUTH_PATH: join(root, "auth.json"), BASTRA_TASK_OWNER_CACHE: join(root, "owner.json") },
-        stdio: ["ignore", "pipe", "pipe"], timeout: 15000,
+      const child = spawn(
+        process.execPath,
+        [
+          "--import",
+          "tsx",
+          "--input-type=module",
+          "-e",
+          `import { cmdTasks } from './packages/daemon/src/cli/tasks-cmd.ts'; process.exitCode = await cmdTasks(${JSON.stringify({ sub, positional: [], argv: ["tasks", sub, ...(agent ? ["agent"] : []), "x", "y", "z", "--json"], json: true })});`,
+        ],
+        {
+          env: {
+            ...process.env,
+            BASTRA_TASKS_PATH: join(root, "tasks.json"),
+            BASTRA_TASK_TOKEN: "",
+            BASTRA_TASK_AUTH_PATH: join(root, "auth.json"),
+            BASTRA_TASK_OWNER_CACHE: join(root, "owner.json"),
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+          timeout: 15000,
+        }
+      );
+      let output = "",
+        errors = "";
+      child.stdout.on("data", (chunk) => {
+        output += chunk;
       });
-      let output = "", errors = "";
-      child.stdout.on("data", chunk => { output += chunk; }); child.stderr.on("data", chunk => { errors += chunk; });
-      const code = await new Promise<number | null>((resolve, reject) => { child.once("error", reject); child.once("close", resolve); });
+      child.stderr.on("data", (chunk) => {
+        errors += chunk;
+      });
+      const code = await new Promise<number | null>((resolve, reject) => {
+        child.once("error", reject);
+        child.once("close", resolve);
+      });
       assert.equal(code, 1, errors);
       const reply = JSON.parse(output || errors);
       assert.equal(reply.code, "retired_command");

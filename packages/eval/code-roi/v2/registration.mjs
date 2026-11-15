@@ -87,7 +87,7 @@ export function armIdsOf(registration, id = DEFAULT_REGISTRATION_ID) {
   if (id === DEFAULT_REGISTRATION_ID) return [...V6_ARM_IDS];
   throw new Error(
     `registration "${id}" lists no arms.ids — a measurement whose arms are not written down ` +
-      `is a measurement whose arms the runner chose.`,
+      `is a measurement whose arms the runner chose.`
   );
 }
 

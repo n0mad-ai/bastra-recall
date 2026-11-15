@@ -98,7 +98,7 @@ describe("git rename evidence", () => {
     assert.equal(
       lookup.renames.some((r) => r.from === "src/dropped.ts"),
       false,
-      "a delete in one commit and an add in the next is two facts, not a rename",
+      "a delete in one commit and an add in the next is two facts, not a rename"
     );
   });
 
@@ -110,7 +110,7 @@ describe("git rename evidence", () => {
     const ranged = parseNameStatus(out, "range");
     assert.ok(
       ranged.some((r) => r.from === "src/dropped.ts" && r.to === "src/lookalike.ts"),
-      "the range diff pairs the delete with the later add",
+      "the range diff pairs the delete with the later add"
     );
   });
 
@@ -133,7 +133,7 @@ describe("git rename evidence", () => {
     // The deleted file stays unresolved — that is the honest state.
     assert.equal(
       unresolved.some((u) => u.file === "src/dropped.ts" && u.reason === "file-missing"),
-      true,
+      true
     );
   });
 
@@ -194,9 +194,7 @@ describe("chaining and refusals", () => {
 
   it("reads only R lines out of --name-status", () => {
     const out = "A\tnew.ts\nD\told.ts\nM\tsame.ts\nR095\tfrom.ts\tto.ts\n";
-    assert.deepEqual(parseNameStatus(out, "c1"), [
-      { from: "from.ts", to: "to.ts", similarity: 95, commit: "c1" },
-    ]);
+    assert.deepEqual(parseNameStatus(out, "c1"), [{ from: "from.ts", to: "to.ts", similarity: 95, commit: "c1" }]);
   });
 
   it("never offers for a malformed or symbol-only mismatch", () => {
@@ -206,7 +204,7 @@ describe("chaining and refusals", () => {
         { memoryId: "m1", entry: "/abs", file: "", symbol: null, reason: "not-repo-relative" as const },
         { memoryId: "m2", entry: "a.ts#x", file: "a.ts", symbol: "x", reason: "symbol-missing" as const },
       ],
-      lookup,
+      lookup
     );
     assert.deepEqual(offers, []);
   });

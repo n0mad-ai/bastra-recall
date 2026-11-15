@@ -135,7 +135,7 @@ export async function handleUiAreas(
   res: ServerResponse,
   vaultRoot: string,
   onChanged?: () => Promise<unknown>,
-  settingsPath?: string,
+  settingsPath?: string
 ): Promise<void> {
   if (!(await getUiEnabled(settingsPath))) {
     sendJsonPlain(res, 404, { error: "ui disabled" });

@@ -28,7 +28,7 @@ async function withIndex(notes: [string, string, string][], fn: (s: SearchIndex)
   for (const [id, title, body] of notes) {
     await writeFile(
       join(dir, "memories", `${id}.md`),
-      `---\nid: ${id}\ntitle: "${title}"\ntype: reference\nsummary: "${title}"\ntopic_path: [t]\ntags: [t]\nscope: s\nrecall_when:\n  - "${title}"\ncreated: 2026-10-01\nupdated: 2026-10-01\n---\n\n${body}\n`,
+      `---\nid: ${id}\ntitle: "${title}"\ntype: reference\nsummary: "${title}"\ntopic_path: [t]\ntags: [t]\nscope: s\nrecall_when:\n  - "${title}"\ncreated: 2026-10-01\nupdated: 2026-10-01\n---\n\n${body}\n`
     );
   }
   const vault = new Vault(dir);
@@ -51,22 +51,22 @@ const FILLER: [string, string, string][] = Array.from({ length: 12 }, (_, i) => 
 ]);
 
 test("#711: a two-word Chinese query finds the note that writes the words without spaces", async () => {
-  await withIndex(
-    [["zh-backup", "备份服务器的密码", "备份服务器的密码存放在保险库里。"], ...FILLER],
-    (s) => {
-      const hits = s.recall("服务器 密码", { k: 5 });
-      assert.equal(hits[0]?.id, "zh-backup");
-    },
-  );
+  await withIndex([["zh-backup", "备份服务器的密码", "备份服务器的密码存放在保险库里。"], ...FILLER], (s) => {
+    const hits = s.recall("服务器 密码", { k: 5 });
+    assert.equal(hits[0]?.id, "zh-backup");
+  });
 });
 
 test("#711: a Japanese query of two words finds the sentence that contains them", async () => {
   await withIndex(
-    [["ja-deploy", "ステージング環境へのデプロイ手順", "ステージング環境へデプロイするときはスクリプトを使う。"], ...FILLER],
+    [
+      ["ja-deploy", "ステージング環境へのデプロイ手順", "ステージング環境へデプロイするときはスクリプトを使う。"],
+      ...FILLER,
+    ],
     (s) => {
       const hits = s.recall("デプロイ 手順", { k: 5 });
       assert.equal(hits[0]?.id, "ja-deploy");
-    },
+    }
   );
 });
 

@@ -4,11 +4,7 @@ import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
 import { debug } from "./logger";
-import {
-  getClaudePaths,
-  findProjectPaths,
-  getFileModificationDate,
-} from "./claude";
+import { getClaudePaths, findProjectPaths, getFileModificationDate } from "./claude";
 
 interface ErrnoError extends Error {
   code?: string;
@@ -20,11 +16,7 @@ export interface CacheEntry<T> {
 }
 
 export class CacheManager {
-  private static readonly CACHE_DIR = path.join(
-    homedir(),
-    ".claude",
-    "powerline",
-  );
+  private static readonly CACHE_DIR = path.join(homedir(), ".claude", "powerline");
   private static readonly USAGE_CACHE_DIR = path.join(this.CACHE_DIR, "usage");
   private static readonly LOCKS_DIR = path.join(this.CACHE_DIR, "locks");
 
@@ -62,10 +54,7 @@ export class CacheManager {
     }
   }
 
-  private static async acquireLock(
-    name: string,
-    timeout = 5000,
-  ): Promise<boolean> {
+  private static async acquireLock(name: string, timeout = 5000): Promise<boolean> {
     const RETRY_DELAY_MS = 50;
     const FILE_CREATE_FLAG = "wx";
 
@@ -121,10 +110,7 @@ export class CacheManager {
     return createHash("md5").update(projectPath).digest("hex").substring(0, 8);
   }
 
-  static async getUsageCache(
-    cacheType: "today" | "block" | "pricing",
-    latestMtime?: number,
-  ): Promise<unknown> {
+  static async getUsageCache(cacheType: "today" | "block" | "pricing", latestMtime?: number): Promise<unknown> {
     const MAX_RETRIES = 3;
     const RETRY_DELAY_MS = 75;
     const FILE_ENCODING = "utf-8";
@@ -150,9 +136,7 @@ export class CacheManager {
           debug(`[CACHE-HIT] ${cacheType} disk cache: found`);
           return this.deserializeDates(cached.data);
         } else {
-          debug(
-            `${cacheType} cache outdated: cache=${cached.timestamp}, latest=${latestMtime}`,
-          );
+          debug(`${cacheType} cache outdated: cache=${cached.timestamp}, latest=${latestMtime}`);
           return null;
         }
       } catch (error) {
@@ -161,9 +145,7 @@ export class CacheManager {
           return null;
         }
         const attemptNumber = attempt + 1;
-        debug(
-          `Attempt ${attemptNumber} failed to read ${cacheType} cache: ${(error as Error).message}. Retrying...`,
-        );
+        debug(`Attempt ${attemptNumber} failed to read ${cacheType} cache: ${(error as Error).message}. Retrying...`);
         await setTimeout(RETRY_DELAY_MS);
       }
     }
@@ -185,7 +167,7 @@ export class CacheManager {
   static async setUsageCache(
     cacheType: "today" | "block" | "pricing",
     data: unknown,
-    latestMtime?: number,
+    latestMtime?: number
   ): Promise<void> {
     const lockName = `${cacheType}.usage.lock`;
     const lockAcquired = await this.acquireLock(lockName);

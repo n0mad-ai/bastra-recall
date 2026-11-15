@@ -77,20 +77,19 @@ describe("#150: saveMemoryHandler failure cap", () => {
       await assert.rejects(
         saveMemoryHandler(DUMMY_DEPS, { not: "valid" }),
         (err: Error) => !err.message.includes("STOP retrying"),
-        `failure ${i} must stay a plain error`,
+        `failure ${i} must stay a plain error`
       );
     }
     await assert.rejects(
       saveMemoryHandler(DUMMY_DEPS, { not: "valid" }),
-      (err: Error) =>
-        err.message.includes("STOP retrying") && err.message.includes("last error:"),
-      "failure at cap must be terminal",
+      (err: Error) => err.message.includes("STOP retrying") && err.message.includes("last error:"),
+      "failure at cap must be terminal"
     );
     // A further retry stays terminal — no reset on the terminal path.
     await assert.rejects(
       saveMemoryHandler(DUMMY_DEPS, { not: "valid" }),
       (err: Error) => err.message.includes("STOP retrying"),
-      "retry after terminal must stay terminal",
+      "retry after terminal must stay terminal"
     );
   });
 
@@ -108,7 +107,7 @@ describe("#150: saveMemoryHandler failure cap", () => {
       await assert.rejects(
         saveMemoryHandler(deps, { not: "valid" }),
         (err: Error) => !err.message.includes("STOP retrying"),
-        "failure after success must be a plain error again",
+        "failure after success must be a plain error again"
       );
     } finally {
       await close();
@@ -133,10 +132,10 @@ describe("malformed MCP save arguments", () => {
     await assert.rejects(
       saveMemoryHandler(DUMMY_DEPS, CORRUPTED),
       (err: Error) =>
-        err.message.includes("corrupted before validation")
-        && err.message.includes("body, topic_path, tags, recall_when")
-        && err.message.includes("NOTHING WAS SAVED")
-        && err.message.includes("STOP retrying"),
+        err.message.includes("corrupted before validation") &&
+        err.message.includes("body, topic_path, tags, recall_when") &&
+        err.message.includes("NOTHING WAS SAVED") &&
+        err.message.includes("STOP retrying")
     );
   });
 
@@ -152,12 +151,11 @@ describe("malformed MCP save arguments", () => {
       await assert.rejects(
         saveMemoryHandler(DUMMY_DEPS, { not: "valid" }),
         (err: Error) => !err.message.includes("STOP retrying"),
-        `ordinary failure ${i} must still be below the cap`,
+        `ordinary failure ${i} must still be below the cap`
       );
     }
-    await assert.rejects(
-      saveMemoryHandler(DUMMY_DEPS, { not: "valid" }),
-      (err: Error) => err.message.includes("STOP retrying"),
+    await assert.rejects(saveMemoryHandler(DUMMY_DEPS, { not: "valid" }), (err: Error) =>
+      err.message.includes("STOP retrying")
     );
   });
 

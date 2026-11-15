@@ -19,7 +19,7 @@ export function listenHttp(server: Server, port: number): Promise<HttpHandle> {
     const onError = (err: NodeJS.ErrnoException): void => {
       if (err.code === "EADDRINUSE") {
         console.error(
-          `[bastra-recall] http: port ${port} already in use — if another bastra-recall daemon owns it, hooks will reach that one.`,
+          `[bastra-recall] http: port ${port} already in use — if another bastra-recall daemon owns it, hooks will reach that one.`
         );
         server.removeAllListeners("error");
         server.removeAllListeners("listening");

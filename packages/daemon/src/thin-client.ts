@@ -51,12 +51,7 @@ export function daemonBaseUrl(): string {
 
 /** POST `body`; resolve with the response body VERBATIM (the daemon returns
  *  the exact stdout document). Rejects on HTTP >= 400 / transport errors. */
-export function postLane(
-  baseUrl: string,
-  path: string,
-  body: unknown,
-  timeoutMs: number,
-): Promise<string> {
+export function postLane(baseUrl: string, path: string, body: unknown, timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
     let url: URL;
     try {
@@ -65,12 +60,8 @@ export function postLane(
       reject(err);
       return;
     }
-    const record = body && typeof body === "object" && !Array.isArray(body)
-      ? body as Record<string, unknown>
-      : null;
-    const wireBody = record && "payload" in record
-      ? { ...record, payload: decorateHookPayload(record.payload) }
-      : body;
+    const record = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
+    const wireBody = record && "payload" in record ? { ...record, payload: decorateHookPayload(record.payload) } : body;
     const payload = Buffer.from(JSON.stringify(wireBody), "utf8");
     // A BASTRA_DAEMON_URL of https:// must use TLS, not fall through to a
     // plain-HTTP socket because `request` was always the node:http one
@@ -115,7 +106,7 @@ export function postLane(
           }
           resolve(data);
         });
-      },
+      }
     );
     req.on("error", (err) => {
       if (settled) return;
@@ -129,7 +120,6 @@ export function postLane(
 }
 
 export function classifyTransportError(e: NodeJS.ErrnoException): "daemon-unreachable" | "timeout" | "error" {
-  if (e.code === "ECONNREFUSED" || e.code === "ENOTFOUND" || e.code === "EHOSTUNREACH")
-    return "daemon-unreachable";
+  if (e.code === "ECONNREFUSED" || e.code === "ENOTFOUND" || e.code === "EHOSTUNREACH") return "daemon-unreachable";
   return e.message === "timeout" ? "timeout" : "error";
 }

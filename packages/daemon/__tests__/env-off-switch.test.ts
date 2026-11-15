@@ -43,7 +43,7 @@ test("one parser: off and on values, any case, whitespace ignored", () => {
   withEnv({ BASTRA_X_SWITCH: undefined }, () => assert.equal(envOff("BASTRA_X_SWITCH"), false, "unset is not off"));
 });
 
-test("BASTRA_TELEMETRY=0 / no / false switch telemetry off, not only \"off\"", () => {
+test('BASTRA_TELEMETRY=0 / no / false switch telemetry off, not only "off"', () => {
   for (const v of ["0", "no", "false", "off"]) {
     withEnv({ BASTRA_TELEMETRY: v, NEXUS_TELEMETRY: undefined }, () => {
       assert.equal(new Telemetry().isEnabled(), false, `BASTRA_TELEMETRY=${v}`);
@@ -68,7 +68,7 @@ test("doctor reads BASTRA_MCP_SESSION_CONTEXT in a client entry like the forward
     assert.deepEqual(
       mcpEnvFeatures({ command: "node", env: { BASTRA_MCP_SESSION_CONTEXT: v } }, "/c.json"),
       { sessionContextOff: true, mcpConfig: "/c.json" },
-      v,
+      v
     );
   }
   for (const v of ["1", "true", "on", ""]) {

@@ -30,13 +30,21 @@ export interface ContentRecallInput {
  *  plus the `content_recall` telemetry summary (undefined when it did not run). */
 export async function runContentRecall(input: ContentRecallInput) {
   const {
-    body, search, hookToolName, query, k, scope, type, expand_hops, skipDense,
-    vectorDeadlineMs, embeddingDegradedAtRecall, promptFused,
+    body,
+    search,
+    hookToolName,
+    query,
+    k,
+    scope,
+    type,
+    expand_hops,
+    skipDense,
+    vectorDeadlineMs,
+    embeddingDegradedAtRecall,
+    promptFused,
   } = input;
   let hits = input.hits;
-  const contentQuery = typeof body.tool_input_excerpt === "string"
-    ? body.tool_input_excerpt.trim().slice(0, 4096)
-    : "";
+  const contentQuery = typeof body.tool_input_excerpt === "string" ? body.tool_input_excerpt.trim().slice(0, 4096) : "";
   let contentRecall:
     | {
         hit_count: number;
@@ -48,10 +56,10 @@ export async function runContentRecall(input: ContentRecallInput) {
       }
     | undefined;
   if (
-    envBool("BASTRA_HOOK_CONTENT_RECALL", false)
-    && CONTENT_RECALL_TOOLS.has(hookToolName ?? "")
-    && contentQuery
-    && contentQuery !== query
+    envBool("BASTRA_HOOK_CONTENT_RECALL", false) &&
+    CONTENT_RECALL_TOOLS.has(hookToolName ?? "") &&
+    contentQuery &&
+    contentQuery !== query
   ) {
     const contentRecallStarted = Date.now();
     try {
@@ -71,27 +79,27 @@ export async function runContentRecall(input: ContentRecallInput) {
       // Arm neben einem Prompt-Recall ohne wäre genau die Last, die
       // `lexical_only` vermeiden soll — und das Merge-Gate darunter würde
       // ihn wegen des Skalenbruchs ohnehin verwerfen.
-      const contentHits = search.hasEmbeddings() && !skipDense
-        ? await search.recallHybrid(contentQuery, {
-            k,
-            scope,
-            type,
-            expand_hops,
-            onStage: collectContentStage,
-            // Same deadline, not a remaining-budget split: by the time this
-            // runs the query recall above has either warmed the model (so
-            // this costs ~120ms) or is still loading it (so this expires
-            // too and degrades the same way). Both are the right outcome.
-            vector_deadline_ms: vectorDeadlineMs,
-          })
-        : search.recall(contentQuery, {
-            k,
-            scope,
-            type,
-            expand_hops,
-          });
-      const contentFused =
-        search.hasEmbeddings() && !embeddingDegradedAtRecall && contentDegradedReason === undefined;
+      const contentHits =
+        search.hasEmbeddings() && !skipDense
+          ? await search.recallHybrid(contentQuery, {
+              k,
+              scope,
+              type,
+              expand_hops,
+              onStage: collectContentStage,
+              // Same deadline, not a remaining-budget split: by the time this
+              // runs the query recall above has either warmed the model (so
+              // this costs ~120ms) or is still loading it (so this expires
+              // too and degrades the same way). Both are the right outcome.
+              vector_deadline_ms: vectorDeadlineMs,
+            })
+          : search.recall(contentQuery, {
+              k,
+              scope,
+              type,
+              expand_hops,
+            });
+      const contentFused = search.hasEmbeddings() && !embeddingDegradedAtRecall && contentDegradedReason === undefined;
       if (contentFused !== promptFused) {
         // Fail-closed: Die beiden Listen liegen in verschiedenen Räumen, und
         // „der höhere Score gewinnt" heißt dann nur „die Skala ohne
@@ -115,9 +123,7 @@ export async function runContentRecall(input: ContentRecallInput) {
           rescored_count: mergedHits.filter((hit) => {
             const queryHit = queryHitsById.get(hit.id);
             const contentHit = contentHitsById.get(hit.id);
-            return queryHit !== undefined
-              && contentHit !== undefined
-              && contentHit.score > queryHit.score;
+            return queryHit !== undefined && contentHit !== undefined && contentHit.score > queryHit.score;
           }).length,
           latency_ms: Date.now() - contentRecallStarted,
         };

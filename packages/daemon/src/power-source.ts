@@ -45,7 +45,7 @@ const execText: ExecText = (cmd, args) =>
 /** One reading. Never throws. */
 export async function readPowerSource(
   exec: ExecText = execText,
-  platform: NodeJS.Platform = process.platform,
+  platform: NodeJS.Platform = process.platform
 ): Promise<PowerSource> {
   if (platform !== "darwin") return "unknown";
   try {

@@ -21,8 +21,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault, SearchIndex, AUTO_RELATED_START } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
-import { recallHandler, loadMemoryHandler, saveMemoryHandler, truncateSummary, type ToolDeps } from "../src/tool-handlers.js";
-import { commonsRankFactor, buildVerificationRecord, verificationRecordPath, loadVerificationCounts } from "../src/cli/commons.js";
+import {
+  recallHandler,
+  loadMemoryHandler,
+  saveMemoryHandler,
+  truncateSummary,
+  type ToolDeps,
+} from "../src/tool-handlers.js";
+import {
+  commonsRankFactor,
+  buildVerificationRecord,
+  verificationRecordPath,
+  loadVerificationCounts,
+} from "../src/cli/commons.js";
 
 const LONG_SUMMARY =
   "alpha bravo charlie delta echo foxtrot golf hotel india juliett kilo lima mike november " +
@@ -145,7 +156,11 @@ async function makeDeps(): Promise<{ deps: ToolDeps; close: () => Promise<void> 
   await writeFile(join(dir, "charlie.md"), leanMemory("charlie", "charlie delta"), "utf8");
   await writeFile(join(dir, "rich.md"), richMemory("rich", "rich echo"), "utf8");
   await writeFile(join(dir, "longsum.md"), longSummaryMemory("longsum", "alpha bravo"), "utf8");
-  await writeFile(join(dir, "private.md"), privateMemory("private-checkout-focus", "checkout button focus private leak"), "utf8");
+  await writeFile(
+    join(dir, "private.md"),
+    privateMemory("private-checkout-focus", "checkout button focus private leak"),
+    "utf8"
+  );
   const vault = new Vault(dir);
   await vault.init();
   const search = new SearchIndex(vault);
@@ -287,11 +302,11 @@ test("save_memory: injection markers in captured content surface as advisory, sa
     assert.ok(res.save_quality);
     assert.ok(
       res.save_quality.issues.some((issue) => issue.includes("prompt-injection markers")),
-      "advisory surfaces in save_quality issues",
+      "advisory surfaces in save_quality issues"
     );
     assert.ok(
       res.save_quality.suggestions.some((s) => s.includes("review the flagged spans")),
-      "concrete review suggestion attached",
+      "concrete review suggestion attached"
     );
   } finally {
     await close();
@@ -316,7 +331,7 @@ test("save_memory returns advisory save_quality with low score for generic trigg
     assert.ok(res.save_quality.score < 50, `expected low score, got ${res.save_quality.score}`);
     assert.ok(
       res.save_quality.issues.some((issue) => issue.includes("css")),
-      "generic trigger should be reported",
+      "generic trigger should be reported"
     );
     assert.ok(res.save_quality.suggestions.length > 0, "expected concrete tightening suggestion");
   } finally {
@@ -340,11 +355,11 @@ test("save_memory admission rules (#159): negative claim without fix + imperativ
     assert.ok(res.save_quality); // #542: absent only on a conflict diversion
     assert.ok(
       res.save_quality.issues.some((i) => i.includes("negative capability claim")),
-      "broken-claim without a fix should be flagged",
+      "broken-claim without a fix should be flagged"
     );
     assert.ok(
       res.save_quality.issues.some((i) => i.includes("imperative phrasing")),
-      "imperative lead should be flagged",
+      "imperative lead should be flagged"
     );
 
     // the same failure WITH a fix in the body passes the negative-claim rule
@@ -361,11 +376,11 @@ test("save_memory admission rules (#159): negative claim without fix + imperativ
     assert.ok(fixed.save_quality); // #542: absent only on a conflict diversion
     assert.ok(
       !fixed.save_quality.issues.some((i) => i.includes("negative capability claim")),
-      "captured fix must not be flagged",
+      "captured fix must not be flagged"
     );
     assert.ok(
       !fixed.save_quality.issues.some((i) => i.includes("imperative phrasing")),
-      "declarative title must not be flagged",
+      "declarative title must not be flagged"
     );
   } finally {
     await close();
@@ -421,8 +436,20 @@ test("save_quality (#108, criterion replaced in #300): weak grazing matches don'
         "",
       ].join("\n");
     for (let i = 0; i < 4; i++) {
-      await writeFile(join(dir, `strong${i}.md`), mk(`strong${i}`, "tuning the flux capacitor drift", `note ${i} about capacitor drift tuning`), "utf8");
-      await writeFile(join(dir, `weak${i}.md`), mk(`weak${i}`, `unrelated trigger number ${i} for sorting widgets`, `widget sorting note ${i} that mentions flux once`), "utf8");
+      await writeFile(
+        join(dir, `strong${i}.md`),
+        mk(`strong${i}`, "tuning the flux capacitor drift", `note ${i} about capacitor drift tuning`),
+        "utf8"
+      );
+      await writeFile(
+        join(dir, `weak${i}.md`),
+        mk(
+          `weak${i}`,
+          `unrelated trigger number ${i} for sorting widgets`,
+          `widget sorting note ${i} that mentions flux once`
+        ),
+        "utf8"
+      );
     }
     const vault = new Vault(dir);
     await vault.init();
@@ -451,7 +478,10 @@ test("save_quality (#108, criterion replaced in #300): weak grazing matches don'
     });
     assert.ok(res.save_quality); // #542: absent only on a conflict diversion
     const collidingTriggers = res.save_quality.trigger_collisions.map((c) => c.trigger);
-    assert.ok(collidingTriggers.includes("tuning the flux capacitor drift"), "real recall_when overlap must still be reported");
+    assert.ok(
+      collidingTriggers.includes("tuning the flux capacitor drift"),
+      "real recall_when overlap must still be reported"
+    );
     assert.ok(!collidingTriggers.includes(weakTrigger), "below-floor grazing matches must NOT count as collisions");
 
     search.stop();
@@ -488,7 +518,11 @@ test("commons fusion: recall merges read-only commons hits (scope commons, dampe
         "",
       ].join("\n");
     await writeFile(join(dirP, "own.md"), mk("own-note", "personal", "flux compensator drift tuning"), "utf8");
-    await writeFile(join(dirC, "recipe.md"), mk("spinner-recipe", "commons", "button spinner clipped width jumps"), "utf8");
+    await writeFile(
+      join(dirC, "recipe.md"),
+      mk("spinner-recipe", "commons", "button spinner clipped width jumps"),
+      "utf8"
+    );
     // ID-Kollision: gleiche ID in commons — der persönliche Treffer muss gewinnen.
     await writeFile(join(dirC, "own-clone.md"), mk("own-note", "commons", "flux compensator drift tuning"), "utf8");
 
@@ -537,7 +571,8 @@ test("save_memory returns high save_quality for specific anchored triggers", asy
     const res = await saveMemoryHandler(deps, {
       title: "checkout button focus fixture",
       type: "lesson",
-      summary: "Before changing checkout button focus styles, run the regression fixture that covers keyboard focus rings.",
+      summary:
+        "Before changing checkout button focus styles, run the regression fixture that covers keyboard focus rings.",
       body: "Run the checkout focus fixture before changing keyboard focus styles.",
       topic_path: ["checkout", "accessibility", "focus"],
       tags: ["checkout-focus", "accessibility"],
@@ -657,7 +692,11 @@ test("verify-loop: rank factor follows evidence, records are counted, load_memor
     const p = verificationRecordPath(root, "spinner-recipe", "abc123def456");
     await mkdir(join(root, "verifications", "spinner-recipe"), { recursive: true });
     await writeFile(p, JSON.stringify(rec), "utf8");
-    await writeFile(verificationRecordPath(root, "spinner-recipe", "ffff00001111"), JSON.stringify({ ...rec, verifier: "ffff00001111", result: "fails" }), "utf8");
+    await writeFile(
+      verificationRecordPath(root, "spinner-recipe", "ffff00001111"),
+      JSON.stringify({ ...rec, verifier: "ffff00001111", result: "fails" }),
+      "utf8"
+    );
     const counts = loadVerificationCounts(root);
     assert.deepEqual(counts.get("spinner-recipe"), { works: 1, fails: 1 });
 
@@ -665,7 +704,30 @@ test("verify-loop: rank factor follows evidence, records are counted, load_memor
     const dirC = join(root, "recipes-vault");
     await mkdir(dirC, { recursive: true });
     const ts = new Date().toISOString();
-    await writeFile(join(dirC, "r.md"), ["---", "id: spinner-recipe", "title: t", "type: lesson", "summary: s", "topic_path:", "  - t", "tags:", "  - t", "scope: commons", "recall_when:", "  - w", `created: ${ts}`, `updated: ${ts}`, "---", "", "Body.", ""].join("\n"), "utf8");
+    await writeFile(
+      join(dirC, "r.md"),
+      [
+        "---",
+        "id: spinner-recipe",
+        "title: t",
+        "type: lesson",
+        "summary: s",
+        "topic_path:",
+        "  - t",
+        "tags:",
+        "  - t",
+        "scope: commons",
+        "recall_when:",
+        "  - w",
+        `created: ${ts}`,
+        `updated: ${ts}`,
+        "---",
+        "",
+        "Body.",
+        "",
+      ].join("\n"),
+      "utf8"
+    );
     const commonsVault = new Vault(dirC);
     await commonsVault.init();
     const commonsSearch = new SearchIndex(commonsVault);
@@ -676,7 +738,14 @@ test("verify-loop: rank factor follows evidence, records are counted, load_memor
     await vault.init();
     const search = new SearchIndex(vault);
     search.start();
-    const deps: ToolDeps = { vault, search, telemetry: new Telemetry(), vaultPath: emptyVaultDir, commonsSearch, commonsVerifications: counts };
+    const deps: ToolDeps = {
+      vault,
+      search,
+      telemetry: new Telemetry(),
+      vaultPath: emptyVaultDir,
+      commonsSearch,
+      commonsVerifications: counts,
+    };
     const loaded = await loadMemoryHandler(deps, { id: "spinner-recipe" });
     assert.ok(loaded.commons, "commons block must be present for commons-sourced loads");
     assert.equal(loaded.commons?.works, 1);

@@ -88,7 +88,11 @@ async function readEvents(logDir: string, kind: string): Promise<Record<string, 
   for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 40));
     let files: string[];
-    try { files = await readdir(logDir); } catch { continue; }
+    try {
+      files = await readdir(logDir);
+    } catch {
+      continue;
+    }
     const out: Record<string, unknown>[] = [];
     for (const f of files.filter((n) => n.startsWith("events-"))) {
       const raw = await readFile(join(logDir, f), "utf8");
@@ -129,19 +133,25 @@ test("#487: ohne max_tokens baut die Budgetfunktion genau einmal, aus derselben 
 
 test("#487: eine Antwort ohne max_tokens trägt keine Budgetfelder", async (t) => {
   const { deps } = await makeDeps(t);
-  const res = (await recallHandler(deps, { query: "deployen", k: 5, min_score: 0 })) as unknown as Record<string, unknown>;
+  const res = (await recallHandler(deps, { query: "deployen", k: 5, min_score: 0 })) as unknown as Record<
+    string,
+    unknown
+  >;
   assert.ok((res.hits as unknown[]).length > 1, "der Vault muss mehrere Treffer liefern");
   assert.equal(res.truncated_by_budget, undefined);
   assert.equal(res.dropped_by_budget, undefined);
   assert.ok(
     !JSON.stringify(res).includes("_by_budget"),
-    "kein Budgetfeld irgendwo in der Antwort — auch nicht in einem Hit",
+    "kein Budgetfeld irgendwo in der Antwort — auch nicht in einem Hit"
   );
 });
 
 test("#487: ein Budget, das reicht, liefert byte-gleich zur Antwort ohne Budget", async (t) => {
   const { deps } = await makeDeps(t);
-  const ohne = (await recallHandler(deps, { query: "deployen", k: 5, min_score: 0 })) as unknown as Record<string, unknown>;
+  const ohne = (await recallHandler(deps, { query: "deployen", k: 5, min_score: 0 })) as unknown as Record<
+    string,
+    unknown
+  >;
   const mit = (await recallHandler(deps, {
     query: "deployen",
     k: 5,
@@ -151,7 +161,7 @@ test("#487: ein Budget, das reicht, liefert byte-gleich zur Antwort ohne Budget"
   assert.equal(
     JSON.stringify(stable(mit), null, 2),
     JSON.stringify(stable(ohne), null, 2),
-    "ein Budget, das nie greift, darf die Antwort nicht anfassen",
+    "ein Budget, das nie greift, darf die Antwort nicht anfassen"
   );
 });
 
@@ -159,7 +169,10 @@ test("#487: ein Budget, das reicht, liefert byte-gleich zur Antwort ohne Budget"
 
 test("#487: das Payload bleibt im Budget, um höchstens einen Treffer daneben", async (t) => {
   const { deps } = await makeDeps(t);
-  const voll = (await recallHandler(deps, { query: "deployen", k: 8, min_score: 0 })) as unknown as Record<string, unknown>;
+  const voll = (await recallHandler(deps, { query: "deployen", k: 8, min_score: 0 })) as unknown as Record<
+    string,
+    unknown
+  >;
   const alle = (voll.hits as unknown[]).length;
   assert.ok(alle >= 4, `der Vault muss genug Treffer liefern, waren ${alle}`);
   // Ein Budget mitten zwischen „nichts" und „alles".
@@ -174,14 +187,11 @@ test("#487: das Payload bleibt im Budget, um höchstens einen Treffer daneben", 
   assert.ok(emitted > 0 && emitted < alle, `gekürzt, aber nicht leer — waren ${emitted} von ${alle}`);
   assert.ok(
     measurePayload(res).tokens <= budget,
-    `das Payload (${measurePayload(res).tokens}) muss ins Budget (${budget}) passen`,
+    `das Payload (${measurePayload(res).tokens}) muss ins Budget (${budget}) passen`
   );
   // Die Toleranz IST ein Treffer: der nächste hätte das Budget gerissen.
   const einerMehr = { ...res, hits: (voll.hits as unknown[]).slice(0, emitted + 1) };
-  assert.ok(
-    measurePayload(einerMehr).tokens > budget,
-    "es wurde nicht mehr weggelassen als nötig",
-  );
+  assert.ok(measurePayload(einerMehr).tokens > budget, "es wurde nicht mehr weggelassen als nötig");
   assert.equal(res.truncated_by_budget, true);
   assert.equal(res.dropped_by_budget, alle - emitted);
 });
@@ -202,7 +212,10 @@ test("#487: k bleibt die harte Obergrenze — ein großes Budget liefert nicht m
 
 test("#487: die Telemetrie hält Budget und ausgeliefertes Payload nebeneinander", async (t) => {
   const { deps, logDir } = await makeDeps(t);
-  const voll = (await recallHandler(deps, { query: "deployen", k: 8, min_score: 0 })) as unknown as Record<string, unknown>;
+  const voll = (await recallHandler(deps, { query: "deployen", k: 8, min_score: 0 })) as unknown as Record<
+    string,
+    unknown
+  >;
   const budget = Math.floor(measurePayload(voll).tokens / 2);
   const res = (await recallHandler(deps, {
     query: "deployen",
@@ -216,7 +229,7 @@ test("#487: die Telemetrie hält Budget und ausgeliefertes Payload nebeneinander
   assert.equal(
     events[0].payload_tokens_est,
     measurePayload(res).tokens,
-    "das AUSGELIEFERTE Payload — ohne beide Zahlen ist keine Ersparnis zuzuordnen",
+    "das AUSGELIEFERTE Payload — ohne beide Zahlen ist keine Ersparnis zuzuordnen"
   );
   assert.equal(events[0].dropped_by_budget, res.dropped_by_budget);
 });
@@ -227,13 +240,18 @@ function httpPost(port: number, path: string, payload: unknown): Promise<Record<
   const body = JSON.stringify(payload);
   return new Promise((resolve, reject) => {
     const req = request(
-      { host: "127.0.0.1", port, path, method: "POST",
-        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) } },
+      {
+        host: "127.0.0.1",
+        port,
+        path,
+        method: "POST",
+        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+      },
       (res) => {
         let raw = "";
         res.on("data", (c) => (raw += c));
         res.on("end", () => resolve(JSON.parse(raw || "{}") as Record<string, unknown>));
-      },
+      }
     );
     req.on("error", reject);
     req.end(body);
@@ -248,7 +266,11 @@ test("#487: /hook/recall kürzt auf dasselbe Budget und meldet es", async (t) =>
   search.start();
   const telemetry = new Telemetry();
   const handle = await startHttpServer({
-    port: 0, vault, search, telemetry, version: "test",
+    port: 0,
+    vault,
+    search,
+    telemetry,
+    version: "test",
     toolDeps: { vault, search, telemetry, vaultPath: dir },
     documentWriteEnabled: false,
     embedding: { on: false, providerId: "none", source: "none" },
@@ -303,7 +325,11 @@ async function hookServer(t: { after: (fn: () => unknown) => void }, dir: string
   search.start();
   const telemetry = new Telemetry();
   const handle = await startHttpServer({
-    port: 0, vault, search, telemetry, version: "test",
+    port: 0,
+    vault,
+    search,
+    telemetry,
+    version: "test",
     toolDeps: { vault, search, telemetry, vaultPath: dir },
     documentWriteEnabled: false,
     embedding: { on: false, providerId: "none", source: "none" },
@@ -330,19 +356,16 @@ test("#487 P1: viele reflex_hits + winziges Budget sprengen das Budget nicht meh
   // Der dokumentierte Boden ist der UMSCHLAG: mehr kann kein Budget einsparen.
   // Die Toleranz ist ein Treffer — EIN Reflex mehr hätte es gerissen.
   const einerMehr = { ...res, reflex_hits: [reflexeVoll[0]] };
-  assert.ok(
-    measurePayload(einerMehr).tokens > 1,
-    "die Toleranz bleibt ein Treffer",
-  );
+  assert.ok(measurePayload(einerMehr).tokens > 1, "die Toleranz bleibt ein Treffer");
   assert.ok(
     measurePayload(res).tokens < measurePayload(voll).tokens / 10,
-    `der Umschlag allein (${measurePayload(res).tokens}) statt 2352 Token`,
+    `der Umschlag allein (${measurePayload(res).tokens}) statt 2352 Token`
   );
   assert.equal(res.truncated_by_budget, true);
   assert.equal(
     res.dropped_by_budget,
     (voll.hits as unknown[]).length + reflexeVoll.length,
-    "gemeldet wird, was das Budget INSGESAMT weggenommen hat",
+    "gemeldet wird, was das Budget INSGESAMT weggenommen hat"
   );
 });
 
@@ -357,7 +380,7 @@ test("#487 P1: gestrichen wird erst gerankt, dann reflex — der Vorrang bleibt"
   assert.equal(
     (res.hits as unknown[]).length,
     0,
-    "und zwar bevor der erste Reflex fällt: die gerankten Treffer gehen zuerst",
+    "und zwar bevor der erste Reflex fällt: die gerankten Treffer gehen zuerst"
   );
 });
 
@@ -370,6 +393,6 @@ test("#487 P1: ohne max_tokens bleibt die Antwort mit reflex_hits unverändert",
   assert.equal(
     JSON.stringify(stable(mit), null, 2),
     JSON.stringify(stable(ohne), null, 2),
-    "ein Budget, das nie greift, fasst auch die reflex_hits nicht an",
+    "ein Budget, das nie greift, fasst auch die reflex_hits nicht an"
   );
 });

@@ -5,11 +5,7 @@
  */
 import * as fs from "node:fs";
 import { claudeSessionPid, sessionFeedPath, STATUSLINE_DIR } from "./statusline-session.js";
-import {
-  adoptTurn,
-  defaultStatuslineState,
-  type StatuslineState,
-} from "./statusline-feed.js";
+import { adoptTurn, defaultStatuslineState, type StatuslineState } from "./statusline-feed.js";
 
 // Feed is namespaced by the CC session (claude ancestor PID) so concurrent
 // sessions don't clobber each other (CC sends no session id — #41836).
@@ -39,9 +35,7 @@ export let liveStatusline: StatuslineState = defaultStatuslineState();
  */
 export function syncStatuslineTurn(): void {
   try {
-    const onDisk = JSON.parse(
-      fs.readFileSync(STATUSLINE_FEED_PATH, "utf8"),
-    ) as Partial<StatuslineState>;
+    const onDisk = JSON.parse(fs.readFileSync(STATUSLINE_FEED_PATH, "utf8")) as Partial<StatuslineState>;
     liveStatusline = adoptTurn(liveStatusline, onDisk);
   } catch {
     // no file / unreadable — keep in-memory state

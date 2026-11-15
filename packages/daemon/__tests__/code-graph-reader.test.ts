@@ -201,9 +201,7 @@ describe("code graph reader: every allowlisted relation resolves", () => {
       });
       const r = await loadGraph(repo);
       assert.ok(r.ok);
-      assert.deepEqual(dependentFilesOf(r.graph, "packages/core/src/save.ts"), [
-        "packages/core/src/audit-save.ts",
-      ]);
+      assert.deepEqual(dependentFilesOf(r.graph, "packages/core/src/save.ts"), ["packages/core/src/audit-save.ts"]);
     });
   }
 

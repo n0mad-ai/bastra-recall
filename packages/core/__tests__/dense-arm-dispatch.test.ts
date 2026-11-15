@@ -60,17 +60,29 @@ const zufall = (): number => (seed = (seed * 1103515245 + 12345) % 2147483648) /
 function memoryDatei(id: string): string {
   const body = Array.from({ length: 60 }, () => WOERTER[Math.floor(zufall() * WOERTER.length)]).join(" ");
   return [
-    "---", `id: ${id}`, `title: ${id}`, "type: lesson", `summary: ${id}`,
-    "topic_path:", "  - test", "tags:", "  - test", "recall_when:", `  - ${id}`,
-    "created: 2026-01-01", "updated: 2026-01-01", "---", "", body, "",
+    "---",
+    `id: ${id}`,
+    `title: ${id}`,
+    "type: lesson",
+    `summary: ${id}`,
+    "topic_path:",
+    "  - test",
+    "tags:",
+    "  - test",
+    "recall_when:",
+    `  - ${id}`,
+    "created: 2026-01-01",
+    "updated: 2026-01-01",
+    "---",
+    "",
+    body,
+    "",
   ].join("\n");
 }
 
 /** Der Provider in einem EIGENEN Prozess — nur so trifft seine Antwort
  *  während der Blockade des Testprozesses ein. */
-async function providerProzess(t: {
-  after: (fn: () => unknown) => void;
-}): Promise<{ port: number }> {
+async function providerProzess(t: { after: (fn: () => unknown) => void }): Promise<{ port: number }> {
   const quelle = `
     const http = require("node:http");
     const s = http.createServer((req, res) => {
@@ -119,7 +131,7 @@ function embeddingsUeberNetz(port: number, antwortNachMs: number | "never", agen
               hits: JSON.parse(roh),
               providerLoadMs: null,
               coldStartObserved: false,
-            }),
+            })
           );
         }).on("error", reject);
       }),
@@ -157,7 +169,7 @@ async function laufMitTimeoutMarke(
   port: number,
   versatz = 0,
   agent?: Agent,
-  query?: string,
+  query?: string
 ): Promise<Lauf> {
   search.useEmbeddings(embeddingsUeberNetz(port, antwortNachMs, agent));
   let timeout = false;
@@ -224,10 +236,7 @@ test("der dichte Arm überlebt eine lange lexikalische Suche", async (t) => {
   // Die Voraussetzung des Tests: Der lexikalische Arm muss den Loop wirklich
   // über die Deadline hinaus halten. Tut er das nicht, prüft der Test nichts.
   const median = ergebnisse.map((e) => e.bm25Ms).sort((a, b) => a - b)[2];
-  assert.ok(
-    median > DEADLINE_MS,
-    `der lexikalische Arm muss länger als die Deadline blockieren, war ${median} ms`,
-  );
+  assert.ok(median > DEADLINE_MS, `der lexikalische Arm muss länger als die Deadline blockieren, war ${median} ms`);
 
   // Dieselbe Diagnose wie im KALTEN Zwilling unten, aus demselben Grund: Ein
   // Timeout ohne seine Zahl zwingt den nächsten Leser zum Raten. Hier ist die
@@ -241,15 +250,15 @@ test("der dichte Arm überlebt eine lange lexikalische Suche", async (t) => {
       Promise.race([
         e.spaeteStichprobe.then((s) => `${Math.round(s.settle_ms)} ms`),
         new Promise<string>((ok) => void setTimeout(() => ok("nie gesettelt"), 1000).unref?.()),
-      ]),
-    ),
+      ])
+    )
   );
   assert.equal(
     timeouts.length,
     0,
     `kein Lauf darf in den Timeout gehen — der Provider antwortet nach ${ANTWORT_NACH_MS} ms, ` +
       `also lange vor der ${DEADLINE_MS}-ms-Frist. ${timeouts.length} von 5 taten es trotzdem ` +
-      `(settle_ms je Timeout: ${settles.join(", ") || "—"}; BM25-Median ${Math.round(median)} ms).`,
+      `(settle_ms je Timeout: ${settles.join(", ") || "—"}; BM25-Median ${Math.round(median)} ms).`
   );
 });
 
@@ -270,16 +279,11 @@ test("#466: auf einem KALTEN Socket überlebt der dichte Arm die lexikalische Su
 
   const ergebnisse: Lauf[] = [];
   for (let i = 0; i < 5; i++) {
-    ergebnisse.push(
-      await laufMitTimeoutMarke(search, ANTWORT_NACH_MS, port, 300 + i, new Agent({ keepAlive: false })),
-    );
+    ergebnisse.push(await laufMitTimeoutMarke(search, ANTWORT_NACH_MS, port, 300 + i, new Agent({ keepAlive: false })));
   }
 
   const median = ergebnisse.map((e) => e.bm25Ms).sort((a, b) => a - b)[2];
-  assert.ok(
-    median > DEADLINE_MS,
-    `der lexikalische Arm muss länger als die Deadline blockieren, war ${median} ms`,
-  );
+  assert.ok(median > DEADLINE_MS, `der lexikalische Arm muss länger als die Deadline blockieren, war ${median} ms`);
 
   // Ein Timeout OHNE seine Zahl ist eine Ratesitzung — genau das kostete am
   // 10.09.2026 einen halben Review: EIN roter Lauf unter voller Suite, und die
@@ -298,15 +302,15 @@ test("#466: auf einem KALTEN Socket überlebt der dichte Arm die lexikalische Su
       Promise.race([
         e.spaeteStichprobe.then((s) => `${Math.round(s.settle_ms)} ms`),
         new Promise<string>((ok) => void setTimeout(() => ok("nie gesettelt"), 1000).unref?.()),
-      ]),
-    ),
+      ])
+    )
   );
   assert.equal(
     timeouts.length,
     0,
     `kein Lauf darf in den Timeout gehen — der Provider antwortet ${ANTWORT_NACH_MS} ms nach dem Connect, ` +
       `also innerhalb der ${DEADLINE_MS}-ms-Frist ab dem Warten. ${timeouts.length} von 5 taten es trotzdem ` +
-      `(settle_ms je Timeout: ${settles.join(", ") || "—"}; BM25-Median ${Math.round(median)} ms).`,
+      `(settle_ms je Timeout: ${settles.join(", ") || "—"}; BM25-Median ${Math.round(median)} ms).`
   );
 });
 
@@ -377,13 +381,13 @@ test("#489: die Wartezeit des dichten Arms schließt den lexikalischen Arm aus",
   assert.ok(warten >= 0, "die Stage muss `wait_ms` tragen");
   assert.ok(
     warten * 4 < bm25,
-    `die Wartezeit darf den lexikalischen Arm nicht enthalten — Warten ${warten} ms, BM25 ${bm25} ms`,
+    `die Wartezeit darf den lexikalischen Arm nicht enthalten — Warten ${warten} ms, BM25 ${bm25} ms`
   );
   // Und die alte Serie bleibt, was sie war: die überlappende Spanne ab dem
   // Abfeuern. Sie MUSS BM25 mit abdecken, sonst wurde hier etwas umdefiniert.
   assert.ok(
     spanne >= bm25,
-    `\`vector.search\` muss die überlappende Spanne bleiben — Spanne ${spanne} ms, BM25 ${bm25} ms`,
+    `\`vector.search\` muss die überlappende Spanne bleiben — Spanne ${spanne} ms, BM25 ${bm25} ms`
   );
 });
 
@@ -409,7 +413,7 @@ test("#489: ein Timeout liefert die Wartezeit UND das echte Settle", async (t) =
   assert.ok(lauf.timeout, "der Arm muss in seine Frist laufen");
   assert.ok(
     lauf.waitMs >= DEADLINE_MS - TIMER_SCHLUPF_MS && lauf.waitMs < ANTWORT_NACH_TIMEOUT_MS,
-    `die Wartezeit muss auf der Deadline liegen, war ${lauf.waitMs} ms`,
+    `die Wartezeit muss auf der Deadline liegen, war ${lauf.waitMs} ms`
   );
   // Zum Zeitpunkt der Antwort darf es die späte Stichprobe noch NICHT geben —
   // sie ist per Definition das, was nach dem Aufgeben passiert.
@@ -419,6 +423,6 @@ test("#489: ein Timeout liefert die Wartezeit UND das echte Settle", async (t) =
   assert.equal(spaet.settled, true, "der aufgegebene Arm lieferte am Ende doch");
   assert.ok(
     spaet.settle_ms >= ANTWORT_NACH_TIMEOUT_MS - 40,
-    `das echte Settle muss die volle Dauer melden, nicht die Deadline — war ${spaet.settle_ms} ms`,
+    `das echte Settle muss die volle Dauer melden, nicht die Deadline — war ${spaet.settle_ms} ms`
   );
 });

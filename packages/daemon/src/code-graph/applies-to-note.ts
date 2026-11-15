@@ -150,9 +150,7 @@ function format(rel: string, candidates: readonly AppliesToCandidate[]): string 
     ];
     if (direct.length > 0) lines.push(`Names this file: ${describe(direct, false, limit)}`);
     if (hop.length > 0) {
-      lines.push(
-        `Attached to a file that depends on it (one hop, never a duty): ${describe(hop, true, limit)}`,
-      );
+      lines.push(`Attached to a file that depends on it (one hop, never a duty): ${describe(hop, true, limit)}`);
     }
     // Every line is `optional` by construction on this path — said once,
     // plainly, rather than repeated per entry.
@@ -164,11 +162,7 @@ function format(rel: string, candidates: readonly AppliesToCandidate[]): string 
   return null;
 }
 
-function describe(
-  candidates: readonly AppliesToCandidate[],
-  withVia = false,
-  limit: number = MAX_LISTED,
-): string {
+function describe(candidates: readonly AppliesToCandidate[], withVia = false, limit: number = MAX_LISTED): string {
   const shown = candidates
     .slice(0, limit)
     .map((c) => {

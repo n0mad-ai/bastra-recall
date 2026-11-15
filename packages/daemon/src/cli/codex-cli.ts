@@ -74,7 +74,10 @@ export function codexServerMatches(existing: CodexMcpServer | null, target: McpS
   return Object.keys(target.env).every((key) => env[key] === target.env[key]);
 }
 
-export function codexMcpGet(bin: string, name = DEFAULT_SERVER_KEY): {
+export function codexMcpGet(
+  bin: string,
+  name = DEFAULT_SERVER_KEY
+): {
   server: CodexMcpServer | null;
   result: CapturedRunResult;
 } {
@@ -85,5 +88,5 @@ export function codexMcpGet(bin: string, name = DEFAULT_SERVER_KEY): {
 /** Probe the selected executable, not another Codex found on PATH. */
 export function codexRuntimeVersion(bin: string): string | null {
   const result = runCaptured(bin, ["--version"], { timeoutMs: 3_000 });
-  return result.ok ? /^codex-cli (\d+\.\d+\.\d+)\s*$/.exec(result.stdout.trim())?.[1] ?? null : null;
+  return result.ok ? (/^codex-cli (\d+\.\d+\.\d+)\s*$/.exec(result.stdout.trim())?.[1] ?? null) : null;
 }

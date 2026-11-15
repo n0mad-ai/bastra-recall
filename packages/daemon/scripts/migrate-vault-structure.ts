@@ -91,7 +91,11 @@ async function main(): Promise<void> {
 
   const byTarget = new Map<string, number>();
   for (const p of all) {
-    const sub = p.to.replace(vault + "/", "").split("/").slice(0, -1).join("/");
+    const sub = p.to
+      .replace(vault + "/", "")
+      .split("/")
+      .slice(0, -1)
+      .join("/");
     byTarget.set(sub, (byTarget.get(sub) ?? 0) + 1);
   }
   console.log("target distribution:");
@@ -104,7 +108,7 @@ async function main(): Promise<void> {
     let collisions = 0;
     const plannedTargets = new Set<string>();
     for (const p of all) {
-      if (plannedTargets.has(p.to) || await exists(p.to)) {
+      if (plannedTargets.has(p.to) || (await exists(p.to))) {
         collisions++;
         console.log(`  collision (target exists or planned twice, would be skipped): ${p.to.replace(vault, "…")}`);
       }

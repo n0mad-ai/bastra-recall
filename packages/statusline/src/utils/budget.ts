@@ -13,19 +13,12 @@ export interface BudgetDisplayState {
   percentageOnly: boolean;
 }
 
-export function calculateBudgetPercentage(
-  cost: number,
-  budget: number | undefined,
-): number | null {
+export function calculateBudgetPercentage(cost: number, budget: number | undefined): number | null {
   if (!budget || budget <= 0 || cost < 0) return null;
   return (cost / budget) * 100;
 }
 
-export function getBudgetStatus(
-  cost: number,
-  budget: number | undefined,
-  warningThreshold = 80,
-): BudgetStatus {
+export function getBudgetStatus(cost: number, budget: number | undefined, warningThreshold = 80): BudgetStatus {
   const percentage = calculateBudgetPercentage(cost, budget);
 
   if (percentage === null) {
@@ -58,7 +51,7 @@ export function getBudgetStatus(
 export function pickBudgetValue(
   cost: number | null,
   tokens: number | null,
-  budgetType: "cost" | "tokens" | undefined,
+  budgetType: "cost" | "tokens" | undefined
 ): number | null {
   return budgetType === "tokens" ? tokens : cost;
 }
@@ -66,7 +59,7 @@ export function pickBudgetValue(
 export function resolveBudgetDisplay(
   cost: number | null,
   tokens: number | null,
-  budget?: BudgetItemConfig,
+  budget?: BudgetItemConfig
 ): BudgetDisplayState {
   if (!budget?.amount || budget.amount <= 0) {
     return {
@@ -100,11 +93,7 @@ export function resolveBudgetDisplay(
   }
 
   const percentText = showPercentage
-    ? getBudgetStatus(
-        budgetValue,
-        budget.amount,
-        budget.warningThreshold,
-      ).displayText.trimStart()
+    ? getBudgetStatus(budgetValue, budget.amount, budget.warningThreshold).displayText.trimStart()
     : "";
 
   return {

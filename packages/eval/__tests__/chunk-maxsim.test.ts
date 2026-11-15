@@ -20,8 +20,11 @@ test("chunks preserve full source, Unicode and final answer-bearing tail", () =>
 test("max-sim collapses before document cap and never averages", () => {
   const hits = Array.from({ length: 100 }, (_, i) => ({ id: `a${i}`, score: 1 - i / 1000 }));
   hits.push({ id: "b0", score: 0.8 });
-  const owners = new Map(hits.map(h => [h.id, h.id.startsWith("a") ? "a" : "b"]));
-  assert.deepEqual(maxPerDocument(hits, owners), [{ id: "a", score: 1 }, { id: "b", score: 0.8 }]);
+  const owners = new Map(hits.map((h) => [h.id, h.id.startsWith("a") ? "a" : "b"]));
+  assert.deepEqual(maxPerDocument(hits, owners), [
+    { id: "a", score: 1 },
+    { id: "b", score: 0.8 },
+  ]);
 });
 
 test("corpus special-token spellings are ordinary source text", () => {

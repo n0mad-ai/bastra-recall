@@ -30,7 +30,7 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
 /** Lays out a fake HOME slice: skill dir (optional) + per-surface configs. */
 async function setupHome(
   dir: string,
-  opts: { skill: boolean; registered: string[] },
+  opts: { skill: boolean; registered: string[] }
 ): Promise<{ skillDir: string; configPaths: Record<string, string> }> {
   const skillDir = join(dir, "skills", "bastra-recall");
   if (opts.skill) {
@@ -58,7 +58,7 @@ test("sweep guard: any remaining registration always wins", () => {
     assert.equal(
       shouldSweepSkill({ surface, remainingRegistrations: ["claude-desktop"] }),
       false,
-      `surface=${surface}`,
+      `surface=${surface}`
     );
   }
 });
@@ -78,7 +78,7 @@ test("sweep guard: a covered surface whose uninstall FAILED counts as still regi
   // 'all' needs every skill-sharing surface to have succeeded …
   assert.equal(
     shouldSweepSkill({ surface: "all", remainingRegistrations: [], succeededSurfaces: ["claude-desktop"] }),
-    false,
+    false
   );
   assert.equal(
     shouldSweepSkill({
@@ -86,7 +86,7 @@ test("sweep guard: a covered surface whose uninstall FAILED counts as still regi
       remainingRegistrations: [],
       succeededSurfaces: ["claude-desktop", "claude-code"],
     }),
-    true,
+    true
   );
   // … but a failed cursor never blocks — it doesn't share the skill.
   assert.equal(
@@ -95,16 +95,13 @@ test("sweep guard: a covered surface whose uninstall FAILED counts as still regi
       remainingRegistrations: [],
       succeededSurfaces: ["claude-desktop", "claude-code"], // cursor errored
     }),
-    true,
+    true
   );
   // Single-surface run: that surface itself must have succeeded.
-  assert.equal(
-    shouldSweepSkill({ surface: "claude-code", remainingRegistrations: [], succeededSurfaces: [] }),
-    false,
-  );
+  assert.equal(shouldSweepSkill({ surface: "claude-code", remainingRegistrations: [], succeededSurfaces: [] }), false);
   assert.equal(
     shouldSweepSkill({ surface: "claude-code", remainingRegistrations: [], succeededSurfaces: ["claude-code"] }),
-    true,
+    true
   );
 });
 
@@ -181,7 +178,7 @@ test("sweep step: dry-run 'all' with a FAILED surface never over-promises — it
     // claude-code's uninstall reported an error (e.g. invalid settings JSON).
     const r = await sweepSharedSkill(
       { surface: "all", dryRun: true, succeededSurfaces: ["claude-desktop", "cursor"] },
-      io,
+      io
     );
     assert.equal(r.status, "kept");
     assert.match(r.detail, /claude-code/);
@@ -194,7 +191,7 @@ test("sweep step: dry-run 'all' with every surface succeeded still reports would
     const io = await setupHome(dir, { skill: true, registered: ["claude-desktop", "claude-code"] });
     const r = await sweepSharedSkill(
       { surface: "all", dryRun: true, succeededSurfaces: ["claude-desktop", "claude-code", "cursor"] },
-      io,
+      io
     );
     assert.equal(r.status, "would-remove");
     assert.equal(existsSync(io.skillDir), true);
@@ -205,10 +202,7 @@ test("sweep step: a FAILED surface blocks the wet sweep even when its registrati
   await withTempDir(async (dir) => {
     const io = await setupHome(dir, { skill: true, registered: [] });
     // claude-code errored mid-uninstall after its MCP entry was dropped.
-    const r = await sweepSharedSkill(
-      { surface: "all", dryRun: false, succeededSurfaces: ["claude-desktop"] },
-      io,
-    );
+    const r = await sweepSharedSkill({ surface: "all", dryRun: false, succeededSurfaces: ["claude-desktop"] }, io);
     assert.equal(r.status, "kept");
     assert.match(r.detail, /uninstall failed: claude-code/);
     assert.equal(existsSync(io.skillDir), true);

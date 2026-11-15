@@ -7,7 +7,14 @@
  * short SQLite writer transaction, never around a lane's recall work.
  * Busy storage is best-effort; a gate only denies after a successful commit.
  */
-import { readHookState, updateHookState, listHookStates, cleanupHookState, writeHookMarker, readHookMarker } from "./hook-state-database.js";
+import {
+  readHookState,
+  updateHookState,
+  listHookStates,
+  cleanupHookState,
+  writeHookMarker,
+  readHookMarker,
+} from "./hook-state-database.js";
 import * as path from "node:path";
 import * as os from "node:os";
 import { createHash } from "node:crypto";
@@ -152,7 +159,7 @@ export interface SessionState {
    */
   activeConventions?: ActiveConvention[];
   /** Full-body loads attributed to this exact caller session; claims/hints never fill this. */
-  loadedConventions?: Array<{id:string;revision:string|null;loadedAt:number;validator?:ConventionValidator}>;
+  loadedConventions?: Array<{ id: string; revision: string | null; loadedAt: number; validator?: ConventionValidator }>;
   /** Only the user-turn candidate path may select this correspondence channel. */
   userValidatorChannel?: string;
   /** #1306: the correspondence task the session is in (prompt-classify.ts). */
@@ -271,7 +278,12 @@ export interface ReadonlySessionState {
   readonly toolCalls?: number;
   readonly claimedMustLoad?: readonly string[];
   readonly activeConventions?: readonly Readonly<ActiveConvention>[];
-  readonly loadedConventions?: readonly Readonly<{id:string;revision:string|null;loadedAt:number;validator?:ConventionValidator}>[];
+  readonly loadedConventions?: readonly Readonly<{
+    id: string;
+    revision: string | null;
+    loadedAt: number;
+    validator?: ConventionValidator;
+  }>[];
   readonly userValidatorChannel?: string;
   readonly activeTask?: Readonly<ActiveTask>;
   readonly correspondenceContext?: Readonly<CorrespondenceContext>;
@@ -328,8 +340,11 @@ export async function loadSessionState(sessionId: string): Promise<ReadonlySessi
  *  lane's early snapshot must not be mutable (see ReadonlySessionState). */
 async function readSessionState(sessionId: string, dir = sessionStateDir()): Promise<SessionState> {
   if (!sessionId) return { shown: {} };
-  try { return decodeSessionState(sessionId, await readHookState(dir, stateKey(sessionId, dir)) ?? "{}"); }
-  catch { return { shown: {} }; }
+  try {
+    return decodeSessionState(sessionId, (await readHookState(dir, stateKey(sessionId, dir))) ?? "{}");
+  } catch {
+    return { shown: {} };
+  }
 }
 
 function stateKey(sessionId: string, dir = sessionStateDir()): string {
@@ -344,8 +359,15 @@ function decodeSessionState(sessionId: string, raw: string): SessionState {
     }
     const state: SessionState = { shown: parsed.shown as Record<string, ShownEntry> };
     const advisory = parsed.githubAdvisory;
-    if (advisory && typeof advisory === "object" && "delivered" in advisory && advisory.delivered === true) state.githubAdvisory = { delivered: true };
-    else if (advisory && typeof advisory === "object" && "token" in advisory && typeof advisory.token === "string" && typeof advisory.deadline === "number") {
+    if (advisory && typeof advisory === "object" && "delivered" in advisory && advisory.delivered === true)
+      state.githubAdvisory = { delivered: true };
+    else if (
+      advisory &&
+      typeof advisory === "object" &&
+      "token" in advisory &&
+      typeof advisory.token === "string" &&
+      typeof advisory.deadline === "number"
+    ) {
       state.githubAdvisory = { token: advisory.token, deadline: advisory.deadline };
     }
     if (typeof parsed.rulebookCheck === "string") state.rulebookCheck = parsed.rulebookCheck;
@@ -369,11 +391,7 @@ function decodeSessionState(sessionId: string, raw: string): SessionState {
       state.touched = touched;
     }
     if (parsed.touchedOverflow === true) state.touchedOverflow = true;
-    if (
-      parsed.boundary &&
-      typeof parsed.boundary.note === "string" &&
-      typeof parsed.boundary.dedupeKey === "string"
-    ) {
+    if (parsed.boundary && typeof parsed.boundary.note === "string" && typeof parsed.boundary.dedupeKey === "string") {
       state.boundary = {
         note: parsed.boundary.note,
         dedupeKey: parsed.boundary.dedupeKey,
@@ -399,7 +417,7 @@ function decodeSessionState(sessionId: string, raw: string): SessionState {
     if (Array.isArray(parsed.pendingMustLoad)) {
       state.pendingMustLoad = parsed.pendingMustLoad.filter(
         (e): e is PendingMustLoad =>
-          !!e && typeof e.id === "string" && typeof e.block === "string" && typeof e.at === "number",
+          !!e && typeof e.id === "string" && typeof e.block === "string" && typeof e.at === "number"
       );
     }
     if (Array.isArray(parsed.deniedReflex)) {
@@ -409,12 +427,25 @@ function decodeSessionState(sessionId: string, raw: string): SessionState {
     if (Array.isArray(parsed.claimedMustLoad)) {
       state.claimedMustLoad = parsed.claimedMustLoad.filter((id): id is string => typeof id === "string");
     }
-    if(Array.isArray(parsed.loadedConventions))state.loadedConventions=parsed.loadedConventions.filter((e):e is {id:string;revision:string|null;loadedAt:number;validator?:ConventionValidator}=>!!e&&typeof e.id==="string"&&(typeof e.revision==="string"||e.revision===null)&&typeof e.loadedAt==="number").slice(-200);
-    if(typeof parsed.userValidatorChannel==='string'&&parsed.userValidatorChannel)state.userValidatorChannel=parsed.userValidatorChannel;
+    if (Array.isArray(parsed.loadedConventions))
+      state.loadedConventions = parsed.loadedConventions
+        .filter(
+          (e): e is { id: string; revision: string | null; loadedAt: number; validator?: ConventionValidator } =>
+            !!e &&
+            typeof e.id === "string" &&
+            (typeof e.revision === "string" || e.revision === null) &&
+            typeof e.loadedAt === "number"
+        )
+        .slice(-200);
+    if (typeof parsed.userValidatorChannel === "string" && parsed.userValidatorChannel)
+      state.userValidatorChannel = parsed.userValidatorChannel;
     if (Array.isArray(parsed.activeConventions)) {
       state.activeConventions = parsed.activeConventions.filter(
         (e): e is ActiveConvention =>
-          !!e && typeof e.id === "string" && (typeof e.revision === "string" || e.revision === null) && typeof e.setAt === "number",
+          !!e &&
+          typeof e.id === "string" &&
+          (typeof e.revision === "string" || e.revision === null) &&
+          typeof e.setAt === "number"
       );
     }
     // #1306: the task state — same reason, every lane's save carries it.
@@ -424,14 +455,25 @@ function decodeSessionState(sessionId: string, raw: string): SessionState {
     if (Array.isArray(parsed.receipts)) {
       state.receipts = parsed.receipts.filter(
         (r): r is ArtifactReceipt =>
-          !!r && typeof r.taskId === "string" && typeof r.generation === "number" && typeof r.hash === "string" &&
-          typeof r.receipt === "string" && typeof r.channel === "string" && typeof r.limit === "number" &&
-          typeof r.unit === "string" && typeof r.at === "number",
+          !!r &&
+          typeof r.taskId === "string" &&
+          typeof r.generation === "number" &&
+          typeof r.hash === "string" &&
+          typeof r.receipt === "string" &&
+          typeof r.channel === "string" &&
+          typeof r.limit === "number" &&
+          typeof r.unit === "string" &&
+          typeof r.at === "number"
       );
     }
     // #1311: the repair counter — same reason, or every other lane's save would reset the cap.
     const repair = parsed.repairAttempts;
-    if (repair && typeof repair.taskId === "string" && typeof repair.generation === "number" && typeof repair.count === "number") {
+    if (
+      repair &&
+      typeof repair.taskId === "string" &&
+      typeof repair.generation === "number" &&
+      typeof repair.count === "number"
+    ) {
       state.repairAttempts = { taskId: repair.taskId, generation: repair.generation, count: repair.count };
     }
     if (parsed.repairWindows !== undefined) state.repairWindows = parseRepairWindows(parsed.repairWindows);
@@ -440,7 +482,7 @@ function decodeSessionState(sessionId: string, raw: string): SessionState {
       const conventions = Array.isArray(question.conventions)
         ? question.conventions.filter(
             (e): e is { id: string; revision: string | null } =>
-              !!e && typeof e.id === "string" && (typeof e.revision === "string" || e.revision === null),
+              !!e && typeof e.id === "string" && (typeof e.revision === "string" || e.revision === null)
           )
         : [];
       state.correspondenceContext = {
@@ -487,7 +529,7 @@ export async function saveSessionState(sessionId: string, state: SessionState): 
 export async function mutateSessionState(
   sessionId: string,
   mutate: (state: SessionState) => void,
-  options: { noQueue?: boolean; deadline?: number } = {},
+  options: { noQueue?: boolean; deadline?: number } = {}
 ): Promise<boolean> {
   if (!sessionId) return false;
   const expired = () => options.deadline !== undefined && Date.now() >= options.deadline;
@@ -495,10 +537,15 @@ export async function mutateSessionState(
     if (expired()) return false;
     let callbackError: unknown;
     try {
-      await updateHookState(sessionStateDir(), stateKey(sessionId), raw => {
+      await updateHookState(sessionStateDir(), stateKey(sessionId), (raw) => {
         if (expired()) throw new Error("hook_state_deadline");
         const state = decodeSessionState(sessionId, raw ?? "{}");
-        try { mutate(state); } catch (error) { callbackError = error; throw error; }
+        try {
+          mutate(state);
+        } catch (error) {
+          callbackError = error;
+          throw error;
+        }
         if (expired()) throw new Error("hook_state_deadline");
         return encodeSessionState(state);
       });
@@ -521,7 +568,9 @@ async function writeSessionState(sessionId: string, state: SessionState, dir = s
   try {
     await updateHookState(dir, stateKey(sessionId, dir), () => encodeSessionState(state));
     return true;
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 function encodeSessionState(state: SessionState): string {
@@ -540,13 +589,19 @@ const PENDING_MUST_LOAD_CAP = 20;
  * An id already waiting keeps its first entry, so one hint is never claimed
  * twice for being shown twice.
  */
-export function bookPendingMustLoad(state: SessionState, ids: readonly string[], block: string, now: number = Date.now(), revisions?: ReadonlyMap<string, string | null>): void {
+export function bookPendingMustLoad(
+  state: SessionState,
+  ids: readonly string[],
+  block: string,
+  now: number = Date.now(),
+  revisions?: ReadonlyMap<string, string | null>
+): void {
   if (ids.length === 0) return;
   // Full loads survive ordinary turns, but clearShown removes them on context loss.
   // Missing revisions cannot prove that the shown rule is the loaded source.
-  const loaded = new Map((state.loadedConventions ?? []).map(e => [e.id, e.revision]));
+  const loaded = new Map((state.loadedConventions ?? []).map((e) => [e.id, e.revision]));
   const satisfied = (id: string) => typeof revisions?.get(id) === "string" && loaded.get(id) === revisions.get(id);
-  const pending = (state.pendingMustLoad ?? []).filter(e => !satisfied(e.id));
+  const pending = (state.pendingMustLoad ?? []).filter((e) => !satisfied(e.id));
   const waiting = new Set(pending.map((e) => e.id));
   for (const id of ids) {
     if (waiting.has(id) || satisfied(id)) continue;
@@ -569,7 +624,7 @@ const CLAIMED_MUST_LOAD_CAP = 20;
 export function recordActiveConventions(
   state: SessionState,
   set: ReadonlyArray<{ id: string; revision: string | null; scope?: "task"; validator?: ConventionValidator }>,
-  now: number = Date.now(),
+  now: number = Date.now()
 ): void {
   if (set.length === 0) return;
   const before = new Map((state.activeConventions ?? []).map((e) => [e.id, e]));
@@ -588,7 +643,6 @@ export function recordActiveConventions(
   }
   state.activeConventions = kept.slice(-ACTIVE_CONVENTIONS_CAP);
 }
-
 
 /**
  * #1306: compact, clear and fork start a new generation of the task state. The
@@ -631,10 +685,18 @@ export async function resetToolCalls(sessionId: string): Promise<void> {
   if (!sessionId) return;
   try {
     const current = await loadSessionState(sessionId);
-    if (!current.toolCalls && !current.constants?.["rule-kernel-delivery"] && !current.constants?.["rule-kernel-retry-at"]) return;
+    if (
+      !current.toolCalls &&
+      !current.constants?.["rule-kernel-delivery"] &&
+      !current.constants?.["rule-kernel-retry-at"]
+    )
+      return;
     await mutateSessionState(sessionId, (state) => {
       delete state.toolCalls;
-      if (state.constants) { delete state.constants["rule-kernel-delivery"]; delete state.constants["rule-kernel-retry-at"]; }
+      if (state.constants) {
+        delete state.constants["rule-kernel-delivery"];
+        delete state.constants["rule-kernel-retry-at"];
+      }
     });
   } catch {
     // A missed reset re-delivers the kernel early; it never blocks the prompt.
@@ -654,13 +716,17 @@ export async function resetToolCalls(sessionId: string): Promise<void> {
 export async function clearPendingMustLoad(
   memId: string,
   activate?: { revision: string | null; validator?: ConventionValidator },
-  loadedSessionId?:string|null,
+  loadedSessionId?: string | null
 ): Promise<void> {
   if (!memId) return;
   try {
-    if(activate&&loadedSessionId)await mutateSessionState(loadedSessionId,state=>{
-     state.loadedConventions=[...(state.loadedConventions??[]).filter(c=>c.id!==memId),{id:memId,revision:activate.revision,loadedAt:Date.now()}].slice(-200);
-    });
+    if (activate && loadedSessionId)
+      await mutateSessionState(loadedSessionId, (state) => {
+        state.loadedConventions = [
+          ...(state.loadedConventions ?? []).filter((c) => c.id !== memId),
+          { id: memId, revision: activate.revision, loadedAt: Date.now() },
+        ].slice(-200);
+      });
     const dir = sessionStateDir();
     const needle = JSON.stringify(memId);
     for (const [sessionId, raw] of await listHookStates(dir)) {
@@ -679,7 +745,8 @@ export async function clearPendingMustLoad(
           if (rest.length > 0) state.claimedMustLoad = rest;
           else delete state.claimedMustLoad;
         }
-        if ((pending || claimed || state.activeConventions?.some((c) => c.id === memId)) && activate) recordActiveConventions(state, [{ id: memId, ...activate }]);
+        if ((pending || claimed || state.activeConventions?.some((c) => c.id === memId)) && activate)
+          recordActiveConventions(state, [{ id: memId, ...activate }]);
       });
     }
   } catch {
@@ -693,8 +760,11 @@ export async function clearPendingMustLoad(
  * pay for it on every cold call).
  */
 export async function cleanupOldStates(maxAgeMs: number = STATE_MAX_AGE_MS): Promise<void> {
-  try { await cleanupHookState(sessionStateDir(), maxAgeMs); }
-  catch { /* State cleanup is advisory. */ }
+  try {
+    await cleanupHookState(sessionStateDir(), maxAgeMs);
+  } catch {
+    /* State cleanup is advisory. */
+  }
 }
 
 /**
@@ -707,7 +777,9 @@ export async function touchLoadedMarker(memId: string): Promise<void> {
   try {
     const key = path.basename(loadedMarkerFile(memId), ".touch").slice("loaded-".length);
     await writeHookMarker(sessionStateDir(), key);
-  } catch { /* A busy state database must never break load_memory. */ }
+  } catch {
+    /* A busy state database must never break load_memory. */
+  }
 }
 
 /**
@@ -720,7 +792,9 @@ export async function getLoadedMarkerMtime(memId: string): Promise<number | null
   try {
     const key = path.basename(loadedMarkerFile(memId), ".touch").slice("loaded-".length);
     return await readHookMarker(sessionStateDir(), key);
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -748,7 +822,7 @@ export async function getLoadedMarkerMtime(memId: string): Promise<number | null
 export function shouldDropHit(
   entry: ShownEntry | undefined,
   loadedMarkerMtime: number | null,
-  _now: number = Date.now(),
+  _now: number = Date.now()
 ): boolean {
   if (!entry) return false;
   if (loadedMarkerMtime !== null && loadedMarkerMtime > entry.at) return false;
@@ -810,7 +884,7 @@ export function recordTouched(
   file: string,
   hits: readonly TouchedHit[] | null,
   truncated = false,
-  now: number = Date.now(),
+  now: number = Date.now()
 ): void {
   if (state.touched === undefined) state.touched = new Map();
   let repo = state.touched.get(repoRoot);
@@ -878,7 +952,7 @@ const ENTRY_OVERHEAD = 64;
 export function parkBoundary(
   state: SessionState,
   built: { note: string; dedupeKey: string; files: number } | null,
-  builtFrom: number,
+  builtFrom: number
 ): void {
   if (state.boundary !== undefined && state.boundary.builtFrom > builtFrom) return;
   if (built === null) {
@@ -926,7 +1000,7 @@ export async function takeParkedBoundary(
    * an uncached settings read — paying it per prompt to learn that no block is
    * waiting is the cost #305 keeps off this path.
    */
-  gate: () => Promise<boolean> = async () => true,
+  gate: () => Promise<boolean> = async () => true
 ): Promise<TakenBoundary | null> {
   if (!sessionId) return null;
   // Cheap early-out: no slot, no lock, no write — the common prompt.
@@ -962,16 +1036,25 @@ export async function clearShown(sessionId: string): Promise<void> {
   // Cheap early-out kept from #354: nothing shown, nothing to write (and no
   // state file conjured for a session that never had one).
   const current = await loadSessionState(sessionId);
-  if (Object.keys(current.shown).length === 0 && current.constants === undefined && !current.loadedConventions?.length && !current.deniedReflex?.length && !current.rulebookCheck && !current.userValidatorChannel && !current.activeTask?.validatorChannel) return;
+  if (
+    Object.keys(current.shown).length === 0 &&
+    current.constants === undefined &&
+    !current.loadedConventions?.length &&
+    !current.deniedReflex?.length &&
+    !current.rulebookCheck &&
+    !current.userValidatorChannel &&
+    !current.activeTask?.validatorChannel
+  )
+    return;
   await mutateSessionState(sessionId, (state) => {
     state.shown = {};
     delete state.constants;
     delete state.loadedConventions;
     delete state.deniedReflex;
     delete state.userValidatorChannel;
-    if(state.activeTask)delete state.activeTask.validatorChannel;
+    if (state.activeTask) delete state.activeTask.validatorChannel;
   });
-  if(current.rulebookCheck)await (await import("./rulebook-check.js")).resetRulebookContext(sessionId);
+  if (current.rulebookCheck) await (await import("./rulebook-check.js")).resetRulebookContext(sessionId);
 }
 
 /**
@@ -981,10 +1064,7 @@ export async function clearShown(sessionId: string): Promise<void> {
  * locked mutation. A part that changed, or was never sent, is sent. An empty
  * part is neither sent nor recorded, so a later non-empty one counts as new.
  */
-export async function takeConstantCadence(
-  sessionId: string,
-  parts: Record<string, string>,
-): Promise<Set<string>> {
+export async function takeConstantCadence(sessionId: string, parts: Record<string, string>): Promise<Set<string>> {
   const skip = new Set<string>();
   if (!sessionId) return skip;
   await mutateSessionState(sessionId, (state) => {
@@ -1048,7 +1128,7 @@ export interface BackoffDecision {
 export function decideBackoff(
   entry: ReadonlySourceBackoff | undefined,
   consumed: boolean,
-  hasRequired: boolean,
+  hasRequired: boolean
 ): BackoffDecision {
   if (
     !entry ||
@@ -1060,10 +1140,7 @@ export function decideBackoff(
     return { suppress: false, streak: 0 };
   }
   const streak = consumed ? 0 : entry.streak;
-  const suppress =
-    !hasRequired &&
-    streak >= BACKOFF_MIN_STREAK &&
-    entry.skipped < Math.min(streak, BACKOFF_STREAK_CAP);
+  const suppress = !hasRequired && streak >= BACKOFF_MIN_STREAK && entry.skipped < Math.min(streak, BACKOFF_STREAK_CAP);
   return { suppress, streak };
 }
 
@@ -1094,7 +1171,7 @@ export function recordSourceEmit(
   source: string,
   ids: string[],
   consumed: boolean,
-  now: number = Date.now(),
+  now: number = Date.now()
 ): void {
   const prev = state.sources?.[source];
   const hadPrev = !!prev && typeof prev.at === "number" && prev.at > 0;
@@ -1118,7 +1195,9 @@ const draftClaims = new Map<string, { at: number; ids: Set<string> }>();
 export function availableDraftHints(sessionId: string, ids: string[], alreadyShown: string[]): string[] {
   const entry = draftClaims.get(`${sessionStateDir()}:${sessionId}`);
   const stored = new Set(alreadyShown);
-  return ids.filter(id => !stored.has(id) && !(entry && Date.now() - entry.at <= STATE_MAX_AGE_MS && entry.ids.has(id)));
+  return ids.filter(
+    (id) => !stored.has(id) && !(entry && Date.now() - entry.at <= STATE_MAX_AGE_MS && entry.ids.has(id))
+  );
 }
 export function claimDraftHints(sessionId: string, ids: string[], alreadyShown: string[], limit: number): string[] {
   const key = `${sessionStateDir()}:${sessionId}`;
@@ -1127,9 +1206,10 @@ export function claimDraftHints(sessionId: string, ids: string[], alreadyShown: 
   while (draftClaims.size >= 500 && !draftClaims.has(key)) draftClaims.delete(draftClaims.keys().next().value!);
   const entry = draftClaims.get(key) ?? { at: now, ids: new Set<string>() };
   for (const id of alreadyShown) entry.ids.add(id);
-  const selected = ids.filter(id => !entry.ids.has(id)).slice(0, limit);
+  const selected = ids.filter((id) => !entry.ids.has(id)).slice(0, limit);
   for (const id of selected) entry.ids.add(id);
-  entry.at = now; draftClaims.set(key, entry);
+  entry.at = now;
+  draftClaims.set(key, entry);
   return selected;
 }
 
@@ -1137,11 +1217,13 @@ export function claimDraftHints(sessionId: string, ids: string[], alreadyShown: 
 export async function persistDraftHintClaims(sessionId: string, ids: string[], dir = sessionStateDir()): Promise<void> {
   await tryWithPathLock(sessionFile(sessionId, dir), async () => {
     try {
-      await updateHookState(dir, stateKey(sessionId, dir), raw => {
+      await updateHookState(dir, stateKey(sessionId, dir), (raw) => {
         const state = decodeSessionState(sessionId, raw ?? "{}");
         state.draftShown = [...new Set([...(state.draftShown ?? []), ...ids])].slice(-500);
         return encodeSessionState(state);
       });
-    } catch { /* Advisory feedback must not wait behind another writer. */ }
+    } catch {
+      /* Advisory feedback must not wait behind another writer. */
+    }
   });
 }

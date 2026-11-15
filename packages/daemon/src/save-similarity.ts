@@ -67,17 +67,19 @@ export function tokens(text: string): string[] {
  * boundaries", folding is a choice this similarity measure makes.
  */
 export function foldUmlauts(token: string): string {
-  return token
-    .replace(/ä/g, "ae")
-    .replace(/ö/g, "oe")
-    .replace(/ü/g, "ue")
-    .replace(/ß/g, "ss")
-    .normalize("NFKD")
-    // Only marks on a Latin base fold away (é → e). Other alphabets keep them:
-    // stripping the breve of "й" or the diaeresis of "ё" merges different
-    // words. NFC puts the kept marks back into single letters.
-    .replace(/(?<=\p{Script=Latin}\p{M}*)\p{Diacritic}/gu, "")
-    .normalize("NFC");
+  return (
+    token
+      .replace(/ä/g, "ae")
+      .replace(/ö/g, "oe")
+      .replace(/ü/g, "ue")
+      .replace(/ß/g, "ss")
+      .normalize("NFKD")
+      // Only marks on a Latin base fold away (é → e). Other alphabets keep them:
+      // stripping the breve of "й" or the diaeresis of "ё" merges different
+      // words. NFC puts the kept marks back into single letters.
+      .replace(/(?<=\p{Script=Latin}\p{M}*)\p{Diacritic}/gu, "")
+      .normalize("NFC")
+  );
 }
 
 /** A token reduced to its comparable form, or null when it carries no signal.

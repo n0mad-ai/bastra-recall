@@ -39,7 +39,6 @@ interface MemoryLike {
   fm: Record<string, unknown>;
 }
 
-
 interface TriggerEntry {
   id: string;
   trigger: string;
@@ -88,12 +87,12 @@ function strings(v: unknown): string[] {
  * everywhere else, and an assumption is not something to bury in a report that
  * decides what nobody has to look at again.
  */
-function closeOverVersionChains(
-  olderThan: Map<string, string>,
-  answered: Map<string, Set<string>>,
-): void {
+function closeOverVersionChains(olderThan: Map<string, string>, answered: Map<string, Set<string>>): void {
   const link = (a: string, b: string): void => {
-    for (const [x, y] of [[a, b], [b, a]] as const) {
+    for (const [x, y] of [
+      [a, b],
+      [b, a],
+    ] as const) {
       const set = answered.get(x) ?? new Set<string>();
       set.add(y);
       answered.set(x, set);
@@ -112,10 +111,7 @@ function closeOverVersionChains(
   }
 }
 
-export function collectClaimedTwice(
-  vault: { list(): MemoryLike[] },
-  limit = 50,
-): ClaimedTwicePair[] {
+export function collectClaimedTwice(vault: { list(): MemoryLike[] }, limit = 50): ClaimedTwicePair[] {
   // A vault that predates the gate holds a lot of these — measured on a real
   // 935-memory vault: 62 pairs, found in 23ms. The report shows the first
   // `limit` and SAYS it is bounded (`vault-report.ts`); a list silently cut at

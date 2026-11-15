@@ -29,7 +29,14 @@ async function vaultWithDuplicate(): Promise<{ dir: string; vault: Vault; close:
   await writeFile(join(dir, "memories", "people", "dupe-kopie.md"), memory("dupe"));
   const vault = new Vault(dir);
   await vault.init();
-  return { dir, vault, close: async () => { await vault.stop?.(); await rm(dir, { recursive: true, force: true }); } };
+  return {
+    dir,
+    vault,
+    close: async () => {
+      await vault.stop?.();
+      await rm(dir, { recursive: true, force: true });
+    },
+  };
 }
 
 test("pathsFor kennt die quarantänisierte Zweitdatei, get() nicht", async () => {
@@ -63,9 +70,9 @@ test("der Locator meldet ambiguous — und der Save verweigert statt zu raten", 
           recall_when: ["t"],
           overwrite: true,
         },
-        { locator: vaultLocator(vault) },
+        { locator: vaultLocator(vault) }
       ),
-      /exists in more than one file/,
+      /exists in more than one file/
     );
   } finally {
     await close();
@@ -80,9 +87,7 @@ test("ist das Duplikat weg, ist die id wieder eindeutig", async () => {
     // Der Watcher ist auf Cloud-Mounts unzuverlässig — der Vault räumt beim
     // Reconcile auf, und danach darf der Locator nicht mehr blockieren.
     await vault.reconcile?.();
-    assert.deepEqual(vault.pathsFor("dupe"), [
-      join(dir, "memories", "projects", "proj", "dupe.md"),
-    ]);
+    assert.deepEqual(vault.pathsFor("dupe"), [join(dir, "memories", "projects", "proj", "dupe.md")]);
     assert.equal(vaultLocator(vault).locate("dupe").kind, "unique");
   } finally {
     await close();

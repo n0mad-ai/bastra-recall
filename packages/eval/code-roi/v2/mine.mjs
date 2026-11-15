@@ -41,7 +41,16 @@
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, mkdirSync, readdirSync, readFileSync, appendFileSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  appendFileSync,
+  writeFileSync,
+  symlinkSync,
+  rmSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { writableOut } from "./archive.mjs";
@@ -130,10 +139,13 @@ async function errorSignatures(wt) {
     const cfg = join(dir, "tsconfig.eval-check.json");
     const include = ["src/**/*.ts"];
     if (existsSync(join(dir, "__tests__"))) include.push("__tests__/**/*.ts");
-    writeFileSync(cfg, JSON.stringify({ extends: "./tsconfig.json", include, compilerOptions: { noEmit: true, rootDir: "." } }));
+    writeFileSync(
+      cfg,
+      JSON.stringify({ extends: "./tsconfig.json", include, compilerOptions: { noEmit: true, rootDir: "." } })
+    );
     const out = await run(TSC, ["-p", cfg, "--pretty", "false"], { cwd: dir, ...BUF }).then(
       (r) => r.stdout,
-      (e) => `${e.stdout ?? ""}`,
+      (e) => `${e.stdout ?? ""}`
     );
     for (const line of out.split("\n")) {
       const m = /^(.+?)\(\d+,\d+\): error (TS\d+): (.*)$/.exec(line);
@@ -178,7 +190,10 @@ export async function analyze(commit, files, wt, { evidence = false } = {}) {
     await checkout(wt, parent);
     const patch = join(wt, ".eval-mutation.diff");
     writeFileSync(patch, diff);
-    const applied = await git(["apply", patch], wt).then(() => true, () => false);
+    const applied = await git(["apply", patch], wt).then(
+      () => true,
+      () => false
+    );
     rmSync(patch, { force: true });
     if (!applied) {
       results.push({ ...record, reason: "diff does not apply alone" });
@@ -214,12 +229,24 @@ function select(walk, cache) {
   let accepted = 0;
   for (const { commit, file } of walk) {
     if (accepted >= STOP_AT) return { decisions, accepted, blockedAt: null };
-    if (files.has(file)) { decisions.push({ commit, file, accepted: false, reason: "file already used" }); continue; }
+    if (files.has(file)) {
+      decisions.push({ commit, file, accepted: false, reason: "file already used" });
+      continue;
+    }
     const r = cache.get(`${commit}:${file}`);
     if (r === undefined) return { decisions, accepted, blockedAt: commit };
-    if (r.reason) { decisions.push({ ...r, accepted: false }); continue; }
-    if (r.truth.length === 0) { decisions.push({ ...r, accepted: false, reason: "breaks nothing" }); continue; }
-    if (r.truth.length > MAX_TRUTH) { decisions.push({ ...r, accepted: false, reason: `breaks ${r.truth.length} files (> ${MAX_TRUTH})` }); continue; }
+    if (r.reason) {
+      decisions.push({ ...r, accepted: false });
+      continue;
+    }
+    if (r.truth.length === 0) {
+      decisions.push({ ...r, accepted: false, reason: "breaks nothing" });
+      continue;
+    }
+    if (r.truth.length > MAX_TRUTH) {
+      decisions.push({ ...r, accepted: false, reason: `breaks ${r.truth.length} files (> ${MAX_TRUTH})` });
+      continue;
+    }
     decisions.push({ ...r, accepted: true });
     accepted++;
     files.add(file);
@@ -262,14 +289,14 @@ async function main() {
           const commit = batch[next++];
           const files = filesByCommit.get(commit).filter((f) => !cache.has(`${commit}:${f}`));
           const results = await analyze(commit, files, wt).catch((e) =>
-            files.map((file) => ({ commit, file, reason: `analysis failed: ${String(e?.message ?? e).slice(0, 200)}` })),
+            files.map((file) => ({ commit, file, reason: `analysis failed: ${String(e?.message ?? e).slice(0, 200)}` }))
           );
           for (const r of results) {
             cache.set(`${r.commit}:${r.file}`, r);
             appendFileSync(CACHE, JSON.stringify(r) + "\n");
           }
         }
-      }),
+      })
     );
   }
 }

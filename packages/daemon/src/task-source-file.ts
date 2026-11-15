@@ -16,7 +16,7 @@ export async function openTaskSourceFile(path: string): Promise<FileHandle> {
     if (!(await handle.stat()).isFile()) throw new Error("source is not a regular file");
     // Bind the actual opened inode, not a second lookup of the attacker-owned
     // path. A swap back after open cannot change /proc/self/fd's target.
-    if (process.platform === "linux" && await readlink(`/proc/self/fd/${handle.fd}`) !== path)
+    if (process.platform === "linux" && (await readlink(`/proc/self/fd/${handle.fd}`)) !== path)
       throw new Error("source descriptor escaped");
     return handle;
   } catch (error) {

@@ -27,7 +27,7 @@ import type { EmbeddingChoice } from "./settings.js";
  */
 export function cloudEmbeddingProvider(
   choice: EmbeddingChoice,
-  env: Record<string, string | undefined> = process.env,
+  env: Record<string, string | undefined> = process.env
 ): OpenAIEmbeddingProvider | null {
   if (choice.provider !== "openai") return null;
   const apiKey = env.OPENAI_API_KEY ?? env.BASTRA_EMBEDDING_KEY;

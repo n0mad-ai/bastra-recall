@@ -43,10 +43,7 @@ import { maybeTaskDueItem } from "./mcp-forwarder-calls.js";
 import { isTaskTool, taskFailure } from "./task-transport.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import {
   pickPhrase,
   pickToolPhrase,
@@ -125,9 +122,9 @@ async function main(): Promise<void> {
       // once at start-up, like the tool surface below — a client restart is
       // what applies a change to either.
       instructions: serverInstructions(
-        !codeAwarenessDisabledByEnv() && (await enabledRepos().catch(() => [])).length > 0,
+        !codeAwarenessDisabledByEnv() && (await enabledRepos().catch(() => [])).length > 0
       ),
-    },
+    }
   );
 
   // #481: the surface THIS client runs on. Read once — it comes from the
@@ -159,18 +156,14 @@ async function main(): Promise<void> {
     // `move_document`.
     await awaitDaemonReady();
     try {
-      const resp = await fetchWithTimeout(
-        `${DAEMON_URL}/tools?surface=${encodeURIComponent(toolSurface)}`,
-        {},
-        2000,
-      );
+      const resp = await fetchWithTimeout(`${DAEMON_URL}/tools?surface=${encodeURIComponent(toolSurface)}`, {}, 2000);
       if (resp.ok) {
         const body = (await resp.json()) as { tools?: { name?: string }[] };
         if (Array.isArray(body.tools) && body.tools.length > 0) {
           return {
             tools: filterToolDefsForSurface(
               body.tools.filter((t): t is { name: string } => typeof t?.name === "string"),
-              toolSurface,
+              toolSurface
             ),
           };
         }
@@ -186,8 +179,7 @@ async function main(): Promise<void> {
 
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     const { name, arguments: args } = req.params;
-    const progressToken = (req.params as { _meta?: { progressToken?: string | number } })._meta
-      ?.progressToken;
+    const progressToken = (req.params as { _meta?: { progressToken?: string | number } })._meta?.progressToken;
 
     // #481: a call outside this client's surface never reaches the daemon.
     // The list already hides it, so this catches the client that remembers a
@@ -208,7 +200,7 @@ async function main(): Promise<void> {
       console.error(
         `[bastra-progress-debug] tool=${name} progressToken=${
           progressToken === undefined ? "ABSENT" : `present(${JSON.stringify(progressToken)})`
-        }`,
+        }`
       );
     }
 
@@ -235,39 +227,37 @@ async function main(): Promise<void> {
       liveStatusline.current_recall_started_at = recallStartedAt;
       flushStatusline();
       try {
-        const result = await holdForDaemon(() => callRecallStreaming(args, async (s: RecallStage) => {
-          // Banter phrase for this stage — the human-readable live message.
-          // Always computed (null when banter is off) so it reaches the
-          // statusline feed, which is the only visible channel in Claude Code
-          // (bug #51713). notifications/progress is sent only when the client
-          // opted in via a progressToken; CC drops it.
-          const phrase = pickPhrase(s, banterMode, banterLang);
-          if (progressToken !== undefined) {
-            const dur = s.durationMs !== undefined ? `${s.durationMs}ms` : "";
-            // Phrase-first: the human-readable banter leads, the technical
-            // stage name only shows when banter is off (fallback).
-            const message = phrase
-              ? dur
-                ? `${phrase} · ${dur}`
-                : phrase
-              : `${s.name}${dur ? ` · ${dur}` : ""}`;
-            await extra
-              .sendNotification({
-                method: "notifications/progress",
-                params: {
-                  progressToken,
-                  progress: progressIndexFor(s.name),
-                  total: RECALL_STAGE_ORDER.length,
-                  message,
-                },
-              })
-              .catch(() => undefined);
-          }
-          liveStatusline.current_stage = s.name;
-          liveStatusline.current_message = phrase;
-          liveStatusline.current_stage_started_at = Date.now();
-          flushStatusline();
-        }));
+        const result = await holdForDaemon(() =>
+          callRecallStreaming(args, async (s: RecallStage) => {
+            // Banter phrase for this stage — the human-readable live message.
+            // Always computed (null when banter is off) so it reaches the
+            // statusline feed, which is the only visible channel in Claude Code
+            // (bug #51713). notifications/progress is sent only when the client
+            // opted in via a progressToken; CC drops it.
+            const phrase = pickPhrase(s, banterMode, banterLang);
+            if (progressToken !== undefined) {
+              const dur = s.durationMs !== undefined ? `${s.durationMs}ms` : "";
+              // Phrase-first: the human-readable banter leads, the technical
+              // stage name only shows when banter is off (fallback).
+              const message = phrase ? (dur ? `${phrase} · ${dur}` : phrase) : `${s.name}${dur ? ` · ${dur}` : ""}`;
+              await extra
+                .sendNotification({
+                  method: "notifications/progress",
+                  params: {
+                    progressToken,
+                    progress: progressIndexFor(s.name),
+                    total: RECALL_STAGE_ORDER.length,
+                    message,
+                  },
+                })
+                .catch(() => undefined);
+            }
+            liveStatusline.current_stage = s.name;
+            liveStatusline.current_message = phrase;
+            liveStatusline.current_stage_started_at = Date.now();
+            flushStatusline();
+          })
+        );
         // Recall complete: fold this recall's hits + duration into the turn
         // totals, clear the current-recall marks.
         const hits = (result as { hits?: unknown[] }).hits;
@@ -282,11 +272,7 @@ async function main(): Promise<void> {
         // Done-banner phrase: the recall's `done` stage event is suppressed
         // upstream, so pick a done phrase here. This persists in the feed and
         // is the only phrase the ≥1s statusline refresh reliably shows.
-        liveStatusline.last_phrase = pickPhrase(
-          { name: "done", startedAtMs: Date.now() },
-          banterMode,
-          banterLang,
-        );
+        liveStatusline.last_phrase = pickPhrase({ name: "done", startedAtMs: Date.now() }, banterMode, banterLang);
         liveStatusline.last_phrase_at = Date.now();
         flushStatusline();
         const sessionContext = await maybeSessionContextItem();
@@ -305,16 +291,17 @@ async function main(): Promise<void> {
         liveStatusline.current_message = null;
         liveStatusline.current_stage_started_at = null;
         liveStatusline.current_recall_started_at = null;
-        liveStatusline.last_phrase = pickPhrase(
-          { name: "error", startedAtMs: Date.now() },
-          banterMode,
-          banterLang,
-        );
+        liveStatusline.last_phrase = pickPhrase({ name: "error", startedAtMs: Date.now() }, banterMode, banterLang);
         liveStatusline.last_phrase_at = Date.now();
         flushStatusline();
         return {
           isError: true,
-          content: [{ type: "text" as const, text: isTaskTool(name) ? JSON.stringify(taskFailure(err).body) : (err as Error).message }],
+          content: [
+            {
+              type: "text" as const,
+              text: isTaskTool(name) ? JSON.stringify(taskFailure(err).body) : (err as Error).message,
+            },
+          ],
         };
       }
     }
@@ -353,10 +340,7 @@ async function main(): Promise<void> {
       flushStatusline();
       const sessionContext = await maybeSessionContextItem();
       return {
-        content: [
-          { type: "text", text: JSON.stringify(result, null, 2) },
-          ...(sessionContext ? [sessionContext] : []),
-        ],
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }, ...(sessionContext ? [sessionContext] : [])],
       };
     } catch (err) {
       liveStatusline.total_ms += Date.now() - toolStartedAt;
@@ -364,7 +348,10 @@ async function main(): Promise<void> {
       return {
         isError: true,
         content: [
-          { type: "text" as const, text: isTaskTool(name) ? JSON.stringify(taskFailure(err).body) : (err as Error).message },
+          {
+            type: "text" as const,
+            text: isTaskTool(name) ? JSON.stringify(taskFailure(err).body) : (err as Error).message,
+          },
         ],
       };
     }
@@ -376,9 +363,7 @@ async function main(): Promise<void> {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(
-    `[bastra-recall-mcp] forwarder ready (daemon=${DAEMON_URL}, spawn=${SPAWN_ENABLED ? "on" : "off"})`,
-  );
+  console.error(`[bastra-recall-mcp] forwarder ready (daemon=${DAEMON_URL}, spawn=${SPAWN_ENABLED ? "on" : "off"})`);
 
   let shuttingDown = false;
   const shutdown = async (): Promise<void> => {

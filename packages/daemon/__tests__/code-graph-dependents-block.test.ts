@@ -6,11 +6,7 @@ import { join } from "node:path";
 import { CodeGraphCache } from "../src/code-graph/cache.js";
 import { graphDirOf, GRAPH_FILE_NAME } from "../src/code-graph/reader.js";
 import { writeManifest, type CodeGraphManifest } from "../src/code-graph/manifest.js";
-import {
-  dependentsNote,
-  codeDedupeKey,
-  repoRelative,
-} from "../src/code-graph/dependents-block.js";
+import { dependentsNote, codeDedupeKey, repoRelative } from "../src/code-graph/dependents-block.js";
 import type { ReadonlySessionState } from "../src/session-state.js";
 
 /** A node in Graphify's real shape (same fixture shape as the reader test). */
@@ -211,11 +207,7 @@ describe("dependents block: what the agent sees", () => {
         node("t_a", "savesTest()", "packages/core/__tests__/aaa-save.test.ts", 5),
         node("t_b", "auditTest()", "packages/core/__tests__/bbb-audit.test.ts", 5),
       ],
-      links: [
-        ...FIXTURE.links,
-        edge("t_a", "save_savememory", "calls"),
-        edge("t_b", "save_savememory", "calls"),
-      ],
+      links: [...FIXTURE.links, edge("t_a", "save_savememory", "calls"), edge("t_b", "save_savememory", "calls")],
     };
     const repo = await freshRepo(root, "ordering", graph);
     const cache = new CodeGraphCache();
@@ -230,10 +222,7 @@ describe("dependents block: what the agent sees", () => {
     });
     assert.ok(out);
     const listed = out.note.split("\n").filter((l) => l.startsWith("- packages/"));
-    assert.deepEqual(listed, [
-      "- packages/core/src/audit-save.ts",
-      "- packages/core/src/index.ts",
-    ]);
+    assert.deepEqual(listed, ["- packages/core/src/audit-save.ts", "- packages/core/src/index.ts"]);
     // The tests are still accounted for — summarised, not dropped.
     assert.match(out.note, /- plus 2 test files/);
     // …and the total in the attribute still counts every dependent.
@@ -354,7 +343,7 @@ describe("dependents block: the cold-start rule", () => {
         session: EMPTY_SESSION,
         cache,
       }),
-      null,
+      null
     );
 
     // The miss is remembered as degraded, so the second call costs nothing.

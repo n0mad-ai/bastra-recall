@@ -17,9 +17,7 @@ import { join } from "node:path";
 
 import { copySkill } from "../src/cli/skill.js";
 
-async function withDirs<T>(
-  fn: (io: { sourceDir: string; targetDir: string }) => Promise<T>,
-): Promise<T> {
+async function withDirs<T>(fn: (io: { sourceDir: string; targetDir: string }) => Promise<T>): Promise<T> {
   const root = await mkdtemp(join(tmpdir(), "bastra-skill-install-"));
   const sourceDir = join(root, "src");
   const targetDir = join(root, "dst");
@@ -50,7 +48,7 @@ test("install carries optional ChatGPT/Codex presentation metadata", async () =>
     assert.equal(result.status, "installed");
     assert.equal(
       await readFile(join(io.targetDir, "agents", "openai.yaml"), "utf8"),
-      "interface:\n  display_name: Bastra Recall\n",
+      "interface:\n  display_name: Bastra Recall\n"
     );
   });
 });

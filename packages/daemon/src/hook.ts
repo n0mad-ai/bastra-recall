@@ -128,7 +128,7 @@ function postWriteLane(baseUrl: string, body: unknown, timeoutMs: number): Promi
           }
           resolve(data);
         });
-      },
+      }
     );
     req.on("error", (err) => {
       if (settled) return;
@@ -178,7 +178,7 @@ async function main(): Promise<void> {
       { tool_name: toolName, file_path: filePath, daemon_url: "", status: "skipped" },
       startedAt,
       payload.session_id ?? null,
-      HOOK_VERSION,
+      HOOK_VERSION
     );
     return;
   }
@@ -207,7 +207,7 @@ async function main(): Promise<void> {
       },
       startedAt,
       payload.session_id ?? null,
-      HOOK_VERSION,
+      HOOK_VERSION
     );
   }
 }

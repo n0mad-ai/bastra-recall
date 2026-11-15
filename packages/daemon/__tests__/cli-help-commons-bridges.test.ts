@@ -16,8 +16,15 @@ import { COMMAND_HELP, showHelp } from "../src/cli/help-text.js";
 function captureShowHelp(command?: string): string {
   let out = "";
   const original = process.stdout.write;
-  process.stdout.write = ((chunk: string | Uint8Array) => { out += String(chunk); return true; }) as typeof process.stdout.write;
-  try { showHelp(command); } finally { process.stdout.write = original; }
+  process.stdout.write = ((chunk: string | Uint8Array) => {
+    out += String(chunk);
+    return true;
+  }) as typeof process.stdout.write;
+  try {
+    showHelp(command);
+  } finally {
+    process.stdout.write = original;
+  }
   return out;
 }
 
@@ -41,7 +48,10 @@ test("bridges help no longer calls the pool language-partitioned", () => {
   assert.doesNotMatch(captureShowHelp(), /language-partitioned/);
   // The setting does change which bridges fire: with an override, expandQuery
   // consults only that folder.
-  assert.match(COMMAND_HELP.bridges, /Without a language setting every\s+folder is searched; an override limits query expansion to one folder/);
+  assert.match(
+    COMMAND_HELP.bridges,
+    /Without a language setting every\s+folder is searched; an override limits query expansion to one folder/
+  );
   assert.match(COMMAND_HELP.bridges, /New\s+bridges are filed by the detected language of their source query/);
   assert.match(COMMAND_HELP.bridges, /language\s+Show or set the query-language override/);
   assert.doesNotMatch(COMMAND_HELP.bridges, /partition language|files new bridges there/);

@@ -77,16 +77,14 @@ export function formatModelName(rawName: string): string {
     return rawName;
   }
 
-  const { family, newMajor, newMinor, oldMajor, oldMinor, oldFamily } =
-    match.groups;
+  const { family, newMajor, newMinor, oldMajor, oldMinor, oldFamily } = match.groups;
 
   const modelFamily = family || oldFamily;
   const major = newMajor || oldMajor;
   const minor = newMinor || oldMinor;
 
   if (modelFamily && major) {
-    const capitalizedFamily =
-      modelFamily.charAt(0).toUpperCase() + modelFamily.slice(1).toLowerCase();
+    const capitalizedFamily = modelFamily.charAt(0).toUpperCase() + modelFamily.slice(1).toLowerCase();
     const version = minor ? `${major}.${minor}` : major;
     return `${capitalizedFamily} ${version}`;
   }
@@ -127,16 +125,11 @@ export function formatBurnRate(rate: number | null | undefined): string {
 }
 
 export function collapseHome(dirPath: string, homeDir?: string): string {
-  const home =
-    homeDir ??
-    globalThis.process?.env?.HOME ??
-    globalThis.process?.env?.USERPROFILE;
+  const home = homeDir ?? globalThis.process?.env?.HOME ?? globalThis.process?.env?.USERPROFILE;
   if (
     home &&
     dirPath.startsWith(home) &&
-    (dirPath.length === home.length ||
-      dirPath[home.length] === "/" ||
-      dirPath[home.length] === "\\")
+    (dirPath.length === home.length || dirPath[home.length] === "/" || dirPath[home.length] === "\\")
   ) {
     return `~${dirPath.slice(home.length)}`;
   }

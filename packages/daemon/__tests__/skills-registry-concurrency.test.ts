@@ -35,7 +35,7 @@ test("#533 — concurrent adds keep the whole durable union, not one winner", as
     assert.equal(
       persisted.length,
       ids.length,
-      `${reported} successes must leave ${ids.length} entries, got ${persisted.length}`,
+      `${reported} successes must leave ${ids.length} entries, got ${persisted.length}`
     );
     assert.deepEqual(persisted.map((e) => e.id).sort(), [...ids].sort());
   });
@@ -45,7 +45,10 @@ test("#533 — a duplicate id concurrently upserts instead of multiplying", asyn
   await withRegistry(async (path) => {
     await Promise.all(Array.from({ length: 20 }, () => addSkill({ id: "same-skill", note: "n" }, path)));
     const persisted = await listSkills(path);
-    assert.deepEqual(persisted.map((e) => e.id), ["same-skill"]);
+    assert.deepEqual(
+      persisted.map((e) => e.id),
+      ["same-skill"]
+    );
   });
 });
 
@@ -53,7 +56,7 @@ test("#533 — the cap is enforced against the durable state, not an in-memory s
   await withRegistry(async (path) => {
     const over = MAX_SKILLS + 20;
     const results = await Promise.allSettled(
-      Array.from({ length: over }, (_, i) => addSkill({ id: `capped-${i}` }, path)),
+      Array.from({ length: over }, (_, i) => addSkill({ id: `capped-${i}` }, path))
     );
     const ok = results.filter((r) => r.status === "fulfilled").length;
     const rejected = results.filter((r) => r.status === "rejected").length;
@@ -72,10 +75,7 @@ test("#533 — a concurrent remove is not undone by an overlapping add", async (
   await withRegistry(async (path) => {
     await addSkill({ id: "doomed" }, path);
     await addSkill({ id: "keeper" }, path);
-    const [removed] = await Promise.all([
-      removeSkill("doomed", path),
-      addSkill({ id: "newcomer" }, path),
-    ]);
+    const [removed] = await Promise.all([removeSkill("doomed", path), addSkill({ id: "newcomer" }, path)]);
     assert.equal(removed, true);
     const ids = (await listSkills(path)).map((e) => e.id).sort();
     assert.deepEqual(ids, ["keeper", "newcomer"], "the remove and the add must both survive");

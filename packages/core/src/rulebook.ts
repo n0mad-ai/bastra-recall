@@ -14,22 +14,31 @@ export interface RulebookLegacyContext {
 /** #1386: what is left of a proposal once `bound` became the memory's own
  * declaration. Bound fields are dropped; if nothing else is pending the
  * proposal is gone, otherwise the rest stays, aligned to the bound tier. */
-export function remainingProposal(proposal: Record<string, unknown> | undefined,
-  bound: { rulebook: RulebookDeclaration["rulebook"]; applies_when: string }, covered: readonly string[] = []): Record<string, unknown> | undefined {
+export function remainingProposal(
+  proposal: Record<string, unknown> | undefined,
+  bound: { rulebook: RulebookDeclaration["rulebook"]; applies_when: string },
+  covered: readonly string[] = []
+): Record<string, unknown> | undefined {
   if (!proposal) return undefined;
-  const rest = Object.entries(proposal).filter(([key]) => key !== "rulebook" && key !== "applies_when" && !covered.includes(key));
+  const rest = Object.entries(proposal).filter(
+    ([key]) => key !== "rulebook" && key !== "applies_when" && !covered.includes(key)
+  );
   return rest.length > 0 ? { ...bound, ...Object.fromEntries(rest) } : undefined;
 }
 
 /** #1394: a later write bound only some parts of a retained proposal (validator,
  * categories). Those parts are dropped; the proposal is gone once what remains
  * only restates the memory's active declaration, otherwise the rest stays as is. */
-export function unboundProposal(proposal: Record<string, unknown> | undefined,
-  active: Record<string, unknown>, covered: readonly string[]): Record<string, unknown> | undefined {
+export function unboundProposal(
+  proposal: Record<string, unknown> | undefined,
+  active: Record<string, unknown>,
+  covered: readonly string[]
+): Record<string, unknown> | undefined {
   if (!proposal) return undefined;
   const rest = Object.entries(proposal).filter(([key]) => !covered.includes(key));
   return rest.every(([key, value]) => (key === "rulebook" || key === "applies_when") && active[key] === value)
-    ? undefined : Object.fromEntries(rest);
+    ? undefined
+    : Object.fromEntries(rest);
 }
 
 /** Explicit declarations win. Legacy membership requires user-directed origin.
@@ -40,8 +49,21 @@ export function resolveRulebook(fm: Frontmatter, context: RulebookLegacyContext 
   let rulebook = fm.rulebook;
   if (!rulebook && fm.write_origin === "user-directed") {
     if (context.floor || context.activeConvention) rulebook = "always";
-    else if (fm.recall_mode === "reflex" || fm.type === "meta-working" || fm.type === "user-preference" || fm.type === "workflow" || fm.rule_categories?.length || fm.validator) rulebook = "on-demand";
+    else if (
+      fm.recall_mode === "reflex" ||
+      fm.type === "meta-working" ||
+      fm.type === "user-preference" ||
+      fm.type === "workflow" ||
+      fm.rule_categories?.length ||
+      fm.validator
+    )
+      rulebook = "on-demand";
   }
-  return rulebook ? { rulebook, applies_when: fm.applies_when ?? fm.summary,
-    ...(fm.applies_when === undefined ? { applies_when_derived: true as const } : {}) } : undefined;
+  return rulebook
+    ? {
+        rulebook,
+        applies_when: fm.applies_when ?? fm.summary,
+        ...(fm.applies_when === undefined ? { applies_when_derived: true as const } : {}),
+      }
+    : undefined;
 }

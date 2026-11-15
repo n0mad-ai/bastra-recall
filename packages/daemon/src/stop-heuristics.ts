@@ -11,9 +11,9 @@ import { restatementIndices } from "./stop-lane-repeat.js";
 import { ASK_TOOL, askAnswers, nativeAskAnswers, optionPicks } from "./stop-lane-choice.js";
 import type { DocsMode } from "./settings.js";
 import type { TranscriptTurn } from "./stop-transcript.js";
-import {normalizeOwnerTurn} from './stop-transcript.js';
-import {currentRoundTurns,lastOwnerBoundary} from './stop-evidence.js';
-import {hasGitCommitCommand} from './bash-pre-analysis.js';
+import { normalizeOwnerTurn } from "./stop-transcript.js";
+import { currentRoundTurns, lastOwnerBoundary } from "./stop-evidence.js";
+import { hasGitCommitCommand } from "./bash-pre-analysis.js";
 
 const FRUSTRATION_WINDOW_TURNS = 10;
 const FRUSTRATION_CUE_THRESHOLD = 4;
@@ -42,50 +42,72 @@ interface HeuristicDeps {
 export function evaluateHeuristics(turns: TranscriptTurn[], deps: HeuristicDeps = {}): SaveSuggestion[] {
   // #1390: Stop is driven by current, structural events. The old exported
   // lexical detectors below remain legacy APIs, not production Stop triggers.
-  turns=turns.map(normalizeOwnerTurn);
+  turns = turns.map(normalizeOwnerTurn);
   const suggestions: SaveSuggestion[] = [];
   const fr = currentCorrection(turns);
   if (fr) suggestions.push(fr);
-  const current=currentRoundTurns(turns);
-  const fc = successfulCommitIndices(current).length?detectFeatureCompletion(current, deps):null;
+  const current = currentRoundTurns(turns);
+  const fc = successfulCommitIndices(current).length ? detectFeatureCompletion(current, deps) : null;
   if (fc) suggestions.push(fc);
   // Keep the question before the latest owner answer; only that answer counts.
-  const ad = turns[lastOwnerBoundary(turns)]?.role==='user'&&optionPicks(turns,1).length?detectOptionPick(turns,1):detectAskAnswer(current,true);
+  const ad =
+    turns[lastOwnerBoundary(turns)]?.role === "user" && optionPicks(turns, 1).length
+      ? detectOptionPick(turns, 1)
+      : detectAskAnswer(current, true);
   if (ad) suggestions.push(ad);
   return suggestions;
 }
 
 /** Repetition alone is not a durable correction. Require a real failed tool
  * in the attempted work and a current emphatic repeated owner request. */
-function currentCorrection(turns:TranscriptTurn[]):SaveSuggestion|null{
- const boundary=lastOwnerBoundary(turns),latest=turns[boundary];
- if(!latest||latest.role!=='user'||!(EMPHASIS_BANG_RE.test(latest.content)||countQualifyingCaps(latest.content)>0))return null;
- const userTurns=turns.filter(t=>t.role==='user').slice(-FRUSTRATION_WINDOW_TURNS);
- if(!restatementIndices(userTurns.map(t=>t.content)).includes(userTurns.length-1))return null;
- let previous=boundary-1;while(previous>=0&&turns[previous].role!=='user')previous--;
- if(previous<0||!turns.slice(previous+1,boundary).some(t=>t.role==='tool'&&t.failed===true))return null;
- return detectRepeatedCorrection(userTurns);
+function currentCorrection(turns: TranscriptTurn[]): SaveSuggestion | null {
+  const boundary = lastOwnerBoundary(turns),
+    latest = turns[boundary];
+  if (
+    !latest ||
+    latest.role !== "user" ||
+    !(EMPHASIS_BANG_RE.test(latest.content) || countQualifyingCaps(latest.content) > 0)
+  )
+    return null;
+  const userTurns = turns.filter((t) => t.role === "user").slice(-FRUSTRATION_WINDOW_TURNS);
+  if (!restatementIndices(userTurns.map((t) => t.content)).includes(userTurns.length - 1)) return null;
+  let previous = boundary - 1;
+  while (previous >= 0 && turns[previous].role !== "user") previous--;
+  if (previous < 0 || !turns.slice(previous + 1, boundary).some((t) => t.role === "tool" && t.failed === true))
+    return null;
+  return detectRepeatedCorrection(userTurns);
 }
 
 /** A command candidate plus git's success record from its tool execution.
  * Quoted/echoed command prose and unreachable/failed commands have no record. */
-function successfulCommitIndices(turns:readonly TranscriptTurn[]):number[]{
- const commits:number[]=[],pending=new Set<string>();let candidate=false;
- turns.forEach((t,i)=>{
-  if(t.role==='assistant'){
-   candidate=!t.opaqueCommands&&!t.calls?.length&&(t.commands??[]).some(hasGitCommitCommand);
-   if(!t.opaqueCommands)for(const call of t.calls??[]){
-    const command=call.input?.command??call.input?.cmd;
-    if(call.id&&['Bash','shell','exec_command','functions.exec_command'].includes(call.name)&&typeof command==='string'&&hasGitCommitCommand(command))pending.add(call.id);
-   }
-  }else if(t.role==='tool'){
-   if(t.results?.length){
-    for(const result of t.results)if(result.id&&pending.delete(result.id)&&result.failed!==true&&COMMIT_OUTPUT_RE.test(result.content))commits.push(i);
-   }else if(candidate&&t.failed!==true&&COMMIT_OUTPUT_RE.test(t.content))commits.push(i);
-   candidate=false;
-  }
- });
- return commits;
+function successfulCommitIndices(turns: readonly TranscriptTurn[]): number[] {
+  const commits: number[] = [],
+    pending = new Set<string>();
+  let candidate = false;
+  turns.forEach((t, i) => {
+    if (t.role === "assistant") {
+      candidate = !t.opaqueCommands && !t.calls?.length && (t.commands ?? []).some(hasGitCommitCommand);
+      if (!t.opaqueCommands)
+        for (const call of t.calls ?? []) {
+          const command = call.input?.command ?? call.input?.cmd;
+          if (
+            call.id &&
+            ["Bash", "shell", "exec_command", "functions.exec_command"].includes(call.name) &&
+            typeof command === "string" &&
+            hasGitCommitCommand(command)
+          )
+            pending.add(call.id);
+        }
+    } else if (t.role === "tool") {
+      if (t.results?.length) {
+        for (const result of t.results)
+          if (result.id && pending.delete(result.id) && result.failed !== true && COMMIT_OUTPUT_RE.test(result.content))
+            commits.push(i);
+      } else if (candidate && t.failed !== true && COMMIT_OUTPUT_RE.test(t.content)) commits.push(i);
+      candidate = false;
+    }
+  });
+  return commits;
 }
 
 // Explicit frustration words, per language (#476) — the list is DATA now, in
@@ -107,9 +129,34 @@ const ALL_CAPS_RE = /^\p{Lu}{4,}$/u;
 // Technical all-caps acronyms that routinely appear in tool output, file paths
 // and doc discussions — never a frustration signal on their own.
 const CAPS_STOPLIST = new Set([
-  "SKILL", "JSON", "CLAUDE", "BASTRA", "NEXUS", "API", "REST", "URL", "HTML",
-  "CSS", "HTTP", "HTTPS", "YAML", "XML", "SQL", "PRS", "TUI", "TSX", "JSX",
-  "SVG", "PNG", "PDF", "JPG", "TODO", "FIXME", "README", "LICENSE", "CHANGELOG",
+  "SKILL",
+  "JSON",
+  "CLAUDE",
+  "BASTRA",
+  "NEXUS",
+  "API",
+  "REST",
+  "URL",
+  "HTML",
+  "CSS",
+  "HTTP",
+  "HTTPS",
+  "YAML",
+  "XML",
+  "SQL",
+  "PRS",
+  "TUI",
+  "TSX",
+  "JSX",
+  "SVG",
+  "PNG",
+  "PDF",
+  "JPG",
+  "TODO",
+  "FIXME",
+  "README",
+  "LICENSE",
+  "CHANGELOG",
 ]);
 
 // A word that is an identifier or a path (`BASTRA_VAULT_PATH`, `src/README.md`),
@@ -154,7 +201,7 @@ export function detectFrustration(turns: TranscriptTurn[]): SaveSuggestion | nul
   const fullEvidence: string[] = [];
   for (const t of userTurns) {
     const fw = countFrustWords(t.content, re);
-    if (fw > 0 || countQualifyingCaps(t.content)>0) fullEvidence.push(t.content);
+    if (fw > 0 || countQualifyingCaps(t.content) > 0) fullEvidence.push(t.content);
     if (fw > 0) {
       frustWordCount += fw;
       // #756: a sentence the user said twice is one exemplar, not two.
@@ -174,7 +221,8 @@ export function detectFrustration(turns: TranscriptTurn[]): SaveSuggestion | nul
     title: "recurring frustration — capture the underlying lesson",
     type: "lesson",
     proposal_evidence: JSON.stringify([...new Set(fullEvidence)]),
-    body: `Detected ${totalCues} frustration cues (${frustWordCount} explicit frustration words) ` +
+    body:
+      `Detected ${totalCues} frustration cues (${frustWordCount} explicit frustration words) ` +
       `in the last ${userTurns.length} user turns. ` +
       `Exemplars: ${exemplars.join(" | ")}. ` +
       `If a concrete recurring pattern surfaced, save a 'lesson' memory that captures the failure path and the fix.`,
@@ -193,7 +241,8 @@ function detectRepeatedCorrection(userTurns: TranscriptTurn[]): SaveSuggestion |
     title: "recurring frustration — capture the underlying lesson",
     type: "lesson",
     proposal_evidence: JSON.stringify([...new Set(repeats)]),
-    body: `Detected ${repeats.length} user turns restating an earlier request (language-neutral signal) ` +
+    body:
+      `Detected ${repeats.length} user turns restating an earlier request (language-neutral signal) ` +
       `in the last ${userTurns.length} user turns. ` +
       `Exemplars: ${[...new Set(repeats.map((c) => c.slice(0, 120)))].slice(0, 3).join(" | ")}. ` +
       `If the user had to repeat a correction, save a 'lesson' memory that captures the failure path and the fix.`,
@@ -204,17 +253,31 @@ const SAVE_TOOL_RE = /(?:^|__)(?:save_memory|edit_memory)$/u;
 
 /** Handler receipts supplement native transcript calls for opaque Codex exec.
  * Unknown or equal timestamps cannot establish order and never suppress work. */
-export function dropSuggestionsAfterExecutedSave(turns:TranscriptTurn[],suggestions:SaveSuggestion[],writes:readonly {at:number}[]):SaveSuggestion[]{
- const boundary=lastOwnerBoundary(turns),current=currentRoundTurns(turns);
- const commits=successfulCommitIndices(current).map(i=>current[i]);
- const answers=current.filter(t=>t.role==='assistant'&&t.tools?.includes(ASK_TOOL));
- const askIds=new Set(answers.flatMap(t=>(t.calls??[]).filter(c=>c.name===ASK_TOOL&&c.id).map(c=>c.id)));
- const answerResults=current.filter(t=>t.role==='tool'&&t.results?.some(r=>r.id&&askIds.has(r.id)));
- return suggestions.filter(s=>{
-  const evidence=[turns[boundary],...(s.heuristic==='feature-completion'?commits:s.heuristic==='architecture-decision'?[...answers,...answerResults]:[])];
-  if(evidence.some(t=>!t||t.at===undefined))return true;
-  return !writes.some(w=>evidence.every(t=>w.at>t.at!));
- });
+export function dropSuggestionsAfterExecutedSave(
+  turns: TranscriptTurn[],
+  suggestions: SaveSuggestion[],
+  writes: readonly { at: number }[]
+): SaveSuggestion[] {
+  const boundary = lastOwnerBoundary(turns),
+    current = currentRoundTurns(turns);
+  const commits = successfulCommitIndices(current).map((i) => current[i]);
+  const answers = current.filter((t) => t.role === "assistant" && t.tools?.includes(ASK_TOOL));
+  const askIds = new Set(
+    answers.flatMap((t) => (t.calls ?? []).filter((c) => c.name === ASK_TOOL && c.id).map((c) => c.id))
+  );
+  const answerResults = current.filter((t) => t.role === "tool" && t.results?.some((r) => r.id && askIds.has(r.id)));
+  return suggestions.filter((s) => {
+    const evidence = [
+      turns[boundary],
+      ...(s.heuristic === "feature-completion"
+        ? commits
+        : s.heuristic === "architecture-decision"
+          ? [...answers, ...answerResults]
+          : []),
+    ];
+    if (evidence.some((t) => !t || t.at === undefined)) return true;
+    return !writes.some((w) => evidence.every((t) => w.at > t.at!));
+  });
 }
 
 /** #1376: a save or edit already did what a suggestion asks when it came after
@@ -224,19 +287,36 @@ export function dropSuggestionsAfterExecutedSave(turns:TranscriptTurn[],suggesti
  * an answer after the save is new evidence, so its suggestion stays. */
 export function dropSuggestionsAfterSave(turns: TranscriptTurn[], suggestions: SaveSuggestion[]): SaveSuggestion[] {
   if (suggestions.length === 0) return suggestions;
-  let user = -1, commit = -1, ask = -1, save = -1;
-  const pending=new Set<string>();
-  const pendingAsks=new Set<string>();
+  let user = -1,
+    commit = -1,
+    ask = -1,
+    save = -1;
+  const pending = new Set<string>();
+  const pendingAsks = new Set<string>();
   turns.forEach((t, i) => {
-    if (t.role === "user") { user = i; pending.clear(); }
+    if (t.role === "user") {
+      user = i;
+      pending.clear();
+    }
     if (isCommitTurn(t)) commit = i;
     if (t.role === "assistant" && t.tools?.includes(ASK_TOOL)) ask = i;
-    for(const call of t.role==='assistant'?t.calls??[]:[])if(call.id&&call.name===ASK_TOOL)pendingAsks.add(call.id);
-    for(const call of t.role==='assistant'?t.calls??[]:[])if(call.id&&SAVE_TOOL_RE.test(call.name))pending.add(call.id);
-    for(const result of t.role==='tool'?t.results??[]:[]){
-      if(result.id&&pendingAsks.delete(result.id)&&!result.failed)ask=i;
-      if(!result.id||!pending.delete(result.id)||result.failed)continue;
-      try{const r=JSON.parse(result.content);if(typeof r.id==='string'&&typeof r.file_path==='string'&&r.conflict_marked!==true&&r.hold!==true)save=i;}catch{}
+    for (const call of t.role === "assistant" ? (t.calls ?? []) : [])
+      if (call.id && call.name === ASK_TOOL) pendingAsks.add(call.id);
+    for (const call of t.role === "assistant" ? (t.calls ?? []) : [])
+      if (call.id && SAVE_TOOL_RE.test(call.name)) pending.add(call.id);
+    for (const result of t.role === "tool" ? (t.results ?? []) : []) {
+      if (result.id && pendingAsks.delete(result.id) && !result.failed) ask = i;
+      if (!result.id || !pending.delete(result.id) || result.failed) continue;
+      try {
+        const r = JSON.parse(result.content);
+        if (
+          typeof r.id === "string" &&
+          typeof r.file_path === "string" &&
+          r.conflict_marked !== true &&
+          r.hold !== true
+        )
+          save = i;
+      } catch {}
     }
   });
   const evidence = (h: string) =>
@@ -246,7 +326,10 @@ export function dropSuggestionsAfterSave(turns: TranscriptTurn[], suggestions: S
 
 /** #1307: reuse the repeated-correction signal, bounded to the latest user
  * turn. Tool evidence after that correction, never a prose mention, clears it. */
-export function correctionReminderSuggestions(turns: TranscriptTurn[], suggestions: SaveSuggestion[]): SaveSuggestion[] {
+export function correctionReminderSuggestions(
+  turns: TranscriptTurn[],
+  suggestions: SaveSuggestion[]
+): SaveSuggestion[] {
   const userTurns = turns.filter((t) => t.role === "user").slice(-FRUSTRATION_WINDOW_TURNS);
   const correction = detectRepeatedCorrection(userTurns);
   if (!correction) return suggestions;
@@ -256,28 +339,35 @@ export function correctionReminderSuggestions(turns: TranscriptTurn[], suggestio
   // The existing frustration suggestion describes this same correction. A
   // save clears both; without one, replace it rather than reminding twice.
   const other = suggestions.filter((s) => s.heuristic !== "frustration-density");
-  if (dropSuggestionsAfterSave(turns.slice(correctionIndex),[correction]).length===0) return other;
-  return [...other, {
-    ...correction,
-    heuristic: "correction-without-save",
-    proposal_evidence: correction.proposal_evidence,
-    body: "The user repeated a correction in this turn and no save_memory followed. " +
-      "If it establishes a durable rule, save the user-evidenced failure path and fix; do not infer a missing convention.",
-  }];
+  if (dropSuggestionsAfterSave(turns.slice(correctionIndex), [correction]).length === 0) return other;
+  return [
+    ...other,
+    {
+      ...correction,
+      heuristic: "correction-without-save",
+      proposal_evidence: correction.proposal_evidence,
+      body:
+        "The user repeated a correction in this turn and no save_memory followed. " +
+        "If it establishes a durable rule, save the user-evidenced failure path and fix; do not infer a missing convention.",
+    },
+  ];
 }
 
 /** Productive wrapper: unlike the legacy helper, a real failed attempt must
  * support the current correction before a reminder can request more work. */
-export function currentCorrectionReminderSuggestions(turns:TranscriptTurn[],suggestions:SaveSuggestion[]):SaveSuggestion[]{
- return currentCorrection(turns.map(normalizeOwnerTurn))?correctionReminderSuggestions(turns,suggestions):suggestions;
+export function currentCorrectionReminderSuggestions(
+  turns: TranscriptTurn[],
+  suggestions: SaveSuggestion[]
+): SaveSuggestion[] {
+  return currentCorrection(turns.map(normalizeOwnerTurn))
+    ? correctionReminderSuggestions(turns, suggestions)
+    : suggestions;
 }
 
 // Source extensions that signal a real edit. `.md` only counts under docs/.
 // json/yaml/css/html are deliberately excluded — they produced the bulk of the
 // false-positive noise (settings.json, .claude.json, …).
-const SOURCE_EXTENSIONS = new Set([
-  "ts", "tsx", "js", "jsx", "mjs", "cjs", "swift", "rs", "py", "go",
-]);
+const SOURCE_EXTENSIONS = new Set(["ts", "tsx", "js", "jsx", "mjs", "cjs", "swift", "rs", "py", "go"]);
 
 const FILE_TOKEN_RE = /[\w./-]+\.[A-Za-z][A-Za-z0-9]*/g;
 
@@ -287,11 +377,11 @@ const FILE_TOKEN_RE = /[\w./-]+\.[A-Za-z][A-Za-z0-9]*/g;
  * user-home / dotfile path (which is where URL-citation noise lives).
  */
 function isRepoRelativeSourceToken(token: string): boolean {
-  if (!token.includes("/")) return false;            // bare filename → reject
+  if (!token.includes("/")) return false; // bare filename → reject
   if (token.startsWith("/") || token.startsWith("~")) return false; // absolute / home
-  if (token.startsWith(".")) return false;           // ./x or .hidden
-  if (/^Users\//.test(token)) return false;          // home path with stripped leading slash
-  if (token.includes("/.")) return false;            // any dotfile/dotdir segment (e.g. /.claude/)
+  if (token.startsWith(".")) return false; // ./x or .hidden
+  if (/^Users\//.test(token)) return false; // home path with stripped leading slash
+  if (token.includes("/.")) return false; // any dotfile/dotdir segment (e.g. /.claude/)
   const ext = token.slice(token.lastIndexOf(".") + 1).toLowerCase();
   if (SOURCE_EXTENSIONS.has(ext)) return true;
   if (ext === "md" && /(^|\/)docs\//.test(token)) return true;
@@ -346,9 +436,18 @@ export function detectFeatureCompletion(turns: TranscriptTurn[], deps: Heuristic
   return {
     heuristic: "feature-completion",
     title: "feature-completion — save a topology / project-fact entry",
-    proposal_evidence: JSON.stringify({files:[...fileTokens].sort(),commits:turns.filter(isCommitTurn).map(t=>({content:t.role==="tool"?t.content:undefined,commands:t.commands,calls:t.calls?.map(c=>({name:c.name,input:c.input})),results:t.results?.map(r=>r.content)}))}),
+    proposal_evidence: JSON.stringify({
+      files: [...fileTokens].sort(),
+      commits: turns.filter(isCommitTurn).map((t) => ({
+        content: t.role === "tool" ? t.content : undefined,
+        commands: t.commands,
+        calls: t.calls?.map((c) => ({ name: c.name, input: c.input })),
+        results: t.results?.map((r) => r.content),
+      })),
+    }),
     type: "project-fact",
-    body: `A git commit was mentioned alongside ${fileTokens.size} distinct repo-relative source files (e.g. ${sample}). ` +
+    body:
+      `A git commit was mentioned alongside ${fileTokens.size} distinct repo-relative source files (e.g. ${sample}). ` +
       `If this lands a coherent feature/refactor, save a 'project-fact' that maps what was built where ` +
       `(file paths in path/to/file.ts:42 format, status, links to related decisions).`,
   };
@@ -380,7 +479,8 @@ export function detectArchitectureDecision(turns: TranscriptTurn[]): SaveSuggest
     title: "decision finalized — save the chosen path and the why",
     type: "decision",
     proposal_evidence: JSON.stringify(fullEvidence),
-    body: `Decision-language in the last ${userTurns.length} user turns: ${exemplars.join(" | ")}. ` +
+    body:
+      `Decision-language in the last ${userTurns.length} user turns: ${exemplars.join(" | ")}. ` +
       `If an architectural choice was committed (X over Y, the trade-off), save a 'decision' memory ` +
       `with the why + how-to-apply.`,
   };
@@ -389,20 +489,27 @@ export function detectArchitectureDecision(turns: TranscriptTurn[]): SaveSuggest
 /** #707 language-neutral fallback: the user picked one of the numbered
  *  options the agent offered with a question (stop-lane-choice.ts). No word
  *  list, so any language fires. */
-function detectOptionPick(turns: TranscriptTurn[],window=DECISION_WINDOW_TURNS): SaveSuggestion | null {
+function detectOptionPick(turns: TranscriptTurn[], window = DECISION_WINDOW_TURNS): SaveSuggestion | null {
   const picks = optionPicks(turns, window);
-  const evidence = turns.flatMap((t,i)=>{
-    if(t.role!=="user")return [];
-    let j=i-1;while(j>=0&&turns[j].role!=="assistant"&&turns[j].role!=="user")j--;
-    return j>=0&&optionPicks([turns[j],t],1).length?[[turns[j].content,t.content]]:[];
-  }).slice(-window);
+  const evidence = turns
+    .flatMap((t, i) => {
+      if (t.role !== "user") return [];
+      let j = i - 1;
+      while (j >= 0 && turns[j].role !== "assistant" && turns[j].role !== "user") j--;
+      return j >= 0 && optionPicks([turns[j], t], 1).length ? [[turns[j].content, t.content]] : [];
+    })
+    .slice(-window);
   if (picks.length === 0) return null;
   return {
     heuristic: "architecture-decision",
     title: "decision finalized — save the chosen path and the why",
     type: "decision",
     proposal_evidence: JSON.stringify(evidence),
-    body: `The user picked one of the offered options (language-neutral signal): ${picks.slice(0, 2).map((c) => c.slice(0, 160)).join(" | ")}. ` +
+    body:
+      `The user picked one of the offered options (language-neutral signal): ${picks
+        .slice(0, 2)
+        .map((c) => c.slice(0, 160))
+        .join(" | ")}. ` +
       `If an architectural choice was committed (X over Y, the trade-off), save a 'decision' memory ` +
       `with the why + how-to-apply.`,
   };
@@ -411,15 +518,25 @@ function detectOptionPick(turns: TranscriptTurn[],window=DECISION_WINDOW_TURNS):
 /** #701 structural signal: the user answered the agent's `AskUserQuestion`
  *  (stop-lane-choice.ts). The answer is a tool result, which the cue check
  *  above never reads. */
-function detectAskAnswer(turns: TranscriptTurn[],native=false): SaveSuggestion | null {
-  const answers = native?nativeAskAnswers(turns):askAnswers(turns, DECISION_WINDOW_TURNS);
+function detectAskAnswer(turns: TranscriptTurn[], native = false): SaveSuggestion | null {
+  const answers = native ? nativeAskAnswers(turns) : askAnswers(turns, DECISION_WINDOW_TURNS);
   if (answers.length === 0) return null;
   return {
     heuristic: "architecture-decision",
     title: "decision finalized — save the chosen path and the why",
     type: "decision",
-    proposal_evidence: JSON.stringify({answers,questions:turns.flatMap(t=>t.calls??[]).filter(c=>c.name===ASK_TOOL).map(c=>({name:c.name,input:c.input}))}),
-    body: `The user answered the agent's question (structural signal): ${[...new Set(answers)].slice(0, 2).map((c) => c.slice(0, 160)).join(" | ")}. ` +
+    proposal_evidence: JSON.stringify({
+      answers,
+      questions: turns
+        .flatMap((t) => t.calls ?? [])
+        .filter((c) => c.name === ASK_TOOL)
+        .map((c) => ({ name: c.name, input: c.input })),
+    }),
+    body:
+      `The user answered the agent's question (structural signal): ${[...new Set(answers)]
+        .slice(0, 2)
+        .map((c) => c.slice(0, 160))
+        .join(" | ")}. ` +
       `If an architectural choice was committed (X over Y, the trade-off), save a 'decision' memory ` +
       `with the why + how-to-apply.`,
   };
@@ -447,7 +564,11 @@ export function formatSuggestion(s: SaveSuggestion): string {
     `  title: "${s.title}"`,
     `  type: ${s.type}`,
     `  body: "${escapeBody(s.body)}"`,
-    ...(s.proposal_id ? [`Only after explicit user rejection: review_save_suggestion(id:"${s.proposal_id}", decision:"reject", write_origin:"user-directed", evidence:<user rejection>). Silence is not rejection.`] : []),
+    ...(s.proposal_id
+      ? [
+          `Only after explicit user rejection: review_save_suggestion(id:"${s.proposal_id}", decision:"reject", write_origin:"user-directed", evidence:<user rejection>). Silence is not rejection.`,
+        ]
+      : []),
     `To save: call save_memory with the values above (or refine first).`,
     `</save-eval>`,
   ].join("\n");

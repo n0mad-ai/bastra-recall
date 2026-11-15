@@ -88,16 +88,20 @@ test("Codex: the surface is preserved through its own transport shape", () => {
   assert.ok(parsed);
   assert.equal(existingToolSurface(parsed.transport), "full");
 
-  const target = buildServerBlock("/vault", "/stable/mcp-forwarder.js", existingToolSurface(parsed.transport) ?? undefined);
+  const target = buildServerBlock(
+    "/vault",
+    "/stable/mcp-forwarder.js",
+    existingToolSurface(parsed.transport) ?? undefined
+  );
   assert.equal(
     codexServerMatches(parsed, target),
     true,
-    "no `codex mcp remove` + re-add, so the hand-set surface stays on disk",
+    "no `codex mcp remove` + re-add, so the hand-set surface stays on disk"
   );
   assert.equal(
     codexServerMatches(parsed, buildServerBlock("/vault", "/stable/mcp-forwarder.js", INSTALL_TOOL_SURFACE)),
     false,
-    "the defect, for the record",
+    "the defect, for the record"
   );
 });
 
@@ -111,7 +115,7 @@ test("every installer adapter carries the existing surface into its target block
       assert.match(
         call,
         /existingToolSurface\(/,
-        `${file} builds a target block without preserving the configured surface`,
+        `${file} builds a target block without preserving the configured surface`
       );
     }
   }

@@ -31,7 +31,7 @@ function fakeVault(mems: Array<Record<string, unknown>>): CuratorRunDeps["vault"
 }
 
 async function withFixture<T>(
-  fn: (root: string, deps: CuratorRunDeps, demotionCalls: string[][]) => Promise<T>,
+  fn: (root: string, deps: CuratorRunDeps, demotionCalls: string[][]) => Promise<T>
 ): Promise<T> {
   const root = await mkdtemp(join(tmpdir(), "bastra-curator-538-"));
   const floorsPath = join(root, "floors.json");
@@ -42,9 +42,7 @@ async function withFixture<T>(
   const demotionCalls: string[][] = [];
   const deps: CuratorRunDeps = {
     vaultRoot: root,
-    vault: fakeVault([
-      { id: "tax", title: "Old unused lesson", created: iso(120), topic_path: ["css"], related: [] },
-    ]),
+    vault: fakeVault([{ id: "tax", title: "Old unused lesson", created: iso(120), topic_path: ["css"], related: [] }]),
     setDemotions: (ids) => demotionCalls.push([...ids]),
   };
   const prev = process.env.BASTRA_FLOORS_PATH;

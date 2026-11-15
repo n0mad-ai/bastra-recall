@@ -1,11 +1,11 @@
-import {indexedActionConventions} from "./action-conventions.js";
-import {createLaneDelivery} from "./lane-delivery.js";
+import { indexedActionConventions } from "./action-conventions.js";
+import { createLaneDelivery } from "./lane-delivery.js";
 import { taskAttachment, taskRequestAuth } from "./task-delivery.js";
 import { defaultTaskContext } from "./task-transport.js";
 import { takeDraftReview } from "./draft-review.js";
 import { draftVaultId } from "./draft-promote.js";
-import { recordDeliveredDraftHints } from './draft-delivery.js';
-import { cleanDraftField } from './draft-text.js';
+import { recordDeliveredDraftHints } from "./draft-delivery.js";
+import { cleanDraftField } from "./draft-text.js";
 /**
  * Route dispatch for the loopback-only surface: the liveness/introspection
  * doors (/health, /tools, /vault/count), the hook lanes that still answer
@@ -87,7 +87,7 @@ export function dispatchLocalRoutes(
   url: string,
   /** Request start, for the hook-recall telemetry path. */
   t0: number,
-  ctx: LocalRouteCtx,
+  ctx: LocalRouteCtx
 ): boolean {
   const { vault, telemetry, toolDeps, healthPayload } = ctx;
   const { search } = toolDeps;
@@ -105,9 +105,7 @@ export function dispatchLocalRoutes(
   // #481: `?surface=search|write|full` narrows the list to what that client's
   // tool surface allows. Absent or unknown → `full`, today's behaviour.
   if (method === "GET" && (url === "/tools" || url.startsWith("/tools?"))) {
-    const surface = toolSurfaceFrom(
-      new URL(url, "http://127.0.0.1").searchParams.get("surface") ?? undefined,
-    );
+    const surface = toolSurfaceFrom(new URL(url, "http://127.0.0.1").searchParams.get("surface") ?? undefined);
     sendJson(res, 200, { tools: filterToolDefsForSurface(ALL_TOOL_DEFS, surface) });
     return true;
   }
@@ -125,15 +123,40 @@ export function dispatchLocalRoutes(
   }
 
   if (method === "POST" && url === "/hook/action-conventions") {
-    readJsonBody(req,MAX_BODY_BYTES).then(async body=>{
-      if(body.category!=="github-issues-prs"){sendJson(res,400,{error:"Unknown structural category"});return;}
-      sendJson(res,200,await indexedActionConventions(vault,typeof body.project==="string"?body.project:null,"github-issues-prs"));
-    }).catch(()=>sendJson(res,200,{hits:[],unavailable:true}));
+    readJsonBody(req, MAX_BODY_BYTES)
+      .then(async (body) => {
+        if (body.category !== "github-issues-prs") {
+          sendJson(res, 400, { error: "Unknown structural category" });
+          return;
+        }
+        sendJson(
+          res,
+          200,
+          await indexedActionConventions(
+            vault,
+            typeof body.project === "string" ? body.project : null,
+            "github-issues-prs"
+          )
+        );
+      })
+      .catch(() => sendJson(res, 200, { hits: [], unavailable: true }));
     return true;
   }
 
   if (method === "POST" && url === "/hook/recall") {
-    handleHookRecall(req, res, t0, vault, search, telemetry, toolDeps.learnedBridges, toolDeps.sharedRecallLang, toolDeps.embeddingDegraded, toolDeps.evidenceGateEnabled, toolDeps.deadlineShadow);
+    handleHookRecall(
+      req,
+      res,
+      t0,
+      vault,
+      search,
+      telemetry,
+      toolDeps.learnedBridges,
+      toolDeps.sharedRecallLang,
+      toolDeps.embeddingDegraded,
+      toolDeps.evidenceGateEnabled,
+      toolDeps.deadlineShadow
+    );
     return true;
   }
 
@@ -154,49 +177,68 @@ export function dispatchLocalRoutes(
   if (method === "POST" && url === "/hook/prompt") {
     const delivery = createLaneDelivery(res);
     readJsonBody(req, MAX_BODY_BYTES)
-      .then(body => delivery.run(async () => {
-        const payload = (body.payload ?? {}) as ClaudeHookPayload;
-        const ppid = typeof body.client_ppid === "number" ? body.client_ppid : null;
-        const self = `http://127.0.0.1:${req.socket.localPort ?? 6723}`;
-        // #702: `bastra doctor --replay` posts `{payload, replay: true}`. The
-        // lane runs in shadow (prompt-lane.ts: `replay`) and the answer is
-        // `{stdout, telemetry}` — what the hook would have printed, plus the
-        // row the lane wrote to the replay log — instead of the bare hook
-        // document. No task attachment: nothing is due in a replayed turn.
-        if (body.replay === true) {
-          let row: PromptHookTelemetry | null = null;
-          const stdout = await runPromptLane(
-            { ...payload, bastra_client: REPLAY_CLIENT } as ClaudeHookPayload,
-            null,
-            self,
-            toolDeps.prewarmEmbedding,
-            () => reflexPoolIds(vault),
-            { onTelemetry: (r) => { row = r; }, conventionOf: vaultConventionOf(vault) },
+      .then((body) =>
+        delivery.run(async () => {
+          const payload = (body.payload ?? {}) as ClaudeHookPayload;
+          const ppid = typeof body.client_ppid === "number" ? body.client_ppid : null;
+          const self = `http://127.0.0.1:${req.socket.localPort ?? 6723}`;
+          // #702: `bastra doctor --replay` posts `{payload, replay: true}`. The
+          // lane runs in shadow (prompt-lane.ts: `replay`) and the answer is
+          // `{stdout, telemetry}` — what the hook would have printed, plus the
+          // row the lane wrote to the replay log — instead of the bare hook
+          // document. No task attachment: nothing is due in a replayed turn.
+          if (body.replay === true) {
+            let row: PromptHookTelemetry | null = null;
+            const stdout = await runPromptLane(
+              { ...payload, bastra_client: REPLAY_CLIENT } as ClaudeHookPayload,
+              null,
+              self,
+              toolDeps.prewarmEmbedding,
+              () => reflexPoolIds(vault),
+              {
+                onTelemetry: (r) => {
+                  row = r;
+                },
+                conventionOf: vaultConventionOf(vault),
+              }
+            );
+            res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ stdout, telemetry: row }));
+            return;
+          }
+          // #361: the prewarmer rides in from toolDeps — the lane fires it at
+          // turn start and never awaits the embed behind it.
+          // #371: the wired reflex pool rides in from the vault index. Mode
+          // "none" — 91% of prompts — can inject nothing else, so the lane
+          // uses it to decide whether the full-vault recall is worth paying
+          // for at all.
+          // #1306: revisions for the active-conventions block, off the same index.
+          const out = await runPromptLane(payload, ppid, self, toolDeps.prewarmEmbedding, () => reflexPoolIds(vault), {
+            conventionOf: vaultConventionOf(vault),
+            kernel: (active, project, mode) => collectRuleKernel(vault, { active, project, mode }),
+          });
+          const due = await taskAttachment(
+            defaultTaskContext(toolDeps),
+            taskRequestAuth(req),
+            String(payload.session_id ?? "unknown"),
+            "prompt"
           );
-          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-          res.end(JSON.stringify({ stdout, telemetry: row }));
-          return;
-        }
-        // #361: the prewarmer rides in from toolDeps — the lane fires it at
-        // turn start and never awaits the embed behind it.
-        // #371: the wired reflex pool rides in from the vault index. Mode
-        // "none" — 91% of prompts — can inject nothing else, so the lane
-        // uses it to decide whether the full-vault recall is worth paying
-        // for at all.
-        // #1306: revisions for the active-conventions block, off the same index.
-        const out = await runPromptLane(payload, ppid, self, toolDeps.prewarmEmbedding, () =>
-          reflexPoolIds(vault), { conventionOf: vaultConventionOf(vault), kernel: (active, project, mode) => collectRuleKernel(vault, { active, project, mode }) },
-        );
-        const due = await taskAttachment(defaultTaskContext(toolDeps), taskRequestAuth(req), String(payload.session_id ?? "unknown"), "prompt");
-        let result = out;
-        if (due) {
-          const parsed = JSON.parse(result) as { hookSpecificOutput?: { hookEventName?: string; additionalContext?: string } };
-          parsed.hookSpecificOutput = { ...parsed.hookSpecificOutput, hookEventName: "UserPromptSubmit",
-            additionalContext: [parsed.hookSpecificOutput?.additionalContext, due.text].filter(Boolean).join("\n") };
-          result = JSON.stringify(parsed); res.once("finish", due.record);
-        }
-        delivery.answer(result);
-      }))
+          let result = out;
+          if (due) {
+            const parsed = JSON.parse(result) as {
+              hookSpecificOutput?: { hookEventName?: string; additionalContext?: string };
+            };
+            parsed.hookSpecificOutput = {
+              ...parsed.hookSpecificOutput,
+              hookEventName: "UserPromptSubmit",
+              additionalContext: [parsed.hookSpecificOutput?.additionalContext, due.text].filter(Boolean).join("\n"),
+            };
+            result = JSON.stringify(parsed);
+            res.once("finish", due.record);
+          }
+          delivery.answer(result);
+        })
+      )
       .catch(() => {
         delivery.answer("{}");
       });
@@ -227,15 +269,19 @@ export function dispatchLocalRoutes(
   // No client-side content gates — the pattern tables and invokesOwnBinary
   // are gate logic that must stay hot-swappable, so they live in the lanes.
   if (method === "POST" && url === "/hook/bash-pre") {
-    const delivery=createLaneDelivery(res);
-    void delivery.run(async()=>{
-      try{
-        const body=await readJsonBody(req,MAX_BODY_BYTES);
-        const out=await runBashPreLane((body.payload??{})as BashHookPayload,
-          `http://127.0.0.1:${req.socket.localPort??6723}`,
-          query=>search.recall(query,{k:5}).map(hit=>({...hit,body:toolDeps.vault.get(hit.id)?.body})));
+    const delivery = createLaneDelivery(res);
+    void delivery.run(async () => {
+      try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const out = await runBashPreLane(
+          (body.payload ?? {}) as BashHookPayload,
+          `http://127.0.0.1:${req.socket.localPort ?? 6723}`,
+          (query) => search.recall(query, { k: 5 }).map((hit) => ({ ...hit, body: toolDeps.vault.get(hit.id)?.body }))
+        );
         delivery.answer(out);
-      }catch{delivery.answer("{}");}
+      } catch {
+        delivery.answer("{}");
+      }
     });
     return true;
   }
@@ -250,12 +296,20 @@ export function dispatchLocalRoutes(
         // (save-notice-lane.ts says why it has no client of its own).
         const out = recallWriteTool(payload.tool_name)
           ? await runSaveNoticeLane(payload as SaveNoticePayload, (id) => {
-            const fm = vault.get(id)?.fm;
-            return fm?.sensitivity === "private" ? undefined : fm;
-          })
+              const fm = vault.get(id)?.fm;
+              return fm?.sensitivity === "private" ? undefined : fm;
+            })
           : await runBashFailLane(payload, `http://127.0.0.1:${req.socket.localPort ?? 6723}`);
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(await appendDraftNotice(out,payload as SaveNoticePayload,id=>vault.get(id)?.fm,undefined,()=>!res.destroyed&&!req.socket.destroyed));
+        res.end(
+          await appendDraftNotice(
+            out,
+            payload as SaveNoticePayload,
+            (id) => vault.get(id)?.fm,
+            undefined,
+            () => !res.destroyed && !req.socket.destroyed
+          )
+        );
       })
       .catch(() => {
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
@@ -269,18 +323,41 @@ export function dispatchLocalRoutes(
   // convention) — the contract is identical to the four above.
   // #490: the session lane among them takes the shared embedding warm-up,
   // injected here the same way the prompt lane takes its prewarmer.
-  if (dispatchLaneRoutes(req, res, method, url, toolDeps.warmupEmbedding, async (out,payload,connected) => {
-    const notices = await appendDraftNotice(out,payload,id=>vault.get(id)?.fm,undefined,connected);
-    if (url !== "/hook/session") return notices;
-    const due = await taskAttachment(defaultTaskContext(toolDeps), taskRequestAuth(req), String((payload as unknown as {session_id?: string}).session_id ?? "unknown"), "session");
-    if (!due || !connected()) return notices;
-    const parsed = JSON.parse(notices) as { hookSpecificOutput?: { hookEventName?: string; additionalContext?: string } };
-    parsed.hookSpecificOutput = { ...parsed.hookSpecificOutput, hookEventName: "SessionStart",
-      additionalContext: [parsed.hookSpecificOutput?.additionalContext, due.text].filter(Boolean).join("\n") };
-    res.once("finish", due.record); return JSON.stringify(parsed);
-  }, async () => takeDraftReview(await draftVaultId(vault.root), toolDeps.primaryLanguage ?? "en"),
-  () => cachedActionReflexPool(vault),
-  (active, project, mode) => collectRuleKernel(vault, { project, active, mode }),vaultConventionOf(vault))) return true;
+  if (
+    dispatchLaneRoutes(
+      req,
+      res,
+      method,
+      url,
+      toolDeps.warmupEmbedding,
+      async (out, payload, connected) => {
+        const notices = await appendDraftNotice(out, payload, (id) => vault.get(id)?.fm, undefined, connected);
+        if (url !== "/hook/session") return notices;
+        const due = await taskAttachment(
+          defaultTaskContext(toolDeps),
+          taskRequestAuth(req),
+          String((payload as unknown as { session_id?: string }).session_id ?? "unknown"),
+          "session"
+        );
+        if (!due || !connected()) return notices;
+        const parsed = JSON.parse(notices) as {
+          hookSpecificOutput?: { hookEventName?: string; additionalContext?: string };
+        };
+        parsed.hookSpecificOutput = {
+          ...parsed.hookSpecificOutput,
+          hookEventName: "SessionStart",
+          additionalContext: [parsed.hookSpecificOutput?.additionalContext, due.text].filter(Boolean).join("\n"),
+        };
+        res.once("finish", due.record);
+        return JSON.stringify(parsed);
+      },
+      async () => takeDraftReview(await draftVaultId(vault.root), toolDeps.primaryLanguage ?? "en"),
+      () => cachedActionReflexPool(vault),
+      (active, project, mode) => collectRuleKernel(vault, { project, active, mode }),
+      vaultConventionOf(vault)
+    )
+  )
+    return true;
 
   // #144: lightweight act-signal (PostToolUse:Bash). No recall, no injection —
   // only matches the excerpt against open loadedMemories episodes so
@@ -326,8 +403,8 @@ export function dispatchLocalRoutes(
         //    it. A missing number beats a number about the wrong session.
         //    `recordSurfacedUsage` above is unaffected — it never needed one.
         const hintedSession =
-          typeof (body as { session_id?: unknown })?.session_id === "string"
-            && (body as { session_id: string }).session_id.length > 0
+          typeof (body as { session_id?: unknown })?.session_id === "string" &&
+          (body as { session_id: string }).session_id.length > 0
             ? cleanDraftField((body as { session_id: string }).session_id)
             : null;
         {
@@ -338,12 +415,22 @@ export function dispatchLocalRoutes(
               const shown = `${id.replace(/[-_]+/g, " ")} ${truncateSummaryTo(String(memory.fm.summary ?? ""), 160)}`;
               return [{ memory_id: id, distinctive_tokens: distinctiveTokensForActedOn(shown) }];
             }),
-            hintedSession,
+            hintedSession
           );
         }
-        const draftIds = Array.isArray(body.draft_ids) ? body.draft_ids.filter((id): id is string => typeof id === "string") : [];
-        const draftCount = await recordDeliveredDraftHints(draftIds, hintedSession, typeof body.draft_input === "string" ? body.draft_input : null);
-        sendJson(res, 200, { ok: true, counted: ids.length, ...(draftCount > 0 ? { drafts_counted: draftCount } : {}) });
+        const draftIds = Array.isArray(body.draft_ids)
+          ? body.draft_ids.filter((id): id is string => typeof id === "string")
+          : [];
+        const draftCount = await recordDeliveredDraftHints(
+          draftIds,
+          hintedSession,
+          typeof body.draft_input === "string" ? body.draft_input : null
+        );
+        sendJson(res, 200, {
+          ok: true,
+          counted: ids.length,
+          ...(draftCount > 0 ? { drafts_counted: draftCount } : {}),
+        });
       })
       .catch(() => sendJson(res, 400, { error: "invalid body" }));
     return true;

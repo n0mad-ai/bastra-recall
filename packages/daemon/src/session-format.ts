@@ -4,7 +4,13 @@
  */
 import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
-import { bandHits, requiredHeadline, unfusedHeadline, CANDIDATES_ONLY_NOTICE, type UnfusedReason } from "./band-wording.js";
+import {
+  bandHits,
+  requiredHeadline,
+  unfusedHeadline,
+  CANDIDATES_ONLY_NOTICE,
+  type UnfusedReason,
+} from "./band-wording.js";
 import type { ConventionLean, RecallHit } from "./session-hook-http.js";
 import { escapeAttr } from "./escape-attr.js";
 import { MUST_LOAD_MARK } from "./prompt-format.js";
@@ -26,7 +32,7 @@ const MUST_LOAD_SCORE = 100;
 export function mergeSessionHits(
   responses: Array<{ scope: string; resp: { hits: RecallHit[] } | null }>,
   unfused: boolean,
-  floor: number,
+  floor: number
 ): RecallHit[] {
   const seen = new Set<string>();
   const lists = responses.filter((r) => r.resp !== null).map((r) => r.resp!.hits);
@@ -69,7 +75,7 @@ export function formatBlock(
    *  als nicht resident gemeldet hat — sonst bleibt es bei der alten Aussage. */
   unfusedReason: UnfusedReason = "off",
   /** #1303: ids the gate lane holds the next tool call for. */
-  gated?: ReadonlySet<string>,
+  gated?: ReadonlySet<string>
 ): string {
   const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
   const srcAttr = source ? ` source="${escapeAttr(source)}"` : "";
@@ -86,7 +92,7 @@ export function formatBlock(
     sections.push(
       `${unfusedHeadline(`the ${project ?? "current"} session`, unfusedReason)} ${CANDIDATES_ONLY_NOTICE} ` +
         `load_memory(id) the ones relevant to what the user actually asks for. ` +
-        `These are hints, not obligations.`,
+        `These are hints, not obligations.`
     );
     for (const h of unbanded) sections.push(formatHintLine(h, true, gated));
   }
@@ -97,10 +103,10 @@ export function formatBlock(
       weak
         ? `Ranked matches, but NONE anchors lexically (no trigger phrase, no title term matched) — on the hybrid path a high score is rank-1-of-nothing. Treat these as probably-not-relevant unless one obviously fits; do not load them just because they are listed.`
         : `${requiredHeadline(`the ${project ?? "current"} session`, MUST_LOAD_SCORE, { k: RRF_K, scale: RRF_SCALE })} ` +
-          `${CANDIDATES_ONLY_NOTICE} ` +
-          `load_memory(id) the ones relevant to what the user actually asks for. ` +
-          `These are hints, not obligations: load only what fits, don't batch-load the list, ` +
-          `and if the user requested a specific number or scope, honor that over this list.`,
+            `${CANDIDATES_ONLY_NOTICE} ` +
+            `load_memory(id) the ones relevant to what the user actually asks for. ` +
+            `These are hints, not obligations: load only what fits, don't batch-load the list, ` +
+            `and if the user requested a specific number or scope, honor that over this list.`
     );
     for (const h of required) sections.push(formatHintLine(h, false, gated));
   }
@@ -108,7 +114,7 @@ export function formatBlock(
   if (optional.length > 0) {
     if (required.length > 0) sections.push("");
     sections.push(
-      `OPTIONAL (score ${SCORE_FLOOR}–${MUST_LOAD_SCORE - 1}) — load only when the user prompt directly touches the topic:`,
+      `OPTIONAL (score ${SCORE_FLOOR}–${MUST_LOAD_SCORE - 1}) — load only when the user prompt directly touches the topic:`
     );
     for (const h of optional) sections.push(formatHintLine(h, false, gated));
   }
@@ -117,7 +123,8 @@ export function formatBlock(
 }
 
 function formatHintLine(h: RecallHit, hideScore = false, gated?: ReadonlySet<string>): string {
-  const summary = (h.summary.length > 220 ? h.summary.slice(0, 217) + "…" : h.summary) + (gated?.has(h.id) ? MUST_LOAD_MARK : "");
+  const summary =
+    (h.summary.length > 220 ? h.summary.slice(0, 217) + "…" : h.summary) + (gated?.has(h.id) ? MUST_LOAD_MARK : "");
   // P0: Auf der unfused Skala ist die Zahl weder mit den Bändern noch zwischen
   // zwei Aufrufen vergleichbar — gleiche Wahl wie in prompt-lane.ts.
   return hideScore
@@ -137,9 +144,7 @@ export function formatTaxonomyBlock(conventions: ConventionLean[]): string {
   if (conventions.length === 0) return "";
   // #152: anti-spoof strip only — deliberately NO reference-only note here,
   // conventions are meant to be BINDING instructions.
-  const lines = conventions
-    .slice(0, 6)
-    .map((c) => stripFenceMarkers(`- [${c.id}] ${c.title}`));
+  const lines = conventions.slice(0, 6).map((c) => stripFenceMarkers(`- [${c.id}] ${c.title}`));
   return (
     `\n<vault-taxonomy>\n` +
     `Self-learned vault conventions — BINDING when saving memories in these clusters. ` +

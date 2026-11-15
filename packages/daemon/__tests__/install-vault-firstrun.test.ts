@@ -91,11 +91,11 @@ test("first-run vault: interactive --dry-run reports the offer, creates nothing"
 test("first-run vault: --yes/non-TTY beat --dry-run (a dry-run reports what the real invocation would do)", () => {
   assert.equal(
     decideFirstRunVaultAction({ vaultConfigured: false, interactive: true, yes: true, dryRun: true }),
-    "error",
+    "error"
   );
   assert.equal(
     decideFirstRunVaultAction({ vaultConfigured: false, interactive: false, yes: false, dryRun: true }),
-    "error",
+    "error"
   );
 });
 
@@ -147,10 +147,13 @@ test("install step: accepted prompt creates the vault and hands the path to the 
     installVaultFirstRunStep(
       { vaultConfigured: false, interactive: true, yes: false, dryRun: false },
       {
-        ask: async (q) => { asked.push(q); return true; },
+        ask: async (q) => {
+          asked.push(q);
+          return true;
+        },
         create: async () => ({ path: "/tmp/home-x/BastraVault" }),
-      },
-    ),
+      }
+    )
   );
   assert.deepEqual(asked, [FIRST_RUN_VAULT_QUESTION]);
   assert.equal(result.vaultPath, "/tmp/home-x/BastraVault");
@@ -162,8 +165,13 @@ test("install step: refusal prints today's error text and keeps the non-zero exi
   const { result, err } = await withCapture(() =>
     installVaultFirstRunStep(
       { vaultConfigured: false, interactive: true, yes: false, dryRun: false },
-      { ask: async () => false, create: async () => { throw new Error("must not create on refusal"); } },
-    ),
+      {
+        ask: async () => false,
+        create: async () => {
+          throw new Error("must not create on refusal");
+        },
+      }
+    )
   );
   assert.equal(result.vaultPath, null);
   assert.equal(result.exit, 1);
@@ -174,8 +182,8 @@ test("install step: failed creation falls back to today's error, non-zero exit",
   const { result, err } = await withCapture(() =>
     installVaultFirstRunStep(
       { vaultConfigured: false, interactive: true, yes: false, dryRun: false },
-      { ask: async () => true, create: async () => ({ error: "EACCES: permission denied" }) },
-    ),
+      { ask: async () => true, create: async () => ({ error: "EACCES: permission denied" }) }
+    )
   );
   assert.equal(result.vaultPath, null);
   assert.equal(result.exit, 1);
@@ -188,10 +196,14 @@ test("install step: dry-run prints the would-line and never asks or creates", as
     installVaultFirstRunStep(
       { vaultConfigured: false, interactive: true, yes: false, dryRun: true },
       {
-        ask: async () => { throw new Error("must not ask under --dry-run"); },
-        create: async () => { throw new Error("must not create under --dry-run"); },
-      },
-    ),
+        ask: async () => {
+          throw new Error("must not ask under --dry-run");
+        },
+        create: async () => {
+          throw new Error("must not create under --dry-run");
+        },
+      }
+    )
   );
   assert.equal(result.vaultPath, null);
   assert.equal(result.exit, null);
@@ -205,9 +217,13 @@ test("install step: non-TTY/--yes fall through silently (per-surface error uncha
   ]) {
     const { result, out, err } = await withCapture(() =>
       installVaultFirstRunStep(i, {
-        ask: async () => { throw new Error("must not ask"); },
-        create: async () => { throw new Error("must not create"); },
-      }),
+        ask: async () => {
+          throw new Error("must not ask");
+        },
+        create: async () => {
+          throw new Error("must not create");
+        },
+      })
     );
     assert.equal(result.vaultPath, null);
     assert.equal(result.exit, null);

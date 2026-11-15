@@ -62,9 +62,7 @@ export const SURFACE_LABELS = {
 
 /** The client list the Homebrew caveat states, as an array of labels. */
 export function formulaCaveatClients(formulaSource = read("distribution/homebrew/bastra-recall.rb")) {
-  const match = formulaSource.match(
-    /registers bastra-recall with every supported AI client\s*\n?\s*\(([^)]+)\)/,
-  );
+  const match = formulaSource.match(/registers bastra-recall with every supported AI client\s*\n?\s*\(([^)]+)\)/);
   if (!match) return null;
   return match[1]
     .replace(/\s+/g, " ")
@@ -75,18 +73,19 @@ export function formulaCaveatClients(formulaSource = read("distribution/homebrew
 
 /** The formula with the two tap-owned lines removed, for a drift comparison. */
 export function formulaWithoutTapOwnedLines(source) {
-  return source
-    .split("\n")
-    .filter((line) => !/^\s*(url|sha256)\s+"/.test(line))
-    // The header comment differs by design: each copy explains its own role.
-    .filter((line) => !/^\s*#/.test(line))
-    .map((line) => line.trimEnd())
-    .filter((line) => line !== "")
-    .join("\n");
+  return (
+    source
+      .split("\n")
+      .filter((line) => !/^\s*(url|sha256)\s+"/.test(line))
+      // The header comment differs by design: each copy explains its own role.
+      .filter((line) => !/^\s*#/.test(line))
+      .map((line) => line.trimEnd())
+      .filter((line) => line !== "")
+      .join("\n")
+  );
 }
 
 export const REPO_FORMULA_PATH = "distribution/homebrew/bastra-recall.rb";
-export const LIVE_FORMULA_URL =
-  "https://raw.githubusercontent.com/n0mad-ai/homebrew-tap/main/Formula/bastra-recall.rb";
+export const LIVE_FORMULA_URL = "https://raw.githubusercontent.com/n0mad-ai/homebrew-tap/main/Formula/bastra-recall.rb";
 
 export { read as readRepoFile };

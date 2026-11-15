@@ -13,7 +13,7 @@ function directory(currentDir, projectDir) {
   return renderer.segments.segmentRenderer.renderDirectory(
     { workspace: { current_dir: currentDir, project_dir: projectDir } },
     renderer.theme.getThemeColors(),
-    { enabled: true, style: "full" },
+    { enabled: true, style: "full" }
   ).text;
 }
 

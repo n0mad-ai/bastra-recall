@@ -54,30 +54,40 @@ export function findFrames(context: string): Array<{ start: number; end: number;
 
 /** Fits generated session sections, preserving whole rule/language blocks.
  * Tag parsing is protocol framing, never intent or rule-applicability detection. */
-export function capSessionContext(context: string, protectedSections: readonly string[], limit = 9900): { text: string; deferred: string[] } {
+export function capSessionContext(
+  context: string,
+  protectedSections: readonly string[],
+  limit = 9900
+): { text: string; deferred: string[] } {
   if (context.length <= limit) return { text: context, deferred: [] };
   const parts: Array<{ text: string; name: string; required: boolean; kept: boolean }> = [];
   const add = (text: string, name: string) => {
     if (!text) return;
-    parts.push({ text, name, kept: true,
-      required: protectedSections.some(p => p.trim() && text.includes(p.trim())) });
+    parts.push({
+      text,
+      name,
+      kept: true,
+      required: protectedSections.some((p) => p.trim() && text.includes(p.trim())),
+    });
   };
   let offset = 0;
   for (const frame of findFrames(context)) {
     add(context.slice(offset, frame.start), "session text");
-    add(context.slice(frame.start, frame.end), frame.name); offset = frame.end;
+    add(context.slice(frame.start, frame.end), frame.name);
+    offset = frame.end;
   }
   add(context.slice(offset), "session text");
   // Sort once and index net savings. Every eviction updates only the entries
   // sharing its name; finding the smallest sufficient section is O(log n).
-  const candidates = parts.filter(p => !p.required).sort((a, b) => a.text.length - b.text.length);
+  const candidates = parts.filter((p) => !p.required).sort((a, b) => a.text.length - b.text.length);
   const groups = new Map<string, number[]>();
   let size = 1;
   while (size < candidates.length) size *= 2;
   const savings = new Array<number>(size * 2).fill(-Infinity);
   candidates.forEach((part, i) => {
     const group = groups.get(part.name) ?? [];
-    group.push(i); groups.set(part.name, group);
+    group.push(i);
+    groups.set(part.name, group);
     savings[size + i] = part.text.length - part.name.length - 2;
   });
   for (let i = size - 1; i > 0; i--) savings[i] = Math.max(savings[2 * i], savings[2 * i + 1]);
@@ -108,14 +118,18 @@ export function capSessionContext(context: string, protectedSections: readonly s
     update(index, -Infinity);
     if (!names.has(chosen.name)) {
       suffixLength += chosen.name.length + (names.size ? 2 : prefix.length + 1);
-      names.add(chosen.name); deferred.push(chosen.name);
+      names.add(chosen.name);
+      deferred.push(chosen.name);
       for (const sameName of groups.get(chosen.name)!) {
         if (candidates[sameName].kept) update(sameName, candidates[sameName].text.length);
       }
     }
     while (largest >= 0 && !candidates[largest].kept) largest--;
   }
-  const keptText = parts.filter(p => p.kept).map(p => p.text).join("");
+  const keptText = parts
+    .filter((p) => p.kept)
+    .map((p) => p.text)
+    .join("");
   let suffix = names.size ? `${prefix}${deferred.join(", ")}.` : "";
   if (keptText.length + suffix.length > limit) {
     // Names are metadata, never a reason to throw or truncate mandatory text.

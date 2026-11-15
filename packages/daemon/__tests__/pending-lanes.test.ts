@@ -87,7 +87,7 @@ test("#513: N is configurable", async () => {
       assert.equal((await start("a-2")).trends.length, 1);
       assert.equal((await start("a-3")).trends.length, 0);
     },
-    { BASTRA_PENDING_TRENDS_SESSIONS: "2" },
+    { BASTRA_PENDING_TRENDS_SESSIONS: "2" }
   );
 });
 
@@ -104,7 +104,11 @@ test("#513: a standing trend that aged out stays retired until its text changes"
     const aged = await start(`s-${PENDING_TRENDS_SESSIONS_DEFAULT + 1}`);
     assert.equal(aged.trends.length, 0, "aged out");
     await stop(); // same standing condition, same text
-    assert.equal((await start(`s-${PENDING_TRENDS_SESSIONS_DEFAULT + 2}`)).trends.length, 0, "not revived by an identical rewrite");
+    assert.equal(
+      (await start(`s-${PENDING_TRENDS_SESSIONS_DEFAULT + 2}`)).trends.length,
+      0,
+      "not revived by an identical rewrite"
+    );
     await stop();
     assert.equal((await start(`s-${PENDING_TRENDS_SESSIONS_DEFAULT + 3}`)).trends.length, 0, "still retired");
     // New counts are news: a fresh row with a fresh counter.
@@ -166,14 +170,17 @@ test("#771: a tombstone ends once N starts pass without a re-write, and the file
       // so the file is removed.
       await start("s-10");
       await start("s-11");
-      await assert.rejects(Promise.resolve().then(() => readAppRecord("pending-suggestions", path)), { code: "ENOENT" });
+      await assert.rejects(
+        Promise.resolve().then(() => readAppRecord("pending-suggestions", path)),
+        { code: "ENOENT" }
+      );
       // The same text coming up again after that is a new trend.
       await stop();
       const back = await start("s-12");
       assert.equal(back.trends.length, 1);
       assert.equal(back.trends[0].sessions, 1);
     },
-    { BASTRA_PENDING_TRENDS_SESSIONS: "2" },
+    { BASTRA_PENDING_TRENDS_SESSIONS: "2" }
   );
 });
 
@@ -187,7 +194,7 @@ test("#771: a start that does not count leaves a tombstone alone", async () => {
       await consumePendingSuggestions();
       assert.match(readAppRecord("pending-suggestions", path), /"retired":true/);
     },
-    { BASTRA_PENDING_TRENDS_SESSIONS: "1" },
+    { BASTRA_PENDING_TRENDS_SESSIONS: "1" }
   );
 });
 
@@ -203,7 +210,8 @@ test("#771: tombstones take no slot in the trends cap and are never reported as 
       try {
         const trend = (name: string) => writePendingSuggestion(`<t>${name}</t>`, { lane: "trends", key: name });
         const tombstonesOnDisk = async () =>
-          (JSON.parse(readAppRecord("pending-suggestions", path)) as { retired?: boolean }[]).filter((e) => e.retired).length;
+          (JSON.parse(readAppRecord("pending-suggestions", path)) as { retired?: boolean }[]).filter((e) => e.retired)
+            .length;
         // Five trends age out at the same start: five tombstones.
         for (let i = 0; i < 5; i++) await trend(`old-${i}`);
         await start("s-1");
@@ -220,7 +228,10 @@ test("#771: tombstones take no slot in the trends cap and are never reported as 
         await trend("live-0");
         assert.equal(await tombstonesOnDisk(), 5, "tombstones are bounded on their own");
         for (let i = 1; i < 5; i++) await trend(`live-${i}`);
-        assert.deepEqual(errs.filter((l) => /dropped/.test(l)), []);
+        assert.deepEqual(
+          errs.filter((l) => /dropped/.test(l)),
+          []
+        );
         // A sixth LIVE trend still drops the oldest live one, and says so.
         await trend("live-5");
         assert.equal(errs.filter((l) => /1 oldest entry dropped/.test(l)).length, 1);
@@ -229,7 +240,7 @@ test("#771: tombstones take no slot in the trends cap and are never reported as 
         process.stderr.write = write;
       }
     },
-    { BASTRA_PENDING_TRENDS_SESSIONS: "1" },
+    { BASTRA_PENDING_TRENDS_SESSIONS: "1" }
   );
 });
 
@@ -237,8 +248,10 @@ test("#771: tombstones take no slot in the trends cap and are never reported as 
 // (counts, example ids) changes with every save, so it is no identity.
 const drift = (clusters: Record<string, number>) =>
   writePendingSuggestion(
-    `<taxonomy-drift>${Object.entries(clusters).map(([k, n]) => `${n} share ${k}`).join("; ")}</taxonomy-drift>`,
-    { lane: "trends", key: "taxonomy-drift", clusters },
+    `<taxonomy-drift>${Object.entries(clusters)
+      .map(([k, n]) => `${n} share ${k}`)
+      .join("; ")}</taxonomy-drift>`,
+    { lane: "trends", key: "taxonomy-drift", clusters }
   );
 
 /** Shows the drift trend until it retires (N = 2), then returns its tombstone. */
@@ -276,7 +289,7 @@ test("#997: a count bump does not revive a retired drift hint, and does not rest
       await drift({ "tag:foo": 8, "topic:bar": 8 });
       assert.equal((await start("s-7")).trends.length, 0, "a known key dropping out and back in is not news");
     },
-    { BASTRA_PENDING_TRENDS_SESSIONS: "2" },
+    { BASTRA_PENDING_TRENDS_SESSIONS: "2" }
   );
 });
 
@@ -289,7 +302,7 @@ test("#997: a retired drift hint returns when a cluster doubles or a new cluster
       assert.equal(grown.trends.length, 1, "growth to 2× revives");
       assert.equal(grown.trends[0].sessions, 1, "with a fresh counter");
     },
-    { BASTRA_PENDING_TRENDS_SESSIONS: "2" },
+    { BASTRA_PENDING_TRENDS_SESSIONS: "2" }
   );
   await withRelay(
     async (path) => {
@@ -299,7 +312,7 @@ test("#997: a retired drift hint returns when a cluster doubles or a new cluster
       assert.equal(added.trends.length, 1, "a new key revives");
       assert.deepEqual(added.trends[0].clusters, { "tag:foo": 8, "topic:bar": 8 });
     },
-    { BASTRA_PENDING_TRENDS_SESSIONS: "2" },
+    { BASTRA_PENDING_TRENDS_SESSIONS: "2" }
   );
 });
 
@@ -307,7 +320,14 @@ test("#997: a tombstone written by the text rule is compared by text once, then 
   await withRelay(
     async (path) => {
       // Pre-#997 tombstone: no `clusters`.
-      const legacy = { ts: Date.now(), blocks: "<taxonomy-drift>8 share tag:foo</taxonomy-drift>", lane: "trends", key: "taxonomy-drift", sessions: 0, retired: true };
+      const legacy = {
+        ts: Date.now(),
+        blocks: "<taxonomy-drift>8 share tag:foo</taxonomy-drift>",
+        lane: "trends",
+        key: "taxonomy-drift",
+        sessions: 0,
+        retired: true,
+      };
       writeAppRecord("pending-suggestions", path, JSON.stringify([legacy]));
       await drift({ "tag:foo": 8 }); // same text → stays retired and learns its keys
       assert.equal((await start("s-1")).trends.length, 0);
@@ -321,7 +341,7 @@ test("#997: a tombstone written by the text rule is compared by text once, then 
       await drift({ "tag:foo": 9 });
       assert.equal((await start("s-3")).trends.length, 1);
     },
-    { BASTRA_PENDING_TRENDS_SESSIONS: "2" },
+    { BASTRA_PENDING_TRENDS_SESSIONS: "2" }
   );
 });
 
@@ -338,7 +358,10 @@ test("#513: synthetic/eval ids, resumed sessions and a repeated id never advance
   await withRelay(async () => {
     await writePendingSuggestion("<t>x</t>", { lane: "trends", key: "k" });
     for (let i = 0; i < 20; i++) {
-      const r = await takePendingRelay({ sessionId: `eval-${i}`, countable: isCountableSessionStart(`eval-${i}`, "startup") });
+      const r = await takePendingRelay({
+        sessionId: `eval-${i}`,
+        countable: isCountableSessionStart(`eval-${i}`, "startup"),
+      });
       assert.equal(r.trends.length, 1, "a synthetic start still sees the trend");
       assert.equal(r.trends[0].sessions, 0, "…but never ages it");
     }
@@ -363,7 +386,10 @@ test("#513: consumePendingSuggestions keeps its contract and leaves trends alone
     await writePendingSuggestion("<t>trend</t>", { lane: "trends", key: "k" });
     await writePendingSuggestion("<save-eval>hot</save-eval>");
     const consumed = await consumePendingSuggestions();
-    assert.deepEqual(consumed.map((e) => e.blocks), ["<save-eval>hot</save-eval>"]);
+    assert.deepEqual(
+      consumed.map((e) => e.blocks),
+      ["<save-eval>hot</save-eval>"]
+    );
     const r = await start("s-1");
     assert.equal(r.recency.length, 0);
     assert.equal(r.trends.length, 1);
@@ -376,7 +402,10 @@ test("#513: the lanes render as two labelled blocks that share the #510 budget",
     recency: [{ ts: 1, blocks: "<save-eval>hot</save-eval>" }],
     trends: [{ ts: 1, blocks: "<taxonomy-drift>recurring</taxonomy-drift>", lane: "trends" }],
   });
-  assert.match(both.text, /^<pending-save-suggestions source="stop-hook">\n[\s\S]*<\/pending-save-suggestions>\n<pending-trends source="stop-hook">\n/);
+  assert.match(
+    both.text,
+    /^<pending-save-suggestions source="stop-hook">\n[\s\S]*<\/pending-save-suggestions>\n<pending-trends source="stop-hook">\n/
+  );
   assert.match(both.text, /Recurring — shown at every session start/);
   assert.match(both.text, /<\/pending-trends>$/);
   assert.ok(both.recencyChars > 0 && both.trendsChars > 0);
@@ -389,19 +418,28 @@ test("#513: the lanes render as two labelled blocks that share the #510 budget",
     trends: [{ ts: 1, blocks: "<t>recurring</t>", lane: "trends" }],
   });
   assert.ok(!full.text.includes("<t>recurring</t>"));
-  assert.match(full.text, /1 earlier suggestion suppressed .* they stay pending and come back at the next session start\./);
+  assert.match(
+    full.text,
+    /1 earlier suggestion suppressed .* they stay pending and come back at the next session start\./
+  );
 });
 
 test("#513: SessionStart delivers both lanes and keeps delivering the trend", async () => {
   await withRelay(async () => {
     await writePendingSuggestion("<save-eval>hot one</save-eval>");
-    await writePendingSuggestion("<taxonomy-drift>recurring one</taxonomy-drift>", { lane: "trends", key: "taxonomy-drift" });
+    await writePendingSuggestion("<taxonomy-drift>recurring one</taxonomy-drift>", {
+      lane: "trends",
+      key: "taxonomy-drift",
+    });
     const ctxOf = async (id: string) => {
       const out = await runSessionLane(
         { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: id },
-        "http://127.0.0.1:1",
+        "http://127.0.0.1:1"
       );
-      return (JSON.parse(out) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput?.additionalContext ?? "";
+      return (
+        (JSON.parse(out) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput
+          ?.additionalContext ?? ""
+      );
     };
     const first = await ctxOf("lane-wiring-1");
     assert.match(first, /hot one/);

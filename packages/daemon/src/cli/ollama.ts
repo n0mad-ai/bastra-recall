@@ -34,14 +34,7 @@ const OLLAMA_URL = (process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434").r
 const EMBED_MODEL = process.env.BASTRA_EMBEDDING_MODEL ?? "embeddinggemma";
 
 export interface EnsureResult {
-  status:
-    | "skipped"
-    | "unsupported"
-    | "env-override"
-    | "already-active"
-    | "would-install"
-    | "activated"
-    | "error";
+  status: "skipped" | "unsupported" | "env-override" | "already-active" | "would-install" | "activated" | "error";
   message: string;
   activated: boolean;
 }
@@ -51,7 +44,11 @@ export interface EnsureResult {
 export async function ensureOllama(opts: { dryRun: boolean; mode: "auto" | "skip" }): Promise<EnsureResult> {
   try {
     if (opts.mode === "skip") {
-      return { status: "skipped", activated: false, message: "skipped (--no-ollama) — semantic recall uses BM25 keyword search" };
+      return {
+        status: "skipped",
+        activated: false,
+        message: "skipped (--no-ollama) — semantic recall uses BM25 keyword search",
+      };
     }
     // env wins over the file at runtime — don't burn a 620 MB download on a
     // choice the daemon will shadow. Checked before everything else: the
@@ -112,7 +109,8 @@ export async function ensureOllama(opts: { dryRun: boolean; mode: "auto" | "skip
         return {
           status: "unsupported",
           activated: false,
-          message: "Ollama not found and Homebrew unavailable — install Ollama from https://ollama.com, then `bastra config set embedding.provider ollama`",
+          message:
+            "Ollama not found and Homebrew unavailable — install Ollama from https://ollama.com, then `bastra config set embedding.provider ollama`",
         };
       }
       const r = run(brewBin, ["install", "ollama"], { timeoutMs: 300_000, showProgress: true });
@@ -149,7 +147,11 @@ export async function ensureOllama(opts: { dryRun: boolean; mode: "auto" | "skip
 }
 
 function err(message: string): EnsureResult {
-  return { status: "error", activated: false, message: `${message} — semantic recall stays OFF (BM25 keyword search still works)` };
+  return {
+    status: "error",
+    activated: false,
+    message: `${message} — semantic recall stays OFF (BM25 keyword search still works)`,
+  };
 }
 
 /**
@@ -161,7 +163,7 @@ function err(message: string): EnsureResult {
  */
 export async function enableSemanticRecall(
   opts: { dryRun: boolean },
-  settingsPath?: string,
+  settingsPath?: string
 ): Promise<EnsureResult & { persisted: boolean }> {
   let persisted = false;
   if (!opts.dryRun) {
@@ -179,7 +181,10 @@ export async function enableSemanticRecall(
  *  "not reachable" is not "not pulled". */
 export async function ollamaModelPulled(name: string, local?: string): Promise<boolean | null> {
   try {
-    const res = await fetch(`${local ?? OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(4000), ...(local ? { redirect: "error" as const } : {}) });
+    const res = await fetch(`${local ?? OLLAMA_URL}/api/tags`, {
+      signal: AbortSignal.timeout(4000),
+      ...(local ? { redirect: "error" as const } : {}),
+    });
     if (!res.ok) return null;
     const data = (await res.json()) as { models?: { name: string }[] };
     return (data.models ?? []).some((m) => m.name === name || m.name === `${name}:latest`);
@@ -221,7 +226,7 @@ export async function enableGenerationModel(
   cli: { find: () => string | null; pull: (ollamaPath: string, model: string) => RunResult } = {
     find: () => findExecutable("ollama"),
     pull: (ollamaPath, m) => run(ollamaPath, ["pull", m], { timeoutMs: 1_800_000, showProgress: true }),
-  },
+  }
 ): Promise<EnsureResult> {
   if (opts.dryRun) {
     return { status: "would-install", activated: false, message: `would pull ${model} + persist generation.model` };
@@ -237,7 +242,11 @@ export async function enableGenerationModel(
     if (refusal) return { status: "error", activated: false, message: refusal };
     const target = localOllamaTarget(OLLAMA_URL);
     if (!target.ok) {
-      return { status: "error", activated: false, message: `${model} cannot be checked with a test call: ${target.reason} — use 'bastra models set ${model}' to switch without it` };
+      return {
+        status: "error",
+        activated: false,
+        message: `${model} cannot be checked with a test call: ${target.reason} — use 'bastra models set ${model}' to switch without it`,
+      };
     }
     local = target.url;
   }
@@ -252,15 +261,25 @@ export async function enableGenerationModel(
   if (!(await ollamaModelPresent(model, local))) {
     process.stdout.write(`  → pulling ${model} (text model for doc2query + rerank)\n`);
     const r = cli.pull(ollamaPath, model);
-    if (r.signal) return { status: "error", activated: false, message: `pull of ${model} was interrupted — re-run when ready` };
+    if (r.signal)
+      return { status: "error", activated: false, message: `pull of ${model} was interrupted — re-run when ready` };
     if (!r.ok) return { status: "error", activated: false, message: `\`ollama pull ${model}\` failed (${r.detail})` };
-    if (!(await ollamaModelPresent(model, local))) return { status: "error", activated: false, message: `${model} not present after pull — re-run \`ollama pull ${model}\`` };
+    if (!(await ollamaModelPresent(model, local)))
+      return {
+        status: "error",
+        activated: false,
+        message: `${model} not present after pull — re-run \`ollama pull ${model}\``,
+      };
   }
   if (local) {
     process.stdout.write(`  → checking ${model} with a short test call\n`);
     const failure = await testCallFailure(model, local);
     if (failure) {
-      return { status: "error", activated: false, message: `${model} is downloaded but did not answer a test call (${failure})` };
+      return {
+        status: "error",
+        activated: false,
+        message: `${model} is downloaded but did not answer a test call (${failure})`,
+      };
     }
   }
   if (opts.recommendationId) {
@@ -269,8 +288,13 @@ export async function enableGenerationModel(
     } catch (e) {
       // The error code, not the message: fs messages quote full paths. The
       // lock refusal is our own text and says what to do.
-      const reason = e instanceof PathLockUnavailableError ? e.message : ((e as NodeJS.ErrnoException).code ?? "write failed");
-      return { status: "error", activated: false, message: `${model} is ready, but the setting could not be saved (${reason})` };
+      const reason =
+        e instanceof PathLockUnavailableError ? e.message : ((e as NodeJS.ErrnoException).code ?? "write failed");
+      return {
+        status: "error",
+        activated: false,
+        message: `${model} is ready, but the setting could not be saved (${reason})`,
+      };
     }
   } else {
     await setGenerationModel(model, settingsPath);
@@ -305,7 +329,8 @@ export function localOllamaTarget(configured: string): { ok: true; url: string }
   } catch {
     return { ok: false, reason: "the configured Ollama URL cannot be read" };
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") return { ok: false, reason: "the configured Ollama URL is not an http(s) URL" };
+  if (url.protocol !== "http:" && url.protocol !== "https:")
+    return { ok: false, reason: "the configured Ollama URL is not an http(s) URL" };
   // fetch refuses a URL with credentials — and quotes it in full when it does.
   if (url.username !== "" || url.password !== "") {
     return { ok: false, reason: "the configured Ollama URL carries credentials, which the test call cannot use" };
@@ -329,7 +354,9 @@ export async function testCallFailure(model: string, configured: string = OLLAMA
   const target = localOllamaTarget(configured);
   if (!target.ok) return target.reason;
   try {
-    const answer = await ollamaChat({ baseURL: target.url, model, timeoutMs: 180_000, redirect: "error" })("Reply with the single word: ok");
+    const answer = await ollamaChat({ baseURL: target.url, model, timeoutMs: 180_000, redirect: "error" })(
+      "Reply with the single word: ok"
+    );
     return answer.trim().length > 0 ? null : "empty answer";
   } catch (e) {
     // fetch reports a refused redirect as a bare "fetch failed"; the cause names it.
@@ -343,7 +370,10 @@ export async function testCallFailure(model: string, configured: string = OLLAMA
 /** `local` (a localOllamaTarget) replaces the configured URL and refuses redirects. */
 async function serverVersion(local?: string): Promise<string | null> {
   try {
-    const res = await fetch(`${local ?? OLLAMA_URL}/api/version`, { signal: AbortSignal.timeout(1500), ...(local ? { redirect: "error" as const } : {}) });
+    const res = await fetch(`${local ?? OLLAMA_URL}/api/version`, {
+      signal: AbortSignal.timeout(1500),
+      ...(local ? { redirect: "error" as const } : {}),
+    });
     if (!res.ok) return null;
     const data = (await res.json()) as { version?: string };
     // Truthiness fallback (not ??): a 200 with version:"" still means reachable,
@@ -401,9 +431,7 @@ export function isLoopbackOllamaURL(baseURL: string): boolean {
  * wirft nie — ohne Ollama bleibt Recall BM25-only und /health zeigt
  * "degraded" (#92).
  */
-export async function ensureOllamaServerForDaemon(
-  baseURL: string,
-): Promise<{ started: boolean; detail: string }> {
+export async function ensureOllamaServerForDaemon(baseURL: string): Promise<{ started: boolean; detail: string }> {
   try {
     if (!isLoopbackOllamaURL(baseURL)) {
       return { started: false, detail: "remote ollama URL — not starting a local server" };
@@ -435,7 +463,7 @@ export async function probeOllama(): Promise<{ ok: boolean; detail: string; hasM
 export async function ensureServing(
   autostart: boolean,
   brewBin: string | null,
-  ollamaPath: string,
+  ollamaPath: string
 ): Promise<{ ok: boolean; detail: string }> {
   // Already up (could be ours, the Pro app's, or a user's) — reuse it, don't
   // spawn a second server on the same port.
@@ -454,7 +482,10 @@ export async function ensureServing(
   // Another server may have bound after the first probe. Keep this check even
   // without brew so we do not spawn a competitor on the same port.
   if (await serverVersion()) {
-    return { ok: true, detail: startedWithBrew ? "started via brew services (login agent)" : "using already-running ollama on 11434" };
+    return {
+      ok: true,
+      detail: startedWithBrew ? "started via brew services (login agent)" : "using already-running ollama on 11434",
+    };
   }
 
   // Linux: systemd --user is the closest equivalent to brew services on the one
@@ -483,7 +514,10 @@ export async function ensureServing(
       // already exists — in which case ollama may well be serving. Re-probe before
       // spawning a competitor on 11434, or a slow unit costs a second server.
       if (await serverVersion()) {
-        return { ok: true, detail: r.ok ? "started via systemd --user (bastra-ollama.service)" : "using already-running ollama on 11434" };
+        return {
+          ok: true,
+          detail: r.ok ? "started via systemd --user (bastra-ollama.service)" : "using already-running ollama on 11434",
+        };
       }
     }
   }
@@ -495,7 +529,10 @@ export async function ensureServing(
     // The diagnosis stays platform-precise: on macOS the only supervisor we ever
     // try is brew services, and saying so is more useful than a generic phrase.
     const noSupervisor = process.platform === "darwin" ? "brew services unavailable" : "no supervisor available";
-    return { ok: true, detail: autostart ? `started (detached — ${noSupervisor})` : "started (one-shot, autostart off)" };
+    return {
+      ok: true,
+      detail: autostart ? `started (detached — ${noSupervisor})` : "started (one-shot, autostart off)",
+    };
   }
   return { ok: false, detail: "server not reachable within 15s" };
 }

@@ -66,7 +66,7 @@ test("rm/git shim and 'shim switched off' are complements for every off and on w
   }
 });
 
-test("opt-ins that only took \"1\" take every on word, and nothing else", () => {
+test('opt-ins that only took "1" take every on word, and nothing else', () => {
   const foreign = "https://example.com/someone/commons.git";
   for (const v of ON) {
     withEnv({ BASTRA_ALLOW_REMOTE_COMMONS: v }, () => assert.equal(commonsRepoRefusal(foreign), null, v));
@@ -82,13 +82,22 @@ test("a variable with more states keeps them and reads its off value like every 
   for (const v of OFF) {
     assert.equal(archiveMaxItem({ BASTRA_ARCHIVE_MAX_ITEM: v }, "2GB"), null, `max-item ${v} lifts the stored limit`);
     assert.equal(banterModeFromEnv({ BASTRA_BANTER: v }), "off", `banter ${v}`);
-    withEnv({ BASTRA_QUERY_ROUTER: v, BASTRA_SALIENCE_RANK: v, BASTRA_TRUST_RANK: v, BASTRA_HINT_SUPPRESS: v, BASTRA_UPDATE_CHECK: v }, () => {
-      assert.equal(queryRouterMode(), "off", `router ${v}`);
-      assert.equal(salienceRankMode(), "off", `salience ${v}`);
-      assert.equal(trustRankMode(), "off", `trust ${v}`);
-      assert.equal(hintSuppressionMode(), "off", `hint-suppress ${v}`);
-      assert.equal(isOptedOut(), true, `update-check ${v}`);
-    });
+    withEnv(
+      {
+        BASTRA_QUERY_ROUTER: v,
+        BASTRA_SALIENCE_RANK: v,
+        BASTRA_TRUST_RANK: v,
+        BASTRA_HINT_SUPPRESS: v,
+        BASTRA_UPDATE_CHECK: v,
+      },
+      () => {
+        assert.equal(queryRouterMode(), "off", `router ${v}`);
+        assert.equal(salienceRankMode(), "off", `salience ${v}`);
+        assert.equal(trustRankMode(), "off", `trust ${v}`);
+        assert.equal(hintSuppressionMode(), "off", `hint-suppress ${v}`);
+        assert.equal(isOptedOut(), true, `update-check ${v}`);
+      }
+    );
   }
   // The extra values are untouched.
   assert.equal(archiveMaxItem({ BASTRA_ARCHIVE_MAX_ITEM: "500MB" }, "2GB"), 500 * 1024 * 1024);
@@ -100,10 +109,18 @@ test("a variable with more states keeps them and reads its off value like every 
     assert.equal(salienceRankMode(), "live");
     assert.equal(trustRankMode(), "live");
   });
-  withEnv({ BASTRA_QUERY_ROUTER: undefined, BASTRA_SALIENCE_RANK: undefined, BASTRA_TRUST_RANK: undefined, BASTRA_UPDATE_CHECK: undefined }, () => {
-    assert.equal(queryRouterMode(), "live");
-    assert.equal(salienceRankMode(), "shadow");
-    assert.equal(trustRankMode(), "shadow");
-    assert.equal(isOptedOut(), false);
-  });
+  withEnv(
+    {
+      BASTRA_QUERY_ROUTER: undefined,
+      BASTRA_SALIENCE_RANK: undefined,
+      BASTRA_TRUST_RANK: undefined,
+      BASTRA_UPDATE_CHECK: undefined,
+    },
+    () => {
+      assert.equal(queryRouterMode(), "live");
+      assert.equal(salienceRankMode(), "shadow");
+      assert.equal(trustRankMode(), "shadow");
+      assert.equal(isOptedOut(), false);
+    }
+  );
 });

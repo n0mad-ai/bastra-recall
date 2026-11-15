@@ -63,7 +63,7 @@ export function fuseCommonsHits(
   personal: RecallHit[],
   commons: RecallHit[],
   weightFor: (id: string) => number,
-  opts: { personalFused: boolean },
+  opts: { personalFused: boolean }
 ): RecallHit[] {
   // `fromCommons` merkt sich, ob dieser Eintrag am Ende einen Commons-Beitrag
   // trägt. Nur dann wird `rrf.raw` neu gesetzt (siehe unten) — ein Treffer, zu

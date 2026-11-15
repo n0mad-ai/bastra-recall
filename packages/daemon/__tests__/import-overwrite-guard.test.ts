@@ -40,11 +40,15 @@ async function plantNode(vault: string, folder: string, id: string, source: stri
   await writeFile(
     full,
     `---\nid: ${id}\ntitle: Fremder Knoten ${id}\ntype: reference\nsummary: ${marker}\nscope: lbl\n${source ? `source: ${source}\n` : ""}---\n${marker}\n`,
-    "utf8",
+    "utf8"
   );
 }
 
-async function readNode(vault: string, folder: string, id: string): Promise<{ data: Record<string, unknown>; body: string }> {
+async function readNode(
+  vault: string,
+  folder: string,
+  id: string
+): Promise<{ data: Record<string, unknown>; body: string }> {
   const raw = await readFile(join(vault, folder, `${id}.md`), "utf8");
   const { data, content } = matter(raw);
   return { data: data as Record<string, unknown>, body: content };
@@ -233,7 +237,7 @@ test("import: eine id, die anderswo im Vault vergeben ist, gilt als fremd", asyn
     await writeFile(
       handmade,
       "---\nid: lbl-note\ntitle: Handgeschrieben\ntype: reference\nsummary: s\ntopic_path:\n  - t\ntags:\n  - t\nscope: proj\nrecall_when:\n  - t\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nORIGINAL\n",
-      "utf8",
+      "utf8"
     );
     await writeSrc(src, "note.md", "# Note\n\nAus der Quelle.\n");
 

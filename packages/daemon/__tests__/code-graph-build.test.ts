@@ -45,7 +45,11 @@ async function tempRepo(): Promise<string> {
  * called. The acceptance criteria are about the argv and the environment, so
  * the test observes the real spawn rather than the function that produced it.
  */
-async function fakeGraphify(dir: string, exitCode = 0, stderr = ""): Promise<{ bin: string; argvFile: string; envFile: string }> {
+async function fakeGraphify(
+  dir: string,
+  exitCode = 0,
+  stderr = ""
+): Promise<{ bin: string; argvFile: string; envFile: string }> {
   const bin = join(dir, "graphify");
   const argvFile = join(dir, "argv.txt");
   const envFile = join(dir, "env.txt");
@@ -116,7 +120,7 @@ describe("code graph build command", () => {
         if (line.includes("FORBIDDEN_SUBCOMMANDS")) continue;
         assert.ok(
           !/["'`]update["'`]/.test(line),
-          `${file} uses "update" as a literal outside a comment: ${line.trim()}`,
+          `${file} uses "update" as a literal outside a comment: ${line.trim()}`
         );
       }
     }
@@ -199,7 +203,7 @@ describe("buildCodeGraph against a stand-in binary", () => {
         "wait",
         "",
       ].join("\n"),
-      "utf8",
+      "utf8"
     );
     await chmod(bin, 0o755);
 
@@ -208,7 +212,7 @@ describe("buildCodeGraph against a stand-in binary", () => {
     assert.equal(
       await acquireRepoLock(graphDirOf(repo), { heartbeat: false }),
       null,
-      "the lock must not be free while the child may still be writing",
+      "the lock must not be free while the child may still be writing"
     );
 
     const result = await build;
@@ -247,7 +251,7 @@ describe("buildCodeGraph against a stand-in binary", () => {
         "wait",
         "",
       ].join("\n"),
-      "utf8",
+      "utf8"
     );
     await chmod(bin, 0o755);
     t.after(async () => {
@@ -265,7 +269,7 @@ describe("buildCodeGraph against a stand-in binary", () => {
     assert.equal(
       await acquireRepoLock(graphDirOf(repo), { heartbeat: false }),
       null,
-      "the lock must be LEFT BEHIND: it expires as stale, it is never handed over early",
+      "the lock must be LEFT BEHIND: it expires as stale, it is never handed over early"
     );
 
     // AND THE LEASE MUST BE GONE WITH IT (#582 counter-review 4). Keeping the
@@ -493,11 +497,15 @@ describe("synchronous repo-root lookup for the hook lanes", () => {
   });
 });
 
-test("successful build stamps its start so edits made during extraction stay stale", async t => {
+test("successful build stamps its start so edits made during extraction stay stale", async (t) => {
   const { graphIsFresh } = await import("../src/code-graph/refresh.js");
-  const repo = await tempRepo(); t.after(() => rm(repo, { recursive: true, force: true }));
+  const repo = await tempRepo();
+  t.after(() => rm(repo, { recursive: true, force: true }));
   const bin = join(repo, "late-edit-graphify");
-  await writeFile(bin, `#!/bin/sh\nif [ "$1" = "--version" ]; then echo 0.9.63; exit 0; fi\nsleep 0.1\necho 'export const changed = true;' > "$2/a.ts"\n`);
+  await writeFile(
+    bin,
+    `#!/bin/sh\nif [ "$1" = "--version" ]; then echo 0.9.63; exit 0; fi\nsleep 0.1\necho 'export const changed = true;' > "$2/a.ts"\n`
+  );
   await chmod(bin, 0o755);
   const result = await buildCodeGraph({ repoRoot: repo, bin, lowPriority: false });
   assert.equal(result.ok, true);

@@ -48,7 +48,7 @@ import { pinSignature, readBuildPin } from "./build-pin.mjs";
 const OUT = writableOut();
 const RUNS = join(OUT, "runs");
 const REG = JSON.parse(
-  readFileSync(new URL("../../registrations/code-awareness-change-impact.json", import.meta.url), "utf8"),
+  readFileSync(new URL("../../registrations/code-awareness-change-impact.json", import.meta.url), "utf8")
 );
 const ARMS = ["A", "B", "prefilled"];
 const EFFECT_ARM = "prefilled";
@@ -71,15 +71,12 @@ const FIND_CODE_TOOL = "mcp__code__find_code";
 export function inputTokensOf(result, model) {
   const usage = result?.modelUsage;
   if (usage && typeof usage === "object") {
-    const rows = Object.entries(usage).filter(
-      ([name, v]) => name === model || v?.canonicalModel === model,
-    );
+    const rows = Object.entries(usage).filter(([name, v]) => name === model || v?.canonicalModel === model);
     if (rows.length > 0) {
       return {
         tokens: rows.reduce(
-          (a, [, v]) =>
-            a + (v.inputTokens ?? 0) + (v.cacheReadInputTokens ?? 0) + (v.cacheCreationInputTokens ?? 0),
-          0,
+          (a, [, v]) => a + (v.inputTokens ?? 0) + (v.cacheReadInputTokens ?? 0) + (v.cacheCreationInputTokens ?? 0),
+          0
         ),
         fallback: false,
       };
@@ -88,8 +85,7 @@ export function inputTokensOf(result, model) {
   const u = result?.usage;
   if (u && typeof u === "object") {
     return {
-      tokens:
-        (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0),
+      tokens: (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0),
       fallback: true,
     };
   }
@@ -126,8 +122,7 @@ export function parseArm(text, treePrefix, model = REG.arms.model) {
     } else if (ev.type === "user") {
       for (const c of ev.message?.content ?? []) {
         if (c.type !== "tool_result") continue;
-        const body =
-          typeof c.content === "string" ? c.content : (c.content ?? []).map((x) => x.text ?? "").join("");
+        const body = typeof c.content === "string" ? c.content : (c.content ?? []).map((x) => x.text ?? "").join("");
         if (pendingAffected.has(c.tool_use_id) && /"status":\s*"(no_answer|unavailable)"/.test(body)) {
           affectedEmpty++;
         }
@@ -223,12 +218,7 @@ export function bootstrapCI(rows, values, seed = REG.statistics.seed) {
  * — so each gets its own pass / fail / underpowered and there is deliberately
  * NO combined status to quote.
  */
-export function judge(
-  rows,
-  thresholds = REG.thresholds,
-  minScenarios = REG.sample.min_scenarios,
-  adoptionRows = rows,
-) {
+export function judge(rows, thresholds = REG.thresholds, minScenarios = REG.sample.min_scenarios, adoptionRows = rows) {
   const n = rows.length;
   const adoptionN = adoptionRows.length;
   const verdictFor = (checks, count) => {
@@ -251,9 +241,7 @@ export function judge(
   const dRecall = rows.map((r) => r[EFFECT_ARM].recall - r[CONTROL_ARM].recall);
   const dPrecision = rows.map((r) => r[EFFECT_ARM].precision - r[CONTROL_ARM].precision);
   const ci = bootstrapCI(rows, dRecall);
-  const bothSolved = rows.filter(
-    (r) => r[CONTROL_ARM].recall >= SOLVED && r[EFFECT_ARM].recall >= SOLVED,
-  );
+  const bothSolved = rows.filter((r) => r[CONTROL_ARM].recall >= SOLVED && r[EFFECT_ARM].recall >= SOLVED);
   const ctxRatio =
     median(bothSolved.map((r) => r[EFFECT_ARM].inputTokens)) /
     median(bothSolved.map((r) => r[CONTROL_ARM].inputTokens));
@@ -261,8 +249,7 @@ export function judge(
   // figure is restricted to scenarios both arms solved so that a cheap wrong
   // answer cannot win on cost; this one says what the run cost in total.
   const ctxRatioAll =
-    median(rows.map((r) => r[EFFECT_ARM].inputTokens)) /
-    median(rows.map((r) => r[CONTROL_ARM].inputTokens));
+    median(rows.map((r) => r[EFFECT_ARM].inputTokens)) / median(rows.map((r) => r[CONTROL_ARM].inputTokens));
   const effectChecks = {
     recall_gain: {
       value: mean(dRecall),
@@ -311,7 +298,7 @@ export function perRepo(rows) {
         precision: Object.fromEntries(ARMS.map((a) => [a, mean(rs.map((r) => r[a].precision))])),
         adoptionShare: rs.filter((r) => r[ADOPTION_ARM].affectedCalls > 0).length / rs.length,
       },
-    ]),
+    ])
   );
 }
 
@@ -379,7 +366,7 @@ export function buildReport(scenarios, readArm) {
           precision: per(arm, (a) => a.precision),
           inputTokensMedian: median(rows.map((r) => r[arm].inputTokens)),
         },
-      ]),
+      ])
     ),
     adoption: {
       arm: ADOPTION_ARM,

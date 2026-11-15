@@ -37,7 +37,7 @@ export async function findOrphanedMemories(
   vaultRoot: string,
   folder: string,
   label: string,
-  currentRelKeys: ReadonlySet<string>,
+  currentRelKeys: ReadonlySet<string>
 ): Promise<ImportVaultOrphan[]> {
   const orphaned: ImportVaultOrphan[] = [];
   const dir = join(vaultRoot, folder);

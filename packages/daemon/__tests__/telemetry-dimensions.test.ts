@@ -136,10 +136,7 @@ test("mehr Arme werden alle bedient", () => {
 // ── Die vier Spalten zusammen ───────────────────────────────────
 
 test("dimensionsFrom füllt alle vier Spalten", () => {
-  const d = dimensionsFrom(
-    { client: "claude-code", hook_source: "bash-pre", session_id: "s-1" },
-    experiment,
-  );
+  const d = dimensionsFrom({ client: "claude-code", hook_source: "bash-pre", session_id: "s-1" }, experiment);
   assert.equal(d.client, "claude-code");
   assert.equal(d.hook_source, "bash-pre");
   assert.equal(d.experiment_session, pseudonymousSession("s-1"));
@@ -201,10 +198,24 @@ test("ein Aufruf ohne jede Angabe ergibt vier gültige Werte, keine Lücken", ()
 
 function memoryMarkdown(id: string, title: string): string {
   return [
-    "---", `id: ${id}`, `title: ${title}`, "type: reference", `summary: ${title}`,
-    "topic_path:", "  - test", "tags:", "  - test", "scope: dim-test",
-    "recall_when:", `  - ${title}`, "created: 2026-01-01", "updated: 2026-01-01",
-    "---", "", `Body for ${title}.`, "",
+    "---",
+    `id: ${id}`,
+    `title: ${title}`,
+    "type: reference",
+    `summary: ${title}`,
+    "topic_path:",
+    "  - test",
+    "tags:",
+    "  - test",
+    "scope: dim-test",
+    "recall_when:",
+    `  - ${title}`,
+    "created: 2026-01-01",
+    "updated: 2026-01-01",
+    "---",
+    "",
+    `Body for ${title}.`,
+    "",
   ].join("\n");
 }
 
@@ -212,9 +223,17 @@ function httpPost(port: number, path: string, payload: unknown): Promise<number>
   const body = JSON.stringify(payload);
   return new Promise((resolve, reject) => {
     const req = request(
-      { host: "127.0.0.1", port, path, method: "POST",
-        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) } },
-      (res) => { res.resume(); res.on("end", () => resolve(res.statusCode ?? 0)); },
+      {
+        host: "127.0.0.1",
+        port,
+        path,
+        method: "POST",
+        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+      },
+      (res) => {
+        res.resume();
+        res.on("end", () => resolve(res.statusCode ?? 0));
+      }
     );
     req.on("error", reject);
     req.end(body);
@@ -225,10 +244,17 @@ async function readEventRow(logDir: string, kind: string): Promise<Record<string
   for (let i = 0; i < 25; i++) {
     await new Promise((r) => setTimeout(r, 40));
     let files: string[];
-    try { files = await readdir(logDir); } catch { continue; }
+    try {
+      files = await readdir(logDir);
+    } catch {
+      continue;
+    }
     for (const f of files.filter((n) => n.startsWith("events-"))) {
       const raw = await readFile(join(logDir, f), "utf8");
-      const line = raw.split("\n").filter((l) => l.includes(`"${kind}"`)).pop();
+      const line = raw
+        .split("\n")
+        .filter((l) => l.includes(`"${kind}"`))
+        .pop();
       if (line) return JSON.parse(line) as Record<string, unknown>;
     }
   }
@@ -250,13 +276,18 @@ async function makeDaemon(config: Parameters<Telemetry["setExperiment"]>[0] = nu
   if (prevLog === undefined) delete process.env.BASTRA_LOG_PATH;
   else process.env.BASTRA_LOG_PATH = prevLog;
   const handle = await startHttpServer({
-    port: 0, vault, search, telemetry, version: "test",
+    port: 0,
+    vault,
+    search,
+    telemetry,
+    version: "test",
     toolDeps: { vault, search, telemetry, vaultPath: dir },
     documentWriteEnabled: false,
     embedding: { on: false, providerId: null, source: "none" },
   });
   return {
-    port: handle.port!, logDir,
+    port: handle.port!,
+    logDir,
     close: async () => {
       search.stop();
       await vault.stop?.();
@@ -277,7 +308,7 @@ test("/hook/recall schreibt die vier Spalten ans Ereignis", async () => {
         client: "claude-code",
         hook_source: "bash-pre",
       }),
-      200,
+      200
     );
     const row = await readEventRow(d.logDir, "hook_recall");
     assert.ok(row, "ein hook_recall-Event sollte geschrieben sein");
@@ -307,7 +338,7 @@ test("#439: das geschriebene Ereignis trägt Experiment, Registrierung und Versi
         client: "claude-code",
         hook_source: "pre-tool",
       }),
-      200,
+      200
     );
     const row = await readEventRow(d.logDir, "hook_recall");
     const dims = row!.dimensions as Record<string, unknown>;

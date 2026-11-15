@@ -85,10 +85,7 @@ describe("code awareness: tool calls", () => {
     assert.equal(t.ok, 1);
     assert.equal(t.noAnswer, 1);
     assert.equal(t.unavailable, 2);
-    assert.deepEqual(
-      t.byUnavailableReason.map((r) => r.key).sort(),
-      ["loading", "not_indexed"],
-    );
+    assert.deepEqual(t.byUnavailableReason.map((r) => r.key).sort(), ["loading", "not_indexed"]);
   });
 
   it("keeps the two tools apart and orders them stably", () => {
@@ -96,7 +93,10 @@ describe("code awareness: tool calls", () => {
       toolCall({ tool: "find_affected_files", lane: undefined, basis: "diff", files: 7 }),
       toolCall(),
     ]);
-    assert.deepEqual(s.tools.map((t) => t.tool), ["find_code", "find_affected_files"]);
+    assert.deepEqual(
+      s.tools.map((t) => t.tool),
+      ["find_code", "find_affected_files"]
+    );
     const aff = s.tools[1]!;
     assert.equal(aff.filesNamed, 7);
     assert.deepEqual(aff.byKind, [{ key: "diff", count: 1 }]);
@@ -152,31 +152,33 @@ describe("code awareness: graph refresh", () => {
   });
 
   it("counts repositories from both event kinds", () => {
-    const s = aggregateCodeAwareness([
-      toolCall({ repo: "a/one" }),
-      refresh({ repo: "b/two" }),
-    ]);
+    const s = aggregateCodeAwareness([toolCall({ repo: "a/one" }), refresh({ repo: "b/two" })]);
     assert.deepEqual(s.repos.map((r) => r.repo).sort(), ["a/one", "b/two"]);
   });
 
-  it("folds a throwaway tree under /tmp into one labeled row, not a repo named \"tmp\"", () => {
+  it('folds a throwaway tree under /tmp into one labeled row, not a repo named "tmp"', () => {
     const s = aggregateCodeAwareness([
       toolCall({ repo: "tmp" }),
       refresh({ repo: "tmp", external_total: 5, external_resolved: 0 }),
       toolCall({ repo: "Projekte/bastra-recall" }),
     ]);
     const temp = s.repos.find((r) => r.repo === "(temporary tree)");
-    assert.deepEqual(temp, { repo: "(temporary tree)", toolCalls: 1, refreshes: 1, externalTotal: null, externalResolved: null });
+    assert.deepEqual(temp, {
+      repo: "(temporary tree)",
+      toolCalls: 1,
+      refreshes: 1,
+      externalTotal: null,
+      externalResolved: null,
+    });
     assert.ok(s.repos.some((r) => r.repo === "Projekte/bastra-recall"));
     assert.equal(s.repos.length, 2);
   });
 
   it("folds macOS's $TMPDIR shape (T/<random>) into the same temp-tree row", () => {
-    const s = aggregateCodeAwareness([
-      toolCall({ repo: "T/code-roi-arm-ab12cd" }),
-      toolCall({ repo: "tmp" }),
+    const s = aggregateCodeAwareness([toolCall({ repo: "T/code-roi-arm-ab12cd" }), toolCall({ repo: "tmp" })]);
+    assert.deepEqual(s.repos, [
+      { repo: "(temporary tree)", toolCalls: 2, refreshes: 0, externalTotal: null, externalResolved: null },
     ]);
-    assert.deepEqual(s.repos, [{ repo: "(temporary tree)", toolCalls: 2, refreshes: 0, externalTotal: null, externalResolved: null }]);
   });
 
   it("does not treat a real repo merely starting with those letters as a temp tree", () => {
@@ -193,9 +195,7 @@ describe("code awareness: the two readouts", () => {
 
   it("names the unavailable reasons in the CLI text rather than only the total", () => {
     const out = renderCodeAwareness(
-      aggregateCodeAwareness([
-        toolCall({ status: "unavailable", lane: undefined, unavailable_reason: "not_enabled" }),
-      ]),
+      aggregateCodeAwareness([toolCall({ status: "unavailable", lane: undefined, unavailable_reason: "not_enabled" })])
     ).join("\n");
     assert.match(out, /find_code: 1 call\(s\)/);
     assert.match(out, /unavailable because: not_enabled×1/);
@@ -219,10 +219,17 @@ describe("code awareness: the two readouts", () => {
 
   it("reaches the UI report next to the other sections", () => {
     const report = buildTelemetryReport(
-      { events: [toolCall(), refresh()] as never, files: 1, from: null, to: null, excludedEval: 0, foldedDuplicates: 0 },
+      {
+        events: [toolCall(), refresh()] as never,
+        files: 1,
+        from: null,
+        to: null,
+        excludedEval: 0,
+        foldedDuplicates: 0,
+      },
       7,
       { mustLoadScore: 100, scoreFloor: 30 },
-      30,
+      30
     );
     assert.equal(report.codeAwareness?.active.tools[0]?.tool, "find_code");
     assert.equal(report.codeAwareness?.active.refresh.ok, 1);
@@ -257,7 +264,7 @@ describe("code awareness: the two readouts", () => {
 
   it("prints the delivered half in `bastra logs --stats`", () => {
     const out = renderCodeAwareness(
-      aggregateCodeAwareness([delivered(), delivered({ dedupe_hit: true, status: "no_answer" })]),
+      aggregateCodeAwareness([delivered(), delivered({ dedupe_hit: true, status: "no_answer" })])
     ).join("\n");
     assert.match(out, /delivered blocks: 1 injected, 1 suppressed as already delivered/);
     assert.match(out, /by lane: write×1/);
@@ -307,7 +314,7 @@ describe("code awareness: audit follow-ups (#665)", () => {
 
   it("prints the interrupted bucket in `bastra logs --stats`", () => {
     const out = renderCodeAwareness(
-      aggregateCodeAwareness([refresh({ outcome: "started" }), refresh({ outcome: "started" }), refresh()]),
+      aggregateCodeAwareness([refresh({ outcome: "started" }), refresh({ outcome: "started" }), refresh()])
     ).join("\n");
     assert.match(out, /graph refresh: 2 run\(s\) — 1 ok, 0 failed, 0 locked, 1 interrupted, 0 skipped, 0 given up/);
   });
@@ -321,7 +328,10 @@ describe("code awareness: audit follow-ups (#665)", () => {
     assert.equal(s.blocks, 1);
     assert.equal(s.dedupeHits, 2);
     assert.deepEqual(s.byLane, [{ key: "write", count: 1 }]);
-    assert.equal(s.byLane.reduce((n, l) => n + l.count, 0), s.blocks);
+    assert.equal(
+      s.byLane.reduce((n, l) => n + l.count, 0),
+      s.blocks
+    );
   });
 
   it("reports no latency at all, not 0 ms, when no delivered row was timed", () => {
@@ -351,7 +361,7 @@ describe("code awareness: audit follow-ups (#665)", () => {
     const out = renderCodeAwareness(aggregateCodeAwareness([toolCall({ files: 0 })])).join("\n");
     assert.match(out, /files named: n\/a/);
     const aff = renderCodeAwareness(
-      aggregateCodeAwareness([toolCall({ tool: "find_affected_files", lane: undefined, basis: "diff", files: 0 })]),
+      aggregateCodeAwareness([toolCall({ tool: "find_affected_files", lane: undefined, basis: "diff", files: 0 })])
     ).join("\n");
     assert.match(aff, /0 file\(s\) named/);
   });
@@ -361,8 +371,24 @@ describe("code awareness: audit follow-ups (#665)", () => {
     const prev = process.env.BASTRA_LOG_PATH;
     process.env.BASTRA_LOG_PATH = dir;
     try {
-      await logDeliveredBlock({ sessionId: "s1", lane: "boundary", repo: "/x/Projekte/bastra-recall", files: 2, tokensEst: 40, dedupeHit: false });
-      await logDeliveredBlock({ sessionId: "s1", lane: "write", repo: "/x/Projekte/bastra-recall", basis: "diff", files: 1, tokensEst: 20, tookMs: 7, dedupeHit: false });
+      await logDeliveredBlock({
+        sessionId: "s1",
+        lane: "boundary",
+        repo: "/x/Projekte/bastra-recall",
+        files: 2,
+        tokensEst: 40,
+        dedupeHit: false,
+      });
+      await logDeliveredBlock({
+        sessionId: "s1",
+        lane: "write",
+        repo: "/x/Projekte/bastra-recall",
+        basis: "diff",
+        files: 1,
+        tokensEst: 20,
+        tookMs: 7,
+        dedupeHit: false,
+      });
     } finally {
       if (prev === undefined) delete process.env.BASTRA_LOG_PATH;
       else process.env.BASTRA_LOG_PATH = prev;

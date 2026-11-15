@@ -160,7 +160,7 @@ export async function recordModelAnswer(
   answer: Exclude<ModelRecommendationAnswer, "asked">,
   path: string = settingsFilePath(),
   now: number = Date.now(),
-  model?: string,
+  model?: string
 ): Promise<void> {
   await mutateSettings(
     path,
@@ -169,7 +169,7 @@ export async function recordModelAnswer(
       ...(model ? { generation: { model } } : {}),
       modelRecommendation: { id, answer, at: new Date(now).toISOString() },
     }),
-    { refuseCorrupt: true, requireLock: true },
+    { refuseCorrupt: true, requireLock: true }
   );
 }
 
@@ -189,7 +189,11 @@ export async function recordModelAnswer(
  * fall back to path-lock's fail-open; the caller then does not ask, and the
  * question comes back with the next command.
  */
-export async function claimModelQuestion(id: string, path: string = settingsFilePath(), now: number = Date.now()): Promise<boolean> {
+export async function claimModelQuestion(
+  id: string,
+  path: string = settingsFilePath(),
+  now: number = Date.now()
+): Promise<boolean> {
   let claimed = false;
   await mutateSettings(
     path,
@@ -198,7 +202,7 @@ export async function claimModelQuestion(id: string, path: string = settingsFile
       claimed = true;
       return { ...current, modelRecommendation: { id, answer: "asked", at: new Date(now).toISOString() } };
     },
-    { refuseCorrupt: true, requireLock: true },
+    { refuseCorrupt: true, requireLock: true }
   );
   return claimed;
 }

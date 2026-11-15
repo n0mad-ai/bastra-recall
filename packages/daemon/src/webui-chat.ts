@@ -58,7 +58,21 @@ const HITS_TOTAL = 8;
 
 /** Actual v22 view IDs (areas.js/registerArea and views/pro-views.js).
  * Action entries such as import/areas are dialogs, not navigable views. */
-export const CHAT_NAVIGATION = ["dashboard", "telemetry", "tasks", "settings", "mindspace", "clouds", "ring", "semantic", "chronos", "radiant", "spiral", "halflife", "weave"] as const;
+export const CHAT_NAVIGATION = [
+  "dashboard",
+  "telemetry",
+  "tasks",
+  "settings",
+  "mindspace",
+  "clouds",
+  "ring",
+  "semantic",
+  "chronos",
+  "radiant",
+  "spiral",
+  "halflife",
+  "weave",
+] as const;
 
 export function buildQueryPrompt(message: string, history: Array<{ role: string; content: string }>): string {
   const ctx = history
@@ -101,7 +115,13 @@ export function tasksFromList(raw: unknown): TaskBrief[] {
     const title = typeof t.goal === "string" ? t.goal.replace(/\s+/g, " ").trim() : "";
     if (!title) continue;
     const dueAt = num(t.snoozed_until) ?? num(t.next_slot?.at) ?? num(t.schedule?.at) ?? num(t.next_check_at);
-    out.push({ title: shortTitle(title), state: typeof t.state === "string" ? t.state : "unknown", armed: t.armed === true, paused: t.paused === true, dueAt });
+    out.push({
+      title: shortTitle(title),
+      state: typeof t.state === "string" ? t.state : "unknown",
+      armed: t.armed === true,
+      paused: t.paused === true,
+      dueAt,
+    });
   }
   return out;
 }
@@ -109,8 +129,17 @@ export function tasksFromList(raw: unknown): TaskBrief[] {
 function localParts(at: number, timeZone?: string): { day: string; text: string } {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
-      timeZone, year: "numeric", month: "2-digit", day: "2-digit", weekday: "long", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
-    }).formatToParts(new Date(at)).map((p) => [p.type, p.value]),
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      weekday: "long",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(new Date(at))
+      .map((p) => [p.type, p.value])
   );
   const day = `${parts.year}-${parts.month}-${parts.day}`;
   return { day, text: `${parts.weekday} ${day} ${parts.hour}:${parts.minute}` };
@@ -128,19 +157,27 @@ const STATE_WORDS: Record<string, string> = {
 export function buildTaskContext(tasks: TaskBrief[] | null, now: number, timeZone?: string): string {
   const today = localParts(now, timeZone);
   const head = `Current local date and time: ${today.text}.`;
-  if (!tasks) return `${head}\nTASK LIST: unavailable (tasks are disabled or could not be read). Say so; do not guess tasks.`;
+  if (!tasks)
+    return `${head}\nTASK LIST: unavailable (tasks are disabled or could not be read). Say so; do not guess tasks.`;
   const open = tasks.filter((t) => !TERMINAL_TASK_STATES.has(t.state));
   const done = tasks.length - open.length;
   const line = (t: TaskBrief) => {
     const when = t.dueAt === null ? "no due time" : `due ${localParts(t.dueAt, timeZone).text}`;
-    const state = t.paused ? "paused (not active)" : STATE_WORDS[t.state] ?? t.state;
+    const state = t.paused ? "paused (not active)" : (STATE_WORDS[t.state] ?? t.state);
     return `- ${t.title} — ${when}; status: ${state}${t.armed ? "" : "; draft, not approved yet"}`;
   };
-  const bucket = (pick: (t: TaskBrief) => boolean) => open.filter((t) => !t.paused && pick(t)).sort((a, b) => (a.dueAt ?? Infinity) - (b.dueAt ?? Infinity));
+  const bucket = (pick: (t: TaskBrief) => boolean) =>
+    open.filter((t) => !t.paused && pick(t)).sort((a, b) => (a.dueAt ?? Infinity) - (b.dueAt ?? Infinity));
   const dayOf = (t: TaskBrief) => (t.dueAt === null ? null : localParts(t.dueAt, timeZone).day);
-  const overdue = bucket((t) => { const d = dayOf(t); return d !== null && d < today.day; });
+  const overdue = bucket((t) => {
+    const d = dayOf(t);
+    return d !== null && d < today.day;
+  });
   const dueToday = bucket((t) => dayOf(t) === today.day);
-  const later = bucket((t) => { const d = dayOf(t); return d === null || d > today.day; });
+  const later = bucket((t) => {
+    const d = dayOf(t);
+    return d === null || d > today.day;
+  });
   const section = (label: string, list: TaskBrief[]) =>
     `${label} (${list.length}):\n${list.length ? list.slice(0, TASKS_MAX).map(line).join("\n") : "(none)"}${list.length > TASKS_MAX ? `\n… and ${list.length - TASKS_MAX} more (not listed)` : ""}`;
   return [
@@ -149,7 +186,10 @@ export function buildTaskContext(tasks: TaskBrief[] | null, now: number, timeZon
     section("DUE TODAY", dueToday),
     section("OVERDUE (due before today, still open)", overdue),
     section("LATER or without due time", later),
-    section("PAUSED (not active; not currently due)", open.filter((t) => t.paused)),
+    section(
+      "PAUSED (not active; not currently due)",
+      open.filter((t) => t.paused)
+    ),
     `Finished or cancelled tasks: ${done}.`,
   ].join("\n");
 }
@@ -160,7 +200,7 @@ export function buildAnswerPrompt(
   getBody?: (id: string) => string | null,
   taskContext?: string,
   lang?: string,
-  soul?: SoulPreference,
+  soul?: SoulPreference
 ): string {
   // the strongest hits contribute their real content — a summary snippet is
   // too thin to answer "what did I say about X" with substance
@@ -168,14 +208,14 @@ export function buildAnswerPrompt(
     ? hits
         .map((h, i) => {
           const body = i < 3 ? getBody?.(h.id) : null;
-          const content = body
-            ? body.replace(/\s+/g, " ").trim().slice(0, 600)
-            : h.summary.slice(0, 220);
+          const content = body ? body.replace(/\s+/g, " ").trim().slice(0, 600) : h.summary.slice(0, 220);
           return `- id: ${h.id}\n  title: ${h.title} (${h.type})\n  content: ${content}`;
         })
         .join("\n")
     : "(no notes found)";
-  const langHint = lang ? ` Only for input with no identifiable language, the fallback language code is "${lang}".` : "";
+  const langHint = lang
+    ? ` Only for input with no identifiable language, the fallback language code is "${lang}".`
+    : "";
   const soulBlock = buildSoulBlock(soul);
   return [
     "You are the assistant of a personal memory app. First decide the user intent: opening a view, asking about tasks, or asking about vault knowledge. A request to OPEN a view is navigation, not a question about its contents.",
@@ -204,9 +244,7 @@ export function parseQueries(raw: string, message: string): string[] {
     .map((l) => l.replace(/^[-*\d.)\s]+/, "").trim())
     .filter((l) => l.length >= 2 && l.length <= 120 && !l.includes("{"));
   const out = [message, ...lines.slice(0, QUERIES_MAX)];
-  return [...new Set(out.map((q) => q.toLowerCase()))].map(
-    (q) => out.find((o) => o.toLowerCase() === q) as string,
-  );
+  return [...new Set(out.map((q) => q.toLowerCase()))].map((q) => out.find((o) => o.toLowerCase() === q) as string);
 }
 
 /** Tolerant JSON extraction: models wrap JSON in prose/fences. `parsed:false`
@@ -220,7 +258,10 @@ export function parseAnswer(raw: string): { reply: string; relevant: string[]; p
         const relevant = Array.isArray(json.relevant)
           ? json.relevant.filter((r): r is string => typeof r === "string")
           : [];
-        const navigate = typeof json.navigate === "string" && (CHAT_NAVIGATION as readonly string[]).includes(json.navigate) ? json.navigate : undefined;
+        const navigate =
+          typeof json.navigate === "string" && (CHAT_NAVIGATION as readonly string[]).includes(json.navigate)
+            ? json.navigate
+            : undefined;
         return { reply: json.reply.trim(), relevant, parsed: true, ...(navigate ? { navigate } : {}) };
       }
     } catch {
@@ -245,7 +286,14 @@ export function parseAnswer(raw: string): { reply: string; relevant: string[]; p
 export async function runSearchCopilot(
   message: string,
   history: Array<{ role: string; content: string }>,
-  deps: { search: SearchIndex; chat: ChatFn; getBody?: (id: string) => string | null; taskContext?: string; lang?: string; soul?: SoulPreference },
+  deps: {
+    search: SearchIndex;
+    chat: ChatFn;
+    getBody?: (id: string) => string | null;
+    taskContext?: string;
+    lang?: string;
+    soul?: SoulPreference;
+  }
 ): Promise<{ reply: string; hits: CopilotHit[]; navigate?: string }> {
   const queries = parseQueries(await deps.chat(buildQueryPrompt(message, history)), message);
   const merged = new Map<string, RecallHit>();
@@ -258,14 +306,18 @@ export async function runSearchCopilot(
   }
   const top = [...merged.values()].sort((a, b) => b.score - a.score).slice(0, HITS_TOTAL);
 
-  const answer = parseAnswer(await deps.chat(buildAnswerPrompt(message, top, deps.getBody, deps.taskContext, deps.lang, deps.soul)));
+  const answer = parseAnswer(
+    await deps.chat(buildAnswerPrompt(message, top, deps.getBody, deps.taskContext, deps.lang, deps.soul))
+  );
   // model picked → trust it (including an explicit "nothing fits" = []);
   // unparseable reply → surface the strongest hits rather than none
   // With task context a failed parse must not dress up a task answer
   // with unrelated notes as sources.
   const chosen = answer.parsed
     ? top.filter((h) => answer.relevant.includes(h.id))
-    : deps.taskContext ? [] : top.slice(0, 3);
+    : deps.taskContext
+      ? []
+      : top.slice(0, 3);
   return {
     reply: answer.reply || "…",
     ...(answer.navigate ? { navigate: answer.navigate } : {}),
@@ -279,7 +331,7 @@ export async function handleUiChat(
   req: IncomingMessage,
   res: ServerResponse,
   deps: CopilotDeps,
-  settingsPath?: string,
+  settingsPath?: string
 ): Promise<void> {
   if (!(await getUiEnabled(settingsPath))) {
     sendJsonPlain(res, 404, { error: "ui disabled" });
@@ -302,7 +354,13 @@ export async function handleUiChat(
   let conversationId: string | null = null;
   let lang: string | undefined;
   try {
-    const body = JSON.parse(raw) as { message?: unknown; history?: unknown; conversation_id?: unknown; area?: unknown; lang?: unknown };
+    const body = JSON.parse(raw) as {
+      message?: unknown;
+      history?: unknown;
+      conversation_id?: unknown;
+      area?: unknown;
+      lang?: unknown;
+    };
     lang = typeof body.lang === "string" && /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/.test(body.lang) ? body.lang : undefined;
     conversationId = typeof body.conversation_id === "string" ? body.conversation_id : null;
     message = typeof body.message === "string" ? body.message.trim().slice(0, MAX_MESSAGE) : "";
@@ -313,10 +371,13 @@ export async function handleUiChat(
             typeof h === "object" &&
             h !== null &&
             typeof (h as { role?: unknown }).role === "string" &&
-            typeof (h as { content?: unknown }).content === "string",
+            typeof (h as { content?: unknown }).content === "string"
         )
         .slice(-MAX_HISTORY)
-        .map((h) => ({ role: h.role === "assistant" ? "assistant" : "user", content: h.content.slice(0, MAX_MESSAGE) }));
+        .map((h) => ({
+          role: h.role === "assistant" ? "assistant" : "user",
+          content: h.content.slice(0, MAX_MESSAGE),
+        }));
     }
   } catch {
     sendJsonPlain(res, 400, { error: "invalid JSON body" });
@@ -334,7 +395,9 @@ export async function handleUiChat(
       try {
         const raw = await deps.listTasks();
         tasks = raw === null ? null : tasksFromList(raw);
-      } catch { /* unavailable is explicit in the prompt */ }
+      } catch {
+        /* unavailable is explicit in the prompt */
+      }
     }
     const taskContext = buildTaskContext(tasks, Date.now());
     const result = await runSearchCopilot(message, history, {
@@ -349,7 +412,9 @@ export async function handleUiChat(
     if (deps.history) {
       // A failing store must not cost the user the answer.
       try {
-        const sources = result.hits.filter((h) => !deps.isPrivate?.(h.id)).map((h) => ({ id: h.id, type: h.type, title: h.title }));
+        const sources = result.hits
+          .filter((h) => !deps.isPrivate?.(h.id))
+          .map((h) => ({ id: h.id, type: h.type, title: h.title }));
         conversation_id = deps.history().append(conversationId, message, result.reply, sources);
       } catch (err) {
         process.stderr.write(`[bastra-recall] chat history not stored: ${(err as Error).message}\n`);

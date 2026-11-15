@@ -3,21 +3,10 @@ import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { SERVER_KEY, fileExists, getServersBlock, readJsonConfig } from "./helpers.js";
-import {
-  CLAUDE_CODE_CONFIG,
-  CLAUDE_DESKTOP_CONFIG,
-  SKILL_SOURCE_DIR,
-  SKILL_TARGET_DIR,
-} from "./paths.js";
+import { CLAUDE_CODE_CONFIG, CLAUDE_DESKTOP_CONFIG, SKILL_SOURCE_DIR, SKILL_TARGET_DIR } from "./paths.js";
 
 export type SkillStepStatus =
-  | "installed"
-  | "already-installed"
-  | "would-install"
-  | "removed"
-  | "not-present"
-  | "would-remove"
-  | "error";
+  "installed" | "already-installed" | "would-install" | "removed" | "not-present" | "would-remove" | "error";
 
 /**
  * The skill payload: every markdown file directly in the skill source dir,
@@ -41,7 +30,10 @@ export async function skillPayload(sourceDir: string): Promise<string[]> {
 export async function skillBundleRevision(sourceDir: string): Promise<string> {
   const h = createHash("sha256");
   for (const name of await skillPayload(sourceDir)) {
-    h.update(name).update("\0").update(await readFile(join(sourceDir, name))).update("\0");
+    h.update(name)
+      .update("\0")
+      .update(await readFile(join(sourceDir, name)))
+      .update("\0");
   }
   return h.digest("hex").slice(0, 12);
 }
@@ -63,10 +55,7 @@ export interface SkillInstallInspection {
  * Same comparison `copySkill` uses to decide what to copy, so doctor and
  * install can never disagree.
  */
-export async function inspectSkillInstall(
-  sourceDir: string,
-  targetDir: string,
-): Promise<SkillInstallInspection> {
+export async function inspectSkillInstall(sourceDir: string, targetDir: string): Promise<SkillInstallInspection> {
   const payload = await skillPayload(sourceDir);
   const revision = await skillBundleRevision(sourceDir);
   const missing: string[] = [];
@@ -106,7 +95,7 @@ export function describeSkillInstall(i: SkillInstallInspection, targetDir: strin
  */
 export async function copySkill(
   opts: { dryRun: boolean },
-  io: { sourceDir?: string; targetDir?: string } = {},
+  io: { sourceDir?: string; targetDir?: string } = {}
 ): Promise<{ status: SkillStepStatus; detail: string }> {
   const sourceDir = io.sourceDir ?? SKILL_SOURCE_DIR;
   const targetDir = io.targetDir ?? SKILL_TARGET_DIR;
@@ -122,10 +111,7 @@ export async function copySkill(
       outdated.push(name);
       continue;
     }
-    const [src, dst] = await Promise.all([
-      readFile(join(sourceDir, name), "utf8"),
-      readFile(target, "utf8"),
-    ]);
+    const [src, dst] = await Promise.all([readFile(join(sourceDir, name), "utf8"), readFile(target, "utf8")]);
     if (src !== dst) outdated.push(name);
   }
   const scope = `${payload.length} file${payload.length === 1 ? "" : "s"}`;
@@ -169,8 +155,7 @@ export function shouldSweepSkill(i: {
   remainingRegistrations: string[];
   succeededSurfaces?: string[];
 }): boolean {
-  const covers =
-    i.surface === "all" || (SKILL_SHARING_SURFACES as readonly string[]).includes(i.surface ?? "");
+  const covers = i.surface === "all" || (SKILL_SHARING_SURFACES as readonly string[]).includes(i.surface ?? "");
   if (!covers || i.remainingRegistrations.length > 0) return false;
   if (i.succeededSurfaces === undefined) return true;
   const succeeded = i.succeededSurfaces;
@@ -210,7 +195,7 @@ async function liveSkillRegistrations(configPaths: Record<string, string>): Prom
  */
 export async function sweepSharedSkill(
   opts: { surface: string | null; dryRun: boolean; succeededSurfaces?: string[] },
-  io: { skillDir?: string; configPaths?: Record<string, string> } = {},
+  io: { skillDir?: string; configPaths?: Record<string, string> } = {}
 ): Promise<{ status: "removed" | "would-remove" | "kept" | "not-present"; detail: string }> {
   try {
     const skillDir = io.skillDir ?? SKILL_TARGET_DIR;
@@ -219,23 +204,25 @@ export async function sweepSharedSkill(
       "claude-desktop": CLAUDE_DESKTOP_CONFIG,
       "claude-code": CLAUDE_CODE_CONFIG,
     };
-    const succeeded = (s: string) =>
-      opts.succeededSurfaces === undefined || opts.succeededSurfaces.includes(s);
+    const succeeded = (s: string) => opts.succeededSurfaces === undefined || opts.succeededSurfaces.includes(s);
     const coveredByRun = (s: string) => opts.surface === "all" || s === opts.surface;
     const live = await liveSkillRegistrations(configPaths);
-    const remaining = opts.dryRun
-      ? live.filter((s) => !coveredByRun(s) || !succeeded(s))
-      : live;
-    if (!shouldSweepSkill({
-      surface: opts.surface,
-      remainingRegistrations: remaining,
-      succeededSurfaces: opts.succeededSurfaces,
-    })) {
+    const remaining = opts.dryRun ? live.filter((s) => !coveredByRun(s) || !succeeded(s)) : live;
+    if (
+      !shouldSweepSkill({
+        surface: opts.surface,
+        remainingRegistrations: remaining,
+        succeededSurfaces: opts.succeededSurfaces,
+      })
+    ) {
       const failed = requiredSweepSurfaces(opts.surface).filter((s) => !succeeded(s));
-      const why = [
-        remaining.length > 0 ? `still registered: ${remaining.join(", ")}` : "",
-        failed.length > 0 ? `uninstall failed: ${failed.join(", ")}` : "",
-      ].filter(Boolean).join("; ") || "still registered: none";
+      const why =
+        [
+          remaining.length > 0 ? `still registered: ${remaining.join(", ")}` : "",
+          failed.length > 0 ? `uninstall failed: ${failed.join(", ")}` : "",
+        ]
+          .filter(Boolean)
+          .join("; ") || "still registered: none";
       return { status: "kept", detail: `kept (${why})` };
     }
     if (opts.dryRun) {

@@ -19,8 +19,8 @@ import { resolveDerivedClaims, type DerivedClaimResult } from "./derived-claims.
 
 export const LoadMemoryArgs = z.object({
   id: z.string().min(1),
-  session_id:z.string().min(1).max(200).optional(),
-  agent_id:z.string().min(1).max(200).optional(),
+  session_id: z.string().min(1).max(200).optional(),
+  agent_id: z.string().min(1).max(200).optional(),
   /**
    * Payload-Verbosity (#50). Default `"lean"` — essenzielle Frontmatter
    * (id, title, type, scope, summary, topic_path, tags, recall_when,
@@ -30,7 +30,6 @@ export const LoadMemoryArgs = z.object({
    */
   verbosity: z.enum(["lean", "full"]).optional(),
 });
-
 
 // ─── Load Memory ─────────────────────────────────────────────────
 
@@ -112,12 +111,12 @@ export async function loadMemoryHandler(
   // #74: echte CC-Session aus den Forwarder-Headern (HTTP-Pfad). Ohne sie
   // fällt recordLoadedMemory auf den zuletzt rotierten Turn zurück (inferred).
   // #464: `trustedPrivate` kommt vom TRANSPORT, nie aus `rawArgs`.
-  ctx?: { sessionId?: string | null; agentId?: string | null } & PrivateAccess,
+  ctx?: { sessionId?: string | null; agentId?: string | null } & PrivateAccess
 ): Promise<LoadMemoryResult> {
   const parsed = LoadMemoryArgs.safeParse(rawArgs);
   if (!parsed.success) throw new Error(parsed.error.message);
-  const sessionId=ctx?.sessionId??callerSessionStore.getStore()??parsed.data.session_id;
-  const agentId=ctx?.agentId!==undefined?ctx.agentId:parsed.data.agent_id;
+  const sessionId = ctx?.sessionId ?? callerSessionStore.getStore() ?? parsed.data.session_id;
+  const agentId = ctx?.agentId !== undefined ? ctx.agentId : parsed.data.agent_id;
 
   // Commons-Fallback: persönlicher Vault gewinnt; nur wenn die ID dort
   // nicht existiert, wird im read-only Commons-Index nachgeschlagen.
@@ -129,11 +128,7 @@ export async function loadMemoryHandler(
   const servedBy = deps.telemetry.findRecallFor(parsed.data.id, sessionId ?? null); // #1128-capture
   // #457: das Ereignis trägt die GELIEFERTE Größe, also erst nach der
   // Projektion — ein Load, der nichts liefert, trägt keine.
-  const logLoad = (delivered?: {
-    delivered_chars: number;
-    body_chars: number;
-    presentation: "lean" | "full";
-  }): void =>
+  const logLoad = (delivered?: { delivered_chars: number; body_chars: number; presentation: "lean" | "full" }): void =>
     fireAndForget(
       deps.telemetry.logLoadMemory({
         id: parsed.data.id,
@@ -154,7 +149,7 @@ export async function loadMemoryHandler(
           : {}),
         caller_session: sessionId ?? null,
         session_known: !!sessionId,
-      }),
+      })
     );
 
   if (!m) {
@@ -177,9 +172,7 @@ export async function loadMemoryHandler(
   deps.telemetry.recordLoadedMemory({
     memory_id: parsed.data.id,
     distinctive_tokens: distinctiveTokensForActedOn(bodyForTelemetry),
-    hook_hint: hookHint
-      ? { recall_id: hookHint.recall_id, score: hookHint.score }
-      : null,
+    hook_hint: hookHint ? { recall_id: hookHint.recall_id, score: hookHint.score } : null,
     session_id: sessionId ?? null,
   });
 
@@ -203,7 +196,7 @@ export async function loadMemoryHandler(
   await clearPendingMustLoad(
     parsed.data.id,
     parsed.data.verbosity === "lean" || agentId != null ? undefined : delivered,
-    source.matchesIndex===true && agentId == null ? sessionId : undefined,
+    source.matchesIndex === true && agentId == null ? sessionId : undefined
   );
 
   if (sessionId && parsed.data.verbosity !== "lean" && source.matchesIndex === true) {
@@ -218,7 +211,11 @@ export async function loadMemoryHandler(
   // Project current declarations and runtime legacy membership, never rewrite
   // the source file just to add new optional schema fields.
   if (source.rulebookMetadata) {
-    delete fm.rulebook; delete fm.rule_categories; delete fm.applies_when; delete fm.rulebook_proposed; delete fm.applies_when_derived;
+    delete fm.rulebook;
+    delete fm.rule_categories;
+    delete fm.applies_when;
+    delete fm.rulebook_proposed;
+    delete fm.applies_when_derived;
     Object.assign(fm, source.rulebookMetadata);
   }
   // verify-Loop: ein Commons-Rezept, das geladen (und gleich angewendet)
@@ -269,9 +266,8 @@ export async function loadMemoryHandler(
       }
     : {};
   const derivedClaims = m.fm.derived_claims ?? [];
-  const derivedBlock = derivedClaims.length > 0
-    ? { derived: { claims: await resolveDerivedClaims(deps.vaultPath, derivedClaims) } }
-    : {};
+  const derivedBlock =
+    derivedClaims.length > 0 ? { derived: { claims: await resolveDerivedClaims(deps.vaultPath, derivedClaims) } } : {};
   const result = {
     id: m.fm.id,
     frontmatter: full ? fm : leanFrontmatter(fm),
@@ -296,7 +292,6 @@ export async function loadMemoryHandler(
 // was structurally penalised on save_quality. `\p{L}\p{N}` + the `u` flag count
 // letters in any script; toLowerCase already folds Unicode case.
 
-
 // #707: function words are per-language data (`FUNCTION_WORDS`,
 // core/stopwords.ts) instead of an English-only list here. A language without
 // a list drops no word — its function words then count toward the overlap.
@@ -306,7 +301,7 @@ export function distinctiveTokensForActedOn(text: string): string[] {
       words(text)
         .filter((token) => token.length >= 4)
         .filter((token) => !FUNCTION_WORDS.has(token))
-        .filter((token) => !GENERIC_TRIGGER_WORDS.has(token)),
-    ),
+        .filter((token) => !GENERIC_TRIGGER_WORDS.has(token))
+    )
   ).slice(0, 200);
 }

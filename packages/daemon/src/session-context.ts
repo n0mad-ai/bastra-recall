@@ -37,18 +37,14 @@ export type { SessionContextDeps };
 export async function buildSessionContext(
   toolDeps: ToolDeps,
   vault: Vault,
-  deps: SessionContextDeps = {}, dueText?: string,
+  deps: SessionContextDeps = {},
+  dueText?: string
 ): Promise<string> {
   // `expand_hops: 0` steht hier ausdrücklich: Der Forwarder-Vertrag kennt keine
   // Hops (mcp-forwarder.ts fragt sie ebenfalls nicht an), und der Default des
   // Assemblers ist die HOOK-Baseline `1`. Ohne diese Zeile bekäme eine hooklose
   // Oberfläche plötzlich mehr, weil anderswo ein Default umgezogen ist.
-  const assembled = await assembleSessionSections(
-    toolDeps,
-    vault,
-    { project: null, expand_hops: 0, dueText },
-    deps,
-  );
+  const assembled = await assembleSessionSections(toolDeps, vault, { project: null, expand_hops: 0, dueText }, deps);
   return renderSessionContext(assembled.sections, vault.size()) + buildSoulBlock(await readSoulPreference());
 }
 
@@ -58,7 +54,7 @@ export async function handleSessionContext(
   req: IncomingMessage,
   res: ServerResponse,
   toolDeps: ToolDeps,
-  vault: Vault,
+  vault: Vault
 ): Promise<void> {
   const due = await taskAttachment(defaultTaskContext(toolDeps), taskRequestAuth(req), "unknown", "session");
   const context = await buildSessionContext(toolDeps, vault, {}, due?.text);
@@ -81,7 +77,7 @@ export async function handleSessionContextPost(
   req: IncomingMessage,
   res: ServerResponse,
   toolDeps: ToolDeps,
-  vault: Vault,
+  vault: Vault
 ): Promise<void> {
   const body = await readJsonBody(req, MAX_BODY_BYTES).catch(() => ({}) as Record<string, unknown>);
   const b = (body ?? {}) as Record<string, unknown>;
@@ -106,7 +102,15 @@ export async function handleSessionContextPost(
   const kernelPromise = kernelReq
     ? startupRulebookCatalog(vault, { project, active: activeFrom(kernelReq.active), budgetMs: num(budget.time_ms) })
     : null;
-  const due = b.assembly_only === true ? undefined : await taskAttachment(defaultTaskContext(toolDeps), taskRequestAuth(req), typeof b.session_id === "string" ? b.session_id : "unknown", "session");
+  const due =
+    b.assembly_only === true
+      ? undefined
+      : await taskAttachment(
+          defaultTaskContext(toolDeps),
+          taskRequestAuth(req),
+          typeof b.session_id === "string" ? b.session_id : "unknown",
+          "session"
+        );
   const assembled = await assembleSessionSections(toolDeps, vault, {
     dueText: due?.text,
     project,
@@ -137,9 +141,7 @@ export async function handleSessionContextPost(
     // Die Deadline des dichten Arms reist mit dem Aufruf, nicht mit dem
     // Endpunkt: Nur die SessionStart-Lane schickt sie, und nur sie bekommt
     // damit mehr als die hookweiten 150 ms. Ungesetzt bleibt alles wie bisher.
-    ...(typeof b.vector_deadline_ms === "number"
-      ? { vector_deadline_ms: b.vector_deadline_ms }
-      : {}),
+    ...(typeof b.vector_deadline_ms === "number" ? { vector_deadline_ms: b.vector_deadline_ms } : {}),
     // #494: Der Verzicht auf den dichten Arm reist genauso mit dem Aufruf.
     // Nur der SessionStart auf kaltem Modell setzt ihn.
     ...(b.lexical_only === true ? { lexical_only: true } : {}),
@@ -148,9 +150,7 @@ export async function handleSessionContextPost(
     ...(typeof b.hook_budget_ms === "number" ? { hook_budget_ms: b.hook_budget_ms } : {}),
     // #493: Die Gruppierung eines Sitzungsstarts reist mit dem Aufruf bis auf
     // jedes einzelne `hook_recall`-Event.
-    ...(typeof b.session_start_call_id === "string"
-      ? { session_start_call_id: b.session_start_call_id }
-      : {}),
+    ...(typeof b.session_start_call_id === "string" ? { session_start_call_id: b.session_start_call_id } : {}),
     caps: {
       ...(num(caps.pinned) !== undefined ? { pinned: num(caps.pinned) } : {}),
       ...(num(caps.hints) !== undefined ? { hints: num(caps.hints) } : {}),
@@ -163,7 +163,7 @@ export async function handleSessionContextPost(
     },
   });
   const context = renderSessionContext(assembled.sections, vault.size()) + buildSoulBlock(await readSoulPreference());
-  if (due && assembled.reports.some(r => r.kind === "due" && r.included)) res.once("finish", due.record);
+  if (due && assembled.reports.some((r) => r.kind === "due" && r.included)) res.once("finish", due.record);
   sendJsonPlain(res, 200, {
     context,
     vault_size: vault.size(),
@@ -194,6 +194,9 @@ function activeFrom(raw: unknown): ActiveConvention[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter(
     (e): e is ActiveConvention =>
-      !!e && typeof e.id === "string" && (typeof e.revision === "string" || e.revision === null) && typeof e.setAt === "number",
+      !!e &&
+      typeof e.id === "string" &&
+      (typeof e.revision === "string" || e.revision === null) &&
+      typeof e.setAt === "number"
   );
 }

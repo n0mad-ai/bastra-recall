@@ -10,13 +10,20 @@ import { GitService } from "../../packages/statusline/src/segments/git.ts";
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const temporary = () => fs.mkdtempSync(path.join(os.tmpdir(), "statusline-1227-"));
 function git(cwd, ...args) {
-  return execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "core.hooksPath=/dev/null", ...args], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  return execFileSync(
+    "git",
+    ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "core.hooksPath=/dev/null", ...args],
+    { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+  );
 }
 async function tick(cwd) {
   const svc = new GitService();
   const commands = [];
   const run = svc.execGitAsync.bind(svc);
-  svc.execGitAsync = async (...args) => { commands.push(args[0]); return run(...args); };
+  svc.execGitAsync = async (...args) => {
+    commands.push(args[0]);
+    return run(...args);
+  };
   const info = await svc.getGitInfo(cwd, { showWorkingTree: true });
   return { info, commands };
 }
@@ -30,11 +37,21 @@ test("#1227: one status query per tick keeps working-tree and upstream state cur
     fs.mkdirSync(repo);
     git(repo, "init", "-b", "main");
     fs.writeFileSync(path.join(repo, "tracked"), "one\n");
-    git(repo, "add", "."); git(repo, "commit", "-m", "initial");
-    git(repo, "remote", "add", "origin", remote); git(repo, "push", "-u", "origin", "main");
+    git(repo, "add", ".");
+    git(repo, "commit", "-m", "initial");
+    git(repo, "remote", "add", "origin", remote);
+    git(repo, "push", "-u", "origin", "main");
     assert.equal((await tick(repo)).info.status, "clean");
-    assert.deepEqual((await tick(repo)).commands, ["git status --porcelain -b --ahead-behind"], "each tick starts only one git process");
-    assert.deepEqual((await tick(repo + path.sep)).commands, ["git status --porcelain -b --ahead-behind"], "trailing separator names the same checkout");
+    assert.deepEqual(
+      (await tick(repo)).commands,
+      ["git status --porcelain -b --ahead-behind"],
+      "each tick starts only one git process"
+    );
+    assert.deepEqual(
+      (await tick(repo + path.sep)).commands,
+      ["git status --porcelain -b --ahead-behind"],
+      "trailing separator names the same checkout"
+    );
 
     fs.writeFileSync(path.join(repo, "tracked"), "two\n");
     assert.equal((await tick(repo)).info.unstaged, 1, "unstaged edits need no index mtime change");
@@ -63,11 +80,16 @@ test("#1227: one status query per tick keeps working-tree and upstream state cur
     fs.writeFileSync(path.join(repo, ".gitignore"), "ignored/\n");
     fs.mkdirSync(path.join(repo, "ignored"));
     fs.writeFileSync(path.join(repo, "ignored", "output"), "first\n");
-    git(repo, "add", ".gitignore"); git(repo, "commit", "-m", "ignore output");
+    git(repo, "add", ".gitignore");
+    git(repo, "commit", "-m", "ignore output");
     git(repo, "push");
     await tick(repo);
     fs.writeFileSync(path.join(repo, "ignored", "output"), "changed\n");
-    assert.deepEqual((await tick(repo)).commands, ["git status --porcelain -b --ahead-behind"], "ignored-file edits still need only one status query");
+    assert.deepEqual(
+      (await tick(repo)).commands,
+      ["git status --porcelain -b --ahead-behind"],
+      "ignored-file edits still need only one status query"
+    );
 
     git(repo, "pack-refs", "--all");
     assert.equal((await tick(repo)).info.ahead, 0);
@@ -81,7 +103,9 @@ test("#1227: one status query per tick keeps working-tree and upstream state cur
     assert.equal((await tick(worktree)).info.ahead, 1);
     git(worktree, "push", "origin", "HEAD:main");
     assert.equal((await tick(worktree)).info.ahead, 0, "worktree uses refs in commondir");
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 function child(code, home) {
@@ -108,7 +132,9 @@ for (const comm of ["claude", "zsh"]) {
       `;
       assert.equal(child(code, home).trim(), "1");
       assert.equal(child(code, home).trim(), "0", "warm tick must reuse the cached PID/parent walk");
-    } finally { fs.rmSync(home, { recursive: true, force: true }); }
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
   });
 }
 
@@ -147,7 +173,9 @@ test("#1227: install and path updates retain a chosen or omitted interval; new b
       }
     `;
     child(code, home);
-  } finally { fs.rmSync(home, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test("#1227: a fresh wrapper shell re-resolves its own Claude feed PID", () => {
@@ -157,9 +185,12 @@ test("#1227: a fresh wrapper shell re-resolves its own Claude feed PID", () => {
     fs.mkdirSync(repo);
     git(repo, "init", "-b", "main");
     fs.writeFileSync(path.join(repo, "file"), "one\n");
-    git(repo, "add", "."); git(repo, "commit", "-m", "initial");
+    git(repo, "add", ".");
+    git(repo, "commit", "-m", "initial");
     const preload = path.join(dir, "count.mjs");
-    fs.writeFileSync(preload, `
+    fs.writeFileSync(
+      preload,
+      `
       import cp from 'node:child_process';
       import { syncBuiltinESMExports } from 'node:module';
       let calls = 0;
@@ -168,12 +199,29 @@ test("#1227: a fresh wrapper shell re-resolves its own Claude feed PID", () => {
       cp.execFileSync = () => { calls++; return process.ppid + ' ${process.pid} sh\\n${process.pid} 1 claude\\n'; };
       syncBuiltinESMExports();
       process.on('exit', () => console.error('CALLS=' + calls));
-    `);
+    `
+    );
     const config = path.join(dir, "config.json");
-    fs.writeFileSync(config, JSON.stringify({ display: { lines: [{ segments: {
-      git: { enabled: true }, bastra: { enabled: true },
-    } }] } }));
-    const payload = JSON.stringify({ session_id: "wrapper-session", workspace: { project_dir: repo, current_dir: repo }, cwd: repo });
+    fs.writeFileSync(
+      config,
+      JSON.stringify({
+        display: {
+          lines: [
+            {
+              segments: {
+                git: { enabled: true },
+                bastra: { enabled: true },
+              },
+            },
+          ],
+        },
+      })
+    );
+    const payload = JSON.stringify({
+      session_id: "wrapper-session",
+      workspace: { project_dir: repo, current_dir: repo },
+      cwd: repo,
+    });
     const code = `
       import { spawnSync } from 'node:child_process';
       const result = spawnSync(process.execPath, ['--import', ${JSON.stringify(preload)},
@@ -190,8 +238,11 @@ test("#1227: a fresh wrapper shell re-resolves its own Claude feed PID", () => {
     assert.equal(warm.calls, 2, "a new parent must resolve its own ancestry, even for the same session id");
     assert.equal(warm.output, cold.output);
     const cache = JSON.parse(fs.readFileSync(path.join(dir, ".bastra/statusline/tick-cache.json"), "utf8"));
-    for (const entry of Object.values(cache)) assert.equal("git" in entry, false, "PID cache contains no Git snapshot or file list");
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    for (const entry of Object.values(cache))
+      assert.equal("git" in entry, false, "PID cache contains no Git snapshot or file list");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 for (const [header, branch, ahead, behind] of [
@@ -216,7 +267,9 @@ for (const [header, branch, ahead, behind] of [
       const info = await service.getGitInfo(repo);
       assert.deepEqual([info.branch, info.ahead, info.behind], [branch, ahead, behind]);
       assert.deepEqual(commands, ["git status --porcelain -b --ahead-behind"]);
-    } finally { fs.rmSync(repo, { recursive: true, force: true }); }
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
   });
 }
 
@@ -229,22 +282,30 @@ test("#1237: real divergence matches rev-list even with status.aheadBehind=false
     fs.mkdirSync(repo);
     git(repo, "init", "-b", "main");
     fs.writeFileSync(path.join(repo, "file"), "initial\n");
-    git(repo, "add", "."); git(repo, "commit", "-m", "initial");
+    git(repo, "add", ".");
+    git(repo, "commit", "-m", "initial");
     git(repo, "clone", "--bare", repo, remote);
-    git(repo, "remote", "add", "origin", remote); git(repo, "push", "-u", "origin", "main");
+    git(repo, "remote", "add", "origin", remote);
+    git(repo, "push", "-u", "origin", "main");
     git(repo, "clone", remote, peer);
     git(repo, "config", "status.aheadBehind", "false");
     const check = async (expected) => {
       const { info, commands } = await tick(repo);
       assert.deepEqual([info.ahead, info.behind], expected);
-      assert.deepEqual([info.ahead, info.behind], [Number(git(repo, "rev-list", "--count", "@{u}..HEAD")), Number(git(repo, "rev-list", "--count", "HEAD..@{u}"))]);
+      assert.deepEqual(
+        [info.ahead, info.behind],
+        [Number(git(repo, "rev-list", "--count", "@{u}..HEAD")), Number(git(repo, "rev-list", "--count", "HEAD..@{u}"))]
+      );
       assert.deepEqual(commands, ["git status --porcelain -b --ahead-behind"]);
     };
     fs.writeFileSync(path.join(peer, "file"), "remote\n");
-    git(peer, "commit", "-am", "remote"); git(peer, "push"); git(repo, "fetch");
+    git(peer, "commit", "-am", "remote");
+    git(peer, "push");
+    git(repo, "fetch");
     await check([0, 1]);
     fs.writeFileSync(path.join(repo, "local"), "local\n");
-    git(repo, "add", "."); git(repo, "commit", "-m", "local");
+    git(repo, "add", ".");
+    git(repo, "commit", "-m", "local");
     await check([1, 1]);
     git(repo, "update-ref", "-d", "refs/remotes/origin/main");
     const gone = await tick(repo);
@@ -254,5 +315,7 @@ test("#1237: real divergence matches rev-list even with status.aheadBehind=false
     const detached = await tick(repo);
     assert.deepEqual([detached.info.branch, detached.info.ahead, detached.info.behind], ["detached", 0, 0]);
     assert.equal(detached.commands.length, 1);
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

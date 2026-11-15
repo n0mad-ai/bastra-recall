@@ -46,17 +46,34 @@ function vaultObject(
   target: string,
   vault: "present" | "absent",
   index: "present" | "absent",
-  indexReason: "present" | "no-such-object" | "created-after-observation" | "not-a-memory" | "no-observation-time" = index === "present" ? "present" : "no-such-object",
+  indexReason:
+    "present" | "no-such-object" | "created-after-observation" | "not-a-memory" | "no-observation-time" = index ===
+  "present"
+    ? "present"
+    : "no-such-object"
 ): ReviewedMissObservation["target"] {
   return {
     kind: "vault-object",
     candidateId: id(target),
-    vaultMembership: { snapshotId: frozen.vaultSnapshotId, candidateId: id(target), membership: vault, reason: vault === "present" ? "present" : "no-such-object" },
-    indexMembership: { snapshotId: frozen.indexSnapshotId, candidateId: id(target), membership: index, reason: indexReason },
+    vaultMembership: {
+      snapshotId: frozen.vaultSnapshotId,
+      candidateId: id(target),
+      membership: vault,
+      reason: vault === "present" ? "present" : "no-such-object",
+    },
+    indexMembership: {
+      snapshotId: frozen.indexSnapshotId,
+      candidateId: id(target),
+      membership: index,
+      reason: indexReason,
+    },
   };
 }
 
-function observation(target: ReviewedMissObservation["target"], withPool: FrozenCandidatePool | null = pool(["a", "b", "c"], ["a"])): ReviewedMissObservation {
+function observation(
+  target: ReviewedMissObservation["target"],
+  withPool: FrozenCandidatePool | null = pool(["a", "b", "c"], ["a"])
+): ReviewedMissObservation {
   return { kind: "reviewed-miss-observation/v1", frozen: withPool ? frozen : null, pool: withPool, target };
 }
 
@@ -66,10 +83,28 @@ test("classifier: each proof pattern lands in exactly one class", () => {
   assert.equal(classify(observation(vaultObject("a", "present", "present"))), "served-hit");
   assert.equal(classify(observation(vaultObject("b", "present", "present"))), "in-pool-not-selected");
   assert.equal(classify(observation(vaultObject("z", "present", "present"))), "genuine-out-of-pool");
-  assert.equal(classify(observation(vaultObject("z", "present", "absent", "created-after-observation"))), "unindexed-vault-object");
+  assert.equal(
+    classify(observation(vaultObject("z", "present", "absent", "created-after-observation"))),
+    "unindexed-vault-object"
+  );
   assert.equal(classify(observation(vaultObject("z", "present", "absent", "not-a-memory"))), "unindexed-vault-object");
-  assert.equal(classify(observation({ kind: "external-read", sourceRef: hash("file_path:/x"), vaultChecked: null, reviewerDurable: null })), "external-source");
-  assert.equal(classify(observation({ kind: "external-read", sourceRef: hash("file_path:/x"), vaultChecked: { snapshotId: frozen.vaultSnapshotId, idCount: 3 }, reviewerDurable: true })), "vault-gap");
+  assert.equal(
+    classify(
+      observation({ kind: "external-read", sourceRef: hash("file_path:/x"), vaultChecked: null, reviewerDurable: null })
+    ),
+    "external-source"
+  );
+  assert.equal(
+    classify(
+      observation({
+        kind: "external-read",
+        sourceRef: hash("file_path:/x"),
+        vaultChecked: { snapshotId: frozen.vaultSnapshotId, idCount: 3 },
+        reviewerDurable: true,
+      })
+    ),
+    "vault-gap"
+  );
 });
 
 test("classifier: contradictions and missing proofs fail closed", () => {
@@ -83,7 +118,12 @@ test("classifier: contradictions and missing proofs fail closed", () => {
   // no observation time: existence at observation cannot be proven
   assert.equal(classify(observation(vaultObject("z", "present", "absent", "no-observation-time"))), "unknown");
   // a durable claim without a checked snapshot is not a vault gap
-  assert.equal(classify(observation({ kind: "external-read", sourceRef: hash("file_path:/x"), vaultChecked: null, reviewerDurable: true })), "unknown");
+  assert.equal(
+    classify(
+      observation({ kind: "external-read", sourceRef: hash("file_path:/x"), vaultChecked: null, reviewerDurable: true })
+    ),
+    "unknown"
+  );
   assert.equal(classify(observation({ kind: "unresolved", sourceRef: null })), "unknown");
   assert.equal(classify({ kind: "something-else" }), "unknown");
   // a proof for another snapshot cannot be borrowed
@@ -94,12 +134,33 @@ test("classifier: contradictions and missing proofs fail closed", () => {
 
 const line = (value: unknown): string => JSON.stringify(value);
 
-function session(recallId: string, envelopeHits: string[], evidence: { name: string; input: Record<string, unknown> }): string {
-  const envelope = JSON.stringify({ query: "rail", hits: envelopeHits.map((hit) => ({ id: hit, score: 1 })), recall_id: recallId }, null, 2);
+function session(
+  recallId: string,
+  envelopeHits: string[],
+  evidence: { name: string; input: Record<string, unknown> }
+): string {
+  const envelope = JSON.stringify(
+    { query: "rail", hits: envelopeHits.map((hit) => ({ id: hit, score: 1 })), recall_id: recallId },
+    null,
+    2
+  );
   return [
     line({ type: "user", message: { content: "where is the deployment rail owner" } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "t-" + recallId, name: "mcp__bastra-recall__recall", input: { query: "rail" } }] } }),
-    line({ type: "user", timestamp: "2026-09-13T20:00:00.000Z", message: { content: [{ type: "tool_result", tool_use_id: "t-" + recallId, content: [{ type: "text", text: envelope }] }] } }),
+    line({
+      type: "assistant",
+      message: {
+        content: [
+          { type: "tool_use", id: "t-" + recallId, name: "mcp__bastra-recall__recall", input: { query: "rail" } },
+        ],
+      },
+    }),
+    line({
+      type: "user",
+      timestamp: "2026-09-13T20:00:00.000Z",
+      message: {
+        content: [{ type: "tool_result", tool_use_id: "t-" + recallId, content: [{ type: "text", text: envelope }] }],
+      },
+    }),
     line({ type: "assistant", message: { content: [{ type: "tool_use", id: "e-" + recallId, ...evidence }] } }),
   ].join("\n");
 }
@@ -121,7 +182,18 @@ function event(recallId: string, ts: string, poolIds: string[], hits: string[]):
 }
 
 const memory = (memoryId: string): string =>
-  ["---", `id: ${memoryId}`, `title: ${memoryId}`, "type: lesson", "scope: test", `summary: lesson ${memoryId}`, "---", "", "body", ""].join("\n");
+  [
+    "---",
+    `id: ${memoryId}`,
+    `title: ${memoryId}`,
+    "type: lesson",
+    "scope: test",
+    `summary: lesson ${memoryId}`,
+    "---",
+    "",
+    "body",
+    "",
+  ].join("\n");
 
 async function fixture(): Promise<{ dir: string; vault: string; events: string; engines: ObservationEngines }> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-reviewed-miss-obs-"));
@@ -134,12 +206,15 @@ async function fixture(): Promise<{ dir: string; vault: string; events: string; 
   await writeFile(join(vault, "memories", "far-three.md"), memory("far-three"));
   await writeFile(join(vault, "memories", "plain-note.md"), "# not a memory\n");
   const later = new Date(Date.now() + 3_600_000).toISOString();
-  await writeFile(join(events, "events-2026-09-13.jsonl"), [
-    event("r-inpool", later, ["served-one", "deep-two"], ["served-one"]),
-    event("r-outpool", later, ["served-one"], ["served-one"]),
-    event("r-before", "2000-01-01T00:00:00.000Z", ["served-one"], ["served-one"]),
-    event("r-served", later, ["served-one", "deep-two"], ["served-one"]),
-  ].join("\n") + "\n");
+  await writeFile(
+    join(events, "events-2026-09-13.jsonl"),
+    [
+      event("r-inpool", later, ["served-one", "deep-two"], ["served-one"]),
+      event("r-outpool", later, ["served-one"], ["served-one"]),
+      event("r-before", "2000-01-01T00:00:00.000Z", ["served-one"], ["served-one"]),
+      event("r-served", later, ["served-one", "deep-two"], ["served-one"]),
+    ].join("\n") + "\n"
+  );
   const engines: ObservationEngines = {
     pools: await loadTelemetryPools(events),
     vaultRoot: vault,
@@ -152,7 +227,11 @@ async function fixture(): Promise<{ dir: string; vault: string; events: string; 
 test("engines: telemetry pool + vault snapshot prove the four vault-side classes", async () => {
   const { dir, vault, engines } = await fixture();
   try {
-    const observe = (recallId: string, evidence: { name: string; input: Record<string, unknown> }, served: string[] = ["served-one"]) => {
+    const observe = (
+      recallId: string,
+      evidence: { name: string; input: Record<string, unknown> },
+      served: string[] = ["served-one"]
+    ) => {
       const [chain] = extractReviewedMissChains(session(recallId, served, evidence), "s.jsonl");
       return observeChain(chain, engines);
     };
@@ -161,9 +240,15 @@ test("engines: telemetry pool + vault snapshot prove the four vault-side classes
 
     assert.equal(observe("r-inpool", load("deep-two")).classification, "in-pool-not-selected");
     assert.equal(observe("r-outpool", load("far-three")).classification, "genuine-out-of-pool");
-    assert.equal(observe("r-outpool", read(join(vault, "memories", "far-three.md"))).classification, "genuine-out-of-pool");
+    assert.equal(
+      observe("r-outpool", read(join(vault, "memories", "far-three.md"))).classification,
+      "genuine-out-of-pool"
+    );
     assert.equal(observe("r-before", load("far-three")).classification, "unindexed-vault-object");
-    assert.equal(observe("r-outpool", read(join(vault, "memories", "plain-note.md"))).classification, "unindexed-vault-object");
+    assert.equal(
+      observe("r-outpool", read(join(vault, "memories", "plain-note.md"))).classification,
+      "unindexed-vault-object"
+    );
     assert.equal(observe("r-outpool", read(join(dir, "elsewhere.md"))).classification, "external-source");
     // served by the same pool and then loaded: a hit, not a miss
     assert.equal(observe("r-served", load("served-one")).classification, "served-hit");
@@ -186,7 +271,11 @@ test("engines: telemetry pool + vault snapshot prove the four vault-side classes
 test("engines: a Bash cat/tail of a real file classifies the same as an equivalent Read, and an unrecognized shape stays unknown", async () => {
   const { dir, vault, engines } = await fixture();
   try {
-    const observe = (recallId: string, evidence: { name: string; input: Record<string, unknown> }, served: string[] = ["served-one"]) => {
+    const observe = (
+      recallId: string,
+      evidence: { name: string; input: Record<string, unknown> },
+      served: string[] = ["served-one"]
+    ) => {
       const [chain] = extractReviewedMissChains(session(recallId, served, evidence), "s.jsonl");
       return observeChain(chain, engines);
     };
@@ -197,7 +286,7 @@ test("engines: a Bash cat/tail of a real file classifies the same as an equivale
     const readPath = join(dir, "elsewhere.md");
     assert.equal(
       observe("r-outpool", bash(`cat ${readPath}`)).classification,
-      observe("r-outpool", { name: "Read", input: { file_path: readPath } }).classification,
+      observe("r-outpool", { name: "Read", input: { file_path: readPath } }).classification
     );
     assert.equal(observe("r-outpool", bash(`cat ${readPath}`)).classification, "external-source");
     assert.equal(observe("r-outpool", bash(`tail -20 ${readPath}`)).classification, "external-source");
@@ -208,7 +297,10 @@ test("engines: a Bash cat/tail of a real file classifies the same as an equivale
 
     // a compound command (pipe) never becomes evidence — it is not one of the closed shapes,
     // and with nothing else in the turn the chain does not even form, so nothing is classified
-    const [noChain] = extractReviewedMissChains(session("r-outpool", ["served-one"], bash(`cat ${readPath} | wc -l`)), "s.jsonl");
+    const [noChain] = extractReviewedMissChains(
+      session("r-outpool", ["served-one"], bash(`cat ${readPath} | wc -l`)),
+      "s.jsonl"
+    );
     assert.equal(noChain, undefined);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -216,7 +308,10 @@ test("engines: a Bash cat/tail of a real file classifies the same as an equivale
 });
 
 test("engines: without --events or --vault nothing can be claimed", async () => {
-  const [chain] = extractReviewedMissChains(session("r-inpool", ["served-one"], { name: "mcp__bastra-recall__load_memory", input: { id: "deep-two" } }), "s.jsonl");
+  const [chain] = extractReviewedMissChains(
+    session("r-inpool", ["served-one"], { name: "mcp__bastra-recall__load_memory", input: { id: "deep-two" } }),
+    "s.jsonl"
+  );
   const bare: ObservationEngines = { pools: null, vaultRoot: null, snapshot: null, labels: new Map() };
   const built = assembleObservation(chain, bare);
   assert.equal(built.pool, null);
@@ -227,9 +322,15 @@ test("engines: without --events or --vault nothing can be claimed", async () => 
 test("engines: a reviewer label turns an external read into a vault gap only against a checked snapshot", async () => {
   const { dir, engines } = await fixture();
   try {
-    const [chain] = extractReviewedMissChains(session("r-outpool", ["served-one"], { name: "Read", input: { file_path: join(dir, "repo", "README.md") } }), "s.jsonl");
+    const [chain] = extractReviewedMissChains(
+      session("r-outpool", ["served-one"], { name: "Read", input: { file_path: join(dir, "repo", "README.md") } }),
+      "s.jsonl"
+    );
     assert.equal(observeChain(chain, engines).classification, "external-source");
-    const labelled = { ...engines, labels: parseReviewerLabels(line({ ref: hash("recall_id:r-outpool"), durable: true }) + "\n") };
+    const labelled = {
+      ...engines,
+      labels: parseReviewerLabels(line({ ref: hash("recall_id:r-outpool"), durable: true }) + "\n"),
+    };
     assert.equal(observeChain(chain, labelled).classification, "vault-gap");
     const unsnapshotted = { ...labelled, vaultRoot: null, snapshot: null };
     assert.equal(observeChain(chain, unsnapshotted).classification, "unknown");
@@ -256,7 +357,10 @@ test("cues: proposals carry the clear target, the intent terms and distinct-sess
     assert.equal(proposal.episodes[0].poolDepth, 2);
     assert.equal(proposal.confidence, null);
     // an external read proposes nothing
-    const [external] = extractReviewedMissChains(session("r-outpool", ["served-one"], { name: "Read", input: { file_path: join(dir, "x.md") } }), "s.jsonl");
+    const [external] = extractReviewedMissChains(
+      session("r-outpool", ["served-one"], { name: "Read", input: { file_path: join(dir, "x.md") } }),
+      "s.jsonl"
+    );
     assert.deepEqual(deriveCueProposals([{ chain: external, record: observeChain(external, engines) }], engines), []);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -268,20 +372,45 @@ test("cli: the accounting line names absent engines, and proposals are written o
   const script = resolve(import.meta.dirname, "..", "scripts", "harvest-reviewed-misses.ts");
   try {
     const sessionFile = join(dir, "session.jsonl");
-    await writeFile(sessionFile, session("r-inpool", ["served-one"], { name: "mcp__bastra-recall__load_memory", input: { id: "deep-two" } }) + "\n");
+    await writeFile(
+      sessionFile,
+      session("r-inpool", ["served-one"], { name: "mcp__bastra-recall__load_memory", input: { id: "deep-two" } }) + "\n"
+    );
     const bare = spawnSync(process.execPath, ["--import", "tsx", script, sessionFile], { encoding: "utf8" });
     assert.equal(bare.status, 0, bare.stderr);
-    const bareReport = JSON.parse(bare.stderr.trim().split("\n").pop() ?? "{}") as { observed: { by_class: { transcript: Record<string, number> } }; engines: Record<string, string> };
+    const bareReport = JSON.parse(bare.stderr.trim().split("\n").pop() ?? "{}") as {
+      observed: { by_class: { transcript: Record<string, number> } };
+      engines: Record<string, string>;
+    };
     assert.equal(bareReport.observed.by_class.transcript.unknown, 1);
     assert.equal(bareReport.engines.pool_join, "absent");
     assert.equal(bareReport.engines.vault_snapshot, "absent");
 
     const proposals = join(dir, "proposals.json");
     const queue = join(dir, "queue.json");
-    const full = spawnSync(process.execPath, ["--import", "tsx", script, "--events", events, "--vault", vault, "--out", queue, "--proposals", proposals, sessionFile], { encoding: "utf8" });
+    const full = spawnSync(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        script,
+        "--events",
+        events,
+        "--vault",
+        vault,
+        "--out",
+        queue,
+        "--proposals",
+        proposals,
+        sessionFile,
+      ],
+      { encoding: "utf8" }
+    );
     assert.equal(full.status, 0, full.stderr);
     assert.equal(full.stdout, "");
-    const report = JSON.parse(full.stderr.trim().split("\n").pop() ?? "{}") as { observed: { by_class: { transcript: Record<string, number> }; proposals: { targets: number } } };
+    const report = JSON.parse(full.stderr.trim().split("\n").pop() ?? "{}") as {
+      observed: { by_class: { transcript: Record<string, number> }; proposals: { targets: number } };
+    };
     assert.equal(report.observed.by_class.transcript["in-pool-not-selected"], 1);
     assert.equal(report.observed.proposals.targets, 1);
     const written = JSON.parse(await readFile(queue, "utf8")) as Array<{ classification: string }>;
@@ -302,33 +431,55 @@ import { pseudonymousSession } from "../src/telemetry-dimensions.js";
 // The daemon's own shapes: a `load_memory` stamps `session_id` with the daemon
 // run and carries no client session; a recall carries the client session as
 // its pseudonym in `dimensions.experiment_session`.
-function loadEvent(id: string, ts: string, run: string, link: { from_hook_recall?: string; follows_recall?: string; hook_hint_rank?: number } = {}, found = true): string {
+function loadEvent(
+  id: string,
+  ts: string,
+  run: string,
+  link: { from_hook_recall?: string; follows_recall?: string; hook_hint_rank?: number } = {},
+  found = true
+): string {
   return line({ kind: "load_memory", ts, session_id: run, id, found, ...link });
 }
 
 function eventIn(recallId: string, ts: string, session: string, poolIds: string[], hits: string[]): string {
-  return JSON.stringify({ ...JSON.parse(event(recallId, ts, poolIds, hits)), session_id: session, dimensions: { experiment_session: pseudonymousSession(session) } });
+  return JSON.stringify({
+    ...JSON.parse(event(recallId, ts, poolIds, hits)),
+    session_id: session,
+    dimensions: { experiment_session: pseudonymousSession(session) },
+  });
 }
 
-async function hookFixture(): Promise<{ dir: string; engines: ObservationEngines; telemetry: Awaited<ReturnType<typeof loadTelemetry>> }> {
+async function hookFixture(): Promise<{
+  dir: string;
+  engines: ObservationEngines;
+  telemetry: Awaited<ReturnType<typeof loadTelemetry>>;
+}> {
   const { dir, vault, events } = await fixture();
   const later = new Date(Date.now() + 3_600_000).toISOString();
   const t = (min: number) => new Date(Date.now() + 3_600_000 + min * 60_000).toISOString();
-  await writeFile(join(events, "events-2026-09-14.jsonl"), [
-    eventIn("h-1", later, "s1", ["served-one", "deep-two"], ["served-one"]),
-    eventIn("h-2", later, "s2", ["served-one", "deep-two"], ["served-one"]),
-    eventIn("h-3", later, "s3", ["served-one", "deep-two", "far-three"], ["served-one"]),
-    loadEvent("served-one", t(1), "s1", { from_hook_recall: "h-1", hook_hint_rank: 1 }),
-    loadEvent("deep-two", t(2), "s1", { follows_recall: "h-1" }),
-    loadEvent("far-three", t(1), "s2", { from_hook_recall: "h-2" }),
-    loadEvent("served-one", t(1), "s3", { from_hook_recall: "h-3", hook_hint_rank: 1 }),
-    loadEvent("deep-two", t(2), "s3", { follows_recall: "h-3" }),
-    loadEvent("deep-two", t(5), "s4"),
-    loadEvent("deep-two", t(5), "s5", { from_hook_recall: "h-nope" }),
-    loadEvent("gone", t(6), "s5", { from_hook_recall: "h-1" }, false),
-  ].join("\n") + "\n");
+  await writeFile(
+    join(events, "events-2026-09-14.jsonl"),
+    [
+      eventIn("h-1", later, "s1", ["served-one", "deep-two"], ["served-one"]),
+      eventIn("h-2", later, "s2", ["served-one", "deep-two"], ["served-one"]),
+      eventIn("h-3", later, "s3", ["served-one", "deep-two", "far-three"], ["served-one"]),
+      loadEvent("served-one", t(1), "s1", { from_hook_recall: "h-1", hook_hint_rank: 1 }),
+      loadEvent("deep-two", t(2), "s1", { follows_recall: "h-1" }),
+      loadEvent("far-three", t(1), "s2", { from_hook_recall: "h-2" }),
+      loadEvent("served-one", t(1), "s3", { from_hook_recall: "h-3", hook_hint_rank: 1 }),
+      loadEvent("deep-two", t(2), "s3", { follows_recall: "h-3" }),
+      loadEvent("deep-two", t(5), "s4"),
+      loadEvent("deep-two", t(5), "s5", { from_hook_recall: "h-nope" }),
+      loadEvent("gone", t(6), "s5", { from_hook_recall: "h-1" }, false),
+    ].join("\n") + "\n"
+  );
   const telemetry = await loadTelemetry(events);
-  const engines: ObservationEngines = { pools: telemetry.pools, vaultRoot: vault, snapshot: await snapshotVault(vault), labels: new Map() };
+  const engines: ObservationEngines = {
+    pools: telemetry.pools,
+    vaultRoot: vault,
+    snapshot: await snapshotVault(vault),
+    labels: new Map(),
+  };
   return { dir, engines, telemetry };
 }
 
@@ -337,11 +488,21 @@ test("hook lane: telemetry alone classifies daemon-joined loads with the same cl
   try {
     const { records, gaps } = observeHookLane(telemetry, engines);
     const byClass = records.map((r) => r.classification).sort();
-    assert.deepEqual(byClass, ["genuine-out-of-pool", "in-pool-not-selected", "in-pool-not-selected", "served-hit", "served-hit"]);
+    assert.deepEqual(byClass, [
+      "genuine-out-of-pool",
+      "in-pool-not-selected",
+      "in-pool-not-selected",
+      "served-hit",
+      "served-hit",
+    ]);
     assert.ok(records.every((r) => r.lane === "hook" && r.intentSource === "hook-query"));
     assert.doesNotMatch(JSON.stringify(records), /deep-two|far-three|served-one|h-1|"s1"/);
     // the join ceiling is visible: every gap kind is counted, none classified
-    assert.deepEqual(gaps.map((g) => g.kind).sort(), ["link-without-pool", "load-not-found", "load-without-recall-link"]);
+    assert.deepEqual(gaps.map((g) => g.kind).sort(), [
+      "link-without-pool",
+      "load-not-found",
+      "load-without-recall-link",
+    ]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -351,7 +512,10 @@ test("hook lane bite: a renamed join field turns classified loads into a den, no
   const { dir, engines, telemetry } = await hookFixture();
   try {
     // an unlinked load has no client session either: only its daemon run can witness the repeat
-    const broken = { ...telemetry, loads: telemetry.loads.map((l) => ({ ...l, fromHookRecall: null, followsRecall: null, session: null })) };
+    const broken = {
+      ...telemetry,
+      loads: telemetry.loads.map((l) => ({ ...l, fromHookRecall: null, followsRecall: null, session: null })),
+    };
     const { records, gaps } = observeHookLane(broken, engines);
     assert.equal(records.length, 0);
     const den = dens(gaps).find((d) => d.kind === "load-without-recall-link");
@@ -367,7 +531,9 @@ test("heatmap and hot paths: hubs and never-loaded are densities, edges need dis
   try {
     const rows = heatmap(telemetry, { hubSessions: 3 });
     const served = rows.find((r) => r.memoryId === "served-one");
-    assert.ok(served && served.hub && served.surfacedSessions === 3 && served.servedHit === 2 && !served.surfacedNeverLoaded);
+    assert.ok(
+      served && served.hub && served.surfacedSessions === 3 && served.servedHit === 2 && !served.surfacedNeverLoaded
+    );
     assert.deepEqual(served?.loadedAtRank, [1, 1]);
     const deep = rows.find((r) => r.memoryId === "deep-two");
     assert.ok(deep && !deep.hub && deep.inPoolBelowServed >= 2 && deep.loaded === 4, JSON.stringify(deep));
@@ -397,9 +563,36 @@ test("cli: --hook-lane needs no sessions and the report keeps coverage, observed
   const script = resolve(import.meta.dirname, "..", "scripts", "harvest-reviewed-misses.ts");
   try {
     const evidence = join(dir, "evidence.json");
-    const run = spawnSync(process.execPath, ["--import", "tsx", script, "--hook-lane", "--events", join(dir, "events"), "--vault", engines.vaultRoot ?? "", "--out", join(dir, "q.json"), "--evidence", evidence], { encoding: "utf8" });
+    const run = spawnSync(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        script,
+        "--hook-lane",
+        "--events",
+        join(dir, "events"),
+        "--vault",
+        engines.vaultRoot ?? "",
+        "--out",
+        join(dir, "q.json"),
+        "--evidence",
+        evidence,
+      ],
+      { encoding: "utf8" }
+    );
     assert.equal(run.status, 0, run.stderr);
-    const report = JSON.parse(run.stderr.trim().split("\n").pop() ?? "{}") as { coverage: Record<string, number>; observed: { by_class: { hook: Record<string, number> }; live_classes: string[]; observed_thin: string[]; hubs: number }; gaps: Array<{ kind: string; verdict: string }>; engines: Record<string, string> };
+    const report = JSON.parse(run.stderr.trim().split("\n").pop() ?? "{}") as {
+      coverage: Record<string, number>;
+      observed: {
+        by_class: { hook: Record<string, number> };
+        live_classes: string[];
+        observed_thin: string[];
+        hubs: number;
+      };
+      gaps: Array<{ kind: string; verdict: string }>;
+      engines: Record<string, string>;
+    };
     assert.equal(report.coverage.sessions_scanned, 0);
     assert.equal(report.coverage.telemetry_loads, 8);
     assert.equal(report.observed.by_class.hook["in-pool-not-selected"], 2);
@@ -443,11 +636,19 @@ test("invariant: hook-lane misses feed proposals, hubs are flagged, hashes leak 
   try {
     const { records, chains } = observeHookLane(telemetry, engines);
     const pairs = records.map((record, index) => ({ chain: chains[index], record }));
-    const hubs = new Set(heatmap(telemetry, { hubSessions: 3 }).filter((r) => r.hub).map((r) => r.memoryId));
+    const hubs = new Set(
+      heatmap(telemetry, { hubSessions: 3 })
+        .filter((r) => r.hub)
+        .map((r) => r.memoryId)
+    );
     const proposals = deriveCueProposals(pairs, engines, new Date("2026-09-14T00:00:00.000Z"), hubs);
-    assert.deepEqual(proposals.map((p) => [p.targetId, p.support, p.hub]).sort(), [["deep-two", 2, false], ["far-three", 1, false]]);
+    assert.deepEqual(proposals.map((p) => [p.targetId, p.support, p.hub]).sort(), [
+      ["deep-two", 2, false],
+      ["far-three", 1, false],
+    ]);
     const queue = JSON.stringify(records);
-    for (const clear of ["served-one", "deep-two", "far-three", "h-1", "h-2", "h-3", '"s1"']) assert.doesNotMatch(queue, new RegExp(clear));
+    for (const clear of ["served-one", "deep-two", "far-three", "h-1", "h-2", "h-3", '"s1"'])
+      assert.doesNotMatch(queue, new RegExp(clear));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -455,13 +656,20 @@ test("invariant: hook-lane misses feed proposals, hubs are flagged, hashes leak 
 
 test("live specimens: real hashed observations replay to their recorded class, and a tampered pool moves them", async () => {
   const path = fileURLToPath(new URL("../__fixtures__/reviewed-miss-harvest/live-specimens.jsonl", import.meta.url));
-  const specimens = (await readFile(path, "utf8")).split("\n").filter(Boolean).map((l) => JSON.parse(l) as Specimen);
+  const specimens = (await readFile(path, "utf8"))
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => JSON.parse(l) as Specimen);
   assert.ok(specimens.length >= 4, "the fixture holds at least four live specimens");
   const text = await readFile(path, "utf8");
   assert.doesNotMatch(text, /"query"|\/Users\/|\/home\//);
   const seen = new Set<string>();
   for (const specimen of specimens) {
-    assert.equal(classifyReviewedMissObservation(specimen.observation), specimen.classification, specimen.lane + ":" + specimen.classification);
+    assert.equal(
+      classifyReviewedMissObservation(specimen.observation),
+      specimen.classification,
+      specimen.lane + ":" + specimen.classification
+    );
     seen.add(specimen.classification);
     if (specimen.observation.target.kind === "vault-object" && specimen.observation.pool) {
       // revert-check on the real shape: flip the one proof the class rests on and the class must move
@@ -469,7 +677,10 @@ test("live specimens: real hashed observations replay to their recorded class, a
       const flipped = structuredClone(specimen.observation);
       if (specimen.classification === "served-hit") {
         flipped.pool!.servedCandidateIds = flipped.pool!.servedCandidateIds.filter((id) => id !== target);
-        assert.ok(["in-pool-not-selected", "genuine-out-of-pool"].includes(classifyReviewedMissObservation(flipped)), "unserved hit becomes a miss");
+        assert.ok(
+          ["in-pool-not-selected", "genuine-out-of-pool"].includes(classifyReviewedMissObservation(flipped)),
+          "unserved hit becomes a miss"
+        );
       } else {
         flipped.pool!.servedCandidateIds = [...flipped.pool!.servedCandidateIds, target];
         assert.equal(classifyReviewedMissObservation(flipped), "served-hit", "served miss becomes a hit");
@@ -485,14 +696,30 @@ test("live specimens: real hashed observations replay to their recorded class, a
         durable.target.reviewerDurable = true;
         durable.target.vaultChecked = { snapshotId: hash("vault:checked"), idCount: 1 };
       }
-      assert.equal(classifyReviewedMissObservation(durable), "vault-gap", "a durable label against a checked snapshot turns the read into a vault gap");
+      assert.equal(
+        classifyReviewedMissObservation(durable),
+        "vault-gap",
+        "a durable label against a checked snapshot turns the read into a vault gap"
+      );
     }
   }
   // fixture-only classes are named, not assumed: this list is the current live coverage
   const fixtureOnly = REVIEWED_MISS_CLASSES.filter((cls) => !seen.has(cls));
   assert.deepEqual(fixtureOnly, ["unindexed-vault-object", "vault-gap"]);
   // specimensOf keeps one per (lane, class) and drops nothing else
-  assert.equal(specimensOf(specimens.map((s) => ({ lane: s.lane, classification: s.classification, observation: s.observation, sessionRef: s.provenance.sessionRef, recallRef: s.provenance.recallRef })), { harvested_at: "x", window_days: 8 }).length, specimens.length);
+  assert.equal(
+    specimensOf(
+      specimens.map((s) => ({
+        lane: s.lane,
+        classification: s.classification,
+        observation: s.observation,
+        sessionRef: s.provenance.sessionRef,
+        recallRef: s.provenance.recallRef,
+      })),
+      { harvested_at: "x", window_days: 8 }
+    ).length,
+    specimens.length
+  );
 });
 
 test("a vault reached through a symlink is still the vault", async () => {
@@ -506,10 +733,17 @@ test("a vault reached through a symlink is still the vault", async () => {
     await symlink(vault, link);
     const viaLink: ObservationEngines = { ...engines, vaultRoot: link };
     const [chain] = extractReviewedMissChains(
-      session("r-inpool", ["served-one"], { name: "Read", input: { file_path: join(vault, "memories", "served-one.md") } }),
-      "s.jsonl",
+      session("r-inpool", ["served-one"], {
+        name: "Read",
+        input: { file_path: join(vault, "memories", "served-one.md") },
+      }),
+      "s.jsonl"
     );
-    assert.equal(observeChain(chain, viaLink).classification, "served-hit", "the read lands inside the vault, not outside it");
+    assert.equal(
+      observeChain(chain, viaLink).classification,
+      "served-hit",
+      "the read lands inside the vault, not outside it"
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -523,9 +757,13 @@ test("a cue proposal resolves a Bash read the same way it resolves a Read", asyn
   try {
     const path = join(vault, "memories", "served-one.md");
     const [viaRead] = extractReviewedMissChains(
-      session("r-inpool", ["served-one"], { name: "Read", input: { file_path: path } }), "s.jsonl");
+      session("r-inpool", ["served-one"], { name: "Read", input: { file_path: path } }),
+      "s.jsonl"
+    );
     const [viaBash] = extractReviewedMissChains(
-      session("r-inpool", ["served-one"], { name: "Bash", input: { command: `cat ${path}` } }), "s.jsonl");
+      session("r-inpool", ["served-one"], { name: "Bash", input: { command: `cat ${path}` } }),
+      "s.jsonl"
+    );
     assert.equal(viaBash.evidence.kind, "bash-read", "the fixture really goes through Bash");
     assert.equal(resolvedMemoryId(viaBash, engines), resolvedMemoryId(viaRead, engines));
     assert.equal(resolvedMemoryId(viaBash, engines), "served-one");
@@ -550,14 +788,27 @@ test("a symlinked vault resolves to its memory when the snapshot is taken the wa
     const link = join(dir, "vault-link");
     await symlinkAt(vault, link);
     const pools = await loadTelemetryPools(events);
-    const cliWay = async (root: string): Promise<ObservationEngines> =>
-      ({ pools, vaultRoot: resolve(root), snapshot: await snapshotVault(root), labels: new Map() });
-    const read = (path: string) => extractReviewedMissChains(
-      session("r-inpool", ["served-one"], { name: "Read", input: { file_path: path } }), "s.jsonl")[0];
+    const cliWay = async (root: string): Promise<ObservationEngines> => ({
+      pools,
+      vaultRoot: resolve(root),
+      snapshot: await snapshotVault(root),
+      labels: new Map(),
+    });
+    const read = (path: string) =>
+      extractReviewedMissChains(
+        session("r-inpool", ["served-one"], { name: "Read", input: { file_path: path } }),
+        "s.jsonl"
+      )[0];
     // --vault is the link, the session read the real path
-    assert.equal(observeChain(read(join(vault, "memories", "served-one.md")), await cliWay(link)).classification, "served-hit");
+    assert.equal(
+      observeChain(read(join(vault, "memories", "served-one.md")), await cliWay(link)).classification,
+      "served-hit"
+    );
     // --vault is the real path, the session read through the link
-    assert.equal(observeChain(read(join(link, "memories", "served-one.md")), await cliWay(vault)).classification, "served-hit");
+    assert.equal(
+      observeChain(read(join(link, "memories", "served-one.md")), await cliWay(vault)).classification,
+      "served-hit"
+    );
     // and the cue side agrees with the classifier
     assert.equal(resolvedMemoryId(read(join(link, "memories", "deep-two.md")), await cliWay(vault)), "deep-two");
   } finally {
@@ -574,16 +825,37 @@ test("a memory rewritten after the observation is not reported as born after it"
   const { dir, vault, events } = await fixture();
   try {
     const file = join(vault, "memories", "old-four.md");
-    const body = ["---", "id: old-four", "title: old-four", "type: lesson", "scope: test", "summary: lesson old-four", "created: '1999-06-01'", "---", "", "body", ""].join("\n");
+    const body = [
+      "---",
+      "id: old-four",
+      "title: old-four",
+      "type: lesson",
+      "scope: test",
+      "summary: lesson old-four",
+      "created: '1999-06-01'",
+      "---",
+      "",
+      "body",
+      "",
+    ].join("\n");
     await writeFile(file + ".tmp", body);
     await rename(file + ".tmp", file); // birth time: now, i.e. after the 2000-01-01 observation
-    const engines: ObservationEngines = { pools: await loadTelemetryPools(events), vaultRoot: vault, snapshot: await snapshotVault(vault), labels: new Map() };
+    const engines: ObservationEngines = {
+      pools: await loadTelemetryPools(events),
+      vaultRoot: vault,
+      snapshot: await snapshotVault(vault),
+      labels: new Map(),
+    };
     const [chain] = extractReviewedMissChains(
-      session("r-before", ["served-one"], { name: "mcp__bastra-recall__load_memory", input: { id: "old-four" } }), "s.jsonl");
+      session("r-before", ["served-one"], { name: "mcp__bastra-recall__load_memory", input: { id: "old-four" } }),
+      "s.jsonl"
+    );
     assert.equal(observeChain(chain, engines).classification, "genuine-out-of-pool");
     // a memory with no declared creation keeps the birth-time answer (fixture: far-three)
     const [fresh] = extractReviewedMissChains(
-      session("r-before", ["served-one"], { name: "mcp__bastra-recall__load_memory", input: { id: "far-three" } }), "s.jsonl");
+      session("r-before", ["served-one"], { name: "mcp__bastra-recall__load_memory", input: { id: "far-three" } }),
+      "s.jsonl"
+    );
     assert.equal(observeChain(fresh, engines).classification, "unindexed-vault-object");
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -601,20 +873,62 @@ test("cli: one load after an MCP recall is one observation, not one per lane", a
   const script = resolve(import.meta.dirname, "..", "scripts", "harvest-reviewed-misses.ts");
   try {
     const later = new Date(Date.now() + 3_600_000 + 60_000).toISOString();
-    await writeFile(join(events, "events-2026-09-15.jsonl"), [
-      JSON.stringify({ ...JSON.parse(event("r-mcp", later, ["served-one", "deep-two"], ["served-one"])), kind: "recall", session_id: "run-1", dimensions: { experiment_session: pseudonymousSession("sess-1") } }),
-      loadEvent("deep-two", later, "run-1", { follows_recall: "r-mcp" }),
-    ].join("\n") + "\n");
+    await writeFile(
+      join(events, "events-2026-09-15.jsonl"),
+      [
+        JSON.stringify({
+          ...JSON.parse(event("r-mcp", later, ["served-one", "deep-two"], ["served-one"])),
+          kind: "recall",
+          session_id: "run-1",
+          dimensions: { experiment_session: pseudonymousSession("sess-1") },
+        }),
+        loadEvent("deep-two", later, "run-1", { follows_recall: "r-mcp" }),
+      ].join("\n") + "\n"
+    );
     const sessionFile = join(dir, "sess-1.jsonl");
-    await writeFile(sessionFile, session("r-mcp", ["served-one"], { name: "mcp__bastra-recall__load_memory", input: { id: "deep-two" } }) + "\n");
+    await writeFile(
+      sessionFile,
+      session("r-mcp", ["served-one"], { name: "mcp__bastra-recall__load_memory", input: { id: "deep-two" } }) + "\n"
+    );
     const proposals = join(dir, "proposals.json");
-    const run = spawnSync(process.execPath, ["--import", "tsx", script, "--hook-lane", "--events", events, "--vault", vault, "--out", join(dir, "q.json"), "--proposals", proposals, sessionFile], { encoding: "utf8" });
+    const run = spawnSync(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        script,
+        "--hook-lane",
+        "--events",
+        events,
+        "--vault",
+        vault,
+        "--out",
+        join(dir, "q.json"),
+        "--proposals",
+        proposals,
+        sessionFile,
+      ],
+      { encoding: "utf8" }
+    );
     assert.equal(run.status, 0, run.stderr);
-    const report = JSON.parse(run.stderr.trim().split("\n").pop() ?? "{}") as { observed: { by_class: { transcript: Record<string, number>; hook: Record<string, number> } } };
+    const report = JSON.parse(run.stderr.trim().split("\n").pop() ?? "{}") as {
+      observed: { by_class: { transcript: Record<string, number>; hook: Record<string, number> } };
+    };
     assert.equal(report.observed.by_class.transcript["in-pool-not-selected"], 1);
-    assert.equal(report.observed.by_class.hook["in-pool-not-selected"], 0, "the transcript lane already owns this load");
-    const written = JSON.parse(await readFile(proposals, "utf8")) as Array<{ targetId: string; support: number; episodes: unknown[] }>;
-    assert.deepEqual(written.map((p) => [p.targetId, p.episodes.length, p.support]), [["deep-two", 1, 1]]);
+    assert.equal(
+      report.observed.by_class.hook["in-pool-not-selected"],
+      0,
+      "the transcript lane already owns this load"
+    );
+    const written = JSON.parse(await readFile(proposals, "utf8")) as Array<{
+      targetId: string;
+      support: number;
+      episodes: unknown[];
+    }>;
+    assert.deepEqual(
+      written.map((p) => [p.targetId, p.episodes.length, p.support]),
+      [["deep-two", 1, 1]]
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -105,7 +105,13 @@ export class SessionBudgetLedger {
    * die Summe des fertigen Blocks; 0 heißt „nichts injiziert" und erzeugt
    * keine Entscheidung — es gab nichts zu entscheiden.
    */
-  charge(sessionId: string, lane: BudgetLane, tokens: number, budget: number, source?: string | null): BudgetShadowDecision | null {
+  charge(
+    sessionId: string,
+    lane: BudgetLane,
+    tokens: number,
+    budget: number,
+    source?: string | null
+  ): BudgetShadowDecision | null {
     if (!Number.isFinite(tokens) || tokens <= 0) return null;
     const row = this.row(sessionId);
     const before = row.spent;
@@ -174,7 +180,7 @@ export function recordBudgetShadow(
   sessionId: string | null | undefined,
   lane: BudgetLane,
   tokens: number,
-  opts: { source?: string | null; ledger?: SessionBudgetLedger; budget?: number } = {},
+  opts: { source?: string | null; ledger?: SessionBudgetLedger; budget?: number } = {}
 ): BudgetShadowDecision | null {
   if (typeof sessionId !== "string" || sessionId === "") return null;
   const ledger = opts.ledger ?? sessionBudget;
@@ -207,8 +213,13 @@ export async function budgetShadowWritesSettled(): Promise<void> {
  * Hook-Kontext, ist danach weg (Claude-Code-Doku, „What survives compaction").
  * `resume` stellt das Transkript unverändert wieder her.
  */
-export function resetBudgetOnSource(sessionId: string | null | undefined, source: string | null | undefined, ledger = sessionBudget): void {
-  if ((source === "clear" || source === "compact") && typeof sessionId === "string" && sessionId !== "") ledger.reset(sessionId);
+export function resetBudgetOnSource(
+  sessionId: string | null | undefined,
+  source: string | null | undefined,
+  ledger = sessionBudget
+): void {
+  if ((source === "clear" || source === "compact") && typeof sessionId === "string" && sessionId !== "")
+    ledger.reset(sessionId);
 }
 
 async function writeBudgetShadow(decision: BudgetShadowDecision): Promise<void> {

@@ -39,10 +39,7 @@ test("#354: eine Sitzung unter Budget wird nicht angefasst", () => {
 test("#354: was nach dem Budget kommt, fällt ganz — gekürzt wird nichts", () => {
   // 400 + 400 passen in 1000, die dritte Injektion (400) nicht mehr. Der
   // Governor kürzt keinen Eintrag; ein halber Beleg ist keiner.
-  const wi = governorWhatIf(
-    [injektion("s1", 400), injektion("s1", 400), injektion("s1", 400)],
-    [1000],
-  );
+  const wi = governorWhatIf([injektion("s1", 400), injektion("s1", 400), injektion("s1", 400)], [1000]);
   assert.equal(wi.rows[0].sessionsAffected, 1);
   assert.equal(wi.rows[0].emissionsTrimmed, 1);
   assert.equal(wi.rows[0].tokensTrimmed, 400);
@@ -51,10 +48,7 @@ test("#354: was nach dem Budget kommt, fällt ganz — gekürzt wird nichts", ()
 test("#354: eine spätere kleine Injektion passt noch, wenn die große fiel", () => {
   // Das ist der Unterschied zwischen „ab hier ist Schluss" und „was nicht
   // hineinpasst, fällt": Nach der zu großen 900 bleibt Platz für die 50.
-  const wi = governorWhatIf(
-    [injektion("s1", 400), injektion("s1", 900), injektion("s1", 50)],
-    [1000],
-  );
+  const wi = governorWhatIf([injektion("s1", 400), injektion("s1", 900), injektion("s1", 50)], [1000]);
   assert.equal(wi.rows[0].emissionsTrimmed, 1, "nur die 900 fällt");
   assert.equal(wi.rows[0].tokensTrimmed, 900);
 });
@@ -100,10 +94,7 @@ const recall = (id: string, fused = true): AnyEventLike => ({
   score_kind: fused ? "rrf" : "bm25",
 });
 
-const entscheid = (
-  recallId: string,
-  decisions: Array<Record<string, unknown>>,
-): AnyEventLike => ({
+const entscheid = (recallId: string, decisions: Array<Record<string, unknown>>): AnyEventLike => ({
   kind: "evidence_decision",
   ts: "2026-08-29T05:00:00.000Z",
   recall_id: recallId,
@@ -111,7 +102,9 @@ const entscheid = (
   decisions,
 });
 
-const decisionsOf = (e: AnyEventLike): Array<{
+const decisionsOf = (
+  e: AnyEventLike
+): Array<{
   memory_id: string;
   decision: string;
   abstain_reason?: string;
@@ -132,7 +125,12 @@ test("§18.2: der Entscheid schweigt, wo Legacy im optional-Band ausgespielt hä
   // required-Sicht gar nicht vorkam.
   const shadow = [
     entscheid("r1", [
-      { memory_id: "m1", decision: "no_answer", abstain_reason: "no_evidence", evidence: merkmale({ lexical_score: 60 }) },
+      {
+        memory_id: "m1",
+        decision: "no_answer",
+        abstain_reason: "no_evidence",
+        evidence: merkmale({ lexical_score: 60 }),
+      },
     ]),
   ];
   const d = noAnswerDivergence([recall("r1")], shadow, decisionsOf, 100, 30);
@@ -160,11 +158,26 @@ test("§18.2: gleiche Signatur über viele Memories ist EIN Befund, und die Brei
   // Muster, das man einmal erklärt — keine 468 Einzelfälle.
   const shadow = [
     entscheid("r1", [
-      { memory_id: "m1", decision: "no_answer", abstain_reason: "no_evidence", evidence: merkmale({ lexical_score: 60 }) },
-      { memory_id: "m2", decision: "no_answer", abstain_reason: "no_evidence", evidence: merkmale({ lexical_score: 70 }) },
+      {
+        memory_id: "m1",
+        decision: "no_answer",
+        abstain_reason: "no_evidence",
+        evidence: merkmale({ lexical_score: 60 }),
+      },
+      {
+        memory_id: "m2",
+        decision: "no_answer",
+        abstain_reason: "no_evidence",
+        evidence: merkmale({ lexical_score: 70 }),
+      },
     ]),
     entscheid("r2", [
-      { memory_id: "m1", decision: "no_answer", abstain_reason: "no_evidence", evidence: merkmale({ lexical_score: 55 }) },
+      {
+        memory_id: "m1",
+        decision: "no_answer",
+        abstain_reason: "no_evidence",
+        evidence: merkmale({ lexical_score: 55 }),
+      },
     ]),
   ];
   const d = noAnswerDivergence([recall("r1"), recall("r2")], shadow, decisionsOf, 100, 30);
@@ -176,8 +189,18 @@ test("§18.2: gleiche Signatur über viele Memories ist EIN Befund, und die Brei
 test("§18.2: unterschiedliche Merkmale sind unterschiedliche Signaturen", () => {
   const shadow = [
     entscheid("r1", [
-      { memory_id: "m1", decision: "no_answer", abstain_reason: "no_evidence", evidence: merkmale({ lexical_score: 60 }) },
-      { memory_id: "m2", decision: "no_answer", abstain_reason: "stale", evidence: merkmale({ lexical_score: 60, temporal_status: "expired" }) },
+      {
+        memory_id: "m1",
+        decision: "no_answer",
+        abstain_reason: "no_evidence",
+        evidence: merkmale({ lexical_score: 60 }),
+      },
+      {
+        memory_id: "m2",
+        decision: "no_answer",
+        abstain_reason: "stale",
+        evidence: merkmale({ lexical_score: 60, temporal_status: "expired" }),
+      },
     ]),
   ];
   const d = noAnswerDivergence([recall("r1")], shadow, decisionsOf, 100, 30);
@@ -188,7 +211,12 @@ test("§18.2: Einigkeit ist keine Abweichung", () => {
   const shadow = [
     entscheid("r1", [
       // Beide schweigen.
-      { memory_id: "m1", decision: "no_answer", abstain_reason: "no_evidence", evidence: merkmale({ lexical_score: 10 }) },
+      {
+        memory_id: "m1",
+        decision: "no_answer",
+        abstain_reason: "no_evidence",
+        evidence: merkmale({ lexical_score: 10 }),
+      },
       // Beide spielen aus.
       { memory_id: "m2", decision: "required", evidence: merkmale({ lexical_score: 150 }) },
     ]),
@@ -201,7 +229,12 @@ test("§18.2: Einigkeit ist keine Abweichung", () => {
 test("§18.2: unfusionierte Läufe zählen nicht — dort bandet Legacy nicht", () => {
   const shadow = [
     entscheid("r1", [
-      { memory_id: "m1", decision: "no_answer", abstain_reason: "no_evidence", evidence: merkmale({ lexical_score: 9999 }) },
+      {
+        memory_id: "m1",
+        decision: "no_answer",
+        abstain_reason: "no_evidence",
+        evidence: merkmale({ lexical_score: 9999 }),
+      },
     ]),
   ];
   const d = noAnswerDivergence([recall("r1", false)], shadow, decisionsOf, 100, 30);
@@ -211,7 +244,12 @@ test("§18.2: unfusionierte Läufe zählen nicht — dort bandet Legacy nicht", 
 test("§18.2: ein Entscheid ohne zugehörigen Recall wird als unbekannter Raum gezählt", () => {
   const shadow = [
     entscheid("verwaist", [
-      { memory_id: "m1", decision: "no_answer", abstain_reason: "no_evidence", evidence: merkmale({ lexical_score: 60 }) },
+      {
+        memory_id: "m1",
+        decision: "no_answer",
+        abstain_reason: "no_evidence",
+        evidence: merkmale({ lexical_score: 60 }),
+      },
     ]),
   ];
   const d = noAnswerDivergence([], shadow, decisionsOf, 100, 30);
@@ -264,13 +302,16 @@ test("C-085: eine dominante Sitzung kippt die Route, auch bei vielen Sitzungen",
   assert.equal(acc.sessions, 24, "die Zahl der Sitzungen allein wäre in Ordnung");
   assert.ok(acc.topSessionShare > 0.25);
   assert.equal(acc.route, null);
-  assert.ok(acc.missing.every((m) => !m.includes("sessions ")), "es fehlt nicht an Sitzungen");
+  assert.ok(
+    acc.missing.every((m) => !m.includes("sessions ")),
+    "es fehlt nicht an Sitzungen"
+  );
 });
 
 test("C-085: die Tage-Route bleibt unberührt von der Streuung", () => {
   // 14 Kalendertage, alles aus einer einzigen Sitzung: erreicht trotzdem.
   const events = Array.from({ length: 14 }, (_, i) =>
-    entscheidungen("s1", `2026-08-${String(i + 1).padStart(2, "0")}`, 3),
+    entscheidungen("s1", `2026-08-${String(i + 1).padStart(2, "0")}`, 3)
   );
   const acc = shadowAcceptance(events, zaehle);
   assert.equal(acc.days, 14);
@@ -304,8 +345,18 @@ test("#422: required-Abweichungen werden in beide Richtungen nach Signatur grupp
   const shadow = [
     entscheid("r1", [
       // Legacy required (Score 120), Entscheid nur optional — der Gate hält zurück.
-      { memory_id: "m1", decision: "optional", abstain_reason: "weak_evidence", evidence: merkmale({ lexical_score: 120, arm_agreement: true }) },
-      { memory_id: "m2", decision: "optional", abstain_reason: "weak_evidence", evidence: merkmale({ lexical_score: 130, arm_agreement: true }) },
+      {
+        memory_id: "m1",
+        decision: "optional",
+        abstain_reason: "weak_evidence",
+        evidence: merkmale({ lexical_score: 120, arm_agreement: true }),
+      },
+      {
+        memory_id: "m2",
+        decision: "optional",
+        abstain_reason: "weak_evidence",
+        evidence: merkmale({ lexical_score: 130, arm_agreement: true }),
+      },
       // Entscheid required, Legacy nur optional (Score 60) — der Gate befördert.
       { memory_id: "m3", decision: "required", evidence: merkmale({ lexical_score: 60, exact_identifier: true }) },
       // Einig — keine Abweichung.

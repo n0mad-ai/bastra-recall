@@ -33,7 +33,7 @@ async function snapshot(dir: string): Promise<Map<string, { hash: string; mtimeM
   const out = new Map<string, { hash: string; mtimeMs: number }>();
   const walk = async (current: string, prefix: string): Promise<void> => {
     for (const entry of (await readdir(current, { withFileTypes: true })).sort((a, b) =>
-      a.name.localeCompare(b.name),
+      a.name.localeCompare(b.name)
     )) {
       const full = join(current, entry.name);
       const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
@@ -99,15 +99,11 @@ test("a second identical import writes nothing and claims nothing", async (t) =>
     assert.equal(now.mtimeMs, then.mtimeMs, `${rel} was rewritten (mtime moved)`);
   }
 
-  assert.deepEqual(
-    await auditLines(vault),
-    auditBefore,
-    "a no-op run must append no audit event",
-  );
+  assert.deepEqual(await auditLines(vault), auditBefore, "a no-op run must append no audit event");
   assert.equal(
     await readFile(markerPath, "utf8"),
     markerBefore,
-    ".bastra-imported must stay stable while the imported set does",
+    ".bastra-imported must stay stable while the imported set does"
   );
 });
 
@@ -145,11 +141,7 @@ test("a changed source file is updated, and only that one", async (t) => {
   assert.equal(moved.length, 1, `exactly one file may change, changed: ${moved.join(", ")}`);
   assert.match(moved[0], /two/);
 
-  assert.equal(
-    (await auditLines(vault)).length,
-    auditBefore.length + 1,
-    "one audit event for the one real change",
-  );
+  assert.equal((await auditLines(vault)).length, auditBefore.length + 1, "one audit event for the one real change");
 });
 
 test("#530 follow-up: the marker mirrors a shrunk source set", async (t) => {
@@ -330,7 +322,7 @@ test("#530 follow-up: a memory is reported orphaned, not removed, when its sourc
   assert.deepEqual(
     await auditLines(vault),
     auditBefore,
-    "reporting an orphan must not itself create an audit event (no delete, no touch)",
+    "reporting an orphan must not itself create an audit event (no delete, no touch)"
   );
 });
 

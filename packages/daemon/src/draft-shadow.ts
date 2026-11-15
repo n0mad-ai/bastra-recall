@@ -28,19 +28,33 @@ export interface DraftVectorEntry {
   measured: boolean;
   vaultMeasured: boolean;
 }
-interface VectorCache { provider: string; dim: number; entries: Map<string, DraftVectorEntry>; decisions: Map<string, string> }
+interface VectorCache {
+  provider: string;
+  dim: number;
+  entries: Map<string, DraftVectorEntry>;
+  decisions: Map<string, string>;
+}
 export interface VaultVectorSnapshot {
   provider: string;
   dim: number;
   vectors: ReadonlyMap<string, Float32Array>;
 }
-export type DraftShadowEvent = ({
-  kind: "draft_repeat_shadow";
-  draft_id: string; other_draft_id: string; dice: number; cosine: number;
-} | {
-  kind: "draft_vault_shadow";
-  draft_id: string; memory_id: string | null; cosine: number; containment: number;
-}) & { provider_id?: string; dimensions?: number };
+export type DraftShadowEvent = (
+  | {
+      kind: "draft_repeat_shadow";
+      draft_id: string;
+      other_draft_id: string;
+      dice: number;
+      cosine: number;
+    }
+  | {
+      kind: "draft_vault_shadow";
+      draft_id: string;
+      memory_id: string | null;
+      cosine: number;
+      containment: number;
+    }
+) & { provider_id?: string; dimensions?: number };
 export interface DraftShadowOptions {
   /** The already resolved boot provider; no cloud factory/fallback on this path. */
   provider: EmbeddingProvider | null;
@@ -53,7 +67,11 @@ export interface DraftShadowOptions {
   now?: number;
 }
 export interface DraftShadowResult {
-  enabled: boolean; embedded: number; pairs: number; vaultMatches: number; errors: number;
+  enabled: boolean;
+  embedded: number;
+  pairs: number;
+  vaultMatches: number;
+  errors: number;
 }
 
 export { draftVectorsPath } from "./draft-store.js";
@@ -61,37 +79,62 @@ function quoteHash(quote: string): string {
   return createHash("sha256").update(quote).digest("hex");
 }
 function validVector(vector: Float32Array, dim: number): boolean {
-  return vector.length === dim && [...vector].every(Number.isFinite) && vector.some(value => value !== 0);
+  return vector.length === dim && [...vector].every(Number.isFinite) && vector.some((value) => value !== 0);
 }
 export function localDraftProvider(opts: DraftShadowOptions): EmbeddingProvider | null {
   if (!opts.provider || !opts.ollama || opts.provider.id !== `ollama-${opts.ollama.model}`) return null;
   try {
     const url = new URL(opts.ollama.baseURL);
-    if (!['http:', 'https:'].includes(url.protocol) || !isLoopbackHost(url.hostname.toLowerCase())) return null;
-  } catch { return null; }
+    if (!["http:", "https:"].includes(url.protocol) || !isLoopbackHost(url.hostname.toLowerCase())) return null;
+  } catch {
+    return null;
+  }
   return Number.isInteger(opts.provider.dim) && opts.provider.dim > 0 ? opts.provider : null;
 }
 async function loadCache(path: string): Promise<VectorCache | null> {
   try {
-      const text = readAppRecord("draft-vectors", path, JSON.parse);
-      if (Buffer.byteLength(text) > VECTOR_MAX_BYTES) return null;
-      const raw = JSON.parse(text);
-      if (raw.version !== 1 || typeof raw.provider !== "string" || !Number.isInteger(raw.dim) || raw.dim <= 0 || !Array.isArray(raw.rows)) return null;
-      const entries = new Map<string, DraftVectorEntry>();
-      for (const row of raw.rows.slice(-500)) {
-        if (!/^d-[a-f0-9]{12}$/.test(row?.id ?? '') || typeof row.fp !== 'string' || typeof row.quoteHash !== 'string' || typeof row.vector !== 'string') continue;
-        const bytes = Buffer.from(row.vector, "base64");
-        if (bytes.length !== raw.dim * 4) continue;
-        const vector = new Float32Array(raw.dim);
-        new Uint8Array(vector.buffer).set(bytes);
-        if (validVector(vector, raw.dim)) entries.set(row.id, { fp: row.fp, quoteHash: row.quoteHash, vector, measured: row.measured === true, vaultMeasured: row.vaultMeasured === true });
-      }
-      const decisions = new Map<string, string>();
-      for (const pair of Array.isArray(raw.decisions) ? raw.decisions.slice(-1000) : []) {
-        if (Array.isArray(pair) && /^[a-f0-9]{64}$/.test(pair[0]) && /^[a-f0-9]{64}$/.test(pair[1])) decisions.set(pair[0], pair[1]);
-      }
-      return { provider: raw.provider, dim: raw.dim, entries, decisions };
-  } catch { return null; }
+    const text = readAppRecord("draft-vectors", path, JSON.parse);
+    if (Buffer.byteLength(text) > VECTOR_MAX_BYTES) return null;
+    const raw = JSON.parse(text);
+    if (
+      raw.version !== 1 ||
+      typeof raw.provider !== "string" ||
+      !Number.isInteger(raw.dim) ||
+      raw.dim <= 0 ||
+      !Array.isArray(raw.rows)
+    )
+      return null;
+    const entries = new Map<string, DraftVectorEntry>();
+    for (const row of raw.rows.slice(-500)) {
+      if (
+        !/^d-[a-f0-9]{12}$/.test(row?.id ?? "") ||
+        typeof row.fp !== "string" ||
+        typeof row.quoteHash !== "string" ||
+        typeof row.vector !== "string"
+      )
+        continue;
+      const bytes = Buffer.from(row.vector, "base64");
+      if (bytes.length !== raw.dim * 4) continue;
+      const vector = new Float32Array(raw.dim);
+      new Uint8Array(vector.buffer).set(bytes);
+      if (validVector(vector, raw.dim))
+        entries.set(row.id, {
+          fp: row.fp,
+          quoteHash: row.quoteHash,
+          vector,
+          measured: row.measured === true,
+          vaultMeasured: row.vaultMeasured === true,
+        });
+    }
+    const decisions = new Map<string, string>();
+    for (const pair of Array.isArray(raw.decisions) ? raw.decisions.slice(-1000) : []) {
+      if (Array.isArray(pair) && /^[a-f0-9]{64}$/.test(pair[0]) && /^[a-f0-9]{64}$/.test(pair[1]))
+        decisions.set(pair[0], pair[1]);
+    }
+    return { provider: raw.provider, dim: raw.dim, entries, decisions };
+  } catch {
+    return null;
+  }
 }
 
 async function saveCache(path: string, cache: VectorCache): Promise<void> {
@@ -99,9 +142,21 @@ async function saveCache(path: string, cache: VectorCache): Promise<void> {
     deleteAppRecord("draft-vectors", path);
     return;
   }
-  const rows = [...cache.entries].map(([id, row]) => ({ id, fp: row.fp, quoteHash: row.quoteHash, measured: row.measured, vaultMeasured: row.vaultMeasured,
-    vector: Buffer.from(row.vector.buffer, row.vector.byteOffset, row.vector.byteLength).toString("base64") }));
-  const payload = JSON.stringify({ version: 1, provider: cache.provider, dim: cache.dim, rows, decisions: [...cache.decisions] });
+  const rows = [...cache.entries].map(([id, row]) => ({
+    id,
+    fp: row.fp,
+    quoteHash: row.quoteHash,
+    measured: row.measured,
+    vaultMeasured: row.vaultMeasured,
+    vector: Buffer.from(row.vector.buffer, row.vector.byteOffset, row.vector.byteLength).toString("base64"),
+  }));
+  const payload = JSON.stringify({
+    version: 1,
+    provider: cache.provider,
+    dim: cache.dim,
+    rows,
+    decisions: [...cache.decisions],
+  });
   if (Buffer.byteLength(payload) > VECTOR_MAX_BYTES) throw new Error("draft vector byte bound");
   writeAppRecord("draft-vectors", path, payload, JSON.parse);
 }
@@ -109,41 +164,62 @@ async function saveCache(path: string, cache: VectorCache): Promise<void> {
 /** Recheck under the draft writer lock: purge during an embedding request must
  * not resurrect a derived vector file after the user has deleted the drafts. */
 async function persistCache(path: string, cache: VectorCache, now?: number): Promise<void> {
-  await withPathLock(draftsPath(), async () => {
-    const current = new Map((await listDrafts(now)).map(row => [row.id, row]));
-    if (current.size === 0) cache.decisions.clear();
-    for (const [id, entry] of cache.entries) {
-      const row = current.get(id);
-      if (!row || row.fp !== entry.fp || quoteHash(row.quote) !== entry.quoteHash) cache.entries.delete(id);
-    }
-    await saveCache(path, cache);
-  }, { crossProcess: true });
+  await withPathLock(
+    draftsPath(),
+    async () => {
+      const current = new Map((await listDrafts(now)).map((row) => [row.id, row]));
+      if (current.size === 0) cache.decisions.clear();
+      for (const [id, entry] of cache.entries) {
+        const row = current.get(id);
+        if (!row || row.fp !== entry.fp || quoteHash(row.quote) !== entry.quoteHash) cache.entries.delete(id);
+      }
+      await saveCache(path, cache);
+    },
+    { crossProcess: true }
+  );
 }
 
 /** Pure comparisons, yielding between rows so background math does not monopolize hooks. */
 export async function compareDraftPairs(
-  drafts: Draft[], entries: ReadonlyMap<string, DraftVectorEntry>, pending: ReadonlySet<string>,
+  drafts: Draft[],
+  entries: ReadonlyMap<string, DraftVectorEntry>,
+  pending: ReadonlySet<string>,
   emit: (event: DraftShadowEvent) => void,
-  capturePair?: (pair: TrainingItem) => void, // #1128-capture
+  capturePair?: (pair: TrainingItem) => void // #1128-capture
 ): Promise<number> {
-  const grams = new Map(drafts.map(row => [row.id, bigramSet(row.quote)]));
-  const sessions = new Map(drafts.map(row => [row.id, new Set(row.evidence.map(e => e.session_id))]));
+  const grams = new Map(drafts.map((row) => [row.id, bigramSet(row.quote)]));
+  const sessions = new Map(drafts.map((row) => [row.id, new Set(row.evidence.map((e) => e.session_id))]));
   let count = 0;
   for (const row of drafts) {
     if (!pending.has(row.id)) continue;
     const a = entries.get(row.id);
     if (!a) continue;
     for (const other of drafts) {
-      if (row.id === other.id || pending.has(other.id) && row.id > other.id) continue;
-      if (other.evidence.some(e => sessions.get(row.id)!.has(e.session_id))) continue;
+      if (row.id === other.id || (pending.has(other.id) && row.id > other.id)) continue;
+      if (other.evidence.some((e) => sessions.get(row.id)!.has(e.session_id))) continue;
       const b = entries.get(other.id);
       if (!b) continue;
-      const left = grams.get(row.id), right = grams.get(other.id);
+      const left = grams.get(row.id),
+        right = grams.get(other.id);
       const lexical = left && right ? dice(left, right) : 0;
       const semantic = cosine(a.vector, b.vector);
       if (lexical >= DRAFT_SHADOW_DICE_MIN || semantic >= DRAFT_SHADOW_COSINE_MIN) {
-        emit({ kind: "draft_repeat_shadow", draft_id: row.id, other_draft_id: other.id, dice: lexical, cosine: semantic });
-        capturePair?.({ type: "relation", a: row.quote, b: other.quote, b_is: "statement", source: "draft_repeat_shadow", dice: lexical, cosine: semantic }); // #1128-capture
+        emit({
+          kind: "draft_repeat_shadow",
+          draft_id: row.id,
+          other_draft_id: other.id,
+          dice: lexical,
+          cosine: semantic,
+        });
+        capturePair?.({
+          type: "relation",
+          a: row.quote,
+          b: other.quote,
+          b_is: "statement",
+          source: "draft_repeat_shadow",
+          dice: lexical,
+          cosine: semantic,
+        }); // #1128-capture
         count++;
       }
     }
@@ -158,10 +234,13 @@ async function writeEvents(events: DraftShadowEvent[]): Promise<void> {
   await mkdir(dir, { recursive: true });
   const ts = new Date().toISOString();
   const path = join(dir, `events-${ts.slice(0, 10)}.jsonl`);
-  let buffer = '';
+  let buffer = "";
   for (const event of events) {
-    buffer += JSON.stringify({ ...event, ts, ...evalRunMark() }) + '\n';
-    if (buffer.length >= 64 * 1024) { await appendFile(path, buffer, "utf8"); buffer = ''; }
+    buffer += JSON.stringify({ ...event, ts, ...evalRunMark() }) + "\n";
+    if (buffer.length >= 64 * 1024) {
+      await appendFile(path, buffer, "utf8");
+      buffer = "";
+    }
   }
   if (buffer) await appendFile(path, buffer, "utf8");
 }
@@ -172,106 +251,181 @@ export async function runDraftShadow(opts: DraftShadowOptions): Promise<DraftSha
   const provider = localDraftProvider(opts);
   const path = draftVectorsPath();
   if (!provider) {
-    try { readAppRecord("draft-vectors", path, JSON.parse); } catch (error) {
+    try {
+      readAppRecord("draft-vectors", path, JSON.parse);
+    } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") result.errors++;
       return result;
     }
   }
   try {
-    return await withPathLock(path, async () => {
-      const allDrafts = await listDrafts(opts.now);
-      const drafts = allDrafts.filter(row => row.state === "open");
-      const byId = new Map(allDrafts.map(row => [row.id, row]));
-      let cache = await loadCache(path);
-      let dirty = false;
-      if (cache) for (const [id, entry] of cache.entries) {
-        const draft = byId.get(id);
-        if (!draft || draft.fp !== entry.fp || quoteHash(draft.quote) !== entry.quoteHash) { cache.entries.delete(id); dirty = true; }
-      }
-      if (!provider) {
-        if (cache && dirty) await persistCache(path, cache, opts.now);
-        return result;
-      }
-      result.enabled = true;
-      if (!cache || cache.provider !== provider.id || cache.dim !== provider.dim) {
-        cache = { provider: provider.id, dim: provider.dim, entries: new Map(), decisions: cache?.decisions ?? new Map() };
-        dirty = true;
-      }
-      const missing = allDrafts.filter(row => !cache!.entries.has(row.id));
-      for (let offset = 0; offset < missing.length; offset += EMBED_BATCH_SIZE) {
-        const batch = missing.slice(offset, offset + EMBED_BATCH_SIZE);
-        try {
-          const vectors = await provider.embed(batch.map(row => row.quote));
-          if (vectors.length !== batch.length || vectors.some(vector => !validVector(vector, provider.dim))) throw new Error("invalid draft vector");
-          for (let i = 0; i < batch.length; i++) cache.entries.set(batch[i].id, { fp: batch[i].fp, quoteHash: quoteHash(batch[i].quote), vector: vectors[i], measured: false, vaultMeasured: false });
-          result.embedded += batch.length;
-          dirty = true;
-        } catch { result.errors++; break; } // unavailable local model never undoes capture
-      }
-      const pending = new Set([...cache.entries].filter(([id, row]) => byId.get(id)?.state === "open" && !row.measured).map(([id]) => id));
-      const events: DraftShadowEvent[] = [];
-      const emit = (event: DraftShadowEvent): void => {
-        const record = { ...event, provider_id: cache!.provider, dimensions: cache!.dim };
-        if (opts.emit) opts.emit(record);
-        else events.push(record);
-      };
-      result.pairs = await compareDraftPairs(drafts, cache.entries, pending, emit, opts.capturePair);
-      const pendingVault = new Set([...cache.entries].filter(([id, row]) => byId.get(id)?.state === "open" && !row.vaultMeasured).map(([id]) => id));
-      const measuredVault: string[] = [];
-      const snapshot = opts.vault && pendingVault.size > 0 ? opts.vaultVectors?.() : null;
-      if (opts.vault && snapshot?.provider === provider.id && snapshot.dim === provider.dim) {
-        // snapshot() is a live map: copy immediately, before any subsequent await.
-        const vectors = new Map([...snapshot.vectors].filter(([, vector]) => validVector(vector, provider.dim)).map(([id, vector]) => [id, new Float32Array(vector)]));
-        const notes = new Map(opts.vault.list().map(memory => [memory.fm.id, memory]));
-        const score = storedQuoteScorer(opts.vault);
-        for (const id of pendingVault) {
-          const draft = byId.get(id), entry = cache.entries.get(id);
-          if (!draft || !entry) continue;
-          let nearest: { id: string; cosine: number } | null = null;
-          for (const [memoryId, vector] of vectors) {
-            if (!notes.has(memoryId) || !opts.vault.get(memoryId)) continue;
-            const value = cosine(entry.vector, vector);
-            if (!nearest || value > nearest.cosine) nearest = { id: memoryId, cosine: value };
+    return await withPathLock(
+      path,
+      async () => {
+        const allDrafts = await listDrafts(opts.now);
+        const drafts = allDrafts.filter((row) => row.state === "open");
+        const byId = new Map(allDrafts.map((row) => [row.id, row]));
+        let cache = await loadCache(path);
+        let dirty = false;
+        if (cache)
+          for (const [id, entry] of cache.entries) {
+            const draft = byId.get(id);
+            if (!draft || draft.fp !== entry.fp || quoteHash(draft.quote) !== entry.quoteHash) {
+              cache.entries.delete(id);
+              dirty = true;
+            }
           }
-          if (nearest) {
-            const privateNote = notes.get(nearest.id)!.fm.sensitivity === "private" || opts.vault.get(nearest.id)?.fm.sensitivity === "private";
-            emit({ kind: "draft_vault_shadow", draft_id: id, memory_id: privateNote ? null : nearest.id,
-              cosine: nearest.cosine, containment: score(draft.quote, nearest.id) });
-            // #1128-capture: a private note's text never reaches the label store.
-            if (!privateNote) opts.capturePair?.({ type: "relation", a: draft.quote, b: noteJudgeText(notes.get(nearest.id)!), b_is: "note", source: "draft_vault_shadow",
-              note_id: nearest.id, cosine: nearest.cosine, containment: score(draft.quote, nearest.id) });
-            result.vaultMatches++;
-            measuredVault.push(id);
-          }
-          await setImmediate();
+        if (!provider) {
+          if (cache && dirty) await persistCache(path, cache, opts.now);
+          return result;
         }
-      }
-      let written = true;
-      try { await writeEvents(events); } catch { result.errors++; written = false; }
-      if (written) {
-        for (const id of pending) { cache.entries.get(id)!.measured = true; dirty = true; }
-        for (const id of measuredVault) { cache.entries.get(id)!.vaultMeasured = true; dirty = true; }
-      }
-      if (dirty) await persistCache(path, cache, opts.now);
-      return result;
-    }, { crossProcess: true });
-  } catch { result.errors++; return result; } // no provider error bodies, quotes or commands in telemetry
+        result.enabled = true;
+        if (!cache || cache.provider !== provider.id || cache.dim !== provider.dim) {
+          cache = {
+            provider: provider.id,
+            dim: provider.dim,
+            entries: new Map(),
+            decisions: cache?.decisions ?? new Map(),
+          };
+          dirty = true;
+        }
+        const missing = allDrafts.filter((row) => !cache!.entries.has(row.id));
+        for (let offset = 0; offset < missing.length; offset += EMBED_BATCH_SIZE) {
+          const batch = missing.slice(offset, offset + EMBED_BATCH_SIZE);
+          try {
+            const vectors = await provider.embed(batch.map((row) => row.quote));
+            if (vectors.length !== batch.length || vectors.some((vector) => !validVector(vector, provider.dim)))
+              throw new Error("invalid draft vector");
+            for (let i = 0; i < batch.length; i++)
+              cache.entries.set(batch[i].id, {
+                fp: batch[i].fp,
+                quoteHash: quoteHash(batch[i].quote),
+                vector: vectors[i],
+                measured: false,
+                vaultMeasured: false,
+              });
+            result.embedded += batch.length;
+            dirty = true;
+          } catch {
+            result.errors++;
+            break;
+          } // unavailable local model never undoes capture
+        }
+        const pending = new Set(
+          [...cache.entries].filter(([id, row]) => byId.get(id)?.state === "open" && !row.measured).map(([id]) => id)
+        );
+        const events: DraftShadowEvent[] = [];
+        const emit = (event: DraftShadowEvent): void => {
+          const record = { ...event, provider_id: cache!.provider, dimensions: cache!.dim };
+          if (opts.emit) opts.emit(record);
+          else events.push(record);
+        };
+        result.pairs = await compareDraftPairs(drafts, cache.entries, pending, emit, opts.capturePair);
+        const pendingVault = new Set(
+          [...cache.entries]
+            .filter(([id, row]) => byId.get(id)?.state === "open" && !row.vaultMeasured)
+            .map(([id]) => id)
+        );
+        const measuredVault: string[] = [];
+        const snapshot = opts.vault && pendingVault.size > 0 ? opts.vaultVectors?.() : null;
+        if (opts.vault && snapshot?.provider === provider.id && snapshot.dim === provider.dim) {
+          // snapshot() is a live map: copy immediately, before any subsequent await.
+          const vectors = new Map(
+            [...snapshot.vectors]
+              .filter(([, vector]) => validVector(vector, provider.dim))
+              .map(([id, vector]) => [id, new Float32Array(vector)])
+          );
+          const notes = new Map(opts.vault.list().map((memory) => [memory.fm.id, memory]));
+          const score = storedQuoteScorer(opts.vault);
+          for (const id of pendingVault) {
+            const draft = byId.get(id),
+              entry = cache.entries.get(id);
+            if (!draft || !entry) continue;
+            let nearest: { id: string; cosine: number } | null = null;
+            for (const [memoryId, vector] of vectors) {
+              if (!notes.has(memoryId) || !opts.vault.get(memoryId)) continue;
+              const value = cosine(entry.vector, vector);
+              if (!nearest || value > nearest.cosine) nearest = { id: memoryId, cosine: value };
+            }
+            if (nearest) {
+              const privateNote =
+                notes.get(nearest.id)!.fm.sensitivity === "private" ||
+                opts.vault.get(nearest.id)?.fm.sensitivity === "private";
+              emit({
+                kind: "draft_vault_shadow",
+                draft_id: id,
+                memory_id: privateNote ? null : nearest.id,
+                cosine: nearest.cosine,
+                containment: score(draft.quote, nearest.id),
+              });
+              // #1128-capture: a private note's text never reaches the label store.
+              if (!privateNote)
+                opts.capturePair?.({
+                  type: "relation",
+                  a: draft.quote,
+                  b: noteJudgeText(notes.get(nearest.id)!),
+                  b_is: "note",
+                  source: "draft_vault_shadow",
+                  note_id: nearest.id,
+                  cosine: nearest.cosine,
+                  containment: score(draft.quote, nearest.id),
+                });
+              result.vaultMatches++;
+              measuredVault.push(id);
+            }
+            await setImmediate();
+          }
+        }
+        let written = true;
+        try {
+          await writeEvents(events);
+        } catch {
+          result.errors++;
+          written = false;
+        }
+        if (written) {
+          for (const id of pending) {
+            cache.entries.get(id)!.measured = true;
+            dirty = true;
+          }
+          for (const id of measuredVault) {
+            cache.entries.get(id)!.vaultMeasured = true;
+            dirty = true;
+          }
+        }
+        if (dirty) await persistCache(path, cache, opts.now);
+        return result;
+      },
+      { crossProcess: true }
+    );
+  } catch {
+    result.errors++;
+    return result;
+  } // no provider error bodies, quotes or commands in telemetry
 }
 
 /** Load the vector file once for a promotion pass, including legacy receipts. */
-export async function readDraftVectorState(opts: DraftShadowOptions, drafts: Draft[]): Promise<{ vectors: ReadonlyMap<string, Float32Array> | null; decisions: ReadonlyMap<string,string> }> {
+export async function readDraftVectorState(
+  opts: DraftShadowOptions,
+  drafts: Draft[]
+): Promise<{ vectors: ReadonlyMap<string, Float32Array> | null; decisions: ReadonlyMap<string, string> }> {
   const provider = localDraftProvider(opts);
   const cache = await loadCache(draftVectorsPath());
-  if (!provider || !cache || cache.provider !== provider.id || cache.dim !== provider.dim) return { vectors: null, decisions: cache?.decisions ?? new Map() };
+  if (!provider || !cache || cache.provider !== provider.id || cache.dim !== provider.dim)
+    return { vectors: null, decisions: cache?.decisions ?? new Map() };
   const vectors = new Map<string, Float32Array>();
   for (const draft of drafts) {
     const entry = cache.entries.get(draft.id);
-    if (entry && entry.fp === draft.fp && entry.quoteHash === quoteHash(draft.quote)) vectors.set(draft.id, entry.vector);
+    if (entry && entry.fp === draft.fp && entry.quoteHash === quoteHash(draft.quote))
+      vectors.set(draft.id, entry.vector);
   }
   return { vectors, decisions: cache.decisions };
 }
 
 /** Compatibility reader for callers that only need the same-model vectors. */
-export async function readDraftVectors(opts: DraftShadowOptions, drafts: Draft[]): Promise<ReadonlyMap<string, Float32Array> | null> {
+export async function readDraftVectors(
+  opts: DraftShadowOptions,
+  drafts: Draft[]
+): Promise<ReadonlyMap<string, Float32Array> | null> {
   return (await readDraftVectorState(opts, drafts)).vectors;
 }

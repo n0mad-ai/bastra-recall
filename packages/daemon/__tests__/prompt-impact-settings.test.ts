@@ -8,7 +8,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { getPromptImpactEnabled, setPromptImpactEnabled, PROMPT_IMPACT_DEFAULT } from "../src/code-graph/prompt-impact-settings.js";
+import {
+  getPromptImpactEnabled,
+  setPromptImpactEnabled,
+  PROMPT_IMPACT_DEFAULT,
+} from "../src/code-graph/prompt-impact-settings.js";
 import { readSettings } from "../src/settings.js";
 
 async function withTempFile<T>(fn: (path: string) => Promise<T>): Promise<T> {
@@ -44,14 +48,14 @@ test("BASTRA_PROMPT_IMPACT wins over the stored file in both directions", async 
     assert.equal(
       await getPromptImpactEnabled(path, { BASTRA_PROMPT_IMPACT: "off" }),
       false,
-      "env off must override a stored true",
+      "env off must override a stored true"
     );
 
     await setPromptImpactEnabled(false, path);
     assert.equal(
       await getPromptImpactEnabled(path, { BASTRA_PROMPT_IMPACT: "on" }),
       true,
-      "env on must override a stored false (or an absent file)",
+      "env on must override a stored false (or an absent file)"
     );
   });
 });
@@ -62,7 +66,7 @@ test("an unrecognized env value falls through to the file, not the default", asy
     assert.equal(
       await getPromptImpactEnabled(path, { BASTRA_PROMPT_IMPACT: "maybe" }),
       true,
-      "a typo must not silently disable a stored opt-in",
+      "a typo must not silently disable a stored opt-in"
     );
   });
 });

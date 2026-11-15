@@ -28,7 +28,7 @@ async function triggersOf(
   title: string,
   tags: string[],
   category: string,
-  recallWhen?: string[],
+  recallWhen?: string[]
 ): Promise<string[]> {
   const source = join(dir, file);
   await writeFile(source, "fake-bytes");
@@ -63,22 +63,19 @@ test("der abgeleitete Tag-Trigger traegt den Titel, statt nur die Kategorie zu w
       "afd-pitch-v2_2026-05-09.pdf",
       "afd-pitch-v2",
       ["sonstiges"],
-      "sonstiges",
+      "sonstiges"
     );
 
     // Der blanke Kategoriename darf nicht mehr als eigener Trigger dastehen.
     assert.equal(
       triggers.includes("sonstiges"),
       false,
-      `bare category still stands as a trigger: ${JSON.stringify(triggers)}`,
+      `bare category still stands as a trigger: ${JSON.stringify(triggers)}`
     );
     // Aber die Kategorie geht nicht verloren — sie wird nur unterscheidbar.
     const tagTrigger = triggers.find((t) => t.startsWith("sonstiges"));
     assert.ok(tagTrigger, `no tag-derived trigger at all: ${JSON.stringify(triggers)}`);
-    assert.ok(
-      tagTrigger.includes("afd-pitch-v2"),
-      `tag trigger does not name the document: ${tagTrigger}`,
-    );
+    assert.ok(tagTrigger.includes("afd-pitch-v2"), `tag trigger does not name the document: ${tagTrigger}`);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -96,7 +93,7 @@ test("zwei Dokumente derselben Kategorie bekommen verschiedene Trigger", async (
       "PHOTO-2026-01-27-13-24-26.jpg",
       "PHOTO-2026-01-27-13-24-26",
       ["foto", "bild", "unsortiert"],
-      "bild",
+      "bild"
     );
     const second = await triggersOf(
       vault,
@@ -104,16 +101,12 @@ test("zwei Dokumente derselben Kategorie bekommen verschiedene Trigger", async (
       "PHOTO-2026-01-27-16-34-01.jpg",
       "PHOTO-2026-01-27-16-34-01",
       ["foto", "bild", "unsortiert"],
-      "bild",
+      "bild"
     );
 
     // Genau das war der Befund: identische Tags, identischer Trigger.
     const shared = first.filter((t) => second.includes(t));
-    assert.deepEqual(
-      shared,
-      [],
-      `two documents share a trigger verbatim: ${JSON.stringify(shared)}`,
-    );
+    assert.deepEqual(shared, [], `two documents share a trigger verbatim: ${JSON.stringify(shared)}`);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -136,13 +129,13 @@ test("ein mitgeschickter Kategorie-Trigger wird ebenso qualifiziert wie ein abge
       "afd-pitch-v2",
       ["sonstiges"],
       "sonstiges",
-      ["nach Dokument suchen afd-pitch-v2", "sonstiges", "file afd-pitch-v2_2026-05-09"],
+      ["nach Dokument suchen afd-pitch-v2", "sonstiges", "file afd-pitch-v2_2026-05-09"]
     );
 
     assert.equal(
       triggers.includes("sonstiges"),
       false,
-      `a hand-written bare category survived: ${JSON.stringify(triggers)}`,
+      `a hand-written bare category survived: ${JSON.stringify(triggers)}`
     );
     // Die beiden dokumentspezifischen Trigger bleiben Wort für Wort erhalten.
     assert.ok(triggers.includes("nach Dokument suchen afd-pitch-v2"), JSON.stringify(triggers));
@@ -166,7 +159,7 @@ test("explizit uebergebene recall_when bleiben unangetastet", async () => {
       "Stromrechnung Januar",
       ["rechnung"],
       "finanzen",
-      own,
+      own
     );
 
     assert.deepEqual(triggers, own);

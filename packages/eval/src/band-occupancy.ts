@@ -23,14 +23,7 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import {
-  Vault,
-  SearchIndex,
-  EmbeddingIndex,
-  OllamaEmbeddingProvider,
-  RRF_K,
-  RRF_SCALE,
-} from "@bastra-recall/core";
+import { Vault, SearchIndex, EmbeddingIndex, OllamaEmbeddingProvider, RRF_K, RRF_SCALE } from "@bastra-recall/core";
 
 /** Same semantics as `daemon/src/env.ts`, replicated because `@bastra-recall/eval`
  *  depends on `core` only — pulling in `daemon` for two numbers is the larger
@@ -79,7 +72,9 @@ async function main(): Promise<void> {
   // at k=30 measures a call the hook cannot make — the very thing the --hops
   // switch below exists to stop doing. Higher values stay available on the flag
   // for the question "what does the tail look like", which is a different one.
-  const ks = arg("--k", "3,10").split(",").map((s) => Number.parseInt(s, 10));
+  const ks = arg("--k", "3,10")
+    .split(",")
+    .map((s) => Number.parseInt(s, 10));
   const outPath = arg("--out", "");
   // A BEIR corpus directory (corpus.jsonl + queries.jsonl) instead of a personal
   // vault. The occupancy of a band is a corpus property, so a number measured on
@@ -95,7 +90,11 @@ async function main(): Promise<void> {
     // Vault build copied from rrf-k-beir.ts, so both harnesses measure the same
     // documents the same way. No recall_when: a public corpus has no
     // author-written triggers and inventing them would test doc2query.
-    const slug = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const slug = (s: string): string =>
+      s
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
     const esc = (s: string): string => JSON.stringify(s.replace(/\s+/g, " ").trim());
     const corpus = (await fs.readFile(path.join(corpusDir, "corpus.jsonl"), "utf8"))
       .split("\n")
@@ -109,7 +108,7 @@ async function main(): Promise<void> {
         path.join(vaultRoot, "memories", `${id}.md`),
         `---\nid: ${id}\ntitle: ${esc(doc.title || id)}\ntype: reference\n` +
           `summary: ${esc((doc.text || "").slice(0, 200))}\ntopic_path: [beir]\ntags: [beir]\n` +
-          `scope: beir\nrecall_when: []\ncreated: 2020-01-01\nupdated: 2020-01-01\n---\n\n${doc.text ?? ""}\n`,
+          `scope: beir\nrecall_when: []\ncreated: 2020-01-01\nupdated: 2020-01-01\n---\n\n${doc.text ?? ""}\n`
       );
     }
     console.error(`corpus ${corpus.length} docs -> ${vaultRoot}`);
@@ -196,20 +195,20 @@ async function main(): Promise<void> {
 
   console.error(
     `vault ${vault.size()} memories, ${emb.size()} vectors, ${queries.length} queries` +
-      `, RRF_K=${RRF_K} RRF_SCALE=${RRF_SCALE.toFixed(2)}`,
+      `, RRF_K=${RRF_K} RRF_SCALE=${RRF_SCALE.toFixed(2)}`
   );
   // A band report that does not name its own cuts is unreadable the moment the
   // cuts are tunable — the reader cannot tell 30 from a raised floor.
   console.error(
     `  bands: floor ${FLOOR}${FLOOR === 30 ? "" : " (BASTRA_RECALL_FLOOR)"}` +
       `, must-load ${MUST_LOAD}${MUST_LOAD === 100 ? "" : " (BASTRA_MUST_LOAD_SCORE)"}` +
-      `, bash-fail ${BASH_FAIL_FLOOR}`,
+      `, bash-fail ${BASH_FAIL_FLOOR}`
   );
   // The inversion #302 shipped, printed so the bands can be read as ranks.
   for (const cut of [FLOOR, BASH_FAIL_FLOOR, MUST_LOAD]) {
     console.error(
       `  cut ${String(cut).padStart(3)} -> two-armed to rank ${Math.floor((2 * RRF_SCALE) / cut - RRF_K)}` +
-        `, one-armed to rank ${Math.floor(RRF_SCALE / cut - RRF_K)}`,
+        `, one-armed to rank ${Math.floor(RRF_SCALE / cut - RRF_K)}`
     );
   }
 
@@ -256,15 +255,15 @@ async function main(): Promise<void> {
     console.log(
       `  REQUIRED >=100   ${pct(req.length, r.length).padStart(6)}` +
         `   — ${pct(req.filter((x) => x.arms === 2).length, req.length)} found by BOTH arms` +
-        `, ${pct(req.filter((x) => x.arms === 1).length, req.length)} by one`,
+        `, ${pct(req.filter((x) => x.arms === 1).length, req.length)} by one`
     );
     console.log(
       `  OPTIONAL 30..99  ${pct(opt.length, r.length).padStart(6)}` +
-        `   — ${pct(opt.filter((x) => x.arms === 1).length, opt.length)} found by ONE arm`,
+        `   — ${pct(opt.filter((x) => x.arms === 1).length, opt.length)} found by ONE arm`
     );
     console.log(
       `  dropped   <30    ${pct(drop.length, r.length).padStart(6)}` +
-        `   — ${pct(drop.filter((x) => x.hop === "1-hop").length, drop.length)} of them one-hop neighbours`,
+        `   — ${pct(drop.filter((x) => x.hop === "1-hop").length, drop.length)} of them one-hop neighbours`
     );
     console.log(`  above bash-fail floor (>=50): ${pct(r.filter((x) => x.score >= BASH_FAIL_FLOOR).length, r.length)}`);
     const seeds = r.filter((x) => x.hop === "direct");
@@ -273,21 +272,20 @@ async function main(): Promise<void> {
       console.log(
         `  hits per query ${(r.length / queries.length).toFixed(1)} ` +
           `(${(seeds.length / queries.length).toFixed(1)} seeds + ${(neigh.length / queries.length).toFixed(1)} hops)` +
-          `   hop hits under the floor: ${pct(neigh.filter((x) => x.score < FLOOR).length, neigh.length)}`,
+          `   hop hits under the floor: ${pct(neigh.filter((x) => x.score < FLOOR).length, neigh.length)}`
       );
     }
     // Two different medians, labelled as what they are. The all-hits median is
     // NOT the median top hit — printing one under the other's name manufactures
     // a finding out of a column heading.
-    const med = (xs: number[]): number =>
-      xs.length ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] : 0;
+    const med = (xs: number[]): number => (xs.length ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] : 0);
     const perQuery = new Map<string, Row[]>();
     for (const x of r) perQuery.set(x.query, [...(perQuery.get(x.query) ?? []), x]);
     const tops = [...perQuery.values()].map((v) => Math.max(...v.map((x) => x.score)));
     console.log(
       `  score median over ALL served hits ${med(r.map((x) => x.score)).toFixed(1)}` +
         `   ·   median of each query's TOP hit ${med(tops).toFixed(1)}` +
-        `   ·   max ${Math.max(...r.map((x) => x.score), 0).toFixed(1)}`,
+        `   ·   max ${Math.max(...r.map((x) => x.score), 0).toFixed(1)}`
     );
     const allReq = [...perQuery.values()].filter((v) => v.every((x) => x.band === "required")).length;
     const anyOpt = [...perQuery.values()].filter((v) => v.some((x) => x.band === "optional")).length;
@@ -301,7 +299,7 @@ async function main(): Promise<void> {
   if (outPath) {
     await fs.writeFile(
       outPath,
-      JSON.stringify({ at: new Date().toISOString(), rrf_k: RRF_K, rrf_scale: RRF_SCALE, rows }, null, 2),
+      JSON.stringify({ at: new Date().toISOString(), rrf_k: RRF_K, rrf_scale: RRF_SCALE, rows }, null, 2)
     );
     console.error(`\nwrote ${outPath}`);
   }

@@ -13,7 +13,12 @@ import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { slugify } from "@bastra-recall/core";
-import { clientMemoryLines, findClientMemoryDirs, migrateClientLabels, type ClientMemoryEnv } from "../src/cli/client-memory.js";
+import {
+  clientMemoryLines,
+  findClientMemoryDirs,
+  migrateClientLabels,
+  type ClientMemoryEnv,
+} from "../src/cli/client-memory.js";
 import { importVault, IMPORT_ROOT } from "../src/import-vault.js";
 
 const CC_NOTE = `---
@@ -49,7 +54,7 @@ test("#674 — finds the Claude Code and Codex folders that hold notes, MEMORY.m
       [
         ["claude-code", "claude-code-projects-shop", 1, 1],
         ["codex", "codex", 1, 1],
-      ],
+      ]
     );
     const lines = clientMemoryLines(dirs);
     assert.match(lines[0], /claude-code: .* 1 note\(s\), 1 not in the vault yet/);
@@ -68,15 +73,27 @@ test("#674 — after the import the notes are no longer pending; a newer note is
     }
     assert.ok(existsSync(join(vault, IMPORT_ROOT, "claude-code-projects-shop", ".bastra-imported")));
     let dirs = await findClientMemoryDirs(vault, { home });
-    assert.deepEqual(dirs.map((d) => d.pending), [0, 0]);
-    assert.deepEqual(clientMemoryLines(dirs).filter((l) => l.includes("import clients")), []);
+    assert.deepEqual(
+      dirs.map((d) => d.pending),
+      [0, 0]
+    );
+    assert.deepEqual(
+      clientMemoryLines(dirs).filter((l) => l.includes("import clients")),
+      []
+    );
 
     const later = new Date(Date.now() + 60_000);
     const fresh = join(home, ".codex", "memories", "new.md");
     await writeFile(fresh, "# New\n\nA note written after the import.\n");
     await utimes(fresh, later, later);
     dirs = await findClientMemoryDirs(vault, { home });
-    assert.deepEqual(dirs.map((d) => [d.label, d.pending]), [["claude-code-projects-shop", 0], ["codex", 1]]);
+    assert.deepEqual(
+      dirs.map((d) => [d.label, d.pending]),
+      [
+        ["claude-code-projects-shop", 0],
+        ["codex", 1],
+      ]
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -109,7 +126,8 @@ test("#674 — doctor walks the folder the way the import does: subfolder notes 
     await writeFile(join(ccMem, "MEMORY.md"), "- [b](feedback/b.md)\n");
     for (const n of ["b", "c", "d"]) await writeFile(join(ccMem, "feedback", `${n}.md`), CC_NOTE);
     await writeFile(join(ccMem, ".hidden", "x.md"), CC_NOTE); // the import skips dotdirs
-    const find = async () => (await findClientMemoryDirs(vault, { home })).find((d) => d.label === "claude-code-projects-nested")!;
+    const find = async () =>
+      (await findClientMemoryDirs(vault, { home })).find((d) => d.label === "claude-code-projects-nested")!;
 
     let d = await find();
     assert.ok(d, "a folder whose notes all sit in subfolders is found");
@@ -140,7 +158,10 @@ test("a project opened in the home directory itself is labelled without the OS u
     }
     const labels = (await findClientMemoryDirs(null, { home })).map((d) => d.label);
     assert.deepEqual(labels, ["claude-code-home", "claude-code-projects-shop"]);
-    assert.ok(labels.every((l) => !l.includes("alice")), labels.join(", "));
+    assert.ok(
+      labels.every((l) => !l.includes("alice")),
+      labels.join(", ")
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -176,7 +197,12 @@ Releases come from main only. See [[feedback_no_silent_removals]].
 /** A real home path, so the old label is `claude-code-users-alice` (a temp
  *  path would run into the 80-character id cap); the folders sit in the temp
  *  dir through CLAUDE_CONFIG_DIR / CODEX_HOME. */
-async function homeFixture(): Promise<{ root: string; env: ClientMemoryEnv; vault: string; mem: (p: string) => string }> {
+async function homeFixture(): Promise<{
+  root: string;
+  env: ClientMemoryEnv;
+  vault: string;
+  mem: (p: string) => string;
+}> {
   const root = await mkdtemp(join(tmpdir(), "bastra-client-memory-"));
   const env = { home: "/Users/alice", claudeConfigDir: join(root, "claude"), codexHome: join(root, "codex") };
   const vault = join(root, "vault");
@@ -268,7 +294,10 @@ test("#1001 review — a renamed long id still rewrites links left in other note
     const oldId = slugify(`${d.previousLabel}-${LONG}`);
     const newId = slugify(`${d.label}-${LONG}`);
     const oldFile = join(oldDir, `${oldId}.md`);
-    await writeFile(oldFile, (await readFile(oldFile, "utf8")).replaceAll(d.previousLabel!, d.label).replaceAll(oldId, newId));
+    await writeFile(
+      oldFile,
+      (await readFile(oldFile, "utf8")).replaceAll(d.previousLabel!, d.label).replaceAll(oldId, newId)
+    );
     await rename(oldFile, join(oldDir, `${newId}.md`));
 
     const moved = await migrateClientLabels(vault, [d]);
@@ -334,7 +363,7 @@ test("#885 — ~/home leaves claude-code-home first, then the home directory mov
       [
         ["claude-code-home", false],
         ["claude-code-home-home", true],
-      ],
+      ]
     );
     for (const d of dirs) await importVault(vault, d.dir, { label: d.previousLabel });
 
@@ -344,7 +373,7 @@ test("#885 — ~/home leaves claude-code-home first, then the home directory mov
       [
         ["claude-code-home-home", true],
         ["claude-code-home", false], // its target is taken until ~/home has moved
-      ],
+      ]
     );
     assert.ok(existsSync(join(vault, IMPORT_ROOT, dirs[0].previousLabel!)), "a dry run moves nothing");
 
@@ -354,7 +383,7 @@ test("#885 — ~/home leaves claude-code-home first, then the home directory mov
       [
         ["claude-code-home-home", 3, undefined],
         ["claude-code-home", 3, undefined],
-      ],
+      ]
     );
     for (const d of await findClientMemoryDirs(vault, env)) {
       const r = await importVault(vault, d.dir, { label: d.label });
@@ -377,7 +406,10 @@ test("label migration leaves attachments and symlinks byte-for-byte in the old f
 
     const [m] = await migrateClientLabels(vault, [d]);
     assert.equal(m.skipped, undefined);
-    assert.deepEqual(m.left, ["attachment.bin", "my-own-note.md", "note-link.md"].map((name) => `${IMPORT_ROOT}/${d.previousLabel}/${name}`));
+    assert.deepEqual(
+      m.left,
+      ["attachment.bin", "my-own-note.md", "note-link.md"].map((name) => `${IMPORT_ROOT}/${d.previousLabel}/${name}`)
+    );
     assert.deepEqual(await readFile(join(oldDir, "attachment.bin")), bytes);
     assert.equal(await fs.promises.readlink(link), join(oldDir, "my-own-note.md"));
     assert.equal(existsSync(join(newDir, "attachment.bin")), false);
@@ -434,8 +466,10 @@ test("a file-by-file label move cannot recreate a vault that disappears before m
       return original(path, options);
     }) as typeof mkdir;
     syncBuiltinESMExports();
-    await assert.rejects(migrateClientLabels(vault, [d]), (e: unknown) =>
-      e instanceof Error && (e as Error & { code?: string }).code === "VAULT_MISSING");
+    await assert.rejects(
+      migrateClientLabels(vault, [d]),
+      (e: unknown) => e instanceof Error && (e as Error & { code?: string }).code === "VAULT_MISSING"
+    );
     assert.equal(vanished, true, "the disappearing-mount boundary was exercised");
     assert.equal(existsSync(vault), false, "no empty replacement vault appeared");
   } finally {

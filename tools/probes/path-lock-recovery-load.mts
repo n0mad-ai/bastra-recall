@@ -10,8 +10,12 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 const dir = await mkdtemp(join(tmpdir(), "bastra-recovery-load-"));
 const worker = join(dir, "worker.mts");
-const rounds = 20, processes = 6, writes = 30;
-await writeFile(worker, `
+const rounds = 20,
+  processes = 6,
+  writes = 30;
+await writeFile(
+  worker,
+  `
   import { withPathLock } from ${JSON.stringify(new URL("../../packages/daemon/src/path-lock.ts", import.meta.url).href)};
   import { readFile, writeFile, open, unlink } from 'node:fs/promises';
   import { hostname } from 'node:os';
@@ -44,48 +48,90 @@ await writeFile(worker, `
     }, {crossProcess:true,requireLock:true});
   }
   process.send({planted});
-`);
-let planted = 0, simultaneousHolders = 0, hangingRounds = 0, failedRounds = 0, lostWrites = 0, leftovers = 0;
+`
+);
+let planted = 0,
+  simultaneousHolders = 0,
+  hangingRounds = 0,
+  failedRounds = 0,
+  lostWrites = 0,
+  leftovers = 0;
 try {
   for (let round = 0; round < rounds; round++) {
     const state = join(dir, `round-${round}.json`);
     await writeFile(state, "[]");
     const children = Array.from({ length: processes }, (_, id) => {
-      const child = spawn(process.execPath, ["--import", "tsx", worker, state, String(id), String(writes), String(1207 + round * processes + id)], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
+      const child = spawn(
+        process.execPath,
+        ["--import", "tsx", worker, state, String(id), String(writes), String(1207 + round * processes + id)],
+        { stdio: ["ignore", "ignore", "pipe", "ipc"] }
+      );
       let stderr = "";
-      child.stderr!.on("data", c => { stderr += c; });
-      child.on("message", (msg: any) => { if (msg?.planted) planted += msg.planted; if(msg?.overlap) simultaneousHolders += msg.overlap; });
+      child.stderr!.on("data", (c) => {
+        stderr += c;
+      });
+      child.on("message", (msg: any) => {
+        if (msg?.planted) planted += msg.planted;
+        if (msg?.overlap) simultaneousHolders += msg.overlap;
+      });
       const ready = new Promise<void>((resolve, reject) => {
-        child.once("message", () => resolve()); child.once("error", reject);
+        child.once("message", () => resolve());
+        child.once("error", reject);
         child.once("exit", () => reject(new Error(`startup: ${stderr}`)));
       });
       const done = new Promise<void>((resolve, reject) => {
         child.once("error", reject);
-        child.once("exit", code => code === 0 ? resolve() : reject(new Error(`round ${round}, worker ${id}: ${stderr}`)));
+        child.once("exit", (code) =>
+          code === 0 ? resolve() : reject(new Error(`round ${round}, worker ${id}: ${stderr}`))
+        );
       });
-      void done.catch(() => {}); void ready.catch(() => {});
+      void done.catch(() => {});
+      void ready.catch(() => {});
       return { child, ready, done };
     });
     let watchdog: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
         (async () => {
-          await Promise.all(children.map(c => c.ready));
+          await Promise.all(children.map((c) => c.ready));
           for (const c of children) c.child.send("start");
-          await Promise.all(children.map(c => c.done));
+          await Promise.all(children.map((c) => c.done));
         })(),
-        new Promise<never>((_, reject) => { watchdog = setTimeout(() => { hangingRounds++; reject(new Error(`round ${round} timed out`)); }, 15_000); }),
+        new Promise<never>((_, reject) => {
+          watchdog = setTimeout(() => {
+            hangingRounds++;
+            reject(new Error(`round ${round} timed out`));
+          }, 15_000);
+        }),
       ]);
-    } catch (err) { failedRounds++; console.error(String(err)); }
-    finally {
+    } catch (err) {
+      failedRounds++;
+      console.error(String(err));
+    } finally {
       clearTimeout(watchdog);
       for (const c of children) if (c.child.exitCode === null) c.child.kill("SIGKILL");
-      await Promise.allSettled(children.map(c => c.done));
+      await Promise.allSettled(children.map((c) => c.done));
     }
     const rows = JSON.parse(await readFile(state, "utf8")) as string[];
     lostWrites += processes * writes - new Set(rows).size;
   }
-  leftovers = (await readdir(dir)).filter(name => name !== "worker.mts" && !/^round-\d+\.json$/.test(name)).length;
-  console.log(JSON.stringify({ rounds, processes, writesPerProcess: writes, writes: rounds * processes * writes, plantProbability: 0.1, planted, hangingRounds, simultaneousHolders, failedRounds, lostWrites, leftovers }));
+  leftovers = (await readdir(dir)).filter((name) => name !== "worker.mts" && !/^round-\d+\.json$/.test(name)).length;
+  console.log(
+    JSON.stringify({
+      rounds,
+      processes,
+      writesPerProcess: writes,
+      writes: rounds * processes * writes,
+      plantProbability: 0.1,
+      planted,
+      hangingRounds,
+      simultaneousHolders,
+      failedRounds,
+      lostWrites,
+      leftovers,
+    })
+  );
   if (hangingRounds || simultaneousHolders || failedRounds || lostWrites || leftovers) process.exitCode = 1;
-} finally { await rm(dir, { recursive: true, force: true }); }
+} finally {
+  await rm(dir, { recursive: true, force: true });
+}

@@ -36,7 +36,7 @@ export class GitService {
 
   private async execGitAsync(
     command: string,
-    options: { cwd: string; encoding: string; timeout: number },
+    options: { cwd: string; encoding: string; timeout: number }
   ): Promise<{ stdout: string }> {
     const { stdout } = await execAsync(command, {
       ...options,
@@ -71,7 +71,7 @@ export class GitService {
       showUpstream?: boolean;
       showRepoName?: boolean;
     } = {},
-    projectDir?: string,
+    projectDir?: string
   ): Promise<GitInfo | null> {
     let gitDir: string;
     const isWorktreeDir = this.isWorktree(workingDir);
@@ -122,8 +122,7 @@ export class GitService {
       }
 
       if (options.showTimeSinceCommit) {
-        heavyOperations.timeSinceCommit =
-          this.getTimeSinceLastCommitAsync(gitDir);
+        heavyOperations.timeSinceCommit = this.getTimeSinceLastCommitAsync(gitDir);
       }
 
       if (options.showStashCount) {
@@ -152,7 +151,7 @@ export class GitService {
           Object.entries(lightOperations).map(async ([key, promise]) => ({
             key,
             value: await promise,
-          })),
+          }))
         );
 
         lightResults.forEach((result) => {
@@ -175,8 +174,7 @@ export class GitService {
       }
 
       if (options.showTimeSinceCommit) {
-        result.timeSinceCommit =
-          (resultMap.get("timeSinceCommit") as number) || undefined;
+        result.timeSinceCommit = (resultMap.get("timeSinceCommit") as number) || undefined;
       }
 
       if (options.showStashCount) {
@@ -235,14 +233,10 @@ export class GitService {
       const gitDir = this.resolveGitDir(workingDir);
 
       if (fs.existsSync(path.join(gitDir, "MERGE_HEAD"))) return "MERGE";
-      if (fs.existsSync(path.join(gitDir, "CHERRY_PICK_HEAD")))
-        return "CHERRY-PICK";
+      if (fs.existsSync(path.join(gitDir, "CHERRY_PICK_HEAD"))) return "CHERRY-PICK";
       if (fs.existsSync(path.join(gitDir, "REVERT_HEAD"))) return "REVERT";
       if (fs.existsSync(path.join(gitDir, "BISECT_LOG"))) return "BISECT";
-      if (
-        fs.existsSync(path.join(gitDir, "rebase-merge")) ||
-        fs.existsSync(path.join(gitDir, "rebase-apply"))
-      )
+      if (fs.existsSync(path.join(gitDir, "rebase-merge")) || fs.existsSync(path.join(gitDir, "rebase-apply")))
         return "REBASE";
 
       return null;
@@ -266,9 +260,7 @@ export class GitService {
     }
   }
 
-  private async getTimeSinceLastCommitAsync(
-    workingDir: string,
-  ): Promise<number | null> {
+  private async getTimeSinceLastCommitAsync(workingDir: string): Promise<number | null> {
     try {
       const result = await this.execGitAsync("git log -1 --format=%ct", {
         cwd: workingDir,
@@ -305,14 +297,11 @@ export class GitService {
 
   private async getUpstreamAsync(workingDir: string): Promise<string | null> {
     try {
-      const result = await this.execGitAsync(
-        "git rev-parse --abbrev-ref @{u}",
-        {
-          cwd: workingDir,
-          encoding: "utf8",
-          timeout: 2000,
-        },
-      );
+      const result = await this.execGitAsync("git rev-parse --abbrev-ref @{u}", {
+        cwd: workingDir,
+        encoding: "utf8",
+        timeout: 2000,
+      });
       const upstream = result.stdout.trim();
 
       return upstream || null;
@@ -323,14 +312,11 @@ export class GitService {
 
   private async getRepoNameAsync(workingDir: string): Promise<string | null> {
     try {
-      const result = await this.execGitAsync(
-        "git config --get remote.origin.url",
-        {
-          cwd: workingDir,
-          encoding: "utf8",
-          timeout: 2000,
-        },
-      );
+      const result = await this.execGitAsync("git config --get remote.origin.url", {
+        cwd: workingDir,
+        encoding: "utf8",
+        timeout: 2000,
+      });
       const remoteUrl = result.stdout.trim();
 
       if (!remoteUrl) return path.basename(workingDir);
@@ -465,14 +451,11 @@ export class GitService {
       }
     } catch {
       try {
-        const result = await this.execGitAsync(
-          "git symbolic-ref --short HEAD",
-          {
-            cwd: workingDir,
-            encoding: "utf8",
-            timeout: 2000,
-          },
-        );
+        const result = await this.execGitAsync("git symbolic-ref --short HEAD", {
+          cwd: workingDir,
+          encoding: "utf8",
+          timeout: 2000,
+        });
         const branch = result.stdout.trim();
         if (branch) {
           return branch;

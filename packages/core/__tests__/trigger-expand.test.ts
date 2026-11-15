@@ -85,7 +85,9 @@ test("buildExpandPrompt carries title/summary/triggers and asks for reworded phr
 });
 
 test("parseExpansions strips bullets/numbering and trims", () => {
-  const raw = ["- why does my panel vanish", "2. fenster schließt sich", "* warum panel zu", "1) related concept"].join("\n");
+  const raw = ["- why does my panel vanish", "2. fenster schließt sich", "* warum panel zu", "1) related concept"].join(
+    "\n"
+  );
   const out = parseExpansions(raw, [], 5);
   assert.deepEqual(out, ["why does my panel vanish", "fenster schließt sich", "warum panel zu", "related concept"]);
 });
@@ -121,15 +123,7 @@ test("isSlugChain flags multi-segment / mixed-delimiter glue, keeps real search 
   }
   // real single-token search terms — must be kept (regression: a length filter
   // can't tell these from slugs; an over-eager "any hyphen" filter eats them)
-  for (const term of [
-    "fenster",
-    "z-index",
-    "min-width",
-    "ci/cd",
-    "gpt-4",
-    "read-only",
-    "doc2query",
-  ]) {
+  for (const term of ["fenster", "z-index", "min-width", "ci/cd", "gpt-4", "read-only", "doc2query"]) {
     assert.equal(isSlugChain(term), false, `should keep term: ${term}`);
   }
   // idiomatic multi-hyphen terms: a function word in the seam → kept, not a slug
@@ -210,7 +204,10 @@ test("expand is a no-op on the second pass — source unchanged breaks the loop"
   try {
     let chatCalls = 0;
     const expander = new TriggerExpander(vault, stubEmbeddings(), {
-      chat: async () => { chatCalls++; return "phrase one"; },
+      chat: async () => {
+        chatCalls++;
+        return "phrase one";
+      },
       backfillOnStart: false,
     });
     await expander.expand("a"); // writes _src
@@ -246,9 +243,16 @@ test("start: a rejecting expand via onEmbed is swallowed (crash guard, fix A)", 
   const { dir, vault } = await vaultWith(["a"]);
   try {
     let fire: ((id: string) => void) | null = null;
-    const emb = { onEmbed(l: (id: string) => void) { fire = l; return () => {}; } } as unknown as EmbeddingIndex;
+    const emb = {
+      onEmbed(l: (id: string) => void) {
+        fire = l;
+        return () => {};
+      },
+    } as unknown as EmbeddingIndex;
     const expander = new TriggerExpander(vault, emb, {
-      chat: async () => { throw new Error("ollama aborted"); },
+      chat: async () => {
+        throw new Error("ollama aborted");
+      },
       backfillOnStart: false,
     });
     expander.start();
@@ -285,7 +289,7 @@ test("buildExpandPrompt scrubs injected context blocks from source fields (#149)
     fakeMemory({
       summary:
         'resignKey observer must respect attachedSheet <session-context surface="claude-code">- hint: packages/daemon/src/hook.ts</session-context>',
-    }),
+    })
   );
   assert.match(p, /resignKey observer must respect attachedSheet/);
   assert.ok(!p.includes("session-context"), "scaffolding tag must not seed paraphrases");
@@ -302,7 +306,10 @@ test("empty generation is a failure: nothing written, nothing stamped, backfill 
     const before = await readFile(path.join(dir, "a.md"), "utf8");
     let chatCalls = 0;
     const expander = new TriggerExpander(vault, stubEmbeddings(), {
-      chat: async () => { chatCalls++; return ""; },
+      chat: async () => {
+        chatCalls++;
+        return "";
+      },
       backfillOnStart: false,
     });
 
@@ -327,7 +334,10 @@ test("text that parses to nothing is still an answer — stamped, not retried (#
   try {
     let chatCalls = 0;
     const expander = new TriggerExpander(vault, stubEmbeddings(), {
-      chat: async () => { chatCalls++; return "panel-close-fix\nsome_id_token\noriginal trigger"; },
+      chat: async () => {
+        chatCalls++;
+        return "panel-close-fix\nsome_id_token\noriginal trigger";
+      },
       backfillOnStart: false,
     });
     assert.deepEqual(await expander.expand("a"), [], "empty kept, not null");
@@ -349,7 +359,10 @@ test("backfill stops after 5 consecutive failed generations (#367)", async () =>
   try {
     let chatCalls = 0;
     const expander = new TriggerExpander(vault, stubEmbeddings(), {
-      chat: async () => { chatCalls++; return ""; },
+      chat: async () => {
+        chatCalls++;
+        return "";
+      },
       backfillOnStart: false,
     });
     assert.equal(await expander.backfill(), 0);
@@ -358,7 +371,10 @@ test("backfill stops after 5 consecutive failed generations (#367)", async () =>
     // A throwing chat is the same failure shape and must trip the same brake.
     chatCalls = 0;
     const throwing = new TriggerExpander(vault, stubEmbeddings(), {
-      chat: async () => { chatCalls++; throw new Error("ollama aborted"); },
+      chat: async () => {
+        chatCalls++;
+        throw new Error("ollama aborted");
+      },
       backfillOnStart: false,
     });
     assert.equal(await throwing.backfill(), 0);
@@ -375,7 +391,10 @@ test("a successful generation resets the failure counter — the breaker needs t
     const expander = new TriggerExpander(vault, stubEmbeddings(), {
       // fail, fail, succeed, then fail forever: the run of 5 only starts after
       // the success, so the sweep reaches memory 8 rather than stopping at 5.
-      chat: async () => { n++; return n === 3 ? "a real phrase" : ""; },
+      chat: async () => {
+        n++;
+        return n === 3 ? "a real phrase" : "";
+      },
       backfillOnStart: false,
     });
     assert.equal(await expander.backfill(), 1, "the one success was written");
@@ -451,8 +470,10 @@ test("#565 expand: a reflex memory gets inflected variants of its triggers, a pl
   const dir = await mkdtemp(path.join(tmpdir(), "bastra-expand-inflect-"));
   await writeFile(
     path.join(dir, "konvention.md"),
-    memoryMd("konvention")
-      .replace('recall_when: ["original trigger"]', 'recall_when: ["Antwort an zzalli draften"]\nrecall_mode: reflex'),
+    memoryMd("konvention").replace(
+      'recall_when: ["original trigger"]',
+      'recall_when: ["Antwort an zzalli draften"]\nrecall_mode: reflex'
+    )
   );
   await writeFile(path.join(dir, "plain.md"), memoryMd("plain"));
   const vault = new Vault(dir);
@@ -484,7 +505,13 @@ test("#565 expand: a reflex memory gets inflected variants of its triggers, a pl
 test("#565: an empty inflection reply leaves a reflex memory eligible for retry", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "bastra-expand-inflect-empty-"));
   const file = path.join(dir, "reflex.md");
-  await writeFile(file, memoryMd("reflex").replace('recall_when: ["original trigger"]', 'recall_when: ["Antwort an zzalli draften"]\nrecall_mode: reflex'));
+  await writeFile(
+    file,
+    memoryMd("reflex").replace(
+      'recall_when: ["original trigger"]',
+      'recall_when: ["Antwort an zzalli draften"]\nrecall_mode: reflex'
+    )
+  );
   const vault = new Vault(dir);
   await vault.init();
   try {

@@ -13,10 +13,7 @@ import assert from "node:assert/strict";
 import { PowerlineRenderer } from "../../packages/statusline/src/powerline.ts";
 import { DEFAULT_CONFIG } from "../../packages/statusline/src/config/defaults.ts";
 import { SYMBOLS } from "../../packages/statusline/src/utils/constants.ts";
-import {
-  resolveSegments,
-  collectFooterParts,
-} from "../../packages/statusline/src/tui/sections.ts";
+import { resolveSegments, collectFooterParts } from "../../packages/statusline/src/tui/sections.ts";
 
 const baseConfig = structuredClone(DEFAULT_CONFIG);
 // Non-TTY test runs resolve "auto" to no color; pin it so the colors differ.
@@ -25,11 +22,10 @@ const renderer = new PowerlineRenderer(baseConfig);
 const colors = renderer.theme.getThemeColors();
 
 function classic(elapsedSeconds, detectedTtlSeconds, config = {}) {
-  return renderer.segments.segmentRenderer.renderCacheTimer(
-    { elapsedSeconds, detectedTtlSeconds },
-    colors,
-    { enabled: true, ...config },
-  );
+  return renderer.segments.segmentRenderer.renderCacheTimer({ elapsedSeconds, detectedTtlSeconds }, colors, {
+    enabled: true,
+    ...config,
+  });
 }
 
 test("elapsed mode: a 1h cache is not critical at 5 minutes", () => {

@@ -23,9 +23,23 @@ import { runHookRecall, queryRouterMode } from "../src/http-hook-routes.js";
 
 function memo(id: string, body: string): string {
   return [
-    "---", `id: ${id}`, `title: Regel ${id}`, "type: lesson", `summary: ${body}`,
-    "topic_path:", "  - test", "tags:", "  - test", "recall_when:", "  - wenn wir deployen",
-    "created: 2026-01-01", "updated: 2026-01-01", "---", "", body, "",
+    "---",
+    `id: ${id}`,
+    `title: Regel ${id}`,
+    "type: lesson",
+    `summary: ${body}`,
+    "topic_path:",
+    "  - test",
+    "tags:",
+    "  - test",
+    "recall_when:",
+    "  - wenn wir deployen",
+    "created: 2026-01-01",
+    "updated: 2026-01-01",
+    "---",
+    "",
+    body,
+    "",
   ].join("\n");
 }
 
@@ -33,7 +47,11 @@ async function readEvents(logDir: string, kind: string): Promise<Record<string, 
   for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 40));
     let files: string[];
-    try { files = await readdir(logDir); } catch { continue; }
+    try {
+      files = await readdir(logDir);
+    } catch {
+      continue;
+    }
     const out: Record<string, unknown>[] = [];
     for (const f of files.filter((n) => n.startsWith("events-"))) {
       const raw = await readFile(join(logDir, f), "utf8");
@@ -63,7 +81,15 @@ async function setup(t: { after: (fn: () => unknown) => void }) {
     runtimeHealth: () => ({ errorCount: 0 }),
     searchDetailed: async () => {
       denseCalls++;
-      return { outcome: "hits", hits: [{ id: "a", score: 0.9 }, { id: "b", score: 0.8 }], providerLoadMs: null, coldStartObserved: false };
+      return {
+        outcome: "hits",
+        hits: [
+          { id: "a", score: 0.9 },
+          { id: "b", score: 0.8 },
+        ],
+        providerLoadMs: null,
+        coldStartObserved: false,
+      };
     },
   } as never);
   const prev = process.env.BASTRA_LOG_PATH;
@@ -141,7 +167,7 @@ test("#362: off und lexical_only — keine Routerzeile", async (t) => {
   const s = await setup(t);
   await withRouter("off", () => runHookRecall({ query: "deployen" }, "deployen", Date.now(), s.deps));
   await withRouter(undefined, () =>
-    runHookRecall({ query: "deployen", lexical_only: true }, "deployen", Date.now(), s.deps),
+    runHookRecall({ query: "deployen", lexical_only: true }, "deployen", Date.now(), s.deps)
   );
   let all = await readEvents(s.logDir, "hook_recall");
   // Die zweite Zeile kann einen Tick nach der ersten landen.

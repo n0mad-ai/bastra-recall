@@ -1,0 +1,12 @@
+{
+  "tabWidth": 2,
+  "useTabs": false,
+  "singleQuote": false,
+  "semi": true,
+  "printWidth": 120,
+  "trailingComma": "es5",
+  "quoteProps": "preserve",
+  "embeddedLanguageFormatting": "off",
+  "htmlWhitespaceSensitivity": "strict",
+  "endOfLine": "lf"
+}

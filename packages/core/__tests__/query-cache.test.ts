@@ -51,9 +51,11 @@ async function makeVault(memos: { id: string; title: string }[]): Promise<{ vaul
 }
 
 function getQueryCache(idx: SearchIndex): Map<string, { hits: unknown[]; at: number }> {
-  return (idx as unknown as {
-    queryCache: Map<string, { hits: unknown[]; at: number }>;
-  }).queryCache;
+  return (
+    idx as unknown as {
+      queryCache: Map<string, { hits: unknown[]; at: number }>;
+    }
+  ).queryCache;
 }
 
 /** #365/4: `EmbeddingIndex.search()` swallows every provider failure and hands
@@ -127,9 +129,12 @@ test("query-cache #365/4: ein Provider-Fehler wird nicht gecacht und heißt vect
     assert.equal(
       first.last().degraded,
       "vector-arm-error",
-      "a provider failure must be distinguishable from an empty vector arm",
+      "a provider failure must be distinguishable from an empty vector arm"
     );
-    assert.ok(degraded.every((h) => h.mode === "bm25"), "degrades through the BM25 path");
+    assert.ok(
+      degraded.every((h) => h.mode === "bm25"),
+      "degrades through the BM25 path"
+    );
 
     const second = doneMeta();
     await idx.recallHybrid("alpha", { k: 5, onStage: second.onStage });
@@ -142,7 +147,7 @@ test("query-cache #365/4: ein Provider-Fehler wird nicht gecacht und heißt vect
     assert.ok(provider.calls > callsBefore, "the recovered query must reach the provider");
     assert.ok(
       recovered.some((h) => h.mode !== "bm25"),
-      "and must be served from both arms, not from the cached degradation",
+      "and must be served from both arms, not from the cached degradation"
     );
   } finally {
     await close();
@@ -172,7 +177,7 @@ test("query-cache #365/4: zwei Fehler in derselben Millisekunde bleiben beide si
     assert.equal(
       b.last().degraded,
       "vector-arm-error",
-      "der zweite Fehler in derselben ms darf nicht als leerer Vektor-Arm durchgehen",
+      "der zweite Fehler in derselben ms darf nicht als leerer Vektor-Arm durchgehen"
     );
     assert.notEqual(b.last().cached, true, "und schon gar nicht aus dem Cache kommen");
 
@@ -226,7 +231,7 @@ test("query-cache: zweiter Recall mit identischem Query hit Cache", async () => 
     assert.deepEqual(
       a.map((h) => h.id),
       a2.map((h) => h.id),
-      "gleiche IDs aus dem Cache",
+      "gleiche IDs aus dem Cache"
     );
 
     await idx.stop();
@@ -273,11 +278,7 @@ test("query-cache: Vault-Change leert den Cache komplett", async () => {
     assert.equal(cache.size, 2);
 
     // change event über reindexFile.
-    await writeFile(
-      join(dir, "qc-1.md"),
-      memoryMarkdown("qc-1", "alpha bravo updated"),
-      "utf8",
-    );
+    await writeFile(join(dir, "qc-1.md"), memoryMarkdown("qc-1", "alpha bravo updated"), "utf8");
     await vault.reindexFile(join(dir, "qc-1.md"));
 
     assert.equal(cache.size, 0, "Cache wurde geleert");
@@ -369,12 +370,12 @@ test("query-cache P0: ein Cache-Hit auf die einarmige Antwort behält den Score-
     assert.equal(
       second.last().degraded,
       "vector-arm-empty",
-      "der Cache-Hit serviert BM25-Scores und muss das auch sagen",
+      "der Cache-Hit serviert BM25-Scores und muss das auch sagen"
     );
     assert.deepEqual(
       warm.map((h) => h.score),
       cold.map((h) => h.score),
-      "identische Zahlen — sie dürfen nur nicht anders benannt werden",
+      "identische Zahlen — sie dürfen nur nicht anders benannt werden"
     );
     assert.ok(warm.every((h) => h.mode === "bm25"));
   } finally {

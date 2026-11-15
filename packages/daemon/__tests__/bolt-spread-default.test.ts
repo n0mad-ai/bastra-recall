@@ -14,8 +14,14 @@ import { storedBoltSpread, BOLT_SPREAD_KEY, BOLT_SPREAD_DEFAULT } from "../webui
 
 function withStorage(value: string | null, fn: () => void) {
   const prev = (globalThis as { localStorage?: unknown }).localStorage;
-  (globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => (k === BOLT_SPREAD_KEY ? value : null) };
-  try { fn(); } finally { (globalThis as { localStorage?: unknown }).localStorage = prev; }
+  (globalThis as { localStorage?: unknown }).localStorage = {
+    getItem: (k: string) => (k === BOLT_SPREAD_KEY ? value : null),
+  };
+  try {
+    fn();
+  } finally {
+    (globalThis as { localStorage?: unknown }).localStorage = prev;
+  }
 }
 
 test("nothing stored → the default spread, not 0", () => {

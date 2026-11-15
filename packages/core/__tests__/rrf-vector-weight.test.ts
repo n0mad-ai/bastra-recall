@@ -46,7 +46,7 @@ test("the default weight is 1.5 and hands rank 1 to the dense arm's pick", () =>
     const fused = fuseRRF(BM25, VECTOR);
     assert.ok(
       fused.get("gold")!.score > fused.get("distractor")!.score,
-      "the dense rank 1 must now outrank the BM25 rank 1 the dense arm puts 3rd",
+      "the dense rank 1 must now outrank the BM25 rank 1 the dense arm puts 3rd"
     );
   });
 });

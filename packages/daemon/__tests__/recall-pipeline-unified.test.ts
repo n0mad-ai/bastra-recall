@@ -85,7 +85,11 @@ async function readEvents(logDir: string, kind: string): Promise<Record<string, 
   for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 40));
     let files: string[];
-    try { files = await readdir(logDir); } catch { continue; }
+    try {
+      files = await readdir(logDir);
+    } catch {
+      continue;
+    }
     const out: Record<string, unknown>[] = [];
     for (const f of files.filter((n) => n.startsWith("events-"))) {
       const raw = await readFile(join(logDir, f), "utf8");
@@ -116,7 +120,10 @@ const ids = (xs: unknown): string[] => ((xs as Array<{ id: string }> | undefined
 
 test("#421: recallHandler liefert verdrahtete Reflexe unter dem top-k-Schnitt", async (t) => {
   const { deps } = await makeDeps(t);
-  const res = (await recallHandler(deps, { query: "deploy release branch", k: 1, min_score: 0 })) as unknown as Record<string, unknown>;
+  const res = (await recallHandler(deps, { query: "deploy release branch", k: 1, min_score: 0 })) as unknown as Record<
+    string,
+    unknown
+  >;
   assert.equal(ids(res.hits).length, 1);
   assert.ok(!ids(res.hits).includes("alpha-reflex"), "Fixture: der Reflex darf nicht im top-1 stehen");
   assert.deepEqual(ids(res.reflex_hits), ["alpha-reflex"]);
@@ -126,7 +133,11 @@ test("#421: recallHandler liefert verdrahtete Reflexe unter dem top-k-Schnitt", 
 
 test("#421: Reflexe passieren denselben Floor wie die gerankten Treffer", async (t) => {
   const { deps } = await makeDeps(t);
-  const res = (await recallHandler(deps, { query: "deploy release branch", k: 1, min_score: 1e9 })) as unknown as Record<string, unknown>;
+  const res = (await recallHandler(deps, {
+    query: "deploy release branch",
+    k: 1,
+    min_score: 1e9,
+  })) as unknown as Record<string, unknown>;
   assert.equal(res.reflex_hits, undefined, "unter dem Floor kein Reflex — und kein leeres Feld");
 });
 
@@ -136,10 +147,14 @@ test("#421: recallHandler mit Projekt — enforce verwirft fremde Scopes, shadow
   const { deps, logDir } = await makeDeps(t);
   const args = { query: "deploy release branch", k: 5, min_score: 0 };
 
-  const shadow = (await withScopeMode(undefined, () => recallHandler(deps, args, { project: "alpha" }))) as unknown as Record<string, unknown>;
+  const shadow = (await withScopeMode(undefined, () =>
+    recallHandler(deps, args, { project: "alpha" })
+  )) as unknown as Record<string, unknown>;
   assert.ok(ids(shadow.hits).includes("beta-1"), "shadow verwirft nichts");
 
-  const enforced = (await withScopeMode("enforce", () => recallHandler(deps, args, { project: "alpha" }))) as unknown as Record<string, unknown>;
+  const enforced = (await withScopeMode("enforce", () =>
+    recallHandler(deps, args, { project: "alpha" })
+  )) as unknown as Record<string, unknown>;
   assert.ok(!ids(enforced.hits).includes("beta-1"), "enforce verwirft den fremden Scope");
   assert.ok(ids(enforced.hits).includes("alpha-1"), "der eigene Scope bleibt");
 
@@ -154,7 +169,7 @@ test("#421: recallHandler mit Projekt — enforce verwirft fremde Scopes, shadow
 test("#421: ein expliziter scope schaltet den Projektfilter ab", async (t) => {
   const { deps } = await makeDeps(t);
   const res = (await withScopeMode("enforce", () =>
-    recallHandler(deps, { query: "deploy release branch", k: 5, min_score: 0, scope: "beta" }, { project: "alpha" }),
+    recallHandler(deps, { query: "deploy release branch", k: 5, min_score: 0, scope: "beta" }, { project: "alpha" })
   )) as unknown as Record<string, unknown>;
   assert.ok(ids(res.hits).includes("beta-1"), "verlangt ist verlangt");
 });
@@ -178,8 +193,8 @@ test("#421: runHookRecall mit apply_scope_filter (Forwarder) filtert wie recallH
       { query: "deploy release branch", k: 5, apply_scope_filter: true, project: "alpha", hook_source: "mcp" },
       "deploy release branch",
       Date.now(),
-      hookDeps,
-    ),
+      hookDeps
+    )
   );
   assert.ok(!ids(res.hits).includes("beta-1"));
   assert.ok(ids(res.hits).includes("alpha-1"));
@@ -192,12 +207,23 @@ test("#421: runHookRecall OHNE das Feld (Hook-Lanes) bleibt unverändert", async
   const { deps, logDir } = await makeDeps(t);
   const hookDeps = { vault: deps.vault, search: deps.search, telemetry: deps.telemetry };
   const res = await withScopeMode("enforce", () =>
-    runHookRecall({ query: "deploy release branch", k: 5, project: "alpha" }, "deploy release branch", Date.now(), hookDeps),
+    runHookRecall(
+      { query: "deploy release branch", k: 5, project: "alpha" },
+      "deploy release branch",
+      Date.now(),
+      hookDeps
+    )
   );
   assert.ok(ids(res.hits).includes("beta-1"), "die Lanes filtern selbst — der Daemon tut es für sie nicht");
   const [row] = await readEvents(logDir, "hook_recall");
   assert.ok(row);
-  for (const f of ["scope_filter_mode", "dropped_scope_count", "dropped_scopes", "filter_project", "scope_filter_skipped"]) {
+  for (const f of [
+    "scope_filter_mode",
+    "dropped_scope_count",
+    "dropped_scopes",
+    "filter_project",
+    "scope_filter_skipped",
+  ]) {
     assert.equal(row![f], undefined, `${f} darf auf einer Hook-Zeile nicht auftauchen`);
   }
 });
@@ -205,8 +231,16 @@ test("#421: runHookRecall OHNE das Feld (Hook-Lanes) bleibt unverändert", async
 test("#421: runHookRecall liefert dieselben Pool-Reflexe wie recallHandler", async (t) => {
   const { deps } = await makeDeps(t);
   const hookDeps = { vault: deps.vault, search: deps.search, telemetry: deps.telemetry };
-  const hook = await runHookRecall({ query: "deploy release branch", k: 1, expand_hops: 0 }, "deploy release branch", Date.now(), hookDeps);
-  const mcp = (await recallHandler(deps, { query: "deploy release branch", k: 1, min_score: 0 })) as unknown as Record<string, unknown>;
+  const hook = await runHookRecall(
+    { query: "deploy release branch", k: 1, expand_hops: 0 },
+    "deploy release branch",
+    Date.now(),
+    hookDeps
+  );
+  const mcp = (await recallHandler(deps, { query: "deploy release branch", k: 1, min_score: 0 })) as unknown as Record<
+    string,
+    unknown
+  >;
   assert.deepEqual(ids(hook.reflex_hits), ["alpha-reflex"]);
   assert.deepEqual(ids(hook.reflex_hits), ids(mcp.reflex_hits));
 });
@@ -225,10 +259,17 @@ test("#421: der Batch-Merge vereinigt Reflexe und lässt gerankte Treffer weg", 
   const merged = mergeBatchResults(
     ["a", "b"],
     [
-      { hits: [{ id: "h1", score: 90 }], score_kind: "rrf", reflex_hits: [{ id: "r1", score: 40 }, { id: "h1", score: 10 }] },
+      {
+        hits: [{ id: "h1", score: 90 }],
+        score_kind: "rrf",
+        reflex_hits: [
+          { id: "r1", score: 40 },
+          { id: "h1", score: 10 },
+        ],
+      },
       { hits: [{ id: "h2", score: 80 }], score_kind: "rrf", reflex_hits: [{ id: "r1", score: 60 }] },
     ],
-    5,
+    5
   );
   assert.deepEqual(merged.reflex_hits, [{ id: "r1", score: 60 }]);
 });
@@ -241,8 +282,18 @@ test("#421: collectPoolReflexHits nimmt nur Verdrahtetes, nicht Serviertes", () 
     n: { fm: { title: "N", type: "convention", scope: "alpha", summary: "s" } },
   };
   const vault = { get: (id: string) => mems[id] } as unknown as Parameters<typeof collectPoolReflexHits>[2];
-  const out = collectPoolReflexHits([{ id: "r", score: 5 }, { id: "n", score: 9 }], new Set(), vault);
-  assert.deepEqual(out.map((h) => h.id), ["r"]);
+  const out = collectPoolReflexHits(
+    [
+      { id: "r", score: 5 },
+      { id: "n", score: 9 },
+    ],
+    new Set(),
+    vault
+  );
+  assert.deepEqual(
+    out.map((h) => h.id),
+    ["r"]
+  );
   assert.deepEqual(collectPoolReflexHits([{ id: "r", score: 5 }], new Set(["r"]), vault), []);
   assert.deepEqual(collectPoolReflexHits([{ id: "r", score: 5 }], new Set(), vault, 6), []);
 });
@@ -262,7 +313,16 @@ test("#421: applyCallerScopeFilter lässt verdrahtete Reflexe immer durch", () =
     { id: "foreignReflex", scope: "beta", score: 80 },
     { id: "foreign", scope: "beta", score: 70 },
   ];
-  const r = applyCallerScopeFilter(hits, { project: "alpha", explicitScope: false, unfused: false, vault, mode: "enforce" });
-  assert.deepEqual(r.hits.map((h) => h.id), ["own", "foreignReflex"]);
+  const r = applyCallerScopeFilter(hits, {
+    project: "alpha",
+    explicitScope: false,
+    unfused: false,
+    vault,
+    mode: "enforce",
+  });
+  assert.deepEqual(
+    r.hits.map((h) => h.id),
+    ["own", "foreignReflex"]
+  );
   assert.equal(r.telemetry.dropped_scope_count, 1);
 });

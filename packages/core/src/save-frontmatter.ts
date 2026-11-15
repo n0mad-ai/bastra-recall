@@ -13,7 +13,15 @@
  * (`save-target.ts`), ob geschrieben werden darf (`save-commit.ts`) und wie
  * der Text serialisiert wird (der Aufrufer).
  */
-import { coerceAliases, ConventionValidatorSchema, DerivedClaimSchema, RuleCategoriesSchema, RulebookSchema, RulebookProposalSchema, FrontmatterSchema } from "./schema.js";
+import {
+  coerceAliases,
+  ConventionValidatorSchema,
+  DerivedClaimSchema,
+  RuleCategoriesSchema,
+  RulebookSchema,
+  RulebookProposalSchema,
+  FrontmatterSchema,
+} from "./schema.js";
 import { remainingProposal, resolveRulebook, unboundProposal } from "./rulebook.js";
 import { clampSummary } from "./summary.js";
 import type { SaveMemoryInput } from "./save-schema.js";
@@ -122,7 +130,7 @@ export function buildFrontmatter(
   input: SaveMemoryInput,
   prev: Record<string, unknown>,
   id: string,
-  scope: string,
+  scope: string
 ): BuiltFrontmatter {
   /** Übernimmt den Bestandswert nur, wenn er den erwarteten Typ hat. */
   const kept = <T>(value: unknown, ok: (v: unknown) => boolean): T | undefined =>
@@ -134,11 +142,7 @@ export function buildFrontmatter(
    * Optionales Frontmatter-Feld: Input gewinnt, sonst der Bestandswert,
    * sonst bleibt das Feld ganz weg (kein `field: undefined` im YAML).
    */
-  const optional = (
-    key: string,
-    value: unknown,
-    ok: (v: unknown) => boolean,
-  ): Record<string, unknown> => {
+  const optional = (key: string, value: unknown, ok: (v: unknown) => boolean): Record<string, unknown> => {
     const next = value ?? kept(prev[key], ok);
     return next == null ? {} : { [key]: next };
   };
@@ -154,16 +158,11 @@ export function buildFrontmatter(
   const aliases = input.aliases ?? coerceAliases(prev.aliases);
   const existingOrigin = kept<string>(prev.write_origin, isStr);
   const salience =
-    input.salience ??
-    kept<number>(prev.salience, (v) => isNum(v) && (v as number) >= 0 && (v as number) <= 1);
+    input.salience ?? kept<number>(prev.salience, (v) => isNum(v) && (v as number) >= 0 && (v as number) <= 1);
   const emotion =
     input.emotion ??
-    kept<string>(prev.emotion, (v) =>
-      ["frustration", "success", "risk", "neutral"].includes(v as string),
-    );
-  const recallMode =
-    input.recall_mode ??
-    kept<string>(prev.recall_mode, (v) => v === "reflex" || v === "deliberate");
+    kept<string>(prev.emotion, (v) => ["frustration", "success", "risk", "neutral"].includes(v as string));
+  const recallMode = input.recall_mode ?? kept<string>(prev.recall_mode, (v) => v === "reflex" || v === "deliberate");
 
   const today = todayISO();
   // Wikilinks aus dem Body in `related[]` spiegeln. Im OSS-Stack existiert
@@ -171,11 +170,8 @@ export function buildFrontmatter(
   // — Multi-Hop-Recall sähe sie nie. Reihenfolge: vom Caller mitgegebene
   // related zuerst, dann neue aus dem Body, dedupliziert.
   const bodyLinks = extractWikilinks(input.body);
-  const mergedRelated = dedupe([
-    ...(input.related ?? kept<string[]>(prev.related, isArr) ?? []),
-    ...bodyLinks,
-  ]).filter(
-    (rel) => rel !== id, // self-link macht keinen Sinn
+  const mergedRelated = dedupe([...(input.related ?? kept<string[]>(prev.related, isArr) ?? []), ...bodyLinks]).filter(
+    (rel) => rel !== id // self-link macht keinen Sinn
   );
 
   // Clamp instead of reject: an over-long summary is truncated at a word
@@ -228,11 +224,7 @@ export function buildFrontmatter(
     // pair the agent has already answered for.
     ...mergedSiblings(),
     ...optional("verify_cmd", input.verify_cmd, isStr),
-    ...optional(
-      "derived_claims",
-      input.derived_claims,
-      (value) => DerivedClaimSchema.array().safeParse(value).success,
-    ),
+    ...optional("derived_claims", input.derived_claims, (value) => DerivedClaimSchema.array().safeParse(value).success),
     ...rulebookFrontmatter(input, prev),
     ...optional("superseded_by", undefined, isStr),
     confidence: input.confidence ?? kept(prev.confidence, isNum) ?? 1,
@@ -263,7 +255,7 @@ export function buildFrontmatter(
       optional("categories", input.categories, isArr),
       optional("read_status", input.read_status, isStr),
       optional("og_image", input.og_image, isStr),
-      optional("source_app", input.source_app, isStr),
+      optional("source_app", input.source_app, isStr)
     );
     // #240/A6 auch hier: `saved_at` ist die Erfassungszeit des Bookmarks (das
     // Bookmark-Pendant zu `created`), nicht die letzte Schreibzeit — niemand im
@@ -297,8 +289,7 @@ function rulebookFrontmatter(input: SaveMemoryInput, prev: Record<string, unknow
   const out: Record<string, unknown> = {};
   const existing = RulebookSchema.safeParse(prev.rulebook);
   const previous = FrontmatterSchema.safeParse(prev);
-  const existingRule = existing.success ||
-    (previous.success && !!resolveRulebook(previous.data));
+  const existingRule = existing.success || (previous.success && !!resolveRulebook(previous.data));
   // #1399: overwrite keeps the stored origin, just like edit_memory.
   const bindsDirectly = existingRule || prev.write_origin === "user-directed" || input.write_origin === "user-directed";
   if (existing.success) out.rulebook = existing.data;
@@ -313,11 +304,15 @@ function rulebookFrontmatter(input: SaveMemoryInput, prev: Record<string, unknow
       Object.assign(out, declaration);
       // #1386: binding supersedes the pending proposal it answers.
       if (!existing.success) {
-        const rest = remainingProposal(out.rulebook_proposed as Record<string, unknown> | undefined, declaration,
-          input.validator != null ? ["validator"] : []);
-        if (rest) out.rulebook_proposed = rest; else delete out.rulebook_proposed;
+        const rest = remainingProposal(
+          out.rulebook_proposed as Record<string, unknown> | undefined,
+          declaration,
+          input.validator != null ? ["validator"] : []
+        );
+        if (rest) out.rulebook_proposed = rest;
+        else delete out.rulebook_proposed;
       }
-    } else out.rulebook_proposed = { ...(out.rulebook_proposed as object ?? {}), ...declaration };
+    } else out.rulebook_proposed = { ...((out.rulebook_proposed as object) ?? {}), ...declaration };
   } else if (input.applies_when !== undefined) {
     out.applies_when = input.applies_when;
   }
@@ -330,28 +325,41 @@ function rulebookFrontmatter(input: SaveMemoryInput, prev: Record<string, unknow
       // Category-only saves declare the same on-demand rule as edit_memory.
       out.rulebook ??= "on-demand";
       out.applies_when = input.applies_when ?? out.applies_when ?? input.summary;
-    }
-    else if (JSON.stringify(input.rule_categories) !== JSON.stringify(categories.success ? categories.data : undefined)) {
+    } else if (
+      JSON.stringify(input.rule_categories) !== JSON.stringify(categories.success ? categories.data : undefined)
+    ) {
       const proposed = out.rulebook_proposed as Record<string, unknown> | undefined;
-      out.rulebook_proposed = { ...proposed, rulebook: proposed?.rulebook ?? "on-demand",
-        applies_when: input.applies_when ?? proposed?.applies_when ?? prev.applies_when ?? input.summary, rule_categories: input.rule_categories };
+      out.rulebook_proposed = {
+        ...proposed,
+        rulebook: proposed?.rulebook ?? "on-demand",
+        applies_when: input.applies_when ?? proposed?.applies_when ?? prev.applies_when ?? input.summary,
+        rule_categories: input.rule_categories,
+      };
     }
   }
   const previousValidator = ConventionValidatorSchema.safeParse(prev.validator);
   if (input.validator !== null && previousValidator.success) out.validator = previousValidator.data;
   if (input.validator != null) {
     if (bindsDirectly) out.validator = input.validator;
-    else out.rulebook_proposed = {
-      rulebook: "on-demand", applies_when: input.applies_when ?? prev.applies_when ?? input.summary,
-      ...(out.rulebook_proposed as object ?? {}), validator: input.validator,
-    };
+    else
+      out.rulebook_proposed = {
+        rulebook: "on-demand",
+        applies_when: input.applies_when ?? prev.applies_when ?? input.summary,
+        ...((out.rulebook_proposed as object) ?? {}),
+        validator: input.validator,
+      };
   }
   // #1394: parts this write bound directly are no longer pending, also on an existing rule.
   const covered = bindsDirectly
-    ? [...(input.rule_categories !== undefined ? ["rule_categories"] : []), ...(input.validator != null ? ["validator"] : [])] : [];
+    ? [
+        ...(input.rule_categories !== undefined ? ["rule_categories"] : []),
+        ...(input.validator != null ? ["validator"] : []),
+      ]
+    : [];
   if (covered.length > 0 && out.rulebook_proposed) {
     const rest = unboundProposal(out.rulebook_proposed as Record<string, unknown>, out, covered);
-    if (rest) out.rulebook_proposed = rest; else delete out.rulebook_proposed;
+    if (rest) out.rulebook_proposed = rest;
+    else delete out.rulebook_proposed;
   }
   return out;
 }

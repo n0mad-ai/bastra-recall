@@ -25,7 +25,7 @@ describe("code-roi v2: reading an arm's transcript", () => {
   it("takes the LAST FILES line and normalizes the paths", () => {
     const t = parseTranscript(
       transcript('draft FILES: ["x"]\nthinking…\nFILES: ["./packages/a/src/x.ts", "/tree/packages/b/src/y.ts"]'),
-      "/tree",
+      "/tree"
     );
     assert.equal(t.noAnswer, false);
     assert.deepEqual(t.named, ["packages/a/src/x.ts", "packages/b/src/y.ts"]);
@@ -34,7 +34,10 @@ describe("code-roi v2: reading an arm's transcript", () => {
 
   it("treats a missing FILES line, an error or no result as no answer", () => {
     assert.equal(parseTranscript(transcript("I think a.ts"), "/t").noAnswer, true);
-    assert.equal(parseTranscript(line({ type: "result", is_error: true, result: 'FILES: ["a"]' }), "/t").noAnswer, true);
+    assert.equal(
+      parseTranscript(line({ type: "result", is_error: true, result: 'FILES: ["a"]' }), "/t").noAnswer,
+      true
+    );
     assert.equal(parseTranscript("", "/t").noAnswer, true);
   });
 
@@ -42,11 +45,19 @@ describe("code-roi v2: reading an arm's transcript", () => {
     const t = parseTranscript(
       transcript("FILES: []", [
         { type: "assistant", message: { content: [{ type: "tool_use", id: "u1", name: "mcp__code__find_code" }] } },
-        { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "u1", content: '{ "status": "no_answer" }' }] } },
+        {
+          type: "user",
+          message: { content: [{ type: "tool_result", tool_use_id: "u1", content: '{ "status": "no_answer" }' }] },
+        },
         { type: "assistant", message: { content: [{ type: "tool_use", id: "u2", name: "Bash" }] } },
-        { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "u2", content: [{ type: "text", text: "12345" }] }] } },
+        {
+          type: "user",
+          message: {
+            content: [{ type: "tool_result", tool_use_id: "u2", content: [{ type: "text", text: "12345" }] }],
+          },
+        },
       ]),
-      "/t",
+      "/t"
     );
     assert.equal(t.findCodeCalls, 1);
     assert.equal(t.findCodeEmpty, 1);

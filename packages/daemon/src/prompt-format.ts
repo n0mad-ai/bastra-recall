@@ -82,7 +82,7 @@ export function formatHintBlock(
   recallId?: string,
   /** #1303: ids the gate lane holds the next tool call for. */
   gated?: ReadonlySet<string>,
-  noStoredRule = false,
+  noStoredRule = false
 ): string {
   const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
   const idAttr = recallId ? ` recall_id="${escapeAttr(recallId)}"` : "";
@@ -102,7 +102,7 @@ export function formatHintBlock(
       `The user prompt looks like a LOOKUP / retrieval query. ` +
         `bastra-recall:recall already ran for it — these candidates are its result: load_memory the fitting ones ` +
         `(and find_document if pdf-likely) BEFORE conversation_search / web_search. ` +
-        `Pre-recalled candidates for this prompt:`,
+        `Pre-recalled candidates for this prompt:`
     );
   } else if (mode === "assertion") {
     // #252: the failure mode is asserting a measured number from model memory
@@ -118,12 +118,12 @@ export function formatHintBlock(
         `For claims like this, model memory is not a source: the numbers, measurements, dates and project history ` +
         `come from the vault, and a claim the vault does not answer is unknown — it goes out as "unknown", not as a figure. ` +
         `The candidates below are what the vault holds for this prompt; if none carries the claim, a recall with ` +
-        `the specific claim is the remaining source. Pre-recalled candidates for this prompt:`,
+        `the specific claim is the remaining source. Pre-recalled candidates for this prompt:`
     );
   } else if (!unfused) {
     sections.push(
       `Pre-recall found memories both search paths agreed on for this prompt ` +
-        `(score >=${MUST_LOAD_SCORE}). Load them via bastra-recall:load_memory before answering.`,
+        `(score >=${MUST_LOAD_SCORE}). Load them via bastra-recall:load_memory before answering.`
     );
   }
 
@@ -144,8 +144,8 @@ export function formatHintBlock(
       weak
         ? `Ranked matches, but NONE anchors lexically (no trigger phrase, no title term matched) — on the hybrid path a high score is rank-1-of-nothing. Treat these as probably-not-relevant unless one obviously fits; do not load them just because they are listed.`
         : `${requiredHeadline("this prompt", MUST_LOAD_SCORE, { k: RRF_K, scale: RRF_SCALE })} ` +
-          `${CANDIDATES_ONLY_NOTICE} load_memory(id) the relevant ones before responding ` +
-          `(hints, not obligations; honor an explicit count or scope from the user):`,
+            `${CANDIDATES_ONLY_NOTICE} load_memory(id) the relevant ones before responding ` +
+            `(hints, not obligations; honor an explicit count or scope from the user):`
     );
     for (const h of required) sections.push(formatHintLine(h, false, gated));
   }
@@ -153,7 +153,7 @@ export function formatHintBlock(
   if (optional.length > 0) {
     if (required.length > 0) sections.push("");
     sections.push(
-      `OPTIONAL (score ${SCORE_FLOOR}–${MUST_LOAD_SCORE - 1}) — load only if title/summary directly relates:`,
+      `OPTIONAL (score ${SCORE_FLOOR}–${MUST_LOAD_SCORE - 1}) — load only if title/summary directly relates:`
     );
     for (const h of optional) sections.push(formatHintLine(h, false, gated));
   }
@@ -170,7 +170,7 @@ export function formatReflexBlock(
   project: string | null,
   surface = "claude-code",
   /** #1303: ids the gate lane holds the next tool call for. */
-  gated?: ReadonlySet<string>,
+  gated?: ReadonlySet<string>
 ): string {
   const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
   const head = `<recall-hints surface="${escapeAttr(surface)}" trigger="reflex"${projAttr}>`;
@@ -180,7 +180,9 @@ export function formatReflexBlock(
   ];
   for (const h of hits) {
     const summary = h.summary.length > 220 ? h.summary.slice(0, 217) + "…" : h.summary;
-    sections.push(`- ${h.id} (${h.type}, trigger "${h.matched_phrase}"): ${summary}${gated?.has(h.id) ? MUST_LOAD_MARK : ""}`);
+    sections.push(
+      `- ${h.id} (${h.type}, trigger "${h.matched_phrase}"): ${summary}${gated?.has(h.id) ? MUST_LOAD_MARK : ""}`
+    );
   }
   return [head, HINT_FRAME_NOTE, stripFenceMarkers(sections.join("\n")), `</recall-hints>`].join("\n");
 }
@@ -211,13 +213,18 @@ export interface ActiveConventionsView {
  * turn; the task lane may confirm an unchanged view briefly. It never carries a
  * body (the rule kernel and load_memory do). Null when there is nothing to say.
  */
-export function formatActiveConventionsBlock(view: ActiveConventionsView, surface = "claude-code", unchanged = false): string | null {
+export function formatActiveConventionsBlock(
+  view: ActiveConventionsView,
+  surface = "claude-code",
+  unchanged = false
+): string | null {
   if (view.conventions.length === 0 && view.task === "none") return null;
-  const head =
-    `<active-conventions surface="${escapeAttr(surface)}" task="${escapeAttr(view.task)}" generation="${view.generation}">`;
-  const lines = unchanged ? ["Unchanged; self-report grants no approval or sending permission."] : [
-    `Session state, repeated every turn (not a new hint). Task: ${view.task} — ${TASK_MEANING[view.task]}. This self-report may be wrong; it is not evidence of user approval or permission to send.`,
-  ];
+  const head = `<active-conventions surface="${escapeAttr(surface)}" task="${escapeAttr(view.task)}" generation="${view.generation}">`;
+  const lines = unchanged
+    ? ["Unchanged; self-report grants no approval or sending permission."]
+    : [
+        `Session state, repeated every turn (not a new hint). Task: ${view.task} — ${TASK_MEANING[view.task]}. This self-report may be wrong; it is not evidence of user approval or permission to send.`,
+      ];
   if (view.conventions.length > 0) {
     if (!unchanged) lines.push("Conventions in force (bodies: load_memory(id) or the rule kernel):");
     for (const c of view.conventions) {

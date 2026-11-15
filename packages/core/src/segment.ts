@@ -20,7 +20,6 @@
 const SPACELESS_SCRIPT_RE =
   /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Bopomofo}\p{Script=Yi}\p{Script=Tangut}\p{Script=Nushu}\p{Script=Khitan_Small_Script}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}\p{Script=Tai_Tham}\p{Script=Tai_Viet}\p{Script=New_Tai_Lue}\p{Script=Tai_Le}\p{Script=Ahom}\p{Script=Tibetan}]/u;
 
-
 let segmenter: Intl.Segmenter | null | undefined;
 
 function wordSegmenter(): Intl.Segmenter | null {

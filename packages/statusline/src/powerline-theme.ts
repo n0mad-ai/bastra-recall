@@ -2,12 +2,7 @@ import type { PowerlineColors, ColorTheme } from "./themes";
 import type { PowerlineConfig } from "./config/loader";
 import type { PowerlineSymbols } from "./segments";
 
-import {
-  hexToAnsi,
-  hexToBasicAnsi,
-  hexTo256Ansi,
-  hexColorDistance,
-} from "./utils/colors";
+import { hexToAnsi, hexToBasicAnsi, hexTo256Ansi, hexColorDistance } from "./utils/colors";
 import { getColorSupport } from "./utils/color-support";
 import { getTheme } from "./themes";
 import { SYMBOLS, TEXT_SYMBOLS, RESET_CODE } from "./utils/constants";
@@ -29,11 +24,7 @@ export class PowerlineTheme {
     const symbolSet = charset === "text" ? TEXT_SYMBOLS : SYMBOLS;
 
     return {
-      right: isMinimalStyle
-        ? ""
-        : isCapsuleStyle
-          ? symbolSet.right_rounded
-          : symbolSet.right,
+      right: isMinimalStyle ? "" : isCapsuleStyle ? symbolSet.right_rounded : symbolSet.right,
       left: isCapsuleStyle ? symbolSet.left_rounded : "",
       branch: symbolSet.branch,
       model: symbolSet.model,
@@ -82,16 +73,12 @@ export class PowerlineTheme {
     if (theme === "custom") {
       colorTheme = this.config.colors?.custom;
       if (!colorTheme) {
-        throw new Error(
-          "Custom theme selected but no colors provided in configuration",
-        );
+        throw new Error("Custom theme selected but no colors provided in configuration");
       }
     } else {
       colorTheme = getTheme(theme, colorSupport);
       if (!colorTheme) {
-        console.warn(
-          `Built-in theme '${theme}' not found, falling back to 'dark' theme`,
-        );
+        console.warn(`Built-in theme '${theme}' not found, falling back to 'dark' theme`);
         colorTheme = getTheme("dark", colorSupport)!;
       }
     }
@@ -122,8 +109,7 @@ export class PowerlineTheme {
         fgHex = colors.bg;
       }
 
-      const bold =
-        colorSupport !== "none" && Boolean(custom?.bold ?? fallback.bold);
+      const bold = colorSupport !== "none" && Boolean(custom?.bold ?? fallback.bold);
 
       return {
         bg: convertHex(colors.bg, true),
@@ -218,12 +204,8 @@ export class PowerlineTheme {
     };
   }
 
-  private resolvePartColors(
-    convertHex: (hex: string, isBg: boolean) => string,
-  ): Record<string, string> {
-    const custom = this.config.colors?.custom as
-      | Record<string, { fg?: string }>
-      | undefined;
+  private resolvePartColors(convertHex: (hex: string, isBg: boolean) => string): Record<string, string> {
+    const custom = this.config.colors?.custom as Record<string, { fg?: string }> | undefined;
     if (!custom) return {};
 
     const result: Record<string, string> = {};
@@ -235,10 +217,7 @@ export class PowerlineTheme {
     return result;
   }
 
-  private getSegmentBgColor(
-    segmentType: string,
-    colors: PowerlineColors,
-  ): string {
+  private getSegmentBgColor(segmentType: string, colors: PowerlineColors): string {
     switch (segmentType) {
       case "directory":
         return colors.modeBg;
@@ -278,10 +257,7 @@ export class PowerlineTheme {
     }
   }
 
-  getSegmentBoldFlag(
-    segmentType: string,
-    colors: PowerlineColors,
-  ): boolean {
+  getSegmentBoldFlag(segmentType: string, colors: PowerlineColors): boolean {
     switch (segmentType) {
       case "directory":
         return colors.modeBold;

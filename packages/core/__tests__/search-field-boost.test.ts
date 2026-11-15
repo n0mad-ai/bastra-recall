@@ -50,12 +50,22 @@ test("field boosts in search.ts are the README's numbers", () => {
 test("an authored recall_when trigger outranks the same word in a body", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "bastra-boost-"));
   try {
-    await writeFile(path.join(dir, "a.md"), md("trigger-side", {
-      title: "first note", recallWhen: "zebrafog", body: "Body text without the word.",
-    }));
-    await writeFile(path.join(dir, "b.md"), md("body-side", {
-      title: "second note", recallWhen: "unrelated", body: "Body text with zebrafog once.",
-    }));
+    await writeFile(
+      path.join(dir, "a.md"),
+      md("trigger-side", {
+        title: "first note",
+        recallWhen: "zebrafog",
+        body: "Body text without the word.",
+      })
+    );
+    await writeFile(
+      path.join(dir, "b.md"),
+      md("body-side", {
+        title: "second note",
+        recallWhen: "unrelated",
+        body: "Body text with zebrafog once.",
+      })
+    );
     const vault = new Vault(dir);
     await vault.init();
     const search = new SearchIndex(vault);

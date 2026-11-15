@@ -12,7 +12,10 @@ test("B2: a later save does not suppress typed capture; relay and vault matching
   const previous = process.env.BASTRA_DRAFTS_PATH;
   process.env.BASTRA_DRAFTS_PATH = join(dir, "drafts.json");
   const now = 1_800_000_000_000;
-  const turns: HarvestTurn[] = Array.from({ length: 4 }, (_, i) => ({ role: "user", content: String.fromCodePoint(0x4e00 + i).repeat(30) }));
+  const turns: HarvestTurn[] = Array.from({ length: 4 }, (_, i) => ({
+    role: "user",
+    content: String.fromCodePoint(0x4e00 + i).repeat(30),
+  }));
   turns.push({ role: "assistant", content: "", tools: ["mcp__bastra_recall__save_memory"] });
   turns.push({ role: "user", content: String.fromCodePoint(0x4e10).repeat(30) });
   try {
@@ -25,7 +28,13 @@ test("B2: a later save does not suppress typed capture; relay and vault matching
       { role: "assistant", content: "", tools: ["mcp__bastra_recall__save_memory"] },
     ];
     assert.deepEqual(harvestCandidates(relayTurns), []);
-    const stored = await captureTypedDrafts([relayTurns[1]], { session_id: "already-in-vault" }, now, [], () => "fixture");
+    const stored = await captureTypedDrafts(
+      [relayTurns[1]],
+      { session_id: "already-in-vault" },
+      now,
+      [],
+      () => "fixture"
+    );
     assert.equal(stored.count, 0);
     assert.equal(stored.stored, 1);
   } finally {

@@ -29,10 +29,7 @@ function entry(loaded: number, acted: number, ageDays: number | null): UsageAggr
 }
 
 test("same weight, different age: the fresher memory ranks higher", () => {
-  const heat = computeHeat(
-    { fresh: entry(6, 0, 1), stale: entry(6, 0, 40) },
-    NOW,
-  );
+  const heat = computeHeat({ fresh: entry(6, 0, 1), stale: entry(6, 0, 40) }, NOW);
   assert.ok(heat.fresh > heat.stale, "a clock that ignores time is not a clock");
   assert.equal(heat.fresh, 1, "the freshest of equals is the reference point");
 });
@@ -40,10 +37,7 @@ test("same weight, different age: the fresher memory ranks higher", () => {
 test("a heavy but cold memory loses to a light warm one — the reported inversion", () => {
   // 50 Ladungen vor einem Jahr gegen 3 in dieser Woche.
   const heat = computeHeat({ lastYear: entry(50, 0, 365), thisWeek: entry(3, 0, 3) }, NOW);
-  assert.ok(
-    heat.thisWeek > heat.lastYear,
-    "reached fifty times last year must not outrank three times this week",
-  );
+  assert.ok(heat.thisWeek > heat.lastYear, "reached fifty times last year must not outrank three times this week");
 });
 
 test("uniformly fresh contenders keep their order — decay is inert there", () => {
@@ -55,7 +49,9 @@ test("uniformly fresh contenders keep their order — decay is inert there", () 
     c: entry(13, 2, 0.7),
   };
   const withTime = computeHeat(sameDay, NOW);
-  const order = Object.entries(withTime).sort((x, y) => y[1] - x[1]).map(([id]) => id);
+  const order = Object.entries(withTime)
+    .sort((x, y) => y[1] - x[1])
+    .map(([id]) => id);
   // #469: weight is `loaded` alone (13 > 10 > 7) — before, 2 × acted_on
   // lifted a and b above c.
   assert.deepEqual(order, ["c", "a", "b"], "weight still decides among equals in age");

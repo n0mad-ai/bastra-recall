@@ -158,7 +158,9 @@ function workspaceDirs(repoRoot: string, patterns: readonly unknown[]): string[]
     if (typeof pattern !== "string" || pattern.length === 0) continue;
     if (pattern.startsWith("!")) continue;
     if (dirs.size >= MAX_WORKSPACE_PACKAGES) break;
-    const segments = trimSlashes(pattern).split("/").filter((s) => s.length > 0);
+    const segments = trimSlashes(pattern)
+      .split("/")
+      .filter((s) => s.length > 0);
     for (const dir of matchDirs(repoRoot, "", segments, MAX_WORKSPACE_PACKAGES - dirs.size)) {
       dirs.add(dir);
     }
@@ -170,13 +172,7 @@ function workspaceDirs(repoRoot: string, patterns: readonly unknown[]): string[]
 const MAX_GLOB_DEPTH = 12;
 
 /** Directories under `base` matching the remaining glob `segments`. */
-function matchDirs(
-  repoRoot: string,
-  base: string,
-  segments: readonly string[],
-  budget: number,
-  depth = 0,
-): string[] {
+function matchDirs(repoRoot: string, base: string, segments: readonly string[], budget: number, depth = 0): string[] {
   if (budget <= 0 || depth > MAX_GLOB_DEPTH) return [];
   if (segments.length === 0) return base.length > 0 ? [base] : [];
   const [head, ...rest] = segments;
@@ -196,9 +192,7 @@ function matchDirs(
   for (const entry of childDirs(repoRoot, base)) {
     if (out.length >= budget) break;
     if (re !== null && !re.test(entry)) continue;
-    out.push(
-      ...matchDirs(repoRoot, under(entry), re === null ? segments : rest, budget - out.length, depth + 1),
-    );
+    out.push(...matchDirs(repoRoot, under(entry), re === null ? segments : rest, budget - out.length, depth + 1));
   }
   return out;
 }

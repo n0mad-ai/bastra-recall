@@ -104,9 +104,9 @@ await writeFile(
       },
     },
     null,
-    2,
+    2
   ),
-  "utf8",
+  "utf8"
 );
 
 for (let s = 0; s < SESSIONS; s++) {
@@ -116,7 +116,7 @@ for (let s = 0; s < SESSIONS; s++) {
 await writeFile(
   join(work, "state.json"),
   JSON.stringify({ vault, home, work, port, sessions: SESSIONS, lines: LINES, daemonPid: daemon.pid }, null, 2),
-  "utf8",
+  "utf8"
 );
 
 console.log(work);

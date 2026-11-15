@@ -26,7 +26,9 @@ export function coverageIndexStamp(repoRoot: string): string | null {
   let cached = paths.get(repoRoot);
   if (!cached || cached.marker !== marker) {
     const result = spawnSync("git", ["-C", repoRoot, "rev-parse", "--git-path", "index"], {
-      stdio: ["ignore", "pipe", "ignore"], timeout: 1_000, encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 1_000,
+      encoding: "utf8",
     });
     if (result.error || result.signal !== null || result.status !== 0 || !result.stdout?.trim()) return null;
     cached = { marker, index: resolve(repoRoot, result.stdout.trim()) };

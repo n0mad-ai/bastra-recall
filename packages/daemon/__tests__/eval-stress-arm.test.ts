@@ -58,7 +58,7 @@ test("--hybrid aborts when the embedding provider is unreachable — it never re
   assert.doesNotMatch(
     out,
     /Provider: \*\*BM25-only\*\*/,
-    "a --hybrid run must never emit a BM25-only report — that is the silent fallback the M0 gate forbids",
+    "a --hybrid run must never emit a BM25-only report — that is the silent fallback the M0 gate forbids"
   );
 });
 
@@ -88,7 +88,7 @@ test("--out refuses a path inside a git working tree", () => {
   assert.equal(
     existsSync(resolve(import.meta.dirname, "..", "..", "..", "should-never-exist.json")),
     false,
-    "and nothing was written",
+    "and nothing was written"
   );
 });
 

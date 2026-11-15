@@ -32,7 +32,7 @@ export async function awaitDenseArm(
   vault: Vault,
   opts: RecallOptions,
   stage: StageEmitter,
-  tVec: number,
+  tVec: number
 ): Promise<{ vectorTop: DenseArmHit[]; vectorArmTimedOut: boolean; vectorArmErrored: boolean }> {
   // #342: race the dense arm against its own deadline. `abandonAfter` never
   // rejects and never cancels — on expiry it hands back null and leaves the
@@ -61,7 +61,7 @@ export async function awaitDenseArm(
       hit_count: r.hits.length,
       provider_load_ms: r.providerLoadMs,
       cold_start_observed: r.coldStartObserved,
-    }),
+    })
   );
   const vectorWaitMs = Date.now() - tVecWait;
   const vectorArmTimedOut = vecOrTimeout === null;
@@ -77,10 +77,7 @@ export async function awaitDenseArm(
       if (mem.fm.obsolete === true) return false;
       if (opts.scope && !scopeEquals(mem.fm.scope, opts.scope)) return false;
       if (opts.type && mem.fm.type !== opts.type) return false;
-      if (
-        !opts.allow_private &&
-        (mem.fm as { sensitivity?: string }).sensitivity === "private"
-      ) {
+      if (!opts.allow_private && (mem.fm as { sensitivity?: string }).sensitivity === "private") {
         return false;
       }
       return true;
@@ -131,7 +128,7 @@ export function fuseArms(
   vault: Vault,
   authoredTerms: ReadonlySet<string>,
   recallWhenDocFreq: (term: string) => number,
-  stage: StageEmitter,
+  stage: StageEmitter
 ): RecallHit[] {
   const tFuse = stage.start("rrf.fuse");
   const bm25Ids = bm25Top.map((r) => r.id as string);
@@ -171,8 +168,11 @@ export function fuseArms(
       matched_recall_when: bm ? matchedRecallWhen(bm, authoredTerms) : false,
       ...(() => {
         const a = bm
-          ? anchorStrength(bm, authoredTerms, (t) => recallWhenDocFreq(t), (id) =>
-              vault.get(id)?.fm.recall_when ?? [],
+          ? anchorStrength(
+              bm,
+              authoredTerms,
+              (t) => recallWhenDocFreq(t),
+              (id) => vault.get(id)?.fm.recall_when ?? []
             )
           : undefined;
         return a ? { anchor_strength: a } : {};

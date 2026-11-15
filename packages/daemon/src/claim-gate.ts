@@ -131,7 +131,7 @@ export function unansweredClaims(
   read?: (id: string) => { summary?: string; body?: string } | undefined,
   /** Every id on the version chain below `id`, itself included. Optional; the
    *  gate degrades to direct answers without it. */
-  chainBelow?: (id: string) => Iterable<string>,
+  chainBelow?: (id: string) => Iterable<string>
 ): ClaimedSituation[] {
   const answered = new Set<string>([
     ...(input.conflict_with ? [input.conflict_with] : []),
@@ -201,7 +201,7 @@ export function unansweredClaims(
 export function claimGateResult(
   finalId: string,
   claimed: ClaimedSituation[],
-  quality: SaveQualityResult,
+  quality: SaveQualityResult
 ): ClaimGateResult {
   const L: string[] = [];
   L.push("NOTHING WAS SAVED. This memory's recall_when claims a situation another memory already declares:");
@@ -213,7 +213,7 @@ export function claimGateResult(
         c.delta.new_terms.length === 0
           ? `      Your body adds NO new terms — every content word of it is already in that memory.`
           : `      Your body would add: ${c.delta.new_terms.join(", ")}` +
-            `  (${Math.round(c.delta.covered * 100)}% of it is already there)`,
+              `  (${Math.round(c.delta.covered * 100)}% of it is already there)`
       );
     }
     if (c.existing_body) {
@@ -232,24 +232,26 @@ export function claimGateResult(
     L.push(
       "  Its words are already in that memory. Unless it states something the vocabulary cannot see — " +
         "a different VALUE for the same fact, a reversal, a correction — DROP this save. Do not link it, " +
-        "do not re-send it. Say in one line that the memory already covers it and move on.",
+        "do not re-send it. Say in one line that the memory already covers it and move on."
     );
   } else {
     L.push(
       "  - Nothing genuinely new (the added terms are rewording): DROP the save. Do not link it, do not " +
-        "re-send it — say the memory already covers it and move on.",
+        "re-send it — say the memory already covers it and move on."
     );
     L.push(
       "  - Something new that BELONGS in that memory: do not create a second one. Re-save THAT memory with " +
         "`overwrite: true`, its id, and a body that carries its existing content plus your addition. " +
-        "Keep its title, triggers and frontmatter unless the new fact changes them.",
+        "Keep its title, triggers and frontmatter unless the new fact changes them."
     );
   }
   L.push("");
   L.push("Only if this really is a separate memory, re-send this save with ONE of:");
   L.push("  - replaces: <id>      — the older one is out of date and this is its new version");
   L.push("  - conflict_with: <id> — both are current and they contradict each other");
-  L.push(`  - sibling_of: [${claimed.map((c) => `'${c.id}'`).join(", ")}] — both apply permanently (different entities, same wording)`);
+  L.push(
+    `  - sibling_of: [${claimed.map((c) => `'${c.id}'`).join(", ")}] — both apply permanently (different entities, same wording)`
+  );
   L.push("  - or narrow this save's recall_when so it no longer claims their situation");
   L.push("");
   L.push("Do not re-send this save unchanged — the gate is deterministic and will hold it again.");

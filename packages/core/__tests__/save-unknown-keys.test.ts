@@ -46,10 +46,7 @@ const FILE = ["memories", "projects", "testproj", "deploy-runbook.md"];
 
 /** Legt das Memory an und schreibt danach fremde Keys ins Frontmatter — so,
  *  wie eine fremde App es täte: an der Save-API vorbei, direkt in die Datei. */
-async function seedWithForeignKeys(
-  dir: string,
-  foreign: Record<string, unknown>,
-): Promise<string> {
+async function seedWithForeignKeys(dir: string, foreign: Record<string, unknown>): Promise<string> {
   await saveMemory(dir, base());
   const file = path.join(dir, ...FILE);
   const parsed = matter(await readFile(file, "utf8"));
@@ -104,10 +101,7 @@ test("bekannt schlägt fremd — ein gleichnamiger Bestandswert überstimmt den 
 
   // `summary` und `tags` sind verwaltete Felder. Käme der Durchreiche-Schritt
   // vor der Kollisionsregel, stünde hinterher der ALTE Wert in der Datei.
-  await saveMemory(
-    dir,
-    base({ summary: "die neue Fassung", tags: ["deploy", "runbook"], overwrite: true }),
-  );
+  await saveMemory(dir, base({ summary: "die neue Fassung", tags: ["deploy", "runbook"], overwrite: true }));
 
   const fm = matter(await readFile(file, "utf8")).data;
   assert.equal(fm.summary, "die neue Fassung");
@@ -213,6 +207,6 @@ test("jedes Feld, das der Save in `fm` schreibt, steht in SAVE_MANAGED_FRONTMATT
   assert.deepEqual(
     Object.keys(fm).sort(),
     [...SAVE_MANAGED_FRONTMATTER_KEYS].sort(),
-    "a key written to fm but not listed is treated as foreign; a listed key missing here needs a value in `prev`",
+    "a key written to fm but not listed is treated as foreign; a listed key missing here needs a value in `prev`"
   );
 });

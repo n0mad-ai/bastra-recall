@@ -34,7 +34,7 @@ export function assertLocalOrOptIn(rawUrl: string): void {
   if (isLoopbackHost(host) || isOnValue(process.env.BASTRA_ALLOW_REMOTE_OLLAMA)) return;
   throw new Error(
     `bastra-recall: refusing non-loopback Ollama endpoint "${host}" — this would ` +
-      `send memory text off-box. Set BASTRA_ALLOW_REMOTE_OLLAMA=1 to use a remote endpoint on purpose.`,
+      `send memory text off-box. Set BASTRA_ALLOW_REMOTE_OLLAMA=1 to use a remote endpoint on purpose.`
   );
 }
 

@@ -54,42 +54,53 @@ export async function startHttp(opts: {
     ollama,
   } = opts;
 
-  const httpHandle =
-    httpDisabled
-      ? { port: null, close: async () => undefined }
-      : await startHttpServer({
-          port: httpPort,
-          settingsUi: { restart: process.platform === "darwin" && daemonOrigin().startedBy === "launchagent" ? async () => { process.kill(process.pid, "SIGTERM"); } : undefined },
-          vault,
-          search,
-          telemetry,
-          version: DAEMON_VERSION,
-          toolDeps,
-          documentWriteEnabled,
-          onActivity: markActivity,
-          embedding: embeddingStatus,
-          embeddingHealth: () => embIdxForHealth?.runtimeHealth() ?? null,
-          embeddingBreaker: () => embeddingBreaker?.snapshot(Date.now()) ?? null,
-          triggerExpand: () => {
-            const model = triggerExpandModel();
-            return model ? { model } : null;
-          },
-          power: () => power.snapshot(),
-          origin: { ...daemonOrigin(), configFingerprint: configFingerprint(process.env) },
-          embeddingVectors: () => embIdxForHealth?.snapshot() ?? null,
-          // Such-Copilot (#207): gleiche lokale Gen-Model-Auflösung wie
-          // doc2query; ohne Ollama bleibt /ui/chat aus (503).
-          uiChat: ollama
-            // 8192 statt des 4096-Defaults (#366): die Lane feuert zwei
+  const httpHandle = httpDisabled
+    ? { port: null, close: async () => undefined }
+    : await startHttpServer({
+        port: httpPort,
+        settingsUi: {
+          restart:
+            process.platform === "darwin" && daemonOrigin().startedBy === "launchagent"
+              ? async () => {
+                  process.kill(process.pid, "SIGTERM");
+                }
+              : undefined,
+        },
+        vault,
+        search,
+        telemetry,
+        version: DAEMON_VERSION,
+        toolDeps,
+        documentWriteEnabled,
+        onActivity: markActivity,
+        embedding: embeddingStatus,
+        embeddingHealth: () => embIdxForHealth?.runtimeHealth() ?? null,
+        embeddingBreaker: () => embeddingBreaker?.snapshot(Date.now()) ?? null,
+        triggerExpand: () => {
+          const model = triggerExpandModel();
+          return model ? { model } : null;
+        },
+        power: () => power.snapshot(),
+        origin: { ...daemonOrigin(), configFingerprint: configFingerprint(process.env) },
+        embeddingVectors: () => embIdxForHealth?.snapshot() ?? null,
+        // Such-Copilot (#207): gleiche lokale Gen-Model-Auflösung wie
+        // doc2query; ohne Ollama bleibt /ui/chat aus (503).
+        uiChat: ollama
+          ? // 8192 statt des 4096-Defaults (#366): die Lane feuert zwei
             // getrennte Calls. buildQueryPrompt nimmt history.slice(-4) ×
             // MAX_MESSAGE 2000 Zeichen + die Frage (webui-chat.ts:34,42) ≈ 10k
             // Zeichen ≈ 3k Tokens; buildAnswerPrompt läuft ohne History, dafür
             // mit HITS_TOTAL 8 × 600 Zeichen Body (:38,69) ≈ 1,5k Tokens. Der
             // Query-Prompt passt knapp in 4096 — 8192 ist der Headroom.
-            ? ollamaChat({ baseURL: ollama.baseURL, model: await resolveGenerationModel(), timeoutMs: 45_000, numCtx: 8192 })
-            : null,
-          curator: { vaultRoot: vaultPath, vault, setDemotions: (ids) => search.setDemotions(ids) },
-        });
+            ollamaChat({
+              baseURL: ollama.baseURL,
+              model: await resolveGenerationModel(),
+              timeoutMs: 45_000,
+              numCtx: 8192,
+            })
+          : null,
+        curator: { vaultRoot: vaultPath, vault, setDemotions: (ids) => search.setDemotions(ids) },
+      });
 
   return { httpHandle };
 }

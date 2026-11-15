@@ -56,12 +56,18 @@ function httpPost(port: number, path: string, payload: unknown): Promise<{ statu
   const body = JSON.stringify(payload);
   return new Promise((resolve, reject) => {
     const req = request(
-      { host: "127.0.0.1", port, path, method: "POST", headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) } },
+      {
+        host: "127.0.0.1",
+        port,
+        path,
+        method: "POST",
+        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+      },
       (res) => {
         const chunks: Buffer[] = [];
         res.on("data", (c) => chunks.push(c as Buffer));
         res.on("end", () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
-      },
+      }
     );
     req.on("error", reject);
     req.write(body);
@@ -74,7 +80,11 @@ function httpPost(port: number, path: string, payload: unknown): Promise<{ statu
  * isWeakResult fires. `rrf` decides no_home: one null rank = present in one arm
  * only = rank-1-of-nothing.
  */
-function unanchoredHit(id: string, score: number, rrf: { rank_bm25: number | null; rank_vector: number | null }): RecallHit {
+function unanchoredHit(
+  id: string,
+  score: number,
+  rrf: { rank_bm25: number | null; rank_vector: number | null }
+): RecallHit {
   return {
     id,
     title: "zzz unrelated heading",
@@ -154,7 +164,10 @@ async function readHookRecallRow(logDir: string): Promise<Record<string, unknown
     }
     for (const f of files.filter((n) => n.startsWith("events-"))) {
       const raw = await readFile(join(logDir, f), "utf8");
-      const line = raw.split("\n").filter((l) => l.includes('"hook_recall"')).pop();
+      const line = raw
+        .split("\n")
+        .filter((l) => l.includes('"hook_recall"'))
+        .pop();
       if (line) return JSON.parse(line) as Record<string, unknown>;
     }
   }

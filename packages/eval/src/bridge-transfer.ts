@@ -47,13 +47,7 @@ import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { fileURLToPath } from "node:url";
-import {
-  Vault,
-  SearchIndex,
-  EmbeddingIndex,
-  OllamaEmbeddingProvider,
-  type RecallHit,
-} from "@bastra-recall/core";
+import { Vault, SearchIndex, EmbeddingIndex, OllamaEmbeddingProvider, type RecallHit } from "@bastra-recall/core";
 
 // The bridge layer lives in the daemon (not exported from core, and a static
 // cross-package source import trips tsc's rootDir guard). We load the REAL
@@ -82,7 +76,11 @@ interface ExpansionResult {
 }
 interface BridgesModule {
   mintBridge: (query: string, memoryTerms: string[], lang?: "de" | "en" | null, date?: string) => Bridge | null;
-  expandQuery: (query: string, pool: BridgePool | null | undefined, opts?: { configuredLang?: "de" | "en" | null }) => ExpansionResult;
+  expandQuery: (
+    query: string,
+    pool: BridgePool | null | undefined,
+    opts?: { configuredLang?: "de" | "en" | null }
+  ) => ExpansionResult;
   distinctiveTerms: (text: string) => string[];
   BridgePool: { load: (rootDir: string) => BridgePool; empty: () => BridgePool };
 }
@@ -90,10 +88,7 @@ interface HarvestModule {
   writeBridges: (rootDir: string, bridges: Bridge[]) => Promise<number>;
 }
 
-const daemonDist = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../daemon/dist/learned-recall",
-);
+const daemonDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../daemon/dist/learned-recall");
 const { mintBridge, expandQuery, distinctiveTerms, BridgePool } = (await import(
   path.join(daemonDist, "bridges.js")
 )) as BridgesModule;
@@ -145,7 +140,7 @@ function parseArgs(argv: string[]): { sample: number; full: boolean; holdout: bo
 // unaffected: they come from the MINT query = phrase[0], handled at the call site.)
 function memoryTerms(
   m: { fm: { title: string; summary: string; recall_when: string[]; tags: string[] }; body: string },
-  holdout: boolean,
+  holdout: boolean
 ): string[] {
   const parts = holdout
     ? [m.fm.title, m.fm.summary, m.body, m.fm.tags.join(" ")]
@@ -410,7 +405,7 @@ async function main(): Promise<void> {
   // charge lever-specific harm only, not the generic cost a random expansion also
   // pays — #129) — but ONLY if the on-arm also clears the FOREIGN null on the far
   // metric (own crossedIn > foreign crossedIn AND own meanΔrank < foreign meanΔrank).
-  const onShowsLift = (onArm.crossedIn > 0 || onArm.meanDeltaRank < 0);
+  const onShowsLift = onArm.crossedIn > 0 || onArm.meanDeltaRank < 0;
   const nearWithinNull = onArm.nearRegression <= foreignArm.nearRegression;
   const beatsForeignCrossed = onArm.crossedIn > foreignArm.crossedIn;
   const beatsForeignDelta = onArm.meanDeltaRank < foreignArm.meanDeltaRank;
@@ -436,15 +431,33 @@ async function main(): Promise<void> {
   console.log("");
   console.log(`  mode : ${holdout ? "HOLDOUT (default)" : "--no-holdout"}`);
   console.log(`  vault size (memories indexed) : ${vaultSize}`);
-  console.log(`  dense leg : ${holdout ? `re-embedded ${embIdx.size()} memories WITHOUT recall_when (fresh temp vectors)` : `production embeddings.json (${embIdx.size()} vectors)`}`);
+  console.log(
+    `  dense leg : ${holdout ? `re-embedded ${embIdx.size()} memories WITHOUT recall_when (fresh temp vectors)` : `production embeddings.json (${embIdx.size()} vectors)`}`
+  );
   console.log(`  eligible memories (≥2 recall_when) : ${n}${full ? " [--full]" : ` [--sample ${sample}]`}`);
   console.log(`  eval queries (held-out phrase[1..]) : ${cases.length}`);
   console.log(`  own bridges minted : ${ownBridges.length}   foreign bridges minted : ${foreignBridges.length}`);
-  console.log(`  ownPool size : ${ownPool.size()} (${ownPool.languages().map((l) => `${l}:${ownPool.size(l)}`).join(" ") || "none"})`);
-  console.log(`  foreignPool size : ${foreignPool.size()} (${foreignPool.languages().map((l) => `${l}:${foreignPool.size(l)}`).join(" ") || "none"})`);
+  console.log(
+    `  ownPool size : ${ownPool.size()} (${
+      ownPool
+        .languages()
+        .map((l) => `${l}:${ownPool.size(l)}`)
+        .join(" ") || "none"
+    })`
+  );
+  console.log(
+    `  foreignPool size : ${foreignPool.size()} (${
+      foreignPool
+        .languages()
+        .map((l) => `${l}:${foreignPool.size(l)}`)
+        .join(" ") || "none"
+    })`
+  );
   console.log("");
   console.log(`  S (serving k / NEAR boundary) : ${S}`);
-  console.log(`  P (candidate-pool length, median/used) : ${num(medianP)}  [pool = max(k*4,20); per-query P = its own pool length]`);
+  console.log(
+    `  P (candidate-pool length, median/used) : ${num(medianP)}  [pool = max(k*4,20); per-query P = its own pool length]`
+  );
   console.log(`  Infinity-rank cap : ${RANK_CAP} (= used P + 1)`);
   console.log("");
   const totalCases = near.length + farInPool.length + oop.length;
@@ -469,19 +482,25 @@ async function main(): Promise<void> {
   console.log("  arm        meanΔrank   crossed-in   near-regression");
   console.log("  ────────   ─────────   ──────────   ───────────────");
   console.log(
-    `  on (own)   ${num(onArm.meanDeltaRank).padStart(9)}   ${pct(onArm.crossedIn).padStart(10)}   ${pct(onArm.nearRegression).padStart(15)}`,
+    `  on (own)   ${num(onArm.meanDeltaRank).padStart(9)}   ${pct(onArm.crossedIn).padStart(10)}   ${pct(onArm.nearRegression).padStart(15)}`
   );
   console.log(
-    `  foreign    ${num(foreignArm.meanDeltaRank).padStart(9)}   ${pct(foreignArm.crossedIn).padStart(10)}   ${pct(foreignArm.nearRegression).padStart(15)}`,
+    `  foreign    ${num(foreignArm.meanDeltaRank).padStart(9)}   ${pct(foreignArm.crossedIn).padStart(10)}   ${pct(foreignArm.nearRegression).padStart(15)}`
   );
   console.log("");
   console.log("  (meanΔrank: negative = lift. Infinity ranks capped at P+1.)");
   console.log("");
   console.log("  ── VERDICT (#129) ─────────────────────────────────────────────────");
   console.log(`    on-arm shows OOP lift        : ${onShowsLift ? "yes" : "no"}`);
-  console.log(`    near-reg ≤ null              : ${nearWithinNull ? "yes" : "no"} (own ${pct(onArm.nearRegression)} vs null ${pct(foreignArm.nearRegression)})`);
-  console.log(`    on beats foreign (crossed-in): ${beatsForeignCrossed ? "yes" : "no"} (own ${pct(onArm.crossedIn)} vs foreign ${pct(foreignArm.crossedIn)})`);
-  console.log(`    on beats foreign (meanΔrank) : ${beatsForeignDelta ? "yes" : "no"} (own ${num(onArm.meanDeltaRank)} vs foreign ${num(foreignArm.meanDeltaRank)})`);
+  console.log(
+    `    near-reg ≤ null              : ${nearWithinNull ? "yes" : "no"} (own ${pct(onArm.nearRegression)} vs null ${pct(foreignArm.nearRegression)})`
+  );
+  console.log(
+    `    on beats foreign (crossed-in): ${beatsForeignCrossed ? "yes" : "no"} (own ${pct(onArm.crossedIn)} vs foreign ${pct(foreignArm.crossedIn)})`
+  );
+  console.log(
+    `    on beats foreign (meanΔrank) : ${beatsForeignDelta ? "yes" : "no"} (own ${num(onArm.meanDeltaRank)} vs foreign ${num(foreignArm.meanDeltaRank)})`
+  );
   console.log("");
   console.log(`    >>> ${promote ? "PROMOTE" : "DO NOT PROMOTE"} <<<`);
   console.log("");

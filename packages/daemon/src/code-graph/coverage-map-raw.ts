@@ -22,7 +22,11 @@ export function parseRawCoverage(text: string): { result: RawScript[] } | null {
       for (const fn of script.functions) {
         if (!object(fn) || (fn.functionName !== undefined && typeof fn.functionName !== "string")) return null;
         if (fn.ranges === undefined) continue;
-        if (!Array.isArray(fn.ranges) || !fn.ranges.every((r: unknown) => object(r) && typeof r.count === "number" && Number.isFinite(r.count))) return null;
+        if (
+          !Array.isArray(fn.ranges) ||
+          !fn.ranges.every((r: unknown) => object(r) && typeof r.count === "number" && Number.isFinite(r.count))
+        )
+          return null;
       }
     }
     return doc as unknown as { result: RawScript[] };
@@ -47,7 +51,9 @@ export function sourceResolver(repoRoot: string): (abs: string) => string {
         const st = fstatSync(fd);
         if (!st.isFile() || st.size > 16 * 1024 * 1024) return abs;
         text = readFileSync(fd, "utf8");
-      } finally { closeSync(fd); }
+      } finally {
+        closeSync(fd);
+      }
       const m = JSON.parse(text) as { sources?: string[]; sourceRoot?: string };
       const src = (m.sources ?? [])
         .map((s) => resolve(dirname(mapPath), m.sourceRoot ?? "", s))
@@ -60,4 +66,3 @@ export function sourceResolver(repoRoot: string): (abs: string) => string {
     return out;
   };
 }
-

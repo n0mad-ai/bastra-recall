@@ -82,14 +82,10 @@ test("eine mitgegebene authority hebelt den Plattenscan nicht mehr aus", async (
   await assert.rejects(
     saveMemory(root, input({ folder: "memories/people" }), stale),
     /memory already exists/,
-    "der Scan unter dem Lock entscheidet, nicht der Aufrufer",
+    "der Scan unter dem Lock entscheidet, nicht der Aufrufer"
   );
 
-  assert.deepEqual(
-    await activeFiles(root),
-    [first.file_path],
-    "kein zweites File mit derselben id",
-  );
+  assert.deepEqual(await activeFiles(root), [first.file_path], "kein zweites File mit derselben id");
 });
 
 test("mutateMemoryFile ohne vaultRoot wird abgewiesen, statt am Claim vorbeizuschreiben", async (t) => {
@@ -104,12 +100,12 @@ test("mutateMemoryFile ohne vaultRoot wird abgewiesen, statt am Claim vorbeizusc
   const untyped = mutateMemoryFile as unknown as (
     f: string,
     id: string,
-    m: { frontmatter: (fm: Record<string, unknown>) => Record<string, unknown> },
+    m: { frontmatter: (fm: Record<string, unknown>) => Record<string, unknown> }
   ) => Promise<unknown>;
 
   await assert.rejects(
     untyped(file, "m", { frontmatter: (fm) => ({ ...fm, obsolete: true }) }),
-    /requires a vaultRoot/,
+    /requires a vaultRoot/
   );
   assert.equal(await readFile(file, "utf8"), before, "nichts geschrieben");
 });
@@ -124,10 +120,7 @@ test("deleteMemoryFile löscht nur, was unter dem Claim DIESES Memory ist", asyn
   // Memory liegt. Vorher hätte das blinde `unlink` es gelöscht.
   const foreign = join(dir, "fremd.md");
   await writeFile(foreign, memoryFile("fremd"), "utf8");
-  await assert.rejects(
-    deleteMemoryFile(foreign, "meins", { vaultRoot: root }),
-    /does not hold memory 'meins'/,
-  );
+  await assert.rejects(deleteMemoryFile(foreign, "meins", { vaultRoot: root }), /does not hold memory 'meins'/);
   assert.ok(existsSync(foreign), "die fremde Datei steht noch");
 
   // Und der gewöhnliche Fall funktioniert unverändert.

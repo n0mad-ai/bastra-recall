@@ -41,10 +41,22 @@ ${marker} ${filler}
 }
 
 test("no threshold set — rareTermFuzzy stays out of the way", () => {
-  assert.equal(rareTermFuzzy(() => 1, undefined), undefined);
-  assert.equal(rareTermFuzzy(() => 1, 0), undefined);
-  assert.equal(rareTermFuzzy(() => 1, Number.NaN), undefined);
-  assert.equal(rareTermFuzzy(() => 1, -5), undefined);
+  assert.equal(
+    rareTermFuzzy(() => 1, undefined),
+    undefined
+  );
+  assert.equal(
+    rareTermFuzzy(() => 1, 0),
+    undefined
+  );
+  assert.equal(
+    rareTermFuzzy(() => 1, Number.NaN),
+    undefined
+  );
+  assert.equal(
+    rareTermFuzzy(() => 1, -5),
+    undefined
+  );
 });
 
 test("rare terms keep fuzzy, common terms lose it", () => {
@@ -84,7 +96,7 @@ test("default is off — a typo still matches through fuzzy", async (t) => {
   const baseline = search.recall(typo, { k: 5 });
   assert.ok(
     baseline.some((h) => h.id === "alpha"),
-    "precondition: without a threshold the typo must reach the memory through fuzzy",
+    "precondition: without a threshold the typo must reach the memory through fuzzy"
   );
 
   // The rare marker keeps its fuzzy tolerance under the threshold, because its
@@ -92,6 +104,6 @@ test("default is off — a typo still matches through fuzzy", async (t) => {
   const treated = search.recall(typo, { k: 5, bm25_fuzzy_rare_df_max: BM25_FUZZY_RARE_DF_MAX });
   assert.ok(
     treated.some((h) => h.id === "alpha"),
-    "a RARE term must keep its fuzzy tolerance when the threshold is set",
+    "a RARE term must keep its fuzzy tolerance when the threshold is set"
   );
 });

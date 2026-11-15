@@ -133,7 +133,7 @@ export function tokenizeWithIdentifiers(text: string): string[] {
       for (const part of token.split(GLUE_SPLIT_RE)) {
         if (part) {
           out.push(part);
-          if (spaceless) out.push(...segmentWords(part).filter(word => word !== part));
+          if (spaceless) out.push(...segmentWords(part).filter((word) => word !== part));
         }
       }
     }
@@ -144,19 +144,7 @@ export function tokenizeWithIdentifiers(text: string): string[] {
 // Dangling boolean-artige Operatoren an den Query-Rändern. Nur
 // alleinstehende Tokens — Identifier wie `--force-push` bleiben unberührt,
 // ebenso Operatoren mitten in der Query.
-const DANGLING_OPS = new Set([
-  "and",
-  "or",
-  "not",
-  "&&",
-  "||",
-  "&",
-  "|",
-  "+",
-  "!",
-  "-",
-  "--",
-]);
+const DANGLING_OPS = new Set(["and", "or", "not", "&&", "||", "&", "|", "+", "!", "-", "--"]);
 
 /**
  * Pure Query-Hygiene für den Recall-Entry: Cap auf QUERY_MAX_CHARS (an

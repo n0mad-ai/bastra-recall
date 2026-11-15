@@ -6,11 +6,12 @@
 
 export function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
-  if (attrs) for (const [k, v] of Object.entries(attrs)) {
-    if (v === null || v === undefined || v === false) continue;
-    if (k === "class") el.className = v;
-    else el.setAttribute(k, v);
-  }
+  if (attrs)
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v === null || v === undefined || v === false) continue;
+      if (k === "class") el.className = v;
+      else el.setAttribute(k, v);
+    }
   for (const c of children.flat()) {
     if (c === null || c === undefined || c === false) continue;
     el.append(c instanceof Node ? c : document.createTextNode(String(c)));
@@ -37,8 +38,16 @@ export function table(headers, rows, extraClass) {
   return h(
     "table",
     { class: extraClass ? `tv-table ${extraClass}` : "tv-table" },
-    h("thead", null, h("tr", null, headers.map((t) => h("th", null, t)))),
-    h("tbody", null, rows),
+    h(
+      "thead",
+      null,
+      h(
+        "tr",
+        null,
+        headers.map((t) => h("th", null, t))
+      )
+    ),
+    h("tbody", null, rows)
   );
 }
 export const td = (v, cls) => h("td", { class: cls ?? null }, v);
@@ -46,4 +55,10 @@ export const note = (text, warn = false) => h("p", { class: `tv-note${warn ? " w
 export const empty = (text) => h("p", { class: "tv-empty" }, text);
 export const h3 = (text) => h("h3", { class: "tv-h3" }, text);
 export const section = (title, question, ...body) =>
-  h("section", { class: "tv-section" }, h("h2", { class: "section-title" }, title), h("p", { class: "tv-q" }, question), ...body);
+  h(
+    "section",
+    { class: "tv-section" },
+    h("h2", { class: "section-title" }, title),
+    h("p", { class: "tv-q" }, question),
+    ...body
+  );

@@ -143,7 +143,12 @@ describe("code awareness end to end, with the real Graphify", { skip: !HAVE_BIN,
       build: async (repoRoot, reason) => {
         builds.push(reason);
         await new Promise((r) => setTimeout(r, 120));
-        return { ok: true, manifest: (await readManifest(graphDirOf(repoRoot)))!, durationMs: 120, tookOverLock: false };
+        return {
+          ok: true,
+          manifest: (await readManifest(graphDirOf(repoRoot)))!,
+          durationMs: 120,
+          tookOverLock: false,
+        };
       },
     });
     try {
@@ -171,7 +176,7 @@ describe("code awareness end to end, with the real Graphify", { skip: !HAVE_BIN,
     assert.ok(graph);
     assert.ok(
       !dependentFilesOf(graph!, "src/core.ts").includes("src/late.ts"),
-      "the deleted file must be gone from the graph",
+      "the deleted file must be gone from the graph"
     );
   });
 
@@ -198,12 +203,10 @@ describe("code awareness end to end, with the real Graphify", { skip: !HAVE_BIN,
 
   it("keeps the repository clean — nothing to commit", async () => {
     // The #574 acceptance: a user's repo must not gain a tracked directory.
-    await writeFile(join(repo, ".git", "info", "exclude"), "graphify-out/\n", "utf8").catch(
-      async () => {
-        await mkdir(join(repo, ".git", "info"), { recursive: true });
-        await writeFile(join(repo, ".git", "info", "exclude"), "graphify-out/\n", "utf8");
-      },
-    );
+    await writeFile(join(repo, ".git", "info", "exclude"), "graphify-out/\n", "utf8").catch(async () => {
+      await mkdir(join(repo, ".git", "info"), { recursive: true });
+      await writeFile(join(repo, ".git", "info", "exclude"), "graphify-out/\n", "utf8");
+    });
     const { stdout } = await run("git", ["status", "--porcelain"], { cwd: repo });
     assert.equal(stdout.trim(), "", `git status should be clean, got:\n${stdout}`);
   });

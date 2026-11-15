@@ -62,7 +62,10 @@ function makeVault(files: Record<string, string>): string {
   return vault;
 }
 
-interface Run { code: number | null; stderr: string }
+interface Run {
+  code: number | null;
+  stderr: string;
+}
 
 function runScript(vault: string, env: Record<string, string | undefined>, preload?: string): Promise<Run> {
   return new Promise((done, fail) => {
@@ -78,22 +81,35 @@ function runScript(vault: string, env: Record<string, string | undefined>, prelo
     const args = ["--import", "tsx", ...(preload ? ["--import", preload] : []), SCRIPT];
     const child = spawn(process.execPath, args, { env: { ...base, ...env } as NodeJS.ProcessEnv });
     let stderr = "";
-    child.stderr.on("data", (d) => { stderr += d; });
-    const timer = setTimeout(() => { child.kill("SIGKILL"); fail(new Error(`backfill-related timed out\n${stderr}`)); }, 90_000);
-    child.on("close", (code) => { clearTimeout(timer); done({ code, stderr }); });
+    child.stderr.on("data", (d) => {
+      stderr += d;
+    });
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      fail(new Error(`backfill-related timed out\n${stderr}`));
+    }, 90_000);
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      done({ code, stderr });
+    });
   });
 }
 
 // Replaces fetch before the script loads: any attempt to reach a network host
 // is printed as `FETCH <url>` and refused.
 const FETCH_RECORDER =
-  "data:text/javascript," + encodeURIComponent('globalThis.fetch = async (u) => { console.error("FETCH " + u); throw new Error("blocked"); };');
+  "data:text/javascript," +
+  encodeURIComponent('globalThis.fetch = async (u) => { console.error("FETCH " + u); throw new Error("blocked"); };');
 
 test("a bare OPENAI_API_KEY is not consent to send vault text to OpenAI", async () => {
   const vault = makeVault({ "a.md": memory("a", "alpha lesson") });
   try {
     const res = await runScript(vault, { OPENAI_API_KEY: "sk-test-not-real" }, FETCH_RECORDER);
-    assert.doesNotMatch(res.stderr, /FETCH https:\/\/api\.openai\.com/, `the script reached for OpenAI:\n${res.stderr}`);
+    assert.doesNotMatch(
+      res.stderr,
+      /FETCH https:\/\/api\.openai\.com/,
+      `the script reached for OpenAI:\n${res.stderr}`
+    );
     assert.equal(res.code, 1);
     assert.match(res.stderr, /kein EmbeddingProvider verfügbar/);
   } finally {
@@ -104,7 +120,9 @@ test("a bare OPENAI_API_KEY is not consent to send vault text to OpenAI", async 
 async function withStubOllama<T>(refuse: string, body: (url: string) => Promise<T>): Promise<T> {
   const server: Server = createServer((req, res) => {
     let raw = "";
-    req.on("data", (d) => { raw += d; });
+    req.on("data", (d) => {
+      raw += d;
+    });
     req.on("end", () => {
       const asked = (JSON.parse(raw || "{}") as { input?: string | string[] }).input ?? [];
       const input = Array.isArray(asked) ? asked : [asked];
@@ -143,7 +161,11 @@ test("Pass B aborts and writes nothing when a memory never receives a vector", a
       assert.match(res.stderr, /Pass B: nur \d+\/2 Memories tragen einen Vektor/);
       assert.doesNotMatch(res.stderr, /alle backfilled/);
     });
-    assert.equal(readFileSync(join(vault, "memories", "keep.md"), "utf8"), before, "an aborted Pass B rewrote a memory");
+    assert.equal(
+      readFileSync(join(vault, "memories", "keep.md"), "utf8"),
+      before,
+      "an aborted Pass B rewrote a memory"
+    );
   } finally {
     rmSync(vault, { recursive: true, force: true });
   }

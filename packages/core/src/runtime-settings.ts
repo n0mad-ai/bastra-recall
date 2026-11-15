@@ -14,28 +14,38 @@ export function readRuntimeSettingsRecord(legacyPath: string, databasePath?: str
   // without settings contents or parser/SQLite snippets (which may hold tokens).
   const unavailable = (error: unknown): null => {
     const code = (error as NodeJS.ErrnoException)?.code ?? "read failed";
-    process.stderr.write(`[bastra-recall] authoritative settings database unavailable (${code}); legacy settings fallback refused\n`);
+    process.stderr.write(
+      `[bastra-recall] authoritative settings database unavailable (${code}); legacy settings fallback refused\n`
+    );
     return null;
   };
-  try { statSync(path); }
-  catch (error) {
+  try {
+    statSync(path);
+  } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     return unavailable(error);
   }
   let db: DatabaseSync | undefined;
   const emitWarning = process.emitWarning;
   try {
-    if (process.versions.node.startsWith("22.")) process.emitWarning = ((warning: string | Error,...args: unknown[]) => {
-      if (typeof warning === "string" && warning.startsWith("SQLite is an experimental feature")) return;
-      Reflect.apply(emitWarning,process,[warning,...args]);
-    }) as typeof emitWarning;
+    if (process.versions.node.startsWith("22."))
+      process.emitWarning = ((warning: string | Error, ...args: unknown[]) => {
+        if (typeof warning === "string" && warning.startsWith("SQLite is an experimental feature")) return;
+        Reflect.apply(emitWarning, process, [warning, ...args]);
+      }) as typeof emitWarning;
     const SQLite = createRequire(import.meta.url)("node:sqlite").DatabaseSync as typeof DatabaseSync;
-    db = new SQLite(path,{readOnly:true,allowExtension:false});
+    db = new SQLite(path, { readOnly: true, allowExtension: false });
     db.exec("PRAGMA busy_timeout=0");
-    const row=db.prepare("SELECT value FROM app_records WHERE namespace='settings' AND key=?").get(resolve(legacyPath));
+    const row = db
+      .prepare("SELECT value FROM app_records WHERE namespace='settings' AND key=?")
+      .get(resolve(legacyPath));
     if (!row) return undefined;
-    const envelope=JSON.parse(String(row.value));
+    const envelope = JSON.parse(String(row.value));
     return typeof envelope?.text === "string" ? envelope.text : null;
-  } catch (error) { return unavailable(error); }
-  finally { db?.close();process.emitWarning=emitWarning; }
+  } catch (error) {
+    return unavailable(error);
+  } finally {
+    db?.close();
+    process.emitWarning = emitWarning;
+  }
 }

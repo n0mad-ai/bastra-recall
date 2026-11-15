@@ -62,25 +62,14 @@ const SEGMENT_NAME_LIST = [
 
 export type SegmentName = (typeof SEGMENT_NAME_LIST)[number];
 
-export const VALID_SEGMENT_NAMES: ReadonlySet<string> = new Set<SegmentName>(
-  SEGMENT_NAME_LIST,
-);
+export const VALID_SEGMENT_NAMES: ReadonlySet<string> = new Set<SegmentName>(SEGMENT_NAME_LIST);
 
 export const SEGMENT_PARTS: Record<SegmentName, readonly string[]> = {
   session: ["icon", "label", "cost", "tokens", "budget"],
   block: ["icon", "label", "value", "time", "budget", "bar"],
   today: ["icon", "cost", "label", "budget"],
   weekly: ["icon", "label", "pct", "time", "bar"],
-  git: [
-    "icon",
-    "headVal",
-    "branch",
-    "status",
-    "ahead",
-    "behind",
-    "working",
-    "head",
-  ],
+  git: ["icon", "headVal", "branch", "status", "ahead", "behind", "working", "head"],
   context: ["icon", "label", "bar", "pct", "tokens"],
   metrics: [
     "response",
@@ -96,15 +85,7 @@ export const SEGMENT_PARTS: Record<SegmentName, readonly string[]> = {
     "removedIcon",
     "removedVal",
   ],
-  activity: [
-    "icon",
-    "duration",
-    "durationIcon",
-    "durationVal",
-    "messages",
-    "messagesIcon",
-    "messagesVal",
-  ],
+  activity: ["icon", "duration", "durationIcon", "durationVal", "messages", "messagesIcon", "messagesVal"],
   model: ["icon", "value"],
   version: ["icon", "value"],
   tmux: ["label", "value"],

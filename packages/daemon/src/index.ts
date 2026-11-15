@@ -68,9 +68,25 @@ const MAY_EXIT_ON_BUSY_PORT = mayExitOnBusyPort(stdinState());
 // `install` → the guided wizard — instead of dying on the missing vault path
 // below. The daemon path runs only when NO CLI command is present.
 const CLI_COMMANDS = new Set([
-  "install", "uninstall", "doctor", "update", "status",
-  "config", "embeddings", "models", "token", "oauth", "commons", "bridges",
-  "map", "ui", "import", "onboard", "feedback", "help", "version",
+  "install",
+  "uninstall",
+  "doctor",
+  "update",
+  "status",
+  "config",
+  "embeddings",
+  "models",
+  "token",
+  "oauth",
+  "commons",
+  "bridges",
+  "map",
+  "ui",
+  "import",
+  "onboard",
+  "feedback",
+  "help",
+  "version",
 ]);
 const firstArg = process.argv[2];
 if (firstArg && (CLI_COMMANDS.has(firstArg) || /^(--help|-h|--version|-v)$/.test(firstArg))) {
@@ -83,8 +99,7 @@ if (firstArg && (CLI_COMMANDS.has(firstArg) || /^(--help|-h|--version|-v)$/.test
 const VAULT_PATH = envFirst("BASTRA_VAULT_PATH", "NEXUS_VAULT_PATH");
 if (!VAULT_PATH) {
   console.error(
-    "[bastra-recall] FATAL: BASTRA_VAULT_PATH is not set. " +
-      "Point it at the directory holding your memory .md files.",
+    "[bastra-recall] FATAL: BASTRA_VAULT_PATH is not set. " + "Point it at the directory holding your memory .md files."
   );
   process.exit(2);
 }
@@ -96,21 +111,31 @@ async function main(): Promise<void> {
   // three a second time against the same vault. `BASTRA_HTTP=off` is a
   // deliberate no-server mode and must never be probed away.
   if (!HTTP_DISABLED && MAY_EXIT_ON_BUSY_PORT && (await probeDaemonPort(HTTP_PORT)) === "in-use") {
-    const freed = daemonOrigin().startedBy !== "forwarder" && await waitForForwarderPort(HTTP_PORT, {
-      onWaiting: () => console.error(`[bastra-recall] port ${HTTP_PORT} belongs to a forwarder daemon — waiting for its idle exit before starting the service`),
-    });
+    const freed =
+      daemonOrigin().startedBy !== "forwarder" &&
+      (await waitForForwarderPort(HTTP_PORT, {
+        onWaiting: () =>
+          console.error(
+            `[bastra-recall] port ${HTTP_PORT} belongs to a forwarder daemon — waiting for its idle exit before starting the service`
+          ),
+      }));
     if (!freed) {
       console.error(
-        `[bastra-recall] port ${HTTP_PORT} is already in use — exiting; if another bastra-recall daemon owns it, the forwarder will use that one.`,
+        `[bastra-recall] port ${HTTP_PORT} is already in use — exiting; if another bastra-recall daemon owns it, the forwarder will use that one.`
       );
       process.exit(0);
     }
   }
 
   const taskAccountAllowed = await processOwnsVault(VAULT_PATH!);
-  if (tasksEnabled() && taskAccountAllowed) await ensureLocalTaskAgent().then(result => {
-    console.error(`[bastra-recall] task agent access: ${result.reason}${!result.configured && result.reason !== "disabled" ? "; reminder cards unavailable — check bastra tasks client-status / setup-hooks" : ""}`);
-  }).catch(() => console.error("[bastra-recall] task agent access unavailable; existing configuration preserved"));
+  if (tasksEnabled() && taskAccountAllowed)
+    await ensureLocalTaskAgent()
+      .then((result) => {
+        console.error(
+          `[bastra-recall] task agent access: ${result.reason}${!result.configured && result.reason !== "disabled" ? "; reminder cards unavailable — check bastra tasks client-status / setup-hooks" : ""}`
+        );
+      })
+      .catch(() => console.error("[bastra-recall] task agent access unavailable; existing configuration preserved"));
 
   // The start-up phases (#1039), in their original order. Each module holds
   // its phase verbatim; the values that cross phases are passed explicitly.
@@ -199,7 +224,7 @@ async function main(): Promise<void> {
   // watcher on the same vault.
   if (httpHandle.addressInUse && MAY_EXIT_ON_BUSY_PORT) {
     console.error(
-      `[bastra-recall] lost port ${HTTP_PORT} while starting up — exiting; if another bastra-recall daemon owns it, the forwarder will use that one.`,
+      `[bastra-recall] lost port ${HTTP_PORT} while starting up — exiting; if another bastra-recall daemon owns it, the forwarder will use that one.`
     );
     process.exit(0);
   }

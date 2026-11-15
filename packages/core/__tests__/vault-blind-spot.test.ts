@@ -70,7 +70,7 @@ test("ein unlesbarer Ordner ist ein gemeldeter blinder Fleck, kein leerer Ordner
 
   assert.ok(
     skipped.some((s) => s.path === sealed),
-    "der unlesbare Ordner muss im init-Report auftauchen",
+    "der unlesbare Ordner muss im init-Report auftauchen"
   );
   assert.deepEqual(vault.scanBlindSpots(), [sealed]);
 });
@@ -97,7 +97,7 @@ test("hinter einem blinden Fleck darf kein zweites Memory derselben id entstehen
       scope: "proj",
       recall_when: ["probe"],
     }),
-    /could not read/,
+    /could not read/
   );
 });
 
@@ -119,7 +119,7 @@ test("reconcile wirft nichts aus dem Index, was es nur nicht mehr lesen kann", a
 
   assert.ok(
     vault.get("hidden"),
-    "ein unlesbarer Ordner ist kein gelöschtes Memory — der Index darf ihn nicht vergessen",
+    "ein unlesbarer Ordner ist kein gelöschtes Memory — der Index darf ihn nicht vergessen"
   );
   assert.deepEqual(vault.scanBlindSpots(), [sealed]);
 });
@@ -149,7 +149,7 @@ test("wer neu indexiert wird, ist kein quarantänisiertes Duplikat mehr", async 
   assert.deepEqual(
     vault.pathsFor("zwilling").sort(),
     [first, second].sort(),
-    "Kontrolle: der zweite Pfad ist als Duplikat bekannt",
+    "Kontrolle: der zweite Pfad ist als Duplikat bekannt"
   );
 
   // Der Konflikt wird aufgelöst — die zweite Datei bekommt eine eigene id.
@@ -159,7 +159,7 @@ test("wer neu indexiert wird, ist kein quarantänisiertes Duplikat mehr", async 
   assert.deepEqual(
     vault.pathsFor("zwilling"),
     [first],
-    "die umbenannte Datei darf nicht weiter als Duplikat der alten id gelten",
+    "die umbenannte Datei darf nicht weiter als Duplikat der alten id gelten"
   );
   assert.deepEqual(vault.pathsFor("eigenstaendig"), [second]);
 });
@@ -199,7 +199,7 @@ test("eine YAML-escapte id wird vom autoritativen Scan gefunden", async (t) => {
       scope: "proj",
       recall_when: ["probe"],
     }),
-    /memory already exists/,
+    /memory already exists/
   );
 });
 
@@ -225,6 +225,9 @@ test("auch eine einzelne unlesbare Datei ist ein blinder Fleck", async (t) => {
   const { skipped } = await vault.init();
   t.after(() => vault.stop());
 
-  assert.ok(skipped.some((s) => s.path === sealed), "im Report");
+  assert.ok(
+    skipped.some((s) => s.path === sealed),
+    "im Report"
+  );
   assert.deepEqual(vault.scanBlindSpots(), [sealed], "und in den blinden Flecken");
 });

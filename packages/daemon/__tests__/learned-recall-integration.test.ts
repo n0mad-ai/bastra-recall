@@ -52,7 +52,13 @@ function nearMemory(): string {
 }
 
 function bridge(lang: string, trigger: string[], expansion: string[]): Bridge {
-  return { id: bridgeId(lang, trigger, expansion), lang, trigger_terms: trigger, expansion_terms: expansion, evidence: 3 };
+  return {
+    id: bridgeId(lang, trigger, expansion),
+    lang,
+    trigger_terms: trigger,
+    expansion_terms: expansion,
+    evidence: 3,
+  };
 }
 
 async function poolWith(bridges: Bridge[], live = true): Promise<BridgePool> {
@@ -98,7 +104,7 @@ test("a German bridge lifts the far query's score for the near-worded memory", a
     ]);
     const on = scoreFor(
       await recallHandler(mkDeps({ learnedBridges: pool }), { query: FAR_DE_QUERY, k: 5, min_score: 0 }),
-      "panel-dismiss",
+      "panel-dismiss"
     );
     assert.ok(on > off, `German bridge must raise recall score (off=${off}, on=${on})`);
   });
@@ -114,12 +120,16 @@ test("#707: a bridge in another language folder lifts the query; a configured ov
     ]);
     const auto = scoreFor(
       await recallHandler(mkDeps({ learnedBridges: pool }), { query: FAR_DE_QUERY, k: 5, min_score: 0 }),
-      "panel-dismiss",
+      "panel-dismiss"
     );
     assert.ok(auto > off, `the filing folder must not block the bridge (off=${off}, auto=${auto})`);
     const pinned = scoreFor(
-      await recallHandler(mkDeps({ learnedBridges: pool, sharedRecallLang: "de" }), { query: FAR_DE_QUERY, k: 5, min_score: 0 }),
-      "panel-dismiss",
+      await recallHandler(mkDeps({ learnedBridges: pool, sharedRecallLang: "de" }), {
+        query: FAR_DE_QUERY,
+        k: 5,
+        min_score: 0,
+      }),
+      "panel-dismiss"
     );
     assert.equal(pinned, off, "with the override pinned to de, a bridge outside bridges/de/ does not change recall");
   });
@@ -133,15 +143,15 @@ test("OFF contract: with no bridge pool wired into the handler, recall applies z
     ]);
     const offNull = scoreFor(
       await recallHandler(mkDeps({ learnedBridges: null }), { query: FAR_DE_QUERY, k: 5, min_score: 0 }),
-      "panel-dismiss",
+      "panel-dismiss"
     );
     const offAbsent = scoreFor(
       await recallHandler(mkDeps(), { query: FAR_DE_QUERY, k: 5, min_score: 0 }),
-      "panel-dismiss",
+      "panel-dismiss"
     );
     const on = scoreFor(
       await recallHandler(mkDeps({ learnedBridges: matching }), { query: FAR_DE_QUERY, k: 5, min_score: 0 }),
-      "panel-dismiss",
+      "panel-dismiss"
     );
     assert.equal(offNull, offAbsent, "learnedBridges null and absent must behave identically (off)");
     assert.ok(on > offNull, "and a matching pool WOULD lift — so off is provably inert, not merely empty");
@@ -150,17 +160,16 @@ test("OFF contract: with no bridge pool wired into the handler, recall applies z
 
 test("configured language override routes a code-shaped (abstaining) query into a pool", async () => {
   await withVault(async (mkDeps) => {
-    const pool = await poolWith([
-      bridge("de", ["panel", "fenster"], ["resignkey", "observer", "attachedsheet"]),
-    ]);
+    const pool = await poolWith([bridge("de", ["panel", "fenster"], ["resignkey", "observer", "attachedsheet"])]);
     // A code-shaped query the detector would abstain on; the override forces 'de'.
-    const res = await recallHandler(
-      mkDeps({ learnedBridges: pool, sharedRecallLang: "de" }),
-      { query: "Panel Fenster", k: 5, min_score: 0 },
-    );
+    const res = await recallHandler(mkDeps({ learnedBridges: pool, sharedRecallLang: "de" }), {
+      query: "Panel Fenster",
+      k: 5,
+      min_score: 0,
+    });
     assert.ok(
       (res.hits as Array<{ id: string }>).some((h) => h.id === "panel-dismiss"),
-      "override pool must widen the query",
+      "override pool must widen the query"
     );
   });
 });
@@ -178,11 +187,13 @@ test("default shadow: a firing bridge does not change the ranking, the bridge_ex
       const off = await recallHandler(mkDeps(), { query: FAR_DE_QUERY, k: 5, min_score: 0 });
       const shadowPool = BridgePool.load(join(logDir, "missing"));
       assert.equal(shadowPool.live, false, "a pool is shadow unless loaded live");
-      const shadow = await recallHandler(
-        mkDeps({ learnedBridges: await poolWith([b], false), telemetry }),
-        { query: FAR_DE_QUERY, k: 5, min_score: 0 },
-      );
-      const ids = (r: { hits: unknown[] }) => (r.hits as Array<{ id: string; score: number }>).map((h) => `${h.id}:${h.score}`);
+      const shadow = await recallHandler(mkDeps({ learnedBridges: await poolWith([b], false), telemetry }), {
+        query: FAR_DE_QUERY,
+        k: 5,
+        min_score: 0,
+      });
+      const ids = (r: { hits: unknown[] }) =>
+        (r.hits as Array<{ id: string; score: number }>).map((h) => `${h.id}:${h.score}`);
       assert.deepEqual(ids(shadow), ids(off), "shadow must leave the ranking exactly as without bridges");
 
       let row: Record<string, unknown> | undefined;

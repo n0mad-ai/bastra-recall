@@ -13,12 +13,12 @@
  */
 
 export interface HookRecallHit {
-  rule_categories?: ("github-issues-prs"|"correspondence")[];
+  rule_categories?: ("github-issues-prs" | "correspondence")[];
   rulebook?: "always" | "on-demand";
   applies_when?: string;
   applies_when_derived?: true;
   rulebook_proposed?: import("@bastra-recall/core").Frontmatter["rulebook_proposed"];
-  revision?:string|null;
+  revision?: string | null;
   validator?: import("@bastra-recall/core").ConventionValidator;
   id: string;
   title: string;

@@ -17,7 +17,13 @@ import { realpathSync } from "node:fs";
 import { open, readdir, readFile } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 import { occupantOfRaw, redactSecrets } from "@bastra-recall/core";
-import { hash, parseRecord, type ReviewedMissCandidate, type ReviewedMissChain, toCandidate } from "./reviewed-miss-harvest.js";
+import {
+  hash,
+  parseRecord,
+  type ReviewedMissCandidate,
+  type ReviewedMissChain,
+  toCandidate,
+} from "./reviewed-miss-harvest.js";
 import {
   classifyReviewedMissObservation,
   type CandidatePoolScoreSpace,
@@ -169,7 +175,8 @@ export async function loadTelemetry(dir: string, options: { sinceMs?: number } =
           run: typeof event.session_id === "string" && event.session_id ? event.session_id : null,
           memoryId: event.id,
           found: event.found !== false,
-          fromHookRecall: typeof event.from_hook_recall === "string" && event.from_hook_recall ? event.from_hook_recall : null,
+          fromHookRecall:
+            typeof event.from_hook_recall === "string" && event.from_hook_recall ? event.from_hook_recall : null,
           followsRecall: typeof event.follows_recall === "string" && event.follows_recall ? event.follows_recall : null,
           hookHintRank: typeof event.hook_hint_rank === "number" ? event.hook_hint_rank : null,
         });
@@ -376,7 +383,7 @@ function membership(
   snapshotId: string,
   candidateId: string,
   present: boolean,
-  reason: MembershipProof["reason"],
+  reason: MembershipProof["reason"]
 ): MembershipProof {
   return { snapshotId, candidateId, membership: present ? "present" : "absent", reason };
 }
@@ -386,7 +393,7 @@ function vaultObjectTarget(
   object: VaultObject | null,
   isMemory: boolean,
   observedAtMs: number | null,
-  frozen: FrozenObservationIds,
+  frozen: FrozenObservationIds
 ): ObservedTarget {
   if (!object) {
     return {
@@ -399,8 +406,13 @@ function vaultObjectTarget(
   const vaultMembership = membership(frozen.vaultSnapshotId, candidateId, true, "present");
   let indexMembership: MembershipProof;
   if (!isMemory) indexMembership = membership(frozen.indexSnapshotId, candidateId, false, "not-a-memory");
-  else if (observedAtMs === null) indexMembership = membership(frozen.indexSnapshotId, candidateId, false, "no-observation-time");
-  else if (object.bornAtMs > observedAtMs && !(object.declaredCreatedByMs !== null && object.declaredCreatedByMs < observedAtMs)) indexMembership = membership(frozen.indexSnapshotId, candidateId, false, "created-after-observation");
+  else if (observedAtMs === null)
+    indexMembership = membership(frozen.indexSnapshotId, candidateId, false, "no-observation-time");
+  else if (
+    object.bornAtMs > observedAtMs &&
+    !(object.declaredCreatedByMs !== null && object.declaredCreatedByMs < observedAtMs)
+  )
+    indexMembership = membership(frozen.indexSnapshotId, candidateId, false, "created-after-observation");
   else indexMembership = membership(frozen.indexSnapshotId, candidateId, true, "present");
   return { kind: "vault-object", candidateId, vaultMembership, indexMembership };
 }
@@ -416,7 +428,7 @@ export function resolveTarget(
   snapshot: VaultSnapshot | null,
   frozen: FrozenObservationIds | null,
   observedAt: string | null,
-  label: ReviewerLabel | null,
+  label: ReviewerLabel | null
 ): ObservedTarget {
   const evidence = chain.evidence;
   const observedAtMs = observedAt ? Date.parse(observedAt) : NaN;
@@ -506,9 +518,18 @@ export function assembleObservation(chain: ReviewedMissChain, engines: Observati
   const pool = telemetry ? frozenPoolOf(telemetry) : null;
   const frozen = telemetry && engines.snapshot ? frozenIdsOf(telemetry, engines.snapshot) : null;
   const candidate = toCandidate(chain);
-  const label = (pool ? engines.labels.get(pool.recallRef) : undefined) ??
-    (candidate.sourceRef ? engines.labels.get(candidate.sourceRef) : undefined) ?? null;
-  const target = resolveTarget(chain, engines.vaultRoot, engines.snapshot, frozen, telemetry?.ts ?? chain.resultTs, label);
+  const label =
+    (pool ? engines.labels.get(pool.recallRef) : undefined) ??
+    (candidate.sourceRef ? engines.labels.get(candidate.sourceRef) : undefined) ??
+    null;
+  const target = resolveTarget(
+    chain,
+    engines.vaultRoot,
+    engines.snapshot,
+    frozen,
+    telemetry?.ts ?? chain.resultTs,
+    label
+  );
   return { kind: "reviewed-miss-observation/v1", frozen, pool, target };
 }
 

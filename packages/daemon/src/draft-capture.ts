@@ -20,38 +20,57 @@ export async function captureTypedDrafts(
   now: number,
   candidates: HarvestCandidate[],
   storedIn?: (quote: string) => string | null,
-  vaultId?: string,
+  vaultId?: string
 ): Promise<{ count: number; appended: number; evicted: number; ids: string[]; omitted: number; stored: number }> {
   turns = turns.map(normalizeOwnerTurn);
   const drafts: Draft[] = [];
   let stored = 0;
-  const shapes = new Map(candidates.map(c => [c.turn, c]));
+  const shapes = new Map(candidates.map((c) => [c.turn, c]));
   // Short typed replies still delimit the command window, even if not drafted.
   const typed = (turn: HarvestTurn): boolean => {
     const text = textBeforeDraftBand(turn.content).trim();
-    return turn.role === "user" && text.length > 0 && text.length < PASTE_MIN_CHARS
-      && !text.startsWith(INTERRUPT_PREFIX) && !isSystemInjectedTurn(text);
+    return (
+      turn.role === "user" &&
+      text.length > 0 &&
+      text.length < PASTE_MIN_CHARS &&
+      !text.startsWith(INTERRUPT_PREFIX) &&
+      !isSystemInjectedTurn(text)
+    );
   };
   // Native Codex timestamps support Stop evidence; they do not opt its drafts
   // into the existing Claude situation-capture contract.
-  const situation = (index: number) => entry.client === "codex"
-    ? { before: [], after: [], reads: [], lits: [] }
-    : situationForTurn(turns, index, typed);
+  const situation = (index: number) =>
+    entry.client === "codex" ? { before: [], after: [], reads: [], lits: [] } : situationForTurn(turns, index, typed);
   for (let i = entry.harvested_upto ?? 0; i < turns.length; i++) {
     const turn = turns[i];
     const text = textBeforeDraftBand(turn.content).trim();
     if (!typed(turn) || (text.match(/\p{L}/gu) ?? []).length < DRAFT_MIN_LETTERS) continue;
-    if (storedIn && storedIn(text) !== null) { stored++; continue; }
+    if (storedIn && storedIn(text) !== null) {
+      stored++;
+      continue;
+    }
     const shape = shapes.get(i);
     const fp = draftFingerprint(text);
     drafts.push({
-      id: draftId(entry.session_id, i, fp), fp,
+      id: draftId(entry.session_id, i, fp),
+      fp,
       ...(vaultId ? { vault_id: vaultId } : {}),
-      kind: afterFailureForTurn(turns, i, typed) ? "after-failure" : shape?.kind ?? "typed",
-      quote: text, ...(shape?.context ? { context: shape.context } : {}),
+      kind: afterFailureForTurn(turns, i, typed) ? "after-failure" : (shape?.kind ?? "typed"),
+      quote: text,
+      ...(shape?.context ? { context: shape.context } : {}),
       situation: situation(i),
-      evidence: [{ session_id: entry.session_id, turn: i, ts: turn.at ?? now, ...(entry.client ? { client: entry.client } : {}) }],
-      created: now, last_touched: now, surfaced: [], state: "open",
+      evidence: [
+        {
+          session_id: entry.session_id,
+          turn: i,
+          ts: turn.at ?? now,
+          ...(entry.client ? { client: entry.client } : {}),
+        },
+      ],
+      created: now,
+      last_touched: now,
+      surfaced: [],
+      state: "open",
     });
   }
   const afterUpdates: DraftAfterUpdate[] = [];
@@ -63,6 +82,10 @@ export async function captureTypedDrafts(
     if (after.length > 0) afterUpdates.push({ session_id: entry.session_id, turn: previous, after });
   }
   const result = await captureDrafts(drafts, now, afterUpdates);
-  return { ...result, ids: result.ids.slice(0, DRAFT_TELEMETRY_MAX_IDS),
-    omitted: Math.max(0, result.ids.length - DRAFT_TELEMETRY_MAX_IDS), stored };
+  return {
+    ...result,
+    ids: result.ids.slice(0, DRAFT_TELEMETRY_MAX_IDS),
+    omitted: Math.max(0, result.ids.length - DRAFT_TELEMETRY_MAX_IDS),
+    stored,
+  };
 }

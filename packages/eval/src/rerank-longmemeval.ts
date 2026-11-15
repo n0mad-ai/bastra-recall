@@ -78,7 +78,11 @@ function parseArgs(argv: string[]): Args {
   for (let i = 0; i < argv.length; i++) {
     const f = argv[i];
     if (f === "--corpus") a.corpus = argv[++i];
-    else if (f === "--models") a.models = argv[++i].split(",").map((s) => s.trim()).filter(Boolean);
+    else if (f === "--models")
+      a.models = argv[++i]
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
     else if (f === "--turns") a.turns = argv[++i] as TurnMode;
     else if (f === "--limit") a.limit = Number(argv[++i]);
     else if (f === "--out") a.out = argv[++i];
@@ -131,10 +135,14 @@ async function main(): Promise<void> {
         },
       });
       const goldSessionIds = new Set(q.answer_session_ids);
-      const gold = new Set(
-        memories.filter((m) => goldSessionIds.has(m.session_id)).map((m) => m.id),
+      const gold = new Set(memories.filter((m) => goldSessionIds.has(m.session_id)).map((m) => m.id));
+      lmeBaseline.push(
+        recallAny(
+          hits.map((h) => h.id),
+          gold,
+          LME_K
+        )
       );
-      lmeBaseline.push(recallAny(hits.map((h) => h.id), gold, LME_K));
 
       const texts = new Map<string, { title: string; summary: string; body: string }>();
       for (const h of pool.slice(0, Math.max(...NS))) {
@@ -214,7 +222,7 @@ async function main(): Promise<void> {
             serveK: LME_K,
             seed: args.seed,
             poolSplit,
-          }),
+          })
         );
       }
     }
@@ -226,17 +234,21 @@ async function main(): Promise<void> {
   const L: string[] = ["", `  #501 CONTROL — LongMemEval, ${rows.length} questions. Carries NO recommendation.`, ""];
   L.push(
     `  #500 protocol baseline, recall_any@${LME_K} over the raw ranked list: ` +
-      `${pct(lmeBaseline.reduce((a, b) => a + b, 0) / Math.max(1, lmeBaseline.length))}`,
+      `${pct(lmeBaseline.reduce((a, b) => a + b, 0) / Math.max(1, lmeBaseline.length))}`
   );
-  L.push("  (checkable against the figure #500 published; the deltas below use served-k + floor, as the gold pass does)");
+  L.push(
+    "  (checkable against the figure #500 published; the deltas below use served-k + floor, as the gold pass does)"
+  );
   L.push("");
-  L.push(`  ${"model/passage".padEnd(16)} | ${"N".padStart(3)} | ${"R@3".padStart(7)} | ${"ΔR@3".padStart(6)} | ${"95% CI".padStart(15)} | ${"ΔR@5".padStart(6)} | any@N`);
+  L.push(
+    `  ${"model/passage".padEnd(16)} | ${"N".padStart(3)} | ${"R@3".padStart(7)} | ${"ΔR@3".padStart(6)} | ${"95% CI".padStart(15)} | ${"ΔR@5".padStart(6)} | any@N`
+  );
   for (const r of reports) {
     const c = r.at["r@3"].paired;
     L.push(
       `  ${`${r.model}/${r.passage}`.padEnd(16)}${r.primary ? "*" : " "}| ${String(r.n).padStart(3)} | ` +
         `${pct(r.at["r@3"].reranked).padStart(7)} | ${pp(c.delta).padStart(6)} | ` +
-        `${`[${pp(c.ci95[0])}, ${pp(c.ci95[1])}]`.padStart(15)} | ${pp(r.at["r@5"].paired.delta).padStart(6)} | ${pct(r.recall_any_at_n)}`,
+        `${`[${pp(c.ci95[0])}, ${pp(c.ci95[1])}]`.padStart(15)} | ${pp(r.at["r@5"].paired.delta).padStart(6)} | ${pct(r.recall_any_at_n)}`
     );
   }
   L.push("");
@@ -271,9 +283,9 @@ async function main(): Promise<void> {
           })),
         },
         null,
-        2,
+        2
       ) + "\n",
-      { mode: 0o600 },
+      { mode: 0o600 }
     );
     console.error(`[rerank-lme] wrote ${args.out}`);
   }

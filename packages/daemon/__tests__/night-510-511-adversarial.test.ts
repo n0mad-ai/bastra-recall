@@ -14,10 +14,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  formatPendingBlock,
-  PENDING_BLOCK_CHAR_BUDGET as B,
-} from "../src/pending-suggestions.js";
+import { formatPendingBlock, PENDING_BLOCK_CHAR_BUDGET as B } from "../src/pending-suggestions.js";
 import { isDokuProject } from "../src/doku-block.js";
 import { detectProject, detectProjectDetailed } from "@bastra-recall/core/topics";
 import { frustrationCues } from "../src/lexicon.js";
@@ -67,7 +64,7 @@ test("formatPendingBlock (#510): the suppressed count is exact and correctly sin
   assert.doesNotMatch(bothFit, /suppressed|clipped/, "a pair summing exactly to budget must not truncate");
   assert.ok(
     bothFit.includes("a".repeat(half)) && bothFit.includes("b".repeat(half - 1)),
-    "both exactly-fitting entries must be present",
+    "both exactly-fitting entries must be present"
   );
 });
 
@@ -93,7 +90,11 @@ test("formatPendingBlock (#510): a lone oversized first entry is clipped AND the
     { ts: 3, blocks: "v" },
   ]);
   assert.match(block, /one suggestion was clipped to fit/, "the oversized first entry must be clipped, not dropped");
-  assert.match(block, /2 earlier suggestions suppressed/, "the two trailing entries must be counted (dropped = length - 1)");
+  assert.match(
+    block,
+    /2 earlier suggestions suppressed/,
+    "the two trailing entries must be counted (dropped = length - 1)"
+  );
   assert.match(block, /…/, "an ellipsis must mark the cut");
   assert.ok(block.length < B + 400, `the runaway must be bounded, got ${block.length}`);
 });
@@ -128,7 +129,7 @@ test("isDokuProject (#511) composed with the live detector: a real repo earns a 
     assert.equal(
       detectProject(bareDir),
       (bareDet.confidence as string) === "none" ? null : bareDet.raw,
-      "session-lane's derived `project` must stay identical to detectProject()",
+      "session-lane's derived `project` must stay identical to detectProject()"
     );
   } finally {
     await rm(gitDir, { recursive: true, force: true });
@@ -204,7 +205,6 @@ test("lexicon (#476) DEFECT: a regex-invalid cue must fall back to defaults, nev
   }
 });
 
-
 // ─────────────────── follow-ups: 510/511 review round ───────────────────────
 
 test("formatPendingBlock (#510): an oversized entry that is NOT first is clipped, not dropped whole", () => {
@@ -228,7 +228,7 @@ test("formatPendingBlock (#510): an oversized entry that is NOT first is clipped
   assert.equal(
     first.length + 1 + clipLine.length,
     B,
-    "entry content (first + join newline + clip) must fill the budget exactly, not overrun it",
+    "entry content (first + join newline + clip) must fill the budget exactly, not overrun it"
   );
 });
 

@@ -59,7 +59,7 @@ const VAULT: EntryLookup = (id) =>
 async function withSandbox<T>(
   settings: Record<string, unknown>,
   extraEnv: Record<string, string>,
-  fn: (dir: string) => Promise<T>,
+  fn: (dir: string) => Promise<T>
 ): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-save-notice-"));
   await mkdir(join(dir, ".bastra"), { recursive: true });
@@ -95,7 +95,7 @@ const german = <T>(fn: (dir: string) => Promise<T>, env: Record<string, string> 
 async function notice(payload: Partial<SaveNoticePayload>): Promise<string | undefined> {
   const out = await runSaveNoticeLane(
     { hook_event_name: "PostToolUse", bastra_client: "claude-code", session_id: "save-notice-test", ...payload },
-    VAULT,
+    VAULT
   );
   const line = (JSON.parse(out) as { systemMessage?: string }).systemMessage;
   return line === undefined ? undefined : plain(line);
@@ -130,7 +130,10 @@ test("only Recall's write tools are announced — under the plain and the plugin
 
 test("the registration: PostToolUse only, the lane's own pattern, on the post-tool client", () => {
   const defs = hookDefinitions().filter((d) => d.matcher === SAVE_NOTICE_MATCHER);
-  assert.deepEqual(defs.map((d) => d.event), ["PostToolUse"]);
+  assert.deepEqual(
+    defs.map((d) => d.event),
+    ["PostToolUse"]
+  );
   assert.equal(defs[0].stubSubcommand, "bash-fail");
   // Claude Code reads a matcher as a regular expression only when it holds a
   // character outside this set; otherwise it would be compared as a literal
@@ -147,7 +150,7 @@ test("a new memory: action, title, type and the first cue — in the user's lang
     });
     assert.equal(
       line,
-      " bastra-recall  gespeichert: „Staging-Deploy braucht VPN“ (lesson) · Abruf bei: Staging-Deploy bricht mit Timeout ab",
+      " bastra-recall  gespeichert: „Staging-Deploy braucht VPN“ (lesson) · Abruf bei: Staging-Deploy bricht mit Timeout ab"
     );
   });
 });
@@ -167,12 +170,17 @@ test("an edit carries no title — it comes from the vault, with what the edit c
   await german(async () => {
     const line = await notice({
       tool_name: `${SERVER}edit_memory`,
-      tool_input: { id: ID, str_replace: { old: "a", new: "b" }, append: "more", frontmatter: { tags: ["x"], recall_when: ["y"] } },
+      tool_input: {
+        id: ID,
+        str_replace: { old: "a", new: "b" },
+        append: "more",
+        frontmatter: { tags: ["x"], recall_when: ["y"] },
+      },
       tool_response: blocks({ id: ID, created: false, operations: ["str_replace", "append", "frontmatter"] }),
     });
     assert.equal(
       line,
-      " bastra-recall  bearbeitet: „Staging-Deploy braucht VPN“ (lesson) · Passage ersetzt, Text angehängt, Felder: tags, recall_when",
+      " bastra-recall  bearbeitet: „Staging-Deploy braucht VPN“ (lesson) · Passage ersetzt, Text angehängt, Felder: tags, recall_when"
     );
   });
 });
@@ -207,8 +215,14 @@ test("a refused call gets no line", async () => {
     ];
     for (const payload of refused) {
       const out = await runSaveNoticeLane(
-        { hook_event_name: "PostToolUse", bastra_client: "claude-code", tool_name: `${SERVER}save_memory`, tool_input: SAVE_INPUT, ...payload },
-        VAULT,
+        {
+          hook_event_name: "PostToolUse",
+          bastra_client: "claude-code",
+          tool_name: `${SERVER}save_memory`,
+          tool_input: SAVE_INPUT,
+          ...payload,
+        },
+        VAULT
       );
       assert.equal(out, "{}", JSON.stringify(payload));
     }
@@ -221,9 +235,17 @@ test("a call that succeeded without writing a new memory does not say saved", as
     const held = await notice({
       tool_name: `${SERVER}save_memory`,
       tool_input: { ...SAVE_INPUT, title: "VPN beim Deploy" },
-      tool_response: blocks({ id: "vpn-beim-deploy", created: false, claim_gate: { claimed: [{ id: "older-vpn-rule" }] }, note: "NOTHING WAS SAVED." }),
+      tool_response: blocks({
+        id: "vpn-beim-deploy",
+        created: false,
+        claim_gate: { claimed: [{ id: "older-vpn-rule" }] },
+        note: "NOTHING WAS SAVED.",
+      }),
     });
-    assert.equal(held, " bastra-recall  nicht gespeichert, schon abgedeckt: „VPN beim Deploy“ (lesson) · siehe: VPN vor jedem Deploy");
+    assert.equal(
+      held,
+      " bastra-recall  nicht gespeichert, schon abgedeckt: „VPN beim Deploy“ (lesson) · siehe: VPN vor jedem Deploy"
+    );
     // #205: the result's id names the EXISTING memory the conflict was marked on.
     const conflict = await notice({
       tool_name: `${SERVER}save_memory`,
@@ -254,11 +276,17 @@ test("wording follows language.primary; an unlisted or unset language gets Engli
 });
 
 test("always one line: long titles are clipped, an oversized detail is dropped, control characters go", () => {
-  const long = formatSaveNotice({ action: "created", title: "Wort ".repeat(40), type: "lesson", detail: "x".repeat(200) }, "de");
+  const long = formatSaveNotice(
+    { action: "created", title: "Wort ".repeat(40), type: "lesson", detail: "x".repeat(200) },
+    "de"
+  );
   assert.ok([...plain(long)].length <= 130, `${[...plain(long)].length} chars`);
   assert.match(plain(long), /…“ \(lesson\)/);
 
-  const tight = formatSaveNotice({ action: "held", title: "T".repeat(60), type: "project-fact", detail: "d".repeat(60) }, "de");
+  const tight = formatSaveNotice(
+    { action: "held", title: "T".repeat(60), type: "project-fact", detail: "d".repeat(60) },
+    "de"
+  );
   assert.doesNotMatch(plain(tight), /·/, "the detail goes before the line grows past its width");
 
   const hostile = formatSaveNotice({ action: "created", title: "a\nb\x1b[31mc\u2028d\u202Ee" }, "en");
@@ -275,7 +303,10 @@ test("readToolResult takes the result out of every shape a client may hand over"
   assert.deepEqual(readToolResult(result), result);
   assert.deepEqual(readToolResult({ content: blocks(result) }), result);
   // A session-context item rides behind the result in the same array.
-  assert.deepEqual(readToolResult([...(blocks(result) as unknown[]), { type: "text", text: "<session-context>…" }]), result);
+  assert.deepEqual(
+    readToolResult([...(blocks(result) as unknown[]), { type: "text", text: "<session-context>…" }]),
+    result
+  );
   assert.equal(readToolResult([{ type: "text", text: "not json" }]), null);
   assert.equal(readToolResult({ created: true }), null);
 });
@@ -289,8 +320,13 @@ test("telemetry: one save_notice_call row per write-tool call, without the title
       tool_response: blocks({ id: ID, created: true }),
     });
     await runSaveNoticeLane(
-      { hook_event_name: "PostToolUse", bastra_client: "claude-code", tool_name: `${SERVER}edit_memory`, tool_response: "boom" },
-      VAULT,
+      {
+        hook_event_name: "PostToolUse",
+        bastra_client: "claude-code",
+        tool_name: `${SERVER}edit_memory`,
+        tool_response: "boom",
+      },
+      VAULT
     );
     await flushSaveNoticeTelemetry();
     const logDir = join(dir, "logs");
@@ -298,15 +334,23 @@ test("telemetry: one save_notice_call row per write-tool call, without the title
     for (const f of await readdir(logDir)) {
       for (const l of (await readFile(join(logDir, f), "utf8")).split("\n")) if (l.trim()) rows.push(JSON.parse(l));
     }
-    const calls = rows.filter((r) => r.kind === "save_notice_call").sort((a, b) => String(b.tool).localeCompare(String(a.tool)));
+    const calls = rows
+      .filter((r) => r.kind === "save_notice_call")
+      .sort((a, b) => String(b.tool).localeCompare(String(a.tool)));
     assert.deepEqual(
       calls.map((r) => [r.tool, r.action, r.shown]),
-      [["save_memory", "created", true], ["edit_memory", null, false]],
+      [
+        ["save_memory", "created", true],
+        ["edit_memory", null, false],
+      ]
     );
     assert.equal(calls[0].session_id, "save-notice-test");
     assert.deepEqual(
-      [(calls[0].dimensions as Record<string, unknown>).client, (calls[0].dimensions as Record<string, unknown>).hook_source],
-      ["claude-code", "save-notice"],
+      [
+        (calls[0].dimensions as Record<string, unknown>).client,
+        (calls[0].dimensions as Record<string, unknown>).hook_source,
+      ],
+      ["claude-code", "save-notice"]
     );
     assert.doesNotMatch(JSON.stringify(calls), /VPN/);
   });
@@ -315,7 +359,14 @@ test("telemetry: one save_notice_call row per write-tool call, without the title
 test("the post-tool route hands a Recall write tool to this lane, title looked up in the vault", async () => {
   await german(async () => {
     const ctx = {
-      vault: { get: (id: string) => id === "private-fixture" ? { fm: { title: "Private fixture title", type: "user-fact", sensitivity: "private" } } : (VAULT(id) ? { fm: VAULT(id) } : undefined) },
+      vault: {
+        get: (id: string) =>
+          id === "private-fixture"
+            ? { fm: { title: "Private fixture title", type: "user-fact", sensitivity: "private" } }
+            : VAULT(id)
+              ? { fm: VAULT(id) }
+              : undefined,
+      },
       toolDeps: {},
     } as unknown as LocalRouteCtx;
     const server: Server = createServer((req, res) => {
@@ -326,60 +377,78 @@ test("the post-tool route hands a Recall write tool to this lane, title looked u
     const addr = server.address();
     const port = typeof addr === "object" && addr ? addr.port : 0;
     try {
-      for (const id of [ID, "private-fixture"]) for (const append of ["x", "x".repeat(MAX_BODY_BYTES - 500), "x".repeat(2 * MAX_BODY_BYTES)]) {
-        const body = await new Promise<string>((ok, ko) => {
-          const req = request(
-            { method: "POST", hostname: "127.0.0.1", port, path: "/hook/bash-fail", headers: { "Content-Type": "application/json" } },
-            (res) => {
-              let data = "";
-              res.on("data", (c: Buffer) => (data += c.toString()));
-              res.on("end", () => ok(data));
-            },
-          );
-          req.on("error", ko);
-          req.end(
-            JSON.stringify({
-              payload: {
-                hook_event_name: "PostToolUse",
-                bastra_client: "claude-code",
-                tool_name: `${SERVER}edit_memory`,
-                tool_input: { id, append },
-                tool_response: blocks({ id, created: false, warning: "x".repeat(2048) }),
+      for (const id of [ID, "private-fixture"])
+        for (const append of ["x", "x".repeat(MAX_BODY_BYTES - 500), "x".repeat(2 * MAX_BODY_BYTES)]) {
+          const body = await new Promise<string>((ok, ko) => {
+            const req = request(
+              {
+                method: "POST",
+                hostname: "127.0.0.1",
+                port,
+                path: "/hook/bash-fail",
+                headers: { "Content-Type": "application/json" },
               },
-            }),
+              (res) => {
+                let data = "";
+                res.on("data", (c: Buffer) => (data += c.toString()));
+                res.on("end", () => ok(data));
+              }
+            );
+            req.on("error", ko);
+            req.end(
+              JSON.stringify({
+                payload: {
+                  hook_event_name: "PostToolUse",
+                  bastra_client: "claude-code",
+                  tool_name: `${SERVER}edit_memory`,
+                  tool_input: { id, append },
+                  tool_response: blocks({ id, created: false, warning: "x".repeat(2048) }),
+                },
+              })
+            );
+          });
+          if (append.length > MAX_BODY_BYTES) {
+            assert.equal(body, "{}", "oversized hook envelopes still fail open under a finite limit");
+            continue;
+          }
+          assert.ok(Buffer.byteLength(JSON.stringify({ id: ID, append })) < MAX_BODY_BYTES);
+          assert.ok(
+            (JSON.parse(body) as { systemMessage?: string }).systemMessage,
+            `a valid tool input plus its result must fit: ${body}`
           );
-        });
-        if (append.length > MAX_BODY_BYTES) {
-          assert.equal(body, "{}", "oversized hook envelopes still fail open under a finite limit");
-          continue;
+          if (id === "private-fixture") {
+            assert.doesNotMatch(body, /Private fixture title|user-fact/);
+          } else {
+            assert.equal(
+              plain((JSON.parse(body) as { systemMessage: string }).systemMessage),
+              " bastra-recall  bearbeitet: „Staging-Deploy braucht VPN“ (lesson) · Text angehängt"
+            );
+          }
         }
-        assert.ok(Buffer.byteLength(JSON.stringify({ id: ID, append })) < MAX_BODY_BYTES);
-        assert.ok((JSON.parse(body) as { systemMessage?: string }).systemMessage, `a valid tool input plus its result must fit: ${body}`);
-        if (id === "private-fixture") {
-          assert.doesNotMatch(body, /Private fixture title|user-fact/);
-        } else {
-        assert.equal(
-          plain((JSON.parse(body) as { systemMessage: string }).systemMessage),
-          " bastra-recall  bearbeitet: „Staging-Deploy braucht VPN“ (lesson) · Text angehängt",
-        );
-        }
-      }
     } finally {
       await new Promise<void>((ok) => server.close(() => ok()));
     }
   });
 });
 
-
 test("unknown or error-shaped write responses never affirm that a file was written", async () => {
   await german(async () => {
     for (const response of [
-      { id: ID }, { id: ID, error: "denied" }, { id: ID, created: true, error: "denied" },
+      { id: ID },
+      { id: ID, error: "denied" },
+      { id: ID, created: true, error: "denied" },
       { id: ID, created: true, claim_gate: null },
     ]) {
-      assert.equal(await notice({ tool_name: `${SERVER}save_memory`, tool_response: blocks(response) }), undefined, JSON.stringify(response));
+      assert.equal(
+        await notice({ tool_name: `${SERVER}save_memory`, tool_response: blocks(response) }),
+        undefined,
+        JSON.stringify(response)
+      );
     }
-    assert.equal(await notice({ tool_name: `${SERVER}save_product_doc`, tool_response: blocks({ id: ID }) }), undefined);
+    assert.equal(
+      await notice({ tool_name: `${SERVER}save_product_doc`, tool_response: blocks({ id: ID }) }),
+      undefined
+    );
     assert.equal(await notice({ tool_name: `${SERVER}edit_memory`, tool_response: blocks({ id: ID }) }), undefined);
     assert.equal(await notice({ tool_name: `${SERVER}save_document`, tool_response: blocks({ id: ID }) }), undefined);
   });
@@ -388,15 +457,26 @@ test("unknown or error-shaped write responses never affirm that a file was writt
 test("slow telemetry never holds back a valid notice", async () => {
   await german(async () => {
     let release!: () => void;
-    const stalled = new Promise<void>((ok) => { release = ok; });
+    const stalled = new Promise<void>((ok) => {
+      release = ok;
+    });
     const run = runSaveNoticeLane(
-      { hook_event_name: "PostToolUse", bastra_client: "claude-code", tool_name: `${SERVER}save_memory`, tool_response: blocks({ id: ID, created: true }) },
+      {
+        hook_event_name: "PostToolUse",
+        bastra_client: "claude-code",
+        tool_name: `${SERVER}save_memory`,
+        tool_response: blocks({ id: ID, created: true }),
+      },
       VAULT,
-      { language: async () => "de", telemetry: () => stalled },
+      { language: async () => "de", telemetry: () => stalled }
     );
     let out: string;
-    try { out = await Promise.race([run, delay(100, "timeout")]); }
-    finally { release(); await run; }
+    try {
+      out = await Promise.race([run, delay(100, "timeout")]);
+    } finally {
+      release();
+      await run;
+    }
     assert.notEqual(out, "timeout", "telemetry cannot consume the client deadline and erase the notice");
     assert.match(plain(JSON.parse(out).systemMessage), /gespeichert/);
   });
@@ -405,57 +485,104 @@ test("slow telemetry never holds back a valid notice", async () => {
 test("#1400: lifecycle drain joins a pending notice write before sandbox teardown", async () => {
   await german(async (dir) => {
     let entered!: () => void, release!: () => void;
-    const writing = new Promise<void>(resolve => { entered = resolve; });
-    const held = new Promise<void>(resolve => { release = resolve; });
-    let persisted = false, drained = false;
+    const writing = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let persisted = false,
+      drained = false;
     await runSaveNoticeLane(
-      { hook_event_name: "PostToolUse", tool_name: `${SERVER}save_memory`, tool_response: blocks({ id: ID, created: true }) },
+      {
+        hook_event_name: "PostToolUse",
+        tool_name: `${SERVER}save_memory`,
+        tool_response: blocks({ id: ID, created: true }),
+      },
       VAULT,
-      { language: async () => "de", telemetry: async () => {
-        entered(); await held;
-        await mkdir(join(dir, "logs"), { recursive: true });
-        await writeFile(join(dir, "logs", "held.jsonl"), "fixture\n");
-        persisted = true;
-      } },
+      {
+        language: async () => "de",
+        telemetry: async () => {
+          entered();
+          await held;
+          await mkdir(join(dir, "logs"), { recursive: true });
+          await writeFile(join(dir, "logs", "held.jsonl"), "fixture\n");
+          persisted = true;
+        },
+      }
     );
     await writing;
-    const drain = flushSaveNoticeTelemetry().then(() => { drained = true; });
+    const drain = flushSaveNoticeTelemetry().then(() => {
+      drained = true;
+    });
     try {
       await Promise.resolve();
       assert.equal(drained, false, "cleanup must wait for the pending write");
       assert.equal(persisted, false);
-    } finally { release(); await drain; }
+    } finally {
+      release();
+      await drain;
+    }
     assert.equal(persisted, true, "the write completed before teardown can remove its directory");
   });
 });
 
 test("doctor needs a command that actually runs the required notice lane", () => {
   const def = hookDefinitions().find((d) => d.matcher === SAVE_NOTICE_MATCHER)!;
-  const check = (command: string, type = "command") => missingRequiredHookRegistrations({ PostToolUse: [{ matcher: SAVE_NOTICE_MATCHER, hooks: [{ type, command }] }] }, [def]);
-  for (const command of ["echo /pkg/bash-fail-hook.js", "echo /pkg/bastra-hook bash-fail", "node /pkg/daemon/dist/other.js /pkg/bash-fail-hook.js", "/pkg/bastra-hook prompt /pkg/bash-fail-hook.js"]) {
+  const check = (command: string, type = "command") =>
+    missingRequiredHookRegistrations({ PostToolUse: [{ matcher: SAVE_NOTICE_MATCHER, hooks: [{ type, command }] }] }, [
+      def,
+    ]);
+  for (const command of [
+    "echo /pkg/bash-fail-hook.js",
+    "echo /pkg/bastra-hook bash-fail",
+    "node /pkg/daemon/dist/other.js /pkg/bash-fail-hook.js",
+    "/pkg/bastra-hook prompt /pkg/bash-fail-hook.js",
+  ]) {
     assert.equal(check(command).length, 1, command);
   }
   assert.equal(check("node /pkg/daemon/dist/bash-fail-hook.js", "prompt").length, 1);
-  for (const command of ["BASTRA_HOOK_CLIENT=claude-code node /pkg/bash-fail-hook.js", "/pkg/bastra-hook bash-fail", "bastra-recall-bash-fail-hook"]) assert.deepEqual(check(command), [], command);
+  for (const command of [
+    "BASTRA_HOOK_CLIENT=claude-code node /pkg/bash-fail-hook.js",
+    "/pkg/bastra-hook bash-fail",
+    "bastra-recall-bash-fail-hook",
+  ])
+    assert.deepEqual(check(command), [], command);
 });
 
 test("installation replaces duplicate notice handlers and keeps one registration", () => {
   const first = planHookEntries("install", {}, { includeStop: false, stubPresent: false });
-  const noticeEntry = first.after.PostToolUse.find((entry) => (entry as { matcher?: string }).matcher === SAVE_NOTICE_MATCHER);
+  const noticeEntry = first.after.PostToolUse.find(
+    (entry) => (entry as { matcher?: string }).matcher === SAVE_NOTICE_MATCHER
+  );
   const duplicate = { ...first.after, PostToolUse: [...first.after.PostToolUse, noticeEntry] };
   const next = planHookEntries("install", duplicate, { includeStop: false, stubPresent: false });
-  assert.equal(next.after.PostToolUse.filter((entry) => (entry as { matcher?: string }).matcher === SAVE_NOTICE_MATCHER).length, 1);
+  assert.equal(
+    next.after.PostToolUse.filter((entry) => (entry as { matcher?: string }).matcher === SAVE_NOTICE_MATCHER).length,
+    1
+  );
   assert.deepEqual(missingRequiredHookRegistrations(next.after), []);
 });
 
-
 test("telemetry exceptions never erase a valid notice", async () => {
   await german(async () => {
-    for (const telemetry of [() => { throw new Error("sink unavailable"); }, async () => { throw new Error("sink unavailable"); }]) {
+    for (const telemetry of [
+      () => {
+        throw new Error("sink unavailable");
+      },
+      async () => {
+        throw new Error("sink unavailable");
+      },
+    ]) {
       const out = await runSaveNoticeLane(
-        { hook_event_name: "PostToolUse", bastra_client: "claude-code", tool_name: `${SERVER}save_memory`, tool_response: blocks({ id: ID, created: true }) },
+        {
+          hook_event_name: "PostToolUse",
+          bastra_client: "claude-code",
+          tool_name: `${SERVER}save_memory`,
+          tool_response: blocks({ id: ID, created: true }),
+        },
         VAULT,
-        { telemetry },
+        { telemetry }
       );
       assert.match(plain(JSON.parse(out).systemMessage), /gespeichert/);
     }
@@ -473,20 +600,40 @@ test("the reused node client fails open on unreachable and stalled daemons", asy
     const invoke = async () => {
       const started = Date.now();
       const child = spawn(process.execPath, [new URL("../dist/bash-fail-hook.js", import.meta.url).pathname], {
-        env: { ...process.env, BASTRA_DAEMON_URL: endpoint, BASTRA_HOOK_TIMEOUT_MS: "100", BASTRA_HOOK_CLIENT: "claude-code" },
+        env: {
+          ...process.env,
+          BASTRA_DAEMON_URL: endpoint,
+          BASTRA_HOOK_TIMEOUT_MS: "100",
+          BASTRA_HOOK_CLIENT: "claude-code",
+        },
         stdio: ["pipe", "pipe", "pipe"],
       });
       let stdout = "";
-      child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
+      child.stdout.on("data", (chunk: Buffer) => {
+        stdout += chunk.toString();
+      });
       child.stderr.resume();
-      const exit = new Promise<number | null>((ok, ko) => { child.once("exit", ok); child.once("error", ko); });
-      child.stdin.end(JSON.stringify({ hook_event_name: "PostToolUse", tool_name: `${SERVER}save_memory`, tool_response: blocks({ id: ID, created: true }) }));
+      const exit = new Promise<number | null>((ok, ko) => {
+        child.once("exit", ok);
+        child.once("error", ko);
+      });
+      child.stdin.end(
+        JSON.stringify({
+          hook_event_name: "PostToolUse",
+          tool_name: `${SERVER}save_memory`,
+          tool_response: blocks({ id: ID, created: true }),
+        })
+      );
       assert.equal(await exit, 0);
       assert.equal(stdout, "{}");
       assert.ok(Date.now() - started < 2000, "an optional notice hook cannot keep the tool turn blocked");
     };
-    try { await invoke(); }
-    finally { server.closeAllConnections(); await new Promise<void>((ok) => server.close(() => ok())); }
+    try {
+      await invoke();
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((ok) => server.close(() => ok()));
+    }
     await invoke();
   });
 });
@@ -498,22 +645,57 @@ test("Codex canonical MCP names share the write matcher", () => {
 });
 
 test("Codex gets a plain fixed prefix after successful writes and nothing after reads", async () => {
-  await german(async () => {
-    for (const tool of ["save_memory", "edit_memory"] as const) {
-      const output = await runSaveNoticeLane({hook_event_name: "PostToolUse", bastra_client: "codex", tool_name: `mcp__bastra_recall__${tool}`, tool_input: SAVE_INPUT, tool_response: {content: blocks({id: ID, created: tool === "save_memory"})}}, VAULT);
-      const line = JSON.parse(output).systemMessage;
-      assert.match(line, /^bastra-recall (?:gespeichert|bearbeitet):/);
-      assert.doesNotMatch(line, /\x1b/);
-    }
-    for (const tool of ["recall", "load_memory"]) {
-      assert.equal(await runSaveNoticeLane({hook_event_name: "PostToolUse", bastra_client: "codex", tool_name: `mcp__bastra_recall__${tool}`, tool_response: {content: blocks({id: ID, created: true})}}, VAULT), "{}");
-    }
-  }, {BASTRA_SAVE_NOTICE_COLOR: "0"});
+  await german(
+    async () => {
+      for (const tool of ["save_memory", "edit_memory"] as const) {
+        const output = await runSaveNoticeLane(
+          {
+            hook_event_name: "PostToolUse",
+            bastra_client: "codex",
+            tool_name: `mcp__bastra_recall__${tool}`,
+            tool_input: SAVE_INPUT,
+            tool_response: { content: blocks({ id: ID, created: tool === "save_memory" }) },
+          },
+          VAULT
+        );
+        const line = JSON.parse(output).systemMessage;
+        assert.match(line, /^bastra-recall (?:gespeichert|bearbeitet):/);
+        assert.doesNotMatch(line, /\x1b/);
+      }
+      for (const tool of ["recall", "load_memory"]) {
+        assert.equal(
+          await runSaveNoticeLane(
+            {
+              hook_event_name: "PostToolUse",
+              bastra_client: "codex",
+              tool_name: `mcp__bastra_recall__${tool}`,
+              tool_response: { content: blocks({ id: ID, created: true }) },
+            },
+            VAULT
+          ),
+          "{}"
+        );
+      }
+    },
+    { BASTRA_SAVE_NOTICE_COLOR: "0" }
+  );
 });
 
 test("Codex colour is an explicit daemon opt-in, with the same plain wording", async () => {
-  await german(async () => {
-    const out = await runSaveNoticeLane({hook_event_name: "PostToolUse", bastra_client: "codex", tool_name: "mcp__bastra_recall__save_memory", tool_input: SAVE_INPUT, tool_response: {content: blocks({id: ID, created: true})}}, VAULT);
-    assert.match(JSON.parse(out).systemMessage, /^\x1b\[/);
-  }, {BASTRA_SAVE_NOTICE_COLOR: "1"});
+  await german(
+    async () => {
+      const out = await runSaveNoticeLane(
+        {
+          hook_event_name: "PostToolUse",
+          bastra_client: "codex",
+          tool_name: "mcp__bastra_recall__save_memory",
+          tool_input: SAVE_INPUT,
+          tool_response: { content: blocks({ id: ID, created: true }) },
+        },
+        VAULT
+      );
+      assert.match(JSON.parse(out).systemMessage, /^\x1b\[/);
+    },
+    { BASTRA_SAVE_NOTICE_COLOR: "1" }
+  );
 });

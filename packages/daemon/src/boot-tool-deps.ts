@@ -132,9 +132,7 @@ export async function buildToolDeps(opts: {
     primaryLanguage,
     // #165: Recall-Telemetrie flaggt Events als embedding_degraded, wenn der
     // Breaker gerade offen ist (Vector-Leg geskippt, BM25-only serviert).
-    embeddingDegraded: embeddingBreaker
-      ? () => embeddingBreaker.state(Date.now()) === "open"
-      : undefined,
+    embeddingDegraded: embeddingBreaker ? () => embeddingBreaker.state(Date.now()) === "open" : undefined,
     // #264: Der Evidenzentscheid, scharf oder nicht. Beim Boot aufgelöst wie
     // die übrigen Schalter; Default aus. Aus heißt NICHT „läuft nicht" — er
     // läuft und wird geloggt, er wirkt nur auf nichts (§21.1: erst shadow).

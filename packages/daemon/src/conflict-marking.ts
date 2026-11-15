@@ -26,7 +26,7 @@ function str(v: unknown): string | undefined {
 export async function markConflict(
   deps: ToolDeps,
   input: SaveMemoryInput,
-  finalId: string,
+  finalId: string
 ): Promise<ConflictMarkResult> {
   const targetId = input.conflict_with;
   if (!targetId) throw new Error("markConflict called without conflict_with");
@@ -37,7 +37,7 @@ export async function markConflict(
   if (!target) {
     throw new Error(
       `conflict_with: unknown memory '${targetId}' — it must exist in the vault. ` +
-        `To simply store a new fact, drop the conflict_with field.`,
+        `To simply store a new fact, drop the conflict_with field.`
     );
   }
 
@@ -49,7 +49,7 @@ export async function markConflict(
       source: str(target.fm.source),
     },
     { statement: input.summary, detail: input.body, date: today, source: input.source },
-    today,
+    today
   );
   // Über `mutateMemoryFile`: atomar (ein direktes writeFile ließ die Datei
   // kurzzeitig halb geschrieben), mit Identitätsprüfung (ein Pfad beweist
@@ -59,18 +59,18 @@ export async function markConflict(
     target.filePath,
     targetId,
     { body: (content) => `${content.replace(/\s*$/, "")}\n\n${block}\n` },
-    { vaultRoot: deps.vaultPath },
+    { vaultRoot: deps.vaultPath }
   );
   if (outcome.kind === "identity-mismatch") {
     throw new Error(
       `conflict_with: ${target.filePath} does not hold memory '${targetId}' ` +
-        `(found ${outcome.found ?? "no memory"}) — refusing to mark a conflict on a foreign file.`,
+        `(found ${outcome.found ?? "no memory"}) — refusing to mark a conflict on a foreign file.`
     );
   }
   if (outcome.kind === "raced") {
     throw new Error(
       `conflict_with: '${targetId}' changed while the conflict block was being written — ` +
-        `nothing was modified. Retry.`,
+        `nothing was modified. Retry.`
     );
   }
   if (outcome.kind !== "written") {
@@ -78,9 +78,7 @@ export async function markConflict(
     // `null` zurück), aber ein Beleg wird nur aus einem WRITTEN gebildet —
     // stillschweigend etwas anderes zu protokollieren wäre genau der Fehler,
     // den P1-2 meint.
-    throw new Error(
-      `conflict_with: '${targetId}' reported '${outcome.kind}' — nothing was modified.`,
-    );
+    throw new Error(`conflict_with: '${targetId}' reported '${outcome.kind}' — nothing was modified.`);
   }
   await deps.vault.reindexFile(target.filePath);
 

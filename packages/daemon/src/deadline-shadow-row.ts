@@ -79,10 +79,7 @@ export function isLatencySample(report: VectorArmReport | null | undefined): boo
  * Grundwahrheit, keine Umbuchung. Und `hosted` kennt kein Modell, das laden
  * könnte; dort gibt es nichts zu klassifizieren.
  */
-export function sampleResidency(
-  reading: ResidencyReading,
-  providerLoadMs: number | null | undefined,
-): Residency {
+export function sampleResidency(reading: ResidencyReading, providerLoadMs: number | null | undefined): Residency {
   if (reading.state === "hosted") return "hosted";
   if (typeof providerLoadMs !== "number" || !Number.isFinite(providerLoadMs)) return reading.state;
   return providerLoadMs >= PROVIDER_COLD_LOAD_MS ? "cold" : "warm";
@@ -262,7 +259,7 @@ export function recordLateSettleSample(
   key: string,
   residency: ResidencyReading,
   row: DeadlineShadowRow,
-  sample: LateSettleSample,
+  sample: LateSettleSample
 ): void {
   // #495: wie oben — jeder berichtete Ladewert ist Grundwahrheit über die
   // Residenz, auch der warme.
@@ -306,7 +303,17 @@ export interface VectorLateSettleRowInput {
  * the recall_id is known (moved here from http-hook-routes.ts, #680).
  */
 export function logVectorLateSettleRow(input: VectorLateSettleRowInput): void {
-  const { telemetry, recallId, vectorDeadlineMs, sample, sessionStartCallId, shadow, deadlineShadowRow, hookSessionId, body } = input;
+  const {
+    telemetry,
+    recallId,
+    vectorDeadlineMs,
+    sample,
+    sessionStartCallId,
+    shadow,
+    deadlineShadowRow,
+    hookSessionId,
+    body,
+  } = input;
   fireAndForget(
     telemetry.logVectorLateSettle({
       recall_id: recallId,
@@ -319,12 +326,8 @@ export function logVectorLateSettleRow(input: VectorLateSettleRowInput): void {
       // sagt nicht, ob eine längere Frist diesen Recall fusioniert hätte.
       ...(sample.outcome ? { provider_outcome: sample.outcome } : {}),
       ...(sample.hit_count !== undefined ? { vector_hit_count: sample.hit_count } : {}),
-      ...(sample.cold_start_observed !== undefined
-        ? { cold_start_observed: sample.cold_start_observed }
-        : {}),
-      ...(typeof sample.provider_load_ms === "number"
-        ? { provider_load_ms: sample.provider_load_ms }
-        : {}),
+      ...(sample.cold_start_observed !== undefined ? { cold_start_observed: sample.cold_start_observed } : {}),
+      ...(typeof sample.provider_load_ms === "number" ? { provider_load_ms: sample.provider_load_ms } : {}),
       ...(sessionStartCallId ? { session_start_call_id: sessionStartCallId } : {}),
       ...(shadow ? { host_profile_id: shadow.hostProfileId() } : {}),
       // #491: Die Prognose reist mit, statt nur über `recall_id`
@@ -351,6 +354,6 @@ export function logVectorLateSettleRow(input: VectorLateSettleRowInput): void {
         : {}),
       ...(hookSessionId ? { session_id: hookSessionId } : {}),
       ...dimensionHints(body),
-    }),
+    })
   );
 }

@@ -52,8 +52,11 @@ import { z } from "zod";
 import {
   AUTO_RELATED_START,
   ConventionValidatorSchema,
-  RuleCategoriesSchema, RulebookSchema,
-  resolveRulebook, remainingProposal, unboundProposal,
+  RuleCategoriesSchema,
+  RulebookSchema,
+  resolveRulebook,
+  remainingProposal,
+  unboundProposal,
   FrontmatterSchema,
   RulebookProposalSchema,
   memoryRevision,
@@ -94,10 +97,17 @@ const FrontmatterPatch = z
     valid_until: z.string().min(1).optional(),
     validator: ConventionValidatorSchema.nullable().optional(),
   })
-  .strict().superRefine((patch, ctx) => {
-    if (patch.rulebook_proposed !== undefined && (patch.rulebook !== undefined || patch.applies_when !== undefined || patch.rule_categories !== undefined)) {
-      ctx.addIssue({ code: "custom", path: ["rulebook_proposed"],
-        message: "rulebook_proposed cannot be combined with rulebook or applies_when in the same patch" });
+  .strict()
+  .superRefine((patch, ctx) => {
+    if (
+      patch.rulebook_proposed !== undefined &&
+      (patch.rulebook !== undefined || patch.applies_when !== undefined || patch.rule_categories !== undefined)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["rulebook_proposed"],
+        message: "rulebook_proposed cannot be combined with rulebook or applies_when in the same patch",
+      });
     }
   });
 
@@ -113,7 +123,10 @@ export const EditMemoryArgs = z
     append: z.string().min(1).optional(),
     frontmatter: FrontmatterPatch.optional(),
     /** Explicit agent attestation of the user's chat decision, never inferred from text. */
-    rulebook_decision: z.object({ decision: z.enum(["accept", "reject"]), write_origin: z.literal("user-directed") }).strict().optional(),
+    rulebook_decision: z
+      .object({ decision: z.enum(["accept", "reject"]), write_origin: z.literal("user-directed") })
+      .strict()
+      .optional(),
     /**
      * Optimistische Nebenläufigkeit: die `revision`, die `load_memory` beim
      * Laden geliefert hat. Steht auf der Platte etwas anderes, wird nichts
@@ -131,12 +144,21 @@ export const EditMemoryArgs = z
     expected_revision: z.string().min(1).optional(),
   })
   .refine(
-    (a) => a.str_replace !== undefined || a.append !== undefined || a.frontmatter !== undefined || a.rulebook_decision !== undefined,
-    { message: "edit_memory needs at least one of str_replace, append or frontmatter (or standalone rulebook_decision)" },
-  ).superRefine((a, ctx) => {
+    (a) =>
+      a.str_replace !== undefined ||
+      a.append !== undefined ||
+      a.frontmatter !== undefined ||
+      a.rulebook_decision !== undefined,
+    {
+      message: "edit_memory needs at least one of str_replace, append or frontmatter (or standalone rulebook_decision)",
+    }
+  )
+  .superRefine((a, ctx) => {
     if (!a.rulebook_decision) return;
-    if (!a.expected_revision) ctx.addIssue({ code: "custom", message: "rulebook_decision requires expected_revision from load_memory" });
-    if (a.frontmatter || a.append || a.str_replace) ctx.addIssue({ code: "custom", message: "rulebook_decision cannot be combined with other edits" });
+    if (!a.expected_revision)
+      ctx.addIssue({ code: "custom", message: "rulebook_decision requires expected_revision from load_memory" });
+    if (a.frontmatter || a.append || a.str_replace)
+      ctx.addIssue({ code: "custom", message: "rulebook_decision cannot be combined with other edits" });
   });
 export type EditMemoryArgs = z.infer<typeof EditMemoryArgs>;
 
@@ -225,13 +247,13 @@ export function applyBodyOps(body: string, args: EditMemoryArgs): string {
     if (hits === 0) {
       throw new EditPreconditionError(
         `str_replace: old_str does not occur in the body of '${args.id}' — NOTHING was written. ` +
-          `Load the memory and copy the exact text you want to replace (whitespace and line breaks included).`,
+          `Load the memory and copy the exact text you want to replace (whitespace and line breaks included).`
       );
     }
     if (hits > 1) {
       throw new EditPreconditionError(
         `str_replace: old_str occurs ${hits} times in the body of '${args.id}' — NOTHING was written. ` +
-          `Extend it with surrounding lines until it is unique.`,
+          `Extend it with surrounding lines until it is unique.`
       );
     }
     next = next.replace(old_str, () => new_str);
@@ -276,7 +298,7 @@ export async function editMemoryHandler(
   /** #464: transportgebunden — siehe `private-access.ts`. Die beiden
    *  öffentlichen Transporte (REST-Dispatcher, stdio-MCP-Server) übergeben
    *  NICHTS, und das Fehlen ist die sichere Antwort. */
-  access?: PrivateAccess,
+  access?: PrivateAccess
 ): Promise<EditMemoryResult | ClaimGateResult> {
   // #519: Der alte Feldname wird LAUT abgelehnt statt still verworfen. Wer ihn
   // schickt, will genau die Absicherung, die Zod ihm sonst kommentarlos
@@ -286,7 +308,7 @@ export async function editMemoryHandler(
     throw new Error(
       `invalid edit_memory args: expected_updated is gone — it compared the day-precision ` +
         `\`updated\` stamp, so two edits on the same day shared it and the later one silently won. ` +
-        `Pass expected_revision with the \`revision\` load_memory returned instead.`,
+        `Pass expected_revision with the \`revision\` load_memory returned instead.`
     );
   }
   const parsed = EditMemoryArgs.safeParse(rawArgs);
@@ -335,7 +357,7 @@ export async function editMemoryHandler(
         const m = deps.vault.get(id);
         return m ? { summary: m.fm.summary, body: m.body } : undefined;
       },
-      (start) => chainBelow(deps, start),
+      (start) => chainBelow(deps, start)
     ).filter((c) => addedTriggers.includes(c.trigger));
     if (claimed.length > 0) return claimGateResult(mem.fm.id, claimed, saveQuality);
   }
@@ -373,7 +395,7 @@ export async function editMemoryHandler(
           throw new EditPreconditionError(
             `expected_revision: '${mem.fm.id}' is at revision ${onDisk}, ` +
               `you expected ${args.expected_revision} — NOTHING was written. ` +
-              `Load the memory again and re-apply your change to the current text.`,
+              `Load the memory again and re-apply your change to the current text.`
           );
         }
       },
@@ -390,48 +412,82 @@ export async function editMemoryHandler(
         const patch = args.frontmatter;
         const previous = FrontmatterSchema.safeParse(fm);
         const legacy = previous.success ? resolveRulebook(previous.data) : undefined;
-        const bindsDirectly = RulebookSchema.safeParse(fm.rulebook).success || !!legacy ||
-          fm.write_origin === "user-directed";
-        if (patch?.rulebook !== undefined || patch?.applies_when !== undefined || patch?.rule_categories !== undefined) {
+        const bindsDirectly =
+          RulebookSchema.safeParse(fm.rulebook).success || !!legacy || fm.write_origin === "user-directed";
+        if (
+          patch?.rulebook !== undefined ||
+          patch?.applies_when !== undefined ||
+          patch?.rule_categories !== undefined
+        ) {
           const rulebook = patch.rulebook ?? fm.rulebook ?? legacy?.rulebook ?? "on-demand";
           const applies_when = patch.applies_when ?? fm.applies_when ?? fm.summary;
-          const proposal = RulebookProposalSchema.safeParse({ rulebook, applies_when, ...(patch.rule_categories !== undefined ? {rule_categories:patch.rule_categories} : fm.rule_categories !== undefined ? {rule_categories:fm.rule_categories} : {}) });
-          if (!proposal.success) throw new Error("rulebook edits require rulebook and applies_when (or existing values)");
+          const proposal = RulebookProposalSchema.safeParse({
+            rulebook,
+            applies_when,
+            ...(patch.rule_categories !== undefined
+              ? { rule_categories: patch.rule_categories }
+              : fm.rule_categories !== undefined
+                ? { rule_categories: fm.rule_categories }
+                : {}),
+          });
+          if (!proposal.success)
+            throw new Error("rulebook edits require rulebook and applies_when (or existing values)");
           if (bindsDirectly) {
             Object.assign(next, proposal.data);
             // #1386: binding supersedes the pending proposal it answers.
             if (fm.rulebook === undefined) {
-              const rest = remainingProposal(next.rulebook_proposed as Record<string, unknown> | undefined, proposal.data,
-                [...(proposal.data.rule_categories !== undefined ? ["rule_categories"] : []), ...(patch.validator ? ["validator"] : [])]);
-              if (rest) next.rulebook_proposed = rest; else delete next.rulebook_proposed;
+              const rest = remainingProposal(
+                next.rulebook_proposed as Record<string, unknown> | undefined,
+                proposal.data,
+                [
+                  ...(proposal.data.rule_categories !== undefined ? ["rule_categories"] : []),
+                  ...(patch.validator ? ["validator"] : []),
+                ]
+              );
+              if (rest) next.rulebook_proposed = rest;
+              else delete next.rulebook_proposed;
             }
           } else {
-            if (fm.rulebook === undefined) delete next.rulebook; else next.rulebook = fm.rulebook;
-            if (fm.applies_when === undefined) delete next.applies_when; else next.applies_when = fm.applies_when;
-            if (fm.rule_categories === undefined) delete next.rule_categories; else next.rule_categories = fm.rule_categories;
-            next.rulebook_proposed = { ...(fm.rulebook_proposed as object ?? {}), ...proposal.data };
+            if (fm.rulebook === undefined) delete next.rulebook;
+            else next.rulebook = fm.rulebook;
+            if (fm.applies_when === undefined) delete next.applies_when;
+            else next.applies_when = fm.applies_when;
+            if (fm.rule_categories === undefined) delete next.rule_categories;
+            else next.rule_categories = fm.rule_categories;
+            next.rulebook_proposed = { ...((fm.rulebook_proposed as object) ?? {}), ...proposal.data };
           }
         }
         if (patch?.validator && !bindsDirectly) {
-          if (fm.validator === undefined) delete next.validator; else next.validator = fm.validator;
+          if (fm.validator === undefined) delete next.validator;
+          else next.validator = fm.validator;
           next.rulebook_proposed = {
-            rulebook: "on-demand", applies_when: patch.applies_when ?? fm.applies_when ?? fm.summary,
-            ...(next.rulebook_proposed as object ?? {}), validator: patch.validator,
+            rulebook: "on-demand",
+            applies_when: patch.applies_when ?? fm.applies_when ?? fm.summary,
+            ...((next.rulebook_proposed as object) ?? {}),
+            validator: patch.validator,
           };
         }
         // #1394: parts this edit bound directly are no longer pending, also on an existing rule.
         const covered = bindsDirectly
-          ? [...(patch?.rule_categories !== undefined ? ["rule_categories"] : []), ...(patch?.validator ? ["validator"] : [])] : [];
+          ? [
+              ...(patch?.rule_categories !== undefined ? ["rule_categories"] : []),
+              ...(patch?.validator ? ["validator"] : []),
+            ]
+          : [];
         if (covered.length > 0 && next.rulebook_proposed) {
           const rest = unboundProposal(next.rulebook_proposed as Record<string, unknown>, next, covered);
-          if (rest) next.rulebook_proposed = rest; else delete next.rulebook_proposed;
+          if (rest) next.rulebook_proposed = rest;
+          else delete next.rulebook_proposed;
         }
         if (args.rulebook_decision) {
           const proposed = RulebookProposalSchema.safeParse(fm.rulebook_proposed);
           if (!proposed.success) throw new Error("no pending rulebook proposal — NOTHING was written");
           if (args.rulebook_decision.decision === "accept") {
             // Legacy archive proposals need the dedicated archive operation, not an invented frontmatter flag.
-            if (proposed.data.archive) throw new Error("archive proposal requires archive_memory on the user's instruction — NOTHING was written");
+            if (proposed.data.archive)
+              throw new Error(
+                "archive proposal requires archive_memory on the user's instruction — NOTHING was written"
+              );
             const { archive: _archive, ...binding } = proposed.data;
             Object.assign(next, binding, { write_origin: "user-directed" });
             if (next.superseded_by === null) delete next.superseded_by;
@@ -448,19 +504,19 @@ export async function editMemoryHandler(
         return next;
       },
     },
-    { vaultRoot: deps.vaultPath, op: "save_memory_edit" },
+    { vaultRoot: deps.vaultPath, op: "save_memory_edit" }
   );
 
   if (outcome.kind === "identity-mismatch") {
     throw new Error(
       `edit_memory: ${mem.filePath} does not hold memory '${mem.fm.id}' ` +
-        `(found ${outcome.found ?? "no memory"}) — NOTHING was written. The index is stale; recall the memory again.`,
+        `(found ${outcome.found ?? "no memory"}) — NOTHING was written. The index is stale; recall the memory again.`
     );
   }
   if (outcome.kind === "raced") {
     throw new Error(
       `edit_memory: '${mem.fm.id}' changed while the edit was being written — NOTHING was written. ` +
-        `Load it again and re-apply your change to the current text.`,
+        `Load it again and re-apply your change to the current text.`
     );
   }
   if (outcome.kind !== "written") {
@@ -531,7 +587,7 @@ export async function editMemoryHandler(
 /** #661: welche bestehenden Listeneinträge der Patch nicht mehr enthält. */
 function droppedListEntries(
   fm: Record<string, unknown>,
-  patch: EditMemoryArgs["frontmatter"],
+  patch: EditMemoryArgs["frontmatter"]
 ): EditMemoryResult["dropped"] {
   const out: NonNullable<EditMemoryResult["dropped"]> = {};
   for (const field of LIST_FIELDS) {

@@ -43,7 +43,7 @@ test("valence: absent by default, explicit values persist", async () => {
 
     const charged = await saveMemory(
       dir,
-      input({ id: "charged-probe", salience: 0.8, emotion: "frustration", recall_mode: "reflex" }),
+      input({ id: "charged-probe", salience: 0.8, emotion: "frustration", recall_mode: "reflex" })
     );
     const chargedFm = await fmOf(charged.file_path);
     assert.equal(chargedFm.salience, 0.8);
@@ -57,13 +57,10 @@ test("valence: absent by default, explicit values persist", async () => {
 test("valence: overwrite without fields preserves existing values", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-valence-"));
   try {
-    await saveMemory(
-      dir,
-      input({ id: "keep-probe", salience: 0.7, emotion: "success", recall_mode: "reflex" }),
-    );
+    await saveMemory(dir, input({ id: "keep-probe", salience: 0.7, emotion: "success", recall_mode: "reflex" }));
     const refreshed = await saveMemory(
       dir,
-      input({ id: "keep-probe", summary: "Refreshed valence probe body text.", overwrite: true }),
+      input({ id: "keep-probe", summary: "Refreshed valence probe body text.", overwrite: true })
     );
     const fm = await fmOf(refreshed.file_path);
     assert.equal(fm.salience, 0.7);
@@ -73,7 +70,7 @@ test("valence: overwrite without fields preserves existing values", async () => 
     // explizite Werte gewinnen beim Overwrite
     const reclassified = await saveMemory(
       dir,
-      input({ id: "keep-probe", salience: 0.2, emotion: "neutral", overwrite: true }),
+      input({ id: "keep-probe", salience: 0.2, emotion: "neutral", overwrite: true })
     );
     const fm2 = await fmOf(reclassified.file_path);
     assert.equal(fm2.salience, 0.2);
@@ -92,7 +89,7 @@ test("valence: salience 0 is written and survives overwrite (no truthy swallow)"
 
     const refreshed = await saveMemory(
       dir,
-      input({ id: "zero-probe", summary: "Refreshed zero salience probe.", overwrite: true }),
+      input({ id: "zero-probe", summary: "Refreshed zero salience probe.", overwrite: true })
     );
     assert.equal((await fmOf(refreshed.file_path)).salience, 0);
   } finally {
@@ -206,7 +203,7 @@ test("staleness #365/14: ein unbekanntes touch sagt mit und ohne valid_until das
     assert.equal(
       computeStaleness({ ...base, valid_until: soon }, now),
       "fresh",
-      `${label}: mit valid_until muss dasselbe sagen`,
+      `${label}: mit valid_until muss dasselbe sagen`
     );
   }
 
@@ -215,15 +212,12 @@ test("staleness #365/14: ein unbekanntes touch sagt mit und ohne valid_until das
   assert.equal(
     computeStaleness({ type: "lesson", updated: "2026-08-01", valid_until: "2026-08-25" }, now),
     "aging",
-    "bekanntes touch: 22 von 24 Tagen verbraucht = 0.92 ≥ 0.75",
+    "bekanntes touch: 22 von 24 Tagen verbraucht = 0.92 ≥ 0.75"
   );
-  assert.equal(
-    computeStaleness({ type: "lesson", updated: "2026-08-01", valid_until: "2026-09-30" }, now),
-    "fresh",
-  );
+  assert.equal(computeStaleness({ type: "lesson", updated: "2026-08-01", valid_until: "2026-09-30" }, now), "fresh");
   assert.equal(
     computeStaleness({ type: "lesson", valid_until: "2026-01-01" }, now),
     "expired",
-    "ein abgelaufenes valid_until gewinnt vor dem touch-Guard",
+    "ein abgelaufenes valid_until gewinnt vor dem touch-Guard"
   );
 });

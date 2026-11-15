@@ -25,7 +25,10 @@ import { ensureVaultDir, VaultRootMissingError, vaultRootFirstSeen, vaultRootsPa
 import type { SaveMemoryInput } from "../src/save-schema.js";
 
 // This file's own marker, so a "restart" can be staged by writing it directly.
-process.env.BASTRA_VAULT_ROOTS_PATH = path.join(await mkdtemp(path.join(tmpdir(), "bastra-guard-roots-")), "vault-roots.json");
+process.env.BASTRA_VAULT_ROOTS_PATH = path.join(
+  await mkdtemp(path.join(tmpdir(), "bastra-guard-roots-")),
+  "vault-roots.json"
+);
 
 function input(): SaveMemoryInput {
   return {
@@ -84,16 +87,28 @@ test("after a restart: a root listed in the marker but missing is never recreate
 
 test("locks: the id claim and the area claim refuse a vanished root", async (t) => {
   const root = await vanished(t);
-  await assert.rejects(withIdClaim({ vaultRoot: root, id: "x", filePath: path.join(root, "x.md") }, async () => undefined), /missing/);
-  await assert.rejects(withAreaExclusive(root, ["ops"], async () => undefined), /missing/);
+  await assert.rejects(
+    withIdClaim({ vaultRoot: root, id: "x", filePath: path.join(root, "x.md") }, async () => undefined),
+    /missing/
+  );
+  await assert.rejects(
+    withAreaExclusive(root, ["ops"], async () => undefined),
+    /missing/
+  );
   assert.equal(existsSync(root), false);
 });
 
 test("the audit log refuses a vanished root", async (t) => {
   const root = await vanished(t);
   await assert.rejects(
-    new AuditLog(root).record({ memory_id: "x", actor: "user", operation: "create", diff_before: null, diff_after: null }),
-    /missing/,
+    new AuditLog(root).record({
+      memory_id: "x",
+      actor: "user",
+      operation: "create",
+      diff_before: null,
+      diff_after: null,
+    }),
+    /missing/
   );
   assert.equal(existsSync(root), false);
 });
@@ -115,7 +130,16 @@ test("a root never seen: a save creates it, a side writer does not", async (t) =
   t.after(() => rm(parent, { recursive: true, force: true }));
   const fresh = path.join(parent, "fresh");
   await assert.rejects(ensureVaultDir(fresh, path.join(fresh, ".bastra", "usage")), /nothing has been saved there yet/);
-  await assert.rejects(new AuditLog(fresh).record({ memory_id: "x", actor: "user", operation: "create", diff_before: null, diff_after: null }), /missing/);
+  await assert.rejects(
+    new AuditLog(fresh).record({
+      memory_id: "x",
+      actor: "user",
+      operation: "create",
+      diff_before: null,
+      diff_after: null,
+    }),
+    /missing/
+  );
   assert.equal(existsSync(fresh), false);
 
   await saveMemory(fresh, input());

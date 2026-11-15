@@ -113,7 +113,7 @@ export const affectedTools = [
       "through reflection or a string-keyed table is not listed at all. Grep " +
       "the symbol names to confirm before acting.\n" +
       "\n" +
-      "`status: \"unavailable\"` means the graph is not in memory for this " +
+      '`status: "unavailable"` means the graph is not in memory for this ' +
       "repository (loading, not indexed, or code awareness is off). It is not " +
       "an error and says nothing about what depends on the file — use Grep " +
       "for this turn.",
@@ -122,8 +122,7 @@ export const affectedTools = [
       properties: {
         file: {
           type: "string",
-          description:
-            "The changed file: repo-relative ('packages/core/src/save.ts') or absolute.",
+          description: "The changed file: repo-relative ('packages/core/src/save.ts') or absolute.",
         },
         symbols: {
           type: "array",
@@ -161,12 +160,10 @@ export const affectedTools = [
  */
 export async function findAffectedFiles(
   cache: CodeGraphCache,
-  args: FindAffectedFilesInput,
+  args: FindAffectedFilesInput
 ): Promise<FindAffectedFilesResult> {
   const startedAt = performance.now();
-  const given = isAbsolute(args.repo ?? "")
-    ? (args.repo as string)
-    : resolve(args.repo ?? process.cwd());
+  const given = isAbsolute(args.repo ?? "") ? (args.repo as string) : resolve(args.repo ?? process.cwd());
   const repo = repoRootSync(given) ?? given;
   const done = (r: Omit<FindAffectedFilesResult, "took_ms">): FindAffectedFilesResult => ({
     ...r,
@@ -236,15 +233,14 @@ export async function findAffectedFiles(
           ? `None of ${unknown.join(", ")} is a symbol the graph knows in ${file}. ` +
             `Check the spelling, or call it again without \`symbols\` to ask about ` +
             `the whole file.`
-          : `The graph indexes ${file} but places no symbol in it, so there is ` +
-            `nothing to follow. Use Grep.`,
+          : `The graph indexes ${file} but places no symbol in it, so there is ` + `nothing to follow. Use Grep.`,
     });
   }
 
   const hits = await narrowPackageHits(
     repo,
     affectedHits(graph, file, symbols, args.depth ?? 1),
-    symbols.filter((s) => s.kind !== "file").map((s) => s.name),
+    symbols.filter((s) => s.kind !== "file").map((s) => s.name)
   );
   const result = affectedResult(symbols, hits);
   return done({

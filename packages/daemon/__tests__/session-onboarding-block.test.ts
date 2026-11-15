@@ -62,15 +62,15 @@ test("#308: delivery stays measurable — the block is its own telemetry column"
   // record: non-zero exactly when the block was injected.
   assert.ok(SESSION_CONTEXT_PARTS.includes("onboarding"));
   assert.equal(tokensByPart({}).onboarding, 0);
-  assert.equal(
-    tokensByPart({ onboarding: block }).onboarding,
-    Math.ceil(block.trimStart().length / 4),
-  );
+  assert.equal(tokensByPart({ onboarding: block }).onboarding, Math.ceil(block.trimStart().length / 4));
   assert.ok(tokensByPart({ onboarding: block }).onboarding > 0);
 });
 
 test("#1411: explicit work defers onboarding without adding questions to its deliverable", () => {
-  assert.match(block, /If the user has given you a concrete task, complete that task without onboarding questions, offers or reminders in the task response/);
+  assert.match(
+    block,
+    /If the user has given you a concrete task, complete that task without onboarding questions, offers or reminders in the task response/
+  );
   assert.match(block, /Defer the interview to a later turn with no active task/);
   assert.match(block, /Deferral is not a decline: do not run `bastra onboard skip` or `bastra onboard done` for it/);
   assert.doesNotMatch(block, /before the user's request and before anything else/);

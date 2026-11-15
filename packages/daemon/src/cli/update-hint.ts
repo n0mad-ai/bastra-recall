@@ -56,7 +56,9 @@ async function markShownToday(path: string): Promise<boolean> {
     let existing = "";
     try {
       existing = await readFile(path, "utf8");
-    } catch { /* file may not exist */ }
+    } catch {
+      /* file may not exist */
+    }
     const lines = existing
       .split("\n")
       .map((l) => l.trim())
@@ -84,11 +86,16 @@ function probeHealth(): Promise<HealthResponse | null> {
             resolve_(data);
             return;
           }
-        } catch { /* fallthrough */ }
+        } catch {
+          /* fallthrough */
+        }
         resolve_(null);
       });
     });
-    req.on("timeout", () => { req.destroy(); resolve_(null); });
+    req.on("timeout", () => {
+      req.destroy();
+      resolve_(null);
+    });
     req.on("error", () => resolve_(null));
     req.end();
   });
@@ -110,7 +117,7 @@ export async function maybeEmitUpdateHint(): Promise<boolean> {
   // ANSI 2 = dim — many shells honor it; if not, plain text is still readable.
   process.stderr.write(
     `\n\x1b[2mℹ A new bastra-recall is available: ${u.latest} (you have ${u.current})\n` +
-      `  → run: bastra update\x1b[0m\n`,
+      `  → run: bastra update\x1b[0m\n`
   );
 
   await markShownToday(shownFilePath());
@@ -127,18 +134,24 @@ export async function maybeEmitUpdateHint(): Promise<boolean> {
  */
 export async function maybeEmitModelHint(opts: OfferOptions & { shownPath?: string } = {}): Promise<boolean> {
   const shownPath = opts.shownPath ?? join(bastraDataDir(), "model-hint-shown.txt");
-  if (await alreadyShownToday(shownPath) || !(await pendingModelNotice(opts))) return false;
+  if ((await alreadyShownToday(shownPath)) || !(await pendingModelNotice(opts))) return false;
   try {
     await mkdir(dirname(shownPath), { recursive: true });
-    return (await tryWithPathLock(shownPath, async () => {
-      if (await alreadyShownToday(shownPath)) return false;
-      const offer = await pendingModelNotice(opts);
-      if (!offer) return false;
-      if (!(await markShownToday(shownPath))) return false;
-      const lines = formatModelNotice(offer).split("\n");
-      process.stderr.write(`\n\x1b[2mℹ ${lines.join("\n  ")}\x1b[0m\n`);
-      return true;
-    }, { crossProcess: true, noQueue: true, takeOverStale: true })) ?? false;
+    return (
+      (await tryWithPathLock(
+        shownPath,
+        async () => {
+          if (await alreadyShownToday(shownPath)) return false;
+          const offer = await pendingModelNotice(opts);
+          if (!offer) return false;
+          if (!(await markShownToday(shownPath))) return false;
+          const lines = formatModelNotice(offer).split("\n");
+          process.stderr.write(`\n\x1b[2mℹ ${lines.join("\n  ")}\x1b[0m\n`);
+          return true;
+        },
+        { crossProcess: true, noQueue: true, takeOverStale: true }
+      )) ?? false
+    );
   } catch {
     return false; // A hint must neither interrupt the command nor bypass its day claim.
   }

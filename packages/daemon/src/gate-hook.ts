@@ -39,7 +39,7 @@ async function writeFailureRow(status: string, error: string | null, url: string
     { daemon_url: url, status, error, non_conformance: status === "timeout" ? "gate_timeout" : "gate_unavailable" },
     startedAt,
     sessionId,
-    THIN_CLIENT_VERSION,
+    THIN_CLIENT_VERSION
   );
 }
 
@@ -66,9 +66,7 @@ async function main(): Promise<void> {
 
 const argv1 = process.argv[1] ?? "";
 const isCliEntry =
-  argv1.endsWith("gate-hook.js") ||
-  argv1.endsWith("gate-hook.ts") ||
-  argv1.endsWith("bastra-recall-gate-hook");
+  argv1.endsWith("gate-hook.js") || argv1.endsWith("gate-hook.ts") || argv1.endsWith("bastra-recall-gate-hook");
 
 if (isCliEntry) {
   const killSwitch = setTimeout(() => {
@@ -82,9 +80,14 @@ if (isCliEntry) {
   // Whichever path finishes first owns the row. Both exits wait for it.
   async function exitAfterFailureWrite(): Promise<never> {
     clearTimeout(killSwitch);
-    try { await failureWrite; }
-    finally { process.exit(0); }
+    try {
+      await failureWrite;
+    } finally {
+      process.exit(0);
+    }
   }
 
-  void main().catch(() => emitOnce("{}")).then(exitAfterFailureWrite);
+  void main()
+    .catch(() => emitOnce("{}"))
+    .then(exitAfterFailureWrite);
 }

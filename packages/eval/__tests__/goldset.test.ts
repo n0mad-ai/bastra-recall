@@ -68,19 +68,20 @@ test("a staged query carries provenance and no gold — the type cannot hold one
 
 test("provenance is enforced, not decorative", () => {
   assert.ok(
-    checkStaged([staged("q", { origin_type: "vibes" as unknown as StagedQuery["origin_type"] })])
-      .some((i) => /five §19 sources/.test(i.problem)),
+    checkStaged([staged("q", { origin_type: "vibes" as unknown as StagedQuery["origin_type"] })]).some((i) =>
+      /five §19 sources/.test(i.problem)
+    )
   );
   assert.ok(checkStaged([staged("q", { authoring_mode: "" })]).some((i) => /authoring_mode/.test(i.problem)));
   assert.ok(
     checkStaged([staged("q", { origin_ref_hash: "not-a-hash" })]).some((i) => /sha256/.test(i.problem)),
-    "the reference must be hashed — raw local paths never travel (§19)",
+    "the reference must be hashed — raw local paths never travel (§19)"
   );
 
   const s = staged("q");
   assert.ok(
     checkStaged([s, { ...s }]).some((i) => /duplicate/.test(i.problem)),
-    "the same query twice is one case, not two",
+    "the same query twice is one case, not two"
   );
 });
 
@@ -88,19 +89,21 @@ test("a label that grades nothing, or contradicts itself, is rejected", () => {
   const s = staged("wie war die regel für force pushes");
   assert.deepEqual(checkLabels([label(s.id)], [s]), []);
 
-  const bad = (over: Partial<GoldLabel>) => checkLabels([label(s.id, over)], [s]).map((i) => i.problem).join(" | ");
+  const bad = (over: Partial<GoldLabel>) =>
+    checkLabels([label(s.id, over)], [s])
+      .map((i) => i.problem)
+      .join(" | ");
   assert.match(bad({ rationale: "" }), /rationale is mandatory/);
   assert.match(bad({ no_answer: true }), /no_answer case cannot expect ids/);
   assert.match(bad({ expected_ids: [] }), /grades nothing/);
   assert.match(bad({ allowed_retrieval_depth: 0 }), /positive integer/);
+  assert.match(bad({ expected_ids: ["m1"], acceptable_alternatives: ["m1"] }), /both expected and merely acceptable/);
   assert.match(
-    bad({ expected_ids: ["m1"], acceptable_alternatives: ["m1"] }),
-    /both expected and merely acceptable/,
-  );
-  assert.match(
-    checkLabels([label("no-such-query")], [s]).map((i) => i.problem).join(" | "),
+    checkLabels([label("no-such-query")], [s])
+      .map((i) => i.problem)
+      .join(" | "),
     /the two steps drifted apart/,
-    "a label pointing at nothing means the staged file changed under it",
+    "a label pointing at nothing means the staged file changed under it"
   );
 });
 
@@ -145,7 +148,7 @@ test("the harvester takes queries from telemetry and never a gold id", () => {
       JSON.stringify({ kind: "save", query: "not a recall", ts: 6 }),
       "{ not json",
     ].join("\n") + "\n",
-    "utf8",
+    "utf8"
   );
 
   const r = harvestFromEvents([file], 100, 12);
@@ -179,7 +182,7 @@ test("merging joins the two steps and the coverage names what is still missing",
     [
       label(a.id, { kind: "descriptive" }),
       label(b.id, { kind: "associative", no_answer: true, expected_ids: [], rationale: "nothing covers it" }),
-    ],
+    ]
   );
 
   assert.equal(cases.length, 2);
@@ -206,11 +209,13 @@ test("a probe is counted beside the set, never inside it", () => {
     [
       label(real.id),
       label(noise.id, {
-        no_answer: true, expected_ids: [], rationale: "none of the tokens occurs in the vault",
+        no_answer: true,
+        expected_ids: [],
+        rationale: "none of the tokens occurs in the vault",
         probe_group: "gibberish-probe",
       }),
       label(diag.id, { probe_group: "body-loss" }),
-    ],
+    ]
   );
 
   const cov = coverage(cases as GoldCase[]);
@@ -218,25 +223,20 @@ test("a probe is counted beside the set, never inside it", () => {
   assert.equal(cov.total_with_probes, 3, "while the file still holds three cases");
   assert.equal(cov.probes, 2);
   assert.deepEqual(cov.by_probe_group, { "gibberish-probe": 1, "body-loss": 1 });
-  assert.equal(
-    cov.no_answer, 0,
-    "a nonsense string must not make the set's no-answer share look healthier than it is",
-  );
+  assert.equal(cov.no_answer, 0, "a nonsense string must not make the set's no-answer share look healthier than it is");
   assert.equal(cov.by_kind.descriptive, 1, "and probes do not pad the kind counts either");
 });
 
 test("probe_group is optional, but a typo in it is not silently accepted", () => {
   const s = staged("wie war die regel für force pushes");
   assert.deepEqual(checkLabels([label(s.id)], [s]), [], "absent is the normal case");
-  assert.deepEqual(
-    checkLabels([label(s.id, { probe_group: "body-loss" })], [s]), [],
-    "a known group passes",
-  );
+  assert.deepEqual(checkLabels([label(s.id, { probe_group: "body-loss" })], [s]), [], "a known group passes");
   assert.match(
     checkLabels([label(s.id, { probe_group: "bodyloss" as GoldLabel["probe_group"] })], [s])
-      .map((i) => i.problem).join(" | "),
+      .map((i) => i.problem)
+      .join(" | "),
     /unknown probe_group/,
-    "a typo would silently move the case out of the main denominator",
+    "a typo would silently move the case out of the main denominator"
   );
 });
 
@@ -255,14 +255,14 @@ test("the no-answer aid is derived from the engine's verdict and stays OUT of st
       // Above the floor throughout.
       JSON.stringify({ kind: "recall", query: "pinning und floors lifecycle regeln", top_score: 120, ts: 4 }),
     ].join("\n") + "\n",
-    "utf8",
+    "utf8"
   );
 
   const r = harvestFromEvents([file], 100, 12);
   assert.deepEqual(
     r.noAnswerCandidates,
     [stagedId("was haben wir zu kubernetes entschieden")],
-    "a query answered even once is not a no-answer candidate",
+    "a query answered even once is not a no-answer candidate"
   );
   for (const s of r.staged) {
     assert.equal("no_answer" in s, false, "the engine's verdict never becomes a field on a staged query");
@@ -305,7 +305,7 @@ test("hook-composed strings are not formulations and never reach the set", () =>
       // A question somebody actually asked survives.
       JSON.stringify({ kind: "recall", query: "readabilityHandler subprocess pipe blocking read", ts: 5 }),
     ].join("\n") + "\n",
-    "utf8",
+    "utf8"
   );
 
   const r = harvestFromEvents([file], 100, 12);
@@ -313,7 +313,7 @@ test("hook-composed strings are not formulations and never reach the set", () =>
   assert.deepEqual(
     r.staged.map((s) => s.query),
     ["readabilityHandler subprocess pipe blocking read"],
-    "a quarter of the set being one machine sentence with the nouns swapped is not coverage",
+    "a quarter of the set being one machine sentence with the nouns swapped is not coverage"
   );
 });
 
@@ -355,7 +355,11 @@ test("wrong field TYPES are caught before the semantic checks see them (#434)", 
     ["allowed_retrieval_depth", { allowed_retrieval_depth: "3" }, /allowed_retrieval_depth must be a number/],
     ["labelled_by", { labelled_by: "  " }, /labelled_by must be a non-empty string/],
     ["probe_group", { probe_group: 1 }, /probe_group must be a string when present/],
-    ["non_application", { correct_answer_is_non_application: "ja" }, /correct_answer_is_non_application must be a boolean/],
+    [
+      "non_application",
+      { correct_answer_is_non_application: "ja" },
+      /correct_answer_is_non_application must be a boolean/,
+    ],
   ];
   for (const [field, over, expected] of cases) {
     const issues = checkGoldCases([goldCase("eine frage", over)]);
@@ -386,7 +390,9 @@ test("a missing or non-array id list is a dataset error, never an exception (#43
   ]) {
     const field = "expected_ids" in over ? "expected_ids" : "acceptable_alternatives";
     let issues: ReturnType<typeof checkGoldCases> = [];
-    assert.doesNotThrow(() => { issues = checkGoldCases([goldCase("eine frage", over)]); }, `${field} must not throw`);
+    assert.doesNotThrow(() => {
+      issues = checkGoldCases([goldCase("eine frage", over)]);
+    }, `${field} must not throw`);
     assert.match(issues.map((i) => i.problem).join(" | "), new RegExp(`${field} must be an array of strings`));
   }
 });
@@ -403,10 +409,7 @@ test("a broken shape short-circuits the semantic checks (#434)", () => {
   // because the semantic checks cannot be trusted on input they never expected.
   const issues = checkGoldCases([goldCase("eine frage", { expected_ids: undefined, kind: "erzaehlend" })]);
   assert.match(issues.map((i) => i.problem).join(" | "), /expected_ids must be an array of strings/);
-  assert.ok(
-    !issues.some((i) => /unknown kind/.test(i.problem)),
-    "the semantic layer does not run on a broken shape",
-  );
+  assert.ok(!issues.some((i) => /unknown kind/.test(i.problem)), "the semantic layer does not run on a broken shape");
 });
 
 test("the three composed families the English regex missed are filtered too (#413)", () => {
@@ -434,7 +437,7 @@ test("the three composed families the English regex missed are filtered too (#41
       JSON.stringify({ kind: "recall", query: "readabilityHandler subprocess pipe blocking read", ts: 8 }),
       JSON.stringify({ kind: "recall", query: "wie war die regel für force pushes", ts: 9 }),
     ].join("\n") + "\n",
-    "utf8",
+    "utf8"
   );
 
   const r = harvestFromEvents([file], 100, 12);
@@ -442,7 +445,7 @@ test("the three composed families the English regex missed are filtered too (#41
   assert.deepEqual(
     r.staged.map((s) => s.query),
     ["readabilityHandler subprocess pipe blocking read", "wie war die regel für force pushes"],
-    "and nothing a person formulated is dropped with them",
+    "and nothing a person formulated is dropped with them"
   );
 });
 
@@ -459,7 +462,7 @@ test("a keyword chain outside the hook vocabulary is a real query (#413)", () =>
       // One token from the vocabulary is not enough either.
       JSON.stringify({ kind: "recall", query: "daemon restart nach dem deploy vergessen", ts: 2 }),
     ].join("\n") + "\n",
-    "utf8",
+    "utf8"
   );
 
   const r = harvestFromEvents([file], 100, 12);

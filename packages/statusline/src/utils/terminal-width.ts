@@ -107,10 +107,7 @@ function getUnixTerminalWidth(): number | null {
   // Re-validate before the shell interpolation in sttyWidth — the cache
   // file is user-owned, but a tty read from disk must pass the same gate
   // as one discovered via ps.
-  let tty =
-    typeof cached.tty === "string" && VALID_TTY_PATTERN.test(cached.tty)
-      ? cached.tty
-      : null;
+  let tty = typeof cached.tty === "string" && VALID_TTY_PATTERN.test(cached.tty) ? cached.tty : null;
   let width = tty ? sttyWidth(tty) : null;
   if (width === null) {
     tty = findParentTty();

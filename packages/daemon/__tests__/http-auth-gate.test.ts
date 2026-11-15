@@ -14,7 +14,14 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { corsAllowlistFromEnv, resolveCorsAllowlist, resolveCorsOrigin, gateApiRequest, safeEqual, isLoopbackHost } from "../src/http.js";
+import {
+  corsAllowlistFromEnv,
+  resolveCorsAllowlist,
+  resolveCorsOrigin,
+  gateApiRequest,
+  safeEqual,
+  isLoopbackHost,
+} from "../src/http.js";
 import { addCorsOrigin, getCorsOrigins } from "../src/settings.js";
 
 const SITE = "https://bastra.io";
@@ -44,7 +51,7 @@ test("gate: no Origin + loopback-skip → 200 without token (CLI/forwarder path)
       apiToken: TOKEN,
       loopbackSkip: true,
     }),
-    200,
+    200
   );
 });
 
@@ -102,7 +109,7 @@ test("#526 gate: NO token configured — a foreign Host is still refused, direct
   // Kein Bearer kann ein nicht existierendes Token treffen.
   assert.equal(
     gateApiRequest({ ...base, isLoopback: true, isLoopbackHost: false, authHeader: `Bearer ${TOKEN}` }),
-    401,
+    401
   );
   // Der dev/local-Weg bleibt genau so offen wie vorher.
   assert.equal(gateApiRequest({ ...base, isLoopback: true, isLoopbackHost: true }), 200);
@@ -119,7 +126,7 @@ test("#526 gate: no token + loopback-skip OFF → nothing gets in (contradictory
       apiToken: "",
       loopbackSkip: false,
     }),
-    401,
+    401
   );
 });
 
@@ -135,7 +142,7 @@ test("gate: browser, allowed origin + correct token → 200 (even over loopback)
       apiToken: TOKEN,
       loopbackSkip: true, // must NOT exempt a browser request
     }),
-    200,
+    200
   );
 });
 
@@ -163,7 +170,7 @@ test("gate: browser, origin NOT on allowlist → 403 regardless of token", () =>
       apiToken: TOKEN,
       loopbackSkip: true,
     }),
-    403,
+    403
   );
 });
 
@@ -178,7 +185,7 @@ test("gate: browser, allowed origin but NO token issued → 401 (secure by defau
       apiToken: "", // daemon has no token → browser clients can't get in
       loopbackSkip: true,
     }),
-    401,
+    401
   );
 });
 
@@ -206,7 +213,7 @@ test("corsAllowlist (#95): milestone test D — evil.com + valid token → 403 o
       apiToken: TOKEN,
       loopbackSkip: true,
     }),
-    403,
+    403
   );
   // Explicit legacy "*" would still let it through (the documented tunnel/dev tradeoff).
   assert.equal(resolveCorsOrigin("https://evil.com", corsAllowlistFromEnv("*")), "https://evil.com");
@@ -230,7 +237,10 @@ test("addCorsOrigin → getCorsOrigins: normalizes, dedupes, drops invalid", asy
   const origErr = process.stderr.write.bind(process.stderr);
   let warned = 0;
   // test shim: swallow stderr, count the warnings we expect.
-  process.stderr.write = () => { warned++; return true; };
+  process.stderr.write = () => {
+    warned++;
+    return true;
+  };
   try {
     await addCorsOrigin(SITE, path);
     await addCorsOrigin(SITE, path); // exact dup → not appended

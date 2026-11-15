@@ -64,7 +64,14 @@ interface Wording {
  *  never matched against anything. An unlisted language gets English. */
 const WORDING_BY_LANGUAGE: Readonly<Record<string, Wording>> = {
   en: {
-    action: { promoted: "saved from draft", created: "saved", updated: "updated", edited: "edited", held: "not saved, already covered", conflict: "conflict noted on" },
+    action: {
+      promoted: "saved from draft",
+      created: "saved",
+      updated: "updated",
+      edited: "edited",
+      held: "not saved, already covered",
+      conflict: "conflict noted on",
+    },
     quote: ["“", "”"],
     cue: "recalled when",
     coveredBy: "see",
@@ -73,7 +80,14 @@ const WORDING_BY_LANGUAGE: Readonly<Record<string, Wording>> = {
     fields: "fields",
   },
   de: {
-    action: { promoted: "aus Entwurf gespeichert", created: "gespeichert", updated: "aktualisiert", edited: "bearbeitet", held: "nicht gespeichert, schon abgedeckt", conflict: "Widerspruch vermerkt an" },
+    action: {
+      promoted: "aus Entwurf gespeichert",
+      created: "gespeichert",
+      updated: "aktualisiert",
+      edited: "bearbeitet",
+      held: "nicht gespeichert, schon abgedeckt",
+      conflict: "Widerspruch vermerkt an",
+    },
     quote: ["„", "“"],
     cue: "Abruf bei",
     coveredBy: "siehe",
@@ -82,7 +96,14 @@ const WORDING_BY_LANGUAGE: Readonly<Record<string, Wording>> = {
     fields: "Felder",
   },
   ru: {
-    action: { promoted: "сохранено из черновика", created: "сохранено", updated: "обновлено", edited: "изменено", held: "не сохранено, уже есть", conflict: "противоречие отмечено в" },
+    action: {
+      promoted: "сохранено из черновика",
+      created: "сохранено",
+      updated: "обновлено",
+      edited: "изменено",
+      held: "не сохранено, уже есть",
+      conflict: "противоречие отмечено в",
+    },
     quote: ["«", "»"],
     cue: "вспомнить при",
     coveredBy: "см.",
@@ -110,9 +131,17 @@ const MAX_LINE = 130;
 /** One line, whatever the stored text contains: control characters (a title
  *  could carry an escape sequence of its own) and line breaks become spaces. */
 function oneLine(text: string, max: number): string {
-  const flat = text.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/gu, " ").replace(/\s+/g, " ").trim();
+  const flat = text
+    .replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   const chars = [...flat];
-  return chars.length > max ? chars.slice(0, max - 1).join("").trimEnd() + "…" : flat;
+  return chars.length > max
+    ? chars
+        .slice(0, max - 1)
+        .join("")
+        .trimEnd() + "…"
+    : flat;
 }
 
 /** What an edit changed, in the user's language — `undefined` when unknown. */

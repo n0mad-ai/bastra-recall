@@ -18,21 +18,22 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { defaultLogDir } from "../learned-recall/harvest.js";
 import { foldClientDuplicates, restartWindows, tsOf } from "./log-stats-phases.js";
-import {
-  GATE_LANE_BY_KIND,
-  PROMPT_TOTAL_LANE,
-  releaseVerdicts,
-  renderReleaseGate,
-} from "./log-stats-thresholds.js";
+import { GATE_LANE_BY_KIND, PROMPT_TOTAL_LANE, releaseVerdicts, renderReleaseGate } from "./log-stats-thresholds.js";
 import { RECALL_BUDGET_MS } from "../hook-budgets.js";
 import { buildContextLedger, type LedgerEvent } from "../context-ledger.js";
 import { isEvalTraffic } from "../telemetry-dimensions.js";
 import { summarizeSessionStart, type ReportEvent, type SessionStartSection } from "../telemetry-report.js";
 
 export {
-  releaseVerdicts, releaseGateMet, laneVerdict,
-  RELEASE_THRESHOLDS, MIN_CALLS_FOR_VERDICT, GATE_LANE_BY_KIND, REQUIRED_LANES,
-  PROMPT_TOTAL_LANE, PROMPT_TOTAL_THRESHOLD,
+  releaseVerdicts,
+  releaseGateMet,
+  laneVerdict,
+  RELEASE_THRESHOLDS,
+  MIN_CALLS_FOR_VERDICT,
+  GATE_LANE_BY_KIND,
+  REQUIRED_LANES,
+  PROMPT_TOTAL_LANE,
+  PROMPT_TOTAL_THRESHOLD,
 } from "./log-stats-thresholds.js";
 
 export { foldClientDuplicates, restartWindows, DUPLICATE_WINDOW_MS } from "./log-stats-phases.js";
@@ -170,8 +171,15 @@ type MutableLane = LaneStats & { latencies: number[] };
 
 function emptyLane(mode: string): MutableLane {
   return {
-    mode, calls: 0, withHits: 0, suppressed: 0, gated: 0,
-    timeouts: 0, errors: 0, latency: null, latencies: [],
+    mode,
+    calls: 0,
+    withHits: 0,
+    suppressed: 0,
+    gated: 0,
+    timeouts: 0,
+    errors: 0,
+    latency: null,
+    latencies: [],
   };
 }
 
@@ -297,9 +305,7 @@ export function aggregate(rawEvents: Array<Record<string, unknown>>): LogStats {
 
   return {
     drafts: aggregateDrafts(events),
-    codeRoi: aggregateCodeRoi(
-      events.filter((e) => e.kind === "hook_call") as Array<Record<string, unknown>>,
-    ),
+    codeRoi: aggregateCodeRoi(events.filter((e) => e.kind === "hook_call") as Array<Record<string, unknown>>),
     // #579: over ALL events — these kinds are not hook calls and would never
     // have reached a filter written for the passive half.
     codeAwareness: aggregateCodeAwareness(events),
@@ -420,7 +426,7 @@ function renderByAgent(rows: LaneStats[]): string[] {
         `   ${pct(r.withHits, r.calls)} (${r.withHits})`.padEnd(12) +
         `${pct(failed, r.calls)}`.padStart(9) +
         (r.latency ? `${r.latency.median}ms`.padStart(9) : "        —") +
-        (r.latency ? `${r.latency.p90}ms`.padStart(7) : "      —"),
+        (r.latency ? `${r.latency.p90}ms`.padStart(7) : "      —")
     );
   }
   out.push("");
@@ -443,12 +449,15 @@ export function renderSessionStart(s: SessionStartSection): string[] {
   for (const p of s.parts) {
     out.push(
       `     ${p.part.padEnd(12)} ${p.tokens.toString().padStart(6)}  ${pct(p.tokens, s.totalTokens).padStart(6)}  ` +
-        `${p.avgPerStart.toString().padStart(9)}  ${p.presentIn.toString().padStart(4)}/${s.withParts}`,
+        `${p.avgPerStart.toString().padStart(9)}  ${p.presentIn.toString().padStart(4)}/${s.withParts}`
     );
   }
   out.push(`    avg tokens per part by source:`);
   for (const row of s.bySource) {
-    const top = row.parts.slice(0, 4).map((p) => `${p.part} ${p.avg}`).join(", ");
+    const top = row.parts
+      .slice(0, 4)
+      .map((p) => `${p.part} ${p.avg}`)
+      .join(", ");
     out.push(`     ${row.source.padEnd(8)} n=${row.n.toString().padStart(3)}  ${top}`);
   }
   return out;
@@ -468,7 +477,7 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
     // different answers, and only one of them means the window was too short.
     if (stats.restart.calls > 0) {
       out.push(
-        `  ${stats.restart.calls} call(s) fell inside ${stats.restart.windows} daemon restart window(s) and are not counted`,
+        `  ${stats.restart.calls} call(s) fell inside ${stats.restart.windows} daemon restart window(s) and are not counted`
       );
     }
     if (stats.otherKinds.length > 0) {
@@ -504,7 +513,7 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
         String(l.timeouts).padStart(10) +
         (lat ? `${lat.median}ms`.padStart(9) : "        —") +
         (lat ? `${lat.p90}ms`.padStart(7) : "      —") +
-        (lat ? `${lat.max}ms`.padStart(7) : "      —"),
+        (lat ? `${lat.max}ms`.padStart(7) : "      —")
     );
   }
   out.push("");
@@ -527,7 +536,7 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
   if (stats.totals.timeouts > 0 || stats.totals.errors > 0) {
     out.push(
       `  ${stats.totals.timeouts} timeout(s), ${stats.totals.errors} error(s) ` +
-        `= ${pct(stats.totals.timeouts + stats.totals.errors, stats.totals.calls)} of all calls`,
+        `= ${pct(stats.totals.timeouts + stats.totals.errors, stats.totals.calls)} of all calls`
     );
   }
   // #305: the two lines that keep the number above honest — what was excluded
@@ -538,13 +547,13 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
     out.push(
       `  excluded: ${stats.restart.calls} call(s) inside ${stats.restart.windows} daemon restart window(s) — ` +
         `${stats.restart.timeouts} timeout(s), ${stats.restart.errors} error(s) there ` +
-        `(${pct(stats.restart.timeouts + stats.restart.errors, stats.restart.calls)})`,
+        `(${pct(stats.restart.timeouts + stats.restart.errors, stats.restart.calls)})`
     );
   }
   if (stats.foldedDuplicates > 0) {
     out.push(
       `  folded: ${stats.foldedDuplicates} client-side row(s) belonged to a call the daemon also logged ` +
-        `(counted once, client verdict kept)`,
+        `(counted once, client verdict kept)`
     );
   }
   const saveLines = [
@@ -577,10 +586,7 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
 }
 
 /** Read every event newer than `cutoff` out of the JSONL day files. */
-export async function readEvents(
-  logDir: string,
-  cutoff: number,
-): Promise<Array<Record<string, unknown>>> {
+export async function readEvents(logDir: string, cutoff: number): Promise<Array<Record<string, unknown>>> {
   let files: string[];
   try {
     files = (await readdir(logDir)).filter((f) => EVENT_FILE.test(f)).sort();

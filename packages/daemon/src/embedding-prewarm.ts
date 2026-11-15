@@ -32,11 +32,7 @@
 export const PREWARM_DEBOUNCE_MS = 60_000;
 
 /** What the turn-start prewarm did — one field on `prompt_hook_call` (#361). */
-export type PrewarmOutcome =
-  | "fired"
-  | "skipped-debounce"
-  | "skipped-no-provider"
-  | "skipped-hosted";
+export type PrewarmOutcome = "fired" | "skipped-debounce" | "skipped-no-provider" | "skipped-hosted";
 
 /** Fires the warm call; returns what it decided. Never throws, never blocks. */
 export type Prewarmer = () => PrewarmOutcome;

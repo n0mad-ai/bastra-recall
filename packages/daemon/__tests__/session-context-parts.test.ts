@@ -30,11 +30,28 @@ test("#462: the parts use the same chars/4 estimator as hint_tokens_est, per par
   assert.equal(t.update, Math.ceil("<update>u</update>".length / 4));
   const sum = Object.values(t).reduce((a, b) => a + b, 0);
   const whole = Math.ceil((parts.pinned + parts.recalls + parts.update).length / 4);
-  assert.ok(sum >= whole && sum - whole <= Object.keys(parts).length, "parts round individually, never below the whole");
+  assert.ok(
+    sum >= whole && sum - whole <= Object.keys(parts).length,
+    "parts round individually, never below the whole"
+  );
 });
 
 test("#462: the part list is the block's assembly order", () => {
-  assert.deepEqual([...SESSION_CONTEXT_PARTS], [
-    "kernel", "pinned", "recalls", "taxonomy", "language", "care", "import", "onboarding", "update", "patch", "pending", "doku",
-  ]);
+  assert.deepEqual(
+    [...SESSION_CONTEXT_PARTS],
+    [
+      "kernel",
+      "pinned",
+      "recalls",
+      "taxonomy",
+      "language",
+      "care",
+      "import",
+      "onboarding",
+      "update",
+      "patch",
+      "pending",
+      "doku",
+    ]
+  );
 });

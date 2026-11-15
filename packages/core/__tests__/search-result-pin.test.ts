@@ -70,8 +70,28 @@ const QUERIES: [string, RecallOptions][] = [
 async function writeFixture(dir: string): Promise<void> {
   let seed = 1039;
   const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
-  const base = ["vault", "hook", "recall", "anchor", "deploy", "daemon", "budget", "scope", "token", "fusion",
-    "staleness", "embedding", "ollama", "cache", "statusline", "telemetry", "curator", "bridge", "refile", "trash"];
+  const base = [
+    "vault",
+    "hook",
+    "recall",
+    "anchor",
+    "deploy",
+    "daemon",
+    "budget",
+    "scope",
+    "token",
+    "fusion",
+    "staleness",
+    "embedding",
+    "ollama",
+    "cache",
+    "statusline",
+    "telemetry",
+    "curator",
+    "bridge",
+    "refile",
+    "trash",
+  ];
   const words = Array.from({ length: 240 }, (_, i) => base[i % 20] + (i < 20 ? "" : String(i)));
   const types = ["lesson", "decision", "project-fact", "reference", "preference", "doc", "workflow"];
   const scopes = ["alpha", "beta", "gamma", "Delta"];
@@ -82,18 +102,37 @@ async function writeFixture(dir: string): Promise<void> {
     const ts = new Date(Date.now() - ageDays * 86400_000).toISOString();
     const related = i % 7 === 0 ? `related_via:\n  - id: m${(i * 31) % 1000}\n    reason: test\n    score: 0.8` : "";
     const lines = [
-      "---", `id: m${i}`, `title: ${phrase(3)} ${i}`, `type: ${types[i % types.length]}`, `summary: ${phrase(6)}`,
-      "topic_path:", `  - ${pick()}`, `tags: [${pick()}, ${pick()}]`, `scope: ${scopes[i % scopes.length]}`,
-      "recall_when:", `  - ${phrase(2)}`, `  - ${pick()}${i % 11 === 0 ? "Config" : ""}`,
-      ...(i % 13 === 0 ? ["sensitivity: private"] : []), ...(i % 17 === 0 ? ["obsolete: true"] : []),
-      `created: ${ts}`, `updated: ${ts}`, related, "---", "", phrase(40), "",
+      "---",
+      `id: m${i}`,
+      `title: ${phrase(3)} ${i}`,
+      `type: ${types[i % types.length]}`,
+      `summary: ${phrase(6)}`,
+      "topic_path:",
+      `  - ${pick()}`,
+      `tags: [${pick()}, ${pick()}]`,
+      `scope: ${scopes[i % scopes.length]}`,
+      "recall_when:",
+      `  - ${phrase(2)}`,
+      `  - ${pick()}${i % 11 === 0 ? "Config" : ""}`,
+      ...(i % 13 === 0 ? ["sensitivity: private"] : []),
+      ...(i % 17 === 0 ? ["obsolete: true"] : []),
+      `created: ${ts}`,
+      `updated: ${ts}`,
+      related,
+      "---",
+      "",
+      phrase(40),
+      "",
     ];
     await writeFile(join(dir, `m${i}.md`), lines.filter((l) => l !== "").join("\n"), "utf8");
   }
 }
 
 const hashIds = (results: { id: string }[][]): string =>
-  createHash("sha256").update(results.map((r) => r.map((h) => h.id).join(",")).join("\n")).digest("hex").slice(0, 16);
+  createHash("sha256")
+    .update(results.map((r) => r.map((h) => h.id).join(",")).join("\n"))
+    .digest("hex")
+    .slice(0, 16);
 
 test("#1039: 20 fixed queries serve the pinned result order on the BM25 and the hybrid path", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-result-pin-"));
@@ -113,7 +152,7 @@ test("#1039: 20 fixed queries serve the pinned result order on the BM25 and the 
   });
   await emb.start();
   // #542: white-box drain of the backfill queue, repeated until every memory has a vector.
-  for (let prev = -1; prev !== emb.size(); ) {
+  for (let prev = -1; prev !== emb.size();) {
     prev = emb.size();
     await (emb as unknown as { flushQueue(): Promise<void> }).flushQueue();
     await new Promise((r) => setTimeout(r, 50));
@@ -130,9 +169,18 @@ test("#1039: 20 fixed queries serve the pinned result order on the BM25 and the 
     hybrid.push(await idx.recallHybrid(q, o));
   }
 
-  assert.deepEqual(bm25.map((r) => r.length), [5, 10, 5, 8, 8, 5, 12, 5, 5, 4, 5, 7, 5, 5, 20, 5, 5, 5, 5, 15]);
-  assert.deepEqual(hybrid.map((r) => r.length), [5, 10, 5, 7, 8, 5, 12, 5, 5, 10, 5, 9, 5, 5, 20, 5, 5, 5, 5, 15]);
-  assert.ok(hybrid.flat().some((h) => (h as { mode?: string }).mode === "hybrid"), "the dense arm took part");
+  assert.deepEqual(
+    bm25.map((r) => r.length),
+    [5, 10, 5, 8, 8, 5, 12, 5, 5, 4, 5, 7, 5, 5, 20, 5, 5, 5, 5, 15]
+  );
+  assert.deepEqual(
+    hybrid.map((r) => r.length),
+    [5, 10, 5, 7, 8, 5, 12, 5, 5, 10, 5, 9, 5, 5, 20, 5, 5, 5, 5, 15]
+  );
+  assert.ok(
+    hybrid.flat().some((h) => (h as { mode?: string }).mode === "hybrid"),
+    "the dense arm took part"
+  );
   assert.equal(hashIds(bm25), "3fbeef07735841ac", "BM25 result order changed");
   assert.equal(hashIds(hybrid), "47c642b146ad6be7", "hybrid result order changed");
 });

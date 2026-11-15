@@ -94,7 +94,7 @@ export function callCorruptionMessage(
   corruption: CallCorruption,
   /** A read tool writes nothing, so claiming "nothing was saved" there would be
    *  its own small lie. Taken from the tool's own `annotations.readOnlyHint`. */
-  readOnly = false,
+  readOnly = false
 ): string {
   const nothingHappened = readOnly ? "THE CALL DID NOT RUN." : "NOTHING WAS SAVED.";
   return (
@@ -125,7 +125,7 @@ export function requiredFieldsOf(def: { inputSchema?: Record<string, unknown> } 
 export function assertCallNotCorrupted(
   tool: string,
   args: unknown,
-  defs: ReadonlyMap<string, { required: readonly string[]; readOnly: boolean }>,
+  defs: ReadonlyMap<string, { required: readonly string[]; readOnly: boolean }>
 ): void {
   const def = defs.get(tool);
   if (!def) return;
@@ -150,7 +150,7 @@ export function recoverCallArguments(
   tool: string,
   args: unknown,
   defs: ReadonlyMap<string, { required: readonly string[]; readOnly: boolean }>,
-  onRepair: (tool: string, corruption: CallCorruption) => void = defaultRepairNotice,
+  onRepair: (tool: string, corruption: CallCorruption) => void = defaultRepairNotice
 ): unknown {
   const def = defs.get(tool);
   if (!def) return args;
@@ -167,7 +167,7 @@ export function recoverCallArguments(
 function defaultRepairNotice(tool: string, corruption: CallCorruption): void {
   console.error(
     `[bastra-recall] ${forLog(tool)}: recovered ${corruption.swallowed.map(forLog).join(", ")} from XML embedded in ` +
-      `'${forLog(corruption.container)}' — the client sent legacy XML instead of JSON arguments`,
+      `'${forLog(corruption.container)}' — the client sent legacy XML instead of JSON arguments`
   );
 }
 
@@ -212,10 +212,7 @@ function isSafeArgumentName(name: string): boolean {
  *   - Returns null unless EVERY missing field came back. A half-repair would
  *     save a memory with holes, which is worse than the honest failure.
  */
-export function repairCallCorruption(
-  raw: unknown,
-  corruption: CallCorruption,
-): Record<string, unknown> | null {
+export function repairCallCorruption(raw: unknown, corruption: CallCorruption): Record<string, unknown> | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const args = raw as Record<string, unknown>;
   const value = args[corruption.container];

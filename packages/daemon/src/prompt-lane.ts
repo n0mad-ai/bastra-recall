@@ -81,7 +81,14 @@ import { runTaskStep } from "./prompt-task.js";
 
 // #680: classification, formatting, telemetry and the loopback call live in
 // their own modules; the lane's public surface is re-exported unchanged.
-export { MUST_LOAD_SCORE, detectAssertion, detectRetrieval, effectiveScoreFloor, extractPrompt, isTrivialPrompt } from "./prompt-classify.js";
+export {
+  MUST_LOAD_SCORE,
+  detectAssertion,
+  detectRetrieval,
+  effectiveScoreFloor,
+  extractPrompt,
+  isTrivialPrompt,
+} from "./prompt-classify.js";
 export type { ClaudeHookPayload, DetectedMode } from "./prompt-classify.js";
 export { formatHintBlock, formatReflexBlock } from "./prompt-format.js";
 export type { PromptReflexHit, RecallHit } from "./prompt-format.js";
@@ -223,22 +230,42 @@ function resetStatuslineFeed(sessionPid: number, ccSessionId: string | null): vo
  * matching the CLI's fail-open contract.
  */
 export async function runPromptLane(
-  payload: ClaudeHookPayload, clientPpid: number | null, selfBaseUrl: string,
-  prewarm?: Prewarmer, reflexPool?: () => string[], opts: PromptLaneOptions = {},
+  payload: ClaudeHookPayload,
+  clientPpid: number | null,
+  selfBaseUrl: string,
+  prewarm?: Prewarmer,
+  reflexPool?: () => string[],
+  opts: PromptLaneOptions = {}
 ): Promise<string> {
   let notice = "";
-  if (opts.kernel && payload.hook_event_name === "UserPromptSubmit" && hookClientEvidence(payload) !== "replay" && (!payload.prompt?.trim() || ownerPromptText(payload.prompt) !== null)) {
-    try { notice = await beginRulebookRound(payload, await catalogFor(payload, opts.kernel)); }
-    catch { // Even a catalog outage must expire the previous round's receipt.
+  if (
+    opts.kernel &&
+    payload.hook_event_name === "UserPromptSubmit" &&
+    hookClientEvidence(payload) !== "replay" &&
+    (!payload.prompt?.trim() || ownerPromptText(payload.prompt) !== null)
+  ) {
+    try {
+      notice = await beginRulebookRound(payload, await catalogFor(payload, opts.kernel));
+    } catch {
+      // Even a catalog outage must expire the previous round's receipt.
       notice = await beginRulebookRound(payload, { entries: [], omitted: 0 }).catch(() => "");
     }
   }
-  const budgetNotice = notice.length <= 9000 ? notice : notice.slice(0, 8800) + "\n[Rulebook notice overflow; remaining exception IDs are in the rulebook event log.]";
-  const out = await runPromptLaneInner(payload, clientPpid, selfBaseUrl, prewarm, reflexPool, {...opts,roundNotice:budgetNotice});
+  const budgetNotice =
+    notice.length <= 9000
+      ? notice
+      : notice.slice(0, 8800) + "\n[Rulebook notice overflow; remaining exception IDs are in the rulebook event log.]";
+  const out = await runPromptLaneInner(payload, clientPpid, selfBaseUrl, prewarm, reflexPool, {
+    ...opts,
+    roundNotice: budgetNotice,
+  });
   if (!budgetNotice) return out;
   const parsed = JSON.parse(out);
-  parsed.hookSpecificOutput = { ...parsed.hookSpecificOutput, hookEventName: "UserPromptSubmit", additionalContext:
-    [budgetNotice, parsed.hookSpecificOutput?.additionalContext].filter(Boolean).join("\n") };
+  parsed.hookSpecificOutput = {
+    ...parsed.hookSpecificOutput,
+    hookEventName: "UserPromptSubmit",
+    additionalContext: [budgetNotice, parsed.hookSpecificOutput?.additionalContext].filter(Boolean).join("\n"),
+  };
   return JSON.stringify(parsed);
 }
 
@@ -256,13 +283,14 @@ async function runPromptLaneInner(
    *  recall below is worth paying for. Absent = no accessor wired (an older
    *  caller, a unit test): the lane then recalls exactly as it did before. */
   reflexPool?: () => string[],
-  opts: PromptLaneOptions = {},
+  opts: PromptLaneOptions = {}
 ): Promise<string> {
   const startedAt = Date.now();
   let remainingContext = 10000 - (opts.roundNotice?.length ?? 0) - 1;
   const fitBlock = (block: string | null): string | null => {
     if (!block || block.length + 1 > remainingContext) return null;
-    remainingContext -= block.length + 1; return block;
+    remainingContext -= block.length + 1;
+    return block;
   };
   const client = hookClient(payload);
   // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt
@@ -365,10 +393,10 @@ async function runPromptLaneInner(
     // lane. The gate is asked only once a block is actually parked, so a
     // trivial prompt still costs the one state read it always did.
     const trivialSnapshot = await loadSessionState(payload.session_id ?? "");
-    const parkedForTrivial = trivialSnapshot.boundary && trivialSnapshot.boundary.note.length + 1 > remainingContext ? null : await takeParkedBoundary(
-      payload.session_id ?? "",
-      getPromptImpactEnabled,
-    );
+    const parkedForTrivial =
+      trivialSnapshot.boundary && trivialSnapshot.boundary.note.length + 1 > remainingContext
+        ? null
+        : await takeParkedBoundary(payload.session_id ?? "", getPromptImpactEnabled);
     if (parkedForTrivial !== null) {
       logBoundaryDelivery(payload.session_id ?? null, payload.cwd ?? process.cwd(), parkedForTrivial);
     }
@@ -383,9 +411,12 @@ async function runPromptLaneInner(
       maxChars: remainingContext,
       actorKey: (payload as RulebookPayload).agent_id ?? (hookAgent(payload) === "main" ? "main" : "unattributed"),
     });
-    const trivialBlocks = [parkedForTrivial?.note ?? null, taskBlock].map(fitBlock).filter((b): b is string => b !== null);
+    const trivialBlocks = [parkedForTrivial?.note ?? null, taskBlock]
+      .map(fitBlock)
+      .filter((b): b is string => b !== null);
     if (trivialBlocks.length > 0) {
-      if (taskBlock !== null && !replay) recordBudgetShadow(payload.session_id ?? null, "prompt_hook_call", Math.ceil(taskBlock.length / 4));
+      if (taskBlock !== null && !replay)
+        recordBudgetShadow(payload.session_id ?? null, "prompt_hook_call", Math.ceil(taskBlock.length / 4));
       return JSON.stringify({
         hookSpecificOutput: {
           hookEventName: "UserPromptSubmit",
@@ -415,7 +446,7 @@ async function runPromptLaneInner(
     selfBaseUrl,
     "/hook/reflex",
     { context: prompt, project, session_id: payload.session_id ?? null, client: clientEvidence },
-    remainingMs,
+    remainingMs
   ).catch(() => null);
 
   // For "generic" mode we only show top-tier hits, so request fewer (k=3).
@@ -510,7 +541,7 @@ async function runPromptLaneInner(
           ...hookCaller(payload),
           hook_source: "prompt",
         },
-        remainingMs,
+        remainingMs
       );
     } catch (err) {
       const e = err as NodeJS.ErrnoException;
@@ -582,9 +613,9 @@ async function runPromptLaneInner(
         priority: i,
         text: h.summary ?? "",
         alreadyShown: shouldDropHit(state.shown[h.id], await getLoadedMarkerMtime(h.id)),
-      })),
+      }))
     ),
-    {},
+    {}
   );
   const reflexKeptIds = new Set(reflexGoverned.kept.map((g) => g.id));
   const reflexKept: PromptReflexHit[] = rawReflexHits.filter((h) => reflexKeptIds.has(h.id));
@@ -614,9 +645,9 @@ async function runPromptLaneInner(
           priority: i,
           text: h.summary ?? "",
           alreadyShown: shouldDropHit(state.shown[h.id], await getLoadedMarkerMtime(h.id)),
-        })),
+        }))
       ),
-      {},
+      {}
     );
     const keptIds = new Set(governed.kept.map((g) => g.id));
     recallHits = recallHits.filter((h) => keptIds.has(h.id));
@@ -628,17 +659,13 @@ async function runPromptLaneInner(
   // würde, und verwirft nichts. Die Anker-Ausnahme bleibt (ein hand-
   // geschriebener Trigger aus einem anderen Projekt IST eine Absicht),
   // Reflex-Treffer sind ausgenommen, und ohne Fusion ist die Ausnahme zu.
-  const scopeFilter = applyLaneScopeFilter(
-    recallHits,
-    filterProject,
-    {
-      allowAnchoredCrossScope: true,
-      mustLoadScore: MUST_LOAD_SCORE,
-      unfused: resp?.unfused === true,
-      exemptReflex: true,
-      projectKnown: resp?.project_known,
-    },
-  );
+  const scopeFilter = applyLaneScopeFilter(recallHits, filterProject, {
+    allowAnchoredCrossScope: true,
+    mustLoadScore: MUST_LOAD_SCORE,
+    unfused: resp?.unfused === true,
+    exemptReflex: true,
+    projectKnown: resp?.project_known,
+  });
   recallHits = scopeFilter.hits;
   // Codex-Gegenreview: `no-hits` wurde oben bestimmt, VOR diesem Filter. Trägt
   // er im enforce-Modus alles ab, meldete die Telemetrie weiter "ok" bei null
@@ -657,8 +684,14 @@ async function runPromptLaneInner(
   const gateActive = hookGateAvailable(payload) && !replay;
   const gatedRecall = new Set(gateActive ? recallHits.filter(isGatedHint).map((h) => h.id) : []);
   // A reflex hit is user-wired by definition; only its type decides.
-  const gatedReflex = new Set(gateActive ? reflexKept.filter((h) => isGatedHint({ ...h, recall_mode: "reflex" })).map((h) => h.id) : []);
-  const noStoredRule = forcedRetrieval && resp !== null && Array.isArray(resp.hits) && rawReflexHits.length === 0 &&
+  const gatedReflex = new Set(
+    gateActive ? reflexKept.filter((h) => isGatedHint({ ...h, recall_mode: "reflex" })).map((h) => h.id) : []
+  );
+  const noStoredRule =
+    forcedRetrieval &&
+    resp !== null &&
+    Array.isArray(resp.hits) &&
+    rawReflexHits.length === 0 &&
     ![...resp.hits, ...(Array.isArray(resp.reflex_hits) ? resp.reflex_hits : [])].some((h) => h.matched_recall_when);
   if (recallHits.length > 0 || noStoredRule) {
     // #161 empty-streak backoff (see session-state.ts): unconsumed injection
@@ -674,8 +707,7 @@ async function runPromptLaneInner(
     // BM25-Werte reißen die 100 fast immer. Ein Bypass daraus hieße: Der
     // Backoff hört genau dann auf zu greifen, wenn der Recall am wenigsten
     // weiß. Ohne Fusion gibt es deshalb kein REQUIRED und keinen Bypass.
-    const hasRequired =
-      resp?.unfused !== true && recallHits.some((h) => h.score >= MUST_LOAD_SCORE);
+    const hasRequired = resp?.unfused !== true && recallHits.some((h) => h.score >= MUST_LOAD_SCORE);
     const decision = decideBackoff(entry, consumedForEmit, hasRequired);
     backoffStreak = decision.streak;
     suppressed = detectedMode === "retrieval" ? false : decision.suppress;
@@ -689,7 +721,7 @@ async function runPromptLaneInner(
       resp?.degraded,
       resp?.recall_id,
       gatedRecall,
-      noStoredRule,
+      noStoredRule
     );
     if (suppressed) {
       // Suppressed drops only the recall block (#161); reflex still emits.
@@ -702,13 +734,21 @@ async function runPromptLaneInner(
     }
   }
 
-  const reflexBlock = fitBlock(reflexKept.length > 0 ? formatReflexBlock(reflexKept, project, client, gatedReflex) : null);
-  if (!reflexBlock) { reflexKept.length = 0; gatedReflex.clear(); }
+  const reflexBlock = fitBlock(
+    reflexKept.length > 0 ? formatReflexBlock(reflexKept, project, client, gatedReflex) : null
+  );
+  if (!reflexBlock) {
+    reflexKept.length = 0;
+    gatedReflex.clear();
+  }
   const unbudgetedRecallBlock = recallBlock;
   recallBlock = fitBlock(recallBlock);
-  if (unbudgetedRecallBlock && !recallBlock) { recallHits = []; gatedRecall.clear(); }
+  if (unbudgetedRecallBlock && !recallBlock) {
+    recallHits = [];
+    gatedRecall.clear();
+  }
   const rawImpact = await impactPromise;
-  const impact = {...rawImpact,block:fitBlock(rawImpact.block)};
+  const impact = { ...rawImpact, block: fitBlock(rawImpact.block) };
 
   // #572: the task-boundary block the last Stop parked for THIS session.
   // #607: behind the prompt lane's own opt-in (b3a6f80) — same lane, same
@@ -723,7 +763,10 @@ async function runPromptLaneInner(
   // them can neither duplicate nor lose the block. A Stop that parks between
   // the snapshot and the lock keeps its block for the next prompt, which is
   // where it was headed anyway.
-  const takeBoundaryNow = state.boundary !== undefined && state.boundary.note.length + 1 <= remainingContext && (await getPromptImpactEnabled());
+  const takeBoundaryNow =
+    state.boundary !== undefined &&
+    state.boundary.note.length + 1 <= remainingContext &&
+    (await getPromptImpactEnabled());
   let boundary: TakenBoundary | null = null;
 
   // State-Bookkeeping in einem Save: Backoff-Streak nur für die
@@ -758,14 +801,23 @@ async function runPromptLaneInner(
       }
       // #1303: beside the shown-state, the must-load the gate will claim —
       // again only for what reached the transcript.
-      bookPendingMustLoad(s, [...gatedReflex, ...(recallBlock ? gatedRecall : [])], gateBlockId, Date.now(), new Map([...recallHits, ...reflexKept].map(h => [h.id, h.revision ?? null])));
+      bookPendingMustLoad(
+        s,
+        [...gatedReflex, ...(recallBlock ? gatedRecall : [])],
+        gateBlockId,
+        Date.now(),
+        new Map([...recallHits, ...reflexKept].map((h) => [h.id, h.revision ?? null]))
+      );
     });
   }
   // The assignment happens inside the mutation callback, which TypeScript's
   // control flow does not follow — without the cast it narrows `boundary` to
   // the `null` it was declared with.
   const takenBoundary = boundary as TakenBoundary | null;
-  if (takenBoundary !== null) { fitBlock(takenBoundary.note); logBoundaryDelivery(payload.session_id ?? null, cwd, takenBoundary); }
+  if (takenBoundary !== null) {
+    fitBlock(takenBoundary.note);
+    logBoundaryDelivery(payload.session_id ?? null, cwd, takenBoundary);
+  }
 
   // Refresh and render explicitly reported active conventions. Recall hits
   // are hints; they no longer decide task membership.
@@ -788,7 +840,7 @@ async function runPromptLaneInner(
   // what the agent just did, and it is worth reading before the next thing is
   // done on top of it.
   const blocks = [takenBoundary?.note ?? null, impact.block, reflexBlock, recallBlock, fitBlock(taskBlock)].filter(
-    (b): b is string => b !== null,
+    (b): b is string => b !== null
   );
   const stdout =
     blocks.length === 0
@@ -811,7 +863,12 @@ async function runPromptLaneInner(
 
   // #458 (shadow): den fertigen Block ans Sitzungsbudget anrechnen und den
   // Governor-Entscheid loggen — nichts wird gekürzt.
-  if (!replay) recordBudgetShadow(payload.session_id ?? null, "prompt_hook_call", Math.ceil(((opts.roundNotice?.length ?? 0) + blocks.join("\n").length) / 4));
+  if (!replay)
+    recordBudgetShadow(
+      payload.session_id ?? null,
+      "prompt_hook_call",
+      Math.ceil(((opts.roundNotice?.length ?? 0) + blocks.join("\n").length) / 4)
+    );
   await emitTelemetry({
     session_id: payload.session_id ?? null,
     client: clientEvidence,
@@ -854,9 +911,7 @@ async function runPromptLaneInner(
     project_confidence: projectConfidence(cwd),
     filter_project: scopeFilter.filterProject,
     ...(scopeFilter.skipped ? { scope_filter_skipped: scopeFilter.skipped } : {}),
-    ...(scopeFilter.droppedScopes.length > 0
-      ? { dropped_scopes: scopeFilter.droppedScopes }
-      : {}),
+    ...(scopeFilter.droppedScopes.length > 0 ? { dropped_scopes: scopeFilter.droppedScopes } : {}),
     ...(resp?.unfused === true ? { unfused: true } : {}),
     ...(resp?.degraded ? { degraded: resp.degraded } : {}),
     ...(resp?.bridges_fired?.length ? { bridges_fired: resp.bridges_fired } : {}),
@@ -869,7 +924,17 @@ async function runPromptLaneInner(
   });
 
   if (replay) return stdout;
-  return appendLaneDrafts(stdout, "UserPromptSubmit", prompt, payload.session_id, [...(resp?.hits ?? []), ...reflexKept], 1, false, undefined, startedAt + laneBudgetMs(detectedMode));
+  return appendLaneDrafts(
+    stdout,
+    "UserPromptSubmit",
+    prompt,
+    payload.session_id,
+    [...(resp?.hits ?? []), ...reflexKept],
+    1,
+    false,
+    undefined,
+    startedAt + laneBudgetMs(detectedMode)
+  );
 }
 
 /**

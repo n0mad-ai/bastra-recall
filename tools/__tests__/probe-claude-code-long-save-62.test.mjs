@@ -37,7 +37,9 @@ const toolUse = (id, title, body) =>
 const toolResult = (id, { isError = false, text = "saved" } = {}) =>
   JSON.stringify({
     type: "user",
-    message: { content: [{ type: "tool_result", tool_use_id: id, is_error: isError, content: [{ type: "text", text }] }] },
+    message: {
+      content: [{ type: "tool_result", tool_use_id: id, is_error: isError, content: [{ type: "text", text }] }],
+    },
   });
 
 const resultLine = (subtype = "success") => JSON.stringify({ type: "result", subtype, result: "PROBE_DONE" });
@@ -53,7 +55,11 @@ async function verdictFor({ transcript, stored, progressLog = "" }) {
   const vault = join(work, "vault");
   await mkdir(join(vault, "memories"), { recursive: true });
   await mkdir(join(work, "transcripts"), { recursive: true });
-  await writeFile(join(work, "state.json"), JSON.stringify({ vault, home: join(work, "home"), work, lines: [40] }), "utf8");
+  await writeFile(
+    join(work, "state.json"),
+    JSON.stringify({ vault, home: join(work, "home"), work, lines: [40] }),
+    "utf8"
+  );
   await writeFile(join(work, "transcripts", "session-0.jsonl"), transcript.join("\n"), "utf8");
   await writeFile(join(work, "forwarder.log"), progressLog, "utf8");
   let i = 0;

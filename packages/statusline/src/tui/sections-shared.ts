@@ -8,12 +8,10 @@ export function resolveThresholdStyle(
   defaultBold: boolean,
   colors: PowerlineColors,
   warningAt = 60,
-  criticalAt = 80,
+  criticalAt = 80
 ): { fg: string; bold: boolean } {
-  if (pct >= criticalAt)
-    return { fg: colors.contextCriticalFg, bold: colors.contextCriticalBold };
-  if (pct >= warningAt)
-    return { fg: colors.contextWarningFg, bold: colors.contextWarningBold };
+  if (pct >= criticalAt) return { fg: colors.contextCriticalFg, bold: colors.contextCriticalBold };
+  if (pct >= warningAt) return { fg: colors.contextWarningFg, bold: colors.contextWarningBold };
   return { fg: defaultFg, bold: defaultBold };
 }
 

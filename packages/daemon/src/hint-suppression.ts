@@ -102,14 +102,16 @@ export function hintRevision(memory: HintMemory | undefined): string | undefined
   if (!memory) return undefined;
   const fm = memory.fm;
   return createHash("sha1")
-    .update(JSON.stringify({
-      updated: fm.updated,
-      title: fm.title,
-      type: fm.type,
-      summary: fm.summary,
-      recall_when: fm.recall_when,
-      body: memory.body,
-    }))
+    .update(
+      JSON.stringify({
+        updated: fm.updated,
+        title: fm.title,
+        type: fm.type,
+        summary: fm.summary,
+        recall_when: fm.recall_when,
+        body: memory.body,
+      })
+    )
     .digest("hex");
 }
 
@@ -118,7 +120,7 @@ export function suppressRepeatedUnused<T extends SuppressibleHit>(
   memoryOf: (id: string) => HintMemory | undefined,
   usage: UsageAggregate,
   threshold = hintSuppressionThreshold(),
-  tokenEstimate: (hit: T) => number = () => 0,
+  tokenEstimate: (hit: T) => number = () => 0
 ): { kept: T[]; suppressed: SuppressedHint[] } {
   if (threshold <= 0) return { kept: hits, suppressed: [] };
   const kept: T[] = [];

@@ -19,7 +19,7 @@ test("parsePsTable: parses pid/ppid/command rows, skips garbage", () => {
       "  404   303 " + FWD,
       "not a row",
       "",
-    ].join("\n"),
+    ].join("\n")
   );
   assert.equal(rows.length, 4);
   assert.deepEqual(rows[3], { pid: 404, ppid: 303, command: FWD });
@@ -31,7 +31,7 @@ test("findStaleForwarders: live Desktop chain (Claude alive) → not stale", () 
       "  202     1 /Applications/Claude.app/Contents/MacOS/Claude", // app alive (launchd child — normal for GUI apps)
       "  303   202 " + DISCLAIMER, // wrapper parented to the LIVING app
       "  404   303 " + FWD,
-    ].join("\n"),
+    ].join("\n")
   );
   assert.deepEqual(findStaleForwarders(rows, 999), []);
 });
@@ -41,7 +41,7 @@ test("findStaleForwarders: dead Desktop (wrapper reparented to init) → forward
     [
       "  303     1 " + DISCLAIMER, // Desktop died → wrapper now child of init
       "  404   303 " + FWD,
-    ].join("\n"),
+    ].join("\n")
   );
   assert.deepEqual(findStaleForwarders(rows, 999), [404]);
 });
@@ -56,7 +56,7 @@ test("findStaleForwarders: Claude Code shape (forwarder under living claude) →
     [
       "  500   100 claude", // CC process, parent = shell
       "  404   500 " + FWD,
-    ].join("\n"),
+    ].join("\n")
   );
   assert.deepEqual(findStaleForwarders(rows, 999), []);
 });
@@ -75,19 +75,13 @@ test("findStaleForwarders: sh wrapper reparented to init (#345 tab class) → fo
     [
       "  300     1 " + SH_WRAPPER, // claude died → wrapper now child of init
       "  404   300 " + FWD,
-    ].join("\n"),
+    ].join("\n")
   );
   assert.deepEqual(findStaleForwarders(rows, 999), [404]);
 });
 
 test("findStaleForwarders: sh wrapper under living claude → not stale", () => {
-  const rows = parsePsTable(
-    [
-      "  500   100 claude",
-      "  300   500 " + SH_WRAPPER,
-      "  404   300 " + FWD,
-    ].join("\n"),
-  );
+  const rows = parsePsTable(["  500   100 claude", "  300   500 " + SH_WRAPPER, "  404   300 " + FWD].join("\n"));
   assert.deepEqual(findStaleForwarders(rows, 999), []);
 });
 

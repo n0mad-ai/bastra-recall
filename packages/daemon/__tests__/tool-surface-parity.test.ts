@@ -88,7 +88,7 @@ test("every tool group in ALL_TOOL_DEFS is also served over stdio", async () => 
     [],
     `these tool groups are in ALL_TOOL_DEFS but not in the stdio ListTools handler, ` +
       `so they are invisible to stdio clients: ${missing.join(", ")}. ` +
-      `Add them to the handler in boot-stdio.ts.`,
+      `Add them to the handler in boot-stdio.ts.`
   );
 });
 
@@ -106,13 +106,14 @@ test("every tool in ALL_TOOL_DEFS has a CallTool branch in the stdio server", as
   const source = await readFile(STDIO_TS, "utf8");
   const undispatched = (ALL_TOOL_DEFS as Array<{ name: string }>)
     .map((def) => def.name)
-    .filter((name) => !source.includes(`name === "${name}"`)
-      && !((TASK_CRUD_OPERATIONS as readonly string[]).includes(name)
-        && source.includes("if (isTaskTool(name)) return callTaskMcp(name, rawArgs")));
+    .filter(
+      (name) =>
+        !source.includes(`name === "${name}"`) &&
+        !(
+          (TASK_CRUD_OPERATIONS as readonly string[]).includes(name) &&
+          source.includes("if (isTaskTool(name)) return callTaskMcp(name, rawArgs")
+        )
+    );
 
-  assert.deepEqual(
-    undispatched,
-    [],
-    `advertised over stdio but never dispatched there: ${undispatched.join(", ")}`,
-  );
+  assert.deepEqual(undispatched, [], `advertised over stdio but never dispatched there: ${undispatched.join(", ")}`);
 });

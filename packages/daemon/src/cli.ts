@@ -9,13 +9,7 @@
  * Entry point only — parsing, adapters, commands live in ./cli/.
  */
 
-import {
-  cmdDoctor,
-  cmdInstall,
-  cmdUninstall,
-  parseArgs,
-  showVersion,
-} from "./cli/commands.js";
+import { cmdDoctor, cmdInstall, cmdUninstall, parseArgs, showVersion } from "./cli/commands.js";
 import { showHelp } from "./cli/help-text.js";
 import { cmdStatus } from "./cli/status.js";
 import { cmdUpdate } from "./cli/update.js";
@@ -55,62 +49,104 @@ import { maybeEmitUpdateHint } from "./cli/update-hint.js";
 // turn of the event loop later, so the code of a failure that was just
 // reported is already set. Other stream errors retain the ordinary failure path.
 let readerGone = false;
-const pipeError = (stream: NodeJS.WriteStream) => (error: NodeJS.ErrnoException): void => {
-  if (error.code !== "EPIPE") throw error;
-  if (stream === process.stderr || readerGone) return;
-  readerGone = true;
-  setImmediate(() => process.exit(process.exitCode ?? 0));
-};
+const pipeError =
+  (stream: NodeJS.WriteStream) =>
+  (error: NodeJS.ErrnoException): void => {
+    if (error.code !== "EPIPE") throw error;
+    if (stream === process.stderr || readerGone) return;
+    readerGone = true;
+    setImmediate(() => process.exit(process.exitCode ?? 0));
+  };
 process.stdout.on("error", pipeError(process.stdout));
 process.stderr.on("error", pipeError(process.stderr));
 
 async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
-  if (args.showVersion) { showVersion(); return 0; }
+  if (args.showVersion) {
+    showVersion();
+    return 0;
+  }
   // #330 — this guard runs BEFORE the switch and carries no `!args.command`
   // condition, so `--help` documents every command instead of executing it.
   // Binding it to "no command given" is what made `bastra update --help`
   // restart the daemon as its answer to what update does.
-  if (args.showHelp) { showHelp(args.command); return 0; }
-  if (!args.command) { return cmdPanel(args); }
-  if (args.command === "help") { showHelp(args.surface); return 0; }
+  if (args.showHelp) {
+    showHelp(args.command);
+    return 0;
+  }
+  if (!args.command) {
+    return cmdPanel(args);
+  }
+  if (args.command === "help") {
+    showHelp(args.surface);
+    return 0;
+  }
 
   switch (args.command) {
-    case "version": showVersion(); return 0;
-    case "install": return cmdInstall(args);
-    case "uninstall": return cmdUninstall(args);
-    case "doctor": return cmdDoctor(args);
-    case "update": return cmdUpdate(args);
-    case "autostart": return cmdAutostart(args);
+    case "version":
+      showVersion();
+      return 0;
+    case "install":
+      return cmdInstall(args);
+    case "uninstall":
+      return cmdUninstall(args);
+    case "doctor":
+      return cmdDoctor(args);
+    case "update":
+      return cmdUpdate(args);
+    case "autostart":
+      return cmdAutostart(args);
 
     case "status": {
       const rc = await cmdStatus({ json: args.json, quiet: args.quiet });
       return rc;
     }
-    case "config": return cmdConfig(args);
-    case "address": return cmdAddress(args);
-    case "embeddings": return cmdEmbeddings({ sub: args.surface });
-    case "models": return cmdModels({ sub: args.surface, positional: args.positional });
-    case "token": return cmdToken({ sub: args.surface, json: args.json, origin: args.origin });
-    case "oauth": return cmdOAuth({ sub: args.surface, positional: args.positional, json: args.json });
-    case "commons": return cmdCommons({ sub: args.surface, positional: args.positional });
-    case "code": return cmdCode({ sub: args.surface, positional: args.positional, yes: args.yes });
-    case "bridges": return cmdBridges({ sub: args.surface, positional: args.positional });
+    case "config":
+      return cmdConfig(args);
+    case "address":
+      return cmdAddress(args);
+    case "embeddings":
+      return cmdEmbeddings({ sub: args.surface });
+    case "models":
+      return cmdModels({ sub: args.surface, positional: args.positional });
+    case "token":
+      return cmdToken({ sub: args.surface, json: args.json, origin: args.origin });
+    case "oauth":
+      return cmdOAuth({ sub: args.surface, positional: args.positional, json: args.json });
+    case "commons":
+      return cmdCommons({ sub: args.surface, positional: args.positional });
+    case "code":
+      return cmdCode({ sub: args.surface, positional: args.positional, yes: args.yes });
+    case "bridges":
+      return cmdBridges({ sub: args.surface, positional: args.positional });
     case "map":
     case "ui":
       return cmdMap();
-    case "import": return cmdImport(args);
-    case "onboard": return cmdOnboard(args);
-    case "skills": return cmdSkills(args);
-    case "feedback": return cmdFeedback(args);
-    case "archive": return cmdArchive(args);
-    case "reconcile": return cmdReconcile(args);
-    case "rules": return cmdRules(args);
-    case "tasks": return cmdTasks({ sub: args.surface, positional: args.positional, argv: process.argv.slice(2), json: args.json });
-    case "codex": return cmdCodexChat(process.argv.slice(3));
-    case "suggestions": return cmdSaveSuggestions(args);
-    case "drafts": return cmdDrafts(args);
-    case "patches": return cmdPatches(args);
-    case "completion": return cmdCompletion(args.surface);
+    case "import":
+      return cmdImport(args);
+    case "onboard":
+      return cmdOnboard(args);
+    case "skills":
+      return cmdSkills(args);
+    case "feedback":
+      return cmdFeedback(args);
+    case "archive":
+      return cmdArchive(args);
+    case "reconcile":
+      return cmdReconcile(args);
+    case "rules":
+      return cmdRules(args);
+    case "tasks":
+      return cmdTasks({ sub: args.surface, positional: args.positional, argv: process.argv.slice(2), json: args.json });
+    case "codex":
+      return cmdCodexChat(process.argv.slice(3));
+    case "suggestions":
+      return cmdSaveSuggestions(args);
+    case "drafts":
+      return cmdDrafts(args);
+    case "patches":
+      return cmdPatches(args);
+    case "completion":
+      return cmdCompletion(args.surface);
     case "logs": {
       const sinceMs = args.since === null ? 5 * 60_000 : parseSince(args.since);
       if (sinceMs === null) {
@@ -130,7 +166,10 @@ async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
       // --stats reads the same files, but aggregated instead of line by line.
       // Default window is wider: a per-lane rate needs days, not five minutes.
       if (args.conventions) {
-        return cmdConventions({ sinceMs: args.since === null ? 7 * 86_400_000 : sinceMs, includeEval: args.includeEval });
+        return cmdConventions({
+          sinceMs: args.since === null ? 7 * 86_400_000 : sinceMs,
+          includeEval: args.includeEval,
+        });
       }
       if (args.stats) {
         const statsSince = args.since === null ? 7 * 86_400_000 : sinceMs;
@@ -146,7 +185,7 @@ async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
 
 async function main(): Promise<number> {
   // This launcher passes Codex's own option grammar through byte-for-byte.
-  if(process.argv[2]==='codex')return cmdCodexChat(process.argv.slice(3));
+  if (process.argv[2] === "codex") return cmdCodexChat(process.argv.slice(3));
   const args = parseArgs(process.argv.slice(2));
 
   // #536 — a usage error ends the run here, before dispatch() can mutate
@@ -157,7 +196,7 @@ async function main(): Promise<number> {
   if (errors.length > 0) {
     for (const e of errors) process.stderr.write(`error: ${e}\n`);
     process.stderr.write(
-      `run 'bastra ${args.command ? `${args.command} --help` : "help"}' for the options this command takes\n`,
+      `run 'bastra ${args.command ? `${args.command} --help` : "help"}' for the options this command takes\n`
     );
     return 2;
   }
@@ -180,20 +219,30 @@ async function main(): Promise<number> {
     args.showHelp ||
     args.showVersion;
   if (!skipHint) {
-    try { await maybeEmitUpdateHint(); } catch { /* never break the CLI over this */ }
+    try {
+      await maybeEmitUpdateHint();
+    } catch {
+      /* never break the CLI over this */
+    }
     // A model recommendation the user has not answered: the catch-up question
     // on a terminal, else a dim hint. After the command's own output, and never
     // touching its exit code (set above).
-    try { await modelNoticeAfterCommand(args); } catch { /* never break the CLI over this */ }
+    try {
+      await modelNoticeAfterCommand(args);
+    } catch {
+      /* never break the CLI over this */
+    }
   }
   return code;
 }
 
 main().then(
   // Let stdout/stderr finish flushing, including large output to slow pipes.
-  (code) => { process.exitCode = code; },
+  (code) => {
+    process.exitCode = code;
+  },
   (err) => {
     process.stderr.write(`fatal: ${(err as Error).stack ?? err}\n`);
     process.exitCode = 1;
-  },
+  }
 );

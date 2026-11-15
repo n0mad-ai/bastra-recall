@@ -47,11 +47,7 @@ import type { Memory } from "./schema.js";
  * es deshalb keinen Erzeuger und keinen Konsumenten — Vorratscode, den keine
  * Messung braucht.
  */
-export type CueFamily =
-  | "descriptive_entity"
-  | "associative_bridge"
-  | "descriptive_scene"
-  | "associative_horizon";
+export type CueFamily = "descriptive_entity" | "associative_bridge" | "descriptive_scene" | "associative_horizon";
 
 /**
  * Ein abgeleiteter Cue mit seiner vollständigen Provenienz.
@@ -119,14 +115,7 @@ export interface DerivedCue {
  * Cues nicht ungültig machen.
  */
 export function cueSourceFingerprint(m: Memory): string {
-  const canonical = JSON.stringify([
-    m.fm.id,
-    m.fm.title,
-    m.fm.summary,
-    m.fm.tags,
-    m.fm.topic_path,
-    m.body,
-  ]);
+  const canonical = JSON.stringify([m.fm.id, m.fm.title, m.fm.summary, m.fm.tags, m.fm.topic_path, m.body]);
   return createHash("sha256").update(canonical).digest("hex");
 }
 
@@ -195,8 +184,7 @@ export interface CueTargetSource {
   get(id: string): Memory | undefined;
 }
 
-const isNonEmptyString = (v: unknown): v is string =>
-  typeof v === "string" && v.length > 0;
+const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v.length > 0;
 
 const FAMILIES: readonly string[] = [
   "descriptive_entity",
@@ -299,7 +287,7 @@ export function projectCues(lines: string[], targets: CueTargetSource): CueProje
 export async function loadCueProjection(
   vaultRoot: string,
   targets: CueTargetSource,
-  path: string = cueSidecarPath(vaultRoot),
+  path: string = cueSidecarPath(vaultRoot)
 ): Promise<CueProjection> {
   let raw: string;
   try {

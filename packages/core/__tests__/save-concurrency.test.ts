@@ -11,16 +11,7 @@ import fsPromises from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { AsyncLocalStorage } from "node:async_hooks";
 import assert from "node:assert/strict";
-import {
-  mkdtemp,
-  mkdir,
-  symlink,
-  readFile,
-  readdir,
-  rm,
-  writeFile,
-  utimes,
-} from "node:fs/promises";
+import { mkdtemp, mkdir, symlink, readFile, readdir, rm, writeFile, utimes } from "node:fs/promises";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -73,9 +64,7 @@ async function artifacts(vault: string, file: string): Promise<string[]> {
   for (const dir of [path.dirname(file), path.join(vault, ".bastra", "locks")]) {
     try {
       found.push(
-        ...(await readdir(dir)).filter(
-          (name) => name.endsWith(".tmp") || name.endsWith(".bastra-write.lock"),
-        ),
+        ...(await readdir(dir)).filter((name) => name.endsWith(".tmp") || name.endsWith(".bastra-write.lock"))
       );
     } catch {
       // Ordner gibt es nicht → nichts hinterlassen.
@@ -87,17 +76,13 @@ async function artifacts(vault: string, file: string): Promise<string[]> {
 async function runWorker(
   vault: string,
   body: string,
-  expectedFile: string,
+  expectedFile: string
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
-  const worker = fileURLToPath(
-    new URL("./fixtures/save-concurrency-worker.ts", import.meta.url),
-  );
+  const worker = fileURLToPath(new URL("./fixtures/save-concurrency-worker.ts", import.meta.url));
   return new Promise((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      ["--import", "tsx", worker, vault, body, expectedFile],
-      { stdio: ["ignore", "pipe", "pipe"] },
-    );
+    const child = spawn(process.execPath, ["--import", "tsx", worker, vault, body, expectedFile], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     let stdout = "";
     let stderr = "";
     child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
@@ -183,13 +168,10 @@ test("an expected-free save refuses a target that appeared before entry", async 
   const landed = await saveMemory(vault, input("landed first"));
   const before = await readFile(landed.file_path, "utf8");
 
-  await assert.rejects(
-    saveMemory(vault, input("must lose"), { expectedTarget: null }),
-    (err) => {
-      assertConflict(err);
-      return true;
-    },
-  );
+  await assert.rejects(saveMemory(vault, input("must lose"), { expectedTarget: null }), (err) => {
+    assertConflict(err);
+    return true;
+  });
   assert.equal(await readFile(landed.file_path, "utf8"), before);
   assert.deepEqual(await artifacts(vault, landed.file_path), []);
 });
@@ -201,10 +183,7 @@ test("an expected preimage refuses a byte change and preserves the newcomer", as
   const newcomer = expected.replace("original", "external edit");
   await writeFile(seeded.file_path, newcomer, "utf8");
 
-  await assert.rejects(
-    saveMemory(vault, input("must lose"), { expectedTarget: expected }),
-    MemoryWriteConflictError,
-  );
+  await assert.rejects(saveMemory(vault, input("must lose"), { expectedTarget: expected }), MemoryWriteConflictError);
   assert.equal(await readFile(seeded.file_path, "utf8"), newcomer);
   assert.deepEqual(await artifacts(vault, seeded.file_path), []);
 });
@@ -217,19 +196,16 @@ test("a held commit claim fails visibly without touching the target or claim", a
   await mkdir(path.dirname(lock), { recursive: true });
   await writeFile(lock, "other writer", "utf8");
 
-  await assert.rejects(
-    saveMemory(vault, input("must lose"), { expectedTarget: expected }),
-    (err) => {
-      assertConflict(err);
-      assert.match((err as Error).message, /another save is committing/);
-      return true;
-    },
-  );
+  await assert.rejects(saveMemory(vault, input("must lose"), { expectedTarget: expected }), (err) => {
+    assertConflict(err);
+    assert.match((err as Error).message, /another save is committing/);
+    return true;
+  });
   assert.equal(await readFile(seeded.file_path, "utf8"), expected);
   assert.equal(await readFile(lock, "utf8"), "other writer");
   assert.deepEqual(
     (await artifacts(vault, seeded.file_path)).filter((name) => name.endsWith(".tmp")),
-    [],
+    []
   );
 });
 
@@ -321,18 +297,22 @@ test("ein veralteter Locator verhindert die Kollisionserkennung nicht", async (t
       const answer = scanVaultForId(vault, wanted);
       if (calls === 1) {
         mkdirSync(rivalDir, { recursive: true });
-        writeFileSync(rival, matter.stringify("\nrival\n", {
-          id: ID,
-          title: "Shared Memory",
-          type: "lesson",
-          summary: "rival",
-          topic_path: ["concurrency"],
-          tags: ["save"],
-          scope: "race",
-          recall_when: ["rival"],
-          created: "2026-08-26",
-          updated: "2026-08-26",
-        }), "utf8");
+        writeFileSync(
+          rival,
+          matter.stringify("\nrival\n", {
+            id: ID,
+            title: "Shared Memory",
+            type: "lesson",
+            summary: "rival",
+            topic_path: ["concurrency"],
+            tags: ["save"],
+            scope: "race",
+            recall_when: ["rival"],
+            created: "2026-08-26",
+            updated: "2026-08-26",
+          }),
+          "utf8"
+        );
       }
       return answer;
     },
@@ -342,13 +322,13 @@ test("ein veralteter Locator verhindert die Kollisionserkennung nicht", async (t
     saveMemory(vault, input("mine", { folder: "memories/projects/mine", overwrite: false }), {
       locator,
     }),
-    /would create a second file with the same id/,
+    /would create a second file with the same id/
   );
   assert.equal(
     existsSync(path.join(vault, "memories/projects/mine", `${ID}.md`)),
     false,
 
-    "kein zweites File neben dem Konkurrenten",
+    "kein zweites File neben dem Konkurrenten"
   );
   assert.deepEqual(await artifacts(vault, rival), []);
 });
@@ -379,7 +359,7 @@ test("the same preimage is claimed exactly once across Node processes", async (t
   assert.deepEqual(
     results.map((result) => result.code).sort(),
     [0, 2],
-    results.map((result) => result.stderr).join("\n"),
+    results.map((result) => result.stderr).join("\n")
   );
   const loser = results.find((result) => result.code === 2);
   assert.ok(loser);
@@ -407,11 +387,7 @@ test("a claim from a dead process on this host is reclaimed", async (t) => {
     const child = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
     child.on("exit", () => resolve(child.pid as number));
   });
-  await writeFile(
-    lock,
-    JSON.stringify({ pid: dead, host: os.hostname(), ts: Date.now() }),
-    "utf8",
-  );
+  await writeFile(lock, JSON.stringify({ pid: dead, host: os.hostname(), ts: Date.now() }), "utf8");
 
   const result = await saveMemory(vault, input("after reclaim"));
 
@@ -483,15 +459,13 @@ test("nur einer kann einen verwaisten Claim übernehmen", async (t) => {
     await writeFile(
       lock,
       JSON.stringify({ pid: 999999, host: "andere-maschine", ts: 0, token: `stale-${round}` }),
-      "utf8",
+      "utf8"
     );
     const old = new Date(Date.now() - 60_000);
     await utimes(lock, old, old);
 
     const results = await Promise.allSettled(
-      Array.from({ length: RECLAIMERS }, () =>
-        acquireCommitClaim(lock, ID, path.join(vault, "x.md")),
-      ),
+      Array.from({ length: RECLAIMERS }, () => acquireCommitClaim(lock, ID, path.join(vault, "x.md")))
     );
     const won = results.filter((r) => r.status === "fulfilled");
     assert.equal(won.length, 1, `Runde ${round}: ${won.length} Gewinner statt einem`);
@@ -502,7 +476,7 @@ test("nur einer kann einen verwaisten Claim übernehmen", async (t) => {
     assert.equal(
       held.token,
       (won[0] as PromiseFulfilledResult<string>).value,
-      `Runde ${round}: der Lock trägt nicht das Token des Gewinners`,
+      `Runde ${round}: der Lock trägt nicht das Token des Gewinners`
     );
     await rm(lock, { force: true });
   }
@@ -527,29 +501,74 @@ test("ein .bastra, das in ein aktives Regal zeigt, trägt keine Locks", async (t
   assert.deepEqual(await readdir(shelf), [], "keine Lock-Datei im aktiven Regal");
 });
 
-
 test("late reclaimer cannot displace a live successor of the generation it checked", { timeout: 5000 }, async (t) => {
-  const vault=await harness(t),lock=commitLockPathFor(vault,ID);await mkdir(path.dirname(lock),{recursive:true});
-  await writeFile(lock,JSON.stringify({pid:999999,host:"foreign-fixture",ts:0,token:"abandoned-generation"}),"utf8");const old=new Date(Date.now()-60000);await utimes(lock,old,old);
-  const actors=new AsyncLocalStorage<"A"|"B">(),reads={A:0,B:0};let reachedB!:()=>void,finishedA!:()=>void;
-  const bChecked=new Promise<void>(resolve=>{reachedB=resolve;}),aAcquired=new Promise<void>(resolve=>{finishedA=resolve;});
-  const original=fsPromises.readFile,originalOpen=fsPromises.open;
-  const beforeRead=async(file:unknown)=>{const actor=actors.getStore();if(file===lock&&actor){const n=++reads[actor];if(actor==="A"&&n===2)await bChecked;if(actor==="B"&&n===2){reachedB();await aAcquired;}}};
-  fsPromises.readFile=(async (file:unknown,...args:unknown[])=>{await beforeRead(file);return Reflect.apply(original,fsPromises,[file,...args]);}) as typeof fsPromises.readFile;
-  fsPromises.open=(async (file:unknown,...args:unknown[])=>{
-    const handle=await Reflect.apply(originalOpen,fsPromises,[file,...args]);
-    if(file===lock&&args[0]==="r"){const read=handle.readFile;handle.readFile=async(...readArgs:unknown[])=>{await beforeRead(file);return Reflect.apply(read,handle,readArgs);};}
+  const vault = await harness(t),
+    lock = commitLockPathFor(vault, ID);
+  await mkdir(path.dirname(lock), { recursive: true });
+  await writeFile(
+    lock,
+    JSON.stringify({ pid: 999999, host: "foreign-fixture", ts: 0, token: "abandoned-generation" }),
+    "utf8"
+  );
+  const old = new Date(Date.now() - 60000);
+  await utimes(lock, old, old);
+  const actors = new AsyncLocalStorage<"A" | "B">(),
+    reads = { A: 0, B: 0 };
+  let reachedB!: () => void, finishedA!: () => void;
+  const bChecked = new Promise<void>((resolve) => {
+      reachedB = resolve;
+    }),
+    aAcquired = new Promise<void>((resolve) => {
+      finishedA = resolve;
+    });
+  const original = fsPromises.readFile,
+    originalOpen = fsPromises.open;
+  const beforeRead = async (file: unknown) => {
+    const actor = actors.getStore();
+    if (file === lock && actor) {
+      const n = ++reads[actor];
+      if (actor === "A" && n === 2) await bChecked;
+      if (actor === "B" && n === 2) {
+        reachedB();
+        await aAcquired;
+      }
+    }
+  };
+  fsPromises.readFile = (async (file: unknown, ...args: unknown[]) => {
+    await beforeRead(file);
+    return Reflect.apply(original, fsPromises, [file, ...args]);
+  }) as typeof fsPromises.readFile;
+  fsPromises.open = (async (file: unknown, ...args: unknown[]) => {
+    const handle = await Reflect.apply(originalOpen, fsPromises, [file, ...args]);
+    if (file === lock && args[0] === "r") {
+      const read = handle.readFile;
+      handle.readFile = async (...readArgs: unknown[]) => {
+        await beforeRead(file);
+        return Reflect.apply(read, handle, readArgs);
+      };
+    }
     return handle;
-  }) as typeof fsPromises.open;syncBuiltinESMExports();
-  let results:PromiseSettledResult<string>[];
-  try{
-    const a=actors.run("A",()=>acquireCommitClaim(lock,ID,path.join(vault,"a.md"))).finally(finishedA);
-    const b=actors.run("B",()=>acquireCommitClaim(lock,ID,path.join(vault,"b.md")));
-    results=await Promise.allSettled([a,b]);
-  }finally{fsPromises.readFile=original;fsPromises.open=originalOpen;syncBuiltinESMExports();}
-  assert.equal(results.filter(r=>r.status==="fulfilled").length,1,"B must not take A's fresh generation after its old abandonment check");
-  assert.equal(results[0].status,"fulfilled");assert.equal(results[1].status,"rejected");
-  if(results[0].status!=="fulfilled"||results[1].status!=="rejected")throw new Error("unexpected claim results");
-  assert.equal((results[1].reason as MemoryWriteConflictError).code,MEMORY_WRITE_CONFLICT);
-  assert.equal((JSON.parse(await readFile(lock,"utf8")) as {token:string}).token,results[0].value);
+  }) as typeof fsPromises.open;
+  syncBuiltinESMExports();
+  let results: PromiseSettledResult<string>[];
+  try {
+    const a = actors.run("A", () => acquireCommitClaim(lock, ID, path.join(vault, "a.md"))).finally(finishedA);
+    const b = actors.run("B", () => acquireCommitClaim(lock, ID, path.join(vault, "b.md")));
+    results = await Promise.allSettled([a, b]);
+  } finally {
+    fsPromises.readFile = original;
+    fsPromises.open = originalOpen;
+    syncBuiltinESMExports();
+  }
+  assert.equal(
+    results.filter((r) => r.status === "fulfilled").length,
+    1,
+    "B must not take A's fresh generation after its old abandonment check"
+  );
+  assert.equal(results[0].status, "fulfilled");
+  assert.equal(results[1].status, "rejected");
+  if (results[0].status !== "fulfilled" || results[1].status !== "rejected")
+    throw new Error("unexpected claim results");
+  assert.equal((results[1].reason as MemoryWriteConflictError).code, MEMORY_WRITE_CONFLICT);
+  assert.equal((JSON.parse(await readFile(lock, "utf8")) as { token: string }).token, results[0].value);
 });

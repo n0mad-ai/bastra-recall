@@ -44,9 +44,13 @@ type SessionState = import("../src/session-state.js").SessionState;
 async function persisted(sessionId: string): Promise<SessionState> {
   const db = openAppDatabase({ path: join(testDir, "recall.db") });
   try {
-    const row = db.sqlite.prepare("SELECT value FROM app_records WHERE namespace LIKE 'hook-session:%' AND key=?").get(sessionId);
+    const row = db.sqlite
+      .prepare("SELECT value FROM app_records WHERE namespace LIKE 'hook-session:%' AND key=?")
+      .get(sessionId);
     return JSON.parse((JSON.parse(String(row?.value)) as { raw: string }).raw) as SessionState;
-  } finally { db.close(); }
+  } finally {
+    db.close();
+  }
 }
 
 test("#539: concurrent lane updates on one session id all survive", async () => {
@@ -59,8 +63,8 @@ test("#539: concurrent lane updates on one session id all survive", async () => 
     ids.map((id) =>
       ss.mutateSessionState(sid, (state) => {
         ss.bumpShown(state, id, 1_000);
-      }),
-    ),
+      })
+    )
   );
   const state = await persisted(sid);
   assert.deepEqual(Object.keys(state.shown).sort(), [...ids].sort());
@@ -72,12 +76,8 @@ test("#539: concurrent dedup bump and backoff emit keep both sections", async ()
   // different sections of the same file, written at the same moment.
   await Promise.all([
     ss.mutateSessionState(sid, (state) => ss.bumpShown(state, "mem-x", 1_000)),
-    ss.mutateSessionState(sid, (state) =>
-      ss.recordSourceEmit(state, "todo-lane", ["mem-y"], false, 2_000),
-    ),
-    ss.mutateSessionState(sid, (state) =>
-      ss.recordSourceEmit(state, "bash-fail-lane", ["mem-z"], false, 3_000),
-    ),
+    ss.mutateSessionState(sid, (state) => ss.recordSourceEmit(state, "todo-lane", ["mem-y"], false, 2_000)),
+    ss.mutateSessionState(sid, (state) => ss.recordSourceEmit(state, "bash-fail-lane", ["mem-z"], false, 3_000)),
   ]);
   const state = await persisted(sid);
   assert.equal(state.shown["mem-x"]?.count, 1);
@@ -89,9 +89,7 @@ test("#539: repeated bumps of the same id count every lane", async () => {
   const sid = "sess-counter";
   const lanes = 8;
   await Promise.all(
-    Array.from({ length: lanes }, () =>
-      ss.mutateSessionState(sid, (state) => ss.bumpShown(state, "mem-hot", 1_000)),
-    ),
+    Array.from({ length: lanes }, () => ss.mutateSessionState(sid, (state) => ss.bumpShown(state, "mem-hot", 1_000)))
   );
   const state = await persisted(sid);
   assert.equal(state.shown["mem-hot"]?.count, lanes);
@@ -102,7 +100,7 @@ test("#539: a throwing mutation never poisons the next lane", async () => {
   await assert.rejects(
     ss.mutateSessionState(sid, () => {
       throw new Error("lane blew up");
-    }),
+    })
   );
   await ss.mutateSessionState(sid, (state) => ss.bumpShown(state, "mem-after", 1_000));
   const state = await persisted(sid);
@@ -140,7 +138,7 @@ test("#539: the mutation stays cheap enough for the hook path", async () => {
   assert.deepEqual(
     (await readdir(testDir)).filter((f) => f.startsWith(sid)),
     [],
-    "state lives in SQLite, no per-session JSON, lock or tmp file left behind",
+    "state lives in SQLite, no per-session JSON, lock or tmp file left behind"
   );
 
   // The lock is per session: while another session's lock is held (a gate this
@@ -168,9 +166,7 @@ test("#539: the mutation stays cheap enough for the hook path", async () => {
  */
 test("#539: a backoff suppression survives a concurrent write from another lane", async () => {
   const sid = "sess-suppressed";
-  await ss.mutateSessionState(sid, (state) =>
-    ss.recordSourceEmit(state, "prompt-lookup", ["mem-q"], false, 5_000),
-  );
+  await ss.mutateSessionState(sid, (state) => ss.recordSourceEmit(state, "prompt-lookup", ["mem-q"], false, 5_000));
   await Promise.all([
     ss.mutateSessionState(sid, (state) => ss.recordSourceSuppressed(state, "prompt-lookup")),
     ss.mutateSessionState(sid, (state) => ss.bumpShown(state, "mem-other", 1_000)),

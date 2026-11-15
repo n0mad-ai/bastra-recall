@@ -54,8 +54,22 @@ import { formatBlockedUpdate, readBlockedUpdate } from "./update-blocked.js";
 import { pendingModelNotice, type ModelOffer } from "./model-recommendation.js";
 import { appendModelSessionNotice } from "./model-session-notice.js";
 import { pendingPatchNotice } from "./patch-report.js";
-import { PENDING_BLOCK_CHAR_BUDGET, formatPendingRelay, isCountableSessionStart, takePendingRelay } from "./pending-suggestions.js";
-import { bookPendingMustLoad, bumpShown, bumpTaskGeneration, clearShown, loadSessionState, mutateSessionState, takeConstantCadence, type ActiveConvention } from "./session-state.js";
+import {
+  PENDING_BLOCK_CHAR_BUDGET,
+  formatPendingRelay,
+  isCountableSessionStart,
+  takePendingRelay,
+} from "./pending-suggestions.js";
+import {
+  bookPendingMustLoad,
+  bumpShown,
+  bumpTaskGeneration,
+  clearShown,
+  loadSessionState,
+  mutateSessionState,
+  takeConstantCadence,
+  type ActiveConvention,
+} from "./session-state.js";
 import { renderRuleKernel, type RenderedKernel } from "./rule-kernel.js";
 import { isGatedHint } from "./hook-recall-response.js";
 import { formatPinnedBlock, dropPinnedFromRanked, type PinnedFloorLean } from "./pinned-block.js";
@@ -65,8 +79,11 @@ import type { Residency, WarmupCoordinator } from "./embedding-warmup.js";
 // #493: die datensparsame Kennung dieses Hosts — Tor 5 aus #492.
 import { hostProfileId } from "./host-profile.js";
 import {
-  postSessionContext, probeHealth,
-  type ConventionLean, type RecallResponse, type SessionContextResponse,
+  postSessionContext,
+  probeHealth,
+  type ConventionLean,
+  type RecallResponse,
+  type SessionContextResponse,
 } from "./session-hook-http.js";
 import { SCORE_FLOOR, formatBlock, formatTaxonomyBlock, mergeSessionHits } from "./session-format.js";
 import { tokensByPart, writeTelemetry, type SessionHookTelemetry } from "./session-lane-telemetry.js";
@@ -177,7 +194,7 @@ export async function runSessionLane(
   warmup?: WarmupCoordinator,
   /** Tests inject an open model recommendation; the shipped one is the default. */
   modelNotice: () => Promise<ModelOffer | null> = pendingModelNotice,
-  draftReview?: () => Promise<DraftReviewDelivery>,
+  draftReview?: () => Promise<DraftReviewDelivery>
 ): Promise<string> {
   const startedAt = Date.now();
   const client = hookClient(payload);
@@ -240,7 +257,10 @@ export async function runSessionLane(
     }
     // #1306: a new generation of the task state — the task and its conventions
     // carry over, pending correspondence context does not.
-    if (payload.source === "compact" || payload.source === "clear" || payload.source === "fork") { await resetRulebookContext(payload.session_id); await bumpTaskGeneration(payload.session_id); }
+    if (payload.source === "compact" || payload.source === "clear" || payload.source === "fork") {
+      await resetRulebookContext(payload.session_id);
+      await bumpTaskGeneration(payload.session_id);
+    }
   }
   resetBudgetOnSource(payload.session_id, payload.source);
   if (payload.source === "compact" || payload.source === "clear") {
@@ -314,9 +334,7 @@ export async function runSessionLane(
           // mehr Zeit als der Hook-Default, und zwar nur für sich. #494: aber
           // nur, wenn das Modell im Speicher liegt — sonst läuft gar kein
           // dichter Arm und es gibt keine Frist zu setzen (`lexical_only`).
-          ...(denseCold
-            ? { lexical_only: true }
-            : { vector_deadline_ms: SESSION_VECTOR_DEADLINE_MS }),
+          ...(denseCold ? { lexical_only: true } : { vector_deadline_ms: SESSION_VECTOR_DEADLINE_MS }),
           // Siehe SESSION_HOOK_BUDGET_MS: der Schatten-Router soll gegen die
           // Wanduhr DIESER Lane rechnen, nicht gegen die der Prompt-Lane.
           hook_budget_ms: SESSION_HOOK_BUDGET_MS,
@@ -325,7 +343,7 @@ export async function runSessionLane(
           ...(kernelWanted ? { kernel: { active: kernelActive } } : {}),
           budget: { time_ms: remainingMs },
         },
-        remainingMs,
+        remainingMs
       );
       sideData = resp.data;
       for (const r of resp.data?.recalls ?? []) {
@@ -369,8 +387,7 @@ export async function runSessionLane(
   // Bis zu drei Recalls stehen hier nebeneinander; gemeldet wird der erste
   // Grund, den einer von ihnen nennt. Der Block wird als Ganzes injiziert und
   // `unfused` gilt ohnehin fail-closed für den ganzen Block.
-  const degradedReason =
-    responses.find((r) => typeof r.resp?.degraded === "string")?.resp?.degraded ?? null;
+  const degradedReason = responses.find((r) => typeof r.resp?.degraded === "string")?.resp?.degraded ?? null;
 
   // #265: Die sechs Seitenabrufe hängen an keiner Recall-AUSGABE — nur daran,
   // DASS der Daemon antwortet. Sequenziell summierten sich ihre Budgets auf bis
@@ -460,7 +477,7 @@ export async function runSessionLane(
           `appending " — skipped". Never distill unprompted — but DO tell the user in your FIRST ` +
           `response of this session, once and in one sentence, that ${imports.open} import ` +
           `candidate(s) are waiting and that saying "work through my import review" starts the ` +
-          `review (#311: the user has no other way of knowing). Do not repeat it unless asked.`,
+          `review (#311: the user has no other way of knowing). Do not repeat it unless asked.`
       );
     }
     if (imports.queued > 0) {
@@ -474,7 +491,7 @@ export async function runSessionLane(
           `is drained; then offer to distill import-review.md together. Mining stages candidates ` +
           `ONLY — never save_memory directly from mined chunks. Mention the queued export once in ` +
           `your FIRST response of this session (one sentence, alongside the open-candidate note ` +
-          `if both exist); do not repeat it unless asked.`,
+          `if both exist); do not repeat it unless asked.`
       );
     }
     if (parts.length > 0) {
@@ -587,7 +604,12 @@ export async function runSessionLane(
   // additionalContext, der Chat bleibt sauber.
   let pendingBlock = "";
   let reviewBlock = "";
-  let pendingLanes: SessionHookTelemetry["pending_lanes"] = { recency: 0, trends: 0, recency_chars: 0, trends_chars: 0 };
+  let pendingLanes: SessionHookTelemetry["pending_lanes"] = {
+    recency: 0,
+    trends: 0,
+    recency_chars: 0,
+    trends_chars: 0,
+  };
   let pendingHarvest = 0;
   try {
     // #513: Recency wird konsumiert, Trends bleiben liegen; nur ein echter
@@ -596,8 +618,9 @@ export async function runSessionLane(
       sessionId: payload.session_id ?? null,
       countable: isCountableSessionStart(payload.session_id, payload.source),
     });
-    for (const row of relay.recency) row.blocks = await filterPendingSaveSuggestions(payload.cwd ? projectForFilter(payload.cwd) : null, row.blocks);
-    relay.recency = relay.recency.filter(row => row.blocks.trim());
+    for (const row of relay.recency)
+      row.blocks = await filterPendingSaveSuggestions(payload.cwd ? projectForFilter(payload.cwd) : null, row.blocks);
+    relay.recency = relay.recency.filter((row) => row.blocks.trim());
     // #510: der Block wird auf ein Zeichen-Budget rationiert (größter Einzel-
     // Part im #462-Baseline). Formatierung + Truncation liegen im Modul, damit
     // sie ohne CLI-Seiteneffekte testbar sind — dieselbe Trennung wie pinned.
@@ -605,7 +628,7 @@ export async function runSessionLane(
     if (review?.block) {
       reviewBlock = "\n" + review.block;
       for (const row of relay.recency) row.blocks = suppressReviewedHarvestQuotes(row.blocks, review.fingerprints);
-      relay.recency = relay.recency.filter(row => row.blocks.trim());
+      relay.recency = relay.recency.filter((row) => row.blocks.trim());
     }
     const rendered = formatPendingRelay(relay, Math.max(0, PENDING_BLOCK_CHAR_BUDGET - (review?.block.length ?? 0)));
     if (rendered.text) pendingBlock = `\n${rendered.text}`;
@@ -681,12 +704,28 @@ export async function runSessionLane(
   // candidates; a cold dense arm says so, the kernel itself never needs one.
   let kernel: RenderedKernel = { text: "", full: [], degraded: [], omitted: 0 };
   if (kernelWanted && sideData?.kernel) {
-    kernel = renderRuleKernel(sideData.kernel, { trigger: `after ${payload.source ?? "startup"}`, lexicalOnly: denseCold });
+    kernel = renderRuleKernel(sideData.kernel, {
+      trigger: `after ${payload.source ?? "startup"}`,
+      lexicalOnly: denseCold,
+    });
   }
-  if (kernelWanted && !sideData?.kernel) kernel.text = "Rulebook unavailable at session start; the complete catalog remains available through list_rules().\n";
+  if (kernelWanted && !sideData?.kernel)
+    kernel.text =
+      "Rulebook unavailable at session start; the complete catalog remains available through list_rules().\n";
   const kernelHead = kernel.text === "" ? "" : kernel.text + "\n";
   const soulBlock = buildSoulBlock(await readSoulPreference());
-  const extras = taxonomyBlock + languageBlock + soulBlock + careBlock + importBlock + onboardingBlock + updateBlock + patchBlock + reviewBlock + pendingBlock + dokuBlock;
+  const extras =
+    taxonomyBlock +
+    languageBlock +
+    soulBlock +
+    careBlock +
+    importBlock +
+    onboardingBlock +
+    updateBlock +
+    patchBlock +
+    reviewBlock +
+    pendingBlock +
+    dokuBlock;
   // #141/#142: der Pinned-Block steht VOR den score-gated Hints — die
   // garantierten Einträge zuerst, die relevanz-gerankte Liste dahinter.
   const pinnedHead = pinnedBlock === "" ? "" : pinnedBlock + "\n";
@@ -717,11 +756,16 @@ export async function runSessionLane(
     const answered = responses.filter((r) => r.resp !== null);
     const allWeak = answered.length > 0 && answered.every((r) => r.resp!.weak_result === true);
     recallBlock = formatBlock(
-      top, project, payload.source ?? null, allWeak, unfused, client,
+      top,
+      project,
+      payload.source ?? null,
+      allWeak,
+      unfused,
+      client,
       // #490: Ehrlichkeit im Block. Einarmig UND das Modell war kalt → sag
       // genau das, statt „semantic search is off" zu behaupten.
       denseCold ? "cold-model" : "off",
-      gated,
+      gated
     );
     injected = kernelHead + pinnedHead + recallBlock + extras;
     out = JSON.stringify({
@@ -743,22 +787,35 @@ export async function runSessionLane(
 
   // Defer only whole optional sections that must go. Preserve the complete
   // kernel/language and name every deferred protocol section in the suffix.
-  out = await appendLaneDrafts(out, "SessionStart", queries.map(q => q.query), payload.session_id, top, 2, false, undefined, startedAt + HOOK_TIMEOUT_MS);
+  out = await appendLaneDrafts(
+    out,
+    "SessionStart",
+    queries.map((q) => q.query),
+    payload.session_id,
+    top,
+    2,
+    false,
+    undefined,
+    startedAt + HOOK_TIMEOUT_MS
+  );
   if (out !== "{}") {
     const parsed = JSON.parse(out);
     const context = parsed.hookSpecificOutput?.additionalContext;
     if (typeof context === "string") {
       const capped = capSessionContext(context, [kernel.text, languageBlock, soulBlock]);
       parsed.hookSpecificOutput.additionalContext = capped.text;
-      out = JSON.stringify(parsed); injected = capped.text;
+      out = JSON.stringify(parsed);
+      injected = capped.text;
     }
   }
-  const retained = (part: string) => part.trim() && injected.includes(part.trim()) ? part : "";
+  const retained = (part: string) => (part.trim() && injected.includes(part.trim()) ? part : "");
   const deliveredTop = retained(recallBlock) ? top : [];
 
   // #458 (shadow): den fertigen Block ans Sitzungsbudget anrechnen und den
   // Governor-Entscheid loggen — nichts wird gekürzt.
-  recordBudgetShadow(payload.session_id ?? null, "session_hook_call", Math.ceil(injected.length / 4), { source: payload.source ?? null });
+  recordBudgetShadow(payload.session_id ?? null, "session_hook_call", Math.ceil(injected.length / 4), {
+    source: payload.source ?? null,
+  });
   await writeTelemetry({
     session_id: payload.session_id ?? null,
     client: clientEvidence,
@@ -798,7 +855,7 @@ export async function runSessionLane(
             patch: retained(patchBlock),
             pending: retained(pendingBlock),
             doku: retained(dokuBlock),
-          },
+          }
     ),
     hinted_ids: deliveredTop.map((h) => h.id),
     hinted_types: deliveredTop.map((h) => h.type),
@@ -806,13 +863,26 @@ export async function runSessionLane(
     ...(pendingHarvest > 0 ? { pending_harvest: pendingHarvest } : {}),
     constants_skipped: constantsSkipped,
     ...(kernelWanted
-      ? { kernel: { full_ids: kernel.full, degraded_ids: kernel.degraded, omitted: kernel.omitted, paged_index: kernel.paged_index, unconfirmed_legacy: sideData?.kernel?.unconfirmed_legacy, chars: kernel.text.length } }
+      ? {
+          kernel: {
+            full_ids: kernel.full,
+            degraded_ids: kernel.degraded,
+            omitted: kernel.omitted,
+            paged_index: kernel.paged_index,
+            unconfirmed_legacy: sideData?.kernel?.unconfirmed_legacy,
+            chars: kernel.text.length,
+          },
+        }
       : {}),
     status,
     error: errMsg,
   });
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
-  await reportHinted(url, deliveredTop.map((h) => h.id), payload.session_id ?? null);
+  await reportHinted(
+    url,
+    deliveredTop.map((h) => h.id),
+    payload.session_id ?? null
+  );
   // #621: what this start put into the context counts as delivered for the
   // PreToolUse and prompt dedup as well — the #354 rule the other lanes follow.
   if (payload.session_id && deliveredTop.length > 0) {
@@ -820,7 +890,13 @@ export async function runSessionLane(
       await mutateSessionState(payload.session_id, (s) => {
         for (const h of deliveredTop) bumpShown(s, h.id);
         // #1303: beside the shown-state, the must-load the gate will claim.
-        bookPendingMustLoad(s, [...gated], `session:${startedAt.toString(36)}`, Date.now(), new Map(deliveredTop.map(h => [h.id, h.revision ?? null])));
+        bookPendingMustLoad(
+          s,
+          [...gated],
+          `session:${startedAt.toString(36)}`,
+          Date.now(),
+          new Map(deliveredTop.map((h) => [h.id, h.revision ?? null]))
+        );
       });
     } catch {
       // State is an optional dedup cache. Never discard the context that was

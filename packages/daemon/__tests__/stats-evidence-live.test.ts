@@ -66,7 +66,10 @@ test("live decisions reach the divergence view against legacy", () => {
       ],
     },
   ]);
-  assert.ok(lines.some((l) => l.includes("divergence vs legacy")), "expected the divergence block");
+  assert.ok(
+    lines.some((l) => l.includes("divergence vs legacy")),
+    "expected the divergence block"
+  );
   const row = (label: string) => lines.find((l) => l.trim().startsWith(label));
   assert.match(row("agree") ?? "", /agree\s+1\b/);
   assert.match(row("legacy required, gate not") ?? "", /gate not\s+1\b/);

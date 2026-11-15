@@ -60,11 +60,7 @@ export function hitTitleMatches(hit: RecallHit): boolean {
  * informational — it filters nothing.
  */
 export function isWeakResult(hits: RecallHit[], hybridActive: boolean): boolean {
-  return (
-    hybridActive &&
-    hits.length > 0 &&
-    !hits.some((h) => h.matched_recall_when === true || hitTitleMatches(h))
-  );
+  return hybridActive && hits.length > 0 && !hits.some((h) => h.matched_recall_when === true || hitTitleMatches(h));
 }
 
 /**

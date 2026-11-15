@@ -68,7 +68,13 @@ test("harvest with a written bridge emits one bridges_mint event, and the doctor
   const vaultDir = await mkdtemp(join(tmpdir(), "bht-vault-"));
   const bridgesDir = await mkdtemp(join(tmpdir(), "bht-bridges-"));
   const ollama = await pickingOllama();
-  const keys = ["BASTRA_LOG_PATH", "BASTRA_VAULT_PATH", "BASTRA_OLLAMA_URL", "BASTRA_BRIDGES_PATH", "BASTRA_EXPAND_MODEL"];
+  const keys = [
+    "BASTRA_LOG_PATH",
+    "BASTRA_VAULT_PATH",
+    "BASTRA_OLLAMA_URL",
+    "BASTRA_BRIDGES_PATH",
+    "BASTRA_EXPAND_MODEL",
+  ];
   const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
   Object.assign(process.env, {
     BASTRA_LOG_PATH: logDir,
@@ -80,8 +86,16 @@ test("harvest with a written bridge emits one bridges_mint event, and the doctor
   const realOut = process.stdout.write.bind(process.stdout);
   const realErr = process.stderr.write.bind(process.stderr);
   try {
-    await writeFile(join(vaultDir, "a.md"), memory("launchagent-modus", "LaunchAgent mode", "launchctl plist keepalive"), "utf8");
-    await writeFile(join(vaultDir, "b.md"), memory("daemon-neustart", "Restart the service", "kickstart launchctl bootout reload"), "utf8");
+    await writeFile(
+      join(vaultDir, "a.md"),
+      memory("launchagent-modus", "LaunchAgent mode", "launchctl plist keepalive"),
+      "utf8"
+    );
+    await writeFile(
+      join(vaultDir, "b.md"),
+      memory("daemon-neustart", "Restart the service", "kickstart launchctl bootout reload"),
+      "utf8"
+    );
     const today = new Date().toISOString().slice(0, 10);
     const poolEvent = {
       ts: new Date().toISOString(),

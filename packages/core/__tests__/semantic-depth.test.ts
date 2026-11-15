@@ -59,10 +59,7 @@ test("semantic layout: positions carry x/y/z in the unit cube", async () => {
 });
 
 test("semantic layout: single vector centers at (0.5, 0.5, 0.5)", async () => {
-  const layout = await buildSemanticLayout(
-    graphOf(["solo"]),
-    new Map([["solo", Float32Array.from([1, 2, 3])]]),
-  );
+  const layout = await buildSemanticLayout(graphOf(["solo"]), new Map([["solo", Float32Array.from([1, 2, 3])]]));
   assert.deepEqual(layout.positions, [{ id: "solo", x: 0.5, y: 0.5, z: 0.5 }]);
 });
 

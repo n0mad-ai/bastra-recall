@@ -150,11 +150,11 @@ describe("an abort is never free", () => {
 
   test("the estimate is READ from the registration, not written into the runner", async () => {
     const reg = JSON.parse(
-      await readFile(new URL("../registrations/code-awareness-change-impact.json", import.meta.url), "utf8"),
+      await readFile(new URL("../registrations/code-awareness-change-impact.json", import.meta.url), "utf8")
     );
     assert.ok(
       String(reg.run_conditions.cost_estimate).includes(`mean $${REGISTERED_ARM_ESTIMATE_USD} per arm`),
-      "the number the runner charges must be the one the registration states",
+      "the number the runner charges must be the one the registration states"
     );
   });
 
@@ -171,7 +171,7 @@ describe("an abort is never free", () => {
 
   test("a second registration supplies its own estimate instead of inheriting v6", async () => {
     const reg = JSON.parse(
-      await readFile(new URL("../registrations/code-awareness-delivered.json", import.meta.url), "utf8"),
+      await readFile(new URL("../registrations/code-awareness-delivered.json", import.meta.url), "utf8")
     );
     assert.equal(armEstimateUsdOf(reg), 0.046);
     assert.deepEqual(abortedArmCharge(killed, 0, 0, armEstimateUsdOf(reg)), {
@@ -184,7 +184,7 @@ describe("an abort is never free", () => {
 describe("the cost ceiling is enforced, not documented", () => {
   test("the runner's ceiling IS the registered one, not a copy of it", async () => {
     const reg = JSON.parse(
-      await readFile(new URL("../registrations/code-awareness-change-impact.json", import.meta.url), "utf8"),
+      await readFile(new URL("../registrations/code-awareness-change-impact.json", import.meta.url), "utf8")
     );
     assert.equal(COST_CEILING_USD, reg.run_conditions.cost_ceiling_usd);
     assert.equal(COST_CEILING_USD, 40, "raised from 20 by decision on 18.09.2026, before the run");
@@ -199,7 +199,7 @@ describe("the cost ceiling is enforced, not documented", () => {
 
   test("the environment may only LOWER it", async () => {
     const reg = JSON.parse(
-      await readFile(new URL("../registrations/code-awareness-change-impact.json", import.meta.url), "utf8"),
+      await readFile(new URL("../registrations/code-awareness-change-impact.json", import.meta.url), "utf8")
     );
     // COST_CEILING_USD was resolved at import time with no env set.
     assert.equal(COST_CEILING_USD, reg.run_conditions.cost_ceiling_usd);
@@ -208,7 +208,7 @@ describe("the cost ceiling is enforced, not documented", () => {
     assert.equal(
       Math.min(999, reg.run_conditions.cost_ceiling_usd),
       reg.run_conditions.cost_ceiling_usd,
-      "raising is not",
+      "raising is not"
     );
   });
 
@@ -247,12 +247,12 @@ describe("a resumed helping reconstructs its spend from disk", () => {
     writeFileSync(join(runs, "S02", "B.jsonl.failed-1"), killed);
     writeFileSync(
       join(runs, "S02", "B.failed-1.meta.json"),
-      JSON.stringify({ arm: "B", finished: false, chargedUsd: 0.5, chargedFrom: "mean_of_finished_arms" }),
+      JSON.stringify({ arm: "B", finished: false, chargedUsd: 0.5, chargedFrom: "mean_of_finished_arms" })
     );
     writeFileSync(join(runs, "S02", "B.jsonl.failed-2"), budgetStopped);
     writeFileSync(
       join(runs, "S02", "B.failed-2.meta.json"),
-      JSON.stringify({ arm: "B", finished: false, chargedUsd: 0.37, chargedFrom: "result_event" }),
+      JSON.stringify({ arm: "B", finished: false, chargedUsd: 0.37, chargedFrom: "result_event" })
     );
     // S03: the shape the old runner produced — a budget stop renamed to a
     // plain `.jsonl` as if it had finished.
@@ -373,23 +373,32 @@ describe("a timed-out arm is forced down, not asked (#602)", () => {
     assert.deepEqual(timeout.state, { timedOut: true, escalated: false });
   });
 
-  test("kills a surviving grandchild even after the group leader exits", { skip: process.platform === "win32" }, async () => {
-    const { armTimeout } = await runnerModule;
-    // The shell dies on TERM; its TERM-ignoring child keeps stdout open.
-    const child = spawn("sh", ["-c", "sh -c 'trap \"\" TERM; echo ready; exec sleep 5' & wait"], {
-      detached: true, stdio: ["ignore", "pipe", "pipe"],
-    });
-    const closing = closed(child);
-    await new Promise<void>((resolve) => child.stdout!.once("data", () => resolve()));
-    const timeout = armTimeout(child, 20, 100);
-    try {
-      await closing;
-      assert.deepEqual(timeout.state, { timedOut: true, escalated: true });
-    } finally {
-      timeout.clear();
-      try { process.kill(-child.pid!, "SIGKILL"); } catch { /* already closed */ }
+  test(
+    "kills a surviving grandchild even after the group leader exits",
+    { skip: process.platform === "win32" },
+    async () => {
+      const { armTimeout } = await runnerModule;
+      // The shell dies on TERM; its TERM-ignoring child keeps stdout open.
+      const child = spawn("sh", ["-c", "sh -c 'trap \"\" TERM; echo ready; exec sleep 5' & wait"], {
+        detached: true,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      const closing = closed(child);
+      await new Promise<void>((resolve) => child.stdout!.once("data", () => resolve()));
+      const timeout = armTimeout(child, 20, 100);
+      try {
+        await closing;
+        assert.deepEqual(timeout.state, { timedOut: true, escalated: true });
+      } finally {
+        timeout.clear();
+        try {
+          process.kill(-child.pid!, "SIGKILL");
+        } catch {
+          /* already closed */
+        }
+      }
     }
-  });
+  );
 
   test("a child that finishes in time is left alone and the timers are cleared", async () => {
     const { armTimeout, ARM_KILL_GRACE_MS } = await runnerModule;

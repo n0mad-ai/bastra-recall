@@ -41,9 +41,7 @@ function fakeVault(memories: Record<string, { summary: string; title: string }> 
   } as never;
 }
 
-async function withDeps(
-  fn: (toolDeps: ToolDeps, vault: ReturnType<typeof fakeVault>) => Promise<void>,
-): Promise<void> {
+async function withDeps(fn: (toolDeps: ToolDeps, vault: ReturnType<typeof fakeVault>) => Promise<void>): Promise<void> {
   // Ein leeres Verzeichnis: care/import/onboarding finden nichts und liefern
   // leere Abschnitte — genau der Zustand, den ein frischer Vault hat.
   const dir = await mkdtemp(join(tmpdir(), "bastra-assembler-"));
@@ -64,7 +62,7 @@ const hit = (id: string, summary: string, score = 100) => ({
 /** Recall-Stub: liefert je Scope eine feste Antwort und merkt sich, womit er
  *  gerufen wurde. */
 function recallStub(
-  perScope: Record<string, { hits: ReturnType<typeof hit>[]; unfused?: boolean; degraded?: string }>,
+  perScope: Record<string, { hits: ReturnType<typeof hit>[]; unfused?: boolean; degraded?: string }>
 ) {
   const calls: Array<{ scope: string; options: Record<string, unknown> }> = [];
   const fn = (async (_deps: unknown, args: unknown, options: unknown = {}) => {
@@ -136,7 +134,7 @@ test("der projektlose Block ist Wort für Wort der bisherige", async () => {
         "and save durable facts via save_memory without being asked.\n" +
         "- [pinned] m1: Ein Floor.\n" +
         "- pref-1 (reference): Daniel schreibt Deutsch.\n" +
-        "</bastra-session-context>",
+        "</bastra-session-context>"
     );
   });
 });
@@ -171,7 +169,7 @@ test("der projektlose Weg fragt kein Projekt ab und filtert Floors auf global", 
     assert.deepEqual(
       calls.map((c) => c.scope),
       ["user-preference"],
-      "nur der Präferenz-Recall, kein Projekt-Recall",
+      "nur der Präferenz-Recall, kein Projekt-Recall"
     );
     assert.deepEqual(seen, [undefined], "Floors ohne Scope-Filter angefragt");
   });
@@ -189,19 +187,12 @@ test("mit Projekt kommt der Projektblock dazu — vor den Präferenzen", async (
       toolDeps,
       vault,
       { project: "bastra-recall" },
-      { recallFn: fn, listFloorsFn: noFloors, listConventionsFn: noConventions },
+      { recallFn: fn, listFloorsFn: noFloors, listConventionsFn: noConventions }
     );
-    assert.deepEqual(
-      calls.map((c) => c.scope).sort(),
-      ["bastra-recall", "user-preference"],
-      "beide Recalls laufen",
-    );
+    assert.deepEqual(calls.map((c) => c.scope).sort(), ["bastra-recall", "user-preference"], "beide Recalls laufen");
     const text = renderSessionContext(a.sections, 42);
     assert.ok(text.includes("- proj-1 (reference): Das Projekt nutzt node:test."));
-    assert.ok(
-      text.indexOf("proj-1") < text.indexOf("pref-1"),
-      "der Projektblock steht vor den Präferenzen",
-    );
+    assert.ok(text.indexOf("proj-1") < text.indexOf("pref-1"), "der Projektblock steht vor den Präferenzen");
   });
 });
 
@@ -219,7 +210,7 @@ test("mit Projekt werden die Floors projekt-gescopt angefragt", async () => {
           return [];
         }) as never,
         listConventionsFn: noConventions,
-      },
+      }
     );
     assert.deepEqual(seen, ["bastra-recall"]);
   });
@@ -237,7 +228,7 @@ test("ein knappes Token-Budget wirft den unwichtigsten Block raus, nicht den obe
       toolDeps,
       vault,
       {},
-      { recallFn: fn, listFloorsFn: floors, listConventionsFn: noConventions },
+      { recallFn: fn, listFloorsFn: floors, listConventionsFn: noConventions }
     );
     const pinnedCost = voll.reports.find((r) => r.kind === "pinned")!.tokens_est;
     assert.ok(pinnedCost > 0);
@@ -247,17 +238,14 @@ test("ein knappes Token-Budget wirft den unwichtigsten Block raus, nicht den obe
       toolDeps,
       vault,
       { budget: { tokens: pinnedCost } },
-      { recallFn: fn, listFloorsFn: floors, listConventionsFn: noConventions },
+      { recallFn: fn, listFloorsFn: floors, listConventionsFn: noConventions }
     );
     const pinned = knapp.reports.find((r) => r.kind === "pinned")!;
     const hints = knapp.reports.find((r) => r.kind === "hints")!;
     assert.equal(pinned.included, true, "der gepinnte Floor überlebt — er ist push-by-state");
     assert.equal(hints.included, false);
     assert.equal(hints.omitted, "token_budget", "und sagt, warum er fehlt");
-    assert.ok(
-      estimateTokens(renderSessionContext(knapp.sections, 42)) > 0,
-      "der Block ist nicht leer",
-    );
+    assert.ok(estimateTokens(renderSessionContext(knapp.sections, 42)) > 0, "der Block ist nicht leer");
   });
 });
 
@@ -267,7 +255,7 @@ test("ein leerer Block meldet `empty`, nicht `token_budget`", async () => {
       toolDeps,
       vault,
       {},
-      { recallFn: recallStub({}).fn, listFloorsFn: noFloors, listConventionsFn: noConventions },
+      { recallFn: recallStub({}).fn, listFloorsFn: noFloors, listConventionsFn: noConventions }
     );
     for (const r of a.reports) {
       assert.equal(r.included, false);
@@ -282,7 +270,7 @@ test("die Prioritäten stehen in der Antwort — Reihenfolge ist nicht Prioritä
       toolDeps,
       vault,
       {},
-      { recallFn: recallStub({}).fn, listFloorsFn: noFloors, listConventionsFn: noConventions },
+      { recallFn: recallStub({}).fn, listFloorsFn: noFloors, listConventionsFn: noConventions }
     );
     const p = new Map(a.reports.map((r) => [r.kind, r.priority]));
     assert.ok(p.get("pinned")! < p.get("onboarding")!);
@@ -304,7 +292,7 @@ test("ein hängender Teil reißt die Deadline und wird als solcher benannt — d
           recallFn: haenger.fn,
           listFloorsFn: (async () => [{ memory_id: "m1", scope: undefined }]) as never,
           listConventionsFn: noConventions,
-        },
+        }
       );
       assert.ok(a.aborted.includes("hints"), "der hängende Recall ist als Abbruch vermerkt");
       const hints = a.reports.find((r) => r.kind === "hints")!;
@@ -327,7 +315,7 @@ test("ein degradierter Recall gibt sich nicht als vollständiger Hybrid aus", as
       toolDeps,
       vault,
       {},
-      { recallFn: fn, listFloorsFn: noFloors, listConventionsFn: noConventions },
+      { recallFn: fn, listFloorsFn: noFloors, listConventionsFn: noConventions }
     );
     assert.equal(a.marker, "degraded");
   });
@@ -340,7 +328,7 @@ test("ein rein lexikalischer Lauf heißt lexical_only, ein vollständiger hybrid
       toolDeps,
       vault,
       {},
-      { recallFn: lex.fn, listFloorsFn: noFloors, listConventionsFn: noConventions },
+      { recallFn: lex.fn, listFloorsFn: noFloors, listConventionsFn: noConventions }
     );
     assert.equal(a.marker, "lexical_only");
 
@@ -349,7 +337,7 @@ test("ein rein lexikalischer Lauf heißt lexical_only, ein vollständiger hybrid
       toolDeps,
       vault,
       {},
-      { recallFn: hyb.fn, listFloorsFn: noFloors, listConventionsFn: noConventions },
+      { recallFn: hyb.fn, listFloorsFn: noFloors, listConventionsFn: noConventions }
     );
     assert.equal(b.marker, "hybrid");
   });
@@ -364,7 +352,7 @@ test("degraded schlägt lexical_only — der ausgefallene Arm ist die stärkere 
       toolDeps,
       vault,
       {},
-      { recallFn: fn, listFloorsFn: noFloors, listConventionsFn: noConventions },
+      { recallFn: fn, listFloorsFn: noFloors, listConventionsFn: noConventions }
     );
     assert.equal(a.marker, "degraded");
   });
@@ -378,7 +366,7 @@ test("ohne Recall gibt es keinen Marker — null heißt nicht `vollständig`", a
         toolDeps,
         vault,
         { budget: { time_ms: 20 } },
-        { recallFn: haenger.fn, listFloorsFn: noFloors, listConventionsFn: noConventions },
+        { recallFn: haenger.fn, listFloorsFn: noFloors, listConventionsFn: noConventions }
       );
       assert.equal(a.marker, null);
     } finally {
@@ -396,14 +384,14 @@ test("der Assembler meldet sich als eigene hook_source, und die steht auf der Al
       toolDeps,
       vault,
       { client: "claude-desktop", session_id: "s-265" },
-      { recallFn: fn, listFloorsFn: noFloors, listConventionsFn: noConventions },
+      { recallFn: fn, listFloorsFn: noFloors, listConventionsFn: noConventions }
     );
     assert.equal(calls[0].options.hook_source, "session-context");
     assert.equal(calls[0].options.client, "claude-desktop");
     assert.equal(calls[0].options.session_id, "s-265");
     assert.ok(
       (HOOK_SOURCES as readonly string[]).includes("session-context"),
-      "sonst normalisiert die Telemetrie den Wert still auf unknown",
+      "sonst normalisiert die Telemetrie den Wert still auf unknown"
     );
   });
 });
@@ -427,12 +415,26 @@ test("auch über die Hook-Pipeline tragen Recall UND Entscheid ihre Dimensionen"
   await writeFile(
     join(dir, "a.md"),
     [
-      "---", "id: a", "title: session fact", "type: reference", "summary: session fact",
-      "topic_path:", "  - test", "tags:", "  - test", "scope: user-preference",
-      "recall_when:", "  - session-start preferences active context",
-      "created: 2026-01-01", "updated: 2026-01-01", "---", "", "Body.", "",
+      "---",
+      "id: a",
+      "title: session fact",
+      "type: reference",
+      "summary: session fact",
+      "topic_path:",
+      "  - test",
+      "tags:",
+      "  - test",
+      "scope: user-preference",
+      "recall_when:",
+      "  - session-start preferences active context",
+      "created: 2026-01-01",
+      "updated: 2026-01-01",
+      "---",
+      "",
+      "Body.",
+      "",
     ].join("\n"),
-    "utf8",
+    "utf8"
   );
   const vault = new Vault(dir);
   await vault.init();
@@ -467,7 +469,7 @@ test("auch über die Hook-Pipeline tragen Recall UND Entscheid ihre Dimensionen"
         session_id: "s-429",
         hookRecall: { vault, search, telemetry },
       } as never,
-      { listFloorsFn: noFloors, listConventionsFn: noConventions },
+      { listFloorsFn: noFloors, listConventionsFn: noConventions }
     );
     // `fireAndForget` heißt: das Ereignis geht nach dem Recall raus, nicht in ihm.
     await new Promise((r) => setTimeout(r, 50));
@@ -508,12 +510,26 @@ test("GET und POST leben beide auf /hook/session-context", async () => {
   await writeFile(
     join(dir, "a.md"),
     [
-      "---", "id: a", "title: session fact", "type: reference", "summary: session fact",
-      "topic_path:", "  - test", "tags:", "  - test", "scope: user-preference",
-      "recall_when:", "  - session-start preferences active context",
-      "created: 2026-01-01", "updated: 2026-01-01", "---", "", "Body.", "",
+      "---",
+      "id: a",
+      "title: session fact",
+      "type: reference",
+      "summary: session fact",
+      "topic_path:",
+      "  - test",
+      "tags:",
+      "  - test",
+      "scope: user-preference",
+      "recall_when:",
+      "  - session-start preferences active context",
+      "created: 2026-01-01",
+      "updated: 2026-01-01",
+      "---",
+      "",
+      "Body.",
+      "",
     ].join("\n"),
-    "utf8",
+    "utf8"
   );
   const vault = new Vault(dir);
   await vault.init();
@@ -521,7 +537,11 @@ test("GET und POST leben beide auf /hook/session-context", async () => {
   search.start();
   const telemetry = new Telemetry();
   const handle = await startHttpServer({
-    port: 0, vault, search, telemetry, version: "test",
+    port: 0,
+    vault,
+    search,
+    telemetry,
+    version: "test",
     toolDeps: { vault, search, telemetry, vaultPath: dir },
     documentWriteEnabled: false,
     embedding: { on: false, providerId: null, source: "none" },
@@ -532,16 +552,17 @@ test("GET und POST leben beide auf /hook/session-context", async () => {
       const payload = body === undefined ? undefined : JSON.stringify(body);
       const req = request(
         {
-          host: "127.0.0.1", port: handle.port!, path: "/hook/session-context", method,
-          headers: payload
-            ? { "content-type": "application/json", "content-length": Buffer.byteLength(payload) }
-            : {},
+          host: "127.0.0.1",
+          port: handle.port!,
+          path: "/hook/session-context",
+          method,
+          headers: payload ? { "content-type": "application/json", "content-length": Buffer.byteLength(payload) } : {},
         },
         (res) => {
           let raw = "";
           res.on("data", (c) => (raw += c));
           res.on("end", () => resolve({ status: res.statusCode ?? 0, json: JSON.parse(raw || "{}") }));
-        },
+        }
       );
       req.on("error", reject);
       req.end(payload);
@@ -592,7 +613,7 @@ test("der Assembler nimmt den Hop mit, ohne dass jemand danach fragt", async () 
       toolDeps,
       vault,
       {},
-      { recallFn: fn, listFloorsFn: noFloors, listConventionsFn: noConventions },
+      { recallFn: fn, listFloorsFn: noFloors, listConventionsFn: noConventions }
     );
     assert.ok(seen.length > 0);
     for (const args of seen) {
@@ -630,7 +651,7 @@ test("ein Aufrufer kann die Baseline überschreiben, aber nur ausdrücklich", as
       toolDeps,
       vault,
       { expand_hops: 0 },
-      { recallFn: fn, listFloorsFn: noFloors, listConventionsFn: noConventions },
+      { recallFn: fn, listFloorsFn: noFloors, listConventionsFn: noConventions }
     );
     assert.equal(seen[0].expand_hops, 0);
   });

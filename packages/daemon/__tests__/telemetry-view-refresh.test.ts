@@ -102,8 +102,16 @@ test("repeated opens never stack a second interval", () => {
   r.arm();
   r.arm();
   r.arm();
-  assert.equal(t.scheduled.length, 3, "one arm() per call, as the manager's own open() guard already dedupes real opens");
-  assert.deepEqual(t.cleared, [1, 2], "each arm() clears the previous timer before scheduling the next — never two live at once");
+  assert.equal(
+    t.scheduled.length,
+    3,
+    "one arm() per call, as the manager's own open() guard already dedupes real opens"
+  );
+  assert.deepEqual(
+    t.cleared,
+    [1, 2],
+    "each arm() clears the previous timer before scheduling the next — never two live at once"
+  );
 });
 
 test("pauses while hidden and resumes once visible again", () => {

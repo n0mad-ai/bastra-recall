@@ -110,8 +110,7 @@ const USAGE_CACHE_MS = 10_000;
 
 /** The cached aggregate, or an empty one when nothing has been read yet. */
 export function usageForShadow(vaultPath: string, now: number = Date.now()): UsageAggregate {
-  const fresh =
-    usageCache !== null && usageCache.vaultPath === vaultPath && now - usageCache.at < USAGE_CACHE_MS;
+  const fresh = usageCache !== null && usageCache.vaultPath === vaultPath && now - usageCache.at < USAGE_CACHE_MS;
   if (!fresh && !usageRefreshInFlight) {
     usageRefreshInFlight = true;
     void readUsage(vaultPath)
@@ -150,7 +149,7 @@ export function primeUsageShadowCache(vaultPath: string, usage: UsageAggregate):
 export function computeTrustShadow(
   hits: { id: string; score: number }[],
   resolveUsage: (id: string) => UsageEntry | undefined,
-  step: number = trustStep(),
+  step: number = trustStep()
 ): TrustShadow | undefined {
   if (trustRankMode() !== "shadow") return undefined;
   if (hits.length === 0 || step <= 0) return undefined;
@@ -162,7 +161,7 @@ export function computeTrustShadow(
   if (!scored.some((h) => h.trust < TRUST_CEILING)) return undefined;
 
   const shadowRank = new Map(
-    [...scored].sort((a, b) => b.shadow_score - a.shadow_score).map((h, i) => [h.id, i + 1] as const),
+    [...scored].sort((a, b) => b.shadow_score - a.shadow_score).map((h, i) => [h.id, i + 1] as const)
   );
   const out: TrustShadowHit[] = scored.map((h) => ({
     id: h.id,

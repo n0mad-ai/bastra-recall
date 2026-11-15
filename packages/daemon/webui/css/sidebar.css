@@ -1,7 +1,8 @@
 /* ── system panel (right) ──────────────────────────────────────── */
 #system-panel {
   position: fixed;
-  top: 70px; right: 16px;
+  top: 70px;
+  right: 16px;
   width: 250px;
   max-height: calc(100vh - 96px);
   z-index: 20;
@@ -13,13 +14,20 @@
   box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
-  transition: transform 0.28s var(--ease-fly), top 0.28s var(--ease-fly), bottom 0.28s var(--ease-fly);
+  transition:
+    transform 0.28s var(--ease-fly),
+    top 0.28s var(--ease-fly),
+    bottom 0.28s var(--ease-fly);
 }
 /* collapsed: the panel slides fully off-screen; only the corner handle stays.
    Hovering the handle peeks the panel back out, animated. A click pins the
    state. */
-#system-panel.collapsed { transform: translateX(calc(100% + 17px)); }
-#system-panel.collapsed:hover { transform: translateX(0); }
+#system-panel.collapsed {
+  transform: translateX(calc(100% + 17px));
+}
+#system-panel.collapsed:hover {
+  transform: translateX(0);
+}
 #panel-handle {
   position: absolute;
   top: -1px;
@@ -34,30 +42,49 @@
   -webkit-backdrop-filter: var(--panel-blur);
   color: var(--text-dim);
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
-#panel-handle:hover { color: var(--accent); border-color: var(--accent); }
-#panel-handle svg { width: 14px; height: 14px; transition: transform 0.28s ease; }
-#system-panel.collapsed #panel-handle svg { transform: rotate(180deg); }
+#panel-handle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+#panel-handle svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.28s ease;
+}
+#system-panel.collapsed #panel-handle svg {
+  transform: rotate(180deg);
+}
 /* pinned: full height, flush right, always visible — the handle disappears
    and the topbar makes room. */
 #system-panel.pinned {
-  top: 0; right: 0; bottom: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
   max-height: none;
   border-top: 0;
   border-bottom: 0;
   border-right: 0;
 }
-#system-panel.pinned #panel-handle { display: none; }
-body.panel-pinned #topbar { right: 250px; }
+#system-panel.pinned #panel-handle {
+  display: none;
+}
+body.panel-pinned #topbar {
+  right: 250px;
+}
 #panel-pin {
   position: absolute;
   /* Vertically centred on the first section heading ("Filters & Options"),
      not on the panel's top edge. That heading's text centre sits at
      .panel-body padding-top (12) + .section-title padding-top (11) + half its
      line box (~6) = 29px, so a 26px button starts at 16. */
-  top: 16px; right: 12px;
-  width: 26px; height: 26px;
+  top: 16px;
+  right: 12px;
+  width: 26px;
+  height: 26px;
   display: grid;
   place-items: center;
   border: 1px solid transparent;
@@ -66,17 +93,29 @@ body.panel-pinned #topbar { right: 250px; }
   cursor: pointer;
   transition: color 0.15s ease;
 }
-#panel-pin:hover { color: var(--accent); }
-#panel-pin svg { width: 15px; height: 15px; }
-#system-panel.pinned #panel-pin { color: var(--accent); transform: rotate(45deg); }
+#panel-pin:hover {
+  color: var(--accent);
+}
+#panel-pin svg {
+  width: 15px;
+  height: 15px;
+}
+#system-panel.pinned #panel-pin {
+  color: var(--accent);
+  transform: rotate(45deg);
+}
 .panel-body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden; /* panels never scroll horizontally — convention */
   padding: 12px 18px 18px;
 }
-.panel-section { border-bottom: 1px solid var(--panel-border); }
-.panel-section:last-child { border-bottom: 0; }
+.panel-section {
+  border-bottom: 1px solid var(--panel-border);
+}
+.panel-section:last-child {
+  border-bottom: 0;
+}
 /* accordion */
 .acc-head {
   width: 100%;
@@ -95,24 +134,42 @@ body.panel-pinned #topbar { right: 250px; }
   cursor: pointer;
   transition: color 0.15s ease;
 }
-.acc-head:hover { color: var(--accent); }
-.acc-head svg { width: 13px; height: 13px; transition: transform 0.25s ease; }
-.panel-section.closed .acc-head svg { transform: rotate(-90deg); }
+.acc-head:hover {
+  color: var(--accent);
+}
+.acc-head svg {
+  width: 13px;
+  height: 13px;
+  transition: transform 0.25s ease;
+}
+.panel-section.closed .acc-head svg {
+  transform: rotate(-90deg);
+}
 .acc-body {
   display: grid;
   grid-template-rows: 1fr;
   transition: grid-template-rows 0.25s var(--ease-fly);
 }
-.panel-section.closed .acc-body { grid-template-rows: 0fr; }
-.acc-inner { overflow: hidden; padding: 0 2px; }
-.panel-section:not(.closed) .acc-inner { padding-bottom: 14px; }
+.panel-section.closed .acc-body {
+  grid-template-rows: 0fr;
+}
+.acc-inner {
+  overflow: hidden;
+  padding: 0 2px;
+}
+.panel-section:not(.closed) .acc-inner {
+  padding-bottom: 14px;
+}
 /* filters */
 .filter-label {
   font-size: 11px;
   color: var(--text-dim);
   margin-bottom: 7px;
 }
-.seg { display: flex; border: 1px solid var(--panel-border); }
+.seg {
+  display: flex;
+  border: 1px solid var(--panel-border);
+}
 .seg button {
   flex: 1;
   padding: 5px 0;
@@ -122,17 +179,39 @@ body.panel-pinned #topbar { right: 250px; }
   color: var(--text-dim);
   font: 11px var(--font-mono);
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
-.seg button:first-child { border-left: 0; }
-.seg button:hover { color: var(--accent); }
-.seg button.active { background: var(--accent-soft); color: var(--accent); }
+.seg button:first-child {
+  border-left: 0;
+}
+.seg button:hover {
+  color: var(--accent);
+}
+.seg button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 /* clickable signals */
-#signals li.filterable { cursor: pointer; margin: 0 -6px; padding: 3px 6px; transition: background 0.12s ease; }
-#signals li.filterable:hover { background: var(--accent-soft); }
-#signals li.filterable.active { background: var(--accent-soft); }
-#signals li.filterable.active .k { color: var(--accent); }
-#legend { list-style: none; }
+#signals li.filterable {
+  cursor: pointer;
+  margin: 0 -6px;
+  padding: 3px 6px;
+  transition: background 0.12s ease;
+}
+#signals li.filterable:hover {
+  background: var(--accent-soft);
+}
+#signals li.filterable.active {
+  background: var(--accent-soft);
+}
+#signals li.filterable.active .k {
+  color: var(--accent);
+}
+#legend {
+  list-style: none;
+}
 #legend li {
   display: flex;
   align-items: center;
@@ -144,17 +223,32 @@ body.panel-pinned #topbar { right: 250px; }
   cursor: pointer;
   transition: background 0.12s ease;
 }
-#legend li:hover { background: var(--accent-soft); }
-#legend li.active { background: var(--accent-soft); }
-#legend li.active .name { color: var(--accent); }
+#legend li:hover {
+  background: var(--accent-soft);
+}
+#legend li.active {
+  background: var(--accent-soft);
+}
+#legend li.active .name {
+  color: var(--accent);
+}
 #legend .dot {
-  width: 9px; height: 9px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   flex: none;
   box-shadow: 0 0 6px currentColor;
 }
-#legend .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#legend .count { font: 11px var(--font-mono); color: var(--text-dim); }
+#legend .name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#legend .count {
+  font: 11px var(--font-mono);
+  color: var(--text-dim);
+}
 #panel-footer {
   flex: none;
   padding: 12px 18px;
@@ -171,11 +265,20 @@ body.panel-pinned #topbar { right: 250px; }
   border: 1px solid var(--panel-border);
   border-radius: 4px;
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
-#reset-layout:hover { border-color: var(--accent); color: var(--accent); }
-#reset-layout:active { transform: scale(0.97); }
-.kv { list-style: none; }
+#reset-layout:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+#reset-layout:active {
+  transform: scale(0.97);
+}
+.kv {
+  list-style: none;
+}
 .kv li {
   display: flex;
   justify-content: space-between;
@@ -183,17 +286,33 @@ body.panel-pinned #topbar { right: 250px; }
   font-size: 12px;
   padding: 3px 0;
 }
-.kv .k { color: var(--text-dim); }
-.kv .v { font: 11.5px var(--font-mono); text-align: right; }
-.kv .v.ok { color: var(--accent); }
+.kv .k {
+  color: var(--text-dim);
+}
+.kv .v {
+  font: 11.5px var(--font-mono);
+  text-align: right;
+}
+.kv .v.ok {
+  color: var(--accent);
+}
 
 /* Aktivitäts-Regler (#227-Folge): wie lange eine Entladung läuft. Sitzt unter
    dem Stil-Switcher, Wert rechts daneben — die Zahl gehört zum Regler, nicht
    in ein eigenes Label darüber. */
 #bolt-speed-row,
-#bolt-spread-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+#bolt-spread-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
 #bolt-speed,
-#bolt-spread { flex: 1; min-width: 0; accent-color: var(--accent); }
+#bolt-spread {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
 #bolt-speed-value,
 #bolt-spread-value {
   flex: 0 0 auto;

@@ -16,7 +16,11 @@ async function claimFile(t: { after: (fn: () => Promise<void>) => void }, ageMs:
   t.after(() => rm(dir, { recursive: true, force: true }));
   const lock = join(dir, "m.commit.lock");
   // process.pid stands in for "some live process holding the owner's old pid".
-  await writeFile(lock, JSON.stringify({ pid: process.pid, host: hostname(), ts: Date.now() - ageMs, token: "t" }), "utf8");
+  await writeFile(
+    lock,
+    JSON.stringify({ pid: process.pid, host: hostname(), ts: Date.now() - ageMs, token: "t" }),
+    "utf8"
+  );
   const when = new Date(Date.now() - ageMs);
   await utimes(lock, when, when);
   return lock;
@@ -33,7 +37,7 @@ test("a live-owner claim past the ceiling ages out (reused pid)", async (t) => {
 });
 
 for (const failures of [1, 2]) {
-  test(`claim preparation tolerates EINVAL (${failures} failures)`, async t => {
+  test(`claim preparation tolerates EINVAL (${failures} failures)`, async (t) => {
     const fs = await import("node:fs/promises");
     const { syncBuiltinESMExports } = await import("node:module");
     const { acquireCommitClaim, releaseCommitClaim } = await import("../src/save-commit.js");
@@ -53,8 +57,12 @@ for (const failures of [1, 2]) {
       if (failures === 1) {
         const token = await acquireCommitClaim(lock, "id", join(root, "id.md"));
         await releaseCommitClaim(lock, token);
-      } else await assert.rejects(acquireCommitClaim(lock, "id", join(root, "id.md")), { name: "MemoryWriteConflictError" });
+      } else
+        await assert.rejects(acquireCommitClaim(lock, "id", join(root, "id.md")), { name: "MemoryWriteConflictError" });
       assert.equal(attempts, 2);
-    } finally { t.mock.restoreAll(); syncBuiltinESMExports(); }
+    } finally {
+      t.mock.restoreAll();
+      syncBuiltinESMExports();
+    }
   });
 }

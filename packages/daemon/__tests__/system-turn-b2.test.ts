@@ -15,7 +15,8 @@ test("B2: complete observed harness forms stay injected, typed opening mentions 
     for (const row of [
       { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text }] } },
       { type: "user", message: { role: "user", content: text } },
-    ]) assert.equal(parseTranscriptFile(JSON.stringify(row))[0].role, "user");
+    ])
+      assert.equal(parseTranscriptFile(JSON.stringify(row))[0].role, "user");
   }
   const injected = [
     "# AGENTS.md instructions for /work/fixture\n\n<INSTRUCTIONS>\nKeep generated files separate.\n</INSTRUCTIONS>",
@@ -25,6 +26,14 @@ test("B2: complete observed harness forms stay injected, typed opening mentions 
   for (const text of injected) {
     assert.equal(isSystemInjectedTurn(text), true);
     assert.equal(ownerPromptText(text), null);
-    assert.equal(parseTranscriptFile(JSON.stringify({ type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text }] } }))[0].role, "system-injected");
+    assert.equal(
+      parseTranscriptFile(
+        JSON.stringify({
+          type: "response_item",
+          payload: { type: "message", role: "user", content: [{ type: "input_text", text }] },
+        })
+      )[0].role,
+      "system-injected"
+    );
   }
 });

@@ -20,19 +20,20 @@ import { strict as assert } from "node:assert";
 import { planHookEntries } from "../src/cli/adapters/claude-code.js";
 import { STOP_HOOK_BIN, HOOK_STUB_BIN } from "../src/cli/paths.js";
 
-const OLD_RUNTIME_STOP_BIN =
-  "/Users/tester/.bastra/runtime/0.8.8/node_modules/@bastra-recall/daemon/dist/stop-hook.js";
+const OLD_RUNTIME_STOP_BIN = "/Users/tester/.bastra/runtime/0.8.8/node_modules/@bastra-recall/daemon/dist/stop-hook.js";
 
 /** A Stop entry as `bastra install --with-stop-hook` wrote it under 0.8.8. */
 function ourStopEntry(bin: string): Record<string, unknown> {
   return {
-    hooks: [{
-      type: "command",
-      command: `node ${bin}`,
-      timeout: 3,
-      __bastraRecall: true,
-      __note: "bastra-recall Stop hook (optional autonomous save-eval, #35)",
-    }],
+    hooks: [
+      {
+        type: "command",
+        command: `node ${bin}`,
+        timeout: 3,
+        __bastraRecall: true,
+        __note: "bastra-recall Stop hook (optional autonomous save-eval, #35)",
+      },
+    ],
   };
 }
 
@@ -56,19 +57,24 @@ function changed(plan: { before: Record<string, unknown[]>; after: Record<string
 // ─── the verified regression ─────────────────────────────────────────────────
 
 test("stop hook: a preserved entry is re-pointed at the current bin (#48 keeps the opt-in, not the path)", () => {
-  const plan = planHookEntries("install", { Stop: [ourStopEntry(OLD_RUNTIME_STOP_BIN)] }, { includeStop: false, stubPresent: false });
+  const plan = planHookEntries(
+    "install",
+    { Stop: [ourStopEntry(OLD_RUNTIME_STOP_BIN)] },
+    { includeStop: false, stubPresent: false }
+  );
 
   assert.equal(plan.stopPreserved, true, "the opt-in decision must survive");
   assert.equal(plan.after.Stop.length, 1, "still exactly one Stop entry — kept, not duplicated");
   assert.deepEqual(commandsOf(plan.after.Stop), [`BASTRA_HOOK_CLIENT=claude-code node ${STOP_HOOK_BIN}`]);
-  assert.ok(
-    !JSON.stringify(plan.after.Stop).includes("0.8.8"),
-    "no trace of the old runtime version may remain",
-  );
+  assert.ok(!JSON.stringify(plan.after.Stop).includes("0.8.8"), "no trace of the old runtime version may remain");
 });
 
 test("stop hook: a stale path is a real change — it must not pass as already-installed", () => {
-  const plan = planHookEntries("install", { Stop: [ourStopEntry(OLD_RUNTIME_STOP_BIN)] }, { includeStop: false, stubPresent: false });
+  const plan = planHookEntries(
+    "install",
+    { Stop: [ourStopEntry(OLD_RUNTIME_STOP_BIN)] },
+    { includeStop: false, stubPresent: false }
+  );
   assert.equal(changed(plan, "Stop"), true);
 });
 
@@ -87,13 +93,17 @@ test("stop hook: an entry already at the current bin stays byte-identical (no ch
 
 test("stop hook: a foreign Stop hook is never removed and never rewritten", () => {
   const foreign = foreignStopEntry();
-  const plan = planHookEntries("install", { Stop: [foreign, ourStopEntry(OLD_RUNTIME_STOP_BIN)] }, { includeStop: false, stubPresent: false });
+  const plan = planHookEntries(
+    "install",
+    { Stop: [foreign, ourStopEntry(OLD_RUNTIME_STOP_BIN)] },
+    { includeStop: false, stubPresent: false }
+  );
 
   assert.equal(plan.after.Stop.length, 2);
   assert.equal(
     JSON.stringify(plan.after.Stop[0]),
     JSON.stringify(foreign),
-    "the foreign entry passes through verbatim, in place",
+    "the foreign entry passes through verbatim, in place"
   );
   assert.deepEqual(commandsOf([plan.after.Stop[1]]), [`BASTRA_HOOK_CLIENT=claude-code node ${STOP_HOOK_BIN}`]);
 });
@@ -113,8 +123,13 @@ test("stop hook: no Stop entry at all → an opted-out run still adds none (#48 
 // ─── the neighbouring paths this must not disturb ────────────────────────────
 
 test("stop hook: the stable-runtime mapping reaches the preserved entry too (#180)", () => {
-  const mapBin = (bin: string) => `/Users/tester/.bastra/runtime/0.8.9/node_modules/@bastra-recall/daemon/dist/${bin.split("/").pop()}`;
-  const plan = planHookEntries("install", { Stop: [ourStopEntry(OLD_RUNTIME_STOP_BIN)] }, { includeStop: false, mapBin, stubPresent: false });
+  const mapBin = (bin: string) =>
+    `/Users/tester/.bastra/runtime/0.8.9/node_modules/@bastra-recall/daemon/dist/${bin.split("/").pop()}`;
+  const plan = planHookEntries(
+    "install",
+    { Stop: [ourStopEntry(OLD_RUNTIME_STOP_BIN)] },
+    { includeStop: false, mapBin, stubPresent: false }
+  );
 
   assert.deepEqual(commandsOf(plan.after.Stop), [
     "BASTRA_HOOK_CLIENT=claude-code node /Users/tester/.bastra/runtime/0.8.9/node_modules/@bastra-recall/daemon/dist/stop-hook.js",
@@ -123,7 +138,11 @@ test("stop hook: the stable-runtime mapping reaches the preserved entry too (#18
 
 test("stop hook: --with-stop-hook replaces a stale entry and keeps the foreign one", () => {
   const foreign = foreignStopEntry();
-  const plan = planHookEntries("install", { Stop: [foreign, ourStopEntry(OLD_RUNTIME_STOP_BIN)] }, { includeStop: true, stubPresent: false });
+  const plan = planHookEntries(
+    "install",
+    { Stop: [foreign, ourStopEntry(OLD_RUNTIME_STOP_BIN)] },
+    { includeStop: true, stubPresent: false }
+  );
 
   assert.deepEqual(commandsOf(plan.after.Stop), [
     "node /opt/other-tool/stop.js",
@@ -133,7 +152,11 @@ test("stop hook: --with-stop-hook replaces a stale entry and keeps the foreign o
 
 test("stop hook: uninstall still strips ours and keeps the foreign one", () => {
   const foreign = foreignStopEntry();
-  const plan = planHookEntries("uninstall", { Stop: [foreign, ourStopEntry(OLD_RUNTIME_STOP_BIN)] }, { includeStop: false, stubPresent: false });
+  const plan = planHookEntries(
+    "uninstall",
+    { Stop: [foreign, ourStopEntry(OLD_RUNTIME_STOP_BIN)] },
+    { includeStop: false, stubPresent: false }
+  );
 
   assert.equal(plan.after.Stop.length, 1);
   assert.equal(JSON.stringify(plan.after.Stop[0]), JSON.stringify(foreign));
@@ -145,7 +168,7 @@ test("stop hook: with the stub present the preserved entry moves to the stub lan
   const plan = planHookEntries(
     "install",
     { Stop: [ourStopEntry(OLD_RUNTIME_STOP_BIN)] },
-    { includeStop: false, stubPresent: true },
+    { includeStop: false, stubPresent: true }
   );
 
   assert.equal(plan.stopPreserved, true, "the opt-in decision must survive the client swap");
@@ -153,7 +176,8 @@ test("stop hook: with the stub present the preserved entry moves to the stub lan
 });
 
 test("stop hook: the stable-runtime mapping does not touch the stub path (#180 maps bins, not the binary)", () => {
-  const mapBin = (bin: string) => `/Users/tester/.bastra/runtime/0.8.9/node_modules/@bastra-recall/daemon/dist/${bin.split("/").pop()}`;
+  const mapBin = (bin: string) =>
+    `/Users/tester/.bastra/runtime/0.8.9/node_modules/@bastra-recall/daemon/dist/${bin.split("/").pop()}`;
   const plan = planHookEntries("install", {}, { includeStop: true, mapBin, stubPresent: true });
   assert.deepEqual(commandsOf(plan.after.Stop), [`BASTRA_HOOK_CLIENT=claude-code ${HOOK_STUB_BIN} stop`]);
 });

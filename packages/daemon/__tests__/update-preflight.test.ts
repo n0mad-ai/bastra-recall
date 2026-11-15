@@ -33,7 +33,13 @@ import {
   writeManifest,
 } from "../src/cli/update-preflight.js";
 import { findExecutable } from "../src/cli/exec.js";
-import { detectInstallMode, hasInPlacePreflight, packageRootFromCliPath, patchReapplyRoot, reapplyPatchSeries } from "../src/cli/update.js";
+import {
+  detectInstallMode,
+  hasInPlacePreflight,
+  packageRootFromCliPath,
+  patchReapplyRoot,
+  reapplyPatchSeries,
+} from "../src/cli/update.js";
 import { parseArgs } from "../src/cli/commands.js";
 import {
   blockedUpdatePath,
@@ -70,7 +76,11 @@ async function fakeInstall(root: string): Promise<void> {
   await mkdir(join(root, "dist", "cli"), { recursive: true });
   await mkdir(join(root, "webui", "js"), { recursive: true });
   await mkdir(join(root, "node_modules", "zod"), { recursive: true });
-  await writeFile(join(root, "package.json"), `{"name":"@bastra-recall/daemon","version":"${VERSION_UNDER_TEST}"}\n`, "utf8");
+  await writeFile(
+    join(root, "package.json"),
+    `{"name":"@bastra-recall/daemon","version":"${VERSION_UNDER_TEST}"}\n`,
+    "utf8"
+  );
   await writeFile(join(root, "dist", "index.js"), "// daemon\n", "utf8");
   await writeFile(join(root, "dist", "cli", "update.js"), "// cli update\n", "utf8");
   await writeFile(join(root, "webui", "js", "app.js"), "// webui\n", "utf8");
@@ -97,7 +107,11 @@ test("buildManifest snapshots the package tree and leaves node_modules out", asy
     const paths = m.files.map((f) => f.path);
     assert.ok(paths.includes("dist/cli/update.js"), `expected dist/cli/update.js in ${paths.join(", ")}`);
     assert.ok(paths.includes("webui/js/app.js"));
-    assert.equal(paths.some((p) => p.startsWith("node_modules/")), false, "node_modules must never be hashed");
+    assert.equal(
+      paths.some((p) => p.startsWith("node_modules/")),
+      false,
+      "node_modules must never be hashed"
+    );
     assert.equal(m.root, s.root);
     assert.equal(m.version, VERSION_UNDER_TEST);
   });
@@ -144,7 +158,7 @@ test("a modified file is detected AND copied aside before anything replaces it",
     assert.equal(
       await readFile(join(expected, "dist", "index.js"), "utf8"),
       "// daemon + local locale fix\n",
-      "the backup must hold the LOCAL content, not the shipped one",
+      "the backup must hold the LOCAL content, not the shipped one"
     );
   });
 });
@@ -172,12 +186,24 @@ test("interactive refuses without --force and proceeds with it — backup in bot
     await baseline(s);
     await writeFile(join(s.root, "dist", "cli", "update.js"), "// patched cli\n", "utf8");
 
-    const refused = await preflight({ root: s.root, unattended: false, force: false, checkProvenance: false, home: s.home });
+    const refused = await preflight({
+      root: s.root,
+      unattended: false,
+      force: false,
+      checkProvenance: false,
+      home: s.home,
+    });
     assert.equal(refused.ok, false);
     assert.match(refused.refusal ?? "", /--force/);
     assert.ok(refused.backupDir, "a refusal must still leave the copy behind");
 
-    const forced = await preflight({ root: s.root, unattended: false, force: true, checkProvenance: false, home: s.home });
+    const forced = await preflight({
+      root: s.root,
+      unattended: false,
+      force: true,
+      checkProvenance: false,
+      home: s.home,
+    });
     assert.equal(forced.ok, true);
     assert.equal(forced.refusal, undefined);
     assert.ok(await exists(join(backupRoot(s.home), VERSION_UNDER_TEST, "dist", "cli", "update.js")));
@@ -266,7 +292,13 @@ test("a manifest from a different install root is skipped with a note", async ()
     const elsewhere = join(s.root, "..", "other-daemon");
     await mkdir(elsewhere, { recursive: true });
 
-    const r = await preflight({ root: elsewhere, unattended: true, force: false, checkProvenance: false, home: s.home });
+    const r = await preflight({
+      root: elsewhere,
+      unattended: true,
+      force: false,
+      checkProvenance: false,
+      home: s.home,
+    });
     assert.equal(r.ok, true);
     assert.equal(r.notes.length, 1);
     assert.match(r.notes[0], /different install root/);
@@ -314,11 +346,11 @@ test("verifyProvenance reports SKIPPED — never a failure — when npm cannot b
 test("packageRootFromCliPath resolves the root of an npm-global install", () => {
   assert.equal(
     packageRootFromCliPath("/usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js"),
-    "/usr/local/lib/node_modules/@bastra-recall/daemon",
+    "/usr/local/lib/node_modules/@bastra-recall/daemon"
   );
   assert.equal(
     packageRootFromCliPath("/opt/homebrew/Cellar/bastra-recall/0.8.7/libexec/dist/cli/update.js"),
-    "/opt/homebrew/Cellar/bastra-recall/0.8.7/libexec",
+    "/opt/homebrew/Cellar/bastra-recall/0.8.7/libexec"
   );
 });
 
@@ -357,13 +389,13 @@ test("classifyAuditOutput: a root without an installed dep tree is SKIPPED", () 
 
   const unsupported = classifyAuditOutput(
     1,
-    "npm error found no dependencies to audit that were installed from a supported registry\n",
+    "npm error found no dependencies to audit that were installed from a supported registry\n"
   );
   assert.equal(unsupported.ok, true);
 });
 
 test("classifyAuditOutput: an npm too old for the subcommand is SKIPPED with an upgrade hint", () => {
-  const r = classifyAuditOutput(1, "npm ERR! Unknown command: \"signatures\"\n");
+  const r = classifyAuditOutput(1, 'npm ERR! Unknown command: "signatures"\n');
   assert.equal(r.ok, true);
   assert.match(r.skipped ?? "", /upgrade npm/);
 });
@@ -392,13 +424,16 @@ test("classifyAuditOutput: an invalid registry signature DOES block", () => {
 });
 
 test("classifyAuditOutput: an invalid attestation and a missing signature both block", () => {
-  const attestation = classifyAuditOutput(1, "2 packages have invalid attestations:\n\nfoo@1.0.0 (https://registry.npmjs.org/)\n");
+  const attestation = classifyAuditOutput(
+    1,
+    "2 packages have invalid attestations:\n\nfoo@1.0.0 (https://registry.npmjs.org/)\n"
+  );
   assert.equal(attestation.ok, false);
   assert.match(attestation.detail ?? "", /attestation/);
 
   const missing = classifyAuditOutput(
     1,
-    "1 package has a missing registry signature but the registry is providing signing keys:\n\nfoo@1.0.0 (https://registry.npmjs.org/)\n",
+    "1 package has a missing registry signature but the registry is providing signing keys:\n\nfoo@1.0.0 (https://registry.npmjs.org/)\n"
   );
   assert.equal(missing.ok, false, "the registry handed out keys and then served an unsigned package");
 });
@@ -413,10 +448,18 @@ test("preflight: a provenance failure blocks interactively and names the way out
   await withSandbox(async (s) => {
     await fakeInstall(s.root);
     await baseline(s);
-    const failing = () => ({ ok: false, detail: "invalid registry signature — 1 package has an invalid registry signature:" });
+    const failing = () => ({
+      ok: false,
+      detail: "invalid registry signature — 1 package has an invalid registry signature:",
+    });
 
     const refused = await preflight({
-      root: s.root, unattended: false, force: false, checkProvenance: true, home: s.home, verify: failing,
+      root: s.root,
+      unattended: false,
+      force: false,
+      checkProvenance: true,
+      home: s.home,
+      verify: failing,
     });
     assert.equal(refused.ok, false);
     assert.match(refused.refusal ?? "", /provenance verification failed/);
@@ -432,13 +475,18 @@ test("preflight: an interactive --force overrides a provenance failure, loudly",
     const failing = () => ({ ok: false, detail: "invalid registry signature" });
 
     const forced = await preflight({
-      root: s.root, unattended: false, force: true, checkProvenance: true, home: s.home, verify: failing,
+      root: s.root,
+      unattended: false,
+      force: true,
+      checkProvenance: true,
+      home: s.home,
+      verify: failing,
     });
     assert.equal(forced.ok, true, "the provenance branch must not sit in front of the --force branch");
     assert.equal(forced.refusal, undefined);
     assert.ok(
       forced.notes.some((n) => /overridden by --force/.test(n)),
-      `an overridden supply-chain finding must still be on the record, got ${JSON.stringify(forced.notes)}`,
+      `an overridden supply-chain finding must still be on the record, got ${JSON.stringify(forced.notes)}`
     );
   });
 });
@@ -450,7 +498,12 @@ test("preflight: the unattended path never honours --force on a provenance failu
     const failing = () => ({ ok: false, detail: "invalid registry signature" });
 
     const r = await preflight({
-      root: s.root, unattended: true, force: true, checkProvenance: true, home: s.home, verify: failing,
+      root: s.root,
+      unattended: true,
+      force: true,
+      checkProvenance: true,
+      home: s.home,
+      verify: failing,
     });
     assert.equal(r.ok, false);
     assert.match(r.refusal ?? "", /provenance verification failed/);
@@ -463,10 +516,18 @@ test("preflight: a provenance check that could not run is a note, never a refusa
   await withSandbox(async (s) => {
     await fakeInstall(s.root);
     await baseline(s);
-    const unreachable = () => ({ ok: true, skipped: "provenance could not be verified here — npm error code ENOTCACHED" });
+    const unreachable = () => ({
+      ok: true,
+      skipped: "provenance could not be verified here — npm error code ENOTCACHED",
+    });
 
     const r = await preflight({
-      root: s.root, unattended: true, force: false, checkProvenance: true, home: s.home, verify: unreachable,
+      root: s.root,
+      unattended: true,
+      force: false,
+      checkProvenance: true,
+      home: s.home,
+      verify: unreachable,
     });
     assert.equal(r.ok, true, "behind a company mirror `bastra update` must still work");
     assert.equal(r.refusal, undefined);
@@ -491,7 +552,13 @@ test("a staged refusal is recorded on disk — reason, findings and backup dir s
     await writeFile(join(s.root, "dist", "index.js"), "// local locale fix\n", "utf8");
     await rm(join(s.root, "webui", "js", "app.js"));
 
-    const verdict = await preflight({ root: s.root, unattended: true, force: false, checkProvenance: false, home: s.home });
+    const verdict = await preflight({
+      root: s.root,
+      unattended: true,
+      force: false,
+      checkProvenance: false,
+      home: s.home,
+    });
     assert.equal(verdict.ok, false, "precondition: the unattended path refuses on dirty files");
     await recordBlockedUpdate(verdict, VERSION_UNDER_TEST, s.home);
 
@@ -545,7 +612,7 @@ test("no record, a malformed record and a cleared record all read as 'nothing is
     await writeFile(
       blockedUpdatePath(s.home),
       JSON.stringify({ version: "1.0.0", reason: "held back", blocked_at: new Date().toISOString() }),
-      "utf8",
+      "utf8"
     );
     const partial = await readBlockedUpdate(s.home);
     assert.ok(partial);
@@ -559,7 +626,13 @@ test("clearBlockedUpdate removes the record and is a no-op when there is none", 
     await fakeInstall(s.root);
     await baseline(s);
     await writeFile(join(s.root, "dist", "index.js"), "// patched\n", "utf8");
-    const verdict = await preflight({ root: s.root, unattended: true, force: false, checkProvenance: false, home: s.home });
+    const verdict = await preflight({
+      root: s.root,
+      unattended: true,
+      force: false,
+      checkProvenance: false,
+      home: s.home,
+    });
     await recordBlockedUpdate(verdict, VERSION_UNDER_TEST, s.home);
     assert.ok(await exists(blockedUpdatePath(s.home)));
 
@@ -573,7 +646,8 @@ test("clearBlockedUpdate removes the record and is a no-op when there is none", 
 test("the SessionStart notice states that NOTHING was installed and how to resolve it", async () => {
   const text = formatBlockedUpdate({
     version: "0.8.7",
-    reason: "2 locally modified file(s) found — an automatic update will not replace them. Run 'bastra update' yourself to review and confirm.",
+    reason:
+      "2 locally modified file(s) found — an automatic update will not replace them. Run 'bastra update' yourself to review and confirm.",
     files: ["changed dist/index.js", "missing webui/js/app.js"],
     backup_dir: "/tmp/home/.bastra/update-backups/0.8.7",
     blocked_at: "2026-07-27T09:00:00.000Z",
@@ -656,12 +730,19 @@ test("the patch series is reapplied onto the keg brew just linked — not skippe
   assert.equal(
     patchReapplyRoot(brew, oldRoot, () => newKegScript),
     "/opt/homebrew/opt/bastra-recall/libexec/packages/daemon",
-    "the fresh keg is the tree the user runs next — the running process's keg is superseded",
+    "the fresh keg is the tree the user runs next — the running process's keg is superseded"
   );
-  assert.equal(patchReapplyRoot(brew, oldRoot, () => null), null, "no installed keg found → nothing to patch, never the old one");
+  assert.equal(
+    patchReapplyRoot(brew, oldRoot, () => null),
+    null,
+    "no installed keg found → nothing to patch, never the old one"
+  );
 
   const npm = detectInstallMode("/usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js");
-  assert.equal(patchReapplyRoot(npm, "/usr/local/lib/node_modules/@bastra-recall/daemon"), "/usr/local/lib/node_modules/@bastra-recall/daemon");
+  assert.equal(
+    patchReapplyRoot(npm, "/usr/local/lib/node_modules/@bastra-recall/daemon"),
+    "/usr/local/lib/node_modules/@bastra-recall/daemon"
+  );
   assert.equal(patchReapplyRoot({ ...npm, mode: "source" }, "/repo/packages/daemon"), null);
   assert.equal(patchReapplyRoot({ ...npm, mode: "unknown" }, "/x"), null);
 });
@@ -674,8 +755,14 @@ test("the update step reapplies onto the fresh keg, and asks brew nothing when t
   let recorded = 0;
   const outcome = { applied: [], kept: [], retired: [], setAside: [], ok: true, rolledBack: false };
   const io = {
-    root: (m: typeof brew, p: string) => (rootAsked++, patchReapplyRoot(m, p, () => "/opt/homebrew/opt/bastra-recall/libexec/packages/daemon/dist/index.js")),
-    apply: ((root: string, opts?: { version?: string }) => (calls.push({ root, version: opts?.version }), outcome)) as never,
+    root: (m: typeof brew, p: string) => (
+      rootAsked++,
+      patchReapplyRoot(m, p, () => "/opt/homebrew/opt/bastra-recall/libexec/packages/daemon/dist/index.js")
+    ),
+    apply: ((root: string, opts?: { version?: string }) => (
+      calls.push({ root, version: opts?.version }),
+      outcome
+    )) as never,
     record: (() => void recorded++) as never,
     version: () => "1.0.1",
     out: () => {},

@@ -43,10 +43,23 @@ const ANTWORT_NACH_MS = 300;
 
 function memo(id: string): string {
   return [
-    "---", `id: ${id}`, `title: Deployment-Strategie`, "type: reference",
-    "summary: Deployment-Strategie", "topic_path:", "  - test", "tags:", "  - test",
-    "recall_when:", "  - wenn wir deployen", "created: 2026-01-01", "updated: 2026-01-01",
-    "---", "", "Text über deployen.", "",
+    "---",
+    `id: ${id}`,
+    `title: Deployment-Strategie`,
+    "type: reference",
+    "summary: Deployment-Strategie",
+    "topic_path:",
+    "  - test",
+    "tags:",
+    "  - test",
+    "recall_when:",
+    "  - wenn wir deployen",
+    "created: 2026-01-01",
+    "updated: 2026-01-01",
+    "---",
+    "",
+    "Text über deployen.",
+    "",
   ].join("\n");
 }
 
@@ -54,13 +67,18 @@ function httpPost(port: number, path: string, payload: unknown): Promise<Record<
   const body = JSON.stringify(payload);
   return new Promise((resolve, reject) => {
     const req = request(
-      { host: "127.0.0.1", port, path, method: "POST",
-        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) } },
+      {
+        host: "127.0.0.1",
+        port,
+        path,
+        method: "POST",
+        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+      },
       (res) => {
         let raw = "";
         res.on("data", (c) => (raw += c));
         res.on("end", () => resolve(JSON.parse(raw || "{}") as Record<string, unknown>));
-      },
+      }
     );
     req.on("error", reject);
     req.end(body);
@@ -71,7 +89,11 @@ async function readEvents(logDir: string, kind: string): Promise<Record<string, 
   for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 40));
     let files: string[];
-    try { files = await readdir(logDir); } catch { continue; }
+    try {
+      files = await readdir(logDir);
+    } catch {
+      continue;
+    }
     const out: Record<string, unknown>[] = [];
     for (const f of files.filter((n) => n.startsWith("events-"))) {
       const raw = await readFile(join(logDir, f), "utf8");
@@ -102,8 +124,8 @@ function spaeterArm() {
               providerLoadMs: null,
               coldStartObserved: false,
             }),
-          ANTWORT_NACH_MS,
-        ),
+          ANTWORT_NACH_MS
+        )
       ),
   } as never;
 }
@@ -123,7 +145,11 @@ async function daemon(t: { after: (fn: () => unknown) => void }) {
   if (prev === undefined) delete process.env.BASTRA_LOG_PATH;
   else process.env.BASTRA_LOG_PATH = prev;
   const handle = await startHttpServer({
-    port: 0, vault, search, telemetry, version: "test",
+    port: 0,
+    vault,
+    search,
+    telemetry,
+    version: "test",
     toolDeps: { vault, search, telemetry, vaultPath: dir },
     documentWriteEnabled: false,
     embedding: { on: true, providerId: "test", source: "none" },
@@ -148,7 +174,7 @@ test("#489: ein aufgegebener Arm schreibt die Wartezeit und, später, sein echte
   assert.equal(typeof stages.vector_wait_ms, "number", "`vector_wait_ms` muss in `recall_stages` ankommen");
   assert.ok(
     stages.vector_wait_ms >= DEADLINE_MS - SCHEDULER_SLACK_MS && stages.vector_wait_ms < ANTWORT_NACH_MS,
-    `die Wartezeit liegt auf der Deadline, war ${stages.vector_wait_ms} ms`,
+    `die Wartezeit liegt auf der Deadline, war ${stages.vector_wait_ms} ms`
   );
   // Die alte Serie behält ihre Bedeutung: Spanne ab dem Abfeuern, überlappend.
   assert.equal(typeof stages.vector_search_ms, "number", "`vector_search_ms` bleibt erhalten");
@@ -162,6 +188,6 @@ test("#489: ein aufgegebener Arm schreibt die Wartezeit und, später, sein echte
   assert.equal(spaet[0].deadline_ms, DEADLINE_MS);
   assert.ok(
     (spaet[0].settle_ms as number) >= ANTWORT_NACH_MS - 40,
-    `das echte Settle meldet die volle Dauer, nicht die Frist — war ${spaet[0].settle_ms} ms`,
+    `das echte Settle meldet die volle Dauer, nicht die Frist — war ${spaet[0].settle_ms} ms`
   );
 });

@@ -1,16 +1,8 @@
 import { darkTheme, darkAnsi256Theme, darkAnsiTheme } from "./dark";
 import { lightTheme, lightAnsi256Theme, lightAnsiTheme } from "./light";
 import { nordTheme, nordAnsi256Theme, nordAnsiTheme } from "./nord";
-import {
-  tokyoNightTheme,
-  tokyoNightAnsi256Theme,
-  tokyoNightAnsiTheme,
-} from "./tokyo-night";
-import {
-  rosePineTheme,
-  rosePineAnsi256Theme,
-  rosePineAnsiTheme,
-} from "./rose-pine";
+import { tokyoNightTheme, tokyoNightAnsi256Theme, tokyoNightAnsiTheme } from "./tokyo-night";
+import { rosePineTheme, rosePineAnsi256Theme, rosePineAnsiTheme } from "./rose-pine";
 import { gruvboxTheme, gruvboxAnsi256Theme, gruvboxAnsiTheme } from "./gruvbox";
 
 export interface SegmentColor {
@@ -121,7 +113,7 @@ export const BUILT_IN_THEMES: Record<string, ColorTheme> = {
 
 export function getTheme(
   themeName: string,
-  colorSupport?: "none" | "ansi" | "ansi256" | "truecolor",
+  colorSupport?: "none" | "ansi" | "ansi256" | "truecolor"
 ): ColorTheme | null {
   const baseTheme = BUILT_IN_THEMES[themeName];
   if (!baseTheme) return null;

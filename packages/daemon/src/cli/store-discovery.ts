@@ -79,14 +79,18 @@ async function readJson(path: string): Promise<Record<string, unknown> | null> {
 }
 
 function vaultOf(servers: unknown): string | null {
-  const block = (servers as Record<string, unknown> | undefined)?.[SERVER_KEY] as { env?: Record<string, unknown> } | undefined;
+  const block = (servers as Record<string, unknown> | undefined)?.[SERVER_KEY] as
+    { env?: Record<string, unknown> } | undefined;
   const v = block?.env?.BASTRA_VAULT_PATH;
   return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
 }
 
 /** The registrations a JSON client config carries: top level, and Claude
  *  Code's per-project `projects.<dir>.mcpServers`. Exported for tests. */
-export function registrationsFromConfig(source: string, data: Record<string, unknown> | null): Array<{ source: string; path: string }> {
+export function registrationsFromConfig(
+  source: string,
+  data: Record<string, unknown> | null
+): Array<{ source: string; path: string }> {
   if (!data) return [];
   const out: Array<{ source: string; path: string }> = [];
   const top = vaultOf(data.mcpServers);
@@ -267,7 +271,10 @@ export function formatDiscovery(d: StoreDiscovery): string {
     const facts: string[] = [];
     if (s.sources.length) facts.push(`found via: ${s.sources.join(", ")}`);
     if (!s.exists) facts.push("missing");
-    else facts.push(`audit log: ${s.auditMemories} memor${s.auditMemories === 1 ? "y" : "ies"}, ${s.sharedWithThis} shared with this vault`);
+    else
+      facts.push(
+        `audit log: ${s.auditMemories} memor${s.auditMemories === 1 ? "y" : "ies"}, ${s.sharedWithThis} shared with this vault`
+      );
     out.push(`    ${facts.join("; ")}`);
     if (s.aliases.length) out.push(`    also reached as: ${s.aliases.join(", ")}`);
     return out;

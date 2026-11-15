@@ -8,10 +8,7 @@
 import { Vault, SearchIndex } from "@bastra-recall/core";
 import { resolve } from "node:path";
 
-const DEFAULT_VAULT = resolve(
-  import.meta.dirname,
-  "../../../fixtures/sample-vault",
-);
+const DEFAULT_VAULT = resolve(import.meta.dirname, "../../../fixtures/sample-vault");
 const VAULT = process.env.BASTRA_VAULT_PATH ?? process.env.NEXUS_VAULT_PATH ?? DEFAULT_VAULT;
 
 const QUERIES: { query: string; expectIds?: string[] }[] = [
@@ -64,9 +61,7 @@ async function main(): Promise<void> {
     const hits = search.recall(q.query, { k: 5 });
     const elapsed = Date.now() - t1;
     const top = hits.slice(0, 5);
-    const found = q.expectIds
-      ? q.expectIds.every((id) => top.some((h) => h.id === id))
-      : true;
+    const found = q.expectIds ? q.expectIds.every((id) => top.some((h) => h.id === id)) : true;
     if (found) passes++;
     const status = found ? "PASS" : "FAIL";
     console.error(`── [${status}] "${q.query}"  (${elapsed}ms, ${hits.length} hits)`);
@@ -75,9 +70,7 @@ async function main(): Promise<void> {
     }
     for (const h of top) {
       const mark = q.expectIds?.includes(h.id) ? "★" : " ";
-      console.error(
-        `   ${mark} ${h.score.toFixed(2).padStart(8)}  ${h.id.padEnd(50)} ${h.title}`,
-      );
+      console.error(`   ${mark} ${h.score.toFixed(2).padStart(8)}  ${h.id.padEnd(50)} ${h.title}`);
     }
     if (!found && q.expectIds) {
       const missing = q.expectIds.filter((id) => !top.some((h) => h.id === id));
@@ -86,9 +79,7 @@ async function main(): Promise<void> {
     console.error("");
   }
 
-  console.error(
-    `[smoke] ${passes}/${QUERIES.length} expected-id queries passed`,
-  );
+  console.error(`[smoke] ${passes}/${QUERIES.length} expected-id queries passed`);
   search.stop();
   await vault.stop();
   process.exit(passes === QUERIES.length ? 0 : 1);

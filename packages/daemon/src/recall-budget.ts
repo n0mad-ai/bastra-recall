@@ -54,7 +54,7 @@ export interface BudgetedPayload<R> {
 export function fitRecallToBudget<H, R>(
   hits: H[],
   budget: number | undefined,
-  build: (emitted: H[], droppedByBudget: number) => R,
+  build: (emitted: H[], droppedByBudget: number) => R
 ): BudgetedPayload<R> {
   const tokens = budget ?? 0;
   if (tokens <= 0) return { payload: build(hits, 0), dropped: 0 };
@@ -91,7 +91,7 @@ export function fitRecallWithReflexToBudget<H, F, R>(
   hits: H[],
   reflexHits: F[],
   budget: number | undefined,
-  build: (emittedHits: H[], emittedReflex: F[], droppedByBudget: number) => R,
+  build: (emittedHits: H[], emittedReflex: F[], droppedByBudget: number) => R
 ): BudgetedPayload<R> {
   type Entry = { reflex: true; hit: F } | { reflex: false; hit: H };
   const order: Entry[] = [
@@ -102,7 +102,7 @@ export function fitRecallWithReflexToBudget<H, F, R>(
     build(
       emitted.flatMap((e) => (e.reflex ? [] : [e.hit])),
       emitted.flatMap((e) => (e.reflex ? [e.hit] : [])),
-      dropped,
-    ),
+      dropped
+    )
   );
 }

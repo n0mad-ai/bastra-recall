@@ -98,7 +98,12 @@ export function foldOf(query: string, folds: number = VERIFY_FOLDS): number {
 function goldByRecallId(events: TelemetryEvent[]): Map<string, string> {
   const gold = new Map<string, string>();
   for (const e of events) {
-    if (e.kind === "recall_episode" && e.acted_on === true && typeof e.recall_id === "string" && typeof e.memory_id === "string") {
+    if (
+      e.kind === "recall_episode" &&
+      e.acted_on === true &&
+      typeof e.recall_id === "string" &&
+      typeof e.memory_id === "string"
+    ) {
       if (!gold.has(e.recall_id)) gold.set(e.recall_id, e.memory_id);
     }
   }
@@ -122,7 +127,12 @@ export function heldOutCases(events: TelemetryEvent[], folds: number = VERIFY_FO
     const key = `${normalize(entry.query)}\n${g}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ query: entry.query, gold: g, fold: foldOf(entry.query, folds), inPool: entry.pool.some((p) => p.id === g) });
+    out.push({
+      query: entry.query,
+      gold: g,
+      fold: foldOf(entry.query, folds),
+      inPool: entry.pool.some((p) => p.id === g),
+    });
   }
   return out;
 }
@@ -203,9 +213,16 @@ export function verifyBridges(opts: {
         if (opts.only && !opts.only.has(b.id)) return;
         const added = single[i].expansionsFor(c.query);
         if (added.length === 0) return;
-        const v =
-          perBridge.get(b.id) ??
-          { id: b.id, fires: 0, lift: 0, nullLift: 0, nullFires: 0, liftSum: 0, nullSum: 0, byStratum: emptyStrata() };
+        const v = perBridge.get(b.id) ?? {
+          id: b.id,
+          fires: 0,
+          lift: 0,
+          nullLift: 0,
+          nullFires: 0,
+          liftSum: 0,
+          nullSum: 0,
+          byStratum: emptyStrata(),
+        };
         perBridge.set(b.id, v);
         const m = measure(added);
         v.fires++;
@@ -224,7 +241,11 @@ export function verifyBridges(opts: {
   const out = new Map<string, BridgeVerdict>();
   for (const [id, v] of perBridge) {
     const { liftSum, nullSum, ...rest } = v;
-    out.set(id, { ...rest, lift: v.fires > 0 ? liftSum / v.fires : 0, nullLift: v.nullFires > 0 ? nullSum / v.nullFires : 0 });
+    out.set(id, {
+      ...rest,
+      lift: v.fires > 0 ? liftSum / v.fires : 0,
+      nullLift: v.nullFires > 0 ? nullSum / v.nullFires : 0,
+    });
   }
   return { folds, cases: cases.length, pool, perBridge: out };
 }
@@ -249,7 +270,8 @@ export interface ContributionVerdict {
 export function contributionVerdict(b: Bridge, v: BridgeVerdict | undefined): ContributionVerdict {
   const reasons: string[] = [];
   if (typeof b.demoted_at === "string") reasons.push("demoted (fired without outcome)");
-  if (!isConfirmedBridge(b)) reasons.push(`unconfirmed (evidence ${b.evidence} < ${CONFIRMED_BRIDGE_EVIDENCE} independent occasions)`);
+  if (!isConfirmedBridge(b))
+    reasons.push(`unconfirmed (evidence ${b.evidence} < ${CONFIRMED_BRIDGE_EVIDENCE} independent occasions)`);
   if (!v || v.fires === 0) {
     // A bridge already out on the rules above is not measured at all (`only`).
     if (reasons.length === 0) reasons.push("no held-out fire (unmeasured)");
@@ -257,10 +279,12 @@ export function contributionVerdict(b: Bridge, v: BridgeVerdict | undefined): Co
   }
   for (const s of STRATA) {
     const slice = v.byStratum[s];
-    if (slice.fired > 0 && slice.liftSum < 0) reasons.push(`held-out lift < 0 on ${s} (${(slice.liftSum / slice.fired).toFixed(3)})`);
+    if (slice.fired > 0 && slice.liftSum < 0)
+      reasons.push(`held-out lift < 0 on ${s} (${(slice.liftSum / slice.fired).toFixed(3)})`);
   }
   const regressions = STRATA.reduce((n, s) => n + v.byStratum[s].regressions, 0);
   if (regressions > 0) reasons.push(`pushed ${regressions} near hit(s) out of the top ${SERVING_K}`);
-  if (v.lift < v.nullLift) reasons.push(`lift ${v.lift.toFixed(3)} below the foreign-expansion null ${v.nullLift.toFixed(3)}`);
+  if (v.lift < v.nullLift)
+    reasons.push(`lift ${v.lift.toFixed(3)} below the foreign-expansion null ${v.nullLift.toFixed(3)}`);
   return { eligible: reasons.length === 0, reasons };
 }

@@ -33,7 +33,7 @@ export function applyStaleness(
   curatorDemotions: ReadonlySet<string>,
   hits: RecallHit[],
   opts: RecallOptions = {},
-  now: Date = new Date(),
+  now: Date = new Date()
 ): RecallHit[] {
   const nowMs = now.getTime();
   for (const h of hits) {
@@ -41,8 +41,7 @@ export function applyStaleness(
     if (!fm) continue;
     const touchTs = computeTouchTs(fm);
     let entry = stalenessCache.get(h.id);
-    const ttlExpired =
-      entry != null && nowMs - entry.computedAt > STALENESS_CACHE_TTL_MS;
+    const ttlExpired = entry != null && nowMs - entry.computedAt > STALENESS_CACHE_TTL_MS;
     if (!entry || entry.touchTs !== touchTs || ttlExpired) {
       const status = computeStaleness(fm, now);
       entry = { touchTs, status, computedAt: nowMs };
@@ -56,8 +55,7 @@ export function applyStaleness(
     // wie salienceRankMode() im Daemon — sonst schaltet "LIVE" beide Lanes
     // still aus (Review-Finding).
     if ((process.env.BASTRA_SALIENCE_RANK ?? "").toLowerCase() === "live") {
-      const sal =
-        typeof fm.salience === "number" ? Math.min(Math.max(fm.salience, 0), 1) : 0;
+      const sal = typeof fm.salience === "number" ? Math.min(Math.max(fm.salience, 0), 1) : 0;
       if (sal > 0) mult *= 1 + sal * salienceRankCap();
     }
     if (mult !== 1.0) h.score = round(h.score * mult);
@@ -77,10 +75,13 @@ export function applyStaleness(
  * No extra retrieval, disk access or model calls.
  */
 function promoteSuccessorScores(vault: Vault, hits: RecallHit[]): void {
-  visitSupersession(hits, hit => vault.get(hit.id)?.fm.superseded_by,
+  visitSupersession(
+    hits,
+    (hit) => vault.get(hit.id)?.fm.superseded_by,
     (hit, successor) => {
       successor.score = Math.max(successor.score, round(hit.score + 0.001));
-    });
+    }
+  );
 }
 
 // MARK: - Lifecycle-Reranking (#74)
@@ -153,10 +154,7 @@ export function salienceRankCap(): number {
   return Number.isFinite(raw) ? Math.min(Math.max(raw, 0), 1) : 0.25;
 }
 
-export function computeStaleness(
-  fm: Record<string, unknown>,
-  now: Date = new Date(),
-): StaleStatus {
+export function computeStaleness(fm: Record<string, unknown>, now: Date = new Date()): StaleStatus {
   const updated = parseDateValue(fm.updated);
   const lastReviewed = parseDateValue(fm.last_reviewed_at);
   const touch = Math.max(updated ?? 0, lastReviewed ?? 0);
@@ -179,18 +177,15 @@ export function computeStaleness(
   }
 
   const type = String(fm.type ?? "");
-  const userOverride =
-    typeof fm.expires_after_days === "number" ? (fm.expires_after_days as number) : null;
-  const typeDefault =
-    type in DEFAULT_EXPIRATION_DAYS ? DEFAULT_EXPIRATION_DAYS[type] : null;
+  const userOverride = typeof fm.expires_after_days === "number" ? (fm.expires_after_days as number) : null;
+  const typeDefault = type in DEFAULT_EXPIRATION_DAYS ? DEFAULT_EXPIRATION_DAYS[type] : null;
   let days = userOverride ?? typeDefault;
   if (days == null || days <= 0) return "fresh";
 
   // #217 Valenz: hohe Salience altert langsamer — emotional aufgeladene
   // Memories verblassen zuletzt. salience 1 = doppelte Lebensdauer.
   // `valid_until` bleibt unberührt (explizites User-Datum gewinnt).
-  const salience =
-    typeof fm.salience === "number" ? Math.min(Math.max(fm.salience, 0), 1) : 0;
+  const salience = typeof fm.salience === "number" ? Math.min(Math.max(fm.salience, 0), 1) : 0;
   if (salience > 0) days = days * (1 + salience);
 
   if (touch <= 0) return "fresh";
@@ -236,7 +231,7 @@ function computeTouchTs(fm: Record<string, unknown>): number {
 export function applyStalenessMultiplier(
   hits: RecallHit[],
   resolveFrontmatter: (id: string) => Record<string, unknown> | undefined,
-  now: Date = new Date(),
+  now: Date = new Date()
 ): RecallHit[] {
   for (const h of hits) {
     const fm = resolveFrontmatter(h.id);

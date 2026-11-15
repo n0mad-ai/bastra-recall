@@ -75,8 +75,11 @@ test("a normal save reports a real collision with an unrelated memory", async (t
   const held = await saveMemoryHandler(deps, base("Telemetry Review April"));
 
   assert.equal(held.created, false, "an unanswered claim must not create a memory");
-  assert.match(JSON.stringify(held), /telemetry-review-march/,
-    "the gate must name the memory whose claim is unanswered");
+  assert.match(
+    JSON.stringify(held),
+    /telemetry-review-march/,
+    "the gate must name the memory whose claim is unanswered"
+  );
 });
 
 test("the replaces predecessor is excluded from collision warnings", async (t) => {
@@ -84,14 +87,14 @@ test("the replaces predecessor is excluded from collision warnings", async (t) =
   t.after(close);
 
   const first = await saveMemoryHandler(deps, base("Telemetry Review March"));
-  const second = await saveMemoryHandler(
-    deps,
-    base("Telemetry Review April", { replaces: first.id }),
-  );
+  const second = await saveMemoryHandler(deps, base("Telemetry Review April", { replaces: first.id }));
 
   assert.equal(second.created, true, "a declared supersession must be written");
-  assert.deepEqual(collisionsWith(second), [],
-    "the predecessor answered this claim — it must not be reported as a collision");
+  assert.deepEqual(
+    collisionsWith(second),
+    [],
+    "the predecessor answered this claim — it must not be reported as a collision"
+  );
 });
 
 test("the whole replacement chain is excluded, not just the direct predecessor", async (t) => {
@@ -103,8 +106,7 @@ test("the whole replacement chain is excluded, not just the direct predecessor",
   const v3 = await saveMemoryHandler(deps, base("Telemetry Review May", { replaces: v2.id }));
 
   assert.equal(v3.created, true, "the third version must be written");
-  assert.deepEqual(collisionsWith(v3), [],
-    "v1 is reachable through v2 and must be excluded with it");
+  assert.deepEqual(collisionsWith(v3), [], "v1 is reachable through v2 and must be excluded with it");
 });
 
 test("overwrite with replaces reports no collision either (the gate is skipped there)", async (t) => {
@@ -115,11 +117,14 @@ test("overwrite with replaces reports no collision either (the gate is skipped t
   await saveMemoryHandler(deps, base("Telemetry Review April", { replaces: first.id }));
   const again = await saveMemoryHandler(
     deps,
-    base("Telemetry Review April", { replaces: first.id, overwrite: true, body: "Revised numbers." }),
+    base("Telemetry Review April", { replaces: first.id, overwrite: true, body: "Revised numbers." })
   );
 
-  assert.deepEqual(collisionsWith(again), [],
-    "overwrite skips the gate, so the report itself must not name the superseded predecessor");
+  assert.deepEqual(
+    collisionsWith(again),
+    [],
+    "overwrite skips the gate, so the report itself must not name the superseded predecessor"
+  );
 });
 
 test("a foreign memory's claim stays visible even when a replaces is declared", async (t) => {
@@ -129,21 +134,17 @@ test("a foreign memory's claim stays visible even when a replaces is declared", 
   const predecessor = await saveMemoryHandler(deps, base("Telemetry Review March"));
   // A second, unrelated memory claiming the SAME situation. Written with the
   // gate answered by `sibling_of`, so the vault legitimately holds two.
-  const foreign = await saveMemoryHandler(
-    deps,
-    base("Ingest Telemetry Notes", { sibling_of: [predecessor.id] }),
-  );
+  const foreign = await saveMemoryHandler(deps, base("Ingest Telemetry Notes", { sibling_of: [predecessor.id] }));
   assert.equal(foreign.created, true, "the sibling save must be written");
 
-  const successor = await saveMemoryHandler(
-    deps,
-    base("Telemetry Review April", { replaces: predecessor.id }),
-  );
+  const successor = await saveMemoryHandler(deps, base("Telemetry Review April", { replaces: predecessor.id }));
 
   const named = collisionsWith(successor);
   assert.ok(!named.includes(predecessor.id), "the superseded predecessor stays excluded");
-  assert.ok(named.includes(foreign.id ?? "ingest-telemetry-notes"),
-    "an unrelated memory claiming the same situation must still be reported");
+  assert.ok(
+    named.includes(foreign.id ?? "ingest-telemetry-notes"),
+    "an unrelated memory claiming the same situation must still be reported"
+  );
 });
 
 test("overwrite carries the chain from frontmatter when the payload omits replaces", async (t) => {
@@ -156,9 +157,12 @@ test("overwrite carries the chain from frontmatter when the payload omits replac
   // `replaces` — the supersession is already recorded in its frontmatter.
   const updated = await saveMemoryHandler(
     deps,
-    base("Telemetry Review April", { overwrite: true, body: "Revised numbers." }),
+    base("Telemetry Review April", { overwrite: true, body: "Revised numbers." })
   );
 
-  assert.deepEqual(collisionsWith(updated), [],
-    "the chain must be read from the stored frontmatter, not only from the payload");
+  assert.deepEqual(
+    collisionsWith(updated),
+    [],
+    "the chain must be read from the stored frontmatter, not only from the payload"
+  );
 });

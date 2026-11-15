@@ -35,10 +35,7 @@ test("a cut is a rank, and the shipped constants put REQUIRED near the top of bo
   // The inversion the issue rests on: score = 2·SCALE/(K+rank) for a hit both
   // arms found, so cut ⇒ rank. Checked against the shipped pair first.
   const shipped = twoArmedRankFor(MUST_LOAD, RRF_K, RRF_SCALE);
-  assert.ok(
-    shipped >= 1 && shipped <= 10,
-    `REQUIRED must mean "both arms ranked it near the top", got top-${shipped}`,
-  );
+  assert.ok(shipped >= 1 && shipped <= 10, `REQUIRED must mean "both arms ranked it near the top", got top-${shipped}`);
 
   // The k it replaced, with the scale that went with it: the same cut sat at
   // rank 40 — which is why every two-armed hit cleared it and the band said
@@ -50,7 +47,7 @@ test("a cut is a rank, and the shipped constants put REQUIRED near the top of bo
   const floorRank = twoArmedRankFor(FLOOR, RRF_K, RRF_SCALE);
   assert.ok(
     floorRank > shipped * 2,
-    `the OPTIONAL band needs room: floor at top-${floorRank} vs REQUIRED at top-${shipped}`,
+    `the OPTIONAL band needs room: floor at top-${floorRank} vs REQUIRED at top-${shipped}`
   );
 });
 
@@ -58,11 +55,7 @@ test("the fused wording claims agreement, not similarity", () => {
   const block = formatHintBlock([hit("a", 164)], [hit("b", 60)], null, false, false, false);
 
   assert.match(block, /[Bb]oth search paths agreed/, "the REQUIRED line states what was measured");
-  assert.doesNotMatch(
-    block,
-    /Strong matches/,
-    "strength is exactly the claim the score does not support",
-  );
+  assert.doesNotMatch(block, /Strong matches/, "strength is exactly the claim the score does not support");
   // The OPTIONAL band's real content: one arm, or both but lower.
   assert.match(block, /ONE search path only, or by both but ranked lower/);
 });
@@ -72,15 +65,11 @@ test("without a vector arm there are no bands to claim", () => {
 
   assert.match(block, /semantic search is off/i, "the reader has to know no second path ran");
   assert.match(block, /open-ended scale/i, "raw BM25 has no ceiling — say so");
-  assert.doesNotMatch(
-    block,
-    /both search paths agreed/i,
-    "nothing agreed: there was only one path",
-  );
+  assert.doesNotMatch(block, /both search paths agreed/i, "nothing agreed: there was only one path");
   assert.doesNotMatch(
     block,
     new RegExp(`score ≥${MUST_LOAD}`),
-    "the fused cut describes nothing on an unbounded scale",
+    "the fused cut describes nothing on an unbounded scale"
   );
 });
 

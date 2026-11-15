@@ -32,14 +32,7 @@
  * unusable — see its comment for why the pool size is nearly constant here.
  */
 import type { RecallHit } from "@bastra-recall/core";
-import {
-  firstExpectedRank,
-  mean,
-  pairedComparison,
-  recallAny,
-  sliceBy,
-  type PairedResult,
-} from "./rerank-metrics.js";
+import { firstExpectedRank, mean, pairedComparison, recallAny, sliceBy, type PairedResult } from "./rerank-metrics.js";
 
 /**
  * Below this a slice is reported, not measured.
@@ -117,7 +110,10 @@ export type ArmRanking = Record<number, RecallHit[]>;
  * from deeper in the pool.
  */
 export function served(hits: readonly RecallHit[], k: number, floor: number): string[] {
-  return hits.slice(0, k).filter((h) => h.score >= floor).map((h) => h.id);
+  return hits
+    .slice(0, k)
+    .filter((h) => h.score >= floor)
+    .map((h) => h.id);
 }
 
 export interface CutMetrics {
@@ -176,16 +172,17 @@ function cut(
   expectedOf: (r: CaseRow) => Set<string>,
   floor: number,
   serveK: number,
-  seed: number,
+  seed: number
 ): CutMetrics {
   const base = rows.map((r) => recallAny(served(r.baseline, serveK, floor), expectedOf(r), k));
-  const rer = rows.map((r) =>
-    recallAny(served(rankings.get(r.id)![n], serveK, floor), expectedOf(r), k),
-  );
+  const rer = rows.map((r) => recallAny(served(rankings.get(r.id)![n], serveK, floor), expectedOf(r), k));
   return {
     baseline: mean(base),
     reranked: mean(rer),
-    paired: pairedComparison(rer.map((v, i) => v - base[i]), { seed }),
+    paired: pairedComparison(
+      rer.map((v, i) => v - base[i]),
+      { seed }
+    ),
   };
 }
 
@@ -196,7 +193,7 @@ function sliceReport(
   floor: number,
   serveK: number,
   seed: number,
-  minN = MIN_SLICE_N,
+  minN = MIN_SLICE_N
 ): SliceReport {
   if (rows.length < minN) {
     return {
@@ -207,10 +204,11 @@ function sliceReport(
   const at: Record<string, PairedResult> = {};
   for (const k of KS) {
     const base = rows.map((r) => recallAny(served(r.baseline, serveK, floor), r.expected, k));
-    const rer = rows.map((r) =>
-      recallAny(served(rankings.get(r.id)![n], serveK, floor), r.expected, k),
+    const rer = rows.map((r) => recallAny(served(rankings.get(r.id)![n], serveK, floor), r.expected, k));
+    at[`r@${k}`] = pairedComparison(
+      rer.map((v, i) => v - base[i]),
+      { seed }
     );
-    at[`r@${k}`] = pairedComparison(rer.map((v, i) => v - base[i]), { seed });
   }
   return { n: rows.length, at };
 }
@@ -283,7 +281,12 @@ export function reportArm(opts: {
   // "Gold is inside this arm's window" — the numerator of recall_any_at_n, so
   // the subset is defined by the arm's own N rather than by a second rule.
   const reachable = rows.filter(
-    (r) => recallAny(r.baseline.slice(0, n).map((h) => h.id), r.expected, n) === 1,
+    (r) =>
+      recallAny(
+        r.baseline.slice(0, n).map((h) => h.id),
+        r.expected,
+        n
+      ) === 1
   );
   const inPoolOnly = sliceReport(reachable, rankings, n, floor, serveK, seed);
 
@@ -296,11 +299,7 @@ export function reportArm(opts: {
   }
 
   const regressions = rows.filter((r) =>
-    regressed(
-      served(r.baseline, serveK, floor),
-      served(rankings.get(r.id)![n], serveK, floor),
-      r.expected,
-    ),
+    regressed(served(r.baseline, serveK, floor), served(rankings.get(r.id)![n], serveK, floor), r.expected)
   ).length;
 
   return {
@@ -313,7 +312,15 @@ export function reportArm(opts: {
     at_no_floor_upper_bound: atNoFloor,
     // The ceiling is a property of the POOL, so it is measured on the window
     // before the cut — that is what "could a rerank have found it at all" means.
-    recall_any_at_n: mean(rows.map((r) => recallAny(r.baseline.slice(0, n).map((h) => h.id), r.expected, n))),
+    recall_any_at_n: mean(
+      rows.map((r) =>
+        recallAny(
+          r.baseline.slice(0, n).map((h) => h.id),
+          r.expected,
+          n
+        )
+      )
+    ),
     rank_regression_share: rows.length === 0 ? 0 : regressions / rows.length,
     by_lang: byLang,
     by_kind: byKind,
@@ -322,7 +329,15 @@ export function reportArm(opts: {
     pool_split: opts.poolSplit,
     // 50, not MIN_SLICE_N: an entire recommendation shape hangs on this one
     // slice, so it carries the higher registered bar.
-    weak_result: sliceReport(rows.filter((r) => r.weakResult), rankings, n, floor, serveK, seed, 50),
+    weak_result: sliceReport(
+      rows.filter((r) => r.weakResult),
+      rankings,
+      n,
+      floor,
+      serveK,
+      seed,
+      50
+    ),
   };
 }
 
@@ -338,7 +353,10 @@ export function reportArm(opts: {
 export function countIntervals(reports: readonly ArmReport[]): number {
   let n = 0;
   for (const r of reports) {
-    n += Object.keys(r.at).length + Object.keys(r.at_incl_acceptable).length + Object.keys(r.at_no_floor_upper_bound).length;
+    n +=
+      Object.keys(r.at).length +
+      Object.keys(r.at_incl_acceptable).length +
+      Object.keys(r.at_no_floor_upper_bound).length;
     for (const s of [
       ...Object.values(r.by_lang),
       ...Object.values(r.by_kind),
@@ -366,7 +384,7 @@ export function noAnswerGuard(
   rankings: Map<string, ArmRanking>,
   n: number,
   serveK: number,
-  floor: number,
+  floor: number
 ): { n_cases: number; top1_changed: number; share: number } {
   let changed = 0;
   for (const r of rows) {

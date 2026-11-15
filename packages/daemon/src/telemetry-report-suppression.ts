@@ -15,7 +15,7 @@ export interface HintSuppressionSection {
 }
 
 type Event = Record<string, unknown> & { kind: string };
-const numberOrNull = (v: unknown): number | null => typeof v === "number" && Number.isFinite(v) ? v : null;
+const numberOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 export function summarizeHintSuppression(events: Event[]): HintSuppressionSection | null {
   const byType = new Map<string, number>();
@@ -26,7 +26,8 @@ export function summarizeHintSuppression(events: Event[]): HintSuppressionSectio
   let unknownTokenCalls = 0;
   const byMode = new Map<string, number>();
   for (const event of events) {
-    if (event.kind !== "hook_recall" || !Array.isArray(event.usage_suppressed) || event.usage_suppressed.length === 0) continue;
+    if (event.kind !== "hook_recall" || !Array.isArray(event.usage_suppressed) || event.usage_suppressed.length === 0)
+      continue;
     calls++;
     hints += event.usage_suppressed.length;
     const mode = typeof event.usage_suppressed_mode === "string" ? event.usage_suppressed_mode : "live";
@@ -53,6 +54,9 @@ export function summarizeHintSuppression(events: Event[]): HintSuppressionSectio
     unknownTokenCalls,
     uniqueMemories: byId.size,
     byType: [...byType].map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count),
-    topMemories: [...byId].map(([id, row]) => ({ id, ...row })).sort((a, b) => b.count - a.count).slice(0, 15),
+    topMemories: [...byId]
+      .map(([id, row]) => ({ id, ...row }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 15),
   };
 }

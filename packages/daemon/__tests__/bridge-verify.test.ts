@@ -15,7 +15,13 @@ import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { harvestBridges, reconstructReaches, type TelemetryEvent } from "../src/learned-recall/harvest.js";
 import { mintBridge, type Bridge } from "../src/learned-recall/bridges.js";
-import { contributionVerdict, foldOf, heldOutCases, verifyBridges, type BridgeVerdict } from "../src/learned-recall/verify.js";
+import {
+  contributionVerdict,
+  foldOf,
+  heldOutCases,
+  verifyBridges,
+  type BridgeVerdict,
+} from "../src/learned-recall/verify.js";
 
 const TERMS: Record<string, string[]> = {
   panel: ["nspanel", "resignkey", "observer"],
@@ -95,7 +101,10 @@ test("#129 k-fold: a bridge from the training folds lifts a held-out out-of-pool
   assert.equal(b.byStratum.near.regressions, 1);
   const vb = contributionVerdict({ ...bridgeB, evidence: 2 }, b);
   assert.equal(vb.eligible, false);
-  assert.ok(vb.reasons.some((r) => r.includes("near hit")), vb.reasons.join("; "));
+  assert.ok(
+    vb.reasons.some((r) => r.includes("near hit")),
+    vb.reasons.join("; ")
+  );
 
   // Pool level: the near slice reports the regression too.
   assert.equal(report.pool.near.cases, 1);
@@ -105,9 +114,17 @@ test("#129 k-fold: a bridge from the training folds lifts a held-out out-of-pool
 
 test("#129 evidence: repeats inside one session are one confirmation, other sessions add", () => {
   const q = "warum schließt sich das fenster beim dialog";
-  const same = reconstructReaches([...reach(q, "panel", "s1", ["d1"]), ...reach(q, "panel", "s1", ["d1"]), ...reach(q, "panel", "s1", ["d1"])]);
+  const same = reconstructReaches([
+    ...reach(q, "panel", "s1", ["d1"]),
+    ...reach(q, "panel", "s1", ["d1"]),
+    ...reach(q, "panel", "s1", ["d1"]),
+  ]);
   assert.equal(harvestBridges(same, getMemoryTerms).bridges[0].evidence, 1);
-  const spread = reconstructReaches([...reach(q, "panel", "s1", ["d1"]), ...reach(q, "panel", "s2", ["d1"]), ...reach(q, "panel", "s3", ["d1"])]);
+  const spread = reconstructReaches([
+    ...reach(q, "panel", "s1", ["d1"]),
+    ...reach(q, "panel", "s2", ["d1"]),
+    ...reach(q, "panel", "s3", ["d1"]),
+  ]);
   assert.equal(harvestBridges(spread, getMemoryTerms).bridges[0].evidence, 3);
 });
 
@@ -119,7 +136,10 @@ test("#129 evidence: without a session the day is the occasion; without either, 
     { query: q, memoryId: "panel", ts: "2026-09-02T10:00:00Z" },
   ];
   assert.equal(harvestBridges(days, getMemoryTerms).bridges[0].evidence, 2);
-  const bare = [{ query: q, memoryId: "panel" }, { query: q, memoryId: "panel" }];
+  const bare = [
+    { query: q, memoryId: "panel" },
+    { query: q, memoryId: "panel" },
+  ];
   assert.equal(harvestBridges(bare, getMemoryTerms).bridges[0].evidence, 1);
 });
 
@@ -131,15 +151,28 @@ function verdict(over: Partial<BridgeVerdict>): BridgeVerdict {
     lift: 0.5,
     nullLift: 0,
     nullFires: 0,
-    byStratum: { near: { ...slice }, "far-in-pool": { ...slice }, "far-out-of-pool": { cases: 1, fired: 1, liftSum: 0.5, regressions: 0 } },
+    byStratum: {
+      near: { ...slice },
+      "far-in-pool": { ...slice },
+      "far-out-of-pool": { cases: 1, fired: 1, liftSum: 0.5, regressions: 0 },
+    },
     ...over,
   };
 }
 
 test("#129 gate: demoted, unconfirmed, unmeasured, negative slice and below-null each keep a bridge home", () => {
-  const b: Bridge = { id: "x", lang: "de", trigger_terms: ["fenster", "dialog"], expansion_terms: ["nspanel"], evidence: 2 };
+  const b: Bridge = {
+    id: "x",
+    lang: "de",
+    trigger_terms: ["fenster", "dialog"],
+    expansion_terms: ["nspanel"],
+    evidence: 2,
+  };
   assert.deepEqual(contributionVerdict(b, verdict({})), { eligible: true, reasons: [] });
-  assert.match(contributionVerdict({ ...b, demoted_at: "2026-09-01T00:00:00Z" }, verdict({})).reasons.join(), /demoted/);
+  assert.match(
+    contributionVerdict({ ...b, demoted_at: "2026-09-01T00:00:00Z" }, verdict({})).reasons.join(),
+    /demoted/
+  );
   assert.match(contributionVerdict({ ...b, evidence: 1 }, verdict({})).reasons.join(), /unconfirmed/);
   assert.match(contributionVerdict(b, undefined).reasons.join(), /unmeasured/);
   const negative = verdict({
@@ -149,6 +182,10 @@ test("#129 gate: demoted, unconfirmed, unmeasured, negative slice and below-null
       "far-out-of-pool": { cases: 1, fired: 1, liftSum: -0.2, regressions: 0 },
     },
   });
-  assert.match(contributionVerdict(b, negative).reasons.join(), /far-out-of-pool/, "an out-of-pool loss is not hidden by an in-pool gain");
+  assert.match(
+    contributionVerdict(b, negative).reasons.join(),
+    /far-out-of-pool/,
+    "an out-of-pool loss is not hidden by an in-pool gain"
+  );
   assert.match(contributionVerdict(b, verdict({ lift: 0.1, nullLift: 0.3, nullFires: 1 })).reasons.join(), /null/);
 });

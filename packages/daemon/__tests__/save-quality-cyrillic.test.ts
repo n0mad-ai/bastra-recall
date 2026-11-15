@@ -66,7 +66,7 @@ test("multi-word Cyrillic recall_when is not flagged as too short/generic", asyn
   assert.deepEqual(
     shortIssues,
     [],
-    `multi-word Cyrillic triggers must tokenise past 1 word, got: ${JSON.stringify(shortIssues)}`,
+    `multi-word Cyrillic triggers must tokenise past 1 word, got: ${JSON.stringify(shortIssues)}`
   );
 });
 
@@ -84,7 +84,7 @@ test("a genuinely one-word Cyrillic trigger is still flagged", async (t) => {
   const shortIssues = res.save_quality.issues.filter((i) => i.includes("too short/generic"));
   assert.ok(
     shortIssues.length >= 1,
-    "the specificity check must still catch a real one-word trigger — the fix widens the alphabet, not the gate",
+    "the specificity check must still catch a real one-word trigger — the fix widens the alphabet, not the gate"
   );
 });
 

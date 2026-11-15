@@ -29,9 +29,19 @@ const HAZE_ALPHA = 0.085; // the dial that carries most of the "weathery" feel
 /** @param {object} env  getters + geometry helpers from createOrbitView */
 export function createOrbitDecor(env) {
   const {
-    project, trigNow, inPlane, add, scale3, norm,
-    depthScale, depthFade, frontFade, viewRect, inView,
-    getSatLight, getHues,
+    project,
+    trigNow,
+    inPlane,
+    add,
+    scale3,
+    norm,
+    depthScale,
+    depthFade,
+    frontFade,
+    viewRect,
+    inView,
+    getSatLight,
+    getHues,
   } = env;
 
   return function decor(ctx, camera, theme, now) {
@@ -231,7 +241,7 @@ export function createOrbitDecor(env) {
           fade: fadeIn,
           depth: depthFade(pr.d),
         },
-        glowSprite,
+        glowSprite
       );
       ctx.globalAlpha = 1;
     }
@@ -331,5 +341,5 @@ export function createOrbitDecor(env) {
       ctx.globalCompositeOperation = "source-over";
     }
     ctx.globalAlpha = 1;
-    };
+  };
 }

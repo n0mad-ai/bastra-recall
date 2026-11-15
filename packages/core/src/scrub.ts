@@ -80,12 +80,16 @@ function asciiLower(text: string): string {
  * regex rescans to the end of the text for each opener that is never closed.
  */
 function nextBlock(lower: string, tag: string, pos: number): [number, number] | undefined {
-  const open = `<${tag}`, close = `</${tag}>`;
+  const open = `<${tag}`,
+    close = `</${tag}>`;
   let start: number;
   while ((start = lower.indexOf(open, pos)) >= 0) {
     let gt = start + open.length;
     if (lower[gt] !== ">") {
-      if (!/\s/.test(lower[gt] ?? "")) { pos = gt; continue; }
+      if (!/\s/.test(lower[gt] ?? "")) {
+        pos = gt;
+        continue;
+      }
       gt = lower.indexOf(">", gt);
       if (gt < 0) return undefined;
     }
@@ -111,7 +115,9 @@ export function scrubInjectedBlocks(text: string): ScrubResult {
   let out = text;
   let lower = asciiLower(text);
   for (const tag of INJECTED_BLOCK_TAGS) {
-    let kept = "", from = 0, block: [number, number] | undefined;
+    let kept = "",
+      from = 0,
+      block: [number, number] | undefined;
     while ((block = nextBlock(lower, tag, from))) {
       kept += out.slice(from, block[0]);
       from = block[1];
@@ -218,13 +224,23 @@ function credentialKey(key: string): boolean {
   const normalized = key.toLowerCase().replace(/[\p{Cf}\s_-]/gu, "");
   if (/usepsk$|psk(?:enabled|mode|identity)$/.test(normalized)) return false;
   if (pskKey(key)) return true;
-  return /(?:password|passwd|passphrase|psk|presharedkey|cookie|token|secret|apikey|accesskey|accesskeyid|secretkey|privatekey|accountkey|authorization|credential)$/.test(normalized) || normalized === "key" || /(?:^|[_.\s-])(?:pwd|pass)$/i.test(key) || /(?:Pwd|Pass)$/.test(key);
+  return (
+    /(?:password|passwd|passphrase|psk|presharedkey|cookie|token|secret|apikey|accesskey|accesskeyid|secretkey|privatekey|accountkey|authorization|credential)$/.test(
+      normalized
+    ) ||
+    normalized === "key" ||
+    /(?:^|[_.\s-])(?:pwd|pass)$/i.test(key) ||
+    /(?:Pwd|Pass)$/.test(key)
+  );
 }
 
 function pskKey(key: string): boolean {
-  const raw = key.replace(/\p{Cf}/gu, ""), normalized = raw.toLowerCase().replace(/[\s_-]/g, "");
-  return /(?:psk(?:\d+|key|value)?|presharedkey|wifikey)$/.test(normalized) ||
-    (/^psk(?:_[a-z0-9]+)+$/i.test(raw) && !/^psk(?:enabled|mode|identity)$/.test(normalized));
+  const raw = key.replace(/\p{Cf}/gu, ""),
+    normalized = raw.toLowerCase().replace(/[\s_-]/g, "");
+  return (
+    /(?:psk(?:\d+|key|value)?|presharedkey|wifikey)$/.test(normalized) ||
+    (/^psk(?:_[a-z0-9]+)+$/i.test(raw) && !/^psk(?:enabled|mode|identity)$/.test(normalized))
+  );
 }
 
 /** Locations and identifiers are the useful content of a draft, not access values. */
@@ -239,7 +255,8 @@ function isLocator(value: string): boolean {
     const parts = value.split("/");
     // Relative file/image/vault paths have named components; opaque base64
     // with slashes has no file extension or word separators in those parts.
-    if (parts.length > 1 && parts.some((p) => /[._-]/.test(p)) && parts.every((p) => /^[\p{L}\p{N}_.:@-]*$/u.test(p))) return true;
+    if (parts.length > 1 && parts.some((p) => /[._-]/.test(p)) && parts.every((p) => /^[\p{L}\p{N}_.:@-]*$/u.test(p)))
+      return true;
   }
   if (/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/.test(value)) return true;
   if (value.includes("-") || value.includes("_")) {
@@ -263,11 +280,11 @@ function codeSymbol(value: string): boolean {
     } else if (/^[A-Z]+$/.test(run)) {
       const next = runs[i + 1] ?? "";
       if (/^[a-z]+$/.test(next)) {
-        if (next.length < 2 || i === 0 && run.length === 2) return false;
+        if (next.length < 2 || (i === 0 && run.length === 2)) return false;
         segments += Math.ceil((run.length - 1) / 2) + 1;
         i++;
       } else if (/^[0-9]+$/.test(next)) {
-        if (run.length === 2 || i === 0 && run.length < 3) return false;
+        if (run.length === 2 || (i === 0 && run.length < 3)) return false;
         segments += Math.floor((run.length - 1) / 2) + 1;
         i++;
       } else {
@@ -280,8 +297,10 @@ function codeSymbol(value: string): boolean {
 }
 
 function isReference(value: string): boolean {
-  return /^(?:[a-z][a-z0-9+.-]*:\/\/|[~.]?[\/\\]|\.\.[\/\\]|[a-z]:[\/\\])/i.test(value) ||
-    /^\$(?:[a-z_][a-z0-9_]*|\{[a-z_][a-z0-9_]*\})$/i.test(value);
+  return (
+    /^(?:[a-z][a-z0-9+.-]*:\/\/|[~.]?[\/\\]|\.\.[\/\\]|[a-z]:[\/\\])/i.test(value) ||
+    /^\$(?:[a-z_][a-z0-9_]*|\{[a-z_][a-z0-9_]*\})$/i.test(value)
+  );
 }
 
 function opaqueValue(value: string, minimum: number): boolean {
@@ -300,13 +319,16 @@ function valueSpans(text: string, start: number, query = false): { spans: Secret
     while (text[pos + escapes] === "\\") escapes++;
     const quote = text[pos + escapes];
     if (quote === '"' || quote === "'" || quote === "`") {
-      const begin = pos += escapes + 1;
+      const begin = (pos += escapes + 1);
       while (pos < text.length) {
         if (text[pos] === "\\") {
           let stop = pos;
           while (text[stop] === "\\") stop++;
           if (text[stop] === quote && escapes > 0 && stop - pos === escapes) break;
-          if (text[stop] === quote && escapes === 0 && (stop - pos) % 2 === 0) { pos = stop; break; }
+          if (text[stop] === quote && escapes === 0 && (stop - pos) % 2 === 0) {
+            pos = stop;
+            break;
+          }
           pos = stop;
           if (text[pos] === quote) pos++;
           continue;
@@ -319,15 +341,22 @@ function valueSpans(text: string, start: number, query = false): { spans: Secret
     } else {
       const begin = pos;
       if (text.startsWith("[REDACTED]", pos)) pos += "[REDACTED]".length;
-      else while (pos < text.length) {
-        if (text.startsWith("${", pos)) {
-          const variable = /^\$\{[a-z_][a-z0-9_]*\}/i.exec(text.slice(pos));
-          if (variable) { pos += variable[0].length; continue; }
+      else
+        while (pos < text.length) {
+          if (text.startsWith("${", pos)) {
+            const variable = /^\$\{[a-z_][a-z0-9_]*\}/i.exec(text.slice(pos));
+            if (variable) {
+              pos += variable[0].length;
+              continue;
+            }
+          }
+          if (text[pos] === "\\" && pos + 1 < text.length && !/[\r\n]/.test(text[pos + 1])) {
+            pos += 2;
+            continue;
+          }
+          if (/[\s,;'"`<>}\]]/.test(text[pos]) || (query && /[&#]/.test(text[pos]))) break;
+          pos++;
         }
-        if (text[pos] === "\\" && pos + 1 < text.length && !/[\r\n]/.test(text[pos + 1])) { pos += 2; continue; }
-        if (/[\s,;'"`<>}\]]/.test(text[pos]) || (query && /[&#]/.test(text[pos]))) break;
-        pos++;
-      }
       spans.push([begin, pos]);
     }
   };
@@ -341,7 +370,11 @@ function valueSpans(text: string, start: number, query = false): { spans: Secret
       continue;
     }
     const concat = /^[ \t\r\n]*\+[ \t\r\n]*(?=\\*["'`])/.exec(rest);
-    if (concat) { pos += concat[0].length; readPart(); continue; }
+    if (concat) {
+      pos += concat[0].length;
+      readPart();
+      continue;
+    }
     const continuation = /^[ \t]*\r?\n[ \t]*([a-z0-9_+\/=.\-]+)(?=[ \t]*(?:\r?\n|$))/i.exec(rest);
     if (continuation && opaqueValue(continuation[1], 8)) {
       const begin = pos + continuation[0].length - continuation[1].length;
@@ -360,10 +393,12 @@ function valueSpans(text: string, start: number, query = false): { spans: Secret
  * URL-like operands, so auth flags of a later command are not borrowed. */
 function scanUserAuth(text: string, mark: (start: number, length: number) => void): void {
   const calls = /(?<![\p{L}\p{N}_.-])(curl(?:\.exe)?|http)(?=[ \t])/giu;
-  const gap = /(?:[ \t]|\\\r?\n)*/y, bare = /[^\s;&|"'`]+/y;
+  const gap = /(?:[ \t]|\\\r?\n)*/y,
+    bare = /[^\s;&|"'`]+/y;
   let call: RegExpExecArray | null;
   while ((call = calls.exec(text))) {
-    let pos = call.index + call[0].length, operand = true;
+    let pos = call.index + call[0].length,
+      operand = true;
     for (;;) {
       gap.lastIndex = pos;
       pos += gap.exec(text)![0].length;
@@ -382,21 +417,29 @@ function scanUserAuth(text: string, mark: (start: number, length: number) => voi
       }
       if (end === pos) break;
       const word = text.slice(pos, end);
-      const user = (call[1].toLowerCase() === "http"
-        ? /^(?:--auth(?:=|$)|-a)/i
-        : /^(?:--(?:proxy-)?user(?:=|$)|-[a-z]*?u)/i).exec(word);
+      const user = (
+        call[1].toLowerCase() === "http" ? /^(?:--auth(?:=|$)|-a)/i : /^(?:--(?:proxy-)?user(?:=|$)|-[a-z]*?u)/i
+      ).exec(word);
       if (user) {
         let start = pos + user[0].length;
-        if (start === end && !user[0].endsWith("=")) { gap.lastIndex = start; start += gap.exec(text)![0].length; }
+        if (start === end && !user[0].endsWith("=")) {
+          gap.lastIndex = start;
+          start += gap.exec(text)![0].length;
+        }
         const parsed = valueSpans(text, start);
         const value = parsed.spans.map(([a, b]) => text.slice(a, b)).join("");
         const colon = value.indexOf(":");
-        if (colon >= 0 && colon < value.length - 1 && !isReference(value.slice(colon + 1))) for (const [a, b] of parsed.spans) mark(a, b - a);
+        if (colon >= 0 && colon < value.length - 1 && !isReference(value.slice(colon + 1)))
+          for (const [a, b] of parsed.spans) mark(a, b - a);
         pos = Math.max(parsed.end, end);
         operand = false;
-      } else if (word.startsWith("-")) { operand = true; pos = end; }
-      else if (operand || /[.:\/]|^["'$]/.test(word)) { operand = false; pos = end; }
-      else break;
+      } else if (word.startsWith("-")) {
+        operand = true;
+        pos = end;
+      } else if (operand || /[.:\/]|^["'$]/.test(word)) {
+        operand = false;
+        pos = end;
+      } else break;
     }
     calls.lastIndex = Math.max(calls.lastIndex, pos);
   }
@@ -406,7 +449,10 @@ function scanUserAuth(text: string, mark: (start: number, length: number) => voi
  * This is not a language-dependent classification of owner intent. */
 export function redactSecrets(text: string, home?: string): SecretRedactionResult {
   const spans: SecretSpan[] = [];
-  const namedContext = (start: number): boolean => /(?:^|\s)(?:ssh|kubectl[ \t]+logs|(?:model|target|host)[ \t]*[:=])[ \t]+$/.test(text.slice(Math.max(0, start - 128), start));
+  const namedContext = (start: number): boolean =>
+    /(?:^|\s)(?:ssh|kubectl[ \t]+logs|(?:model|target|host)[ \t]*[:=])[ \t]+$/.test(
+      text.slice(Math.max(0, start - 128), start)
+    );
   const mark = (start: number, length: number) => {
     if (length > 0 && text.slice(start, start + length) !== "[REDACTED]") spans.push([start, start + length]);
   };
@@ -433,26 +479,30 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
       return end;
     }
     const parsed = valueSpans(text, start, query);
-    const joined = parsed.spans.map(([a, b]) => text.slice(a, b)).join("").replace(/\p{Cf}/gu, "");
+    const joined = parsed.spans
+      .map(([a, b]) => text.slice(a, b))
+      .join("")
+      .replace(/\p{Cf}/gu, "");
     // A reference names where a credential comes from; it is not the value.
     if (reference && isReference(joined)) strong = false;
     if (!strong && namedContext(start)) return parsed.end;
-    if (strong || opaqueValue(joined, 16)) for (const [a, b] of parsed.spans) {
-      if (text.slice(a, b) !== "[REDACTED]") mark(a, b - a);
-    }
+    if (strong || opaqueValue(joined, 16))
+      for (const [a, b] of parsed.spans) {
+        if (text.slice(a, b) !== "[REDACTED]") mark(a, b - a);
+      }
     return parsed.end;
   };
   // Bare PSK assignment passphrases may contain spaces. Stop at a line/field/flag
   // boundary; quoted values, references and block scalars keep the existing parser.
   const markPsk = (start: number): number => {
     const tail = text.slice(start);
-    if (tail.startsWith("[REDACTED]")) return start+"[REDACTED]".length;
-    if (valueSpans(text,start).spans.length>1) return markValue(start,true);
+    if (tail.startsWith("[REDACTED]")) return start + "[REDACTED]".length;
+    if (valueSpans(text, start).spans.length > 1) return markValue(start, true);
     if (/^(?:true|false|[01]|WPA[23])(?=\s|[,;}]|$)/i.test(tail) || /^(?:bitte|siehe)\b/i.test(tail)) return start;
-    if (/^["'`$|>\\]/.test(tail) || isReference(/^\S*/.exec(tail)![0])) return markValue(start,true);
-    const value = text.slice(start,pskLineEnd(text,start)).trimEnd();
-    if (value && value !== "[REDACTED]") mark(start,value.length);
-    return start+value.length;
+    if (/^["'`$|>\\]/.test(tail) || isReference(/^\S*/.exec(tail)![0])) return markValue(start, true);
+    const value = text.slice(start, pskLineEnd(text, start)).trimEnd();
+    if (value && value !== "[REDACTED]") mark(start, value.length);
+    return start + value.length;
   };
   // Prose and command forms without `=` name no value boundary, so only a quoted
   // value or a secret-shaped token is redacted; plain words stay readable.
@@ -474,7 +524,8 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
       while (text[pos] === " " || text[pos] === "\t") pos++;
     }
   };
-  for (const m of text.matchAll(/-----BEGIN ([A-Z0-9 ]+)-----[\s\S]*?(?:-----END \1-----|$)/g)) mark(m.index!, m[0].length);
+  for (const m of text.matchAll(/-----BEGIN ([A-Z0-9 ]+)-----[\s\S]*?(?:-----END \1-----|$)/g))
+    mark(m.index!, m[0].length);
 
   const locations: SecretSpan[] = [];
   for (const m of text.matchAll(/[^\s"'`<>]+/g)) {
@@ -504,20 +555,29 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
     }
   }
   // Provider-issued prefixes remain decisive even inside an otherwise useful URL.
-  for (const m of text.matchAll(/\b(?:sk-[a-z0-9_\-\p{Cf}]{8,}|sk_(?:live|test)_[a-z0-9_\p{Cf}]{8,}|gh[pousr]_[a-z0-9_\p{Cf}]{8,}|github_pat_[a-z0-9_\p{Cf}]{8,}|(?:AKIA|ASIA)[A-Z0-9]{16}|xox[baprs]-[a-z0-9\-\p{Cf}]{8,}|AIza[a-z0-9_\-]{20,}|glpat-[a-z0-9_\-]{8,}|npm_[a-z0-9_]{8,}|hf_[a-z0-9_]{8,}|dckr_pat_[a-z0-9_]{8,}|SG\.[a-z0-9_\-]+\.[a-z0-9_\-]+|[0-9]{6,12}:[a-z0-9_\-]{30,})/giu)) mark(m.index!, m[0].length);
+  for (const m of text.matchAll(
+    /\b(?:sk-[a-z0-9_\-\p{Cf}]{8,}|sk_(?:live|test)_[a-z0-9_\p{Cf}]{8,}|gh[pousr]_[a-z0-9_\p{Cf}]{8,}|github_pat_[a-z0-9_\p{Cf}]{8,}|(?:AKIA|ASIA)[A-Z0-9]{16}|xox[baprs]-[a-z0-9\-\p{Cf}]{8,}|AIza[a-z0-9_\-]{20,}|glpat-[a-z0-9_\-]{8,}|npm_[a-z0-9_]{8,}|hf_[a-z0-9_]{8,}|dckr_pat_[a-z0-9_]{8,}|SG\.[a-z0-9_\-]+\.[a-z0-9_\-]+|[0-9]{6,12}:[a-z0-9_\-]{30,})/giu
+  ))
+    mark(m.index!, m[0].length);
 
   // Scan complete dotted tokens once. Looking for eyJ within the first
   // segment permits a hyphen prefix without retrying every eyJ in a long run.
   for (const m of text.matchAll(/(?<![a-z0-9_.-])[a-z0-9_-]+(?:\.[a-z0-9_-]+){2}/gi)) {
     const first = m[0].slice(0, m[0].indexOf("."));
     const jwt = /(?:^|[^a-z0-9_])(eyJ[a-z0-9_-]+)/i.exec(first);
-    if (jwt) mark(m.index! + jwt.index + jwt[0].length - jwt[1].length, m[0].length - jwt.index - jwt[0].length + jwt[1].length);
+    if (jwt)
+      mark(
+        m.index! + jwt.index + jwt[0].length - jwt[1].length,
+        m[0].length - jwt.index - jwt[0].length + jwt[1].length
+      );
   }
 
   // URL query credentials are scanned separately, including inside an env URL.
   let queryEnd = 0;
-  for (const m of text.matchAll(/[?&]([a-z0-9_-]+)=/gi)) if (m.index! >= queryEnd && credentialKey(m[1])) queryEnd = markValue(m.index! + m[0].length, true, true);
-  const assignments = /(?<![\p{L}\p{N}_.-])(?:"([^"\r\n]{1,80})"|'([^'\r\n]{1,80})'|([\p{L}\p{N}_.\-\p{Cf}]{1,128}))[ \t]*[=:][ \t]*(?!\/\/)/gu;
+  for (const m of text.matchAll(/[?&]([a-z0-9_-]+)=/gi))
+    if (m.index! >= queryEnd && credentialKey(m[1])) queryEnd = markValue(m.index! + m[0].length, true, true);
+  const assignments =
+    /(?<![\p{L}\p{N}_.-])(?:"([^"\r\n]{1,80})"|'([^'\r\n]{1,80})'|([\p{L}\p{N}_.\-\p{Cf}]{1,128}))[ \t]*[=:][ \t]*(?!\/\/)/gu;
   let assignment: RegExpExecArray | null;
   let neutralEnd = 0;
   while ((assignment = assignments.exec(text))) {
@@ -554,16 +614,20 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
     let strong = credentialKey(key);
     if (pskKey(key)) {
       // Protocol comparisons/questions are not disclosed credential values.
-      if (/(?:\bist|\bzum)[ \t]+$/i.test(text.slice(Math.max(0,assignment.index-12),assignment.index))) continue;
-      const query = /[?&]/.test(text[assignment.index-1] ?? "");
-      const end = query ? markValue(start,true,true) : markPsk(start);
-      assignments.lastIndex = Math.max(assignments.lastIndex,end);
+      if (/(?:\bist|\bzum)[ \t]+$/i.test(text.slice(Math.max(0, assignment.index - 12), assignment.index))) continue;
+      const query = /[?&]/.test(text[assignment.index - 1] ?? "");
+      const end = query ? markValue(start, true, true) : markPsk(start);
+      assignments.lastIndex = Math.max(assignments.lastIndex, end);
       continue;
     }
     // A key in an object with a separate value field names that field, and a
     // lower-case key after another word can name a sort/database key.
-    if (key === "key" && (/\p{L}[ \t]+$/u.test(text.slice(Math.max(0, assignment.index - 80), assignment.index)) ||
-        /^"key"[ \t]*:/.test(assignment[0]) && /^[^}\r\n]{0,200}"value"[ \t]*:/.test(text.slice(start)))) strong = false;
+    if (
+      key === "key" &&
+      (/\p{L}[ \t]+$/u.test(text.slice(Math.max(0, assignment.index - 80), assignment.index)) ||
+        (/^"key"[ \t]*:/.test(assignment[0]) && /^[^}\r\n]{0,200}"value"[ \t]*:/.test(text.slice(start))))
+    )
+      strong = false;
     if (!strong && start < neutralEnd) continue;
     const end = markValue(start, strong, /[?&]/.test(text[assignment.index - 1] ?? ""));
     // Cache a neutral wrapper's end, so its inner neutral bindings do not
@@ -572,12 +636,23 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
     else neutralEnd = end;
   }
   let flagEnd = 0;
-  for (const m of text.matchAll(/(?<![a-z0-9_-])--([a-z][a-z0-9_-]*)(?:=|[ \t]+)/gi)) if (m.index! >= flagEnd && credentialKey(m[1])) flagEnd = markValue(m.index! + m[0].length, true);
+  for (const m of text.matchAll(/(?<![a-z0-9_-])--([a-z][a-z0-9_-]*)(?:=|[ \t]+)/gi))
+    if (m.index! >= flagEnd && credentialKey(m[1])) flagEnd = markValue(m.index! + m[0].length, true);
   // Track command context once, rather than repeatedly rescanning a long line.
-  const commands = [...text.matchAll(/(?:^|[ \t\/])(mysql|mariadb|sshpass|docker[ \t]+login|ssh|curl)(?=[ \t]|$)|[;&|\r\n]/gmi)];
+  const commands = [
+    ...text.matchAll(/(?:^|[ \t\/])(mysql|mariadb|sshpass|docker[ \t]+login|ssh|curl)(?=[ \t]|$)|[;&|\r\n]/gim),
+  ];
   scanUserAuth(text, mark);
   scanNetworkForms(text, mark, isReference);
-  scanPskForms(text,markLoose,(start)=>{markValue(start,true);},mark,isReference);
+  scanPskForms(
+    text,
+    markLoose,
+    (start) => {
+      markValue(start, true);
+    },
+    mark,
+    isReference
+  );
   let commandIndex = 0;
   let passwordCommand: string | undefined;
   for (const m of text.matchAll(/(?<![a-z0-9_-])-p[ \t]*/g)) {
@@ -588,8 +663,12 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
     const attached = m[0] === "-p" && !!text[m.index! + 2] && !/\s/.test(text[m.index! + 2]);
     const separated = /^[a-z][a-z0-9]*(?=\s|$)/i.exec(text.slice(m.index! + m[0].length));
     const mixed = separated !== null && /[0-9]/.test(separated[0]);
-    if (passwordCommand === "sshpass" || passwordCommand === "docker login" ||
-        ((passwordCommand === "mysql" || passwordCommand === "mariadb") && (attached || mixed))) markValue(m.index! + m[0].length, true);
+    if (
+      passwordCommand === "sshpass" ||
+      passwordCommand === "docker login" ||
+      ((passwordCommand === "mysql" || passwordCommand === "mariadb") && (attached || mixed))
+    )
+      markValue(m.index! + m[0].length, true);
   }
   let locationIndex = 0;
   for (const m of text.matchAll(/[a-z0-9_+\/.\-\p{Cf}]{24,}={0,2}/giu)) {
@@ -616,7 +695,11 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
     end = stop;
   }
   out += text.slice(end);
-  if (home && home !== "/") out = out.split(home).map((part, i) => i === 0 ? part : (/^(?:[\\/\s'"`),;:]|$)/.test(part) ? "~" : home) + part).join("");
+  if (home && home !== "/")
+    out = out
+      .split(home)
+      .map((part, i) => (i === 0 ? part : (/^(?:[\\/\s'"`),;:]|$)/.test(part) ? "~" : home) + part))
+      .join("");
   return { text: out, redactedChars };
 }
 

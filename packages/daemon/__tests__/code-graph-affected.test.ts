@@ -4,12 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  loadGraph,
-  graphDirOf,
-  GRAPH_FILE_NAME,
-  type LoadedGraph,
-} from "../src/code-graph/reader.js";
+import { loadGraph, graphDirOf, GRAPH_FILE_NAME, type LoadedGraph } from "../src/code-graph/reader.js";
 import {
   affectedHits,
   affectedResult,
@@ -28,11 +23,7 @@ import { externalRefLines } from "../src/code-graph/external-refs.js";
 import { createHash } from "node:crypto";
 import { CodeGraphCache } from "../src/code-graph/cache.js";
 import { affectedTools, findAffectedFiles } from "../src/code-graph/find-affected-files.js";
-import {
-  CODE_AWARENESS_CLAUSE,
-  SERVER_INSTRUCTIONS,
-  serverInstructions,
-} from "../src/mcp-instructions.js";
+import { CODE_AWARENESS_CLAUSE, SERVER_INSTRUCTIONS, serverInstructions } from "../src/mcp-instructions.js";
 
 /**
  * A node in Graphify's real shape — the same helper the reader test uses,
@@ -240,16 +231,12 @@ describe("workspace packages", () => {
     try {
       await mkdir(join(pnpm, "packages", "db", "src"), { recursive: true });
       await writeFile(join(pnpm, "package.json"), JSON.stringify({ name: "root" }), "utf8");
-      await writeFile(
-        join(pnpm, "pnpm-workspace.yaml"),
-        'packages:\n  - "apps/*"\n  - "packages/*"\n',
-        "utf8",
-      );
+      await writeFile(join(pnpm, "pnpm-workspace.yaml"), 'packages:\n  - "apps/*"\n  - "packages/*"\n', "utf8");
       await writeFile(
         join(pnpm, "packages", "db", "package.json"),
         // Consumed as raw source: `main` points at the .ts, not at a build dir.
         JSON.stringify({ name: "@acme/db", main: "./src/index.ts" }),
-        "utf8",
+        "utf8"
       );
       await writeFile(join(pnpm, "packages", "db", "src", "index.ts"), "export {};\n", "utf8");
       const modules = workspaceModules(pnpm);
@@ -270,7 +257,7 @@ describe("workspace packages", () => {
       await writeFile(
         join(wild, "package.json"),
         JSON.stringify({ name: "root", workspaces: ["packages/**"] }),
-        "utf8",
+        "utf8"
       );
       await writeFile(
         join(pkg, "package.json"),
@@ -278,7 +265,7 @@ describe("workspace packages", () => {
           name: "@acme/ui",
           exports: { ".": "./dist/index.js", "./*": { import: "./dist/*.js" } },
         }),
-        "utf8",
+        "utf8"
       );
       for (const file of ["index.ts", "button.ts", "forms/input.ts"]) {
         await writeFile(join(pkg, "src", file), "export {};\n", "utf8");
@@ -289,7 +276,7 @@ describe("workspace packages", () => {
       assert.equal(
         modules.get("@acme/ui/forms/input"),
         "packages/group/ui/src/forms/input.ts",
-        "the star spans a slash, the way Node resolves it",
+        "the star spans a slash, the way Node resolves it"
       );
     } finally {
       await rm(wild, { recursive: true, force: true });
@@ -308,7 +295,7 @@ describe("workspace packages", () => {
       await writeFile(
         join(twoStars, "package.json"),
         JSON.stringify({ name: "root", workspaces: ["packages/*"] }),
-        "utf8",
+        "utf8"
       );
       await writeFile(
         join(pkg, "package.json"),
@@ -316,14 +303,14 @@ describe("workspace packages", () => {
         // supports); the bug is in re-inserting its match into a KEY that
         // repeats the star.
         JSON.stringify({ name: "@acme/widgets", exports: { "./*/*.css": "./dist/*.js" } }),
-        "utf8",
+        "utf8"
       );
       await writeFile(join(pkg, "src", "button.ts"), "export {};\n", "utf8");
       const modules = workspaceModules(twoStars);
       assert.equal(
         modules.get("@acme/widgets/button/button.css"),
         "packages/widgets/src/button.ts",
-        "both stars in the subpath got the same match, the way Node resolves it",
+        "both stars in the subpath got the same match, the way Node resolves it"
       );
       for (const key of modules.keys()) {
         assert.doesNotMatch(key, /\*/, `"${key}" left a star unreplaced in the specifier`);
@@ -341,18 +328,15 @@ describe("workspace packages", () => {
       await writeFile(
         join(apps, "package.json"),
         JSON.stringify({ name: "root", workspaces: ["apps/*/server"] }),
-        "utf8",
+        "utf8"
       );
       await writeFile(
         join(apps, "apps", "web", "server", "package.json"),
         JSON.stringify({ name: "@acme/server", main: "./src/index.ts" }),
-        "utf8",
+        "utf8"
       );
       await writeFile(join(apps, "apps", "web", "server", "src", "index.ts"), "export {};\n", "utf8");
-      assert.equal(
-        workspaceModules(apps).get("@acme/server"),
-        "apps/web/server/src/index.ts",
-      );
+      assert.equal(workspaceModules(apps).get("@acme/server"), "apps/web/server/src/index.ts");
     } finally {
       await rm(apps, { recursive: true, force: true });
     }
@@ -361,19 +345,15 @@ describe("workspace packages", () => {
 
 describe("external references", () => {
   it("indexes the package importers the graph itself has no edge for", () => {
-    assert.deepEqual(graph.importersByEntry.get("packages/core/src/index.ts"), [
-      "packages/daemon/src/bridge.ts",
-    ]);
-    assert.deepEqual(graph.importersByEntry.get("packages/core/src/topics.ts"), [
-      "packages/daemon/src/write-lane.ts",
-    ]);
+    assert.deepEqual(graph.importersByEntry.get("packages/core/src/index.ts"), ["packages/daemon/src/bridge.ts"]);
+    assert.deepEqual(graph.importersByEntry.get("packages/core/src/topics.ts"), ["packages/daemon/src/write-lane.ts"]);
   });
 
   it("folds a resolved-path external node back onto the real symbol", () => {
     const dependents = graph.dependentsBySymbol.get("core_save_fn") ?? [];
     assert.ok(
       dependents.some((d) => d.id === "daemon_bridge_run" && d.relation === "imports"),
-      "the import through packages_core_dist_index_savememory reaches saveMemory",
+      "the import through packages_core_dist_index_savememory reaches saveMemory"
     );
   });
 });
@@ -385,7 +365,11 @@ describe("an unavailable answer is honest about why", () => {
     assert.equal(r.status, "unavailable");
     assert.match(r.note, /not enabled/);
     assert.match(r.note, /bastra code enable/);
-    assert.doesNotMatch(r.note, /loading|being read/i, "nothing is loading — saying so sends the agent back for nothing");
+    assert.doesNotMatch(
+      r.note,
+      /loading|being read/i,
+      "nothing is loading — saying so sends the agent back for nothing"
+    );
   });
 
   it("an enabled repository without a graph is told to index, not to wait", async () => {
@@ -407,12 +391,12 @@ describe("an unavailable answer is honest about why", () => {
     assert.equal(
       sha(JSON.stringify(affectedTools[0])),
       "e8e51b5e0c80e6d7e18e009d18624265de9a515c26b95c728ec3b0507ed48b96",
-      "find_affected_files tool definition changed — arms.frozen_surface in the registration no longer matches",
+      "find_affected_files tool definition changed — arms.frozen_surface in the registration no longer matches"
     );
     assert.equal(
       sha(serverInstructions(true)),
       "63a1bac0f13ff91069ca72dde2a5a8be859922df0c83e85d89c30594220bd07c",
-      "server instructions changed — arms.frozen_surface in the registration no longer matches",
+      "server instructions changed — arms.frozen_surface in the registration no longer matches"
     );
     // THE PARTS, SEPARATELY. The combined hash alone let the two come apart:
     // 2f9dc47 rewrote the code clause, updated the combined hash and left
@@ -422,12 +406,12 @@ describe("an unavailable answer is honest about why", () => {
     assert.equal(
       sha(SERVER_INSTRUCTIONS),
       "0b92d332e295c9ce32d925bfc53d5186afb1c6f2073d8611bacfaea5496ce78b",
-      "the memory policy changed — memory_part_sha256 in the registration no longer matches",
+      "the memory policy changed — memory_part_sha256 in the registration no longer matches"
     );
     assert.equal(
       sha(CODE_AWARENESS_CLAUSE),
       "df5bea2ca78a20343767657b0165983d8f23b4f9e1b1a34be86a663b7e041348",
-      "the code clause changed — code_clause_sha256 in the registration no longer matches",
+      "the code clause changed — code_clause_sha256 in the registration no longer matches"
     );
   });
 
@@ -435,10 +419,7 @@ describe("an unavailable answer is honest about why", () => {
     // The drift above was between the FILE and the code, not inside either, so
     // a test that only pins the code would not have caught it either.
     const reg = JSON.parse(
-      await readFile(
-        new URL("../../eval/registrations/code-awareness-change-impact.json", import.meta.url),
-        "utf8",
-      ),
+      await readFile(new URL("../../eval/registrations/code-awareness-change-impact.json", import.meta.url), "utf8")
     ) as { arms: { frozen_surface: Record<string, string> } };
     const sha = (v: string) => createHash("sha256").update(v).digest("hex");
     const frozen = reg.arms.frozen_surface;
@@ -484,8 +465,13 @@ describe("changed symbols from a diff", () => {
   });
 
   it("also takes a symbol the diff only NAMES", () => {
-    const diff = SAVE_DIFF.replace("+  return write(input, { audited: true });", "+  const x: SaveMemoryInput = input;");
-    const changed = changedSymbolsOf(graph, SAVE_TS, diff).map((s) => s.name).sort();
+    const diff = SAVE_DIFF.replace(
+      "+  return write(input, { audited: true });",
+      "+  const x: SaveMemoryInput = input;"
+    );
+    const changed = changedSymbolsOf(graph, SAVE_TS, diff)
+      .map((s) => s.name)
+      .sort();
     assert.deepEqual(changed, ["SaveMemoryInput", "saveMemory"]);
   });
 
@@ -581,7 +567,7 @@ describe("changed symbols from a diff", () => {
     const changed = changedSymbolsOf(graph, barrel, diff).map((s) => s.name);
     assert.ok(
       changed.includes("saveMemory"),
-      "the barrel holds no symbols of its own, so the re-exported one is followed",
+      "the barrel holds no symbols of its own, so the re-exported one is followed"
     );
   });
 });
@@ -622,14 +608,9 @@ describe("changedLines: the unified diff parser (P1.2)", () => {
   });
 
   it("keeps a pure deletion run — nothing `+` follows it — mapped to both neighbours, unchanged", () => {
-    const diff = [
-      "diff --git a/f.ts b/f.ts",
-      "--- a/f.ts",
-      "+++ b/f.ts",
-      "@@ -5,2 +4,0 @@",
-      "-old1",
-      "-old2",
-    ].join("\n");
+    const diff = ["diff --git a/f.ts b/f.ts", "--- a/f.ts", "+++ b/f.ts", "@@ -5,2 +4,0 @@", "-old1", "-old2"].join(
+      "\n"
+    );
     assert.deepEqual(changedLines(diff, "f.ts"), { lines: [4, 5], mappable: true });
   });
 
@@ -649,24 +630,12 @@ describe("changedLines: the unified diff parser (P1.2)", () => {
   });
 
   it("maps a deletion at the very start of the file without inventing line 0", () => {
-    const diff = [
-      "diff --git a/f.ts b/f.ts",
-      "--- a/f.ts",
-      "+++ b/f.ts",
-      "@@ -1,1 +0,0 @@",
-      "-first",
-    ].join("\n");
+    const diff = ["diff --git a/f.ts b/f.ts", "--- a/f.ts", "+++ b/f.ts", "@@ -1,1 +0,0 @@", "-first"].join("\n");
     assert.deepEqual(changedLines(diff, "f.ts"), { lines: [1], mappable: true });
   });
 
   it("maps a deletion at the very end of the file to the line before it and the (absent) line after", () => {
-    const diff = [
-      "diff --git a/f.ts b/f.ts",
-      "--- a/f.ts",
-      "+++ b/f.ts",
-      "@@ -20,1 +19,0 @@",
-      "-last",
-    ].join("\n");
+    const diff = ["diff --git a/f.ts b/f.ts", "--- a/f.ts", "+++ b/f.ts", "@@ -20,1 +19,0 @@", "-last"].join("\n");
     assert.deepEqual(changedLines(diff, "f.ts"), { lines: [19, 20], mappable: true });
   });
 
@@ -710,14 +679,7 @@ describe("changedLines: the unified diff parser (P1.2)", () => {
       "+new",
     ].join("\n");
     const kinds = [...diffLines(diff)].map((l) => l.kind);
-    assert.deepEqual(kinds, [
-      "file-boundary",
-      "old-header",
-      "new-header",
-      "hunk-header",
-      "removed",
-      "added",
-    ]);
+    assert.deepEqual(kinds, ["file-boundary", "old-header", "new-header", "hunk-header", "removed", "added"]);
   });
 });
 
@@ -839,16 +801,13 @@ describe("affected files", () => {
     assert.ok(bridge.length > 0, "the daemon file that imports @acme/core is affected");
     assert.ok(
       bridge.some((h) => h.relation === PACKAGE_IMPORT),
-      "and it is marked as the file-level, package-import kind of hit",
+      "and it is marked as the file-level, package-import kind of hit"
     );
   });
 
   it("does not drag in importers of an unrelated subpath", () => {
     const files = affectedHits(graph, SAVE_TS, changedSave()).map((h) => h.file);
-    assert.ok(
-      !files.includes("packages/daemon/src/write-lane.ts"),
-      "@acme/core/topics does not re-export save.ts",
-    );
+    assert.ok(!files.includes("packages/daemon/src/write-lane.ts"), "@acme/core/topics does not re-export save.ts");
   });
 
   it("counts BOTH roads into a file: its own entry and the barrel", () => {
@@ -869,7 +828,10 @@ describe("affected files", () => {
   it("reports an unknown symbol name instead of an empty blast radius", () => {
     const named = symbolsNamed(graph, SAVE_TS, ["saveMemory", "nosuchthing"]);
     assert.deepEqual(named.unknown, ["nosuchthing"]);
-    assert.deepEqual(named.found.map((s) => s.name), ["saveMemory"]);
+    assert.deepEqual(
+      named.found.map((s) => s.name),
+      ["saveMemory"]
+    );
   });
 });
 
@@ -966,28 +928,27 @@ describe("against the real graph of this repository", () => {
     // it resolves the specifier to a path and keeps the symbol name, without
     // it the specifier stays bare. Either way the boundary must be crossed.
     const save = (real.idsByLabel.get("savememory") ?? []).find(
-      (id) => real.nodes.get(id)?.file === "packages/core/src/save.ts",
+      (id) => real.nodes.get(id)?.file === "packages/core/src/save.ts"
     );
     assert.ok(save !== undefined, "saveMemory is in the graph");
     const viaSymbol = (real.dependentsBySymbol.get(save) ?? []).some((d) =>
-      real.nodes.get(d.id)?.file.startsWith("packages/daemon/"),
+      real.nodes.get(d.id)?.file.startsWith("packages/daemon/")
     );
     const viaPackage = (real.importersByEntry.get("packages/core/src/index.ts") ?? []).some((f) =>
-      f.startsWith("packages/daemon/"),
+      f.startsWith("packages/daemon/")
     );
     assert.ok(
       viaSymbol || viaPackage,
-      "daemon depends on core through @bastra-recall/core, for which the graph itself has no edge",
+      "daemon depends on core through @bastra-recall/core, for which the graph itself has no edge"
     );
   });
 });
 
-
 describe("changedLines: headerless tab-suffixed paths (#1250)", () => {
-  for (const path of ['a/space name.ts', '"a/space name.ts"', '"a/\\303\\244 \\"q\\".ts"']) {
+  for (const path of ["a/space name.ts", '"a/space name.ts"', '"a/\\303\\244 \\"q\\".ts"']) {
     it(`matches ${path} before its timestamp suffix`, () => {
       const file = unquoteGitPath(path).slice(2);
-      const diff = `--- ${path}\t2026-11-09\n+++ ${path.replace('a/', 'b/')}\t\n@@ -1 +1 @@\n-old\n+new\n`;
+      const diff = `--- ${path}\t2026-11-09\n+++ ${path.replace("a/", "b/")}\t\n@@ -1 +1 @@\n-old\n+new\n`;
       assert.deepEqual(changedLines(diff, file), { lines: [1], mappable: true });
       assert.deepEqual(changedLines(diff, "other.ts"), { lines: [], mappable: true });
     });

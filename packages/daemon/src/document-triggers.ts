@@ -35,10 +35,7 @@ function words(text: string): string[] {
  * leerer Trigger zählt nicht als generisch, sondern wird vom Aufrufer ohnehin
  * verworfen.
  */
-export function isGenericDocumentTrigger(
-  trigger: string,
-  ctx: { category: string; tags: string[] },
-): boolean {
+export function isGenericDocumentTrigger(trigger: string, ctx: { category: string; tags: string[] }): boolean {
   const own = words(trigger);
   if (own.length === 0) return false;
   const vocabulary = new Set([...words(ctx.category), ...ctx.tags.flatMap(words)]);
@@ -55,7 +52,7 @@ export function isGenericDocumentTrigger(
  */
 export function qualifyDocumentTriggers(
   triggers: string[],
-  ctx: { title: string; category: string; tags: string[] },
+  ctx: { title: string; category: string; tags: string[] }
 ): string[] {
   const titleWords = words(ctx.title);
   return triggers.map((trigger) => {

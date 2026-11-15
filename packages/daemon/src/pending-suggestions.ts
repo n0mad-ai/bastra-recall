@@ -26,7 +26,8 @@ import { redactSecrets } from "@bastra-recall/core/scrub";
 import { clipDraftText } from "./draft-text.js";
 
 function validateLegacyJson(text: string): void {
-  if (text.trim() && !Array.isArray(JSON.parse(text))) throw new Error("Local registry must be a JSON array; original preserved");
+  if (text.trim() && !Array.isArray(JSON.parse(text)))
+    throw new Error("Local registry must be a JSON array; original preserved");
 }
 
 /**
@@ -78,9 +79,7 @@ export const TREND_CLUSTER_GROWTH_FACTOR = 2;
  *  or a known cluster grew to {@link TREND_CLUSTER_GROWTH_FACTOR} times its
  *  stored size. Shrinking, a cluster dropping out or two swapping order is not. */
 function clusterNews(stored: Record<string, number>, next: Record<string, number>): boolean {
-  return Object.entries(next).some(
-    ([k, n]) => stored[k] === undefined || n >= TREND_CLUSTER_GROWTH_FACTOR * stored[k],
-  );
+  return Object.entries(next).some(([k, n]) => stored[k] === undefined || n >= TREND_CLUSTER_GROWTH_FACTOR * stored[k]);
 }
 
 function isTombstone(e: PendingSuggestion): boolean {
@@ -112,7 +111,10 @@ export function pendingTrendsSessions(): number {
  */
 const SYNTHETIC_SESSION_RE = /^(eval|test|synthetic|smoke|probe|bench|fixture)[-_:.]/i;
 
-export function isCountableSessionStart(sessionId: string | null | undefined, source: string | null | undefined): boolean {
+export function isCountableSessionStart(
+  sessionId: string | null | undefined,
+  source: string | null | undefined
+): boolean {
   if (typeof sessionId !== "string" || sessionId.trim() === "") return false;
   if (source != null && source !== "startup") return false;
   return !SYNTHETIC_SESSION_RE.test(sessionId);
@@ -145,30 +147,44 @@ export function pendingSuggestionsPath(): string {
 }
 
 /** One gate for every relay producer, reader and settlement. Existing files stay untouched. */
-export function pendingRelayEnabled(): boolean { return !envOff("BASTRA_PENDING_RELAY"); }
+export function pendingRelayEnabled(): boolean {
+  return !envOff("BASTRA_PENDING_RELAY");
+}
 
 /** Relay failures are distinguishable from draft-store failures at the CLI. */
 export class PendingRelayAccessError extends Error {
-  constructor() { super("cannot clear pending relay; original preserved"); this.name = "PendingRelayAccessError"; }
+  constructor() {
+    super("cannot clear pending relay; original preserved");
+    this.name = "PendingRelayAccessError";
+  }
 }
 /** Validate under the relay lock, clear drafts, then clear the relay. The callback
  * failing leaves the relay unchanged. Missing relay files are not created. */
 export async function purgePendingSuggestions(clearDrafts: () => Promise<void> = async () => {}): Promise<boolean> {
   const path = pendingSuggestionsPath();
   let draftError: unknown;
-  return withPathLock(path, async () => {
-    let present = true;
-    try {
-      const raw = readAppRecord("pending-suggestions", path, validateLegacyJson);
-      if (raw.trim() && !Array.isArray(JSON.parse(raw))) throw new PendingRelayAccessError();
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") present = false;
-      else throw new PendingRelayAccessError();
-    }
-    try { await clearDrafts(); } catch (error) { draftError = error; throw error; }
-    if (present) await writePendingRows(path, []);
-    return present;
-  }, { crossProcess: true, requireLock: true }).catch(error => {
+  return withPathLock(
+    path,
+    async () => {
+      let present = true;
+      try {
+        const raw = readAppRecord("pending-suggestions", path, validateLegacyJson);
+        if (raw.trim() && !Array.isArray(JSON.parse(raw))) throw new PendingRelayAccessError();
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") present = false;
+        else throw new PendingRelayAccessError();
+      }
+      try {
+        await clearDrafts();
+      } catch (error) {
+        draftError = error;
+        throw error;
+      }
+      if (present) await writePendingRows(path, []);
+      return present;
+    },
+    { crossProcess: true, requireLock: true }
+  ).catch((error) => {
     if (error === draftError) throw error;
     throw new PendingRelayAccessError();
   });
@@ -176,13 +192,15 @@ export async function purgePendingSuggestions(clearDrafts: () => Promise<void> =
 
 /** Stop's response does not await disk contention. The daemon retains this
  * promise and retries under a real lock; no busy-lock diagnostics or fail-open. */
-export function writePendingFromHook(blocks: string, opts: Parameters<typeof writePendingSuggestion>[1] = {}): Promise<void> {
+export function writePendingFromHook(
+  blocks: string,
+  opts: Parameters<typeof writePendingSuggestion>[1] = {}
+): Promise<void> {
   return writePendingSuggestion(blocks, { ...opts, deferOnBusy: true });
 }
 
 function capPendingBlocks(blocks: string): string {
-  return blocks.length > PENDING_ENTRY_CHAR_CAP
-    ? clipDraftText(blocks, PENDING_ENTRY_CHAR_CAP - 1) + "…" : blocks;
+  return blocks.length > PENDING_ENTRY_CHAR_CAP ? clipDraftText(blocks, PENDING_ENTRY_CHAR_CAP - 1) + "…" : blocks;
 }
 
 /** Same credential inventory and clipping boundary as local drafts. */
@@ -195,11 +213,13 @@ function scrubPendingRows(rows: PendingSuggestion[]): void {
 }
 
 /** Every write, including write-back/settlement, cleans legacy rows in place. */
-function sqliteBusy(error:unknown):boolean {return [5,6].includes((error as {errcode?:number}).errcode??-1);}
+function sqliteBusy(error: unknown): boolean {
+  return [5, 6].includes((error as { errcode?: number }).errcode ?? -1);
+}
 
-async function writePendingRows(path: string, rows: PendingSuggestion[],busyTimeoutMs?:number): Promise<void> {
+async function writePendingRows(path: string, rows: PendingSuggestion[], busyTimeoutMs?: number): Promise<void> {
   scrubPendingRows(rows);
-  writeAppRecord("pending-suggestions", path, JSON.stringify(rows), validateLegacyJson,{busyTimeoutMs});
+  writeAppRecord("pending-suggestions", path, JSON.stringify(rows), validateLegacyJson, { busyTimeoutMs });
 }
 
 /**
@@ -225,11 +245,15 @@ async function writePendingRows(path: string, rows: PendingSuggestion[],busyTime
 export async function writePendingSuggestion(
   blocks: string,
   opts: {
-    lane?: PendingLane; key?: string; clusters?: Record<string, number>; provisional?: string; deferOnBusy?: boolean;
+    lane?: PendingLane;
+    key?: string;
+    clusters?: Record<string, number>;
+    provisional?: string;
+    deferOnBusy?: boolean;
     /** Called only after a successful atomic relay write (also for refreshes).
      *  Disabled relay, skipped writes and failures never acknowledge persistence. */
     onPersisted?: () => void;
-  } = {},
+  } = {}
 ): Promise<void> {
   if (!pendingRelayEnabled()) return;
   const lane: PendingLane = opts.lane ?? "recency";
@@ -239,7 +263,7 @@ export async function writePendingSuggestion(
   if (clipped !== blocks) {
     reportLoss(
       `one suggestion of ${blocks.length} chars clipped to the ` +
-        `${PENDING_ENTRY_CHAR_CAP}-char per-entry cap before it was stored`,
+        `${PENDING_ENTRY_CHAR_CAP}-char per-entry cap before it was stored`
     );
   }
   try {
@@ -249,86 +273,102 @@ export async function writePendingSuggestion(
     const deadline = Date.now() + 11_000;
     while (pendingRelayEnabled()) {
       let ran = false;
-      try {await tryWithPathLock(path, async () => {
-      ran = true;
-      let entries: PendingSuggestion[] = [];
       try {
-        const parsed = JSON.parse(readAppRecord("pending-suggestions", path, validateLegacyJson,{busyTimeoutMs:0})) as unknown;
-        if (!Array.isArray(parsed)) {
-          reportLoss("existing file is not a JSON array — write skipped; original preserved");
-          return;
-        }
-        entries = parsed as PendingSuggestion[];
+        await tryWithPathLock(
+          path,
+          async () => {
+            ran = true;
+            let entries: PendingSuggestion[] = [];
+            try {
+              const parsed = JSON.parse(
+                readAppRecord("pending-suggestions", path, validateLegacyJson, { busyTimeoutMs: 0 })
+              ) as unknown;
+              if (!Array.isArray(parsed)) {
+                reportLoss("existing file is not a JSON array — write skipped; original preserved");
+                return;
+              }
+              entries = parsed as PendingSuggestion[];
+            } catch (error) {
+              if (sqliteBusy(error)) throw error;
+              if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+                reportLoss("existing file unreadable or invalid — write skipped; original preserved");
+                return;
+              }
+            }
+            scrubPendingRows(entries);
+            if (lane === "trends") {
+              // #513/#771: one row per trend, and one rule for its counter — the N
+              // session starts belong to the TEXT. An unchanged re-write says
+              // nothing new: a live row keeps its progress (restarting it here made
+              // a STANDING trend, e.g. taxonomy-drift on every Stop, never age out)
+              // and a tombstone stays one, with its expiry pushed back. Changed text
+              // is news, live or aged out: a fresh row with a fresh counter.
+              // #997: a writer that passes its cluster keys is compared by those
+              // instead — the drift text changes with every count. A row written
+              // before #997 has no keys; it is compared by text once and then
+              // carries the keys (an unchanged text means the sizes are exact).
+              const dup = entries.find(
+                (e) => laneOf(e) === "trends" && (opts.key ? e.key === opts.key : e.blocks === capped)
+              );
+              if (dup) entries.splice(entries.indexOf(dup), 1);
+              const same =
+                dup !== undefined &&
+                (opts.clusters && dup.clusters ? !clusterNews(dup.clusters, opts.clusters) : dup.blocks === capped);
+              if (dup && same) {
+                dup.ts = Date.now();
+                if (dup.retired) dup.sessions = 0;
+                else dup.blocks = capped; // live: show the current numbers
+                // A tombstone keeps its sizes at retirement; a live row merges, so a
+                // cluster flickering in and out of the report is not a new key.
+                if (opts.clusters && !(dup.retired && dup.clusters))
+                  dup.clusters = { ...dup.clusters, ...opts.clusters };
+                entries.push(dup);
+              } else {
+                const row: PendingSuggestion = { ts: Date.now(), blocks: capped, lane: "trends", sessions: 0 };
+                if (opts.key) row.key = opts.key;
+                if (opts.clusters) row.clusters = { ...opts.clusters };
+                entries.push(row);
+              }
+            } else {
+              const dup = entries.find((e) => laneOf(e) === "recency" && e.blocks === capped);
+              if (dup) {
+                if (!opts.provisional || dup.provisional === opts.provisional) dup.ts = Date.now();
+              } else
+                entries.push({
+                  ts: Date.now(),
+                  blocks: capped,
+                  ...(opts.provisional ? { provisional: opts.provisional } : {}),
+                });
+            }
+            // The cap holds per lane: a burst of hot suggestions must not evict a
+            // trend that is still alive, nor the other way round. Tombstones are
+            // nothing a session would see, so they take no slot in the trends lane;
+            // they are bounded on their own and dropping one is not a loss.
+            const keep = new Set<PendingSuggestion>();
+            const live = (l: PendingLane) =>
+              entries.filter((x) => laneOf(x) === l && !isTombstone(x) && !x.provisional);
+            for (const rows of [live("recency"), live("trends"), entries.filter(isTombstone)]) {
+              for (const e of rows.slice(-MAX_ENTRIES)) keep.add(e);
+            }
+            for (const row of entries) if (row.provisional) keep.add(row);
+            const kept = entries.filter((e) => keep.has(e));
+            // Dropping the oldest is the documented contract, not a bug — but it IS
+            // a durable loss, so it gets a line instead of happening in silence.
+            const droppedAtCap = entries.filter((e) => !keep.has(e) && !isTombstone(e)).length;
+            if (droppedAtCap > 0) {
+              reportLoss(
+                `${droppedAtCap} oldest ${droppedAtCap === 1 ? "entry" : "entries"} dropped ` +
+                  `at the ${MAX_ENTRIES}-entry cap`
+              );
+            }
+            await writePendingRows(path, kept, 0);
+            opts.onPersisted?.();
+          },
+          { crossProcess: true, noQueue: true, takeOverStale: true }
+        );
       } catch (error) {
-        if(sqliteBusy(error))throw error;
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-          reportLoss("existing file unreadable or invalid — write skipped; original preserved");
-          return;
-        }
-      }
-      scrubPendingRows(entries);
-      if (lane === "trends") {
-        // #513/#771: one row per trend, and one rule for its counter — the N
-        // session starts belong to the TEXT. An unchanged re-write says
-        // nothing new: a live row keeps its progress (restarting it here made
-        // a STANDING trend, e.g. taxonomy-drift on every Stop, never age out)
-        // and a tombstone stays one, with its expiry pushed back. Changed text
-        // is news, live or aged out: a fresh row with a fresh counter.
-        // #997: a writer that passes its cluster keys is compared by those
-        // instead — the drift text changes with every count. A row written
-        // before #997 has no keys; it is compared by text once and then
-        // carries the keys (an unchanged text means the sizes are exact).
-        const dup = entries.find(
-          (e) => laneOf(e) === "trends" && (opts.key ? e.key === opts.key : e.blocks === capped),
-        );
-        if (dup) entries.splice(entries.indexOf(dup), 1);
-        const same =
-          dup !== undefined &&
-          (opts.clusters && dup.clusters ? !clusterNews(dup.clusters, opts.clusters) : dup.blocks === capped);
-        if (dup && same) {
-          dup.ts = Date.now();
-          if (dup.retired) dup.sessions = 0;
-          else dup.blocks = capped; // live: show the current numbers
-          // A tombstone keeps its sizes at retirement; a live row merges, so a
-          // cluster flickering in and out of the report is not a new key.
-          if (opts.clusters && !(dup.retired && dup.clusters)) dup.clusters = { ...dup.clusters, ...opts.clusters };
-          entries.push(dup);
-        } else {
-          const row: PendingSuggestion = { ts: Date.now(), blocks: capped, lane: "trends", sessions: 0 };
-          if (opts.key) row.key = opts.key;
-          if (opts.clusters) row.clusters = { ...opts.clusters };
-          entries.push(row);
-        }
-      } else {
-        const dup = entries.find((e) => laneOf(e) === "recency" && e.blocks === capped);
-        if (dup) { if (!opts.provisional || dup.provisional === opts.provisional) dup.ts = Date.now(); }
-        else entries.push({ ts: Date.now(), blocks: capped, ...(opts.provisional ? {provisional:opts.provisional} : {}) });
-      }
-      // The cap holds per lane: a burst of hot suggestions must not evict a
-      // trend that is still alive, nor the other way round. Tombstones are
-      // nothing a session would see, so they take no slot in the trends lane;
-      // they are bounded on their own and dropping one is not a loss.
-      const keep = new Set<PendingSuggestion>();
-      const live = (l: PendingLane) => entries.filter((x) => laneOf(x) === l && !isTombstone(x) && !x.provisional);
-      for (const rows of [live("recency"), live("trends"), entries.filter(isTombstone)]) {
-        for (const e of rows.slice(-MAX_ENTRIES)) keep.add(e);
-      }
-      for (const row of entries) if (row.provisional) keep.add(row);
-      const kept = entries.filter((e) => keep.has(e));
-      // Dropping the oldest is the documented contract, not a bug — but it IS
-      // a durable loss, so it gets a line instead of happening in silence.
-      const droppedAtCap = entries.filter((e) => !keep.has(e) && !isTombstone(e)).length;
-      if (droppedAtCap > 0) {
-        reportLoss(
-          `${droppedAtCap} oldest ${droppedAtCap === 1 ? "entry" : "entries"} dropped ` +
-            `at the ${MAX_ENTRIES}-entry cap`,
-        );
-      }
-      await writePendingRows(path, kept,0);
-      opts.onPersisted?.();
-      }, { crossProcess: true, noQueue: true, takeOverStale: true });}catch(error){
-        if(!sqliteBusy(error))throw error;
-        ran=false; // SQLite contention follows the existing deferred/retry path.
+        if (!sqliteBusy(error)) throw error;
+        ran = false; // SQLite contention follows the existing deferred/retry path.
       }
       if (ran) return;
       if (opts.deferOnBusy) {
@@ -412,9 +452,16 @@ export function formatPendingBlock(entries: PendingSuggestion[]): string {
  * trends get what is left, so the relay as a whole never grows past it. A trend
  * squeezed out this way is announced and stays alive for the next start.
  */
-export function formatPendingRelay(relay: PendingRelay, budget = PENDING_BLOCK_CHAR_BUDGET): { text: string; recencyChars: number; trendsChars: number } {
+export function formatPendingRelay(
+  relay: PendingRelay,
+  budget = PENDING_BLOCK_CHAR_BUDGET
+): { text: string; recencyChars: number; trendsChars: number } {
   const recency = renderLane(relay.recency, "recency", Math.min(PENDING_BLOCK_CHAR_BUDGET, Math.max(0, budget)));
-  const trends = renderLane(relay.trends, "trends", Math.max(0, Math.min(PENDING_BLOCK_CHAR_BUDGET, budget) - recency.used));
+  const trends = renderLane(
+    relay.trends,
+    "trends",
+    Math.max(0, Math.min(PENDING_BLOCK_CHAR_BUDGET, budget) - recency.used)
+  );
   return {
     text: [recency.text, trends.text].filter(Boolean).join("\n"),
     recencyChars: recency.text.length,
@@ -422,13 +469,10 @@ export function formatPendingRelay(relay: PendingRelay, budget = PENDING_BLOCK_C
   };
 }
 
-function renderLane(
-  entries: PendingSuggestion[],
-  lane: PendingLane,
-  budget: number,
-): { text: string; used: number } {
+function renderLane(entries: PendingSuggestion[], lane: PendingLane, budget: number): { text: string; used: number } {
   if (entries.length === 0) return { text: "", used: 0 };
-  const head = lane === "trends" ? `<pending-trends source="stop-hook">` : `<pending-save-suggestions source="stop-hook">`;
+  const head =
+    lane === "trends" ? `<pending-trends source="stop-hook">` : `<pending-save-suggestions source="stop-hook">`;
   const intro =
     lane === "trends"
       ? `Recurring — shown at every session start until it ages out after ${pendingTrendsSessions()} sessions; ` +
@@ -473,15 +517,13 @@ function renderLane(
   if (clipped || dropped > 0) {
     const parts: string[] = [];
     if (clipped) parts.push("one suggestion was clipped to fit");
-    if (dropped > 0)
-      parts.push(`${dropped} earlier ${dropped === 1 ? "suggestion" : "suggestions"} suppressed`);
+    if (dropped > 0) parts.push(`${dropped} earlier ${dropped === 1 ? "suggestion" : "suggestions"} suppressed`);
     const tail =
       lane === "trends"
         ? `they stay pending and come back at the next session start.`
         : `the rest were not shown this session.`;
     lines.push(
-      `… ${parts.join(", ")} — the pending set exceeded the ${PENDING_BLOCK_CHAR_BUDGET}-char budget ` +
-        `and ${tail}`,
+      `… ${parts.join(", ")} — the pending set exceeded the ${PENDING_BLOCK_CHAR_BUDGET}-char budget ` + `and ${tail}`
     );
   }
   return { text: lines.join("\n") + "\n" + foot, used };
@@ -507,7 +549,7 @@ export interface PendingRelay {
  * own read and its write-back.
  */
 export async function takePendingRelay(
-  opts: { now?: number; sessionId?: string | null; countable?: boolean } = {},
+  opts: { now?: number; sessionId?: string | null; countable?: boolean } = {}
 ): Promise<PendingRelay> {
   if (!pendingRelayEnabled()) return { recency: [], trends: [] };
   const now = opts.now ?? Date.now();
@@ -515,44 +557,52 @@ export async function takePendingRelay(
   const advanceFor = opts.countable && opts.sessionId ? opts.sessionId : null;
   const maxSessions = pendingTrendsSessions();
   try {
-    return (await tryWithPathLock(path, async () => {
-      const parsed = JSON.parse(readAppRecord("pending-suggestions", path, validateLegacyJson,{busyTimeoutMs:0})) as unknown;
-      lossDiagnostics = 0;
-      const valid = Array.isArray(parsed)
-        ? (parsed as PendingSuggestion[]).filter((e) => typeof e?.blocks === "string" && typeof e?.ts === "number")
-        : [];
-      scrubPendingRows(valid); // Old entries must also be safe on their first delivery.
-      const recency = valid.filter((e) => laneOf(e) === "recency" && now - e.ts <= PENDING_MAX_AGE_MS);
-      const trends: PendingSuggestion[] = [];
-      const tombstones: PendingSuggestion[] = [];
-      for (const e of valid) {
-        if (laneOf(e) !== "trends") continue;
-        let sessions = typeof e.sessions === "number" && e.sessions >= 0 ? e.sessions : 0;
-        let last = e.last_session;
-        if (advanceFor && last !== advanceFor) {
-          sessions += 1;
-          last = advanceFor;
-        }
-        const row: PendingSuggestion = { ...e, sessions };
-        if (last !== undefined) row.last_session = last;
-        if (sessions <= maxSessions) {
-          (isTombstone(e) ? tombstones : trends).push(row);
-        } else if (!isTombstone(e)) {
-          // Aged out — this start no longer shows it. Keep a tombstone so the
-          // Stop hook re-writing the same standing trend does not revive it.
-          // Its counter starts over and now counts starts WITHOUT a re-write:
-          // a standing trend resets it at every Stop, so only a trend nobody
-          // writes any more lets its tombstone pass N and be dropped here.
-          tombstones.push({ ...row, sessions: 0, retired: true });
-        }
-      }
-      if (trends.length + tombstones.length > 0) {
-        await writePendingRows(path, [...tombstones, ...trends],0);
-      } else {
-        deleteAppRecord("pending-suggestions", path, validateLegacyJson,{busyTimeoutMs:0});
-      }
-      return { recency, trends };
-    }, { crossProcess: true, noQueue: true })) ?? { recency: [], trends: [] };
+    return (
+      (await tryWithPathLock(
+        path,
+        async () => {
+          const parsed = JSON.parse(
+            readAppRecord("pending-suggestions", path, validateLegacyJson, { busyTimeoutMs: 0 })
+          ) as unknown;
+          lossDiagnostics = 0;
+          const valid = Array.isArray(parsed)
+            ? (parsed as PendingSuggestion[]).filter((e) => typeof e?.blocks === "string" && typeof e?.ts === "number")
+            : [];
+          scrubPendingRows(valid); // Old entries must also be safe on their first delivery.
+          const recency = valid.filter((e) => laneOf(e) === "recency" && now - e.ts <= PENDING_MAX_AGE_MS);
+          const trends: PendingSuggestion[] = [];
+          const tombstones: PendingSuggestion[] = [];
+          for (const e of valid) {
+            if (laneOf(e) !== "trends") continue;
+            let sessions = typeof e.sessions === "number" && e.sessions >= 0 ? e.sessions : 0;
+            let last = e.last_session;
+            if (advanceFor && last !== advanceFor) {
+              sessions += 1;
+              last = advanceFor;
+            }
+            const row: PendingSuggestion = { ...e, sessions };
+            if (last !== undefined) row.last_session = last;
+            if (sessions <= maxSessions) {
+              (isTombstone(e) ? tombstones : trends).push(row);
+            } else if (!isTombstone(e)) {
+              // Aged out — this start no longer shows it. Keep a tombstone so the
+              // Stop hook re-writing the same standing trend does not revive it.
+              // Its counter starts over and now counts starts WITHOUT a re-write:
+              // a standing trend resets it at every Stop, so only a trend nobody
+              // writes any more lets its tombstone pass N and be dropped here.
+              tombstones.push({ ...row, sessions: 0, retired: true });
+            }
+          }
+          if (trends.length + tombstones.length > 0) {
+            await writePendingRows(path, [...tombstones, ...trends], 0);
+          } else {
+            deleteAppRecord("pending-suggestions", path, validateLegacyJson, { busyTimeoutMs: 0 });
+          }
+          return { recency, trends };
+        },
+        { crossProcess: true, noQueue: true }
+      )) ?? { recency: [], trends: [] }
+    );
   } catch {
     return { recency: [], trends: [] };
   }
@@ -566,39 +616,49 @@ export async function consumePendingSuggestions(now: number = Date.now()): Promi
   return (await takePendingRelay({ now })).recency;
 }
 
-
 /** Settle one sharp pass atomically. Provisional rows are outside the ordinary
  * recency cap until this point, so a successful withdrawal never loses a foreign
  * suggestion. Failed/uncaptured rows become ordinary relay and use its usual cap.
  * A killed process leaves its durable rows readable as fallback suggestions. */
 export async function settleProvisionalSuggestions(token: string, withdraw: ReadonlySet<string>): Promise<Set<string>> {
   if (!pendingRelayEnabled()) return new Set();
-  const path = pendingSuggestionsPath(), removed = new Set<string>();
+  const path = pendingSuggestionsPath(),
+    removed = new Set<string>();
   const requested = new Map<string, string[]>();
   for (const original of withdraw) {
     const safe = safePendingBlocks(original);
     requested.set(safe, [...(requested.get(safe) ?? []), original]);
   }
   try {
-    return await withPathLock(path, async () => {
-      const parsed:unknown = JSON.parse(readAppRecord("pending-suggestions", path, validateLegacyJson));
-      if (!Array.isArray(parsed)) return removed;
-      const rows = parsed as PendingSuggestion[];
-      scrubPendingRows(rows);
-      const entries:PendingSuggestion[]=[];
-      for (const entry of rows) {
-        if(entry.provisional===token) {
-          if(requested.has(entry.blocks)) {for (const original of requested.get(entry.blocks)!) removed.add(original);continue;}
-          delete entry.provisional;
+    return await withPathLock(
+      path,
+      async () => {
+        const parsed: unknown = JSON.parse(readAppRecord("pending-suggestions", path, validateLegacyJson));
+        if (!Array.isArray(parsed)) return removed;
+        const rows = parsed as PendingSuggestion[];
+        scrubPendingRows(rows);
+        const entries: PendingSuggestion[] = [];
+        for (const entry of rows) {
+          if (entry.provisional === token) {
+            if (requested.has(entry.blocks)) {
+              for (const original of requested.get(entry.blocks)!) removed.add(original);
+              continue;
+            }
+            delete entry.provisional;
+          }
+          entries.push(entry);
         }
-        entries.push(entry);
-      }
-      const ordinary=entries.filter(entry=>laneOf(entry)==="recency"&&!entry.provisional);
-      const allowed=new Set(ordinary.slice(-MAX_ENTRIES));
-      const kept=entries.filter(entry=>laneOf(entry)!=="recency"||entry.provisional||allowed.has(entry));
-      if(ordinary.length>MAX_ENTRIES)reportLoss(`${ordinary.length-MAX_ENTRIES} oldest entries dropped when fallback became ordinary relay`);
-      await writePendingRows(path, kept);
-      return removed;
-    }, { crossProcess: true, requireLock: true });
-  } catch {return new Set();} // Fallback stays readable if settlement fails.
+        const ordinary = entries.filter((entry) => laneOf(entry) === "recency" && !entry.provisional);
+        const allowed = new Set(ordinary.slice(-MAX_ENTRIES));
+        const kept = entries.filter((entry) => laneOf(entry) !== "recency" || entry.provisional || allowed.has(entry));
+        if (ordinary.length > MAX_ENTRIES)
+          reportLoss(`${ordinary.length - MAX_ENTRIES} oldest entries dropped when fallback became ordinary relay`);
+        await writePendingRows(path, kept);
+        return removed;
+      },
+      { crossProcess: true, requireLock: true }
+    );
+  } catch {
+    return new Set();
+  } // Fallback stays readable if settlement fails.
 }

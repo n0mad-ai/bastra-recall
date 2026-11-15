@@ -6,7 +6,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { matchPattern, formatHintBlock, runBashPreLane } from "../src/bash-pre-lane.js";
 
-
 describe("bash-pre-hook: matchPattern", () => {
   it("matches rm -rf as destructive", () => {
     const m = matchPattern("rm -rf /tmp/x");
@@ -168,10 +167,7 @@ function startMockDaemon(handler: (req: IncomingMessage, res: ServerResponse) =>
  *  daemon stays identical to the CLI era — the lane still reaches recall and
  *  hinted over loopback HTTP. env vars are applied around the call and
  *  restored, mirroring what the spawned CLI inherited before. */
-async function runHook(
-  payload: object,
-  env: Record<string, string>,
-): Promise<{ stdout: string }> {
+async function runHook(payload: object, env: Record<string, string>): Promise<{ stdout: string }> {
   const applied: Record<string, string | undefined> = {};
   const withDefaults: Record<string, string> = { BASTRA_TELEMETRY: "off", ...env };
   for (const [k, v] of Object.entries(withDefaults)) {
@@ -204,7 +200,7 @@ describe("bash-pre-hook: backoff exemption (#161)", () => {
           "bash-tripwire": { streak: 6, at: Date.now() - 1000, ids: ["safety-1"], skipped: 0 },
         },
       }),
-      "utf8",
+      "utf8"
     );
 
     const daemon = await startMockDaemon((req, res) => {
@@ -230,7 +226,7 @@ describe("bash-pre-hook: backoff exemption (#161)", () => {
             vault_size: 10,
             latency_ms: 1,
             recall_id: "t",
-          }),
+          })
         );
       } else {
         res.end("{}");
@@ -248,7 +244,7 @@ describe("bash-pre-hook: backoff exemption (#161)", () => {
         {
           BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
           BASTRA_HOOK_STATE_DIR: stateDir,
-        },
+        }
       );
       const parsed = JSON.parse(stdout) as {
         hookSpecificOutput?: { additionalContext?: string };
@@ -296,7 +292,7 @@ describe("bash-pre-hook: telemetry session (#356)", () => {
             vault_size: 10,
             latency_ms: 1,
             recall_id: "t",
-          }),
+          })
         );
       } else {
         res.end("{}");
@@ -317,7 +313,7 @@ describe("bash-pre-hook: telemetry session (#356)", () => {
           BASTRA_HOOK_STATE_DIR: stateDir,
           BASTRA_TELEMETRY: "on",
           BASTRA_LOG_PATH: logDir,
-        },
+        }
       );
       const ev = (await readTelemetryEvents(logDir)).find((e) => e.kind === "bash_hook_call");
       assert.ok(ev, "a bash_hook_call event must be written");
@@ -332,7 +328,9 @@ describe("bash-pre-hook: telemetry session (#356)", () => {
   it("#507: a call with no client evidence writes the explicit unknown, never the surface default", async () => {
     const daemon = await startMockDaemon((req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(req.url === "/hook/recall" ? JSON.stringify({ hits: [], vault_size: 0, latency_ms: 1, recall_id: "t" }) : "{}");
+      res.end(
+        req.url === "/hook/recall" ? JSON.stringify({ hits: [], vault_size: 0, latency_ms: 1, recall_id: "t" }) : "{}"
+      );
     });
     const logDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-dims-"));
     const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-dims-state-"));
@@ -351,12 +349,16 @@ describe("bash-pre-hook: telemetry session (#356)", () => {
           BASTRA_HOOK_STATE_DIR: stateDir,
           BASTRA_TELEMETRY: "on",
           BASTRA_LOG_PATH: logDir,
-        },
+        }
       );
       const ev = (await readTelemetryEvents(logDir)).find((e) => e.kind === "bash_hook_call");
       assert.ok(ev, "a bash_hook_call event must be written");
       const dims = ev.dimensions as Record<string, unknown>;
-      assert.equal(dims.client, "unknown", "no evidence in the payload → the explicit unknown, not hookClient's claude-code surface default");
+      assert.equal(
+        dims.client,
+        "unknown",
+        "no evidence in the payload → the explicit unknown, not hookClient's claude-code surface default"
+      );
       assert.equal(dims.hook_source, "bash-pre");
     } finally {
       await daemon.close();
@@ -369,7 +371,9 @@ describe("bash-pre-hook: telemetry session (#356)", () => {
     // Revert-check: drop `agent` from the bash-pre dimensionsFrom call → both asserts are red.
     const daemon = await startMockDaemon((req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(req.url === "/hook/recall" ? JSON.stringify({ hits: [], vault_size: 0, latency_ms: 1, recall_id: "t" }) : "{}");
+      res.end(
+        req.url === "/hook/recall" ? JSON.stringify({ hits: [], vault_size: 0, latency_ms: 1, recall_id: "t" }) : "{}"
+      );
     });
     const logDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-agent-"));
     const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-agent-state-"));
@@ -380,7 +384,12 @@ describe("bash-pre-hook: telemetry session (#356)", () => {
         BASTRA_TELEMETRY: "on",
         BASTRA_LOG_PATH: logDir,
       };
-      const base = { hook_event_name: "PreToolUse", tool_name: "Bash", bastra_client: "claude-code", tool_input: { command: "rm -rf /tmp/whatever" } };
+      const base = {
+        hook_event_name: "PreToolUse",
+        tool_name: "Bash",
+        bastra_client: "claude-code",
+        tool_input: { command: "rm -rf /tmp/whatever" },
+      };
       await runHook({ ...base, session_id: "agent-main" }, env);
       await runHook({ ...base, session_id: "agent-sub", agent_id: "a1b2c3", agent_type: "Explore" }, env);
       const evs = (await readTelemetryEvents(logDir)).filter((e) => e.kind === "bash_hook_call");
@@ -398,7 +407,9 @@ describe("bash-pre-hook: telemetry session (#356)", () => {
   it("#507: an explicit bastra_client marker is real evidence and is trusted", async () => {
     const daemon = await startMockDaemon((req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(req.url === "/hook/recall" ? JSON.stringify({ hits: [], vault_size: 0, latency_ms: 1, recall_id: "t" }) : "{}");
+      res.end(
+        req.url === "/hook/recall" ? JSON.stringify({ hits: [], vault_size: 0, latency_ms: 1, recall_id: "t" }) : "{}"
+      );
     });
     const logDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-dims-codex-"));
     const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-dims-codex-state-"));
@@ -416,7 +427,7 @@ describe("bash-pre-hook: telemetry session (#356)", () => {
           BASTRA_HOOK_STATE_DIR: stateDir,
           BASTRA_TELEMETRY: "on",
           BASTRA_LOG_PATH: logDir,
-        },
+        }
       );
       const ev = (await readTelemetryEvents(logDir)).find((e) => e.kind === "bash_hook_call");
       assert.ok(ev, "a bash_hook_call event must be written");
@@ -432,7 +443,9 @@ describe("bash-pre-hook: telemetry session (#356)", () => {
   it("#507: a call without a payload session_id gets the honest unassigned arm, not a guessed one", async () => {
     const daemon = await startMockDaemon((req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(req.url === "/hook/recall" ? JSON.stringify({ hits: [], vault_size: 0, latency_ms: 1, recall_id: "t" }) : "{}");
+      res.end(
+        req.url === "/hook/recall" ? JSON.stringify({ hits: [], vault_size: 0, latency_ms: 1, recall_id: "t" }) : "{}"
+      );
     });
     const logDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-dims-nosess-"));
     const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-dims-nosess-state-"));
@@ -450,7 +463,7 @@ describe("bash-pre-hook: telemetry session (#356)", () => {
           BASTRA_HOOK_STATE_DIR: stateDir,
           BASTRA_TELEMETRY: "on",
           BASTRA_LOG_PATH: logDir,
-        },
+        }
       );
       const ev = (await readTelemetryEvents(logDir)).find((e) => e.kind === "bash_hook_call");
       assert.ok(ev, "a bash_hook_call event must be written");
@@ -487,7 +500,7 @@ describe("bash-pre-hook: self-exclusion guard is a basename check, not a substri
             vault_size: 10,
             latency_ms: 1,
             recall_id: "t",
-          }),
+          })
         );
       } else {
         res.end("{}");
@@ -505,9 +518,13 @@ describe("bash-pre-hook: self-exclusion guard is a basename check, not a substri
       ]) {
         const { stdout } = await runHook(
           { hook_event_name: "PreToolUse", tool_name: "Bash", session_id: "guard-sess", tool_input: { command } },
-          { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir },
+          { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir }
         );
-        assert.match(stdout, /STOP — destructive Bash command detected \(pattern: `rm -rf`\)/, `must hint for: ${command}`);
+        assert.match(
+          stdout,
+          /STOP — destructive Bash command detected \(pattern: `rm -rf`\)/,
+          `must hint for: ${command}`
+        );
       }
     } finally {
       await daemon.close();
@@ -525,7 +542,7 @@ describe("bash-pre-hook: self-exclusion guard is a basename check, not a substri
           session_id: "guard-sess",
           tool_input: { command: "node_modules/.bin/bastra-recall-bash-pre-hook; rm -rf /tmp/x" },
         },
-        { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}` },
+        { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}` }
       );
       assert.equal(stdout.trim(), "{}");
     } finally {
@@ -547,12 +564,21 @@ describe("bash-pre-hook: query is the command head, hints dedup per session (22.
           res.end(
             JSON.stringify({
               hits: [
-                { id: hitId, title: "never rm -rf node_modules", type: "user-preference", scope: "all-projects", summary: "Ask first.", score: 120, matched_recall_when: true, anchor_strength: "strong" },
+                {
+                  id: hitId,
+                  title: "never rm -rf node_modules",
+                  type: "user-preference",
+                  scope: "all-projects",
+                  summary: "Ask first.",
+                  score: 120,
+                  matched_recall_when: true,
+                  anchor_strength: "strong",
+                },
               ],
               vault_size: 10,
               latency_ms: 1,
               recall_id: "t",
-            }),
+            })
           );
         } else {
           res.end("{}");
@@ -567,8 +593,13 @@ describe("bash-pre-hook: query is the command head, hints dedup per session (22.
     const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-query-"));
     try {
       await runHook(
-        { hook_event_name: "PreToolUse", tool_name: "Bash", session_id: "query-sess", tool_input: { command: "rm -rf node_modules && npm install" } },
-        { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir },
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          session_id: "query-sess",
+          tool_input: { command: "rm -rf node_modules && npm install" },
+        },
+        { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir }
       );
       assert.equal(daemon.seen.length, 1);
       assert.equal(daemon.seen[0].query, "rm -rf node_modules");
@@ -582,7 +613,12 @@ describe("bash-pre-hook: query is the command head, hints dedup per session (22.
     const daemon = await recordingDaemon("safety-3");
     const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-dedup-"));
     const env = { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir };
-    const payload = { hook_event_name: "PreToolUse", tool_name: "Bash", session_id: "dedup-sess", tool_input: { command: "rm -rf /tmp/scratch" } };
+    const payload = {
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      session_id: "dedup-sess",
+      tool_input: { command: "rm -rf /tmp/scratch" },
+    };
     try {
       const first = (await runHook(payload, env)).stdout;
       assert.match(first, /safety-3/, "first emit carries the memory line");
@@ -606,14 +642,39 @@ describe("#614 — only a memory wired to this command rides under the warning",
         res.end(
           JSON.stringify({
             hits: [
-              { id: "avatar-corners", title: "Avatars are square", type: "lesson", scope: "all-projects", summary: "UI.", score: 150 },
-              { id: "weak-trigger", title: "tmp", type: "lesson", scope: "all-projects", summary: "x", score: 140, matched_recall_when: true, anchor_strength: "weak" },
-              { id: "wired-rule", title: "Test data", type: "lesson", scope: "all-projects", summary: "Never delete by pattern.", score: 120, matched_recall_when: true, anchor_strength: "strong" },
+              {
+                id: "avatar-corners",
+                title: "Avatars are square",
+                type: "lesson",
+                scope: "all-projects",
+                summary: "UI.",
+                score: 150,
+              },
+              {
+                id: "weak-trigger",
+                title: "tmp",
+                type: "lesson",
+                scope: "all-projects",
+                summary: "x",
+                score: 140,
+                matched_recall_when: true,
+                anchor_strength: "weak",
+              },
+              {
+                id: "wired-rule",
+                title: "Test data",
+                type: "lesson",
+                scope: "all-projects",
+                summary: "Never delete by pattern.",
+                score: 120,
+                matched_recall_when: true,
+                anchor_strength: "strong",
+              },
             ],
             vault_size: 10,
             latency_ms: 1,
             recall_id: "t",
-          }),
+          })
         );
       } else {
         res.end("{}");
@@ -621,8 +682,18 @@ describe("#614 — only a memory wired to this command rides under the warning",
     });
     try {
       const { stdout } = await runHook(
-        { hook_event_name: "PreToolUse", tool_name: "Bash", session_id: "sess-614", tool_input: { command: "rm -rf /tmp/testdata-*" } },
-        { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir, BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir },
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          session_id: "sess-614",
+          tool_input: { command: "rm -rf /tmp/testdata-*" },
+        },
+        {
+          BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
+          BASTRA_HOOK_STATE_DIR: stateDir,
+          BASTRA_TELEMETRY: "on",
+          BASTRA_LOG_PATH: logDir,
+        }
       );
       assert.match(stdout, /STOP — destructive Bash command detected/, "the static warning is unconditional");
       assert.match(stdout, /wired-rule/);
@@ -693,7 +764,7 @@ describe("#521 — a heredoc body fed to a data sink is prose, not a command", (
     // a STOP warning with three unrelated memories, and nothing destructive ran.
     assert.equal(
       matchPattern("cat > dm5.txt <<'EOF'\nHi,\nOn rm -rf: I think the plumbing already exists.\nEOF"),
-      null,
+      null
     );
     assert.equal(matchPattern("cat >> notes.md <<'EOF'\nwe ran git reset --hard once\nEOF"), null);
     assert.equal(matchPattern("tee notes.md <<'EOF'\nnever kubectl delete pod without asking\nEOF"), null);
@@ -706,7 +777,7 @@ describe("#521 — a heredoc body fed to a data sink is prose, not a command", (
   it("#521 does not fire on issue bodies and commit messages read from stdin", () => {
     assert.equal(
       matchPattern("gh issue create --title x --body-file - <<'EOF'\nWe should warn before git push --force.\nEOF"),
-      null,
+      null
     );
     assert.equal(matchPattern("git commit -F - <<'EOF'\nfix: DROP TABLE in prose must not fire\nEOF"), null);
   });
@@ -791,26 +862,30 @@ describe("#521 — a heredoc body fed to a data sink is prose, not a command", (
     const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-521-"));
     const env = { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir };
     try {
-      const prose = (await runHook(
-        {
-          hook_event_name: "PreToolUse",
-          tool_name: "Bash",
-          session_id: "sess-521",
-          tool_input: { command: "cat > dm5.txt <<'EOF'\nOn rm -rf: the plumbing exists.\nEOF" },
-        },
-        env,
-      )).stdout;
+      const prose = (
+        await runHook(
+          {
+            hook_event_name: "PreToolUse",
+            tool_name: "Bash",
+            session_id: "sess-521",
+            tool_input: { command: "cat > dm5.txt <<'EOF'\nOn rm -rf: the plumbing exists.\nEOF" },
+          },
+          env
+        )
+      ).stdout;
       assert.equal(prose.trim(), "{}", "prose written to a file must not warn");
 
-      const real = (await runHook(
-        {
-          hook_event_name: "PreToolUse",
-          tool_name: "Bash",
-          session_id: "sess-521",
-          tool_input: { command: "bash <<'EOF'\nrm -rf /tmp/x\nEOF" },
-        },
-        env,
-      )).stdout;
+      const real = (
+        await runHook(
+          {
+            hook_event_name: "PreToolUse",
+            tool_name: "Bash",
+            session_id: "sess-521",
+            tool_input: { command: "bash <<'EOF'\nrm -rf /tmp/x\nEOF" },
+          },
+          env
+        )
+      ).stdout;
       assert.match(real, /STOP — destructive Bash command detected \(pattern: `rm -rf`\)/);
     } finally {
       await daemon.close();
@@ -906,7 +981,7 @@ describe("#540 — the quoted message or body of git and gh is prose, not a comm
       "cd /repo && git add a.ts && git commit -m \"$(cat <<'EOF'\nfix: never git reset --hard\n\nbody mentions git push --force; DROP TABLE too | sh\n\nCo-Authored-By: X <x@example.com>\nEOF\n)\"",
       "git commit --message=\"$(cat <<'EOF'\nrm -rf in prose\nEOF\n)\"",
       "git tag -a v1 -m \"$(cat <<'EOF'\nremoved the rm -rf step\nEOF\n)\"",
-      "gh pr create --title \"tripwire\" --body \"$(cat <<'EOF'\n## Summary\n- rm -rf is still caught\nEOF\n)\"",
+      'gh pr create --title "tripwire" --body "$(cat <<\'EOF\'\n## Summary\n- rm -rf is still caught\nEOF\n)"',
       "git commit -m \"$(cat <<'EOF'\nrm -rf x\nEOF\n)\" && git push origin main",
     ]) {
       assert.equal(matchPattern(cmd), null, `must not fire for: ${JSON.stringify(cmd)}`);
@@ -962,26 +1037,30 @@ describe("#540 — the quoted message or body of git and gh is prose, not a comm
     const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-540-"));
     const env = { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir };
     try {
-      const prose = (await runHook(
-        {
-          hook_event_name: "PreToolUse",
-          tool_name: "Bash",
-          session_id: "sess-540",
-          tool_input: { command: 'git commit -m "docs: explain why rm -rf is blocked"' },
-        },
-        env,
-      )).stdout;
+      const prose = (
+        await runHook(
+          {
+            hook_event_name: "PreToolUse",
+            tool_name: "Bash",
+            session_id: "sess-540",
+            tool_input: { command: 'git commit -m "docs: explain why rm -rf is blocked"' },
+          },
+          env
+        )
+      ).stdout;
       assert.equal(prose.trim(), "{}", "a commit message that mentions rm -rf must not warn");
 
-      const real = (await runHook(
-        {
-          hook_event_name: "PreToolUse",
-          tool_name: "Bash",
-          session_id: "sess-540",
-          tool_input: { command: 'git commit -m "$(rm -rf /tmp/x)"' },
-        },
-        env,
-      )).stdout;
+      const real = (
+        await runHook(
+          {
+            hook_event_name: "PreToolUse",
+            tool_name: "Bash",
+            session_id: "sess-540",
+            tool_input: { command: 'git commit -m "$(rm -rf /tmp/x)"' },
+          },
+          env
+        )
+      ).stdout;
       assert.match(real, /STOP — destructive Bash command detected \(pattern: `rm -rf`\)/);
     } finally {
       await daemon.close();

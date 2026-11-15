@@ -7,12 +7,7 @@ import { request } from "node:http";
 
 // ─── loopback self-call ─────────────────────────────────────────────────────
 
-export function postJson<T>(
-  baseUrl: string,
-  path: string,
-  body: unknown,
-  timeoutMs: number,
-): Promise<T> {
+export function postJson<T>(baseUrl: string, path: string, body: unknown, timeoutMs: number): Promise<T> {
   return new Promise((resolve, reject) => {
     let url: URL;
     try {
@@ -49,7 +44,7 @@ export function postJson<T>(
             reject(new Error("invalid JSON response from daemon"));
           }
         });
-      },
+      }
     );
     req.on("timeout", () => {
       req.destroy(new Error("timeout"));

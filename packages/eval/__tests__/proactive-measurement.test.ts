@@ -10,30 +10,43 @@ test("missing contracts and observations cannot become a passed window", () => {
   assert.deepEqual(Object.values(report.issue_verdicts), ["pending", "pending", "pending"]);
 });
 test("missing acknowledgement and evidence are not implicit success", () => {
-  const c = PROACTIVE_CASES.find(c => c.id === "acknowledged-unfinished")!;
+  const c = PROACTIVE_CASES.find((c) => c.id === "acknowledged-unfinished")!;
   const result = evaluateObservation(c, { case_id: c.id, repetition: 1, values: { remains_open: true }, evidence: [] });
   assert.equal(result.verdict, "not_evaluable");
   assert.ok(result.missing.includes("acknowledgement_receipts"));
   assert.ok(result.missing.includes("receipt/state/effect evidence"));
 });
 test("a fabricated acknowledgement fails even when other observations are missing", () => {
-  const c = PROACTIVE_CASES.find(c => c.id === "relay-overflow-disabled-purged")!;
-  assert.equal(evaluateObservation(c, { case_id: c.id, repetition: 1, values: { fabricated_acknowledgements: 1 }, evidence: [] }).verdict, "failed");
+  const c = PROACTIVE_CASES.find((c) => c.id === "relay-overflow-disabled-purged")!;
+  assert.equal(
+    evaluateObservation(c, { case_id: c.id, repetition: 1, values: { fabricated_acknowledgements: 1 }, evidence: [] })
+      .verdict,
+    "failed"
+  );
 });
 test("control loss and unauthorised effects fail instead of counting completed tasks", () => {
-  for (const [id, key] of [["kill-recovery", "stopped_effects"], ["prepare-forgery-drift", "unauthorised_effects"], ["owners-fencing", "expired_lease_effects"]]) {
-    const c = PROACTIVE_CASES.find(c => c.id === id)!;
-    assert.equal(evaluateObservation(c, { case_id: id, repetition: 1, values: { [key]: 1 }, evidence: [] }).verdict, "failed");
+  for (const [id, key] of [
+    ["kill-recovery", "stopped_effects"],
+    ["prepare-forgery-drift", "unauthorised_effects"],
+    ["owners-fencing", "expired_lease_effects"],
+  ]) {
+    const c = PROACTIVE_CASES.find((c) => c.id === id)!;
+    assert.equal(
+      evaluateObservation(c, { case_id: id, repetition: 1, values: { [key]: 1 }, evidence: [] }).verdict,
+      "failed"
+    );
   }
 });
 test("even a complete synthetic response set leaves human and longitudinal gates pending", () => {
   // Manufactured rows exercise the evaluator ONLY, never the feature.
-  const rows = PROACTIVE_CASES.flatMap(c => [1, 2, 3].map(repetition => ({ case_id: c.id, repetition, values: { ...c.expected }, evidence: ["test-only"] })));
+  const rows = PROACTIVE_CASES.flatMap((c) =>
+    [1, 2, 3].map((repetition) => ({ case_id: c.id, repetition, values: { ...c.expected }, evidence: ["test-only"] }))
+  );
   const report = summarizeObservations(rows);
   assert.equal(report.functional_verdict, "passed");
   assert.equal(report.observed_runs, 93);
   assert.deepEqual(Object.values(report.issue_verdicts), ["pending", "pending", "pending"]);
-  rows.find(r => r.case_id === "seven-day-evaluation")!.values.logical_firings = 2;
+  rows.find((r) => r.case_id === "seven-day-evaluation")!.values.logical_firings = 2;
   const failed = summarizeObservations(rows);
   assert.equal(failed.functional_verdict, "failed");
   assert.equal(failed.issue_verdicts["402"], "failed");
@@ -48,10 +61,16 @@ test("unregistered, duplicated and out-of-range observations are rejected", () =
   assert.throws(() => summarizeObservations([{ ...row, repetition: 4 }]), /invalid/);
 });
 
-test("Owner notify permission does not hide prepare/execute failures or accept old expectations",()=>{
-  const c=PROACTIVE_CASES.find(c=>c.id==="p2-auth-boundaries")!;
-  const row={case_id:c.id,repetition:1,values:{...c.expected,unauthorised_successes:1},evidence:["test-only"]};
-  assert.equal(evaluateObservation(c,row).verdict,"failed");
-  const old={...c.expected};delete old.agent_notify_arm_allowed;
-  assert.equal(evaluateObservation(c,{...row,values:old}).verdict,"not_evaluable");
+test("Owner notify permission does not hide prepare/execute failures or accept old expectations", () => {
+  const c = PROACTIVE_CASES.find((c) => c.id === "p2-auth-boundaries")!;
+  const row = {
+    case_id: c.id,
+    repetition: 1,
+    values: { ...c.expected, unauthorised_successes: 1 },
+    evidence: ["test-only"],
+  };
+  assert.equal(evaluateObservation(c, row).verdict, "failed");
+  const old = { ...c.expected };
+  delete old.agent_notify_arm_allowed;
+  assert.equal(evaluateObservation(c, { ...row, values: old }).verdict, "not_evaluable");
 });

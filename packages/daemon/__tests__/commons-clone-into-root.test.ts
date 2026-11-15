@@ -11,7 +11,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cloneIntoRoot } from "../src/cli/commons.js";
@@ -56,7 +65,11 @@ test("a root that already holds the bridges pool is cloned into, and the pool su
     assert.ok(existsSync(join(root, "recipes", "one.md")), "the recipes arrived");
     assert.equal(readFileSync(join(root, "bridges", "en", "b.json"), "utf8"), "{}", "the minted bridges are untouched");
     assert.equal(readFileSync(join(root, "last-mint.json"), "utf8"), '{"minted":20}');
-    assert.deepEqual(readdirSync(dir).filter((n) => n.includes("-clone-")), [], "no staging directory is left behind");
+    assert.deepEqual(
+      readdirSync(dir).filter((n) => n.includes("-clone-")),
+      [],
+      "no staging directory is left behind"
+    );
   });
 });
 
@@ -71,7 +84,10 @@ test("a name on both sides is refused by name, and the local file is not overwri
     assert.match((r as { detail: string }).detail, /README\.md/, "the refusal names the clash");
     assert.equal(readFileSync(join(root, "README.md"), "utf8"), "mine\n", "the user's file stays");
     assert.ok(!existsSync(join(root, ".git")), "a refused clone leaves no half checkout");
-    assert.deepEqual(readdirSync(dir).filter((n) => n.includes("-clone-")), []);
+    assert.deepEqual(
+      readdirSync(dir).filter((n) => n.includes("-clone-")),
+      []
+    );
   });
 });
 
@@ -97,7 +113,10 @@ test("#638: a mid-move failure rolls back copied checkout entries", { skip: !git
     assert.match((result as { detail: string }).detail, /rolled back/);
     assert.deepEqual(readdirSync(root), ["last-mint.json"]);
     assert.equal(readFileSync(join(root, "last-mint.json"), "utf8"), "local\n");
-    assert.deepEqual(readdirSync(dir).filter((n) => n.includes("-clone-")), []);
+    assert.deepEqual(
+      readdirSync(dir).filter((n) => n.includes("-clone-")),
+      []
+    );
   });
 });
 

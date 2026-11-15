@@ -213,7 +213,7 @@ async function readCursor(dir: string): Promise<number> {
  *  exited 0 and left 14 of 20 conversations on disk. */
 export async function buildQueue(
   conversations: ConversationRecord[],
-  dir: string = defaultQueueDir(),
+  dir: string = defaultQueueDir()
 ): Promise<{ queued: number; messages: number; queueFile: string }> {
   const queueFile = join(dir, QUEUE_FILE);
   return withPathLock(
@@ -231,7 +231,7 @@ export async function buildQueue(
         queueFile,
       };
     },
-    { crossProcess: true },
+    { crossProcess: true }
   );
 }
 
@@ -320,6 +320,6 @@ export async function readNextChunk(dir: string = defaultQueueDir()): Promise<Mi
       const source = [...sources.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "text";
       return { body: sections.join("\n\n"), conversations: sections.length, remaining, source };
     },
-    { crossProcess: true },
+    { crossProcess: true }
   );
 }

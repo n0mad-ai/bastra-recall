@@ -26,9 +26,7 @@ import { emptyVaultAnswer } from "./empty-vault.mjs";
 
 const DIST = new URL("../../../daemon/dist/code-graph/", import.meta.url).pathname;
 const { codeTools, findCode, FindCodeArgs } = await import(`${DIST}find-code.js`);
-const { affectedTools, findAffectedFiles, FindAffectedFilesArgs } = await import(
-  `${DIST}find-affected-files.js`
-);
+const { affectedTools, findAffectedFiles, FindAffectedFilesArgs } = await import(`${DIST}find-affected-files.js`);
 const { CodeGraphCache } = await import(`${DIST}cache.js`);
 // The PRODUCT's whole tool list, not just the code half (#582 review). The
 // instructions tell an agent to `recall` first; an arm that is told that and
@@ -37,9 +35,7 @@ const { CodeGraphCache } = await import(`${DIST}cache.js`);
 // document tools are served as STUBS over an empty vault: same names, same
 // schemas, an honest "nothing here" — the scenarios carry no memories, so an
 // empty vault is the truthful answer, not a crippled one.
-const { ALL_TOOL_DEFS } = await import(
-  new URL("../../../daemon/dist/tool-defs.js", import.meta.url).pathname
-);
+const { ALL_TOOL_DEFS } = await import(new URL("../../../daemon/dist/tool-defs.js", import.meta.url).pathname);
 // The PRODUCT's server instructions, not a stand-in. Claude Code loads these
 // into the model's context at session start, so an arm served without them
 // measures a weaker surface than any real user is given (#582).
@@ -71,7 +67,7 @@ const server = new Server(
   { name: "code", version: "1.0.0" },
   // Code awareness IS on for an arm that is served a graph, so the arm gets
   // exactly the instructions such a user gets — including the code paragraph.
-  { capabilities: { tools: {} }, instructions: serverInstructions(true) },
+  { capabilities: { tools: {} }, instructions: serverInstructions(true) }
 );
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
@@ -84,9 +80,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   }
   if (req.params.name === "find_affected_files") {
     const parsed = FindAffectedFilesArgs.safeParse(args);
-    return parsed.success
-      ? ok(await findAffectedFiles(cache, { ...parsed.data, repo }))
-      : fail(parsed.error.message);
+    return parsed.success ? ok(await findAffectedFiles(cache, { ...parsed.data, repo })) : fail(parsed.error.message);
   }
   if (TOOLS.some((t) => t.name === req.params.name) && !CODE_TOOLS.has(req.params.name)) {
     const answer = emptyVaultAnswer(req.params.name, args);

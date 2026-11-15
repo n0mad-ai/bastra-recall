@@ -66,12 +66,12 @@ test("der Trash darf kein Symlink sein, auch nicht innerhalb von .bastra", async
       memoryID: "doomed",
       context: { actor: "user" },
     }),
-    /own trash/,
+    /own trash/
   );
   assert.deepEqual(
     (await readdir(locks)).filter((n) => n.endsWith(".md")),
     [],
-    "kein gelöschtes Memory zwischen den Lock-Dateien",
+    "kein gelöschtes Memory zwischen den Lock-Dateien"
   );
 });
 
@@ -94,7 +94,7 @@ test("das Lock-Regal darf kein Symlink sein, auch nicht innerhalb von .bastra", 
       scope: "proj",
       recall_when: ["probe"],
     }),
-    /own locks/,
+    /own locks/
   );
   assert.deepEqual(await readdir(trash), [], "keine Lock-Datei im Trash");
 });

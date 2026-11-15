@@ -14,11 +14,7 @@ import { dirname } from "node:path";
 import matter from "gray-matter";
 import { SUMMARY_MAX } from "./summary.js";
 import { ensureVaultDir } from "./vault-root-guard.js";
-import type {
-  SaveMemoryInput,
-  SaveMemoryResult,
-  SaveMemoryCommitOptions,
-} from "./save-schema.js";
+import type { SaveMemoryInput, SaveMemoryResult, SaveMemoryCommitOptions } from "./save-schema.js";
 import { MemoryWriteConflictError, assertBodyTail } from "./save-schema.js";
 import { buildFrontmatter } from "./save-frontmatter.js";
 import { fileExists, readTarget, writeConflict } from "./save-commit.js";
@@ -27,12 +23,7 @@ import { sameFile } from "./file-identity.js";
 import { normalizeScopeKey } from "./scope.js";
 import { resolveMemoryTarget } from "./save-target.js";
 import { moveToTrashUnderClaim } from "./audit-log.js";
-import {
-  areaExclusivelyHeld,
-  areaKeyForPath,
-  assertAreaWritable,
-  withAreaShared,
-} from "./area-claim.js";
+import { areaExclusivelyHeld, areaKeyForPath, assertAreaWritable, withAreaShared } from "./area-claim.js";
 import { newOperationId, reportMutationIncident } from "./mutation-incident.js";
 import { readOccupant, scanVaultForId, vaultRelative, type Located } from "./memory-locator.js";
 
@@ -43,7 +34,7 @@ import { readOccupant, scanVaultForId, vaultRelative, type Located } from "./mem
 export async function saveMemory(
   vaultRoot: string,
   input: SaveMemoryInput,
-  commit: SaveMemoryCommitOptions = {},
+  commit: SaveMemoryCommitOptions = {}
 ): Promise<SaveMemoryResult> {
   // #544: the declared tail of the body, checked before any lock or file I/O.
   // A body that arrives truncated (MCP framing, a lossy proxy, an older
@@ -89,10 +80,14 @@ export async function saveMemory(
   // deren Regal hier nicht mitgesperrt. Es früher zu wissen hieße, den
   // Vaultscan VOR den Area-Claim zu ziehen — und damit die Auskunft, um die es
   // geht, wieder ohne Sperre zu erheben.
-  return withAreaShared(vaultRoot, [areaKeyForPath(vaultRoot, filePath), existingPath !== undefined ? areaKeyForPath(vaultRoot, existingPath) : null], () =>
-    withIdClaim({ vaultRoot, id, filePath, op: input.overwrite ? "save_memory_update" : "save_memory_create" }, (claim) =>
-      commitMemory(vaultRoot, input, commit, { id, filePath, scope }, claim),
-    ),
+  return withAreaShared(
+    vaultRoot,
+    [areaKeyForPath(vaultRoot, filePath), existingPath !== undefined ? areaKeyForPath(vaultRoot, existingPath) : null],
+    () =>
+      withIdClaim(
+        { vaultRoot, id, filePath, op: input.overwrite ? "save_memory_update" : "save_memory_create" },
+        (claim) => commitMemory(vaultRoot, input, commit, { id, filePath, scope }, claim)
+      )
   );
 }
 
@@ -111,7 +106,7 @@ function assertIdIsNotClaimedElsewhere(
   id: string,
   filePath: string,
   overwrite: boolean,
-  located: Located,
+  located: Located
 ): void {
   // Ein Scan mit blindem Fleck darf nicht als „die id ist frei" durchgehen:
   // Hinter dem Ordner, den er nicht öffnen konnte, kann dasselbe Memory
@@ -124,7 +119,7 @@ function assertIdIsNotClaimedElsewhere(
         (located.cloudOnly?.length
           ? `${located.cloudOnly.length} files are only in the cloud (not downloaded). ${CLOUD_OFFLINE_GUIDANCE} `
           : `Restore read access to the files and folders before saving. `) +
-        `Writing now could create a second file with the same id.`,
+        `Writing now could create a second file with the same id.`
     );
   }
   // Ein `ambiguous` ist ein Vault-Defekt (#240/A2.3), keine Wahlmöglichkeit:
@@ -134,7 +129,7 @@ function assertIdIsNotClaimedElsewhere(
     throw new Error(
       `memory '${id}' exists in more than one file: ` +
         `${located.filePaths.map((p) => vaultRelative(vaultRoot, p)).join(", ")}. ` +
-        `Remove or rename all but one before saving — the index silently loads only one of them.`,
+        `Remove or rename all but one before saving — the index silently loads only one of them.`
     );
   }
   // Dieselbe id an einem ANDEREN Ort ist eine Kollision, kein freier Platz.
@@ -153,7 +148,7 @@ function assertIdIsNotClaimedElsewhere(
     throw new Error(
       `memory already exists: ${id} (at ${vaultRelative(vaultRoot, located.filePath)}). ` +
         `Saving it to ${vaultRelative(vaultRoot, filePath)} would create a second file with the ` +
-        `same id — pass the existing folder, or pick a different id.`,
+        `same id — pass the existing folder, or pick a different id.`
     );
   }
 }
@@ -171,7 +166,7 @@ async function commitMemory(
   input: SaveMemoryInput,
   commit: SaveMemoryCommitOptions,
   target: { id: string; filePath: string; scope: string },
-  claim: IdClaim,
+  claim: IdClaim
 ): Promise<SaveMemoryResult> {
   const { id, filePath: filePath0, scope } = target;
   // EINE autoritative Auskunft für die gesamte Transaktion: Sie beantwortet
@@ -228,7 +223,7 @@ async function commitMemory(
         id,
         located.filePath,
         `the area holding this memory is being renamed, deleted or created right now — ` +
-          `nothing was written. Retry in a moment.`,
+          `nothing was written. Retry in a moment.`
       );
     }
   }
@@ -272,33 +267,29 @@ async function commitMemory(
       throw new Error(
         `refusing to overwrite ${vaultRelative(vaultRoot, filePath)}: the file exists but ` +
           `cannot be read (${occupant.reason}), so it cannot be shown to be memory '${id}'. ` +
-          `Fix its permissions, or move it out of the way.`,
+          `Fix its permissions, or move it out of the way.`
       );
     }
     if (occupant.kind === "foreign") {
       throw new Error(
         `refusing to overwrite ${vaultRelative(vaultRoot, filePath)}: it is not a memory ` +
-          `(no valid memory frontmatter). Pick a different id, or move that file out of the way.`,
+          `(no valid memory frontmatter). Pick a different id, or move that file out of the way.`
       );
     }
     if (occupant.kind === "memory" && occupant.id !== id) {
       throw new Error(
         `refusing to overwrite ${vaultRelative(vaultRoot, filePath)}: it holds memory ` +
-          `'${occupant.id}', not '${id}'. Two memories cannot share one file.`,
+          `'${occupant.id}', not '${id}'. Two memories cannot share one file.`
       );
     }
   }
 
-  if (
-    commit.expectedTarget !== undefined &&
-    commit.expectedTarget !== observedTarget
-  ) {
+  if (commit.expectedTarget !== undefined && commit.expectedTarget !== observedTarget) {
     throw writeConflict(id, filePath, "target changed after the caller inspected it");
   }
   if (exists && !input.overwrite) {
     throw new Error(
-      `memory already exists: ${id}. Pass overwrite=true to replace it, ` +
-        `or pick a different title/id.`,
+      `memory already exists: ${id}. Pass overwrite=true to replace it, ` + `or pick a different title/id.`
     );
   }
 
@@ -327,9 +318,7 @@ async function commitMemory(
   // Auskunft, unter derselben Transaktion — nicht aus nachkopierten
   // Einzelfeldern in den Aufrufern.
   const refiledFrom =
-    input.overwrite && located.kind === "unique" && !sameFile(located.filePath, filePath)
-      ? located.filePath
-      : null;
+    input.overwrite && located.kind === "unique" && !sameFile(located.filePath, filePath) ? located.filePath : null;
   // Fail-closed: Ist die Vorlage unlesbar, wird nicht „ohne sie" geschrieben —
   // das wäre exakt der Metadatenverlust, den dieser Zweig verhindert.
   // `readTarget` wirft auf allem außer ENOENT.
@@ -452,11 +441,7 @@ async function commitMemory(
     if (refiledFrom !== null) {
       const commitSource = await readTarget(refiledFrom);
       if (commitSource !== baseRaw) {
-        throw writeConflict(
-          id,
-          refiledFrom,
-          "the source file changed while the re-file was being prepared",
-        );
+        throw writeConflict(id, refiledFrom, "the source file changed while the re-file was being prepared");
       }
     }
 
@@ -536,7 +521,7 @@ async function commitMemory(
           (undone
             ? `Nothing was changed.`
             : `AND ${vaultRelative(vaultRoot, filePath)} could not be rolled back — both files ` +
-              `now carry id '${id}'. Remove or fix one of them by hand.`),
+              `now carry id '${id}'. Remove or fix one of them by hand.`)
       );
     }
   }
@@ -641,28 +626,31 @@ export interface DeleteMemoryResult {
 export async function deleteMemoryFile(
   filePath: string,
   id: string,
-  opts: { vaultRoot: string; expectedSha256?: string },
+  opts: { vaultRoot: string; expectedSha256?: string }
 ): Promise<DeleteMemoryResult> {
-  return withIdClaim(
-    { vaultRoot: opts.vaultRoot, id, filePath, op: "delete_memory_file" },
-    async () => {
-      if (!(await fileExists(filePath))) {
-        throw new Error(`memory file not found: ${filePath}`);
-      }
-      if (opts.expectedSha256 !== undefined && createHash("sha256").update(await readFile(filePath)).digest("hex") !== opts.expectedSha256) {
-        throw Object.assign(new Error("memory file content changed since the expected snapshot"), { code: "MEMORY_CONTENT_CHANGED" });
-      }
-      const occupant = readOccupant(filePath);
-      if (occupant.kind !== "memory" || occupant.id !== id) {
-        throw new Error(
-          `refusing to delete ${vaultRelative(opts.vaultRoot, filePath)}: it does not hold ` +
-            `memory '${id}' (found ${occupant.kind === "memory" ? `'${occupant.id}'` : occupant.kind}). ` +
-            `Re-resolve the path — a stale index entry must not delete a foreign file.`,
-        );
-      }
-      await unlink(filePath);
-      return { id, file_path: filePath, deleted: true };
-    },
-  );
+  return withIdClaim({ vaultRoot: opts.vaultRoot, id, filePath, op: "delete_memory_file" }, async () => {
+    if (!(await fileExists(filePath))) {
+      throw new Error(`memory file not found: ${filePath}`);
+    }
+    if (
+      opts.expectedSha256 !== undefined &&
+      createHash("sha256")
+        .update(await readFile(filePath))
+        .digest("hex") !== opts.expectedSha256
+    ) {
+      throw Object.assign(new Error("memory file content changed since the expected snapshot"), {
+        code: "MEMORY_CONTENT_CHANGED",
+      });
+    }
+    const occupant = readOccupant(filePath);
+    if (occupant.kind !== "memory" || occupant.id !== id) {
+      throw new Error(
+        `refusing to delete ${vaultRelative(opts.vaultRoot, filePath)}: it does not hold ` +
+          `memory '${id}' (found ${occupant.kind === "memory" ? `'${occupant.id}'` : occupant.kind}). ` +
+          `Re-resolve the path — a stale index entry must not delete a foreign file.`
+      );
+    }
+    await unlink(filePath);
+    return { id, file_path: filePath, deleted: true };
+  });
 }
-

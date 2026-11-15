@@ -39,35 +39,100 @@ async function drive(t: Telemetry): Promise<string[]> {
   });
 
   await t.logRecall({
-    recall_id: "rec-2", query: "how to deploy", k: 5, scope: null, type: null,
-    vault_size: 10, hit_count: 1, top_score: 88, hits: [{ id: "m1", score: 88, type: "lesson" }],
-    latency_ms: 12, session_id: "sess-a", client: "claude-code",
+    recall_id: "rec-2",
+    query: "how to deploy",
+    k: 5,
+    scope: null,
+    type: null,
+    vault_size: 10,
+    hit_count: 1,
+    top_score: 88,
+    hits: [{ id: "m1", score: 88, type: "lesson" }],
+    latency_ms: 12,
+    session_id: "sess-a",
+    client: "claude-code",
   } as Arg<"logRecall">);
-  await t.logLoadMemory({ id: "m1", found: true, follows_recall: "rec-2", from_hook_recall: null, hook_hint_rank: null } as Arg<"logLoadMemory">);
+  await t.logLoadMemory({
+    id: "m1",
+    found: true,
+    follows_recall: "rec-2",
+    from_hook_recall: null,
+    hook_hint_rank: null,
+  } as Arg<"logLoadMemory">);
   await t.logReadDocument({ id: "d1", found: true, delivered_chars: 10 } as Arg<"logReadDocument">);
   await t.logSaveMemory({
-    id: "m9", type: "lesson", scope: "s", title: "T", tag_count: 1, recall_when_count: 2,
-    body_chars: 30, overwrite: false, created: true, follows_recall: null,
+    id: "m9",
+    type: "lesson",
+    scope: "s",
+    title: "T",
+    tag_count: 1,
+    recall_when_count: 2,
+    body_chars: 30,
+    overwrite: false,
+    created: true,
+    follows_recall: null,
   } as Arg<"logSaveMemory">);
-  await t.logSaveHold({ reason: "duplicate", id: "m9", type: "lesson", scope: "s", claimed_count: 1, overwrite: false, follows_recall: null } as unknown as Arg<"logSaveHold">);
-  await t.logIdScan({ id: "m9", op: "save", ms: 3, files: 4, bytes: 5, dirs: 1, blind_spots: 0, cloud_mount: false } as Arg<"logIdScan">);
+  await t.logSaveHold({
+    reason: "duplicate",
+    id: "m9",
+    type: "lesson",
+    scope: "s",
+    claimed_count: 1,
+    overwrite: false,
+    follows_recall: null,
+  } as unknown as Arg<"logSaveHold">);
+  await t.logIdScan({
+    id: "m9",
+    op: "save",
+    ms: 3,
+    files: 4,
+    bytes: 5,
+    dirs: 1,
+    blind_spots: 0,
+    cloud_mount: false,
+  } as Arg<"logIdScan">);
   await t.logHookRecall({
-    recall_id: "rec-3", query: "fix the build", hits: [{ id: "m2", score: 40 }],
-    session_id: "sess-b", hook_source: "prompt", client: "claude-code",
+    recall_id: "rec-3",
+    query: "fix the build",
+    hits: [{ id: "m2", score: 40 }],
+    session_id: "sess-b",
+    hook_source: "prompt",
+    client: "claude-code",
   } as Arg<"logHookRecall">);
   await t.logHookRecall({ recall_id: "rec-4", query: "no session", hits: [] } as unknown as Arg<"logHookRecall">);
   await t.logEvidenceDecision({
-    recall_id: "rec-3", shadow: true, degraded: false, decisions: [],
-    counts: { required: 0, optional: 1, no_answer: 0 }, session_id: "sess-b", hook_source: "prompt",
+    recall_id: "rec-3",
+    shadow: true,
+    degraded: false,
+    decisions: [],
+    counts: { required: 0, optional: 1, no_answer: 0 },
+    session_id: "sess-b",
+    hook_source: "prompt",
   } as Arg<"logEvidenceDecision">);
   await t.logHookReflex({ session_id: "sess-a", reflex: "x" } as unknown as Arg<"logHookReflex">);
-  await t.logHookAct({ session_id: "sess-a", tool_name: "Bash", hook_source: "bash-pre" } as unknown as Arg<"logHookAct">);
-  await t.logMutationIncident({ operation_id: "op-1", op: "save", status: "failed", phase: "write", memory_id: null, rollback: null, detail: null } as Arg<"logMutationIncident">);
+  await t.logHookAct({
+    session_id: "sess-a",
+    tool_name: "Bash",
+    hook_source: "bash-pre",
+  } as unknown as Arg<"logHookAct">);
+  await t.logMutationIncident({
+    operation_id: "op-1",
+    op: "save",
+    status: "failed",
+    phase: "write",
+    memory_id: null,
+    rollback: null,
+    detail: null,
+  } as Arg<"logMutationIncident">);
   await t.logCodeToolCall({ tool: "find_code", ms: 4 } as unknown as Arg<"logCodeToolCall">);
   await t.logCodeGraphRefresh({ outcome: "started" } as unknown as Arg<"logCodeGraphRefresh">);
   await t.logOllamaLifecycle({ action: "prewarm" } as unknown as Arg<"logOllamaLifecycle">);
   await t.logWarmupSettle({ session_start_call_id: "c1" } as unknown as Arg<"logWarmupSettle">);
-  await t.logVectorLateSettle({ recall_id: "rec-3", session_id: "sess-b", hook_source: "prompt" } as unknown as Arg<"logVectorLateSettle">);
+  await t.logVectorLateSettle({
+    recall_id: "rec-3",
+    session_id: "sess-b",
+    hook_source: "prompt",
+  } as unknown as Arg<"logVectorLateSettle">);
   await t.logVectorLateSettle({ recall_id: "rec-4" } as unknown as Arg<"logVectorLateSettle">);
 
   // The act path: one recall_episode (load in sess-b) and the shadow row for
@@ -79,7 +144,12 @@ async function drive(t: Telemetry): Promise<string[]> {
   await new Promise((r) => setImmediate(r));
   await new Promise((r) => setImmediate(r));
   // Two windows left open, so the snapshot carries its Set → array shape.
-  t.recordLoadedMemory({ memory_id: "m2", distinctive_tokens: ["delta", "epsilon"], hook_hint: null, session_id: "sess-a" });
+  t.recordLoadedMemory({
+    memory_id: "m2",
+    distinctive_tokens: ["delta", "epsilon"],
+    hook_hint: null,
+    session_id: "sess-a",
+  });
   t.recordSurfacedHints([{ memory_id: "m5", distinctive_tokens: ["omega"] }], "sess-b");
   await new Promise((r) => setImmediate(r));
   await new Promise((r) => setImmediate(r));
@@ -111,12 +181,30 @@ test("event log and join-state snapshot keep their byte format (#1039)", async (
     // #1313 adds delivery events and session slots. Keep the historical rows
     // and snapshot fields byte-pinned, and assert the additive fields explicitly.
     const lines = log.split("\n");
-    const shown = lines.filter(line => line && JSON.parse(line).kind === "convention_shown");
-    assert.deepEqual(shown.map(line => JSON.parse(line)), [
-      { kind: "convention_shown", ts: "2026-10-04T12:00:00.000Z", session_id: "sess-a", session_known: true, memory_ids: ["m4"] },
-      { kind: "convention_shown", ts: "2026-10-04T12:00:00.000Z", session_id: "sess-b", session_known: true, memory_ids: ["m5"] },
-    ]);
-    assert.deepEqual(lines.filter(line => !shown.includes(line)), EXPECTED_LOG);
+    const shown = lines.filter((line) => line && JSON.parse(line).kind === "convention_shown");
+    assert.deepEqual(
+      shown.map((line) => JSON.parse(line)),
+      [
+        {
+          kind: "convention_shown",
+          ts: "2026-10-04T12:00:00.000Z",
+          session_id: "sess-a",
+          session_known: true,
+          memory_ids: ["m4"],
+        },
+        {
+          kind: "convention_shown",
+          ts: "2026-10-04T12:00:00.000Z",
+          session_id: "sess-b",
+          session_known: true,
+          memory_ids: ["m5"],
+        },
+      ]
+    );
+    assert.deepEqual(
+      lines.filter((line) => !shown.includes(line)),
+      EXPECTED_LOG
+    );
     const snapshot = JSON.parse(joinState);
     assert.deepEqual(snapshot.sessionHookHints, []);
     delete snapshot.sessionHookHints;
@@ -150,8 +238,9 @@ const EXPECTED_LOG: string[] = [
   '{"kind":"vector_late_settle","ts":"2026-10-04T12:00:00.000Z","session_id":"<run>","late":true,"recall_id":"rec-4","dimensions":{"client":"unknown","hook_source":"unknown","experiment_session":null,"arm":"unassigned"}}',
   '{"kind":"recall_episode","ts":"2026-10-04T12:00:00.000Z","session_id":"<run>","turn_id":"<turn-3>","turn_source":"session","recall_id":"rec-1","memory_id":"m1","surfaced_score":120,"band":"required","surfaced":true,"acted_on":true,"match_strength":2,"tool_name":"Edit"}',
   '{"kind":"hint_followed_shadow","ts":"2026-10-04T12:00:00.000Z","session_id":"<run>","memory_id":"m4","turn_id":"<turn-1>","turn_source":"session","followed":true,"match_strength":2,"tool_name":"Bash","age_ms":0}',
-  '',
+  "",
 ];
 
 // The debounced join-state snapshot, flushed by `flushNow`.
-const EXPECTED_JOIN_STATE = "{\"version\":1,\"lastRecall\":null,\"hookHints\":[[\"m1\",{\"recall_id\":\"rec-1\",\"rank\":1,\"score\":120,\"ts\":1791115200000}],[\"m2\",{\"recall_id\":\"rec-1\",\"rank\":2,\"score\":40,\"ts\":1791115200000}],[\"m3\",{\"recall_id\":\"rec-1\",\"rank\":3,\"score\":null,\"ts\":1791115200000}]],\"turns\":[[\"sess-a\",{\"turn_id\":\"<turn-1>\",\"session_id\":\"sess-a\",\"started_at\":1791115200000}],[\"sess-b\",{\"turn_id\":\"<turn-3>\",\"session_id\":\"sess-b\",\"started_at\":1791115200000}]],\"latestTurn\":{\"turn_id\":\"<turn-3>\",\"session_id\":\"sess-b\",\"started_at\":1791115200000},\"adoptedTurnKeys\":[[\"sess-b\",7]],\"loadedMemories\":[{\"memory_id\":\"m2\",\"distinctive_tokens\":[\"delta\",\"epsilon\"],\"turn_id\":\"<turn-1>\",\"turn_source\":\"session\",\"recall_id\":null,\"surfaced_score\":null,\"band\":\"not_hinted\",\"surfaced\":false,\"ts\":1791115200000,\"closed\":false},{\"memory_id\":\"m5\",\"distinctive_tokens\":[\"omega\"],\"turn_id\":\"<turn-3>\",\"turn_source\":\"session\",\"recall_id\":null,\"surfaced_score\":null,\"band\":\"not_hinted\",\"surfaced\":true,\"ts\":1791115200000,\"closed\":false,\"hint_only\":true,\"hint_session_id\":\"sess-b\"}]}";
+const EXPECTED_JOIN_STATE =
+  '{"version":1,"lastRecall":null,"hookHints":[["m1",{"recall_id":"rec-1","rank":1,"score":120,"ts":1791115200000}],["m2",{"recall_id":"rec-1","rank":2,"score":40,"ts":1791115200000}],["m3",{"recall_id":"rec-1","rank":3,"score":null,"ts":1791115200000}]],"turns":[["sess-a",{"turn_id":"<turn-1>","session_id":"sess-a","started_at":1791115200000}],["sess-b",{"turn_id":"<turn-3>","session_id":"sess-b","started_at":1791115200000}]],"latestTurn":{"turn_id":"<turn-3>","session_id":"sess-b","started_at":1791115200000},"adoptedTurnKeys":[["sess-b",7]],"loadedMemories":[{"memory_id":"m2","distinctive_tokens":["delta","epsilon"],"turn_id":"<turn-1>","turn_source":"session","recall_id":null,"surfaced_score":null,"band":"not_hinted","surfaced":false,"ts":1791115200000,"closed":false},{"memory_id":"m5","distinctive_tokens":["omega"],"turn_id":"<turn-3>","turn_source":"session","recall_id":null,"surfaced_score":null,"band":"not_hinted","surfaced":true,"ts":1791115200000,"closed":false,"hint_only":true,"hint_session_id":"sess-b"}]}';

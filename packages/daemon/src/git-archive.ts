@@ -117,7 +117,7 @@ function readArgs(rest: string[], g: Grammar): Args | null {
       const name = eq > 0 ? a.slice(0, eq) : a;
       if (g.valued?.includes(name)) {
         if (eq > 0) r.values[name] = a.slice(eq + 1);
-        else if (i + 1 < rest.length) r.valueAt.add(i + 1), (r.values[name] = rest[++i]);
+        else if (i + 1 < rest.length) (r.valueAt.add(i + 1), (r.values[name] = rest[++i]));
         else return null;
       } else if (eq < 0 && g.longs.includes(a)) r.flags.add(a);
       else return null;
@@ -125,7 +125,8 @@ function readArgs(rest: string[], g: Grammar): Args | null {
       for (let k = 1; k < a.length; k++) {
         const f = `-${a[k]}`;
         if (g.shorts.includes(a[k])) r.flags.add(f);
-        else if (g.valued?.includes(f) && k === a.length - 1 && i + 1 < rest.length) r.valueAt.add(i + 1), (r.values[f] = rest[++i]);
+        else if (g.valued?.includes(f) && k === a.length - 1 && i + 1 < rest.length)
+          (r.valueAt.add(i + 1), (r.values[f] = rest[++i]));
         else return null;
       }
     } else r.operands.push(a);
@@ -135,7 +136,17 @@ function readArgs(rest: string[], g: Grammar): Args | null {
 
 const has = (r: Args, ...names: string[]): boolean => names.some((n) => r.flags.has(n));
 /** Flags of `checkout <paths>` and `restore` that change neither what runs nor what is lost. */
-const PATH_FLAGS = ["--quiet", "--ours", "--theirs", "--no-recurse-submodules", "--overlay", "--no-overlay", "--ignore-skip-worktree-bits", "--progress", "--no-progress"];
+const PATH_FLAGS = [
+  "--quiet",
+  "--ours",
+  "--theirs",
+  "--no-recurse-submodules",
+  "--overlay",
+  "--no-overlay",
+  "--ignore-skip-worktree-bits",
+  "--progress",
+  "--no-progress",
+];
 
 /** The act this invocation is, when it is one the shim makes reversible. */
 export function gitAct(p: ParsedGit): GitAct | null {
@@ -155,17 +166,35 @@ export function gitAct(p: ParsedGit): GitAct | null {
   if (sub === "reset") {
     const r = readArgs(rest, { shorts: "q", longs: ["--hard", "--quiet", "--no-quiet", "--no-recurse-submodules"] });
     if (!r || !has(r, "--hard") || r.operands.length > 1 || (r.after?.length ?? 0) > 0) return null;
-    return { kind: "snapshot", what: "reset --hard", paths: [], source: r.operands[0] ?? "HEAD", staged: true, worktree: true };
+    return {
+      kind: "snapshot",
+      what: "reset --hard",
+      paths: [],
+      source: r.operands[0] ?? "HEAD",
+      staged: true,
+      worktree: true,
+    };
   }
   if (sub === "checkout") {
     // With `--` and paths after it. `git checkout <branch> --` is a switch.
     const r = readArgs(rest, { shorts: "qf", longs: [...PATH_FLAGS, "--force"] });
     if (!r || !r.after || r.after.length === 0 || r.operands.length > 1) return null;
     const source = r.operands[0];
-    return { kind: "snapshot", what: "checkout --", paths: r.after, source, staged: source !== undefined, worktree: true };
+    return {
+      kind: "snapshot",
+      what: "checkout --",
+      paths: r.after,
+      source,
+      staged: source !== undefined,
+      worktree: true,
+    };
   }
   if (sub === "restore") {
-    const r = readArgs(rest, { shorts: "SWq", longs: [...PATH_FLAGS, "--staged", "--worktree", "--ignore-unmerged"], valued: ["-s", "--source"] });
+    const r = readArgs(rest, {
+      shorts: "SWq",
+      longs: [...PATH_FLAGS, "--staged", "--worktree", "--ignore-unmerged"],
+      valued: ["-s", "--source"],
+    });
     if (!r) return null;
     const paths = [...r.operands, ...(r.after ?? [])];
     if (paths.length === 0) return null;
@@ -343,7 +372,15 @@ function refusal(g: Plumbing, act: GitAct, cwd: string, top: string | null): str
   // for the first, a checkout from a tree for both). A sparse checkout marks
   // what is not on disk the same way; only a file that is there counts.
   if (act.kind === "snapshot" && top !== null) {
-    const listed = g.raw(["ls-files", "-v", "-s", "-z", "--full-name", "--", ...(act.paths.length > 0 ? act.paths : [":/"])]);
+    const listed = g.raw([
+      "ls-files",
+      "-v",
+      "-s",
+      "-z",
+      "--full-name",
+      "--",
+      ...(act.paths.length > 0 ? act.paths : [":/"]),
+    ]);
     if (listed === null) return null; // a pathspec git cannot read: the act fails on it the same way
     const marked = listed
       .split("\0")
@@ -432,7 +469,7 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
     if (!env.BASTRA_RM_CALL) return passThrough();
     err(
       `bastra: \`git ${argv.join(" ").slice(0, 120)}\` is not an act bastra's allow covers (as the shell expanded it) — not run (nothing changed). ` +
-        `Ask the user to run it, or BASTRA_GIT_SHIM=0 for the normal permission prompt.`,
+        `Ask the user to run it, or BASTRA_GIT_SHIM=0 for the normal permission prompt.`
     );
     return 1;
   }
@@ -457,7 +494,10 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
   const raw = (args: string[]): string | null => run([...SAFE, ...args]);
   const git = (args: string[]): string | null => raw(args)?.trimEnd() ?? null;
   const plain = (args: string[]): string | null => run(args);
-  const hash = (files: string[]): string[] | null => run([...SAFE, "hash-object", "--stdin-paths"], files.join("\n") + "\n")?.trimEnd().split("\n") ?? null;
+  const hash = (files: string[]): string[] | null =>
+    run([...SAFE, "hash-object", "--stdin-paths"], files.join("\n") + "\n")
+      ?.trimEnd()
+      .split("\n") ?? null;
   const top = git(["rev-parse", "--show-toplevel"]);
   // A bare repository has branches and no worktree: `-C <its directory>` restores there.
   const home = top ?? (act.kind === "branch" ? git(["rev-parse", "--absolute-git-dir"]) : null);
@@ -484,7 +524,20 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
       if (git(["update-ref", ref, sha, ""]) !== null) break;
     }
     const [first, ...then] = restore;
-    const row = { ts, action: "pinned", orig: home, dest: ref, sha, act: what, restore: first, ...(then.length > 0 ? { then } : {}), kind: "user", cwd, argv, call };
+    const row = {
+      ts,
+      action: "pinned",
+      orig: home,
+      dest: ref,
+      sha,
+      act: what,
+      restore: first,
+      ...(then.length > 0 ? { then } : {}),
+      kind: "user",
+      cwd,
+      argv,
+      call,
+    };
     try {
       appendManifest(archive, JSON.stringify(row) + "\n");
     } catch {
@@ -522,17 +575,35 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
   if (act.kind === "snapshot") {
     const sha = git(["stash", "create"]);
     if (sha === null) {
-      if (git(["rev-parse", "--verify", "-q", "HEAD^{commit}"]) === null) return refuse("there is no commit yet, so nothing can hold a snapshot of the staged files");
-      if (git(["ls-files", "-u"])) return refuse("the index has unmerged paths (a merge, rebase or cherry-pick in progress), which a snapshot cannot hold");
+      if (git(["rev-parse", "--verify", "-q", "HEAD^{commit}"]) === null)
+        return refuse("there is no commit yet, so nothing can hold a snapshot of the staged files");
+      if (git(["ls-files", "-u"]))
+        return refuse(
+          "the index has unmerged paths (a merge, rebase or cherry-pick in progress), which a snapshot cannot hold"
+        );
       const ita = raw(["diff-files", "--name-only", "-z", "--diff-filter=A"])?.split("\0").filter(Boolean) ?? [];
-      if (ita.length > 0) return refuse(`${ita[0]} was added with \`git add -N\` (intent to add), which git stash cannot save`);
+      if (ita.length > 0)
+        return refuse(`${ita[0]} was added with \`git add -N\` (intent to add), which git stash cannot save`);
       return refuse("could not save the uncommitted changes first");
     }
     // A tree the act names and git cannot find: git says so itself, and changes nothing.
-    if (act.source !== undefined && git(["rev-parse", "--verify", "-q", `${act.source}^{tree}`]) === null) return passThrough();
+    if (act.source !== undefined && git(["rev-parse", "--verify", "-q", `${act.source}^{tree}`]) === null)
+      return passThrough();
     /** Paths (from the top) that differ between two trees, inside the act's paths. */
     const differ = (from: string, to: string, filter: string, cached = false): string[] | null => {
-      const listed = raw(["diff", ...(cached ? ["--cached"] : []), "--name-only", "-z", "--no-renames", "--no-ext-diff", `--diff-filter=${filter}`, from, ...(cached ? [] : [to]), "--", ...act.paths]);
+      const listed = raw([
+        "diff",
+        ...(cached ? ["--cached"] : []),
+        "--name-only",
+        "-z",
+        "--no-renames",
+        "--no-ext-diff",
+        `--diff-filter=${filter}`,
+        from,
+        ...(cached ? [] : [to]),
+        "--",
+        ...act.paths,
+      ]);
       return listed === null ? null : listed.split("\0").filter(Boolean);
     };
     // Untracked, and the act writes a tracked file there: in the tree it takes
@@ -549,7 +620,8 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
     if (sha) {
       const what = `git ${act.what}`;
       if (act.what === "reset --hard") {
-        if (!pin("reset", sha, what, [["-C", top as string, "stash", "apply", "--index", sha]])) return refuse("could not pin the uncommitted changes");
+        if (!pin("reset", sha, what, [["-C", top as string, "stash", "apply", "--index", sha]]))
+          return refuse("could not pin the uncommitted changes");
       } else {
         // What the act discards in its paths: where the snapshot differs from
         // the tree the act writes. Named file by file, so the way back is
@@ -559,14 +631,30 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
         const index = act.staged ? differ(from, `${sha}^2`, "AMT") : [];
         const files = act.worktree ? differ(from, sha, "AMT") : [];
         if (index === null || files === null) return refuse("could not list what the act would discard");
-        const back = (src: string, where: string, names: string[]): string[] => ["-C", top as string, "--literal-pathspecs", "restore", `--source=${src}`, where, "--", ...names];
-        const restore = [...(index.length > 0 ? [back(`${sha}^2`, "--staged", index)] : []), ...(files.length > 0 ? [back(sha, "--worktree", files)] : [])];
-        if (restore.length > 0 && !pin(act.what === "restore" ? "restore" : "checkout", sha, what, restore)) return refuse("could not pin the uncommitted changes");
+        const back = (src: string, where: string, names: string[]): string[] => [
+          "-C",
+          top as string,
+          "--literal-pathspecs",
+          "restore",
+          `--source=${src}`,
+          where,
+          "--",
+          ...names,
+        ];
+        const restore = [
+          ...(index.length > 0 ? [back(`${sha}^2`, "--staged", index)] : []),
+          ...(files.length > 0 ? [back(sha, "--worktree", files)] : []),
+        ];
+        if (restore.length > 0 && !pin(act.what === "restore" ? "restore" : "checkout", sha, what, restore))
+          return refuse("could not pin the uncommitted changes");
       }
     }
     for (const [i, at] of over.entries()) {
       if (!archived(at, `git ${act.what}`)) {
-        return refuse(`could not move ${at} to the archive (git would overwrite it)`, i === 0 ? "nothing changed" : `${i} untracked file(s) already moved to the archive — see the receipt`);
+        return refuse(
+          `could not move ${at} to the archive (git would overwrite it)`,
+          i === 0 ? "nothing changed" : `${i} untracked file(s) already moved to the archive — see the receipt`
+        );
       }
     }
     return passThrough();
@@ -578,18 +666,31 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
       const sha = git(["rev-parse", "--verify", "-q", `${ref}^{commit}`]);
       if (!sha) continue; // git reports the missing branch itself
       const back = act.remote ? ["-C", home, "update-ref", ref, sha] : ["-C", home, "branch", name, sha];
-      if (!pin(`${act.remote ? "remote-branch" : "branch"}/${name}`, sha, `git branch -D ${act.remote ? "-r " : ""}${name}`, [back])) return refuse(`could not pin ${name}`);
+      if (
+        !pin(
+          `${act.remote ? "remote-branch" : "branch"}/${name}`,
+          sha,
+          `git branch -D ${act.remote ? "-r " : ""}${name}`,
+          [back]
+        )
+      )
+        return refuse(`could not pin ${name}`);
     }
     return passThrough();
   }
 
   // stash drop / clear
-  const refs = act.refs === "clear" ? (git(["stash", "list", "--format=%gd"]) ?? "").split("\n").filter(Boolean) : act.refs;
+  const refs =
+    act.refs === "clear" ? (git(["stash", "list", "--format=%gd"]) ?? "").split("\n").filter(Boolean) : act.refs;
   for (const r of refs) {
     const sha = git(["rev-parse", "--verify", "-q", `${r}^{commit}`]);
     if (!sha) continue; // git reports the missing stash itself
     const msg = git(["log", "-1", "--format=%s", sha]) ?? "bastra-restored stash";
-    if (!pin("stash", sha, `git stash ${act.refs === "clear" ? "clear" : "drop"} (${r})`, [["-C", home, "stash", "store", "-m", msg, sha]])) {
+    if (
+      !pin("stash", sha, `git stash ${act.refs === "clear" ? "clear" : "drop"} (${r})`, [
+        ["-C", home, "stash", "store", "-m", msg, sha],
+      ])
+    ) {
       return refuse(`could not pin ${r}`);
     }
   }
@@ -623,7 +724,12 @@ export function restoreShape(sha: string | undefined, cmd: string[]): boolean {
   if (rest.length === 3 && is("update-ref", /^refs\/remotes\/[^-]/, sha)) return true;
   if (rest.length === 5 && is("stash", "store", "-m", /^/, sha)) return true;
   const paths = (from: number): boolean => rest[from] === "--" && rest.length > from + 1;
-  if (is("--literal-pathspecs", "restore") && (rest[2] === `--source=${sha}` || rest[2] === `--source=${sha}^2`) && /^--(?:staged|worktree)$/.test(rest[3] ?? "")) return paths(4);
+  if (
+    is("--literal-pathspecs", "restore") &&
+    (rest[2] === `--source=${sha}` || rest[2] === `--source=${sha}^2`) &&
+    /^--(?:staged|worktree)$/.test(rest[3] ?? "")
+  )
+    return paths(4);
   // As 631e5af recorded a path act.
   if (is("restore", `--source=${sha}`, "--worktree")) return paths(3);
   return false;

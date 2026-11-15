@@ -47,7 +47,7 @@ export function findCodeEvent(
   cache: CodeGraphCache,
   args: FindCodeInput,
   result: FindCodeResult,
-  ctx: { surface: CodeToolSurface; callerSession?: string | null },
+  ctx: { surface: CodeToolSurface; callerSession?: string | null }
 ): CodeToolCallPayload {
   const repo = repoOf(args.repo);
   return {
@@ -55,9 +55,7 @@ export function findCodeEvent(
     status: result.status,
     mode: result.mode,
     ...(result.lane !== undefined ? { lane: result.lane } : {}),
-    ...(result.status === "unavailable"
-      ? { unavailable_reason: unavailableReason(cache, repo) }
-      : {}),
+    ...(result.status === "unavailable" ? { unavailable_reason: unavailableReason(cache, repo) } : {}),
     hits: result.hits.length,
     files: result.files?.length ?? 0,
     truncated: result.truncated,
@@ -72,16 +70,14 @@ export function findAffectedFilesEvent(
   cache: CodeGraphCache,
   args: FindAffectedFilesInput,
   result: FindAffectedFilesResult,
-  ctx: { surface: CodeToolSurface; callerSession?: string | null },
+  ctx: { surface: CodeToolSurface; callerSession?: string | null }
 ): CodeToolCallPayload {
   const repo = repoOf(args.repo);
   return {
     tool: "find_affected_files",
     status: result.status,
     ...(result.basis !== undefined ? { basis: result.basis } : {}),
-    ...(result.status === "unavailable"
-      ? { unavailable_reason: unavailableReason(cache, repo) }
-      : {}),
+    ...(result.status === "unavailable" ? { unavailable_reason: unavailableReason(cache, repo) } : {}),
     hits: result.hits.length,
     files: result.files.length,
     truncated: result.truncated,

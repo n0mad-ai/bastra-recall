@@ -28,19 +28,22 @@ const parse = (raw: string, path = "/vault/memories/note.md", mtime = Date.UTC(2
 
 test("A: an unknown escape sequence costs its own field, not the node", () => {
   const m = parse(
-    `---\nid: note\ntitle: "it\\'s here"\ntype: lesson\nsummary: Intakte Zusammenfassung\ntopic_path: [a]\ntags: [t]\nscope: s\nrecall_when: ["wenn x"]\ncreated: 2026-05-01\nupdated: 2026-05-01\n---\nDer Body bleibt.`,
+    `---\nid: note\ntitle: "it\\'s here"\ntype: lesson\nsummary: Intakte Zusammenfassung\ntopic_path: [a]\ntags: [t]\nscope: s\nrecall_when: ["wenn x"]\ncreated: 2026-05-01\nupdated: 2026-05-01\n---\nDer Body bleibt.`
   );
   assert.equal(m.fm.id, "note");
   assert.equal(m.fm.summary, "Intakte Zusammenfassung", "the healthy fields must survive intact");
   assert.deepEqual(m.fm.recall_when, ["wenn x"]);
   assert.match(m.body, /Der Body bleibt/);
-  assert.ok(m.damaged?.some((d) => d.field === "title"), `title should be flagged, got ${JSON.stringify(m.damaged)}`);
+  assert.ok(
+    m.damaged?.some((d) => d.field === "title"),
+    `title should be flagged, got ${JSON.stringify(m.damaged)}`
+  );
   assert.ok(m.fm.title.length > 0, "a damaged title still needs some value");
 });
 
 test("A: an unquoted value containing a colon or a middot costs its own field only", () => {
   const m = parse(
-    `---\nid: note\ntitle: Titel bleibt\ntype: lesson\nsummary: Foo · Bar: baz\ntopic_path: [a]\ntags: [t]\nscope: s\nrecall_when: ["wenn x"]\ncreated: 2026-05-01\nupdated: 2026-05-01\n---\nbody`,
+    `---\nid: note\ntitle: Titel bleibt\ntype: lesson\nsummary: Foo · Bar: baz\ntopic_path: [a]\ntags: [t]\nscope: s\nrecall_when: ["wenn x"]\ncreated: 2026-05-01\nupdated: 2026-05-01\n---\nbody`
   );
   assert.equal(m.fm.title, "Titel bleibt");
   assert.equal(m.fm.scope, "s");
@@ -49,7 +52,7 @@ test("A: an unquoted value containing a colon or a middot costs its own field on
 
 test("A: multi-line blocks survive the rescue — a list is not torn apart by a broken neighbour", () => {
   const m = parse(
-    `---\nid: note\ntitle: "bad\\'escape"\ntype: lesson\nsummary: ok\ntopic_path:\n  - alpha\n  - beta\ntags:\n  - eins\n  - zwei\nscope: s\nrecall_when:\n  - erster trigger\n  - zweiter trigger\ncreated: 2026-05-01\nupdated: 2026-05-01\n---\nbody`,
+    `---\nid: note\ntitle: "bad\\'escape"\ntype: lesson\nsummary: ok\ntopic_path:\n  - alpha\n  - beta\ntags:\n  - eins\n  - zwei\nscope: s\nrecall_when:\n  - erster trigger\n  - zweiter trigger\ncreated: 2026-05-01\nupdated: 2026-05-01\n---\nbody`
   );
   assert.deepEqual(m.fm.topic_path, ["alpha", "beta"], "the list after the broken field must stay whole");
   assert.deepEqual(m.fm.tags, ["eins", "zwei"]);
@@ -77,7 +80,7 @@ test("B: missing required keys are filled from what is knowable, and flagged", (
 test("B: a missing id falls back to the filename, so the node keeps a stable identity", () => {
   const m = parse(
     `---\ntitle: Ohne id\ntype: lesson\nsummary: s\ntopic_path: [a]\ntags: [t]\nscope: s\nrecall_when: [x]\ncreated: 2026-05-01\nupdated: 2026-05-01\n---\nbody`,
-    "/vault/memories/Mein Merk-Satz.md",
+    "/vault/memories/Mein Merk-Satz.md"
   );
   assert.equal(m.fm.id, "mein-merk-satz");
   assert.ok(m.damaged?.some((d) => d.field === "id"));
@@ -85,7 +88,7 @@ test("B: a missing id falls back to the filename, so the node keeps a stable ide
 
 test("a healthy file is untouched — no damaged marker, no behaviour change", () => {
   const m = parse(
-    `---\nid: clean\ntitle: Sauber\ntype: lesson\nsummary: Alles gut\ntopic_path: [a, b]\ntags: [t]\nscope: proj\nrecall_when: ["wenn y"]\ncreated: 2026-05-01\nupdated: 2026-05-02\n---\nbody text`,
+    `---\nid: clean\ntitle: Sauber\ntype: lesson\nsummary: Alles gut\ntopic_path: [a, b]\ntags: [t]\nscope: proj\nrecall_when: ["wenn y"]\ncreated: 2026-05-01\nupdated: 2026-05-02\n---\nbody text`
   );
   assert.equal(m.damaged, undefined, "a healthy memory must carry no damage marker at all");
   assert.equal(m.fm.title, "Sauber");
@@ -107,7 +110,7 @@ test("structural strictness stays through the rescue path too — a type that on
 
 test("a type that is only readable after the rescue still identifies the memory", () => {
   const m = parse(
-    `---\ntitle: "kaputt\\'hier"\ntype: decision\nid: rescued\nsummary: s\ntopic_path: [a]\ntags: [t]\nscope: s\nrecall_when: [x]\ncreated: 2026-05-01\nupdated: 2026-05-01\n---\nbody`,
+    `---\ntitle: "kaputt\\'hier"\ntype: decision\nid: rescued\nsummary: s\ntopic_path: [a]\ntags: [t]\nscope: s\nrecall_when: [x]\ncreated: 2026-05-01\nupdated: 2026-05-01\n---\nbody`
   );
   assert.equal(m.fm.type, "decision");
   assert.equal(m.fm.id, "rescued");
@@ -116,7 +119,7 @@ test("a type that is only readable after the rescue still identifies the memory"
 test("an id that is present but path-unsafe is repaired rather than dropped", () => {
   const m = parse(
     `---\nid: ../../etc/passwd\ntitle: T\ntype: lesson\nsummary: s\ntopic_path: [a]\ntags: [t]\nscope: s\nrecall_when: [x]\ncreated: 2026-05-01\nupdated: 2026-05-01\n---\nbody`,
-    "/vault/memories/safe-name.md",
+    "/vault/memories/safe-name.md"
   );
   assert.equal(m.fm.id, "safe-name", "a path-unsafe id must not reach the filesystem layer");
   assert.ok(m.damaged?.some((d) => d.field === "id"));
@@ -124,7 +127,7 @@ test("an id that is present but path-unsafe is repaired rather than dropped", ()
 
 test("damaged entries name the field and carry a reason a human can act on", () => {
   const m = parse(
-    `---\nid: note\ntitle: "x\\'y"\ntype: lesson\nsummary: ok\ntopic_path: [a]\ntags: [t]\nscope: s\nrecall_when: [x]\ncreated: 2026-05-01\nupdated: 2026-05-01\n---\nbody`,
+    `---\nid: note\ntitle: "x\\'y"\ntype: lesson\nsummary: ok\ntopic_path: [a]\ntags: [t]\nscope: s\nrecall_when: [x]\ncreated: 2026-05-01\nupdated: 2026-05-01\n---\nbody`
   );
   const entry = m.damaged?.find((d) => d.field === "title");
   assert.ok(entry);
@@ -143,18 +146,21 @@ test("A: a column-zero list is not torn off its key by an item that contains a c
   // Obsidian and hand-written frontmatter put lists at column zero routinely;
   // Bastra's own writer indents, which is why this never showed up in-house.
   const m = parse(
-    `---\nid: note\ntitle: "bad\\'escape"\ntype: lesson\nsummary: ok\ntopic_path: [a]\ntags: [t]\nscope: s\nrecall_when:\n- "when the daemon: restarts"\n- second trigger\ncreated: 2026-05-01\nupdated: 2026-05-01\n---\nbody`,
+    `---\nid: note\ntitle: "bad\\'escape"\ntype: lesson\nsummary: ok\ntopic_path: [a]\ntags: [t]\nscope: s\nrecall_when:\n- "when the daemon: restarts"\n- second trigger\ncreated: 2026-05-01\nupdated: 2026-05-01\n---\nbody`
   );
   assert.deepEqual(
     m.fm.recall_when,
     ["when the daemon: restarts", "second trigger"],
-    "the authored triggers must survive the rescue",
+    "the authored triggers must survive the rescue"
   );
   assert.ok(
     !m.damaged?.some((d) => d.field === "recall_when"),
-    `an intact field must not be reported as damaged, got ${JSON.stringify(m.damaged)}`,
+    `an intact field must not be reported as damaged, got ${JSON.stringify(m.damaged)}`
   );
-  assert.ok(m.damaged?.some((d) => d.field === "title"), "the actually broken field is still flagged");
+  assert.ok(
+    m.damaged?.some((d) => d.field === "title"),
+    "the actually broken field is still flagged"
+  );
 });
 
 test("#613: a `__proto__` entry in a rescued fragment cannot smuggle fields past data's own keys", () => {
@@ -171,12 +177,15 @@ test("#613: a `__proto__` entry in a rescued fragment cannot smuggle fields past
   // enumerates own keys sees a clean frontmatter.
   const m = parse(
     `---\ntitle: "kaputt\\'hier"\ntype: lesson\nsummary: ok\ntopic_path: [a]\ntags: [t]\nscope: s\nrecall_when: [x]\ncreated: 2026-05-01\nupdated: 2026-05-01\n__proto__:\n  sensitivity: public\n  id: someone-elses-id\n---\nbody`,
-    "/vault/memories/safe-name.md",
+    "/vault/memories/safe-name.md"
   );
   assert.notEqual(m.fm.id, "someone-elses-id", "a __proto__ entry must not smuggle an id nobody wrote");
   assert.notEqual(m.fm.sensitivity, "public", "a __proto__ entry must not smuggle a sensitivity nobody wrote");
   assert.equal(m.fm.id, "safe-name", "the id must fall back to the filename, exactly as a genuinely missing id would");
-  assert.ok(m.damaged?.some((d) => d.field === "id"), "a smuggled-then-dropped id must still be flagged as repaired");
+  assert.ok(
+    m.damaged?.some((d) => d.field === "id"),
+    "a smuggled-then-dropped id must still be flagged as repaired"
+  );
 });
 
 test("#613: rescueFrontmatter never lets a `__proto__` entry change data's own prototype", () => {
@@ -185,7 +194,7 @@ test("#613: rescueFrontmatter never lets a `__proto__` entry change data's own p
   };
   const rescued = rescueFrontmatter(
     boom as unknown as Parameters<typeof rescueFrontmatter>[0],
-    `---\ntitle: note\n__proto__:\n  sensitivity: public\n  id: someone-elses-id\n---\nbody\n`,
+    `---\ntitle: note\n__proto__:\n  sensitivity: public\n  id: someone-elses-id\n---\nbody\n`
   );
   assert.ok(rescued, "a delimited block is rescuable");
   assert.equal(Object.getPrototypeOf(rescued!.data), Object.prototype, "data's prototype must never change");
@@ -205,7 +214,7 @@ test("#613: `constructor` and `prototype` entries are ordinary own keys, not a p
   };
   const rescued = rescueFrontmatter(
     boom as unknown as Parameters<typeof rescueFrontmatter>[0],
-    `---\nconstructor: not a function\nprototype: not a prototype\n---\nbody\n`,
+    `---\nconstructor: not a function\nprototype: not a prototype\n---\nbody\n`
   );
   assert.ok(rescued);
   assert.deepEqual(Object.keys(rescued!.data).sort(), ["constructor", "prototype"]);
@@ -223,7 +232,7 @@ test("a key that starts with a dash is still a key, and no list ever leaks in as
   };
   const rescued = rescueFrontmatter(
     boom as unknown as Parameters<typeof rescueFrontmatter>[0],
-    `---\n-notakey: still a key\ntags:\n- "a: b"\n- c\n---\nbody\n`,
+    `---\n-notakey: still a key\ntags:\n- "a: b"\n- c\n---\nbody\n`
   );
   assert.ok(rescued, "a delimited block is rescuable");
   assert.equal(rescued!.data["-notakey"], "still a key");

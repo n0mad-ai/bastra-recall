@@ -35,7 +35,7 @@ test("a non-directive version is suppressed after the configured unused threshol
     () => m,
     ignoredUsage(m),
     8,
-    () => 42,
+    () => 42
   );
   assert.deepEqual(result.kept, []);
   assert.deepEqual(result.suppressed, [{ id: "fact", type: "project-fact", surfaced: 8, tokens_est: 42 }]);
@@ -49,18 +49,25 @@ test("below threshold, explicitly loaded, or changed versions stay eligible", ()
   loaded.fact.revision_loaded = 1;
   assert.equal(suppressRepeatedUnused([hit], () => original, loaded, 8).kept.length, 1);
   assert.equal(
-    suppressRepeatedUnused([hit], () => memory("project-fact", "Rewritten body."), ignoredUsage(original), 8).kept.length,
+    suppressRepeatedUnused([hit], () => memory("project-fact", "Rewritten body."), ignoredUsage(original), 8).kept
+      .length,
     1,
-    "content changes produce a new revision and a clean trial",
+    "content changes produce a new revision and a clean trial"
   );
 });
 
 test("directive memories, explicit reflexes, and the zero kill switch are never suppressed", () => {
   for (const m of [memory("preference"), memory("project-fact", "body", "reflex")]) {
-    assert.equal(suppressRepeatedUnused([{ id: "fact", type: String(m.fm.type) }], () => m, ignoredUsage(m), 8).kept.length, 1);
+    assert.equal(
+      suppressRepeatedUnused([{ id: "fact", type: String(m.fm.type) }], () => m, ignoredUsage(m), 8).kept.length,
+      1
+    );
   }
   const m = memory();
-  assert.equal(suppressRepeatedUnused([{ id: "fact", type: "project-fact" }], () => m, ignoredUsage(m), 0).kept.length, 1);
+  assert.equal(
+    suppressRepeatedUnused([{ id: "fact", type: "project-fact" }], () => m, ignoredUsage(m), 0).kept.length,
+    1
+  );
 });
 
 test("#484: der Modus ist Schatten, solange nichts anderes gesetzt ist — `live` ist aus der Umgebung nicht mehr erreichbar", () => {
@@ -70,7 +77,13 @@ test("#484: der Modus ist Schatten, solange nichts anderes gesetzt ist — `live
     assert.equal(hintSuppressionMode(), "shadow");
     // `live` fällt seit #484 auf `shadow` zurück wie jeder unbekannte Wert:
     // der Wirkbetrieb geht in v1.0 nicht scharf.
-    for (const [raw, expected] of [["live", "shadow"], ["LIVE", "shadow"], ["off", "off"], ["quatsch", "shadow"], ["", "shadow"]]) {
+    for (const [raw, expected] of [
+      ["live", "shadow"],
+      ["LIVE", "shadow"],
+      ["off", "off"],
+      ["quatsch", "shadow"],
+      ["", "shadow"],
+    ]) {
       process.env.BASTRA_HINT_SUPPRESS = raw;
       assert.equal(hintSuppressionMode(), expected, `${raw} → ${expected}`);
     }

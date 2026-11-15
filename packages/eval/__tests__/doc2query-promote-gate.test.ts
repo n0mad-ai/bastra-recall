@@ -72,9 +72,16 @@ test("a run with DATA-STARVED slices prints DO NOT PROMOTE even when the lift co
     const vault = join(dir, "vault");
     mkdirSync(join(vault, "memories"), { recursive: true });
     const put = (id: string, text: string): void => writeFileSync(join(vault, "memories", `${id}.md`), text);
-    put("alpha-note", mem("alpha-note", "Alpha-note", ["alpha first trigger", "zebrafish"], ["zebrafish migration paraphrase"]));
-    put("bravo-note", mem("bravo-note", "Marmalade bravo-note", ["bravo first trigger", "marmalade"], ["bravo paraphrase"]));
-    for (let i = 0; i < 30; i++) put(`filler-${String(i).padStart(2, "0")}`, mem(`filler-${String(i).padStart(2, "0")}`, `Filler ${i}`, [], []));
+    put(
+      "alpha-note",
+      mem("alpha-note", "Alpha-note", ["alpha first trigger", "zebrafish"], ["zebrafish migration paraphrase"])
+    );
+    put(
+      "bravo-note",
+      mem("bravo-note", "Marmalade bravo-note", ["bravo first trigger", "marmalade"], ["bravo paraphrase"])
+    );
+    for (let i = 0; i < 30; i++)
+      put(`filler-${String(i).padStart(2, "0")}`, mem(`filler-${String(i).padStart(2, "0")}`, `Filler ${i}`, [], []));
 
     const port = (server.address() as AddressInfo).port;
     const out = await new Promise<string>((resolveOut, reject) => {

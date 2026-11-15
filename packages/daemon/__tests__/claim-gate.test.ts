@@ -91,11 +91,7 @@ test("#360: a save claiming an existing memory's situation is held, not written"
     assert.match(held.note ?? "", new RegExp(field), `the refusal must name ${field}`);
   }
 
-  assert.deepEqual(
-    (await memoryFiles(vaultPath)).sort(),
-    before.sort(),
-    "the gate must not leave a file behind",
-  );
+  assert.deepEqual((await memoryFiles(vaultPath)).sort(), before.sort(), "the gate must not leave a file behind");
 });
 
 test("#360: `replaces` is an answer — the same save goes through", async (t) => {
@@ -105,7 +101,7 @@ test("#360: `replaces` is an answer — the same save goes through", async (t) =
   await saveMemoryHandler(deps, memo("Staging-Deploy Ablauf", [OWNER_TRIGGER]));
   const result = await saveMemoryHandler(
     deps,
-    memo("Staging-Deploy Zweitnotiz", [CLAIMING_TRIGGER], { replaces: "staging-deploy-ablauf" }),
+    memo("Staging-Deploy Zweitnotiz", [CLAIMING_TRIGGER], { replaces: "staging-deploy-ablauf" })
   );
 
   assert.equal(result.created, true);
@@ -119,7 +115,7 @@ test("#360: `sibling_of` is an answer and lands in the frontmatter", async (t) =
   await saveMemoryHandler(deps, memo("Staging-Deploy Ablauf", [OWNER_TRIGGER]));
   const result = await saveMemoryHandler(
     deps,
-    memo("Staging-Deploy Zweitnotiz", [CLAIMING_TRIGGER], { sibling_of: ["staging-deploy-ablauf"] }),
+    memo("Staging-Deploy Zweitnotiz", [CLAIMING_TRIGGER], { sibling_of: ["staging-deploy-ablauf"] })
   );
 
   assert.equal(result.created, true);
@@ -133,7 +129,7 @@ test("#360: `sibling_of` is an answer and lands in the frontmatter", async (t) =
     memo("Staging-Deploy Zweitnotiz", [CLAIMING_TRIGGER], {
       sibling_of: ["staging-deploy-ablauf"],
       overwrite: true,
-    }),
+    })
   );
   assert.ok(!("claim_gate" in again));
 });
@@ -147,12 +143,12 @@ test("#360: answering for one of two colliding memories still leaves the other o
     deps,
     memo("Staging-Deploy Runbook", ["das Deployment der Staging-Umgebung dokumentieren"], {
       sibling_of: ["staging-deploy-ablauf"],
-    }),
+    })
   );
 
   const held = await saveMemoryHandler(
     deps,
-    memo("Staging-Deploy Zweitnotiz", [CLAIMING_TRIGGER], { replaces: "staging-deploy-ablauf" }),
+    memo("Staging-Deploy Zweitnotiz", [CLAIMING_TRIGGER], { replaces: "staging-deploy-ablauf" })
   );
 
   assert.ok("claim_gate" in held, "the unanswered second memory must still hold the save");
@@ -160,7 +156,7 @@ test("#360: answering for one of two colliding memories still leaves the other o
   assert.deepEqual(
     gate.claimed.map((c) => c.id),
     ["staging-deploy-runbook"],
-    "only the memory that was NOT answered for may be reported",
+    "only the memory that was NOT answered for may be reported"
   );
 });
 
@@ -169,10 +165,7 @@ test("#360: overwrite is never gated by the memory's own triggers", async (t) =>
   t.after(cleanup);
 
   await saveMemoryHandler(deps, memo("Staging-Deploy Ablauf", [OWNER_TRIGGER]));
-  const again = await saveMemoryHandler(
-    deps,
-    memo("Staging-Deploy Ablauf", [OWNER_TRIGGER], { overwrite: true }),
-  );
+  const again = await saveMemoryHandler(deps, memo("Staging-Deploy Ablauf", [OWNER_TRIGGER], { overwrite: true }));
 
   assert.ok(!("claim_gate" in again), "re-saving a memory must not be held by its own trigger");
   assert.equal(again.created, false, "overwrite updates rather than creates");
@@ -185,7 +178,7 @@ test("#360: an unrelated save is untouched by the gate", async (t) => {
   await saveMemoryHandler(deps, memo("Staging-Deploy Ablauf", [OWNER_TRIGGER]));
   const result = await saveMemoryHandler(
     deps,
-    memo("Backup-Rotation", ["die wöchentliche Sicherung der Datenbank rotieren"]),
+    memo("Backup-Rotation", ["die wöchentliche Sicherung der Datenbank rotieren"])
   );
 
   assert.equal(result.created, true);
@@ -201,7 +194,7 @@ test("#360: the curator sweep finds the pairs that predate the gate, and skips a
   await saveMemoryHandler(deps, memo("Staging-Deploy Ablauf", [OWNER_TRIGGER]));
   await saveMemoryHandler(
     deps,
-    memo("Staging-Deploy Zweitnotiz", [CLAIMING_TRIGGER], { sibling_of: ["staging-deploy-ablauf"] }),
+    memo("Staging-Deploy Zweitnotiz", [CLAIMING_TRIGGER], { sibling_of: ["staging-deploy-ablauf"] })
   );
   await saveMemoryHandler(deps, memo("Backup-Rotation", ["die wöchentliche Sicherung der Datenbank rotieren"]));
 
@@ -212,7 +205,7 @@ test("#360: the curator sweep finds the pairs that predate the gate, and skips a
   resetSaveFailures();
   await saveMemoryHandler(
     deps,
-    memo("Staging-Deploy Zweitnotiz", [CLAIMING_TRIGGER], { sibling_of: [], overwrite: true }),
+    memo("Staging-Deploy Zweitnotiz", [CLAIMING_TRIGGER], { sibling_of: [], overwrite: true })
   );
   // `sibling_of: []` cannot clear a stored quittance (the merge is a union), so
   // assert against the vault rather than assuming — this documents which of the
@@ -231,7 +224,7 @@ test("#360: the sweep reports an unanswered pair once, naming both triggers", as
   await saveMemoryHandler(deps, memo("Staging-Deploy Ablauf", [OWNER_TRIGGER]));
   await saveMemoryHandler(
     deps,
-    memo("Staging-Deploy Zweitnotiz", [CLAIMING_TRIGGER], { sibling_of: ["staging-deploy-ablauf"] }),
+    memo("Staging-Deploy Zweitnotiz", [CLAIMING_TRIGGER], { sibling_of: ["staging-deploy-ablauf"] })
   );
 
   const pairs = collectClaimedTwice({
@@ -271,7 +264,7 @@ test("#360b: a save that repeats the existing body is told to drop itself", asyn
   assert.deepEqual(
     claimed.delta?.new_terms,
     [],
-    `a restatement must add no terms, got ${JSON.stringify(claimed.delta?.new_terms)}`,
+    `a restatement must add no terms, got ${JSON.stringify(claimed.delta?.new_terms)}`
   );
   assert.equal(claimed.delta?.covered, 1);
   assert.match(held.note ?? "", /adds NO new terms/);
@@ -292,20 +285,22 @@ test("#360b: a save carrying a new fact is pointed at an overwrite, not a second
     body: "Der Staging-Deploy laeuft ueber die Pipeline und bricht ohne Datenbankmigration ab.",
   });
 
-  const claimed = (held as {
-    claim_gate: { claimed: Array<{ delta?: { covered: number; new_terms: string[] }; existing_body?: string }> };
-  }).claim_gate.claimed[0];
+  const claimed = (
+    held as {
+      claim_gate: { claimed: Array<{ delta?: { covered: number; new_terms: string[] }; existing_body?: string }> };
+    }
+  ).claim_gate.claimed[0];
 
   assert.ok(claimed.delta !== undefined);
   assert.ok(claimed.delta.covered < 1, "a genuinely new term must not read as fully covered");
   assert.ok(
     claimed.delta.new_terms.includes("datenbankmigration"),
-    `the added term must be named, got ${JSON.stringify(claimed.delta.new_terms)}`,
+    `the added term must be named, got ${JSON.stringify(claimed.delta.new_terms)}`
   );
   assert.equal(
     claimed.existing_body,
     "Der Staging-Deploy laeuft ueber die Pipeline.",
-    "the agent must see the existing text without a second roundtrip",
+    "the agent must see the existing text without a second roundtrip"
   );
   assert.match(held.note ?? "", /overwrite: true/);
   assert.match(held.note ?? "", /do not create a second one/);
@@ -327,7 +322,7 @@ test("#360b: the delta ignores what the machine appended to the body", async (t)
   await writeFile(
     path,
     `${raw.trimEnd()}\n\n<!-- bastra:auto-related:start -->\n## Verwandt\n- [[zufallsbegriff-katamaran]]\n<!-- bastra:auto-related:end -->\n`,
-    "utf8",
+    "utf8"
   );
   await deps.vault.reindexFile(path);
 
@@ -336,15 +331,16 @@ test("#360b: the delta ignores what the machine appended to the body", async (t)
     body: "Der Staging-Deploy laeuft ueber die Pipeline und braucht einen Katamaran.",
   });
 
-  const claimed = (held as { claim_gate: { claimed: Array<{ delta?: { new_terms: string[] }; existing_body?: string }> } })
-    .claim_gate.claimed[0];
+  const claimed = (
+    held as { claim_gate: { claimed: Array<{ delta?: { new_terms: string[] }; existing_body?: string }> } }
+  ).claim_gate.claimed[0];
   assert.ok(
     claimed.delta?.new_terms.includes("katamaran"),
-    `a word that only appears in the auto-related block must still count as new, got ${JSON.stringify(claimed.delta?.new_terms)}`,
+    `a word that only appears in the auto-related block must still count as new, got ${JSON.stringify(claimed.delta?.new_terms)}`
   );
   assert.ok(
     !(claimed.existing_body ?? "").includes("auto-related"),
-    "the quoted body must not carry the machine block",
+    "the quoted body must not carry the machine block"
   );
 });
 
@@ -362,15 +358,15 @@ test("#360b: a compound the memory already wrote covers its parts", async (t) =>
     body: "FSRS-6 und der Ablauf sind hier nochmal notiert, plus ein Rollbackpfad.",
   });
 
-  const delta = (held as { claim_gate: { claimed: Array<{ delta?: { new_terms: string[] } }> } })
-    .claim_gate.claimed[0].delta;
+  const delta = (held as { claim_gate: { claimed: Array<{ delta?: { new_terms: string[] } }> } }).claim_gate.claimed[0]
+    .delta;
   assert.ok(
     !delta?.new_terms.includes("fsrs-6"),
-    `a part of a compound the memory already wrote must not read as new, got ${JSON.stringify(delta?.new_terms)}`,
+    `a part of a compound the memory already wrote must not read as new, got ${JSON.stringify(delta?.new_terms)}`
   );
   assert.ok(
     delta?.new_terms.includes("rollbackpfad"),
-    `a genuinely new word must survive, got ${JSON.stringify(delta?.new_terms)}`,
+    `a genuinely new word must survive, got ${JSON.stringify(delta?.new_terms)}`
   );
 });
 
@@ -417,16 +413,12 @@ test("#360: the inverted index finds every pair a brute-force sweep finds", asyn
 
   const swept = new Set(
     collectClaimedTwice({ list: () => list }, 10_000).map((p) =>
-      p.fromId < p.toId ? `${p.fromId}|${p.toId}` : `${p.toId}|${p.fromId}`,
-    ),
+      p.fromId < p.toId ? `${p.fromId}|${p.toId}` : `${p.toId}|${p.fromId}`
+    )
   );
 
   assert.ok(brute.size > 0, "precondition: the fixtures must actually collide");
-  assert.deepEqual(
-    [...swept].sort(),
-    [...brute].sort(),
-    "the rarest-token candidate set must not narrow the result",
-  );
+  assert.deepEqual([...swept].sort(), [...brute].sort(), "the rarest-token candidate set must not narrow the result");
 });
 
 test("#360: generated triggers (docs, bookmarks) stay out of the sweep", async (t) => {
@@ -459,7 +451,7 @@ test("#360: generated triggers (docs, bookmarks) stay out of the sweep", async (
         `Sidecar ${name}.`,
         "",
       ].join("\n"),
-      "utf8",
+      "utf8"
     );
   }
   await reindexAll(deps, vaultPath);
@@ -468,7 +460,7 @@ test("#360: generated triggers (docs, bookmarks) stay out of the sweep", async (
   await saveMemoryHandler(deps, memo("Staging-Deploy Ablauf", [OWNER_TRIGGER]));
   await saveMemoryHandler(
     deps,
-    memo("Staging-Deploy Zweitnotiz", [CLAIMING_TRIGGER], { sibling_of: ["staging-deploy-ablauf"] }),
+    memo("Staging-Deploy Zweitnotiz", [CLAIMING_TRIGGER], { sibling_of: ["staging-deploy-ablauf"] })
   );
 
   const pairs = collectClaimedTwice({
@@ -477,11 +469,11 @@ test("#360: generated triggers (docs, bookmarks) stay out of the sweep", async (
 
   assert.ok(
     !pairs.some((p) => p.fromId.startsWith("doc-inbox") || p.toId.startsWith("doc-inbox")),
-    `a generated trigger must not produce a row, got ${JSON.stringify(pairs)}`,
+    `a generated trigger must not produce a row, got ${JSON.stringify(pairs)}`
   );
   assert.ok(
     pairs.some((p) => p.fromId === "staging-deploy-zweitnotiz"),
-    "the authored pair must still be reported",
+    "the authored pair must still be reported"
   );
 });
 
@@ -506,10 +498,7 @@ test("#360: a document save is never held, however much its trigger collides", a
 
   // Verbatim identical trigger — full containment, the gate's own condition.
   const second = await saveMemoryHandler(deps, sidecar("Foto B"));
-  assert.ok(
-    !("claim_gate" in second),
-    `a generated trigger must not hold an import, got ${JSON.stringify(second)}`,
-  );
+  assert.ok(!("claim_gate" in second), `a generated trigger must not hold an import, got ${JSON.stringify(second)}`);
   assert.equal(second.created, true, "the second sidecar must be written");
 
   // And the rule is type-scoped, not a hole: an authored memory still gates.
@@ -535,16 +524,19 @@ async function reindexAll(deps: ToolDeps, vaultPath: string): Promise<void> {
 /** The same fixtures with every version/sibling edge stripped MUST report
  *  pairs — otherwise a later assertion of "no pairs" proves nothing. */
 function assertPairsWithoutEdges(deps: ToolDeps, expected: number): void {
-  const bare = collectClaimedTwice({
-    list: () =>
-      deps.vault.list().map((m) => ({
-        fm: { ...m.fm, siblings: undefined, replaces: undefined, superseded_by: undefined },
-      })),
-  }, 100);
+  const bare = collectClaimedTwice(
+    {
+      list: () =>
+        deps.vault.list().map((m) => ({
+          fm: { ...m.fm, siblings: undefined, replaces: undefined, superseded_by: undefined },
+        })),
+    },
+    100
+  );
   assert.equal(
     bare.length,
     expected,
-    `precondition: without edges these fixtures must collide ${expected}×, got ${bare.length}`,
+    `precondition: without edges these fixtures must collide ${expected}×, got ${bare.length}`
   );
 }
 
@@ -587,11 +579,7 @@ test("#360: a finished version chain answers for every pair in it, not just neig
 
   assertPairsWithoutEdges(deps, 3);
   const pairs = collectClaimedTwice({ list: () => deps.vault.list() }, 100);
-  assert.deepEqual(
-    pairs,
-    [],
-    `a fully linked chain must leave nothing open, got ${JSON.stringify(pairs)}`,
-  );
+  assert.deepEqual(pairs, [], `a fully linked chain must leave nothing open, got ${JSON.stringify(pairs)}`);
 });
 
 test("#360: a fork stays open — two successors to one predecessor is still a question", async (t) => {
@@ -657,7 +645,7 @@ test("#360: appending to a running chain is not held by its ancestors", async (t
   const fourth = await saveMemoryHandler(deps, memo("Stand vier", T, { replaces: "stand-drei" }));
   assert.ok(
     !("claim_gate" in fourth),
-    `joining a chain must not be held by its ancestors, got ${JSON.stringify((fourth as { claim_gate?: unknown }).claim_gate)}`,
+    `joining a chain must not be held by its ancestors, got ${JSON.stringify((fourth as { claim_gate?: unknown }).claim_gate)}`
   );
   assert.equal(fourth.created, true);
 
@@ -669,12 +657,12 @@ test("#360: appending to a running chain is not held by its ancestors", async (t
     deps,
     memo("Fremder Stand", ["den Stand der Sache pruefen und melden"], {
       sibling_of: ["stand-eins", "stand-zwei", "stand-drei", "stand-vier"],
-    }),
+    })
   );
   const held = await saveMemoryHandler(deps, memo("Stand fuenf", T, { replaces: "stand-vier" }));
   assert.ok("claim_gate" in held, "a colliding memory off the chain must still be reported");
   assert.deepEqual(
     (held as { claim_gate: { claimed: Array<{ id: string }> } }).claim_gate.claimed.map((c) => c.id),
-    ["fremder-stand"],
+    ["fremder-stand"]
   );
 });

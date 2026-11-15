@@ -52,7 +52,16 @@ const SESSION_CONTEXT = JSON.stringify({
       {
         scope: "user-preference",
         resp: {
-          hits: [{ id: "m1", title: "Session fact", type: "reference", scope: "user-preference", summary: "Ein Fakt.", score: 150 }],
+          hits: [
+            {
+              id: "m1",
+              title: "Session fact",
+              type: "reference",
+              scope: "user-preference",
+              summary: "Ein Fakt.",
+              score: 150,
+            },
+          ],
           vault_size: 1,
           latency_ms: 1,
           recall_id: "r1",
@@ -98,7 +107,10 @@ test("#373: session_hook_call carries the payload session_id, hook_version and t
     let rendered = "";
     await withDaemon(async (base) => {
       const out = await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir }, () =>
-        runSessionLane({ hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-373" }, base),
+        runSessionLane(
+          { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-373" },
+          base
+        )
       );
       const parsed = JSON.parse(out) as { hookSpecificOutput?: { additionalContext?: unknown } };
       rendered = String(parsed.hookSpecificOutput?.additionalContext ?? "");
@@ -113,8 +125,16 @@ test("#373: session_hook_call carries the payload session_id, hook_version and t
     assert.equal(ev.hint_count, 1);
     assert.equal(typeof ev.hint_tokens_est, "number");
     assert.ok((ev.hint_tokens_est as number) > 0);
-    assert.equal(ev.hint_tokens_est, Math.ceil(rendered.length / 4), "#457 measures the text actually returned to the hook");
-    assert.equal(buildContextLedger([ev as LedgerEvent]).total.totalTokens, ev.hint_tokens_est, "#457: the ledger folds this lane row at exactly its own hint_tokens_est");
+    assert.equal(
+      ev.hint_tokens_est,
+      Math.ceil(rendered.length / 4),
+      "#457 measures the text actually returned to the hook"
+    );
+    assert.equal(
+      buildContextLedger([ev as LedgerEvent]).total.totalTokens,
+      ev.hint_tokens_est,
+      "#457: the ledger folds this lane row at exactly its own hint_tokens_est"
+    );
     const parts = ev.hint_tokens_by_part as Record<string, number>;
     assert.ok(parts && typeof parts === "object", "#462: per-part tokens ride on the row");
     assert.ok(parts.recalls > 0, "the hint list is the measured part here");
@@ -131,7 +151,10 @@ test("#754: an unavailable dedup directory does not discard assembled SessionSta
     await writeFile(file, "occupied");
     await withDaemon(async (base) => {
       const out = await withEnv({ BASTRA_HOOK_STATE_DIR: file, BASTRA_TELEMETRY: "off" }, () =>
-        runSessionLane({ hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-754" }, base),
+        runSessionLane(
+          { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-754" },
+          base
+        )
       );
       const parsed = JSON.parse(out) as { hookSpecificOutput?: { additionalContext?: string } };
       assert.match(parsed.hookSpecificOutput?.additionalContext ?? "", /m1/);
@@ -146,7 +169,10 @@ test("#507: session_hook_call carries client/hook_source in dimensions, so stats
   try {
     await withDaemon(async (base) => {
       await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir }, () =>
-        runSessionLane({ hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-507" }, base),
+        runSessionLane(
+          { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-507" },
+          base
+        )
       );
     });
     const ev = (await readEvents(logDir)).find((e) => e.kind === "session_hook_call");
@@ -168,7 +194,7 @@ test("#373: without a payload session_id the row carries a synthetic UUID — fa
   try {
     await withDaemon(async (base) => {
       await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir }, () =>
-        runSessionLane({ hook_event_name: "SessionStart", source: "resume", cwd: "/tmp" }, base),
+        runSessionLane({ hook_event_name: "SessionStart", source: "resume", cwd: "/tmp" }, base)
       );
     });
     const ev = (await readEvents(logDir)).find((e) => e.kind === "session_hook_call");
@@ -183,7 +209,10 @@ test("#373: an unreachable daemon still yields a row with the payload session an
   const logDir = await mkdtemp(join(tmpdir(), "bastra-session-telemetry-down-"));
   try {
     const out = await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir }, () =>
-      runSessionLane({ hook_event_name: "SessionStart", source: "clear", cwd: "/tmp", session_id: "sess-down" }, "http://127.0.0.1:1"),
+      runSessionLane(
+        { hook_event_name: "SessionStart", source: "clear", cwd: "/tmp", session_id: "sess-down" },
+        "http://127.0.0.1:1"
+      )
     );
     assert.doesNotThrow(() => JSON.parse(out), "fail-open: always a JSON document");
     const ev = (await readEvents(logDir)).find((e) => e.kind === "session_hook_call");
@@ -204,11 +233,23 @@ test("#458 (shadow): the SessionStart lane charges its emitted block to the sess
   const logDir = await mkdtemp(join(tmpdir(), "bastra-session-budget-"));
   try {
     await withDaemon(async (base) => {
-      await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir, BASTRA_SESSION_BUDGET_SHADOW: "100" }, async () => {
-        await runSessionLane({ hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-458" }, base);
-        await runSessionLane({ hook_event_name: "SessionStart", source: "resume", cwd: "/tmp", session_id: "sess-458" }, base);
-        await runSessionLane({ hook_event_name: "SessionStart", source: "compact", cwd: "/tmp", session_id: "sess-458" }, base);
-      });
+      await withEnv(
+        { BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir, BASTRA_SESSION_BUDGET_SHADOW: "100" },
+        async () => {
+          await runSessionLane(
+            { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-458" },
+            base
+          );
+          await runSessionLane(
+            { hook_event_name: "SessionStart", source: "resume", cwd: "/tmp", session_id: "sess-458" },
+            base
+          );
+          await runSessionLane(
+            { hook_event_name: "SessionStart", source: "compact", cwd: "/tmp", session_id: "sess-458" },
+            base
+          );
+        }
+      );
     });
     // The budget_shadow rows are fire-and-forget — #1056: wait for them, not for a fixed time.
     await budgetShadowWritesSettled();
@@ -219,7 +260,11 @@ test("#458 (shadow): the SessionStart lane charges its emitted block to the sess
     assert.equal(shadow.length, 3, "one decision per emission");
     for (let i = 0; i < 3; i++) {
       assert.equal(shadow[i].lane, "session_hook_call");
-      assert.equal(shadow[i].tokens, calls[i].hint_tokens_est, "the shadow charges exactly the lane's hint_tokens_est (#457 reconciliation)");
+      assert.equal(
+        shadow[i].tokens,
+        calls[i].hint_tokens_est,
+        "the shadow charges exactly the lane's hint_tokens_est (#457 reconciliation)"
+      );
       assert.equal(shadow[i].budget, 100);
     }
     const t = calls[0].hint_tokens_est as number;
@@ -238,7 +283,12 @@ test("#458 (shadow): the SessionStart lane charges its emitted block to the sess
 const WITH_CONVENTIONS = (() => {
   const doc = JSON.parse(SESSION_CONTEXT) as { data: { conventions: unknown[] } };
   doc.data.conventions = [
-    { id: "konvention-person", title: "People go under memories/people", summary: "A long summary that the pointer already covers.", updated: "2026-09-01" },
+    {
+      id: "konvention-person",
+      title: "People go under memories/people",
+      summary: "A long summary that the pointer already covers.",
+      updated: "2026-09-01",
+    },
   ];
   return JSON.stringify(doc);
 })();
@@ -272,9 +322,14 @@ test("#509: taxonomy lines carry id + title only — the pointer covers the summ
   try {
     await withConventionDaemon(async (base) => {
       const out = await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir }, () =>
-        runSessionLane({ hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: `sess-509-tax-${Date.now()}` }, base),
+        runSessionLane(
+          { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: `sess-509-tax-${Date.now()}` },
+          base
+        )
       );
-      const ctx = String((JSON.parse(out) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext);
+      const ctx = String(
+        (JSON.parse(out) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext
+      );
       assert.match(ctx, /- \[konvention-person\] People go under memories\/people\n/);
       assert.doesNotMatch(ctx, /A long summary/);
       assert.match(ctx, /load_memory\(id\) for the full rule/, "the pointer to the full rule stays");
@@ -292,18 +347,36 @@ test("#509: the #462 cadence — resume leaves the unchanged taxonomy out, compa
     await withConventionDaemon(async (base) => {
       await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir }, async () => {
         for (const source of ["startup", "resume", "compact", "resume", "clear"] as const) {
-          const out = await runSessionLane({ hook_event_name: "SessionStart", source, cwd: "/tmp", session_id: sid }, base);
-          contexts.push(String((JSON.parse(out) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext));
+          const out = await runSessionLane(
+            { hook_event_name: "SessionStart", source, cwd: "/tmp", session_id: sid },
+            base
+          );
+          contexts.push(
+            String(
+              (JSON.parse(out) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput
+                .additionalContext
+            )
+          );
         }
       });
     });
     const has = contexts.map((c) => c.includes("<vault-taxonomy>"));
     assert.deepEqual(has, [true, false, true, false, true]);
     for (const c of contexts) assert.match(c, /m1/, "recalls stay every start (#462)");
-    assert.ok((await loadSessionState(sid)).shown.m1, "#621: a session-start hint counts as delivered for the PreToolUse/prompt dedup");
+    assert.ok(
+      (await loadSessionState(sid)).shown.m1,
+      "#621: a session-start hint counts as delivered for the PreToolUse/prompt dedup"
+    );
     const calls = (await readEvents(logDir)).filter((e) => e.kind === "session_hook_call");
-    assert.deepEqual(calls.map((e) => (e.constants_skipped as string[]).includes("taxonomy")), [false, true, false, true, false]);
-    assert.deepEqual(calls.map((e) => (e.hint_tokens_by_part as Record<string, number>).taxonomy > 0), has, "the per-part tokens measure what was sent");
+    assert.deepEqual(
+      calls.map((e) => (e.constants_skipped as string[]).includes("taxonomy")),
+      [false, true, false, true, false]
+    );
+    assert.deepEqual(
+      calls.map((e) => (e.hint_tokens_by_part as Record<string, number>).taxonomy > 0),
+      has,
+      "the per-part tokens measure what was sent"
+    );
   } finally {
     await rm(logDir, { recursive: true, force: true });
   }

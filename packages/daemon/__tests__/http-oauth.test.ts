@@ -47,7 +47,15 @@ test("oauth: extension parameters cannot inject properties and all duplicate nam
   assert.equal(parsed.constructor, "extension");
   assert.equal(parsed.toString, "value");
   for (const name of ["client_id", "__proto__", "constructor", "toString"]) {
-    assert.equal(singleParams(new URLSearchParams([[name, "one"], [name, "two"]])), null);
+    assert.equal(
+      singleParams(
+        new URLSearchParams([
+          [name, "one"],
+          [name, "two"],
+        ])
+      ),
+      null
+    );
   }
 });
 
@@ -61,7 +69,7 @@ function call(
   port: number,
   method: string,
   path: string,
-  opts: { headers?: Record<string, string>; body?: string } = {},
+  opts: { headers?: Record<string, string>; body?: string } = {}
 ): Promise<Reply> {
   return new Promise((resolve, reject) => {
     const req = request(
@@ -71,7 +79,7 @@ function call(
         res.setEncoding("utf8");
         res.on("data", (c: string) => (text += c));
         res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, text }));
-      },
+      }
     );
     req.on("error", reject);
     req.end(opts.body);
@@ -153,7 +161,12 @@ async function openAuthorize(port: number, clientId: string, challenge: string):
 }
 
 async function approve(port: number, requestId: string, apiToken = TOKEN): Promise<Reply> {
-  return call(port, "POST", "/api/v1/oauth/authorize", form({ request: requestId, api_token: apiToken, action: "approve" }));
+  return call(
+    port,
+    "POST",
+    "/api/v1/oauth/authorize",
+    form({ request: requestId, api_token: apiToken, action: "approve" })
+  );
 }
 
 interface Tokens {
@@ -173,22 +186,32 @@ async function login(port: number): Promise<{ clientId: string; tokens: Tokens }
   assert.equal(location.origin + location.pathname, REDIRECT);
   assert.equal(location.searchParams.get("state"), "xyz");
   assert.equal(location.searchParams.get("iss"), ORIGIN);
-  const exchanged = await call(port, "POST", "/api/v1/oauth/token", form({
-    grant_type: "authorization_code",
-    code: location.searchParams.get("code")!,
-    redirect_uri: REDIRECT,
-    client_id: clientId,
-    code_verifier: verifier,
-    resource: `${ORIGIN}/api/v1/mcp`,
-  }));
+  const exchanged = await call(
+    port,
+    "POST",
+    "/api/v1/oauth/token",
+    form({
+      grant_type: "authorization_code",
+      code: location.searchParams.get("code")!,
+      redirect_uri: REDIRECT,
+      client_id: clientId,
+      code_verifier: verifier,
+      resource: `${ORIGIN}/api/v1/mcp`,
+    })
+  );
   assert.equal(exchanged.status, 200, exchanged.text);
   assert.equal(exchanged.headers["cache-control"], "no-store");
   return { clientId, tokens: JSON.parse(exchanged.text) as Tokens };
 }
 
 const MCP_HEADERS = { "Content-Type": "application/json", Accept: "application/json, text/event-stream" };
-const rpc = (id: number, method: string, params: unknown = {}) => JSON.stringify({ jsonrpc: "2.0", id, method, params });
-const INIT = rpc(1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "t", version: "0" } });
+const rpc = (id: number, method: string, params: unknown = {}) =>
+  JSON.stringify({ jsonrpc: "2.0", id, method, params });
+const INIT = rpc(1, "initialize", {
+  protocolVersion: "2025-11-25",
+  capabilities: {},
+  clientInfo: { name: "t", version: "0" },
+});
 
 function mcp(port: number, token: string | null, body: string): Promise<Reply> {
   const auth: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -201,13 +224,16 @@ test("oauth: a 401 from /api/v1/mcp points at the protected resource metadata", 
     assert.equal(r.status, 401);
     assert.equal(
       r.headers["www-authenticate"],
-      `Bearer resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource/api/v1/mcp", scope="mcp"`,
+      `Bearer resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource/api/v1/mcp", scope="mcp"`
     );
     const bad = await mcp(port, "x".repeat(43), INIT);
     assert.equal(bad.status, 401);
     assert.match(String(bad.headers["www-authenticate"]), /^Bearer error="invalid_token", resource_metadata=/);
     // Other REST routes keep their plain 401 — no OAuth challenge there.
-    const rest = await call(port, "POST", "/api/v1/recall", { headers: { "Content-Type": "application/json" }, body: "{}" });
+    const rest = await call(port, "POST", "/api/v1/recall", {
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
     assert.equal(rest.status, 401);
     assert.equal(rest.headers["www-authenticate"], undefined);
   });
@@ -242,7 +268,14 @@ test("oauth: registration accepts only the allowlisted redirect hosts", async ()
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         client_name: "ChatGPT",
-        redirect_uris: [REDIRECT, "https://claude.ai/api/mcp/auth_callback", "https://claude.com/cb", "https://chat.openai.com/cb", "http://localhost:3334/cb", "http://127.0.0.1:9/cb"],
+        redirect_uris: [
+          REDIRECT,
+          "https://claude.ai/api/mcp/auth_callback",
+          "https://claude.com/cb",
+          "https://chat.openai.com/cb",
+          "http://localhost:3334/cb",
+          "http://127.0.0.1:9/cb",
+        ],
       }),
     });
     assert.equal(ok.status, 201, ok.text);
@@ -299,7 +332,10 @@ test("oauth: full code + PKCE flow ends in a working tools/list, and the token o
     assert.equal(other.status, 401);
 
     const stored = readAppRecord("oauth", storePath);
-    assert.ok(!stored.includes(tokens.access_token) && !stored.includes(tokens.refresh_token), "tokens stored hashed only");
+    assert.ok(
+      !stored.includes(tokens.access_token) && !stored.includes(tokens.refresh_token),
+      "tokens stored hashed only"
+    );
   });
 });
 
@@ -326,7 +362,12 @@ test("oauth: before consent, a malformed request gets a page — never a redirec
       { ...base, code_challenge: challenge, code_challenge_method: "plain" },
       { ...base, response_type: "token", code_challenge: challenge, code_challenge_method: "S256" },
       { ...base, code_challenge: challenge, code_challenge_method: "S256", resource: "https://other.example/mcp" },
-      { ...base, redirect_uri: "https://attacker.example/cb", code_challenge: challenge, code_challenge_method: "S256" },
+      {
+        ...base,
+        redirect_uri: "https://attacker.example/cb",
+        code_challenge: challenge,
+        code_challenge_method: "S256",
+      },
     ];
     for (const params of cases) {
       const r = await call(port, "GET", `/api/v1/oauth/authorize?${new URLSearchParams(params)}`);
@@ -354,13 +395,22 @@ test("oauth: wrong API tokens burn their own request, not the user's", async () 
     const fifth = await approve(port, attackers, "wrong-token");
     assert.equal(fifth.status, 401);
     assert.match(fifth.text, /Start the connection again/);
-    assert.equal((await approve(port, attackers, TOKEN)).status, 400, "a burnt request stays dead, even with the right token");
+    assert.equal(
+      (await approve(port, attackers, TOKEN)).status,
+      400,
+      "a burnt request stays dead, even with the right token"
+    );
 
     const ok = await approve(port, users, TOKEN);
     assert.equal(ok.status, 302, "the user's own request is untouched by the attacker's failures");
     assert.ok(new URL(String(ok.headers.location)).searchParams.get("code"));
 
-    const unknown = await call(port, "POST", "/api/v1/oauth/authorize", form({ request: "forged", api_token: TOKEN, action: "approve" }));
+    const unknown = await call(
+      port,
+      "POST",
+      "/api/v1/oauth/authorize",
+      form({ request: "forged", api_token: TOKEN, action: "approve" })
+    );
     assert.equal(unknown.status, 400, "a form without a live request id (CSRF) is refused");
   });
 });
@@ -406,7 +456,7 @@ test("oauth: deny redirects with access_denied", async () => {
 });
 
 test("oauth: choosing a public authorize route cannot bypass consent or expose protected routes", async () => {
-  await withServer(async port => {
+  await withServer(async (port) => {
     const id = await openAuthorize(port, await register(port), pkce().challenge);
     const fields = form({ request: id, action: "approve" });
     for (const [method, path, status] of [
@@ -428,7 +478,12 @@ test("oauth: refresh rotates; the replaced token gets one grace use within 60 s,
   await withServer(async (port) => {
     const { clientId, tokens } = await login(port);
     const refresh = (rt: string) =>
-      call(port, "POST", "/api/v1/oauth/token", form({ grant_type: "refresh_token", refresh_token: rt, client_id: clientId }));
+      call(
+        port,
+        "POST",
+        "/api/v1/oauth/token",
+        form({ grant_type: "refresh_token", refresh_token: rt, client_id: clientId })
+      );
     const r = await refresh(tokens.refresh_token);
     assert.equal(r.status, 200, r.text);
     const next = JSON.parse(r.text) as Tokens;
@@ -443,7 +498,11 @@ test("oauth: refresh rotates; the replaced token gets one grace use within 60 s,
     assert.equal((await mcp(port, third.access_token, INIT)).status, 200);
 
     assert.equal((await refresh(tokens.refresh_token)).status, 400, "the grace is spent");
-    assert.equal((await mcp(port, third.access_token, INIT)).status, 401, "and the second replay revoked the whole grant");
+    assert.equal(
+      (await mcp(port, third.access_token, INIT)).status,
+      401,
+      "and the second replay revoked the whole grant"
+    );
   });
 });
 
@@ -451,7 +510,12 @@ test("oauth: a refresh replay after the grace window revokes the grant", async (
   await withServer(async (port, storePath) => {
     const { clientId, tokens } = await login(port);
     const refresh = (rt: string) =>
-      call(port, "POST", "/api/v1/oauth/token", form({ grant_type: "refresh_token", refresh_token: rt, client_id: clientId }));
+      call(
+        port,
+        "POST",
+        "/api/v1/oauth/token",
+        form({ grant_type: "refresh_token", refresh_token: rt, client_id: clientId })
+      );
     const next = JSON.parse((await refresh(tokens.refresh_token)).text) as Tokens;
     const data = JSON.parse(readAppRecord("oauth", storePath)) as { grants: { rotated_at: number }[] };
     for (const g of data.grants) g.rotated_at = Date.now() - 61_000;
@@ -467,7 +531,13 @@ test("oauth: a reused code revokes what it bought; a malformed verifier is refus
     const { verifier, challenge } = pkce();
     const approved = await approve(port, await openAuthorize(port, clientId, challenge));
     const code = new URL(String(approved.headers.location)).searchParams.get("code")!;
-    const fields = { grant_type: "authorization_code", code, redirect_uri: REDIRECT, client_id: clientId, code_verifier: verifier };
+    const fields = {
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: REDIRECT,
+      client_id: clientId,
+      code_verifier: verifier,
+    };
     const first = await call(port, "POST", "/api/v1/oauth/token", form(fields));
     assert.equal(first.status, 200);
     const tokens = JSON.parse(first.text) as Tokens;
@@ -478,7 +548,12 @@ test("oauth: a reused code revokes what it bought; a malformed verifier is refus
     const p2 = pkce();
     const a2 = await approve(port, await openAuthorize(port, clientId, p2.challenge));
     const code2 = new URL(String(a2.headers.location)).searchParams.get("code")!;
-    const short = await call(port, "POST", "/api/v1/oauth/token", form({ ...fields, code: code2, code_verifier: "short" }));
+    const short = await call(
+      port,
+      "POST",
+      "/api/v1/oauth/token",
+      form({ ...fields, code: code2, code_verifier: "short" })
+    );
     assert.equal(short.status, 400);
     const dup = await call(port, "POST", "/api/v1/oauth/token", {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -501,7 +576,10 @@ test("oauth: control characters never reach the terminal", async () => {
     writeAppRecord("oauth", storePath, JSON.stringify(data));
     let out = "";
     const write = process.stdout.write.bind(process.stdout);
-    process.stdout.write = ((chunk: string) => { out += chunk; return true; }) as typeof process.stdout.write;
+    process.stdout.write = ((chunk: string) => {
+      out += chunk;
+      return true;
+    }) as typeof process.stdout.write;
     try {
       assert.equal(await cmdOAuth({ sub: "list", positional: ["oauth", "list"], json: false }), 0);
     } finally {
@@ -524,9 +602,16 @@ test("oauth: expired and revoked tokens are rejected", async () => {
     assert.equal((await mcp(port, b.tokens.access_token, INIT)).status, 200);
     assert.equal(await revokeClient(b.clientId, storePath), 1);
     assert.equal((await mcp(port, b.tokens.access_token, INIT)).status, 401, "revoked");
-    const refreshed = await call(port, "POST", "/api/v1/oauth/token", form({
-      grant_type: "refresh_token", refresh_token: b.tokens.refresh_token, client_id: b.clientId,
-    }));
+    const refreshed = await call(
+      port,
+      "POST",
+      "/api/v1/oauth/token",
+      form({
+        grant_type: "refresh_token",
+        refresh_token: b.tokens.refresh_token,
+        client_id: b.clientId,
+      })
+    );
     assert.equal(refreshed.status, 400, "a revoked client cannot refresh");
   });
 });
@@ -555,11 +640,19 @@ test("oauth: the SDK's own client discovers, registers and connects", async () =
         redirectUrl,
         clientMetadata: { client_name: "SDK client", redirect_uris: [redirectUrl], token_endpoint_auth_method: "none" },
         clientInformation: () => info,
-        saveClientInformation: (i) => { info = i; },
+        saveClientInformation: (i) => {
+          info = i;
+        },
         tokens: () => saved,
-        saveTokens: (t) => { saved = t; },
-        redirectToAuthorization: (u) => { authUrl = u; },
-        saveCodeVerifier: (v) => { verifier = v; },
+        saveTokens: (t) => {
+          saved = t;
+        },
+        redirectToAuthorization: (u) => {
+          authUrl = u;
+        },
+        saveCodeVerifier: (v) => {
+          verifier = v;
+        },
         codeVerifier: () => verifier,
       };
       assert.equal(await auth(provider, { serverUrl }), "REDIRECT");
@@ -592,9 +685,12 @@ test("oauth store: unused registrations expire, the cap evicts the oldest unused
   const path = join(dir, "oauth.json");
   try {
     const kept = await registerClient({ client_name: "kept", redirect_uris: [REDIRECT] }, path);
-    assert.ok(kept && (await createGrant({ client_id: kept.client_id, resource: `${ORIGIN}/api/v1/mcp`, scope: "mcp" }, path)));
+    assert.ok(
+      kept && (await createGrant({ client_id: kept.client_id, resource: `${ORIGIN}/api/v1/mcp`, scope: "mcp" }, path))
+    );
     const ids: string[] = [];
-    for (let i = 0; i < 99; i++) ids.push((await registerClient({ client_name: `c${i}`, redirect_uris: [REDIRECT] }, path))!.client_id);
+    for (let i = 0; i < 99; i++)
+      ids.push((await registerClient({ client_name: `c${i}`, redirect_uris: [REDIRECT] }, path))!.client_id);
     const extra = await registerClient({ client_name: "extra", redirect_uris: [REDIRECT] }, path);
     assert.ok(extra, "at the cap, a new registration still succeeds");
     let data = JSON.parse(readAppRecord("oauth", path)) as { clients: { client_id: string; created_at: string }[] };
@@ -608,7 +704,10 @@ test("oauth store: unused registrations expire, the cap evicts the oldest unused
     writeAppRecord("oauth", path, JSON.stringify(data));
     assert.equal(await revokeClient("nobody", path), 0);
     data = JSON.parse(readAppRecord("oauth", path)) as typeof data;
-    assert.deepEqual(data.clients.map((c) => c.client_id), [kept.client_id]);
+    assert.deepEqual(
+      data.clients.map((c) => c.client_id),
+      [kept.client_id]
+    );
 
     const before = (await stat(appRecordDatabasePath(path))).mtimeMs;
     await new Promise((r) => setTimeout(r, 20));

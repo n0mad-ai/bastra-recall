@@ -34,7 +34,10 @@ const FULL: VaultHealthData = {
       id: "old-css-lesson",
       title: "Old CSS lesson",
       usage: { surfaced: 9, loaded: 0, acted_on: 0, last_surfaced_at: "2026-07-01T00:00:00Z" },
-      entry: { stale_since: "2026-06-01T00:00:00Z", reason: "surfaced 9× without recent engagement (last: never) — context tax" },
+      entry: {
+        stale_since: "2026-06-01T00:00:00Z",
+        reason: "surfaced 9× without recent engagement (last: never) — context tax",
+      },
     },
   ],
   floors: [
@@ -65,7 +68,14 @@ const FULL: VaultHealthData = {
 test("all four sections render with stable anchors, in both empty and full states", () => {
   for (const data of [EMPTY, FULL]) {
     const md = renderVaultHealthReport(data);
-    for (const anchor of ["bastra-report:start", "bastra-report:stale", "bastra-report:floors", "bastra-report:conflicts", "bastra-report:dangling", "bastra-report:end"]) {
+    for (const anchor of [
+      "bastra-report:start",
+      "bastra-report:stale",
+      "bastra-report:floors",
+      "bastra-report:conflicts",
+      "bastra-report:dangling",
+      "bastra-report:end",
+    ]) {
       assert.ok(md.includes(`<!-- ${anchor}`), `missing anchor ${anchor}`);
     }
     assert.ok(md.startsWith("<!-- bastra-report:start"));

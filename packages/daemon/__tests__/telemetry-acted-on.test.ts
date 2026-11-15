@@ -180,11 +180,7 @@ test("join-state persists across a daemon boot (Audit 26.6.)", async () => {
     // Boot B: frische Instanz, gleicher Log-Pfad = simulierter Idle-Respawn.
     const b = new Telemetry();
     assert.equal(b.recentRecallId(), recallId, "follows_recall must survive the boot");
-    assert.equal(
-      b.findHookHintFor("mem-x")?.recall_id,
-      recallId,
-      "from_hook_recall must survive the boot",
-    );
+    assert.equal(b.findHookHintFor("mem-x")?.recall_id, recallId, "from_hook_recall must survive the boot");
 
     // recall_episode entsteht jetzt boot-übergreifend — das war der Wurzeldefekt.
     const episodes = b.matchLoadedMemories({
@@ -224,7 +220,7 @@ test("join-state restore drops entries past their follow-up window", async () =>
         adoptedTurnKeys: [],
         loadedMemories: [],
       }),
-      "utf8",
+      "utf8"
     );
 
     const t = new Telemetry();
@@ -266,11 +262,19 @@ test("acted_on (#701): the tool input is tokenised like the memory — Cyrillic 
   // one on the input side left these with match_strength 0.
   const body = "Перед релизом проверяем миграцию хранилища сессий. 发布前检查 会话存储迁移";
   const tokens = distinctiveTokensForActedOn(body);
-  assert.ok(tokens.includes("миграцию") && tokens.includes("хранилища") && tokens.includes("会话存储迁移"), tokens.join(" "));
+  assert.ok(
+    tokens.includes("миграцию") && tokens.includes("хранилища") && tokens.includes("会话存储迁移"),
+    tokens.join(" ")
+  );
 
   const telemetry = new Telemetry();
   telemetry.rotateTurn("session-ru");
-  telemetry.recordLoadedMemory({ memory_id: "mem-ru", distinctive_tokens: tokens, hook_hint: null, session_id: "session-ru" });
+  telemetry.recordLoadedMemory({
+    memory_id: "mem-ru",
+    distinctive_tokens: tokens,
+    hook_hint: null,
+    session_id: "session-ru",
+  });
   const [ru] = telemetry.matchLoadedMemories({
     tool_name: "Edit",
     tool_input_excerpt: "// Миграцию хранилища запускаем до релиза",
@@ -281,7 +285,12 @@ test("acted_on (#701): the tool input is tokenised like the memory — Cyrillic 
   assert.equal(ru.match_strength, 3);
   assert.equal(ru.acted_on, true);
 
-  telemetry.recordLoadedMemory({ memory_id: "mem-zh", distinctive_tokens: tokens, hook_hint: null, session_id: "session-ru" });
+  telemetry.recordLoadedMemory({
+    memory_id: "mem-zh",
+    distinctive_tokens: tokens,
+    hook_hint: null,
+    session_id: "session-ru",
+  });
   const [zh] = telemetry.matchLoadedMemories({
     tool_name: "Edit",
     tool_input_excerpt: "发布前检查 会话存储迁移 done",

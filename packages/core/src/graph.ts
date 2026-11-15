@@ -258,7 +258,11 @@ export function subKeyFor(m: Memory, vaultRoot: string): string {
   return parts.length > idx + 2 ? parts[idx + 1] : "general";
 }
 
-export function buildGraph(vault: Vault, skills: SkillRef[] = [], options: { includePrivate?: boolean } = {}): VaultGraph {
+export function buildGraph(
+  vault: Vault,
+  skills: SkillRef[] = [],
+  options: { includePrivate?: boolean } = {}
+): VaultGraph {
   // The external projection keeps the existing team sensitivity default.
   // Only the account-checked UI explicitly opts into private memories.
   // `withheld` counts actual exclusions, including zero for the full view.
@@ -269,9 +273,7 @@ export function buildGraph(vault: Vault, skills: SkillRef[] = [], options: { inc
   // for "my skills are gone": a ghost exists only while a linker survives,
   // a registered skill is emitted always. A vault memory with the same id
   // wins (the file is the truth); the registry entry is ignored then.
-  const skillById = new Map(
-    skills.filter((s) => !byId.has(s.id)).map((s) => [s.id, s]),
-  );
+  const skillById = new Map(skills.filter((s) => !byId.has(s.id)).map((s) => [s.id, s]));
 
   const clusterOf = new Map<string, string>();
   const groupOf = new Map<string, string>();

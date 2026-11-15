@@ -5,13 +5,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  computeTrustShadow,
-  trustRankMode,
-  trustScore,
-  TRUST_CEILING,
-  TRUST_FLOOR,
-} from "../src/trust-shadow.js";
+import { computeTrustShadow, trustRankMode, trustScore, TRUST_CEILING, TRUST_FLOOR } from "../src/trust-shadow.js";
 import type { UsageEntry } from "../src/usage-sidecar.js";
 
 const entry = (surfaced: number, loaded: number, acted_on: number): UsageEntry => ({
@@ -86,10 +80,7 @@ test("#160: shadow reports the reorder without touching the served hits", () => 
       { id: "ignored", score: 100 },
       { id: "solid", score: 95 },
     ];
-    const shadow = computeTrustShadow(
-      hits,
-      usageOf({ ignored: entry(20, 0, 0), solid: entry(5, 5, 3) }),
-    );
+    const shadow = computeTrustShadow(hits, usageOf({ ignored: entry(20, 0, 0), solid: entry(5, 5, 3) }));
     assert.ok(shadow, "a hit below the ceiling must produce a shadow");
     assert.equal(shadow.order_changed, true);
     // 100 × 0.6 = 60 against 95 × 1.0 — the ignored memory drops behind.
@@ -98,19 +89,19 @@ test("#160: shadow reports the reorder without touching the served hits", () => 
       [
         ["ignored", 1, 2],
         ["solid", 2, 1],
-      ],
+      ]
     );
     // The input list is untouched: shadow mode serves what it served.
-    assert.deepEqual(hits.map((h) => h.id), ["ignored", "solid"]);
+    assert.deepEqual(
+      hits.map((h) => h.id),
+      ["ignored", "solid"]
+    );
   });
 });
 
 test("#160: nothing to say when every hit is at the ceiling", () => {
   withEnv({ BASTRA_TRUST_RANK: "shadow" }, () => {
-    const shadow = computeTrustShadow(
-      [{ id: "a", score: 10 }],
-      usageOf({ a: entry(3, 3, 1) }),
-    );
+    const shadow = computeTrustShadow([{ id: "a", score: 10 }], usageOf({ a: entry(3, 3, 1) }));
     assert.equal(shadow, undefined, "logging identity is noise, not a measurement");
   });
 });
@@ -123,7 +114,7 @@ test("#160: a demotion that does not reorder still logs, and says so", () => {
         { id: "top", score: 100 },
         { id: "ignored", score: 10 },
       ],
-      usageOf({ top: entry(2, 2, 0), ignored: entry(20, 0, 0) }),
+      usageOf({ top: entry(2, 2, 0), ignored: entry(20, 0, 0) })
     );
     assert.ok(shadow);
     assert.equal(shadow.order_changed, false);
@@ -137,7 +128,7 @@ test("#160: off and live produce no shadow", () => {
       assert.equal(
         computeTrustShadow([{ id: "a", score: 10 }], usageOf({ a: entry(20, 0, 0) })),
         undefined,
-        `${mode} must not log a would-be order`,
+        `${mode} must not log a would-be order`
       );
     });
   }
@@ -152,9 +143,6 @@ test("#160: shadow is the default, and a bad value falls back to it", () => {
 test("#160: a zero step is the kill switch", () => {
   withEnv({ BASTRA_TRUST_RANK: "shadow", BASTRA_TRUST_STEP: "0" }, () => {
     assert.equal(trustScore(entry(50, 0, 0)), TRUST_CEILING);
-    assert.equal(
-      computeTrustShadow([{ id: "a", score: 10 }], usageOf({ a: entry(50, 0, 0) })),
-      undefined,
-    );
+    assert.equal(computeTrustShadow([{ id: "a", score: 10 }], usageOf({ a: entry(50, 0, 0) })), undefined);
   });
 });

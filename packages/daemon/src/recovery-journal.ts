@@ -69,7 +69,9 @@ export interface RecoveryJournalHandle {
 
 /** A committed document stays committed if cleanup fails. Surface the failure
  * as a result warning while keeping the journal for boot-time inspection. */
-export async function acknowledgeCommittedJournal(journal: RecoveryJournalHandle | undefined): Promise<string | undefined> {
+export async function acknowledgeCommittedJournal(
+  journal: RecoveryJournalHandle | undefined
+): Promise<string | undefined> {
   if (!journal) return undefined;
   try {
     await journal.acknowledge();
@@ -93,7 +95,7 @@ function journalDir(vaultRoot: string): string {
  */
 export async function openRecoveryJournal(
   vaultRoot: string,
-  what: { op: string; id: string; steps: RecoveryStep[] },
+  what: { op: string; id: string; steps: RecoveryStep[] }
 ): Promise<RecoveryJournalHandle> {
   const entry: RecoveryJournalEntry = {
     operation_id: newOperationId(),
@@ -136,9 +138,7 @@ export async function openRecoveryJournal(
  * Der Ordner selbst fehlt bei einem Vault, in dem nie eine solche Operation
  * lief; das ist kein Fehler.
  */
-export async function readOpenRecoveryEntries(
-  vaultRoot: string,
-): Promise<RecoveryJournalEntry[]> {
+export async function readOpenRecoveryEntries(vaultRoot: string): Promise<RecoveryJournalEntry[]> {
   const dir = journalDir(vaultRoot);
   let names: string[];
   try {
@@ -191,7 +191,7 @@ export function describeOpenEntry(entry: RecoveryJournalEntry): string {
  */
 export async function reportOpenRecoveryEntries(
   vaultRoot: string,
-  report: (incident: MutationIncident, entry: RecoveryJournalEntry) => void,
+  report: (incident: MutationIncident, entry: RecoveryJournalEntry) => void
 ): Promise<number> {
   const entries = await readOpenRecoveryEntries(vaultRoot);
   for (const entry of entries) {
@@ -205,7 +205,7 @@ export async function reportOpenRecoveryEntries(
         rollback: "none",
         detail: "open_journal_entry",
       },
-      entry,
+      entry
     );
   }
   return entries.length;

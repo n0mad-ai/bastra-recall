@@ -29,12 +29,7 @@ import {
   GATE_LANE_BY_KIND,
   DEFAULT_HOOK_BUDGET_MS,
 } from "../src/cli/log-stats.js";
-import {
-  FAST_BUDGET_MS,
-  PROMPT_ASSERTION_BUDGET_MS,
-  RECALL_BUDGET_MS,
-  STOP_BUDGET_MS,
-} from "../src/hook-budgets.js";
+import { FAST_BUDGET_MS, PROMPT_ASSERTION_BUDGET_MS, RECALL_BUDGET_MS, STOP_BUDGET_MS } from "../src/hook-budgets.js";
 
 function promptCall(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -196,9 +191,7 @@ test("#484 shadow: der Bericht sagt nicht 'removed', wenn nichts entfernt wurde"
 test("the render names each lane's budget and what it is judged against", () => {
   // Was: one "hook budget Xms — worst lane p90" line. Since #305 budgets are
   // per lane, so the readout names the lane's own ceiling and its verdict.
-  const stats = aggregate([
-    promptCall({ detected_mode: "assertion", latency_ms_total: 259, status: "timeout" }),
-  ]);
+  const stats = aggregate([promptCall({ detected_mode: "assertion", latency_ms_total: 259, status: "timeout" })]);
   const out = renderStats(stats, 250);
   assert.match(out, /assertion/);
   assert.match(out, /assertion\s+1000ms budget · p90 ≤ 900ms · fail ≤ 5%/);
@@ -233,7 +226,7 @@ test("the readout's budget default matches what the hooks actually enforce", asy
     assert.equal(
       Number(m[1]),
       DEFAULT_HOOK_BUDGET_MS,
-      `${hook} enforces ${m[1]}ms but the stats readout assumes ${DEFAULT_HOOK_BUDGET_MS}ms`,
+      `${hook} enforces ${m[1]}ms but the stats readout assumes ${DEFAULT_HOOK_BUDGET_MS}ms`
     );
   }
 });
@@ -264,7 +257,7 @@ test("#305: the prompt CLIENTS outlast the slowest class the daemon can hand the
     assert.match(
       body,
       /PROMPT_ASSERTION_BUDGET_MS/,
-      `${rel} must take its prompt budget from hook-budgets.ts, not a literal`,
+      `${rel} must take its prompt budget from hook-budgets.ts, not a literal`
     );
   }
 });
@@ -275,8 +268,14 @@ test("#305: a lane over its failure ceiling fails the gate, and says which numbe
   // — the lane was not slow so much as cut off — so the verdict has to name the
   // failure rate, not the latency.
   const v = laneVerdict({
-    mode: "assertion", calls: 273, withHits: 215, suppressed: 19, gated: 0,
-    timeouts: 64, errors: 0, latency: { n: 273, median: 423, p90: 731, max: 1017 },
+    mode: "assertion",
+    calls: 273,
+    withHits: 215,
+    suppressed: 19,
+    gated: 0,
+    timeouts: 64,
+    errors: 0,
+    latency: { n: 273, median: 423, p90: 731, max: 1017 },
   });
   assert.equal(v.verdict, "fail");
   assert.equal(v.reasons.length, 1);
@@ -288,8 +287,14 @@ test("#305: the same lane inside both ceilings passes", () => {
   // What the 1000ms budget is expected to produce: the 64 cut calls
   // reconstruct to <= 975ms, so they land instead of expiring.
   const v = laneVerdict({
-    mode: "assertion", calls: 273, withHits: 270, suppressed: 0, gated: 0,
-    timeouts: 2, errors: 0, latency: { n: 273, median: 440, p90: 836, max: 975 },
+    mode: "assertion",
+    calls: 273,
+    withHits: 270,
+    suppressed: 0,
+    gated: 0,
+    timeouts: 2,
+    errors: 0,
+    latency: { n: 273, median: 440, p90: 836, max: 975 },
   });
   assert.equal(v.verdict, "pass");
   assert.deepEqual(v.reasons, []);
@@ -301,8 +306,14 @@ test("#305: a lane too small to judge gets no verdict, and no free pass either",
   // one call is worse than no gate — but "we did not measure" must not read as
   // "it works".
   const v = laneVerdict({
-    mode: "retrieval", calls: 1, withHits: 1, suppressed: 0, gated: 0,
-    timeouts: 0, errors: 0, latency: { n: 1, median: 114, p90: 114, max: 114 },
+    mode: "retrieval",
+    calls: 1,
+    withHits: 1,
+    suppressed: 0,
+    gated: 0,
+    timeouts: 0,
+    errors: 0,
+    latency: { n: 1, median: 114, p90: 114, max: 114 },
   });
   assert.equal(v.verdict, "not_evaluable");
   assert.equal(releaseGateMet([v]), false);
@@ -312,11 +323,20 @@ test("#305: a lane too small to judge gets no verdict, and no free pass either",
 test("#305: the readout prints the gate, per lane, with its verdict", () => {
   const events = [
     ...Array.from({ length: 60 }, (_, i) =>
-      promptCall({ ts: `2026-09-06T05:${String(i % 60).padStart(2, "0")}:00.000Z`, detected_mode: "assertion", status: "timeout", latency_ms_total: 610 }),
+      promptCall({
+        ts: `2026-09-06T05:${String(i % 60).padStart(2, "0")}:00.000Z`,
+        detected_mode: "assertion",
+        status: "timeout",
+        latency_ms_total: 610,
+      })
     ),
-    ...Array.from({ length: 60 }, (_, i) =>
-      ({ kind: "hook_call", ts: `2026-09-06T07:${String(i % 60).padStart(2, "0")}:00.000Z`, status: "ok", latency_ms: 60, hint_count: 1 }),
-    ),
+    ...Array.from({ length: 60 }, (_, i) => ({
+      kind: "hook_call",
+      ts: `2026-09-06T07:${String(i % 60).padStart(2, "0")}:00.000Z`,
+      status: "ok",
+      latency_ms: 60,
+      hint_count: 1,
+    })),
   ];
   const rendered = renderStats(aggregate(events), 600);
   assert.match(rendered, /release gate \(#305\)/);
@@ -351,7 +371,13 @@ test("#305: a client timeout and the daemon row for the same call are ONE call",
   // tripled the timeout rate the release gate was being read off — and put
   // the assertion lane's failures under the silent lane's name.
   const stats = aggregate([
-    promptCall({ ts: "2026-09-06T05:00:00.000Z", detected_mode: "assertion", status: "ok", latency_ms_total: 880, hint_count: 3 }),
+    promptCall({
+      ts: "2026-09-06T05:00:00.000Z",
+      detected_mode: "assertion",
+      status: "ok",
+      latency_ms_total: 880,
+      hint_count: 3,
+    }),
     clientRow({ ts: "2026-09-06T05:00:00.200Z" }),
   ]);
   assert.equal(stats.totals.calls, 1);
@@ -410,8 +436,20 @@ test("#305: two calls of one session close together stay two calls", () => {
   // is the only thing left keeping two calls of the SAME session apart. One
   // client row may consume one daemon row, never both.
   const stats = aggregate([
-    promptCall({ ts: "2026-09-06T05:00:00.000Z", detected_mode: "assertion", status: "ok", latency_ms_total: 700, hint_count: 2 }),
-    promptCall({ ts: "2026-09-06T05:00:00.100Z", detected_mode: "assertion", status: "ok", latency_ms_total: 720, hint_count: 1 }),
+    promptCall({
+      ts: "2026-09-06T05:00:00.000Z",
+      detected_mode: "assertion",
+      status: "ok",
+      latency_ms_total: 700,
+      hint_count: 2,
+    }),
+    promptCall({
+      ts: "2026-09-06T05:00:00.100Z",
+      detected_mode: "assertion",
+      status: "ok",
+      latency_ms_total: 720,
+      hint_count: 1,
+    }),
     clientRow({ ts: "2026-09-06T05:00:00.150Z" }),
   ]);
   assert.equal(stats.foldedDuplicates, 1);
@@ -447,7 +485,7 @@ test("#305: every hook client stamps the payload's session, or the fold has noth
     assert.match(
       body,
       /session_id:[^,\n]*\?\?\s*randomUUID\(\)/,
-      `${rel}: the client row must carry the payload's session (#356)`,
+      `${rel}: the client row must carry the payload's session (#356)`
     );
   }
   // …and every client hands that writer the payload's session instead of
@@ -466,13 +504,18 @@ test("#305: every hook client stamps the payload's session, or the fold has noth
     assert.doesNotMatch(
       body,
       /session_id:\s*randomUUID\(\)/,
-      `${rel}: a bare randomUUID() gives the row an id no other row shares — the fold then has nothing to pair on but time (#305)`,
+      `${rel}: a bare randomUUID() gives the row an id no other row shares — the fold then has nothing to pair on but time (#305)`
     );
   }
 });
 
 test("#305: aggregate does not mutate the events it was handed", () => {
-  const daemonRow = promptCall({ ts: "2026-09-06T05:00:00.000Z", detected_mode: "assertion", status: "ok", latency_ms_total: 880 });
+  const daemonRow = promptCall({
+    ts: "2026-09-06T05:00:00.000Z",
+    detected_mode: "assertion",
+    status: "ok",
+    latency_ms_total: 880,
+  });
   aggregate([daemonRow, clientRow({ ts: "2026-09-06T05:00:00.100Z" })]);
   assert.equal(daemonRow.status, "ok");
 });
@@ -524,7 +567,7 @@ test("#305: the report states what it excluded and what it folded", () => {
       promptCall({ ts: "2026-09-06T06:00:00.000Z", detected_mode: "assertion", status: "ok", latency_ms_total: 700 }),
       clientRow({ ts: "2026-09-06T06:00:00.100Z" }),
     ]),
-    600,
+    600
   );
   assert.match(rendered, /excluded: 1 call\(s\)/);
   assert.match(rendered, /folded: 1 client-side row\(s\)/);
@@ -546,14 +589,19 @@ test("#305: the fold's client/daemon split matches what the sources actually sta
     assert.match(
       await versionOf(rel),
       /-(thin|stub)$/,
-      `${rel} writes telemetry from the hook process; its version must say so, or its rows count twice`,
+      `${rel} writes telemetry from the hook process; its version must say so, or its rows count twice`
     );
   }
-  for (const rel of ["src/prompt-lane-telemetry.ts", "src/write-lane-telemetry.ts", "src/todo-lane.ts", "src/session-lane-telemetry.ts"]) {
+  for (const rel of [
+    "src/prompt-lane-telemetry.ts",
+    "src/write-lane-telemetry.ts",
+    "src/todo-lane.ts",
+    "src/session-lane-telemetry.ts",
+  ]) {
     assert.doesNotMatch(
       await versionOf(rel),
       /-(thin|stub)$/,
-      `${rel} runs in the daemon; a client suffix would make its rows foldable into each other`,
+      `${rel} runs in the daemon; a client suffix would make its rows foldable into each other`
     );
   }
 });
@@ -564,7 +612,7 @@ test("#305: a window that is nothing but a restart says so", () => {
       { kind: "warmup_settle", ts: "2026-09-06T05:00:00.000Z", trigger: "boot" },
       { kind: "hook_call", ts: "2026-09-06T05:00:05.000Z", status: "daemon-unreachable", latency_ms: 7 },
     ]),
-    600,
+    600
   );
   assert.match(rendered, /no hook-lane events/);
   assert.match(rendered, /1 call\(s\) fell inside 1 daemon restart window\(s\)/);
@@ -602,7 +650,11 @@ test("#305: plan, session, Bash pre/post and Stop are lanes, not `other events`"
   assert.equal(stats.totals.calls, 5);
   // Each of these lanes names its hit count differently; reading only
   // `hint_count` reported three of them as delivering nothing, ever.
-  assert.equal(stats.lanes.every((l) => l.withHits === 1), true, JSON.stringify(stats.lanes));
+  assert.equal(
+    stats.lanes.every((l) => l.withHits === 1),
+    true,
+    JSON.stringify(stats.lanes)
+  );
 });
 
 test("#305: a Stop lane over its failure ceiling turns the gate red", () => {
@@ -624,17 +676,22 @@ test("#887: a Stop row with `skipped_reason` is a call, not a failure, and stays
   // writes such a row. It must not turn the gate red, and its 1ms must not
   // pass for the lane's p90.
   const skipped = lane("save_eval_call", 40, {
-    status: undefined, hint_count: undefined, suggested_count: 0, turn_count: 0,
-    latency_ms_total: 1, skipped_reason: "transcript_path not readable on this host: ENOENT",
+    status: undefined,
+    hint_count: undefined,
+    suggested_count: 0,
+    turn_count: 0,
+    latency_ms_total: 1,
+    skipped_reason: "transcript_path not readable on this host: ENOENT",
   });
-  const others = ["hook_call", "todo_hook_call", "session_hook_call", "bash_hook_call", "bash_fail_hook_call"]
-    .flatMap((kind) => lane(kind, 40, { latency_ms: 60 }));
+  const others = ["hook_call", "todo_hook_call", "session_hook_call", "bash_hook_call", "bash_fail_hook_call"].flatMap(
+    (kind) => lane(kind, 40, { latency_ms: 60 })
+  );
   const prompts = lane("prompt_hook_call", 40, { detected_mode: "none", latency_ms_total: 60 });
   const remote = aggregate([...others, ...prompts, ...skipped]);
   const stop = remote.lanes.find((l) => l.mode === "stop")!;
   assert.deepEqual(
     { calls: stop.calls, errors: stop.errors, gated: stop.gated, latency: stop.latency },
-    { calls: 40, errors: 0, gated: 40, latency: null },
+    { calls: 40, errors: 0, gated: 40, latency: null }
   );
   const rendered = renderStats(remote, 600);
   assert.match(rendered, /stop\s+1000ms budget · p90 ≤ 200ms · fail ≤ 2% — PASS/);
@@ -658,7 +715,7 @@ test("#305: an automatic lane the window never saw is NOT EVALUABLE, not absent"
     assert.match(
       rendered,
       new RegExp(`${mode}\\s+\\d+ms budget · [^\\n]*— NOT EVALUABLE \\(0 call\\(s\\) of the min-N 30\\)`),
-      `${mode} must state that it was not measured`,
+      `${mode} must state that it was not measured`
     );
   }
   assert.match(rendered, /pretooluse\s+600ms budget[^\n]*— PASS/);
@@ -674,7 +731,7 @@ test("#305: every gate lane has a threshold, and every threshold names a real bu
     assert.ok(t, `${mode} is counted as a lane but has no release threshold`);
     assert.ok(
       [RECALL_BUDGET_MS, FAST_BUDGET_MS, STOP_BUDGET_MS, PROMPT_ASSERTION_BUDGET_MS].includes(t.budgetMs),
-      `${mode}: ${t.budgetMs}ms is not one of the budgets hook-budgets.ts enforces`,
+      `${mode}: ${t.budgetMs}ms is not one of the budgets hook-budgets.ts enforces`
     );
     // #542: p90TargetMs is null only for prompt-total (not a REQUIRED_LANES
     // member) — every lane here carries a real target.
@@ -684,7 +741,7 @@ test("#305: every gate lane has a threshold, and every threshold names a real bu
   assert.deepEqual(
     Object.values(GATE_LANE_BY_KIND).sort(),
     ["bash-post", "bash-pre", "plan", "pretooluse", "session", "stop"],
-    "all six kind-based automatic lanes, or the gate covers fewer lanes than the product advertises",
+    "all six kind-based automatic lanes, or the gate covers fewer lanes than the product advertises"
   );
 });
 
@@ -692,9 +749,14 @@ test("the agent split: the same calls, apart by main thread and subagent", () =>
   // Revert-check: count every row into "none" (drop agentOf) → the subagent
   // row is missing and the render asserts are red.
   const call = (sid: string, dims: Record<string, unknown> | undefined, over: Record<string, unknown> = {}) => ({
-    kind: "bash_hook_call", ts: "2026-07-28T05:00:00.000Z", session_id: sid,
-    status: "ok", hint_count: 0, latency_ms_total: 10,
-    ...(dims ? { dimensions: dims } : {}), ...over,
+    kind: "bash_hook_call",
+    ts: "2026-07-28T05:00:00.000Z",
+    session_id: sid,
+    status: "ok",
+    hint_count: 0,
+    latency_ms_total: 10,
+    ...(dims ? { dimensions: dims } : {}),
+    ...over,
   });
   const stats = aggregate([
     call("a1", { agent: "subagent" }, { hint_count: 2 }),
@@ -704,12 +766,16 @@ test("the agent split: the same calls, apart by main thread and subagent", () =>
     call("a5", undefined),
   ]);
   const by = Object.fromEntries(stats.byAgent.map((r) => [r.mode, r]));
-  assert.deepEqual(
-    Object.fromEntries(Object.entries(by).map(([k, r]) => [k, [r.calls, r.withHits, r.timeouts]])),
-    { subagent: [2, 1, 1], main: [1, 1, 0], none: [2, 0, 0] },
-  );
+  assert.deepEqual(Object.fromEntries(Object.entries(by).map(([k, r]) => [k, [r.calls, r.withHits, r.timeouts]])), {
+    subagent: [2, 1, 1],
+    main: [1, 1, 0],
+    none: [2, 0, 0],
+  });
   // Same calls as the lane table, not a second count of something else.
-  assert.equal(stats.byAgent.reduce((n, r) => n + r.calls, 0), stats.totals.calls);
+  assert.equal(
+    stats.byAgent.reduce((n, r) => n + r.calls, 0),
+    stats.totals.calls
+  );
   const text = renderStats(stats, 200);
   assert.match(text, /by agent/);
   assert.match(text, /\n  subagent\s+2\s+50%/);
@@ -740,15 +806,28 @@ test("#512: `bastra logs --stats` renders the per-part session-start section (#4
   ]);
   assert.equal(stats.sessionStart.withParts, 2);
   const out = renderStats(stats, 600);
-  assert.match(out, /session start — 3 start\(s\), 2 with per-part data, 1000 tokens \(1 older start\(s\) carry only a total\)/);
+  assert.match(
+    out,
+    /session start — 3 start\(s\), 2 with per-part data, 1000 tokens \(1 older start\(s\) carry only a total\)/
+  );
   assert.match(out, /conventions\s+800\s+80%\s+400\s+2\/2/);
   assert.match(out, /pinned\s+100\s+10%\s+50\s+1\/2/);
   assert.match(out, /clear\s+n=\s+1\s+conventions 500, recency 100/);
 });
 
 test("#993: a genuinely empty Stop row (turn_count 0) stays out of the latency sample", () => {
-  const empty = lane("save_eval_call", 40, { status: undefined, suggested_count: 0, turn_count: 0, latency_ms_total: 1 });
-  const real = lane("save_eval_call", 40, { status: undefined, suggested_count: 1, turn_count: 3, latency_ms_total: 150 });
+  const empty = lane("save_eval_call", 40, {
+    status: undefined,
+    suggested_count: 0,
+    turn_count: 0,
+    latency_ms_total: 1,
+  });
+  const real = lane("save_eval_call", 40, {
+    status: undefined,
+    suggested_count: 1,
+    turn_count: 3,
+    latency_ms_total: 150,
+  });
   const stop = (rows: Array<Record<string, unknown>>) => aggregate(rows).lanes.find((l) => l.mode === "stop")!;
   assert.equal(stop(empty).latency, null);
   assert.deepEqual(stop([...real, ...empty]).latency, stop(real).latency);

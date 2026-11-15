@@ -87,7 +87,8 @@ function isFloorAct(v: unknown): v is FloorAct {
   if (!v || typeof v !== "object") return false;
   const a = v as Record<string, unknown>;
   return (
-    typeof a.memory_id === "string" && a.memory_id.length > 0 &&
+    typeof a.memory_id === "string" &&
+    a.memory_id.length > 0 &&
     typeof a.affirmed_by === "string" &&
     typeof a.why === "string" &&
     typeof a.recorded === "string" &&
@@ -122,7 +123,7 @@ export async function readActs(path: string = floorActsPath()): Promise<FloorAct
  */
 export async function appendAct(
   act: Omit<FloorAct, "recorded">,
-  path: string = floorActsPath(),
+  path: string = floorActsPath()
 ): Promise<FloorAct | null> {
   const key = identity(act);
   const existing = await readActs(path);
@@ -175,7 +176,7 @@ export function liveIntent(
   memoryId: string,
   flooredAt: string,
   acts: FloorAct[],
-  fallback: { last_affirmed: string; affirmed_by?: string; why?: string },
+  fallback: { last_affirmed: string; affirmed_by?: string; why?: string }
 ): LiveIntent {
   const flooredAtMs = Date.parse(flooredAt);
   const mine = acts.filter((a) => a.memory_id === memoryId && orderKey(a) >= flooredAtMs);
@@ -212,9 +213,7 @@ export function liveIntent(
     return a.recorded >= best.recorded ? a : best;
   });
 
-  const gap = win.occurred_at !== undefined
-    ? Date.parse(win.recorded) - Date.parse(win.occurred_at)
-    : null;
+  const gap = win.occurred_at !== undefined ? Date.parse(win.recorded) - Date.parse(win.occurred_at) : null;
 
   return {
     occurred_at: win.occurred_at ?? null,

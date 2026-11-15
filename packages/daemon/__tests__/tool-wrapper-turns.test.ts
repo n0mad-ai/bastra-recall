@@ -19,10 +19,13 @@ for (const tag of tags) {
     assert.equal(ownerPromptText(wrapped + "\n" + human), human);
     for (const shape of [
       (content: string) => ({ message: { role: "user", content } }),
-      (content: string) => ({ type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: content }] } }),
+      (content: string) => ({
+        type: "response_item",
+        payload: { type: "message", role: "user", content: [{ type: "input_text", text: content }] },
+      }),
     ]) {
       const excluded = normalizeTurns([shape(wrapped), shape(wrapped)]);
-      assert.ok(excluded.every(t => t.role === "system-injected"));
+      assert.ok(excluded.every((t) => t.role === "system-injected"));
       assert.deepEqual(harvestCandidates(excluded), []);
       const suffix = normalizeTurns([shape(wrapped + "\n" + human)])[0];
       assert.equal(suffix.role, "user");
@@ -32,7 +35,11 @@ for (const tag of tags) {
         assert.equal(normalizeTurns([shape(quote)])[0].role, "user");
       }
     }
-    for (const broken of [`<${tag}>unclosed`, `<${tag}><${tag}>nested</${tag}>${human}`, `<${tag.toUpperCase()}>output</${tag.toUpperCase()}>${human}`]) {
+    for (const broken of [
+      `<${tag}>unclosed`,
+      `<${tag}><${tag}>nested</${tag}>${human}`,
+      `<${tag.toUpperCase()}>output</${tag.toUpperCase()}>${human}`,
+    ]) {
       assert.equal(ownerPromptText(broken), null);
       assert.equal(normalizeTurns([{ role: "user", content: broken }])[0].role, "system-injected");
     }
@@ -40,7 +47,9 @@ for (const tag of tags) {
 }
 
 test("multiple complete wrappers and a reminder recover only the trailing human prompt", () => {
-  const text = "<local-command-stdout>x</local-command-stdout>\n<bash-stdout>y</bash-stdout>\n<system-reminder>hook</system-reminder>\n" + human;
+  const text =
+    "<local-command-stdout>x</local-command-stdout>\n<bash-stdout>y</bash-stdout>\n<system-reminder>hook</system-reminder>\n" +
+    human;
   assert.equal(ownerPromptText(text), human);
   assert.equal(normalizeTurns([{ role: "user", content: text }])[0].content, human);
 });
@@ -53,7 +62,12 @@ test("direct harvest and capture recover attributed tool suffixes without losing
   try {
     const turns = [
       { role: "assistant", content: "How should staging be configured?", commands: ["deploy fixture.invalid"] },
-      { role: "user", content: `<bash-stdout source="tool">untrusted output</bash-stdout>\n${human}`, cwd: "/fixture/staging", at: now },
+      {
+        role: "user",
+        content: `<bash-stdout source="tool">untrusted output</bash-stdout>\n${human}`,
+        cwd: "/fixture/staging",
+        at: now,
+      },
     ];
     const candidates = harvestCandidates(turns);
     assert.equal(candidates.length, 1);
@@ -67,7 +81,8 @@ test("direct harvest and capture recover attributed tool suffixes without losing
     assert.ok(rows[0].situation.before.includes("deploy fixture.invalid"));
     assert.ok(!JSON.stringify(rows).includes("untrusted output"));
   } finally {
-    if (previous === undefined) delete process.env.BASTRA_DRAFTS_PATH; else process.env.BASTRA_DRAFTS_PATH = previous;
+    if (previous === undefined) delete process.env.BASTRA_DRAFTS_PATH;
+    else process.env.BASTRA_DRAFTS_PATH = previous;
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -78,24 +93,36 @@ test("raw wrapper turns never enter the broad draft store", async () => {
   process.env.BASTRA_DRAFTS_PATH = join(dir, "drafts.json");
   const now = Date.now();
   try {
-    await captureTypedDrafts(tags.map(tag => ({ role: "user", content: `<${tag}>${human}</${tag}>` })), { session_id: "tools" }, now, []);
+    await captureTypedDrafts(
+      tags.map((tag) => ({ role: "user", content: `<${tag}>${human}</${tag}>` })),
+      { session_id: "tools" },
+      now,
+      []
+    );
     assert.deepEqual(await listDrafts(now), []);
   } finally {
-    if (previous === undefined) delete process.env.BASTRA_DRAFTS_PATH; else process.env.BASTRA_DRAFTS_PATH = previous;
+    if (previous === undefined) delete process.env.BASTRA_DRAFTS_PATH;
+    else process.env.BASTRA_DRAFTS_PATH = previous;
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test('stderr pairs exclude both streams and preserve only the genuine suffix', () => {
-  for (const [out, err] of [['bash-stdout','bash-stderr'],['local-command-stdout','local-command-stderr']]) {
-    const pair=`<${out}>fixture output</${out}><${err}>fixture warning</${err}>`;
-    assert.equal(ownerPromptText(pair),null);
-    assert.equal(ownerPromptText(pair+'\n'+human),human);
-    assert.equal(normalizeTurns([{role:'user',content:pair}])[0].role,'system-injected');
-    assert.equal(ownerPromptText(`<${err}></${err}>`),null);
-    const malformed=`<${out}>printed </${out}>${human}</${out}>`;
-    assert.equal(ownerPromptText(malformed),null);
-    assert.equal(ownerPromptText(pair+`\nExplain \`</${out}>\` in this fixture.`),`Explain \`</${out}>\` in this fixture.`);
-    assert.equal(ownerPromptText(pair+`\n${human} <${err}>leftover`),null);
+test("stderr pairs exclude both streams and preserve only the genuine suffix", () => {
+  for (const [out, err] of [
+    ["bash-stdout", "bash-stderr"],
+    ["local-command-stdout", "local-command-stderr"],
+  ]) {
+    const pair = `<${out}>fixture output</${out}><${err}>fixture warning</${err}>`;
+    assert.equal(ownerPromptText(pair), null);
+    assert.equal(ownerPromptText(pair + "\n" + human), human);
+    assert.equal(normalizeTurns([{ role: "user", content: pair }])[0].role, "system-injected");
+    assert.equal(ownerPromptText(`<${err}></${err}>`), null);
+    const malformed = `<${out}>printed </${out}>${human}</${out}>`;
+    assert.equal(ownerPromptText(malformed), null);
+    assert.equal(
+      ownerPromptText(pair + `\nExplain \`</${out}>\` in this fixture.`),
+      `Explain \`</${out}>\` in this fixture.`
+    );
+    assert.equal(ownerPromptText(pair + `\n${human} <${err}>leftover`), null);
   }
 });

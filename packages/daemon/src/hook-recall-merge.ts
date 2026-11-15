@@ -5,11 +5,7 @@
  */
 import type { RecallHit } from "@bastra-recall/core";
 
-export function mergeHookRecallHits(
-  first: RecallHit[],
-  second: RecallHit[],
-  limit: number,
-): RecallHit[] {
+export function mergeHookRecallHits(first: RecallHit[], second: RecallHit[], limit: number): RecallHit[] {
   const byId = new Map<string, RecallHit>();
   for (const hit of [...first, ...second]) {
     const previous = byId.get(hit.id);

@@ -132,9 +132,7 @@ export function createLiveDeck({ cardsEl }) {
       card.style.setProperty("--fan-dur", `${dur.toFixed(3)}s`);
 
       // opening: top first, the pile reads downward
-      const open = covered
-        ? stackTail + (i - DECK_VISIBLE) * TAIL_STEP
-        : FAN_LEAD + Math.max(0, i - 1) * STACK_STEP;
+      const open = covered ? stackTail + (i - DECK_VISIBLE) * TAIL_STEP : FAN_LEAD + Math.max(0, i - 1) * STACK_STEP;
       card.style.setProperty("--fan-delay", `${open.toFixed(3)}s`);
 
       // closing: the reverse — the last card folds home first

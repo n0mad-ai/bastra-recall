@@ -14,13 +14,34 @@ import type { CaseResult } from "../src/goldset-run.js";
 
 function row(id: string, rank: number, extra: Partial<CaseResult> = {}): CaseResult {
   return {
-    id, query: id, no_answer: false, kind: "k", zone: "z", origin: "o", lang: "de", allowed_depth: 3,
-    rank_expected: rank, rank_any: rank, top_id: "x", top_score: 50, gold_score: 50, abstained: false,
-    weak_result: false, anchor: "title", unknown_ids: [], top_mode: "hybrid", top_k: [], ...extra,
+    id,
+    query: id,
+    no_answer: false,
+    kind: "k",
+    zone: "z",
+    origin: "o",
+    lang: "de",
+    allowed_depth: 3,
+    rank_expected: rank,
+    rank_any: rank,
+    top_id: "x",
+    top_score: 50,
+    gold_score: 50,
+    abstained: false,
+    weak_result: false,
+    anchor: "title",
+    unknown_ids: [],
+    top_mode: "hybrid",
+    top_k: [],
+    ...extra,
   } as CaseResult;
 }
 
-const ms = new Map([["a", 10], ["b", 20], ["c", 30]]);
+const ms = new Map([
+  ["a", 10],
+  ["b", 20],
+  ["c", 30],
+]);
 
 test("#362: armReport zählt relevant_loss nur auf dem Referenzset", () => {
   const r = armReport([row("a", 1), row("b", 0), row("c", 0)], ms, 60, new Set(["a", "b"]), new Set(["c"]));
@@ -40,9 +61,18 @@ test("#362: jede Verschlechterung ist ein Verstoß", () => {
   const base = armReport([row("a", 1), row("b", 1)], ms, 30, new Set(["a", "b"]));
   const worse = armReport([row("a", 1), row("b", 0)], ms, 30, new Set(["a", "b"]));
   const v = shipBarViolations(base, worse);
-  assert.ok(v.some((s) => s.startsWith("recall_at_1")), v.join("; "));
-  assert.ok(v.some((s) => s.startsWith("relevant_loss 0 → 1")), v.join("; "));
-  assert.ok(v.some((s) => s.includes("> tolerance")), "0.5 reißt die M1-Toleranz 0.24");
+  assert.ok(
+    v.some((s) => s.startsWith("recall_at_1")),
+    v.join("; ")
+  );
+  assert.ok(
+    v.some((s) => s.startsWith("relevant_loss 0 → 1")),
+    v.join("; ")
+  );
+  assert.ok(
+    v.some((s) => s.includes("> tolerance")),
+    "0.5 reißt die M1-Toleranz 0.24"
+  );
 });
 
 test("#362: eine neue Abstention ist ein Verstoß", () => {

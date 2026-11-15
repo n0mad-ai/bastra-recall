@@ -105,7 +105,7 @@ test("crash recovery: a sampled event in a rotated-but-unfolded file is counted 
     await writeFile(
       join(root, USAGE, "events.compacting.jsonl"),
       JSON.stringify(ev("a", MEASUREMENT_KIND, "2026-07-01T10:00:00Z")) + "\n",
-      "utf8",
+      "utf8"
     );
     assert.equal((await readUsage(root))["a"].last_sampled_at, "2026-07-01T10:00:00Z");
     await compactUsage(root);
@@ -122,7 +122,7 @@ test("an aggregate written before the field existed still reads, and reads as du
     await writeFile(
       join(root, USAGE, "aggregate.json"),
       JSON.stringify({ old: { surfaced: 12, loaded: 4, acted_on: 2, last_surfaced_at: "2026-07-01T10:00:00Z" } }),
-      "utf8",
+      "utf8"
     );
     const agg = await readUsage(root);
     assert.equal(agg["old"].surfaced, 12);
@@ -178,7 +178,7 @@ test("the low-salience tail enters the sample even with no sidecar entry at all"
   assert.deepEqual(
     dueForSampling(usage, ["fresh", "never"], now, threshold),
     ["never"],
-    "passing the vault's id set is what makes the bound cover the tail",
+    "passing the vault's id set is what makes the bound cover the tail"
   );
 });
 
@@ -193,7 +193,7 @@ test("due list is ordered never-measured first, then oldest measurement first", 
   assert.deepEqual(
     dueForSampling(usage, ["recent", "ok", "b-never", "ancient", "a-never"], now, threshold),
     ["a-never", "b-never", "ancient", "recent"],
-    "a caller with a probe budget slices from the front",
+    "a caller with a probe budget slices from the front"
   );
   // Deterministic and duplicate-free — the same id twice is one probe.
   assert.deepEqual(dueForSampling(usage, ["ancient", "ancient", ""], now, threshold), ["ancient"]);
@@ -243,12 +243,12 @@ test("BASTRA_SAMPLE_ROT_DAYS tunes the floor; 0 forces every memory into the sam
     assert.equal(
       isSampleDue({ ...entry, last_sampled_at: new Date(now - 1000).toISOString() }, now),
       true,
-      "floor 0: anything not measured in this very instant is due",
+      "floor 0: anything not measured in this very instant is due"
     );
     assert.equal(
       isSampleDue({ ...entry, last_sampled_at: new Date(now).toISOString() }, now),
       false,
-      "…but a measurement taken now is a measurement, at every setting",
+      "…but a measurement taken now is a measurement, at every setting"
     );
     process.env.BASTRA_SAMPLE_ROT_DAYS = "-5";
     assert.equal(sampleRotThresholdMs(), 0, "negative clamps to 0, never to a negative window");

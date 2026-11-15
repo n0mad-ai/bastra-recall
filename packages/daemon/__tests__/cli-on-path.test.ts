@@ -31,8 +31,11 @@ const GLOBAL_CLI = "/opt/homebrew/lib/node_modules/@bastra-recall/daemon/dist/mc
 test("decideCliOnPath: a permanent install already has its bin — nothing to offer", () => {
   assert.equal(decideCliOnPath({ cliPath: GLOBAL_CLI, resolvedBastra: null }), "permanent");
   assert.equal(
-    decideCliOnPath({ cliPath: "/Users/x/Projekte/bastra-recall/packages/daemon/dist/mcp-forwarder.js", resolvedBastra: null }),
-    "permanent",
+    decideCliOnPath({
+      cliPath: "/Users/x/Projekte/bastra-recall/packages/daemon/dist/mcp-forwarder.js",
+      resolvedBastra: null,
+    }),
+    "permanent"
   );
 });
 
@@ -74,14 +77,24 @@ test("binDirOnPath: trailing slashes and empty entries do not change the answer"
 // and every other shape has to name a way to run something.
 
 test("formatGlobalInstallOutcome: reachable bin is the only success", () => {
-  const line = formatGlobalInstallOutcome({ ok: true, binPath: "/opt/homebrew/bin/bastra", offPath: false, detail: "installed" });
+  const line = formatGlobalInstallOutcome({
+    ok: true,
+    binPath: "/opt/homebrew/bin/bastra",
+    offPath: false,
+    detail: "installed",
+  });
   assert.equal(line.level, "success");
   assert.match(line.text, /\/opt\/homebrew\/bin\/bastra/);
   assert.match(line.text, /bastra doctor/);
 });
 
 test("formatGlobalInstallOutcome: installed off PATH is a warning that names the directory", () => {
-  const line = formatGlobalInstallOutcome({ ok: true, binPath: "/Users/x/.npm-global/bin/bastra", offPath: true, detail: "installed" });
+  const line = formatGlobalInstallOutcome({
+    ok: true,
+    binPath: "/Users/x/.npm-global/bin/bastra",
+    offPath: true,
+    detail: "installed",
+  });
   assert.equal(line.level, "warn");
   assert.match(line.text, /\/Users\/x\/\.npm-global\/bin(?!\/bastra)/, "names the directory to add to PATH");
   assert.ok(line.text.includes(NPX_FALLBACK_HINT), "still offers a way to run commands now");

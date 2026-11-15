@@ -26,7 +26,14 @@ import { envFirst, envOff, envInt } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow } from "./session-budget.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookClientEvidence } from "./hook-surface.js";
+import {
+  hookCaller,
+  hookClient,
+  hookAgent,
+  hookClientEvidence,
+  type HookAgent,
+  type HookClientEvidence,
+} from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
 import { governContext } from "./context-governor.js";
 import { postLane } from "./thin-client.js";
@@ -81,15 +88,30 @@ type RecallResponse = HookRecallResponse;
  * Run the tripwire pipeline; return the exact stdout document for the thin
  * client. Never throws — every failure degrades to `{}` plus telemetry.
  */
-export async function runBashPreLane(payload:BashHookPayload,selfBaseUrl:string,draftNotes?:(query:string)=>DraftNote[]):Promise<string>{
- const github=await githubConventionGate(payload,selfBaseUrl,Date.now()+HOOK_TIMEOUT_MS);
- if(github&&JSON.parse(github).hookSpecificOutput?.permissionDecision==="deny")return github;
- const original=await runBashPreLaneOriginal(payload,selfBaseUrl,draftNotes);if(!github)return original;
- const output=JSON.parse(original),extra=JSON.parse(github).hookSpecificOutput.additionalContext;
- output.hookSpecificOutput={...output.hookSpecificOutput,hookEventName:"PreToolUse",additionalContext:[output.hookSpecificOutput?.additionalContext,extra].filter(Boolean).join("\n")};return JSON.stringify(output);
+export async function runBashPreLane(
+  payload: BashHookPayload,
+  selfBaseUrl: string,
+  draftNotes?: (query: string) => DraftNote[]
+): Promise<string> {
+  const github = await githubConventionGate(payload, selfBaseUrl, Date.now() + HOOK_TIMEOUT_MS);
+  if (github && JSON.parse(github).hookSpecificOutput?.permissionDecision === "deny") return github;
+  const original = await runBashPreLaneOriginal(payload, selfBaseUrl, draftNotes);
+  if (!github) return original;
+  const output = JSON.parse(original),
+    extra = JSON.parse(github).hookSpecificOutput.additionalContext;
+  output.hookSpecificOutput = {
+    ...output.hookSpecificOutput,
+    hookEventName: "PreToolUse",
+    additionalContext: [output.hookSpecificOutput?.additionalContext, extra].filter(Boolean).join("\n"),
+  };
+  return JSON.stringify(output);
 }
 
-async function runBashPreLaneOriginal(payload: BashHookPayload, selfBaseUrl: string, draftNotes?: (query: string) => DraftNote[]): Promise<string> {
+async function runBashPreLaneOriginal(
+  payload: BashHookPayload,
+  selfBaseUrl: string,
+  draftNotes?: (query: string) => DraftNote[]
+): Promise<string> {
   const startedAt = Date.now();
   const client = hookClient(payload);
   // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt
@@ -127,18 +149,34 @@ async function runBashPreLaneOriginal(payload: BashHookPayload, selfBaseUrl: str
     if (rewritten !== null) {
       await writeShadow("coverage_rewrite", {
         session_id: payload.session_id ?? null,
-        dimensions: dimensionsFrom({ client: clientEvidence, hook_source: "bash-pre", session_id: payload.session_id, agent }),
+        dimensions: dimensionsFrom({
+          client: clientEvidence,
+          hook_source: "bash-pre",
+          session_id: payload.session_id,
+          agent,
+        }),
       });
     }
-    const stdout = rewritten === null
-      ? "{}"
-      : JSON.stringify({
-          hookSpecificOutput: {
-            hookEventName: "PreToolUse",
-            updatedInput: { ...toolInput, command: rewritten },
-          },
-        });
-    return appendLaneDrafts(stdout, "PreToolUse", command, payload.session_id, [], 1, false, draftNotes ? () => draftNotes(command) : undefined, startedAt + HOOK_TIMEOUT_MS);
+    const stdout =
+      rewritten === null
+        ? "{}"
+        : JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: "PreToolUse",
+              updatedInput: { ...toolInput, command: rewritten },
+            },
+          });
+    return appendLaneDrafts(
+      stdout,
+      "PreToolUse",
+      command,
+      payload.session_id,
+      [],
+      1,
+      false,
+      draftNotes ? () => draftNotes(command) : undefined,
+      startedAt + HOOK_TIMEOUT_MS
+    );
   }
 
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
@@ -170,8 +208,8 @@ async function runBashPreLaneOriginal(payload: BashHookPayload, selfBaseUrl: str
           ...hookCaller(payload),
           hook_source: "bash-pre",
         },
-        remainingMs,
-      ),
+        remainingMs
+      )
     ) as RecallResponse;
   } catch (err) {
     const e = err as NodeJS.ErrnoException;
@@ -241,9 +279,9 @@ async function runBashPreLaneOriginal(payload: BashHookPayload, selfBaseUrl: str
           // nicht erfunden — die Summary ist der Löwenanteil der Zeile.
           text: h.summary ?? "",
           alreadyShown: shouldDropHit(state.shown[h.id], await getLoadedMarkerMtime(h.id)),
-        })),
+        }))
       ),
-      {},
+      {}
     );
     droppedDedupCount = governed.dropped.filter((d) => d.reason === "already_shown").length;
     const keptIds = new Set(governed.kept.map((g) => g.id));
@@ -265,9 +303,18 @@ async function runBashPreLaneOriginal(payload: BashHookPayload, selfBaseUrl: str
   // our allow, so no allow, no rewrite, no "no confirmation needed" (#650).
   const receiptRm = match.undo?.kind === "receipt" && match.undo.needsArchivingRm ? match.undo : null;
   const verdictNow = receiptRm ? bashVerdict(command, settingsFiles(payload.cwd)) : null;
-  const deniedRule = verdictNow?.verdict === "deny" ? verdictNow.rule ?? "deny" : null;
+  const deniedRule = verdictNow?.verdict === "deny" ? (verdictNow.rule ?? "deny") : null;
   const effective = deniedRule ? { ...match, undo: null, viaShim: false } : match;
-  const block = formatHintBlock(effective.label, effective.severity, emitted, unfused, client, effective.undo, resp?.degraded, effective.pathVar);
+  const block = formatHintBlock(
+    effective.label,
+    effective.severity,
+    emitted,
+    unfused,
+    client,
+    effective.undo,
+    resp?.degraded,
+    effective.pathVar
+  );
   // bastra's archiving rm carries the receipt: run the command through it and
   // let it run — a move with an address needs no confirmation. The call id
   // ties the manifest lines to this call for the PostToolUse receipt.
@@ -282,7 +329,7 @@ async function runBashPreLaneOriginal(payload: BashHookPayload, selfBaseUrl: str
             payload.tool_use_id || `${payload.session_id ?? "s"}-${startedAt}`,
             match.viaGit,
             // #934: the per-target limit rides along; the shim reads no settings.
-            archiveMaxItem(process.env, await getArchiveMaxItem().catch(() => undefined)),
+            archiveMaxItem(process.env, await getArchiveMaxItem().catch(() => undefined))
           ),
         },
       }
@@ -303,7 +350,12 @@ async function runBashPreLaneOriginal(payload: BashHookPayload, selfBaseUrl: str
       settings_rule: settings.rule ?? null,
       hinted: offLine !== "",
       // The same call's dimensions as its bash_hook_call row (#507/#652).
-      dimensions: dimensionsFrom({ client: clientEvidence, hook_source: "bash-pre", session_id: payload.session_id, agent }),
+      dimensions: dimensionsFrom({
+        client: clientEvidence,
+        hook_source: "bash-pre",
+        session_id: payload.session_id,
+        agent,
+      }),
     });
   }
   if (match.unmarked) {
@@ -316,7 +368,12 @@ async function runBashPreLaneOriginal(payload: BashHookPayload, selfBaseUrl: str
       settings_verdict: settings.verdict,
       settings_rule: settings.rule ?? null,
       hinted: offLine !== "",
-      dimensions: dimensionsFrom({ client: clientEvidence, hook_source: "bash-pre", session_id: payload.session_id, agent }),
+      dimensions: dimensionsFrom({
+        client: clientEvidence,
+        hook_source: "bash-pre",
+        session_id: payload.session_id,
+        agent,
+      }),
     });
   }
   if (deniedRule && receiptRm) {
@@ -329,7 +386,12 @@ async function runBashPreLaneOriginal(payload: BashHookPayload, selfBaseUrl: str
       matched_pattern: match.label,
       settings_rule: deniedRule,
       put_verdict: put?.verdict ?? null,
-      dimensions: dimensionsFrom({ client: clientEvidence, hook_source: "bash-pre", session_id: payload.session_id, agent }),
+      dimensions: dimensionsFrom({
+        client: clientEvidence,
+        hook_source: "bash-pre",
+        session_id: payload.session_id,
+        agent,
+      }),
     });
   }
   const text = offLine ? block.replace(/<\/recall-hints>$/, `${offLine}\n</recall-hints>`) : block;
@@ -368,9 +430,23 @@ async function runBashPreLaneOriginal(payload: BashHookPayload, selfBaseUrl: str
     error: errMsg,
   });
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
-  await reportHinted(selfBaseUrl, emitted.map((h) => h.id), payload.session_id ?? null);
+  await reportHinted(
+    selfBaseUrl,
+    emitted.map((h) => h.id),
+    payload.session_id ?? null
+  );
 
-  return appendLaneDrafts(stdout, "PreToolUse", command, payload.session_id, emitted, 1, false, undefined, startedAt + HOOK_TIMEOUT_MS);
+  return appendLaneDrafts(
+    stdout,
+    "PreToolUse",
+    command,
+    payload.session_id,
+    emitted,
+    1,
+    false,
+    undefined,
+    startedAt + HOOK_TIMEOUT_MS
+  );
 }
 
 function formatHintLine(h: RecallHit, hideScore = false): string {
@@ -394,7 +470,7 @@ export function formatHintBlock(
   // bediente.
   degraded?: string,
   /** #1047: the STOP comes only from a write to the variable `path`. */
-  pathVar = false,
+  pathVar = false
 ): string {
   const head = `<recall-hints surface="${surface}" trigger="bash-${severity}">`;
   const tail = `</recall-hints>`;
@@ -403,7 +479,7 @@ export function formatHintBlock(
   if (severity === "risky") {
     lines.push(
       `CAUTION — risky Bash command detected (pattern: \`${pattern}\`). ` +
-        `Check the target/scope before running — recursive/destructive side effects are easy to miss.`,
+        `Check the target/scope before running — recursive/destructive side effects are easy to miss.`
     );
   } else if (!undo) {
     lines.push(
@@ -412,7 +488,7 @@ export function formatHintBlock(
           ? `The command writes the variable \`path\`, which zsh ties to PATH, so the archiving \`rm\` may not be the one that runs — rename that variable and the reversible receipt comes back. `
           : "") +
         `Per user-preference this needs explicit user confirmation unless authorized in advance. ` +
-        `Do not run blindly: confirm the target paths, the scope of effect, and that the user has asked for this exact action.`,
+        `Do not run blindly: confirm the target paths, the scope of effect, and that the user has asked for this exact action.`
     );
   } else if (undo.kind === "receipt") {
     lines.push(`NOTE — reversible (pattern: \`${pattern}\`): ${undo.text} No confirmation needed.`);
@@ -420,7 +496,7 @@ export function formatHintBlock(
     lines.push(
       `REVERSIBLE FORM — destructive Bash command detected (pattern: \`${pattern}\`), but it has an undo: ` +
         `${undo.text} Run that form — it needs no confirmation. ` +
-        `The bare command keeps the rule: explicit user confirmation unless authorized in advance.`,
+        `The bare command keeps the rule: explicit user confirmation unless authorized in advance.`
     );
   }
 
@@ -429,8 +505,8 @@ export function formatHintBlock(
     lines.push(
       unfused
         ? `Relevant lessons / preferences from the vault — load_memory(id) before deciding to run. ` +
-          unfusedHeadline("this command", unfusedReasonFor(degraded))
-        : `Relevant lessons / preferences from the vault — load_memory(id) before deciding to run:`,
+            unfusedHeadline("this command", unfusedReasonFor(degraded))
+        : `Relevant lessons / preferences from the vault — load_memory(id) before deciding to run:`
     );
     for (const h of hits) lines.push(formatHintLine(h, unfused));
   }
@@ -486,7 +562,11 @@ async function writeShadow(kind: string, fields: Record<string, unknown>): Promi
     const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? defaultLogDir();
     await mkdir(logDir, { recursive: true });
     const ts = new Date().toISOString();
-    await appendFile(join(logDir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify({ kind, ts, hook_version: HOOK_VERSION, ...fields }) + "\n", "utf8");
+    await appendFile(
+      join(logDir, `events-${ts.slice(0, 10)}.jsonl`),
+      JSON.stringify({ kind, ts, hook_version: HOOK_VERSION, ...fields }) + "\n",
+      "utf8"
+    );
   } catch {
     // Telemetry must never break the lane.
   }

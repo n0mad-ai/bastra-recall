@@ -83,7 +83,7 @@ export async function abandonAfter<T>(
   p: Promise<T>,
   deadlineMs: number,
   onLateSettle?: (sample: LateSettleSample) => void,
-  describeLate?: LateSettleDescriber<T>,
+  describeLate?: LateSettleDescriber<T>
 ): Promise<T | null> {
   if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) return p;
   const clampedMs = Math.min(deadlineMs, MAX_DEADLINE_MS);
@@ -127,8 +127,7 @@ export async function abandonAfter<T>(
           // #493: Der Beschreiber läuft INNERHALB desselben try — ein
           // werfender Beschreiber darf so wenig eskalieren wie ein werfender
           // Listener, und die Zeile geht dann eben ohne Ergebnisfelder raus.
-          const detail =
-            settled && describeLate && value !== undefined ? describeLate(value) : {};
+          const detail = settled && describeLate && value !== undefined ? describeLate(value) : {};
           onLateSettle({ settle_ms: Date.now() - startedAt, settled, ...detail });
         } catch {
           /* Telemetrie darf einen aufgegebenen Arm nie zum Absturz bringen */
@@ -136,7 +135,7 @@ export async function abandonAfter<T>(
       };
       p.then(
         (value) => report(true, value),
-        () => report(false),
+        () => report(false)
       );
     }
     return winner;

@@ -20,7 +20,8 @@ import { ensureVaultDir } from "@bastra-recall/core";
 
 export const JOURNAL_DIR = "journal";
 
-const ANCHOR = "<!-- bastra-journal:start — generated from the audit log; edits here are overwritten on the next curator pass -->";
+const ANCHOR =
+  "<!-- bastra-journal:start — generated from the audit log; edits here are overwritten on the next curator pass -->";
 
 function fmtLine(e: AuditEntry): string {
   const time = e.timestamp.slice(11, 16);
@@ -37,7 +38,7 @@ export function renderMonthlyJournal(month: string, entries: AuditEntry[]): stri
   L.push(`# Journal ${month}`);
   L.push("");
   L.push(
-    `${entries.length} write${entries.length === 1 ? "" : "s"} this month — projected from the audit log, which stays the source of truth.`,
+    `${entries.length} write${entries.length === 1 ? "" : "s"} this month — projected from the audit log, which stays the source of truth.`
   );
   let day = "";
   for (const e of entries) {

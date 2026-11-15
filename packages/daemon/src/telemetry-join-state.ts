@@ -89,9 +89,7 @@ interface JoinStateSnapshot {
   turns: Array<[string, TurnTrace]>;
   latestTurn: TurnTrace | null;
   adoptedTurnKeys: Array<[string, number]>;
-  loadedMemories: Array<
-    Omit<LoadedMemoryTrace, "distinctive_tokens"> & { distinctive_tokens: string[] }
-  >;
+  loadedMemories: Array<Omit<LoadedMemoryTrace, "distinctive_tokens"> & { distinctive_tokens: string[] }>;
 }
 
 export class JoinState {
@@ -179,11 +177,13 @@ export class JoinState {
         ts,
       });
     }
-    for (const [key, trace] of this.sessionHookHints) if (ts - trace.ts > HOOK_HINT_WINDOW_MS) this.sessionHookHints.delete(key);
-    if (session_id) for (const hit of hits) {
-      const trace = this.hookHints.get(hit.id);
-      if (trace) this.sessionHookHints.set(`${session_id}\0${hit.id}`, trace);
-    }
+    for (const [key, trace] of this.sessionHookHints)
+      if (ts - trace.ts > HOOK_HINT_WINDOW_MS) this.sessionHookHints.delete(key);
+    if (session_id)
+      for (const hit of hits) {
+        const trace = this.hookHints.get(hit.id);
+        if (trace) this.sessionHookHints.set(`${session_id}\0${hit.id}`, trace);
+      }
     // Deliberately NO usage emission here: these are the engine's raw top-k.
     // The hook CLIs drop hits client-side (score floors, #110/#148 scope
     // filter, per-session dedup) — counting them as "surfaced" would let
@@ -211,7 +211,8 @@ export class JoinState {
     if (!session) return;
     const ts = Date.now();
     for (const [key, trace] of this.recallHits) if (ts - trace.ts > HOOK_HINT_WINDOW_MS) this.recallHits.delete(key);
-    for (const hit of delivered) this.recallHits.set(`${session}\0${hit.id}`, { recall_id: hit.recall_id, rank: hit.rank, ts });
+    for (const hit of delivered)
+      this.recallHits.set(`${session}\0${hit.id}`, { recall_id: hit.recall_id, rank: hit.rank, ts });
   }
 
   findRecallFor(id: string, session: string | null): { recall_id: string; rank: number } | null {
@@ -224,7 +225,9 @@ export class JoinState {
   /** Usage moment "surfaced" (#154) — fed by POST /hook/hinted with the ids a
    *  hook ACTUALLY injected after its client-side filtering. */
   recordSurfacedUsage(ids: string[]): void {
-    this.emitUsage(ids.filter((id) => typeof id === "string" && id.length > 0).map((id) => ({ id, kind: "surfaced" as const })));
+    this.emitUsage(
+      ids.filter((id) => typeof id === "string" && id.length > 0).map((id) => ({ id, kind: "surfaced" as const }))
+    );
   }
 
   /**
@@ -245,14 +248,19 @@ export class JoinState {
    */
   recordSurfacedHints(
     hints: Array<{ memory_id: string; distinctive_tokens: string[] }>,
-    session_id: string | null,
+    session_id: string | null
   ): void {
     if (hints.length === 0) return;
-    if (this.enabled) fireAndForget(this.sink.write({
-      kind: "convention_shown", ts: new Date().toISOString(),
-      session_id: session_id || this.sessionId, session_known: !!session_id,
-      memory_ids: hints.map((hint) => hint.memory_id),
-    }));
+    if (this.enabled)
+      fireAndForget(
+        this.sink.write({
+          kind: "convention_shown",
+          ts: new Date().toISOString(),
+          session_id: session_id || this.sessionId,
+          session_known: !!session_id,
+          memory_ids: hints.map((hint) => hint.memory_id),
+        })
+      );
     // Review find (Vera, 06.09.): without a session id `currentTurn` produces
     // an `inferred` turn, and the session lock further down
     // (`turn_source === "session"`) then does not apply — a command from a
@@ -270,9 +278,7 @@ export class JoinState {
     // closable by a parallel session, so it must not exist.
     if (turn.turn_source !== "session") return;
     const now = Date.now();
-    this.loadedMemories = this.loadedMemories.filter(
-      (entry) => !entry.closed && now - entry.ts <= ACTED_ON_WINDOW_MS,
-    );
+    this.loadedMemories = this.loadedMemories.filter((entry) => !entry.closed && now - entry.ts <= ACTED_ON_WINDOW_MS);
     for (const hint of hints) {
       const tokens = new Set(hint.distinctive_tokens);
       // Same gate as the load path: without distinctive tokens there is
@@ -315,7 +321,10 @@ export class JoinState {
    * Returns the recall_id + rank if this id was hinted in the last
    * HOOK_HINT_WINDOW_MS. Lazy-evicts the entry on miss.
    */
-  findHookHintFor(id: string, session_id?: string | null): { recall_id: string; rank: number; score: number | null } | null {
+  findHookHintFor(
+    id: string,
+    session_id?: string | null
+  ): { recall_id: string; rank: number; score: number | null } | null {
     // Omitted argument preserves the legacy API; explicit null means unknown.
     const map = session_id === undefined ? this.hookHints : this.sessionHookHints;
     const key = session_id ? `${session_id}\0${id}` : id;
@@ -427,16 +436,16 @@ export class JoinState {
     this.rememberLoad(payload.memory_id, loadingSession);
     this.loadedMemories = this.loadedMemories.filter(
       (entry) =>
-        !(entry.hint_only
-          && entry.memory_id === payload.memory_id
-          && (loadingSession === null || entry.hint_session_id === loadingSession)),
+        !(
+          entry.hint_only &&
+          entry.memory_id === payload.memory_id &&
+          (loadingSession === null || entry.hint_session_id === loadingSession)
+        )
     );
     if (tokens.size === 0) return;
     const turn = this.currentTurn(payload.session_id ?? null);
     const now = Date.now();
-    this.loadedMemories = this.loadedMemories.filter(
-      (entry) => !entry.closed && now - entry.ts <= ACTED_ON_WINDOW_MS,
-    );
+    this.loadedMemories = this.loadedMemories.filter((entry) => !entry.closed && now - entry.ts <= ACTED_ON_WINDOW_MS);
     this.loadedMemories.push({
       memory_id: payload.memory_id,
       session_id: loadingSession,
@@ -504,7 +513,8 @@ export class JoinState {
         let candidates = neighbors.get(token);
         if (!candidates) {
           candidates = hasWordForm(inputTokens, token)
-            ? [...inputTokens].filter(candidate => sameWordForm(token, candidate)) : [];
+            ? [...inputTokens].filter((candidate) => sameWordForm(token, candidate))
+            : [];
           neighbors.set(token, candidates);
         }
         for (const candidate of candidates) {
@@ -560,12 +570,8 @@ export class JoinState {
       });
     }
 
-    this.loadedMemories = this.loadedMemories.filter(
-      (entry) => !entry.closed && now - entry.ts <= ACTED_ON_WINDOW_MS,
-    );
-    this.emitUsage(
-      episodes.filter((e) => e.acted_on).map((e) => ({ id: e.memory_id, kind: "acted_on" as const })),
-    );
+    this.loadedMemories = this.loadedMemories.filter((entry) => !entry.closed && now - entry.ts <= ACTED_ON_WINDOW_MS);
+    this.emitUsage(episodes.filter((e) => e.acted_on).map((e) => ({ id: e.memory_id, kind: "acted_on" as const })));
     this.scheduleFlush();
     return episodes;
   }
@@ -657,5 +663,4 @@ export class JoinState {
     }
     await writeJoinState(this.joinStatePath, this.snapshot());
   }
-
 }

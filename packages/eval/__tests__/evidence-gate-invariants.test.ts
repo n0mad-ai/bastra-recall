@@ -221,7 +221,7 @@ test("the narrowings tighten only what they say they tighten (§10.3)", () => {
   assert.equal(
     redecide(evidence, "direct", 8, { minCoverage: 0 }),
     "required",
-    "and the old rule, spelled out, still says what it used to — the red proof for the change",
+    "and the old rule, spelled out, still says what it used to — the red proof for the change"
   );
 
   // No narrowing may push anything to no_answer: a signal that no longer earns

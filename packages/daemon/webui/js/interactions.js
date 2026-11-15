@@ -1,6 +1,11 @@
 /** Pan / zoom / hover / click / camera flights. */
 
-export function createInteractions(canvas, renderer, sim, { onSelect, onHoverChange, onClusterDragEnd, getInsets, canDragClusters }) {
+export function createInteractions(
+  canvas,
+  renderer,
+  sim,
+  { onSelect, onHoverChange, onClusterDragEnd, getInsets, canDragClusters }
+) {
   // UI overlays (inspector, sidebar, topbar) shrink the usable viewport —
   // every fit/flight centers inside THIS rectangle so nodes never end up
   // hidden behind a panel.
@@ -21,9 +26,7 @@ export function createInteractions(canvas, renderer, sim, { onSelect, onHoverCha
     lastY = ev.clientY;
     // grabbing a cluster label moves the whole cloud instead of panning
     // (computed views like the ring don't allow rearranging)
-    dragCluster = (canDragClusters?.() ?? true)
-      ? renderer.pickClusterLabel(ev.clientX, ev.clientY)
-      : null;
+    dragCluster = (canDragClusters?.() ?? true) ? renderer.pickClusterLabel(ev.clientX, ev.clientY) : null;
     canvas.classList.add("dragging");
     canvas.setPointerCapture(ev.pointerId);
   });
@@ -92,7 +95,7 @@ export function createInteractions(canvas, renderer, sim, { onSelect, onHoverCha
       camera.y = ev.clientY - (ev.clientY - camera.y) * applied;
       camera.scale = next;
     },
-    { passive: false },
+    { passive: false }
   );
 
   const easeFly = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
@@ -114,7 +117,10 @@ export function createInteractions(canvas, renderer, sim, { onSelect, onHoverCha
   /** Fit a set of world points into the UNOBSTRUCTED viewport, animated. */
   function flyToBounds(points, { padding = 110, maxScale = 3, ms = 800 } = {}) {
     if (!points.length) return;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
     for (const p of points) {
       if (p.x < minX) minX = p.x;
       if (p.y < minY) minY = p.y;
@@ -127,7 +133,7 @@ export function createInteractions(canvas, renderer, sim, { onSelect, onHoverCha
     const scale = Math.min(
       (availW - padding * 2) / Math.max(maxX - minX, 1),
       (availH - padding * 2) / Math.max(maxY - minY, 1),
-      maxScale,
+      maxScale
     );
     flight = {
       fromX: camera.x,
@@ -161,7 +167,10 @@ export function createInteractions(canvas, renderer, sim, { onSelect, onHoverCha
   /** Fit the whole graph into the unobstructed viewport (initial view).
    *  Nodes drilled away in the ring browser don't count. */
   function fitAll(padding = 90) {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
     for (const n of sim.nodes) {
       if (n.ringHidden || (n.ringFade !== undefined && n.ringFade < 0.5)) continue;
       if (n.x < minX) minX = n.x;
@@ -176,12 +185,21 @@ export function createInteractions(canvas, renderer, sim, { onSelect, onHoverCha
     const scale = Math.min(
       (availW - padding * 2) / Math.max(maxX - minX, 1),
       (availH - padding * 2) / Math.max(maxY - minY, 1),
-      1.6,
+      1.6
     );
     camera.scale = scale;
     camera.x = ins.left + availW / 2 - ((minX + maxX) / 2) * scale;
     camera.y = ins.top + availH / 2 - ((minY + maxY) / 2) * scale;
   }
 
-  return { flyTo, flyToBounds, flyToCluster, step, isFlying: () => flight !== null, fitAll, draggedCluster: () => dragCluster, setDragDelegate: (fn) => (dragDelegate = fn) };
+  return {
+    flyTo,
+    flyToBounds,
+    flyToCluster,
+    step,
+    isFlying: () => flight !== null,
+    fitAll,
+    draggedCluster: () => dragCluster,
+    setDragDelegate: (fn) => (dragDelegate = fn),
+  };
 }

@@ -177,7 +177,11 @@ test("#609: the lean load path carries derived.claims", async () => {
     // Lean is the default an agent gets; a verdict that only `verbosity:
     // "full"` shows would reach nobody.
     const { loaded } = await statusesFor(deps, [{ ...claim, expect: 3 }]);
-    assert.equal((loaded.frontmatter as { derived_claims?: unknown[] }).derived_claims?.length, 1, "lean is the default an agent gets");
+    assert.equal(
+      (loaded.frontmatter as { derived_claims?: unknown[] }).derived_claims?.length,
+      1,
+      "lean is the default an agent gets"
+    );
     assert.equal(loaded.derived?.claims[0]?.status, "matches");
   } finally {
     await cleanup();
@@ -279,7 +283,7 @@ test("#609: a canary outside the vault stays unopened", async () => {
     assert.deepEqual(
       reads.mock.calls.map((c) => String(c.arguments[0])),
       [],
-      "the canary stays unopened",
+      "the canary stays unopened"
     );
     assert.equal(await readFile(canary, "utf8"), canaryText);
   } finally {
@@ -358,7 +362,7 @@ test("#609: a directory, an oversized file and a missing one are each unverifiab
         ["a-folder", "unverifiable", "not_a_file"],
         ["over-a-megabyte", "unverifiable", "too_large"],
         ["absent", "unverifiable", "unavailable"],
-      ],
+      ]
     );
   } finally {
     await cleanup();
@@ -370,7 +374,7 @@ test("#467: a traversal source is refused at save, before any resolver runs", as
   try {
     await assert.rejects(
       () => saveMemoryHandler(deps, fact({ derived_claims: [{ ...claim, source: "../outside.md" }] })),
-      /source must be a vault-relative path/,
+      /source must be a vault-relative path/
     );
   } finally {
     await cleanup();
@@ -384,9 +388,9 @@ test("#609: quote.v1 asks for the string it should look for", async () => {
       () =>
         saveMemoryHandler(
           deps,
-          fact({ derived_claims: [{ id: "timeout", resolver: "quote.v1", source: "ops/deploy.md" }] }),
+          fact({ derived_claims: [{ id: "timeout", resolver: "quote.v1", source: "ops/deploy.md" }] })
         ),
-      /quote\.v1 needs `exact`/,
+      /quote\.v1 needs `exact`/
     );
   } finally {
     await cleanup();
@@ -423,7 +427,7 @@ test("#609: doctor's derived-claims note is silent without claims and lists the 
     assert.deepEqual(
       await derivedClaimsLines({ memories: async () => [{ id: "plain", claims: [] }], resolve }),
       [],
-      "no memory declares a claim -> nothing to say",
+      "no memory declares a claim -> nothing to say"
     );
 
     const lines = await derivedClaimsLines({
@@ -444,24 +448,33 @@ test("#609: doctor's derived-claims note is silent without claims and lists the 
     assert.ok(lines.some((l) => l.includes("old → count") && l.includes("note says 27") && l.includes("says 3")));
     assert.ok(lines.some((l) => l.includes("old → quote") && l.includes("no longer in")));
     assert.ok(!lines.some((l) => l.includes("fresh")), "a matching claim is not listed");
-    assert.equal(lines.at(-1), "1 claim could not be checked (source missing, outside the vault, not a file or over 1 MB)");
+    assert.equal(
+      lines.at(-1),
+      "1 claim could not be checked (source missing, outside the vault, not a file or over 1 MB)"
+    );
   } finally {
     await cleanup();
   }
 });
 
-
-test("#1330: full loads default to main for a known session; lean and explicit workers do not record main loads",async()=>{
- const {loadSessionState}=await import("../src/session-state.js"),{deps,cleanup}=await makeDeps();
- try{
-  const saved=await saveMemoryHandler(deps,fact());
-  await loadMemoryHandler(deps,{id:saved.id},{sessionId:"fixture-load-known",agentId:null});
-  assert.ok((await loadSessionState("fixture-load-known")).loadedConventions?.some(c=>c.id===saved.id));
-  await loadMemoryHandler(deps,{id:saved.id},{sessionId:"fixture-load-unknown"});
-  assert.ok((await loadSessionState("fixture-load-unknown")).loadedConventions?.some(c=>c.id===saved.id));
-  await loadMemoryHandler(deps,{id:saved.id},{sessionId:"fixture-load-worker",agentId:"child"});
-  assert.equal((await loadSessionState("fixture-load-worker")).loadedConventions,undefined);
-  await loadMemoryHandler(deps,{id:saved.id,verbosity:"lean"},{sessionId:"fixture-load-dismiss",agentId:null});
-  assert.equal((await loadSessionState("fixture-load-dismiss")).loadedConventions,undefined);
- }finally{await cleanup();}
+test("#1330: full loads default to main for a known session; lean and explicit workers do not record main loads", async () => {
+  const { loadSessionState } = await import("../src/session-state.js"),
+    { deps, cleanup } = await makeDeps();
+  try {
+    const saved = await saveMemoryHandler(deps, fact());
+    await loadMemoryHandler(deps, { id: saved.id }, { sessionId: "fixture-load-known", agentId: null });
+    assert.ok((await loadSessionState("fixture-load-known")).loadedConventions?.some((c) => c.id === saved.id));
+    await loadMemoryHandler(deps, { id: saved.id }, { sessionId: "fixture-load-unknown" });
+    assert.ok((await loadSessionState("fixture-load-unknown")).loadedConventions?.some((c) => c.id === saved.id));
+    await loadMemoryHandler(deps, { id: saved.id }, { sessionId: "fixture-load-worker", agentId: "child" });
+    assert.equal((await loadSessionState("fixture-load-worker")).loadedConventions, undefined);
+    await loadMemoryHandler(
+      deps,
+      { id: saved.id, verbosity: "lean" },
+      { sessionId: "fixture-load-dismiss", agentId: null }
+    );
+    assert.equal((await loadSessionState("fixture-load-dismiss")).loadedConventions, undefined);
+  } finally {
+    await cleanup();
+  }
 });

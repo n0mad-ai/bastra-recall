@@ -13,10 +13,17 @@ import { randomUUID, createHash } from "node:crypto";
 import { bastraDataDir } from "../platform-paths.js";
 import type { AutostartState } from "./autostart.js";
 
-export interface ServiceResult { ok: boolean; detail: string }
+export interface ServiceResult {
+  ok: boolean;
+  detail: string;
+}
 export interface AutostartService {
   status(): Promise<AutostartState>;
-  install(env: Record<string, string>, program: string[], opts: { reload: boolean; force?: boolean }): Promise<ServiceResult>;
+  install(
+    env: Record<string, string>,
+    program: string[],
+    opts: { reload: boolean; force?: boolean }
+  ): Promise<ServiceResult>;
   uninstall(opts?: { force?: boolean }): Promise<ServiceResult>;
   kickstart(): Promise<ServiceResult>;
 }
@@ -26,19 +33,27 @@ export function decodeServiceOutput(output: Buffer): string {
   const utf16 = output.length >= 2 && (output.readUInt16LE() === 0xfeff || (output[0] !== 0 && output[1] === 0));
   return output.toString(utf16 ? "utf16le" : "utf8").replace(/^\ufeff/, "");
 }
-const execute: ServiceExec = (file, args) => new Promise((resolve, reject) => {
-  execFile(file, args, { encoding: "buffer", timeout: 15_000, windowsHide: true }, (error, stdout, stderr) => {
-    if (error) reject(Object.assign(error, { detail: decodeServiceOutput(stderr).trim() || error.message }));
-    else resolve(decodeServiceOutput(stdout));
+const execute: ServiceExec = (file, args) =>
+  new Promise((resolve, reject) => {
+    execFile(file, args, { encoding: "buffer", timeout: 15_000, windowsHide: true }, (error, stdout, stderr) => {
+      if (error) reject(Object.assign(error, { detail: decodeServiceOutput(stderr).trim() || error.message }));
+      else resolve(decodeServiceOutput(stdout));
+    });
   });
-});
 /** Ownership marker, not an authentication boundary: tasks belong to this user. */
 const PREFIX = "Bastra managed autostart v1:";
-const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
-const unxml = (s: string) => s.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+const xml = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+const unxml = (s: string) =>
+  s
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
 /** Windows CommandLineToArgvW quoting, not cmd.exe quoting. */
 export function quoteWindowsArg(s: string): string {
-  return '"' + s.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/g, '$1$1') + '"';
+  return '"' + s.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/g, "$1$1") + '"';
 }
 function actionArgs(env: Record<string, string>, script: string): string {
   // Task Scheduler has no EnvironmentVariables element. Set the persisted
@@ -60,21 +75,46 @@ export function renderTaskXml(env: Record<string, string>, program: string[], us
 </Task>\n`;
 }
 
-export function windowsService(opts: { exec?: ServiceExec; user?: string; directory?: string; taskName?: string } = {}): AutostartService {
+export function windowsService(
+  opts: { exec?: ServiceExec; user?: string; directory?: string; taskName?: string } = {}
+): AutostartService {
   const exec = opts.exec ?? execute;
-  const user = opts.user ?? (process.env.USERDOMAIN ? `${process.env.USERDOMAIN}\\${userInfo().username}` : userInfo().username);
+  const user =
+    opts.user ?? (process.env.USERDOMAIN ? `${process.env.USERDOMAIN}\\${userInfo().username}` : userInfo().username);
   // Per-user task names avoid sharing an autostart definition across accounts.
-  const taskName = opts.taskName ?? `Bastra-${createHash("sha256").update(user.toLowerCase()).digest("hex").slice(0, 16)}`;
+  const taskName =
+    opts.taskName ?? `Bastra-${createHash("sha256").update(user.toLowerCase()).digest("hex").slice(0, 16)}`;
   const directory = opts.directory ?? bastraDataDir(undefined, { platform: "win32" });
   const path = join(directory, "autostart-task.xml");
   const scheduler = win32.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "schtasks.exe");
-  const powershell = win32.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  const powershell = win32.join(
+    process.env.SystemRoot ?? "C:\\Windows",
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe"
+  );
   async function status(): Promise<AutostartState> {
-    const state: AutostartState = { path: taskName, exists: false, managed: false, program: [], loaded: false, missingProgramPath: null, danglingProgram: false, endpoint: null, env: {} };
+    const state: AutostartState = {
+      path: taskName,
+      exists: false,
+      managed: false,
+      program: [],
+      loaded: false,
+      missingProgramPath: null,
+      danglingProgram: false,
+      endpoint: null,
+      env: {},
+    };
     // COM State=4 is running, independent of Windows display language. Only
     // ERROR_FILE_NOT_FOUND means absent; access/service/query failures throw.
     const script = `$ErrorActionPreference='Stop';try{$s=New-Object -ComObject Schedule.Service;$s.Connect();$s.GetFolder('\\').GetTask('${taskName.replace(/'/g, "''")}').State}catch{$e=$_.Exception;while($e.InnerException){$e=$e.InnerException};if($e.HResult -eq -2147024894){'MISSING'}else{throw}}`;
-    const raw = await exec(powershell, ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")]);
+    const raw = await exec(powershell, [
+      "-NoProfile",
+      "-NonInteractive",
+      "-EncodedCommand",
+      Buffer.from(script, "utf16le").toString("base64"),
+    ]);
     if (raw.trim() === "MISSING") return state;
     if (!/^[1-4]$/.test(raw.trim())) throw new Error("Could not determine Task Scheduler state");
     state.loaded = raw.trim() === "4";
@@ -84,29 +124,47 @@ export function windowsService(opts: { exec?: ServiceExec; user?: string; direct
       const description = /<Description>([^<]*)<\/Description>/.exec(definition)?.[1] ?? "";
       if (description.startsWith(PREFIX)) {
         const data = JSON.parse(Buffer.from(description.slice(PREFIX.length), "base64").toString("utf8"));
-        if (Array.isArray(data.program) && data.program.length === 2 && data.program.every((v: unknown) => typeof v === "string") && data.env?.BASTRA_AUTOSTART_MANAGED === "1" && Object.values(data.env).every(v => typeof v === "string")) {
+        if (
+          Array.isArray(data.program) &&
+          data.program.length === 2 &&
+          data.program.every((v: unknown) => typeof v === "string") &&
+          data.env?.BASTRA_AUTOSTART_MANAGED === "1" &&
+          Object.values(data.env).every((v) => typeof v === "string")
+        ) {
           // Marker alone does not authorize replacing a task whose action was changed.
           const command = unxml(/<Command>([^<]*)<\/Command>/.exec(definition)?.[1] ?? "");
           const args = unxml(/<Arguments>([^<]*)<\/Arguments>/.exec(definition)?.[1] ?? "");
-          if ((definition.match(/<Exec>/g) ?? []).length === 1 && command === data.program[0] && args === actionArgs(data.env, data.program[1])) {
-            state.managed = true; state.program = data.program; state.env = data.env;
+          if (
+            (definition.match(/<Exec>/g) ?? []).length === 1 &&
+            command === data.program[0] &&
+            args === actionArgs(data.env, data.program[1])
+          ) {
+            state.managed = true;
+            state.program = data.program;
+            state.env = data.env;
             state.endpoint = data.env.BASTRA_DAEMON_URL ?? null;
           }
         }
       }
-    } catch { /* unreadable means foreign */ }
-    state.missingProgramPath = state.program.find(p => !existsSync(p)) ?? null;
+    } catch {
+      /* unreadable means foreign */
+    }
+    state.missingProgramPath = state.program.find((p) => !existsSync(p)) ?? null;
     state.danglingProgram = state.missingProgramPath !== null;
     return state;
   }
   async function run(args: string[]): Promise<ServiceResult> {
-    try { await exec(scheduler, args); return { ok: true, detail: "" }; }
-    catch (error) { return { ok: false, detail: (error as { detail?: string }).detail ?? (error as Error).message }; }
+    try {
+      await exec(scheduler, args);
+      return { ok: true, detail: "" };
+    } catch (error) {
+      return { ok: false, detail: (error as { detail?: string }).detail ?? (error as Error).message };
+    }
   }
   async function waitForRunning(expected: boolean): Promise<ServiceResult> {
     for (let attempt = 0; attempt < 50; attempt++) {
       if ((await status()).loaded === expected) return { ok: true, detail: "" };
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
     return { ok: false, detail: expected ? "task did not enter running state" : "task did not stop" };
   }
@@ -127,15 +185,25 @@ export function windowsService(opts: { exec?: ServiceExec; user?: string; direct
     kickstart,
     async install(env, program, options) {
       const state = await status();
-      if (state.exists && !state.managed && !options.force) return { ok: false, detail: "task was not written by bastra; use --force to replace it" };
+      if (state.exists && !state.managed && !options.force)
+        return { ok: false, detail: "task was not written by bastra; use --force to replace it" };
       await mkdir(directory, { recursive: true });
       const temporary = `${path}.${randomUUID()}.tmp`;
       try {
-        await writeFile(temporary, Buffer.from('\ufeff' + renderTaskXml(env, program, user), "utf16le"));
-        const result = await run(["/Create", "/TN", taskName, "/XML", temporary, ...(state.managed || options.force ? ["/F"] : [])]);
+        await writeFile(temporary, Buffer.from("\ufeff" + renderTaskXml(env, program, user), "utf16le"));
+        const result = await run([
+          "/Create",
+          "/TN",
+          taskName,
+          "/XML",
+          temporary,
+          ...(state.managed || options.force ? ["/F"] : []),
+        ]);
         if (!result.ok) return result;
         return options.reload ? kickstart() : result;
-      } finally { await unlink(temporary).catch(() => {}); }
+      } finally {
+        await unlink(temporary).catch(() => {});
+      }
     },
     async uninstall(options = {}) {
       const state = await status();

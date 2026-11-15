@@ -13,10 +13,7 @@ import { onIdScan, onMutationIncident, reportMutationIncident } from "@bastra-re
 import type { Telemetry } from "./telemetry.js";
 import { reportOpenRecoveryEntries, describeOpenEntry } from "./recovery-journal.js";
 
-export async function wireBootObservers(opts: {
-  telemetry: Telemetry;
-  vaultPath: string;
-}): Promise<void> {
+export async function wireBootObservers(opts: { telemetry: Telemetry; vaultPath: string }): Promise<void> {
   const { telemetry, vaultPath } = opts;
 
   // Der Preis der ID-Transaktion, dauerhaft gemessen (Codex-Gegenreview): Jeder
@@ -67,8 +64,6 @@ export async function wireBootObservers(opts: {
       reportMutationIncident(incident);
     });
   } catch (err) {
-    console.error(
-      `[bastra-recall] recovery journal: could not be read (${(err as Error).message})`,
-    );
+    console.error(`[bastra-recall] recovery journal: could not be read (${(err as Error).message})`);
   }
 }

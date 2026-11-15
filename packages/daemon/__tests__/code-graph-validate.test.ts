@@ -1,12 +1,6 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-  safeString,
-  safeRepoPath,
-  safeLine,
-  safeNode,
-  safeEdge,
-} from "../src/code-graph/validate.js";
+import { safeString, safeRepoPath, safeLine, safeNode, safeEdge } from "../src/code-graph/validate.js";
 import {
   CODE_FILE_TYPE,
   EXTRACTED,

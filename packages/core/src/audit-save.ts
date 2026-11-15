@@ -48,9 +48,7 @@ export async function auditedSave(args: {
   const { vault, auditLog, vaultRoot, input, context } = args;
 
   if (context.actor === "assistant" && !context.reason?.trim()) {
-    throw new Error(
-      "assistant mutations require a `reason` (1-2 sentences explaining the change).",
-    );
+    throw new Error("assistant mutations require a `reason` (1-2 sentences explaining the change).");
   }
 
   // Den Locator des Vaults mitgeben, sonst scannt `saveMemory` das
@@ -123,9 +121,7 @@ export async function auditedSoftDelete(args: {
     throw new Error(`memory not found in vault: ${memoryID}`);
   }
   if (context.actor === "assistant" && !context.reason?.trim()) {
-    throw new Error(
-      "assistant deletes require a `reason` (1-2 sentences explaining the change).",
-    );
+    throw new Error("assistant deletes require a `reason` (1-2 sentences explaining the change).");
   }
 
   // Codex-Gegenreview (P0): Gelöscht wurde der Pfad, den der CACHE nannte, ohne
@@ -135,36 +131,33 @@ export async function auditedSoftDelete(args: {
   // `x` sei gelöscht worden. Ein Löschen ist eine besitzverändernde Operation,
   // also gehört es unter denselben Claim wie ein Schreiben, mit derselben
   // autoritativen Auskunft.
-  return withIdClaim(
-    { vaultRoot, id: memoryID, filePath: memory.filePath, op: "soft_delete" },
-    async (claim) => {
-      const located = await claim.locate();
-      if (located.kind !== "unique") {
-        throw new Error(
-          located.kind === "none"
-            ? `cannot delete "${memoryID}": no file on disk holds it (the index is stale).`
-            : `cannot delete "${memoryID}": the vault scan is not conclusive (${located.kind}) — ` +
-              `fix that first, deleting now would move the wrong file.`,
-        );
-      }
-      // Codex-Gegenreview Runde 10 (P1-4): Hier stand ein EIGENER Read, dessen
-      // Ergebnis danach als `diff_before` ins Ledger ging — ohne jede Bindung
-      // an die Fassung, die `moveToTrashUnderClaim` gleich verschob. Zwischen
-      // beiden konnte eine externe Änderung eintreffen: verschoben wurde die
-      // neue Fassung, protokolliert die alte. Das Vorbild kommt deshalb aus der
-      // Trash-Primitive selbst, gelesen aus genau den Bytes, die gewandert
-      // sind.
-      return commitSoftDelete({
-        vault,
-        auditLog,
-        vaultRoot,
-        memoryID,
-        claim,
-        originalPath: located.filePath,
-        context,
-      });
-    },
-  );
+  return withIdClaim({ vaultRoot, id: memoryID, filePath: memory.filePath, op: "soft_delete" }, async (claim) => {
+    const located = await claim.locate();
+    if (located.kind !== "unique") {
+      throw new Error(
+        located.kind === "none"
+          ? `cannot delete "${memoryID}": no file on disk holds it (the index is stale).`
+          : `cannot delete "${memoryID}": the vault scan is not conclusive (${located.kind}) — ` +
+              `fix that first, deleting now would move the wrong file.`
+      );
+    }
+    // Codex-Gegenreview Runde 10 (P1-4): Hier stand ein EIGENER Read, dessen
+    // Ergebnis danach als `diff_before` ins Ledger ging — ohne jede Bindung
+    // an die Fassung, die `moveToTrashUnderClaim` gleich verschob. Zwischen
+    // beiden konnte eine externe Änderung eintreffen: verschoben wurde die
+    // neue Fassung, protokolliert die alte. Das Vorbild kommt deshalb aus der
+    // Trash-Primitive selbst, gelesen aus genau den Bytes, die gewandert
+    // sind.
+    return commitSoftDelete({
+      vault,
+      auditLog,
+      vaultRoot,
+      memoryID,
+      claim,
+      originalPath: located.filePath,
+      context,
+    });
+  });
 }
 
 /** Der schreibende Teil des Löschens — unter dem Claim, auf dem autoritativ
@@ -181,11 +174,7 @@ async function commitSoftDelete(a: {
   context: AuditContext;
 }): Promise<{ id: string; trashPath: string; audit: AuditEntry | null; audit_warning?: string }> {
   const { vault, auditLog, vaultRoot, memoryID, claim, originalPath, context } = a;
-  const { trashPath, frontmatter: diffBefore } = await moveToTrashUnderClaim(
-    vaultRoot,
-    originalPath,
-    claim,
-  );
+  const { trashPath, frontmatter: diffBefore } = await moveToTrashUnderClaim(vaultRoot, originalPath, claim);
   // Codex-Befund 5: Die Datei war weg, der Index-Eintrag blieb. Auf einem
   // Cloud-Mount pollt der Watcher (Intervall 1500ms) und bekommt den unlink
   // eines Provider-Mounts oft überhaupt nicht mit — bis zum nächsten Reconcile
@@ -250,9 +239,7 @@ export async function auditedRestore(args: {
   // Zielpfad: vom Caller bevorzugt, sonst aus dem letzten Delete-Audit-Eintrag.
   const dest = destFilePath ?? lastDelete.file_path;
   if (!dest) {
-    throw new Error(
-      `restore needs an explicit destFilePath — the original path is missing in the audit-log.`,
-    );
+    throw new Error(`restore needs an explicit destFilePath — the original path is missing in the audit-log.`);
   }
 
   // Codex-Befund 6a: `destFilePath` kam ungeprüft vom Caller — ein Restore in
@@ -275,20 +262,16 @@ export async function auditedRestore(args: {
       throw new Error(
         `cannot restore "${memoryID}": the vault scan could not read ` +
           `${located.unreadable.join(", ")} — restoring now could create a second file ` +
-          `with the same id. Fix the permissions first.`,
+          `with the same id. Fix the permissions first.`
       );
     }
-    const live = located.kind === "unique"
-      ? [located.filePath]
-      : located.kind === "ambiguous"
-        ? located.filePaths
-        : [];
+    const live = located.kind === "unique" ? [located.filePath] : located.kind === "ambiguous" ? located.filePaths : [];
     const stillElsewhere = live.filter((p) => !sameFile(p, dest));
     if (stillElsewhere.length > 0) {
       throw new Error(
         `cannot restore "${memoryID}": it is already live at ${stillElsewhere.join(", ")}. ` +
           `Restoring would put a second file with the same id into the vault — archive or move ` +
-          `the existing one first, or restore to that exact path to replace it.`,
+          `the existing one first, or restore to that exact path to replace it.`
       );
     }
 
@@ -330,7 +313,7 @@ async function publishRestore(a: {
     const found = occupant.kind === "memory" ? `"${occupant.id}"` : "no memory at all";
     throw new Error(
       `the trashed file for "${memoryID}" does not hold memory "${memoryID}" (found ${found}) — ` +
-        `restore aborted, the trash file is untouched.`,
+        `restore aborted, the trash file is untouched.`
     );
   }
 
@@ -376,7 +359,7 @@ async function publishRestore(a: {
  */
 async function recordOrWarn(
   auditLog: AuditLog,
-  entry: Parameters<AuditLog["record"]>[0],
+  entry: Parameters<AuditLog["record"]>[0]
 ): Promise<{ audit: AuditEntry | null; audit_warning?: string }> {
   try {
     return { audit: await auditLog.record(entry) };
@@ -402,8 +385,6 @@ async function recordOrWarn(
     };
   }
 }
-
-
 
 function cloneFrontmatter(fm: unknown): Record<string, unknown> {
   return JSON.parse(JSON.stringify(fm)) as Record<string, unknown>;
@@ -431,4 +412,3 @@ function vaultAsLocator(vault: Vault): MemoryLocator {
     },
   };
 }
-

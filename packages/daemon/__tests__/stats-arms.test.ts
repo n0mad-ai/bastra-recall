@@ -19,13 +19,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import {
-  armIdentities,
-  evaluateArms,
-  loadMinNRule,
-  minNRuleFrom,
-  sessionsPerArm,
-} from "../src/stats-arms.js";
+import { armIdentities, evaluateArms, loadMinNRule, minNRuleFrom, sessionsPerArm } from "../src/stats-arms.js";
 import { buildTelemetryReport } from "../src/telemetry-report.js";
 import { aggregate, renderStats } from "../src/cli/log-stats.js";
 
@@ -95,7 +89,7 @@ test("#437: rows without a registration identity cannot be cleared against any m
   const arms = evaluateArms(
     [row("a", "s1", false), row("a", "s2", false)],
     { minN: 1, reportingRule: null, fallbackVerdict: null },
-    null,
+    null
   );
   assert.equal(arms.get("a")?.evaluable, false);
   assert.match(arms.get("a")!.why, /no registration identity/);
@@ -191,13 +185,13 @@ test("#437: the shipped CLI report prints NOT EVALUABLE and no arm rate", async 
     await writeFile(
       join(logDir, "events-2026-09-10.jsonl"),
       events.map((e) => JSON.stringify(e)).join("\n") + "\n",
-      "utf8",
+      "utf8"
     );
 
     const { stdout } = await exec(
       process.execPath,
       ["--import", "tsx", join(REPO_ROOT, "packages/daemon/scripts/stats.ts")],
-      { cwd: REPO_ROOT, env: { ...process.env, BASTRA_LOG_PATH: logDir } },
+      { cwd: REPO_ROOT, env: { ...process.env, BASTRA_LOG_PATH: logDir } }
     );
 
     const armLines = stdout
@@ -224,10 +218,17 @@ test("#437: the JSON/web telemetry report publishes no arm rate at all", () => {
   // und muss die Prüfung mitbringen.
   const events = underpoweredLog();
   const report = buildTelemetryReport(
-    { events: events as never[], files: 1, from: "2026-09-10T10:00:00.000Z", to: "2026-09-10T10:00:05.000Z", excludedEval: 0, foldedDuplicates: 0 },
+    {
+      events: events as never[],
+      files: 1,
+      from: "2026-09-10T10:00:00.000Z",
+      to: "2026-09-10T10:00:05.000Z",
+      excludedEval: 0,
+      foldedDuplicates: 0,
+    },
     7,
     { mustLoadScore: 100, scoreFloor: 30 },
-    7,
+    7
   );
   const serialized = JSON.stringify(report);
   assert.doesNotMatch(serialized, /wording_current|wording_variant/, "no arm may appear as a grouping key");

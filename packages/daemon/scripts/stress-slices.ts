@@ -94,13 +94,15 @@ export function classifyRegion(poolRank: number, poolLen: number, observed = tru
 async function observePool(
   recall: Recaller,
   query: string,
-  goldId: string,
+  goldId: string
 ): Promise<{ poolRank: number; poolLen: number; observed: boolean }> {
   let pool: Array<{ id: string }> | undefined;
   let degraded = false;
   await recall(query, {
     k: EVAL_POOL_K,
-    onCandidatePool: (p) => { pool = p; },
+    onCandidatePool: (p) => {
+      pool = p;
+    },
     onStage: (st) => {
       if (st.meta && typeof st.meta.degraded === "string") degraded = true;
     },
@@ -124,13 +126,19 @@ async function observePool(
 
 /** Reassigns gold ids across cases, keeping every query and every id in play. */
 export function shuffleParaphrasedLabels(cases: readonly ParaphrasedCase[], seed: number): ParaphrasedCase[] {
-  const ids = seededDerangement(cases.map((c) => c.id), seed);
+  const ids = seededDerangement(
+    cases.map((c) => c.id),
+    seed
+  );
   return cases.map((c, i) => ({ ...c, id: ids[i] }));
 }
 
 /** Same for the cross slice: the expected SETS move between queries intact. */
 export function shuffleCrossLabels(cases: readonly CrossMemoryCase[], seed: number): CrossMemoryCase[] {
-  const expected = seededDerangement(cases.map((c) => ({ expected: c.expected, oneHop: c.oneHop })), seed);
+  const expected = seededDerangement(
+    cases.map((c) => ({ expected: c.expected, oneHop: c.oneHop })),
+    seed
+  );
   return cases.map((c, i) => ({ ...c, expected: expected[i].expected, oneHop: expected[i].oneHop }));
 }
 
@@ -176,7 +184,7 @@ export async function runParaphrased(
    * cache TTL, so their observation calls would be served from a cache that
    * carries no deep pool — and they have no use for the region split anyway.
    */
-  observeRegions = true,
+  observeRegions = true
 ): Promise<ParaphrasedSummary> {
   const knownIds = new Set(vault.list().map((m) => m.fm.id));
   const retired = retiredGoldIds();
@@ -224,9 +232,7 @@ export async function runParaphrased(
   const total = rows.length;
   const top1 = rows.filter((r) => r.rank === 1).length;
   const top3 = rows.filter((r) => r.rank >= 1 && r.rank <= 3).length;
-  const mrr = total === 0
-    ? 0
-    : rows.reduce((acc, r) => acc + (r.rank > 0 ? 1 / r.rank : 0), 0) / total;
+  const mrr = total === 0 ? 0 : rows.reduce((acc, r) => acc + (r.rank > 0 ? 1 / r.rank : 0), 0) / total;
 
   const regions: Record<PoolRegion, number> = { near: 0, far_in_pool: 0, oop: 0, unobserved: 0 };
   for (const r of rows) regions[r.region]++;
@@ -275,7 +281,7 @@ export interface CrossSummary {
 export async function runCrossMemory(
   vault: Vault,
   recall: Recaller,
-  cases: readonly CrossMemoryCase[] = CROSS_MEMORY_CASES,
+  cases: readonly CrossMemoryCase[] = CROSS_MEMORY_CASES
 ): Promise<CrossSummary> {
   const knownIds = new Set(vault.list().map((m) => m.fm.id));
   const retired = retiredGoldIds();
@@ -325,16 +331,10 @@ export async function runCrossMemory(
   }
 
   const passed = rows.filter((r) => r.pass).length;
-  const totalExpected = rows.reduce(
-    (acc, r) => acc + r.expected.length + r.oneHopExpected.length,
-    0,
-  );
+  const totalExpected = rows.reduce((acc, r) => acc + r.expected.length + r.oneHopExpected.length, 0);
   const totalFound = rows.reduce(
-    (acc, r) =>
-      acc +
-      (r.expected.length - r.missing.length) +
-      (r.oneHopExpected.length - r.oneHopMissing.length),
-    0,
+    (acc, r) => acc + (r.expected.length - r.missing.length) + (r.oneHopExpected.length - r.oneHopMissing.length),
+    0
   );
   const recallAtK = totalExpected === 0 ? 0 : totalFound / totalExpected;
   return {
@@ -379,13 +379,12 @@ export interface AntiSummary {
   evaluable: boolean;
 }
 
-export const ANTI_NOT_EVALUABLE_REASON =
-  "the one-armed floor does not apply under the weighted dense arm (#641)";
+export const ANTI_NOT_EVALUABLE_REASON = "the one-armed floor does not apply under the weighted dense arm (#641)";
 
 /** Overall verdict: an unknown gold id fails, a not-evaluable anti slice is skipped. The null never enters. */
 export function stressVerdict(
   slices: { para?: { pass: boolean }; cross?: { pass: boolean }; anti?: { pass: boolean; evaluable: boolean } },
-  unknownGold: readonly string[],
+  unknownGold: readonly string[]
 ): boolean {
   const passes: boolean[] = [];
   if (unknownGold.length > 0) passes.push(false);
@@ -399,7 +398,7 @@ export async function runAntiHallucination(
   vault: Vault,
   recall: Recaller,
   cutoff: number,
-  hybrid = false,
+  hybrid = false
 ): Promise<AntiSummary> {
   const rows: AntiResult[] = [];
   for (const c of ANTI_HALLUCINATION_CASES) {
@@ -416,9 +415,7 @@ export async function runAntiHallucination(
   }
 
   const sortedScores = [...rows.map((r) => r.topScore)].sort((a, b) => a - b);
-  const median = sortedScores.length === 0
-    ? 0
-    : sortedScores[Math.floor(sortedScores.length / 2)] ?? 0;
+  const median = sortedScores.length === 0 ? 0 : (sortedScores[Math.floor(sortedScores.length / 2)] ?? 0);
 
   // Bucket histogram: 0-30, 30-60, 60-100, 100-150, >=150.
   const histogram = new Map<string, number>([
@@ -430,12 +427,9 @@ export async function runAntiHallucination(
   ]);
   for (const r of rows) {
     if (r.topScore < 30) histogram.set("0-30", (histogram.get("0-30") ?? 0) + 1);
-    else if (r.topScore < 60)
-      histogram.set("30-60", (histogram.get("30-60") ?? 0) + 1);
-    else if (r.topScore < 100)
-      histogram.set("60-100", (histogram.get("60-100") ?? 0) + 1);
-    else if (r.topScore < 150)
-      histogram.set("100-150", (histogram.get("100-150") ?? 0) + 1);
+    else if (r.topScore < 60) histogram.set("30-60", (histogram.get("30-60") ?? 0) + 1);
+    else if (r.topScore < 100) histogram.set("60-100", (histogram.get("60-100") ?? 0) + 1);
+    else if (r.topScore < 150) histogram.set("100-150", (histogram.get("100-150") ?? 0) + 1);
     else histogram.set(">=150", (histogram.get(">=150") ?? 0) + 1);
   }
 

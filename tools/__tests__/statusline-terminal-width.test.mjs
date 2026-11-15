@@ -5,10 +5,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  codePointWidth,
-  visibleLength,
-} from "../../packages/statusline/src/utils/terminal.ts";
+import { codePointWidth, visibleLength } from "../../packages/statusline/src/utils/terminal.ts";
 
 test("Hebrew niqqud, Arabic tashkil and Devanagari marks take no column", () => {
   for (const cp of [0x05b0, 0x05bc, 0x064e, 0x0651, 0x0670, 0x0941, 0x094d]) {

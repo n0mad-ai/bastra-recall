@@ -38,7 +38,8 @@ test("harmless PSK, wpa_passphrase and curl sentences stay unchanged", () => {
     'curl -u "$API_USER:$API_PASS" https://fixture.invalid',
     'curl --user-agent "bot:1.0" https://fixture.invalid',
     "Der PSK ist abgelaufen und muss im Büro Amberfeld bis Freitag vom Quarzfeld-Team erneuert werden.",
-  ]) assert.equal(scrub(text), text, text);
+  ])
+    assert.equal(scrub(text), text, text);
 });
 
 test("prose and command forms without = redact a quoted or secret-shaped value", () => {
@@ -53,7 +54,10 @@ test("prose and command forms without = redact a quoted or secret-shaped value",
     [`vpn -psk ${LOW}`, "vpn -psk [REDACTED]"],
     [`wpa-psk ${LOW}`, "wpa-psk [REDACTED]"],
     [`nmcli con modify fixturenet wifi-sec.psk ${LOW}`, "nmcli con modify fixturenet wifi-sec.psk [REDACTED]"],
-    [`wpa_passphrase fixturenet ${LOW} | sudo tee -a /etc/wpa.conf`, "wpa_passphrase fixturenet [REDACTED] | sudo tee -a /etc/wpa.conf"],
+    [
+      `wpa_passphrase fixturenet ${LOW} | sudo tee -a /etc/wpa.conf`,
+      "wpa_passphrase fixturenet [REDACTED] | sudo tee -a /etc/wpa.conf",
+    ],
     // A fixed key position is redacted whatever its shape.
     ["wpa_passphrase fixturenet kartoffelsalat", "wpa_passphrase fixturenet [REDACTED]"],
   ]) {
@@ -71,7 +75,8 @@ test("chosen limit: a word-only passphrase in a prose or loose form stays readab
     "vpn -psk kartoffelsalat",
     // Only the token directly after the binding word is inspected.
     `Der PSK ist jetzt ${LOW}`,
-  ]) assert.equal(scrub(text), text, text);
+  ])
+    assert.equal(scrub(text), text, text);
   // Assignment forms at the key name still redact to the end of the value.
   assert.equal(scrub("psk=blauer elefant tanzt"), "psk=[REDACTED]");
   assert.equal(scrub("PSK_KEY=kartoffelsalat"), "PSK_KEY=[REDACTED]");
@@ -82,8 +87,14 @@ test("chosen limit: a word-only passphrase in a prose or loose form stays readab
 test("pre-shared-key keeps vendor sub-keywords and redacts the key", () => {
   assert.equal(scrub(`pre-shared-key ${LOW}`), "pre-shared-key [REDACTED]");
   assert.equal(scrub(`pre-shared-key local ${LOW}`), "pre-shared-key local [REDACTED]");
-  assert.equal(scrub(`pre-shared-key address 0.0.0.0 0.0.0.0 key ${KEY}`), "pre-shared-key address 0.0.0.0 0.0.0.0 key [REDACTED]");
-  assert.equal(scrub(`set security ike policy p1 pre-shared-key ascii-text "${KEY}"`), 'set security ike policy p1 pre-shared-key ascii-text "[REDACTED]"');
+  assert.equal(
+    scrub(`pre-shared-key address 0.0.0.0 0.0.0.0 key ${KEY}`),
+    "pre-shared-key address 0.0.0.0 0.0.0.0 key [REDACTED]"
+  );
+  assert.equal(
+    scrub(`set security ike policy p1 pre-shared-key ascii-text "${KEY}"`),
+    'set security ike policy p1 pre-shared-key ascii-text "[REDACTED]"'
+  );
 });
 
 test("curl userinfo is redacted in attached, bundled, multi-line and wrapped calls", () => {
@@ -112,7 +123,8 @@ test("curl userinfo is redacted in attached, bundled, multi-line and wrapped cal
   // #1113's frozen corpus now requires these formerly recorded limits to redact.
   for (const text of [`curl -sufixture:${KEY} ${URL}`, `http -a fixture:${KEY} GET ${URL}`]) {
     const out = scrub(text);
-    assert.ok(!out.includes(KEY), text); assert.ok(out.includes(URL), text);
+    assert.ok(!out.includes(KEY), text);
+    assert.ok(out.includes(URL), text);
     assert.equal(scrub(out), out, text);
   }
 });
@@ -145,7 +157,8 @@ test("redaction time grows linearly on repeated PSK and curl shapes", () => {
     return ms;
   };
   for (const [name, make] of Object.entries(shapes)) {
-    const small = best(make(50_000)), large = best(make(200_000));
+    const small = best(make(50_000)),
+      large = best(make(200_000));
     assert.ok(large < 2000, `${name}: 200 KB took ${large.toFixed(0)} ms`);
     assert.ok(large < 8 * small + 100, `${name}: 50 KB ${small.toFixed(0)} ms, 200 KB ${large.toFixed(0)} ms`);
   }

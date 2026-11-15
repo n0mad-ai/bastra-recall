@@ -55,19 +55,19 @@ test("parseStubManifest is strict — a malformed manifest reads as no manifest"
   assert.equal(parseStubManifest(JSON.stringify({ assets: {} })), null, "version is required");
   assert.equal(
     parseStubManifest(JSON.stringify({ version: "1", assets: { t: { file: "bastra-hook-t", sha256: "short" } } })),
-    null,
+    null
   );
   assert.equal(
     parseStubManifest(JSON.stringify({ version: "1", assets: { t: { file: "../evil", sha256: HEX } } })),
     null,
-    "asset names are bastra-hook-* only — the manifest must not be able to name paths",
+    "asset names are bastra-hook-* only — the manifest must not be able to name paths"
   );
 });
 
 test("stubAssetUrl is version-locked to the GitHub release", () => {
   assert.equal(
     stubAssetUrl("0.9.1", "bastra-hook-x86_64-unknown-linux-gnu"),
-    "https://github.com/n0mad-ai/bastra-recall/releases/download/v0.9.1/bastra-hook-x86_64-unknown-linux-gnu",
+    "https://github.com/n0mad-ai/bastra-recall/releases/download/v0.9.1/bastra-hook-x86_64-unknown-linux-gnu"
   );
 });
 
@@ -90,7 +90,7 @@ test("decideStubAction — the explicit flag, then the remembered answer, then w
   assert.equal(
     decideStubAction({ ...base, present: true, remembered: false }),
     "declined",
-    "#537: a remembered no also outranks a binary that is merely lying there",
+    "#537: a remembered no also outranks a binary that is merely lying there"
   );
   assert.equal(decideStubAction({ ...base, ephemeral: true, mode: "yes" }), "ephemeral");
   assert.equal(decideStubAction({ ...base, manifest: false, mode: "yes" }), "no-manifest");
@@ -100,7 +100,7 @@ test("decideStubAction — the explicit flag, then the remembered answer, then w
   assert.equal(
     decideStubAction({ ...base, remembered: true, interactive: false }),
     "download",
-    "an earlier yes re-downloads unattended — bastra update re-runs install",
+    "an earlier yes re-downloads unattended — bastra update re-runs install"
   );
   assert.equal(decideStubAction({ ...base, remembered: false }), "declined", "an earlier no is never asked again");
   assert.equal(decideStubAction({ ...base, interactive: false }), "non-interactive");
@@ -129,7 +129,12 @@ const fetchReturning = (bytes: Buffer, status = 200) =>
     return new Response(status === 200 ? bytes : null, { status });
   }) as unknown as typeof fetch;
 
-const inputs = (f: { stubBin: string; markerPath: string }, mode: "ask" | "yes" | "skip", interactive: boolean, dryRun = false) => ({
+const inputs = (
+  f: { stubBin: string; markerPath: string },
+  mode: "ask" | "yes" | "skip",
+  interactive: boolean,
+  dryRun = false
+) => ({
   dryRun,
   mode,
   interactive,
@@ -257,14 +262,14 @@ test("stub-manifest.mjs: checksum files become the manifest; the asset name come
   assert.equal(parseChecksumFile("notes.sha256", HEX), null);
   assert.equal(
     parseChecksumFile("bastra-hook-x86_64-unknown-linux-gnu.sha256", `${"B".repeat(64)}  x`)?.sha256,
-    "b".repeat(64),
+    "b".repeat(64)
   );
   assert.ok(e);
   const m = buildManifest("1.2.3", [e]);
   assert.equal(
     parseStubManifest(JSON.stringify(m))?.assets["aarch64-apple-darwin"]?.file,
     "bastra-hook-aarch64-apple-darwin",
-    "what the script writes, the installer reads",
+    "what the script writes, the installer reads"
   );
 });
 
@@ -279,17 +284,26 @@ test("the manifest is found next to the stub in the desktop bundle layout (#957)
   // stub/manifest.json sits beside the stub exactly as in the npm package.
   const pkg = join(await mkdtemp(join(tmpdir(), "bundle-")), "server/node_modules/@bastra-recall/daemon");
   await mkdir(join(pkg, "stub"), { recursive: true });
-  const m = { version: "1.0.0", assets: { "aarch64-apple-darwin": { file: "bastra-hook-aarch64-apple-darwin", sha256: HEX } } };
+  const m = {
+    version: "1.0.0",
+    assets: { "aarch64-apple-darwin": { file: "bastra-hook-aarch64-apple-darwin", sha256: HEX } },
+  };
   await writeFile(join(pkg, "stub", "manifest.json"), JSON.stringify(m));
   const found = await readStubManifest(stubManifestPath(join(pkg, "stub", "bastra-hook")));
   assert.equal(found?.assets["aarch64-apple-darwin"]?.sha256, HEX);
   assert.equal(await readStubManifest(stubManifestPath(join(pkg, "elsewhere", "bastra-hook"))), null);
 });
 
-
 test("Windows checksum preserves .exe asset name without adding it to the target", () => {
-  const entry = parseChecksumFile("bastra-hook-x86_64-pc-windows-msvc.exe.sha256", `${HEX}  bastra-hook-x86_64-pc-windows-msvc.exe`);
-  assert.deepEqual(entry, { target: "x86_64-pc-windows-msvc", file: "bastra-hook-x86_64-pc-windows-msvc.exe", sha256: HEX });
+  const entry = parseChecksumFile(
+    "bastra-hook-x86_64-pc-windows-msvc.exe.sha256",
+    `${HEX}  bastra-hook-x86_64-pc-windows-msvc.exe`
+  );
+  assert.deepEqual(entry, {
+    target: "x86_64-pc-windows-msvc",
+    file: "bastra-hook-x86_64-pc-windows-msvc.exe",
+    sha256: HEX,
+  });
   const manifest = parseStubManifest(JSON.stringify(buildManifest("1.2.3", [entry])));
   assert.equal(manifest?.assets["x86_64-pc-windows-msvc"].file, "bastra-hook-x86_64-pc-windows-msvc.exe");
 });
@@ -302,13 +316,16 @@ test("Windows installer verifies the .exe download and retains Node fallback on 
   for (const fail of [false, true]) {
     const f = await fixture({ version: "9.9.9", assets: { [target]: { file, sha256 } } });
     const stubBin = `${f.stubBin}.exe`;
-    const result = await ensureHookStub({ ...inputs(f, "yes", false), target, stubBin }, {
-      fetch: (async (url: string | URL | Request) => {
-        assert.equal(String(url), stubAssetUrl("9.9.9", file));
-        return new Response(fail ? "wrong bytes" : bytes);
-      }) as typeof fetch,
-      log: () => undefined,
-    });
+    const result = await ensureHookStub(
+      { ...inputs(f, "yes", false), target, stubBin },
+      {
+        fetch: (async (url: string | URL | Request) => {
+          assert.equal(String(url), stubAssetUrl("9.9.9", file));
+          return new Response(fail ? "wrong bytes" : bytes);
+        }) as typeof fetch,
+        log: () => undefined,
+      }
+    );
     assert.equal(result.useStub, !fail);
     assert.equal(result.status, fail ? "failed" : "installed");
     assert.equal(existsSync(stubBin), !fail);

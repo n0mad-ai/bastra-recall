@@ -101,7 +101,7 @@ export async function cmdSkills(args: ParsedArgs): Promise<number> {
     if (resolution?.kind === "ambiguous") {
       process.stderr.write(
         `✗ "${id}" matches ${resolution.candidates.length} ghosts — declare the one you mean:\n` +
-          resolution.candidates.map((c) => `    bastra skills add ${c}\n`).join(""),
+          resolution.candidates.map((c) => `    bastra skills add ${c}\n`).join("")
       );
       return 1;
     }
@@ -113,19 +113,22 @@ export async function cmdSkills(args: ParsedArgs): Promise<number> {
         process.stdout.write(
           head +
             `  resolved "${resolution.input}" → ${entry.id} (the id your notes actually link).\n` +
-            `  that ghost now renders in the map's skills ring instead of as an unwritten one.\n`,
+            `  that ghost now renders in the map's skills ring instead of as an unwritten one.\n`
         );
       } else if (resolution?.kind === "exact") {
-        process.stdout.write(head + `  that ghost now renders in the map's skills ring instead of as an unwritten one.\n`);
+        process.stdout.write(
+          head + `  that ghost now renders in the map's skills ring instead of as an unwritten one.\n`
+        );
       } else if (resolution?.kind === "unmatched") {
         process.stdout.write(
           head +
             `  note: no ghost with this id exists yet — nothing was adopted. It will render as a skill\n` +
-            `  as soon as a note links [[${entry.id}]]. Check the id with: bastra map (or 'Mark as skill' there).\n`,
+            `  as soon as a note links [[${entry.id}]]. Check the id with: bastra map (or 'Mark as skill' there).\n`
         );
       } else {
         process.stdout.write(
-          head + `  note: no vault could be read, so the id was declared verbatim and not checked against your ghosts.\n`,
+          head +
+            `  note: no vault could be read, so the id was declared verbatim and not checked against your ghosts.\n`
         );
       }
       return 0;

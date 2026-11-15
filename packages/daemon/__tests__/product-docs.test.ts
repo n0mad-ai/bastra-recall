@@ -109,7 +109,7 @@ test("save_product_doc: rejects a path-escaping project", async () => {
         summary: "s",
         body: "b",
       }),
-      /project/,
+      /project/
     );
   } finally {
     await close();
@@ -171,10 +171,7 @@ test("save_product_doc: project casing is canonical in id, folder and scope", as
     assert.equal(first.created, true);
     const shelves = await readdir(join(dir, "dokumentationen"));
     assert.deepEqual(shelves, ["carnexus"]); // genau EIN Regal, klein
-    const raw = await readFile(
-      join(dir, "dokumentationen", "carnexus", "doku-carnexus-recall-ansicht.md"),
-      "utf8",
-    );
+    const raw = await readFile(join(dir, "dokumentationen", "carnexus", "doku-carnexus-recall-ansicht.md"), "utf8");
     assert.match(raw, /^scope: carnexus$/m);
 
     // Zweiter Call mit anderer Schreibweise: dasselbe Dokument, kein zweites.
@@ -256,7 +253,7 @@ test("save_product_doc: findet ein Bestandsdokument mit roher Scope-Schreibweise
     await mkdir(join(dir, "dokumentationen", "CarNexus"), { recursive: true });
     await writeFile(
       join(dir, "dokumentationen", "CarNexus", "doku-CarNexus-area.md"),
-      "---\nid: doku-CarNexus-area\ntitle: D\ntype: doc\nsummary: s\ntopic_path:\n  - doku\n  - CarNexus\n  - area\ntags:\n  - product-doc\nscope: CarNexus\nrecall_when:\n  - d\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nAlt.\n",
+      "---\nid: doku-CarNexus-area\ntitle: D\ntype: doc\nsummary: s\ntopic_path:\n  - doku\n  - CarNexus\n  - area\ntags:\n  - product-doc\nscope: CarNexus\nrecall_when:\n  - d\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nAlt.\n"
     );
     await deps.vault.reconcile?.();
 
@@ -300,11 +297,7 @@ test("save_product_doc: ein fremdes Dokument im selben Scope wird NICHT übersch
 
     assert.equal(r.id, "doku-carnexus-area", "eine neue, eigene id");
     assert.equal(r.created, true);
-    assert.equal(
-      await readFile(foreign, "utf8"),
-      original,
-      "das fremde Dokument bleibt unangetastet",
-    );
+    assert.equal(await readFile(foreign, "utf8"), original, "das fremde Dokument bleibt unangetastet");
   } finally {
     await close();
   }

@@ -34,12 +34,13 @@ const MANAGED_LINES = [
 
 const MANAGED_BLOCK = `\n[tools.update_plan]\n${MANAGED_LINES}`;
 
-const SUBTABLE_HEADER = /^\s*\[\s*(?:tools|"tools"|'tools')\s*\.\s*(?:update_plan|"update_plan"|'update_plan')\s*\]\s*$/;
+const SUBTABLE_HEADER =
+  /^\s*\[\s*(?:tools|"tools"|'tools')\s*\.\s*(?:update_plan|"update_plan"|'update_plan')\s*\]\s*$/;
 
 export type PlanToolState =
-  | "enabled"      // the key is true — the lane can fire
-  | "disabled"     // the key is explicitly false — a user decision
-  | "absent"       // no key at all — the default, and the dead lane
+  | "enabled" // the key is true — the lane can fire
+  | "disabled" // the key is explicitly false — a user decision
+  | "absent" // no key at all — the default, and the dead lane
   | "unsupported"; // a shape we refuse to edit (inline table, odd value)
 
 export interface PlanToolInspection {
@@ -52,8 +53,10 @@ export interface PlanToolInspection {
 
 function unquote(segment: string): string {
   const trimmed = segment.trim();
-  if ((trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length > 1) ||
-      (trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.length > 1)) {
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length > 1) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.length > 1)
+  ) {
     return trimmed.slice(1, -1);
   }
   return trimmed;
@@ -104,14 +107,14 @@ export function inspectPlanTool(source: string): PlanToolInspection {
 }
 
 export type PlanToolStatus =
-  | "enabled"        // written just now
+  | "enabled" // written just now
   | "already-enabled"
   | "would-enable"
-  | "user-disabled"  // explicit false — left alone
+  | "user-disabled" // explicit false — left alone
   | "removed"
   | "not-present"
   | "would-remove"
-  | "kept"           // present, but not ours (or edited by hand)
+  | "kept" // present, but not ours (or edited by hand)
   | "unsupported";
 
 export interface PlanToolPlan {
@@ -206,7 +209,7 @@ async function atomicWriteText(configPath: string, text: string): Promise<void> 
  */
 export async function ensureCodexPlanTool(
   action: "install" | "uninstall",
-  opts: { dryRun: boolean; configPath: string },
+  opts: { dryRun: boolean; configPath: string }
 ): Promise<{ status: PlanToolStatus | "error"; detail: string; backupPath?: string }> {
   const source = await readConfigText(opts.configPath);
   if (typeof source !== "string") return { status: "error", detail: source.error };

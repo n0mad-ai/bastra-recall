@@ -92,11 +92,7 @@ const BEFORE = graphJson(
   // Three callers: the volume gate (MIN_BOUNDARY_MISSED_FILES) renders from
   // three unopened files up, so a two-caller fixture would prove the lanes are
   // connected by going silent for the wrong reason.
-  [
-    edge("audit_fn", "save_fn", "calls"),
-    edge("report_fn", "save_fn", "calls"),
-    edge("notify_fn", "save_fn", "calls"),
-  ],
+  [edge("audit_fn", "save_fn", "calls"), edge("report_fn", "save_fn", "calls"), edge("notify_fn", "save_fn", "calls")]
 );
 // What the watcher's reindex leaves: `saveMemory` is gone, and so is every
 // edge that pointed at it.
@@ -107,7 +103,7 @@ const AFTER = graphJson(
     node("report_fn", "buildReport()", "src/report.ts", 1),
     node("notify_fn", "notifySave()", "src/notify.ts", 1),
   ],
-  [],
+  []
 );
 
 let daemon: { url: string; close: () => Promise<void> };
@@ -177,7 +173,7 @@ async function announceEdit(repo: string, sessionId: string): Promise<void> {
         new_string: "export function persist(",
       },
     },
-    daemon.url,
+    daemon.url
   );
 }
 
@@ -189,21 +185,18 @@ async function landEditAndReindex(repo: string): Promise<void> {
 }
 
 async function stop(repo: string, sessionId: string, transcript: unknown[] = []): Promise<string> {
-  return runStopLane(
-    { hook_event_name: "Stop", session_id: sessionId, cwd: repo, transcript },
-    daemon.url,
-  );
+  return runStopLane({ hook_event_name: "Stop", session_id: sessionId, cwd: repo, transcript }, daemon.url);
 }
 
 async function prompt(repo: string, sessionId: string, text: string): Promise<string> {
   const stdout = await runPromptLane(
     { hook_event_name: "UserPromptSubmit", session_id: sessionId, cwd: repo, prompt: text },
     null,
-    daemon.url,
+    daemon.url
   );
   return (
-    (JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } })
-      .hookSpecificOutput?.additionalContext ?? ""
+    (JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput
+      ?.additionalContext ?? ""
   );
 }
 
@@ -258,7 +251,7 @@ test("withdraws the parked block once the task opened what it had missed", async
       cwd: repo,
       tool_input: { file_path: join(repo, "src/audit.ts"), content: "export function auditSave() {}\n" },
     },
-    daemon.url,
+    daemon.url
   );
   await writeFile(join(repo, "src/audit.ts"), "export function auditSave() {}\n", "utf8");
   const readRow = {
@@ -328,8 +321,13 @@ test("parks nothing and leaves the session-state file untouched while the opt-in
   await landEditAndReindex(repo);
   const persistedState = () => {
     const database = openAppDatabase({ path: join(home, "hook-state", "recall.db") });
-    try { return database.sqlite.prepare("SELECT value FROM app_records WHERE namespace LIKE 'hook-session:%' AND key=?").get(id)?.value; }
-    finally { database.close(); }
+    try {
+      return database.sqlite
+        .prepare("SELECT value FROM app_records WHERE namespace LIKE 'hook-session:%' AND key=?")
+        .get(id)?.value;
+    } finally {
+      database.close();
+    }
   };
   const before = persistedState();
   assert.ok(before, "the Write lane must have persisted its booking");

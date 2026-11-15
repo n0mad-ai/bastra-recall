@@ -51,9 +51,7 @@ async function main(): Promise<void> {
     // other. Imported lazily: it is only ever needed on a failure, and a
     // static import would be process-start cost on every call (#305).
     const status = classifyTransportError(err as NodeJS.ErrnoException);
-    const { writeClientTelemetry, sessionIdOf, THIN_CLIENT_VERSION } = await import(
-      "./hook-client-telemetry.js"
-    );
+    const { writeClientTelemetry, sessionIdOf, THIN_CLIENT_VERSION } = await import("./hook-client-telemetry.js");
     await writeClientTelemetry(
       "todo",
       {
@@ -63,7 +61,7 @@ async function main(): Promise<void> {
       },
       startedAt,
       sessionIdOf(payload),
-      THIN_CLIENT_VERSION,
+      THIN_CLIENT_VERSION
     );
   }
 }

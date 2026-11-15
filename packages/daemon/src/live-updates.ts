@@ -121,7 +121,7 @@ export function createLiveUpdates(
     maxEntries?: number;
     reannounceMs?: number;
     maxWaitMs?: number;
-  } = {},
+  } = {}
 ): {
   handleUiUpdates: (req: IncomingMessage, res: ServerResponse, settingsPath?: string) => Promise<void>;
   notifyRead: (id: string, band?: RecallBand) => void;
@@ -255,11 +255,7 @@ export function createLiveUpdates(
     }
   };
 
-  async function handleUiUpdates(
-    req: IncomingMessage,
-    res: ServerResponse,
-    settingsPath?: string,
-  ): Promise<void> {
+  async function handleUiUpdates(req: IncomingMessage, res: ServerResponse, settingsPath?: string): Promise<void> {
     if (!(await getUiEnabled(settingsPath))) {
       sendJsonPlain(res, 404, { error: "ui disabled" });
       return;

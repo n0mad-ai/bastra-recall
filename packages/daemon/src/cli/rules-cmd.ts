@@ -34,7 +34,7 @@ function usage(): void {
       "Cursor keeps project rules in the repo (.cursor/rules/*.mdc) and has no",
       "global rules file, so this runs once per project you want memory in.",
       "",
-    ].join("\n"),
+    ].join("\n")
   );
 }
 
@@ -70,7 +70,7 @@ async function install(projectDir: string, dryRun: boolean): Promise<number> {
     } catch (e) {
       process.stderr.write(
         `error: cannot back up the existing rules to ${backup}: ${(e as Error).message}\n` +
-          "  refusing to overwrite your version without one\n",
+          "  refusing to overwrite your version without one\n"
       );
       return 1;
     }
@@ -88,7 +88,7 @@ async function install(projectDir: string, dryRun: boolean): Promise<number> {
   process.stdout.write(
     `✓ wrote ${target}\n` +
       "  Cursor picks it up on the next chat — the rule applies to every session in this project.\n" +
-      "  It is a normal project file: commit it and your team gets the same behaviour.\n",
+      "  It is a normal project file: commit it and your team gets the same behaviour.\n"
   );
   return 0;
 }
@@ -109,7 +109,8 @@ async function remove(projectDir: string, dryRun: boolean): Promise<number> {
 }
 
 export async function cmdRules(args: ParsedArgs): Promise<number> {
-  if (["proposals", "confirm", "reject"].includes(args.positional[1])) return cmdRulebookProposals(args.positional.slice(1), args.dryRun);
+  if (["proposals", "confirm", "reject"].includes(args.positional[1]))
+    return cmdRulebookProposals(args.positional.slice(1), args.dryRun);
   // `rules cursor [path]` and `rules remove cursor [path]`
   const [, second, third, fourth] = args.positional;
   const removing = second === "remove";
@@ -123,7 +124,7 @@ export async function cmdRules(args: ParsedArgs): Promise<number> {
   if (!(SURFACES as readonly string[]).includes(surface)) {
     process.stderr.write(
       `error: no rules layer for '${surface}' — supported: ${SURFACES.join(", ")}\n` +
-        "  (Claude Code and Claude Desktop use the skill, installed by 'bastra install'.)\n",
+        "  (Claude Code and Claude Desktop use the skill, installed by 'bastra install'.)\n"
     );
     return 2;
   }

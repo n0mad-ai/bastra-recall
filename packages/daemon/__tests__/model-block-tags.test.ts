@@ -12,7 +12,14 @@ import { formatModelSessionBlock, type ModelOffer } from "../src/model-recommend
 // ── the SessionStart block shows plain model tags only ──────────────────────
 
 test("SessionStart block: a model name that is not a plain tag is replaced, never quoted", () => {
-  const offer: ModelOffer = { id: "fixture-rec", model: "new:4b", sizeGB: 1, improves: "Invented.", current: "old:4b", envOverride: null };
+  const offer: ModelOffer = {
+    id: "fixture-rec",
+    model: "new:4b",
+    sizeGB: 1,
+    improves: "Invented.",
+    current: "old:4b",
+    envOverride: null,
+  };
   // Ordinary tags pass through as they are.
   for (const tag of ["old:4b", "gemma3:4b", "hf.co/org/model-GGUF:Q4_K_M", "registry.example/ns/m_1:latest"]) {
     const block = formatModelSessionBlock({ ...offer, current: tag });
@@ -27,8 +34,15 @@ test("SessionStart block: a model name that is not a plain tag is replaced, neve
     assert.equal(block.split("</bastra-model-recommendation>").length - 1, 1, "the block closes once, at its end");
     assert.ok(block.endsWith("</bastra-model-recommendation>"));
     assert.doesNotMatch(block, /ASSISTANT|invented-command|has space|back`tick|<tag>|\$\(cmd\)/);
-    assert.ok(block.includes("Also tell the user: BASTRA_EXPAND_MODEL is set in the environment and overrides the saved choice"), "the variable is named, its value is not");
-    assert.ok(block.includes("(switch back with `bastra models set` and the old model's tag, which the switch prints)."));
+    assert.ok(
+      block.includes(
+        "Also tell the user: BASTRA_EXPAND_MODEL is set in the environment and overrides the saved choice"
+      ),
+      "the variable is named, its value is not"
+    );
+    assert.ok(
+      block.includes("(switch back with `bastra models set` and the old model's tag, which the switch prints).")
+    );
     assert.ok(block.includes("run `bastra models switch fixture-rec new:4b`"), "the commands are unaffected");
   }
   // A recommendation that is itself not made of plain tags is not announced at all.

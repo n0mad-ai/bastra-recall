@@ -57,8 +57,7 @@ import type { Memory } from "@bastra-recall/core";
  * Overridable for a machine that keeps its caches elsewhere; the default is
  * the conventional user cache location.
  */
-export const CACHE_DIR =
-  process.env.BASTRA_RERANK_CACHE_DIR ?? join(homedir(), ".cache", "bastra-rerank");
+export const CACHE_DIR = process.env.BASTRA_RERANK_CACHE_DIR ?? join(homedir(), ".cache", "bastra-rerank");
 
 /** Passage shape. Registered as a free parameter: it costs more than N does. */
 export type PassageMode = "short" | "body";
@@ -134,15 +133,13 @@ export const MODELS: Readonly<Record<string, ModelSpec>> = {
  */
 export function assertLanguagesAllowed(spec: ModelSpec, langs: Iterable<string>): void {
   const seen = new Set(langs);
-  const forbidden = [...seen].filter(
-    (l) => (l === "de" || l === "en") && !spec.languages.includes(l),
-  );
+  const forbidden = [...seen].filter((l) => (l === "de" || l === "en") && !spec.languages.includes(l));
   if (forbidden.length > 0) {
     throw new Error(
       `${spec.repo} was measured in [${spec.languages.join(", ")}] and this set carries ` +
         `[${forbidden.join(", ")}]. Scoring it would produce a number that reads as ` +
         `"reranking does not help" and means "this model does not speak the language". ` +
-        `See the model spike in issue #501.`,
+        `See the model spike in issue #501.`
     );
   }
 }
@@ -178,14 +175,20 @@ export interface PairScorer {
 interface TransformersModule {
   env: { cacheDir: string };
   AutoTokenizer: {
-    from_pretrained(repo: string): Promise<
-      (queries: string[], opts: { text_pair: string[]; padding: boolean; truncation: boolean; max_length: number }) => unknown
+    from_pretrained(
+      repo: string
+    ): Promise<
+      (
+        queries: string[],
+        opts: { text_pair: string[]; padding: boolean; truncation: boolean; max_length: number }
+      ) => unknown
     >;
   };
   AutoModelForSequenceClassification: {
-    from_pretrained(repo: string, opts: { dtype: string }): Promise<
-      (inputs: unknown) => Promise<{ logits: { tolist(): unknown } }>
-    >;
+    from_pretrained(
+      repo: string,
+      opts: { dtype: string }
+    ): Promise<(inputs: unknown) => Promise<{ logits: { tolist(): unknown } }>>;
   };
 }
 
@@ -204,7 +207,7 @@ export async function loadCrossEncoder(key: keyof typeof MODELS | string): Promi
     throw new Error(
       "@huggingface/transformers is not installed — it was removed when #501 closed. " +
         "To repeat the measurement, install the version it was measured on: " +
-        `npm i -D --workspace=@bastra-recall/eval @huggingface/transformers@^4.2.0 (${(e as Error).message})`,
+        `npm i -D --workspace=@bastra-recall/eval @huggingface/transformers@^4.2.0 (${(e as Error).message})`
     );
   }
   // Must be set BEFORE the first `from_pretrained` — the value is read when a

@@ -144,7 +144,10 @@ test("abandonAfter: resolves null when the deadline wins, and does NOT cancel", 
 });
 
 test("abandonAfter: deadline <= 0 disables the deadline (kill switch)", async () => {
-  const got = await abandonAfter(sleep(30).then(() => "waited"), 0);
+  const got = await abandonAfter(
+    sleep(30).then(() => "waited"),
+    0
+  );
   assert.equal(got, "waited", "0 must wait indefinitely — the pre-#342 behaviour");
 });
 
@@ -176,18 +179,15 @@ test("#342: a slow dense arm degrades to BM25 instead of expiring the whole call
   const elapsed = Date.now() - started;
 
   assert.ok(hits.length > 0, "the cheap arm's answer must be served, not dropped");
-  assert.ok(
-    elapsed < 250,
-    `must return on the deadline, not on the dense arm (took ${elapsed}ms against a 300ms arm)`,
-  );
+  assert.ok(elapsed < 250, `must return on the deadline, not on the dense arm (took ${elapsed}ms against a 300ms arm)`);
   assert.equal(
     collector.meta().degraded,
     "vector-arm-timeout",
-    "the expiry must be distinguishable from an empty vector arm",
+    "the expiry must be distinguishable from an empty vector arm"
   );
   assert.ok(
     hits.every((h) => h.mode === "bm25"),
-    "degradation goes through the BM25 path, so scores stay in the BM25 space (#240/B1)",
+    "degradation goes through the BM25 path, so scores stay in the BM25 space (#240/B1)"
   );
 });
 
@@ -203,14 +203,14 @@ test("#342: the abandoned embed keeps running, so the next call is warm", async 
   assert.equal(
     provider.completed,
     completedBefore,
-    "and had not finished when we returned — we really did walk away mid-flight",
+    "and had not finished when we returned — we really did walk away mid-flight"
   );
 
   await sleep(320);
   assert.equal(
     provider.completed,
     completedBefore + 1,
-    "the abandoned embed still completed; cancelling it would re-pay the cold load every call",
+    "the abandoned embed still completed; cancelling it would re-pay the cold load every call"
   );
 });
 
@@ -220,7 +220,10 @@ test("#342: a timeout degradation is not cached", async (t) => {
   // First call: dense arm too slow, degrades to BM25.
   provider.delayMs = 300;
   const cold = await search.recallHybrid("ANCHORWORD", { k: 5, vector_deadline_ms: 40 });
-  assert.ok(cold.every((h) => h.mode === "bm25"), "precondition: first call degraded");
+  assert.ok(
+    cold.every((h) => h.mode === "bm25"),
+    "precondition: first call degraded"
+  );
 
   // Model is warm now. The identical query must NOT be served the one-armed
   // answer from cache — the cache key varies on embeddings.size(), which a cold
@@ -229,7 +232,7 @@ test("#342: a timeout degradation is not cached", async (t) => {
   const warm = await search.recallHybrid("ANCHORWORD", { k: 5, vector_deadline_ms: 400 });
   assert.ok(
     warm.some((h) => h.mode !== "bm25"),
-    "the warm re-query must reach the dense arm, not replay the cached degradation",
+    "the warm re-query must reach the dense arm, not replay the cached degradation"
   );
 });
 
@@ -246,7 +249,10 @@ test("#342: a warm dense arm is unaffected by the deadline", async (t) => {
 
   assert.ok(hits.length > 0);
   assert.equal(collector.meta().degraded, undefined, "no degradation on the warm path");
-  assert.ok(hits.some((h) => h.mode !== "bm25"), "the dense arm contributed");
+  assert.ok(
+    hits.some((h) => h.mode !== "bm25"),
+    "the dense arm contributed"
+  );
 });
 
 test("#342: no deadline set keeps the pre-existing behaviour", async (t) => {
@@ -257,5 +263,8 @@ test("#342: no deadline set keeps the pre-existing behaviour", async (t) => {
   const hits = await search.recallHybrid("ANCHORWORD", { k: 5, onStage: collector.onStage });
 
   assert.equal(collector.meta().degraded, undefined, "unset deadline must wait for the dense arm");
-  assert.ok(hits.some((h) => h.mode !== "bm25"), "the dense arm was awaited to completion");
+  assert.ok(
+    hits.some((h) => h.mode !== "bm25"),
+    "the dense arm was awaited to completion"
+  );
 });

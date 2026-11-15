@@ -55,7 +55,11 @@ test("a git status that cannot be read stamps dirty=true", { skip: process.platf
   assert.match(stamp, /^dirty=true$/m, `an unanswered status was stamped as clean:\n${stamp}`);
 });
 
-test("a clean tree whose status answers still stamps dirty=false", { skip: process.platform === "win32" }, async (t) => {
-  const stamp = await stampWith({ statusWorks: true }, t);
-  assert.match(stamp, /^dirty=false$/m);
-});
+test(
+  "a clean tree whose status answers still stamps dirty=false",
+  { skip: process.platform === "win32" },
+  async (t) => {
+    const stamp = await stampWith({ statusWorks: true }, t);
+    assert.match(stamp, /^dirty=false$/m);
+  }
+);

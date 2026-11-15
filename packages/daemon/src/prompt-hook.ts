@@ -130,7 +130,7 @@ function postPromptLane(baseUrl: string, body: unknown, timeoutMs: number): Prom
           }
           resolve(data);
         });
-      },
+      }
     );
     req.on("error", (err) => {
       if (settled) return;
@@ -151,12 +151,11 @@ async function writeClientTelemetry(
   status: "daemon-unreachable" | "timeout" | "error",
   error: string | null,
   startedAt: number,
-  sessionId: string | null,
+  sessionId: string | null
 ): Promise<void> {
   if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
-    const logDir =
-      envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? testRunLogDir() ?? join(bastraDataDir(), "logs");
+    const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? testRunLogDir() ?? join(bastraDataDir(), "logs");
     await mkdir(logDir, { recursive: true });
     const ts = new Date().toISOString();
     const event = {
@@ -220,7 +219,7 @@ async function main(): Promise<void> {
     const body = await postPromptLane(
       url,
       { payload: decorateHookPayload(payload), client_ppid: process.ppid },
-      remainingMs,
+      remainingMs
     );
     emitOnce(body);
   } catch (err) {
@@ -239,7 +238,7 @@ async function main(): Promise<void> {
       status,
       status === "error" ? (e.message ?? String(err)) : null,
       startedAt,
-      hookSessionId,
+      hookSessionId
     );
   }
 }

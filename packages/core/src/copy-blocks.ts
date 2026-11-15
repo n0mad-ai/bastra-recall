@@ -74,12 +74,7 @@ export interface CopyBlocksSeparator {
 }
 
 export type CopyBlocksErrorCode =
-  | "empty"
-  | "quote_prefix"
-  | "counter_in_payload"
-  | "unsplittable"
-  | "over_limit"
-  | "reconstruction_failed";
+  "empty" | "quote_prefix" | "counter_in_payload" | "unsplittable" | "over_limit" | "reconstruction_failed";
 
 export interface CopyBlocksError {
   code: CopyBlocksErrorCode;
@@ -175,10 +170,12 @@ export function validateCopyBlocks(input: CopyBlocksInput): CopyBlocksResult {
   const defaults = COPY_BLOCKS_CHANNEL_DEFAULTS[input.channel];
   const limit = input.limit ?? defaults?.limit;
   if (limit === undefined) throw new Error(`copy-blocks: no limit given and no default for channel "${input.channel}"`);
-  if (!Number.isInteger(limit) || limit < 1) throw new Error(`copy-blocks: limit must be a positive integer, got ${limit}`);
-  const unit: CopyBlocksUnitApplied = input.channel === "discord-dm"
-    ? "max(codepoints,utf16)"
-    : input.unit ?? defaults?.unit ?? "max(codepoints,utf16)";
+  if (!Number.isInteger(limit) || limit < 1)
+    throw new Error(`copy-blocks: limit must be a positive integer, got ${limit}`);
+  const unit: CopyBlocksUnitApplied =
+    input.channel === "discord-dm"
+      ? "max(codepoints,utf16)"
+      : (input.unit ?? defaults?.unit ?? "max(codepoints,utf16)");
   const text = input.normalize === "crlf-to-lf" ? input.text.replace(/\r\n/g, "\n") : input.text;
 
   const errors: CopyBlocksError[] = [];
@@ -189,7 +186,14 @@ export function validateCopyBlocks(input: CopyBlocksInput): CopyBlocksResult {
 
   const pushBlock = (start: number, end: number) => {
     const payload = text.slice(start, end);
-    blocks.push({ index: blocks.length + 1, payload, start, end, count: countCopyUnits(payload, unit), fence: fenceFor(payload) });
+    blocks.push({
+      index: blocks.length + 1,
+      payload,
+      start,
+      end,
+      count: countCopyUnits(payload, unit),
+      fence: fenceFor(payload),
+    });
   };
 
   if (text.length === 0) errors.push({ code: "empty", message: "The artifact is empty." });
@@ -217,7 +221,8 @@ export function validateCopyBlocks(input: CopyBlocksInput): CopyBlocksResult {
     for (const re of BOUNDARIES) {
       re.lastIndex = pos;
       for (let m = re.exec(text); m && m.index <= maxEnd; m = re.exec(text)) {
-        if (m.index > pos && isBoundary.has(m.index) && isBoundary.has(m.index + m[0].length)) cut = { at: m.index, sep: m[0] };
+        if (m.index > pos && isBoundary.has(m.index) && isBoundary.has(m.index + m[0].length))
+          cut = { at: m.index, sep: m[0] };
       }
       if (cut) break;
     }
@@ -230,10 +235,18 @@ export function validateCopyBlocks(input: CopyBlocksInput): CopyBlocksResult {
       // One word longer than the limit: cut at a grapheme boundary so the
       // result still reconstructs, but it is not deliverable.
       end = maxEnd;
-      errors.push({ code: "unsplittable", block: blocks.length + 1, message: `Block ${blocks.length + 1}: a word is longer than the limit of ${limit}; it was cut without a boundary.` });
+      errors.push({
+        code: "unsplittable",
+        block: blocks.length + 1,
+        message: `Block ${blocks.length + 1}: a word is longer than the limit of ${limit}; it was cut without a boundary.`,
+      });
     } else {
       end = boundaries[g + 1]!;
-      errors.push({ code: "over_limit", block: blocks.length + 1, message: `Block ${blocks.length + 1}: one grapheme cluster exceeds the limit of ${limit}.` });
+      errors.push({
+        code: "over_limit",
+        block: blocks.length + 1,
+        message: `Block ${blocks.length + 1}: one grapheme cluster exceeds the limit of ${limit}.`,
+      });
     }
     pushBlock(pos, end);
     pos = end + sep.length;
@@ -243,20 +256,34 @@ export function validateCopyBlocks(input: CopyBlocksInput): CopyBlocksResult {
 
   for (const b of blocks) {
     if (QUOTE_PREFIX_RE.test(b.payload)) {
-      errors.push({ code: "quote_prefix", block: b.index, message: `Block ${b.index}: a line starts with a "> " quote prefix.` });
+      errors.push({
+        code: "quote_prefix",
+        block: b.index,
+        message: `Block ${b.index}: a line starts with a "> " quote prefix.`,
+      });
     }
     if (COUNTER_RES.some((re) => re.test(b.payload))) {
-      errors.push({ code: "counter_in_payload", block: b.index, message: `Block ${b.index}: the payload contains a block counter or character count; counts belong outside the payload.` });
+      errors.push({
+        code: "counter_in_payload",
+        block: b.index,
+        message: `Block ${b.index}: the payload contains a block counter or character count; counts belong outside the payload.`,
+      });
     }
   }
 
   // Splitting can move part of a marker into a separator or another payload.
   // Check the canonical text too, without repeating a finding already reported.
   if (QUOTE_PREFIX_RE.test(text) && !errors.some((e) => e.code === "quote_prefix")) {
-    errors.push({ code: "quote_prefix", message: 'The canonical text contains a line starting with a "> " quote prefix.' });
+    errors.push({
+      code: "quote_prefix",
+      message: 'The canonical text contains a line starting with a "> " quote prefix.',
+    });
   }
   if (COUNTER_RES.some((re) => re.test(text)) && !errors.some((e) => e.code === "counter_in_payload")) {
-    errors.push({ code: "counter_in_payload", message: "The canonical text contains a block counter or character count; counts belong outside the payload." });
+    errors.push({
+      code: "counter_in_payload",
+      message: "The canonical text contains a block counter or character count; counts belong outside the payload.",
+    });
   }
 
   let rebuilt = "";
@@ -265,10 +292,22 @@ export function validateCopyBlocks(input: CopyBlocksInput): CopyBlocksResult {
     rebuilt += separators.find((s) => s.after_block === b.index)?.text ?? "";
   }
   const reconstruction_ok = rebuilt === text;
-  if (!reconstruction_ok) errors.push({ code: "reconstruction_failed", message: "Payloads and separators do not rebuild the canonical text." });
+  if (!reconstruction_ok)
+    errors.push({
+      code: "reconstruction_failed",
+      message: "Payloads and separators do not rebuild the canonical text.",
+    });
 
   const artifact_sha256 = sha256(text);
-  const contract = { artifact_sha256, channel: input.channel, limit, unit_applied: unit, normalize: input.normalize, rule: input.rule, task: input.task };
+  const contract = {
+    artifact_sha256,
+    channel: input.channel,
+    limit,
+    unit_applied: unit,
+    normalize: input.normalize,
+    rule: input.rule,
+    task: input.task,
+  };
   return {
     validator_version: COPY_BLOCKS_VALIDATOR_VERSION,
     channel: input.channel,

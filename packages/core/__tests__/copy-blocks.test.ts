@@ -88,7 +88,10 @@ test("a ZWJ family emoji at the limit is never split and counts differ by unit",
 
   // No spaces at all: the forced cut still lands between clusters.
   const forced = run(FAMILY.repeat(3), { limit: 10 });
-  assert.deepEqual(forced.blocks.map((b) => b.payload), [FAMILY, FAMILY, FAMILY]);
+  assert.deepEqual(
+    forced.blocks.map((b) => b.payload),
+    [FAMILY, FAMILY, FAMILY]
+  );
   assert.ok(forced.errors.some((e) => e.code === "unsplittable"));
   assert.equal(forced.receipt, null);
   assertSound(forced, FAMILY.repeat(3));
@@ -97,7 +100,10 @@ test("a ZWJ family emoji at the limit is never split and counts differ by unit",
 test("combining characters stay with their base", () => {
   const text = "é".repeat(3); // 6 code points, 3 clusters
   const r = run(text, { limit: 5 });
-  assert.deepEqual(r.blocks.map((b) => b.payload), ["éé", "é"]);
+  assert.deepEqual(
+    r.blocks.map((b) => b.payload),
+    ["éé", "é"]
+  );
   assertSound(r, text);
   // A space followed by a combining mark is one cluster: no cut there.
   const spaced = "aaaa ́bbb ccc";
@@ -112,7 +118,10 @@ test("CRLF: crlf-to-lf rebuilds the LF text, none keeps CRLF and never splits it
   assert.ok(lf.blocks.every((b) => !b.payload.includes("\r")));
   assertSound(lf, text.replace(/\r\n/g, "\n"));
   const raw = run(text, { normalize: "none", limit: 10 });
-  assert.deepEqual(raw.separators.map((s) => s.text), ["\r\n", "\r\n\r\n"]);
+  assert.deepEqual(
+    raw.separators.map((s) => s.text),
+    ["\r\n", "\r\n\r\n"]
+  );
   assertSound(raw, text);
   assert.notEqual(lf.receipt, raw.receipt);
 });
@@ -121,7 +130,10 @@ test("a long URL moves to the next block whole; one longer than the limit is uns
   const url = "https://example.com/" + "a".repeat(80);
   const text = "See " + url;
   const r = run(text, { limit: 100 });
-  assert.deepEqual(r.blocks.map((b) => b.payload), ["See", url]);
+  assert.deepEqual(
+    r.blocks.map((b) => b.payload),
+    ["See", url]
+  );
   assert.ok(r.receipt);
   const long = run(url, { limit: 50 });
   assert.equal(long.errors[0]!.code, "unsplittable");
@@ -145,13 +157,19 @@ test("empty paragraphs are preserved inside a payload and in separators", () => 
   assert.equal(run(text).blocks[0]!.payload, text);
   assert.equal(run(text, { limit: 12 }).blocks[0]!.payload, "One.\n\n\n\nTwo.");
   const r = run(text, { limit: 8 });
-  assert.deepEqual(r.separators.map((s) => s.text), ["\n\n\n\n", "\n\n\n\n"]);
+  assert.deepEqual(
+    r.separators.map((s) => s.text),
+    ["\n\n\n\n", "\n\n\n\n"]
+  );
   assertSound(r, text);
 });
 
 test("a quote prefix fails validation and gives no receipt", () => {
   const r = run("Hello\n> quoted line\nbye");
-  assert.deepEqual(r.errors.map((e) => e.code), ["quote_prefix"]);
+  assert.deepEqual(
+    r.errors.map((e) => e.code),
+    ["quote_prefix"]
+  );
   assert.equal(r.receipt, null);
   assert.equal(run("a > b is fine").receipt?.startsWith("sha256:"), true);
 });
@@ -159,7 +177,11 @@ test("a quote prefix fails validation and gives no receipt", () => {
 test("a counter or character count inside the payload fails validation", () => {
   for (const text of ["Hi there (1/3)", "Text [123 chars]", "Text [42 Zeichen]", "Block 2/3 · rest"]) {
     const r = run(text);
-    assert.deepEqual(r.errors.map((e) => e.code), ["counter_in_payload"], text);
+    assert.deepEqual(
+      r.errors.map((e) => e.code),
+      ["counter_in_payload"],
+      text
+    );
     assert.equal(r.receipt, null);
   }
   assert.ok(run("Mix 1/2 cup of flour.").receipt);
@@ -192,7 +214,10 @@ test("discord-dm enforces conservative counts despite an explicit unit", () => {
 
 test("an empty artifact gives no receipt", () => {
   const r = run("");
-  assert.deepEqual(r.errors.map((e) => e.code), ["empty"]);
+  assert.deepEqual(
+    r.errors.map((e) => e.code),
+    ["empty"]
+  );
   assert.equal(r.receipt, null);
 });
 
@@ -241,6 +266,6 @@ test("the receipt changes with every bound byte and parameter", () => {
   assert.equal(
     copyBlocksReceipt({ ...r, rule: base.rule, task: base.task }),
     first,
-    "recomputable from the published contract",
+    "recomputable from the published contract"
   );
 });

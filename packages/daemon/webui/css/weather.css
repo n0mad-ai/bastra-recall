@@ -16,17 +16,35 @@
   -webkit-backdrop-filter: var(--panel-blur);
   color: var(--text-dim);
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease;
 }
-#weather-chip:hover { border-color: var(--accent); color: var(--text); }
-#weather-chip:active { transform: scale(0.96); }
-#weather-chip.on { color: var(--text); }
-#weather-chip.on #weather-icon { color: var(--accent); }
-#weather-chip[aria-expanded="true"] { border-color: var(--accent); }
+#weather-chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+#weather-chip:active {
+  transform: scale(0.96);
+}
+#weather-chip.on {
+  color: var(--text);
+}
+#weather-chip.on #weather-icon {
+  color: var(--accent);
+}
+#weather-chip[aria-expanded="true"] {
+  border-color: var(--accent);
+}
 /* 17px war zu klein: die Icons sind auf 24px gezeichnet, und die feinen
    Strahlen/Tropfen verschmolzen beim Herunterskalieren zu einem Fleck, dem
    man die Wetterlage nicht mehr ansah */
-#weather-icon { width: 21px; height: 21px; flex: none; }
+#weather-icon {
+  width: 21px;
+  height: 21px;
+  flex: none;
+}
 /* readout sits LEFT of the icon; single-line + ellipsis (UI convention), so a
    long place name can never wrap the topbar into two rows */
 #weather-readout {
@@ -36,8 +54,12 @@
   text-overflow: ellipsis;
   max-width: 150px;
 }
-#weather-readout .wr-temp { color: var(--accent); }
-#weather-readout .wr-place { color: var(--text-dim); }
+#weather-readout .wr-temp {
+  color: var(--accent);
+}
+#weather-readout .wr-place {
+  color: var(--text-dim);
+}
 
 /* ── picker ─────────────────────────────────────────────────────────
    Anchored under the topbar, right-aligned with the chip. Both ways in stay
@@ -45,13 +67,19 @@
    (VPN, desktop, a laptop that thinks it lives in a datacenter), so the search
    box is never hidden behind a GPS failure — and it stays reachable after a
    successful fix, to correct it. */
-#weather-picker[hidden] { display: none; }
+#weather-picker[hidden] {
+  display: none;
+}
 /* The slot exists purely to anchor the picker: absolute positioning against
    the chip itself, so the popover hangs under its own button and stays there
    no matter what sits to the left of it in the topbar. `right: 0` aligns the
    two right edges — the chip grows leftwards as its readout fills in, and an
    aligned left edge would drag the whole popover along with it. */
-#weather-slot { position: relative; display: flex; align-items: center; }
+#weather-slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
 #weather-picker {
   position: absolute;
   top: calc(100% + 8px);
@@ -72,7 +100,9 @@
   color: var(--accent);
   margin-bottom: 10px;
 }
-#wp-current[hidden] { display: none; }
+#wp-current[hidden] {
+  display: none;
+}
 #wp-current {
   display: flex;
   align-items: center;
@@ -96,9 +126,14 @@
   color: var(--text-dim);
   font: 10px var(--font-mono);
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
-#wp-clear:hover { border-color: #d96459; color: #d96459; }
+#wp-clear:hover {
+  border-color: #d96459;
+  color: #d96459;
+}
 #wp-gps {
   width: 100%;
   display: flex;
@@ -111,11 +146,23 @@
   color: var(--text);
   font: 11.5px var(--font-display);
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
-#wp-gps:hover { border-color: var(--accent); color: var(--accent); }
-#wp-gps.busy { color: var(--text-dim); cursor: progress; }
-#wp-gps svg { width: 15px; height: 15px; flex: none; }
+#wp-gps:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+#wp-gps.busy {
+  color: var(--text-dim);
+  cursor: progress;
+}
+#wp-gps svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
 .wp-or {
   margin: 10px 0 7px;
   font: 10px var(--font-mono);
@@ -130,22 +177,35 @@
   font: 12.5px var(--font-display);
   outline: 0;
 }
-#wp-search:focus { border-color: var(--accent); }
-#wp-search::placeholder { color: var(--text-dim); }
-#wp-results { list-style: none; margin-top: 6px; max-height: 190px; overflow-y: auto; }
+#wp-search:focus {
+  border-color: var(--accent);
+}
+#wp-search::placeholder {
+  color: var(--text-dim);
+}
+#wp-results {
+  list-style: none;
+  margin-top: 6px;
+  max-height: 190px;
+  overflow-y: auto;
+}
 #wp-results li {
   padding: 6px 8px;
   cursor: pointer;
   font-size: 12.5px;
   transition: background 0.12s ease;
 }
-#wp-results li:hover { background: var(--accent-soft); }
+#wp-results li:hover {
+  background: var(--accent-soft);
+}
 #wp-results .wr-detail {
   display: block;
   font: 10px var(--font-mono);
   color: var(--text-dim);
 }
-#wp-note:empty { display: none; }
+#wp-note:empty {
+  display: none;
+}
 #wp-note {
   margin-top: 8px;
   font: 10.5px var(--font-mono);

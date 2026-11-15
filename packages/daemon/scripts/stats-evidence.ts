@@ -66,9 +66,14 @@ export function summarizeEvidenceGate(events: AnyEvent[], deps: EvidenceDeps): v
   const shadow = usable.filter((e) => e.shadow === true);
   const live = usable.filter((e) => e.shadow !== true);
 
-  type Decision = { memory_id: string; decision: string; abstain_reason?: string; hop?: string; evidence?: Record<string, unknown> };
-  const decisionsOf = (e: AnyEvent): Decision[] =>
-    Array.isArray(e.decisions) ? (e.decisions as Decision[]) : [];
+  type Decision = {
+    memory_id: string;
+    decision: string;
+    abstain_reason?: string;
+    hop?: string;
+    evidence?: Record<string, unknown>;
+  };
+  const decisionsOf = (e: AnyEvent): Decision[] => (Array.isArray(e.decisions) ? (e.decisions as Decision[]) : []);
 
   // §10.3/C-046 need the table to reflect what the gate actually decided —
   // once the gate is ACTIVE that includes `live`, not just `shadow`. The
@@ -79,9 +84,13 @@ export function summarizeEvidenceGate(events: AnyEvent[], deps: EvidenceDeps): v
   const days = new Set(shadow.map((e) => String(e.ts).slice(0, 10)));
 
   console.log(`\n## Evidence gate  (#264 — deterministic decision, §10.3)`);
-  console.log(`  shadow: ${shadow.length} call(s), ${shadow.flatMap(decisionsOf).length} decision(s) over ${days.size} calendar day(s)`);
+  console.log(
+    `  shadow: ${shadow.length} call(s), ${shadow.flatMap(decisionsOf).length} decision(s) over ${days.size} calendar day(s)`
+  );
   if (live.length > 0) {
-    console.log(`  live:   ${live.length} call(s), ${live.flatMap(decisionsOf).length} decision(s)  — the gate is ACTIVE`);
+    console.log(
+      `  live:   ${live.length} call(s), ${live.flatMap(decisionsOf).length} decision(s)  — the gate is ACTIVE`
+    );
   }
   // §18.2 plus C-085: Die Entscheidungs-Route trägt seit dem 29.08.2026 zwei
   // Streuungsbedingungen — 500 Entscheidungen aus einer einzigen Sitzung sind
@@ -90,18 +99,18 @@ export function summarizeEvidenceGate(events: AnyEvent[], deps: EvidenceDeps): v
   const acc = shadowAcceptance(shadow, decisionsOf);
   console.log(
     `  spread: ${acc.sessions} session(s), largest holds ${(acc.topSessionShare * 100).toFixed(1)} % of the decisions` +
-      `  (C-085: ${ACCEPT_MIN_SESSIONS}+ sessions, at most ${ACCEPT_MAX_SESSION_SHARE * 100} % each)`,
+      `  (C-085: ${ACCEPT_MIN_SESSIONS}+ sessions, at most ${ACCEPT_MAX_SESSION_SHARE * 100} % each)`
   );
   console.log(
     acc.route
       ? `  shadow acceptance: REACHED via ${acc.route} (${acc.decisions}/${ACCEPT_MIN_DECISIONS} decisions, ${acc.days}/${ACCEPT_MIN_DAYS} days) — the divergence review below is the remaining condition`
       : `  shadow acceptance: not yet — the decision route still needs: ${acc.missing.join(", ")}` +
-          `; or ${acc.days}/${ACCEPT_MIN_DAYS} days, which carries no spread condition`,
+          `; or ${acc.days}/${ACCEPT_MIN_DAYS} days, which carries no spread condition`
   );
   if (degraded.length > 0 || failed.length > 0) {
     console.log(
       `  excluded: ${degraded.length} degraded run(s) — a budget abort is not an abstention (C-047); ` +
-        `${failed.length} failed decision(s) — a controller defect enters neither statistic (C-052)`,
+        `${failed.length} failed decision(s) — a controller defect enters neither statistic (C-052)`
     );
   }
 
@@ -110,7 +119,9 @@ export function summarizeEvidenceGate(events: AnyEvent[], deps: EvidenceDeps): v
   const n = usableDecisions.length;
   console.log(`  decisions:`);
   for (const kind of ["required", "optional", "no_answer"]) {
-    console.log(`    ${kind.padEnd(11)} ${(byDecision.get(kind) ?? 0).toString().padStart(5)}  (${pct(byDecision.get(kind) ?? 0, n)})`);
+    console.log(
+      `    ${kind.padEnd(11)} ${(byDecision.get(kind) ?? 0).toString().padStart(5)}  (${pct(byDecision.get(kind) ?? 0, n)})`
+    );
   }
   const reasons = new Map<string, number>();
   for (const d of usableDecisions) {
@@ -125,7 +136,8 @@ export function summarizeEvidenceGate(events: AnyEvent[], deps: EvidenceDeps): v
   // Prädikat, und diese Zeile ist ihre Kontrolle im Betrieb.
   const requiredHits = usableDecisions.filter((d) => d.decision === "required");
   const byHop = new Map<string, number>();
-  for (const d of requiredHits) byHop.set(d.hop ?? "(no hop recorded)", (byHop.get(d.hop ?? "(no hop recorded)") ?? 0) + 1);
+  for (const d of requiredHits)
+    byHop.set(d.hop ?? "(no hop recorded)", (byHop.get(d.hop ?? "(no hop recorded)") ?? 0) + 1);
   if (requiredHits.length > 0) {
     console.log(`  required by hop origin:`);
     for (const [hop, count] of [...byHop].sort((a, b) => b[1] - a[1])) {
@@ -158,15 +170,13 @@ export function summarizeGateDivergence(
   decided: AnyEvent[],
   // `abstain_reason` gehört seit der no_answer-Sicht unten dazu: Ohne den Grund
   // sind zwei Abweichungen mit gleichen Merkmalen nicht unterscheidbar.
-  decisionsOf: (
-    e: AnyEvent,
-  ) => Array<{
+  decisionsOf: (e: AnyEvent) => Array<{
     memory_id: string;
     decision: string;
     abstain_reason?: string;
     evidence?: Record<string, unknown>;
   }>,
-  deps: EvidenceDeps,
+  deps: EvidenceDeps
 ): void {
   const { pct, MUST_LOAD_SCORE, SCORE_FLOOR } = deps;
   const fused = new Map<string, boolean>();
@@ -203,11 +213,19 @@ export function summarizeGateDivergence(
   if (total === 0 && unknownSpace === 0) return;
   console.log(`  divergence vs legacy  (fused runs only — the cuts describe nothing on raw BM25):`);
   console.log(`    agree                       ${agree.toString().padStart(5)}  (${pct(agree, total)})`);
-  console.log(`    legacy required, gate not   ${legacyRequiredGateNot.toString().padStart(5)}  (${pct(legacyRequiredGateNot, total)})  — the gate withholds`);
-  console.log(`    gate required, legacy not   ${gateRequiredLegacyNot.toString().padStart(5)}  (${pct(gateRequiredLegacyNot, total)})  — the gate promotes`);
-  console.log(`    every one of the ${legacyRequiredGateNot + gateRequiredLegacyNot} divergence(s) needs an explanation before activation (§18.2)`);
+  console.log(
+    `    legacy required, gate not   ${legacyRequiredGateNot.toString().padStart(5)}  (${pct(legacyRequiredGateNot, total)})  — the gate withholds`
+  );
+  console.log(
+    `    gate required, legacy not   ${gateRequiredLegacyNot.toString().padStart(5)}  (${pct(gateRequiredLegacyNot, total)})  — the gate promotes`
+  );
+  console.log(
+    `    every one of the ${legacyRequiredGateNot + gateRequiredLegacyNot} divergence(s) needs an explanation before activation (§18.2)`
+  );
   if (unknownSpace > 0) {
-    console.log(`    (${unknownSpace} decision(s) skipped: no hook_recall in this window, so the score space is unknown)`);
+    console.log(
+      `    (${unknownSpace} decision(s) skipped: no hook_recall in this window, so the score space is unknown)`
+    );
   }
 
   // #422: die `required`-Abweichungen nach Signatur — die Zählung oben sagt
@@ -224,15 +242,15 @@ export function summarizeGateDivergence(
     const events_ = groups.reduce((s, g) => s + g.events, 0);
     const memories = groups.reduce((s, g) => s + g.memories, 0);
     console.log(
-      `  required divergence — ${label}:  ${events_} decision(s) across ${memories} memory/-ies, ${groups.length} signature(s)`,
+      `  required divergence — ${label}:  ${events_} decision(s) across ${memories} memory/-ies, ${groups.length} signature(s)`
     );
     for (const g of groups.slice(0, 8)) {
       const s = g.signature;
       console.log(
-        `    ${String(g.events).padStart(5)} dec / ${String(g.memories).padStart(3)} mem  legacy=${s.legacyBand.padEnd(11)} gate=${s.decision.padEnd(9)} reason=${s.abstainReason.padEnd(11)}`,
+        `    ${String(g.events).padStart(5)} dec / ${String(g.memories).padStart(3)} mem  legacy=${s.legacyBand.padEnd(11)} gate=${s.decision.padEnd(9)} reason=${s.abstainReason.padEnd(11)}`
       );
       console.log(
-        `                              identifier=${String(s.exactIdentifier).padEnd(5)} coverage=${String(s.coverage).padEnd(4)} arms=${String(s.armAgreement).padEnd(5)} scope=${String(s.scopeMatch).padEnd(5)} temporal=${s.temporalStatus}`,
+        `                              identifier=${String(s.exactIdentifier).padEnd(5)} coverage=${String(s.coverage).padEnd(4)} arms=${String(s.armAgreement).padEnd(5)} scope=${String(s.scopeMatch).padEnd(5)} temporal=${s.temporalStatus}`
       );
     }
     if (groups.length > 8) console.log(`    … ${groups.length - 8} further signature(s)`);
@@ -253,17 +271,16 @@ export function summarizeGateDivergence(
     const events_ = groups.reduce((s, g) => s + g.events, 0);
     const memories = groups.reduce((s, g) => s + g.memories, 0);
     console.log(
-      `  no_answer divergence — ${label}:  ${events_} decision(s) across ${memories} memory/-ies, ${groups.length} signature(s)`,
+      `  no_answer divergence — ${label}:  ${events_} decision(s) across ${memories} memory/-ies, ${groups.length} signature(s)`
     );
     for (const g of groups) {
       const s = g.signature;
       console.log(
-        `    ${String(g.events).padStart(5)} dec / ${String(g.memories).padStart(3)} mem  legacy=${s.legacyBand.padEnd(11)} gate=${s.decision.padEnd(9)} reason=${s.abstainReason.padEnd(11)}`,
+        `    ${String(g.events).padStart(5)} dec / ${String(g.memories).padStart(3)} mem  legacy=${s.legacyBand.padEnd(11)} gate=${s.decision.padEnd(9)} reason=${s.abstainReason.padEnd(11)}`
       );
       console.log(
-        `                              identifier=${String(s.exactIdentifier).padEnd(5)} coverage=${String(s.coverage).padEnd(4)} arms=${String(s.armAgreement).padEnd(5)} scope=${String(s.scopeMatch).padEnd(5)} temporal=${s.temporalStatus}`,
+        `                              identifier=${String(s.exactIdentifier).padEnd(5)} coverage=${String(s.coverage).padEnd(4)} arms=${String(s.armAgreement).padEnd(5)} scope=${String(s.scopeMatch).padEnd(5)} temporal=${s.temporalStatus}`
       );
     }
   }
 }
-

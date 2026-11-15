@@ -13,7 +13,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BridgePool, type Bridge } from "../src/learned-recall/bridges.js";
 import { writeBridges, type TelemetryEvent } from "../src/learned-recall/harvest.js";
-import { bridgeFireStats, demoteIdleBridges, DEMOTION_MIN_FIRES, DEMOTION_WINDOW_DAYS } from "../src/learned-recall/demotion.js";
+import {
+  bridgeFireStats,
+  demoteIdleBridges,
+  DEMOTION_MIN_FIRES,
+  DEMOTION_WINDOW_DAYS,
+} from "../src/learned-recall/demotion.js";
 
 const DAY = 86_400_000;
 const NOW = new Date("2026-09-28T12:00:00.000Z");
@@ -64,14 +69,25 @@ test("#129 defaults: 30-day window, 20 fires", () => {
 });
 
 test("#129 bridgeFireStats: attributes fires by trigger + added terms, counts loads and acted-on episodes as outcomes", () => {
-  const other: Bridge = { ...BRIDGE, id: "b-other", trigger_terms: ["invoice", "amount"], expansion_terms: ["billing"] };
+  const other: Bridge = {
+    ...BRIDGE,
+    id: "b-other",
+    trigger_terms: ["invoice", "amount"],
+    expansion_terms: ["billing"],
+  };
   const events: TelemetryEvent[] = [
     ...fires(3, 1),
     { kind: "load_memory", ts: at(1), id: "m", found: true, follows_recall: "f0", from_hook_recall: null },
     { kind: "recall_episode", ts: at(1), recall_id: "f1", memory_id: "m", acted_on: true },
     { kind: "load_memory", ts: at(1), id: "gone", found: false, follows_recall: "f2", from_hook_recall: null }, // a failed load is no outcome
     // expanded, but by other terms: not a fire of BRIDGE
-    { kind: "hook_recall", ts: at(1), recall_id: "x", query: QUERY, bridge_expansion: { lang: "en", added: ["billing"] } },
+    {
+      kind: "hook_recall",
+      ts: at(1),
+      recall_id: "x",
+      query: QUERY,
+      bridge_expansion: { lang: "en", added: ["billing"] },
+    },
   ];
   const stats = bridgeFireStats([BRIDGE, other], events, new Date(NOW.getTime() - 30 * DAY), NOW);
   assert.deepEqual(stats.get("b-panel"), { fires: 3, outcomes: 2 });
@@ -92,7 +108,10 @@ test("#129: a confirmed bridge with ≥20 fires and no outcome is demoted and th
 
     const after = BridgePool.load(root, NOW).expansionsFor(QUERY, "en");
     assert.equal(after.length, 3, "demoted: at most 3 expansion terms");
-    const log = (await readFile(join(root, "bridges", "archive", "log.jsonl"), "utf8")).trim().split("\n").map((l) => JSON.parse(l));
+    const log = (await readFile(join(root, "bridges", "archive", "log.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
     assert.equal(log[0].action, "demote");
   });
 });
@@ -118,7 +137,11 @@ test("#129: demoted for a full window, fired again without outcome → archived;
     assert.deepEqual(r, { demoted: 0, restored: 0, archived: 1 });
     assert.ok(!existsSync(join(dir, `${BRIDGE.id}.json`)));
     assert.ok(existsSync(join(root, "bridges", "archive", "en", `${BRIDGE.id}.json`)), "moved, not deleted");
-    assert.deepEqual(BridgePool.load(root, NOW).expansionsFor(QUERY, "en"), [], "the archived bridge no longer expands");
+    assert.deepEqual(
+      BridgePool.load(root, NOW).expansionsFor(QUERY, "en"),
+      [],
+      "the archived bridge no longer expands"
+    );
 
     // the reach that minted it may still be in the log: a rewrite must not resurrect it
     assert.equal(await writeBridges(root, [BRIDGE], NOW), 0);

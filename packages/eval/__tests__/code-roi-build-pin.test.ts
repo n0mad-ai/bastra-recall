@@ -110,7 +110,7 @@ const TOOL_DEF = { name: "find_affected_files", description: "x" };
  */
 async function buildFakeDist(
   root: string,
-  opts: { memoryPart?: string; codeClause?: string; toolDef?: unknown } = {},
+  opts: { memoryPart?: string; codeClause?: string; toolDef?: unknown } = {}
 ): Promise<string> {
   const distDir = join(root, "packages", "daemon", "dist");
   await mkdir(join(distDir, "code-graph"), { recursive: true });
@@ -124,12 +124,12 @@ async function buildFakeDist(
       `export function serverInstructions(enabled) { return enabled ? SERVER_INSTRUCTIONS + CODE_AWARENESS_CLAUSE : SERVER_INSTRUCTIONS; }`,
       "",
     ].join("\n"),
-    "utf8",
+    "utf8"
   );
   await writeFile(
     join(distDir, "code-graph", "find-affected-files.js"),
     `export const affectedTools = [${JSON.stringify(opts.toolDef ?? TOOL_DEF)}];\n`,
-    "utf8",
+    "utf8"
   );
   await writeFile(join(distDir, "tool-defs.js"), "export const ALL_TOOL_DEFS = [];\n", "utf8");
   // The copy inside the checkout, not the real repo's own script — see the
@@ -220,10 +220,7 @@ describe("frozenSurfaceMismatches", () => {
     const reg = matchingRegistration();
     const built = { ...reg.arms.frozen_surface, tool_definition_sha256: "x", code_clause_sha256: "y" };
     const mismatches = frozenSurfaceMismatches(built, reg);
-    assert.deepEqual(
-      mismatches.map((m: any) => m.field).sort(),
-      ["code_clause_sha256", "tool_definition_sha256"],
-    );
+    assert.deepEqual(mismatches.map((m: any) => m.field).sort(), ["code_clause_sha256", "tool_definition_sha256"]);
   });
 });
 
@@ -501,7 +498,7 @@ describe("the runner's own CLI: build-pin.json across a synthetic archive", () =
       assert.equal(
         await readFile(join(out, "build-pin.json"), "utf8"),
         JSON.stringify(tampered, null, 2),
-        "the mismatched pin is never silently overwritten",
+        "the mismatched pin is never silently overwritten"
       );
     });
   });
@@ -515,11 +512,11 @@ describe("evaluate-v4's mixed_builds report", () => {
       await mkdir(join(dir, "runs", "S01"), { recursive: true });
       await writeFile(
         join(dir, "runs", "S01", "A.meta.json"),
-        JSON.stringify({ arm: "A", finished: true, buildPin: "sig-1" }),
+        JSON.stringify({ arm: "A", finished: true, buildPin: "sig-1" })
       );
       await writeFile(
         join(dir, "runs", "S01", "B.failed-123.meta.json"),
-        JSON.stringify({ arm: "B", finished: false, buildPin: "sig-1" }),
+        JSON.stringify({ arm: "B", finished: false, buildPin: "sig-1" })
       );
       const rows = armMetaRows(join(dir, "runs"));
       assert.equal(rows.length, 2);
@@ -551,10 +548,7 @@ describe("evaluate-v4's mixed_builds report", () => {
     ];
     const report = mixedBuildsReport(rows, "sig-1");
     assert.equal(report.mixed_builds, true);
-    assert.deepEqual(
-      report.offending.map((o: { scenario: string }) => o.scenario).sort(),
-      ["S17", "S17"],
-    );
+    assert.deepEqual(report.offending.map((o: { scenario: string }) => o.scenario).sort(), ["S17", "S17"]);
   });
 });
 

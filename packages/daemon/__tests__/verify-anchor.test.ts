@@ -103,7 +103,7 @@ test("#467: a summary that states a count gets the count reminder", async () => 
         title: "Fehlerkatalog",
         summary: "Der Katalog listet 27 recurring failure modes.",
         verify_cmd: "grep -c '^1' catalog.md",
-      }),
+      })
     );
     const hint = (await loadMemoryHandler(deps, { id: counted.id })).verify!.hint;
     assert.match(hint, /states a count/);

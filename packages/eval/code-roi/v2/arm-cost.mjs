@@ -27,7 +27,7 @@ import { join } from "node:path";
  * paid run stops.
  */
 const REGISTRATION = JSON.parse(
-  readFileSync(new URL("../../registrations/code-awareness-change-impact.json", import.meta.url), "utf8"),
+  readFileSync(new URL("../../registrations/code-awareness-change-impact.json", import.meta.url), "utf8")
 );
 const REGISTERED_CEILING_USD = Number(REGISTRATION.run_conditions.cost_ceiling_usd);
 
@@ -55,9 +55,7 @@ export function armEstimateUsdOf(registration) {
   const prose = String(registration?.run_conditions?.cost_estimate ?? "");
   const m = /mean \$([0-9]+(?:\.[0-9]+)?) per arm/.exec(prose);
   if (m !== null) return Number(m[1]);
-  throw new Error(
-    "run_conditions must provide arm_estimate_usd or state a “mean $X per arm” cost estimate",
-  );
+  throw new Error("run_conditions must provide arm_estimate_usd or state a “mean $X per arm” cost estimate");
 }
 
 /**
@@ -78,7 +76,7 @@ export const REGISTERED_ARM_ESTIMATE_USD = (() => {
       "run_conditions.cost_estimate no longer states a “mean $X per arm”. The runner " +
         "charges an aborted arm with that number before any arm has finished; without it an " +
         "abort would cost $0 and the ceiling would not bind. Restore the phrase, or amend the " +
-        "registration and this reader together.",
+        "registration and this reader together."
     );
   }
   return Number(m[1]);
@@ -194,7 +192,7 @@ export function abortedArmCharge(
   transcript,
   finishedCostUsd,
   finishedArms,
-  registeredEstimateUsd = REGISTERED_ARM_ESTIMATE_USD,
+  registeredEstimateUsd = REGISTERED_ARM_ESTIMATE_USD
 ) {
   const measured = armCostUsd(transcript ?? "");
   if (measured > 0) return { usd: measured, source: "result_event" };

@@ -27,7 +27,7 @@ test("A holder whose lock was taken over leaves the successor's lock in place", 
       // Another process took the lock over as orphaned while this one was slow.
       await writeFile(lockPath, successor, "utf8");
     },
-    { crossProcess: true },
+    { crossProcess: true }
   );
   assert.equal(await readFile(lockPath, "utf8"), successor, "the successor's lock was deleted");
 });
@@ -36,7 +36,10 @@ test("A holder still owning its lock removes it on release", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-path-lock-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const state = join(dir, "state.json");
-  assert.equal(await withPathLock(state, async () => existsSync(pathLockFilePath(state)), { crossProcess: true }), true);
+  assert.equal(
+    await withPathLock(state, async () => existsSync(pathLockFilePath(state)), { crossProcess: true }),
+    true
+  );
   assert.equal(existsSync(pathLockFilePath(state)), false);
 });
 
@@ -68,10 +71,22 @@ test("#1207: a replacement between age inspection and removal survives", async (
     return result;
   });
   syncBuiltinESMExports();
-  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
   let ran = false;
   const { PathLockUnavailableError } = await import("../src/path-lock.js");
-  await assert.rejects(withPathLock(state, async () => { ran = true; }, { crossProcess: true, requireLock: true }), PathLockUnavailableError);
+  await assert.rejects(
+    withPathLock(
+      state,
+      async () => {
+        ran = true;
+      },
+      { crossProcess: true, requireLock: true }
+    ),
+    PathLockUnavailableError
+  );
   assert.equal(replaced, true);
   assert.equal(ran, false);
   assert.equal(await readFile(lock, "utf8"), successor);
@@ -92,9 +107,12 @@ test("#1207: an unchanged stale token is reclaimed, including the advisory lane"
       assert.notEqual(JSON.parse(await readFile(lock, "utf8")).token, "old");
       return "held";
     };
-    assert.equal(advisory
-      ? await tryWithPathLock(state, callback, { crossProcess: true, takeOverStale: true })
-      : await withPathLock(state, callback, { crossProcess: true, requireLock: true }), "held");
+    assert.equal(
+      advisory
+        ? await tryWithPathLock(state, callback, { crossProcess: true, takeOverStale: true })
+        : await withPathLock(state, callback, { crossProcess: true, requireLock: true }),
+      "held"
+    );
     assert.equal(existsSync(lock), false);
     assert.equal(existsSync(`${lock}.mutation`), false);
   }
@@ -107,7 +125,9 @@ test("#1207: overlapping processes reclaim once and retain every write", { timeo
   const dir = await mkdtemp(join(tmpdir(), "bastra-path-lock-load-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const worker = join(dir, "worker.mts");
-  await writeFile(worker, `
+  await writeFile(
+    worker,
+    `
     import { withPathLock } from ${JSON.stringify(module)};
     import { readFile, writeFile, open, unlink } from 'node:fs/promises';
     import { setTimeout as delay } from 'node:timers/promises';
@@ -127,8 +147,11 @@ test("#1207: overlapping processes reclaim once and retain every write", { timeo
         } finally { await handle.close(); await unlink(active); }
       }, { crossProcess: true, requireLock: true });
     }
-  `);
-  const rounds = 5, processes = 4, writes = 25;
+  `
+  );
+  const rounds = 5,
+    processes = 4,
+    writes = 25;
   for (let round = 0; round < rounds; round++) {
     const state = join(dir, `round-${round}.json`);
     await writeFile(state, "[]");
@@ -136,9 +159,13 @@ test("#1207: overlapping processes reclaim once and retain every write", { timeo
     const old = new Date(Date.now() - 20_000);
     await utimes(pathLockFilePath(state), old, old);
     const children = Array.from({ length: processes }, (_, id) => {
-      const child = spawn(process.execPath, ["--import", "tsx", worker, state, String(id), String(writes)], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
+      const child = spawn(process.execPath, ["--import", "tsx", worker, state, String(id), String(writes)], {
+        stdio: ["ignore", "ignore", "pipe", "ipc"],
+      });
       let stderr = "";
-      child.stderr!.on("data", chunk => { stderr += chunk; });
+      child.stderr!.on("data", (chunk) => {
+        stderr += chunk;
+      });
       const ready = new Promise<void>((resolve, reject) => {
         child.once("message", () => resolve());
         child.once("error", reject);
@@ -146,22 +173,33 @@ test("#1207: overlapping processes reclaim once and retain every write", { timeo
       });
       const done = new Promise<void>((resolve, reject) => {
         child.once("error", reject);
-        child.once("exit", code => code === 0 ? resolve() : reject(new Error(`worker ${id} exited ${code}: ${stderr}`)));
+        child.once("exit", (code) =>
+          code === 0 ? resolve() : reject(new Error(`worker ${id} exited ${code}: ${stderr}`))
+        );
       });
       // Attach immediately so a startup failure cannot become unhandled.
       void done.catch(() => {});
-      t.after(() => { if (child.exitCode === null) child.kill(); });
+      t.after(() => {
+        if (child.exitCode === null) child.kill();
+      });
       return { child, ready, done };
     });
-    await Promise.all(children.map(c => c.ready));
+    await Promise.all(children.map((c) => c.ready));
     for (const c of children) c.child.send("start");
-    await Promise.all(children.map(c => c.done));
+    await Promise.all(children.map((c) => c.done));
     const rows = JSON.parse(await readFile(state, "utf8")) as string[];
     assert.equal(rows.length, processes * writes, `round ${round}: lost writes`);
     assert.equal(new Set(rows).size, processes * writes);
   }
-  assert.equal((await readdir(dir)).filter(name => name.endsWith(".lock") || name.endsWith(".mutation") || name.endsWith(".active")).length, 0);
-  t.diagnostic(`${rounds} rounds × ${processes} processes × ${writes} writes = ${rounds * processes * writes} writes; 0 simultaneous holders, 0 lost writes`);
+  assert.equal(
+    (await readdir(dir)).filter(
+      (name) => name.endsWith(".lock") || name.endsWith(".mutation") || name.endsWith(".active")
+    ).length,
+    0
+  );
+  t.diagnostic(
+    `${rounds} rounds × ${processes} processes × ${writes} writes = ${rounds * processes * writes} writes; 0 simultaneous holders, 0 lost writes`
+  );
 });
 
 test("#1207: dead and aged empty mutation guards recover in both lanes", async (t) => {
@@ -169,48 +207,70 @@ test("#1207: dead and aged empty mutation guards recover in both lanes", async (
   const { tryWithPathLock } = await import("../src/path-lock.js");
   const dir = await mkdtemp(join(tmpdir(), "bastra-path-lock-recovery-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
-  for (const advisory of [false, true]) for (const body of ["", "invalid", JSON.stringify({ pid: 2147483647, host: hostname(), ts: Date.now(), token: "dead" })]) {
-    const state = join(dir, "state.json");
-    const guard = `${pathLockFilePath(state)}.mutation`;
-    await writeFile(guard, body);
-    if (body === "" || body === "invalid") {
-      const old = new Date(Date.now() - 4_500);
-      await utimes(guard, old, old);
+  for (const advisory of [false, true])
+    for (const body of [
+      "",
+      "invalid",
+      JSON.stringify({ pid: 2147483647, host: hostname(), ts: Date.now(), token: "dead" }),
+    ]) {
+      const state = join(dir, "state.json");
+      const guard = `${pathLockFilePath(state)}.mutation`;
+      await writeFile(guard, body);
+      if (body === "" || body === "invalid") {
+        const old = new Date(Date.now() - 4_500);
+        await utimes(guard, old, old);
+      }
+      assert.equal(
+        advisory
+          ? await tryWithPathLock(state, async () => "recovered", { crossProcess: true })
+          : await withPathLock(state, async () => "recovered", { crossProcess: true, requireLock: true }),
+        "recovered"
+      );
+      assert.equal(existsSync(guard), false);
     }
-    assert.equal(advisory
-      ? await tryWithPathLock(state, async () => "recovered", { crossProcess: true })
-      : await withPathLock(state, async () => "recovered", { crossProcess: true, requireLock: true }), "recovered");
-    assert.equal(existsSync(guard), false);
-  }
 });
 
 test("#1207: fresh markers recover before the acquisition deadline in required and fail-open lanes", async (t) => {
   const { utimes } = await import("node:fs/promises");
   const dir = await mkdtemp(join(tmpdir(), "bastra-marker-deadline-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
-  for (const recovery of [false, true]) for (const remote of [false, true]) for (const requireLock of [false, true]) {
-    const state = join(dir, "state.json");
-    const guard = `${pathLockFilePath(state)}.mutation`;
-    const start = Date.now();
-    const body = remote ? JSON.stringify({ pid: process.pid, host: "remote", ts: start, token: "remote" }) : "";
-    await writeFile(guard, recovery ? JSON.stringify({ pid: 2147483647, host: hostname(), token: "dead" }) : body);
-    const marker = recovery ? `${guard}.recover` : guard;
-    if (recovery) await writeFile(marker, body);
-    await utimes(marker, new Date(start), new Date(start));
-    // Advance only the clock; real filesystem I/O and retry scheduling remain.
-    // At 5 s the old equal stale/wait bounds reject or invoke without a lease.
-    let now = start - 25;
-    t.mock.method(Date, "now", () => now += 25);
-    try {
-      assert.equal(await withPathLock(state, async () => {
-        assert.ok(existsSync(pathLockFilePath(state)), "callback must hold a lease, including the fail-open lane");
-        return "held";
-      }, { crossProcess: true, requireLock }), "held");
-      assert.ok(now - start < 5_000, "recovery leaves headroom before the deadline");
-      assert.equal(existsSync(guard), false);
-      assert.equal(existsSync(`${guard}.recover`), false);
-    } finally { t.mock.restoreAll(); }
-  }
+  for (const recovery of [false, true])
+    for (const remote of [false, true])
+      for (const requireLock of [false, true]) {
+        const state = join(dir, "state.json");
+        const guard = `${pathLockFilePath(state)}.mutation`;
+        const start = Date.now();
+        const body = remote ? JSON.stringify({ pid: process.pid, host: "remote", ts: start, token: "remote" }) : "";
+        await writeFile(guard, recovery ? JSON.stringify({ pid: 2147483647, host: hostname(), token: "dead" }) : body);
+        const marker = recovery ? `${guard}.recover` : guard;
+        if (recovery) await writeFile(marker, body);
+        await utimes(marker, new Date(start), new Date(start));
+        // Advance only the clock; real filesystem I/O and retry scheduling remain.
+        // At 5 s the old equal stale/wait bounds reject or invoke without a lease.
+        let now = start - 25;
+        t.mock.method(Date, "now", () => (now += 25));
+        try {
+          assert.equal(
+            await withPathLock(
+              state,
+              async () => {
+                assert.ok(
+                  existsSync(pathLockFilePath(state)),
+                  "callback must hold a lease, including the fail-open lane"
+                );
+                return "held";
+              },
+              { crossProcess: true, requireLock }
+            ),
+            "held"
+          );
+          assert.ok(now - start < 5_000, "recovery leaves headroom before the deadline");
+          assert.equal(existsSync(guard), false);
+          assert.equal(existsSync(`${guard}.recover`), false);
+        } finally {
+          t.mock.restoreAll();
+        }
+      }
 });
 
 test("#1207: fresh live, remote and empty mutation guards stay protected", async (t) => {
@@ -218,7 +278,11 @@ test("#1207: fresh live, remote and empty mutation guards stay protected", async
   const { utimes } = await import("node:fs/promises");
   const dir = await mkdtemp(join(tmpdir(), "bastra-path-lock-guard-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
-  for (const body of ["", JSON.stringify({ pid: process.pid, host: hostname(), ts: 1, token: "live" }), JSON.stringify({ pid: 2147483647, host: "remote", ts: 1, token: "remote" })]) {
+  for (const body of [
+    "",
+    JSON.stringify({ pid: process.pid, host: hostname(), ts: 1, token: "live" }),
+    JSON.stringify({ pid: 2147483647, host: "remote", ts: 1, token: "remote" }),
+  ]) {
     const state = join(dir, "state.json");
     const guard = `${pathLockFilePath(state)}.mutation`;
     await writeFile(guard, body);
@@ -228,14 +292,19 @@ test("#1207: fresh live, remote and empty mutation guards stay protected", async
     t.mock.method(Date, "now", () => start + 6_000 * ticks++);
     assert.equal(await withPathLock(state, async () => "fail-open", { crossProcess: true }), "fail-open");
     ticks = 0;
-    await assert.rejects(withPathLock(state, async () => assert.fail("must not write"), { crossProcess: true, requireLock: true }), PathLockUnavailableError);
+    await assert.rejects(
+      withPathLock(state, async () => assert.fail("must not write"), { crossProcess: true, requireLock: true }),
+      PathLockUnavailableError
+    );
     ticks = 0;
-    assert.equal(await tryWithPathLock(state, async () => assert.fail("must not write"), { crossProcess: true }), undefined);
+    assert.equal(
+      await tryWithPathLock(state, async () => assert.fail("must not write"), { crossProcess: true }),
+      undefined
+    );
     assert.equal(await readFile(guard, "utf8"), body);
     t.mock.restoreAll();
   }
 });
-
 
 test("#1207: recovery preserves a concurrently replaced live marker", async (t) => {
   const fs = await import("node:fs");
@@ -254,11 +323,16 @@ test("#1207: recovery preserves a concurrently replaced live marker", async (t) 
     return fd;
   });
   syncBuiltinESMExports();
-  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
-  assert.equal(await tryWithPathLock(state, async () => assert.fail("live marker must block"), { crossProcess: true }), undefined);
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+  assert.equal(
+    await tryWithPathLock(state, async () => assert.fail("live marker must block"), { crossProcess: true }),
+    undefined
+  );
   assert.equal(await readFile(guard, "utf8"), replacement);
 });
-
 
 test("#1207: recovery preserves a fresh empty replacement with identical bytes", async (t) => {
   const fs = await import("node:fs");
@@ -282,11 +356,16 @@ test("#1207: recovery preserves a fresh empty replacement with identical bytes",
     return fd;
   });
   syncBuiltinESMExports();
-  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
-  assert.equal(await tryWithPathLock(state, async () => assert.fail("fresh marker must block"), { crossProcess: true }), undefined);
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+  assert.equal(
+    await tryWithPathLock(state, async () => assert.fail("fresh marker must block"), { crossProcess: true }),
+    undefined
+  );
   assert.equal(await readFile(guard, "utf8"), "");
 });
-
 
 test("#1207: aged mutation and recovery markers expire regardless of owner", async (t) => {
   const { utimes, readdir } = await import("node:fs/promises");
@@ -296,26 +375,27 @@ test("#1207: aged mutation and recovery markers expire regardless of owner", asy
   t.after(() => child.kill());
   const dir = await mkdtemp(join(tmpdir(), "bastra-aged-guard-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
-  for (const advisory of [false, true]) for (const owner of [
-    { pid: child.pid!, host: hostname(), ts: 1, token: "live-other-process" },
-    { pid: process.pid, host: "another-host", ts: 1, token: "remote" },
-  ]) {
-    const state = join(dir, "state.json");
-    const guard = `${pathLockFilePath(state)}.mutation`;
-    const old = new Date(Date.now() - 4_500);
-    for (const marker of [guard, `${guard}.recover`]) {
-      await writeFile(marker, JSON.stringify(owner));
-      await utimes(marker, old, old);
+  for (const advisory of [false, true])
+    for (const owner of [
+      { pid: child.pid!, host: hostname(), ts: 1, token: "live-other-process" },
+      { pid: process.pid, host: "another-host", ts: 1, token: "remote" },
+    ]) {
+      const state = join(dir, "state.json");
+      const guard = `${pathLockFilePath(state)}.mutation`;
+      const old = new Date(Date.now() - 4_500);
+      for (const marker of [guard, `${guard}.recover`]) {
+        await writeFile(marker, JSON.stringify(owner));
+        await utimes(marker, old, old);
+      }
+      if (advisory) {
+        // Cleaning an interrupted recovery backs off once before acquiring wx.
+        assert.equal(await tryWithPathLock(state, async () => "held", { crossProcess: true }), undefined);
+        assert.equal(await tryWithPathLock(state, async () => "held", { crossProcess: true }), "held");
+      } else {
+        assert.equal(await withPathLock(state, async () => "held", { crossProcess: true, requireLock: true }), "held");
+      }
+      assert.deepEqual(await readdir(dir), []);
     }
-    if (advisory) {
-      // Cleaning an interrupted recovery backs off once before acquiring wx.
-      assert.equal(await tryWithPathLock(state, async () => "held", { crossProcess: true }), undefined);
-      assert.equal(await tryWithPathLock(state, async () => "held", { crossProcess: true }), "held");
-    } else {
-      assert.equal(await withPathLock(state, async () => "held", { crossProcess: true, requireLock: true }), "held");
-    }
-    assert.deepEqual(await readdir(dir), []);
-  }
 });
 
 test("#1207: owner cleanup tolerates ENOENT without failing lock acquisition", async (t) => {
@@ -323,29 +403,42 @@ test("#1207: owner cleanup tolerates ENOENT without failing lock acquisition", a
   const { syncBuiltinESMExports } = await import("node:module");
   const dir = await mkdtemp(join(tmpdir(), "bastra-owner-enoent-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
-  const state = join(dir, "state.json"), guard = `${pathLockFilePath(state)}.mutation`;
+  const state = join(dir, "state.json"),
+    guard = `${pathLockFilePath(state)}.mutation`;
   const unlink = fs.default.unlinkSync;
   t.mock.method(fs.default, "unlinkSync", (...args: Parameters<typeof unlink>) => {
-    if (args[0] === guard) { unlink(...args); throw Object.assign(new Error("already removed"), { code: "ENOENT" }); }
+    if (args[0] === guard) {
+      unlink(...args);
+      throw Object.assign(new Error("already removed"), { code: "ENOENT" });
+    }
     return unlink(...args);
   });
   syncBuiltinESMExports();
-  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
   assert.equal(await withPathLock(state, async () => "held", { crossProcess: true, requireLock: true }), "held");
   assert.equal(existsSync(pathLockFilePath(state)), false);
   assert.equal(existsSync(guard), false);
 });
 
-test("#1207: competing recovery never moves a live owner's guard or strands its lease", { timeout: 15_000 }, async (t) => {
-  const { spawn } = await import("node:child_process");
-  const { readdir } = await import("node:fs/promises");
-  const { setTimeout: delay } = await import("node:timers/promises");
-  const dir = await mkdtemp(join(tmpdir(), "bastra-recovery-interleave-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
-  const state = join(dir, "state.json"), guard = `${pathLockFilePath(state)}.mutation`;
-  await writeFile(guard, JSON.stringify({ pid: 2147483647, host: hostname(), ts: 1, token: "dead" }));
-  const worker = join(dir, "worker.mts");
-  await writeFile(worker, `
+test(
+  "#1207: competing recovery never moves a live owner's guard or strands its lease",
+  { timeout: 15_000 },
+  async (t) => {
+    const { spawn } = await import("node:child_process");
+    const { readdir } = await import("node:fs/promises");
+    const { setTimeout: delay } = await import("node:timers/promises");
+    const dir = await mkdtemp(join(tmpdir(), "bastra-recovery-interleave-"));
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    const state = join(dir, "state.json"),
+      guard = `${pathLockFilePath(state)}.mutation`;
+    await writeFile(guard, JSON.stringify({ pid: 2147483647, host: hostname(), ts: 1, token: "dead" }));
+    const worker = join(dir, "worker.mts");
+    await writeFile(
+      worker,
+      `
     import fs from 'node:fs';
     import { syncBuiltinESMExports } from 'node:module';
     const [state, role] = process.argv.slice(2), guard = state + '.lock.mutation';
@@ -399,51 +492,65 @@ test("#1207: competing recovery never moves a live owner's guard or strands its 
       fs.writeFileSync(flag(role+'-result'), JSON.stringify({ result: result ?? null }));
     } catch (err) { fs.writeFileSync(flag(role+'-result'), JSON.stringify({ error: err.name })); }
     finally { signal(role+'-done'); }
-  `);
-  const start = (role: string) => {
-    const child = spawn(process.execPath, ["--import", "tsx", worker, state, role], { stdio: ["ignore", "ignore", "pipe"] });
-    let stderr = "";
-    child.stderr!.on("data", chunk => { stderr += chunk; });
-    t.after(() => { if (child.exitCode === null) child.kill(); });
-    const done = new Promise<void>((resolve, reject) => {
-      child.once("error", reject);
-      child.once("exit", code => code === 0 ? resolve() : reject(new Error(`${role}: ${stderr}`)));
-    });
-    void done.catch(() => {});
-    return done;
-  };
-  const wait = async (...names: string[]) => {
-    const end = Date.now() + 10_000;
-    while (!names.some(name => existsSync(`${state}.${name}`))) {
-      assert.ok(Date.now() < end, `timed out waiting for ${names}`);
-      await delay(2);
-    }
-  };
-  const b = start("B");
-  await wait("B-observed");
-  const a = start("A");
-  await wait("A-owned");
-  await writeFile(`${state}.B-go`, "");
-  await wait("B-moved", "B-done");
-  await writeFile(`${state}.A-go`, "");
-  await Promise.all([a, b]);
-  assert.deepEqual(JSON.parse(await readFile(`${state}.A-result`, "utf8")), { result: "held" });
-  assert.equal(await withPathLock(state, async () => "next", { crossProcess: true, requireLock: true }), "next");
-  assert.deepEqual((await readdir(dir)).filter(name => /\.lock(?:\.|$)/.test(name)), []);
-});
+  `
+    );
+    const start = (role: string) => {
+      const child = spawn(process.execPath, ["--import", "tsx", worker, state, role], {
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+      let stderr = "";
+      child.stderr!.on("data", (chunk) => {
+        stderr += chunk;
+      });
+      t.after(() => {
+        if (child.exitCode === null) child.kill();
+      });
+      const done = new Promise<void>((resolve, reject) => {
+        child.once("error", reject);
+        child.once("exit", (code) => (code === 0 ? resolve() : reject(new Error(`${role}: ${stderr}`))));
+      });
+      void done.catch(() => {});
+      return done;
+    };
+    const wait = async (...names: string[]) => {
+      const end = Date.now() + 10_000;
+      while (!names.some((name) => existsSync(`${state}.${name}`))) {
+        assert.ok(Date.now() < end, `timed out waiting for ${names}`);
+        await delay(2);
+      }
+    };
+    const b = start("B");
+    await wait("B-observed");
+    const a = start("A");
+    await wait("A-owned");
+    await writeFile(`${state}.B-go`, "");
+    await wait("B-moved", "B-done");
+    await writeFile(`${state}.A-go`, "");
+    await Promise.all([a, b]);
+    assert.deepEqual(JSON.parse(await readFile(`${state}.A-result`, "utf8")), { result: "held" });
+    assert.equal(await withPathLock(state, async () => "next", { crossProcess: true, requireLock: true }), "next");
+    assert.deepEqual(
+      (await readdir(dir)).filter((name) => /\.lock(?:\.|$)/.test(name)),
+      []
+    );
+  }
+);
 
 test("#1207: owner cleanup leaves a replacement guard inode untouched", async (t) => {
   const fs = await import("node:fs");
   const { syncBuiltinESMExports } = await import("node:module");
   const dir = await mkdtemp(join(tmpdir(), "bastra-owner-successor-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
-  const state = join(dir, "state.json"), guard = `${pathLockFilePath(state)}.mutation`;
-  const open = fs.default.openSync, fstat = fs.default.fstatSync;
-  let ownerFd: number | undefined, swapped = false;
+  const state = join(dir, "state.json"),
+    guard = `${pathLockFilePath(state)}.mutation`;
+  const open = fs.default.openSync,
+    fstat = fs.default.fstatSync;
+  let ownerFd: number | undefined,
+    swapped = false;
   const successor = JSON.stringify({ pid: process.pid, host: hostname(), ts: Date.now(), token: "successor" });
   t.mock.method(fs.default, "openSync", (...args: Parameters<typeof open>) => {
     const fd = open(...args);
-    if (args[0] === guard && args[1] !== 'r') ownerFd = fd;
+    if (args[0] === guard && args[1] !== "r") ownerFd = fd;
     return fd;
   });
   t.mock.method(fs.default, "fstatSync", (...args: Parameters<typeof fstat>) => {
@@ -456,11 +563,21 @@ test("#1207: owner cleanup leaves a replacement guard inode untouched", async (t
     return st;
   });
   syncBuiltinESMExports();
-  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
-  assert.equal(await withPathLock(state, async () => {
-    assert.equal(await readFile(guard, "utf8"), successor);
-    await rm(guard); // Allow the real release to acquire its own guard.
-    return "held";
-  }, { crossProcess: true, requireLock: true }), "held");
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+  assert.equal(
+    await withPathLock(
+      state,
+      async () => {
+        assert.equal(await readFile(guard, "utf8"), successor);
+        await rm(guard); // Allow the real release to acquire its own guard.
+        return "held";
+      },
+      { crossProcess: true, requireLock: true }
+    ),
+    "held"
+  );
   assert.equal(swapped, true);
 });

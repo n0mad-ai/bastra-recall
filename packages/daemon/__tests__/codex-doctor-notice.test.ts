@@ -10,9 +10,15 @@ import type { DoctorResult } from "../src/cli/types.js";
 async function doctor(scenario: string): Promise<DoctorResult> {
   const home = await mkdtemp(join(tmpdir(), "codex-doctor-notice-"));
   try {
-    const bin = join(home, "bin"); await mkdir(bin);
-    const forwarder = join(home, "mcp-forwarder.js"); await writeFile(forwarder, "// fixture\n");
-    await writeFile(join(bin, "codex"), `#!${process.execPath}\nprocess.stdout.write(process.env.CODEX_MCP_FIXTURE);\n`, { mode: 0o700 });
+    const bin = join(home, "bin");
+    await mkdir(bin);
+    const forwarder = join(home, "mcp-forwarder.js");
+    await writeFile(forwarder, "// fixture\n");
+    await writeFile(
+      join(bin, "codex"),
+      `#!${process.execPath}\nprocess.stdout.write(process.env.CODEX_MCP_FIXTURE);\n`,
+      { mode: 0o700 }
+    );
     const adapter = new URL("../src/cli/adapters/codex.ts", import.meta.url).href;
     const paths = new URL("../src/cli/paths.ts", import.meta.url).href;
     const program = `
@@ -35,37 +41,62 @@ async function doctor(scenario: string): Promise<DoctorResult> {
       process.stdout.write(JSON.stringify(await codexAdapter.doctor()));
     `;
     const result = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", program], {
-      encoding: "utf8", timeout: 10_000,
-      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: `${bin}${delimiter}${process.env.PATH}`, DOCTOR_SCENARIO: scenario,
-        BASTRA_DAEMON_URL: "http://127.0.0.1:1", CODEX_MCP_FIXTURE: JSON.stringify({ name: "bastra-recall", transport: { type: "stdio", args: [forwarder], env: { BASTRA_VAULT_PATH: home } } }) },
+      encoding: "utf8",
+      timeout: 10_000,
+      env: {
+        ...process.env,
+        HOME: home,
+        USERPROFILE: home,
+        PATH: `${bin}${delimiter}${process.env.PATH}`,
+        DOCTOR_SCENARIO: scenario,
+        BASTRA_DAEMON_URL: "http://127.0.0.1:1",
+        CODEX_MCP_FIXTURE: JSON.stringify({
+          name: "bastra-recall",
+          transport: { type: "stdio", args: [forwarder], env: { BASTRA_VAULT_PATH: home } },
+        }),
+      },
     });
     assert.equal(result.status, 0, result.stderr);
     return JSON.parse(result.stdout);
-  } finally { await rm(home, { recursive: true, force: true }); }
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 }
 
-test("only a missing save notice keeps the installation and recall hooks healthy", { skip: process.platform === "win32" }, async () => {
-  for (const scenario of ["missing-notice", "optional-stop", "wrong-matcher"]) {
-    const result = await doctor(scenario);
-    assert.equal(result.status, "ok", JSON.stringify(result));
-    assert.ok(result.features); assert.ok(result.details);
-    assert.equal(result.features.recallHooks, true);
-    assert.equal(result.features.stopHook, scenario !== "optional-stop");
-    assert.match(result.message, /save notice missing.*bastra install codex/);
-    assert.match(result.details["save-notice-hook"], /MISSING/);
-    assert.match(result.details["hook-trust"], /\/hooks/);
+test(
+  "only a missing save notice keeps the installation and recall hooks healthy",
+  { skip: process.platform === "win32" },
+  async () => {
+    for (const scenario of ["missing-notice", "optional-stop", "wrong-matcher"]) {
+      const result = await doctor(scenario);
+      assert.equal(result.status, "ok", JSON.stringify(result));
+      assert.ok(result.features);
+      assert.ok(result.details);
+      assert.equal(result.features.recallHooks, true);
+      assert.equal(result.features.stopHook, scenario !== "optional-stop");
+      assert.match(result.message, /save notice missing.*bastra install codex/);
+      assert.match(result.details["save-notice-hook"], /MISSING/);
+      assert.match(result.details["hook-trust"], /\/hooks/);
+    }
   }
-});
+);
 
-test("healthy notices stay healthy; required recall and unreadable hooks still need repair", { skip: process.platform === "win32" }, async () => {
-  const healthy = await doctor("healthy");
-  assert.ok(healthy.features); assert.ok(healthy.details);
-  assert.equal(healthy.status, "ok"); assert.equal(healthy.features.recallHooks, true);
-  assert.equal(healthy.details["save-notice-hook"], "registered");
-  assert.doesNotMatch(healthy.message, /missing/);
-  for (const scenario of ["missing-recall", "malformed"]) {
-    const result = await doctor(scenario);
-    assert.ok(result.features);
-    assert.equal(result.status, "broken"); assert.equal(result.features.recallHooks, false);
+test(
+  "healthy notices stay healthy; required recall and unreadable hooks still need repair",
+  { skip: process.platform === "win32" },
+  async () => {
+    const healthy = await doctor("healthy");
+    assert.ok(healthy.features);
+    assert.ok(healthy.details);
+    assert.equal(healthy.status, "ok");
+    assert.equal(healthy.features.recallHooks, true);
+    assert.equal(healthy.details["save-notice-hook"], "registered");
+    assert.doesNotMatch(healthy.message, /missing/);
+    for (const scenario of ["missing-recall", "malformed"]) {
+      const result = await doctor(scenario);
+      assert.ok(result.features);
+      assert.equal(result.status, "broken");
+      assert.equal(result.features.recallHooks, false);
+    }
   }
-});
+);

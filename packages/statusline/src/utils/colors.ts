@@ -1,8 +1,5 @@
 export function hexToAnsi(hex: string, isBackground: boolean): string {
-  if (
-    isBackground &&
-    (hex.toLowerCase() === "transparent" || hex.toLowerCase() === "none")
-  ) {
+  if (isBackground && (hex.toLowerCase() === "transparent" || hex.toLowerCase() === "none")) {
     return "\x1b[49m";
   }
 
@@ -12,10 +9,7 @@ export function hexToAnsi(hex: string, isBackground: boolean): string {
   return `\x1b[${isBackground ? "48" : "38"};2;${r};${g};${b}m`;
 }
 
-export function extractBgToFg(
-  ansiCode: string,
-  useTextOnly: boolean = false,
-): string {
+export function extractBgToFg(ansiCode: string, useTextOnly: boolean = false): string {
   if (!ansiCode || ansiCode === "") {
     return "";
   }
@@ -48,10 +42,7 @@ export function extractBgToFg(
 }
 
 export function hexTo256Ansi(hex: string, isBackground: boolean): string {
-  if (
-    isBackground &&
-    (hex.toLowerCase() === "transparent" || hex.toLowerCase() === "none")
-  ) {
+  if (isBackground && (hex.toLowerCase() === "transparent" || hex.toLowerCase() === "none")) {
     return "\x1b[49m";
   }
 
@@ -65,12 +56,7 @@ export function hexTo256Ansi(hex: string, isBackground: boolean): string {
       if (r > 248) return 231;
       return Math.round(((r - 8) / 247) * 24) + 232;
     }
-    return (
-      16 +
-      36 * Math.round((r / 255) * 5) +
-      6 * Math.round((g / 255) * 5) +
-      Math.round((b / 255) * 5)
-    );
+    return 16 + 36 * Math.round((r / 255) * 5) + 6 * Math.round((g / 255) * 5) + Math.round((b / 255) * 5);
   };
 
   const colorCode = toAnsi256(r, g, b);
@@ -78,10 +64,7 @@ export function hexTo256Ansi(hex: string, isBackground: boolean): string {
 }
 
 export function hexToBasicAnsi(hex: string, isBackground: boolean): string {
-  if (
-    isBackground &&
-    (hex.toLowerCase() === "transparent" || hex.toLowerCase() === "none")
-  ) {
+  if (isBackground && (hex.toLowerCase() === "transparent" || hex.toLowerCase() === "none")) {
     return "\x1b[49m";
   }
 

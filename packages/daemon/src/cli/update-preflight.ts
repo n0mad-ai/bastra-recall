@@ -111,7 +111,9 @@ async function walk(root: string, dir: string, out: string[]): Promise<void> {
 
 async function hashFile(path: string): Promise<string | null> {
   try {
-    return createHash("sha256").update(await readFile(path)).digest("hex");
+    return createHash("sha256")
+      .update(await readFile(path))
+      .digest("hex");
   } catch {
     return null;
   }
@@ -182,11 +184,7 @@ export interface BackupOutcome {
  * told "backed up to: …" about an empty directory and then overwrite the
  * original. Per file, so one failure still lets the rest be saved.
  */
-export async function backupDirty(
-  m: UpdateManifest,
-  dirty: DirtyFile[],
-  home = homedir(),
-): Promise<BackupOutcome> {
+export async function backupDirty(m: UpdateManifest, dirty: DirtyFile[], home = homedir()): Promise<BackupOutcome> {
   const present = dirty.filter((d) => d.kind === "modified");
   if (present.length === 0) return { failed: [] };
   const dir = join(backupRoot(home), m.version);
@@ -255,7 +253,13 @@ const AUDIT_FAILURE_PATTERNS: ReadonlyArray<{ re: RegExp; what: string }> = [
 
 /** Last few meaningful lines of npm's output, for a one-line report. */
 function tail(out: string): string {
-  return out.split("\n").map((l) => l.trim()).filter(Boolean).slice(-3).join(" ").slice(0, 300);
+  return out
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(-3)
+    .join(" ")
+    .slice(0, 300);
 }
 
 /**
@@ -297,10 +301,17 @@ export function classifyAuditOutput(status: number, output: string): ProvenanceC
  * exits 1 with "Fetching verification keys using TUF failed" / ENOTCACHED, and
  * with a negative list that verdict would have killed `bastra update` for good.
  */
-export function verifyProvenance(packageRoot: string, io: UpdateRuntimeIo = {}, spawn: typeof spawnSync = spawnSync): ProvenanceCheck {
+export function verifyProvenance(
+  packageRoot: string,
+  io: UpdateRuntimeIo = {},
+  spawn: typeof spawnSync = spawnSync
+): ProvenanceCheck {
   let npm;
-  try { npm = npmInvocation(io); }
-  catch (error) { return { ok: true, skipped: (error as Error).message }; }
+  try {
+    npm = npmInvocation(io);
+  } catch (error) {
+    return { ok: true, skipped: (error as Error).message };
+  }
   const r = spawn(npm.bin, [...npm.args, "audit", "signatures"], {
     cwd: packageRoot,
     encoding: "utf8",
@@ -346,7 +357,9 @@ export async function preflight(opts: PreflightOptions): Promise<PreflightResult
   if (!manifest) {
     // First run after this ships: there is no baseline yet, so "clean" is not
     // knowable. Saying so beats implying a check happened.
-    notes.push("no install manifest yet — local modifications could not be checked (a baseline is written after this update)");
+    notes.push(
+      "no install manifest yet — local modifications could not be checked (a baseline is written after this update)"
+    );
   } else if (manifest.root !== opts.root) {
     notes.push(`manifest was taken from a different install root (${manifest.root}) — skipping the dirty check`);
   } else {

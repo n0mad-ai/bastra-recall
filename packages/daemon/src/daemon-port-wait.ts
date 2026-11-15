@@ -6,14 +6,18 @@ export const SERVICE_PORT_RETRY_MAX_MS = 30_000;
 const OWNER_PROBE_MS = 750;
 
 async function forwarderOwnsPort(port: number): Promise<boolean> {
-  const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), OWNER_PROBE_MS);
+  const ctrl = new AbortController(),
+    timer = setTimeout(() => ctrl.abort(), OWNER_PROBE_MS);
   try {
     const response = await fetch(`http://127.0.0.1:${port}/health`, { signal: ctrl.signal, redirect: "error" });
     if (!response.ok) return false;
-    const body = await response.json() as { ok?: boolean; started_by?: string };
+    const body = (await response.json()) as { ok?: boolean; started_by?: string };
     return body.ok === true && body.started_by === "forwarder";
-  } catch { return false; }
-  finally { clearTimeout(timer); }
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Wait indefinitely while a forwarder owns the port. Only the interval is
@@ -23,16 +27,16 @@ async function forwarderOwnsPort(port: number): Promise<boolean> {
  * Test-only intervals never become user settings. */
 export async function waitForForwarderPort(
   port: number,
-  opts: { retryMs?: number; maxRetryMs?: number; onWaiting?: () => void } = {},
+  opts: { retryMs?: number; maxRetryMs?: number; onWaiting?: () => void } = {}
 ): Promise<boolean> {
-  if (!await forwarderOwnsPort(port)) return false;
+  if (!(await forwarderOwnsPort(port))) return false;
   opts.onWaiting?.();
   let interval = opts.retryMs ?? SERVICE_PORT_RETRY_MS;
   const cap = opts.maxRetryMs ?? SERVICE_PORT_RETRY_MAX_MS;
   for (;;) {
-    await new Promise<void>(resolve => setTimeout(resolve, interval));
-    if (await probeDaemonPort(port) === "free") return true;
-    if (!await forwarderOwnsPort(port)) return false;
+    await new Promise<void>((resolve) => setTimeout(resolve, interval));
+    if ((await probeDaemonPort(port)) === "free") return true;
+    if (!(await forwarderOwnsPort(port))) return false;
     interval = Math.min(interval * 2, cap);
   }
 }

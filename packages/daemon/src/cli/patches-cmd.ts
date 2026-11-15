@@ -34,7 +34,7 @@ function usage(): void {
       "  status          probe every patch against the current installation\n\n" +
       "Registered patches are reapplied automatically after 'bastra update'.\n" +
       "A patch upstream has absorbed is retired; one that no longer applies is\n" +
-      "set aside and reported, never forced.\n",
+      "set aside and reported, never forced.\n"
   );
 }
 
@@ -78,7 +78,8 @@ export async function cmdPatches(args: ParsedArgs): Promise<number> {
     for (const p of active) out(`  ${p.id}\n      ${p.subject}\n      added ${p.added_at.slice(0, 10)}\n`);
     if (retired.length) {
       out(`\nRetired (${retired.length}) — kept as history, no longer applied:\n`);
-      for (const p of retired) out(`  ${p.id} — ${p.retired_reason ?? "retired"} ${p.retired_at?.slice(0, 10) ?? ""}\n`);
+      for (const p of retired)
+        out(`  ${p.id} — ${p.retired_reason ?? "retired"} ${p.retired_at?.slice(0, 10) ?? ""}\n`);
     }
     return 0;
   }

@@ -19,7 +19,8 @@ const ASCII_RE = /^[\x00-\x7f]*$/;
 const INVISIBLE_RE = /[\p{Cf}\u0640]/gu;
 /** The optional vowel points of the abjads: niqqud, harakat, shadda. Written
  *  in textbooks and poetry, left out everywhere else — the word is the same. */
-const ABJAD_POINT_RE = /(?=\p{Mn})[\p{Script_Extensions=Hebrew}\p{Script_Extensions=Arabic}\p{Script_Extensions=Syriac}]/gu;
+const ABJAD_POINT_RE =
+  /(?=\p{Mn})[\p{Script_Extensions=Hebrew}\p{Script_Extensions=Arabic}\p{Script_Extensions=Syriac}]/gu;
 /** An apostrophe between two letters of a non-Latin script is part of the
  *  word — the Ukrainian/Belarusian apostrophe ("п'ятниця", "обʼєкт"), the
  *  Hebrew geresh typed as "'" ("סטייג'ינג") — and would otherwise split it
@@ -41,10 +42,7 @@ export function normalizeInwordApostrophes(text: string): string {
  */
 export function normalizeText(text: string): string {
   if (ASCII_RE.test(text)) return text;
-  const spelling = text
-    .normalize("NFKC")
-    .replace(INVISIBLE_RE, "")
-    .replace(ABJAD_POINT_RE, "");
+  const spelling = text.normalize("NFKC").replace(INVISIBLE_RE, "").replace(ABJAD_POINT_RE, "");
   return normalizeInwordApostrophes(spelling).normalize("NFC");
 }
 
@@ -58,6 +56,8 @@ export function normalizeText(text: string): string {
  */
 export function foldTerm(term: string): string {
   if (ASCII_RE.test(term)) return term.toLowerCase();
-  return normalizeText(term).toUpperCase().toLowerCase().replace(/i\u0307/g, "i");
+  return normalizeText(term)
+    .toUpperCase()
+    .toLowerCase()
+    .replace(/i\u0307/g, "i");
 }
-

@@ -33,11 +33,7 @@ async function gitInfoWith(statusOutput) {
 
 function renderGit(info) {
   const renderer = new PowerlineRenderer(structuredClone(DEFAULT_CONFIG));
-  return renderer.segments.segmentRenderer.renderGit(
-    info,
-    renderer.theme.getThemeColors(),
-    { enabled: true },
-  ).text;
+  return renderer.segments.segmentRenderer.renderGit(info, renderer.theme.getThemeColors(), { enabled: true }).text;
 }
 
 test("a failed git status is reported as unknown, not clean", async () => {
@@ -52,17 +48,23 @@ test("a verified clean tree is still clean", async () => {
   assert.ok(!renderGit(info).endsWith("?"));
 });
 
-test("old Git retries porcelain without --ahead-behind, preserving dirty counts", async t => {
+test("old Git retries porcelain without --ahead-behind, preserving dirty counts", async (t) => {
   const git = new GitService();
   const commands = [];
   t.mock.method(git, "execGitAsync", async (command) => {
     commands.push(command);
     if (command.includes("--ahead-behind")) throw new Error("unknown option ahead-behind");
-    if (command.startsWith("git status")) return { stdout: "## main...origin/main [ahead 2, behind 1]\n M changed.ts\n" };
+    if (command.startsWith("git status"))
+      return { stdout: "## main...origin/main [ahead 2, behind 1]\n M changed.ts\n" };
     return { stdout: "main\n" };
   });
   const info = await git.getGitInfo(process.cwd(), { showWorkingTree: true });
-  assert.equal(info?.status, "dirty"); assert.equal(info?.unstaged, 1);
-  assert.equal(info?.ahead, 2); assert.equal(info?.behind, 1);
-  assert.deepEqual(commands.filter(c => c.startsWith("git status")), ["git status --porcelain -b --ahead-behind", "git status --porcelain -b"]);
+  assert.equal(info?.status, "dirty");
+  assert.equal(info?.unstaged, 1);
+  assert.equal(info?.ahead, 2);
+  assert.equal(info?.behind, 1);
+  assert.deepEqual(
+    commands.filter((c) => c.startsWith("git status")),
+    ["git status --porcelain -b --ahead-behind", "git status --porcelain -b"]
+  );
 });

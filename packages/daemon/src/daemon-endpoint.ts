@@ -30,11 +30,7 @@
 
 export const DEFAULT_DAEMON_PORT = 6723;
 
-export type EndpointSource =
-  | "BASTRA_DAEMON_URL"
-  | "BASTRA_HTTP_URL"
-  | "BASTRA_HTTP_PORT"
-  | "default";
+export type EndpointSource = "BASTRA_DAEMON_URL" | "BASTRA_HTTP_URL" | "BASTRA_HTTP_PORT" | "default";
 
 export interface DaemonEndpoint {
   /** Origin without a trailing slash, e.g. `http://127.0.0.1:26723`. */
@@ -76,10 +72,7 @@ function parseUrl(raw: string): { baseUrl: string; host: string; port: number } 
   return { baseUrl: url.origin, host: url.hostname, port };
 }
 
-function build(
-  parts: { baseUrl: string; host: string; port: number },
-  source: EndpointSource,
-): DaemonEndpoint {
+function build(parts: { baseUrl: string; host: string; port: number }, source: EndpointSource): DaemonEndpoint {
   return {
     baseUrl: parts.baseUrl,
     host: parts.host,
@@ -137,7 +130,7 @@ export function resolveDaemonEndpoint(env: Env = process.env): DaemonEndpoint {
  */
 export function endpointToPersist(
   existing: string | null | undefined,
-  endpoint: DaemonEndpoint = resolveDaemonEndpoint(),
+  endpoint: DaemonEndpoint = resolveDaemonEndpoint()
 ): string | null {
   if (endpoint.configured) return endpoint.baseUrl;
   const kept = typeof existing === "string" ? existing.trim() : "";

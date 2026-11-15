@@ -13,11 +13,11 @@ export function foldUsageEvent(agg: UsageAggregate, e: UsageEvent, measurementKi
   if (kind !== measurementKind && typeof e.revision === "string" && e.revision.length > 0) {
     const seenAt = entry.revision_seen_at;
     const olderRevision =
-      entry.revision !== undefined
-      && entry.revision !== e.revision
-      && typeof seenAt === "string"
-      && typeof e.ts === "string"
-      && e.ts < seenAt;
+      entry.revision !== undefined &&
+      entry.revision !== e.revision &&
+      typeof seenAt === "string" &&
+      typeof e.ts === "string" &&
+      e.ts < seenAt;
     if (!olderRevision) {
       if (entry.revision !== e.revision) {
         entry.revision = e.revision;
@@ -31,11 +31,7 @@ export function foldUsageEvent(agg: UsageAggregate, e: UsageEvent, measurementKi
     }
   }
 
-  const tsField = `last_${kind}_at` as
-    | "last_surfaced_at"
-    | "last_loaded_at"
-    | "last_acted_on_at"
-    | "last_sampled_at";
+  const tsField = `last_${kind}_at` as "last_surfaced_at" | "last_loaded_at" | "last_acted_on_at" | "last_sampled_at";
   if (typeof e.ts === "string" && (!entry[tsField] || e.ts > entry[tsField]!)) {
     entry[tsField] = e.ts;
   }

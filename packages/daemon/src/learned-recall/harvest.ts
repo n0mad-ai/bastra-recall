@@ -19,7 +19,14 @@ import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { bridgeLanguage } from "./language.js";
 import { isSystemInjectedTurn, ownerPromptText } from "../system-turn.js";
-import { bridgeId, isExpiredUnconfirmed, isMachineVocabulary, mintBridge, UNCONFIRMED_BRIDGE_TTL_DAYS, type Bridge } from "./bridges.js";
+import {
+  bridgeId,
+  isExpiredUnconfirmed,
+  isMachineVocabulary,
+  mintBridge,
+  UNCONFIRMED_BRIDGE_TTL_DAYS,
+  type Bridge,
+} from "./bridges.js";
 import { rerank, type ChatFn, type RerankCandidate } from "./reranker.js";
 import { testRunLogDir } from "../env.js";
 import type { RerankVerdict } from "../training-signal.js"; // #1128-capture
@@ -51,11 +58,13 @@ export interface Reach {
  * count as fresh evidence. `undefined` when the row names neither.
  */
 export function occasionOf(e: { ts?: unknown; dimensions?: unknown }): string | undefined {
-  const dims = typeof e.dimensions === "object" && e.dimensions !== null ? (e.dimensions as Record<string, unknown>) : {};
+  const dims =
+    typeof e.dimensions === "object" && e.dimensions !== null ? (e.dimensions as Record<string, unknown>) : {};
   if (typeof dims.experiment_session === "string" && dims.experiment_session.length > 0) {
     return `session:${dims.experiment_session}`;
   }
-  if (typeof e.ts === "string" && Number.isFinite(Date.parse(e.ts))) return `day:${new Date(e.ts).toISOString().slice(0, 10)}`;
+  if (typeof e.ts === "string" && Number.isFinite(Date.parse(e.ts)))
+    return `day:${new Date(e.ts).toISOString().slice(0, 10)}`;
   return undefined;
 }
 
@@ -70,7 +79,11 @@ export function defaultLogDir(): string {
 /** Read events-*.jsonl, optionally limited to `days`. Strict readers distinguish
  * unavailable directories from empty logs. A missing directory is empty (fresh
  * installation); existing non-strict callers keep [] for other read errors. */
-export async function readEventLog(logDir: string = defaultLogDir(), days: number | null = null, options: { strict?: boolean } = {}): Promise<TelemetryEvent[]> {
+export async function readEventLog(
+  logDir: string = defaultLogDir(),
+  days: number | null = null,
+  options: { strict?: boolean } = {}
+): Promise<TelemetryEvent[]> {
   let files: string[];
   try {
     files = (await readdir(logDir)).filter((f) => f.startsWith("events-") && f.endsWith(".jsonl"));
@@ -140,11 +153,12 @@ const TOOL_HOOK_SOURCES = new Set(["pre-tool", "session", "stop", "bash-pre", "b
  * (`mcp-forwarder` = MCP). An MCP `recall` event is the model's own call.
  */
 export function queryOrigin(e: TelemetryEvent): QueryOrigin {
-  const dims = typeof e.dimensions === "object" && e.dimensions !== null ? (e.dimensions as Record<string, unknown>) : {};
+  const dims =
+    typeof e.dimensions === "object" && e.dimensions !== null ? (e.dimensions as Record<string, unknown>) : {};
   const explicit = [e.origin, e.query_origin, dims.origin].find((v) => typeof v === "string") as string | undefined;
   if (explicit === "system") return "system";
   if (explicit === "tool") return "tool";
-  if (typeof e.query === "string" && (isSystemTurnText(e.query)||ownerPromptText(e.query)===null)) return "system";
+  if (typeof e.query === "string" && (isSystemTurnText(e.query) || ownerPromptText(e.query) === null)) return "system";
   if (explicit === "owner" || explicit === "user") return "owner";
   if (explicit === "agent") return "agent";
   const source = dims.hook_source;
@@ -171,10 +185,13 @@ export function teachesBridges(e: TelemetryEvent): boolean {
  * recall, and neither depends on who phrased the query.
  */
 export function bridgeTeachingEvents(events: TelemetryEvent[]): TelemetryEvent[] {
-  return events.filter((e) => (e.kind !== "hook_recall" && e.kind !== "recall") || teachesBridges(e)).map(e=>{
-    if((e.kind==="hook_recall"||e.kind==="recall")&&typeof e.query==="string")return {...e,query:ownerPromptText(e.query)??e.query};
-    return e;
-  });
+  return events
+    .filter((e) => (e.kind !== "hook_recall" && e.kind !== "recall") || teachesBridges(e))
+    .map((e) => {
+      if ((e.kind === "hook_recall" || e.kind === "recall") && typeof e.query === "string")
+        return { ...e, query: ownerPromptText(e.query) ?? e.query };
+      return e;
+    });
 }
 
 /**
@@ -186,13 +203,22 @@ export function bridgeTeachingEvents(events: TelemetryEvent[]): TelemetryEvent[]
 export function reconstructReaches(events: TelemetryEvent[]): Reach[] {
   const recallById = new Map<string, TelemetryEvent & { query: string }>();
   for (const e of events) {
-    if ((e.kind === "hook_recall" || e.kind === "recall") && typeof e.recall_id === "string" && typeof e.query === "string") {
+    if (
+      (e.kind === "hook_recall" || e.kind === "recall") &&
+      typeof e.recall_id === "string" &&
+      typeof e.query === "string"
+    ) {
       recallById.set(e.recall_id, e as TelemetryEvent & { query: string });
     }
   }
   const reaches: Reach[] = [];
   for (const e of events) {
-    if (e.kind === "recall_episode" && e.acted_on === true && typeof e.recall_id === "string" && typeof e.memory_id === "string") {
+    if (
+      e.kind === "recall_episode" &&
+      e.acted_on === true &&
+      typeof e.recall_id === "string" &&
+      typeof e.memory_id === "string"
+    ) {
       const recall = recallById.get(e.recall_id);
       if (!recall) continue;
       // #129: the recall row names the session that asked; the episode's own
@@ -224,7 +250,11 @@ export interface HarvestResult {
  * onto the same bridge on different occasions accumulate evidence (#129: one per
  * occasion, see occasionOf — a repeat inside one session is not a confirmation).
  */
-export function harvestBridges(reaches: Reach[], getMemoryTerms: (memoryId: string) => string[], date?: string): HarvestResult {
+export function harvestBridges(
+  reaches: Reach[],
+  getMemoryTerms: (memoryId: string) => string[],
+  date?: string
+): HarvestResult {
   const byId = new Map<string, Bridge>();
   const occasions = new Map<string, Set<string>>();
   for (const r of reaches) {
@@ -304,20 +334,14 @@ function sameScoreSpace(a: ScoreSpace, b: ScoreSpace): boolean {
 }
 
 /** Liest eine Score-Signatur aus einem Telemetrie-Event, unbekannt = `null`. */
-function readScoreSpace(
-  e: TelemetryEvent,
-  kindKey: string,
-  versionKey: string,
-  armsKey: string,
-): ScoreSpace {
+function readScoreSpace(e: TelemetryEvent, kindKey: string, versionKey: string, armsKey: string): ScoreSpace {
   const rawKind = e[kindKey];
   const rawVersion = e[versionKey];
   const rawArms = e[armsKey];
   return {
     kind: rawKind === "rrf" || rawKind === "bm25" ? rawKind : null,
     version: typeof rawVersion === "string" ? rawVersion : null,
-    arms:
-      Array.isArray(rawArms) && rawArms.every((x) => typeof x === "string") ? (rawArms as string[]) : null,
+    arms: Array.isArray(rawArms) && rawArms.every((x) => typeof x === "string") ? (rawArms as string[]) : null,
   };
 }
 
@@ -325,7 +349,11 @@ function readScoreSpace(
 export function extractCandidatePools(events: TelemetryEvent[]): CandidatePoolEntry[] {
   const out: CandidatePoolEntry[] = [];
   for (const e of events) {
-    if ((e.kind !== "recall" && e.kind !== "hook_recall") || typeof e.query !== "string" || !Array.isArray(e.candidate_pool)) {
+    if (
+      (e.kind !== "recall" && e.kind !== "hook_recall") ||
+      typeof e.query !== "string" ||
+      !Array.isArray(e.candidate_pool)
+    ) {
       continue;
     }
     const pool = (e.candidate_pool as { id?: unknown; score?: unknown }[])
@@ -349,7 +377,7 @@ export function extractCandidatePools(events: TelemetryEvent[]): CandidatePoolEn
       e,
       "candidate_pool_score_kind",
       "candidate_pool_score_version",
-      "candidate_pool_score_arms",
+      "candidate_pool_score_arms"
     );
     const useTop = sameScoreSpace(topSpace, poolSpace) && typeof e.top_score === "number";
     const space = useTop ? topSpace : poolSpace;
@@ -391,9 +419,14 @@ export async function harvestFarBridges(
   pools: CandidatePoolEntry[],
   getMemoryInfo: (id: string) => MemoryInfo | null,
   chat: ChatFn,
-  opts: { maxScore?: number; maxJudge?: number; date?: string; onProgress?: (done: number, total: number) => void;
+  opts: {
+    maxScore?: number;
+    maxJudge?: number;
+    date?: string;
+    onProgress?: (done: number, total: number) => void;
     /** #1128-capture: every judgement, ids only. Observed; the harvest does not read it back. */
-    onVerdict?: (verdict: RerankVerdict) => void } = {},
+    onVerdict?: (verdict: RerankVerdict) => void;
+  } = {}
 ): Promise<DeepHarvestResult> {
   const maxScore = opts.maxScore ?? 100; // only cases without a strong (REQUIRED-band) hit
   const maxJudge = opts.maxJudge ?? 50;
@@ -422,7 +455,12 @@ export async function harvestFarBridges(
     judged++;
     opts.onProgress?.(judged, Math.min(maxJudge, pools.length));
     const { bestId, chosenRank } = await rerank(entry.query, candidates, chat);
-    opts.onVerdict?.({ recall_id: entry.recallId ?? null, candidate_ids: candidates.map((c) => c.id), chosen_id: bestId, chosen_rank: chosenRank }); // #1128-capture
+    opts.onVerdict?.({
+      recall_id: entry.recallId ?? null,
+      candidate_ids: candidates.map((c) => c.id),
+      chosen_id: bestId,
+      chosen_rank: chosenRank,
+    }); // #1128-capture
     if (!bestId || chosenRank === null || chosenRank <= 1) continue; // none, or top already → no rescue
     const info = getMemoryInfo(bestId);
     if (!info) continue;
@@ -455,14 +493,22 @@ export async function writeBridges(rootDir: string, bridges: Bridge[], now: Date
   for (const b of bridges) {
     let index = indexes.get(b.lang);
     if (!index) {
-      index = new Map(); indexes.set(b.lang, index);
+      index = new Map();
+      indexes.set(b.lang, index);
       for (const archived of [false, true]) {
         const dir = join(rootDir, "bridges", ...(archived ? ["archive"] : []), b.lang);
         for (const file of (await readdir(dir).catch(() => [] as string[])).sort()) {
           if (!file.endsWith(".json")) continue;
-          const path = join(dir, file), stored = await readBridgeFile(path);
-          if (stored?.lang !== b.lang || !Array.isArray(stored.trigger_terms) || !Array.isArray(stored.expansion_terms)
-            || !stored.trigger_terms.every(t => typeof t === "string") || !stored.expansion_terms.every(t => typeof t === "string")) continue;
+          const path = join(dir, file),
+            stored = await readBridgeFile(path);
+          if (
+            stored?.lang !== b.lang ||
+            !Array.isArray(stored.trigger_terms) ||
+            !Array.isArray(stored.expansion_terms) ||
+            !stored.trigger_terms.every((t) => typeof t === "string") ||
+            !stored.expansion_terms.every((t) => typeof t === "string")
+          )
+            continue;
           index.set(bridgeId(b.lang, stored.trigger_terms, stored.expansion_terms), { path, archived });
         }
       }
@@ -476,9 +522,11 @@ export async function writeBridges(rootDir: string, bridges: Bridge[], now: Date
     const dir = join(rootDir, "bridges", b.lang);
     await mkdir(dir, { recursive: true });
     const exactPath = join(dir, `${b.id}.json`);
-    const path = existsSync(exactPath) ? exactPath : equivalent?.path ?? exactPath;
+    const path = existsSync(exactPath) ? exactPath : (equivalent?.path ?? exactPath);
     const prior = await readBridgeFile(path);
-    const stamps = [prior?.first_seen, b.first_seen].filter((s): s is string => typeof s === "string" && Number.isFinite(Date.parse(s)));
+    const stamps = [prior?.first_seen, b.first_seen].filter(
+      (s): s is string => typeof s === "string" && Number.isFinite(Date.parse(s))
+    );
     stamps.sort((x, y) => Date.parse(x) - Date.parse(y));
     const merged: Bridge = {
       ...b,
@@ -520,7 +568,7 @@ export async function readBridgeFile(path: string): Promise<Partial<Bridge> | nu
 export async function pruneUnconfirmedBridges(
   rootDir: string,
   now: Date = new Date(),
-  ttlDays: number = UNCONFIRMED_BRIDGE_TTL_DAYS,
+  ttlDays: number = UNCONFIRMED_BRIDGE_TTL_DAYS
 ): Promise<number> {
   const base = join(rootDir, "bridges");
   let langs: string[];
@@ -568,7 +616,7 @@ export async function archiveBridgeFile(
   path: string,
   b: Pick<Bridge, "id" | "lang" | "trigger_terms">,
   reason: string,
-  now: Date,
+  now: Date
 ): Promise<boolean> {
   try {
     await mkdir(join(rootDir, "bridges", "archive", b.lang), { recursive: true });
@@ -587,7 +635,7 @@ export async function appendBridgeLog(
   action: "archive" | "demote" | "restore",
   b: Pick<Bridge, "id" | "lang" | "trigger_terms">,
   reason: string,
-  now: Date,
+  now: Date
 ): Promise<void> {
   try {
     await mkdir(join(rootDir, "bridges", "archive"), { recursive: true });
@@ -642,7 +690,7 @@ export async function archiveMachineBridges(rootDir: string, now: Date = new Dat
       path,
       { id: bridge.id, lang: bridge.lang, trigger_terms: bridge.trigger_terms },
       "machine-vocabulary trigger (#704)",
-      now,
+      now
     );
     if (ok) archived++;
   }

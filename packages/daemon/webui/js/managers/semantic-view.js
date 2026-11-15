@@ -166,7 +166,7 @@ export function createSemanticView(deps) {
             pitch = Math.min(Math.max(pitch + dy * 0.004, -PITCH_MAX), PITCH_MAX);
             projectAll();
           }
-        : null,
+        : null
     );
     if (depth) deps.renderer.setDrawOrder(byDepth);
     else clearDepthCues();

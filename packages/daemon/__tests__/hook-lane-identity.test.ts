@@ -42,9 +42,7 @@ interface Captured {
  * Die Antwort ist bewusst leer (`hits: []`): Was die Lane aus den Treffern
  * MACHT, prüfen ihre eigenen Tests. Hier zählt allein, was sie schickt.
  */
-async function withRecallSink(
-  fn: (baseUrl: string, seen: Captured[]) => Promise<void>,
-): Promise<void> {
+async function withRecallSink(fn: (baseUrl: string, seen: Captured[]) => Promise<void>): Promise<void> {
   const seen: Captured[] = [];
   const server: Server = createServer((req, res) => {
     let raw = "";
@@ -84,22 +82,18 @@ const recallOf = (seen: Captured[]): Record<string, unknown> | undefined =>
  * `telemetry-dimensions.ts` sie still auf `unknown` — die Lane hätte die Felder
  * dann zwar gesendet, und die Auswertung sähe trotzdem nichts.
  */
-function assertIdentity(
-  body: Record<string, unknown> | undefined,
-  lane: string,
-  expectedSource: string,
-): void {
+function assertIdentity(body: Record<string, unknown> | undefined, lane: string, expectedSource: string): void {
   assert.ok(body, `${lane}: kein /hook/recall-Aufruf angekommen`);
   assert.equal(body.client, "claude-code", `${lane}: client fehlt oder ist falsch`);
   assert.equal(body.hook_source, expectedSource, `${lane}: hook_source fehlt oder ist falsch`);
   assert.equal(body.session_id, SESSION, `${lane}: session_id fehlt oder ist falsch`);
   assert.ok(
     (TELEMETRY_CLIENTS as readonly string[]).includes(body.client as string),
-    `${lane}: client steht nicht auf der Allowlist`,
+    `${lane}: client steht nicht auf der Allowlist`
   );
   assert.ok(
     (HOOK_SOURCES as readonly string[]).includes(body.hook_source as string),
-    `${lane}: hook_source steht nicht auf der Allowlist`,
+    `${lane}: hook_source steht nicht auf der Allowlist`
   );
 }
 
@@ -114,7 +108,7 @@ test("die Prompt-Lane weist sich aus", async () => {
         prompt: "wie war noch die Entscheidung zur Deployment-Strategie im Projekt",
       } as never,
       null,
-      baseUrl,
+      baseUrl
     );
     assertIdentity(recallOf(seen), "prompt-lane", "prompt");
   });
@@ -133,7 +127,7 @@ test("die Write-Lane weist sich aus", async () => {
           content: "export function deploy(): void {}\n".repeat(20),
         },
       } as never,
-      baseUrl,
+      baseUrl
     );
     assertIdentity(recallOf(seen), "write-lane", "pre-tool");
   });
@@ -155,7 +149,7 @@ test("die Todo-Lane weist sich aus", async () => {
           ],
         },
       } as never,
-      baseUrl,
+      baseUrl
     );
     assertIdentity(recallOf(seen), "todo-lane", "todo");
   });
@@ -173,7 +167,7 @@ test("die Bash-Fail-Lane weist sich aus", async () => {
         tool_input: { command: "npm run build" },
         tool_response: { exit_code: 1, stderr: "Error: ENOENT missing module tsconfig" },
       },
-      baseUrl,
+      baseUrl
     );
     assertIdentity(recallOf(seen), "bash-fail-lane", "bash-fail");
   });

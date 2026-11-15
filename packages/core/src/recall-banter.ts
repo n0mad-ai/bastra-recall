@@ -29,18 +29,8 @@ interface PhrasePool {
 
 const STAGE_PHRASES: Record<RecallStage["name"], PhrasePool> = {
   "query.parse": {
-    de: [
-      "Query zerlegen …",
-      "Stichworte sortieren …",
-      "Was suchst du eigentlich?",
-      "Tokens packen …",
-    ],
-    en: [
-      "Parsing the query …",
-      "Sorting keywords …",
-      "What are we looking for?",
-      "Tokenizing …",
-    ],
+    de: ["Query zerlegen …", "Stichworte sortieren …", "Was suchst du eigentlich?", "Tokens packen …"],
+    en: ["Parsing the query …", "Sorting keywords …", "What are we looking for?", "Tokenizing …"],
   },
   "cache.hit": {
     de: [
@@ -79,80 +69,27 @@ const STAGE_PHRASES: Record<RecallStage["name"], PhrasePool> = {
       "Vektoren vergleichen …",
       "Bedeutung suchen, nicht nur Worte …",
     ],
-    en: [
-      "Comparing semantics …",
-      "Embeddings pondering …",
-      "Vector math in progress …",
-      "Meaning over words …",
-    ],
+    en: ["Comparing semantics …", "Embeddings pondering …", "Vector math in progress …", "Meaning over words …"],
   },
   "rrf.fuse": {
-    de: [
-      "Treffer fusionieren …",
-      "Rankings verschmelzen …",
-      "Reciprocal-Rank tanzt …",
-      "Listen mergen …",
-    ],
-    en: [
-      "Fusing rankings …",
-      "Merging hit lists …",
-      "RRF doing the dance …",
-      "Combining scores …",
-    ],
+    de: ["Treffer fusionieren …", "Rankings verschmelzen …", "Reciprocal-Rank tanzt …", "Listen mergen …"],
+    en: ["Fusing rankings …", "Merging hit lists …", "RRF doing the dance …", "Combining scores …"],
   },
   "hops.expand": {
-    de: [
-      "Nachbarn besuchen …",
-      "Related-via folgen …",
-      "Ein Hop weiter …",
-      "Verwandte einsammeln …",
-    ],
-    en: [
-      "Visiting neighbors …",
-      "Following related-via …",
-      "One hop further …",
-      "Collecting kinfolk …",
-    ],
+    de: ["Nachbarn besuchen …", "Related-via folgen …", "Ein Hop weiter …", "Verwandte einsammeln …"],
+    en: ["Visiting neighbors …", "Following related-via …", "One hop further …", "Collecting kinfolk …"],
   },
   "staleness.rank": {
-    de: [
-      "Frische prüfen …",
-      "Alte Memories sanft rausnehmen …",
-      "Staleness-Re-Rank …",
-      "Wie alt ist das nochmal?",
-    ],
-    en: [
-      "Checking freshness …",
-      "Gently demoting old memories …",
-      "Staleness re-rank …",
-      "How old is this again?",
-    ],
+    de: ["Frische prüfen …", "Alte Memories sanft rausnehmen …", "Staleness-Re-Rank …", "Wie alt ist das nochmal?"],
+    en: ["Checking freshness …", "Gently demoting old memories …", "Staleness re-rank …", "How old is this again?"],
   },
   done: {
-    de: [
-      "Da, bitte.",
-      "Hab ich dir.",
-      "Fertig.",
-      "Soweit alles.",
-    ],
-    en: [
-      "There you go.",
-      "Got you.",
-      "Done.",
-      "All set.",
-    ],
+    de: ["Da, bitte.", "Hab ich dir.", "Fertig.", "Soweit alles."],
+    en: ["There you go.", "Got you.", "Done.", "All set."],
   },
   error: {
-    de: [
-      "Hmm, da ging was schief.",
-      "Das wollte nicht.",
-      "Fehler — guck mal nach.",
-    ],
-    en: [
-      "Hmm, something tripped.",
-      "That didn't work.",
-      "Error — please check.",
-    ],
+    de: ["Hmm, da ging was schief.", "Das wollte nicht.", "Fehler — guck mal nach."],
+    en: ["Hmm, something tripped.", "That didn't work.", "Error — please check."],
   },
 };
 
@@ -248,11 +185,7 @@ export function banterModeFromEnv(env: NodeJS.ProcessEnv = process.env): BanterM
  * Ausgenommen sind Terminal-Stages (`TERMINAL_STAGES`): die melden ein
  * Ergebnis, keinen Fortschritt.
  */
-export function pickPhrase(
-  stage: RecallStage,
-  mode: BanterMode,
-  lang: BanterLang,
-): string | null {
+export function pickPhrase(stage: RecallStage, mode: BanterMode, lang: BanterLang): string | null {
   if (mode === "off" || mode === "terse") return null;
 
   const duration = stage.durationMs ?? 0;
@@ -279,12 +212,7 @@ export function pickPhrase(
  * über aufeinanderfolgende Aufrufe (z.B. ein hochzählender Zähler im
  * Forwarder), damit eine Serie wechselnde Phrasen zeigt.
  */
-export function pickToolPhrase(
-  toolName: string,
-  mode: BanterMode,
-  lang: BanterLang,
-  seed: number,
-): string | null {
+export function pickToolPhrase(toolName: string, mode: BanterMode, lang: BanterLang, seed: number): string | null {
   if (mode === "off" || mode === "terse") return null;
   const pool = TOOL_PHRASES[toolName] ?? DEFAULT_TOOL_PHRASES;
   return pickFromPool(pool, lang, seed);

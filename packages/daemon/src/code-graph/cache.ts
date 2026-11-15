@@ -64,7 +64,7 @@ export class CodeGraphCache {
      * for itself serves whatever it is pointed at. Checked on every `get()`, so
      * `bastra code disable` takes effect on the next call, not the next restart.
      */
-    private readonly allow: (repoRoot: string) => boolean = () => true,
+    private readonly allow: (repoRoot: string) => boolean = () => true
   ) {}
 
   /**

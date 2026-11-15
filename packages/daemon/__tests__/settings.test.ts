@@ -162,7 +162,11 @@ test("writes preserve sibling keys (update + embedding + ollama)", async () => {
 
 test("readSettings: malformed embedding.provider → undefined, update.mode preserved", async () => {
   await withTempFile(async (path) => {
-    await writeSettingsFixture(path, JSON.stringify({ update: { mode: "auto" }, embedding: { provider: "llama" } }), "utf8");
+    await writeSettingsFixture(
+      path,
+      JSON.stringify({ update: { mode: "auto" }, embedding: { provider: "llama" } }),
+      "utf8"
+    );
     const s = await readSettings(path);
     assert.equal(s.update.mode, "auto");
     assert.equal(s.embedding, undefined);
@@ -211,7 +215,7 @@ test("readSettings: invalid docs.mode/docs.language → dropped to defaults", as
     await writeSettingsFixture(
       path,
       JSON.stringify({ update: { mode: "auto" }, docs: { mode: "loud", language: "deutsch!" } }),
-      "utf8",
+      "utf8"
     );
     const s = await readSettings(path);
     assert.equal(s.docs, undefined);
@@ -249,7 +253,7 @@ test("sharedRecall: language is lowercased and invalid values are dropped", asyn
     await writeSettingsFixture(
       path,
       JSON.stringify({ update: { mode: "auto" }, sharedRecall: { enabled: true, language: "klingon!" } }),
-      "utf8",
+      "utf8"
     );
     assert.equal(await getSharedRecallEnabled(path), true, "valid enabled kept");
     assert.equal(await getSharedRecallLanguage(path), undefined, "invalid language dropped");
@@ -263,16 +267,24 @@ test("sharedRecall: a regex-valid but UNSUPPORTED hand-edited language (fr) is d
     await writeSettingsFixture(
       path,
       JSON.stringify({ update: { mode: "notify" }, sharedRecall: { enabled: true, language: "fr" } }),
-      "utf8",
+      "utf8"
     );
     assert.equal(await getSharedRecallEnabled(path), true);
-    assert.equal(await getSharedRecallLanguage(path), undefined, "unsupported language must not persist into the daemon");
+    assert.equal(
+      await getSharedRecallLanguage(path),
+      undefined,
+      "unsupported language must not persist into the daemon"
+    );
   });
 });
 
 test("sharedRecall: non-boolean enabled is ignored", async () => {
   await withTempFile(async (path) => {
-    await writeSettingsFixture(path, JSON.stringify({ update: { mode: "notify" }, sharedRecall: { enabled: "yes" } }), "utf8");
+    await writeSettingsFixture(
+      path,
+      JSON.stringify({ update: { mode: "notify" }, sharedRecall: { enabled: "yes" } }),
+      "utf8"
+    );
     assert.equal(await getSharedRecallEnabled(path), false);
   });
 });
@@ -295,7 +307,7 @@ test("reflex (#217): valid block persists, invalid maxPerTurn dropped", async ()
     await writeSettingsFixture(
       path,
       JSON.stringify({ update: { mode: "notify" }, reflex: { enabled: false, maxPerTurn: 3 } }),
-      "utf8",
+      "utf8"
     );
     const s = await readSettings(path);
     assert.deepEqual(s.reflex, { enabled: false, maxPerTurn: 3 });
@@ -303,7 +315,7 @@ test("reflex (#217): valid block persists, invalid maxPerTurn dropped", async ()
     await writeSettingsFixture(
       path,
       JSON.stringify({ update: { mode: "notify" }, reflex: { enabled: true, maxPerTurn: 99 } }),
-      "utf8",
+      "utf8"
     );
     const invalid = await readSettings(path);
     assert.deepEqual(invalid.reflex, { enabled: true }, "out-of-range maxPerTurn must be dropped");
@@ -318,14 +330,14 @@ test("promptImpact (#607): valid block persists, non-boolean dropped, absent sta
     await writeSettingsFixture(
       path,
       JSON.stringify({ update: { mode: "notify" }, promptImpact: { enabled: true } }),
-      "utf8",
+      "utf8"
     );
     assert.deepEqual((await readSettings(path)).promptImpact, { enabled: true });
 
     await writeSettingsFixture(
       path,
       JSON.stringify({ update: { mode: "notify" }, promptImpact: { enabled: "yes" } }),
-      "utf8",
+      "utf8"
     );
     assert.equal((await readSettings(path)).promptImpact, undefined, "non-boolean enabled must be dropped");
 
@@ -348,7 +360,11 @@ test("language.primary: set/get round-trips, normalized to lowercase, siblings p
 
 test("language.primary: invalid stored code is dropped on read, valid 2-letter survives", async () => {
   await withTempFile(async (path) => {
-    await writeSettingsFixture(path, JSON.stringify({ update: { mode: "notify" }, language: { primary: "english" } }), "utf8");
+    await writeSettingsFixture(
+      path,
+      JSON.stringify({ update: { mode: "notify" }, language: { primary: "english" } }),
+      "utf8"
+    );
     assert.equal(await getPrimaryLanguage(path), undefined, "non-2-letter code rejected by the sanitizer");
     assert.equal((await readSettings(path)).update.mode, "notify", "sibling preserved");
     await writeSettingsFixture(path, JSON.stringify({ language: { primary: "DE" } }), "utf8");
@@ -429,7 +445,7 @@ test("#425: an experiment block without its registration reference is refused, s
     await writeSettingsFixture(
       path,
       JSON.stringify({ update: { mode: "auto" }, experiment: { name: "floating", arms: ["a", "b"] } }),
-      "utf8",
+      "utf8"
     );
     assert.equal(await getExperimentConfig(path), null, "no registration reference → no arm assignment");
     assert.equal((await readSettings(path)).update.mode, "auto", "sibling preserved");

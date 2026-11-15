@@ -89,8 +89,13 @@ const LANES: Lane[] = [
     kind: "bash_hook_call",
     run: (x, base) =>
       runBashPreLane(
-        { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "rm -rf /tmp/whatever" }, ...x } as Parameters<typeof runBashPreLane>[0],
-        base,
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          tool_input: { command: "rm -rf /tmp/whatever" },
+          ...x,
+        } as Parameters<typeof runBashPreLane>[0],
+        base
       ),
   },
   {
@@ -98,8 +103,14 @@ const LANES: Lane[] = [
     kind: "bash_fail_hook_call",
     run: (x, base) =>
       runBashFailLane(
-        { hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command: "npm test" }, tool_response: { exit_code: 1 }, ...x } as Parameters<typeof runBashFailLane>[0],
-        base,
+        {
+          hook_event_name: "PostToolUse",
+          tool_name: "Bash",
+          tool_input: { command: "npm test" },
+          tool_response: { exit_code: 1 },
+          ...x,
+        } as Parameters<typeof runBashFailLane>[0],
+        base
       ),
   },
   {
@@ -107,22 +118,37 @@ const LANES: Lane[] = [
     kind: "prompt_hook_call",
     run: (x, base) =>
       runPromptLane(
-        { hook_event_name: "UserPromptSubmit", prompt: "How did we configure the session store migration last time?", cwd: "/tmp", ...x } as Parameters<typeof runPromptLane>[0],
+        {
+          hook_event_name: "UserPromptSubmit",
+          prompt: "How did we configure the session store migration last time?",
+          cwd: "/tmp",
+          ...x,
+        } as Parameters<typeof runPromptLane>[0],
         null,
-        base,
+        base
       ),
   },
   {
     name: "session",
     kind: "session_hook_call",
     run: (x, base) =>
-      runSessionLane({ hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", ...x } as Parameters<typeof runSessionLane>[0], base),
+      runSessionLane(
+        { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", ...x } as Parameters<
+          typeof runSessionLane
+        >[0],
+        base
+      ),
   },
   {
     name: "todo",
     kind: "todo_hook_call",
     run: (x, base) =>
-      runTodoLane({ hook_event_name: "PreToolUse", tool_name: "TodoWrite", cwd: "/tmp", tool_input: TODOS, ...x } as Parameters<typeof runTodoLane>[0], base),
+      runTodoLane(
+        { hook_event_name: "PreToolUse", tool_name: "TodoWrite", cwd: "/tmp", tool_input: TODOS, ...x } as Parameters<
+          typeof runTodoLane
+        >[0],
+        base
+      ),
   },
   {
     name: "write (pre-tool)",
@@ -136,7 +162,7 @@ const LANES: Lane[] = [
           tool_input: { file_path: "/tmp/session-store/migrate.ts", old_string: "a", new_string: "b" },
           ...x,
         } as Parameters<typeof runWriteLane>[0],
-        base,
+        base
       ),
   },
 ];
@@ -148,15 +174,23 @@ describe("hook agent dimension on every lane's own row", () => {
       try {
         await withDaemon(async (base) => {
           await withEnv(
-            { BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir, BASTRA_HOOK_STATE_DIR: logDir, BASTRA_SESSION_STATE_DIR: logDir },
+            {
+              BASTRA_TELEMETRY: "on",
+              BASTRA_LOG_PATH: logDir,
+              BASTRA_HOOK_STATE_DIR: logDir,
+              BASTRA_SESSION_STATE_DIR: logDir,
+            },
             async () => {
               await lane.run({ session_id: `agent-main-${lane.name}`, bastra_client: "claude-code" }, base);
               // `claude --agent X` stamps agent_type on the MAIN thread too —
               // only agent_id marks a subagent.
-              await lane.run({ session_id: `agent-flag-${lane.name}`, bastra_client: "claude-code", agent_type: "reviewer" }, base);
+              await lane.run(
+                { session_id: `agent-flag-${lane.name}`, bastra_client: "claude-code", agent_type: "reviewer" },
+                base
+              );
               await lane.run({ session_id: `agent-unmarked-${lane.name}` }, base);
               await lane.run({ session_id: `agent-sub-${lane.name}`, agent_id: "a1b2c3", agent_type: "Explore" }, base);
-            },
+            }
           );
         });
         const rows = (await readEvents(logDir)).filter((e) => e.kind === lane.kind);
@@ -185,7 +219,7 @@ describe("hook agent dimension: Codex thread attribution", () => {
     try {
       await withDaemon(async (base) => {
         await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir, BASTRA_HOOK_STATE_DIR: logDir }, () =>
-          LANES[0].run({ session_id: "agent-codex", bastra_client: "codex" }, base),
+          LANES[0].run({ session_id: "agent-codex", bastra_client: "codex" }, base)
         );
       });
       const row = (await readEvents(logDir)).find((e) => e.kind === "bash_hook_call" && e.session_id === "agent-codex");

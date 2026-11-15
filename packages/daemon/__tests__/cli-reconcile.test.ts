@@ -24,8 +24,12 @@ async function capture(fn: () => Promise<number>): Promise<{ code: number; out: 
   const error = console.error;
   let out = "";
   let err = "";
-  console.log = (...a: unknown[]) => { out += a.join(" ") + "\n"; };
-  console.error = (...a: unknown[]) => { err += a.join(" ") + "\n"; };
+  console.log = (...a: unknown[]) => {
+    out += a.join(" ") + "\n";
+  };
+  console.error = (...a: unknown[]) => {
+    err += a.join(" ") + "\n";
+  };
   try {
     return { code: await fn(), out, err };
   } finally {
@@ -41,19 +45,34 @@ async function stores() {
   await writeFile(join(b, "m.md"), memo("m", "old"));
   await writeFile(join(a, "c.md"), memo("c", "here"));
   await writeFile(join(b, "c.md"), memo("c", "there"));
-  const rec = (root: string, id: string) => new AuditLog(root).record({
-    id, memory_id: id.split("-")[0], actor: "assistant", operation: "update", diff_before: null, diff_after: null,
-  });
+  const rec = (root: string, id: string) =>
+    new AuditLog(root).record({
+      id,
+      memory_id: id.split("-")[0],
+      actor: "assistant",
+      operation: "update",
+      diff_before: null,
+      diff_after: null,
+    });
   await rec(a, "m-1");
   await rec(a, "c-1");
   await rec(b, "c-2");
-  return { a, b, cleanup: async () => { await rm(a, { recursive: true, force: true }); await rm(b, { recursive: true, force: true }); } };
+  return {
+    a,
+    b,
+    cleanup: async () => {
+      await rm(a, { recursive: true, force: true });
+      await rm(b, { recursive: true, force: true });
+    },
+  };
 }
 
 const NO_DISCOVERY: StoreDiscoveryEnv = { home: "/nonexistent-home", registrations: [], syncRoots: [] };
 
 test("no other store and --yes → usage, exit 2", async () => {
-  const r = await capture(() => cmdReconcile(parseArgs(["reconcile", "--vault", tmpdir(), "--yes"]), new Date(), NO_DISCOVERY));
+  const r = await capture(() =>
+    cmdReconcile(parseArgs(["reconcile", "--vault", tmpdir(), "--yes"]), new Date(), NO_DISCOVERY)
+  );
   assert.equal(r.code, 2);
   assert.match(r.err, /usage: bastra reconcile/);
 });
@@ -82,8 +101,22 @@ test("discovery: a registration names the mirror, a sync folder holds a copy, an
     await mkdir(copy, { recursive: true });
     await mkdir(other, { recursive: true });
     await writeFile(join(copy, "m.md"), memo("m", "old"));
-    await new AuditLog(copy).record({ id: "m-9", memory_id: "m", actor: "assistant", operation: "update", diff_before: null, diff_after: null });
-    await new AuditLog(other).record({ id: "z-1", memory_id: "zzz", actor: "assistant", operation: "update", diff_before: null, diff_after: null });
+    await new AuditLog(copy).record({
+      id: "m-9",
+      memory_id: "m",
+      actor: "assistant",
+      operation: "update",
+      diff_before: null,
+      diff_after: null,
+    });
+    await new AuditLog(other).record({
+      id: "z-1",
+      memory_id: "zzz",
+      actor: "assistant",
+      operation: "update",
+      diff_before: null,
+      diff_after: null,
+    });
     // The home holds a symlink onto the mirror.
     await symlink(b, join(home, "mirror-link"));
     const env: StoreDiscoveryEnv = {
@@ -106,7 +139,11 @@ test("discovery: a registration names the mirror, a sync folder holds a copy, an
     assert.deepEqual(cloudCopy.sources, ["sync folder Dropbox"]);
     assert.equal(cloudCopy.sharedWithThis, 1);
     assert.equal(d.others.find((s) => s.path === join(home, "gone"))!.exists, false);
-    assert.equal(d.others.some((s) => s.path === other), false, "no shared history → another vault");
+    assert.equal(
+      d.others.some((s) => s.path === other),
+      false,
+      "no shared history → another vault"
+    );
 
     // The CLI lists them; with several comparable copies it does not pick one.
     const r = await capture(() => cmdReconcile(parseArgs(["reconcile", "--vault", a]), new Date(), env));
@@ -124,13 +161,19 @@ test("discovery: a registration names the mirror, a sync folder holds a copy, an
 test("discovery: exactly one other copy → its dry run is printed, nothing written", async () => {
   const { a, b, cleanup } = await stores();
   try {
-    const env: StoreDiscoveryEnv = { home: "/nonexistent-home", registrations: [{ source: "claude-desktop registration", path: b }], syncRoots: [] };
+    const env: StoreDiscoveryEnv = {
+      home: "/nonexistent-home",
+      registrations: [{ source: "claude-desktop registration", path: b }],
+      syncRoots: [],
+    };
     const r = await capture(() => cmdReconcile(parseArgs(["reconcile", "--vault", a]), new Date(), env));
     assert.equal(r.code, 0, r.err);
     assert.match(r.out, /dry run against /);
     assert.match(r.out, /this ahead → copy to other: 1/);
     assert.equal(await readFile(join(b, "m.md"), "utf8"), memo("m", "old"));
-    const j = JSON.parse((await capture(() => cmdReconcile(parseArgs(["reconcile", "--vault", a, "--json"]), new Date(), env))).out);
+    const j = JSON.parse(
+      (await capture(() => cmdReconcile(parseArgs(["reconcile", "--vault", a, "--json"]), new Date(), env))).out
+    );
     assert.equal(j.stores.others[0].path, b);
     assert.equal(j.dry_run, true);
   } finally {
@@ -140,8 +183,14 @@ test("discovery: exactly one other copy → its dry run is printed, nothing writ
 
 test("registrationsFromConfig: top-level and Claude Code per-project registrations", () => {
   const cfg = {
-    mcpServers: { "bastra-recall": { env: { BASTRA_VAULT_PATH: "/v/main" } }, other: { env: { BASTRA_VAULT_PATH: "/x" } } },
-    projects: { "/work/p": { mcpServers: { "bastra-recall": { env: { BASTRA_VAULT_PATH: "/v/project" } } } }, "/work/q": {} },
+    mcpServers: {
+      "bastra-recall": { env: { BASTRA_VAULT_PATH: "/v/main" } },
+      other: { env: { BASTRA_VAULT_PATH: "/x" } },
+    },
+    projects: {
+      "/work/p": { mcpServers: { "bastra-recall": { env: { BASTRA_VAULT_PATH: "/v/project" } } } },
+      "/work/q": {},
+    },
   };
   assert.deepEqual(registrationsFromConfig("claude-code registration", cfg), [
     { source: "claude-code registration", path: "/v/main" },

@@ -67,8 +67,7 @@ export function galacticOmega(r, rTurn) {
 }
 
 /** Is this cluster an unadopted import? Same test the shipped mode uses. */
-export const isIntakeCluster = (key, members) =>
-  members[0]?.group === "intake" || / \(import\)$/.test(key);
+export const isIntakeCluster = (key, members) => members[0]?.group === "intake" || / \(import\)$/.test(key);
 
 // ───────────────────────────────────────────────────────────────────────────
 // universe-lab: the cosmic web
@@ -179,7 +178,7 @@ export function cosmicWebPlacement(entries, edges, radiusOf, R) {
         // hard separation while overlapping, soft 1/r falloff beyond. The
         // ambient term stays weak so it opens voids without flattening the
         // distance signal the bridges encode.
-        const push = d < gap ? (gap - d) * 0.5 : (gap * gap) / (d * d) * 2.2;
+        const push = d < gap ? (gap - d) * 0.5 : ((gap * gap) / (d * d)) * 2.2;
         const ux = (dx / d) * push;
         const uy = (dy / d) * push;
         const uz = (dz / d) * push;

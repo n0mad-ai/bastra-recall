@@ -11,7 +11,13 @@ test("state paths normalize within the trusted root and reject sibling/absolute 
   const { resolveStatePath } = await import("../src/state-path.js");
   const root = resolve(tmpdir(), "bastra-codeql-fixture");
   assert.equal(resolveStatePath(root, join(root, "nested", "..", "session.json")), join(root, "session.json"));
-  for (const candidate of [join(root, "..", "outside.json"), `${root}-sibling/session.json`, resolve(root, ".."), root, "/etc/passwd"]) {
+  for (const candidate of [
+    join(root, "..", "outside.json"),
+    `${root}-sibling/session.json`,
+    resolve(root, ".."),
+    root,
+    "/etc/passwd",
+  ]) {
     assert.throws(() => resolveStatePath(root, candidate), /outside.*state root/);
   }
 });
@@ -20,13 +26,22 @@ test("a metadata symlink swapped at the check/open boundary never authorizes sta
   const fs = await import("node:fs/promises");
   const root = await mkdtemp(join(tmpdir(), "bastra-codeql-race-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const dir = join(root, "bastra-address-admin-fixture"); await mkdir(dir, { mode: 0o700 });
-  const metadata = join(dir, "process.json"), outside = join(root, "outside.json");
+  const dir = join(root, "bastra-address-admin-fixture");
+  await mkdir(dir, { mode: 0o700 });
+  const metadata = join(dir, "process.json"),
+    outside = join(root, "outside.json");
   const content = JSON.stringify({ version: 1, createdAt: Date.now() - 3600000, adminPid: 2147483647 });
-  await writeFile(metadata, content, { mode: 0o600 }); await writeFile(outside, content, { mode: 0o600 });
+  await writeFile(metadata, content, { mode: 0o600 });
+  await writeFile(outside, content, { mode: 0o600 });
   let replaced = false;
-  const replace = async () => { if (replaced) return; replaced = true; await fs.unlink(metadata); await symlink(outside, metadata); };
-  const originalLstat = fs.default.lstat, originalOpen = fs.default.open;
+  const replace = async () => {
+    if (replaced) return;
+    replaced = true;
+    await fs.unlink(metadata);
+    await symlink(outside, metadata);
+  };
+  const originalLstat = fs.default.lstat,
+    originalOpen = fs.default.open;
   t.mock.method(fs.default, "lstat", async (...args: Parameters<typeof originalLstat>) => {
     const result = await originalLstat(...args);
     if (args[0] === metadata) await replace();
@@ -36,7 +51,11 @@ test("a metadata symlink swapped at the check/open boundary never authorizes sta
     if (args[0] === metadata) await replace();
     return originalOpen(...args);
   });
-  syncBuiltinESMExports(); t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+  syncBuiltinESMExports();
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
   await cleanupMacAddressAdminStaging(root);
   assert.equal(replaced, true);
   assert.equal(existsSync(dir), true, "a swapped metadata path must not authorize deletion");
@@ -47,7 +66,11 @@ test("hostile session IDs keep state and lock artifacts below the configured dir
   const root = await mkdtemp(join(tmpdir(), "bastra-codeql-session-"));
   const previous = process.env.BASTRA_HOOK_STATE_DIR;
   process.env.BASTRA_HOOK_STATE_DIR = join(root, "state");
-  t.after(async () => { if (previous === undefined) delete process.env.BASTRA_HOOK_STATE_DIR; else process.env.BASTRA_HOOK_STATE_DIR = previous; await rm(root, { recursive: true, force: true }); });
+  t.after(async () => {
+    if (previous === undefined) delete process.env.BASTRA_HOOK_STATE_DIR;
+    else process.env.BASTRA_HOOK_STATE_DIR = previous;
+    await rm(root, { recursive: true, force: true });
+  });
   const { saveSessionState, loadSessionState } = await import("../src/session-state.js");
   for (const id of ["../../outside", "/etc/passwd", "..\\..\\outside", "a/../../../outside", "session-normal"]) {
     await saveSessionState(id, { shown: { fixture: { count: 1, at: 1 } } });
@@ -57,28 +80,42 @@ test("hostile session IDs keep state and lock artifacts below the configured dir
   assert.deepEqual(files, ["state"]);
   const saved = await (await import("node:fs/promises")).readdir(join(root, "state"));
   assert.ok(saved.length > 0);
-  assert.ok(saved.every(name => dirname(join(root, "state", name)) === join(root, "state")));
+  assert.ok(saved.every((name) => dirname(join(root, "state", name)) === join(root, "state")));
 });
-
 
 test("legacy hook migration refuses a file replaced with a symlink before opening", async (t) => {
   const fs = await import("node:fs/promises");
   const { readHookState } = await import("../src/hook-state-database.js");
   const root = await mkdtemp(join(tmpdir(), "bastra-hook-import-race-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const file = join(root, "legacy.json"), outside = join(root, "outside.txt");
+  const file = join(root, "legacy.json"),
+    outside = join(root, "outside.txt");
   await writeFile(file, JSON.stringify({ shown: {} }));
   await writeFile(outside, JSON.stringify({ shown: { stolen: { count: 1, at: 1 } } }));
   let swapped = false;
-  const swap = async () => { if (!swapped) { swapped = true; await fs.unlink(file); await symlink(outside, file); } };
-  const originalLstat = fs.default.lstat, originalOpen = fs.default.open;
+  const swap = async () => {
+    if (!swapped) {
+      swapped = true;
+      await fs.unlink(file);
+      await symlink(outside, file);
+    }
+  };
+  const originalLstat = fs.default.lstat,
+    originalOpen = fs.default.open;
   t.mock.method(fs.default, "lstat", async (...args: Parameters<typeof originalLstat>) => {
-    const result = await originalLstat(...args); if (args[0] === file) await swap(); return result;
+    const result = await originalLstat(...args);
+    if (args[0] === file) await swap();
+    return result;
   });
   t.mock.method(fs.default, "open", async (...args: Parameters<typeof originalOpen>) => {
-    if (args[0] === file) await swap(); return originalOpen(...args);
+    if (args[0] === file) await swap();
+    return originalOpen(...args);
   });
-  syncBuiltinESMExports(); t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+  syncBuiltinESMExports();
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
   assert.equal(await readHookState(root, "legacy"), undefined);
   assert.equal(swapped, true);
   assert.equal(await readFile(outside, "utf8"), JSON.stringify({ shown: { stolen: { count: 1, at: 1 } } }));

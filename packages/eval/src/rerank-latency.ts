@@ -68,7 +68,7 @@ export async function measureLatency(
    * already warmed the session — a per-N "cold" would otherwise be three cold
    * numbers of which two are warm.
    */
-  state: { scoredAnything: boolean },
+  state: { scoredAnything: boolean }
 ): Promise<LatencyReport[]> {
   const out: LatencyReport[] = [];
   for (const n of ns) {

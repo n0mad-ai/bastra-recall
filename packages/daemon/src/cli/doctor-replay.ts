@@ -124,7 +124,7 @@ function loadedIdsOf(content: unknown, into: Set<string>): void {
 export async function readClaudeTranscripts(
   projectsDir: string,
   sinceMs: number,
-  untilMs = Number.POSITIVE_INFINITY,
+  untilMs = Number.POSITIVE_INFINITY
 ): Promise<ReplayCorpus> {
   const turns: ReplayTurn[] = [];
   const loadedIds = new Set<string>();
@@ -224,7 +224,7 @@ export function replaySessionId(original: string, run: string): string {
 export async function runReplay(
   corpus: ReplayCorpus,
   post: ReplayPost,
-  opts: { run: string; concurrency?: number; onProgress?: (done: number, total: number) => void } ,
+  opts: { run: string; concurrency?: number; onProgress?: (done: number, total: number) => void }
 ): Promise<ReplayRow[]> {
   const bySession = new Map<string, number[]>();
   corpus.turns.forEach((t, i) => bySession.set(t.session, [...(bySession.get(t.session) ?? []), i]));
@@ -268,63 +268,65 @@ export async function daemonSupportsReplay(baseUrl: string): Promise<boolean> {
 function postReplay(
   baseUrl: string,
   turn: ReplayTurn,
-  sessionId: string,
+  sessionId: string
 ): Promise<{ stdout?: unknown; telemetry?: ReplayRow | null } | null> {
   return new Promise((resolve) => {
-      let url: URL;
-      try {
-        url = new URL("/hook/prompt", baseUrl);
-      } catch {
-        resolve(null);
-        return;
+    let url: URL;
+    try {
+      url = new URL("/hook/prompt", baseUrl);
+    } catch {
+      resolve(null);
+      return;
+    }
+    const body = Buffer.from(
+      JSON.stringify({
+        replay: true,
+        payload: {
+          session_id: sessionId,
+          cwd: turn.cwd ?? undefined,
+          hook_event_name: "UserPromptSubmit",
+          prompt: turn.text,
+        },
+      }),
+      "utf8"
+    );
+    const req = request(
+      {
+        method: "POST",
+        hostname: url.hostname,
+        port: url.port || 80,
+        path: url.pathname,
+        headers: {
+          // No task token: nothing is due in a replayed turn, and a daemon
+          // from before #702 runs the live route for the probe — with a
+          // token it would mark due tasks as delivered to "replay-probe".
+          "Content-Type": "application/json; charset=utf-8",
+          "Content-Length": body.byteLength.toString(),
+        },
+        timeout: POST_TIMEOUT_MS,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c: Buffer) => chunks.push(c));
+        res.on("end", () => {
+          if ((res.statusCode ?? 500) >= 400) {
+            resolve(null);
+            return;
+          }
+          try {
+            resolve(
+              JSON.parse(Buffer.concat(chunks).toString("utf8")) as { stdout?: unknown; telemetry?: ReplayRow | null }
+            );
+          } catch {
+            resolve(null);
+          }
+        });
       }
-      const body = Buffer.from(
-        JSON.stringify({
-          replay: true,
-          payload: {
-            session_id: sessionId,
-            cwd: turn.cwd ?? undefined,
-            hook_event_name: "UserPromptSubmit",
-            prompt: turn.text,
-          },
-        }),
-        "utf8",
-      );
-      const req = request(
-        {
-          method: "POST",
-          hostname: url.hostname,
-          port: url.port || 80,
-          path: url.pathname,
-          headers: {
-            // No task token: nothing is due in a replayed turn, and a daemon
-            // from before #702 runs the live route for the probe — with a
-            // token it would mark due tasks as delivered to "replay-probe".
-            "Content-Type": "application/json; charset=utf-8",
-            "Content-Length": body.byteLength.toString(),
-          },
-          timeout: POST_TIMEOUT_MS,
-        },
-        (res) => {
-          const chunks: Buffer[] = [];
-          res.on("data", (c: Buffer) => chunks.push(c));
-          res.on("end", () => {
-            if ((res.statusCode ?? 500) >= 400) {
-              resolve(null);
-              return;
-            }
-            try {
-              resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")) as { stdout?: unknown; telemetry?: ReplayRow | null });
-            } catch {
-              resolve(null);
-            }
-          });
-        },
-      );
-      req.on("timeout", () => req.destroy());
-      req.on("error", () => resolve(null));
-      req.write(body);
-      req.end();
+    );
+    req.on("timeout", () => req.destroy());
+    req.on("error", () => resolve(null));
+    req.write(body);
+    req.end();
   });
 }
 
@@ -378,8 +380,9 @@ function countBy(keys: string[]): Record<string, number> {
 /** Pure: the same rows give the same report. */
 export function summarizeReplay(
   rows: ReplayRow[],
-  corpus: Pick<ReplayCorpus, "loadedIds" | "files" | "sessions"> & Partial<Pick<ReplayCorpus, "oversized">> & { turns: number },
-  meta: { days: number; sinceMs: number },
+  corpus: Pick<ReplayCorpus, "loadedIds" | "files" | "sessions"> &
+    Partial<Pick<ReplayCorpus, "oversized">> & { turns: number },
+  meta: { days: number; sinceMs: number }
 ): ReplayReport {
   const system = rows.filter((r) => r.origin === "system");
   const owner = rows.filter((r) => r.origin !== "system");
@@ -447,28 +450,36 @@ function counts(map: Record<string, number>): string {
 export function formatReplayReport(r: ReplayReport): string {
   const lines: string[] = [];
   lines.push(
-    `replay: ${r.turns} user turns from ${r.sessions} Claude Code sessions, last ${r.days} days (since ${r.since})`,
+    `replay: ${r.turns} user turns from ${r.sessions} Claude Code sessions, last ${r.days} days (since ${r.since})`
   );
   if (r.oversized_files > 0) {
-    lines.push(`  skipped transcripts: ${r.oversized_files} over ${MAX_TRANSCRIPT_BYTES / (1024 * 1024)} MiB (not read)`);
+    lines.push(
+      `  skipped transcripts: ${r.oversized_files} over ${MAX_TRANSCRIPT_BYTES / (1024 * 1024)} MiB (not read)`
+    );
   }
   if (r.replayed < r.turns) lines.push(`  not answered by the daemon: ${r.turns - r.replayed} turns (left out below)`);
-  lines.push(`  system turns        ${r.system_turns} (${pct(r.system_turns, r.replayed)}) — task notifications, agent mail, reminders; gated, no recall`);
+  lines.push(
+    `  system turns        ${r.system_turns} (${pct(r.system_turns, r.replayed)}) — task notifications, agent mail, reminders; gated, no recall`
+  );
   lines.push(`  owner prompts       ${r.owner_prompts}`);
   lines.push(`    trivial, gated    ${r.gated_prompts}`);
-  lines.push(`    with a hint       ${r.prompts_with_hint} (${pct(r.prompts_with_hint, r.owner_prompts)} of owner prompts)`);
+  lines.push(
+    `    with a hint       ${r.prompts_with_hint} (${pct(r.prompts_with_hint, r.owner_prompts)} of owner prompts)`
+  );
   lines.push(`  hint slots          ${r.slots}`);
   lines.push(`    ten most frequent notes   ${r.top_notes_slots} slots (${pct(r.top_notes_slots, r.slots)})`);
   for (const t of r.top_notes) lines.push(`      ${String(t.slots).padStart(4)}  ${t.id}`);
   lines.push(
-    `    on notes the agent loaded in the window   ${r.slots_on_loaded} slots (${pct(r.slots_on_loaded, r.slots)}; ${r.loaded_ids} notes loaded)`,
+    `    on notes the agent loaded in the window   ${r.slots_on_loaded} slots (${pct(r.slots_on_loaded, r.slots)}; ${r.loaded_ids} notes loaded)`
   );
   const fires = r.bridges.reduce((n, b) => n + b.fires, 0);
   lines.push(`  bridges fired       ${r.bridges.length} bridges, ${fires} fires`);
   for (const b of r.bridges) lines.push(`      ${String(b.fires).padStart(4)}  ${b.id}`);
   const p50 = r.latency.p50_ms === null ? "–" : `${r.latency.p50_ms} ms`;
   const p95 = r.latency.p95_ms === null ? "–" : `${r.latency.p95_ms} ms`;
-  lines.push(`  latency (recall ran, n=${r.latency.n})   p50 ${p50}   p95 ${p95}   timeouts ${r.statuses.timeout ?? 0}`);
+  lines.push(
+    `  latency (recall ran, n=${r.latency.n})   p50 ${p50}   p95 ${p95}   timeouts ${r.statuses.timeout ?? 0}`
+  );
   lines.push(`  statuses: ${counts(r.statuses)}`);
   lines.push(`  modes: ${counts(r.modes)}`);
   lines.push("  rows: replay-YYYY-MM-DD.jsonl in the daemon's log dir — never counted with live traffic");
@@ -491,7 +502,11 @@ export function formatReplayDiff(before: ReplayReport, after: ReplayReport): str
     row("hint slots", before.slots, after.slots),
     row("slots on ten most frequent notes", before.top_notes_slots, after.top_notes_slots),
     row("slots on loaded notes", before.slots_on_loaded, after.slots_on_loaded),
-    row("bridge fires", before.bridges.reduce((n, b) => n + b.fires, 0), after.bridges.reduce((n, b) => n + b.fires, 0)),
+    row(
+      "bridge fires",
+      before.bridges.reduce((n, b) => n + b.fires, 0),
+      after.bridges.reduce((n, b) => n + b.fires, 0)
+    ),
     row("timeouts", before.statuses.timeout ?? 0, after.statuses.timeout ?? 0),
     row("latency p50 ms", before.latency.p50_ms, after.latency.p50_ms),
     row("latency p95 ms", before.latency.p95_ms, after.latency.p95_ms),
@@ -504,12 +519,16 @@ export function formatReplayDiff(before: ReplayReport, after: ReplayReport): str
 export function parseDays(raw: string | null): number | { error: string } {
   if (raw === null) return REPLAY_DEFAULT_DAYS;
   const n = Number(raw);
-  if (!Number.isInteger(n) || n < 1 || n > 365) return { error: `--days needs a whole number of days between 1 and 365, got '${raw}'` };
+  if (!Number.isInteger(n) || n < 1 || n > 365)
+    return { error: `--days needs a whole number of days between 1 and 365, got '${raw}'` };
   return n;
 }
 
 function runStamp(now: number): string {
-  return new Date(now).toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+  return new Date(now)
+    .toISOString()
+    .replace(/[-:.TZ]/g, "")
+    .slice(0, 14);
 }
 
 function notEvaluable(days: number, sinceMs: number, reason: string): ReplayNotEvaluable {
@@ -537,7 +556,7 @@ export async function replayAndReport(opts: {
       report: notEvaluable(
         opts.days,
         sinceMs,
-        `no Claude Code transcripts in the last ${opts.days} days under ${projectsDir} — use Claude Code for a week, then run \`bastra doctor --replay\``,
+        `no Claude Code transcripts in the last ${opts.days} days under ${projectsDir} — use Claude Code for a week, then run \`bastra doctor --replay\``
       ),
       code: 0,
     };
@@ -546,7 +565,11 @@ export async function replayAndReport(opts: {
   const probe = await probeDaemon(endpoint);
   if (!probe.ok) {
     return {
-      report: notEvaluable(opts.days, sinceMs, `daemon not reachable at ${endpoint.label} (${probe.detail}) — start it and run \`bastra doctor --replay\` again`),
+      report: notEvaluable(
+        opts.days,
+        sinceMs,
+        `daemon not reachable at ${endpoint.label} (${probe.detail}) — start it and run \`bastra doctor --replay\` again`
+      ),
       code: 1,
     };
   }
@@ -555,19 +578,19 @@ export async function replayAndReport(opts: {
       report: notEvaluable(
         opts.days,
         sinceMs,
-        `the daemon at ${endpoint.label} (${probe.version ?? "unknown version"}) predates the replay mode — restart it on the current build (\`bastra update\`), then run \`bastra doctor --replay\` again`,
+        `the daemon at ${endpoint.label} (${probe.version ?? "unknown version"}) predates the replay mode — restart it on the current build (\`bastra update\`), then run \`bastra doctor --replay\` again`
       ),
       code: 1,
     };
   }
   if (opts.maxTurns !== undefined && corpus.turns.length > opts.maxTurns) {
     opts.progress?.(
-      `replaying the latest ${opts.maxTurns} of ${corpus.turns.length} user turns — \`bastra doctor --replay --days ${opts.days}\` replays them all`,
+      `replaying the latest ${opts.maxTurns} of ${corpus.turns.length} user turns — \`bastra doctor --replay --days ${opts.days}\` replays them all`
     );
     corpus = latestTurns(corpus, opts.maxTurns);
   }
   opts.progress?.(
-    `replaying ${corpus.turns.length} user turns from ${corpus.sessions} sessions (${corpus.files} transcripts) through ${endpoint.label} in shadow — nothing is written to the vault`,
+    `replaying ${corpus.turns.length} user turns from ${corpus.sessions} sessions (${corpus.files} transcripts) through ${endpoint.label} in shadow — nothing is written to the vault`
   );
   let lastTick = 0;
   const rows = await runReplay(corpus, postReplayTurn(endpoint.baseUrl), {

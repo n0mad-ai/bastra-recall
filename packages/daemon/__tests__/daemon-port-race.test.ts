@@ -75,10 +75,24 @@ test("the probe leaves the port free for the real listen()", async () => {
 function memoryMarkdown(id: string, title: string): string {
   const ts = new Date().toISOString();
   return [
-    "---", `id: ${id}`, `title: ${title}`, "type: reference", `summary: ${title}`,
-    "topic_path:", "  - test", "tags:", "  - test", "scope: port-race-test",
-    "recall_when:", `  - ${title}`, `created: ${ts}`, `updated: ${ts}`, "---",
-    "", `Body for ${title}.`, "",
+    "---",
+    `id: ${id}`,
+    `title: ${title}`,
+    "type: reference",
+    `summary: ${title}`,
+    "topic_path:",
+    "  - test",
+    "tags:",
+    "  - test",
+    "scope: port-race-test",
+    "recall_when:",
+    `  - ${title}`,
+    `created: ${ts}`,
+    `updated: ${ts}`,
+    "---",
+    "",
+    `Body for ${title}.`,
+    "",
   ].join("\n");
 }
 
@@ -152,13 +166,16 @@ test("the port probe stays above the vault and embedding lifecycle", async () =>
   // #494: Das Boot-Prewarm heißt jetzt so — es läuft seit #494 durch dieselbe
   // Singleflight-Grenze wie die beiden anderen Warmup-Auslöser, statt einen
   // eigenen HTTP-Call zu feuern.
-  assert.ok(embeddingsSrc.indexOf('ensureWarm("boot")') > 0, "the boot warm-up not found in boot-embeddings.ts — update this test");
+  assert.ok(
+    embeddingsSrc.indexOf('ensureWarm("boot")') > 0,
+    "the boot warm-up not found in boot-embeddings.ts — update this test"
+  );
 
   // And it must not fire in the deliberate no-server mode.
   assert.match(
     src.slice(probe - 120, probe),
     /HTTP_DISABLED/,
-    "the probe must stay guarded by HTTP_DISABLED (BASTRA_HTTP=off)",
+    "the probe must stay guarded by HTTP_DISABLED (BASTRA_HTTP=off)"
   );
 });
 

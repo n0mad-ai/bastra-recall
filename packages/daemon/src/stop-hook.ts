@@ -31,7 +31,8 @@ let stdoutEmitted = false;
 let callSessionId: string | null = null;
 let failureRecorded = false;
 async function recordFailure(): Promise<void> {
-  if (failureRecorded) return; failureRecorded = true;
+  if (failureRecorded) return;
+  failureRecorded = true;
   const { spoolRulebookFailure } = await import("./rulebook-spool.js");
   await spoolRulebookFailure(callSessionId);
 }
@@ -67,9 +68,7 @@ async function main(): Promise<void> {
     // static import would be process-start cost on every call (#305).
     await recordFailure();
     const status = classifyTransportError(err as NodeJS.ErrnoException);
-    const { writeClientTelemetry, sessionIdOf, THIN_CLIENT_VERSION } = await import(
-      "./hook-client-telemetry.js"
-    );
+    const { writeClientTelemetry, sessionIdOf, THIN_CLIENT_VERSION } = await import("./hook-client-telemetry.js");
     await writeClientTelemetry(
       "stop",
       {
@@ -79,7 +78,7 @@ async function main(): Promise<void> {
       },
       startedAt,
       sessionIdOf(payload),
-      THIN_CLIENT_VERSION,
+      THIN_CLIENT_VERSION
     );
   }
 }
@@ -87,11 +86,7 @@ async function main(): Promise<void> {
 const isMain = (() => {
   const argv1 = process.argv[1];
   if (typeof argv1 !== "string") return false;
-  return (
-    argv1.endsWith("stop-hook.js") ||
-    argv1.endsWith("stop-hook.ts") ||
-    argv1.endsWith("bastra-recall-stop-hook")
-  );
+  return argv1.endsWith("stop-hook.js") || argv1.endsWith("stop-hook.ts") || argv1.endsWith("bastra-recall-stop-hook");
 })();
 
 if (isMain) {

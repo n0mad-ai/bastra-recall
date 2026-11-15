@@ -40,8 +40,14 @@ export function createContextMenu({ canvas, sim, renderer, inspector, getInterac
       items.push(
         { text: node.title.length > 34 ? `${node.title.slice(0, 33)}…` : node.title, isHeading: true },
         { text: "Zoom to connections", action: () => select(node) },
-        { text: "Open in inspector", action: () => { renderer.setFocus(node); inspector.show(node); } },
-        { isDivider: true },
+        {
+          text: "Open in inspector",
+          action: () => {
+            renderer.setFocus(node);
+            inspector.show(node);
+          },
+        },
+        { isDivider: true }
       );
     }
     if (cluster) items.push({ text: `Fit cloud “${cluster}”`, action: () => interactions.flyToCluster(cluster) });

@@ -62,13 +62,16 @@ test("loadAnswersFile: YAML and JSON give the same persona + answers; numbers be
     await writeFile(
       yamlPath,
       "persona: developer\nanswers:\n  identity: Sam · English · terse\n  conventions_size: 500\n  people: Anna\n",
-      "utf8",
+      "utf8"
     );
     const jsonPath = join(dir, "answers.json");
     await writeFile(
       jsonPath,
-      JSON.stringify({ persona: "developer", answers: { identity: "Sam · English · terse", conventions_size: 500, people: "Anna" } }),
-      "utf8",
+      JSON.stringify({
+        persona: "developer",
+        answers: { identity: "Sam · English · terse", conventions_size: 500, people: "Anna" },
+      }),
+      "utf8"
     );
     const expected = {
       persona: "developer",
@@ -104,7 +107,11 @@ test("loadAnswersFile: nothing usable plus an ignored or dropped entry is an err
   try {
     // A typo in the only id, values that are not text.
     await writeFile(join(dir, "typo.yaml"), "persona: personal\nanswers:\n  identty: Kim\n", "utf8");
-    await writeFile(join(dir, "nontext.yaml"), "persona: personal\nanswers:\n  identity: true\n  world: [a, b]\n", "utf8");
+    await writeFile(
+      join(dir, "nontext.yaml"),
+      "persona: personal\nanswers:\n  identity: true\n  world: [a, b]\n",
+      "utf8"
+    );
     const typo = await loadAnswersFile(join(dir, "typo.yaml"));
     assert.ok("error" in typo);
     assert.match(typo.error, /no usable answer \(not a personal question: identty\) — known ids: identity/);
@@ -114,8 +121,16 @@ test("loadAnswersFile: nothing usable plus an ignored or dropped entry is an err
     // Only the persona, or a blank answer (the interview's Enter), is a valid
     // file like on the map — the contributor's test pinned blank as an error.
     await writeFile(join(dir, "persona.yaml"), "persona: personal\n", "utf8");
-    await writeFile(join(dir, "blank.json"), JSON.stringify({ persona: "personal", answers: { identity: "  " } }), "utf8");
-    assert.deepEqual(await loadAnswersFile(join(dir, "persona.yaml")), { persona: "personal", answers: {}, ignored: [] });
+    await writeFile(
+      join(dir, "blank.json"),
+      JSON.stringify({ persona: "personal", answers: { identity: "  " } }),
+      "utf8"
+    );
+    assert.deepEqual(await loadAnswersFile(join(dir, "persona.yaml")), {
+      persona: "personal",
+      answers: {},
+      ignored: [],
+    });
     assert.deepEqual(await loadAnswersFile(join(dir, "blank.json")), {
       persona: "personal",
       answers: { identity: "  " },
@@ -213,7 +228,11 @@ test("cmdOnboard --answers: saves through the interview's save path without a TT
   process.env.HOME = join(dir, "home");
   try {
     const file = join(dir, "answers.yaml");
-    await writeFile(file, "persona: personal\nanswers:\n  identity: Kim · Polish, informal\n  world: Warsaw · two cats\n", "utf8");
+    await writeFile(
+      file,
+      "persona: personal\nanswers:\n  identity: Kim · Polish, informal\n  world: Warsaw · two cats\n",
+      "utf8"
+    );
     assert.equal(await cmdOnboard(parseArgs(["onboard", "--vault", vault, "--answers", file])), 0);
     assert.equal(await isOnboardingDone(vault), true);
     const audit = (await readFile(join(vault, ".bastra", "audit-log.ndjson"), "utf8")).trim().split("\n");
@@ -235,12 +254,14 @@ test("cmdOnboard ends with the shadow replay (#702), capped at the latest turns 
   await mkdir(proj, { recursive: true });
   const total = ONBOARD_REPLAY_MAX_TURNS + 5;
   const now = Date.now();
-  const rows = Array.from({ length: total }, (_, i) => JSON.stringify({
-    type: "user",
-    timestamp: new Date(now - (total - i) * 60_000).toISOString(),
-    cwd: "/Users/me/proj",
-    message: { role: "user", content: `turn ${i}` },
-  }));
+  const rows = Array.from({ length: total }, (_, i) =>
+    JSON.stringify({
+      type: "user",
+      timestamp: new Date(now - (total - i) * 60_000).toISOString(),
+      cwd: "/Users/me/proj",
+      message: { role: "user", content: `turn ${i}` },
+    })
+  );
   await writeFile(join(proj, "sess-1.jsonl"), rows.join("\n") + "\n", "utf8");
   // A stand-in daemon on its own port — never the user's — that knows the
   // replay mode and answers every turn with an empty lane row.
@@ -256,13 +277,20 @@ test("cmdOnboard ends with the shadow replay (#702), capped at the latest turns 
       }
       const body = JSON.parse(raw) as { payload: { prompt: string; session_id: string } };
       prompts.push(body.payload.prompt);
-      res.end(JSON.stringify({
-        stdout: "{}",
-        telemetry: {
-          session_id: body.payload.session_id, origin: "owner", gated: false, status: "no-hits",
-          detected_mode: "none", hinted_ids: [], latency_ms_total: 1,
-        },
-      }));
+      res.end(
+        JSON.stringify({
+          stdout: "{}",
+          telemetry: {
+            session_id: body.payload.session_id,
+            origin: "owner",
+            gated: false,
+            status: "no-hits",
+            detected_mode: "none",
+            hinted_ids: [],
+            latency_ms_total: 1,
+          },
+        })
+      );
     });
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));

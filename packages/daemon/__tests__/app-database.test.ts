@@ -7,8 +7,16 @@ import { spawn } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import { openAppDatabase, type AppMigration } from "../src/app-database.js";
 
-function fixture() { return join(mkdtempSync(join(tmpdir(), "bastra-db-")), "recall.db"); }
-const first: AppMigration = { version: 1, name: "counter", up(db) { db.exec("CREATE TABLE counter(value INTEGER); INSERT INTO counter VALUES(0)"); } };
+function fixture() {
+  return join(mkdtempSync(join(tmpdir(), "bastra-db-")), "recall.db");
+}
+const first: AppMigration = {
+  version: 1,
+  name: "counter",
+  up(db) {
+    db.exec("CREATE TABLE counter(value INTEGER); INSERT INTO counter VALUES(0)");
+  },
+};
 
 test("WAL, FTS5, JSON records and idempotent schema startup", () => {
   const path = fixture();
@@ -30,13 +38,20 @@ test("backup precedes each migration, includes committed WAL and failed migratio
   let db = openAppDatabase({ path, migrations: [first] });
   db.sqlite.exec("UPDATE counter SET value=42");
   db.close();
-  const second: AppMigration = { version: 2, name: "broken", up(sqlite) { sqlite.exec("UPDATE counter SET value=99; CREATE TABLE partial(value)"); throw new Error("interrupted"); } };
+  const second: AppMigration = {
+    version: 2,
+    name: "broken",
+    up(sqlite) {
+      sqlite.exec("UPDATE counter SET value=99; CREATE TABLE partial(value)");
+      throw new Error("interrupted");
+    },
+  };
   assert.throws(() => openAppDatabase({ path, migrations: [first, second] }), /interrupted/);
   db = openAppDatabase({ path, migrations: [first] });
   assert.equal(db.sqlite.prepare("SELECT value FROM counter").get()?.value, 42);
   assert.equal(db.sqlite.prepare("SELECT name FROM sqlite_master WHERE name='partial'").get(), undefined);
   db.close();
-  const backups = readdirSync(`${path}.backups`).filter(x => x.includes("before-v2"));
+  const backups = readdirSync(`${path}.backups`).filter((x) => x.includes("before-v2"));
   assert.equal(backups.length, 1);
   const snapshot = new DatabaseSync(join(`${path}.backups`, backups[0]), { readOnly: true });
   assert.equal(snapshot.prepare("SELECT value FROM counter").get()?.value, 42);
@@ -47,7 +62,14 @@ test("backup precedes each migration, includes committed WAL and failed migratio
 test("backup and portable JSON export preserve rows; transaction rejects async callbacks", () => {
   const path = fixture();
   const db = openAppDatabase({ path, migrations: [first] });
-  assert.throws(() => db.transaction(() => { db.sqlite.exec("UPDATE counter SET value=1"); throw new Error("rollback"); }), /rollback/);
+  assert.throws(
+    () =>
+      db.transaction(() => {
+        db.sqlite.exec("UPDATE counter SET value=1");
+        throw new Error("rollback");
+      }),
+    /rollback/
+  );
   assert.throws(() => db.transaction(async () => 1), /synchronous/);
   assert.equal(db.sqlite.prepare("SELECT value FROM counter").get()?.value, 0);
   const target = `${path}.copy`;
@@ -67,7 +89,8 @@ test("rejects future schemas, invalid migration sequences and sync-directory sym
   const path = fixture();
   assert.throws(() => openAppDatabase({ path, migrations: [{ ...first, version: 2 }] }), /contiguous/);
   let db = openAppDatabase({ path, migrations: [first] });
-  db.sqlite.exec("PRAGMA user_version=99"); db.close();
+  db.sqlite.exec("PRAGMA user_version=99");
+  db.close();
   assert.throws(() => openAppDatabase({ path, migrations: [first] }), /newer/);
   const root = mkdtempSync(join(tmpdir(), "bastra-db-path-"));
   mkdirSync(join(root, "CloudStorage"));
@@ -81,7 +104,22 @@ test("rejects future schemas, invalid migration sequences and sync-directory sym
   assert.throws(() => backupDb.backup(join(root, "dangling.db")), /local/i);
   backupDb.close();
   let invoked = false;
-  assert.throws(() => openAppDatabase({ path: fixture(), migrations: [{ version: 1, name: "async", async up() { invoked = true; } }] }), /synchronous/);
+  assert.throws(
+    () =>
+      openAppDatabase({
+        path: fixture(),
+        migrations: [
+          {
+            version: 1,
+            name: "async",
+            async up() {
+              invoked = true;
+            },
+          },
+        ],
+      }),
+    /synchronous/
+  );
   assert.equal(invoked, false);
   assert.throws(() => openAppDatabase({ path: fixture(), busyTimeoutMs: -1 }), /timeout/);
   const failFast = openAppDatabase({ path: fixture(), busyTimeoutMs: 0 });
@@ -91,9 +129,16 @@ test("rejects future schemas, invalid migration sequences and sync-directory sym
 
 async function child(code: string) {
   return await new Promise<{ code: number | null; stderr: string }>((resolve, reject) => {
-    const proc = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code], { cwd: process.cwd(), env: process.env });
-    let stderr = ""; proc.stderr.on("data", chunk => { stderr += chunk; });
-    proc.on("error", reject); proc.on("close", code => resolve({ code, stderr }));
+    const proc = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code], {
+      cwd: process.cwd(),
+      env: process.env,
+    });
+    let stderr = "";
+    proc.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    proc.on("error", reject);
+    proc.on("close", (code) => resolve({ code, stderr }));
   });
 }
 
@@ -112,10 +157,26 @@ test("multiple processes migrate once and serialize read-modify-write transactio
 
 test("process termination during migration leaves previous version usable and retry succeeds", async () => {
   const path = fixture();
-  const db = openAppDatabase({ path, migrations: [first] }); db.close();
-  const result = await child(`import {openAppDatabase} from './packages/daemon/src/app-database.ts'; openAppDatabase({path:${JSON.stringify(path)},migrations:[{version:1,name:'counter',up(){}},{version:2,name:'crash',up(db){db.exec('UPDATE counter SET value=88'); process.exit(17)}}]});`);
+  const db = openAppDatabase({ path, migrations: [first] });
+  db.close();
+  const result = await child(
+    `import {openAppDatabase} from './packages/daemon/src/app-database.ts'; openAppDatabase({path:${JSON.stringify(path)},migrations:[{version:1,name:'counter',up(){}},{version:2,name:'crash',up(db){db.exec('UPDATE counter SET value=88'); process.exit(17)}}]});`
+  );
   assert.equal(result.code, 17, result.stderr);
-  const retry = openAppDatabase({ path, migrations: [first, { version: 2, name: "retry", up(sqlite) { assert.equal(sqlite.prepare("SELECT value FROM counter").get()?.value, 0); sqlite.exec("ALTER TABLE counter ADD COLUMN note TEXT"); } }] });
+  const retry = openAppDatabase({
+    path,
+    migrations: [
+      first,
+      {
+        version: 2,
+        name: "retry",
+        up(sqlite) {
+          assert.equal(sqlite.prepare("SELECT value FROM counter").get()?.value, 0);
+          sqlite.exec("ALTER TABLE counter ADD COLUMN note TEXT");
+        },
+      },
+    ],
+  });
   assert.equal(retry.sqlite.prepare("PRAGMA user_version").get()?.user_version, 2);
   retry.close();
 });

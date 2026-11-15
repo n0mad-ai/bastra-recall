@@ -415,7 +415,9 @@ export function accretionLocal(i, t, innerR, outerR) {
 export function gravityWebLocal(i, innerR, outerR) {
   const spread = (salt, amp) => (rnd(i, salt) - 0.5) * 2 * amp;
   return {
-    x: 0, y: 0, z: 0, // filled in per frame from orbit3d
+    x: 0,
+    y: 0,
+    z: 0, // filled in per frame from orbit3d
     orbit3d: {
       r: innerR + rnd(i, 961) * (outerR - innerR),
       a0: rnd(i, 967) * Math.PI * 2,

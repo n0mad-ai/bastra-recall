@@ -198,7 +198,7 @@ export function confidenceFromRank(rank: number | null): number {
 /** Cues für ein Memory erzeugen. Wirft nur, was `chat` wirft. */
 export async function generateCuesFor(
   m: Memory,
-  opts: CueBatchOptions,
+  opts: CueBatchOptions
 ): Promise<{ cues: DerivedCue[]; dropped: { unparsable: number; selfTest: number; lowConfidence: number } }> {
   const max = opts.maxCues ?? DEFAULT_MAX_CUES;
   const minConfidence = opts.minConfidence ?? DEFAULT_MIN_CONFIDENCE;
@@ -256,7 +256,7 @@ export async function generateCuesFor(
  */
 export async function generateCueBatch(
   vault: Vault,
-  opts: CueBatchOptions & { onCue: (cue: DerivedCue) => void | Promise<void> },
+  opts: CueBatchOptions & { onCue: (cue: DerivedCue) => void | Promise<void> }
 ): Promise<CueBatchReport> {
   const report: CueBatchReport = {
     memories_seen: 0,
@@ -282,7 +282,7 @@ export async function generateCueBatch(
       console.error(`[bastra.cues] generation failed for ${m.fm.id}: ${(err as Error).message}`);
       if (consecutiveFailures >= MAX_CONSECUTIVE_GEN_FAILURES) {
         console.error(
-          `[bastra.cues] batch stopped after ${MAX_CONSECUTIVE_GEN_FAILURES} consecutive generation failures — check the model`,
+          `[bastra.cues] batch stopped after ${MAX_CONSECUTIVE_GEN_FAILURES} consecutive generation failures — check the model`
         );
         report.stopped_early = true;
         break;
@@ -296,7 +296,7 @@ export async function generateCueBatch(
       consecutiveFailures++;
       if (consecutiveFailures >= MAX_CONSECUTIVE_GEN_FAILURES) {
         console.error(
-          `[bastra.cues] batch stopped after ${MAX_CONSECUTIVE_GEN_FAILURES} consecutive empty generations — check the model`,
+          `[bastra.cues] batch stopped after ${MAX_CONSECUTIVE_GEN_FAILURES} consecutive empty generations — check the model`
         );
         report.stopped_early = true;
         break;

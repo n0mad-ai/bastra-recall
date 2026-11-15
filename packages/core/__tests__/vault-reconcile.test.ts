@@ -116,7 +116,7 @@ test("#341: eine mtime-erhaltende Anreicherung bleibt im Index — auch bei glei
           frontmatter: (fm) => ({ ...fm, recall_when_expanded_src: src }),
           authoredContent: (body) => body,
         },
-        { vaultRoot: dir },
+        { vaultRoot: dir }
       );
 
     assert.equal((await enrich("aaaaaaaa")).kind, "written");
@@ -134,7 +134,7 @@ test("#341: eine mtime-erhaltende Anreicherung bleibt im Index — auch bei glei
     assert.equal(
       vault.get("a")?.fm.recall_when_expanded_src,
       "bbbbbbbb",
-      "reconcile lässt den selbst gesetzten Eintrag stehen",
+      "reconcile lässt den selbst gesetzten Eintrag stehen"
     );
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });

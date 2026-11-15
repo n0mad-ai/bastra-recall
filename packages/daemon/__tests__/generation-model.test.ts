@@ -10,11 +10,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { recommendTextModel } from "../src/cli/hardware.js";
-import {
-  resolveGenerationModel,
-  setGenerationModel,
-  GENERATION_MODEL_DEFAULT,
-} from "../src/settings.js";
+import { resolveGenerationModel, setGenerationModel, GENERATION_MODEL_DEFAULT } from "../src/settings.js";
 
 test("recommendTextModel: RAM tiers map to the right model", () => {
   // Below the 16 GB baseline → no generation model.
@@ -26,7 +22,10 @@ test("recommendTextModel: RAM tiers map to the right model", () => {
   assert.equal(recommendTextModel(16).tier, "baseline");
   assert.equal(recommendTextModel(16).alt, undefined);
   // …and the note claims nothing that was not measured.
-  assert.match(recommendTextModel(16).note, /follows from its size \(4\.5 GB\); it was not measured on a 16 GB machine/);
+  assert.match(
+    recommendTextModel(16).note,
+    /follows from its size \(4\.5 GB\); it was not measured on a 16 GB machine/
+  );
   // 24 GB → tev1:4b, 12B offered as opt-in alternative.
   assert.equal(recommendTextModel(24).model, "tev1:4b");
   assert.equal(recommendTextModel(24).tier, "enhanced");

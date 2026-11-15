@@ -143,11 +143,7 @@ function collectFacts(vault: VaultLike, flooredIds: Set<string>): CuratorMemoryF
 
 // ─── report data collection ──────────────────────────────────────────────────
 
-function collectStaleCandidates(
-  vault: VaultLike,
-  state: CuratorState,
-  usage: UsageAggregate,
-): ReportStaleCandidate[] {
+function collectStaleCandidates(vault: VaultLike, state: CuratorState, usage: UsageAggregate): ReportStaleCandidate[] {
   return Object.entries(state.stale)
     .map(([id, entry]) => ({
       id,
@@ -186,7 +182,10 @@ async function collectFloorReview(vault: VaultLike, nowMs: number): Promise<Repo
   return out.sort((a, b) => b.weeksSinceAffirm - a.weeksSinceAffirm);
 }
 
-function collectConflictsAndDangling(vault: VaultLike, skillIds: Set<string> = new Set()): {
+function collectConflictsAndDangling(
+  vault: VaultLike,
+  skillIds: Set<string> = new Set()
+): {
   conflicts: ReportConflictCluster[];
   dangling: ReportDanglingLink[];
 } {
@@ -264,7 +263,7 @@ function collectFlaggedCaptures(vault: VaultLike): Array<{ id: string; title?: s
  */
 function collectDamagedFrontmatter(
   vault: VaultLike,
-  vaultRoot: string,
+  vaultRoot: string
 ): Array<{ id: string; title?: string; path: string; fields: Array<{ field: string; reason: string }> }> {
   const out: Array<{ id: string; title?: string; path: string; fields: Array<{ field: string; reason: string }> }> = [];
   for (const m of vault.list()) {
@@ -351,7 +350,7 @@ function refusedResult(dryRun: boolean, staleTotal: number): CuratorRunResult {
  */
 export async function runCuratorPass(
   deps: CuratorRunDeps,
-  opts: { force?: boolean; dryRun?: boolean; lastActivityMs?: number; nowMs?: number } = {},
+  opts: { force?: boolean; dryRun?: boolean; lastActivityMs?: number; nowMs?: number } = {}
 ): Promise<CuratorRunResult> {
   // #538 single-flight. The check and the claim are both synchronous — no
   // await may sit between them, or two callers would slip through together.
@@ -402,17 +401,24 @@ export async function collectReflexCandidates(
   vault: VaultLike,
   state: CuratorState,
   nowMs: number,
-  events?: TelemetryEvent[],
+  events?: TelemetryEvent[]
 ): Promise<ReflexCandidate[]> {
   const out: ReflexCandidate[] = [];
   const frustrationIds = new Set<string>();
   for (const mem of vault.list()) {
     const fm = mem.fm;
     const id = str(fm.id);
-    if (!id || fm.write_origin !== "user-directed" ||
-        typeof fm.salience !== "number" || !(fm.salience >= 0.8) ||
-        fm.emotion !== "frustration" || fm.recall_mode !== undefined ||
-        fm.superseded_by || fm.obsolete === true) continue;
+    if (
+      !id ||
+      fm.write_origin !== "user-directed" ||
+      typeof fm.salience !== "number" ||
+      !(fm.salience >= 0.8) ||
+      fm.emotion !== "frustration" ||
+      fm.recall_mode !== undefined ||
+      fm.superseded_by ||
+      fm.obsolete === true
+    )
+      continue;
     frustrationIds.add(id);
     // Also respects a previous telemetry suggestion, even beyond its cooldown.
     if (Object.hasOwn(state.reflex_suggested ?? {}, id)) continue;
@@ -462,7 +468,7 @@ export function formatReflexCandidateBlock(c: ReflexCandidate): string {
 export function collectConsolidationCandidates(
   vault: VaultLike,
   state: CuratorState,
-  nowMs: number,
+  nowMs: number
 ): { key: string; label: string; scope: string; ids: string[] }[] {
   const clusters = new Map<string, { label: string; scope: string; ids: string[] }>();
   const cutoffMs = nowMs - CONSOLIDATION_MIN_AGE_DAYS * 24 * 60 * 60 * 1000;
@@ -508,7 +514,7 @@ export async function collectAdoptionCandidates(
   vault: VaultLike,
   state: CuratorState,
   nowMs: number,
-  events?: TelemetryEvent[],
+  events?: TelemetryEvent[]
 ): Promise<{ id: string; title: string; count: number }[]> {
   const evts = events ?? (await readEventLog(logDirFor(), 30));
   const counts = new Map<string, number>();
@@ -565,7 +571,7 @@ export function formatConsolidationBlock(c: { label: string; scope: string; ids:
 
 async function runCuratorPassInner(
   deps: CuratorRunDeps,
-  opts: { force?: boolean; dryRun?: boolean; lastActivityMs?: number; nowMs?: number },
+  opts: { force?: boolean; dryRun?: boolean; lastActivityMs?: number; nowMs?: number }
 ): Promise<CuratorRunResult> {
   const nowMs = opts.nowMs ?? Date.now();
   const state = await loadCuratorState(deps.vaultRoot);
@@ -573,8 +579,7 @@ async function runCuratorPassInner(
 
   if (!opts.force) {
     if (!shouldRunCurator({ nowMs, lastRunAt: state.last_run_at, lastActivityMs: opts.lastActivityMs })) {
-      const busy =
-        opts.lastActivityMs !== undefined && nowMs - opts.lastActivityMs < 10 * 60 * 1000;
+      const busy = opts.lastActivityMs !== undefined && nowMs - opts.lastActivityMs < 10 * 60 * 1000;
       return {
         ran: false,
         skipped: busy ? "busy" : "interval",
@@ -651,15 +656,16 @@ async function runCuratorPassInner(
           [cluster.key]: nowIso,
         };
       }
-      if (blocks.length > 0) await writePendingSuggestion(blocks.join("\n"), {
-        onPersisted: () => {
-          // #1308: a best-effort relay return alone is not delivery evidence.
-          // Failed/disabled writes must not permanently consume a candidate.
-          for (const id of reflexIds) {
-            nextState.reflex_suggested = { ...(nextState.reflex_suggested ?? {}), [id]: nowIso };
-          }
-        },
-      });
+      if (blocks.length > 0)
+        await writePendingSuggestion(blocks.join("\n"), {
+          onPersisted: () => {
+            // #1308: a best-effort relay return alone is not delivery evidence.
+            // Failed/disabled writes must not permanently consume a candidate.
+            for (const id of reflexIds) {
+              nextState.reflex_suggested = { ...(nextState.reflex_suggested ?? {}), [id]: nowIso };
+            }
+          },
+        });
     } catch {
       /* suggestions are best-effort */
     }
@@ -719,11 +725,13 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 /** GET /curator/state — last run + active demotions (loopback, read-only). */
 export function handleCuratorState(_req: IncomingMessage, res: ServerResponse, deps: CuratorRunDeps): void {
   loadCuratorState(deps.vaultRoot)
-    .then((state) => sendJson(res, 200, {
-      last_run_at: state.last_run_at ?? null,
-      stale_count: Object.keys(state.stale).length,
-      stale: state.stale,
-    }))
+    .then((state) =>
+      sendJson(res, 200, {
+        last_run_at: state.last_run_at ?? null,
+        stale_count: Object.keys(state.stale).length,
+        stale: state.stale,
+      })
+    )
     .catch(() => sendJson(res, 200, { last_run_at: null, stale_count: 0, stale: {} }));
 }
 
@@ -739,19 +747,24 @@ export function handleCuratorState(_req: IncomingMessage, res: ServerResponse, d
  * not reach an HTTP response. Loopback-only today; the hygiene rule holds
  * regardless of audience. Exported for tests.
  */
-export function sanitizeRunResultForHttp(
-  result: CuratorRunResult,
-): { status: number; body: CuratorRunResult } {
+export function sanitizeRunResultForHttp(result: CuratorRunResult): { status: number; body: CuratorRunResult } {
   if (!result.error) return { status: 200, body: result };
   return { status: 500, body: { ...result, error: "curator run failed — see daemon log" } };
 }
 
 export function handleCuratorRun(req: IncomingMessage, res: ServerResponse, deps: CuratorRunDeps): void {
   let raw = "";
-  req.on("data", (c) => { raw += c; if (raw.length > 4096) req.destroy(); });
+  req.on("data", (c) => {
+    raw += c;
+    if (raw.length > 4096) req.destroy();
+  });
   req.on("end", () => {
     let body: { force?: boolean; dryRun?: boolean } = {};
-    try { body = raw.trim() ? JSON.parse(raw) : {}; } catch { /* defaults */ }
+    try {
+      body = raw.trim() ? JSON.parse(raw) : {};
+    } catch {
+      /* defaults */
+    }
     runCuratorPass(deps, { force: body.force ?? true, dryRun: body.dryRun ?? true })
       .then((result) => {
         if (result.error) console.error(`[bastra-recall] /curator/run failed: ${result.error}`);

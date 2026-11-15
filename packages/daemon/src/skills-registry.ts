@@ -22,7 +22,8 @@ import { sendJsonPlain } from "./webui.js";
 import { getUiEnabled } from "./settings.js";
 
 function validateLegacyJson(text: string): void {
-  if (text.trim() && !Array.isArray(JSON.parse(text))) throw new Error("Local registry must be a JSON array; original preserved");
+  if (text.trim() && !Array.isArray(JSON.parse(text)))
+    throw new Error("Local registry must be a JSON array; original preserved");
 }
 
 export interface SkillEntry extends SkillRef {
@@ -62,7 +63,7 @@ async function readRegistry(path: string): Promise<SkillEntry[]> {
     parsed = JSON.parse(raw);
   } catch (e) {
     process.stderr.write(
-      `[bastra-recall] skills.json is corrupt (${(e as Error).message}) — treating as empty. Fix or delete ${path}\n`,
+      `[bastra-recall] skills.json is corrupt (${(e as Error).message}) — treating as empty. Fix or delete ${path}\n`
     );
     return [];
   }
@@ -96,13 +97,13 @@ async function writeRegistry(entries: SkillEntry[], path: string): Promise<void>
  */
 export async function addSkill(
   input: { id: string; label?: string; note?: string },
-  path: string = skillsFilePath(),
+  path: string = skillsFilePath()
 ): Promise<SkillEntry> {
   const id = input.id?.trim() ?? "";
   if (!SKILL_ID_RE.test(id)) {
     throw new Error(
       `invalid skill id ${JSON.stringify(input.id)} — must be a lowercase link slug ` +
-        `([a-z0-9_-], max 80 chars), exactly what you write as [[id]]`,
+        `([a-z0-9_-], max 80 chars), exactly what you write as [[id]]`
     );
   }
   const label = input.label?.trim();
@@ -126,7 +127,7 @@ export async function addSkill(
       await writeRegistry(entries, path);
       return entry;
     },
-    { crossProcess: true },
+    { crossProcess: true }
   );
 }
 
@@ -144,7 +145,7 @@ export async function removeSkill(id: string, path: string = skillsFilePath()): 
       await writeRegistry(next, path);
       return true;
     },
-    { crossProcess: true },
+    { crossProcess: true }
   );
 }
 
@@ -161,7 +162,7 @@ export async function handleUiSkills(
   req: IncomingMessage,
   res: ServerResponse,
   settingsPath?: string,
-  registryPath?: string,
+  registryPath?: string
 ): Promise<void> {
   if (!(await getUiEnabled(settingsPath))) {
     sendJsonPlain(res, 404, { error: "ui disabled" });
@@ -193,7 +194,7 @@ export async function handleUiSkills(
         label: typeof body.label === "string" ? body.label : undefined,
         note: typeof body.note === "string" ? body.note : undefined,
       },
-      registryPath ?? skillsFilePath(),
+      registryPath ?? skillsFilePath()
     );
     sendJsonPlain(res, 200, { skill: entry });
   } catch (err) {

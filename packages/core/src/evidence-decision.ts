@@ -155,11 +155,7 @@ function hasExactIdentifier(input: DecisionInput): boolean {
   const candidates = input.queryTerms.filter((t) => t.length >= 3 && IDENTIFIER_SHAPE.test(t));
   if (candidates.length === 0) return false;
   const m = input.memory;
-  const haystack = [
-    input.hit.title,
-    ...(m ? [m.fm.title, ...(m.fm.recall_when ?? [])] : []),
-  ]
-    .join(" \n ");
+  const haystack = [input.hit.title, ...(m ? [m.fm.title, ...(m.fm.recall_when ?? [])] : [])].join(" \n ");
   const folded = foldTerm(normalizeText(haystack));
   return candidates.some((t) => startsWhole(folded, foldTerm(t)));
 }
@@ -292,17 +288,14 @@ export function decideHit(input: DecisionInput): RecallDecisionHit {
   }
 
   // Ab hier ist es keine Pflicht. Bleibt genug für einen Vorschlag?
-  const anySignal = evidence.recall_when_coverage > 0 || evidence.arm_agreement || evidence.scope_match || evidence.exact_identifier;
+  const anySignal =
+    evidence.recall_when_coverage > 0 || evidence.arm_agreement || evidence.scope_match || evidence.exact_identifier;
   if (anySignal) {
     return {
       id,
       decision: "optional",
       evidence,
-      ...(stale
-        ? { abstain_reason: "stale" as const }
-        : hopOnly
-          ? { abstain_reason: "hop_only" as const }
-          : {}),
+      ...(stale ? { abstain_reason: "stale" as const } : hopOnly ? { abstain_reason: "hop_only" as const } : {}),
     };
   }
 
@@ -318,7 +311,7 @@ export function decideHit(input: DecisionInput): RecallDecisionHit {
  */
 export function decideHits(
   hits: RecallHit[],
-  ctx: { queryTerms: string[]; scope?: string | null; memoryOf?: (id: string) => Memory | undefined },
+  ctx: { queryTerms: string[]; scope?: string | null; memoryOf?: (id: string) => Memory | undefined }
 ): RecallDecisionHit[] {
   return hits.map((hit) =>
     decideHit({
@@ -326,6 +319,6 @@ export function decideHits(
       memory: ctx.memoryOf?.(hit.id),
       queryTerms: ctx.queryTerms,
       scope: ctx.scope,
-    }),
+    })
   );
 }

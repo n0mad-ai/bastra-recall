@@ -58,7 +58,7 @@ function httpPost(port: number, path: string, payload: unknown): Promise<{ statu
         const chunks: Buffer[] = [];
         res.on("data", (c: Buffer) => chunks.push(c));
         res.on("end", () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
-      },
+      }
     );
     req.on("error", reject);
     req.write(body);
@@ -193,7 +193,11 @@ test("/hook/act logs the CLAUDE session id on the hook_act event, not the daemon
         await new Promise((r) => setTimeout(r, 50));
         try {
           const raw = await readFile(eventsPath, "utf8");
-          line = raw.split("\n").filter((l) => l.includes('"hook_act"')).pop() ?? "";
+          line =
+            raw
+              .split("\n")
+              .filter((l) => l.includes('"hook_act"'))
+              .pop() ?? "";
         } catch {
           // Datei existiert noch nicht — weiter pollen
         }

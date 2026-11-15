@@ -69,7 +69,7 @@ test("findRulesFiles: picks up project files, .cursor/rules/ contents and the gl
     const files = await findRulesFiles(cwd, home);
     assert.deepEqual(
       files.map((f) => f.label),
-      ["CLAUDE.md", "AGENTS.md", ".cursor/rules/a.mdc", ".cursor/rules/b.mdc", "~/.claude/CLAUDE.md"],
+      ["CLAUDE.md", "AGENTS.md", ".cursor/rules/a.mdc", ".cursor/rules/b.mdc", "~/.claude/CLAUDE.md"]
     );
   } finally {
     await rm(cwd, { recursive: true, force: true });

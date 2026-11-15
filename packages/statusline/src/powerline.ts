@@ -55,9 +55,7 @@ export class PowerlineRenderer {
       ? await this.segments.blockProvider.getActiveBlockInfo(hookData)
       : null;
 
-    const todayInfo = this.segments.needsSegmentInfo("today")
-      ? await this.segments.todayProvider.getTodayInfo()
-      : null;
+    const todayInfo = this.segments.needsSegmentInfo("today") ? await this.segments.todayProvider.getTodayInfo() : null;
 
     const contextSegmentConfig = this.config.display.lines
       .map((line) => line.segments.context)
@@ -83,23 +81,14 @@ export class PowerlineRenderer {
         todayInfo,
         contextInfo,
         metricsInfo,
-        cacheTimerInfo,
+        cacheTimerInfo
       );
     }
 
     const lines = await Promise.all(
       this.config.display.lines.map((lineConfig) =>
-        this.renderLine(
-          lineConfig,
-          hookData,
-          usageInfo,
-          blockInfo,
-          todayInfo,
-          contextInfo,
-          metricsInfo,
-          cacheTimerInfo,
-        ),
-      ),
+        this.renderLine(lineConfig, hookData, usageInfo, blockInfo, todayInfo, contextInfo, metricsInfo, cacheTimerInfo)
+      )
     );
 
     return lines.filter((line) => line.length > 0).join("\n");
@@ -112,7 +101,7 @@ export class PowerlineRenderer {
     todayInfo: TodayInfo | null,
     contextInfo: ContextInfo | null,
     metricsInfo: MetricsInfo | null,
-    cacheTimerInfo: CacheTimerInfo | null,
+    cacheTimerInfo: CacheTimerInfo | null
   ): Promise<string> {
     const colors = this.theme.getThemeColors();
     const currentDir = hookData.workspace?.current_dir || hookData.cwd || "/";
@@ -122,10 +111,7 @@ export class PowerlineRenderer {
 
     for (const lineConfig of this.config.display.lines) {
       const segments = Object.entries(lineConfig.segments)
-        .filter(
-          ([_, config]: [string, AnySegmentConfig | undefined]) =>
-            config?.enabled,
-        )
+        .filter(([_, config]: [string, AnySegmentConfig | undefined]) => config?.enabled)
         .map(([type, config]: [string, AnySegmentConfig]) => ({
           type,
           config,
@@ -143,7 +129,7 @@ export class PowerlineRenderer {
           metricsInfo,
           cacheTimerInfo,
           colors,
-          currentDir,
+          currentDir
         );
 
         if (segmentData) {
@@ -159,17 +145,13 @@ export class PowerlineRenderer {
 
       if (renderedSegments.length === 0) continue;
 
-      outputLines.push(
-        ...this.layout.wrapSegments(renderedSegments, terminalWidth, colors),
-      );
+      outputLines.push(...this.layout.wrapSegments(renderedSegments, terminalWidth, colors));
     }
 
     return outputLines.join("\n");
   }
 
-  private async generateTuiStatusline(
-    hookData: ClaudeHookData,
-  ): Promise<string> {
+  private async generateTuiStatusline(hookData: ClaudeHookData): Promise<string> {
     const colors = this.theme.getThemeColors();
     const terminalWidth = getTerminalWidth();
     const currentDir = hookData.workspace?.current_dir || hookData.cwd || "/";
@@ -198,23 +180,13 @@ export class PowerlineRenderer {
           showUpstream: false,
           showRepoName: false,
         },
-        hookData.workspace?.project_dir,
+        hookData.workspace?.project_dir
       ),
       this.segments.tmuxService.getSessionId(),
       this.segments.cacheTimerProvider.getCacheTimerInfo(hookData),
     ]);
-    const val = <T>(r: PromiseSettledResult<T>) =>
-      r.status === "fulfilled" ? r.value : null;
-    const [
-      usageInfo,
-      blockInfo,
-      todayInfo,
-      contextInfo,
-      metricsInfo,
-      gitInfo,
-      tmuxSessionId,
-      cacheTimerInfo,
-    ] = [
+    const val = <T>(r: PromiseSettledResult<T>) => (r.status === "fulfilled" ? r.value : null);
+    const [usageInfo, blockInfo, todayInfo, contextInfo, metricsInfo, gitInfo, tmuxSessionId, cacheTimerInfo] = [
       val(results[0]!),
       val(results[1]!),
       val(results[2]!),
@@ -239,16 +211,10 @@ export class PowerlineRenderer {
       colors,
     };
 
-    return renderTuiPanel(
-      tuiData,
-      boxChars,
-      colors.reset,
-      terminalWidth,
-      this.config,
-      { rawTerminalWidth: getRawTerminalWidth() },
-    );
+    return renderTuiPanel(tuiData, boxChars, colors.reset, terminalWidth, this.config, {
+      rawTerminalWidth: getRawTerminalWidth(),
+    });
   }
-
 
   private async renderLine(
     lineConfig: LineConfig,
@@ -258,16 +224,13 @@ export class PowerlineRenderer {
     todayInfo: TodayInfo | null,
     contextInfo: ContextInfo | null,
     metricsInfo: MetricsInfo | null,
-    cacheTimerInfo: CacheTimerInfo | null,
+    cacheTimerInfo: CacheTimerInfo | null
   ): Promise<string> {
     const colors = this.theme.getThemeColors();
     const currentDir = hookData.workspace?.current_dir || hookData.cwd || "/";
 
     const segments = Object.entries(lineConfig.segments)
-      .filter(
-        ([_, config]: [string, AnySegmentConfig | undefined]) =>
-          config?.enabled,
-      )
+      .filter(([_, config]: [string, AnySegmentConfig | undefined]) => config?.enabled)
       .map(([type, config]: [string, AnySegmentConfig]) => ({ type, config }));
 
     const renderedSegments: RenderedSegment[] = [];
@@ -282,7 +245,7 @@ export class PowerlineRenderer {
         metricsInfo,
         cacheTimerInfo,
         colors,
-        currentDir,
+        currentDir
       );
 
       if (segmentData) {

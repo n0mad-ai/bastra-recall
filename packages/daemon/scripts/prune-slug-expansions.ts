@@ -80,7 +80,7 @@ async function main(): Promise<void> {
     if (samples.length < 12) samples.push(...r.removedSamples.slice(0, 2));
   }
   process.stdout.write(
-    `${apply ? "PRUNED" : "would prune"} ${slugsRemoved} slug entries from ${files} files (${emptied} left empty)\n`,
+    `${apply ? "PRUNED" : "would prune"} ${slugsRemoved} slug entries from ${files} files (${emptied} left empty)\n`
   );
   process.stdout.write(`sample of removed slugs:\n  ${samples.slice(0, 12).join("\n  ")}\n`);
 }

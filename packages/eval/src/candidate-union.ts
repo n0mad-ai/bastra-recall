@@ -246,7 +246,7 @@ async function collectPrompts(limit: number): Promise<Prompt[]> {
   const sorted = [...found.values()].sort(
     (a, b) =>
       a.text.length - b.text.length ||
-      (a.text < b.text ? -1 : a.text > b.text ? 1 : a.sessionDir < b.sessionDir ? -1 : 1),
+      (a.text < b.text ? -1 : a.text > b.text ? 1 : a.sessionDir < b.sessionDir ? -1 : 1)
   );
   const step = Math.max(1, Math.floor(sorted.length / limit));
   const out: Prompt[] = [];
@@ -267,7 +267,7 @@ function add(
   id: string,
   title: string,
   p: Provenance,
-  hybrid?: { score: number; rankBelowFloor?: number },
+  hybrid?: { score: number; rankBelowFloor?: number }
 ): void {
   const existing = map.get(id);
   if (existing) {
@@ -376,7 +376,7 @@ async function main(): Promise<void> {
       model: process.env.BASTRA_EMBEDDING_MODEL ?? "embeddinggemma",
       keepAlive: "10m",
     }),
-    path.join(vaultRoot, ".bastra", "embeddings.json"),
+    path.join(vaultRoot, ".bastra", "embeddings.json")
   );
   await emb.start();
   search.useEmbeddings(emb);
@@ -425,9 +425,7 @@ async function main(): Promise<void> {
       .filter((c) => c.score < RECALL_FLOOR)
       .sort((a, b) => b.score - a.score)
       .slice(0, belowFloorMargin);
-    nearMiss.forEach((c, i) =>
-      add(map, c.id, titleOf(c.id), "below-floor", { score: c.score, rankBelowFloor: i + 1 }),
-    );
+    nearMiss.forEach((c, i) => add(map, c.id, titleOf(c.id), "below-floor", { score: c.score, rankBelowFloor: i + 1 }));
 
     // 2) Der dichte Arm für sich — er findet anderes als die Fusion zeigt.
     for (const d of await emb.search(q, 20)) add(map, d.id, titleOf(d.id), "dense-top");
@@ -523,8 +521,7 @@ async function main(): Promise<void> {
   const total = sets.reduce((s, q) => s + q.candidates.length, 0);
   const byProv = new Map<string, number>();
   for (const s of metaSets)
-    for (const c of s.candidates)
-      for (const p of c.provenance) byProv.set(p, (byProv.get(p) ?? 0) + 1);
+    for (const c of s.candidates) for (const p of c.provenance) byProv.set(p, (byProv.get(p) ?? 0) + 1);
 
   console.log(`\nQueries: ${sets.length}, Kandidaten gesamt: ${total}`);
   console.log("Provenienz (Mehrfachnennung pro Kandidat möglich):");
@@ -534,13 +531,13 @@ async function main(): Promise<void> {
   if (unscopedFallbackCount > 0) {
     console.log(
       `\nProjekt-Erkennung gescheitert/unsicher bei ${unscopedFallbackCount}/${sets.length} Queries — ` +
-        "deren Kontrolle ist UNGEFILTERT (random-control-unscoped), nicht scope-kompatibel.",
+        "deren Kontrolle ist UNGEFILTERT (random-control-unscoped), nicht scope-kompatibel."
     );
   }
   if (globalOnlyCount > 0) {
     console.log(
       `Projekt aus der cwd erkannt, aber ohne Vault-Scope bei ${globalOnlyCount}/${sets.length} Queries — ` +
-        "deren Kontrolle (random-control-global-only) besteht ausdrücklich nur aus globalen Scopes.",
+        "deren Kontrolle (random-control-global-only) besteht ausdrücklich nur aus globalen Scopes."
     );
   }
   // Exklusivität wird gegen die ARM-Quellen gerechnet, nicht gegen alle
@@ -551,10 +548,10 @@ async function main(): Promise<void> {
   const HYBRID_POOL: Provenance[] = ["above-inject-floor", "below-floor"];
   const all = metaSets.flatMap((s) => s.candidates);
   const onlyDense = all.filter(
-    (c) => c.provenance.includes("dense-top") && !LEX.some((p) => c.provenance.includes(p)),
+    (c) => c.provenance.includes("dense-top") && !LEX.some((p) => c.provenance.includes(p))
   ).length;
   const onlyLex = all.filter(
-    (c) => LEX.some((p) => c.provenance.includes(p)) && !c.provenance.includes("dense-top"),
+    (c) => LEX.some((p) => c.provenance.includes(p)) && !c.provenance.includes("dense-top")
   ).length;
   // Außerhalb der ausgewerteten Arm-Tiefe: der Hybrid-Pool (above-inject-floor
   // / below-floor) hat den Kandidaten gefunden — also mindestens ein Arm hat
@@ -564,7 +561,7 @@ async function main(): Promise<void> {
     (c) =>
       HYBRID_POOL.some((p) => c.provenance.includes(p)) &&
       !c.provenance.includes("dense-top") &&
-      !LEX.some((p) => c.provenance.includes(p)),
+      !LEX.some((p) => c.provenance.includes(p))
   ).length;
   // Von keinem Retriever vorgeschlagen: einzig über die random-control-Quelle
   // ins Set gekommen, kein Arm und kein Hybrid-Pool hat den Kandidaten je
@@ -578,15 +575,21 @@ async function main(): Promise<void> {
   console.log("Die ersten beiden Zahlen kann ein Set aus den heutigen Treffern nicht enthalten.");
   console.log("Die dritte ist Pool-Randzone: mindestens ein Arm hat gescort, nur außerhalb seiner Top-20.");
   console.log("Die vierte ist der einzige echte gemeinsame blinde Fleck, sichtbar nur über die Kontrolle.");
-  console.log(`\nLabelaufwand: ${all.length} Kandidaten über ${sets.length} Queries (${Math.round(all.length / sets.length)} je Query).`);
+  console.log(
+    `\nLabelaufwand: ${all.length} Kandidaten über ${sets.length} Queries (${Math.round(all.length / sets.length)} je Query).`
+  );
 
   if (out) {
     const metaOut = out.endsWith(".json") ? out.slice(0, -".json".length) + ".meta.json" : out + ".meta.json";
     await fs.writeFile(out, JSON.stringify({ created_for: "#362 Phase 0", sets }, null, 2), "utf8");
     await fs.writeFile(
       metaOut,
-      JSON.stringify({ created_for: "#362 Phase 0", note: "NICHT zum Labeln — enthält Scores/Ränge.", sets: metaSets }, null, 2),
-      "utf8",
+      JSON.stringify(
+        { created_for: "#362 Phase 0", note: "NICHT zum Labeln — enthält Scores/Ränge.", sets: metaSets },
+        null,
+        2
+      ),
+      "utf8"
     );
     console.log(`\nBlindes Arbeitsblatt geschrieben: ${out}`);
     console.log(`Auswertungsdatei geschrieben:      ${metaOut}`);

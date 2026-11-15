@@ -45,7 +45,7 @@ export function passesScopeFilter(
     anchor_strength?: "strong" | "weak";
   },
   project: string | null,
-  mustLoadScore: number,
+  mustLoadScore: number
 ): boolean {
   if (isScopeCompatible(hit.scope, project)) return true;
   // P0: Ein einzelnes häufiges Wort, das zufällig in einer fremden
@@ -177,7 +177,7 @@ export function applyLaneScopeFilter<T extends LaneScopeHit>(
   hits: T[],
   project: string | null,
   opts: LaneScopeFilterOptions,
-  mode: ScopeFilterMode = laneScopeFilterMode(),
+  mode: ScopeFilterMode = laneScopeFilterMode()
 ): LaneScopeFilterResult<T> {
   if (!project) {
     return { hits, droppedCount: 0, droppedScopes: [], mode, filterProject: null, skipped: "no-project" };
@@ -289,10 +289,7 @@ export function projectConfidence(cwd: string): DetectedProject["confidence"] {
  * Früher Abbruch: Im Normalfall trifft der erste eigene Treffer sofort; nur
  * der seltene Fehlerfall („packages") läuft einmal durch die Liste.
  */
-export function vaultKnowsProject(
-  vault: { list(): Array<{ fm: { scope?: unknown } }> },
-  project: string,
-): boolean {
+export function vaultKnowsProject(vault: { list(): Array<{ fm: { scope?: unknown } }> }, project: string): boolean {
   if (!project) return false;
   for (const m of vault.list()) {
     const scope = m.fm.scope;

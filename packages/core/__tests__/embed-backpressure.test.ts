@@ -71,10 +71,7 @@ test("flushQueue respects MAX_CONCURRENT_BATCHES (default 2)", async () => {
       await new Promise((r) => setTimeout(r, 50));
     }
     assert.equal(idx.size(), 200, "all memories should be embedded");
-    assert.ok(
-      provider.peakInFlight <= 2,
-      `peakInFlight = ${provider.peakInFlight}, must be <= 2`,
-    );
+    assert.ok(provider.peakInFlight <= 2, `peakInFlight = ${provider.peakInFlight}, must be <= 2`);
     await idx.stop();
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
@@ -114,7 +111,7 @@ test("enqueue() applies backpressure when queue grows beyond limit", async () =>
     // Callbacks synchron, also wächst die Queue über das Limit hinaus.
     assert.ok(
       idx.stallCount() > 0,
-      `enqueue burst must stall once the queue exceeds the limit, stalls=${idx.stallCount()}`,
+      `enqueue burst must stall once the queue exceeds the limit, stalls=${idx.stallCount()}`
     );
 
     await idx.stop();
@@ -153,11 +150,7 @@ test("enqueue() does not stall while the queue stays under the limit", async () 
 
     await Promise.all(ids.map((id) => idx.enqueue(id)));
 
-    assert.equal(
-      idx.stallCount(),
-      0,
-      "100 enqueues under a limit of 500 must never hit backpressure",
-    );
+    assert.equal(idx.stallCount(), 0, "100 enqueues under a limit of 500 must never hit backpressure");
 
     await idx.stop();
     while (idx.inFlightCount() > 0) await new Promise((r) => setTimeout(r, 10));

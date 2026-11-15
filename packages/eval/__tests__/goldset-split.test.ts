@@ -38,12 +38,21 @@ const corpus = (): GoldCase[] => [
 test("the same seed reproduces the same split, byte for byte", () => {
   const one = splitGoldCases(corpus(), REGISTERED);
   const two = splitGoldCases(corpus(), REGISTERED);
-  assert.deepEqual(one.selection.map((x) => x.id), two.selection.map((x) => x.id));
-  assert.deepEqual(one.holdout.map((x) => x.id), two.holdout.map((x) => x.id));
+  assert.deepEqual(
+    one.selection.map((x) => x.id),
+    two.selection.map((x) => x.id)
+  );
+  assert.deepEqual(
+    one.holdout.map((x) => x.id),
+    two.holdout.map((x) => x.id)
+  );
 
   // A split that moves between runs is not a registered split.
   const other = splitGoldCases(corpus(), { ...REGISTERED, seed: 1 });
-  assert.notDeepEqual(one.selection.map((x) => x.id), other.selection.map((x) => x.id));
+  assert.notDeepEqual(
+    one.selection.map((x) => x.id),
+    other.selection.map((x) => x.id)
+  );
 });
 
 test("input order does not change the split", () => {
@@ -52,7 +61,7 @@ test("input order does not change the split", () => {
   assert.deepEqual(
     forward.selection.map((x) => x.id).sort(),
     shuffled.selection.map((x) => x.id).sort(),
-    "concatenating the gold files in a different order must not move a single case",
+    "concatenating the gold files in a different order must not move a single case"
   );
 });
 
@@ -89,7 +98,7 @@ test("a split without strata or with a degenerate share is refused", () => {
   assert.throws(
     () => splitGoldCases(corpus(), { ...REGISTERED, stratifyBy: [] }),
     /at least one field/,
-    "a seed makes an unbalanced draw reproducible, not balanced",
+    "a seed makes an unbalanced draw reproducible, not balanced"
   );
   for (const share of [0, 1, 1.5]) {
     assert.throws(() => splitGoldCases(corpus(), { ...REGISTERED, selectionShare: share }), /strictly between/);
@@ -101,17 +110,14 @@ test("a stratifyBy field that does not vary over the pool is refused (#444)", ()
   // eligible case is descriptive, so the draw is unstratified with a seed.
   assert.throws(
     () => splitGoldCases(corpus(), { ...REGISTERED, stratifyBy: ["origin_type", "kind"] }),
-    /`kind` is constant over the eligible pool/,
+    /`kind` is constant over the eligible pool/
   );
   // The check runs on the ELIGIBLE pool: a field that varies only across the
   // excluded cases still names nothing the split can balance.
-  const withProbe = [
-    ...corpus(),
-    c("p1", { probe_group: "gibberish-probe", kind: "associative" }),
-  ];
+  const withProbe = [...corpus(), c("p1", { probe_group: "gibberish-probe", kind: "associative" })];
   assert.throws(
     () => splitGoldCases(withProbe, { ...REGISTERED, stratifyBy: ["origin_type", "kind"] }),
-    /`kind` is constant over the eligible pool/,
+    /`kind` is constant over the eligible pool/
   );
   // And the registered configuration is unaffected.
   assert.equal(splitGoldCases(corpus(), REGISTERED).strata.length, 4);
@@ -126,10 +132,7 @@ test("a stratum too small for both halves is coalesced, not silently one-sided (
   for (const s of r.strata) {
     assert.ok(s.selection > 0 && s.holdout > 0, `${s.key} reaches both halves`);
   }
-  assert.ok(
-    !r.strata.some((s) => s.key === "user_query|en"),
-    "the stratum of one does not survive as its own stratum",
-  );
+  assert.ok(!r.strata.some((s) => s.key === "user_query|en"), "the stratum of one does not survive as its own stratum");
 
   // It merged into its largest sibling under the same origin — origin is the
   // factor the M0 variance sits on, so `lang` is what gets backed off.

@@ -140,17 +140,13 @@ const MAX_DIFF_BYTES = 2 * 1024 * 1024;
  */
 export async function workingDiff(repoRoot: string, file: string): Promise<string | null> {
   try {
-    const { stdout } = await run(
-      "git",
-      ["diff", "--no-color", "--no-ext-diff", "-U0", "HEAD", "--", file],
-      {
-        cwd: repoRoot,
-        timeout: GIT_TIMEOUT_MS,
-        windowsHide: true,
-        encoding: "utf8",
-        maxBuffer: MAX_DIFF_BYTES,
-      },
-    );
+    const { stdout } = await run("git", ["diff", "--no-color", "--no-ext-diff", "-U0", "HEAD", "--", file], {
+      cwd: repoRoot,
+      timeout: GIT_TIMEOUT_MS,
+      windowsHide: true,
+      encoding: "utf8",
+      maxBuffer: MAX_DIFF_BYTES,
+    });
     return stdout.trim() === "" ? null : stdout;
   } catch {
     return null;

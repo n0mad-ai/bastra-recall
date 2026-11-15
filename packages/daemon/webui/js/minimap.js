@@ -17,7 +17,10 @@ export function createMinimap(canvas, sim, renderer, colorOf, flyTo) {
   function draw() {
     const W = canvas.clientWidth;
     const H = canvas.clientHeight;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
     for (const n of sim.nodes) {
       if (n.x < minX) minX = n.x;
       if (n.y < minY) minY = n.y;

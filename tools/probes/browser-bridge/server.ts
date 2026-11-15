@@ -1,6 +1,11 @@
 /** Synthetic loopback fixture. Never imports settings, vaults, or daemon startup. */
 import { createServer } from "node:http";
-import { gateApiRequest, isLoopback, isLoopbackHost, resolveCorsOrigin } from "../../../packages/daemon/src/http-auth.js";
+import {
+  gateApiRequest,
+  isLoopback,
+  isLoopbackHost,
+  resolveCorsOrigin,
+} from "../../../packages/daemon/src/http-auth.js";
 import { sendCors, sendJson } from "../../../packages/daemon/src/http-util.js";
 
 const rawOrigin = process.argv[2];
@@ -37,27 +42,40 @@ const servers = [
     const allowedOrigin = resolveCorsOrigin(req.headers.origin, allow);
     const preflight = req.method === "OPTIONS";
     sendCors(res, allowedOrigin, {
-      allowPrivateNetwork: preflight && allowedOrigin !== null &&
-        req.headers["access-control-request-private-network"] === "true",
+      allowPrivateNetwork:
+        preflight && allowedOrigin !== null && req.headers["access-control-request-private-network"] === "true",
     });
-    const gateStatus = preflight ? 204 : gateApiRequest({
-      reqOrigin: req.headers.origin,
-      allowedOrigin,
-      isLoopback: isLoopback(req),
-      isLoopbackHost: isLoopbackHost(req.headers.host, []),
-      authHeader: req.headers.authorization ?? "",
-      apiToken: token,
-      loopbackSkip: false,
-    });
+    const gateStatus = preflight
+      ? 204
+      : gateApiRequest({
+          reqOrigin: req.headers.origin,
+          allowedOrigin,
+          isLoopback: isLoopback(req),
+          isLoopbackHost: isLoopbackHost(req.headers.host, []),
+          authHeader: req.headers.authorization ?? "",
+          apiToken: token,
+          loopbackSkip: false,
+        });
     const methodAllowed = req.method === "GET" || req.method === "POST";
     const status = preflight || methodAllowed ? gateStatus : 405;
     // Only protocol diagnostics; do not log Authorization, payloads, or cookies.
-    console.log(JSON.stringify({ fixture: label, method: req.method,
-      origin: req.headers.origin ?? null, status, cors: allowedOrigin !== null,
-      requestedMethod: req.headers["access-control-request-method"] ?? null,
-      privateNetwork: req.headers["access-control-request-private-network"] === "true" }));
+    console.log(
+      JSON.stringify({
+        fixture: label,
+        method: req.method,
+        origin: req.headers.origin ?? null,
+        status,
+        cors: allowedOrigin !== null,
+        requestedMethod: req.headers["access-control-request-method"] ?? null,
+        privateNetwork: req.headers["access-control-request-private-network"] === "true",
+      })
+    );
     req.resume(); // discard every body; no vault or persistence exists
-    if (preflight) { res.writeHead(status); res.end(); return; }
+    if (preflight) {
+      res.writeHead(status);
+      res.end();
+      return;
+    }
     if (!methodAllowed) {
       sendJson(res, 405, { synthetic: true, error: "GET/POST only" });
       return;
@@ -77,5 +95,7 @@ const servers = [
   return server;
 });
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.on(signal, () => { for (const server of servers) server.close(); });
+  process.on(signal, () => {
+    for (const server of servers) server.close();
+  });
 }

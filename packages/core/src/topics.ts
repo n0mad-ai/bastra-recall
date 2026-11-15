@@ -353,11 +353,7 @@ export function detectTopics(intent: ToolIntent): TopicResult {
  * tool_input payload (#15). Caps at maxChars to keep the recall query bounded
  * — the goal is topic detection, not full-text similarity.
  */
-export function extractContentExcerpt(
-  toolName: string,
-  toolInput: Record<string, unknown>,
-  maxChars = 4000,
-): string {
+export function extractContentExcerpt(toolName: string, toolInput: Record<string, unknown>, maxChars = 4000): string {
   const pieces: string[] = [];
   if (toolName === "Write" && typeof toolInput.content === "string") {
     pieces.push(toolInput.content);

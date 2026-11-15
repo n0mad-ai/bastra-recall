@@ -36,17 +36,21 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export class VaultRootMissingError extends Error {
   readonly code = "VAULT_MISSING";
-  constructor(readonly vaultRoot: string, readonly firstSeen: string | null, missingParent?: string) {
+  constructor(
+    readonly vaultRoot: string,
+    readonly firstSeen: string | null,
+    missingParent?: string
+  ) {
     super(
       missingParent
         ? `the vault at ${vaultRoot} cannot be created: its parent directory ${missingParent} does not exist ` +
             `(often a drive that is not mounted). Refusing to create the path; mount the drive or create the parent directory first.`
         : firstSeen
-        ? `the vault at ${vaultRoot} is missing — it was present before (first seen ${firstSeen}) but is not now ` +
+          ? `the vault at ${vaultRoot} is missing — it was present before (first seen ${firstSeen}) but is not now ` +
             `(unmounted drive, dropped network share). Refusing to recreate it; remount it and retry. ` +
             `If the vault was moved or deleted on purpose, create the folder again or point bastra at the new path.`
-        : `the vault at ${vaultRoot} is missing — nothing has been saved there yet, or the drive holding it is not mounted. ` +
-            `Refusing to create it from here; a save creates a new vault.`,
+          : `the vault at ${vaultRoot} is missing — nothing has been saved there yet, or the drive holding it is not mounted. ` +
+            `Refusing to create it from here; a save creates a new vault.`
     );
     this.name = "VaultRootMissingError";
   }
@@ -57,14 +61,17 @@ export type VaultRootHistoryCause = "corrupt" | "unwritable" | "unknown";
 /** Two sentences: the marker file, the cause (when known) and the repair. */
 export class VaultRootHistoryError extends Error {
   readonly code = "VAULT_ROOT_HISTORY_UNAVAILABLE";
-  constructor(readonly markerPath: string, readonly cause: VaultRootHistoryCause = "unknown") {
+  constructor(
+    readonly markerPath: string,
+    readonly cause: VaultRootHistoryCause = "unknown"
+  ) {
     const dir = dirname(markerPath);
     super(
       cause === "corrupt"
         ? `Bastra refuses every vault write: the vault-root history ${markerPath} is empty or corrupt. If the vault is mounted, delete that file; it is rewritten on the next save.`
         : cause === "unwritable"
-        ? `Bastra refuses every vault write: the vault-root history ${markerPath} cannot be written. Fix the permissions of ${dir}; the file is rewritten on the next save.`
-        : `Bastra refuses every vault write: the vault-root history ${markerPath} is empty or corrupt, or ${dir} is not writable. If the vault is mounted, delete that file (it is rewritten on the next save); otherwise fix the permissions of ${dir}.`,
+          ? `Bastra refuses every vault write: the vault-root history ${markerPath} cannot be written. Fix the permissions of ${dir}; the file is rewritten on the next save.`
+          : `Bastra refuses every vault write: the vault-root history ${markerPath} is empty or corrupt, or ${dir} is not writable. If the vault is mounted, delete that file (it is rewritten on the next save); otherwise fix the permissions of ${dir}.`
     );
     this.name = "VaultRootHistoryError";
   }
@@ -136,7 +143,9 @@ const persisted = new Set<string>();
  * case-insensitive macOS/Windows volume. False STOP on a case-sensitive volume
  * is safer than recreating a known vault on its unmounted parent filesystem. */
 function sameRootKey(a: string, b: string): boolean {
-  return a === b || ((process.platform === "darwin" || process.platform === "win32") && a.toLowerCase() === b.toLowerCase());
+  return (
+    a === b || ((process.platform === "darwin" || process.platform === "win32") && a.toLowerCase() === b.toLowerCase())
+  );
 }
 
 function firstSeenIn(roots: Map<string, RootEntry>, key: string): string | null {
@@ -156,7 +165,11 @@ function seenThisRun(key: string): boolean {
 function persistsRoot(root: string): boolean {
   if (process.env.BASTRA_VAULT_ROOTS_PATH || process.env.NODE_TEST_CONTEXT) return true;
   const physical = (path: string): string => {
-    try { return realpathSync(path); } catch { return resolve(path); }
+    try {
+      return realpathSync(path);
+    } catch {
+      return resolve(path);
+    }
   };
   const key = physical(root);
   const tempRoots = [tmpdir(), ...(process.platform === "win32" ? [] : ["/tmp"])];
@@ -193,7 +206,10 @@ export function noteVaultRootPresent(vaultRoot: string): void {
   try {
     const roots = readRoots();
     if (!roots) return; // never overwrite a corrupt history with one entry
-    if (roots.has(key)) { persisted.add(key); return; }
+    if (roots.has(key)) {
+      persisted.add(key);
+      return;
+    }
     roots.set(key, { first_seen: new Date().toISOString() });
     const path = vaultRootsPath();
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -224,7 +240,11 @@ export function vaultRootPresent(vaultRoot: string): boolean {
  * never seen present, and only when its parent directory exists; otherwise
  * this throws a {@link VaultRootMissingError} and creates nothing.
  */
-export async function ensureVaultDir(vaultRoot: string, dir: string, opts: { createRoot?: boolean } = {}): Promise<void> {
+export async function ensureVaultDir(
+  vaultRoot: string,
+  dir: string,
+  opts: { createRoot?: boolean } = {}
+): Promise<void> {
   const root = resolve(vaultRoot);
   const target = resolve(dir);
   const child = relative(root, target);
@@ -242,7 +262,7 @@ export async function ensureVaultDir(vaultRoot: string, dir: string, opts: { cre
     (err: NodeJS.ErrnoException) => {
       if (err.code === "ENOENT" || err.code === "ENOTDIR") return false;
       throw err;
-    },
+    }
   );
   if (!present) {
     const firstSeen = firstSeenIn(roots, root) ?? (seenThisRun(root) ? "earlier in this run" : null);
@@ -252,7 +272,8 @@ export async function ensureVaultDir(vaultRoot: string, dir: string, opts: { cre
     try {
       await mkdir(root);
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") throw new VaultRootMissingError(vaultRoot, null, dirname(root));
+      if ((err as NodeJS.ErrnoException).code === "ENOENT")
+        throw new VaultRootMissingError(vaultRoot, null, dirname(root));
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
     }
   }
@@ -264,7 +285,8 @@ export async function ensureVaultDir(vaultRoot: string, dir: string, opts: { cre
     try {
       await mkdir(current);
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") throw new VaultRootMissingError(vaultRoot, vaultRootFirstSeen(vaultRoot));
+      if ((err as NodeJS.ErrnoException).code === "ENOENT")
+        throw new VaultRootMissingError(vaultRoot, vaultRootFirstSeen(vaultRoot));
       if ((err as NodeJS.ErrnoException).code !== "EEXIST" || !(await stat(current)).isDirectory()) throw err;
     }
   }

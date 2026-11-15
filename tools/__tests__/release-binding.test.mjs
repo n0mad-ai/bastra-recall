@@ -111,10 +111,7 @@ test("#548 gate: a dispatch on a commit the draft does not point at is refused",
   assert.notEqual(code, 0, `a diverged dispatch was allowed to publish:\n${out}`);
   assert.match(out, new RegExp(SHA_A));
   assert.match(out, new RegExp(SHA_B));
-  assert.ok(
-    !outputs.includes("publish=true"),
-    `the gate still authorised publishing:\n${outputs}`,
-  );
+  assert.ok(!outputs.includes("publish=true"), `the gate still authorised publishing:\n${outputs}`);
 });
 
 test("#548 gate: the dispatch commit is accepted only when it IS the draft's commit", async () => {
@@ -168,12 +165,7 @@ test("#548 gate: every published package's version is checked, not only the root
   // One release is one version everywhere; bump.mjs keeps them in lockstep and
   // the gate is where a hand-edited tree stops being publishable.
   const source = await readFile(BINDING, "utf8");
-  for (const pkg of [
-    "packages/core",
-    "packages/statusline",
-    "packages/daemon",
-    "packages/bastra-recall",
-  ]) {
+  for (const pkg of ["packages/core", "packages/statusline", "packages/daemon", "packages/bastra-recall"]) {
     assert.ok(source.includes(`${pkg}/package.json`), `${pkg} is outside the version check`);
   }
 });
@@ -199,7 +191,7 @@ test("#548 workflow (regression guard, not the acceptance test): every job build
     const block = yml.slice(at, next.length ? Math.min(...next) : yml.length);
     assert.ok(
       block.includes("ref: ${{ needs.gate.outputs.sha }}"),
-      `job ${n} checks out the dispatch ref instead of the commit the gate resolved`,
+      `job ${n} checks out the dispatch ref instead of the commit the gate resolved`
     );
   }
 });

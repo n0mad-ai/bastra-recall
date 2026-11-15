@@ -331,10 +331,9 @@ test("a state file holding a __proto__ key loads it like any other entry", async
   // the fixture through assignment would write a perfectly clean file.
   const entry = '{"at":1,"last":1,"hits":[],"unplaced":true,"truncated":false}';
   const raw = { shown: {}, touched: { "/r": { "a.ts": JSON.parse(entry) as unknown } } };
-  const poisoned = JSON.stringify(raw).replace(
-    '"touched":{',
-    `"touched":{"__proto__":{"a.ts":${entry}},`,
-  ).replace('"/r":{', `"/r":{"__proto__":${entry},`);
+  const poisoned = JSON.stringify(raw)
+    .replace('"touched":{', `"touched":{"__proto__":{"a.ts":${entry}},`)
+    .replace('"/r":{', `"/r":{"__proto__":${entry},`);
   assert.ok(poisoned.includes('"__proto__"'), "the fixture really carries the key");
   await writeFile(file, poisoned);
 

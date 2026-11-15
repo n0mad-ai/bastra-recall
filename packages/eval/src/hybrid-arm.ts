@@ -68,7 +68,7 @@ async function writeVectorsJson(
   persistPath: string,
   provider: OllamaEmbeddingProvider,
   ids: string[],
-  vectors: Float32Array[],
+  vectors: Float32Array[]
 ): Promise<void> {
   const out: Record<string, string> = {};
   for (let i = 0; i < ids.length; i++) {
@@ -85,7 +85,7 @@ async function embedAll(
   provider: OllamaEmbeddingProvider,
   memories: Memory[],
   includeRecallWhen: boolean,
-  label: string,
+  label: string
 ): Promise<{ ids: string[]; vectors: Float32Array[] }> {
   const ids: string[] = [];
   const vectors: Float32Array[] = [];
@@ -160,7 +160,7 @@ export async function buildHybridArmPair(vaultPath: string): Promise<HybridArmPa
     // Sanity: confirm the injected vectors loaded (no silent backfill from buildEmbedText).
     if (emb.size() < vault.size()) {
       process.stderr.write(
-        `⚠ hybrid ${side}: only ${emb.size()}/${vault.size()} vectors loaded — injection may have missed memories\n`,
+        `⚠ hybrid ${side}: only ${emb.size()}/${vault.size()} vectors loaded — injection may have missed memories\n`
       );
     }
     return { search, emb, vault };

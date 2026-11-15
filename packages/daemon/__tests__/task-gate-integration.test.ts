@@ -37,8 +37,11 @@ for (const scope of [undefined, "task"] as const) {
       bookPendingMustLoad(s, ["rule"], "prompt:first", 1);
     });
     const action = {
-      session_id: sessionId, hook_event_name: "PreToolUse", tool_name: "Edit",
-      bastra_client: "claude-code", tool_input: { file_path: "/fixture.txt" },
+      session_id: sessionId,
+      hook_event_name: "PreToolUse",
+      tool_name: "Edit",
+      bastra_client: "claude-code",
+      tool_input: { file_path: "/fixture.txt" },
     };
     const first = JSON.parse(await runGateLane(action, { reflexPool: () => [] }));
     assert.equal(first.hookSpecificOutput.permissionDecision, "deny");
@@ -53,8 +56,10 @@ for (const scope of [undefined, "task"] as const) {
     // A reported task keeps the deduped, already-loaded rule without booking a
     // second must-load; rendering/refresh never creates another task.
     const block = await runTaskStep({
-      sessionId, snapshot: loaded,
-      conventionOf: async () => ({ revision: "new", validator }), surface: "claude-code",
+      sessionId,
+      snapshot: loaded,
+      conventionOf: async () => ({ revision: "new", validator }),
+      surface: "claude-code",
     });
     assert.match(block!, /validator: tool=validate_artifact channel=discord limit=2000 unit=codepoints/);
     assert.equal(scrubInjectedBlocks(`before${block}after`).text, "beforeafter");

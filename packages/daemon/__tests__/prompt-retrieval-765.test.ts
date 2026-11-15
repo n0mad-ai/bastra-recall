@@ -109,7 +109,9 @@ test("#765 retrieval: an unlisted language is not classified by guess, and a lex
 
 test("#765 retrieval: every shipped lead fits the cue grammar a file entry has to meet", async () => {
   // A suffix makes each one a NEW cue, so it is validated instead of deduped.
-  const variants = Object.values(DEFAULT_RETRIEVAL_LEAD_CUES_BY_LANGUAGE).flat().map((c) => `${c}zz`);
+  const variants = Object.values(DEFAULT_RETRIEVAL_LEAD_CUES_BY_LANGUAGE)
+    .flat()
+    .map((c) => `${c}zz`);
   await withLexiconDir({ "decision.txt": variants.join("\n") }, () => {
     const cues = decisionCues();
     for (const v of variants) assert.ok(cues.includes(v), `default-shaped cue rejected: ${v}`);
@@ -157,7 +159,8 @@ async function runLane(prompt: string, score: number): Promise<{ stdout: string;
     const stdout = await runPromptLane(payload as Parameters<typeof runPromptLane>[0], null, daemon.url);
     const rows: Record<string, unknown>[] = [];
     for (const f of (await readdir(logDir)).filter((n) => n.startsWith("events-"))) {
-      for (const l of (await readFile(join(logDir, f), "utf8")).split("\n")) if (l.trim()) rows.push(JSON.parse(l) as Record<string, unknown>);
+      for (const l of (await readFile(join(logDir, f), "utf8")).split("\n"))
+        if (l.trim()) rows.push(JSON.parse(l) as Record<string, unknown>);
     }
     const row = rows.find((r) => r.kind === "prompt_hook_call");
     assert.ok(row, "the lane wrote its row");

@@ -54,7 +54,8 @@ test("default is off — a long query reaches BM25 uncapped", async (t) => {
   search.start();
   t.after(() => search.stop());
 
-  const filler = "hallo kurz eine frage zu dem thema von gestern bitte anschauen sagen davon haeltst grundsaetzlich stelle code besprochen genau danach rest text nichts beitraegt ANCHORWORD";
+  const filler =
+    "hallo kurz eine frage zu dem thema von gestern bitte anschauen sagen davon haeltst grundsaetzlich stelle code besprochen genau danach rest text nichts beitraegt ANCHORWORD";
   const longQuery = `${filler} ${filler} ${filler}`;
   assert.ok(longQuery.length > BM25_QUERY_MAX_CHARS, "fixture must exceed the #362 budget");
 
@@ -78,10 +79,10 @@ test("default is off — a long query reaches BM25 uncapped", async (t) => {
   assert.equal(
     unique,
     new Set(tokenizeWithIdentifiers(longQuery).map((t) => t.toLowerCase())).size,
-    "no explicit bm25_query_max_chars must leave every distinct term in the query",
+    "no explicit bm25_query_max_chars must leave every distinct term in the query"
   );
   assert.ok(
     emitted !== undefined && unique !== undefined && emitted > unique,
-    `precondition: the fixture must actually repeat terms (${emitted} emitted, ${unique} unique)`,
+    `precondition: the fixture must actually repeat terms (${emitted} emitted, ${unique} unique)`
   );
 });

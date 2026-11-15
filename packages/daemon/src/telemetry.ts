@@ -83,9 +83,7 @@ const MAX_SURFACED_NOTICES = 3;
  * live-updates. Das Band reist trotzdem mit, damit die Karte `required` von
  * `optional` unterscheiden kann, ohne selbst Schwellen zu kennen.
  */
-function surfacedHits(
-  hits: { id: string; score: number }[],
-): { id: string; band: RecallBand }[] {
+function surfacedHits(hits: { id: string; score: number }[]): { id: string; band: RecallBand }[] {
   return hits.slice(0, MAX_SURFACED_NOTICES).map((h) => ({
     id: h.id,
     band: bandForScore(typeof h.score === "number" ? h.score : null),
@@ -97,9 +95,7 @@ function surfacedHits(
  * already observes (surfaced/loaded/acted_on), timestamped here so the sink
  * stays a dumb forwarder (index.ts wires it to recordUsage on the vault).
  */
-export type UsageSink = (
-  events: Array<{ id: string; kind: "surfaced" | "loaded" | "acted_on"; ts: string }>,
-) => void;
+export type UsageSink = (events: Array<{ id: string; kind: "surfaced" | "loaded" | "acted_on"; ts: string }>) => void;
 
 export class Telemetry {
   private readonly enabled: boolean;
@@ -129,7 +125,8 @@ export class Telemetry {
   constructor(opts: { onUsage?: UsageSink; logDir?: string } = {}) {
     this.enabled =
       envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") !== undefined
-        ? !envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") : runtimeFeatureSetting("telemetry", TELEMETRY_DEFAULT);
+        ? !envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")
+        : runtimeFeatureSetting("telemetry", TELEMETRY_DEFAULT);
     // Log-Pfad bleibt bei `~/.nexus-recall/logs` bis zur User-Data-Migration
     // (Daniel hat existing logs, die wir nicht orphanen wollen).
     this.logDir = opts.logDir ?? envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? defaultLogDir();
@@ -191,7 +188,7 @@ export class Telemetry {
    *  hints — see `JoinState.recordSurfacedHints`. */
   recordSurfacedHints(
     hints: Array<{ memory_id: string; distinctive_tokens: string[] }>,
-    session_id: string | null,
+    session_id: string | null
   ): void {
     this.joins.recordSurfacedHints(hints, session_id);
   }
@@ -200,7 +197,10 @@ export class Telemetry {
    * Returns the recall_id + rank if this id was hinted in the last
    * HOOK_HINT_WINDOW_MS. Lazy-evicts the entry on miss.
    */
-  findHookHintFor(id: string, session_id?: string | null): { recall_id: string; rank: number; score: number | null } | null {
+  findHookHintFor(
+    id: string,
+    session_id?: string | null
+  ): { recall_id: string; rank: number; score: number | null } | null {
     return this.joins.findHookHintFor(id, session_id);
   }
 
@@ -235,14 +235,12 @@ export class Telemetry {
   /** Close the open acted_on windows against a tool input — see
    *  `JoinState.matchLoadedMemories`. */
   matchLoadedMemories(
-    payload: Parameters<JoinState["matchLoadedMemories"]>[0],
+    payload: Parameters<JoinState["matchLoadedMemories"]>[0]
   ): Omit<RecallEpisodeEvent, "kind" | "ts" | "session_id">[] {
     return this.joins.matchLoadedMemories(payload);
   }
 
-  async logRecallEpisode(
-    payload: Omit<RecallEpisodeEvent, "kind" | "ts" | "session_id">,
-  ): Promise<void> {
+  async logRecallEpisode(payload: Omit<RecallEpisodeEvent, "kind" | "ts" | "session_id">): Promise<void> {
     if (!this.enabled) return;
     await this.write({
       kind: "recall_episode",
@@ -272,11 +270,12 @@ export class Telemetry {
   }
 
   async logRecall(
-    payload: Omit<RecallEvent, "kind" | "ts" | "session_id" | "dimensions" | "origin"> & DimensionHints & {
-      /** Die Session des AUFRUFERS, nicht die Boot-id: Aus ihr entsteht das
-       *  Pseudonym und daraus der Arm. Fehlt sie, gibt es keinen Arm. */
-      session_id?: string | null;
-    },
+    payload: Omit<RecallEvent, "kind" | "ts" | "session_id" | "dimensions" | "origin"> &
+      DimensionHints & {
+        /** Die Session des AUFRUFERS, nicht die Boot-id: Aus ihr entsteht das
+         *  Pseudonym und daraus der Arm. Fehlt sie, gibt es keinen Arm. */
+        session_id?: string | null;
+      }
   ): Promise<void> {
     // "surfaced"-Notice VOR dem enabled-Gate — die Map-Notice ist ein UI-Signal,
     // unabhängig von der Telemetrie-Persistenz (wie onMemoryLoaded). Das Band filtert.
@@ -286,7 +285,10 @@ export class Telemetry {
       /* Notices dürfen einen Recall nie brechen */
     }
     if (!this.enabled) return;
-    const { hints, rest: { session_id, ...rest } } = splitHints(payload);
+    const {
+      hints,
+      rest: { session_id, ...rest },
+    } = splitHints(payload);
     const dimensions = this.dimensionsFor({ ...hints, session_id });
     await this.write({
       kind: "recall",
@@ -301,9 +303,7 @@ export class Telemetry {
     });
   }
 
-  async logLoadMemory(
-    payload: Omit<LoadMemoryEvent, "kind" | "ts" | "session_id">,
-  ): Promise<void> {
+  async logLoadMemory(payload: Omit<LoadMemoryEvent, "kind" | "ts" | "session_id">): Promise<void> {
     if (!this.enabled) return;
     await this.write({
       kind: "load_memory",
@@ -314,9 +314,7 @@ export class Telemetry {
   }
 
   /** #457: eine Zeile pro `read_document`, nur Größen, kein Text. */
-  async logReadDocument(
-    payload: Omit<ReadDocumentEvent, "kind" | "ts" | "session_id">,
-  ): Promise<void> {
+  async logReadDocument(payload: Omit<ReadDocumentEvent, "kind" | "ts" | "session_id">): Promise<void> {
     if (!this.enabled) return;
     await this.write({
       kind: "read_document",
@@ -326,9 +324,7 @@ export class Telemetry {
     });
   }
 
-  async logSaveMemory(
-    payload: Omit<SaveMemoryEvent, "kind" | "ts" | "session_id">,
-  ): Promise<void> {
+  async logSaveMemory(payload: Omit<SaveMemoryEvent, "kind" | "ts" | "session_id">): Promise<void> {
     if (!this.enabled) return;
     await this.write({
       kind: "save_memory",
@@ -344,9 +340,7 @@ export class Telemetry {
    * Telemetrie-Ereignis: der Hold selbst passiert auch dann, wenn das
    * Schreiben des Events scheitert.
    */
-  async logSaveHold(
-    payload: Omit<SaveHoldEvent, "kind" | "ts" | "session_id">,
-  ): Promise<void> {
+  async logSaveHold(payload: Omit<SaveHoldEvent, "kind" | "ts" | "session_id">): Promise<void> {
     if (!this.enabled) return;
     await this.write({
       kind: "save_hold",
@@ -359,9 +353,7 @@ export class Telemetry {
 
   /** Siehe {@link IdScanEvent} — der Preis der ID-Transaktion, dauerhaft
    *  gemessen statt einmal geschätzt. */
-  async logIdScan(
-    payload: Omit<IdScanEvent, "kind" | "ts" | "session_id">,
-  ): Promise<void> {
+  async logIdScan(payload: Omit<IdScanEvent, "kind" | "ts" | "session_id">): Promise<void> {
     if (!this.enabled) return;
     await this.write({
       kind: "id_scan",
@@ -373,13 +365,16 @@ export class Telemetry {
 
   async logConventionValidation(payload: Omit<ConventionValidationEvent, "kind" | "ts" | "session_id">): Promise<void> {
     if (!this.enabled) return;
-    await this.write({ kind: "convention_validation", ts: new Date().toISOString(), session_id: this.sessionId, ...payload });
+    await this.write({
+      kind: "convention_validation",
+      ts: new Date().toISOString(),
+      session_id: this.sessionId,
+      ...payload,
+    });
   }
 
   /** #1310: see {@link ReceiptUnattributedEvent}. */
-  async logReceiptUnattributed(
-    payload: Omit<ReceiptUnattributedEvent, "kind" | "ts" | "session_id">,
-  ): Promise<void> {
+  async logReceiptUnattributed(payload: Omit<ReceiptUnattributedEvent, "kind" | "ts" | "session_id">): Promise<void> {
     if (!this.enabled) return;
     await this.write({
       kind: "receipt_unattributed",
@@ -398,7 +393,7 @@ export class Telemetry {
     // auf Recall-Ebene konnte nach Session oder Turn gruppieren (#305, #361).
     payload: Omit<HookRecallEvent, "kind" | "ts" | "session_id" | "dimensions" | "origin"> & {
       session_id?: string;
-    } & DimensionHints,
+    } & DimensionHints
   ): Promise<void> {
     // "surfaced"-Notice VOR dem enabled-Gate — der Hook-Pfad ist der
     // Löwenanteil des Traffics; die Map-Notice ist UI, nicht Persistenz. Das Band filtert.
@@ -448,7 +443,7 @@ export class Telemetry {
   async logEvidenceDecision(
     payload: Omit<EvidenceDecisionEvent, "kind" | "ts" | "session_id" | "dimensions"> & {
       session_id?: string;
-    } & DimensionHints,
+    } & DimensionHints
   ): Promise<void> {
     if (!this.enabled) return;
     const { hints, rest } = splitHints(payload);
@@ -465,7 +460,7 @@ export class Telemetry {
     // session_id optional wie bei logHookAct: der Hook liefert die echte
     // Claude-Session-id mit — sie überschreibt die Daemon-Boot-UUID, sonst
     // ist ein per-Session-Join gegen Transcripts strukturell unmöglich.
-    payload: Omit<HookReflexEvent, "kind" | "ts" | "session_id"> & { session_id?: string },
+    payload: Omit<HookReflexEvent, "kind" | "ts" | "session_id"> & { session_id?: string }
   ): Promise<void> {
     if (!this.enabled) return;
     await this.write({
@@ -482,7 +477,7 @@ export class Telemetry {
     // per-Session-Join gegen Transcripts strukturell unmöglich (Audit 2026-07-10).
     payload: Omit<HookActEvent, "kind" | "ts" | "session_id" | "dimensions"> & {
       session_id?: string;
-    } & DimensionHints,
+    } & DimensionHints
   ): Promise<void> {
     if (!this.enabled) return;
     const { hints, rest } = splitHints(payload);
@@ -505,9 +500,7 @@ export class Telemetry {
    * als bei `ollama_lifecycle` ist das hier keine Behauptung über eine Session,
    * weil der Incident selbst über `operation_id` gruppiert wird.
    */
-  async logMutationIncident(
-    payload: Omit<MutationIncidentEvent, "kind" | "ts" | "session_id">,
-  ): Promise<void> {
+  async logMutationIncident(payload: Omit<MutationIncidentEvent, "kind" | "ts" | "session_id">): Promise<void> {
     if (!this.enabled) return;
     await this.write({
       kind: "mutation_incident",
@@ -525,9 +518,7 @@ export class Telemetry {
    * `code-graph/tool-telemetry.ts` builds the payload and decides what is safe
    * to carry.
    */
-  async logCodeToolCall(
-    payload: Omit<CodeToolCallEvent, "kind" | "ts" | "session_id">,
-  ): Promise<void> {
+  async logCodeToolCall(payload: Omit<CodeToolCallEvent, "kind" | "ts" | "session_id">): Promise<void> {
     if (!this.enabled) return;
     await this.write({
       kind: "code_tool_call",
@@ -538,9 +529,7 @@ export class Telemetry {
   }
 
   /** #579: one row per graph refresh run — `started` plus its terminal outcome. */
-  async logCodeGraphRefresh(
-    payload: Omit<CodeGraphRefreshEvent, "kind" | "ts" | "session_id">,
-  ): Promise<void> {
+  async logCodeGraphRefresh(payload: Omit<CodeGraphRefreshEvent, "kind" | "ts" | "session_id">): Promise<void> {
     if (!this.enabled) return;
     await this.write({
       kind: "code_graph_refresh",
@@ -551,7 +540,7 @@ export class Telemetry {
   }
 
   async logOllamaLifecycle(
-    payload: Omit<OllamaLifecycleEvent, "kind" | "ts" | "session_id" | "run_id">,
+    payload: Omit<OllamaLifecycleEvent, "kind" | "ts" | "session_id" | "run_id">
   ): Promise<void> {
     if (!this.enabled) return;
     await this.write({
@@ -576,9 +565,7 @@ export class Telemetry {
    * leistet `session_start_call_id` im Payload — nicht die Boot-UUID, die hier
    * eine Session behaupten würde, die es nicht gibt (#363).
    */
-  async logWarmupSettle(
-    payload: Omit<WarmupSettleEvent, "kind" | "ts" | "session_id" | "run_id">,
-  ): Promise<void> {
+  async logWarmupSettle(payload: Omit<WarmupSettleEvent, "kind" | "ts" | "session_id" | "run_id">): Promise<void> {
     if (!this.enabled) return;
     await this.write({
       kind: "warmup_settle",
@@ -604,10 +591,13 @@ export class Telemetry {
   async logVectorLateSettle(
     payload: Omit<VectorLateSettleEvent, "kind" | "ts" | "session_id" | "late"> & {
       session_id?: string;
-    } & DimensionHints,
+    } & DimensionHints
   ): Promise<void> {
     if (!this.enabled) return;
-    const { hints, rest: { session_id, ...rest } } = splitHints(payload);
+    const {
+      hints,
+      rest: { session_id, ...rest },
+    } = splitHints(payload);
     await this.write({
       kind: "vector_late_settle",
       ts: new Date().toISOString(),

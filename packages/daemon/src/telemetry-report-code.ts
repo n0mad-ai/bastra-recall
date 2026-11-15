@@ -27,7 +27,7 @@ export interface CodeAwarenessSection {
 export function summarizeCodeAwareness(events: AnyEventLike[]): CodeAwarenessSection | null {
   const active = aggregateCodeAwareness(events as Parameters<typeof aggregateCodeAwareness>[0]);
   const block = aggregateCodeRoi(
-    events.filter((e) => e.kind === "hook_call") as Parameters<typeof aggregateCodeRoi>[0],
+    events.filter((e) => e.kind === "hook_call") as Parameters<typeof aggregateCodeRoi>[0]
   );
   if (active.events === 0 && block.withCodeBlock === 0 && block.withAppliesTo === 0) return null;
   return { active, block };

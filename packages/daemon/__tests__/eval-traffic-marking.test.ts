@@ -45,10 +45,24 @@ test("isEvalTraffic reads only dimensions.client, nothing inferred", () => {
 
 function memoryMarkdown(id: string, title: string): string {
   return [
-    "---", `id: ${id}`, `title: ${title}`, "type: reference", `summary: ${title}`,
-    "topic_path:", "  - test", "tags:", "  - test", "scope: eval-marking-test",
-    "recall_when:", `  - ${title}`, "created: 2026-01-01", "updated: 2026-01-01",
-    "---", "", `Body for ${title}.`, "",
+    "---",
+    `id: ${id}`,
+    `title: ${title}`,
+    "type: reference",
+    `summary: ${title}`,
+    "topic_path:",
+    "  - test",
+    "tags:",
+    "  - test",
+    "scope: eval-marking-test",
+    "recall_when:",
+    `  - ${title}`,
+    "created: 2026-01-01",
+    "updated: 2026-01-01",
+    "---",
+    "",
+    `Body for ${title}.`,
+    "",
   ].join("\n");
 }
 
@@ -56,10 +70,17 @@ async function readRecallEvent(logDir: string): Promise<Record<string, unknown> 
   for (let i = 0; i < 25; i++) {
     await new Promise((r) => setTimeout(r, 40));
     let files: string[];
-    try { files = await readdir(logDir); } catch { continue; }
+    try {
+      files = await readdir(logDir);
+    } catch {
+      continue;
+    }
     for (const f of files.filter((n) => n.startsWith("events-"))) {
       const raw = await readFile(join(logDir, f), "utf8");
-      const line = raw.split("\n").filter((l) => l.includes('"recall"')).pop();
+      const line = raw
+        .split("\n")
+        .filter((l) => l.includes('"recall"'))
+        .pop();
       if (line) return JSON.parse(line) as Record<string, unknown>;
     }
   }
@@ -106,7 +127,7 @@ for (const script of ["measure-recall-payload.ts", "measure-recall-budget.ts"]) 
     assert.equal(
       markedCount,
       callCount,
-      `${script}: ${callCount} recallHandler call(s) but only ${markedCount} marked {client: "eval"} — a regression here would silently pollute production telemetry again`,
+      `${script}: ${callCount} recallHandler call(s) but only ${markedCount} marked {client: "eval"} — a regression here would silently pollute production telemetry again`
     );
   });
 }

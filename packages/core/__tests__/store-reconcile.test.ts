@@ -43,7 +43,12 @@ async function put(root: string, rel: string, raw: string): Promise<void> {
   await writeFile(path.join(root, rel), raw, "utf8");
 }
 
-async function audit(root: string, memoryId: string, entryId: string, operation: "create" | "update" | "delete" = "update") {
+async function audit(
+  root: string,
+  memoryId: string,
+  entryId: string,
+  operation: "create" | "update" | "delete" = "update"
+) {
   await new AuditLog(root).record({
     id: entryId,
     memory_id: memoryId,
@@ -51,7 +56,7 @@ async function audit(root: string, memoryId: string, entryId: string, operation:
     operation,
     diff_before: null,
     diff_after: null,
-    timestamp: `2026-08-0${entryId.length % 9 + 1}T10:00:00.000Z`,
+    timestamp: `2026-08-0${(entryId.length % 9) + 1}T10:00:00.000Z`,
   });
 }
 
@@ -68,11 +73,19 @@ async function fixture(): Promise<{ a: string; b: string; cleanup: () => Promise
 
   // same: the daemon enriched A (generated field + auto-related block), B has
   // the body hard-wrapped and a CRLF file — authored content identical.
-  await put(a, "same.md", memo("same", "First line of a paragraph that goes on.\n\nSee [[Präferenz|the rule]].", {
-    recall_when_expanded: `["paraphrase"]`,
-    updated: "2026-09-20",
-  }).replace(/\n$/, GENERATED_TAIL));
-  await put(b, "same.md", memo("same", "First line of a\nparagraph that goes on.\n\nSee [[praeferenz|the rule]].").replace(/\n/g, "\r\n"));
+  await put(
+    a,
+    "same.md",
+    memo("same", "First line of a paragraph that goes on.\n\nSee [[Präferenz|the rule]].", {
+      recall_when_expanded: `["paraphrase"]`,
+      updated: "2026-09-20",
+    }).replace(/\n$/, GENERATED_TAIL)
+  );
+  await put(
+    b,
+    "same.md",
+    memo("same", "First line of a\nparagraph that goes on.\n\nSee [[praeferenz|the rule]].").replace(/\n/g, "\r\n")
+  );
   await audit(a, "same", "e-same-1", "create");
   await audit(b, "same", "e-same-1", "create");
 
@@ -85,7 +98,14 @@ async function fixture(): Promise<{ a: string; b: string; cleanup: () => Promise
 
   // ahead-there: the mirror took a failover write — and looks OLDER by every
   // cheap signal (A was enriched afterwards). Direction must still be B.
-  await put(a, "ahead-there.md", memo("ahead-there", "The lead is live.", { related_via: "[]", updated: "2026-09-25" }).replace(/\n$/, GENERATED_TAIL));
+  await put(
+    a,
+    "ahead-there.md",
+    memo("ahead-there", "The lead is live.", { related_via: "[]", updated: "2026-09-25" }).replace(
+      /\n$/,
+      GENERATED_TAIL
+    )
+  );
   await put(b, "ahead-there.md", memo("ahead-there", "The lead is live.\n\nRetracted: the lead was wrong."));
   await audit(a, "ahead-there", "e-at-1", "create");
   await audit(b, "ahead-there", "e-at-1", "create");
@@ -119,7 +139,14 @@ async function fixture(): Promise<{ a: string; b: string; cleanup: () => Promise
   // a plain note is not a memory and never part of the plan.
   await put(a, "README.md", "# just a note\n");
 
-  return { a, b, cleanup: async () => { await rm(a, { recursive: true, force: true }); await rm(b, { recursive: true, force: true }); } };
+  return {
+    a,
+    b,
+    cleanup: async () => {
+      await rm(a, { recursive: true, force: true });
+      await rm(b, { recursive: true, force: true });
+    },
+  };
 }
 
 function byId(items: PlanItem[]): Map<string, PlanItem> {
@@ -189,18 +216,27 @@ test("apply: copies with backup, carries audit entries, leaves conflicts alone",
     const plan = await planReconcile(await loadStore(a), await loadStore(b));
     const results = await applyReconcile(plan, new Date("2026-09-28T12:00:00.000Z"));
 
-    assert.ok(results.every((r) => r.status === "copied"), JSON.stringify(results));
+    assert.ok(
+      results.every((r) => r.status === "copied"),
+      JSON.stringify(results)
+    );
     assert.equal(
       await readFile(path.join(b, "notes/ahead-here.md"), "utf8"),
-      await readFile(path.join(a, "notes/ahead-here.md"), "utf8"),
+      await readFile(path.join(a, "notes/ahead-here.md"), "utf8")
     );
     const backup = results.find((r) => r.id === "ahead-here")?.backup;
     assert.ok(backup?.includes("/.bastra/reconcile-backup/2026-09-28T12-00-00Z/notes/ahead-here.md."));
     if (!backup) throw new Error("expected overwritten copy backup");
     assert.equal(await readFile(backup, "utf8"), oldB, "the overwritten copy is kept");
     assert.match(await readFile(path.join(a, "ahead-there.md"), "utf8"), /Retracted/);
-    assert.equal(await readFile(path.join(b, "deep/only-here.md"), "utf8"), await readFile(path.join(a, "deep/only-here.md"), "utf8"));
-    assert.equal(await readFile(path.join(a, "only-there.md"), "utf8"), await readFile(path.join(b, "only-there.md"), "utf8"));
+    assert.equal(
+      await readFile(path.join(b, "deep/only-here.md"), "utf8"),
+      await readFile(path.join(a, "deep/only-here.md"), "utf8")
+    );
+    assert.equal(
+      await readFile(path.join(a, "only-there.md"), "utf8"),
+      await readFile(path.join(b, "only-there.md"), "utf8")
+    );
 
     // conflicts untouched on both sides
     assert.equal(await readFile(path.join(a, "both.md"), "utf8"), bothA);

@@ -78,8 +78,7 @@ function solid(ctx, x, y, r, color, a = 1) {
 /** Jets spin unevenly: a steady sweep with two wobbles laid over it. */
 const beamSpin = (t, base = 3.2) => t * base + 0.4 * Math.sin(t * 3.1) + 0.2 * Math.sin(t * 6.7);
 /** ...and flicker, fast shimmer modulated by a slower swell. */
-const beamFlick = (t, o = 0) =>
-  0.3 + 0.45 * (0.5 + 0.5 * Math.sin(t * 9.3 + o)) * (0.6 + 0.4 * Math.sin(t * 2.7 + o));
+const beamFlick = (t, o = 0) => 0.3 + 0.45 * (0.5 + 0.5 * Math.sin(t * 9.3 + o)) * (0.6 + 0.4 * Math.sin(t * 2.7 + o));
 
 /** A beam: a wedge widening away from the core, fading along its length. */
 function lobe(ctx, cx, cy, ang, len, wid, color, a, blend) {
@@ -280,8 +279,16 @@ function quasar(ctx, o, glowSprite) {
   for (const q of starField("quasar", 30, 8, 30)) {
     const aa = q.a + t * (2.6 - q.r * 0.045);
     const sr = Math.max(q.sz * S, 1.6 / camScale); // screen floor — see note
-    glow(ctx, glowSprite, x + Math.cos(aa) * q.r * S, y + Math.sin(aa) * q.r * 0.4 * S,
-         sr, CORE, 0.6 * fade * depth, theme.flowBlend);
+    glow(
+      ctx,
+      glowSprite,
+      x + Math.cos(aa) * q.r * S,
+      y + Math.sin(aa) * q.r * 0.4 * S,
+      sr,
+      CORE,
+      0.6 * fade * depth,
+      theme.flowBlend
+    );
   }
   heart(ctx, glowSprite, o, CORE, 4 * S, 11 * S, 1 * S);
 }

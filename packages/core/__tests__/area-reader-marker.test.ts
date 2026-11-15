@@ -88,7 +88,7 @@ test("lässt sich die Markierung nicht löschen, wird sie entwertet und gemeldet
     ({ seen } = await collect(() =>
       withAreaShared(root, [AREA], async () => {
         await chmod(dir, 0o500);
-      }),
+      })
     ));
   } finally {
     await chmod(dir, 0o700).catch(() => {});
@@ -98,11 +98,7 @@ test("lässt sich die Markierung nicht löschen, wird sie entwertet und gemeldet
   const incident = seen.find((i) => i.phase === "reader-marker-release");
   assert.ok(incident, `ein Incident muss ankommen, gesehen: ${JSON.stringify(seen)}`);
   assert.equal(incident.op, "area_shared");
-  assert.equal(
-    incident.status,
-    "rolled_back",
-    "entwertet heißt: die Blockade läuft aus, es braucht keinen Menschen",
-  );
+  assert.equal(incident.status, "rolled_back", "entwertet heißt: die Blockade läuft aus, es braucht keinen Menschen");
 
   // Die Markierung liegt noch da, trägt aber keine pid mehr — genau das lässt
   // sie nach der Altersregel verfallen, statt an einem lebenden Prozess zu
@@ -135,7 +131,7 @@ test("die entwertete Markierung blockiert das Regal nicht dauerhaft", async (t) 
   await assert.rejects(
     () => withAreaExclusive(root, [AREA], async () => undefined),
     /are writing into/,
-    "frisch entwertet zählt noch als in flight",
+    "frisch entwertet zählt noch als in flight"
   );
 
   // Nach dem Verwaisungsfenster ist sie weg — ohne die Entwertung hinge sie an
@@ -166,7 +162,7 @@ test("auch ohne Schreibrecht auf die Markierung bleibt der Befund sichtbar", asy
         const [file] = await readdir(dir);
         await chmod(join(dir, file), 0o400);
         await chmod(dir, 0o500);
-      }),
+      })
     ));
   } finally {
     await chmod(dir, 0o700).catch(() => {});
@@ -181,10 +177,10 @@ test("auch ohne Schreibrecht auf die Markierung bleibt der Befund sichtbar", asy
   assert.equal(
     incident.status,
     "partial",
-    "hier ist die Blockade echt — das ist der Status, der einen Menschen braucht",
+    "hier ist die Blockade echt — das ist der Status, der einen Menschen braucht"
   );
   assert.ok(
     lines.some((l) => l.includes("until the process restarts")),
-    `die Konsequenz muss dastehen, gesehen: ${JSON.stringify(lines)}`,
+    `die Konsequenz muss dastehen, gesehen: ${JSON.stringify(lines)}`
   );
 });

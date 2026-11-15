@@ -8,9 +8,18 @@
  * counts distinct sessions. Nothing here writes `recall_when`; the output is
  * a reviewer's list, and `confidence` is not computed rather than invented.
  */
-import { capAtWordBoundary, MIN_SIGNIFICANT_TOKEN_LEN, PHRASE_STOPWORDS, tokenizeWithIdentifiers } from "@bastra-recall/core";
+import {
+  capAtWordBoundary,
+  MIN_SIGNIFICANT_TOKEN_LEN,
+  PHRASE_STOPWORDS,
+  tokenizeWithIdentifiers,
+} from "@bastra-recall/core";
 import type { ReviewedMissChain } from "./reviewed-miss-harvest.js";
-import { realOrResolved, type ObservationEngines, type ReviewedMissObservedCandidate } from "./reviewed-miss-engines.js";
+import {
+  realOrResolved,
+  type ObservationEngines,
+  type ReviewedMissObservedCandidate,
+} from "./reviewed-miss-engines.js";
 import type { ReviewedMissClassification } from "./reviewed-miss-observation.js";
 
 export const CUE_GENERATOR = "reviewed-miss-cues/v1";
@@ -78,7 +87,7 @@ export function deriveCueProposals(
   pairs: ObservedPair[],
   engines: ObservationEngines,
   now: Date = new Date(),
-  hubs: ReadonlySet<string> = new Set(),
+  hubs: ReadonlySet<string> = new Set()
 ): CueProposal[] {
   const byTarget = new Map<string, CueProposal>();
   for (const { chain, record } of pairs) {

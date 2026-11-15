@@ -24,15 +24,11 @@ export class PowerlineLayout {
   constructor(
     private readonly config: PowerlineConfig,
     private readonly symbols: PowerlineSymbols,
-    private readonly theme: PowerlineTheme,
+    private readonly theme: PowerlineTheme
   ) {}
 
   /** Splits one configured line into as many output lines as the width needs. */
-  wrapSegments(
-    renderedSegments: RenderedSegment[],
-    terminalWidth: number | null,
-    colors: PowerlineColors,
-  ): string[] {
+  wrapSegments(renderedSegments: RenderedSegment[], terminalWidth: number | null, colors: PowerlineColors): string[] {
     const outputLines: string[] = [];
 
     if (!terminalWidth || terminalWidth <= 0) {
@@ -44,18 +40,10 @@ export class PowerlineLayout {
     let currentLineWidth = 0;
 
     for (const segment of renderedSegments) {
-      const segmentWidth = this.calculateSegmentWidth(
-        segment,
-        currentLineSegments.length === 0,
-      );
+      const segmentWidth = this.calculateSegmentWidth(segment, currentLineSegments.length === 0);
 
-      if (
-        currentLineSegments.length > 0 &&
-        currentLineWidth + segmentWidth > terminalWidth
-      ) {
-        outputLines.push(
-          this.buildLineFromSegments(currentLineSegments, colors),
-        );
+      if (currentLineSegments.length > 0 && currentLineWidth + segmentWidth > terminalWidth) {
+        outputLines.push(this.buildLineFromSegments(currentLineSegments, colors));
         currentLineSegments = [];
         currentLineWidth = 0;
       }
@@ -65,18 +53,13 @@ export class PowerlineLayout {
     }
 
     if (currentLineSegments.length > 0) {
-      outputLines.push(
-        this.buildLineFromSegments(currentLineSegments, colors),
-      );
+      outputLines.push(this.buildLineFromSegments(currentLineSegments, colors));
     }
 
     return outputLines;
   }
 
-  private calculateSegmentWidth(
-    segment: RenderedSegment,
-    isFirst: boolean,
-  ): number {
+  private calculateSegmentWidth(segment: RenderedSegment, isFirst: boolean): number {
     const isCapsuleStyle = this.config.display.style === "capsule";
     const textWidth = visibleLength(segment.text);
     const padding = this.config.display.padding ?? 1;
@@ -91,10 +74,7 @@ export class PowerlineLayout {
     return textWidth + powerlineOverhead;
   }
 
-  buildLineFromSegments(
-    segments: RenderedSegment[],
-    colors: PowerlineColors,
-  ): string {
+  buildLineFromSegments(segments: RenderedSegment[], colors: PowerlineColors): string {
     const isCapsuleStyle = this.config.display.style === "capsule";
     let line = colors.reset;
 
@@ -110,17 +90,9 @@ export class PowerlineLayout {
         line += " ";
       }
 
-      const bold =
-        segment.bold ?? this.theme.getSegmentBoldFlag(segment.type, colors);
+      const bold = segment.bold ?? this.theme.getSegmentBoldFlag(segment.type, colors);
 
-      line += this.formatSegment(
-        segment.bgColor,
-        segment.fgColor,
-        segment.text,
-        nextSegment?.bgColor,
-        colors,
-        bold,
-      );
+      line += this.formatSegment(segment.bgColor, segment.fgColor, segment.text, nextSegment?.bgColor, colors, bold);
     }
 
     return line;
@@ -132,7 +104,7 @@ export class PowerlineLayout {
     text: string,
     nextBgColor: string | undefined,
     colors: PowerlineColors,
-    bold: boolean,
+    bold: boolean
   ): string {
     const isCapsuleStyle = this.config.display.style === "capsule";
     const padding = " ".repeat(this.config.display.padding ?? 1);

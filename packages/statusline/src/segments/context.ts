@@ -55,21 +55,12 @@ export class ContextProvider {
   private calculatePercentages(
     totalTokens: number,
     contextLimit: number,
-    autocompactBuffer: number = 33000,
-  ): Pick<
-    ContextInfo,
-    "percentage" | "usablePercentage" | "contextLeftPercentage" | "usableTokens"
-  > {
-    const percentage = Math.min(
-      100,
-      Math.max(0, Math.round((totalTokens / contextLimit) * 100)),
-    );
+    autocompactBuffer: number = 33000
+  ): Pick<ContextInfo, "percentage" | "usablePercentage" | "contextLeftPercentage" | "usableTokens"> {
+    const percentage = Math.min(100, Math.max(0, Math.round((totalTokens / contextLimit) * 100)));
 
     const usableLimit = Math.max(1, contextLimit - autocompactBuffer);
-    const usablePercentage = Math.min(
-      100,
-      Math.max(0, Math.round((totalTokens / usableLimit) * 100)),
-    );
+    const usablePercentage = Math.min(100, Math.max(0, Math.round((totalTokens / usableLimit) * 100)));
 
     const contextLeftPercentage = Math.max(0, 100 - usablePercentage);
 
@@ -85,15 +76,10 @@ export class ContextProvider {
    * Calculate context info from native Claude Code context_window data (preferred).
    * Requires Claude Code 2.0.70+ with current_usage field.
    */
-  calculateContextFromHookData(
-    hookData: ClaudeHookData,
-    autocompactBuffer: number = 33000,
-  ): ContextInfo | null {
+  calculateContextFromHookData(hookData: ClaudeHookData, autocompactBuffer: number = 33000): ContextInfo | null {
     const currentUsage = hookData.context_window?.current_usage;
     if (!currentUsage) {
-      debug(
-        "No current_usage in hook data, falling back to transcript parsing",
-      );
+      debug("No current_usage in hook data, falling back to transcript parsing");
       return null;
     }
 
@@ -104,15 +90,11 @@ export class ContextProvider {
       (currentUsage.cache_read_input_tokens || 0);
 
     debug(
-      `Native current_usage: input=${currentUsage.input_tokens}, cache_create=${currentUsage.cache_creation_input_tokens}, cache_read=${currentUsage.cache_read_input_tokens}, total=${totalTokens} (limit: ${contextLimit})`,
+      `Native current_usage: input=${currentUsage.input_tokens}, cache_create=${currentUsage.cache_creation_input_tokens}, cache_read=${currentUsage.cache_read_input_tokens}, total=${totalTokens} (limit: ${contextLimit})`
     );
 
     const nativePct = hookData.context_window?.used_percentage;
-    const percentages = this.calculatePercentages(
-      totalTokens,
-      contextLimit,
-      autocompactBuffer,
-    );
+    const percentages = this.calculatePercentages(totalTokens, contextLimit, autocompactBuffer);
 
     if (nativePct != null) {
       percentages.percentage = Math.round(nativePct);
@@ -133,7 +115,7 @@ export class ContextProvider {
   async calculateContextTokensFromTranscript(
     transcriptPath: string,
     modelId?: string,
-    autocompactBuffer: number = 33000,
+    autocompactBuffer: number = 33000
   ): Promise<ContextInfo | null> {
     try {
       debug(`Calculating context tokens from transcript: ${transcriptPath}`);
@@ -155,30 +137,20 @@ export class ContextProvider {
         if (entry.isSidechain === true) continue;
 
         mostRecentEntry = entry;
-        debug(
-          `Context segment: Found most recent entry at ${entry.timestamp.toISOString()}, stopping search`,
-        );
+        debug(`Context segment: Found most recent entry at ${entry.timestamp.toISOString()}, stopping search`);
         break;
       }
 
       if (mostRecentEntry?.message?.usage) {
         const usage = mostRecentEntry.message.usage;
         const totalTokens =
-          (usage.input_tokens || 0) +
-          (usage.cache_read_input_tokens || 0) +
-          (usage.cache_creation_input_tokens || 0);
+          (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0);
 
         const contextLimit = modelId ? this.getContextLimit(modelId) : 200000;
 
-        debug(
-          `Most recent main chain context: ${totalTokens} tokens (limit: ${contextLimit})`,
-        );
+        debug(`Most recent main chain context: ${totalTokens} tokens (limit: ${contextLimit})`);
 
-        const percentages = this.calculatePercentages(
-          totalTokens,
-          contextLimit,
-          autocompactBuffer,
-        );
+        const percentages = this.calculatePercentages(totalTokens, contextLimit, autocompactBuffer);
 
         return {
           totalTokens,
@@ -190,9 +162,7 @@ export class ContextProvider {
       debug("No main chain entries with usage data found");
       return null;
     } catch (error) {
-      debug(
-        `Error reading transcript: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      debug(`Error reading transcript: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     }
   }
@@ -200,22 +170,12 @@ export class ContextProvider {
   /**
    * Get context info using native data if available, falling back to transcript parsing.
    */
-  async getContextInfo(
-    hookData: ClaudeHookData,
-    autocompactBuffer: number = 33000,
-  ): Promise<ContextInfo | null> {
-    const nativeContext = this.calculateContextFromHookData(
-      hookData,
-      autocompactBuffer,
-    );
+  async getContextInfo(hookData: ClaudeHookData, autocompactBuffer: number = 33000): Promise<ContextInfo | null> {
+    const nativeContext = this.calculateContextFromHookData(hookData, autocompactBuffer);
     if (nativeContext) {
       return nativeContext;
     }
 
-    return this.calculateContextTokensFromTranscript(
-      hookData.transcript_path,
-      hookData.model?.id,
-      autocompactBuffer,
-    );
+    return this.calculateContextTokensFromTranscript(hookData.transcript_path, hookData.model?.id, autocompactBuffer);
   }
 }

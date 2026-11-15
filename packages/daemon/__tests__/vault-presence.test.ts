@@ -55,7 +55,11 @@ test("recall on a missing vault says so; the first save creates it and the signa
   try {
     const before = await recallHandler(deps, { query: "zebra quartz" });
     assert.deepEqual(before.hits, []);
-    assert.match(before.vault_missing ?? "", /does not exist/, "an empty hit list from no directory must not read as 'nothing on this'");
+    assert.match(
+      before.vault_missing ?? "",
+      /does not exist/,
+      "an empty hit list from no directory must not read as 'nothing on this'"
+    );
 
     // The Desktop extension's promise: the default folder is created on first save.
     await saveMemoryHandler(deps, {
@@ -80,8 +84,16 @@ test("recall on a missing vault says so; the first save creates it and the signa
 });
 
 test("/health carries the missing vault next to vault_size", () => {
-  const base = { vaultSize: () => 0, version: "t", embedding: { on: false, source: "test" } as never, updateState: () => null };
-  assert.equal(buildHealthPayload({ ...base, vaultMissing: () => "the vault path /x does not exist" }).vault_missing, "the vault path /x does not exist");
+  const base = {
+    vaultSize: () => 0,
+    version: "t",
+    embedding: { on: false, source: "test" } as never,
+    updateState: () => null,
+  };
+  assert.equal(
+    buildHealthPayload({ ...base, vaultMissing: () => "the vault path /x does not exist" }).vault_missing,
+    "the vault path /x does not exist"
+  );
   assert.equal(buildHealthPayload({ ...base, vaultMissing: () => null }).vault_missing, null);
 });
 
@@ -91,12 +103,18 @@ test("install: an explicit --vault that does not exist is created", async () => 
     const target = join(s.dir, "BastraVault");
     const created: string[] = [];
     assert.equal(
-      await installVaultPresenceStep({ flagPath: target, resolvedPath: target, dryRun: false }, { create: async (p) => (created.push(p), { path: p }), out: () => {} }),
-      null,
+      await installVaultPresenceStep(
+        { flagPath: target, resolvedPath: target, dryRun: false },
+        { create: async (p) => (created.push(p), { path: p }), out: () => {} }
+      ),
+      null
     );
     assert.deepEqual(created, [target]);
     const dry: string[] = [];
-    await installVaultPresenceStep({ flagPath: target, resolvedPath: target, dryRun: true }, { create: async (p) => (dry.push(p), { path: p }), out: () => {} });
+    await installVaultPresenceStep(
+      { flagPath: target, resolvedPath: target, dryRun: true },
+      { create: async (p) => (dry.push(p), { path: p }), out: () => {} }
+    );
     assert.deepEqual(dry, [], "a dry run creates nothing");
   } finally {
     s.cleanup();
@@ -109,7 +127,10 @@ test("install: a missing path from the environment or a registration is named, n
     const target = join(s.dir, "mnt", "vault");
     const created: string[] = [];
     let said = "";
-    await installVaultPresenceStep({ flagPath: null, resolvedPath: target, dryRun: false }, { create: async (p) => (created.push(p), { path: p }), out: (t) => (said += t) });
+    await installVaultPresenceStep(
+      { flagPath: null, resolvedPath: target, dryRun: false },
+      { create: async (p) => (created.push(p), { path: p }), out: (t) => (said += t) }
+    );
     assert.deepEqual(created, [], "an empty dir on an unmounted mountpoint is the failure itself");
     assert.match(said, /does not exist/);
   } finally {
@@ -121,12 +142,20 @@ test("`bastra install <surface> --vault <missing> --dry-run` runs the step (wire
   const s = scratch();
   try {
     const target = join(s.dir, "NewVault");
-    const r = spawnSync(process.execPath, ["--import", "tsx", join(SRC, "cli.ts"), "install", "cursor", "--vault", target, "--dry-run"], {
-      env: { ...process.env, HOME: s.dir, USERPROFILE: s.dir },
-      encoding: "utf8",
-      timeout: 60_000,
-    });
-    assert.match(r.stdout, /would create the vault at .*NewVault/, `stdout: ${r.stdout.slice(0, 400)} stderr: ${r.stderr.slice(-300)}`);
+    const r = spawnSync(
+      process.execPath,
+      ["--import", "tsx", join(SRC, "cli.ts"), "install", "cursor", "--vault", target, "--dry-run"],
+      {
+        env: { ...process.env, HOME: s.dir, USERPROFILE: s.dir },
+        encoding: "utf8",
+        timeout: 60_000,
+      }
+    );
+    assert.match(
+      r.stdout,
+      /would create the vault at .*NewVault/,
+      `stdout: ${r.stdout.slice(0, 400)} stderr: ${r.stderr.slice(-300)}`
+    );
     assert.equal(existsSync(target), false);
   } finally {
     s.cleanup();
@@ -136,11 +165,20 @@ test("`bastra install <surface> --vault <missing> --dry-run` runs the step (wire
 function post(port: number, path: string, payload: unknown): Promise<Record<string, unknown>> {
   const body = JSON.stringify(payload);
   return new Promise((ok, fail) => {
-    const req = request({ host: "127.0.0.1", port, path, method: "POST", headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) } }, (res) => {
-      let raw = "";
-      res.on("data", (c) => (raw += c));
-      res.on("end", () => ok(JSON.parse(raw || "{}")));
-    });
+    const req = request(
+      {
+        host: "127.0.0.1",
+        port,
+        path,
+        method: "POST",
+        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+      },
+      (res) => {
+        let raw = "";
+        res.on("data", (c) => (raw += c));
+        res.on("end", () => ok(JSON.parse(raw || "{}")));
+      }
+    );
     req.on("error", fail);
     req.end(body);
   });
@@ -155,7 +193,11 @@ test("the daemon's doors carry it: /health, and /hook/recall — the MCP forward
   search.start();
   const telemetry = new Telemetry();
   const handle = await startHttpServer({
-    port: 0, vault, search, telemetry, version: "test",
+    port: 0,
+    vault,
+    search,
+    telemetry,
+    version: "test",
     toolDeps: { vault, search, telemetry, vaultPath },
     documentWriteEnabled: false,
     embedding: { on: false, providerId: null, source: "none" },
@@ -169,7 +211,11 @@ test("the daemon's doors carry it: /health, and /hook/recall — the MCP forward
   const health = (await (await fetch(`http://127.0.0.1:${handle.port}/health`)).json()) as Record<string, unknown>;
   assert.match(String(health.vault_missing), /does not exist/);
   const recall = await post(handle.port!, "/hook/recall", { query: "anything", k: 5 });
-  assert.match(String(recall.vault_missing), /does not exist/, `hook recall payload: ${JSON.stringify(recall).slice(0, 300)}`);
+  assert.match(
+    String(recall.vault_missing),
+    /does not exist/,
+    `hook recall payload: ${JSON.stringify(recall).slice(0, 300)}`
+  );
   // …and the forwarder's projection passes it on instead of dropping an unknown field.
   assert.match(String(projectRecallResult("anything", recall as never).vault_missing), /does not exist/);
 });

@@ -25,7 +25,7 @@ export interface CapturedRunResult extends RunResult {
 export function runCaptured(
   bin: string,
   args: string[],
-  opts: { timeoutMs: number; env?: Record<string, string> },
+  opts: { timeoutMs: number; env?: Record<string, string> }
 ): CapturedRunResult {
   const r = spawnSync(bin, args, {
     stdio: ["ignore", "pipe", "pipe"],
@@ -59,7 +59,11 @@ export function runCaptured(
  * spawnSync with a hard timeout and a closed stdin. stdin:"ignore" means a
  * brew sudo prompt fails fast instead of hanging a non-interactive run.
  */
-export function run(bin: string, args: string[], opts: { timeoutMs: number; showProgress?: boolean; env?: Record<string, string> }): RunResult {
+export function run(
+  bin: string,
+  args: string[],
+  opts: { timeoutMs: number; showProgress?: boolean; env?: Record<string, string> }
+): RunResult {
   const r = spawnSync(bin, args, {
     stdio: opts.showProgress ? ["ignore", "inherit", "inherit"] : ["ignore", "pipe", "pipe"],
     timeout: opts.timeoutMs,
@@ -70,7 +74,11 @@ export function run(bin: string, args: string[], opts: { timeoutMs: number; show
   });
   if (r.error) {
     const code = (r.error as NodeJS.ErrnoException).code;
-    return { ok: false, signal: false, detail: code === "ETIMEDOUT" ? `timed out after ${opts.timeoutMs}ms` : r.error.message };
+    return {
+      ok: false,
+      signal: false,
+      detail: code === "ETIMEDOUT" ? `timed out after ${opts.timeoutMs}ms` : r.error.message,
+    };
   }
   if (r.signal) return { ok: false, signal: true, detail: `killed by ${r.signal}` };
   if (r.status !== 0) return { ok: false, signal: false, detail: `exit ${r.status}` };
@@ -101,8 +109,7 @@ export function findExecutable(name: string): string | null {
     .map((e) => e.trim())
     .filter(Boolean);
   const nameHasExt = /\.[^\\/.]+$/.test(name);
-  const candidates =
-    isWin && !nameHasExt ? winExts.map((ext) => name + ext) : [name];
+  const candidates = isWin && !nameHasExt ? winExts.map((ext) => name + ext) : [name];
   const seen = new Set<string>();
   for (const dir of dirs) {
     if (seen.has(dir)) continue;

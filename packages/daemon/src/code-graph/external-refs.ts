@@ -99,7 +99,7 @@ export function resolveExternals(
   externals: readonly string[],
   nodes: ReadonlyMap<string, SafeNode>,
   idsByLabel: ReadonlyMap<string, string[]>,
-  modules: WorkspaceModules,
+  modules: WorkspaceModules
 ): ResolvedExternals {
   const symbols = new Map<string, string[]>();
   const moduleEntries = new Map<string, string>();
@@ -145,7 +145,7 @@ function resolveSymbolRef(
   key: string,
   dirs: ReadonlySet<string>,
   nodes: ReadonlyMap<string, SafeNode>,
-  idsByLabel: ReadonlyMap<string, string[]>,
+  idsByLabel: ReadonlyMap<string, string[]>
 ): string[] | null {
   let dir: string | null = null;
   for (const candidate of dirs) {

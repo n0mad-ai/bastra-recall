@@ -66,7 +66,7 @@ test("no source file in any package carries a raw control byte (#416)", () => {
   assert.deepEqual(
     offenders,
     [],
-    "write the escape (\\0, \\x01) instead of the raw byte — same string at runtime, reviewable diff",
+    "write the escape (\\0, \\x01) instead of the raw byte — same string at runtime, reviewable diff"
   );
   // Without this the sweep could pass by reading nothing at all — a wrong base
   // path, a renamed `src/`, a `recursive` option that stops working. The number

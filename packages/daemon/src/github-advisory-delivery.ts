@@ -8,21 +8,31 @@ export async function githubAdvisoryOnce(sessionId: string, text: string, deadli
   try {
     const token = randomUUID();
     let claimed = false;
-    const persisted = await mutateSessionState(sessionId, state => {
-      const prior = state.githubAdvisory;
-      if (prior && ("delivered" in prior || prior.deadline > Date.now())) return;
-      state.githubAdvisory = { token, deadline };
-      claimed = true;
-    }, { noQueue: true, deadline });
+    const persisted = await mutateSessionState(
+      sessionId,
+      (state) => {
+        const prior = state.githubAdvisory;
+        if (prior && ("delivered" in prior || prior.deadline > Date.now())) return;
+        state.githubAdvisory = { token, deadline };
+        claimed = true;
+      },
+      { noQueue: true, deadline }
+    );
     if (!persisted || !claimed) return "";
-    await confirmLaneDelivery(async delivered => {
-      await mutateSessionState(sessionId, state => {
-        const current = state.githubAdvisory;
-        if (!current || !("token" in current) || current.token !== token) return;
-        if (delivered) state.githubAdvisory = { delivered: true };
-        else delete state.githubAdvisory;
-      });
-    }, deadline, "context");
+    await confirmLaneDelivery(
+      async (delivered) => {
+        await mutateSessionState(sessionId, (state) => {
+          const current = state.githubAdvisory;
+          if (!current || !("token" in current) || current.token !== token) return;
+          if (delivered) state.githubAdvisory = { delivered: true };
+          else delete state.githubAdvisory;
+        });
+      },
+      deadline,
+      "context"
+    );
     return text;
-  } catch { return ""; } // Optional advice must never suppress the rule result.
+  } catch {
+    return "";
+  } // Optional advice must never suppress the rule result.
 }

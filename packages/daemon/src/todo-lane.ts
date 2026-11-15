@@ -20,7 +20,13 @@
 import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
 import { FUNCTION_WORDS, foldTerm } from "@bastra-recall/core";
 import { requiredHeadline, unfusedHeadline, unfusedReasonFor } from "./band-wording.js";
-import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLane, type ScopeFilterMode } from "./scope-filter.js";
+import {
+  applyLaneScopeFilter,
+  projectConfidence,
+  projectForFilter,
+  projectForLane,
+  type ScopeFilterMode,
+} from "./scope-filter.js";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { request } from "node:http";
 import { appendFile, mkdir } from "node:fs/promises";
@@ -30,7 +36,15 @@ import { envFirst, envOff, envInt } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow } from "./session-budget.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookCaller, type HookClientEvidence } from "./hook-surface.js";
+import {
+  hookCaller,
+  hookClient,
+  hookAgent,
+  hookClientEvidence,
+  type HookAgent,
+  type HookCaller,
+  type HookClientEvidence,
+} from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
 import {
   decideBackoff,
@@ -128,9 +142,7 @@ export function extractTopicsFromTodos(todosRaw: unknown): TopicExtraction {
   if (!Array.isArray(todosRaw)) {
     return { query: "", topics: [], todoCount: 0 };
   }
-  const todos: TodoItem[] = todosRaw.filter(
-    (t): t is TodoItem => typeof t === "object" && t !== null,
-  );
+  const todos: TodoItem[] = todosRaw.filter((t): t is TodoItem => typeof t === "object" && t !== null);
   const contents: string[] = todos
     .map((t) => (typeof t.content === "string" ? t.content : ""))
     .filter((c) => c.length > 0);
@@ -239,8 +251,9 @@ function planItemsOf(payload: ClaudeHookPayload): unknown {
     return items;
   }
   if (payload.tool_name === "TaskCreate" || payload.tool_name === "TaskUpdate") {
-    const text = [input.subject, input.description, input.activeForm ?? input.active_form]
-      .filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+    const text = [input.subject, input.description, input.activeForm ?? input.active_form].filter(
+      (v): v is string => typeof v === "string" && v.trim().length > 0
+    );
     // One tool call is one plan step, however many fields carried its text —
     // `todo_count` must keep meaning "steps", not "strings found".
     return text.length > 0 ? [{ content: text.join(". "), status: input.status }] : [];
@@ -263,10 +276,7 @@ export function isLowConfidence(extraction: TopicExtraction): boolean {
  * writes to stdout. Never throws; every failure degrades to `{}` plus
  * telemetry, matching the CLI's fail-open contract.
  */
-export async function runTodoLane(
-  payload: ClaudeHookPayload,
-  selfBaseUrl: string,
-): Promise<string> {
+export async function runTodoLane(payload: ClaudeHookPayload, selfBaseUrl: string): Promise<string> {
   const startedAt = Date.now();
   const client = hookClient(payload);
   // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt
@@ -313,8 +323,7 @@ export async function runTodoLane(
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
 
   let resp: RecallResponse | null = null;
-  let status: "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error" | "low-confidence" =
-    "ok";
+  let status: "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error" | "low-confidence" = "ok";
   let errMsg: string | null = null;
   try {
     resp = await postRecall(
@@ -332,7 +341,7 @@ export async function runTodoLane(
         ...hookCaller(payload),
         hook_source: "todo",
       },
-      remainingMs,
+      remainingMs
     );
   } catch (err) {
     const e = err as NodeJS.ErrnoException;
@@ -358,17 +367,13 @@ export async function runTodoLane(
   // Projekt-Fakt ist hier fast immer Kontamination, nicht Kontext. Deshalb
   // ohne Cross-Scope-Ausnahme, anders als in der Prompt-Lane. Läuft zuerst im
   // SHADOW-Modus: misst, verwirft nichts (BASTRA_SCOPE_FILTER_LANES=enforce).
-  const scopeFilter = applyLaneScopeFilter(
-    aboveFloor,
-    filterProject,
-    {
-      allowAnchoredCrossScope: false,
-      mustLoadScore: MUST_LOAD_SCORE,
-      unfused: resp?.unfused === true,
-      exemptReflex: true,
-      projectKnown: resp?.project_known,
-    },
-  );
+  const scopeFilter = applyLaneScopeFilter(aboveFloor, filterProject, {
+    allowAnchoredCrossScope: false,
+    mustLoadScore: MUST_LOAD_SCORE,
+    unfused: resp?.unfused === true,
+    exemptReflex: true,
+    projectKnown: resp?.project_known,
+  });
   const filtered = scopeFilter.hits;
   if (resp && filtered.length === 0) status = "no-hits";
 
@@ -415,7 +420,11 @@ export async function runTodoLane(
       const emitted = filtered.map((h) => h.id);
       await mutateSessionState(sessionId, (s) => recordSourceEmit(s, BACKOFF_SOURCE, emitted, consumed));
       // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
-      await reportHinted(url, filtered.map((h) => h.id), payload.session_id ?? null);
+      await reportHinted(
+        url,
+        filtered.map((h) => h.id),
+        payload.session_id ?? null
+      );
     }
   }
 
@@ -445,9 +454,7 @@ export async function runTodoLane(
     project_confidence: projectConfidence(cwd),
     filter_project: scopeFilter.filterProject,
     ...(scopeFilter.skipped ? { scope_filter_skipped: scopeFilter.skipped } : {}),
-    ...(scopeFilter.droppedScopes.length > 0
-      ? { dropped_scopes: scopeFilter.droppedScopes }
-      : {}),
+    ...(scopeFilter.droppedScopes.length > 0 ? { dropped_scopes: scopeFilter.droppedScopes } : {}),
     ...(resp?.unfused === true ? { unfused: true } : {}),
   });
   return out;
@@ -473,7 +480,7 @@ export function formatHintBlock(
   // #565: der `degraded`-Grund der Antwort — ohne ihn behauptete der Block
   // „semantic search is off", wo der Arm lief und nur diesen Aufruf nicht
   // bediente.
-  degraded?: string,
+  degraded?: string
 ): string {
   const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
   const topicsAttr = topics.length > 0 ? ` topics="${escapeAttr(topics.join(","))}"` : "";
@@ -491,7 +498,7 @@ export function formatHintBlock(
     `You just produced a multi-step plan via ${toolName}. ` +
       `Before starting these todos, load the project-facts above to understand ` +
       `the current file layout / past decisions in this area. ` +
-      `load_memory(id) the hits relevant to these todos; treat the rest as candidates (hints, not obligations).`,
+      `load_memory(id) the hits relevant to these todos; treat the rest as candidates (hints, not obligations).`
   );
 
   if (unfused) {
@@ -505,7 +512,7 @@ export function formatHintBlock(
     sections.push("");
     sections.push(
       `${requiredHeadline("these todos", MUST_LOAD_SCORE, { k: RRF_K, scale: RRF_SCALE })} ` +
-        `load_memory(id) the ones relevant to them (hints, not obligations):`,
+        `load_memory(id) the ones relevant to them (hints, not obligations):`
     );
     for (const h of required) sections.push(formatHintLine(h));
   }
@@ -513,7 +520,7 @@ export function formatHintBlock(
   if (optional.length > 0) {
     if (required.length > 0) sections.push("");
     sections.push(
-      `OPTIONAL (score ${SCORE_FLOOR}–${MUST_LOAD_SCORE - 1}) — load only if title/summary maps to a concrete todo:`,
+      `OPTIONAL (score ${SCORE_FLOOR}–${MUST_LOAD_SCORE - 1}) — load only if title/summary maps to a concrete todo:`
     );
     for (const h of optional) sections.push(formatHintLine(h));
   }
@@ -535,11 +542,7 @@ interface RecallRequestBody extends HookCaller {
   hook_source: string;
 }
 
-function postRecall(
-  baseUrl: string,
-  body: RecallRequestBody,
-  timeoutMs: number,
-): Promise<RecallResponse> {
+function postRecall(baseUrl: string, body: RecallRequestBody, timeoutMs: number): Promise<RecallResponse> {
   return new Promise((resolve, reject) => {
     let url: URL;
     try {
@@ -576,7 +579,7 @@ function postRecall(
             reject(new Error("invalid JSON response from daemon"));
           }
         });
-      },
+      }
     );
     req.on("timeout", () => {
       req.destroy(new Error("timeout"));
@@ -633,14 +636,7 @@ interface TodoHookTelemetry {
   suppressed_tokens_est?: number;
   /** #457: est. tokens of the injected block; 0 when nothing was emitted. */
   hint_tokens_est?: number;
-  status:
-    | "ok"
-    | "no-hits"
-    | "daemon-unreachable"
-    | "timeout"
-    | "error"
-    | "low-confidence"
-    | "suppressed";
+  status: "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error" | "low-confidence" | "suppressed";
   error: string | null;
 }
 

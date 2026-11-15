@@ -84,7 +84,7 @@ export async function cmdImport(args: ParsedArgs): Promise<number> {
           "Where to get the list:\n" +
           "  ChatGPT  Settings → Personalization → Manage memories → copy\n" +
           "  Claude   Settings → memory text → copy\n" +
-          "  Gemini   Settings → Saved Info → copy\n",
+          "  Gemini   Settings → Saved Info → copy\n"
       );
       return 2;
     }
@@ -97,7 +97,9 @@ export async function cmdImport(args: ParsedArgs): Promise<number> {
       try {
         const info = await fh.stat();
         if (info.size > MAX_IMPORT_FILE_BYTES) {
-          process.stderr.write(`error: ${fileArg} is ${Math.round(info.size / 1024 / 1024)} MB — too large to parse safely (max 256 MB)\n`);
+          process.stderr.write(
+            `error: ${fileArg} is ${Math.round(info.size / 1024 / 1024)} MB — too large to parse safely (max 256 MB)\n`
+          );
           return 1;
         }
         raw = await fh.readFile({ encoding: "utf8" });
@@ -110,9 +112,7 @@ export async function cmdImport(args: ParsedArgs): Promise<number> {
       return 1;
     }
     if (BASTRA_OWN_FILES.has(fileName.toLowerCase())) {
-      process.stderr.write(
-        `error: ${fileName} is written by bastra itself — it is never an import source.\n`,
-      );
+      process.stderr.write(`error: ${fileName} is written by bastra itself — it is never an import source.\n`);
       return 1;
     }
   }
@@ -144,7 +144,7 @@ function printStaged(result: StageResult, source: ImportSource): void {
     `✓ ${result.staged} candidate(s) staged in ${IMPORT_FILE} (source: ${source})` +
       (result.skippedDuplicates > 0 ? ` · ${result.skippedDuplicates} duplicate(s) skipped` : "") +
       `\n  ${result.openTotal} open in total — your next AI session will offer to distill them with you.\n` +
-      `  Nothing is saved to the vault without your accept.\n`,
+      `  Nothing is saved to the vault without your accept.\n`
   );
 }
 
@@ -154,7 +154,7 @@ async function queueConversations(raw: string): Promise<number> {
   if (!parsed) {
     process.stderr.write(
       "error: unrecognized JSON shape — expected a memory list (JSON array of strings) " +
-        "or a ChatGPT/Claude conversations.json data export\n",
+        "or a ChatGPT/Claude conversations.json data export\n"
     );
     return 2;
   }
@@ -166,7 +166,7 @@ async function queueConversations(raw: string): Promise<number> {
       `  Queue: ${result.queueFile} (${st.remaining} pending) — local only, never leaves this\n` +
       `  machine, deleted when mining completes. Discard anytime: bastra import clear\n` +
       `  In your AI session say "mine the imported chat history" — it combs the queue\n` +
-      `  chunk-wise via \`bastra import mine\` and stages candidate facts for your review.\n`,
+      `  chunk-wise via \`bastra import mine\` and stages candidate facts for your review.\n`
   );
   return 0;
 }
@@ -182,7 +182,7 @@ async function cmdImportRules(args: ParsedArgs): Promise<number> {
   if (files.length === 0) {
     process.stdout.write(
       "no rules files found — looked for CLAUDE.md, AGENTS.md, .cursorrules and .cursor/rules/ " +
-        "here, and ~/.claude/CLAUDE.md\n",
+        "here, and ~/.claude/CLAUDE.md\n"
     );
     return 1;
   }
@@ -193,10 +193,7 @@ async function cmdImportRules(args: ParsedArgs): Promise<number> {
     try {
       const r = extractRulesCandidates(await readFile(f.path, "utf8"));
       all.push(...r.candidates);
-      line =
-        r.candidates.length > 0
-          ? `${r.candidates.length} candidate(s)`
-          : `0 candidates: ${r.emptyReason}`;
+      line = r.candidates.length > 0 ? `${r.candidates.length} candidate(s)` : `0 candidates: ${r.emptyReason}`;
     } catch (err) {
       line = `0 candidates: unreadable (${(err as Error).message})`;
     }
@@ -226,7 +223,7 @@ async function cmdImportVault(args: ParsedArgs): Promise<number> {
         "  memories/imported/<label>/ — deterministic, no per-item review.\n" +
         "  label      namespace for this batch (default: the folder's name)\n" +
         "  --exclude  skip a directory name anywhere in the tree (repeatable);\n" +
-        "             dotdirs, _archive/ and archive/ are always skipped\n",
+        "             dotdirs, _archive/ and archive/ are always skipped\n"
     );
     return 2;
   }
@@ -265,7 +262,7 @@ async function cmdImportVault(args: ParsedArgs): Promise<number> {
       (result.byAdapter.index > 0 ? ` · ${result.byAdapter.index} curated index` : "") +
       (result.skipped.length > 0 ? ` · ${result.skipped.length} skipped` : "") +
       (result.orphaned.length > 0 ? ` · ${result.orphaned.length} orphaned` : "") +
-      `\n`,
+      `\n`
   );
   for (const s of result.skipped.slice(0, 10)) {
     process.stdout.write(`  · skipped ${basename(s.path)}: ${s.reason}\n`);
@@ -295,7 +292,7 @@ async function cmdImportVault(args: ParsedArgs): Promise<number> {
   if (!result.dryRun && result.imported > 0) {
     process.stdout.write(
       `  the running daemon indexes them automatically; delete the whole set anytime\n` +
-        `  by removing the ${result.folder}/ folder.\n`,
+        `  by removing the ${result.folder}/ folder.\n`
     );
   }
   return 0;
@@ -315,7 +312,7 @@ async function cmdImportClients(args: ParsedArgs): Promise<number> {
   const dirs = await findClientMemoryDirs(vault.path);
   if (dirs.length === 0) {
     process.stdout.write(
-      "no client memory notes found — looked in ~/.claude/projects/*/memory and ~/.codex/memories\n",
+      "no client memory notes found — looked in ~/.claude/projects/*/memory and ~/.codex/memories\n"
     );
     return 0;
   }
@@ -329,12 +326,12 @@ async function cmdImportClients(args: ParsedArgs): Promise<number> {
       process.stdout.write(
         m.skipped
           ? `! ${where} not moved: ${m.skipped} — the import below writes beside it\n`
-          : `✓ ${where} — ${m.memories} memory id(s) ${args.dryRun ? "would be renamed" : "renamed"}\n`,
+          : `✓ ${where} — ${m.memories} memory id(s) ${args.dryRun ? "would be renamed" : "renamed"}\n`
       );
       for (const f of m.left ?? []) {
         process.stdout.write(
           `  · left untouched: ${f} — not written by this import; ` +
-            `it stays in ${IMPORT_ROOT}/${m.from}/; move it where it belongs, or leave it (a rerun does not touch it)\n`,
+            `it stays in ${IMPORT_ROOT}/${m.from}/; move it where it belongs, or leave it (a rerun does not touch it)\n`
         );
       }
     }
@@ -356,9 +353,7 @@ async function cmdImportClients(args: ParsedArgs): Promise<number> {
     }
   }
   if (!args.dryRun) {
-    process.stdout.write(
-      "  the originals stay where they are; the running daemon indexes the imported copies.\n",
-    );
+    process.stdout.write("  the originals stay where they are; the running daemon indexes the imported copies.\n");
   }
   return failed > 0 ? 1 : 0;
 }
@@ -368,7 +363,7 @@ async function cmdImportMine(): Promise<number> {
   const chunk = await readNextChunk();
   if (!chunk) {
     process.stdout.write(
-      "mining queue is empty — queue a data export first: bastra import <path/to/conversations.json>\n",
+      "mining queue is empty — queue a data export first: bastra import <path/to/conversations.json>\n"
     );
     return 0;
   }
@@ -382,7 +377,7 @@ async function cmdImportMine(): Promise<number> {
       `  printf '%s\\n' "fact one" "fact two" | bastra import - ${chunk.source}\n` +
       (chunk.remaining > 0
         ? "Then run `bastra import mine` for the next chunk.\n"
-        : "Queue drained — the staged candidates are distilled with the user via import-review.md.\n"),
+        : "Queue drained — the staged candidates are distilled with the user via import-review.md.\n")
   );
   return 0;
 }
@@ -393,7 +388,7 @@ async function cmdImportClear(): Promise<number> {
   process.stdout.write(
     st.remaining > 0
       ? `✓ mining queue cleared — ${st.remaining} pending conversation(s) discarded\n`
-      : "mining queue is already empty\n",
+      : "mining queue is already empty\n"
   );
   return 0;
 }

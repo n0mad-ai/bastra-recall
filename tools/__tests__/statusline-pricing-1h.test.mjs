@@ -56,10 +56,13 @@ test("without the split everything bills at the 5m rate", async () => {
 
 test("a missing 1h price falls back to the 5m rate without making costs NaN", async () => {
   for (const oneHourTokens of [0, 1_000_000]) {
-    const c = await cost({
-      cache_creation_input_tokens: 1_000_000,
-      cache_creation: { ephemeral_1h_input_tokens: oneHourTokens },
-    }, "test-model-no-1h");
+    const c = await cost(
+      {
+        cache_creation_input_tokens: 1_000_000,
+        cache_creation: { ephemeral_1h_input_tokens: oneHourTokens },
+      },
+      "test-model-no-1h"
+    );
     assert.equal(c, 1, `1h tokens: ${oneHourTokens}`);
   }
 });

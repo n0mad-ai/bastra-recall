@@ -235,20 +235,29 @@ export function mergeBatchResults(queries: string[], subs: BatchSubResult[], k: 
   // Keep actual single-query scores, including when rank fusion selected them.
   const hits = orderSuperseded(mixed ? fuseByQueryRank(subs, Infinity) : mergeByScore(subs, Infinity)).slice(0, k);
   const hitIds = new Set(hits.map((h) => h.id));
-  const reflexHits = mergeByScore(subs.map((s) => ({ hits: s.reflex_hits })), Infinity)
-    .filter((h) => !hitIds.has(h.id));
-  const draftHits = [...new Map(subs.flatMap(s => s.draft_hits ?? []).map(hit => [hit.id, hit])).values()].slice(0, 2);
+  const reflexHits = mergeByScore(
+    subs.map((s) => ({ hits: s.reflex_hits })),
+    Infinity
+  ).filter((h) => !hitIds.has(h.id));
+  const draftHits = [...new Map(subs.flatMap((s) => s.draft_hits ?? []).map((hit) => [hit.id, hit])).values()].slice(
+    0,
+    2
+  );
   return {
     query: queries.join(" | "),
     query_count: queries.length,
     vault_size: vaultSize,
-    ...(subs.find(s => s.vault_availability)?.vault_availability ? { vault_availability: subs.find(s => s.vault_availability)!.vault_availability } : {}),
+    ...(subs.find((s) => s.vault_availability)?.vault_availability
+      ? { vault_availability: subs.find((s) => s.vault_availability)!.vault_availability }
+      : {}),
     hits,
     recall_id: recallIds[0],
     recall_ids: recallIds,
     ...(weakAll && subs.length > 0 ? { weak_result: true as const } : {}),
     ...(noHomeAll && subs.length > 0 ? { no_home: true as const } : {}),
-    ...(subs.find((x) => x.vault_missing)?.vault_missing ? { vault_missing: subs.find((x) => x.vault_missing)!.vault_missing } : {}),
+    ...(subs.find((x) => x.vault_missing)?.vault_missing
+      ? { vault_missing: subs.find((x) => x.vault_missing)!.vault_missing }
+      : {}),
     score_kind: scoreKind,
     ...(mixed ? {} : { score_arms: subs[0]?.score_arms, score_version: subs[0]?.score_version }),
     ...(scoreKind === "bm25" ? { unfused: true as const } : {}),
@@ -262,27 +271,32 @@ export function mergeBatchResults(queries: string[], subs: BatchSubResult[], k: 
  * through both wire projections. Only an already retrieved target can affect
  * the eventual merged ordering.
  */
-export function withSupersession<T extends { id: string }>(hit: T, vault: Vault, source: ConventionSource | undefined): T &
-  Pick<Frontmatter, "superseded_by"> & RulebookMetadata {
+export function withSupersession<T extends { id: string }>(
+  hit: T,
+  vault: Vault,
+  source: ConventionSource | undefined
+): T & Pick<Frontmatter, "superseded_by"> & RulebookMetadata {
   const fm = vault.get(hit.id)?.fm;
   if (!fm) return hit;
   // Membership is supplied by the shared current-source reader, never inferred here.
   const metadata = source?.rulebookMetadata;
-  return { ...hit, ...metadata,
-    ...(fm.superseded_by ? { superseded_by: fm.superseded_by } : {}) };
+  return { ...hit, ...metadata, ...(fm.superseded_by ? { superseded_by: fm.superseded_by } : {}) };
 }
 
 function orderSuperseded(hits: BatchHit[]): BatchHit[] {
   const ordered = [...hits];
-  visitSupersession(hits,
-    hit => typeof hit.superseded_by === "string" ? hit.superseded_by : undefined,
+  visitSupersession(
+    hits,
+    (hit) => (typeof hit.superseded_by === "string" ? hit.superseded_by : undefined),
     (predecessor, successor) => {
-      const a = ordered.indexOf(predecessor), b = ordered.indexOf(successor);
+      const a = ordered.indexOf(predecessor),
+        b = ordered.indexOf(successor);
       if (a < b) {
         ordered.splice(b, 1);
         ordered.splice(a, 0, successor);
       }
-    });
+    }
+  );
   return ordered;
 }
 
@@ -366,7 +380,7 @@ function fuseByQueryRank(subs: BatchSubResult[], k: number): BatchHit[] {
  */
 export function projectRecallResult(
   query: string,
-  payload: Omit<BatchSubResult, "hits"> & { hits?: unknown[]; latency_ms?: number },
+  payload: Omit<BatchSubResult, "hits"> & { hits?: unknown[]; latency_ms?: number }
 ): Record<string, unknown> {
   return {
     query,

@@ -53,7 +53,10 @@ test("surface choices: detected clients are preselected and hinted", () => {
     codex: false,
     cursor: true,
   });
-  assert.deepEqual(options.map((o) => o.value), ["claude-desktop", "claude-code", "codex", "cursor"]);
+  assert.deepEqual(
+    options.map((o) => o.value),
+    ["claude-desktop", "claude-code", "codex", "cursor"]
+  );
   assert.deepEqual(new Set(initialValues), new Set(["claude-code", "cursor"]));
   assert.equal(options.find((o) => o.value === "claude-code")?.hint, "detected");
   assert.equal(options.find((o) => o.value === "claude-desktop")?.hint, "not detected");
@@ -61,7 +64,10 @@ test("surface choices: detected clients are preselected and hinted", () => {
 
 test("surface choices: nothing detected → everything preselected (plain Enter = full install)", () => {
   const { options, initialValues } = buildSurfaceChoices({});
-  assert.deepEqual(initialValues, options.map((o) => o.value));
+  assert.deepEqual(
+    initialValues,
+    options.map((o) => o.value)
+  );
 });
 
 test("surface choices: labels drop the parenthetical detail", () => {
@@ -90,18 +96,33 @@ test("detectSurfaces: home-relative traces are found in the given home", async (
 
 test("wizard semantic: --ollama = consent, never asks (flag beats everything)", () => {
   assert.equal(decideWizardSemantic({ ollamaFlag: "auto", effectiveProvider: "none", daemonSemanticOn: false }), "on");
-  assert.equal(decideWizardSemantic({ ollamaFlag: "auto", effectiveProvider: "ollama", daemonSemanticOn: false }), "on");
+  assert.equal(
+    decideWizardSemantic({ ollamaFlag: "auto", effectiveProvider: "ollama", daemonSemanticOn: false }),
+    "on"
+  );
 });
 
 test("wizard semantic: effective provider or semantic daemon → nothing to ask", () => {
-  assert.equal(decideWizardSemantic({ ollamaFlag: null, effectiveProvider: "ollama", daemonSemanticOn: false }), "already");
-  assert.equal(decideWizardSemantic({ ollamaFlag: null, effectiveProvider: "none", daemonSemanticOn: true }), "already");
+  assert.equal(
+    decideWizardSemantic({ ollamaFlag: null, effectiveProvider: "ollama", daemonSemanticOn: false }),
+    "already"
+  );
+  assert.equal(
+    decideWizardSemantic({ ollamaFlag: null, effectiveProvider: "none", daemonSemanticOn: true }),
+    "already"
+  );
   // --no-ollama with an effective provider: skips provisioning, disables nothing
-  assert.equal(decideWizardSemantic({ ollamaFlag: "skip", effectiveProvider: "openai", daemonSemanticOn: false }), "already");
+  assert.equal(
+    decideWizardSemantic({ ollamaFlag: "skip", effectiveProvider: "openai", daemonSemanticOn: false }),
+    "already"
+  );
 });
 
 test("wizard semantic: --no-ollama = opt-out, never asks (review find 2026-07-03)", () => {
-  assert.equal(decideWizardSemantic({ ollamaFlag: "skip", effectiveProvider: "none", daemonSemanticOn: false }), "later");
+  assert.equal(
+    decideWizardSemantic({ ollamaFlag: "skip", effectiveProvider: "none", daemonSemanticOn: false }),
+    "later"
+  );
 });
 
 test("wizard semantic: no flag, nothing effective → ask", () => {
@@ -112,12 +133,35 @@ test("wizard semantic: no flag, nothing effective → ask", () => {
 
 test("install --help documents instead of acting (wizard or missing-surface error)", async () => {
   const args: ParsedArgs = {
-    command: "install", surface: null, dryRun: false, vaultPath: null,
-    showHelp: true, showVersion: false, json: false, quiet: false, yes: false,
-    fix: false, withStopHook: false, staged: false, force: false, ollama: null,
-    origin: null, answers: null, extension: false, stub: null, exclude: [], follow: false,
-    since: null, source: null, lines: null, stats: false, conventions: false, includeEval: false,
-    replay: false, days: null, compare: null,
+    command: "install",
+    surface: null,
+    dryRun: false,
+    vaultPath: null,
+    showHelp: true,
+    showVersion: false,
+    json: false,
+    quiet: false,
+    yes: false,
+    fix: false,
+    withStopHook: false,
+    staged: false,
+    force: false,
+    ollama: null,
+    origin: null,
+    answers: null,
+    extension: false,
+    stub: null,
+    exclude: [],
+    follow: false,
+    since: null,
+    source: null,
+    lines: null,
+    stats: false,
+    conventions: false,
+    includeEval: false,
+    replay: false,
+    days: null,
+    compare: null,
     positional: ["install"],
   };
   const origWrite = process.stdout.write.bind(process.stdout);
@@ -250,13 +294,19 @@ test("probeVaultPresence: counts what the daemon indexes — memories, not plain
 test("text model step: a new install is offered tev1:4b first and preselected", () => {
   const c16 = buildTextModelChoices(16);
   assert.equal(c16?.initialValue, "tev1:4b");
-  assert.deepEqual(c16?.options.map((o) => o.value), ["tev1:4b", ""]);
+  assert.deepEqual(
+    c16?.options.map((o) => o.value),
+    ["tev1:4b", ""]
+  );
   assert.equal(c16?.options[0].label, "tev1:4b — recommended for 16 GB");
   assert.equal(c16?.options[0].hint, "~4.5 GB download");
   // 24 GB: the same suggestion, gemma4:12b stays the alternative.
   const c24 = buildTextModelChoices(24);
   assert.equal(c24?.initialValue, "tev1:4b");
-  assert.deepEqual(c24?.options.map((o) => o.value), ["tev1:4b", "gemma4:12b", ""]);
+  assert.deepEqual(
+    c24?.options.map((o) => o.value),
+    ["tev1:4b", "gemma4:12b", ""]
+  );
   assert.equal(c24?.options[1].hint, "~8.1 GB download");
   // 32 GB and up: gemma4:12b, as before.
   assert.equal(buildTextModelChoices(32)?.initialValue, "gemma4:12b");

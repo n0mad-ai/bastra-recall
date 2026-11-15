@@ -280,7 +280,13 @@ export function attribute(dir, testFile, changed, { packageNames = new Map() } =
     .replace(/\.[cm]?[jt]sx?$/, "")
     .replace(/\.(test|spec)$/, "")
     .replace(/^(test|spec)_/, "");
-  const sibling = internal.filter((f) => f.split("/").pop().replace(/\.[cm]?[jt]sx?$/, "") === stem);
+  const sibling = internal.filter(
+    (f) =>
+      f
+        .split("/")
+        .pop()
+        .replace(/\.[cm]?[jt]sx?$/, "") === stem
+  );
   if (sibling.length > 0) return { rule: "sibling-name", files: sibling.sort(), closure: depths };
 
   const direct = internal.filter((f) => depths.get(f) === 1);

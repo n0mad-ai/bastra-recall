@@ -1,116 +1,351 @@
 import { readAppRecord } from "../src/app-record-store.js";
 import "./tasks-opt-in.js";
-import {test} from "node:test";
+import { test } from "node:test";
 import assert from "node:assert/strict";
-import {mkdtemp} from "node:fs/promises";
-import {tmpdir} from "node:os";
-import {join} from "node:path";
-import {createServer, request} from "node:http";
-import {once} from "node:events";
-import {dispatchTaskUi} from "../src/task-ui-session.js";
-import {ensureLocalTaskAgent} from "../src/task-auto-setup.js";
-import {taskClientToken} from "../src/task-client-auth.js";
-import {authenticateTask, mintTaskCredential, revokeTaskCredential} from "../src/task-auth.js";
-import {setUiEnabled} from "../src/settings.js";
-import {callTaskCrud} from "../src/task-service.js";
-import {readTaskStore} from "../src/task-store.js";
-import {dispatchTaskHttp} from "../src/task-transport.js";
-test("tokenless task UI session is local/CSRF-protected Agent access, never Owner authority",async()=>{
- const root=await mkdtemp(join(tmpdir(),"task-ui-session-")),ctx={path:join(root,"tasks.json"),authPath:join(root,"task-auth.json")};const previous=process.env.BASTRA_TASKS_PATH,previousToken=process.env.BASTRA_TASK_TOKEN;process.env.BASTRA_TASKS_PATH=ctx.path;delete process.env.BASTRA_TASK_TOKEN;await setUiEnabled(true);await ensureLocalTaskAgent();
- const agent=await authenticateTask(`Bearer ${taskClientToken()}`,ctx.authPath);const server=createServer((req,res)=>{if(!dispatchTaskUi(req,res,req.method!,req.url!,ctx)&&!dispatchTaskHttp(req,res,req.method!,req.url!,ctx)){res.writeHead(404);res.end();}});server.listen(0,"127.0.0.1");await once(server,"listening");const base=`http://127.0.0.1:${(server.address() as any).port}`;
- const post=async(path:string,body:unknown={},extra:Record<string,string>={})=>fetch(base+path,{method:"POST",headers:{"Content-Type":"application/json",...extra},body:JSON.stringify(body)});
- try{
-  assert.equal((await post("/ui/tasks/session",{}, {Origin:"https://foreign.invalid"})).status,403);
-  const foreignHost = await new Promise<number>((resolve,reject)=>{const r=request(base+"/ui/tasks/session",{method:"POST",headers:{Host:"foreign.invalid","Content-Type":"application/json"}},res=>{res.resume();res.on("end",()=>resolve(res.statusCode!));});r.on("error",reject);r.end("{}");});assert.equal(foreignHost,403);
-  const bootstrap=await post("/ui/tasks/session",{}, {Origin:base});assert.equal(bootstrap.status,200);const data=await bootstrap.json() as any;const setCookie=bootstrap.headers.get("set-cookie")!;assert.match(setCookie,/HttpOnly/);assert.match(setCookie,/SameSite=Strict/);assert.ok(!JSON.stringify(data).includes(taskClientToken()!));assert.equal(data.role,"agent");const headers={Cookie:setCookie.split(";")[0],"x-bastra-task-csrf":data.csrf,Origin:base};
-  assert.equal((await post("/ui/tasks/api/task_status",{}, {Cookie:headers.Cookie})).status,403);
-  assert.doesNotMatch(setCookie,/Max-Age|Expires=/i,"ordinary browser access uses a session cookie");
-  assert.equal(data.expires_in,null,"session lasts for the daemon lifetime");
-  for(let i=0;i<101;i++){
-   const reopened=await post("/ui/tasks/session",{},headers);assert.equal(reopened.status,200);
-   assert.equal((await reopened.json() as any).csrf,data.csrf,"reload reuses its scoped session instead of exhausting capacity");
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createServer, request } from "node:http";
+import { once } from "node:events";
+import { dispatchTaskUi } from "../src/task-ui-session.js";
+import { ensureLocalTaskAgent } from "../src/task-auto-setup.js";
+import { taskClientToken } from "../src/task-client-auth.js";
+import { authenticateTask, mintTaskCredential, revokeTaskCredential } from "../src/task-auth.js";
+import { setUiEnabled } from "../src/settings.js";
+import { callTaskCrud } from "../src/task-service.js";
+import { readTaskStore } from "../src/task-store.js";
+import { dispatchTaskHttp } from "../src/task-transport.js";
+test("tokenless task UI session is local/CSRF-protected Agent access, never Owner authority", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-ui-session-")),
+    ctx = { path: join(root, "tasks.json"), authPath: join(root, "task-auth.json") };
+  const previous = process.env.BASTRA_TASKS_PATH,
+    previousToken = process.env.BASTRA_TASK_TOKEN;
+  process.env.BASTRA_TASKS_PATH = ctx.path;
+  delete process.env.BASTRA_TASK_TOKEN;
+  await setUiEnabled(true);
+  await ensureLocalTaskAgent();
+  const agent = await authenticateTask(`Bearer ${taskClientToken()}`, ctx.authPath);
+  const server = createServer((req, res) => {
+    if (
+      !dispatchTaskUi(req, res, req.method!, req.url!, ctx) &&
+      !dispatchTaskHttp(req, res, req.method!, req.url!, ctx)
+    ) {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const base = `http://127.0.0.1:${(server.address() as any).port}`;
+  const post = async (path: string, body: unknown = {}, extra: Record<string, string> = {}) =>
+    fetch(base + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...extra },
+      body: JSON.stringify(body),
+    });
+  try {
+    assert.equal((await post("/ui/tasks/session", {}, { Origin: "https://foreign.invalid" })).status, 403);
+    const foreignHost = await new Promise<number>((resolve, reject) => {
+      const r = request(
+        base + "/ui/tasks/session",
+        { method: "POST", headers: { Host: "foreign.invalid", "Content-Type": "application/json" } },
+        (res) => {
+          res.resume();
+          res.on("end", () => resolve(res.statusCode!));
+        }
+      );
+      r.on("error", reject);
+      r.end("{}");
+    });
+    assert.equal(foreignHost, 403);
+    const bootstrap = await post("/ui/tasks/session", {}, { Origin: base });
+    assert.equal(bootstrap.status, 200);
+    const data = (await bootstrap.json()) as any;
+    const setCookie = bootstrap.headers.get("set-cookie")!;
+    assert.match(setCookie, /HttpOnly/);
+    assert.match(setCookie, /SameSite=Strict/);
+    assert.ok(!JSON.stringify(data).includes(taskClientToken()!));
+    assert.equal(data.role, "agent");
+    const headers = { Cookie: setCookie.split(";")[0], "x-bastra-task-csrf": data.csrf, Origin: base };
+    assert.equal((await post("/ui/tasks/api/task_status", {}, { Cookie: headers.Cookie })).status, 403);
+    assert.doesNotMatch(setCookie, /Max-Age|Expires=/i, "ordinary browser access uses a session cookie");
+    assert.equal(data.expires_in, null, "session lasts for the daemon lifetime");
+    for (let i = 0; i < 101; i++) {
+      const reopened = await post("/ui/tasks/session", {}, headers);
+      assert.equal(reopened.status, 200);
+      assert.equal(
+        ((await reopened.json()) as any).csrf,
+        data.csrf,
+        "reload reuses its scoped session instead of exhausting capacity"
+      );
+    }
+    const realNow = Date.now;
+    try {
+      Date.now = () => realNow() + 24 * 60 * 60 * 1000;
+      assert.equal(
+        (await post("/ui/tasks/api/task_status", {}, headers)).status,
+        200,
+        "idle time never expires a running daemon's session"
+      );
+      assert.equal(
+        (await post("/ui/tasks/api/task_status", {}, { ...headers, Origin: "https://foreign.invalid" })).status,
+        403
+      );
+      assert.equal(
+        (await post("/ui/tasks/api/task_status", {}, { ...headers, "x-bastra-task-csrf": "x".repeat(43) })).status,
+        403
+      );
+    } finally {
+      Date.now = realNow;
+    }
+    const input = {
+      idempotency_key: "ui",
+      original_request: "Synthetic",
+      goal: "Remind me",
+      resolution_condition: "Done",
+      schedule: { kind: "instant", at: Date.now() + 100000 },
+      timezone: "Europe/Madrid",
+      scope: { kind: "personal", name: "ui" },
+      owner_domains: ["personal"],
+      arm: true,
+      origin: { kind: "user-request", client: "ui", session: "synthetic", context: "Synthetic request" },
+    };
+    const made = await post("/ui/tasks/api/task_create", input, headers);
+    assert.equal(made.status, 200);
+    const task = (await made.json()) as any;
+    assert.equal(task.armed, true);
+    assert.equal(
+      (await post("/ui/tasks/api/task_controls", { muted: true }, headers)).status,
+      200,
+      "mapped Agent may apply commissioned controls in its domains"
+    );
+    const resume = await post("/ui/tasks/api/task_controls", { execution_stopped: false }, headers);
+    assert.equal(resume.status, 409, "execution still requires a registered local target");
+    assert.equal(((await resume.json()) as any).code, "conflict");
+    assert.equal(
+      (await post("/ui/tasks/api/task_recover", {}, headers)).status,
+      403,
+      "backup recovery remains separate Owner administration"
+    );
+    assert.equal(
+      (
+        await post(
+          "/ui/tasks/api/task_edit",
+          { id: task.id, expected_revision: task.expected_revision, patch: { action_level: "execute" } },
+          headers
+        )
+      ).status,
+      200,
+      "Agent task management includes every action level"
+    );
+    assert.equal(
+      (await post("/api/v1/task_status", {}, headers)).status,
+      401,
+      "cookie cannot bypass explicit REST auth"
+    );
+    const owner = await mintTaskCredential(ctx.authPath, { actor_id: "owner", role: "owner", domains: ["personal"] });
+    process.env.BASTRA_TASK_TOKEN = owner.token;
+    assert.equal((await post("/ui/tasks/session")).status, 403, "Owner env is never a tokenless browser grant");
+    delete process.env.BASTRA_TASK_TOKEN;
+    const before = await readTaskStore(ctx.path);
+    assert.equal(before.controls.execution_stopped, true);
+    await revokeTaskCredential(ctx.authPath, agent.credential_id);
+    assert.equal((await post("/ui/tasks/api/task_status", {}, headers)).status, 401);
+    assert.equal((await post("/ui/tasks/logout", {}, headers)).status, 200);
+    assert.equal((await post("/ui/tasks/api/task_status", {}, headers)).status, 401);
+    await setUiEnabled(false);
+    assert.equal((await post("/ui/tasks/session")).status, 403);
+  } finally {
+    await new Promise<void>((r) => server.close(() => r()));
+    await setUiEnabled(false);
+    if (previous === undefined) delete process.env.BASTRA_TASKS_PATH;
+    else process.env.BASTRA_TASKS_PATH = previous;
+    if (previousToken === undefined) delete process.env.BASTRA_TASK_TOKEN;
+    else process.env.BASTRA_TASK_TOKEN = previousToken;
   }
-  const realNow=Date.now;
-  try{
-   Date.now=()=>realNow()+24*60*60*1000;
-   assert.equal((await post("/ui/tasks/api/task_status",{},headers)).status,200,"idle time never expires a running daemon's session");
-   assert.equal((await post("/ui/tasks/api/task_status",{}, {...headers,Origin:"https://foreign.invalid"})).status,403);
-   assert.equal((await post("/ui/tasks/api/task_status",{}, {...headers,"x-bastra-task-csrf":"x".repeat(43)})).status,403);
-  }finally{Date.now=realNow;}
-  const input={idempotency_key:"ui",original_request:"Synthetic",goal:"Remind me",resolution_condition:"Done",schedule:{kind:"instant",at:Date.now()+100000},timezone:"Europe/Madrid",scope:{kind:"personal",name:"ui"},owner_domains:["personal"],arm:true,origin:{kind:"user-request",client:"ui",session:"synthetic",context:"Synthetic request"}};
-  const made=await post("/ui/tasks/api/task_create",input,headers);assert.equal(made.status,200);const task=await made.json() as any;assert.equal(task.armed,true);
-  assert.equal((await post("/ui/tasks/api/task_controls",{muted:true},headers)).status,200,"mapped Agent may apply commissioned controls in its domains");
-  const resume=await post("/ui/tasks/api/task_controls",{execution_stopped:false},headers);
-  assert.equal(resume.status,409,"execution still requires a registered local target");
-  assert.equal((await resume.json() as any).code,"conflict");
-  assert.equal((await post("/ui/tasks/api/task_recover",{},headers)).status,403,"backup recovery remains separate Owner administration");
-  assert.equal((await post("/ui/tasks/api/task_edit",{id:task.id,expected_revision:task.expected_revision,patch:{action_level:"execute"}},headers)).status,200,"Agent task management includes every action level");
-  assert.equal((await post("/api/v1/task_status",{},headers)).status,401,"cookie cannot bypass explicit REST auth");
-  const owner=await mintTaskCredential(ctx.authPath,{actor_id:"owner",role:"owner",domains:["personal"]});process.env.BASTRA_TASK_TOKEN=owner.token;assert.equal((await post("/ui/tasks/session")).status,403,"Owner env is never a tokenless browser grant");delete process.env.BASTRA_TASK_TOKEN;
-  const before=await readTaskStore(ctx.path);assert.equal(before.controls.execution_stopped,true);
-  await revokeTaskCredential(ctx.authPath,agent.credential_id);assert.equal((await post("/ui/tasks/api/task_status",{},headers)).status,401);
-  assert.equal((await post("/ui/tasks/logout",{},headers)).status,200);assert.equal((await post("/ui/tasks/api/task_status",{},headers)).status,401);
-  await setUiEnabled(false);assert.equal((await post("/ui/tasks/session")).status,403);
- }finally{await new Promise<void>(r=>server.close(()=>r()));await setUiEnabled(false);if(previous===undefined)delete process.env.BASTRA_TASKS_PATH;else process.env.BASTRA_TASKS_PATH=previous;if(previousToken===undefined)delete process.env.BASTRA_TASK_TOKEN;else process.env.BASTRA_TASK_TOKEN=previousToken;}
 });
-test("cold archive browsing is read-only, domain-filtered and hash-verified",async()=>{
- const root=await mkdtemp(join(tmpdir(),"task-ui-archive-")),ctx={path:join(root,"tasks.json"),authPath:join(root,"task-auth.json")};const owner=await mintTaskCredential(ctx.authPath,{actor_id:"owner",role:"owner",domains:["personal"]}),agent=await mintTaskCredential(ctx.authPath,{actor_id:"agent",role:"agent",domains:["personal"]}),other=await mintTaskCredential(ctx.authPath,{actor_id:"other",role:"agent",domains:["other"]});const auth=`Bearer ${owner.token}`;
- const input={idempotency_key:"archive-ui",original_request:"Synthetic",goal:"Finished",resolution_condition:"Done",schedule:{kind:"instant",at:1000},timezone:"Europe/Madrid",scope:{kind:"personal",name:"ui"},owner_domains:["personal"]};let task=await callTaskCrud(ctx,auth,"task_create",input) as any;await callTaskCrud(ctx,auth,"task_resolve",{id:task.id,expected_revision:task.expected_revision});const before=await readTaskStore(ctx.path);const archive=await callTaskCrud(ctx,auth,"task_archive",{task_ids:[task.id],expected_revision:before.revision,recovery_epoch:before.recovery_epoch}) as any;
- const bytes=await readAppRecord("tasks", ctx.path);const rows=await callTaskCrud(ctx,`Bearer ${agent.token}`,"task_list",{archive_id:archive.archive_id}) as any;assert.equal(rows.tasks[0].state,"resolved");assert.equal(rows.tasks[0].archived,true);assert.equal(await readAppRecord("tasks", ctx.path),bytes);await assert.rejects(callTaskCrud(ctx,`Bearer ${other.token}`,"task_list",{archive_id:archive.archive_id}),{code:"not_found"});
+test("cold archive browsing is read-only, domain-filtered and hash-verified", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-ui-archive-")),
+    ctx = { path: join(root, "tasks.json"), authPath: join(root, "task-auth.json") };
+  const owner = await mintTaskCredential(ctx.authPath, { actor_id: "owner", role: "owner", domains: ["personal"] }),
+    agent = await mintTaskCredential(ctx.authPath, { actor_id: "agent", role: "agent", domains: ["personal"] }),
+    other = await mintTaskCredential(ctx.authPath, { actor_id: "other", role: "agent", domains: ["other"] });
+  const auth = `Bearer ${owner.token}`;
+  const input = {
+    idempotency_key: "archive-ui",
+    original_request: "Synthetic",
+    goal: "Finished",
+    resolution_condition: "Done",
+    schedule: { kind: "instant", at: 1000 },
+    timezone: "Europe/Madrid",
+    scope: { kind: "personal", name: "ui" },
+    owner_domains: ["personal"],
+  };
+  let task = (await callTaskCrud(ctx, auth, "task_create", input)) as any;
+  await callTaskCrud(ctx, auth, "task_resolve", { id: task.id, expected_revision: task.expected_revision });
+  const before = await readTaskStore(ctx.path);
+  const archive = (await callTaskCrud(ctx, auth, "task_archive", {
+    task_ids: [task.id],
+    expected_revision: before.revision,
+    recovery_epoch: before.recovery_epoch,
+  })) as any;
+  const bytes = await readAppRecord("tasks", ctx.path);
+  const rows = (await callTaskCrud(ctx, `Bearer ${agent.token}`, "task_list", {
+    archive_id: archive.archive_id,
+  })) as any;
+  assert.equal(rows.tasks[0].state, "resolved");
+  assert.equal(rows.tasks[0].archived, true);
+  assert.equal(await readAppRecord("tasks", ctx.path), bytes);
+  await assert.rejects(callTaskCrud(ctx, `Bearer ${other.token}`, "task_list", { archive_id: archive.archive_id }), {
+    code: "not_found",
+  });
 });
 
-test('#1410: new browsers reclaim abandoned sessions while authenticated activity keeps its session', async () => {
- const root=await mkdtemp(join(tmpdir(),'task-ui-reclaim-')),ctx={path:join(root,'tasks.json'),authPath:join(root,'task-auth.json')};
- const previous=process.env.BASTRA_TASKS_PATH,previousToken=process.env.BASTRA_TASK_TOKEN;
- process.env.BASTRA_TASKS_PATH=ctx.path;delete process.env.BASTRA_TASK_TOKEN;
- await setUiEnabled(true);await ensureLocalTaskAgent();
- const server=createServer((req,res)=>dispatchTaskUi(req,res,req.method!,req.url!,ctx));server.listen(0,'127.0.0.1');await once(server,'listening');
- const base=`http://127.0.0.1:${(server.address() as any).port}`,realNow=Date.now;let now=realNow();Date.now=()=>now;
- const post=(path:string,headers:Record<string,string>={})=>fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json',Origin:base,...headers},body:'{}'});
- try {
-  const first=await post('/ui/tasks/session');assert.equal(first.status,200);const data=await first.json() as any;
-  const active={Cookie:first.headers.get('set-cookie')!.split(';')[0],'x-bastra-task-csrf':data.csrf};
-  // No automatic TTL: an old cookie still works before another browser needs its slot.
-  now+=25*3600000;assert.equal((await post('/ui/tasks/api/task_status',active)).status,200);
-  let abandoned:Record<string,string>|undefined;
-  for(let i=0;i<150;i++) {
-   now+=3600000;
-   assert.equal((await post('/ui/tasks/api/task_status',active)).status,200,'used session remains valid');
-   if(abandoned) assert.equal((await post('/ui/tasks/api/task_status',{...abandoned,Origin:'https://foreign.invalid'})).status,403);
-   const fresh=await post('/ui/tasks/session');assert.equal(fresh.status,200,'abandoned browsers cannot exhaust the daemon');
-   const grant=await fresh.json() as any;
-   if(i===0)abandoned={Cookie:fresh.headers.get('set-cookie')!.split(';')[0],'x-bastra-task-csrf':grant.csrf};
+test("#1410: new browsers reclaim abandoned sessions while authenticated activity keeps its session", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-ui-reclaim-")),
+    ctx = { path: join(root, "tasks.json"), authPath: join(root, "task-auth.json") };
+  const previous = process.env.BASTRA_TASKS_PATH,
+    previousToken = process.env.BASTRA_TASK_TOKEN;
+  process.env.BASTRA_TASKS_PATH = ctx.path;
+  delete process.env.BASTRA_TASK_TOKEN;
+  await setUiEnabled(true);
+  await ensureLocalTaskAgent();
+  const server = createServer((req, res) => dispatchTaskUi(req, res, req.method!, req.url!, ctx));
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const base = `http://127.0.0.1:${(server.address() as any).port}`,
+    realNow = Date.now;
+  let now = realNow();
+  Date.now = () => now;
+  const post = (path: string, headers: Record<string, string> = {}) =>
+    fetch(base + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: base, ...headers },
+      body: "{}",
+    });
+  try {
+    const first = await post("/ui/tasks/session");
+    assert.equal(first.status, 200);
+    const data = (await first.json()) as any;
+    const active = { Cookie: first.headers.get("set-cookie")!.split(";")[0], "x-bastra-task-csrf": data.csrf };
+    // No automatic TTL: an old cookie still works before another browser needs its slot.
+    now += 25 * 3600000;
+    assert.equal((await post("/ui/tasks/api/task_status", active)).status, 200);
+    let abandoned: Record<string, string> | undefined;
+    for (let i = 0; i < 150; i++) {
+      now += 3600000;
+      assert.equal((await post("/ui/tasks/api/task_status", active)).status, 200, "used session remains valid");
+      if (abandoned)
+        assert.equal(
+          (await post("/ui/tasks/api/task_status", { ...abandoned, Origin: "https://foreign.invalid" })).status,
+          403
+        );
+      const fresh = await post("/ui/tasks/session");
+      assert.equal(fresh.status, 200, "abandoned browsers cannot exhaust the daemon");
+      const grant = (await fresh.json()) as any;
+      if (i === 0)
+        abandoned = { Cookie: fresh.headers.get("set-cookie")!.split(";")[0], "x-bastra-task-csrf": grant.csrf };
+    }
+    assert.equal(
+      (await post("/ui/tasks/api/task_status", abandoned!)).status,
+      401,
+      "denied foreign requests do not keep an abandoned session alive"
+    );
+    assert.equal(
+      (await post("/ui/tasks/api/task_status", { ...active, "x-bastra-task-csrf": "x".repeat(43) })).status,
+      403
+    );
+    let saturated = false;
+    for (let i = 0; i < 101; i++) {
+      const fresh = await post("/ui/tasks/session");
+      if (fresh.status === 503) {
+        saturated = true;
+        break;
+      }
+      assert.equal(fresh.status, 200);
+    }
+    assert.equal(saturated, true, "recently active sessions retain the bounded capacity guard");
+    assert.equal(
+      (await post("/ui/tasks/api/task_status", active)).status,
+      200,
+      "capacity never displaces active grants"
+    );
+    assert.equal((await post("/ui/tasks/logout", active)).status, 200);
+    assert.equal((await post("/ui/tasks/api/task_status", active)).status, 401, "logout invalidates copied cookies");
+  } finally {
+    Date.now = realNow;
+    await new Promise<void>((r) => server.close(() => r()));
+    await setUiEnabled(false);
+    if (previous === undefined) delete process.env.BASTRA_TASKS_PATH;
+    else process.env.BASTRA_TASKS_PATH = previous;
+    if (previousToken === undefined) delete process.env.BASTRA_TASK_TOKEN;
+    else process.env.BASTRA_TASK_TOKEN = previousToken;
   }
-  assert.equal((await post('/ui/tasks/api/task_status',abandoned!)).status,401,'denied foreign requests do not keep an abandoned session alive');
-  assert.equal((await post('/ui/tasks/api/task_status',{...active,'x-bastra-task-csrf':'x'.repeat(43)})).status,403);
-  let saturated=false;
-  for(let i=0;i<101;i++) {const fresh=await post('/ui/tasks/session');if(fresh.status===503){saturated=true;break;}assert.equal(fresh.status,200);}
-  assert.equal(saturated,true,'recently active sessions retain the bounded capacity guard');
-  assert.equal((await post('/ui/tasks/api/task_status',active)).status,200,'capacity never displaces active grants');
-  assert.equal((await post('/ui/tasks/logout',active)).status,200);
-  assert.equal((await post('/ui/tasks/api/task_status',active)).status,401,'logout invalidates copied cookies');
- }finally{Date.now=realNow;await new Promise<void>(r=>server.close(()=>r()));await setUiEnabled(false);if(previous===undefined)delete process.env.BASTRA_TASKS_PATH;else process.env.BASTRA_TASKS_PATH=previous;if(previousToken===undefined)delete process.env.BASTRA_TASK_TOKEN;else process.env.BASTRA_TASK_TOKEN=previousToken;}
 });
 
-test('full board sessions: a new browser displaces the least recently used idle session, never a session in use', async () => {
- const root=await mkdtemp(join(tmpdir(),'task-ui-lru-')),ctx={path:join(root,'tasks.json'),authPath:join(root,'task-auth.json')};
- const previous=process.env.BASTRA_TASKS_PATH,previousToken=process.env.BASTRA_TASK_TOKEN;
- process.env.BASTRA_TASKS_PATH=ctx.path;delete process.env.BASTRA_TASK_TOKEN;
- await setUiEnabled(true);await ensureLocalTaskAgent();
- const server=createServer((req,res)=>dispatchTaskUi(req,res,req.method!,req.url!,ctx));server.listen(0,'127.0.0.1');await once(server,'listening');
- const base=`http://127.0.0.1:${(server.address() as any).port}`,realNow=Date.now;let now=realNow()+400*86400000;Date.now=()=>now;
- const post=(path:string,headers:Record<string,string>={})=>fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json',Origin:base,...headers},body:'{}'});
- const grant=async()=>{const r=await post('/ui/tasks/session');assert.equal(r.status,200);return {Cookie:r.headers.get('set-cookie')!.split(';')[0],'x-bastra-task-csrf':(await r.json() as any).csrf};};
- try {
-  // Sessions left over from earlier tests in this process are older than everything here.
-  const oldest=await grant();now+=1000;
-  const active=await grant();now+=1000;
-  for(let i=0;i<250;i++){const r=await post('/ui/tasks/session');if(r.status===503)break;assert.equal(r.status,200);}
-  assert.equal((await post('/ui/tasks/session')).status,503,'slots used within the idle window keep the capacity guard');
-  now+=11*60000;
-  assert.equal((await post('/ui/tasks/api/task_status',active)).status,200,'an open board keeps its session');
-  assert.equal((await post('/ui/tasks/session')).status,200,'a new browser gets in once the oldest slot has been idle long enough');
-  assert.equal((await post('/ui/tasks/api/task_status',oldest)).status,401,'the least recently used session gave way');
-  assert.equal((await post('/ui/tasks/api/task_status',active)).status,200,'the session in use stays valid');
- }finally{Date.now=realNow;await new Promise<void>(r=>server.close(()=>r()));await setUiEnabled(false);if(previous===undefined)delete process.env.BASTRA_TASKS_PATH;else process.env.BASTRA_TASKS_PATH=previous;if(previousToken===undefined)delete process.env.BASTRA_TASK_TOKEN;else process.env.BASTRA_TASK_TOKEN=previousToken;}
+test("full board sessions: a new browser displaces the least recently used idle session, never a session in use", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-ui-lru-")),
+    ctx = { path: join(root, "tasks.json"), authPath: join(root, "task-auth.json") };
+  const previous = process.env.BASTRA_TASKS_PATH,
+    previousToken = process.env.BASTRA_TASK_TOKEN;
+  process.env.BASTRA_TASKS_PATH = ctx.path;
+  delete process.env.BASTRA_TASK_TOKEN;
+  await setUiEnabled(true);
+  await ensureLocalTaskAgent();
+  const server = createServer((req, res) => dispatchTaskUi(req, res, req.method!, req.url!, ctx));
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const base = `http://127.0.0.1:${(server.address() as any).port}`,
+    realNow = Date.now;
+  let now = realNow() + 400 * 86400000;
+  Date.now = () => now;
+  const post = (path: string, headers: Record<string, string> = {}) =>
+    fetch(base + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: base, ...headers },
+      body: "{}",
+    });
+  const grant = async () => {
+    const r = await post("/ui/tasks/session");
+    assert.equal(r.status, 200);
+    return { Cookie: r.headers.get("set-cookie")!.split(";")[0], "x-bastra-task-csrf": ((await r.json()) as any).csrf };
+  };
+  try {
+    // Sessions left over from earlier tests in this process are older than everything here.
+    const oldest = await grant();
+    now += 1000;
+    const active = await grant();
+    now += 1000;
+    for (let i = 0; i < 250; i++) {
+      const r = await post("/ui/tasks/session");
+      if (r.status === 503) break;
+      assert.equal(r.status, 200);
+    }
+    assert.equal(
+      (await post("/ui/tasks/session")).status,
+      503,
+      "slots used within the idle window keep the capacity guard"
+    );
+    now += 11 * 60000;
+    assert.equal((await post("/ui/tasks/api/task_status", active)).status, 200, "an open board keeps its session");
+    assert.equal(
+      (await post("/ui/tasks/session")).status,
+      200,
+      "a new browser gets in once the oldest slot has been idle long enough"
+    );
+    assert.equal(
+      (await post("/ui/tasks/api/task_status", oldest)).status,
+      401,
+      "the least recently used session gave way"
+    );
+    assert.equal((await post("/ui/tasks/api/task_status", active)).status, 200, "the session in use stays valid");
+  } finally {
+    Date.now = realNow;
+    await new Promise<void>((r) => server.close(() => r()));
+    await setUiEnabled(false);
+    if (previous === undefined) delete process.env.BASTRA_TASKS_PATH;
+    else process.env.BASTRA_TASKS_PATH = previous;
+    if (previousToken === undefined) delete process.env.BASTRA_TASK_TOKEN;
+    else process.env.BASTRA_TASK_TOKEN = previousToken;
+  }
 });

@@ -49,7 +49,7 @@ async function withFetchRecorder<T>(fn: (calls: Captured[]) => Promise<T>): Prom
     calls.push({ url: String(input), body });
     return new Response(
       JSON.stringify({ data: body.input.map((_, index) => ({ index, embedding: new Array(1536).fill(0) })) }),
-      { status: 200, headers: { "content-type": "application/json" } },
+      { status: 200, headers: { "content-type": "application/json" } }
     );
   }) as unknown as typeof fetch;
   try {

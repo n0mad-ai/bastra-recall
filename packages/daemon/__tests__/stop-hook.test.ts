@@ -71,11 +71,7 @@ describe("stop-hook: detectFrustration", () => {
     // 2 frust words + 2 Umlaut/ASCII CAPS cues = 4 → fires.
     // With the old `\b[A-ZÄÖÜ]+\b` regex, "ÄRGER" mangles to "RGER" (len 4,
     // single → no cue), yielding only 3 cues and NO suggest. The fix makes it 4.
-    const turns: TranscriptTurn[] = [
-      userTurn("wieder kaputt"),
-      userTurn("schon wieder"),
-      userTurn("ÄRGER UNSINN"),
-    ];
+    const turns: TranscriptTurn[] = [userTurn("wieder kaputt"), userTurn("schon wieder"), userTurn("ÄRGER UNSINN")];
     const s = detectFrustration(turns);
     assert.ok(s, "should fire: 2 frust words + ÄRGER + UNSINN = 4 cues");
   });
@@ -91,11 +87,7 @@ describe("stop-hook: detectFrustration", () => {
   });
 
   it("does not fire below threshold", () => {
-    const turns: TranscriptTurn[] = [
-      userTurn("normal"),
-      userTurn("alles ok"),
-      userTurn("klingt gut"),
-    ];
+    const turns: TranscriptTurn[] = [userTurn("normal"), userTurn("alles ok"), userTurn("klingt gut")];
     assert.equal(detectFrustration(turns), null);
   });
 
@@ -131,7 +123,13 @@ describe('stop-hook: #756 the plain word for "again" is not a frustration cue', 
 
   it('neutral "again" sentences never reach the threshold, in any shipped language', () => {
     for (const neutral of [
-      ["ich bin jetzt wieder zu hause", "jetzt geht es wieder", "das wlan ist wieder da", "starte ihn wieder", "wieder online"],
+      [
+        "ich bin jetzt wieder zu hause",
+        "jetzt geht es wieder",
+        "das wlan ist wieder da",
+        "starte ihn wieder",
+        "wieder online",
+      ],
       ["I'm back home again", "it works again now", "run it again", "try again please", "again, thanks"],
       ["я снова дома", "теперь снова работает", "запусти снова", "опять работает", "попробуй опять"],
     ]) {
@@ -145,12 +143,15 @@ describe('stop-hook: #756 the plain word for "again" is not a frustration cue', 
     assert.ok(fired(["not again", "yet again", "it is broken again", "again and again"]));
     assert.ok(fired(["опять не работает", "снова не то", "опять то же самое", "снова сломалось"]));
     // "schon wieder nicht" is ONE cue ("schon wieder"), not two.
-    assert.match(fired(["schon wieder nicht", "schon wieder nicht", "verdammt", "verdammt"])!.body, /Detected 4 frustration cues/);
+    assert.match(
+      fired(["schon wieder nicht", "schon wieder nicht", "verdammt", "verdammt"])!.body,
+      /Detected 4 frustration cues/
+    );
   });
 
   it("an exemplar the user said twice is listed once", () => {
     const s = detectFrustration(
-      ["immer wieder dieser fehler", "immer wieder dieser fehler", "schon wieder", "wieder kaputt"].map(userTurn),
+      ["immer wieder dieser fehler", "immer wieder dieser fehler", "schon wieder", "wieder kaputt"].map(userTurn)
     );
     assert.ok(s);
     const exemplars = /Exemplars: (.*?)\. If/.exec(s!.body)![1].split(" | ");
@@ -221,7 +222,7 @@ describe("stop-hook: #476 the lane fires for non-German users too", () => {
         userTurn("this is not against the rules"),
         userTurn("this is not against the rules"),
       ]),
-      null,
+      null
     );
   });
 });
@@ -291,20 +292,19 @@ describe("stop-hook: #678 languages without a cue list fire on repeated correcti
 
   it("keeps a no-space exclamation mark as emphasis in a repeated Japanese correction", () => {
     const request = "このファイルでセミコロンを使わないで";
-    assert.ok(detectFrustration([
-      userTurn(request), userTurn(request), userTurn(`${request}!言ったよね`),
-    ]));
-    assert.ok(detectFrustration([
-      userTurn(request), userTurn(request), userTurn(`${request}!...`),
-    ]));
+    assert.ok(detectFrustration([userTurn(request), userTurn(request), userTurn(`${request}!言ったよね`)]));
+    assert.ok(detectFrustration([userTurn(request), userTurn(request), userTurn(`${request}!...`)]));
   });
 
   it("does not fire on a single restatement or on short repeated acknowledgements", () => {
     assert.equal(
       detectFrustration([userTurn("nie używaj średników w tym pliku"), userTurn("nie używaj średników w tym pliku!")]),
-      null,
+      null
     );
-    assert.equal(detectFrustration([userTurn("dalej!"), userTurn("dalej!"), userTurn("dalej!"), userTurn("dalej!")]), null);
+    assert.equal(
+      detectFrustration([userTurn("dalej!"), userTurn("dalej!"), userTurn("dalej!"), userTurn("dalej!")]),
+      null
+    );
   });
 
   it("does not fire on unrelated emphatic requests in one language", () => {
@@ -319,10 +319,7 @@ describe("stop-hook: #678 languages without a cue list fire on repeated correcti
 
 describe("stop-hook: detectFeatureCompletion", () => {
   it("fires on user 'git commit' + >=5 source tokens existing in repo (#48 B)", () => {
-    const turns: TranscriptTurn[] = [
-      assistantTurn(FIVE_SOURCE_FILES),
-      userTurn("super, ich habe git commit gemacht"),
-    ];
+    const turns: TranscriptTurn[] = [assistantTurn(FIVE_SOURCE_FILES), userTurn("super, ich habe git commit gemacht")];
     const s = detectFeatureCompletion(turns, ALL_EXIST);
     assert.ok(s);
     assert.equal(s!.heuristic, "feature-completion");
@@ -331,22 +328,20 @@ describe("stop-hook: detectFeatureCompletion", () => {
 
   it("does NOT fire when 'git commit' is only explained + URL-path tokens (#48 B)", () => {
     // git commit appears only in assistant text; file tokens are home/URL paths.
-    const noise = Array.from({ length: 25 }, (_, i) =>
-      `Users/n0mad/.claude/skills/bastra-recall/file${i}.md`,
-    ).join(" ");
+    const noise = Array.from({ length: 25 }, (_, i) => `Users/n0mad/.claude/skills/bastra-recall/file${i}.md`).join(
+      " "
+    );
     const turns: TranscriptTurn[] = [
       assistantTurn(
         "the stop-hook explains: a git commit alongside file tokens would suggest. " +
-          `Users/n0mad/.claude.json claude.json ${noise}`,
+          `Users/n0mad/.claude.json claude.json ${noise}`
       ),
     ];
     assert.equal(detectFeatureCompletion(turns, ALL_EXIST), null);
   });
 
   it("does not fire when commit is mentioned but not by the user", () => {
-    const turns: TranscriptTurn[] = [
-      assistantTurn("running git commit -m 'feat'\n" + FIVE_SOURCE_FILES),
-    ];
+    const turns: TranscriptTurn[] = [assistantTurn("running git commit -m 'feat'\n" + FIVE_SOURCE_FILES)];
     assert.equal(detectFeatureCompletion(turns, ALL_EXIST), null);
   });
 
@@ -363,7 +358,11 @@ describe("stop-hook: detectFeatureCompletion", () => {
   it("fires on git's own commit line in a tool result (user ran it via ! or a shell)", () => {
     const turns: TranscriptTurn[] = [
       assistantTurn(FIVE_SOURCE_FILES),
-      { role: "tool", content: "[main 8a465e8] fix(taxonomy): treat person memories as drift coverage\n 2 files changed, 42 insertions(+)" },
+      {
+        role: "tool",
+        content:
+          "[main 8a465e8] fix(taxonomy): treat person memories as drift coverage\n 2 files changed, 42 insertions(+)",
+      },
     ];
     assert.ok(detectFeatureCompletion(turns, ALL_EXIST));
   });
@@ -394,14 +393,27 @@ describe("stop-hook: detectFeatureCompletion", () => {
     assert.deepEqual(claude[0].commands, ["git commit -m 'x'"]);
 
     const codex = normalizeTurns([
-      { type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "ok" }] } },
-      { type: "response_item", payload: { type: "function_call", name: "shell", arguments: JSON.stringify({ command: ["git", "commit", "-m", "y"] }) } },
+      {
+        type: "response_item",
+        payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "ok" }] },
+      },
+      {
+        type: "response_item",
+        payload: {
+          type: "function_call",
+          name: "shell",
+          arguments: JSON.stringify({ command: ["git", "commit", "-m", "y"] }),
+        },
+      },
     ]);
     assert.equal(codex.length, 1, "the call attaches to the preceding assistant turn");
     assert.deepEqual(codex[0].commands, ["git commit -m y"]);
 
     const currentCodex = normalizeTurns([
-      { type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "ok" }] } },
+      {
+        type: "response_item",
+        payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "ok" }] },
+      },
       {
         type: "response_item",
         payload: {
@@ -417,7 +429,10 @@ describe("stop-hook: detectFeatureCompletion", () => {
 
   it("does not lift git-commit prose from a current Codex custom tool call", () => {
     const turns = normalizeTurns([
-      { type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: FIVE_SOURCE_FILES }] } },
+      {
+        type: "response_item",
+        payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: FIVE_SOURCE_FILES }] },
+      },
       {
         type: "response_item",
         payload: {
@@ -439,19 +454,14 @@ describe("stop-hook: detectFeatureCompletion", () => {
   });
 
   it("does not fire when no token exists in the active repo (cwd-check)", () => {
-    const turns: TranscriptTurn[] = [
-      assistantTurn(FIVE_SOURCE_FILES),
-      userTurn("git commit done"),
-    ];
+    const turns: TranscriptTurn[] = [assistantTurn(FIVE_SOURCE_FILES), userTurn("git commit done")];
     assert.equal(detectFeatureCompletion(turns, NONE_EXIST), null);
   });
 });
 
 describe("stop-hook: detectArchitectureDecision", () => {
   it("fires on 'ok dann'", () => {
-    const turns: TranscriptTurn[] = [
-      userTurn("ok dann nehmen wir Drizzle"),
-    ];
+    const turns: TranscriptTurn[] = [userTurn("ok dann nehmen wir Drizzle")];
     const s = detectArchitectureDecision(turns);
     assert.ok(s);
     assert.equal(s!.heuristic, "architecture-decision");
@@ -463,10 +473,7 @@ describe("stop-hook: detectArchitectureDecision", () => {
   });
 
   it("does not fire on neutral chatter", () => {
-    assert.equal(
-      detectArchitectureDecision([userTurn("schauen wir mal weiter")]),
-      null,
-    );
+    assert.equal(detectArchitectureDecision([userTurn("schauen wir mal weiter")]), null);
   });
 });
 
@@ -514,7 +521,9 @@ describe("stop-hook: #707 a decision in a language without a cue list fires on a
 
   // #767 follow-up: numbered headings structure a report, they are not options.
   it("does not read numbered section headings as options", () => {
-    const report = assistantTurn("## 1. Befund\nder Cache läuft voll\n## 2. Ursache\nkein Limit\n\nSoll ich das so umsetzen?");
+    const report = assistantTurn(
+      "## 1. Befund\nder Cache läuft voll\n## 2. Ursache\nkein Limit\n\nSoll ich das so umsetzen?"
+    );
     assert.equal(detectArchitectureDecision([report, userTurn("ja, aber 2 nochmal prüfen")]), null);
     const heading = assistantTurn("### 1. Drizzle\nfast\n### 2. Prisma\nmature\nHangisi?");
     assert.equal(detectArchitectureDecision([heading, userTurn("1 olsun")]), null);
@@ -532,30 +541,33 @@ describe("stop-hook: #707 a decision in a language without a cue list fires on a
 
   it("does not fire on a long new request that happens to contain an offered number", () => {
     assert.equal(
-      detectArchitectureDecision([offer("Hangisi?"), userTurn("önce 2 dosyadaki testleri düzelt, sonra derleme hatalarına bak ve raporla")]),
-      null,
+      detectArchitectureDecision([
+        offer("Hangisi?"),
+        userTurn("önce 2 dosyadaki testleri düzelt, sonra derleme hatalarına bak ve raporla"),
+      ]),
+      null
     );
   });
 });
 
 describe("stop-hook: evaluateHeuristics", () => {
   it("returns empty array on neutral transcript", () => {
-    const out = evaluateHeuristics([
-      userTurn("bitte X"),
-      assistantTurn("done"),
-    ]);
+    const out = evaluateHeuristics([userTurn("bitte X"), assistantTurn("done")]);
     assert.deepEqual(out, []);
   });
 
   it("can fire multiple heuristics at once", () => {
     const turns: TranscriptTurn[] = [
-      assistantTurn("Which?\n1. Polling\n2. Queue"), userTurn("2"),
-      {role:"assistant",content:FIVE_SOURCE_FILES,commands:["git commit -m fixture"]},
-      {role:"tool",content:"[main abc1234] fixture",failed:false},
+      assistantTurn("Which?\n1. Polling\n2. Queue"),
+      userTurn("2"),
+      { role: "assistant", content: FIVE_SOURCE_FILES, commands: ["git commit -m fixture"] },
+      { role: "tool", content: "[main abc1234] fixture", failed: false },
     ];
-    const kinds = evaluateHeuristics(turns, ALL_EXIST).map(s=>s.heuristic).sort();
-    assert.deepEqual(kinds,["architecture-decision","feature-completion"]);
-    assert.ok(!kinds.includes("frustration-density"),"mere old words cannot add a third assignment");
+    const kinds = evaluateHeuristics(turns, ALL_EXIST)
+      .map((s) => s.heuristic)
+      .sort();
+    assert.deepEqual(kinds, ["architecture-decision", "feature-completion"]);
+    assert.ok(!kinds.includes("frustration-density"), "mere old words cannot add a third assignment");
   });
 });
 
@@ -599,8 +611,14 @@ describe("stop-hook: parseTranscriptFile", () => {
 
   it("parses current Codex response_item message records (#15)", () => {
     const raw = [
-      JSON.stringify({ type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "hello from Codex" }] } }),
-      JSON.stringify({ type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "hello back" }] } }),
+      JSON.stringify({
+        type: "response_item",
+        payload: { type: "message", role: "user", content: [{ type: "input_text", text: "hello from Codex" }] },
+      }),
+      JSON.stringify({
+        type: "response_item",
+        payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "hello back" }] },
+      }),
     ].join("\n");
     const turns = parseTranscriptFile(raw);
     assert.deepEqual(turns, [
@@ -617,7 +635,13 @@ describe("stop-hook: parseTranscriptFile", () => {
 
   it("reclassifies Claude-Code tool_result (role user) to role 'tool'", () => {
     const items = [
-      { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "x", content: "bash output: wieder ÄRGER" }] } },
+      {
+        type: "user",
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "x", content: "bash output: wieder ÄRGER" }],
+        },
+      },
       { type: "user", message: { role: "user", content: "echte frage wieder" } },
       { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "antwort" }] } },
     ];

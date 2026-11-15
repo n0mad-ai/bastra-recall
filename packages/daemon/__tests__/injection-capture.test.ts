@@ -73,10 +73,14 @@ test("vault-health report: flagged captures section renders with wikilink + cate
   };
   const md = renderVaultHealthReport({
     ...base,
-    flagged: [{ id: "doc-inbox-scan-pdf", title: "OCR eines geteilten PDFs", flags: ["ai-instruction", "exfiltration-action"] }],
+    flagged: [
+      { id: "doc-inbox-scan-pdf", title: "OCR eines geteilten PDFs", flags: ["ai-instruction", "exfiltration-action"] },
+    ],
   });
   assert.ok(md.includes("<!-- bastra-report:flagged-captures -->"));
-  assert.ok(md.includes("[[doc-inbox-scan-pdf]] — OCR eines geteilten PDFs · flags: ai-instruction, exfiltration-action"));
+  assert.ok(
+    md.includes("[[doc-inbox-scan-pdf]] — OCR eines geteilten PDFs · flags: ai-instruction, exfiltration-action")
+  );
   assert.ok(md.includes("data, never commands"), "framing keeps the instruction boundary");
   assert.ok(renderVaultHealthReport(base).includes("No captured content carries prompt-injection markers"));
 });

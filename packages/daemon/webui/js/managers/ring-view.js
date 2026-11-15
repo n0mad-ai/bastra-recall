@@ -59,8 +59,7 @@ export function createRingView(deps) {
     }
     return e;
   }
-  const activeEmblemKey = () =>
-    drillState && drillState.mode === "instance" ? drillState.active : "";
+  const activeEmblemKey = () => (drillState && drillState.mode === "instance" ? drillState.active : "");
   $("#vault-image-input").addEventListener("change", async () => {
     const file = $("#vault-image-input").files[0];
     $("#vault-image-input").value = "";
@@ -190,9 +189,7 @@ export function createRingView(deps) {
       for (let i = 0; i < segs.length; i++) {
         const cur = segs[i];
         const next = segs[(i + 1) % segs.length];
-        const a = i === segs.length - 1
-          ? (cur.a1 + next.a0 + Math.PI * 2) / 2
-          : (cur.a1 + next.a0) / 2;
+        const a = i === segs.length - 1 ? (cur.a1 + next.a0 + Math.PI * 2) / 2 : (cur.a1 + next.a0) / 2;
         ctx.globalAlpha = 0.65 * alpha;
         ctx.beginPath();
         ctx.moveTo(center.x + Math.cos(a) * center.rInnerRing, center.y + Math.sin(a) * center.rInnerRing);
@@ -202,7 +199,17 @@ export function createRingView(deps) {
       ctx.globalAlpha = 1;
       for (const seg of segs) {
         const mid = (seg.a0 + seg.a1) / 2;
-        drawArcText(ctx, camera, seg.key.toUpperCase(), bandMid, mid, (seg.a1 - seg.a0) * 0.92, clusterColor(hues, seg.key, sat, light), 12, alpha);
+        drawArcText(
+          ctx,
+          camera,
+          seg.key.toUpperCase(),
+          bandMid,
+          mid,
+          (seg.a1 - seg.a0) * 0.92,
+          clusterColor(hues, seg.key, sat, light),
+          12,
+          alpha
+        );
       }
     };
 
@@ -231,7 +238,17 @@ export function createRingView(deps) {
       }
       // focus name rides its widening wedge, fading over to the sub-names
       drawSegmentSet(morphed.slice(1), othersAlpha);
-      drawArcText(ctx, camera, focus.key.toUpperCase(), bandMid, focusA0 + focusSpan / 2, focusSpan * 0.92, clusterColor(hues, focus.key, sat, light), 12, Math.max(0, 1 - f * 1.4));
+      drawArcText(
+        ctx,
+        camera,
+        focus.key.toUpperCase(),
+        bandMid,
+        focusA0 + focusSpan / 2,
+        focusSpan * 0.92,
+        clusterColor(hues, focus.key, sat, light),
+        12,
+        Math.max(0, 1 - f * 1.4)
+      );
       const subAlpha = Math.max(0, (f - 0.55) / 0.45);
       drawSegmentSet(bandAnim.drill.segments, subAlpha);
     }
@@ -259,7 +276,17 @@ export function createRingView(deps) {
       ctx.globalAlpha = 1;
       for (const seg of metaGeo.segments) {
         const mid = (seg.a0 + seg.a1) / 2;
-        drawArcText(ctx, camera, seg.key.toUpperCase(), mMid, mid, (seg.a1 - seg.a0) * 0.92, clusterColor(hues, seg.key, sat, light), 11, metaAlpha);
+        drawArcText(
+          ctx,
+          camera,
+          seg.key.toUpperCase(),
+          mMid,
+          mid,
+          (seg.a1 - seg.a0) * 0.92,
+          clusterColor(hues, seg.key, sat, light),
+          11,
+          metaAlpha
+        );
       }
     }
 
@@ -271,7 +298,7 @@ export function createRingView(deps) {
       const or = lerp(
         geoA.orbits.find((x) => x.key === o.key)?.r ?? o.r,
         geoB.orbits.find((x) => x.key === o.key)?.r ?? o.r,
-        f,
+        f
       );
       maxOrbitR = Math.max(maxOrbitR, or);
       ctx.strokeStyle = theme.edge;
@@ -303,9 +330,10 @@ export function createRingView(deps) {
         ctx.globalAlpha = headAlpha;
         const ty = center.y - maxOrbitR - 34;
         const midY = ty - fontPx * 0.36; // optical midline of the uppercase text
-        const color = headlineHoverT > 0.02
-          ? `color-mix(in srgb, ${theme.accent} ${Math.round(headlineHoverT * 100)}%, ${theme.label})`
-          : theme.label;
+        const color =
+          headlineHoverT > 0.02
+            ? `color-mix(in srgb, ${theme.accent} ${Math.round(headlineHoverT * 100)}%, ${theme.label})`
+            : theme.label;
         ctx.lineWidth = 4;
         ctx.strokeStyle = theme.labelHalo;
         ctx.strokeText(text, center.x, ty);
@@ -325,7 +353,12 @@ export function createRingView(deps) {
         ctx.stroke();
         ctx.globalAlpha = 1;
         const pad = 10;
-        headlineBounds = { x: chevX - pad, y: ty - fontPx - pad, w: w / 2 + (center.x - chevX) + pad * 2, h: fontPx + pad * 2 };
+        headlineBounds = {
+          x: chevX - pad,
+          y: ty - fontPx - pad,
+          w: w / 2 + (center.x - chevX) + pad * 2,
+          h: fontPx + pad * 2,
+        };
       }
     } else {
       headlineBounds = null;
@@ -354,7 +387,7 @@ export function createRingView(deps) {
         center.x - (em.img.naturalWidth * s) / 2,
         center.y - (em.img.naturalHeight * s) / 2,
         em.img.naturalWidth * s,
-        em.img.naturalHeight * s,
+        em.img.naturalHeight * s
       );
       ctx.restore();
     } else {
@@ -399,8 +432,11 @@ export function createRingView(deps) {
     const R = layout.outerRadius + 70; // headline breathing room
     const c = layout.center;
     deps.getInteractions().flyToBounds(
-      [{ x: c.x - R, y: c.y - R }, { x: c.x + R, y: c.y + R }],
-      { padding: 30, maxScale: 8, ms: 950 },
+      [
+        { x: c.x - R, y: c.y - R },
+        { x: c.x + R, y: c.y + R },
+      ],
+      { padding: 30, maxScale: 8, ms: 950 }
     );
   }
 

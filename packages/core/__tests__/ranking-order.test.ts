@@ -31,10 +31,7 @@ function flush(emb: EmbeddingIndex): Promise<void> {
   return (emb as unknown as { flushQueue(): Promise<void> }).flushQueue();
 }
 
-function memoryMd(
-  id: string,
-  opts: { updated?: string; type?: string; marker?: string; scope?: string } = {},
-): string {
+function memoryMd(id: string, opts: { updated?: string; type?: string; marker?: string; scope?: string } = {}): string {
   const marker = opts.marker ?? "ANCHORWORD";
   return `---
 id: ${id}
@@ -63,10 +60,7 @@ class StubProvider implements EmbeddingProvider {
   }
 }
 
-async function vaultWith(
-  t: { after: (fn: () => unknown) => void },
-  files: Record<string, string>,
-) {
+async function vaultWith(t: { after: (fn: () => unknown) => void }, files: Record<string, string>) {
   const dir = await mkdtemp(path.join(tmpdir(), "bastra-ranking-"));
   for (const [name, content] of Object.entries(files)) {
     await writeFile(path.join(dir, name), content, "utf8");
@@ -108,11 +102,7 @@ test("A7: k=1 returns the true top-1 after lifecycle damping, not before", async
 
   const top1 = search.recall("ANCHORWORD", { k: 1 });
   assert.equal(top1.length, 1);
-  assert.equal(
-    top1[0].id,
-    trueTop,
-    `k=1 must serve the same winner as k=10 (got ${top1[0].id}, true top ${trueTop})`,
-  );
+  assert.equal(top1[0].id, trueTop, `k=1 must serve the same winner as k=10 (got ${top1[0].id}, true top ${trueTop})`);
   assert.equal(trueTop, "fresh-lo", "the fresh note must win once damping is applied");
 });
 
@@ -131,8 +121,7 @@ test("A7: damping is applied once per endpoint, not compounded through a hop", a
   // `seed.score * 0.5 * link.score` — so an expired seed multiplied its
   // neighbours a second time (0.2 × 0.2 = 0.04) and a FRESH neighbour behind
   // an expired seed fell to 4% of its raw score.
-  const relatedVia = (id: string) =>
-    `related_via:\n  - id: ${id}\n    reason: cosine 1.000\n    score: 1`;
+  const relatedVia = (id: string) => `related_via:\n  - id: ${id}\n    reason: cosine 1.000\n    score: 1`;
 
   const seed = (id: string, updated: string) => `---
 id: ${id}
@@ -176,7 +165,7 @@ Body SEEDWORD ${id}.
   assert.equal(
     viaExpired,
     viaFresh,
-    `a fresh neighbour must score the same regardless of the seed's age (fresh ${viaFresh}, via expired ${viaExpired})`,
+    `a fresh neighbour must score the same regardless of the seed's age (fresh ${viaFresh}, via expired ${viaExpired})`
   );
 });
 
@@ -199,7 +188,7 @@ test("B1: an empty vector arm returns real BM25 scores, not one-armed RRF", asyn
   assert.equal(
     degraded[0].score,
     pureBm25[0].score,
-    "a degraded recall must live in the BM25 score space the thresholds assume",
+    "a degraded recall must live in the BM25 score space the thresholds assume"
   );
   assert.equal(degraded[0].mode, "bm25");
   // The one-armed RRF ceiling was 5000/61 — anything at or below that for a
@@ -244,7 +233,7 @@ test("B1: the degraded fallback emits one monotonic stage sequence", async (t) =
   assert.equal(
     cold.starts.filter((s) => s === "bm25.search").length,
     1,
-    `bm25.search must run once, saw ${JSON.stringify(cold.all)}`,
+    `bm25.search must run once, saw ${JSON.stringify(cold.all)}`
   );
   assert.equal(cold.all.filter((s) => s === "done").length, 1, "exactly one done");
   assert.equal(cold.pool, 1, "exactly one candidate-pool callback");
@@ -368,10 +357,7 @@ test("B1/A7: MCP progress never moves backwards, on any path", async (t) => {
   const monotonic = (label: string, names: RecallStage["name"][]) => {
     const idx = names.map(progressIndexFor);
     for (let i = 1; i < idx.length; i++) {
-      assert.ok(
-        idx[i] >= idx[i - 1],
-        `${label}: progress went backwards — ${names.join(" → ")} = ${idx.join(" → ")}`,
-      );
+      assert.ok(idx[i] >= idx[i - 1], `${label}: progress went backwards — ${names.join(" → ")} = ${idx.join(" → ")}`);
     }
   };
 
@@ -379,7 +365,12 @@ test("B1/A7: MCP progress never moves backwards, on any path", async (t) => {
   // kept RecallStage["name"][] so it feeds progressIndexFor without a cast.
   const collect = (): { names: RecallStage["name"][]; onStage: (s: RecallStage) => void } => {
     const names: RecallStage["name"][] = [];
-    return { names, onStage: (s) => { if (s.durationMs !== undefined) names.push(s.name); } };
+    return {
+      names,
+      onStage: (s) => {
+        if (s.durationMs !== undefined) names.push(s.name);
+      },
+    };
   };
 
   // BM25, with hops

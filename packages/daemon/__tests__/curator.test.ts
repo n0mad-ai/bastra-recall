@@ -91,7 +91,13 @@ test("recent acted_on or loaded keeps a memory fresh (acceptance: recent acted_o
     loaded: { surfaced: 10, loaded: 1, acted_on: 0, last_loaded_at: iso(10) },
     old: { surfaced: 10, loaded: 1, acted_on: 1, last_acted_on_at: iso(90), last_loaded_at: iso(80) },
   };
-  const d = decideStale({ nowMs: NOW, observedSinceMs: MATURE, facts: [facts("acted"), facts("loaded"), facts("old")], usage, currentStale: {} });
+  const d = decideStale({
+    nowMs: NOW,
+    observedSinceMs: MATURE,
+    facts: [facts("acted"), facts("loaded"), facts("old")],
+    usage,
+    currentStale: {},
+  });
   assert.equal(d.demote["acted"], undefined);
   assert.equal(d.demote["loaded"], undefined);
   assert.match(d.demote["old"], /surfaced 10×/, "engagement OUTSIDE the window does not protect");
@@ -109,7 +115,13 @@ test("idempotent: an already-stale memory is not re-demoted; engagement after st
     still: { stale_since: staleSince, reason: "r" },
     revived: { stale_since: staleSince, reason: "r" },
   };
-  const d = decideStale({ nowMs: NOW, observedSinceMs: MATURE, facts: [facts("still"), facts("revived")], usage, currentStale: current });
+  const d = decideStale({
+    nowMs: NOW,
+    observedSinceMs: MATURE,
+    facts: [facts("still"), facts("revived")],
+    usage,
+    currentStale: current,
+  });
   assert.deepEqual(d.demote, {});
   assert.deepEqual(d.reactivate, ["revived"]);
 
@@ -122,7 +134,13 @@ test("idempotent: an already-stale memory is not re-demoted; engagement after st
 test("immature observation window: candidates land in pendingObservation, never in demote", () => {
   const usage: UsageAggregate = { a: { surfaced: 7, loaded: 0, acted_on: 0 } };
   // Sidecar started 7 days ago — "no engagement in 30d" is unobservable.
-  const d = decideStale({ nowMs: NOW, observedSinceMs: NOW - 7 * 86_400_000, facts: [facts("a")], usage, currentStale: {} });
+  const d = decideStale({
+    nowMs: NOW,
+    observedSinceMs: NOW - 7 * 86_400_000,
+    facts: [facts("a")],
+    usage,
+    currentStale: {},
+  });
   assert.deepEqual(d.demote, {});
   assert.match(d.pendingObservation["a"], /surfaced 7×/);
   // No epoch at all = unknown = equally immature.
@@ -146,7 +164,13 @@ test("protection wins over an earlier demotion: flooring a stale memory reactiva
 
 test("ghost pruning: a stale id whose memory left the vault is reactivated", () => {
   const current = { gone: { stale_since: iso(20), reason: "r" } };
-  const d = decideStale({ nowMs: NOW, observedSinceMs: MATURE, facts: [facts("other")], usage: {}, currentStale: current });
+  const d = decideStale({
+    nowMs: NOW,
+    observedSinceMs: MATURE,
+    facts: [facts("other")],
+    usage: {},
+    currentStale: current,
+  });
   assert.deepEqual(d.reactivate, ["gone"]);
 });
 

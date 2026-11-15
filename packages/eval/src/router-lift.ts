@@ -81,7 +81,7 @@ export function armReport(
   ms: Map<string, number>,
   totalMs: number,
   referenceIds: Set<string>,
-  routedIds?: Set<string>,
+  routedIds?: Set<string>
 ): ArmReport {
   const answerable = rows.filter((r) => !r.probe_group && !r.no_answer);
   const ref = answerable.filter((r) => referenceIds.has(r.id));
@@ -144,7 +144,7 @@ async function main(): Promise<void> {
   const arm = await attachHybrid(vault, search, vaultPath);
 
   const reference = JSON.parse(
-    readFileSync(join(import.meta.dirname, "..", "registrations", "m1-reference-set.json"), "utf8"),
+    readFileSync(join(import.meta.dirname, "..", "registrations", "m1-reference-set.json"), "utf8")
   ) as { case_ids: string[] };
   const referenceIds = new Set(reference.case_ids);
 
@@ -184,7 +184,12 @@ async function main(): Promise<void> {
   const changed = routedArm.rows
     .map((r, i) => ({ r, b: baseline.rows[i]! }))
     .filter(({ r, b }) => routedIds.has(r.id) && !r.no_answer && !r.probe_group && r.rank_expected !== b.rank_expected)
-    .map(({ r, b }) => ({ id: r.id, reason: routes.get(r.id)!.reason, rank_before: b.rank_expected, rank_after: r.rank_expected }));
+    .map(({ r, b }) => ({
+      id: r.id,
+      reason: routes.get(r.id)!.reason,
+      rank_before: b.rank_expected,
+      rank_after: r.rank_expected,
+    }));
   const violations = shipBarViolations(baseline.report, routedArm.report);
 
   const result = {

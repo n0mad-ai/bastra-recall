@@ -7,7 +7,9 @@ import { planCodexHooks } from "../src/cli/adapters/codex.js";
 import { hookWrapper, runsOurHookRunner, windowsHookToken } from "../src/cli/adapters/command-paths.js";
 
 function commands(hooks: Record<string, unknown>): string[] {
-  return Object.values(hooks).flatMap((entries) => (entries as { hooks: { command: string }[] }[]).flatMap((e) => e.hooks.map((h) => h.command)));
+  return Object.values(hooks).flatMap((entries) =>
+    (entries as { hooks: { command: string }[] }[]).flatMap((e) => e.hooks.map((h) => h.command))
+  );
 }
 
 test("installer stub path uses native Windows separators and .exe; Mac path stays unchanged", () => {
@@ -17,8 +19,16 @@ test("installer stub path uses native Windows separators and .exe; Mac path stay
 
 for (const stubPresent of [true, false]) {
   test(`Windows registrations call ${stubPresent ? "compiled stub directly" : "Node fallback"} with argv marker`, () => {
-    for (const [client, plan] of [["claude-code", planHookEntries], ["codex", planCodexHooks]] as const) {
-      const opts = { includeStop: true, stubPresent, platform: "win32", mapBin: (bin: string) => `C:\\Program Files\\Bastra\\daemon\\dist\\${bin.split("/").pop()}` };
+    for (const [client, plan] of [
+      ["claude-code", planHookEntries],
+      ["codex", planCodexHooks],
+    ] as const) {
+      const opts = {
+        includeStop: true,
+        stubPresent,
+        platform: "win32",
+        mapBin: (bin: string) => `C:\\Program Files\\Bastra\\daemon\\dist\\${bin.split("/").pop()}`,
+      };
       const first = plan("install", {}, opts);
       const cmds = commands(first.after);
       assert.ok(cmds.length >= 7);
@@ -41,8 +51,14 @@ test("Windows command recognition and wrapper extraction retain user suffix only
   const cmd = 'node "C:/Program Files/Bastra/daemon/dist/session-hook.js" --client=codex >> log.txt';
   assert.ok(runsOurHookRunner(cmd, ["session-hook.js"], "BASTRA_HOOK_CLIENT=codex"));
   assert.deepEqual(hookWrapper(cmd, "session-hook.js", "session"), { prefix: "", suffix: " >> log.txt" });
-  assert.equal(windowsHookToken('C:\\Program Files\\Bastra\\bastra-hook.exe'), '"C:/Program Files/Bastra/bastra-hook.exe"');
-  assert.equal(statuslineCommand('C:\\Program Files\\Bastra\\index.mjs', false, "win32"), 'node "C:/Program Files/Bastra/index.mjs" --style=powerline');
+  assert.equal(
+    windowsHookToken("C:\\Program Files\\Bastra\\bastra-hook.exe"),
+    '"C:/Program Files/Bastra/bastra-hook.exe"'
+  );
+  assert.equal(
+    statuslineCommand("C:\\Program Files\\Bastra\\index.mjs", false, "win32"),
+    'node "C:/Program Files/Bastra/index.mjs" --style=powerline'
+  );
 });
 
 test("registration argv marker reaches hook payload for both stub and Node clients", () => {
@@ -50,7 +66,10 @@ test("registration argv marker reaches hook payload for both stub and Node clien
   const env = process.env.BASTRA_HOOK_CLIENT;
   try {
     process.env.BASTRA_HOOK_CLIENT = "claude-code";
-    for (const args of [["node", "session-hook.js", "--client=codex"], ["deno", "bastra-hook.exe", "session", "--client=codex"]]) {
+    for (const args of [
+      ["node", "session-hook.js", "--client=codex"],
+      ["deno", "bastra-hook.exe", "session", "--client=codex"],
+    ]) {
       process.argv = args;
       assert.deepEqual(decorateHookPayload({ session_id: "s" }), { session_id: "s", bastra_client: "codex" });
     }

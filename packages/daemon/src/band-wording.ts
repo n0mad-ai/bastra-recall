@@ -96,19 +96,12 @@ export const CANDIDATES_ONLY_NOTICE =
  * dieselbe Leitung — sie heißen hier genau so, damit kein Aufrufer sie noch
  * einmal übersetzt.
  */
-export type UnfusedReason =
-  | "off"
-  | "cold-model"
-  | "vector-arm-timeout"
-  | "vector-arm-error"
-  | "vector-arm-empty";
+export type UnfusedReason = "off" | "cold-model" | "vector-arm-timeout" | "vector-arm-error" | "vector-arm-empty";
 
 /** Der `degraded`-Grund der Antwort, als Grund für die Überschrift. Fehlt er,
  *  gab es wirklich keinen zweiten Arm. */
 export function unfusedReasonFor(degraded: string | undefined): UnfusedReason {
-  return degraded === "vector-arm-timeout" ||
-    degraded === "vector-arm-error" ||
-    degraded === "vector-arm-empty"
+  return degraded === "vector-arm-timeout" || degraded === "vector-arm-error" || degraded === "vector-arm-empty"
     ? degraded
     : "off";
 }
@@ -126,8 +119,7 @@ export function unfusedHeadline(subject: string, reason: UnfusedReason = "off"):
           ? `semantic search is ON but its call failed on this lookup, so this ONE ` +
             `lookup ranked lexically — not a permanent limitation`
           : reason === "vector-arm-empty"
-            ? `semantic search is ON but returned nothing for this text, so no ` +
-              `second path had anything to confirm`
+            ? `semantic search is ON but returned nothing for this text, so no ` + `second path had anything to confirm`
             : `semantic search is off`;
   return (
     `Lexical matches for ${subject}, ranked by term overlap alone — ${why}, so no ` +
@@ -175,7 +167,7 @@ export interface BandedHits<H> {
 export function bandHits<H extends { score: number; hop?: "direct" | "1-hop" }>(
   hits: H[],
   cut: number,
-  unfused: boolean,
+  unfused: boolean
 ): BandedHits<H> {
   if (unfused) return { required: [], optional: [], unbanded: hits };
   const isRequired = (h: H): boolean => h.score >= cut && h.hop !== "1-hop";

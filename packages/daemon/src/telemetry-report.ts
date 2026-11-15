@@ -29,7 +29,12 @@ import { aggregateSaveSuggestions, type SaveSuggestionStats } from "./save-sugge
 export { summarizeCodeAwareness, type CodeAwarenessSection } from "./telemetry-report-code.js";
 import { median, num, p95, day, bump, type ReportEvent, type ReportThresholds } from "./telemetry-report-shared.js";
 export type { ReportEvent, ReportThresholds } from "./telemetry-report-shared.js";
-import { summarizeEvidence, summarizeQuality, type EvidenceSection, type QualitySection } from "./telemetry-report-recall.js";
+import {
+  summarizeEvidence,
+  summarizeQuality,
+  type EvidenceSection,
+  type QualitySection,
+} from "./telemetry-report-recall.js";
 export {
   summarizeEvidence,
   summarizeQuality,
@@ -119,7 +124,7 @@ export async function readEventWindow(
   days: number,
   now = Date.now(),
   includeEval = false,
-  finished?: FinishedDaySource,
+  finished?: FinishedDaySource
 ): Promise<EventWindow> {
   let files: string[];
   try {
@@ -137,9 +142,10 @@ export async function readEventWindow(
     const fileDay = EVENT_FILE.exec(f)?.[1] ?? "";
     let parsed: ReportEvent[];
     try {
-      parsed = finished && fileDay < today
-        ? await finished.eventsOf(logDir, f, fileDay)
-        : parseEventLines(await readFile(join(logDir, f), "utf8"));
+      parsed =
+        finished && fileDay < today
+          ? await finished.eventsOf(logDir, f, fileDay)
+          : parseEventLines(await readFile(join(logDir, f), "utf8"));
     } catch {
       continue;
     }
@@ -202,7 +208,12 @@ const LATENCY_FIELD: Record<string, string> = {
   recall: "latency_ms",
 };
 
-const latencyRow = (lane: string, xs: number[]): LatencyRow => ({ lane, n: xs.length, median: median(xs), p95: p95(xs) });
+const latencyRow = (lane: string, xs: number[]): LatencyRow => ({
+  lane,
+  n: xs.length,
+  median: median(xs),
+  p95: p95(xs),
+});
 
 export function summarizeLatency(events: ReportEvent[]): LatencySection & { excludedRestart: number } {
   // The CLI (`log-stats.ts`'s `aggregate`) excludes calls that landed
@@ -344,7 +355,7 @@ export function buildTelemetryReport(
   window: EventWindow,
   days: number,
   t: ReportThresholds,
-  retentionDays = resolveRetentionDays(),
+  retentionDays = resolveRetentionDays()
 ): TelemetryReport {
   const events = window.events;
   const { excludedRestart, ...latency } = summarizeLatency(events);

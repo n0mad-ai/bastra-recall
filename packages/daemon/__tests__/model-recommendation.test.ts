@@ -42,7 +42,13 @@ import {
   type ModelOffer,
 } from "../src/model-recommendation.js";
 import { runSessionLane } from "../src/session-lane.js";
-import { readSettings, resolveGenerationModel, setEmbeddingProvider, setGenerationModel, setUpdateMode } from "../src/settings.js";
+import {
+  readSettings,
+  resolveGenerationModel,
+  setEmbeddingProvider,
+  setGenerationModel,
+  setUpdateMode,
+} from "../src/settings.js";
 
 const IMPROVES = "Sharper search keywords and a stricter draft check.";
 const REC: ModelRecommendation = {
@@ -82,8 +88,17 @@ async function captured(fn: () => Promise<unknown>): Promise<{ out: string; err:
   const real = { out: process.stdout.write, err: process.stderr.write };
   let out = "";
   let err = "";
-  process.stdout.write = ((c: unknown) => { if (typeof c === "string") { out += c; return true; } return real.out.call(process.stdout, c as Uint8Array); }) as typeof process.stdout.write;
-  process.stderr.write = ((c: unknown) => { err += String(c); return true; }) as typeof process.stderr.write;
+  process.stdout.write = ((c: unknown) => {
+    if (typeof c === "string") {
+      out += c;
+      return true;
+    }
+    return real.out.call(process.stdout, c as Uint8Array);
+  }) as typeof process.stdout.write;
+  process.stderr.write = ((c: unknown) => {
+    err += String(c);
+    return true;
+  }) as typeof process.stderr.write;
   try {
     const result = await fn();
     return { out, err, result };
@@ -93,7 +108,13 @@ async function captured(fn: () => Promise<unknown>): Promise<{ out: string; err:
   }
 }
 
-const opts = (path: string, extra: Partial<ModelsDeps> = {}) => ({ recommendation: REC, ramGB: 16, settingsPath: path, now: NOW, ...extra });
+const opts = (path: string, extra: Partial<ModelsDeps> = {}) => ({
+  recommendation: REC,
+  ramGB: 16,
+  settingsPath: path,
+  now: NOW,
+  ...extra,
+});
 const answerOf = async (path: string) => (await readSettings(path)).modelRecommendation?.answer;
 
 // ── the shipped state ────────────────────────────────────────────────────────
@@ -146,7 +167,11 @@ test("shipped: an existing install is told and asked — per tier, never below 1
     const lines = out.split("\n");
     assert.equal(lines[0], "generation model: gemma3:4b (default)");
     assert.equal(lines[2], "recommended: tev1:4b  [baseline]");
-    assert.match(lines[3], /it was not measured on a 16 GB machine/, "the tier's caveat stays next to the recommendation");
+    assert.match(
+      lines[3],
+      /it was not measured on a 16 GB machine/,
+      "the tier's caveat stays next to the recommendation"
+    );
     assert.ok(out.includes("\n  bastra models switch 2026-10-tev1 tev1:4b   switch now\n"));
     assert.ok(out.includes("\n  bastra models later 2026-10-tev1   "));
     assert.ok(out.includes("\n  bastra models dismiss 2026-10-tev1   "));
@@ -183,8 +208,11 @@ test("shipped: whoever already runs a model of the recommendation hears nothing,
     await setGenerationModel("gemma3:4b", path);
     for (const key of ["BASTRA_EXPAND_MODEL", "BASTRA_RERANK_MODEL"]) {
       process.env[key] = "gemma4:12b";
-      try { assert.equal(await pendingModelNotice(shipped(24)), null); }
-      finally { delete process.env[key]; }
+      try {
+        assert.equal(await pendingModelNotice(shipped(24)), null);
+      } finally {
+        delete process.env[key];
+      }
     }
   });
 });
@@ -206,11 +234,18 @@ test("no recommendation (null, the off switch): nothing is offered and nothing i
     assert.equal(lines[2], "recommended: tev1:4b  [baseline]");
     assert.equal(lines[lines.length - 2], "to switch: bastra models set tev1:4b");
     assert.equal(await readSettingsFixture(path, "utf8"), before);
-    const neverAsk = async () => { throw new Error("must not ask"); };
-    const ask = await captured(() => cmdModels({ sub: "ask", settingsPath: path, deps: { ...off, interactive: true, ask: neverAsk } }));
+    const neverAsk = async () => {
+      throw new Error("must not ask");
+    };
+    const ask = await captured(() =>
+      cmdModels({ sub: "ask", settingsPath: path, deps: { ...off, interactive: true, ask: neverAsk } })
+    );
     assert.equal(ask.out, "", "`bastra update` ends without a question");
     const after = await captured(() =>
-      modelNoticeAfterCommand({ command: "status", json: false, showHelp: false, showVersion: false }, { ...off, interactive: true, ask: neverAsk, shownPath: join(dir, "shown.txt") }),
+      modelNoticeAfterCommand(
+        { command: "status", json: false, showHelp: false, showVersion: false },
+        { ...off, interactive: true, ask: neverAsk, shownPath: join(dir, "shown.txt") }
+      )
     );
     assert.equal(after.result, "none", "no catch-up question after a command either");
     assert.equal(after.out + after.err, "");
@@ -231,7 +266,11 @@ test("offer: the recommended model of this machine's tier, against the model in 
     });
     const high = await pendingModelNotice(opts(path, { ramGB: 32 }));
     assert.equal(high?.model, "new:12b");
-    assert.equal(high?.improves, "More accurate, at about three times the answer time.", "the sentence belongs to the tier's model");
+    assert.equal(
+      high?.improves,
+      "More accurate, at about three times the answer time.",
+      "the sentence belongs to the tier's model"
+    );
   });
 });
 
@@ -317,7 +356,13 @@ test("later: silent for 7 days, then asked again", async () => {
     // A note from the future (clock set back) or with an unreadable time does
     // not silence the reminder for good.
     assert.equal((await pendingModelNotice(opts(path, { now: NOW - DAY })))?.model, "new:4b");
-    await writeSettingsFixture(path, JSON.stringify({ embedding: { provider: "ollama" }, modelRecommendation: { id: REC.id, answer: "later", at: "bad-time" } }));
+    await writeSettingsFixture(
+      path,
+      JSON.stringify({
+        embedding: { provider: "ollama" },
+        modelRecommendation: { id: REC.id, answer: "later", at: "bad-time" },
+      })
+    );
     assert.equal((await pendingModelNotice(opts(path)))?.model, "new:4b");
   });
 });
@@ -326,7 +371,11 @@ test("dismissed: never again for this id — a new id asks again", async () => {
   await existingUser(async (path) => {
     await recordModelAnswer(REC.id, "dismissed", path, NOW);
     assert.equal(await pendingModelNotice(opts(path, { now: NOW + 400 * DAY })), null);
-    assert.equal((await currentModelOffer(opts(path)))?.model, "new:4b", "dismissing does not hide it from `bastra models`");
+    assert.equal(
+      (await currentModelOffer(opts(path)))?.model,
+      "new:4b",
+      "dismissing does not hide it from `bastra models`"
+    );
     const next = { ...REC, id: "test-rec-2" };
     assert.equal((await pendingModelNotice(opts(path, { recommendation: next })))?.id, "test-rec-2");
   });
@@ -353,10 +402,20 @@ test("the note lives in cli-settings.json and survives other settings writes", a
   await existingUser(async (path) => {
     await recordModelAnswer(REC.id, "later", path, NOW);
     await setGenerationModel("my-own:7b", path);
-    assert.deepEqual((await readSettings(path)).modelRecommendation, { id: REC.id, answer: "later", at: "2026-10-09T12:00:00.000Z" });
+    assert.deepEqual((await readSettings(path)).modelRecommendation, {
+      id: REC.id,
+      answer: "later",
+      at: "2026-10-09T12:00:00.000Z",
+    });
     assert.match(await readSettingsFixture(path, "utf8"), /"modelRecommendation"/);
     // An answer this build does not know is no answer: the user is asked.
-    await writeSettingsFixture(path, JSON.stringify({ embedding: { provider: "ollama" }, modelRecommendation: { id: REC.id, answer: "maybe", at: "x" } }));
+    await writeSettingsFixture(
+      path,
+      JSON.stringify({
+        embedding: { provider: "ollama" },
+        modelRecommendation: { id: REC.id, answer: "maybe", at: "x" },
+      })
+    );
     assert.equal((await readSettings(path)).modelRecommendation, undefined);
     assert.equal((await pendingModelNotice(opts(path)))?.model, "new:4b");
   });
@@ -364,7 +423,14 @@ test("the note lives in cli-settings.json and survives other settings writes", a
 
 // ── the texts ────────────────────────────────────────────────────────────────
 
-const OFFER: ModelOffer = { id: REC.id, model: "new:4b", sizeGB: 3.3, improves: IMPROVES, current: "gemma3:4b", envOverride: null };
+const OFFER: ModelOffer = {
+  id: REC.id,
+  model: "new:4b",
+  sizeGB: 3.3,
+  improves: IMPROVES,
+  current: "gemma3:4b",
+  envOverride: null,
+};
 const NOTICE =
   `bastra-recall recommends a different local text model for this machine: new:4b (you run gemma3:4b).\n` +
   `What gets better: Sharper search keywords and a stricter draft check.\n` +
@@ -391,7 +457,7 @@ test("SessionStart block: facts, ask first, the three bound commands — and no 
       `- The user says later → run \`bastra models later test-rec-1\` (asks again in 7 days).\n` +
       `- The user says no / stop asking → FIRST tell them what that means: ${WARN}; ${OPEN}. ` +
       `Only when they confirm after hearing that, run \`bastra models dismiss test-rec-1\` (a future, new recommendation asks again).\n` +
-      `</bastra-model-recommendation>`,
+      `</bastra-model-recommendation>`
   );
   // The warning comes before the command it guards, in the same instruction.
   assert.ok(block.indexOf(DISMISS_WARNING) < block.indexOf("bastra models dismiss"));
@@ -449,20 +515,31 @@ test("CLI hint: separate processes emit the day's notice only once", async () =>
   await existingUser(async (path, dir) => {
     const worker = fileURLToPath(new URL("./fixtures/model-hint-worker.mts", import.meta.url));
     const shown = join(dir, "shown.txt");
-    const run = () => new Promise<{ code: number; err: string }>((resolve, reject) => {
-      const child = spawn(process.execPath, ["--import", "tsx", worker, path, shown], { stdio: ["ignore", "ignore", "pipe"] });
-      let err = "";
-      child.stderr.setEncoding("utf8");
-      child.stderr.on("data", (chunk: string) => { err += chunk; });
-      child.once("error", reject);
-      child.once("close", code => {
-        if (code !== 0 && code !== 10) reject(new Error(`worker exited ${code}: ${err}`));
-        else resolve({ code, err });
+    const run = () =>
+      new Promise<{ code: number; err: string }>((resolve, reject) => {
+        const child = spawn(process.execPath, ["--import", "tsx", worker, path, shown], {
+          stdio: ["ignore", "ignore", "pipe"],
+        });
+        let err = "";
+        child.stderr.setEncoding("utf8");
+        child.stderr.on("data", (chunk: string) => {
+          err += chunk;
+        });
+        child.once("error", reject);
+        child.once("close", (code) => {
+          if (code !== 0 && code !== 10) reject(new Error(`worker exited ${code}: ${err}`));
+          else resolve({ code, err });
+        });
       });
-    });
     const results = await Promise.all([run(), run(), run()]);
-    assert.deepEqual(results.map(r => r.code).sort(), [0, 0, 10]);
-    assert.equal(results.map(r => r.err).join("").split("recommends a different").length - 1, 1);
+    assert.deepEqual(results.map((r) => r.code).sort(), [0, 0, 10]);
+    assert.equal(
+      results
+        .map((r) => r.err)
+        .join("")
+        .split("recommends a different").length - 1,
+      1
+    );
   });
 });
 
@@ -485,7 +562,11 @@ test("CLI hint: silent when opted out or already answered — and that spends no
     await recordModelAnswer(REC.id, "dismissed", path, NOW);
     assert.equal((await captured(() => maybeEmitModelHint(hintOpts))).result, false);
     await recordModelAnswer(REC.id, "later", path, NOW - 8 * DAY);
-    assert.equal((await captured(() => maybeEmitModelHint(hintOpts))).result, true, "the reminder is due and was not throttled away");
+    assert.equal(
+      (await captured(() => maybeEmitModelHint(hintOpts))).result,
+      true,
+      "the reminder is due and was not throttled away"
+    );
   });
 });
 
@@ -497,14 +578,17 @@ function fakeEnable(result: { activated: boolean; message: string }) {
   const calls: unknown[][] = [];
   const enable = (async (model: string, o: { recommendationId?: string }, path: string) => {
     calls.push([model, o, path]);
-    if (result.activated && o.recommendationId) await recordModelAnswer(o.recommendationId, "switched", path, NOW, model);
+    if (result.activated && o.recommendationId)
+      await recordModelAnswer(o.recommendationId, "switched", path, NOW, model);
     return { status: result.activated ? "activated" : "error", ...result };
   }) as unknown as NonNullable<ModelsDeps["enable"]>;
   return { calls, enable };
 }
 
 const run = (path: string, argv: string[], extra: Partial<ModelsDeps> = {}) =>
-  captured(() => cmdModels({ sub: argv[0], positional: ["models", ...argv], settingsPath: path, deps: opts(path, extra) }));
+  captured(() =>
+    cmdModels({ sub: argv[0], positional: ["models", ...argv], settingsPath: path, deps: opts(path, extra) })
+  );
 
 test("bastra models: shows the recommendation at any time, also after `dismiss`", async () => {
   await existingUser(async (path) => {
@@ -521,11 +605,17 @@ test("bastra models later / dismiss: recorded, model untouched, usable without a
   await existingUser(async (path) => {
     const later = await run(path, ["later", "test-rec-1"]);
     assert.equal(later.result, 0);
-    assert.equal(later.out, "OK — the generation model stays gemma3:4b. You will be asked again in 7 days; until then 'bastra models' shows the recommendation.\n");
+    assert.equal(
+      later.out,
+      "OK — the generation model stays gemma3:4b. You will be asked again in 7 days; until then 'bastra models' shows the recommendation.\n"
+    );
     assert.equal(await answerOf(path), "later");
 
     const dismiss = await run(path, ["dismiss", "test-rec-1"]);
-    assert.equal(dismiss.out, `OK — the generation model stays gemma3:4b. From now on ${WARN}.\nStill open to you: ${OPEN}.\n`);
+    assert.equal(
+      dismiss.out,
+      `OK — the generation model stays gemma3:4b. From now on ${WARN}.\nStill open to you: ${OPEN}.\n`
+    );
     assert.equal(await answerOf(path), "dismissed");
     assert.equal((await readSettings(path)).generation, undefined);
   });
@@ -534,7 +624,10 @@ test("bastra models later / dismiss: recorded, model untouched, usable without a
 test("bastra models switch: the verified switch, the answer recorded with it, the way back named", async () => {
   await existingUser(async (path) => {
     await setGenerationModel("my-own:7b", path);
-    const sw = fakeEnable({ activated: true, message: "text model new:4b ready + saved — restart the daemon to apply" });
+    const sw = fakeEnable({
+      activated: true,
+      message: "text model new:4b ready + saved — restart the daemon to apply",
+    });
     const { out, result } = await run(path, ["switch", "test-rec-1", "new:4b"], { enable: sw.enable });
     assert.equal(result, 0);
     assert.deepEqual(sw.calls, [["new:4b", { dryRun: false, verify: true, recommendationId: "test-rec-1" }, path]]);
@@ -542,7 +635,7 @@ test("bastra models switch: the verified switch, the answer recorded with it, th
       out,
       "Switching the generation model to new:4b (about 3.3 GB download if it is not present yet) …\n" +
         "✓ text model new:4b ready + saved — restart the daemon to apply\n" +
-        "The previous model my-own:7b is still installed. Switch back any time: bastra models set my-own:7b\n",
+        "The previous model my-own:7b is still installed. Switch back any time: bastra models set my-own:7b\n"
     );
     assert.equal(await answerOf(path), "switched");
     assert.equal(await pendingModelNotice(opts(path)), null);
@@ -551,13 +644,18 @@ test("bastra models switch: the verified switch, the answer recorded with it, th
 
 test("bastra models switch: a failed switch says why, changes nothing and leaves the question open", async () => {
   await existingUser(async (path) => {
-    const sw = fakeEnable({ activated: false, message: "new:4b is downloaded but did not answer a test call (Ollama chat HTTP 500)" });
+    const sw = fakeEnable({
+      activated: false,
+      message: "new:4b is downloaded but did not answer a test call (Ollama chat HTTP 500)",
+    });
     const { out, result } = await run(path, ["switch", "test-rec-1", "new:4b"], { enable: sw.enable });
     assert.equal(result, 1);
-    assert.ok(out.endsWith(
-      "✗ new:4b is downloaded but did not answer a test call (Ollama chat HTTP 500)\n" +
-        "Nothing was changed — the generation model stays gemma3:4b.\n",
-    ));
+    assert.ok(
+      out.endsWith(
+        "✗ new:4b is downloaded but did not answer a test call (Ollama chat HTTP 500)\n" +
+          "Nothing was changed — the generation model stays gemma3:4b.\n"
+      )
+    );
     assert.equal((await readSettings(path)).modelRecommendation, undefined);
     assert.equal((await pendingModelNotice(opts(path)))?.model, "new:4b");
   });
@@ -568,8 +666,16 @@ test("bastra models switch with an env pin: switches the saved choice and says i
     process.env.BASTRA_EXPAND_MODEL = "pinned:9b";
     const sw = fakeEnable({ activated: true, message: "saved" });
     const { out } = await run(path, ["switch", "test-rec-1", "new:4b"], { enable: sw.enable });
-    assert.match(out, /previous model gemma3:4b is still installed/, "the way back names the stored model, not the pinned one");
-    assert.ok(out.endsWith("Note: BASTRA_EXPAND_MODEL=pinned:9b is set in the environment and overrides the saved choice: the switch only takes effect once that variable is removed and the daemon restarted.\n"));
+    assert.match(
+      out,
+      /previous model gemma3:4b is still installed/,
+      "the way back names the stored model, not the pinned one"
+    );
+    assert.ok(
+      out.endsWith(
+        "Note: BASTRA_EXPAND_MODEL=pinned:9b is set in the environment and overrides the saved choice: the switch only takes effect once that variable is removed and the daemon restarted.\n"
+      )
+    );
   });
 });
 
@@ -586,22 +692,39 @@ test("bastra models switch / later / dismiss: no recommendation for this machine
 
 // ── the question `bastra update` ends with (`bastra models ask`) ─────────────
 
-const QUESTION = "[s] switch now   [l] later (ask again in 7 days)   [n] never ask again for this recommendation — your choice [s/l/n]: ";
+const QUESTION =
+  "[s] switch now   [l] later (ask again in 7 days)   [n] never ask again for this recommendation — your choice [s/l/n]: ";
 
 test("bastra update, on a terminal: asks, and each answer does what it says", async () => {
   await existingUser(async (path) => {
     const asked: string[] = [];
-    const reply = (text: string | null) => async (q: string) => { asked.push(q); return text; };
+    const reply = (text: string | null) => async (q: string) => {
+      asked.push(q);
+      return text;
+    };
     const sw = fakeEnable({ activated: true, message: "saved" });
     const ask = (text: string | null) =>
-      captured(() => cmdModels({ sub: "ask", settingsPath: path, deps: opts(path, { interactive: true, ask: reply(text), enable: sw.enable }) }));
+      captured(() =>
+        cmdModels({
+          sub: "ask",
+          settingsPath: path,
+          deps: opts(path, { interactive: true, ask: reply(text), enable: sw.enable }),
+        })
+      );
 
     // No answer (Ctrl-C / EOF) is not a choice: only "asked" is noted, and the
     // question stays open everywhere.
     const none = await ask(null);
-    assert.ok(none.out.startsWith("\nbastra-recall recommends a different local text model for this machine: new:4b (you run gemma3:4b).\n"));
+    assert.ok(
+      none.out.startsWith(
+        "\nbastra-recall recommends a different local text model for this machine: new:4b (you run gemma3:4b).\n"
+      )
+    );
     assert.deepEqual(asked, [QUESTION]);
-    assert.ok(none.out.endsWith(`\nAbout [n]: ${WARN}; ${OPEN}.\n`), "the cost of [n] is on screen before the question is asked");
+    assert.ok(
+      none.out.endsWith(`\nAbout [n]: ${WARN}; ${OPEN}.\n`),
+      "the cost of [n] is on screen before the question is asked"
+    );
     assert.equal(none.result, 0);
     assert.equal(await answerOf(path), "asked");
     assert.equal((await pendingModelNotice(opts(path)))?.model, "new:4b");
@@ -622,7 +745,11 @@ test("bastra update, on a terminal: asks, and each answer does what it says", as
 
     await recordModelAnswer(REC.id, "later", path, NOW - 8 * DAY);
     await ask("s");
-    assert.deepEqual(sw.calls, [["new:4b", { dryRun: false, verify: true, recommendationId: "test-rec-1" }, path]], "the switch is for the offer that was on screen");
+    assert.deepEqual(
+      sw.calls,
+      [["new:4b", { dryRun: false, verify: true, recommendationId: "test-rec-1" }, path]],
+      "the switch is for the offer that was on screen"
+    );
     assert.equal(await answerOf(path), "switched");
   });
 });
@@ -633,8 +760,13 @@ test("bastra update, without a terminal: only the notice — no question, nothin
       cmdModels({
         sub: "ask",
         settingsPath: path,
-        deps: opts(path, { interactive: false, ask: async () => { throw new Error("must not prompt"); } }),
-      }),
+        deps: opts(path, {
+          interactive: false,
+          ask: async () => {
+            throw new Error("must not prompt");
+          },
+        }),
+      })
     );
     assert.equal(result, 0);
     assert.equal(out, `\n${NOTICE}\n`);
@@ -645,7 +777,9 @@ test("bastra update, without a terminal: only the notice — no question, nothin
 test("bastra update: opted out → the closing question is not asked either", async () => {
   await existingUser(async (path) => {
     process.env.BASTRA_UPDATE_CHECK = "off";
-    const { out } = await captured(() => cmdModels({ sub: "ask", settingsPath: path, deps: opts(path, { interactive: true, ask: async () => "s" }) }));
+    const { out } = await captured(() =>
+      cmdModels({ sub: "ask", settingsPath: path, deps: opts(path, { interactive: true, ask: async () => "s" }) })
+    );
     assert.equal(out, "");
   });
 });
@@ -655,33 +789,53 @@ test("bastra update: the closing question is asked by the installed cli, as `mod
   try {
     // A stand-in for the freshly installed dist/: cli.js next to index.js.
     await writeFile(join(dir, "index.js"), "");
-    await writeFile(join(dir, "cli.js"), `require("node:fs").writeFileSync(${JSON.stringify(join(dir, "argv.json"))}, JSON.stringify(process.argv.slice(2)));\nprocess.exit(7);\n`);
+    await writeFile(
+      join(dir, "cli.js"),
+      `require("node:fs").writeFileSync(${JSON.stringify(join(dir, "argv.json"))}, JSON.stringify(process.argv.slice(2)));\nprocess.exit(7);\n`
+    );
     await writeFile(join(dir, "package.json"), '{"type":"commonjs"}');
-    const r = askModelRecommendation({ node: process.execPath, script: join(dir, "index.js"), version: "9.9.9" }, "pipe");
+    const r = askModelRecommendation(
+      { node: process.execPath, script: join(dir, "index.js"), version: "9.9.9" },
+      "pipe"
+    );
     assert.deepEqual(JSON.parse(await readFile(join(dir, "argv.json"), "utf8")), ["models", "ask"]);
     assert.equal(r?.status, 7, "the child's exit code is handed back, never thrown — the update's own result stands");
     // No installed runtime, or one without a cli: nothing is started, nothing throws.
     assert.equal(askModelRecommendation(null, "pipe"), null);
-    assert.equal(askModelRecommendation({ node: process.execPath, script: join(dir, "missing", "index.js"), version: null }, "pipe"), null);
+    assert.equal(
+      askModelRecommendation(
+        { node: process.execPath, script: join(dir, "missing", "index.js"), version: null },
+        "pipe"
+      ),
+      null
+    );
     // The source-checkout exit must retain this real default even when an
     // optional test callback is available. The installer exit is exercised
     // through cmdUpdate with an ask spy in windows-update-runtime.test.ts.
     const src = await readFile(fileURLToPath(new URL("../src/cli/update.ts", import.meta.url)), "utf8");
-    assert.equal(src.split("(io.ask ?? askModelRecommendation)(installed);\n    return 0;").length - 1, 1, "source-checkout exit");
+    assert.equal(
+      src.split("(io.ask ?? askModelRecommendation)(installed);\n    return 0;").length - 1,
+      1,
+      "source-checkout exit"
+    );
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });
 
-test("bastra update: the real built cli answers `models ask` without a terminal and without waiting", { skip: !existsSync(fileURLToPath(new URL("../dist/cli.js", import.meta.url))) }, () => {
-  // What the spawn above starts, for real: the built cli, stdin closed, output
-  // piped. The test home has no settings — no Ollama embeddings, no text model
-  // set up — so it has nothing to say and must return at once.
-  const dist = fileURLToPath(new URL("../dist/index.js", import.meta.url));
-  const r = askModelRecommendation({ node: process.execPath, script: dist, version: null }, "pipe");
-  assert.equal(r?.status, 0, String(r?.stderr));
-  assert.equal(String(r?.stdout), "");
-});
+test(
+  "bastra update: the real built cli answers `models ask` without a terminal and without waiting",
+  { skip: !existsSync(fileURLToPath(new URL("../dist/cli.js", import.meta.url))) },
+  () => {
+    // What the spawn above starts, for real: the built cli, stdin closed, output
+    // piped. The test home has no settings — no Ollama embeddings, no text model
+    // set up — so it has nothing to say and must return at once.
+    const dist = fileURLToPath(new URL("../dist/index.js", import.meta.url));
+    const r = askModelRecommendation({ node: process.execPath, script: dist, version: null }, "pipe");
+    assert.equal(r?.status, 0, String(r?.stderr));
+    assert.equal(String(r?.stdout), "");
+  }
+);
 
 // ── the catch-up question after a command ────────────────────────────────────
 
@@ -691,13 +845,24 @@ test("catch-up: the first interactive command asks, after the command, exactly o
   await existingUser(async (path, dir) => {
     const asked: string[] = [];
     const deps = (text: string | null, extra: Partial<ModelsDeps> = {}) =>
-      opts(path, { interactive: true, ask: async (q: string) => { asked.push(q); return text; }, shownPath: join(dir, "shown.txt"), ...extra });
+      opts(path, {
+        interactive: true,
+        ask: async (q: string) => {
+          asked.push(q);
+          return text;
+        },
+        shownPath: join(dir, "shown.txt"),
+        ...extra,
+      });
 
     // Ctrl-C / EOF: no answer is recorded, nothing throws, nothing is switched.
     const first = await captured(() => modelNoticeAfterCommand(ARGS, deps(null)));
     assert.equal(first.result, "asked");
     assert.deepEqual(asked, [QUESTION]);
-    assert.ok(first.out.includes(`About [n]: ${WARN}; ${OPEN}.`), "the dismiss warning is part of the catch-up question");
+    assert.ok(
+      first.out.includes(`About [n]: ${WARN}; ${OPEN}.`),
+      "the dismiss warning is part of the catch-up question"
+    );
     assert.equal(await answerOf(path), "asked");
     assert.equal((await readSettings(path)).generation, undefined);
 
@@ -709,7 +874,9 @@ test("catch-up: the first interactive command asks, after the command, exactly o
     assert.equal((await captured(() => modelNoticeAfterCommand(ARGS, deps("s")))).result, "none");
 
     // A new recommendation id is a new question.
-    const next = await captured(() => modelNoticeAfterCommand(ARGS, deps("", { recommendation: { ...REC, id: "test-rec-2" } })));
+    const next = await captured(() =>
+      modelNoticeAfterCommand(ARGS, deps("", { recommendation: { ...REC, id: "test-rec-2" } }))
+    );
     assert.equal(next.result, "asked");
     assert.deepEqual((await readSettings(path)).modelRecommendation?.id, "test-rec-2");
     assert.equal(await answerOf(path), "later", "Enter is later");
@@ -717,15 +884,32 @@ test("catch-up: the first interactive command asks, after the command, exactly o
 });
 
 test("catch-up: each answer does what it says, bound to the offer on screen", async () => {
-  for (const [reply, expected] of [["s", "switched"], ["l", "later"], ["", "later"], ["what?", "later"], ["n", "dismissed"]] as const) {
+  for (const [reply, expected] of [
+    ["s", "switched"],
+    ["l", "later"],
+    ["", "later"],
+    ["what?", "later"],
+    ["n", "dismissed"],
+  ] as const) {
     await existingUser(async (path, dir) => {
       const sw = fakeEnable({ activated: true, message: "saved" });
       const r = await captured(() =>
-        modelNoticeAfterCommand(ARGS, opts(path, { interactive: true, ask: async () => reply, enable: sw.enable, shownPath: join(dir, "shown.txt") })),
+        modelNoticeAfterCommand(
+          ARGS,
+          opts(path, {
+            interactive: true,
+            ask: async () => reply,
+            enable: sw.enable,
+            shownPath: join(dir, "shown.txt"),
+          })
+        )
       );
       assert.equal(r.result, "asked");
       assert.equal(await answerOf(path), expected);
-      assert.deepEqual(sw.calls.map((c) => c[0]), expected === "switched" ? ["new:4b"] : []);
+      assert.deepEqual(
+        sw.calls.map((c) => c[0]),
+        expected === "switched" ? ["new:4b"] : []
+      );
       if (expected === "dismissed") assert.ok(r.out.includes(`From now on ${WARN}.`));
     });
   }
@@ -735,7 +919,10 @@ test("catch-up: a failing switch does not fail the command it follows", async ()
   await existingUser(async (path, dir) => {
     const sw = fakeEnable({ activated: false, message: "`ollama pull new:4b` failed (exit 1)" });
     const r = await captured(() =>
-      modelNoticeAfterCommand(ARGS, opts(path, { interactive: true, ask: async () => "s", enable: sw.enable, shownPath: join(dir, "shown.txt") })),
+      modelNoticeAfterCommand(
+        ARGS,
+        opts(path, { interactive: true, ask: async () => "s", enable: sw.enable, shownPath: join(dir, "shown.txt") })
+      )
     );
     assert.equal(r.result, "asked", "an outcome, not an exit code — the command's own code is already set");
     assert.match(r.out, /Nothing was changed — the generation model stays gemma3:4b/);
@@ -745,8 +932,12 @@ test("catch-up: a failing switch does not fail the command it follows", async ()
 
 test("catch-up: never without a terminal — the dim hint instead", async () => {
   await existingUser(async (path, dir) => {
-    const never = async () => { throw new Error("must not ask"); };
-    const r = await captured(() => modelNoticeAfterCommand(ARGS, opts(path, { interactive: false, ask: never, shownPath: join(dir, "shown.txt") })));
+    const never = async () => {
+      throw new Error("must not ask");
+    };
+    const r = await captured(() =>
+      modelNoticeAfterCommand(ARGS, opts(path, { interactive: false, ask: never, shownPath: join(dir, "shown.txt") }))
+    );
     assert.equal(r.result, "hinted");
     assert.equal(r.out, "", "nothing on stdout: a pipe gets the command's output only");
     assert.equal((await readSettings(path)).modelRecommendation, undefined);
@@ -756,10 +947,16 @@ test("catch-up: never without a terminal — the dim hint instead", async () => 
 
 test("catch-up: never after output a script reads, nor after help, version, update, models, completion, uninstall", async () => {
   await existingUser(async (path, dir) => {
-    const never = async () => { throw new Error("must not ask"); };
-    const deps = () => opts(path, { interactive: true, ask: never, shownPath: join(dir, `shown-${Math.random()}.txt`) });
+    const never = async () => {
+      throw new Error("must not ask");
+    };
+    const deps = () =>
+      opts(path, { interactive: true, ask: never, shownPath: join(dir, `shown-${Math.random()}.txt`) });
     // --json and uninstall: no question; the stderr hint is all there is.
-    for (const args of [{ ...ARGS, json: true }, { ...ARGS, command: "uninstall" }]) {
+    for (const args of [
+      { ...ARGS, json: true },
+      { ...ARGS, command: "uninstall" },
+    ]) {
       const r = await captured(() => modelNoticeAfterCommand(args, deps()));
       assert.equal(r.result, "hinted");
       assert.equal(r.out, "");
@@ -769,7 +966,10 @@ test("catch-up: never after output a script reads, nor after help, version, upda
       { ...ARGS, showHelp: true },
       { ...ARGS, showVersion: true },
       { ...ARGS, command: null },
-      ...["help", "version", "update", "models", "completion", "config", "token"].map((command) => ({ ...ARGS, command })),
+      ...["help", "version", "update", "models", "completion", "config", "token"].map((command) => ({
+        ...ARGS,
+        command,
+      })),
     ];
     for (const args of silent) {
       const r = await captured(() => modelNoticeAfterCommand(args, deps()));
@@ -781,14 +981,23 @@ test("catch-up: never after output a script reads, nor after help, version, upda
 });
 
 test("catch-up: not when the updater already asked, and not when the user already answered elsewhere", async () => {
-  const never = async () => { throw new Error("must not ask"); };
+  const never = async () => {
+    throw new Error("must not ask");
+  };
   // `bastra update` (new updater) asked and got no answer.
   await existingUser(async (path) => {
-    await captured(() => cmdModels({ sub: "ask", settingsPath: path, deps: opts(path, { interactive: true, ask: async () => null }) }));
+    await captured(() =>
+      cmdModels({ sub: "ask", settingsPath: path, deps: opts(path, { interactive: true, ask: async () => null }) })
+    );
     assert.equal(await maybeAskModelCatchUp(opts(path, { interactive: true, ask: never })), false);
   });
   // Answered in chat or on the CLI — also a "later" that has come due: the hint reminds, the terminal does not ask.
-  for (const [answer, at] of [["dismissed", NOW], ["switched", NOW], ["later", NOW], ["later", NOW - 8 * DAY]] as const) {
+  for (const [answer, at] of [
+    ["dismissed", NOW],
+    ["switched", NOW],
+    ["later", NOW],
+    ["later", NOW - 8 * DAY],
+  ] as const) {
     await existingUser(async (path) => {
       await recordModelAnswer(REC.id, answer, path, at);
       assert.equal(await maybeAskModelCatchUp(opts(path, { interactive: true, ask: never })), false, `${answer}`);
@@ -822,10 +1031,19 @@ test("installer: a new install is offered the recommended model for its tier dir
   // Without an active recommendation the installer offers the ladder's pick.
   assert.equal(recommendTextModel(16, null).model, "tev1:4b");
   assert.equal(recommendTextModel(32, REC).model, "new:12b");
-  assert.equal(recommendTextModel(64, { ...REC, models: { ...REC.models, high: { model: "gemma4:12b", sizeGB: 8.1, improves: "x" } } }).alt, undefined);
+  assert.equal(
+    recommendTextModel(64, {
+      ...REC,
+      models: { ...REC.models, high: { model: "gemma4:12b", sizeGB: 8.1, improves: "x" } },
+    }).alt,
+    undefined
+  );
   assert.equal(recommendTextModel(8, REC).model, null);
   // A recommendation with nothing for this tier leaves the ladder's pick.
-  assert.equal(recommendTextModel(32, { id: "partial", models: { baseline: REC.models.baseline } }).model, "gemma4:12b");
+  assert.equal(
+    recommendTextModel(32, { id: "partial", models: { baseline: REC.models.baseline } }).model,
+    "gemma4:12b"
+  );
 });
 
 // ── SessionStart ─────────────────────────────────────────────────────────────
@@ -835,7 +1053,14 @@ async function sessionStart(modelNotice?: () => Promise<ModelOffer | null>): Pro
     "/hook/session-context": JSON.stringify({
       budget: {},
       aborted: [],
-      data: { recalls: [], floors: [], conventions: [], care: { open: 0, queued: 0 }, imports: { open: 0, queued: 0 }, onboarding: false },
+      data: {
+        recalls: [],
+        floors: [],
+        conventions: [],
+        care: { open: 0, queued: 0 },
+        imports: { open: 0, queued: 0 },
+        onboarding: false,
+      },
     }),
     "/health": JSON.stringify({ ok: true }),
     "/hook/hinted": "{}",
@@ -854,7 +1079,7 @@ async function sessionStart(modelNotice?: () => Promise<ModelOffer | null>): Pro
       { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-model-rec" },
       `http://127.0.0.1:${(server.address() as { port: number }).port}`,
       undefined,
-      modelNotice,
+      modelNotice
     );
     const parsed = JSON.parse(out) as { hookSpecificOutput?: { additionalContext?: unknown } };
     return String(parsed.hookSpecificOutput?.additionalContext ?? "");
@@ -873,8 +1098,10 @@ test("SessionStart: an open recommendation reaches the agent once per day", asyn
       assert.ok((await sessionStart(async () => OFFER)).includes(formatModelSessionBlock(OFFER).trimStart()));
       assert.doesNotMatch(await sessionStart(async () => OFFER), /bastra-model-recommendation/);
     } finally {
-      if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
-      if (previousProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = previousProfile;
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+      if (previousProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = previousProfile;
     }
   });
 });

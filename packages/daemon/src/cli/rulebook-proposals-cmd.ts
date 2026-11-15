@@ -4,13 +4,22 @@ import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 import { projectForFilter } from "../scope-filter.js";
 import { getApiToken } from "../settings.js";
 
-export async function rulebookCliCall(tool: "list_rules" | "load_memory" | "edit_memory" | "review_save_suggestion", input: unknown): Promise<any> {
-  const token = process.env.BASTRA_API_TOKEN || await getApiToken();
+export async function rulebookCliCall(
+  tool: "list_rules" | "load_memory" | "edit_memory" | "review_save_suggestion",
+  input: unknown
+): Promise<any> {
+  const token = process.env.BASTRA_API_TOKEN || (await getApiToken());
   const response = await fetch(`${resolveDaemonEndpoint().baseUrl}/api/v1/${tool}`, {
-    method: "POST", headers: { "Content-Type": "application/json", "x-bastra-project": encodeURIComponent(projectForFilter(process.cwd()) ?? ""), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    body: JSON.stringify(input), signal: AbortSignal.timeout(10000),
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-bastra-project": encodeURIComponent(projectForFilter(process.cwd()) ?? ""),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(input),
+    signal: AbortSignal.timeout(10000),
   });
-  const body = await response.json() as any;
+  const body = (await response.json()) as any;
   if (!response.ok) throw new Error(body.error ?? `HTTP ${response.status}`);
   return body;
 }
@@ -33,11 +42,19 @@ export async function cmdRulebookProposals(words: string[], dryRun: boolean): Pr
       return 0;
     }
     if (!id || !revision || origin !== "user-directed" || extra.length) {
-      throw new Error("usage: bastra rules confirm|reject <id> <revision> user-directed — only after the user's explicit decision on the displayed proposal");
+      throw new Error(
+        "usage: bastra rules confirm|reject <id> <revision> user-directed — only after the user's explicit decision on the displayed proposal"
+      );
     }
-    const input = { id, expected_revision: revision,
-      rulebook_decision: { decision: operation === "confirm" ? "accept" : "reject", write_origin: "user-directed" } };
-    if (dryRun) { process.stdout.write(JSON.stringify({ dry_run: true, tool: "edit_memory", input }) + "\n"); return 0; }
+    const input = {
+      id,
+      expected_revision: revision,
+      rulebook_decision: { decision: operation === "confirm" ? "accept" : "reject", write_origin: "user-directed" },
+    };
+    if (dryRun) {
+      process.stdout.write(JSON.stringify({ dry_run: true, tool: "edit_memory", input }) + "\n");
+      return 0;
+    }
     const result = await rulebookCliCall("edit_memory", input);
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
     return 0;

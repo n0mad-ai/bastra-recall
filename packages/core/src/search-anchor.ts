@@ -35,10 +35,7 @@ import { PHRASE_STOPWORDS, MIN_SIGNIFICANT_TOKEN_LEN } from "./stopwords.js";
  * `recall_when_expanded_flat` zählt weiterhin NICHT: doc2query-generiert, vom
  * Autor nicht als Trigger geschrieben (#148).
  */
-export function matchedRecallWhen(
-  r: { match?: Record<string, string[]> },
-  queryTerms: ReadonlySet<string>,
-): boolean {
+export function matchedRecallWhen(r: { match?: Record<string, string[]> }, queryTerms: ReadonlySet<string>): boolean {
   const match = r.match;
   if (!match || queryTerms.size === 0) return false;
   for (const [term, fields] of Object.entries(match)) {
@@ -105,7 +102,7 @@ export function anchorStrength(
   r: { id: unknown; match?: Record<string, string[]> },
   queryTerms: ReadonlySet<string>,
   recallWhenDocFreq: (term: string) => number,
-  phrasesOf: (id: string) => string[],
+  phrasesOf: (id: string) => string[]
 ): "strong" | "weak" | undefined {
   const match = r.match;
   if (!match || queryTerms.size === 0) return undefined;

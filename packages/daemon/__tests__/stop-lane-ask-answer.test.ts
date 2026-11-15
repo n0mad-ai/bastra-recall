@@ -54,9 +54,13 @@ const toolResult = (id: string, content: string, extra: object = {}): object => 
   ...extra,
 });
 const answered = (id: string): object =>
-  toolResult(id, `User has answered your questions: "${QUESTION}"="${ANSWER}". You can now continue with the user's answers in mind.`, {
-    toolUseResult: { questions: [{ question: QUESTION }], answers: { [QUESTION]: ANSWER } },
-  });
+  toolResult(
+    id,
+    `User has answered your questions: "${QUESTION}"="${ANSWER}". You can now continue with the user's answers in mind.`,
+    {
+      toolUseResult: { questions: [{ question: QUESTION }], answers: { [QUESTION]: ANSWER } },
+    }
+  );
 
 const turnsOf = (rows: object[]) => parseTranscriptFile(rows.map((r) => JSON.stringify(r)).join("\n"));
 
@@ -90,7 +94,10 @@ test("#701 — a declined question, or a pair no AskUserQuestion call precedes, 
     user("Zeig mir die Konfiguration."),
     {
       type: "assistant",
-      message: { role: "assistant", content: [{ type: "tool_use", id: "toolu_03", name: "Bash", input: { command: "cat .env" } }] },
+      message: {
+        role: "assistant",
+        content: [{ type: "tool_use", id: "toolu_03", name: "Bash", input: { command: "cat .env" } }],
+      },
     },
     toolResult("toolu_03", `"${QUESTION}"="${ANSWER}"`),
   ]);
@@ -98,9 +105,16 @@ test("#701 — a declined question, or a pair no AskUserQuestion call precedes, 
 });
 
 test("#701 — an answer older than the last five user turns is out of the window", () => {
-  const later = ["eins", "zwei", "drei", "vier", "fünf"].flatMap((t) => [user(`weiter mit schritt ${t}`), assistant("erledigt")]);
+  const later = ["eins", "zwei", "drei", "vier", "fünf"].flatMap((t) => [
+    user(`weiter mit schritt ${t}`),
+    assistant("erledigt"),
+  ]);
   const turns = turnsOf([user("Richte das Mono-Repo ein."), ask("toolu_04"), answered("toolu_04"), ...later]);
   assert.equal(detectArchitectureDecision(turns), null);
   // …and inside the window it still fires.
-  assert.ok(detectArchitectureDecision(turnsOf([user("Richte das Mono-Repo ein."), ask("toolu_04"), answered("toolu_04"), ...later.slice(0, 8)])));
+  assert.ok(
+    detectArchitectureDecision(
+      turnsOf([user("Richte das Mono-Repo ein."), ask("toolu_04"), answered("toolu_04"), ...later.slice(0, 8)])
+    )
+  );
 });

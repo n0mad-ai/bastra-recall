@@ -127,10 +127,7 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
     // covers the body read too — a server can stall after the headers.
     const ctrl = new AbortController();
     const timeoutMs = embedDeadlineMs(this.timeoutMs, texts.length);
-    const tid = setTimeout(
-      () => ctrl.abort(new Error(`OpenAI embed timed out after ${timeoutMs} ms`)),
-      timeoutMs,
-    );
+    const tid = setTimeout(() => ctrl.abort(new Error(`OpenAI embed timed out after ${timeoutMs} ms`)), timeoutMs);
     let json: { data: Array<{ embedding: number[]; index: number }> };
     try {
       const resp = await fetch("https://api.openai.com/v1/embeddings", {
@@ -217,11 +214,7 @@ const keepAliveHttps = new https.Agent({ keepAlive: true });
  * opens a fresh one for the next call, so the keep-alive design above is
  * unaffected on the normal path.
  */
-function postJsonKeepAlive(
-  url: string,
-  body: string,
-  timeoutMs: number,
-): Promise<{ status: number; body: string }> {
+function postJsonKeepAlive(url: string, body: string, timeoutMs: number): Promise<{ status: number; body: string }> {
   const target = new URL(url);
   const secure = target.protocol === "https:";
   const request = secure ? https.request : http.request;
@@ -253,7 +246,7 @@ function postJsonKeepAlive(
           resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") });
         });
         res.on("error", fail);
-      },
+      }
     );
     tid = setTimeout(() => {
       req.destroy(new Error(`Ollama embed timed out after ${timeoutMs} ms (${url})`));
@@ -315,20 +308,14 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
     const url = this.baseURL.replace(/\/+$/, "") + "/api/embed";
     const body: Record<string, unknown> = { model: this.model, input: texts };
     if (this.keepAlive !== undefined) body.keep_alive = this.keepAlive;
-    const resp = await postJsonKeepAlive(
-      url,
-      JSON.stringify(body),
-      embedDeadlineMs(this.timeoutMs, texts.length),
-    );
+    const resp = await postJsonKeepAlive(url, JSON.stringify(body), embedDeadlineMs(this.timeoutMs, texts.length));
     if (resp.status < 200 || resp.status >= 300) {
-      throw new Error(
-        `Ollama embed HTTP ${resp.status} (${url}): ${resp.body.slice(0, 200)}`,
-      );
+      throw new Error(`Ollama embed HTTP ${resp.status} (${url}): ${resp.body.slice(0, 200)}`);
     }
     const json = JSON.parse(resp.body) as { embeddings: number[][]; load_duration?: number };
     if (!Array.isArray(json.embeddings) || json.embeddings.length !== texts.length) {
       throw new Error(
-        `Ollama embed: expected ${texts.length} embeddings, got ${Array.isArray(json.embeddings) ? json.embeddings.length : "none"}`,
+        `Ollama embed: expected ${texts.length} embeddings, got ${Array.isArray(json.embeddings) ? json.embeddings.length : "none"}`
       );
     }
     return {
@@ -337,9 +324,7 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
       // 0: „der Server sagt nichts" und „es musste nichts geladen werden" sind
       // verschiedene Aussagen, und nur die zweite wäre eine Messung.
       loadMs:
-        typeof json.load_duration === "number" && Number.isFinite(json.load_duration)
-          ? json.load_duration / 1e6
-          : null,
+        typeof json.load_duration === "number" && Number.isFinite(json.load_duration) ? json.load_duration / 1e6 : null,
     };
   }
 }

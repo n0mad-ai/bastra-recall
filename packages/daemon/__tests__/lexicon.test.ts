@@ -50,7 +50,7 @@ test("lexicon (#476): a file EXTENDS the defaults, comments/blanks ignored, dupe
         "ach-nein   # inline comment stripped",
         "verdammt", // already a default → must not duplicate
       ].join("\n"),
-      "utf8",
+      "utf8"
     );
     const cues = frustrationCues();
     // defaults still present, in front
@@ -115,7 +115,7 @@ test("lexicon: a cue that is not a valid regex, or hides a quantified group (ReD
     await writeFile(
       join(dir, "frustration.txt"),
       ["(unclosed", "(a+)+$", "x".repeat(400), "честный-кью"].join("\n"),
-      "utf8",
+      "utf8"
     );
     const cues = frustrationCues();
     assert.deepEqual(cues.slice(0, DEFAULT_FRUSTRATION_CUES.length), [...DEFAULT_FRUSTRATION_CUES]);
@@ -145,7 +145,13 @@ test("lexicon (#517): overlapping repeats without a group are dropped — the is
       String.raw`\P{L}*\P{L}*x`,
       String.raw`\u{37}*\u{37}*x`,
     ];
-    const good = [String.raw`\w+x`, String.raw`\p{N}+x`, String.raw`\w{0,8}\w{0,8}x`, String.raw`schon\s+sowas\s+wieder\s+hier`, String.raw`ha\*ha[*+?]{2}`];
+    const good = [
+      String.raw`\w+x`,
+      String.raw`\p{N}+x`,
+      String.raw`\w{0,8}\w{0,8}x`,
+      String.raw`schon\s+sowas\s+wieder\s+hier`,
+      String.raw`ha\*ha[*+?]{2}`,
+    ];
     await writeFile(join(dir, "frustration.txt"), [...bad, ...good].join("\n"), "utf8");
     const cues = frustrationCues();
     for (const b of bad) assert.ok(!cues.includes(b), `polynomial cue reached the live lexicon: ${b}`);
@@ -181,7 +187,7 @@ test(
       execFileSync("mkfifo", [join(dir, "frustration.txt")]);
       assert.deepEqual(frustrationCues(), [...DEFAULT_FRUSTRATION_CUES]);
     });
-  },
+  }
 );
 
 test("lexicon (#517): a file of exactly 64 KiB keeps its last complete line", async () => {
@@ -197,7 +203,6 @@ test("lexicon (#517): a file of exactly 64 KiB keeps its last complete line", as
     assert.ok(!over.includes("latecue") && !over.includes("latecuex"));
   });
 });
-
 
 test("#1307 previous convention cues ship DE/EN and accept other languages via user data", async () => {
   await withLexiconDir(async (dir) => {

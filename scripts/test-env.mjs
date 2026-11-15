@@ -72,7 +72,11 @@ if (!process.env.BASTRA_TEST_RUN_ROOT) {
   // Tool-specific homes can bypass os.homedir(). A child inside this run may
   // deliberately supply its own fixture, but developer exports never reach it.
   for (const key of Object.keys(process.env)) {
-    if (["CLAUDE_CONFIG_DIR", "CODEX_HOME", "CODEX_THREAD_ID", "APPDATA", "LOCALAPPDATA"].includes(key) || key.startsWith("XDG_")) delete process.env[key];
+    if (
+      ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "CODEX_THREAD_ID", "APPDATA", "LOCALAPPDATA"].includes(key) ||
+      key.startsWith("XDG_")
+    )
+      delete process.env[key];
   }
   const root = mkdtempSync(join(tmpdir(), "bastra-test-run-"));
   process.env.BASTRA_TEST_RUN_ROOT = root;
@@ -91,9 +95,12 @@ if (!process.env.BASTRA_TEST_RUN_ROOT) {
   process.env.BASTRA_COMMONS_PATH = join(runHome, ".bastra", "commons");
   // Obtain a currently unused loopback port; never probe the operator's daemon.
   const reservation = createServer();
-  await new Promise((resolve, reject) => { reservation.once("error", reject); reservation.listen(0, "127.0.0.1", resolve); });
+  await new Promise((resolve, reject) => {
+    reservation.once("error", reject);
+    reservation.listen(0, "127.0.0.1", resolve);
+  });
   const port = reservation.address().port;
-  await new Promise(resolve => reservation.close(resolve));
+  await new Promise((resolve) => reservation.close(resolve));
   process.env.BASTRA_DAEMON_URL = `http://127.0.0.1:${port}`;
   process.env.BASTRA_HTTP_PORT = String(port);
   // CLI grandchildren do not inherit --import arguments, but do inherit this.
@@ -111,13 +118,32 @@ if (!process.env.BASTRA_TEST_RUN_ROOT) {
   process.env.BASTRA_ARCHIVE_DIR = join(root, "archive");
   const removeRoot = () => {
     // This is checked once for the entire process tree, before cleanup.
-    const expected = new Set([".bastra", ".claude", ".claude.json", ".codex", ".cursor", ".cmuxterm", ".config", ".cache", ".npm", "Library", "AppData"]);
-    const unexpected = existsSync(runHome) ? readdirSync(runHome).filter(name => !expected.has(name)) : [];
+    const expected = new Set([
+      ".bastra",
+      ".claude",
+      ".claude.json",
+      ".codex",
+      ".cursor",
+      ".cmuxterm",
+      ".config",
+      ".cache",
+      ".npm",
+      "Library",
+      "AppData",
+    ]);
+    const unexpected = existsSync(runHome) ? readdirSync(runHome).filter((name) => !expected.has(name)) : [];
     const cacheDir = join(runHome, ".cache");
-    if (existsSync(cacheDir)) unexpected.push(...readdirSync(cacheDir).filter(name => name !== "deno").map(name => `.cache/${name}`));
+    if (existsSync(cacheDir))
+      unexpected.push(
+        ...readdirSync(cacheDir)
+          .filter((name) => name !== "deno")
+          .map((name) => `.cache/${name}`)
+      );
     const blocked = existsSync(join(root, "blocked-daemon-connections.jsonl"));
     if (unexpected.length || blocked) {
-      process.stderr.write(`test isolation audit failed: unexpected home entries ${JSON.stringify(unexpected)}; blocked daemon connection ${blocked}\n`);
+      process.stderr.write(
+        `test isolation audit failed: unexpected home entries ${JSON.stringify(unexpected)}; blocked daemon connection ${blocked}\n`
+      );
       process.exitCode = 1;
     }
     try {

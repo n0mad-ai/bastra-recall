@@ -55,17 +55,17 @@ async function vaultWithMemories(): Promise<{ vault: Vault; dir: string }> {
   await writeFile(
     join(dir, "a.md"),
     memo("a", "telescope assembly manual", "orbital docking procedure", "Notes on telescope assembly."),
-    "utf8",
+    "utf8"
   );
   await writeFile(
     join(dir, "b.md"),
     memo("b", "kitchen inventory", "when cooking dinner", "Pots, pans and a telescope-shaped whisk."),
-    "utf8",
+    "utf8"
   );
   await writeFile(
     join(dir, "c.md"),
     memo("c", "annual insurance policy", "when the premium is due", "Allianz, policy 4711."),
-    "utf8",
+    "utf8"
   );
   const vault = new Vault(dir);
   await vault.init();
@@ -95,13 +95,7 @@ function ranking(idx: SearchIndex, query: string): string {
     .join(" | ");
 }
 
-const QUERIES = [
-  "telescope assembly",
-  "orbital docking",
-  "insurance policy premium",
-  "kitchen",
-  "telescope",
-];
+const QUERIES = ["telescope assembly", "orbital docking", "insurance policy premium", "kitchen", "telescope"];
 
 // ── Der Kernpfad: ohne Projektion ändert sich nichts ─────────────
 
@@ -144,7 +138,7 @@ test("Boost 0 heißt aus: eine geladene Projektion ohne Gewicht ändert nichts",
     assert.equal(
       aus.recall("Versicherungsunterlagen", { k: 10 }).length,
       0,
-      "ein Cue-Term darf bei Gewicht 0 keinen Kandidaten öffnen",
+      "ein Cue-Term darf bei Gewicht 0 keinen Kandidaten öffnen"
     );
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
@@ -177,7 +171,7 @@ test("mit Gewicht öffnet ein Cue einen Kandidaten, den kein anderes Feld trägt
     assert.equal(
       ohne.recall("Versicherungsunterlagen", { k: 10 }).length,
       0,
-      "Vorbedingung: der Cue-Term steht in keinem der sieben Felder",
+      "Vorbedingung: der Cue-Term steht in keinem der sieben Felder"
     );
 
     const mit = new SearchIndex(vault, {
@@ -232,7 +226,7 @@ test("ein Memory ohne Cues bleibt unberührt, wenn andere welche haben", async (
     const hits = mit.recall("orbital docking", { k: 10 });
     assert.ok(
       hits.some((h) => h.id === "a"),
-      "der Treffer über recall_when steht weiterhin",
+      "der Treffer über recall_when steht weiterhin"
     );
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
@@ -254,7 +248,7 @@ test("ein Cue-Treffer ist kein recall_when-Treffer", async () => {
     assert.notEqual(
       hit.matched_recall_when,
       true,
-      "§11.4: die beiden Vertrauensklassen werden nie zu einem Feld verschmolzen",
+      "§11.4: die beiden Vertrauensklassen werden nie zu einem Feld verschmolzen"
     );
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });

@@ -197,15 +197,12 @@ export function judge(rows, registration) {
   const recallCi = bootstrapStat(
     rows,
     (sample) => mean(sample.map((r) => r[DELIVERED_ARM].recall - r[CONTROL_ARM].recall)),
-    seed,
+    seed
   );
 
-  const bothSolved = rows.filter(
-    (r) => r[CONTROL_ARM].recall >= SOLVED && r[DELIVERED_ARM].recall >= SOLVED,
-  );
+  const bothSolved = rows.filter((r) => r[CONTROL_ARM].recall >= SOLVED && r[DELIVERED_ARM].recall >= SOLVED);
   const ratioOf = (sample) =>
-    median(sample.map((r) => r[DELIVERED_ARM].inputTokens)) /
-    median(sample.map((r) => r[CONTROL_ARM].inputTokens));
+    median(sample.map((r) => r[DELIVERED_ARM].inputTokens)) / median(sample.map((r) => r[CONTROL_ARM].inputTokens));
   const contextRatio = ratioOf(bothSolved);
   const contextCi = bothSolved.length === 0 ? null : bootstrapStat(bothSolved, ratioOf, seed);
 
@@ -282,7 +279,7 @@ export function blindSpotReport(rows, arms) {
           subset.map((r) => {
             const truth = new Set(r[key]);
             return r[arm].named.filter((f) => truth.has(f)).length / truth.size;
-          }),
+          })
         );
   return {
     blindSpotScenarios: blind.map((r) => r.id),
@@ -295,7 +292,7 @@ export function blindSpotReport(rows, arms) {
           graphReachable: recallOf(reachable, arm, "reachableTruthFiles"),
           blindSpot: recallOf(blind, arm, "blindTruthFiles"),
         },
-      ]),
+      ])
     ),
     precision: Object.fromEntries(
       arms.map((arm) => [
@@ -304,7 +301,7 @@ export function blindSpotReport(rows, arms) {
           graphReachable: reachable.length === 0 ? null : mean(reachable.map((r) => r[arm].precision)),
           blindSpot: blind.length === 0 ? null : mean(blind.map((r) => r[arm].precision)),
         },
-      ]),
+      ])
     ),
     $comment:
       "Under tests/v2 each broken test file is itself a truth file, so blindSpotTests partitions the " +
@@ -323,16 +320,16 @@ export function buildReport(scenarioFile, readArm, readDelivered, registration, 
   ) {
     throw new Error(
       `scenario registration version ${scenarioFile.registration_version} does not match ` +
-        `${registrationId} version ${registration.registration_version}`,
+        `${registrationId} version ${registration.registration_version}`
     );
   }
   const wrongTruth = (scenarioFile.scenarios ?? []).filter(
-    (s) => s.truthRule !== undefined && s.truthRule !== registration.unit_and_truth?.truth_rule,
+    (s) => s.truthRule !== undefined && s.truthRule !== registration.unit_and_truth?.truth_rule
   );
   if (wrongTruth.length > 0) {
     throw new Error(
       `${wrongTruth.length} scenarios do not carry registered truth rule ` +
-        `${registration.unit_and_truth?.truth_rule}`,
+        `${registration.unit_and_truth?.truth_rule}`
     );
   }
   const arms = armIdsOf(registration, registrationId);
@@ -410,7 +407,7 @@ export function buildReport(scenarioFile, readArm, readDelivered, registration, 
           precision: per(arm, (a) => a.precision),
           inputTokensMedian: median(rows.map((r) => r[arm].inputTokens)),
         },
-      ]),
+      ])
     ),
     context: {
       status: verdict.context.status,
@@ -444,8 +441,7 @@ export function buildReport(scenarioFile, readArm, readDelivered, registration, 
         ? median(rows.map((r) => r.P.inputTokens)) / median(rows.map((r) => r[DELIVERED_ARM].inputTokens))
         : null,
       context_ratio_all_scenarios:
-        median(rows.map((r) => r[DELIVERED_ARM].inputTokens)) /
-        median(rows.map((r) => r[CONTROL_ARM].inputTokens)),
+        median(rows.map((r) => r[DELIVERED_ARM].inputTokens)) / median(rows.map((r) => r[CONTROL_ARM].inputTokens)),
       $comment:
         "The gated context ratio covers only scenarios BOTH arms solved (recall >= 0.8), so that a " +
         "cheap wrong answer cannot win on cost. These cover everything and are reported for completeness.",
@@ -474,7 +470,7 @@ function main() {
       return existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : null;
     },
     registration,
-    registrationId,
+    registrationId
   );
   const recordedPin = readBuildPin(OUT);
   const buildPin =

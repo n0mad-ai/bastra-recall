@@ -77,7 +77,7 @@ describe("the arms and the thresholds come from the registration", () => {
     assert.throws(
       () => armIdsOf({ arms: {} }, "some-other-registration"),
       /lists no arms\.ids/,
-      "a measurement whose arms are not written down is a measurement the runner chose",
+      "a measurement whose arms are not written down is a measurement the runner chose"
     );
   });
 
@@ -112,7 +112,7 @@ describe("the arms and the thresholds come from the registration", () => {
         block_use_min: 0.5,
         precision_loss_max: 0.05,
         recall_guard_ci_lower: 0,
-      },
+      }
     );
     assert.equal(DELIVERED.registration_version, 3);
     // The population has been mined, adjudicated and frozen, so the pending
@@ -143,10 +143,10 @@ describe("the arms and the thresholds come from the registration", () => {
   });
 
   test("both verdicts carry the two guards, and neither guard is a verdict of its own", () => {
-    assert.deepEqual(Object.keys(DELIVERED.verdicts).filter((k) => !k.startsWith("$")), [
-      "context",
-      "use",
-    ]);
+    assert.deepEqual(
+      Object.keys(DELIVERED.verdicts).filter((k) => !k.startsWith("$")),
+      ["context", "use"]
+    );
     for (const verdict of ["context", "use"]) {
       const criteria = DELIVERED.verdicts[verdict].criteria as string[];
       assert.ok(criteria.includes("precision_loss_max"), `${verdict} carries the precision guard`);
@@ -198,7 +198,7 @@ describe("the build pin knows which registration it pinned", () => {
     assert.deepEqual(
       frozenSurfaceMismatches(built, DELIVERED),
       [],
-      "run `npm run build` — arm D would otherwise be served a block this registration never froze",
+      "run `npm run build` — arm D would otherwise be served a block this registration never froze"
     );
     // Every `*_sha256` field of the registration is checked, so a field added
     // to the registration cannot be silently ignored by the comparison.
@@ -357,19 +357,14 @@ describe("arm D is rendered by the product's prompt lane", () => {
     const { tree, graphRoot } = await fixture();
     try {
       const task = `What breaks if I change \`touched\` in ${FILE_A}?`;
-      const block = await deliveredBlockFor(
-        { file: FILE_A, diff: FORWARD_DIFF },
-        tree,
-        graphRoot,
-        task,
-      );
+      const block = await deliveredBlockFor({ file: FILE_A, diff: FORWARD_DIFF }, tree, graphRoot, task);
       assert.ok(block !== null, "the graph indexes the file and something depends on it");
       assert.equal(block.basis, "symbols", "the prompt named the symbol inside the named file");
       assert.deepEqual(block.changedSymbols, ["touched"]);
       assert.deepEqual(
         block.listed,
         [FILE_B],
-        "consumer.ts depends on unrelated(), which this diff does not touch — the whole point of narrowing",
+        "consumer.ts depends on unrelated(), which this diff does not touch — the whole point of narrowing"
       );
       assert.match(block.note, /You asked what a change here would affect/);
       assert.match(block.note, /^<code-impact file="packages\/a\/src\/thing\.ts" basis="symbols" files="1"/);
@@ -384,7 +379,7 @@ describe("arm D is rendered by the product's prompt lane", () => {
       assert.equal(
         prompt.replace(block.note, "").trim(),
         task,
-        "nothing is added around the block — an instruction here would measure an instruction the product does not give",
+        "nothing is added around the block — an instruction here would measure an instruction the product does not give"
       );
     } finally {
       rmSync(tree, { recursive: true, force: true });
@@ -401,7 +396,7 @@ describe("arm D is rendered by the product's prompt lane", () => {
         { file: FILE_A, diff: FORWARD_DIFF },
         tree,
         graphRoot,
-        `What breaks if I change ${FILE_A}?`,
+        `What breaks if I change ${FILE_A}?`
       );
       assert.ok(block !== null);
       assert.equal(block.basis, "whole_file");
@@ -484,9 +479,9 @@ describe("arm D is rendered by the product's prompt lane", () => {
             { file: FILE_A, diff: FORWARD_DIFF },
             tree,
             graphRoot,
-            `What breaks if I change \`touched\` in ${FILE_A}?`,
+            `What breaks if I change \`touched\` in ${FILE_A}?`
           ),
-        /BASTRA_CODE_AWARENESS=off/,
+        /BASTRA_CODE_AWARENESS=off/
       );
     } finally {
       if (before === undefined) delete process.env.BASTRA_CODE_AWARENESS;
@@ -507,7 +502,7 @@ describe("arm D is rendered by the product's prompt lane", () => {
         { file: "packages/z/src/unknown.ts", diff: FORWARD_DIFF },
         tree,
         graphRoot,
-        "What breaks if I change packages/z/src/unknown.ts?",
+        "What breaks if I change packages/z/src/unknown.ts?"
       );
       assert.equal(block, null, "the product is silent here, so the arm gets the bare prompt");
       assert.equal(promptWithDeliveredBlock("THE TASK", null), "THE TASK");
@@ -531,7 +526,7 @@ describe("block use is measured against what the block PRINTED", () => {
     assert.equal(
       blockUse(["a.ts"], ["a.ts", "b.ts", "c.ts"]),
       1,
-      "the denominator is the block, not the answer — this measures use of the block",
+      "the denominator is the block, not the answer — this measures use of the block"
     );
   });
 
@@ -579,21 +574,28 @@ describe("the blind-spot split is per scenario, and says when it cannot be", () 
 
   test("recall is reported for both halves and gated in neither", () => {
     const reachable = (id: string) => ({
-      id, repo: null, file: `${id}.ts`, blindSpot: false, blindSpotPartial: false,
-      blindTruthFiles: [], reachableTruthFiles: ["r.test.ts"],
+      id,
+      repo: null,
+      file: `${id}.ts`,
+      blindSpot: false,
+      blindSpotPartial: false,
+      blindTruthFiles: [],
+      reachableTruthFiles: ["r.test.ts"],
       A: { named: ["r.test.ts"], recall: 1, precision: 1 },
       D: { named: ["r.test.ts"], recall: 1, precision: 1 },
     });
     const blind = {
-      id: "S3", repo: null, file: "S3.ts", blindSpot: true, blindSpotPartial: false,
-      blindTruthFiles: ["b1.test.ts", "b2.test.ts"], reachableTruthFiles: [],
+      id: "S3",
+      repo: null,
+      file: "S3.ts",
+      blindSpot: true,
+      blindSpotPartial: false,
+      blindTruthFiles: ["b1.test.ts", "b2.test.ts"],
+      reachableTruthFiles: [],
       A: { named: ["b1.test.ts"], recall: 0.5, precision: 1 },
       D: { named: [], recall: 0, precision: 1 },
     };
-    const report = blindSpotReport(
-      [reachable("S1"), reachable("S2"), blind],
-      ["A", "D"],
-    );
+    const report = blindSpotReport([reachable("S1"), reachable("S2"), blind], ["A", "D"]);
     assert.deepEqual(report.blindSpotScenarios, ["S3"]);
     assert.equal(report.graphReachableScenarios, 2);
     assert.deepEqual(report.partialBlindSpotScenarios, []);
@@ -699,9 +701,7 @@ describe("the two verdicts, decided by the registered numbers", () => {
 
   test("the context ratio is gated on the scenarios BOTH arms solved", () => {
     // One arm wrong and cheap: it must not be allowed to win the ratio.
-    const mixed = rows(45).map((r, i) =>
-      i < 20 ? { ...r, D: { ...r.D, recall: 0.2, inputTokens: 100 } } : r,
-    );
+    const mixed = rows(45).map((r, i) => (i < 20 ? { ...r, D: { ...r.D, recall: 0.2, inputTokens: 100 } } : r));
     const v = judge(mixed, DELIVERED);
     assert.equal(v.context.bothSolved, 25);
     assert.ok(v.context.checks.context_ratio.value > 0.5, "the cheap wrong answers are excluded");
@@ -723,49 +723,58 @@ describe("the finished v6 measurement is unaffected", () => {
     ? JSON.parse(readFileSync(join(V6_ARCHIVE, "report.json"), "utf8"))
     : null;
 
-  test("its scorer reproduces its report from its archive", { skip: stored === null && "no v6 archive on this machine" }, () => {
-    // Scored through a directory of SYMLINKS, never the archive itself: the
-    // scorer writes report.json where it is pointed and the record on disk is
-    // the thing being compared against. The last path segment is the archive's
-    // own name because `treeDirOf` derives the tree root from it, and an answer
-    // carrying an absolute tree path is normalised against that.
-    const box = mkdtempSync(join(tmpdir(), "code-roi-v6-replay-"));
-    const out = join(box, "code-roi-v4-bastra-io");
-    try {
-      mkdirSync(out);
-      for (const entry of ["scenarios.json", "runs", "build-pin.json"]) {
-        symlinkSync(join(V6_ARCHIVE, entry), join(out, entry));
+  test(
+    "its scorer reproduces its report from its archive",
+    { skip: stored === null && "no v6 archive on this machine" },
+    () => {
+      // Scored through a directory of SYMLINKS, never the archive itself: the
+      // scorer writes report.json where it is pointed and the record on disk is
+      // the thing being compared against. The last path segment is the archive's
+      // own name because `treeDirOf` derives the tree root from it, and an answer
+      // carrying an absolute tree path is normalised against that.
+      const box = mkdtempSync(join(tmpdir(), "code-roi-v6-replay-"));
+      const out = join(box, "code-roi-v4-bastra-io");
+      try {
+        mkdirSync(out);
+        for (const entry of ["scenarios.json", "runs", "build-pin.json"]) {
+          symlinkSync(join(V6_ARCHIVE, entry), join(out, entry));
+        }
+        execFileSync("npx", ["tsx", "packages/eval/code-roi/v2/evaluate-v4.mjs"], {
+          cwd: REPO_ROOT,
+          env: { ...process.env, CODE_ROI_OUT: out },
+          encoding: "utf8",
+          stdio: "pipe",
+        });
+        const replayed = JSON.parse(readFileSync(join(out, "report.json"), "utf8"));
+        assert.deepEqual(replayed.verdicts, stored.verdicts, "adoption pass, effect fail — unchanged");
+        assert.equal(replayed.n, stored.n);
+        assert.deepEqual(replayed.means, stored.means);
+        assert.deepEqual(replayed.checks, stored.checks);
+        assert.deepEqual(replayed.effect, stored.effect);
+        assert.deepEqual(replayed.adoption, stored.adoption);
+        assert.deepEqual(replayed.notGated, stored.notGated);
+        assert.deepEqual(replayed.byRepo, stored.byRepo);
+        assert.equal(replayed.cost.usd, stored.cost.usd);
+        assert.equal(
+          replayed.mixed_builds.mixed_builds,
+          false,
+          "adding registrationId outside the pin signature left every transcript's stamp intact"
+        );
+        assert.equal(replayed.build_pin.signature, stored.build_pin.signature);
+      } finally {
+        rmSync(box, { recursive: true, force: true });
       }
-      execFileSync(
-        "npx",
-        ["tsx", "packages/eval/code-roi/v2/evaluate-v4.mjs"],
-        { cwd: REPO_ROOT, env: { ...process.env, CODE_ROI_OUT: out }, encoding: "utf8", stdio: "pipe" },
-      );
-      const replayed = JSON.parse(readFileSync(join(out, "report.json"), "utf8"));
-      assert.deepEqual(replayed.verdicts, stored.verdicts, "adoption pass, effect fail — unchanged");
-      assert.equal(replayed.n, stored.n);
-      assert.deepEqual(replayed.means, stored.means);
-      assert.deepEqual(replayed.checks, stored.checks);
-      assert.deepEqual(replayed.effect, stored.effect);
-      assert.deepEqual(replayed.adoption, stored.adoption);
-      assert.deepEqual(replayed.notGated, stored.notGated);
-      assert.deepEqual(replayed.byRepo, stored.byRepo);
-      assert.equal(replayed.cost.usd, stored.cost.usd);
-      assert.equal(
-        replayed.mixed_builds.mixed_builds,
-        false,
-        "adding registrationId outside the pin signature left every transcript's stamp intact",
-      );
-      assert.equal(replayed.build_pin.signature, stored.build_pin.signature);
-    } finally {
-      rmSync(box, { recursive: true, force: true });
     }
-  });
+  );
 
-  test("its scenario file still names arms the runner knows", { skip: stored === null && "no v6 archive on this machine" }, () => {
-    const { arms, registration } = JSON.parse(readFileSync(join(V6_ARCHIVE, "scenarios.json"), "utf8"));
-    assert.deepEqual(arms, V6_ARM_IDS);
-    assert.equal(registration, undefined, "v6's scenario file predates the field and must not need it");
-    assert.equal(resolveRegistrationId(V6_ARCHIVE), DEFAULT_REGISTRATION_ID);
-  });
+  test(
+    "its scenario file still names arms the runner knows",
+    { skip: stored === null && "no v6 archive on this machine" },
+    () => {
+      const { arms, registration } = JSON.parse(readFileSync(join(V6_ARCHIVE, "scenarios.json"), "utf8"));
+      assert.deepEqual(arms, V6_ARM_IDS);
+      assert.equal(registration, undefined, "v6's scenario file predates the field and must not need it");
+      assert.equal(resolveRegistrationId(V6_ARCHIVE), DEFAULT_REGISTRATION_ID);
+    }
+  );
 });

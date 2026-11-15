@@ -44,8 +44,15 @@ function eventLogLines(reaches = 2, ts = new Date().toISOString()): string {
   const lines: object[] = [];
   for (let i = 1; i <= reaches; i++) {
     lines.push(
-      { kind: "hook_recall", ts, recall_id: `r${i}`, query: "warum schließt sich mein Fenster von allein", origin: "owner", tool_name: "UserPromptSubmit" },
-      { kind: "recall_episode", ts, recall_id: `r${i}`, memory_id: "panel-dismiss", acted_on: true },
+      {
+        kind: "hook_recall",
+        ts,
+        recall_id: `r${i}`,
+        query: "warum schließt sich mein Fenster von allein",
+        origin: "owner",
+        tool_name: "UserPromptSubmit",
+      },
+      { kind: "recall_episode", ts, recall_id: `r${i}`, memory_id: "panel-dismiss", acted_on: true }
     );
   }
   return lines.map((e) => JSON.stringify(e)).join("\n") + "\n";
@@ -109,7 +116,9 @@ test("runInBandMint: empty log still records the run (frozen-pool visibility)", 
   }
 });
 
-async function withMintDirs(fn: (d: { vault: Vault; logDir: string; bridgesRoot: string }) => Promise<void>): Promise<void> {
+async function withMintDirs(
+  fn: (d: { vault: Vault; logDir: string; bridgesRoot: string }) => Promise<void>
+): Promise<void> {
   const vaultDir = await mkdtemp(join(tmpdir(), "bastra-mint-vault-"));
   const logDir = await mkdtemp(join(tmpdir(), "bastra-mint-log-"));
   const bridgesRoot = await mkdtemp(join(tmpdir(), "bastra-mint-bridges-"));
@@ -174,10 +183,20 @@ test("#672: a second reach inside the window confirms the bridge — it outlives
     await runInBandMint({ vault, bridgesRoot, trigger: "cli", logDir });
     const secondTs = new Date().toISOString();
     // a second, distinct reach (own recall_id) onto the same bridge
-    const lines = [
-      { kind: "hook_recall", ts: secondTs, recall_id: "r2", query: "warum schließt sich mein Fenster von allein", origin: "owner", tool_name: "UserPromptSubmit" },
-      { kind: "recall_episode", ts: secondTs, recall_id: "r2", memory_id: "panel-dismiss", acted_on: true },
-    ].map((e) => JSON.stringify(e)).join("\n") + "\n";
+    const lines =
+      [
+        {
+          kind: "hook_recall",
+          ts: secondTs,
+          recall_id: "r2",
+          query: "warum schließt sich mein Fenster von allein",
+          origin: "owner",
+          tool_name: "UserPromptSubmit",
+        },
+        { kind: "recall_episode", ts: secondTs, recall_id: "r2", memory_id: "panel-dismiss", acted_on: true },
+      ]
+        .map((e) => JSON.stringify(e))
+        .join("\n") + "\n";
     await writeFile(join(logDir, `events-${secondTs.slice(0, 10)}.jsonl`), lines, { encoding: "utf8", flag: "a" });
     await runInBandMint({ vault, bridgesRoot, trigger: "daemon-interval", logDir });
     let [b] = await bridgeFiles(bridgesRoot);
@@ -186,7 +205,13 @@ test("#672: a second reach inside the window confirms the bridge — it outlives
 
     // long past the TTL, and the first reach has aged out of the log: still confirmed, still there
     await rm(join(logDir, `events-${firstTs.slice(0, 10)}.jsonl`));
-    const out = await runInBandMint({ vault, bridgesRoot, trigger: "daemon-interval", logDir, now: new Date(Date.now() + 60 * DAY) });
+    const out = await runInBandMint({
+      vault,
+      bridgesRoot,
+      trigger: "daemon-interval",
+      logDir,
+      now: new Date(Date.now() + 60 * DAY),
+    });
     assert.equal(out.pruned, 0);
     [b] = await bridgeFiles(bridgesRoot);
     assert.equal(b.evidence, 2, "a lower recount from a trimmed log never demotes a confirmed bridge");
@@ -198,9 +223,36 @@ test("#672: the prune leaves pre-#672 files and contributed bridges alone", asyn
     const dir = join(bridgesRoot, "bridges", "de");
     await mkdir(dir, { recursive: true });
     const old = new Date(Date.now() - 90 * DAY).toISOString();
-    await writeFile(join(dir, "legacy.json"), JSON.stringify({ id: "legacy", lang: "de", trigger_terms: ["a1b"], expansion_terms: ["x"], evidence: 1 }), "utf8");
-    await writeFile(join(dir, "contrib.json"), JSON.stringify({ id: "contrib", lang: "de", trigger_terms: ["a1b"], expansion_terms: ["x"], evidence: 1, first_seen: old, verifier: "v" }), "utf8");
-    await writeFile(join(dir, "mine.json"), JSON.stringify({ id: "mine", lang: "de", trigger_terms: ["a1b"], expansion_terms: ["x"], evidence: 1, first_seen: old }), "utf8");
+    await writeFile(
+      join(dir, "legacy.json"),
+      JSON.stringify({ id: "legacy", lang: "de", trigger_terms: ["a1b"], expansion_terms: ["x"], evidence: 1 }),
+      "utf8"
+    );
+    await writeFile(
+      join(dir, "contrib.json"),
+      JSON.stringify({
+        id: "contrib",
+        lang: "de",
+        trigger_terms: ["a1b"],
+        expansion_terms: ["x"],
+        evidence: 1,
+        first_seen: old,
+        verifier: "v",
+      }),
+      "utf8"
+    );
+    await writeFile(
+      join(dir, "mine.json"),
+      JSON.stringify({
+        id: "mine",
+        lang: "de",
+        trigger_terms: ["a1b"],
+        expansion_terms: ["x"],
+        evidence: 1,
+        first_seen: old,
+      }),
+      "utf8"
+    );
     const out = await runInBandMint({ vault, bridgesRoot, trigger: "cli", logDir });
     assert.equal(out.pruned, 1);
     assert.deepEqual((await readdir(dir)).sort(), ["contrib.json", "legacy.json"]);
@@ -218,7 +270,13 @@ test("#704: a confirmed bridge with a machine-vocabulary trigger moves to archiv
       expansion_terms: ["ledger", "archive"],
       evidence: 2,
     };
-    const owner = { id: "owner", lang: "en", trigger_terms: ["panel", "dismiss", "claude"], expansion_terms: ["nspanel"], evidence: 3 };
+    const owner = {
+      id: "owner",
+      lang: "en",
+      trigger_terms: ["panel", "dismiss", "claude"],
+      expansion_terms: ["nspanel"],
+      evidence: 3,
+    };
     const contrib = { ...machine, id: "contrib", verifier: "v" };
     await writeFile(join(dir, "08e0435836b182bf.json"), JSON.stringify(machine), "utf8");
     await writeFile(join(dir, "owner.json"), JSON.stringify(owner), "utf8");
@@ -226,9 +284,14 @@ test("#704: a confirmed bridge with a machine-vocabulary trigger moves to archiv
     const out = await runInBandMint({ vault, bridgesRoot, trigger: "cli", logDir });
     assert.equal(out.archived, 1);
     assert.deepEqual((await readdir(dir)).sort(), ["contrib.json", "owner.json"], "moved, not left in the pool");
-    const archived = JSON.parse(await readFile(join(bridgesRoot, "bridges", "archive", "en", "08e0435836b182bf.json"), "utf8"));
+    const archived = JSON.parse(
+      await readFile(join(bridgesRoot, "bridges", "archive", "en", "08e0435836b182bf.json"), "utf8")
+    );
     assert.deepEqual(archived, machine, "archived unchanged — moving it back restores it");
-    const log = (await readFile(join(bridgesRoot, "bridges", "archive", "log.jsonl"), "utf8")).trim().split("\n").map((l) => JSON.parse(l));
+    const log = (await readFile(join(bridgesRoot, "bridges", "archive", "log.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
     assert.equal(log.length, 1);
     assert.equal(log[0].id, "08e0435836b182bf");
     assert.match(log[0].reason, /#704/);

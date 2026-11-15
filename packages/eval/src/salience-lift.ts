@@ -37,7 +37,9 @@ function logDir(): string {
 function readEvents(dir: string): Record<string, unknown>[] {
   if (!existsSync(dir)) return [];
   const events: Record<string, unknown>[] = [];
-  for (const file of readdirSync(dir).filter((f) => f.startsWith("events-") && f.endsWith(".jsonl")).sort()) {
+  for (const file of readdirSync(dir)
+    .filter((f) => f.startsWith("events-") && f.endsWith(".jsonl"))
+    .sort()) {
     for (const line of readFileSync(join(dir, file), "utf8").split("\n")) {
       if (!line.trim()) continue;
       try {
@@ -96,6 +98,6 @@ if (engaged === 0) {
   console.log(
     improved > worsened
       ? "→ positive lift: candidates for BASTRA_SALIENCE_RANK=live (keep watching the margin)."
-      : "→ no lift yet: keep shadow mode.",
+      : "→ no lift yet: keep shadow mode."
   );
 }

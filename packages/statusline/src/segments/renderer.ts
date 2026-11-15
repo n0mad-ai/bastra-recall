@@ -4,12 +4,7 @@ import type { PowerlineColors } from "../themes";
 import type { PowerlineConfig } from "../config/loader";
 import type { BlockInfo } from "./block";
 import type { CacheTimerInfo } from "./cacheTimer";
-import type {
-  UsageInfo,
-  GitInfo,
-  ContextInfo,
-  MetricsInfo,
-} from ".";
+import type { UsageInfo, GitInfo, ContextInfo, MetricsInfo } from ".";
 import type { TodayInfo } from "./today";
 import type { BastraInfo } from "./bastra";
 
@@ -29,16 +24,8 @@ import {
 // formatting live in their own modules; this class keeps one render method per
 // segment and delegates to them. The types are re-exported so every import
 // from "./renderer" keeps working.
-import {
-  plural,
-  getDisplayDirectoryName,
-  formatUsageWithBudget,
-} from "./renderer-format";
-import {
-  buildBar,
-  resolveBarStyleDef,
-  formatPercentageWithBar,
-} from "./renderer-bars";
+import { plural, getDisplayDirectoryName, formatUsageWithBudget } from "./renderer-format";
+import { buildBar, resolveBarStyleDef, formatPercentageWithBar } from "./renderer-bars";
 
 import { shouldShowIcon } from "../utils/icon-visibility";
 
@@ -89,26 +76,17 @@ export type {
 export class SegmentRenderer {
   constructor(
     private readonly config: PowerlineConfig,
-    private readonly symbols: PowerlineSymbols,
+    private readonly symbols: PowerlineSymbols
   ) {}
 
   private leadingIcon(symbol: string, segConfig?: SegmentConfig): string {
-    const show = shouldShowIcon(
-      this.config.display?.showIcons,
-      segConfig?.showIcon,
-    );
+    const show = shouldShowIcon(this.config.display?.showIcons, segConfig?.showIcon);
     return show ? `${symbol} ` : "";
   }
 
-  renderDirectory(
-    hookData: ClaudeHookData,
-    colors: PowerlineColors,
-    config?: DirectorySegmentConfig,
-  ): SegmentData {
+  renderDirectory(hookData: ClaudeHookData, colors: PowerlineColors, config?: DirectorySegmentConfig): SegmentData {
     const worktreeOriginalCwd = hookData.worktree?.original_cwd || undefined;
-    const currentDir =
-      worktreeOriginalCwd ??
-      (hookData.workspace?.current_dir || hookData.cwd || "/");
+    const currentDir = worktreeOriginalCwd ?? (hookData.workspace?.current_dir || hookData.cwd || "/");
     const projectDir = worktreeOriginalCwd ?? hookData.workspace?.project_dir;
 
     const style = config?.style ?? (config?.showBasename ? "basename" : "full");
@@ -123,9 +101,7 @@ export class SegmentRenderer {
     }
 
     const displayDir = collapseHome(currentDir);
-    const displayProjectDir = projectDir
-      ? collapseHome(projectDir)
-      : projectDir;
+    const displayProjectDir = projectDir ? collapseHome(projectDir) : projectDir;
 
     let dirName = getDisplayDirectoryName(displayDir, displayProjectDir);
 
@@ -140,11 +116,7 @@ export class SegmentRenderer {
     };
   }
 
-  renderGit(
-    gitInfo: GitInfo,
-    colors: PowerlineColors,
-    config?: GitSegmentConfig,
-  ): SegmentData | null {
+  renderGit(gitInfo: GitInfo, colors: PowerlineColors, config?: GitSegmentConfig): SegmentData | null {
     if (!gitInfo) return null;
 
     const parts: string[] = [];
@@ -160,15 +132,8 @@ export class SegmentRenderer {
       parts.push(`[${gitInfo.operation}]`);
     }
 
-    const showBranchIcon = shouldShowIcon(
-      this.config.display?.showIcons,
-      config?.showIcon,
-    );
-    parts.push(
-      showBranchIcon
-        ? `${this.symbols.branch} ${gitInfo.branch}`
-        : gitInfo.branch,
-    );
+    const showBranchIcon = shouldShowIcon(this.config.display?.showIcons, config?.showIcon);
+    parts.push(showBranchIcon ? `${this.symbols.branch} ${gitInfo.branch}` : gitInfo.branch);
 
     if (config?.showTag && gitInfo.tag) {
       parts.push(`${this.symbols.git_tag} ${gitInfo.tag}`);
@@ -180,9 +145,7 @@ export class SegmentRenderer {
 
     if (config?.showAheadBehind !== false) {
       if (gitInfo.ahead > 0 && gitInfo.behind > 0) {
-        parts.push(
-          `${this.symbols.git_ahead}${gitInfo.ahead}${this.symbols.git_behind}${gitInfo.behind}`,
-        );
+        parts.push(`${this.symbols.git_ahead}${gitInfo.ahead}${this.symbols.git_behind}${gitInfo.behind}`);
       } else if (gitInfo.ahead > 0) {
         parts.push(`${this.symbols.git_ahead}${gitInfo.ahead}`);
       } else if (gitInfo.behind > 0) {
@@ -192,14 +155,10 @@ export class SegmentRenderer {
 
     if (config?.showWorkingTree) {
       const counts: string[] = [];
-      if (gitInfo.staged && gitInfo.staged > 0)
-        counts.push(`+${gitInfo.staged}`);
-      if (gitInfo.unstaged && gitInfo.unstaged > 0)
-        counts.push(`~${gitInfo.unstaged}`);
-      if (gitInfo.untracked && gitInfo.untracked > 0)
-        counts.push(`?${gitInfo.untracked}`);
-      if (gitInfo.conflicts && gitInfo.conflicts > 0)
-        counts.push(`!${gitInfo.conflicts}`);
+      if (gitInfo.staged && gitInfo.staged > 0) counts.push(`+${gitInfo.staged}`);
+      if (gitInfo.unstaged && gitInfo.unstaged > 0) counts.push(`~${gitInfo.unstaged}`);
+      if (gitInfo.untracked && gitInfo.untracked > 0) counts.push(`?${gitInfo.untracked}`);
+      if (gitInfo.conflicts && gitInfo.conflicts > 0) counts.push(`!${gitInfo.conflicts}`);
       if (counts.length > 0) {
         parts.push(`(${counts.join(" ")})`);
       }
@@ -209,11 +168,7 @@ export class SegmentRenderer {
       parts.push(`${this.symbols.git_upstream}${gitInfo.upstream}`);
     }
 
-    if (
-      config?.showStashCount &&
-      gitInfo.stashCount &&
-      gitInfo.stashCount > 0
-    ) {
+    if (config?.showStashCount && gitInfo.stashCount && gitInfo.stashCount > 0) {
       parts.push(`${this.symbols.git_stash} ${gitInfo.stashCount}`);
     }
 
@@ -239,11 +194,7 @@ export class SegmentRenderer {
     };
   }
 
-  renderModel(
-    hookData: ClaudeHookData,
-    colors: PowerlineColors,
-    config?: SegmentConfig,
-  ): SegmentData {
+  renderModel(hookData: ClaudeHookData, colors: PowerlineColors, config?: SegmentConfig): SegmentData {
     const rawName = hookData.model?.display_name || "Claude";
     const modelName = formatModelName(rawName);
 
@@ -254,19 +205,14 @@ export class SegmentRenderer {
     };
   }
 
-  renderSession(
-    usageInfo: UsageInfo,
-    colors: PowerlineColors,
-    config?: UsageSegmentConfig,
-  ): SegmentData | null {
+  renderSession(usageInfo: UsageInfo, colors: PowerlineColors, config?: UsageSegmentConfig): SegmentData | null {
     const type = config?.type || "cost";
     const costSource = config?.costSource;
     const sessionBudget = this.config.budget?.session;
 
     const getCost = () => {
       if (costSource === "calculated") return usageInfo.session.calculatedCost;
-      if (costSource === "official")
-        return usageInfo.session.officialCost ?? usageInfo.session.calculatedCost;
+      if (costSource === "official") return usageInfo.session.officialCost ?? usageInfo.session.calculatedCost;
       return usageInfo.session.cost;
     };
 
@@ -276,7 +222,7 @@ export class SegmentRenderer {
       usageInfo.session.tokenBreakdown,
       type,
       sessionBudget,
-      config?.showUnits ?? true,
+      config?.showUnits ?? true
     );
 
     if (formattedUsage === null) return null;
@@ -290,15 +236,9 @@ export class SegmentRenderer {
     };
   }
 
-  renderSessionId(
-    sessionId: string,
-    colors: PowerlineColors,
-    config?: SessionIdSegmentConfig,
-  ): SegmentData {
+  renderSessionId(sessionId: string, colors: PowerlineColors, config?: SessionIdSegmentConfig): SegmentData {
     const showLabel = config?.showIdLabel !== false;
-    const text = showLabel
-      ? `${this.leadingIcon(this.symbols.session_id, config)}${sessionId}`
-      : sessionId;
+    const text = showLabel ? `${this.leadingIcon(this.symbols.session_id, config)}${sessionId}` : sessionId;
 
     return {
       text,
@@ -307,10 +247,7 @@ export class SegmentRenderer {
     };
   }
 
-  renderTmux(
-    sessionId: string | null,
-    colors: PowerlineColors,
-  ): SegmentData | null {
+  renderTmux(sessionId: string | null, colors: PowerlineColors): SegmentData | null {
     if (!sessionId) {
       return {
         text: `tmux:none`,
@@ -329,7 +266,7 @@ export class SegmentRenderer {
   renderContext(
     contextInfo: ContextInfo | null,
     colors: PowerlineColors,
-    config?: ContextSegmentConfig,
+    config?: ContextSegmentConfig
   ): SegmentData | null {
     const barLength = 10;
     const style = config?.displayStyle ?? "text";
@@ -342,9 +279,7 @@ export class SegmentRenderer {
     if (!contextInfo) {
       if (barStyleDef) {
         const emptyBar =
-          mode === "remaining"
-            ? buildBar(barStyleDef, barLength, 0, barLength)
-            : barStyleDef.empty.repeat(barLength);
+          mode === "remaining" ? buildBar(barStyleDef, barLength, 0, barLength) : barStyleDef.empty.repeat(barLength);
         return {
           text: `${emptyBar} ${emptyPct}`,
           bgColor: colors.contextBg,
@@ -372,22 +307,12 @@ export class SegmentRenderer {
       bold = colors.contextWarningBold;
     }
 
-    const pct =
-      mode === "remaining"
-        ? contextInfo.contextLeftPercentage
-        : contextInfo.usablePercentage;
-    const filledCount = Math.round(
-      (pct / 100) * barLength,
-    );
+    const pct = mode === "remaining" ? contextInfo.contextLeftPercentage : contextInfo.usablePercentage;
+    const filledCount = Math.round((pct / 100) * barLength);
     const emptyCount = barLength - filledCount;
 
     if (barStyleDef) {
-      const bar = buildBar(
-        barStyleDef,
-        filledCount,
-        emptyCount,
-        barLength,
-      );
+      const bar = buildBar(barStyleDef, filledCount, emptyCount, barLength);
 
       const text = config?.showPercentageOnly
         ? `${bar} ${pct}%`
@@ -407,7 +332,7 @@ export class SegmentRenderer {
   renderMetrics(
     metricsInfo: MetricsInfo | null,
     colors: PowerlineColors,
-    config?: MetricsSegmentConfig,
+    config?: MetricsSegmentConfig
   ): SegmentData | null {
     if (!metricsInfo) {
       return {
@@ -427,10 +352,7 @@ export class SegmentRenderer {
       parts.push(`${this.symbols.metrics_last_response} ${lastResponseTime}`);
     }
 
-    if (
-      config?.showResponseTime !== false &&
-      metricsInfo.responseTime !== null
-    ) {
+    if (config?.showResponseTime !== false && metricsInfo.responseTime !== null) {
       const responseTime =
         metricsInfo.responseTime < 60
           ? `${metricsInfo.responseTime.toFixed(1)}s`
@@ -438,41 +360,21 @@ export class SegmentRenderer {
       parts.push(`${this.symbols.metrics_response} ${responseTime}`);
     }
 
-    if (
-      config?.showDuration !== false &&
-      metricsInfo.sessionDuration !== null
-    ) {
+    if (config?.showDuration !== false && metricsInfo.sessionDuration !== null) {
       const duration = formatDuration(metricsInfo.sessionDuration);
       parts.push(`${this.symbols.metrics_duration} ${duration}`);
     }
 
-    if (
-      config?.showMessageCount !== false &&
-      metricsInfo.messageCount !== null
-    ) {
-      parts.push(
-        `${this.symbols.metrics_messages} ${metricsInfo.messageCount}`,
-      );
+    if (config?.showMessageCount !== false && metricsInfo.messageCount !== null) {
+      parts.push(`${this.symbols.metrics_messages} ${metricsInfo.messageCount}`);
     }
 
-    if (
-      config?.showLinesAdded !== false &&
-      metricsInfo.linesAdded !== null &&
-      metricsInfo.linesAdded > 0
-    ) {
-      parts.push(
-        `${this.symbols.metrics_lines_added} ${metricsInfo.linesAdded}`,
-      );
+    if (config?.showLinesAdded !== false && metricsInfo.linesAdded !== null && metricsInfo.linesAdded > 0) {
+      parts.push(`${this.symbols.metrics_lines_added} ${metricsInfo.linesAdded}`);
     }
 
-    if (
-      config?.showLinesRemoved !== false &&
-      metricsInfo.linesRemoved !== null &&
-      metricsInfo.linesRemoved > 0
-    ) {
-      parts.push(
-        `${this.symbols.metrics_lines_removed} ${metricsInfo.linesRemoved}`,
-      );
+    if (config?.showLinesRemoved !== false && metricsInfo.linesRemoved !== null && metricsInfo.linesRemoved > 0) {
+      parts.push(`${this.symbols.metrics_lines_removed} ${metricsInfo.linesRemoved}`);
     }
 
     if (parts.length === 0) {
@@ -490,11 +392,7 @@ export class SegmentRenderer {
     };
   }
 
-  renderBlock(
-    blockInfo: BlockInfo,
-    colors: PowerlineColors,
-    config?: BlockSegmentConfig,
-  ): SegmentData {
+  renderBlock(blockInfo: BlockInfo, colors: PowerlineColors, config?: BlockSegmentConfig): SegmentData {
     const pct = Math.round(blockInfo.nativeUtilization);
     const timeStr = formatLongTimeRemaining(blockInfo.timeRemaining);
     const blockBudget = this.config.budget?.block;
@@ -521,18 +419,12 @@ export class SegmentRenderer {
     };
   }
 
-  renderWeekly(
-    hookData: ClaudeHookData,
-    colors: PowerlineColors,
-    config?: WeeklySegmentConfig,
-  ): SegmentData | null {
+  renderWeekly(hookData: ClaudeHookData, colors: PowerlineColors, config?: WeeklySegmentConfig): SegmentData | null {
     const sevenDay = hookData.rate_limits?.seven_day;
     if (!sevenDay) return null;
 
     const pct = Math.round(sevenDay.used_percentage);
-    const timeStr = formatLongTimeRemaining(
-      minutesUntilReset(sevenDay.resets_at),
-    );
+    const timeStr = formatLongTimeRemaining(minutesUntilReset(sevenDay.resets_at));
 
     let bgColor = colors.weeklyBg;
     let fgColor = colors.weeklyFg;
@@ -558,12 +450,10 @@ export class SegmentRenderer {
   renderToday(
     todayInfo: TodayInfo,
     colors: PowerlineColors,
-    configOrType?: TodaySegmentConfig | string,
+    configOrType?: TodaySegmentConfig | string
   ): SegmentData | null {
     const config: TodaySegmentConfig | undefined =
-      typeof configOrType === "string"
-        ? ({ enabled: true, type: configOrType } as TodaySegmentConfig)
-        : configOrType;
+      typeof configOrType === "string" ? ({ enabled: true, type: configOrType } as TodaySegmentConfig) : configOrType;
     const type = config?.type ?? "cost";
     const todayBudget = this.config.budget?.today;
     const formattedUsage = formatUsageWithBudget(
@@ -572,7 +462,7 @@ export class SegmentRenderer {
       todayInfo.tokenBreakdown,
       type,
       todayBudget,
-      config?.showUnits ?? true,
+      config?.showUnits ?? true
     );
 
     if (formattedUsage === null) return null;
@@ -586,11 +476,7 @@ export class SegmentRenderer {
     };
   }
 
-  renderVersion(
-    hookData: ClaudeHookData,
-    colors: PowerlineColors,
-    config?: VersionSegmentConfig,
-  ): SegmentData | null {
+  renderVersion(hookData: ClaudeHookData, colors: PowerlineColors, config?: VersionSegmentConfig): SegmentData | null {
     if (!hookData.version) {
       return null;
     }
@@ -602,25 +488,16 @@ export class SegmentRenderer {
     };
   }
 
-  renderEnv(
-    colors: PowerlineColors,
-    config: EnvSegmentConfig,
-  ): SegmentData | null {
+  renderEnv(colors: PowerlineColors, config: EnvSegmentConfig): SegmentData | null {
     const value = globalThis.process?.env?.[config.variable];
     if (!value) return null;
     const prefix = config.prefix ?? config.variable;
     const iconPrefix = this.leadingIcon(this.symbols.env, config);
-    const text = prefix
-      ? `${iconPrefix}${prefix}: ${value}`
-      : `${iconPrefix}${value}`;
+    const text = prefix ? `${iconPrefix}${prefix}: ${value}` : `${iconPrefix}${value}`;
     return { text, bgColor: colors.envBg, fgColor: colors.envFg };
   }
 
-  renderAgent(
-    hookData: ClaudeHookData,
-    colors: PowerlineColors,
-    config?: AgentSegmentConfig,
-  ): SegmentData | null {
+  renderAgent(hookData: ClaudeHookData, colors: PowerlineColors, config?: AgentSegmentConfig): SegmentData | null {
     const rawName = hookData.agent?.name;
     if (typeof rawName !== "string") return null;
     const name = rawName.trim();
@@ -639,7 +516,7 @@ export class SegmentRenderer {
   renderThinking(
     hookData: ClaudeHookData,
     colors: PowerlineColors,
-    config?: ThinkingSegmentConfig,
+    config?: ThinkingSegmentConfig
   ): SegmentData | null {
     const showEnabled = config?.showEnabled ?? true;
     const showEffort = config?.showEffort ?? true;
@@ -661,11 +538,7 @@ export class SegmentRenderer {
     };
   }
 
-  renderCacheTimer(
-    info: CacheTimerInfo,
-    colors: PowerlineColors,
-    config?: CacheTimerSegmentConfig,
-  ): SegmentData {
+  renderCacheTimer(info: CacheTimerInfo, colors: PowerlineColors, config?: CacheTimerSegmentConfig): SegmentData {
     const e = info.elapsedSeconds;
     const iconPrefix = this.leadingIcon(this.symbols.cache_timer, config);
 
@@ -704,11 +577,7 @@ export class SegmentRenderer {
     return { text, bgColor, fgColor, bold };
   }
 
-  renderBastra(
-    info: BastraInfo | null,
-    colors: PowerlineColors,
-    config?: BastraSegmentConfig,
-  ): SegmentData | null {
+  renderBastra(info: BastraInfo | null, colors: PowerlineColors, config?: BastraSegmentConfig): SegmentData | null {
     if (!info) return null;
 
     const icon = this.leadingIcon(this.symbols.bastra, config);
@@ -733,9 +602,7 @@ export class SegmentRenderer {
       // then fall back to the bare banner.
       const PHRASE_TTL_MS = 10_000;
       const showPhrase =
-        info.lastPhrase !== null &&
-        info.lastPhraseAt !== null &&
-        Date.now() - info.lastPhraseAt < PHRASE_TTL_MS;
+        info.lastPhrase !== null && info.lastPhraseAt !== null && Date.now() - info.lastPhraseAt < PHRASE_TTL_MS;
       const tail = showPhrase ? ` · ${info.lastPhrase}` : "";
       // hits come from recalls only; ms from any tool call. Show each only
       // when present, so load_memory-only turns read "N calls · Xms" (no hits).

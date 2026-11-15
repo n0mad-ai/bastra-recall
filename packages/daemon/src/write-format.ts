@@ -50,7 +50,7 @@ export function formatHintBlock(
   // #565: der `degraded`-Grund der Antwort — ohne ihn behauptete der Block
   // „semantic search is off", wo der Arm lief und nur diesen Aufruf nicht
   // bediente.
-  degraded?: string,
+  degraded?: string
 ): string {
   const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
   const head = `<recall-hints surface="${escapeAttr(surface)}"${projAttr}>`;
@@ -66,20 +66,20 @@ export function formatHintBlock(
     sections.push(
       noHome
         ? `A lookup ran for what you're about to do and this vault has NO memory of ` +
-          `it — nothing anchored lexically, and the ranking found no near neighbour ` +
-          `either. The lines below are the least-bad rows of an empty result. Treat ` +
-          `this as "not written down yet", not as weak evidence, and do not load them.`
+            `it — nothing anchored lexically, and the ranking found no near neighbour ` +
+            `either. The lines below are the least-bad rows of an empty result. Treat ` +
+            `this as "not written down yet", not as weak evidence, and do not load them.`
         : weak
-        ? `Ranked matches for what you're about to do — but NONE of them anchors ` +
-          `lexically (no trigger phrase, no title term matched). On the hybrid path a ` +
-          `high score is rank-1-of-nothing, so treat these as "probably not relevant" ` +
-          `unless one obviously fits. Do not load them just because they are listed.`
-        : unfused
-        ? `${unfusedHeadline("what you're about to do", unfusedReasonFor(degraded))} ` +
-          `load_memory(id) the ones that bear on this edit.`
-        : `${requiredHeadline("what you're about to do", MUST_LOAD_SCORE, { k: RRF_K, scale: RRF_SCALE })} ` +
-          `${CANDIDATES_ONLY_NOTICE} load_memory(id) the ones that bear on this edit. ` +
-          `Hints, not obligations: load only what fits, don't batch-load the list.`,
+          ? `Ranked matches for what you're about to do — but NONE of them anchors ` +
+            `lexically (no trigger phrase, no title term matched). On the hybrid path a ` +
+            `high score is rank-1-of-nothing, so treat these as "probably not relevant" ` +
+            `unless one obviously fits. Do not load them just because they are listed.`
+          : unfused
+            ? `${unfusedHeadline("what you're about to do", unfusedReasonFor(degraded))} ` +
+              `load_memory(id) the ones that bear on this edit.`
+            : `${requiredHeadline("what you're about to do", MUST_LOAD_SCORE, { k: RRF_K, scale: RRF_SCALE })} ` +
+              `${CANDIDATES_ONLY_NOTICE} load_memory(id) the ones that bear on this edit. ` +
+              `Hints, not obligations: load only what fits, don't batch-load the list.`
     );
     for (const h of required) sections.push(formatHintLine(h, unfused));
   }
@@ -94,7 +94,7 @@ export function formatHintBlock(
           // scores half of a two-armed hit at the same rank — or both paths,
           // but further down than the REQUIRED band demands.
           `OPTIONAL — found by ONE search path only, or by both but ranked lower. ` +
-          `Load only if the title/summary directly relates to the pending change:`,
+            `Load only if the title/summary directly relates to the pending change:`
     );
     for (const h of optional) sections.push(formatHintLine(h, unfused));
   }

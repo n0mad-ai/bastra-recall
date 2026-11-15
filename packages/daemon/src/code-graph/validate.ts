@@ -37,10 +37,7 @@ export type RejectReason =
  * something other than what it is — and the rendering is what a human
  * reviewer acts on.
  */
-const CONTROL_CHARS = new RegExp(
-  "[\\u0000-\\u001F\\u007F-\\u009F\\u202A-\\u202E\\u2066-\\u2069]",
-  "g",
-);
+const CONTROL_CHARS = new RegExp("[\\u0000-\\u001F\\u007F-\\u009F\\u202A-\\u202E\\u2066-\\u2069]", "g");
 
 /** A NUL byte, checked separately from the strip so a path carrying one is
  *  refused outright rather than quietly cleaned into a valid-looking path. */
@@ -135,8 +132,7 @@ export function safeNode(raw: unknown, codeFileType: string): SafeNode | null {
     label,
     file,
     line: safeLine(n.source_location),
-    community:
-      typeof n.community === "number" && Number.isFinite(n.community) ? n.community : null,
+    community: typeof n.community === "number" && Number.isFinite(n.community) ? n.community : null,
   };
 }
 

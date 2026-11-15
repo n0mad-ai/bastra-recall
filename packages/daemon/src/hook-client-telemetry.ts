@@ -71,7 +71,14 @@ export const CLIENT_ROW_BASE: Record<ClientLane, Record<string, unknown>> = {
   // with the assertion lane's failures wearing another lane's name.
   // #508: hint_tokens_est 0 — nothing was injected, so the size is a known
   // zero; left out, the context ledger counts the no-op as an unknown residual.
-  prompt: { kind: "prompt_hook_call", detected_mode: "unknown", prompt_chars: 0, hint_count: 0, top_score: null, hint_tokens_est: 0 },
+  prompt: {
+    kind: "prompt_hook_call",
+    detected_mode: "unknown",
+    prompt_chars: 0,
+    hint_count: 0,
+    top_score: null,
+    hint_tokens_est: 0,
+  },
   write: {
     kind: "hook_call",
     topics: [],
@@ -168,12 +175,11 @@ export async function writeClientTelemetry(
   fields: Record<string, unknown>,
   startedAt: number,
   sessionId: string | null,
-  hookVersion: string,
+  hookVersion: string
 ): Promise<void> {
   if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
-    const logDir =
-      envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? testRunLogDir() ?? join(bastraDataDir(), "logs");
+    const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? testRunLogDir() ?? join(bastraDataDir(), "logs");
     await mkdir(logDir, { recursive: true });
     const ts = new Date().toISOString();
     const event = {

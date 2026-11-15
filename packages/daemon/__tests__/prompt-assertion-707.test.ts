@@ -68,7 +68,7 @@ const GREEK = "γράψε μια απάντηση στο σχόλιο";
 test("#707 assertion: an unlisted language is not classified by guess, and a lexicon file adds it", async () => {
   await withLexiconDir({}, () => assert.equal(detectAssertion(GREEK), false));
   await withLexiconDir({ "compose-verb.txt": "γράψε\n", "outward-artifact.txt": "σχόλιο\n" }, () =>
-    assert.equal(detectAssertion(GREEK), true),
+    assert.equal(detectAssertion(GREEK), true)
   );
 });
 
@@ -98,7 +98,10 @@ async function recallMock(score: number): Promise<{ url: string; recalls: () => 
 }
 
 /** Runs the lane on `prompt`; returns its output and the `prompt_hook_call` row. */
-async function runLane(prompt: string, score: number): Promise<{ stdout: string; recalls: number; row: Record<string, unknown> }> {
+async function runLane(
+  prompt: string,
+  score: number
+): Promise<{ stdout: string; recalls: number; row: Record<string, unknown> }> {
   const stateDir = await mkdtemp(join(tmpdir(), "bastra-707-state-"));
   const logDir = await mkdtemp(join(tmpdir(), "bastra-707-log-"));
   const lexiconDir = await mkdtemp(join(tmpdir(), "bastra-707-lex-"));
@@ -116,7 +119,8 @@ async function runLane(prompt: string, score: number): Promise<{ stdout: string;
     const stdout = await runPromptLane(payload as Parameters<typeof runPromptLane>[0], null, daemon.url);
     const rows: Record<string, unknown>[] = [];
     for (const f of (await readdir(logDir)).filter((n) => n.startsWith("events-"))) {
-      for (const l of (await readFile(join(logDir, f), "utf8")).split("\n")) if (l.trim()) rows.push(JSON.parse(l) as Record<string, unknown>);
+      for (const l of (await readFile(join(logDir, f), "utf8")).split("\n"))
+        if (l.trim()) rows.push(JSON.parse(l) as Record<string, unknown>);
     }
     const row = rows.find((r) => r.kind === "prompt_hook_call");
     assert.ok(row, "the lane wrote its row");

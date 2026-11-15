@@ -1,5 +1,5 @@
-import {recordRulebookCheck} from "../src/rulebook-check.js";
-import {checkStopRepair} from '../src/stop-repair.js';
+import { recordRulebookCheck } from "../src/rulebook-check.js";
+import { checkStopRepair } from "../src/stop-repair.js";
 /** #1311 R3: invented DM through real prompt, validation, receipt and Stop lanes.
  * Only retrieval responses are fixtures; metadata comes from a real vault file.
  * P2: a later edited artifact still accepts the prior task/generation receipt;
@@ -19,12 +19,18 @@ import { runStopLane } from "../src/stop-lane.js";
 import { loadSessionState } from "../src/session-state.js";
 import { validateArtifactHandler } from "../src/validate-artifact-handler.js";
 
-const ANNOUNCE = "ich arbeite jetzt eine eingegangene Nachricht ab\nBonjour, pourrais-tu confirmer la visite fictive demain ?";
+const ANNOUNCE =
+  "ich arbeite jetzt eine eingegangene Nachricht ab\nBonjour, pourrais-tu confirmer la visite fictive demain ?";
 const MESSAGE = "Hallo Sam, morgen kommt das erfundene Paket. Bitte bestätige die Adresse.";
 const CONVENTION = {
-  id: "invented-dm-convention", title: "Invented DM convention", type: "workflow", scope: "all-projects",
-  summary: "Translate, draft, then validate the approved DM before copy.", score: 150,
-  matched_recall_when: true, recall_mode: "reflex",
+  id: "invented-dm-convention",
+  title: "Invented DM convention",
+  type: "workflow",
+  scope: "all-projects",
+  summary: "Translate, draft, then validate the approved DM before copy.",
+  score: 150,
+  matched_recall_when: true,
+  recall_mode: "reflex",
   validator: { tool: "validate_artifact", channel: "discord-dm", limit: 2000, unit: "utf16" } as const,
 };
 let root = "";
@@ -36,24 +42,38 @@ const saved = new Map<string, string | undefined>();
 before(async () => {
   root = await mkdtemp(join(tmpdir(), "bastra-repair-workflow-"));
   for (const [key, value] of Object.entries({
-    HOME: root, USERPROFILE: root, BASTRA_HOOK_STATE_DIR: join(root, "state"),
-    BASTRA_LOG_PATH: join(root, "logs"), BASTRA_PENDING_SUGGESTIONS_PATH: join(root, "pending.json"),
-    BASTRA_TELEMETRY: "on", BASTRA_PROMPT_HOOK_MODE: "all", BASTRA_STOP_SAME_TURN: "1",
+    HOME: root,
+    USERPROFILE: root,
+    BASTRA_HOOK_STATE_DIR: join(root, "state"),
+    BASTRA_LOG_PATH: join(root, "logs"),
+    BASTRA_PENDING_SUGGESTIONS_PATH: join(root, "pending.json"),
+    BASTRA_TELEMETRY: "on",
+    BASTRA_PROMPT_HOOK_MODE: "all",
+    BASTRA_STOP_SAME_TURN: "1",
   })) {
     saved.set(key, process.env[key]);
     process.env[key] = value;
   }
   const vaultRoot = join(root, "vault");
   await mkdir(vaultRoot);
-  await saveMemory(vaultRoot, { id: CONVENTION.id, title: CONVENTION.title, type: "workflow",
-    summary: CONVENTION.summary, body: "Translate, draft, validate approved copy.", write_origin: "user-directed",
-    scope: "all-projects", topic_path: ["fixture"], tags: ["fixture"], recall_when: ["eingegangene Nachricht"],
-    validator: CONVENTION.validator });
+  await saveMemory(vaultRoot, {
+    id: CONVENTION.id,
+    title: CONVENTION.title,
+    type: "workflow",
+    summary: CONVENTION.summary,
+    body: "Translate, draft, validate approved copy.",
+    write_origin: "user-directed",
+    scope: "all-projects",
+    topic_path: ["fixture"],
+    tags: ["fixture"],
+    recall_when: ["eingegangene Nachricht"],
+    validator: CONVENTION.validator,
+  });
   vault = new Vault(vaultRoot);
   await vault.init();
   server = createServer((req, res) => {
     let raw = "";
-    req.on("data", (chunk) => raw += chunk);
+    req.on("data", (chunk) => (raw += chunk));
     req.on("end", () => {
       const body = JSON.parse(raw || "{}");
       res.writeHead(200, { "content-type": "application/json" });
@@ -61,7 +81,12 @@ before(async () => {
       if (req.url === "/hook/recall") {
         res.end(JSON.stringify({ hits: message ? [CONVENTION] : [], vault_size: 1, latency_ms: 1, score_kind: "rrf" }));
       } else if (req.url === "/hook/reflex") {
-        res.end(JSON.stringify({ hits: message ? [{ ...CONVENTION, matched_phrase: "eingegangene Nachricht" }] : [], recall_id: null }));
+        res.end(
+          JSON.stringify({
+            hits: message ? [{ ...CONVENTION, matched_phrase: "eingegangene Nachricht" }] : [],
+            recall_id: null,
+          })
+        );
       } else res.end("{}");
     });
   });
@@ -73,33 +98,66 @@ after(async () => {
   await vault.stop();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   for (const [key, value] of saved) {
-    if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
   }
   await rm(root, { recursive: true, force: true });
 });
 
 async function prompt(sid: string, text: string): Promise<string> {
-  return runPromptLane({ hook_event_name: "UserPromptSubmit", session_id: sid, prompt: text, cwd: root }, null, base, undefined, () => [CONVENTION.id], {
-    conventionOf: vaultConventionOf(vault),
-  });
+  return runPromptLane(
+    { hook_event_name: "UserPromptSubmit", session_id: sid, prompt: text, cwd: root },
+    null,
+    base,
+    undefined,
+    () => [CONVENTION.id],
+    {
+      conventionOf: vaultConventionOf(vault),
+    }
+  );
 }
 
-const catalog={entries:[{id:CONVENTION.id,title:CONVENTION.title,group:"explicit" as const,rulebook:"on-demand" as const,applies_when:"Fixture",body:"Fixture",revision:"r1",updated:null,stale_status:"unknown" as const,validator:CONVENTION.validator}],omitted:0};
-async function approved(sid:string):Promise<void>{
- catalog.entries[0].revision=(await vaultConventionOf(vault)(CONVENTION.id))?.revision??"r1";
- await prompt(sid,ANNOUNCE);
- await recordRulebookCheck(sid,{applicable:[CONVENTION.id],task:"draft-for-review"},catalog);
- assert.equal((await loadSessionState(sid)).activeTask?.kind,"draft-for-review");
- await checkStopRepair({session_id:sid,transcript:[{role:"assistant",content:"```\nKurzer Entwurf.\n```"}]});
- await recordRulebookCheck(sid,{applicable:[CONVENTION.id],task:"approved-copy"},catalog);
- assert.equal((await loadSessionState(sid)).activeTask?.kind,"approved-copy");
+const catalog = {
+  entries: [
+    {
+      id: CONVENTION.id,
+      title: CONVENTION.title,
+      group: "explicit" as const,
+      rulebook: "on-demand" as const,
+      applies_when: "Fixture",
+      body: "Fixture",
+      revision: "r1",
+      updated: null,
+      stale_status: "unknown" as const,
+      validator: CONVENTION.validator,
+    },
+  ],
+  omitted: 0,
+};
+async function approved(sid: string): Promise<void> {
+  catalog.entries[0].revision = (await vaultConventionOf(vault)(CONVENTION.id))?.revision ?? "r1";
+  await prompt(sid, ANNOUNCE);
+  await recordRulebookCheck(sid, { applicable: [CONVENTION.id], task: "draft-for-review" }, catalog);
+  assert.equal((await loadSessionState(sid)).activeTask?.kind, "draft-for-review");
+  await checkStopRepair({ session_id: sid, transcript: [{ role: "assistant", content: "```\nKurzer Entwurf.\n```" }] });
+  await recordRulebookCheck(sid, { applicable: [CONVENTION.id], task: "approved-copy" }, catalog);
+  assert.equal((await loadSessionState(sid)).activeTask?.kind, "approved-copy");
 }
 
 async function stop(sid: string, text = MESSAGE, repeated = true): Promise<string> {
-  return runStopLane({
-    hook_event_name: "Stop", session_id: sid, cwd: root, stop_hook_active: repeated,
-    transcript: [{ role: "user", content: "ok" }, { role: "assistant", content: text }],
-  }, base);
+  return runStopLane(
+    {
+      hook_event_name: "Stop",
+      session_id: sid,
+      cwd: root,
+      stop_hook_active: repeated,
+      transcript: [
+        { role: "user", content: "ok" },
+        { role: "assistant", content: text },
+      ],
+    },
+    base
+  );
 }
 
 async function exhaustion(sid: string): Promise<Record<string, unknown>[]> {
@@ -117,7 +175,9 @@ async function exhaustion(sid: string): Promise<Record<string, unknown>[]> {
 test("DM announcement → draft → ok → validation receipt → Stop; reported stage change requires validation again", async () => {
   const sid = "workflow-validated-dm";
   await approved(sid);
-  const validation = await callerSessionStore.run(sid, () => validateArtifactHandler({ text: MESSAGE, channel: "discord-dm", normalize: "none" }));
+  const validation = await callerSessionStore.run(sid, () =>
+    validateArtifactHandler({ text: MESSAGE, channel: "discord-dm", normalize: "none" })
+  );
   assert.equal(validation.session_known, true);
   assert.equal(validation.receipt_stored, true);
   const before = await loadSessionState(sid);
@@ -128,16 +188,26 @@ test("DM announcement → draft → ok → validation receipt → Stop; reported
   assert.equal(await stop(sid), "{}");
   assert.equal((await loadSessionState(sid)).repairAttempts, undefined);
 
-  await prompt(sid,"zweiten Satz kürzer");
-  assert.deepEqual((await loadSessionState(sid)).activeTask,before.activeTask,"user wording never changes the reported stage");
-  assert.deepEqual((await loadSessionState(sid)).receipts,before.receipts);
-  await recordRulebookCheck(sid,{applicable:[CONVENTION.id],task:"draft-for-review"},catalog);
-  await recordRulebookCheck(sid,{applicable:[CONVENTION.id],task:"approved-copy"},catalog);
-  assert.equal((await loadSessionState(sid)).receipts,undefined);
-  assert.match(await stop(sid),/copy-repair/);
-  await callerSessionStore.run(sid,()=>validateArtifactHandler({text:MESSAGE,channel:"discord-dm",normalize:"none"}));
-  assert.equal(await stop(sid),"{}");
-  assert.equal(await stop(sid,"Hallo Sam, tomorrow comes the package."),"{}","receipts remain task/generation evidence, not byte equality");
+  await prompt(sid, "zweiten Satz kürzer");
+  assert.deepEqual(
+    (await loadSessionState(sid)).activeTask,
+    before.activeTask,
+    "user wording never changes the reported stage"
+  );
+  assert.deepEqual((await loadSessionState(sid)).receipts, before.receipts);
+  await recordRulebookCheck(sid, { applicable: [CONVENTION.id], task: "draft-for-review" }, catalog);
+  await recordRulebookCheck(sid, { applicable: [CONVENTION.id], task: "approved-copy" }, catalog);
+  assert.equal((await loadSessionState(sid)).receipts, undefined);
+  assert.match(await stop(sid), /copy-repair/);
+  await callerSessionStore.run(sid, () =>
+    validateArtifactHandler({ text: MESSAGE, channel: "discord-dm", normalize: "none" })
+  );
+  assert.equal(await stop(sid), "{}");
+  assert.equal(
+    await stop(sid, "Hallo Sam, tomorrow comes the package."),
+    "{}",
+    "receipts remain task/generation evidence, not byte equality"
+  );
   assert.deepEqual(await exhaustion(sid), []);
 });
 

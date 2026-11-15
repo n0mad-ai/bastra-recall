@@ -71,10 +71,7 @@ test("isLowConfidence — triggers when no topics and short query", () => {
 });
 
 test("isLowConfidence — passes with >=2 topics", () => {
-  assert.equal(
-    isLowConfidence({ query: "x", topics: ["alpha", "beta"], todoCount: 2 }),
-    false,
-  );
+  assert.equal(isLowConfidence({ query: "x", topics: ["alpha", "beta"], todoCount: 2 }), false);
 });
 
 test("isLowConfidence — passes with long query even if no topics", () => {
@@ -84,7 +81,7 @@ test("isLowConfidence — passes with long query even if no topics", () => {
       topics: [],
       todoCount: 1,
     }),
-    false,
+    false
   );
 });
 
@@ -139,8 +136,7 @@ async function runLane(payload: object, daemonUrl: string): Promise<{ stdout: st
 }
 
 test("integration — TodoWrite with topical todos yields hints + type=project-fact filter", async () => {
-  let received: { url: string | undefined; body: { type?: string; query?: string } } | null =
-    null;
+  let received: { url: string | undefined; body: { type?: string; query?: string } } | null = null;
   const daemon = await startMockDaemon((req, res) => {
     let body = "";
     req.on("data", (c: Buffer) => (body += c.toString()));
@@ -164,7 +160,7 @@ test("integration — TodoWrite with topical todos yields hints + type=project-f
           vault_size: 100,
           latency_ms: 10,
           recall_id: "test",
-        }),
+        })
       );
     });
   });
@@ -183,7 +179,7 @@ test("integration — TodoWrite with topical todos yields hints + type=project-f
           ],
         },
       },
-      `http://127.0.0.1:${daemon.port}`,
+      `http://127.0.0.1:${daemon.port}`
     );
 
     const parsed = JSON.parse(stdout) as {
@@ -213,27 +209,41 @@ test("integration — Codex update_plan is normalized and identified as codex (#
     req.on("end", () => {
       if (req.url === "/hook/recall") received = JSON.parse(body);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({
-        hits: [{ id: "codex-layout", title: "Layout", type: "project-fact", scope: "all-projects", summary: "Current adapter layout.", score: 130 }],
-        vault_size: 1,
-        latency_ms: 1,
-        recall_id: "codex-plan",
-      }));
+      res.end(
+        JSON.stringify({
+          hits: [
+            {
+              id: "codex-layout",
+              title: "Layout",
+              type: "project-fact",
+              scope: "all-projects",
+              summary: "Current adapter layout.",
+              score: 130,
+            },
+          ],
+          vault_size: 1,
+          latency_ms: 1,
+          recall_id: "codex-plan",
+        })
+      );
     });
   });
   try {
-    const { stdout } = await runLane({
-      hook_event_name: "PreToolUse",
-      tool_name: "update_plan",
-      model: "gpt-5.6-codex",
-      cwd: process.cwd(),
-      tool_input: {
-        plan: [
-          { step: "Implement Codex adapter hooks", status: "in_progress" },
-          { step: "Test Codex adapter hooks", status: "pending" },
-        ],
+    const { stdout } = await runLane(
+      {
+        hook_event_name: "PreToolUse",
+        tool_name: "update_plan",
+        model: "gpt-5.6-codex",
+        cwd: process.cwd(),
+        tool_input: {
+          plan: [
+            { step: "Implement Codex adapter hooks", status: "in_progress" },
+            { step: "Test Codex adapter hooks", status: "pending" },
+          ],
+        },
       },
-    }, `http://127.0.0.1:${daemon.port}`);
+      `http://127.0.0.1:${daemon.port}`
+    );
     const context = JSON.parse(stdout).hookSpecificOutput?.additionalContext ?? "";
     assert.match(context, /surface="codex"/);
     assert.match(context, /via update_plan/);
@@ -259,7 +269,7 @@ test("integration — low-confidence todos emit empty object", async () => {
         tool_name: "TodoWrite",
         tool_input: { todos: [{ content: "ok", status: "pending" }] },
       },
-      `http://127.0.0.1:${daemon.port}`,
+      `http://127.0.0.1:${daemon.port}`
     );
     assert.equal(stdout.trim(), "{}");
     assert.equal(hit, false, "daemon must not be called for low-confidence todos");
@@ -280,7 +290,7 @@ test("integration — wrong tool_name emits empty object", async () => {
         tool_name: "Write",
         tool_input: { file_path: "/tmp/x.ts" },
       },
-      `http://127.0.0.1:${daemon.port}`,
+      `http://127.0.0.1:${daemon.port}`
     );
     assert.equal(stdout.trim(), "{}");
   } finally {
@@ -354,7 +364,7 @@ test("integration — an unfused recall response reaches the block honestly", as
           latency_ms: 10,
           recall_id: "test",
           unfused: true,
-        }),
+        })
       );
     });
   });
@@ -374,11 +384,11 @@ test("integration — an unfused recall response reaches the block honestly", as
           ],
         },
       },
-      `http://127.0.0.1:${daemon.port}`,
+      `http://127.0.0.1:${daemon.port}`
     );
     const ctx =
-      (JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } })
-        .hookSpecificOutput?.additionalContext ?? "";
+      (JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput
+        ?.additionalContext ?? "";
     assert.match(ctx, /bm25-only-treffer/);
     assert.match(ctx, /open-ended scale/);
     assert.doesNotMatch(ctx, /REQUIRED/);
@@ -423,7 +433,7 @@ function startForeignScopeDaemon() {
           vault_size: 100,
           latency_ms: 10,
           recall_id: "test",
-        }),
+        })
       );
     });
   });
@@ -451,11 +461,11 @@ async function runScopeLane(mode: string | undefined, port: number): Promise<str
         cwd: "/Users/x/Projekte/bastra-recall",
         tool_input: SCOPE_TODOS,
       },
-      `http://127.0.0.1:${port}`,
+      `http://127.0.0.1:${port}`
     );
     return (
-      (JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } })
-        .hookSpecificOutput?.additionalContext ?? ""
+      (JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput
+        ?.additionalContext ?? ""
     );
   } finally {
     if (before === undefined) delete process.env.BASTRA_SCOPE_FILTER_LANES;

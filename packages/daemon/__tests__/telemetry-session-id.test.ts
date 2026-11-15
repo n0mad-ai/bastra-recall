@@ -67,7 +67,7 @@ function httpPost(port: number, path: string, payload: unknown): Promise<{ statu
         const chunks: Buffer[] = [];
         res.on("data", (c) => chunks.push(c as Buffer));
         res.on("end", () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
-      },
+      }
     );
     req.on("error", reject);
     req.write(body);
@@ -127,11 +127,7 @@ async function makeDaemon(): Promise<Daemon> {
 /** ALLE Zeilen der gesuchten Event-Art, in Schreibreihenfolge — für Prüfungen,
  *  die mehrere Ereignisse gegeneinander halten (Turn-Grenzen). Wartet, bis
  *  mindestens `mindestens` Zeilen da sind; write() ist fire-and-forget. */
-async function readEventRows(
-  logDir: string,
-  kind: string,
-  mindestens = 1,
-): Promise<Record<string, unknown>[]> {
+async function readEventRows(logDir: string, kind: string, mindestens = 1): Promise<Record<string, unknown>[]> {
   for (let i = 0; i < 25; i++) {
     await new Promise((r) => setTimeout(r, 40));
     let files: string[];
@@ -164,7 +160,10 @@ async function readEventRow(logDir: string, kind: string): Promise<Record<string
     }
     for (const f of files.filter((n) => n.startsWith("events-"))) {
       const raw = await readFile(join(logDir, f), "utf8");
-      const line = raw.split("\n").filter((l) => l.includes(`"${kind}"`)).pop();
+      const line = raw
+        .split("\n")
+        .filter((l) => l.includes(`"${kind}"`))
+        .pop();
       if (line) return JSON.parse(line) as Record<string, unknown>;
     }
   }
@@ -186,12 +185,12 @@ test("#363: /hook/recall stempelt die Claude-Session-id aufs hook_recall-Event, 
     assert.equal(
       row!.session_id,
       "claude-session-363",
-      "ohne das ist keine Auswertung auf Recall-Ebene nach Session oder Turn gruppierbar (#305, #361)",
+      "ohne das ist keine Auswertung auf Recall-Ebene nach Session oder Turn gruppierbar (#305, #361)"
     );
     assert.notEqual(
       row!.session_id,
       d.telemetry.runId(),
-      "die Boot-id darf nicht mehr gewinnen — sie war der ganze Bug",
+      "die Boot-id darf nicht mehr gewinnen — sie war der ganze Bug"
     );
   } finally {
     await d.close();
@@ -214,7 +213,7 @@ test("#363: ohne session_id im Payload bleibt die Boot-UUID stehen — kein unde
     assert.equal(
       row!.session_id,
       d.telemetry.runId(),
-      "Fallback ist die Boot-id, nicht undefined — ein Event ohne session_id-Feld wäre schlechter als eins mit Fallback",
+      "Fallback ist die Boot-id, nicht undefined — ein Event ohne session_id-Feld wäre schlechter als eins mit Fallback"
     );
   } finally {
     await d.close();
@@ -245,7 +244,10 @@ test("#363: ollama_lifecycle sagt session_id: null und trägt die Boot-id als ru
 
     const row = await readEventRow(logDir, "ollama_lifecycle");
     assert.ok(row, "ein ollama_lifecycle-Event sollte geschrieben sein");
-    assert.ok("session_id" in row!, "das Feld muss da sein — sonst ist der null-Wert nicht von einem alten Event zu unterscheiden");
+    assert.ok(
+      "session_id" in row!,
+      "das Feld muss da sein — sonst ist der null-Wert nicht von einem alten Event zu unterscheiden"
+    );
     assert.equal(row!.session_id, null, "keine Session im Boot-/Timer-Pfad — null statt Boot-id-Lüge");
     assert.equal(row!.run_id, telemetry.runId(), "die Boot-id bleibt auswertbar, nur richtig beschriftet");
     assert.equal(row!.action, "prewarm");
@@ -278,7 +280,7 @@ test("#305/#361: das hook_recall-Event trägt die Turn-Grenze, nicht nur die Ses
     assert.equal(
       zeilen[1].turn_id,
       ersterTurn,
-      "derselbe Turn muss dieselbe id tragen, sonst zählt jede Auswertung Turns doppelt",
+      "derselbe Turn muss dieselbe id tragen, sonst zählt jede Auswertung Turns doppelt"
     );
 
     // Der nächste Prompt beginnt einen neuen Turn.
@@ -288,11 +290,7 @@ test("#305/#361: das hook_recall-Event trägt die Turn-Grenze, nicht nur die Ses
       tool_name: "UserPromptSubmit",
     });
     const nachher = await readEventRows(d.logDir, "hook_recall", 3);
-    assert.notEqual(
-      nachher[2].turn_id,
-      ersterTurn,
-      "ein neuer UserPromptSubmit muss einen neuen Turn beginnen",
-    );
+    assert.notEqual(nachher[2].turn_id, ersterTurn, "ein neuer UserPromptSubmit muss einen neuen Turn beginnen");
     assert.equal(nachher[2].turn_source, "session", "die Zuordnung kommt aus der Session, nicht geraten");
   } finally {
     await d.close();

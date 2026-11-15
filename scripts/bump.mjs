@@ -38,34 +38,36 @@ if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) {
   process.exit(1);
 }
 
-const DEP_FIELDS = [
-  "dependencies",
-  "devDependencies",
-  "peerDependencies",
-  "optionalDependencies",
-];
+const DEP_FIELDS = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
 
 // Read and validate both README release lines before changing any files.
 const readmePath = resolve(repoRoot, "README.md");
 const readme = readFileSync(readmePath, "utf8");
 const isPrerelease = isPrereleaseVersion(version);
-if (!isPrerelease && ["is available", "ist verfügbar"].some(phrase =>
-  (readme.match(README_RELEASE_LINE) ?? []).filter(line => line.includes(phrase)).length +
-  (readme.match(README_RELEASE_TARGET_LINE) ?? []).filter(line => line.includes(phrase === "is available" ? "Release target" : "Release-Ziel")).length !== 1)) {
+if (
+  !isPrerelease &&
+  ["is available", "ist verfügbar"].some(
+    (phrase) =>
+      (readme.match(README_RELEASE_LINE) ?? []).filter((line) => line.includes(phrase)).length +
+        (readme.match(README_RELEASE_TARGET_LINE) ?? []).filter((line) =>
+          line.includes(phrase === "is available" ? "Release target" : "Release-Ziel")
+        ).length !==
+      1
+  )
+) {
   console.error("error: README needs one English and one German release version line");
   process.exit(1);
 }
-const updatedReadme = isPrerelease ? readme : readme.replace(README_RELEASE_LINE,
-  (_line, _oldVersion, phrase) => `**Version ${version} ${phrase}.**`).replace(README_RELEASE_TARGET_LINE,
-  (_line, label) => `**${label}: ${version}.**`);
+const updatedReadme = isPrerelease
+  ? readme
+  : readme
+      .replace(README_RELEASE_LINE, (_line, _oldVersion, phrase) => `**Version ${version} ${phrase}.**`)
+      .replace(README_RELEASE_TARGET_LINE, (_line, label) => `**${label}: ${version}.**`);
 
 // 1) Collect package.json paths: root + every workspace.
 const rootPkgPath = resolve(repoRoot, "package.json");
 const rootPkg = JSON.parse(readFileSync(rootPkgPath, "utf8"));
-const pkgPaths = [
-  rootPkgPath,
-  ...(rootPkg.workspaces ?? []).map((w) => resolve(repoRoot, w, "package.json")),
-];
+const pkgPaths = [rootPkgPath, ...(rootPkg.workspaces ?? []).map((w) => resolve(repoRoot, w, "package.json"))];
 
 // 2) Load them all, then learn the internal package names from their `name`.
 const pkgs = pkgPaths.map((path) => ({
@@ -77,9 +79,7 @@ const internalNames = new Set(pkgs.map((p) => p.json.name).filter(Boolean));
 // 3) Set version + rewrite internal pins; record every change.
 const changes = [];
 for (const { path, json } of pkgs) {
-  const rel = path.startsWith(repoRoot + "/")
-    ? path.slice(repoRoot.length + 1)
-    : path;
+  const rel = path.startsWith(repoRoot + "/") ? path.slice(repoRoot.length + 1) : path;
   let dirty = false;
 
   if (json.version !== version) {
@@ -138,7 +138,7 @@ for (const relPath of GUARDED_SOURCES) {
     console.error(
       `error: hardcoded version literal in ${relPath}: ${hit[0]}\n` +
         `       The daemon reads its version from package.json at runtime — remove the literal\n` +
-        `       and import DAEMON_VERSION from ./version.js instead.`,
+        `       and import DAEMON_VERSION from ./version.js instead.`
     );
     process.exit(1);
   }
@@ -178,9 +178,11 @@ const stagingNote = isPrerelease
   : "  # draft: invisible and untagged until `promote` has verified the whole set";
 
 function printHandoff() {
-  console.log(isPrerelease
-    ? "Prerelease: README keeps the stable release version; no matching CHANGELOG section is required by npm test."
-    : `npm test will fail until CHANGELOG.md has a section for ${version}.`);
+  console.log(
+    isPrerelease
+      ? "Prerelease: README keeps the stable release version; no matching CHANGELOG section is required by npm test."
+      : `npm test will fail until CHANGELOG.md has a section for ${version}.`
+  );
   console.log(
     `\nNext:\n  npm install            # refresh package-lock\n` +
       `  # REQUIRED: update CHANGELOG, README and Wiki EN/DE; publish Wiki after review\n` +
@@ -192,7 +194,7 @@ function printHandoff() {
       "  # builds, attaches, publishes npm LAST — and only then publishes the draft\n" +
       "  # #548: dispatch BEFORE the branch moves on. The gate refuses a run whose\n" +
       "  # commit is not the one the draft points at, rather than building something\n" +
-      "  # else and attaching it to this release.",
+      "  # else and attaching it to this release."
   );
 }
 

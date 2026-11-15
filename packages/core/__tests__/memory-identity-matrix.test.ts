@@ -33,8 +33,7 @@ const memory = (id: string) =>
   `---\nid: ${id}\ntitle: Alt\ntype: reference\nsummary: s\ntopic_path:\n  - t\ntags:\n  - t\nscope: proj\nrecall_when:\n  - t\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nALT\n`;
 
 /** Ein Memory-File ohne id — der Vault repariert sie aus dem Dateinamen. */
-const memoryWithoutId =
-  `---\ntitle: Alt\ntype: reference\nsummary: s\ntopic_path:\n  - t\ntags:\n  - t\nscope: proj\nrecall_when:\n  - t\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nALT\n`;
+const memoryWithoutId = `---\ntitle: Alt\ntype: reference\nsummary: s\ntopic_path:\n  - t\ntags:\n  - t\nscope: proj\nrecall_when:\n  - t\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nALT\n`;
 
 async function vaultWith(files: Array<[string, string]>): Promise<string> {
   const v = await mkdtemp(join(tmpdir(), "identity-"));
@@ -51,10 +50,7 @@ test("A: eine gewöhnliche Notiz am kanonischen Zielpfad bleibt unangetastet", a
   const note = "# Notiz\n\nPLAIN\n";
   const v = await vaultWith([["memories/projects/proj/upper-id.md", note]]);
   try {
-    await assert.rejects(
-      saveMemory(v, { ...base, id: "upper-id", overwrite: true }),
-      /is not a memory/,
-    );
+    await assert.rejects(saveMemory(v, { ...base, id: "upper-id", overwrite: true }), /is not a memory/);
     assert.equal(await readFile(join(v, "memories/projects/proj/upper-id.md"), "utf8"), note);
   } finally {
     await rm(v, { recursive: true, force: true });
@@ -64,14 +60,8 @@ test("A: eine gewöhnliche Notiz am kanonischen Zielpfad bleibt unangetastet", a
 test("B: ein FREMDES Memory am erwarteten Pfad wird nicht überschrieben", async () => {
   const v = await vaultWith([["memories/projects/proj/upper-id.md", memory("other-id")]]);
   try {
-    await assert.rejects(
-      saveMemory(v, { ...base, id: "upper-id", overwrite: true }),
-      /holds memory 'other-id'/,
-    );
-    assert.match(
-      await readFile(join(v, "memories/projects/proj/upper-id.md"), "utf8"),
-      /id: other-id[\s\S]*ALT/,
-    );
+    await assert.rejects(saveMemory(v, { ...base, id: "upper-id", overwrite: true }), /holds memory 'other-id'/);
+    assert.match(await readFile(join(v, "memories/projects/proj/upper-id.md"), "utf8"), /id: other-id[\s\S]*ALT/);
   } finally {
     await rm(v, { recursive: true, force: true });
   }
@@ -150,7 +140,7 @@ test("F: dieselbe id in zwei Regalen ist eine Kollision, kein zweites Memory", a
     assert.equal(a.created, true);
     await assert.rejects(
       saveMemory(v, { ...base, id: "dup-id", folder: "memories/knowledge" }),
-      /would create a second file with the same id/,
+      /would create a second file with the same id/
     );
   } finally {
     await rm(v, { recursive: true, force: true });
@@ -163,10 +153,7 @@ test("G: zwei Dateien mit derselben id blockieren den Save, statt geraten zu wer
     ["memories/knowledge/b.md", memory("dup-id")],
   ]);
   try {
-    await assert.rejects(
-      saveMemory(v, { ...base, id: "dup-id", overwrite: true }),
-      /exists in more than one file/,
-    );
+    await assert.rejects(saveMemory(v, { ...base, id: "dup-id", overwrite: true }), /exists in more than one file/);
   } finally {
     await rm(v, { recursive: true, force: true });
   }

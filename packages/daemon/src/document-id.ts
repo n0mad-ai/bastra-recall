@@ -15,7 +15,7 @@ export function makeDocId(folderPath: string, filename: string): string {
       .replace(/(\p{Script=Latin})\p{M}+/gu, "$1")
       .normalize("NFC")
       .replace(/[^\p{L}\p{M}\p{N}]+/gu, "-")
-      .replace(/^-+|-+$/g, ""),
+      .replace(/^-+|-+$/g, "")
   )
     .slice(0, SLUG_MAX_LEN)
     .join("");

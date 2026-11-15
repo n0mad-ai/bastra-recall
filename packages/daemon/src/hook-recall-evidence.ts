@@ -3,7 +3,13 @@
  * http-hook-routes.ts, #680). Logs the decision on every recall; filters the
  * hits only when the gate is enabled.
  */
-import { decideHits, tokenizeWithIdentifiers, type RecallDecisionHit, type RecallHit, type Vault } from "@bastra-recall/core";
+import {
+  decideHits,
+  tokenizeWithIdentifiers,
+  type RecallDecisionHit,
+  type RecallHit,
+  type Vault,
+} from "@bastra-recall/core";
 import { fireAndForget, type Telemetry } from "./telemetry.js";
 import { dimensionHints } from "./telemetry-dimensions.js";
 
@@ -23,7 +29,8 @@ export interface EvidenceGateInput {
 
 /** Returns the hits the gate lets through — all of them unless it is enabled. */
 export function applyEvidenceGate(input: EvidenceGateInput): RecallHit[] {
-  const { query, scope, vault, decideFn, telemetry, recallId, gateEnabled, degradedReason, hookSessionId, body } = input;
+  const { query, scope, vault, decideFn, telemetry, recallId, gateEnabled, degradedReason, hookSessionId, body } =
+    input;
   let hits = input.hits;
   // #264: Der Evidenzentscheid. Hier und nicht später, weil die Treffer an
   // dieser Stelle noch ihre Hop-Herkunft tragen — die Projektion unten
@@ -60,7 +67,7 @@ export function applyEvidenceGate(input: EvidenceGateInput): RecallHit[] {
         counts,
         ...(hookSessionId ? { session_id: hookSessionId } : {}),
         ...dimensionHints(body),
-      }),
+      })
     );
   } catch (err) {
     // Ein Defekt im Entscheid geht in KEINE der beiden Statistiken
@@ -80,7 +87,7 @@ export function applyEvidenceGate(input: EvidenceGateInput): RecallHit[] {
         counts: { required: 0, optional: 0, no_answer: 0 },
         ...(hookSessionId ? { session_id: hookSessionId } : {}),
         ...dimensionHints(body),
-      }),
+      })
     );
   }
 
@@ -89,9 +96,7 @@ export function applyEvidenceGate(input: EvidenceGateInput): RecallHit[] {
   // ausgespielt. Ausgeschaltet ändert diese Zeile nichts, und das ist der
   // Auslieferungszustand (§21.1: erst shadow, dann aktiv).
   if (gateEnabled && decisions) {
-    const suppressed = new Set(
-      decisions.filter((d) => d.decision === "no_answer").map((d) => d.id),
-    );
+    const suppressed = new Set(decisions.filter((d) => d.decision === "no_answer").map((d) => d.id));
     if (suppressed.size > 0) hits = hits.filter((h) => !suppressed.has(h.id));
   }
   return hits;

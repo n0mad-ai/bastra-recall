@@ -46,7 +46,9 @@ export function cleanRecallWhen(candidates: string[], body: string): { recall_wh
       continue;
     }
     if (entry.length > MAX_RECALL_WHEN_CHARS) {
-      warnings.push(`recall_when entry of ${entry.length} chars cut to ${MAX_RECALL_WHEN_CHARS} (the description stays in summary)`);
+      warnings.push(
+        `recall_when entry of ${entry.length} chars cut to ${MAX_RECALL_WHEN_CHARS} (the description stays in summary)`
+      );
       out.push(capAtWordBoundary(entry, MAX_RECALL_WHEN_CHARS));
       continue;
     }
@@ -167,10 +169,16 @@ function buildInput(
   fields: { name: string; description: string; type: SaveMemoryInput["type"]; ccType: string; adapter: string },
   fileBase: string,
   body: string,
-  ctx: MapContext,
+  ctx: MapContext
 ): MapResult {
   const { name, description, type, ccType, adapter } = fields;
-  const relSegments = ctx.relDir ? ctx.relDir.split(sep).filter(Boolean).map((s) => s.trim()).filter(Boolean) : [];
+  const relSegments = ctx.relDir
+    ? ctx.relDir
+        .split(sep)
+        .filter(Boolean)
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
   // #240/A10: the id must come from the SOURCE IDENTITY, not from the file's
   // position in the current batch. `uniqueId(label-fileBase)` only
   // disambiguated within one sorted run, so two `same.md` in different source
@@ -199,7 +207,10 @@ function buildInput(
   // next to the whole description however long.
   const { recall_when, warnings } = cleanRecallWhen([description, deSlug(name)], body);
   if (recall_when.length === 0) {
-    return { ok: false, reason: `title, description and body hold nothing but a memory type word ('${name}') — no recall_when trigger to import it under` };
+    return {
+      ok: false,
+      reason: `title, description and body hold nothing but a memory type word ('${name}') — no recall_when trigger to import it under`,
+    };
   }
   const safeBody = namespaceWikilinks(body.trim().length > 0 ? body : description || name, ctx.label, ctx.idByBase);
   const input: SaveMemoryInput = {
@@ -227,9 +238,8 @@ export function mapFile(fileBase: string, raw: string, ctx: MapContext): MapResu
   const idxDesc = ctx.harvest.get(fileBase)?.description ?? null;
 
   if (looksLikeClaudeCode(data)) {
-    const meta = (typeof data.metadata === "object" && data.metadata !== null
-      ? (data.metadata as Record<string, unknown>)
-      : {});
+    const meta =
+      typeof data.metadata === "object" && data.metadata !== null ? (data.metadata as Record<string, unknown>) : {};
     const ccType = str(data.type) ?? str(meta.type) ?? typeFromFilename(fileBase) ?? "reference";
     const type = CC_TYPE_MAP[ccType] ?? "reference";
     const name = str(data.name) ?? firstH1(content) ?? deSlug(fileBase);

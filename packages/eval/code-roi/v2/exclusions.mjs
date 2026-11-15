@@ -74,7 +74,7 @@ export function buildExclusions({
     if (!existsSync(path)) {
       throw new Error(
         `exclusion archive missing: ${path}. Refusing to mine — without it the ` +
-          `population would silently reuse scenarios the thresholds were tuned on.`,
+          `population would silently reuse scenarios the thresholds were tuned on.`
       );
     }
     const scenarios = JSON.parse(readFileSync(path, "utf8")).scenarios ?? [];

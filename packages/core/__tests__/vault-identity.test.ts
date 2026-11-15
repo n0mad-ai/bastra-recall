@@ -75,7 +75,7 @@ test("an in-place id change leaves no ghost in the search index", async (t) => {
   assert.deepEqual(
     search.recall("ZEPPELINWORD", { k: 5 }).map((h) => h.id),
     [],
-    "the old id must not survive as a dangling search hit",
+    "the old id must not survive as a dangling search hit"
   );
 });
 
@@ -93,7 +93,7 @@ test("a file that stops parsing drops out of the index instead of going stale", 
   assert.deepEqual(
     search.recall("OBELISKWORD", { k: 5 }).map((h) => h.id),
     [],
-    "pre-edit content must not be served as current",
+    "pre-edit content must not be served as current"
   );
 });
 
@@ -111,11 +111,7 @@ test("a transient read failure keeps the last-known-good node", async (t) => {
   await rename(file, stashed); // file momentarily unreadable at its path
   await vault.reindexFile(file);
 
-  assert.equal(
-    vault.get("cloud-valid")?.fm.id,
-    "cloud-valid",
-    "an unreadable file must not evict the indexed version",
-  );
+  assert.equal(vault.get("cloud-valid")?.fm.id, "cloud-valid", "an unreadable file must not evict the indexed version");
   assert.equal(search.recall("PLACEHOLDERWORD", { k: 5 })[0]?.id, "cloud-valid");
 
   // …and a real deletion still removes it, through the unlink path.
@@ -179,14 +175,14 @@ test("reconcile does not promote a quarantined duplicate into the index", async 
   assert.equal(
     vault.get("dup-id")?.filePath,
     path.join(dir, "a-first.md"),
-    "first path keeps the claim — load_memory must not start serving the copy",
+    "first path keeps the claim — load_memory must not start serving the copy"
   );
   assert.match(vault.get("dup-id")?.body ?? "", /AAAWORD/);
   assert.equal(search.recall("AAAWORD", { k: 5 })[0]?.id, "dup-id");
   assert.deepEqual(
     search.recall("ZZZWORD", { k: 5 }).map((h) => h.id),
     [],
-    "the copy's body must not enter BM25 either",
+    "the copy's body must not enter BM25 either"
   );
 });
 
@@ -222,13 +218,9 @@ test("an id edited onto a claimed id releases the file's old id instead of leavi
   assert.deepEqual(
     search.recall("FOOWORD", { k: 5 }).map((h) => h.id),
     [],
-    "the pre-edit body must leave BM25 with the old id",
+    "the pre-edit body must leave BM25 with the old id"
   );
-  assert.equal(
-    vault.get("bar")?.filePath,
-    path.join(dir, "other.md"),
-    "the claim stays with the first path",
-  );
+  assert.equal(vault.get("bar")?.filePath, path.join(dir, "other.md"), "the claim stays with the first path");
 
   // Once the winner is gone, the edited file is a free claimant again.
   await unlink(path.join(dir, "other.md"));

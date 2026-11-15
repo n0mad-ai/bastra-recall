@@ -80,7 +80,14 @@ export function loadRerankDecisionRegistration(): Record<string, unknown> {
 
 /** Citation fields §29.1 demands of every quoted foreign claim. */
 const REQUIRED_FIELDS: Array<keyof ForeignFigure> = [
-  "id", "system", "claim", "evidence_class", "source", "version", "locus", "retrieved",
+  "id",
+  "system",
+  "claim",
+  "evidence_class",
+  "source",
+  "version",
+  "locus",
+  "retrieved",
 ];
 
 /**
@@ -130,7 +137,12 @@ export function rankingBlocker(a: ForeignFigure, b: ForeignFigure): string | nul
     const av = a[field];
     const bv = b[field];
     if (av === null || bv === null) {
-      const which = av === null && bv === null ? "neither source states" : av === null ? `${a.id} does not state` : `${b.id} does not state`;
+      const which =
+        av === null && bv === null
+          ? "neither source states"
+          : av === null
+            ? `${a.id} does not state`
+            : `${b.id} does not state`;
       return `${which} \`${field}\` — an unknown configuration cannot be asserted to match`;
     }
     if (av !== bv) return `\`${field}\` differs: ${a.id} has "${av}", ${b.id} has "${bv}"`;
@@ -162,7 +174,7 @@ export type CueStage = "structure_pending_decision" | "structure_registered" | "
  */
 export function checkCueRegistration(
   requiredStage: CueStage = "structure_registered",
-  reg: Record<string, unknown> = loadCueRegistration(),
+  reg: Record<string, unknown> = loadCueRegistration()
 ): RegistrationIssue[] {
   const issues: RegistrationIssue[] = [];
   const at = (k: string): unknown => reg[k];
@@ -183,7 +195,7 @@ export function checkCueRegistration(
   const design = at("design");
   if (order.indexOf(stage) >= order.indexOf("structure_registered")) {
     if (design !== "A" && design !== "B") {
-      issues.push({ where: "design", problem: "must be \"A\" or \"B\" — there is no third design (§18.3)" });
+      issues.push({ where: "design", problem: 'must be "A" or "B" — there is no third design (§18.3)' });
     }
     const admissible = at("admissible_designs") as Record<string, Record<string, unknown>> | undefined;
     const chosen = admissible?.[String(design)];
@@ -200,11 +212,15 @@ export function checkCueRegistration(
         if (!guard || !permitted.includes(String(guard.mode))) {
           issues.push({
             where: "design A",
-            problem: "the fixed cue configuration must not be chosen on the cases the comparison then runs on — register a selection/holdout split or a nested evaluation (§18.3)",
+            problem:
+              "the fixed cue configuration must not be chosen on the cases the comparison then runs on — register a selection/holdout split or a nested evaluation (§18.3)",
           });
         }
         if (chosen.fixed_cue_configuration == null) {
-          issues.push({ where: "design A", problem: "the held-fixed cue configuration is part of the registration (§18.3)" });
+          issues.push({
+            where: "design A",
+            problem: "the held-fixed cue configuration is part of the registration (§18.3)",
+          });
         }
       }
       if (design === "B" && chosen.cell_count !== 8) {
@@ -239,7 +255,10 @@ export function checkCueRegistration(
       }
     }
     if (at("evaluation_rule") == null) {
-      issues.push({ where: "evaluation_rule", problem: "fixed before the run, so the analysis is not chosen after seeing the data (§18.3)" });
+      issues.push({
+        where: "evaluation_rule",
+        problem: "fixed before the run, so the analysis is not chosen after seeing the data (§18.3)",
+      });
     }
 
     // §18.1: "In beiden Fällen werden Bedingungs- beziehungsweise Zellstruktur,
@@ -248,7 +267,9 @@ export function checkCueRegistration(
     // generation-path experiment carries its own N, and without it the
     // registration would reach `numbers_registered` while the one number the
     // chosen design actually runs on is still open.
-    const chosenNow = (at("admissible_designs") as Record<string, Record<string, unknown>> | undefined)?.[String(design)];
+    const chosenNow = (at("admissible_designs") as Record<string, Record<string, unknown>> | undefined)?.[
+      String(design)
+    ];
     const perUnit = design === "A" ? "min_n_per_condition" : "min_n_per_cell";
     if (chosenNow && typeof chosenNow[perUnit] !== "number") {
       issues.push({
@@ -268,12 +289,21 @@ export function checkCueRegistration(
       const sel = guard.selection_share;
       const hold = guard.holdout_share;
       if (typeof sel !== "number" || typeof hold !== "number") {
-        issues.push({ where: "contamination_guard", problem: "selection_share and holdout_share are part of the registration (§18.3)" });
+        issues.push({
+          where: "contamination_guard",
+          problem: "selection_share and holdout_share are part of the registration (§18.3)",
+        });
       } else if (Math.abs(sel + hold - 1) > 1e-9) {
-        issues.push({ where: "contamination_guard", problem: `shares must cover the case set exactly: ${sel} + ${hold} != 1` });
+        issues.push({
+          where: "contamination_guard",
+          problem: `shares must cover the case set exactly: ${sel} + ${hold} != 1`,
+        });
       }
       if (guard.split_seed == null) {
-        issues.push({ where: "contamination_guard", problem: "the split needs a seed, or it is not the same split on the next run" });
+        issues.push({
+          where: "contamination_guard",
+          problem: "the split needs a seed, or it is not the same split on the next run",
+        });
       }
       // A seed alone only makes an UNBALANCED split reproducible. The M0
       // baseline measured Recall@3 per gold file between 31.3% and 84.9% — a
@@ -283,7 +313,8 @@ export function checkCueRegistration(
       if (!Array.isArray(guard.stratify_by) || guard.stratify_by.length === 0) {
         issues.push({
           where: "contamination_guard",
-          problem: "the split must name what it stratifies by — a seed makes an unbalanced split reproducible, not balanced",
+          problem:
+            "the split must name what it stratifies by — a seed makes an unbalanced split reproducible, not balanced",
         });
       }
     }
@@ -307,7 +338,7 @@ export function checkCueRegistration(
  */
 export function checkPresentationRegistration(
   requiredStage: CueStage = "structure_registered",
-  reg: Record<string, unknown> = loadPresentationRegistration(),
+  reg: Record<string, unknown> = loadPresentationRegistration()
 ): RegistrationIssue[] {
   const issues: RegistrationIssue[] = [];
   const at = (k: string): unknown => reg[k];
@@ -351,14 +382,20 @@ export function checkPresentationRegistration(
     for (const key of ["A_wording", "B_gate"]) {
       const arm = arms?.[key];
       if (!arm) {
-        issues.push({ where: `arms.${key}`, problem: "both arm pairs are registered before the run, blocked ones included" });
+        issues.push({
+          where: `arms.${key}`,
+          problem: "both arm pairs are registered before the run, blocked ones included",
+        });
         continue;
       }
       if (!Array.isArray(arm.conditions) || arm.conditions.length !== 2) {
         issues.push({ where: `arms.${key}`, problem: "each arm pair has exactly two conditions" });
       }
       if (typeof arm.held_constant !== "string") {
-        issues.push({ where: `arms.${key}`, problem: "what stays constant is what makes the comparison an experiment (§18.3)" });
+        issues.push({
+          where: `arms.${key}`,
+          problem: "what stays constant is what makes the comparison an experiment (§18.3)",
+        });
       }
     }
   }
@@ -372,11 +409,15 @@ export function checkPresentationRegistration(
     if (!fb || !measured || !conclusion) {
       issues.push({
         where: "min_n_per_arm",
-        problem: "no min-N is registrable only WITH the measurement that shows why — otherwise the gap reads as an omission (§18.1)",
+        problem:
+          "no min-N is registrable only WITH the measurement that shows why — otherwise the gap reads as an omission (§18.1)",
       });
     } else {
       if (!fb.measured_from) {
-        issues.push({ where: "underpowered_fallback", problem: "the measurement names its source window and vault, or it cannot be re-checked" });
+        issues.push({
+          where: "underpowered_fallback",
+          problem: "the measurement names its source window and vault, or it cannot be re-checked",
+        });
       }
       // §18.1 (#972): the verdict for an arm below its min-N is a field, not
       // a reading of the prose — keyword lists cannot tell a rule from its
@@ -389,17 +430,25 @@ export function checkPresentationRegistration(
       if (verdict !== "not_evaluable" && verdict !== "null_result") {
         issues.push({
           where: "underpowered_fallback",
-          problem: "§18.1: `conclusion.underpowered_arm_verdict` states the verdict for an arm below its min-N (`not_evaluable` | `null_result`)",
+          problem:
+            "§18.1: `conclusion.underpowered_arm_verdict` states the verdict for an arm below its min-N (`not_evaluable` | `null_result`)",
         });
       } else if (verdict === "null_result") {
         issues.push({
           where: "underpowered_fallback",
-          problem: "§18.1: an arm below its min-N is reported as NOT EVALUABLE, never as a null result — `underpowered_arm_verdict` must be `not_evaluable`",
+          problem:
+            "§18.1: an arm below its min-N is reported as NOT EVALUABLE, never as a null result — `underpowered_arm_verdict` must be `not_evaluable`",
         });
       }
       if (typeof rule !== "string" || !rule.trim()) {
-        issues.push({ where: "underpowered_fallback", problem: "§18.1: the reporting rule belongs in the registration as prose next to its verdict field" });
-      } else if ((verdict === "not_evaluable" && !namesNotEvaluable) || (verdict === "null_result" && namesNotEvaluable)) {
+        issues.push({
+          where: "underpowered_fallback",
+          problem: "§18.1: the reporting rule belongs in the registration as prose next to its verdict field",
+        });
+      } else if (
+        (verdict === "not_evaluable" && !namesNotEvaluable) ||
+        (verdict === "null_result" && namesNotEvaluable)
+      ) {
         issues.push({
           where: "underpowered_fallback",
           problem: `§18.1: \`reporting_rule\` contradicts \`underpowered_arm_verdict: ${verdict}\` — the prose names a different verdict than the field`,
@@ -443,7 +492,7 @@ export function checkPresentationRegistration(
 export function checkLongMemEvalRegistration(
   requiredStage: CueStage = "structure_registered",
   reg: Record<string, unknown> = loadLongMemEvalRegistration(),
-  figures: ForeignFigure[] = loadForeignFigures(),
+  figures: ForeignFigure[] = loadForeignFigures()
 ): RegistrationIssue[] {
   const issues: RegistrationIssue[] = [];
   const at = (k: string): unknown => reg[k];
@@ -468,7 +517,10 @@ export function checkLongMemEvalRegistration(
   const corpus = at("corpus") as Record<string, unknown> | undefined;
   for (const field of ["dataset", "variant", "file", "source", "license", "n_questions"]) {
     if (corpus?.[field] == null) {
-      issues.push({ where: "corpus", problem: `\`${field}\` is part of the registration — the variant decides the task` });
+      issues.push({
+        where: "corpus",
+        problem: `\`${field}\` is part of the registration — the variant decides the task`,
+      });
     }
   }
 
@@ -478,7 +530,10 @@ export function checkLongMemEvalRegistration(
   const protocol = at("protocol") as Record<string, unknown> | undefined;
   for (const field of ["index_scope", "granularity", "document_text", "query", "metric", "reranker", "llm_in_loop"]) {
     if (typeof protocol?.[field] !== "string") {
-      issues.push({ where: "protocol", problem: `\`${field}\` is fixed before the run, not chosen after seeing the numbers (§18.3)` });
+      issues.push({
+        where: "protocol",
+        problem: `\`${field}\` is fixed before the run, not chosen after seeing the numbers (§18.3)`,
+      });
     }
   }
 
@@ -494,7 +549,8 @@ export function checkLongMemEvalRegistration(
       if (!known.has(String(id))) {
         issues.push({
           where: `compared_against ${String(id)}`,
-          problem: "no such figure in foreign-figures.json — a comparison target must itself carry an evidence class (C-040)",
+          problem:
+            "no such figure in foreign-figures.json — a comparison target must itself carry an evidence class (C-040)",
         });
       }
     }
@@ -502,7 +558,10 @@ export function checkLongMemEvalRegistration(
 
   const configs = at("configurations") as Record<string, unknown>[] | undefined;
   if (!Array.isArray(configs) || configs.length === 0) {
-    issues.push({ where: "configurations", problem: "at least one measured configuration is part of the registration" });
+    issues.push({
+      where: "configurations",
+      problem: "at least one measured configuration is part of the registration",
+    });
     return issues;
   }
 
@@ -513,7 +572,8 @@ export function checkLongMemEvalRegistration(
     if (!configs.some((c) => c.matches === id)) {
       issues.push({
         where: `compared_against ${id}`,
-        problem: "no configuration is built to match this figure — a comparison target without a matched run is a caveat, not a comparison",
+        problem:
+          "no configuration is built to match this figure — a comparison target without a matched run is a caveat, not a comparison",
       });
     }
   }
@@ -521,10 +581,16 @@ export function checkLongMemEvalRegistration(
   for (const c of configs) {
     const where = `configurations.${String(c.id ?? "<unnamed>")}`;
     if (typeof c.cli !== "string") {
-      issues.push({ where, problem: "the exact command is part of the registration, or the configuration is not reproducible" });
+      issues.push({
+        where,
+        problem: "the exact command is part of the registration, or the configuration is not reproducible",
+      });
     }
     if (typeof c.matches !== "string" || !known.has(String(c.matches))) {
-      issues.push({ where, problem: "`matches` names the registered figure this configuration is built to be comparable to" });
+      issues.push({
+        where,
+        problem: "`matches` names the registered figure this configuration is built to be comparable to",
+      });
     }
     // Unsere eigene Zahl ist eine Messung wie jede andere und trägt dieselben
     // Konfigurationsfelder. Ohne sie könnte `rankingBlocker` nie mehr sagen als
@@ -543,14 +609,18 @@ export function checkLongMemEvalRegistration(
       // retriever class, and when that is a DIFFERENT figure from the one whose
       // protocol it reproduces, both have to be on the record.
       if (typeof self.retriever_class !== "string") {
-        issues.push({ where: `${where}.self_figure`, problem: "`retriever_class` is required — matching a protocol is not retrieving alike" });
+        issues.push({
+          where: `${where}.self_figure`,
+          problem: "`retriever_class` is required — matching a protocol is not retrieving alike",
+        });
       }
       const matched = known.get(String(c.matches)) as (ForeignFigure & { retriever_class?: string }) | undefined;
       const sameClassId = c.same_retriever_class;
       if (typeof sameClassId !== "string" || !known.has(String(sameClassId))) {
         issues.push({
           where,
-          problem: "`same_retriever_class` names the registered figure built the way we build — it is the number our own is honestly measured against",
+          problem:
+            "`same_retriever_class` names the registered figure built the way we build — it is the number our own is honestly measured against",
         });
       } else {
         const sameClass = known.get(String(sameClassId)) as (ForeignFigure & { retriever_class?: string }) | undefined;
@@ -563,7 +633,8 @@ export function checkLongMemEvalRegistration(
         if (matched && matched.retriever_class !== self.retriever_class && sameClassId === c.matches) {
           issues.push({
             where,
-            problem: "the protocol-matched figure retrieves differently, so it cannot also be the like-for-like row — name the one that is",
+            problem:
+              "the protocol-matched figure retrieves differently, so it cannot also be the like-for-like row — name the one that is",
           });
         }
       }
@@ -571,11 +642,17 @@ export function checkLongMemEvalRegistration(
     if (self) {
       for (const field of ["reader", "judge", "top_k", "context_budget"] as const) {
         if (!(field in self)) {
-          issues.push({ where: `${where}.self_figure`, problem: `\`${field}\` is absent — state it, or state null (§29.1)` });
+          issues.push({
+            where: `${where}.self_figure`,
+            problem: `\`${field}\` is absent — state it, or state null (§29.1)`,
+          });
         }
       }
       if (self.evidence_class !== "project_self_measurement") {
-        issues.push({ where: `${where}.self_figure`, problem: "our own run is a project_self_measurement, whatever corpus it ran on (§2.3)" });
+        issues.push({
+          where: `${where}.self_figure`,
+          problem: "our own run is a project_self_measurement, whatever corpus it ran on (§2.3)",
+        });
       }
     }
 
@@ -584,7 +661,10 @@ export function checkLongMemEvalRegistration(
     // reserviert. Eine externe Retrieval-Messung gehört nicht dazu, und die
     // Registrierung ist die Stelle, an der das nachprüfbar dasteht.
     if (typeof m?.run_out === "string" && /\.bastra\/eval-runs/.test(m.run_out)) {
-      issues.push({ where: `${where}.measurement.run_out`, problem: "this arm must not write into the private eval-run archive (#446)" });
+      issues.push({
+        where: `${where}.measurement.run_out`,
+        problem: "this arm must not write into the private eval-run archive (#446)",
+      });
     }
 
     if (stage === "numbers_registered") {
@@ -625,8 +705,14 @@ export function checkLongMemEvalRegistration(
  */
 export function longMemEvalComparability(
   reg: Record<string, unknown> = loadLongMemEvalRegistration(),
-  figures: ForeignFigure[] = loadForeignFigures(),
-): { configuration: string; against: string; blocker: string | null; retriever_match: boolean; like_for_like: string | null }[] {
+  figures: ForeignFigure[] = loadForeignFigures()
+): {
+  configuration: string;
+  against: string;
+  blocker: string | null;
+  retriever_match: boolean;
+  like_for_like: string | null;
+}[] {
   const known = new Map(figures.map((f) => [f.id, f]));
   const configs = (reg.configurations as Record<string, unknown>[] | undefined) ?? [];
   return configs.map((c) => {
@@ -646,8 +732,8 @@ export function longMemEvalComparability(
       // A null blocker says the four configuration quantities match. It does
       // NOT say the two systems retrieve alike, and reading it that way is how
       // a hybrid ends up quoted against a dense-only baseline.
-      retriever_match: other != null
-        && (other as ForeignFigure & { retriever_class?: string }).retriever_class === ourClass,
+      retriever_match:
+        other != null && (other as ForeignFigure & { retriever_class?: string }).retriever_class === ourClass,
       like_for_like: sameClass ? String(c.same_retriever_class) : null,
     };
   });
@@ -679,18 +765,25 @@ export function longMemEvalComparability(
 const HEDGE_WORDS = ["essentially", "clearly", "roughly", "about ", "substantially", "materially"];
 
 export function checkRerankDecisionRegistration(
-  reg: Record<string, unknown> = loadRerankDecisionRegistration(),
+  reg: Record<string, unknown> = loadRerankDecisionRegistration()
 ): RegistrationIssue[] {
   const issues: RegistrationIssue[] = [];
   const where = "rerank-decision.json";
 
   const primary = reg.primary_endpoint as Record<string, unknown> | undefined;
   if (!primary) {
-    issues.push({ where, problem: "no primary_endpoint — with several hundred intervals per run, a registration without one cannot conclude anything" });
+    issues.push({
+      where,
+      problem:
+        "no primary_endpoint — with several hundred intervals per run, a registration without one cannot conclude anything",
+    });
   } else {
     for (const field of ["metric", "dataset", "model", "passage", "n", "estimator"]) {
       if (primary[field] === undefined || primary[field] === null || primary[field] === "") {
-        issues.push({ where, problem: `primary_endpoint.${field} is missing — a partly specified endpoint leaves the choice open` });
+        issues.push({
+          where,
+          problem: `primary_endpoint.${field} is missing — a partly specified endpoint leaves the choice open`,
+        });
       }
     }
   }
@@ -698,7 +791,10 @@ export function checkRerankDecisionRegistration(
   const bars = reg.decision_bars as Record<string, unknown> | undefined;
   const precedence = reg.precedence as { order?: string[] } | undefined;
   if (!precedence?.order?.length) {
-    issues.push({ where, problem: "no precedence.order — overlapping shapes would leave the choice to whoever writes the report" });
+    issues.push({
+      where,
+      problem: "no precedence.order — overlapping shapes would leave the choice to whoever writes the report",
+    });
   } else if (bars) {
     for (const shape of precedence.order) {
       if (!(shape in bars)) {
@@ -707,11 +803,14 @@ export function checkRerankDecisionRegistration(
     }
     // The trap that made the first draft's ordering meaningless.
     const close = JSON.stringify(bars.close_501 ?? {});
-    const conditional = precedence.order.filter((o) => o !== "close_501" && o !== "always_on" && o !== "unresolved_fallback");
+    const conditional = precedence.order.filter(
+      (o) => o !== "close_501" && o !== "always_on" && o !== "unresolved_fallback"
+    );
     if (precedence.order[0] === "close_501" && conditional.length > 0 && !/none of|neither/i.test(close)) {
       issues.push({
         where,
-        problem: "close_501 is first in precedence but its condition does not exclude the conditional shapes — they would be structurally unreachable",
+        problem:
+          "close_501 is first in precedence but its condition does not exclude the conditional shapes — they would be structurally unreachable",
       });
     }
   }
@@ -720,14 +819,20 @@ export function checkRerankDecisionRegistration(
     const text = JSON.stringify(bars).toLowerCase();
     for (const w of HEDGE_WORDS) {
       if (text.includes(w)) {
-        issues.push({ where, problem: `decision_bars still contains the hedging word ${JSON.stringify(w.trim())} — a bar that can be argued is not a bar` });
+        issues.push({
+          where,
+          problem: `decision_bars still contains the hedging word ${JSON.stringify(w.trim())} — a bar that can be argued is not a bar`,
+        });
       }
     }
   }
 
   const version = reg.registration_version;
   if (typeof version === "number" && version > 1 && typeof reg.$comment_amendment !== "string") {
-    issues.push({ where, problem: `registration_version ${version} without a $comment_amendment — an amendment must say what changed and that no run preceded it` });
+    issues.push({
+      where,
+      problem: `registration_version ${version} without a $comment_amendment — an amendment must say what changed and that no run preceded it`,
+    });
   }
 
   return issues;

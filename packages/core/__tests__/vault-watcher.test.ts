@@ -34,11 +34,7 @@ ${body}
 }
 
 /** Wait until `predicate` sees a matching event, or fail after `ms`. */
-async function waitFor(
-  events: VaultEvent[],
-  predicate: (e: VaultEvent) => boolean,
-  ms = 8000,
-): Promise<VaultEvent> {
+async function waitFor(events: VaultEvent[], predicate: (e: VaultEvent) => boolean, ms = 8000): Promise<VaultEvent> {
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
     const hit = events.find(predicate);
@@ -47,8 +43,8 @@ async function waitFor(
   }
   throw new Error(
     `no matching watcher event within ${ms}ms — saw: ${JSON.stringify(
-      events.map((e) => `${e.kind}:${"memory" in e && e.memory ? e.memory.fm.id : ""}`),
-    )}`,
+      events.map((e) => `${e.kind}:${"memory" in e && e.memory ? e.memory.fm.id : ""}`)
+    )}`
   );
 }
 
@@ -81,11 +77,7 @@ test("a nested .md file is watched too", async (t) => {
   const { dir, vault, events } = await watchedVault(t);
 
   await mkdir(path.join(dir, "memories", "projects", "demo"), { recursive: true });
-  await writeFile(
-    path.join(dir, "memories", "projects", "demo", "beta.md"),
-    memoryMd("beta"),
-    "utf8",
-  );
+  await writeFile(path.join(dir, "memories", "projects", "demo", "beta.md"), memoryMd("beta"), "utf8");
 
   await waitFor(events, (e) => e.kind === "add" && e.memory?.fm.id === "beta");
   assert.equal(vault.get("beta")?.fm.id, "beta");
@@ -142,8 +134,7 @@ test("a file the save path already indexed must not arrive as a second add", asy
 
   await writeFile(file, memoryMd("zeta"), "utf8");
   await vault.reindexFile(file);
-  const addsOf = (): VaultEvent[] =>
-    events.filter((e) => e.kind === "add" && e.memory?.fm.id === "zeta");
+  const addsOf = (): VaultEvent[] => events.filter((e) => e.kind === "add" && e.memory?.fm.id === "zeta");
   assert.equal(addsOf().length, 1, "the save path itself announces the newborn once");
 
   // the watcher's own report for the same file must land as a change
@@ -158,8 +149,7 @@ test("a watcher error is survivable — it must not take the process down", asyn
   // process, and there is no uncaughtException handler in core or daemon.
   // EMFILE is reachable for a launchd-spawned daemon at the macOS default of
   // 256 descriptors, so this has to degrade to the periodic reconcile.
-  const watcher = (vault as unknown as { watcher?: { emit: (ev: string, err: Error) => void } })
-    .watcher;
+  const watcher = (vault as unknown as { watcher?: { emit: (ev: string, err: Error) => void } }).watcher;
   assert.ok(watcher, "startWatching must have created a watcher");
   assert.doesNotThrow(() => watcher!.emit("error", new Error("EMFILE: simulated")));
 

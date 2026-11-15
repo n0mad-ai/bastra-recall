@@ -73,7 +73,9 @@ async function main(): Promise<void> {
   const arm = await attachHybrid(vault, search, vaultPath);
   console.error(`[pool-coverage] ${arm.label}`);
 
-  const files = readdirSync(goldDir).filter((f) => f.startsWith("gold-") && f.endsWith(".json")).sort();
+  const files = readdirSync(goldDir)
+    .filter((f) => f.startsWith("gold-") && f.endsWith(".json"))
+    .sort();
   const perFile: FileCoverage[] = [];
   const allRanks: number[] = [];
   const allByKind: Record<string, number[]> = {};
@@ -92,7 +94,12 @@ async function main(): Promise<void> {
     for (const c of answerable) {
       let pool: RecallHit[] = [];
       const recall = gatedHybridRecaller((q, o) =>
-        search.recallHybrid(q, { ...o, onCandidatePool: (p) => { pool = p; } }),
+        search.recallHybrid(q, {
+          ...o,
+          onCandidatePool: (p) => {
+            pool = p;
+          },
+        })
       );
       await recall(c.query, c.id);
       const exp = new Set(c.expected_ids);
@@ -104,7 +111,10 @@ async function main(): Promise<void> {
       kinds[c.kind] = (kinds[c.kind] ?? 0) + 1;
       (byKindRanks[c.kind] ??= []).push(rank);
       (allByKind[c.kind] ??= []).push(rank);
-      const servedIds = pool.slice(0, PRODUCTION_K).filter((h) => h.score >= SCORE_FLOOR).map((h) => h.id);
+      const servedIds = pool
+        .slice(0, PRODUCTION_K)
+        .filter((h) => h.score >= SCORE_FLOOR)
+        .map((h) => h.id);
       const sRank = servedIds.findIndex((id) => exp.has(id)) + 1;
       served3.push(sRank >= 1 && sRank <= 3);
       served10.push(sRank >= 1);
@@ -115,8 +125,14 @@ async function main(): Promise<void> {
       kinds,
       cases: answerable.length,
       in_pool_at: Object.fromEntries(DEPTHS.map((d) => [`@${d}`, share(ranks, (r) => r >= 1 && r <= d)])),
-      served_at_3: share(served3.map((b) => (b ? 1 : 0)), (x) => x === 1),
-      served_at_10: share(served10.map((b) => (b ? 1 : 0)), (x) => x === 1),
+      served_at_3: share(
+        served3.map((b) => (b ? 1 : 0)),
+        (x) => x === 1
+      ),
+      served_at_10: share(
+        served10.map((b) => (b ? 1 : 0)),
+        (x) => x === 1
+      ),
       absent_from_pool: ranks.filter((r) => r === 0).length,
       median_pool_size: sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0,
     });
@@ -138,26 +154,34 @@ async function main(): Promise<void> {
         in_pool_at: Object.fromEntries(DEPTHS.map((d) => [`@${d}`, share(rs, (r) => r >= 1 && r <= d)])),
         absent_from_pool: rs.filter((r) => r === 0).length,
       },
-    ]),
+    ])
   );
 
   const total = {
     cases: allRanks.length,
     by_kind: byKind,
     in_pool_at: Object.fromEntries(DEPTHS.map((d) => [`@${d}`, share(allRanks, (r) => r >= 1 && r <= d)])),
-    served_at_3: share(allServed3.map((b) => (b ? 1 : 0)), (x) => x === 1),
-    served_at_10: share(allServed10.map((b) => (b ? 1 : 0)), (x) => x === 1),
+    served_at_3: share(
+      allServed3.map((b) => (b ? 1 : 0)),
+      (x) => x === 1
+    ),
+    served_at_10: share(
+      allServed10.map((b) => (b ? 1 : 0)),
+      (x) => x === 1
+    ),
     absent_from_pool: allRanks.filter((r) => r === 0).length,
   };
 
   const pct = (x: number): string => `${(x * 100).toFixed(1)}%`;
   const L: string[] = ["", "  Pool coverage — the ceiling on anything a reranker can do.", ""];
-  L.push(`  ${"file".padEnd(24)} | ${"n".padStart(4)} | ${DEPTHS.map((d) => `@${d}`.padStart(6)).join(" |")} | absent | served@3`);
+  L.push(
+    `  ${"file".padEnd(24)} | ${"n".padStart(4)} | ${DEPTHS.map((d) => `@${d}`.padStart(6)).join(" |")} | absent | served@3`
+  );
   for (const f of [...perFile, { ...total, file: "TOTAL", median_pool_size: 0 } as FileCoverage]) {
     L.push(
       `  ${f.file.padEnd(24)} | ${String(f.cases).padStart(4)} | ` +
         `${DEPTHS.map((d) => pct(f.in_pool_at[`@${d}`]).padStart(6)).join(" |")} | ` +
-        `${String(f.absent_from_pool).padStart(6)} | ${pct(f.served_at_3)}`,
+        `${String(f.absent_from_pool).padStart(6)} | ${pct(f.served_at_3)}`
     );
   }
   L.push("");
@@ -165,7 +189,7 @@ async function main(): Promise<void> {
   for (const [k, v] of Object.entries(byKind)) {
     L.push(
       `    ${k.padEnd(14)} n=${String(v.cases).padStart(4)} | ` +
-        `${DEPTHS.map((d) => pct(v.in_pool_at[`@${d}`]).padStart(6)).join(" |")} | absent ${v.absent_from_pool}`,
+        `${DEPTHS.map((d) => pct(v.in_pool_at[`@${d}`]).padStart(6)).join(" |")} | absent ${v.absent_from_pool}`
     );
   }
   L.push("");
@@ -176,7 +200,23 @@ async function main(): Promise<void> {
 
   if (out) {
     mkdirSync(dirname(out), { recursive: true });
-    writeFileSync(out, JSON.stringify({ issue: 501, note: "retrieval only — no cross-encoder involved", vault: vaultFingerprint(vault), production_k: PRODUCTION_K, score_floor: SCORE_FLOOR, per_file: perFile, total }, null, 2) + "\n", { mode: 0o600 });
+    writeFileSync(
+      out,
+      JSON.stringify(
+        {
+          issue: 501,
+          note: "retrieval only — no cross-encoder involved",
+          vault: vaultFingerprint(vault),
+          production_k: PRODUCTION_K,
+          score_floor: SCORE_FLOOR,
+          per_file: perFile,
+          total,
+        },
+        null,
+        2
+      ) + "\n",
+      { mode: 0o600 }
+    );
     console.error(`[pool-coverage] wrote ${out}`);
   }
 

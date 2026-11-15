@@ -87,7 +87,7 @@ export function defaultStatuslineState(): StatuslineState {
 export function idleStatuslineState(
   turnId: number,
   vaultSize: number,
-  ccSessionId: string | null = null,
+  ccSessionId: string | null = null
 ): StatuslineState {
   return {
     ...defaultStatuslineState(),
@@ -111,18 +111,16 @@ export function idleStatuslineState(
  */
 export function adoptTurn(
   current: StatuslineState,
-  onDisk: Partial<StatuslineState> | null | undefined,
+  onDisk: Partial<StatuslineState> | null | undefined
 ): StatuslineState {
   const diskTurn = onDisk?.turn_id;
   if (typeof diskTurn === "number" && diskTurn !== current.turn_id) {
     return {
       ...defaultStatuslineState(),
       turn_id: diskTurn,
-      vault_size:
-        typeof onDisk?.vault_size === "number" ? onDisk.vault_size : current.vault_size,
+      vault_size: typeof onDisk?.vault_size === "number" ? onDisk.vault_size : current.vault_size,
       // #74: Session-Key vom prompt-hook übernehmen und über Flushes erhalten.
-      cc_session_id:
-        typeof onDisk?.cc_session_id === "string" ? onDisk.cc_session_id : current.cc_session_id ?? null,
+      cc_session_id: typeof onDisk?.cc_session_id === "string" ? onDisk.cc_session_id : (current.cc_session_id ?? null),
     };
   }
   return current;

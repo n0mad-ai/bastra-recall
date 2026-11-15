@@ -52,11 +52,7 @@ export interface SymbolSpan {
  * File nodes are left out. A file node's "span" is the file, so it would
  * cover every line and no change could ever be outside a symbol.
  */
-export function symbolSpans(
-  repoRoot: string,
-  file: string,
-  symbols: readonly CodeSymbol[],
-): SymbolSpan[] | null {
+export function symbolSpans(repoRoot: string, file: string, symbols: readonly CodeSymbol[]): SymbolSpan[] | null {
   const starts = symbols.filter((s) => s.kind !== "file" && s.line !== null);
   if (starts.length === 0) return [];
 
@@ -144,9 +140,7 @@ function runsPastItsOwnEnd(scan: Scan, openedAt: number, end: number, start: num
  * contains its own methods, and those start indented.
  */
 function topLevelOverrun(scan: Scan, spans: readonly SymbolSpan[]): boolean {
-  const top = spans
-    .filter((s) => scan.indent[s.start - 1] === 0)
-    .sort((a, b) => a.start - b.start);
+  const top = spans.filter((s) => scan.indent[s.start - 1] === 0).sort((a, b) => a.start - b.start);
   for (let i = 0; i < top.length - 1; i++) {
     const next = top.find((s) => s.start > top[i].start);
     if (next !== undefined && top[i].end >= next.start) return true;
@@ -487,13 +481,7 @@ function scanSource(lines: readonly string[]): Scan {
       }
       if (c === ":") {
         const atCaseDepth = caseHeadDepth === brackets.length;
-        const label = colonEndsStatement(
-          ternary,
-          brackets[brackets.length - 1],
-          lastTok,
-          prevTok,
-          atCaseDepth,
-        );
+        const label = colonEndsStatement(ternary, brackets[brackets.length - 1], lastTok, prevTok, atCaseDepth);
         if (label) {
           // A label's or a `case` arm's colon ends a statement, so what follows
           // is a statement start: `{` opens a block, `/` opens a regex.
@@ -567,7 +555,7 @@ function colonEndsStatement(
   frame: BracketKind | undefined,
   lastTok: string,
   prevTok: string,
-  caseHead: boolean,
+  caseHead: boolean
 ): boolean {
   if (ternary[ternary.length - 1] > 0) {
     ternary[ternary.length - 1]--;

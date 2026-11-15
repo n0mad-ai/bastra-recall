@@ -5,7 +5,14 @@
  */
 import { rename } from "node:fs/promises";
 import { join } from "node:path";
-import { assertInsideDir, assertOwnSubdir, clearAreaMark, ensureVaultDir, markAreaDeleted, withAreaExclusive } from "@bastra-recall/core";
+import {
+  assertInsideDir,
+  assertOwnSubdir,
+  clearAreaMark,
+  ensureVaultDir,
+  markAreaDeleted,
+  withAreaExclusive,
+} from "@bastra-recall/core";
 import { areaPath, assertEditable, docsShelfPath, isDir } from "./webui-areas-shared.js";
 
 export interface DeleteResult {
@@ -74,20 +81,12 @@ function assertAreaTrashBoundary(vaultRoot: string, areasRoot: string, dests: st
  *  Weg (Rename lässt die Doku stehen) hätte den Recall dauerhaft mit
  *  Dokumenten eines Projekts versorgt, das es nicht mehr gibt.
  */
-export async function deleteArea(
-  vaultRoot: string,
-  kind: "project" | "top",
-  name: string,
-): Promise<DeleteResult> {
+export async function deleteArea(vaultRoot: string, kind: "project" | "top", name: string): Promise<DeleteResult> {
   assertEditable(kind, name);
   return withAreaExclusive(vaultRoot, [name], () => deleteAreaLocked(vaultRoot, kind, name));
 }
 
-async function deleteAreaLocked(
-  vaultRoot: string,
-  kind: "project" | "top",
-  name: string,
-): Promise<DeleteResult> {
+async function deleteAreaLocked(vaultRoot: string, kind: "project" | "top", name: string): Promise<DeleteResult> {
   const from = areaPath(vaultRoot, kind, name);
   if (!(await isDir(from))) throw new Error(`area not found: ${name}`);
   const trashRoot = join(vaultRoot, ".bastra", "trash", "areas");
@@ -141,16 +140,14 @@ async function deleteAreaLocked(
         } catch {
           throw new Error(
             `delete failed AND could not be fully undone: ${(err as Error).message}. ` +
-              `Von Hand zu richten: ${dest} (sollte ${from} sein).`,
+              `Von Hand zu richten: ${dest} (sollte ${from} sein).`
           );
         }
         // Vollständig zurück: Das Regal liegt wieder an seinem Platz, also
         // ist der Name wieder in Betrieb. Nur hier — auf dem Pfad darüber
         // (`could not be fully undone`) bleibt der Grabstein bewusst stehen.
         await clearAreaMark(vaultRoot, name);
-        throw new Error(
-          `delete failed, nothing was changed: ${(err as Error).message}`,
-        );
+        throw new Error(`delete failed, nothing was changed: ${(err as Error).message}`);
       }
     }
   }

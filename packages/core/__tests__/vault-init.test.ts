@@ -87,7 +87,7 @@ id: broken
 ---
 
 no title, no summary, no topic_path → repaired, not dropped.
-`,
+`
     );
     // Plain Obsidian note without a memory `type:` → silent skip, unchanged:
     // structural strictness is what keeps the vault scan from swallowing
@@ -104,7 +104,7 @@ no title, no summary, no topic_path → repaired, not dropped.
     assert.ok(repaired!.damaged && repaired!.damaged.length > 0, "the repair must be flagged, not silent");
     assert.ok(
       repaired!.damaged!.some((d) => d.field === "title"),
-      `expected the missing title to be named, got ${JSON.stringify(repaired!.damaged)}`,
+      `expected the missing title to be named, got ${JSON.stringify(repaired!.damaged)}`
     );
 
     const healthy = vault.get("good");

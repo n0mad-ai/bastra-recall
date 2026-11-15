@@ -134,7 +134,7 @@ test("probePatch separates clean, already-upstream and conflict", () => {
     const conflicting = writePatchFile(
       s.root,
       "conflict.patch",
-      diffFor("src/a.txt", ["something else entirely"], ["replacement"]),
+      diffFor("src/a.txt", ["something else entirely"], ["replacement"])
     );
     const probe = probePatch(s.root, conflicting);
     assert.equal(probe.state, "conflict");
@@ -182,13 +182,10 @@ test("applySeries applies in order, retires what upstream absorbed, sets aside t
     writeFileSync(join(s.root, "src", "moved.txt"), "upstream rewrote this\n", "utf8");
 
     addPatch(writePatchFile(s.root, "p1.patch", diffFor("src/keep.txt", ["old"], ["patched"])), s.home);
-    addPatch(
-      writePatchFile(s.root, "p2.patch", diffFor("src/merged.txt", ["already-old"], ["already-new"])),
-      s.home,
-    );
+    addPatch(writePatchFile(s.root, "p2.patch", diffFor("src/merged.txt", ["already-old"], ["already-new"])), s.home);
     addPatch(
       writePatchFile(s.root, "p3.patch", diffFor("src/moved.txt", ["what it used to say"], ["local fix"])),
-      s.home,
+      s.home
     );
 
     const out = applySeries(s.root, { home: s.home, skipSmoke: true });
@@ -200,7 +197,7 @@ test("applySeries applies in order, retires what upstream absorbed, sets aside t
     assert.equal(
       readFileSync(join(s.root, "src", "moved.txt"), "utf8"),
       "upstream rewrote this\n",
-      "a set-aside patch must never touch the file",
+      "a set-aside patch must never touch the file"
     );
 
     // The retired one leaves the active series but stays in the index as history.
@@ -226,7 +223,7 @@ test("applySeries reverses everything it applied when the install stops booting"
     addPatch(writePatchFile(s.root, "ok.patch", diffFor("src/a.txt", ["old"], ["new"])), s.home);
     addPatch(
       writePatchFile(s.root, "boom.patch", diffFor("dist/cli.js", ["process.exit(0);"], ["process.exit(3);"])),
-      s.home,
+      s.home
     );
 
     const out = applySeries(s.root, { home: s.home });
@@ -238,7 +235,7 @@ test("applySeries reverses everything it applied when the install stops booting"
     assert.equal(
       readFileSync(join(s.root, "src", "a.txt"), "utf8"),
       "old\n",
-      "the unrelated patch is reversed too — the run is the unit, not the patch",
+      "the unrelated patch is reversed too — the run is the unit, not the patch"
     );
     assert.equal(readFileSync(join(s.root, "dist", "cli.js"), "utf8"), "process.exit(0);\n");
   } finally {
@@ -301,7 +298,7 @@ test("pendingPatchNotice reports set-aside patches and forgets resolved ones", (
     writeFileSync(join(s.root, "src", "a.txt"), "upstream moved this\n", "utf8");
     const { entry } = addPatch(
       writePatchFile(s.root, "p.patch", diffFor("src/a.txt", ["what it used to say"], ["local fix"])),
-      s.home,
+      s.home
     );
 
     const out = applySeries(s.root, { home: s.home, skipSmoke: true });
@@ -371,10 +368,7 @@ test("a source install addresses patches from the repo root, not the package roo
   const s = sourceCheckout();
   try {
     const target = join(s.repo, "packages", "core", "src", "a.txt");
-    addPatch(
-      writePatchFile(s.home, "p.patch", diffFor("packages/core/src/a.txt", ["old"], ["new"])),
-      s.home,
-    );
+    addPatch(writePatchFile(s.home, "p.patch", diffFor("packages/core/src/a.txt", ["old"], ["new"])), s.home);
 
     // The install root is the daemon package; the patch names a path outside it.
     // `git apply` run from there does not fail on such a path — it SKIPS it and
@@ -406,51 +400,59 @@ test("a patch git skips is never counted as applied", () => {
   }
 });
 
-test("a localized git cannot hide a skipped patch: git runs in the C locale", { skip: process.platform === "win32" }, () => {
-  // The skip check reads git's English "Skipped patch". A localized git prints
-  // that line in the caller's language (de: "Patch '…' ausgelassen.") and still
-  // exits 0. The stand-in below is such a git for `apply`: it skips every patch
-  // and says so in German unless LC_ALL is C; everything else goes to real git.
-  const onPath = findExecutable("git");
-  assert.ok(onPath, "git must be installed for this test");
-  // The git binary itself, not a wrapper that would find the stand-in on PATH again.
-  const execPath = spawnSync(onPath, ["--exec-path"], { encoding: "utf8" }).stdout.trim();
-  const realGit = existsSync(join(execPath, "git")) ? join(execPath, "git") : onPath;
-  const s = scratch();
-  const binDir = join(s.root, "..", "localized-bin");
-  mkdirSync(binDir, { mode: 0o700 });
-  const shim = join(binDir, "git");
-  writeFileSync(
-    shim,
-    `#!/bin/sh\n` +
-      `[ "$1" = apply ] || exec '${realGit}' "$@"\n` +
-      `if [ "$LC_ALL" = C ]; then echo "Skipped patch 'src/a.txt'."; else echo "Patch 'src/a.txt' ausgelassen."; fi\n` +
-      `exit 0\n`,
-    { mode: 0o755 },
-  );
-  const prev = { PATH: process.env.PATH, LC_ALL: process.env.LC_ALL, LANGUAGE: process.env.LANGUAGE };
-  process.env.PATH = `${binDir}${delimiter}${prev.PATH ?? ""}`;
-  process.env.LC_ALL = "de_DE.UTF-8";
-  process.env.LANGUAGE = "de";
-  try {
-    assert.equal(findExecutable("git"), shim, "the localized stand-in is the git the registry runs");
-    writeFileSync(join(s.root, "src", "a.txt"), "old\n", "utf8");
-    const file = writePatchFile(s.root, "p.patch", diffFor("src/a.txt", ["old"], ["new"]));
-    assert.notEqual(probePatch(s.root, file).state, "already-upstream", "a skipped patch must never read as merged upstream");
-    addPatch(file, s.home);
-    const out = applySeries(s.root, { home: s.home, skipSmoke: true });
-    assert.equal(out.retired.length, 0, "nothing may be retired on the strength of a skip, in any language");
-    assert.equal(out.applied.length, 0, "and a skip is not an apply");
-    assert.equal(activePatches(s.home).length, 1, "the patch stays in the series");
-  } finally {
-    for (const [k, v] of Object.entries(prev)) {
-      if (v === undefined) delete process.env[k];
-      else process.env[k] = v;
+test(
+  "a localized git cannot hide a skipped patch: git runs in the C locale",
+  { skip: process.platform === "win32" },
+  () => {
+    // The skip check reads git's English "Skipped patch". A localized git prints
+    // that line in the caller's language (de: "Patch '…' ausgelassen.") and still
+    // exits 0. The stand-in below is such a git for `apply`: it skips every patch
+    // and says so in German unless LC_ALL is C; everything else goes to real git.
+    const onPath = findExecutable("git");
+    assert.ok(onPath, "git must be installed for this test");
+    // The git binary itself, not a wrapper that would find the stand-in on PATH again.
+    const execPath = spawnSync(onPath, ["--exec-path"], { encoding: "utf8" }).stdout.trim();
+    const realGit = existsSync(join(execPath, "git")) ? join(execPath, "git") : onPath;
+    const s = scratch();
+    const binDir = join(s.root, "..", "localized-bin");
+    mkdirSync(binDir, { mode: 0o700 });
+    const shim = join(binDir, "git");
+    writeFileSync(
+      shim,
+      `#!/bin/sh\n` +
+        `[ "$1" = apply ] || exec '${realGit}' "$@"\n` +
+        `if [ "$LC_ALL" = C ]; then echo "Skipped patch 'src/a.txt'."; else echo "Patch 'src/a.txt' ausgelassen."; fi\n` +
+        `exit 0\n`,
+      { mode: 0o755 }
+    );
+    const prev = { PATH: process.env.PATH, LC_ALL: process.env.LC_ALL, LANGUAGE: process.env.LANGUAGE };
+    process.env.PATH = `${binDir}${delimiter}${prev.PATH ?? ""}`;
+    process.env.LC_ALL = "de_DE.UTF-8";
+    process.env.LANGUAGE = "de";
+    try {
+      assert.equal(findExecutable("git"), shim, "the localized stand-in is the git the registry runs");
+      writeFileSync(join(s.root, "src", "a.txt"), "old\n", "utf8");
+      const file = writePatchFile(s.root, "p.patch", diffFor("src/a.txt", ["old"], ["new"]));
+      assert.notEqual(
+        probePatch(s.root, file).state,
+        "already-upstream",
+        "a skipped patch must never read as merged upstream"
+      );
+      addPatch(file, s.home);
+      const out = applySeries(s.root, { home: s.home, skipSmoke: true });
+      assert.equal(out.retired.length, 0, "nothing may be retired on the strength of a skip, in any language");
+      assert.equal(out.applied.length, 0, "and a skip is not an apply");
+      assert.equal(activePatches(s.home).length, 1, "the patch stays in the series");
+    } finally {
+      for (const [k, v] of Object.entries(prev)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+      rmSync(binDir, { recursive: true, force: true });
+      s.cleanup();
     }
-    rmSync(binDir, { recursive: true, force: true });
-    s.cleanup();
   }
-});
+);
 
 test("a 3-way that cannot merge leaves the tree and the index exactly as they were", () => {
   const s = sourceCheckout();
@@ -498,7 +500,7 @@ test("a 3-way that cannot merge leaves the tree and the index exactly as they we
 function conflictingRenamePatch(
   s: { home: string; repo: string },
   fromName: string,
-  toName: string,
+  toName: string
 ): { patch: string; fromAbs: string; toAbs: string } {
   const dir = "packages/core/src";
   const fromAbs = join(s.repo, dir, fromName);
@@ -747,7 +749,12 @@ test("a rollback recreates a directory the rename emptied", () => {
  * Before the ceiling, every file of every patch came back "Skipped patch" and
  * the series never applied on that platform.
  */
-function kegInsideForeignRepo(opts: { prefixName?: string } = {}): { home: string; prefix: string; installRoot: string; cleanup: () => void } {
+function kegInsideForeignRepo(opts: { prefixName?: string } = {}): {
+  home: string;
+  prefix: string;
+  installRoot: string;
+  cleanup: () => void;
+} {
   const base = mkdtempSync(join(tmpdir(), "bastra-patch-keg-"));
   const home = join(base, "home");
   const prefix = join(base, opts.prefixName ?? "homebrew");
@@ -759,7 +766,13 @@ function kegInsideForeignRepo(opts: { prefixName?: string } = {}): { home: strin
   writeFileSync(join(installRoot, "dist", "a.js"), "old\n", "utf8");
   // No .gitignore for Cellar: the keg's files are untracked, so any write git makes
   // to Homebrew's index or tree shows up in `status` and in the index bytes.
-  for (const args of [["init", "-q", "-b", "main"], ["config", "user.email", "t@example.invalid"], ["config", "user.name", "t"], ["add", "brew.rb"], ["commit", "-qm", "brew"]]) {
+  for (const args of [
+    ["init", "-q", "-b", "main"],
+    ["config", "user.email", "t@example.invalid"],
+    ["config", "user.name", "t"],
+    ["add", "brew.rb"],
+    ["commit", "-qm", "brew"],
+  ]) {
     const r = spawnSync("git", args, { cwd: prefix, encoding: "utf8" });
     assert.equal(r.status, 0, `git ${args.join(" ")}: ${r.stderr}`);
   }
@@ -800,14 +813,18 @@ test("…also when the install root is reached through a symlink", { skip: proce
   }
 });
 
-test("…also when the path contains a colon (a git ceiling list delimiter)", { skip: process.platform === "win32" }, () => {
-  const s = kegInsideForeignRepo({ prefixName: "home:brew" });
-  try {
-    assertKegPatched(s, s.installRoot, join(s.installRoot, "dist", "a.js"));
-  } finally {
-    s.cleanup();
+test(
+  "…also when the path contains a colon (a git ceiling list delimiter)",
+  { skip: process.platform === "win32" },
+  () => {
+    const s = kegInsideForeignRepo({ prefixName: "home:brew" });
+    try {
+      assertKegPatched(s, s.installRoot, join(s.installRoot, "dist", "a.js"));
+    } finally {
+      s.cleanup();
+    }
   }
-});
+);
 
 // ─── the series running over a tree it already patched ───────────────────────
 // `bastra update` with nothing newer to install, or a source checkout after a
@@ -951,7 +968,10 @@ test("a last-run record written before root/version existed keeps the patch it a
     writeFileSync(join(s.root, "src", "a.txt"), "mine\n", "utf8");
     const id = addPatch(writePatchFile(s.home, "p.patch", diffFor("src/a.txt", ["old"], ["mine"])), s.home).entry.id;
     mkdirSync(join(s.home, ".bastra", "patches"), { recursive: true });
-    writeFileSync(join(s.home, ".bastra", "patches", "last-run.json"), JSON.stringify({ at: "2026-09-01T00:00:00Z", applied: [id], retired: [], setAside: [], rolledBack: false }));
+    writeFileSync(
+      join(s.home, ".bastra", "patches", "last-run.json"),
+      JSON.stringify({ at: "2026-09-01T00:00:00Z", applied: [id], retired: [], setAside: [], rolledBack: false })
+    );
     const out = applySeries(s.root, { home: s.home, skipSmoke: true, version: "1.0.0" });
     assert.equal(out.retired.length, 0);
     assert.equal(out.kept.length, 1);
@@ -971,7 +991,11 @@ test("a rollback inside a foreign work tree puts the keg back and leaves the for
     writeFileSync(join(s.installRoot, "dist", "cli.js"), "process.exit(3)\n", "utf8");
     addPatch(writePatchFile(s.home, "p.patch", diffFor("dist/a.js", ["old"], ["new"])), s.home);
     const out = applySeries(s.installRoot, { home: s.home });
-    assert.equal(out.rolledBack, true, `expected a clean rollback, got ${JSON.stringify({ ok: out.ok, unrestored: out.unrestored, smoke: out.smokeError })}`);
+    assert.equal(
+      out.rolledBack,
+      true,
+      `expected a clean rollback, got ${JSON.stringify({ ok: out.ok, unrestored: out.unrestored, smoke: out.smokeError })}`
+    );
     assert.equal(readFileSync(join(s.installRoot, "dist", "a.js"), "utf8"), "old\n");
     assert.deepEqual(readFileSync(join(s.prefix, ".git", "index")), indexBefore);
   } finally {
@@ -985,7 +1009,17 @@ test("the rollback notice does not claim 'running unpatched' while earlier patch
     const id = addPatch(writePatchFile(s.home, "p.patch", diffFor("src/a.txt", ["old"], ["mine"])), s.home).entry.id;
     mkdirSync(join(s.home, ".bastra", "patches"), { recursive: true });
     const rec = (applied: string[]) =>
-      writeFileSync(join(s.home, ".bastra", "patches", "last-run.json"), JSON.stringify({ at: "2026-09-14T00:00:00Z", applied, retired: [], setAside: [], rolledBack: true, smokeError: "boom" }));
+      writeFileSync(
+        join(s.home, ".bastra", "patches", "last-run.json"),
+        JSON.stringify({
+          at: "2026-09-14T00:00:00Z",
+          applied,
+          retired: [],
+          setAside: [],
+          rolledBack: true,
+          smokeError: "boom",
+        })
+      );
     rec([id]);
     assert.match(pendingPatchNotice(s.home)!, /1 patch from an earlier run is still on this install/);
     assert.doesNotMatch(pendingPatchNotice(s.home)!, /running unpatched/);

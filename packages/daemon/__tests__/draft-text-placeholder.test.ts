@@ -16,5 +16,5 @@ test("B3 prerequisite: clipping aligns before redaction placeholders at every pa
   const stored = cleanDraftText(path);
   assert.ok(!stored.includes("["), "expansion after redaction must not leave a partial marker in paths");
   const lits = situationLiterals({ before: [stored], after: [], reads: [stored], lits: [] });
-  assert.ok(lits.every(token => !/REDACT/.test(token)));
+  assert.ok(lits.every((token) => !/REDACT/.test(token)));
 });

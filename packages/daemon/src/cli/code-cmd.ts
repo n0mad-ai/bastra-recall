@@ -43,11 +43,7 @@ import { fetchRefreshStatus, resumeRefreshIfGivenUp } from "./code-refresh-clien
 
 const out = (s: string): void => void process.stdout.write(s);
 
-export async function cmdCode(opts: {
-  sub: string | null;
-  positional?: string[];
-  yes?: boolean;
-}): Promise<number> {
+export async function cmdCode(opts: { sub: string | null; positional?: string[]; yes?: boolean }): Promise<number> {
   const sub = opts.sub ?? "status";
   // `bastra code enable <dir>` — positional[2] is the first argument after
   // the command and subcommand.
@@ -115,7 +111,9 @@ async function cmdStatus(): Promise<number> {
     out(size === null ? "\n" : `, ${size} MB\n`);
     if (manifest.lastError !== null) out(`    last error: ${manifest.lastError}\n`);
     if (manifest.dirty) out("    a build did not finish — it will be retried\n");
-    out(`    ${await coverageMapStatus(repo)} (experimental${(await getCoverageMapEnabled()) ? "" : ", collection off: bastra config set coverageMap.enabled true"})\n`);
+    out(
+      `    ${await coverageMapStatus(repo)} (experimental${(await getCoverageMapEnabled()) ? "" : ", collection off: bastra config set coverageMap.enabled true"})\n`
+    );
     const refreshState = refresh?.get(repo);
     if (refreshState !== undefined) for (const line of refreshStatusLines(refreshState)) out(`    ${line}\n`);
   }
@@ -136,9 +134,9 @@ async function cmdEnable(dir: string): Promise<number> {
   out(changed ? `✓ code awareness enabled for ${dir}\n` : `code awareness was already enabled for ${dir}\n`);
   out(
     "  experimental: it can help an agent find its way into an unfamiliar or large repository. " +
-      "For \"what breaks if I change this\" it did not beat plain search in our measurements, and it costs " +
+      'For "what breaks if I change this" it did not beat plain search in our measurements, and it costs ' +
       "context (the dependents block before edits) and background CPU (graph refreshes). " +
-      "'bastra code disable' turns it off.\n",
+      "'bastra code disable' turns it off.\n"
   );
   await ensureExcluded(dir);
   return await cmdIndex(dir, false, true);
@@ -172,7 +170,7 @@ async function cmdIndex(dir: string, rebuild: boolean, yes: boolean): Promise<nu
     // smaller one. Naming what it overrides is the point of the question.
     const ok = await confirm(
       "Rebuild with --force? This overrides Graphify's refusal to replace a larger graph with a smaller one.",
-      { defaultYes: false },
+      { defaultYes: false }
     );
     if (!ok) {
       out("cancelled — nothing was changed\n");
@@ -281,10 +279,7 @@ function reasonWording(reason: string): string {
  *   - Silence is not consent. A non-interactive install asks nothing and does
  *     nothing, matching `confirm()`'s own posture on downloads.
  */
-export async function installCodeAwarenessStep(args: {
-  dryRun: boolean;
-  yes: boolean;
-}): Promise<void> {
+export async function installCodeAwarenessStep(args: { dryRun: boolean; yes: boolean }): Promise<void> {
   if (args.dryRun) return;
 
   const tool = await probeTool();
@@ -301,11 +296,11 @@ export async function installCodeAwarenessStep(args: {
   const accepted = await confirm(
     "Enable code awareness (experimental)? It uses Graphify to build a code map of a repository " +
       "and shows an agent what depends on a file before it edits one. It can help an agent find its way " +
-      "into an unfamiliar or large repository; for \"what breaks if I change this\" it did not beat plain " +
+      'into an unfamiliar or large repository; for "what breaks if I change this" it did not beat plain ' +
       "search in our measurements, and it costs context and background CPU. " +
       `This installs graphifyy==${GRAPHIFY_PIN} (Apache-2.0) into Recall's own tool directory. ` +
       "Nothing is indexed until you enable a repository, and no code is sent anywhere.",
-    { defaultYes: false },
+    { defaultYes: false }
   );
   if (!accepted) {
     out("→ code awareness: skipped — enable it later with 'bastra code enable'\n");

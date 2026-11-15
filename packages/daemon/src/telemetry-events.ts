@@ -8,11 +8,7 @@ import type { CallerScopeFilterTelemetry } from "./recall-pipeline.js";
 import type { SalienceShadow } from "./salience-shadow.js";
 import type { TrustShadow } from "./trust-shadow.js";
 import type { RecallOrigin, TelemetryDimensions } from "./telemetry-dimensions.js";
-import type {
-  OllamaLifecycleEvent,
-  WarmupSettleEvent,
-  VectorLateSettleEvent,
-} from "./telemetry-events-embedding.js";
+import type { OllamaLifecycleEvent, WarmupSettleEvent, VectorLateSettleEvent } from "./telemetry-events-embedding.js";
 import type { CodeToolCallEvent, CodeGraphRefreshEvent } from "./telemetry-events-code.js";
 import type { HookActEvent, HookRecallEvent, HookReflexEvent } from "./telemetry-events-hook.js";
 import type { TelemetryPoolCandidate } from "./training-signal.js"; // #1128-capture
@@ -603,11 +599,7 @@ export interface EvidenceDecisionEvent extends BaseEvent, DimensionedEvent {
 }
 
 // Re-Export hält jeden bestehenden Importpfad gültig.
-export type {
-  OllamaLifecycleEvent,
-  WarmupSettleEvent,
-  VectorLateSettleEvent,
-} from "./telemetry-events-embedding.js";
+export type { OllamaLifecycleEvent, WarmupSettleEvent, VectorLateSettleEvent } from "./telemetry-events-embedding.js";
 
 // #579: dasselbe für die Code-Awareness-Zeilen.
 export type {
@@ -618,12 +610,7 @@ export type {
 } from "./telemetry-events-code.js";
 
 // #680: dasselbe für die Hook-Zeilen.
-export type {
-  HookActEvent,
-  DeadlineShadowRow,
-  HookRecallEvent,
-  HookReflexEvent,
-} from "./telemetry-events-hook.js";
+export type { HookActEvent, DeadlineShadowRow, HookRecallEvent, HookReflexEvent } from "./telemetry-events-hook.js";
 
 /** Actual hook delivery, independent of token matching or turn availability. */
 export interface ConventionShownEvent extends BaseEvent {

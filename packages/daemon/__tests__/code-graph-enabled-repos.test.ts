@@ -18,10 +18,7 @@ import {
  * tests hold down is the one that keeps Recall out of directories nobody asked
  * about: an empty list means nothing happens, and that is the default.
  */
-async function withSettings<T>(
-  initial: unknown,
-  fn: (path: string) => Promise<T>,
-): Promise<T> {
+async function withSettings<T>(initial: unknown, fn: (path: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-enabled-"));
   const path = join(dir, "cli-settings.json");
   if (initial !== undefined) await writeFile(path, JSON.stringify(initial), "utf8");
@@ -93,12 +90,9 @@ describe("code awareness: which repositories are enabled", () => {
   });
 
   it("survives a malformed list instead of throwing", async () => {
-    await withSettings(
-      { update: { mode: "notify" }, code: { repos: ["/repos/ok", 42, "", null] } },
-      async (path) => {
-        assert.deepEqual(await enabledRepos(path, {}, "darwin"), [canonicalRepoPath("/repos/ok")]);
-      },
-    );
+    await withSettings({ update: { mode: "notify" }, code: { repos: ["/repos/ok", 42, "", null] } }, async (path) => {
+      assert.deepEqual(await enabledRepos(path, {}, "darwin"), [canonicalRepoPath("/repos/ok")]);
+    });
   });
 });
 
@@ -136,7 +130,11 @@ describe("code awareness: the synchronous gate the readers use (#585)", () => {
       await assert.rejects(stat(join(path, "..", "recall.db")), { code: "ENOENT" });
       await setRepoEnabled("/repos/alpha", false, path);
       await writeFile(path, JSON.stringify({ code: { repos: ["/repos/alpha"] } }), "utf8");
-      assert.equal(isRepoEnabledSync("/repos/alpha", path, {}, "darwin"), false, "stored opt-out wins over a stale legacy file");
+      assert.equal(
+        isRepoEnabledSync("/repos/alpha", path, {}, "darwin"),
+        false,
+        "stored opt-out wins over a stale legacy file"
+      );
     });
   });
 

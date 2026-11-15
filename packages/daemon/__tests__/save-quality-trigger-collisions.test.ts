@@ -68,7 +68,7 @@ function saveInput(recallWhen: string[]) {
 }
 
 async function makeVault(
-  files: Array<[string, string, string[]]>,
+  files: Array<[string, string, string[]]>
 ): Promise<{ deps: ToolDeps; close: () => Promise<void> }> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-collision-300-"));
   for (const [id, summary, recallWhen] of files) {
@@ -118,18 +118,18 @@ test("#300: a trigger that merely retrieves the scope is not a collision", async
   const raw = deps.search.recall(trigger, { k: 20, scope: SCOPE, type: "decision" });
   assert.ok(
     raw.length >= SHARED_VOCABULARY.length,
-    `precondition: the scan must receive the pool as candidates, got ${raw.length}`,
+    `precondition: the scan must receive the pool as candidates, got ${raw.length}`
   );
 
   const quality = scoreSaveQuality(deps, saveInput([trigger]), "vault-path-watcher-decision");
   assert.deepEqual(
     quality.trigger_collisions,
     [],
-    `no neighbour declares this situation, got ${JSON.stringify(quality.trigger_collisions)}`,
+    `no neighbour declares this situation, got ${JSON.stringify(quality.trigger_collisions)}`
   );
   assert.ok(
     !quality.issues.some((i) => i.startsWith("trigger collision")),
-    `the advisory must stay silent, got ${JSON.stringify(quality.issues)}`,
+    `the advisory must stay silent, got ${JSON.stringify(quality.issues)}`
   );
 });
 
@@ -154,7 +154,7 @@ test("#300: a memory declaring the same trigger IS reported, and names its own p
   assert.equal(collision.admitted_pool, SHARED_VOCABULARY.length + 1);
   assert.ok(
     quality.suggestions.some((s) => s.includes("load_memory('twin')")),
-    `the suggestion must point at the colliding memory, got ${JSON.stringify(quality.suggestions)}`,
+    `the suggestion must point at the colliding memory, got ${JSON.stringify(quality.suggestions)}`
   );
   assert.ok(quality.score < 100, "a taken trigger has to cost something");
 });
@@ -176,7 +176,7 @@ test("#300: containment is directional — a broader trigger collides with the n
   assert.deepEqual(
     broader.trigger_collisions.map((c) => c.examples[0]),
     ["narrower"],
-    "the broader trigger must report the narrower memory",
+    "the broader trigger must report the narrower memory"
   );
   // Nothing else fires on this save, so the score is the collision penalty
   // alone: 12 per taken trigger, capped at 30.
@@ -188,7 +188,7 @@ test("#300: containment is directional — a broader trigger collides with the n
   const narrower = scoreSaveQuality(
     deps,
     saveInput(["Vault-Pfad überwachen wenn der Mount unter Last keine Events mehr liefert"]),
-    "vault-path-watcher-decision",
+    "vault-path-watcher-decision"
   );
   assert.deepEqual(narrower.trigger_collisions, []);
 });
@@ -210,27 +210,24 @@ test("#300: words spread across two of a memory's triggers do not add up to a cl
   assert.deepEqual(
     quality.trigger_collisions,
     [],
-    `shared vocabulary across separate triggers is not a claim, got ${JSON.stringify(quality.trigger_collisions)}`,
+    `shared vocabulary across separate triggers is not a claim, got ${JSON.stringify(quality.trigger_collisions)}`
   );
 });
 
 test("#300: the memory's other triggers stay unaffected when one of them collides", async (t) => {
   const taken = "Arbeit an einem Issue abgeschlossen";
-  const { deps, close } = await makeVault([
-    ...SHARED_VOCABULARY,
-    ["twin", "How finished issues get closed.", [taken]],
-  ]);
+  const { deps, close } = await makeVault([...SHARED_VOCABULARY, ["twin", "How finished issues get closed.", [taken]]]);
   t.after(close);
 
   const quality = scoreSaveQuality(
     deps,
     saveInput([taken, "Windows-Portierung oder plattformabhängige Pfadlogik planen"]),
-    "vault-path-watcher-decision",
+    "vault-path-watcher-decision"
   );
   assert.deepEqual(
     quality.trigger_collisions.map((c) => c.trigger),
     [taken],
-    "only the taken trigger is reported — the other one has no claimant",
+    "only the taken trigger is reported — the other one has no claimant"
   );
 });
 
@@ -248,12 +245,12 @@ test("#325: ä and ae are the same trigger — the spelling is not the situation
   const quality = scoreSaveQuality(
     deps,
     saveInput(["nächste Nachricht an zzalli entwerfen"]),
-    "vault-path-watcher-decision",
+    "vault-path-watcher-decision"
   );
   assert.deepEqual(
     quality.trigger_collisions.map((c) => c.trigger),
     ["nächste Nachricht an zzalli entwerfen"],
-    `the ae-spelling claims the same situation, got ${JSON.stringify(quality.trigger_collisions)}`,
+    `the ae-spelling claims the same situation, got ${JSON.stringify(quality.trigger_collisions)}`
   );
 });
 
@@ -272,6 +269,6 @@ test("#325: folding does not smuggle German function words past the stopword lis
   assert.deepEqual(
     quality.trigger_collisions,
     [],
-    `function words carry no claim, got ${JSON.stringify(quality.trigger_collisions)}`,
+    `function words carry no claim, got ${JSON.stringify(quality.trigger_collisions)}`
   );
 });

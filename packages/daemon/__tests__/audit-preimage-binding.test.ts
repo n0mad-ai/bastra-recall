@@ -90,16 +90,8 @@ test("saveMemoryWithAuditTrail protokolliert beim Re-File das Vorbild der QUELLE
   assert.equal(entries.length, 2);
   const update = entries[1];
   assert.equal(update.operation, "update");
-  assert.notEqual(
-    update.diff_before,
-    null,
-    "eine Änderung ohne Vorzustand ist im Trail nicht rekonstruierbar",
-  );
-  assert.equal(
-    update.diff_before?.source,
-    "version-0.4",
-    "das Vorbild muss die Quelldatei beschreiben",
-  );
+  assert.notEqual(update.diff_before, null, "eine Änderung ohne Vorzustand ist im Trail nicht rekonstruierbar");
+  assert.equal(update.diff_before?.source, "version-0.4", "das Vorbild muss die Quelldatei beschreiben");
   assert.equal(update.diff_after?.source, "version-0.4");
 });
 
@@ -119,15 +111,11 @@ test("der MCP-Save protokolliert das Vorbild der Datei, die er gepatcht hat", as
   // des Handlers etwas anderes sieht als die Platte. Der Save patcht die
   // Datei, die es gibt — der Cache kennt sie nicht.
   await saveMemory(dir, input({ source: "version-0.4" }));
-  assert.equal(
-    vault.get("umzug"),
-    undefined,
-    "Voraussetzung der Reproduktion: der Index kennt das Memory noch nicht",
-  );
+  assert.equal(vault.get("umzug"), undefined, "Voraussetzung der Reproduktion: der Index kennt das Memory noch nicht");
 
   const result = await saveMemoryHandler(
     deps,
-    input({ overwrite: true, body: "Neuer Body." }) as Record<string, unknown>,
+    input({ overwrite: true, body: "Neuer Body." }) as Record<string, unknown>
   );
   assert.equal((result as { created: boolean }).created, false);
   // Das Vorbild ist Audit-Material, kein Tool-Payload: Es trägt die volle
@@ -136,7 +124,7 @@ test("der MCP-Save protokolliert das Vorbild der Datei, die er gepatcht hat", as
   assert.deepEqual(
     Object.keys(result).filter((k) => k.startsWith("audit_")),
     [],
-    "audit_before/audit_after gehören nicht in die Tool-Antwort",
+    "audit_before/audit_after gehören nicht in die Tool-Antwort"
   );
 
   const entries = await auditEntries(dir);
@@ -145,7 +133,7 @@ test("der MCP-Save protokolliert das Vorbild der Datei, die er gepatcht hat", as
   assert.equal(
     update.diff_before?.source,
     "version-0.4",
-    "ein Update ohne Vorzustand ist im Trail nicht rekonstruierbar",
+    "ein Update ohne Vorzustand ist im Trail nicht rekonstruierbar"
   );
   assert.equal(update.diff_after?.scope, "proj");
 });

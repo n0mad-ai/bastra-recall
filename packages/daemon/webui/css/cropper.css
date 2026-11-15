@@ -1,5 +1,7 @@
 /* ── emblem cropper modal ──────────────────────────────────────── */
-#cropper[hidden] { display: none !important; } /* explicit display beats [hidden] otherwise */
+#cropper[hidden] {
+  display: none !important;
+} /* explicit display beats [hidden] otherwise */
 #cropper {
   position: fixed;
   inset: 0;
@@ -30,8 +32,13 @@
   cursor: grab;
   touch-action: none;
 }
-#cropper-canvas:active { cursor: grabbing; }
-#cropper-zoom { width: 100%; accent-color: var(--accent); }
+#cropper-canvas:active {
+  cursor: grabbing;
+}
+#cropper-zoom {
+  width: 100%;
+  accent-color: var(--accent);
+}
 #cropper-actions {
   display: flex;
   gap: 8px;
@@ -50,10 +57,26 @@
   text-transform: uppercase;
   letter-spacing: 0.1em;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
 }
-#cropper-actions button:hover { border-color: var(--accent); color: var(--accent); }
-#cropper-ok { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
-#cropper-ok:hover { background: var(--accent); }
-:root[data-theme="dark"] #cropper-ok:hover { color: #06131f; }
-:root[data-theme="light"] #cropper-ok:hover { color: #fffdf8; }
+#cropper-actions button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+#cropper-ok {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+#cropper-ok:hover {
+  background: var(--accent);
+}
+:root[data-theme="dark"] #cropper-ok:hover {
+  color: #06131f;
+}
+:root[data-theme="light"] #cropper-ok:hover {
+  color: #fffdf8;
+}

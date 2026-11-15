@@ -68,8 +68,4 @@ if (!revision) process.exit(0);
 const status = git("status", "--porcelain");
 const dirty = status === null || status.trim() !== "";
 
-writeFileSync(
-  resolve(distDir, ".build-revision"),
-  `revision=${revision}\ndirty=${dirty}\n`,
-  "utf8",
-);
+writeFileSync(resolve(distDir, ".build-revision"), `revision=${revision}\ndirty=${dirty}\n`, "utf8");

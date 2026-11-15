@@ -58,14 +58,7 @@ import { dirname, join, resolve } from "node:path";
 import { readBuildStamp, type BuildStamp } from "../build-stamp.js";
 
 export type SourceBuildReason =
-  | "current"
-  | "dirty"
-  | "unbuilt"
-  | "stale"
-  | "unstamped"
-  | "mismatch"
-  | "unverifiable"
-  | "unknown";
+  "current" | "dirty" | "unbuilt" | "stale" | "unstamped" | "mismatch" | "unverifiable" | "unknown";
 
 /** HEAD as git reports it right now. */
 export interface HeadState {
@@ -146,8 +139,7 @@ export function decideSourceBuild(i: {
 export function describeSourceBuild(s: SourceBuildState, rebuild: string): string {
   const rev = s.revision ? ` (HEAD ${s.revision})` : "";
   const built = shortRevision(s.builtRevision) ?? "unknown";
-  const buildFirst =
-    `    Build it first, then re-run 'bastra update':\n      ${rebuild}\n`;
+  const buildFirst = `    Build it first, then re-run 'bastra update':\n      ${rebuild}\n`;
   switch (s.reason) {
     case "current":
       return `  ✓ the build in this checkout was produced from HEAD ${s.revision}\n`;
@@ -160,9 +152,7 @@ export function describeSourceBuild(s: SourceBuildState, rebuild: string): strin
     case "unknown":
       return "  ⚠ no workspace sources found here — the build could not be verified\n";
     case "unbuilt":
-      return (
-        `  ✗ this checkout${rev} has no build output — nothing to re-register.\n` + buildFirst
-      );
+      return `  ✗ this checkout${rev} has no build output — nothing to re-register.\n` + buildFirst;
     case "stale":
       return (
         `  ✗ the build in this checkout${rev} is older than its sources` +
@@ -295,7 +285,7 @@ export function inspectSourceBuild(repoRoot: string, gitBin: string | null = "gi
   // the agreeing sibling instead would hide exactly the package that is wrong.
   const built = stamps.some((s) => s === null)
     ? null
-    : (head !== null ? stamps.find((s) => s?.revision !== head.revision) : undefined) ?? stamps[0] ?? null;
+    : ((head !== null ? stamps.find((s) => s?.revision !== head.revision) : undefined) ?? stamps[0] ?? null);
   return offender
     ? decideSourceBuild({ newestSourceMs: offender.src, newestBuildMs: offender.built, head, built })
     : decideSourceBuild({ newestSourceMs, newestBuildMs, head, built });

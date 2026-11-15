@@ -1,5 +1,12 @@
 import { printRulebookDoctorNote } from "./rulebook-note.js";
-import { assistantAddressStatus, hasManagedAssistantAddress, addressRemovalNeedsConsent, removeAssistantAddress, notifyAssistantAddressDaemon, type AssistantAddressOptions } from "../assistant-address.js";
+import {
+  assistantAddressStatus,
+  hasManagedAssistantAddress,
+  addressRemovalNeedsConsent,
+  removeAssistantAddress,
+  notifyAssistantAddressDaemon,
+  type AssistantAddressOptions,
+} from "../assistant-address.js";
 /** CLI command orchestration, including Codex/ChatGPT installation (#15). */
 import { missingVaultReason } from "../vault-presence.js";
 import { resolveTargets } from "./registry.js";
@@ -105,7 +112,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
     else if (a === "-q" || a === "--quiet") result.quiet = true;
     else if (a === "--yes" || a === "-y") result.yes = true;
     else if (a === "--fix") result.fix = true;
-    else if (a === "--with-stop-hook") result.withStopHook = true; // kept for compat — now the default
+    else if (a === "--with-stop-hook")
+      result.withStopHook = true; // kept for compat — now the default
     else if (a === "--no-stop-hook") result.withStopHook = false;
     else if (a === "--with-bootstrap") result.withBootstrap = true;
     else if (a === "--no-bootstrap") result.withBootstrap = false;
@@ -117,8 +125,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     } else if (a.startsWith("--exclude=")) {
       const v = a.slice("--exclude=".length);
       if (v) result.exclude.push(v);
-    }
-    else if (a === "--follow" || a === "-f") result.follow = true;
+    } else if (a === "--follow" || a === "-f") result.follow = true;
     else if (a === "--stats") result.stats = true;
     else if (a === "--conventions") result.conventions = true;
     else if (a === "--include-eval") result.includeEval = true;
@@ -131,8 +138,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       result.compare = argv[++i] ?? null;
     } else if (a.startsWith("--compare=")) {
       result.compare = a.slice("--compare=".length);
-    }
-    else if (a === "--since") {
+    } else if (a === "--since") {
       result.since = argv[++i] ?? null;
     } else if (a.startsWith("--since=")) {
       result.since = a.slice("--since=".length);
@@ -144,8 +150,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       result.lines = argv[++i] ?? null;
     } else if (a.startsWith("--lines=")) {
       result.lines = a.slice("--lines=".length);
-    }
-    else if (a === "--extension") result.extension = true;
+    } else if (a === "--extension") result.extension = true;
     else if (a === "--stub") result.stub = "yes";
     else if (a === "--no-stub") result.stub = "skip";
     else if (a === "--ollama") result.ollama = "auto";
@@ -181,8 +186,7 @@ function resolveVaultPath(cliVault: string | null): string | null {
   return cliVault ?? process.env.BASTRA_VAULT_PATH ?? null;
 }
 
-export const FIRST_RUN_VAULT_QUESTION =
-  `No memory vault configured yet. Create one at ${DEFAULT_VAULT_DISPLAY}?`;
+export const FIRST_RUN_VAULT_QUESTION = `No memory vault configured yet. Create one at ${DEFAULT_VAULT_DISPLAY}?`;
 
 /**
  * First-run vault step (#178): on a fresh machine there is nothing to
@@ -198,7 +202,7 @@ export async function installVaultFirstRunStep(
   io: {
     ask?: (question: string, opts: { defaultYes?: boolean }) => Promise<boolean>;
     create?: (path: string) => Promise<{ path: string } | { error: string }>;
-  } = {},
+  } = {}
 ): Promise<{ vaultPath: string | null; exit: number | null }> {
   const action = decideFirstRunVaultAction(i);
   // "error" = non-TTY/--yes without a vault: do nothing here — the per-surface
@@ -240,7 +244,7 @@ export async function installVaultFirstRunStep(
  */
 export async function installVaultPresenceStep(
   i: { flagPath: string | null; resolvedPath: string | null; dryRun: boolean },
-  io: { create?: (path: string) => Promise<{ path: string } | { error: string }>; out?: (s: string) => void } = {},
+  io: { create?: (path: string) => Promise<{ path: string } | { error: string }>; out?: (s: string) => void } = {}
 ): Promise<number | null> {
   const out = io.out ?? ((t: string) => process.stdout.write(t));
   const path = i.resolvedPath;
@@ -259,7 +263,9 @@ export async function installVaultPresenceStep(
     out(`✓ created ${created.path} — your memories live here as plain markdown files\n\n`);
     return null;
   }
-  out(`⚠ ${reason}.\n  Not creating it: a path from the environment or an earlier registration that is missing is usually an unmounted drive.\n\n`);
+  out(
+    `⚠ ${reason}.\n  Not creating it: a path from the environment or an earlier registration that is missing is usually an unmounted drive.\n\n`
+  );
   return null;
 }
 
@@ -317,9 +323,11 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
   });
   if (firstRun.exit !== null) return firstRun.exit;
   if (firstRun.vaultPath) opts.vaultPath = firstRun.vaultPath;
-  const vaultStep = await installVaultPresenceStep(
-    { flagPath: args.vaultPath, resolvedPath: opts.vaultPath ?? ("path" in preResolve ? preResolve.path : null), dryRun: args.dryRun },
-  );
+  const vaultStep = await installVaultPresenceStep({
+    flagPath: args.vaultPath,
+    resolvedPath: opts.vaultPath ?? ("path" in preResolve ? preResolve.path : null),
+    dryRun: args.dryRun,
+  });
   if (vaultStep !== null) return vaultStep;
 
   // #350/#15: the compiled hook client for Claude Code and Codex. Runs before the
@@ -375,17 +383,46 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
   return 0;
 }
 
-export async function cmdUninstall(args: ParsedArgs,io?:{address?:AssistantAddressOptions;notify?:()=>Promise<void>}): Promise<number> {
+export async function cmdUninstall(
+  args: ParsedArgs,
+  io?: { address?: AssistantAddressOptions; notify?: () => Promise<void> }
+): Promise<number> {
   try {
-  if(args.surface === "all" && await hasManagedAssistantAddress(io?.address)) {
-    if(args.dryRun) process.stdout.write("→ assistant address: would remove only owned hosts/browser/socket entries after system consent\n");
-    else {
-      const needs=await addressRemovalNeedsConsent(io?.address);
-      if(needs && !(process.stdin.isTTY&&process.stdout.isTTY&&await confirm("Eigene Assistenten-Systemadresse entfernen? macOS fragt nach Administratorrechten."))) {process.stderr.write("Eigene Systemadresse zuerst mit bastra address remove --yes entfernen. Nichts deinstalliert.\n");return 1;}
-      try{await removeAssistantAddress({...io?.address,systemConsent:needs});await(io?.notify??notifyAssistantAddressDaemon)();}catch(e){process.stderr.write(`Assistenten-Adresse nicht entfernt: ${(e as Error).message}\n`);return 1;}
+    if (args.surface === "all" && (await hasManagedAssistantAddress(io?.address))) {
+      if (args.dryRun)
+        process.stdout.write(
+          "→ assistant address: would remove only owned hosts/browser/socket entries after system consent\n"
+        );
+      else {
+        const needs = await addressRemovalNeedsConsent(io?.address);
+        if (
+          needs &&
+          !(
+            process.stdin.isTTY &&
+            process.stdout.isTTY &&
+            (await confirm("Eigene Assistenten-Systemadresse entfernen? macOS fragt nach Administratorrechten."))
+          )
+        ) {
+          process.stderr.write(
+            "Eigene Systemadresse zuerst mit bastra address remove --yes entfernen. Nichts deinstalliert.\n"
+          );
+          return 1;
+        }
+        try {
+          await removeAssistantAddress({ ...io?.address, systemConsent: needs });
+          await (io?.notify ?? notifyAssistantAddressDaemon)();
+        } catch (e) {
+          process.stderr.write(`Assistenten-Adresse nicht entfernt: ${(e as Error).message}\n`);
+          return 1;
+        }
+      }
     }
+  } catch (e) {
+    process.stderr.write(
+      `Assistenten-Adresse nicht geprüft/entfernt: ${(e as Error).message}. bastra address status prüfen.\n`
+    );
+    return 1;
   }
-  } catch(e) { process.stderr.write(`Assistenten-Adresse nicht geprüft/entfernt: ${(e as Error).message}. bastra address status prüfen.\n`);return 1; }
   const targets = resolveTargets(args.surface);
   if ("error" in targets) {
     process.stderr.write(`error: ${targets.error}\n`);
@@ -440,7 +477,7 @@ export async function cmdUninstall(args: ParsedArgs,io?:{address?:AssistantAddre
     process.stdout.write(
       "→ semantic recall: Ollama stays configured and its login service may still run.\n" +
         "  Disable recall: bastra embeddings off\n" +
-        "  Stop the service: brew services stop ollama\n\n",
+        "  Stop the service: brew services stop ollama\n\n"
     );
   }
   return hadError ? 1 : 0;
@@ -501,7 +538,17 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   await printVersionPairNote();
   await printDaemonOriginNote();
   await printAutostartNote();
-  try{const a=await assistantAddressStatus();if(a.error||a.pending)process.stdout.write(`→ assistant address: ${a.error??"Systemeinrichtung ausstehend"}\n  ${a.repair}\n`);if(a.name)process.stdout.write(`→ assistant address: ${a.ready?"reachable":`not ready — run bastra address setup ${a.name} --yes`}\n  ${a.urls!.local}\n  hosts: ${a.registeredName===a.name?"current":"missing/stale"}; ${a.firefoxProfiles} Firefox profile(s)\n  ${a.bareNameNotice}\n`);}catch(e){process.stdout.write(`→ assistant address: ${(e as Error).message}\n`);}
+  try {
+    const a = await assistantAddressStatus();
+    if (a.error || a.pending)
+      process.stdout.write(`→ assistant address: ${a.error ?? "Systemeinrichtung ausstehend"}\n  ${a.repair}\n`);
+    if (a.name)
+      process.stdout.write(
+        `→ assistant address: ${a.ready ? "reachable" : `not ready — run bastra address setup ${a.name} --yes`}\n  ${a.urls!.local}\n  hosts: ${a.registeredName === a.name ? "current" : "missing/stale"}; ${a.firefoxProfiles} Firefox profile(s)\n  ${a.bareNameNotice}\n`
+      );
+  } catch (e) {
+    process.stdout.write(`→ assistant address: ${(e as Error).message}\n`);
+  }
   await printStubBinaryNote();
   await printAffectsFilesNote(resolveVaultPath(args.vaultPath));
   await printDerivedClaimsNote(resolveVaultPath(args.vaultPath));
@@ -614,9 +661,7 @@ async function printCodeGraphNote(): Promise<void> {
     }
     if (tool.external !== null) {
       // Reported so an overlap is visible; Recall never changes it (#573).
-      process.stdout.write(
-        `  note: your own Graphify at ${tool.external.path} is left untouched\n`,
-      );
+      process.stdout.write(`  note: your own Graphify at ${tool.external.path} is left untouched\n`);
     }
     // #1148: whether the daemon has paused (busy lock) or stopped (failed
     // builds) its automatic refresh, and when it tries again. The manifest
@@ -757,9 +802,7 @@ async function printVersionPairNote(): Promise<void> {
       process.stdout.write(`  ${formatStatus("ok")}: cli and daemon both ${VERSION}\n\n`);
       return;
     }
-    process.stdout.write(
-      `  ⚠ version drift: cli ${VERSION}, daemon ${probe.version} — ${VERSION_DRIFT_HINT}\n\n`,
-    );
+    process.stdout.write(`  ⚠ version drift: cli ${VERSION}, daemon ${probe.version} — ${VERSION_DRIFT_HINT}\n\n`);
   } catch {
     /* a diagnostics NOTE must never break doctor */
   }

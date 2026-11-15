@@ -166,35 +166,55 @@ const TEMPLATES: Record<string, Template> = {
     title: "Profile: how to address me",
     type: "user-preference",
     tags: ["profile", "onboarding", "tone"],
-    recall_when: ["session start — language and tone", "how should I address the user", "what language does the user prefer"],
+    recall_when: [
+      "session start — language and tone",
+      "how should I address the user",
+      "what language does the user prefer",
+    ],
   },
   rules: {
     id: "profile-standing-rules",
     title: "Profile: standing rules (always/never)",
     type: "workflow",
     tags: ["profile", "onboarding", "rules"],
-    recall_when: ["before running a risky or irreversible action", "what are the user's hard rules", "am I allowed to do this on my own"],
+    recall_when: [
+      "before running a risky or irreversible action",
+      "what are the user's hard rules",
+      "am I allowed to do this on my own",
+    ],
   },
   stack: {
     id: "profile-stack",
     title: "Profile: stack and tools",
     type: "user-preference",
     tags: ["profile", "onboarding", "stack"],
-    recall_when: ["about to write code — which stack", "what languages and frameworks does the user use", "choosing a library or tool"],
+    recall_when: [
+      "about to write code — which stack",
+      "what languages and frameworks does the user use",
+      "choosing a library or tool",
+    ],
   },
   projects: {
     id: "profile-active-projects",
     title: "Profile: active projects",
     type: "project-fact",
     tags: ["profile", "onboarding", "projects"],
-    recall_when: ["what is the user building right now", "session start project context", "which project does this task belong to"],
+    recall_when: [
+      "what is the user building right now",
+      "session start project context",
+      "which project does this task belong to",
+    ],
   },
   workflow: {
     id: "profile-dev-workflow",
     title: "Profile: how I like to work",
     type: "workflow",
     tags: ["profile", "onboarding", "workflow"],
-    recall_when: ["before committing or opening a PR", "how does the user want tests and reviews handled", "what workflow does the user prefer"],
+    recall_when: [
+      "before committing or opening a PR",
+      "how does the user want tests and reviews handled",
+      "what workflow does the user prefer",
+    ],
   },
   conventions_size: {
     id: "profile-file-size-guide",
@@ -224,14 +244,22 @@ const TEMPLATES: Record<string, Template> = {
     title: "Profile: company and role",
     type: "project-fact",
     tags: ["profile", "onboarding", "business"],
-    recall_when: ["what company does the user run", "business context for a decision or draft", "who is the user professionally"],
+    recall_when: [
+      "what company does the user run",
+      "business context for a decision or draft",
+      "who is the user professionally",
+    ],
   },
   people: {
     id: "profile-key-people",
     title: "Profile: key people",
     type: "project-fact",
     tags: ["profile", "onboarding", "people"],
-    recall_when: ["who does the user work with", "drafting a message to a colleague", "who is this person the user mentioned"],
+    recall_when: [
+      "who does the user work with",
+      "drafting a message to a colleague",
+      "who is this person the user mentioned",
+    ],
     note: "Split into one memory per person (memories/people) when a person starts accumulating their own history.",
   },
   duties: {
@@ -239,21 +267,33 @@ const TEMPLATES: Record<string, Template> = {
     title: "Profile: what to prepare and watch",
     type: "workflow",
     tags: ["profile", "onboarding", "duties"],
-    recall_when: ["what should I proactively prepare for the user", "meeting or mail preparation", "daily assistant duties"],
+    recall_when: [
+      "what should I proactively prepare for the user",
+      "meeting or mail preparation",
+      "daily assistant duties",
+    ],
   },
   world: {
     id: "profile-my-world",
     title: "Profile: my day-to-day world",
     type: "user-preference",
     tags: ["profile", "onboarding", "personal"],
-    recall_when: ["personal context — people, places, routines", "planning something in the user's daily life", "who or what matters to the user"],
+    recall_when: [
+      "personal context — people, places, routines",
+      "planning something in the user's daily life",
+      "who or what matters to the user",
+    ],
   },
   remember: {
     id: "profile-never-forget",
     title: "Profile: never forget",
     type: "user-preference",
     tags: ["profile", "onboarding", "personal"],
-    recall_when: ["important dates or standing preferences", "what must never be forgotten", "before making plans for the user"],
+    recall_when: [
+      "important dates or standing preferences",
+      "what must never be forgotten",
+      "before making plans for the user",
+    ],
   },
   goals: {
     id: "profile-personal-goals",
@@ -267,7 +307,11 @@ const TEMPLATES: Record<string, Template> = {
     title: "Profile: about me (self-described)",
     type: "user-preference",
     tags: ["profile", "onboarding"],
-    recall_when: ["session start — who is the user", "general context about the user", "what did the user say about themselves"],
+    recall_when: [
+      "session start — who is the user",
+      "general context about the user",
+      "what did the user say about themselves",
+    ],
   },
 };
 
@@ -292,7 +336,11 @@ export function buildOnboardingMemories(persona: Persona, answers: Record<string
       body: `**${PERSONA_LABELS[persona]}** (persona: ${persona})\n\nChosen during onboarding — the primary lens for what this vault should hold and how features should be tailored.`,
       topic_path: ["profile", "usage"],
       tags: ["profile", "onboarding", "persona"],
-      recall_when: ["what does the user use this memory for", "tailoring features to the user's persona", "session start context"],
+      recall_when: [
+        "what does the user use this memory for",
+        "tailoring features to the user's persona",
+        "session start context",
+      ],
       write_origin: "user-directed",
       overwrite: true,
     },
@@ -325,12 +373,13 @@ export function buildOnboardingMemories(persona: Persona, answers: Record<string
  * buildOnboardingMemories, which walks the persona's catalog).
  */
 export function parseOnboardingAnswers(
-  body: unknown,
+  body: unknown
 ): { persona: Persona; answers: Record<string, string> } | { error: string } {
   const b = (typeof body === "object" && body !== null ? body : {}) as { persona?: unknown; answers?: unknown };
-  const persona = typeof b.persona === "string" && (PERSONAS as readonly string[]).includes(b.persona)
-    ? (b.persona as Persona)
-    : null;
+  const persona =
+    typeof b.persona === "string" && (PERSONAS as readonly string[]).includes(b.persona)
+      ? (b.persona as Persona)
+      : null;
   if (!persona) return { error: `persona required — one of: ${PERSONAS.join(", ")}` };
   const answers: Record<string, string> = {};
   if (typeof b.answers === "object" && b.answers !== null) {
@@ -343,7 +392,7 @@ export function parseOnboardingAnswers(
   return { persona, answers };
 }
 
-export type OnboardingSurface ="ui:onboarding" | "cli:onboard";
+export type OnboardingSurface = "ui:onboarding" | "cli:onboard";
 
 /**
  * Save one interview as one user-authored audit run, regardless of surface.
@@ -356,7 +405,7 @@ export type OnboardingSurface ="ui:onboarding" | "cli:onboard";
 export async function saveOnboardingMemories(
   vaultPath: string,
   memories: SaveMemoryInput[],
-  surface: OnboardingSurface,
+  surface: OnboardingSurface
 ): Promise<void> {
   // Keep this outside the loop: per-memory UUIDs would destroy batch
   // reconstruction even though every individual audit entry looked valid.
@@ -379,10 +428,7 @@ export async function saveOnboardingMemories(
  * (clamp 100..5000); keine Zahl → keine Änderung. Best-effort — ein
  * Settings-Fehler bricht nie ein Onboarding ab.
  */
-export async function persistConventionSettings(
-  answers: Record<string, string>,
-  settingsPath?: string,
-): Promise<void> {
+export async function persistConventionSettings(answers: Record<string, string>, settingsPath?: string): Promise<void> {
   const raw = (answers.conventions_size ?? "").trim();
   if (!raw) return;
   const m = /\d{2,5}/.exec(raw.replace(/[.,](?=\d{3}\b)/g, ""));
@@ -448,10 +494,7 @@ function explicitLanguage(text: string): string | null {
  * nur de/en). Kein eindeutiges Signal → nichts schreiben. Best-effort — ein
  * Settings-Fehler bricht nie ein Onboarding ab.
  */
-export async function persistLanguageSetting(
-  answers: Record<string, string>,
-  settingsPath?: string,
-): Promise<void> {
+export async function persistLanguageSetting(answers: Record<string, string>, settingsPath?: string): Promise<void> {
   const identity = (answers.identity ?? "").trim();
   let code = identity ? explicitLanguage(identity) : null;
   if (!code) {
@@ -479,7 +522,7 @@ export async function markOnboardingDone(vaultPath: string, via: string): Promis
   await writeFile(
     join(vaultPath, ONBOARD_MARKER),
     `onboarded ${new Date().toISOString().slice(0, 10)} via ${via}\n`,
-    "utf8",
+    "utf8"
   );
 }
 
@@ -490,11 +533,7 @@ export async function isOnboardingNeeded(vaultPath: string, vaultSize: number): 
 
 /** GET /hook/onboarding — loopback-only, NOT ui-gated (the session hook
  *  needs it regardless of whether the map is enabled). */
-export async function handleHookOnboarding(
-  res: ServerResponse,
-  vaultPath: string,
-  vaultSize: number,
-): Promise<void> {
+export async function handleHookOnboarding(res: ServerResponse, vaultPath: string, vaultSize: number): Promise<void> {
   sendJsonPlain(res, 200, { needed: await isOnboardingNeeded(vaultPath, vaultSize) });
 }
 
@@ -508,7 +547,7 @@ export async function handleUiOnboarding(
   res: ServerResponse,
   vaultPath: string,
   vaultSize: number,
-  settingsPath?: string,
+  settingsPath?: string
 ): Promise<void> {
   if (!(await getUiEnabled(settingsPath))) {
     sendJsonPlain(res, 404, { error: "ui disabled" });

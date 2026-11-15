@@ -8,11 +8,7 @@ import { strict as assert } from "node:assert";
 import { createServer, type Server } from "node:http";
 import { CodeGraphRefresher, type RepoStatus } from "../src/code-graph/refresh.js";
 import type { BuildResult } from "../src/code-graph/build.js";
-import {
-  parseRefreshStatusRows,
-  refreshStatusLines,
-  toRefreshStatusRows,
-} from "../src/code-graph/refresh-status.js";
+import { parseRefreshStatusRows, refreshStatusLines, toRefreshStatusRows } from "../src/code-graph/refresh-status.js";
 import { dispatchLocalRoutes, type LocalRouteCtx } from "../src/http-local-routes.js";
 import { fetchRefreshStatus, requestManualRefresh, resumeRefreshIfGivenUp } from "../src/cli/code-refresh-client.js";
 
@@ -41,22 +37,30 @@ describe("refresh status wording", () => {
 
   it("names the hourly attempt of a lock pause and the way out", () => {
     const lines = refreshStatusLines(
-      status({ givenUp: true, state: "waiting", lastError: "locked after 7 attempts: locked: /repo/graphify-out", nextAttemptAt: "2026-10-20T10:42:00Z" }),
-      NOW,
+      status({
+        givenUp: true,
+        state: "waiting",
+        lastError: "locked after 7 attempts: locked: /repo/graphify-out",
+        nextAttemptAt: "2026-10-20T10:42:00Z",
+      }),
+      NOW
     );
     assert.deepEqual(lines, [
       "refresh paused: locked after 7 attempts: locked: /repo/graphify-out",
       "next automatic attempt in 42 min — 'bastra code index' tries now",
     ]);
-    assert.match(refreshStatusLines(status({ givenUp: true, nextAttemptAt: "2026-10-20T11:05:00Z" }), NOW)[1]!, /in 1 h 5 min/);
-    assert.match(refreshStatusLines(status({ givenUp: true, nextAttemptAt: "2026-10-20T09:59:00Z" }), NOW)[1]!, /any moment now/);
+    assert.match(
+      refreshStatusLines(status({ givenUp: true, nextAttemptAt: "2026-10-20T11:05:00Z" }), NOW)[1]!,
+      /in 1 h 5 min/
+    );
+    assert.match(
+      refreshStatusLines(status({ givenUp: true, nextAttemptAt: "2026-10-20T09:59:00Z" }), NOW)[1]!,
+      /any moment now/
+    );
   });
 
   it("says a stop after failed builds waits for the user, and which command", () => {
-    const lines = refreshStatusLines(
-      status({ givenUp: true, failures: 3, lastError: "failed: exit code 1" }),
-      NOW,
-    );
+    const lines = refreshStatusLines(status({ givenUp: true, failures: 3, lastError: "failed: exit code 1" }), NOW);
     assert.deepEqual(lines, [
       "refresh stopped after 3 failed builds: failed: exit code 1",
       "no automatic retry — run 'bastra code index' to retry",
@@ -66,7 +70,15 @@ describe("refresh status wording", () => {
 
 describe("refresh status on the wire", () => {
   it("survives the round trip and drops rows it cannot read", () => {
-    const s = status({ givenUp: true, failures: 2, lastError: "x", lastReason: "git", builds: 4, nextAttemptAt: "2026-10-20T11:00:00Z", state: "waiting" });
+    const s = status({
+      givenUp: true,
+      failures: 2,
+      lastError: "x",
+      lastReason: "git",
+      builds: 4,
+      nextAttemptAt: "2026-10-20T11:00:00Z",
+      state: "waiting",
+    });
     assert.deepEqual(parseRefreshStatusRows({ repos: toRefreshStatusRows([s]) }), [s]);
     assert.deepEqual(parseRefreshStatusRows({ repos: [{ repo_root: "/x", state: "unknown" }, null, 3] }), []);
     assert.deepEqual(parseRefreshStatusRows(null), []);
@@ -93,10 +105,21 @@ describe("GET and POST /code/refresh", () => {
   }
 
   const fail = (): BuildResult => ({ ok: false, reason: "failed", detail: "boom" });
-  const ok: BuildResult = { ok: true, durationMs: 1, tookOverLock: false, manifest: {
-    graphifyVersion: "fixture", builtAt: new Date().toISOString(), commit: null, repoRoot: "/repo",
-    command: "fixture", fileState: { count: 1, newestMtimeMs: 1 }, lastError: null, dirty: false,
-  } };
+  const ok: BuildResult = {
+    ok: true,
+    durationMs: 1,
+    tookOverLock: false,
+    manifest: {
+      graphifyVersion: "fixture",
+      builtAt: new Date().toISOString(),
+      commit: null,
+      repoRoot: "/repo",
+      command: "fixture",
+      fileState: { count: 1, newestMtimeMs: 1 },
+      lastError: null,
+      dirty: false,
+    },
+  };
 
   it("shows a stopped repository, and a manual request builds it again", async () => {
     let calls = 0;

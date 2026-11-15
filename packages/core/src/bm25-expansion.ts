@@ -66,7 +66,7 @@ export const BM25_FUZZY = 0.2;
  */
 export function rareTermFuzzy(
   docFreq: DocFreqFn,
-  maxDf: number | undefined,
+  maxDf: number | undefined
 ): ((term: string) => number | false) | undefined {
   if (maxDf === undefined || !Number.isFinite(maxDf) || maxDf <= 0) return undefined;
   return (term: string) => {

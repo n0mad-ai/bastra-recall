@@ -12,22 +12,12 @@
 
 export type { ClaudeHookData } from "./utils/claude";
 
-export type {
-  PowerlineConfig,
-  DisplayConfig,
-  LineConfig,
-  BudgetConfig,
-  BudgetItemConfig,
-} from "./config/loader";
+export type { PowerlineConfig, DisplayConfig, LineConfig, BudgetConfig, BudgetItemConfig } from "./config/loader";
 
 export type { ColorTheme, PowerlineColors, SegmentColor } from "./themes";
 
 export type { GitInfo } from "./segments/git";
-export type {
-  UsageInfo,
-  SessionInfo,
-  TokenBreakdown,
-} from "./segments/session";
+export type { UsageInfo, SessionInfo, TokenBreakdown } from "./segments/session";
 export type { ContextInfo } from "./segments/context";
 export type { MetricsInfo } from "./segments/metrics";
 export type { BlockInfo } from "./segments/block";
@@ -105,24 +95,11 @@ export {
 
 // --- Constants ---
 
-export {
-  SYMBOLS,
-  TEXT_SYMBOLS,
-  RESET_CODE,
-  BOX_CHARS,
-  BOX_CHARS_TEXT,
-  BOX_PRESETS,
-} from "./utils/constants";
+export { SYMBOLS, TEXT_SYMBOLS, RESET_CODE, BOX_CHARS, BOX_CHARS_TEXT, BOX_PRESETS } from "./utils/constants";
 
 // --- Pure utilities ---
 
-export {
-  hexToAnsi,
-  extractBgToFg,
-  hexTo256Ansi,
-  hexToBasicAnsi,
-  hexColorDistance,
-} from "./utils/colors";
+export { hexToAnsi, extractBgToFg, hexTo256Ansi, hexToBasicAnsi, hexColorDistance } from "./utils/colors";
 export { stripAnsi, visibleLength, ESC } from "./utils/terminal";
 export {
   formatCost,
@@ -201,8 +178,4 @@ export { DEFAULT_CONFIG } from "./config/defaults";
 
 // --- Segment ref validation ---
 
-export {
-  isValidSegmentRef,
-  VALID_SEGMENT_NAMES,
-  SEGMENT_PARTS,
-} from "./tui/types";
+export { isValidSegmentRef, VALID_SEGMENT_NAMES, SEGMENT_PARTS } from "./tui/types";

@@ -118,7 +118,7 @@ test("#206: an overwrite is an update and carries the previous state", async () 
     assert.equal(
       (update.diff_before as Record<string, unknown>).title,
       "Wird geändert",
-      "the before-state must be the frontmatter as it actually was",
+      "the before-state must be the frontmatter as it actually was"
     );
   } finally {
     await cleanup();
@@ -209,7 +209,7 @@ test("#287: one folder import is reconstructable as one audit run", async () => 
     assert.deepEqual(
       new Set(firstEntries.map((e) => e.memory_id)),
       new Set(first.ids),
-      "the trail must name every node the import reported",
+      "the trail must name every node the import reported"
     );
     assert.ok(firstEntries.every((e) => e.actor === "import"));
     assert.ok(firstEntries.every((e) => e.actor_detail === "import:vault"));
@@ -217,7 +217,7 @@ test("#287: one folder import is reconstructable as one audit run", async () => 
     assert.equal(
       new Set(firstEntries.map((e) => e.session_id)).size,
       1,
-      "all nodes from one invocation need one shared run id",
+      "all nodes from one invocation need one shared run id"
     );
     const firstRun = firstEntries[0].session_id;
     assert.ok(firstRun);
@@ -227,11 +227,7 @@ test("#287: one folder import is reconstructable as one audit run", async () => 
     // je Datei, mit identischem Vor- und Nachbild): ein Beleg für eine
     // Änderung, die nicht stattgefunden hat.
     await importVault(vaultPath, sourcePath, { label: "audit-batch" });
-    assert.deepEqual(
-      await auditEntries(vaultPath),
-      firstEntries,
-      "an identical re-import must append no audit entry",
-    );
+    assert.deepEqual(await auditEntries(vaultPath), firstEntries, "an identical re-import must append no audit entry");
 
     // Eine echte Änderung belegt der Lauf weiterhin — und nur sie.
     await writeFile(join(sourcePath, "two.md"), "# Two\n\nSecond imported note, corrected.\n", "utf8");
@@ -400,8 +396,10 @@ test("#380: im Normalfall gibt recordAudit nichts heraus", async () => {
     // unknown> enough for a direct cast any more — via unknown first, same as
     // TS's own suggestion, for the duck-typed access below.
     const res = (await saveMemoryHandler(deps, memo("Ohne Warnung"))) as unknown as Record<string, unknown>;
-    assert.ok(!("warning" in res) || !String(res.warning).includes("audit"), 
-      `eine gelungene Protokollierung erzeugt keine Warnung: ${JSON.stringify(res.warning)}`);
+    assert.ok(
+      !("warning" in res) || !String(res.warning).includes("audit"),
+      `eine gelungene Protokollierung erzeugt keine Warnung: ${JSON.stringify(res.warning)}`
+    );
   } finally {
     await cleanup();
   }
@@ -424,7 +422,7 @@ test("#380: die MCP-Antwort trägt die Warnung, wenn der Beleg fehlt", async () 
     assert.ok(res.id, "der Save selbst ist gelungen — das ist die Zusage von dfb044e");
     assert.ok(
       typeof res.warning === "string" && res.warning.includes("do NOT retry"),
-      `die Antwort muss die Warnung tragen, war: ${JSON.stringify(res.warning)}`,
+      `die Antwort muss die Warnung tragen, war: ${JSON.stringify(res.warning)}`
     );
   } finally {
     console.error = err;
@@ -450,7 +448,7 @@ test("#380: auch archive_memory sagt es, wenn sein Beleg fehlt", async () => {
     assert.equal(res.id, saved.id, "archiviert wurde trotzdem");
     assert.ok(
       typeof res.warning === "string" && res.warning.includes("do NOT retry"),
-      `die Antwort muss die Warnung tragen, war: ${JSON.stringify(res.warning)}`,
+      `die Antwort muss die Warnung tragen, war: ${JSON.stringify(res.warning)}`
     );
   } finally {
     console.error = err;

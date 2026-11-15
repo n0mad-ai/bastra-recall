@@ -9,51 +9,79 @@ import type { ParsedArgs } from "./types.js";
 
 export async function cmdDrafts(args: ParsedArgs): Promise<number> {
   const sub = args.positional[1] ?? "list";
-  if (!["list", "purge", "undo", "reject"].includes(sub) || sub !== "reject" && args.positional.length > (sub === "undo" ? 3 : 2) || (sub === "undo" || sub === "reject") && !args.positional[2]) {
-    process.stderr.write("usage: bastra drafts [list|purge|undo <id>|reject <id>...] [--json] [--vault <path>] [--force]\n");
+  if (
+    !["list", "purge", "undo", "reject"].includes(sub) ||
+    (sub !== "reject" && args.positional.length > (sub === "undo" ? 3 : 2)) ||
+    ((sub === "undo" || sub === "reject") && !args.positional[2])
+  ) {
+    process.stderr.write(
+      "usage: bastra drafts [list|purge|undo <id>|reject <id>...] [--json] [--vault <path>] [--force]\n"
+    );
     return 2;
   }
   try {
     if (sub === "undo") {
       const resolved = await resolveVault(args);
-      if ("error" in resolved) { process.stderr.write("error: configure a vault or pass --vault\n"); return 1; }
+      if ("error" in resolved) {
+        process.stderr.write("error: configure a vault or pass --vault\n");
+        return 1;
+      }
       const vault = new Vault(resolved.path);
       try {
         await vault.init();
         const memoryId = await undoDraftPromotion(vault, args.positional[2], Date.now(), args.force);
-        process.stdout.write(args.json ? JSON.stringify({ undone: memoryId }) + "\n" : `Draft promotion undone: ${memoryId}\n`);
-      } finally { await vault.stop(); }
+        process.stdout.write(
+          args.json ? JSON.stringify({ undone: memoryId }) + "\n" : `Draft promotion undone: ${memoryId}\n`
+        );
+      } finally {
+        await vault.stop();
+      }
     } else if (sub === "reject") {
       const results = await rejectDrafts(args.positional.slice(2));
       if (args.json) process.stdout.write(JSON.stringify({ results }) + "\n");
-      else for (const r of results) {
-        if (r.outcome === "rejected") process.stdout.write(`Draft rejected: ${r.id}\n`);
-        else if (r.outcome === "already_rejected") process.stdout.write(`Draft already rejected: ${r.id}\n`);
-        else if (r.outcome === "promoted") process.stderr.write(`Draft already promoted, not rejected: ${r.id}; use bastra drafts undo ${r.id}\n`);
-        else process.stderr.write(`No open draft with this id: ${r.id}\n`);
-      }
+      else
+        for (const r of results) {
+          if (r.outcome === "rejected") process.stdout.write(`Draft rejected: ${r.id}\n`);
+          else if (r.outcome === "already_rejected") process.stdout.write(`Draft already rejected: ${r.id}\n`);
+          else if (r.outcome === "promoted")
+            process.stderr.write(`Draft already promoted, not rejected: ${r.id}; use bastra drafts undo ${r.id}\n`);
+          else process.stderr.write(`No open draft with this id: ${r.id}\n`);
+        }
       // An already rejected draft is closed; only promoted and unknown ids fail.
-      return results.every(r => r.outcome === "rejected" || r.outcome === "already_rejected") ? 0 : 1;
+      return results.every((r) => r.outcome === "rejected" || r.outcome === "already_rejected") ? 0 : 1;
     } else if (sub === "purge") {
       const { pendingRelay } = await purgeDrafts();
       const cleared = ["drafts", "vectors", "decisions", ...(pendingRelay ? ["pending-relay"] : [])];
-      process.stdout.write(args.json ? JSON.stringify({ purged: true, cleared, ...(!pendingRelay ? { pending_relay: "absent" } : {}) }) + "\n"
-        : `Local drafts, vectors and decision receipts cleared; pending relay ${pendingRelay ? "cleared" : "not present"}.\n`);
-
+      process.stdout.write(
+        args.json
+          ? JSON.stringify({ purged: true, cleared, ...(!pendingRelay ? { pending_relay: "absent" } : {}) }) + "\n"
+          : `Local drafts, vectors and decision receipts cleared; pending relay ${pendingRelay ? "cleared" : "not present"}.\n`
+      );
     } else {
       const rows = await listDrafts();
       if (args.json) process.stdout.write(JSON.stringify(rows) + "\n");
       else if (!rows.length) process.stdout.write("No local drafts.\n");
-      else for (const row of rows) {
-        process.stdout.write(`${row.id}  ${row.state}  ${new Date(row.last_touched).toISOString()}\n  ${row.quote.replace(/[\r\n\x00-\x1f\x7f]/g, " ")}\n`);
-      }
+      else
+        for (const row of rows) {
+          process.stdout.write(
+            `${row.id}  ${row.state}  ${new Date(row.last_touched).toISOString()}\n  ${row.quote.replace(/[\r\n\x00-\x1f\x7f]/g, " ")}\n`
+          );
+        }
     }
     return 0;
   } catch (error) {
     let message = error instanceof Error ? error.message : "";
     if (message === "note changed since promotion") message += "; review it and use --force to undo";
-    const known = ["draft is not a promoted note", "draft belongs to a different or unconfirmed vault", "note no longer matches draft provenance", "promotion receipt missing; review the note and use --force to undo", "note changed since promotion; review it and use --force to undo"];
-    process.stderr.write(`error: ${error instanceof PendingRelayAccessError || sub === "undo" && known.includes(message) ? message : "cannot access local drafts"}\n`);
+    const known = [
+      "draft is not a promoted note",
+      "draft belongs to a different or unconfirmed vault",
+      "note no longer matches draft provenance",
+      "promotion receipt missing; review the note and use --force to undo",
+      "note changed since promotion; review it and use --force to undo",
+    ];
+    process.stderr.write(
+      `error: ${error instanceof PendingRelayAccessError || (sub === "undo" && known.includes(message)) ? message : "cannot access local drafts"}\n`
+    );
     return 1;
   }
 }

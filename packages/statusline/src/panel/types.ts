@@ -1,9 +1,9 @@
-import type { PanelGit } from './git-status';
-import type { PanelText } from './i18n';
+import type { PanelGit } from "./git-status";
+import type { PanelText } from "./i18n";
 
 export interface NeuralData {
-  mode: 'demo' | 'snapshot' | 'live';
-  client?: 'claude' | 'codex';
+  mode: "demo" | "snapshot" | "live";
+  client?: "claude" | "codex";
   git?: PanelGit | null;
   effort?: string | null;
   durationMs?: number | null;
@@ -15,7 +15,7 @@ export interface NeuralData {
   linesRemoved?: number | null;
   tokens?: number | null;
   clientLatency?: number | null;
-  timingSource?: 'forwarder' | 'client';
+  timingSource?: "forwarder" | "client";
   active?: boolean;
   recent?: boolean;
   agentActive?: boolean;
@@ -46,7 +46,16 @@ export interface NeuralData {
 }
 
 export const NEURAL_DEMO: NeuralData = {
-  mode: 'demo', project: 'bastra-recall', model: 'OPUS 5.5', context: 24,
-  usage: 70, vault: 1368, searches: 2, hits: 6, loads: 3, saves: 1,
-  latency: 120, stage: 'Semantik abgleichen',
+  mode: "demo",
+  project: "bastra-recall",
+  model: "OPUS 5.5",
+  context: 24,
+  usage: 70,
+  vault: 1368,
+  searches: 2,
+  hits: 6,
+  loads: 3,
+  saves: 1,
+  latency: 120,
+  stage: "Semantik abgleichen",
 };

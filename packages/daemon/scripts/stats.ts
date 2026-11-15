@@ -18,13 +18,7 @@ import { readUsage, type UsageAggregate } from "../src/usage-sidecar.js";
 import { summarizeEvidenceGate } from "./stats-evidence.js";
 import { buildContextLedger } from "../src/context-ledger.js";
 import { isEvalTraffic } from "../src/telemetry-dimensions.js";
-import {
-  armIdentities,
-  evaluateArms,
-  loadMinNRule,
-  UNASSIGNED_ARM,
-  type ArmEvaluation,
-} from "../src/stats-arms.js";
+import { armIdentities, evaluateArms, loadMinNRule, UNASSIGNED_ARM, type ArmEvaluation } from "../src/stats-arms.js";
 import { summarizeSessionStart } from "../src/telemetry-report.js";
 import { renderSessionStart } from "../src/cli/log-stats.js";
 import { dimensionValue, median, p95, pct, type AnyEvent } from "./stats-shared.js";
@@ -38,8 +32,7 @@ function defaultLogDir(): string {
   return next;
 }
 
-const LOG_DIR =
-  process.env.BASTRA_LOG_PATH ?? process.env.NEXUS_LOG_PATH ?? defaultLogDir();
+const LOG_DIR = process.env.BASTRA_LOG_PATH ?? process.env.NEXUS_LOG_PATH ?? defaultLogDir();
 
 // Band-Schwellen müssen mit telemetry-join-state.ts (bandForScore) übereinstimmen — sonst
 // werden candidates-Bänder (hier aus hits[].score) und loaded/acted-Bänder
@@ -49,8 +42,7 @@ const MUST_LOAD_SCORE = Number(process.env.BASTRA_MUST_LOAD_SCORE ?? 100);
 const SCORE_FLOOR = Number(process.env.BASTRA_RECALL_FLOOR ?? 30);
 
 const daysArg = process.argv.indexOf("--days");
-const DAYS: number | null =
-  daysArg >= 0 && process.argv[daysArg + 1] ? parseInt(process.argv[daysArg + 1], 10) : null;
+const DAYS: number | null = daysArg >= 0 && process.argv[daysArg + 1] ? parseInt(process.argv[daysArg + 1], 10) : null;
 
 async function loadEvents(): Promise<AnyEvent[]> {
   let files: string[];
@@ -118,10 +110,18 @@ function summarizeHook(events: AnyEvent[]): void {
   for (const [s, n] of [...statuses.entries()].sort((a, b) => b[1] - a[1])) {
     console.log(`     ${n.toString().padStart(4)}  ${s}`);
   }
-  console.log(`  hook latency_ms_total:   median ${median(totalLatencies).toFixed(0).padStart(4)}   p95 ${p95(totalLatencies).toFixed(0).padStart(4)}`);
-  console.log(`  daemon latency_ms_recall: median ${median(recallLatencies).toFixed(0).padStart(4)}   p95 ${p95(recallLatencies).toFixed(0).padStart(4)}`);
-  console.log(`  daemon latency_ms_total: median ${median(httpLatencies).toFixed(0).padStart(4)}   p95 ${p95(httpLatencies).toFixed(0).padStart(4)}`);
-  console.log(`  top-score distribution (top candidate per reachable call, pre-dedup — a high score with 0 hints = deduped/scope-filtered):`);
+  console.log(
+    `  hook latency_ms_total:   median ${median(totalLatencies).toFixed(0).padStart(4)}   p95 ${p95(totalLatencies).toFixed(0).padStart(4)}`
+  );
+  console.log(
+    `  daemon latency_ms_recall: median ${median(recallLatencies).toFixed(0).padStart(4)}   p95 ${p95(recallLatencies).toFixed(0).padStart(4)}`
+  );
+  console.log(
+    `  daemon latency_ms_total: median ${median(httpLatencies).toFixed(0).padStart(4)}   p95 ${p95(httpLatencies).toFixed(0).padStart(4)}`
+  );
+  console.log(
+    `  top-score distribution (top candidate per reachable call, pre-dedup — a high score with 0 hints = deduped/scope-filtered):`
+  );
   console.log(`     ≥ 100:  ${above100.toString().padStart(4)}  (${pct(above100, topScores.length)})`);
   console.log(`     50-99:  ${above50.toString().padStart(4)}  (${pct(above50, topScores.length)})`);
   console.log(`     30-49:  ${above30.toString().padStart(4)}  (${pct(above30, topScores.length)})`);
@@ -173,7 +173,9 @@ function summarizeMcp(events: AnyEvent[]): void {
   // Save → was there a preceding recall?
   if (saves.length) {
     const followsRecall = saves.filter((s) => s.follows_recall != null).length;
-    console.log(`  saves following a recall (≤5min): ${followsRecall} of ${saves.length}  (${pct(followsRecall, saves.length)})`);
+    console.log(
+      `  saves following a recall (≤5min): ${followsRecall} of ${saves.length}  (${pct(followsRecall, saves.length)})`
+    );
   }
 }
 
@@ -183,9 +185,7 @@ function summarizeFollowThrough(events: AnyEvent[]): void {
   if (loads.length === 0 && hookRecalls.length === 0) return;
 
   const fromHook = loads.filter((l) => l.from_hook_recall != null);
-  const distinctHookRecallsConsumed = new Set(
-    fromHook.map((l) => String(l.from_hook_recall)),
-  );
+  const distinctHookRecallsConsumed = new Set(fromHook.map((l) => String(l.from_hook_recall)));
 
   const rankCounts = new Map<number, number>();
   for (const l of fromHook) {
@@ -197,7 +197,9 @@ function summarizeFollowThrough(events: AnyEvent[]): void {
   console.log(`  A hint can be applied without load_memory; that path is not observable here.`);
   console.log(`  load_memory total:                ${loads.length}`);
   console.log(`  load_memory triggered by a hint:  ${fromHook.length}  (${pct(fromHook.length, loads.length)})`);
-  console.log(`  hook_recalls that produced ≥1 load: ${distinctHookRecallsConsumed.size} of ${hookRecalls.length}  (${pct(distinctHookRecallsConsumed.size, hookRecalls.length)})`);
+  console.log(
+    `  hook_recalls that produced ≥1 load: ${distinctHookRecallsConsumed.size} of ${hookRecalls.length}  (${pct(distinctHookRecallsConsumed.size, hookRecalls.length)})`
+  );
   if (rankCounts.size > 0) {
     console.log(`  loaded-from-hint by rank in hint list:`);
     for (const [r, n] of [...rankCounts.entries()].sort((a, b) => a[0] - b[0])) {
@@ -258,16 +260,18 @@ function summarizeUseRate(events: AnyEvent[]): void {
   }
 
   for (const e of surfacedEpisodes) {
-    const band = bands.includes(e.band as typeof bands[number])
-      ? String(e.band)
-      : "below_floor";
+    const band = bands.includes(e.band as (typeof bands)[number]) ? String(e.band) : "below_floor";
     loaded.set(band, (loaded.get(band) ?? 0) + 1);
     if (e.acted_on === true) acted.set(band, (acted.get(band) ?? 0) + 1);
   }
 
   console.log(`\n## USE-rate  (did loaded hints affect the next tool input?)`);
-  console.log(`  loaded/candidates is a LOWER BOUND on follow-through: applied hints without load_memory are invisible.`);
-  console.log(`  candidates = engine top-k before hook-side filtering, NOT what was actually injected. The injected count is not in this table: the usage sidecar holds it per memory, all-time.`);
+  console.log(
+    `  loaded/candidates is a LOWER BOUND on follow-through: applied hints without load_memory are invisible.`
+  );
+  console.log(
+    `  candidates = engine top-k before hook-side filtering, NOT what was actually injected. The injected count is not in this table: the usage sidecar holds it per memory, all-time.`
+  );
   for (const band of bands) {
     const s = candidates.get(band) ?? 0;
     const l = loaded.get(band) ?? 0;
@@ -276,7 +280,9 @@ function summarizeUseRate(events: AnyEvent[]): void {
     // verwässert); acted_on/loaded ist die EHRLICHE USE-rate, die die
     // Header-Frage „haben geladene Hints den nächsten Input beeinflusst?"
     // beantwortet — sonst liest man pct(a,s)≈0 als „wirkt nicht".
-    console.log(`  ${band.padEnd(11)} candidates ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)} lower bound)  acted_on ${a.toString().padStart(4)}  (${pct(a, l)} of loaded · ${pct(a, s)} of candidates)`);
+    console.log(
+      `  ${band.padEnd(11)} candidates ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)} lower bound)  acted_on ${a.toString().padStart(4)}  (${pct(a, l)} of loaded · ${pct(a, s)} of candidates)`
+    );
   }
   if (directLoads > 0) {
     console.log(`  (excluded: ${directLoads} direct load(s) with no preceding hint — not part of any band quota)`);
@@ -305,7 +311,9 @@ function summarizeUseRate(events: AnyEvent[]): void {
   for (const src of ["bash-tripwire", "write-edit"] as const) {
     const s = hintsBySource[src];
     const [l, a] = epBySource[src];
-    console.log(`    ${src.padEnd(14)} candidates ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)} lower bound)  acted_on ${a.toString().padStart(4)} (${pct(a, s)})`);
+    console.log(
+      `    ${src.padEnd(14)} candidates ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)} lower bound)  acted_on ${a.toString().padStart(4)} (${pct(a, s)})`
+    );
   }
 
   // #263/§17.4 Punkt 5: „Auswertung getrennt nach Client, Hook-Quelle und
@@ -331,9 +339,7 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".."
 function armVerdict(hookRecalls: AnyEvent[]): Map<string, ArmEvaluation> {
   const ids = armIdentities(hookRecalls);
   const loaded =
-    ids.length === 1
-      ? loadMinNRule(ids[0].registration, [process.cwd(), REPO_ROOT])
-      : { rule: null, error: null };
+    ids.length === 1 ? loadMinNRule(ids[0].registration, [process.cwd(), REPO_ROOT]) : { rule: null, error: null };
   return evaluateArms(hookRecalls, loaded.rule, loaded.error);
 }
 
@@ -349,7 +355,7 @@ function printDimensionSplit(
   hookRecalls: AnyEvent[],
   surfacedEpisodes: AnyEvent[],
   /** #437: das Mindest-N-Urteil je Arm. Nur für `field === "arm"` gesetzt. */
-  armEval?: Map<string, ArmEvaluation>,
+  armEval?: Map<string, ArmEvaluation>
 ): void {
   const byRecallId = new Map<string, AnyEvent>();
   for (const r of hookRecalls) byRecallId.set(String(r.recall_id), r);
@@ -391,19 +397,17 @@ function printDimensionSplit(
     if (verdict && !verdict.evaluable) {
       console.log(
         `    ${key.padEnd(14)} NOT EVALUABLE — ${verdict.why}` +
-          `  [counts only: sessions ${verdict.sessions}  candidates ${s}  loaded ${l}  acted_on ${a}]`,
+          `  [counts only: sessions ${verdict.sessions}  candidates ${s}  loaded ${l}  acted_on ${a}]`
       );
       continue;
     }
     const units = verdict ? `  sessions ${verdict.sessions.toString().padStart(4)} ≥ min-N ${verdict.minN}` : "";
     console.log(
-      `    ${key.padEnd(14)} candidates ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)} lower bound)  acted_on ${a.toString().padStart(4)}  (${pct(a, l)} of loaded)${units}`,
+      `    ${key.padEnd(14)} candidates ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)} lower bound)  acted_on ${a.toString().padStart(4)}  (${pct(a, l)} of loaded)${units}`
     );
   }
   if (armEval && [...armEval.values()].some((v) => !v.evaluable)) {
-    console.log(
-      `    (§18.1: an arm below its registered min-N is reported as NOT EVALUABLE, never as a null result —`,
-    );
+    console.log(`    (§18.1: an arm below its registered min-N is reported as NOT EVALUABLE, never as a null result —`);
     console.log(`     no rate is printed for it, because a rate is what a result looks like)`);
   }
 }
@@ -466,7 +470,9 @@ function summarizeOllamaLifecycle(events: AnyEvent[]): void {
   console.log(`  prewarms (boot wakeups):  ${prewarms.length}`);
   console.log(`  idle unloads:             ${unloads.length}`);
   if (cycles > 0) {
-    console.log(`  est. RAM residency:       ~${Math.round(residentMs / 60000)} min across ${cycles} load cycle(s) (lower bound)`);
+    console.log(
+      `  est. RAM residency:       ~${Math.round(residentMs / 60000)} min across ${cycles} load cycle(s) (lower bound)`
+    );
   }
   const lastUnload = unloads[unloads.length - 1];
   if (lastUnload && typeof lastUnload.embed_calls_since_boot === "number") {
@@ -493,7 +499,9 @@ function summarizeBridges(events: AnyEvent[]): void {
   }
 
   console.log(`\n## Learned-recall bridges  (#120 — did bridges widen queries?)`);
-  console.log(`  recalls with a bridge expansion:  ${expanded.length} of ${recalls.length}  (${pct(expanded.length, recalls.length)})`);
+  console.log(
+    `  recalls with a bridge expansion:  ${expanded.length} of ${recalls.length}  (${pct(expanded.length, recalls.length)})`
+  );
   console.log(`  by query language:                ${[...byLang.entries()].map(([l, n]) => `${l}:${n}`).join("  ")}`);
   console.log(`  avg terms added per expansion:    ${(totalAdded / expanded.length).toFixed(1)}`);
   const top = [...termCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
@@ -524,7 +532,9 @@ async function summarizeExposureNormalised(events: AnyEvent[]): Promise<void> {
   const episodes = events.filter((e) => e.kind === "recall_episode" && e.acted_on === true);
   if (episodes.length === 0) return;
   if (!vaultRoot) {
-    console.log(`\n## Exposure-normalised use  (skipped: BASTRA_VAULT_PATH not set — the denominator lives in the vault's usage sidecar)`);
+    console.log(
+      `\n## Exposure-normalised use  (skipped: BASTRA_VAULT_PATH not set — the denominator lives in the vault's usage sidecar)`
+    );
     return;
   }
 
@@ -551,7 +561,9 @@ async function summarizeExposureNormalised(events: AnyEvent[]): Promise<void> {
 
   console.log(`\n## Exposure-normalised use  (acted_on per surfacing, denominator from the usage sidecar)`);
   if (DAYS) {
-    console.log(`  CAUTION: acted_on is windowed to the last ${DAYS} day(s); the sidecar's surfaced count is all-time — the rate below is understated, not comparable across --days values.`);
+    console.log(
+      `  CAUTION: acted_on is windowed to the last ${DAYS} day(s); the sidecar's surfaced count is all-time — the rate below is understated, not comparable across --days values.`
+    );
   }
   console.log(`  NORMALISATION, NOT BIAS CORRECTION (§17.5). Dividing by the number of`);
   console.log(`  surfacings makes rates comparable; it says nothing about WHY a memory was`);
@@ -565,19 +577,22 @@ async function summarizeExposureNormalised(events: AnyEvent[]): Promise<void> {
     console.log(`  highest acted_on rate (of memories with a known denominator):`);
     for (const r of top) {
       console.log(
-        `    ${(r.acted / r.surfaced!).toFixed(3).padStart(6)}  ${r.acted.toString().padStart(3)}/${String(r.surfaced).padStart(4)}  ${r.id}`,
+        `    ${(r.acted / r.surfaced!).toFixed(3).padStart(6)}  ${r.acted.toString().padStart(3)}/${String(r.surfaced).padStart(4)}  ${r.id}`
       );
     }
   }
   console.log(`  memories with a known denominator: ${known.length}`);
   if (neverSurfaced.length > 0) {
     console.log(
-      `  acted_on but sidecar says surfaced=0: ${neverSurfaced.length} (rate undefined, not 0 — the sidecar is behind or the load came without a hint)`,
+      `  acted_on but sidecar says surfaced=0: ${neverSurfaced.length} (rate undefined, not 0 — the sidecar is behind or the load came without a hint)`
     );
   }
   if (unknown.length > 0) {
     console.log(
-      `  no sidecar history — counted UNKNOWN, never 0: ${unknown.length} (${unknown.slice(0, 5).map((r) => r.id).join(", ")}${unknown.length > 5 ? ", …" : ""})`,
+      `  no sidecar history — counted UNKNOWN, never 0: ${unknown.length} (${unknown
+        .slice(0, 5)
+        .map((r) => r.id)
+        .join(", ")}${unknown.length > 5 ? ", …" : ""})`
     );
   }
 }
@@ -605,7 +620,7 @@ async function main(): Promise<void> {
     console.log(
       includeEval
         ? `eval/synthetic traffic included (#619): ${evalEvents.length} events, ~${excludedTokens} context-tax tokens`
-        : `excluded as eval/synthetic (#619): ${evalEvents.length} events, ~${excludedTokens} context-tax tokens — rerun with --include-eval to include them`,
+        : `excluded as eval/synthetic (#619): ${evalEvents.length} events, ~${excludedTokens} context-tax tokens — rerun with --include-eval to include them`
     );
   }
   if (events.length === 0) {

@@ -259,7 +259,12 @@ export function createOrbitView(deps) {
     // same structures, so projection/hover/bursts/decor work unchanged.
     if (isLab(mode)) {
       buildLab({
-        universe, entries, adj, R, mode, core,
+        universe,
+        entries,
+        adj,
+        R,
+        mode,
+        core,
         edges: deps.sim.edges,
         userKey: "user",
         discBasis,
@@ -273,72 +278,84 @@ export function createOrbitView(deps) {
     }
 
     if (!isLab(mode))
-    entries.forEach(([key, members], ci) => {
-      let center = null;
-      let orbit = null;
-      let spinBoost = 1;
-      if (galactic) {
-        const p = galactic.placement.get(key);
-        center = p.center;
-        orbit = p.orbit;
-        spinBoost = p.spinBoost;
-      } else {
-        let bestScore = -1;
-        for (let k = 0; k < 24; k++) {
-          const cand = sampleVolume(ci * 131 + k);
-          const score = placedCenters.length
-            ? Math.min(...placedCenters.map((p) => dist3(p, cand)))
-            : dist3(cand, { px: 0, py: 0, pz: 0 }) + VOL.x;
-          if (score > bestScore) {
-            bestScore = score;
-            center = cand;
+      entries.forEach(([key, members], ci) => {
+        let center = null;
+        let orbit = null;
+        let spinBoost = 1;
+        if (galactic) {
+          const p = galactic.placement.get(key);
+          center = p.center;
+          orbit = p.orbit;
+          spinBoost = p.spinBoost;
+        } else {
+          let bestScore = -1;
+          for (let k = 0; k < 24; k++) {
+            const cand = sampleVolume(ci * 131 + k);
+            const score = placedCenters.length
+              ? Math.min(...placedCenters.map((p) => dist3(p, cand)))
+              : dist3(cand, { px: 0, py: 0, pz: 0 }) + VOL.x;
+            if (score > bestScore) {
+              bestScore = score;
+              center = cand;
+            }
           }
+          placedCenters.push(center);
         }
-        placedCenters.push(center);
-      }
 
-      const dwarf = members.length <= DWARF_MAX;
-      const discR = discRFor(members.length);
-      const basis = discBasis(ci + 1);
-      const spin = DISC_SPIN * (0.4 + rnd(ci, 89) * 0.6) * (rnd(ci, 91) > 0.5 ? 1 : -1) * spinBoost;
-      const nebula = !dwarf && rnd(ci, 95) > 0.62
-        ? Array.from({ length: 3 }, (_, bi) => ({
-            ox: (rnd(ci * 7 + bi, 101) - 0.5) * discR * 1.6,
-            oy: (rnd(ci * 7 + bi, 103) - 0.5) * discR * 1.6,
-            r: discR * (0.7 + rnd(ci * 7 + bi, 107) * 0.9),
-            phase: rnd(ci * 7 + bi, 109) * Math.PI * 2,
-            drift: 0.05 + rnd(ci * 7 + bi, 113) * 0.1,
-          }))
-        : null;
-      universe.galaxies.push({
-        key, center, orbit, basis, r: discR, count: members.length,
-        dwarf, nebula, spin, phase: rnd(ci, 151) * Math.PI * 2,
-        sx: 0, sy: 0, d: 0, scale: 1,
-      });
+        const dwarf = members.length <= DWARF_MAX;
+        const discR = discRFor(members.length);
+        const basis = discBasis(ci + 1);
+        const spin = DISC_SPIN * (0.4 + rnd(ci, 89) * 0.6) * (rnd(ci, 91) > 0.5 ? 1 : -1) * spinBoost;
+        const nebula =
+          !dwarf && rnd(ci, 95) > 0.62
+            ? Array.from({ length: 3 }, (_, bi) => ({
+                ox: (rnd(ci * 7 + bi, 101) - 0.5) * discR * 1.6,
+                oy: (rnd(ci * 7 + bi, 103) - 0.5) * discR * 1.6,
+                r: discR * (0.7 + rnd(ci * 7 + bi, 107) * 0.9),
+                phase: rnd(ci * 7 + bi, 109) * Math.PI * 2,
+                drift: 0.05 + rnd(ci * 7 + bi, 113) * 0.1,
+              }))
+            : null;
+        universe.galaxies.push({
+          key,
+          center,
+          orbit,
+          basis,
+          r: discR,
+          count: members.length,
+          dwarf,
+          nebula,
+          spin,
+          phase: rnd(ci, 151) * Math.PI * 2,
+          sx: 0,
+          sy: 0,
+          d: 0,
+          scale: 1,
+        });
 
-      const subs = new Map();
-      for (const n of members) {
-        const s = n.sub && n.sub !== "general" ? n.sub : "";
-        const l = subs.get(s) ?? [];
-        l.push(n);
-        subs.set(s, l);
-      }
-      const subKeys = [...subs.keys()].filter((s) => s !== "" && subs.get(s).length >= 3);
-      const coreMembers = members.filter((n) => !subKeys.includes(n.sub));
-      layoutDisc(coreMembers, center, basis, discR, adj, ci * 97 + 1, spin, dwarf);
-      subKeys.forEach((sk, si) => {
-        const subMembers = subs.get(sk);
-        const subR = Math.max(34, Math.sqrt(subMembers.length) * 18);
-        const ring = {
-          parent: center,
-          ringR: discR * 1.55 + si * 24,
-          phase: si * GOLDEN + rnd(ci, 11) * Math.PI * 2,
-          omega: 0.006 * (0.5 + rnd(ci * 7 + si, 157) * 0.8) * (rnd(ci * 7 + si, 163) > 0.5 ? 1 : -1),
-          zoff: (rnd(si + ci, 13) - 0.5) * discR * 0.4,
-        };
-        layoutDisc(subMembers, null, basis, subR, adj, ci * 97 + si * 13 + 2, spin, false, ring);
+        const subs = new Map();
+        for (const n of members) {
+          const s = n.sub && n.sub !== "general" ? n.sub : "";
+          const l = subs.get(s) ?? [];
+          l.push(n);
+          subs.set(s, l);
+        }
+        const subKeys = [...subs.keys()].filter((s) => s !== "" && subs.get(s).length >= 3);
+        const coreMembers = members.filter((n) => !subKeys.includes(n.sub));
+        layoutDisc(coreMembers, center, basis, discR, adj, ci * 97 + 1, spin, dwarf);
+        subKeys.forEach((sk, si) => {
+          const subMembers = subs.get(sk);
+          const subR = Math.max(34, Math.sqrt(subMembers.length) * 18);
+          const ring = {
+            parent: center,
+            ringR: discR * 1.55 + si * 24,
+            phase: si * GOLDEN + rnd(ci, 11) * Math.PI * 2,
+            omega: 0.006 * (0.5 + rnd(ci * 7 + si, 157) * 0.8) * (rnd(ci * 7 + si, 163) > 0.5 ? 1 : -1),
+            zoff: (rnd(si + ci, 13) - 0.5) * discR * 0.4,
+          };
+          layoutDisc(subMembers, null, basis, subR, adj, ci * 97 + si * 13 + 2, spin, false, ring);
+        });
       });
-    });
 
     stars = [];
     for (let i = 0; i < 480; i++) {
@@ -347,7 +364,9 @@ export function createOrbitView(deps) {
       const sa = i * GOLDEN * 1.7;
       const shell = R * (2.4 + rnd(i, 17) * 1.2);
       stars.push({
-        px: Math.cos(sa) * sr * shell, py: sy * shell, pz: Math.sin(sa) * sr * shell,
+        px: Math.cos(sa) * sr * shell,
+        py: sy * shell,
+        pz: Math.sin(sa) * sr * shell,
         size: 0.5 + rnd(i, 19) * 1.1,
         alpha: 0.06 + rnd(i, 23) * 0.26,
         bright: rnd(i, 29) > 0.97,
@@ -357,7 +376,9 @@ export function createOrbitView(deps) {
     for (let i = 0; i < 260; i++) {
       const p = sampleVolume(i * 977 + 5);
       stars.push({
-        px: p.px * 1.15, py: p.py * 1.15, pz: p.pz * 1.15,
+        px: p.px * 1.15,
+        py: p.py * 1.15,
+        pz: p.pz * 1.15,
         size: 0.7 + rnd(i, 73) * 1.4,
         alpha: 0.1 + rnd(i, 79) * 0.3,
         bright: rnd(i, 83) > 0.94,
@@ -384,7 +405,13 @@ export function createOrbitView(deps) {
         .slice(0, MAX_PLANETS);
       if (sats.length < 2) continue;
       claimed.add(sun.id);
-      const local = spiralLocal(discR, claimed.size * 7 + seed, 0.25 + rnd(seed + claimed.size, 31) * 0.55, dwarf, spin);
+      const local = spiralLocal(
+        discR,
+        claimed.size * 7 + seed,
+        0.25 + rnd(seed + claimed.size, 31) * 0.55,
+        dwarf,
+        spin
+      );
       universe.disc.set(sun.id, { center, ring, basis, ...local, spin });
       const rings = [];
       sats.forEach((p, pi) => {
@@ -399,7 +426,17 @@ export function createOrbitView(deps) {
           omega: (OMEGA / Math.pow(orbitR / ORBIT_BASE, 1.5)) * (rnd(seed + pi, 41) > 0.5 ? 1 : -1),
         });
       });
-      universe.systems.push({ sunId: sun.id, basis, rings, pulse: rnd(seed, 167) * Math.PI * 2, sunWorld: null, sx: 0, sy: 0, d: 0, scale: 1 });
+      universe.systems.push({
+        sunId: sun.id,
+        basis,
+        rings,
+        pulse: rnd(seed, 167) * Math.PI * 2,
+        sunWorld: null,
+        sx: 0,
+        sy: 0,
+        d: 0,
+        scale: 1,
+      });
     }
 
     const field = members.filter((n) => !claimed.has(n.id));
@@ -457,7 +494,7 @@ export function createOrbitView(deps) {
           p.basis,
           Math.cos(p.ring.phase + p.ring.omega * tSec) * p.ring.ringR,
           Math.sin(p.ring.phase + p.ring.omega * tSec) * p.ring.ringR,
-          p.ring.zoff,
+          p.ring.zoff
         )
       : p.center;
     // orbit3d: this member rides its own tilted, flattened ellipse instead of
@@ -575,13 +612,21 @@ export function createOrbitView(deps) {
      *  apply() writes n.x/n.y every frame in the same coordinates the decor
      *  draws in, so the gravity web can hang its threads on the real memories
      *  instead of on invented points. */
-    getUserAnchors: () =>
-      deps.sim.nodes.filter((n) => (n.baseCluster ?? n.cluster) === "user" && !n.ringHidden),
+    getUserAnchors: () => deps.sim.nodes.filter((n) => (n.baseCluster ?? n.cluster) === "user" && !n.ringHidden),
     getEnterAt: () => enterAt,
     getR: () => R,
     getWeather: deps.getWeather ?? (() => null),
-    project, trigNow, inPlane, add, scale3, norm,
-    depthScale, depthFade, frontFade, viewRect, inView,
+    project,
+    trigNow,
+    inPlane,
+    add,
+    scale3,
+    norm,
+    depthScale,
+    depthFade,
+    frontFade,
+    viewRect,
+    inView,
     getSatLight: deps.getSatLight,
     getHues: deps.getHues,
   });
@@ -606,7 +651,7 @@ export function createOrbitView(deps) {
           g.basis,
           (rnd(h, 173) - 0.5) * g.r * 1.3,
           (rnd(h, 179) - 0.5) * g.r * 1.3,
-          (rnd(h, 181) - 0.5) * g.r * 0.3,
+          (rnd(h, 181) - 0.5) * g.r * 0.3
         )
       : { px: (rnd(h, 173) - 0.5) * R, py: (rnd(h, 179) - 0.5) * R * 0.5, pz: (rnd(h, 181) - 0.5) * R };
     bursts.set(entry.id, { world, born: performance.now(), entry });
@@ -659,8 +704,7 @@ export function createOrbitView(deps) {
     }
   }
 
-  const listBursts = () =>
-    [...bursts.entries()].map(([id, b]) => ({ id, born: b.born, cluster: b.entry.cluster }));
+  const listBursts = () => [...bursts.entries()].map(([id, b]) => ({ id, born: b.born, cluster: b.entry.cluster }));
 
   /** Hit-Test für Live-Bursts: der Stern ist bis zu 2 Minuten das einzige
    *  Visual des neugeborenen Memorys — er muss klickbar sein. Nimmt
@@ -754,7 +798,7 @@ export function createOrbitView(deps) {
           g.galaxyBasis,
           g.local.x * cos - g.local.y * sin,
           g.local.x * sin + g.local.y * cos,
-          g.local.z,
+          g.local.z
         );
         g.center.px = w.px;
         g.center.py = w.py;
@@ -818,7 +862,14 @@ export function createOrbitView(deps) {
   }
 
   return {
-    enter, exit, tick, spawnBurst, focusBurst, renderBursts, listBursts, pickBurst,
+    enter,
+    exit,
+    tick,
+    spawnBurst,
+    focusBurst,
+    renderBursts,
+    listBursts,
+    pickBurst,
     relayout,
     invalidate,
     setMode,

@@ -35,8 +35,13 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 /** The client marker every Claude Code hook command starts with (#657/#650). */
 const CC = "BASTRA_HOOK_CLIENT=claude-code ";
 const HOOK_FILES = [
-  "hook.js", "session-hook.js", "prompt-hook.js", "todo-hook.js",
-  "bash-pre-hook.js", "bash-fail-hook.js", "stop-hook.js",
+  "hook.js",
+  "session-hook.js",
+  "prompt-hook.js",
+  "todo-hook.js",
+  "bash-pre-hook.js",
+  "bash-fail-hook.js",
+  "stop-hook.js",
 ];
 
 function commandsOf(entries: unknown[]): string[] {
@@ -64,7 +69,20 @@ test("all eight lanes register across all twelve hook entries when the binary is
   // #675: SessionEnd rides the stop lane, so "stop" appears twice. The save
   // notice rides the post-tool client beside the two Bash entries.
   // #1303: the catch-all gate is the eighth lane.
-  assert.deepEqual(subs, ["bash-fail", "bash-fail", "bash-fail", "bash-pre", "gate", "prompt", "session", "session", "stop", "stop", "todo", "write"]);
+  assert.deepEqual(subs, [
+    "bash-fail",
+    "bash-fail",
+    "bash-fail",
+    "bash-pre",
+    "gate",
+    "prompt",
+    "session",
+    "session",
+    "stop",
+    "stop",
+    "todo",
+    "write",
+  ]);
 });
 
 test("without the binary every lane falls back to its node client", () => {
@@ -94,14 +112,14 @@ test("doctor-level registration check requires PostToolUseFailure:Bash", () => {
   assert.equal(
     registeredHookBins(legacy).size,
     8,
-    "the old binary-only 8/8 count cannot detect the missing event registration",
+    "the old binary-only 8/8 count cannot detect the missing event registration"
   );
 });
 
 test("stubSubcommandForFile maps every hook file to its lane", () => {
   assert.deepEqual(
     HOOK_FILES.map((f) => stubSubcommandForFile(f)),
-    ["write", "session", "prompt", "todo", "bash-pre", "bash-fail", "stop"],
+    ["write", "session", "prompt", "todo", "bash-pre", "bash-fail", "stop"]
   );
   assert.equal(stubSubcommandForFile("not-ours.js"), null);
 });
@@ -159,22 +177,22 @@ test("stubLaneCommandPath accepts the forms a settings.json can carry", () => {
   assert.equal(
     stubLaneCommandPath('"/a b/stub/bastra-hook" bash-pre', "bash-pre"),
     "/a b/stub/bastra-hook",
-    "a quoted path with spaces",
+    "a quoted path with spaces"
   );
   assert.equal(
     stubLaneCommandPath("~/.bastra/stub/bastra-hook prompt", "prompt", "/Users/tester"),
     "/Users/tester/.bastra/stub/bastra-hook",
-    "~ is expanded like hookCommandPath does",
+    "~ is expanded like hookCommandPath does"
   );
   assert.equal(
     stubLaneCommandPath("/a/b/stub/bastra-hook statusline --style=powerline", "prompt"),
     null,
-    "the statusline entry is not a lane",
+    "the statusline entry is not a lane"
   );
   assert.equal(
     stubLaneCommandPath(`${CC}/a/b/stub/bastra-hook stop`, "stop"),
     "/a/b/stub/bastra-hook",
-    "past the client marker the installer writes in front",
+    "past the client marker the installer writes in front"
   );
   assert.equal(stubLaneCommandPath("/a/b/stub/bastra-hook stop", "session"), null, "wrong lane");
   assert.equal(stubLaneCommandPath("node /a/b/dist/stop-hook.js", "stop"), null, "the node client");
@@ -196,10 +214,20 @@ test("unrelated stub lanes and normal Stop keep the chat registry out of their e
     }
     return seen;
   }
-  for (const entry of [join(HERE, "..", "stub", "bastra-hook.ts"), join(HERE, "..", "src", "stop-hook.ts"), join(HERE, "..", "src", "prompt-hook.ts")]) {
-    const eager = [...await eagerImports(entry)];
-    assert.ok(!eager.some(file => file.endsWith("/task-chat-registry.ts")), "chat registration must be loaded only by its lifecycle path");
-    assert.ok(!eager.some(file => file.endsWith("/path-lock.ts")), "unrelated hooks must not load the registry's filesystem-lock implementation");
+  for (const entry of [
+    join(HERE, "..", "stub", "bastra-hook.ts"),
+    join(HERE, "..", "src", "stop-hook.ts"),
+    join(HERE, "..", "src", "prompt-hook.ts"),
+  ]) {
+    const eager = [...(await eagerImports(entry))];
+    assert.ok(
+      !eager.some((file) => file.endsWith("/task-chat-registry.ts")),
+      "chat registration must be loaded only by its lifecycle path"
+    );
+    assert.ok(
+      !eager.some((file) => file.endsWith("/path-lock.ts")),
+      "unrelated hooks must not load the registry's filesystem-lock implementation"
+    );
   }
 });
 
@@ -207,6 +235,6 @@ test("the stub digest still includes the lazily loaded chat registry and its loc
   // @ts-expect-error — plain build script without declarations, as in the binary parity guard.
   const { stubSourceFiles } = await import("../scripts/stub-source-digest.mjs");
   const files: string[] = stubSourceFiles();
-  assert.ok(files.some(file => file.endsWith("/task-chat-registry.ts")));
-  assert.ok(files.some(file => file.endsWith("/path-lock.ts")));
+  assert.ok(files.some((file) => file.endsWith("/task-chat-registry.ts")));
+  assert.ok(files.some((file) => file.endsWith("/path-lock.ts")));
 });

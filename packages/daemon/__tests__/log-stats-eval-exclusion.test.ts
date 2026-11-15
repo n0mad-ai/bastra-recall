@@ -66,7 +66,7 @@ test("#619: bastra logs --stats excludes eval-marked rows by default and reports
     await writeFile(
       join(logDir, `events-${DAY}.jsonl`),
       EVENTS.map((e) => JSON.stringify(e)).join("\n") + "\n",
-      "utf8",
+      "utf8"
     );
 
     const defaultOut = await withCapturedStdout(() => cmdLogStats({ sinceMs: 30 * 86_400_000 }).then(() => undefined));
@@ -74,17 +74,17 @@ test("#619: bastra logs --stats excludes eval-marked rows by default and reports
     assert.match(
       defaultOut,
       /excluded as eval\/synthetic \(#619\): 1 events, ~4000 context-tax tokens — rerun with --include-eval to include them/,
-      defaultOut,
+      defaultOut
     );
 
     const includeOut = await withCapturedStdout(() =>
-      cmdLogStats({ sinceMs: 30 * 86_400_000, includeEval: true }).then(() => undefined),
+      cmdLogStats({ sinceMs: 30 * 86_400_000, includeEval: true }).then(() => undefined)
     );
     assert.match(includeOut, /2 call\(s\)/, `expected both calls with --include-eval:\n${includeOut}`);
     assert.match(
       includeOut,
       /eval\/synthetic traffic included \(#619\): 1 events, ~4000 context-tax tokens/,
-      includeOut,
+      includeOut
     );
   } finally {
     if (prevLog === undefined) delete process.env.BASTRA_LOG_PATH;

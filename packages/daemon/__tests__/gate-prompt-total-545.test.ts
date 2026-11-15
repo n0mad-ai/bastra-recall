@@ -108,7 +108,7 @@ async function runPromptClient(argv: string[], sessionId: string): Promise<Array
         session_id: sessionId,
         hook_event_name: "UserPromptSubmit",
         prompt: "und was war da nochmal mit der assertion lane",
-      }),
+      })
     );
     child.stdin.end();
   });
@@ -127,7 +127,7 @@ test("#545: both prompt clients write `unknown`, with the payload's own lane and
     { shape: "node", argv: [resolve(SRC, "prompt-hook.ts")], session: "s545-node" },
   ];
   const results = await Promise.all(
-    shapes.map(async (s) => ({ ...s, rows: await runPromptClient(s.argv, s.session) })),
+    shapes.map(async (s) => ({ ...s, rows: await runPromptClient(s.argv, s.session) }))
   );
 
   for (const { shape, session, rows } of results) {
@@ -141,7 +141,7 @@ test("#545: both prompt clients write `unknown`, with the payload's own lane and
     assert.equal(
       row.detected_mode,
       "unknown",
-      `${shape}: a client that never reached the daemon cannot know the trigger class`,
+      `${shape}: a client that never reached the daemon cannot know the trigger class`
     );
     assert.equal(row.session_id, session, `${shape}: the payload's session must be stamped, not a fresh UUID`);
     assert.match(String(row.hook_version), /-(stub|thin)$/, `${shape}: the row must declare itself a client row`);
@@ -203,8 +203,12 @@ test("#545: prompt-total is a reliability lane — no p90 target, min-N and ceil
   assert.equal(t.maxFailureRate, 0.05);
   assert.equal(
     t.maxFailureRate,
-    Math.max(...Object.entries(RELEASE_THRESHOLDS).filter(([m]) => m !== PROMPT_TOTAL_LANE).map(([, v]) => v.maxFailureRate)),
-    "prompt-total must not be stricter than the most permissive class lane it re-counts",
+    Math.max(
+      ...Object.entries(RELEASE_THRESHOLDS)
+        .filter(([m]) => m !== PROMPT_TOTAL_LANE)
+        .map(([, v]) => v.maxFailureRate)
+    ),
+    "prompt-total must not be stricter than the most permissive class lane it re-counts"
   );
 
   // Below the shared min-N it is NOT EVALUABLE — not a pass, and never silent.
@@ -212,7 +216,7 @@ test("#545: prompt-total is a reliability lane — no p90 target, min-N and ceil
   const rendered = renderStats(thin, 600);
   assert.match(
     rendered,
-    new RegExp(`${PROMPT_TOTAL_LANE}[^\\n]*— NOT EVALUABLE \\(29 call\\(s\\) of the min-N ${MIN_CALLS_FOR_VERDICT}\\)`),
+    new RegExp(`${PROMPT_TOTAL_LANE}[^\\n]*— NOT EVALUABLE \\(29 call\\(s\\) of the min-N ${MIN_CALLS_FOR_VERDICT}\\)`)
   );
   assert.equal(releaseGateMet(releaseVerdicts(thin.lanes, thin.promptTotal)), false);
 });
@@ -228,13 +232,20 @@ test("#545: prompt-total re-counts the class lanes' calls and says so, without i
   ];
   const stats = aggregate(window);
   assert.equal(stats.totals.calls, 6 * 40 + 60, "prompt-total must not appear in the lane table or the totals");
-  assert.equal(stats.lanes.some((l) => l.mode === PROMPT_TOTAL_LANE), false);
+  assert.equal(
+    stats.lanes.some((l) => l.mode === PROMPT_TOTAL_LANE),
+    false
+  );
   assert.equal(stats.promptTotal.calls, 60);
 
   const rendered = renderStats(stats, 600);
   assert.match(rendered, /prompt delivery \(#545\) — every prompt call, all trigger classes together/);
   assert.match(rendered, /the same calls as the prompt lanes above, counted once more as one delivery series/);
   assert.match(rendered, new RegExp(`${PROMPT_TOTAL_LANE}[^\\n]*— PASS`));
-  assert.match(rendered, /assertion\s+\d+ms budget · p90 ≤ \d+ms[^\n]*— PASS/, "class lanes keep their own latency bar");
+  assert.match(
+    rendered,
+    /assertion\s+\d+ms budget · p90 ≤ \d+ms[^\n]*— PASS/,
+    "class lanes keep their own latency bar"
+  );
   assert.match(rendered, /gate: MET/, "a healthy window must still be able to pass");
 });

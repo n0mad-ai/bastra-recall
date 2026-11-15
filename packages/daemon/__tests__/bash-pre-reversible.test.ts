@@ -11,7 +11,13 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
-import { matchPattern, formatHintBlock, runBashPreLane, reversibleDefault, DESTRUCTIVE_PATTERNS } from "../src/bash-pre-lane.js";
+import {
+  matchPattern,
+  formatHintBlock,
+  runBashPreLane,
+  reversibleDefault,
+  DESTRUCTIVE_PATTERNS,
+} from "../src/bash-pre-lane.js";
 
 const RM = { BASTRA_RM_ARCHIVES: "host" };
 
@@ -56,12 +62,17 @@ async function readTelemetryEvents(dir: string): Promise<Record<string, unknown>
   return out;
 }
 
-
 /** What the agent reads for a command: the hint kind and the pattern it names. */
 async function hintOf(command: string, env: Record<string, string> = {}, surface = "claude-code") {
   const stdout = await runHook(
-    { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command }, session_id: "", bastra_client: surface },
-    env,
+    {
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command },
+      session_id: "",
+      bastra_client: surface,
+    },
+    env
   );
   const block: string = JSON.parse(stdout)?.hookSpecificOutput?.additionalContext ?? "";
   const pattern = /pattern: `([^`]+)`/.exec(block)?.[1] ?? "";
@@ -153,7 +164,8 @@ describe("#650 reversible defaults — the table", () => {
             assert.match(out, /bare command keeps the rule: explicit user confirmation/, label);
           }
         }
-        for (const { label } of without) assert.match(formatHintBlock(label, "destructive", []), /STOP — destructive/, label);
+        for (const { label } of without)
+          assert.match(formatHintBlock(label, "destructive", []), /STOP — destructive/, label);
       });
     }
   });
@@ -161,7 +173,10 @@ describe("#650 reversible defaults — the table", () => {
   it("an undo that needs the archiving rm exists only on claude-code with BASTRA_RM_ARCHIVES", () => {
     // Revert-check: drop the needsArchivingRm gate in reversibleDefault → red.
     const gated = DESTRUCTIVE_PATTERNS.filter((p) => p.undo?.needsArchivingRm);
-    assert.deepEqual(gated.map((p) => p.label), ["rm -rf", "rm -r", "git clean -f"]);
+    assert.deepEqual(
+      gated.map((p) => p.label),
+      ["rm -rf", "rm -r", "git clean -f"]
+    );
     for (const { label } of gated) {
       assert.equal(reversibleDefault(label, "claude-code"), null, `${label} without the flag`);
       withEnv(RM, () => {
@@ -172,7 +187,10 @@ describe("#650 reversible defaults — the table", () => {
   });
 
   it("the archive receipt names the archive, and codex or no flag keep STOP", async () => {
-    assert.match(withEnv(RM, () => formatHintBlock("rm -rf", "destructive", [])), /archives instead of deleting/);
+    assert.match(
+      withEnv(RM, () => formatHintBlock("rm -rf", "destructive", [])),
+      /archives instead of deleting/
+    );
     assert.equal((await hintOf("rm -rf build", RM, "codex")).kind, "stop");
     assert.equal((await hintOf("rm -rf build")).kind, "stop");
   });
@@ -184,7 +202,7 @@ describe("#650 reversible defaults — the table", () => {
       try {
         const stdout = await runHook(
           { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "rm -rf build" }, session_id: "" },
-          {},
+          {}
         );
         const out = JSON.parse(stdout)?.hookSpecificOutput ?? {};
         assert.match(out.additionalContext ?? "", /STOP — destructive/, JSON.stringify(env));
@@ -376,7 +394,10 @@ describe("#650 reversible defaults — every undo row's recipe, run in a real re
       }
       assert.ok(listing(bare).includes("?? loose"), "precondition: there is something to clean");
       bare.git("clean", "-f", "-d");
-      const listed = form.git("clean", "-n", "-f", "-d").split("\n").map((l) => l.replace(/^Would remove /, ""));
+      const listed = form
+        .git("clean", "-n", "-f", "-d")
+        .split("\n")
+        .map((l) => l.replace(/^Would remove /, ""));
       assert.ok(listed.length > 0 && existsSync(join(form.dir, "loose")), "-n wins over -f: nothing removed yet");
       for (const p of listed) await rm(join(form.dir, p), { recursive: true });
       assert.equal(listing(form), listing(bare));
@@ -420,12 +441,17 @@ describe("#650 reversible defaults — every undo row's recipe, run in a real re
   };
   // Push proofs push to a local bare repo; the name marks them so a host that
   // gates `git push` can leave them out (`--test-skip-pattern "runs git push"`).
-  const title = (label: string) => (label.startsWith("git push") ? `${label} (runs git push to a local bare repo)` : label);
+  const title = (label: string) =>
+    label.startsWith("git push") ? `${label} (runs git push to a local bare repo)` : label;
 
   const rows = withEnv(RM, () => DESTRUCTIVE_PATTERNS.filter((p) => reversibleDefault(p.label, "claude-code")));
   it("there are undo rows to prove, and every proof belongs to one", () => {
     assert.ok(rows.length > 0);
-    for (const label of Object.keys(PROOFS)) assert.ok(rows.some((p) => p.label === label), `${label}: stale proof`);
+    for (const label of Object.keys(PROOFS))
+      assert.ok(
+        rows.some((p) => p.label === label),
+        `${label}: stale proof`
+      );
   });
   for (const { label } of rows) {
     if (NOT_RUN_HERE[label]) it(label, { skip: NOT_RUN_HERE[label] }, () => {});
@@ -446,7 +472,10 @@ describe("#651 review — the hint weighs the whole command, not the first row i
   // Generated from the table on both hosts: every pair of rows, every
   // separator, both orders. Revert-check: make hintFor return the first
   // match's own undo → hundreds of pairs read "No confirmation needed".
-  for (const [host, env] of [["no opt-in", {}], ["rm archives", RM]] as const) {
+  for (const [host, env] of [
+    ["no opt-in", {}],
+    ["rm archives", RM],
+  ] as const) {
     it(`${host}: an act with an undo next to one without is STOP, naming the one without`, async () => {
       const { withUndo, without } = sides(env);
       assert.ok(withUndo.length > 0 && without.length > 0);
@@ -491,11 +520,16 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       for (const [command] of want) {
         await runHook(
           { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command }, session_id: "" },
-          { BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir },
+          { BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir }
         );
       }
-      const logged = (await readTelemetryEvents(logDir)).filter((e) => e.kind === "bash_hook_call").map((e) => e.hint_kind);
-      assert.deepEqual(logged, want.map(([, kind]) => kind));
+      const logged = (await readTelemetryEvents(logDir))
+        .filter((e) => e.kind === "bash_hook_call")
+        .map((e) => e.hint_kind);
+      assert.deepEqual(
+        logged,
+        want.map(([, kind]) => kind)
+      );
       assert.equal((await hintOf(want[0][0])).kind, "stop", "the block for the chained row");
     } finally {
       await rm(logDir, { recursive: true, force: true });
@@ -504,11 +538,17 @@ describe("#651 review — the hint weighs the whole command, not the first row i
 
   it("one push that both leases and deletes, or leases and forces, is STOP", async () => {
     // Revert-check: remove the `git push --delete` row → the delete reads as a lease receipt.
-    assert.deepEqual(await hintOf("git push --force-with-lease origin :old"), { kind: "stop", pattern: "git push --delete" });
+    assert.deepEqual(await hintOf("git push --force-with-lease origin :old"), {
+      kind: "stop",
+      pattern: "git push --delete",
+    });
     assert.equal((await hintOf("git push --force-with-lease --prune origin")).kind, "stop");
     assert.equal((await hintOf("git push --force-with-lease --force origin main")).kind, "stop");
     // Revert-check: remove the `git push +refspec` row → the `+` force reads as a lease receipt.
-    assert.deepEqual(await hintOf("git push --force-with-lease origin +main"), { kind: "stop", pattern: "git push +refspec" });
+    assert.deepEqual(await hintOf("git push --force-with-lease origin +main"), {
+      kind: "stop",
+      pattern: "git push +refspec",
+    });
     assert.equal((await hintOf("git push --force-with-lease origin +HEAD:main")).kind, "stop");
     // …and a plain lease, or a push to a refspec with a colon inside, stays what it is.
     assert.equal((await hintOf("git push --force-with-lease origin HEAD:main")).kind, "receipt");
@@ -519,10 +559,10 @@ describe("#651 review — the hint weighs the whole command, not the first row i
   it("#658: removing the reflog turns a reflog-based receipt into STOP", async () => {
     // Revert-check: drop the reflog/gc rows → the amend receipt is shown although
     // the same line deletes the reflog entry it points to.
-    assert.deepEqual(
-      await hintOf("git commit --amend; git reflog expire --expire=now --all; git gc --prune=now"),
-      { kind: "stop", pattern: "git reflog expire" },
-    );
+    assert.deepEqual(await hintOf("git commit --amend; git reflog expire --expire=now --all; git gc --prune=now"), {
+      kind: "stop",
+      pattern: "git reflog expire",
+    });
     assert.equal((await hintOf("git commit --amend --no-edit && git gc --prune=now")).kind, "stop");
     assert.equal((await hintOf("git branch -D old; git reflog delete HEAD@{1}")).kind, "stop");
     assert.equal(matchPattern("git gc --prune=never"), null);
@@ -548,14 +588,14 @@ describe("#651 review — the hint weighs the whole command, not the first row i
   it("#658: `git reflog drop` and an amend with the reflog off leave no HEAD@{1} — STOP, not the amend receipt", async () => {
     // Revert-check: drop the two rows → both lines get the amend receipt
     // although the entry `git reset --soft HEAD@{1}` needs is gone or never written.
-    assert.deepEqual(
-      await hintOf("git commit --amend --no-edit; git reflog drop --all"),
-      { kind: "stop", pattern: "git reflog drop" },
-    );
-    assert.deepEqual(
-      await hintOf("git -c core.logAllRefUpdates=false commit --amend --no-edit"),
-      { kind: "stop", pattern: "git commit --amend (reflog off)" },
-    );
+    assert.deepEqual(await hintOf("git commit --amend --no-edit; git reflog drop --all"), {
+      kind: "stop",
+      pattern: "git reflog drop",
+    });
+    assert.deepEqual(await hintOf("git -c core.logAllRefUpdates=false commit --amend --no-edit"), {
+      kind: "stop",
+      pattern: "git commit --amend (reflog off)",
+    });
     assert.equal((await hintOf("git -c core.logAllRefUpdates=true commit --amend --no-edit")).kind, "receipt");
   });
 
@@ -568,15 +608,21 @@ describe("#651 review — the hint weighs the whole command, not the first row i
         tool_input: { command: "git commit --amend --no-edit && git push --force-with-lease origin main" },
         session_id: "",
       },
-      {},
+      {}
     );
     const block: string = JSON.parse(stdout)?.hookSpecificOutput?.additionalContext ?? "";
     assert.match(block, /NOTE — reversible/);
     assert.match(block, /git reset --soft HEAD@\{1\}/, "the amend receipt");
     assert.match(block, /the lease refuses/, "the lease receipt");
     const rmStdout = await runHook(
-      { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "rm -rf a && rm -r b" }, session_id: "", bastra_client: "claude-code" },
-      RM,
+      {
+        hook_event_name: "PreToolUse",
+        tool_name: "Bash",
+        tool_input: { command: "rm -rf a && rm -r b" },
+        session_id: "",
+        bastra_client: "claude-code",
+      },
+      RM
     );
     const rmBlock: string = JSON.parse(rmStdout)?.hookSpecificOutput?.additionalContext ?? "";
     assert.equal(rmBlock.split("archives instead of deleting").length - 1, 1, "one rm receipt, not two");
@@ -611,7 +657,7 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "PATH=/bin; rm -rf x",
       "alias rm=/bin/rm; rm -rf x",
       'rm() { /bin/rm "$@"; }; rm -rf x',
-      "function rm { /bin/rm \"$@\"; }; rm -rf x",
+      'function rm { /bin/rm "$@"; }; rm -rf x',
       // …also inside a quoted eval, or by pinning the hash table entry.
       "eval 'rm(){ /bin/rm \"$@\"; }'; rm -rf x",
       'eval "rm(){ /bin/rm \\"\\$@\\"; }"; rm -rf x',
@@ -742,12 +788,27 @@ describe("#651 review — the hint weighs the whole command, not the first row i
   });
 
   it("names the variable `path` when it is the only reason for the STOP (#1047)", async () => {
-    const reason = "The command writes the variable `path`, which zsh ties to PATH, so the archiving `rm` may not be the one that runs — rename that variable and the reversible receipt comes back.";
+    const reason =
+      "The command writes the variable `path`, which zsh ties to PATH, so the archiving `rm` may not be the one that runs — rename that variable and the reversible receipt comes back.";
     const block = async (command: string): Promise<string> =>
       JSON.parse(
-        await runHook({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command }, session_id: "", bastra_client: "claude-code" }, RM),
+        await runHook(
+          {
+            hook_event_name: "PreToolUse",
+            tool_name: "Bash",
+            tool_input: { command },
+            session_id: "",
+            bastra_client: "claude-code",
+          },
+          RM
+        )
       ).hookSpecificOutput.additionalContext;
-    for (const cmd of ["for path in /bin; do :; done; rm -rf dist", "select path in a b; do break; done; rm -rf dist", "path=/x; rm -rf dist", "read path; rm -rf dist"]) {
+    for (const cmd of [
+      "for path in /bin; do :; done; rm -rf dist",
+      "select path in a b; do break; done; rm -rf dist",
+      "path=/x; rm -rf dist",
+      "read path; rm -rf dist",
+    ]) {
       assert.ok((await block(cmd)).includes(reason), cmd);
     }
     // Another reason in the same command, PATH itself, or a heredoc (whose
@@ -768,7 +829,7 @@ describe("#651 review — the hint weighs the whole command, not the first row i
     // A heredoc body is not read as shell, so the loop text changes nothing.
     assert.deepEqual(
       await hintOf("cat <<'EOF'\nfor path in a b\nEOF\nrm -rf dist", RM),
-      await hintOf("cat <<'EOF'\nfor p in a b\nEOF\nrm -rf dist", RM),
+      await hintOf("cat <<'EOF'\nfor p in a b\nEOF\nrm -rf dist", RM)
     );
   });
 });

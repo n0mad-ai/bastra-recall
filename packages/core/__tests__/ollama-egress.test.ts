@@ -177,10 +177,7 @@ test("an unparseable host still falls through to fetch (documented, unchanged)",
 
 test("OllamaEmbeddingProvider refuses a spoofed-loopback baseURL (#365 item 8)", () => {
   withoutOptIn(() => {
-    assert.throws(
-      () => new OllamaEmbeddingProvider({ baseURL: "http://127.0.0.1.nip.io:11434" }),
-      /non-loopback/,
-    );
+    assert.throws(() => new OllamaEmbeddingProvider({ baseURL: "http://127.0.0.1.nip.io:11434" }), /non-loopback/);
     assert.doesNotThrow(() => new OllamaEmbeddingProvider({ baseURL: "http://0.0.0.0:11434" }));
   });
 });

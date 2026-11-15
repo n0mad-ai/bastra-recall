@@ -23,7 +23,9 @@ export interface FsBrowseEntry {
  * common import source `~/.claude/projects/<x>/memory` lives behind one) but
  * sorted after the visible ones; node_modules is dropped.
  */
-export async function listSubdirs(dir: string): Promise<{ path: string; parent: string | null; dirs: FsBrowseEntry[] }> {
+export async function listSubdirs(
+  dir: string
+): Promise<{ path: string; parent: string | null; dirs: FsBrowseEntry[] }> {
   const abs = resolve(dir);
   const entries = await readdir(abs, { withFileTypes: true });
   const dirs: FsBrowseEntry[] = [];
@@ -55,7 +57,7 @@ export async function listSubdirs(dir: string): Promise<{ path: string; parent: 
 export async function handleUiFsBrowse(
   req: IncomingMessage,
   res: ServerResponse,
-  settingsPath?: string,
+  settingsPath?: string
 ): Promise<void> {
   if (!(await getUiEnabled(settingsPath))) {
     sendJsonPlain(res, 404, { error: "ui disabled" });

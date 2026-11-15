@@ -369,7 +369,10 @@ describe("status and shutdown", () => {
 
     r.stop();
     assert.ok(r.status().every((s) => s.state === "idle"));
-    assert.ok(r.status().every((s) => s.nextAttemptAt === null), "nothing is due once stopped");
+    assert.ok(
+      r.status().every((s) => s.nextAttemptAt === null),
+      "nothing is due once stopped"
+    );
     r.enqueue("/a", "manual");
     assert.equal(r.statusOf("/a")?.state, "idle", "a stopped refresher takes no new work");
     await r.whenIdle();
@@ -537,7 +540,9 @@ describe("a change during a build is not skipped as fresh", () => {
     let calls = 0;
     const r = new CodeGraphRefresher({
       debounceMs: 1,
-      isFresh: async () => { throw new Error("boom"); },
+      isFresh: async () => {
+        throw new Error("boom");
+      },
       build: async () => (calls++, OK),
     });
     r.enqueue(repo, "stop-hook");

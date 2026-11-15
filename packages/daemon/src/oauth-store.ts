@@ -98,7 +98,10 @@ function validateOAuthFile(text: string): void {
   const data: unknown = JSON.parse(text);
   if (!data || typeof data !== "object") throw new Error("Invalid OAuth state; original preserved");
   const value = data as Partial<OAuthFile>;
-  if ((value.clients !== undefined && !Array.isArray(value.clients)) || (value.grants !== undefined && !Array.isArray(value.grants)))
+  if (
+    (value.clients !== undefined && !Array.isArray(value.clients)) ||
+    (value.grants !== undefined && !Array.isArray(value.grants))
+  )
     throw new Error("Invalid OAuth state; original preserved");
 }
 
@@ -120,31 +123,35 @@ function prune(data: OAuthFile, now: number): void {
   data.grants = data.grants.filter((g) => g.refresh_expires_at > now);
   const used = granted(data);
   data.clients = data.clients.filter(
-    (c) => used.has(c.client_id) || now - Date.parse(c.created_at) < UNUSED_CLIENT_TTL_MS,
+    (c) => used.has(c.client_id) || now - Date.parse(c.created_at) < UNUSED_CLIENT_TTL_MS
   );
 }
 
 /** Read-modify-write under the path lock; skips the write when nothing changed. */
 async function mutate<T>(path: string, fn: (data: OAuthFile, now: number) => T): Promise<T> {
-  return withPathLock(path, async () => {
-    const data = await load(path);
-    const before = JSON.stringify(data);
-    const now = Date.now();
-    prune(data, now);
-    const result = fn(data, now);
-    const after = JSON.stringify(data, null, 2);
-    if (JSON.stringify(data) !== before) {
-      writeAppRecord("oauth", path, after + "\n", validateOAuthFile);
-    }
-    return result;
-  }, { crossProcess: true });
+  return withPathLock(
+    path,
+    async () => {
+      const data = await load(path);
+      const before = JSON.stringify(data);
+      const now = Date.now();
+      prune(data, now);
+      const result = fn(data, now);
+      const after = JSON.stringify(data, null, 2);
+      if (JSON.stringify(data) !== before) {
+        writeAppRecord("oauth", path, after + "\n", validateOAuthFile);
+      }
+      return result;
+    },
+    { crossProcess: true }
+  );
 }
 
 /** At the cap the oldest never-granted registration makes room; only a file
  *  full of clients the user actually approved refuses a new one. */
 export async function registerClient(
   meta: { client_name: string; redirect_uris: string[] },
-  path = oauthStorePath(),
+  path = oauthStorePath()
 ): Promise<OAuthClient | null> {
   return mutate(path, (data) => {
     if (data.clients.length >= MAX_CLIENTS) {
@@ -184,7 +191,7 @@ function issueInto(grant: OAuthGrant, now: number): IssuedTokens {
 
 export async function createGrant(
   p: { client_id: string; resource: string; scope: string },
-  path = oauthStorePath(),
+  path = oauthStorePath()
 ): Promise<{ grantId: string; tokens: IssuedTokens } | null> {
   return mutate(path, (data, now) => {
     if (!data.clients.some((c) => c.client_id === p.client_id)) return null;
@@ -218,11 +225,13 @@ export async function revokeGrant(grantId: string, path = oauthStorePath()): Pro
  *  the grace window, or used twice) also revokes the grant it belonged to. */
 export async function refreshGrant(
   p: { refresh_token: string; client_id: string; resource: string | null },
-  path = oauthStorePath(),
+  path = oauthStorePath()
 ): Promise<IssuedTokens | null> {
   const h = hashToken(p.refresh_token);
   return mutate(path, (data, now) => {
-    const grant = data.grants.find((g) => g.refresh_hash === h || g.prev_refresh_hash === h || g.retired_hashes?.includes(h));
+    const grant = data.grants.find(
+      (g) => g.refresh_hash === h || g.prev_refresh_hash === h || g.retired_hashes?.includes(h)
+    );
     if (!grant) return null;
     const inGrace = grant.prev_refresh_hash === h && now - (grant.rotated_at ?? 0) < REFRESH_GRACE_MS;
     if (grant.refresh_hash !== h && !inGrace) {
@@ -261,7 +270,11 @@ export async function listClients(path = oauthStorePath()): Promise<ClientListin
   const data = await load(path);
   return data.clients.map((c) => {
     const own = data.grants.filter((g) => g.client_id === c.client_id);
-    const last = own.map((g) => g.last_used_at).sort().at(-1) ?? null;
+    const last =
+      own
+        .map((g) => g.last_used_at)
+        .sort()
+        .at(-1) ?? null;
     return { ...c, grants: own.length, last_used_at: last };
   });
 }

@@ -58,11 +58,7 @@ export interface RouteDecision {
  */
 export function routeRetrieval(input: RouteInput): RouteDecision {
   const estimatedLexicalMs = estimateBm25Ms(input.uniqueTerms);
-  const fits = lexicalFitsBudget(
-    input.uniqueTerms,
-    input.budgetMs,
-    input.denseAvailable ? input.denseReservedMs : 0,
-  );
+  const fits = lexicalFitsBudget(input.uniqueTerms, input.budgetMs, input.denseAvailable ? input.denseReservedMs : 0);
   const mode: RetrievalMode = input.denseAvailable
     ? fits
       ? "hybrid"

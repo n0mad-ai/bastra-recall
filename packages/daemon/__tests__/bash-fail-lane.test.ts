@@ -45,17 +45,31 @@ describe("bash-fail-hook: readExitCode", () => {
     // Revert check: read only `output`'s first line again → all three go red (null).
     const header = (status: string, pre = "") =>
       `${pre}Chunk ID: 3f2a91\nWall time: 0.0120 seconds\n${status}\nOriginal token count: 12\nOutput:\n`;
-    assert.equal(readExitCode(normalizeToolResponse(header("Process exited with code 2") + "fatal: not a git repository")), 2);
     assert.equal(
-      readExitCode(normalizeToolResponse(header("Process exited with code 1", "Warning: truncated output (original token count: 9000)\nTotal output lines: 400\n\n") + "…")),
-      1,
+      readExitCode(normalizeToolResponse(header("Process exited with code 2") + "fatal: not a git repository")),
+      2
     );
-    assert.equal(readExitCode(normalizeToolResponse("Wall time: 1.2000 seconds\nProcess exited with code 5\nOutput:\n")), 5);
+    assert.equal(
+      readExitCode(
+        normalizeToolResponse(
+          header(
+            "Process exited with code 1",
+            "Warning: truncated output (original token count: 9000)\nTotal output lines: 400\n\n"
+          ) + "…"
+        )
+      ),
+      1
+    );
+    assert.equal(
+      readExitCode(normalizeToolResponse("Wall time: 1.2000 seconds\nProcess exited with code 5\nOutput:\n")),
+      5
+    );
   });
   it("never reads a status out of the output below a Codex header", () => {
     // A successful command whose own output quotes a status line. Revert check: scan the whole
     // `output` (or more than the header) → this goes red (1 instead of 0).
-    const ok = "Chunk ID: 77\nWall time: 0.0100 seconds\nProcess exited with code 0\nOutput:\nProcess exited with code 1\nExit code 3";
+    const ok =
+      "Chunk ID: 77\nWall time: 0.0100 seconds\nProcess exited with code 0\nOutput:\nProcess exited with code 1\nExit code 3";
     assert.equal(readExitCode(normalizeToolResponse(ok)), 0);
     const running = "Wall time: 5.0000 seconds\nProcess running with session ID 4\nOutput:\nProcess exited with code 1";
     assert.equal(readExitCode(normalizeToolResponse(running)), null);
@@ -152,14 +166,13 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-
 interface SeenRequest {
   path: string;
   body: Record<string, unknown>;
 }
 
 function startRecordingDaemon(
-  recallHits: Record<string, unknown>[] = [],
+  recallHits: Record<string, unknown>[] = []
 ): Promise<{ port: number; seen: SeenRequest[]; close: () => Promise<void> }> {
   const seen: SeenRequest[] = [];
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -188,10 +201,7 @@ async function runFailHook(payload: object, port: number): Promise<string> {
   const prev = process.env.BASTRA_TELEMETRY;
   process.env.BASTRA_TELEMETRY = "off";
   try {
-    return await runBashFailLane(
-      payload as Parameters<typeof runBashFailLane>[0],
-      `http://127.0.0.1:${port}`,
-    );
+    return await runBashFailLane(payload as Parameters<typeof runBashFailLane>[0], `http://127.0.0.1:${port}`);
   } finally {
     if (prev === undefined) delete process.env.BASTRA_TELEMETRY;
     else process.env.BASTRA_TELEMETRY = prev;
@@ -211,7 +221,7 @@ describe("bash-fail-hook: #144 act-signal", () => {
           tool_input: { command: "npm test" },
           tool_response: { exit_code: 0 },
         },
-        daemon.port,
+        daemon.port
       );
       assert.equal(stdout.trim(), "{}");
       const paths = daemon.seen.map((r) => r.path);
@@ -237,10 +247,13 @@ describe("bash-fail-hook: #144 act-signal", () => {
           tool_input: { command: "sed -n 1,40p hook.log" },
           tool_response: { stdout: 'attachment {"exitCode": 1}\nExit code 1', stderr: "", interrupted: false },
         },
-        daemon.port,
+        daemon.port
       );
       assert.equal(stdout.trim(), "{}");
-      assert.deepEqual(daemon.seen.map((r) => r.path), ["/hook/act"]);
+      assert.deepEqual(
+        daemon.seen.map((r) => r.path),
+        ["/hook/act"]
+      );
       assert.equal(daemon.seen[0].body.exit_code, null);
     } finally {
       await daemon.close();
@@ -254,21 +267,38 @@ describe("bash-fail-hook: #144 act-signal", () => {
     const prev = process.env.BASTRA_HOOK_STATE_DIR;
     process.env.BASTRA_HOOK_STATE_DIR = stateDir;
     const sid = `dedup-fail-${Date.now()}`;
-    const daemon = await startRecordingDaemon([{
-      id: "same-lesson", title: "Known build failure", type: "lesson", scope: "all",
-      summary: "Use the generated type before building.", score: 80,
-    }]);
+    const daemon = await startRecordingDaemon([
+      {
+        id: "same-lesson",
+        title: "Known build failure",
+        type: "lesson",
+        scope: "all",
+        summary: "Use the generated type before building.",
+        score: 80,
+      },
+    ]);
     const fail = {
-      hook_event_name: "PostToolUseFailure", tool_name: "Bash", bastra_client: "claude-code", session_id: sid,
-      tool_input: { command: "npm run build" }, error: "Command exited with non-zero status code 1: TS2304", is_interrupt: false,
+      hook_event_name: "PostToolUseFailure",
+      tool_name: "Bash",
+      bastra_client: "claude-code",
+      session_id: sid,
+      tool_input: { command: "npm run build" },
+      error: "Command exited with non-zero status code 1: TS2304",
+      is_interrupt: false,
     };
     try {
       assert.match(await runFailHook(fail, daemon.port), /same-lesson/, "first failure carries the memory");
       const realNow = Date.now;
       Date.now = () => realNow() + 31_000;
       try {
-        assert.doesNotMatch(await runFailHook(fail, daemon.port), /same-lesson/, "second failure after throttle expiry: already shown");
-      } finally { Date.now = realNow; }
+        assert.doesNotMatch(
+          await runFailHook(fail, daemon.port),
+          /same-lesson/,
+          "second failure after throttle expiry: already shown"
+        );
+      } finally {
+        Date.now = realNow;
+      }
     } finally {
       await daemon.close();
       if (prev === undefined) delete process.env.BASTRA_HOOK_STATE_DIR;
@@ -278,14 +308,16 @@ describe("bash-fail-hook: #144 act-signal", () => {
   });
 
   it("PostToolUseFailure sends the act-signal and recalls from its top-level error", async () => {
-    const daemon = await startRecordingDaemon([{
-      id: "failure-lesson",
-      title: "Known build failure",
-      type: "lesson",
-      scope: "all",
-      summary: "Use the generated type before building.",
-      score: 80,
-    }]);
+    const daemon = await startRecordingDaemon([
+      {
+        id: "failure-lesson",
+        title: "Known build failure",
+        type: "lesson",
+        scope: "all",
+        summary: "Use the generated type before building.",
+        score: 80,
+      },
+    ]);
     try {
       const stdout = await runFailHook(
         {
@@ -298,11 +330,14 @@ describe("bash-fail-hook: #144 act-signal", () => {
           is_interrupt: false,
           duration_ms: 4187,
         },
-        daemon.port,
+        daemon.port
       );
       const output = JSON.parse(stdout) as { hookSpecificOutput?: { hookEventName?: string } };
       assert.equal(output.hookSpecificOutput?.hookEventName, "PostToolUseFailure");
-      assert.deepEqual(daemon.seen.map((r) => r.path), ["/hook/act", "/hook/recall", "/hook/hinted"]);
+      assert.deepEqual(
+        daemon.seen.map((r) => r.path),
+        ["/hook/act", "/hook/recall", "/hook/hinted"]
+      );
       assert.equal(daemon.seen[0].body.exit_code, 1);
       assert.equal(daemon.seen[0].body.client, "claude-code");
       assert.equal(daemon.seen[0].body.hook_source, "bash-fail");
@@ -324,7 +359,7 @@ describe("bash-fail-hook: #144 act-signal", () => {
           error: "Interrupted by user",
           is_interrupt: true,
         },
-        daemon.port,
+        daemon.port
       );
       assert.equal(stdout.trim(), "{}");
       assert.equal(daemon.seen.length, 0);
@@ -345,7 +380,7 @@ describe("bash-fail-hook: #144 act-signal", () => {
           tool_input: { command: "git status" },
           tool_response: { exit_code: 0 },
         },
-        daemon.port,
+        daemon.port
       );
       assert.equal(daemon.seen[0].body.client, "codex");
       assert.equal(daemon.seen[0].body.hook_source, "bash-fail");
@@ -365,7 +400,7 @@ describe("bash-fail-hook: #144 act-signal", () => {
           tool_input: { command: "npm run build" },
           tool_response: { exit_code: 1, stderr: "Error: tsc failed with TS2304" },
         },
-        daemon.port,
+        daemon.port
       );
       const paths = daemon.seen.map((r) => r.path);
       assert.deepEqual(paths, ["/hook/act", "/hook/recall"]);
@@ -389,7 +424,7 @@ describe("bash-fail-hook: #144 act-signal", () => {
           tool_input: { command: "npm test" },
           tool_response: { stdout: "ok", stderr: "", interrupted: false, isImage: false, noOutputExpected: false },
         },
-        daemon.port,
+        daemon.port
       );
       assert.equal(stdout.trim(), "{}");
       const paths = daemon.seen.map((r) => r.path);
@@ -411,7 +446,7 @@ describe("bash-fail-hook: #144 act-signal", () => {
           tool_input: { command: "npm run dev" },
           tool_response: { stdout: "", stderr: "", interrupted: true },
         },
-        daemon.port,
+        daemon.port
       );
       assert.equal(stdout.trim(), "{}");
       assert.equal(daemon.seen.length, 0);
@@ -431,7 +466,7 @@ describe("bash-fail-hook: #144 act-signal", () => {
           tool_input: { command: "npm run dev" },
           tool_response: { exit_code: 130 },
         },
-        daemon.port,
+        daemon.port
       );
       assert.equal(stdout.trim(), "{}");
       assert.equal(daemon.seen.length, 0);
@@ -498,7 +533,7 @@ describe("bash-fail-hook: telemetry session (#356)", () => {
           tool_input: { command: "npm test" },
           tool_response: { exit_code: 1 },
         } as Parameters<typeof runBashFailLane>[0],
-        `http://127.0.0.1:${daemon.port}`,
+        `http://127.0.0.1:${daemon.port}`
       );
       const ev = (await readTelemetryEvents(logDir)).find((e) => e.kind === "bash_fail_hook_call");
       assert.ok(ev, "a bash_fail_hook_call event must be written");
@@ -537,7 +572,7 @@ describe("bash-fail-hook: telemetry session (#356)", () => {
           tool_input: { command: "npm test" },
           tool_response: { exit_code: 1 },
         } as Parameters<typeof runBashFailLane>[0],
-        `http://127.0.0.1:${daemon.port}`,
+        `http://127.0.0.1:${daemon.port}`
       );
       const ev = (await readTelemetryEvents(logDir)).find((e) => e.kind === "bash_fail_hook_call");
       assert.ok(ev, "a bash_fail_hook_call event must be written");

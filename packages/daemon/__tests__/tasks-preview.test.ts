@@ -1,128 +1,263 @@
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, readdir } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
-import { spawn } from 'node:child_process';
-import { once } from 'node:events';
-import { createServer } from 'node:net';
-import { tasksEnabled } from '../src/tasks-enabled.js';
-import { ALL_TOOL_DEFS, filterToolDefsForSurface, isToolAllowed } from '../src/tool-defs.js';
-import { ensureLocalTaskAgent, taskAgentAccessStatus } from '../src/task-auto-setup.js';
-import { taskClientToken } from '../src/task-client-auth.js';
-import { taskAttachment } from '../src/task-delivery.js';
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, mkdir, writeFile, readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { createServer } from "node:net";
+import { tasksEnabled } from "../src/tasks-enabled.js";
+import { ALL_TOOL_DEFS, filterToolDefsForSurface, isToolAllowed } from "../src/tool-defs.js";
+import { ensureLocalTaskAgent, taskAgentAccessStatus } from "../src/task-auto-setup.js";
+import { taskClientToken } from "../src/task-client-auth.js";
+import { taskAttachment } from "../src/task-delivery.js";
 
-test('tasks default on; explicit environment opt-out disables them', () => {
-  assert.equal(tasksEnabled({}),true);
-  assert.ok(ALL_TOOL_DEFS.some(t=>t.name.startsWith('task_')));
-  assert.equal(isToolAllowed('task_create','search'),false);
-  assert.equal(isToolAllowed('task_create','write'),true);
-  assert.equal(isToolAllowed('task_create','full'),true);
+test("tasks default on; explicit environment opt-out disables them", () => {
+  assert.equal(tasksEnabled({}), true);
+  assert.ok(ALL_TOOL_DEFS.some((t) => t.name.startsWith("task_")));
+  assert.equal(isToolAllowed("task_create", "search"), false);
+  assert.equal(isToolAllowed("task_create", "write"), true);
+  assert.equal(isToolAllowed("task_create", "full"), true);
 });
 
-test('explicit opt-out hides local tasks from every surface', () => {
-  const previous=process.env.BASTRA_TASKS;process.env.BASTRA_TASKS='0';
+test("explicit opt-out hides local tasks from every surface", () => {
+  const previous = process.env.BASTRA_TASKS;
+  process.env.BASTRA_TASKS = "0";
   try {
-  for (const value of ['','0','false','true','invalid']) assert.equal(tasksEnabled({BASTRA_TASKS:value}),false);
-  assert.equal(tasksEnabled({BASTRA_TASKS:'1'}),true);
-  for (const surface of ['search','write','full'] as const) {
-    assert.equal(isToolAllowed('task_create',surface),false);
-    assert.deepEqual(filterToolDefsForSurface([{name:'recall'},{name:'task_create'}],surface),[{name:'recall'}]);
-  }
-  } finally {if(previous===undefined)delete process.env.BASTRA_TASKS;else process.env.BASTRA_TASKS=previous;}
-});
-
-test('disabled access and passive cards never touch existing credentials/data', async () => {
-  const previous=process.env.BASTRA_TASKS;process.env.BASTRA_TASKS='0';
-  try {
-  assert.equal(taskClientToken('/path/that/must/not/be/read'),undefined);
-  assert.deepEqual(await ensureLocalTaskAgent(),{configured:false,reason:'disabled'});
-  assert.equal((await taskAgentAccessStatus()).reason,'disabled');
-  assert.equal(await taskAttachment({path:'/absent/tasks.json',authPath:'/absent/auth.json'},'Bearer old-token','test','http'),undefined);
-  } finally {if(previous===undefined)delete process.env.BASTRA_TASKS;else process.env.BASTRA_TASKS=previous;}
-});
-
-for (const existing of [false,true]) test(`explicitly disabled daemon: zero task I/O/timers, routes hidden, existing data preserved (${existing})`, async () => {
-  const root=await mkdtemp(join(tmpdir(),'tasks-preview-')),data=join(root,'data'),vault=join(root,'vault'),audit=join(root,'audit.jsonl');
-  await mkdir(vault); await mkdir(data); await writeFile(audit,'');
-  const names=['tasks.json','task-auth.json','task-hook-token.json','task-approval-keys.json'];
-  if(existing) for(const name of names) await writeFile(join(data,name),`untouched existing ${name}\n`);
-  const reservation=createServer(); reservation.listen(0,'127.0.0.1'); await once(reservation,'listening');
-  const port=(reservation.address() as {port:number}).port; await new Promise<void>(r=>reservation.close(()=>r())); assert.notEqual(port,6723);
-  const base=`http://127.0.0.1:${port}`;
-  const env={...process.env,BASTRA_TASKS:'0',BASTRA_VAULT_PATH:vault,BASTRA_TASKS_PATH:join(data,'tasks.json'),BASTRA_HTTP_PORT:String(port),BASTRA_DAEMON_URL:base,BASTRA_AUTO_UPDATE:'0',BASTRA_EMBEDDING_PROVIDER:'none',BASTRA_BM25_ONLY:'1',TASK_DATA_ROOT:data,TASK_AUDIT:audit};
-  const child=spawn(process.execPath,['--import',fileURLToPath(new URL('./fixtures/tasks-off-guard.mjs',import.meta.url)),fileURLToPath(new URL('../dist/index.js',import.meta.url))],{env,stdio:['pipe','ignore','pipe']});
-  let errors='';child.stderr!.on('data',c=>{errors=(errors+c).slice(-6000);});const closed=once(child,'close');
-  try {
-    let ready=false;const end=Date.now()+15000;
-    while(Date.now()<end){try{if((await fetch(base+'/health')).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,25));}
-    assert.ok(ready,errors);
-    const tools=await (await fetch(base+'/tools')).json() as any;
-    assert.ok(!JSON.stringify(tools).includes('task_create'));
-    for(const route of ['/api/v1/tasks','/api/v1/task_list','/ui/tasks/session','/ui/tasks/logout','/ui/tasks/api/task_list']) {
-      const response=await fetch(base+route,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-      assert.equal(response.status,404,route);assert.equal((await response.json() as any).code,'feature_disabled');
+    for (const value of ["", "0", "false", "true", "invalid"])
+      assert.equal(tasksEnabled({ BASTRA_TASKS: value }), false);
+    assert.equal(tasksEnabled({ BASTRA_TASKS: "1" }), true);
+    for (const surface of ["search", "write", "full"] as const) {
+      assert.equal(isToolAllowed("task_create", surface), false);
+      assert.deepEqual(filterToolDefsForSurface([{ name: "recall" }, { name: "task_create" }], surface), [
+        { name: "recall" },
+      ]);
     }
-    const session=await fetch(base+'/hook/session-context');
-    assert.equal(session.status,200);assert.ok(!(await session.text()).includes('bastra-due'));
-    // CLI must short-circuit before credential prompts, reads or network access.
-    const cli=spawn(process.execPath,[fileURLToPath(new URL('../dist/cli.js',import.meta.url)),'tasks','setup-hooks','--json'],{env,stdio:['ignore','pipe','pipe']});
-    let output='';cli.stdout.on('data',c=>{output+=c;});assert.equal((await once(cli,'close'))[0],0);
-    assert.equal(JSON.parse(output).code,'feature_disabled');assert.match(output,/BASTRA_TASKS=1/);
-    await new Promise(r=>setTimeout(r,100));
-  } finally {child.kill('SIGTERM');await closed;}
-  assert.equal(await readFile(audit,'utf8'),'','disabled start must do no task I/O or task timers');
-  assert.deepEqual((await readdir(data)).sort(),existing?[...names].sort():[]);
-  if(existing) for(const name of names) assert.equal(await readFile(join(data,name),'utf8'),`untouched existing ${name}\n`);
+  } finally {
+    if (previous === undefined) delete process.env.BASTRA_TASKS;
+    else process.env.BASTRA_TASKS = previous;
+  }
 });
 
-test('served UI shows Tasks by default and hides the same tab with opt-out', async () => {
-  const { createServer }=await import('node:http');
-  const { handleWebUi, resolveWebUiDir }=await import('../src/webui.js');
-  const root=await mkdtemp(join(tmpdir(),'tasks-ui-preview-')),settings=join(root,'settings.json');
-  await writeFile(settings,JSON.stringify({ui:{enabled:true}}));
-  const server=createServer((req,res)=>{void handleWebUi(req,res,req.url!,resolveWebUiDir(),settings);});
-  server.listen(0,'127.0.0.1');await once(server,'listening');
-  const base=`http://127.0.0.1:${(server.address() as {port:number}).port}`,previous=process.env.BASTRA_TASKS;
+test("disabled access and passive cards never touch existing credentials/data", async () => {
+  const previous = process.env.BASTRA_TASKS;
+  process.env.BASTRA_TASKS = "0";
   try {
-    for(const enabled of [false,true]) {
-      if(enabled) delete process.env.BASTRA_TASKS; else process.env.BASTRA_TASKS='0';
-      for(const path of ['/ui/','/ui/index.html']) {
-        const response=await fetch(base+path),html=await response.text();
-        assert.equal(response.status,200);assert.match(html,new RegExp(`data-tasks-enabled="${enabled}"`));
-        assert.equal(/data-view="tasks" hidden/.test(html),!enabled);
-        assert.equal(response.headers.get('cache-control'),'no-store');
-        assert.equal(Number(response.headers.get('content-length')),Buffer.byteLength(html));
+    assert.equal(taskClientToken("/path/that/must/not/be/read"), undefined);
+    assert.deepEqual(await ensureLocalTaskAgent(), { configured: false, reason: "disabled" });
+    assert.equal((await taskAgentAccessStatus()).reason, "disabled");
+    assert.equal(
+      await taskAttachment(
+        { path: "/absent/tasks.json", authPath: "/absent/auth.json" },
+        "Bearer old-token",
+        "test",
+        "http"
+      ),
+      undefined
+    );
+  } finally {
+    if (previous === undefined) delete process.env.BASTRA_TASKS;
+    else process.env.BASTRA_TASKS = previous;
+  }
+});
+
+for (const existing of [false, true])
+  test(`explicitly disabled daemon: zero task I/O/timers, routes hidden, existing data preserved (${existing})`, async () => {
+    const root = await mkdtemp(join(tmpdir(), "tasks-preview-")),
+      data = join(root, "data"),
+      vault = join(root, "vault"),
+      audit = join(root, "audit.jsonl");
+    await mkdir(vault);
+    await mkdir(data);
+    await writeFile(audit, "");
+    const names = ["tasks.json", "task-auth.json", "task-hook-token.json", "task-approval-keys.json"];
+    if (existing) for (const name of names) await writeFile(join(data, name), `untouched existing ${name}\n`);
+    const reservation = createServer();
+    reservation.listen(0, "127.0.0.1");
+    await once(reservation, "listening");
+    const port = (reservation.address() as { port: number }).port;
+    await new Promise<void>((r) => reservation.close(() => r()));
+    assert.notEqual(port, 6723);
+    const base = `http://127.0.0.1:${port}`;
+    const env = {
+      ...process.env,
+      BASTRA_TASKS: "0",
+      BASTRA_VAULT_PATH: vault,
+      BASTRA_TASKS_PATH: join(data, "tasks.json"),
+      BASTRA_HTTP_PORT: String(port),
+      BASTRA_DAEMON_URL: base,
+      BASTRA_AUTO_UPDATE: "0",
+      BASTRA_EMBEDDING_PROVIDER: "none",
+      BASTRA_BM25_ONLY: "1",
+      TASK_DATA_ROOT: data,
+      TASK_AUDIT: audit,
+    };
+    const child = spawn(
+      process.execPath,
+      [
+        "--import",
+        fileURLToPath(new URL("./fixtures/tasks-off-guard.mjs", import.meta.url)),
+        fileURLToPath(new URL("../dist/index.js", import.meta.url)),
+      ],
+      { env, stdio: ["pipe", "ignore", "pipe"] }
+    );
+    let errors = "";
+    child.stderr!.on("data", (c) => {
+      errors = (errors + c).slice(-6000);
+    });
+    const closed = once(child, "close");
+    try {
+      let ready = false;
+      const end = Date.now() + 15000;
+      while (Date.now() < end) {
+        try {
+          if ((await fetch(base + "/health")).ok) {
+            ready = true;
+            break;
+          }
+        } catch {}
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      assert.ok(ready, errors);
+      const tools = (await (await fetch(base + "/tools")).json()) as any;
+      assert.ok(!JSON.stringify(tools).includes("task_create"));
+      for (const route of [
+        "/api/v1/tasks",
+        "/api/v1/task_list",
+        "/ui/tasks/session",
+        "/ui/tasks/logout",
+        "/ui/tasks/api/task_list",
+      ]) {
+        const response = await fetch(base + route, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        assert.equal(response.status, 404, route);
+        assert.equal(((await response.json()) as any).code, "feature_disabled");
+      }
+      const session = await fetch(base + "/hook/session-context");
+      assert.equal(session.status, 200);
+      assert.ok(!(await session.text()).includes("bastra-due"));
+      // CLI must short-circuit before credential prompts, reads or network access.
+      const cli = spawn(
+        process.execPath,
+        [fileURLToPath(new URL("../dist/cli.js", import.meta.url)), "tasks", "setup-hooks", "--json"],
+        { env, stdio: ["ignore", "pipe", "pipe"] }
+      );
+      let output = "";
+      cli.stdout.on("data", (c) => {
+        output += c;
+      });
+      assert.equal((await once(cli, "close"))[0], 0);
+      assert.equal(JSON.parse(output).code, "feature_disabled");
+      assert.match(output, /BASTRA_TASKS=1/);
+      await new Promise((r) => setTimeout(r, 100));
+    } finally {
+      child.kill("SIGTERM");
+      await closed;
+    }
+    assert.equal(await readFile(audit, "utf8"), "", "disabled start must do no task I/O or task timers");
+    assert.deepEqual((await readdir(data)).sort(), existing ? [...names].sort() : []);
+    if (existing)
+      for (const name of names) assert.equal(await readFile(join(data, name), "utf8"), `untouched existing ${name}\n`);
+  });
+
+test("served UI shows Tasks by default and hides the same tab with opt-out", async () => {
+  const { createServer } = await import("node:http");
+  const { handleWebUi, resolveWebUiDir } = await import("../src/webui.js");
+  const root = await mkdtemp(join(tmpdir(), "tasks-ui-preview-")),
+    settings = join(root, "settings.json");
+  await writeFile(settings, JSON.stringify({ ui: { enabled: true } }));
+  const server = createServer((req, res) => {
+    void handleWebUi(req, res, req.url!, resolveWebUiDir(), settings);
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`,
+    previous = process.env.BASTRA_TASKS;
+  try {
+    for (const enabled of [false, true]) {
+      if (enabled) delete process.env.BASTRA_TASKS;
+      else process.env.BASTRA_TASKS = "0";
+      for (const path of ["/ui/", "/ui/index.html"]) {
+        const response = await fetch(base + path),
+          html = await response.text();
+        assert.equal(response.status, 200);
+        assert.match(html, new RegExp(`data-tasks-enabled="${enabled}"`));
+        assert.equal(/data-view="tasks" hidden/.test(html), !enabled);
+        assert.equal(response.headers.get("cache-control"), "no-store");
+        assert.equal(Number(response.headers.get("content-length")), Buffer.byteLength(html));
       }
     }
-  } finally {if(previous===undefined) delete process.env.BASTRA_TASKS;else process.env.BASTRA_TASKS=previous;await new Promise<void>(r=>server.close(()=>r()));}
+  } finally {
+    if (previous === undefined) delete process.env.BASTRA_TASKS;
+    else process.env.BASTRA_TASKS = previous;
+    await new Promise<void>((r) => server.close(() => r()));
+  }
 });
 
-test('default startup includes canonical tools on write/full surfaces', async () => {
-  const moduleUrl=new URL('../dist/tool-defs.js',import.meta.url).href;
-  const script=`import {ALL_TOOL_DEFS,filterToolDefsForSurface} from ${JSON.stringify(moduleUrl)}; console.log(JSON.stringify(Object.fromEntries(['search','write','full'].map(s=>[s,filterToolDefsForSurface(ALL_TOOL_DEFS,s).filter(t=>t.name.startsWith('task_')).map(t=>t.name)]))));`;
-  const env={...process.env};delete env.BASTRA_TASKS;
-  const child=spawn(process.execPath,['--input-type=module','-e',script],{env,stdio:['ignore','pipe','pipe']});
-  let output='';child.stdout.on('data',c=>{output+=c;});assert.equal((await once(child,'close'))[0],0);
-  const tools=JSON.parse(output);assert.deepEqual(tools.search,[]);assert.ok(tools.write.includes('task_create'));assert.deepEqual(tools.write,tools.full);
+test("default startup includes canonical tools on write/full surfaces", async () => {
+  const moduleUrl = new URL("../dist/tool-defs.js", import.meta.url).href;
+  const script = `import {ALL_TOOL_DEFS,filterToolDefsForSurface} from ${JSON.stringify(moduleUrl)}; console.log(JSON.stringify(Object.fromEntries(['search','write','full'].map(s=>[s,filterToolDefsForSurface(ALL_TOOL_DEFS,s).filter(t=>t.name.startsWith('task_')).map(t=>t.name)]))));`;
+  const env = { ...process.env };
+  delete env.BASTRA_TASKS;
+  const child = spawn(process.execPath, ["--input-type=module", "-e", script], {
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let output = "";
+  child.stdout.on("data", (c) => {
+    output += c;
+  });
+  assert.equal((await once(child, "close"))[0], 0);
+  const tools = JSON.parse(output);
+  assert.deepEqual(tools.search, []);
+  assert.ok(tools.write.includes("task_create"));
+  assert.deepEqual(tools.write, tools.full);
 });
 
-test('standalone MCP registration and guessed calls follow the preview switch', async () => {
-  const { Client }=await import('@modelcontextprotocol/sdk/client/index.js');
-  const { StdioClientTransport }=await import('@modelcontextprotocol/sdk/client/stdio.js');
-  for(const enabled of [false,true]) {
-    const root=await mkdtemp(join(tmpdir(),'tasks-mcp-preview-')),vault=join(root,'vault');await mkdir(vault);
-    const env=Object.fromEntries(Object.entries({...process.env,BASTRA_TASKS:enabled?'1':'0',BASTRA_HTTP:'off',BASTRA_VAULT_PATH:vault,BASTRA_TASKS_PATH:join(root,'data','tasks.json'),BASTRA_AUTO_UPDATE:'0',BASTRA_EMBEDDING_PROVIDER:'none',BASTRA_BM25_ONLY:'1',BASTRA_VAULT_RECONCILE_MS:'0'}).filter((entry):entry is [string,string]=>entry[1]!==undefined));
-    const transport=new StdioClientTransport({command:process.execPath,args:[fileURLToPath(new URL('../dist/index.js',import.meta.url))],env,stderr:'ignore'});
-    const client=new Client({name:'preview-test',version:'1.0.0'});
+test("standalone MCP registration and guessed calls follow the preview switch", async () => {
+  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+  const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
+  for (const enabled of [false, true]) {
+    const root = await mkdtemp(join(tmpdir(), "tasks-mcp-preview-")),
+      vault = join(root, "vault");
+    await mkdir(vault);
+    const env = Object.fromEntries(
+      Object.entries({
+        ...process.env,
+        BASTRA_TASKS: enabled ? "1" : "0",
+        BASTRA_HTTP: "off",
+        BASTRA_VAULT_PATH: vault,
+        BASTRA_TASKS_PATH: join(root, "data", "tasks.json"),
+        BASTRA_AUTO_UPDATE: "0",
+        BASTRA_EMBEDDING_PROVIDER: "none",
+        BASTRA_BM25_ONLY: "1",
+        BASTRA_VAULT_RECONCILE_MS: "0",
+      }).filter((entry): entry is [string, string] => entry[1] !== undefined)
+    );
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: [fileURLToPath(new URL("../dist/index.js", import.meta.url))],
+      env,
+      stderr: "ignore",
+    });
+    const client = new Client({ name: "preview-test", version: "1.0.0" });
     try {
       await client.connect(transport);
-      assert.equal((await client.listTools()).tools.some(t=>t.name==='task_create'),enabled);
-      if(!enabled) {
-        const result=await client.callTool({name:'task_create',arguments:{}});
-        assert.equal(result.isError,true);assert.match(JSON.stringify(result),/Tasks disabled/);
+      assert.equal(
+        (await client.listTools()).tools.some((t) => t.name === "task_create"),
+        enabled
+      );
+      if (!enabled) {
+        const result = await client.callTool({ name: "task_create", arguments: {} });
+        assert.equal(result.isError, true);
+        assert.match(JSON.stringify(result), /Tasks disabled/);
       }
-    } finally {await client.close();}
+    } finally {
+      await client.close();
+    }
   }
 });

@@ -2,18 +2,26 @@
 #live-toggle {
   display: grid;
   place-items: center;
-  width: 34px; height: 34px;
+  width: 34px;
+  height: 34px;
   border: 1px solid var(--panel-border);
   background: var(--panel);
   backdrop-filter: var(--panel-blur);
   -webkit-backdrop-filter: var(--panel-blur);
   cursor: pointer;
-  transition: transform 0.1s ease, border-color 0.15s ease;
+  transition:
+    transform 0.1s ease,
+    border-color 0.15s ease;
 }
-#live-toggle:hover { border-color: var(--accent); }
-#live-toggle:active { transform: scale(0.92); }
+#live-toggle:hover {
+  border-color: var(--accent);
+}
+#live-toggle:active {
+  transform: scale(0.92);
+}
 #live-toggle .live-dot {
-  width: 9px; height: 9px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: var(--text-dim);
 }
@@ -23,8 +31,15 @@
   animation: live-pulse 2s ease-in-out infinite;
 }
 @keyframes live-pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.35); opacity: 0.7; }
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.7;
+  }
 }
 
 /* Notices arrive as a DECK, not a column: a busy minute used to push a wall of
@@ -68,10 +83,19 @@
      · pinned — the topbar shrinks, putting the toggle's right edge at
        250+20 = 270. That single value both lines up with the toggle AND
        leaves 20px to the flush-mounted panel. */
-body.panel-open #live-lane { right: 286px; }
-body.panel-pinned #live-lane { right: 270px; }
+body.panel-open #live-lane {
+  right: 286px;
+}
+body.panel-pinned #live-lane {
+  right: 270px;
+}
 /* `relative` because the tick rail is anchored to THIS box (see below) */
-#live-stack { position: relative; display: flex; flex-direction: column; width: 280px; }
+#live-stack {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 280px;
+}
 /* Hover bridge. The first beat of the opening slides the pile DOWN into the
    space #live-more vacates — which pulls the top card out from under a cursor
    resting on its upper edge. The hover then dies mid-gesture and the deck
@@ -98,7 +122,10 @@ body.panel-pinned #live-lane { right: 270px; }
      left rail already carries the position. */
   scrollbar-width: none;
 }
-#live-cards::-webkit-scrollbar { width: 0; height: 0; }
+#live-cards::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
 /* Expanded, the deck must scroll — with many notices it would otherwise grow
    past the viewport and hide its own oldest entries. Scrolling needs the
    container to take the pointer, so that happens only while hovered. */
@@ -108,7 +135,9 @@ body.panel-pinned #live-lane { right: 270px; }
 }
 
 /* ── left rail: one tick per notice, the current one marked ──────── */
-#live-ticks[hidden] { display: none; }
+#live-ticks[hidden] {
+  display: none;
+}
 /* Anchored to the STACK, not laid out beside it. As a flex sibling the rail
    set the lane's height whenever it was the taller of the two, which pushed
    the deck to the bottom and left the marks floating above it. Absolute
@@ -140,9 +169,15 @@ body.panel-pinned #live-lane { right: 270px; }
   background: var(--text-dim);
   opacity: 0.35;
   border-radius: 1px;
-  transition: width 0.22s var(--ease-fly), opacity 0.22s ease, background 0.22s ease;
+  transition:
+    width 0.22s var(--ease-fly),
+    opacity 0.22s ease,
+    background 0.22s ease;
 }
-.lt-tick.near { width: 20px; opacity: 0.55; }
+.lt-tick.near {
+  width: 20px;
+  opacity: 0.55;
+}
 .lt-tick.active {
   width: 34px;
   height: 2.5px;
@@ -151,9 +186,18 @@ body.panel-pinned #live-lane { right: 270px; }
 }
 /* the rail wakes up with the deck — every tick stretches, so the hover reads
    as "this is a control", not just as a highlight moving */
-#live-lane:hover .lt-tick { width: 22px; opacity: 0.6; }
-#live-lane:hover .lt-tick.near { width: 30px; opacity: 0.75; }
-#live-lane:hover .lt-tick.active { width: 44px; opacity: 1; }
+#live-lane:hover .lt-tick {
+  width: 22px;
+  opacity: 0.6;
+}
+#live-lane:hover .lt-tick.near {
+  width: 30px;
+  opacity: 0.75;
+}
+#live-lane:hover .lt-tick.active {
+  width: 44px;
+  opacity: 1;
+}
 /* The mark for the item under the cursor. Deliberately the accent colour
    rather than a longer dash: the rail already uses LENGTH for the scroll
    position, and two lengths competing on one rail cannot be told apart. */
@@ -164,7 +208,9 @@ body.panel-pinned #live-lane { right: 270px; }
 }
 
 /* ── "+N still below", broken down by kind ───────────────────────── */
-#live-more[hidden] { display: none; }
+#live-more[hidden] {
+  display: none;
+}
 #live-more {
   /* full width of the notes it belongs to — it is the foot of the deck, not a
      badge floating beside it */
@@ -202,13 +248,23 @@ body.panel-pinned #live-lane { right: 270px; }
      cards that were still moving. */
   transition-delay: var(--fold-total, 0s);
 }
-.lm-total { color: var(--text); }
+.lm-total {
+  color: var(--text);
+}
 /* the breakdown is pushed to the right edge, so the "+N" stays the anchor the
    eye lands on */
-.lm-kind:first-of-type { margin-left: auto; }
-.lm-kind.kind-change { color: #d9a441; }
-.lm-kind.kind-delete { color: #d96459; }
-.lm-kind.kind-add { color: var(--accent); }
+.lm-kind:first-of-type {
+  margin-left: auto;
+}
+.lm-kind.kind-change {
+  color: #d9a441;
+}
+.lm-kind.kind-delete {
+  color: #d96459;
+}
+.lm-kind.kind-add {
+  color: var(--accent);
+}
 /* Expanded, the count is redundant — the cards themselves are all there. The
    bar collapses to nothing so the deck drops back down flush with the rail. */
 #live-lane:hover #live-more {
@@ -277,7 +333,9 @@ body.panel-pinned #live-lane { right: 270px; }
    appeared instead of moving while the three above them slid properly. Same
    layout, same rule, same animation now. --self-hide is measured per card in
    live-deck.js. */
-.live-card:nth-child(n + 4) { margin-top: var(--self-hide, -140px); }
+.live-card:nth-child(n + 4) {
+  margin-top: var(--self-hide, -140px);
+}
 #live-lane:hover .live-card + .live-card {
   margin-top: 10px;
   /* one delay per property, in the order of the shorthand above
@@ -285,11 +343,21 @@ body.panel-pinned #live-lane { right: 270px; }
      also postpone the card's own hover border, which then feels broken */
   transition-delay: 0s, 0s, var(--fan-delay, 0s);
 }
-.live-card:hover { border-color: var(--accent); }
-.live-card.fade { opacity: 0; }
+.live-card:hover {
+  border-color: var(--accent);
+}
+.live-card.fade {
+  opacity: 0;
+}
 @keyframes live-in {
-  from { transform: translateX(40px); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  from {
+    transform: translateX(40px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 .live-head {
   display: flex;
@@ -297,7 +365,10 @@ body.panel-pinned #live-lane { right: 270px; }
   gap: 6px;
   margin-bottom: 4px;
 }
-.live-star { color: var(--accent); font-size: 13px; }
+.live-star {
+  color: var(--accent);
+  font-size: 13px;
+}
 .live-label {
   font: 10px var(--font-mono);
   text-transform: uppercase;
@@ -322,7 +393,9 @@ body.panel-pinned #live-lane { right: 270px; }
   cursor: pointer;
   padding: 0 2px;
 }
-.live-close:hover { color: var(--accent); }
+.live-close:hover {
+  color: var(--accent);
+}
 .live-title {
   font-size: 13px;
   font-weight: 600;
@@ -350,43 +423,78 @@ body.panel-pinned #live-lane { right: 270px; }
   animation: live-count-bump 0.9s ease;
 }
 @keyframes live-count-bump {
-  0% { color: var(--accent); transform: scale(1.25); }
-  100% { color: var(--text-dim); transform: scale(1); }
+  0% {
+    color: var(--accent);
+    transform: scale(1.25);
+  }
+  100% {
+    color: var(--text-dim);
+    transform: scale(1);
+  }
 }
 
 /* ── notice kinds: add=accent, change=amber, delete=red, read=dim ── */
-.live-card.kind-change { border-left-color: #d9a441; }
+.live-card.kind-change {
+  border-left-color: #d9a441;
+}
 .live-card.kind-change .live-star,
-.live-card.kind-change .live-label { color: #d9a441; }
-.live-card.kind-delete { border-left-color: #d96459; cursor: default; }
+.live-card.kind-change .live-label {
+  color: #d9a441;
+}
+.live-card.kind-delete {
+  border-left-color: #d96459;
+  cursor: default;
+}
 .live-card.kind-delete .live-star,
-.live-card.kind-delete .live-label { color: #d96459; }
-.live-card.kind-read { border-left-color: var(--text-dim); }
+.live-card.kind-delete .live-label {
+  color: #d96459;
+}
+.live-card.kind-read {
+  border-left-color: var(--text-dim);
+}
 .live-card.kind-read .live-star,
-.live-card.kind-read .live-label { color: var(--text-dim); }
+.live-card.kind-read .live-label {
+  color: var(--text-dim);
+}
 
 /* ── session history: topbar button + panel ─────────────────────── */
 #live-history-toggle {
   position: relative;
   display: grid;
   place-items: center;
-  width: 34px; height: 34px;
+  width: 34px;
+  height: 34px;
   border: 1px solid var(--panel-border);
   background: var(--panel);
   color: var(--text-dim);
   backdrop-filter: var(--panel-blur);
   -webkit-backdrop-filter: var(--panel-blur);
   cursor: pointer;
-  transition: transform 0.1s ease, border-color 0.15s ease;
+  transition:
+    transform 0.1s ease,
+    border-color 0.15s ease;
 }
-#live-history-toggle svg { width: 16px; height: 16px; }
-#live-history-toggle:hover { border-color: var(--accent); color: var(--text); }
-#live-history-toggle:active { transform: scale(0.92); }
-#live-history-toggle.open { border-color: var(--accent); color: var(--accent); }
+#live-history-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+#live-history-toggle:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+#live-history-toggle:active {
+  transform: scale(0.92);
+}
+#live-history-toggle.open {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 #live-history-count {
   position: absolute;
-  top: -5px; right: -5px;
-  min-width: 15px; height: 15px;
+  top: -5px;
+  right: -5px;
+  min-width: 15px;
+  height: 15px;
   padding: 0 3px;
   border-radius: 8px;
   background: var(--accent);
@@ -395,7 +503,9 @@ body.panel-pinned #live-lane { right: 270px; }
   line-height: 15px;
   text-align: center;
 }
-#live-history[hidden] { display: none; }
+#live-history[hidden] {
+  display: none;
+}
 #live-history {
   position: fixed;
   top: 62px;
@@ -413,8 +523,12 @@ body.panel-pinned #live-lane { right: 270px; }
   transition: right 0.28s ease;
 }
 /* same two docked states as #live-lane above */
-body.panel-open #live-history { right: 286px; }
-body.panel-pinned #live-history { right: 270px; }
+body.panel-open #live-history {
+  right: 286px;
+}
+body.panel-pinned #live-history {
+  right: 270px;
+}
 #live-history .lh-head {
   padding: 9px 12px;
   font: 10px var(--font-mono);
@@ -423,7 +537,10 @@ body.panel-pinned #live-history { right: 270px; }
   color: var(--accent);
   border-bottom: 1px solid var(--panel-border);
 }
-#live-history .lh-session { color: var(--text-dim); letter-spacing: 0.1em; }
+#live-history .lh-session {
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+}
 /* Die Historie trägt dieselbe Tick-Leiste wie das Notice-Deck statt einer
    Scrollbar. Die native wird ausgeblendet, nicht umgestylt: eine gestylte
    ::-webkit-scrollbar reserviert einen Gutter und schrumpft den Inhalt, eine
@@ -444,8 +561,12 @@ body.panel-pinned #live-history { right: 270px; }
   overflow-y: auto;
   scrollbar-width: none; /* Firefox */
 }
-#live-history-list::-webkit-scrollbar { display: none; }
-#live-history-ticks[hidden] { display: none; }
+#live-history-list::-webkit-scrollbar {
+  display: none;
+}
+#live-history-ticks[hidden] {
+  display: none;
+}
 /* Links AUSSERHALB, am Anfang der Liste. Anders als am Deck oben verankert:
    das Deck wächst von unten und schließt unten bündig ab, die Historie liest
    sich von oben nach unten und fängt oben an. Containing Block ist der Body,
@@ -466,9 +587,18 @@ body.panel-pinned #live-history { right: 270px; }
   pointer-events: none; /* die Leiste zeigt an, sie fängt keine Klicks */
 }
 /* und dieselbe Reaktion beim Hover wie am Deck */
-#live-history:hover .lt-tick { width: 22px; opacity: 0.6; }
-#live-history:hover .lt-tick.near { width: 30px; opacity: 0.75; }
-#live-history:hover .lt-tick.active { width: 44px; opacity: 1; }
+#live-history:hover .lt-tick {
+  width: 22px;
+  opacity: 0.6;
+}
+#live-history:hover .lt-tick.near {
+  width: 30px;
+  opacity: 0.75;
+}
+#live-history:hover .lt-tick.active {
+  width: 44px;
+  opacity: 1;
+}
 .lh-row {
   display: grid;
   grid-template-columns: 16px 62px 1fr auto;
@@ -478,14 +608,32 @@ body.panel-pinned #live-history { right: 270px; }
   cursor: pointer;
   border-bottom: 1px solid var(--panel-border);
 }
-.lh-row:last-child { border-bottom: 0; }
-.lh-row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
-.lh-row.kind-delete { cursor: default; }
-.lh-row.kind-delete:hover { background: transparent; }
-.lh-kind-icon { text-align: center; color: var(--accent); font-size: 12px; }
-.lh-row.kind-change .lh-kind-icon { color: #d9a441; }
-.lh-row.kind-delete .lh-kind-icon { color: #d96459; }
-.lh-row.kind-read .lh-kind-icon { color: var(--text-dim); }
+.lh-row:last-child {
+  border-bottom: 0;
+}
+.lh-row:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.lh-row.kind-delete {
+  cursor: default;
+}
+.lh-row.kind-delete:hover {
+  background: transparent;
+}
+.lh-kind-icon {
+  text-align: center;
+  color: var(--accent);
+  font-size: 12px;
+}
+.lh-row.kind-change .lh-kind-icon {
+  color: #d9a441;
+}
+.lh-row.kind-delete .lh-kind-icon {
+  color: #d96459;
+}
+.lh-row.kind-read .lh-kind-icon {
+  color: var(--text-dim);
+}
 .lh-kind {
   font: 9.5px var(--font-mono);
   text-transform: uppercase;
@@ -499,8 +647,14 @@ body.panel-pinned #live-history { right: 270px; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.lh-row.kind-delete .lh-title { text-decoration: line-through; color: var(--text-dim); }
-.lh-time { font: 10px var(--font-mono); color: var(--text-dim); }
+.lh-row.kind-delete .lh-title {
+  text-decoration: line-through;
+  color: var(--text-dim);
+}
+.lh-time {
+  font: 10px var(--font-mono);
+  color: var(--text-dim);
+}
 .lh-empty {
   padding: 16px 12px;
   font-size: 12px;

@@ -80,7 +80,7 @@ export async function ensureDaemonRunning(
     /** Skips detection when the caller already knows the vault — the wizard
      *  holds the path the user just picked, which no config file may name yet. */
     vaultPath?: string;
-  } = {},
+  } = {}
 ): Promise<DaemonStartOutcome> {
   const io = opts.io ?? realIO;
   const timeoutMs = opts.timeoutMs ?? DAEMON_START_TIMEOUT_MS;

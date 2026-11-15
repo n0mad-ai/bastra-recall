@@ -5,7 +5,15 @@
  */
 import { readdir, rename } from "node:fs/promises";
 import { join } from "node:path";
-import { clearAreaMark, isMarkdownFile, markAreaRenamed, mutateMemoryFile, readOccupant, slugify, withAreaExclusive } from "@bastra-recall/core";
+import {
+  clearAreaMark,
+  isMarkdownFile,
+  markAreaRenamed,
+  mutateMemoryFile,
+  readOccupant,
+  slugify,
+  withAreaExclusive,
+} from "@bastra-recall/core";
 import { scopeEquals } from "@bastra-recall/core/scope";
 import { areaPath, assertEditable, docsShelfPath, isDir } from "./webui-areas-shared.js";
 
@@ -22,7 +30,7 @@ async function rewriteScopes(
   dir: string,
   oldScope: string,
   newScope: string,
-  failed: string[],
+  failed: string[]
 ): Promise<number> {
   let rewritten = 0;
   let entries;
@@ -69,7 +77,7 @@ async function rewriteScopes(
             return { ...fm, scope: newScope };
           },
         },
-        { vaultRoot },
+        { vaultRoot }
       );
       // `noop` heißt „hier war nichts umzuschreiben" (ein fremdes Memory im
       // Ordner), `raced` und `identity-mismatch` heißen „mein Stempel liegt
@@ -122,12 +130,7 @@ async function rewriteScopes(
  * immer `null` zurück, die Mutation ist also garantiert ein `noop` und fasst
  * keine Datei an; sie leiht sich nur den Lock und den EINEN Read.
  */
-async function findStaleScopes(
-  vaultRoot: string,
-  dir: string,
-  oldScope: string,
-  stale: string[],
-): Promise<void> {
+async function findStaleScopes(vaultRoot: string, dir: string, oldScope: string, stale: string[]): Promise<void> {
   let entries;
   try {
     entries = await readdir(dir, { withFileTypes: true });
@@ -161,7 +164,7 @@ async function findStaleScopes(
           return null;
         },
       },
-      { vaultRoot },
+      { vaultRoot }
     );
     // Fremde Scopes bleiben unangetastet — geprüft wird nur, ob der ALTE
     // Area-Name noch irgendwo steht. Ein Memory eines anderen Projekts im
@@ -216,7 +219,7 @@ async function rewriteDocMetadata(
   dir: string,
   oldName: string,
   newName: string,
-  failed: string[],
+  failed: string[]
 ): Promise<number> {
   let touched = 0;
   let entries;
@@ -241,32 +244,40 @@ async function rewriteDocMetadata(
     }
     if (occupant.kind !== "memory") continue;
     try {
-      const outcome = await mutateMemoryFile(full, occupant.id, {
-        frontmatter: (fm) => {
-          if (!isProductDocOf(fm, oldName)) return null;
-          const next = { ...fm };
-          let changed = false;
-          // #360: gefaltet — ein Bestandsdokument kann `doku-CarNexus-…` heißen
-          // und `topic_path: [doku, CarNexus, …]` tragen.
-          if (Array.isArray(next.topic_path) && typeof next.topic_path[1] === "string" &&
-              scopeEquals(next.topic_path[1] as string, oldName)) {
-            const path = [...(next.topic_path as unknown[])];
-            path[1] = newName;
-            next.topic_path = path;
-            changed = true;
-          }
-          if (Array.isArray(next.tags)) {
-            const tags = (next.tags as unknown[]).map((t) =>
-              typeof t === "string" && scopeEquals(t, oldName) ? newName : t,
-            );
-            if (tags.some((t, i) => t !== (next.tags as unknown[])[i])) {
-              next.tags = tags;
+      const outcome = await mutateMemoryFile(
+        full,
+        occupant.id,
+        {
+          frontmatter: (fm) => {
+            if (!isProductDocOf(fm, oldName)) return null;
+            const next = { ...fm };
+            let changed = false;
+            // #360: gefaltet — ein Bestandsdokument kann `doku-CarNexus-…` heißen
+            // und `topic_path: [doku, CarNexus, …]` tragen.
+            if (
+              Array.isArray(next.topic_path) &&
+              typeof next.topic_path[1] === "string" &&
+              scopeEquals(next.topic_path[1] as string, oldName)
+            ) {
+              const path = [...(next.topic_path as unknown[])];
+              path[1] = newName;
+              next.topic_path = path;
               changed = true;
             }
-          }
-          return changed ? next : null;
+            if (Array.isArray(next.tags)) {
+              const tags = (next.tags as unknown[]).map((t) =>
+                typeof t === "string" && scopeEquals(t, oldName) ? newName : t
+              );
+              if (tags.some((t, i) => t !== (next.tags as unknown[])[i])) {
+                next.tags = tags;
+                changed = true;
+              }
+            }
+            return changed ? next : null;
+          },
         },
-      }, { vaultRoot });
+        { vaultRoot }
+      );
       if (outcome.kind === "written") touched++;
       else if (outcome.kind !== "noop") failed.push(`${full} (${outcome.kind})`);
     } catch (err) {
@@ -311,7 +322,7 @@ export async function renameArea(
   vaultRoot: string,
   kind: "project" | "top",
   name: string,
-  rawNewName: string,
+  rawNewName: string
 ): Promise<RenameResult> {
   assertEditable(kind, name);
   const newName = slugify(rawNewName);
@@ -323,16 +334,14 @@ export async function renameArea(
   // auf das Ziel des VERLIERERS zeigte — ein alter Client bekam eine sachlich
   // falsche Weiterleitung. Der Zielname gehört mit unter den Claim, sonst
   // könnte ein `createArea(ziel)` mitten in den Umzug laufen.
-  return withAreaExclusive(vaultRoot, [name, newName], () =>
-    renameAreaLocked(vaultRoot, kind, name, newName),
-  );
+  return withAreaExclusive(vaultRoot, [name, newName], () => renameAreaLocked(vaultRoot, kind, name, newName));
 }
 
 async function renameAreaLocked(
   vaultRoot: string,
   kind: "project" | "top",
   name: string,
-  newName: string,
+  newName: string
 ): Promise<RenameResult> {
   const from = areaPath(vaultRoot, kind, name);
   const to = areaPath(vaultRoot, kind, newName);
@@ -349,7 +358,7 @@ async function renameAreaLocked(
   if (kind === "project" && (await isDir(docsFrom)) && (await isDir(docsTo))) {
     throw new Error(
       `docs folder already exists: dokumentationen/${newName} — move or merge it first, ` +
-        `renaming would leave dokumentationen/${name} behind.`,
+        `renaming would leave dokumentationen/${name} behind.`
     );
   }
   // Codex-Gegenreview (P0): Die Nachprüfung am Ende (`findStaleScopes`) sieht
@@ -400,7 +409,7 @@ async function renameAreaLocked(
           `rename failed, nothing was moved: ${(err as Error).message}. ` +
             `AND the tombstone for '${name}' could not be removed ` +
             `(${(clearErr as Error).message}) — saves into '${name}' will keep failing ` +
-            `until that is fixed.`,
+            `until that is fixed.`
         );
       }
     }
@@ -443,8 +452,7 @@ async function renameAreaLocked(
     }
     if (failed.length > 0) {
       throw new Error(
-        `${failed.length} Datei(en) im Projekt konnten nicht umgeschrieben werden: ` +
-          `${failed.join("; ")}`,
+        `${failed.length} Datei(en) im Projekt konnten nicht umgeschrieben werden: ` + `${failed.join("; ")}`
       );
     }
     // Die Transaktionsgrenze, die dieser Operation fehlt — siehe
@@ -459,14 +467,14 @@ async function renameAreaLocked(
         throw new Error(
           `der Rename ist unvollständig: ${stale.length} Datei(en) im umgezogenen Regal ` +
             `tragen weiterhin die alte Area "${name}" — wahrscheinlich hat ein paralleler ` +
-            `Save währenddessen mit der alten Area-Identität geschrieben: ${stale.join("; ")}`,
+            `Save währenddessen mit der alten Area-Identität geschrieben: ${stale.join("; ")}`
         );
       }
     }
   } catch (err) {
     throw await rollbackRename(
       { vaultRoot, kind, name, newName, from, to, docsFrom, docsTo, docsFolderMoved },
-      err as Error,
+      err as Error
     );
   }
   return { name: newName, scopesRewritten, docsFolderMoved, docsRetagged };
@@ -503,7 +511,7 @@ async function rollbackRename(
     docsTo: string;
     docsFolderMoved: boolean;
   },
-  cause: Error,
+  cause: Error
 ): Promise<Error> {
   const stuck: string[] = [];
   // Codex-Gegenreview (P1): Hier standen an beiden Aufrufen NEUE LEERE
@@ -537,12 +545,10 @@ async function rollbackRename(
     if (notRestored.length > 0) {
       detail.push(
         `${notRestored.length} Datei(en) konnten nicht zurückgeschrieben werden und tragen ` +
-          `womöglich noch "${a.newName}" in Scope oder Tags: ${notRestored.join("; ")}`,
+          `womöglich noch "${a.newName}" in Scope oder Tags: ${notRestored.join("; ")}`
       );
     }
-    return new Error(
-      `rename failed AND could not be fully undone: ${cause.message}. ${detail.join(". ")}.`,
-    );
+    return new Error(`rename failed AND could not be fully undone: ${cause.message}. ${detail.join(". ")}.`);
   }
   // Vollständig zurückgerollt: Das Regal liegt wieder unter dem alten Namen,
   // also ist der alte Name wieder der richtige — der Grabstein muss weg, sonst

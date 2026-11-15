@@ -24,7 +24,15 @@ import { planHookEntries } from "../src/cli/adapters/claude-code.js";
 import { planCodexHooks, patchCodexHooks } from "../src/cli/adapters/codex.js";
 import { runsOurHookRunner } from "../src/cli/adapters/command-paths.js";
 
-const FILES = ["hook.js", "session-hook.js", "prompt-hook.js", "todo-hook.js", "bash-pre-hook.js", "bash-fail-hook.js", "stop-hook.js"];
+const FILES = [
+  "hook.js",
+  "session-hook.js",
+  "prompt-hook.js",
+  "todo-hook.js",
+  "bash-pre-hook.js",
+  "bash-fail-hook.js",
+  "stop-hook.js",
+];
 const entry = (command: string, extra: Record<string, unknown> = {}, matcher?: string): Record<string, unknown> => ({
   ...(matcher ? { matcher } : {}),
   hooks: [{ type: "command", command, timeout: 2, ...extra }],
@@ -37,14 +45,15 @@ test("runsOurHookRunner: the program run decides, not the text", () => {
   for (const ours of [
     "node /opt/x/node_modules/@bastra-recall/daemon/dist/prompt-hook.js",
     "node C:\\Users\\j\\AppData\\npm\\node_modules\\@bastra-recall\\daemon\\dist\\hook.js",
-    "node \"/Users/Jane Doe/repo/packages/daemon/dist/session-hook.js\"",
+    'node "/Users/Jane Doe/repo/packages/daemon/dist/session-hook.js"',
     "/Users/j/.bastra/stub/bastra-hook prompt",
     "bastra-recall-session-hook",
     "/usr/local/bin/bastra-recall-hook",
     "nexus-recall-hook",
     "/usr/local/bin/hook-timer node /opt/x/daemon/dist/todo-hook.js --trace",
     `${cc} node /old/runtime/dist/stop-hook.js`,
-  ]) assert.equal(runsOurHookRunner(ours, FILES, cc), true, ours);
+  ])
+    assert.equal(runsOurHookRunner(ours, FILES, cc), true, ours);
   for (const foreign of [
     "~/bin/my-bastra-recall-audit-hook.sh",
     "/opt/tools/nexus-recall-hook-logger --all",
@@ -57,7 +66,8 @@ test("runsOurHookRunner: the program run decides, not the text", () => {
     "node /tmp/foreign.js /opt/daemon/dist/prompt-hook.js",
     `${cc} /usr/bin/echo bastra-hook prompt`,
     `${cc} node /tmp/foreign.js /opt/daemon/dist/prompt-hook.js`,
-  ]) assert.equal(runsOurHookRunner(foreign, FILES, cc), false, foreign);
+  ])
+    assert.equal(runsOurHookRunner(foreign, FILES, cc), false, foreign);
 });
 
 test("a runner name in an argument never makes a foreign hook ours", () => {
@@ -116,7 +126,13 @@ test("Codex: a foreign script named like ours survives install and uninstall", (
   assert.equal(installed.after.PreToolUse.length, 4, "the three PreToolUse lanes are added next to it");
   assert.deepEqual(installed.leftAlone, ["BASTRA_HOOK_CLIENT=codex ~/bin/my-bastra-hook-audit.sh"]);
   // The registered events are unchanged by the recognition fix.
-  assert.deepEqual(Object.keys(installed.after), ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"]);
+  assert.deepEqual(Object.keys(installed.after), [
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "Stop",
+  ]);
 
   const removed = planCodexHooks("uninstall", installed.after, { includeStop: false, stubPresent: false });
   assert.deepEqual(removed.after.PreToolUse, [foreign]);
@@ -124,8 +140,12 @@ test("Codex: a foreign script named like ours survives install and uninstall", (
 
 test("Codex: our entries, current and legacy shapes, are still replaced", () => {
   const ours = [
-    entry("BASTRA_HOOK_CLIENT=codex node '/old/runtime/dist/prompt-hook.js'", { statusMessage: "Bastra Recall · recalling for prompt" }),
-    entry("BASTRA_HOOK_CLIENT=codex '/old/stub/bastra-hook' prompt", { statusMessage: "Bastra Recall · recalling for prompt" }),
+    entry("BASTRA_HOOK_CLIENT=codex node '/old/runtime/dist/prompt-hook.js'", {
+      statusMessage: "Bastra Recall · recalling for prompt",
+    }),
+    entry("BASTRA_HOOK_CLIENT=codex '/old/stub/bastra-hook' prompt", {
+      statusMessage: "Bastra Recall · recalling for prompt",
+    }),
     entry("node /old/dist/prompt-hook.js", { statusMessage: "bastra-recall: prompt" }),
     entry("BASTRA_HOOK_CLIENT=codex node '/old/runtime/dist/prompt-hook.js'"),
     entry("BASTRA_HOOK_CLIENT=codex '/old/stub/bastra-hook' prompt"),
@@ -138,48 +158,60 @@ test("Codex: our entries, current and legacy shapes, are still replaced", () => 
 
 // The checkout script applies the adapter's planHookEntries, so it uses the
 // same recognition. `--print` writes nothing but the resulting JSON; HOME is a temp dir.
-test("install-hook.sh: the same rule — foreign script kept and named, our legacy forms replaced", { skip: process.platform === "win32" }, async () => {
-  const home = await mkdtemp(join(tmpdir(), "bastra-install-hook-683-"));
-  try {
-    await mkdir(join(home, ".claude"));
-    await writeFile(join(home, ".claude", "settings.json"), JSON.stringify({
-      hooks: {
-        UserPromptSubmit: [
-          entry("~/bin/my-bastra-recall-audit-hook.sh"),
-          entry("bastra-recall-prompt-hook"),
-          entry("node /old/checkout/packages/daemon/dist/prompt-hook.js"),
-        ],
-      },
-    }), "utf8");
-    const script = fileURLToPath(new URL("../../skill/install-hook.sh", import.meta.url));
-    const run = spawnSync("bash", [script, "--print"], { env: { ...process.env, HOME: home }, encoding: "utf8" });
-    assert.equal(run.status, 0, run.stderr);
-    const commands = commandsOf(JSON.parse(run.stdout).hooks.UserPromptSubmit);
-    assert.equal(commands.length, 2);
-    assert.equal(commands[0], "~/bin/my-bastra-recall-audit-hook.sh");
-    // The script now builds entries with the CLI's adapter, client marker included.
-    assert.match(commands[1], /^BASTRA_HOOK_CLIENT=claude-code node .*\/daemon\/dist\/prompt-hook\.js$/);
-    assert.match(run.stderr, /left alone.*my-bastra-recall-audit-hook\.sh/);
-  } finally {
-    await rm(home, { recursive: true, force: true });
+test(
+  "install-hook.sh: the same rule — foreign script kept and named, our legacy forms replaced",
+  { skip: process.platform === "win32" },
+  async () => {
+    const home = await mkdtemp(join(tmpdir(), "bastra-install-hook-683-"));
+    try {
+      await mkdir(join(home, ".claude"));
+      await writeFile(
+        join(home, ".claude", "settings.json"),
+        JSON.stringify({
+          hooks: {
+            UserPromptSubmit: [
+              entry("~/bin/my-bastra-recall-audit-hook.sh"),
+              entry("bastra-recall-prompt-hook"),
+              entry("node /old/checkout/packages/daemon/dist/prompt-hook.js"),
+            ],
+          },
+        }),
+        "utf8"
+      );
+      const script = fileURLToPath(new URL("../../skill/install-hook.sh", import.meta.url));
+      const run = spawnSync("bash", [script, "--print"], { env: { ...process.env, HOME: home }, encoding: "utf8" });
+      assert.equal(run.status, 0, run.stderr);
+      const commands = commandsOf(JSON.parse(run.stdout).hooks.UserPromptSubmit);
+      assert.equal(commands.length, 2);
+      assert.equal(commands[0], "~/bin/my-bastra-recall-audit-hook.sh");
+      // The script now builds entries with the CLI's adapter, client marker included.
+      assert.match(commands[1], /^BASTRA_HOOK_CLIENT=claude-code node .*\/daemon\/dist\/prompt-hook\.js$/);
+      assert.match(run.stderr, /left alone.*my-bastra-recall-audit-hook\.sh/);
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
   }
-});
+);
 
-test("install-hook.sh leaves a runner name in a foreign argument alone", { skip: process.platform === "win32" }, async () => {
-  const home = await mkdtemp(join(tmpdir(), "bastra-install-argument-945-"));
-  try {
-    await mkdir(join(home, ".claude"));
-    const foreign = entry("/usr/bin/echo bastra-hook prompt");
-    const settings = join(home, ".claude", "settings.json");
-    await writeFile(settings, JSON.stringify({ hooks: { UserPromptSubmit: [foreign] } }), "utf8");
-    const script = fileURLToPath(new URL("../../skill/install-hook.sh", import.meta.url));
-    const run = spawnSync("bash", [script, "--uninstall"], { env: { ...process.env, HOME: home }, encoding: "utf8" });
-    assert.equal(run.status, 0, run.stderr);
-    assert.deepEqual(JSON.parse(await readFile(settings, "utf8")).hooks.UserPromptSubmit, [foreign]);
-  } finally {
-    await rm(home, { recursive: true, force: true });
+test(
+  "install-hook.sh leaves a runner name in a foreign argument alone",
+  { skip: process.platform === "win32" },
+  async () => {
+    const home = await mkdtemp(join(tmpdir(), "bastra-install-argument-945-"));
+    try {
+      await mkdir(join(home, ".claude"));
+      const foreign = entry("/usr/bin/echo bastra-hook prompt");
+      const settings = join(home, ".claude", "settings.json");
+      await writeFile(settings, JSON.stringify({ hooks: { UserPromptSubmit: [foreign] } }), "utf8");
+      const script = fileURLToPath(new URL("../../skill/install-hook.sh", import.meta.url));
+      const run = spawnSync("bash", [script, "--uninstall"], { env: { ...process.env, HOME: home }, encoding: "utf8" });
+      assert.equal(run.status, 0, run.stderr);
+      assert.deepEqual(JSON.parse(await readFile(settings, "utf8")).hooks.UserPromptSubmit, [foreign]);
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
   }
-});
+);
 
 test("Codex hooks.json: the foreign script is still in the file after install and uninstall, and both say so", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-codex-683-"));

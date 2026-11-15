@@ -32,11 +32,12 @@ const item = (id: string, priority: number, chars = 40, over: Record<string, unk
 // ── §16.3 Frage 1: wie viele Memories ───────────────────────────
 
 test("die Höchstzahl greift, und zwar nach Priorität", () => {
-  const d = governContext(
-    [item("c", 3), item("a", 1), item("b", 2)],
-    { items: 2 },
+  const d = governContext([item("c", 3), item("a", 1), item("b", 2)], { items: 2 });
+  assert.deepEqual(
+    d.kept.map((i) => i.id),
+    ["a", "b"],
+    "die beiden wichtigsten"
   );
-  assert.deepEqual(d.kept.map((i) => i.id), ["a", "b"], "die beiden wichtigsten");
   assert.deepEqual(d.dropped, [{ id: "c", reason: "item_budget" }]);
 });
 
@@ -52,14 +53,21 @@ test("ohne Budget bleibt alles", () => {
 test("das Token-Budget greift und wird bilanziert", () => {
   // Drei Einträge à 10 Token, Budget 25 → zwei passen.
   const d = governContext([item("a", 1), item("b", 2), item("c", 3)], { tokens: 25 });
-  assert.deepEqual(d.kept.map((i) => i.id), ["a", "b"]);
+  assert.deepEqual(
+    d.kept.map((i) => i.id),
+    ["a", "b"]
+  );
   assert.equal(d.tokens_spent, 20);
   assert.deepEqual(d.dropped, [{ id: "c", reason: "token_budget" }]);
 });
 
 test("ein Eintrag, der allein das Budget sprengt, fällt — er wird nicht gekürzt", () => {
   const d = governContext([item("riese", 1, 4000), item("klein", 2, 40)], { tokens: 25 });
-  assert.deepEqual(d.kept.map((i) => i.id), ["klein"], "der kleine passt noch");
+  assert.deepEqual(
+    d.kept.map((i) => i.id),
+    ["klein"],
+    "der kleine passt noch"
+  );
   assert.deepEqual(d.dropped, [{ id: "riese", reason: "token_budget" }]);
   // Ein halber Beleg ist keiner: Der Text der behaltenen Einträge ist
   // unangetastet.
@@ -76,33 +84,39 @@ test("beide Grenzen gelten gleichzeitig", () => {
 // ── §16.3 Frage 4: erneute Erwähnung ────────────────────────────
 
 test("was in dieser Sitzung schon gezeigt wurde, fällt zuerst", () => {
-  const d = governContext(
-    [item("alt", 1, 40, { alreadyShown: true }), item("neu", 2)],
-    { items: 1 },
+  const d = governContext([item("alt", 1, 40, { alreadyShown: true }), item("neu", 2)], { items: 1 });
+  assert.deepEqual(
+    d.kept.map((i) => i.id),
+    ["neu"],
+    "auch wenn `alt` die höhere Priorität hat"
   );
-  assert.deepEqual(d.kept.map((i) => i.id), ["neu"], "auch wenn `alt` die höhere Priorität hat");
   assert.deepEqual(d.dropped, [{ id: "alt", reason: "already_shown" }]);
 });
 
 test("der Aufrufer kann die Wiedererwähnung erlauben", () => {
-  const d = governContext(
-    [item("alt", 1, 40, { alreadyShown: true })],
-    {},
-    { allowRemention: true },
+  const d = governContext([item("alt", 1, 40, { alreadyShown: true })], {}, { allowRemention: true });
+  assert.deepEqual(
+    d.kept.map((i) => i.id),
+    ["alt"]
   );
-  assert.deepEqual(d.kept.map((i) => i.id), ["alt"]);
 });
 
 test("die Entscheidung ist deterministisch — zweimal dasselbe Ergebnis", () => {
   const items = [item("a", 2), item("b", 1), item("c", 2)];
   const first = governContext(items, { items: 2 });
   for (let i = 0; i < 20; i++) {
-    assert.deepEqual(governContext(items, { items: 2 }).kept.map((x) => x.id), first.kept.map((x) => x.id));
+    assert.deepEqual(
+      governContext(items, { items: 2 }).kept.map((x) => x.id),
+      first.kept.map((x) => x.id)
+    );
   }
   // `b` (Priorität 1) und `a` (Priorität 2, vor `c` eingereicht) überleben —
   // ausgegeben aber in EINGABEreihenfolge, nicht in Prioritätsreihenfolge. Bei
   // Gleichstand entscheidet die Eingabereihenfolge, wer aufgenommen wird.
-  assert.deepEqual(first.kept.map((x) => x.id), ["a", "b"]);
+  assert.deepEqual(
+    first.kept.map((x) => x.id),
+    ["a", "b"]
+  );
 });
 
 // ── Was der Governor NICHT tut ──────────────────────────────────
@@ -112,24 +126,28 @@ test("er sortiert nicht um — die Ausgabe steht in Eingabereihenfolge", () => {
   // nach oben. Umsortieren wäre eine Änderung der Trefferauswahl, die der
   // Governor nicht begründen kann.
   const d = governContext([item("a", 3), item("b", 2), item("c", 1)], { items: 2 });
-  assert.deepEqual(d.kept.map((i) => i.id), ["b", "c"], "Reihenfolge erhalten, `a` gestrichen");
+  assert.deepEqual(
+    d.kept.map((i) => i.id),
+    ["b", "c"],
+    "Reihenfolge erhalten, `a` gestrichen"
+  );
 });
 
 test("er kennt keine Hop-Herkunft — ein Nachbar fällt wie jeder andere", () => {
   // C-046: Trimmen darf die `related_via`-Sicht nicht als KLASSE wegräumen.
   // Der Governor liest `hop` nicht; ein Nachbar mit guter Priorität überlebt.
-  const d = governContext(
-    [item("direkt", 2, 40, { hop: "direct" }), item("nachbar", 1, 40, { hop: "1-hop" })],
-    { items: 1 },
+  const d = governContext([item("direkt", 2, 40, { hop: "direct" }), item("nachbar", 1, 40, { hop: "1-hop" })], {
+    items: 1,
+  });
+  assert.deepEqual(
+    d.kept.map((i) => i.id),
+    ["nachbar"],
+    "Priorität entscheidet, nicht die Herkunft"
   );
-  assert.deepEqual(d.kept.map((i) => i.id), ["nachbar"], "Priorität entscheidet, nicht die Herkunft");
 });
 
 test("jeder gestrichene Eintrag trägt seinen Grund", () => {
-  const d = governContext(
-    [item("a", 1, 40, { alreadyShown: true }), item("b", 2), item("c", 3)],
-    { items: 1 },
-  );
+  const d = governContext([item("a", 1, 40, { alreadyShown: true }), item("b", 2), item("c", 3)], { items: 1 });
   assert.equal(d.dropped.length, 2);
   assert.deepEqual(new Set(d.dropped.map((x) => x.reason)), new Set(["already_shown", "item_budget"]));
   // Ein stillschweigend gestrichener Kandidat wäre genau die Unsichtbarkeit,
@@ -203,9 +221,12 @@ test("und die Streichgründe machen sichtbar, was die Schleife nur mitzählte", 
       { id: "b", priority: 1, text: "x" },
       { id: "c", priority: 2, text: "x", alreadyShown: true },
     ],
-    {},
+    {}
   );
-  assert.deepEqual(d.kept.map((i) => i.id), ["b"]);
+  assert.deepEqual(
+    d.kept.map((i) => i.id),
+    ["b"]
+  );
   assert.deepEqual(d.dropped, [
     { id: "a", reason: "already_shown" },
     { id: "c", reason: "already_shown" },
@@ -225,7 +246,10 @@ test("#438: ein als token_budget verworfenes Duplikat erscheint nicht trotzdem i
 
 test("#438: die zweite Erwähnung derselben id fällt vor jedem Budget — auch wenn Platz wäre", () => {
   const d = governContext([item("a", 1), item("a", 2), item("b", 3)], { tokens: 1000, items: 10 });
-  assert.deepEqual(d.kept.map((k) => k.id), ["a", "b"]);
+  assert.deepEqual(
+    d.kept.map((k) => k.id),
+    ["a", "b"]
+  );
   assert.deepEqual(d.dropped, [{ id: "a", reason: "duplicate_id" }]);
   assert.equal(d.tokens_spent, 20, "das Duplikat kostet nichts");
 });
@@ -235,11 +259,11 @@ test("#438: die Item-Zählung und die Ausgabe zählen dieselbe Sache — Einträ
   // gefiltert — zwei Einträge einer id belegten einen Platz und wurden zweimal ausgegeben.
   const d = governContext([item("a", 1), item("a", 1), item("b", 2), item("c", 3)], { items: 2 });
   assert.equal(d.kept.length, 2);
-  assert.deepEqual(d.kept.map((k) => k.id), ["a", "b"]);
   assert.deepEqual(
-    d.dropped.map((x) => `${x.id}:${x.reason}`).sort(),
-    ["a:duplicate_id", "c:item_budget"],
+    d.kept.map((k) => k.id),
+    ["a", "b"]
   );
+  assert.deepEqual(d.dropped.map((x) => `${x.id}:${x.reason}`).sort(), ["a:duplicate_id", "c:item_budget"]);
 });
 
 test("#438: das Duplikat mit der besseren Priorität ist das behaltene", () => {

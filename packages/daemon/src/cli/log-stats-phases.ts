@@ -82,7 +82,8 @@ class CandidateBucket {
   private readonly left: number[];
 
   constructor(rows: Array<{ event: Record<string, unknown>; order: number }>) {
-    this.rows = rows.map(({ event, order }) => ({ event, time: tsOf(event), order }))
+    this.rows = rows
+      .map(({ event, order }) => ({ event, time: tsOf(event), order }))
       .sort((a, b) => a.time - b.time || a.order - b.order);
     this.right = Array.from({ length: rows.length + 1 }, (_, i) => i);
     this.left = Array.from({ length: rows.length + 1 }, (_, i) => i);
@@ -116,9 +117,7 @@ class CandidateBucket {
     // The nearest earlier timestamp can have several rows. The reference
     // loop chooses the first row in events order on an equal gap, so take the
     // earliest AVAILABLE row of that timestamp, not its final row in sort order.
-    const before = beforeLast >= 0
-      ? this.find(this.right, this.lowerBound(this.rows[beforeLast]!.time))
-      : -1;
+    const before = beforeLast >= 0 ? this.find(this.right, this.lowerBound(this.rows[beforeLast]!.time)) : -1;
     const after = this.find(this.right, lo);
     const a = before >= 0 ? this.rows[before] : undefined;
     const b = after < this.rows.length ? this.rows[after] : undefined;
@@ -132,9 +131,10 @@ class CandidateBucket {
   }
 }
 
-export function foldClientDuplicates(
-  events: Array<Record<string, unknown>>,
-): { events: Array<Record<string, unknown>>; folded: number } {
+export function foldClientDuplicates(events: Array<Record<string, unknown>>): {
+  events: Array<Record<string, unknown>>;
+  folded: number;
+} {
   const clients = events.filter(isClientRow);
   if (clients.length === 0) return { events, folded: 0 };
   const dropped = new Set<Record<string, unknown>>();

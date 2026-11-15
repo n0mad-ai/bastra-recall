@@ -129,19 +129,19 @@ export async function mutateMemoryFile(
   filePath: string,
   expectedId: string,
   mutation: MemoryMutation,
-  opts: MutateOptions & { vaultRoot: string },
+  opts: MutateOptions & { vaultRoot: string }
 ): Promise<MutateOutcome>;
 export async function mutateMemoryFile(
   filePath: string,
   expectedId: null,
   mutation: MemoryMutation,
-  opts?: MutateOptions,
+  opts?: MutateOptions
 ): Promise<MutateOutcome>;
 export async function mutateMemoryFile(
   filePath: string,
   expectedId: string | null,
   mutation: MemoryMutation,
-  opts: MutateOptions = {},
+  opts: MutateOptions = {}
 ): Promise<MutateOutcome> {
   // Der Trash-Stempel (expectedId === null) trifft eine Datei, die per
   // Definition kein indexiertes Memory mehr ist — es gibt keine id, an der ein
@@ -160,11 +160,11 @@ export async function mutateMemoryFile(
   if (opts.vaultRoot === undefined) {
     throw new Error(
       `mutateMemoryFile('${expectedId}') requires a vaultRoot: mutating a memory by its id ` +
-        `must run under the id transaction, never beside it.`,
+        `must run under the id transaction, never beside it.`
     );
   }
   return withIdClaim({ vaultRoot: opts.vaultRoot, id: expectedId, filePath, op: opts.op ?? "mutate" }, () =>
-    mutateUnderClaim(filePath, expectedId, mutation),
+    mutateUnderClaim(filePath, expectedId, mutation)
   );
 }
 
@@ -180,7 +180,7 @@ export interface MutateOptions {
 async function mutateUnderClaim(
   filePath: string,
   expectedId: string | null,
-  mutation: MemoryMutation,
+  mutation: MemoryMutation
 ): Promise<MutateOutcome> {
   // EIN Read für alles: Identität, Transform und der Vergleich vor dem Commit
   // müssen auf denselben Bytes beruhen. Vorher las die Identitätsprüfung die

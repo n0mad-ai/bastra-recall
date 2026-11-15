@@ -75,10 +75,7 @@ test("no daemon to compare against shows the CLI build, named as the CLI's", () 
   assert.equal(rows.length, 1);
   const out = text(rows);
   assert.match(out, /cli[^\n]*0\.8\.6/, "the number shown is the CLI's and must say so");
-  assert.ok(
-    !/daemon[^\n]*0\.8\.6/.test(out),
-    `the CLI version must never be presented as the daemon's, got: ${out}`,
-  );
+  assert.ok(!/daemon[^\n]*0\.8\.6/.test(out), `the CLI version must never be presented as the daemon's, got: ${out}`);
   assert.ok(!DRIFT_MARKER.test(out), "nothing to compare is not a drift");
 });
 
@@ -98,18 +95,18 @@ test("provider none plus a reachable Ollama offers the enable hint", () => {
 test("an unreachable Ollama produces no row at all", () => {
   assert.equal(
     semanticRecallRow({ effectiveProvider: "none", daemonSemanticRecall: "off", ollamaReachable: false }),
-    null,
+    null
   );
 });
 
 test("a configured provider produces no row", () => {
   assert.equal(
     semanticRecallRow({ effectiveProvider: "ollama", daemonSemanticRecall: "on", ollamaReachable: true }),
-    null,
+    null
   );
   assert.equal(
     semanticRecallRow({ effectiveProvider: "openai", daemonSemanticRecall: undefined, ollamaReachable: true }),
-    null,
+    null
   );
 });
 
@@ -120,13 +117,11 @@ test("a daemon already running semantic recall suppresses the row", () => {
     assert.equal(
       semanticRecallRow({ effectiveProvider: "none", daemonSemanticRecall: live, ollamaReachable: true }),
       null,
-      `daemon reporting ${live} must suppress the OFF hint`,
+      `daemon reporting ${live} must suppress the OFF hint`
     );
   }
 });
 
 test("an offline daemon does not suppress the hint", () => {
-  assert.ok(
-    semanticRecallRow({ effectiveProvider: "none", daemonSemanticRecall: undefined, ollamaReachable: true }),
-  );
+  assert.ok(semanticRecallRow({ effectiveProvider: "none", daemonSemanticRecall: undefined, ollamaReachable: true }));
 });

@@ -14,22 +14,31 @@ export function resetContextNotices(state: SessionState): void {
 }
 
 export async function compactContextNotice(
-  sessionId: string, key: string, binding: string, full: string, reminder: string,
+  sessionId: string,
+  key: string,
+  binding: string,
+  full: string,
+  reminder: string
 ): Promise<string> {
   if (!sessionId || !full) return full;
   const hash = createHash("sha256").update(binding).digest("hex");
   let unchanged = false;
   let epoch = "";
-  const saved = await mutateSessionState(sessionId, state => {
+  const saved = await mutateSessionState(sessionId, (state) => {
     state.constants ??= {};
     epoch = state.constants[PREFIX + "epoch"] ??= randomUUID();
     unchanged = state.constants[PREFIX + key] === hash;
   });
-  if (saved && !unchanged) await confirmLaneDelivery(async delivered => {
-    if (!delivered) return;
-    await mutateSessionState(sessionId, state => {
-      if (state.constants?.[PREFIX + "epoch"] === epoch) state.constants[PREFIX + key] = hash;
-    });
-  }, Date.now() + 5000, "context");
+  if (saved && !unchanged)
+    await confirmLaneDelivery(
+      async (delivered) => {
+        if (!delivered) return;
+        await mutateSessionState(sessionId, (state) => {
+          if (state.constants?.[PREFIX + "epoch"] === epoch) state.constants[PREFIX + key] = hash;
+        });
+      },
+      Date.now() + 5000,
+      "context"
+    );
   return saved && unchanged ? reminder : full;
 }

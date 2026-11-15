@@ -22,14 +22,14 @@ export function summarizeContextTax(events: AnyEvent[]): void {
   console.log(`  total (known parts):          ${t.totalTokens} tokens across ${emissions} emissions`);
   if (t.totalUnknown > 0) {
     console.log(
-      `  unknown residual:             ${t.totalUnknown} emissions carry no size field (pre-#457/#72 rows) — the total is a lower bound`,
+      `  unknown residual:             ${t.totalUnknown} emissions carry no size field (pre-#457/#72 rows) — the total is a lower bound`
     );
   }
   const row = (label: string, p: { emissions: number; tokens: number; unknown: number }): void => {
     if (p.emissions === 0) return;
     console.log(
       `    ${label.padEnd(22)} ${p.tokens.toString().padStart(8)}  ${p.emissions.toString().padStart(5)} emissions` +
-        (p.unknown > 0 ? `  (${p.unknown} unknown)` : ""),
+        (p.unknown > 0 ? `  (${p.unknown} unknown)` : "")
     );
   };
   console.log(`  by lane:`);
@@ -62,7 +62,9 @@ export function summarizeContextTax(events: AnyEvent[]): void {
     console.log(`  by ${field}:`);
     for (const [key, t2] of rows.sort((a, b) => b[1].totalTokens - a[1].totalTokens)) {
       const em = [...Object.values(t2.lanes), ...Object.values(t2.tools)].reduce((s, p) => s + p.emissions, 0);
-      console.log(`    ${key.padEnd(22)} ${t2.totalTokens.toString().padStart(8)}  ${em.toString().padStart(5)} emissions`);
+      console.log(
+        `    ${key.padEnd(22)} ${t2.totalTokens.toString().padStart(8)}  ${em.toString().padStart(5)} emissions`
+      );
     }
   }
   const top = [...ledger.sessions.values()]
@@ -74,7 +76,7 @@ export function summarizeContextTax(events: AnyEvent[]): void {
     for (const s of top) console.log(`    ${s.totalTokens.toString().padStart(7)}  ${s.session.slice(0, 8)}…`);
   }
   console.log(
-    `  (tool payloads are attributed to the caller session where the forwarder sent one; hook lanes to their own session_id)`,
+    `  (tool payloads are attributed to the caller session where the forwarder sent one; hook lanes to their own session_id)`
   );
 }
 
@@ -115,31 +117,24 @@ export function summarizeContextROI(events: AnyEvent[]): void {
   };
   const ratioSources = actedSurfaced.map(sourceForRatio);
   const actedFromNumeratorLanes = ratioSources.filter(
-    (source) => source !== null && numeratorHookSources.has(source),
+    (source) => source !== null && numeratorHookSources.has(source)
   ).length;
   const unattributed = ratioSources.filter((source) => source === null).length;
 
   // #161: Backoff-Ersparnis — Events, deren Injektion der Empty-Streak-
   // Backoff unterdrückt hat, tragen suppressed_tokens_est als Sparseite.
-  const allHookKinds = new Set([
-    ...hookKinds,
-    "bash_fail_hook_call",
-    "prompt_hook_call",
-    "todo_hook_call",
-  ]);
-  const suppressedEvents = events.filter(
-    (e) => allHookKinds.has(String(e.kind)) && e.suppressed === true,
-  );
+  const allHookKinds = new Set([...hookKinds, "bash_fail_hook_call", "prompt_hook_call", "todo_hook_call"]);
+  const suppressedEvents = events.filter((e) => allHookKinds.has(String(e.kind)) && e.suppressed === true);
   const savedTokens = suppressedEvents.reduce(
     (sum, e) => sum + (typeof e.suppressed_tokens_est === "number" ? Number(e.suppressed_tokens_est) : 0),
-    0,
+    0
   );
 
   console.log(`\n## Net-context-ROI  (hint tokens spent vs. acted-on loads they caused)`);
   console.log(`  injected hint tokens (est.):  ${totalTokens}  across ${withTokens.length} hook emissions`);
   if (suppressedEvents.length > 0) {
     console.log(
-      `  backoff-suppressed (#161):    ${suppressedEvents.length} emissions skipped, ~${savedTokens} hint tokens saved`,
+      `  backoff-suppressed (#161):    ${suppressedEvents.length} emissions skipped, ~${savedTokens} hint tokens saved`
     );
   }
   console.log(`  acted-on surfaced loads:      ${actedSurfaced.length}`);
@@ -161,7 +156,7 @@ export function summarizeContextROI(events: AnyEvent[]): void {
     }
   }
   console.log(
-    `  (token side is limited to pre-tool/session/bash-pre event kinds; the dimension split above covers acted-on loads)`,
+    `  (token side is limited to pre-tool/session/bash-pre event kinds; the dimension split above covers acted-on loads)`
   );
   const coverage =
     `(${actedFromNumeratorLanes} of ${actedSurfaced.length} acted-on from counted lanes; ` +
@@ -171,7 +166,7 @@ export function summarizeContextROI(events: AnyEvent[]): void {
       ? `  tokens per acted-on load:     ~${Math.round(totalTokens / actedFromNumeratorLanes)}  ${coverage}`
       : unattributed > 0
         ? `  tokens per acted-on load:     n/a ${coverage} — an unassigned load may belong to the counted lanes`
-        : `  tokens per acted-on load:     ∞ ${coverage} — no attributable load from the counted lanes`,
+        : `  tokens per acted-on load:     ∞ ${coverage} — no attributable load from the counted lanes`
   );
 
   // Per-session injected tokens (top 5 by cost).
@@ -234,9 +229,7 @@ export function summarizeContextROI(events: AnyEvent[]): void {
     }
   }
   if (directives.length > 0) {
-    console.log(
-      `  directive-type memories with acted_on 0 (${directives.length}) — NOT archival candidates:`,
-    );
+    console.log(`  directive-type memories with acted_on 0 (${directives.length}) — NOT archival candidates:`);
     console.log(`    a rule that works produces no acted_on signal; this list is not evidence of waste`);
     for (const t of directives.slice(0, 10)) {
       console.log(`    ${t.emitted.toString().padStart(4)}×  [${t.type}] ${t.id}`);
@@ -245,7 +238,7 @@ export function summarizeContextROI(events: AnyEvent[]): void {
   const unknownTyped = unused.filter((t) => t.type === "unknown").length;
   if (unknownTyped > 0) {
     console.log(
-      `  (${unknownTyped} of them from events before hinted_types existed — counted as archival, unverified)`,
+      `  (${unknownTyped} of them from events before hinted_types existed — counted as archival, unverified)`
     );
   }
 }
@@ -278,32 +271,24 @@ export function summarizeContextGovernor(events: AnyEvent[]): void {
   if (wi.sessionsMultiEmission === 0) return;
 
   console.log(`\n## Context governor  (#354 — what a session budget would have trimmed)`);
+  console.log(`  today: no budget is set — \`governContext\` defaults to 0 (unlimited) on all three wired lanes`);
   console.log(
-    `  today: no budget is set — \`governContext\` defaults to 0 (unlimited) on all three wired lanes`,
+    `  sessions with injections:     ${wi.sessionsWithInjection}  (of those, ${wi.sessionsMultiEmission} with 2+ — only these are readable as a session)`
   );
   console.log(
-    `  sessions with injections:     ${wi.sessionsWithInjection}  (of those, ${wi.sessionsMultiEmission} with 2+ — only these are readable as a session)`,
+    `  hint tokens per session:      p50 ${wi.tokensPerSession.p50}  p75 ${wi.tokensPerSession.p75}  p90 ${wi.tokensPerSession.p90}  max ${wi.tokensPerSession.max}`
   );
   console.log(
-    `  hint tokens per session:      p50 ${wi.tokensPerSession.p50}  p75 ${wi.tokensPerSession.p75}  p90 ${wi.tokensPerSession.p90}  max ${wi.tokensPerSession.max}`,
-  );
-  console.log(
-    `  injections per session:       p50 ${wi.emissionsPerSession.p50}  p90 ${wi.emissionsPerSession.p90}  max ${wi.emissionsPerSession.max}`,
+    `  injections per session:       p50 ${wi.emissionsPerSession.p50}  p90 ${wi.emissionsPerSession.p90}  max ${wi.emissionsPerSession.max}`
   );
   console.log(`  budget      sessions hit   injections trimmed   tokens trimmed`);
   for (const r of wi.rows) {
     console.log(
-      `  ${String(r.budget).padStart(6)}   ${String(r.sessionsAffected).padStart(13)}   ${String(r.emissionsTrimmed).padStart(18)}   ${String(r.tokensTrimmed).padStart(14)}`,
+      `  ${String(r.budget).padStart(6)}   ${String(r.sessionsAffected).padStart(13)}   ${String(r.emissionsTrimmed).padStart(18)}   ${String(r.tokensTrimmed).padStart(14)}`
     );
   }
-  console.log(
-    `  (per-injection granularity: the events carry one token sum per injection, while the governor`,
-  );
-  console.log(
-    `   decides per ENTRY by priority — so this is coarser than the governor and reads as an upper bound`,
-  );
-  console.log(
-    `   on what a budget touches. Single-injection sessions are excluded: the bash lane stamps a fresh`,
-  );
+  console.log(`  (per-injection granularity: the events carry one token sum per injection, while the governor`);
+  console.log(`   decides per ENTRY by priority — so this is coarser than the governor and reads as an upper bound`);
+  console.log(`   on what a budget touches. Single-injection sessions are excluded: the bash lane stamps a fresh`);
   console.log(`   synthetic session id per call.)`);
 }

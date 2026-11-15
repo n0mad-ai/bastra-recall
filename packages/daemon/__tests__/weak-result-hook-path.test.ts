@@ -60,7 +60,7 @@ test("#249: BM25-only mode is never weak — there the score is a real BM25 quan
   assert.equal(
     isWeakResult(hits, false),
     false,
-    "the flag is hybrid-only; in BM25 mode the floor already does this job",
+    "the flag is hybrid-only; in BM25 mode the floor already does this job"
   );
 });
 
@@ -82,10 +82,16 @@ test("#249: no matched_terms at all cannot be a title match", () => {
 test("#249: title matching is diacritic- and case-tolerant", () => {
   const h = hit({ title: "Größe der Lösung", matched_terms: ["größe"] });
   assert.equal(hitTitleMatches(h), true);
-  assert.equal(hitTitleMatches(hit({ title: "Größe der Lösung", matched_terms: ["GRÖSSE"] })), true,
-    "GRÖSSE is the upper case of größe — Unicode case folding maps ß to ss, and the title check folds case");
-  assert.equal(hitTitleMatches(hit({ title: "Größe der Lösung", matched_terms: ["grosse"] })), false,
-    "folding is about case, not transliteration: ö is not o");
+  assert.equal(
+    hitTitleMatches(hit({ title: "Größe der Lösung", matched_terms: ["GRÖSSE"] })),
+    true,
+    "GRÖSSE is the upper case of größe — Unicode case folding maps ß to ss, and the title check folds case"
+  );
+  assert.equal(
+    hitTitleMatches(hit({ title: "Größe der Lösung", matched_terms: ["grosse"] })),
+    false,
+    "folding is about case, not transliteration: ö is not o"
+  );
 });
 
 // ─── #230: no_home — the stricter claim ──────────────────────────────────

@@ -1,21 +1,23 @@
-import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
-import { bastraDataDir } from '@bastra-recall/core/platform-paths';
-import { readRuntimeSettingsRecord } from '@bastra-recall/core/runtime-settings';
-import type { PanelLang } from './i18n';
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { bastraDataDir } from "@bastra-recall/core/platform-paths";
+import { readRuntimeSettingsRecord } from "@bastra-recall/core/runtime-settings";
+import type { PanelLang } from "./i18n";
 
 /** `language.primary` from the daemon's settings record, with legacy fallback before migration. */
 export function readPrimaryLanguage(home: string = homedir()): string | undefined {
   try {
-    const path = join(bastraDataDir(home), 'cli-settings.json');
+    const path = join(bastraDataDir(home), "cli-settings.json");
     const stored = readRuntimeSettingsRecord(path);
-    const primary = JSON.parse(stored === undefined ? readFileSync(path, 'utf8') : stored ?? '{}')?.language?.primary;
-    return typeof primary === 'string' ? primary.trim().toLowerCase() : undefined;
-  } catch { return undefined; }
+    const primary = JSON.parse(stored === undefined ? readFileSync(path, "utf8") : (stored ?? "{}"))?.language?.primary;
+    return typeof primary === "string" ? primary.trim().toLowerCase() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** An explicit --lang wins; otherwise German only when Recall's primary language is German, else English. */
 export function panelLang(cliLang: PanelLang | undefined, home?: string): PanelLang {
-  return cliLang ?? (readPrimaryLanguage(home) === 'de' ? 'de' : 'en');
+  return cliLang ?? (readPrimaryLanguage(home) === "de" ? "de" : "en");
 }

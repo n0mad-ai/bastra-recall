@@ -96,7 +96,11 @@ test("release(condition) removes ALL entries sharing the token and returns the r
     assert.deepEqual(removed.sort(), ["m1", "m2"], "both entries of the token are gone in ONE call");
 
     const remaining = await listFloors(undefined, path);
-    assert.deepEqual(remaining.map((e) => e.memory_id), ["m3"], "unrelated condition survives");
+    assert.deepEqual(
+      remaining.map((e) => e.memory_id),
+      ["m3"],
+      "unrelated condition survives"
+    );
 
     assert.deepEqual(await release("migration-x", path), [], "releasing an unknown/spent token removes nothing");
   } finally {
@@ -111,8 +115,14 @@ test("affirm without why (or without affirmed_by) is rejected — the clock does
 
     // Anti-incidental-touch invariant (#142): an affirm is a deliberate
     // re-justification. No why = no affirm.
-    await assert.rejects(() => affirm("m1", "cowork-os", "", { path, actsPath }), /affirm requires affirmed_by AND why/);
-    await assert.rejects(() => affirm("m1", "", "still valid", { path, actsPath }), /affirm requires affirmed_by AND why/);
+    await assert.rejects(
+      () => affirm("m1", "cowork-os", "", { path, actsPath }),
+      /affirm requires affirmed_by AND why/
+    );
+    await assert.rejects(
+      () => affirm("m1", "", "still valid", { path, actsPath }),
+      /affirm requires affirmed_by AND why/
+    );
     await assert.rejects(() => affirm("m1", "  ", "   ", { path, actsPath }), /affirm requires affirmed_by AND why/);
 
     const after = await listFloors(undefined, path);
@@ -164,7 +174,7 @@ test(`cap: entry ${MAX_FLOORS + 1} is rejected with an error listing the current
         assert.match(err.message, /m1 \(condition: cond-1\)/);
         assert.match(err.message, new RegExp(`m${MAX_FLOORS} \\(condition: cond-${MAX_FLOORS}\\)`));
         return true;
-      },
+      }
     );
 
     // Rewriting an EXISTING entry at the cap is not an add — it must pass.
@@ -182,8 +192,15 @@ test("persistence roundtrip: entries survive as valid JSON on disk and re-read i
   try {
     const a = await addFloor({ memory_id: "m1", condition: "c1", reason: "r1", scope: "proj-a" }, path);
     const b = await addFloor(
-      { memory_id: "m2", condition: "c2", reason: "r2", affirmed_by: "surface", why: "rewrite-as-affirm", acts_path: actsPath },
-      path,
+      {
+        memory_id: "m2",
+        condition: "c2",
+        reason: "r2",
+        affirmed_by: "surface",
+        why: "rewrite-as-affirm",
+        acts_path: actsPath,
+      },
+      path
     );
 
     const raw = JSON.parse(readAppRecord("floors", path)) as FloorEntry[];
@@ -196,7 +213,7 @@ test("persistence roundtrip: entries survive as valid JSON on disk and re-read i
     // Both-or-neither on add: a lone why is not an affirm.
     await assert.rejects(
       () => addFloor({ memory_id: "m3", condition: "c3", reason: "r3", why: "lonely why" }, path),
-      /affirmed_by and why must be provided together/,
+      /affirmed_by and why must be provided together/
     );
   } finally {
     await cleanup();
@@ -235,7 +252,7 @@ test("listFloors: a capitalised project name still finds its own lowercase-scope
     assert.deepEqual(
       scoped.map((e) => e.memory_id).sort(),
       ["ga", "pc"],
-      "the project's own floor must not vanish just because the detected cwd segment is capitalised",
+      "the project's own floor must not vanish just because the detected cwd segment is capitalised"
     );
   } finally {
     await cleanup();
@@ -262,7 +279,7 @@ function httpPost(port: number, path: string, payload: unknown): Promise<{ statu
         const chunks: Buffer[] = [];
         res.on("data", (c: Buffer) => chunks.push(c));
         res.on("end", () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
-      },
+      }
     );
     req.on("error", reject);
     req.write(body);
@@ -347,7 +364,11 @@ test("/hook/floors joins id→title/summary daemon-side and honors ?scope=", asy
 
     const foreign = await httpGet(srv.port, "/hook/floors?scope=other-project");
     const foreignFloors = (JSON.parse(foreign.body) as FloorsBody).floors;
-    assert.deepEqual(foreignFloors.map((f) => f.memory_id), ["ghost"], "foreign scope sees only global entries");
+    assert.deepEqual(
+      foreignFloors.map((f) => f.memory_id),
+      ["ghost"],
+      "foreign scope sees only global entries"
+    );
   } finally {
     await srv.close();
   }
@@ -371,7 +392,10 @@ test("/api/v1/floors add + list + affirm-guard + release over the REST surface",
 
     const list = await httpGet(srv.port, "/api/v1/floors");
     assert.equal(list.status, 200);
-    assert.deepEqual((JSON.parse(list.body) as FloorsBody).floors.map((f) => f.memory_id), ["m1"]);
+    assert.deepEqual(
+      (JSON.parse(list.body) as FloorsBody).floors.map((f) => f.memory_id),
+      ["m1"]
+    );
 
     // The anti-incidental-touch invariant crosses the wire: no why → 400.
     const badAffirm = await httpPost(srv.port, "/api/v1/floors/affirm", { memory_id: "m1", affirmed_by: "surface" });
@@ -403,7 +427,11 @@ test("survival-by-id: retire/unpin drops to ranked without delete — file and r
   const dir = await mkdtemp(join(tmpdir(), "bastra-floors-survival-"));
   const file = join(dir, "floored.md");
   await writeFile(file, memoryMarkdown("floored-probe", "floored survival probe", "floors-survival"), "utf8");
-  await writeFile(join(dir, "other.md"), memoryMarkdown("other-probe", "unrelated other memory", "floors-survival"), "utf8");
+  await writeFile(
+    join(dir, "other.md"),
+    memoryMarkdown("other-probe", "unrelated other memory", "floors-survival"),
+    "utf8"
+  );
   const vault = new Vault(dir);
   await vault.init();
   const floorsPath = join(dir, "floors.json");
@@ -421,7 +449,10 @@ test("survival-by-id: retire/unpin drops to ranked without delete — file and r
   try {
     const bytesBefore = await readFile(file);
     const rankBefore = rank();
-    assert.ok(rankBefore.some((h) => h.id === "floored-probe"), "probe ranks before flooring");
+    assert.ok(
+      rankBefore.some((h) => h.id === "floored-probe"),
+      "probe ranks before flooring"
+    );
 
     // FLOOR: the primitive is injection-layer-only — a daemon-side registry
     // entry, never a frontmatter write, never a score input to search.ts.

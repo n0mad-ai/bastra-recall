@@ -75,7 +75,7 @@ test("a claim-gated save emits exactly one content-free hold event", async (t) =
       scope: "gateproj",
       claimed_count: 1,
       overwrite: false,
-    },
+    }
   );
   for (const privateField of ["title", "body", "recall_when", "summary"]) {
     assert.ok(!(privateField in holds[0]), `${privateField} must not be logged`);

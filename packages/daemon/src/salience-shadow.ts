@@ -44,7 +44,7 @@ const clamp01 = (n: number): number => Math.min(Math.max(n, 0), 1);
 export function computeSalienceShadow(
   hits: { id: string; score: number }[],
   resolveFm: (id: string) => Record<string, unknown> | undefined,
-  cap: number = salienceRankCap(),
+  cap: number = salienceRankCap()
 ): SalienceShadow | undefined {
   if (salienceRankMode() !== "shadow") return undefined;
   if (hits.length === 0 || cap <= 0) return undefined;
@@ -62,9 +62,7 @@ export function computeSalienceShadow(
   if (!scored.some((h) => h.salience != null && h.salience > 0)) return undefined;
 
   const shadowRank = new Map(
-    [...scored]
-      .sort((a, b) => b.shadow_score - a.shadow_score)
-      .map((h, i) => [h.id, i + 1] as const),
+    [...scored].sort((a, b) => b.shadow_score - a.shadow_score).map((h, i) => [h.id, i + 1] as const)
   );
   const out: SalienceShadowHit[] = scored.map((h) => ({
     id: h.id,

@@ -63,7 +63,7 @@ test("survival-by-id: curator demotion is score-only and fully reversible", asyn
     assert.ok(duringDemoted, "demoted memory is still findable (demote ≠ hide)");
     assert.ok(
       Math.abs(duringDemoted!.score - beforeDemoted!.score * CURATOR_DEMOTION_MULTIPLIER) < 0.01,
-      `score is ×${CURATOR_DEMOTION_MULTIPLIER} (was ${beforeDemoted!.score}, got ${duringDemoted!.score})`,
+      `score is ×${CURATOR_DEMOTION_MULTIPLIER} (was ${beforeDemoted!.score}, got ${duringDemoted!.score})`
     );
     // neighbor: untouched
     assert.equal(duringNeighbor!.score, beforeNeighbor!.score, "un-demoted neighbor keeps its score");

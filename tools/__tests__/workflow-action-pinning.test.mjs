@@ -48,14 +48,12 @@ test("every third-party action is pinned to a full commit SHA, not a moving tag"
   const uses = await collectUses();
   assert.ok(uses.length > 0, "found no `uses:` at all — the collector is broken, not the workflows");
 
-  const unpinned = uses
-    .filter((u) => !u.ref.startsWith("./"))
-    .filter((u) => !FULL_SHA.test(u.ref.split("@")[1] ?? ""));
+  const unpinned = uses.filter((u) => !u.ref.startsWith("./")).filter((u) => !FULL_SHA.test(u.ref.split("@")[1] ?? ""));
 
   assert.deepEqual(
     unpinned.map((u) => `${u.file}:${u.line} ${u.ref}`),
     [],
-    "a moving tag lets whoever controls it run code in CI with this repository's token",
+    "a moving tag lets whoever controls it run code in CI with this repository's token"
   );
 });
 

@@ -71,7 +71,7 @@ test("ein laufender Save hält seinen Scope — der Rename daneben schreibt kein
   await assert.rejects(
     () => renameArea(root, "project", "carnexus", "neu"),
     /save\(s\) are writing into/,
-    "der Rename darf nicht mitten in einen Save laufen",
+    "der Rename darf nicht mitten in einen Save laufen"
   );
   // Und er hat nichts hinterlassen: kein Grabstein, kein bewegtes Regal.
   assert.equal(await readAreaMark(root, "carnexus"), null);
@@ -105,7 +105,7 @@ test("zwei parallele Renames: die Marke zeigt auf das Regal, das wirklich existi
     assert.equal(
       mark?.to,
       winner,
-      `der Grabstein muss auf das existierende Regal zeigen, nicht auf das Ziel des Verlierers (Runde ${round})`,
+      `der Grabstein muss auf das existierende Regal zeigen, nicht auf das Ziel des Verlierers (Runde ${round})`
     );
     assert.equal(existsSync(join(root, "memories", "projects", winner)), true);
     const loser = winner === "ziel-a" ? "ziel-b" : "ziel-a";
@@ -123,7 +123,7 @@ test("ein gescheiterter Rename lässt keinen Grabstein zurück", async (t) => {
   assert.equal(
     await readAreaMark(root, "carnexus"),
     null,
-    "das Regal steht unverändert da — dann darf es auch kein Grabstein sperren",
+    "das Regal steht unverändert da — dann darf es auch kein Grabstein sperren"
   );
   assert.equal(existsSync(join(root, "memories", "projects", "carnexus")), true);
   // Und ein Save in die unveränderte Area geht weiterhin.
@@ -135,10 +135,7 @@ test("Delete und Create desselben Namens laufen nicht gegeneinander", async (t) 
   const root = await vault(t);
   await createArea(root, "carnexus");
 
-  const settled = await Promise.allSettled([
-    deleteArea(root, "project", "carnexus"),
-    createArea(root, "carnexus"),
-  ]);
+  const settled = await Promise.allSettled([deleteArea(root, "project", "carnexus"), createArea(root, "carnexus")]);
   // Beide Ausgänge sind zulässig — verboten ist nur ein Endzustand, in dem der
   // Ordner existiert UND ein Grabstein ihn sperrt.
   const mark = await readAreaMark(root, "carnexus");
@@ -146,7 +143,7 @@ test("Delete und Create desselben Namens laufen nicht gegeneinander", async (t) 
   assert.equal(
     dirThere && mark !== null,
     false,
-    `lebendes Regal mit Grabstein: ${JSON.stringify({ mark, settled: settled.map((s) => s.status) })}`,
+    `lebendes Regal mit Grabstein: ${JSON.stringify({ mark, settled: settled.map((s) => s.status) })}`
   );
 });
 
@@ -168,7 +165,7 @@ test("einen verwaisten Area-Lock übernimmt genau einer", async (t) => {
     await writeFile(
       lockPath,
       JSON.stringify({ pid: 999999, host: "eine-andere-maschine", ts: 0, token: "alt" }),
-      "utf8",
+      "utf8"
     );
     const past = new Date(Date.now() - 5 * 60_000);
     await utimes(lockPath, past, past);
@@ -182,14 +179,14 @@ test("einen verwaisten Area-Lock übernimmt genau einer", async (t) => {
           maxInside = Math.max(maxInside, inside);
           await new Promise((r) => setTimeout(r, 5));
           inside--;
-        }),
-      ),
+        })
+      )
     );
     assert.equal(maxInside, 1, `nie mehr als einer im exklusiven Abschnitt (Runde ${round})`);
     assert.equal(
       settled.filter((x) => x.status === "fulfilled").length,
       1,
-      `genau ein Reclaimer darf gewinnen (Runde ${round})`,
+      `genau ein Reclaimer darf gewinnen (Runde ${round})`
     );
   }
 });
@@ -227,7 +224,7 @@ test("ein exklusiver people-Lock blockiert einen Save mit folder: memories/peopl
 
   await assert.rejects(
     () => saveMemory(root, input({ id: "mike", folder: "memories/people" })),
-    /the area 'people' is being renamed, deleted or created right now/,
+    /the area 'people' is being renamed, deleted or created right now/
   );
   assert.equal(existsSync(join(root, "memories", "people", "mike.md")), false);
 
@@ -256,7 +253,7 @@ test("ein Re-File sperrt Quell- UND Zielregal", async (t) => {
   await targetAcquired;
   await assert.rejects(
     () => saveMemory(root, input({ overwrite: true, folder: "memories/people" })),
-    /the area 'people' is being renamed/,
+    /the area 'people' is being renamed/
   );
   releaseTarget();
   await holdingTarget;
@@ -273,7 +270,7 @@ test("ein Re-File sperrt Quell- UND Zielregal", async (t) => {
   await sourceAcquired;
   await assert.rejects(
     () => saveMemory(root, input({ overwrite: true, folder: "memories/people" })),
-    /the area 'carnexus' is being renamed/,
+    /the area 'carnexus' is being renamed/
   );
   releaseSource();
   await holdingSource;

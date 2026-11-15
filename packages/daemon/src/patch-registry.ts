@@ -410,7 +410,7 @@ export function probePatch(
   patchFile: string,
   /** Pass the already-resolved apply root when probing a whole series: working
    *  it out costs two `git` processes, and it cannot change between patches. */
-  knownApplyRoot?: string,
+  knownApplyRoot?: string
 ): { state: PatchState; detail?: string } {
   if (!findExecutable("git")) return { state: "unknown", detail: "git not found on a trusted PATH" };
   if (!existsSync(patchFile)) return { state: "unknown", detail: "patch file missing" };
@@ -430,9 +430,16 @@ export function statusAll(root: string, home = homedir(), version?: string): Pat
   return activePatches(home).map((entry) => {
     const { state, detail } = probePatch(root, join(dir, entry.file), applyRoot);
     if (state === "already-upstream" && prior === null && !appliedByLastRun(last, entry.id, applyRoot, version)) {
-      return { entry, state: "unknown" as const, detail: "patch provenance is unreadable; keeping the registered patch" };
+      return {
+        entry,
+        state: "unknown" as const,
+        detail: "patch provenance is unreadable; keeping the registered patch",
+      };
     }
-    if (state === "already-upstream" && (appliedByLastRun(last, entry.id, applyRoot, version) || prior?.has(entry.id))) {
+    if (
+      state === "already-upstream" &&
+      (appliedByLastRun(last, entry.id, applyRoot, version) || prior?.has(entry.id))
+    ) {
       return { entry, state: "applied-here" as const, detail };
     }
     return { entry, state, detail };
@@ -454,7 +461,15 @@ function unquotePath(raw: string): string | null {
   if (raw.length < 2 || !raw.startsWith('"') || !raw.endsWith('"')) return null;
   const body = raw.slice(1, -1);
   const simple: Record<string, number> = {
-    a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, "\\": 92,
+    a: 7,
+    b: 8,
+    t: 9,
+    n: 10,
+    v: 11,
+    f: 12,
+    r: 13,
+    '"': 34,
+    "\\": 92,
   };
   const bytes: number[] = [];
   for (let i = 0; i < body.length; i++) {
@@ -676,7 +691,10 @@ export function applySeries(root: string, opts: ApplyOptions = {}): ApplyOutcome
     const file = join(dir, entry.file);
     const { state, detail } = probePatch(root, file, roots.apply);
 
-    if (state === "already-upstream" && (appliedByLastRun(last, entry.id, roots.apply, opts.version) || prior === null || prior.has(entry.id))) {
+    if (
+      state === "already-upstream" &&
+      (appliedByLastRun(last, entry.id, roots.apply, opts.version) || prior === null || prior.has(entry.id))
+    ) {
       out.kept.push(entry);
       continue;
     }
@@ -693,8 +711,12 @@ export function applySeries(root: string, opts: ApplyOptions = {}): ApplyOutcome
         continue;
       }
       const covered = takeSnapshot(file);
-      try { rememberPatch(out.tree.root, opts.version, entry.id, home); }
-      catch (err) { out.setAside.push({ entry, detail: `could not record patch provenance: ${(err as Error).message}` }); continue; }
+      try {
+        rememberPatch(out.tree.root, opts.version, entry.id, home);
+      } catch (err) {
+        out.setAside.push({ entry, detail: `could not record patch provenance: ${(err as Error).message}` });
+        continue;
+      }
       if (applyPatch(roots.apply, file).ok) {
         out.applied.push(entry);
         if (!covered) unenumerable.add(entry.id);
@@ -705,8 +727,12 @@ export function applySeries(root: string, opts: ApplyOptions = {}): ApplyOutcome
     // Conflict — one more attempt, and only where it is actually available.
     if (state === "conflict" && repo && !opts.dryRun) {
       takeSnapshot(file);
-      try { rememberPatch(out.tree.root, opts.version, entry.id, home); }
-      catch (err) { out.setAside.push({ entry, detail: `could not record patch provenance: ${(err as Error).message}` }); continue; }
+      try {
+        rememberPatch(out.tree.root, opts.version, entry.id, home);
+      } catch (err) {
+        out.setAside.push({ entry, detail: `could not record patch provenance: ${(err as Error).message}` });
+        continue;
+      }
       if (tryThreeWay(roots.apply, file)) {
         out.applied.push(entry);
         continue;

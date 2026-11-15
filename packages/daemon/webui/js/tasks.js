@@ -1,148 +1,1112 @@
 export function createTasksView() {
-// Everything from task/source data is rendered via textContent, never HTML.
-const $=id=>document.getElementById(`task-${id}`);let token="",snapshot,localSession=false,csrf="",coldTasks=[],selectedId=null,dragTask=null;
-const limits={done:20,failed:20};
-let visible=false,pollTimer=0,polling=false,accessExpired=false,request=0,connection=0,boardState="",signedOut=false,renewing=null,renewalError="";
-const active=()=>visible&&!document.hidden;
-const busy=()=>dragTask||['detail','compose','settings','cards-dialog','proposal'].some(name=>$(name).open);
-async function poll(){
- if(!active()||signedOut||busy()||polling||accessExpired||(!token&&!localSession))return;
- polling=true;const epoch=connection,controller=new AbortController();let timer;
- // Cancel the network request at its deadline before allowing another poll.
- const timeout=new Promise((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(new Error('Zeitüberschreitung'));},10000);});
- try{await Promise.race([refresh(true,false,controller.signal),timeout]);}catch(e){if(epoch===connection&&active()&&e.code==='unauthorized'){if(localSession)await recoverLocal();else{accessExpired=true;message(e.message,true);}}}
- finally{clearTimeout(timer);polling=false;}
-}
-function armPolling(){clearInterval(pollTimer);pollTimer=active()?setInterval(poll,1500):0;}
-document.addEventListener('visibilitychange',async()=>{armPolling();if(active()&&!signedOut){if(localSession)accessExpired=false;if(!token&&!localSession)await action(connectLocal,false);else await poll();}});
-const state={pending:"offen",due:"fällig",snoozed:"zurückgestellt",resolved:"erledigt",cancelled:"abgebrochen",expired:"abgelaufen"};
-const level={notify:"erinnern",prepare:"vorbereiten",execute:"ausführen"},outcome={pending:"offen",unknown:"Ausgang unklar",succeeded:"Wirkung bestätigt",reconciled:"Zielstand abgeglichen",failed:"fehlgeschlagen"};
-const errors={lease_busy:"Diese Aufgabe wird gerade ausgeführt. Bitte prüfe ihren aktuellen Stand.",unauthorized:"Dein Zugang ist abgelaufen oder nicht verfügbar. Bitte verbinde dich erneut.",forbidden:"Für diese Aktion fehlt deine Berechtigung.",not_found:"Die Aufgabe wurde nicht gefunden.",validation:"Bitte prüfe deine Eingabe. Gib eine Dauer wie 7d oder eine Zeit als YYYY-MM-DDTHH:mm ein.",conflict:"Die Aufgabe wurde inzwischen geändert. Bitte aktualisiere die Ansicht.",approval_stale:"Der Vorschlag wurde geändert. Bitte bereite ihn für den aktuellen Auftrag neu vor.",approval_expired:"Die Freigabe ist abgelaufen.",approval_revoked:"Die Freigabe wurde zurückgenommen.",approval_denied:"Dieser Vorschlag wurde nicht freigegeben.",approval_missing:"Für diese Aktion fehlt ein Auftrag oder ein Ja im Chat.",adapter_disabled:"Ausführen ist noch ausgeschaltet.",execution_stopped:"Ausführen wurde gestoppt.",protected_boundary_required:"Ausführen ist noch nicht eingerichtet. Erinnern und Vorbereiten bleiben verfügbar."};
-const text=(tag,value,cls)=>{const n=document.createElement(tag);n.textContent=value;if(cls)n.className=cls;return n;};
-const reviewReason=value=>value === "Explicit owner review required" ? "Wartet auf deine Freigabe." : value === "Edited binding requires explicit owner review" ? "Nach der Änderung ist eine neue Freigabe nötig." : value;
-const verification=t=>{const v=t.verification;const names={verified:"bestätigt",refuted:"Prämisse geändert",inconclusive:"unklar/strittig",unavailable:"nicht erreichbar",stale:"veraltet"};const reasons={irrelevant_claim:"andere Prämisse",evidence_not_attributable:"Evidenz unbekannt oder strittig",unknown_or_contested_evidence:"Evidenz unbekannt oder strittig",source_disabled_or_missing:"Quelle aus oder fehlt",evidence_revision_drift:"Evidenzrevision geändert",source_timeout:"Zeitbudget erreicht",source_budget:"Quellbudget überschritten"};return v?`${names[v.outcome]}${reasons[v.reason]?` (${reasons[v.reason]})`:""}, geprüft ${time(v.checked_at,t.timezone)}`:t.schedule.kind==="event"?"wartet auf erstes Ereignis":"noch nicht geprüft";};
-const whyNow=c=>c.why_now?.startsWith("Registered condition") ? "Der Auslöser ist fällig. Ein Ergebnis oder bestandenes Messkriterium wird damit nicht behauptet." : c.why_now;
-const message=(value,error=false)=>{$("message").textContent=value;$("message").hidden=!value;$("message").dataset.kind=error?"error":"success";};
-const time=(at,tz)=>at===undefined?"noch keine":new Intl.DateTimeFormat("de-DE",{weekday:"short",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",timeZone:tz||"Europe/Madrid"}).format(new Date(at));
-async function api(name,input={},signal){const r=await fetch(localSession?`/ui/tasks/api/task_${name}`:`/api/v1/task_${name}`,{method:"POST",headers:{"Content-Type":"application/json",...(localSession?{"x-bastra-task-csrf":csrf}:{Authorization:`Bearer ${token}`})},body:JSON.stringify(input),signal});const b=await r.json();if(!r.ok){const e=new Error(errors[b.code]||"Vorgang nicht möglich; Daemon/Status prüfen.");e.code=b.code;throw e;}return b;}
-async function recoverLocal(ownAction=false){
- if(!localSession||signedOut||!active()||accessExpired)return false;
- let renewed=false;
- try{
-  if(!renewing)renewing=connectLocal(true).finally(()=>{renewing=null;});
-  if(!await renewing||signedOut||!active())return false;
-  renewed=true;
-  await refresh(!ownAction||!!dragTask,true);
-  if(signedOut||!localSession||!active())return false;
-  if(renewalError&&$("message").textContent===renewalError)message("");renewalError="";
-  return true;
- }catch(e){if(accessExpired||signedOut||!localSession||!active())return false;accessExpired=!renewed||e.code==='unauthorized';renewalError=e.message;message(renewalError,true);return false;}
-}
-async function action(fn,ownAction=true){const epoch=connection;try{await fn();}catch(e){
- if(e.code==='unauthorized'&&localSession&&epoch!==connection&&!signedOut&&active())return;
- if(e.code==='unauthorized'&&localSession&&epoch===connection&&!signedOut&&active()){
-  if(accessExpired){message(renewalError||e.message,true);return;}
-  if(await recoverLocal(ownAction)&&ownAction)message(e.refreshFailed?"Sitzung erneuert. Bitte prüfe den aktuellen Aufgabenstand.":"Sitzung erneuert. Bitte löse die Aktion erneut aus.");
- }else message(e.message,true);
-}}
-function button(label,fn,owner=false,unavailable=false){const b=text("button",label,"skill-declare");b.disabled=unavailable||(owner&&snapshot.role!=="owner");b.addEventListener("click",()=>action(fn));return b;}
-async function mutate(task,op,extra={}){const current=await api("get",{id:task.id});await api(op,{id:task.id,expected_revision:current.expected_revision,...extra});await refresh();message(op==="rearm"?"Erneut vorgelegt. Die Aufgabe wartet auf deine Freigabe.":"Aufgabe aktualisiert.");}
-async function refresh(background=false,preserveCards=false,signal){const seq=++request,epoch=connection;let next;try{next=await api("status",{},signal);}catch(e){e.refreshFailed=true;throw e;}
- if(seq!==request||epoch!==connection||(background&&(!active()||busy())))return;
- if(renewalError){if($("message").textContent===renewalError)message("");renewalError="";}
- $("disconnect").hidden=!token;
- const changed=JSON.stringify(next)!==JSON.stringify(snapshot);if(background&&!changed)return;
- snapshot=next;if(!background&&!preserveCards)$("cards").replaceChildren();$("workspace").hidden=false;$("status").replaceChildren(text("h2",`Funktion ${snapshot.controls.enabled?"an":"aus"} · ${snapshot.controls.muted?"stumm":"hörbar"}`),text("p",`Automatik ${!snapshot.controls.enabled?"aus":snapshot.runtime.running?"läuft":"nicht aktiv"}; nächste Prüfung ${snapshot.controls.enabled?time(snapshot.runtime.next_tick||undefined):"keine"}; letzter Fehler ${snapshot.runtime.last_error||"keiner"}; Backoff ${snapshot.runtime.backoff_ms||0} ms. Ausführung ${snapshot.controls.execution_stopped?"gestoppt (sicherer Standard)":"aktiv"}.`));
- if(snapshot.budgets)$("status").append(text("p",`Globale Budgets: ${snapshot.budgets.max_assessments_per_turn} Prüfungen/${snapshot.budgets.source_turn_ms/1000}s je Lauf; Poll alle ${snapshot.budgets.poll_ms/1000}s; Speicher ${snapshot.budgets.snapshot_bytes/1048576} MiB (Normalbetrieb bis 75 %).`,"meta"));
- $("arm").disabled=false;
- document.querySelectorAll("[data-control]").forEach(b=>b.disabled=snapshot.role!=="owner");const nextBoard=boardFingerprint();if(!background||nextBoard!==boardState){renderBoard();boardState=nextBoard;}
- $("actions").replaceChildren(text("p",`Speicher: ${snapshot.capacity.intents}/${snapshot.capacity.intent_limit} Absichten; ${snapshot.capacity.receipts}/${snapshot.capacity.receipt_limit} Quittungen. Abgleich nötig: ${snapshot.capacity.review_required}.`));
- for(const i of snapshot.intents){const row=text("article","","tv-section");row.append(text("h3",`${i.state === "unknown" ? "Ausgang unklar – Abgleich nötig" : i.state === "pending" ? "Absicht offen – Abgleich nötig" : "Wirkung bestätigt"}`),text("p",`Absicht ${i.id} · Ziel ${i.target_id} · ${time(i.at)}. Vorher ${i.before_hash.slice(0,12)}, nachher ${i.after_hash.slice(0,12)}.`));if(i.temp_cleanup_pending)row.append(text("p","Temp-Rest: sichere Bereinigung nötig."));if(i.state === "pending" || i.temp_cleanup_pending)row.append(button("Abgleichen (nur lesen)",async()=>{const result=await api("intent_reconcile",{intent_id:i.id});await refresh();message(result.state === "unknown" ? "Ausgang unklar. Owner muss den Zielstand prüfen; es wurde nichts erneut geschrieben." : "Zielstand abgeglichen, kein erneutes Schreiben.");},true));$("actions").append(row);}
- for(const r of snapshot.receipts){const row=text("article","","tv-section");row.append(text("p",`Quittung ${r.id} · ${r.outcome === "unknown" ? "Ausgang unklar – Abgleich nötig" : r.outcome === "reconciled" ? "Zielstand abgeglichen" : "Wirkung bestätigt"} · Ziel ${r.target_id} · ${time(r.at)}.`));if(r.rollback_available)row.append(button("Rückabwicklung vorbereiten",async()=>showProposal(await api("rollback_prepare",{receipt_id:r.id})),true));$("actions").append(row);}
- $("sources").replaceChildren(text("p","Die Nutzeranweisung oder das Ja im Chat ist die Freigabe. Die Vertrauensgrenze ist dein Mac-Konto."));
- for(const s of snapshot.sources)$("sources").append(text("p",`${s.id}: ${s.enabled?"an":"aus"}, Revision ${s.revision}`));for(const a of snapshot.adapters)$("sources").append(text("p",`${a.id}: ${a.enabled?"aktiv":"aus"} (${a.adapter})`));
- for(const p of snapshot.proposals)$("sources").append(button(`Vorschlag ${p.id.slice(0,12)} · ${p.binding_current ? ({prepared:"vorbereitet",denied:"abgelehnt",revoked:"widerrufen"}[p.status]) : "veraltet, neu prüfen"}`,async()=>showProposal(await api("proposal",{proposal_id:p.id}))));
-}
-function authorizationRecord(rows){const row=rows?.at(-1);return row?.authorization?{...row.authorization,decision:row.decision,revoked_at:row.revoked_at}:undefined;}
-function taskAuthorization(t){return t.authorization||authorizationRecord((snapshot.authorizations||[]).filter(a=>a.task_id===t.id))||(snapshot.proposals||[]).filter(p=>p.task_id===t.id&&p.authorization).at(-1)?.authorization;}
-function authorizationLabel(a){return a.revoked_at!==undefined?"Chat-Freigabe widerrufen":a.decision==="deny"?"Im Chat abgelehnt":"Im Chat beauftragt";}
-function authorizationText(a){return `${authorizationLabel(a)} · ${a.program} · Sitzung ${a.session_id} · ${time(a.at)} · ${a.write_origin}: ${a.user_request}`;}
-function originLabel(t){if(t.origin)return t.origin.kind==='user-request'?'auf Ansage':'vom Agenten bemerkt';return t.request_source==='owner-command'||t.request_source==='user-request'?'auf Ansage':t.request_source==='agent-proposal'||t.request_source==='agent-observed'?'vom Agenten bemerkt':'nicht vermerkt';}
-function dueAt(t){return t.snoozed_until??t.next_slot?.at??t.schedule.at??t.next_check_at;}
-function taskDetails(t){const terminal=['resolved','cancelled','expired'].includes(t.state),failure=taskFailureReason(t),card=text('article','','task-details');card.append(text('h2',t.goal,'insp-title'));
- const facts=text('ul','','kv');const line=(label,value)=>{const row=text('li','');row.append(text('span',label,'k'),text('span',value,'v'));facts.append(row);};
- line('Status',t.paused?'pausiert':state[t.state]);if(t.expires_at!==undefined)line('Gültig bis',`${time(t.expires_at,t.timezone)} (${t.timezone})`);line('Fällig',`${time(dueAt(t),t.timezone)} (${t.timezone})`);line('Herkunft',originLabel(t));line('Wortlaut',t.original_request);line('Stufe',level[t.action_level]);line('Nächste Prüfung',time(t.next_check_at,t.timezone));line('Letzte Zustellung',time(t.deliveries.at(-1)?.last_attempt,t.timezone));
- const authorization=taskAuthorization(t);if(authorization)line('Freigabe im Chat',authorizationText(authorization));
- if(t.deliveries.at(-1)?.acknowledged)line('Gesehen',terminal?'Damals als gesehen markiert':'Gesehen, noch nicht erledigt');if(!terminal&&!t.armed)line('Freigabe','Wartet auf deine Freigabe');if(failure)line('Grund',failure);card.append(facts);
- const technical=text('details','');technical.append(text('summary','Technische Details'));
- if(t.origin)technical.append(text('p',`Client: ${t.origin.client}. Sitzung: ${t.origin.session}. Kontext: ${t.origin.context}`));
- if(t.budget)technical.append(text('p',`Budget: frühestens alle ${t.budget.poll_interval_ms/1000}s; Timeout ${t.budget.timeout_ms}ms; Quelle höchstens ${t.budget.max_source_bytes} Bytes.`));
- technical.append(text('p',`Quellenprüfung: ${verification(t)}`));if(t.last_failure)technical.append(text('p',`Letzter Fehler: ${t.last_failure.message||t.last_failure.code}`));if(t.review_reason)technical.append(text('p',reviewReason(t.review_reason)));if(t.archived)technical.append(text('pre',JSON.stringify(t.history,null,2)));card.append(technical);
- if(t.archived){card.append(text('p','Aus dem Archiv. Die Aufgabe wird nicht mehr überwacht.'));return card;}
- const controls=text('div','','task-actions');if(terminal){controls.append(button('Wieder zur Prüfung',()=>mutate(t,'rearm')));}
- else {controls.append(button(t.paused?'Fortsetzen':'Pausieren',()=>mutate(t,t.paused?'resume':'pause')));if(t.recurrence)controls.append(button('Serie beenden',()=>{if(confirm('Diese Serie wirklich beenden?'))return mutate(t,'end_series');}));if(!t.armed)controls.append(button('Freigeben',()=>mutate(t,'review')));controls.append(button('Zurückstellen',()=>moveTask(t,'snoozed')));if(canMove(t,'done'))controls.append(button('Erledigt',()=>moveTask(t,'done')));controls.append(button('Abbrechen',()=>moveTask(t,'failed')));
- controls.append(button('Bearbeiten',async()=>{const goal=prompt('Neuer Text',t.goal);if(goal!==null)await mutate(t,'edit',{patch:{goal}});}));
- controls.append(button('Gültigkeit ändern',async()=>{const value=prompt('Gültig bis (YYYY-MM-DDTHH:mm in Aufgaben-Zeitzone), leer zum Entfernen',t.expires_at===undefined?'':localParts(t.expires_at,t.timezone));if(value!==null)await mutate(t,'edit',{patch:{expires_at:value?await calendarAt(value,t.timezone):null}});}));
- if(t.action_level!=='notify'){controls.append(button('Vorbereiten',async()=>{const target=prompt('Registriertes Ziel',snapshot.adapters[0]?.id||'');if(!target)return;const payload=prompt('Exakter neuer Inhalt');if(payload===null)return;const current=await api('get',{id:t.id});await showProposal(await api('prepare',{id:t.id,expected_revision:current.expected_revision,target_id:target,payload}));},false,!t.armed));if(!t.armed)card.append(text('p','Zum Vorbereiten fehlt noch die Freigabe dieser Aufgabe.'));}}
- card.append(controls);return card;
-}
-async function calendarAt(value,tz){const input=await makeInput("Zeitberechnung",value,"when",tz,false);return input.schedule.at;}
-// Browser resolves candidates; server independently re-resolves and validates.
-function localParts(at,tz){const p=new Intl.DateTimeFormat("en-CA",{timeZone:tz,hourCycle:"h23",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"}).formatToParts(at);const get=k=>p.find(v=>v.type===k).value;return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}`;}
-async function makeInput(goal,when,kind,tz,arm){const now=Date.now();let schedule;if(kind==="after"){const m=/^(\d+)(m|h|d|w)$/.exec(when);if(!m)throw new Error("Dauer: 30m, 2h, 7d oder 2w.");const ms=+m[1]*({m:60000,h:3600000,d:86400000,w:604800000}[m[2]]);schedule={kind:"duration",reference_at:now,duration_ms:ms,at:now+ms};}else{const local=when.length===16?when+":00":when,wall=Date.parse(local+"Z");if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(local)||!Number.isFinite(wall))throw new Error("Ortszeit als YYYY-MM-DDTHH:mm eingeben.");const offsets=new Set();for(let h=-36;h<=36;h+=6){const sample=wall+h*3600000;offsets.add(Date.parse(localParts(sample,tz)+"Z")-sample);}const choices=[...offsets].map(o=>({at:wall-o,offset_minutes:o/60000})).filter(c=>localParts(c.at,tz)===local).sort((a,b)=>a.at-b.at);if(!choices.length)throw new Error("Ortszeit ungültig oder Sommerzeit-Lücke.");if(choices.length>1){arm=false;message("Diese Uhrzeit kommt zweimal vor. Der frühere Zeitpunkt ist gewählt; bitte gib die Aufgabe danach frei.");}schedule={kind:"calendar",local_time:local,timezone:tz,gap:"reject",overlap:"earlier",...choices[0]};}
- return{idempotency_key:crypto.randomUUID(),original_request:goal,goal,resolution_condition:"Owner bestätigt Erledigung",schedule,timezone:tz,scope:{kind:"personal",name:$("domain").value.split(",")[0]},owner_domains:$("domain").value.split(","),action_level:$("level").value,arm};}
-async function showProposal(data){if(data.proposal.status==="stale"){$("execute-button")?.remove();$("preview").replaceChildren(text("h3","Vorschlag veraltet"),text("p","Neue Vorbereitung und neue Freigaben für den aktuellen Auftrag erforderlich."));$("binding").textContent="";$("sign-command").textContent="";$("proposal").showModal();return;}$("preview").replaceChildren(text("h3",data.task_goal||`Aufgabe ${data.proposal.task_id}`),text("p","Exakte Änderung für den Auftrag. Vor dem Schreiben wird der aktuelle Zielstand erneut abgeglichen."),text("h3","Vorher"),text("pre",data.preview?.before??"Vorzustand über aktuelle Challenge prüfen"),text("h3","Nachher"),text("pre",data.preview?.after??data.proposal.payload));$("binding").textContent=JSON.stringify(data,null,2);$("sign-command").textContent="";const authorization=authorizationRecord(data.authorizations)||data.authorization||data.proposal.authorization;if(authorization)$("preview").append(text("p",authorizationText(authorization)));
- const old=$("execute-button");old?.remove();const b=button("Änderung ausführen",async()=>{if(b.disabled)return;b.disabled=true;let reservation;
- try{reservation=await api("lease",{proposal_id:data.proposal.id});const result=await api("execute",{proposal_id:data.proposal.id,lease_id:reservation.lease.id,holder_token:reservation.holder_token,fence:reservation.lease.fence,idempotency_key:crypto.randomUUID()});$("preview").replaceChildren(text("h3",outcome[result.state]||"Abgleich nötig"),text("p",`Absicht ${result.intent_id}; Quittung ${result.receipt?.id||"noch keine"}. Kein automatisches Erledigen.`));await refresh();}finally{if(reservation)await api("release",{lease_id:reservation.lease.id,holder_token:reservation.holder_token,fence:reservation.lease.fence}).catch(()=>{});}});b.id="task-execute-button";b.disabled=data.approved !== true || (data.binding_status && data.binding_status !== "current");if(b.disabled)$("preview").append(text("p","Für diese Änderung fehlt ein Auftrag oder ein Ja im Chat. Der Agent fragt bei einer selbst vorgeschlagenen folgenreichen Aktion einmal nach und hält die Antwort fest."));$("proposal").append(b);$("proposal").showModal();}
-$("connect").addEventListener("submit",e=>{e.preventDefault();connection++;signedOut=false;accessExpired=false;token=$("token").value;localSession=false;csrf="";$("token").value="";action(refresh);});$("refresh").onclick=()=>{if(localSession)accessExpired=false;return action(refresh,false);};$("disconnect").onclick=()=>{connection++;signedOut=true;accessExpired=false;if(localSession)void fetch("/ui/tasks/logout",{method:"POST",headers:{"Content-Type":"application/json","x-bastra-task-csrf":csrf},body:"{}"});localSession=false;csrf="";token="";snapshot=undefined;boardState="";$("workspace").hidden=true;$("tasks").replaceChildren();$("cards").replaceChildren();message("Abgemeldet. Token verworfen.");};
-$("create").addEventListener("submit",e=>{e.preventDefault();action(async()=>{const input=await makeInput($("goal").value,$("when").value,$("timing").value,$("timezone").value,$("arm").checked);if($("expires").value)input.expires_at=await calendarAt($("expires").value,input.timezone);if($("every").value){const m=/^(\d+)(d|w)$/.exec($("every").value);if(!m)throw new Error("Wiederholung: 1d oder 1w.");input.recurrence={kind:input.schedule.kind==="calendar"?"calendar":"elapsed",interval:+m[1]*(input.schedule.kind==="calendar"?(m[2]==="w"?7:1):(m[2]==="w"?604800000:86400000)),...($("count").value?{count:+$("count").value}:{}),catch_up:"latest"};}if(snapshot.role==="agent")input.origin={kind:"user-request",client:"recall-ui",session:"local-browser",context:input.goal};await api("create",input);$("compose").close();message("Aufgabe gespeichert.");await refresh();});});
-const controlMap={mute:{muted:true},unmute:{muted:false},off:{enabled:false},on:{enabled:true},stop:{execution_stopped:true}};document.querySelectorAll("[data-control]").forEach(b=>b.onclick=()=>action(async()=>{await api("controls",controlMap[b.dataset.control]);await refresh();message("Steuerung geändert; nichts erledigt, keine Freigabe erneuert.");}));
-$("due").onclick=()=>action(async()=>{const data=await api("due",{include_acknowledged:true,max_bytes:16384});$("cards-dialog").showModal();$("cards").replaceChildren();for(const c of data.cards){if(c.kind==="availability"){$("cards").append(text("p",`${c.summary} ${c.detail_command}`));continue;}const card=text("article","","tv-section");card.append(text("h3",c.goal), ...(c.action_outcome ? [text("p",`Wirkung: ${outcome[c.action_outcome.receipt_outcome ?? c.action_outcome.state] ?? c.action_outcome.state}; ${c.action_outcome.temp_cleanup_pending?"Temp-Rest, sichere Bereinigung nötig · ":""}${c.action_outcome.review_hint ?? outcome[c.action_outcome.receipt_outcome] ?? "Quittung vorhanden"}. Absicht ${c.action_outcome.intent_id}.`)] : []),text("p",`${time(c.due_at,c.timezone)} ${c.timezone} · ${c.acknowledged?"gesehen, noch nicht erledigt":"noch nicht als gesehen markiert"}`),text("p",whyNow(c)),button("Als gesehen markieren",async()=>{const t=await api("get",{id:c.task_id});await api("acknowledge",{id:t.id,expected_revision:t.expected_revision,occurrence_id:c.occurrence_id});await refresh();message("Als gesehen markiert; noch nicht erledigt.");}));if(c.compact)card.append(text("p",`Gekürzt; Details: ${c.detail_command}`));if(c.reconsideration){card.append(text("p",`Bisher: ${c.reconsideration.decision.option} – ${c.reconsideration.decision.reason}. Prämisse: ${c.reconsideration.old_premise} → ${c.reconsideration.new_premise ?? "unbekannt"}. Alternativen: ${c.reconsideration.decision.alternatives.join(", ")}. Keine Alternative wird automatisch gewählt.`),text("p",`Evidenz ${c.reconsideration.new_evidence.id}, Revision ${c.reconsideration.new_evidence.revision}, beobachtet ${time(c.reconsideration.new_evidence.observed_at,c.timezone)}.`));for(const choice of ["keep","snooze","stop","change"])card.append(button({keep:"Beibehalten",snooze:"Zurückstellen",stop:"Abbrechen",change:"Entscheidung ändern"}[choice],async()=>{const t=await api("get",{id:c.task_id}),extra={};if(choice==="snooze"){const value=prompt("Zielzeit in Aufgaben-Zeitzone");if(!value)return;extra.until=await calendarAt(value,t.timezone);}if(choice==="change"){const option=prompt("Neue Option"),reason=prompt("Begründung"),body=prompt("Exakter neuer Entscheidungstext");if(!option||!reason||body===null||!confirm("Diese neue Entscheidung bestätigen?"))return;extra.change={idempotency_key:crypto.randomUUID(),expected_memory_revision:t.decision.revision,option,reason,body};}await api("reconsider",{id:t.id,expected_revision:t.expected_revision,occurrence_id:c.occurrence_id,choice,...extra});await refresh();message("Deine Auswahl wurde gespeichert.");},true));}$("cards").append(card);}if(!data.cards.length)$("cards").append(text("p","Keine Erinnerung fällig. Prüfe bei Bedarf die offenen Aufgaben."));});$("close-preview").onclick=()=>$("proposal").close();
+  // Everything from task/source data is rendered via textContent, never HTML.
+  const $ = (id) => document.getElementById(`task-${id}`);
+  let token = "",
+    snapshot,
+    localSession = false,
+    csrf = "",
+    coldTasks = [],
+    selectedId = null,
+    dragTask = null;
+  const limits = { done: 20, failed: 20 };
+  let visible = false,
+    pollTimer = 0,
+    polling = false,
+    accessExpired = false,
+    request = 0,
+    connection = 0,
+    boardState = "",
+    signedOut = false,
+    renewing = null,
+    renewalError = "";
+  const active = () => visible && !document.hidden;
+  const busy = () =>
+    dragTask || ["detail", "compose", "settings", "cards-dialog", "proposal"].some((name) => $(name).open);
+  async function poll() {
+    if (!active() || signedOut || busy() || polling || accessExpired || (!token && !localSession)) return;
+    polling = true;
+    const epoch = connection,
+      controller = new AbortController();
+    let timer;
+    // Cancel the network request at its deadline before allowing another poll.
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new Error("Zeitüberschreitung"));
+      }, 10000);
+    });
+    try {
+      await Promise.race([refresh(true, false, controller.signal), timeout]);
+    } catch (e) {
+      if (epoch === connection && active() && e.code === "unauthorized") {
+        if (localSession) await recoverLocal();
+        else {
+          accessExpired = true;
+          message(e.message, true);
+        }
+      }
+    } finally {
+      clearTimeout(timer);
+      polling = false;
+    }
+  }
+  function armPolling() {
+    clearInterval(pollTimer);
+    pollTimer = active() ? setInterval(poll, 1500) : 0;
+  }
+  document.addEventListener("visibilitychange", async () => {
+    armPolling();
+    if (active() && !signedOut) {
+      if (localSession) accessExpired = false;
+      if (!token && !localSession) await action(connectLocal, false);
+      else await poll();
+    }
+  });
+  const state = {
+    pending: "offen",
+    due: "fällig",
+    snoozed: "zurückgestellt",
+    resolved: "erledigt",
+    cancelled: "abgebrochen",
+    expired: "abgelaufen",
+  };
+  const level = { notify: "erinnern", prepare: "vorbereiten", execute: "ausführen" },
+    outcome = {
+      pending: "offen",
+      unknown: "Ausgang unklar",
+      succeeded: "Wirkung bestätigt",
+      reconciled: "Zielstand abgeglichen",
+      failed: "fehlgeschlagen",
+    };
+  const errors = {
+    lease_busy: "Diese Aufgabe wird gerade ausgeführt. Bitte prüfe ihren aktuellen Stand.",
+    unauthorized: "Dein Zugang ist abgelaufen oder nicht verfügbar. Bitte verbinde dich erneut.",
+    forbidden: "Für diese Aktion fehlt deine Berechtigung.",
+    not_found: "Die Aufgabe wurde nicht gefunden.",
+    validation: "Bitte prüfe deine Eingabe. Gib eine Dauer wie 7d oder eine Zeit als YYYY-MM-DDTHH:mm ein.",
+    conflict: "Die Aufgabe wurde inzwischen geändert. Bitte aktualisiere die Ansicht.",
+    approval_stale: "Der Vorschlag wurde geändert. Bitte bereite ihn für den aktuellen Auftrag neu vor.",
+    approval_expired: "Die Freigabe ist abgelaufen.",
+    approval_revoked: "Die Freigabe wurde zurückgenommen.",
+    approval_denied: "Dieser Vorschlag wurde nicht freigegeben.",
+    approval_missing: "Für diese Aktion fehlt ein Auftrag oder ein Ja im Chat.",
+    adapter_disabled: "Ausführen ist noch ausgeschaltet.",
+    execution_stopped: "Ausführen wurde gestoppt.",
+    protected_boundary_required: "Ausführen ist noch nicht eingerichtet. Erinnern und Vorbereiten bleiben verfügbar.",
+  };
+  const text = (tag, value, cls) => {
+    const n = document.createElement(tag);
+    n.textContent = value;
+    if (cls) n.className = cls;
+    return n;
+  };
+  const reviewReason = (value) =>
+    value === "Explicit owner review required"
+      ? "Wartet auf deine Freigabe."
+      : value === "Edited binding requires explicit owner review"
+        ? "Nach der Änderung ist eine neue Freigabe nötig."
+        : value;
+  const verification = (t) => {
+    const v = t.verification;
+    const names = {
+      verified: "bestätigt",
+      refuted: "Prämisse geändert",
+      inconclusive: "unklar/strittig",
+      unavailable: "nicht erreichbar",
+      stale: "veraltet",
+    };
+    const reasons = {
+      irrelevant_claim: "andere Prämisse",
+      evidence_not_attributable: "Evidenz unbekannt oder strittig",
+      unknown_or_contested_evidence: "Evidenz unbekannt oder strittig",
+      source_disabled_or_missing: "Quelle aus oder fehlt",
+      evidence_revision_drift: "Evidenzrevision geändert",
+      source_timeout: "Zeitbudget erreicht",
+      source_budget: "Quellbudget überschritten",
+    };
+    return v
+      ? `${names[v.outcome]}${reasons[v.reason] ? ` (${reasons[v.reason]})` : ""}, geprüft ${time(v.checked_at, t.timezone)}`
+      : t.schedule.kind === "event"
+        ? "wartet auf erstes Ereignis"
+        : "noch nicht geprüft";
+  };
+  const whyNow = (c) =>
+    c.why_now?.startsWith("Registered condition")
+      ? "Der Auslöser ist fällig. Ein Ergebnis oder bestandenes Messkriterium wird damit nicht behauptet."
+      : c.why_now;
+  const message = (value, error = false) => {
+    $("message").textContent = value;
+    $("message").hidden = !value;
+    $("message").dataset.kind = error ? "error" : "success";
+  };
+  const time = (at, tz) =>
+    at === undefined
+      ? "noch keine"
+      : new Intl.DateTimeFormat("de-DE", {
+          weekday: "short",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: tz || "Europe/Madrid",
+        }).format(new Date(at));
+  async function api(name, input = {}, signal) {
+    const r = await fetch(localSession ? `/ui/tasks/api/task_${name}` : `/api/v1/task_${name}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(localSession ? { "x-bastra-task-csrf": csrf } : { Authorization: `Bearer ${token}` }),
+      },
+      body: JSON.stringify(input),
+      signal,
+    });
+    const b = await r.json();
+    if (!r.ok) {
+      const e = new Error(errors[b.code] || "Vorgang nicht möglich; Daemon/Status prüfen.");
+      e.code = b.code;
+      throw e;
+    }
+    return b;
+  }
+  async function recoverLocal(ownAction = false) {
+    if (!localSession || signedOut || !active() || accessExpired) return false;
+    let renewed = false;
+    try {
+      if (!renewing)
+        renewing = connectLocal(true).finally(() => {
+          renewing = null;
+        });
+      if (!(await renewing) || signedOut || !active()) return false;
+      renewed = true;
+      await refresh(!ownAction || !!dragTask, true);
+      if (signedOut || !localSession || !active()) return false;
+      if (renewalError && $("message").textContent === renewalError) message("");
+      renewalError = "";
+      return true;
+    } catch (e) {
+      if (accessExpired || signedOut || !localSession || !active()) return false;
+      accessExpired = !renewed || e.code === "unauthorized";
+      renewalError = e.message;
+      message(renewalError, true);
+      return false;
+    }
+  }
+  async function action(fn, ownAction = true) {
+    const epoch = connection;
+    try {
+      await fn();
+    } catch (e) {
+      if (e.code === "unauthorized" && localSession && epoch !== connection && !signedOut && active()) return;
+      if (e.code === "unauthorized" && localSession && epoch === connection && !signedOut && active()) {
+        if (accessExpired) {
+          message(renewalError || e.message, true);
+          return;
+        }
+        if ((await recoverLocal(ownAction)) && ownAction)
+          message(
+            e.refreshFailed
+              ? "Sitzung erneuert. Bitte prüfe den aktuellen Aufgabenstand."
+              : "Sitzung erneuert. Bitte löse die Aktion erneut aus."
+          );
+      } else message(e.message, true);
+    }
+  }
+  function button(label, fn, owner = false, unavailable = false) {
+    const b = text("button", label, "skill-declare");
+    b.disabled = unavailable || (owner && snapshot.role !== "owner");
+    b.addEventListener("click", () => action(fn));
+    return b;
+  }
+  async function mutate(task, op, extra = {}) {
+    const current = await api("get", { id: task.id });
+    await api(op, { id: task.id, expected_revision: current.expected_revision, ...extra });
+    await refresh();
+    message(op === "rearm" ? "Erneut vorgelegt. Die Aufgabe wartet auf deine Freigabe." : "Aufgabe aktualisiert.");
+  }
+  async function refresh(background = false, preserveCards = false, signal) {
+    const seq = ++request,
+      epoch = connection;
+    let next;
+    try {
+      next = await api("status", {}, signal);
+    } catch (e) {
+      e.refreshFailed = true;
+      throw e;
+    }
+    if (seq !== request || epoch !== connection || (background && (!active() || busy()))) return;
+    if (renewalError) {
+      if ($("message").textContent === renewalError) message("");
+      renewalError = "";
+    }
+    $("disconnect").hidden = !token;
+    const changed = JSON.stringify(next) !== JSON.stringify(snapshot);
+    if (background && !changed) return;
+    snapshot = next;
+    if (!background && !preserveCards) $("cards").replaceChildren();
+    $("workspace").hidden = false;
+    $("status").replaceChildren(
+      text(
+        "h2",
+        `Funktion ${snapshot.controls.enabled ? "an" : "aus"} · ${snapshot.controls.muted ? "stumm" : "hörbar"}`
+      ),
+      text(
+        "p",
+        `Automatik ${!snapshot.controls.enabled ? "aus" : snapshot.runtime.running ? "läuft" : "nicht aktiv"}; nächste Prüfung ${snapshot.controls.enabled ? time(snapshot.runtime.next_tick || undefined) : "keine"}; letzter Fehler ${snapshot.runtime.last_error || "keiner"}; Backoff ${snapshot.runtime.backoff_ms || 0} ms. Ausführung ${snapshot.controls.execution_stopped ? "gestoppt (sicherer Standard)" : "aktiv"}.`
+      )
+    );
+    if (snapshot.budgets)
+      $("status").append(
+        text(
+          "p",
+          `Globale Budgets: ${snapshot.budgets.max_assessments_per_turn} Prüfungen/${snapshot.budgets.source_turn_ms / 1000}s je Lauf; Poll alle ${snapshot.budgets.poll_ms / 1000}s; Speicher ${snapshot.budgets.snapshot_bytes / 1048576} MiB (Normalbetrieb bis 75 %).`,
+          "meta"
+        )
+      );
+    $("arm").disabled = false;
+    document.querySelectorAll("[data-control]").forEach((b) => (b.disabled = snapshot.role !== "owner"));
+    const nextBoard = boardFingerprint();
+    if (!background || nextBoard !== boardState) {
+      renderBoard();
+      boardState = nextBoard;
+    }
+    $("actions").replaceChildren(
+      text(
+        "p",
+        `Speicher: ${snapshot.capacity.intents}/${snapshot.capacity.intent_limit} Absichten; ${snapshot.capacity.receipts}/${snapshot.capacity.receipt_limit} Quittungen. Abgleich nötig: ${snapshot.capacity.review_required}.`
+      )
+    );
+    for (const i of snapshot.intents) {
+      const row = text("article", "", "tv-section");
+      row.append(
+        text(
+          "h3",
+          `${i.state === "unknown" ? "Ausgang unklar – Abgleich nötig" : i.state === "pending" ? "Absicht offen – Abgleich nötig" : "Wirkung bestätigt"}`
+        ),
+        text(
+          "p",
+          `Absicht ${i.id} · Ziel ${i.target_id} · ${time(i.at)}. Vorher ${i.before_hash.slice(0, 12)}, nachher ${i.after_hash.slice(0, 12)}.`
+        )
+      );
+      if (i.temp_cleanup_pending) row.append(text("p", "Temp-Rest: sichere Bereinigung nötig."));
+      if (i.state === "pending" || i.temp_cleanup_pending)
+        row.append(
+          button(
+            "Abgleichen (nur lesen)",
+            async () => {
+              const result = await api("intent_reconcile", { intent_id: i.id });
+              await refresh();
+              message(
+                result.state === "unknown"
+                  ? "Ausgang unklar. Owner muss den Zielstand prüfen; es wurde nichts erneut geschrieben."
+                  : "Zielstand abgeglichen, kein erneutes Schreiben."
+              );
+            },
+            true
+          )
+        );
+      $("actions").append(row);
+    }
+    for (const r of snapshot.receipts) {
+      const row = text("article", "", "tv-section");
+      row.append(
+        text(
+          "p",
+          `Quittung ${r.id} · ${r.outcome === "unknown" ? "Ausgang unklar – Abgleich nötig" : r.outcome === "reconciled" ? "Zielstand abgeglichen" : "Wirkung bestätigt"} · Ziel ${r.target_id} · ${time(r.at)}.`
+        )
+      );
+      if (r.rollback_available)
+        row.append(
+          button(
+            "Rückabwicklung vorbereiten",
+            async () => showProposal(await api("rollback_prepare", { receipt_id: r.id })),
+            true
+          )
+        );
+      $("actions").append(row);
+    }
+    $("sources").replaceChildren(
+      text("p", "Die Nutzeranweisung oder das Ja im Chat ist die Freigabe. Die Vertrauensgrenze ist dein Mac-Konto.")
+    );
+    for (const s of snapshot.sources)
+      $("sources").append(text("p", `${s.id}: ${s.enabled ? "an" : "aus"}, Revision ${s.revision}`));
+    for (const a of snapshot.adapters)
+      $("sources").append(text("p", `${a.id}: ${a.enabled ? "aktiv" : "aus"} (${a.adapter})`));
+    for (const p of snapshot.proposals)
+      $("sources").append(
+        button(
+          `Vorschlag ${p.id.slice(0, 12)} · ${p.binding_current ? { prepared: "vorbereitet", denied: "abgelehnt", revoked: "widerrufen" }[p.status] : "veraltet, neu prüfen"}`,
+          async () => showProposal(await api("proposal", { proposal_id: p.id }))
+        )
+      );
+  }
+  function authorizationRecord(rows) {
+    const row = rows?.at(-1);
+    return row?.authorization
+      ? { ...row.authorization, decision: row.decision, revoked_at: row.revoked_at }
+      : undefined;
+  }
+  function taskAuthorization(t) {
+    return (
+      t.authorization ||
+      authorizationRecord((snapshot.authorizations || []).filter((a) => a.task_id === t.id)) ||
+      (snapshot.proposals || []).filter((p) => p.task_id === t.id && p.authorization).at(-1)?.authorization
+    );
+  }
+  function authorizationLabel(a) {
+    return a.revoked_at !== undefined
+      ? "Chat-Freigabe widerrufen"
+      : a.decision === "deny"
+        ? "Im Chat abgelehnt"
+        : "Im Chat beauftragt";
+  }
+  function authorizationText(a) {
+    return `${authorizationLabel(a)} · ${a.program} · Sitzung ${a.session_id} · ${time(a.at)} · ${a.write_origin}: ${a.user_request}`;
+  }
+  function originLabel(t) {
+    if (t.origin) return t.origin.kind === "user-request" ? "auf Ansage" : "vom Agenten bemerkt";
+    return t.request_source === "owner-command" || t.request_source === "user-request"
+      ? "auf Ansage"
+      : t.request_source === "agent-proposal" || t.request_source === "agent-observed"
+        ? "vom Agenten bemerkt"
+        : "nicht vermerkt";
+  }
+  function dueAt(t) {
+    return t.snoozed_until ?? t.next_slot?.at ?? t.schedule.at ?? t.next_check_at;
+  }
+  function taskDetails(t) {
+    const terminal = ["resolved", "cancelled", "expired"].includes(t.state),
+      failure = taskFailureReason(t),
+      card = text("article", "", "task-details");
+    card.append(text("h2", t.goal, "insp-title"));
+    const facts = text("ul", "", "kv");
+    const line = (label, value) => {
+      const row = text("li", "");
+      row.append(text("span", label, "k"), text("span", value, "v"));
+      facts.append(row);
+    };
+    line("Status", t.paused ? "pausiert" : state[t.state]);
+    if (t.expires_at !== undefined) line("Gültig bis", `${time(t.expires_at, t.timezone)} (${t.timezone})`);
+    line("Fällig", `${time(dueAt(t), t.timezone)} (${t.timezone})`);
+    line("Herkunft", originLabel(t));
+    line("Wortlaut", t.original_request);
+    line("Stufe", level[t.action_level]);
+    line("Nächste Prüfung", time(t.next_check_at, t.timezone));
+    line("Letzte Zustellung", time(t.deliveries.at(-1)?.last_attempt, t.timezone));
+    const authorization = taskAuthorization(t);
+    if (authorization) line("Freigabe im Chat", authorizationText(authorization));
+    if (t.deliveries.at(-1)?.acknowledged)
+      line("Gesehen", terminal ? "Damals als gesehen markiert" : "Gesehen, noch nicht erledigt");
+    if (!terminal && !t.armed) line("Freigabe", "Wartet auf deine Freigabe");
+    if (failure) line("Grund", failure);
+    card.append(facts);
+    const technical = text("details", "");
+    technical.append(text("summary", "Technische Details"));
+    if (t.origin)
+      technical.append(
+        text("p", `Client: ${t.origin.client}. Sitzung: ${t.origin.session}. Kontext: ${t.origin.context}`)
+      );
+    if (t.budget)
+      technical.append(
+        text(
+          "p",
+          `Budget: frühestens alle ${t.budget.poll_interval_ms / 1000}s; Timeout ${t.budget.timeout_ms}ms; Quelle höchstens ${t.budget.max_source_bytes} Bytes.`
+        )
+      );
+    technical.append(text("p", `Quellenprüfung: ${verification(t)}`));
+    if (t.last_failure) technical.append(text("p", `Letzter Fehler: ${t.last_failure.message || t.last_failure.code}`));
+    if (t.review_reason) technical.append(text("p", reviewReason(t.review_reason)));
+    if (t.archived) technical.append(text("pre", JSON.stringify(t.history, null, 2)));
+    card.append(technical);
+    if (t.archived) {
+      card.append(text("p", "Aus dem Archiv. Die Aufgabe wird nicht mehr überwacht."));
+      return card;
+    }
+    const controls = text("div", "", "task-actions");
+    if (terminal) {
+      controls.append(button("Wieder zur Prüfung", () => mutate(t, "rearm")));
+    } else {
+      controls.append(button(t.paused ? "Fortsetzen" : "Pausieren", () => mutate(t, t.paused ? "resume" : "pause")));
+      if (t.recurrence)
+        controls.append(
+          button("Serie beenden", () => {
+            if (confirm("Diese Serie wirklich beenden?")) return mutate(t, "end_series");
+          })
+        );
+      if (!t.armed) controls.append(button("Freigeben", () => mutate(t, "review")));
+      controls.append(button("Zurückstellen", () => moveTask(t, "snoozed")));
+      if (canMove(t, "done")) controls.append(button("Erledigt", () => moveTask(t, "done")));
+      controls.append(button("Abbrechen", () => moveTask(t, "failed")));
+      controls.append(
+        button("Bearbeiten", async () => {
+          const goal = prompt("Neuer Text", t.goal);
+          if (goal !== null) await mutate(t, "edit", { patch: { goal } });
+        })
+      );
+      controls.append(
+        button("Gültigkeit ändern", async () => {
+          const value = prompt(
+            "Gültig bis (YYYY-MM-DDTHH:mm in Aufgaben-Zeitzone), leer zum Entfernen",
+            t.expires_at === undefined ? "" : localParts(t.expires_at, t.timezone)
+          );
+          if (value !== null)
+            await mutate(t, "edit", { patch: { expires_at: value ? await calendarAt(value, t.timezone) : null } });
+        })
+      );
+      if (t.action_level !== "notify") {
+        controls.append(
+          button(
+            "Vorbereiten",
+            async () => {
+              const target = prompt("Registriertes Ziel", snapshot.adapters[0]?.id || "");
+              if (!target) return;
+              const payload = prompt("Exakter neuer Inhalt");
+              if (payload === null) return;
+              const current = await api("get", { id: t.id });
+              await showProposal(
+                await api("prepare", {
+                  id: t.id,
+                  expected_revision: current.expected_revision,
+                  target_id: target,
+                  payload,
+                })
+              );
+            },
+            false,
+            !t.armed
+          )
+        );
+        if (!t.armed) card.append(text("p", "Zum Vorbereiten fehlt noch die Freigabe dieser Aufgabe."));
+      }
+    }
+    card.append(controls);
+    return card;
+  }
+  async function calendarAt(value, tz) {
+    const input = await makeInput("Zeitberechnung", value, "when", tz, false);
+    return input.schedule.at;
+  }
+  // Browser resolves candidates; server independently re-resolves and validates.
+  function localParts(at, tz) {
+    const p = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }).formatToParts(at);
+    const get = (k) => p.find((v) => v.type === k).value;
+    return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}`;
+  }
+  async function makeInput(goal, when, kind, tz, arm) {
+    const now = Date.now();
+    let schedule;
+    if (kind === "after") {
+      const m = /^(\d+)(m|h|d|w)$/.exec(when);
+      if (!m) throw new Error("Dauer: 30m, 2h, 7d oder 2w.");
+      const ms = +m[1] * { m: 60000, h: 3600000, d: 86400000, w: 604800000 }[m[2]];
+      schedule = { kind: "duration", reference_at: now, duration_ms: ms, at: now + ms };
+    } else {
+      const local = when.length === 16 ? when + ":00" : when,
+        wall = Date.parse(local + "Z");
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(local) || !Number.isFinite(wall))
+        throw new Error("Ortszeit als YYYY-MM-DDTHH:mm eingeben.");
+      const offsets = new Set();
+      for (let h = -36; h <= 36; h += 6) {
+        const sample = wall + h * 3600000;
+        offsets.add(Date.parse(localParts(sample, tz) + "Z") - sample);
+      }
+      const choices = [...offsets]
+        .map((o) => ({ at: wall - o, offset_minutes: o / 60000 }))
+        .filter((c) => localParts(c.at, tz) === local)
+        .sort((a, b) => a.at - b.at);
+      if (!choices.length) throw new Error("Ortszeit ungültig oder Sommerzeit-Lücke.");
+      if (choices.length > 1) {
+        arm = false;
+        message(
+          "Diese Uhrzeit kommt zweimal vor. Der frühere Zeitpunkt ist gewählt; bitte gib die Aufgabe danach frei."
+        );
+      }
+      schedule = {
+        kind: "calendar",
+        local_time: local,
+        timezone: tz,
+        gap: "reject",
+        overlap: "earlier",
+        ...choices[0],
+      };
+    }
+    return {
+      idempotency_key: crypto.randomUUID(),
+      original_request: goal,
+      goal,
+      resolution_condition: "Owner bestätigt Erledigung",
+      schedule,
+      timezone: tz,
+      scope: { kind: "personal", name: $("domain").value.split(",")[0] },
+      owner_domains: $("domain").value.split(","),
+      action_level: $("level").value,
+      arm,
+    };
+  }
+  async function showProposal(data) {
+    if (data.proposal.status === "stale") {
+      $("execute-button")?.remove();
+      $("preview").replaceChildren(
+        text("h3", "Vorschlag veraltet"),
+        text("p", "Neue Vorbereitung und neue Freigaben für den aktuellen Auftrag erforderlich.")
+      );
+      $("binding").textContent = "";
+      $("sign-command").textContent = "";
+      $("proposal").showModal();
+      return;
+    }
+    $("preview").replaceChildren(
+      text("h3", data.task_goal || `Aufgabe ${data.proposal.task_id}`),
+      text("p", "Exakte Änderung für den Auftrag. Vor dem Schreiben wird der aktuelle Zielstand erneut abgeglichen."),
+      text("h3", "Vorher"),
+      text("pre", data.preview?.before ?? "Vorzustand über aktuelle Challenge prüfen"),
+      text("h3", "Nachher"),
+      text("pre", data.preview?.after ?? data.proposal.payload)
+    );
+    $("binding").textContent = JSON.stringify(data, null, 2);
+    $("sign-command").textContent = "";
+    const authorization = authorizationRecord(data.authorizations) || data.authorization || data.proposal.authorization;
+    if (authorization) $("preview").append(text("p", authorizationText(authorization)));
+    const old = $("execute-button");
+    old?.remove();
+    const b = button("Änderung ausführen", async () => {
+      if (b.disabled) return;
+      b.disabled = true;
+      let reservation;
+      try {
+        reservation = await api("lease", { proposal_id: data.proposal.id });
+        const result = await api("execute", {
+          proposal_id: data.proposal.id,
+          lease_id: reservation.lease.id,
+          holder_token: reservation.holder_token,
+          fence: reservation.lease.fence,
+          idempotency_key: crypto.randomUUID(),
+        });
+        $("preview").replaceChildren(
+          text("h3", outcome[result.state] || "Abgleich nötig"),
+          text(
+            "p",
+            `Absicht ${result.intent_id}; Quittung ${result.receipt?.id || "noch keine"}. Kein automatisches Erledigen.`
+          )
+        );
+        await refresh();
+      } finally {
+        if (reservation)
+          await api("release", {
+            lease_id: reservation.lease.id,
+            holder_token: reservation.holder_token,
+            fence: reservation.lease.fence,
+          }).catch(() => {});
+      }
+    });
+    b.id = "task-execute-button";
+    b.disabled = data.approved !== true || (data.binding_status && data.binding_status !== "current");
+    if (b.disabled)
+      $("preview").append(
+        text(
+          "p",
+          "Für diese Änderung fehlt ein Auftrag oder ein Ja im Chat. Der Agent fragt bei einer selbst vorgeschlagenen folgenreichen Aktion einmal nach und hält die Antwort fest."
+        )
+      );
+    $("proposal").append(b);
+    $("proposal").showModal();
+  }
+  $("connect").addEventListener("submit", (e) => {
+    e.preventDefault();
+    connection++;
+    signedOut = false;
+    accessExpired = false;
+    token = $("token").value;
+    localSession = false;
+    csrf = "";
+    $("token").value = "";
+    action(refresh);
+  });
+  $("refresh").onclick = () => {
+    if (localSession) accessExpired = false;
+    return action(refresh, false);
+  };
+  $("disconnect").onclick = () => {
+    connection++;
+    signedOut = true;
+    accessExpired = false;
+    if (localSession)
+      void fetch("/ui/tasks/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-bastra-task-csrf": csrf },
+        body: "{}",
+      });
+    localSession = false;
+    csrf = "";
+    token = "";
+    snapshot = undefined;
+    boardState = "";
+    $("workspace").hidden = true;
+    $("tasks").replaceChildren();
+    $("cards").replaceChildren();
+    message("Abgemeldet. Token verworfen.");
+  };
+  $("create").addEventListener("submit", (e) => {
+    e.preventDefault();
+    action(async () => {
+      const input = await makeInput(
+        $("goal").value,
+        $("when").value,
+        $("timing").value,
+        $("timezone").value,
+        $("arm").checked
+      );
+      if ($("expires").value) input.expires_at = await calendarAt($("expires").value, input.timezone);
+      if ($("every").value) {
+        const m = /^(\d+)(d|w)$/.exec($("every").value);
+        if (!m) throw new Error("Wiederholung: 1d oder 1w.");
+        input.recurrence = {
+          kind: input.schedule.kind === "calendar" ? "calendar" : "elapsed",
+          interval:
+            +m[1] * (input.schedule.kind === "calendar" ? (m[2] === "w" ? 7 : 1) : m[2] === "w" ? 604800000 : 86400000),
+          ...($("count").value ? { count: +$("count").value } : {}),
+          catch_up: "latest",
+        };
+      }
+      if (snapshot.role === "agent")
+        input.origin = { kind: "user-request", client: "recall-ui", session: "local-browser", context: input.goal };
+      await api("create", input);
+      $("compose").close();
+      message("Aufgabe gespeichert.");
+      await refresh();
+    });
+  });
+  const controlMap = {
+    mute: { muted: true },
+    unmute: { muted: false },
+    off: { enabled: false },
+    on: { enabled: true },
+    stop: { execution_stopped: true },
+  };
+  document.querySelectorAll("[data-control]").forEach(
+    (b) =>
+      (b.onclick = () =>
+        action(async () => {
+          await api("controls", controlMap[b.dataset.control]);
+          await refresh();
+          message("Steuerung geändert; nichts erledigt, keine Freigabe erneuert.");
+        }))
+  );
+  $("due").onclick = () =>
+    action(async () => {
+      const data = await api("due", { include_acknowledged: true, max_bytes: 16384 });
+      $("cards-dialog").showModal();
+      $("cards").replaceChildren();
+      for (const c of data.cards) {
+        if (c.kind === "availability") {
+          $("cards").append(text("p", `${c.summary} ${c.detail_command}`));
+          continue;
+        }
+        const card = text("article", "", "tv-section");
+        card.append(
+          text("h3", c.goal),
+          ...(c.action_outcome
+            ? [
+                text(
+                  "p",
+                  `Wirkung: ${outcome[c.action_outcome.receipt_outcome ?? c.action_outcome.state] ?? c.action_outcome.state}; ${c.action_outcome.temp_cleanup_pending ? "Temp-Rest, sichere Bereinigung nötig · " : ""}${c.action_outcome.review_hint ?? outcome[c.action_outcome.receipt_outcome] ?? "Quittung vorhanden"}. Absicht ${c.action_outcome.intent_id}.`
+                ),
+              ]
+            : []),
+          text(
+            "p",
+            `${time(c.due_at, c.timezone)} ${c.timezone} · ${c.acknowledged ? "gesehen, noch nicht erledigt" : "noch nicht als gesehen markiert"}`
+          ),
+          text("p", whyNow(c)),
+          button("Als gesehen markieren", async () => {
+            const t = await api("get", { id: c.task_id });
+            await api("acknowledge", {
+              id: t.id,
+              expected_revision: t.expected_revision,
+              occurrence_id: c.occurrence_id,
+            });
+            await refresh();
+            message("Als gesehen markiert; noch nicht erledigt.");
+          })
+        );
+        if (c.compact) card.append(text("p", `Gekürzt; Details: ${c.detail_command}`));
+        if (c.reconsideration) {
+          card.append(
+            text(
+              "p",
+              `Bisher: ${c.reconsideration.decision.option} – ${c.reconsideration.decision.reason}. Prämisse: ${c.reconsideration.old_premise} → ${c.reconsideration.new_premise ?? "unbekannt"}. Alternativen: ${c.reconsideration.decision.alternatives.join(", ")}. Keine Alternative wird automatisch gewählt.`
+            ),
+            text(
+              "p",
+              `Evidenz ${c.reconsideration.new_evidence.id}, Revision ${c.reconsideration.new_evidence.revision}, beobachtet ${time(c.reconsideration.new_evidence.observed_at, c.timezone)}.`
+            )
+          );
+          for (const choice of ["keep", "snooze", "stop", "change"])
+            card.append(
+              button(
+                { keep: "Beibehalten", snooze: "Zurückstellen", stop: "Abbrechen", change: "Entscheidung ändern" }[
+                  choice
+                ],
+                async () => {
+                  const t = await api("get", { id: c.task_id }),
+                    extra = {};
+                  if (choice === "snooze") {
+                    const value = prompt("Zielzeit in Aufgaben-Zeitzone");
+                    if (!value) return;
+                    extra.until = await calendarAt(value, t.timezone);
+                  }
+                  if (choice === "change") {
+                    const option = prompt("Neue Option"),
+                      reason = prompt("Begründung"),
+                      body = prompt("Exakter neuer Entscheidungstext");
+                    if (!option || !reason || body === null || !confirm("Diese neue Entscheidung bestätigen?")) return;
+                    extra.change = {
+                      idempotency_key: crypto.randomUUID(),
+                      expected_memory_revision: t.decision.revision,
+                      option,
+                      reason,
+                      body,
+                    };
+                  }
+                  await api("reconsider", {
+                    id: t.id,
+                    expected_revision: t.expected_revision,
+                    occurrence_id: c.occurrence_id,
+                    choice,
+                    ...extra,
+                  });
+                  await refresh();
+                  message("Deine Auswahl wurde gespeichert.");
+                },
+                true
+              )
+            );
+        }
+        $("cards").append(card);
+      }
+      if (!data.cards.length)
+        $("cards").append(text("p", "Keine Erinnerung fällig. Prüfe bei Bedarf die offenen Aufgaben."));
+    });
+  $("close-preview").onclick = () => $("proposal").close();
 
-$("level").addEventListener("change",()=>{if(snapshot){$("arm").disabled=false;if($("arm").disabled)$("arm").checked=false;}});
-function taskFailureReason(t){if(["cancelled","expired"].includes(t.state))return state[t.state];if(t.archive_failure)return t.archive_failure;if(t.archived)return "";const i=snapshot.intents?.filter(i=>i.task_id===t.id).at(-1),r=snapshot.receipts?.filter(r=>r.task_id===t.id).at(-1);if(i&&["pending","unknown"].includes(i.state))return "Das Ergebnis muss noch geprüft werden";if(r?.outcome==="failed")return "Ausführung fehlgeschlagen";if(t.verification?.outcome==="unavailable")return "Die Quelle ist zurzeit nicht erreichbar; die Prüfung wird später wiederholt";return "";}
+  $("level").addEventListener("change", () => {
+    if (snapshot) {
+      $("arm").disabled = false;
+      if ($("arm").disabled) $("arm").checked = false;
+    }
+  });
+  function taskFailureReason(t) {
+    if (["cancelled", "expired"].includes(t.state)) return state[t.state];
+    if (t.archive_failure) return t.archive_failure;
+    if (t.archived) return "";
+    const i = snapshot.intents?.filter((i) => i.task_id === t.id).at(-1),
+      r = snapshot.receipts?.filter((r) => r.task_id === t.id).at(-1);
+    if (i && ["pending", "unknown"].includes(i.state)) return "Das Ergebnis muss noch geprüft werden";
+    if (r?.outcome === "failed") return "Ausführung fehlgeschlagen";
+    if (t.verification?.outcome === "unavailable")
+      return "Die Quelle ist zurzeit nicht erreichbar; die Prüfung wird später wiederholt";
+    return "";
+  }
 
-async function connectLocal(quiet=false){const epoch=connection;const r=await fetch("/ui/tasks/session",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});if(!r.ok)throw new Error("Die Erinnerungen sind gerade nicht erreichbar. Öffne die Steuerung, um dich zu verbinden.");const data=await r.json();if(epoch!==connection||signedOut)return false;connection++;accessExpired=false;csrf=data.csrf;localSession=true;if(!quiet){await refresh();message("");}return true;}
-const columns=[['planned','Geplant'],['due','Fällig'],['snoozed','Zurückgestellt'],['done','Erledigt'],['failed','Fehlgeschlagen/Abgebrochen']];
-function columnFor(t){if(t.paused)return 'snoozed';if(taskFailureReason(t))return 'failed';return {pending:'planned',due:'due',snoozed:'snoozed',resolved:'done',cancelled:'failed',expired:'failed'}[t.state]||'planned';}
-function canMove(t,target){if(t.archived)return false;const terminal=['resolved','cancelled','expired'].includes(t.state);if(target==='planned')return terminal;if(terminal)return false;if(target==='done')return !t.recurrence||t.deliveries.some(d=>!d.resolved);return target==='snoozed'||target==='failed';}
-async function moveTask(t,target){if(!canMove(t,target))return; if(target==='planned')return mutate(t,'rearm');if(target==='done')return mutate(t,'resolve');if(target==='failed'){if(confirm('Diese Aufgabe wirklich abbrechen?'))await mutate(t,'cancel');return;}if(target==='snoozed'){const value=prompt('Neue Zielzeit (YYYY-MM-DDTHH:mm in Aufgaben-Zeitzone)');if(value)await mutate(t,'snooze',{until:await calendarAt(value,t.timezone)});}}
-function taskKey(t){return t.archived?`archive:${t.archive_id??''}:${t.id}:${t.generation??0}:${t.revision??0}`:`live:${t.id}`;}
-function selectTask(t){selectedId=taskKey(t);t=boardTasks().find(current=>taskKey(current)===selectedId)||t;$("detail-body").replaceChildren(taskDetails(t));if(!$("detail").open)$("detail").showModal();}
-function setDropTargets(t){document.querySelectorAll('[data-task-column]').forEach(col=>{const locked=!!t&&!canMove(t,col.dataset.taskColumn);col.classList.toggle('locked',locked);col.classList.toggle('drop-target',!!t&&!locked);col.children[0].setAttribute('aria-disabled',String(locked));});}
-function boardCard(t){const card=text('article','','task-card');card.dataset.taskId=t.id;card.dataset.taskKey=taskKey(t);card.draggable=!t.archived;card.setAttribute('aria-label',`Aufgabendaten: ${t.goal}`);
- const title=button(t.goal,()=>selectTask(t));title.className='task-card-title';card.append(title,text('p',time(dueAt(t),t.timezone),'task-meta'),text('p',`${originLabel(t)} · ${level[t.action_level]}`,'task-meta'));
- const authorization=taskAuthorization(t);if(authorization)card.append(text('p',`${authorizationLabel(authorization)} · ${authorization.program}`,'task-meta'));
- if(t.paused)card.append(text('p','Pausiert','task-stage'));if(!['resolved','cancelled','expired'].includes(t.state)&&!t.armed)card.append(text('p','Wartet auf deine Freigabe','task-stage'));const failure=taskFailureReason(t);if(failure)card.append(text('p',`Grund: ${failure}`,'task-meta'));
- const buttons=text('div','','task-actions');buttons.append(button('Details',()=>selectTask(t)));if(!t.archived&&!['resolved','cancelled','expired'].includes(t.state)){buttons.append(button(t.paused?'Fortsetzen':'Pausieren',()=>mutate(t,t.paused?'resume':'pause')));if(t.recurrence)buttons.append(button('Serie beenden',()=>{if(confirm('Diese Serie wirklich beenden?'))return mutate(t,'end_series');}));}for(const [target,label] of [['done','Erledigt'],['snoozed','Zurückstellen'],['failed','Abbrechen'],['planned','Wieder zur Prüfung']])if(canMove(t,target))buttons.append(button(label,()=>moveTask(t,target)));card.append(buttons);
- card.addEventListener('dragstart',e=>{dragTask=t;e.dataTransfer?.setData('text/plain',t.id);if(e.dataTransfer)e.dataTransfer.effectAllowed='move';setDropTargets(t);message('Ziehe die Aufgabe in eine markierte Spalte.');});card.addEventListener('dragend',()=>{dragTask=null;setDropTargets(null);});return card;}
-function boardTasks(){const seen=new Set();return [...snapshot.tasks,...coldTasks].filter(t=>!seen.has(taskKey(t))&&seen.add(taskKey(t)));}
-function columnItems(tasks,key){return tasks.filter(t=>columnFor(t)===key).sort((a,b)=>(b.updated_at??b.schedule.at??0)-(a.updated_at??a.schedule.at??0));}
-// Compare the rendered board, not runtime-only timestamps or inspector data.
-function boardFingerprint(){const tasks=boardTasks();return JSON.stringify([
- columns.map(([key])=>{const items=columnItems(tasks,key);return [key,items.length,items.slice(0,limits[key]??items.length).map(t=>[
- taskKey(t),t.paused,t.goal,time(dueAt(t),t.timezone),originLabel(t),level[t.action_level],taskAuthorization(t),
- !['resolved','cancelled','expired'].includes(t.state)&&!t.armed,taskFailureReason(t),
- ['done','snoozed','failed','planned'].map(target=>canMove(t,target))])];}),
- (snapshot.archives||[]).map(entry=>[entry.id,time(entry.at),entry.task_count])]);}
-function renderBoard(){const board=$("tasks"),focus=document.activeElement;
- // Replacing the cards ends any drag: the old card's dragend may never fire.
- if(dragTask){dragTask=null;setDropTargets(null);}
- const positions=Array.from(board.children,col=>[col.dataset.taskColumn,col.children[1].scrollTop,col.children[1].scrollLeft]);
- let focused;
- for(const col of board.children)for(const card of col.children[1].children){const controls=Array.from(card.children).flatMap(n=>n.children.length?Array.from(n.children):[n]);if(card===focus||controls.includes(focus))focused={key:card.dataset.taskKey,column:col.dataset.taskColumn,label:focus.textContent,title:card.children[0]===focus};}
- board.replaceChildren();const unique=boardTasks();
- for(const [key,label] of columns){const col=text('section','','task-column');col.dataset.taskColumn=key;col.setAttribute('aria-label',label);const items=columnItems(unique,key);const heading=text('header','','task-column-head');heading.append(text('h2',label,'section-title'),text('span',String(items.length),'task-count'));const list=text('div','','task-column-list');for(const t of items.slice(0,limits[key]??items.length))list.append(boardCard(t));if(!items.length)list.append(text('p','Keine Aufgaben','tv-empty'));
- if(items.length>(limits[key]??Infinity))list.append(button('Ältere Einträge laden',async()=>{limits[key]+=20;renderBoard();}));if(key==='done'||key==='failed')for(const entry of snapshot.archives||[])list.append(button(`Archiv ${time(entry.at)} · ${entry.task_count} Aufgaben`,async()=>{const data=await api('list',{archive_id:entry.id});coldTasks=data.tasks.map(t=>({...t,deliveries:[]}));renderBoard();}));
- col.append(heading,list);col.addEventListener('dragover',e=>{if(dragTask&&canMove(dragTask,key)){e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect='move';}});col.addEventListener('drop',e=>{e.preventDefault();const t=dragTask;dragTask=null;setDropTargets(null);if(t&&canMove(t,key))action(()=>moveTask(t,key));else message('Diese Aufgabe kann hier nicht abgelegt werden.',true);});board.append(col);}
- for(const [key,top,left] of positions){const col=Array.from(board.children).find(c=>c.dataset.taskColumn===key);if(col){col.children[1].scrollTop=top;col.children[1].scrollLeft=left;}}
- if(focused){let target;for(const col of board.children)for(const card of col.children[1].children){if(focused.key&&card.dataset.taskKey===focused.key){const controls=Array.from(card.children).flatMap(n=>n.children.length?Array.from(n.children):[n]);target=focused.title?card.children[0]:controls.find(n=>n.textContent===focused.label)||card.children[0];}else if(!focused.key&&col.dataset.taskColumn===focused.column&&card.textContent===focused.label)target=card;}
- if(!target){target=Array.from(board.children).find(c=>c.dataset.taskColumn===focused.column)?.children[0];if(target)target.tabIndex=-1;}target?.focus({preventScroll:true});}
- if(selectedId){const selected=unique.find(t=>taskKey(t)===selectedId);if(selected)$("detail-body").replaceChildren(taskDetails(selected));}
-}
-for(const name of ['detail','compose','settings','cards'])$(`${name}-close`).onclick=()=>$(name==='cards'?'cards-dialog':name).close();
-$("new").onclick=()=>$("compose").showModal();$("settings-open").onclick=()=>$("settings").showModal();
-function open(){if(!visible)signedOut=false;visible=true;document.getElementById('tasks-view').hidden=false;document.body.classList.add('tasks-open');if(active()&&!signedOut){if(localSession)accessExpired=false;action(()=>!token&&!localSession?connectLocal():refresh(),false);}armPolling();}
-function close(){visible=false;armPolling();document.getElementById('tasks-view').hidden=true;document.body.classList.remove('tasks-open');for(const name of ['detail','compose','settings','cards-dialog','proposal'])$(name).close();}
-return { open, close };
+  async function connectLocal(quiet = false) {
+    const epoch = connection;
+    const r = await fetch("/ui/tasks/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    if (!r.ok)
+      throw new Error("Die Erinnerungen sind gerade nicht erreichbar. Öffne die Steuerung, um dich zu verbinden.");
+    const data = await r.json();
+    if (epoch !== connection || signedOut) return false;
+    connection++;
+    accessExpired = false;
+    csrf = data.csrf;
+    localSession = true;
+    if (!quiet) {
+      await refresh();
+      message("");
+    }
+    return true;
+  }
+  const columns = [
+    ["planned", "Geplant"],
+    ["due", "Fällig"],
+    ["snoozed", "Zurückgestellt"],
+    ["done", "Erledigt"],
+    ["failed", "Fehlgeschlagen/Abgebrochen"],
+  ];
+  function columnFor(t) {
+    if (t.paused) return "snoozed";
+    if (taskFailureReason(t)) return "failed";
+    return (
+      { pending: "planned", due: "due", snoozed: "snoozed", resolved: "done", cancelled: "failed", expired: "failed" }[
+        t.state
+      ] || "planned"
+    );
+  }
+  function canMove(t, target) {
+    if (t.archived) return false;
+    const terminal = ["resolved", "cancelled", "expired"].includes(t.state);
+    if (target === "planned") return terminal;
+    if (terminal) return false;
+    if (target === "done") return !t.recurrence || t.deliveries.some((d) => !d.resolved);
+    return target === "snoozed" || target === "failed";
+  }
+  async function moveTask(t, target) {
+    if (!canMove(t, target)) return;
+    if (target === "planned") return mutate(t, "rearm");
+    if (target === "done") return mutate(t, "resolve");
+    if (target === "failed") {
+      if (confirm("Diese Aufgabe wirklich abbrechen?")) await mutate(t, "cancel");
+      return;
+    }
+    if (target === "snoozed") {
+      const value = prompt("Neue Zielzeit (YYYY-MM-DDTHH:mm in Aufgaben-Zeitzone)");
+      if (value) await mutate(t, "snooze", { until: await calendarAt(value, t.timezone) });
+    }
+  }
+  function taskKey(t) {
+    return t.archived
+      ? `archive:${t.archive_id ?? ""}:${t.id}:${t.generation ?? 0}:${t.revision ?? 0}`
+      : `live:${t.id}`;
+  }
+  function selectTask(t) {
+    selectedId = taskKey(t);
+    t = boardTasks().find((current) => taskKey(current) === selectedId) || t;
+    $("detail-body").replaceChildren(taskDetails(t));
+    if (!$("detail").open) $("detail").showModal();
+  }
+  function setDropTargets(t) {
+    document.querySelectorAll("[data-task-column]").forEach((col) => {
+      const locked = !!t && !canMove(t, col.dataset.taskColumn);
+      col.classList.toggle("locked", locked);
+      col.classList.toggle("drop-target", !!t && !locked);
+      col.children[0].setAttribute("aria-disabled", String(locked));
+    });
+  }
+  function boardCard(t) {
+    const card = text("article", "", "task-card");
+    card.dataset.taskId = t.id;
+    card.dataset.taskKey = taskKey(t);
+    card.draggable = !t.archived;
+    card.setAttribute("aria-label", `Aufgabendaten: ${t.goal}`);
+    const title = button(t.goal, () => selectTask(t));
+    title.className = "task-card-title";
+    card.append(
+      title,
+      text("p", time(dueAt(t), t.timezone), "task-meta"),
+      text("p", `${originLabel(t)} · ${level[t.action_level]}`, "task-meta")
+    );
+    const authorization = taskAuthorization(t);
+    if (authorization)
+      card.append(text("p", `${authorizationLabel(authorization)} · ${authorization.program}`, "task-meta"));
+    if (t.paused) card.append(text("p", "Pausiert", "task-stage"));
+    if (!["resolved", "cancelled", "expired"].includes(t.state) && !t.armed)
+      card.append(text("p", "Wartet auf deine Freigabe", "task-stage"));
+    const failure = taskFailureReason(t);
+    if (failure) card.append(text("p", `Grund: ${failure}`, "task-meta"));
+    const buttons = text("div", "", "task-actions");
+    buttons.append(button("Details", () => selectTask(t)));
+    if (!t.archived && !["resolved", "cancelled", "expired"].includes(t.state)) {
+      buttons.append(button(t.paused ? "Fortsetzen" : "Pausieren", () => mutate(t, t.paused ? "resume" : "pause")));
+      if (t.recurrence)
+        buttons.append(
+          button("Serie beenden", () => {
+            if (confirm("Diese Serie wirklich beenden?")) return mutate(t, "end_series");
+          })
+        );
+    }
+    for (const [target, label] of [
+      ["done", "Erledigt"],
+      ["snoozed", "Zurückstellen"],
+      ["failed", "Abbrechen"],
+      ["planned", "Wieder zur Prüfung"],
+    ])
+      if (canMove(t, target)) buttons.append(button(label, () => moveTask(t, target)));
+    card.append(buttons);
+    card.addEventListener("dragstart", (e) => {
+      dragTask = t;
+      e.dataTransfer?.setData("text/plain", t.id);
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+      setDropTargets(t);
+      message("Ziehe die Aufgabe in eine markierte Spalte.");
+    });
+    card.addEventListener("dragend", () => {
+      dragTask = null;
+      setDropTargets(null);
+    });
+    return card;
+  }
+  function boardTasks() {
+    const seen = new Set();
+    return [...snapshot.tasks, ...coldTasks].filter((t) => !seen.has(taskKey(t)) && seen.add(taskKey(t)));
+  }
+  function columnItems(tasks, key) {
+    return tasks
+      .filter((t) => columnFor(t) === key)
+      .sort((a, b) => (b.updated_at ?? b.schedule.at ?? 0) - (a.updated_at ?? a.schedule.at ?? 0));
+  }
+  // Compare the rendered board, not runtime-only timestamps or inspector data.
+  function boardFingerprint() {
+    const tasks = boardTasks();
+    return JSON.stringify([
+      columns.map(([key]) => {
+        const items = columnItems(tasks, key);
+        return [
+          key,
+          items.length,
+          items
+            .slice(0, limits[key] ?? items.length)
+            .map((t) => [
+              taskKey(t),
+              t.paused,
+              t.goal,
+              time(dueAt(t), t.timezone),
+              originLabel(t),
+              level[t.action_level],
+              taskAuthorization(t),
+              !["resolved", "cancelled", "expired"].includes(t.state) && !t.armed,
+              taskFailureReason(t),
+              ["done", "snoozed", "failed", "planned"].map((target) => canMove(t, target)),
+            ]),
+        ];
+      }),
+      (snapshot.archives || []).map((entry) => [entry.id, time(entry.at), entry.task_count]),
+    ]);
+  }
+  function renderBoard() {
+    const board = $("tasks"),
+      focus = document.activeElement;
+    // Replacing the cards ends any drag: the old card's dragend may never fire.
+    if (dragTask) {
+      dragTask = null;
+      setDropTargets(null);
+    }
+    const positions = Array.from(board.children, (col) => [
+      col.dataset.taskColumn,
+      col.children[1].scrollTop,
+      col.children[1].scrollLeft,
+    ]);
+    let focused;
+    for (const col of board.children)
+      for (const card of col.children[1].children) {
+        const controls = Array.from(card.children).flatMap((n) => (n.children.length ? Array.from(n.children) : [n]));
+        if (card === focus || controls.includes(focus))
+          focused = {
+            key: card.dataset.taskKey,
+            column: col.dataset.taskColumn,
+            label: focus.textContent,
+            title: card.children[0] === focus,
+          };
+      }
+    board.replaceChildren();
+    const unique = boardTasks();
+    for (const [key, label] of columns) {
+      const col = text("section", "", "task-column");
+      col.dataset.taskColumn = key;
+      col.setAttribute("aria-label", label);
+      const items = columnItems(unique, key);
+      const heading = text("header", "", "task-column-head");
+      heading.append(text("h2", label, "section-title"), text("span", String(items.length), "task-count"));
+      const list = text("div", "", "task-column-list");
+      for (const t of items.slice(0, limits[key] ?? items.length)) list.append(boardCard(t));
+      if (!items.length) list.append(text("p", "Keine Aufgaben", "tv-empty"));
+      if (items.length > (limits[key] ?? Infinity))
+        list.append(
+          button("Ältere Einträge laden", async () => {
+            limits[key] += 20;
+            renderBoard();
+          })
+        );
+      if (key === "done" || key === "failed")
+        for (const entry of snapshot.archives || [])
+          list.append(
+            button(`Archiv ${time(entry.at)} · ${entry.task_count} Aufgaben`, async () => {
+              const data = await api("list", { archive_id: entry.id });
+              coldTasks = data.tasks.map((t) => ({ ...t, deliveries: [] }));
+              renderBoard();
+            })
+          );
+      col.append(heading, list);
+      col.addEventListener("dragover", (e) => {
+        if (dragTask && canMove(dragTask, key)) {
+          e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+        }
+      });
+      col.addEventListener("drop", (e) => {
+        e.preventDefault();
+        const t = dragTask;
+        dragTask = null;
+        setDropTargets(null);
+        if (t && canMove(t, key)) action(() => moveTask(t, key));
+        else message("Diese Aufgabe kann hier nicht abgelegt werden.", true);
+      });
+      board.append(col);
+    }
+    for (const [key, top, left] of positions) {
+      const col = Array.from(board.children).find((c) => c.dataset.taskColumn === key);
+      if (col) {
+        col.children[1].scrollTop = top;
+        col.children[1].scrollLeft = left;
+      }
+    }
+    if (focused) {
+      let target;
+      for (const col of board.children)
+        for (const card of col.children[1].children) {
+          if (focused.key && card.dataset.taskKey === focused.key) {
+            const controls = Array.from(card.children).flatMap((n) =>
+              n.children.length ? Array.from(n.children) : [n]
+            );
+            target = focused.title
+              ? card.children[0]
+              : controls.find((n) => n.textContent === focused.label) || card.children[0];
+          } else if (!focused.key && col.dataset.taskColumn === focused.column && card.textContent === focused.label)
+            target = card;
+        }
+      if (!target) {
+        target = Array.from(board.children).find((c) => c.dataset.taskColumn === focused.column)?.children[0];
+        if (target) target.tabIndex = -1;
+      }
+      target?.focus({ preventScroll: true });
+    }
+    if (selectedId) {
+      const selected = unique.find((t) => taskKey(t) === selectedId);
+      if (selected) $("detail-body").replaceChildren(taskDetails(selected));
+    }
+  }
+  for (const name of ["detail", "compose", "settings", "cards"])
+    $(`${name}-close`).onclick = () => $(name === "cards" ? "cards-dialog" : name).close();
+  $("new").onclick = () => $("compose").showModal();
+  $("settings-open").onclick = () => $("settings").showModal();
+  function open() {
+    if (!visible) signedOut = false;
+    visible = true;
+    document.getElementById("tasks-view").hidden = false;
+    document.body.classList.add("tasks-open");
+    if (active() && !signedOut) {
+      if (localSession) accessExpired = false;
+      action(() => (!token && !localSession ? connectLocal() : refresh()), false);
+    }
+    armPolling();
+  }
+  function close() {
+    visible = false;
+    armPolling();
+    document.getElementById("tasks-view").hidden = true;
+    document.body.classList.remove("tasks-open");
+    for (const name of ["detail", "compose", "settings", "cards-dialog", "proposal"]) $(name).close();
+  }
+  return { open, close };
 }

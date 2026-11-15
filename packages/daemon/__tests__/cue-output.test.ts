@@ -55,7 +55,7 @@ test("#427: a run stopped by the brake or with no cues keeps the previous sideca
   await writeFile(braked, "");
   await assert.rejects(
     publishCueRun(report({ generation_failures: 5, stopped_early: true }), braked, out, true),
-    /Generierungsbremse/,
+    /Generierungsbremse/
   );
   assert.equal(await readFile(out, "utf8"), old);
 
@@ -91,7 +91,7 @@ test("#427: the end of a cue run gates on the report, the vector arm and dry-run
   await writeFile(braked, "");
   await assert.rejects(
     finishCueRun(report({ generation_failures: 5, stopped_early: true }), opts(braked)),
-    /Generierungsbremse/,
+    /Generierungsbremse/
   );
   assert.equal(await readFile(out, "utf8"), old);
 
@@ -99,7 +99,7 @@ test("#427: the end of a cue run gates on the report, the vector arm and dry-run
   await writeFile(lost, "new\n");
   await assert.rejects(
     finishCueRun(report({ memories_with_cues: 1, cues_written: 1 }), opts(lost, { armLost: "embed timeout" })),
-    /Vektorarm/,
+    /Vektorarm/
   );
   assert.equal(await readFile(out, "utf8"), old);
 

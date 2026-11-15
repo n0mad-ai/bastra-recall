@@ -35,9 +35,7 @@ interface SimilarityModule {
   tokens: (text: string) => string[];
 }
 const daemonDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../daemon/dist");
-const { containedIn, tokens } = (await import(
-  path.join(daemonDist, "save-similarity.js")
-)) as SimilarityModule;
+const { containedIn, tokens } = (await import(path.join(daemonDist, "save-similarity.js"))) as SimilarityModule;
 
 interface Pair {
   /** Directed: `a` is the trigger whose words are contained in `b`. */
@@ -109,9 +107,7 @@ async function main(): Promise<void> {
     pools.set(key, bucket);
   }
   const totalTriggers = [...pools.values()].reduce((n, b) => n + b.length, 0);
-  console.error(
-    `vault ${memories.length} memories, ${totalTriggers} triggers, ${pools.size} scope×type pools`,
-  );
+  console.error(`vault ${memories.length} memories, ${totalTriggers} triggers, ${pools.size} scope×type pools`);
 
   const seen = new Map<string, Pair>();
   let compared = 0;
@@ -128,10 +124,7 @@ async function main(): Promise<void> {
         // land here twice with different scores. A labeller should see the pair
         // once — keep the direction that scores higher, because that is the one a
         // future criterion would fire on.
-        const key = [
-          `${bucket[i].id}\0${bucket[i].trigger}`,
-          `${bucket[j].id}\0${bucket[j].trigger}`,
-        ]
+        const key = [`${bucket[i].id}\0${bucket[i].trigger}`, `${bucket[j].id}\0${bucket[j].trigger}`]
           .sort()
           .join("\x01");
         const existing = seen.get(key);
@@ -161,7 +154,7 @@ async function main(): Promise<void> {
     // filling it in is the human step #325 asks for.
     await fs.writeFile(
       outPath,
-      JSON.stringify({ band_min: min, pairs: sorted.map((p) => ({ ...p, label: "" })) }, null, 2),
+      JSON.stringify({ band_min: min, pairs: sorted.map((p) => ({ ...p, label: "" })) }, null, 2)
     );
     console.error(`wrote ${outPath} — fill in "label" per pair: collision | template | neither`);
   }

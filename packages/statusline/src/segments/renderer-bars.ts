@@ -23,17 +23,10 @@ const BAR_STYLES: Record<string, BarStyleDef> = {
   squares: { filled: "◼", empty: "◻" },
 };
 
-export function buildBar(
-  s: BarStyleDef,
-  filledCount: number,
-  emptyCount: number,
-  barLength: number,
-): string {
+export function buildBar(s: BarStyleDef, filledCount: number, emptyCount: number, barLength: number): string {
   if (s.marker) {
     const pos = Math.min(filledCount, barLength - 1);
-    return (
-      s.filled.repeat(pos) + s.marker + s.empty.repeat(barLength - pos - 1)
-    );
+    return s.filled.repeat(pos) + s.marker + s.empty.repeat(barLength - pos - 1);
   }
   if (s.cap) {
     if (filledCount === 0) {
@@ -42,27 +35,20 @@ export function buildBar(
     if (filledCount >= barLength) {
       return s.filled.repeat(barLength);
     }
-    return (
-      s.filled.repeat(filledCount - 1) + s.cap + s.empty.repeat(emptyCount)
-    );
+    return s.filled.repeat(filledCount - 1) + s.cap + s.empty.repeat(emptyCount);
   }
   return s.filled.repeat(filledCount) + s.empty.repeat(emptyCount);
 }
 
-export function resolveBarStyleDef(
-  symbols: PowerlineSymbols,
-  style: string,
-): BarStyleDef | null {
-  return style === "bar"
-    ? { filled: symbols.bar_filled, empty: symbols.bar_empty }
-    : (BAR_STYLES[style] ?? null);
+export function resolveBarStyleDef(symbols: PowerlineSymbols, style: string): BarStyleDef | null {
+  return style === "bar" ? { filled: symbols.bar_filled, empty: symbols.bar_empty } : (BAR_STYLES[style] ?? null);
 }
 
 export function formatPercentageWithBar(
   symbols: PowerlineSymbols,
   pct: number,
   displayStyle?: BarDisplayStyle,
-  timeStr?: string | null,
+  timeStr?: string | null
 ): string {
   const style = displayStyle ?? "text";
   const barStyleDef = resolveBarStyleDef(symbols, style);
@@ -71,12 +57,7 @@ export function formatPercentageWithBar(
   if (barStyleDef) {
     const filledCount = Math.round((pct / 100) * barLength);
     const emptyCount = barLength - filledCount;
-    const bar = buildBar(
-      barStyleDef,
-      filledCount,
-      emptyCount,
-      barLength,
-    );
+    const bar = buildBar(barStyleDef, filledCount, emptyCount, barLength);
     return timeStr ? `${bar} ${pct}% (${timeStr})` : `${bar} ${pct}%`;
   }
   return timeStr ? `${pct}% (${timeStr})` : `${pct}%`;

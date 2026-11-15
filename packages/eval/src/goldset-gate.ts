@@ -66,7 +66,7 @@ export function gateCase(
   served: { id: string; hop?: string }[],
   decisions: RecallDecisionHit[],
   expected: Set<string>,
-  any: Set<string>,
+  any: Set<string>
 ): CaseGateResult {
   const kept: string[] = [];
   const out: CaseGateResult = {
@@ -199,10 +199,10 @@ export function componentGates(rows: GateRow[]): ComponentGateReport {
       required_without_trigger: sum((g) => g.required_without_trigger),
       required_without_hard_anchor: sum((g) => g.required_without_hard_anchor),
       $comment:
-        "required_hop_only must be 0 — the predicate excludes a 1-hop hit before it can say required (C-046). "
-        + "The other two are populations, not defects: they say how many `required` rest on the two-of-three "
-        + "rule rather than on a hard anchor, which is where §18.2's 'harter Anker ODER unabhängige "
-        + "Arm-Evidenz' is read more broadly than the words alone suggest.",
+        "required_hop_only must be 0 — the predicate excludes a 1-hop hit before it can say required (C-046). " +
+        "The other two are populations, not defects: they say how many `required` rest on the two-of-three " +
+        "rule rather than on a hard anchor, which is where §18.2's 'harter Anker ODER unabhängige " +
+        "Arm-Evidenz' is read more broadly than the words alone suggest.",
     },
     decisions: {
       required: sum((g) => g.required),
@@ -210,10 +210,10 @@ export function componentGates(rows: GateRow[]): ComponentGateReport {
       no_answer: sum((g) => g.no_answer),
     },
     $comment:
-      "MEASUREMENT, not a verdict. Two of the seven §18.2 gates ('kein relevanter Verlust') carry no registered "
-      + "threshold, so `recall_at_3` and `recall_at_3_identifier_queries` report a delta and nothing else. "
-      + "The two that do carry one report `within`. Deriving the missing thresholds is a separate, deliberate "
-      + "step — see m1-tolerances.json on what an unmeasured tolerance is worth.",
+      "MEASUREMENT, not a verdict. Two of the seven §18.2 gates ('kein relevanter Verlust') carry no registered " +
+      "threshold, so `recall_at_3` and `recall_at_3_identifier_queries` report a delta and nothing else. " +
+      "The two that do carry one report `within`. Deriving the missing thresholds is a separate, deliberate " +
+      "step — see m1-tolerances.json on what an unmeasured tolerance is worth.",
   };
 }
 
@@ -261,9 +261,7 @@ export interface GateVariantReport {
 
 export function gateVariants(rows: GateRow[]): GateVariantReport {
   const current = componentGates(rows);
-  const withoutBody = componentGates(
-    rows.map((r) => ({ ...r, gate: r.gate_no_body })),
-  );
+  const withoutBody = componentGates(rows.map((r) => ({ ...r, gate: r.gate_no_body })));
   const d = (a: number, b: number): number => Number((b - a).toFixed(4));
   return {
     current,
@@ -277,14 +275,14 @@ export function gateVariants(rows: GateRow[]): GateVariantReport {
       false_abstention: d(current.false_abstention.value, withoutBody.false_abstention.value),
       anti_query_injection: d(current.anti_query_injection.value, withoutBody.anti_query_injection.value),
       $comment:
-        "Negative means the variant is lower. A narrowed anchor should cost `required` and buy "
-        + "`anti_query_injection`; what it must NOT cost is recall_at_3_gated and false_abstention, and "
-        + "those two are the price this measurement exists to name.",
+        "Negative means the variant is lower. A narrowed anchor should cost `required` and buy " +
+        "`anti_query_injection`; what it must NOT cost is recall_at_3_gated and false_abstention, and " +
+        "those two are the price this measurement exists to name.",
     },
     $comment:
-      "MEASUREMENT of a counterfactual, taken before any change to the predicate (§10.3). `anchor_without_body` "
-      + "is the shipped `decideHits` called with an empty memory body — the only field the identifier haystack "
-      + "reads beyond title and recall_when. Nothing here changes what the daemon does.",
+      "MEASUREMENT of a counterfactual, taken before any change to the predicate (§10.3). `anchor_without_body` " +
+      "is the shipped `decideHits` called with an empty memory body — the only field the identifier haystack " +
+      "reads beyond title and recall_when. Nothing here changes what the daemon does.",
   };
 }
 
@@ -337,7 +335,7 @@ export function redecide(
   evidence: RecallDecisionHit["evidence"],
   hop: string | undefined,
   termCount: number,
-  rule: NarrowingRule = CURRENT_RULE,
+  rule: NarrowingRule = CURRENT_RULE
 ): RecallDecisionHit["decision"] {
   const stale = evidence.temporal_status === "expired" || evidence.temporal_status === "obsolete";
   const hopOnly = hop === "1-hop";
@@ -345,10 +343,7 @@ export function redecide(
 
   const cov = evidence.recall_when_coverage;
   const matched = Math.round(cov * termCount);
-  const coverageCounts =
-    cov > 0
-    && cov >= (rule.minCoverage ?? 0)
-    && matched >= (rule.minMatchedTerms ?? 0);
+  const coverageCounts = cov > 0 && cov >= (rule.minCoverage ?? 0) && matched >= (rule.minMatchedTerms ?? 0);
 
   const independent = [coverageCounts, evidence.arm_agreement, evidence.scope_match].filter(Boolean).length;
   if (!stale && !hopOnly && (hardAnchor || independent >= 2)) return "required";
@@ -367,14 +362,14 @@ export function redecide(
 export function assertReproducesShipped(
   decisions: RecallDecisionHit[],
   served: { hop?: string }[],
-  termCount: number,
+  termCount: number
 ): void {
   decisions.forEach((d, i) => {
     const mine = redecide(d.evidence, served[i]?.hop, termCount, CURRENT_RULE);
     if (mine !== d.decision) {
       throw new Error(
-        `variant re-derivation drifted from decideHit on ${d.id}: shipped ${d.decision}, re-derived ${mine}. `
-          + "The narrowing measurements are only meaningful while these agree.",
+        `variant re-derivation drifted from decideHit on ${d.id}: shipped ${d.decision}, re-derived ${mine}. ` +
+          "The narrowing measurements are only meaningful while these agree."
       );
     }
   });
@@ -387,7 +382,7 @@ export function gateCaseUnder(
   expected: Set<string>,
   any: Set<string>,
   termCount: number,
-  rule: NarrowingRule,
+  rule: NarrowingRule
 ): CaseGateResult {
   const varied: RecallDecisionHit[] = decisions.map((d, i) => ({
     ...d,
@@ -472,10 +467,10 @@ export function variantTable(rows: GateRow[]): { table: VariantRow[]; $comment: 
   return {
     table,
     $comment:
-      "All variants scored on the SAME served pools, so a difference between two rows is the rule alone. "
-      + "`no_body` is the §10.3 anchor narrowing (an input taken away from the shipped predicate); the "
-      + "`coverage>=` and `matched>=` rows re-derive the two-of-three combination from the shipped evidence, "
-      + "guarded by a per-case assertion that the re-derivation reproduces `decideHit` at the identity rule. "
-      + "Rows ending in `+no_body` are the combination of both.",
+      "All variants scored on the SAME served pools, so a difference between two rows is the rule alone. " +
+      "`no_body` is the §10.3 anchor narrowing (an input taken away from the shipped predicate); the " +
+      "`coverage>=` and `matched>=` rows re-derive the two-of-three combination from the shipped evidence, " +
+      "guarded by a per-case assertion that the re-derivation reproduces `decideHit` at the identity rule. " +
+      "Rows ending in `+no_body` are the combination of both.",
   };
 }

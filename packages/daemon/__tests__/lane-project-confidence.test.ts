@@ -98,7 +98,7 @@ interface Captured {
 
 async function withDaemon(
   bodies: Record<string, string>,
-  fn: (baseUrl: string, seen: Captured[]) => Promise<void>,
+  fn: (baseUrl: string, seen: Captured[]) => Promise<void>
 ): Promise<void> {
   const seen: Captured[] = [];
   const server: Server = createServer((req, res) => {
@@ -171,8 +171,8 @@ async function runSession(cwd: string, base: string): Promise<string> {
         cwd,
         session_id: `proj-conf-${cwd}-${Date.now()}`,
       },
-      base,
-    ),
+      base
+    )
   );
 }
 
@@ -186,8 +186,8 @@ async function runPrompt(cwd: string, base: string): Promise<string> {
         session_id: `proj-conf-prompt-${cwd}-${Date.now()}`,
       },
       null,
-      base,
-    ),
+      base
+    )
   );
 }
 
@@ -230,7 +230,7 @@ async function withDocsOn<T>(fn: () => Promise<T>): Promise<T> {
   await writeFile(
     join(home, ".bastra", "cli-settings.json"),
     JSON.stringify({ docs: { mode: "suggest", language: "de" } }),
-    "utf8",
+    "utf8"
   );
   const prev = process.env.HOME;
   process.env.HOME = home;
@@ -247,8 +247,16 @@ test("SessionStart (#511): root-match zahlt keine Doku-Tokens, ein echtes Repo s
   await withDocsOn(async () => {
     await withDaemon(SESSION_BODIES, async (base) => {
       const rootMatch = context(await runSession(DETECTED_CWD, base));
-      assert.match(rootMatch, /project="bastra-recall"/, "Vorbedingung: erkannt wird weiter — nur der Doku-Block hängt am Gate");
-      assert.doesNotMatch(rootMatch, /<bastra-product-docs/, "ein Container-Root ohne .git ist kein Repo — kein Doku-Block");
+      assert.match(
+        rootMatch,
+        /project="bastra-recall"/,
+        "Vorbedingung: erkannt wird weiter — nur der Doku-Block hängt am Gate"
+      );
+      assert.doesNotMatch(
+        rootMatch,
+        /<bastra-product-docs/,
+        "ein Container-Root ohne .git ist kein Repo — kein Doku-Block"
+      );
 
       // Gegenprobe am selben HOME: Sie beweist, dass `docs.mode` hier wirklich
       // an ist — ohne sie wäre die Abwesenheit oben nichts wert.
@@ -303,8 +311,8 @@ async function runWrite(cwd: string, base: string): Promise<string> {
           new_string: "const recall = 2;",
         },
       },
-      base,
-    ),
+      base
+    )
   );
 }
 
@@ -353,8 +361,8 @@ async function runTodo(cwd: string, base: string): Promise<string> {
         cwd,
         tool_input: TODOS,
       },
-      base,
-    ),
+      base
+    )
   );
 }
 
@@ -390,9 +398,7 @@ test("Todo-Lane mit erkanntem Projekt (root-match): unverändert", async () => {
  * prüft dieser Test, weil der gerenderte Block bei einem Fake-Vault ohnehin
  * leer bliebe und ein geratenes Projekt dort nicht sichtbar würde.
  */
-async function postSessionContextRoute(
-  body: Record<string, unknown>,
-): Promise<{ project: unknown; context: string }> {
+async function postSessionContextRoute(body: Record<string, unknown>): Promise<{ project: unknown; context: string }> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-proj-conf-"));
   const vault = { size: () => 0, get: () => undefined, list: () => [] } as unknown as Vault;
   const server: Server = createServer((req, res) => {

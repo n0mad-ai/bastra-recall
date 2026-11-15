@@ -77,7 +77,9 @@ for (const name of (await readdir(transcriptDir)).sort()) {
   }
   for (const s of sent) s.result = resultsById.get(s.id) ?? null;
   const transport = [
-    ...raw.matchAll(/(daemon unreachable|not reachable|connection closed|transport closed|ECONNRESET|socket hang up)/gi),
+    ...raw.matchAll(
+      /(daemon unreachable|not reachable|connection closed|transport closed|ECONNRESET|socket hang up)/gi
+    ),
   ]
     .map((m) => m[0])
     .slice(0, 10);
@@ -146,7 +148,7 @@ for (const s of sessions) {
       if (call.result?.isError) {
         refusedAndAbsent++;
         anomalies.push(
-          `session ${s.session}: refused and absent (correct) — ${call.title}: ${(call.result.text ?? "").slice(0, 140)}`,
+          `session ${s.session}: refused and absent (correct) — ${call.title}: ${(call.result.text ?? "").slice(0, 140)}`
         );
       } else {
         acceptedButAbsent++;
@@ -165,7 +167,7 @@ for (const s of sessions) {
       anomalies.push(
         `session ${s.session}: BODY DIFFERS ${call.title}: client sent ${sentBody.length} chars ` +
           `(${sha(sentBody).slice(0, 12)}), stored ${got.length} chars (${sha(got).slice(0, 12)}), ` +
-          `first difference at index ${i}`,
+          `first difference at index ${i}`
       );
     }
     const lines = Number(/n(\d+)$/.exec(call.title)?.[1] ?? 0);
@@ -178,7 +180,9 @@ for (const s of sessions) {
 
 const duplicateTitles = [...byTitle.entries()].filter(([, v]) => v.count > 1).map(([t, v]) => `${t} ×${v.count}`);
 const transportErrors = sessions.flatMap((s) => s.transport.map((t) => `session ${s.session}: ${t}`));
-const failedSessions = sessions.filter((s) => s.subtype && s.subtype !== "success").map((s) => `session ${s.session}: ${s.subtype}`);
+const failedSessions = sessions
+  .filter((s) => s.subtype && s.subtype !== "success")
+  .map((s) => `session ${s.session}: ${s.subtype}`);
 
 const report = {
   client: "Claude Code, real, headless `claude -p`",
@@ -199,7 +203,12 @@ const report = {
   modelWroteExactlyWhatWasAsked: asSpecified,
   modelWroteSomethingElse,
   deviations:
-    differing + acceptedButAbsent + noBodyField + duplicateTitles.length + transportErrors.length + failedSessions.length,
+    differing +
+    acceptedButAbsent +
+    noBodyField +
+    duplicateTitles.length +
+    transportErrors.length +
+    failedSessions.length,
   anomalies: anomalies.slice(0, 20),
 };
 

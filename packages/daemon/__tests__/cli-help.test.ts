@@ -31,7 +31,11 @@ import { COMMAND_HELP } from "../src/cli/help-text.js";
 const here = dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = resolve(here, "..", "src", "cli.ts");
 
-interface Run { stdout: string; stderr: string; code: number }
+interface Run {
+  stdout: string;
+  stderr: string;
+  code: number;
+}
 
 function runCli(args: string[]): Promise<Run> {
   return new Promise((ok, ko) => {
@@ -64,7 +68,7 @@ function expectedHelp(cmd: string): string {
 // thing that fails — a broken guard then prints a diff instead of restarting
 // the daemon on whoever's machine runs the suite.
 const SAFE_ARGS: Record<string, string[]> = {
-  codex: ['-m','fixture-help-only'],
+  codex: ["-m", "fixture-help-only"],
   status: [],
   doctor: [],
   update: ["--dry-run"],
@@ -76,11 +80,7 @@ for (const [cmd, extra] of Object.entries(SAFE_ARGS)) {
   test(`--help documents '${cmd}' instead of running it`, async () => {
     const { stdout, code } = await runCli([cmd, "--help", ...extra]);
     assert.equal(code, 0, `exit code for '${cmd} --help'`);
-    assert.equal(
-      stdout,
-      expectedHelp(cmd),
-      `'${cmd} --help' emitted something other than its help section — it ran`,
-    );
+    assert.equal(stdout, expectedHelp(cmd), `'${cmd} --help' emitted something other than its help section — it ran`);
   });
 }
 
@@ -132,7 +132,7 @@ test("the help guard runs before the dispatch switch, for every command", async 
   assert.doesNotMatch(
     src.slice(guard, table),
     /args\.showHelp\s*&&\s*!args\.command/,
-    "help is bound to the no-command case again — that is #330",
+    "help is bound to the no-command case again — that is #330"
   );
 });
 
@@ -154,7 +154,7 @@ test("every dispatched command has its own help section (drift gate)", async () 
   assert.deepEqual(
     missing,
     [],
-    `these commands dispatch but have no help section — add them to COMMAND_HELP in cli/help-text.ts: ${missing.join(", ")}`,
+    `these commands dispatch but have no help section — add them to COMMAND_HELP in cli/help-text.ts: ${missing.join(", ")}`
   );
 });
 

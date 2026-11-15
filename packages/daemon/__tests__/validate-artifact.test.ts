@@ -23,7 +23,10 @@ const MESSAGE = "Hi Sam,\n\nthe invented package arrives on Tuesday.\nPlease con
 
 test("validate_artifact is on the write and full surfaces, not on search", () => {
   for (const surface of ["write", "full"] as const) {
-    assert.ok(filterToolDefsForSurface(ALL_TOOL_DEFS, surface).some((d) => d.name === "validate_artifact"), surface);
+    assert.ok(
+      filterToolDefsForSurface(ALL_TOOL_DEFS, surface).some((d) => d.name === "validate_artifact"),
+      surface
+    );
     assert.ok(isToolAllowed("validate_artifact", surface));
   }
   assert.equal(isToolAllowed("validate_artifact", "search"), false);
@@ -32,7 +35,9 @@ test("validate_artifact is on the write and full surfaces, not on search", () =>
 
 test("the handler returns the core result plus labels rendered outside the payload", async () => {
   const out = await validateArtifactHandler({ text: MESSAGE, channel: "discord-dm", normalize: "none" });
-  const { rendered, session_known, receipt_stored, receipt_note, ...result } = out as typeof out & { receipt_note?: string };
+  const { rendered, session_known, receipt_stored, receipt_note, ...result } = out as typeof out & {
+    receipt_note?: string;
+  };
   assert.deepEqual(result, validateCopyBlocks({ text: MESSAGE, channel: "discord-dm", normalize: "none" }));
   assert.match(rendered, /^Block 1\/1 · \d+ max\(codepoints,utf16\)\n```\n/);
   // #1310: stdio — no session, so the receipt is returned but not stored.
@@ -41,7 +46,12 @@ test("the handler returns the core result plus labels rendered outside the paylo
 });
 
 test("the handler cannot weaken Discord's unverified counting fallback", async () => {
-  const out = await validateArtifactHandler({ text: "😀 ".repeat(1000) + "😀", channel: "discord-dm", unit: "codepoints", normalize: "none" });
+  const out = await validateArtifactHandler({
+    text: "😀 ".repeat(1000) + "😀",
+    channel: "discord-dm",
+    unit: "codepoints",
+    normalize: "none",
+  });
   assert.equal(out.unit_applied, "max(codepoints,utf16)");
   assert.ok(out.blocks.every((b) => b.payload.length <= 2000));
   assert.ok(out.receipt);
@@ -59,9 +69,14 @@ test("round trip through the HTTP daemon and the MCP forwarder on the write surf
   search.start();
   const telemetry = new Telemetry();
   const handle = await startHttpServer({
-    port: 0, vault, search, telemetry, version: "fixture",
+    port: 0,
+    vault,
+    search,
+    telemetry,
+    version: "fixture",
     toolDeps: { vault, search, vaultPath: root, telemetry } as never,
-    documentWriteEnabled: false, onActivity: () => {},
+    documentWriteEnabled: false,
+    onActivity: () => {},
     embedding: { on: false, providerId: null, source: "none" },
     origin: { startedBy: "direct", envOrigin: "own", configFingerprint: "0123456789ab" },
   });
@@ -70,15 +85,33 @@ test("round trip through the HTTP daemon and the MCP forwarder on the write surf
     const base = `http://127.0.0.1:${handle.port}`;
     client = new Client({ name: "validate-fixture", version: "1" }, { capabilities: {} });
     const env = Object.fromEntries(
-      Object.entries({ ...process.env, BASTRA_DAEMON_URL: base, BASTRA_FORWARDER_SPAWN: "0", BASTRA_TOOL_SURFACE: "write" })
-        .filter((e): e is [string, string] => typeof e[1] === "string"),
+      Object.entries({
+        ...process.env,
+        BASTRA_DAEMON_URL: base,
+        BASTRA_FORWARDER_SPAWN: "0",
+        BASTRA_TOOL_SURFACE: "write",
+      }).filter((e): e is [string, string] => typeof e[1] === "string")
     );
-    await client.connect(new StdioClientTransport({ command: process.execPath, args: [resolve("packages/daemon/dist/mcp-forwarder.js")], env, stderr: "pipe" }));
+    await client.connect(
+      new StdioClientTransport({
+        command: process.execPath,
+        args: [resolve("packages/daemon/dist/mcp-forwarder.js")],
+        env,
+        stderr: "pipe",
+      })
+    );
     const names = (await client.listTools()).tools.map((t) => t.name);
     assert.ok(names.includes("validate_artifact"));
     assert.ok(names.includes("review_draft"));
 
-    const args = { text: MESSAGE, channel: "discord-dm", limit: 40, unit: "codepoints" as const, normalize: "none" as const, task: { kind: "translate-only", generation: 1 } };
+    const args = {
+      text: MESSAGE,
+      channel: "discord-dm",
+      limit: 40,
+      unit: "codepoints" as const,
+      normalize: "none" as const,
+      task: { kind: "translate-only", generation: 1 },
+    };
     const answered = await client.callTool({ name: "validate_artifact", arguments: args });
     assert.ok(!answered.isError, JSON.stringify(answered));
     const body = JSON.parse((answered.content as { text: string }[])[0]!.text);
@@ -96,7 +129,8 @@ test("round trip through the HTTP daemon and the MCP forwarder on the write surf
     await handle.close();
     search.stop();
     await vault.stop();
-    if (prevToken === undefined) delete process.env.BASTRA_API_TOKEN; else process.env.BASTRA_API_TOKEN = prevToken;
+    if (prevToken === undefined) delete process.env.BASTRA_API_TOKEN;
+    else process.env.BASTRA_API_TOKEN = prevToken;
     await rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   }
 });

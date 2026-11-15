@@ -40,20 +40,16 @@ async function bodyOf(file: string): Promise<string> {
 }
 
 const moveToTrash = (vaultRoot: string, filePath: string, id: string) =>
-  withIdClaim({ vaultRoot, id, filePath }, (claim) =>
-    moveToTrashUnderClaim(vaultRoot, filePath, claim),
-  ).then((r) => r.trashPath);
+  withIdClaim({ vaultRoot, id, filePath }, (claim) => moveToTrashUnderClaim(vaultRoot, filePath, claim)).then(
+    (r) => r.trashPath
+  );
 
 const restoreFromTrash = (vaultRoot: string, trashFile: string, destFile: string) =>
   withIdClaim({ vaultRoot, id: "restore-test", filePath: destFile }, (claim) =>
-    restoreFromTrashUnderClaim(vaultRoot, trashFile, destFile, claim),
+    restoreFromTrashUnderClaim(vaultRoot, trashFile, destFile, claim)
   );
 
-async function vaultWith(
-  t: { after: (fn: () => unknown) => void },
-  marker: string,
-  id = "victim",
-) {
+async function vaultWith(t: { after: (fn: () => unknown) => void }, marker: string, id = "victim") {
   const dir = await mkdtemp(path.join(tmpdir(), "bastra-trash-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const file = path.join(dir, "victim.md");
@@ -112,15 +108,8 @@ test("restore refuses to overwrite an active file at the destination", async (t)
   // save a fresh memory under the same title).
   await writeFile(file, mem("victim", "ACTIVE-EDIT-DO-NOT-LOSE"), "utf8");
 
-  await assert.rejects(
-    () => restoreFromTrash(dir, trashed, file),
-    /refusing to restore over an existing file/,
-  );
-  assert.equal(
-    await bodyOf(file),
-    "ACTIVE-EDIT-DO-NOT-LOSE",
-    "the active version must be untouched",
-  );
+  await assert.rejects(() => restoreFromTrash(dir, trashed, file), /refusing to restore over an existing file/);
+  assert.equal(await bodyOf(file), "ACTIVE-EDIT-DO-NOT-LOSE", "the active version must be untouched");
   assert.equal(await bodyOf(trashed), "TRASHED", "the trashed copy stays recoverable");
 });
 
@@ -158,7 +147,7 @@ test("a dotted neighbour id is not mistaken for a trashed version", async (t) =>
   assert.equal(
     await latestTrashPathFor(dir, "foo"),
     undefined,
-    "`foo` was never trashed — `foo.bar.md` must not stand in for it",
+    "`foo` was never trashed — `foo.bar.md` must not stand in for it"
   );
 });
 
@@ -250,7 +239,7 @@ test("#381: ein nachgebauter Claim kommt nicht an den Trash", async (t) => {
   await assert.rejects(
     () => moveToTrashUnderClaim(vaultRoot, file, gefaelscht),
     /requires a real id claim/,
-    "ohne Marke darf nichts bewegt werden",
+    "ohne Marke darf nichts bewegt werden"
   );
   // Und die Datei liegt unangetastet da, wo sie war.
   assert.equal(await bodyOf(file), "ORIGINAL");
@@ -272,7 +261,7 @@ test("#381: auch der Restore verlangt die Marke", async (t) => {
 
   await assert.rejects(
     () => restoreFromTrashUnderClaim(vaultRoot, trashPath, file, gefaelscht),
-    /requires a real id claim/,
+    /requires a real id claim/
   );
   assert.ok(existsSync(trashPath), "die Trash-Fassung liegt noch da");
   assert.ok(!existsSync(file), "und nichts wurde zurückgeschrieben");
@@ -288,7 +277,7 @@ test("#381: der echte Claim aus withIdClaim funktioniert unverändert", async (t
   // Die Prüfung darf den Normalweg nicht anfassen — Trash und Restore am Stück.
   const trashPath = await moveToTrash(vaultRoot, file, "m");
   await withIdClaim({ vaultRoot, id: "m", filePath: file }, (claim) =>
-    restoreFromTrashUnderClaim(vaultRoot, trashPath, file, claim),
+    restoreFromTrashUnderClaim(vaultRoot, trashPath, file, claim)
   );
 
   assert.equal(await bodyOf(file), "ORIGINAL", "zurückgeholt wie gehabt");

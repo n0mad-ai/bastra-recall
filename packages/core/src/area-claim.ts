@@ -84,7 +84,7 @@ export async function readAreaMark(vaultRoot: string, name: string): Promise<Are
     if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return null;
     throw new Error(
       `cannot tell whether the area '${name}' is still in use ` +
-        `(${(err as NodeJS.ErrnoException)?.code ?? String(err)}) — refusing to guess.`,
+        `(${(err as NodeJS.ErrnoException)?.code ?? String(err)}) — refusing to guess.`
     );
   }
   try {
@@ -111,11 +111,7 @@ async function writeMark(vaultRoot: string, name: string, mark: AreaMark): Promi
 }
 
 /** Der alte Name eines umbenannten Regals ist ab jetzt vergeben. */
-export async function markAreaRenamed(
-  vaultRoot: string,
-  oldName: string,
-  newName: string,
-): Promise<void> {
+export async function markAreaRenamed(vaultRoot: string, oldName: string, newName: string): Promise<void> {
   await writeMark(vaultRoot, oldName, {
     kind: "renamed",
     from: normalizeScopeKey(oldName),
@@ -154,7 +150,7 @@ export async function clearAreaMark(vaultRoot: string, name: string): Promise<vo
     throw new Error(
       `the area '${name}' is live again, but its tombstone could not be removed ` +
         `(${(err as NodeJS.ErrnoException)?.code ?? String(err)}) — every save into '${name}' ` +
-        `would keep failing. Fix the permissions on .bastra/areas and retry.`,
+        `would keep failing. Fix the permissions on .bastra/areas and retry.`
     );
   }
 }
@@ -175,12 +171,12 @@ export async function assertAreaWritable(vaultRoot: string, scope: string): Prom
       `the area '${scope}' was renamed to '${mark.to}'${mark.ts !== "unknown" ? ` on ${mark.ts.slice(0, 10)}` : ""} — ` +
         `save with scope '${mark.to}' instead. Writing to the old name would recreate the shelf ` +
         `that was just moved away. If you really want '${scope}' back as a separate area, ` +
-        `create it explicitly first.`,
+        `create it explicitly first.`
     );
   }
   throw new Error(
     `the area '${scope}' was deleted${mark.ts !== "unknown" ? ` on ${mark.ts.slice(0, 10)}` : ""} — ` +
-      `writing to it would silently revive it. Create it explicitly first if that is what you want.`,
+      `writing to it would silently revive it. Create it explicitly first if that is what you want.`
   );
 }
 
@@ -299,7 +295,7 @@ async function liveReaders(readersDir: string): Promise<string[]> {
     if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return [];
     throw new Error(
       `cannot tell whether saves are in flight for this area ` +
-        `(${(err as NodeJS.ErrnoException)?.code ?? String(err)}) — refusing to guess.`,
+        `(${(err as NodeJS.ErrnoException)?.code ?? String(err)}) — refusing to guess.`
     );
   }
   const live: string[] = [];
@@ -322,7 +318,6 @@ async function liveReaders(readersDir: string): Promise<string[]> {
  *  gekreuzt hat. Die Gegenseite tritt zurück, also genügen wenige Runden. */
 const SHARED_RETRIES = 5;
 const SHARED_RETRY_MS = 20;
-
 
 /**
  * Welches Regal wird an diesem Pfad wirklich beschrieben?
@@ -351,8 +346,7 @@ export function areaKeyForPath(vaultRoot: string, filePath: string): string | nu
   if (rel.length === 0 || rel[0] === "" || rel[0] === "..") return null;
   // Der Schlüssel muss ein ORDNER sein: `memories/projects/x.md` ist eine Datei
   // im Projektregal-Elternordner, kein Regal namens `x.md`.
-  const at = (i: number): string | null =>
-    rel.length > i + 1 && rel[i] !== "" ? normalizeScopeKey(rel[i]) : null;
+  const at = (i: number): string | null => (rel.length > i + 1 && rel[i] !== "" ? normalizeScopeKey(rel[i]) : null);
   if (rel[0] === "memories") return rel[1] === "projects" ? at(2) : at(1);
   if (rel[0] === "dokumentationen") return at(1);
   return null;
@@ -407,15 +401,13 @@ async function releaseReaderMarker(path: string, area: string): Promise<void> {
     op: "area_shared",
     status: entwertet ? "rolled_back" : "partial",
     phase: "reader-marker-release",
-    detail: entwertet
-      ? "marker could not be removed, expires by age"
-      : "marker stuck, area blocked until restart",
+    detail: entwertet ? "marker could not be removed, expires by age" : "marker stuck, area blocked until restart",
   });
   console.error(
     `[bastra-recall] area '${area}': a reader marker could not be removed — ` +
       (entwertet
         ? "it will expire by age."
-        : "renames, deletes and creates on this area will fail until the process restarts."),
+        : "renames, deletes and creates on this area will fail until the process restarts.")
   );
 }
 
@@ -423,11 +415,7 @@ async function releaseReaderMarker(path: string, area: string): Promise<void> {
  * Den Namen für die Dauer von `fn` MITBENUTZEN — ein Save, der ins Regal
  * schreibt, ohne es zu verändern.
  */
-export async function withAreaShared<T>(
-  vaultRoot: string,
-  names: (string | null)[],
-  fn: () => Promise<T>,
-): Promise<T> {
+export async function withAreaShared<T>(vaultRoot: string, names: (string | null)[], fn: () => Promise<T>): Promise<T> {
   // Sortiert und dedupliziert wie beim exklusiven Claim: Ein Re-File berührt
   // ZWEI Regale (Quelle und Ziel), und zwei Saves in gekreuzter Richtung
   // dürfen nicht jeweils die Hälfte halten. `null` ist kein Regal.
@@ -458,7 +446,7 @@ export async function withAreaShared<T>(
     if (attempt >= SHARED_RETRIES) {
       throw new Error(
         `the area '${blockedBy}' is being renamed, deleted or created right now — ` +
-          `nothing was written. Retry in a moment.`,
+          `nothing was written. Retry in a moment.`
       );
     }
     await new Promise((r) => setTimeout(r, SHARED_RETRY_MS));
@@ -471,11 +459,7 @@ export async function withAreaShared<T>(
  * Mehrere Namen (ein Rename braucht Quelle UND Ziel) werden sortiert
  * erworben, damit zwei gekreuzte Renames nicht jeweils die Hälfte halten.
  */
-export async function withAreaExclusive<T>(
-  vaultRoot: string,
-  names: string[],
-  fn: () => Promise<T>,
-): Promise<T> {
+export async function withAreaExclusive<T>(vaultRoot: string, names: string[], fn: () => Promise<T>): Promise<T> {
   const wanted = [...new Set(names.map((n) => normalizeScopeKey(n)))].sort();
   const held: { lock: string; token: string }[] = [];
   const opId = newOperationId();
@@ -514,7 +498,7 @@ export async function withAreaExclusive<T>(
         });
         throw new Error(
           `another area operation is running on '${name}' — nothing was changed. ` +
-            `Retry in a moment. (${(err as Error).message})`,
+            `Retry in a moment. (${(err as Error).message})`
         );
       }
       held.push({ lock, token });
@@ -530,7 +514,7 @@ export async function withAreaExclusive<T>(
         });
         throw new Error(
           `${readersLive.length} save(s) are writing into '${name}' right now — ` +
-            `nothing was changed. Retry in a moment.`,
+            `nothing was changed. Retry in a moment.`
         );
       }
     }

@@ -19,12 +19,7 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import {
-  Vault,
-  SearchIndex,
-  EmbeddingIndex,
-  OllamaEmbeddingProvider,
-} from "@bastra-recall/core";
+import { Vault, SearchIndex, EmbeddingIndex, OllamaEmbeddingProvider } from "@bastra-recall/core";
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
@@ -44,7 +39,7 @@ async function main(): Promise<void> {
   if (!(await fs.stat(embSrc).catch(() => null))) {
     console.error(
       `FATAL: ${embSrc} not found — this harness reads the vectors a daemon already built. ` +
-        "Run the daemon once on this vault, or use absence-honesty.ts, which seeds them itself.",
+        "Run the daemon once on this vault, or use absence-honesty.ts, which seeds them itself."
     );
     process.exit(2);
   }
@@ -100,7 +95,7 @@ async function main(): Promise<void> {
       hybrid_ids: hybrid.map((h) => h.id),
     });
     process.stderr.write(
-      `${c.gold.slice(0, 46).padEnd(46)} hybrid=${rows.at(-1)!.hybrid ?? "-"} bm25=${rows.at(-1)!.bm25 ?? "-"} dense=${rows.at(-1)!.dense ?? "-"}\n`,
+      `${c.gold.slice(0, 46).padEnd(46)} hybrid=${rows.at(-1)!.hybrid ?? "-"} bm25=${rows.at(-1)!.bm25 ?? "-"} dense=${rows.at(-1)!.dense ?? "-"}\n`
     );
   }
 
@@ -113,13 +108,17 @@ async function main(): Promise<void> {
       `  top-${String(cut).padStart(2)}   hybrid ${String(count((r) => within(r.hybrid, cut))).padStart(2)}/${n}` +
         `   bm25 ${String(count((r) => within(r.bm25, cut))).padStart(2)}/${n}` +
         `   dense ${String(count((r) => within(r.dense, cut))).padStart(2)}/${n}` +
-        `   either arm ${String(count((r) => within(r.bm25, cut) || within(r.dense, cut))).padStart(2)}/${n}`,
+        `   either arm ${String(count((r) => within(r.bm25, cut) || within(r.dense, cut))).padStart(2)}/${n}`
     );
   }
-  console.log(`\n  gold in the hybrid pool at depth ${depth} but outside top-5: ` +
-    `${count((r) => within(r.hybrid, depth) && !within(r.hybrid, 5))}/${n}  ← rescuable by reranking`);
-  console.log(`  gold nowhere in either arm at depth ${depth}: ` +
-    `${count((r) => !within(r.bm25, depth) && !within(r.dense, depth))}/${n}  ← retrieval, not ranking`);
+  console.log(
+    `\n  gold in the hybrid pool at depth ${depth} but outside top-5: ` +
+      `${count((r) => within(r.hybrid, depth) && !within(r.hybrid, 5))}/${n}  ← rescuable by reranking`
+  );
+  console.log(
+    `  gold nowhere in either arm at depth ${depth}: ` +
+      `${count((r) => !within(r.bm25, depth) && !within(r.dense, depth))}/${n}  ← retrieval, not ranking`
+  );
 
   await emb.stop();
   search.stop();

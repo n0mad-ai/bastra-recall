@@ -44,9 +44,7 @@ interface HostProfileFile {
 export function hostProfilePath(): string {
   // BASTRA_HOST_PROFILE_PATH is a test seam, not a user setting. It always
   // names the FILE, and setting it moves the salt — so the host id changes.
-  return (
-    envFirst("BASTRA_HOST_PROFILE_PATH") ?? testRunHostProfilePath() ?? join(bastraDataDir(), "host-profile.json")
-  );
+  return envFirst("BASTRA_HOST_PROFILE_PATH") ?? testRunHostProfilePath() ?? join(bastraDataDir(), "host-profile.json");
 }
 
 /**

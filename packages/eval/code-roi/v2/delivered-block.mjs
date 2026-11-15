@@ -56,7 +56,7 @@ export async function deliveredBlockFor(s, tree, graphRoot, prompt) {
   if (codeAwarenessDisabledByEnv()) {
     throw new Error(
       "BASTRA_CODE_AWARENESS=off — arm D would be silent everywhere for a reason that has " +
-        "nothing to do with the block. Unset it before running the measurement.",
+        "nothing to do with the block. Unset it before running the measurement."
     );
   }
   const { CodeGraphCache } = await import(`${DIST}cache.js`);

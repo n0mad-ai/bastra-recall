@@ -3,8 +3,7 @@
 
 import { searchNodes } from "./graph-data.js";
 
-const esc = (s) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 export function createSearch(input, resultsEl, nodes, { colorOf, onPick, aiSearch, onOpenChange }) {
   let items = []; // [{node, ai}]

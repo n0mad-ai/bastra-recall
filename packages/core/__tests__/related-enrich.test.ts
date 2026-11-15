@@ -52,7 +52,7 @@ async function vaultWith(ids: string[]): Promise<{ dir: string; vault: Vault }> 
 /** Vault aus id→sensitivity — für die #365/13-Fälle, in denen die Einstufung
  *  der Nachbarn das eigentliche Testobjekt ist. */
 async function vaultWithSensitivity(
-  spec: Record<string, "private" | "team" | "public">,
+  spec: Record<string, "private" | "team" | "public">
 ): Promise<{ dir: string; vault: Vault }> {
   const dir = await mkdtemp(path.join(tmpdir(), "bastra-related-sens-"));
   for (const [id, sensitivity] of Object.entries(spec)) {
@@ -237,7 +237,7 @@ test("two enrichments of the same memory do not race for one temp file", async (
       assert.deepEqual(
         failed.map((r) => (r as PromiseRejectedResult).reason?.code ?? String(r)),
         [],
-        `round ${round}: concurrent enrichment of the same memory must not fail`,
+        `round ${round}: concurrent enrichment of the same memory must not fail`
       );
       // and the file is intact, not a half-written mixture
       assert.match(await readFile(path.join(dir, "a.md"), "utf8"), /^---\n/);
@@ -267,7 +267,10 @@ test("#365/13: ein private-Nachbar landet weder als Kante noch als Wikilink im T
     ]);
     const written = await new RelatedEnricher(vault, index).enrich("host");
 
-    assert.deepEqual(written?.map((e) => e.id), ["sprint-planning"]);
+    assert.deepEqual(
+      written?.map((e) => e.id),
+      ["sprint-planning"]
+    );
     const raw = await readFile(path.join(dir, "host.md"), "utf8");
     assert.doesNotMatch(raw, /therapie-termin-notizen/);
     assert.match(raw, /- \[\[sprint-planning\]\] \(cosine 0\.85\)/);
@@ -292,7 +295,10 @@ test("#365/13: der private-Filter kostet keinen topN-Slot", async () => {
       { id: "c", score: 0.85 },
     ]);
     const written = await new RelatedEnricher(vault, index, { topN: 2 }).enrich("host");
-    assert.deepEqual(written?.map((e) => e.id), ["b", "c"]);
+    assert.deepEqual(
+      written?.map((e) => e.id),
+      ["b", "c"]
+    );
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
@@ -306,7 +312,10 @@ test("#365/13: ein privates Memory behält seine eigenen private-Nachbarn", asyn
     const { index } = stubEmbeddings([{ id: "p", score: 0.9 }]);
     const written = await new RelatedEnricher(vault, index).enrich("host");
 
-    assert.deepEqual(written?.map((e) => e.id), ["p"]);
+    assert.deepEqual(
+      written?.map((e) => e.id),
+      ["p"]
+    );
     assert.match(await readFile(path.join(dir, "host.md"), "utf8"), /- \[\[p\]\] \(cosine 0\.90\)/);
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
@@ -351,7 +360,7 @@ body host
 - [[b]] (cosine 0.85)
 
 <!-- bastra:auto-related:end -->
-`,
+`
     );
     const vault = new Vault(dir);
     await vault.init();
@@ -363,7 +372,10 @@ body host
     const enricher = new RelatedEnricher(vault, index);
 
     const healed = await enricher.enrich("host");
-    assert.deepEqual(healed?.map((e) => e.id), ["b"]);
+    assert.deepEqual(
+      healed?.map((e) => e.id),
+      ["b"]
+    );
     const raw = await readFile(path.join(dir, "host.md"), "utf8");
     assert.doesNotMatch(raw, /\[\[p\]\]/);
     assert.doesNotMatch(raw, /id: p/);
@@ -401,7 +413,7 @@ test("#341: enrich behält die mtime und der Index sieht die Anreicherung trotzd
     assert.equal(
       (vault.get("a")?.fm as { related_via?: { id: string }[] }).related_via?.[0]?.id,
       "b",
-      "der schreibende Prozess hat selbst reindiziert",
+      "der schreibende Prozess hat selbst reindiziert"
     );
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
@@ -425,8 +437,16 @@ test("#631: two candidates within ε of the last slot do not alternate — the f
     for (let i = 0; i < 4; i++) {
       stub.current =
         i % 2 === 0
-          ? [{ id: "b", score: 0.9 }, { id: "y", score: 0.789 }, { id: "x", score: 0.78 }]
-          : [{ id: "b", score: 0.9 }, { id: "x", score: 0.789 }, { id: "y", score: 0.78 }];
+          ? [
+              { id: "b", score: 0.9 },
+              { id: "y", score: 0.789 },
+              { id: "x", score: 0.78 },
+            ]
+          : [
+              { id: "b", score: 0.9 },
+              { id: "x", score: 0.789 },
+              { id: "y", score: 0.78 },
+            ];
       assert.equal(await enricher.enrich("a"), null, `pass ${i} must not write`);
     }
     assert.equal(await readFile(path.join(dir, "a.md"), "utf8"), settled);
@@ -445,9 +465,16 @@ test("#631: a challenger that leads by more than ε still displaces the incumben
     ]);
     const enricher = new RelatedEnricher(vault, index, { topN: 2 });
     await enricher.enrich("a");
-    stub.current = [{ id: "b", score: 0.9 }, { id: "y", score: 0.83 }, { id: "x", score: 0.8 }];
+    stub.current = [
+      { id: "b", score: 0.9 },
+      { id: "y", score: 0.83 },
+      { id: "x", score: 0.8 },
+    ];
     const written = await enricher.enrich("a");
-    assert.deepEqual(written?.map((e) => e.id), ["b", "y"]);
+    assert.deepEqual(
+      written?.map((e) => e.id),
+      ["b", "y"]
+    );
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }

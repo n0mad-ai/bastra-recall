@@ -66,8 +66,7 @@ export interface SplitResult {
   excluded: { probes: number; no_answer: number };
 }
 
-const stratumKey = (c: GoldCase, by: readonly (keyof GoldCase)[]): string =>
-  by.map((f) => String(c[f])).join("|");
+const stratumKey = (c: GoldCase, by: readonly (keyof GoldCase)[]): string => by.map((f) => String(c[f])).join("|");
 
 /**
  * Whether a stratum of this size reaches BOTH halves.
@@ -106,7 +105,7 @@ const reachesBothHalves = (n: number, share: number): boolean => {
 function coalesceStrata(
   byStratum: Map<string, GoldCase[]>,
   fieldCount: number,
-  share: number,
+  share: number
 ): Map<string, { cases: GoldCase[]; from: string[] }> {
   const groups = new Map<string, { cases: GoldCase[]; from: string[] }>();
   for (const [k, v] of byStratum) groups.set(k, { cases: [...v], from: [] });
@@ -175,8 +174,8 @@ export function splitGoldCases(cases: readonly GoldCase[], opts: SplitOptions): 
       const values = new Set(eligible.map((c) => String(c[f])));
       if (values.size < 2) {
         throw new Error(
-          `stratifyBy field \`${String(f)}\` is constant over the eligible pool (${[...values][0]}) — `
-            + "a factor that does not vary balances nothing",
+          `stratifyBy field \`${String(f)}\` is constant over the eligible pool (${[...values][0]}) — ` +
+            "a factor that does not vary balances nothing"
         );
       }
     }
@@ -195,8 +194,8 @@ export function splitGoldCases(cases: readonly GoldCase[], opts: SplitOptions): 
     .map(([k]) => k);
   if (stillDegenerate.length) {
     throw new Error(
-      `stratum ${stillDegenerate.join(", ")} cannot reach both halves even after coalescing — `
-        + "the pool is too small for this split, and a seed does not fix that",
+      `stratum ${stillDegenerate.join(", ")} cannot reach both halves even after coalescing — ` +
+        "the pool is too small for this split, and a seed does not fix that"
     );
   }
 

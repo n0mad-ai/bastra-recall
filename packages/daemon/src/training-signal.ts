@@ -19,7 +19,8 @@ import { dirname, join } from "node:path";
 import type { Memory, RecallHit, Vault } from "@bastra-recall/core";
 import { envFirst, envOff, isOnValue, testRunLogDir } from "./env.js";
 
-const logDir = (): string => envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? testRunLogDir() ?? join(bastraDataDir(), "logs");
+const logDir = (): string =>
+  envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? testRunLogDir() ?? join(bastraDataDir(), "logs");
 
 // ─── This feature's own files ────────────────────────────────────────────────
 
@@ -56,15 +57,21 @@ function isOwnRegularFile(info: Stats, at: Stats | null): boolean {
  */
 export async function openOwnFile(path: string, flags: number, mode = 0o600): Promise<FileHandle> {
   let handle: FileHandle;
-  try { handle = await open(path, flags | NOFOLLOW | NONBLOCK, mode); } catch (error) {
+  try {
+    handle = await open(path, flags | NOFOLLOW | NONBLOCK, mode);
+  } catch (error) {
     // A link (ELOOP/EMLINK), a pipe or socket nobody serves (ENXIO/EOPNOTSUPP), a directory opened for writing (EISDIR).
-    if (["ELOOP", "EMLINK", "ENXIO", "EOPNOTSUPP", "EISDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) throw new RefusedFile();
+    if (["ELOOP", "EMLINK", "ENXIO", "EOPNOTSUPP", "EISDIR"].includes((error as NodeJS.ErrnoException).code ?? ""))
+      throw new RefusedFile();
     throw error;
   }
   try {
     if (!isOwnRegularFile(await handle.stat(), await lstat(path).catch(() => null))) throw new RefusedFile();
     return handle;
-  } catch (error) { await handle.close(); throw error; }
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
 }
 
 const warned = new Set<string>();
@@ -72,7 +79,9 @@ const warned = new Set<string>();
 export function warnRefusedFile(name: string): void {
   if (warned.has(name)) return;
   warned.add(name);
-  console.error(`[bastra-recall] ${name} is not a regular file of its own (a link, a pipe, or unreadable) — it is left untouched and nothing is written`);
+  console.error(
+    `[bastra-recall] ${name} is not a regular file of its own (a link, a pipe, or unreadable) — it is left untouched and nothing is written`
+  );
 }
 
 // ─── Candidate pool: note state and per-arm rank ─────────────────────────────
@@ -100,14 +109,28 @@ async function readOrCreateKey(path: string): Promise<Buffer> {
   await mkdir(dirname(path), { recursive: true });
   try {
     // O_EXCL creates or fails; it never opens what is already there, whatever that is.
-    const fresh = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NOFOLLOW | NONBLOCK, 0o600);
-    try { const key = randomBytes(32); await fresh.writeFile(key.toString("hex")); return key; } finally { await fresh.close(); }
+    const fresh = await open(
+      path,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NOFOLLOW | NONBLOCK,
+      0o600
+    );
+    try {
+      const key = randomBytes(32);
+      await fresh.writeFile(key.toString("hex"));
+      return key;
+    } finally {
+      await fresh.close();
+    }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
   }
   const handle = await openOwnFile(path, constants.O_RDONLY);
   let text: string;
-  try { text = (await handle.readFile("utf8")).trim(); } finally { await handle.close(); }
+  try {
+    text = (await handle.readFile("utf8")).trim();
+  } finally {
+    await handle.close();
+  }
   if (!/^[a-f0-9]{64}$/.test(text)) throw new RefusedFile();
   return Buffer.from(text, "hex");
 }
@@ -122,16 +145,23 @@ async function readOrCreateKey(path: string): Promise<Buffer> {
 export function loadContentKey(): Promise<Buffer | null> {
   const path = join(logDir(), CONTENT_KEY_FILE);
   if (loading?.path === path) return loading.done;
-  const done = readOrCreateKey(path).then((key) => {
-    // Unchanged bytes keep their Buffer, so hashes already computed stay valid.
-    const kept = contentKey?.path === path && contentKey.key?.equals(key) ? contentKey.key : key;
-    contentKey = { path, key: kept, checked: Date.now() };
-    return kept;
-  }, () => {
-    warnRefusedFile(CONTENT_KEY_FILE);
-    contentKey = { path, key: null, checked: Date.now() };
-    return null;
-  }).finally(() => { if (loading?.done === done) loading = undefined; });
+  const done = readOrCreateKey(path)
+    .then(
+      (key) => {
+        // Unchanged bytes keep their Buffer, so hashes already computed stay valid.
+        const kept = contentKey?.path === path && contentKey.key?.equals(key) ? contentKey.key : key;
+        contentKey = { path, key: kept, checked: Date.now() };
+        return kept;
+      },
+      () => {
+        warnRefusedFile(CONTENT_KEY_FILE);
+        contentKey = { path, key: null, checked: Date.now() };
+        return null;
+      }
+    )
+    .finally(() => {
+      if (loading?.done === done) loading = undefined;
+    });
   loading = { path, done };
   return done;
 }
@@ -165,12 +195,18 @@ export function noteContentHash(note: Memory): string | null {
   if (!key) return null;
   const known = hashes.get(note);
   if (known?.key === key) return known.hash;
-  const hash = createHmac("sha256", key).update(JSON.stringify([note.fm.title, note.fm.summary ?? "", note.fm.recall_when ?? [], note.body])).digest("hex").slice(0, 16);
+  const hash = createHmac("sha256", key)
+    .update(JSON.stringify([note.fm.title, note.fm.summary ?? "", note.fm.recall_when ?? [], note.body]))
+    .digest("hex")
+    .slice(0, 16);
   hashes.set(note, { key, hash });
   return hash;
 }
 
-export function telemetryCandidatePool(pool: readonly RecallHit[], vault: Pick<Vault, "get">): TelemetryPoolCandidate[] {
+export function telemetryCandidatePool(
+  pool: readonly RecallHit[],
+  vault: Pick<Vault, "get">
+): TelemetryPoolCandidate[] {
   // No row is written with telemetry off, so no key is created for it either.
   const hashed = !envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY");
   return pool.map((hit) => {
@@ -222,7 +258,10 @@ export async function recordRerankVerdicts(verdicts: RerankVerdict[], model: str
     const dir = logDir();
     await mkdir(dir, { recursive: true });
     const ts = new Date().toISOString();
-    const rows = verdicts.map((verdict) => JSON.stringify({ kind: "rerank_verdict", ts, session_id: null, ...verdict, model, ...evalRunMark() }) + "\n");
+    const rows = verdicts.map(
+      (verdict) =>
+        JSON.stringify({ kind: "rerank_verdict", ts, session_id: null, ...verdict, model, ...evalRunMark() }) + "\n"
+    );
     await appendFile(join(dir, `events-${ts.slice(0, 10)}.jsonl`), rows.join(""), "utf8");
   } catch {
     // Observability must never break the harvest itself.

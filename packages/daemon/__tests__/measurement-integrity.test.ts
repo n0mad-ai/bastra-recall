@@ -44,10 +44,23 @@ const KEY = "ollama-embeddinggemma";
 
 function memo(id: string): string {
   return [
-    "---", `id: ${id}`, "title: Deployment-Strategie", "type: reference",
-    "summary: Deployment-Strategie", "topic_path:", "  - test", "tags:", "  - test",
-    "recall_when:", "  - wenn wir deployen", "created: 2026-01-01", "updated: 2026-01-01",
-    "---", "", "Text über deployen.", "",
+    "---",
+    `id: ${id}`,
+    "title: Deployment-Strategie",
+    "type: reference",
+    "summary: Deployment-Strategie",
+    "topic_path:",
+    "  - test",
+    "tags:",
+    "  - test",
+    "recall_when:",
+    "  - wenn wir deployen",
+    "created: 2026-01-01",
+    "updated: 2026-01-01",
+    "---",
+    "",
+    "Text über deployen.",
+    "",
   ].join("\n");
 }
 
@@ -55,13 +68,18 @@ function httpPost(port: number, path: string, payload: unknown): Promise<Record<
   const body = JSON.stringify(payload);
   return new Promise((resolve, reject) => {
     const req = request(
-      { host: "127.0.0.1", port, path, method: "POST",
-        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) } },
+      {
+        host: "127.0.0.1",
+        port,
+        path,
+        method: "POST",
+        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+      },
       (res) => {
         let raw = "";
         res.on("data", (c) => (raw += c));
         res.on("end", () => resolve(JSON.parse(raw || "{}") as Record<string, unknown>));
-      },
+      }
     );
     req.on("error", reject);
     req.end(body);
@@ -72,7 +90,11 @@ async function readEvents(logDir: string, kind: string, mindestens = 1): Promise
   for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 40));
     let files: string[];
-    try { files = await readdir(logDir); } catch { continue; }
+    try {
+      files = await readdir(logDir);
+    } catch {
+      continue;
+    }
     const out: Record<string, unknown>[] = [];
     for (const f of files.filter((n) => n.startsWith("events-"))) {
       const raw = await readFile(join(logDir, f), "utf8");
@@ -92,11 +114,7 @@ async function readEvents(logDir: string, kind: string, mindestens = 1): Promise
  * genau die Unterscheidung, die `EmbeddingIndex.search()` vor #493 verschluckt
  * hat.
  */
-function armMitAusgang(
-  outcome: "hits" | "empty" | "error",
-  nachMs: number,
-  loadMs: number | null = null,
-) {
+function armMitAusgang(outcome: "hits" | "empty" | "error", nachMs: number, loadMs: number | null = null) {
   return {
     size: () => 1,
     runtimeHealth: () => ({ errorCount: 0 }),
@@ -110,8 +128,8 @@ function armMitAusgang(
               providerLoadMs: loadMs,
               coldStartObserved: loadMs !== null && loadMs >= 200,
             }),
-          nachMs,
-        ),
+          nachMs
+        )
       ),
   } as never;
 }
@@ -119,7 +137,7 @@ function armMitAusgang(
 async function daemonMit(
   t: { after: (fn: () => unknown) => void },
   arm: ReturnType<typeof armMitAusgang>,
-  shadow: DeadlineShadow | undefined,
+  shadow: DeadlineShadow | undefined
 ) {
   const dir = await mkdtemp(join(tmpdir(), "bastra-mi-vault-"));
   const logDir = await mkdtemp(join(tmpdir(), "bastra-mi-logs-"));
@@ -135,7 +153,11 @@ async function daemonMit(
   if (prev === undefined) delete process.env.BASTRA_LOG_PATH;
   else process.env.BASTRA_LOG_PATH = prev;
   const handle = await startHttpServer({
-    port: 0, vault, search, telemetry, version: "test",
+    port: 0,
+    vault,
+    search,
+    telemetry,
+    version: "test",
     toolDeps: { vault, search, telemetry, vaultPath: dir, deadlineShadow: shadow },
     documentWriteEnabled: false,
     embedding: { on: true, providerId: "test", source: "none" },
@@ -185,10 +207,7 @@ test("#493: ein leerer Arm ist ebenfalls keine Stichprobe, ein Arm mit Treffern 
   const leer = await daemonMit(t, armMitAusgang("empty", 30), schattenMit(profil));
   await httpPost(leer.port, "/hook/recall", { query: "deployen", k: 5, vector_deadline_ms: 2000 });
   const leerRecalls = await readEvents(leer.logDir, "hook_recall");
-  assert.equal(
-    (leerRecalls[0].deadline_shadow as Record<string, unknown>).provider_outcome,
-    "empty",
-  );
+  assert.equal((leerRecalls[0].deadline_shadow as Record<string, unknown>).provider_outcome, "empty");
   assert.equal(profil.sampleCount(KEY), 0);
 
   // Und der Gegenbeweis: Ein Arm mit echten Treffern wird gelernt, sonst
@@ -211,7 +230,10 @@ test("#702: ein Replay-Recall lehrt das Latenzprofil nichts", async (t) => {
   // liefert — nur als Replay (`bastra doctor --replay`) gekennzeichnet.
   const d = await daemonMit(t, armMitAusgang("hits", 30, 585), shadow);
   const res = await httpPost(d.port, "/hook/recall", {
-    query: "deployen", k: 5, vector_deadline_ms: 2000, client: "replay",
+    query: "deployen",
+    k: 5,
+    vector_deadline_ms: 2000,
+    client: "replay",
   });
   assert.ok(Array.isArray(res.hits) && res.hits.length > 0, `der Recall lief: ${JSON.stringify(res)}`);
   await new Promise((r) => setTimeout(r, 300));
@@ -242,7 +264,10 @@ test("#493: die Wanduhr des Aufrufers gilt — und die Zeile sagt, woher sie kam
   const eigen = await daemonMit(t, armMitAusgang("hits", 20), schattenMit(profil));
   // Die MCP-Lane schickt seit #493 ihr eigenes Budget mit.
   await httpPost(eigen.port, "/hook/recall", {
-    query: "deployen", k: 5, vector_deadline_ms: 1500, hook_budget_ms: FORWARDER_HOOK_BUDGET_MS,
+    query: "deployen",
+    k: 5,
+    vector_deadline_ms: 1500,
+    hook_budget_ms: FORWARDER_HOOK_BUDGET_MS,
   });
   const mitBudget = (await readEvents(eigen.logDir, "hook_recall"))[0].deadline_shadow as Record<string, unknown>;
   assert.equal(mitBudget.lane_budget_ms, FORWARDER_HOOK_BUDGET_MS);
@@ -338,15 +363,11 @@ test("#493: der host_profile_id ist stabil, unterscheidet Hosts und nennt keinen
   assert.equal(a1, a2, "derselbe Salt, derselbe Fingerabdruck: dieselbe Kennung");
   assert.match(a1, /^[0-9a-f]{16}$/);
 
-  assert.notEqual(
-    computeHostProfileId(pfadA, "maschine-zwei"),
-    a1,
-    "eine andere Maschine ist eine andere Kennung",
-  );
+  assert.notEqual(computeHostProfileId(pfadA, "maschine-zwei"), a1, "eine andere Maschine ist eine andere Kennung");
   assert.notEqual(
     computeHostProfileId(pfadB, "maschine-eins"),
     a1,
-    "und ohne den lokalen Salt lässt sie sich nicht nachrechnen",
+    "und ohne den lokalen Salt lässt sie sich nicht nachrechnen"
   );
 
   // Datensparsam: Der Salt liegt lokal, in der Kennung steht nichts Lesbares.
@@ -415,7 +436,7 @@ test("#493: die Lane erzeugt die Klammer, schickt sie mit und schreibt sie auf i
   try {
     await runSessionLane(
       { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-493-lane" },
-      `http://127.0.0.1:${port}`,
+      `http://127.0.0.1:${port}`
     );
   } finally {
     if (vorher.tel === undefined) delete process.env.BASTRA_TELEMETRY;
@@ -431,7 +452,7 @@ test("#493: die Lane erzeugt die Klammer, schickt sie mit und schreibt sie auf i
   assert.equal(
     koerper[0].session_start_call_id,
     zeile.session_start_call_id,
-    "dieselbe Klammer geht an den Assembler wie in die eigene Zeile",
+    "dieselbe Klammer geht an den Assembler wie in die eigene Zeile"
   );
   assert.match(String(zeile.host_profile_id), /^[0-9a-f]{16}$/, "und die Hostkennung steht dabei");
 
@@ -443,7 +464,7 @@ test("#493: die Lane erzeugt die Klammer, schickt sie mit und schreibt sie auf i
   try {
     await runSessionLane(
       { hook_event_name: "SessionStart", source: "compact", cwd: "/tmp", session_id: "sess-493-lane" },
-      `http://127.0.0.1:${port}`,
+      `http://127.0.0.1:${port}`
     );
   } finally {
     if (vorher.tel === undefined) delete process.env.BASTRA_TELEMETRY;

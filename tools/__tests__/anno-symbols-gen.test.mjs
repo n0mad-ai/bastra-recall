@@ -52,8 +52,11 @@ const EXPECTED = {
 };
 
 const normalize = (map) =>
-  Object.fromEntries(Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => [k, [...v].sort()]));
+  Object.fromEntries(
+    Object.entries(map)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => [k, [...v].sort()])
+  );
 
 async function fixtureRepo(t) {
   const dir = await mkdtemp(join(tmpdir(), "anno-symbols-"));
@@ -80,7 +83,7 @@ test("reproduces the reference engine's symbol map for the fixture repo", async 
   assert.deepEqual(
     normalize(table.symbols),
     normalize(EXPECTED),
-    "a second producer must agree with the reference implementation, symbol for symbol",
+    "a second producer must agree with the reference implementation, symbol for symbol"
   );
 });
 
@@ -101,25 +104,31 @@ test("a name declared in several files keeps every location, sorted", async (t) 
   execFileSync("node", [GEN, dir], { stdio: "pipe" });
 
   // never first-wins: the value is a list so a path hint can be checked
-  assert.deepEqual(tableOf(dir).symbols.CARD_LIFE_MS,
-    ["src/another.ts", "src/second.ts", "src/target.ts"]);
+  assert.deepEqual(tableOf(dir).symbols.CARD_LIFE_MS, ["src/another.ts", "src/second.ts", "src/target.ts"]);
 });
 
 test("generics key on the bare identifier, overloads collapse to one name", async (t) => {
   const dir = await fixtureRepo(t);
-  await writeFile(join(dir, "src", "generic.ts"),
+  await writeFile(
+    join(dir, "src", "generic.ts"),
     "export interface Box<T> { value: T }\n" +
-    "export function pick<T>(x: T): T { return x; }\n" +
-    "export function twice(x: string): string;\n" +
-    "export function twice(x: number): number;\n" +
-    "export function twice(x: any): any { return x; }\n", "utf8");
+      "export function pick<T>(x: T): T { return x; }\n" +
+      "export function twice(x: string): string;\n" +
+      "export function twice(x: number): number;\n" +
+      "export function twice(x: any): any { return x; }\n",
+    "utf8"
+  );
   execFileSync("git", ["-C", dir, "add", "-A"], { stdio: "pipe" });
   execFileSync("git", ["-C", dir, "commit", "-q", "-m", "generics"], { stdio: "pipe" });
   execFileSync("node", [GEN, dir], { stdio: "pipe" });
 
   const s = tableOf(dir).symbols;
   assert.deepEqual(s.Box, ["src/generic.ts"], "Box, never Box<T>");
-  assert.equal(Object.keys(s).some((k) => k.includes("<")), false, "no type parameters in any key");
+  assert.equal(
+    Object.keys(s).some((k) => k.includes("<")),
+    false,
+    "no type parameters in any key"
+  );
   assert.deepEqual(s.twice, ["src/generic.ts"], "three overload signatures, one entry");
 });
 

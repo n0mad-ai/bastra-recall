@@ -35,7 +35,8 @@ import { withPathLock } from "./path-lock.js";
 import { scopeEquals } from "@bastra-recall/core/scope";
 
 function validateLegacyJson(text: string): void {
-  if (text.trim() && !Array.isArray(JSON.parse(text))) throw new Error("Local registry must be a JSON array; original preserved");
+  if (text.trim() && !Array.isArray(JSON.parse(text)))
+    throw new Error("Local registry must be a JSON array; original preserved");
 }
 
 export interface FloorEntry {
@@ -72,8 +73,10 @@ function isFloorEntry(v: unknown): v is FloorEntry {
   if (!v || typeof v !== "object") return false;
   const e = v as Record<string, unknown>;
   return (
-    typeof e.memory_id === "string" && e.memory_id.length > 0 &&
-    typeof e.condition === "string" && e.condition.length > 0 &&
+    typeof e.memory_id === "string" &&
+    e.memory_id.length > 0 &&
+    typeof e.condition === "string" &&
+    e.condition.length > 0 &&
     typeof e.reason === "string" &&
     typeof e.floored_at === "string" &&
     typeof e.last_affirmed === "string"
@@ -98,7 +101,7 @@ async function readRegistry(path: string): Promise<FloorEntry[]> {
     parsed = JSON.parse(raw);
   } catch (e) {
     process.stderr.write(
-      `[bastra-recall] floors.json is corrupt (${(e as Error).message}) — treating as empty. Fix or delete ${path}\n`,
+      `[bastra-recall] floors.json is corrupt (${(e as Error).message}) — treating as empty. Fix or delete ${path}\n`
     );
     return [];
   }
@@ -145,47 +148,51 @@ export async function addFloor(input: AddFloorInput, path: string = floorsFilePa
   }
   const scope = typeof input.scope === "string" && input.scope.trim().length > 0 ? input.scope.trim() : undefined;
 
-  return withPathLock(path, async () => {
-    const entries = await readRegistry(path);
-    const existing = entries.findIndex((e) => e.memory_id === memoryId);
-    if (existing === -1 && entries.length >= MAX_FLOORS) {
-      const current = entries.map((e) => `${e.memory_id} (condition: ${e.condition})`).join(", ");
-      throw new Error(
-        `floor cap reached (${MAX_FLOORS}) — the pinned set rations the context window; ` +
-          `release a condition before adding. Current floors: ${current}`,
-      );
-    }
+  return withPathLock(
+    path,
+    async () => {
+      const entries = await readRegistry(path);
+      const existing = entries.findIndex((e) => e.memory_id === memoryId);
+      if (existing === -1 && entries.length >= MAX_FLOORS) {
+        const current = entries.map((e) => `${e.memory_id} (condition: ${e.condition})`).join(", ");
+        throw new Error(
+          `floor cap reached (${MAX_FLOORS}) — the pinned set rations the context window; ` +
+            `release a condition before adding. Current floors: ${current}`
+        );
+      }
 
-    const now = new Date().toISOString();
-    // A rewrite carrying affirmed_by + why IS an affirm (see the doc comment
-    // above), so it belongs in the act log too — otherwise the log is
-    // incomplete from day one and live-intent misses a real re-justification.
-    if (hasBy) {
-      await appendAct(
-        {
-          memory_id: memoryId,
-          ...(input.occurred_at !== undefined ? { occurred_at: input.occurred_at } : {}),
-          affirmed_by: input.affirmed_by!,
-          why: input.why!,
-        },
-        input.acts_path,
-      );
-    }
-    const entry: FloorEntry = {
-      memory_id: memoryId,
-      condition,
-      reason,
-      ...(scope !== undefined ? { scope } : {}),
-      floored_at: now,
-      last_affirmed: now,
-      // Stored verbatim — opaque audit payload, never interpreted.
-      ...(hasBy ? { affirmed_by: input.affirmed_by, why: input.why } : {}),
-    };
-    if (existing >= 0) entries[existing] = entry;
-    else entries.push(entry);
-    await writeRegistry(entries, path);
-    return entry;
-  }, { crossProcess: true });
+      const now = new Date().toISOString();
+      // A rewrite carrying affirmed_by + why IS an affirm (see the doc comment
+      // above), so it belongs in the act log too — otherwise the log is
+      // incomplete from day one and live-intent misses a real re-justification.
+      if (hasBy) {
+        await appendAct(
+          {
+            memory_id: memoryId,
+            ...(input.occurred_at !== undefined ? { occurred_at: input.occurred_at } : {}),
+            affirmed_by: input.affirmed_by!,
+            why: input.why!,
+          },
+          input.acts_path
+        );
+      }
+      const entry: FloorEntry = {
+        memory_id: memoryId,
+        condition,
+        reason,
+        ...(scope !== undefined ? { scope } : {}),
+        floored_at: now,
+        last_affirmed: now,
+        // Stored verbatim — opaque audit payload, never interpreted.
+        ...(hasBy ? { affirmed_by: input.affirmed_by, why: input.why } : {}),
+      };
+      if (existing >= 0) entries[existing] = entry;
+      else entries.push(entry);
+      await writeRegistry(entries, path);
+      return entry;
+    },
+    { crossProcess: true }
+  );
 }
 
 /**
@@ -201,13 +208,20 @@ export async function addFloor(input: AddFloorInput, path: string = floorsFilePa
 export async function release(condition: string, path: string = floorsFilePath()): Promise<string[]> {
   const token = condition?.trim() ?? "";
   if (!token) throw new Error("condition is required");
-  return withPathLock(path, async () => {
-    const entries = await readRegistry(path);
-    const removed = entries.filter((e) => e.condition === token).map((e) => e.memory_id);
-    if (removed.length === 0) return [];
-    await writeRegistry(entries.filter((e) => e.condition !== token), path);
-    return removed;
-  }, { crossProcess: true });
+  return withPathLock(
+    path,
+    async () => {
+      const entries = await readRegistry(path);
+      const removed = entries.filter((e) => e.condition === token).map((e) => e.memory_id);
+      if (removed.length === 0) return [];
+      await writeRegistry(
+        entries.filter((e) => e.condition !== token),
+        path
+      );
+      return removed;
+    },
+    { crossProcess: true }
+  );
 }
 
 export interface AffirmOptions {
@@ -244,43 +258,47 @@ export async function affirm(
   memoryId: string,
   affirmedBy: string,
   why: string,
-  opts: AffirmOptions = {},
+  opts: AffirmOptions = {}
 ): Promise<FloorEntry> {
   const id = memoryId?.trim() ?? "";
   if (!id) throw new Error("memory_id is required");
   if (!affirmedBy?.trim() || !why?.trim()) {
     throw new Error(
-      "affirm requires affirmed_by AND why — without a re-justification the last_affirmed clock does not move",
+      "affirm requires affirmed_by AND why — without a re-justification the last_affirmed clock does not move"
     );
   }
   const path = opts.path ?? floorsFilePath();
-  return withPathLock(path, async () => {
-    const entries = await readRegistry(path);
-    const idx = entries.findIndex((e) => e.memory_id === id);
-    if (idx === -1) throw new Error(`memory is not floored: ${id}`);
+  return withPathLock(
+    path,
+    async () => {
+      const entries = await readRegistry(path);
+      const idx = entries.findIndex((e) => e.memory_id === id);
+      if (idx === -1) throw new Error(`memory is not floored: ${id}`);
 
-    const act = await appendAct(
-      {
-        memory_id: id,
-        ...(opts.occurredAt !== undefined ? { occurred_at: opts.occurredAt } : {}),
+      const act = await appendAct(
+        {
+          memory_id: id,
+          ...(opts.occurredAt !== undefined ? { occurred_at: opts.occurredAt } : {}),
+          affirmed_by: affirmedBy,
+          why,
+        },
+        opts.actsPath
+      );
+      // Duplicate redelivery: nothing happened, so nothing moves.
+      if (!act) return entries[idx];
+
+      const next: FloorEntry = {
+        ...entries[idx],
+        last_affirmed: act.recorded,
         affirmed_by: affirmedBy,
         why,
-      },
-      opts.actsPath,
-    );
-    // Duplicate redelivery: nothing happened, so nothing moves.
-    if (!act) return entries[idx];
-
-    const next: FloorEntry = {
-      ...entries[idx],
-      last_affirmed: act.recorded,
-      affirmed_by: affirmedBy,
-      why,
-    };
-    entries[idx] = next;
-    await writeRegistry(entries, path);
-    return next;
-  }, { crossProcess: true });
+      };
+      entries[idx] = next;
+      await writeRegistry(entries, path);
+      return next;
+    },
+    { crossProcess: true }
+  );
 }
 
 /**

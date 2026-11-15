@@ -139,7 +139,7 @@ async function main(): Promise<void> {
   const prompts = await collectPrompts(n);
   if (prompts.length === 0) {
     console.error(
-      `FATAL: no user prompts in ${MIN_PROMPT_CHARS}–${MAX_PROMPT_CHARS} chars found in ~/.claude/projects`,
+      `FATAL: no user prompts in ${MIN_PROMPT_CHARS}–${MAX_PROMPT_CHARS} chars found in ~/.claude/projects`
     );
     process.exit(1);
   }
@@ -207,7 +207,7 @@ async function main(): Promise<void> {
   const base = await runArm(undefined);
   console.log("df<=      bm25 p50   bm25 p90   total p50   identical   ids lost   ids gained   SHIP");
   console.log(
-    `baseline  ${med(base.bm25).toFixed(0).padStart(8)}   ${p90(base.bm25).toFixed(0).padStart(8)}   ${med(base.total).toFixed(0).padStart(9)}   ${"—".padStart(9)}   ${"—".padStart(8)}   ${"—".padStart(10)}   —`,
+    `baseline  ${med(base.bm25).toFixed(0).padStart(8)}   ${p90(base.bm25).toFixed(0).padStart(8)}   ${med(base.total).toFixed(0).padStart(9)}   ${"—".padStart(9)}   ${"—".padStart(8)}   ${"—".padStart(10)}   —`
   );
 
   // Kontrolle: derselbe Arm ein zweites Mal. Weicht er von sich selbst ab,
@@ -222,7 +222,7 @@ async function main(): Promise<void> {
     if (same) selfIdentical++;
   }
   console.log(
-    `control   ${med(control.bm25).toFixed(0).padStart(8)}   ${p90(control.bm25).toFixed(0).padStart(8)}   ${med(control.total).toFixed(0).padStart(9)}   ${((selfIdentical / prompts.length) * 100).toFixed(0).padStart(7)} %   ${"—".padStart(8)}   ${"—".padStart(10)}   —`,
+    `control   ${med(control.bm25).toFixed(0).padStart(8)}   ${p90(control.bm25).toFixed(0).padStart(8)}   ${med(control.total).toFixed(0).padStart(9)}   ${((selfIdentical / prompts.length) * 100).toFixed(0).padStart(7)} %   ${"—".padStart(8)}   ${"—".padStart(10)}   —`
   );
 
   for (const dfMax of sweep) {
@@ -242,7 +242,7 @@ async function main(): Promise<void> {
     const pct = (identical / prompts.length) * 100;
     const ships = lostTotal === 0 && pct >= 90;
     console.log(
-      `${String(dfMax).padEnd(9)} ${med(arm.bm25).toFixed(0).padStart(8)}   ${p90(arm.bm25).toFixed(0).padStart(8)}   ${med(arm.total).toFixed(0).padStart(9)}   ${(pct.toFixed(0) + " %").padStart(9)}   ${String(lostTotal).padStart(8)}   ${String(gainedTotal).padStart(10)}   ${ships ? "PASS" : "FAIL"}`,
+      `${String(dfMax).padEnd(9)} ${med(arm.bm25).toFixed(0).padStart(8)}   ${p90(arm.bm25).toFixed(0).padStart(8)}   ${med(arm.total).toFixed(0).padStart(9)}   ${(pct.toFixed(0) + " %").padStart(9)}   ${String(lostTotal).padStart(8)}   ${String(gainedTotal).padStart(10)}   ${ships ? "PASS" : "FAIL"}`
     );
     for (const id of lostIds) console.log(`            lost: ${id}`);
   }

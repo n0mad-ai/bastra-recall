@@ -53,7 +53,8 @@ async function isDir(p: string): Promise<boolean> {
 function describeDiff(d: { fields: string[]; paragraphsOnlyA: number; paragraphsOnlyB: number } | undefined): string {
   if (!d) return "";
   const parts: string[] = [];
-  if (d.paragraphsOnlyA || d.paragraphsOnlyB) parts.push(`paragraphs: ${d.paragraphsOnlyA} only here, ${d.paragraphsOnlyB} only there`);
+  if (d.paragraphsOnlyA || d.paragraphsOnlyB)
+    parts.push(`paragraphs: ${d.paragraphsOnlyA} only here, ${d.paragraphsOnlyB} only there`);
   if (d.fields.length) parts.push(`fields: ${d.fields.join(", ")}`);
   return parts.length ? `  (${parts.join("; ")})` : "";
 }
@@ -67,20 +68,36 @@ export function formatPlan(plan: ReconcilePlan): string {
     `this store:  ${plan.a.root}  (${count(plan.a)} memories)`,
     `other store: ${plan.b.root}  (${count(plan.b)} memories)`,
     `same:        ${same.length}` +
-      (same.some((s) => s.bytesDiffer) ? `  (${same.filter((s) => s.bytesDiffer).length} differ only in generated fields/blocks)` : ""),
+      (same.some((s) => s.bytesDiffer)
+        ? `  (${same.filter((s) => s.bytesDiffer).length} differ only in generated fields/blocks)`
+        : ""),
   ];
   const group = (title: string, items: Extract<PlanItem, { kind: "copy" }>[]) => {
     if (items.length === 0) return;
     lines.push(`${title}: ${items.length}`);
     for (const i of items) {
-      const audit = i.carryAudit.length ? `  [${i.carryAudit.length} audit entr${i.carryAudit.length === 1 ? "y" : "ies"} the other lacks]` : "";
+      const audit = i.carryAudit.length
+        ? `  [${i.carryAudit.length} audit entr${i.carryAudit.length === 1 ? "y" : "ies"} the other lacks]`
+        : "";
       lines.push(`  ${i.id}  ${i.source.rel}${audit}${describeDiff(i.diff)}`);
     }
   };
-  group("this ahead → copy to other", copies.filter((c) => c.from === "a" && c.why === "ahead"));
-  group("other ahead → copy here", copies.filter((c) => c.from === "b" && c.why === "ahead"));
-  group("only here → copy to other", copies.filter((c) => c.from === "a" && c.why === "only-here"));
-  group("only there → copy here", copies.filter((c) => c.from === "b" && c.why === "only-here"));
+  group(
+    "this ahead → copy to other",
+    copies.filter((c) => c.from === "a" && c.why === "ahead")
+  );
+  group(
+    "other ahead → copy here",
+    copies.filter((c) => c.from === "b" && c.why === "ahead")
+  );
+  group(
+    "only here → copy to other",
+    copies.filter((c) => c.from === "a" && c.why === "only-here")
+  );
+  group(
+    "only there → copy here",
+    copies.filter((c) => c.from === "b" && c.why === "only-here")
+  );
   if (conflicts.length) {
     lines.push(`conflicts (left alone, decide by hand): ${conflicts.length}`);
     for (const c of conflicts) {
@@ -101,14 +118,25 @@ function planJson(plan: ReconcilePlan): unknown {
       if (i.kind === "same") return i;
       if (i.kind === "copy") {
         return {
-          kind: i.kind, id: i.id, from: i.from === "a" ? "this" : "other", why: i.why,
-          source: i.source.rel, target: i.target?.rel ?? i.source.rel, audit_entries: i.carryAudit.length, diff: i.diff,
+          kind: i.kind,
+          id: i.id,
+          from: i.from === "a" ? "this" : "other",
+          why: i.why,
+          source: i.source.rel,
+          target: i.target?.rel ?? i.source.rel,
+          audit_entries: i.carryAudit.length,
+          diff: i.diff,
         };
       }
       return {
-        kind: i.kind, id: i.id, reason: i.reason,
-        here: (i.a ?? []).map((f) => f.rel), there: (i.b ?? []).map((f) => f.rel),
-        audit_only_here: i.onlyA, audit_only_there: i.onlyB, diff: i.diff,
+        kind: i.kind,
+        id: i.id,
+        reason: i.reason,
+        here: (i.a ?? []).map((f) => f.rel),
+        there: (i.b ?? []).map((f) => f.rel),
+        audit_only_here: i.onlyA,
+        audit_only_there: i.onlyB,
+        diff: i.diff,
       };
     }),
     unreadable: [...plan.a.unreadable, ...plan.b.unreadable],
@@ -118,7 +146,7 @@ function planJson(plan: ReconcilePlan): unknown {
 export async function cmdReconcile(
   args: ParsedArgs,
   now: Date = new Date(),
-  discoveryEnv?: StoreDiscoveryEnv,
+  discoveryEnv?: StoreDiscoveryEnv
 ): Promise<number> {
   const otherArg = args.positional[1];
   if (args.yes && args.dryRun) {
@@ -154,10 +182,12 @@ export async function cmdReconcile(
     else {
       console.log(formatPlan(plan));
       const n = plan.items.filter((i) => i.kind === "copy").length;
-      console.log(n
-        ? `\ndry run — nothing written. 'bastra reconcile ${otherArg} --yes' copies the ${n} above; ` +
-          `overwritten files go to <store>/.bastra/reconcile-backup/${backupStamp(now)}/ first.`
-        : "\nnothing to copy.");
+      console.log(
+        n
+          ? `\ndry run — nothing written. 'bastra reconcile ${otherArg} --yes' copies the ${n} above; ` +
+              `overwritten files go to <store>/.bastra/reconcile-backup/${backupStamp(now)}/ first.`
+          : "\nnothing to copy."
+      );
     }
     return 0;
   }
@@ -168,9 +198,11 @@ export async function cmdReconcile(
     console.log(formatPlan(plan));
     console.log("");
     for (const r of results) {
-      console.log(r.status === "copied"
-        ? `copied   ${r.id} → ${r.target}${r.backup ? `  (backup: ${r.backup})` : ""}${r.warning ? `  WARNING: ${r.warning}` : ""}`
-        : `skipped  ${r.id}: ${r.reason}${r.backup ? `  (backup: ${r.backup})` : ""}`);
+      console.log(
+        r.status === "copied"
+          ? `copied   ${r.id} → ${r.target}${r.backup ? `  (backup: ${r.backup})` : ""}${r.warning ? `  WARNING: ${r.warning}` : ""}`
+          : `skipped  ${r.id}: ${r.reason}${r.backup ? `  (backup: ${r.backup})` : ""}`
+      );
     }
     if (results.length === 0) console.log("nothing to copy.");
   }
@@ -186,7 +218,8 @@ async function listStores(here: string, env: StoreDiscoveryEnv, json: boolean): 
   }
   const found = await discoverStores(here, env);
   const comparable = found.others.filter((s) => s.exists);
-  const plan = comparable.length === 1 ? await planReconcile(await loadStore(here), await loadStore(comparable[0].path)) : null;
+  const plan =
+    comparable.length === 1 ? await planReconcile(await loadStore(here), await loadStore(comparable[0].path)) : null;
   if (json) {
     console.log(JSON.stringify({ stores: found, ...(plan ? { dry_run: true, ...(planJson(plan) as object) } : {}) }));
     return 0;

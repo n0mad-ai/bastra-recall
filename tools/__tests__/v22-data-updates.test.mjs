@@ -11,7 +11,20 @@ test("user area counts include memories and documents while synthetic nodes stay
     { id: "g", kind: "ghost", cluster: "area" },
     { id: "s", kind: "skill", cluster: "skills" },
   ];
-  const ctx = vm.createContext({ document: { title: "" }, fetch: async () => ({ ok: true, json: async () => ({ nodes, clusters: [{ key: "area", count: 3 }, { key: "skills", count: 1 }], edges: [] }) }) });
+  const ctx = vm.createContext({
+    document: { title: "" },
+    fetch: async () => ({
+      ok: true,
+      json: async () => ({
+        nodes,
+        clusters: [
+          { key: "area", count: 3 },
+          { key: "skills", count: 1 },
+        ],
+        edges: [],
+      }),
+    }),
+  });
   vm.runInContext(source.replaceAll("export ", "") + ";globalThis.api = { loadGraph, data };", ctx);
   await ctx.api.loadGraph();
   assert.deepEqual(JSON.parse(JSON.stringify(ctx.api.data.clusters)), [{ key: "area", count: 2 }]);
@@ -20,45 +33,84 @@ test("user area counts include memories and documents while synthetic nodes stay
 
 test("live graph refresh coalesces a batch, covers changes/deletes, skips reads and duplicate polls", async () => {
   const source = await readFile(new URL("../../packages/daemon/webui/v22/js/data.js", import.meta.url), "utf8");
-  let graphCalls = 0, updateCalls = 0, seq = 1, updates = [], nodes = [{ id: "existing", title: "Old" }];
-  const context = vm.createContext({ document: { title: "" }, fetch: async (url) => ({ ok: true, json: async () => {
-    if (url === "/ui/graph") { graphCalls++; return { nodes: structuredClone(nodes), edges: [], clusters: [] }; }
-    updateCalls++; return { seq, updates };
-  } }) });
+  let graphCalls = 0,
+    updateCalls = 0,
+    seq = 1,
+    updates = [],
+    nodes = [{ id: "existing", title: "Old" }];
+  const context = vm.createContext({
+    document: { title: "" },
+    fetch: async (url) => ({
+      ok: true,
+      json: async () => {
+        if (url === "/ui/graph") {
+          graphCalls++;
+          return { nodes: structuredClone(nodes), edges: [], clusters: [] };
+        }
+        updateCalls++;
+        return { seq, updates };
+      },
+    }),
+  });
   vm.runInContext(source.replaceAll("export ", "") + ";globalThis.api = { loadGraph, pollUpdates, data };", context);
   const { loadGraph, pollUpdates, data } = context.api;
-  await loadGraph(); await pollUpdates();
-  seq++; updates = [{ kind: "add" }, { kind: "add" }]; nodes.push({ id: "added", title: "New" });
+  await loadGraph();
+  await pollUpdates();
+  seq++;
+  updates = [{ kind: "add" }, { kind: "add" }];
+  nodes.push({ id: "added", title: "New" });
   await Promise.all([pollUpdates(), pollUpdates(), pollUpdates()]);
-  assert.equal(graphCalls, 2); assert.equal(updateCalls, 2);
+  assert.equal(graphCalls, 2);
+  assert.equal(updateCalls, 2);
   assert.equal(data.graph.nodes.length, 2);
-  seq++; updates = [{ kind: "change" }]; nodes[0].title = "Changed";
-  await pollUpdates(); assert.equal(data.graph.nodes[0].title, "Changed");
-  seq++; updates = [{ kind: "delete" }]; nodes = nodes.slice(1);
-  await pollUpdates(); assert.equal(data.graph.nodes[0].id, "added");
+  seq++;
+  updates = [{ kind: "change" }];
+  nodes[0].title = "Changed";
+  await pollUpdates();
+  assert.equal(data.graph.nodes[0].title, "Changed");
+  seq++;
+  updates = [{ kind: "delete" }];
+  nodes = nodes.slice(1);
+  await pollUpdates();
+  assert.equal(data.graph.nodes[0].id, "added");
   assert.equal(graphCalls, 4);
-  seq++; updates = [{ kind: "read" }]; await pollUpdates(); await pollUpdates();
-  assert.equal(graphCalls, 4); assert.equal(data.newSince, 5);
+  seq++;
+  updates = [{ kind: "read" }];
+  await pollUpdates();
+  await pollUpdates();
+  assert.equal(graphCalls, 4);
+  assert.equal(data.newSince, 5);
 });
 
 test("a mutation arriving during initial graph load fetches a fresh snapshot afterward", async () => {
   const source = await readFile(new URL("../../packages/daemon/webui/v22/js/data.js", import.meta.url), "utf8");
-  let seq = 1, calls = 0, finishInitial;
-  const ctx = vm.createContext({ document: { title: "" }, fetch: async (url) => {
-    if (url === "/ui/graph") {
-      calls++;
-      if (calls === 1) return new Promise((resolve) => { finishInitial = () => resolve({ ok: true, json: async () => ({ nodes: [{ id: "old" }] }) }); });
-      return { ok: true, json: async () => ({ nodes: [{ id: "new" }] }) };
-    }
-    return { ok: true, json: async () => ({ seq, updates: [{ kind: "add" }] }) };
-  } });
+  let seq = 1,
+    calls = 0,
+    finishInitial;
+  const ctx = vm.createContext({
+    document: { title: "" },
+    fetch: async (url) => {
+      if (url === "/ui/graph") {
+        calls++;
+        if (calls === 1)
+          return new Promise((resolve) => {
+            finishInitial = () => resolve({ ok: true, json: async () => ({ nodes: [{ id: "old" }] }) });
+          });
+        return { ok: true, json: async () => ({ nodes: [{ id: "new" }] }) };
+      }
+      return { ok: true, json: async () => ({ seq, updates: [{ kind: "add" }] }) };
+    },
+  });
   vm.runInContext(source.replaceAll("export ", "") + ";globalThis.api = { loadGraph, pollUpdates, data };", ctx);
   const api = ctx.api;
   await api.pollUpdates();
-  const initial = api.loadGraph(); seq++;
+  const initial = api.loadGraph();
+  seq++;
   const update = api.pollUpdates();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(calls, 1);
-  finishInitial(); await Promise.all([initial, update]);
-  assert.equal(calls, 2); assert.equal(api.data.graph.nodes[0].id, "new");
+  finishInitial();
+  await Promise.all([initial, update]);
+  assert.equal(calls, 2);
+  assert.equal(api.data.graph.nodes[0].id, "new");
 });

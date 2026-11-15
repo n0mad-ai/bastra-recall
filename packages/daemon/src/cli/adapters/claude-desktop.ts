@@ -29,10 +29,10 @@ import type { Adapter, DoctorResult, InstallOpts, InstallResult, UninstallResult
  */
 const DESKTOP_AUTONOMY_NOTE =
   "make Desktop use memory ON ITS OWN (one-time, ~2 min):\n" +
-  "    1. Settings → Connectors → bastra-recall → tool access: \"Always available\"\n" +
+  '    1. Settings → Connectors → bastra-recall → tool access: "Always available"\n' +
   "       (keeps the memory tools and their guidance always in Claude's context)\n" +
-  "    2. On the first tool call pick \"Allow always\" — recall/load/find are read-only\n" +
-  "    3. Settings → Profile → personal preferences (\"Instructions for Claude\") — paste:\n" +
+  '    2. On the first tool call pick "Allow always" — recall/load/find are read-only\n' +
+  '    3. Settings → Profile → personal preferences ("Instructions for Claude") — paste:\n' +
   "       ┄┄┄\n" +
   "       Memory: I use bastra-recall (local MCP). Begin every conversation by silently\n" +
   "       retrieving context with its recall tool. Before answering anything about my past,\n" +
@@ -64,7 +64,7 @@ async function claudeDesktopInstall(opts: InstallOpts): Promise<InstallResult> {
     // carries — a GUI client inherits no shell export.
     serverBlockEndpoint(servers[SERVER_KEY]),
     // #647: env keys the user added (BASTRA_FORWARDER_SPAWN=0, …) survive.
-    foreignEnv(servers[SERVER_KEY]),
+    foreignEnv(servers[SERVER_KEY])
   );
   const mcpMatches = blocksMatch(servers[SERVER_KEY], block);
 
@@ -202,7 +202,12 @@ async function claudeDesktopDoctor(): Promise<DoctorResult> {
     details["vault-path"]?.startsWith("not ") === true ||
     details["skill"] === "missing" ||
     details["skill"].startsWith("STALE");
-  if (broken) return { status: "broken", message: "registered but skill or referenced paths need repair — re-run 'bastra install claude-desktop'", details };
+  if (broken)
+    return {
+      status: "broken",
+      message: "registered but skill or referenced paths need repair — re-run 'bastra install claude-desktop'",
+      details,
+    };
   return { status: "ok", message: "registered with skill, looks healthy", details };
 }
 

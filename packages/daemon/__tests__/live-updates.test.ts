@@ -59,7 +59,7 @@ interface Poll {
 /** boots a vault + a tiny server around handleUiUpdates; `call(seq?)` polls,
  *  omitting `since` when seq is undefined (baseline request). */
 async function harness(
-  opts: { debounceMs?: number; maxEntries?: number; maxWaitMs?: number; reannounceMs?: number } = {},
+  opts: { debounceMs?: number; maxEntries?: number; maxWaitMs?: number; reannounceMs?: number } = {}
 ): Promise<{
   vault: Vault;
   live: ReturnType<typeof createLiveUpdates>;

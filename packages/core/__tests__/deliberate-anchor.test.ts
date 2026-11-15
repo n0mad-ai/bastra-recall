@@ -37,7 +37,7 @@ updated: 2026-07-01
 
 ${e.body ?? `body of ${e.id}`}
 `,
-      "utf8",
+      "utf8"
     );
   }
   const vault = new Vault(dir);
@@ -64,15 +64,13 @@ test("a fuzzy neighbour does not claim authored intent", async (t) => {
     assert.equal(
       sand.matched_recall_when,
       false,
-      "a fuzzy hit must not set the deliberate anchor — it is intent, not proximity",
+      "a fuzzy hit must not set the deliberate anchor — it is intent, not proximity"
     );
   }
 });
 
 test("a prefix hit does not claim authored intent", async (t) => {
-  const { dir, search } = await vaultWith([
-    { id: "tripwire-memo", recall_when: ["tripwire auswerten"] },
-  ]);
+  const { dir, search } = await vaultWith([{ id: "tripwire-memo", recall_when: ["tripwire auswerten"] }]);
   t.after(async () => {
     search.stop();
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
@@ -81,17 +79,11 @@ test("a prefix hit does not claim authored intent", async (t) => {
   const hits = search.recall("tripwir", { k: 5 });
   const hit = hits.find((h) => h.id === "tripwire-memo");
   assert.ok(hit, "precondition: the prefix must still RETRIEVE the memory");
-  assert.equal(
-    hit.matched_recall_when,
-    false,
-    "a prefix hit retrieves, but it does not declare intent",
-  );
+  assert.equal(hit.matched_recall_when, false, "a prefix hit retrieves, but it does not declare intent");
 });
 
 test("the exact authored word still sets the anchor", async (t) => {
-  const { dir, search } = await vaultWith([
-    { id: "tripwire-memo", recall_when: ["tripwire auswerten"] },
-  ]);
+  const { dir, search } = await vaultWith([{ id: "tripwire-memo", recall_when: ["tripwire auswerten"] }]);
   t.after(async () => {
     search.stop();
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
@@ -103,9 +95,7 @@ test("the exact authored word still sets the anchor", async (t) => {
 });
 
 test("case does not decide intent", async (t) => {
-  const { dir, search } = await vaultWith([
-    { id: "memo", recall_when: ["Tripwire auswerten"] },
-  ]);
+  const { dir, search } = await vaultWith([{ id: "memo", recall_when: ["Tripwire auswerten"] }]);
   t.after(async () => {
     search.stop();
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
@@ -230,7 +220,7 @@ test("two terms from DIFFERENT authored phrases are not a declaration", async (t
   assert.equal(
     hit.anchor_strength,
     "weak",
-    "but they come from two separate situations — that is not one declared context",
+    "but they come from two separate situations — that is not one declared context"
   );
 });
 
@@ -253,9 +243,7 @@ test("a rare ordinary word alone is not enough — it must look like an identifi
 });
 
 test("an identifier with separators carries intent even when short-ish", async (t) => {
-  const { dir, search } = await vaultWith([
-    { id: "cfg-memo", recall_when: ["bm25_query_max_chars setzen"] },
-  ]);
+  const { dir, search } = await vaultWith([{ id: "cfg-memo", recall_when: ["bm25_query_max_chars setzen"] }]);
   t.after(async () => {
     search.stop();
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
@@ -285,11 +273,7 @@ test("the same word repeated in a phrase does not satisfy the two-term rule", as
 
   const hit = search.recall("foo", { k: 20 }).find((h) => h.id === "target");
   assert.ok(hit, "precondition: the memory must be retrieved");
-  assert.equal(
-    hit.anchor_strength,
-    "weak",
-    "'foo' appears twice, but it is ONE distinct authored word, not two",
-  );
+  assert.equal(hit.anchor_strength, "weak", "'foo' appears twice, but it is ONE distinct authored word, not two");
 });
 
 /**
@@ -315,7 +299,7 @@ test("a single hyphenated identifier does not satisfy the two-term rule by itsel
   assert.equal(
     hit.anchor_strength,
     "weak",
-    "'my' and 'app' both come from the single word 'my-app' — one origin, not two",
+    "'my' and 'app' both come from the single word 'my-app' — one origin, not two"
   );
 });
 
@@ -339,11 +323,7 @@ test("two common filler words from the same phrase are not a declaration", async
   const hit = search.recall("aber auch", { k: 20 }).find((h) => h.id === "target");
   assert.ok(hit, "precondition: the memory must be retrieved");
   assert.equal(hit.matched_recall_when, true, "both words ARE authored triggers");
-  assert.equal(
-    hit.anchor_strength,
-    "weak",
-    "two filler words do not declare intent, even matched exactly",
-  );
+  assert.equal(hit.anchor_strength, "weak", "two filler words do not declare intent, even matched exactly");
 });
 
 /**
@@ -373,7 +353,7 @@ test("rarity is measured over recall_when occurrences, not all fields summed", a
     hit.anchor_strength,
     "strong",
     "recall_when-DF is 1 (only 'target' authored it) even though ten bodies also mention it — " +
-      "the all-field sum would have wrongly counted 11 and failed the rarity check",
+      "the all-field sum would have wrongly counted 11 and failed the rarity check"
   );
 });
 
@@ -407,7 +387,7 @@ updated: 2026-07-01
 
 body
 `,
-      "utf8",
+      "utf8"
     );
   };
 
@@ -533,7 +513,7 @@ test("a repeated hyphenated identifier is still one origin, even across punctuat
   assert.equal(
     hit.anchor_strength,
     "weak",
-    "'my-app,' and 'my-app!' fold to the same identifier — one origin, not two",
+    "'my-app,' and 'my-app!' fold to the same identifier — one origin, not two"
   );
 });
 
@@ -581,7 +561,7 @@ test("two origins that both only match the same single query term stay weak", as
   assert.equal(
     hit.anchor_strength,
     "weak",
-    "'my-app' and 'your-app' are two origins, but both hit only the single query term 'app'",
+    "'my-app' and 'your-app' are two origins, but both hit only the single query term 'app'"
   );
 });
 
@@ -601,7 +581,7 @@ test("two origins with two different matched terms declare strong intent", async
   assert.equal(
     hit.anchor_strength,
     "strong",
-    "'my-app' hits 'app', 'konfig-datei' hits 'konfig' — two origins, two distinct terms",
+    "'my-app' hits 'app', 'konfig-datei' hits 'konfig' — two origins, two distinct terms"
   );
 });
 
@@ -630,6 +610,6 @@ test("an origin covering two terms can still pair with a single-term origin", as
   assert.equal(
     hit.anchor_strength,
     "strong",
-    "A hits {app}, B hits {app, konfig} — a matching (A→app, B→konfig) exists",
+    "A hits {app}, B hits {app, konfig} — a matching (A→app, B→konfig) exists"
   );
 });

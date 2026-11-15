@@ -43,7 +43,8 @@ function args(positional: string[], dryRun = false): ParsedArgs {
     since: null,
     source: null,
     lines: null,
-    stats: false, conventions: false,
+    stats: false,
+    conventions: false,
     includeEval: false,
     replay: false,
     days: null,
@@ -144,12 +145,10 @@ test("rules: refuses to replace an edited file when the backup cannot be made", 
     // already ticked (proceed, rc=0) — the invariant that must hold in both
     // cases is that the user's wording still exists somewhere.
     const files = await readdir(join(dir, ".cursor", "rules"));
-    const bodies = await Promise.all(
-      files.map((f) => readFile(join(dir, ".cursor", "rules", f), "utf8")),
-    );
+    const bodies = await Promise.all(files.map((f) => readFile(join(dir, ".cursor", "rules", f), "utf8")));
     assert.ok(
       bodies.some((b) => b.includes("irreplaceable")),
-      `rc=${rc}: the user's version vanished — files: ${files.join(", ")}`,
+      `rc=${rc}: the user's version vanished — files: ${files.join(", ")}`
     );
   });
 });

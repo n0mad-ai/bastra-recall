@@ -33,14 +33,16 @@ test("empty registry renders no block", () => {
 });
 
 test("audit line: never-affirmed entry omits the affirm part", () => {
-  const { text: block } = formatPinnedBlock([entry({ memory_id: "m1", title: "Killed option X", reason: "do not revisit" })]);
+  const { text: block } = formatPinnedBlock([
+    entry({ memory_id: "m1", title: "Killed option X", reason: "do not revisit" }),
+  ]);
   assert.ok(block.startsWith(`<pinned-memories surface="claude-code">`));
   assert.ok(block.endsWith(`</pinned-memories>`));
   // #152: reference-only frame note is the first body line.
   assert.equal(block.split("\n")[1], HINT_FRAME_NOTE);
   assert.ok(
     block.includes("- [m1] Killed option X — floored since 2026-07-01: do not revisit"),
-    `audit line format, got:\n${block}`,
+    `audit line format, got:\n${block}`
   );
   assert.ok(!block.includes("last affirmed"), "no affirm part when never affirmed");
 });
@@ -57,14 +59,16 @@ test("audit line: affirmed entry carries last-affirmed date and affirmed_by", ()
   ]);
   assert.ok(
     block.includes(
-      "- [m2] Hard constraint Y — floored since 2026-07-01, last affirmed 2026-07-02 by cowork-os: migration X pending",
+      "- [m2] Hard constraint Y — floored since 2026-07-01, last affirmed 2026-07-02 by cowork-os: migration X pending"
     ),
-    `affirmed audit line, got:\n${block}`,
+    `affirmed audit line, got:\n${block}`
   );
 });
 
 test("unresolvable id stays visible (stale floor), rendered id-only", () => {
-  const { text: block } = formatPinnedBlock([entry({ memory_id: "ghost", title: undefined, reason: "orphaned handle" })]);
+  const { text: block } = formatPinnedBlock([
+    entry({ memory_id: "ghost", title: undefined, reason: "orphaned handle" }),
+  ]);
   assert.ok(block.includes("- [ghost] (id not resolvable — stale floor?)"));
 });
 
@@ -96,20 +100,20 @@ test(`budget: block is capped near ${PINNED_BLOCK_CHAR_BUDGET} chars and notes t
         reason:
           `a long reason string that explains in some detail why this constraint was floored ` +
           `and which decision owns its condition token (${i})`,
-      }),
+      })
     );
   }
   const { text: block, included } = formatPinnedBlock(many);
-  assert.ok(
-    block.length <= PINNED_BLOCK_CHAR_BUDGET + 150,
-    `block stays near the budget (got ${block.length} chars)`,
-  );
+  assert.ok(block.length <= PINNED_BLOCK_CHAR_BUDGET + 150, `block stays near the budget (got ${block.length} chars)`);
   assert.match(block, /more pinned entries truncated/, "truncation is noted");
   assert.ok(block.includes("- [mem-1]"), "registry order: first entries render");
   assert.ok(!block.includes("- [mem-12]"), "overflow entries are cut");
   // `included` is only what the block actually showed — mem-12 was
   // truncated OUT of the block, so it must not also be dropped from ranked.
-  assert.ok(included.some((e) => e.memory_id === "mem-1"), "shown entries are included");
+  assert.ok(
+    included.some((e) => e.memory_id === "mem-1"),
+    "shown entries are included"
+  );
   assert.ok(!included.some((e) => e.memory_id === "mem-12"), "truncated entries stay eligible for ranked");
 });
 
@@ -124,7 +128,7 @@ test("no-drop invariant: dedup removes the RANKED duplicate, never the pinned en
   // The ranked list loses the duplicate — the pinned block already guarantees b.
   assert.deepEqual(
     dropPinnedFromRanked(hits, pinned).map((h) => h.id),
-    ["a", "c"],
+    ["a", "c"]
   );
   // …while the pinned side renders b regardless of any ranked/session state.
   assert.ok(formatPinnedBlock(pinned).text.includes("- [b]"));

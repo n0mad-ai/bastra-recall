@@ -222,7 +222,10 @@ test("isBatchShapeMismatch matches exactly the core mismatch shape", () => {
   assert.equal(isBatchShapeMismatch(new Error("Ollama embed: expected 1 embeddings, got none")), true);
   assert.equal(isBatchShapeMismatch("expected 50 embeddings, got 49"), true);
   // Availability-Fehler zählen weiter Richtung OPEN.
-  assert.equal(isBatchShapeMismatch(new Error("Ollama embed HTTP 500 (http://127.0.0.1:11434/api/embed): boom")), false);
+  assert.equal(
+    isBatchShapeMismatch(new Error("Ollama embed HTTP 500 (http://127.0.0.1:11434/api/embed): boom")),
+    false
+  );
   assert.equal(isBatchShapeMismatch(new Error("fetch failed")), false);
   assert.equal(isBatchShapeMismatch(new Error("connect ECONNREFUSED 127.0.0.1:11434")), false);
 });
@@ -343,7 +346,10 @@ test("hybrid recall serves BM25-only while open, probe re-enables the vector leg
     const callsBefore = inner.calls;
     for (let i = 1; i <= 3; i++) {
       const hits = await search.recallHybrid(`alpha probefail${i}`, { k: 3 });
-      assert.ok(hits.some((h) => h.id === "alpha"), "BM25 leg must still deliver");
+      assert.ok(
+        hits.some((h) => h.id === "alpha"),
+        "BM25 leg must still deliver"
+      );
     }
     assert.equal(inner.calls, callsBefore + 3);
     assert.equal(breaker.state(now), "open");
@@ -416,7 +422,7 @@ test("recall telemetry: embedding_degraded describes the served recall, not the 
     assert.equal(
       (logged as { embedding_degraded?: boolean }).embedding_degraded,
       undefined,
-      "flag must be captured BEFORE the recall runs",
+      "flag must be captured BEFORE the recall runs"
     );
   } finally {
     search.stop();

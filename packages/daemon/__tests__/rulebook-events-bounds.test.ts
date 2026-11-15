@@ -18,7 +18,8 @@ test("a dismissal ID is bounded like the other caller-supplied identifiers", () 
 test("an audit row stays one line and bounds a session ID from a request header", async () => {
   const dir = await mkdtemp(join(tmpdir(), "rulebook-events-"));
   const saved = { log: process.env.BASTRA_LOG_PATH, telemetry: process.env.BASTRA_TELEMETRY };
-  process.env.BASTRA_LOG_PATH = dir; delete process.env.BASTRA_TELEMETRY;
+  process.env.BASTRA_LOG_PATH = dir;
+  delete process.env.BASTRA_TELEMETRY;
   try {
     await recordRulebookEvent(`a\nforged\n${"s".repeat(16000)}`, { outcome: "checked" });
     const [file] = await readdir(dir);
@@ -29,8 +30,10 @@ test("an audit row stays one line and bounds a session ID from a request header"
     assert.equal(row.session_known, true);
     assert.equal(row.session_id.length, 200);
   } finally {
-    if (saved.log === undefined) delete process.env.BASTRA_LOG_PATH; else process.env.BASTRA_LOG_PATH = saved.log;
-    if (saved.telemetry === undefined) delete process.env.BASTRA_TELEMETRY; else process.env.BASTRA_TELEMETRY = saved.telemetry;
+    if (saved.log === undefined) delete process.env.BASTRA_LOG_PATH;
+    else process.env.BASTRA_LOG_PATH = saved.log;
+    if (saved.telemetry === undefined) delete process.env.BASTRA_TELEMETRY;
+    else process.env.BASTRA_TELEMETRY = saved.telemetry;
     await rm(dir, { recursive: true, force: true });
   }
 });

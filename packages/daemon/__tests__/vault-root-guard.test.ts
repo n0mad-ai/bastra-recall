@@ -33,7 +33,9 @@ async function scratch(t: { after: (fn: () => unknown) => void }): Promise<strin
 }
 
 /** A vault the daemon saw at init, then the mount goes away under it. */
-async function vanished(t: { after: (fn: () => unknown) => void }): Promise<{ root: string; vault: Vault; parent: string }> {
+async function vanished(t: {
+  after: (fn: () => unknown) => void;
+}): Promise<{ root: string; vault: Vault; parent: string }> {
   const parent = await scratch(t);
   const root = join(parent, "vault");
   await mkdir(root);
@@ -49,8 +51,15 @@ test("save_document refuses a vanished root", async (t) => {
   const src = join(parent, "Vertrag.pdf");
   await writeFile(src, "BYTES", "utf8");
   await assert.rejects(
-    saveDocument(vault, { title: "Vertrag", category: "vertraege", tags: ["vertrag"], linked_file: false, original_path: src, folder_path: "vertraege" } as unknown as Parameters<typeof saveDocument>[1]),
-    /missing/,
+    saveDocument(vault, {
+      title: "Vertrag",
+      category: "vertraege",
+      tags: ["vertrag"],
+      linked_file: false,
+      original_path: src,
+      folder_path: "vertraege",
+    } as unknown as Parameters<typeof saveDocument>[1]),
+    /missing/
   );
   assert.equal(existsSync(root), false);
 });
@@ -89,18 +98,30 @@ test("createVaultAt with a broken root history creates nothing, not even the par
   t.after(() => (before === null ? rm(marker, { force: true }) : writeFile(marker, before)));
   await writeFile(marker, "{broken");
   const out = await createVaultAt(join(parent, "deep", "new", "vault"));
-  assert.match("error" in out ? out.error : "", /vault-roots\.json is empty or corrupt\. If the vault is mounted, delete that file/);
+  assert.match(
+    "error" in out ? out.error : "",
+    /vault-roots\.json is empty or corrupt\. If the vault is mounted, delete that file/
+  );
   assert.equal(existsSync(join(parent, "deep")), false);
 });
 
 function post(port: number, path: string, payload: unknown): Promise<Record<string, unknown>> {
   const body = JSON.stringify(payload);
   return new Promise((ok, fail) => {
-    const req = request({ host: "127.0.0.1", port, path, method: "POST", headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) } }, (res) => {
-      let raw = "";
-      res.on("data", (c) => (raw += c));
-      res.on("end", () => ok(JSON.parse(raw || "{}")));
-    });
+    const req = request(
+      {
+        host: "127.0.0.1",
+        port,
+        path,
+        method: "POST",
+        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+      },
+      (res) => {
+        let raw = "";
+        res.on("data", (c) => (raw += c));
+        res.on("end", () => ok(JSON.parse(raw || "{}")));
+      }
+    );
     req.on("error", fail);
     req.end(body);
   });
@@ -121,7 +142,12 @@ test("a daemon restart with the marker present and the root missing: vault_missi
   const telemetry = new Telemetry();
   const toolDeps = { vault, search, telemetry, vaultPath: root };
   const handle = await startHttpServer({
-    port: 0, vault, search, telemetry, version: "test", toolDeps,
+    port: 0,
+    vault,
+    search,
+    telemetry,
+    version: "test",
+    toolDeps,
     documentWriteEnabled: false,
     embedding: { on: false, providerId: null, source: "none" },
   });
@@ -138,10 +164,16 @@ test("a daemon restart with the marker present and the root missing: vault_missi
 
   await assert.rejects(
     saveMemoryHandler(toolDeps, {
-      title: "Mount check", type: "lesson", summary: "a save before the mount is back", body: "Body.",
-      topic_path: ["ops"], tags: ["mount"], scope: "testproj", recall_when: ["when the vault mount is gone"],
+      title: "Mount check",
+      type: "lesson",
+      summary: "a save before the mount is back",
+      body: "Body.",
+      topic_path: ["ops"],
+      tags: ["mount"],
+      scope: "testproj",
+      recall_when: ["when the vault mount is gone"],
     }),
-    /missing/,
+    /missing/
   );
   await recordUsage(root, [{ id: "x", kind: "surfaced", ts: new Date().toISOString() } as never]);
   assert.equal(existsSync(root), false, "the vault root must not appear on the parent filesystem");

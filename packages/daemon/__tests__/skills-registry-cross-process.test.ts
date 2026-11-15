@@ -49,7 +49,7 @@ test("#533 — two processes adding skills at once keep the whole durable union"
       `const [registry, prefix, count] = process.argv.slice(2);\n` +
         `const { addSkill } = await import(${JSON.stringify(SKILLS_SRC)});\n` +
         `for (let i = 0; i < Number(count); i++) await addSkill({ id: \`\${prefix}-\${i}\` }, registry);\n`,
-      "utf8",
+      "utf8"
     );
     const perChild = 20;
     await Promise.all([
@@ -65,7 +65,7 @@ test("#533 — two processes adding skills at once keep the whole durable union"
     assert.deepEqual(
       persisted.map((e) => e.id).sort(),
       expected,
-      `two processes must not overwrite each other: got ${persisted.length} of ${expected.length} entries`,
+      `two processes must not overwrite each other: got ${persisted.length} of ${expected.length} entries`
     );
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });

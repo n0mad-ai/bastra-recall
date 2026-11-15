@@ -39,7 +39,7 @@ export function loadGoldFiles(paths: string[]): { cases: GoldCase[]; sources: Re
     const parsed = JSON.parse(readFileSync(p, "utf8")) as { schema_version?: number; cases?: GoldCase[] };
     if (parsed.schema_version !== GOLD_SCHEMA_VERSION) {
       throw new Error(
-        `${p}: gold schema_version ${JSON.stringify(parsed.schema_version)} — this runner grades version ${GOLD_SCHEMA_VERSION}`,
+        `${p}: gold schema_version ${JSON.stringify(parsed.schema_version)} — this runner grades version ${GOLD_SCHEMA_VERSION}`
       );
     }
     if (!Array.isArray(parsed.cases) || parsed.cases.length === 0) throw new Error(`${p}: holds no cases`);
@@ -56,8 +56,8 @@ export function loadGoldFiles(paths: string[]): { cases: GoldCase[]; sources: Re
   if (issues.length) {
     for (const i of issues) console.error(`[goldset-run] gold ${i.where}: ${i.problem}`);
     throw new Error(
-      `${issues.length} gold case(s) violate §19 — a run grades the file, not its history`
-        + ` (first: ${issues[0].where}: ${issues[0].problem})`,
+      `${issues.length} gold case(s) violate §19 — a run grades the file, not its history` +
+        ` (first: ${issues[0].where}: ${issues[0].problem})`
     );
   }
   return { cases, sources };
@@ -94,28 +94,33 @@ export function unknownGoldIds(cases: GoldCase[], knownIds: ReadonlySet<string>)
  * move it.
  */
 export function datasetHash(sources: Record<string, number>, cases: GoldCase[]): string {
-  const names = Object.keys(sources).sort().map((n) => `${n}:${sources[n]}`).join(",");
+  const names = Object.keys(sources)
+    .sort()
+    .map((n) => `${n}:${sources[n]}`)
+    .join(",");
   const canonical = [...cases]
     .sort((a, b) => a.id.localeCompare(b.id))
     // JSON, not a joined string: a query may carry the separator itself, and
     // two different datasets must not be able to collide by punctuation.
-    .map((c) => JSON.stringify([
-      c.id,
-      c.query,
-      [...c.expected_ids].sort().join(","),
-      [...c.acceptable_alternatives].sort().join(","),
-      String(c.no_answer),
-      c.probe_group ?? "",
-      String(c.allowed_retrieval_depth),
-      c.kind,
-      c.expected_zone,
-      c.origin_type,
-      c.lang,
-      String(c.has_identifier),
-      c.scope ?? "",
-      c.time_view ?? "",
-      String(c.correct_answer_is_non_application ?? false),
-    ]))
+    .map((c) =>
+      JSON.stringify([
+        c.id,
+        c.query,
+        [...c.expected_ids].sort().join(","),
+        [...c.acceptable_alternatives].sort().join(","),
+        String(c.no_answer),
+        c.probe_group ?? "",
+        String(c.allowed_retrieval_depth),
+        c.kind,
+        c.expected_zone,
+        c.origin_type,
+        c.lang,
+        String(c.has_identifier),
+        c.scope ?? "",
+        c.time_view ?? "",
+        String(c.correct_answer_is_non_application ?? false),
+      ])
+    )
     .join("\n");
   return sha256(`${names}\n${canonical}`);
 }

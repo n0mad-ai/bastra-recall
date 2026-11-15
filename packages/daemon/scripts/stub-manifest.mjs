@@ -50,8 +50,7 @@ async function main() {
     console.error("usage: node scripts/stub-manifest.mjs <dir> [--out <path>] [--version <v>]");
     process.exit(2);
   }
-  const version =
-    opt("--version") ?? JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8")).version;
+  const version = opt("--version") ?? JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8")).version;
   const out = resolve(opt("--out") ?? join(packageRoot, "stub", "manifest.json"));
 
   const entries = [];

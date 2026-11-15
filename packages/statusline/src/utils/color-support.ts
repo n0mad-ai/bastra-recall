@@ -36,9 +36,7 @@ export function getColorSupport(): "none" | "ansi" | "ansi256" | "truecolor" {
   }
 
   if (env.CI) {
-    if (
-      ["GITHUB_ACTIONS", "GITEA_ACTIONS", "CIRCLECI"].some((key) => key in env)
-    ) {
+    if (["GITHUB_ACTIONS", "GITEA_ACTIONS", "CIRCLECI"].some((key) => key in env)) {
       return "truecolor";
     }
     return "ansi";
@@ -48,14 +46,7 @@ export function getColorSupport(): "none" | "ansi" | "ansi256" | "truecolor" {
     return "truecolor";
   }
 
-  const truecolorTerminals = [
-    "xterm-kitty",
-    "xterm-ghostty",
-    "wezterm",
-    "alacritty",
-    "foot",
-    "contour",
-  ];
+  const truecolorTerminals = ["xterm-kitty", "xterm-ghostty", "wezterm", "alacritty", "foot", "contour"];
 
   if (truecolorTerminals.includes(env.TERM || "")) {
     return "truecolor";
@@ -82,11 +73,7 @@ export function getColorSupport(): "none" | "ansi" | "ansi256" | "truecolor" {
     return "truecolor";
   }
 
-  if (
-    /^screen|^xterm|^vt100|^vt220|^rxvt|color|ansi|cygwin|linux/i.test(
-      env.TERM || "",
-    )
-  ) {
+  if (/^screen|^xterm|^vt100|^vt220|^rxvt|color|ansi|cygwin|linux/i.test(env.TERM || "")) {
     return "ansi";
   }
 

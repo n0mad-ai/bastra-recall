@@ -17,23 +17,12 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault, SearchIndex } from "../src/index.js";
-import {
-  normalizeQuery,
-  tokenizeWithIdentifiers,
-  capAtWordBoundary,
-  QUERY_MAX_CHARS,
-} from "../src/query-normalize.js";
+import { normalizeQuery, tokenizeWithIdentifiers, capAtWordBoundary, QUERY_MAX_CHARS } from "../src/query-normalize.js";
 
 // ─── tokenizer matrix ────────────────────────────────────────────
 
 test("tokenizer: dual-emits dotted identifier plus its parts", () => {
-  assert.deepEqual(tokenizeWithIdentifiers("my-app.config.ts"), [
-    "my-app.config.ts",
-    "my",
-    "app",
-    "config",
-    "ts",
-  ]);
+  assert.deepEqual(tokenizeWithIdentifiers("my-app.config.ts"), ["my-app.config.ts", "my", "app", "config", "ts"]);
 });
 
 test("tokenizer: hyphenated command name stays a unit", () => {
@@ -41,11 +30,7 @@ test("tokenizer: hyphenated command name stays a unit", () => {
 });
 
 test("tokenizer: leading punctuation is trimmed (--force-push)", () => {
-  assert.deepEqual(tokenizeWithIdentifiers("--force-push"), [
-    "force-push",
-    "force",
-    "push",
-  ]);
+  assert.deepEqual(tokenizeWithIdentifiers("--force-push"), ["force-push", "force", "push"]);
 });
 
 test("tokenizer: versioned identifier P2.2 survives", () => {
@@ -53,12 +38,7 @@ test("tokenizer: versioned identifier P2.2 survives", () => {
 });
 
 test("tokenizer: snake_case survives", () => {
-  assert.deepEqual(tokenizeWithIdentifiers("snake_case_name"), [
-    "snake_case_name",
-    "snake",
-    "case",
-    "name",
-  ]);
+  assert.deepEqual(tokenizeWithIdentifiers("snake_case_name"), ["snake_case_name", "snake", "case", "name"]);
 });
 
 test("tokenizer: plain prose is unchanged vs. split-only tokenization", () => {
@@ -70,13 +50,7 @@ test("tokenizer: sentence-final period does not create a fake identifier", () =>
 });
 
 test("tokenizer: path separators and colons still split (file segments survive)", () => {
-  assert.deepEqual(tokenizeWithIdentifiers("src/search.ts:42"), [
-    "src",
-    "search.ts",
-    "search",
-    "ts",
-    "42",
-  ]);
+  assert.deepEqual(tokenizeWithIdentifiers("src/search.ts:42"), ["src", "search.ts", "search", "ts", "42"]);
 });
 
 test("tokenizer: punctuation-only input yields no tokens", () => {
@@ -167,7 +141,7 @@ test("normalizeQuery: long hook prompt keeps identifiers past the old 1000-char 
   assert.ok(query.length > 1000 && query.length < QUERY_MAX_CHARS);
   assert.ok(
     normalizeQuery(query).includes("my-app.config.ts"),
-    "identifier beyond the old cap must survive normalization",
+    "identifier beyond the old cap must survive normalization"
   );
 });
 
@@ -189,12 +163,7 @@ test("normalizeQuery: idempotent", () => {
 // ─── retrieval fixtures (index + query symmetry) ─────────────────
 
 /** Identifier-heavy memory fixture — recall_when/title carry the identifiers. */
-function memo(
-  id: string,
-  title: string,
-  recallWhen: string,
-  body: string,
-): string {
+function memo(id: string, title: string, recallWhen: string, body: string): string {
   const ts = new Date().toISOString();
   return [
     "---",
@@ -227,9 +196,9 @@ async function makeIndex(): Promise<{ idx: SearchIndex; dir: string }> {
       "cfg",
       "vite aliases in my-app.config.ts",
       "editing my-app.config.ts build settings",
-      "Alias block in my-app.config.ts must mirror tsconfig paths.",
+      "Alias block in my-app.config.ts must mirror tsconfig paths."
     ),
-    "utf8",
+    "utf8"
   );
   // Decoy: carries the generic split parts but NOT the joined identifier.
   await writeFile(
@@ -238,9 +207,9 @@ async function makeIndex(): Promise<{ idx: SearchIndex; dir: string }> {
       "decoy",
       "general app housekeeping",
       "app config ts cleanup chores",
-      "Misc notes about app config and ts housekeeping.",
+      "Misc notes about app config and ts housekeeping."
     ),
-    "utf8",
+    "utf8"
   );
   await writeFile(
     join(dir, "send.md"),
@@ -248,19 +217,14 @@ async function makeIndex(): Promise<{ idx: SearchIndex; dir: string }> {
       "send",
       "chat-send handler debounce",
       "touching the chat-send handler",
-      "Debounce lives in the chat-send handler, not the socket layer.",
+      "Debounce lives in the chat-send handler, not the socket layer."
     ),
-    "utf8",
+    "utf8"
   );
   await writeFile(
     join(dir, "phase.md"),
-    memo(
-      "phase",
-      "P2.2 rollout gate",
-      "planning P2.2 rollout",
-      "Gate criteria for P2.2 were fixed in the kickoff.",
-    ),
-    "utf8",
+    memo("phase", "P2.2 rollout gate", "planning P2.2 rollout", "Gate criteria for P2.2 were fixed in the kickoff."),
+    "utf8"
   );
   const vault = new Vault(dir);
   await vault.init();
@@ -278,7 +242,7 @@ test("retrieval: joined identifier query ranks the exact memory above the split-
     // The joined token itself matched — not just the generic parts.
     assert.ok(
       hits[0].matched_terms.includes("my-app.config.ts"),
-      `joined identifier is a matched term (got: ${hits[0].matched_terms.join(", ")})`,
+      `joined identifier is a matched term (got: ${hits[0].matched_terms.join(", ")})`
     );
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });

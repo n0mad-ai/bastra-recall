@@ -36,7 +36,7 @@ const done = new Set(
           const e = JSON.parse(l);
           return `${e.commit}:${e.file}`;
         })
-    : [],
+    : []
 );
 
 const todo = accepted.filter((c) => !done.has(`${c.commit}:${c.file}`));
@@ -59,7 +59,7 @@ await Promise.all(
       const commit = commits[next++];
       const files = byCommit.get(commit);
       const results = await analyze(commit, files, dir, { evidence: true }).catch((e) =>
-        files.map((file) => ({ commit, file, reason: `evidence failed: ${String(e?.message ?? e).slice(0, 200)}` })),
+        files.map((file) => ({ commit, file, reason: `evidence failed: ${String(e?.message ?? e).slice(0, 200)}` }))
       );
       for (const r of results) {
         appendFileSync(
@@ -72,10 +72,10 @@ await Promise.all(
             reproduced: r.reason === undefined,
             newErrors: r.newErrors ?? [],
             ...(r.reason === undefined ? {} : { reason: r.reason }),
-          }) + "\n",
+          }) + "\n"
         );
         process.stdout.write(`${r.commit.slice(0, 7)} ${r.file} reproduced=${r.reason === undefined}\n`);
       }
     }
-  }),
+  })
 );

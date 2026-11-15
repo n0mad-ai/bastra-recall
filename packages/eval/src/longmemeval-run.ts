@@ -89,13 +89,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-  Vault,
-  SearchIndex,
-  EmbeddingIndex,
-  OllamaEmbeddingProvider,
-  rrfVectorWeight,
-} from "@bastra-recall/core";
+import { Vault, SearchIndex, EmbeddingIndex, OllamaEmbeddingProvider, rrfVectorWeight } from "@bastra-recall/core";
 import {
   haystackMemories,
   isoDate,
@@ -136,7 +130,7 @@ function usage(): never {
       "  --k <n>           retrieval depth (default: 20)\n" +
       "  --near <x>        fixed near/far coverage cut (default: median split)\n" +
       "  --limit <n>       only the first n questions (0 = all)\n" +
-      "  --out <path>      write the run JSON here (nothing is written otherwise)\n",
+      "  --out <path>      write the run JSON here (nothing is written otherwise)\n"
   );
   process.exit(2);
 }
@@ -170,13 +164,17 @@ function parseArgs(argv: string[]): Args {
       }
       args.turns = t;
     } else if (a === "--arms") {
-      args.arms = req(argv[++i], "--arms").split(",").map((s) => s.trim()).filter(Boolean).map((s) => {
-        if (!(ARM_NAMES as readonly string[]).includes(s)) {
-          console.error(`FATAL: unknown arm \`${s}\` — known: ${ARM_NAMES.join(", ")}`);
-          usage();
-        }
-        return s as ArmName;
-      });
+      args.arms = req(argv[++i], "--arms")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((s) => {
+          if (!(ARM_NAMES as readonly string[]).includes(s)) {
+            console.error(`FATAL: unknown arm \`${s}\` — known: ${ARM_NAMES.join(", ")}`);
+            usage();
+          }
+          return s as ArmName;
+        });
       if (args.arms.length === 0) usage();
     } else if (a === "--k") args.k = Number.parseInt(req(argv[++i], "--k"), 10);
     else if (a === "--limit") args.limit = Number.parseInt(req(argv[++i], "--limit"), 10);
@@ -200,13 +198,18 @@ function parseArgs(argv: string[]): Args {
 // authored trigger, here it is the gold session itself.
 
 const STOP = new Set(
-  ("a an the to of in on at for and or but with without when how why is are be it its " +
+  (
+    "a an the to of in on at for and or but with without when how why is are be it its " +
     "into as my me i you your their them they not no than instead while per after before " +
-    "does do that this so what which").split(" "),
+    "does do that this so what which"
+  ).split(" ")
 );
 function toks(s: string): Set<string> {
   return new Set(
-    s.toLowerCase().split(/[^a-z0-9.]+/).filter((t) => t && t.length > 1 && !STOP.has(t)),
+    s
+      .toLowerCase()
+      .split(/[^a-z0-9.]+/)
+      .filter((t) => t && t.length > 1 && !STOP.has(t))
   );
 }
 /** Fraction of the question's content tokens that occur in the reference text. */
@@ -290,7 +293,7 @@ export async function writeQuestionVault(root: string, memories: SessionMemory[]
         `summary: ${yaml(m.summary)}\ntopic_path: [longmemeval]\ntags: [longmemeval]\n` +
         `scope: longmemeval\nrecall_when: []\ncreated: ${date}\nupdated: ${date}\n---\n\n${m.body}\n`;
       return fs.writeFile(path.join(dir, `${m.id}.md`), md);
-    }),
+    })
   );
 }
 
@@ -315,7 +318,7 @@ export async function awaitBackfill(emb: EmbeddingIndex, want: number, label: st
     if (Date.now() - stalledSince > 120_000) {
       console.error(
         `\nFATAL: ${label}: embedding stalled at ${emb.size()}/${want}. Is Ollama reachable at ` +
-          `${process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434"}?`,
+          `${process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434"}?`
       );
       process.exit(3);
     }
@@ -357,12 +360,16 @@ function engineIdentity(): {
   let coreFiles: number | null = null;
   try {
     const dir = path.resolve(import.meta.dirname, "..", "..", "core", "src");
-    const names = readdirSync(dir).filter((f) => f.endsWith(".ts")).sort();
+    const names = readdirSync(dir)
+      .filter((f) => f.endsWith(".ts"))
+      .sort();
     const h = createHash("sha256");
     for (const name of names) {
       // The name goes in too, so a renamed file changes the identity even
       // when the bytes are unchanged.
-      h.update(name).update("\0").update(readFileSync(path.join(dir, name)));
+      h.update(name)
+        .update("\0")
+        .update(readFileSync(path.join(dir, name)));
     }
     coreHash = h.digest("hex");
     coreFiles = names.length;
@@ -406,7 +413,7 @@ async function main(): Promise<void> {
           `\n` +
           `      packages/eval/scripts/fetch-longmemeval.sh\n` +
           `\n` +
-          `  then point --corpus at the downloaded longmemeval_s_cleaned.json.\n`,
+          `  then point --corpus at the downloaded longmemeval_s_cleaned.json.\n`
       );
       process.exit(2);
     }
@@ -425,13 +432,13 @@ async function main(): Promise<void> {
     `LongMemEval: ${questions.length}/${all.length} questions` +
       `${loaded.dropped ? ` (${loaded.dropped} abstention-typed dropped)` : ""}` +
       ` · arms ${args.arms.join("+")} · turns ${args.turns} · k=${args.k}` +
-      ` · rrf vector weight ${rrfVectorWeight()}`,
+      ` · rrf vector weight ${rrfVectorWeight()}`
   );
   const engine = engineIdentity();
   console.error(`dataset ${datasetHash.slice(0, 12)} · code ${codeHash.slice(0, 12)} · ${corpus}`);
   console.error(
-    `engine core/src ${engine.core_src_sha256?.slice(0, 12) ?? "unknown"}`
-      + ` · repo ${engine.repo_commit?.slice(0, 12) ?? "unknown"}${engine.repo_dirty ? "-dirty" : ""}`,
+    `engine core/src ${engine.core_src_sha256?.slice(0, 12) ?? "unknown"}` +
+      ` · repo ${engine.repo_commit?.slice(0, 12) ?? "unknown"}${engine.repo_dirty ? "-dirty" : ""}`
   );
 
   const wantHybrid = args.arms.includes("hybrid");
@@ -479,9 +486,10 @@ async function main(): Promise<void> {
         // false, which is what an external MCP caller gets — the corpus carries
         // no `private` memory, so the filter removes nothing and the vector arm
         // simply asks for the deeper pool (#240/A8).
-        const hits = arm === "hybrid"
-          ? await search.recallHybrid(q.question, { k: args.k })
-          : search.recall(q.question, { k: args.k });
+        const hits =
+          arm === "hybrid"
+            ? await search.recallHybrid(q.question, { k: args.k })
+            : search.recall(q.question, { k: args.k });
         ranked[arm] = hits.map((h) => h.id);
       }
 
@@ -519,7 +527,7 @@ async function main(): Promise<void> {
         const elapsed = (Date.now() - started) / 1000;
         process.stderr.write(
           `\r${qi + 1}/${questions.length} · running ${arm} R@5 ${pct(recallAt(rows, arm, 5))}` +
-            ` · ${elapsed.toFixed(0)}s`,
+            ` · ${elapsed.toFixed(0)}s`
         );
       }
     }
@@ -538,7 +546,8 @@ async function main(): Promise<void> {
   const L: string[] = [];
   L.push(`\n── LongMemEval · ${questions.length} questions · ${sessionCount} sessions indexed ──`);
   L.push(`   corpus ${path.basename(corpus)} · dataset ${datasetHash.slice(0, 12)} · turns ${args.turns}`);
-  if (duplicateSessions) L.push(`   ${duplicateSessions} repeated session id(s) collapsed (identical content, never gold)`);
+  if (duplicateSessions)
+    L.push(`   ${duplicateSessions} repeated session id(s) collapsed (identical content, never gold)`);
   L.push("");
   L.push(`   ${"arm".padEnd(8)} | ${KS.map((k) => `R@${k}`.padStart(6)).join(" | ")} | nDCG@10 |    MRR`);
   L.push("   " + "-".repeat(8 + 3 + KS.length * 9 + 20));
@@ -554,7 +563,7 @@ async function main(): Promise<void> {
     summary[arm] = at;
     L.push(
       `   ${arm.padEnd(8)} | ${KS.map((k) => pct(at[`r@${k}`]).padStart(6)).join(" | ")}` +
-        ` |  ${nd.toFixed(4)} | ${mr.toFixed(4)}`,
+        ` |  ${nd.toFixed(4)} | ${mr.toFixed(4)}`
     );
   }
 
@@ -563,7 +572,7 @@ async function main(): Promise<void> {
   L.push(
     `   near/far cut ${cut.toFixed(3)}` +
       `${args.near === null ? " (median split)" : " (fixed)"}` +
-      ` · near n=${near.length} · far n=${far.length}`,
+      ` · near n=${near.length} · far n=${far.length}`
   );
   L.push(`   ${"arm".padEnd(8)} | near R@5 |  far R@5 | far_retention`);
   L.push("   " + "-".repeat(50));
@@ -574,7 +583,7 @@ async function main(): Promise<void> {
     farRetention[arm] = rn > 0 ? rf / rn : Number.NaN;
     L.push(
       `   ${arm.padEnd(8)} | ${pct(rn).padStart(8)} | ${pct(rf).padStart(8)} |` +
-        `          ${Number.isFinite(farRetention[arm]) ? farRetention[arm].toFixed(2) : "n/a"}`,
+        `          ${Number.isFinite(farRetention[arm]) ? farRetention[arm].toFixed(2) : "n/a"}`
     );
   }
 
@@ -588,7 +597,7 @@ async function main(): Promise<void> {
     L.push(
       `   **survival(dense) = lift(far)/lift(near) = ` +
         `${Number.isFinite(survival) ? survival.toFixed(2) : "n/a"}** — NOT the recall_when` +
-        ` survival of #103; this corpus has no authored triggers to ablate.`,
+        ` survival of #103; this corpus has no authored triggers to ablate.`
     );
   }
 
@@ -604,7 +613,7 @@ async function main(): Promise<void> {
     for (const arm of args.arms) byType[t][arm] = recallAt(sub, arm, 5);
     L.push(
       `   ${t.padEnd(26)} | ${String(sub.length).padStart(3)} | ` +
-        args.arms.map((a) => pct(byType[t][a]).padStart(11)).join(" | "),
+        args.arms.map((a) => pct(byType[t][a]).padStart(11)).join(" | ")
     );
   }
 
@@ -613,7 +622,7 @@ async function main(): Promise<void> {
     L.push("");
     L.push(
       `   ${absRows.length} question ids end in \`_abs\` and are KEPT (neither reference run drops them):` +
-        ` ${args.arms.map((a) => `${a} R@5 ${pct(recallAt(absRows, a, 5))}`).join(" · ")}`,
+        ` ${args.arms.map((a) => `${a} R@5 ${pct(recallAt(absRows, a, 5))}`).join(" · ")}`
     );
   }
 
@@ -649,8 +658,8 @@ async function main(): Promise<void> {
           questions: rows,
         },
         null,
-        2,
-      ),
+        2
+      )
     );
     console.error(`wrote ${args.out}`);
   }

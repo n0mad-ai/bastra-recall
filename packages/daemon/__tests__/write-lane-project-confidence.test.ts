@@ -51,7 +51,7 @@ function startDaemonWithOwnHit() {
           vault_size: 100,
           latency_ms: 5,
           recall_id: "test",
-        }),
+        })
       );
     });
   });
@@ -73,11 +73,11 @@ async function runLane(cwd: string, port: number): Promise<string> {
           new_string: "const recall = 2;",
         },
       },
-      `http://127.0.0.1:${port}`,
+      `http://127.0.0.1:${port}`
     );
     return (
-      (JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } })
-        .hookSpecificOutput?.additionalContext ?? ""
+      (JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput
+        ?.additionalContext ?? ""
     );
   } finally {
     if (before === undefined) delete process.env.BASTRA_TELEMETRY;

@@ -20,12 +20,20 @@ const canonicalBody = gen.splitFrontmatter(canonical).body.trimEnd();
 
 test("#455: the committed Cursor rule is exactly the generator's output", async () => {
   const committed = await readFile(gen.PROJECTIONS.cursor, "utf8");
-  assert.equal(committed, gen.renderCursorRule(canonical), "cursor-rules.mdc is stale or hand-edited — run `npm run skill:build`");
+  assert.equal(
+    committed,
+    gen.renderCursorRule(canonical),
+    "cursor-rules.mdc is stale or hand-edited — run `npm run skill:build`"
+  );
 });
 
 test("#455: the committed plugin skill is exactly the generator's output", async () => {
   const committed = await readFile(join(gen.PROJECTIONS.pluginSkillDir, "SKILL.md"), "utf8");
-  assert.equal(committed, gen.renderPluginSkill(canonical), "plugin SKILL.md is stale or hand-edited — run `npm run skill:build`");
+  assert.equal(
+    committed,
+    gen.renderPluginSkill(canonical),
+    "plugin SKILL.md is stale or hand-edited — run `npm run skill:build`"
+  );
 });
 
 test("#455: every projection carries the canonical body verbatim and the canonical hash", async () => {
@@ -46,7 +54,13 @@ test("#455: the projections keep only client metadata in their frontmatter — n
   assert.doesNotMatch(cursor.body.replace(canonicalBody, ""), /~100\+|Below\s+~30 is noise/);
   const plugin = gen.splitFrontmatter(await readFile(join(gen.PROJECTIONS.pluginSkillDir, "SKILL.md"), "utf8"));
   assert.match(plugin.frontmatter, /^name: bastra-recall$/m);
-  assert.equal(plugin.body.replace(canonicalBody, "").replace(/<!--[^>]*-->/g, "").trim(), "");
+  assert.equal(
+    plugin.body
+      .replace(canonicalBody, "")
+      .replace(/<!--[^>]*-->/g, "")
+      .trim(),
+    ""
+  );
 });
 
 test("#455: the plugin skill dir carries every reference file the body points at, and the OpenAI metadata", async () => {
@@ -65,7 +79,7 @@ test("#455: the plugin skill dir carries every reference file the body points at
   assert.equal(a, b);
 });
 
-test("#763: the frustration trigger text names a repetition phrase, never the bare word for \"again\"", async () => {
+test('#763: the frustration trigger text names a repetition phrase, never the bare word for "again"', async () => {
   const { MEMORY_TOOL_DEFS } = await import("../src/tool-defs-memory.js");
   const save = MEMORY_TOOL_DEFS.find((t) => t.name === "save_memory");
   assert.ok(save, "save_memory tool def");

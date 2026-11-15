@@ -11,12 +11,7 @@
  */
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
-import {
-  mutateMemoryFile,
-  withIdClaim,
-  moveToTrashUnderClaim,
-  SaveMemoryInput,
-} from "@bastra-recall/core";
+import { mutateMemoryFile, withIdClaim, moveToTrashUnderClaim, SaveMemoryInput } from "@bastra-recall/core";
 import { recordAudit } from "./audit-trail.js";
 
 import type { ToolDeps } from "./tool-deps.js";
@@ -32,14 +27,8 @@ export { MEMORY_TOOL_DEFS };
 // ─── Zod-Schemas ────────────────────────────────────────────────
 
 // ─── Recall — lives in recall-handler.ts (file-size split), re-exported ───
-export {
-  RecallArgs,
-  recallHandler,
-  toLeanHit,
-  truncateSummary,
-} from "./recall-handler.js";
+export { RecallArgs, recallHandler, toLeanHit, truncateSummary } from "./recall-handler.js";
 export type { RecallResult, RecallStageTimings } from "./recall-handler.js";
-
 
 // ─── Load Memory — lives in load-memory-handler.ts (#680 split), re-exported ───
 export {
@@ -60,9 +49,7 @@ export {
 } from "./save-memory-handler.js";
 export type { SaveMemoryResult } from "./save-memory-handler.js";
 
-
 export { SaveMemoryInput };
-
 
 // ─── archive_memory (#217 Intake-Adoption) ──────────────────────
 
@@ -84,7 +71,7 @@ export async function archiveMemoryHandler(
   deps: ToolDeps,
   args: Record<string, unknown>,
   /** #464: transportgebunden — siehe private-access.ts. */
-  access?: PrivateAccess,
+  access?: PrivateAccess
 ): Promise<{ id: string; archived_to: string; superseded_by: string | null }> {
   const parsed = ArchiveMemoryArgs.safeParse(args);
   if (!parsed.success) {
@@ -119,7 +106,7 @@ export async function archiveMemoryHandler(
           located.kind === "none"
             ? `cannot archive "${id}": no file on disk holds it (the index is stale).`
             : `cannot archive "${id}": the vault scan is not conclusive (${located.kind}) — ` +
-              `fix that first, archiving now would move the wrong file.`,
+                `fix that first, archiving now would move the wrong file.`
         );
       }
       // #464 (wiedereröffnet): Die Sensitivitätsprüfung oben fragte den INDEX.
@@ -133,9 +120,7 @@ export async function archiveMemoryHandler(
       // weicht sie ab, wird gar nichts verschoben.
       const preimage = await readFile(located.filePath, "utf8");
       if (hiddenOnDisk(access, preimage)) {
-        throw new Error(
-          `unknown memory: ${id} — archive_memory only archives memories that exist in the vault.`,
-        );
+        throw new Error(`unknown memory: ${id} — archive_memory only archives memories that exist in the vault.`);
       }
       // Codex-Gegenreview Runde 10 (P1-4): Hier stand ein eigener Read, dessen
       // Ergebnis als `diff_before` ins Ledger ging — ohne Bindung an die
@@ -145,7 +130,7 @@ export async function archiveMemoryHandler(
         deps.vaultPath,
         located.filePath,
         claim,
-        preimage,
+        preimage
       );
       deps.vault.forgetFile(located.filePath);
       if (superseded_by) {
@@ -161,7 +146,7 @@ export async function archiveMemoryHandler(
         }
       }
       return { archivedTo: to, originalPath: located.filePath, diffBefore: onDisk };
-    },
+    }
   );
   // #206: archiving is the one operation that takes a memory out of the active
   // index, so it is the one that most needs a record. `diff_before` keeps the

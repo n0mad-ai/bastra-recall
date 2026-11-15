@@ -167,14 +167,11 @@ function main() {
   const populationPath = join(OUT, "population.json");
   if (registration?.population?.freeze !== undefined) {
     if (!existsSync(populationPath)) throw new Error(`${registrationId}: frozen population.json is missing`);
-    const mismatches = populationFreezeMismatches(
-      registration,
-      JSON.parse(readFileSync(populationPath, "utf8")),
-    );
+    const mismatches = populationFreezeMismatches(registration, JSON.parse(readFileSync(populationPath, "utf8")));
     if (mismatches.length > 0) {
       throw new Error(
         `${registrationId}: population does not match the registration:\n` +
-          mismatches.map((m) => `  ${m.field}: registered ${m.expected}, mined ${m.actual}`).join("\n"),
+          mismatches.map((m) => `  ${m.field}: registered ${m.expected}, mined ${m.actual}`).join("\n")
       );
     }
   }
@@ -221,12 +218,7 @@ function main() {
   const pooled = pooling.allowed === true && firstRepoAlone < target;
   const cap = pooled ? (pooling.per_repo_cap ?? Infinity) : Infinity;
   // Draw a little past the minimum so hand adjudication has room to remove.
-  const { pooled: drawn, takenPerRepo } = pooledCandidates(
-    byRepo,
-    pooled ? order : order.slice(0, 1),
-    cap,
-    draw,
-  );
+  const { pooled: drawn, takenPerRepo } = pooledCandidates(byRepo, pooled ? order : order.slice(0, 1), cap, draw);
   const kept = drawn;
   const next = rng(SEED);
   const scenarios = kept.map((c, i) => ({
@@ -265,7 +257,7 @@ function main() {
     throw new Error(
       `${registrationId}: no candidate matched — ${accepted.length} accepted candidates in ` +
         `${join(OUT, "candidates.jsonl")}, repo order ${order.join(", ")}. ` +
-        `Refusing to write an empty scenario file.`,
+        `Refusing to write an empty scenario file.`
     );
   }
   writeFileSync(
@@ -283,13 +275,13 @@ function main() {
         scenarios,
       },
       null,
-      2,
-    ),
+      2
+    )
   );
   process.stdout.write(
     `${scenarios.length} scenarios written` +
       (dropped > 0 ? ` (${dropped} dropped: pilot commits, excluded by the registration)` : "") +
-      "\n",
+      "\n"
   );
   for (const [repo, n] of takenPerRepo) {
     process.stdout.write(`  ${n} from ${repo}\n`);

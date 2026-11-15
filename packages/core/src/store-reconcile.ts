@@ -59,7 +59,10 @@ function stableJson(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(stableJson).join(",")}]`;
   if (v && typeof v === "object") {
     const o = v as Record<string, unknown>;
-    return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${stableJson(o[k])}`).join(",")}}`;
+    return `{${Object.keys(o)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableJson(o[k])}`)
+      .join(",")}}`;
   }
   return JSON.stringify(v ?? null);
 }
@@ -75,8 +78,10 @@ function linkTarget(target: string): string {
 /** `[[Präferenz|shown]]` → `[[praeferenz|shown]]` — the target in one dialect,
  *  the alias kept (it is authored text). */
 function normalizeLinks(text: string): string {
-  return text.replace(/\[\[([^\]|]+)(\|[^\]]*)?\]\]/g, (_m, t: string, alias: string | undefined) =>
-    `[[${linkTarget(t)}${alias ?? ""}]]`);
+  return text.replace(
+    /\[\[([^\]|]+)(\|[^\]]*)?\]\]/g,
+    (_m, t: string, alias: string | undefined) => `[[${linkTarget(t)}${alias ?? ""}]]`
+  );
 }
 
 /** Links normalised outside inline code only — a code example stays verbatim. */
@@ -128,9 +133,8 @@ export function authoredContent(fm: Record<string, unknown>, body: string): Auth
   for (const [k, v] of Object.entries(fm)) {
     if (GENERATED_FIELDS.has(k) || v === undefined) continue;
     // `related` is written in the same id dialect as the body's links.
-    fields[k] = k === "related" && Array.isArray(v)
-      ? stableJson(v.map((x) => linkTarget(String(x))).sort())
-      : stableJson(v);
+    fields[k] =
+      k === "related" && Array.isArray(v) ? stableJson(v.map((x) => linkTarget(String(x))).sort()) : stableJson(v);
   }
   return { fields, paragraphs: authoredBody(body) };
 }
@@ -140,7 +144,10 @@ export function authoredKey(a: AuthoredContent): string {
 }
 
 /** What differs between two authored versions — for the report only. */
-export function authoredDiff(a: AuthoredContent, b: AuthoredContent): {
+export function authoredDiff(
+  a: AuthoredContent,
+  b: AuthoredContent
+): {
   fields: string[];
   paragraphsOnlyA: number;
   paragraphsOnlyB: number;
@@ -323,7 +330,15 @@ export async function planReconcile(a: StoreSnapshot, b: StoreSnapshot): Promise
     const onlyA = minus(a.auditIds.get(id), b.auditIds.get(id));
     const onlyB = minus(b.auditIds.get(id), a.auditIds.get(id));
     if ((fa && fa.length > 1) || (fb && fb.length > 1)) {
-      items.push({ kind: "conflict", id, reason: "duplicate-id", a: fa, b: fb, onlyA: onlyA.length, onlyB: onlyB.length });
+      items.push({
+        kind: "conflict",
+        id,
+        reason: "duplicate-id",
+        a: fa,
+        b: fb,
+        onlyA: onlyA.length,
+        onlyB: onlyB.length,
+      });
       continue;
     }
     if (fa && fb) {
@@ -339,8 +354,14 @@ export async function planReconcile(a: StoreSnapshot, b: StoreSnapshot): Promise
         items.push({ kind: "copy", id, from: "b", why: "ahead", source: y, target: x, carryAudit: onlyB, diff });
       } else {
         items.push({
-          kind: "conflict", id, reason: onlyA.length > 0 ? "both-changed" : "unrecorded",
-          a: fa, b: fb, onlyA: onlyA.length, onlyB: onlyB.length, diff,
+          kind: "conflict",
+          id,
+          reason: onlyA.length > 0 ? "both-changed" : "unrecorded",
+          a: fa,
+          b: fb,
+          onlyA: onlyA.length,
+          onlyB: onlyB.length,
+          diff,
         });
       }
       continue;
@@ -352,11 +373,27 @@ export async function planReconcile(a: StoreSnapshot, b: StoreSnapshot): Promise
     const here = from === "a" ? a : b;
     const deletedThere = minus(other.deletes.get(id), here.deletes.get(id)).length > 0;
     if (deletedThere) {
-      items.push({ kind: "conflict", id, reason: "deleted-on-one-side", a: fa, b: fb, onlyA: onlyA.length, onlyB: onlyB.length });
+      items.push({
+        kind: "conflict",
+        id,
+        reason: "deleted-on-one-side",
+        a: fa,
+        b: fb,
+        onlyA: onlyA.length,
+        onlyB: onlyB.length,
+      });
       continue;
     }
     if (await exists(join(other.root, source.rel))) {
-      items.push({ kind: "conflict", id, reason: "path-taken", a: fa, b: fb, onlyA: onlyA.length, onlyB: onlyB.length });
+      items.push({
+        kind: "conflict",
+        id,
+        reason: "path-taken",
+        a: fa,
+        b: fb,
+        onlyA: onlyA.length,
+        onlyB: onlyB.length,
+      });
       continue;
     }
     items.push({ kind: "copy", id, from, why: "only-here", source, carryAudit: from === "a" ? onlyA : onlyB });
@@ -381,7 +418,10 @@ export interface ApplyResult {
 
 /** `2026-09-28T14-03-07Z` — sortable, and legal in a Windows path. */
 export function backupStamp(now: Date): string {
-  return now.toISOString().replace(/\.\d+Z$/, "Z").replace(/:/g, "-");
+  return now
+    .toISOString()
+    .replace(/\.\d+Z$/, "Z")
+    .replace(/:/g, "-");
 }
 
 async function revisionOf(path: string): Promise<string | null> {
@@ -421,7 +461,7 @@ async function restoreBackupExclusive(backup: string, target: string): Promise<b
 export async function applyReconcile(
   plan: ReconcilePlan,
   now: Date = new Date(),
-  io: { beforePublish?: (target: string) => Promise<void> } = {},
+  io: { beforePublish?: (target: string) => Promise<void> } = {}
 ): Promise<ApplyResult[]> {
   const stamp = backupStamp(now);
   const results: ApplyResult[] = [];
@@ -436,14 +476,15 @@ export async function applyReconcile(
         { vaultRoot: dst.root, id: item.id, filePath: targetPath, op: "reconcile_store" },
         async (claim): Promise<ApplyResult> => {
           const located = await claim.locate();
-          if (item.target
-            ? located.kind !== "unique" || located.filePath !== targetPath
-            : located.kind !== "none") {
+          if (item.target ? located.kind !== "unique" || located.filePath !== targetPath : located.kind !== "none") {
             return { ...base, status: "skipped", reason: "target id changed since the plan" };
           }
           let sourceRaw: string;
-          try { sourceRaw = await readFile(item.source.filePath, "utf8"); }
-          catch { return { ...base, status: "skipped", reason: "source unreadable since the plan" }; }
+          try {
+            sourceRaw = await readFile(item.source.filePath, "utf8");
+          } catch {
+            return { ...base, status: "skipped", reason: "source unreadable since the plan" };
+          }
           if (memoryRevision(sourceRaw) !== item.source.revision) {
             return { ...base, status: "skipped", reason: "source changed since the plan" };
           }
@@ -452,14 +493,25 @@ export async function applyReconcile(
           }
 
           await ensureVaultDir(dst.root, dirname(targetPath));
-          const tmp = join(dirname(targetPath), `.${basename(targetPath)}.reconcile-${process.pid}-${randomUUID()}.tmp`);
+          const tmp = join(
+            dirname(targetPath),
+            `.${basename(targetPath)}.reconcile-${process.pid}-${randomUUID()}.tmp`
+          );
           let backup: string | undefined;
           try {
-            await writeFile(tmp, sourceRaw, { encoding: "utf8", flag: "wx", mode: (await stat(item.source.filePath)).mode & 0o777 });
+            await writeFile(tmp, sourceRaw, {
+              encoding: "utf8",
+              flag: "wx",
+              mode: (await stat(item.source.filePath)).mode & 0o777,
+            });
             // Some cloud mounts cannot create hard links. Discover that while
             // the old target is still in place, before moving it to backup.
             const probe = `${tmp}.link-probe`;
-            try { await link(tmp, probe); } finally { await unlink(probe).catch(() => {}); }
+            try {
+              await link(tmp, probe);
+            } finally {
+              await unlink(probe).catch(() => {});
+            }
             if (item.target) {
               // Move, then verify the exact bytes now held by the backup. An
               // external edit in the preflight window is preserved there and
@@ -476,9 +528,14 @@ export async function applyReconcile(
               backup = backupPath;
               if ((await revisionOf(backup)) !== item.target.revision) {
                 const restored = await restoreBackupExclusive(backup, targetPath);
-                return { ...base, status: "skipped", reason: restored
-                  ? "target changed before backup; original restored and backup preserved"
-                  : "target changed before backup; check target and preserved backup", backup };
+                return {
+                  ...base,
+                  status: "skipped",
+                  reason: restored
+                    ? "target changed before backup; original restored and backup preserved"
+                    : "target changed before backup; check target and preserved backup",
+                  backup,
+                };
               }
             }
             await io.beforePublish?.(targetPath);
@@ -490,9 +547,18 @@ export async function applyReconcile(
             if (backup) {
               restored = await restoreBackupExclusive(backup, targetPath);
             }
-            return { ...base, status: "skipped", reason: `publish failed: ${(err as Error).message}` +
-              (backup ? restored ? "; target restored, backup preserved" : "; inspect target and preserved backup" : ""),
-              ...(backup ? { backup } : {}) };
+            return {
+              ...base,
+              status: "skipped",
+              reason:
+                `publish failed: ${(err as Error).message}` +
+                (backup
+                  ? restored
+                    ? "; target restored, backup preserved"
+                    : "; inspect target and preserved backup"
+                  : ""),
+              ...(backup ? { backup } : {}),
+            };
           } finally {
             await unlink(tmp).catch(() => {});
           }
@@ -504,10 +570,15 @@ export async function applyReconcile(
               if (e.memory_id === item.id && carry.has(e.id)) await log.record(e);
             }
           } catch (err) {
-            return { ...base, status: "copied", ...(backup ? { backup } : {}), warning: `audit entries could not all be copied: ${(err as Error).message}` };
+            return {
+              ...base,
+              status: "copied",
+              ...(backup ? { backup } : {}),
+              warning: `audit entries could not all be copied: ${(err as Error).message}`,
+            };
           }
           return { ...base, status: "copied", ...(backup ? { backup } : {}) };
-        },
+        }
       );
       results.push(result);
     } catch (err) {

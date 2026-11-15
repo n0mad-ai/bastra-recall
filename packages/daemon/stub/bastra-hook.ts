@@ -48,9 +48,7 @@ const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", RECALL_BUDGET_MS, "NEXU
 const STUB_VERSION = "0.6.0-stub"; // 0.6.0 = Codex payload adaptation (#15)
 
 type Lane = ClientLane;
-const LANES = new Set<Lane>([
-  "prompt", "write", "bash-pre", "bash-fail", "stop", "session", "todo", "gate",
-]);
+const LANES = new Set<Lane>(["prompt", "write", "bash-pre", "bash-fail", "stop", "session", "todo", "gate"]);
 const SUPPORTED_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch"]);
 /** EVERY lane logs its own failure (#543). The three lanes added in #369 were
  *  silent here, with a reason that was right when it was written: their event
@@ -80,7 +78,8 @@ const SUPPORTED_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit", "
  */
 function laneBudgetMs(lane: string): number {
   if (lane === "stop") return envInt("BASTRA_STOP_HOOK_TIMEOUT_MS", STOP_BUDGET_MS);
-  if (lane === "session") return envInt("BASTRA_HOOK_TIMEOUT_MS", SESSION_START_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS") + 100;
+  if (lane === "session")
+    return envInt("BASTRA_HOOK_TIMEOUT_MS", SESSION_START_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS") + 100;
   if (lane === "prompt") return envInt("BASTRA_HOOK_TIMEOUT_MS", PROMPT_ASSERTION_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
   // #1303: the gate runs on EVERY tool call and answers from session state.
   if (lane === "gate") return envInt("BASTRA_HOOK_TIMEOUT_MS", FAST_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
@@ -181,7 +180,7 @@ function postLane(baseUrl: string, path: string, body: unknown, timeoutMs: numbe
           }
           resolve(data);
         });
-      },
+      }
     );
     req.on("error", (err) => {
       if (settled) return;
@@ -195,8 +194,7 @@ function postLane(baseUrl: string, path: string, body: unknown, timeoutMs: numbe
 }
 
 function classifyError(e: NodeJS.ErrnoException): "daemon-unreachable" | "timeout" | "error" {
-  if (e.code === "ECONNREFUSED" || e.code === "ENOTFOUND" || e.code === "EHOSTUNREACH")
-    return "daemon-unreachable";
+  if (e.code === "ECONNREFUSED" || e.code === "ENOTFOUND" || e.code === "EHOSTUNREACH") return "daemon-unreachable";
   return e.message === "timeout" ? "timeout" : "error";
 }
 
@@ -254,7 +252,7 @@ async function main(): Promise<void> {
         { tool_name: toolName, file_path: filePath, daemon_url: "", status: "skipped" },
         startedAt,
         payload.session_id ?? null,
-        STUB_VERSION,
+        STUB_VERSION
       );
       return;
     }
@@ -295,12 +293,15 @@ async function main(): Promise<void> {
           error: status === "error" ? (e.message ?? String(err)) : null,
           ...(lane === "gate" ? { non_conformance: status === "timeout" ? "gate_timeout" : "gate_unavailable" } : {}),
           ...(lane === "write"
-            ? { tool_name: payload.tool_name ?? "", file_path: (payload.tool_input as { file_path?: string } | undefined)?.file_path ?? null }
+            ? {
+                tool_name: payload.tool_name ?? "",
+                file_path: (payload.tool_input as { file_path?: string } | undefined)?.file_path ?? null,
+              }
             : {}),
         },
         startedAt,
         payload.session_id ?? null,
-        STUB_VERSION,
+        STUB_VERSION
       );
     })();
   }
@@ -324,30 +325,39 @@ if (process.argv[2] === "version") {
   import("../../statusline/dist/index.mjs").catch(() => process.exit(0));
 } else {
   const lane = process.argv[2];
-  const killSwitch = setTimeout(() => {
-    emitOnce("{}");
-    if (lane !== "gate" && lane !== "stop") process.exit(0);
-    failureWrite ??= (async () => {
-      const { spoolRulebookFailure } = await import("../src/rulebook-spool.js");
-      await spoolRulebookFailure(callSessionId);
-      // #1303: the gate passed the call without deciding.
-      if (lane === "gate") await writeClientTelemetry(
-        "gate",
-        { daemon_url: "", status: "timeout", error: "kill-switch", non_conformance: "gate_timeout" },
-        callStartedAt,
-        callSessionId,
-        STUB_VERSION,
-      );
-    })();
-    void exitAfterFailureWrite();
-  }, laneBudgetMs(lane ?? "") + 50);
+  const killSwitch = setTimeout(
+    () => {
+      emitOnce("{}");
+      if (lane !== "gate" && lane !== "stop") process.exit(0);
+      failureWrite ??= (async () => {
+        const { spoolRulebookFailure } = await import("../src/rulebook-spool.js");
+        await spoolRulebookFailure(callSessionId);
+        // #1303: the gate passed the call without deciding.
+        if (lane === "gate")
+          await writeClientTelemetry(
+            "gate",
+            { daemon_url: "", status: "timeout", error: "kill-switch", non_conformance: "gate_timeout" },
+            callStartedAt,
+            callSessionId,
+            STUB_VERSION
+          );
+      })();
+      void exitAfterFailureWrite();
+    },
+    laneBudgetMs(lane ?? "") + 50
+  );
   killSwitch.unref?.();
 
   async function exitAfterFailureWrite(): Promise<never> {
     clearTimeout(killSwitch);
-    try { await failureWrite; }
-    finally { process.exit(0); }
+    try {
+      await failureWrite;
+    } finally {
+      process.exit(0);
+    }
   }
 
-  void main().catch(() => emitOnce("{}")).then(exitAfterFailureWrite);
+  void main()
+    .catch(() => emitOnce("{}"))
+    .then(exitAfterFailureWrite);
 }

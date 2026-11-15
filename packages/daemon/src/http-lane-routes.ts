@@ -35,7 +35,7 @@ function runLane<P>(
   req: IncomingMessage,
   res: ServerResponse,
   run: (payload: P, self: string) => Promise<string>,
-  notice?: (out:string,payload:SaveNoticePayload,isConnected:()=>boolean)=>Promise<string>,
+  notice?: (out: string, payload: SaveNoticePayload, isConnected: () => boolean) => Promise<string>
 ): void {
   const answer = (body: string): void => {
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
@@ -44,10 +44,10 @@ function runLane<P>(
   readJsonBody(req, MAX_BODY_BYTES)
     .then(async (body) => {
       const self = `http://127.0.0.1:${req.socket.localPort ?? 6723}`;
-      const payload=(body.payload??{}) as P;
-      const out=await run(payload,self);
-      const connected=()=>!res.destroyed&&!res.writableEnded&&!req.socket.destroyed;
-      if(connected())answer(notice?await notice(out,payload as SaveNoticePayload,connected):out);
+      const payload = (body.payload ?? {}) as P;
+      const out = await run(payload, self);
+      const connected = () => !res.destroyed && !res.writableEnded && !req.socket.destroyed;
+      if (connected()) answer(notice ? await notice(out, payload as SaveNoticePayload, connected) : out);
     })
     .catch(() => answer("{}"));
 }
@@ -63,28 +63,35 @@ export function dispatchLaneRoutes(
    *  http.ts). Absent = no embedding provider, and the lane behaves exactly
    *  as it did before #490. */
   warmupEmbedding?: WarmupCoordinator,
-  notice?: (out:string,payload:SaveNoticePayload,isConnected:()=>boolean)=>Promise<string>,
+  notice?: (out: string, payload: SaveNoticePayload, isConnected: () => boolean) => Promise<string>,
   draftReview?: () => Promise<DraftReviewDelivery>,
   /** #1303: the cached action-time reflex pool. Absent = no reflex denies,
    *  must-load still gates. */
   gateReflexPool?: () => readonly Memory[],
   /** #1305: the rule kernel's candidates for the gate's re-delivery. */
   gateKernel?: GateDeps["kernel"],
-  conventionOf?: (id:string)=>Promise<import('./convention-source.js').ConventionSource>,
+  conventionOf?: (id: string) => Promise<import("./convention-source.js").ConventionSource>
 ): boolean {
   if (method !== "POST") return false;
 
   // Stop (#35/#48/#67): the highest-frequency lane — one call at the end of
   // every answer. Always answers `{}`; the suggestions go to the pending file.
   if (url === "/hook/stop") {
-    runLane<ClaudeStopPayload>(req, res, (payload, self) => runStopLane(payload, self, { kernel: gateKernel, conventionOf }),notice);
+    runLane<ClaudeStopPayload>(
+      req,
+      res,
+      (payload, self) => runStopLane(payload, self, { kernel: gateKernel, conventionOf }),
+      notice
+    );
     return true;
   }
   // SessionStart: the recall + floors + taxonomy + care/import/update block.
   if (url === "/hook/session") {
-    runLane<SessionPayload>(req, res, (payload, self) =>
-      runSessionLane(payload, self, warmupEmbedding, undefined, draftReview),
-      notice,
+    runLane<SessionPayload>(
+      req,
+      res,
+      (payload, self) => runSessionLane(payload, self, warmupEmbedding, undefined, draftReview),
+      notice
     );
     return true;
   }
@@ -100,9 +107,14 @@ export function dispatchLaneRoutes(
     void delivery.run(async () => {
       try {
         const body = await readJsonBody(req, MAX_BODY_BYTES);
-        const out = await runGateLane((body.payload ?? {}) as GatePayload, { reflexPool: gateReflexPool ?? (() => []), kernel: gateKernel });
+        const out = await runGateLane((body.payload ?? {}) as GatePayload, {
+          reflexPool: gateReflexPool ?? (() => []),
+          kernel: gateKernel,
+        });
         delivery.answer(out);
-      } catch { delivery.answer("{}"); }
+      } catch {
+        delivery.answer("{}");
+      }
     });
     return true;
   }

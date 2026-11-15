@@ -65,7 +65,7 @@ export async function unloadOllamaModel(baseURL: string, model: string): Promise
 async function fetchWithTimeout(
   url: string,
   body: Record<string, unknown> | null,
-  timeoutMs: number,
+  timeoutMs: number
 ): Promise<Response> {
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), timeoutMs);

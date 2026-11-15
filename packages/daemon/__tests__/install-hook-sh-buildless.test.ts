@@ -17,25 +17,40 @@ function checkout(t: { after: (fn: () => void) => void }) {
   mkdirSync(join(home, ".claude"), { recursive: true });
   copyFileSync(SCRIPT, script);
   const settings = join(home, ".claude", "settings.json");
-  const run = (...args: string[]) => spawnSync("bash", [script, ...args], {
-    env: { ...process.env, HOME: home }, encoding: "utf8",
-  });
+  const run = (...args: string[]) =>
+    spawnSync("bash", [script, ...args], {
+      env: { ...process.env, HOME: home },
+      encoding: "utf8",
+    });
   return { root, run, settings };
 }
 
 test("install-hook.sh uninstalls without dist and keeps a foreign handler in the same entry", shellOnly, (t) => {
   const { run, settings } = checkout(t);
-  writeFileSync(settings, JSON.stringify({ hooks: {
-    PreToolUse: [{ matcher: "Write", hooks: [
-      { type: "command", command: "node /old/daemon/dist/hook.js" },
-      { type: "command", command: "~/bin/my-bastra-recall-audit-hook.sh" },
-    ] }],
-    Stop: [{ hooks: [{ type: "command", command: "node /old/stop-hook.js", __bastraRecall: true }] }],
-  } }));
+  writeFileSync(
+    settings,
+    JSON.stringify({
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: "Write",
+            hooks: [
+              { type: "command", command: "node /old/daemon/dist/hook.js" },
+              { type: "command", command: "~/bin/my-bastra-recall-audit-hook.sh" },
+            ],
+          },
+        ],
+        Stop: [{ hooks: [{ type: "command", command: "node /old/stop-hook.js", __bastraRecall: true }] }],
+      },
+    })
+  );
   const result = run("--uninstall");
   assert.equal(result.status, 0, result.stderr);
   const hooks = JSON.parse(readFileSync(settings, "utf8")).hooks;
-  assert.deepEqual(hooks.PreToolUse[0].hooks.map((h: { command: string }) => h.command), ["~/bin/my-bastra-recall-audit-hook.sh"]);
+  assert.deepEqual(
+    hooks.PreToolUse[0].hooks.map((h: { command: string }) => h.command),
+    ["~/bin/my-bastra-recall-audit-hook.sh"]
+  );
   assert.equal(hooks.Stop, undefined);
   assert.ok(existsSync(`${settings}.bak`));
 });
@@ -57,7 +72,10 @@ test("install-hook.sh explains an outdated adapter before changing settings", sh
   writeFileSync(join(root, "package.json"), '{"type":"module"}');
   const adapter = join(root, "packages", "daemon", "dist", "cli", "adapters", "claude-code.js");
   mkdirSync(resolve(adapter, ".."), { recursive: true });
-  writeFileSync(adapter, "export const hookDefinitions = () => []; export const planHookEntries = () => ({ after: {}, leftAlone: undefined });\n");
+  writeFileSync(
+    adapter,
+    "export const hookDefinitions = () => []; export const planHookEntries = () => ({ after: {}, leftAlone: undefined });\n"
+  );
   writeFileSync(settings, "{}\n");
   writeFileSync(`${settings}.bak`, "previous backup");
   const result = run();

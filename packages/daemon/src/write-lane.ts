@@ -109,7 +109,7 @@ const SUPPORTED_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit", "
 export async function runWriteLane(
   payload: WriteHookPayload,
   selfBaseUrl: string,
-  vaultRoot: string | null = null,
+  vaultRoot: string | null = null
 ): Promise<string> {
   const startedAt = Date.now();
   const client = hookClient(payload);
@@ -161,18 +161,22 @@ export async function runWriteLane(
   let status: HookStatus = "ok";
   let errMsg: string | null = null;
   try {
-    resp = await postRecall(selfBaseUrl, {
-      query: topics.query,
-      topics: topics.topics,
-      project,
-      tool_name: toolName,
-      tool_input_excerpt: intent.content_excerpt,
-      k: 3,
-      // #445: die Lane weist sich aus. `pre-tool` ist ihr Allowlist-Wert —
-      // sie ist die PreToolUse-Lane für Write/Edit.
-      ...hookCaller(payload),
-      hook_source: "pre-tool",
-    }, remainingMs);
+    resp = await postRecall(
+      selfBaseUrl,
+      {
+        query: topics.query,
+        topics: topics.topics,
+        project,
+        tool_name: toolName,
+        tool_input_excerpt: intent.content_excerpt,
+        k: 3,
+        // #445: die Lane weist sich aus. `pre-tool` ist ihr Allowlist-Wert —
+        // sie ist die PreToolUse-Lane für Write/Edit.
+        ...hookCaller(payload),
+        hook_source: "pre-tool",
+      },
+      remainingMs
+    );
   } catch (err) {
     const e = err as NodeJS.ErrnoException;
     if (e.code === "ECONNREFUSED" || e.code === "ENOTFOUND" || e.code === "EHOSTUNREACH") {
@@ -211,7 +215,7 @@ export async function runWriteLane(
       exemptReflex: true,
       projectKnown: resp?.project_known,
     },
-    "enforce",
+    "enforce"
   );
   const filteredHits = scopeFilter.hits;
   const droppedScopeCount = scopeFilter.droppedCount;
@@ -268,11 +272,9 @@ export async function runWriteLane(
         appliesToNote({ filePath: target, repoRoot, session: sessionState }).catch(() => null),
       ]);
       return { repoRoot, impact, applies };
-    }),
+    })
   );
-  const codeNotes = perTarget
-    .map((t) => t.impact.note)
-    .filter((n): n is ImpactNote => n !== null);
+  const codeNotes = perTarget.map((t) => t.impact.note).filter((n): n is ImpactNote => n !== null);
   const memoryCodeNotes = perTarget.map((t) => t.applies).filter((n): n is AppliesToNote => n !== null);
   // #606: one `code_tool_call` row per delivered block, and one per dedupe hit
   // — the two silences that are worth telling apart. Fire-and-forget: the row
@@ -453,13 +455,31 @@ export async function runWriteLane(
     }
     const block = compactHit
       ? formatCompactHint(compactHit, project, client, hintReason as "first-touch" | "binding-anchored")
-      : formatHintBlock(requiredHits, optionalHits, project, resp?.weak_result === true, resp?.no_home === true, resp?.unfused === true, client, resp?.degraded);
+      : formatHintBlock(
+          requiredHits,
+          optionalHits,
+          project,
+          resp?.weak_result === true,
+          resp?.no_home === true,
+          resp?.unfused === true,
+          client,
+          resp?.degraded
+        );
     suppressedTokensEst = Math.ceil(block.length / 4);
     stateDeltas.push((s) => recordSourceSuppressed(s, BACKOFF_SOURCE));
   } else {
     const hintsBlock = compactHit
       ? formatCompactHint(compactHit, project, client, hintReason as "first-touch" | "binding-anchored")
-      : formatHintBlock(requiredHits, optionalHits, project, resp?.weak_result === true, resp?.no_home === true, resp?.unfused === true, client, resp?.degraded);
+      : formatHintBlock(
+          requiredHits,
+          optionalHits,
+          project,
+          resp?.weak_result === true,
+          resp?.no_home === true,
+          resp?.unfused === true,
+          client,
+          resp?.degraded
+        );
     const block = detNote ? `${detNote}\n${hintsBlock}` : hintsBlock;
     hintTokensEst = Math.ceil(block.length / 4);
     hintedIds = [...requiredHits, ...optionalHits].map((h) => h.id);
@@ -561,7 +581,17 @@ export async function runWriteLane(
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
   await reportHinted(selfBaseUrl, hintedIds, payload.session_id ?? null);
 
-  return appendLaneDrafts(stdout, "PreToolUse", topics.query, payload.session_id, presentedHits, 1, true, undefined, startedAt + HOOK_TIMEOUT_MS);
+  return appendLaneDrafts(
+    stdout,
+    "PreToolUse",
+    topics.query,
+    payload.session_id,
+    presentedHits,
+    1,
+    true,
+    undefined,
+    startedAt + HOOK_TIMEOUT_MS
+  );
 }
 
 // ─── loopback self-call ─────────────────────────────────────────────────────
@@ -578,11 +608,7 @@ interface RecallRequestBody extends HookCaller {
   hook_source: string;
 }
 
-function postRecall(
-  baseUrl: string,
-  body: RecallRequestBody,
-  timeoutMs: number,
-): Promise<RecallResponse> {
+function postRecall(baseUrl: string, body: RecallRequestBody, timeoutMs: number): Promise<RecallResponse> {
   return new Promise((resolve, reject) => {
     let url: URL;
     try {
@@ -619,7 +645,7 @@ function postRecall(
             reject(new Error("invalid JSON response from daemon"));
           }
         });
-      },
+      }
     );
     req.on("timeout", () => {
       req.destroy(new Error("timeout"));

@@ -116,7 +116,7 @@ test("#491: das Profil bildet sich aus echten Gesamtzeiten und überlebt einen N
   assert.deepEqual(
     nachNeustart.derive(ableitung()),
     vorher,
-    "und die abgeleitete Frist ist dieselbe — nicht neu zu lernen ist der ganze Sinn der Datei",
+    "und die abgeleitete Frist ist dieselbe — nicht neu zu lernen ist der ganze Sinn der Datei"
   );
 });
 
@@ -210,7 +210,7 @@ test("#491: ein leeres Profil antwortet GENAU EINMAL lexikalisch — der aufgege
   assert.equal(
     erste.predicted_deadline_ms,
     MIN_DEADLINE_MS,
-    "so kurz wie der Endpunkt zulässt: nicht warten, lexikalisch antworten",
+    "so kurz wie der Endpunkt zulässt: nicht warten, lexikalisch antworten"
   );
 
   // Genau das, was danach passiert: `abandonAfter` bricht NICHT ab, der Embed
@@ -285,7 +285,7 @@ test("#493: die Verwurfsgrenze ist keine Latenzobergrenze mehr — ein 12-Sekund
   assert.equal(
     abgeleitet.predicted_deadline_ms,
     MAX_DEADLINE_MS,
-    "anwenden lässt sie sich nicht — der Endpunkt nimmt höchstens 10 s",
+    "anwenden lässt sie sich nicht — der Endpunkt nimmt höchstens 10 s"
   );
   assert.equal(abgeleitet.cap_reason, "max-deadline", "und die Zeile sagt, dass gedeckelt wurde");
 
@@ -312,7 +312,7 @@ test("#491: die Alterung wirkt — eine Woche alte Zahlen zählen nicht mehr", a
   assert.equal(
     profil.derive(ableitung()).cap_reason,
     "profile-empty",
-    "und ein Profil aus lauter veralteten Zahlen ist ein leeres Profil, keine Prognose",
+    "und ein Profil aus lauter veralteten Zahlen ist ein leeres Profil, keine Prognose"
   );
 
   for (let i = 0; i < 20; i++) profil.record(stichprobe(80));
@@ -351,10 +351,23 @@ const ANTWORT_NACH_MS = 300;
 
 function memo(id: string): string {
   return [
-    "---", `id: ${id}`, "title: Deployment-Strategie", "type: reference",
-    "summary: Deployment-Strategie", "topic_path:", "  - test", "tags:", "  - test",
-    "recall_when:", "  - wenn wir deployen", "created: 2026-01-01", "updated: 2026-01-01",
-    "---", "", "Text über deployen.", "",
+    "---",
+    `id: ${id}`,
+    "title: Deployment-Strategie",
+    "type: reference",
+    "summary: Deployment-Strategie",
+    "topic_path:",
+    "  - test",
+    "tags:",
+    "  - test",
+    "recall_when:",
+    "  - wenn wir deployen",
+    "created: 2026-01-01",
+    "updated: 2026-01-01",
+    "---",
+    "",
+    "Text über deployen.",
+    "",
   ].join("\n");
 }
 
@@ -362,13 +375,18 @@ function httpPost(port: number, path: string, payload: unknown): Promise<Record<
   const body = JSON.stringify(payload);
   return new Promise((resolve, reject) => {
     const req = request(
-      { host: "127.0.0.1", port, path, method: "POST",
-        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) } },
+      {
+        host: "127.0.0.1",
+        port,
+        path,
+        method: "POST",
+        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+      },
       (res) => {
         let raw = "";
         res.on("data", (c) => (raw += c));
         res.on("end", () => resolve(JSON.parse(raw || "{}") as Record<string, unknown>));
-      },
+      }
     );
     req.on("error", reject);
     req.end(body);
@@ -379,7 +397,11 @@ async function readEvents(logDir: string, kind: string, mindestens = 1): Promise
   for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 40));
     let files: string[];
-    try { files = await readdir(logDir); } catch { continue; }
+    try {
+      files = await readdir(logDir);
+    } catch {
+      continue;
+    }
     const out: Record<string, unknown>[] = [];
     for (const f of files.filter((n) => n.startsWith("events-"))) {
       const raw = await readFile(join(logDir, f), "utf8");
@@ -411,8 +433,8 @@ function spaeterArm() {
               providerLoadMs: null,
               coldStartObserved: false,
             }),
-          ANTWORT_NACH_MS,
-        ),
+          ANTWORT_NACH_MS
+        )
       ),
   } as never;
 }
@@ -443,7 +465,11 @@ test("#491: die Schattenspalte kommt in der Telemetrie an — Prognose, Wirklich
     profile: profil,
   };
   const handle = await startHttpServer({
-    port: 0, vault, search, telemetry, version: "test",
+    port: 0,
+    vault,
+    search,
+    telemetry,
+    version: "test",
     toolDeps: { vault, search, telemetry, vaultPath: dir, deadlineShadow },
     documentWriteEnabled: false,
     embedding: { on: true, providerId: "test", source: "none" },
@@ -457,7 +483,10 @@ test("#491: die Schattenspalte kommt in der Telemetrie an — Prognose, Wirklich
   });
 
   await httpPost(handle.port!, "/hook/recall", {
-    query: "deployen", k: 5, vector_deadline_ms: DEADLINE_MS, hook_budget_ms: 500,
+    query: "deployen",
+    k: 5,
+    vector_deadline_ms: DEADLINE_MS,
+    hook_budget_ms: 500,
   });
 
   const recalls = await readEvents(logDir, "hook_recall");
@@ -484,13 +513,17 @@ test("#491: die Schattenspalte kommt in der Telemetrie an — Prognose, Wirklich
   // eigene Kalibrierung bezahlt.
   assert.equal(profil.sampleCount(KEY), 1, "genau eine Stichprobe, aus dem aufgegebenen Arm");
   const zweite = profil.derive({
-    key: KEY, residency: "cold", queryChars: 8, concurrency: 1,
-    overlapMs: 0, laneRemainingMs: Infinity,
+    key: KEY,
+    residency: "cold",
+    queryChars: 8,
+    concurrency: 1,
+    overlapMs: 0,
+    laneRemainingMs: Infinity,
   });
   assert.notEqual(zweite.cap_reason, "profile-empty");
   assert.ok(
     zweite.predicted_deadline_ms >= ANTWORT_NACH_MS - 60,
-    `die gelernte Frist kennt jetzt die echte Dauer, war ${zweite.predicted_deadline_ms} ms`,
+    `die gelernte Frist kennt jetzt die echte Dauer, war ${zweite.predicted_deadline_ms} ms`
   );
 
   // Und an der Antwort hat der Schatten nichts geändert: Die Frist, die galt,
@@ -513,7 +546,11 @@ test("#491: ohne Schattenprofil bleibt die Telemetrie unverändert", async (t) =
   if (prev === undefined) delete process.env.BASTRA_LOG_PATH;
   else process.env.BASTRA_LOG_PATH = prev;
   const handle = await startHttpServer({
-    port: 0, vault, search, telemetry, version: "test",
+    port: 0,
+    vault,
+    search,
+    telemetry,
+    version: "test",
     toolDeps: { vault, search, telemetry, vaultPath: dir },
     documentWriteEnabled: false,
     embedding: { on: true, providerId: "test", source: "none" },

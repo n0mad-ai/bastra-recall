@@ -36,9 +36,7 @@ import { diffForTree } from "./diff-side.mjs";
 
 const DIST = new URL("../../../daemon/dist/code-graph/", import.meta.url).pathname;
 const { loadGraph, dependentFilesOf } = await import(DIST + "reader.js");
-const { affectedHits, affectedResult, changedSymbolsOf, narrowPackageHits } = await import(
-  DIST + "affected.js"
-);
+const { affectedHits, affectedResult, changedSymbolsOf, narrowPackageHits } = await import(DIST + "affected.js");
 
 /** Exactly the chain `find_affected_files` runs, minus the cache and the diff. */
 async function affectedVia(graph, root, file, symbols, depth) {
@@ -104,9 +102,7 @@ for (const arm of Object.keys(rows[0].arms)) {
     pre.push(got.length === 0 ? 1 : hit / got.length);
     if (hit === row.truth.length) complete++;
   }
-  console.log(
-    `${arm.padEnd(22)} ${pct(rec).padStart(5)} %  ${pct(pre).padStart(7)} %  ${complete}/${rows.length}`,
-  );
+  console.log(`${arm.padEnd(22)} ${pct(rec).padStart(5)} %  ${pct(pre).padStart(7)} %  ${complete}/${rows.length}`);
 }
 
 console.log("\nremaining gaps (symbols d1):");
@@ -118,6 +114,6 @@ for (const row of rows) {
     `  ${row.id} ${row.file}\n` +
       `    symbols: ${row.symbols.join(", ") || "(none)"}\n` +
       `    missed:  ${missed.join(", ")}` +
-      (alsoFile.length > 0 ? `\n    (the file-level query DID find: ${alsoFile.join(", ")})` : ""),
+      (alsoFile.length > 0 ? `\n    (the file-level query DID find: ${alsoFile.join(", ")})` : "")
   );
 }

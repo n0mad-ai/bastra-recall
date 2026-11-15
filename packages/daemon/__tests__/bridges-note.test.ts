@@ -13,21 +13,34 @@ import { BRIDGE_STALL_WINDOW_DAYS, bridgeLearningLines, readMintRuns, type MintR
 
 const NOW = new Date("2026-09-26T12:00:00.000Z");
 const daysAgo = (n: number): string => new Date(NOW.getTime() - n * 86_400_000).toISOString();
-const run = (ts: string, minted: number, written: number, reaches = minted): MintRun => ({ ts, minted, written, reaches });
+const run = (ts: string, minted: number, written: number, reaches = minted): MintRun => ({
+  ts,
+  minted,
+  written,
+  reaches,
+});
 
 test("bridge note: silent when shared recall is off", () => {
   assert.deepEqual(bridgeLearningLines({ enabled: false, runs: [], now: NOW }), []);
 });
 
 test("bridge note: warns when no mint ran inside the window", () => {
-  const lines = bridgeLearningLines({ enabled: true, runs: [run(daysAgo(BRIDGE_STALL_WINDOW_DAYS + 1), 5, 5)], now: NOW });
+  const lines = bridgeLearningLines({
+    enabled: true,
+    runs: [run(daysAgo(BRIDGE_STALL_WINDOW_DAYS + 1), 5, 5)],
+    now: NOW,
+  });
   assert.equal(lines.length, 2);
   assert.match(lines[0], /^⚠ no bridge mint ran in the last 30 days/);
   assert.match(lines[0], /bastra bridges mint/);
 });
 
 test("bridge note: minted but never written is reported as stalled (the zzallirog month)", () => {
-  const lines = bridgeLearningLines({ enabled: true, runs: [run(daysAgo(10), 20, 0), run(daysAgo(1), 23, 0)], now: NOW });
+  const lines = bridgeLearningLines({
+    enabled: true,
+    runs: [run(daysAgo(10), 20, 0), run(daysAgo(1), 23, 0)],
+    now: NOW,
+  });
   assert.equal(lines.length, 2);
   assert.match(lines[0], /^⚠ bridge learning stalled: 2 mint run\(s\)/);
   assert.match(lines[0], /last: 23 minted, 0 written/);
@@ -89,14 +102,22 @@ test("readMintRuns: reads bridges_mint events inside the window and falls back t
         JSON.stringify({ kind: "bridges_mint", ts: inWindow, minted: 9, reaches: 9, written: 0 }),
         "{ malformed bridges_mint",
       ].join("\n") + "\n",
-      "utf8",
+      "utf8"
     );
     await writeFile(
       join(logDir, `events-${outside.slice(0, 10)}.jsonl`),
       JSON.stringify({ kind: "bridges_mint", ts: outside, minted: 1, reaches: 1, written: 1 }) + "\n",
-      "utf8",
+      "utf8"
     );
-    const lastMint = { ts: daysAgo(1), host: "h", trigger: "cli" as const, minted: 2, reaches: 2, written: 2, pruned: 0 };
+    const lastMint = {
+      ts: daysAgo(1),
+      host: "h",
+      trigger: "cli" as const,
+      minted: 2,
+      reaches: 2,
+      written: 2,
+      pruned: 0,
+    };
     const runs = await readMintRuns(logDir, lastMint, NOW);
     assert.deepEqual(runs, [
       { ts: inWindow, minted: 9, reaches: 9, written: 0, demoted: 0, archived: 0 },

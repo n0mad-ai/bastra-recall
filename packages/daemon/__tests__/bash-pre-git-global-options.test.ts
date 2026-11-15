@@ -5,7 +5,7 @@ import { matchPattern } from "../src/bash-pre-lane.js";
 test("a git message after --work-tree is prose, including a quoted data heredoc", () => {
   for (const command of [
     'git --work-tree /repo commit -m "docs: explain rm -rf build"',
-    'git --work-tree /repo commit -m "$(cat <<\'EOF\'\nexplain rm -rf build\nEOF\n)"',
+    "git --work-tree /repo commit -m \"$(cat <<'EOF'\nexplain rm -rf build\nEOF\n)\"",
   ]) {
     assert.equal(matchPattern(command), null, command);
   }

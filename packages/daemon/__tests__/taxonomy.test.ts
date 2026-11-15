@@ -89,15 +89,32 @@ test("listConventions: only scope taxonomy, obsolete excluded, newest first", as
     { rel: "a.md", content: memoryFile({ id: "not-a-convention", title: "regular", scope: "proj", tags: ["x"] }) },
     {
       rel: "memories/taxonomy/conv-person.md",
-      content: memoryFile({ id: "conv-person", title: "person convention", scope: "taxonomy", tags: ["convention", "person"] }),
+      content: memoryFile({
+        id: "conv-person",
+        title: "person convention",
+        scope: "taxonomy",
+        tags: ["convention", "person"],
+      }),
     },
     {
       rel: "memories/taxonomy/conv-old.md",
-      content: memoryFile({ id: "conv-old", title: "older convention", scope: "taxonomy", tags: ["convention"], updated: OLD_DAY }),
+      content: memoryFile({
+        id: "conv-old",
+        title: "older convention",
+        scope: "taxonomy",
+        tags: ["convention"],
+        updated: OLD_DAY,
+      }),
     },
     {
       rel: "memories/taxonomy/conv-dead.md",
-      content: memoryFile({ id: "conv-dead", title: "retired convention", scope: "taxonomy", tags: ["convention"], obsolete: true }),
+      content: memoryFile({
+        id: "conv-dead",
+        title: "retired convention",
+        scope: "taxonomy",
+        tags: ["convention"],
+        obsolete: true,
+      }),
     },
   ]);
   try {
@@ -105,7 +122,7 @@ test("listConventions: only scope taxonomy, obsolete excluded, newest first", as
     assert.deepEqual(
       conventions.map((c) => c.id),
       ["conv-person", "conv-old"],
-      "taxonomy scope only, obsolete excluded, newest first",
+      "taxonomy scope only, obsolete excluded, newest first"
     );
     assert.equal(typeof conventions[0].summary, "string");
   } finally {
@@ -140,7 +157,12 @@ test("drift: a covering convention silences the cluster", async () => {
     { rel: "p3.md", content: memoryFile({ id: "p3", title: "zzallirog", scope: "proj", tags: ["person"] }) },
     {
       rel: "memories/taxonomy/conv-person.md",
-      content: memoryFile({ id: "conv-person", title: "person convention", scope: "taxonomy", tags: ["convention", "person"] }),
+      content: memoryFile({
+        id: "conv-person",
+        title: "person convention",
+        scope: "taxonomy",
+        tags: ["convention", "person"],
+      }),
     },
   ]);
   try {
@@ -155,12 +177,45 @@ test("drift: a person memory covers its own handle as cluster key", async () => 
     // Das Personen-Memory selbst: Tag person, topic_path [people, <handle>].
     {
       rel: "memories/people/zzallirog.md",
-      content: memoryFile({ id: "zzallirog", title: "zzallirog peer", scope: "proj", tags: ["person"], topicPath: ["people", "zzallirog"] }),
+      content: memoryFile({
+        id: "zzallirog",
+        title: "zzallirog peer",
+        scope: "proj",
+        tags: ["person"],
+        topicPath: ["people", "zzallirog"],
+      }),
     },
     // Drei Memories, die per topic_path auf die Person verweisen.
-    { rel: "a.md", content: memoryFile({ id: "a", title: "thread a", scope: "proj", tags: ["thread"], topicPath: ["proj", "zzallirog"] }) },
-    { rel: "b.md", content: memoryFile({ id: "b", title: "thread b", scope: "proj", tags: ["thread"], topicPath: ["proj", "zzallirog"] }) },
-    { rel: "c.md", content: memoryFile({ id: "c", title: "thread c", scope: "proj", tags: ["thread", "zzallirog"], topicPath: ["proj", "zzallirog"] }) },
+    {
+      rel: "a.md",
+      content: memoryFile({
+        id: "a",
+        title: "thread a",
+        scope: "proj",
+        tags: ["thread"],
+        topicPath: ["proj", "zzallirog"],
+      }),
+    },
+    {
+      rel: "b.md",
+      content: memoryFile({
+        id: "b",
+        title: "thread b",
+        scope: "proj",
+        tags: ["thread"],
+        topicPath: ["proj", "zzallirog"],
+      }),
+    },
+    {
+      rel: "c.md",
+      content: memoryFile({
+        id: "c",
+        title: "thread c",
+        scope: "proj",
+        tags: ["thread", "zzallirog"],
+        topicPath: ["proj", "zzallirog"],
+      }),
+    },
   ]);
   try {
     const keys = detectTaxonomyDrift(vault).map((c) => c.key);
@@ -176,13 +231,31 @@ test("drift: a person memory covers its own handle as cluster key", async () => 
 test("drift: stale memories and structural keys never cluster", async () => {
   const { vault, close } = await makeVault([
     // Alt: außerhalb des Fensters — zählt nicht.
-    { rel: "o1.md", content: memoryFile({ id: "o1", title: "old1", scope: "proj", tags: ["person"], updated: OLD_DAY }) },
-    { rel: "o2.md", content: memoryFile({ id: "o2", title: "old2", scope: "proj", tags: ["person"], updated: OLD_DAY }) },
-    { rel: "o3.md", content: memoryFile({ id: "o3", title: "old3", scope: "proj", tags: ["person"], updated: OLD_DAY }) },
+    {
+      rel: "o1.md",
+      content: memoryFile({ id: "o1", title: "old1", scope: "proj", tags: ["person"], updated: OLD_DAY }),
+    },
+    {
+      rel: "o2.md",
+      content: memoryFile({ id: "o2", title: "old2", scope: "proj", tags: ["person"], updated: OLD_DAY }),
+    },
+    {
+      rel: "o3.md",
+      content: memoryFile({ id: "o3", title: "old3", scope: "proj", tags: ["person"], updated: OLD_DAY }),
+    },
     // Frisch, aber nur strukturelle Schlüssel (scope-Name als Tag, Memory-Typ).
-    { rel: "s1.md", content: memoryFile({ id: "s1", title: "s1", scope: "proj", tags: ["proj", "lesson"], topicPath: ["proj"] }) },
-    { rel: "s2.md", content: memoryFile({ id: "s2", title: "s2", scope: "proj", tags: ["proj", "lesson"], topicPath: ["proj"] }) },
-    { rel: "s3.md", content: memoryFile({ id: "s3", title: "s3", scope: "proj", tags: ["proj", "lesson"], topicPath: ["proj"] }) },
+    {
+      rel: "s1.md",
+      content: memoryFile({ id: "s1", title: "s1", scope: "proj", tags: ["proj", "lesson"], topicPath: ["proj"] }),
+    },
+    {
+      rel: "s2.md",
+      content: memoryFile({ id: "s2", title: "s2", scope: "proj", tags: ["proj", "lesson"], topicPath: ["proj"] }),
+    },
+    {
+      rel: "s3.md",
+      content: memoryFile({ id: "s3", title: "s3", scope: "proj", tags: ["proj", "lesson"], topicPath: ["proj"] }),
+    },
   ]);
   try {
     assert.deepEqual(detectTaxonomyDrift(vault), [], "stale + structural keys must not fire");
@@ -205,7 +278,10 @@ test("drift: version tags and system-assigned product-doc never cluster", async 
     { rel: "n3.md", content: memoryFile({ id: "n3", title: "n3", scope: "proj", tags: ["vault"] }) },
   ]);
   try {
-    assert.deepEqual(detectTaxonomyDrift(vault).map((c) => c.key), ["vault"]);
+    assert.deepEqual(
+      detectTaxonomyDrift(vault).map((c) => c.key),
+      ["vault"]
+    );
   } finally {
     await close();
   }
@@ -271,10 +347,7 @@ test("save_memory: overwrite with a changed folder MOVES (old file trashed)", as
     assert.ok(first.file_path.includes("memories/projects/bastra-recall"));
 
     // Ohne overwrite: Umzug wird abgelehnt.
-    await assert.rejects(
-      saveMemoryHandler(deps, { ...PERSON_INPUT, folder: "memories/people" }),
-      /already exists/,
-    );
+    await assert.rejects(saveMemoryHandler(deps, { ...PERSON_INPUT, folder: "memories/people" }), /already exists/);
 
     const moved = await saveMemoryHandler(deps, {
       ...PERSON_INPUT,
@@ -313,7 +386,7 @@ test("save_memory: overwrite WITHOUT folder keeps the file in place (no silent r
     await access(created.file_path); // same file, still present
     await assert.rejects(
       access(join(dir, ".bastra/trash/caio-ribeiro.md")),
-      "nothing should have been trashed on an in-place update",
+      "nothing should have been trashed on an in-place update"
     );
     assert.equal(deps.vault.get("caio-ribeiro")?.filePath, created.file_path);
   } finally {
@@ -324,14 +397,8 @@ test("save_memory: overwrite WITHOUT folder keeps the file in place (no silent r
 test("save_memory: traversal folder is rejected", async () => {
   const { deps, close } = await makeDeps();
   try {
-    await assert.rejects(
-      saveMemoryHandler(deps, { ...PERSON_INPUT, folder: "../outside" }),
-      /folder/,
-    );
-    await assert.rejects(
-      saveMemoryHandler(deps, { ...PERSON_INPUT, folder: "/absolute" }),
-      /folder/,
-    );
+    await assert.rejects(saveMemoryHandler(deps, { ...PERSON_INPUT, folder: "../outside" }), /folder/);
+    await assert.rejects(saveMemoryHandler(deps, { ...PERSON_INPUT, folder: "/absolute" }), /folder/);
   } finally {
     await close();
   }

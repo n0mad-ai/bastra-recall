@@ -1,8 +1,19 @@
-import { accountBindingEnforced, createLocalAccountGuard, localAccountPath, vaultAccountUid, type LocalAccountOptions } from "./local-account-access.js";
+import {
+  accountBindingEnforced,
+  createLocalAccountGuard,
+  localAccountPath,
+  vaultAccountUid,
+  type LocalAccountOptions,
+} from "./local-account-access.js";
 import { authenticateTask } from "./task-auth.js";
 import { dispatchSettingsUi, type SettingsUiOptions } from "./settings-ui.js";
 import { createAssistantAddressListener } from "./assistant-address-gateway.js";
-import { assistantAddressOptions, migrateAssistantAddressRuntime, publishAssistantAddressEndpoint, type AssistantAddressOptions } from "./assistant-address.js";
+import {
+  assistantAddressOptions,
+  migrateAssistantAddressRuntime,
+  publishAssistantAddressEndpoint,
+  type AssistantAddressOptions,
+} from "./assistant-address.js";
 import { handleAssistantAddressUi } from "./http-assistant-address.js";
 import { tasksEnabled } from "./tasks-enabled.js";
 /**
@@ -82,11 +93,7 @@ import { requestTaskReconciliation } from "./task-runtime-signal.js";
 import { tasksPath } from "./task-store.js";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createServer as createNetServer } from "node:net";
-import type {
-  Vault,
-  SearchIndex,
-  EmbeddingRuntimeHealth,
-} from "@bastra-recall/core";
+import type { Vault, SearchIndex, EmbeddingRuntimeHealth } from "@bastra-recall/core";
 import type { EmbeddingBreakerSnapshot } from "./embedding-breaker.js";
 import { type Telemetry } from "./telemetry.js";
 import { type ToolDeps } from "./tool-handlers.js";
@@ -223,12 +230,14 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
 
   let addressListener: ReturnType<typeof createAssistantAddressListener> | null = null;
   const addressOptions = assistantAddressOptions(opts.assistantAddress);
-  const accountAllowed = createLocalAccountGuard(await vaultAccountUid(vault.root, opts.localAccount), opts.localAccount);
+  const accountAllowed = createLocalAccountGuard(
+    await vaultAccountUid(vault.root, opts.localAccount),
+    opts.localAccount
+  );
   const handleRequest = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const t0 = Date.now();
     const url = req.url ?? "";
     const method = req.method ?? "GET";
-
 
     // #1279: the OAuth discovery documents are public and secret-free; remote
     // MCP clients fetch them through the tunnel, so they answer ahead of the
@@ -246,9 +255,11 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     // #1264: a proxy may rewrite Host to localhost. Hooks and UI must then
     // authenticate too, before any handler can read data or apply a write.
     const pathname = url.split("?", 1)[0]!;
-    if ((pathname.startsWith("/hook/") || pathname === "/ui" || pathname.startsWith("/ui/")) &&
-        hasForwardingHeaders(req) &&
-        (!ctx.apiToken || !safeEqual(req.headers.authorization ?? "", `Bearer ${ctx.apiToken}`))) {
+    if (
+      (pathname.startsWith("/hook/") || pathname === "/ui" || pathname.startsWith("/ui/")) &&
+      hasForwardingHeaders(req) &&
+      (!ctx.apiToken || !safeEqual(req.headers.authorization ?? "", `Bearer ${ctx.apiToken}`))
+    ) {
       sendJson(res, 401, { error: "unauthorized" });
       return;
     }
@@ -258,18 +269,27 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     // cards on ordinary REST and hook replies, before any task state is read.
     let privateTaskRequest = false;
     if (tasksEnabled() && taskRequestAuth(req)) {
-      try { await authenticateTask(taskRequestAuth(req), defaultTaskContext(toolDeps).authPath); privateTaskRequest = true; }
-      catch { /* no private cards can be delivered without a mapped credential */ }
+      try {
+        await authenticateTask(taskRequestAuth(req), defaultTaskContext(toolDeps).authPath);
+        privateTaskRequest = true;
+      } catch {
+        /* no private cards can be delivered without a mapped credential */
+      }
     }
     const accountRequired = localAccountPath(url) || privateTaskRequest;
-    const accountVerified = accountRequired && await accountAllowed(req.socket);
+    const accountVerified = accountRequired && (await accountAllowed(req.socket));
     if (accountRequired && !accountVerified) {
-      res.setHeader("Connection", "close"); sendJson(res, 403, { error: "vault account required" }); return;
+      res.setHeader("Connection", "close");
+      sendJson(res, 403, { error: "vault account required" });
+      return;
     }
     if (tasksEnabled()) installTaskHttpProjection(req, res, defaultTaskContext(toolDeps));
     // Ordinary requests still count as activity; only proved account requests
     // may trigger private task reconciliation.
-    if (!ctx.isHealthProbe(url)) { onActivity?.(); if (tasksEnabled() && accountVerified) requestTaskReconciliation(tasksPath()); }
+    if (!ctx.isHealthProbe(url)) {
+      onActivity?.();
+      if (tasksEnabled() && accountVerified) requestTaskReconciliation(tasksPath());
+    }
 
     if (method === "POST" && !url.startsWith("/api/v1/")) {
       const gate = gateLocalPost({
@@ -286,11 +306,21 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
 
     if (dispatchSettingsUi(req, res, method, pathname, opts.settingsUi)) return;
 
-    if (url.split("?",1)[0].startsWith("/ui/assistant-address")) {
-      void handleAssistantAddressUi(req,res,method,url.split("?",1)[0],{...addressOptions,daemonUrl:`http://127.0.0.1:${req.socket.localPort}`},()=>addressListener?.refresh()??Promise.resolve({}));
+    if (url.split("?", 1)[0].startsWith("/ui/assistant-address")) {
+      void handleAssistantAddressUi(
+        req,
+        res,
+        method,
+        url.split("?", 1)[0],
+        { ...addressOptions, daemonUrl: `http://127.0.0.1:${req.socket.localPort}` },
+        () => addressListener?.refresh() ?? Promise.resolve({})
+      );
       return;
     }
-    if (method === "GET" && url === "/ui/health") { sendJson(res,200,ctx.healthPayload()); return; }
+    if (method === "GET" && url === "/ui/health") {
+      sendJson(res, 200, ctx.healthPayload());
+      return;
+    }
 
     // CORS preflight for /api/v1/*
     if (method === "OPTIONS" && url.startsWith("/api/v1/")) {
@@ -300,10 +330,10 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
       // 127.0.0.1-Daemon) trägt diesen Request-Header und wird sonst geblockt.
       // Nur beim Preflight beantworten, nur wenn die Origin erlaubt ist.
       const allowPrivateNetwork =
-        allowedOrigin !== null &&
-        req.headers["access-control-request-private-network"] === "true";
+        allowedOrigin !== null && req.headers["access-control-request-private-network"] === "true";
       sendCors(res, allowedOrigin, { allowPrivateNetwork });
-      if (url.startsWith("/api/v1/tasks")) res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+      if (url.startsWith("/api/v1/tasks"))
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
       res.writeHead(204);
       res.end();
       return;
@@ -312,57 +342,89 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     // Loopback surface: /health, /tools, /vault/count, /hook/*, /curator/*,
     // /settings/docs, /code/refresh — all token-free behind the host gate above
     // (http-local-routes.ts, route order preserved).
-    if (dispatchLocalRoutes(req, res, method, url, t0, {
-      vault,
-      telemetry,
-      toolDeps,
-      healthPayload: ctx.healthPayload,
-      curator: opts.curator,
-      codeRefresh: codeGraphRefresher(),
-    })) {
+    if (
+      dispatchLocalRoutes(req, res, method, url, t0, {
+        vault,
+        telemetry,
+        toolDeps,
+        healthPayload: ctx.healthPayload,
+        curator: opts.curator,
+        codeRefresh: codeGraphRefresher(),
+      })
+    ) {
       return;
     }
 
     // Vault-map web UI surface (#207/#208/#215/#216) + its hook-side
     // companions (/hook/import, /hook/onboarding, /hook/session-context) —
     // route order preserved inside http-ui-routes.ts.
-    if (dispatchUiRoutes(req, res, method, url, {
-      vault,
-      search,
-      toolDeps,
-      liveUpdates: ctx.liveUpdates,
-      uiChat: opts.uiChat,
-      server: ctx,
-      embeddingVectors: opts.embeddingVectors,
-      // Private memories only when the peer account was actually proven, never on a pass-through platform.
-      privateGraph: accountVerified && accountBindingEnforced(opts.localAccount),
-    })) {
+    if (
+      dispatchUiRoutes(req, res, method, url, {
+        vault,
+        search,
+        toolDeps,
+        liveUpdates: ctx.liveUpdates,
+        uiChat: opts.uiChat,
+        server: ctx,
+        embeddingVectors: opts.embeddingVectors,
+        // Private memories only when the peer account was actually proven, never on a pass-through platform.
+        privateGraph: accountVerified && accountBindingEnforced(opts.localAccount),
+      })
+    ) {
       return;
     }
 
     // ─── REST-API /api/v1/* ──────────────────────────────────────
-    if (dispatchApiSurface(req, res, method, url, {
-      vault,
-      toolDeps,
-      documentWriteEnabled,
-      embeddingVectors: opts.embeddingVectors,
-      server: ctx,
-    })) {
+    if (
+      dispatchApiSurface(req, res, method, url, {
+        vault,
+        toolDeps,
+        documentWriteEnabled,
+        embeddingVectors: opts.embeddingVectors,
+        server: ctx,
+      })
+    ) {
       return;
     }
 
     sendJson(res, 404, { error: `not found: ${method} ${url}` });
   };
-  const server = createServer((req, res) => { void handleRequest(req, res).catch(() => {
-    if (!res.headersSent) sendJson(res, 503, { error: "local account boundary unavailable" }); else res.destroy();
-  }); });
+  const server = createServer((req, res) => {
+    void handleRequest(req, res).catch(() => {
+      if (!res.headersSent) sendJson(res, 503, { error: "local account boundary unavailable" });
+      else res.destroy();
+    });
+  });
 
   const handle = await listenHttp(server, port);
   if (handle.port !== null) {
-    await migrateAssistantAddressRuntime({...addressOptions,daemonUrl:`http://127.0.0.1:${handle.port}`}).catch(()=>{/* status diagnoses a damaged owned runtime; boot retries unfinished migration */});
-    await publishAssistantAddressEndpoint({...addressOptions,daemonUrl:`http://127.0.0.1:${handle.port}`}).catch(()=>{/* status diagnoses a damaged owned runtime */});
-    addressListener = createAssistantAddressListener({ settingsPath: addressOptions.settingsPath, hostsPath: addressOptions.hostsPath, owner: addressOptions.uid, helperPath: addressOptions.helperPath, daemonUrl: `http://127.0.0.1:${handle.port}` },opts.assistantAddress?.port??80);
+    await migrateAssistantAddressRuntime({ ...addressOptions, daemonUrl: `http://127.0.0.1:${handle.port}` }).catch(
+      () => {
+        /* status diagnoses a damaged owned runtime; boot retries unfinished migration */
+      }
+    );
+    await publishAssistantAddressEndpoint({ ...addressOptions, daemonUrl: `http://127.0.0.1:${handle.port}` }).catch(
+      () => {
+        /* status diagnoses a damaged owned runtime */
+      }
+    );
+    addressListener = createAssistantAddressListener(
+      {
+        settingsPath: addressOptions.settingsPath,
+        hostsPath: addressOptions.hostsPath,
+        owner: addressOptions.uid,
+        helperPath: addressOptions.helperPath,
+        daemonUrl: `http://127.0.0.1:${handle.port}`,
+      },
+      opts.assistantAddress?.port ?? 80
+    );
     await addressListener.refresh();
   }
-  return {...handle,close:async()=>{await addressListener?.close();await handle.close();}};
+  return {
+    ...handle,
+    close: async () => {
+      await addressListener?.close();
+      await handle.close();
+    },
+  };
 }

@@ -82,7 +82,7 @@ export function createAreasManager({ modal, opener }) {
         if (!newName || newName === area.name) return done();
         await mutate(
           { action: "rename", kind: area.kind, name: area.name, newName },
-          `✓ renamed ${area.name} → ${newName}`,
+          `✓ renamed ${area.name} → ${newName}`
         );
       });
       input.addEventListener("blur", done);
@@ -124,7 +124,10 @@ export function createAreasManager({ modal, opener }) {
   $("#areas-create").addEventListener("click", async () => {
     const name = createNameEl.value.trim();
     if (!name) return;
-    const ok = await mutate({ action: "create", name }, `✓ created ${name} — it appears on the map with its first memory`);
+    const ok = await mutate(
+      { action: "create", name },
+      `✓ created ${name} — it appears on the map with its first memory`
+    );
     if (ok) createNameEl.value = "";
   });
   createNameEl.addEventListener("keydown", (ev) => {

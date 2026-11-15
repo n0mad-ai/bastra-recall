@@ -25,7 +25,7 @@ test("shadow: high-salience hit would outrank, live hits untouched", () => {
     [
       ["top", 1, 2],
       ["hot", 2, 1],
-    ],
+    ]
   );
   assert.equal(shadow.cap, 0.25);
   // servierte Hits bleiben unangefasst
@@ -58,7 +58,10 @@ test("shadow: order_changed false when the boost cannot flip ranks", () => {
 });
 
 test("shadow: modes off/live skip the computation", () => {
-  const hits = [{ id: "hot", score: 90 }, { id: "top", score: 100 }];
+  const hits = [
+    { id: "hot", score: 90 },
+    { id: "top", score: 100 },
+  ];
   const fm = fmMap({ hot: { salience: 1 } });
   for (const mode of ["off", "live"]) {
     process.env.BASTRA_SALIENCE_RANK = mode;

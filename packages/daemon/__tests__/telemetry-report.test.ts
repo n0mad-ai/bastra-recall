@@ -37,20 +37,61 @@ test("#463 quality: bands from hook hits, loaded/acted from surfaced episodes, d
       ts: ts("2026-09-01"),
       recall_id: "r1",
       tool_name: "Write",
-      hits: [{ id: "a", score: 150 }, { id: "b", score: 60 }, { id: "c", score: 10 }],
+      hits: [
+        { id: "a", score: 150 },
+        { id: "b", score: 60 },
+        { id: "c", score: 10 },
+      ],
     },
     { kind: "hook_recall", ts: ts("2026-09-01"), recall_id: "r2", tool_name: "Bash", hits: [{ id: "d", score: 120 }] },
-    { kind: "recall_episode", ts: ts("2026-09-01"), recall_id: "r1", memory_id: "a", surfaced: true, band: "required", acted_on: true },
-    { kind: "recall_episode", ts: ts("2026-09-01"), recall_id: "r1", memory_id: "b", surfaced: true, band: "optional", acted_on: false },
-    { kind: "recall_episode", ts: ts("2026-09-01"), recall_id: "r2", memory_id: "d", surfaced: true, band: "required", acted_on: true },
+    {
+      kind: "recall_episode",
+      ts: ts("2026-09-01"),
+      recall_id: "r1",
+      memory_id: "a",
+      surfaced: true,
+      band: "required",
+      acted_on: true,
+    },
+    {
+      kind: "recall_episode",
+      ts: ts("2026-09-01"),
+      recall_id: "r1",
+      memory_id: "b",
+      surfaced: true,
+      band: "optional",
+      acted_on: false,
+    },
+    {
+      kind: "recall_episode",
+      ts: ts("2026-09-01"),
+      recall_id: "r2",
+      memory_id: "d",
+      surfaced: true,
+      band: "required",
+      acted_on: true,
+    },
     // Direkt-Load ohne Hint: in keiner Bandquote (#77).
-    { kind: "recall_episode", ts: ts("2026-09-01"), recall_id: null, memory_id: "z", surfaced: false, band: "not_hinted", acted_on: true },
+    {
+      kind: "recall_episode",
+      ts: ts("2026-09-01"),
+      recall_id: null,
+      memory_id: "z",
+      surfaced: false,
+      band: "not_hinted",
+      acted_on: true,
+    },
     { kind: "load_memory", ts: ts("2026-09-01"), id: "a", found: true, from_hook_recall: "r1", hook_hint_rank: 1 },
     { kind: "load_memory", ts: ts("2026-09-01"), id: "d", found: true, from_hook_recall: "r2", hook_hint_rank: 1 },
     { kind: "load_memory", ts: ts("2026-09-01"), id: "z", found: true },
   ];
   const q = summarizeQuality(events, T);
-  assert.deepEqual(q.hookCalls, { calls: 3, reachable: 2, withHints: 1, topScore: { required: 1, optional: 1, below_floor: 0, none: 1 } });
+  assert.deepEqual(q.hookCalls, {
+    calls: 3,
+    reachable: 2,
+    withHints: 1,
+    topScore: { required: 1, optional: 1, below_floor: 0, none: 1 },
+  });
   assert.deepEqual(q.bands, [
     { band: "required", candidates: 2, loaded: 2, acted: 2 },
     { band: "optional", candidates: 1, loaded: 1, acted: 0 },
@@ -61,19 +102,53 @@ test("#463 quality: bands from hook hits, loaded/acted from surfaced episodes, d
     { source: "bash-tripwire", candidates: 1, loaded: 1, acted: 1 },
     { source: "write-edit", candidates: 3, loaded: 2, acted: 1 },
   ]);
-  assert.deepEqual(q.followThrough, { loads: 3, fromHint: 2, hookRecallsWithHits: 2, hookRecallsConsumed: 2, ranks: [{ rank: 1, count: 2 }] });
+  assert.deepEqual(q.followThrough, {
+    loads: 3,
+    fromHint: 2,
+    hookRecallsWithHits: 2,
+    hookRecallsConsumed: 2,
+    ranks: [{ rank: 1, count: 2 }],
+  });
 });
 
 test("#463 context tax: daily series follows the ledger rules, archival list keeps directives apart and old rows untyped", () => {
   const events: ReportEvent[] = [
-    { kind: "session_hook_call", ts: ts("2026-09-01"), session_id: "s1", hint_tokens_est: 2000, hinted_ids: ["fact-1", "rule-1"], hinted_types: ["project-fact", "preference"] },
-    { kind: "prompt_hook_call", ts: ts("2026-09-01"), session_id: "s1", hint_tokens_est: 500, hinted_ids: ["fact-1", "rule-1"], hinted_types: ["project-fact", "preference"] },
-    { kind: "prompt_hook_call", ts: ts("2026-09-02"), session_id: "s2", hint_tokens_est: 300, hinted_ids: ["fact-1", "rule-1", "old-1"], hinted_types: ["project-fact", "preference", "lesson"] },
+    {
+      kind: "session_hook_call",
+      ts: ts("2026-09-01"),
+      session_id: "s1",
+      hint_tokens_est: 2000,
+      hinted_ids: ["fact-1", "rule-1"],
+      hinted_types: ["project-fact", "preference"],
+    },
+    {
+      kind: "prompt_hook_call",
+      ts: ts("2026-09-01"),
+      session_id: "s1",
+      hint_tokens_est: 500,
+      hinted_ids: ["fact-1", "rule-1"],
+      hinted_types: ["project-fact", "preference"],
+    },
+    {
+      kind: "prompt_hook_call",
+      ts: ts("2026-09-02"),
+      session_id: "s2",
+      hint_tokens_est: 300,
+      hinted_ids: ["fact-1", "rule-1", "old-1"],
+      hinted_types: ["project-fact", "preference", "lesson"],
+    },
     // Alte Zeile: kein Typfeld, keine Größe — zählt unknown, nicht 0.
     { kind: "hook_call", ts: ts("2026-09-02"), session_id: "s2", hinted_ids: ["old-1", "old-1"] },
     { kind: "hook_call", ts: ts("2026-09-02"), session_id: "s2", hinted_ids: ["old-1"] },
     { kind: "recall", ts: ts("2026-09-02"), caller_session: "s2", payload_tokens_est: 400 },
-    { kind: "load_memory", ts: ts("2026-09-02"), caller_session: "s2", found: true, delivered_tokens_est: 250, presentation: "lean" },
+    {
+      kind: "load_memory",
+      ts: ts("2026-09-02"),
+      caller_session: "s2",
+      found: true,
+      delivered_tokens_est: 250,
+      presentation: "lean",
+    },
     { kind: "load_memory", ts: ts("2026-09-02"), caller_session: "s2", found: false },
   ];
   const c = summarizeContextTax(events);
@@ -83,19 +158,35 @@ test("#463 context tax: daily series follows the ledger rules, archival list kee
     { day: "2026-09-01", lanes: 2500, tools: 0, unknown: 0, sessions: 1 },
     { day: "2026-09-02", lanes: 300, tools: 650, unknown: 2, sessions: 1 },
   ]);
-  assert.deepEqual(c.topSessions.map((s) => [s.session, s.tokens]), [["s1", 2500], ["s2", 950]]);
+  assert.deepEqual(
+    c.topSessions.map((s) => [s.session, s.tokens]),
+    [
+      ["s1", 2500],
+      ["s2", 950],
+    ]
+  );
   // fact-1: 3× emittiert, nie acted_on, bewertbarer Typ → Kandidat.
   // rule-1: 3× emittiert, Direktive → NICHT Kandidat.
   // old-1: 4× emittiert, Typ nur aus der neuen Zeile bekannt (lesson) → Kandidat, typisiert.
   assert.deepEqual(
     c.archival.candidates.map((x) => [x.id, x.emitted, x.type]),
-    [["old-1", 4, "lesson"], ["fact-1", 3, "project-fact"]],
+    [
+      ["old-1", 4, "lesson"],
+      ["fact-1", 3, "project-fact"],
+    ]
   );
-  assert.deepEqual(c.archival.directives.map((x) => [x.id, x.type]), [["rule-1", "preference"]]);
+  assert.deepEqual(
+    c.archival.directives.map((x) => [x.id, x.type]),
+    [["rule-1", "preference"]]
+  );
   assert.equal(c.archival.typedEmissions, 3);
   assert.equal(c.archival.untypedEmissions, 2);
   // Ohne die typisierte Zeile bleibt old-1 `unknown` — und wird als solches gezählt.
-  const older = summarizeContextTax(events.filter((e) => !(Array.isArray(e.hinted_ids) && (e.hinted_ids as string[]).includes("old-1") && e.hinted_types)));
+  const older = summarizeContextTax(
+    events.filter(
+      (e) => !(Array.isArray(e.hinted_ids) && (e.hinted_ids as string[]).includes("old-1") && e.hinted_types)
+    )
+  );
   const old = older.archival.candidates.find((x) => x.id === "old-1");
   assert.equal(old?.type, "unknown");
   assert.equal(older.archival.unknownTyped, 1);
@@ -119,19 +210,56 @@ test("#463 latency: per lane median/p95 and a per-day hook/recall split", () => 
   ]);
   assert.deepEqual(l.daily, [
     { day: "2026-09-01", hook: { lane: "hook", n: 2, median: 20, p95: 30 }, recall: null },
-    { day: "2026-09-02", hook: { lane: "hook", n: 1, median: 50, p95: 50 }, recall: { lane: "recall", n: 2, median: 90, p95: 100 } },
+    {
+      day: "2026-09-02",
+      hook: { lane: "hook", n: 1, median: 50, p95: 50 },
+      recall: { lane: "recall", n: 2, median: 90, p95: 100 },
+    },
   ]);
 });
 
 test("#463 evidence: acceptance over shadow only, mix over usable, divergence only on fused runs", () => {
-  const dec = (memory_id: string, decision: string, lexical_score: number) => ({ memory_id, decision, evidence: { lexical_score }, hop: "direct" });
+  const dec = (memory_id: string, decision: string, lexical_score: number) => ({
+    memory_id,
+    decision,
+    evidence: { lexical_score },
+    hop: "direct",
+  });
   const events: ReportEvent[] = [
     { kind: "hook_recall", ts: ts("2026-09-01"), recall_id: "f", score_kind: "rrf" },
     { kind: "hook_recall", ts: ts("2026-09-01"), recall_id: "u", score_kind: "bm25" },
-    { kind: "evidence_decision", ts: ts("2026-09-01"), session_id: "s1", recall_id: "f", shadow: true, decisions: [dec("a", "required", 150), dec("b", "optional", 150), dec("c", "required", 50)] },
-    { kind: "evidence_decision", ts: ts("2026-09-02"), session_id: "s2", recall_id: "u", shadow: true, decisions: [dec("d", "no_answer", 500)] },
-    { kind: "evidence_decision", ts: ts("2026-09-02"), session_id: "s2", recall_id: "x", shadow: false, decisions: [dec("e", "optional", 60)] },
-    { kind: "evidence_decision", ts: ts("2026-09-02"), recall_id: "f", shadow: true, degraded: true, decisions: [dec("g", "no_answer", 1)] },
+    {
+      kind: "evidence_decision",
+      ts: ts("2026-09-01"),
+      session_id: "s1",
+      recall_id: "f",
+      shadow: true,
+      decisions: [dec("a", "required", 150), dec("b", "optional", 150), dec("c", "required", 50)],
+    },
+    {
+      kind: "evidence_decision",
+      ts: ts("2026-09-02"),
+      session_id: "s2",
+      recall_id: "u",
+      shadow: true,
+      decisions: [dec("d", "no_answer", 500)],
+    },
+    {
+      kind: "evidence_decision",
+      ts: ts("2026-09-02"),
+      session_id: "s2",
+      recall_id: "x",
+      shadow: false,
+      decisions: [dec("e", "optional", 60)],
+    },
+    {
+      kind: "evidence_decision",
+      ts: ts("2026-09-02"),
+      recall_id: "f",
+      shadow: true,
+      degraded: true,
+      decisions: [dec("g", "no_answer", 1)],
+    },
     { kind: "evidence_decision", ts: ts("2026-09-02"), recall_id: "f", shadow: true, failed: true, decisions: [] },
   ];
   const ev = summarizeEvidence(events, T)!;
@@ -211,7 +339,7 @@ test("#479 suppression: report measures removed hints and estimated context", ()
         { type: "project-fact", count: 2 },
         { type: "lesson", count: 1 },
       ],
-    },
+    }
   );
   assert.deepEqual(section.topMemories[0], { id: "fact-a", type: "project-fact", count: 2, surfaced: 9 });
   // #484: der Modus trennt die Live-Historie von den Schattenzahlen danach.
@@ -225,8 +353,20 @@ test("#479 suppression: report measures removed hints and estimated context", ()
 
 test("#463 session start: shares only over starts that carry per-part data, the rest is counted as a gap", () => {
   const events: ReportEvent[] = [
-    { kind: "session_hook_call", ts: ts("2026-09-01"), source: "startup", hint_tokens_est: 1000, hint_tokens_by_part: { recalls: 600, taxonomy: 400, care: 0 } },
-    { kind: "session_hook_call", ts: ts("2026-09-01"), source: "clear", hint_tokens_est: 800, hint_tokens_by_part: { recalls: 400, taxonomy: 400, care: 0 } },
+    {
+      kind: "session_hook_call",
+      ts: ts("2026-09-01"),
+      source: "startup",
+      hint_tokens_est: 1000,
+      hint_tokens_by_part: { recalls: 600, taxonomy: 400, care: 0 },
+    },
+    {
+      kind: "session_hook_call",
+      ts: ts("2026-09-01"),
+      source: "clear",
+      hint_tokens_est: 800,
+      hint_tokens_by_part: { recalls: 400, taxonomy: 400, care: 0 },
+    },
     { kind: "session_hook_call", ts: ts("2026-08-01"), source: "startup", hint_tokens_est: 2300 }, // vor #462
   ];
   const ss = summarizeSessionStart(events);
@@ -238,10 +378,13 @@ test("#463 session start: shares only over starts that carry per-part data, the 
     { part: "recalls", tokens: 1000, avgPerStart: 500, presentIn: 2 },
     { part: "taxonomy", tokens: 800, avgPerStart: 400, presentIn: 2 },
   ]);
-  assert.deepEqual(ss.bySource.map((s) => [s.source, s.n, s.parts[0]]), [
-    ["startup", 1, { part: "recalls", avg: 600 }],
-    ["clear", 1, { part: "recalls", avg: 400 }],
-  ]);
+  assert.deepEqual(
+    ss.bySource.map((s) => [s.source, s.n, s.parts[0]]),
+    [
+      ["startup", 1, { part: "recalls", avg: 600 }],
+      ["clear", 1, { part: "recalls", avg: 400 }],
+    ]
+  );
 });
 
 test("#463 window: only day files inside the window are read, and the route is ui-gated and retention-clamped", async (t) => {
@@ -252,9 +395,18 @@ test("#463 window: only day files inside the window are read, and the route is u
   t.mock.timers.enable({ apis: ["Date"], now }); // Route and direct reader share the fixture clock.
   const line = (o: object) => JSON.stringify(o) + "\n";
   try {
-    await writeFile(join(logDir, "events-2026-09-04.jsonl"), line({ kind: "hook_call", ts: "2026-09-04T11:00:00.000Z", latency_ms_total: 5 }) + "not json\n");
-    await writeFile(join(logDir, "events-2026-09-03.jsonl"), line({ kind: "hook_call", ts: "2026-09-03T11:00:00.000Z", latency_ms_total: 7 }));
-    await writeFile(join(logDir, "events-2026-08-01.jsonl"), line({ kind: "hook_call", ts: "2026-08-01T11:00:00.000Z", latency_ms_total: 9 }));
+    await writeFile(
+      join(logDir, "events-2026-09-04.jsonl"),
+      line({ kind: "hook_call", ts: "2026-09-04T11:00:00.000Z", latency_ms_total: 5 }) + "not json\n"
+    );
+    await writeFile(
+      join(logDir, "events-2026-09-03.jsonl"),
+      line({ kind: "hook_call", ts: "2026-09-03T11:00:00.000Z", latency_ms_total: 7 })
+    );
+    await writeFile(
+      join(logDir, "events-2026-08-01.jsonl"),
+      line({ kind: "hook_call", ts: "2026-08-01T11:00:00.000Z", latency_ms_total: 9 })
+    );
     const w = await readEventWindow(logDir, 2, now);
     assert.equal(w.files, 2, "the August file is never opened");
     assert.equal(w.events.length, 2, "the malformed line is skipped");
@@ -266,7 +418,11 @@ test("#463 window: only day files inside the window are read, and the route is u
     assert.equal(report.latency.lanes[0].median, 6);
 
     assert.equal(parseDays("/ui/telemetry", 90), 7);
-    assert.equal(parseDays("/ui/telemetry?days=365", 90), 90, "clamped to retention — a longer window would promise data retention deleted");
+    assert.equal(
+      parseDays("/ui/telemetry?days=365", 90),
+      90,
+      "clamped to retention — a longer window would promise data retention deleted"
+    );
     assert.equal(parseDays("/ui/telemetry?days=abc", 90), 7);
     assert.equal(parseDays("/ui/telemetry?days=0", 90), 7);
 
@@ -291,7 +447,11 @@ test("#463 window: only day files inside the window are read, and the route is u
       await writeFile(settingsPath, JSON.stringify({ update: { mode: "notify" }, ui: { enabled: true } }));
       const on = await get("/ui/telemetry?days=90");
       assert.equal(on.status, 200);
-      const body = JSON.parse(on.body) as { window: { days: number; events: number }; quality: unknown; contextTax: unknown };
+      const body = JSON.parse(on.body) as {
+        window: { days: number; events: number };
+        quality: unknown;
+        contextTax: unknown;
+      };
       assert.equal(body.window.days, 90);
       assert.equal(body.window.events, 3);
       assert.ok(body.quality && body.contextTax);
@@ -306,8 +466,22 @@ test("#463 window: only day files inside the window are read, and the route is u
 
 test("#458 budget shadow: per lane and per day, sessions affected, first crossing, changed budget flagged", async () => {
   const { summarizeBudgetShadow } = await import("../src/telemetry-report.js");
-  const ev = (day: string, session_id: string, lane: string, tokens: number, would_drop: boolean, extra: object = {}) => ({
-    kind: "budget_shadow", ts: ts(day), session_id, lane, tokens, budget: 1000, would_drop, ...extra,
+  const ev = (
+    day: string,
+    session_id: string,
+    lane: string,
+    tokens: number,
+    would_drop: boolean,
+    extra: object = {}
+  ) => ({
+    kind: "budget_shadow",
+    ts: ts(day),
+    session_id,
+    lane,
+    tokens,
+    budget: 1000,
+    would_drop,
+    ...extra,
   });
   const events: ReportEvent[] = [
     ev("2026-09-04", "s1", "session_hook_call", 700, false, { emission_index: 1 }),
@@ -319,7 +493,10 @@ test("#458 budget shadow: per lane and per day, sessions affected, first crossin
   const b = summarizeBudgetShadow(events)!;
   assert.equal(b.budget, 2000, "the latest decision's budget");
   assert.deepEqual(b.budgets, [1000, 2000]);
-  assert.deepEqual([b.emissions, b.tokens, b.sessions, b.sessionsAffected, b.wouldDrop, b.tokensTrimmed], [5, 2400, 3, 1, 2, 500]);
+  assert.deepEqual(
+    [b.emissions, b.tokens, b.sessions, b.sessionsAffected, b.wouldDrop, b.tokensTrimmed],
+    [5, 2400, 3, 1, 2, 500]
+  );
   assert.deepEqual(b.byLane, [
     { lane: "session_hook_call", emissions: 2, tokens: 1000, wouldDrop: 0, tokensTrimmed: 0 },
     { lane: "prompt_hook_call", emissions: 2, tokens: 1300, wouldDrop: 1, tokensTrimmed: 400 },
@@ -339,12 +516,41 @@ test("#664: the UI window excludes eval traffic and folds stub/daemon duplicates
   const now = Date.parse("2026-09-04T12:00:00.000Z");
   const rows = [
     // One real call, logged twice: the daemon row and the stub's own row.
-    { kind: "hook_call", ts: "2026-09-04T11:00:00.000Z", session_id: "s1", hook_version: "1.0.0", status: "ok", latency_ms_total: 40 },
-    { kind: "hook_call", ts: "2026-09-04T11:00:00.200Z", session_id: "s1", hook_version: "0.6.0-stub", status: "timeout", latency_ms_total: 900 },
+    {
+      kind: "hook_call",
+      ts: "2026-09-04T11:00:00.000Z",
+      session_id: "s1",
+      hook_version: "1.0.0",
+      status: "ok",
+      latency_ms_total: 40,
+    },
+    {
+      kind: "hook_call",
+      ts: "2026-09-04T11:00:00.200Z",
+      session_id: "s1",
+      hook_version: "0.6.0-stub",
+      status: "timeout",
+      latency_ms_total: 900,
+    },
     // A second real call.
-    { kind: "hook_call", ts: "2026-09-04T11:05:00.000Z", session_id: "s2", hook_version: "1.0.0", status: "ok", latency_ms_total: 60 },
+    {
+      kind: "hook_call",
+      ts: "2026-09-04T11:05:00.000Z",
+      session_id: "s2",
+      hook_version: "1.0.0",
+      status: "ok",
+      latency_ms_total: 60,
+    },
     // An eval probe (#619).
-    { kind: "hook_call", ts: "2026-09-04T11:10:00.000Z", session_id: "e1", hook_version: "1.0.0", status: "ok", latency_ms_total: 50, dimensions: { client: "eval" } },
+    {
+      kind: "hook_call",
+      ts: "2026-09-04T11:10:00.000Z",
+      session_id: "e1",
+      hook_version: "1.0.0",
+      status: "ok",
+      latency_ms_total: 50,
+      dimensions: { client: "eval" },
+    },
   ];
   try {
     await writeFile(join(logDir, "events-2026-09-04.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
@@ -369,10 +575,24 @@ test("#664: the UI window excludes eval traffic and folds stub/daemon duplicates
 test("#664: a call inside a daemon-restart window stays out of latency, like the CLI sets it aside", async () => {
   const { aggregate } = await import("../src/cli/log-stats.js");
   const rows: ReportEvent[] = [
-    { kind: "hook_call", ts: "2026-09-04T11:00:00.000Z", session_id: "s1", hook_version: "1.0.0", status: "ok", latency_ms_total: 40 },
+    {
+      kind: "hook_call",
+      ts: "2026-09-04T11:00:00.000Z",
+      session_id: "s1",
+      hook_version: "1.0.0",
+      status: "ok",
+      latency_ms_total: 40,
+    },
     // A daemon restart, and a cold call 10 s later inside its window.
     { kind: "warmup_settle", ts: "2026-09-04T11:30:00.000Z", trigger: "boot", session_id: "boot-2" },
-    { kind: "hook_call", ts: "2026-09-04T11:30:10.000Z", session_id: "s2", hook_version: "1.0.0", status: "ok", latency_ms_total: 900 },
+    {
+      kind: "hook_call",
+      ts: "2026-09-04T11:30:10.000Z",
+      session_id: "s2",
+      hook_version: "1.0.0",
+      status: "ok",
+      latency_ms_total: 900,
+    },
   ];
   const cli = aggregate(rows);
   assert.deepEqual([cli.totals.calls, cli.restart.calls], [1, 1], "precondition: the CLI sets the restart call aside");
@@ -382,7 +602,12 @@ test("#664: a call inside a daemon-restart window stays out of latency, like the
 });
 
 test("#875: the report states how many calls latency left out for a restart window — zero without one", () => {
-  const call = (kind: string, ts: string, field: string, ms: number): ReportEvent => ({ kind, ts, session_id: "s", [field]: ms });
+  const call = (kind: string, ts: string, field: string, ms: number): ReportEvent => ({
+    kind,
+    ts,
+    session_id: "s",
+    [field]: ms,
+  });
   const steady: ReportEvent[] = [
     call("hook_call", "2026-09-04T11:00:00.000Z", "latency_ms_total", 40),
     call("recall", "2026-09-04T11:01:00.000Z", "latency_ms", 30),
@@ -395,7 +620,12 @@ test("#875: the report states how many calls latency left out for a restart wind
     // Inside the window but without a latency value: never a latency row, so not a dropped one.
     { kind: "hook_call", ts: "2026-09-04T11:30:20.000Z", session_id: "s" },
   ];
-  const boot: ReportEvent = { kind: "warmup_settle", ts: "2026-09-04T11:30:00.000Z", trigger: "boot", session_id: "boot-2" };
+  const boot: ReportEvent = {
+    kind: "warmup_settle",
+    ts: "2026-09-04T11:30:00.000Z",
+    trigger: "boot",
+    session_id: "boot-2",
+  };
   const report = (events: ReportEvent[]) =>
     buildTelemetryReport({ events, files: 1, from: null, to: null, excludedEval: 0, foldedDuplicates: 0 }, 2, T, 90);
   const rows = (r: ReturnType<typeof report>) => r.latency.lanes.reduce((sum, l) => sum + l.n, 0);
@@ -406,7 +636,11 @@ test("#875: the report states how many calls latency left out for a restart wind
 
   const withRestart = report([...steady, boot, ...cold]);
   assert.equal(rows(withRestart), 2);
-  assert.equal(withRestart.window.excludedRestart, rows(noRestart) - rows(withRestart), "the count is the rows that dropped out");
+  assert.equal(
+    withRestart.window.excludedRestart,
+    rows(noRestart) - rows(withRestart),
+    "the count is the rows that dropped out"
+  );
   assert.equal(withRestart.window.excludedRestart, 3);
   assert.equal("excludedRestart" in withRestart.latency, false, "stated once, in the window");
 });

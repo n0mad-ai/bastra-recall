@@ -243,12 +243,12 @@ export function metricsFor(rows: CaseResult[]): SliceMetrics {
     recall_at_1: ratio(rows.filter((r) => hit(r, 1)).length, n),
     recall_at_3: ratio(rows.filter((r) => hit(r, 3)).length, n),
     recall_at_10: ratio(rows.filter((r) => hit(r, PRODUCTION_K)).length, n),
-    recall_at_allowed_depth: ratio(
-      rows.filter((r) => hit(r, Math.min(r.allowed_depth, PRODUCTION_K))).length,
-      n,
-    ),
+    recall_at_allowed_depth: ratio(rows.filter((r) => hit(r, Math.min(r.allowed_depth, PRODUCTION_K))).length, n),
     recall_at_3_incl_acceptable: ratio(rows.filter((r) => hit(r, 3, true)).length, n),
-    mrr: n === 0 ? 0 : Number((rows.reduce((a, r) => a + (r.rank_expected > 0 ? 1 / r.rank_expected : 0), 0) / n).toFixed(4)),
+    mrr:
+      n === 0
+        ? 0
+        : Number((rows.reduce((a, r) => a + (r.rank_expected > 0 ? 1 / r.rank_expected : 0), 0) / n).toFixed(4)),
   };
 }
 
@@ -264,8 +264,14 @@ function groupBy(rows: CaseResult[], key: (r: CaseResult) => string): Record<str
  * refusal to report a partial arm as a measurement are the reasons the number
  * is trustworthy, and a second implementation of them would drift.
  */
-export async function attachHybrid(vault: Vault, search: SearchIndex, vaultPath: string): Promise<{
-  label: string; vectors: number; cleanup: () => Promise<void>;
+export async function attachHybrid(
+  vault: Vault,
+  search: SearchIndex,
+  vaultPath: string
+): Promise<{
+  label: string;
+  vectors: number;
+  cleanup: () => Promise<void>;
 }> {
   const provider = new OllamaEmbeddingProvider({
     baseURL: process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434",
@@ -283,7 +289,10 @@ export async function attachHybrid(vault: Vault, search: SearchIndex, vaultPath:
     await copyFile(join(vaultPath, ".bastra", "embeddings.json"), persistPath);
     hadStore = true;
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== "ENOENT") { await cleanup(); throw e; }
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+      await cleanup();
+      throw e;
+    }
   }
   // Probe first: EmbeddingIndex.start() swallows provider failures and retries,
   // so an unreachable provider would surface as a fifteen-minute hang.
@@ -307,19 +316,25 @@ export async function attachHybrid(vault: Vault, search: SearchIndex, vaultPath:
     loaded = now;
   }
   if (loaded < want) {
-    emb.stop(); await cleanup();
+    emb.stop();
+    await cleanup();
     throw new Error(`--hybrid: only ${loaded}/${want} memories carry a vector — a partial arm is not a measurement.`);
   }
   search.useEmbeddings(emb);
   if (!search.hasEmbeddings()) {
-    emb.stop(); await cleanup();
+    emb.stop();
+    await cleanup();
     throw new Error("--hybrid: useEmbeddings() did not take effect — refusing to report BM25 as hybrid.");
   }
   return {
-    label: `Hybrid (BM25 + Vector RRF) · ${provider.id} · store ${hadStore ? "copied from vault" : "embedded fresh"}`
-      + (loaded > atStart ? ` · ${loaded - atStart} backfilled` : ""),
+    label:
+      `Hybrid (BM25 + Vector RRF) · ${provider.id} · store ${hadStore ? "copied from vault" : "embedded fresh"}` +
+      (loaded > atStart ? ` · ${loaded - atStart} backfilled` : ""),
     vectors: loaded,
-    cleanup: async () => { emb.stop(); await cleanup(); },
+    cleanup: async () => {
+      emb.stop();
+      await cleanup();
+    },
   };
 }
 
@@ -355,7 +370,7 @@ export function controlRecaller(ids: string[], seed: number): Recaller {
       const j = Math.floor(rnd() * (i + 1));
       [pool[i], pool[j]] = [pool[j], pool[i]];
     }
-    return pool.slice(0, PRODUCTION_K).map((id, i) => ({ id, score: 100 - i } as RecallHit));
+    return pool.slice(0, PRODUCTION_K).map((id, i) => ({ id, score: 100 - i }) as RecallHit);
   };
 }
 
@@ -382,7 +397,7 @@ function stringSeed(s: string): number {
  * from "the vector arm was not there".
  */
 export function gatedHybridRecaller(
-  search: (query: string, opts: { k: number; onStage: StageListener }) => Promise<RecallHit[]>,
+  search: (query: string, opts: { k: number; onStage: StageListener }) => Promise<RecallHit[]>
 ): Recaller {
   return async (query, caseId) => {
     let degraded: string | undefined;
@@ -395,8 +410,8 @@ export function gatedHybridRecaller(
     });
     if (degraded !== undefined) {
       throw new Error(
-        `case ${caseId}: the vector arm fell back to BM25 (${degraded}) — `
-          + "a run labelled hybrid cannot hold a BM25 row.",
+        `case ${caseId}: the vector arm fell back to BM25 (${degraded}) — ` +
+          "a run labelled hybrid cannot hold a BM25 row."
       );
     }
     return hits;
@@ -422,8 +437,8 @@ export async function scoreCases(
     served: RecallHit[],
     query: string,
     expected: Set<string>,
-    any: Set<string>,
-  ) => Record<string, CaseGateResult>,
+    any: Set<string>
+  ) => Record<string, CaseGateResult>
 ): Promise<CaseResult[]> {
   const rows: CaseResult[] = [];
   for (const c of cases) {
@@ -508,12 +523,18 @@ function hashCode(): string {
   // `goldset-dataset.ts` is in the list because the rules that admit a run's
   // data are part of what the run is cited by — leaving it out when the
   // functions moved there would have quietly narrowed the code hash.
-  return sha256(["goldset-run.ts", "goldset-dataset.ts", "goldset.ts"]
-    .map((f) => readFileSync(join(here, f), "utf8"))
-    .join("\n"));
+  return sha256(
+    ["goldset-run.ts", "goldset-dataset.ts", "goldset.ts"].map((f) => readFileSync(join(here, f), "utf8")).join("\n")
+  );
 }
 
-interface Args { gold: string[]; out: string; hybrid: boolean; seed: number; gate: boolean }
+interface Args {
+  gold: string[];
+  out: string;
+  hybrid: boolean;
+  seed: number;
+  gate: boolean;
+}
 
 function parseArgs(argv: string[]): Args {
   const a: Args = { gold: [], out: "", hybrid: false, seed: 20260828, gate: false };
@@ -555,7 +576,7 @@ async function main(): Promise<void> {
   const unknown = unknownGoldIds(cases, knownIds);
   if (unknown.length) {
     throw new Error(
-      `${unknown.length} gold id(s) are not in the vault — a gate failure, never a miss: ${unknown.join(", ")}`,
+      `${unknown.length} gold id(s) are not in the vault — a gate failure, never a miss: ${unknown.join(", ")}`
     );
   }
 
@@ -564,7 +585,9 @@ async function main(): Promise<void> {
   let vectors = 0;
   if (args.hybrid) {
     const arm = await attachHybrid(vault, search, vaultPath);
-    armLabel = arm.label; vectors = arm.vectors; cleanup = arm.cleanup;
+    armLabel = arm.label;
+    vectors = arm.vectors;
+    cleanup = arm.cleanup;
   }
 
   // Never report BM25 under a hybrid label: the hybrid path is taken only when
@@ -625,7 +648,7 @@ async function main(): Promise<void> {
         served: RecallHit[],
         query: string,
         expected: Set<string>,
-        anyIds: Set<string>,
+        anyIds: Set<string>
       ): Record<string, CaseGateResult> => {
         const terms = tokenizeWithIdentifiers(query).filter((t) => t.length >= 3);
         const shipped = decideHits(served, {
@@ -736,19 +759,27 @@ async function main(): Promise<void> {
     hashes: {
       code: hashCode(),
       git: gitState(),
-      vault: sha256(vault.list().map((m) => `${String(m.fm.id)} ${String(m.fm.updated ?? "")}`).sort().join("\n")),
+      vault: sha256(
+        vault
+          .list()
+          .map((m) => `${String(m.fm.id)} ${String(m.fm.updated ?? "")}`)
+          .sort()
+          .join("\n")
+      ),
       model: sha256(armLabel),
       // #641: a weighted fusion is a different configuration. A weight other
       // than 1 enters the hash, so a run at weight 1 keeps the config hash the
       // registered baselines pin (v1-baseline.json was measured at 1). Since
       // v1.0.1 the default is 1.5, so a default run hashes differently from
       // that baseline — by design, the baseline stays as registered.
-      config: sha256(JSON.stringify({
-        k: PRODUCTION_K,
-        floor: SCORE_FLOOR,
-        hybrid: args.hybrid,
-        ...(rrfVectorWeight() !== 1 ? { rrf_vector_weight: rrfVectorWeight() } : {}),
-      })),
+      config: sha256(
+        JSON.stringify({
+          k: PRODUCTION_K,
+          floor: SCORE_FLOOR,
+          hybrid: args.hybrid,
+          ...(rrfVectorWeight() !== 1 ? { rrf_vector_weight: rrfVectorWeight() } : {}),
+        })
+      ),
       dataset: datasetHash(sources, cases),
     },
   };
@@ -765,8 +796,7 @@ async function main(): Promise<void> {
   ];
   for (const l of lines) console.error(l);
 
-  const w = (name: string, body: string): void =>
-    writeFileSync(join(dir, name), body, { mode: 0o600 });
+  const w = (name: string, body: string): void => writeFileSync(join(dir, name), body, { mode: 0o600 });
   w("manifest.json", JSON.stringify(manifest, null, 2) + "\n");
   w("results.json", JSON.stringify(results, null, 2) + "\n");
   w("stdout.txt", "");

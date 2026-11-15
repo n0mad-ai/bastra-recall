@@ -68,13 +68,7 @@ export interface EmbedCacheFile {
  */
 export function hashEmbedContent(m: Memory): string {
   const fm = m.fm;
-  const seed = [
-    fm.title,
-    fm.tags.join(","),
-    fm.recall_when.join("\n"),
-    fm.summary,
-    embedBody(m),
-  ].join("|");
+  const seed = [fm.title, fm.tags.join(","), fm.recall_when.join("\n"), fm.summary, embedBody(m)].join("|");
   return createHash("sha256").update(seed).digest("hex");
 }
 
@@ -87,7 +81,7 @@ export class EmbedCache {
     private readonly vaultRoot: string,
     private readonly cachePath: string,
     providerId: string,
-    dim: number,
+    dim: number
   ) {
     this.providerId = providerId;
     this.dim = dim;
@@ -102,14 +96,14 @@ export class EmbedCache {
       // every start until the file is rewritten, and without a line nobody sees why.
       if (data.version !== 1) {
         console.error(
-          `[bastra.embeddings] embed-cache ignored: version ${String(data.version)} (want 1) — ${this.cachePath}`,
+          `[bastra.embeddings] embed-cache ignored: version ${String(data.version)} (want 1) — ${this.cachePath}`
         );
         return;
       }
       if (data.provider !== this.providerId || data.dim !== this.dim) {
         console.error(
           `[bastra.embeddings] embed-cache ignored: built by ${data.provider}/${data.dim}, ` +
-            `provider is ${this.providerId}/${this.dim} — ${this.cachePath}`,
+            `provider is ${this.providerId}/${this.dim} — ${this.cachePath}`
         );
         return;
       }

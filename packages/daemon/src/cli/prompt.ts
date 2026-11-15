@@ -51,14 +51,21 @@ export async function ask(question: string): Promise<string | null> {
  * interface is what settles the promise — `question()` alone never resolves
  * once its input is gone.
  */
-export function askOn(question: string, input: NodeJS.ReadableStream, output: NodeJS.WritableStream): Promise<string | null> {
+export function askOn(
+  question: string,
+  input: NodeJS.ReadableStream,
+  output: NodeJS.WritableStream
+): Promise<string | null> {
   const rl = createInterface({ input, output });
   return new Promise((resolve) => {
     rl.once("close", () => resolve(null));
     rl.on("SIGINT", () => rl.close());
     rl.question(question).then(
-      (answer) => { resolve(answer.trim()); rl.close(); },
-      () => resolve(null),
+      (answer) => {
+        resolve(answer.trim());
+        rl.close();
+      },
+      () => resolve(null)
     );
   });
 }

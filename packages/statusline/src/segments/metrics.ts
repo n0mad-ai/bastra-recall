@@ -34,9 +34,7 @@ interface TranscriptEntry {
 }
 
 export class MetricsProvider {
-  private async loadTranscriptEntries(
-    sessionId: string,
-  ): Promise<TranscriptEntry[]> {
+  private async loadTranscriptEntries(sessionId: string): Promise<TranscriptEntry[]> {
     try {
       const transcriptPath = await findTranscriptFile(sessionId);
       if (!transcriptPath) {
@@ -79,11 +77,8 @@ export class MetricsProvider {
 
   private calculateMessageCount(entries: TranscriptEntry[]): number {
     return entries.filter((entry) => {
-      const messageType =
-        entry.type || entry.message?.role || entry.message?.type;
-      const isToolResult =
-        entry.type === "user" &&
-        entry.message?.content?.[0]?.type === "tool_result";
+      const messageType = entry.type || entry.message?.role || entry.message?.type;
+      const isToolResult = entry.type === "user" && entry.message?.content?.[0]?.type === "tool_result";
       return messageType === "user" && !isToolResult;
     }).length;
   }
@@ -101,19 +96,15 @@ export class MetricsProvider {
 
       try {
         const timestamp = new Date(entry.timestamp);
-        const messageType =
-          entry.type || entry.message?.role || entry.message?.type;
+        const messageType = entry.type || entry.message?.role || entry.message?.type;
 
-        const isToolResult =
-          entry.type === "user" &&
-          entry.message?.content?.[0]?.type === "tool_result";
+        const isToolResult = entry.type === "user" && entry.message?.content?.[0]?.type === "tool_result";
         const isRealUserMessage = messageType === "user" && !isToolResult;
 
         if (isRealUserMessage) {
           lastUserTime = timestamp;
         } else if (messageType === "assistant" && lastUserTime) {
-          const responseTime =
-            (timestamp.getTime() - lastUserTime.getTime()) / 1000;
+          const responseTime = (timestamp.getTime() - lastUserTime.getTime()) / 1000;
           if (responseTime > 0.1 && responseTime < 300) {
             bestResponseTime = responseTime;
           }
@@ -126,10 +117,7 @@ export class MetricsProvider {
     return bestResponseTime;
   }
 
-  async getMetricsInfo(
-    sessionId: string,
-    hookData: ClaudeHookData,
-  ): Promise<MetricsInfo> {
+  async getMetricsInfo(sessionId: string, hookData: ClaudeHookData): Promise<MetricsInfo> {
     try {
       debug(`Getting metrics from hook data for session: ${sessionId}`);
 
@@ -158,10 +146,7 @@ export class MetricsProvider {
         linesRemoved: hookData.cost.total_lines_removed,
       };
     } catch (error) {
-      debug(
-        `Error getting metrics from hook data for session ${sessionId}:`,
-        error,
-      );
+      debug(`Error getting metrics from hook data for session ${sessionId}:`, error);
       return {
         responseTime: null,
         lastResponseTime: null,

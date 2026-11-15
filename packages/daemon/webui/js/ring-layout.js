@@ -165,7 +165,14 @@ export function computeRingLayout(nodes, width, height, opts = {}) {
       const span = mRaw[mi] * mScale;
       const outer = packWedge(members, mAngle, span, metaR0);
       metaMaxOuter = Math.max(metaMaxOuter, outer);
-      metaSegments.push({ key, a0: mAngle, a1: mAngle + span, outer, b0: mAngle - GAP / 2, b1: mAngle + span + GAP / 2 });
+      metaSegments.push({
+        key,
+        a0: mAngle,
+        a1: mAngle + span,
+        outer,
+        b0: mAngle - GAP / 2,
+        b1: mAngle + span + GAP / 2,
+      });
       const mid = mAngle + span / 2;
       const midR = (metaR0 + outer) / 2;
       centers.set(key, { x: cx + Math.cos(mid) * midR, y: cy + Math.sin(mid) * midR });
@@ -191,11 +198,7 @@ export function computeRingLayout(nodes, width, height, opts = {}) {
     orbits.push({ key: "unwritten", label: "unwritten", r: orbitR, dashed: true });
   }
 
-  const outerRadius = orbits.length
-    ? orbits[orbits.length - 1].r
-    : metaBand
-      ? metaBand.rOuter
-      : band.rOuter;
+  const outerRadius = orbits.length ? orbits[orbits.length - 1].r : metaBand ? metaBand.rOuter : band.rOuter;
 
   return {
     positions,

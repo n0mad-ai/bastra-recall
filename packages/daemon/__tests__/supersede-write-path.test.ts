@@ -124,7 +124,7 @@ test("#164: an old version still resolves by id — old citations keep working",
     assert.equal(
       loaded.frontmatter.superseded_by,
       fresh.id,
-      "loading an old version must reveal that a newer one exists",
+      "loading an old version must reveal that a newer one exists"
     );
   } finally {
     await cleanup();
@@ -143,15 +143,12 @@ test("#1206: the successor ranks ahead while the predecessor stays retrievable",
     const res = await recallHandler(deps, { query: "Rangfrage", k: 10, min_score: 0 });
     const hits = res.hits as Array<{ id: string; score: number }>;
     const predecessor = hits.find((h) => h.id === old.id);
-    assert.ok(
-      predecessor,
-      "the predecessor must still be retrievable after the ranking correction",
-    );
+    assert.ok(predecessor, "the predecessor must still be retrievable after the ranking correction");
     const successor = hits.find((h) => h.id === fresh.id);
     assert.ok(successor, "sanity: the successor is in the index too");
     assert.ok(
       predecessor!.score < successor!.score,
-      `predecessor ${predecessor!.score} must rank below successor ${successor!.score}`,
+      `predecessor ${predecessor!.score} must rank below successor ${successor!.score}`
     );
     assert.ok(hits.indexOf(successor!) < hits.indexOf(predecessor!));
     const loaded = await loadMemoryHandler(deps, { id: old.id });
@@ -166,7 +163,7 @@ test("#164: replaces must point at something that exists", async () => {
   try {
     await assert.rejects(
       () => saveMemoryHandler(deps, memo("Zeigt ins Leere", { replaces: "gibt-es-nicht" })),
-      /unknown memory 'gibt-es-nicht'/,
+      /unknown memory 'gibt-es-nicht'/
     );
   } finally {
     await cleanup();
@@ -179,7 +176,7 @@ test("#164: a memory cannot supersede itself", async () => {
     const first = await saveMemoryHandler(deps, memo("Selbstbezug"));
     await assert.rejects(
       () => saveMemoryHandler(deps, memo("Selbstbezug", { replaces: first.id, overwrite: true })),
-      /cannot supersede itself/,
+      /cannot supersede itself/
     );
   } finally {
     await cleanup();

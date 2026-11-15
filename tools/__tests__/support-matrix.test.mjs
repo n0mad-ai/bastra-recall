@@ -27,21 +27,13 @@ import {
 const README = readRepoFile("README.md");
 
 test("the CLI's surface list is the four clients the matrix names", () => {
-  assert.deepEqual(installableSurfaces().sort(), [
-    "claude-code",
-    "claude-desktop",
-    "codex",
-    "cursor",
-  ]);
+  assert.deepEqual(installableSurfaces().sort(), ["claude-code", "claude-desktop", "codex", "cursor"]);
 });
 
 test("README names every installable client in both language matrices", () => {
   // Match whole heading lines: "### Why not just CLAUDE.md?" also starts with "### Why".
   const en = README.slice(README.indexOf("### Supported surfaces"), README.indexOf("\n### Why\n"));
-  const de = README.slice(
-    README.indexOf("### Unterstützte Oberflächen"),
-    README.indexOf("\n### Warum\n"),
-  );
+  const de = README.slice(README.indexOf("### Unterstützte Oberflächen"), README.indexOf("\n### Warum\n"));
   assert.ok(en.length > 0 && de.length > 0, "both matrix sections must exist");
   for (const surface of installableSurfaces()) {
     const label = SURFACE_LABELS[surface];
@@ -59,10 +51,12 @@ test("the Homebrew caveat lists exactly the installable clients", () => {
   assert.ok(clients, "the caveat's client list could not be parsed");
   assert.deepEqual(
     clients,
-    installableSurfaces().map((s) => SURFACE_LABELS[s]).sort((a, b) => {
-      const order = ["Claude Code", "Claude Desktop", "Codex/ChatGPT Desktop", "Cursor"];
-      return order.indexOf(a) - order.indexOf(b);
-    }),
+    installableSurfaces()
+      .map((s) => SURFACE_LABELS[s])
+      .sort((a, b) => {
+        const order = ["Claude Code", "Claude Desktop", "Codex/ChatGPT Desktop", "Cursor"];
+        return order.indexOf(a) - order.indexOf(b);
+      })
   );
 });
 
@@ -80,11 +74,7 @@ test("the published package descriptions do not contradict the matrix", () => {
   const installer = JSON.parse(readRepoFile("packages/bastra-recall/package.json"));
   for (const surface of installableSurfaces()) {
     const needle = SURFACE_LABELS[surface].split(/[/ +]/)[0];
-    assert.match(
-      installer.description,
-      new RegExp(needle),
-      `the bastra-recall package description forgets ${needle}`,
-    );
+    assert.match(installer.description, new RegExp(needle), `the bastra-recall package description forgets ${needle}`);
   }
   const daemon = JSON.parse(readRepoFile("packages/daemon/package.json"));
   // #525: it described itself as exposing recall + load_memory only, long
@@ -104,8 +94,7 @@ test("the platform matrix matches configured hook-client targets and their valid
     "x86_64-unknown-linux-gnu",
   ]);
   const workflow = readRepoFile(".github/workflows/publish-npm.yml");
-  const configuredTargets = [...workflow.matchAll(/^\s+targets: (.+)$/gm)]
-    .flatMap((m) => m[1].trim().split(/\s+/));
+  const configuredTargets = [...workflow.matchAll(/^\s+targets: (.+)$/gm)].flatMap((m) => m[1].trim().split(/\s+/));
   assert.deepEqual(configuredTargets.sort(), targets, "installer and release target configuration drifted");
   const section = README.slice(README.indexOf("### Supported platforms"));
   const table = section.slice(0, section.indexOf("###", 5) === -1 ? undefined : section.indexOf("###", 5));
@@ -129,7 +118,7 @@ test("the platform matrix matches configured hook-client targets and their valid
   assert.doesNotMatch(
     npmReadme,
     /macOS \(Apple Silicon\) today/,
-    "the npm README still states an Apple-Silicon-only requirement",
+    "the npm README still states an Apple-Silicon-only requirement"
   );
   assert.match(npmReadme, /Linux/, "the npm README does not state the Linux boundary");
   assert.match(npmReadme, /Windows[^\n]+experimental preparation only/);

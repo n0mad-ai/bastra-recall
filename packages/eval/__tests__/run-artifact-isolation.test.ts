@@ -40,7 +40,7 @@ function envUnderTestHarness(name: string, preset?: string): string {
   return execFileSync(
     process.execPath,
     ["--import", "./scripts/test-env.mjs", "-e", `process.stdout.write(String(process.env.${name}))`],
-    { cwd: repoRoot, encoding: "utf8", env },
+    { cwd: repoRoot, encoding: "utf8", env }
   ).trim();
 }
 
@@ -50,7 +50,7 @@ test("the test harness redirects run artifacts away from the real directory (#42
   assert.ok(dir.startsWith(tmpdir()), `expected a tmpdir, got ${dir}`);
   assert.ok(
     !dir.startsWith(join(homedir(), ".bastra", "eval-runs")),
-    "the registered baselines live there — a suite pass must never write into it",
+    "the registered baselines live there — a suite pass must never write into it"
   );
 });
 

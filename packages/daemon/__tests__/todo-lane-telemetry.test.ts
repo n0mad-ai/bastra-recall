@@ -50,7 +50,9 @@ const TODOS = {
 };
 
 const RECALL = JSON.stringify({
-  hits: [{ id: "m1", title: "Session store lesson", type: "lesson", scope: "proj", summary: "Eine Lektion.", score: 150 }],
+  hits: [
+    { id: "m1", title: "Session store lesson", type: "lesson", scope: "proj", summary: "Eine Lektion.", score: 150 },
+  ],
   vault_size: 1,
   latency_ms: 1,
   recall_id: "r1",
@@ -80,11 +82,19 @@ test("#373: todo_hook_call carries the payload session_id, hook_version and the 
   const logDir = await mkdtemp(join(tmpdir(), "bastra-todo-telemetry-"));
   try {
     await withDaemon(async (base) => {
-      const out = await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir, BASTRA_SESSION_STATE_DIR: logDir }, () =>
-        runTodoLane(
-          { hook_event_name: "PreToolUse", tool_name: "TodoWrite", session_id: "todo-373", cwd: "/tmp", tool_input: TODOS },
-          base,
-        ),
+      const out = await withEnv(
+        { BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir, BASTRA_SESSION_STATE_DIR: logDir },
+        () =>
+          runTodoLane(
+            {
+              hook_event_name: "PreToolUse",
+              tool_name: "TodoWrite",
+              session_id: "todo-373",
+              cwd: "/tmp",
+              tool_input: TODOS,
+            },
+            base
+          )
       );
       assert.doesNotThrow(() => JSON.parse(out));
     });
@@ -106,9 +116,15 @@ test("#507: todo_hook_call carries client/hook_source in dimensions, so stats.ts
     await withDaemon(async (base) => {
       await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir, BASTRA_SESSION_STATE_DIR: logDir }, () =>
         runTodoLane(
-          { hook_event_name: "PreToolUse", tool_name: "TodoWrite", session_id: "todo-dims-507", cwd: "/tmp", tool_input: TODOS },
-          base,
-        ),
+          {
+            hook_event_name: "PreToolUse",
+            tool_name: "TodoWrite",
+            session_id: "todo-dims-507",
+            cwd: "/tmp",
+            tool_input: TODOS,
+          },
+          base
+        )
       );
     });
     const ev = (await readEvents(logDir)).find((e) => e.kind === "todo_hook_call");
@@ -127,7 +143,10 @@ test("#373: without a payload session_id the row carries a synthetic UUID — fa
   const logDir = await mkdtemp(join(tmpdir(), "bastra-todo-telemetry-uuid-"));
   try {
     await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir, BASTRA_SESSION_STATE_DIR: logDir }, () =>
-      runTodoLane({ hook_event_name: "PreToolUse", tool_name: "TodoWrite", cwd: "/tmp", tool_input: TODOS }, "http://127.0.0.1:1"),
+      runTodoLane(
+        { hook_event_name: "PreToolUse", tool_name: "TodoWrite", cwd: "/tmp", tool_input: TODOS },
+        "http://127.0.0.1:1"
+      )
     );
     const ev = (await readEvents(logDir)).find((e) => e.kind === "todo_hook_call");
     assert.ok(ev);
@@ -143,8 +162,17 @@ test("#373: the event gate returns `{}` for other tools and writes nothing", asy
   const logDir = await mkdtemp(join(tmpdir(), "bastra-todo-telemetry-gate-"));
   try {
     await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir }, async () => {
-      assert.equal(await runTodoLane({ hook_event_name: "PreToolUse", tool_name: "Bash", session_id: "x" }, "http://127.0.0.1:1"), "{}");
-      assert.equal(await runTodoLane({ hook_event_name: "PostToolUse", tool_name: "TodoWrite", session_id: "x" }, "http://127.0.0.1:1"), "{}");
+      assert.equal(
+        await runTodoLane({ hook_event_name: "PreToolUse", tool_name: "Bash", session_id: "x" }, "http://127.0.0.1:1"),
+        "{}"
+      );
+      assert.equal(
+        await runTodoLane(
+          { hook_event_name: "PostToolUse", tool_name: "TodoWrite", session_id: "x" },
+          "http://127.0.0.1:1"
+        ),
+        "{}"
+      );
     });
     assert.equal((await readdir(logDir)).length, 0, "a gated call writes no telemetry");
   } finally {
@@ -157,9 +185,14 @@ test("#373: a low-confidence todo list is recorded as gated, with the payload se
   try {
     const out = await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir }, () =>
       runTodoLane(
-        { hook_event_name: "PreToolUse", tool_name: "TodoWrite", session_id: "todo-thin", tool_input: { todos: [{ content: "fix", status: "pending" }] } },
-        "http://127.0.0.1:1",
-      ),
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "TodoWrite",
+          session_id: "todo-thin",
+          tool_input: { todos: [{ content: "fix", status: "pending" }] },
+        },
+        "http://127.0.0.1:1"
+      )
     );
     assert.equal(out, "{}");
     const ev = (await readEvents(logDir)).find((e) => e.kind === "todo_hook_call");

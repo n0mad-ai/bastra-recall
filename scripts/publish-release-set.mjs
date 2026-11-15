@@ -67,12 +67,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // Publication order. The wrapper depends on the daemon, which depends on core
 // and statusline — publishing in dependency order means a partially published
 // set never resolves to something that is not there yet.
-const WORKSPACE_DIRS = [
-  "packages/core",
-  "packages/statusline",
-  "packages/daemon",
-  "packages/bastra-recall",
-];
+const WORKSPACE_DIRS = ["packages/core", "packages/statusline", "packages/daemon", "packages/bastra-recall"];
 
 const verifyOnly = process.argv.includes("--verify");
 
@@ -131,7 +126,7 @@ function packDigest(name) {
   const res = npm(["pack", "--dry-run", "--json", `--workspace=${name}`]);
   if (res.status !== 0) {
     throw new Error(
-      `npm pack --dry-run ${name} failed (${res.status}):\n${`${res.stdout ?? ""}${res.stderr ?? ""}`.trim()}`,
+      `npm pack --dry-run ${name} failed (${res.status}):\n${`${res.stdout ?? ""}${res.stderr ?? ""}`.trim()}`
     );
   }
   const entry = packEntry(res.stdout ?? "", name);
@@ -181,8 +176,7 @@ const pkgs = WORKSPACE_DIRS.map(readPkg);
 const versions = new Set(pkgs.map((p) => p.version));
 if (versions.size !== 1) {
   console.error(
-    `error: the release set is not on one version:\n` +
-      pkgs.map((p) => `  ${p.name}: ${p.version}`).join("\n"),
+    `error: the release set is not on one version:\n` + pkgs.map((p) => `  ${p.name}: ${p.version}`).join("\n")
   );
   process.exit(1);
 }
@@ -211,7 +205,8 @@ function verifySetting(name, fallback, minimum) {
 const VERIFY_ATTEMPTS = verifySetting("BASTRA_VERIFY_ATTEMPTS", 60, 1);
 const VERIFY_INTERVAL_MS = verifySetting("BASTRA_VERIFY_INTERVAL_MS", 5000, 0);
 const VERIFY_WINDOW_MS = VERIFY_ATTEMPTS * VERIFY_INTERVAL_MS;
-if (!Number.isSafeInteger(VERIFY_WINDOW_MS)) throw new Error("The verification window must be a finite integer number of milliseconds");
+if (!Number.isSafeInteger(VERIFY_WINDOW_MS))
+  throw new Error("The verification window must be a finite integer number of milliseconds");
 
 /** Block this process without a timer — the script is synchronous throughout. */
 function sleepSync(ms) {
@@ -226,18 +221,25 @@ function sleepSync(ms) {
  * and the wall-clock deadline so tests exercise propagation without sleeping.
  */
 function awaitVisibleSet(packages) {
-  const rows = packages.map(pkg => ({ pkg, ok: false, reason: "is not on the registry" }));
+  const rows = packages.map((pkg) => ({ pkg, ok: false, reason: "is not on the registry" }));
   const deadline = VERIFY_WINDOW_MS === 0 ? Infinity : performance.now() + VERIFY_WINDOW_MS;
-  const remaining = () => Number.isFinite(deadline) ? Math.max(1, Math.ceil(deadline - performance.now())) : undefined;
+  const remaining = () =>
+    Number.isFinite(deadline) ? Math.max(1, Math.ceil(deadline - performance.now())) : undefined;
   let delay = VERIFY_INTERVAL_MS;
   for (let attempt = 1; attempt <= VERIFY_ATTEMPTS; attempt++) {
-    for (const row of rows.filter(row => !row.ok)) {
+    for (const row of rows.filter((row) => !row.ok)) {
       if (performance.now() >= deadline) break;
       try {
         const seen = fetchPublished(row.pkg.name, row.pkg.version, remaining());
-        if (!seen) { row.reason = "is not on the registry"; continue; }
+        if (!seen) {
+          row.reason = "is not on the registry";
+          continue;
+        }
         const mismatch = mismatchReason(row.pkg, seen, null);
-        if (mismatch) throw new Error(`${row.pkg.name}@${row.pkg.version} is already published but is NOT this release: ${mismatch}`);
+        if (mismatch)
+          throw new Error(
+            `${row.pkg.name}@${row.pkg.version} is already published but is NOT this release: ${mismatch}`
+          );
         if (performance.now() >= deadline) break;
         const latest = fetchLatestTag(row.pkg.name, remaining());
         row.ok = latest === row.pkg.version;
@@ -248,7 +250,7 @@ function awaitVisibleSet(packages) {
         break;
       }
     }
-    if (rows.every(row => row.ok) || attempt === VERIFY_ATTEMPTS || performance.now() >= deadline) break;
+    if (rows.every((row) => row.ok) || attempt === VERIFY_ATTEMPTS || performance.now() >= deadline) break;
     sleepSync(Math.min(delay, deadline - performance.now()));
     delay = Math.min(delay * 2, 30_000);
   }
@@ -267,7 +269,7 @@ if (!verifyOnly) {
     console.error(
       "error: refusing to publish without --tag <release tag>.\n" +
         "       npm `latest` must not move before the release it belongs to is complete,\n" +
-        "       and without the tag that completeness cannot be checked.",
+        "       and without the tag that completeness cannot be checked."
     );
     process.exit(1);
   }
@@ -277,7 +279,7 @@ if (!verifyOnly) {
     console.error(
       `error: ${err.message}\n` +
         `       Publishing now would move npm \`latest\` to a release whose downloads do\n` +
-        `       not exist. Let the asset jobs finish and rerun — nothing has been published.`,
+        `       not exist. Let the asset jobs finish and rerun — nothing has been published.`
     );
     process.exit(1);
   }
@@ -290,7 +292,7 @@ if (verifyOnly) {
     if (ok) console.log(`✓ ${pkg.name}@${pkg.version} published and tagged latest`);
     else console.error(`✗ ${pkg.name}@${pkg.version} ${reason}`);
   }
-  process.exit(results.every(row => row.ok) ? 0 : 1);
+  process.exit(results.every((row) => row.ok) ? 0 : 1);
 }
 
 // Preflight every target before the first publish, so a set that is already
@@ -306,7 +308,7 @@ for (const pkg of pkgs) {
     if (reason) {
       console.error(
         `error: ${pkg.name}@${pkg.version} is already published but is NOT this release: ${reason}.\n` +
-          `       npm versions are immutable — this needs a new version, not a rerun.`,
+          `       npm versions are immutable — this needs a new version, not a rerun.`
       );
       process.exit(1);
     }
@@ -320,21 +322,13 @@ for (const { pkg, published } of state) {
     continue;
   }
   console.log(`→ publishing ${pkg.name}@${pkg.version}`);
-  const res = npm([
-    "publish",
-    `--workspace=${pkg.name}`,
-    "--access",
-    "public",
-    "--provenance",
-    "--tag",
-    "latest",
-  ]);
+  const res = npm(["publish", `--workspace=${pkg.name}`, "--access", "public", "--provenance", "--tag", "latest"]);
   process.stdout.write(res.stdout ?? "");
   process.stderr.write(res.stderr ?? "");
   if (res.status !== 0) {
     console.error(
       `error: publishing ${pkg.name}@${pkg.version} failed.\n` +
-        `       Rerun this script — packages already on the registry are skipped.`,
+        `       Rerun this script — packages already on the registry are skipped.`
     );
     process.exit(res.status || 1);
   }

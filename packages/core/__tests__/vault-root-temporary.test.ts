@@ -17,7 +17,14 @@ test("temporary library vaults leave the default root history untouched; explici
   delete env.BASTRA_VAULT_ROOTS_PATH;
   const guard = new URL("../src/vault-root-guard.ts", import.meta.url).href;
   const vault = new URL("../src/vault.ts", import.meta.url).href;
-  const output = execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+  const output = execFileSync(
+    process.execPath,
+    [
+      "--import",
+      "tsx",
+      "--input-type=module",
+      "-e",
+      `
     import assert from 'node:assert/strict';
     import { existsSync } from 'node:fs';
     import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
@@ -47,6 +54,9 @@ test("temporary library vaults leave the default root history untouched; explici
     noteVaultRootPresent(fixture);
     assert.ok(JSON.parse(await readFile(process.env.BASTRA_VAULT_ROOTS_PATH, 'utf8'))[fixture]);
     console.log('ok');
-  `], { env, encoding: "utf8" });
+  `,
+    ],
+    { env, encoding: "utf8" }
+  );
   assert.equal(output.trim(), "ok");
 });

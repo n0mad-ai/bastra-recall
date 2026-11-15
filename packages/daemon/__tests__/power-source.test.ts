@@ -23,7 +23,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const AC = "Now drawing from 'AC Power'\n -InternalBattery-0 (id=1)\t100%; charged; 0:00 remaining present: true\n";
-const BATT = "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=1)\t80%; discharging; 4:10 remaining present: true\n";
+const BATT =
+  "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=1)\t80%; discharging; 4:10 remaining present: true\n";
 
 test("pmset output: AC, battery, UPS and garbage", () => {
   assert.equal(parsePmsetBatt(AC), "ac");
@@ -44,7 +45,12 @@ test("readPowerSource: macOS asks pmset, other platforms are neutral, a failing 
   assert.equal(await readPowerSource(exec, "linux"), "unknown");
   assert.equal(await readPowerSource(exec, "win32"), "unknown");
   assert.equal(calls.length, 1, "no pmset call off macOS");
-  assert.equal(await readPowerSource(async () => { throw new Error("ENOENT"); }, "darwin"), "unknown");
+  assert.equal(
+    await readPowerSource(async () => {
+      throw new Error("ENOENT");
+    }, "darwin"),
+    "unknown"
+  );
 });
 
 test("the switch: default off, file value, env wins both ways", () => {
@@ -52,7 +58,11 @@ test("the switch: default off, file value, env wins both ways", () => {
   assert.equal(batterySaverEnabled(true, {}), true);
   assert.equal(batterySaverEnabled(true, { BASTRA_BATTERY_SAVER: "off" }), false);
   assert.equal(batterySaverEnabled(false, { BASTRA_BATTERY_SAVER: "1" }), true);
-  assert.equal(batterySaverEnabled(true, { BASTRA_BATTERY_SAVER: "maybe" }), true, "an unreadable env value falls back to the file");
+  assert.equal(
+    batterySaverEnabled(true, { BASTRA_BATTERY_SAVER: "maybe" }),
+    true,
+    "an unreadable env value falls back to the file"
+  );
 });
 
 function scripted(seq: PowerSource[]): () => Promise<PowerSource> {
@@ -72,7 +82,13 @@ test("monitor: saving only with the switch on AND on battery", async () => {
   assert.equal(on.saving(), false, "unknown behaves like AC");
 
   let reads = 0;
-  const off = createPowerMonitor({ enabled: false, read: async () => { reads++; return "battery"; } });
+  const off = createPowerMonitor({
+    enabled: false,
+    read: async () => {
+      reads++;
+      return "battery";
+    },
+  });
   await off.poll();
   assert.equal(off.saving(), false);
   assert.equal(reads, 0, "with the switch off, power is never read");
@@ -82,7 +98,9 @@ test("monitor: deferred work waits for AC and resumes on the plug-in reading", a
   const m = createPowerMonitor({ enabled: true, read: scripted(["battery", "battery", "ac"]) });
   await m.poll();
   let released = false;
-  const waiting = m.waitUntilNotSaving().then(() => { released = true; });
+  const waiting = m.waitUntilNotSaving().then(() => {
+    released = true;
+  });
   await m.poll();
   await Promise.resolve();
   assert.equal(released, false, "still on battery");
@@ -100,7 +118,9 @@ function warmup(deferred: () => boolean) {
     providerAvailable: () => true,
     lastOkAt: () => null,
     deferred,
-    warm: async () => { warms++; },
+    warm: async () => {
+      warms++;
+    },
   });
   return { w, warms: () => warms };
 }

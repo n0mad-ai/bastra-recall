@@ -29,13 +29,13 @@
 export function rerankWindow<T>(
   pool: readonly T[],
   n: number,
-  scoreOf: (item: T, indexInWindow: number) => number,
+  scoreOf: (item: T, indexInWindow: number) => number
 ): T[] {
   if (n <= 0) return [...pool];
   const head = pool.slice(0, n);
   const tail = pool.slice(n);
   const scored = head.map((item, i) => ({ item, i, score: scoreOf(item, i) }));
-  scored.sort((a, b) => (b.score - a.score) || (a.i - b.i));
+  scored.sort((a, b) => b.score - a.score || a.i - b.i);
   return [...scored.map((s) => s.item), ...tail];
 }
 
@@ -97,7 +97,7 @@ export interface PairedResult {
  */
 export function pairedComparison(
   deltas: readonly number[],
-  opts: { iterations?: number; seed?: number } = {},
+  opts: { iterations?: number; seed?: number } = {}
 ): PairedResult {
   const iterations = opts.iterations ?? 10_000;
   const seed = opts.seed ?? 20260909;

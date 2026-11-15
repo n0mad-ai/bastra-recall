@@ -79,8 +79,8 @@ export function runnerCommand(dir, runner, files = []) {
       // The repository's own `--test` flags are reused (`--experimental-strip-types`
       // and friends), because without them the suite does not even parse; only
       // the reporter and the file list are ours.
-      const extra = (runner.script.match(/--experimental-\S+|--import\s+\S+|--loader\s+\S+/g) ?? []).flatMap(
-        (f) => f.split(/\s+/),
+      const extra = (runner.script.match(/--experimental-\S+|--import\s+\S+|--loader\s+\S+/g) ?? []).flatMap((f) =>
+        f.split(/\s+/)
       );
       const targets = files.length > 0 ? files : testFilesOf(dir, runner);
       return { cmd: process.execPath, args: ["--test", "--test-reporter=tap", ...extra, ...targets] };
@@ -186,9 +186,7 @@ export async function runSuite(dir, runner, { files = [], timeoutMs = DEFAULT_TI
     return { status: "error", cases: new Map(), detail: result.spawnError };
   }
   const parsed =
-    runner.reporter === "tap"
-      ? parseTap(result.stdout)
-      : parseJsonReport(runner.kind, result.stdout, result.stderr);
+    runner.reporter === "tap" ? parseTap(result.stdout) : parseJsonReport(runner.kind, result.stdout, result.stderr);
   if (parsed === null || parsed.cases.size === 0) {
     return {
       status: "error",
@@ -354,7 +352,7 @@ export async function confirmCases(
   broke,
   fileOf,
   expected,
-  { timeoutMs = DEFAULT_TIMEOUT_MS } = {},
+  { timeoutMs = DEFAULT_TIMEOUT_MS } = {}
 ) {
   if (brokenFiles.length === 0) return { status: "ok", confirmed: new Set(), casesByFile: new Map() };
   const run = await runSuite(dir, runner, { files: brokenFiles, timeoutMs });

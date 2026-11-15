@@ -199,10 +199,7 @@ function gensDir(graphDir: string): string {
  * Take the build lock for one repository, or return null when another live
  * holder has it. Never waits: the caller decides what "busy" means.
  */
-export async function acquireRepoLock(
-  graphDir: string,
-  opts: AcquireOptions = {},
-): Promise<RepoLock | null> {
+export async function acquireRepoLock(graphDir: string, opts: AcquireOptions = {}): Promise<RepoLock | null> {
   const staleMs = opts.staleMs ?? LOCK_STALE_MS;
   const renewMs = opts.renewMs ?? LOCK_RENEW_MS;
   const path = lockPath(graphDir);
@@ -330,7 +327,7 @@ async function claimTurn(gens: string, name: string): Promise<boolean> {
     // Gone since our mkdir: someone took it over. One plain claim, like theirs.
     return mkdir(marker).then(
       () => true,
-      () => false,
+      () => false
     );
   }
   if (Date.now() - seen.mtimeMs < LOCK_STALE_MS) return false;
@@ -348,7 +345,7 @@ async function claimTurn(gens: string, name: string): Promise<boolean> {
   // marker for good.
   return mkdir(join(marker, `takeover-${Math.trunc(seen.mtimeMs)}`)).then(
     () => true,
-    () => false,
+    () => false
   );
 }
 
@@ -375,7 +372,7 @@ async function pruneOldGenerations(gens: string, gen: number): Promise<void> {
       } catch {
         /* another process may already have swept it */
       }
-    }),
+    })
   );
 }
 
@@ -404,7 +401,7 @@ function makeLock(
   tookOver: boolean,
   renewMs: number,
   heartbeat: boolean,
-  onRenew?: () => void,
+  onRenew?: () => void
 ): RepoLock {
   let released = false;
   let live: FileHandle | null = handle;
@@ -485,11 +482,7 @@ async function freeLock(path: string, gens: string, record: LockRecord): Promise
  * `rename` give the temporary file's inode the lock's name, so the descriptor
  * and the lock path are the same file until the next generation replaces it.
  */
-async function publish(
-  path: string,
-  record: LockRecord,
-  mode: "create" | "replace",
-): Promise<FileHandle | null> {
+async function publish(path: string, record: LockRecord, mode: "create" | "replace"): Promise<FileHandle | null> {
   const tmp = `${path}.new-${process.pid}-${record.token}`;
   let handle: FileHandle | null = null;
   try {
@@ -555,11 +548,7 @@ async function isYoungerThan(path: string, ms: number): Promise<boolean> {
  * record. Should it nonetheless catch a partial line, the mtime it just saw is
  * fresh, and {@link UNREADABLE_GRACE_MS} makes that "busy", not "junk".
  */
-async function renew(
-  handle: FileHandle,
-  record: LockRecord,
-  onRenew?: () => void,
-): Promise<void> {
+async function renew(handle: FileHandle, record: LockRecord, onRenew?: () => void): Promise<void> {
   const beat = { ...record, renewedAt: new Date().toISOString() };
   const text = serialize(beat);
   try {
@@ -571,7 +560,6 @@ async function renew(
   }
   onRenew?.();
 }
-
 
 /**
  * What is at the lock path. "Nobody holds it" and "somebody wrote something
@@ -633,8 +621,6 @@ async function readRecord(path: string): Promise<LockRecord | null> {
   const state = await readState(path);
   return state.kind === "held" ? state.record : null;
 }
-
-
 
 function newRecord(gen: number): LockRecord {
   const now = new Date().toISOString();

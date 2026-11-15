@@ -79,7 +79,11 @@ export function binDirOnPath(binPath: string, pathEnv: string = process.env.PATH
     .split(delimiter)
     .filter(Boolean)
     .some((d) => {
-      try { return resolve(d) === dir; } catch { return false; }
+      try {
+        return resolve(d) === dir;
+      } catch {
+        return false;
+      }
     });
 }
 

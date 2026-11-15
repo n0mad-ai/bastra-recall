@@ -96,7 +96,7 @@ async function describe(
   dir: string,
   label: string,
   vaultRoot: string | null,
-  previousLabel?: string,
+  previousLabel?: string
 ): Promise<ClientMemoryDir | null> {
   // The very walk `bastra import clients` runs, so what doctor counts is what
   // the import writes (subfolders included, MEMORY.md and dotdirs not).
@@ -118,7 +118,7 @@ async function describe(
 /** Every client memory folder that holds at least one note. Never throws. */
 export async function findClientMemoryDirs(
   vaultRoot: string | null,
-  env: ClientMemoryEnv = defaultClientMemoryEnv(),
+  env: ClientMemoryEnv = defaultClientMemoryEnv()
 ): Promise<ClientMemoryDir[]> {
   const out: ClientMemoryDir[] = [];
   const claudeRoot = env.claudeConfigDir ?? join(env.home, ".claude");
@@ -131,11 +131,16 @@ export async function findClientMemoryDirs(
       join(projectsDir, project, "memory"),
       label,
       vaultRoot,
-      previous === label ? undefined : previous,
+      previous === label ? undefined : previous
     );
     if (d) out.push(d);
   }
-  const codex = await describe("codex", join(env.codexHome ?? join(env.home, ".codex"), "memories"), "codex", vaultRoot);
+  const codex = await describe(
+    "codex",
+    join(env.codexHome ?? join(env.home, ".codex"), "memories"),
+    "codex",
+    vaultRoot
+  );
   if (codex) out.push(codex);
   return out;
 }
@@ -147,12 +152,12 @@ export function clientMemoryLines(dirs: ClientMemoryDir[]): string[] {
   const lines = dirs.map(
     (d) =>
       `${d.pending > 0 ? "⚠ " : ""}${d.client}: ${d.dir} — ${d.notes} note(s)` +
-      (d.pending > 0 ? `, ${d.pending} not in the vault yet` : ", all imported"),
+      (d.pending > 0 ? `, ${d.pending} not in the vault yet` : ", all imported")
   );
   if (pending > 0) {
     lines.push(
       `recall never reads these folders — import them with 'bastra import clients' ` +
-        `(add --dry-run to preview; re-running only picks up what changed)`,
+        `(add --dry-run to preview; re-running only picks up what changed)`
     );
   }
   return lines;
@@ -190,14 +195,14 @@ export interface LabelMigration {
 export async function migrateClientLabels(
   vaultRoot: string,
   dirs: ClientMemoryDir[],
-  { dryRun = false }: { dryRun?: boolean } = {},
+  { dryRun = false }: { dryRun?: boolean } = {}
 ): Promise<LabelMigration[]> {
   const moved: LabelMigration[] = [];
   let skipped: LabelMigration[] = [];
   let todo = dirs.filter((d) => d.previousLabel);
   // `~/home` has to leave `claude-code-home` before the home directory can
   // move in, so repeat while a pass still moved something.
-  for (let again = true; again; ) {
+  for (let again = true; again;) {
     again = false;
     skipped = [];
     const left: ClientMemoryDir[] = [];
@@ -254,7 +259,7 @@ async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean
       ? (await readdir(newDir, { recursive: true, withFileTypes: true }))
           .filter((f) => f.isFile() && f.name.endsWith(".md"))
           .map((f) => basename(f.name, ".md"))
-      : [],
+      : []
   );
   const markerPath = join(oldDir, ".bastra-imported");
   // Only imported Markdown and the root marker belong to this migration.
@@ -316,7 +321,7 @@ async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean
   const oldIds = [...newIdOf.keys()].sort((a, b) => b.length - a.length).map(escapeRe);
   const token = new RegExp(
     `(?<![\\p{L}\\p{N}-])(?:(${oldIds.join("|") || "(?!)"})(?![\\p{L}\\p{N}-])|${escapeRe(from)}(?![\\p{L}\\p{N}]))`,
-    "gu",
+    "gu"
   );
   const rewrite = (s: string) => s.replace(token, (_, id?: string) => (id ? newIdOf.get(id)! : to));
 
@@ -327,14 +332,18 @@ async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean
   const plan: Array<{ path: string; target: string; dest: string; oldId?: string; newId?: string }> = [];
   for (const path of [...files.filter((f) => f !== markerPath && !foreign.includes(f)), markerPath]) {
     const target = join(dirname(path), rewrite(basename(path)));
-    if (target !== path && await migrationPathTaken(target)) return skip(`${target} exists already`);
+    if (target !== path && (await migrationPathTaken(target))) return skip(`${target} exists already`);
     const dest = join(newDir, relative(oldDir, target));
-    if (byFile && await migrationPathTaken(dest)) return skip(`${dest} exists already`);
+    if (byFile && (await migrationPathTaken(dest))) return skip(`${dest} exists already`);
     const oldId = basename(path, ".md");
     const newId = path.endsWith(".md") ? basename(target, ".md") : oldId;
     const located = ids.locate(newId);
-    if (located.kind === "incomplete" || located.kind === "ambiguous" ||
-        (located.kind === "unique" && located.filePath !== path)) return skip(`the id ${newId} is taken or cannot be checked`);
+    if (
+      located.kind === "incomplete" ||
+      located.kind === "ambiguous" ||
+      (located.kind === "unique" && located.filePath !== path)
+    )
+      return skip(`the id ${newId} is taken or cannot be checked`);
     plan.push({ path, target, dest, ...(newId !== oldId ? { oldId, newId } : {}) });
   }
   const memories = plan.filter((p) => p.newId).length;
@@ -377,8 +386,10 @@ async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean
 /** A dangling symlink still occupies its name; stat would treat its missing
  * target as a free slot and rename could replace the user's link. */
 async function migrationPathTaken(path: string): Promise<boolean> {
-  try { await lstat(path); return true; }
-  catch (err) {
+  try {
+    await lstat(path);
+    return true;
+  } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
     throw err;
   }

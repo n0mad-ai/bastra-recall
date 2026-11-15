@@ -48,7 +48,7 @@ async function makeIndex(): Promise<{ idx: SearchIndex; dir: string }> {
   await writeFile(
     join(dir, "scope.md"),
     memo("scope", "telescope assembly manual", "orbital docking procedure", "Notes on telescope assembly manual."),
-    "utf8",
+    "utf8"
   );
   const vault = new Vault(dir);
   await vault.init();
@@ -78,7 +78,7 @@ test("matched_recall_when: false when the query hits only title/body (not recall
     assert.equal(
       hit!.matched_recall_when,
       false,
-      "a title/body-only match must NOT set the recall_when flag (this is the #110 noise case)",
+      "a title/body-only match must NOT set the recall_when flag (this is the #110 noise case)"
     );
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });

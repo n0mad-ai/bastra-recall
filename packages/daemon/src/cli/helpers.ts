@@ -64,7 +64,7 @@ export function buildServerBlock(
   forwarderPath: string = FORWARDER_SCRIPT_PATH,
   surface: ToolSurface = INSTALL_TOOL_SURFACE,
   daemonUrl: string | null = null,
-  keptEnv: Record<string, string> = {},
+  keptEnv: Record<string, string> = {}
 ): McpServerBlock {
   const env: Record<string, string> = {
     ...keptEnv,
@@ -83,7 +83,7 @@ export function buildServerBlock(
 /** The env keys the installer writes and therefore owns (#647) — with their
  *  legacy NEXUS_* names, which a reinstall has always cleaned out. */
 const OWNED_ENV_KEYS = new Set(
-  ["VAULT_PATH", "TOOL_SURFACE", "DAEMON_URL"].flatMap((k) => [`BASTRA_${k}`, `NEXUS_${k}`]),
+  ["VAULT_PATH", "TOOL_SURFACE", "DAEMON_URL"].flatMap((k) => [`BASTRA_${k}`, `NEXUS_${k}`])
 );
 
 /**
@@ -160,12 +160,16 @@ export function existingToolSurface(existing: unknown): ToolSurface | null {
  */
 export function mcpEnvFeatures(
   existing: unknown,
-  configPath: string,
+  configPath: string
 ): { toolSurface?: "search"; sessionContextOff?: true; mcpConfig?: string } {
   const out: { toolSurface?: "search"; sessionContextOff?: true; mcpConfig?: string } = {};
   if (existingToolSurface(existing) === "search") out.toolSurface = "search";
   const env = typeof existing === "object" && existing !== null ? (existing as { env?: unknown }).env : undefined;
-  if (typeof env === "object" && env !== null && isOffValue(String((env as Record<string, unknown>).BASTRA_MCP_SESSION_CONTEXT ?? ""))) {
+  if (
+    typeof env === "object" &&
+    env !== null &&
+    isOffValue(String((env as Record<string, unknown>).BASTRA_MCP_SESSION_CONTEXT ?? ""))
+  ) {
     out.sessionContextOff = true;
   }
   if (out.toolSurface || out.sessionContextOff) out.mcpConfig = configPath;
@@ -187,16 +191,27 @@ export function blocksMatch(existing: unknown, target: McpServerBlock): boolean 
 }
 
 export async function fileExists(p: string): Promise<boolean> {
-  try { await stat(p); return true; } catch { return false; }
+  try {
+    await stat(p);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-export interface ParsedConfig { data: Record<string, unknown>; existed: boolean; }
+export interface ParsedConfig {
+  data: Record<string, unknown>;
+  existed: boolean;
+}
 
 export async function readJsonConfig(p: string): Promise<ParsedConfig | { error: string }> {
   if (!(await fileExists(p))) return { data: {}, existed: false };
   let raw: string;
-  try { raw = await readFile(p, "utf8"); }
-  catch (e) { return { error: `cannot read ${p}: ${(e as Error).message}` }; }
+  try {
+    raw = await readFile(p, "utf8");
+  } catch (e) {
+    return { error: `cannot read ${p}: ${(e as Error).message}` };
+  }
   if (raw.trim() === "") return { data: {}, existed: true };
   try {
     const parsed = JSON.parse(raw);
@@ -232,7 +247,9 @@ async function detectExistingVault(): Promise<string | null> {
       const data = JSON.parse(raw);
       const vault = data?.mcpServers?.[SERVER_KEY]?.env?.BASTRA_VAULT_PATH;
       if (typeof vault === "string" && vault.length > 0) return vault;
-    } catch { /* ignore — try next */ }
+    } catch {
+      /* ignore — try next */
+    }
   }
   // Codex owns TOML serialization; ask its official CLI for the normalized
   // registration instead of maintaining a second TOML parser (#15).
@@ -483,22 +500,48 @@ export function probeDaemon(endpoint: DaemonEndpoint = resolveDaemonEndpoint()):
               buildRevision: typeof data.build_revision === "string" ? data.build_revision : undefined,
               triggerExpandModel: !("trigger_expand" in data)
                 ? undefined
-                : typeof data.trigger_expand?.model === "string" ? data.trigger_expand.model : null,
-              power: typeof data.power?.battery_saver === "boolean"
-                ? { batterySaver: data.power.battery_saver, source: String(data.power.source), saving: data.power.saving === true }
-                : undefined,
+                : typeof data.trigger_expand?.model === "string"
+                  ? data.trigger_expand.model
+                  : null,
+              power:
+                typeof data.power?.battery_saver === "boolean"
+                  ? {
+                      batterySaver: data.power.battery_saver,
+                      source: String(data.power.source),
+                      saving: data.power.saving === true,
+                    }
+                  : undefined,
               startedBy: typeof data.started_by === "string" ? data.started_by : undefined,
               envOrigin: typeof data.env_origin === "string" ? data.env_origin : undefined,
               configFingerprint: typeof data.config_fingerprint === "string" ? data.config_fingerprint : undefined,
             });
             return;
           }
-        } catch { /* fallthrough */ }
-        resolve_({ ok: false, endpoint, detail: `daemon at ${endpoint.label} answered but health unexpected (status=${res.statusCode})` });
+        } catch {
+          /* fallthrough */
+        }
+        resolve_({
+          ok: false,
+          endpoint,
+          detail: `daemon at ${endpoint.label} answered but health unexpected (status=${res.statusCode})`,
+        });
       });
     });
-    req.on("timeout", () => { req.destroy(); resolve_({ ok: false, endpoint, detail: `timeout (no daemon listening on ${endpoint.label} — forwarder will auto-spawn on first MCP call)` }); });
-    req.on("error", (e) => resolve_({ ok: false, endpoint, detail: `not reachable at ${endpoint.label}: ${(e as NodeJS.ErrnoException).code ?? e.message} (forwarder will auto-spawn on first MCP call)` }));
+    req.on("timeout", () => {
+      req.destroy();
+      resolve_({
+        ok: false,
+        endpoint,
+        detail: `timeout (no daemon listening on ${endpoint.label} — forwarder will auto-spawn on first MCP call)`,
+      });
+    });
+    req.on("error", (e) =>
+      resolve_({
+        ok: false,
+        endpoint,
+        detail: `not reachable at ${endpoint.label}: ${(e as NodeJS.ErrnoException).code ?? e.message} (forwarder will auto-spawn on first MCP call)`,
+      })
+    );
     req.end();
   });
 }
@@ -511,18 +554,31 @@ export function getServersBlock(data: Record<string, unknown>): Record<string, u
 
 export function formatStatus(status: string): string {
   switch (status) {
-    case "installed": return "✓ installed";
-    case "already-installed": return "= already installed";
-    case "would-install": return "~ would install (dry-run)";
-    case "removed": return "✓ removed";
-    case "not-present": return "= not present";
-    case "would-remove": return "~ would remove (dry-run)";
-    case "ok": return "✓ ok";
-    case "missing": return "✗ missing";
-    case "broken": return "✗ broken";
-    case "not-implemented": return "… not implemented yet";
-    case "error": return "✗ error";
-    case "warn": return "! note";
-    default: return status;
+    case "installed":
+      return "✓ installed";
+    case "already-installed":
+      return "= already installed";
+    case "would-install":
+      return "~ would install (dry-run)";
+    case "removed":
+      return "✓ removed";
+    case "not-present":
+      return "= not present";
+    case "would-remove":
+      return "~ would remove (dry-run)";
+    case "ok":
+      return "✓ ok";
+    case "missing":
+      return "✗ missing";
+    case "broken":
+      return "✗ broken";
+    case "not-implemented":
+      return "… not implemented yet";
+    case "error":
+      return "✗ error";
+    case "warn":
+      return "! note";
+    default:
+      return status;
   }
 }

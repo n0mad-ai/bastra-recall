@@ -91,14 +91,8 @@ test("#447: a matching pair passes — the check does not simply reject everythi
 test("#447: a case added or removed on either side is named", () => {
   const s = stagedQuery();
   const merged = mergeCases([s], [labelFor(s)]);
-  assert.match(
-    checkGoldAgainstLabels({ cases: [] }, merged, PROVENANCE)[0].problem,
-    /missing from the merged gold/,
-  );
-  assert.match(
-    checkGoldAgainstLabels({ cases: merged }, [], PROVENANCE)[0].problem,
-    /no longer labelled/,
-  );
+  assert.match(checkGoldAgainstLabels({ cases: [] }, merged, PROVENANCE)[0].problem, /missing from the merged gold/);
+  assert.match(checkGoldAgainstLabels({ cases: merged }, [], PROVENANCE)[0].problem, /no longer labelled/);
 });
 
 test("#447: a gold file from a different batch entirely is rejected, not silently accepted", () => {
@@ -109,7 +103,7 @@ test("#447: a gold file from a different batch entirely is rejected, not silentl
   const issues = checkGoldAgainstLabels(
     { cases: mergeCases([other], [labelFor(other)]) },
     mergeCases([s], [labelFor(s)]),
-    PROVENANCE,
+    PROVENANCE
   );
   assert.equal(issues.length, 2, "beide Richtungen werden gemeldet");
   assert.ok(issues.some((i) => /missing from the merged gold/.test(i.problem)));
@@ -122,7 +116,7 @@ test("#447: a staged file changed since the merge is caught too", () => {
   const issues = checkGoldAgainstLabels(
     { cases: merged, merged_from: { ...PROVENANCE, staged_sha256: "d".repeat(64) } },
     merged,
-    PROVENANCE,
+    PROVENANCE
   );
   assert.equal(issues.length, 1);
   assert.match(issues[0].problem, /staged file changed since the merge/);
@@ -137,7 +131,7 @@ test("#447: a gold file written before #447 has no provenance — the case compa
   const drifted = checkGoldAgainstLabels(
     { cases: merged },
     mergeCases([s], [labelFor(s, { expected_ids: ["m2"] })]),
-    PROVENANCE,
+    PROVENANCE
   );
   assert.equal(drifted.length, 1);
   assert.match(drifted[0].problem, /expected_ids/);
@@ -152,7 +146,7 @@ test("#447: a label change that touches no case is still caught by the recorded 
   const issues = checkGoldAgainstLabels(
     { cases: merged, merged_from: { ...PROVENANCE, labels_sha256: "c".repeat(64) } },
     merged,
-    PROVENANCE,
+    PROVENANCE
   );
   assert.equal(issues.length, 1);
   assert.match(issues[0].problem, /label file changed since the merge/);
@@ -184,7 +178,7 @@ test("#447: `--check` goes red on a deliberately twisted pairing", async () => {
   assert.match(
     JSON.parse(readFileSync(gold, "utf8")).merged_from.labels,
     /labels\.json/,
-    "the gold file records which label state it was merged from",
+    "the gold file records which label state it was merged from"
   );
 
   const clean = await cli(["--check", "--staged", staged, "--labels", labels, "--gold", gold]);
@@ -199,8 +193,8 @@ test("#447: `--check` goes red on a deliberately twisted pairing", async () => {
         labels: [labelFor(s, { acceptable_alternatives: ["pref-no-backend-kill-or-bg-restart"] })],
       },
       null,
-      2,
-    ),
+      2
+    )
   );
 
   const drifted = await cli(["--check", "--staged", staged, "--labels", labels, "--gold", gold]);

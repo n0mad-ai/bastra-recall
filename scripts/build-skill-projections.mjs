@@ -109,7 +109,8 @@ export function renderPluginSkill(canonical) {
 export function renderDraftReviewRule(text, rule, language) {
   const start = `<!-- draft-review-decision-rule:${language} -->`;
   const end = `<!-- /draft-review-decision-rule:${language} -->`;
-  const a = text.indexOf(start), b = text.indexOf(end, a);
+  const a = text.indexOf(start),
+    b = text.indexOf(end, a);
   if (a < 0 || b < 0) throw new Error(`missing draft review rule region: ${language}`);
   const body = language === "both" ? `${rule.en}\n**Deutsch:** ${rule.de}` : rule[language];
   return text.slice(0, a) + start + "\n" + body + "\n" + text.slice(b);
@@ -117,13 +118,15 @@ export function renderDraftReviewRule(text, rule, language) {
 
 export async function buildSkillProjections({ write = true } = {}) {
   const rule = JSON.parse(await readFile(DRAFT_REVIEW_RULE_PATH, "utf8"));
-  if (![rule.en, rule.de].every(value => typeof value === "string" && value.length > 0)) throw new Error("invalid draft review decision rule");
+  if (![rule.en, rule.de].every((value) => typeof value === "string" && value.length > 0))
+    throw new Error("invalid draft review decision rule");
   const source = await readFile(resolve(CANONICAL_DIR, "SKILL.md"), "utf8");
   const canonical = renderDraftReviewRule(source, rule, "both");
   if (write) {
     if (canonical !== source) await writeFile(resolve(CANONICAL_DIR, "SKILL.md"), canonical, "utf8");
     for (const name of ["PRIVACY.md", "USAGE.md", "hooks.md"]) {
-      const path = resolve(REPO_ROOT, "docs", name), before = await readFile(path, "utf8");
+      const path = resolve(REPO_ROOT, "docs", name),
+        before = await readFile(path, "utf8");
       const after = renderDraftReviewRule(renderDraftReviewRule(before, rule, "en"), rule, "de");
       if (after !== before) await writeFile(path, after, "utf8");
     }
@@ -143,7 +146,7 @@ export async function buildSkillProjections({ write = true } = {}) {
     }
     await copyFile(
       resolve(CANONICAL_DIR, "agents", "openai.yaml"),
-      resolve(PROJECTIONS.pluginSkillDir, "agents", "openai.yaml"),
+      resolve(PROJECTIONS.pluginSkillDir, "agents", "openai.yaml")
     );
   }
   return out;

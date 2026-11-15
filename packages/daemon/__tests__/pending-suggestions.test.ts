@@ -63,10 +63,12 @@ test("writePendingSuggestion onPersisted acknowledges only successfully stored r
   process.env.BASTRA_PENDING_SUGGESTIONS_PATH = path;
   let acknowledgments = 0;
   const persistedRows: unknown[] = [];
-  const opts = { onPersisted: () => {
-    acknowledgments++;
-    persistedRows.push(JSON.parse(readAppRecord("pending-suggestions", path)));
-  } };
+  const opts = {
+    onPersisted: () => {
+      acknowledgments++;
+      persistedRows.push(JSON.parse(readAppRecord("pending-suggestions", path)));
+    },
+  };
   try {
     process.env.BASTRA_PENDING_RELAY = "off";
     await writePendingSuggestion("persist me", opts);
@@ -119,7 +121,7 @@ test("formatPendingBlock (#510): under budget → all entries present, no trunca
     `<pending-save-suggestions source="stop-hook">\n` +
       `From earlier session(s) — evaluate silently, save via bastra-recall:save_memory only what genuinely qualifies:\n` +
       `<save-eval>one</save-eval>\n<save-eval>two</save-eval>\n` +
-      `</pending-save-suggestions>`,
+      `</pending-save-suggestions>`
   );
 });
 
@@ -172,7 +174,7 @@ test("SessionStart (#510): der AUSGELIEFERTE pending-Block ist auf das Budget ra
 
     const out = await runSessionLane(
       { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "pending-budget-wiring" },
-      "http://127.0.0.1:1",
+      "http://127.0.0.1:1"
     );
     const parsed = JSON.parse(out) as { hookSpecificOutput?: { additionalContext?: string } };
     const ctx = parsed.hookSpecificOutput?.additionalContext ?? "";
@@ -183,7 +185,7 @@ test("SessionStart (#510): der AUSGELIEFERTE pending-Block ist auf das Budget ra
     const block = ctx.slice(ctx.indexOf("<pending-save-suggestions"));
     assert.ok(
       block.length < PENDING_BLOCK_CHAR_BUDGET + 400,
-      `der ausgelieferte Block ist unbegrenzt: ${block.length}`,
+      `der ausgelieferte Block ist unbegrenzt: ${block.length}`
     );
   } finally {
     if (prev === undefined) delete process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
@@ -207,7 +209,7 @@ test("stop-hook (#48): injected skill body in role=user does not feed the heuris
   ]);
   assert.ok(
     turns.every((t) => t.role !== "user"),
-    `injected turns must not keep role=user, got: ${turns.map((t) => t.role).join(",")}`,
+    `injected turns must not keep role=user, got: ${turns.map((t) => t.role).join(",")}`
   );
   const suggestions = evaluateHeuristics(turns, { cwd: "/tmp" });
   assert.deepEqual(suggestions, [], "no heuristic may fire on injected system content");
@@ -257,7 +259,6 @@ test("pending-suggestions (#551): an entry inside the cap is stored byte-for-byt
   }
 });
 
-
 test("#1207: a busy lease bounds pending writes and reports no text", { timeout: 14_000 }, async (t) => {
   const { writeFile, readFile } = await import("node:fs/promises");
   const dir = await mkdtemp(join(tmpdir(), "bastra-pending-busy-"));
@@ -274,7 +275,10 @@ test("#1207: a busy lease bounds pending writes and reports no text", { timeout:
   const future = new Date(Date.now() + 60_000);
   await utimes(`${path}.lock`, future, future);
   let stderr = "";
-  t.mock.method(process.stderr, "write", (chunk: string) => { stderr += chunk; return true; });
+  t.mock.method(process.stderr, "write", (chunk: string) => {
+    stderr += chunk;
+    return true;
+  });
   const start = performance.now();
   await writePendingSuggestion("PRIVATE suggestion text");
   const elapsed = performance.now() - start;
@@ -287,20 +291,23 @@ test("#1207: a busy lease bounds pending writes and reports no text", { timeout:
   assert.doesNotMatch(stderr, /PRIVATE suggestion text/);
 });
 
-
-test("#1207: a recently crashed lease retains the pending suggestion after stale takeover", { timeout: 13_000 }, async (t) => {
-  const { writeFile } = await import("node:fs/promises");
-  const dir = await mkdtemp(join(tmpdir(), "bastra-pending-crashed-"));
-  const prev = process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
-  const path = join(dir, "pending.json");
-  process.env.BASTRA_PENDING_SUGGESTIONS_PATH = path;
-  t.after(async () => {
-    if (prev === undefined) delete process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
-    else process.env.BASTRA_PENDING_SUGGESTIONS_PATH = prev;
-    await rm(dir, { recursive: true, force: true });
-  });
-  await writeFile(`${path}.lock`, "crashed");
-  await writePendingSuggestion("retained after stale takeover");
-  const rows = JSON.parse(readAppRecord("pending-suggestions", path));
-  assert.equal(rows[0].blocks, "retained after stale takeover");
-});
+test(
+  "#1207: a recently crashed lease retains the pending suggestion after stale takeover",
+  { timeout: 13_000 },
+  async (t) => {
+    const { writeFile } = await import("node:fs/promises");
+    const dir = await mkdtemp(join(tmpdir(), "bastra-pending-crashed-"));
+    const prev = process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
+    const path = join(dir, "pending.json");
+    process.env.BASTRA_PENDING_SUGGESTIONS_PATH = path;
+    t.after(async () => {
+      if (prev === undefined) delete process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
+      else process.env.BASTRA_PENDING_SUGGESTIONS_PATH = prev;
+      await rm(dir, { recursive: true, force: true });
+    });
+    await writeFile(`${path}.lock`, "crashed");
+    await writePendingSuggestion("retained after stale takeover");
+    const rows = JSON.parse(readAppRecord("pending-suggestions", path));
+    assert.equal(rows[0].blocks, "retained after stale takeover");
+  }
+);

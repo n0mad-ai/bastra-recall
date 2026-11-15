@@ -64,17 +64,15 @@ export async function renderTuiPanel(
   reset: string,
   terminalWidth: number | null,
   config: PowerlineConfig,
-  options?: TuiPanelOptions,
+  options?: TuiPanelOptions
 ): Promise<string> {
-  const sym =
-    (config.display.charset || "unicode") === "text" ? TEXT_SYMBOLS : SYMBOLS;
+  const sym = (config.display.charset || "unicode") === "text" ? TEXT_SYMBOLS : SYMBOLS;
   const colors = data.colors;
 
   // Grid path: when display.tui grid config is present
   if (config.display.tui) {
     const gridConfig = config.display.tui;
-    const rawWidth =
-      gridConfig.terminalWidth ?? options?.rawTerminalWidth ?? 120;
+    const rawWidth = gridConfig.terminalWidth ?? options?.rawTerminalWidth ?? 120;
 
     // Merge box character overrides with charset defaults
     // Resolve box preset name or merge partial overrides with charset defaults
@@ -86,10 +84,7 @@ export async function renderTuiPanel(
     }
 
     // Estimate content width for initial segment resolution (grid will compute final widths)
-    const estPanelWidth = Math.max(
-      gridConfig.minWidth ?? MIN_PANEL_WIDTH,
-      rawWidth - (gridConfig.widthReserve ?? 45),
-    );
+    const estPanelWidth = Math.max(gridConfig.minWidth ?? MIN_PANEL_WIDTH, rawWidth - (gridConfig.widthReserve ?? 45));
     const estInnerWidth = estPanelWidth - 2;
     const estContentWidth = estInnerWidth - 2;
 
@@ -109,10 +104,7 @@ export async function renderTuiPanel(
     const templates = resolved.templates;
 
     const pf = colors.partFg;
-    const lateResolve = (
-      segment: string,
-      cellWidth: number,
-    ): string | undefined => {
+    const lateResolve = (segment: string, cellWidth: number): string | undefined => {
       if (segment === "context") {
         return buildContextLine(data, cellWidth, sym, reset, colors) ?? "";
       }
@@ -132,13 +124,7 @@ export async function renderTuiPanel(
       return undefined;
     };
 
-    const gridResult = renderGrid(
-      gridConfig,
-      resolvedData,
-      mergedBox,
-      rawWidth,
-      lateResolve,
-    );
+    const gridResult = renderGrid(gridConfig, resolvedData, mergedBox, rawWidth, lateResolve);
     const innerWidth = gridResult.panelWidth - 2;
 
     const footerLeft = gridConfig.footer?.left
@@ -149,15 +135,7 @@ export async function renderTuiPanel(
       : undefined;
 
     const lines: string[] = [];
-    lines.push(
-      buildTitleBar(
-        data,
-        mergedBox,
-        innerWidth,
-        gridConfig.title,
-        resolvedData,
-      ),
-    );
+    lines.push(buildTitleBar(data, mergedBox, innerWidth, gridConfig.title, resolvedData));
     lines.push(...gridResult.lines);
     lines.push(bottomBorder(mergedBox, innerWidth, footerLeft, footerRight));
     return SYNC_START + lines.map((l) => WS_GUARD + l).join("\n") + SYNC_END;

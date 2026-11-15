@@ -29,24 +29,64 @@ export const DRAFT_SESSION_DICE_MIN = 0.6;
 export const DRAFT_RETAIN_AGE_MS = 180 * 24 * 60 * 60 * 1000;
 
 const timestamp = z.number().finite().nonnegative();
-const draftSchema = z.object({
-  id: z.string().regex(/^d-[a-f0-9]{12}$/),
-  fp: z.string().regex(/^[a-f0-9]{40}$/),
-  kind: z.enum(["restated", "correction", "answer", "after-failure", "typed"]),
-  quote: z.string(), context: z.string().optional(),
-  situation: z.object({
-    cwd: z.string().optional(), project: z.string().optional(), branch: z.string().optional(),
-    before: z.array(z.string()).default([]), after: z.array(z.string()).default([]),
-    reads: z.array(z.string()).default([]), lits: z.array(z.string()).default([]),
-  }).passthrough().default({ before: [], after: [], reads: [], lits: [] }),
-  evidence: z.array(z.object({ session_id: z.string(), turn: z.number().int().nonnegative(), ts: timestamp, client: z.string().optional() }).passthrough()).min(1),
-  created: timestamp, last_touched: timestamp,
-  surfaced: z.array(z.object({ session_id: z.string(), ts: timestamp, novel: z.array(z.string()), used: z.object({ ts: timestamp, tool: z.string(), exit_code: z.literal(0), matched: z.array(z.string()) }).optional() }).passthrough()).default([]),
-  state: z.enum(["open", "promoted", "rejected"]).default("open"),
-  vault_id: z.string().optional(),
-  promoted_hash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
-  memory_id: z.string().optional(), evidence_key: z.string().optional(), announce: z.boolean().optional(),
-}).passthrough();
+const draftSchema = z
+  .object({
+    id: z.string().regex(/^d-[a-f0-9]{12}$/),
+    fp: z.string().regex(/^[a-f0-9]{40}$/),
+    kind: z.enum(["restated", "correction", "answer", "after-failure", "typed"]),
+    quote: z.string(),
+    context: z.string().optional(),
+    situation: z
+      .object({
+        cwd: z.string().optional(),
+        project: z.string().optional(),
+        branch: z.string().optional(),
+        before: z.array(z.string()).default([]),
+        after: z.array(z.string()).default([]),
+        reads: z.array(z.string()).default([]),
+        lits: z.array(z.string()).default([]),
+      })
+      .passthrough()
+      .default({ before: [], after: [], reads: [], lits: [] }),
+    evidence: z
+      .array(
+        z
+          .object({
+            session_id: z.string(),
+            turn: z.number().int().nonnegative(),
+            ts: timestamp,
+            client: z.string().optional(),
+          })
+          .passthrough()
+      )
+      .min(1),
+    created: timestamp,
+    last_touched: timestamp,
+    surfaced: z
+      .array(
+        z
+          .object({
+            session_id: z.string(),
+            ts: timestamp,
+            novel: z.array(z.string()),
+            used: z
+              .object({ ts: timestamp, tool: z.string(), exit_code: z.literal(0), matched: z.array(z.string()) })
+              .optional(),
+          })
+          .passthrough()
+      )
+      .default([]),
+    state: z.enum(["open", "promoted", "rejected"]).default("open"),
+    vault_id: z.string().optional(),
+    promoted_hash: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
+    memory_id: z.string().optional(),
+    evidence_key: z.string().optional(),
+    announce: z.boolean().optional(),
+  })
+  .passthrough();
 
 export type Draft = z.infer<typeof draftSchema>;
 
@@ -60,10 +100,17 @@ export function draftVectorsPath(): string {
   return path.endsWith(".json") ? path.slice(0, -5) + ".vectors.json" : path + ".vectors.json";
 }
 
-export function draftDecisionsPath(): string { return draftsPath() + ".decisions.json"; }
+export function draftDecisionsPath(): string {
+  return draftsPath() + ".decisions.json";
+}
 
 export function draftFingerprint(quote: string): string {
-  const normalized = redactSecrets(quote, homedir()).text.normalize("NFKC").toLowerCase().match(/[\p{L}\p{N}]+/gu)?.join(" ") ?? "";
+  const normalized =
+    redactSecrets(quote, homedir())
+      .text.normalize("NFKC")
+      .toLowerCase()
+      .match(/[\p{L}\p{N}]+/gu)
+      ?.join(" ") ?? "";
   return createHash("sha256").update(normalized).digest("hex").slice(0, 40);
 }
 
@@ -72,43 +119,76 @@ export function draftId(sessionId: string, turn: number, fp: string): string {
   return "d-" + createHash("sha256").update(`${sessionId}:${turn}:${fp}`).digest("hex").slice(0, 12);
 }
 
-
 function sanitize(input: unknown, now: number, fallback = now): Draft | null {
   const d = draftSchema.parse(input);
   // A background tick's start clock may precede concurrent hint/use writes.
   // Only timestamps beyond the real wall clock are untrusted future values.
-  const time = (ts: number) => ts > now ? Math.min(now, fallback) : ts;
-  const proofTime=(ts:number)=>ts>Math.max(now,Date.now())?Math.min(now,fallback):ts;
+  const time = (ts: number) => (ts > now ? Math.min(now, fallback) : ts);
+  const proofTime = (ts: number) => (ts > Math.max(now, Date.now()) ? Math.min(now, fallback) : ts);
   const quoteInput = clipDraftText(d.quote, 600);
   const quote = redactSecrets(quoteInput, homedir());
   if (quote.redactedChars > quoteInput.length * 0.3) return null;
   const clean = cleanDraftText;
-  const optional = (text: string | undefined, clean = cleanDraftLine) => text === undefined ? undefined : clean(text);
+  const optional = (text: string | undefined, clean = cleanDraftLine) => (text === undefined ? undefined : clean(text));
   const strings = (items: string[], count: number, max = 200) => items.slice(-count).map((s) => clean(s, max));
   // Derived tokens are stored lower-cased; the commands they came from are not.
-  const rawSituation = [...d.situation.before,...d.situation.after].join("\n").toLowerCase();
-  const safeSituation = [...strings(d.situation.before,3),...strings(d.situation.after.slice(0,3),3)].join("\n").toLowerCase();
-  const safeToken = (value:string):boolean => !value.includes("[REDACTED]") && !(rawSituation.includes(value.toLowerCase()) && !safeSituation.includes(value.toLowerCase()));
-  const result:Draft = {
-    ...d, created: time(d.created), quote: clipDraftText(quote.text, 600), context: d.context === undefined ? undefined : clean(d.context, 160),
+  const rawSituation = [...d.situation.before, ...d.situation.after].join("\n").toLowerCase();
+  const safeSituation = [...strings(d.situation.before, 3), ...strings(d.situation.after.slice(0, 3), 3)]
+    .join("\n")
+    .toLowerCase();
+  const safeToken = (value: string): boolean =>
+    !value.includes("[REDACTED]") &&
+    !(rawSituation.includes(value.toLowerCase()) && !safeSituation.includes(value.toLowerCase()));
+  const result: Draft = {
+    ...d,
+    created: time(d.created),
+    quote: clipDraftText(quote.text, 600),
+    context: d.context === undefined ? undefined : clean(d.context, 160),
     situation: {
       ...d.situation,
-      cwd: optional(d.situation.cwd), project: optional(d.situation.project), branch: optional(d.situation.branch),
-      before: strings(d.situation.before, 3), after: strings(d.situation.after.slice(0, 3), 3),
-      reads: d.situation.reads.slice(-3).map(s=>cleanDraftLine(s)), lits: strings(d.situation.lits, 32, 160).filter(safeToken),
+      cwd: optional(d.situation.cwd),
+      project: optional(d.situation.project),
+      branch: optional(d.situation.branch),
+      before: strings(d.situation.before, 3),
+      after: strings(d.situation.after.slice(0, 3), 3),
+      reads: d.situation.reads.slice(-3).map((s) => cleanDraftLine(s)),
+      lits: strings(d.situation.lits, 32, 160).filter(safeToken),
     },
     // Opaque identifiers (often UUIDs) must keep their identity across sessions.
-    evidence: d.evidence.map((e) => ({ ...e, ts: time(e.ts), session_id: cleanDraftField(e.session_id), client: optional(e.client, cleanDraftField) })),
-    surfaced: d.surfaced.map((s) => ({ ...s, ts: proofTime(s.ts), session_id: cleanDraftField(s.session_id), novel: strings(s.novel, 32, 160).filter(safeToken),
-      ...(s.used ? { used: { ...s.used, ts: proofTime(s.used.ts), tool: cleanDraftField(s.used.tool, 80), matched: strings(s.used.matched, 3, 160).filter(safeToken) } } : {}),
+    evidence: d.evidence.map((e) => ({
+      ...e,
+      ts: time(e.ts),
+      session_id: cleanDraftField(e.session_id),
+      client: optional(e.client, cleanDraftField),
     })),
-    memory_id: d.memory_id?.slice(0, 200), evidence_key: d.evidence_key?.slice(0, 200),
-    last_touched: Math.max(time(d.last_touched), time(d.created), ...d.evidence.map((e) => time(e.ts)), ...d.surfaced.flatMap(s=>s.used?[proofTime(s.used.ts)]:[])),
+    surfaced: d.surfaced.map((s) => ({
+      ...s,
+      ts: proofTime(s.ts),
+      session_id: cleanDraftField(s.session_id),
+      novel: strings(s.novel, 32, 160).filter(safeToken),
+      ...(s.used
+        ? {
+            used: {
+              ...s.used,
+              ts: proofTime(s.used.ts),
+              tool: cleanDraftField(s.used.tool, 80),
+              matched: strings(s.used.matched, 3, 160).filter(safeToken),
+            },
+          }
+        : {}),
+    })),
+    memory_id: d.memory_id?.slice(0, 200),
+    evidence_key: d.evidence_key?.slice(0, 200),
+    last_touched: Math.max(
+      time(d.last_touched),
+      time(d.created),
+      ...d.evidence.map((e) => time(e.ts)),
+      ...d.surfaced.flatMap((s) => (s.used ? [proofTime(s.used.ts)] : []))
+    ),
   };
-  result.surfaced=retainDraftSurfaces(result);
+  result.surfaced = retainDraftSurfaces(result);
   return result;
 }
-
 
 export interface DraftStoreDiagnostics {
   version: number | null;
@@ -127,18 +207,25 @@ function documentOf(rows: Draft[], metadata: Record<string, unknown>): Record<st
   return { ...metadata, version: DRAFT_STORE_VERSION, rows };
 }
 
-function expired(row:Draft,now:number):boolean {
- const age=row.state!=="open"?DRAFT_RETAIN_AGE_MS:row.evidence.length===1&&!draftUseProof(row)?DRAFT_UNCONFIRMED_AGE_MS:DRAFT_OPEN_AGE_MS;
- return !(now-row.last_touched<age);
+function expired(row: Draft, now: number): boolean {
+  const age =
+    row.state !== "open"
+      ? DRAFT_RETAIN_AGE_MS
+      : row.evidence.length === 1 && !draftUseProof(row)
+        ? DRAFT_UNCONFIRMED_AGE_MS
+        : DRAFT_OPEN_AGE_MS;
+  return !(now - row.last_touched < age);
 }
 function bounded(rows: Draft[], now: number, metadata: Record<string, unknown> = {}): Draft[] {
-  const kept=rows.filter(row=>!expired(row,now));
+  const kept = rows.filter((row) => !expired(row, now));
   // Preserve tombstones and confirmed drafts before disposable first captures.
-  const priority = (d: Draft): number => d.state !== "open" ? 2
-    : d.evidence.length === 1 && d.surfaced.length === 0 ? 0 : 1;
+  const priority = (d: Draft): number =>
+    d.state !== "open" ? 2 : d.evidence.length === 1 && d.surfaced.length === 0 ? 0 : 1;
   kept.sort((a, b) => priority(a) - priority(b) || a.last_touched - b.last_touched);
   if (kept.length > DRAFT_MAX_ROWS) kept.splice(0, kept.length - DRAFT_MAX_ROWS);
-  let bytes = Buffer.byteLength(JSON.stringify(documentOf([], metadata))) + kept.reduce((sum, d) => sum + Buffer.byteLength(JSON.stringify(d)) + 1, 0);
+  let bytes =
+    Buffer.byteLength(JSON.stringify(documentOf([], metadata))) +
+    kept.reduce((sum, d) => sum + Buffer.byteLength(JSON.stringify(d)) + 1, 0);
   while (bytes > DRAFT_MAX_BYTES && kept.length) bytes -= Buffer.byteLength(JSON.stringify(kept.shift()!)) + 1;
   if (bytes > DRAFT_MAX_BYTES) throw new Error("draft metadata exceeds store byte limit");
   return kept.sort((a, b) => a.last_touched - b.last_touched);
@@ -149,42 +236,62 @@ let cache: { path: string; stamp: string; store: StoreSnapshot } | undefined;
 
 /** Counts only, never quote contents. Describes the latest loaded snapshot. */
 export function draftStoreDiagnostics(): DraftStoreDiagnostics {
-  return { ...(cache?.store.diagnostics ?? { version: DRAFT_STORE_VERSION, skippedRows: 0, corrupt: false, unsupportedVersion: false }) };
+  return {
+    ...(cache?.store.diagnostics ?? {
+      version: DRAFT_STORE_VERSION,
+      skippedRows: 0,
+      corrupt: false,
+      unsupportedVersion: false,
+    }),
+  };
 }
 
 class DraftLegacyValidationError extends Error {}
 function validateLegacyDraftDocument(raw: string): void {
   if (Buffer.byteLength(raw) > DRAFT_MAX_BYTES) throw new Error("draft store exceeds its byte limit");
   let parsed: unknown;
-  try { parsed=raw.trim()===""?[]:JSON.parse(raw); }
-  catch { throw new DraftLegacyValidationError("draft store is malformed; original file preserved"); }
+  try {
+    parsed = raw.trim() === "" ? [] : JSON.parse(raw);
+  } catch {
+    throw new DraftLegacyValidationError("draft store is malformed; original file preserved");
+  }
   if (Array.isArray(parsed)) return; // Invalid rows retain the existing skip/diagnostic policy.
-  if (!parsed || typeof parsed!=="object") throw new DraftLegacyValidationError("draft store is malformed; original file preserved");
-  const doc=parsed as Record<string,unknown>;
-  if(typeof doc.version==="number"&&Number.isInteger(doc.version)&&doc.version>DRAFT_STORE_VERSION)
+  if (!parsed || typeof parsed !== "object")
+    throw new DraftLegacyValidationError("draft store is malformed; original file preserved");
+  const doc = parsed as Record<string, unknown>;
+  if (typeof doc.version === "number" && Number.isInteger(doc.version) && doc.version > DRAFT_STORE_VERSION)
     throw new DraftLegacyValidationError("draft store version is newer; original file preserved");
-  if(typeof doc.version!=="number"||!Number.isInteger(doc.version)||doc.version<0||!Array.isArray(doc.rows))
+  if (typeof doc.version !== "number" || !Number.isInteger(doc.version) || doc.version < 0 || !Array.isArray(doc.rows))
     throw new DraftLegacyValidationError("draft store is malformed; original file preserved");
 }
-function draftDocumentText(path:string,busyTimeoutMs?:number):string {
-  try { return readAppRecord("drafts",path,validateLegacyDraftDocument,{busyTimeoutMs}); }
-  catch(error) {
+function draftDocumentText(path: string, busyTimeoutMs?: number): string {
+  try {
+    return readAppRecord("drafts", path, validateLegacyDraftDocument, { busyTimeoutMs });
+  } catch (error) {
     // Preserve malformed/future legacy files at their original names while the
     // ordinary loader still reports its existing diagnostics and disables writes.
-    if(error instanceof DraftLegacyValidationError)return readFileSync(path,"utf8");
+    if (error instanceof DraftLegacyValidationError) return readFileSync(path, "utf8");
     throw error;
   }
 }
-function sqliteBusy(error:unknown):boolean {return [5,6].includes((error as {errcode?:number}).errcode??-1);}
+function sqliteBusy(error: unknown): boolean {
+  return [5, 6].includes((error as { errcode?: number }).errcode ?? -1);
+}
 
-async function fileInfo(path: string,busyTimeoutMs?:number): Promise<{ stamp: string; mtime: number }> {
+async function fileInfo(path: string, busyTimeoutMs?: number): Promise<{ stamp: string; mtime: number }> {
   try {
     // Only background/store access reads SQLite; draftSearchSnapshot stays RAM-only.
-    const raw = draftDocumentText(path,busyTimeoutMs);
+    const raw = draftDocumentText(path, busyTimeoutMs);
     if (Buffer.byteLength(raw) > DRAFT_MAX_BYTES) throw new Error("draft store exceeds its byte limit");
     let mtime = Date.now();
-    try { mtime = (await stat(path)).mtimeMs; } catch {
-      try {mtime=(await stat(`${path}.pre-db`)).mtimeMs;}catch{/* new DB record */}
+    try {
+      mtime = (await stat(path)).mtimeMs;
+    } catch {
+      try {
+        mtime = (await stat(`${path}.pre-db`)).mtimeMs;
+      } catch {
+        /* new DB record */
+      }
     }
     return { stamp: createHash("sha256").update(raw).digest("hex"), mtime };
   } catch (err) {
@@ -193,21 +300,21 @@ async function fileInfo(path: string,busyTimeoutMs?:number): Promise<{ stamp: st
   }
 }
 
-async function load(path: string, now: number,busyTimeoutMs?:number): Promise<StoreSnapshot> {
-  const info = await fileInfo(path,busyTimeoutMs);
+async function load(path: string, now: number, busyTimeoutMs?: number): Promise<StoreSnapshot> {
+  const info = await fileInfo(path, busyTimeoutMs);
   if (cache?.path === path && cache.stamp === info.stamp) return structuredClone(cache.store);
   const store: StoreSnapshot = {
-    rows: [], metadata: {},
+    rows: [],
+    metadata: {},
     diagnostics: { version: DRAFT_STORE_VERSION, skippedRows: 0, corrupt: false, unsupportedVersion: false },
   };
   if (info.stamp !== "missing") {
     let parsed: unknown;
     try {
-      const raw = draftDocumentText(path,busyTimeoutMs);
+      const raw = draftDocumentText(path, busyTimeoutMs);
       parsed = raw.trim() === "" ? [] : JSON.parse(raw);
-    }
-    catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return load(path, now,busyTimeoutMs);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return load(path, now, busyTimeoutMs);
       store.diagnostics.corrupt = true;
       store.diagnostics.version = null;
     }
@@ -223,7 +330,12 @@ async function load(path: string, now: number,busyTimeoutMs?:number): Promise<St
           // A future layout need not have today's rows field. Never interpret or rewrite it.
           store.diagnostics.version = version;
           store.diagnostics.unsupportedVersion = true;
-        } else if (typeof version !== "number" || !Number.isInteger(version) || version < 0 || !Array.isArray(envelope.rows)) {
+        } else if (
+          typeof version !== "number" ||
+          !Number.isInteger(version) ||
+          version < 0 ||
+          !Array.isArray(envelope.rows)
+        ) {
           store.diagnostics.corrupt = true;
           store.diagnostics.version = null;
         } else {
@@ -243,9 +355,11 @@ async function load(path: string, now: number,busyTimeoutMs?:number): Promise<St
         else store.diagnostics.skippedRows++;
       }
     }
-    if (store.diagnostics.skippedRows) process.stderr.write(`[bastra-recall] drafts: skipped ${store.diagnostics.skippedRows} invalid rows\n`);
+    if (store.diagnostics.skippedRows)
+      process.stderr.write(`[bastra-recall] drafts: skipped ${store.diagnostics.skippedRows} invalid rows\n`);
     if (store.diagnostics.corrupt) process.stderr.write("[bastra-recall] drafts: malformed file; writes disabled\n");
-    if (store.diagnostics.unsupportedVersion) process.stderr.write(`[bastra-recall] drafts: version ${store.diagnostics.version} is newer; writes disabled\n`);
+    if (store.diagnostics.unsupportedVersion)
+      process.stderr.write(`[bastra-recall] drafts: version ${store.diagnostics.version} is newer; writes disabled\n`);
   }
   cache = { path, stamp: info.stamp, store };
   return structuredClone(store);
@@ -256,17 +370,29 @@ function assertWritable(store: StoreSnapshot): void {
   if (store.diagnostics.unsupportedVersion) throw new Error("draft store version is newer; original file preserved");
 }
 
-async function write(path: string, rows: Draft[], metadata: Record<string, unknown>, now=Date.now(),busyTimeoutMs?:number): Promise<void> {
-  const retained=new Set(rows.map(row=>row.id));
-  const expiredCount=cache?.path===path?cache.store.rows.filter(row=>!retained.has(row.id)&&expired(row,now)).length:0;
+async function write(
+  path: string,
+  rows: Draft[],
+  metadata: Record<string, unknown>,
+  now = Date.now(),
+  busyTimeoutMs?: number
+): Promise<void> {
+  const retained = new Set(rows.map((row) => row.id));
+  const expiredCount =
+    cache?.path === path ? cache.store.rows.filter((row) => !retained.has(row.id) && expired(row, now)).length : 0;
   const payload = JSON.stringify(documentOf(rows, metadata));
   if (Buffer.byteLength(payload) > DRAFT_MAX_BYTES) throw new Error("draft store exceeds its byte limit");
-  writeAppRecord("drafts", path, payload, validateLegacyDraftDocument,{busyTimeoutMs});
-  const info = await fileInfo(path,busyTimeoutMs);
-  if(expiredCount)void writeDraftEvent({kind:"draft_expired",count:expiredCount});
+  writeAppRecord("drafts", path, payload, validateLegacyDraftDocument, { busyTimeoutMs });
+  const info = await fileInfo(path, busyTimeoutMs);
+  if (expiredCount) void writeDraftEvent({ kind: "draft_expired", count: expiredCount });
   cache = {
-    path, stamp: info.stamp,
-    store: { rows: structuredClone(rows), metadata, diagnostics: { version: DRAFT_STORE_VERSION, skippedRows: 0, corrupt: false, unsupportedVersion: false } },
+    path,
+    stamp: info.stamp,
+    store: {
+      rows: structuredClone(rows),
+      metadata,
+      diagnostics: { version: DRAFT_STORE_VERSION, skippedRows: 0, corrupt: false, unsupportedVersion: false },
+    },
   };
 }
 
@@ -288,12 +414,20 @@ export async function storedDrafts(now = Date.now()): Promise<Draft[]> {
 export function draftSearchSnapshot(now = Date.now()): { key: string; rows: readonly Draft[] } {
   const path = draftsPath();
   const store = cache?.path === path ? cache.store : undefined;
-  if (!store || store.diagnostics.corrupt || store.diagnostics.unsupportedVersion) return { key: `${path}:cold`, rows: [] };
-  const rows = store.rows.filter(row => {
-    const age = row.state !== "open" ? DRAFT_RETAIN_AGE_MS : row.evidence.length === 1 && !draftUseProof(row) ? DRAFT_UNCONFIRMED_AGE_MS : DRAFT_OPEN_AGE_MS;
-    return now - row.last_touched < age;
-  }).slice(-DRAFT_MAX_ROWS);
-  return { key: `${path}:${cache!.stamp}:${rows.map(row => row.id).join(",")}`, rows };
+  if (!store || store.diagnostics.corrupt || store.diagnostics.unsupportedVersion)
+    return { key: `${path}:cold`, rows: [] };
+  const rows = store.rows
+    .filter((row) => {
+      const age =
+        row.state !== "open"
+          ? DRAFT_RETAIN_AGE_MS
+          : row.evidence.length === 1 && !draftUseProof(row)
+            ? DRAFT_UNCONFIRMED_AGE_MS
+            : DRAFT_OPEN_AGE_MS;
+      return now - row.last_touched < age;
+    })
+    .slice(-DRAFT_MAX_ROWS);
+  return { key: `${path}:${cache!.stamp}:${rows.map((row) => row.id).join(",")}`, rows };
 }
 
 /** Replace by id; captureDraft owns evidence deduplication during harvest. */
@@ -302,15 +436,19 @@ export async function upsertDraft(input: Draft, now = Date.now()): Promise<Draft
   if (!draft) return null;
   if (Buffer.byteLength(JSON.stringify(draft)) > DRAFT_MAX_BYTES - 2) throw new Error("draft exceeds store byte limit");
   const path = draftsPath();
-  return withPathLock(path, async () => {
-    const store = await load(path, now);
-    assertWritable(store);
-    const rows = store.rows.filter((row) => row.id !== draft.id);
-    rows.push(draft);
-    const kept = bounded(rows, now, store.metadata);
-    await write(path, kept, store.metadata, now);
-    return structuredClone(kept.find((row) => row.id === draft.id) ?? null);
-  }, { crossProcess: true });
+  return withPathLock(
+    path,
+    async () => {
+      const store = await load(path, now);
+      assertWritable(store);
+      const rows = store.rows.filter((row) => row.id !== draft.id);
+      rows.push(draft);
+      const kept = bounded(rows, now, store.metadata);
+      await write(path, kept, store.metadata, now);
+      return structuredClone(kept.find((row) => row.id === draft.id) ?? null);
+    },
+    { crossProcess: true }
+  );
 }
 
 export interface DraftCaptureResult {
@@ -330,93 +468,116 @@ export interface DraftAfterUpdate {
 
 /** One session, one lock and at most one write. Exact fingerprints match across
  * sessions; Dice matches only inside a session. Closed rows stay tombstones. */
-async function captureBatch(inputs: Draft[], now: number, afterUpdates: DraftAfterUpdate[] = []): Promise<DraftCaptureResult & { matches: (Draft | null)[] }> {
-  const drafts = inputs.map(input => sanitize(input, now));
-  const empty = { count: 0, appended: 0, evicted: 0, ids: [] as string[], matches: inputs.map(() => null) as (Draft | null)[] };
+async function captureBatch(
+  inputs: Draft[],
+  now: number,
+  afterUpdates: DraftAfterUpdate[] = []
+): Promise<DraftCaptureResult & { matches: (Draft | null)[] }> {
+  const drafts = inputs.map((input) => sanitize(input, now));
+  const empty = {
+    count: 0,
+    appended: 0,
+    evicted: 0,
+    ids: [] as string[],
+    matches: inputs.map(() => null) as (Draft | null)[],
+  };
   if (!drafts.some(Boolean) && afterUpdates.length === 0) return empty;
   const path = draftsPath();
-  return withPathLock(path, async () => {
-    const store = await load(path, now);
-    assertWritable(store);
-    const before = JSON.stringify(store.rows);
-    const rows = bounded(store.rows, now, store.metadata);
-    const original = new Map(rows.map(row => [row.id, structuredClone(row)]));
-    const byFingerprint = new Map(rows.map(row => [row.fp, row]));
-    const grams = new Map<string, Set<string> | null>();
-    const gramsOf = (row: Draft): Set<string> | null => {
-      if (!grams.has(row.id)) grams.set(row.id, bigramSet(row.quote));
-      return grams.get(row.id)!;
-    };
-    const matchedIds = drafts.map(draft => {
-      if (!draft) return null;
-      const session = draft.evidence[0].session_id;
-      const current = gramsOf(draft);
-      const hit = byFingerprint.get(draft.fp) ?? rows.find(row => {
-        if (row.state !== "open" || !row.evidence.some(e => e.session_id === session) || !current) return false;
-        const previous = gramsOf(row);
-        return previous !== null && dice(previous, current) >= DRAFT_SESSION_DICE_MIN;
-      });
-      if (hit) {
-        if (hit.state !== "open") return hit.id;
-        // Mixed or legacy provenance must never inherit a new vault identity.
-        if (hit.vault_id !== draft.vault_id) hit.vault_id = "mixed";
-        if (hit.kind === "typed" && draft.kind !== "typed") {
-          hit.kind = draft.kind;
-          if (draft.context !== undefined) hit.context = draft.context;
-        }
-        let appended = false;
-        for (const evidence of draft.evidence) {
-          if (!hit.evidence.some(e => e.session_id === evidence.session_id && e.turn === evidence.turn)) {
-            hit.evidence.push(evidence);
-            appended = true;
-            hit.last_touched = Math.max(hit.last_touched, now);
+  return withPathLock(
+    path,
+    async () => {
+      const store = await load(path, now);
+      assertWritable(store);
+      const before = JSON.stringify(store.rows);
+      const rows = bounded(store.rows, now, store.metadata);
+      const original = new Map(rows.map((row) => [row.id, structuredClone(row)]));
+      const byFingerprint = new Map(rows.map((row) => [row.fp, row]));
+      const grams = new Map<string, Set<string> | null>();
+      const gramsOf = (row: Draft): Set<string> | null => {
+        if (!grams.has(row.id)) grams.set(row.id, bigramSet(row.quote));
+        return grams.get(row.id)!;
+      };
+      const matchedIds = drafts.map((draft) => {
+        if (!draft) return null;
+        const session = draft.evidence[0].session_id;
+        const current = gramsOf(draft);
+        const hit =
+          byFingerprint.get(draft.fp) ??
+          rows.find((row) => {
+            if (row.state !== "open" || !row.evidence.some((e) => e.session_id === session) || !current) return false;
+            const previous = gramsOf(row);
+            return previous !== null && dice(previous, current) >= DRAFT_SESSION_DICE_MIN;
+          });
+        if (hit) {
+          if (hit.state !== "open") return hit.id;
+          // Mixed or legacy provenance must never inherit a new vault identity.
+          if (hit.vault_id !== draft.vault_id) hit.vault_id = "mixed";
+          if (hit.kind === "typed" && draft.kind !== "typed") {
+            hit.kind = draft.kind;
+            if (draft.context !== undefined) hit.context = draft.context;
           }
+          let appended = false;
+          for (const evidence of draft.evidence) {
+            if (!hit.evidence.some((e) => e.session_id === evidence.session_id && e.turn === evidence.turn)) {
+              hit.evidence.push(evidence);
+              appended = true;
+              hit.last_touched = Math.max(hit.last_touched, now);
+            }
+          }
+          if (appended) hit.situation = mergeSituations(hit.situation, draft.situation);
+        } else {
+          rows.push(draft);
+          byFingerprint.set(draft.fp, draft);
         }
-        if (appended) hit.situation = mergeSituations(hit.situation, draft.situation);
-      } else {
-        rows.push(draft);
-        byFingerprint.set(draft.fp, draft);
+        return (hit ?? draft).id;
+      });
+      // A resumed transcript may supply the application commands after a turn
+      // already captured. Enrich only that existing open row, never add evidence.
+      const updatedIds: string[] = [];
+      for (const update of afterUpdates) {
+        const row = rows.find(
+          (row) =>
+            row.state === "open" &&
+            row.evidence.some((e) => e.session_id === cleanDraftField(update.session_id) && e.turn === update.turn)
+        );
+        if (!row) continue;
+        const additions = update.after
+          .map((command) => cleanDraftText(command))
+          .filter((command) => !row.situation.after.includes(command));
+        const after = [...row.situation.after, ...additions].slice(0, 3);
+        if (JSON.stringify(after) === JSON.stringify(row.situation.after)) continue;
+        row.situation.after = after;
+        row.situation.lits = situationLiterals(row.situation);
+        row.last_touched = Math.max(row.last_touched, now);
+        updatedIds.push(row.id);
       }
-      return (hit ?? draft).id;
-    });
-    // A resumed transcript may supply the application commands after a turn
-    // already captured. Enrich only that existing open row, never add evidence.
-    const updatedIds: string[] = [];
-    for (const update of afterUpdates) {
-      const row = rows.find(row => row.state === "open" && row.evidence.some(e =>
-        e.session_id === cleanDraftField(update.session_id) && e.turn === update.turn));
-      if (!row) continue;
-      const additions = update.after.map(command => cleanDraftText(command)).filter(command => !row.situation.after.includes(command));
-      const after = [...row.situation.after, ...additions].slice(0, 3);
-      if (JSON.stringify(after) === JSON.stringify(row.situation.after)) continue;
-      row.situation.after = after;
-      row.situation.lits = situationLiterals(row.situation);
-      row.last_touched = Math.max(row.last_touched, now);
-      updatedIds.push(row.id);
-    }
-    const kept = bounded(rows, now, store.metadata);
-    if (JSON.stringify(kept) !== before) await write(path, kept, store.metadata, now);
-    const byId = new Map(kept.map(row => [row.id, row]));
-    const result: DraftCaptureResult = { count: 0, appended: 0, evicted: 0, ids: [] };
-    for (const id of new Set([...matchedIds, ...updatedIds])) {
-      if (id === null) continue;
-      const row = byId.get(id);
-      if (!row) {
-        if (!original.has(id)) result.evicted++;
-        continue;
+      const kept = bounded(rows, now, store.metadata);
+      if (JSON.stringify(kept) !== before) await write(path, kept, store.metadata, now);
+      const byId = new Map(kept.map((row) => [row.id, row]));
+      const result: DraftCaptureResult = { count: 0, appended: 0, evicted: 0, ids: [] };
+      for (const id of new Set([...matchedIds, ...updatedIds])) {
+        if (id === null) continue;
+        const row = byId.get(id);
+        if (!row) {
+          if (!original.has(id)) result.evicted++;
+          continue;
+        }
+        if (row.state !== "open") continue;
+        const prior = original.get(id);
+        if (!prior) result.count++;
+        result.appended += row.evidence.length - (prior?.evidence.length ?? 1);
+        if (!prior || JSON.stringify(row) !== JSON.stringify(prior)) result.ids.push(id);
       }
-      if (row.state !== "open") continue;
-      const prior = original.get(id);
-      if (!prior) result.count++;
-      result.appended += row.evidence.length - (prior?.evidence.length ?? 1);
-      if (!prior || JSON.stringify(row) !== JSON.stringify(prior)) result.ids.push(id);
-    }
-    return { ...result, matches: matchedIds.map(id => id === null ? null : byId.get(id) ?? null) };
-  }, { crossProcess: true });
+      return { ...result, matches: matchedIds.map((id) => (id === null ? null : (byId.get(id) ?? null))) };
+    },
+    { crossProcess: true }
+  );
 }
 
 export async function captureDrafts(
-  inputs: Draft[], now = Date.now(), afterUpdates: DraftAfterUpdate[] = [],
+  inputs: Draft[],
+  now = Date.now(),
+  afterUpdates: DraftAfterUpdate[] = []
 ): Promise<DraftCaptureResult> {
   const { matches: _matches, ...result } = await captureBatch(inputs, now, afterUpdates);
   return result;
@@ -428,90 +589,137 @@ export async function captureDraft(input: Draft, now = Date.now()): Promise<Draf
 }
 
 /** Called from the harvest tick. A missing promoted note leaves a tombstone. */
-export async function expireDrafts(opts: { now?: number; memoryExists?: (id: string) => Promise<boolean> } = {}): Promise<number> {
+export async function expireDrafts(
+  opts: { now?: number; memoryExists?: (id: string) => Promise<boolean> } = {}
+): Promise<number> {
   const now = opts.now ?? Date.now();
   const path = draftsPath();
-  return withPathLock(path, async () => {
-    const store = await load(path, now);
-    assertWritable(store);
-    const rows = store.rows;
-    const before = JSON.stringify(rows);
-    if (opts.memoryExists) {
-      for (const row of rows) {
-        if (row.state === "promoted" && row.memory_id && !await opts.memoryExists(row.memory_id)) {
-          row.state = "rejected";
-          row.announce = false;
-          row.last_touched = now;
+  return withPathLock(
+    path,
+    async () => {
+      const store = await load(path, now);
+      assertWritable(store);
+      const rows = store.rows;
+      const before = JSON.stringify(rows);
+      if (opts.memoryExists) {
+        for (const row of rows) {
+          if (row.state === "promoted" && row.memory_id && !(await opts.memoryExists(row.memory_id))) {
+            row.state = "rejected";
+            row.announce = false;
+            row.last_touched = now;
+          }
         }
       }
-    }
-    const kept = bounded(rows, now, store.metadata);
-    if (JSON.stringify(kept) !== before || store.diagnostics.skippedRows > 0) await write(path, kept, store.metadata, now);
-    return rows.length - kept.length;
-  }, { crossProcess: true });
+      const kept = bounded(rows, now, store.metadata);
+      if (JSON.stringify(kept) !== before || store.diagnostics.skippedRows > 0)
+        await write(path, kept, store.metadata, now);
+      return rows.length - kept.length;
+    },
+    { crossProcess: true }
+  );
 }
 
 export async function purgeDrafts(): Promise<{ pendingRelay: boolean }> {
   const path = draftsPath();
-  return withDraftPublication(() => withPathLock(path, async () => {
-    const pendingRelay = await purgePendingSuggestions(async () => {
-      deleteAppRecord("drafts", path);
-      deleteAppRecord("draft-vectors", draftVectorsPath());
-      deleteAppRecord("draft-decisions", draftDecisionsPath());
-      cache = undefined;
-    });
-    return { pendingRelay };
-  }, { crossProcess: true, requireLock: true }));
+  return withDraftPublication(() =>
+    withPathLock(
+      path,
+      async () => {
+        const pendingRelay = await purgePendingSuggestions(async () => {
+          deleteAppRecord("drafts", path);
+          deleteAppRecord("draft-vectors", draftVectorsPath());
+          deleteAppRecord("draft-decisions", draftDecisionsPath());
+          cache = undefined;
+        });
+        return { pendingRelay };
+      },
+      { crossProcess: true, requireLock: true }
+    )
+  );
 }
 
 /** Retrieval mutations preserve concurrent harvest evidence and retained tombstones. */
 export async function updateRetrievedDrafts(
-  removeIds: string[], displays: { id: string; session_id: string; novel: string[] }[], now = Date.now(), tryOnly = false,
+  removeIds: string[],
+  displays: { id: string; session_id: string; novel: string[] }[],
+  now = Date.now(),
+  tryOnly = false
 ): Promise<void> {
   if (!removeIds.length && !displays.length) return;
   const path = draftsPath();
   const lock = tryOnly ? tryWithPathLock : withPathLock;
-  try {await lock(path, async () => {
-    const store = await load(path, now,tryOnly?0:undefined);
-    assertWritable(store);
-    const removed = new Set(removeIds);
-    const rows = store.rows.filter(row => row.state !== "open" || !removed.has(row.id));
-    let changed = rows.length !== store.rows.length;
-    for (const display of displays) {
-      const row = rows.find(row => row.id === display.id && row.state === "open");
-      if (!row || row.surfaced.some(s => s.session_id === display.session_id)) continue;
-      row.surfaced.push({ session_id: display.session_id, ts: now, novel: display.novel });
-      row.surfaced = row.surfaced.slice(-5);
-      row.last_touched = now;
-      changed = true;
-    }
-    if (changed) await write(path, bounded(rows, now, store.metadata), store.metadata, now,tryOnly?0:undefined);
-  }, { crossProcess: true });}catch(error){if(!tryOnly||!sqliteBusy(error))throw error;}
+  try {
+    await lock(
+      path,
+      async () => {
+        const store = await load(path, now, tryOnly ? 0 : undefined);
+        assertWritable(store);
+        const removed = new Set(removeIds);
+        const rows = store.rows.filter((row) => row.state !== "open" || !removed.has(row.id));
+        let changed = rows.length !== store.rows.length;
+        for (const display of displays) {
+          const row = rows.find((row) => row.id === display.id && row.state === "open");
+          if (!row || row.surfaced.some((s) => s.session_id === display.session_id)) continue;
+          row.surfaced.push({ session_id: display.session_id, ts: now, novel: display.novel });
+          row.surfaced = row.surfaced.slice(-5);
+          row.last_touched = now;
+          changed = true;
+        }
+        if (changed)
+          await write(path, bounded(rows, now, store.metadata), store.metadata, now, tryOnly ? 0 : undefined);
+      },
+      { crossProcess: true }
+    );
+  } catch (error) {
+    if (!tryOnly || !sqliteBusy(error)) throw error;
+  }
 }
 
 /** Promotion and undo serialize with capture/purge. Keep the draft lock across
  * the audited vault mutation; a purge cannot race a late note publication. */
 export function transactDrafts<T>(mutate: (rows: Draft[]) => Promise<T>, now?: number, tryOnly?: false): Promise<T>;
-export function transactDrafts<T>(mutate: (rows: Draft[]) => Promise<T>, now: number, tryOnly: true, noQueue?: boolean): Promise<T | undefined>;
-export async function transactDrafts<T>(mutate: (rows: Draft[]) => Promise<T>, now = Date.now(), tryOnly = false, noQueue = false): Promise<T | undefined> {
+export function transactDrafts<T>(
+  mutate: (rows: Draft[]) => Promise<T>,
+  now: number,
+  tryOnly: true,
+  noQueue?: boolean
+): Promise<T | undefined>;
+export async function transactDrafts<T>(
+  mutate: (rows: Draft[]) => Promise<T>,
+  now = Date.now(),
+  tryOnly = false,
+  noQueue = false
+): Promise<T | undefined> {
   const path = draftsPath();
   const lock = tryOnly ? tryWithPathLock : withPathLock;
-  try {return await lock(path, async () => {
-    const store = await load(path, now,tryOnly?0:undefined);
-    assertWritable(store);
-    const rows = bounded(store.rows, now, store.metadata);
-    const before = JSON.stringify(rows);
-    const result = await mutate(rows);
-    if (JSON.stringify(rows) !== before) await write(path, bounded(rows, now, store.metadata), store.metadata, now,tryOnly?0:undefined);
-    return result;
-  }, { crossProcess: true, noQueue });}catch(error){if(tryOnly&&sqliteBusy(error))return undefined;throw error;}
+  try {
+    return await lock(
+      path,
+      async () => {
+        const store = await load(path, now, tryOnly ? 0 : undefined);
+        assertWritable(store);
+        const rows = bounded(store.rows, now, store.metadata);
+        const before = JSON.stringify(rows);
+        const result = await mutate(rows);
+        if (JSON.stringify(rows) !== before)
+          await write(path, bounded(rows, now, store.metadata), store.metadata, now, tryOnly ? 0 : undefined);
+        return result;
+      },
+      { crossProcess: true, noQueue }
+    );
+  } catch (error) {
+    if (tryOnly && sqliteBusy(error)) return undefined;
+    throw error;
+  }
 }
 
 /** Prime and refresh outside every hook/recall path, including external CLI
  * purge/atomic writes. The watcher is local and never keeps the daemon alive. */
 export function startDraftSearchCache(): () => void {
   const path = draftsPath();
-  let busy = false, pending = false, stopped = false;
+  let busy = false,
+    pending = false,
+    stopped = false;
   const refresh = () => {
     pending = true;
     if (busy || stopped || draftsPath() !== path) return;
@@ -519,30 +727,50 @@ export function startDraftSearchCache(): () => void {
     void (async () => {
       do {
         pending = false;
-        try { await listDrafts(); } catch { if (cache?.path === path) cache = undefined; }
+        try {
+          await listDrafts();
+        } catch {
+          if (cache?.path === path) cache = undefined;
+        }
       } while (pending && !stopped && draftsPath() === path);
-    })().finally(() => { busy = false; });
+    })().finally(() => {
+      busy = false;
+    });
   };
   refresh();
   // Folder watchers may coalesce rapid create/delete events. Reconcile only
   // in the background as well; retrieval itself never probes the file.
-  const timer = setInterval(refresh, 1000); timer.unref();
+  const timer = setInterval(refresh, 1000);
+  timer.unref();
   try {
     const dbPath = appRecordDatabasePath(path);
     const watcher = watch(dirname(dbPath), { persistent: false }, (_event, name) => {
-      if(name?.toString()===basename(dbPath))refresh();
-      else if(name?.toString()===`${basename(dbPath)}-wal`){
+      if (name?.toString() === basename(dbPath)) refresh();
+      else if (name?.toString() === `${basename(dbPath)}-wal`) {
         // Reader connections can create/remove an empty WAL. Only real frames
         // indicate a commit; reacting to empty read WALs would refresh forever.
-        try{if(statSync(`${dbPath}-wal`).size>32)refresh();}catch{/* removed WAL */}
+        try {
+          if (statSync(`${dbPath}-wal`).size > 32) refresh();
+        } catch {
+          /* removed WAL */
+        }
       }
     });
-    watcher.on("error", () => { if (cache?.path === path) cache = undefined; });
-    return () => { stopped = true; watcher.close(); clearInterval(timer); };
+    watcher.on("error", () => {
+      if (cache?.path === path) cache = undefined;
+    });
+    return () => {
+      stopped = true;
+      watcher.close();
+      clearInterval(timer);
+    };
   } catch {
     // First use before the parent directory exists. Capture also refreshes
     // the cache directly; the background fallback notices external changes.
-    return () => { stopped = true; clearInterval(timer); };
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
   }
 }
 
@@ -554,26 +782,40 @@ export function withDraftPublication<T>(publish: () => Promise<T>): Promise<T> {
 /** Explicit one-off #1338 migration; no expiry, eviction or automatic startup.
  * Retains every valid stored row, including aged evidence, as a tombstone.
  */
-export async function rejectInjectedDrafts(now=Date.now()):Promise<number>{
- const path=draftsPath();
- return withPathLock(path,async()=>{
-  const store=await load(path,now);assertWritable(store);
-  if(store.diagnostics.skippedRows)throw new Error("Draft cleanup requires a valid store; original file preserved");
-  let count=0;
-  for(const row of store.rows){
-   if(row.state==="rejected")continue;
-   // Old command echoes lack origin metadata. Preserve their wrapper rather
-   // than treating its removal as proof of agent authorship. Still inspect
-   // the body for explicit hook/agent envelopes, including clipped records.
-   const quote=row.quote.trim();
-   const command=/^<(bash-input|local-command-stdout)(?:\s[^>]*)?>/i.exec(quote);
-   const text=command?quote.slice(command[0].length).replace(new RegExp(`</${command[1]}>\\s*$`,"i"),"").trim():quote;
-   const owner=ownerPromptText(text);
-   if(owner!==null&&owner.trim()===text)continue;
-   row.state="rejected";row.announce=false;row.last_touched=now;
-   row.rejection_reason="non-owner-origin-1338";count++;
-  }
-  if(count)await write(path,store.rows,store.metadata,now);
-  return count;
- },{crossProcess:true});
+export async function rejectInjectedDrafts(now = Date.now()): Promise<number> {
+  const path = draftsPath();
+  return withPathLock(
+    path,
+    async () => {
+      const store = await load(path, now);
+      assertWritable(store);
+      if (store.diagnostics.skippedRows)
+        throw new Error("Draft cleanup requires a valid store; original file preserved");
+      let count = 0;
+      for (const row of store.rows) {
+        if (row.state === "rejected") continue;
+        // Old command echoes lack origin metadata. Preserve their wrapper rather
+        // than treating its removal as proof of agent authorship. Still inspect
+        // the body for explicit hook/agent envelopes, including clipped records.
+        const quote = row.quote.trim();
+        const command = /^<(bash-input|local-command-stdout)(?:\s[^>]*)?>/i.exec(quote);
+        const text = command
+          ? quote
+              .slice(command[0].length)
+              .replace(new RegExp(`</${command[1]}>\\s*$`, "i"), "")
+              .trim()
+          : quote;
+        const owner = ownerPromptText(text);
+        if (owner !== null && owner.trim() === text) continue;
+        row.state = "rejected";
+        row.announce = false;
+        row.last_touched = now;
+        row.rejection_reason = "non-owner-origin-1338";
+        count++;
+      }
+      if (count) await write(path, store.rows, store.metadata, now);
+      return count;
+    },
+    { crossProcess: true }
+  );
 }

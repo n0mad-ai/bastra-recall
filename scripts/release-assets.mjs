@@ -56,8 +56,7 @@ export function fetchAssetNames(tag, repo) {
   const res = spawnSync("gh", args, { encoding: "utf8" });
   if (res.status !== 0) {
     throw new Error(
-      `gh release view ${tag} failed (${res.status}):\n` +
-        `${`${res.stdout ?? ""}${res.stderr ?? ""}`.trim()}`,
+      `gh release view ${tag} failed (${res.status}):\n` + `${`${res.stdout ?? ""}${res.stderr ?? ""}`.trim()}`
     );
   }
   return (res.stdout ?? "")
@@ -75,8 +74,7 @@ export function assertCompleteAssets(tag, repo) {
   const missing = missingAssets(names);
   if (missing.length > 0) {
     throw new Error(
-      `the release ${tag} is missing ${missing.length} required asset(s):\n` +
-        missing.map((m) => `  - ${m}`).join("\n"),
+      `the release ${tag} is missing ${missing.length} required asset(s):\n` + missing.map((m) => `  - ${m}`).join("\n")
     );
   }
   return names;

@@ -33,10 +33,24 @@ process.env.BASTRA_CORS_ORIGIN = "https://bastra.io";
 function memoryMarkdown(id: string, title: string): string {
   const ts = new Date().toISOString();
   return [
-    "---", `id: ${id}`, `title: ${title}`, "type: reference", `summary: ${title}`,
-    "topic_path:", "  - test", "tags:", "  - test", "scope: health-test",
-    "recall_when:", `  - ${title}`, `created: ${ts}`, `updated: ${ts}`, "---",
-    "", `Body for ${title}.`, "",
+    "---",
+    `id: ${id}`,
+    `title: ${title}`,
+    "type: reference",
+    `summary: ${title}`,
+    "topic_path:",
+    "  - test",
+    "tags:",
+    "  - test",
+    "scope: health-test",
+    "recall_when:",
+    `  - ${title}`,
+    `created: ${ts}`,
+    `updated: ${ts}`,
+    "---",
+    "",
+    `Body for ${title}.`,
+    "",
   ].join("\n");
 }
 
@@ -46,12 +60,7 @@ interface Reply {
   headers: Record<string, string | string[] | undefined>;
 }
 
-function httpReq(
-  port: number,
-  method: string,
-  path: string,
-  headers: Record<string, string> = {},
-): Promise<Reply> {
+function httpReq(port: number, method: string, path: string, headers: Record<string, string> = {}): Promise<Reply> {
   return new Promise((resolve, reject) => {
     const req = request({ hostname: "127.0.0.1", port, path, method, headers }, (res) => {
       let body = "";
@@ -64,9 +73,7 @@ function httpReq(
   });
 }
 
-async function withServer(
-  fn: (port: number, activity: () => number) => Promise<void>,
-): Promise<void> {
+async function withServer(fn: (port: number, activity: () => number) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-apihealth-"));
   await writeFile(join(dir, "alpha.md"), memoryMarkdown("alpha", "alpha bravo"), "utf8");
   const vault = new Vault(dir);
@@ -113,7 +120,7 @@ test("api health: answers a token-carrying browser with reachability + vault siz
     assert.equal(
       res.headers["access-control-allow-origin"],
       "https://bastra.io",
-      "without this header the browser cannot read the answer at all",
+      "without this header the browser cannot read the answer at all"
     );
   });
 });
@@ -160,7 +167,7 @@ test("health: reports how long this daemon has been up (#22)", async () => {
     const derived = (Date.now() - started) / 1000;
     assert.ok(
       Math.abs(derived - body.uptime_seconds) < 2,
-      `started_at (${derived}s ago) and uptime_seconds (${body.uptime_seconds}) disagree`,
+      `started_at (${derived}s ago) and uptime_seconds (${body.uptime_seconds}) disagree`
     );
   });
 });
@@ -201,6 +208,7 @@ test("ui health: pro_preview follows BASTRA_PRO_PREVIEW, read at start (web UI v
       assert.equal(body.pro_preview, false);
     });
   } finally {
-    if (before === undefined) delete process.env.BASTRA_PRO_PREVIEW; else process.env.BASTRA_PRO_PREVIEW = before;
+    if (before === undefined) delete process.env.BASTRA_PRO_PREVIEW;
+    else process.env.BASTRA_PRO_PREVIEW = before;
   }
 });

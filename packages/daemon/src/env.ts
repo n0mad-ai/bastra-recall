@@ -62,9 +62,7 @@ export function envFirst(...names: string[]): string | undefined {
     if (value !== undefined && value !== "") {
       if (i > 0 && !warned.has(name)) {
         warned.add(name);
-        console.error(
-          `[bastra-recall] legacy env var ${name} in use — please rename to ${names[0]}.`,
-        );
+        console.error(`[bastra-recall] legacy env var ${name} in use — please rename to ${names[0]}.`);
       }
       return value;
     }

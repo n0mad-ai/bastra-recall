@@ -166,7 +166,7 @@ export type RecallOrigin = "owner" | "agent" | "tool" | "system";
 export function recallOrigin(
   kind: "recall" | "hook_recall",
   hookSource: HookSource,
-  query: string,
+  query: string
 ): RecallOrigin | undefined {
   if (hookSource === "prompt") return isSystemInjectedTurn(query) ? "system" : "owner";
   if (hookSource === "mcp") return "agent";
@@ -220,10 +220,7 @@ export interface ExperimentConfig {
  * gleichverteilt, weil ein Hash gleichverteilt ist, und ohne zweite
  * Hashrunde nachvollziehbar.
  */
-export function assignArm(
-  experimentSession: string | null,
-  config: ExperimentConfig | null,
-): string {
+export function assignArm(experimentSession: string | null, config: ExperimentConfig | null): string {
   if (!config || config.arms.length === 0 || experimentSession === null) return UNASSIGNED_ARM;
   // Die letzten 8 Hex-Stellen als Zahl — 32 Bit reichen für eine Aufteilung auf
   // eine Handvoll Arme, und `parseInt` bleibt exakt.
@@ -258,7 +255,7 @@ export function dimensionHints(source: object): DimensionHints {
 /** Die Hinweise vom Rest eines Log-Payloads trennen: Die Hinweise werden zur
  *  Spalte `dimensions`, der Rest steht auf der Zeile. */
 export function splitHints<T extends DimensionHints>(
-  payload: T,
+  payload: T
 ): { hints: DimensionHints; rest: Omit<T, keyof DimensionHints> } {
   const rest: Record<string, unknown> = { ...payload };
   for (const k of DIMENSION_HINT_KEYS) delete rest[k];
@@ -275,11 +272,9 @@ export function splitHints<T extends DimensionHints>(
  */
 export function dimensionsFrom(
   input: DimensionHints & { session_id?: unknown },
-  config: ExperimentConfig | null = null,
+  config: ExperimentConfig | null = null
 ): TelemetryDimensions {
-  const experimentSession = pseudonymousSession(
-    typeof input.session_id === "string" ? input.session_id : null,
-  );
+  const experimentSession = pseudonymousSession(typeof input.session_id === "string" ? input.session_id : null);
   return {
     client: normalizeClient(input.client),
     hook_source: normalizeHookSource(input.hook_source),

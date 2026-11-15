@@ -110,9 +110,7 @@ function gitState(): string {
  * that moved `updated`.
  */
 export function hashVault(mems: Array<{ fm: Record<string, unknown> }>): string {
-  const rows = mems
-    .map((m) => `${String(m.fm.id)}\0${String(m.fm.updated ?? "")}`)
-    .sort();
+  const rows = mems.map((m) => `${String(m.fm.id)}\0${String(m.fm.updated ?? "")}`).sort();
   return sha256(rows.join("\n"));
 }
 

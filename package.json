@@ -33,9 +33,12 @@
     "check:tap-drift": "node tools/check-tap-drift.mjs",
     "probe:save62-claude": "bash tools/probes/claude-code-long-save/run.sh",
     "openapi:generate": "node --import tsx packages/daemon/scripts/generate-openapi.ts",
-    "openapi:check": "node --import tsx packages/daemon/scripts/generate-openapi.ts --check"
+    "openapi:check": "node --import tsx packages/daemon/scripts/generate-openapi.ts --check",
+    "format": "prettier --write \"{packages,scripts,tools}/**/*.{ts,mts,js,mjs,css,html,json}\"",
+    "format:check": "prettier --check \"{packages,scripts,tools}/**/*.{ts,mts,js,mjs,css,html,json}\""
   },
   "devDependencies": {
+    "prettier": "3.10.1",
     "typescript": "^6.0.3"
   },
   "overrides": {

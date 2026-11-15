@@ -78,7 +78,8 @@ export function summarizeContextTax(events: ReportEvent[]): ContextTaxSection {
     const r = perDay.get(d) ?? { lanes: 0, tools: 0, unknown: 0, sessions: new Set<string>() };
     if (size === null) r.unknown++;
     else r[side] += size;
-    const sid = typeof e.caller_session === "string" && e.caller_session ? e.caller_session : String(e.session_id ?? "");
+    const sid =
+      typeof e.caller_session === "string" && e.caller_session ? e.caller_session : String(e.session_id ?? "");
     if (sid) r.sessions.add(sid);
     perDay.set(d, r);
   }
@@ -220,7 +221,13 @@ export function summarizeBudgetShadow(events: ReportEvent[]): BudgetShadowSectio
     byLane: HOOK_LANE_KINDS.filter((k) => byLane.has(k)).map((lane) => ({ lane, ...byLane.get(lane)! })),
     daily: [...perDay]
       .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-      .map(([d, r]) => ({ day: d, tokens: r.tokens, tokensTrimmed: r.tokensTrimmed, wouldDrop: r.wouldDrop, sessionsAffected: r.affected.size })),
+      .map(([d, r]) => ({
+        day: d,
+        tokens: r.tokens,
+        tokensTrimmed: r.tokensTrimmed,
+        wouldDrop: r.wouldDrop,
+        sessionsAffected: r.affected.size,
+      })),
     firstOverAtEmission: firstOver.length ? median(firstOver) : null,
   };
 }

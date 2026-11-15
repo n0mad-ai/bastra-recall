@@ -26,7 +26,11 @@ describe("hook agent dimension: main thread vs subagent", () => {
     assert.equal(hookAgent({ session_id: "s", bastra_client: "codex", agent_id: "x" }), "subagent");
     assert.equal(hookAgent({ session_id: "s", bastra_client: "claude-code" }), "main");
     assert.deepEqual(hookCaller({ session_id: "s" }), { session_id: "s", client: "unknown", agent: null });
-    assert.deepEqual(hookCaller({ session_id: "s", bastra_client: "claude-code" }), { session_id: "s", client: "claude-code", agent: "main" });
+    assert.deepEqual(hookCaller({ session_id: "s", bastra_client: "claude-code" }), {
+      session_id: "s",
+      client: "claude-code",
+      agent: "main",
+    });
   });
 
   it("dimensionsFrom keeps agent only from the allowlist, never free text", () => {

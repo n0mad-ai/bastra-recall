@@ -26,15 +26,15 @@ test("A9: parallel addFloor calls all persist", async (t) => {
   // The natural shape: a surface pins several memories for ONE decision.
   await Promise.all(
     Array.from({ length: MAX_FLOORS }, (_, i) =>
-      addFloor({ memory_id: `mem-${i}`, condition: "decision-x", reason: "r" }, path),
-    ),
+      addFloor({ memory_id: `mem-${i}`, condition: "decision-x", reason: "r" }, path)
+    )
   );
 
   const persisted = await listFloors(undefined, path);
   assert.equal(
     persisted.length,
     MAX_FLOORS,
-    `expected ${MAX_FLOORS} floors, got ${persisted.length} — a lost floor is a silently dropped hard constraint`,
+    `expected ${MAX_FLOORS} floors, got ${persisted.length} — a lost floor is a silently dropped hard constraint`
   );
 });
 
@@ -43,8 +43,8 @@ test("A9: the cap is enforced against committed state, not a stale read", async 
 
   const results = await Promise.allSettled(
     Array.from({ length: MAX_FLOORS + 8 }, (_, i) =>
-      addFloor({ memory_id: `mem-${i}`, condition: "c", reason: "r" }, path),
-    ),
+      addFloor({ memory_id: `mem-${i}`, condition: "c", reason: "r" }, path)
+    )
   );
 
   const rejected = results.filter((r) => r.status === "rejected");
@@ -58,17 +58,14 @@ test("A9: a parallel release actually releases", async (t) => {
     await addFloor({ memory_id: `keep-${i}`, condition: "gone", reason: "r" }, path);
   }
 
-  await Promise.all([
-    release("gone", path),
-    addFloor({ memory_id: "new-1", condition: "stays", reason: "r" }, path),
-  ]);
+  await Promise.all([release("gone", path), addFloor({ memory_id: "new-1", condition: "stays", reason: "r" }, path)]);
 
   const left = await listFloors(undefined, path);
+  assert.ok(!left.some((e) => e.condition === "gone"), "released floors must not survive a concurrent add");
   assert.ok(
-    !left.some((e) => e.condition === "gone"),
-    "released floors must not survive a concurrent add",
+    left.some((e) => e.memory_id === "new-1"),
+    "the concurrent add must survive too"
   );
-  assert.ok(left.some((e) => e.memory_id === "new-1"), "the concurrent add must survive too");
 });
 
 // ─── A10: import ids are derived from source identity ───────────
@@ -109,17 +106,13 @@ test("A10: same basename in different source folders keeps stable ids on reimpor
   const bTitleBefore = [...before.entries()].find(([, t2]) => t2.includes("Same B"))?.[0];
   const bTitleAfter = [...after.entries()].find(([, t2]) => t2.includes("Same B"))?.[0];
   assert.ok(bTitleBefore && bTitleAfter, "the surviving note must still be present");
-  assert.equal(
-    bTitleAfter,
-    bTitleBefore,
-    "removing a sibling must not move the surviving note's id",
-  );
+  assert.equal(bTitleAfter, bTitleBefore, "removing a sibling must not move the surviving note's id");
 
   const titles = [...after.values()];
   assert.equal(
     new Set(titles).size,
     titles.length,
-    `no content may end up duplicated under two ids: ${JSON.stringify(titles)}`,
+    `no content may end up duplicated under two ids: ${JSON.stringify(titles)}`
   );
 });
 
@@ -151,13 +144,10 @@ test("A10: a wikilink between nested imported notes resolves to a real id", asyn
   const one = vault.list().find((m) => m.fm.title.includes("One"));
   assert.ok(one, "the linking note must have imported");
 
-  const linked = [...(one.body.matchAll(/\[\[([^\]]+)\]\]/g))].map((m) => m[1]);
+  const linked = [...one.body.matchAll(/\[\[([^\]]+)\]\]/g)].map((m) => m[1]);
   assert.ok(linked.length > 0, "the wikilink must survive the import");
   for (const target of linked) {
-    assert.ok(
-      ids.has(target),
-      `[[${target}]] must point at an imported id, have ${JSON.stringify([...ids])}`,
-    );
+    assert.ok(ids.has(target), `[[${target}]] must point at an imported id, have ${JSON.stringify([...ids])}`);
   }
   assert.equal(res.skipped.length, 0);
 });
@@ -184,7 +174,7 @@ test("A10 (Weg C): a pre-A10 twin stays as a visible active duplicate — never 
   await writeFile(
     join(importFolder, "demo-note.md"),
     `---\nid: demo-note\ntitle: Note\ntype: reference\nsummary: the old identity\ntopic_path: [imported, demo]\ntags: [imported]\nscope: demo\nrecall_when: ["note"]\ncreated: 2026-06-01\nupdated: 2026-06-01\n---\n\n# Note\n\nA nested note.\n`,
-    "utf8",
+    "utf8"
   );
 
   const res = await importVault(target, src, { label: "demo" });
@@ -198,20 +188,18 @@ test("A10 (Weg C): a pre-A10 twin stays as a visible active duplicate — never 
   assert.deepEqual(res.migrated, [], "Weg C never migrates");
   assert.ok(vault.get("demo-a-note"), "the new identity is written");
   assert.ok(vault.get("demo-note"), "the pre-A10 twin stays active — not trashed");
-  assert.equal(
-    existsSync(join(target, ".bastra", "trash", "demo-note.md")),
-    false,
-    "nothing is moved to trash",
-  );
+  assert.equal(existsSync(join(target, ".bastra", "trash", "demo-note.md")), false, "nothing is moved to trash");
 });
-
 
 test("A10: a fresh import with root+nested same basename keeps BOTH", async (t) => {
   // The migration used to derive one legacy candidate per file and retire it
   // on mere existence. On a FIRST import `same.md` legitimately mints
   // `demo-same`; processing `z/same.md` computed the same legacy candidate,
   // found the file this very run had just written, and trashed it.
-  for (const [first, second] of [["same.md", "z/same.md"], ["z/same.md", "same.md"]]) {
+  for (const [first, second] of [
+    ["same.md", "z/same.md"],
+    ["z/same.md", "same.md"],
+  ]) {
     const { importVault } = await import("../src/import-vault.js");
     const root = await mkdtemp(join(tmpdir(), "bastra-import-rootnested-"));
     t.after(() => rm(root, { recursive: true, force: true }));
@@ -226,7 +214,10 @@ test("A10: a fresh import with root+nested same basename keeps BOTH", async (t) 
     const res = await importVault(target, src, { label: "demo" });
     const vault = new Vault(target);
     await vault.init();
-    const active = vault.list().map((m) => m.fm.id).sort();
+    const active = vault
+      .list()
+      .map((m) => m.fm.id)
+      .sort();
     await vault.stop?.();
 
     assert.deepEqual(active, ["demo-same", "demo-z-same"], `order ${first} first`);
@@ -247,13 +238,13 @@ test("A10: a declared index.md is not overwritten by the synthetic index", async
   await writeFile(
     join(src, "index.md"),
     "---\ntype: reference\nname: Source Index Note\n---\n\nIrreplaceable source content.\n",
-    "utf8",
+    "utf8"
   );
   await writeFile(join(src, "other.md"), "# Other\n\nOther body.\n", "utf8");
   await writeFile(
     join(src, "MEMORY.md"),
     "# Memory\n\n## Section A\n\n- [Index](index.md) the index note\n- [Other](other.md) another\n",
-    "utf8",
+    "utf8"
   );
 
   const res = await importVault(target, src, { label: "demo" });
@@ -299,24 +290,23 @@ test("A10: a legacy collision family is left as a visible duplicate, not auto-mi
   const res = await importVault(target, src, { label: "demo" });
   const vault = new Vault(target);
   await vault.init();
-  const active = vault.list().map((m) => m.fm.id).sort();
+  const active = vault
+    .list()
+    .map((m) => m.fm.id)
+    .sort();
   await vault.stop?.();
 
   assert.deepEqual(res.migrated, [], "a collision family must not be auto-migrated");
   // The three new nodes plus the three untouched legacy nodes — nothing lost.
-  assert.deepEqual(active, [
-    "demo-a-same",
-    "demo-b-same",
-    "demo-c-same",
-    "demo-same",
-    "demo-same-2",
-    "demo-same-3",
-  ]);
+  assert.deepEqual(active, ["demo-a-same", "demo-b-same", "demo-c-same", "demo-same", "demo-same-2", "demo-same-3"]);
 });
 
 test("A10: link lookup is slug-equivalent to id minting", async (t) => {
   const { importVault } = await import("../src/import-vault.js");
-  for (const [file, link] of [["Two.md", "two"], ["gate_catalog.md", "gate_catalog"]]) {
+  for (const [file, link] of [
+    ["Two.md", "two"],
+    ["gate_catalog.md", "gate_catalog"],
+  ]) {
     const root = await mkdtemp(join(tmpdir(), "bastra-import-slugkey-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const src = join(root, "src");
@@ -341,7 +331,6 @@ test("A10: link lookup is slug-equivalent to id minting", async (t) => {
   }
 });
 
-
 test("A10: an empty/skipped source does NOT trash its legacy node", async (t) => {
   // Re-audit P1: the legacy node was trashed on mere existence, so an empty
   // source (imported: 0) left no active node at all — pure data loss.
@@ -357,7 +346,7 @@ test("A10: an empty/skipped source does NOT trash its legacy node", async (t) =>
   await writeFile(
     join(folder, "demo-empty.md"),
     `---\nid: demo-empty\ntitle: Empty\ntype: reference\nsummary: the valid legacy node\ntopic_path: [imported, demo]\ntags: [imported]\nscope: demo\nrecall_when: ["x"]\ncreated: 2026-06-01\nupdated: 2026-06-01\n---\n\nlegacy body\n`,
-    "utf8",
+    "utf8"
   );
 
   const res = await importVault(target, src, { label: "demo" });
@@ -431,7 +420,7 @@ test("A10 (Weg C): a genuinely failed save leaves everything untouched", async (
   await writeFile(
     join(folder, "demo-note.md"),
     `---\nid: demo-note\ntitle: Note\ntype: reference\nsummary: legacy\ntopic_path: [imported, demo]\ntags: [imported]\nscope: demo\nrecall_when: ["x"]\ncreated: 2026-06-01\nupdated: 2026-06-01\n---\n\nlegacy body\n`,
-    "utf8",
+    "utf8"
   );
 
   const res = await importVault(target, src, { label: "demo" });
@@ -439,7 +428,7 @@ test("A10 (Weg C): a genuinely failed save leaves everything untouched", async (
   assert.equal(res.imported, 0, "the successor save must not land");
   assert.ok(
     res.skipped.some((s) => /save failed|ownership/.test(s.reason)),
-    `expected a visible save failure or ownership refusal, got ${JSON.stringify(res.skipped)}`,
+    `expected a visible save failure or ownership refusal, got ${JSON.stringify(res.skipped)}`
   );
   assert.deepEqual(res.migrated, [], "no successor written → nothing migrated");
 
@@ -481,16 +470,19 @@ test("P1-a: an id freed by a removed sibling is not stolen to overwrite a strang
   t.after(async () => {
     await vault.stop?.();
   });
-  const bodies = vault.list().map((m) => m.body).join("\n");
+  const bodies = vault
+    .list()
+    .map((m) => m.body)
+    .join("\n");
   assert.ok(bodies.includes("ROOT-ALPHA"), "the reimported file's own content must be present");
   assert.ok(
     bodies.includes("NESTED-BETA"),
-    "the removed sibling's node must NOT be overwritten — its unique content must still be active",
+    "the removed sibling's node must NOT be overwritten — its unique content must still be active"
   );
   assert.equal(
     existsSync(join(target, ".bastra", "trash", "demo-a-note.md")),
     false,
-    "and it must not have been silently discarded to trash either",
+    "and it must not have been silently discarded to trash either"
   );
 });
 
@@ -512,20 +504,20 @@ test("P1-b: the synthetic index never overwrites a foreign node on its fallback 
   await writeFile(
     join(folder, "demo-index-2.md"),
     `---\nid: demo-index-2\ntitle: Legacy Index Two\ntype: reference\nsummary: unique legacy\ntopic_path: [imported, demo]\ntags: [imported]\nscope: demo\nrecall_when: ["x"]\nsource: legacy-hand-authored\ncreated: 2026-06-01\nupdated: 2026-06-01\n---\n\nUNIQUE-LEGACY-INDEX-2 body.\n`,
-    "utf8",
+    "utf8"
   );
   // A source whose index.md takes `demo-index`, plus a MEMORY.md that mints the
   // synthetic index — which then needs a fallback id and hits `demo-index-2`.
   await writeFile(
     join(src, "index.md"),
     "---\ntype: reference\nname: Source Index Note\n---\n\nSource index content.\n",
-    "utf8",
+    "utf8"
   );
   await writeFile(join(src, "other.md"), "# Other\n\nOther body.\n", "utf8");
   await writeFile(
     join(src, "MEMORY.md"),
     "# Memory\n\n## Section A\n\n- [Index](index.md) the index note\n- [Other](other.md) another\n",
-    "utf8",
+    "utf8"
   );
 
   const res = await importVault(target, src, { label: "demo" });
@@ -538,7 +530,7 @@ test("P1-b: the synthetic index never overwrites a foreign node on its fallback 
   const legacy = vault.get("demo-index-2");
   assert.ok(
     legacy && legacy.body.includes("UNIQUE-LEGACY-INDEX-2"),
-    "the synthetic index must not overwrite a foreign node sitting on its fallback id",
+    "the synthetic index must not overwrite a foreign node sitting on its fallback id"
   );
   assert.notEqual(res.indexNode, "demo-index-2", "the synthetic index needs an id that is not foreign-owned");
 });
@@ -567,7 +559,7 @@ updated: 2026-05-01
 
 body
 `,
-    "utf8",
+    "utf8"
   );
   const vault = new Vault(dir);
   await vault.init();
@@ -583,6 +575,10 @@ body
   assert.equal(res.ok, false, "a missing file must not be reported as opened");
   assert.match(
     res.message ?? "",
-    process.platform === "darwin" ? /no longer exists/ : process.platform === "win32" ? /cannot launch originals on Windows/ : /only supported on macOS/,
+    process.platform === "darwin"
+      ? /no longer exists/
+      : process.platform === "win32"
+        ? /cannot launch originals on Windows/
+        : /only supported on macOS/
   );
 });

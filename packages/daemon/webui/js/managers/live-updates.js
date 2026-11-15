@@ -72,8 +72,7 @@ export function createLiveUpdates(deps) {
   }
 
   // ── session history ────────────────────────────────────────────────
-  const timeOf = (ms) =>
-    new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const timeOf = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
   function recordHistory(u) {
     history.unshift({ ...u, seenAt: Date.now() });
@@ -99,8 +98,7 @@ export function createLiveUpdates(deps) {
     // the supernova, not a flare. By look-up time that star has long burned
     // out, so the replay borrows the theme's accent instead.
     const color =
-      KIND_META[h.kind]?.flash ??
-      getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+      KIND_META[h.kind]?.flash ?? getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
     deps.renderer.flashNode?.(h.id, color, REPLAY_LIFE_MS);
   }
 
@@ -139,7 +137,7 @@ export function createLiveUpdates(deps) {
           });
         }
         return row;
-      }),
+      })
     );
     historyRail.update(history.length);
   }
@@ -223,11 +221,14 @@ export function createLiveUpdates(deps) {
           // after a view switch the flight needs a beat before refocusing —
           // and the bolt has to wait for the same beat, or it fires while the
           // old view is still on screen and is simply not seen
-          setTimeout(() => {
-            deps.orbitView.focusBurst(entry.id);
-            replayFlash(entry);
-            deps.openMemory?.(entry.id, entry);
-          }, wasOrbit ? 0 : 1100);
+          setTimeout(
+            () => {
+              deps.orbitView.focusBurst(entry.id);
+              replayFlash(entry);
+              deps.openMemory?.(entry.id, entry);
+            },
+            wasOrbit ? 0 : 1100
+          );
         } else {
           // der Eintrag trägt `cluster` — openMemory adoptiert damit ein
           // Memory, das erst nach dem Seiten-Load entstanden ist, und fliegt
@@ -384,9 +385,7 @@ export function createLiveUpdates(deps) {
       }
       for (const u of fresh.slice(0, MAX_CARDS_PER_POLL)) card(u);
       if (fresh.length > MAX_CARDS_PER_POLL) summaryCard(fresh.length - MAX_CARDS_PER_POLL);
-      counter.bump(
-        fresh.filter((u) => u.kind === "add").length - fresh.filter((u) => u.kind === "delete").length,
-      );
+      counter.bump(fresh.filter((u) => u.kind === "add").length - fresh.filter((u) => u.kind === "delete").length);
       counter.afterPoll();
     } catch {
       // daemon briefly away — next poll retries
@@ -427,7 +426,7 @@ export function createLiveUpdates(deps) {
       const age = (now - b.born) / 1000;
       if (age > BURST_LIFE) continue;
       const anchor = deps.sim.nodes.find(
-        (n) => (n.baseCluster === b.cluster || n.cluster === b.cluster) && !n.ringHidden,
+        (n) => (n.baseCluster === b.cluster || n.cluster === b.cluster) && !n.ringHidden
       );
       if (!anchor) continue;
       drawBurstAt(ctx, camera, theme, anchor.x, anchor.y - 16, 1, age);

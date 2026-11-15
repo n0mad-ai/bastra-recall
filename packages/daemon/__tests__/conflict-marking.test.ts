@@ -57,7 +57,7 @@ test("#205: the contradicting save is diverted — no sibling, no overwrite, bot
       memo("Server läuft auf Port 443", {
         conflict_with: existing.id,
         source: "Deploy-Log 19.08.",
-      }),
+      })
     );
     // #542: saveMemoryHandler returns SaveMemoryResult | ClaimGateResult; a
     // diversion into a conflict mark is never held at the claim gate, so
@@ -76,7 +76,11 @@ test("#205: the contradicting save is diverted — no sibling, no overwrite, bot
     assert.match(raw, /Inhalt von Server läuft auf Port 80/, "the original claim was not discarded");
     assert.match(raw, /Zusammenfassung für Server läuft auf Port 80/, "existing claim quoted in the block");
     assert.match(raw, /Zusammenfassung für Server läuft auf Port 443/, "incoming claim quoted in the block");
-    assert.match(raw, /Inhalt von Server läuft auf Port 443/, "incoming body preserved — the diverted save is not lost");
+    assert.match(
+      raw,
+      /Inhalt von Server läuft auf Port 443/,
+      "incoming body preserved — the diverted save is not lost"
+    );
     assert.match(raw, /Deploy-Log 19\.08\./, "incoming provenance carried");
     assert.ok(!raw.includes("<details>"), "plain markdown only — no viewer-specific syntax");
   } finally {
@@ -96,10 +100,7 @@ test("#205: recall lean hits expose the unresolved-conflict flag — and drop it
     assert.equal(hit!.conflict, true, "lean hit carries conflict: true");
 
     // Resolution: an explicit overwrite with the winning claim removes the block.
-    await saveMemoryHandler(
-      deps,
-      memo("Streitfall Datenbank", { overwrite: true, body: "Geklärter Stand." }),
-    );
+    await saveMemoryHandler(deps, memo("Streitfall Datenbank", { overwrite: true, body: "Geklärter Stand." }));
     const after = await recallHandler(deps, { query: "Streitfall Datenbank", k: 5, min_score: 0 });
     const resolved = (after.hits as Array<{ id: string; conflict?: boolean }>).find((h) => h.id === existing.id);
     assert.ok(resolved);
@@ -131,7 +132,7 @@ test("#205: conflict_with must point at something that exists — nothing writte
   try {
     await assert.rejects(
       () => saveMemoryHandler(deps, memo("Zeigt ins Leere", { conflict_with: "gibt-es-nicht" })),
-      /unknown memory 'gibt-es-nicht'/,
+      /unknown memory 'gibt-es-nicht'/
     );
     assert.equal(deps.vault.get("zeigt-ins-leere"), undefined, "the rejected save left nothing behind");
   } finally {
@@ -145,7 +146,7 @@ test("#205: a memory cannot conflict with itself", async () => {
     const first = await saveMemoryHandler(deps, memo("Selbstwiderspruch"));
     await assert.rejects(
       () => saveMemoryHandler(deps, memo("Selbstwiderspruch", { conflict_with: first.id })),
-      /cannot conflict with itself/,
+      /cannot conflict with itself/
     );
   } finally {
     await cleanup();

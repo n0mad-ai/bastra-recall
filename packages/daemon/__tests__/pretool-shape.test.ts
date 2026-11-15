@@ -27,15 +27,25 @@ test("area key: files in the same area share it, case and depth are folded", () 
   assert.equal(a, pretoolAreaKey(root, "/Repo/Packages/Daemon/c.ts"), "case aliases do not open a new area");
   assert.notEqual(a, pretoolAreaKey(root, "/Repo/packages/core/src/a.ts"));
   assert.equal(pretoolAreaKey(root, "/Repo/README.md"), "area:/repo:", "the repo root is one area");
-  assert.equal(pretoolAreaKey(root, "/elsewhere/x/y.md"), "area:/elsewhere/x", "outside the repo: the parent directory");
+  assert.equal(
+    pretoolAreaKey(root, "/elsewhere/x/y.md"),
+    "area:/elsewhere/x",
+    "outside the repo: the parent directory"
+  );
 });
 
 test("compact hint: one line, id + title + first sentence, under the ceiling", () => {
   const block = formatCompactHint(
-    { id: "m1", title: "Never edit generated files", type: "lesson", summary: "Edit the source and rebuild. More detail follows here.", score: 150 },
+    {
+      id: "m1",
+      title: "Never edit generated files",
+      type: "lesson",
+      summary: "Edit the source and rebuild. More detail follows here.",
+      score: 150,
+    },
     "proj",
     "claude-code",
-    "first-touch",
+    "first-touch"
   );
   assert.match(block, /<recall-hints surface="claude-code" trigger="first-touch" project="proj">/);
   assert.match(block, /- m1 \(lesson\): Never edit generated files — Edit the source and rebuild\.\n/);
@@ -46,14 +56,22 @@ test("compact hint: one line, id + title + first sentence, under the ceiling", (
     { id: "m2", title: "T".repeat(400), type: "lesson", summary: "S".repeat(2000), score: 150 },
     null,
     "claude-code",
-    "binding-anchored",
+    "binding-anchored"
   );
   assert.ok(huge.length <= PRETOOL_HINT_CHAR_CEILING, `ceiling holds (${huge.length})`);
   assert.match(huge, /trigger="binding-anchored"/);
 });
 
 test("binding-anchored needs the fused scale, the REQUIRED band and a strong recall_when anchor", () => {
-  const h = { id: "x", title: "t", type: "lesson", summary: "s", score: 150, matched_recall_when: true, anchor_strength: "strong" as const };
+  const h = {
+    id: "x",
+    title: "t",
+    type: "lesson",
+    summary: "s",
+    score: 150,
+    matched_recall_when: true,
+    anchor_strength: "strong" as const,
+  };
   assert.equal(isBindingAnchored(h, 100, false), true);
   assert.equal(isBindingAnchored(h, 100, true), false);
   assert.equal(isBindingAnchored({ ...h, score: 80 }, 100, false), false);
@@ -65,7 +83,13 @@ test("binding-anchored needs the fused scale, the REQUIRED band and a strong rec
 
 type Hit = Record<string, unknown>;
 const hit = (id: string, extra: Hit = {}): Hit => ({
-  id, title: `Title ${id}`, type: "lesson", scope: "user-preference", summary: `Rule of ${id}. Detail.`, score: 150, ...extra,
+  id,
+  title: `Title ${id}`,
+  type: "lesson",
+  scope: "user-preference",
+  summary: `Rule of ${id}. Detail.`,
+  score: 150,
+  ...extra,
 });
 
 async function withDaemon(hitsFor: (n: number) => Hit[], fn: (base: string) => Promise<void>): Promise<void> {
@@ -103,10 +127,19 @@ async function withEnv<T>(env: Record<string, string>, fn: () => Promise<T>): Pr
 
 async function edit(base: string, sid: string, cwd: string, rel: string): Promise<string> {
   const out = await runWriteLane(
-    { hook_event_name: "PreToolUse", tool_name: "Edit", session_id: sid, cwd, tool_input: { file_path: join(cwd, rel), old_string: "a", new_string: "b" } },
-    base,
+    {
+      hook_event_name: "PreToolUse",
+      tool_name: "Edit",
+      session_id: sid,
+      cwd,
+      tool_input: { file_path: join(cwd, rel), old_string: "a", new_string: "b" },
+    },
+    base
   );
-  return (JSON.parse(out) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput?.additionalContext ?? "";
+  return (
+    (JSON.parse(out) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput
+      ?.additionalContext ?? ""
+  );
 }
 
 async function events(logDir: string): Promise<Record<string, unknown>[]> {
@@ -124,7 +157,14 @@ test("#621: first touch shows one candidate, repeat edits in the area stay silen
   try {
     await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir, BASTRA_HOOK_STATE_DIR: cwd }, async () => {
       await withDaemon(
-        (n) => (n === 0 ? [hit("a1"), hit("a2"), hit("a3")] : n === 1 ? [hit("b1"), hit("b2")] : n === 2 ? [hit("c1")] : [hit("d1", { matched_recall_when: true, anchor_strength: "strong" })]),
+        (n) =>
+          n === 0
+            ? [hit("a1"), hit("a2"), hit("a3")]
+            : n === 1
+              ? [hit("b1"), hit("b2")]
+              : n === 2
+                ? [hit("c1")]
+                : [hit("d1", { matched_recall_when: true, anchor_strength: "strong" })],
         async (base) => {
           const first = await edit(base, sid, cwd, "src/lane/one.ts");
           assert.match(first, /trigger="first-touch"/);
@@ -140,11 +180,14 @@ test("#621: first touch shows one candidate, repeat edits in the area stay silen
           const binding = await edit(base, sid, cwd, "src/lane/three.ts");
           assert.match(binding, /trigger="binding-anchored"/, "the named exception rides through a repeat");
           assert.match(binding, /- d1 /);
-        },
+        }
       );
     });
     const rows = await events(logDir);
-    assert.deepEqual(rows.map((r) => r.hint_reason), ["first-touch", "repeat-area", "first-touch", "binding-anchored"]);
+    assert.deepEqual(
+      rows.map((r) => r.hint_reason),
+      ["first-touch", "repeat-area", "first-touch", "binding-anchored"]
+    );
     assert.ok(rows.every((r) => r.pretool_shape === "compact"));
     assert.equal(rows[1]!.hint_tokens_est, 0);
   } finally {
@@ -158,10 +201,17 @@ test("#621: a candidate SessionStart or an earlier edit already delivered is not
   const sid = `pretool-dedup-${Date.now()}`;
   try {
     await withEnv({ BASTRA_TELEMETRY: "off", BASTRA_HOOK_STATE_DIR: cwd }, async () => {
-      await withDaemon(() => [hit("same")], async (base) => {
-        assert.match(await edit(base, sid, cwd, "a/x.ts"), /- same /);
-        assert.equal(await edit(base, sid, cwd, "b/y.ts"), "", "already delivered in this session — not again, even in a new area");
-      });
+      await withDaemon(
+        () => [hit("same")],
+        async (base) => {
+          assert.match(await edit(base, sid, cwd, "a/x.ts"), /- same /);
+          assert.equal(
+            await edit(base, sid, cwd, "b/y.ts"),
+            "",
+            "already delivered in this session — not again, even in a new area"
+          );
+        }
+      );
     });
   } finally {
     await rm(cwd, { recursive: true, force: true });
@@ -173,13 +223,16 @@ test("#621 rollback: BASTRA_PRETOOL_SHAPE=legacy restores the full list on every
   const sid = `pretool-legacy-${Date.now()}`;
   try {
     await withEnv({ BASTRA_TELEMETRY: "off", BASTRA_HOOK_STATE_DIR: cwd, BASTRA_PRETOOL_SHAPE: "legacy" }, async () => {
-      await withDaemon((n) => (n === 0 ? [hit("a1"), hit("a2")] : [hit("b1")]), async (base) => {
-        const first = await edit(base, sid, cwd, "src/one.ts");
-        assert.match(first, /a1/);
-        assert.match(first, /a2/);
-        assert.doesNotMatch(first, /trigger="first-touch"/);
-        assert.match(await edit(base, sid, cwd, "src/two.ts"), /b1/, "legacy does not gate by area");
-      });
+      await withDaemon(
+        (n) => (n === 0 ? [hit("a1"), hit("a2")] : [hit("b1")]),
+        async (base) => {
+          const first = await edit(base, sid, cwd, "src/one.ts");
+          assert.match(first, /a1/);
+          assert.match(first, /a2/);
+          assert.doesNotMatch(first, /trigger="first-touch"/);
+          assert.match(await edit(base, sid, cwd, "src/two.ts"), /b1/, "legacy does not gate by area");
+        }
+      );
     });
   } finally {
     await rm(cwd, { recursive: true, force: true });

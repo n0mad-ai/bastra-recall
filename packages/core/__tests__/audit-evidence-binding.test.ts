@@ -65,11 +65,7 @@ test("das Delete-Vorbild stammt aus der Fassung, die wirklich in den Trash wande
 
   // Zwischen Beweis-Read und Trash-Move kam bisher eine externe Fassung durch.
   const externAlt = await readFile(saved.file_path, "utf8");
-  await writeFile(
-    saved.file_path,
-    externAlt.replace("original-summary", "extern-auf-der-platte"),
-    "utf8",
-  );
+  await writeFile(saved.file_path, externAlt.replace("original-summary", "extern-auf-der-platte"), "utf8");
 
   const v = stubVault(new Map([["beleg", saved.file_path]]));
   const { audit, trashPath } = await auditedSoftDelete({
@@ -83,7 +79,7 @@ test("das Delete-Vorbild stammt aus der Fassung, die wirklich in den Trash wande
   assert.equal(
     (audit!.diff_before as Record<string, unknown>).summary,
     "extern-auf-der-platte",
-    "protokolliert wird, was verschoben wurde — nicht der Stand von vorher",
+    "protokolliert wird, was verschoben wurde — nicht der Stand von vorher"
   );
   assert.match(await readFile(trashPath, "utf8"), /extern-auf-der-platte/);
 });
@@ -119,7 +115,7 @@ test("der Restore protokolliert die tatsächlich veröffentlichte Fassung", asyn
   assert.equal(
     (audit!.diff_after as Record<string, unknown>).summary,
     "im-trash-geaendert",
-    "das Nachbild muss die Datei beschreiben, die jetzt im Vault liegt",
+    "das Nachbild muss die Datei beschreiben, die jetzt im Vault liegt"
   );
 });
 
@@ -143,6 +139,6 @@ test("ein Audit-Fehler macht aus einem committeten Save keinen Fehlschlag", asyn
   assert.match(
     await readFile(result.file_path, "utf8"),
     /original-summary/,
-    "die Mutation steht vollständig auf der Platte",
+    "die Mutation steht vollständig auf der Platte"
   );
 });

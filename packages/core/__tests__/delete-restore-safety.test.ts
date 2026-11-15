@@ -69,7 +69,7 @@ test("auditedSoftDelete evicts the memory from the index itself — no waiting f
     assert.equal(
       vault.get("doomed"),
       undefined,
-      "delete must drop the index entry, not wait for a cloud-unreliable unlink event",
+      "delete must drop the index entry, not wait for a cloud-unreliable unlink event"
     );
   } finally {
     await vault.stop();
@@ -82,7 +82,11 @@ test("auditedRestore refuses a destination outside the vault", async () => {
   const outside = join(dirname(root), `${"escape-"}${process.pid}`);
   try {
     await auditedSoftDelete({
-      vault, auditLog, vaultRoot: root, memoryID: "doomed", context: { actor: "user" },
+      vault,
+      auditLog,
+      vaultRoot: root,
+      memoryID: "doomed",
+      context: { actor: "user" },
     });
     await mkdir(outside, { recursive: true });
     await assert.rejects(
@@ -94,7 +98,7 @@ test("auditedRestore refuses a destination outside the vault", async () => {
         context: { actor: "user" },
       }),
       /outside the vault/,
-      "a sibling directory next to the vault is not a restore target",
+      "a sibling directory next to the vault is not a restore target"
     );
     assert.deepEqual(await readdir(outside), [], "nothing was written outside the vault");
   } finally {
@@ -109,7 +113,11 @@ test("auditedRestore is not fooled by a symlink that points out of the vault", a
   const outside = await mkdtemp(join(tmpdir(), "bastra-outside-"));
   try {
     await auditedSoftDelete({
-      vault, auditLog, vaultRoot: root, memoryID: "doomed", context: { actor: "user" },
+      vault,
+      auditLog,
+      vaultRoot: root,
+      memoryID: "doomed",
+      context: { actor: "user" },
     });
     // Cloud-Mounts sind oft genau das: ein Symlink im Vault, der woanders
     // hinzeigt. Eine rein textuelle Präfix-Prüfung ginge hier durch.
@@ -122,7 +130,7 @@ test("auditedRestore is not fooled by a symlink that points out of the vault", a
         destFilePath: join(root, "elsewhere", "doomed.md"),
         context: { actor: "user" },
       }),
-      /outside the vault/,
+      /outside the vault/
     );
     assert.deepEqual(await readdir(outside), [], "the symlink target stayed empty");
   } finally {
@@ -136,7 +144,11 @@ test("auditedRestore rejects a trash file that is not the requested memory", asy
   const { root, vault, auditLog } = await makeVault("bastra-restore-swap-");
   try {
     await auditedSoftDelete({
-      vault, auditLog, vaultRoot: root, memoryID: "doomed", context: { actor: "user" },
+      vault,
+      auditLog,
+      vaultRoot: root,
+      memoryID: "doomed",
+      context: { actor: "user" },
     });
     // Jemand hat den Trash von Hand angefasst (oder ein Sync-Konflikt hat
     // ihn ersetzt): unter `doomed.md` liegt jetzt ein FREMDES Memory.
@@ -144,9 +156,12 @@ test("auditedRestore rejects a trash file that is not the requested memory", asy
     await writeFile(trashFile, memoryMarkdown("someone-else"), "utf8");
     await assert.rejects(
       auditedRestore({
-        auditLog, vaultRoot: root, memoryID: "doomed", context: { actor: "user" },
+        auditLog,
+        vaultRoot: root,
+        memoryID: "doomed",
+        context: { actor: "user" },
       }),
-      /does not hold memory/,
+      /does not hold memory/
     );
     // Und der Vault hat nichts Falsches an den Originalpfad bekommen.
     const inVault = (await readdir(root)).filter((n) => n.endsWith(".md"));
@@ -212,7 +227,7 @@ test("restore verweigert, wenn die id inzwischen woanders lebt", async () => {
         memoryID: "wiederkehrer",
         context: { actor: "user", actor_detail: "test" },
       }),
-      /already live at/,
+      /already live at/
     );
     assert.equal(vault.pathsFor("wiederkehrer").length, 1, "es bleibt bei einer aktiven Datei");
   } finally {
@@ -256,11 +271,7 @@ test("auditedSave räumt beim Re-Filing die alte Datei weg", async () => {
 
     assert.notEqual(result.file_path, before[0], "die Datei ist umgezogen");
     await vault.reconcile?.();
-    assert.deepEqual(
-      vault.pathsFor("wanderer"),
-      [result.file_path],
-      "nur noch eine Datei trägt die id",
-    );
+    assert.deepEqual(vault.pathsFor("wanderer"), [result.file_path], "nur noch eine Datei trägt die id");
   } finally {
     await vault.stop?.();
     await rm(root, { recursive: true, force: true });
@@ -287,14 +298,18 @@ test("auditedSoftDelete verschiebt nicht, was der Cache für das Memory hält", 
 
     await assert.rejects(
       auditedSoftDelete({
-        vault, auditLog, vaultRoot: root, memoryID: "doomed", context: { actor: "user" },
+        vault,
+        auditLog,
+        vaultRoot: root,
+        memoryID: "doomed",
+        context: { actor: "user" },
       }),
-      /no file on disk holds it|not conclusive/,
+      /no file on disk holds it|not conclusive/
     );
     assert.match(
       await readFile(file, "utf8"),
       /Nur eine Notiz/,
-      "die fremde Notiz muss unangetastet an ihrem Platz liegen",
+      "die fremde Notiz muss unangetastet an ihrem Platz liegen"
     );
   } finally {
     await vault.stop();
@@ -321,9 +336,13 @@ test("ein Trash, der in ein aktives Regal zeigt, ist kein Trash", async () => {
 
     await assert.rejects(
       auditedSoftDelete({
-        vault, auditLog, vaultRoot: root, memoryID: "doomed", context: { actor: "user" },
+        vault,
+        auditLog,
+        vaultRoot: root,
+        memoryID: "doomed",
+        context: { actor: "user" },
       }),
-      /outside the \.bastra folder|not .*own (\.bastra|trash)/,
+      /outside the \.bastra folder|not .*own (\.bastra|trash)/
     );
     assert.deepEqual(await readdir(shelf), [], "nichts darf im aktiven Regal gelandet sein");
     assert.ok(existsSync(join(root, "doomed.md")), "und das Memory liegt noch, wo es lag");
@@ -353,19 +372,23 @@ test("das Delete-Audit beschreibt die Datei auf der PLATTE, nicht den Cache-Stan
     assert.equal(vault.get("doomed")?.fm.summary, "s", "Kontrolle: der Cache weiß nichts davon");
 
     const out = await auditedSoftDelete({
-      vault, auditLog, vaultRoot: root, memoryID: "doomed", context: { actor: "user" },
+      vault,
+      auditLog,
+      vaultRoot: root,
+      memoryID: "doomed",
+      context: { actor: "user" },
     });
 
     assert.ok(out.audit, "audit is null only when logging itself failed"); // #542
     assert.equal(
       (out.audit.diff_before as Record<string, unknown>).summary,
       "extern geaendert",
-      "das Audit muss die Fassung nennen, die wirklich in den Trash gewandert ist",
+      "das Audit muss die Fassung nennen, die wirklich in den Trash gewandert ist"
     );
     assert.match(
       await readFile(out.trashPath, "utf8"),
       /extern geaendert/,
-      "Kontrolle: im Trash liegt genau diese Fassung",
+      "Kontrolle: im Trash liegt genau diese Fassung"
     );
   } finally {
     await vault.stop();

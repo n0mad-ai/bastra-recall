@@ -85,7 +85,7 @@ export function createTickRail({ railEl, scrollEl, sizeEl = null, maxTicks = 30 
           const t = document.createElement("span");
           t.className = "lt-tick";
           return t;
-        }),
+        })
       );
     }
     const hovered = hoverIndex === null ? null : tickFor(hoverIndex, count);

@@ -1,5 +1,7 @@
 /* ── areas manager (#216) ──────────────────────────────────────── */
-#areas-modal[hidden] { display: none !important; }
+#areas-modal[hidden] {
+  display: none !important;
+}
 #areas-modal {
   position: fixed;
   inset: 0;
@@ -28,7 +30,9 @@
   line-height: 1.5;
   color: var(--text-dim);
 }
-#areas-help code { color: var(--text); }
+#areas-help code {
+  color: var(--text);
+}
 #areas-list {
   list-style: none;
   margin: 0;
@@ -44,9 +48,18 @@
   font: 12.5px var(--font-mono);
   color: var(--text);
 }
-#areas-list li:hover { background: var(--accent-soft); }
-#areas-list .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#areas-list .kind, #areas-list .count, #areas-list .lock {
+#areas-list li:hover {
+  background: var(--accent-soft);
+}
+#areas-list .name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#areas-list .kind,
+#areas-list .count,
+#areas-list .lock {
   font-size: 11px;
   color: var(--text-dim);
 }
@@ -63,8 +76,14 @@
   font-size: 11px;
   cursor: pointer;
 }
-#areas-list .area-act:hover { color: var(--accent); border-color: var(--accent); }
-#areas-list .area-act.danger:hover { color: #d06a6a; border-color: #d06a6a; }
+#areas-list .area-act:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+#areas-list .area-act.danger:hover {
+  color: #d06a6a;
+  border-color: #d06a6a;
+}
 #areas-list .area-rename {
   flex: 1;
   padding: 3px 8px;
@@ -88,7 +107,9 @@
   font: 12.5px var(--font-mono);
   outline: none;
 }
-#areas-create-name:focus { border-color: var(--accent); }
+#areas-create-name:focus {
+  border-color: var(--accent);
+}
 #areas-create {
   padding: 8px 14px;
   border: 1px solid var(--panel-border);
@@ -96,13 +117,27 @@
   color: var(--text);
   cursor: pointer;
   white-space: nowrap;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
-#areas-create:hover { border-color: var(--accent); color: var(--accent); }
-#areas-status { font-size: 12px; color: var(--text-dim); }
-#areas-status.ok { color: var(--accent); }
-#areas-status.err { color: #d06a6a; }
-#areas-actions { display: flex; }
+#areas-create:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+#areas-status {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+#areas-status.ok {
+  color: var(--accent);
+}
+#areas-status.err {
+  color: #d06a6a;
+}
+#areas-actions {
+  display: flex;
+}
 #areas-actions button {
   flex: 1;
   display: flex;
@@ -113,6 +148,11 @@
   background: transparent;
   color: var(--text);
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
-#areas-actions button:hover { border-color: var(--accent); color: var(--accent); }
+#areas-actions button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}

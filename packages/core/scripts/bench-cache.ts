@@ -23,10 +23,32 @@ const RECALL_COUNT = Number(process.env.BENCH_RECALL_COUNT ?? 10_000);
 const HOT_QUERY_COUNT = 20;
 
 const WORDS = [
-  "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf",
-  "hotel", "india", "juliet", "kilo", "lima", "mike", "november",
-  "oscar", "papa", "quebec", "romeo", "sierra", "tango", "uniform",
-  "victor", "whiskey", "xray", "yankee", "zulu",
+  "alpha",
+  "bravo",
+  "charlie",
+  "delta",
+  "echo",
+  "foxtrot",
+  "golf",
+  "hotel",
+  "india",
+  "juliet",
+  "kilo",
+  "lima",
+  "mike",
+  "november",
+  "oscar",
+  "papa",
+  "quebec",
+  "romeo",
+  "sierra",
+  "tango",
+  "uniform",
+  "victor",
+  "whiskey",
+  "xray",
+  "yankee",
+  "zulu",
 ];
 
 const TYPES = ["lesson", "decision", "project-fact", "reference", "preference"];
@@ -106,14 +128,12 @@ function printResult(r: BenchResult): void {
   console.log(
     `  ${r.label.padEnd(48)}  total ${r.totalMs.toFixed(1).padStart(8)} ms` +
       `  |  per call ${r.perCallUs.toFixed(2).padStart(8)} µs` +
-      `  (n=${r.recalls})`,
+      `  (n=${r.recalls})`
   );
 }
 
 async function main(): Promise<void> {
-  console.log(
-    `[bench] vault=${VAULT_SIZE} memorys, recall_count=${RECALL_COUNT}`,
-  );
+  console.log(`[bench] vault=${VAULT_SIZE} memorys, recall_count=${RECALL_COUNT}`);
   const t0 = performance.now();
   const { vault, idx, dir } = await setup();
   console.log(`[bench] indexed ${idx.size()} memorys in ${(performance.now() - t0).toFixed(0)} ms`);
@@ -123,35 +143,21 @@ async function main(): Promise<void> {
   console.log("Query-Tokenizer-Cache (#30):");
 
   // Cold: unique queries → cache miss every time.
-  const coldQueries = Array.from({ length: RECALL_COUNT }, (_, i) =>
-    `${pick(WORDS, i)} ${pick(WORDS, i * 11)} ${i}`,
-  );
-  const cold = bench(
-    "cold path (unique queries, miss every call)",
-    RECALL_COUNT,
-    (i) => {
-      idx.recall(coldQueries[i % coldQueries.length]!, { k: 5 });
-    },
-  );
+  const coldQueries = Array.from({ length: RECALL_COUNT }, (_, i) => `${pick(WORDS, i)} ${pick(WORDS, i * 11)} ${i}`);
+  const cold = bench("cold path (unique queries, miss every call)", RECALL_COUNT, (i) => {
+    idx.recall(coldQueries[i % coldQueries.length]!, { k: 5 });
+  });
   printResult(cold);
 
   // Hot: 20 queries cycled → cache hits after first 20.
-  const hotQueries = Array.from({ length: HOT_QUERY_COUNT }, (_, i) =>
-    `${pick(WORDS, i)} ${pick(WORDS, i * 11)}`,
-  );
+  const hotQueries = Array.from({ length: HOT_QUERY_COUNT }, (_, i) => `${pick(WORDS, i)} ${pick(WORDS, i * 11)}`);
   // Wir resetten den Cache explizit um die Hits zu zeigen.
   (idx as unknown as { queryCache: Map<string, unknown> }).queryCache.clear();
-  const hot = bench(
-    "hot path (20 cycled queries, mostly cache-hit)",
-    RECALL_COUNT,
-    (i) => {
-      idx.recall(hotQueries[i % HOT_QUERY_COUNT]!, { k: 5 });
-    },
-  );
+  const hot = bench("hot path (20 cycled queries, mostly cache-hit)", RECALL_COUNT, (i) => {
+    idx.recall(hotQueries[i % HOT_QUERY_COUNT]!, { k: 5 });
+  });
   printResult(hot);
-  console.log(
-    `  → hot/cold speedup: ${(cold.perCallUs / hot.perCallUs).toFixed(1)}×`,
-  );
+  console.log(`  → hot/cold speedup: ${(cold.perCallUs / hot.perCallUs).toFixed(1)}×`);
 
   console.log();
 
@@ -170,15 +176,11 @@ async function main(): Promise<void> {
   console.log(`  (sample hit count: ${sampleHits.length})`);
 
   // HEAD-Pfad: freistehende applyStalenessMultiplier ohne Cache.
-  const head = bench(
-    "applyStalenessMultiplier (HEAD, no per-memory cache)",
-    RECALL_COUNT,
-    () => {
-      // Kopie der Hits weil die Funktion das Array mutiert / re-sorted.
-      const hits = sampleHits.map((h) => ({ ...h }));
-      applyStalenessMultiplier(hits, (id) => vault.get(id)?.fm as Record<string, unknown> | undefined);
-    },
-  );
+  const head = bench("applyStalenessMultiplier (HEAD, no per-memory cache)", RECALL_COUNT, () => {
+    // Kopie der Hits weil die Funktion das Array mutiert / re-sorted.
+    const hits = sampleHits.map((h) => ({ ...h }));
+    applyStalenessMultiplier(hits, (id) => vault.get(id)?.fm as Record<string, unknown> | undefined);
+  });
   printResult(head);
 
   // Cached: SearchIndex.applyStaleness via private cast.
@@ -187,18 +189,12 @@ async function main(): Promise<void> {
   ).applyStaleness.bind(idx);
   // Warmup damit der Staleness-Cache gefüllt ist.
   applyStalenessCached(sampleHits.map((h) => ({ ...h })));
-  const cached = bench(
-    "SearchIndex.applyStaleness (cached, this PR)",
-    RECALL_COUNT,
-    () => {
-      const hits = sampleHits.map((h) => ({ ...h }));
-      applyStalenessCached(hits);
-    },
-  );
+  const cached = bench("SearchIndex.applyStaleness (cached, this PR)", RECALL_COUNT, () => {
+    const hits = sampleHits.map((h) => ({ ...h }));
+    applyStalenessCached(hits);
+  });
   printResult(cached);
-  console.log(
-    `  → cached/HEAD speedup: ${(head.perCallUs / cached.perCallUs).toFixed(1)}×`,
-  );
+  console.log(`  → cached/HEAD speedup: ${(head.perCallUs / cached.perCallUs).toFixed(1)}×`);
 
   console.log();
   console.log("[bench] cleanup …");

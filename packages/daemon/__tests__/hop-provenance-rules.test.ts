@@ -44,23 +44,32 @@ test("ein Hop-Treffer über dem Cut landet trotzdem nicht in required", () => {
 
 test("ein direkter Treffer über dem Cut bleibt required", () => {
   const banded = bandHits([hit("direkt", 150, "direct")], CUT, false);
-  assert.deepEqual(banded.required.map((h) => h.id), ["direkt"]);
+  assert.deepEqual(
+    banded.required.map((h) => h.id),
+    ["direkt"]
+  );
 });
 
 test("ohne Hop-Angabe bandet es wie bisher — die schlanke Projektion trägt keinen Hop", () => {
   // Die Lane sieht projizierte Hits ohne `hop`. Die Regel darf ihr Verhalten
   // nicht ändern, sonst hinge das Banding an einem Feld, das dort nie ankommt.
   const banded = bandHits([hit("projiziert", 150)], CUT, false);
-  assert.deepEqual(banded.required.map((h) => h.id), ["projiziert"]);
+  assert.deepEqual(
+    banded.required.map((h) => h.id),
+    ["projiziert"]
+  );
 });
 
 test("gemischt: der direkte Treffer wird required, der Nachbar nicht", () => {
   const banded = bandHits(
     [hit("direkt", 160, "direct"), hit("nachbar", 155, "1-hop"), hit("schwach", 40, "direct")],
     CUT,
-    false,
+    false
   );
-  assert.deepEqual(banded.required.map((h) => h.id), ["direkt"]);
+  assert.deepEqual(
+    banded.required.map((h) => h.id),
+    ["direkt"]
+  );
   assert.deepEqual(banded.optional.map((h) => h.id).sort(), ["nachbar", "schwach"]);
 });
 
@@ -126,7 +135,7 @@ test("der Assembler ruft weder Reranker noch Cross-Encoder noch Deep Recall", ()
   for (const forbidden of ["reranker", "rerank", "cross-encoder", "crossEncoder", "deepRecall", "deep-recall"]) {
     assert.ok(
       !code.includes(forbidden),
-      `session-assembler.ts greift auf "${forbidden}" zu — das gehört nicht ins SessionStart-Budget`,
+      `session-assembler.ts greift auf "${forbidden}" zu — das gehört nicht ins SessionStart-Budget`
     );
   }
 });
@@ -134,7 +143,11 @@ test("der Assembler ruft weder Reranker noch Cross-Encoder noch Deep Recall", ()
 test("ein direkter Treffer GENAU auf dem Cut ist required — die Grenze ist inklusiv", () => {
   // `>= cut` in band-wording; `>` left all eight tests here green (night 09-22): nothing sat on 100.
   const on = bandHits([hit("kante", CUT, "direct")], CUT, false);
-  assert.deepEqual(on.required.map((h) => h.id), ["kante"], "score === cut must clear the cut");
+  assert.deepEqual(
+    on.required.map((h) => h.id),
+    ["kante"],
+    "score === cut must clear the cut"
+  );
   const under = bandHits([hit("knapp", CUT - 1, "direct")], CUT, false);
   assert.deepEqual(under.required, [], "score === cut - 1 must not");
 });

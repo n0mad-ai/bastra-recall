@@ -21,7 +21,15 @@ describe("the delivered scorer bootstraps truth-overlap clusters", () => {
       { repo: "r2", file: "same.ts", v: 1 },
     ];
     assert.equal(bootstrapStat(pooled, statistic, 1, 50)?.clusters, 2);
-    assert.equal(bootstrapStat(pooled.map((r) => ({ ...r, repo: "r1" })), statistic, 1, 50)?.clusters, 1);
+    assert.equal(
+      bootstrapStat(
+        pooled.map((r) => ({ ...r, repo: "r1" })),
+        statistic,
+        1,
+        50
+      )?.clusters,
+      1
+    );
   });
 
   test("truth overlap is transitive", () => {

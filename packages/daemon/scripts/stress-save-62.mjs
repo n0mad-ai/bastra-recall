@@ -196,7 +196,7 @@ try {
   const again = await client.callTool(
     { name: "save_memory", arguments: saveArgs(dupSeed, makeBody(1_200, `${dupSeed}-CHANGED`)) },
     undefined,
-    { timeout: 120_000 },
+    { timeout: 120_000 }
   );
   const text = again.content?.map((c) => c.text ?? "").join("\n") ?? "";
   idempotency = again.isError ? `refused: ${text.slice(0, 160)}` : `answered: ${text.slice(0, 160)}`;
@@ -232,7 +232,7 @@ const truncated = await new Promise((done) => {
       id: 0,
       method: "initialize",
       params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "t", version: "1" } },
-    })}\n`,
+    })}\n`
   );
   // Half the frame, then nothing — no trailing newline, exactly what a
   // connection that drops mid-write leaves behind.
@@ -292,7 +292,7 @@ for (const r of results) {
     while (i < Math.min(expected.length, got.length) && expected[i] === got[i]) i++;
     anomalies.push(
       `body mismatch ${titleFor(seed)}: sent ${expected.length} chars (${sha(expected).slice(0, 12)}), ` +
-        `stored ${got.length} chars (${sha(got).slice(0, 12)}), first difference at index ${i}`,
+        `stored ${got.length} chars (${sha(got).slice(0, 12)}), first difference at index ${i}`
     );
   }
 }
@@ -314,7 +314,11 @@ const report = {
   idempotentResaveOfSameTitle: idempotency,
   truncatedFrameProducedAResult: truncated.stdoutHadResult,
   truncatedFrameStoredAMemory: truncationStored,
-  deviations: mismatched + missing + results.filter((r) => r.verdict !== "ok").length + duplicateTitles.length +
+  deviations:
+    mismatched +
+    missing +
+    results.filter((r) => r.verdict !== "ok").length +
+    duplicateTitles.length +
     (truncationStored ? 1 : 0),
   anomalies: anomalies.slice(0, 20),
 };

@@ -22,9 +22,7 @@ import { rng } from "./select.mjs";
 
 // CODE_ROI_OUT: a pilot directory, so a plumbing check never touches the real archive.
 const OUT = process.env.CODE_ROI_OUT ?? join(homedir(), ".bastra", "eval", "code-roi-v2");
-const REG = JSON.parse(
-  readFileSync(new URL("../../registrations/code-awareness-roi.json", import.meta.url), "utf8"),
-);
+const REG = JSON.parse(readFileSync(new URL("../../registrations/code-awareness-roi.json", import.meta.url), "utf8"));
 const T = REG.thresholds;
 const SOLVED = 0.8;
 const RESAMPLES = 10_000;
@@ -119,7 +117,11 @@ export function clusterBootstrap(rows, key, seed = REG.statistics.seed) {
     means.push(mean(sample));
   }
   means.sort((a, b) => a - b);
-  return { lo: means[Math.floor(0.025 * RESAMPLES)], hi: means[Math.floor(0.975 * RESAMPLES) - 1], clusters: groups.length };
+  return {
+    lo: means[Math.floor(0.025 * RESAMPLES)],
+    hi: means[Math.floor(0.975 * RESAMPLES) - 1],
+    clusters: groups.length,
+  };
 }
 
 function main() {
@@ -163,7 +165,11 @@ function main() {
   const checks = {
     recall_gain: { value: dRecall, required: `>= ${T.recall_gain_min}`, pass: dRecall >= T.recall_gain_min },
     recall_ci_lower: { value: ciRecall?.lo, required: "> 0", pass: (ciRecall?.lo ?? -1) > 0 },
-    precision_loss: { value: dPrecision, required: `>= -${T.precision_loss_max}`, pass: dPrecision >= -T.precision_loss_max },
+    precision_loss: {
+      value: dPrecision,
+      required: `>= -${T.precision_loss_max}`,
+      pass: dPrecision >= -T.precision_loss_max,
+    },
     context: {
       value: ctxRatio,
       required: `<= ${1 + T.context_increase_max_ratio} (median, ${bothSolved.length} scenarios solved in both arms)`,
@@ -171,7 +177,14 @@ function main() {
     },
   };
   const underpowered = n < REG.sample.min_scenarios;
-  const status = missing.length > 0 && n === 0 ? "not_evaluable" : underpowered ? "underpowered" : Object.values(checks).every((c) => c.pass) ? "pass" : "fail";
+  const status =
+    missing.length > 0 && n === 0
+      ? "not_evaluable"
+      : underpowered
+        ? "underpowered"
+        : Object.values(checks).every((c) => c.pass)
+          ? "pass"
+          : "fail";
 
   const report = {
     registration_version: REG.registration_version,
@@ -180,13 +193,22 @@ function main() {
     clusters: ciRecall?.clusters ?? 0,
     missing,
     means: {
-      recall: { control: mean(rows.map((r) => r.control.recall)), treatment: mean(rows.map((r) => r.treatment.recall)) },
-      precision: { control: mean(rows.map((r) => r.control.precision)), treatment: mean(rows.map((r) => r.treatment.precision)) },
+      recall: {
+        control: mean(rows.map((r) => r.control.recall)),
+        treatment: mean(rows.map((r) => r.treatment.recall)),
+      },
+      precision: {
+        control: mean(rows.map((r) => r.control.precision)),
+        treatment: mean(rows.map((r) => r.treatment.precision)),
+      },
       contextTokens: {
         control: median(rows.map((r) => r.control.contextChars)) / 4,
         treatment: median(rows.map((r) => r.treatment.contextChars)) / 4,
       },
-      turns: { control: median(rows.map((r) => r.control.turns ?? 0)), treatment: median(rows.map((r) => r.treatment.turns ?? 0)) },
+      turns: {
+        control: median(rows.map((r) => r.control.turns ?? 0)),
+        treatment: median(rows.map((r) => r.treatment.turns ?? 0)),
+      },
     },
     ciRecall,
     checks,
@@ -195,8 +217,12 @@ function main() {
       empty: rows.reduce((a, r) => a + r.treatment.findCodeEmpty, 0),
       scenariosUsingIt: rows.filter((r) => r.treatment.findCodeCalls > 0).length,
     },
-    noAnswers: { control: rows.filter((r) => r.control.noAnswer).length, treatment: rows.filter((r) => r.treatment.noAnswer).length },
-    notGatedHere: "latency and the hook-block share come from lane telemetry (`bastra logs --stats`), not from these runs",
+    noAnswers: {
+      control: rows.filter((r) => r.control.noAnswer).length,
+      treatment: rows.filter((r) => r.treatment.noAnswer).length,
+    },
+    notGatedHere:
+      "latency and the hook-block share come from lane telemetry (`bastra logs --stats`), not from these runs",
     rows,
   };
   writeFileSync(join(OUT, "report.json"), JSON.stringify(report, null, 2));

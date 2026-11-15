@@ -56,7 +56,7 @@ test("persona-gen exits non-zero and keeps the old file when every generation fa
         "",
         "Body.",
         "",
-      ].join("\n"),
+      ].join("\n")
     );
     const outPath = join(dir, "personas.json");
     writeFileSync(outPath, '{"previous":"run"}');
@@ -69,7 +69,11 @@ test("persona-gen exits non-zero and keeps the old file when every generation fa
     assert.match(out, /sampling 1 /, `the memory must be eligible; output:\n${out}`);
     assert.notEqual(res.status, 0, `a run with no persona must not exit 0; output:\n${out}`);
     assert.doesNotMatch(out, /wrote .*personas\.json/);
-    assert.equal(readFileSync(outPath, "utf8"), '{"previous":"run"}', "the previous file is not overwritten by an empty one");
+    assert.equal(
+      readFileSync(outPath, "utf8"),
+      '{"previous":"run"}',
+      "the previous file is not overwritten by an empty one"
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

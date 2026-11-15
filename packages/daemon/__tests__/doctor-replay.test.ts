@@ -92,14 +92,22 @@ interface Daemon {
 async function makeDaemon(): Promise<Daemon> {
   const vaultDir = await mkdtemp(join(tmpdir(), "bastra-replay-vault-"));
   const logDir = await mkdtemp(join(tmpdir(), "bastra-replay-logs-"));
-  await writeFile(join(vaultDir, "alpha.md"), memoryMarkdown("alpha", "alpha bravo charlie", ["alpha bravo charlie"]), "utf8");
-  await writeFile(join(vaultDir, "delta.md"), memoryMarkdown("delta", "delta echo foxtrot", ["delta echo foxtrot"]), "utf8");
+  await writeFile(
+    join(vaultDir, "alpha.md"),
+    memoryMarkdown("alpha", "alpha bravo charlie", ["alpha bravo charlie"]),
+    "utf8"
+  );
+  await writeFile(
+    join(vaultDir, "delta.md"),
+    memoryMarkdown("delta", "delta echo foxtrot", ["delta echo foxtrot"]),
+    "utf8"
+  );
   // A reflex memory: `/hook/reflex` serves it without any recall, so it is
   // the one hint that only the reflex route could anchor in the join state.
   await writeFile(
     join(vaultDir, "golf.md"),
     memoryMarkdown("golf", "golf hotel india", ["golf hotel india"], ["recall_mode: reflex"]),
-    "utf8",
+    "utf8"
   );
   const vault = new Vault(vaultDir);
   await vault.init();
@@ -173,17 +181,33 @@ test("(a)+(b): a replay against a read-only vault changes nothing and files its 
     assert.equal(rows.length, CORPUS.turns.length, "every turn gets a row");
     const system = rows.filter((r) => r.origin === "system");
     assert.equal(system.length, 1, "the task notification is tagged, not dropped");
-    assert.ok(rows.every((r) => typeof r.session_id === "string" && r.session_id.startsWith("replay-r1-")), "replay session ids");
+    assert.ok(
+      rows.every((r) => typeof r.session_id === "string" && r.session_id.startsWith("replay-r1-")),
+      "replay session ids"
+    );
     const hinted = rows.flatMap((r) => r.hinted_ids ?? []);
     assert.ok(hinted.includes("alpha"), `the retrieval prompt gets its hint (${JSON.stringify(rows)})`);
 
     assert.deepEqual(await snapshot(d.vaultDir), before, "(a) no vault file changed, none added");
 
     const files = (await readdir(d.logDir)).sort();
-    assert.ok(files.some((f) => f.startsWith("replay-") && f.endsWith(".jsonl")), `replay file written: ${files}`);
+    assert.ok(
+      files.some((f) => f.startsWith("replay-") && f.endsWith(".jsonl")),
+      `replay file written: ${files}`
+    );
     assert.ok(!files.some((f) => f.startsWith("events-")), `(b) no live event file: ${files}`);
-    const replayRows = (await readFile(join(d.logDir, files.find((f) => f.startsWith("replay-"))!), "utf8"))
-      .split("\n").filter(Boolean).map((l) => JSON.parse(l) as { kind: string; dimensions?: { client?: string } });
+    const replayRows = (
+      await readFile(
+        join(
+          d.logDir,
+          files.find((f) => f.startsWith("replay-"))!
+        ),
+        "utf8"
+      )
+    )
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { kind: string; dimensions?: { client?: string } });
     const kinds = new Set(replayRows.map((r) => r.kind));
     assert.ok(kinds.has("prompt_hook_call"), `lane rows in the replay file: ${[...kinds]}`);
     assert.ok(kinds.has("hook_recall"), `recall rows in the replay file: ${[...kinds]}`);
@@ -193,7 +217,8 @@ test("(a)+(b): a replay against a read-only vault changes nothing and files its 
     }
   } finally {
     await chmod(d.vaultDir, 0o755).catch(() => {});
-    for (const name of await readdir(d.vaultDir).catch(() => [] as string[])) await chmod(join(d.vaultDir, name), 0o644).catch(() => {});
+    for (const name of await readdir(d.vaultDir).catch(() => [] as string[]))
+      await chmod(join(d.vaultDir, name), 0o644).catch(() => {});
     await d.close();
   }
 });
@@ -230,7 +255,10 @@ test("(b) a replay leaves no recall a real load_memory or save_memory would foll
     };
     const rows = await runReplay(corpus, postReplayTurn(`http://127.0.0.1:${d.port}`), { run: "rid" });
     await settle();
-    assert.ok(rows.flatMap((r) => r.hinted_ids ?? []).length >= 2, `recall and reflex both served: ${JSON.stringify(rows)}`);
+    assert.ok(
+      rows.flatMap((r) => r.hinted_ids ?? []).length >= 2,
+      `recall and reflex both served: ${JSON.stringify(rows)}`
+    );
     assert.equal(d.telemetry.recentRecallId(), null, "the replay's recall ids stay out of the join state");
   } finally {
     await d.close();
@@ -259,7 +287,10 @@ test("(b) a real recall before a replay stays the one a later load_memory follow
     };
     const rows = await runReplay(corpus, postReplayTurn(`http://127.0.0.1:${d.port}`), { run: "keep" });
     await settle();
-    assert.ok(rows.flatMap((r) => r.hinted_ids ?? []).includes("alpha"), `the replay recalled: ${JSON.stringify(rows)}`);
+    assert.ok(
+      rows.flatMap((r) => r.hinted_ids ?? []).includes("alpha"),
+      `the replay recalled: ${JSON.stringify(rows)}`
+    );
     assert.equal(d.telemetry.recentRecallId(), live.recall_id, "still the live recall after the replay");
     assert.deepEqual(lit, [], "no replayed hit lit up the map");
   } finally {
@@ -269,8 +300,14 @@ test("(b) a real recall before a replay stays the one a later load_memory follow
 
 test("(b) unit: the sink routes a replay row by client or by session prefix, a live row stays in events-*", () => {
   const ts = "2026-10-20T10:00:00.000Z";
-  assert.equal(eventLogFile("/l", ts, { session_id: "abc", dimensions: { client: "claude-code" } }), "/l/events-2026-10-20.jsonl");
-  assert.equal(eventLogFile("/l", ts, { session_id: "abc", dimensions: { client: "replay" } }), "/l/replay-2026-10-20.jsonl");
+  assert.equal(
+    eventLogFile("/l", ts, { session_id: "abc", dimensions: { client: "claude-code" } }),
+    "/l/events-2026-10-20.jsonl"
+  );
+  assert.equal(
+    eventLogFile("/l", ts, { session_id: "abc", dimensions: { client: "replay" } }),
+    "/l/replay-2026-10-20.jsonl"
+  );
   assert.equal(eventLogFile("/l", ts, { session_id: "replay-r1-abc" }), "/l/replay-2026-10-20.jsonl");
   assert.equal(isEvalTraffic({ dimensions: { client: "replay" } }), true);
   assert.equal(isEvalTraffic({ dimensions: { client: "claude-code" } }), false);
@@ -285,8 +322,16 @@ test("(c) the same turns and the same lane give the same report twice", async ()
     const second = strip(await runReplay(CORPUS, post, { run: "b" }));
     const meta = { days: 14, sinceMs: Date.parse("2026-10-06T00:00:00.000Z") };
     const corpus = { ...CORPUS, turns: CORPUS.turns.length };
-    const r1 = summarizeReplay(first.map((r) => ({ ...r, session_id: null })), corpus, meta);
-    const r2 = summarizeReplay(second.map((r) => ({ ...r, session_id: null })), corpus, meta);
+    const r1 = summarizeReplay(
+      first.map((r) => ({ ...r, session_id: null })),
+      corpus,
+      meta
+    );
+    const r2 = summarizeReplay(
+      second.map((r) => ({ ...r, session_id: null })),
+      corpus,
+      meta
+    );
     assert.deepEqual(r1, r2);
     assert.equal(formatReplayReport(r1), formatReplayReport(r2));
     // Session dedup inside one session: the repeated alpha prompt in s2 is a
@@ -304,11 +349,45 @@ test("(c) the same turns and the same lane give the same report twice", async ()
 
 test("summarizeReplay is pure and the top-ten share counts slots, not prompts", () => {
   const rows: ReplayRow[] = [
-    { session_id: "replay-x-1", status: "ok", detected_mode: "retrieval", hinted_ids: ["a", "b"], latency_ms_total: 100 },
-    { session_id: "replay-x-1", status: "ok", detected_mode: "generic", hinted_ids: ["a"], latency_ms_total: 300, bridges_fired: ["br1"] },
-    { session_id: "replay-x-1", status: "gated", detected_mode: "none", gated: true, hinted_ids: [], latency_ms_total: 1 },
-    { session_id: "replay-x-2", status: "gated", detected_mode: "none", gated: true, origin: "system", latency_ms_total: 1 },
-    { session_id: "replay-x-2", status: "no-hits", detected_mode: "generic", hinted_ids: [], latency_ms_total: 200, bridges_fired: ["br1", "br2"] },
+    {
+      session_id: "replay-x-1",
+      status: "ok",
+      detected_mode: "retrieval",
+      hinted_ids: ["a", "b"],
+      latency_ms_total: 100,
+    },
+    {
+      session_id: "replay-x-1",
+      status: "ok",
+      detected_mode: "generic",
+      hinted_ids: ["a"],
+      latency_ms_total: 300,
+      bridges_fired: ["br1"],
+    },
+    {
+      session_id: "replay-x-1",
+      status: "gated",
+      detected_mode: "none",
+      gated: true,
+      hinted_ids: [],
+      latency_ms_total: 1,
+    },
+    {
+      session_id: "replay-x-2",
+      status: "gated",
+      detected_mode: "none",
+      gated: true,
+      origin: "system",
+      latency_ms_total: 1,
+    },
+    {
+      session_id: "replay-x-2",
+      status: "no-hits",
+      detected_mode: "generic",
+      hinted_ids: [],
+      latency_ms_total: 200,
+      bridges_fired: ["br1", "br2"],
+    },
   ];
   const corpus = { loadedIds: new Set(["b"]), files: 1, sessions: 2, turns: 5 };
   const r = summarizeReplay(rows, corpus, { days: 3, sinceMs: Date.parse("2026-10-17T00:00:00.000Z") });
@@ -317,9 +396,15 @@ test("summarizeReplay is pure and the top-ten share counts slots, not prompts", 
   assert.equal(r.gated_prompts, 1);
   assert.equal(r.prompts_with_hint, 2);
   assert.equal(r.slots, 3);
-  assert.deepEqual(r.top_notes, [{ id: "a", slots: 2 }, { id: "b", slots: 1 }]);
+  assert.deepEqual(r.top_notes, [
+    { id: "a", slots: 2 },
+    { id: "b", slots: 1 },
+  ]);
   assert.equal(r.slots_on_loaded, 1);
-  assert.deepEqual(r.bridges, [{ id: "br1", fires: 2 }, { id: "br2", fires: 1 }]);
+  assert.deepEqual(r.bridges, [
+    { id: "br1", fires: 2 },
+    { id: "br2", fires: 1 },
+  ]);
   assert.deepEqual(r.latency, { n: 3, p50_ms: 200, p95_ms: 300 });
   assert.deepEqual(r.statuses, { gated: 1, "no-hits": 1, ok: 2 });
   assert.deepEqual(r.modes, { generic: 2, retrieval: 1 });
@@ -339,21 +424,50 @@ test("readClaudeTranscripts: user turns with cwd, system turns kept, tool result
     const at = (s: number): string => new Date(Date.parse("2026-10-19T12:00:00.000Z") + s * 1000).toISOString();
     const rows = [
       { type: "user", timestamp: at(1), cwd: "/Users/me/proj", message: { role: "user", content: "fix the parser" } },
-      { type: "user", timestamp: at(2), cwd: "/Users/me/proj", message: { role: "user", content: [{ type: "tool_result", content: "out" }] } },
-      { type: "user", timestamp: at(3), isMeta: true, message: { role: "user", content: "<command-name>/foo</command-name>" } },
+      {
+        type: "user",
+        timestamp: at(2),
+        cwd: "/Users/me/proj",
+        message: { role: "user", content: [{ type: "tool_result", content: "out" }] },
+      },
+      {
+        type: "user",
+        timestamp: at(3),
+        isMeta: true,
+        message: { role: "user", content: "<command-name>/foo</command-name>" },
+      },
       { type: "user", timestamp: at(4), isSidechain: true, message: { role: "user", content: "subagent prompt" } },
-      { type: "user", timestamp: at(5), cwd: "/Users/me/proj", message: { role: "user", content: "<task-notification>\n<status>done</status>\n</task-notification>" } },
-      { type: "assistant", timestamp: at(6), message: { role: "assistant", content: [{ type: "tool_use", name: "mcp__bastra-recall__load_memory", input: { id: "note-1" } }] } },
+      {
+        type: "user",
+        timestamp: at(5),
+        cwd: "/Users/me/proj",
+        message: { role: "user", content: "<task-notification>\n<status>done</status>\n</task-notification>" },
+      },
+      {
+        type: "assistant",
+        timestamp: at(6),
+        message: {
+          role: "assistant",
+          content: [{ type: "tool_use", name: "mcp__bastra-recall__load_memory", input: { id: "note-1" } }],
+        },
+      },
       { type: "user", timestamp: at(7), message: { role: "user", content: [{ type: "text", text: "old turn" }] } },
     ];
     await writeFile(join(proj, "sess-1.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf8");
     // A transcript older than the window is skipped by mtime before parsing.
-    const corpus = await readClaudeTranscripts(root, Date.parse("2026-10-19T00:00:00.000Z"), Date.parse("2026-10-19T12:00:06.500Z"));
+    const corpus = await readClaudeTranscripts(
+      root,
+      Date.parse("2026-10-19T00:00:00.000Z"),
+      Date.parse("2026-10-19T12:00:06.500Z")
+    );
     assert.equal(corpus.files, 1);
     assert.equal(corpus.sessions, 1);
     assert.deepEqual(
       corpus.turns.map((t) => [t.session, t.cwd, t.text.slice(0, 19)]),
-      [["sess-1", "/Users/me/proj", "fix the parser"], ["sess-1", "/Users/me/proj", "<task-notification>"]],
+      [
+        ["sess-1", "/Users/me/proj", "fix the parser"],
+        ["sess-1", "/Users/me/proj", "<task-notification>"],
+      ]
     );
     assert.deepEqual([...corpus.loadedIds], ["note-1"]);
   } finally {
@@ -366,7 +480,12 @@ test("readClaudeTranscripts skips and counts a transcript over 64 MiB instead of
   try {
     const proj = join(root, "-Users-me-proj");
     await mkdir(proj, { recursive: true });
-    const row = { type: "user", timestamp: "2026-10-19T12:00:01.000Z", cwd: "/Users/me/proj", message: { role: "user", content: "fix the parser" } };
+    const row = {
+      type: "user",
+      timestamp: "2026-10-19T12:00:01.000Z",
+      cwd: "/Users/me/proj",
+      message: { role: "user", content: "fix the parser" },
+    };
     await writeFile(join(proj, "small.jsonl"), JSON.stringify(row) + "\n", "utf8");
     // Sparse: 64 MiB + 1 byte on paper, nothing on disk.
     await writeFile(join(proj, "big.jsonl"), "", "utf8");
@@ -375,7 +494,11 @@ test("readClaudeTranscripts skips and counts a transcript over 64 MiB instead of
     assert.equal(corpus.files, 1, "only the small transcript is read");
     assert.equal(corpus.oversized, 1, "the big one is counted");
     assert.equal(corpus.turns.length, 1);
-    const r = summarizeReplay([], { ...corpus, turns: corpus.turns.length }, { days: 14, sinceMs: Date.parse("2026-10-06T00:00:00.000Z") });
+    const r = summarizeReplay(
+      [],
+      { ...corpus, turns: corpus.turns.length },
+      { days: 14, sinceMs: Date.parse("2026-10-06T00:00:00.000Z") }
+    );
     assert.equal(r.oversized_files, 1);
     assert.match(formatReplayReport(r), /skipped transcripts: 1 over 64 MiB/);
   } finally {
@@ -402,7 +525,11 @@ test("--compare prints both columns with deltas and warns when the turn sets dif
   const corpus = { loadedIds: new Set<string>(), files: 1, sessions: 1, turns: 1 };
   const meta = { days: 3, sinceMs: Date.parse("2026-10-17T00:00:00.000Z") };
   const saved = summarizeReplay(base, corpus, meta);
-  const now = summarizeReplay([...base, { session_id: null, status: "timeout", detected_mode: "generic", hinted_ids: [], latency_ms_total: 900 }], { ...corpus, turns: 2 }, meta);
+  const now = summarizeReplay(
+    [...base, { session_id: null, status: "timeout", detected_mode: "generic", hinted_ids: [], latency_ms_total: 900 }],
+    { ...corpus, turns: 2 },
+    meta
+  );
   const text = formatReplayDiff(saved, now);
   assert.match(text, /turn sets differ/);
   assert.match(text, /hint slots\s+1\s+1\s+\(\+0\)/);

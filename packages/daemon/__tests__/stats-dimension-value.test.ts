@@ -17,7 +17,7 @@ test("a current tool-payload event is not labelled as a pre-#263 legacy row", ()
       assert.equal(
         dimensionValue({ kind, ts: "2026-09-25T10:00:00.000Z" }, field),
         "(tool call — not stamped)",
-        `${kind}/${field}`,
+        `${kind}/${field}`
       );
     }
   }

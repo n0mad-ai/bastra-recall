@@ -17,10 +17,7 @@ import {
  * change without the mirror in index-config.ts being updated — so a stale
  * ablation can't quietly report a lift against the wrong baseline.
  */
-const searchSrc = readFileSync(
-  resolve(import.meta.dirname, "../../core/src/search.ts"),
-  "utf8",
-);
+const searchSrc = readFileSync(resolve(import.meta.dirname, "../../core/src/search.ts"), "utf8");
 
 test("ablation field weights stay in sync with core SearchIndex", () => {
   const expected: Record<string, number> = {
@@ -36,7 +33,7 @@ test("ablation field weights stay in sync with core SearchIndex", () => {
     assert.match(
       searchSrc,
       new RegExp(`${field}:\\s*${weight}\\b`),
-      `core/src/search.ts should boost ${field} at ${weight} — update index-config.ts if core changed`,
+      `core/src/search.ts should boost ${field} at ${weight} — update index-config.ts if core changed`
     );
   }
 });
@@ -49,26 +46,23 @@ test("ablation field weights stay in sync with core SearchIndex", () => {
  * IMPORTS the tokenizer (no hand mirror), so the only drift left to guard is
  * the wiring itself — on both sides.
  */
-const indexConfigSrc = readFileSync(
-  resolve(import.meta.dirname, "../src/index-config.ts"),
-  "utf8",
-);
+const indexConfigSrc = readFileSync(resolve(import.meta.dirname, "../src/index-config.ts"), "utf8");
 
 test("tokenizer wiring stays in sync with core SearchIndex", () => {
   assert.match(
     searchSrc,
     /tokenize:\s*tokenizeWithIdentifiers/,
-    "core/src/search.ts should wire tokenizeWithIdentifiers as the top-level tokenizer — update index-config.ts if core changed",
+    "core/src/search.ts should wire tokenizeWithIdentifiers as the top-level tokenizer — update index-config.ts if core changed"
   );
   assert.match(
     indexConfigSrc,
     /tokenize:\s*tokenizeWithIdentifiers/,
-    "index-config.ts should pass core's tokenizeWithIdentifiers as the top-level tokenizer",
+    "index-config.ts should pass core's tokenizeWithIdentifiers as the top-level tokenizer"
   );
   assert.doesNotMatch(
     indexConfigSrc,
     /searchOptions:[^}]*tokenize/s,
-    "no separate searchOptions.tokenize — that would break index/query tokenization symmetry (see core query-normalize.ts)",
+    "no separate searchOptions.tokenize — that would break index/query tokenization symmetry (see core query-normalize.ts)"
   );
 });
 
@@ -89,6 +83,6 @@ test("ablation index dual-emits identifiers exactly like core (behavioral pin)",
   assert.equal(hits[0]?.id, "tok-probe");
   assert.ok(
     hits[0].terms.includes("my-app.config.ts"),
-    `the JOINED identifier must be a matched term, not just its split parts (got: ${hits[0].terms.join(", ")})`,
+    `the JOINED identifier must be a matched term, not just its split parts (got: ${hits[0].terms.join(", ")})`
   );
 });

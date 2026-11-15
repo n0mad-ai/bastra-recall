@@ -54,9 +54,7 @@ if (differences.length === 0) {
   process.exit(0);
 }
 
-console.error(
-  `formula DRIFT: ${differences.length} line(s) differ between the live tap and ${REPO_FORMULA_PATH}.`,
-);
+console.error(`formula DRIFT: ${differences.length} line(s) differ between the live tap and ${REPO_FORMULA_PATH}.`);
 console.error("The repository copy is authoritative for everything but url/sha256 — fix the tap.\n");
 for (const d of differences.slice(0, 40)) {
   console.error(`  ${d.line}`);
@@ -67,8 +65,6 @@ for (const d of differences.slice(0, 40)) {
 const repoClients = formulaCaveatClients(repoSource);
 const liveClients = formulaCaveatClients(liveSource);
 if (repoClients && liveClients && repoClients.join("|") !== liveClients.join("|")) {
-  console.error(
-    `\ncaveat client list: repo says [${repoClients.join(", ")}], live says [${liveClients.join(", ")}]`,
-  );
+  console.error(`\ncaveat client list: repo says [${repoClients.join(", ")}], live says [${liveClients.join(", ")}]`);
 }
 process.exit(1);

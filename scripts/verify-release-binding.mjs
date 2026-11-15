@@ -65,10 +65,7 @@ function emit(pairs) {
 function gh(args) {
   const res = spawnSync("gh", args, { encoding: "utf8" });
   if (res.status !== 0) {
-    die(
-      `gh ${args.join(" ")} failed (${res.status}):\n` +
-        `${`${res.stdout ?? ""}${res.stderr ?? ""}`.trim()}`,
-    );
+    die(`gh ${args.join(" ")} failed (${res.status}):\n` + `${`${res.stdout ?? ""}${res.stderr ?? ""}`.trim()}`);
   }
   return (res.stdout ?? "").trim();
 }
@@ -91,15 +88,7 @@ if (!tag) die("dry_run=false needs the tag of the staged draft release");
 if (!repo) die("GITHUB_REPOSITORY is not set — cannot resolve the draft release");
 if (!dispatchSha) die("GITHUB_SHA is not set — cannot prove which commit this run builds");
 
-const raw = gh([
-  "release",
-  "view",
-  tag,
-  "--repo",
-  repo,
-  "--json",
-  "isDraft,targetCommitish,tagName",
-]);
+const raw = gh(["release", "view", tag, "--repo", repo, "--json", "isDraft,targetCommitish,tagName"]);
 let release;
 try {
   release = JSON.parse(raw);
@@ -137,7 +126,7 @@ if (targetSha !== dispatchSha.toLowerCase()) {
       `       Everything this run builds would come from the dispatch ref while the\n` +
       `       published tag would come to rest on the draft's commit. Re-dispatch the\n` +
       `       workflow on a ref that points at ${targetSha}, or re-stage the draft on\n` +
-      `       the commit you actually want to release.`,
+      `       the commit you actually want to release.`
   );
 }
 
@@ -157,10 +146,16 @@ for (const rel of VERSIONED) {
   }
 }
 
-try { checkReleaseDocs(repoRoot, want); } catch (error) { die(error.message); }
+try {
+  checkReleaseDocs(repoRoot, want);
+} catch (error) {
+  die(error.message);
+}
 
 if (process.env.WIKI_UPDATED !== "true") {
-  die("Wiki updated is required: update and publish the English and German Wiki for this release, then dispatch with wiki_updated=true (WIKI_UPDATED=true).");
+  die(
+    "Wiki updated is required: update and publish the English and German Wiki for this release, then dispatch with wiki_updated=true (WIKI_UPDATED=true)."
+  );
 }
 console.log("Required checklist: Wiki updated (English + German) — confirmed by releaser.");
 

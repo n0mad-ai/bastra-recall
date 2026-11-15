@@ -19,14 +19,7 @@ import {
   passageFor,
   type PairScorer,
 } from "../src/rerank-model.js";
-import {
-  PRIMARY,
-  NS,
-  partitionCases,
-  rankArm,
-  checkBatchInvariance,
-  vaultFingerprint,
-} from "../src/rerank-replay.js";
+import { PRIMARY, NS, partitionCases, rankArm, checkBatchInvariance, vaultFingerprint } from "../src/rerank-replay.js";
 import {
   ASSOCIATIVE_MIN_N,
   MIN_SLICE_N,
@@ -58,13 +51,25 @@ const POOL = ["a", "b", "c", "d", "e"];
 
 /** A pooled hit at a given RRF score — the floor needs real scores. */
 function hit(id: string, score = 100): RecallHit {
-  return { id, title: id, type: "lesson", scope: "s", summary: "", topic_path: [], score, matched_terms: [] } as unknown as RecallHit;
+  return {
+    id,
+    title: id,
+    type: "lesson",
+    scope: "s",
+    summary: "",
+    topic_path: [],
+    score,
+    matched_terms: [],
+  } as unknown as RecallHit;
 }
 
 // ── rerankWindow: the window, the tail, and the ties ────────────────────────
 
 test("rerankWindow reorders the window and leaves the tail alone", () => {
-  assert.deepEqual(rerankWindow(POOL, 3, (_x, i) => i), ["c", "b", "a", "d", "e"]);
+  assert.deepEqual(
+    rerankWindow(POOL, 3, (_x, i) => i),
+    ["c", "b", "a", "d", "e"]
+  );
 });
 
 test("rerankWindow keeps the tail even when it is longer than the window", () => {
@@ -74,15 +79,24 @@ test("rerankWindow keeps the tail even when it is longer than the window", () =>
 });
 
 test("rerankWindow: a tie keeps pool order — a model that cannot separate two candidates has said nothing", () => {
-  assert.deepEqual(rerankWindow(POOL, 4, () => 1), POOL);
+  assert.deepEqual(
+    rerankWindow(POOL, 4, () => 1),
+    POOL
+  );
 });
 
 test("rerankWindow with n >= pool size reorders everything and loses nothing", () => {
-  assert.deepEqual(rerankWindow(POOL, 30, (_x, i) => -i), POOL);
+  assert.deepEqual(
+    rerankWindow(POOL, 30, (_x, i) => -i),
+    POOL
+  );
 });
 
 test("rerankWindow with n <= 0 is the identity — no window, no rerank", () => {
-  assert.deepEqual(rerankWindow(POOL, 0, () => 99), POOL);
+  assert.deepEqual(
+    rerankWindow(POOL, 0, () => 99),
+    POOL
+  );
 });
 
 // ── the metrics ────────────────────────────────────────────────────────────
@@ -145,7 +159,10 @@ test("pairedComparison never reports p = 0 — no permutation test licenses that
 
 test("pairedComparison is reproducible across calls with the same seed", () => {
   const d = [1, 0, 1, -1, 0, 1, 0, 0, 1, -1];
-  assert.deepEqual(pairedComparison(d, { iterations: 1000, seed: 7 }), pairedComparison(d, { iterations: 1000, seed: 7 }));
+  assert.deepEqual(
+    pairedComparison(d, { iterations: 1000, seed: 7 }),
+    pairedComparison(d, { iterations: 1000, seed: 7 })
+  );
 });
 
 test("pairedComparison on an empty sample is neutral, not a crash", () => {
@@ -178,18 +195,40 @@ test("a rerank that lifts a sub-floor candidate to rank 1 scores no hit", () => 
   const reranked = rerankWindow(pool, 2, (h) => (h.id === "gold" ? 99 : 0));
   assert.equal(reranked[0].id, "gold", "the rerank did promote it");
   assert.equal(recallAny(served(reranked, 10, 30), new Set(["gold"]), 3), 0, "but production never shows it");
-  assert.equal(recallAny(reranked.map((h) => h.id), new Set(["gold"]), 3), 1, "the floor-free upper bound does");
+  assert.equal(
+    recallAny(
+      reranked.map((h) => h.id),
+      new Set(["gold"]),
+      3
+    ),
+    1,
+    "the floor-free upper bound does"
+  );
 });
 
 // ── the case partition ─────────────────────────────────────────────────────
 
 function goldCase(over: Partial<GoldCase>): GoldCase {
   return {
-    id: "x", query: "q", origin_type: "harvested", authoring_mode: "test", origin_ref_hash: "h",
-    lang: "de", has_identifier: false, expected_ids: ["m1"], acceptable_alternatives: [],
-    expected_zone: "core", no_answer: false, scope: null, time_view: null,
-    allowed_retrieval_depth: 3, rationale: "r", kind: "descriptive",
-    labelled_at: "2026-09-09", labelled_by: "test", ...over,
+    id: "x",
+    query: "q",
+    origin_type: "harvested",
+    authoring_mode: "test",
+    origin_ref_hash: "h",
+    lang: "de",
+    has_identifier: false,
+    expected_ids: ["m1"],
+    acceptable_alternatives: [],
+    expected_zone: "core",
+    no_answer: false,
+    scope: null,
+    time_view: null,
+    allowed_retrieval_depth: 3,
+    rationale: "r",
+    kind: "descriptive",
+    labelled_at: "2026-09-09",
+    labelled_by: "test",
+    ...over,
   } as GoldCase;
 }
 
@@ -201,8 +240,14 @@ test("partitionCases: probes out, no_answer apart, and the three buckets add up"
     goldCase({ id: "d" }),
   ];
   const p = partitionCases(cases);
-  assert.deepEqual(p.answerable.map((c) => c.id), ["a", "d"]);
-  assert.deepEqual(p.noAnswer.map((c) => c.id), ["b"]);
+  assert.deepEqual(
+    p.answerable.map((c) => c.id),
+    ["a", "d"]
+  );
+  assert.deepEqual(
+    p.noAnswer.map((c) => c.id),
+    ["b"]
+  );
   assert.equal(p.probes, 1);
   assert.equal(p.answerable.length + p.noAnswer.length + p.malformed.length + p.probes, cases.length);
 });
@@ -210,7 +255,11 @@ test("partitionCases: probes out, no_answer apart, and the three buckets add up"
 test("partitionCases surfaces a malformed case instead of dropping it silently", () => {
   const p = partitionCases([goldCase({ id: "a", expected_ids: [] })]);
   assert.equal(p.answerable.length, 0);
-  assert.deepEqual(p.malformed.map((c) => c.id), ["a"], "it must land somewhere the runner can refuse");
+  assert.deepEqual(
+    p.malformed.map((c) => c.id),
+    ["a"],
+    "it must land somewhere the runner can refuse"
+  );
 });
 
 // ── passages ───────────────────────────────────────────────────────────────
@@ -245,7 +294,7 @@ test("the language guard REFUSES ms-marco on a set carrying German", () => {
   assert.throws(
     () => assertLanguagesAllowed(MODELS["ms-marco"], ["de", "neutral"]),
     /does not speak the language|was measured in/,
-    "an English-only model must not be scorable on a German set",
+    "an English-only model must not be scorable on a German set"
   );
 });
 
@@ -308,8 +357,24 @@ test("rankArm reranks through the real function and rescues a buried gold", asyn
   const rankings = await rankArm(lastWins, "short", rows, MEMS, "t", [10]);
   const after = rankings.get("c1")![10];
   assert.equal(after[0].id, "m9", "the last candidate scored highest and must lead");
-  assert.equal(recallAny(rows[0].baseline.map((h) => h.id), rows[0].expected, 3), 0, "baseline: outside the top 3");
-  assert.equal(recallAny(after.map((h) => h.id), rows[0].expected, 3), 1, "reranked: inside");
+  assert.equal(
+    recallAny(
+      rows[0].baseline.map((h) => h.id),
+      rows[0].expected,
+      3
+    ),
+    0,
+    "baseline: outside the top 3"
+  );
+  assert.equal(
+    recallAny(
+      after.map((h) => h.id),
+      rows[0].expected,
+      3
+    ),
+    1,
+    "reranked: inside"
+  );
 });
 
 test("rankArm maps score i to candidate i — an off-by-one here would be invisible in the aggregate", async () => {
@@ -318,7 +383,10 @@ test("rankArm maps score i to candidate i — an off-by-one here would be invisi
   const rankings = await rankArm(lastWins, "short", rows, MEMS, "t", [4]);
   // lastWins gives score j to the j-th passage, so the exact reversal is the
   // only correct answer. Any index shift produces a different permutation.
-  assert.deepEqual(rankings.get("c1")![4].map((h) => h.id), ["d", "c", "b", "a"]);
+  assert.deepEqual(
+    rankings.get("c1")![4].map((h) => h.id),
+    ["d", "c", "b", "a"]
+  );
 });
 
 test("one deep pass yields the same windows as separate shallow passes — the harness's core claim", async () => {
@@ -330,7 +398,7 @@ test("one deep pass yields the same windows as separate shallow passes — the h
     assert.deepEqual(
       deep.get("c1")![n].map((h) => h.id),
       separate.get("c1")![n].map((h) => h.id),
-      `N=${n} derived from the deep pass must equal a dedicated N=${n} pass`,
+      `N=${n} derived from the deep pass must equal a dedicated N=${n} pass`
     );
   }
 });
@@ -372,9 +440,16 @@ function ranked(rows: CaseRow[], order: (r: CaseRow) => string[]): Map<string, A
 test("a slice below MIN_SLICE_N is reported as not evaluable, never as a number", () => {
   const rows = [row("c1", ["a", "b"], ["a"], { lang: "mixed" })];
   const rep = reportArm({
-    model: "en-de", passage: "short", n: 10, primary: true,
-    rows, rankings: ranked(rows, (r) => r.baseline.map((h) => h.id)),
-    floor: 30, serveK: 10, seed: 1, poolSplit: assignPoolBuckets([...rows], 40),
+    model: "en-de",
+    passage: "short",
+    n: 10,
+    primary: true,
+    rows,
+    rankings: ranked(rows, (r) => r.baseline.map((h) => h.id)),
+    floor: 30,
+    serveK: 10,
+    seed: 1,
+    poolSplit: assignPoolBuckets([...rows], 40),
   });
   assert.ok(rep.by_lang.mixed.not_evaluable, "mixed (n=4 in the real set) must not carry an interval");
   assert.equal(rep.by_lang.mixed.at, undefined);
@@ -386,16 +461,42 @@ test("rank_regression_share counts a gold that fell out of the served list", () 
   // Push the gold to the back; with serveK=1 it leaves the served list entirely.
   const rankings = ranked(rows, () => ["x", "y", "gold"]);
   const rep = reportArm({
-    model: "en-de", passage: "short", n: 10, primary: true,
-    rows, rankings, floor: 30, serveK: 1, seed: 1, poolSplit: assignPoolBuckets([...rows], 40),
+    model: "en-de",
+    passage: "short",
+    n: 10,
+    primary: true,
+    rows,
+    rankings,
+    floor: 30,
+    serveK: 1,
+    seed: 1,
+    poolSplit: assignPoolBuckets([...rows], 40),
   });
   assert.equal(rep.rank_regression_share, 1);
 });
 
 test("the no_answer guard counts a changed top-1 and says so as a share", () => {
   const rows = [row("g1", ["a", "b"], [])];
-  assert.equal(noAnswerGuard(rows, ranked(rows, () => ["b", "a"]), 10, 10, 30).top1_changed, 1);
-  assert.equal(noAnswerGuard(rows, ranked(rows, () => ["a", "b"]), 10, 10, 30).share, 0);
+  assert.equal(
+    noAnswerGuard(
+      rows,
+      ranked(rows, () => ["b", "a"]),
+      10,
+      10,
+      30
+    ).top1_changed,
+    1
+  );
+  assert.equal(
+    noAnswerGuard(
+      rows,
+      ranked(rows, () => ["a", "b"]),
+      10,
+      10,
+      30
+    ).share,
+    0
+  );
 });
 
 test("assignPoolBuckets splits at the in-run median, not at a chosen number", () => {
@@ -407,7 +508,10 @@ test("assignPoolBuckets splits at the in-run median, not at a chosen number", ()
   const split = assignPoolBuckets(rows, 40);
   assert.equal(split.median, 10);
   assert.equal(split.degenerate, undefined);
-  assert.deepEqual(rows.map((r) => r.poolBucket), ["small", "large", "large"]);
+  assert.deepEqual(
+    rows.map((r) => r.poolBucket),
+    ["small", "large", "large"]
+  );
 });
 
 test("assignPoolBuckets flags a constant pool — the split that silently does not split", () => {
@@ -435,9 +539,16 @@ test("a degenerate pool split makes both by_pool buckets not evaluable — inclu
   const rows = Array.from({ length: 40 }, (_, i) => row(`c${i}`, ["a", "b"], ["a"], { poolSize: 40 }));
   const split = assignPoolBuckets(rows, 40);
   const rep = reportArm({
-    model: "en-de", passage: "short", n: 10, primary: true,
-    rows, rankings: ranked(rows, (r) => r.baseline.map((h) => h.id)),
-    floor: 30, serveK: 10, seed: 1, poolSplit: split,
+    model: "en-de",
+    passage: "short",
+    n: 10,
+    primary: true,
+    rows,
+    rankings: ranked(rows, (r) => r.baseline.map((h) => h.id)),
+    floor: 30,
+    serveK: 10,
+    seed: 1,
+    poolSplit: split,
   });
   assert.ok(rep.by_pool.small, "the empty bucket must still appear");
   assert.ok(rep.by_pool.large, "the full bucket must appear");
@@ -478,16 +589,19 @@ test("transformers.js is gone from every package — #501 closed, the dependency
   const rootPkg = JSON.parse(readFileSync(join(root, "..", "package.json"), "utf8"));
   for (const [where, pkg] of [
     ["<root>", rootPkg],
-    ...["core", "daemon", "eval", "bastra-recall", "statusline"].map((p) => [
-      p,
-      JSON.parse(readFileSync(join(root, p, "package.json"), "utf8")),
-    ] as [string, Record<string, Record<string, string> | undefined>]),
+    ...["core", "daemon", "eval", "bastra-recall", "statusline"].map(
+      (p) =>
+        [p, JSON.parse(readFileSync(join(root, p, "package.json"), "utf8"))] as [
+          string,
+          Record<string, Record<string, string> | undefined>,
+        ]
+    ),
   ] as [string, Record<string, Record<string, string> | undefined>][]) {
     for (const field of ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]) {
       assert.equal(
         pkg[field]?.["@huggingface/transformers"],
         undefined,
-        `${where}/${field} still carries the dependency`,
+        `${where}/${field} still carries the dependency`
       );
     }
   }
@@ -506,13 +620,18 @@ test("§18.1: the associative axis under its registered minimum is NOT EVALUABLE
   // 137 answerable associative cases against a registered minimum of 150. The
   // bar lives in code because a report writer can forget a rule; a checker
   // cannot. Above MIN_SLICE_N=30, so nothing else would have caught this.
-  const rows = Array.from({ length: 137 }, (_, i) =>
-    row(`a${i}`, ["gold", "x"], ["gold"], { kind: "associative" }),
-  );
+  const rows = Array.from({ length: 137 }, (_, i) => row(`a${i}`, ["gold", "x"], ["gold"], { kind: "associative" }));
   const rep = reportArm({
-    model: "en-de", passage: "short", n: 10, primary: true,
-    rows, rankings: ranked(rows, (r) => r.baseline.map((h) => h.id)),
-    floor: 30, serveK: 10, seed: 1, poolSplit: assignPoolBuckets([...rows], 40),
+    model: "en-de",
+    passage: "short",
+    n: 10,
+    primary: true,
+    rows,
+    rankings: ranked(rows, (r) => r.baseline.map((h) => h.id)),
+    floor: 30,
+    serveK: 10,
+    seed: 1,
+    poolSplit: assignPoolBuckets([...rows], 40),
   });
   assert.ok(rep.by_kind.associative.not_evaluable?.includes("§18.1"), JSON.stringify(rep.by_kind.associative));
   assert.ok(rep.by_kind.associative.not_evaluable?.includes("never as a null finding"));
@@ -522,13 +641,18 @@ test("§18.1: the associative axis under its registered minimum is NOT EVALUABLE
 });
 
 test("the descriptive axis is NOT bound by the associative minimum", () => {
-  const rows = Array.from({ length: 60 }, (_, i) =>
-    row(`d${i}`, ["gold", "x"], ["gold"], { kind: "descriptive" }),
-  );
+  const rows = Array.from({ length: 60 }, (_, i) => row(`d${i}`, ["gold", "x"], ["gold"], { kind: "descriptive" }));
   const rep = reportArm({
-    model: "en-de", passage: "short", n: 10, primary: true,
-    rows, rankings: ranked(rows, (r) => r.baseline.map((h) => h.id)),
-    floor: 30, serveK: 10, seed: 1, poolSplit: assignPoolBuckets([...rows], 40),
+    model: "en-de",
+    passage: "short",
+    n: 10,
+    primary: true,
+    rows,
+    rankings: ranked(rows, (r) => r.baseline.map((h) => h.id)),
+    floor: 30,
+    serveK: 10,
+    seed: 1,
+    poolSplit: assignPoolBuckets([...rows], 40),
   });
   assert.ok(rep.by_kind.descriptive.at, "60 descriptive cases clear MIN_SLICE_N and must be measured");
 });

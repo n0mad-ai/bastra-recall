@@ -34,10 +34,7 @@ import {
 } from "./documents-write-handler.js";
 import { editMemoryHandler } from "./edit-memory-handler.js";
 import { FindCodeArgs, findCode, sharedCodeGraphCache } from "./code-graph/find-code.js";
-import {
-  FindAffectedFilesArgs,
-  findAffectedFiles,
-} from "./code-graph/find-affected-files.js";
+import { FindAffectedFilesArgs, findAffectedFiles } from "./code-graph/find-affected-files.js";
 import { findAffectedFilesEvent, findCodeEvent } from "./code-graph/tool-telemetry.js";
 import { addFloor, affirm, release } from "./floors.js";
 import { saveProductDocHandler } from "./product-doc-handler.js";
@@ -64,17 +61,19 @@ export interface DispatchCtx {
 export async function dispatchApi(
   tool: string,
   body: Record<string, unknown>,
-  ctx: DispatchCtx,
+  ctx: DispatchCtx
 ): Promise<unknown | undefined> {
   // #708: every MCP tool event a forwarded call writes carries the caller's
   // Claude Code session — see caller-session.ts. `null` = forwarded, no header.
-  return callerSessionStore.run(ctx.ccSessionId ?? null, () => withExecutedVaultWrite(tool, ctx, () => dispatchTool(tool, body, ctx), body));
+  return callerSessionStore.run(ctx.ccSessionId ?? null, () =>
+    withExecutedVaultWrite(tool, ctx, () => dispatchTool(tool, body, ctx), body)
+  );
 }
 
 async function dispatchTool(
   tool: string,
   body: Record<string, unknown>,
-  ctx: DispatchCtx,
+  ctx: DispatchCtx
 ): Promise<unknown | undefined> {
   const { toolDeps, documentWriteEnabled } = ctx;
   const { vault, search } = toolDeps;
@@ -89,13 +88,28 @@ async function dispatchTool(
   body = recoverCallArguments(tool, body, TOOL_ARG_EXPECTATIONS) as Record<string, unknown>;
 
   switch (tool) {
-    case "review_save_suggestion": return reviewSaveSuggestion(ctx.project !== undefined ? ctx.project : ctx.cwd ? projectForFilter(ctx.cwd) : null, body);
-    case "review_draft": return reviewDraftHandler(toolDeps, body);
-    case "validate_artifact": return await validateArtifactHandler(body, toolDeps);
+    case "review_save_suggestion":
+      return reviewSaveSuggestion(
+        ctx.project !== undefined ? ctx.project : ctx.cwd ? projectForFilter(ctx.cwd) : null,
+        body
+      );
+    case "review_draft":
+      return reviewDraftHandler(toolDeps, body);
+    case "validate_artifact":
+      return await validateArtifactHandler(body, toolDeps);
     case "recall":
       return await recallHandler(toolDeps, body);
-    case "rulebook_check": return await rulebookCheckHandler(toolDeps, body, { sessionId: ctx.ccSessionId, agentId: ctx.agentId, project: ctx.project !== undefined ? ctx.project : ctx.cwd ? projectForFilter(ctx.cwd) : null });
-    case "list_rules": return await listRulesHandler(toolDeps, body, { sessionId: ctx.ccSessionId, project: ctx.project !== undefined ? ctx.project : ctx.cwd ? projectForFilter(ctx.cwd) : null });
+    case "rulebook_check":
+      return await rulebookCheckHandler(toolDeps, body, {
+        sessionId: ctx.ccSessionId,
+        agentId: ctx.agentId,
+        project: ctx.project !== undefined ? ctx.project : ctx.cwd ? projectForFilter(ctx.cwd) : null,
+      });
+    case "list_rules":
+      return await listRulesHandler(toolDeps, body, {
+        sessionId: ctx.ccSessionId,
+        project: ctx.project !== undefined ? ctx.project : ctx.cwd ? projectForFilter(ctx.cwd) : null,
+      });
     case "load_memory":
       return await loadMemoryHandler(toolDeps, body, { sessionId: ctx.ccSessionId ?? null, agentId: ctx.agentId });
     case "save_memory":
@@ -148,7 +162,7 @@ async function dispatchTool(
         typeof body.memory_id === "string" ? body.memory_id : "",
         typeof body.affirmed_by === "string" ? body.affirmed_by : "",
         typeof body.why === "string" ? body.why : "",
-        occurredAt !== undefined ? { occurredAt } : {},
+        occurredAt !== undefined ? { occurredAt } : {}
       );
       return { ok: true, entry };
     }
@@ -167,7 +181,7 @@ async function dispatchTool(
           findCodeEvent(cache, parsed.data, result, {
             surface: "http",
             callerSession: ctx.ccSessionId ?? null,
-          }),
+          })
         )
         .catch(() => {});
       return result;
@@ -183,7 +197,7 @@ async function dispatchTool(
           findAffectedFilesEvent(cache, parsed.data, result, {
             surface: "http",
             callerSession: ctx.ccSessionId ?? null,
-          }),
+          })
         )
         .catch(() => {});
       return result;
@@ -199,18 +213,20 @@ async function dispatchTool(
       const doc = readDocument(vault, parsed.data);
       // #457: read_document liefert ganze Dokumentkörper — bisher der größte
       // Posten, der in keiner Kontextrechnung stand.
-      void toolDeps.telemetry.logReadDocument({
-        id: parsed.data.id,
-        found: doc !== null,
-        ...(doc
-          ? {
-              delivered_chars: JSON.stringify(doc, null, 2).length,
-              delivered_tokens_est: Math.ceil(JSON.stringify(doc, null, 2).length / 4),
-              body_chars: doc.body.length,
-            }
-          : {}),
-        caller_session: ctx.ccSessionId ?? null,
-      }).catch(() => {});
+      void toolDeps.telemetry
+        .logReadDocument({
+          id: parsed.data.id,
+          found: doc !== null,
+          ...(doc
+            ? {
+                delivered_chars: JSON.stringify(doc, null, 2).length,
+                delivered_tokens_est: Math.ceil(JSON.stringify(doc, null, 2).length / 4),
+                body_chars: doc.body.length,
+              }
+            : {}),
+          caller_session: ctx.ccSessionId ?? null,
+        })
+        .catch(() => {});
       if (!doc) throw new Error(`document not found: ${parsed.data.id}`);
       return doc;
     }
@@ -228,9 +244,7 @@ async function dispatchTool(
     case "recategorize_document":
     case "move_document": {
       if (!documentWriteEnabled) {
-        throw new Error(
-          `${tool} is a Pro feature — set BASTRA_DOCUMENT_WRITE=1 to enable.`,
-        );
+        throw new Error(`${tool} is a Pro feature — set BASTRA_DOCUMENT_WRITE=1 to enable.`);
       }
       if (tool === "save_document") {
         const parsed = SaveDocumentArgs.safeParse(body);

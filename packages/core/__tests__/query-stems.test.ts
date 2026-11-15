@@ -41,7 +41,7 @@ ${opts.body}
 
 async function withVault(
   notes: Record<string, { recallWhen: string; body: string }>,
-  run: (search: SearchIndex) => void | Promise<void>,
+  run: (search: SearchIndex) => void | Promise<void>
 ): Promise<void> {
   const dir = await mkdtemp(path.join(tmpdir(), "bastra-stems-"));
   try {
@@ -86,14 +86,20 @@ test("queryStems: closed affix families only, seven letters up, stems keep five"
 test("a Turkish query word longer than the stored form finds the note", async () => {
   await withVault(NOTES, (search) => {
     const hits = search.recall("faturanın şablonlarında");
-    assert.deepEqual(hits.map((h) => h.id), ["turkish"]);
+    assert.deepEqual(
+      hits.map((h) => h.id),
+      ["turkish"]
+    );
   });
 });
 
 test("a Finnish query word longer than the stored form finds the note", async () => {
   await withVault(NOTES, (search) => {
     const hits = search.recall("skriptillä");
-    assert.deepEqual(hits.map((h) => h.id), ["finnish"]);
+    assert.deepEqual(
+      hits.map((h) => h.id),
+      ["finnish"]
+    );
   });
 });
 
@@ -110,14 +116,14 @@ test("stems are not query terms: the anchor checks see the authored words only",
 });
 
 test("an indexed query word gets no stems, and bm25_no_fuzzy gets none either", async () => {
-  await withVault(
-    { ...NOTES, inflected: { recallWhen: "ajo", body: "Ajo skriptillä onnistui eilen." } },
-    (search) => {
-      // "skriptillä" is in the index now: the word matches as before, the
-      // stem "skripti" is not asked for, so the "finnish" note stays out.
-      assert.deepEqual(search.recall("skriptillä").map((h) => h.id), ["inflected"]);
-    },
-  );
+  await withVault({ ...NOTES, inflected: { recallWhen: "ajo", body: "Ajo skriptillä onnistui eilen." } }, (search) => {
+    // "skriptillä" is in the index now: the word matches as before, the
+    // stem "skripti" is not asked for, so the "finnish" note stays out.
+    assert.deepEqual(
+      search.recall("skriptillä").map((h) => h.id),
+      ["inflected"]
+    );
+  });
   await withVault(NOTES, (search) => {
     assert.deepEqual(search.recall("skriptillä", { bm25_no_fuzzy: true }), []);
   });
@@ -137,9 +143,20 @@ test("stems are capped per word (shortest first) and per query", async () => {
     // (The index fold turns Turkish ı into i; stems are cut after the fold.)
     assert.deepEqual(planTerms(search, "şablonlarında"), ["şablonlarında", "şablon", "şablonların"].map(foldTerm));
     // Twelve unindexed words with two stems each ask for 24; the query budget keeps 12.
-    const words = ["şablonlarında", "faturalarında", "müşterilerinde", "raporlarında", "projelerinde",
-      "toplantılarında", "sözleşmelerinde", "ödemelerinde", "siparişlerinde", "teklifl" + "erinde",
-      "kullanıcılarında", "hesaplarında"];
+    const words = [
+      "şablonlarında",
+      "faturalarında",
+      "müşterilerinde",
+      "raporlarında",
+      "projelerinde",
+      "toplantılarında",
+      "sözleşmelerinde",
+      "ödemelerinde",
+      "siparişlerinde",
+      "teklifl" + "erinde",
+      "kullanıcılarında",
+      "hesaplarında",
+    ];
     const terms = planTerms(search, words.join(" "));
     assert.equal(terms.length, words.length + QUERY_STEMS_MAX);
     assert.deepEqual(terms.slice(0, words.length), words.map(foldTerm));

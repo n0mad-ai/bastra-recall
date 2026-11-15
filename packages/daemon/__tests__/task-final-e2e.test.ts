@@ -1,51 +1,310 @@
 import "./tasks-opt-in.js";
 /** Final-stack real-process smoke, entirely synthetic; no human consent evidence claimed. */
-import {test} from "node:test";
+import { test } from "node:test";
 import assert from "node:assert/strict";
-import {mkdtemp,mkdir,writeFile,readFile,stat,realpath} from "node:fs/promises";
-import {tmpdir} from "node:os";
-import {join} from "node:path";
-import {fileURLToPath} from "node:url";
-import {spawn,type ChildProcess} from "node:child_process";
-import {once} from "node:events";
-import {createServer} from "node:net";
-import {mintTaskCredential} from "../src/task-auth.js";
-import {readTaskStore} from "../src/task-store.js";
-const daemon=fileURLToPath(new URL("../dist/index.js",import.meta.url)),guard=fileURLToPath(new URL("../../../scripts/test-env.mjs",import.meta.url));
-const pause=(ms:number)=>new Promise(r=>setTimeout(r,ms));
-test("final daemon: durable next-contact notify → chat-directed execute without keys → crash receipt recovery → chat-directed rollback",async()=>{
- const root=await realpath(await mkdtemp(join(tmpdir(),"task-final-e2e-"))),data=join(root,"data"),work=join(root,"work"),vault=join(root,"vault");await Promise.all([mkdir(data),mkdir(work),mkdir(vault)]);const path=join(data,"tasks.json"),authPath=join(data,"task-auth.json");await writeFile(join(work,"artifact.txt"),"old\n");
- const owner=await mintTaskCredential(authPath,{actor_id:"owner",role:"owner",domains:["personal"]}),agent=await mintTaskCredential(authPath,{actor_id:"agent",role:"agent",domains:["personal"]});
- const registry={schema_version:1,revision:1,protected_boundary:false,keys:[],targets:[{id:"artifact",root:work,path:"artifact.txt",owner_domains:["personal"],sensitivity:"private",adapter:"local-artifact-v1"}]};await writeFile(join(data,"task-action-registry.json"),JSON.stringify(registry),{mode:0o600});
- const instruction=(user_request:string)=>({write_origin:"user-directed",session_id:"synthetic-e2e",program:"synthetic-test-client",user_request,at:Date.now()});
- const fault=join(root,"synthetic-crash.mjs");await writeFile(fault,"import fs from 'node:fs';import{syncBuiltinESMExports}from'node:module';const rename=fs.renameSync;fs.renameSync=(a,b)=>{const r=rename(a,b);if(b===process.env.SYNTHETIC_TARGET)process.kill(process.pid,'SIGKILL');return r;};syncBuiltinESMExports();");
- let child:ChildProcess|undefined,closed:Promise<any>|undefined,base="",errors="";
- const start=async(crash=false)=>{const probe=createServer();probe.listen(0,"127.0.0.1");await once(probe,"listening");const port=(probe.address() as any).port;await new Promise<void>(r=>probe.close(()=>r()));assert.notEqual(port,6723);base=`http://127.0.0.1:${port}`;
-  child=spawn(process.execPath,["--import",guard,...(crash?["--import",fault]:[]),daemon],{env:{...process.env,BASTRA_VAULT_PATH:vault,BASTRA_TASKS_PATH:path,BASTRA_HTTP_PORT:String(port),BASTRA_DAEMON_URL:base,BASTRA_AUTO_UPDATE:"0",BASTRA_EMBEDDING_PROVIDER:"none",BASTRA_BM25_ONLY:"1",BASTRA_PENDING_RELAY:"0",SYNTHETIC_TARGET:join(work,"artifact.txt")},stdio:["pipe","ignore","pipe"]});closed=once(child,"close");errors="";child.stderr!.on("data",c=>{errors=(errors+c).slice(-2000);});const until=Date.now()+15000;while(Date.now()<until){try{if((await fetch(base+"/health")).ok)return;}catch{}await pause(25);}throw new Error(errors||"isolated daemon did not start");};
- const stop=async()=>{if(child&&child.exitCode===null&&child.signalCode===null)child.kill("SIGTERM");await closed;child=undefined;};
- const call=async(name:string,input:unknown={},who=owner)=>{const r=await fetch(base+`/api/v1/task_${name}`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${who.token}`},body:JSON.stringify(input)});const b=await r.json() as any;assert.equal(r.status,200,JSON.stringify(b));return b;};
- const waitTask=async(id:string,condition:(t:any)=>boolean)=>{const until=Date.now()+10000;while(Date.now()<until){const t=await call("get",{id});if(condition(t))return t;await pause(25);}throw new Error("task contact deadline");};
- const create=async(key:string,level="notify",at=Date.now()-1)=>call("create",{idempotency_key:key,original_request:"Evaluate the synthetic run, not a passed gate",goal:"Evaluate the synthetic run",resolution_condition:"Explicit owner outcome",timezone:"Europe/Madrid",scope:{kind:"personal",name:"demo"},owner_domains:["personal"],action_level:level,arm:true,schedule:{kind:"instant",at},...(level==="notify"?{origin:{kind:"user-request",client:"e2e",session:"synthetic",context:"Evaluate the synthetic run"}}:{})},level==="notify"?agent:owner);
- try{
-  await start();const notify=await create("notify");await waitTask(notify.id,t=>t.state==="due");
-  let hookBody:any; const hookDeadline=Date.now()+10000;
-  do { const hook=await fetch(base+"/hook/session-context",{method:"POST",headers:{"Content-Type":"application/json","x-bastra-task-authorization":`Bearer ${agent.token}`},body:JSON.stringify({session_id:"conversation-e2e",budget:{tokens:4096}})});hookBody=await hook.json();if(hookBody.context.includes("bastra-due"))break;await pause(25); } while(Date.now()<hookDeadline);
-  assert.match(hookBody.context,/bastra-due/);assert.match(hookBody.context,/user-request/);
-  const duplicate=await create("notify-duplicate","notify",notify.schedule.at);assert.equal(duplicate.id,notify.id);assert.equal(duplicate.duplicate,true);
-  let due=await call("due",{max_bytes:16384});const card=due.cards.find((c:any)=>c.task_id===notify.id);assert.ok(card);assert.match(card.why_now,/not a passed measurement gate/);assert.equal((await readTaskStore(path)).occurrences[0].acknowledgement,undefined);
-  const small=await call("due",{max_bytes:256});assert.equal(small.cards.length,1);assert.equal(small.cards[0].kind,"availability");assert.ok(small.overflow);assert.equal((await readTaskStore(path)).tasks[0].state,"due");
-  const current=await call("get",{id:notify.id});await call("acknowledge",{id:notify.id,expected_revision:current.expected_revision,occurrence_id:card.occurrence_id},agent);assert.equal((await call("get",{id:notify.id})).state,"due");await stop();await start();due=await call("due",{include_acknowledged:true,max_bytes:16384});assert.equal(due.cards.find((c:any)=>c.task_id===notify.id).occurrence_id,card.occurrence_id);assert.equal((await readTaskStore(path)).occurrences.filter(o=>o.task_id===notify.id).length,1);
-  const present=await call("get",{id:notify.id});await call("resolve",{id:notify.id,expected_revision:present.expected_revision},agent);
-  for(const action_level of ["prepare","execute"]){const currentNotify=await call("get",{id:notify.id});const edited=await call("edit",{id:notify.id,expected_revision:currentNotify.expected_revision,patch:{action_level}},agent);assert.equal(edited.action_level,action_level);assert.equal(edited.armed,false,"editing a terminal task never rearms it");}
-  const draft=await create("prepare","prepare");await waitTask(draft.id,t=>t.state==="due");const liveDraft=await call("get",{id:draft.id}),prepared=await call("prepare",{id:draft.id,expected_revision:liveDraft.expected_revision,target_id:"artifact",payload:"new\n"},agent);assert.equal(prepared.executes,false);assert.equal(await readFile(join(work,"artifact.txt"),"utf8"),"old\n");
-  const currentDraft=await call("get",{id:draft.id});await call("resolve",{id:draft.id,expected_revision:currentDraft.expected_revision});
-  const executable=await create("execute","execute");await waitTask(executable.id,t=>t.state==="due");const live=await call("get",{id:executable.id}),authorization=instruction("Bitte ersetze die lokale Testdatei durch new."),proposal=await call("prepare",{id:executable.id,expected_revision:live.expected_revision,target_id:"artifact",payload:"new\n",authorization},agent);
-  assert.equal(proposal.approved,true);assert.deepEqual(proposal.authorization,authorization);assert.deepEqual(proposal.preview,{before:"old\n",after:"new\n"});await call("controls",{execution_stopped:false,adapter:{id:"local-artifact-v1",enabled:true}},agent);
-  const preparedStatus=await call("status",{},agent);assert.deepEqual(preparedStatus.authorizations[0].authorization,authorization);assert.equal(preparedStatus.authorizations[0].consumed,false);assert.equal((await readTaskStore(path)).approvals[0].signature,undefined);
-  await stop();await start(true);const lease=await call("lease",{proposal_id:proposal.proposal.id},agent),input={proposal_id:proposal.proposal.id,lease_id:lease.lease.id,holder_token:lease.holder_token,fence:lease.lease.fence,idempotency_key:"exact-effect"};
-  await assert.rejects(call("execute",input,agent));await closed;child=undefined;assert.equal(await readFile(join(work,"artifact.txt"),"utf8"),"new\n");const stamp=(await stat(join(work,"artifact.txt"))).mtimeMs;let persisted=await readTaskStore(path);assert.equal(persisted.intents[0].state,"pending");assert.equal(persisted.receipts.length,0);assert.equal(persisted.consumed_approval_ids.length,1);
-  await start();const until=Date.now()+10000;while(Date.now()<until){persisted=await readTaskStore(path);if(persisted.receipts.length)break;await pause(25);}assert.equal(persisted.receipts[0].outcome,"reconciled");assert.equal((await stat(join(work,"artifact.txt"))).mtimeMs,stamp);const retry=await call("execute",input,agent);assert.equal(retry.receipt.id,persisted.receipts[0].id);assert.equal((await stat(join(work,"artifact.txt"))).mtimeMs,stamp);
-  const rollbackAuthorization=instruction("Mach diese Teständerung rückgängig."),rollback=await call("rollback_prepare",{receipt_id:retry.receipt.id,authorization:rollbackAuthorization},agent);assert.equal(rollback.approved,true);assert.equal(rollback.new_owner_approvals_required,false);const reserved=await call("lease",{proposal_id:rollback.proposal.id},agent);await call("execute",{proposal_id:rollback.proposal.id,lease_id:reserved.lease.id,holder_token:reserved.holder_token,fence:reserved.lease.fence,idempotency_key:"chat-directed-rollback"},agent);assert.equal(await readFile(join(work,"artifact.txt"),"utf8"),"old\n");
-  await call("controls",{enabled:false,execution_stopped:true,adapter:{id:"local-artifact-v1",enabled:false}});const status=await call("status");assert.equal(status.controls.enabled,false);assert.equal(status.adapters[0].enabled,false);assert.equal(status.receipts.length,2);assert.equal(status.authorizations.length,2);assert.ok(status.authorizations.every((a:any)=>a.consumed));assert.deepEqual(status.authorizations[1].authorization,rollbackAuthorization);assert.equal(JSON.stringify(status.authorizations).includes("signature"),false);assert.equal(status.budgets.poll_ms,60000);assert.equal(status.coverage,process.platform==="darwin"?"local-macos-and-next-contact":"next-contact-only");assert.equal(status.notifications.supported,process.platform==="darwin");
- }finally{await stop();}
+import { mkdtemp, mkdir, writeFile, readFile, stat, realpath } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { spawn, type ChildProcess } from "node:child_process";
+import { once } from "node:events";
+import { createServer } from "node:net";
+import { mintTaskCredential } from "../src/task-auth.js";
+import { readTaskStore } from "../src/task-store.js";
+const daemon = fileURLToPath(new URL("../dist/index.js", import.meta.url)),
+  guard = fileURLToPath(new URL("../../../scripts/test-env.mjs", import.meta.url));
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+test("final daemon: durable next-contact notify → chat-directed execute without keys → crash receipt recovery → chat-directed rollback", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "task-final-e2e-"))),
+    data = join(root, "data"),
+    work = join(root, "work"),
+    vault = join(root, "vault");
+  await Promise.all([mkdir(data), mkdir(work), mkdir(vault)]);
+  const path = join(data, "tasks.json"),
+    authPath = join(data, "task-auth.json");
+  await writeFile(join(work, "artifact.txt"), "old\n");
+  const owner = await mintTaskCredential(authPath, { actor_id: "owner", role: "owner", domains: ["personal"] }),
+    agent = await mintTaskCredential(authPath, { actor_id: "agent", role: "agent", domains: ["personal"] });
+  const registry = {
+    schema_version: 1,
+    revision: 1,
+    protected_boundary: false,
+    keys: [],
+    targets: [
+      {
+        id: "artifact",
+        root: work,
+        path: "artifact.txt",
+        owner_domains: ["personal"],
+        sensitivity: "private",
+        adapter: "local-artifact-v1",
+      },
+    ],
+  };
+  await writeFile(join(data, "task-action-registry.json"), JSON.stringify(registry), { mode: 0o600 });
+  const instruction = (user_request: string) => ({
+    write_origin: "user-directed",
+    session_id: "synthetic-e2e",
+    program: "synthetic-test-client",
+    user_request,
+    at: Date.now(),
+  });
+  const fault = join(root, "synthetic-crash.mjs");
+  await writeFile(
+    fault,
+    "import fs from 'node:fs';import{syncBuiltinESMExports}from'node:module';const rename=fs.renameSync;fs.renameSync=(a,b)=>{const r=rename(a,b);if(b===process.env.SYNTHETIC_TARGET)process.kill(process.pid,'SIGKILL');return r;};syncBuiltinESMExports();"
+  );
+  let child: ChildProcess | undefined,
+    closed: Promise<any> | undefined,
+    base = "",
+    errors = "";
+  const start = async (crash = false) => {
+    const probe = createServer();
+    probe.listen(0, "127.0.0.1");
+    await once(probe, "listening");
+    const port = (probe.address() as any).port;
+    await new Promise<void>((r) => probe.close(() => r()));
+    assert.notEqual(port, 6723);
+    base = `http://127.0.0.1:${port}`;
+    child = spawn(process.execPath, ["--import", guard, ...(crash ? ["--import", fault] : []), daemon], {
+      env: {
+        ...process.env,
+        BASTRA_VAULT_PATH: vault,
+        BASTRA_TASKS_PATH: path,
+        BASTRA_HTTP_PORT: String(port),
+        BASTRA_DAEMON_URL: base,
+        BASTRA_AUTO_UPDATE: "0",
+        BASTRA_EMBEDDING_PROVIDER: "none",
+        BASTRA_BM25_ONLY: "1",
+        BASTRA_PENDING_RELAY: "0",
+        SYNTHETIC_TARGET: join(work, "artifact.txt"),
+      },
+      stdio: ["pipe", "ignore", "pipe"],
+    });
+    closed = once(child, "close");
+    errors = "";
+    child.stderr!.on("data", (c) => {
+      errors = (errors + c).slice(-2000);
+    });
+    const until = Date.now() + 15000;
+    while (Date.now() < until) {
+      try {
+        if ((await fetch(base + "/health")).ok) return;
+      } catch {}
+      await pause(25);
+    }
+    throw new Error(errors || "isolated daemon did not start");
+  };
+  const stop = async () => {
+    if (child && child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+    await closed;
+    child = undefined;
+  };
+  const call = async (name: string, input: unknown = {}, who = owner) => {
+    const r = await fetch(base + `/api/v1/task_${name}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${who.token}` },
+      body: JSON.stringify(input),
+    });
+    const b = (await r.json()) as any;
+    assert.equal(r.status, 200, JSON.stringify(b));
+    return b;
+  };
+  const waitTask = async (id: string, condition: (t: any) => boolean) => {
+    const until = Date.now() + 10000;
+    while (Date.now() < until) {
+      const t = await call("get", { id });
+      if (condition(t)) return t;
+      await pause(25);
+    }
+    throw new Error("task contact deadline");
+  };
+  const create = async (key: string, level = "notify", at = Date.now() - 1) =>
+    call(
+      "create",
+      {
+        idempotency_key: key,
+        original_request: "Evaluate the synthetic run, not a passed gate",
+        goal: "Evaluate the synthetic run",
+        resolution_condition: "Explicit owner outcome",
+        timezone: "Europe/Madrid",
+        scope: { kind: "personal", name: "demo" },
+        owner_domains: ["personal"],
+        action_level: level,
+        arm: true,
+        schedule: { kind: "instant", at },
+        ...(level === "notify"
+          ? {
+              origin: {
+                kind: "user-request",
+                client: "e2e",
+                session: "synthetic",
+                context: "Evaluate the synthetic run",
+              },
+            }
+          : {}),
+      },
+      level === "notify" ? agent : owner
+    );
+  try {
+    await start();
+    const notify = await create("notify");
+    await waitTask(notify.id, (t) => t.state === "due");
+    let hookBody: any;
+    const hookDeadline = Date.now() + 10000;
+    do {
+      const hook = await fetch(base + "/hook/session-context", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-bastra-task-authorization": `Bearer ${agent.token}` },
+        body: JSON.stringify({ session_id: "conversation-e2e", budget: { tokens: 4096 } }),
+      });
+      hookBody = await hook.json();
+      if (hookBody.context.includes("bastra-due")) break;
+      await pause(25);
+    } while (Date.now() < hookDeadline);
+    assert.match(hookBody.context, /bastra-due/);
+    assert.match(hookBody.context, /user-request/);
+    const duplicate = await create("notify-duplicate", "notify", notify.schedule.at);
+    assert.equal(duplicate.id, notify.id);
+    assert.equal(duplicate.duplicate, true);
+    let due = await call("due", { max_bytes: 16384 });
+    const card = due.cards.find((c: any) => c.task_id === notify.id);
+    assert.ok(card);
+    assert.match(card.why_now, /not a passed measurement gate/);
+    assert.equal((await readTaskStore(path)).occurrences[0].acknowledgement, undefined);
+    const small = await call("due", { max_bytes: 256 });
+    assert.equal(small.cards.length, 1);
+    assert.equal(small.cards[0].kind, "availability");
+    assert.ok(small.overflow);
+    assert.equal((await readTaskStore(path)).tasks[0].state, "due");
+    const current = await call("get", { id: notify.id });
+    await call(
+      "acknowledge",
+      { id: notify.id, expected_revision: current.expected_revision, occurrence_id: card.occurrence_id },
+      agent
+    );
+    assert.equal((await call("get", { id: notify.id })).state, "due");
+    await stop();
+    await start();
+    due = await call("due", { include_acknowledged: true, max_bytes: 16384 });
+    assert.equal(due.cards.find((c: any) => c.task_id === notify.id).occurrence_id, card.occurrence_id);
+    assert.equal((await readTaskStore(path)).occurrences.filter((o) => o.task_id === notify.id).length, 1);
+    const present = await call("get", { id: notify.id });
+    await call("resolve", { id: notify.id, expected_revision: present.expected_revision }, agent);
+    for (const action_level of ["prepare", "execute"]) {
+      const currentNotify = await call("get", { id: notify.id });
+      const edited = await call(
+        "edit",
+        { id: notify.id, expected_revision: currentNotify.expected_revision, patch: { action_level } },
+        agent
+      );
+      assert.equal(edited.action_level, action_level);
+      assert.equal(edited.armed, false, "editing a terminal task never rearms it");
+    }
+    const draft = await create("prepare", "prepare");
+    await waitTask(draft.id, (t) => t.state === "due");
+    const liveDraft = await call("get", { id: draft.id }),
+      prepared = await call(
+        "prepare",
+        { id: draft.id, expected_revision: liveDraft.expected_revision, target_id: "artifact", payload: "new\n" },
+        agent
+      );
+    assert.equal(prepared.executes, false);
+    assert.equal(await readFile(join(work, "artifact.txt"), "utf8"), "old\n");
+    const currentDraft = await call("get", { id: draft.id });
+    await call("resolve", { id: draft.id, expected_revision: currentDraft.expected_revision });
+    const executable = await create("execute", "execute");
+    await waitTask(executable.id, (t) => t.state === "due");
+    const live = await call("get", { id: executable.id }),
+      authorization = instruction("Bitte ersetze die lokale Testdatei durch new."),
+      proposal = await call(
+        "prepare",
+        {
+          id: executable.id,
+          expected_revision: live.expected_revision,
+          target_id: "artifact",
+          payload: "new\n",
+          authorization,
+        },
+        agent
+      );
+    assert.equal(proposal.approved, true);
+    assert.deepEqual(proposal.authorization, authorization);
+    assert.deepEqual(proposal.preview, { before: "old\n", after: "new\n" });
+    await call("controls", { execution_stopped: false, adapter: { id: "local-artifact-v1", enabled: true } }, agent);
+    const preparedStatus = await call("status", {}, agent);
+    assert.deepEqual(preparedStatus.authorizations[0].authorization, authorization);
+    assert.equal(preparedStatus.authorizations[0].consumed, false);
+    assert.equal((await readTaskStore(path)).approvals[0].signature, undefined);
+    await stop();
+    await start(true);
+    const lease = await call("lease", { proposal_id: proposal.proposal.id }, agent),
+      input = {
+        proposal_id: proposal.proposal.id,
+        lease_id: lease.lease.id,
+        holder_token: lease.holder_token,
+        fence: lease.lease.fence,
+        idempotency_key: "exact-effect",
+      };
+    await assert.rejects(call("execute", input, agent));
+    await closed;
+    child = undefined;
+    assert.equal(await readFile(join(work, "artifact.txt"), "utf8"), "new\n");
+    const stamp = (await stat(join(work, "artifact.txt"))).mtimeMs;
+    let persisted = await readTaskStore(path);
+    assert.equal(persisted.intents[0].state, "pending");
+    assert.equal(persisted.receipts.length, 0);
+    assert.equal(persisted.consumed_approval_ids.length, 1);
+    await start();
+    const until = Date.now() + 10000;
+    while (Date.now() < until) {
+      persisted = await readTaskStore(path);
+      if (persisted.receipts.length) break;
+      await pause(25);
+    }
+    assert.equal(persisted.receipts[0].outcome, "reconciled");
+    assert.equal((await stat(join(work, "artifact.txt"))).mtimeMs, stamp);
+    const retry = await call("execute", input, agent);
+    assert.equal(retry.receipt.id, persisted.receipts[0].id);
+    assert.equal((await stat(join(work, "artifact.txt"))).mtimeMs, stamp);
+    const rollbackAuthorization = instruction("Mach diese Teständerung rückgängig."),
+      rollback = await call(
+        "rollback_prepare",
+        { receipt_id: retry.receipt.id, authorization: rollbackAuthorization },
+        agent
+      );
+    assert.equal(rollback.approved, true);
+    assert.equal(rollback.new_owner_approvals_required, false);
+    const reserved = await call("lease", { proposal_id: rollback.proposal.id }, agent);
+    await call(
+      "execute",
+      {
+        proposal_id: rollback.proposal.id,
+        lease_id: reserved.lease.id,
+        holder_token: reserved.holder_token,
+        fence: reserved.lease.fence,
+        idempotency_key: "chat-directed-rollback",
+      },
+      agent
+    );
+    assert.equal(await readFile(join(work, "artifact.txt"), "utf8"), "old\n");
+    await call("controls", {
+      enabled: false,
+      execution_stopped: true,
+      adapter: { id: "local-artifact-v1", enabled: false },
+    });
+    const status = await call("status");
+    assert.equal(status.controls.enabled, false);
+    assert.equal(status.adapters[0].enabled, false);
+    assert.equal(status.receipts.length, 2);
+    assert.equal(status.authorizations.length, 2);
+    assert.ok(status.authorizations.every((a: any) => a.consumed));
+    assert.deepEqual(status.authorizations[1].authorization, rollbackAuthorization);
+    assert.equal(JSON.stringify(status.authorizations).includes("signature"), false);
+    assert.equal(status.budgets.poll_ms, 60000);
+    assert.equal(status.coverage, process.platform === "darwin" ? "local-macos-and-next-contact" : "next-contact-only");
+    assert.equal(status.notifications.supported, process.platform === "darwin");
+  } finally {
+    await stop();
+  }
 });

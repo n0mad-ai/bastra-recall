@@ -1,4 +1,4 @@
-import { t, type PanelLang } from './i18n.js';
+import { t, type PanelLang } from "./i18n.js";
 
 /**
  * Context rot: a model attends worse the fuller its window is. Research describes a gradient, not an edge,
@@ -9,12 +9,18 @@ export const CONTEXT_STOPS = { caution: 40, warning: 60, critical: 70 } as const
 
 /** 0 calm, 1 from 40 %, 2 from 60 %, 3 from 70 %. Unknown stays calm: no warning without a measurement. */
 export function contextLevel(percent: number | null | undefined): 0 | 1 | 2 | 3 {
-  if (typeof percent !== 'number' || !Number.isFinite(percent)) return 0;
-  return percent >= CONTEXT_STOPS.critical ? 3 : percent >= CONTEXT_STOPS.warning ? 2 : percent >= CONTEXT_STOPS.caution ? 1 : 0;
+  if (typeof percent !== "number" || !Number.isFinite(percent)) return 0;
+  return percent >= CONTEXT_STOPS.critical
+    ? 3
+    : percent >= CONTEXT_STOPS.warning
+      ? 2
+      : percent >= CONTEXT_STOPS.caution
+        ? 1
+        : 0;
 }
 
 /** The line a panel shows under the context readout; null while there is nothing to act on. */
-export function contextWarning(percent: number | null | undefined, lang: PanelLang = 'de'): string | null {
+export function contextWarning(percent: number | null | undefined, lang: PanelLang = "de"): string | null {
   const level = contextLevel(percent);
-  return level === 0 ? null : t(lang, level === 1 ? 'ctx.caution' : level === 2 ? 'ctx.warning' : 'ctx.critical');
+  return level === 0 ? null : t(lang, level === 1 ? "ctx.caution" : level === 2 ? "ctx.warning" : "ctx.critical");
 }

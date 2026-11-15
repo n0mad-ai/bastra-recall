@@ -100,7 +100,7 @@ function runHook(
   url: string,
   logDir: string,
   stdin: unknown,
-  env: Record<string, string> = {},
+  env: Record<string, string> = {}
 ): Promise<number | null> {
   return new Promise((ok, ko) => {
     const child = spawn(process.execPath, ["--import", "tsx", ...args], {
@@ -130,7 +130,12 @@ const CLIENTS: Array<{ name: string; args: string[]; payload: unknown; path: str
   {
     name: "hook.ts",
     args: ["src/hook.ts"],
-    payload: { session_id: "s", hook_event_name: "PreToolUse", tool_name: "Write", tool_input: { file_path: "/repo/src/a.ts", content: "x" } },
+    payload: {
+      session_id: "s",
+      hook_event_name: "PreToolUse",
+      tool_name: "Write",
+      tool_input: { file_path: "/repo/src/a.ts", content: "x" },
+    },
     path: "/hook/write",
   },
 ];
@@ -173,15 +178,13 @@ for (const c of CLIENTS) {
     await runHook(c.args, `http://127.0.0.1:${d.port}`, logDir, c.payload, { BASTRA_HOOK_TIMEOUT_MS: "800" });
     assert.deepEqual(d.hits, [c.path]);
     const files = (await readdir(logDir)).filter((f) => f.startsWith("events-"));
-    const rows = (
-      await Promise.all(files.map(async (f) => (await readFile(join(logDir, f), "utf8")).split("\n")))
-    )
+    const rows = (await Promise.all(files.map(async (f) => (await readFile(join(logDir, f), "utf8")).split("\n"))))
       .flat()
       .filter((l) => l.trim())
       .map((l) => JSON.parse(l) as { status?: string });
     assert.ok(
       rows.some((r) => r.status === "timeout"),
-      `${c.name}: no timeout row, got ${JSON.stringify(rows.map((r) => r.status))}`,
+      `${c.name}: no timeout row, got ${JSON.stringify(rows.map((r) => r.status))}`
     );
   });
 }

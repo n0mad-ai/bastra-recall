@@ -35,36 +35,35 @@ function closureOf(files: Record<string, string>): string[] {
 }
 
 test("the closure follows a bare side-effect import", () => {
-  assert.deepEqual(
-    closureOf({ "entry.ts": 'import "./side.js";\n', "side.ts": "export {};\n" }),
-    ["entry.ts", "side.ts"],
-  );
+  assert.deepEqual(closureOf({ "entry.ts": 'import "./side.js";\n', "side.ts": "export {};\n" }), [
+    "entry.ts",
+    "side.ts",
+  ]);
 });
 
 test("the closure resolves an extensionless specifier like --sloppy-imports", () => {
-  assert.deepEqual(
-    closureOf({ "entry.ts": 'import { x } from "./lib";\n', "lib.ts": "export const x = 1;\n" }),
-    ["entry.ts", "lib.ts"],
-  );
+  assert.deepEqual(closureOf({ "entry.ts": 'import { x } from "./lib";\n', "lib.ts": "export const x = 1;\n" }), [
+    "entry.ts",
+    "lib.ts",
+  ]);
 });
 
 test("the closure resolves a directory specifier to its index", () => {
   assert.deepEqual(
     closureOf({ "entry.ts": 'import { y } from "./util";\n', "util/index.ts": "export const y = 2;\n" }),
-    ["entry.ts", "util/index.ts"],
+    ["entry.ts", "util/index.ts"]
   );
 });
 
 test("a .js specifier still maps to its .ts source", () => {
-  assert.deepEqual(
-    closureOf({ "entry.ts": 'import { z } from "./mod.js";\n', "mod.ts": "export const z = 3;\n" }),
-    ["entry.ts", "mod.ts"],
-  );
+  assert.deepEqual(closureOf({ "entry.ts": 'import { z } from "./mod.js";\n', "mod.ts": "export const z = 3;\n" }), [
+    "entry.ts",
+    "mod.ts",
+  ]);
 });
-
 
 test("stub closure includes the mapped dependency-free shared path source and import map", () => {
   const files: string[] = stubSourceFiles();
-  assert.ok(files.some(path => path.endsWith("/core/src/platform-paths.ts")));
-  assert.ok(files.some(path => path.endsWith("/stub/import-map.json")));
+  assert.ok(files.some((path) => path.endsWith("/core/src/platform-paths.ts")));
+  assert.ok(files.some((path) => path.endsWith("/stub/import-map.json")));
 });

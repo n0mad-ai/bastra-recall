@@ -46,9 +46,7 @@ export function createSidebarPanels(deps) {
       count.className = "count";
       count.textContent = c.count;
       li.append(dot, name, count);
-      const match = scoped
-        ? (n) => drillScope.matchKey(n) === c.key
-        : (n) => n.cluster === c.key;
+      const match = scoped ? (n) => drillScope.matchKey(n) === c.key : (n) => n.cluster === c.key;
       li.classList.toggle("active", clusterFilter?.key === c.key);
       li.addEventListener("mouseenter", () => renderer.setHighlight(match, scoped ? null : c.key));
       li.addEventListener("mouseleave", () => renderer.setHighlight(null));
@@ -80,9 +78,7 @@ export function createSidebarPanels(deps) {
       renderer.setFilter(null);
       return;
     }
-    const cutoff = timeDays
-      ? new Date(Date.now() - timeDays * 86400e3).toISOString().slice(0, 10)
-      : null;
+    const cutoff = timeDays ? new Date(Date.now() - timeDays * 86400e3).toISOString().slice(0, 10) : null;
     renderer.setFilter((n) => {
       if (clusterFilter !== null && !clusterFilter.match(n)) return false;
       if (cutoff !== null && !(n.updated && n.updated >= cutoff)) return false;
@@ -94,8 +90,7 @@ export function createSidebarPanels(deps) {
     });
   }
 
-  const kv = (k, v, ok = false) =>
-    `<li><span class="k">${k}</span><span class="v${ok ? " ok" : ""}">${v}</span></li>`;
+  const kv = (k, v, ok = false) => `<li><span class="k">${k}</span><span class="v${ok ? " ok" : ""}">${v}</span></li>`;
 
   function renderSignals() {
     // signals always describe what is ON the map right now — inside a drill
@@ -140,7 +135,9 @@ export function createSidebarPanels(deps) {
     const btn = ev.target.closest("button[data-days]");
     if (!btn) return;
     timeDays = btn.dataset.days === "" ? null : Number(btn.dataset.days);
-    $("#time-filter").querySelectorAll("button").forEach((b) => b.classList.toggle("active", b === btn));
+    $("#time-filter")
+      .querySelectorAll("button")
+      .forEach((b) => b.classList.toggle("active", b === btn));
     applyFilter();
   });
 
@@ -176,7 +173,9 @@ export function createSidebarPanels(deps) {
   let panelState = { collapsed: false, pinned: false, closed: {} };
   try {
     panelState = { ...panelState, ...JSON.parse(localStorage.getItem(PANEL_KEY) ?? "{}") };
-  } catch { /* defaults */ }
+  } catch {
+    /* defaults */
+  }
   const panel = $("#system-panel");
   function applyPanelState() {
     panel.classList.toggle("pinned", panelState.pinned);
@@ -212,7 +211,6 @@ export function createSidebarPanels(deps) {
       savePanelState();
     });
   });
-
 
   /** Release the legend's click filter (select / drill / structure change
    *  invalidate its match). Returns true when a filter was actually set. */

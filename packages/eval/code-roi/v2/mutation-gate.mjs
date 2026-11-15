@@ -46,7 +46,7 @@ import { rng } from "./select.mjs";
 
 const OUT = writableOut();
 const REG = JSON.parse(
-  readFileSync(new URL("../../registrations/code-awareness-change-impact.json", import.meta.url), "utf8"),
+  readFileSync(new URL("../../registrations/code-awareness-change-impact.json", import.meta.url), "utf8")
 );
 const SEED = Number(REG.statistics.seed);
 const TARGET = Number(argOf("--target") ?? REG.mechanism_gate?.mutation?.target_cross_package_truth_files ?? 20);
@@ -80,7 +80,7 @@ export const OPERATORS = [
     /** Renames the exported binding, so every importer loses the name. */
     apply(text, symbol) {
       const decl = new RegExp(
-        `(export\\s+(?:async\\s+)?(?:function|class|const|let|interface|type|enum)\\s+)${symbol}\\b`,
+        `(export\\s+(?:async\\s+)?(?:function|class|const|let|interface|type|enum)\\s+)${symbol}\\b`
       );
       return decl.test(text) ? text.replace(decl, `$1${symbol}Renamed`) : null;
     },
@@ -266,9 +266,7 @@ async function main() {
     seed: SEED,
     target: TARGET,
   };
-  const recorded = existsSync(POPULATION_FILE)
-    ? JSON.parse(readFileSync(POPULATION_FILE, "utf8"))
-    : null;
+  const recorded = existsSync(POPULATION_FILE) ? JSON.parse(readFileSync(POPULATION_FILE, "utf8")) : null;
   const verdict = checkPopulation(recorded, pinned);
   if (!verdict.ok) throw new Error(`population drift: ${verdict.why}`);
   if (verdict.write) writeFileSync(POPULATION_FILE, JSON.stringify(pinned, null, 2) + "\n");
@@ -283,7 +281,7 @@ async function main() {
             const r = JSON.parse(l);
             return `${r.file}:${r.symbol}:${r.operator}`;
           })
-      : [],
+      : []
   );
   let crossFiles = existsSync(RESULTS)
     ? readFileSync(RESULTS, "utf8")
@@ -315,7 +313,13 @@ async function main() {
       // it measured the graph query and not the product: a user changes a file
       // and the product works out which symbols that touched. Storing the diff
       // is what lets the scorer run BOTH.
-      record = { ...cand, diff: mutationDiff(cand.file, original, mutated), truth, crossTruth, kept: crossTruth.length > 0 };
+      record = {
+        ...cand,
+        diff: mutationDiff(cand.file, original, mutated),
+        truth,
+        crossTruth,
+        kept: crossTruth.length > 0,
+      };
     } finally {
       writeFileSync(join(dir, cand.file), original, "utf8");
     }
@@ -324,7 +328,7 @@ async function main() {
     if (record.kept) {
       crossFiles += record.crossTruth.length;
       process.stdout.write(
-        `kept ${cand.operator} ${cand.file}:${cand.symbol} -> ${record.crossTruth.length} cross (${crossFiles}/${TARGET})\n`,
+        `kept ${cand.operator} ${cand.file}:${cand.symbol} -> ${record.crossTruth.length} cross (${crossFiles}/${TARGET})\n`
       );
     }
   }
@@ -334,9 +338,7 @@ async function main() {
     .filter(Boolean)
     .map((l) => JSON.parse(l))
     .filter((r) => r.kept);
-  process.stdout.write(
-    `\n${kept.length} mutations kept, ${crossFiles} cross-package truth files (target ${TARGET})\n`,
-  );
+  process.stdout.write(`\n${kept.length} mutations kept, ${crossFiles} cross-package truth files (target ${TARGET})\n`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) await main();

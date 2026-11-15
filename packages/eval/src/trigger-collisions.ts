@@ -72,9 +72,7 @@ interface SaveQualityModule {
 }
 
 const daemonDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../daemon/dist");
-const { scoreSaveQuality } = (await import(
-  path.join(daemonDist, "save-quality.js")
-)) as SaveQualityModule;
+const { scoreSaveQuality } = (await import(path.join(daemonDist, "save-quality.js"))) as SaveQualityModule;
 
 interface Row {
   id: string;
@@ -174,8 +172,12 @@ async function main(): Promise<void> {
   const allCollisions = withTriggers.reduce((n, r) => n + r.collisions.length, 0);
 
   console.log(`\n── stock-take over ${rows.length} memories ──`);
-  console.log(`  memories with at least one colliding trigger  ${pct(colliding.length, withTriggers.length).padStart(6)}  (${colliding.length}/${withTriggers.length})`);
-  console.log(`  triggers that collide                         ${pct(allCollisions, allTriggers).padStart(6)}  (${allCollisions}/${allTriggers})`);
+  console.log(
+    `  memories with at least one colliding trigger  ${pct(colliding.length, withTriggers.length).padStart(6)}  (${colliding.length}/${withTriggers.length})`
+  );
+  console.log(
+    `  triggers that collide                         ${pct(allCollisions, allTriggers).padStart(6)}  (${allCollisions}/${allTriggers})`
+  );
   if (noTriggers > 0) console.log(`  memories with NO recall_when at all            ${noTriggers}`);
 
   // #289 is explicitly about hand-written triggers ("die Qualität der von Hand
@@ -188,8 +190,12 @@ async function main(): Promise<void> {
   const authoredColliding = authored.filter((r) => r.collisions.length > 0);
   const importedColliding = imported.filter((r) => r.collisions.length > 0);
   console.log(`\n  split by who wrote the trigger:`);
-  console.log(`    authored (the #289 question)  ${pct(authoredColliding.length, authored.length).padStart(6)}  (${authoredColliding.length}/${authored.length})`);
-  console.log(`    imported/generated            ${pct(importedColliding.length, imported.length).padStart(6)}  (${importedColliding.length}/${imported.length})`);
+  console.log(
+    `    authored (the #289 question)  ${pct(authoredColliding.length, authored.length).padStart(6)}  (${authoredColliding.length}/${authored.length})`
+  );
+  console.log(
+    `    imported/generated            ${pct(importedColliding.length, imported.length).padStart(6)}  (${importedColliding.length}/${imported.length})`
+  );
 
   // How hard do they collide? A trigger matching one other memory is a note; one
   // matching most of its pool is the #289 finding. Reported as a distribution,
@@ -199,20 +205,33 @@ async function main(): Promise<void> {
     { label: "1 other memory        ", hit: (c: { count: number }) => c.count === 1 },
     { label: "2-4 others            ", hit: (c: { count: number }) => c.count >= 2 && c.count <= 4 },
     { label: "5+ others             ", hit: (c: { count: number }) => c.count >= 5 },
-    { label: "over half of its pool ", hit: (c: { count: number; pool: number }) => c.pool > 0 && c.count > c.pool / 2 },
+    {
+      label: "over half of its pool ",
+      hit: (c: { count: number; pool: number }) => c.pool > 0 && c.count > c.pool / 2,
+    },
   ];
   const flat = colliding.flatMap((r) => r.collisions);
   console.log(`\n  colliding triggers by reach (${flat.length} total):`);
   for (const b of bands) {
-    console.log(`    ${b.label} ${pct(flat.filter(b.hit).length, flat.length).padStart(6)}  (${flat.filter(b.hit).length})`);
+    console.log(
+      `    ${b.label} ${pct(flat.filter(b.hit).length, flat.length).padStart(6)}  (${flat.filter(b.hit).length})`
+    );
   }
   console.log(`  median share of pool touched: ${(100 * median(shares)).toFixed(1)}%`);
 
   // Score distribution — #289's claim was that the malus is a permanent state.
   const scores = rows.map((r) => r.score);
-  console.log(`\n  save-quality score: median ${median(scores)}, min ${Math.min(...scores)}, max ${Math.max(...scores)}`);
-  for (const [label, lo, hi] of [["90-100", 90, 100], ["70-89", 70, 89], ["below 70", 0, 69]] as const) {
-    console.log(`    ${String(label).padEnd(9)} ${pct(scores.filter((s) => s >= lo && s <= hi).length, scores.length).padStart(6)}`);
+  console.log(
+    `\n  save-quality score: median ${median(scores)}, min ${Math.min(...scores)}, max ${Math.max(...scores)}`
+  );
+  for (const [label, lo, hi] of [
+    ["90-100", 90, 100],
+    ["70-89", 70, 89],
+    ["below 70", 0, 69],
+  ] as const) {
+    console.log(
+      `    ${String(label).padEnd(9)} ${pct(scores.filter((s) => s >= lo && s <= hi).length, scores.length).padStart(6)}`
+    );
   }
 
   // The worst offenders, which is what a cleanup run would work from. Grouped by
@@ -231,7 +250,9 @@ async function main(): Promise<void> {
     console.log(`\n  widest triggers (${byTrigger.size} distinct phrases behind ${flat.length} collisions):`);
     for (const [trigger, e] of worst) {
       const carried = e.memories > 1 ? `  [carried by ${e.memories} memories]` : "";
-      console.log(`    ${e.at_least ? ">=" : "  "}${String(e.count).padStart(3)} of ${String(e.pool).padStart(3)}   "${trigger}"${carried}`);
+      console.log(
+        `    ${e.at_least ? ">=" : "  "}${String(e.count).padStart(3)} of ${String(e.pool).padStart(3)}   "${trigger}"${carried}`
+      );
     }
   }
 

@@ -1,33 +1,16 @@
 /**
  * `save_document`. Aus documents-write-handler.ts herausgelöst (#680).
  */
-import {
-  copyFile,
-  unlink,
-  stat,
-  rename,
-} from "node:fs/promises";
+import { copyFile, unlink, stat, rename } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join, basename, isAbsolute, resolve } from "node:path";
 import type { z } from "zod";
 import type { Vault } from "@bastra-recall/core";
-import {
-  readOccupant,
-  withIdClaim,
-  type IdClaim,
-} from "@bastra-recall/core";
-import {
-  scanForInjection,
-  injectionCategories,
-  formatInjectionAdvisory,
-} from "@bastra-recall/core";
+import { readOccupant, withIdClaim, type IdClaim } from "@bastra-recall/core";
+import { scanForInjection, injectionCategories, formatInjectionAdvisory } from "@bastra-recall/core";
 import { truncateSummaryTo, SUMMARY_MAX } from "@bastra-recall/core";
 import { hiddenFromCaller, type PrivateAccess } from "./private-access.js";
-import {
-  acknowledgeCommittedJournal,
-  openRecoveryJournal,
-  type RecoveryJournalHandle,
-} from "./recovery-journal.js";
+import { acknowledgeCommittedJournal, openRecoveryJournal, type RecoveryJournalHandle } from "./recovery-journal.js";
 import { qualifyDocumentTriggers } from "./document-triggers.js";
 import { recordAudit } from "./audit-trail.js";
 import { legacyDocId, makeDocId } from "./document-id.js";
@@ -69,7 +52,7 @@ export async function saveDocument(
   vault: Vault,
   args: z.infer<typeof SaveDocumentArgs>,
   /** #464: transportgebunden — siehe private-access.ts. */
-  caller?: PrivateAccess,
+  caller?: PrivateAccess
 ): Promise<SaveDocumentResult> {
   if (!isAbsolute(args.original_path)) {
     throw new Error(`original_path must be absolute: ${args.original_path}`);
@@ -95,9 +78,7 @@ export async function saveDocument(
 
   const filename = basename(args.original_path);
   const sidecarPath = join(folder, `${filename}.md`);
-  const originalDest = args.linked_file
-    ? args.original_path
-    : join(folder, filename);
+  const originalDest = args.linked_file ? args.original_path : join(folder, filename);
   let docID = makeDocId(args.folder_path ?? "", filename);
   if (args.overwrite && readOccupant(sidecarPath).kind === "memory") {
     const oldId = legacyDocId(args.folder_path ?? "", filename);
@@ -113,7 +94,7 @@ export async function saveDocument(
   // und der Vault lud beim nächsten Start still nur eines davon. Ab hier gilt
   // dieselbe Sperre und dieselbe autoritative Auskunft wie im Save-Pfad.
   return withIdClaim({ vaultRoot: root, id: docID, filePath: sidecarPath, op: "save_document" }, (claim) =>
-    commitDocument(claim, vault, args, { root, filename, docID, sidecarPath, originalDest }, caller),
+    commitDocument(claim, vault, args, { root, filename, docID, sidecarPath, originalDest }, caller)
   );
 }
 
@@ -131,25 +112,19 @@ async function commitDocument(
     sidecarPath: string;
     originalDest: string;
   },
-  caller?: PrivateAccess,
+  caller?: PrivateAccess
 ): Promise<SaveDocumentResult> {
   const { root, filename, docID, sidecarPath, originalDest } = ctx;
   // #240/A5: PREFLIGHT — jede Kollision prüfen, BEVOR irgendetwas mutiert
   // wird. Vorher lief erst der Copy und danach der Sidecar-Check: ein
   // Sidecar-Konflikt meldete einen Fehler und ließ die Kopie trotzdem im
   // Vault zurück (halb ausgeführte Operation).
-  if (
-    !args.linked_file &&
-    (await pathExists(originalDest)) &&
-    !args.overwrite
-  ) {
+  if (!args.linked_file && (await pathExists(originalDest)) && !args.overwrite) {
     throw new Error(`destination already exists: ${originalDest}`);
   }
   // Der Bestand auf der Platte, sobald ein eigenes Sidecar am Pfad liegt —
   // Grundlage des Metadaten-Patches weiter unten (siehe metadataPatch).
-  let existing:
-    | { data: Record<string, unknown>; body: string; raw: string }
-    | undefined;
+  let existing: { data: Record<string, unknown>; body: string; raw: string } | undefined;
   // Der Bytestand, auf dem dieser Kandidat gebaut wird — Preimage des
   // Compare-and-Swap unten. `null` bleibt es, wenn am Pfad nichts liegt: Ein
   // neu entstehendes Sidecar HAT kein Preimage, und das ist ein gültiger
@@ -168,9 +143,7 @@ async function commitDocument(
       preimage = existing.raw;
     }
     if (occupant.kind === "foreign" || !isDocumentSidecar(existing?.data, docID)) {
-      throw new Error(
-        `refusing to overwrite ${sidecarPath}: not a document sidecar for ${docID}`,
-      );
+      throw new Error(`refusing to overwrite ${sidecarPath}: not a document sidecar for ${docID}`);
     }
     // #464: Es IST das eigene Sidecar — aber wenn es `sensitivity: private`
     // trägt, darf dieser Caller es nicht einmal lesen. Der Check steht im
@@ -192,15 +165,11 @@ async function commitDocument(
     throw new Error(
       `cannot verify who owns id ${docID}: the vault scan could not read ` +
         `${located.unreadable.join(", ")}. Fix the permissions first — writing now ` +
-        `could create a second file with the same id.`,
+        `could create a second file with the same id.`
     );
   }
   const holder = (
-    located.kind === "unique"
-      ? [located.filePath]
-      : located.kind === "ambiguous"
-        ? located.filePaths
-        : []
+    located.kind === "unique" ? [located.filePath] : located.kind === "ambiguous" ? located.filePaths : []
   ).find((p) => resolve(p) !== resolve(sidecarPath));
   if (holder) {
     throw new Error(`id ${docID} already belongs to ${holder}`);
@@ -299,16 +268,20 @@ async function commitDocument(
           await unlink(originalDest);
         } catch (e) {
           if ((e as NodeJS.ErrnoException)?.code !== "ENOENT") {
-            return `${originalDest} could not be removed (${(e as Error).message})` +
-              (hadOriginal ? `; the previous version is still at ${backupDest}.` : `.`);
+            return (
+              `${originalDest} could not be removed (${(e as Error).message})` +
+              (hadOriginal ? `; the previous version is still at ${backupDest}.` : `.`)
+            );
           }
         }
         if (!hadOriginal) return null;
         try {
           await rename(backupDest, originalDest);
         } catch (e) {
-          return `the previous version of ${originalDest} could not be put back ` +
-            `(${(e as Error).message}) — it is still at ${backupDest}.`;
+          return (
+            `the previous version of ${originalDest} could not be put back ` +
+            `(${(e as Error).message}) — it is still at ${backupDest}.`
+          );
         }
         return null;
       };
@@ -325,8 +298,7 @@ async function commitDocument(
   // #452: das veröffentlichte Sidecar — Nachbild des Audit-Eintrags.
   let published = "";
   try {
-    const existingSummary =
-      typeof existing?.data.summary === "string" ? existing.data.summary : undefined;
+    const existingSummary = typeof existing?.data.summary === "string" ? existing.data.summary : undefined;
     // Ein Refresh ohne `summary` MEINT die Summary nicht — der abgeleitete
     // Default (`kategorie: titel`) hätte eine von Hand geschriebene ersetzt.
     const summary = args.summary ?? existingSummary ?? `${args.category}: ${args.title}`;
@@ -335,23 +307,20 @@ async function commitDocument(
     // über den Default. Warum die Regel so eng gefasst ist: `document-triggers.ts`.
     const recallWhen = qualifyDocumentTriggers(
       args.recall_when ??
-        (Array.isArray(existing?.data.recall_when)
-          ? (existing.data.recall_when as string[])
-          : undefined) ?? [
+        (Array.isArray(existing?.data.recall_when) ? (existing.data.recall_when as string[]) : undefined) ??
+        [
           `find document ${args.title}`,
           args.tags.slice(0, 3).join(" "),
           `file ${basename(filename, "." + (filename.split(".").pop() ?? ""))}`,
         ].filter(Boolean),
-      { title: args.title, category: args.category, tags: args.tags },
+      { title: args.title, category: args.category, tags: args.tags }
     );
 
     // #147: Dokument-Inhalt ist Third-Party-Content — der Capture-Scan flaggt
     // Injection-Marker (nie blocken: der Flag ist billig, ein verpasster
     // Marker nicht). Kategorien wandern ins Sidecar-Frontmatter, die Advisory
     // in die Tool-Response.
-    injectionFindings = scanForInjection(
-      [args.title, summary, args.body ?? ""].join("\n"),
-    );
+    injectionFindings = scanForInjection([args.title, summary, args.body ?? ""].join("\n"));
     const injectionFlags = injectionCategories(injectionFindings);
 
     const today = todayISO();
@@ -377,9 +346,9 @@ async function commitDocument(
       ? `> Sidecar für \`${originalDest}\`.\n\n## Extrahierter Inhalt\n\n${args.body}`
       : // Auch der Body ist Bestand: ein Refresh ohne `body` hat keinen Inhalt
         // zu melden, er hat den vorhandenen nicht zu löschen.
-        (existing?.body.trim()
-          ? existing.body
-          : `> Sidecar für \`${originalDest}\`.\n\n_(Kein extrahierter Inhalt — vom Caller nicht mitgeliefert.)_`);
+        existing?.body.trim()
+        ? existing.body
+        : `> Sidecar für \`${originalDest}\`.\n\n_(Kein extrahierter Inhalt — vom Caller nicht mitgeliefert.)_`;
 
     // Beim Overwrite wird das bestehende Frontmatter GEPATCHT, nicht neu
     // gebaut. Der Rebuild verlor dieselben Felder, die er beim Recategorize
@@ -387,10 +356,7 @@ async function commitDocument(
     // eine heruntergestufte `confidence` —, nur hier zusätzlich noch über den
     // Weg, den der Hub seinen Callern selbst als Metadaten-Refresh anbietet.
     const content = existing
-      ? renderPatched(
-          patchSidecarFrontmatter(existing.data, savePatch(existing.data, fm)),
-          body,
-        )
+      ? renderPatched(patchSidecarFrontmatter(existing.data, savePatch(existing.data, fm)), body)
       : renderSidecar(fm, body);
     // `save_document` kennt kein `force`: `overwrite` heißt „ersetze den
     // Dokument-Eintrag", nicht „ich habe eine externe Bearbeitung gesehen und
@@ -444,6 +410,6 @@ async function commitDocument(
     reindexed: true,
     cloud_mount_warning: cloudWarn,
     injection_warning: formatInjectionAdvisory(injectionFindings),
-    ...((auditWarning || journalWarning) ? { warning: [auditWarning, journalWarning].filter(Boolean).join("; ") } : {}),
+    ...(auditWarning || journalWarning ? { warning: [auditWarning, journalWarning].filter(Boolean).join("; ") } : {}),
   };
 }

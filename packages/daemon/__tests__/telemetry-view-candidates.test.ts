@@ -19,7 +19,10 @@ class StubNode {
   children: StubNode[] = [];
   style: Record<string, string> = {};
   className = "";
-  constructor(readonly tag: string, readonly text = "") {}
+  constructor(
+    readonly tag: string,
+    readonly text = ""
+  ) {}
   setAttribute(): void {}
   append(...nodes: StubNode[]): void {
     this.children.push(...nodes);
@@ -34,7 +37,17 @@ class StubNode {
 
 const ts = "2026-09-01T10:00:00.000Z";
 const EVENTS: ReportEvent[] = [
-  { kind: "hook_recall", ts, recall_id: "r1", tool_name: "Write", hits: [{ id: "a", score: 150 }, { id: "b", score: 60 }, { id: "c", score: 10 }] },
+  {
+    kind: "hook_recall",
+    ts,
+    recall_id: "r1",
+    tool_name: "Write",
+    hits: [
+      { id: "a", score: 150 },
+      { id: "b", score: 60 },
+      { id: "c", score: 10 },
+    ],
+  },
   { kind: "hook_recall", ts, recall_id: "r2", tool_name: "Bash", hits: [{ id: "d", score: 120 }] },
   { kind: "recall_episode", ts, recall_id: "r1", memory_id: "a", surfaced: true, band: "required", acted_on: true },
 ];
@@ -56,9 +69,18 @@ test("the band and source tables show the raw top-k as `candidates`, with its co
     assert.deepEqual(rows.find((r) => r[0] === "band" && r.includes("use-rate"))?.[2], "candidates");
     assert.deepEqual(rows.find((r) => r[0] === "source")?.[1], "candidates");
     // band · bar · candidates · loaded · load lower bound · acted · use-rate
-    assert.deepEqual(rows.find((r) => r[0] === "required"), ["required", "", "2", "1", "50.0%", "1", "100.0%"]);
-    assert.deepEqual(rows.find((r) => r[0] === "below_floor"), ["below_floor", "", "1", "0", "0.0%", "0", "—"]);
-    assert.deepEqual(rows.find((r) => r[0] === "write-edit"), ["write-edit", "3", "1", "33.3%", "1", "100.0%"]);
+    assert.deepEqual(
+      rows.find((r) => r[0] === "required"),
+      ["required", "", "2", "1", "50.0%", "1", "100.0%"]
+    );
+    assert.deepEqual(
+      rows.find((r) => r[0] === "below_floor"),
+      ["below_floor", "", "1", "0", "0.0%", "0", "—"]
+    );
+    assert.deepEqual(
+      rows.find((r) => r[0] === "write-edit"),
+      ["write-edit", "3", "1", "33.3%", "1", "100.0%"]
+    );
     assert.doesNotMatch(el.textContent, /surfaced/i, "the raw top-k must not be called surfaced");
   } finally {
     delete g.Node;

@@ -95,7 +95,11 @@ export function readOccupant(filePath: string): Occupant {
   } catch (err) {
     const code = (err as NodeJS.ErrnoException)?.code;
     if (code === "ENOENT" || code === "ENOTDIR") return { kind: "absent" };
-    return { kind: "unreadable", reason: code ?? String(err), ...(isCloudPlaceholderError(err) ? { cloudOnly: true } : {}) };
+    return {
+      kind: "unreadable",
+      reason: code ?? String(err),
+      ...(isCloudPlaceholderError(err) ? { cloudOnly: true } : {}),
+    };
   }
   return occupantOfRaw(raw, filePath);
 }
@@ -145,7 +149,7 @@ function walk(
   id: string,
   out: string[],
   unreadable: string[],
-  cloudOnly: string[],
+  cloudOnly: string[]
 ): void {
   let entries;
   try {
@@ -212,7 +216,12 @@ export async function scanVaultForIdAsync(
   vaultRoot: string,
   id: string,
   stats?: IdScanStats,
-  budget?: { maxBytes: number; maxFiles: number; deadline: number; onLimit?: (reason: "bytes" | "files" | "timeout") => void },
+  budget?: {
+    maxBytes: number;
+    maxFiles: number;
+    deadline: number;
+    onLimit?: (reason: "bytes" | "files" | "timeout") => void;
+  }
 ): Promise<Located> {
   const found: string[] = [];
   const unreadable: string[] = [];
@@ -221,7 +230,15 @@ export async function scanVaultForIdAsync(
   counters.dirs = 0;
   counters.files = 0;
   counters.bytes = 0;
-  await walkAsync(vaultRoot, id, found, unreadable, cloudOnly, counters, budget ? { ...budget, reserved: 0, entries: 0 } : undefined);
+  await walkAsync(
+    vaultRoot,
+    id,
+    found,
+    unreadable,
+    cloudOnly,
+    counters,
+    budget ? { ...budget, reserved: 0, entries: 0 } : undefined
+  );
   counters.blindSpots = unreadable.length;
   if (unreadable.length > 0) return { kind: "incomplete", unreadable, ...(cloudOnly.length ? { cloudOnly } : {}) };
   if (found.length === 0) return { kind: "none" };
@@ -255,9 +272,20 @@ async function walkAsync(
   unreadable: string[],
   cloudOnly: string[],
   stats: IdScanStats,
-  budget?: { maxBytes: number; maxFiles: number; deadline: number; reserved: number; entries: number; onLimit?: (reason: "bytes" | "files" | "timeout") => void },
+  budget?: {
+    maxBytes: number;
+    maxFiles: number;
+    deadline: number;
+    reserved: number;
+    entries: number;
+    onLimit?: (reason: "bytes" | "files" | "timeout") => void;
+  }
 ): Promise<void> {
-  if (budget && Date.now() >= budget.deadline) { budget.onLimit?.("timeout"); unreadable.push(dir); return; }
+  if (budget && Date.now() >= budget.deadline) {
+    budget.onLimit?.("timeout");
+    unreadable.push(dir);
+    return;
+  }
   stats.dirs++;
   let entries;
   try {
@@ -269,7 +297,11 @@ async function walkAsync(
   }
   const files: string[] = [];
   for (const e of entries) {
-    if (budget && (++budget.entries > budget.maxFiles || Date.now() >= budget.deadline)) { budget.onLimit?.(Date.now() >= budget.deadline ? "timeout" : "files"); unreadable.push(dir); return; }
+    if (budget && (++budget.entries > budget.maxFiles || Date.now() >= budget.deadline)) {
+      budget.onLimit?.(Date.now() >= budget.deadline ? "timeout" : "files");
+      unreadable.push(dir);
+      return;
+    }
     if (e.name.startsWith(".") || e.name === "node_modules") continue;
     const full = join(dir, e.name);
     if (e.isDirectory()) {
@@ -288,17 +320,29 @@ async function walkAsync(
         try {
           if (!budget) raw = await readFile(full, "utf8");
           else {
-            if (Date.now() >= budget.deadline) { budget.onLimit?.("timeout"); throw new Error("scan budget"); }
+            if (Date.now() >= budget.deadline) {
+              budget.onLimit?.("timeout");
+              throw new Error("scan budget");
+            }
             const handle = await open(full, constants.O_RDONLY | constants.O_NOFOLLOW);
             try {
               const size = (await handle.stat()).size;
-              if (budget.reserved + size > budget.maxBytes) { budget.onLimit?.("bytes"); throw new Error("scan byte budget"); }
+              if (budget.reserved + size > budget.maxBytes) {
+                budget.onLimit?.("bytes");
+                throw new Error("scan byte budget");
+              }
               budget.reserved += size;
-              const bytes = Buffer.alloc(size + 1); const result = await handle.read(bytes, 0, bytes.length, 0);
-              if (Date.now() >= budget.deadline) { budget.onLimit?.("timeout"); throw new Error("scan timed out"); }
+              const bytes = Buffer.alloc(size + 1);
+              const result = await handle.read(bytes, 0, bytes.length, 0);
+              if (Date.now() >= budget.deadline) {
+                budget.onLimit?.("timeout");
+                throw new Error("scan timed out");
+              }
               if (result.bytesRead > size) throw new Error("scan changed");
               raw = bytes.subarray(0, result.bytesRead).toString("utf8");
-            } finally { await handle.close(); }
+            } finally {
+              await handle.close();
+            }
           }
         } catch (err) {
           const code = (err as NodeJS.ErrnoException)?.code;
@@ -320,7 +364,7 @@ async function walkAsync(
         return occupant.kind === "memory" && occupant.id === id
           ? { kind: "hit" as const, full }
           : { kind: "skip" as const };
-      }),
+      })
     );
     for (const r of settled) {
       if (r.kind === "hit") out.push(r.full);
@@ -376,7 +420,7 @@ function collect(
   dir: string,
   out: Map<string, string[]>,
   unreadable: string[],
-  cloudOnly: string[],
+  cloudOnly: string[]
 ): void {
   let entries;
   try {

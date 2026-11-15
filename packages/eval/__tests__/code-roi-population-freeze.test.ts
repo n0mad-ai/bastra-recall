@@ -31,7 +31,7 @@ test("select cannot relabel an old population as a new truth rule", () => {
   };
   assert.deepEqual(
     populationFreezeMismatches(registration, oldPopulation).map((m: { field: string }) => m.field),
-    ["population_sha256", "repository_head", "truth_rule", "exclusions_sha256"],
+    ["population_sha256", "repository_head", "truth_rule", "exclusions_sha256"]
   );
   assert.deepEqual(
     populationFreezeMismatches(registration, {
@@ -40,7 +40,7 @@ test("select cannot relabel an old population as a new truth rule", () => {
       truth_rule: "tests/v2",
       exclusions: { sha256: "e2" },
     }),
-    [],
+    []
   );
 });
 
@@ -70,11 +70,10 @@ test("lowering the verdict floor does not shrink an exhausted frozen population"
 
 /** Run `select.mjs` against a throwaway archive and report how it ended. */
 function runSelect(out: string): { code: number | null; stderr: string } {
-  const result = spawnSync(
-    process.execPath,
-    [new URL("../code-roi/v2/select.mjs", import.meta.url).pathname],
-    { env: { ...process.env, CODE_ROI_OUT: out }, encoding: "utf8" },
-  );
+  const result = spawnSync(process.execPath, [new URL("../code-roi/v2/select.mjs", import.meta.url).pathname], {
+    env: { ...process.env, CODE_ROI_OUT: out },
+    encoding: "utf8",
+  });
   return { code: result.status, stderr: `${result.stderr}${result.stdout}` };
 }
 
@@ -85,7 +84,7 @@ test("select reads which registration the archive is, instead of assuming the de
   // resolved, and picking the default would have produced a different one.
   writeFileSync(
     join(out, "scenarios.json"),
-    JSON.stringify({ registration: "code-awareness-delivered", registration_version: 3, scenarios: [] }),
+    JSON.stringify({ registration: "code-awareness-delivered", registration_version: 3, scenarios: [] })
   );
   writeFileSync(join(out, "candidates.jsonl"), "");
   const { code, stderr } = runSelect(out);
@@ -139,16 +138,14 @@ test("the frozen registration names the population that is actually on disk", ()
   assert.equal(
     Object.keys(population.rejected).some((r) => r.startsWith("not evaluable")),
     false,
-    `unjudged candidates remain: ${JSON.stringify(population.rejected)}`,
+    `unjudged candidates remain: ${JSON.stringify(population.rejected)}`
   );
 
   const candidates = readFileSync(join(archive, "candidates.jsonl"), "utf8")
     .split("\n")
     .filter(Boolean)
     .map((l) => JSON.parse(l) as Record<string, unknown>);
-  const testless = candidates.filter(
-    (c) => (c.testSelection as { mode?: string } | undefined)?.mode === "no_tests",
-  );
+  const testless = candidates.filter((c) => (c.testSelection as { mode?: string } | undefined)?.mode === "no_tests");
   assert.ok(testless.length > 0, "the testless-tree path is exercised by this population");
   for (const c of testless) {
     // Decided on types alone, and saying so: a scenario with no broken test

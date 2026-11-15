@@ -48,14 +48,17 @@ test("the control arm ranks at random, respects k, and does not reuse one order 
   assert.deepEqual(
     a.map((h) => h.score),
     [5, 4, 3, 2, 1],
-    "scores descend so rank logic downstream behaves normally",
+    "scores descend so rank logic downstream behaves normally"
   );
   assert.deepEqual(await control("deploy staging", { k: 5 }), a, "same query, same ranking");
 
   // A single fixed order per run would quietly favour whatever gold ids sit
   // near its front — the permutation is drawn per query.
   const b = await control("something else entirely", { k: 5 });
-  assert.notDeepEqual(b.map((h) => h.id), a.map((h) => h.id));
+  assert.notDeepEqual(
+    b.map((h) => h.id),
+    a.map((h) => h.id)
+  );
 });
 
 test("the label shuffle keeps every query and every gold id, and only breaks the pairing", () => {
@@ -64,10 +67,14 @@ test("the label shuffle keeps every query and every gold id, and only breaks the
 
   assert.equal(shuffled.length, cases.length);
   assert.deepEqual(shuffled.map((c) => c.id).sort(), cases.map((c) => c.id).sort(), "same gold ids in play");
-  assert.deepEqual(shuffled.map((c) => c.paraphrases), cases.map((c) => c.paraphrases), "queries untouched");
+  assert.deepEqual(
+    shuffled.map((c) => c.paraphrases),
+    cases.map((c) => c.paraphrases),
+    "queries untouched"
+  );
   assert.ok(
     shuffled.some((c, i) => c.id !== cases[i].id),
-    "at least one pairing broke — a null that changed nothing tests nothing",
+    "at least one pairing broke — a null that changed nothing tests nothing"
   );
   assert.deepEqual(shuffleParaphrasedLabels(cases, 20260726), shuffled, "seeded, so it is citable");
 });
@@ -80,18 +87,22 @@ test("the cross shuffle moves whole expected sets between queries", () => {
   ];
   const shuffled = shuffleCrossLabels(cases, 20260726);
 
-  assert.deepEqual(shuffled.map((c) => c.query), ["a", "b", "c"], "queries stay put");
+  assert.deepEqual(
+    shuffled.map((c) => c.query),
+    ["a", "b", "c"],
+    "queries stay put"
+  );
   assert.deepEqual(
     shuffled.flatMap((c) => c.expected).sort(),
     cases.flatMap((c) => c.expected).sort(),
-    "the same ids remain in play",
+    "the same ids remain in play"
   );
   // Sets travel intact: a query keeps a plausible cardinality instead of a
   // sample of loose ids.
   assert.deepEqual(
     shuffled.map((c) => c.expected.length).sort(),
     [1, 2, 3],
-    "set sizes are preserved, only their owners change",
+    "set sizes are preserved, only their owners change"
   );
 });
 
@@ -180,11 +191,14 @@ test("the real fixture had a fixed point under the old shuffle and has none now"
   const uniform = seededShuffle(ids, SEED);
   assert.ok(
     uniform.some((id, i) => id === ids[i]),
-    "regression anchor: the uniform shuffle really did leave a case paired with itself at this seed",
+    "regression anchor: the uniform shuffle really did leave a case paired with itself at this seed"
   );
 
   const deranged = seededDerangement(ids, SEED);
-  assert.deepEqual(deranged.filter((id, i) => id === ids[i]), []);
+  assert.deepEqual(
+    deranged.filter((id, i) => id === ids[i]),
+    []
+  );
 });
 
 // #799: a cross slice with nothing left to grade is not a PASS.

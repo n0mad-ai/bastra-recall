@@ -84,7 +84,7 @@ export async function cmdModels(opts: {
       return cmdAsk(deps);
     default:
       process.stderr.write(
-        "usage: bastra models [status | recommend | set <tag> | switch <id> <model> | later <id> | dismiss <id>]\n",
+        "usage: bastra models [status | recommend | set <tag> | switch <id> <model> | later <id> | dismiss <id>]\n"
       );
       return 2;
   }
@@ -143,7 +143,12 @@ async function cmdSet(model: string, settingsPath?: string): Promise<number> {
  * Open at any time, whatever was answered before: a "dismiss" must not lock
  * the user out of switching later.
  */
-async function cmdAnswer(choice: Choice, id: string | undefined, model: string | undefined, deps: ModelsDeps): Promise<number> {
+async function cmdAnswer(
+  choice: Choice,
+  id: string | undefined,
+  model: string | undefined,
+  deps: ModelsDeps
+): Promise<number> {
   const offer = await machineRecommendation(deps);
   const answered = id ? `${id}${model ? ` (${model})` : ""}` : null;
   if (!offer) {
@@ -157,12 +162,14 @@ async function cmdAnswer(choice: Choice, id: string | undefined, model: string |
   }
   if (!id || (choice === "switch" && !model)) {
     process.stderr.write(
-      `Say which recommendation you are answering — the full command is:\n  ${decisionCommand(choice, offer)}\nNothing was changed.\n`,
+      `Say which recommendation you are answering — the full command is:\n  ${decisionCommand(choice, offer)}\nNothing was changed.\n`
     );
     return 2;
   }
   if (id !== offer.id || (choice === "switch" && model !== offer.model)) {
-    write(`✗ ${answered} is not the current recommendation. This bastra version recommends ${offer.model} (${offer.id}, about ${offer.sizeGB} GB download).`);
+    write(
+      `✗ ${answered} is not the current recommendation. This bastra version recommends ${offer.model} (${offer.id}, about ${offer.sizeGB} GB download).`
+    );
     write("Nothing was changed. 'bastra models' shows the current recommendation and its commands.");
     return 1;
   }
@@ -184,7 +191,9 @@ async function answer(choice: Choice, offer: ModelOffer, deps: ModelsDeps): Prom
       return 1;
     }
     if (choice === "later") {
-      write(`OK — the generation model stays ${offer.current}. You will be asked again in 7 days; until then 'bastra models' shows the recommendation.`);
+      write(
+        `OK — the generation model stays ${offer.current}. You will be asked again in 7 days; until then 'bastra models' shows the recommendation.`
+      );
     } else {
       write(`OK — the generation model stays ${offer.current}. From now on ${DISMISS_WARNING}.`);
       write(`Still open to you: ${DISMISS_STILL_OPEN}.`);
@@ -194,12 +203,14 @@ async function answer(choice: Choice, offer: ModelOffer, deps: ModelsDeps): Prom
   // What `bastra models set <previous>` has to name: the stored choice, not a
   // model an env variable currently pins over it.
   const previous = (await readSettings(deps.settingsPath)).generation?.model ?? GENERATION_MODEL_DEFAULT;
-  write(`Switching the generation model to ${offer.model} (about ${offer.sizeGB} GB download if it is not present yet) …`);
+  write(
+    `Switching the generation model to ${offer.model} (about ${offer.sizeGB} GB download if it is not present yet) …`
+  );
   // The model and the answer "switched" are stored together, inside enable.
   const r = await (deps.enable ?? enableGenerationModel)(
     offer.model,
     { dryRun: false, verify: true, recommendationId: offer.id },
-    deps.settingsPath,
+    deps.settingsPath
   );
   if (!r.activated) {
     write(`✗ ${r.message}`);
@@ -232,7 +243,7 @@ async function askQuestion(offer: ModelOffer, deps: ModelsDeps): Promise<number>
   if (env) write(`Note: ${env}`);
   write(`About [n]: ${DISMISS_WARNING}; ${DISMISS_STILL_OPEN}.`);
   const reply = await (deps.ask ?? ask)(
-    "[s] switch now   [l] later (ask again in 7 days)   [n] never ask again for this recommendation — your choice [s/l/n]: ",
+    "[s] switch now   [l] later (ask again in 7 days)   [n] never ask again for this recommendation — your choice [s/l/n]: "
   );
   if (reply === null) return 0;
   if (/^s(witch)?$/i.test(reply)) return answer("switch", offer, deps);
@@ -314,7 +325,7 @@ const NO_NOTICE_AFTER = new Set(["update", "models", "config", "token", "help", 
  */
 export async function modelNoticeAfterCommand(
   args: Pick<ParsedArgs, "command" | "json" | "showHelp" | "showVersion">,
-  deps: ModelsDeps = {},
+  deps: ModelsDeps = {}
 ): Promise<"asked" | "hinted" | "none"> {
   if (!args.command || NO_NOTICE_AFTER.has(args.command) || args.showHelp || args.showVersion) return "none";
   if (!args.json && args.command !== "uninstall" && (await maybeAskModelCatchUp(deps))) return "asked";

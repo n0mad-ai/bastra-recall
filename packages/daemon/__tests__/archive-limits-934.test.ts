@@ -38,7 +38,13 @@ const quiet = { out: () => {}, err: () => {} };
 function sandbox(extra: NodeJS.ProcessEnv = {}): { dir: string; env: NodeJS.ProcessEnv } {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "archive-limits-")));
   // Outside every temp root: the test-run root is under /tmp.
-  const env: NodeJS.ProcessEnv = { ...process.env, BASTRA_RM_TEMP_ROOTS: "", BASTRA_ARCHIVE_DIR: join(dir, "_archive"), BASTRA_RM_CALL: "call-1", ...extra };
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    BASTRA_RM_TEMP_ROOTS: "",
+    BASTRA_ARCHIVE_DIR: join(dir, "_archive"),
+    BASTRA_RM_CALL: "call-1",
+    ...extra,
+  };
   delete env.BASTRA_ARCHIVE_CAP;
   if (!("BASTRA_ARCHIVE_MAX_ITEM" in extra)) delete env.BASTRA_ARCHIVE_MAX_ITEM;
   return { dir, env };
@@ -47,7 +53,12 @@ function sandbox(extra: NodeJS.ProcessEnv = {}): { dir: string; env: NodeJS.Proc
 /** A temp HOME plus the given process env for the duration of `run`. */
 async function withHome<T>(vars: Record<string, string | undefined>, run: (home: string) => Promise<T>): Promise<T> {
   const home = realpathSync(mkdtempSync(join(tmpdir(), "archive-limits-home-")));
-  const all: Record<string, string | undefined> = { BASTRA_ARCHIVE_CAP: undefined, BASTRA_ARCHIVE_MAX_ITEM: undefined, ...vars, HOME: home };
+  const all: Record<string, string | undefined> = {
+    BASTRA_ARCHIVE_CAP: undefined,
+    BASTRA_ARCHIVE_MAX_ITEM: undefined,
+    ...vars,
+    HOME: home,
+  };
   const saved = Object.fromEntries(Object.keys(all).map((k) => [k, process.env[k]]));
   for (const [k, v] of Object.entries(all)) {
     if (v === undefined) delete process.env[k];
@@ -77,7 +88,9 @@ async function captured(run: () => Promise<unknown>): Promise<string> {
   const orig = { out: process.stdout.write, err: process.stderr.write, log: console.log, error: console.error };
   const take = (stream: NodeJS.WriteStream, write: typeof process.stdout.write) =>
     ((s: unknown, ...rest: unknown[]): boolean =>
-      typeof s === "string" ? (chunks.push(s), true) : (write as (...a: unknown[]) => boolean).call(stream, s, ...rest)) as typeof process.stdout.write;
+      typeof s === "string"
+        ? (chunks.push(s), true)
+        : (write as (...a: unknown[]) => boolean).call(stream, s, ...rest)) as typeof process.stdout.write;
   process.stdout.write = take(process.stdout, orig.out);
   process.stderr.write = take(process.stderr, orig.err);
   console.log = (...a: unknown[]) => void chunks.push(a.join(" ") + "\n");
@@ -112,7 +125,8 @@ describe("#934 — sizes", () => {
   });
 
   it("rejects garbage, a bare number, a negative and a zero size", () => {
-    for (const bad of ["", "big", "5", "5 gigs", "-1GB", "GB", "0GB", "1e3MB", "5GB 2"]) assert.equal(parseSize(bad), null, bad);
+    for (const bad of ["", "big", "5", "5 gigs", "-1GB", "GB", "0GB", "1e3MB", "5GB 2"])
+      assert.equal(parseSize(bad), null, bad);
   });
 
   it("formats bytes the way it reads them", () => {
@@ -162,10 +176,18 @@ describe("#934 — the total cap is configurable", () => {
     const now = new Date();
     assert.deepEqual(reconcilePlan(now, archiveCap(env), env), [], "12 KB under the default 10 GB");
     const tight = reconcilePlan(now, archiveCap({ BASTRA_ARCHIVE_CAP: "10KB" }), env);
-    assert.deepEqual(tight.map((d) => [d.why, d.kind]), [["archive size cap", "junk"]], "one junk target brings it under 10 KB");
+    assert.deepEqual(
+      tight.map((d) => [d.why, d.kind]),
+      [["archive size cap", "junk"]],
+      "one junk target brings it under 10 KB"
+    );
     assert.ok(junk.includes(tight[0].orig));
     const none = reconcilePlan(now, archiveCap({}, "1KB"), env);
-    assert.deepEqual(none.map((d) => d.kind), ["junk", "junk"], "the user entry is younger than its retention and stays");
+    assert.deepEqual(
+      none.map((d) => d.kind),
+      ["junk", "junk"],
+      "the user entry is younger than its retention and stays"
+    );
   });
 
   it("`bastra archive reconcile` reads the stored cap, and the env wins over it", async () => {
@@ -208,7 +230,10 @@ describe("#934 — the per-target limit", () => {
     assert.match(row.reason ?? "", /per-target archive limit of 1 KB/);
     // The walk stops once the limit is exceeded: two of the ten files were counted.
     assert.equal(row.bytes, 1200);
-    assert.deepEqual(readdirSync(join(dir, "_archive")).filter((n) => n !== "manifest.jsonl"), []);
+    assert.deepEqual(
+      readdirSync(join(dir, "_archive")).filter((n) => n !== "manifest.jsonl"),
+      []
+    );
   });
 
   it("a single file over the limit is refused with its real size", () => {
@@ -239,7 +264,10 @@ describe("#934 — the per-target limit", () => {
     assert.equal(runRmShim(["-rf", small, big], { env, cwd: dir, ...quiet }), 1);
     assert.equal(existsSync(small), false);
     assert.ok(existsSync(big));
-    assert.deepEqual(manifestRows(env).map((r) => r.action), ["archived", "refused"]);
+    assert.deepEqual(
+      manifestRows(env).map((r) => r.action),
+      ["archived", "refused"]
+    );
   });
 
   it("no limit set: today's behaviour, whatever the size", () => {
@@ -263,8 +291,15 @@ describe("#934 — the per-target limit", () => {
     assert.doesNotMatch(shimRewrite("x", "c"), /BASTRA_ARCHIVE_MAX_ITEM/);
     const pre = async (): Promise<string> => {
       const stdout = await runBashPreLane(
-        { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: `${RM} -rf build`, description: "d" }, session_id: "s", tool_use_id: "toolu_1", bastra_client: "claude-code" } as never,
-        "http://127.0.0.1:1",
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          tool_input: { command: `${RM} -rf build`, description: "d" },
+          session_id: "s",
+          tool_use_id: "toolu_1",
+          bastra_client: "claude-code",
+        } as never,
+        "http://127.0.0.1:1"
       );
       return JSON.parse(stdout || "{}").hookSpecificOutput?.updatedInput?.command ?? "";
     };
@@ -273,7 +308,11 @@ describe("#934 — the per-target limit", () => {
       await captured(() => config("set", "archive.max-item", "2GB"));
       assert.match(await pre(), new RegExp(` BASTRA_ARCHIVE_MAX_ITEM=${2 * GB}B\\n`));
       process.env.BASTRA_ARCHIVE_MAX_ITEM = "1GB";
-      assert.match(await pre(), new RegExp(` BASTRA_ARCHIVE_MAX_ITEM=${GB}B\\n`), "the daemon's env wins over the file");
+      assert.match(
+        await pre(),
+        new RegExp(` BASTRA_ARCHIVE_MAX_ITEM=${GB}B\\n`),
+        "the daemon's env wins over the file"
+      );
     });
   });
 });
@@ -296,11 +335,21 @@ describe("#934 — bastra config and bastra doctor", () => {
   it("garbage is rejected with exit 2, a message that shows the form, and nothing written", async () => {
     // Revert-check: store the value without parseSize → exit 0 and `cap: "plenty"` in the file.
     await withHome({}, async (home) => {
-      for (const [key, value] of [["archive.cap", "plenty"], ["archive.cap", "0GB"], ["archive.cap", "5"], ["archive.max-item", "huge"]]) {
+      for (const [key, value] of [
+        ["archive.cap", "plenty"],
+        ["archive.cap", "0GB"],
+        ["archive.cap", "5"],
+        ["archive.max-item", "huge"],
+      ]) {
         let code = 0;
         const said = await captured(async () => void (code = await config("set", key, value)));
         assert.equal(code, 2, `${key} ${value}`);
-        assert.match(said, new RegExp(`error: ${key.replace(".", "\\.")} is a size above zero, e\\.g\\. \\dGB or 500MB .* got '${value}'`));
+        assert.match(
+          said,
+          new RegExp(
+            `error: ${key.replace(".", "\\.")} is a size above zero, e\\.g\\. \\dGB or 500MB .* got '${value}'`
+          )
+        );
       }
       assert.equal(await configRc("set", "archive.cap"), 2);
       assert.equal(existsSync(join(home, ".bastra", "cli-settings.json")), false);
@@ -332,7 +381,11 @@ describe("#934 — bastra config and bastra doctor", () => {
         await config("set", "archive.max-item", "2GB");
       });
       assert.match(await line(), /cap 5 GB, per-target limit 2 GB;/);
-      assert.match(await line({ BASTRA_ARCHIVE_CAP: "1GB", BASTRA_ARCHIVE_MAX_ITEM: "off" }), /cap 1 GB, per-target limit off;/, "the env wins");
+      assert.match(
+        await line({ BASTRA_ARCHIVE_CAP: "1GB", BASTRA_ARCHIVE_MAX_ITEM: "off" }),
+        /cap 1 GB, per-target limit off;/,
+        "the env wins"
+      );
     });
   });
 });

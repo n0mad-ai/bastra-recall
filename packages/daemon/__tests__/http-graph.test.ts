@@ -20,7 +20,7 @@ import { handleWebUi, handleUiAnnotate, handleUiAnnotations, parseCareFile, CARE
 
 function memoryMarkdown(
   id: string,
-  opts: { related?: string[]; sensitivity?: string; salience?: number; emotion?: string; created?: string } = {},
+  opts: { related?: string[]; sensitivity?: string; salience?: number; emotion?: string; created?: string } = {}
 ): string {
   const ts = new Date().toISOString();
   const related = (opts.related ?? []).map((r) => `  - ${r}`).join("\n");
@@ -73,7 +73,7 @@ async function buildTestVault(): Promise<{ dir: string; vault: Vault }> {
   // a1/a2 → ghost-x (majority cluster), p1 → ghost-x (second cluster)
   await writeFile(
     join(alpha, "a1.md"),
-    memoryMarkdown("a1", { related: ["a2", "ghost-x"], salience: 0.9, emotion: "frustration", created: "2026-03-04" }),
+    memoryMarkdown("a1", { related: ["a2", "ghost-x"], salience: 0.9, emotion: "frustration", created: "2026-03-04" })
   );
   await writeFile(join(alpha, "a2.md"), memoryMarkdown("a2", { related: ["ghost-x"], created: "sometime-in-march" }));
   await writeFile(join(people, "p1.md"), memoryMarkdown("p1", { related: ["ghost-x"] }));
@@ -101,7 +101,7 @@ test("buildGraph: clusters, ghosts, bridges, private filter", async () => {
     assert.equal(
       g.vault_size - g.withheld.private,
       drawn,
-      `vault_size ${g.vault_size} − withheld ${g.withheld.private} must equal the ${drawn} memory/doc nodes`,
+      `vault_size ${g.vault_size} − withheld ${g.withheld.private} must equal the ${drawn} memory/doc nodes`
     );
 
     const a1 = g.nodes.find((n) => n.id === "a1")!;
@@ -199,7 +199,10 @@ test("GET /api/v1/graph + /api/v1/graph/node over loopback", async () => {
     assert.deepEqual(full.recall_when, ["a1"]);
     assert.ok(typeof full.file === "string" && full.file.endsWith(".md") && !full.file.startsWith("/"), full.file);
     assert.ok(Array.isArray(full.recall_days) && Array.isArray(full.related_via));
-    assert.ok(nodes.every((n) => Array.isArray((n as { recall_days?: unknown }).recall_days)), "recall_days is always stamped");
+    assert.ok(
+      nodes.every((n) => Array.isArray((n as { recall_days?: unknown }).recall_days)),
+      "recall_days is always stamped"
+    );
 
     const priv = await httpGet(handle.port!, "/api/v1/graph/node?id=secret");
     assert.equal(priv.status, 404, "private memory must 404");
@@ -221,26 +224,43 @@ test("graph node reference metadata excludes private targets but retains missing
     { id: "private-target", reason: "private-link-reason-marker", score: 0.9 },
     { id: "missing-target", reason: "Unwritten topic", score: 0.5 },
   ];
-  await writeFile(join(dir, "parent.md"), memoryMarkdown("parent", {
-    related: ["public-target", "private-target", "missing-target"],
-  }).replace("created:", `related_via: ${JSON.stringify(via)}\ncreated:`));
+  await writeFile(
+    join(dir, "parent.md"),
+    memoryMarkdown("parent", {
+      related: ["public-target", "private-target", "missing-target"],
+    }).replace("created:", `related_via: ${JSON.stringify(via)}\ncreated:`)
+  );
   await writeFile(join(dir, "public.md"), memoryMarkdown("public-target"));
   await writeFile(join(dir, "private.md"), memoryMarkdown("private-target", { sensitivity: "private" }));
   const vault = new Vault(dir);
   await vault.init();
-  const search = new SearchIndex(vault); search.start();
+  const search = new SearchIndex(vault);
+  search.start();
   const telemetry = new Telemetry();
   const handle = await startHttpServer({
-    port: 0, vault, search, telemetry, version: "test",
-    toolDeps: { vault, search, telemetry, vaultPath: dir }, documentWriteEnabled: false,
+    port: 0,
+    vault,
+    search,
+    telemetry,
+    version: "test",
+    toolDeps: { vault, search, telemetry, vaultPath: dir },
+    documentWriteEnabled: false,
     embedding: { on: false, providerId: null, source: "none" },
   });
   try {
     const node = await httpGet(handle.port!, "/api/v1/graph/node?id=parent");
     assert.equal(node.status, 200);
     const detail = JSON.parse(node.body);
-    assert.deepEqual(detail.related_via, [via[0], via[2]], "typed links must suppress private IDs and their derived reasons");
-    assert.deepEqual(detail.related, ["public-target", "missing-target"], "explicit links follow the same privacy boundary, preserving ghosts");
+    assert.deepEqual(
+      detail.related_via,
+      [via[0], via[2]],
+      "typed links must suppress private IDs and their derived reasons"
+    );
+    assert.deepEqual(
+      detail.related,
+      ["public-target", "missing-target"],
+      "explicit links follow the same privacy boundary, preserving ghosts"
+    );
     assert.ok(!node.body.includes("private-target"));
     assert.ok(!node.body.includes("private-link-reason-marker"));
     assert.equal((await httpGet(handle.port!, "/api/v1/graph/node?id=private-target")).status, 404);
@@ -248,7 +268,9 @@ test("graph node reference metadata excludes private targets but retains missing
     assert.ok(!graph.nodes.some((n: { id: string }) => n.id === "private-target"));
     assert.ok(!graph.edges.some((e: { target: string }) => e.target === "private-target"));
   } finally {
-    search.stop(); await vault.stop?.(); await handle.close();
+    search.stop();
+    await vault.stop?.();
+    await handle.close();
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });
@@ -321,12 +343,18 @@ test("vault care: annotate appends to vault-care.md, annotations parses it back"
     new Promise((resolve, reject) => {
       const body = JSON.stringify(payload);
       const req = request(
-        { hostname: "127.0.0.1", port, path: "/ui/annotate", method: "POST", headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body).toString() } },
+        {
+          hostname: "127.0.0.1",
+          port,
+          path: "/ui/annotate",
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body).toString() },
+        },
         (res) => {
           let b = "";
           res.on("data", (c) => (b += c));
           res.on("end", () => resolve({ status: res.statusCode ?? 0, body: b }));
-        },
+        }
       );
       req.on("error", reject);
       req.end(body);
@@ -345,7 +373,10 @@ test("vault care: annotate appends to vault-care.md, annotations parses it back"
     assert.equal(annotations.length, 2);
     assert.deepEqual(
       annotations.map((a: { id: string; kind: string; done: boolean }) => [a.id, a.kind, a.done]),
-      [["old-note", "delete", false], ["ghost-x", "write", false]],
+      [
+        ["old-note", "delete", false],
+        ["ghost-x", "write", false],
+      ]
     );
     assert.ok(!annotations[1].note.includes("\n"), "newlines are flattened");
 

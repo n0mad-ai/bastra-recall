@@ -5,9 +5,10 @@ export async function getAssistantName(path = settingsFilePath()): Promise<strin
 }
 export async function setAssistantName(value: string | null, path = settingsFilePath()): Promise<void> {
   const name = value === null || value === "" ? null : normalizeAssistantName(value);
-  await mutateSettings(path, current => {
+  await mutateSettings(path, (current) => {
     const next = { ...current };
-    if (name === null) delete next.assistant; else next.assistant = { name };
+    if (name === null) delete next.assistant;
+    else next.assistant = { name };
     return next;
   });
 }

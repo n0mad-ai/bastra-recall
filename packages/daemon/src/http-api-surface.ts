@@ -44,7 +44,7 @@ export function dispatchApiSurface(
   res: ServerResponse,
   method: string,
   url: string,
-  ctx: ApiSurfaceCtx,
+  ctx: ApiSurfaceCtx
 ): boolean {
   if (!url.startsWith("/api/v1/")) return false;
   const { toolDeps, documentWriteEnabled, server } = ctx;
@@ -54,9 +54,13 @@ export function dispatchApiSurface(
   sendCors(res, allowedOrigin); // before the gate, so a 401/403 still carries CORS
 
   if (url.startsWith("/api/v1/tasks") || url.startsWith("/api/v1/task_")) {
-    const sameOrigin = reqOrigin === `http://${req.headers.host}` && isLoopback(req) && isLoopbackHost(req.headers.host, []);
+    const sameOrigin =
+      reqOrigin === `http://${req.headers.host}` && isLoopback(req) && isLoopbackHost(req.headers.host, []);
     if (sameOrigin && reqOrigin) sendCors(res, reqOrigin);
-    if (reqOrigin && !allowedOrigin && !sameOrigin) { sendJson(res, 403, { error: "origin not allowed" }); return true; }
+    if (reqOrigin && !allowedOrigin && !sameOrigin) {
+      sendJson(res, 403, { error: "origin not allowed" });
+      return true;
+    }
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
     return dispatchTaskHttp(req, res, method, url, defaultTaskContext(toolDeps, true));
   }
@@ -135,7 +139,7 @@ export function dispatchApiSurface(
               ...e,
               live_intent: liveIntent(e.memory_id, e.floored_at, acts, e),
             })),
-          }),
+          })
         )
         .catch((err: Error) => sendJson(res, 500, { error: err.message }));
       return true;
@@ -161,12 +165,17 @@ export function dispatchApiSurface(
   const ccTurnHeader = req.headers["x-bastra-cc-turn"];
   const ccSessionId = typeof ccSessionHeader === "string" && ccSessionHeader ? ccSessionHeader : null;
   const actorHeader = req.headers["x-bastra-agent-id"];
-  const agentId = typeof actorHeader === "string" && actorHeader ? (actorHeader === "main" ? null : actorHeader) : undefined;
+  const agentId =
+    typeof actorHeader === "string" && actorHeader ? (actorHeader === "main" ? null : actorHeader) : undefined;
   const ccTurnKey = typeof ccTurnHeader === "string" ? Number(ccTurnHeader) : null;
   const projectHeader = req.headers["x-bastra-project"];
   let callerProject: string | null = null;
   if (typeof projectHeader === "string") {
-    try { callerProject = decodeURIComponent(projectHeader); } catch { /* unknown caller scope */ }
+    try {
+      callerProject = decodeURIComponent(projectHeader);
+    } catch {
+      /* unknown caller scope */
+    }
   }
 
   readJsonBody(req, MAX_BODY_BYTES)

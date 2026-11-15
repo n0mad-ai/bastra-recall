@@ -4,10 +4,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  calculateBudgetPercentage,
-  resolveBudgetDisplay,
-} from "../../packages/statusline/src/utils/budget.ts";
+import { calculateBudgetPercentage, resolveBudgetDisplay } from "../../packages/statusline/src/utils/budget.ts";
 
 test("an overspend reports its real percentage", () => {
   assert.equal(calculateBudgetPercentage(20, 5), 400);

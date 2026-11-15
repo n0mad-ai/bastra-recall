@@ -133,7 +133,7 @@ export function findDocument(
   search: SearchIndex,
   vault: Vault,
   args: { query: string; k?: number },
-  opts: { allowPrivate?: boolean } = {},
+  opts: { allowPrivate?: boolean } = {}
 ): { query: string; docs_indexed: number; hits: Array<unknown> } {
   const k = args.k ?? 3;
   const allowPrivate = opts.allowPrivate ?? false;
@@ -158,27 +158,22 @@ export function findDocument(
 export function readDocument(
   vault: Vault,
   args: { id: string },
-  opts: { allowPrivate?: boolean } = {},
-):
-  | {
-      id: string;
-      title: string;
-      summary: string;
-      tags: string[];
-      folder_path: string | null;
-      document_category: string | null;
-      original_path: string | null;
-      linked_file: boolean;
-      file_path: string;
-      body: string;
-    }
-  | null {
+  opts: { allowPrivate?: boolean } = {}
+): {
+  id: string;
+  title: string;
+  summary: string;
+  tags: string[];
+  folder_path: string | null;
+  document_category: string | null;
+  original_path: string | null;
+  linked_file: boolean;
+  file_path: string;
+  body: string;
+} | null {
   const m = vault.get(args.id);
   if (!m || m.fm.type !== "doc") return null;
-  if (
-    !opts.allowPrivate &&
-    (m.fm as { sensitivity?: string }).sensitivity === "private"
-  ) {
+  if (!opts.allowPrivate && (m.fm as { sensitivity?: string }).sensitivity === "private") {
     return null;
   }
   const fm = m.fm as typeof m.fm & {
@@ -208,19 +203,13 @@ export function readDocument(
 export async function openDocument(
   vault: Vault,
   args: { id: string },
-  opts: { allowPrivate?: boolean; platform?: NodeJS.Platform } = {},
-): Promise<
-  | { ok: true; path: string }
-  | { ok: false; path?: string; message: string }
-> {
+  opts: { allowPrivate?: boolean; platform?: NodeJS.Platform } = {}
+): Promise<{ ok: true; path: string } | { ok: false; path?: string; message: string }> {
   const m = vault.get(args.id);
   if (!m || m.fm.type !== "doc") {
     return { ok: false, message: `document not found: ${args.id}` };
   }
-  if (
-    !opts.allowPrivate &&
-    (m.fm as { sensitivity?: string }).sensitivity === "private"
-  ) {
+  if (!opts.allowPrivate && (m.fm as { sensitivity?: string }).sensitivity === "private") {
     return { ok: false, message: `document not found: ${args.id}` };
   }
   const fm = m.fm as typeof m.fm & { original_path?: string };
@@ -230,9 +219,10 @@ export async function openDocument(
     return {
       ok: false,
       path,
-      message: platform === "win32"
-        ? "open_document cannot launch originals on Windows yet — returning path. Windows document import/OCR has no supported backend yet (#85); search and read of already-extracted document text remain available. Open this path manually."
-        : "open_document is only supported on macOS — returning path.",
+      message:
+        platform === "win32"
+          ? "open_document cannot launch originals on Windows yet — returning path. Windows document import/OCR has no supported backend yet (#85); search and read of already-extracted document text remain available. Open this path manually."
+          : "open_document is only supported on macOS — returning path.",
     };
   }
   // #240/B11: the try/catch was dead code for the real failure mode — spawn
@@ -249,11 +239,7 @@ export async function openDocument(
       resolve({ ok: false, path, message: `failed to open: ${err.message}` });
     });
     child.on("exit", (code) => {
-      resolve(
-        code === 0
-          ? { ok: true, path }
-          : { ok: false, path, message: `open exited with code ${code}` },
-      );
+      resolve(code === 0 ? { ok: true, path } : { ok: false, path, message: `open exited with code ${code}` });
     });
   });
 }

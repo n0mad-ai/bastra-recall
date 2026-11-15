@@ -1,4 +1,4 @@
-import type {ConventionSource} from "./convention-source.js";
+import type { ConventionSource } from "./convention-source.js";
 /**
  * /hook/recall — assembling the wire payload (split out of
  * http-hook-routes.ts, #680, the cut named in #504): lean projection,
@@ -14,7 +14,7 @@ import { fitRecallWithReflexToBudget } from "./recall-budget.js";
 import { withSupersession } from "./recall-batch.js";
 
 export interface HookRecallPayloadInput {
-  conventionSources?:ReadonlyMap<string,ConventionSource>;
+  conventionSources?: ReadonlyMap<string, ConventionSource>;
   hits: RecallHit[];
   candidatePool: { id: string; score: number }[];
   vault: Vault;
@@ -31,13 +31,24 @@ export interface HookRecallPayloadInput {
 /** Builds the budgeted response payload; `.payload` is what goes on the wire. */
 export function assembleHookRecallPayload(input: HookRecallPayloadInput) {
   const {
-    hits:rawHits, candidatePool:rawPool, vault, maxTokens, totalLatencyMs, recallId, weakResult, noHome,
-    hookProject, hybridActiveAtRecall, degradedReason,
+    hits: rawHits,
+    candidatePool: rawPool,
+    vault,
+    maxTokens,
+    totalLatencyMs,
+    recallId,
+    weakResult,
+    noHome,
+    hookProject,
+    hybridActiveAtRecall,
+    degradedReason,
   } = input;
   // Respect visibility of the served index/source metadata. Hook source updates
   // follow Vault watcher/reconcile; direct MCP readers validate current bytes.
-  const visible=(id:string)=>vault.get(id)?.fm.sensitivity!=="private" && input.conventionSources?.get(id)?.hiddenFromPublic!==true;
-  const hits=rawHits.filter(h=>visible(h.id)),candidatePool=rawPool.filter(h=>visible(h.id));
+  const visible = (id: string) =>
+    vault.get(id)?.fm.sensitivity !== "private" && input.conventionSources?.get(id)?.hiddenFromPublic !== true;
+  const hits = rawHits.filter((h) => visible(h.id)),
+    candidatePool = rawPool.filter((h) => visible(h.id));
   // Lean projection (#50): the hook CLI only consumes lean fields, so we
   // never need to send matched_terms/mode/hop/topic_path over the wire.
   // Telemetry above already logged the full hits. #148: the hook scope
@@ -56,24 +67,37 @@ export function assembleHookRecallPayload(input: HookRecallPayloadInput) {
   // and the lane keeps every floor and dedup it already applies.
   // #421: derselbe Schritt, den der MCP-`recallHandler` fährt
   // (`recall-pipeline.ts`). Floor 0: Die Lanes wenden ihren eigenen an.
-  const reflexHits = collectPoolReflexHits(candidatePool, new Set(hits.map((h) => h.id)), vault)
-    .map(h => withSupersession(h, vault, input.conventionSources?.get(h.id)));
+  const reflexHits = collectPoolReflexHits(candidatePool, new Set(hits.map((h) => h.id)), vault).map((h) =>
+    withSupersession(h, vault, input.conventionSources?.get(h.id))
+  );
   // recall_mode rides along only when the user wired the memory as
   // reflex: the prompt lane's mode-"none" semantic filter keys on it
   // (19.08. incident — see prompt-lane.ts).
-  const leanHits = hits.map((h) => withSupersession({
-    ...toLeanHit(h),
-    ...(vault.get(h.id)?.fm.validator ? { validator: vault.get(h.id)!.fm.validator } : {}),
-    matched_recall_when: h.matched_recall_when ?? false,
-    // P0: Der Cross-Scope-Bypass in den Lanes braucht mehr als das Flag —
-    // ein einzelnes häufiges Wort in einer fremden Triggerphrase ist
-    // keine Absicht. Nur gesetzt, wenn überhaupt ein Trigger-Term traf.
-    ...(h.anchor_strength ? { anchor_strength: h.anchor_strength } : {}),
-    ...(vault.get(h.id)?.fm.recall_mode === "reflex" ? { recall_mode: "reflex" as const } : {}),
-    // #1303: the gate's evidence that the user dictated the rule.
-    ...(vault.get(h.id)?.fm.write_origin ? { write_origin: vault.get(h.id)!.fm.write_origin } : {}),
-    ...(input.conventionSources?{revision:input.conventionSources.get(h.id)?.revision??null,write_origin:input.conventionSources.get(h.id)?.write_origin,summary:input.conventionSources.get(h.id)?.summary??h.summary}:{}),
-  }, vault, input.conventionSources?.get(h.id)));
+  const leanHits = hits.map((h) =>
+    withSupersession(
+      {
+        ...toLeanHit(h),
+        ...(vault.get(h.id)?.fm.validator ? { validator: vault.get(h.id)!.fm.validator } : {}),
+        matched_recall_when: h.matched_recall_when ?? false,
+        // P0: Der Cross-Scope-Bypass in den Lanes braucht mehr als das Flag —
+        // ein einzelnes häufiges Wort in einer fremden Triggerphrase ist
+        // keine Absicht. Nur gesetzt, wenn überhaupt ein Trigger-Term traf.
+        ...(h.anchor_strength ? { anchor_strength: h.anchor_strength } : {}),
+        ...(vault.get(h.id)?.fm.recall_mode === "reflex" ? { recall_mode: "reflex" as const } : {}),
+        // #1303: the gate's evidence that the user dictated the rule.
+        ...(vault.get(h.id)?.fm.write_origin ? { write_origin: vault.get(h.id)!.fm.write_origin } : {}),
+        ...(input.conventionSources
+          ? {
+              revision: input.conventionSources.get(h.id)?.revision ?? null,
+              write_origin: input.conventionSources.get(h.id)?.write_origin,
+              summary: input.conventionSources.get(h.id)?.summary ?? h.summary,
+            }
+          : {}),
+      },
+      vault,
+      input.conventionSources?.get(h.id)
+    )
+  );
   // #487: Das Kontextbudget des AUFRUFS. Gestrichen wird von hinten, und
   // die Streichliste ist [reflex …, gerankt …]: zuerst fallen die
   // gerankten Treffer (der schwächste zuerst), und erst wenn keiner mehr
@@ -86,56 +110,59 @@ export function assembleHookRecallPayload(input: HookRecallPayloadInput) {
   // Ohne `max_tokens` (0) baut die Funktion einmal und die Antwort ist
   // byte-gleich zu der vor #487.
   const vaultMissing = missingVaultReason(vault.root);
-  const budgeted = fitRecallWithReflexToBudget(leanHits, reflexHits, maxTokens, (emittedHits, emittedReflex, droppedByBudget) => ({
-    hits: emittedHits,
-    ...(emittedReflex.length > 0 ? { reflex_hits: emittedReflex } : {}),
-    vault_size: vault.size(),
-    ...(vault.availability().not_loaded ? { vault_availability: vault.availability() } : {}),
-    // The MCP forwarder's recall path is this stream, not recallHandler.
-    ...(vaultMissing ? { vault_missing: vaultMissing } : {}),
-    latency_ms: totalLatencyMs,
-    recall_id: recallId,
-    ...(weakResult ? { weak_result: true } : {}),
-    // #230: the stricter half travels the same wire. A strict subset of
-    // weak_result, so a consumer that only knows weak_result is unaffected.
-    ...(noHome ? { no_home: true } : {}),
-    // #302: whether RRF ran at all. Without a vector arm there is no
-    // fusion and no ceiling — raw BM25 is unbounded (top hits into six
-    // digits on a real vault), so the 30/100 cuts describe nothing there.
-    // The formatter has to say so rather than band an unbounded scale.
-    // Same shape as the flags above: present only when it has something
-    // to say, computed once from the value the honesty flags already use.
-    // P0: derselbe explizite Score-Raum wie auf dem MCP-Pfad. `unfused`
-    // sagt es indirekt, aber ein Konsument soll das Feld lesen können,
-    // statt aus einer Abwesenheit zu schließen.
-    // Codex-Gegenreview zum Confidence-Gate: Kennt der Vault den
-    // Projektnamen überhaupt? `detectProject()` liefert für
-    // `/workspace/packages/core` das Projekt "packages" — mit voller
-    // Zuversicht, denn ein Pfadsegment hieß "workspace". Ein scharfer
-    // Scope-Filter würde damit das ganze eigene Gedächtnis entfernen.
-    // Die Frage ist nur HIER beantwortbar, wo der Vault liegt; die Lanes
-    // sehen ihn nicht. Früher Abbruch beim ersten Treffer: der Normalfall
-    // (eigenes Projekt) kostet nichts, nur der seltene Fehlerfall läuft
-    // einmal durch.
-    ...(hookProject !== null ? { project_known: vaultKnowsProject(vault, hookProject) } : {}),
-    score_kind: hybridActiveAtRecall ? ("rrf" as const) : ("bm25" as const),
-    // Dieselbe Angabe wie auf dem MCP-Pfad: `score_kind` allein macht zwei
-    // Zahlen nicht vergleichbar, die Armmenge tut es. Der Hook-Pfad kennt
-    // keine Commons — hier sind es immer die persönlichen Arme, und genau
-    // das muss auf der Leitung stehen, statt vom Konsumenten geraten zu
-    // werden.
-    score_arms: armsOf({ hybridActive: hybridActiveAtRecall, commonsFused: false }),
-    // Keine Formelversion auf einer rohen Skala — siehe recall-handler.ts.
-    ...(hybridActiveAtRecall ? { score_version: currentScoreVersion() } : { unfused: true }),
-    // #342: name the reason on the wire too. `unfused` says the bands do
-    // not apply; this says why, so a slow machine degrading on every call
-    // is distinguishable from embeddings being off — from the response
-    // alone, without correlating against the telemetry log.
-    ...(degradedReason ? { degraded: degradedReason } : {}),
-    // #487: nur gesetzt, wenn das Budget wirklich gestrichen hat.
-    ...(droppedByBudget > 0
-      ? { truncated_by_budget: true, dropped_by_budget: droppedByBudget }
-      : {}),
-  }));
+  const budgeted = fitRecallWithReflexToBudget(
+    leanHits,
+    reflexHits,
+    maxTokens,
+    (emittedHits, emittedReflex, droppedByBudget) => ({
+      hits: emittedHits,
+      ...(emittedReflex.length > 0 ? { reflex_hits: emittedReflex } : {}),
+      vault_size: vault.size(),
+      ...(vault.availability().not_loaded ? { vault_availability: vault.availability() } : {}),
+      // The MCP forwarder's recall path is this stream, not recallHandler.
+      ...(vaultMissing ? { vault_missing: vaultMissing } : {}),
+      latency_ms: totalLatencyMs,
+      recall_id: recallId,
+      ...(weakResult ? { weak_result: true } : {}),
+      // #230: the stricter half travels the same wire. A strict subset of
+      // weak_result, so a consumer that only knows weak_result is unaffected.
+      ...(noHome ? { no_home: true } : {}),
+      // #302: whether RRF ran at all. Without a vector arm there is no
+      // fusion and no ceiling — raw BM25 is unbounded (top hits into six
+      // digits on a real vault), so the 30/100 cuts describe nothing there.
+      // The formatter has to say so rather than band an unbounded scale.
+      // Same shape as the flags above: present only when it has something
+      // to say, computed once from the value the honesty flags already use.
+      // P0: derselbe explizite Score-Raum wie auf dem MCP-Pfad. `unfused`
+      // sagt es indirekt, aber ein Konsument soll das Feld lesen können,
+      // statt aus einer Abwesenheit zu schließen.
+      // Codex-Gegenreview zum Confidence-Gate: Kennt der Vault den
+      // Projektnamen überhaupt? `detectProject()` liefert für
+      // `/workspace/packages/core` das Projekt "packages" — mit voller
+      // Zuversicht, denn ein Pfadsegment hieß "workspace". Ein scharfer
+      // Scope-Filter würde damit das ganze eigene Gedächtnis entfernen.
+      // Die Frage ist nur HIER beantwortbar, wo der Vault liegt; die Lanes
+      // sehen ihn nicht. Früher Abbruch beim ersten Treffer: der Normalfall
+      // (eigenes Projekt) kostet nichts, nur der seltene Fehlerfall läuft
+      // einmal durch.
+      ...(hookProject !== null ? { project_known: vaultKnowsProject(vault, hookProject) } : {}),
+      score_kind: hybridActiveAtRecall ? ("rrf" as const) : ("bm25" as const),
+      // Dieselbe Angabe wie auf dem MCP-Pfad: `score_kind` allein macht zwei
+      // Zahlen nicht vergleichbar, die Armmenge tut es. Der Hook-Pfad kennt
+      // keine Commons — hier sind es immer die persönlichen Arme, und genau
+      // das muss auf der Leitung stehen, statt vom Konsumenten geraten zu
+      // werden.
+      score_arms: armsOf({ hybridActive: hybridActiveAtRecall, commonsFused: false }),
+      // Keine Formelversion auf einer rohen Skala — siehe recall-handler.ts.
+      ...(hybridActiveAtRecall ? { score_version: currentScoreVersion() } : { unfused: true }),
+      // #342: name the reason on the wire too. `unfused` says the bands do
+      // not apply; this says why, so a slow machine degrading on every call
+      // is distinguishable from embeddings being off — from the response
+      // alone, without correlating against the telemetry log.
+      ...(degradedReason ? { degraded: degradedReason } : {}),
+      // #487: nur gesetzt, wenn das Budget wirklich gestrichen hat.
+      ...(droppedByBudget > 0 ? { truncated_by_budget: true, dropped_by_budget: droppedByBudget } : {}),
+    })
+  );
   return budgeted;
 }

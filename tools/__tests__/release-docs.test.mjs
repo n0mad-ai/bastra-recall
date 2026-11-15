@@ -9,16 +9,21 @@ import { checkReleaseDocs } from "../../scripts/release-docs.mjs";
 
 const root = new URL("../../", import.meta.url);
 const version = JSON.parse(readFileSync(new URL("package.json", root))).version;
-const prose = v => `**Version ${v} is available.**\n**Version ${v} ist verfügbar.**\n`;
+const prose = (v) => `**Version ${v} is available.**\n**Version ${v} ist verfügbar.**\n`;
 test("release README languages and changelog match package.json", () => {
   checkReleaseDocs(fileURLToPath(root), version);
 });
 
-test("reject stale/missing/duplicate language lines and missing changelog version", t => {
+test("reject stale/missing/duplicate language lines and missing changelog version", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "bastra-release-docs-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   writeFileSync(join(dir, "CHANGELOG.md"), "## [2.3.4] — today\n");
-  for (const text of [prose("2.3.3"), prose("2.3.4").split("\n")[0], prose("2.3.4") + prose("2.3.4"), prose("2.3.4").replace("2.3.4 ist", "2.3.3 ist")]) {
+  for (const text of [
+    prose("2.3.3"),
+    prose("2.3.4").split("\n")[0],
+    prose("2.3.4") + prose("2.3.4"),
+    prose("2.3.4").replace("2.3.4 ist", "2.3.3 ist"),
+  ]) {
     writeFileSync(join(dir, "README.md"), text);
     assert.throws(() => checkReleaseDocs(dir, "2.3.4"), /README/);
   }
@@ -28,7 +33,7 @@ test("reject stale/missing/duplicate language lines and missing changelog versio
   assert.throws(() => checkReleaseDocs(dir, "2.3.4"), /CHANGELOG/);
 });
 
-test("version bump updates both README lines; dry run leaves bytes unchanged", t => {
+test("version bump updates both README lines; dry run leaves bytes unchanged", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "bastra-bump-docs-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   mkdirSync(join(dir, "scripts"));
@@ -41,7 +46,7 @@ test("version bump updates both README lines; dry run leaves bytes unchanged", t
   }
   writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "fixture", version: "1.0.0", workspaces: [] }));
   writeFileSync(join(dir, "README.md"), prose("1.0.0"));
-  const run = args => spawnSync(process.execPath, [join(dir, "scripts/bump.mjs"), ...args], { encoding: "utf8" });
+  const run = (args) => spawnSync(process.execPath, [join(dir, "scripts/bump.mjs"), ...args], { encoding: "utf8" });
   const dry = run(["2.3.4", "--dry-run"]);
   assert.equal(dry.status, 0, dry.stderr);
   assert.match(dry.stdout, /README.md/);
@@ -55,7 +60,7 @@ test("version bump updates both README lines; dry run leaves bytes unchanged", t
 });
 
 for (const prerelease of ["2.3.4-beta.1", "2.3.4-rc.2+build-1"]) {
-  test(`prerelease ${prerelease} keeps stable README and needs no changelog section`, t => {
+  test(`prerelease ${prerelease} keeps stable README and needs no changelog section`, (t) => {
     const dir = mkdtempSync(join(tmpdir(), "bastra-prerelease-docs-"));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     mkdirSync(join(dir, "scripts"));
@@ -80,7 +85,7 @@ for (const prerelease of ["2.3.4-beta.1", "2.3.4-rc.2+build-1"]) {
   });
 }
 
-test("a hyphen in build metadata does not bypass stable documentation checks", t => {
+test("a hyphen in build metadata does not bypass stable documentation checks", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "bastra-build-docs-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   writeFileSync(join(dir, "README.md"), prose("2.3.4+build-1"));
@@ -90,11 +95,10 @@ test("a hyphen in build metadata does not bypass stable documentation checks", t
   checkReleaseDocs(dir, "2.3.4+build-1");
 });
 
-
-test("release targets are version-checked without claiming publication", t => {
+test("release targets are version-checked without claiming publication", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "bastra-release-target-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const target = v => `**Release target: ${v}.**\n**Release-Ziel: ${v}.**\n`;
+  const target = (v) => `**Release target: ${v}.**\n**Release-Ziel: ${v}.**\n`;
   writeFileSync(join(dir, "README.md"), target("2.3.4"));
   writeFileSync(join(dir, "CHANGELOG.md"), "## [2.3.4] — today\n");
   checkReleaseDocs(dir, "2.3.4");
@@ -103,9 +107,11 @@ test("release targets are version-checked without claiming publication", t => {
     assert.throws(() => checkReleaseDocs(dir, "2.3.4"), /README/);
   }
   mkdirSync(join(dir, "scripts"));
-  for (const name of ["bump.mjs", "release-docs.mjs"]) copyFileSync(new URL(`scripts/${name}`, root), join(dir, "scripts", name));
+  for (const name of ["bump.mjs", "release-docs.mjs"])
+    copyFileSync(new URL(`scripts/${name}`, root), join(dir, "scripts", name));
   mkdirSync(join(dir, "packages/daemon/src/cli"), { recursive: true });
-  for (const file of ["index.ts", "mcp-forwarder.ts", "version.ts", "cli/helpers.ts"]) writeFileSync(join(dir, "packages/daemon/src", file), "// no literal\n");
+  for (const file of ["index.ts", "mcp-forwarder.ts", "version.ts", "cli/helpers.ts"])
+    writeFileSync(join(dir, "packages/daemon/src", file), "// no literal\n");
   writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "fixture", version: "1.0.0", workspaces: [] }));
   writeFileSync(join(dir, "README.md"), target("1.0.0"));
   const run = spawnSync(process.execPath, [join(dir, "scripts/bump.mjs"), "2.3.4"], { encoding: "utf8" });

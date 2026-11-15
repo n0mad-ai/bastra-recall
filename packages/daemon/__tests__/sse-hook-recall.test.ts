@@ -59,7 +59,7 @@ function httpPost(
   port: number,
   path: string,
   payload: unknown,
-  headers: Record<string, string> = {},
+  headers: Record<string, string> = {}
 ): Promise<HttpResult> {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify(payload);
@@ -85,7 +85,7 @@ function httpPost(
             body: Buffer.concat(chunks).toString("utf8"),
           });
         });
-      },
+      }
     );
     req.on("error", reject);
     req.write(body);
@@ -194,7 +194,7 @@ test("hook/recall: content-axis recall is opt-in and additive", async () => {
     assert.deepEqual(
       JSON.parse(off.body).hits.map((hit: { id: string }) => hit.id),
       ["alpha"],
-      "the file-axis result is unchanged while the experiment is off",
+      "the file-axis result is unchanged while the experiment is off"
     );
 
     process.env.BASTRA_HOOK_CONTENT_RECALL = "1";
@@ -208,7 +208,7 @@ test("hook/recall: content-axis recall is opt-in and additive", async () => {
     assert.deepEqual(
       new Set(JSON.parse(on.body).hits.map((hit: { id: string }) => hit.id)),
       new Set(["alpha", "charlie"]),
-      "content-only hits join the existing file-axis result",
+      "content-only hits join the existing file-axis result"
     );
 
     const bash = await httpPost(d.port, "/hook/recall", {
@@ -220,7 +220,7 @@ test("hook/recall: content-axis recall is opt-in and additive", async () => {
     assert.deepEqual(
       JSON.parse(bash.body).hits.map((hit: { id: string }) => hit.id),
       ["alpha"],
-      "the edit experiment does not widen other hook surfaces",
+      "the edit experiment does not widen other hook surfaces"
     );
   } finally {
     if (previous === undefined) delete process.env.BASTRA_HOOK_CONTENT_RECALL;
@@ -279,7 +279,7 @@ test("hook/recall: content-axis failure preserves the file-axis response", async
     assert.equal(result.status, 200);
     assert.deepEqual(
       JSON.parse(result.body).hits.map((hit: { id: string }) => hit.id),
-      ["alpha"],
+      ["alpha"]
     );
   } finally {
     if (previous === undefined) delete process.env.BASTRA_HOOK_CONTENT_RECALL;
@@ -291,12 +291,7 @@ test("hook/recall: content-axis failure preserves the file-axis response", async
 test("hook/recall: with Accept: text/event-stream returns SSE stages + done", async () => {
   const d = await makeDaemon();
   try {
-    const r = await httpPost(
-      d.port,
-      "/hook/recall",
-      { query: "alpha" },
-      { Accept: "text/event-stream" },
-    );
+    const r = await httpPost(d.port, "/hook/recall", { query: "alpha" }, { Accept: "text/event-stream" });
     assert.equal(r.status, 200);
     const ct = String(r.headers["content-type"] ?? "");
     assert.ok(ct.includes("text/event-stream"), `expected SSE content-type, got ${ct}`);
@@ -332,12 +327,7 @@ test("hook/recall: with Accept: text/event-stream returns SSE stages + done", as
 test("hook/recall: SSE missing query returns error event", async () => {
   const d = await makeDaemon();
   try {
-    const r = await httpPost(
-      d.port,
-      "/hook/recall",
-      {},
-      { Accept: "text/event-stream" },
-    );
+    const r = await httpPost(d.port, "/hook/recall", {}, { Accept: "text/event-stream" });
     assert.equal(r.status, 200, "SSE keeps 200 even on error — event carries the failure");
     assert.ok(r.body.includes("event: error"), `expected error event, got: ${r.body}`);
   } finally {

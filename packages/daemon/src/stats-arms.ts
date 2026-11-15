@@ -78,8 +78,7 @@ export function minNRuleFrom(registration: unknown): MinNRule {
   const conclusion = (fb.conclusion ?? {}) as Record<string, unknown>;
   return {
     minN,
-    reportingRule:
-      typeof conclusion.reporting_rule === "string" ? conclusion.reporting_rule : null,
+    reportingRule: typeof conclusion.reporting_rule === "string" ? conclusion.reporting_rule : null,
     fallbackVerdict: typeof conclusion.verdict === "string" ? conclusion.verdict : null,
   };
 }
@@ -93,13 +92,8 @@ export function minNRuleFrom(registration: unknown): MinNRule {
  * ZURÜCKGEGEBEN, nicht geworfen: Eine unlesbare Registrierung darf den Report
  * nicht abbrechen, aber sie darf auch nicht zu einer stillen Quote führen.
  */
-export function loadMinNRule(
-  registration: string,
-  roots: string[],
-): { rule: MinNRule | null; error: string | null } {
-  const candidates = isAbsolute(registration)
-    ? [registration]
-    : roots.map((r) => resolve(r, registration));
+export function loadMinNRule(registration: string, roots: string[]): { rule: MinNRule | null; error: string | null } {
+  const candidates = isAbsolute(registration) ? [registration] : roots.map((r) => resolve(r, registration));
   for (const p of candidates) {
     try {
       return { rule: minNRuleFrom(JSON.parse(readFileSync(p, "utf8"))), error: null };
@@ -178,7 +172,7 @@ export interface ArmEvaluation {
 export function evaluateArms(
   events: readonly unknown[],
   rule: MinNRule | null,
-  registrationError: string | null,
+  registrationError: string | null
 ): Map<string, ArmEvaluation> {
   const identities = armIdentities(events);
   const sessions = sessionsPerArm(events);

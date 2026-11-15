@@ -10,12 +10,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault, SearchIndex } from "@bastra-recall/core";
-import {
-  buildContextLedger,
-  HOOK_LANE_KINDS,
-  TOOL_PAYLOAD_KINDS,
-  type LedgerEvent,
-} from "../src/context-ledger.js";
+import { buildContextLedger, HOOK_LANE_KINDS, TOOL_PAYLOAD_KINDS, type LedgerEvent } from "../src/context-ledger.js";
 import { loadMemoryHandler, recallHandler, type ToolDeps } from "../src/tool-handlers.js";
 import { Telemetry } from "../src/telemetry.js";
 
@@ -57,10 +52,14 @@ test("#457: Prompt, Todo and Bash-fail tokens cannot fall out of the complete nu
     assert.equal(ledger.total.totalTokens, 123, `${kind} tokens reach the total`);
   }
   // Und jede Lane, die ein Ereignis mit hint_tokens_est schreibt, steht in der Liste.
-  assert.deepEqual(
-    [...HOOK_LANE_KINDS].sort(),
-    ["bash_fail_hook_call", "bash_hook_call", "hook_call", "prompt_hook_call", "session_hook_call", "todo_hook_call"],
-  );
+  assert.deepEqual([...HOOK_LANE_KINDS].sort(), [
+    "bash_fail_hook_call",
+    "bash_hook_call",
+    "hook_call",
+    "prompt_hook_call",
+    "session_hook_call",
+    "todo_hook_call",
+  ]);
   assert.deepEqual([...TOOL_PAYLOAD_KINDS].sort(), ["load_memory", "read_document", "recall"]);
 });
 
@@ -124,10 +123,11 @@ test("#457: load_memory records the size it delivered after the lean/full projec
   search.start();
   const telemetry = new Telemetry();
   const logged: Record<string, unknown>[] = [];
-  (telemetry as unknown as { logLoadMemory: (p: Record<string, unknown>) => Promise<void> }).logLoadMemory =
-    async (p) => {
-      logged.push(p);
-    };
+  (telemetry as unknown as { logLoadMemory: (p: Record<string, unknown>) => Promise<void> }).logLoadMemory = async (
+    p
+  ) => {
+    logged.push(p);
+  };
   const deps: ToolDeps = { vault, search, telemetry, vaultPath: dir };
   try {
     const lean = await loadMemoryHandler(deps, { id: "m-1" });

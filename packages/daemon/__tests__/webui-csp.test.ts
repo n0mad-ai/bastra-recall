@@ -108,7 +108,7 @@ test("CSP: rides on the document only, not on stylesheets or scripts", async () 
   assert.equal(
     css.headers["content-security-policy"],
     undefined,
-    "a CSP on a stylesheet is ignored by the browser — shipping it there only pretends to protect",
+    "a CSP on a stylesheet is ignored by the browser — shipping it there only pretends to protect"
   );
 });
 
@@ -152,7 +152,7 @@ test("CSP: every host the shipped web UI fetches from is declared", async () => 
   for (const host of hosts) {
     assert.ok(
       declared.has(`https://${host}`),
-      `${host} is fetched by the web UI but missing from connect-src — the browser would block it silently`,
+      `${host} is fetched by the web UI but missing from connect-src — the browser would block it silently`
     );
   }
 });
@@ -179,7 +179,8 @@ test("CSP: the shipped web UI writes no inline style attribute that style-src 's
   for (const f of files) {
     const lines = (await readFile(f, "utf8")).split("\n");
     lines.forEach((line, i) => {
-      if (/\sstyle\s*=\s*["'$]|setAttribute\(\s*["']style["']/.test(line)) hits.push(`${f.slice(root.length)}:${i + 1}: ${line.trim()}`);
+      if (/\sstyle\s*=\s*["'$]|setAttribute\(\s*["']style["']/.test(line))
+        hits.push(`${f.slice(root.length)}:${i + 1}: ${line.trim()}`);
     });
   }
   assert.deepEqual(hits, [], "an inline style attribute is blocked by style-src 'self'");
@@ -207,7 +208,8 @@ test("CSP: the app injects no <style> element that style-src 'self' would block"
   for (const f of files) {
     const lines = (await readFile(f, "utf8")).split("\n");
     lines.forEach((line, i) => {
-      if (/createElement\(\s*["'`]style["'`]|<style[\s>]/i.test(line)) hits.push(`${f.slice(root.length)}:${i + 1}: ${line.trim()}`);
+      if (/createElement\(\s*["'`]style["'`]|<style[\s>]/i.test(line))
+        hits.push(`${f.slice(root.length)}:${i + 1}: ${line.trim()}`);
     });
   }
   assert.deepEqual(hits, [], "an injected <style> element is blocked by style-src 'self'");
@@ -223,7 +225,11 @@ test("CSP: overlays.css carries every base rule ctxmenu.js would inject", async 
   const injected = /var styles = '([^']*)'/.exec(vendor)?.[1];
   assert.ok(injected, "ctxmenu.js no longer carries its styles string — re-check what it injects");
 
-  const norm = (d: string): string => d.trim().replace(/\s*([:,])\s*/g, "$1").replace(/\s+/g, " ");
+  const norm = (d: string): string =>
+    d
+      .trim()
+      .replace(/\s*([:,])\s*/g, "$1")
+      .replace(/\s+/g, " ");
   const rulesOf = (css: string): Map<string, Set<string>> => {
     const rules = new Map<string, Set<string>>();
     for (const m of css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^}]*)\}/g)) {
@@ -243,7 +249,6 @@ test("CSP: overlays.css carries every base rule ctxmenu.js would inject", async 
   assert.deepEqual(missing, [], "a ctxmenu base rule is missing from overlays.css");
 });
 
-
 test("CSP exclusion: the local demo is excluded from the npm package, not just git", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-demo-pack-"));
   try {
@@ -254,7 +259,8 @@ test("CSP exclusion: the local demo is excluded from the npm package, not just g
     await writeFile(join(dir, "webui", "js", "main.js"), "export const shipped = true;");
     await writeFile(join(dir, "webui", "js", "demo.js"), 'document.createElement("style");');
     const { stdout } = await promisify(execFile)("npm", ["pack", "--ignore-scripts", "--dry-run", "--json"], {
-      cwd: dir, env: { ...process.env, npm_config_cache: join(dir, "cache") },
+      cwd: dir,
+      env: { ...process.env, npm_config_cache: join(dir, "cache") },
     });
     const paths = (JSON.parse(stdout) as Array<{ files: Array<{ path: string }> }>)[0].files.map((f) => f.path);
     assert.ok(paths.includes("webui/js/main.js"), "the regular web UI must still ship");
@@ -265,5 +271,6 @@ test("CSP exclusion: the local demo is excluded from the npm package, not just g
 });
 
 test("integrated task view retains the main map framing boundary", async () => {
- const map = await fetchAsset("/ui/"); assert.match(String(map.headers["content-security-policy"]), /frame-ancestors 'none'/);
+  const map = await fetchAsset("/ui/");
+  assert.match(String(map.headers["content-security-policy"]), /frame-ancestors 'none'/);
 });

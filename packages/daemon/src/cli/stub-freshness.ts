@@ -201,7 +201,7 @@ function commandStrings(node: unknown, out: string[] = []): string[] {
  *  that name them. A file that is absent or unparseable contributes nothing:
  *  a broken registration is the surface adapters' finding, not this one's. */
 export async function collectRegisteredStubs(
-  home: string = homedir(),
+  home: string = homedir()
 ): Promise<Array<{ binary: string; surfaces: string[] }>> {
   const bySurface = new Map<string, Set<string>>();
   for (const { surface, path } of stubRegistrationFiles(home)) {
@@ -284,7 +284,11 @@ async function digestModule(root: string): Promise<StubDigestModule | null> {
  * means it was asked and predates the stamp (#546).
  */
 export function readStubStamp(binary: string, timeoutMs = 5_000): StubStamp | null {
-  const r = spawnSync(binary, ["version"], { encoding: "utf8", timeout: timeoutMs, stdio: ["ignore", "pipe", "ignore"] });
+  const r = spawnSync(binary, ["version"], {
+    encoding: "utf8",
+    timeout: timeoutMs,
+    stdio: ["ignore", "pipe", "ignore"],
+  });
   if (r.error || r.status !== 0) return null;
   try {
     const parsed: unknown = JSON.parse(r.stdout);
@@ -333,7 +337,7 @@ export async function stubFreshness(io: StubFreshnessIo = {}): Promise<StubFresh
 
   const findings: StubFinding[] = [];
   const binaries = await collectRegisteredStubs(home);
-  if (io.includeOwn && exists(own) && !binaries.some(b => b.binary === own)) {
+  if (io.includeOwn && exists(own) && !binaries.some((b) => b.binary === own)) {
     binaries.push({ binary: own, surfaces: ["source checkout"] });
   }
   for (const { binary, surfaces } of binaries) {
@@ -402,31 +406,31 @@ export function stubFreshnessLines(report: StubFreshnessReport): string[] {
         lines.push(
           `⚠ stale hook binary: ${f.binary}${builtFrom(f.stamp)} was built from different sources than the ones` +
             ` in this checkout. Every hook call on ${who} runs that older code — this is how a two-week-old` +
-            ` binary wrote telemetry nobody could fold (#546)${rebuild}`,
+            ` binary wrote telemetry nobody could fold (#546)${rebuild}`
         );
         break;
       case "unstamped":
         lines.push(
           `⚠ unstamped hook binary: ${f.binary} answers \`version\` without a source digest, so it predates` +
-            ` #546 and cannot say which sources it came from. That is not the same as current${rebuild}`,
+            ` #546 and cannot say which sources it came from. That is not the same as current${rebuild}`
         );
         break;
       case "unknown-sources":
         lines.push(
           `· ${f.binary}${builtFrom(f.stamp)} — this installation ships no stub sources, so whether the binary` +
-            ` is still current cannot be decided here. Check it in a source checkout.`,
+            ` is still current cannot be decided here. Check it in a source checkout.`
         );
         break;
       case "missing":
         lines.push(
           `⚠ missing hook binary: ${who} registers ${f.binary}, and no such file exists —` +
-            ` those hook lanes run nothing. Re-run \`bastra install ${f.surfaces[0]}\``,
+            ` those hook lanes run nothing. Re-run \`bastra install ${f.surfaces[0]}\``
         );
         break;
       case "unreadable":
         lines.push(
           `⚠ unusable hook binary: ${f.binary} is there but \`${basename(f.binary)} version\` did not answer` +
-            ` — an interrupted download or a binary for another architecture. Re-run \`bastra install ${f.surfaces[0]}\``,
+            ` — an interrupted download or a binary for another architecture. Re-run \`bastra install ${f.surfaces[0]}\``
         );
         break;
     }
@@ -438,12 +442,12 @@ export function stubFreshnessLines(report: StubFreshnessReport): string[] {
         lines.push(
           `⚠ stale statusline in an otherwise current hook binary: ${f.binary} carries a statusline bundle built` +
             ` from different sources than \`packages/statusline/dist\` here. The hook lanes are fine; \`${basename(f.binary)}` +
-            ` statusline\` renders older code (#547)${rebuild}`,
+            ` statusline\` renders older code (#547)${rebuild}`
         );
       } else if (f.statusline === "unstamped") {
         lines.push(
           `⚠ ${f.binary} matches the stub sources but carries no statusline digest, so it predates #547 and cannot` +
-            ` say which statusline bundle is inside it. That is not the same as current${rebuild}`,
+            ` say which statusline bundle is inside it. That is not the same as current${rebuild}`
         );
       }
     }
@@ -451,7 +455,7 @@ export function stubFreshnessLines(report: StubFreshnessReport): string[] {
       lines.push(
         `⚠ ${who} runs ${f.binary}, not this installation's ${report.own} —` +
           ` the hooks execute a different build than the one you are looking at.` +
-          ` \`bastra install ${f.surfaces[0]}\` re-registers this one`,
+          ` \`bastra install ${f.surfaces[0]}\` re-registers this one`
       );
     }
   }

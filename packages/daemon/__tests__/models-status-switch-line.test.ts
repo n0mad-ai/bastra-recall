@@ -16,10 +16,16 @@ import { quiet, withDir } from "./fixtures/model-decision-helpers.js";
 
 test("bastra models: `to switch` names the recommended model; the alternative has its own line", async () => {
   await withDir(async (_dir, path) => {
-    const status = async (ramGB: number) => (await quiet(() => cmdModels({ sub: "status", settingsPath: path, deps: { recommendation: null, ramGB } }))).out.trimEnd().split("\n");
+    const status = async (ramGB: number) =>
+      (await quiet(() => cmdModels({ sub: "status", settingsPath: path, deps: { recommendation: null, ramGB } }))).out
+        .trimEnd()
+        .split("\n");
     const at24 = await status(24);
     assert.ok(at24.includes("recommended: tev1:4b  [enhanced]"));
-    assert.deepEqual(at24.slice(-2), ["to switch: bastra models set tev1:4b", "alternative: bastra models set gemma4:12b"]);
+    assert.deepEqual(at24.slice(-2), [
+      "to switch: bastra models set tev1:4b",
+      "alternative: bastra models set gemma4:12b",
+    ]);
     const at16 = await status(16);
     assert.equal(at16[at16.length - 1], "to switch: bastra models set tev1:4b");
     assert.ok(!at16.some((l) => l.startsWith("alternative:")));

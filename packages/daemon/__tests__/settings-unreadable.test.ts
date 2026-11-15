@@ -21,31 +21,61 @@ import { settingsFileState } from "../src/settings-file.js";
 import { ARGS, ORIGINAL, cannotRevokeRead, deps, quiet, withDir } from "./fixtures/model-decision-helpers.js";
 // ── P1: a file that cannot be read is not a file without settings ────────────
 
-test("P1 unreadable settings: a model answer refuses, and the file keeps every setting", { skip: cannotRevokeRead }, async () => {
-  await withDir(async (_dir, path) => {
-    for (const argv of [["later", "fixture-rec"], ["dismiss", "fixture-rec"], ["switch", "fixture-rec", "new:4b"]]) {
-      await chmod(path, 0o200);
-      const enable = (async () => { throw new Error("must not reach the switch"); }) as never;
-      const { result, out } = await quiet(() => cmdModels({ sub: argv[0], positional: ["models", ...argv], settingsPath: path, deps: deps(path, argv[0] === "switch" ? {} : { enable }) }));
-      await chmod(path, 0o600);
-      assert.equal(result, 1, argv.join(" "));
-      assert.match(out, /cannot be read \(EACCES\)|Ollama isn't running/, out);
-      assert.match(out, /Nothing was changed/);
-      assert.equal(await readFile(path, "utf8"), ORIGINAL, `${argv[0]}: generation, embedding and the API token are still there`);
-    }
-  });
-});
+test(
+  "P1 unreadable settings: a model answer refuses, and the file keeps every setting",
+  { skip: cannotRevokeRead },
+  async () => {
+    await withDir(async (_dir, path) => {
+      for (const argv of [
+        ["later", "fixture-rec"],
+        ["dismiss", "fixture-rec"],
+        ["switch", "fixture-rec", "new:4b"],
+      ]) {
+        await chmod(path, 0o200);
+        const enable = (async () => {
+          throw new Error("must not reach the switch");
+        }) as never;
+        const { result, out } = await quiet(() =>
+          cmdModels({
+            sub: argv[0],
+            positional: ["models", ...argv],
+            settingsPath: path,
+            deps: deps(path, argv[0] === "switch" ? {} : { enable }),
+          })
+        );
+        await chmod(path, 0o600);
+        assert.equal(result, 1, argv.join(" "));
+        assert.match(out, /cannot be read \(EACCES\)|Ollama isn't running/, out);
+        assert.match(out, /Nothing was changed/);
+        assert.equal(
+          await readFile(path, "utf8"),
+          ORIGINAL,
+          `${argv[0]}: generation, embedding and the API token are still there`
+        );
+      }
+    });
+  }
+);
 
-test("P1 unreadable settings: the catch-up question is not put and nothing is written", { skip: cannotRevokeRead }, async () => {
-  await withDir(async (_dir, path) => {
-    await chmod(path, 0o200);
-    // Unreadable means defaults for a reader — the notice may or may not be
-    // due; what matters is that no note is written over the file.
-    await quiet(() => modelNoticeAfterCommand(ARGS, deps(path, { interactive: true, ask: async () => "l", shownPath: join(path, "..", "shown.txt") })));
-    await chmod(path, 0o600);
-    assert.equal(await readFile(path, "utf8"), ORIGINAL);
-  });
-});
+test(
+  "P1 unreadable settings: the catch-up question is not put and nothing is written",
+  { skip: cannotRevokeRead },
+  async () => {
+    await withDir(async (_dir, path) => {
+      await chmod(path, 0o200);
+      // Unreadable means defaults for a reader — the notice may or may not be
+      // due; what matters is that no note is written over the file.
+      await quiet(() =>
+        modelNoticeAfterCommand(
+          ARGS,
+          deps(path, { interactive: true, ask: async () => "l", shownPath: join(path, "..", "shown.txt") })
+        )
+      );
+      await chmod(path, 0o600);
+      assert.equal(await readFile(path, "utf8"), ORIGINAL);
+    });
+  }
+);
 
 test("P1 unreadable settings: the shared write path refuses for every setter — a missing file is still created", async () => {
   await withDir(async (dir, path) => {
@@ -68,21 +98,28 @@ test("P1 unreadable settings: the shared write path refuses for every setter —
   });
 });
 
-test("P1 unreadable settings: `bastra config`-style setters no longer replace the file either", { skip: cannotRevokeRead }, async () => {
-  await withDir(async (_dir, path) => {
-    await chmod(path, 0o200);
-    await assert.rejects(setUpdateMode("auto", path), /exists but cannot be read \(EACCES\)/);
-    await chmod(path, 0o600);
-    assert.equal(await readFile(path, "utf8"), ORIGINAL);
-  });
-});
+test(
+  "P1 unreadable settings: `bastra config`-style setters no longer replace the file either",
+  { skip: cannotRevokeRead },
+  async () => {
+    await withDir(async (_dir, path) => {
+      await chmod(path, 0o200);
+      await assert.rejects(setUpdateMode("auto", path), /exists but cannot be read \(EACCES\)/);
+      await chmod(path, 0o600);
+      assert.equal(await readFile(path, "utf8"), ORIGINAL);
+    });
+  }
+);
 
 test("a corrupt file: ordinary setters still repair it (unchanged), model answers refuse", async () => {
   await withDir(async (_dir, path) => {
     const CORRUPT = '{"api":{"token":"invented-token"},BROKEN';
     await writeFile(path, CORRUPT);
     assert.equal(await settingsFileState(path), "corrupt");
-    await assert.rejects(quiet(() => recordModelAnswer("fixture-rec", "later", path)), /not valid JSON/);
+    await assert.rejects(
+      quiet(() => recordModelAnswer("fixture-rec", "later", path)),
+      /not valid JSON/
+    );
     assert.equal(await readSettingsFixture(path, "utf8"), CORRUPT);
     await quiet(() => setUpdateMode("auto", path));
     assert.equal((await quiet(() => readSettings(path))).result.update.mode, "auto");
@@ -92,7 +129,11 @@ test("a corrupt file: ordinary setters still repair it (unchanged), model answer
 // ── the write path reads the file once ───────────────────────────────────────
 
 /** Runs `fn` with every source-file open of `path` after the first one going through `later`. */
-async function withLaterReads<T>(path: string, later: (read: () => unknown) => unknown, fn: () => Promise<T>): Promise<T> {
+async function withLaterReads<T>(
+  path: string,
+  later: (read: () => unknown) => unknown,
+  fn: () => Promise<T>
+): Promise<T> {
   const realRead = fs.openSync;
   let reads = 0;
   fs.openSync = ((p: never, ...args: never[]) => {
@@ -115,10 +156,14 @@ test("P1 one read: a read that fails AFTER the first one cannot empty the file �
   for (const code of ["EAGAIN", "EBUSY", "ETIMEDOUT", "EIO"]) {
     for (const kind of ["ordinary setter", "model answer"] as const) {
       await withDir(async (_dir, path) => {
-        const fail = () => { throw Object.assign(new Error("injected: later read failed"), { code }); };
+        const fail = () => {
+          throw Object.assign(new Error("injected: later read failed"), { code });
+        };
         // Whether the write goes through or is refused, the settings survive.
         await withLaterReads(path, fail, () =>
-          quiet(() => (kind === "ordinary setter" ? setUpdateMode("off", path) : recordModelAnswer("fixture-rec", "later", path))).catch(() => undefined),
+          quiet(() =>
+            kind === "ordinary setter" ? setUpdateMode("off", path) : recordModelAnswer("fixture-rec", "later", path)
+          ).catch(() => undefined)
         );
         const stored = JSON.parse(await readSettingsFixture(path, "utf8"));
         assert.equal(stored.generation?.model, "old:4b", `${code}, ${kind}: generation.model`);
@@ -133,8 +178,13 @@ test("P1 one read: a file that turns corrupt right after it was read is not answ
   await withDir(async (_dir, path) => {
     // Every later read would see broken JSON. The one read the writer makes saw
     // the valid file, and that snapshot is what it changes and writes.
-    const corruptNow = (read: () => unknown) => { writeFileSync(path, '{"api":{"token":"invented-token"},BROKEN'); return read(); };
-    await withLaterReads(path, corruptNow, () => quiet(() => recordModelAnswer("fixture-rec", "later", path)).catch(() => undefined));
+    const corruptNow = (read: () => unknown) => {
+      writeFileSync(path, '{"api":{"token":"invented-token"},BROKEN');
+      return read();
+    };
+    await withLaterReads(path, corruptNow, () =>
+      quiet(() => recordModelAnswer("fixture-rec", "later", path)).catch(() => undefined)
+    );
     const stored = JSON.parse(await readSettingsFixture(path, "utf8"));
     assert.equal(stored.api?.token, "invented-token");
     assert.equal(stored.generation?.model, "old:4b");

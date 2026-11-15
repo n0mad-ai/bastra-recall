@@ -46,8 +46,16 @@ test("#537 — an explicit flag beats the remembered choice, which beats a prese
   };
   // 1. the explicit flag
   assert.equal(decideStubAction({ ...base, mode: "skip" }), "skip", "--no-stub over a present binary");
-  assert.equal(decideStubAction({ ...base, mode: "skip", remembered: true }), "skip", "--no-stub over a remembered yes");
-  assert.equal(decideStubAction({ ...base, mode: "yes", remembered: false }), "present", "--stub reverses a remembered no");
+  assert.equal(
+    decideStubAction({ ...base, mode: "skip", remembered: true }),
+    "skip",
+    "--no-stub over a remembered yes"
+  );
+  assert.equal(
+    decideStubAction({ ...base, mode: "yes", remembered: false }),
+    "present",
+    "--stub reverses a remembered no"
+  );
   // 2. the remembered choice
   assert.equal(decideStubAction({ ...base, remembered: false }), "declined", "a remembered no over a present binary");
   assert.equal(decideStubAction({ ...base, remembered: true }), "present");
@@ -103,14 +111,18 @@ test("#537 — --no-stub keeps the downloaded binary; selection and retention ar
 function claudeCommands(useStub: boolean): string[] {
   const plan = planHookEntries("install", {}, { includeStop: true, stubPresent: useStub });
   return Object.values(plan.after).flatMap((entries) =>
-    entries.flatMap((e) => ((e as { hooks?: unknown[] }).hooks ?? []).map((h) => (h as { command?: string }).command ?? "")),
+    entries.flatMap((e) =>
+      ((e as { hooks?: unknown[] }).hooks ?? []).map((h) => (h as { command?: string }).command ?? "")
+    )
   );
 }
 
 function codexCommands(useStub: boolean): string[] {
   const plan = planCodexHooks("install", {}, { includeStop: true, stubPresent: useStub });
   return Object.values(plan.after).flatMap((entries) =>
-    entries.flatMap((e) => ((e as { hooks?: unknown[] }).hooks ?? []).map((h) => (h as { command?: string }).command ?? "")),
+    entries.flatMap((e) =>
+      ((e as { hooks?: unknown[] }).hooks ?? []).map((h) => (h as { command?: string }).command ?? "")
+    )
   );
 }
 
@@ -124,17 +136,18 @@ test("#537 — with the client deselected, every Claude Code command runs on nod
   assert.equal(
     statuslineCommand("/pkg/statusline/dist/index.mjs", false),
     "node /pkg/statusline/dist/index.mjs --style=powerline",
-    "the statusLine is part of the same choice",
+    "the statusLine is part of the same choice"
   );
 });
 
 test("#537 — with the client selected, every Claude Code command runs on the binary", () => {
   const cmds = claudeCommands(true);
   assert.equal(cmds.length, 12);
-  for (const cmd of cmds) assert.ok(cmd.startsWith(`BASTRA_HOOK_CLIENT=claude-code ${HOOK_STUB_BIN} `), `not on the compiled client: ${cmd}`);
+  for (const cmd of cmds)
+    assert.ok(cmd.startsWith(`BASTRA_HOOK_CLIENT=claude-code ${HOOK_STUB_BIN} `), `not on the compiled client: ${cmd}`);
   assert.equal(
     statuslineCommand("/pkg/statusline/dist/index.mjs", true),
-    `${HOOK_STUB_BIN} statusline --style=powerline`,
+    `${HOOK_STUB_BIN} statusline --style=powerline`
   );
 });
 

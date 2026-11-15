@@ -30,26 +30,13 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  mkdtemp,
-  writeFile,
-  readFile,
-  rm,
-  mkdir,
-  stat,
-  symlink,
-  readdir,
-} from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, rm, mkdir, stat, symlink, readdir } from "node:fs/promises";
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import matter from "gray-matter";
 import { Vault } from "@bastra-recall/core";
-import {
-  saveDocument,
-  recategorizeDocument,
-  moveDocument,
-} from "../src/documents-write-handler.js";
+import { saveDocument, recategorizeDocument, moveDocument } from "../src/documents-write-handler.js";
 
 async function harness(t: { after: (fn: () => unknown) => void }) {
   const dir = await mkdtemp(join(tmpdir(), "bastra-docid-"));
@@ -90,8 +77,7 @@ test("eine fremde Obsidian-Notiz am Sidecar-Pfad wird nie überschrieben", async
   const folder = join(dir, "documents", "notizen");
   await mkdir(folder, { recursive: true });
   const note = join(folder, "Vertrag.pdf.md");
-  const NOTE =
-    "# Meine Gedanken zum Vertrag\n\nHandgeschrieben, nirgends sonst.\n";
+  const NOTE = "# Meine Gedanken zum Vertrag\n\nHandgeschrieben, nirgends sonst.\n";
   await writeFile(note, NOTE, "utf8");
 
   const src = join(dir, "Vertrag.pdf");
@@ -105,13 +91,9 @@ test("eine fremde Obsidian-Notiz am Sidecar-Pfad wird nie überschrieben", async
         folder_path: "notizen",
         overwrite: true,
       } as unknown as SaveArgs),
-    /not a document sidecar|sidecar already exists/,
+    /not a document sidecar|sidecar already exists/
   );
-  assert.equal(
-    await readFile(note, "utf8"),
-    NOTE,
-    "die Notiz muss unangetastet sein",
-  );
+  assert.equal(await readFile(note, "utf8"), NOTE, "die Notiz muss unangetastet sein");
 });
 
 // ── 2 ───────────────────────────────────────────────────────────
@@ -135,7 +117,7 @@ async function writeProductDoc(dir: string, vault: Vault): Promise<string> {
       created: "2026-05-01",
       updated: "2026-05-01",
     }),
-    "utf8",
+    "utf8"
   );
   await vault.reindexFile(path);
   return path;
@@ -152,13 +134,9 @@ test("recategorize_document fasst eine Produktdoku nicht an", async (t) => {
         id: "doku-carnexus-cli",
         title: "Umbenannt",
       }),
-    /not a document sidecar/,
+    /not a document sidecar/
   );
-  assert.equal(
-    await readFile(path, "utf8"),
-    before,
-    "die Produktdoku bleibt, wie sie war",
-  );
+  assert.equal(await readFile(path, "utf8"), before, "die Produktdoku bleibt, wie sie war");
 });
 
 test("move_document fasst eine Produktdoku nicht an", async (t) => {
@@ -172,13 +150,9 @@ test("move_document fasst eine Produktdoku nicht an", async (t) => {
         id: "doku-carnexus-cli",
         folder_path: "verschoben",
       }),
-    /not a document sidecar/,
+    /not a document sidecar/
   );
-  assert.equal(
-    await readFile(path, "utf8"),
-    before,
-    "die Produktdoku bleibt, wo sie war",
-  );
+  assert.equal(await readFile(path, "utf8"), before, "die Produktdoku bleibt, wo sie war");
 });
 
 // ── 3 ───────────────────────────────────────────────────────────
@@ -202,18 +176,12 @@ test("recategorize erhält Felder, die nicht in seiner Feldliste stehen", async 
   const enriched = {
     ...parsed.data,
     related: ["doc-alt-anderes-pdf"],
-    related_via: [
-      { id: "doc-alt-anderes-pdf", reason: "gleiche Police", score: 0.8 },
-    ],
+    related_via: [{ id: "doc-alt-anderes-pdf", reason: "gleiche Police", score: 0.8 }],
     sensitivity: "team",
     source: "scan:brother-mfc",
     confidence: 0.6,
   };
-  await writeFile(
-    doc.sidecar_path,
-    matter.stringify(parsed.content, enriched),
-    "utf8",
-  );
+  await writeFile(doc.sidecar_path, matter.stringify(parsed.content, enriched), "utf8");
   await vault.reindexFile(doc.sidecar_path);
 
   await recategorizeDocument(vault, {
@@ -222,15 +190,10 @@ test("recategorize erhält Felder, die nicht in seiner Feldliste stehen", async 
     force: true,
   });
 
-  const after = matter(await readFile(doc.sidecar_path, "utf8")).data as Record<
-    string,
-    unknown
-  >;
+  const after = matter(await readFile(doc.sidecar_path, "utf8")).data as Record<string, unknown>;
   assert.equal(after.title, "Police 2026", "der gewollte Patch greift");
   assert.deepEqual(after.related, ["doc-alt-anderes-pdf"]);
-  assert.deepEqual(after.related_via, [
-    { id: "doc-alt-anderes-pdf", reason: "gleiche Police", score: 0.8 },
-  ]);
+  assert.deepEqual(after.related_via, [{ id: "doc-alt-anderes-pdf", reason: "gleiche Police", score: 0.8 }]);
   assert.equal(after.sensitivity, "team");
   assert.equal(after.source, "scan:brother-mfc");
   assert.equal(after.confidence, 0.6);
@@ -259,7 +222,7 @@ test("zwei Dateinamen mit derselben Doc-id ergeben kein zweites Sidecar", async 
         title: "A minus B",
         original_path: minus,
       } as unknown as SaveArgs),
-    /id .* already belongs to/,
+    /id .* already belongs to/
   );
 
   assert.equal(vault.get(first.id)!.filePath, first.sidecar_path);
@@ -292,13 +255,13 @@ test("ein fehlschlagender Kopiervorgang löscht die vorhandene Zieldatei nicht",
         folder_path: "akten",
         overwrite: true,
       } as unknown as SaveArgs),
-    /not a regular file|EISDIR/,
+    /not a regular file|EISDIR/
   );
 
   assert.equal(
     await readFile(doc.original_path, "utf8"),
     "AKTE ORIGINAL",
-    "das bestehende Dokument muss den Fehlschlag überleben",
+    "das bestehende Dokument muss den Fehlschlag überleben"
   );
 });
 
@@ -325,14 +288,7 @@ test("gleichzeitige Writes aufs selbe Sidecar treten sich nicht auf die Tempdate
       overwrite: true,
     } as unknown as SaveArgs);
 
-  const results = await Promise.allSettled([
-    again(),
-    again(),
-    again(),
-    again(),
-    again(),
-    again(),
-  ]);
+  const results = await Promise.allSettled([again(), again(), again(), again(), again(), again()]);
   // Seit dem Umbau auf die ID-Transaktion (Codex-Gegenreview P0) gilt für
   // Dokumente dieselbe Regel wie für Memories: Gleichzeitige Writes auf EINE
   // id serialisieren sich, genau einer gewinnt, die übrigen bekommen einen
@@ -343,18 +299,11 @@ test("gleichzeitige Writes aufs selbe Sidecar treten sich nicht auf die Tempdate
   assert.equal(results.length - failed.length, 1, "genau einer gewinnt");
   for (const r of failed) {
     const message = (r as PromiseRejectedResult).reason.message as string;
-    assert.match(
-      message,
-      /write conflict/,
-      `nur ein Konflikt ist ein zulässiger Fehlschlag, nicht: ${message}`,
-    );
+    assert.match(message, /write conflict/, `nur ein Konflikt ist ein zulässiger Fehlschlag, nicht: ${message}`);
   }
 
   const sidecar = join(dir, "documents", "belege", "Beleg.pdf.md");
-  assert.ok(
-    (await stat(sidecar)).isFile(),
-    "das Sidecar steht danach vollständig da",
-  );
+  assert.ok((await stat(sidecar)).isFile(), "das Sidecar steht danach vollständig da");
 });
 
 test("auch ein Move erhält die Felder außerhalb der Rebuild-Liste", async (t) => {
@@ -378,14 +327,13 @@ test("auch ein Move erhält die Felder außerhalb der Rebuild-Liste", async (t) 
       sensitivity: "team",
       confidence: 0.5,
     }),
-    "utf8",
+    "utf8"
   );
   await vault.reindexFile(doc.sidecar_path);
 
   const moved = await moveDocument(vault, { id: doc.id, folder_path: "neu" });
 
-  const after = matter(await readFile(moved.sidecar_path, "utf8"))
-    .data as Record<string, unknown>;
+  const after = matter(await readFile(moved.sidecar_path, "utf8")).data as Record<string, unknown>;
   assert.equal(after.folder_path, "neu", "der Move greift");
   assert.deepEqual(after.related, ["doc-alt-akte-pdf"]);
   assert.equal(after.sensitivity, "team");
@@ -418,14 +366,12 @@ test("save_document(overwrite) patcht das Sidecar, statt es neu zu bauen", async
       created: "2019-03-04",
       aliases: [...(parsed.data.aliases as string[]), "meine-police"],
       related: ["doc-versicherung-antrag-pdf"],
-      related_via: [
-        { id: "doc-versicherung-antrag-pdf", reason: "same-folder", score: 0.8 },
-      ],
+      related_via: [{ id: "doc-versicherung-antrag-pdf", reason: "same-folder", score: 0.8 }],
       sensitivity: "team",
       source: "scan",
       confidence: 0.4,
     }),
-    "utf8",
+    "utf8"
   );
   await vault.reindexFile(doc.sidecar_path);
 
@@ -440,28 +386,17 @@ test("save_document(overwrite) patcht das Sidecar, statt es neu zu bauen", async
     overwrite: true,
   } as unknown as SaveArgs);
 
-  const after = matter(await readFile(doc.sidecar_path, "utf8")).data as Record<
-    string,
-    unknown
-  >;
+  const after = matter(await readFile(doc.sidecar_path, "utf8")).data as Record<string, unknown>;
   assert.equal(after.title, "Police (korrigiert)", "der Refresh greift");
   assert.deepEqual(after.tags, ["versicherung", "police"]);
   assert.equal(after.created, "2019-03-04", "created ist keine Neuerfassung");
   assert.deepEqual(after.related, ["doc-versicherung-antrag-pdf"]);
-  assert.deepEqual(after.related_via, [
-    { id: "doc-versicherung-antrag-pdf", reason: "same-folder", score: 0.8 },
-  ]);
+  assert.deepEqual(after.related_via, [{ id: "doc-versicherung-antrag-pdf", reason: "same-folder", score: 0.8 }]);
   assert.equal(after.sensitivity, "team");
   assert.equal(after.source, "scan");
   assert.equal(after.confidence, 0.4);
-  assert.ok(
-    (after.aliases as string[]).includes("meine-police"),
-    "der handvergebene Alias überlebt",
-  );
-  assert.ok(
-    (after.aliases as string[]).includes(doc.id),
-    "der id-Alias bleibt trotzdem da",
-  );
+  assert.ok((after.aliases as string[]).includes("meine-police"), "der handvergebene Alias überlebt");
+  assert.ok((after.aliases as string[]).includes(doc.id), "der id-Alias bleibt trotzdem da");
 });
 
 // ── 8 ───────────────────────────────────────────────────────────
@@ -480,11 +415,7 @@ test("ein Sidecar mit `scope: Documents` ist dasselbe Sidecar", async (t) => {
   } as unknown as SaveArgs);
 
   const parsed = matter(await readFile(doc.sidecar_path, "utf8"));
-  await writeFile(
-    doc.sidecar_path,
-    matter.stringify(parsed.content, { ...parsed.data, scope: "Documents" }),
-    "utf8",
-  );
+  await writeFile(doc.sidecar_path, matter.stringify(parsed.content, { ...parsed.data, scope: "Documents" }), "utf8");
   await vault.reindexFile(doc.sidecar_path);
 
   // Ungefaltet verglichen ist das Sidecar sich selbst fremd: der Hub
@@ -532,7 +463,7 @@ test("ein quarantänisiertes Sidecar derselben id blockiert den Save", async (t)
       folder_path: loser.includes(`${sep}b${sep}`) ? "b" : "a",
       overwrite: true,
     } as unknown as SaveArgs),
-    /already belongs to/,
+    /already belongs to/
   );
 });
 
@@ -560,13 +491,9 @@ test("ein Symlink im Dokumentenordner führt nicht aus dem Vault heraus", async 
       original_path: src,
       folder_path: "linked",
     } as unknown as SaveArgs),
-    /outside the documents folder/,
+    /outside the documents folder/
   );
-  assert.deepEqual(
-    await readdir(outside),
-    [],
-    "nichts darf im Symlink-Ziel gelandet sein",
-  );
+  assert.deepEqual(await readdir(outside), [], "nichts darf im Symlink-Ziel gelandet sein");
 });
 
 /**
@@ -599,14 +526,8 @@ test("zwei Dateinamen mit derselben abgeleiteten id kollidieren auch parallel", 
   const ok = results.filter((r) => r.status === "fulfilled");
   assert.equal(ok.length, 1, "genau ein Sidecar darf die id bekommen");
 
-  const sidecars = (await readdir(join(dir, "documents"))).filter((n) =>
-    n.endsWith(".md"),
-  );
-  assert.equal(
-    sidecars.length,
-    1,
-    `zwei Sidecars mit einer id wären der Defekt: ${sidecars.join(", ")}`,
-  );
+  const sidecars = (await readdir(join(dir, "documents"))).filter((n) => n.endsWith(".md"));
+  assert.equal(sidecars.length, 1, `zwei Sidecars mit einer id wären der Defekt: ${sidecars.join(", ")}`);
 });
 
 /**
@@ -678,13 +599,9 @@ test("ein Symlink INNERHALB des Vaults führt nicht in ein fremdes Regal", async
       original_path: src,
       folder_path: "linked",
     } as unknown as SaveArgs),
-    /outside the documents folder/,
+    /outside the documents folder/
   );
-  assert.deepEqual(
-    await readdir(foreignShelf),
-    [],
-    "im fremden Regal darf nichts gelandet sein",
-  );
+  assert.deepEqual(await readdir(foreignShelf), [], "im fremden Regal darf nichts gelandet sein");
 });
 
 // ── Codex-Gegenreview (P1): Compare-and-Swap vor der Veröffentlichung ──
@@ -708,7 +625,7 @@ function argsWithExternalWriteAfterRead(
   base: Record<string, unknown>,
   field: "title",
   value: string,
-  external: { path: string; content: string },
+  external: { path: string; content: string }
 ): Record<string, unknown> {
   let fired = false;
   return {
@@ -764,12 +681,10 @@ test("eine externe Änderung im Commit-Fenster geht nicht verloren", async (t) =
     () =>
       recategorizeDocument(
         vault,
-        argsWithExternalWriteAfterRead(
-          { id: doc.id },
-          "title",
-          "Police 2026",
-          { path: doc.sidecar_path, content: EXTERN },
-        ) as Parameters<typeof recategorizeDocument>[1],
+        argsWithExternalWriteAfterRead({ id: doc.id }, "title", "Police 2026", {
+          path: doc.sidecar_path,
+          content: EXTERN,
+        }) as Parameters<typeof recategorizeDocument>[1]
       ),
     (err: Error) => {
       assert.match(err.message, /changed on disk/);
@@ -777,13 +692,13 @@ test("eine externe Änderung im Commit-Fenster geht nicht verloren", async (t) =
       assert.match(err.message, /read_document/);
       assert.match(err.message, /force=true/);
       return true;
-    },
+    }
   );
 
   assert.equal(
     await readFile(doc.sidecar_path, "utf8"),
     EXTERN,
-    "die externe Bearbeitung muss unangetastet auf der Platte stehen",
+    "die externe Bearbeitung muss unangetastet auf der Platte stehen"
   );
 });
 
@@ -806,15 +721,12 @@ test("auch ein Move verliert eine externe Änderung im Commit-Fenster nicht", as
     },
   };
 
-  await assert.rejects(
-    () => moveDocument(vault, args as Parameters<typeof moveDocument>[1]),
-    /changed on disk/,
-  );
+  await assert.rejects(() => moveDocument(vault, args as Parameters<typeof moveDocument>[1]), /changed on disk/);
   assert.equal(seen >= 2, true, "das Commit-Fenster wurde überhaupt getroffen");
   assert.equal(
     await readFile(newSidecar, "utf8"),
     EXTERN,
-    "die externe Bearbeitung muss unangetastet auf der Platte stehen",
+    "die externe Bearbeitung muss unangetastet auf der Platte stehen"
   );
   // Codex-Gegenreview (P0): Bis hierher prüfte der Test nur das gerettete
   // Sidecar — und ließ damit einen halben Zustand durch: Das Original war
@@ -823,17 +735,17 @@ test("auch ein Move verliert eine externe Änderung im Commit-Fenster nicht", as
   assert.deepEqual(
     (await readdir(join(dir, "documents", "neu"))).sort(),
     ["Police.pdf", "Police.pdf.md"],
-    "Original und Sidecar liegen zusammen, nicht auf zwei Ordner verteilt",
+    "Original und Sidecar liegen zusammen, nicht auf zwei Ordner verteilt"
   );
   assert.deepEqual(
     await readdir(join(dir, "documents", "alt")).catch(() => []),
     [],
-    "im alten Ordner bleibt nichts liegen",
+    "im alten Ordner bleibt nichts liegen"
   );
   assert.equal(
     vault.get(doc.id)?.filePath,
     newSidecar,
-    "der Vault-Index muss das Dokument weiter kennen — und zwar dort, wo es liegt",
+    "der Vault-Index muss das Dokument weiter kennen — und zwar dort, wo es liegt"
   );
 });
 
@@ -855,10 +767,7 @@ test("ein neu entstehendes Sidecar hat kein Preimage und wird trotzdem geschrieb
     overwrite: true,
   } as unknown as SaveArgs);
   assert.equal(again.sidecar_path, doc.sidecar_path);
-  assert.equal(
-    matter(await readFile(doc.sidecar_path, "utf8")).data.title,
-    "Police 2026",
-  );
+  assert.equal(matter(await readFile(doc.sidecar_path, "utf8")).data.title, "Police 2026");
 });
 
 test("force=true überschreibt die externe Bearbeitung bewusst", async (t) => {
@@ -867,18 +776,16 @@ test("force=true überschreibt die externe Bearbeitung bewusst", async (t) => {
 
   await recategorizeDocument(
     vault,
-    argsWithExternalWriteAfterRead(
-      { id: doc.id, force: true },
-      "title",
-      "Police 2026",
-      { path: doc.sidecar_path, content: EXTERNAL_SIDECAR(doc.id) },
-    ) as Parameters<typeof recategorizeDocument>[1],
+    argsWithExternalWriteAfterRead({ id: doc.id, force: true }, "title", "Police 2026", {
+      path: doc.sidecar_path,
+      content: EXTERNAL_SIDECAR(doc.id),
+    }) as Parameters<typeof recategorizeDocument>[1]
   );
 
   assert.equal(
     matter(await readFile(doc.sidecar_path, "utf8")).data.title,
     "Police 2026",
-    "force heißt: der eigene Patch gewinnt",
+    "force heißt: der eigene Patch gewinnt"
   );
 });
 
@@ -897,20 +804,14 @@ test("force überschreibt keine fremde Datei am Sidecar-Pfad", async (t) => {
     () =>
       recategorizeDocument(
         vault,
-        argsWithExternalWriteAfterRead(
-          { id: doc.id, force: true },
-          "title",
-          "Police 2026",
-          { path: doc.sidecar_path, content: NOTIZ },
-        ) as Parameters<typeof recategorizeDocument>[1],
+        argsWithExternalWriteAfterRead({ id: doc.id, force: true }, "title", "Police 2026", {
+          path: doc.sidecar_path,
+          content: NOTIZ,
+        }) as Parameters<typeof recategorizeDocument>[1]
       ),
-    /no longer the sidecar/,
+    /no longer the sidecar/
   );
-  assert.equal(
-    await readFile(doc.sidecar_path, "utf8"),
-    NOTIZ,
-    "die fremde Datei muss unangetastet sein",
-  );
+  assert.equal(await readFile(doc.sidecar_path, "utf8"), NOTIZ, "die fremde Datei muss unangetastet sein");
 });
 
 /**
@@ -935,11 +836,7 @@ test("ein Dokumentenordner, der selbst ein Symlink ist, wird nicht beschrieben",
       original_path: src,
       folder_path: "",
     } as unknown as SaveArgs),
-    /is not .*'s own documents|not .* own documents/,
+    /is not .*'s own documents|not .* own documents/
   );
-  assert.deepEqual(
-    await readdir(foreignShelf),
-    [],
-    "im fremden Regal darf nichts gelandet sein",
-  );
+  assert.deepEqual(await readdir(foreignShelf), [], "im fremden Regal darf nichts gelandet sein");
 });

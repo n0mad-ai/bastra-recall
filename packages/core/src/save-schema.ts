@@ -9,7 +9,15 @@
  */
 import { z } from "zod";
 import type { MemoryLocator } from "./memory-locator.js";
-import { ConventionValidatorSchema, DerivedClaimSchema, RuleCategoriesSchema, RulebookSchema, RulebookProposalSchema, MemoryTypeEnum, isPathSafeComponent } from "./schema.js";
+import {
+  ConventionValidatorSchema,
+  DerivedClaimSchema,
+  RuleCategoriesSchema,
+  RulebookSchema,
+  RulebookProposalSchema,
+  MemoryTypeEnum,
+  isPathSafeComponent,
+} from "./schema.js";
 import { isPathSafeFolder } from "./save-text.js";
 
 /**
@@ -23,185 +31,198 @@ import { isPathSafeFolder } from "./save-text.js";
  * (`superseded_by` on the predecessor) is applied by the daemon, which is the
  * layer that knows where the predecessor lives.
  */
-export const SaveMemoryInput = z.object({
-  rulebook: RulebookSchema.optional(),
+export const SaveMemoryInput = z
+  .object({
+    rulebook: RulebookSchema.optional(),
     rule_categories: RuleCategoriesSchema.optional(),
-  applies_when: z.string().trim().min(1).optional(),
-  rulebook_proposed: RulebookProposalSchema.optional(),
-  title: z.string().min(1),
-  type: MemoryTypeEnum,
-  // No `.max` here on purpose: an over-long summary is clamped in
-  // saveMemory() (with a non-fatal note in the result), never rejected —
-  // a too_big error would force the caller into a wasteful retry roundtrip.
-  summary: z.string().min(1),
-  body: z.string().min(1),
-  topic_path: z.array(z.string().min(1)).min(1),
-  tags: z.array(z.string().min(1)).min(1),
-  // scope becomes a directory segment (`memories/projects/<scope>/`) — reject
-  // anything that could climb out of the vault.
-  scope: z.string().min(1).refine(isPathSafeComponent, {
-    message: "scope must not contain path separators, '..', or a leading dot",
-  }),
-  recall_when: z.array(z.string().min(1)).min(1),
-  /**
-   * #164 — id of the memory this one supersedes.
-   *
-   * Deliberately NOT the same thing as `archive_memory`: the predecessor stays
-   * in the living vault and stays resolvable by its id. It is not moved to the
-   * trash, not dropped from the index, and not marked `obsolete`. Per the V1→V2
-   * architecture contract (C-059) historicity comes from the version status,
-   * never from a change of location — a predecessor that is moved away is not
-   * historical, it is gone, and old versions have to stay citable.
-   */
-  replaces: z.string().min(1).optional(),
-  /**
-   * #205 — conflict marking. Id of an existing memory the incoming save
-   * CONTRADICTS. The save is then diverted: the incoming memory is NOT
-   * created (no silent sibling), the existing one is NOT overwritten (no
-   * silent discard) — instead a plain-markdown conflict block carrying both
-   * claims, sources and dates is appended to the existing memory's body.
-   * Resolution is a later deliberate `overwrite=true` save of that memory.
-   */
-  conflict_with: z.string().min(1).optional(),
-  /**
-   * #360 — ids this save deliberately stands BESIDE.
-   *
-   * The third answer to the write-time claim gate. When a save's `recall_when`
-   * fully contains an existing memory's trigger, the two declare the same
-   * situation, and that is one of three things: a successor (`replaces`), a
-   * contradiction (`conflict_with`), or siblings — several entities that are
-   * permanently valid at once ("the memo for contributor A" and "the memo for
-   * contributor B" share every trigger word but the name). Only the third case
-   * has no field, so a legitimate save had no way past the gate except to
-   * mis-declare itself as one of the other two.
-   *
-   * Lands in the `siblings` frontmatter list, MERGED with what the file already
-   * carries: quittances accumulate, a later save never drops an earlier one.
-   */
-  sibling_of: z.array(z.string().min(1)).optional(),
-  /** #235: optional anchor command that can prove this memory's claim.
-   *  Stored and displayed only — nothing here ever runs it. */
-  verify_cmd: z.string().min(1).optional(),
-  /**
-   * #467: locally derived facts.  A claim stores a bounded resolver and an
-   * in-vault source, and the value stays in the source.  The daemon evaluates
-   * it while loading the memory and leaves the note as it is.
-   */
-  derived_claims: z.array(DerivedClaimSchema).optional(),
-  /** Omit to preserve on overwrite; null explicitly removes the declaration. */
-  validator: ConventionValidatorSchema.nullable().optional(),
-  related: z.array(z.string()).optional(),
-  /**
-   * Obsidian-Aliases (#188): Substrat-Plumbing, kein Agent-Knob — der Daemon
-   * exponiert das Feld NICHT im MCP-Tool-Schema. Wird vom RelatedEnricher /
-   * Documents-Flow gesetzt. Beim Overwrite ohne explizite aliases bleiben
-   * die bestehenden File-Aliases erhalten (siehe saveMemory).
-   */
-  aliases: z.array(z.string()).optional(),
-  /**
-   * Memory-Graph (#30 / #49): LLM-detektierte Beziehungen. Optional —
-   * normalerweise nicht beim manuellen save_memory gesetzt, sondern vom
-   * Auto-Related-Detection-Background-Service via reindex_file persistiert.
-   */
-  related_via: z
-    .array(
-      z.object({
-        id: z.string().min(1),
-        reason: z.string().min(1),
-        score: z.number().min(0).max(1),
-      }),
-    )
-    .optional(),
-  /**
-   * Sensitivity-Level (#58). Optional, default „team" wenn nicht gesetzt.
-   * Mac-App-UI macht den Per-Memory-Picker; Auto-Captures (Inbox-Watcher,
-   * Share-Sheet) erben den Default.
-   */
-  sensitivity: z.enum(["private", "team", "public"]).optional(),
-  /**
-   * Write-Provenance (#158): `user-directed` wenn der Mensch das Speichern
-   * explizit angeordnet hat („merk dir das") — solche Memories sind für
-   * automatisierte Lifecycle-Pässe (Curator, Konsolidierung) unantastbar.
-   * Weglassen = `agent-session` (autonomer Save im Sessionfluss).
-   * `capture-review` stempelt der Post-Session-Capture-Pass (#157).
-   */
-  write_origin: z.enum(["user-directed", "agent-session", "capture-review"]).optional(),
-  /**
-   * Memory-Lifecycle (#74): optionale Ablauf-/Review-Felder. `stale_status`
-   * wird vom Vault-Loader computet, ist hier aber akzeptiert damit die
-   * Mac-App es explizit setzen kann (z.B. manuelles „obsolete").
-   */
-  valid_until: z.string().optional(),
-  expires_after_days: z.number().int().positive().optional(),
-  last_reviewed_at: z.string().optional(),
-  stale_status: z.enum(["fresh", "aging", "stale", "expired"]).optional(),
-  /**
-   * Duplicate-Detection (#70): SHA-256-Hash + Größe der Original-Datei.
-   * Nur bei `type: doc` Memories sinnvoll. Mac-App-DocumentsImporter
-   * berechnet beide beim ersten Import.
-   */
-  content_hash: z.string().optional(),
-  content_size: z.number().int().nonnegative().optional(),
-  source: z.string().optional(),
-  confidence: z.number().min(0).max(1).optional(),
-  /**
-   * Valenz + Reflex (#217). `salience`/`emotion` nur setzen, wenn eine
-   * Capture-Regel feuert; `recall_mode: "reflex"` nur nach expliziter
-   * User-Bestätigung. Bei Overwrite ohne Angabe bleiben Bestandswerte
-   * erhalten (gleiche Regel wie write_origin).
-   */
-  salience: z.number().min(0).max(1).optional(),
-  emotion: z.enum(["frustration", "success", "risk", "neutral"]).optional(),
-  recall_mode: z.enum(["reflex", "deliberate"]).optional(),
-  affects_files: z.array(z.string()).optional(),
-  issues: z.array(z.string()).optional(),
-  // id becomes the filename (`<id>.md`) — same path-safety bar as scope.
-  // slugify() output always passes; only explicit caller-set ids can violate.
-  id: z.string().min(1).refine(isPathSafeComponent, {
-    message: "id must not contain path separators, '..', or a leading dot",
-  }).optional(),
-  /**
-   * Selbstlernende Taxonomie (#64/#65): optionaler Ziel-Ordner relativ zum
-   * Vault-Root (z.B. "memories/people"). Überschreibt das scope/type-Routing
-   * von subfolderFor() — damit kann eine Taxonomie-Konvention neue physische
-   * Strukturen im Vault etablieren, ohne dass core sie kennen muss. Der Vault
-   * scannt rekursiv, jeder Ordner wird indexiert.
-   */
-  folder: z.string().min(1).refine(isPathSafeFolder, {
-    message:
-      "folder must be a relative path without '..', '\\', or dot-segments (e.g. \"memories/people\")",
-  }).optional(),
-  overwrite: z.boolean().optional(),
-  /**
-   * #544 — a TAIL SENTINEL: the last ~40 characters of `body`, copied
-   * verbatim. A body that arrives truncated (MCP framing, a lossy proxy, an
-   * older client) currently lands as a shorter memory that looks exactly
-   * like a successful save — the caller cannot tell, and neither can the
-   * user.
-   *
-   * Why the tail and not a declared length: a language model cannot count
-   * characters reliably, so a length it declares is wrong often enough to
-   * fail legitimate saves — but it copies text reliably, and truncation in
-   * transport always takes the END. Optional: a caller that never sends it
-   * keeps today's behaviour unchanged, exactly like `expected_revision` on
-   * edit_memory (#519).
-   *
-   * `.min(1)` only here; the sentinel's real floor needs the body and lives
-   * in `assertBodyTail` below.
-   */
-  body_ends_with: z.string().min(1).optional(),
-  // Bookmark-only fields
-  url: z.string().optional(),
-  categories: z.array(z.string()).optional(),
-  read_status: z.enum(["unread", "read", "archived"]).optional(),
-  og_image: z.string().optional(),
-  saved_at: z.string().optional(),
-  source_app: z.string().optional(),
-}).superRefine((input, ctx) => {
-  if (input.rulebook !== undefined && input.applies_when === undefined) {
-    ctx.addIssue({ code: "custom", path: ["applies_when"], message: "New rulebook declarations require applies_when in the user's language" });
-  }
-});
+    applies_when: z.string().trim().min(1).optional(),
+    rulebook_proposed: RulebookProposalSchema.optional(),
+    title: z.string().min(1),
+    type: MemoryTypeEnum,
+    // No `.max` here on purpose: an over-long summary is clamped in
+    // saveMemory() (with a non-fatal note in the result), never rejected —
+    // a too_big error would force the caller into a wasteful retry roundtrip.
+    summary: z.string().min(1),
+    body: z.string().min(1),
+    topic_path: z.array(z.string().min(1)).min(1),
+    tags: z.array(z.string().min(1)).min(1),
+    // scope becomes a directory segment (`memories/projects/<scope>/`) — reject
+    // anything that could climb out of the vault.
+    scope: z.string().min(1).refine(isPathSafeComponent, {
+      message: "scope must not contain path separators, '..', or a leading dot",
+    }),
+    recall_when: z.array(z.string().min(1)).min(1),
+    /**
+     * #164 — id of the memory this one supersedes.
+     *
+     * Deliberately NOT the same thing as `archive_memory`: the predecessor stays
+     * in the living vault and stays resolvable by its id. It is not moved to the
+     * trash, not dropped from the index, and not marked `obsolete`. Per the V1→V2
+     * architecture contract (C-059) historicity comes from the version status,
+     * never from a change of location — a predecessor that is moved away is not
+     * historical, it is gone, and old versions have to stay citable.
+     */
+    replaces: z.string().min(1).optional(),
+    /**
+     * #205 — conflict marking. Id of an existing memory the incoming save
+     * CONTRADICTS. The save is then diverted: the incoming memory is NOT
+     * created (no silent sibling), the existing one is NOT overwritten (no
+     * silent discard) — instead a plain-markdown conflict block carrying both
+     * claims, sources and dates is appended to the existing memory's body.
+     * Resolution is a later deliberate `overwrite=true` save of that memory.
+     */
+    conflict_with: z.string().min(1).optional(),
+    /**
+     * #360 — ids this save deliberately stands BESIDE.
+     *
+     * The third answer to the write-time claim gate. When a save's `recall_when`
+     * fully contains an existing memory's trigger, the two declare the same
+     * situation, and that is one of three things: a successor (`replaces`), a
+     * contradiction (`conflict_with`), or siblings — several entities that are
+     * permanently valid at once ("the memo for contributor A" and "the memo for
+     * contributor B" share every trigger word but the name). Only the third case
+     * has no field, so a legitimate save had no way past the gate except to
+     * mis-declare itself as one of the other two.
+     *
+     * Lands in the `siblings` frontmatter list, MERGED with what the file already
+     * carries: quittances accumulate, a later save never drops an earlier one.
+     */
+    sibling_of: z.array(z.string().min(1)).optional(),
+    /** #235: optional anchor command that can prove this memory's claim.
+     *  Stored and displayed only — nothing here ever runs it. */
+    verify_cmd: z.string().min(1).optional(),
+    /**
+     * #467: locally derived facts.  A claim stores a bounded resolver and an
+     * in-vault source, and the value stays in the source.  The daemon evaluates
+     * it while loading the memory and leaves the note as it is.
+     */
+    derived_claims: z.array(DerivedClaimSchema).optional(),
+    /** Omit to preserve on overwrite; null explicitly removes the declaration. */
+    validator: ConventionValidatorSchema.nullable().optional(),
+    related: z.array(z.string()).optional(),
+    /**
+     * Obsidian-Aliases (#188): Substrat-Plumbing, kein Agent-Knob — der Daemon
+     * exponiert das Feld NICHT im MCP-Tool-Schema. Wird vom RelatedEnricher /
+     * Documents-Flow gesetzt. Beim Overwrite ohne explizite aliases bleiben
+     * die bestehenden File-Aliases erhalten (siehe saveMemory).
+     */
+    aliases: z.array(z.string()).optional(),
+    /**
+     * Memory-Graph (#30 / #49): LLM-detektierte Beziehungen. Optional —
+     * normalerweise nicht beim manuellen save_memory gesetzt, sondern vom
+     * Auto-Related-Detection-Background-Service via reindex_file persistiert.
+     */
+    related_via: z
+      .array(
+        z.object({
+          id: z.string().min(1),
+          reason: z.string().min(1),
+          score: z.number().min(0).max(1),
+        })
+      )
+      .optional(),
+    /**
+     * Sensitivity-Level (#58). Optional, default „team" wenn nicht gesetzt.
+     * Mac-App-UI macht den Per-Memory-Picker; Auto-Captures (Inbox-Watcher,
+     * Share-Sheet) erben den Default.
+     */
+    sensitivity: z.enum(["private", "team", "public"]).optional(),
+    /**
+     * Write-Provenance (#158): `user-directed` wenn der Mensch das Speichern
+     * explizit angeordnet hat („merk dir das") — solche Memories sind für
+     * automatisierte Lifecycle-Pässe (Curator, Konsolidierung) unantastbar.
+     * Weglassen = `agent-session` (autonomer Save im Sessionfluss).
+     * `capture-review` stempelt der Post-Session-Capture-Pass (#157).
+     */
+    write_origin: z.enum(["user-directed", "agent-session", "capture-review"]).optional(),
+    /**
+     * Memory-Lifecycle (#74): optionale Ablauf-/Review-Felder. `stale_status`
+     * wird vom Vault-Loader computet, ist hier aber akzeptiert damit die
+     * Mac-App es explizit setzen kann (z.B. manuelles „obsolete").
+     */
+    valid_until: z.string().optional(),
+    expires_after_days: z.number().int().positive().optional(),
+    last_reviewed_at: z.string().optional(),
+    stale_status: z.enum(["fresh", "aging", "stale", "expired"]).optional(),
+    /**
+     * Duplicate-Detection (#70): SHA-256-Hash + Größe der Original-Datei.
+     * Nur bei `type: doc` Memories sinnvoll. Mac-App-DocumentsImporter
+     * berechnet beide beim ersten Import.
+     */
+    content_hash: z.string().optional(),
+    content_size: z.number().int().nonnegative().optional(),
+    source: z.string().optional(),
+    confidence: z.number().min(0).max(1).optional(),
+    /**
+     * Valenz + Reflex (#217). `salience`/`emotion` nur setzen, wenn eine
+     * Capture-Regel feuert; `recall_mode: "reflex"` nur nach expliziter
+     * User-Bestätigung. Bei Overwrite ohne Angabe bleiben Bestandswerte
+     * erhalten (gleiche Regel wie write_origin).
+     */
+    salience: z.number().min(0).max(1).optional(),
+    emotion: z.enum(["frustration", "success", "risk", "neutral"]).optional(),
+    recall_mode: z.enum(["reflex", "deliberate"]).optional(),
+    affects_files: z.array(z.string()).optional(),
+    issues: z.array(z.string()).optional(),
+    // id becomes the filename (`<id>.md`) — same path-safety bar as scope.
+    // slugify() output always passes; only explicit caller-set ids can violate.
+    id: z
+      .string()
+      .min(1)
+      .refine(isPathSafeComponent, {
+        message: "id must not contain path separators, '..', or a leading dot",
+      })
+      .optional(),
+    /**
+     * Selbstlernende Taxonomie (#64/#65): optionaler Ziel-Ordner relativ zum
+     * Vault-Root (z.B. "memories/people"). Überschreibt das scope/type-Routing
+     * von subfolderFor() — damit kann eine Taxonomie-Konvention neue physische
+     * Strukturen im Vault etablieren, ohne dass core sie kennen muss. Der Vault
+     * scannt rekursiv, jeder Ordner wird indexiert.
+     */
+    folder: z
+      .string()
+      .min(1)
+      .refine(isPathSafeFolder, {
+        message: "folder must be a relative path without '..', '\\', or dot-segments (e.g. \"memories/people\")",
+      })
+      .optional(),
+    overwrite: z.boolean().optional(),
+    /**
+     * #544 — a TAIL SENTINEL: the last ~40 characters of `body`, copied
+     * verbatim. A body that arrives truncated (MCP framing, a lossy proxy, an
+     * older client) currently lands as a shorter memory that looks exactly
+     * like a successful save — the caller cannot tell, and neither can the
+     * user.
+     *
+     * Why the tail and not a declared length: a language model cannot count
+     * characters reliably, so a length it declares is wrong often enough to
+     * fail legitimate saves — but it copies text reliably, and truncation in
+     * transport always takes the END. Optional: a caller that never sends it
+     * keeps today's behaviour unchanged, exactly like `expected_revision` on
+     * edit_memory (#519).
+     *
+     * `.min(1)` only here; the sentinel's real floor needs the body and lives
+     * in `assertBodyTail` below.
+     */
+    body_ends_with: z.string().min(1).optional(),
+    // Bookmark-only fields
+    url: z.string().optional(),
+    categories: z.array(z.string()).optional(),
+    read_status: z.enum(["unread", "read", "archived"]).optional(),
+    og_image: z.string().optional(),
+    saved_at: z.string().optional(),
+    source_app: z.string().optional(),
+  })
+  .superRefine((input, ctx) => {
+    if (input.rulebook !== undefined && input.applies_when === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["applies_when"],
+        message: "New rulebook declarations require applies_when in the user's language",
+      });
+    }
+  });
 export type SaveMemoryInput = z.infer<typeof SaveMemoryInput>;
 
 // ─── #544: the tail sentinel ──────────────────────────────────────────
@@ -260,14 +281,14 @@ export function assertBodyTail(body: string, sentinel: string | undefined): void
     throw new BodySentinelError(
       `body_ends_with must repeat at least ${required} characters from the end of the body ` +
         `(got ${expected.length}) — a tail that short would match a truncated body too. ` +
-        `NOTHING was written.`,
+        `NOTHING was written.`
     );
   }
   if (actual.endsWith(expected)) return;
   throw new BodySentinelError(
     `body_ends_with: the body that arrived does not end with the declared tail — it was ` +
       `truncated in transit. Declared ending: ${endingFor(expected)}. Actual ending: ` +
-      `${endingFor(actual)}. NOTHING was written; resend save_memory with the COMPLETE body.`,
+      `${endingFor(actual)}. NOTHING was written; resend save_memory with the COMPLETE body.`
   );
 }
 

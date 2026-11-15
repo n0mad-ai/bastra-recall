@@ -38,7 +38,7 @@ mkdirSync(join(buildDir, "server"), { recursive: true });
 writeFileSync(
   join(buildDir, "server", "package.json"),
   JSON.stringify({ name: "bastra-recall-mcpb-server", version: "0.0.0", private: true }, null, 2) + "\n",
-  "utf8",
+  "utf8"
 );
 
 // 2. Manifest from template + icon.
@@ -58,7 +58,9 @@ if (local) {
   for (const ws of ["packages/core", "packages/statusline", "packages/daemon"]) {
     run("npm", ["pack", "--pack-destination", tarballDir], join(repoRoot, ws));
   }
-  const tarballs = readdirSync(tarballDir).filter((f) => f.endsWith(".tgz")).map((f) => join(tarballDir, f));
+  const tarballs = readdirSync(tarballDir)
+    .filter((f) => f.endsWith(".tgz"))
+    .map((f) => join(tarballDir, f));
   run("npm", [...installArgs, ...tarballs], join(buildDir, "server"));
   rmSync(tarballDir, { recursive: true, force: true });
 } else {

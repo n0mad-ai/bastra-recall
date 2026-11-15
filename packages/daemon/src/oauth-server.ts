@@ -155,7 +155,12 @@ function sendMetadata(res: ServerResponse, body: unknown): void {
 }
 
 /** Front-door route for the well-known documents. True when handled. */
-export function dispatchOAuthWellKnown(req: IncomingMessage, res: ServerResponse, method: string, url: string): boolean {
+export function dispatchOAuthWellKnown(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string,
+  url: string
+): boolean {
   const path = url.split("?", 1)[0];
   const isPrm = path === PRM_PATH || path === PRM_PATH + MCP_PATH;
   if (!isPrm && path !== ASM_PATH) return false;
@@ -274,7 +279,10 @@ function sendHtml(res: ServerResponse, status: number, html: string): void {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   // No script, no framing (clickjacking on the consent button), no referrer
   // leaking the authorize query string to the redirect target.
-  res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'");
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'"
+  );
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Cache-Control", "no-store");
@@ -299,13 +307,22 @@ export interface OAuthApiCtx {
 
 // Public token acquisition routes are an explicit allowlist, before the
 // bearer gate. Each handler applies its own OAuth validation/consent checks.
-type PublicOAuthRoute = (req: IncomingMessage, res: ServerResponse, url: string, origin: string, ctx: OAuthApiCtx) => Promise<void>;
+type PublicOAuthRoute = (
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: string,
+  origin: string,
+  ctx: OAuthApiCtx
+) => Promise<void>;
 const PUBLIC_OAUTH_ROUTES = new Map<string, ReadonlyMap<string, PublicOAuthRoute>>([
   ["register", new Map([["POST", (req, res) => handleRegister(req, res)]])],
-  ["authorize", new Map([
-    ["GET", (_req, res, url, origin, ctx) => handleAuthorizeGet(res, url, origin, ctx.state)],
-    ["POST", (req, res, _url, _origin, ctx) => handleAuthorizePost(req, res, ctx)],
-  ])],
+  [
+    "authorize",
+    new Map([
+      ["GET", (_req, res, url, origin, ctx) => handleAuthorizeGet(res, url, origin, ctx.state)],
+      ["POST", (req, res, _url, _origin, ctx) => handleAuthorizePost(req, res, ctx)],
+    ]),
+  ],
   ["token", new Map([["POST", (req, res, _url, origin, ctx) => handleToken(req, res, origin, ctx.state)]])],
 ]);
 
@@ -315,7 +332,7 @@ export function dispatchOAuthApi(
   res: ServerResponse,
   method: string,
   url: string,
-  ctx: OAuthApiCtx,
+  ctx: OAuthApiCtx
 ): boolean {
   const path = url.split("?", 1)[0];
   if (!path.startsWith(OAUTH_PREFIX)) return false;
@@ -346,8 +363,18 @@ async function handleRegister(req: IncomingMessage, res: ServerResponse): Promis
     return oauthError(res, 400, "invalid_client_metadata", (err as Error).message);
   }
   const uris = body.redirect_uris;
-  if (!Array.isArray(uris) || uris.length === 0 || uris.length > 10 || !uris.every((u) => typeof u === "string" && allowedRedirectUri(u))) {
-    return oauthError(res, 400, "invalid_redirect_uri", `redirect_uris must be https on ${REDIRECT_HOSTS.join(", ")} or http on localhost`);
+  if (
+    !Array.isArray(uris) ||
+    uris.length === 0 ||
+    uris.length > 10 ||
+    !uris.every((u) => typeof u === "string" && allowedRedirectUri(u))
+  ) {
+    return oauthError(
+      res,
+      400,
+      "invalid_redirect_uri",
+      `redirect_uris must be https on ${REDIRECT_HOSTS.join(", ")} or http on localhost`
+    );
   }
   const grantTypes = body.grant_types;
   if (grantTypes !== undefined && (!Array.isArray(grantTypes) || !grantTypes.includes("authorization_code"))) {
@@ -362,7 +389,13 @@ async function handleRegister(req: IncomingMessage, res: ServerResponse): Promis
     client_name: rawName.slice(0, 120) || "Unnamed client",
     redirect_uris: uris as string[],
   });
-  if (!client) return oauthError(res, 400, "invalid_client_metadata", "too many registered clients — revoke some with `bastra oauth revoke`");
+  if (!client)
+    return oauthError(
+      res,
+      400,
+      "invalid_client_metadata",
+      "too many registered clients — revoke some with `bastra oauth revoke`"
+    );
   res.setHeader("Cache-Control", "no-store");
   sendJson(res, 201, {
     client_id: client.client_id,
@@ -438,7 +471,12 @@ async function handleAuthorizePost(req: IncomingMessage, res: ServerResponse, ct
   const now = Date.now();
   sweep(state.pending, now);
   const pending = state.pending.get(form.request ?? "");
-  if (!pending) return sendHtml(res, 400, renderErrorPage("This sign-in request expired or was already used. Start the connection again."));
+  if (!pending)
+    return sendHtml(
+      res,
+      400,
+      renderErrorPage("This sign-in request expired or was already used. Start the connection again.")
+    );
   const back = { state: pending.state, iss: pending.issuer };
   if (form.action === "deny") {
     state.pending.delete(form.request);
@@ -456,12 +494,18 @@ async function handleAuthorizePost(req: IncomingMessage, res: ServerResponse, ct
       state.pending.delete(form.request);
       return sendHtml(res, 401, renderErrorPage("Too many wrong tokens for this sign-in. Start the connection again."));
     }
-    return sendHtml(res, 401, renderAuthorizePage({
-      requestId: form.request,
-      clientName: pending.client_name,
-      redirectUri: pending.redirect_uri,
-      error: ctx.apiToken ? "Wrong API token." : "This daemon has no API token. Run `bastra token` and restart the daemon.",
-    }));
+    return sendHtml(
+      res,
+      401,
+      renderAuthorizePage({
+        requestId: form.request,
+        clientName: pending.client_name,
+        redirectUri: pending.redirect_uri,
+        error: ctx.apiToken
+          ? "Wrong API token."
+          : "This daemon has no API token. Run `bastra token` and restart the daemon.",
+      })
+    );
   }
   state.pending.delete(form.request);
   sweep(state.codes, now);
@@ -485,7 +529,12 @@ function clientIdOf(req: IncomingMessage, form: Record<string, string>): string 
   return decodeURIComponent(decoded.split(":", 1)[0]);
 }
 
-async function handleToken(req: IncomingMessage, res: ServerResponse, origin: string, state: OAuthState): Promise<void> {
+async function handleToken(
+  req: IncomingMessage,
+  res: ServerResponse,
+  origin: string,
+  state: OAuthState
+): Promise<void> {
   const form = await readForm(req);
   const clientId = clientIdOf(req, form);
   const resource = form.resource ? normalizeResource(form.resource) : null;
@@ -520,7 +569,8 @@ async function handleToken(req: IncomingMessage, res: ServerResponse, origin: st
     if (!/^[A-Za-z0-9._~-]{43,128}$/.test(verifier) || !safeEqual(s256(verifier), code.code_challenge)) {
       return oauthError(res, 400, "invalid_grant", "PKCE verification failed");
     }
-    if (resource !== null && resource !== code.resource) return oauthError(res, 400, "invalid_target", "resource does not match");
+    if (resource !== null && resource !== code.resource)
+      return oauthError(res, 400, "invalid_target", "resource does not match");
     const created = await createGrant({ client_id: clientId, resource: code.resource, scope: SCOPE });
     if (created) state.used.set(form.code, { grant_id: created.grantId, expires_at: code.expires_at });
     tokens = created?.tokens ?? null;

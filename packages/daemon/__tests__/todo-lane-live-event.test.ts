@@ -118,7 +118,10 @@ const LIVE_UPDATE_PLAN = {
  */
 function matcherMatches(matcher: string, toolName: string): boolean {
   if (/^[A-Za-z0-9_\-|, ]+$/.test(matcher)) {
-    return matcher.split("|").map((s) => s.trim()).includes(toolName);
+    return matcher
+      .split("|")
+      .map((s) => s.trim())
+      .includes(toolName);
   }
   return new RegExp(matcher).test(toolName);
 }
@@ -127,7 +130,7 @@ function todoLaneMatcher(): string {
   const plan = planHookEntries("install", {}, { includeStop: false, stubPresent: false });
   const entries = (plan.after.PreToolUse ?? []) as Array<Record<string, unknown>>;
   const entry = entries.find((e) =>
-    ((e.hooks ?? []) as Array<{ command?: string }>).some((h) => (h.command ?? "").includes("todo-hook.js")),
+    ((e.hooks ?? []) as Array<{ command?: string }>).some((h) => (h.command ?? "").includes("todo-hook.js"))
   );
   assert.ok(entry, "no PreToolUse entry registers the todo lane at all");
   return String(entry.matcher ?? "");
@@ -139,7 +142,7 @@ test("#506: the registered matcher fires on the tool a live Claude Code session 
   assert.equal(
     matcherMatches(todoLaneMatcher(), LIVE_TASK_CREATE.tool_name),
     true,
-    `matcher ${todoLaneMatcher()} does not match ${LIVE_TASK_CREATE.tool_name}`,
+    `matcher ${todoLaneMatcher()} does not match ${LIVE_TASK_CREATE.tool_name}`
   );
 });
 
@@ -171,8 +174,8 @@ test("#506: the Codex matcher fires on the tool a live Codex session sends", () 
   const plan = planCodexHooks("install", {}, { includeStop: false, stubPresent: false });
   const entry = (plan.after.PreToolUse ?? []).find((e) =>
     (((e as Record<string, unknown>).hooks ?? []) as Array<{ command?: string }>).some((h) =>
-      (h.command ?? "").includes("todo-hook.js"),
-    ),
+      (h.command ?? "").includes("todo-hook.js")
+    )
   ) as Record<string, unknown> | undefined;
   assert.ok(entry, "the Codex installer registers no plan lane at all");
   const matcher = String(entry.matcher ?? "");
@@ -180,7 +183,7 @@ test("#506: the Codex matcher fires on the tool a live Codex session sends", () 
   assert.equal(
     new RegExp(matcher).test(LIVE_UPDATE_PLAN.tool_name),
     true,
-    `${matcher} does not match ${LIVE_UPDATE_PLAN.tool_name}`,
+    `${matcher} does not match ${LIVE_UPDATE_PLAN.tool_name}`
   );
   // Anchored, so it cannot start matching a longer tool name by accident.
   assert.equal(new RegExp(matcher).test("update_plan_v2"), false);
@@ -207,7 +210,16 @@ test("#506: the captured update_plan payload produces hints and a todo_hook_call
 // ─── the lane, against the captured payload ────────────────────────────────
 
 const RECALL = JSON.stringify({
-  hits: [{ id: "m1", title: "Health endpoint layout", type: "project-fact", scope: "proj", summary: "Ein Fakt.", score: 150 }],
+  hits: [
+    {
+      id: "m1",
+      title: "Health endpoint layout",
+      type: "project-fact",
+      scope: "proj",
+      summary: "Ein Fakt.",
+      score: 150,
+    },
+  ],
   vault_size: 1,
   latency_ms: 1,
   recall_id: "r1",

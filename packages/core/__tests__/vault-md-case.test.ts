@@ -50,10 +50,7 @@ test("vault.init() loads .MD like the watcher does — one extension rule, not t
   try {
     await vault.init();
     assert.ok(vault.get("lower-case-note"), "control: the lowercase file loads");
-    assert.ok(
-      vault.get("upper-case-note"),
-      "UPPER.MD is a memory to the watcher — the initial walk must agree",
-    );
+    assert.ok(vault.get("upper-case-note"), "UPPER.MD is a memory to the watcher — the initial walk must agree");
 
     // Und der Neustart darf sie nicht wieder verlieren: genau das war der
     // Vorfall — per reindexFile sichtbar, nach Restart weg.

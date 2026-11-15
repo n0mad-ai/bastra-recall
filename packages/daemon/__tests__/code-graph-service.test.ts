@@ -124,7 +124,7 @@ describe("what a refresh row is allowed to say (#582 review)", () => {
     assert.equal(
       detailCode("something failed: locked nonsense"),
       "other",
-      "\"failed: locked\" mid-string must not be misread as the anchored case",
+      '"failed: locked" mid-string must not be misread as the anchored case'
     );
     // A prefix of "locked" that is a different word entirely.
     assert.equal(detailCode("unlocked"), "other");
@@ -164,7 +164,7 @@ describe("what a refresh row is allowed to say (#582 review)", () => {
         took_ms: 1,
         note: "no code graph yet for /Users/someone/Projekte/client — run bastra code index",
       } as never,
-      { surface: "mcp" },
+      { surface: "mcp" }
     );
     const text = JSON.stringify(row);
     assert.doesNotMatch(text, /secret-feature/, "the changed file is not in the row");

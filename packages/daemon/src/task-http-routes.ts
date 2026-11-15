@@ -21,12 +21,28 @@ export const TASK_HTTP_ROUTES: readonly TaskHttpRoute[] = [
   { method: "GET", path: "/tasks/{id}", operation: "task_get" },
   { method: "DELETE", path: "/tasks/{id}", operation: "task_delete" },
   { method: "PATCH", path: "/tasks/{id}", operation: "task_edit" },
-  ...["review", "snooze", "acknowledge", "resolve", "cancel", "rearm", "reconsider", "pause", "resume", "end_series"].map(action => ({
-    method: "POST" as const, path: `/tasks/{id}/${action}`, operation: `task_${action}` as TaskCrudOperation,
+  ...[
+    "review",
+    "snooze",
+    "acknowledge",
+    "resolve",
+    "cancel",
+    "rearm",
+    "reconsider",
+    "pause",
+    "resume",
+    "end_series",
+  ].map((action) => ({
+    method: "POST" as const,
+    path: `/tasks/{id}/${action}`,
+    operation: `task_${action}` as TaskCrudOperation,
   })),
 ];
 
-export function matchTaskHttpRoute(method: string, pathname: string): { operation: TaskCrudOperation; id?: string } | undefined {
+export function matchTaskHttpRoute(
+  method: string,
+  pathname: string
+): { operation: TaskCrudOperation; id?: string } | undefined {
   // Preserve the established collection trailing-slash alias, and strict ID alphabet.
   const path = pathname === "/api/v1/tasks/" ? "/tasks" : pathname.slice("/api/v1".length);
   for (const route of TASK_HTTP_ROUTES) {

@@ -63,7 +63,7 @@ test("bare tag mentions survive — memories documenting the hook format stay in
 });
 
 test("unterminated block (no close tag) is left untouched", () => {
-  const input = "<recall-hints surface=\"claude-code\">\n- dangling hint without close";
+  const input = '<recall-hints surface="claude-code">\n- dangling hint without close';
   const { text, removed } = scrubInjectedBlocks(input);
   assert.equal(text, input);
   assert.deepEqual(removed, []);
@@ -84,8 +84,7 @@ test("containsInjectedBlock reports complete blocks without rewriting", () => {
 });
 
 test("stripFenceMarkers drops lone marker fragments but keeps prose (#152 anti-spoof)", () => {
-  const input =
-    'lesson about </recall-hints> breakout and <system-reminder foo="1"> forging — prose stays';
+  const input = 'lesson about </recall-hints> breakout and <system-reminder foo="1"> forging — prose stays';
   const out = stripFenceMarkers(input);
   assert.ok(!out.includes("recall-hints"));
   assert.ok(!out.includes("system-reminder"));
@@ -235,5 +234,6 @@ test("scrubInjectedBlocks matches the block regex on attributes, case and nestin
     ["a<recall-hintsx>b</recall-hints>c", "a<recall-hintsx>b</recall-hints>c"],
     ["a<recall-hints>b", "a<recall-hints>b"],
     ["a<recall-hints\nid=1>b</recall-hints>c<recall-hints>d", "ac<recall-hints>d"],
-  ]) assert.equal(scrubInjectedBlocks(input).text, expected, input);
+  ])
+    assert.equal(scrubInjectedBlocks(input).text, expected, input);
 });

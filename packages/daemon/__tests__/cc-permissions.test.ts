@@ -45,7 +45,11 @@ describe("#650 — Claude Code permission rules, read the way Claude Code reads 
       local: { deny: [`Bash(${RM} -rf /:*)`] },
     });
     const files = [f.managed, f.user, f.local];
-    assert.deepEqual(bashVerdict(`${RM} -rf /`, files), { verdict: "deny", rule: `Bash(${RM} -rf /:*)`, file: f.local });
+    assert.deepEqual(bashVerdict(`${RM} -rf /`, files), {
+      verdict: "deny",
+      rule: `Bash(${RM} -rf /:*)`,
+      file: f.local,
+    });
     assert.equal(bashVerdict(`${RM} -rf build`, files).verdict, "ask");
     assert.equal(bashVerdict(`${RM} -rf build`, [f.managed]).verdict, "allow");
     assert.equal(bashVerdict("ls", files).verdict, "none");
@@ -77,7 +81,10 @@ describe("#650 — Claude Code permission rules, read the way Claude Code reads 
     assert.equal(files.length, 4);
     assert.match(files[0], /managed-settings\.json$/);
     assert.equal(files[1], "/cfg/settings.json");
-    assert.deepEqual(files.slice(2), [join(dir, ".claude", "settings.json"), join(dir, ".claude", "settings.local.json")]);
+    assert.deepEqual(files.slice(2), [
+      join(dir, ".claude", "settings.json"),
+      join(dir, ".claude", "settings.local.json"),
+    ]);
   });
 });
 
@@ -93,14 +100,18 @@ describe("a repository's settings file is untrusted input", () => {
     assert.ok(ruleMatches("Bash(a**b)", "ab"));
   });
 
-  it("a FIFO or an oversized file at the settings path gives no verdict instead of hanging", { skip: process.platform === "win32" }, () => {
-    // Revert-check: drop O_NONBLOCK → the FIFO blocks this test forever; drop the stat check → the big rule applies.
-    const dir = mkdtempSync(join(tmpdir(), "cc-perms-"));
-    const fifo = join(dir, "fifo.json");
-    execFileSync("mkfifo", [fifo]);
-    assert.equal(bashVerdict("ls", [fifo]).verdict, "none");
-    const big = join(dir, "big.json");
-    writeFileSync(big, JSON.stringify({ permissions: { deny: ["Bash"] }, pad: "x".repeat(1024 * 1024) }));
-    assert.equal(bashVerdict("ls", [big]).verdict, "none");
-  });
+  it(
+    "a FIFO or an oversized file at the settings path gives no verdict instead of hanging",
+    { skip: process.platform === "win32" },
+    () => {
+      // Revert-check: drop O_NONBLOCK → the FIFO blocks this test forever; drop the stat check → the big rule applies.
+      const dir = mkdtempSync(join(tmpdir(), "cc-perms-"));
+      const fifo = join(dir, "fifo.json");
+      execFileSync("mkfifo", [fifo]);
+      assert.equal(bashVerdict("ls", [fifo]).verdict, "none");
+      const big = join(dir, "big.json");
+      writeFileSync(big, JSON.stringify({ permissions: { deny: ["Bash"] }, pad: "x".repeat(1024 * 1024) }));
+      assert.equal(bashVerdict("ls", [big]).verdict, "none");
+    }
+  );
 });

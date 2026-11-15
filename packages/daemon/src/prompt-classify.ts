@@ -110,14 +110,52 @@ export function detectAssertion(prompt: string): boolean {
 // like any prompt — a missed ack costs one lookup, never a lost recall.
 const TRIVIAL_ACKS_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
   en: [
-    "ok", "okay", "k", "kk", "yes", "yep", "yeah", "no", "nope", "thx",
-    "thanks", "thank you", "cool", "nice", "great", "perfect", "go",
-    "continue", "proceed", "stop", "wait", "done", "sure",
+    "ok",
+    "okay",
+    "k",
+    "kk",
+    "yes",
+    "yep",
+    "yeah",
+    "no",
+    "nope",
+    "thx",
+    "thanks",
+    "thank you",
+    "cool",
+    "nice",
+    "great",
+    "perfect",
+    "go",
+    "continue",
+    "proceed",
+    "stop",
+    "wait",
+    "done",
+    "sure",
   ],
   de: [
-    "ja", "jo", "jep", "nein", "ne", "nö", "danke", "super", "top", "passt",
-    "perfekt", "weiter", "mach", "mach weiter", "los", "gut", "genau",
-    "richtig", "stimmt", "erledigt", "fertig",
+    "ja",
+    "jo",
+    "jep",
+    "nein",
+    "ne",
+    "nö",
+    "danke",
+    "super",
+    "top",
+    "passt",
+    "perfekt",
+    "weiter",
+    "mach",
+    "mach weiter",
+    "los",
+    "gut",
+    "genau",
+    "richtig",
+    "stimmt",
+    "erledigt",
+    "fertig",
   ],
 };
 const TRIVIAL_ACKS = new Set(Object.values(TRIVIAL_ACKS_BY_LANGUAGE).flat());
@@ -173,14 +211,15 @@ export type TaskKind = "translate-only" | "draft-for-review" | "approved-copy" |
 /** Structural quote boundaries only; no language-dependent mail headers. */
 export function splitQuoted(prompt: string): { own: string; quoted: boolean } {
   let quoted = false;
-  const withoutPaste = prompt.replace(/<pasted_content\b[^>]*>[\s\S]*?(?:<\/pasted_content>|$)/giu, block => {
+  const withoutPaste = prompt.replace(/<pasted_content\b[^>]*>[\s\S]*?(?:<\/pasted_content>|$)/giu, (block) => {
     if (/\S/u.test(block.replace(/<\/?pasted_content\b[^>]*>/giu, ""))) quoted = true;
     return "\n";
   });
   const own: string[] = [];
   for (const line of withoutPaste.split("\n")) {
-    if (/^\s*>/u.test(line)) { if (/\S/u.test(line.replace(/^\s*>/u, ""))) quoted = true; }
-    else own.push(line);
+    if (/^\s*>/u.test(line)) {
+      if (/\S/u.test(line.replace(/^\s*>/u, ""))) quoted = true;
+    } else own.push(line);
   }
-  return {own: own.join("\n").trim(), quoted};
+  return { own: own.join("\n").trim(), quoted };
 }

@@ -18,7 +18,9 @@
   gap: 6px;
   margin-bottom: 12px;
 }
-.opt-slot { display: flex; }
+.opt-slot {
+  display: flex;
+}
 
 .opt-btn {
   flex: 1;
@@ -34,17 +36,29 @@
   /* single line, always — a wrapped button breaks the two-column row */
   white-space: nowrap;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
 }
-.opt-btn svg { width: 14px; height: 14px; flex: none; }
-.opt-btn:hover { color: var(--accent); border-color: var(--accent); }
+.opt-btn svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.opt-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
 .opt-btn[aria-expanded="true"] {
   background: var(--accent-soft);
   color: var(--accent);
   border-color: var(--accent);
 }
 
-.opt-pop[hidden] { display: none; }
+.opt-pop[hidden] {
+  display: none;
+}
 .opt-pop {
   position: fixed;
   /* Same right-hand alignment the live deck uses (#live-lane in live.css), so
@@ -76,8 +90,12 @@
 /* rail visible → clear it; pinned → it sits flush right, so 20 off its edge.
    `top` needs no variant: it is measured from the topbar, which stays 58px
    tall in both states (pinned only shortens it horizontally). */
-body.panel-open .opt-pop { right: 286px; }
-body.panel-pinned .opt-pop { right: 270px; }
+body.panel-open .opt-pop {
+  right: 286px;
+}
+body.panel-pinned .opt-pop {
+  right: 270px;
+}
 
 .opt-pop-head {
   font: 10px var(--font-mono);
@@ -88,17 +106,27 @@ body.panel-pinned .opt-pop { right: 270px; }
 }
 /* Consistent rhythm inside the panel. The markup used to carry inline
    `margin-top: 10px` on individual labels; spacing belongs here instead. */
-.opt-pop .filter-label { margin-top: 10px; }
+.opt-pop .filter-label {
+  margin-top: 10px;
+}
 .opt-pop > .opt-pop-head + .filter-label,
-.opt-pop > .opt-pop-head + .seg { margin-top: 0; }
-.opt-pop .seg { margin-top: 4px; }
+.opt-pop > .opt-pop-head + .seg {
+  margin-top: 0;
+}
+.opt-pop .seg {
+  margin-top: 4px;
+}
 .opt-pop #bolt-speed-row,
-.opt-pop #bolt-spread-row { margin-top: 8px; }
+.opt-pop #bolt-spread-row {
+  margin-top: 8px;
+}
 
 /* hidden must beat .seg's explicit display — same trap as the sidebar rows */
 #view-opts-pop[hidden],
 #activity-opts-pop[hidden],
-#mindspace-galaxy-opts[hidden] { display: none !important; }
+#mindspace-galaxy-opts[hidden] {
+  display: none !important;
+}
 
 /* core switcher — a select rather than a segmented row: the list will grow
    well past what fits side by side once the lab centres get ported in */
@@ -112,6 +140,15 @@ body.panel-pinned .opt-pop { right: 270px; }
   font: 11px var(--font-mono);
   cursor: pointer;
 }
-#mindspace-core-select:hover { color: var(--accent); border-color: var(--accent); }
-#mindspace-core-select option { background: var(--panel); color: var(--text); }
-#mindspace-core-select[hidden], #mindspace-core-label[hidden] { display: none !important; }
+#mindspace-core-select:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+#mindspace-core-select option {
+  background: var(--panel);
+  color: var(--text);
+}
+#mindspace-core-select[hidden],
+#mindspace-core-label[hidden] {
+  display: none !important;
+}

@@ -100,7 +100,7 @@ test("wird das Quellregal gerade umbenannt, tritt der Save zurück", async (t) =
     await assert.rejects(
       () => saveMemory(root, input(), { locator: blinderLocator }),
       /being renamed, deleted or created right now/,
-      "der Save darf nicht in eine laufende Area-Operation hineinschreiben",
+      "der Save darf nicht in eine laufende Area-Operation hineinschreiben"
     );
   });
 

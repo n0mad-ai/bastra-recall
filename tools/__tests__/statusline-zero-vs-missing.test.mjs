@@ -60,12 +60,9 @@ const projectDir = (dir) => {
   return project;
 };
 
-const today = (setup, getCache) =>
-  withClaudeDir(setup, () => new TodayProvider().getTodayInfo(), getCache);
+const today = (setup, getCache) => withClaudeDir(setup, () => new TodayProvider().getTodayInfo(), getCache);
 const session = (setup, hookData) =>
-  withClaudeDir(setup, () =>
-    new SessionProvider().getSessionInfo(SESSION, hookData),
-  );
+  withClaudeDir(setup, () => new SessionProvider().getSessionInfo(SESSION, hookData));
 
 test("a day without entries is a measured zero", async () => {
   const info = await today(emptyProjects);
@@ -104,8 +101,8 @@ test("a fresh session is a measured zero", async () => {
         timestamp: new Date().toISOString(),
         type: "user",
         message: { role: "user", content: "hi" },
-      })}\n`,
-    ),
+      })}\n`
+    )
   );
   assert.equal(beforeFirstAnswer.cost, 0);
   assert.equal(beforeFirstAnswer.tokens, 0);
@@ -120,8 +117,7 @@ test("a fresh session reports the cost Claude Code hands over", async () => {
 
 test("a session is unknown when its source is missing or unreadable", async () => {
   // A directory in place of the transcript: found, but reading it fails.
-  const unreadableTranscript = (dir) =>
-    mkdirSync(join(projectDir(dir), `${SESSION}.jsonl`));
+  const unreadableTranscript = (dir) => mkdirSync(join(projectDir(dir), `${SESSION}.jsonl`));
   for (const setup of [noProjects, unreadableProjects, unreadableTranscript]) {
     const info = await session(setup);
     assert.equal(info.cost, null);
@@ -144,8 +140,7 @@ function classic(values, segment, budget) {
   const colors = renderer.theme.getThemeColors();
   const segConfig = { enabled: true, showIcon: false, ...segment };
   return [
-    renderer.segments.segmentRenderer.renderSession(asUsage(values), colors, segConfig)
-      .text,
+    renderer.segments.segmentRenderer.renderSession(asUsage(values), colors, segConfig).text,
     renderer.segments.segmentRenderer.renderToday(values, colors, segConfig).text,
   ];
 }
@@ -181,12 +176,6 @@ test("a measured zero is 0% of the budget, missing data has no percentage", () =
   const cost = { type: "cost" };
   assert.equal(classic(ZERO, cost, budget)[1], "$0.00 0%");
   assert.equal(classic(MISSING, cost, budget)[1], "--");
-  assert.equal(
-    formatTodaySegment(ZERO, {}, config(budget), false),
-    "$0.00 today 0%",
-  );
-  assert.equal(
-    formatTodaySegment(MISSING, {}, config(budget), false),
-    "-- today",
-  );
+  assert.equal(formatTodaySegment(ZERO, {}, config(budget), false), "$0.00 today 0%");
+  assert.equal(formatTodaySegment(MISSING, {}, config(budget), false), "-- today");
 });

@@ -180,7 +180,7 @@ export interface ShadowAcceptance {
  */
 export function shadowAcceptance(
   shadow: AnyEventLike[],
-  decisionsOf: (e: AnyEventLike) => Array<{ memory_id: string }>,
+  decisionsOf: (e: AnyEventLike) => Array<{ memory_id: string }>
 ): ShadowAcceptance {
   const perSession = new Map<string, number>();
   let decisions = 0;
@@ -202,9 +202,7 @@ export function shadowAcceptance(
   if (decisions < ACCEPT_MIN_DECISIONS) missing.push(`decisions ${decisions}/${ACCEPT_MIN_DECISIONS}`);
   if (sessions < ACCEPT_MIN_SESSIONS) missing.push(`sessions ${sessions}/${ACCEPT_MIN_SESSIONS}`);
   if (topSessionShare > ACCEPT_MAX_SESSION_SHARE) {
-    missing.push(
-      `top session ${(topSessionShare * 100).toFixed(1)} % (max ${ACCEPT_MAX_SESSION_SHARE * 100} %)`,
-    );
+    missing.push(`top session ${(topSessionShare * 100).toFixed(1)} % (max ${ACCEPT_MAX_SESSION_SHARE * 100} %)`);
   }
 
   // Reihenfolge: erst die Dauer, dann die Menge. Wer 14 Tage beobachtet hat,
@@ -307,7 +305,7 @@ export function requiredDivergence(
   shadow: AnyEventLike[],
   decisionsOf: (e: AnyEventLike) => DecisionLike[],
   mustLoadScore: number,
-  scoreFloor: number,
+  scoreFloor: number
 ): RequiredDivergence {
   const fused = new Map<string, boolean>();
   for (const r of events) {
@@ -326,8 +324,7 @@ export function requiredDivergence(
     }
     if (!space) continue;
     for (const d of decisionsOf(e)) {
-      const score =
-        typeof d.evidence?.lexical_score === "number" ? (d.evidence.lexical_score as number) : null;
+      const score = typeof d.evidence?.lexical_score === "number" ? (d.evidence.lexical_score as number) : null;
       if (score === null) continue;
       const legacyRequired = score >= mustLoadScore;
       const gateRequired = d.decision === "required";
@@ -366,7 +363,7 @@ export function noAnswerDivergence(
   shadow: AnyEventLike[],
   decisionsOf: (e: AnyEventLike) => DecisionLike[],
   mustLoadScore: number,
-  scoreFloor: number,
+  scoreFloor: number
 ): NoAnswerDivergence {
   const fused = new Map<string, boolean>();
   for (const r of events) {
@@ -386,11 +383,9 @@ export function noAnswerDivergence(
     }
     if (!space) continue;
     for (const d of decisionsOf(e)) {
-      const score =
-        typeof d.evidence?.lexical_score === "number" ? (d.evidence.lexical_score as number) : null;
+      const score = typeof d.evidence?.lexical_score === "number" ? (d.evidence.lexical_score as number) : null;
       if (score === null) continue;
-      const legacyBand =
-        score >= mustLoadScore ? "required" : score >= scoreFloor ? "optional" : "below_floor";
+      const legacyBand = score >= mustLoadScore ? "required" : score >= scoreFloor ? "optional" : "below_floor";
       const legacyServed = score >= scoreFloor;
       const gateSilent = d.decision === "no_answer";
       if (legacyServed === !gateSilent) continue; // einig — keine Abweichung

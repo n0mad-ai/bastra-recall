@@ -120,7 +120,7 @@ export interface BoundaryImpactOptions {
 export function boundaryImpact(
   graph: LoadedGraph | null,
   touches: readonly BoundaryTouch[],
-  options: BoundaryImpactOptions = {},
+  options: BoundaryImpactOptions = {}
 ): BoundaryImpact {
   const maxMissed = options.maxMissed ?? MAX_AFFECTED_FILES;
   const readAfter = new Set<string>(options.readAfter ?? []);

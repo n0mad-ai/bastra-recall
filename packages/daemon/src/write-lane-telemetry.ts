@@ -13,14 +13,7 @@ import type { PretoolHintReason } from "./pretool-shape.js";
 
 const HOOK_VERSION = "0.4.0"; // 0.4.0 = daemon-side lane (#343)
 
-export type HookStatus =
-  | "ok"
-  | "no-hits"
-  | "skipped"
-  | "suppressed"
-  | "daemon-unreachable"
-  | "timeout"
-  | "error";
+export type HookStatus = "ok" | "no-hits" | "skipped" | "suppressed" | "daemon-unreachable" | "timeout" | "error";
 
 // ─── telemetry ──────────────────────────────────────────────────────────────
 

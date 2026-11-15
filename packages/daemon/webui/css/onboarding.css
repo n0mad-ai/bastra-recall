@@ -1,5 +1,7 @@
 /* ── onboarding interview: seed a fresh vault ─────────────────── */
-#onboarding-modal[hidden] { display: none !important; } /* explicit display beats [hidden] otherwise */
+#onboarding-modal[hidden] {
+  display: none !important;
+} /* explicit display beats [hidden] otherwise */
 #onboarding-modal {
   position: fixed;
   inset: 0;
@@ -42,9 +44,14 @@
   cursor: pointer;
   text-align: left;
   font-size: 13px;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
-#onboarding-personas button:hover { border-color: var(--accent); color: var(--accent); }
+#onboarding-personas button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .onboarding-ask {
   font-size: 13px;
   color: var(--text);
@@ -62,7 +69,9 @@
   line-height: 1.5;
   outline: none;
 }
-#onboarding-answer:focus { border-color: var(--accent); }
+#onboarding-answer:focus {
+  border-color: var(--accent);
+}
 #onboarding-progress {
   font-size: 11px;
   color: var(--text-dim);
@@ -76,9 +85,25 @@
   border: 1px solid var(--panel-border);
   background: transparent;
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
-#onboarding-never, #onboarding-later { flex: 0 0 auto; color: var(--text-dim); }
-#onboarding-back, #onboarding-next { flex: 1; color: var(--text); }
-#onboarding-actions button:hover { border-color: var(--accent); color: var(--accent); }
-#onboarding-next:disabled { opacity: 0.5; cursor: default; }
+#onboarding-never,
+#onboarding-later {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+}
+#onboarding-back,
+#onboarding-next {
+  flex: 1;
+  color: var(--text);
+}
+#onboarding-actions button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+#onboarding-next:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

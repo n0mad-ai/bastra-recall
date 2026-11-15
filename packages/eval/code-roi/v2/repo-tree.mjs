@@ -89,7 +89,7 @@ export async function extractTree(repo, profile, sha, dir) {
   await pipeSpawn(
     spawn("git", ["archive", "--format=tar", sha], { cwd: repo }),
     spawn("tar", ["-x", "-C", dir]),
-    `extract ${sha}`,
+    `extract ${sha}`
   );
   linkNodeModules(repo, profile, dir);
 }

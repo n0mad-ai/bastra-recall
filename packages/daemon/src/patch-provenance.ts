@@ -8,10 +8,18 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { LastRun } from "./patch-registry.js";
 
-interface RecordOnDisk { root: string; version: string; ids: string[] }
+interface RecordOnDisk {
+  root: string;
+  version: string;
+  ids: string[];
+}
 
 export function canonicalPatchRoot(path: string): string {
-  try { return realpathSync(path); } catch { return resolve(path); }
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
 }
 
 export function appliedByLastRun(last: LastRun | null, id: string, applyRoot: string, version?: string): boolean {
@@ -34,7 +42,17 @@ function readRecords(home: string): RecordOnDisk[] {
     throw err;
   }
   const parsed: unknown = JSON.parse(raw);
-  if (!Array.isArray(parsed) || !parsed.every((r) => r && typeof r.root === "string" && typeof r.version === "string" && Array.isArray(r.ids) && r.ids.every((id: unknown) => typeof id === "string"))) {
+  if (
+    !Array.isArray(parsed) ||
+    !parsed.every(
+      (r) =>
+        r &&
+        typeof r.root === "string" &&
+        typeof r.version === "string" &&
+        Array.isArray(r.ids) &&
+        r.ids.every((id: unknown) => typeof id === "string")
+    )
+  ) {
     throw new Error("invalid patch provenance record");
   }
   return parsed as RecordOnDisk[];

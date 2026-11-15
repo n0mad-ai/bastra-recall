@@ -70,9 +70,7 @@ export function createImportDialog({ modal, opener }) {
       badgeEl.hidden = n === 0;
       badgeEl.textContent = n > 99 ? "99+" : String(n);
       opener.title =
-        n > 0
-          ? `Import memories — ${n} staged candidate(s) waiting for review; open for the next step`
-          : IDLE_TITLE;
+        n > 0 ? `Import memories — ${n} staged candidate(s) waiting for review; open for the next step` : IDLE_TITLE;
     } catch {
       /* daemon busy — next poll */
     }
@@ -136,7 +134,7 @@ export function createImportDialog({ modal, opener }) {
         `✓ ${r.staged} staged` +
           (r.skipped_duplicates > 0 ? ` · ${r.skipped_duplicates} duplicate(s) skipped` : "") +
           ` · ${r.open_total} open`,
-        "ok",
+        "ok"
       );
       // #309: name the next action instead of leaving the user standing there
       nextEl.hidden = false;
@@ -203,7 +201,7 @@ export function createImportDialog({ modal, opener }) {
     }
     browserEl.hidden = false;
     loadBrowser(vaultDirEl.value.trim() || null).catch(() =>
-      loadBrowser(null).catch((e) => setVaultStatus(e.message, "err")),
+      loadBrowser(null).catch((e) => setVaultStatus(e.message, "err"))
     );
   });
 
@@ -230,7 +228,7 @@ export function createImportDialog({ modal, opener }) {
           (r.skipped > 0 ? ` · ${r.skipped} skipped` : "") +
           // #530 follow-up: source gone, memory kept — nothing removed.
           (r.orphaned > 0 ? ` · ${r.orphaned} orphaned (source gone, kept)` : ""),
-        "ok",
+        "ok"
       );
     } catch (err) {
       setVaultStatus(err.message, "err");

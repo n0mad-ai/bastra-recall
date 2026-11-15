@@ -55,9 +55,9 @@ function post(port: number, path: string, raw: string): Promise<Reply> {
             status: res.statusCode ?? 0,
             body,
             contentType: res.headers["content-type"],
-          }),
+          })
         );
-      },
+      }
     );
     req.on("error", ko);
     req.end(raw);

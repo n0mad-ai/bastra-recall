@@ -20,12 +20,7 @@ import { Vault, SearchIndex } from "@bastra-recall/core";
 
 import { findDocument, readDocument, openDocument } from "../src/documents-handler.js";
 
-function memoryMarkdown(
-  id: string,
-  title: string,
-  type: string,
-  sensitivity?: string,
-): string {
+function memoryMarkdown(id: string, title: string, type: string, sensitivity?: string): string {
   const ts = new Date().toISOString();
   return [
     "---",
@@ -51,7 +46,7 @@ function memoryMarkdown(
 }
 
 async function makeVault(
-  files: Array<{ name: string; content: string }>,
+  files: Array<{ name: string; content: string }>
 ): Promise<{ vault: Vault; search: SearchIndex; close: () => Promise<void> }> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-empty-corpus-"));
   for (const f of files) {
@@ -118,18 +113,12 @@ test("docs_indexed respektiert den Sensitivity-Filter des Callers", async () => 
     assert.equal(external.docs_indexed, 0);
 
     // Mac-App ruft mit allowPrivate.
-    const internal = findDocument(
-      search,
-      vault,
-      { query: "zebra handling" },
-      { allowPrivate: true },
-    );
+    const internal = findDocument(search, vault, { query: "zebra handling" }, { allowPrivate: true });
     assert.equal(internal.docs_indexed, 1);
   } finally {
     await close();
   }
 });
-
 
 test("Windows: opening reports missing support while extracted text stays searchable and readable", async () => {
   const { vault, search, close } = await makeVault([

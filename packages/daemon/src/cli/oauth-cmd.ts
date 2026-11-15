@@ -31,7 +31,7 @@ export async function cmdOAuth(args: { sub: string | null; positional: string[];
           `  redirect: ${hosts}\n` +
           `  registered ${c.created_at}, ${c.grants} grant(s)` +
           (c.last_used_at ? `, last token ${c.last_used_at}` : ", never approved") +
-          "\n",
+          "\n"
       );
     }
     return 0;
@@ -54,6 +54,8 @@ export async function cmdOAuth(args: { sub: string | null; positional: string[];
     process.stdout.write(`revoked ${removed} client(s) — their tokens stop working on the next request.\n`);
     return 0;
   }
-  process.stderr.write(`error: unknown 'oauth' subcommand '${sub}' — use 'bastra oauth list' or 'bastra oauth revoke <client_id|all>'\n`);
+  process.stderr.write(
+    `error: unknown 'oauth' subcommand '${sub}' — use 'bastra oauth list' or 'bastra oauth revoke <client_id|all>'\n`
+  );
   return 2;
 }

@@ -69,10 +69,12 @@ export class AuditLog {
   // ─── public API ───────────────────────────────────────────────
 
   /** Schreibt einen neuen Audit-Eintrag und invalidiert den Lese-Cache. */
-  async record(input: Omit<AuditEntry, "id" | "timestamp"> & {
-    id?: string;
-    timestamp?: string;
-  }): Promise<AuditEntry> {
+  async record(
+    input: Omit<AuditEntry, "id" | "timestamp"> & {
+      id?: string;
+      timestamp?: string;
+    }
+  ): Promise<AuditEntry> {
     const entry: AuditEntry = {
       id: input.id ?? makeAuditID(),
       memory_id: input.memory_id,
@@ -165,7 +167,7 @@ export class AuditLog {
   /** Einträge ab einem Timestamp, optional gefiltert nach actor/operation. */
   async since(
     sinceISO: string,
-    filters: { actor?: AuditActor; operation?: AuditOperation } = {},
+    filters: { actor?: AuditActor; operation?: AuditOperation } = {}
   ): Promise<AuditEntry[]> {
     const all = await this.readAll();
     return all
@@ -270,10 +272,7 @@ const TRASH_VERSION_STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z(?:-\d+)
  * der Basis-Pfad `<id>.md` ist dann die ÄLTESTE Fassung, und ein Restore,
  * der stur `trashPathFor()` nimmt, holte die falsche zurück.
  */
-export async function latestTrashPathFor(
-  vaultRoot: string,
-  id: string,
-): Promise<string | undefined> {
+export async function latestTrashPathFor(vaultRoot: string, id: string): Promise<string | undefined> {
   const base = trashPathFor(vaultRoot, id);
   const trashRoot = dirname(base);
   let entries: string[];
@@ -306,7 +305,7 @@ export async function latestTrashPathFor(
       } catch {
         return { full, mtime: -1 };
       }
-    }),
+    })
   );
   withTime.sort((a, b) => b.mtime - a.mtime);
   return withTime[0].full;
@@ -368,7 +367,7 @@ export async function moveToTrashUnderClaim(
   vaultRoot: string,
   filePath: string,
   claim: IdClaim,
-  expectedPreimage?: string | null,
+  expectedPreimage?: string | null
 ): Promise<TrashMoveResult> {
   // #381: Die Marke, bevor irgendetwas bewegt wird. Ohne sie hielt niemand den
   // Lock, auf den sich alles Weitere hier verlässt.
@@ -389,7 +388,7 @@ export async function moveToTrashUnderClaim(
     throw new Error(
       `refusing to trash ${filePath}: it does not hold memory '${id}' ` +
         `(found ${occupant.kind === "memory" ? `'${occupant.id}'` : occupant.kind}). ` +
-        `The id claim proves a lock, not which file it belongs to — re-resolve the path.`,
+        `The id claim proves a lock, not which file it belongs to — re-resolve the path.`
     );
   }
   const frontmatter = JSON.parse(JSON.stringify(matter(raw).data)) as Record<string, unknown>;
@@ -425,7 +424,7 @@ export async function restoreFromTrashUnderClaim(
   vaultRoot: string,
   trashFile: string,
   destFile: string,
-  claim: IdClaim,
+  claim: IdClaim
 ): Promise<void> {
   // #381: wie oben — der Restore schreibt in den aktiven Bestand zurück und
   // braucht den Anspruch auf die id genauso.
@@ -448,7 +447,7 @@ export async function restoreFromTrashUnderClaim(
     if ((err as NodeJS.ErrnoException)?.code === "EEXIST") {
       throw new Error(
         `refusing to restore over an existing file: ${destFile}. ` +
-          `Move or delete it first — restoring would overwrite the active version.`,
+          `Move or delete it first — restoring would overwrite the active version.`
       );
     }
     throw err;

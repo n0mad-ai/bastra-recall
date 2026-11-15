@@ -20,18 +20,14 @@ import * as http from "node:http";
 import type { AddressInfo, Socket } from "node:net";
 
 import { OllamaEmbeddingProvider, OpenAIEmbeddingProvider } from "../src/embeddings.js";
-import {
-  EMBED_REQUEST_TIMEOUT_MS,
-  EMBED_TIMEOUT_PER_TEXT_MS,
-  embedDeadlineMs,
-} from "../src/embedding-providers.js";
+import { EMBED_REQUEST_TIMEOUT_MS, EMBED_TIMEOUT_PER_TEXT_MS, embedDeadlineMs } from "../src/embedding-providers.js";
 
 /** Server that answers /api/embed after `delayMs`, or never when `delayMs` is
  *  null. `holdFirst` holds only the first request and answers the rest.
  *  `connections()` counts the TCP connections the server has accepted. */
 async function ollamaStub(
   delayMs: number | null,
-  opts: { holdFirst?: boolean } = {},
+  opts: { holdFirst?: boolean } = {}
 ): Promise<{ url: string; close: () => Promise<void>; connections: () => number }> {
   const sockets = new Set<Socket>();
   let connections = 0;
@@ -78,7 +74,7 @@ async function settleWithin<T>(p: Promise<T>, ms: number): Promise<{ ok: true; v
     return await Promise.race([
       p.then(
         (value) => ({ ok: true as const, value }),
-        (err: Error) => ({ ok: false as const, err }),
+        (err: Error) => ({ ok: false as const, err })
       ),
       timeout,
     ]);
@@ -139,7 +135,10 @@ test("Ollama: a URL http.request rejects synchronously leaves no timer behind", 
 
 test("batch deadline grows with the number of texts", () => {
   assert.equal(embedDeadlineMs(EMBED_REQUEST_TIMEOUT_MS, 1), EMBED_REQUEST_TIMEOUT_MS);
-  assert.equal(embedDeadlineMs(EMBED_REQUEST_TIMEOUT_MS, 50), EMBED_REQUEST_TIMEOUT_MS + 49 * EMBED_TIMEOUT_PER_TEXT_MS);
+  assert.equal(
+    embedDeadlineMs(EMBED_REQUEST_TIMEOUT_MS, 50),
+    EMBED_REQUEST_TIMEOUT_MS + 49 * EMBED_TIMEOUT_PER_TEXT_MS
+  );
 });
 
 test("OpenAI: a fetch that never answers is aborted after timeoutMs", async () => {

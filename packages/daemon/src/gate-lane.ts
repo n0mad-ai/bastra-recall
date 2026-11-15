@@ -1,9 +1,9 @@
-import {requireActionRules,actionRulebookScope} from "./rulebook-check.js";
+import { requireActionRules, actionRulebookScope } from "./rulebook-check.js";
 import { catalogFor, rulebookBoundary, type RulebookDenialReceipt, type CatalogProvider } from "./rulebook-check.js";
 import { rulebookMutates, bastraReadTool } from "./rulebook-effects.js";
 import { withRulebookDeadline, RULEBOOK_CATALOG_BUDGET_MS } from "./rulebook-catalog.js";
 import { spoolRulebookFailure } from "./rulebook-spool.js";
-import {confirmLaneDelivery} from "./lane-delivery.js";
+import { confirmLaneDelivery } from "./lane-delivery.js";
 /**
  * Gate lane (#1303/#1304): the catch-all PreToolUse hook, daemon-side.
  *
@@ -52,13 +52,16 @@ import { dimensionsFrom } from "./telemetry-dimensions.js";
 import { defaultLogDir } from "./telemetry.js";
 import { isReflexPoolMember, matchReflexPool, reflexConfig, reflexPool, type ReflexMatch } from "./reflex.js";
 import {
-  loadSessionState, mutateSessionState, recordActiveConventions, recordClaimedMustLoad,
-  type ActiveConvention, type PendingMustLoad,
+  loadSessionState,
+  mutateSessionState,
+  recordActiveConventions,
+  recordClaimedMustLoad,
+  type ActiveConvention,
+  type PendingMustLoad,
 } from "./session-state.js";
 import { recordBudgetShadow } from "./session-budget.js";
 import { projectForLane } from "./scope-filter.js";
 import { RULE_KERNEL_TOOL_CALLS, renderRuleKernel } from "./rule-kernel.js";
-
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", FAST_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_VERSION = "0.1.0";
@@ -75,7 +78,6 @@ const KERNEL_DELIVERY = "rule-kernel-delivery";
 const KERNEL_RETRY_AT = "rule-kernel-retry-at";
 /** Pool eligibility: only a rule the user dictated and rated as weighty. */
 const MIN_SALIENCE = 0.8;
-
 
 export interface GatePayload {
   session_id?: string;
@@ -94,25 +96,60 @@ export interface GateDeps {
   /** A tool-specific inline gate must not double count the catch-all call. */
   countTool?: boolean;
   /** Tool-specific rules delivered to this subagent, independent of its parent hints. */
-  actionMustLoad?: {ids:readonly string[];key:string;summaries?:ReadonlyMap<string,string>;origins?:ReadonlyMap<string,string|undefined>;revisions?:ReadonlyMap<string,string|null>;onClaim?:(ids:readonly string[])=>void};
+  actionMustLoad?: {
+    ids: readonly string[];
+    key: string;
+    summaries?: ReadonlyMap<string, string>;
+    origins?: ReadonlyMap<string, string | undefined>;
+    revisions?: ReadonlyMap<string, string | null>;
+    onClaim?: (ids: readonly string[]) => void;
+  };
   /** The action-time reflex pool, already filtered (see actionReflexPool). */
   reflexPool: () => readonly Memory[];
   /** Testable advisory telemetry; failure must never alter gate delivery. */
-  telemetry?:(fields:Record<string,unknown>)=>Promise<void>;
+  telemetry?: (fields: Record<string, unknown>) => Promise<void>;
   /** #1305: the rule kernel's candidates from the daemon's vault index.
    *  Absent = no re-delivery; the count still runs. */
   kernel?: CatalogProvider;
 }
 
 /** Recalled text stays reference-only; only owner-directed text is inlined. */
-export function actionConventionFrame(ids:readonly string[],summaries?:ReadonlyMap<string,string>,origins?:ReadonlyMap<string,string|undefined>){
- const line=(s:string)=>stripFenceMarkers(s.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu," ")).replace(/\s+/gu," ").trim();
- const head=['<recall-hints trigger="github-write">',HINT_FRAME_NOTE,"MUST-LOAD — load the applicable saved issue/PR conventions before deciding:"];
- const rows:string[]=[];let used=head.join("\n").length;
- for(const id of ids){const text=summaries?.get(id);const row=origins?.get(id)==="user-directed"&&typeof text==="string"?`- ${line(id)}: ${line(text).slice(0,350)}`:`- ${line(id)}: load_memory(${JSON.stringify(line(id))})`;
-  if(used+row.length>7600)break;rows.push(row);used+=row.length+1;
- }
- return [...head,...rows,...(rows.length<ids.length?[`${ids.length-rows.length} further required IDs are not displayed here; read list_rules for the complete categorized catalog.`]:[]),'</recall-hints>'].join("\n");
+export function actionConventionFrame(
+  ids: readonly string[],
+  summaries?: ReadonlyMap<string, string>,
+  origins?: ReadonlyMap<string, string | undefined>
+) {
+  const line = (s: string) =>
+    stripFenceMarkers(s.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " "))
+      .replace(/\s+/gu, " ")
+      .trim();
+  const head = [
+    '<recall-hints trigger="github-write">',
+    HINT_FRAME_NOTE,
+    "MUST-LOAD — load the applicable saved issue/PR conventions before deciding:",
+  ];
+  const rows: string[] = [];
+  let used = head.join("\n").length;
+  for (const id of ids) {
+    const text = summaries?.get(id);
+    const row =
+      origins?.get(id) === "user-directed" && typeof text === "string"
+        ? `- ${line(id)}: ${line(text).slice(0, 350)}`
+        : `- ${line(id)}: load_memory(${JSON.stringify(line(id))})`;
+    if (used + row.length > 7600) break;
+    rows.push(row);
+    used += row.length + 1;
+  }
+  return [
+    ...head,
+    ...rows,
+    ...(rows.length < ids.length
+      ? [
+          `${ids.length - rows.length} further required IDs are not displayed here; read list_rules for the complete categorized catalog.`,
+        ]
+      : []),
+    "</recall-hints>",
+  ].join("\n");
 }
 
 /** Read/check tools always pass; Bastra writes participate in round checking. */
@@ -131,7 +168,7 @@ export function actionReflexPool(memories: readonly Memory[]): Memory[] {
       isReflexPoolMember(m) &&
       m.fm.write_origin === "user-directed" &&
       typeof m.fm.salience === "number" &&
-      m.fm.salience >= MIN_SALIENCE,
+      m.fm.salience >= MIN_SALIENCE
   );
 }
 
@@ -178,7 +215,9 @@ export async function runGateLane(payload: GatePayload, deps: GateDeps): Promise
   const startedAt = Date.now();
   let settleC: RulebookDenialReceipt | undefined;
   try {
-    const output = await gate(payload, deps, startedAt, settle => { settleC = settle; });
+    const output = await gate(payload, deps, startedAt, (settle) => {
+      settleC = settle;
+    });
     if (settleC) {
       const denied = JSON.parse(output).hookSpecificOutput?.permissionDecision === "deny";
       if (denied) await confirmLaneDelivery(settleC, Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity));
@@ -197,8 +236,20 @@ export async function runGateLane(payload: GatePayload, deps: GateDeps): Promise
   }
 }
 
-async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onDenial: (settle: RulebookDenialReceipt) => void): Promise<string> {
-  const emitTelemetry=async(fields:Record<string,unknown>&{outcome:Outcome})=>{try{if(deps.telemetry)await deps.telemetry(fields);else await writeTelemetry(payload,startedAt,fields);}catch{/* advisory only */}};
+async function gate(
+  payload: GatePayload,
+  deps: GateDeps,
+  startedAt: number,
+  onDenial: (settle: RulebookDenialReceipt) => void
+): Promise<string> {
+  const emitTelemetry = async (fields: Record<string, unknown> & { outcome: Outcome }) => {
+    try {
+      if (deps.telemetry) await deps.telemetry(fields);
+      else await writeTelemetry(payload, startedAt, fields);
+    } catch {
+      /* advisory only */
+    }
+  };
   if (payload.hook_event_name !== "PreToolUse") return "{}";
   // #1304: Codex needs registration evidence for the proven runtime minimum.
   if (!hookGateAvailable(payload)) return "{}";
@@ -210,13 +261,39 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onD
   const mutates = await rulebookMutates(toolName, input);
   // Readers skip C and catalog I/O; legacy must-load/reflex behavior remains
   // until Phase 4. Collect both reasons before emitting one denial; legacy claims keep their original finite contract.
-  let rulebookDecision:string|undefined,requiredActionIds:readonly string[]=[],actionScope="";
-  if(deps.actionMustLoad){
-    const refs=deps.actionMustLoad.ids.map(id=>({id,revision:deps.actionMustLoad?.revisions?.get(id)??null}));
-    await requireActionRules(payload,refs,Math.min(startedAt+HOOK_TIMEOUT_MS,deps.deadline??Infinity));
-    const catalog:import("./rulebook-catalog.js").KernelCandidates={entries:refs.map(r=>({...r,title:"",body:"",group:"explicit",updated:null,stale_status:"unknown",rulebook:"on-demand"})),omitted:0};
-    rulebookDecision=await rulebookBoundary(payload,catalog,"action",{requiredOnly:true,deadline:deps.deadline,onRequired:(ids,scope)=>{requiredActionIds=ids;actionScope=scope;},onDenial});
-  }else rulebookDecision=deps.kernel&&mutates?await boundedRulebookAction(payload,deps,startedAt,onDenial):undefined;
+  let rulebookDecision: string | undefined,
+    requiredActionIds: readonly string[] = [],
+    actionScope = "";
+  if (deps.actionMustLoad) {
+    const refs = deps.actionMustLoad.ids.map((id) => ({
+      id,
+      revision: deps.actionMustLoad?.revisions?.get(id) ?? null,
+    }));
+    await requireActionRules(payload, refs, Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity));
+    const catalog: import("./rulebook-catalog.js").KernelCandidates = {
+      entries: refs.map((r) => ({
+        ...r,
+        title: "",
+        body: "",
+        group: "explicit",
+        updated: null,
+        stale_status: "unknown",
+        rulebook: "on-demand",
+      })),
+      omitted: 0,
+    };
+    rulebookDecision = await rulebookBoundary(payload, catalog, "action", {
+      requiredOnly: true,
+      deadline: deps.deadline,
+      onRequired: (ids, scope) => {
+        requiredActionIds = ids;
+        actionScope = scope;
+      },
+      onDenial,
+    });
+  } else
+    rulebookDecision =
+      deps.kernel && mutates ? await boundedRulebookAction(payload, deps, startedAt, onDenial) : undefined;
   const rulebookDenied = rulebookDecision !== undefined && rulebookDecision !== "{}";
   if (!sessionId) return "{}";
 
@@ -227,7 +304,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onD
   const reflexCandidates = matched.length > 0 ? await servedReflex(matched) : [];
   // #1305: a delivered reflex rule is in force from here on, at this revision.
   const reflexRevisions = new Map(
-    reflexCandidates.map(m => [m.memory.fm.id, indexedConventionSource(m.memory)] as const),
+    reflexCandidates.map((m) => [m.memory.fm.id, indexedConventionSource(m.memory)] as const)
   );
 
   let claimedMustLoad: PendingMustLoad[] = [];
@@ -235,8 +312,13 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onD
   let kernelActive: ActiveConvention[] | null = null;
   const kernelToken = randomUUID();
   const finishKernel = (delivered: boolean, backoff = false) => {
-    void mutateSessionState(sessionId, state => {
-      let marker; try { marker = JSON.parse(state.constants?.[KERNEL_DELIVERY] ?? "null"); } catch { return; }
+    void mutateSessionState(sessionId, (state) => {
+      let marker;
+      try {
+        marker = JSON.parse(state.constants?.[KERNEL_DELIVERY] ?? "null");
+      } catch {
+        return;
+      }
       if (marker?.token !== kernelToken) return;
       delete state.constants![KERNEL_DELIVERY];
       if (!delivered) {
@@ -250,199 +332,356 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onD
   let previousClaims: string[] = [];
   const undoLegacy = async () => {
     if (!legacyPending.length && !claimedReflex.length) return;
-    await mutateSessionState(sessionId, state => {
+    await mutateSessionState(sessionId, (state) => {
       const pending = state.pendingMustLoad ?? [];
-      for (const entry of legacyPending) if (!pending.some(e => e.id === entry.id) && !state.loadedConventions?.some(c => c.id === entry.id)) pending.push(entry);
+      for (const entry of legacyPending)
+        if (!pending.some((e) => e.id === entry.id) && !state.loadedConventions?.some((c) => c.id === entry.id))
+          pending.push(entry);
       if (pending.length) state.pendingMustLoad = pending;
-      const reflexIds = new Set(claimedReflex.map(m => m.memory.fm.id));
-      state.deniedReflex = state.deniedReflex?.filter(id => !reflexIds.has(id));
+      const reflexIds = new Set(claimedReflex.map((m) => m.memory.fm.id));
+      state.deniedReflex = state.deniedReflex?.filter((id) => !reflexIds.has(id));
       // Restore only the activations this claim installed; preserve concurrent loads.
-      state.activeConventions = state.activeConventions?.filter(c => !reflexIds.has(c.id) || state.loadedConventions?.some(l => l.id === c.id));
-      for (const old of previousActive) if (reflexIds.has(old.id) && !state.activeConventions?.some(c => c.id === old.id)) (state.activeConventions ??= []).push(old);
-      const added = new Set(legacyPending.map(e => e.id).filter(id => !previousClaims.includes(id)));
-      state.claimedMustLoad = state.claimedMustLoad?.filter(id => !added.has(id));
+      state.activeConventions = state.activeConventions?.filter(
+        (c) => !reflexIds.has(c.id) || state.loadedConventions?.some((l) => l.id === c.id)
+      );
+      for (const old of previousActive)
+        if (reflexIds.has(old.id) && !state.activeConventions?.some((c) => c.id === old.id))
+          (state.activeConventions ??= []).push(old);
+      const added = new Set(legacyPending.map((e) => e.id).filter((id) => !previousClaims.includes(id)));
+      state.claimedMustLoad = state.claimedMustLoad?.filter((id) => !added.has(id));
     });
   };
-  const expired=()=>Date.now()-startedAt>HOOK_TIMEOUT_MS||(deps.deadline!==undefined&&Date.now()>=deps.deadline);
-  const actionToken=randomUUID();let actionIds:string[]=[],newActionClaims:string[]=[];
-  const finishAction=async(delivered:boolean)=>{
-   const action=deps.actionMustLoad;if(!action||!actionIds.length)return;
-   await mutateSessionState(sessionId,state=>{
-    if(state.constants?.[`${action.key}:scope`]!==actionScope)return;
-    const confirmed=delivered&&actionRulebookScope(state)===actionScope;
-    const seen=new Set<string>(JSON.parse(state.constants?.[action.key]??"[]"));
-    for(const id of actionIds){
-     const key=`${action.key}:attempt:${id}`,raw=state.constants?.[key];let marker;try{marker=raw?JSON.parse(raw):null;}catch{continue;}
-     if(marker?.token!==actionToken)continue;
-     if(confirmed){
-      const revisions=JSON.parse(state.constants?.[`${action.key}:revisions`]??"{}");revisions[id]=marker.revision??null;
-      state.constants![`${action.key}:revisions`]=JSON.stringify(Object.fromEntries([...seen].slice(-200).map(id=>[id,revisions[id]??null])));
-      delete state.constants![key];
-     }
-     else{seen.delete(id);delete state.constants![key];if(newActionClaims.includes(id))state.claimedMustLoad=state.claimedMustLoad?.filter(value=>value!==id);}
-    }
-    if(state.constants){
-     state.constants[action.key]=JSON.stringify([...seen].slice(-200));
-     // Retain only bounded completed agent histories; never evict an in-flight claim.
-     const keys=Object.keys(state.constants),histories=keys.filter(k=>k.startsWith("github-action-conventions-v2")&&!k.includes(":attempt:")&&!k.endsWith(":revisions")&&!k.endsWith(":scope")&&!keys.some(at=>at.startsWith(k+":attempt:")));
-     for(const old of histories.slice(0,-100)){delete state.constants[old];delete state.constants[old+":revisions"];delete state.constants[old+":scope"];}
-    }
-   });
+  const expired = () =>
+    Date.now() - startedAt > HOOK_TIMEOUT_MS || (deps.deadline !== undefined && Date.now() >= deps.deadline);
+  const actionToken = randomUUID();
+  let actionIds: string[] = [],
+    newActionClaims: string[] = [];
+  const finishAction = async (delivered: boolean) => {
+    const action = deps.actionMustLoad;
+    if (!action || !actionIds.length) return;
+    await mutateSessionState(sessionId, (state) => {
+      if (state.constants?.[`${action.key}:scope`] !== actionScope) return;
+      const confirmed = delivered && actionRulebookScope(state) === actionScope;
+      const seen = new Set<string>(JSON.parse(state.constants?.[action.key] ?? "[]"));
+      for (const id of actionIds) {
+        const key = `${action.key}:attempt:${id}`,
+          raw = state.constants?.[key];
+        let marker;
+        try {
+          marker = raw ? JSON.parse(raw) : null;
+        } catch {
+          continue;
+        }
+        if (marker?.token !== actionToken) continue;
+        if (confirmed) {
+          const revisions = JSON.parse(state.constants?.[`${action.key}:revisions`] ?? "{}");
+          revisions[id] = marker.revision ?? null;
+          state.constants![`${action.key}:revisions`] = JSON.stringify(
+            Object.fromEntries([...seen].slice(-200).map((id) => [id, revisions[id] ?? null]))
+          );
+          delete state.constants![key];
+        } else {
+          seen.delete(id);
+          delete state.constants![key];
+          if (newActionClaims.includes(id))
+            state.claimedMustLoad = state.claimedMustLoad?.filter((value) => value !== id);
+        }
+      }
+      if (state.constants) {
+        state.constants[action.key] = JSON.stringify([...seen].slice(-200));
+        // Retain only bounded completed agent histories; never evict an in-flight claim.
+        const keys = Object.keys(state.constants),
+          histories = keys.filter(
+            (k) =>
+              k.startsWith("github-action-conventions-v2") &&
+              !k.includes(":attempt:") &&
+              !k.endsWith(":revisions") &&
+              !k.endsWith(":scope") &&
+              !keys.some((at) => at.startsWith(k + ":attempt:"))
+          );
+        for (const old of histories.slice(0, -100)) {
+          delete state.constants[old];
+          delete state.constants[old + ":revisions"];
+          delete state.constants[old + ":scope"];
+        }
+      }
+    });
   };
-  const undoAction=()=>finishAction(false);
-  try{
-  const persisted = await mutateSessionState(sessionId, (state) => {
-    if(deps.countTool!==false)state.toolCalls = (state.toolCalls ?? 0) + 1;
-    let delivery;
-    try { delivery = JSON.parse(state.constants?.[KERNEL_DELIVERY] ?? "null"); } catch { /* invalid marker */ }
-    if (delivery && Date.now() >= delivery.deadline) {
-      delete state.constants![KERNEL_DELIVERY];
-      state.toolCalls = (state.toolCalls ?? 0) + (delivery.calls ?? RULE_KERNEL_TOOL_CALLS);
-      delivery = null;
+  const undoAction = () => finishAction(false);
+  try {
+    const persisted = await mutateSessionState(
+      sessionId,
+      (state) => {
+        if (deps.countTool !== false) state.toolCalls = (state.toolCalls ?? 0) + 1;
+        let delivery;
+        try {
+          delivery = JSON.parse(state.constants?.[KERNEL_DELIVERY] ?? "null");
+        } catch {
+          /* invalid marker */
+        }
+        if (delivery && Date.now() >= delivery.deadline) {
+          delete state.constants![KERNEL_DELIVERY];
+          state.toolCalls = (state.toolCalls ?? 0) + (delivery.calls ?? RULE_KERNEL_TOOL_CALLS);
+          delivery = null;
+        }
+        claimedMustLoad = [];
+        claimedReflex = [];
+        kernelActive = null;
+        previousActive = [...(state.activeConventions ?? [])];
+        previousClaims = [...(state.claimedMustLoad ?? [])];
+        if (!subagent && state.pendingMustLoad !== undefined && state.pendingMustLoad.length > 0) {
+          claimedMustLoad = state.pendingMustLoad;
+          legacyPending = [...claimedMustLoad];
+          delete state.pendingMustLoad;
+        }
+        const action = deps.actionMustLoad;
+        if (action && requiredActionIds.length && actionScope === actionRulebookScope(state) && !expired()) {
+          if (state.constants?.[`${action.key}:scope`] !== actionScope) {
+            const prefix = `${action.key}:attempt:`;
+            for (const key of Object.keys(state.constants ?? {}))
+              if (key.startsWith(prefix)) {
+                try {
+                  if (JSON.parse(state.constants![key]).newClaim)
+                    state.claimedMustLoad = state.claimedMustLoad?.filter((id) => id !== key.slice(prefix.length));
+                } catch {}
+                delete state.constants![key];
+              }
+            (state.constants ??= {})[action.key] = "[]";
+            state.constants[`${action.key}:revisions`] = "{}";
+            state.constants[`${action.key}:scope`] = actionScope;
+          }
+          const seen = new Set<string>(JSON.parse(state.constants?.[action.key] ?? "[]"));
+          const revisions = JSON.parse(state.constants?.[`${action.key}:revisions`] ?? "{}");
+          for (const id of seen)
+            if (
+              Object.hasOwn(revisions, id) &&
+              action.revisions?.has(id) &&
+              revisions[id] !== action.revisions.get(id)
+            ) {
+              seen.delete(id);
+              delete revisions[id];
+            }
+          if (state.constants?.[`${action.key}:revisions`])
+            state.constants[`${action.key}:revisions`] = JSON.stringify(revisions);
+          // A process crash or dropped response leaves a reservation, not a spent delivery.
+          for (const id of seen) {
+            const key = `${action.key}:attempt:${id}`,
+              raw = state.constants?.[key];
+            if (!raw) continue;
+            try {
+              const marker = JSON.parse(raw);
+              if (
+                (!marker.delivered && Date.now() >= marker.deadline) ||
+                (action.revisions?.has(id) && marker.revision !== action.revisions.get(id))
+              ) {
+                seen.delete(id);
+                delete state.constants![key];
+                if (marker.newClaim) state.claimedMustLoad = state.claimedMustLoad?.filter((value) => value !== id);
+              }
+            } catch {
+              /* legacy marker */
+            }
+          }
+          // C has already resolved actual full loads and accepted exceptions for
+          // this actor/revision. Applicability alone never answers an action rule.
+          const pending = new Set(requiredActionIds);
+          const ids = action.ids.filter((id) => pending.has(id) && !seen.has(id)).slice(0, 20);
+          actionIds = ids;
+          newActionClaims = rulebookDenied
+            ? ids.filter((id) => !state.claimedMustLoad?.includes(id) && !claimedMustLoad.some((e) => e.id === id))
+            : [];
+          const alreadyClaimed = new Set(claimedMustLoad.map((e) => e.id));
+          for (const id of ids) {
+            seen.add(id);
+            if (rulebookDenied && !alreadyClaimed.has(id))
+              claimedMustLoad.push({ id, block: action.key, at: Date.now() });
+          }
+          if (ids.length) {
+            (state.constants ??= {})[action.key] = JSON.stringify([...seen].slice(-200));
+            for (const old of [...seen].slice(0, -200)) delete state.constants[`${action.key}:attempt:${old}`];
+            for (const id of ids)
+              state.constants[`${action.key}:attempt:${id}`] = JSON.stringify({
+                token: actionToken,
+                deadline: Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity),
+                delivered: false,
+                revision: action.revisions?.get(id) ?? null,
+                newClaim: newActionClaims.includes(id),
+              });
+          }
+          action.onClaim?.(ids);
+        }
+        if (reflexCandidates.length > 0) {
+          const denied = new Set(state.deniedReflex ?? []);
+          claimedReflex = reflexCandidates.filter((m) => !denied.has(m.memory.fm.id));
+          if (claimedReflex.length > 0) {
+            for (const m of claimedReflex) denied.add(m.memory.fm.id);
+            state.deniedReflex = [...denied].slice(-DENIED_REFLEX_CAP);
+            recordActiveConventions(
+              state,
+              claimedReflex.map((m) => ({
+                id: m.memory.fm.id,
+                ...(reflexRevisions.get(m.memory.fm.id) ?? { revision: null }),
+              }))
+            );
+          }
+        }
+        if (claimedMustLoad.length > 0)
+          recordClaimedMustLoad(
+            state,
+            claimedMustLoad.map((e) => e.id)
+          );
+        // A deny or action context carries its own message; the kernel waits.
+        if (
+          deps.kernel &&
+          !rulebookDenied &&
+          actionIds.length === 0 &&
+          claimedMustLoad.length === 0 &&
+          claimedReflex.length === 0 &&
+          !delivery &&
+          Date.now() >= Number(state.constants?.[KERNEL_RETRY_AT] ?? 0) &&
+          (state.toolCalls ?? 0) >= RULE_KERNEL_TOOL_CALLS
+        ) {
+          kernelActive = [...(state.activeConventions ?? [])];
+          const calls = state.toolCalls ?? 0;
+          state.toolCalls = 0;
+          (state.constants ??= {})[KERNEL_DELIVERY] = JSON.stringify({
+            token: kernelToken,
+            calls,
+            deadline: Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity),
+          });
+          delete state.constants[KERNEL_RETRY_AT];
+        }
+      },
+      { deadline: Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity) }
+    );
+    const elapsed = Date.now() - startedAt;
+    if (!persisted) {
+      // No claim reached the disk, so nothing may be denied: the call passes.
+      // SQLite may reject BEGIN before the callback sees the pending ids. The
+      // read snapshot is diagnostic only; it never claims or consumes them.
+      const unclaimedMustLoadIds =
+        claimedMustLoad.length > 0
+          ? claimedMustLoad.map((e) => e.id)
+          : subagent
+            ? []
+            : ((await loadSessionState(sessionId)).pendingMustLoad ?? []).map((e) => e.id);
+      await emitTelemetry({
+        outcome: "pass",
+        non_conformance: expired() ? "gate_timeout" : "state_write_failed",
+        ...(unclaimedMustLoadIds.length > 0 ? { unclaimed_must_load_ids: unclaimedMustLoadIds } : {}),
+        ...(claimedReflex.length > 0 ? { unclaimed_reflex_ids: claimedReflex.map((m) => m.memory.fm.id) } : {}),
+      });
+      return "{}";
     }
-    claimedMustLoad = [];
-    claimedReflex = [];
-    kernelActive = null;
-    previousActive = [...(state.activeConventions ?? [])];
-    previousClaims = [...(state.claimedMustLoad ?? [])];
-    if (!subagent && state.pendingMustLoad !== undefined && state.pendingMustLoad.length > 0) {
-      claimedMustLoad = state.pendingMustLoad;
-      legacyPending = [...claimedMustLoad];
-      delete state.pendingMustLoad;
+    if (elapsed > HOOK_TIMEOUT_MS || (deps.deadline !== undefined && Date.now() >= deps.deadline)) {
+      await undoAction();
+      await undoLegacy();
+      if (kernelActive) finishKernel(false);
+      // A late response must neither deny nor consume an undelivered legacy claim.
+      await emitTelemetry({ outcome: "pass", non_conformance: "gate_timeout" });
+      return "{}";
     }
-    const action=deps.actionMustLoad;
-    if(action&&requiredActionIds.length&&actionScope===actionRulebookScope(state)&&!expired()){
-      if(state.constants?.[`${action.key}:scope`]!==actionScope){
-       const prefix=`${action.key}:attempt:`;
-       for(const key of Object.keys(state.constants??{}))if(key.startsWith(prefix)){
-        try{if(JSON.parse(state.constants![key]).newClaim)state.claimedMustLoad=state.claimedMustLoad?.filter(id=>id!==key.slice(prefix.length));}catch{}
-        delete state.constants![key];
-       }
-       (state.constants??={})[action.key]="[]";
-       state.constants[`${action.key}:revisions`]="{}";
-       state.constants[`${action.key}:scope`]=actionScope;
+    if (claimedMustLoad.length === 0 && claimedReflex.length === 0) {
+      if (rulebookDenied) return rulebookDecision!;
+      if (actionIds.length) {
+        const context = actionConventionFrame(actionIds, deps.actionMustLoad?.summaries, deps.actionMustLoad?.origins);
+        await confirmLaneDelivery(
+          finishAction,
+          Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity),
+          "context"
+        );
+        return JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: context } });
       }
-      const seen=new Set<string>(JSON.parse(state.constants?.[action.key]??"[]"));
-      const revisions=JSON.parse(state.constants?.[`${action.key}:revisions`]??"{}");
-      for(const id of seen)if(Object.hasOwn(revisions,id)&&action.revisions?.has(id)&&revisions[id]!==action.revisions.get(id)){seen.delete(id);delete revisions[id];}
-      if(state.constants?.[`${action.key}:revisions`])state.constants[`${action.key}:revisions`]=JSON.stringify(revisions);
-      // A process crash or dropped response leaves a reservation, not a spent delivery.
-      for(const id of seen){const key=`${action.key}:attempt:${id}`,raw=state.constants?.[key];if(!raw)continue;try{const marker=JSON.parse(raw);if((!marker.delivered&&Date.now()>=marker.deadline)||(action.revisions?.has(id)&&marker.revision!==action.revisions.get(id))){seen.delete(id);delete state.constants![key];if(marker.newClaim)state.claimedMustLoad=state.claimedMustLoad?.filter(value=>value!==id);}}catch{/* legacy marker */}}
-      // C has already resolved actual full loads and accepted exceptions for
-      // this actor/revision. Applicability alone never answers an action rule.
-      const pending=new Set(requiredActionIds);
-      const ids=action.ids.filter(id=>pending.has(id)&&!seen.has(id)).slice(0,20);
-      actionIds=ids;newActionClaims=rulebookDenied?ids.filter(id=>!state.claimedMustLoad?.includes(id)&&!claimedMustLoad.some(e=>e.id===id)):[];
-      const alreadyClaimed=new Set(claimedMustLoad.map(e=>e.id));
-      for(const id of ids){seen.add(id);if(rulebookDenied&&!alreadyClaimed.has(id))claimedMustLoad.push({id,block:action.key,at:Date.now()});}
-      if(ids.length){
-       (state.constants??={})[action.key]=JSON.stringify([...seen].slice(-200));
-       for(const old of [...seen].slice(0,-200))delete state.constants[`${action.key}:attempt:${old}`];
-       for(const id of ids)state.constants[`${action.key}:attempt:${id}`]=JSON.stringify({token:actionToken,deadline:Math.min(startedAt+HOOK_TIMEOUT_MS,deps.deadline??Infinity),delivered:false,revision:action.revisions?.get(id)??null,newClaim:newActionClaims.includes(id)});
-      }
-      action.onClaim?.(ids);
+      const active = kernelActive as ActiveConvention[] | null;
+      return active === null || !deps.kernel
+        ? "{}"
+        : redeliverKernel(payload, deps.kernel, active, startedAt, finishKernel, deps.deadline);
     }
-    if (reflexCandidates.length > 0) {
-      const denied = new Set(state.deniedReflex ?? []);
-      claimedReflex = reflexCandidates.filter((m) => !denied.has(m.memory.fm.id));
-      if (claimedReflex.length > 0) {
-        for (const m of claimedReflex) denied.add(m.memory.fm.id);
-        state.deniedReflex = [...denied].slice(-DENIED_REFLEX_CAP);
-        recordActiveConventions(state, claimedReflex.map((m) => ({ id: m.memory.fm.id, ...(reflexRevisions.get(m.memory.fm.id) ?? { revision: null }) })));
-      }
-    }
-    if (claimedMustLoad.length > 0) recordClaimedMustLoad(state, claimedMustLoad.map((e) => e.id));
-    // A deny or action context carries its own message; the kernel waits.
-    if (deps.kernel && !rulebookDenied && actionIds.length === 0 && claimedMustLoad.length === 0 && claimedReflex.length === 0 && !delivery && Date.now() >= Number(state.constants?.[KERNEL_RETRY_AT] ?? 0) && (state.toolCalls??0) >= RULE_KERNEL_TOOL_CALLS) {
-      kernelActive = [...(state.activeConventions ?? [])];
-      const calls = state.toolCalls ?? 0;
-      state.toolCalls = 0;
-      (state.constants ??= {})[KERNEL_DELIVERY] = JSON.stringify({ token: kernelToken, calls, deadline: Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity) });
-      delete state.constants[KERNEL_RETRY_AT];
-    }
-  },{deadline:Math.min(startedAt+HOOK_TIMEOUT_MS,deps.deadline??Infinity)});
-  const elapsed = Date.now() - startedAt;
-  if (!persisted) {
-    // No claim reached the disk, so nothing may be denied: the call passes.
-    // SQLite may reject BEGIN before the callback sees the pending ids. The
-    // read snapshot is diagnostic only; it never claims or consumes them.
-    const unclaimedMustLoadIds = claimedMustLoad.length > 0
-      ? claimedMustLoad.map(e => e.id)
-      : subagent ? [] : ((await loadSessionState(sessionId)).pendingMustLoad ?? []).map(e => e.id);
+
+    const reason = denyReason(
+      claimedMustLoad.map((e) => e.id),
+      claimedReflex
+    );
+    if (rulebookDenied) reason.text += "\n" + JSON.parse(rulebookDecision!).hookSpecificOutput.permissionDecisionReason;
+    if (actionIds.length)
+      reason.text +=
+        "\n" + actionConventionFrame(actionIds, deps.actionMustLoad?.summaries, deps.actionMustLoad?.origins);
     await emitTelemetry({
-      outcome: "pass",
-      non_conformance: expired() ? "gate_timeout" : "state_write_failed",
-      ...(unclaimedMustLoadIds.length > 0 ? { unclaimed_must_load_ids: unclaimedMustLoadIds } : {}),
-      ...(claimedReflex.length > 0 ? { unclaimed_reflex_ids: claimedReflex.map((m) => m.memory.fm.id) } : {}),
+      outcome: "deny",
+      must_load_ids: claimedMustLoad.map((e) => e.id),
+      must_load_blocks: [...new Set(claimedMustLoad.map((e) => e.block))],
+      reflex_ids: claimedReflex.map((m) => m.memory.fm.id),
+      degraded_ids: reason.degraded,
+      reason_chars: reason.text.length,
     });
-    return "{}";
-  }
-  if (elapsed > HOOK_TIMEOUT_MS || (deps.deadline !== undefined && Date.now() >= deps.deadline)) {
+    if (expired()) {
+      await undoAction();
+      await undoLegacy();
+      return "{}";
+    }
+    if (actionIds.length)
+      await confirmLaneDelivery(finishAction, Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity));
+    if (expired()) {
+      await undoAction();
+      await undoLegacy();
+      return "{}";
+    }
+    await confirmLaneDelivery(
+      async (delivered) => {
+        if (!delivered) await undoLegacy();
+      },
+      Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity)
+    );
+    return JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: reason.text,
+      },
+    });
+  } catch (error) {
     await undoAction();
     await undoLegacy();
-    if (kernelActive) finishKernel(false);
-    // A late response must neither deny nor consume an undelivered legacy claim.
-    await emitTelemetry({ outcome: "pass", non_conformance: "gate_timeout" });
-    return "{}";
+    throw error;
   }
-  if (claimedMustLoad.length === 0 && claimedReflex.length === 0) {
-    if (rulebookDenied) return rulebookDecision!;
-    if(actionIds.length){
-      const context=actionConventionFrame(actionIds,deps.actionMustLoad?.summaries,deps.actionMustLoad?.origins);
-      await confirmLaneDelivery(finishAction,Math.min(startedAt+HOOK_TIMEOUT_MS,deps.deadline??Infinity),"context");
-      return JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:context}});
-    }
-    const active = kernelActive as ActiveConvention[] | null;
-    return active === null || !deps.kernel ? "{}" : redeliverKernel(payload, deps.kernel, active, startedAt, finishKernel, deps.deadline);
-  }
-
-  const reason = denyReason(claimedMustLoad.map((e) => e.id), claimedReflex);
-  if (rulebookDenied) reason.text += "\n" + JSON.parse(rulebookDecision!).hookSpecificOutput.permissionDecisionReason;
-  if(actionIds.length)reason.text+="\n"+actionConventionFrame(actionIds,deps.actionMustLoad?.summaries,deps.actionMustLoad?.origins);
-  await emitTelemetry({
-    outcome: "deny",
-    must_load_ids: claimedMustLoad.map((e) => e.id),
-    must_load_blocks: [...new Set(claimedMustLoad.map((e) => e.block))],
-    reflex_ids: claimedReflex.map((m) => m.memory.fm.id),
-    degraded_ids: reason.degraded,
-    reason_chars: reason.text.length,
-  });
-  if(expired()){await undoAction();await undoLegacy();return "{}";}
-  if(actionIds.length)await confirmLaneDelivery(finishAction,Math.min(startedAt+HOOK_TIMEOUT_MS,deps.deadline??Infinity));
-  if(expired()){await undoAction();await undoLegacy();return "{}";}
-  await confirmLaneDelivery(async delivered => { if (!delivered) await undoLegacy(); }, Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity));
-  return JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      permissionDecision: "deny",
-      permissionDecisionReason: reason.text,
-    },
-  });
-  }catch(error){await undoAction();await undoLegacy();throw error;}
 }
 
 /** A catalog outage or a queued C write must not swallow a legacy denial.
  * The deadline also guards work that completes after the timeout has won. */
-async function boundedRulebookAction(payload: GatePayload, deps: GateDeps, startedAt: number,
-  onDenial: (settle: RulebookDenialReceipt) => void): Promise<string | undefined> {
-  const deadline = Math.min(startedAt + Math.min(RULEBOOK_ACTION_BUDGET_MS, HOOK_TIMEOUT_MS / 2), deps.deadline ?? Infinity);
+async function boundedRulebookAction(
+  payload: GatePayload,
+  deps: GateDeps,
+  startedAt: number,
+  onDenial: (settle: RulebookDenialReceipt) => void
+): Promise<string | undefined> {
+  const deadline = Math.min(
+    startedAt + Math.min(RULEBOOK_ACTION_BUDGET_MS, HOOK_TIMEOUT_MS / 2),
+    deps.deadline ?? Infinity
+  );
   if (Date.now() >= deadline) return undefined;
-  let abandoned = false, settleC: RulebookDenialReceipt | undefined;
+  let abandoned = false,
+    settleC: RulebookDenialReceipt | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const work = (async () => {
     const catalog = await catalogFor(payload, deps.kernel!);
     if (abandoned || Date.now() >= deadline) return undefined;
-    return rulebookBoundary(payload, catalog, "action", { deadline, onDenial: async settle => {
-      settleC = settle;
-      if (abandoned || Date.now() >= deadline) await settle(false);
-      else onDenial(settle);
-    } });
+    return rulebookBoundary(payload, catalog, "action", {
+      deadline,
+      onDenial: async (settle) => {
+        settleC = settle;
+        if (abandoned || Date.now() >= deadline) await settle(false);
+        else onDenial(settle);
+      },
+    });
   })();
   const timeout = Symbol("rulebook-timeout");
   try {
-    const result = await Promise.race([work, new Promise<typeof timeout>(resolve => {
-      timer = setTimeout(() => resolve(timeout), Math.max(0, deadline - Date.now()));
-    })]);
+    const result = await Promise.race([
+      work,
+      new Promise<typeof timeout>((resolve) => {
+        timer = setTimeout(() => resolve(timeout), Math.max(0, deadline - Date.now()));
+      }),
+    ]);
     if (result === timeout || Date.now() >= deadline) {
       abandoned = true;
       await settleC?.(false);
@@ -473,20 +712,42 @@ async function redeliverKernel(
   active: readonly ActiveConvention[],
   startedAt: number,
   finishKernel: (delivered: boolean, backoff?: boolean) => void,
-  outerDeadline?: number,
+  outerDeadline?: number
 ): Promise<string> {
   const project = projectForLane(typeof payload.cwd === "string" && payload.cwd ? payload.cwd : process.cwd());
   const deadline = Math.min(startedAt + HOOK_TIMEOUT_MS, outerDeadline ?? Infinity);
   try {
-    const candidates = await withRulebookDeadline(() => kernel(active, project, "content"), Math.min(deadline, Date.now() + RULEBOOK_CATALOG_BUDGET_MS));
+    const candidates = await withRulebookDeadline(
+      () => kernel(active, project, "content"),
+      Math.min(deadline, Date.now() + RULEBOOK_CATALOG_BUDGET_MS)
+    );
     const rendered = renderRuleKernel(candidates, { trigger: `${RULE_KERNEL_TOOL_CALLS} tool calls without a prompt` });
-    if (Date.now() >= deadline) { finishKernel(false); return "{}"; }
-    if (rendered.text === "") { finishKernel(true); return "{}"; }
-    recordBudgetShadow(payload.session_id ?? null, "hook_call", Math.ceil(rendered.text.length / 4), { source: "rule-kernel" });
-    void writeTelemetry(payload, startedAt, { outcome: "pass", kernel_ids: rendered.full,
-      kernel_degraded_ids: rendered.degraded, kernel_omitted: rendered.omitted,
-      kernel_paged_index: rendered.paged_index ?? 0, kernel_chars: rendered.text.length });
-    await confirmLaneDelivery(async delivered => { finishKernel(delivered); }, deadline, "context");
+    if (Date.now() >= deadline) {
+      finishKernel(false);
+      return "{}";
+    }
+    if (rendered.text === "") {
+      finishKernel(true);
+      return "{}";
+    }
+    recordBudgetShadow(payload.session_id ?? null, "hook_call", Math.ceil(rendered.text.length / 4), {
+      source: "rule-kernel",
+    });
+    void writeTelemetry(payload, startedAt, {
+      outcome: "pass",
+      kernel_ids: rendered.full,
+      kernel_degraded_ids: rendered.degraded,
+      kernel_omitted: rendered.omitted,
+      kernel_paged_index: rendered.paged_index ?? 0,
+      kernel_chars: rendered.text.length,
+    });
+    await confirmLaneDelivery(
+      async (delivered) => {
+        finishKernel(delivered);
+      },
+      deadline,
+      "context"
+    );
     return JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: rendered.text } });
   } catch {
     finishKernel(false, true);
@@ -515,7 +776,7 @@ function denyReason(mustLoad: string[], reflex: ReflexMatch[]): { text: string; 
     parts.push(
       `bastra-recall must-load: ${mustLoad.join(", ")} — shown as must-load and not loaded yet. ` +
         `load_memory(id) or dismiss via load_memory(id, verbosity:'lean'). ` +
-        `This call was interrupted once; retrying it goes through.`,
+        `This call was interrupted once; retrying it goes through.`
     );
   }
   let budget = REFLEX_BODY_BUDGET_CHARS;
@@ -537,7 +798,11 @@ function denyReason(mustLoad: string[], reflex: ReflexMatch[]): { text: string; 
 
 /** One `gate_hook_call` row per deny, kernel re-delivery or non-conformance.
  *  A plain pass writes nothing: the lane runs on every tool call. */
-async function writeTelemetry(payload: GatePayload, startedAt: number, fields: Record<string, unknown> & { outcome: Outcome }): Promise<void> {
+async function writeTelemetry(
+  payload: GatePayload,
+  startedAt: number,
+  fields: Record<string, unknown> & { outcome: Outcome }
+): Promise<void> {
   if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
     const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? defaultLogDir();

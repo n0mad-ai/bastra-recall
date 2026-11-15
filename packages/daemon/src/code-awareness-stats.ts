@@ -185,12 +185,12 @@ function foldTemporaryTrees(rows: readonly RepoRow[]): RepoRow[] {
   // No external total/resolved on the merged row — those describe one
   // repository's current state, and summing them across unrelated throwaway
   // trees would not mean anything.
-  if (sawTemp) real.push({ repo: TEMPORARY_TREE_LABEL, toolCalls, refreshes, externalTotal: null, externalResolved: null });
+  if (sawTemp)
+    real.push({ repo: TEMPORARY_TREE_LABEL, toolCalls, refreshes, externalTotal: null, externalResolved: null });
   return real;
 }
 
-const num = (v: unknown): number | null =>
-  typeof v === "number" && Number.isFinite(v) ? v : null;
+const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
 
 /** Null, not 0, for an empty sample: nothing measured is not the same as fast. */
@@ -233,7 +233,10 @@ export const CODE_TOOLS = ["find_code", "find_affected_files"] as const;
 
 export function aggregateCodeAwareness(rows: readonly CodeEventRow[]): CodeAwarenessStats {
   const tools = new Map<string, MutableTool>();
-  const repos = new Map<string, { toolCalls: number; refreshes: number; total: number | null; resolved: number | null }>();
+  const repos = new Map<
+    string,
+    { toolCalls: number; refreshes: number; total: number | null; resolved: number | null }
+  >();
   const refreshReasons = new Map<string, number>();
   const refreshFailures = new Map<string, number>();
   const durations: number[] = [];
@@ -390,7 +393,7 @@ export function aggregateCodeAwareness(rows: readonly CodeEventRow[]): CodeAware
         refreshes: r.refreshes,
         externalTotal: r.total,
         externalResolved: r.resolved,
-      })),
+      }))
     ).sort((a, b) => b.toolCalls + b.refreshes - (a.toolCalls + a.refreshes)),
   };
 }

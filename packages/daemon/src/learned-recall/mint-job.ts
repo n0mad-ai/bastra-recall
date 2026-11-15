@@ -63,9 +63,7 @@ export function memoryTermsGetter(vault: Vault): (id: string) => string[] {
   return (id: string): string[] => {
     const m = vault.get(id);
     if (!m) return [];
-    return distinctiveTerms(
-      [m.fm.title, m.fm.summary, ...m.fm.recall_when, ...m.fm.tags, m.body].join(" "),
-    );
+    return distinctiveTerms([m.fm.title, m.fm.summary, ...m.fm.recall_when, ...m.fm.tags, m.body].join(" "));
   };
 }
 
@@ -145,9 +143,7 @@ export async function readLastMint(bridgesRoot: string): Promise<LastMintRecord 
   try {
     const raw = await readFile(join(bridgesRoot, LAST_MINT_FILE), "utf8");
     const parsed = JSON.parse(raw) as LastMintRecord;
-    return typeof parsed === "object" && parsed !== null && typeof parsed.ts === "string"
-      ? parsed
-      : null;
+    return typeof parsed === "object" && parsed !== null && typeof parsed.ts === "string" ? parsed : null;
   } catch {
     return null;
   }
@@ -185,11 +181,7 @@ async function writeMintTelemetry(record: LastMintRecord): Promise<void> {
       demoted: record.demoted ?? 0,
       restored: record.restored ?? 0,
     };
-    await appendFile(
-      join(logDir, `events-${record.ts.slice(0, 10)}.jsonl`),
-      JSON.stringify(event) + "\n",
-      "utf8",
-    );
+    await appendFile(join(logDir, `events-${record.ts.slice(0, 10)}.jsonl`), JSON.stringify(event) + "\n", "utf8");
   } catch {
     // Telemetry must never break the mint.
   }

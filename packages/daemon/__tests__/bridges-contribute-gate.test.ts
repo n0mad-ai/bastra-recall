@@ -78,7 +78,19 @@ function twoQueries(): [string, string] {
 function reachLines(query: string, session: string, id: string): string[] {
   const ts = "2026-09-20T10:00:00.000Z";
   return [
-    { kind: "hook_recall", ts, recall_id: id, query, origin: "owner", tool_name: "UserPromptSubmit", dimensions: { hook_source: "prompt", experiment_session: session }, candidate_pool: [{ id: "d1", score: 40 }, { id: "d2", score: 30 }] },
+    {
+      kind: "hook_recall",
+      ts,
+      recall_id: id,
+      query,
+      origin: "owner",
+      tool_name: "UserPromptSubmit",
+      dimensions: { hook_source: "prompt", experiment_session: session },
+      candidate_pool: [
+        { id: "d1", score: 40 },
+        { id: "d2", score: 30 },
+      ],
+    },
     { kind: "recall_episode", ts, recall_id: id, memory_id: "panel", acted_on: true },
   ].map((e) => JSON.stringify(e));
 }
@@ -90,14 +102,30 @@ async function withSetup(fn: (d: { bridgesRoot: string }) => Promise<void>): Pro
   const bridgesRoot = join(root, "bridges-root");
   await mkdir(vault, { recursive: true });
   await mkdir(logs, { recursive: true });
-  await writeFile(join(vault, "panel.md"), memory("panel", "Nspanel resignkey observer", "Nspanel resignkey observer keywindow."));
+  await writeFile(
+    join(vault, "panel.md"),
+    memory("panel", "Nspanel resignkey observer", "Nspanel resignkey observer keywindow.")
+  );
   for (let i = 1; i <= 5; i++) {
-    await writeFile(join(vault, `d${i}.md`), memory(`d${i}`, `Fenster Dialog Notiz ${i}`, `Warum schließt sich das Fenster beim Dialog, Fall ${i}.`));
+    await writeFile(
+      join(vault, `d${i}.md`),
+      memory(`d${i}`, `Fenster Dialog Notiz ${i}`, `Warum schließt sich das Fenster beim Dialog, Fall ${i}.`)
+    );
   }
   const [qa, qb] = twoQueries();
-  const lines = [...reachLines(qa, "s1", "r1"), ...reachLines(qa, "s2", "r2"), ...reachLines(qb, "s1", "r3"), ...reachLines(qb, "s2", "r4")];
+  const lines = [
+    ...reachLines(qa, "s1", "r1"),
+    ...reachLines(qa, "s2", "r2"),
+    ...reachLines(qb, "s1", "r3"),
+    ...reachLines(qb, "s2", "r4"),
+  ];
   await writeFile(join(logs, "events-2026-09-20.jsonl"), lines.join("\n") + "\n");
-  const saved = { v: process.env.BASTRA_VAULT_PATH, l: process.env.BASTRA_LOG_PATH, b: process.env.BASTRA_BRIDGES_PATH, c: process.env.BASTRA_COMMONS_PATH };
+  const saved = {
+    v: process.env.BASTRA_VAULT_PATH,
+    l: process.env.BASTRA_LOG_PATH,
+    b: process.env.BASTRA_BRIDGES_PATH,
+    c: process.env.BASTRA_COMMONS_PATH,
+  };
   process.env.BASTRA_VAULT_PATH = vault;
   process.env.BASTRA_LOG_PATH = logs;
   process.env.BASTRA_BRIDGES_PATH = bridgesRoot;
@@ -107,7 +135,12 @@ async function withSetup(fn: (d: { bridgesRoot: string }) => Promise<void>): Pro
     assert.equal(mint.rc, 0, mint.out);
     await fn({ bridgesRoot });
   } finally {
-    for (const [k, v] of [["BASTRA_VAULT_PATH", saved.v], ["BASTRA_LOG_PATH", saved.l], ["BASTRA_BRIDGES_PATH", saved.b], ["BASTRA_COMMONS_PATH", saved.c]] as const) {
+    for (const [k, v] of [
+      ["BASTRA_VAULT_PATH", saved.v],
+      ["BASTRA_LOG_PATH", saved.l],
+      ["BASTRA_BRIDGES_PATH", saved.b],
+      ["BASTRA_COMMONS_PATH", saved.c],
+    ] as const) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
     }

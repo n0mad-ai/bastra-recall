@@ -66,7 +66,7 @@ test("shouldSkipPath: skip-matrix from issue #20", () => {
     assert.equal(
       actual,
       row.expected,
-      `path=${JSON.stringify(row.path)} expected=${row.expected} actual=${actual} (${row.why})`,
+      `path=${JSON.stringify(row.path)} expected=${row.expected} actual=${actual} (${row.why})`
     );
   }
 });

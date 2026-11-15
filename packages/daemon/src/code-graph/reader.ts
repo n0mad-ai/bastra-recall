@@ -131,9 +131,7 @@ export interface LoadedGraph {
   builtAtCommit: string | null;
 }
 
-export type LoadResult =
-  | { ok: true; graph: LoadedGraph }
-  | { ok: false; reason: RejectReason; detail?: string };
+export type LoadResult = { ok: true; graph: LoadedGraph } | { ok: false; reason: RejectReason; detail?: string };
 
 /**
  * Read, validate and index one graph. Never throws: every failure becomes a
@@ -312,10 +310,7 @@ export function dependentSymbolsOf(g: LoadedGraph, symbolId: string): CodeSymbol
 }
 
 /** Symbols that depend on one symbol id, with the relation that connects them. */
-export function dependentEdgesOf(
-  g: LoadedGraph,
-  symbolId: string,
-): Array<{ symbol: CodeSymbol; relation: string }> {
+export function dependentEdgesOf(g: LoadedGraph, symbolId: string): Array<{ symbol: CodeSymbol; relation: string }> {
   return (g.dependentsBySymbol.get(symbolId) ?? []).map((dep) => ({
     symbol: toSymbol(g.nodes.get(dep.id)!),
     relation: dep.relation,

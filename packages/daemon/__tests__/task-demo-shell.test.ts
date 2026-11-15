@@ -1,10 +1,10 @@
 import "./tasks-opt-in.js";
-import {test} from "node:test";
+import { test } from "node:test";
 import assert from "node:assert/strict";
-import {spawn} from "node:child_process";
-import {once} from "node:events";
-import {fileURLToPath} from "node:url";
-const py=`import os,pty,subprocess,select,time,sys,fcntl,termios,struct
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { fileURLToPath } from "node:url";
+const py = `import os,pty,subprocess,select,time,sys,fcntl,termios,struct
 m,s=pty.openpty();fcntl.ioctl(s,termios.TIOCSWINSZ,struct.pack('HHHH',40,120,0,0));p=subprocess.Popen(sys.argv[1:],stdin=s,stdout=s,stderr=s,start_new_session=True,preexec_fn=lambda: fcntl.ioctl(s,termios.TIOCSCTTY,0));os.close(s)
 out=b'';stage=0;checkpoint=0;deadline=time.time()+25
 while p.poll() is None and time.time()<deadline:
@@ -32,15 +32,42 @@ try:
 except OSError:pass
 os.close(m);sys.stdout.buffer.write(out);sys.stdout.write('\\nDEMO_EXIT='+str(p.returncode)+'\\n')
 `;
-test("documented isolated demo shell runs actual hook setup and guarded owner target CLI without manual registry editing",async()=>{
- const demo=fileURLToPath(new URL("../../../tools/proactive-tasks-demo.mjs",import.meta.url));
- const env={...process.env};delete env.NODE_TEST_CONTEXT;
- const child=spawn("python3",["-c",py,process.execPath,demo],{env,stdio:["ignore","pipe","pipe"]});let output="",errors="";child.stdout.on("data",c=>{output+=c;});child.stderr.on("data",c=>{errors+=c;});const [code]=await once(child,"exit");assert.equal(code,0,errors);assert.match(output,/Nur Wegwerf-Daten/);assert.match(output,/Claude chat delivery declined and saved/);assert.ok(!output.includes("Claude chat delivery enabled"));assert.match(output,/Ziel demo registriert/);assert.match(output,/DEMO_EXIT=0/);assert.match(output,/Demo-Daemon wieder bereit/);assert.match(output,/Erfundene Dateien vorbereitet/);assert.match(output,/Keine automatische Umkehr/);assert.match(output,/Neubewertungskarte sichtbar im Standardbudget/);assert.ok(!output.includes("Port 6723"));assert.ok(!output.includes("Dieser Ort ist gesperrt"));
+test("documented isolated demo shell runs actual hook setup and guarded owner target CLI without manual registry editing", async () => {
+  const demo = fileURLToPath(new URL("../../../tools/proactive-tasks-demo.mjs", import.meta.url));
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  const child = spawn("python3", ["-c", py, process.execPath, demo], { env, stdio: ["ignore", "pipe", "pipe"] });
+  let output = "",
+    errors = "";
+  child.stdout.on("data", (c) => {
+    output += c;
+  });
+  child.stderr.on("data", (c) => {
+    errors += c;
+  });
+  const [code] = await once(child, "exit");
+  assert.equal(code, 0, errors);
+  assert.match(output, /Nur Wegwerf-Daten/);
+  assert.match(output, /Claude chat delivery declined and saved/);
+  assert.ok(!output.includes("Claude chat delivery enabled"));
+  assert.match(output, /Ziel demo registriert/);
+  assert.match(output, /DEMO_EXIT=0/);
+  assert.match(output, /Demo-Daemon wieder bereit/);
+  assert.match(output, /Erfundene Dateien vorbereitet/);
+  assert.match(output, /Keine automatische Umkehr/);
+  assert.match(output, /Neubewertungskarte sichtbar im Standardbudget/);
+  assert.ok(!output.includes("Port 6723"));
+  assert.ok(!output.includes("Dieser Ort ist gesperrt"));
 });
 
-test("demo neutralizes inherited isolation/output paths and SIGHUP closes its daemon and disposable root",async()=>{
- const {mkdtemp,mkdir,readdir,access}=await import("node:fs/promises"),{tmpdir}=await import("node:os"),{join}=await import("node:path");const trap=await mkdtemp(join(tmpdir(),"demo-env-trap-"));await mkdir(join(trap,"logs"));await mkdir(join(trap,"eval"));
- const script=`import os,pty,subprocess,select,time,sys,json,re,signal
+test("demo neutralizes inherited isolation/output paths and SIGHUP closes its daemon and disposable root", async () => {
+  const { mkdtemp, mkdir, readdir, access } = await import("node:fs/promises"),
+    { tmpdir } = await import("node:os"),
+    { join } = await import("node:path");
+  const trap = await mkdtemp(join(tmpdir(), "demo-env-trap-"));
+  await mkdir(join(trap, "logs"));
+  await mkdir(join(trap, "eval"));
+  const script = `import os,pty,subprocess,select,time,sys,json,re,signal
 m,s=pty.openpty();p=subprocess.Popen(sys.argv[1:],stdin=s,stdout=s,stderr=s,start_new_session=True,preexec_fn=lambda: __import__('fcntl').ioctl(s,__import__('termios').TIOCSCTTY,0));os.close(s);out=b'';deadline=time.time()+20
 while b'bastra-demo> ' not in out and p.poll() is None and time.time()<deadline:
  if select.select([m],[],[],0.1)[0]:
@@ -52,6 +79,31 @@ try:p.wait(timeout=10)
 except subprocess.TimeoutExpired:p.kill();p.wait()
 os.close(m);print(json.dumps({'root':root.group(1) if root else None,'port':int(port.group(1)) if port else None,'exit':p.returncode}))
 `;
- const demo=fileURLToPath(new URL("../../../tools/proactive-tasks-demo.mjs",import.meta.url)),env:NodeJS.ProcessEnv={...process.env,BASTRA_TEST_RUN_ROOT:trap,BASTRA_TEST_KEEP_ENV:"1",BASTRA_LOG_PATH:join(trap,"logs"),BASTRA_EVAL_RUNS_DIR:join(trap,"eval")};delete env.NODE_TEST_CONTEXT;
- const p=spawn("python3",["-c",script,process.execPath,demo],{env,stdio:["ignore","pipe","pipe"]});let out="",errors="";p.stdout.on("data",c=>{out+=c;});p.stderr.on("data",c=>{errors+=c;});const [code]=await once(p,"exit");assert.equal(code,0,errors);const result=JSON.parse(out);assert.ok(result.root);assert.ok(result.port);await assert.rejects(access(result.root),JSON.stringify(result));assert.deepEqual(await readdir(join(trap,"logs")),[]);assert.deepEqual(await readdir(join(trap,"eval")),[]);await assert.rejects(fetch(`http://127.0.0.1:${result.port}/health`),JSON.stringify(result));
+  const demo = fileURLToPath(new URL("../../../tools/proactive-tasks-demo.mjs", import.meta.url)),
+    env: NodeJS.ProcessEnv = {
+      ...process.env,
+      BASTRA_TEST_RUN_ROOT: trap,
+      BASTRA_TEST_KEEP_ENV: "1",
+      BASTRA_LOG_PATH: join(trap, "logs"),
+      BASTRA_EVAL_RUNS_DIR: join(trap, "eval"),
+    };
+  delete env.NODE_TEST_CONTEXT;
+  const p = spawn("python3", ["-c", script, process.execPath, demo], { env, stdio: ["ignore", "pipe", "pipe"] });
+  let out = "",
+    errors = "";
+  p.stdout.on("data", (c) => {
+    out += c;
+  });
+  p.stderr.on("data", (c) => {
+    errors += c;
+  });
+  const [code] = await once(p, "exit");
+  assert.equal(code, 0, errors);
+  const result = JSON.parse(out);
+  assert.ok(result.root);
+  assert.ok(result.port);
+  await assert.rejects(access(result.root), JSON.stringify(result));
+  assert.deepEqual(await readdir(join(trap, "logs")), []);
+  assert.deepEqual(await readdir(join(trap, "eval")), []);
+  await assert.rejects(fetch(`http://127.0.0.1:${result.port}/health`), JSON.stringify(result));
 });

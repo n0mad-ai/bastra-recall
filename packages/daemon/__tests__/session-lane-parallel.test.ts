@@ -158,10 +158,7 @@ test("der Health-Probe läuft NEBEN dem Assembler, nicht dahinter", async () => 
     // Er gehört zum Update-Block, den der Assembler nicht abdeckt, und hängt an
     // keiner seiner Ausgaben. Liefe er danach, hätte der Umbau die
     // Nebenläufigkeit gegen einen zweiten Round Trip eingetauscht.
-    assert.ok(
-      p.peak >= 2,
-      `Höchststand ${p.peak}: Assembler und Health-Probe liefen nacheinander`,
-    );
+    assert.ok(p.peak >= 2, `Höchststand ${p.peak}: Assembler und Health-Probe liefen nacheinander`);
   });
 });
 
@@ -187,7 +184,7 @@ test("die Lane überschreibt die Hop-Baseline nicht", async () => {
     assert.equal(
       (body as Record<string, unknown>).expand_hops,
       undefined,
-      "kein Override — die Baseline kommt aus dem Assembler",
+      "kein Override — die Baseline kommt aus dem Assembler"
     );
   });
 });
@@ -195,7 +192,7 @@ test("die Lane überschreibt die Hop-Baseline nicht", async () => {
 test("ein unerreichbarer Daemon bleibt fail-open — kein Wurf, ein JSON-Dokument", async () => {
   const out = await runSessionLane(
     { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp" },
-    "http://127.0.0.1:1",
+    "http://127.0.0.1:1"
   );
   assert.doesNotThrow(() => JSON.parse(out));
 });

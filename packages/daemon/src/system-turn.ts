@@ -30,9 +30,11 @@ import { INJECTED_BLOCK_TAGS, scrubInjectedBlocks } from "@bastra-recall/core/sc
  * (a JSON array of `{question, answer}` — the answer is the user's, the row
  * is not a statement they typed).
  */
-const CODEX_HARNESS_TAG = /^<(?:environment_context|recommended_plugins|codex_internal_context|send_user_message_question_reply)[\s>]/;
+const CODEX_HARNESS_TAG =
+  /^<(?:environment_context|recommended_plugins|codex_internal_context|send_user_message_question_reply)[\s>]/;
 // Observed in local Codex rollouts: repository instructions are harness rows.
-const AGENTS_INSTRUCTIONS = /^# AGENTS\.md instructions(?: for (?:\/|\\|~|\.|[A-Za-z]:)[^\r\n]*)?\r?\n[ \t]*\r?\n[\s\S]*\S\s*$/;
+const AGENTS_INSTRUCTIONS =
+  /^# AGENTS\.md instructions(?: for (?:\/|\\|~|\.|[A-Za-z]:)[^\r\n]*)?\r?\n[ \t]*\r?\n[\s\S]*\S\s*$/;
 const TURN_ABORTED = /^<turn_aborted>\r?\n[^\r\n]+\r?\n<\/turn_aborted>\s*$/;
 const TASK_NOTIFICATION = /^<task-notification[\s>]/;
 const AGENT_MAIL_WRAPPER = "Another Claude session sent a message:";
@@ -58,8 +60,10 @@ const REMINDER_CLOSE = "</system-reminder>";
 const REMINDER_TAG_START = /^<\s*system(?:\s*-\s*|&#(?:x0*2d|0*45);?|&hyphen;?)\s*reminder(?=[\s/>])/i;
 const REMINDER_TAG_ANY = /<\s*\/?\s*system(?:\s*-\s*|&#(?:x0*2d|0*45);?|&hyphen;?)\s*reminder(?=[\s/>])/gi;
 // Raw CLI/tool output sometimes arrives as a user-role text wrapper (#1106).
-const TOOL_WRAPPER_START = /^<(local-command-stdout|local-command-stderr|bash-input|bash-stdout|bash-stderr|command-message)(?=[\s/>])/i;
-const TOOL_WRAPPER_TAG = /<\s*\/?\s*(?:local-command-stdout|local-command-stderr|bash-input|bash-stdout|bash-stderr|command-message)(?=[\s/>])/i;
+const TOOL_WRAPPER_START =
+  /^<(local-command-stdout|local-command-stderr|bash-input|bash-stdout|bash-stderr|command-message)(?=[\s/>])/i;
+const TOOL_WRAPPER_TAG =
+  /<\s*\/?\s*(?:local-command-stdout|local-command-stderr|bash-input|bash-stdout|bash-stderr|command-message)(?=[\s/>])/i;
 const COMMAND_ECHO_PREFIXES = ["<command-name>", "<local-command-caveat>"];
 
 function isCommandEcho(head: string): boolean {
@@ -70,7 +74,7 @@ function isCommandEcho(head: string): boolean {
  *  harness context, skill body, reminder, command echo, hand-back), not typed
  *  text. */
 export function isSystemInjectedTurn(text: string): boolean {
-  const head = text.trimStart().replace(/^[\u200b\u200d\u2060]+/,"");
+  const head = text.trimStart().replace(/^[\u200b\u200d\u2060]+/, "");
   return (
     /^<draft-hints\b/i.test(head) ||
     /^<hook_prompt(?:[\s>]|$)/i.test(head) ||
@@ -138,7 +142,7 @@ export function carriesInjectedBlock(text: string): boolean {
  */
 function maskBacktickQuotes(text: string): string {
   const runs: Array<{ start: number; length: number }> = [];
-  for (let i = text.indexOf("`"); i >= 0; ) {
+  for (let i = text.indexOf("`"); i >= 0;) {
     let end = i + 1;
     while (text[end] === "`") end++;
     runs.push({ start: i, length: end - i });
@@ -174,7 +178,8 @@ function maskBacktickQuotes(text: string): string {
 // An attribute or the end of the text (cut delivery) makes the tag a band on
 // its own. A bare tag followed by a space and more words, never closed, is a
 // sentence about the tag.
-const AGENT_BAND = /(^|\r?\n)([ \t\u200b\u200d\u2060]*)(?:\[cmux agent message\](?=\s|$)|<hook_prompt(?=[\s>]|$)|<(?:agent|teammate|cross-session)-message(?:(?=(\s+[\w-]+=|\s*$))|(?=[\s>])))/gi;
+const AGENT_BAND =
+  /(^|\r?\n)([ \t\u200b\u200d\u2060]*)(?:\[cmux agent message\](?=\s|$)|<hook_prompt(?=[\s>]|$)|<(?:agent|teammate|cross-session)-message(?:(?=(\s+[\w-]+=|\s*$))|(?=[\s>])))/gi;
 const AGENT_BAND_PROSE = />[ \t]+\S/y;
 const AGENT_BAND_CLOSE = /<\/(?:agent|teammate|cross-session)-message\s*>/gi;
 
@@ -262,7 +267,6 @@ export function textAfterReminders(text: string): string | null {
   if (rest.length === 0) return null;
   return rest;
 }
-
 
 /** A line-start band appended to typed owner prose is never owner evidence,
  * even if delivery was cut before its closing tag. Inline quoted tags stay prose. */

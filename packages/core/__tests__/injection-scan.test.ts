@@ -8,12 +8,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  scanForInjection,
-  injectionCategories,
-  formatInjectionAdvisory,
-  MAX_FINDINGS,
-} from "../src/injection-scan.js";
+import { scanForInjection, injectionCategories, formatInjectionAdvisory, MAX_FINDINGS } from "../src/injection-scan.js";
 
 function cats(text: string): string[] {
   return injectionCategories(scanForInjection(text));
@@ -189,6 +184,6 @@ test("long runs of spaces or zero-width characters scan in linear time", () => {
     const t0 = performance.now();
     scanForInjection(text);
     const ms = performance.now() - t0;
-    assert.ok(ms < 1000,`${JSON.stringify(text.slice(0, 16))}\u2026 took ${ms.toFixed(1)} ms`);
+    assert.ok(ms < 1000, `${JSON.stringify(text.slice(0, 16))}\u2026 took ${ms.toFixed(1)} ms`);
   }
 });

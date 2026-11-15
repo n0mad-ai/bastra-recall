@@ -115,10 +115,7 @@ test("die Start-Detection meldet einen offenen Eintrag — und schweigt nach der
   assert.equal(reported[0].memory_id, "doc-police-pdf");
   // #377: Das Event verlässt potenziell den Rechner — Pfade gehören nur in die
   // lokale Meldung, nie ins Event.
-  assert.ok(
-    !JSON.stringify(reported[0]).includes(dir),
-    "der Incident darf keinen Pfad tragen",
-  );
+  assert.ok(!JSON.stringify(reported[0]).includes(dir), "der Incident darf keinen Pfad tragen");
   assert.ok(describeOpenEntry(handle.entry).includes(dir), "die stderr-Zeile schon");
 
   await handle.acknowledge();
@@ -138,7 +135,7 @@ test("die Start-Detection repariert nichts", async (t) => {
   assert.equal(
     (await readOpenRecoveryEntries(dir)).length,
     1,
-    "der Eintrag bleibt stehen — Benennen ist nicht Aufräumen",
+    "der Eintrag bleibt stehen — Benennen ist nicht Aufräumen"
   );
 });
 
@@ -203,13 +200,13 @@ test("ein Move, dessen Rollback an einer fremden Datei scheitert, lässt den Ein
     // Eine fremde Datei am neuen Sidecar-Pfad: der Commit scheitert, und der
     // Rollback DARF sie nicht mit zurückschleifen — die Dateien bleiben im
     // Zielordner liegen.
-    writeFileSync(join(zielordner, "Police.pdf.md"), "# Handgeschrieben\n", "utf8"),
+    writeFileSync(join(zielordner, "Police.pdf.md"), "# Handgeschrieben\n", "utf8")
   );
   t.after(armed.stop);
 
   const outcome = await moveDocument(vault, { id: doc.id, folder_path: "neu" }).then(
     () => "fulfilled" as const,
-    (err: Error) => err,
+    (err: Error) => err
   );
   armed.stop();
 
@@ -223,7 +220,7 @@ test("ein Move, dessen Rollback an einer fremden Datei scheitert, lässt den Ein
   assert.equal(open[0].id, doc.id);
   assert.ok(
     open[0].steps.some((s) => s.to.endsWith(join("documents", "neu", "Police.pdf.md"))),
-    "der Eintrag nennt den Sidecar-Move",
+    "der Eintrag nennt den Sidecar-Move"
   );
 });
 
@@ -288,7 +285,9 @@ test("#431: ein unlink-Fehler beim Quittieren erreicht den Aufrufer", { skip: pr
 test("#431: nach dem Commit wird ein Cleanup-Fehler als Warnung gemeldet", async () => {
   const warning = await acknowledgeCommittedJournal({
     entry: {} as Awaited<ReturnType<typeof openRecoveryJournal>>["entry"],
-    acknowledge: async () => { throw new Error("EIO"); },
+    acknowledge: async () => {
+      throw new Error("EIO");
+    },
   });
   assert.match(warning ?? "", /committed.*cleanup failed: EIO/);
 });

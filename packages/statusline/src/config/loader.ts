@@ -74,14 +74,7 @@ export interface BudgetConfig {
 }
 
 export interface PowerlineConfig {
-  theme:
-    | "light"
-    | "dark"
-    | "nord"
-    | "tokyo-night"
-    | "rose-pine"
-    | "gruvbox"
-    | "custom";
+  theme: "light" | "dark" | "nord" | "tokyo-night" | "rose-pine" | "gruvbox" | "custom";
   display: DisplayConfig;
   colors?: {
     custom: ColorTheme;
@@ -91,26 +84,11 @@ export interface PowerlineConfig {
 }
 
 function isValidTheme(theme: string): theme is PowerlineConfig["theme"] {
-  return [
-    "light",
-    "dark",
-    "nord",
-    "tokyo-night",
-    "rose-pine",
-    "gruvbox",
-    "custom",
-  ].includes(theme);
+  return ["light", "dark", "nord", "tokyo-night", "rose-pine", "gruvbox", "custom"].includes(theme);
 }
 
-function isValidStyle(
-  style: string,
-): style is "minimal" | "powerline" | "capsule" | "tui" {
-  return (
-    style === "minimal" ||
-    style === "powerline" ||
-    style === "capsule" ||
-    style === "tui"
-  );
+function isValidStyle(style: string): style is "minimal" | "powerline" | "capsule" | "tui" {
+  return style === "minimal" || style === "powerline" || style === "capsule" || style === "tui";
 }
 
 function isValidCharset(charset: string): charset is "unicode" | "text" {
@@ -131,26 +109,19 @@ function getArgValue(args: string[], argName: string): string | undefined {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function deepMerge<T extends Record<string, any>>(
-  target: T,
-  source: Partial<T>,
-): T {
+function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>): T {
   const result = { ...target };
 
   for (const key in source) {
     const sourceValue = source[key];
     if (sourceValue !== undefined) {
-      if (
-        typeof sourceValue === "object" &&
-        sourceValue !== null &&
-        !Array.isArray(sourceValue)
-      ) {
+      if (typeof sourceValue === "object" && sourceValue !== null && !Array.isArray(sourceValue)) {
         const targetValue = result[key] || {};
         result[key] = deepMerge(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           targetValue as Record<string, any>,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          sourceValue as Record<string, any>,
+          sourceValue as Record<string, any>
         ) as T[Extract<keyof T, string>];
       } else {
         result[key] = sourceValue as T[Extract<keyof T, string>];
@@ -161,10 +132,7 @@ function deepMerge<T extends Record<string, any>>(
   return result;
 }
 
-function findConfigFile(
-  customPath?: string,
-  projectDir?: string,
-): string | null {
+function findConfigFile(customPath?: string, projectDir?: string): string | null {
   if (customPath) {
     return fs.existsSync(customPath) ? customPath : null;
   }
@@ -185,7 +153,7 @@ function loadConfigFile(filePath: string): Partial<PowerlineConfig> {
     return JSON.parse(content);
   } catch (error) {
     throw new Error(
-      `Failed to load config file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+      `Failed to load config file ${filePath}: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 }
@@ -204,9 +172,7 @@ function loadEnvConfig(): Partial<PowerlineConfig> {
     if (isValidStyle(style)) {
       display.style = style;
     } else {
-      console.warn(
-        `Invalid display style '${style}' from environment variable, falling back to 'minimal'`,
-      );
+      console.warn(`Invalid display style '${style}' from environment variable, falling back to 'minimal'`);
       display.style = "minimal";
     }
   }
@@ -236,9 +202,7 @@ function parseCLIOverrides(args: string[]): Partial<PowerlineConfig> {
     if (isValidStyle(style)) {
       display.style = style;
     } else {
-      console.warn(
-        `Invalid display style '${style}' from CLI argument, falling back to 'minimal'`,
-      );
+      console.warn(`Invalid display style '${style}' from CLI argument, falling back to 'minimal'`);
       display.style = "minimal";
     }
   }
@@ -248,9 +212,7 @@ function parseCLIOverrides(args: string[]): Partial<PowerlineConfig> {
     if (isValidCharset(charset)) {
       display.charset = charset;
     } else {
-      console.warn(
-        `Invalid charset '${charset}' from CLI argument, falling back to 'unicode'`,
-      );
+      console.warn(`Invalid charset '${charset}' from CLI argument, falling back to 'unicode'`);
       display.charset = "unicode";
     }
   }
@@ -268,11 +230,7 @@ function validateGridConfig(tui: TuiGridConfig): string | null {
     return `unknown box preset "${tui.box}" (valid: ${valid})`;
   }
 
-  if (
-    !tui.breakpoints ||
-    !Array.isArray(tui.breakpoints) ||
-    tui.breakpoints.length === 0
-  ) {
+  if (!tui.breakpoints || !Array.isArray(tui.breakpoints) || tui.breakpoints.length === 0) {
     return "grid config must have at least one breakpoint";
   }
 
@@ -339,9 +297,7 @@ function validateGridConfig(tui: TuiGridConfig): string | null {
       }
 
       // Check segment names and contiguity
-      const templateNames = tui.segments
-        ? new Set(Object.keys(tui.segments))
-        : new Set<string>();
+      const templateNames = tui.segments ? new Set(Object.keys(tui.segments)) : new Set<string>();
       let prevCell = "";
       let spanName = "";
       for (const cell of cells) {
@@ -393,11 +349,7 @@ function validateGridConfig(tui: TuiGridConfig): string | null {
       if (!tmpl.items || !Array.isArray(tmpl.items)) {
         return `segments["${segRef}"]: items must be an array`;
       }
-      if (
-        tmpl.justify !== undefined &&
-        tmpl.justify !== "start" &&
-        tmpl.justify !== "between"
-      ) {
+      if (tmpl.justify !== undefined && tmpl.justify !== "start" && tmpl.justify !== "between") {
         return `segments["${segRef}"]: invalid justify value "${tmpl.justify}" (use "start" or "between")`;
       }
     }
@@ -406,16 +358,11 @@ function validateGridConfig(tui: TuiGridConfig): string | null {
   return null; // valid
 }
 
-export function loadConfig(
-  args: string[] = process.argv,
-  projectDir?: string,
-): PowerlineConfig {
+export function loadConfig(args: string[] = process.argv, projectDir?: string): PowerlineConfig {
   let config: PowerlineConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
 
   const rawConfigPath = getArgValue(args, "--config") || getConfigPathFromEnv();
-  const configPath = rawConfigPath?.startsWith("~")
-    ? rawConfigPath.replace("~", os.homedir())
-    : rawConfigPath;
+  const configPath = rawConfigPath?.startsWith("~") ? rawConfigPath.replace("~", os.homedir()) : rawConfigPath;
 
   const configFile = findConfigFile(configPath, projectDir);
   if (configFile) {
@@ -423,30 +370,22 @@ export function loadConfig(
       const fileConfig = loadConfigFile(configFile);
       config = deepMerge(config, fileConfig);
     } catch (err) {
-      console.warn(
-        `Warning: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      console.warn(`Warning: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
   if (config.display?.style && !isValidStyle(config.display.style)) {
-    console.warn(
-      `Invalid display style '${config.display.style}' in config file, falling back to 'minimal'`,
-    );
+    console.warn(`Invalid display style '${config.display.style}' in config file, falling back to 'minimal'`);
     config.display.style = "minimal";
   }
 
   if (config.display?.charset && !isValidCharset(config.display.charset)) {
-    console.warn(
-      `Invalid charset '${config.display.charset}' in config file, falling back to 'unicode'`,
-    );
+    console.warn(`Invalid charset '${config.display.charset}' in config file, falling back to 'unicode'`);
     config.display.charset = "unicode";
   }
 
   if (config.theme && !isValidTheme(config.theme)) {
-    console.warn(
-      `Invalid theme '${config.theme}' in config file, falling back to 'dark'`,
-    );
+    console.warn(`Invalid theme '${config.theme}' in config file, falling back to 'dark'`);
     config.theme = "dark";
   }
 
@@ -460,9 +399,7 @@ export function loadConfig(
   if (config.display?.tui) {
     const error = validateGridConfig(config.display.tui);
     if (error) {
-      process.stderr.write(
-        `Warning: invalid grid config: ${error}. Falling back to hardcoded layout.\n`,
-      );
+      process.stderr.write(`Warning: invalid grid config: ${error}. Falling back to hardcoded layout.\n`);
       delete config.display.tui;
     }
   }

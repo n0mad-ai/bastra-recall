@@ -87,11 +87,16 @@ export const DerivedClaimSchema = z
     message: "sha256.v1 expects a 64-character hexadecimal digest",
     path: ["expect"],
   })
-  .refine((claim) => claim.resolver !== "count.markdown-numbered-list.v1" || claim.expect === undefined ||
-    (typeof claim.expect === "number" && Number.isSafeInteger(claim.expect) && claim.expect >= 0), {
-    message: "count.markdown-numbered-list.v1 expects a non-negative integer",
-    path: ["expect"],
-  })
+  .refine(
+    (claim) =>
+      claim.resolver !== "count.markdown-numbered-list.v1" ||
+      claim.expect === undefined ||
+      (typeof claim.expect === "number" && Number.isSafeInteger(claim.expect) && claim.expect >= 0),
+    {
+      message: "count.markdown-numbered-list.v1 expects a non-negative integer",
+      path: ["expect"],
+    }
+  )
   .refine((claim) => claim.resolver !== "quote.v1" || claim.expect === undefined, {
     message: "quote.v1 compares its exact text and does not use expect",
     path: ["expect"],
@@ -130,8 +135,7 @@ export function isPathSafeComponent(value: string): boolean {
   );
 }
 
-const pathSafeMessage =
-  "must not contain path separators, '..', or a leading dot";
+const pathSafeMessage = "must not contain path separators, '..', or a leading dot";
 
 /**
  * Tolerante aliases-Koerzierung (#188): Frontmatter ist in Obsidian hand-
@@ -145,34 +149,36 @@ const pathSafeMessage =
 export function coerceAliases(v: unknown): string[] | undefined {
   if (v == null) return undefined;
   const arr = Array.isArray(v) ? v : [v];
-  const out = arr
-    .filter((a) => a != null)
-    .map((a) => (a instanceof Date ? a.toISOString().slice(0, 10) : String(a)));
+  const out = arr.filter((a) => a != null).map((a) => (a instanceof Date ? a.toISOString().slice(0, 10) : String(a)));
   return out.length > 0 ? out : undefined;
 }
 
 /** #1323: an explicit mechanical check; prose never activates a validator. */
-export const ConventionValidatorSchema = z.object({
-  tool: z.literal("validate_artifact"),
-  channel: z.string().trim().min(1),
-  limit: z.number().int().positive(),
-  unit: z.enum(["codepoints", "utf16"]),
-}).strict();
+export const ConventionValidatorSchema = z
+  .object({
+    tool: z.literal("validate_artifact"),
+    channel: z.string().trim().min(1),
+    limit: z.number().int().positive(),
+    unit: z.enum(["codepoints", "utf16"]),
+  })
+  .strict();
 export type ConventionValidator = z.infer<typeof ConventionValidatorSchema>;
 
 /** Additive rulebook metadata; descriptions are authored in the user's language. */
 export const RulebookSchema = z.enum(["always", "on-demand"]);
 export const RuleCategoriesSchema = z.array(z.enum(["github-issues-prs", "correspondence"])).max(2);
-export const RulebookProposalSchema = z.object({
-  rulebook: RulebookSchema,
-  rule_categories: RuleCategoriesSchema.optional(),
-  applies_when: z.string().trim().min(1),
-  validator: ConventionValidatorSchema.nullable().optional(),
-  archive: z.boolean().optional(),
-  obsolete: z.boolean().optional(),
-  superseded_by: z.string().nullable().optional(),
-  sensitivity: z.enum(['public','team','private']).optional(),
-}).strict();
+export const RulebookProposalSchema = z
+  .object({
+    rulebook: RulebookSchema,
+    rule_categories: RuleCategoriesSchema.optional(),
+    applies_when: z.string().trim().min(1),
+    validator: ConventionValidatorSchema.nullable().optional(),
+    archive: z.boolean().optional(),
+    obsolete: z.boolean().optional(),
+    superseded_by: z.string().nullable().optional(),
+    sensitivity: z.enum(["public", "team", "private"]).optional(),
+  })
+  .strict();
 
 export const FrontmatterSchema = z.object({
   rulebook: RulebookSchema.optional(),
@@ -186,7 +192,10 @@ export const FrontmatterSchema = z.object({
   // >400-char summary (hand-edited in Obsidian, synced from a cloud drive, or
   // written by an older version) would otherwise fail parsing and be silently
   // skipped from the index — silent data loss. Clamp it in-memory instead.
-  summary: z.string().min(1).transform((s) => truncateSummaryTo(s, SUMMARY_MAX)),
+  summary: z
+    .string()
+    .min(1)
+    .transform((s) => truncateSummaryTo(s, SUMMARY_MAX)),
   topic_path: z.array(z.string()).min(1),
   tags: z.array(z.string()).min(1),
   scope: z.string().min(1),
@@ -216,7 +225,7 @@ export const FrontmatterSchema = z.object({
         id: z.string().min(1),
         reason: z.string().min(1),
         score: z.number().min(0).max(1),
-      }),
+      })
     )
     .default([]),
   /**
@@ -400,18 +409,19 @@ export interface Memory {
  * Parse a markdown file with YAML frontmatter into a Memory.
  * Throws if the frontmatter is missing or invalid.
  */
-export function parseMemory(
-  raw: string,
-  filePath: string,
-  mtime: number,
-): Memory {
+export function parseMemory(raw: string, filePath: string, mtime: number): Memory {
   // gray-matter caches parsed data by raw bytes. Lenient repair mutates its
   // input, so give each file/read an owned copy: fallback ids/dates must not
   // leak from a source probe (mtime 0) into a later real vault load.
-  return parseMemoryWith((input) => {
-    const parsed = matter(input);
-    return { data: structuredClone(parsed.data), content: parsed.content };
-  }, raw, filePath, mtime);
+  return parseMemoryWith(
+    (input) => {
+      const parsed = matter(input);
+      return { data: structuredClone(parsed.data), content: parsed.content };
+    },
+    raw,
+    filePath,
+    mtime
+  );
 }
 
 /**
@@ -422,7 +432,7 @@ export function parseMemoryWith(
   matter: (input: string) => { data: unknown; content: string },
   raw: string,
   filePath: string,
-  mtime: number,
+  mtime: number
 ): Memory {
   // #222: when the block as a whole is not valid YAML, rescue it entry by
   // entry instead of losing the node. A healthy file takes the same path it

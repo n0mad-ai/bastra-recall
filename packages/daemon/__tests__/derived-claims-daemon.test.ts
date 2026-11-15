@@ -89,13 +89,50 @@ test("#609 pilot: count, quote and sha256 claims resolve through the daemon's lo
   const port = handle.port!;
   try {
     const decls: Array<[string, Json]> = [
-      ["Failure mode count", { derived_claims: [{ id: "modes", resolver: "count.markdown-numbered-list.v1", source: "catalog/failure-modes.md", expect: 3 }] }],
-      ["Deploy timeout", { derived_claims: [{ id: "timeout", resolver: "quote.v1", source: "ops/deploy.md", exact: "timeout: 30s" }] }],
-      ["Release notes digest", { derived_claims: [{ id: "notes", resolver: "sha256.v1", source: "release/NOTES.md", expect: sha(FILES["release/NOTES.md"]) }] }],
-      ["Failure mode count observed", { derived_claims: [{ id: "modes-observed", resolver: "count.markdown-numbered-list.v1", source: "catalog/failure-modes.md" }] }],
-      ["Service owner", { derived_claims: [{ id: "owner", resolver: "quote.v1", source: "ops/owners.md", exact: "owner: platform" }] }],
-      ["Runbook reference", { derived_claims: [{ id: "runbook", resolver: "quote.v1", source: "ops/runbook.md", exact: "page the on-call" }] }],
-      ["Staging uses its own database", { type: "decision", body: "Decided: staging never shares the production database." }],
+      [
+        "Failure mode count",
+        {
+          derived_claims: [
+            { id: "modes", resolver: "count.markdown-numbered-list.v1", source: "catalog/failure-modes.md", expect: 3 },
+          ],
+        },
+      ],
+      [
+        "Deploy timeout",
+        { derived_claims: [{ id: "timeout", resolver: "quote.v1", source: "ops/deploy.md", exact: "timeout: 30s" }] },
+      ],
+      [
+        "Release notes digest",
+        {
+          derived_claims: [
+            { id: "notes", resolver: "sha256.v1", source: "release/NOTES.md", expect: sha(FILES["release/NOTES.md"]) },
+          ],
+        },
+      ],
+      [
+        "Failure mode count observed",
+        {
+          derived_claims: [
+            { id: "modes-observed", resolver: "count.markdown-numbered-list.v1", source: "catalog/failure-modes.md" },
+          ],
+        },
+      ],
+      [
+        "Service owner",
+        { derived_claims: [{ id: "owner", resolver: "quote.v1", source: "ops/owners.md", exact: "owner: platform" }] },
+      ],
+      [
+        "Runbook reference",
+        {
+          derived_claims: [
+            { id: "runbook", resolver: "quote.v1", source: "ops/runbook.md", exact: "page the on-call" },
+          ],
+        },
+      ],
+      [
+        "Staging uses its own database",
+        { type: "decision", body: "Decided: staging never shares the production database." },
+      ],
     ];
     const ids: string[] = [];
     for (const [title, extra] of decls) {
@@ -119,13 +156,19 @@ test("#609 pilot: count, quote and sha256 claims resolve through the daemon's lo
     const notesBefore = await Promise.all(ids.map((id) => readFile(vault.get(id)!.filePath, "utf8")));
 
     // The sources move on; the notes do not.
-    await writeFile(join(dir, "catalog/failure-modes.md"), FILES["catalog/failure-modes.md"] + "4. clock skew\n", "utf8");
+    await writeFile(
+      join(dir, "catalog/failure-modes.md"),
+      FILES["catalog/failure-modes.md"] + "4. clock skew\n",
+      "utf8"
+    );
     await writeFile(join(dir, "ops/deploy.md"), "region: eu-central\ntimeout: 90s\nretries: 3\n", "utf8");
     await writeFile(join(dir, "release/NOTES.md"), "Release 1.4.3\n\nSigned tags only.\n", "utf8");
     await writeFile(join(dir, "ops/owners.md"), "owner: platform\n", "utf8");
     await writeFile(join(dir, "ops/runbook.md"), "Step 1: page the on-call.\n", "utf8");
     const sourcesAfter = await Promise.all(
-      ["catalog/failure-modes.md", "ops/deploy.md", "release/NOTES.md", "ops/owners.md", "ops/runbook.md"].map((r) => readFile(join(dir, r), "utf8")),
+      ["catalog/failure-modes.md", "ops/deploy.md", "release/NOTES.md", "ops/owners.md", "ops/runbook.md"].map((r) =>
+        readFile(join(dir, r), "utf8")
+      )
     );
 
     assert.deepEqual(await verdicts(), ["differs", "gone", "differs", "observed", "matches", "matches"]);
@@ -138,9 +181,11 @@ test("#609 pilot: count, quote and sha256 claims resolve through the daemon's lo
     assert.deepEqual(await Promise.all(ids.map((id) => readFile(vault.get(id)!.filePath, "utf8"))), notesBefore);
     assert.deepEqual(
       await Promise.all(
-        ["catalog/failure-modes.md", "ops/deploy.md", "release/NOTES.md", "ops/owners.md", "ops/runbook.md"].map((r) => readFile(join(dir, r), "utf8")),
+        ["catalog/failure-modes.md", "ops/deploy.md", "release/NOTES.md", "ops/owners.md", "ops/runbook.md"].map((r) =>
+          readFile(join(dir, r), "utf8")
+        )
       ),
-      sourcesAfter,
+      sourcesAfter
     );
   } finally {
     await handle.close();

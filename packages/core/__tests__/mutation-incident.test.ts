@@ -70,7 +70,7 @@ test("ein gescheitertes Audit-Append meldet audit_failed — die Mutation steht 
   } as unknown as Vault;
 
   const { result, seen } = await collect(() =>
-    auditedSave({ vault: stub, auditLog: log, vaultRoot: root, input: input(), context: { actor: "user" } }),
+    auditedSave({ vault: stub, auditLog: log, vaultRoot: root, input: input(), context: { actor: "user" } })
   );
 
   assert.equal(result.audit, null, "kein Beleg geschrieben");
@@ -93,7 +93,7 @@ test("ein Incident trägt keine Memory-Inhalte", async (t) => {
   } as unknown as Vault;
 
   const { seen } = await collect(() =>
-    auditedSave({ vault: stub, auditLog: log, vaultRoot: root, input: input(), context: { actor: "user" } }),
+    auditedSave({ vault: stub, auditLog: log, vaultRoot: root, input: input(), context: { actor: "user" } })
   );
 
   // Das ist die Zusage des Issues, und sie ist die einzige, die man nicht
@@ -143,16 +143,14 @@ test("ein Re-File, dessen Trash scheitert, meldet den Ausgang statt still zu ble
   await writeFile(join(root, ".bastra", "trash"), "kein Ordner", "utf8");
 
   const { seen } = await collect(async () => {
-    await assert.rejects(() =>
-      saveMemory(root, input({ overwrite: true, folder: "memories/people" })),
-    );
+    await assert.rejects(() => saveMemory(root, input({ overwrite: true, folder: "memories/people" })));
   });
 
   const incident = seen.find((i) => i.op === "save_memory_refile");
   assert.ok(incident, `ein Re-File-Incident muss ankommen, gesehen: ${JSON.stringify(seen)}`);
   assert.ok(
     incident.status === "rolled_back" || incident.status === "partial",
-    `der Status muss den Ausgang benennen, war: ${incident.status}`,
+    `der Status muss den Ausgang benennen, war: ${incident.status}`
   );
   assert.equal(incident.phase, "refile-trash");
   assert.equal(incident.memory_id, "m");

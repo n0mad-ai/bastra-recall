@@ -30,12 +30,7 @@ import { fileURLToPath } from "node:url";
 
 import { cmdUpdate, detectInstallMode, verifySourceCheckout } from "../src/cli/update.js";
 import { parseArgs } from "../src/cli/commands.js";
-import {
-  decideSourceBuild,
-  inspectSourceBuild,
-  provenRevision,
-  type HeadState,
-} from "../src/cli/source-build.js";
+import { decideSourceBuild, inspectSourceBuild, provenRevision, type HeadState } from "../src/cli/source-build.js";
 import { parseBuildStamp, readBuildStamp } from "../src/build-stamp.js";
 import { buildHealthPayload } from "../src/http-health.js";
 import { decideLiveRevision, describeLiveRevision, liveRevisionOfDaemon } from "../src/cli/live-revision.js";
@@ -55,7 +50,12 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
 /** Captures what a writer-taking function printed. */
 function capture(): { write: (s: string) => void; text: () => string } {
   let buf = "";
-  return { write: (s) => { buf += s; }, text: () => buf };
+  return {
+    write: (s) => {
+      buf += s;
+    },
+    text: () => buf,
+  };
 }
 
 /**
@@ -65,7 +65,7 @@ function capture(): { write: (s: string) => void; text: () => string } {
  */
 async function fakeCheckout(
   dir: string,
-  opts: { dist: boolean; distAgeMs?: number },
+  opts: { dist: boolean; distAgeMs?: number }
 ): Promise<{ root: string; cliFile: string }> {
   const root = join(dir, "checkout");
   // A plain file named `.git` is what a worktree carries — gitRootFor accepts both.
@@ -74,7 +74,7 @@ async function fakeCheckout(
   await writeFile(
     join(root, "packages", "daemon", "package.json"),
     JSON.stringify({ name: "d", scripts: { build: "tsc" } }),
-    "utf8",
+    "utf8"
   );
   await writeFile(join(root, "packages", "daemon", "src", "cli", "update.ts"), "export {};\n", "utf8");
   const cliFile = join(root, "packages", "daemon", "dist", "cli", "update.js");
@@ -117,7 +117,7 @@ async function realCheckout(dir: string, name: string): Promise<string> {
   await writeFile(
     join(root, "packages", "daemon", "package.json"),
     JSON.stringify({ name: "d", scripts: { build: "tsc" } }),
-    "utf8",
+    "utf8"
   );
   await writeFile(join(root, "packages", "daemon", "src", "a.ts"), "export const v = 1;\n", "utf8");
   // Build output is ignored here exactly as it is in the repo — otherwise every
@@ -285,7 +285,11 @@ test("#528 — a package that declares no build (eval runs from tsx) is not dema
     const root = await realCheckout(dir, "repo");
     await build(root);
     await mkdir(join(root, "packages", "eval", "src"), { recursive: true });
-    await writeFile(join(root, "packages", "eval", "package.json"), JSON.stringify({ name: "e", scripts: { lift: "tsx" } }), "utf8");
+    await writeFile(
+      join(root, "packages", "eval", "package.json"),
+      JSON.stringify({ name: "e", scripts: { lift: "tsx" } }),
+      "utf8"
+    );
     await writeFile(join(root, "packages", "eval", "src", "x.ts"), "export {};\n", "utf8");
     git(root, "add", "-A");
     git(root, "commit", "-qm", "eval");
@@ -457,7 +461,7 @@ test("#528 — the live revision comes from the daemon, not from the disk that w
   assert.equal(decideLiveRevision({ provenHead: head, daemonReachable: true, daemonRevision: head }), "live");
   assert.equal(
     decideLiveRevision({ provenHead: head, daemonReachable: true, daemonRevision: "b".repeat(40) }),
-    "other-build",
+    "other-build"
   );
   assert.equal(decideLiveRevision({ provenHead: head, daemonReachable: true, daemonRevision: null }), "unknown-build");
   assert.equal(decideLiveRevision({ provenHead: head, daemonReachable: false, daemonRevision: null }), "no-daemon");
@@ -518,7 +522,8 @@ test("#528 — a daemon answering from HEAD is the proof the closing line may st
     attempts: 3,
     sleep: async () => {},
     // A just-kickstarted daemon is not up on the first probe.
-    probe: async () => (++calls < 2 ? { ok: false, detail: "starting" } : { ok: true, detail: "", buildRevision: head }),
+    probe: async () =>
+      ++calls < 2 ? { ok: false, detail: "starting" } : { ok: true, detail: "", buildRevision: head },
   });
   assert.equal(verdict, "live");
   assert.match(describeLiveRevision(verdict, { state, daemonRevision }).closing, /HEAD aaaaaaa is live/);

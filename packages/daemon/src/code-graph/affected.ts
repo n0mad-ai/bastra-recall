@@ -41,12 +41,7 @@
 
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import {
-  bareLabel,
-  dependentEdgesOf,
-  type CodeSymbol,
-  type LoadedGraph,
-} from "./reader.js";
+import { bareLabel, dependentEdgesOf, type CodeSymbol, type LoadedGraph } from "./reader.js";
 import { diffLines, unquoteGitPath, unquoteGitPaths, type DiffLine } from "./diff-lines.js";
 import { spansCovering, symbolSpans } from "./symbol-spans.js";
 
@@ -212,16 +207,11 @@ export function affectedHits(
   graph: LoadedGraph,
   file: string,
   symbols: readonly CodeSymbol[],
-  depth = 1,
+  depth = 1
 ): AffectedHit[] {
   const hits: AffectedHit[] = [];
   const seen = new Set<string>();
-  const add = (
-    dependent: CodeSymbol,
-    via: string,
-    relation: string,
-    hopDepth: number,
-  ): void => {
+  const add = (dependent: CodeSymbol, via: string, relation: string, hopDepth: number): void => {
     if (dependent.file === file) return;
     const key = `${dependent.file}|${dependent.line ?? ""}|${via}`;
     if (seen.has(key)) return;
@@ -272,7 +262,7 @@ export function affectedHits(
       a.depth - b.depth ||
       evidenceRank(a.relation) - evidenceRank(b.relation) ||
       a.file.localeCompare(b.file) ||
-      a.via.localeCompare(b.via),
+      a.via.localeCompare(b.via)
   );
   return hits;
 }
@@ -313,10 +303,7 @@ export function evidenceRank(relation: string): number {
  * hits first, and narrowing AFTER the cap would throw away the precise hits it
  * kept and keep the noise it dropped.
  */
-export function affectedResult(
-  symbols: readonly CodeSymbol[],
-  hits: readonly AffectedHit[],
-): AffectedResult {
+export function affectedResult(symbols: readonly CodeSymbol[], hits: readonly AffectedHit[]): AffectedResult {
   const best = new Map<string, AffectedHit>();
   for (const hit of hits) if (!best.has(hit.file)) best.set(hit.file, hit);
   const kept = [...best.values()].slice(0, MAX_AFFECTED_FILES);
@@ -411,8 +398,7 @@ const MAX_CANDIDATE_BYTES = 2 * 1024 * 1024;
  * still loses. That is the known price of the check and the reason it only
  * runs when the candidate list is already too long to read.
  */
-const INDIRECT_USE =
-  /^\s*(?:export\s+\*|import\s+(?:type\s+)?(?:\*\s+as\s+)?[A-Za-z_$][\w$]*\s*(?:,|from)\s)/m;
+const INDIRECT_USE = /^\s*(?:export\s+\*|import\s+(?:type\s+)?(?:\*\s+as\s+)?[A-Za-z_$][\w$]*\s*(?:,|from)\s)/m;
 
 /**
  * What reading one candidate file settled.
@@ -427,7 +413,7 @@ type Verdict = "names" | "unclear" | "unrelated";
 export async function narrowPackageHits(
   repo: string,
   hits: readonly AffectedHit[],
-  names: readonly string[],
+  names: readonly string[]
 ): Promise<AffectedHit[]> {
   const packageHits = hits.filter((h) => h.relation === PACKAGE_IMPORT);
   if (names.length === 0 || packageHits.length <= PACKAGE_HITS_WORTH_READING) return [...hits];
@@ -436,17 +422,14 @@ export async function narrowPackageHits(
   await Promise.all(
     packageHits.map(async (hit) => {
       verdicts.set(hit.file, await verdictFor(repo, hit.file, names));
-    }),
+    })
   );
-  const kept = hits.filter(
-    (h) => h.relation !== PACKAGE_IMPORT || verdicts.get(h.file) !== "unrelated",
-  );
+  const kept = hits.filter((h) => h.relation !== PACKAGE_IMPORT || verdicts.get(h.file) !== "unrelated");
   // `unclear` is kept, but LAST. The answer is capped on files, and a file
   // that only might use the symbol must not push out one that demonstrably
   // does — measured: without this ordering three scenarios of the sample lost
   // their true dependent to the cap while gaining nothing.
-  const doubtful = (h: AffectedHit): boolean =>
-    h.relation === PACKAGE_IMPORT && verdicts.get(h.file) === "unclear";
+  const doubtful = (h: AffectedHit): boolean => h.relation === PACKAGE_IMPORT && verdicts.get(h.file) === "unclear";
   return [...kept.filter((h) => !doubtful(h)), ...kept.filter(doubtful)];
 }
 
@@ -460,11 +443,7 @@ export async function narrowPackageHits(
  * re-exports onward: none of those is evidence of absence, and dropping on no
  * evidence is how a real dependent disappears from a list of candidates.
  */
-async function verdictFor(
-  repo: string,
-  file: string,
-  names: readonly string[],
-): Promise<Verdict> {
+async function verdictFor(repo: string, file: string, names: readonly string[]): Promise<Verdict> {
   let text: string;
   try {
     const buf = await readFile(resolve(repo, file));
@@ -651,7 +630,7 @@ export function allSymbolsOf(graph: LoadedGraph, file: string): CodeSymbol[] {
 export function symbolsNamed(
   graph: LoadedGraph,
   file: string,
-  names: readonly string[],
+  names: readonly string[]
 ): { found: CodeSymbol[]; unknown: string[] } {
   const inFile = allSymbolsOf(graph, file);
   const found: CodeSymbol[] = [];

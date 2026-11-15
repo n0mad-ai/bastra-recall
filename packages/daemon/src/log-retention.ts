@@ -63,12 +63,14 @@ export function resolveRetentionDays(env: string | undefined = process.env.BASTR
  *
  * Never throws — a housekeeping pass must not be able to take the daemon down.
  */
-export async function pruneEventLogs(opts: {
-  logDir?: string;
-  days?: number;
-  now?: number;
-  dryRun?: boolean;
-} = {}): Promise<RetentionResult> {
+export async function pruneEventLogs(
+  opts: {
+    logDir?: string;
+    days?: number;
+    now?: number;
+    dryRun?: boolean;
+  } = {}
+): Promise<RetentionResult> {
   const logDir = opts.logDir ?? defaultLogDir();
   const keptDays = opts.days ?? resolveRetentionDays();
   const now = opts.now ?? Date.now();

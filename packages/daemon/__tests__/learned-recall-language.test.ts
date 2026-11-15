@@ -104,5 +104,6 @@ test("#707: bridgeLanguage never returns null — Russian, Turkish, Greek file u
 
 test("#707: isBridgeLanguage checks the folder shape, not a language list", () => {
   for (const ok of ["de", "en", "und", "ru", "tr", "el"]) assert.equal(isBridgeLanguage(ok), true, ok);
-  for (const bad of ["archive", "../x", "", "DE", "de-DE", 42, null]) assert.equal(isBridgeLanguage(bad), false, String(bad));
+  for (const bad of ["archive", "../x", "", "DE", "de-DE", 42, null])
+    assert.equal(isBridgeLanguage(bad), false, String(bad));
 });

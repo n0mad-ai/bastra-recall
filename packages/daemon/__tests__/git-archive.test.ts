@@ -6,11 +6,28 @@
  */
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { SHIM_DIR, callReport, manifestRows, reconcilePlan, applyReconcile, restore, runRmShim } from "../src/rm-archive.js";
+import {
+  SHIM_DIR,
+  callReport,
+  manifestRows,
+  reconcilePlan,
+  applyReconcile,
+  restore,
+  runRmShim,
+} from "../src/rm-archive.js";
 import { cUnquote, gitAct, parseGit, runGitShim, unpin } from "../src/git-archive.js";
 import { matchPattern, runBashPreLane } from "../src/bash-pre-lane.js";
 
@@ -37,7 +54,14 @@ function repo(root: string, name: string) {
   /** What the caller can observe: worktree + index + untracked/ignored, branches, stash list. */
   const state = () =>
     // No commit shas: each twin's commits carry their own second.
-    [git("status", "--porcelain", "--untracked-files=all", "--ignored"), git("branch", "--format=%(refname:short) %(tree)"), git("stash", "list", "--format=%gs %T"), git("rev-parse", "HEAD^{tree}"), read("a"), read("b")].join("\n--\n");
+    [
+      git("status", "--porcelain", "--untracked-files=all", "--ignored"),
+      git("branch", "--format=%(refname:short) %(tree)"),
+      git("stash", "list", "--format=%gs %T"),
+      git("rev-parse", "HEAD^{tree}"),
+      read("a"),
+      read("b"),
+    ].join("\n--\n");
   return { dir, git, read, state };
 }
 
@@ -45,7 +69,12 @@ function twins() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "git-shim-")));
   // The suite runs with the shim switched off (scripts/test-env.mjs); here it is on.
   const { BASTRA_GIT_SHIM: _off, ...base } = process.env;
-  const env: NodeJS.ProcessEnv = { ...base, BASTRA_ARCHIVE_DIR: join(root, "_archive"), BASTRA_RM_TEMP_ROOTS: "", BASTRA_RM_CALL: "toolu_g" };
+  const env: NodeJS.ProcessEnv = {
+    ...base,
+    BASTRA_ARCHIVE_DIR: join(root, "_archive"),
+    BASTRA_RM_TEMP_ROOTS: "",
+    BASTRA_RM_CALL: "toolu_g",
+  };
   const bare = repo(root, "bare");
   const form = repo(root, "form");
   const shim = (...argv: string[]) => runGitShim(argv, { env, cwd: form.dir, ...quiet });
@@ -72,10 +101,16 @@ describe("#650 git snapshots — same end state as the real git, and the lost pa
     });
     const said: string[] = [];
     t.bare.git("clean", "-fdx");
-    assert.equal(runGitShim(["clean", "-fdx"], { env: t.env, cwd: t.form.dir, out: (s) => said.push(s), err: () => {} }), 0);
+    assert.equal(
+      runGitShim(["clean", "-fdx"], { env: t.env, cwd: t.form.dir, out: (s) => said.push(s), err: () => {} }),
+      0
+    );
     assert.equal(t.form.state(), t.bare.state());
     assert.deepEqual(said.sort(), ["Removing .gitignore", "Removing ig", "Removing u.txt", "Removing ud/"]);
-    const archived = manifestRows(t.env).filter((r) => r.action === "archived").map((r) => r.orig.slice(t.form.dir.length + 1)).sort();
+    const archived = manifestRows(t.env)
+      .filter((r) => r.action === "archived")
+      .map((r) => r.orig.slice(t.form.dir.length + 1))
+      .sort();
     assert.deepEqual(archived, [".gitignore", "ig", "u.txt", "ud"]);
     restore(join(t.form.dir, "ud"), t.env);
     assert.equal(t.form.read("ud/f"), "f\n");
@@ -113,7 +148,10 @@ describe("#650 git snapshots — same end state as the real git, and the lost pa
 
   it("git checkout -- <path> and git restore <path>: same end state; the receipt's command brings the path back", () => {
     // Revert-check: restore args `stash apply` for path acts → the untouched path b conflicts / is doubled.
-    for (const act of [["checkout", "--", "a"], ["restore", "a"]]) {
+    for (const act of [
+      ["checkout", "--", "a"],
+      ["restore", "a"],
+    ]) {
       const t = twins();
       t.both(dirty);
       t.bare.git(...act);
@@ -142,7 +180,10 @@ describe("#650 git snapshots — same end state as the real git, and the lost pa
     t.shim("branch", "-D", "side");
     assert.equal(t.form.state(), t.bare.state());
     const row = manifestRows(t.env).find((r) => r.action === "pinned")!;
-    assert.equal(row.sha, t.form.git("rev-parse", "refs/bastra-archive/" + (row.dest as string).split("refs/bastra-archive/")[1]));
+    assert.equal(
+      row.sha,
+      t.form.git("rev-parse", "refs/bastra-archive/" + (row.dest as string).split("refs/bastra-archive/")[1])
+    );
     restore(row.dest as string, t.env);
     assert.equal(t.form.git("rev-parse", "side"), t.form.git("rev-parse", row.sha as string));
     assert.ok(tip);
@@ -182,7 +223,10 @@ describe("#650 git snapshots — same end state as the real git, and the lost pa
     const pins = manifestRows(t.env).filter((r) => r.action === "pinned");
     assert.equal(new Set(pins.map((p) => p.dest)).size, 2);
     for (const p of pins) restore(p.dest as string, t.env);
-    assert.deepEqual(t.form.git("stash", "list", "--format=%s").split("\n").sort(), ["On main: first", "On main: second"]);
+    assert.deepEqual(t.form.git("stash", "list", "--format=%s").split("\n").sort(), [
+      "On main: first",
+      "On main: second",
+    ]);
   });
 
   it("the receipt names each pin and the command that puts it back", () => {
@@ -191,7 +235,10 @@ describe("#650 git snapshots — same end state as the real git, and the lost pa
     t.both(dirty);
     t.shim("reset", "-q", "--hard");
     const report = callReport("toolu_g", t.env) ?? "";
-    assert.match(report, /before `git reset --hard` in .*: saved [0-9a-f]{10} as refs\/bastra-archive\/reset\/.* \(restore: `git -C .* stash apply --index [0-9a-f]{40}`/);
+    assert.match(
+      report,
+      /before `git reset --hard` in .*: saved [0-9a-f]{10} as refs\/bastra-archive\/reset\/.* \(restore: `git -C .* stash apply --index [0-9a-f]{40}`/
+    );
   });
 
   it("a snapshot goes after the user retention: reconcile deletes the ref, only while it still names the sha", () => {
@@ -202,7 +249,10 @@ describe("#650 git snapshots — same end state as the real git, and the lost pa
     const row = manifestRows(t.env).find((r) => r.action === "pinned")!;
     assert.deepEqual(reconcilePlan(new Date(Date.now() + 1 * 86_400_000), 10 * 2 ** 30, t.env), []);
     const drop = reconcilePlan(new Date(Date.now() + 3 * 86_400_000), 10 * 2 ** 30, t.env);
-    assert.deepEqual(drop.map((d) => d.dest), [row.dest]);
+    assert.deepEqual(
+      drop.map((d) => d.dest),
+      [row.dest]
+    );
     applyReconcile(drop, t.env);
     assert.throws(() => t.form.git("rev-parse", "--verify", "-q", row.dest as string));
   });
@@ -234,7 +284,10 @@ describe("#650 git snapshots — refuse where the repository would run its own c
     const t = twins();
     dirty(t.form);
     const env = { ...t.env, BASTRA_RM_CALL: "" };
-    assert.equal(runGitShim(["-c", "advice.detachedHead=false", "reset", "-q", "--hard"], { env, cwd: t.form.dir, ...quiet }), 0);
+    assert.equal(
+      runGitShim(["-c", "advice.detachedHead=false", "reset", "-q", "--hard"], { env, cwd: t.form.dir, ...quiet }),
+      0
+    );
     assert.equal(manifestRows(t.env).length, 0);
     assert.equal(t.form.read("a"), "one\n", "the act itself ran");
   });
@@ -242,13 +295,27 @@ describe("#650 git snapshots — refuse where the repository would run its own c
   it("inside an allowed command the shell's expansion cannot bring in another form: not an act, not run", () => {
     // Revert-check: pass through whenever there is no act (drop the BASTRA_RM_CALL check) → `restore -p a`,
     // which the lane read as `git restore {-p,a}`, runs the real git under the allow.
-    for (const words of [["status"], ["-c", "core.hooksPath=/tmp/h", "reset", "--hard"], ["checkout", "-f", "main", "--"], ["reset", "--hard", "--recurse-submodules"], ["restore", "-p", "a"]]) {
+    for (const words of [
+      ["status"],
+      ["-c", "core.hooksPath=/tmp/h", "reset", "--hard"],
+      ["checkout", "-f", "main", "--"],
+      ["reset", "--hard", "--recurse-submodules"],
+      ["restore", "-p", "a"],
+    ]) {
       const t = twins();
       dirty(t.form);
       const before = t.form.state();
       const errs: string[] = [];
-      assert.equal(runGitShim(words, { env: t.env, cwd: t.form.dir, out: () => {}, err: (s) => errs.push(s) }), 1, words.join(" "));
-      assert.match(errs.join(""), /is not an act bastra's allow covers .* not run \(nothing changed\)/, words.join(" "));
+      assert.equal(
+        runGitShim(words, { env: t.env, cwd: t.form.dir, out: () => {}, err: (s) => errs.push(s) }),
+        1,
+        words.join(" ")
+      );
+      assert.match(
+        errs.join(""),
+        /is not an act bastra's allow covers .* not run \(nothing changed\)/,
+        words.join(" ")
+      );
       assert.equal(t.form.state(), before, words.join(" "));
     }
   });
@@ -257,7 +324,10 @@ describe("#650 git snapshots — refuse where the repository would run its own c
     // Revert-check: drop the BASTRA_GIT_SHIM check in runGitShim → the reset is pinned although the shim is off.
     const t = twins();
     dirty(t.form);
-    assert.equal(runGitShim(["reset", "-q", "--hard"], { env: { ...t.env, BASTRA_GIT_SHIM: "0" }, cwd: t.form.dir, ...quiet }), 0);
+    assert.equal(
+      runGitShim(["reset", "-q", "--hard"], { env: { ...t.env, BASTRA_GIT_SHIM: "0" }, cwd: t.form.dir, ...quiet }),
+      0
+    );
     assert.equal(manifestRows(t.env).length, 0);
     assert.equal(t.form.read("a"), "one\n");
   });
@@ -276,7 +346,11 @@ const act = (...words: string[]) => gitAct(parseGit(words)!);
 describe("#650 git snapshots — what the first pass found: the way back is whole", () => {
   it("restore -s <tree> / --source <tree>: the tree is not a path, and the pin comes back", () => {
     // Revert-check: drop `valued: ["-s", "--source"]` from restore's grammar → the form is no act, no pin.
-    for (const form of [["restore", "-s", "HEAD~1", "a"], ["restore", "--source", "HEAD~1", "a"], ["restore", "--source=HEAD~1", "a"]]) {
+    for (const form of [
+      ["restore", "-s", "HEAD~1", "a"],
+      ["restore", "--source", "HEAD~1", "a"],
+      ["restore", "--source=HEAD~1", "a"],
+    ]) {
       const t = twins();
       t.both(history);
       t.bare.git(...form);
@@ -306,7 +380,12 @@ describe("#650 git snapshots — what the first pass found: the way back is whol
 
   it("checkout <tree> -- <path> and restore --staged [--worktree]: the staged content comes back too", () => {
     // Revert-check: `const index = act.staged ? … : []` → `[]` → the index stays at the tree's content after restore.
-    for (const form of [["checkout", "HEAD", "--", "a"], ["restore", "--staged", "--worktree", "a"], ["restore", "-SW", "a"], ["restore", "--staged", "a"]]) {
+    for (const form of [
+      ["checkout", "HEAD", "--", "a"],
+      ["restore", "--staged", "--worktree", "a"],
+      ["restore", "-SW", "a"],
+      ["restore", "--staged", "a"],
+    ]) {
       const t = twins();
       t.both(dirty);
       t.bare.git(...form);
@@ -327,7 +406,7 @@ describe("#650 git snapshots — what the first pass found: the way back is whol
     t.shim("checkout", "HEAD", "--", "a");
     assert.match(
       callReport("toolu_g", t.env) ?? "",
-      /restore: `git -C \S+ --literal-pathspecs restore --source=[0-9a-f]{40}\^2 --staged -- a` then `git -C \S+ --literal-pathspecs restore --source=[0-9a-f]{40} --worktree -- a`, or `bastra archive restore refs/,
+      /restore: `git -C \S+ --literal-pathspecs restore --source=[0-9a-f]{40}\^2 --staged -- a` then `git -C \S+ --literal-pathspecs restore --source=[0-9a-f]{40} --worktree -- a`, or `bastra archive restore refs/
     );
   });
 
@@ -345,7 +424,11 @@ describe("#650 git snapshots — what the first pass found: the way back is whol
 
   it("an untracked file the act would overwrite goes to the archive first: reset --hard <commit>, checkout <tree> -- <path>, restore --source", () => {
     // Revert-check: skip the `for (const [i, at] of over.entries())` loop → nothing archived, the notes are gone.
-    for (const form of [["reset", "-q", "--hard", "main"], ["checkout", "main", "--", "n"], ["restore", "--source=main", "n"]]) {
+    for (const form of [
+      ["reset", "-q", "--hard", "main"],
+      ["checkout", "main", "--", "n"],
+      ["restore", "--source=main", "n"],
+    ]) {
       const t = twins();
       t.both((r) => {
         writeFileSync(join(r.dir, "n"), "tracked later\n");
@@ -361,7 +444,10 @@ describe("#650 git snapshots — what the first pass found: the way back is whol
       const [row] = archived(t.env);
       assert.equal(row.orig, join(t.form.dir, "n"), form.join(" "));
       assert.equal(readFileSync(row.dest as string, "utf8"), "my notes\n");
-      assert.match(callReport("toolu_g", t.env) ?? "", /archived \(before `git (?:reset --hard|checkout --|restore)`\) /);
+      assert.match(
+        callReport("toolu_g", t.env) ?? "",
+        /archived \(before `git (?:reset --hard|checkout --|restore)`\) /
+      );
     }
   });
 
@@ -397,7 +483,10 @@ describe("#650 git snapshots — what the first pass found: the way back is whol
     const [row] = pinned(t.env);
     assert.match(row.act as string, /stash@\{1\}/);
     restore(row.dest as string, t.env);
-    assert.deepEqual(t.form.git("stash", "list", "--format=%s").split("\n").sort(), ["On main: first", "On main: second"]);
+    assert.deepEqual(t.form.git("stash", "list", "--format=%s").split("\n").sort(), [
+      "On main: first",
+      "On main: second",
+    ]);
   });
 
   it("git branch -D -r: the remote-tracking branch is pinned and comes back", () => {
@@ -437,9 +526,17 @@ describe("#650 git snapshots — what the first pass found: the way back is whol
     t.both((r) => names.forEach((n) => writeFileSync(join(r.dir, n), "u\n")));
     const said: string[] = [];
     t.bare.git("clean", "-f");
-    assert.equal(runGitShim(["clean", "-f"], { env: t.env, cwd: t.form.dir, out: (s) => said.push(s), err: () => {} }), 0);
+    assert.equal(
+      runGitShim(["clean", "-f"], { env: t.env, cwd: t.form.dir, out: (s) => said.push(s), err: () => {} }),
+      0
+    );
     assert.equal(t.form.state(), t.bare.state());
-    assert.deepEqual(archived(t.env).map((r) => r.orig.slice(t.form.dir.length + 1)).sort(), [...names].sort());
+    assert.deepEqual(
+      archived(t.env)
+        .map((r) => r.orig.slice(t.form.dir.length + 1))
+        .sort(),
+      [...names].sort()
+    );
     assert.ok(said.includes('Removing "u\\ttab"'), "as git prints it");
   });
 
@@ -449,7 +546,15 @@ describe("#650 git snapshots — what the first pass found: the way back is whol
     t.both((r) => ["keep.qq", "go.txt"].forEach((n) => writeFileSync(join(r.dir, n), "u\n")));
     const said: string[] = [];
     t.bare.git("clean", "-fq", "-e", "*.qq");
-    assert.equal(runGitShim(["clean", "-fq", "-e", "*.qq"], { env: t.env, cwd: t.form.dir, out: (s) => said.push(s), err: () => {} }), 0);
+    assert.equal(
+      runGitShim(["clean", "-fq", "-e", "*.qq"], {
+        env: t.env,
+        cwd: t.form.dir,
+        out: (s) => said.push(s),
+        err: () => {},
+      }),
+      0
+    );
     assert.equal(t.form.state(), t.bare.state());
     assert.equal(t.form.read("keep.qq"), "u\n");
     assert.deepEqual(said, []);
@@ -546,18 +651,44 @@ describe("#650 git snapshots — what the first pass found: more ways a reposito
     //  - post-checkout only for `checkout --` → it runs on restore;
     //  - drop the promisor keys → the partial clone fetches through remote.<n>.uploadpack.
     const cases: Array<[string, (r: ReturnType<typeof repo>, mark: string) => void, string[], RegExp]> = [
-      ["include", (r, m) => (extra(r, `[core]\n\tfsmonitor = ${evil(r, m)}\n`), r.git("config", "include.path", "extra.cfg")), ["reset", "--hard"], /core\.fsmonitor/],
+      [
+        "include",
+        (r, m) => (extra(r, `[core]\n\tfsmonitor = ${evil(r, m)}\n`), r.git("config", "include.path", "extra.cfg")),
+        ["reset", "--hard"],
+        /core\.fsmonitor/,
+      ],
       [
         "includeIf",
-        (r, m) => (extra(r, `[core]\n\thooksPath = ${join(r.dir, ".git")}\n[filter "x"]\n\tsmudge = ${evil(r, m)}\n`), r.git("config", `includeIf.gitdir:${r.dir}/.path`, join(r.dir, ".git", "extra.cfg"))),
+        (r, m) => (
+          extra(r, `[core]\n\thooksPath = ${join(r.dir, ".git")}\n[filter "x"]\n\tsmudge = ${evil(r, m)}\n`),
+          r.git("config", `includeIf.gitdir:${r.dir}/.path`, join(r.dir, ".git", "extra.cfg"))
+        ),
         ["checkout", "--", "a"],
         /core\.hookspath|filter\.x\.smudge/,
       ],
-      ["config.worktree", (r, m) => (r.git("config", "extensions.worktreeConfig", "true"), r.git("config", "--worktree", "core.fsmonitor", evil(r, m))), ["reset", "--hard"], /core\.fsmonitor/],
+      [
+        "config.worktree",
+        (r, m) => (
+          r.git("config", "extensions.worktreeConfig", "true"),
+          r.git("config", "--worktree", "core.fsmonitor", evil(r, m))
+        ),
+        ["reset", "--hard"],
+        /core\.fsmonitor/,
+      ],
       ["post-index-change", (r) => writeHook(r, "post-index-change"), ["reset", "--hard"], /hook post-index-change/],
       ["post-checkout on restore", (r) => writeHook(r, "post-checkout"), ["restore", "a"], /hook post-checkout/],
-      ["partial clone", (r) => r.git("config", "remote.origin.promisor", "true"), ["reset", "--hard"], /remote\.origin\.promisor/],
-      ["partial clone (extension)", (r) => r.git("config", "extensions.partialClone", "origin"), ["checkout", "--", "a"], /extensions\.partialclone/],
+      [
+        "partial clone",
+        (r) => r.git("config", "remote.origin.promisor", "true"),
+        ["reset", "--hard"],
+        /remote\.origin\.promisor/,
+      ],
+      [
+        "partial clone (extension)",
+        (r) => r.git("config", "extensions.partialClone", "origin"),
+        ["checkout", "--", "a"],
+        /extensions\.partialclone/,
+      ],
     ];
     for (const [name, plant, words, why] of cases) {
       const t = twins();
@@ -565,11 +696,20 @@ describe("#650 git snapshots — what the first pass found: more ways a reposito
       dirty(t.form);
       plant(t.form, mark);
       // The test's own look at the index must not be what runs the planted program.
-      const seen = () => [t.form.read("a"), t.form.read("b"), t.form.git("-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "show", ":a")].join("|");
+      const seen = () =>
+        [
+          t.form.read("a"),
+          t.form.read("b"),
+          t.form.git("-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "show", ":a"),
+        ].join("|");
       const before = seen();
       assert.equal(existsSync(mark), false, `${name}: the test itself ran it`);
       const errs: string[] = [];
-      assert.equal(runGitShim(words, { env: t.env, cwd: t.form.dir, out: () => {}, err: (s) => errs.push(s) }), 1, name);
+      assert.equal(
+        runGitShim(words, { env: t.env, cwd: t.form.dir, out: () => {}, err: (s) => errs.push(s) }),
+        1,
+        name
+      );
       assert.equal(seen(), before, name);
       assert.match(errs.join(""), why, name);
       assert.match(errs.join(""), /nothing changed/, name);
@@ -582,7 +722,10 @@ describe("#650 git snapshots — what the first pass found: more ways a reposito
     // Revert-check: refuse `core.fsmonitor` whatever its value (drop `!FALSE.test(c.value)`) → the third case is refused.
     const cases: Array<[(r: ReturnType<typeof repo>) => void, string[]]> = [
       [(r) => writeHook(r, "post-checkout"), ["reset", "-q", "--hard"]],
-      [(r) => (writeHook(r, "post-checkout"), writeHook(r, "post-index-change"), r.git("branch", "side")), ["branch", "-q", "-D", "side"]],
+      [
+        (r) => (writeHook(r, "post-checkout"), writeHook(r, "post-index-change"), r.git("branch", "side")),
+        ["branch", "-q", "-D", "side"],
+      ],
       [(r) => r.git("config", "core.fsmonitor", "false"), ["reset", "-q", "--hard"]],
     ];
     for (const [plant, words] of cases) {
@@ -604,7 +747,10 @@ describe("#650 git snapshots — what the first pass found: more ways a reposito
     writeFileSync(join(t.form.dir, "a"), "outside\n");
     t.form.git("config", "submodule.recurse", "true");
     const errs: string[] = [];
-    assert.equal(runGitShim(["reset", "--hard"], { env: t.env, cwd: t.form.dir, out: () => {}, err: (s) => errs.push(s) }), 1);
+    assert.equal(
+      runGitShim(["reset", "--hard"], { env: t.env, cwd: t.form.dir, out: () => {}, err: (s) => errs.push(s) }),
+      1
+    );
     assert.match(errs.join(""), /submodule\.recurse is on/);
     assert.equal(t.form.read("sub/a"), "inside the submodule\n");
     assert.equal(t.form.read("a"), "outside\n");
@@ -630,7 +776,11 @@ describe("#650 git snapshots — what the first pass found: more ways a reposito
       t.form.git("update-index", flag, "a");
       writeFileSync(join(t.form.dir, "a"), "kept out of git's sight\n");
       const errs: string[] = [];
-      assert.equal(runGitShim(words, { env: t.env, cwd: t.form.dir, out: () => {}, err: (s) => errs.push(s) }), 1, `${flag} ${words.join(" ")}`);
+      assert.equal(
+        runGitShim(words, { env: t.env, cwd: t.form.dir, out: () => {}, err: (s) => errs.push(s) }),
+        1,
+        `${flag} ${words.join(" ")}`
+      );
       assert.match(errs.join(""), new RegExp(`a is marked ${flag.slice(2)}.*nothing changed`), words.join(" "));
       assert.equal(t.form.read("a"), "kept out of git's sight\n");
     }
@@ -657,7 +807,10 @@ describe("#650 git snapshots — what the first pass found: more ways a reposito
     t.form.git("commit", "-qam", "o2");
     assert.throws(() => t.form.git("merge", "main"));
     writeFileSync(join(t.form.dir, "a"), "resolved by hand\n");
-    for (const words of [["reset", "--hard"], ["checkout", "--theirs", "--", "a"]]) {
+    for (const words of [
+      ["reset", "--hard"],
+      ["checkout", "--theirs", "--", "a"],
+    ]) {
       const errs: string[] = [];
       assert.equal(runGitShim(words, { env: t.env, cwd: t.form.dir, out: () => {}, err: (s) => errs.push(s) }), 1);
       assert.match(errs.join(""), /unmerged paths \(a merge, rebase or cherry-pick in progress\).*nothing changed/);
@@ -668,7 +821,10 @@ describe("#650 git snapshots — what the first pass found: more ways a reposito
     writeFileSync(join(n.form.dir, "later"), "to be added\n");
     n.form.git("add", "-N", "later");
     const said: string[] = [];
-    assert.equal(runGitShim(["reset", "--hard"], { env: n.env, cwd: n.form.dir, out: () => {}, err: (s) => said.push(s) }), 1);
+    assert.equal(
+      runGitShim(["reset", "--hard"], { env: n.env, cwd: n.form.dir, out: () => {}, err: (s) => said.push(s) }),
+      1
+    );
     assert.match(said.join(""), /later was added with `git add -N`/);
     assert.equal(n.form.read("later"), "to be added\n");
     const unborn = join(t.root, "unborn");
@@ -677,7 +833,10 @@ describe("#650 git snapshots — what the first pass found: more ways a reposito
     writeFileSync(join(unborn, "n"), "staged, never committed\n");
     execFileSync("git", ["add", "n"], { cwd: unborn });
     const errs: string[] = [];
-    assert.equal(runGitShim(["reset", "--hard"], { env: t.env, cwd: unborn, out: () => {}, err: (s) => errs.push(s) }), 1);
+    assert.equal(
+      runGitShim(["reset", "--hard"], { env: t.env, cwd: unborn, out: () => {}, err: (s) => errs.push(s) }),
+      1
+    );
     assert.match(errs.join(""), /no commit yet/);
     assert.equal(readFileSync(join(unborn, "n"), "utf8"), "staged, never committed\n");
   });
@@ -698,7 +857,10 @@ describe("#650 git snapshots — what the first pass found: retention", () => {
     utimesSync(rotated, old, old);
     applyReconcile([], t.env);
     assert.ok(existsSync(rotated), "the pin is live: its manifest stays");
-    assert.deepEqual(reconcilePlan(new Date(Date.now() + 3 * 86_400_000), 10 * 2 ** 30, t.env).map((d) => d.dest), [row.dest]);
+    assert.deepEqual(
+      reconcilePlan(new Date(Date.now() + 3 * 86_400_000), 10 * 2 ** 30, t.env).map((d) => d.dest),
+      [row.dest]
+    );
     applyReconcile(reconcilePlan(new Date(Date.now() + 3 * 86_400_000), 10 * 2 ** 30, t.env), t.env);
     assert.throws(() => t.form.git("rev-parse", "--verify", "-q", row.dest as string));
     applyReconcile([], t.env);
@@ -715,19 +877,34 @@ describe("#650 git snapshots — what the first pass found: retention", () => {
     const archive = join(t.root, "_archive");
     mkdirSync(archive, { recursive: true });
     const row = (dest: string, restore: string[]) =>
-      JSON.stringify({ ts: "2000-01-01T00:00:00", action: "pinned", orig: t.form.dir, dest, sha, act: "x", restore, kind: "user", cwd: t.form.dir, argv: ["x"], call: "c" }) + "\n";
+      JSON.stringify({
+        ts: "2000-01-01T00:00:00",
+        action: "pinned",
+        orig: t.form.dir,
+        dest,
+        sha,
+        act: "x",
+        restore,
+        kind: "user",
+        cwd: t.form.dir,
+        argv: ["x"],
+        call: "c",
+      }) + "\n";
     t.form.git("update-ref", "refs/bastra-archive/branch/x/1", sha);
     writeFileSync(
       join(archive, "manifest.jsonl"),
       row("refs/heads/victim", ["-C", t.form.dir, "branch", "victim", sha]) +
         row("refs/bastra-archive/../heads/victim", ["-C", t.form.dir, "branch", "victim", sha]) +
-        row("refs/bastra-archive/branch/x/1", ["-C", t.form.dir, "-c", `alias.x=!echo ran > '${mark}'`, "x"]),
+        row("refs/bastra-archive/branch/x/1", ["-C", t.form.dir, "-c", `alias.x=!echo ran > '${mark}'`, "x"])
     );
     assert.throws(() => restore("refs/heads/victim", t.env), /not one bastra's git snapshots wrote/);
     assert.throws(() => restore("refs/bastra-archive/branch/x/1", t.env), /not one bastra's git snapshots wrote/);
     assert.equal(existsSync(mark), false, "the row's command ran");
     const drop = reconcilePlan(new Date(), 10 * 2 ** 30, t.env);
-    assert.deepEqual(drop.map((d) => d.dest), ["refs/bastra-archive/branch/x/1"]);
+    assert.deepEqual(
+      drop.map((d) => d.dest),
+      ["refs/bastra-archive/branch/x/1"]
+    );
     applyReconcile(drop, t.env);
     unpin(t.form.dir, "refs/heads/victim", sha);
     assert.equal(t.form.git("rev-parse", "refs/heads/victim"), sha);
@@ -781,7 +958,10 @@ describe("#650 git snapshots — next to the archiving rm", () => {
       assert.equal(runRmShim(["-f", "a"], { env: t.env, cwd: t.form.dir, ...quiet }), 0);
     } finally {
       process.env.PATH = prev.path;
-      for (const [k, v] of [["BASTRA_RM_CALL", prev.call], ["BASTRA_GIT_SHIM", prev.off]] as const) {
+      for (const [k, v] of [
+        ["BASTRA_RM_CALL", prev.call],
+        ["BASTRA_GIT_SHIM", prev.off],
+      ] as const) {
         if (v === undefined) delete process.env[k];
         else process.env[k] = v;
       }
@@ -815,8 +995,16 @@ function writeHook(r: ReturnType<typeof repo>, name: string): void {
 
 async function preHook(command: string, cwd?: string) {
   const stdout = await runBashPreLane(
-    { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command }, session_id: "s", tool_use_id: "toolu_1", bastra_client: "claude-code", ...(cwd ? { cwd } : {}) } as never,
-    "http://127.0.0.1:1",
+    {
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command },
+      session_id: "s",
+      tool_use_id: "toolu_1",
+      bastra_client: "claude-code",
+      ...(cwd ? { cwd } : {}),
+    } as never,
+    "http://127.0.0.1:1"
   );
   return JSON.parse(stdout || "{}").hookSpecificOutput ?? {};
 }
@@ -868,7 +1056,8 @@ describe("#650 git snapshots — the bash-pre lane allows only commands made of 
     await on(async () => {
       const { command } = (await preHook("git reset --hard")).updatedInput;
       assert.match(command, /^\[ -x '[^']*\/shims\/rm' \] && \[ -x '[^']*\/shims\/git' \] \|\| exit 97; /);
-      const moved = (cmd: string) => cmd.replaceAll(`${SHIM_DIR}/git`, "/nonexistent/bastra/shims/git").replace(/\n[^\n]*$/, "\necho ran");
+      const moved = (cmd: string) =>
+        cmd.replaceAll(`${SHIM_DIR}/git`, "/nonexistent/bastra/shims/git").replace(/\n[^\n]*$/, "\necho ran");
       const r = spawnSync("sh", ["-c", moved(command)], { encoding: "utf8" });
       assert.equal(r.status, 97);
       assert.equal(r.stdout, "");
@@ -917,7 +1106,10 @@ describe("#650 git snapshots — the bash-pre lane allows only commands made of 
     // Revert-check: shimOnly(cmd) without `take` in hintCore → `rm -rf build && git stash drop` is allowed with the git shim off.
     const prev = { rm: process.env.BASTRA_RM_SHIM, git: process.env.BASTRA_GIT_SHIM };
     const set = (rm: string | undefined, git: string | undefined) => {
-      for (const [k, v] of [["BASTRA_RM_SHIM", rm], ["BASTRA_GIT_SHIM", git]] as const) {
+      for (const [k, v] of [
+        ["BASTRA_RM_SHIM", rm],
+        ["BASTRA_GIT_SHIM", git],
+      ] as const) {
         if (v === undefined) delete process.env[k];
         else process.env[k] = v;
       }
@@ -976,7 +1168,10 @@ describe("#650 git snapshots — the bash-pre lane allows only commands made of 
     };
     const events = () => {
       try {
-        return readFileSync(join(process.env.BASTRA_LOG_PATH as string, `events-${new Date().toISOString().slice(0, 10)}.jsonl`), "utf8")
+        return readFileSync(
+          join(process.env.BASTRA_LOG_PATH as string, `events-${new Date().toISOString().slice(0, 10)}.jsonl`),
+          "utf8"
+        )
           .split("\n")
           .filter(Boolean)
           .map((l) => JSON.parse(l))
@@ -985,7 +1180,12 @@ describe("#650 git snapshots — the bash-pre lane allows only commands made of 
         return [];
       }
     };
-    const prev = { git: process.env.BASTRA_GIT_SHIM, rm: process.env.BASTRA_RM_SHIM, cfg: process.env.CLAUDE_CONFIG_DIR, tel: process.env.BASTRA_TELEMETRY };
+    const prev = {
+      git: process.env.BASTRA_GIT_SHIM,
+      rm: process.env.BASTRA_RM_SHIM,
+      cfg: process.env.CLAUDE_CONFIG_DIR,
+      tel: process.env.BASTRA_TELEMETRY,
+    };
     process.env.BASTRA_GIT_SHIM = "0";
     delete process.env.BASTRA_RM_SHIM;
     process.env.CLAUDE_CONFIG_DIR = project();
@@ -993,23 +1193,33 @@ describe("#650 git snapshots — the bash-pre lane allows only commands made of 
     try {
       const before = events().length;
       const plain = await preHook("git reset --hard", project());
-      assert.match(plain.additionalContext, /this exact command needs no confirmation: it saves what it discards first .* They refuse in a repository that runs its own code/);
+      assert.match(
+        plain.additionalContext,
+        /this exact command needs no confirmation: it saves what it discards first .* They refuse in a repository that runs its own code/
+      );
       const ask = await preHook("git checkout HEAD~1 -- a", project({ ask: ["Bash(git checkout:*)"] }));
       assert.match(ask.additionalContext, /would still be asked about \(your settings: `Bash\(git checkout:\*\)`\)/);
       const deny = await preHook("git stash drop", project({ deny: ["Bash(git stash:*)"] }));
       assert.doesNotMatch(deny.additionalContext, /switched off/, "a deny stays a deny with the snapshots on: no line");
       await preHook("git reset --hard && echo done", project());
       assert.deepEqual(
-        events().slice(before).map((e) => [e.kind, e.matched_pattern, e.git_only, e.settings_verdict, e.settings_rule, e.hinted]),
+        events()
+          .slice(before)
+          .map((e) => [e.kind, e.matched_pattern, e.git_only, e.settings_verdict, e.settings_rule, e.hinted]),
         [
           ["git_shim_shadow", "git reset --hard", true, "none", null, true],
           ["git_shim_shadow", "git checkout <tree> --", true, "ask", "Bash(git checkout:*)", true],
           ["git_shim_shadow", "git stash drop", true, "deny", "Bash(git stash:*)", false],
           ["git_shim_shadow", "git reset --hard", false, "none", null, false],
-        ],
+        ]
       );
     } finally {
-      for (const [k, v] of [["BASTRA_GIT_SHIM", prev.git], ["BASTRA_RM_SHIM", prev.rm], ["CLAUDE_CONFIG_DIR", prev.cfg], ["BASTRA_TELEMETRY", prev.tel]] as const) {
+      for (const [k, v] of [
+        ["BASTRA_GIT_SHIM", prev.git],
+        ["BASTRA_RM_SHIM", prev.rm],
+        ["CLAUDE_CONFIG_DIR", prev.cfg],
+        ["BASTRA_TELEMETRY", prev.tel],
+      ] as const) {
         if (v === undefined) delete process.env[k];
         else process.env[k] = v;
       }

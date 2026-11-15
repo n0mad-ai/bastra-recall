@@ -86,7 +86,9 @@ test("buildGraph: registered id becomes a skill node in the skills ring, not a g
     const plain = buildGraph(vault);
     assert.equal(plain.nodes.filter((n) => n.kind === "ghost").length, 2);
 
-    const g = buildGraph(vault, [{ id: "uncertainty-check", label: "Uncertainty check", note: "lives in ~/.claude/skills" }]);
+    const g = buildGraph(vault, [
+      { id: "uncertainty-check", label: "Uncertainty check", note: "lives in ~/.claude/skills" },
+    ]);
     const skill = g.nodes.find((n) => n.id === "uncertainty-check");
     assert.equal(skill?.kind, "skill");
     assert.equal(skill?.cluster, "skills");

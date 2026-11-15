@@ -77,7 +77,7 @@ describe("a broken pipe is a failed candidate, not a failed run", () => {
     await assert.rejects(
       () => pipeSpawn(spawn(...PRODUCER), spawn(...CONSUMER), "probe"),
       /^Error: probe: /,
-      "the label names which step failed, so the candidate's reason says what went wrong",
+      "the label names which step failed, so the candidate's reason says what went wrong"
     );
   });
 
@@ -100,14 +100,14 @@ describe("a broken pipe is a failed candidate, not a failed run", () => {
   test("a non-zero consumer carries its stderr into the reason", async () => {
     await assert.rejects(
       () => pipeSpawn(spawn("echo", ["x"]), spawn("tar", ["-x", "-C", "/nonexistent-code-roi-dir"]), "extract abc"),
-      /^Error: extract abc: /,
+      /^Error: extract abc: /
     );
   });
 
   test("a non-zero producer cannot be hidden by a consumer that exits zero", async () => {
     await assert.rejects(
       () => pipeSpawn(spawn("sh", ["-c", "echo producer-failed >&2; exit 7"]), spawn("cat"), "archive"),
-      /producer exited 7.*producer-failed/,
+      /producer exited 7.*producer-failed/
     );
   });
 });

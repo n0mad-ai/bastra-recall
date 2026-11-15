@@ -47,9 +47,7 @@ test("extractCandidates: JSON array of strings works, conversation export is rej
   const arr = extractCandidates(JSON.stringify(["Likes espresso more than filter coffee", "x"]));
   assert.deepEqual(arr, ["Likes espresso more than filter coffee"]);
 
-  const conversations = JSON.stringify([
-    { title: "chat 1", mapping: { a: { message: { content: "hi" } } } },
-  ]);
+  const conversations = JSON.stringify([{ title: "chat 1", mapping: { a: { message: { content: "hi" } } } }]);
   assert.throws(() => extractCandidates(conversations), ConversationExportError);
 });
 
@@ -138,14 +136,20 @@ test("POST /ui/import: gated on ui.enabled, stages like the CLI", async () => {
   const post = (body: unknown): Promise<{ status: number; json: Record<string, unknown> }> =>
     new Promise((resolve, reject) => {
       const req = request(
-        { hostname: "127.0.0.1", port, path: "/ui/import", method: "POST", headers: { "Content-Type": "application/json" } },
+        {
+          hostname: "127.0.0.1",
+          port,
+          path: "/ui/import",
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        },
         (res) => {
           let raw = "";
           res.on("data", (c) => (raw += c));
           res.on("end", () =>
-            resolve({ status: res.statusCode ?? 0, json: JSON.parse(raw) as Record<string, unknown> }),
+            resolve({ status: res.statusCode ?? 0, json: JSON.parse(raw) as Record<string, unknown> })
           );
-        },
+        }
       );
       req.on("error", reject);
       req.end(JSON.stringify(body));
@@ -159,7 +163,10 @@ test("POST /ui/import: gated on ui.enabled, stages like the CLI", async () => {
 
     await writeFile(settingsPath, JSON.stringify({ ui: { enabled: true } }));
 
-    const ok = await post({ text: "- Prefers concise replies without preamble\n- short\n- Works at a small AI startup in Berlin", source: "chatgpt" });
+    const ok = await post({
+      text: "- Prefers concise replies without preamble\n- short\n- Works at a small AI startup in Berlin",
+      source: "chatgpt",
+    });
     assert.equal(ok.status, 200);
     assert.equal(ok.json.staged, 2);
     assert.equal(ok.json.open_total, 2);
@@ -184,8 +191,8 @@ test("#529: overlapping stageImport writers keep the union and report durable co
     const shared = "Every writer stages this very same shared candidate line";
     const results = await Promise.all(
       Array.from({ length: writers }, (_, i) =>
-        stageImport(dir, "text", [`independent import candidate number ${String(i).padStart(3, "0")}`, shared]),
-      ),
+        stageImport(dir, "text", [`independent import candidate number ${String(i).padStart(3, "0")}`, shared])
+      )
     );
 
     // Durable union: every unique candidate plus the shared one exactly once.

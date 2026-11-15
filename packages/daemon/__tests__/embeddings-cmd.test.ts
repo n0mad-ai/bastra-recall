@@ -42,7 +42,7 @@ async function withTempFile<T>(fn: (path: string) => Promise<T>): Promise<T> {
  */
 async function withEnvAndStdout(
   envValue: string | null,
-  fn: () => Promise<number>,
+  fn: () => Promise<number>
 ): Promise<{ rc: number; out: string }> {
   const prev: Record<string, string | undefined> = {
     BASTRA_EMBEDDING_PROVIDER: process.env.BASTRA_EMBEDDING_PROVIDER,
@@ -106,7 +106,9 @@ test("embeddings on: setting is persisted even when env overrides (no download f
 test("embeddings status: default state names the default source and the OFF note", async () => {
   await withTempFile(async (path) => {
     const noDaemon = async () => ({ ok: false as const, detail: "unreachable" });
-    const { rc, out } = await withEnvAndStdout(null, () => cmdEmbeddings({ sub: "status", settingsPath: path, probe: noDaemon }));
+    const { rc, out } = await withEnvAndStdout(null, () =>
+      cmdEmbeddings({ sub: "status", settingsPath: path, probe: noDaemon })
+    );
     assert.equal(rc, 0);
     assert.match(out, /effective provider: none/);
     assert.match(out, /resolved via: default \(nothing configured\)/);
@@ -134,44 +136,92 @@ test("embeddings: unknown subcommand → usage + exit 2", async () => {
 // ─── install-end prompt guards (pure decision, no TTY needed) ────────────────
 
 test("install step: --no-ollama skips when no provider is effective", () => {
-  const a = decideInstallRecallAction({ ollamaFlag: "skip", effectiveProvider: "none", interactive: true, yes: false, dryRun: false });
+  const a = decideInstallRecallAction({
+    ollamaFlag: "skip",
+    effectiveProvider: "none",
+    interactive: true,
+    yes: false,
+    dryRun: false,
+  });
   assert.equal(a, "skip");
 });
 
 test("install step: --no-ollama with an already-effective provider stays silent (it skips provisioning, it disables nothing — e.g. `bastra update`'s hard-skip)", () => {
-  const a = decideInstallRecallAction({ ollamaFlag: "skip", effectiveProvider: "ollama", interactive: true, yes: false, dryRun: false });
+  const a = decideInstallRecallAction({
+    ollamaFlag: "skip",
+    effectiveProvider: "ollama",
+    interactive: true,
+    yes: false,
+    dryRun: false,
+  });
   assert.equal(a, "silent");
 });
 
 test("install step: --ollama provisions without asking (flag = consent)", () => {
-  const a = decideInstallRecallAction({ ollamaFlag: "auto", effectiveProvider: "none", interactive: false, yes: true, dryRun: false });
+  const a = decideInstallRecallAction({
+    ollamaFlag: "auto",
+    effectiveProvider: "none",
+    interactive: false,
+    yes: true,
+    dryRun: false,
+  });
   assert.equal(a, "provision");
 });
 
 test("install step: an already-effective provider (env or setting) stays silent", () => {
   for (const p of ["ollama", "openai"] as const) {
-    const a = decideInstallRecallAction({ ollamaFlag: null, effectiveProvider: p, interactive: true, yes: false, dryRun: false });
+    const a = decideInstallRecallAction({
+      ollamaFlag: null,
+      effectiveProvider: p,
+      interactive: true,
+      yes: false,
+      dryRun: false,
+    });
     assert.equal(a, "silent");
   }
 });
 
 test("install step: non-TTY never prompts (never hangs) — hint instead", () => {
-  const a = decideInstallRecallAction({ ollamaFlag: null, effectiveProvider: "none", interactive: false, yes: false, dryRun: false });
+  const a = decideInstallRecallAction({
+    ollamaFlag: null,
+    effectiveProvider: "none",
+    interactive: false,
+    yes: false,
+    dryRun: false,
+  });
   assert.equal(a, "hint");
 });
 
 test("install step: --yes suppresses the prompt (non-interactive convention) — hint instead", () => {
-  const a = decideInstallRecallAction({ ollamaFlag: null, effectiveProvider: "none", interactive: true, yes: true, dryRun: false });
+  const a = decideInstallRecallAction({
+    ollamaFlag: null,
+    effectiveProvider: "none",
+    interactive: true,
+    yes: true,
+    dryRun: false,
+  });
   assert.equal(a, "hint");
 });
 
 test("install step: --dry-run never prompts and never writes — hint instead", () => {
-  const a = decideInstallRecallAction({ ollamaFlag: null, effectiveProvider: "none", interactive: true, yes: false, dryRun: true });
+  const a = decideInstallRecallAction({
+    ollamaFlag: null,
+    effectiveProvider: "none",
+    interactive: true,
+    yes: false,
+    dryRun: true,
+  });
   assert.equal(a, "hint");
 });
 
 test("install step: interactive TTY with no effective provider → ask once", () => {
-  const a = decideInstallRecallAction({ ollamaFlag: null, effectiveProvider: "none", interactive: true, yes: false, dryRun: false });
+  const a = decideInstallRecallAction({
+    ollamaFlag: null,
+    effectiveProvider: "none",
+    interactive: true,
+    yes: false,
+    dryRun: false,
+  });
   assert.equal(a, "prompt");
 });
 
@@ -220,7 +270,9 @@ test("doctor: configured ollama with the model missing → actionable warning", 
     envValue: undefined,
     probe: { ok: true, detail: "running (0.9.1)", hasModel: false },
   });
-  assert.ok(lines.some((l) => /⚠ configured \(ollama, source: cli-settings\) but the embeddinggemma model is missing/.test(l)));
+  assert.ok(
+    lines.some((l) => /⚠ configured \(ollama, source: cli-settings\) but the embeddinggemma model is missing/.test(l))
+  );
   assert.ok(lines.some((l) => /Fix: bastra embeddings on/.test(l)));
 });
 
@@ -241,7 +293,11 @@ test("doctor: env overriding a different file value is mentioned", () => {
     envValue: "none",
     probe: null,
   });
-  assert.ok(lines.some((l) => l === "  note: BASTRA_EMBEDDING_PROVIDER=none (env) overrides embedding.provider=ollama (cli-settings)"));
+  assert.ok(
+    lines.some(
+      (l) => l === "  note: BASTRA_EMBEDDING_PROVIDER=none (env) overrides embedding.provider=ollama (cli-settings)"
+    )
+  );
 });
 
 test("doctor: healthy ollama → quiet ok line, no warnings", () => {
@@ -251,7 +307,9 @@ test("doctor: healthy ollama → quiet ok line, no warnings", () => {
     envValue: undefined,
     probe: { ok: true, detail: "running (0.9.1)", hasModel: true },
   });
-  assert.ok(lines.some((l) => /✓ ok: ollama running \(0\.9\.1\), model embeddinggemma present \(source: cli-settings\)/.test(l)));
+  assert.ok(
+    lines.some((l) => /✓ ok: ollama running \(0\.9\.1\), model embeddinggemma present \(source: cli-settings\)/.test(l))
+  );
   assert.ok(!lines.some((l) => l.includes("⚠")));
 });
 
@@ -290,7 +348,9 @@ test("embeddings status: running daemon with semantic recall ON shows both views
       embeddingMode: "ollama-embeddinggemma",
       embeddingSource: "env",
     });
-    const { rc, out } = await withEnvAndStdout(null, () => cmdEmbeddings({ sub: "status", settingsPath: path, probe: daemonOn }));
+    const { rc, out } = await withEnvAndStdout(null, () =>
+      cmdEmbeddings({ sub: "status", settingsPath: path, probe: daemonOn })
+    );
     assert.equal(rc, 0);
     // #531 — the line now names the endpoint the answer came from.
     assert.match(out, /running daemon at .+ semantic recall on \(ollama-embeddinggemma, source: env\)/);
@@ -314,7 +374,10 @@ test("#646: embeddings on names the model, the cost class and the off switch; a 
   assert.match(pulled, /generation model, not the embedding model/);
   assert.match(pulled, /BASTRA_TRIGGER_EXPAND=0/);
   assert.doesNotMatch(pulled, /ollama pull/);
-  assert.match(paraphrasingNotice("qwen2.5:7b", false).join("\n"), /⚠ qwen2\.5:7b is not pulled.*ollama pull qwen2\.5:7b/);
+  assert.match(
+    paraphrasingNotice("qwen2.5:7b", false).join("\n"),
+    /⚠ qwen2\.5:7b is not pulled.*ollama pull qwen2\.5:7b/
+  );
   // Ollama not answering proves nothing about the model: no pull hint.
   assert.doesNotMatch(paraphrasingNotice("qwen2.5:7b", null).join("\n"), /ollama pull/);
 });
@@ -326,13 +389,14 @@ test("#646: embeddings on under an env override to another provider says nothing
   });
 });
 
-
 test("doctor: Windows explains external setup and BM25 without changing provider state", () => {
   for (const platform of ["win32", "darwin", "linux"] as const) {
     const lines = formatEmbeddingDoctorLines({
       platform,
       choice: { provider: "none", source: "none" },
-      fileProvider: undefined, envValue: undefined, probe: null,
+      fileProvider: undefined,
+      envValue: undefined,
+      probe: null,
     }).join("\n");
     assert.equal(lines.includes("Windows includes no bundled Ollama"), platform === "win32");
     if (platform === "win32") {
@@ -344,7 +408,8 @@ test("doctor: Windows explains external setup and BM25 without changing provider
   const ready = formatEmbeddingDoctorLines({
     platform: "win32",
     choice: { provider: "ollama", source: "cli-settings" },
-    fileProvider: "ollama", envValue: undefined,
+    fileProvider: "ollama",
+    envValue: undefined,
     probe: { ok: true, detail: "running", hasModel: true },
   }).join("\n");
   assert.match(ready, /✓ ok: ollama/);

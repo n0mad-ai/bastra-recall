@@ -3,7 +3,14 @@ import { bastraDataDir } from "./platform-paths.js";
 import { join } from "node:path";
 import { withPathLock } from "./path-lock.js";
 import { readAppRecord, writeAppRecord } from "./app-record-store.js";
-import { SETTINGS_REGISTRY, parseStoredSettings, DEFAULT_UPDATE_MODE, type CliSettings, type DocsMode, type EmbeddingProviderName } from "./settings-registry.js";
+import {
+  SETTINGS_REGISTRY,
+  parseStoredSettings,
+  DEFAULT_UPDATE_MODE,
+  type CliSettings,
+  type DocsMode,
+  type EmbeddingProviderName,
+} from "./settings-registry.js";
 export * from "./settings-registry.js";
 
 export function settingsFilePath(): string {
@@ -52,7 +59,7 @@ function warnAboutUnknownKeys(data: unknown, path: string): void {
   const unknown = Object.keys(data).filter((k) => !KNOWN_SETTINGS_KEYS.includes(k));
   if (unknown.length === 0) return;
   process.stderr.write(
-    `[bastra-recall] cli-settings.json: unknown key(s) ${unknown.join(", ")} — this build does not understand them and the next write will drop them (${path})\n`,
+    `[bastra-recall] cli-settings.json: unknown key(s) ${unknown.join(", ")} — this build does not understand them and the next write will drop them (${path})\n`
   );
 }
 
@@ -85,7 +92,7 @@ export async function settingsFileState(path: string = settingsFilePath()): Prom
 
 /** The ONE read of the file: its text, or why there is none. */
 async function readSettingsText(
-  path: string,
+  path: string
 ): Promise<{ state: "missing" } | { state: { unreadable: string } } | { state: "text"; raw: string }> {
   let raw: string;
   try {
@@ -120,8 +127,10 @@ async function readSettingsSnapshot(path: string): Promise<{ state: SettingsFile
 /** Why a writer that must not lose settings refuses this file, or null. No
  *  path in the text: it is printed, and may end up in a chat transcript. */
 export function settingsFileRefusal(state: SettingsFileState, opts: { refuseCorrupt?: boolean } = {}): string | null {
-  if (typeof state === "object") return `the settings file exists but cannot be read (${state.unreadable}) — nothing was written to it`;
-  if (state === "corrupt" && opts.refuseCorrupt) return "the settings file is not valid JSON — fix or delete it first (bastra names the file on every run)";
+  if (typeof state === "object")
+    return `the settings file exists but cannot be read (${state.unreadable}) — nothing was written to it`;
+  if (state === "corrupt" && opts.refuseCorrupt)
+    return "the settings file is not valid JSON — fix or delete it first (bastra names the file on every run)";
   return null;
 }
 
@@ -138,8 +147,9 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
  *  said so on stderr); the settings are the defaults then. */
 function parseSettingsText(raw: string, path: string): { settings: CliSettings; corrupt: boolean } {
   let data: unknown;
-  try { data = JSON.parse(raw); }
-  catch {
+  try {
+    data = JSON.parse(raw);
+  } catch {
     // Never include JSON parser snippets: they may contain API tokens.
     process.stderr.write(`[bastra-recall] cli-settings.json is corrupt — using defaults. Fix or restore ${path}\n`);
     return { settings: { update: { mode: DEFAULT_UPDATE_MODE } }, corrupt: true };
@@ -188,7 +198,7 @@ async function writeSettings(next: CliSettings, path: string): Promise<void> {
 export async function mutateSettings(
   path: string,
   mutate: (current: CliSettings) => CliSettings | null,
-  opts: { refuseCorrupt?: boolean; requireLock?: boolean } = {},
+  opts: { refuseCorrupt?: boolean; requireLock?: boolean } = {}
 ): Promise<void> {
   await withPathLock(
     path,
@@ -204,6 +214,6 @@ export async function mutateSettings(
     // `requireLock`: reject instead of writing without the cross-process lock
     // (path-lock.ts). For the model answers and the question claim; every
     // other setter keeps path-lock's fail-open.
-    { crossProcess: true, requireLock: opts.requireLock },
+    { crossProcess: true, requireLock: opts.requireLock }
   );
 }

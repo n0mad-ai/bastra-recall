@@ -70,7 +70,7 @@ async function runLane(lane: string, sessionId: string): Promise<Record<string, 
         hook_event_name: lane === "bash-pre" ? "PreToolUse" : "PostToolUse",
         tool_name: "Bash",
         tool_input: { command: "rm -rf /tmp/nothing" },
-      }),
+      })
     );
     child.stdin.end();
   });
@@ -90,10 +90,14 @@ test("#305: a client-side Bash failure is written into the Bash lane, not the wr
   assert.equal(pre.session_id, "session-bash-pre");
   assert.equal(post.session_id, "session-bash-post");
   for (const row of [pre, post]) {
-    assert.match(String(row.hook_version), /-stub$/, "the row must declare itself a client row, or it cannot be folded");
+    assert.match(
+      String(row.hook_version),
+      /-stub$/,
+      "the row must declare itself a client row, or it cannot be folded"
+    );
     assert.ok(
       ["daemon-unreachable", "timeout", "error"].includes(String(row.status)),
-      `a dead daemon must be recorded as a failure, got ${String(row.status)}`,
+      `a dead daemon must be recorded as a failure, got ${String(row.status)}`
     );
   }
 
@@ -133,7 +137,7 @@ test("#305: no two client lanes write the same event kind", async () => {
     if (kind === "gate_hook_call") continue;
     assert.ok(
       kind === "prompt_hook_call" || GATE_LANE_BY_KIND[kind] !== undefined,
-      `${lane} writes \`${kind}\`, which no lane of the release gate counts`,
+      `${lane} writes \`${kind}\`, which no lane of the release gate counts`
     );
   }
 });

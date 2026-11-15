@@ -50,7 +50,7 @@ export function dispatchUiRoutes(
   res: ServerResponse,
   method: string,
   url: string,
-  ctx: UiRouteCtx,
+  ctx: UiRouteCtx
 ): boolean {
   const { vault, search, toolDeps, liveUpdates } = ctx;
   if (dispatchUiGraph(req, res, method, url, ctx)) return true;
@@ -81,7 +81,7 @@ export function dispatchUiRoutes(
   // staging), but only into memories/imported/.
   if (method === "POST" && url === "/ui/import-vault") {
     handleUiImportVault(req, res, toolDeps.vaultPath, () => vault.reconcile()).catch(() =>
-      sendJson(res, 500, { error: "import error" }),
+      sendJson(res, 500, { error: "import error" })
     );
     return true;
   }
@@ -105,7 +105,7 @@ export function dispatchUiRoutes(
   // top-level areas. Bulk folder moves heal with one reconcile.
   if ((method === "GET" || method === "POST") && url === "/ui/areas") {
     handleUiAreas(req, res, toolDeps.vaultPath, () => vault.reconcile()).catch(() =>
-      sendJson(res, 500, { error: "areas error" }),
+      sendJson(res, 500, { error: "areas error" })
     );
     return true;
   }
@@ -116,11 +116,15 @@ export function dispatchUiRoutes(
   // Onboarding interview: needed-flag for the session hook (loopback, not
   // ui-gated) and the map dialog's catalog + answer submission (ui-gated).
   if (method === "GET" && url === "/hook/onboarding") {
-    handleHookOnboarding(res, toolDeps.vaultPath, vault.size()).catch(() => sendJson(res, 500, { error: "onboarding error" }));
+    handleHookOnboarding(res, toolDeps.vaultPath, vault.size()).catch(() =>
+      sendJson(res, 500, { error: "onboarding error" })
+    );
     return true;
   }
   if ((method === "GET" || method === "POST") && url === "/ui/onboarding") {
-    handleUiOnboarding(req, res, toolDeps.vaultPath, vault.size()).catch(() => sendJson(res, 500, { error: "onboarding error" }));
+    handleUiOnboarding(req, res, toolDeps.vaultPath, vault.size()).catch(() =>
+      sendJson(res, 500, { error: "onboarding error" })
+    );
     return true;
   }
   // Session-context for hookless clients (Claude Desktop, Cursor): the MCP
@@ -128,9 +132,7 @@ export function dispatchUiRoutes(
   // the same context the SessionStart hook injects in Claude Code.
   // Loopback-only (Host-Gate above), read-only, no auth — like /hook/care.
   if (method === "GET" && url === "/hook/session-context") {
-    handleSessionContext(req, res, toolDeps, vault).catch(() =>
-      sendJson(res, 500, { error: "session-context error" }),
-    );
+    handleSessionContext(req, res, toolDeps, vault).catch(() => sendJson(res, 500, { error: "session-context error" }));
     return true;
   }
   // #265: derselbe Pfad, projektbewusst und mit Budgets. GET bleibt der
@@ -138,7 +140,7 @@ export function dispatchUiRoutes(
   // liefert die Blockliste, den §9.4-Marker und die Budgetbilanz daneben.
   if (method === "POST" && url === "/hook/session-context") {
     handleSessionContextPost(req, res, toolDeps, vault).catch(() =>
-      sendJson(res, 500, { error: "session-context error" }),
+      sendJson(res, 500, { error: "session-context error" })
     );
     return true;
   }
@@ -165,12 +167,19 @@ export function dispatchUiRoutes(
     const listTasks = async (): Promise<unknown> => {
       const token = taskClientToken();
       if (!token) return null;
-      const result = (await callTaskCrud(defaultTaskContext(toolDeps, true), `Bearer ${token}`, "task_list", {})) as { tasks?: unknown };
+      const result = (await callTaskCrud(defaultTaskContext(toolDeps, true), `Bearer ${token}`, "task_list", {})) as {
+        tasks?: unknown;
+      };
       return result.tasks ?? [];
     };
-    handleUiChat(req, res, { search, chat: ctx.uiChat ?? null, getBody, history: chatHistory, isPrivate, listTasks }).catch(() =>
-      sendJson(res, 500, { error: "ui error" }),
-    );
+    handleUiChat(req, res, {
+      search,
+      chat: ctx.uiChat ?? null,
+      getBody,
+      history: chatHistory,
+      isPrivate,
+      listTasks,
+    }).catch(() => sendJson(res, 500, { error: "ui error" }));
     return true;
   }
   // Agent window history (chat-history.ts): list, open, delete conversations.

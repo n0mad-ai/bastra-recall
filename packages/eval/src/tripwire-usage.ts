@@ -31,7 +31,9 @@ function logDir(): string {
 function readEvents(dir: string, sinceDay: string): Ev[] {
   if (!existsSync(dir)) return [];
   const out: Ev[] = [];
-  for (const file of readdirSync(dir).filter((f) => f.startsWith("events-") && f.endsWith(".jsonl")).sort()) {
+  for (const file of readdirSync(dir)
+    .filter((f) => f.startsWith("events-") && f.endsWith(".jsonl"))
+    .sort()) {
     if (file.slice(7, 17) < sinceDay) continue;
     for (const line of readFileSync(join(dir, file), "utf8").split("\n")) {
       if (!line.trim()) continue;
@@ -45,8 +47,7 @@ function readEvents(dir: string, sinceDay: string): Ev[] {
   return out;
 }
 
-const since =
-  process.env.SINCE ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+const since = process.env.SINCE ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const dir = logDir();
 const events = readEvents(dir, since);
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -110,15 +111,17 @@ console.log(
     [...byPattern.entries()]
       .sort((a, b) => b[1] - a[1])
       .map(([p, n]) => `${p}=${n}`)
-      .join(", "),
+      .join(", ")
 );
 console.log(`  tokens injected: ${tokens} (${withHints ? Math.round(tokens / withHints) : 0}/hint)`);
 console.log(`  distinct memories hinted: ${hinted.size}`);
 for (const [id, n] of [...hinted.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)) {
   console.log(`    ${String(n).padStart(5)}  ${id}`);
 }
-console.log(`follow-through: ${followed} hinted ids loaded within 15 min (${withHints ? ((100 * followed) / withHints).toFixed(1) : "0.0"}% of hinting calls)`);
+console.log(
+  `follow-through: ${followed} hinted ids loaded within 15 min (${withHints ? ((100 * followed) / withHints).toFixed(1) : "0.0"}% of hinting calls)`
+);
 console.log(
   "share of hook-injected tokens: " +
-    [...share.entries()].map(([k, v]) => `${k} ${v} (${total ? Math.round((100 * v) / total) : 0}%)`).join(", "),
+    [...share.entries()].map(([k, v]) => `${k} ${v} (${total ? Math.round((100 * v) / total) : 0}%)`).join(", ")
 );

@@ -89,7 +89,10 @@ describe("the applies_to block", () => {
   it("separates the one-hop memory and says where it came from", async () => {
     const note = await appliesToNote(opts());
     assert.ok(note);
-    assert.match(note.note, /Attached to a file that depends on it[^\n]*m-audit[^\n]*via packages\/core\/src\/audit-save\.ts/);
+    assert.match(
+      note.note,
+      /Attached to a file that depends on it[^\n]*m-audit[^\n]*via packages\/core\/src\/audit-save\.ts/
+    );
   });
 
   it("never claims required — every line is optional on this path", async () => {
@@ -145,7 +148,10 @@ describe("the process-wide index", () => {
     unbindAppliesToVault();
   });
 
-  function fakeVault(): AppliesToVaultSource & { memories: Array<{ fm: { id: string; affects_files: string[] } }>; fire: () => void } {
+  function fakeVault(): AppliesToVaultSource & {
+    memories: Array<{ fm: { id: string; affects_files: string[] } }>;
+    fire: () => void;
+  } {
     const listeners = new Set<() => void>();
     return {
       memories: [{ fm: { id: "m1", affects_files: [SAVE] } }],
@@ -170,7 +176,10 @@ describe("the process-wide index", () => {
     bindAppliesToVault(fakeVault());
     const first = appliesToIndex();
     assert.ok(first);
-    assert.deepEqual(first.directOn(SAVE).map((c) => c.memoryId), ["m1"]);
+    assert.deepEqual(
+      first.directOn(SAVE).map((c) => c.memoryId),
+      ["m1"]
+    );
     assert.equal(appliesToIndex(), first, "a second call reuses the build");
   });
 
@@ -183,7 +192,10 @@ describe("the process-wide index", () => {
     vault.fire();
     const second = appliesToIndex();
     assert.notEqual(second, first);
-    assert.deepEqual(second?.directOn(SAVE).map((c) => c.memoryId), ["m1", "m2"]);
+    assert.deepEqual(
+      second?.directOn(SAVE).map((c) => c.memoryId),
+      ["m1", "m2"]
+    );
   });
 
   it("lets go of the listener on unbind", () => {

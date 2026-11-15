@@ -13,20 +13,14 @@ import { timingSafeEqual } from "node:crypto";
 // nicht jedes Mal authentifizieren müssen.
 export function isLoopback(req: IncomingMessage): boolean {
   const addr = req.socket.remoteAddress ?? "";
-  return (
-    addr === "127.0.0.1" ||
-    addr === "::1" ||
-    addr === "::ffff:127.0.0.1"
-  );
+  return addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1";
 }
 
 /** #1264: presence alone marks a forwarded request, even an empty header or
  * a claimed localhost value. Never trust proxy-supplied addresses as proof
  * that the original caller was local. Node lowercases incoming header names. */
 export function hasForwardingHeaders(req: IncomingMessage): boolean {
-  return ["forwarded", "x-forwarded-for", "x-forwarded-host"].some(
-    (name) => Object.hasOwn(req.headers, name),
-  );
+  return ["forwarded", "x-forwarded-for", "x-forwarded-host"].some((name) => Object.hasOwn(req.headers, name));
 }
 
 /**
@@ -58,10 +52,7 @@ export function safeEqual(a: string, b: string): boolean {
  * MCP-Forwarder, node:http im thin-client) setzt den Header selbst; HTTP/1.1
  * verlangt ihn ohnehin. Exported for unit tests.
  */
-export function isLoopbackHost(
-  hostHeader: string | undefined,
-  extraHosts: readonly string[],
-): boolean {
+export function isLoopbackHost(hostHeader: string | undefined, extraHosts: readonly string[]): boolean {
   if (!hostHeader) return false;
   const lower = hostHeader.toLowerCase();
   const host = lower.replace(/:\d+$/, "");
@@ -103,10 +94,7 @@ export function resolveCorsAllowlist(fromEnv: readonly string[], fromSettings: r
  * in the allowlist is permissive (tunnel/dev): reflect the caller's origin, or
  * "*" when there's none. Exported for unit tests.
  */
-export function resolveCorsOrigin(
-  reqOrigin: string | undefined,
-  allow: readonly string[],
-): string | null {
+export function resolveCorsOrigin(reqOrigin: string | undefined, allow: readonly string[]): string | null {
   if (allow.includes("*")) return reqOrigin ?? "*";
   if (reqOrigin && allow.includes(reqOrigin)) return reqOrigin;
   return null;
@@ -126,9 +114,12 @@ export function gateLocalPost(p: {
     let sameOrigin = false;
     try {
       const origin = new URL(p.origin);
-      sameOrigin = (origin.protocol === "http:" || origin.protocol === "https:") &&
+      sameOrigin =
+        (origin.protocol === "http:" || origin.protocol === "https:") &&
         origin.host.toLowerCase() === p.host?.toLowerCase();
-    } catch { /* malformed and opaque origins are foreign */ }
+    } catch {
+      /* malformed and opaque origins are foreign */
+    }
     if (!sameOrigin) return 403;
   }
   const type = p.contentType?.split(";", 1)[0]?.trim().toLowerCase();

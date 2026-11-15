@@ -9,7 +9,9 @@ import type { Draft } from "./draft-store.js";
 type Situation = Draft["situation"];
 
 export function situationForTurn(
-  turns: TranscriptTurn[], index: number, typed: (turn: TranscriptTurn) => boolean,
+  turns: TranscriptTurn[],
+  index: number,
+  typed: (turn: TranscriptTurn) => boolean
 ): Situation {
   const empty: Situation = { before: [], after: [], reads: [], lits: [] };
   let start = index - 1;
@@ -20,19 +22,39 @@ export function situationForTurn(
   const following = turns.slice(index + 1, end);
   const metadata = [...prior, turns[index]];
   // Codex parsing is unchanged in B2 and supplies none of these Claude fields.
-  if (!metadata.some(t => t.cwd !== undefined || t.branch !== undefined || t.at !== undefined || t.failed !== undefined)) return empty;
+  if (
+    !metadata.some((t) => t.cwd !== undefined || t.branch !== undefined || t.at !== undefined || t.failed !== undefined)
+  )
+    return empty;
   // Preserve full-command redaction; only derive cues after the store's bounds.
   const clean = (text: string): string => cleanDraftText(redactSecrets(text, homedir()).text);
-  const before = prior.filter(t => t.role === "assistant").flatMap(t => t.commands ?? []).slice(-3).map(clean);
-  const after = following.filter(t => t.role === "assistant").flatMap(t => t.commands ?? []).slice(0, 3).map(clean);
-  const reads = prior.filter(t => t.role === "assistant").flatMap(t => (t.reads ?? []).map(r => r.path)).slice(-3).map(clean);
-  const rawCwd = [...metadata].reverse().find(t => t.cwd !== undefined)?.cwd;
+  const before = prior
+    .filter((t) => t.role === "assistant")
+    .flatMap((t) => t.commands ?? [])
+    .slice(-3)
+    .map(clean);
+  const after = following
+    .filter((t) => t.role === "assistant")
+    .flatMap((t) => t.commands ?? [])
+    .slice(0, 3)
+    .map(clean);
+  const reads = prior
+    .filter((t) => t.role === "assistant")
+    .flatMap((t) => (t.reads ?? []).map((r) => r.path))
+    .slice(-3)
+    .map(clean);
+  const rawCwd = [...metadata].reverse().find((t) => t.cwd !== undefined)?.cwd;
   const cwd = rawCwd ? clean(rawCwd) : undefined;
-  const branch = [...metadata].reverse().find(t => t.branch !== undefined && (!rawCwd || t.cwd === rawCwd))?.branch;
+  const branch = [...metadata].reverse().find((t) => t.branch !== undefined && (!rawCwd || t.cwd === rawCwd))?.branch;
   const project = cwd ? basename(cwd) : undefined;
-  const situation: Situation = { before, after, reads, lits: [],
+  const situation: Situation = {
+    before,
+    after,
+    reads,
+    lits: [],
     ...(cwd ? { cwd: clean(cwd), project: clean(project!) } : {}),
-    ...(branch !== undefined ? { branch: clean(branch) } : {}) };
+    ...(branch !== undefined ? { branch: clean(branch) } : {}),
+  };
   situation.lits = situationLiterals(situation);
   return situation;
 }
@@ -81,7 +103,9 @@ export function situationLiterals(situation: Situation): string[] {
  * The last tool result since the preceding typed turn decides; a later success
  * or unknown result suppresses the label. */
 export function afterFailureForTurn(
-  turns: TranscriptTurn[], index: number, typed: (turn: TranscriptTurn) => boolean,
+  turns: TranscriptTurn[],
+  index: number,
+  typed: (turn: TranscriptTurn) => boolean
 ): boolean {
   for (let i = index - 1; i >= 0 && !typed(turns[i]); i--) {
     if (turns[i].role === "tool") return turns[i].failed === true;

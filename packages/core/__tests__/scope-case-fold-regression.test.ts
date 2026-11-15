@@ -34,7 +34,7 @@ function memo(
   title: string,
   scope: string,
   recallWhen: string,
-  relatedVia?: { id: string; reason: string; score: number }[],
+  relatedVia?: { id: string; reason: string; score: number }[]
 ): string {
   const ts = new Date().toISOString();
   const lines = [
@@ -66,7 +66,7 @@ test("BM25 path: scope 'CarNexus' finds a memory scoped 'carnexus'", async () =>
   await writeFile(
     path.join(dir, "m1.md"),
     memo("m1", "deploy pipeline note", "carnexus", "carnexus deploy pipeline trigger"),
-    "utf8",
+    "utf8"
   );
   const vault = new Vault(dir);
   await vault.init();
@@ -76,7 +76,7 @@ test("BM25 path: scope 'CarNexus' finds a memory scoped 'carnexus'", async () =>
     const hits = idx.recall("carnexus deploy pipeline", { scope: "CarNexus", k: 5 });
     assert.ok(
       hits.some((h) => h.id === "m1"),
-      "a capitalised scope filter must still find the project's own (lowercase-scoped) memory",
+      "a capitalised scope filter must still find the project's own (lowercase-scoped) memory"
     );
   } finally {
     idx.stop();
@@ -94,12 +94,12 @@ test("Hop-expansion path: a neighbour scoped 'carnexus' survives a 'CarNexus' fi
     memo("seed", "seed memory", "carnexus", "hop seed trigger phrase", [
       { id: "neighbor", reason: "same investigation", score: 0.9 },
     ]),
-    "utf8",
+    "utf8"
   );
   await writeFile(
     path.join(dir, "neighbor.md"),
     memo("neighbor", "neighbour memory", "carnexus", "unrelated neighbour phrase"),
-    "utf8",
+    "utf8"
   );
   const vault = new Vault(dir);
   await vault.init();
@@ -109,7 +109,7 @@ test("Hop-expansion path: a neighbour scoped 'carnexus' survives a 'CarNexus' fi
     const hits = idx.recall("hop seed trigger", { scope: "CarNexus", k: 5, expand_hops: 1 });
     assert.ok(
       hits.some((h) => h.id === "neighbor"),
-      "the related_via neighbour must survive the folded scope filter too",
+      "the related_via neighbour must survive the folded scope filter too"
     );
   } finally {
     idx.stop();
@@ -123,7 +123,7 @@ test("Vector-arm path: scope 'CarNexus' finds a memory scoped 'carnexus'", async
   await writeFile(
     path.join(dir, "m1.md"),
     memo("m1", "vector arm probe", "carnexus", "vector arm probe trigger"),
-    "utf8",
+    "utf8"
   );
   const vault = new Vault(dir);
   await vault.init();
@@ -136,7 +136,7 @@ test("Vector-arm path: scope 'CarNexus' finds a memory scoped 'carnexus'", async
     const hits = await idx.recallHybrid("vector arm probe trigger", { scope: "CarNexus", k: 5 });
     assert.ok(
       hits.some((h) => h.id === "m1"),
-      "the dense arm's own scope filter must fold case too, not just BM25's",
+      "the dense arm's own scope filter must fold case too, not just BM25's"
     );
   } finally {
     await emb.stop();

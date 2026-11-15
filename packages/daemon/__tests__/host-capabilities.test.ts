@@ -21,7 +21,7 @@ test("all evidence rows record all capabilities, sources, runtime scope and cove
     for (const value of Object.values(row.capabilities)) {
       assert.ok(statuses.includes(value.status));
       assert.ok(statuses.includes(value.bastra));
-      assert.ok(value.sources.every(url => url.startsWith("https://")) && value.sources.length);
+      assert.ok(value.sources.every((url) => url.startsWith("https://")) && value.sources.length);
       assert.ok(value.note);
     }
   }
@@ -30,14 +30,14 @@ test("all evidence rows record all capabilities, sources, runtime scope and cove
 test("installable matrix rows agree with canonical support helper and CLI surface list", async () => {
   // Dynamic import keeps this test on the same canonical helper used by release drift tests.
   const helper = await import(new URL("tools/support-matrix.mjs", repo).href);
-  const installable = [...new Set(HOST_CAPABILITIES.filter(row => row.installable).map(row => row.surface))].sort();
+  const installable = [...new Set(HOST_CAPABILITIES.filter((row) => row.installable).map((row) => row.surface))].sort();
   assert.deepEqual(installable, helper.installableSurfaces().sort());
   assert.deepEqual(installable, ["claude-code", "claude-desktop", "codex", "cursor"]);
 });
 
 test("installer gate/fork registration agrees with the matrix's actual Bastra path", () => {
   const claudeDefs = hookDefinitions({ includeStop: true });
-  assert.ok(claudeDefs.some(def => def.event === "PreToolUse" && def.stubSubcommand === "gate"));
+  assert.ok(claudeDefs.some((def) => def.event === "PreToolUse" && def.stubSubcommand === "gate"));
   assert.equal(hostCapabilities("claude-code").capabilities.must_load_gate.bastra, "supported");
   for (const version of [CODEX_GATE_MIN_VERSION, "0.162.2", "0.161.0", null, "garbage", "0.163.0-beta.1"]) {
     const row = hostCapabilities("codex", version);
@@ -55,7 +55,7 @@ test("Codex runtime certification is exact and coverage distinguishes probe from
   const tested = hostCapabilities("codex", "0.162.1");
   assert.equal(tested.capabilities.pre_tool_deny.status, "supported");
   assert.deepEqual(tested.pre_tool_coverage.runtimeVerified, ["exec_command (hook name Bash)", "view_image"]);
-  assert.ok(tested.pre_tool_coverage.documentedOnly.some(name => name.includes("MCP")));
+  assert.ok(tested.pre_tool_coverage.documentedOnly.some((name) => name.includes("MCP")));
   assert.match(tested.pre_tool_coverage.exceptions.join(" "), /write_stdin.*no fresh PreToolUse/);
   assert.match(tested.pre_tool_coverage.exceptions.join(" "), /Hosted WebSearch.*unsupported/);
   for (const version of [undefined, null, "0.161.0", "0.162.2", "99.0.0", "0.162.1-beta", "garbage"]) {
@@ -81,7 +81,11 @@ test("#1311 — approved-copy Stop repair: additionalContext on Claude Code, uns
     const row = hostCapabilities("codex", version).capabilities;
     assert.equal(row.stop_additional_context.bastra, "unsupported", String(version));
     assert.match(row.stop_additional_context.note, /approved-copy Stop repair is not offered on Codex/);
-    assert.equal(row.stop_block.bastra, version === CODEX_GATE_MIN_VERSION ? "supported" : "unsupported", String(version));
+    assert.equal(
+      row.stop_block.bastra,
+      version === CODEX_GATE_MIN_VERSION ? "supported" : "unsupported",
+      String(version)
+    );
     assert.match(row.stop_block.note, /no approved-copy Stop repair on Codex/);
   }
 });
@@ -89,7 +93,14 @@ test("#1311 — approved-copy Stop repair: additionalContext on Claude Code, uns
 test("hookless/replay capability claims do not imply live denial; validation needs write/full MCP", () => {
   for (const surface of ["cursor", "claude-desktop", "remote-mcp"] as const) {
     const row = hostCapabilities(surface);
-    for (const key of ["prompt_hook", "pre_tool_deny", "stop_additional_context", "stop_block", "session_fork", "must_load_gate"] as const) {
+    for (const key of [
+      "prompt_hook",
+      "pre_tool_deny",
+      "stop_additional_context",
+      "stop_block",
+      "session_fork",
+      "must_load_gate",
+    ] as const) {
       assert.equal(row.capabilities[key].status, "unverified");
       assert.equal(row.capabilities[key].bastra, "unsupported");
     }
@@ -97,7 +108,7 @@ test("hookless/replay capability claims do not imply live denial; validation nee
     assert.equal(row.capabilities.rule_kernel.bastra, "preparation-only");
     assert.match(row.prerequisites.join(" "), /without these does not have the tool/);
   }
-  assert.ok(Object.values(hostCapabilities("replay").capabilities).every(cap => cap.status === "preparation-only"));
+  assert.ok(Object.values(hostCapabilities("replay").capabilities).every((cap) => cap.status === "preparation-only"));
   assert.equal(isToolAllowed("validate_artifact", "search"), false);
   for (const surface of ["write", "full"] as const) assert.ok(isToolAllowed("validate_artifact", surface));
 });
@@ -107,7 +118,10 @@ test("both README capability tables match the evidence ledger", () => {
   const table = [
     "| Surface | Runtime | Bastra pre_tool_deny | Bastra must_load_gate |",
     "|---|---|---|---|",
-    ...[...HOST_CAPABILITIES.slice(0,2), hostCapabilities("codex", "0.166.0"), ...HOST_CAPABILITIES.slice(2)].map(row => `| ${row.surface} | ${row.runtime.verifiedVersion ?? "unverified / not version-pinned"} | ${row.capabilities.pre_tool_deny.bastra} | ${row.capabilities.must_load_gate.bastra} |`),
+    ...[...HOST_CAPABILITIES.slice(0, 2), hostCapabilities("codex", "0.166.0"), ...HOST_CAPABILITIES.slice(2)].map(
+      (row) =>
+        `| ${row.surface} | ${row.runtime.verifiedVersion ?? "unverified / not version-pinned"} | ${row.capabilities.pre_tool_deny.bastra} | ${row.capabilities.must_load_gate.bastra} |`
+    ),
   ].join("\n");
   assert.equal(readme.split(table).length - 1, 2, "EN and DE summaries must agree with the canonical data");
   assert.equal(readme.split("[host-capabilities.ts](./packages/daemon/src/host-capabilities.ts)").length - 1, 2);
@@ -117,7 +131,6 @@ test("both README capability tables match the evidence ledger", () => {
   assert.match(readme, /\*\*Codex IDE \+ ChatGPT Desktop\*\*[^\n]+not yet field-tested/);
 });
 
-
 test("README hook registration counts match the Claude Code installer in both languages", () => {
   const readme = read("README.md");
   const withStop = hookDefinitions({ includeStop: true }).length;
@@ -126,10 +139,10 @@ test("README hook registration counts match the Claude Code installer in both la
   assert.ok(readme.includes(`${withStop} Hook-Registrierungen (${withoutStop} ohne optionalen Stop/Harvest)`));
 });
 
-test("Codex 0.166.0 certifies only the probed paths",()=>{
- const row=hostCapabilities("codex","0.166.0");
- assert.deepEqual(row.pre_tool_coverage.runtimeVerified,["exec_command (hook name Bash)","view_image"]);
- assert.equal(row.capabilities.session_fork.status,"unverified");
- assert.ok(row.pre_tool_coverage.documentedOnly.some(name=>name.includes("MCP")));
- assert.match(row.capabilities.pre_tool_deny.note,/apply_patch.*unverified/);
+test("Codex 0.166.0 certifies only the probed paths", () => {
+  const row = hostCapabilities("codex", "0.166.0");
+  assert.deepEqual(row.pre_tool_coverage.runtimeVerified, ["exec_command (hook name Bash)", "view_image"]);
+  assert.equal(row.capabilities.session_fork.status, "unverified");
+  assert.ok(row.pre_tool_coverage.documentedOnly.some((name) => name.includes("MCP")));
+  assert.match(row.capabilities.pre_tool_deny.note, /apply_patch.*unverified/);
 });

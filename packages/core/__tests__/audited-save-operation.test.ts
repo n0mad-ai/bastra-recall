@@ -63,19 +63,9 @@ test("a slug-inferred overwrite is audited as update, with the pre-image kept", 
   const second = await save({ ...INPUT, body: "Body v2.", overwrite: true });
   assert.ok(second.audit, "audit is null only when logging itself failed"); // #542
   assert.equal(second.result.created, false, "the file already existed");
-  assert.equal(
-    second.audit.operation,
-    "update",
-    "a destructive overwrite must not be recorded as a creation",
-  );
-  assert.ok(
-    second.audit.diff_before,
-    "the overwritten state must be reconstructable from the trail",
-  );
-  assert.equal(
-    (second.audit.diff_before as Record<string, unknown>).id,
-    first.result.id,
-  );
+  assert.equal(second.audit.operation, "update", "a destructive overwrite must not be recorded as a creation");
+  assert.ok(second.audit.diff_before, "the overwritten state must be reconstructable from the trail");
+  assert.equal((second.audit.diff_before as Record<string, unknown>).id, first.result.id);
 });
 
 test("an explicit id still classifies correctly", async (t) => {
@@ -121,7 +111,7 @@ test("das Save-Audit liest sein Vorbild von der Platte, auch wenn der Index es n
   assert.ok(second.audit, "audit is null only when logging itself failed"); // #542
   assert.ok(
     second.audit.diff_before,
-    "ein Overwrite ohne Vorbild ist ein Trail, aus dem die Mutation nicht rekonstruierbar ist",
+    "ein Overwrite ohne Vorbild ist ein Trail, aus dem die Mutation nicht rekonstruierbar ist"
   );
   assert.equal((second.audit.diff_before as Record<string, unknown>).id, first.result.id);
 });
@@ -137,7 +127,7 @@ test("das Save-Audit nennt die Fassung von der Platte, nicht den veralteten Cach
   assert.equal(
     vault.get(first.result.id)?.fm.summary,
     "How to roll back a deploy.",
-    "Kontrolle: der Cache weiß nichts von der externen Änderung",
+    "Kontrolle: der Cache weiß nichts von der externen Änderung"
   );
 
   const second = await save({ ...INPUT, body: "Body v3.", overwrite: true });
@@ -146,6 +136,6 @@ test("das Save-Audit nennt die Fassung von der Platte, nicht den veralteten Cach
   assert.equal(
     (second.audit.diff_before as Record<string, unknown>).summary,
     "extern geaendert",
-    "das Vorbild muss die Datei beschreiben, die wirklich überschrieben wurde",
+    "das Vorbild muss die Datei beschreiben, die wirklich überschrieben wurde"
   );
 });

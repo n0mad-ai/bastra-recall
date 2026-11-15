@@ -1,4 +1,14 @@
-import { chmodSync, closeSync, fsyncSync, lstatSync, mkdirSync, openSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  closeSync,
+  fsyncSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -16,8 +26,11 @@ function sqliteConstructor(): typeof SQLiteDatabase {
       Reflect.apply(original, process, [warning, ...args]);
     }) as typeof process.emitWarning;
   }
-  try { return createRequire(import.meta.url)("node:sqlite").DatabaseSync; }
-  finally { process.emitWarning = original; }
+  try {
+    return createRequire(import.meta.url)("node:sqlite").DatabaseSync;
+  } finally {
+    process.emitWarning = original;
+  }
 }
 const DatabaseSync = sqliteConstructor();
 
@@ -28,11 +41,12 @@ export interface AppMigration {
   up(db: SQLiteDatabase): void;
 }
 
-export const APP_MIGRATIONS: readonly AppMigration[] = [{
-  version: 1,
-  name: "app-storage-foundation",
-  up(db) {
-    db.exec(`CREATE TABLE app_records (
+export const APP_MIGRATIONS: readonly AppMigration[] = [
+  {
+    version: 1,
+    name: "app-storage-foundation",
+    up(db) {
+      db.exec(`CREATE TABLE app_records (
       namespace TEXT NOT NULL, key TEXT NOT NULL,
       value TEXT NOT NULL CHECK(json_valid(value)),
       PRIMARY KEY(namespace,key)
@@ -40,14 +54,15 @@ export const APP_MIGRATIONS: readonly AppMigration[] = [{
     CREATE TABLE app_index_catalog (name TEXT PRIMARY KEY, rebuildable INTEGER NOT NULL CHECK(rebuildable=1)) STRICT;
     CREATE VIRTUAL TABLE app_search USING fts5(namespace UNINDEXED,key UNINDEXED,text);
     INSERT INTO app_index_catalog VALUES('app_search',1);`);
+    },
   },
-}, {
-  version: 2,
-  name: "agent-chat-history",
-  // UI state of the agent window (chat-history.ts): conversations and their
-  // messages. Memories stay Markdown in the vault; nothing here is vault data.
-  up(db) {
-    db.exec(`CREATE TABLE chat_conversations (
+  {
+    version: 2,
+    name: "agent-chat-history",
+    // UI state of the agent window (chat-history.ts): conversations and their
+    // messages. Memories stay Markdown in the vault; nothing here is vault data.
+    up(db) {
+      db.exec(`CREATE TABLE chat_conversations (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       created_at INTEGER NOT NULL,
@@ -63,16 +78,17 @@ export const APP_MIGRATIONS: readonly AppMigration[] = [{
       created_at INTEGER NOT NULL
     ) STRICT;
     CREATE INDEX chat_messages_conversation ON chat_messages(conversation_id, id);`);
+    },
   },
-}, {
-  version: 3,
-  name: "telemetry-days",
-  // #1438: one row per finished UTC day of the telemetry event log
-  // (telemetry-day-store.ts): the day's events cut to the fields the report
-  // reads, as gzip-compressed JSON. Rebuildable from the logs at any time;
-  // nothing here is vault data.
-  up(db) {
-    db.exec(`CREATE TABLE telemetry_days (
+  {
+    version: 3,
+    name: "telemetry-days",
+    // #1438: one row per finished UTC day of the telemetry event log
+    // (telemetry-day-store.ts): the day's events cut to the fields the report
+    // reads, as gzip-compressed JSON. Rebuildable from the logs at any time;
+    // nothing here is vault data.
+    up(db) {
+      db.exec(`CREATE TABLE telemetry_days (
       log_dir TEXT NOT NULL,
       day TEXT NOT NULL,
       version INTEGER NOT NULL,
@@ -83,8 +99,9 @@ export const APP_MIGRATIONS: readonly AppMigration[] = [{
       computed_at INTEGER NOT NULL,
       PRIMARY KEY(log_dir, day)
     ) STRICT;`);
+    },
   },
-}];
+];
 
 export interface AppDatabaseOptions {
   /** Explicit local path for isolated fixtures or an installation's state root. */
@@ -108,7 +125,12 @@ export function defaultAppDatabasePath(): string {
 function localPath(path: string): string {
   // Check spelling and physical ancestors, including aliases to sync folders.
   const check = (value: string) => {
-    if (/^(?:\\\\|\/\/)/u.test(value) || /(?:^|[\\/])(?:CloudStorage|Google Drive|GoogleDrive[^\\/]*|Dropbox|OneDrive[^\\/]*|Mobile Documents)(?:[\\/]|$)/iu.test(value)) {
+    if (
+      /^(?:\\\\|\/\/)/u.test(value) ||
+      /(?:^|[\\/])(?:CloudStorage|Google Drive|GoogleDrive[^\\/]*|Dropbox|OneDrive[^\\/]*|Mobile Documents)(?:[\\/]|$)/iu.test(
+        value
+      )
+    ) {
       throw new Error("App database and backups must use local storage outside sync folders");
     }
   };
@@ -121,8 +143,12 @@ function localPath(path: string): string {
       if (entry.isSymbolicLink()) {
         const refuse = () => new Error("App database and backups must use local regular files, not symlink endpoints");
         if (ancestor === absolute) throw refuse();
-        try { statSync(ancestor); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw refuse(); throw error; }
+        try {
+          statSync(ancestor);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") throw refuse();
+          throw error;
+        }
       }
       break;
     } catch (error) {
@@ -136,7 +162,11 @@ function localPath(path: string): string {
 
 function syncFile(path: string): void {
   const fd = openSync(path, "r");
-  try { fsyncSync(fd); } finally { closeSync(fd); }
+  try {
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 function reservePrivateFile(path: string): void {
@@ -154,8 +184,10 @@ function enableWal(db: SQLiteDatabase, timeout: number): void {
   // not always invoke its busy handler for this PRAGMA. Retry only BUSY/LOCKED,
   // within the same configured budget (hooks with timeout=0 never wait).
   while (true) {
-    try { db.exec("PRAGMA journal_mode=WAL"); return; }
-    catch (error) {
+    try {
+      db.exec("PRAGMA journal_mode=WAL");
+      return;
+    } catch (error) {
       const code = (error as { errcode?: number }).errcode;
       const remaining = deadline - Date.now();
       if ((code !== 5 && code !== 6) || remaining <= 0) throw error;
@@ -172,29 +204,38 @@ export class AppDatabase {
 
   constructor(options: AppDatabaseOptions = {}) {
     const busyTimeoutMs = options.busyTimeoutMs ?? 10000;
-    if (!Number.isSafeInteger(busyTimeoutMs) || busyTimeoutMs < 0 || busyTimeoutMs > 60000) throw new Error("Invalid app database busy timeout");
+    if (!Number.isSafeInteger(busyTimeoutMs) || busyTimeoutMs < 0 || busyTimeoutMs > 60000)
+      throw new Error("Invalid app database busy timeout");
     const migrations = options.migrations ?? APP_MIGRATIONS;
     migrations.forEach((migration, index) => {
-      if (migration.version !== index + 1) throw new Error("App migrations must have contiguous versions starting at 1");
+      if (migration.version !== index + 1)
+        throw new Error("App migrations must have contiguous versions starting at 1");
       if (migration.up.constructor.name === "AsyncFunction") throw new Error("App migrations must be synchronous");
     });
     this.path = localPath(options.path ?? defaultAppDatabasePath());
     mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
-    try { reservePrivateFile(this.path); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+    try {
+      reservePrivateFile(this.path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
     this.sqlite = new DatabaseSync(this.path, { allowExtension: false });
     try {
-      const mode=lstatSync(this.path).mode & 0o777;
+      const mode = lstatSync(this.path).mode & 0o777;
       // Windows chmod models writability, not POSIX group/other bits. Avoid a
       // metadata write on every read-only open: watchers would wake themselves.
-      if(process.platform==="win32" ? (mode & 0o200)===0 : mode!==0o600)chmodSync(this.path, 0o600);
+      if (process.platform === "win32" ? (mode & 0o200) === 0 : mode !== 0o600) chmodSync(this.path, 0o600);
       // PRAGMA works on Node 22 too (constructor timeout was added later).
       this.sqlite.exec(`PRAGMA busy_timeout=${busyTimeoutMs}`);
       enableWal(this.sqlite, busyTimeoutMs);
       this.sqlite.exec("PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON");
-      if (schemaVersion(this.sqlite) > migrations.length) throw new Error("App database schema is newer than this version; restore its backup before downgrading");
+      if (schemaVersion(this.sqlite) > migrations.length)
+        throw new Error("App database schema is newer than this version; restore its backup before downgrading");
       for (const migration of migrations) this.migrate(migration);
-    } catch (error) { this.sqlite.close(); throw error; }
+    } catch (error) {
+      this.sqlite.close();
+      throw error;
+    }
   }
 
   private migrate(migration: AppMigration): void {
@@ -206,25 +247,30 @@ export class AppDatabase {
       mkdirSync(directory, { recursive: true, mode: 0o700 });
       this.backup(join(directory, `before-v${migration.version}-${randomUUID()}.db`));
       const result: unknown = migration.up(this.sqlite);
-      if (result && typeof (result as PromiseLike<unknown>).then === "function") throw new Error("App migrations must be synchronous");
+      if (result && typeof (result as PromiseLike<unknown>).then === "function")
+        throw new Error("App migrations must be synchronous");
       this.sqlite.exec(`PRAGMA user_version=${migration.version}`);
     });
   }
 
   transaction<T>(operation: () => T): T {
     if (this.inTransaction) throw new Error("Nested app database transactions are not supported");
-    if (operation.constructor.name === "AsyncFunction") throw new Error("App database transactions must be synchronous");
+    if (operation.constructor.name === "AsyncFunction")
+      throw new Error("App database transactions must be synchronous");
     this.sqlite.exec("BEGIN IMMEDIATE");
     this.inTransaction = true;
     try {
       const result = operation();
-      if (result && typeof (result as unknown as PromiseLike<unknown>).then === "function") throw new Error("App database transactions must be synchronous");
+      if (result && typeof (result as unknown as PromiseLike<unknown>).then === "function")
+        throw new Error("App database transactions must be synchronous");
       this.sqlite.exec("COMMIT");
       return result;
     } catch (error) {
       this.sqlite.exec("ROLLBACK");
       throw error;
-    } finally { this.inTransaction = false; }
+    } finally {
+      this.inTransaction = false;
+    }
   }
 
   /** Consistent committed snapshot, including WAL. Never overwrites a backup. */
@@ -241,16 +287,22 @@ export class AppDatabase {
       reader.prepare("VACUUM INTO ?").run(target);
       chmodSync(target, 0o600);
       syncFile(target);
-    } finally { reader.close(); }
+    } finally {
+      reader.close();
+    }
   }
 
   /** Diagnostic portable snapshot. Schema SQL and rows; no media BLOBs. */
   exportJson(destination: string): void {
     const target = localPath(destination);
     const collect = () => {
-      const schema = this.sqlite.prepare("SELECT name,type,sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name").all();
+      const schema = this.sqlite
+        .prepare("SELECT name,type,sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name")
+        .all();
       const tables: Record<string, unknown[]> = {};
-      for (const row of this.sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()) {
+      for (const row of this.sqlite
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+        .all()) {
         const name = String(row.name);
         tables[name] = this.sqlite.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}"`).all();
       }
@@ -259,11 +311,17 @@ export class AppDatabase {
     const snapshot = this.transaction(collect);
     mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
     // Exclusive creation avoids overwriting a previous recovery artifact.
-    writeFileSync(target, `${JSON.stringify(snapshot, (_key, value: unknown) => typeof value === "bigint" ? value.toString() : value, 2)}\n`, { flag: "wx", mode: 0o600 });
+    writeFileSync(
+      target,
+      `${JSON.stringify(snapshot, (_key, value: unknown) => (typeof value === "bigint" ? value.toString() : value), 2)}\n`,
+      { flag: "wx", mode: 0o600 }
+    );
     syncFile(target);
   }
 
-  close(): void { this.sqlite.close(); }
+  close(): void {
+    this.sqlite.close();
+  }
 }
 
 export function openAppDatabase(options: AppDatabaseOptions = {}): AppDatabase {

@@ -12,12 +12,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  pickPhrase,
-  pickToolPhrase,
-  banterModeFromEnv,
-  type RecallStage,
-} from "../src/index.js";
+import { pickPhrase, pickToolPhrase, banterModeFromEnv, type RecallStage } from "../src/index.js";
 
 const STAGES: RecallStage["name"][] = [
   "query.parse",
@@ -32,11 +27,7 @@ const STAGES: RecallStage["name"][] = [
 
 test("pickPhrase: returns non-empty DE string for every stage in 'on' mode", () => {
   for (const name of STAGES) {
-    const phrase = pickPhrase(
-      { name, startedAtMs: 1_700_000_000_000 },
-      "on",
-      "de",
-    );
+    const phrase = pickPhrase({ name, startedAtMs: 1_700_000_000_000 }, "on", "de");
     assert.equal(typeof phrase, "string");
     assert.ok(phrase!.length > 0, `empty DE phrase for stage ${name}`);
   }
@@ -44,11 +35,7 @@ test("pickPhrase: returns non-empty DE string for every stage in 'on' mode", () 
 
 test("pickPhrase: returns non-empty EN string for every stage in 'on' mode", () => {
   for (const name of STAGES) {
-    const phrase = pickPhrase(
-      { name, startedAtMs: 1_700_000_000_000 },
-      "on",
-      "en",
-    );
+    const phrase = pickPhrase({ name, startedAtMs: 1_700_000_000_000 }, "on", "en");
     assert.equal(typeof phrase, "string");
     assert.ok(phrase!.length > 0, `empty EN phrase for stage ${name}`);
   }
@@ -75,7 +62,7 @@ test("pickPhrase: slow-stage (> 500ms) draws from slow pool, not stage pool", ()
   const slowMarkers = ["dauert", "zieht sich", "tief", "Pause", "voll"];
   assert.ok(
     slowMarkers.some((m) => slowPhrase.includes(m)),
-    `slow phrase did not match slow-pool markers: ${slowPhrase}`,
+    `slow phrase did not match slow-pool markers: ${slowPhrase}`
   );
 });
 
@@ -93,11 +80,7 @@ test("pickPhrase: very-slow-stage (> 1000ms) escalates further", () => {
 test("pickPhrase: deterministic within same second bucket", () => {
   const a: RecallStage = { name: "rrf.fuse", startedAtMs: 1_700_000_001_000 };
   const b: RecallStage = { name: "rrf.fuse", startedAtMs: 1_700_000_001_500 };
-  assert.equal(
-    pickPhrase(a, "on", "de"),
-    pickPhrase(b, "on", "de"),
-    "same second bucket should yield same phrase",
-  );
+  assert.equal(pickPhrase(a, "on", "de"), pickPhrase(b, "on", "de"), "same second bucket should yield same phrase");
 });
 
 test("banterModeFromEnv: parses BASTRA_BANTER", () => {
@@ -146,7 +129,7 @@ test("pickPhrase: a terminal stage keeps its own phrase, however long the recall
       assert.equal(
         pickPhrase({ name, startedAtMs: at, durationMs }, "on", "de"),
         fast,
-        `${name} at ${durationMs}ms must still draw from its own pool`,
+        `${name} at ${durationMs}ms must still draw from its own pool`
       );
     }
   }

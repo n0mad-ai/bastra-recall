@@ -44,10 +44,7 @@ test("truncateSummaryTo: cuts at a word boundary, not mid-word", () => {
   const out = truncateSummaryTo(long, 40);
   const body = out.slice(0, -1); // drop the ellipsis
   assert.ok(long.startsWith(body), "kept text is a prefix of the input");
-  assert.ok(
-    long[body.length] === " " || body.length === long.length,
-    "the cut lands on a space (whole-word boundary)",
-  );
+  assert.ok(long[body.length] === " " || body.length === long.length, "the cut lands on a space (whole-word boundary)");
 });
 
 test("truncateSummaryTo: hard-cuts a single very long word", () => {

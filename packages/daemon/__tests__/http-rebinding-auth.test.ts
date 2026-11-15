@@ -64,7 +64,7 @@ function call(
   method: string,
   path: string,
   headers: Record<string, string>,
-  body?: string,
+  body?: string
 ): Promise<Res> {
   return new Promise((resolve, reject) => {
     const req = request({ hostname: "127.0.0.1", port, path, method, headers }, (res) => {
@@ -128,7 +128,7 @@ async function buildVault(): Promise<{ dir: string; vault: Vault }> {
       "",
       "Body of a1 — the full non-private payload an attacker would exfiltrate.",
       "",
-    ].join("\n"),
+    ].join("\n")
   );
   const vault = new Vault(dir);
   await vault.init();
@@ -146,7 +146,7 @@ async function buildVault(): Promise<{ dir: string; vault: Vault }> {
  */
 async function withServer(
   opts: { token: TokenState; env?: Record<string, string> },
-  fn: (port: number) => Promise<void>,
+  fn: (port: number) => Promise<void>
 ): Promise<void> {
   const { dir, vault } = await buildVault();
   const home = await mkdtemp(join(tmpdir(), "bastra-526-home-"));
@@ -218,14 +218,27 @@ test("#1264: forwarded loopback API, hook and UI requests require a token", asyn
         ]) {
           const proxyHeaders = { ...headers, [name!]: value! };
           for (const authorization of [undefined, "Bearer wrong"]) {
-            const response = await call(port, route.method, route.path,
-              { ...proxyHeaders, ...(authorization ? { authorization } : {}) }, route.body);
+            const response = await call(
+              port,
+              route.method,
+              route.path,
+              { ...proxyHeaders, ...(authorization ? { authorization } : {}) },
+              route.body
+            );
             assert.equal(response.status, 401, `${token} ${route.path} ${name}=${value} ${authorization}`);
           }
-          const valid = await call(port, route.method, route.path,
-            { ...proxyHeaders, authorization: `Bearer ${TOKEN}` }, route.body);
-          assert.equal(valid.status, token === "set" ? direct.status : 401,
-            `${token} ${route.path} ${name}: valid token`);
+          const valid = await call(
+            port,
+            route.method,
+            route.path,
+            { ...proxyHeaders, authorization: `Bearer ${TOKEN}` },
+            route.body
+          );
+          assert.equal(
+            valid.status,
+            token === "set" ? direct.status : 401,
+            `${token} ${route.path} ${name}: valid token`
+          );
         }
       }
     });
@@ -237,14 +250,24 @@ test("#1264: assistant gateway preserves forwarding evidence and bearer authenti
     const dir = await mkdtemp(join(tmpdir(), "bastra-1264-gateway-"));
     const settingsPath = join(dir, "settings.json");
     await writeFile(settingsPath, JSON.stringify({ assistant: { name: "Jarvis" }, ui: { enabled: true } }));
-    const gateway = createServer(assistantGatewayHandler({ settingsPath, hostsPath: join(dir, "hosts"), daemonUrl: `http://127.0.0.1:${daemonPort}` }));
+    const gateway = createServer(
+      assistantGatewayHandler({
+        settingsPath,
+        hostsPath: join(dir, "hosts"),
+        daemonUrl: `http://127.0.0.1:${daemonPort}`,
+      })
+    );
     try {
       await new Promise<void>((resolve) => gateway.listen(0, "127.0.0.1", resolve));
       const port = (gateway.address() as AddressInfo).port;
       assert.equal((await call(port, "GET", "/ui/health", {})).status, 200);
       for (const name of ["Forwarded", "X-Forwarded-For", "X-Forwarded-Host"]) {
         assert.equal((await call(port, "GET", "/ui/health", { [name]: "localhost" })).status, 401, name);
-        assert.equal((await call(port, "GET", "/ui/health", { [name]: "localhost", authorization: `Bearer ${TOKEN}` })).status, 200, name);
+        assert.equal(
+          (await call(port, "GET", "/ui/health", { [name]: "localhost", authorization: `Bearer ${TOKEN}` })).status,
+          200,
+          name
+        );
       }
     } finally {
       gateway.closeAllConnections();
@@ -258,19 +281,31 @@ test("local POST gate: foreign and opaque browser origins cannot reach local wri
   await withServer({ token: "unset" }, async (port) => {
     for (const path of ["/ui/areas", "/settings/docs", "/ui/onboarding", "/hook/hinted"]) {
       for (const origin of ["https://attacker.example", "null"]) {
-        const result = await call(port, "POST", path, {
-          "content-type": "text/plain",
-          origin,
-        }, "{}");
+        const result = await call(
+          port,
+          "POST",
+          path,
+          {
+            "content-type": "text/plain",
+            origin,
+          },
+          "{}"
+        );
         assert.equal(result.status, 403, `${path} accepted ${origin}`);
       }
     }
     const simple = await call(port, "POST", "/settings/docs", { "content-type": "text/plain" }, "{}");
     assert.equal(simple.status, 415, "an originless simple POST must not be parsed as JSON");
-    const local = await call(port, "POST", "/hook/hinted", {
-      ...JSON_HEADERS,
-      origin: `http://127.0.0.1:${port}`,
-    }, "{}");
+    const local = await call(
+      port,
+      "POST",
+      "/hook/hinted",
+      {
+        ...JSON_HEADERS,
+        origin: `http://127.0.0.1:${port}`,
+      },
+      "{}"
+    );
     assert.notEqual(local.status, 403, "the daemon's own page keeps its local POST path");
   });
 });
@@ -323,11 +358,7 @@ for (const tokenState of ["set", "empty", "unset"] as const) {
     test(`#526 matrix: loopback peer + ${HOST_LABEL[hostCase]} + token ${tokenState} → ${expected}`, async () => {
       await withServer({ token: tokenState }, async (port) => {
         const res = await probe(port, { host: hostHeader(hostCase, port) });
-        assert.equal(
-          res.status,
-          expected,
-          `${HOST_LABEL[hostCase]} / token ${tokenState} must answer ${expected}`,
-        );
+        assert.equal(res.status, expected, `${HOST_LABEL[hostCase]} / token ${tokenState} must answer ${expected}`);
         if (expected === 200) assert.match(res.body, /Body of a1/);
         else assert.doesNotMatch(res.body, /Body of a1/, "no memory body may leak");
       });
@@ -350,7 +381,7 @@ test("#526: a foreign Host cannot bluff its way in when NO token is configured",
         "POST",
         "/api/v1/recall",
         { host: FOREIGN, ...JSON_HEADERS },
-        JSON.stringify({ query: "a1" }),
+        JSON.stringify({ query: "a1" })
       );
       assert.equal(recall.status, 401);
       assert.doesNotMatch(recall.body, /Body of a1/);
@@ -371,7 +402,7 @@ test("#526: without a token the direct local path stays open — dev/local mode 
         "POST",
         "/api/v1/recall",
         { host: `127.0.0.1:${port}`, ...JSON_HEADERS },
-        JSON.stringify({ query: "a1" }),
+        JSON.stringify({ query: "a1" })
       );
       assert.equal(recall.status, 200, "the CLI/forwarder POST path must stay tokenless");
     });
@@ -399,7 +430,7 @@ test("#526: foreign Host + no Origin + no token → 401 on API GET and POST (loo
       "POST",
       "/api/v1/recall",
       { host: FOREIGN, ...JSON_HEADERS },
-      JSON.stringify({ query: "a1" }),
+      JSON.stringify({ query: "a1" })
     );
     assert.equal(recall.status, 401);
 
@@ -426,7 +457,7 @@ test("#526: tunnel/reverse-proxy — foreign Host + correct bearer token still w
       "POST",
       "/api/v1/recall",
       { host: FOREIGN, authorization: `Bearer ${TOKEN}`, ...JSON_HEADERS },
-      JSON.stringify({ query: "a1" }),
+      JSON.stringify({ query: "a1" })
     );
     assert.equal(recall.status, 200);
   });
@@ -445,7 +476,7 @@ test("#526: direct loopback stays tokenless — 127.0.0.1, localhost, [::1]", as
       "POST",
       "/api/v1/recall",
       { host: `127.0.0.1:${port}`, ...JSON_HEADERS },
-      JSON.stringify({ query: "a1" }),
+      JSON.stringify({ query: "a1" })
     );
     assert.equal(recall.status, 200, "the CLI/forwarder POST path must stay tokenless");
   });
@@ -510,7 +541,7 @@ test("#526: the pre-existing gates are untouched — /health and a foreign Origi
         "POST",
         "/api/v1/recall",
         { host: FOREIGN, origin: `http://${FOREIGN}`, ...JSON_HEADERS },
-        JSON.stringify({ query: "a1" }),
+        JSON.stringify({ query: "a1" })
       );
       assert.equal(browser.status, 403, "a foreign Origin is still an origin rejection");
 
@@ -520,7 +551,7 @@ test("#526: the pre-existing gates are untouched — /health and a foreign Origi
         "POST",
         "/api/v1/recall",
         { host: `127.0.0.1:${port}`, origin: "https://bastra.io", ...JSON_HEADERS },
-        JSON.stringify({ query: "a1" }),
+        JSON.stringify({ query: "a1" })
       );
       assert.equal(allowed.status, 401, "a browser needs the token, configured or not");
     });
@@ -558,7 +589,7 @@ test("#526: a MISSING Host header is no loopback proof — raw tunnel and direct
       // Mit Token bleibt derselbe Weg für legitime Tunnel-Clients offen.
       const withToken = await rawRequest(
         fwdPort,
-        `GET /api/v1/graph/node?id=a1 HTTP/1.0\r\nAuthorization: Bearer ${TOKEN}\r\n\r\n`,
+        `GET /api/v1/graph/node?id=a1 HTTP/1.0\r\nAuthorization: Bearer ${TOKEN}\r\n\r\n`
       );
       assert.match(withToken, /^HTTP\/1\.1 200 /);
       assert.match(withToken, /Body of a1/);

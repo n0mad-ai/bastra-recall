@@ -15,13 +15,7 @@ import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, utimes, writeFile 
 import { hostname, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
-import {
-  acquireRepoLock,
-  lockPath,
-  readLock,
-  LOCK_STALE_MS,
-  UNREADABLE_GRACE_MS,
-} from "../src/code-graph/lock.js";
+import { acquireRepoLock, lockPath, readLock, LOCK_STALE_MS, UNREADABLE_GRACE_MS } from "../src/code-graph/lock.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..", "..");
@@ -47,7 +41,7 @@ describe("the build lock against adversarial interleavings", () => {
     assert.equal(
       await acquireRepoLock(dir, { heartbeat: false }),
       null,
-      "a lock file that just appeared is a competitor mid-publish, not junk",
+      "a lock file that just appeared is a competitor mid-publish, not junk"
     );
     assert.equal(await readFile(lockPath(dir), "utf8"), "", "and it was not removed");
 
@@ -99,7 +93,7 @@ describe("the build lock against adversarial interleavings", () => {
     assert.equal(
       (await readLock(dir))?.token,
       successor.record.token,
-      "the successor's lock must survive every beat of the holder it replaced",
+      "the successor's lock must survive every beat of the holder it replaced"
     );
   });
 
@@ -116,7 +110,7 @@ describe("the build lock against adversarial interleavings", () => {
     assert.equal(
       (await readLock(dir))?.token,
       successor.record.token,
-      "the replaced holder must not unlink the file its successor created",
+      "the replaced holder must not unlink the file its successor created"
     );
   });
 
@@ -159,11 +153,7 @@ describe("the build lock against adversarial interleavings", () => {
     t.after(() => successor.release());
     // Give the successor the holder's own token, which is what defeats a check
     // made on tokens; its generation is still one past the holder's.
-    await writeFile(
-      lockPath(dir),
-      JSON.stringify({ ...successor.record, token: mine.record.token }),
-      "utf8",
-    );
+    await writeFile(lockPath(dir), JSON.stringify({ ...successor.record, token: mine.record.token }), "utf8");
 
     await mine.release();
     const still = await readLock(dir);
@@ -259,13 +249,17 @@ describe("the build lock against adversarial interleavings", () => {
       await utimes(marker, old, old);
 
       const got = await Promise.all(
-        Array.from({ length: 6 }, () => acquireRepoLock(dir, { staleMs: -1, heartbeat: false })),
+        Array.from({ length: 6 }, () => acquireRepoLock(dir, { staleMs: -1, heartbeat: false }))
       );
       const holders = got.filter((l) => l !== null);
       const generations = holders.map((h) => h!.record.gen);
       // staleMs: -1 also permits a later contender to take over a newly
       // published record. That is a new generation, not a duplicate claim.
-      assert.equal(new Set(generations).size, generations.length, `round ${round}: duplicate generation in ${generations}`);
+      assert.equal(
+        new Set(generations).size,
+        generations.length,
+        `round ${round}: duplicate generation in ${generations}`
+      );
       for (const h of holders) await h!.release();
     }
   });
@@ -368,15 +362,33 @@ describe("the build lock against adversarial interleavings", () => {
     // that simultaneous acquisition ever happens to pick a different winner.
     for (const holder of contenders) {
       await phase([holder], "acquire");
-      await phase(contenders.filter((c) => c !== holder), "acquire");
+      await phase(
+        contenders.filter((c) => c !== holder),
+        "acquire"
+      );
       await phase(contenders, "release");
     }
     const results = await Promise.all(contenders.map((c) => c.finish()));
     const shown = JSON.stringify(results);
-    assert.equal(results.reduce((n, r) => n + r.held, 0), 62, `one holder per round: ${shown}`);
-    assert.equal(results.reduce((n, r) => n + r.violations, 0), 0, `two holders at once: ${shown}`);
-    assert.ok(results.every((r) => r.held > 0), `each process must hold the lock: ${shown}`);
-    assert.equal(results.reduce((n, r) => n + r.tookOver, 0), 0, `no live lock may be taken over: ${shown}`);
+    assert.equal(
+      results.reduce((n, r) => n + r.held, 0),
+      62,
+      `one holder per round: ${shown}`
+    );
+    assert.equal(
+      results.reduce((n, r) => n + r.violations, 0),
+      0,
+      `two holders at once: ${shown}`
+    );
+    assert.ok(
+      results.every((r) => r.held > 0),
+      `each process must hold the lock: ${shown}`
+    );
+    assert.equal(
+      results.reduce((n, r) => n + r.tookOver, 0),
+      0,
+      `no live lock may be taken over: ${shown}`
+    );
     assert.equal(await readLock(dir), null, "and the lock is free again afterwards");
   });
 
@@ -465,9 +477,7 @@ function beatCounter(): { readonly total: number; count: () => void; atLeast: (n
  */
 async function publishStaleLock(dir: string): Promise<void> {
   const old = new Date(Date.now() - 3_600_000).toISOString();
-  const previous = JSON.parse(
-    await readFile(lockPath(dir), "utf8").catch(() => "{}"),
-  ) as Record<string, unknown>;
+  const previous = JSON.parse(await readFile(lockPath(dir), "utf8").catch(() => "{}")) as Record<string, unknown>;
   const tmp = `${lockPath(dir)}.seed`;
   await writeFile(
     tmp,
@@ -480,7 +490,7 @@ async function publishStaleLock(dir: string): Promise<void> {
       renewedAt: old,
       state: "held",
     }),
-    "utf8",
+    "utf8"
   );
   await rename(tmp, lockPath(dir)); // atomic: readers never see half a record
 }

@@ -59,17 +59,13 @@ async function main(): Promise<void> {
       const result = await vault.init();
       const dt = performance.now() - t0;
       times.push(dt);
-      console.log(
-        `run ${r + 1}: loaded=${result.loaded} skipped=${result.skipped.length} dt=${dt.toFixed(1)}ms`,
-      );
+      console.log(`run ${r + 1}: loaded=${result.loaded} skipped=${result.skipped.length} dt=${dt.toFixed(1)}ms`);
     }
     const sorted = [...times].sort((a, b) => a - b);
     const min = sorted[0];
     const max = sorted[sorted.length - 1];
     const median = sorted[Math.floor(sorted.length / 2)];
-    console.log(
-      `summary: min=${min.toFixed(1)}ms median=${median.toFixed(1)}ms max=${max.toFixed(1)}ms (N=${N})`,
-    );
+    console.log(`summary: min=${min.toFixed(1)}ms median=${median.toFixed(1)}ms max=${max.toFixed(1)}ms (N=${N})`);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -2,25 +2,14 @@
  * `move_document` und der rückrollbare Datei-Move, den auch save und
  * recategorize benutzen. Aus documents-write-handler.ts herausgelöst (#680).
  */
-import {
-  unlink,
-  stat,
-  link,
-} from "node:fs/promises";
+import { unlink, stat, link } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { join, basename } from "node:path";
 import type { z } from "zod";
 import type { Vault } from "@bastra-recall/core";
-import {
-  withIdClaim,
-  type IdClaim,
-} from "@bastra-recall/core";
+import { withIdClaim, type IdClaim } from "@bastra-recall/core";
 import { hiddenFromCaller, hiddenOnDisk, type PrivateAccess } from "./private-access.js";
-import {
-  acknowledgeCommittedJournal,
-  openRecoveryJournal,
-  type RecoveryJournalHandle,
-} from "./recovery-journal.js";
+import { acknowledgeCommittedJournal, openRecoveryJournal, type RecoveryJournalHandle } from "./recovery-journal.js";
 import { recordAudit } from "./audit-trail.js";
 import { ensureVaultDir } from "@bastra-recall/core";
 import type { MoveDocumentArgs } from "./documents-write-handler.js";
@@ -57,7 +46,7 @@ export async function abortMove(
   moved: MovedDocumentFiles,
   oldSidecarPath: string,
   expectedSidecar: string | undefined,
-  err: unknown,
+  err: unknown
 ): Promise<never> {
   const undone = await moved
     .rollback(expectedSidecar)
@@ -71,7 +60,7 @@ export async function abortMove(
     `${(err as Error)?.message ?? String(err)}\n\n` +
       `Careful: the files had already been moved and the move could NOT be fully undone: ` +
       `${undone.detail ?? "reason unknown"}. The sidecar frontmatter may still name the old ` +
-      `folder. Read the document again (read_document) and redo the move.`,
+      `folder. Read the document again (read_document) and redo the move.`
   );
 }
 
@@ -81,7 +70,7 @@ export async function moveDocument(
   vault: Vault,
   args: z.infer<typeof MoveDocumentArgs>,
   /** #464: transportgebunden — siehe private-access.ts. */
-  caller?: PrivateAccess,
+  caller?: PrivateAccess
 ): Promise<{
   id: string;
   sidecar_path: string;
@@ -103,9 +92,8 @@ export async function moveDocument(
   // Dieselbe Transaktion wie beim Recategorize: Ein Move liest, verschiebt und
   // patcht — ohne Sperre trat er sich mit einem gleichzeitigen Metadaten-Patch
   // desselben Dokuments auf die Füße, und beide meldeten Erfolg.
-  return withIdClaim(
-    { vaultRoot: vaultRoot(vault), id: args.id, filePath: m.filePath, op: "move_document" },
-    (claim) => commitMoveDocument(claim, vault, args, m, caller),
+  return withIdClaim({ vaultRoot: vaultRoot(vault), id: args.id, filePath: m.filePath, op: "move_document" }, (claim) =>
+    commitMoveDocument(claim, vault, args, m, caller)
   );
 }
 
@@ -113,8 +101,18 @@ async function commitMoveDocument(
   claim: IdClaim,
   vault: Vault,
   args: z.infer<typeof MoveDocumentArgs>,
-  m: { fm: Record<string, unknown> & { id: string; title: string; tags: string[]; summary: string; recall_when: string[]; created: string }; filePath: string },
-  caller?: PrivateAccess,
+  m: {
+    fm: Record<string, unknown> & {
+      id: string;
+      title: string;
+      tags: string[];
+      summary: string;
+      recall_when: string[];
+      created: string;
+    };
+    filePath: string;
+  },
+  caller?: PrivateAccess
 ): Promise<{
   id: string;
   sidecar_path: string;
@@ -134,7 +132,7 @@ async function commitMoveDocument(
     throw new Error(
       located.kind === "none"
         ? `document not found on disk: ${args.id}`
-        : `cannot move ${args.id}: the vault scan is not conclusive (${located.kind}).`,
+        : `cannot move ${args.id}: the vault scan is not conclusive (${located.kind}).`
     );
   }
   // #464 (wiedereröffnet): wie im Recategorize — die Prüfung oben fragte den
@@ -171,8 +169,7 @@ async function commitMoveDocument(
       title: m.fm.title,
       summary: m.fm.summary,
       tags: m.fm.tags,
-      category:
-        (fm as { document_category?: string }).document_category ?? "sonstiges",
+      category: (fm as { document_category?: string }).document_category ?? "sonstiges",
       recallWhen: m.fm.recall_when,
       originalPath: moved.newOriginalPath,
       linkedFile: fm.linked_file ?? false,
@@ -182,13 +179,9 @@ async function commitMoveDocument(
       aliases: (raw.data.aliases as string[] | undefined) ?? fm.aliases,
       // #147: Capture-Flags überleben den Patch — Metadaten-Ops ändern nie die
       // Provenienz-Bewertung des Inhalts.
-      injectionFlags:
-        (raw.data.injection_flags as string[] | undefined) ?? fm.injection_flags,
+      injectionFlags: (raw.data.injection_flags as string[] | undefined) ?? fm.injection_flags,
     });
-    updated = patchSidecarFrontmatter(
-      raw.data,
-      metadataPatch(raw.data, rebuilt),
-    );
+    updated = patchSidecarFrontmatter(raw.data, metadataPatch(raw.data, rebuilt));
     // `move_document` kennt kein `force` — ein Ordnerwechsel ist nie der Ort,
     // an dem jemand eine fremde Bearbeitung bewusst wegwirft.
     await publishSidecar(moved.newSidecarPath, renderPatched(updated, raw.body), {
@@ -225,7 +218,7 @@ async function commitMoveDocument(
     sidecar_path: moved.newSidecarPath,
     original_path: moved.newOriginalPath,
     reindexed: true,
-    ...((auditWarning || journalWarning) ? { warning: [auditWarning, journalWarning].filter(Boolean).join("; ") } : {}),
+    ...(auditWarning || journalWarning ? { warning: [auditWarning, journalWarning].filter(Boolean).join("; ") } : {}),
   };
 }
 
@@ -311,14 +304,7 @@ async function moveExclusive(src: string, dest: string): Promise<void> {
 
 /** Ist an diesem Pfad noch exakt die Datei, die wir dort hingelegt haben? */
 function sameFileStat(a: Stats | null, b: Stats | null): boolean {
-  return (
-    a !== null &&
-    b !== null &&
-    a.dev === b.dev &&
-    a.ino === b.ino &&
-    a.size === b.size &&
-    a.mtimeMs === b.mtimeMs
-  );
+  return a !== null && b !== null && a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeMs === b.mtimeMs;
 }
 
 export async function moveDocumentFiles(
@@ -332,7 +318,7 @@ export async function moveDocumentFiles(
     currentFolderPath: string;
     newFolderPath: string;
     linkedFile: boolean;
-  },
+  }
 ): Promise<MovedDocumentFiles> {
   const root = vaultRoot(vault);
   const docsRoot = join(root, DOCUMENTS_ROOT);
@@ -343,17 +329,14 @@ export async function moveDocumentFiles(
   const originalFilename = basename(args.originalPath);
 
   const newSidecarPath = join(targetFolder, sidecarFilename);
-  const newOriginalPath = args.linkedFile
-    ? args.originalPath
-    : join(targetFolder, originalFilename);
+  const newOriginalPath = args.linkedFile ? args.originalPath : join(targetFolder, originalFilename);
 
   // #240/A5.3: BEIDE Ziele prüfen, bevor das erste umbenannt wird. Vorher
   // wanderte das Original erfolgreich ans Ziel und erst danach kollidierte
   // der Sidecar — Ergebnis war ein gemeldeter Fehler bei halb ausgeführtem
   // Move: Original im Zielordner, Sidecar in der Quelle, Frontmatter und
   // Platte widersprachen sich.
-  const movesOriginal =
-    !args.linkedFile && newOriginalPath !== args.originalPath;
+  const movesOriginal = !args.linkedFile && newOriginalPath !== args.originalPath;
   const movesSidecar = newSidecarPath !== args.sidecarPath;
   if (movesOriginal && (await pathExists(newOriginalPath))) {
     throw new Error(`target original already exists: ${newOriginalPath}`);
@@ -405,7 +388,7 @@ export async function moveDocumentFiles(
           throw new Error(
             `${(err as Error).message} — AND the original could not be moved back: ` +
               `it is at ${newOriginalPath} instead of ${args.originalPath} ` +
-              `(${(undoErr as Error).message}).`,
+              `(${(undoErr as Error).message}).`
           );
         }
       }
@@ -449,14 +432,12 @@ export async function moveDocumentFiles(
         `the moved sidecar could not be read back (${(err as Error).message})` +
           (undo.length > 0
             ? ` AND the move could not be undone. Fix by hand: ${undo.join("; ")}.`
-            : ` — the move was undone, nothing was changed.`),
+            : ` — the move was undone, nothing was changed.`)
       );
     }
   }
 
-  const rollback = async (
-    expectedSidecar: string | null = movedBytes,
-  ): Promise<MoveRollbackResult> => {
+  const rollback = async (expectedSidecar: string | null = movedBytes): Promise<MoveRollbackResult> => {
     const problems: string[] = [];
     if (movesSidecar) {
       // Nur zurückrollen, was auch noch unser Sidecar ist — sonst schleift der
@@ -473,25 +454,19 @@ export async function moveDocumentFiles(
       try {
         await moveExclusive(newSidecarPath, args.sidecarPath);
       } catch (e) {
-        problems.push(
-          `${newSidecarPath} could not go back to ${args.sidecarPath} (${(e as Error).message})`,
-        );
+        problems.push(`${newSidecarPath} could not go back to ${args.sidecarPath} (${(e as Error).message})`);
       }
     }
     if (movesOriginal) {
       // Dieselbe Frage fürs Original — sie fehlte ganz, und deshalb ersetzte
       // der Rollback eine extern am alten Pfad entstandene Datei.
       if (!sameFileStat(publishedOriginal, await stat(newOriginalPath).catch(() => null))) {
-        problems.push(
-          `${newOriginalPath} was changed by someone else after the move — it was left there`,
-        );
+        problems.push(`${newOriginalPath} was changed by someone else after the move — it was left there`);
       } else {
         try {
           await moveExclusive(newOriginalPath, args.originalPath);
         } catch (e) {
-          problems.push(
-            `${newOriginalPath} could not go back to ${args.originalPath} (${(e as Error).message})`,
-          );
+          problems.push(`${newOriginalPath} could not go back to ${args.originalPath} (${(e as Error).message})`);
         }
       }
     }

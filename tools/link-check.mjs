@@ -43,9 +43,7 @@ const SKIP_DIRS = new Set([
 export function markdownFiles(root = REPO_ROOT) {
   const out = [];
   const walk = (dir) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
-      a.name.localeCompare(b.name),
-    )) {
+    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
       if (entry.name.startsWith(".") && entry.name !== ".github") {
         if (!SKIP_DIRS.has(entry.name)) continue;
       }
@@ -125,9 +123,7 @@ export function checkFile(file, root = REPO_ROOT) {
     if (!ok) problems.push({ file: rel, kind: "inline", target });
   }
 
-  const defined = new Set(
-    [...text.matchAll(DEFINITION)].map((m) => m[1].trim().toLowerCase()),
-  );
+  const defined = new Set([...text.matchAll(DEFINITION)].map((m) => m[1].trim().toLowerCase()));
   const used = new Set();
   for (const match of text.matchAll(FULL_REFERENCE)) used.add(match[1].trim().toLowerCase());
   for (const match of text.matchAll(COLLAPSED_REFERENCE)) used.add(match[1].trim().toLowerCase());

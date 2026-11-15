@@ -29,7 +29,14 @@
  */
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { tokenizeWithIdentifiers, foldTerm, PHRASE_STOPWORDS, MIN_SIGNIFICANT_TOKEN_LEN, ALTERNATIVE_WORDS, hasWordForm } from "@bastra-recall/core";
+import {
+  tokenizeWithIdentifiers,
+  foldTerm,
+  PHRASE_STOPWORDS,
+  MIN_SIGNIFICANT_TOKEN_LEN,
+  ALTERNATIVE_WORDS,
+  hasWordForm,
+} from "@bastra-recall/core";
 import type { Vault, Memory } from "@bastra-recall/core";
 import { envFirst, envInt, isOffValue } from "./env.js";
 import { readSettings } from "./settings.js";
@@ -46,7 +53,7 @@ const DEFAULT_MAX_PER_TURN = 2;
  *  Trenner „/" und „|" (nur freistehend — `src/app` bleibt ein Token). */
 const ALTERNATIVE_SPLIT_RE = new RegExp(
   `\\s+(?:${[...ALTERNATIVE_WORDS].map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\s+|\\s+[/|]\\s+`,
-  "iu",
+  "iu"
 );
 
 export interface ReflexHit {
@@ -72,11 +79,7 @@ const IDENTIFIER_TOKEN_RE = /[-_./#+@:]|\d/;
  *  im Kontext vorkommen — mindestens 2 Tokens, oder genau 1 Identifier-Token
  *  exakt. Unterstützte Flexionsformen zählen über feste Affixfamilien;
  *  keine freie Stammähnlichkeit. */
-export function phraseMatchesContext(
-  phrase: string,
-  contextTokens: Set<string>,
-  contextSequence?: string,
-): boolean {
+export function phraseMatchesContext(phrase: string, contextTokens: Set<string>, contextSequence?: string): boolean {
   return evaluatePhrase(phrase, contextTokens, contextSequence).matched;
 }
 
@@ -96,11 +99,7 @@ interface PhraseEval {
 const NO_CONTENT: PhraseEval = { matched: false, found: 0, total: 0, missing: [], guard: false };
 
 /** Die Match-Regel selbst (siehe phraseMatchesContext), mit Protokoll. */
-function evaluatePhrase(
-  phrase: string,
-  contextTokens: Set<string>,
-  contextSequence?: string,
-): PhraseEval {
+function evaluatePhrase(phrase: string, contextTokens: Set<string>, contextSequence?: string): PhraseEval {
   // Ein „oder"/„or" in der Phrase ist eine Alternativen-Liste, kein
   // Token-Paket: „Nachricht oder Antwort entwerfen" verlangte sonst BEIDE
   // Substantive im Prompt und feuerte nie (19.08.-Vorfall: die
@@ -115,9 +114,7 @@ function evaluatePhrase(
     return evals.find((e) => e.matched) ?? evals.reduce(closerOf);
   }
   const tokens = tokenizeWithIdentifiers(phrase).map(foldTerm);
-  const meaningful = [
-    ...new Set(tokens.filter((t) => t.length >= MIN_TOKEN_LEN && !PHRASE_STOPWORDS.has(t))),
-  ];
+  const meaningful = [...new Set(tokens.filter((t) => t.length >= MIN_TOKEN_LEN && !PHRASE_STOPWORDS.has(t)))];
   if (meaningful.length === 0) return NO_CONTENT;
   if (meaningful.length === 1 && !IDENTIFIER_TOKEN_RE.test(meaningful[0])) {
     // 20.08.-Vorfall: „antwortentwurf bitte" — vom User wörtlich als Trigger
@@ -128,9 +125,7 @@ function evaluatePhrase(
     // wörtlich — als zusammenhängende Tokenfolge, Funktionswörter inklusive.
     // Ohne Sequenz (Alt-Aufrufer) bleibt es beim Verwerfen.
     const literal =
-      tokens.length >= 2 &&
-      contextSequence !== undefined &&
-      contextSequence.includes(` ${tokens.join(" ")} `);
+      tokens.length >= 2 && contextSequence !== undefined && contextSequence.includes(` ${tokens.join(" ")} `);
     const found = hasWordForm(contextTokens, meaningful[0]) ? 1 : 0;
     return {
       matched: literal,
@@ -157,9 +152,7 @@ function evaluatePhrase(
 /** Die von zwei Phrasen, die näher dran war: mehr abgehakte Tokens im
  *  Verhältnis, bei Gleichstand die mit mehr Tokens überhaupt. */
 const closerOf = (a: PhraseEval, b: PhraseEval): PhraseEval =>
-  b.found / Math.max(b.total, 1) > a.found / Math.max(a.total, 1) || (b.found > a.found && b.total === a.total)
-    ? b
-    : a;
+  b.found / Math.max(b.total, 1) > a.found / Math.max(a.total, 1) || (b.found > a.found && b.total === a.total) ? b : a;
 
 /**
  * #565: warum ein verdrahtetes Reflex-Memory NICHT gefeuert hat. Elf Vorfälle
@@ -219,10 +212,7 @@ export function reflexPool(vault: Vault): Memory[] {
 /** Die eine Pool-Bedingung, auch für Pools, die nicht aus einem Vault kommen. */
 export function isReflexPoolMember(m: Memory): boolean {
   return (
-    m.fm.recall_mode === "reflex" &&
-    m.fm.obsolete !== true &&
-    m.fm.sensitivity !== "private" &&
-    !m.fm.superseded_by
+    m.fm.recall_mode === "reflex" && m.fm.obsolete !== true && m.fm.sensitivity !== "private" && !m.fm.superseded_by
   );
 }
 
@@ -231,8 +221,7 @@ export function reflexPoolIds(vault: Vault): string[] {
   return reflexPool(vault).map((m) => m.fm.id);
 }
 
-const salienceOf = (m: Memory): number =>
-  typeof m.fm.salience === "number" ? m.fm.salience : 0;
+const salienceOf = (m: Memory): number => (typeof m.fm.salience === "number" ? m.fm.salience : 0);
 
 /**
  * Pure Match-Pipeline, exportiert für Tests: Reflex-Subset filtern, hart
@@ -241,7 +230,7 @@ const salienceOf = (m: Memory): number =>
 export function collectReflexHits(
   vault: Vault,
   context: string,
-  budget: number,
+  budget: number
 ): { pool: number; matched: ReflexMatch[]; served: ReflexMatch[]; nearMisses: ReflexNearMiss[] } {
   return matchReflexPool(reflexPool(vault), context, budget);
 }
@@ -251,7 +240,7 @@ export function collectReflexHits(
 export function matchReflexPool(
   pool: readonly Memory[],
   context: string,
-  budget: number,
+  budget: number
 ): { pool: number; matched: ReflexMatch[]; served: ReflexMatch[]; nearMisses: ReflexNearMiss[] } {
   // One spelling and case fold on both sides (core fold.ts): an NFD prompt
   // from macOS or a Turkish "İ" meets its trigger.
@@ -270,10 +259,9 @@ export function matchReflexPool(
     // Autorisierung. Nötig, weil Flexion und Frageform das exakte Token-AND
     // sonst leer laufen lassen („entwirfst" matcht „entwerfen" nie).
     const expanded = (m.fm as { recall_when_expanded?: unknown }).recall_when_expanded;
-    const phrases = [
-      ...(m.fm.recall_when ?? []),
-      ...(Array.isArray(expanded) ? expanded : []),
-    ].filter((p): p is string => typeof p === "string");
+    const phrases = [...(m.fm.recall_when ?? []), ...(Array.isArray(expanded) ? expanded : [])].filter(
+      (p): p is string => typeof p === "string"
+    );
     const evaluated = phrases.map((p) => ({ phrase: p, ev: evaluatePhrase(p, contextTokens, contextSequence) }));
     const hit = evaluated.filter((e) => e.ev.matched);
     if (hit.length > 0) {
@@ -282,7 +270,7 @@ export function matchReflexPool(
     }
     const closest = evaluated.reduce<(typeof evaluated)[number] | undefined>(
       (best, e) => (best === undefined || closerOf(best.ev, e.ev) === e.ev ? e : best),
-      undefined,
+      undefined
     );
     // Ein Memory, von dessen Trigger kein einziges Token im Prompt steht, ist
     // kein Beinahe-Treffer, sondern ein anderes Thema.
@@ -304,7 +292,7 @@ export function matchReflexPool(
     (a, b) =>
       b.matches - a.matches ||
       salienceOf(b.memory) - salienceOf(a.memory) ||
-      String(b.memory.fm.updated ?? "").localeCompare(String(a.memory.fm.updated ?? "")),
+      String(b.memory.fm.updated ?? "").localeCompare(String(a.memory.fm.updated ?? ""))
   );
   const served = matched.slice(0, budget);
   // Was der Budget-Cut verworfen hat, steht vor den Teiltreffern: es hat hart
@@ -326,10 +314,7 @@ export function matchReflexPool(
 export async function reflexConfig(): Promise<{ enabled: boolean; maxPerTurn: number }> {
   const settings = await readSettings().catch(() => undefined);
   const envMode = envFirst("BASTRA_REFLEX");
-  const enabled =
-    envMode !== undefined
-      ? !isOffValue(envMode)
-      : settings?.reflex?.enabled ?? true;
+  const enabled = envMode !== undefined ? !isOffValue(envMode) : (settings?.reflex?.enabled ?? true);
   const raw = envInt("BASTRA_REFLEX_MAX_PER_TURN", settings?.reflex?.maxPerTurn ?? DEFAULT_MAX_PER_TURN);
   const maxPerTurn = Math.min(Math.max(Math.trunc(raw), 1), 5);
   return { enabled, maxPerTurn };
@@ -351,7 +336,7 @@ export function handleHookReflex(
   res: ServerResponse,
   t0: number,
   vault: Vault,
-  telemetry: Telemetry,
+  telemetry: Telemetry
 ): void {
   let raw = "";
   req.on("data", (c) => {
@@ -392,7 +377,11 @@ export function handleHookReflex(
       const recallId = served.length > 0 ? (replay ? randomUUID() : telemetry.newRecallId()) : null;
       if (recallId && !replay) {
         // Join-Anker für spätere load_memory-Episoden (score-los → null).
-        telemetry.recordHookHints(recallId, served.map((m) => ({ id: m.memory.fm.id })), typeof body.session_id === "string" ? body.session_id : null);
+        telemetry.recordHookHints(
+          recallId,
+          served.map((m) => ({ id: m.memory.fm.id })),
+          typeof body.session_id === "string" ? body.session_id : null
+        );
       }
       const sessionId = typeof body.session_id === "string" ? body.session_id : undefined;
       fireAndForget(
@@ -407,7 +396,7 @@ export function handleHookReflex(
           ...(nearMisses.length > 0 ? { near_miss: nearMisses } : {}),
           latency_ms: Date.now() - t0,
           ...(sessionId ? { session_id: sessionId } : {}),
-        }),
+        })
       );
       send(200, { hits: served.map(toReflexHit), recall_id: recallId });
     })();

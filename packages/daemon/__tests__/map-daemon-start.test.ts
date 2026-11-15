@@ -43,8 +43,12 @@ function harness(opts: { healthyAtMs: number | null; vault?: { path: string } | 
       return opts.healthyAtMs !== null && state.clock >= opts.healthyAtMs;
     },
     resolveVaultPath: async () => opts.vault ?? { path: VAULT },
-    spawnDaemon: (vaultPath) => { state.spawns.push(vaultPath); },
-    sleep: async (ms) => { state.clock += ms; },
+    spawnDaemon: (vaultPath) => {
+      state.spawns.push(vaultPath);
+    },
+    sleep: async (ms) => {
+      state.clock += ms;
+    },
     now: () => state.clock,
   };
   return { io, state };
@@ -129,11 +133,21 @@ test("no vault: fails immediately instead of waiting out the timeout", async () 
 test("onStarting announces a real start only — never a daemon that was already up", async () => {
   let announced = 0;
   const up = harness({ healthyAtMs: 0 });
-  await ensureDaemonRunning({ io: up.io, onStarting: () => { announced += 1; } });
+  await ensureDaemonRunning({
+    io: up.io,
+    onStarting: () => {
+      announced += 1;
+    },
+  });
   assert.equal(announced, 0);
 
   const down = harness({ healthyAtMs: 1_000 });
-  await ensureDaemonRunning({ io: down.io, onStarting: () => { announced += 1; } });
+  await ensureDaemonRunning({
+    io: down.io,
+    onStarting: () => {
+      announced += 1;
+    },
+  });
   assert.equal(announced, 1, "fires once, before the wait it explains");
 });
 
@@ -163,7 +177,7 @@ test("setup: the closing line offers the URL only when the daemon came up", () =
 test("setup: a daemon that did not start downgrades the line and names the way out", () => {
   const bad = vaultMapOutcomeLine(
     { ok: false, state: "timeout", detail: "daemon did not answer /health within 30s" },
-    "http://127.0.0.1:6723/ui",
+    "http://127.0.0.1:6723/ui"
   );
   assert.equal(bad.level, "warn", "a link that cannot load is not a success");
   assert.match(bad.text, /did not start/);
@@ -177,21 +191,23 @@ const MAP_URL = "http://127.0.0.1:6723/ui";
  * clock/probe underneath — so these exercise the actual order and start
  * decision, not a stand-in for them. Nothing writes settings, nothing spawns.
  */
-function setupStep(
-  h: ReturnType<typeof harness>,
-  opts: { vaultPath?: string; timeoutMs?: number } = {},
-) {
+function setupStep(h: ReturnType<typeof harness>, opts: { vaultPath?: string; timeoutMs?: number } = {}) {
   const calls: string[] = [];
   const run = vaultMapSetupStep(
     { vaultPath: opts.vaultPath, onStarting: () => calls.push("announced") },
     {
-      enableMap: async () => { calls.push("enabled"); },
+      enableMap: async () => {
+        calls.push("enabled");
+      },
       ensureDaemon: (o) => {
         calls.push("ensured");
         return ensureDaemonRunning({ ...o, io: h.io, timeoutMs: opts.timeoutMs });
       },
-      url: () => { calls.push("url-read"); return MAP_URL; },
-    },
+      url: () => {
+        calls.push("url-read");
+        return MAP_URL;
+      },
+    }
   );
   return { run, calls };
 }
@@ -205,7 +221,7 @@ test("setup step: daemon down → started with the picked vault, URL offered onl
   assert.deepEqual(
     calls,
     ["enabled", "ensured", "announced", "url-read"],
-    "the daemon is dealt with before the URL is even read, let alone offered",
+    "the daemon is dealt with before the URL is even read, let alone offered"
   );
   assert.equal(line.level, "success");
   assert.ok(line.text.includes(MAP_URL));
@@ -227,10 +243,7 @@ test("setup step: daemon will not come up → the URL is NOT offered as reachabl
   const line = await run;
 
   assert.equal(line.level, "warn", "this is the line the reporter clicked — it must not read as success");
-  assert.ok(
-    !line.text.includes("read per request"),
-    "no 'here is your map' phrasing when there is no map to open",
-  );
+  assert.ok(!line.text.includes("read per request"), "no 'here is your map' phrasing when there is no map to open");
   assert.match(line.text, /did not start/);
   assert.match(line.text, /bastra map/, "name the command that retries it");
 });
@@ -270,7 +283,7 @@ test("map: the browser opens only after the daemon answers", async () => {
         settingsPath,
         ensureDaemon: outcome({ ok: true, state: "started", detail: "daemon started" }),
         open: (url) => opened.push(url),
-      }),
+      })
     );
 
     assert.equal(result, 0);
@@ -287,7 +300,7 @@ test("map: a daemon that was already running is not announced, page opens as bef
         settingsPath,
         ensureDaemon: outcome({ ok: true, state: "already-running", detail: "daemon already running" }),
         open: (url) => opened.push(url),
-      }),
+      })
     );
 
     assert.equal(result, 0);
@@ -304,7 +317,7 @@ test("map: a daemon that will not come up opens NO page and says why (#322)", as
         settingsPath,
         ensureDaemon: outcome({ ok: false, state: "timeout", detail: "daemon did not answer /health within 30s" }),
         open: (url) => opened.push(url),
-      }),
+      })
     );
 
     assert.equal(result, 1, "a map that cannot load is not a success");
@@ -322,7 +335,7 @@ test("map: an unresolvable vault is reported, not opened into", async () => {
         settingsPath,
         ensureDaemon: outcome({ ok: false, state: "no-vault", detail: "vault path required — pass --vault <path>" }),
         open: (url) => opened.push(url),
-      }),
+      })
     );
 
     assert.equal(result, 1);
@@ -339,9 +352,12 @@ test("map: still disabled + no TTY → the old opt-in message, and no daemon is 
     const { result, err } = await withCapture(() =>
       cmdMap({
         settingsPath: join(dir, "cli-settings.json"),
-        ensureDaemon: async () => { ensured += 1; return { ok: true, state: "started", detail: "" }; },
+        ensureDaemon: async () => {
+          ensured += 1;
+          return { ok: true, state: "started", detail: "" };
+        },
         open: (url) => opened.push(url),
-      }),
+      })
     );
 
     assert.equal(result, 1);

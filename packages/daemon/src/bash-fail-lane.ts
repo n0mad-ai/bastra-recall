@@ -29,7 +29,15 @@ import { reportHinted } from "./hook-hinted.js";
 import { postLane } from "./thin-client.js";
 import { isUnfused, type HookRecallHit, type HookRecallResponse } from "./hook-recall-response.js";
 import { unfusedHeadline, unfusedReasonFor } from "./band-wording.js";
-import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookCaller, type HookClientEvidence } from "./hook-surface.js";
+import {
+  hookCaller,
+  hookClient,
+  hookAgent,
+  hookClientEvidence,
+  type HookAgent,
+  type HookCaller,
+  type HookClientEvidence,
+} from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
 import { spawn } from "node:child_process";
 import { extname } from "node:path";
@@ -107,7 +115,9 @@ function withRmReceipt(out: string, payload: BashFailPayload): string {
     return out;
   }
   if (!report) return out;
-  const doc = JSON.parse(out || "{}") as { hookSpecificOutput?: { hookEventName?: string; additionalContext?: string } };
+  const doc = JSON.parse(out || "{}") as {
+    hookSpecificOutput?: { hookEventName?: string; additionalContext?: string };
+  };
   const prev = doc.hookSpecificOutput?.additionalContext;
   doc.hookSpecificOutput = {
     ...doc.hookSpecificOutput,
@@ -129,7 +139,10 @@ function withRmReceipt(out: string, payload: BashFailPayload): string {
 function reconcileInBackground(): void {
   stampReconcile();
   const cli = fileURLToPath(new URL(`./cli${extname(import.meta.url)}`, import.meta.url));
-  const child = spawn(process.execPath, [...process.execArgv, cli, "archive", "reconcile", "--yes"], { detached: true, stdio: "ignore" });
+  const child = spawn(process.execPath, [...process.execArgv, cli, "archive", "reconcile", "--yes"], {
+    detached: true,
+    stdio: "ignore",
+  });
   child.on("error", () => {});
   child.unref();
 }
@@ -186,7 +199,7 @@ async function bashPostLane(payload: BashFailPayload, selfBaseUrl: string): Prom
       ...hookCaller(payload),
       hook_source: "bash-fail",
     },
-    Math.min(120, Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt))),
+    Math.min(120, Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt)))
   );
 
   // Success path ends here — the act-signal was the only job.
@@ -222,8 +235,8 @@ async function bashPostLane(payload: BashFailPayload, selfBaseUrl: string): Prom
           ...hookCaller(payload),
           hook_source: "bash-fail",
         },
-        remainingMs,
-      ),
+        remainingMs
+      )
     ) as RecallResponse;
   } catch (err) {
     const e = err as NodeJS.ErrnoException;
@@ -302,7 +315,11 @@ async function bashPostLane(payload: BashFailPayload, selfBaseUrl: string): Prom
       await markThrottle(sessionId);
       hintTokensEst = Math.ceil(block.length / 4);
       // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
-      await reportHinted(selfBaseUrl, hits.map((h) => h.id), typeof payload.session_id === "string" ? payload.session_id : null);
+      await reportHinted(
+        selfBaseUrl,
+        hits.map((h) => h.id),
+        typeof payload.session_id === "string" ? payload.session_id : null
+      );
       const emitted = hits.map((h) => h.id);
       const now = Date.now();
       await mutateSessionState(sessionId, (s) => {
@@ -320,7 +337,11 @@ async function bashPostLane(payload: BashFailPayload, selfBaseUrl: string): Prom
 
   // #458 (shadow): den fertigen Block ans Sitzungsbudget anrechnen und den
   // Governor-Entscheid loggen — nichts wird gekürzt.
-  recordBudgetShadow(typeof payload.session_id === "string" ? payload.session_id : null, "bash_fail_hook_call", hintTokensEst);
+  recordBudgetShadow(
+    typeof payload.session_id === "string" ? payload.session_id : null,
+    "bash_fail_hook_call",
+    hintTokensEst
+  );
   await writeTelemetry({
     session_id: typeof payload.session_id === "string" ? payload.session_id : null,
     client: clientEvidence,
@@ -461,7 +482,10 @@ export function extractErrorContext(result: Record<string, unknown>): string {
  *  `cd <dir> &&` is skipped: agents prefix most commands with it, and a query
  *  built from `cd <dir>` names a directory, not the program that failed. */
 export function extractCommandHead(command: string): string {
-  const clauses = command.split(/[\n;&|]/).map((c) => c.trim()).filter(Boolean);
+  const clauses = command
+    .split(/[\n;&|]/)
+    .map((c) => c.trim())
+    .filter(Boolean);
   const firstClause = clauses.find((c) => !/^(?:cd|pushd)(?:\s|$)/.test(c)) ?? clauses[0] ?? "";
   const tokens = firstClause.split(/\s+/).slice(0, 3);
   return tokens.join(" ").slice(0, 80);
@@ -500,13 +524,13 @@ export function formatHintBlock(
   // #565: der `degraded`-Grund der Antwort — ohne ihn behauptete der Block
   // „semantic search is off", wo der Arm lief und nur diesen Aufruf nicht
   // bediente.
-  degraded?: string,
+  degraded?: string
 ): string {
   const head = `<recall-hints surface="${surface}" trigger="bash-fail">`;
   const tail = `</recall-hints>`;
   const lines: string[] = [];
   lines.push(
-    `The Bash command above failed. These memories describe similar failure modes — check before re-running or trying alternatives.`,
+    `The Bash command above failed. These memories describe similar failure modes — check before re-running or trying alternatives.`
   );
   // P0: ohne Fusion sagen, woran das Modell die Treffer stattdessen misst.
   if (unfused) lines.push(unfusedHeadline("this failure", unfusedReasonFor(degraded)));
@@ -552,7 +576,7 @@ async function postAct(
     exit_code: number | null;
     hook_source: "bash-fail";
   },
-  timeoutMs: number,
+  timeoutMs: number
 ): Promise<void> {
   try {
     await postLane(baseUrl, "/hook/act", body, timeoutMs);

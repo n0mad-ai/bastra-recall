@@ -10,11 +10,7 @@ import { DEFAULT_CONFIG } from "../../packages/statusline/src/config/defaults.ts
 
 function context(info, config) {
   const renderer = new PowerlineRenderer(structuredClone(DEFAULT_CONFIG));
-  return renderer.segments.segmentRenderer.renderContext(
-    info,
-    renderer.theme.getThemeColors(),
-    config,
-  );
+  return renderer.segments.segmentRenderer.renderContext(info, renderer.theme.getThemeColors(), config);
 }
 
 const NINETY_USED = {

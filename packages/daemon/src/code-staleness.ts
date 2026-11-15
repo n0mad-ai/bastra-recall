@@ -90,11 +90,7 @@ export interface StalenessMonitor {
  * would be waste. 30s is well inside "within one check interval" from the
  * issue's acceptance, and far below the 6h update-check tick it suggested.
  */
-export function createStalenessMonitor(
-  running: string,
-  io: StalenessIo,
-  throttleMs = 30_000,
-): StalenessMonitor {
+export function createStalenessMonitor(running: string, io: StalenessIo, throttleMs = 30_000): StalenessMonitor {
   const bootMtimeMs = io.buildMtimeMs();
   let lastProbeAt = 0;
   let verdict: CodeStale | null = null;

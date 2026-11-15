@@ -128,7 +128,7 @@ export async function affectsFilesLines(io: AffectsFilesIo): Promise<string[]> {
   if (lines.length > 0 && notRepoPaths.length > 0) {
     const n = notRepoPaths.length;
     lines.push(
-      `${n} further entr${n === 1 ? "y names an absolute or home path" : "ies name absolute or home paths"} — not repository paths, nothing to resolve`,
+      `${n} further entr${n === 1 ? "y names an absolute or home path" : "ies name absolute or home paths"} — not repository paths, nothing to resolve`
     );
   }
   return lines;
@@ -155,7 +155,7 @@ function capped(lines: string[]): string[] {
 async function offersFor(
   repoRoot: string,
   unresolved: readonly UnresolvedEntry[],
-  memories: ReadonlyArray<AppliesToMemory & { updated?: string }>,
+  memories: ReadonlyArray<AppliesToMemory & { updated?: string }>
 ): Promise<ReturnType<typeof renameOffers>> {
   const affected = new Set(unresolved.map((u) => u.memoryId));
   const dates = memories

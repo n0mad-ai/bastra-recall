@@ -42,12 +42,14 @@ test("onRecalled fires with the served recall hits, capped at three", async () =
 
   assert.deepEqual(
     seen,
-    [[
-      { id: "a", band: "optional" },
-      { id: "b", band: "optional" },
-      { id: "c", band: "optional" },
-    ]],
-    "only three light up, each carrying the band that served it",
+    [
+      [
+        { id: "a", band: "optional" },
+        { id: "b", band: "optional" },
+        { id: "c", band: "optional" },
+      ],
+    ],
+    "only three light up, each carrying the band that served it"
   );
 });
 
@@ -77,11 +79,13 @@ test("onRecalled fires on the hook_recall path too", async () => {
 
   assert.deepEqual(
     seen,
-    [[
-      { id: "x", band: "optional" },
-      { id: "y", band: "optional" },
-    ]],
-    "hook_recall surfaces its hits (< 3 = all)",
+    [
+      [
+        { id: "x", band: "optional" },
+        { id: "y", band: "optional" },
+      ],
+    ],
+    "hook_recall surfaces its hits (< 3 = all)"
   );
 });
 
@@ -110,12 +114,14 @@ test("the band labels a notice, it never swallows one", async () => {
 
   assert.deepEqual(
     seen,
-    [[
-      { id: "must", band: "required" },
-      { id: "maybe", band: "optional" },
-      { id: "faint", band: "below_floor" },
-    ]],
-    "every served hit lights up, each carrying the band it was served in",
+    [
+      [
+        { id: "must", band: "required" },
+        { id: "maybe", band: "optional" },
+        { id: "faint", band: "below_floor" },
+      ],
+    ],
+    "every served hit lights up, each carrying the band it was served in"
   );
 });
 
@@ -138,6 +144,6 @@ test("a throwing onRecalled never breaks the recall", async () => {
       latency_ms: 1,
       recall_stages: undefined,
       dropped_below_floor: 0,
-    }),
+    })
   );
 });

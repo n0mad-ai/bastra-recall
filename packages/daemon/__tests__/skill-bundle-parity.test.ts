@@ -13,7 +13,13 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { copySkill, describeSkillInstall, inspectSkillInstall, skillBundleRevision, skillPayload } from "../src/cli/skill.js";
+import {
+  copySkill,
+  describeSkillInstall,
+  inspectSkillInstall,
+  skillBundleRevision,
+  skillPayload,
+} from "../src/cli/skill.js";
 // @ts-expect-error — plain .mjs script, no declarations (#542).
 import { packEntry } from "../../../scripts/npm-pack-json.mjs";
 import { cursorRuleState } from "../src/cli/adapters/cursor.js";
@@ -32,7 +38,10 @@ const CANONICAL = resolve(REPO, "packages", "skill");
 async function shippedBundle(): Promise<string[]> {
   const payload = await skillPayload(CANONICAL);
   assert.ok(payload.includes("SKILL.md"), `no SKILL.md in the payload of ${CANONICAL}: ${payload.join(", ")}`);
-  assert.ok(payload.includes("agents/openai.yaml"), `no agents/openai.yaml in the payload of ${CANONICAL}: ${payload.join(", ")}`);
+  assert.ok(
+    payload.includes("agents/openai.yaml"),
+    `no agents/openai.yaml in the payload of ${CANONICAL}: ${payload.join(", ")}`
+  );
   return [...payload, "cursor-rules.mdc"];
 }
 

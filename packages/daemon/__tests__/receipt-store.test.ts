@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { validateCopyBlocks } from "@bastra-recall/core";
 import { callerSessionStore } from "../src/caller-session.js";
 import { formatActiveConventionsBlock } from "../src/prompt-format.js";
-import {recordRulebookCheck} from "../src/rulebook-check.js";
+import { recordRulebookCheck } from "../src/rulebook-check.js";
 import { runTaskStep } from "../src/prompt-task.js";
 import { RECEIPTS_CAP, currentReceipt, findReceipt, storeReceipt } from "../src/receipt-store.js";
 import { bumpTaskGeneration, loadSessionState, mutateSessionState, taskIdFor } from "../src/session-state.js";
@@ -43,7 +43,11 @@ after(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-async function seedTask(sid: string, kind: "draft-for-review" | "approved-copy" = "approved-copy", generation = 0): Promise<void> {
+async function seedTask(
+  sid: string,
+  kind: "draft-for-review" | "approved-copy" = "approved-copy",
+  generation = 0
+): Promise<void> {
   await mutateSessionState(sid, (s) => {
     s.activeTask = { id: taskIdFor(kind, 1000), kind, since: 1000, generation };
   });
@@ -51,7 +55,11 @@ async function seedTask(sid: string, kind: "draft-for-review" | "approved-copy" 
 
 function fakeTelemetry(): { telemetry: Telemetry; lines: unknown[] } {
   const lines: unknown[] = [];
-  const telemetry = { logReceiptUnattributed: async (p: unknown) => { lines.push(p); } } as unknown as Telemetry;
+  const telemetry = {
+    logReceiptUnattributed: async (p: unknown) => {
+      lines.push(p);
+    },
+  } as unknown as Telemetry;
   return { telemetry, lines };
 }
 
@@ -72,7 +80,16 @@ test("a passing call with a session stores the receipt in that session, without 
   const stored = state.receipts![0]!;
   assert.deepEqual(
     { ...stored, at: 0 },
-    { taskId: "approved-copy@1000", generation: 0, hash: out.artifact_sha256, receipt: out.receipt, channel: "discord-dm", limit: 2000, unit: "max(codepoints,utf16)", at: 0 },
+    {
+      taskId: "approved-copy@1000",
+      generation: 0,
+      hash: out.artifact_sha256,
+      receipt: out.receipt,
+      channel: "discord-dm",
+      limit: 2000,
+      unit: "max(codepoints,utf16)",
+      at: 0,
+    }
   );
   assert.ok(!JSON.stringify(state.receipts).includes("Paket"), "no artifact text in the store");
   assert.equal((await loadSessionState("rs-other")).receipts, undefined, "never written into another session");
@@ -80,7 +97,10 @@ test("a passing call with a session stores the receipt in that session, without 
 });
 
 test("without a session nothing is stored and one receipt_unattributed line is written", async () => {
-  for (const [caller, transport] of [[undefined, "stdio"], [null, "forwarded"]] as const) {
+  for (const [caller, transport] of [
+    [undefined, "stdio"],
+    [null, "forwarded"],
+  ] as const) {
     const { telemetry, lines } = fakeTelemetry();
     const run = () => validateArtifactHandler(ARGS, { telemetry });
     const out = caller === undefined ? await run() : await callerSessionStore.run(caller, run);
@@ -95,7 +115,9 @@ test("without a session nothing is stored and one receipt_unattributed line is w
 test("a failed validation stores nothing and writes no line", async () => {
   await seedTask("rs-failed");
   const { telemetry, lines } = fakeTelemetry();
-  const out = await callerSessionStore.run("rs-failed", () => validateArtifactHandler({ ...ARGS, text: "> " + MESSAGE }, { telemetry }));
+  const out = await callerSessionStore.run("rs-failed", () =>
+    validateArtifactHandler({ ...ARGS, text: "> " + MESSAGE }, { telemetry })
+  );
   assert.equal(out.receipt, null);
   assert.equal(out.receipt_stored, false);
   assert.equal((await loadSessionState("rs-failed")).receipts, undefined);
@@ -108,11 +130,13 @@ test("no task in progress or a stale task binding stores nothing", async () => {
   assert.match((none as { receipt_note?: string }).receipt_note ?? "", /no correspondence task/);
   await seedTask("rs-stale", "approved-copy", 2);
   const stale = await callerSessionStore.run("rs-stale", () =>
-    validateArtifactHandler({ ...ARGS, task: { kind: "approved-copy", generation: 1 } }));
+    validateArtifactHandler({ ...ARGS, task: { kind: "approved-copy", generation: 1 } })
+  );
   assert.equal(stale.receipt_stored, false);
   assert.equal((await loadSessionState("rs-stale")).receipts, undefined);
   const fresh = await callerSessionStore.run("rs-stale", () =>
-    validateArtifactHandler({ ...ARGS, task: { kind: "approved-copy", generation: 2 } }));
+    validateArtifactHandler({ ...ARGS, task: { kind: "approved-copy", generation: 2 } })
+  );
   assert.equal(fresh.receipt_stored, true);
 });
 
@@ -157,7 +181,7 @@ test("a generation jump (compact/clear/fork) expires the receipts", async () => 
 test("the task ending (kind none) expires the receipts", async () => {
   await seedTask("rs-none", "draft-for-review");
   await storeReceipt("rs-none", passing(), undefined);
-  await recordRulebookCheck("rs-none",{applicable:[],task:"none"},{entries:[],omitted:0});
+  await recordRulebookCheck("rs-none", { applicable: [], task: "none" }, { entries: [], omitted: 0 });
   const state = await loadSessionState("rs-none");
   assert.equal(state.activeTask?.kind, "none");
   assert.equal(state.receipts, undefined);
@@ -167,9 +191,12 @@ test("the active-conventions block shows the receipt line while it is valid", as
   await seedTask("rs-block");
   const r = passing();
   await storeReceipt("rs-block", r, undefined);
-  const step = async () => runTaskStep({
-    sessionId: "rs-block", snapshot: await loadSessionState("rs-block"), surface: "claude-code",
-  });
+  const step = async () =>
+    runTaskStep({
+      sessionId: "rs-block",
+      snapshot: await loadSessionState("rs-block"),
+      surface: "claude-code",
+    });
   const short = r.receipt.slice("sha256:".length, "sha256:".length + 12);
   const shown = await step();
   assert.ok(shown?.includes(`receipt: ${short} (discord-dm, 2000 max(codepoints,utf16))`), shown ?? "null");

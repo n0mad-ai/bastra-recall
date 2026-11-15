@@ -14,11 +14,7 @@ import { mkdtemp, readFile, rm, symlink, writeFile, mkdir } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 
-import {
-  compareVersions,
-  checkForUpdate,
-  isOptedOut,
-} from "../src/update-check.js";
+import { compareVersions, checkForUpdate, isOptedOut } from "../src/update-check.js";
 import { detectInstallMode, resolveInstalledRuntime } from "../src/cli/update.js";
 import {
   autostartEnv,
@@ -57,14 +53,18 @@ test("checkForUpdate: cache hit within TTL skips fetch", async () => {
   await withTempDir(async (dir) => {
     const cachePath = join(dir, "cache.json");
     const now = Date.now();
-    await writeFile(cachePath, JSON.stringify({
-      last_checked_at: new Date(now - 60_000).toISOString(),
-      current: "0.5.2",
-      latest: "0.6.0",
-      html_url: "https://example.com/v0.6.0",
-      published_at: "2026-05-20T00:00:00Z",
-      hasUpdate: true,
-    }), "utf8");
+    await writeFile(
+      cachePath,
+      JSON.stringify({
+        last_checked_at: new Date(now - 60_000).toISOString(),
+        current: "0.5.2",
+        latest: "0.6.0",
+        html_url: "https://example.com/v0.6.0",
+        published_at: "2026-05-20T00:00:00Z",
+        hasUpdate: true,
+      }),
+      "utf8"
+    );
 
     let fetchCalls = 0;
     const state = await checkForUpdate({
@@ -167,14 +167,18 @@ test("checkForUpdate: stale-cache fallback when fetch returns null", async () =>
     const cachePath = join(dir, "cache.json");
     const now = Date.now();
     // Cache older than TTL
-    await writeFile(cachePath, JSON.stringify({
-      last_checked_at: new Date(now - 48 * 60 * 60 * 1000).toISOString(),
-      current: "0.5.2",
-      latest: "0.6.0",
-      html_url: "https://example.com",
-      published_at: "2026-05-01T00:00:00Z",
-      hasUpdate: true,
-    }), "utf8");
+    await writeFile(
+      cachePath,
+      JSON.stringify({
+        last_checked_at: new Date(now - 48 * 60 * 60 * 1000).toISOString(),
+        current: "0.5.2",
+        latest: "0.6.0",
+        html_url: "https://example.com",
+        published_at: "2026-05-01T00:00:00Z",
+        hasUpdate: true,
+      }),
+      "utf8"
+    );
 
     const state = await checkForUpdate({
       currentVersion: "0.5.2",
@@ -249,10 +253,13 @@ const out = { ProgramArguments: strings(block("ProgramArguments", "array")), Env
 for (let i = 0; i + 1 < env.length; i += 2) out.EnvironmentVariables[env[i]] = env[i + 1];
 process.stdout.write(JSON.stringify(out));
 `,
-    "utf8",
+    "utf8"
   );
   const plutil = join(dir, "plutil");
-  await writeFile(plutil, `#!/bin/sh\nexec "${process.execPath}" "${reader}" "$@"\n`, { encoding: "utf8", mode: 0o755 });
+  await writeFile(plutil, `#!/bin/sh\nexec "${process.execPath}" "${reader}" "$@"\n`, {
+    encoding: "utf8",
+    mode: 0o755,
+  });
   return plutil;
 }
 
@@ -280,7 +287,10 @@ async function makeStubs(dir: string, prefix: string): Promise<{ bin: string; la
   await mkdir(bin, { recursive: true });
   const log = join(dir, "launchctl.log");
   const brew = join(bin, "brew");
-  await writeFile(brew, `#!/bin/sh\n[ "$1" = "--prefix" ] && { echo "${prefix}"; exit 0; }\nexit 1\n`, { encoding: "utf8", mode: 0o755 });
+  await writeFile(brew, `#!/bin/sh\n[ "$1" = "--prefix" ] && { echo "${prefix}"; exit 0; }\nexit 1\n`, {
+    encoding: "utf8",
+    mode: 0o755,
+  });
   const launchctl = join(bin, "launchctl");
   await writeFile(launchctl, `#!/bin/sh\necho "$@" >> "${log}"\nexit 0\n`, { encoding: "utf8", mode: 0o755 });
   return { bin, launchctl, log };
@@ -293,7 +303,15 @@ function programFromPlist(xml: string): string[] {
 }
 
 async function withKegFixture<T>(
-  fn: (ctx: { dir: string; old: Keg; fresh: Keg; plist: string; launchctl: string; plutil: string; log: string }) => Promise<T>,
+  fn: (ctx: {
+    dir: string;
+    old: Keg;
+    fresh: Keg;
+    plist: string;
+    launchctl: string;
+    plutil: string;
+    log: string;
+  }) => Promise<T>
 ): Promise<T> {
   return withTempDir(async (dir) => {
     const cellar = join(dir, "Cellar", "bastra-recall");
@@ -308,7 +326,7 @@ async function withKegFixture<T>(
     await writeFile(
       plist,
       renderPlist(autostartEnv(join(dir, "vault"), process.execPath), [process.execPath, old.script]),
-      "utf8",
+      "utf8"
     );
     const prevPath = process.env.PATH;
     const prevVault = process.env.BASTRA_VAULT_PATH;
@@ -342,14 +360,19 @@ test("#435: after a Homebrew update the managed autostart names the NEW keg, not
     assert.equal(target.version, "0.9.2");
 
     let out = "";
-    const outcome = await refreshManagedAutostart((s) => { out += s; }, {
-      target,
-      reload: true,
-      plistFile: plist,
-      launchctl,
-      plutil,
-      platform: "darwin",
-    });
+    const outcome = await refreshManagedAutostart(
+      (s) => {
+        out += s;
+      },
+      {
+        target,
+        reload: true,
+        plistFile: plist,
+        launchctl,
+        plutil,
+        platform: "darwin",
+      }
+    );
     assert.equal(outcome.ok, true, out);
 
     const program = programFromPlist(await readFile(plist, "utf8"));
@@ -362,14 +385,19 @@ test("#435: after a Homebrew update the managed autostart names the NEW keg, not
 test("#435: an unresolvable install leaves the managed autostart alone instead of reporting success", async () => {
   await withKegFixture(async ({ old, plist, launchctl, plutil }) => {
     let out = "";
-    const outcome = await refreshManagedAutostart((s) => { out += s; }, {
-      target: null,
-      reload: true,
-      plistFile: plist,
-      launchctl,
-      plutil,
-      platform: "darwin",
-    });
+    const outcome = await refreshManagedAutostart(
+      (s) => {
+        out += s;
+      },
+      {
+        target: null,
+        reload: true,
+        plistFile: plist,
+        launchctl,
+        plutil,
+        platform: "darwin",
+      }
+    );
     assert.equal(outcome.ok, false, "an update may not report success it cannot prove");
     const program = programFromPlist(await readFile(plist, "utf8"));
     assert.equal(program[1], old.script, "nothing was rewritten");
@@ -383,14 +411,19 @@ test("#441: a staged update repoints the managed LaunchAgent without restarting 
 
     let out = "";
     // reload: false ist genau das, was `bastra update --staged` setzt.
-    const outcome = await refreshManagedAutostart((s) => { out += s; }, {
-      target,
-      reload: false,
-      plistFile: plist,
-      launchctl,
-      plutil,
-      platform: "darwin",
-    });
+    const outcome = await refreshManagedAutostart(
+      (s) => {
+        out += s;
+      },
+      {
+        target,
+        reload: false,
+        plistFile: plist,
+        launchctl,
+        plutil,
+        platform: "darwin",
+      }
+    );
     assert.equal(outcome.ok, true, out);
 
     const program = programFromPlist(await readFile(plist, "utf8"));
@@ -415,17 +448,14 @@ test("#441: the staged path is wired to the same refresh as the interactive one"
   // were. Pin the exact snippet each regression changes, not just the order.
   assert.ok(
     src.includes("if (!args.dryRun) {\n    const autostart"),
-    "the refresh must run unconditionally (not skipped for --staged)",
+    "the refresh must run unconditionally (not skipped for --staged)"
   );
   assert.ok(src.includes("reload: !args.staged,"), "staged must pass reload: false, never a hardcoded reload");
   assert.ok(src.includes("if (!autostart.ok) {"), "a failed refresh must not be ignored");
   const refreshAt = src.indexOf("(io.refresh ?? refreshManagedAutostart)((s)");
   const stagedReturnAt = src.indexOf("→ staged — daemon left running on old code");
   assert.ok(refreshAt > 0 && stagedReturnAt > 0, "both anchors must exist");
-  assert.ok(
-    refreshAt < stagedReturnAt,
-    "the managed-service refresh must run BEFORE --staged reports success (#441)",
-  );
+  assert.ok(refreshAt < stagedReturnAt, "the managed-service refresh must run BEFORE --staged reports success (#441)");
 });
 
 // ─── #435, zweiter Teil: das node-Binary im plist ────────────────────────────
@@ -464,7 +494,7 @@ test("#435: a version-pinned node keg gives way to the stable symlink the packag
     assert.equal(
       stableNodeBin(pinned),
       join(prefix, "opt", "node", "bin", "node"),
-      "the plist must name the path that survives the next node upgrade",
+      "the plist must name the path that survives the next node upgrade"
     );
   });
 });
@@ -495,26 +525,29 @@ test("#435: a stable path that is not a working node is refused rather than writ
   });
 });
 
-test("#435: a plist naming a node binary that is gone fails the update instead of reporting success", {
-}, async () => {
+test("#435: a plist naming a node binary that is gone fails the update instead of reporting success", {}, async () => {
   await withKegFixture(async ({ dir, fresh, plist, launchctl, plutil }) => {
     const deadNode = join(dir, "homebrew", "Cellar", "node", "23.0.0", "bin", "node");
     let out = "";
-    const outcome = await refreshManagedAutostart((s) => { out += s; }, {
-      target: { node: deadNode, script: fresh.script, version: "0.9.2" },
-      reload: true,
-      plistFile: plist,
-      launchctl,
-      plutil,
-      platform: "darwin",
-    });
+    const outcome = await refreshManagedAutostart(
+      (s) => {
+        out += s;
+      },
+      {
+        target: { node: deadNode, script: fresh.script, version: "0.9.2" },
+        reload: true,
+        plistFile: plist,
+        launchctl,
+        plutil,
+        platform: "darwin",
+      }
+    );
     assert.equal(outcome.ok, false, "an update may not report a service whose runtime does not exist");
     assert.match(out, /is not on disk|does not run as node/);
   });
 });
 
-test("#435: doctor names a dead node binary, not only a dead script", {
-}, async () => {
+test("#435: doctor names a dead node binary, not only a dead script", {}, async () => {
   await withTempDir(async (dir) => {
     const p = join(dir, "own.plist");
     const script = join(dir, "dist", "index.js");
@@ -535,16 +568,28 @@ test("#1326: node repoint preserves every custom env value and snapshots the exa
     const env = {
       ...autostartEnv(join(dir, "vault"), "/old/node"),
       BASTRA_CORS_ORIGIN: "http://localhost:5001,https://bastra.io,https://www.bastra.io",
-      BASTRA_EMBEDDING_PROVIDER: "ollama", BASTRA_EMBEDDING_MODEL: "embeddinggemma",
-      BASTRA_EXPAND_MODEL: "tev1:4b", BASTRA_RERANK_MODEL: "tev1:4b",
-      BASTRA_OLLAMA_URL: "http://localhost:11434", BASTRA_LOG_RETENTION_DAYS: "3650",
-      BASTRA_TRAINING_CAPTURE: "1", BASTRA_HTTP_PORT: "6723", CUSTOM: "<&unchanged>",
+      BASTRA_EMBEDDING_PROVIDER: "ollama",
+      BASTRA_EMBEDDING_MODEL: "embeddinggemma",
+      BASTRA_EXPAND_MODEL: "tev1:4b",
+      BASTRA_RERANK_MODEL: "tev1:4b",
+      BASTRA_OLLAMA_URL: "http://localhost:11434",
+      BASTRA_LOG_RETENTION_DAYS: "3650",
+      BASTRA_TRAINING_CAPTURE: "1",
+      BASTRA_HTTP_PORT: "6723",
+      CUSTOM: "<&unchanged>",
     };
     const before = renderPlist(env, ["/old/node", old.script]);
     await writeFile(plist, before);
     const backupDir = join(dir, "snapshots");
-    const options = { target: { node: process.execPath, script: fresh.script, version: fresh.version },
-      reload: false, plistFile: plist, launchctl, plutil, platform: "darwin" as const, backupDir };
+    const options = {
+      target: { node: process.execPath, script: fresh.script, version: fresh.version },
+      reload: false,
+      plistFile: plist,
+      launchctl,
+      plutil,
+      platform: "darwin" as const,
+      backupDir,
+    };
     const first = await refreshManagedAutostart(() => {}, options);
     assert.equal(first.ok, true, first.detail);
     assert.deepEqual((await readState(plist, launchctl, plutil)).env, env);
@@ -564,7 +609,12 @@ test("#1326: node repoint preserves every custom env value and snapshots the exa
 });
 
 test("#1329: shell opt-ins enter new services; existing plist values and custom env win", () => {
-  const shell = { BASTRA_TASKS: "1", BASTRA_TRAINING_CAPTURE: "1", BASTRA_CUSTOM: "shell", UNRELATED_SECRET: "do-not-copy" };
+  const shell = {
+    BASTRA_TASKS: "1",
+    BASTRA_TRAINING_CAPTURE: "1",
+    BASTRA_CUSTOM: "shell",
+    UNRELATED_SECRET: "do-not-copy",
+  };
   const fresh = autostartEnv("/vault", process.execPath, null, "darwin", {}, shell);
   assert.equal(fresh.BASTRA_TASKS, "1");
   assert.equal(fresh.BASTRA_TRAINING_CAPTURE, "1");
@@ -580,8 +630,12 @@ test("#1329: unchanged runtime still persists missing shell opt-ins and bootstra
   await withKegFixture(async ({ old, plist, launchctl, plutil, log }) => {
     const before = await readState(plist, launchctl, plutil);
     const outcome = await refreshManagedAutostart(() => {}, {
-      target: { node: process.execPath, script: old.script, version: old.version }, reload: true,
-      plistFile: plist, launchctl, plutil, platform: "darwin",
+      target: { node: process.execPath, script: old.script, version: old.version },
+      reload: true,
+      plistFile: plist,
+      launchctl,
+      plutil,
+      platform: "darwin",
       env: { BASTRA_TASKS: "1", BASTRA_TRAINING_CAPTURE: "1" },
     });
     assert.equal(outcome.ok, true, outcome.detail);
@@ -599,12 +653,37 @@ test("#1329: updater never kickstarts a managed service after refresh reloaded i
   t.mock.method(process.stdout, "write", () => true);
   let refreshes = 0;
   let kicks = 0;
-  const state = { exists: true, managed: true, loaded: true, path: "fixture", program: [], env: {}, endpoint: null, danglingProgram: false, missingProgramPath: null };
+  const state = {
+    exists: true,
+    managed: true,
+    loaded: true,
+    path: "fixture",
+    program: [],
+    env: {},
+    endpoint: null,
+    danglingProgram: false,
+    missingProgramPath: null,
+  };
   const rc = await cmdUpdate(parseArgs(["update"]), {
-    platform: "darwin", cliPath: "/unknown/location/update.js",
-    install: async () => 0, reapply: () => {}, ask: () => null,
-    refresh: async (_, opts) => { assert.equal(opts.reload, true); refreshes++; return { ok: true, detail: "reloaded" }; },
-    service: () => ({ status: async () => state, install: async () => ({ ok: true, detail: "" }), uninstall: async () => ({ ok: true, detail: "" }), kickstart: async () => { kicks++; return { ok: true, detail: "" }; } }),
+    platform: "darwin",
+    cliPath: "/unknown/location/update.js",
+    install: async () => 0,
+    reapply: () => {},
+    ask: () => null,
+    refresh: async (_, opts) => {
+      assert.equal(opts.reload, true);
+      refreshes++;
+      return { ok: true, detail: "reloaded" };
+    },
+    service: () => ({
+      status: async () => state,
+      install: async () => ({ ok: true, detail: "" }),
+      uninstall: async () => ({ ok: true, detail: "" }),
+      kickstart: async () => {
+        kicks++;
+        return { ok: true, detail: "" };
+      },
+    }),
   });
   assert.equal(rc, 0);
   assert.equal(refreshes, 1);
@@ -614,7 +693,11 @@ test("#1329: updater never kickstarts a managed service after refresh reloaded i
 test("#1329: readState reports launchd's loaded opt-ins separately from the plist", async () => {
   await withKegFixture(async ({ dir, plist, plutil }) => {
     const launchctl = join(dir, "loaded-env-launchctl");
-    await writeFile(launchctl, "#!/bin/sh\nprintf 'job = {\\n\\tenvironment = {\\n\\t\\tBASTRA_TASKS => 0\\n\\t\\tBASTRA_TRAINING_CAPTURE => 1\\n\\t}\\n}\\n'\n", { mode: 0o755 });
+    await writeFile(
+      launchctl,
+      "#!/bin/sh\nprintf 'job = {\\n\\tenvironment = {\\n\\t\\tBASTRA_TASKS => 0\\n\\t\\tBASTRA_TRAINING_CAPTURE => 1\\n\\t}\\n}\\n'\n",
+      { mode: 0o755 }
+    );
     const state = await readState(plist, launchctl, plutil);
     assert.equal(state.loaded, true);
     assert.deepEqual(state.loadedEnv, { BASTRA_TASKS: "0", BASTRA_TRAINING_CAPTURE: "1" });
@@ -623,17 +706,44 @@ test("#1329: readState reports launchd's loaded opt-ins separately from the plis
 });
 
 test("#1329 security: shell credentials and transient settings never enter managed plist", async () => {
-  const shell = { BASTRA_TASKS: "1", BASTRA_TRAINING_CAPTURE: "1", BASTRA_API_TOKEN: "api-secret", BASTRA_EMBEDDING_KEY: "embedding-secret", BASTRA_TASK_TOKEN: "task-secret", BASTRA_VAULT_PATH: "/transient", BASTRA_HTTP_PORT: "12345", BASTRA_DAEMON_URL: "http://localhost:12345", BASTRA_CUSTOM: "not-approved" };
+  const shell = {
+    BASTRA_TASKS: "1",
+    BASTRA_TRAINING_CAPTURE: "1",
+    BASTRA_API_TOKEN: "api-secret",
+    BASTRA_EMBEDDING_KEY: "embedding-secret",
+    BASTRA_TASK_TOKEN: "task-secret",
+    BASTRA_VAULT_PATH: "/transient",
+    BASTRA_HTTP_PORT: "12345",
+    BASTRA_DAEMON_URL: "http://localhost:12345",
+    BASTRA_CUSTOM: "not-approved",
+  };
   const env = autostartEnv("/chosen", process.execPath, null, "darwin", {}, shell);
   assert.equal(env.BASTRA_TASKS, "1");
   assert.equal(env.BASTRA_TRAINING_CAPTURE, "1");
-  for (const key of ["BASTRA_API_TOKEN", "BASTRA_EMBEDDING_KEY", "BASTRA_TASK_TOKEN", "BASTRA_HTTP_PORT", "BASTRA_DAEMON_URL", "BASTRA_CUSTOM"]) assert.equal(env[key], undefined, key);
+  for (const key of [
+    "BASTRA_API_TOKEN",
+    "BASTRA_EMBEDDING_KEY",
+    "BASTRA_TASK_TOKEN",
+    "BASTRA_HTTP_PORT",
+    "BASTRA_DAEMON_URL",
+    "BASTRA_CUSTOM",
+  ])
+    assert.equal(env[key], undefined, key);
   assert.equal(env.BASTRA_VAULT_PATH, "/chosen");
   await withKegFixture(async ({ fresh, plist, launchctl, plutil, dir }) => {
-    const result = await refreshManagedAutostart(() => {}, { target: { node: process.execPath, script: fresh.script, version: fresh.version }, reload: false, plistFile: plist, launchctl, plutil, platform: "darwin", env: shell });
+    const result = await refreshManagedAutostart(() => {}, {
+      target: { node: process.execPath, script: fresh.script, version: fresh.version },
+      reload: false,
+      plistFile: plist,
+      launchctl,
+      plutil,
+      platform: "darwin",
+      env: shell,
+    });
     assert.equal(result.ok, true);
     const after = await readState(plist, launchctl, plutil);
-    for (const key of ["BASTRA_API_TOKEN", "BASTRA_EMBEDDING_KEY", "BASTRA_TASK_TOKEN", "BASTRA_CUSTOM"]) assert.equal(after.env[key], undefined, key);
+    for (const key of ["BASTRA_API_TOKEN", "BASTRA_EMBEDDING_KEY", "BASTRA_TASK_TOKEN", "BASTRA_CUSTOM"])
+      assert.equal(after.env[key], undefined, key);
     const { stat, readdir } = await import("node:fs/promises");
     assert.equal((await stat(plist)).mode & 0o777, 0o600);
     const backups = join(dir, "LaunchAgents", "backups");
@@ -645,9 +755,20 @@ test("#1329 security: shell credentials and transient settings never enter manag
 });
 
 test("#1329 security: explicit autostart-on vault and endpoint override old managed values", () => {
-  const env = autostartEnv("/new-vault", process.execPath, "http://127.0.0.1:26723", "darwin", {
-    BASTRA_VAULT_PATH: "/old-vault", BASTRA_HTTP_PORT: "6723", BASTRA_DAEMON_URL: "http://127.0.0.1:6723", BASTRA_TASKS: "0", CUSTOM: "kept",
-  }, { BASTRA_TASKS: "1" });
+  const env = autostartEnv(
+    "/new-vault",
+    process.execPath,
+    "http://127.0.0.1:26723",
+    "darwin",
+    {
+      BASTRA_VAULT_PATH: "/old-vault",
+      BASTRA_HTTP_PORT: "6723",
+      BASTRA_DAEMON_URL: "http://127.0.0.1:6723",
+      BASTRA_TASKS: "0",
+      CUSTOM: "kept",
+    },
+    { BASTRA_TASKS: "1" }
+  );
   assert.equal(env.BASTRA_VAULT_PATH, "/new-vault");
   assert.equal(env.BASTRA_HTTP_PORT, "26723");
   assert.equal(env.BASTRA_DAEMON_URL, "http://127.0.0.1:26723");
@@ -657,9 +778,25 @@ test("#1329 security: explicit autostart-on vault and endpoint override old mana
 test("#1329 security: failed bootstrap after successful bootout clearly reports the service stopped", async () => {
   await withKegFixture(async ({ old, dir, plist, plutil }) => {
     const launchctl = join(dir, "failing-bootstrap");
-    await writeFile(launchctl, '#!/bin/sh\nif [ "$1" = bootstrap ]; then echo "fixture I/O failure" >&2; exit 5; fi\nexit 0\n', { mode: 0o755 });
+    await writeFile(
+      launchctl,
+      '#!/bin/sh\nif [ "$1" = bootstrap ]; then echo "fixture I/O failure" >&2; exit 5; fi\nexit 0\n',
+      { mode: 0o755 }
+    );
     let out = "";
-    const result = await refreshManagedAutostart(s => { out += s; }, { target: { node: process.execPath, script: old.script, version: old.version }, reload: true, plistFile: plist, launchctl, plutil, platform: "darwin" });
+    const result = await refreshManagedAutostart(
+      (s) => {
+        out += s;
+      },
+      {
+        target: { node: process.execPath, script: old.script, version: old.version },
+        reload: true,
+        plistFile: plist,
+        launchctl,
+        plutil,
+        platform: "darwin",
+      }
+    );
     assert.equal(result.ok, false);
     assert.match(out, /bootstrap.*failed.*service.*stopped/i);
     assert.match(out, /launchctl bootstrap/);
@@ -669,7 +806,14 @@ test("#1329 security: failed bootstrap after successful bootout clearly reports 
 test("#1329 security: both rewritten plist and exact backup are owner-readable only", async () => {
   await withKegFixture(async ({ old, fresh, plist, launchctl, plutil, dir }) => {
     const before = await readFile(plist, "utf8");
-    const result = await refreshManagedAutostart(() => {}, { target: { node: process.execPath, script: fresh.script, version: fresh.version }, reload: false, plistFile: plist, launchctl, plutil, platform: "darwin" });
+    const result = await refreshManagedAutostart(() => {}, {
+      target: { node: process.execPath, script: fresh.script, version: fresh.version },
+      reload: false,
+      plistFile: plist,
+      launchctl,
+      plutil,
+      platform: "darwin",
+    });
     assert.equal(result.ok, true);
     const { stat, readdir } = await import("node:fs/promises");
     const backupDir = join(dir, "LaunchAgents", "backups");
@@ -683,7 +827,10 @@ test("#1329 security: both rewritten plist and exact backup are owner-readable o
 test("#1329 security: parser accepts captured launchctl print structure with separate inherited env", async () => {
   await withKegFixture(async ({ dir, plist, plutil }) => {
     const { fileURLToPath } = await import("node:url");
-    const captured = await readFile(fileURLToPath(new URL("../__tests__/fixtures/launchctl-print-managed.txt", import.meta.url)), "utf8");
+    const captured = await readFile(
+      fileURLToPath(new URL("../__tests__/fixtures/launchctl-print-managed.txt", import.meta.url)),
+      "utf8"
+    );
     const output = join(dir, "launchctl-output.txt");
     await writeFile(output, captured);
     const launchctl = join(dir, "captured-launchctl");
@@ -692,22 +839,46 @@ test("#1329 security: parser accepts captured launchctl print structure with sep
     assert.equal(state.loaded, true);
     const own = captured.match(/\n\s*environment = \{\n([\s\S]*?)\n\s*\}/)?.[1];
     assert.ok(own, "captured output must carry its own environment section");
-    const expectedKeys = [...own.matchAll(/^\s*(BASTRA_[A-Z0-9_]+)\s*=>/gm)].map(m => m[1]).sort();
+    const expectedKeys = [...own.matchAll(/^\s*(BASTRA_[A-Z0-9_]+)\s*=>/gm)].map((m) => m[1]).sort();
     assert.deepEqual(Object.keys(state.loadedEnv ?? {}).sort(), expectedKeys);
     assert.equal(state.loadedEnv?.BASTRA_VAULT_PATH, "fixture-value");
   });
 });
 
 test("#1329 legacy credentials: on and update strip known persisted keys and report names only", async () => {
-  const secrets = { BASTRA_API_TOKEN: "legacy-api-secret", BASTRA_EMBEDDING_KEY: "legacy-embedding-secret", BASTRA_TASK_TOKEN: "legacy-task-secret" };
-  const env = autostartEnv("/vault", process.execPath, null, "darwin", { ...secrets, BASTRA_TASKS: "1", CUSTOM: "kept" }, {});
+  const secrets = {
+    BASTRA_API_TOKEN: "legacy-api-secret",
+    BASTRA_EMBEDDING_KEY: "legacy-embedding-secret",
+    BASTRA_TASK_TOKEN: "legacy-task-secret",
+  };
+  const env = autostartEnv(
+    "/vault",
+    process.execPath,
+    null,
+    "darwin",
+    { ...secrets, BASTRA_TASKS: "1", CUSTOM: "kept" },
+    {}
+  );
   for (const key of Object.keys(secrets)) assert.equal(env[key], undefined, key);
   assert.equal(env.CUSTOM, "kept");
   await withKegFixture(async ({ old, plist, launchctl, plutil, dir }) => {
     const before = await readState(plist, launchctl, plutil);
     await writeFile(plist, renderPlist({ ...before.env, ...secrets }, before.program));
     let output = "";
-    const result = await refreshManagedAutostart(s => { output += s; }, { target: { node: process.execPath, script: old.script, version: old.version }, reload: false, plistFile: plist, launchctl, plutil, platform: "darwin", env: {} });
+    const result = await refreshManagedAutostart(
+      (s) => {
+        output += s;
+      },
+      {
+        target: { node: process.execPath, script: old.script, version: old.version },
+        reload: false,
+        plistFile: plist,
+        launchctl,
+        plutil,
+        platform: "darwin",
+        env: {},
+      }
+    );
     assert.equal(result.ok, true, result.detail);
     const after = await readState(plist, launchctl, plutil);
     assert.deepEqual(after.env, before.env, "removal must cause a rewrite even without repoint");

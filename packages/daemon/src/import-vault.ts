@@ -32,7 +32,13 @@ import { harvestIndex, looksLikeIndexHub } from "./import/index-harvest.js";
 import { KNOWN_ADAPTERS, looksLikeClaudeCode, mapFile, safeParse } from "./import/adapters.js";
 import { findOrphanedMemories } from "./import/orphans.js";
 import { ensureVaultDir } from "@bastra-recall/core";
-import { IMPORT_ROOT, listSourceMarkdown, type ImportVaultOptions, type ImportVaultResult, type ImportVaultSkip } from "./import-vault-shared.js";
+import {
+  IMPORT_ROOT,
+  listSourceMarkdown,
+  type ImportVaultOptions,
+  type ImportVaultResult,
+  type ImportVaultSkip,
+} from "./import-vault-shared.js";
 export type { ImportVaultOrphan } from "./import/orphans.js";
 // #680: split modules — re-exported so no importer has to change.
 export { IMPORT_ROOT, listSourceMarkdown } from "./import-vault-shared.js";
@@ -71,7 +77,7 @@ const HASH_CANDIDATES = 8;
 export async function importVault(
   vaultRoot: string,
   sourceDir: string,
-  options: ImportVaultOptions = {},
+  options: ImportVaultOptions = {}
 ): Promise<ImportVaultResult> {
   const info = await stat(sourceDir).catch(() => null);
   if (!info || !info.isDirectory()) {
@@ -87,14 +93,13 @@ export async function importVault(
   // (~, Cloud-Mounts) die Prüfung nicht umgehen.
   const srcReal = await realpath(sourceDir).catch(() => resolve(sourceDir));
   const vaultReal = await realpath(vaultRoot).catch(() => resolve(vaultRoot));
-  const within = (child: string, parent: string): boolean =>
-    child === parent || child.startsWith(parent + sep);
+  const within = (child: string, parent: string): boolean => child === parent || child.startsWith(parent + sep);
   if (within(srcReal, vaultReal) || within(vaultReal, srcReal)) {
     throw new Error(
       `import source (${srcReal}) overlaps the vault (${vaultReal}) — refusing to self-ingest. ` +
         `The vault indexes its own files natively; importing it into itself would write a duplicate ` +
         `slugified copy under ${IMPORT_ROOT}/. Point "import vault" at a folder OUTSIDE the vault ` +
-        `(or copy the notes out first).`,
+        `(or copy the notes out first).`
     );
   }
   const label = slugify(options.label ?? (basename(sourceDir) || "import"));
@@ -108,7 +113,7 @@ export async function importVault(
 
   const files = await listSourceMarkdown(
     sourceDir,
-    new Set((options.exclude ?? []).map((d) => d.trim().toLowerCase()).filter(Boolean)),
+    new Set((options.exclude ?? []).map((d) => d.trim().toLowerCase()).filter(Boolean))
   );
   const used = new Set<string>();
   const skipped: ImportVaultSkip[] = [];
@@ -162,11 +167,7 @@ export async function importVault(
   const vaultIds = snapshotLocator(vaultRoot);
   const importPathOf = (id: string): string => join(vaultRoot, folder, `${id}.md`);
 
-  const ownership = async (
-    id: string,
-    myKey: string,
-    isIndex: boolean,
-  ): Promise<OwnershipCheck> => {
+  const ownership = async (id: string, myKey: string, isIndex: boolean): Promise<OwnershipCheck> => {
     // Liegt die id ANDERSWO im Vault, ist sie vergeben — unabhängig davon,
     // was am Importpfad steht. Auch `ambiguous` ist vergeben: Dann ist der
     // Vault schon defekt, und ein weiterer Anwärter macht es nicht besser.
@@ -205,10 +206,7 @@ export async function importVault(
       // import lands beside it as a visible duplicate (Weg C) instead of
       // replacing content it cannot prove it produced.
       return {
-        owner:
-          parts.length >= 3 && parts.slice(2).join(":") === myKey
-            ? "mine"
-            : "foreign",
+        owner: parts.length >= 3 && parts.slice(2).join(":") === myKey ? "mine" : "foreign",
         target: raw,
       };
     }
@@ -230,7 +228,9 @@ export async function importVault(
       const check = await ownership(id, seed, isIndex);
       if (check.owner === "free" || check.owner === "mine") return { id };
       if (check.owner === "unverifiable")
-        return { skip: `ownership of ${folder}/${id}.md is unverifiable (node exists but is unreadable) — refusing to overwrite` };
+        return {
+          skip: `ownership of ${folder}/${id}.md is unverifiable (node exists but is unreadable) — refusing to overwrite`,
+        };
       if (guard >= HASH_CANDIDATES) break;
       id = uniqueId(`${base}-${pathHash(guard === 0 ? seed : `${seed}#${guard}`)}`, used);
     }
@@ -333,7 +333,18 @@ export async function importVault(
     const selfId = idByPath.get(filePath);
     if (selfId === undefined) continue; // not part of the minted set
     const relKey = relKeyByPath.get(filePath) ?? relative(sourceDir, filePath).split(sep).join("/");
-    const mapped = mapFile(fileBase, raw, { label, folder, relDir, relKey, overwrite, used, referenced, harvest, idByBase, selfId });
+    const mapped = mapFile(fileBase, raw, {
+      label,
+      folder,
+      relDir,
+      relKey,
+      overwrite,
+      used,
+      referenced,
+      harvest,
+      idByBase,
+      selfId,
+    });
     if (!mapped.ok) {
       skipped.push({ path: filePath, reason: mapped.reason });
       continue;
@@ -438,10 +449,7 @@ export async function importVault(
         alloc.id === undefined
           ? ({ owner: "foreign", target: "" } as const)
           : await ownership(alloc.id, indexSeed, true); // #245 P1: TOCTOU re-check
-      if (
-        alloc.id !== undefined &&
-        (indexCheck.owner === "free" || indexCheck.owner === "mine")
-      ) {
+      if (alloc.id !== undefined && (indexCheck.owner === "free" || indexCheck.owner === "mine")) {
         const id = alloc.id;
         // A dry-run has nothing to write, so nothing can fail — it lands by
         // definition; a real run only lands if the write returns.
@@ -549,9 +557,9 @@ export async function importVault(
             note: "Machine-imported copy of an external folder — safe for external tools to skip.",
           },
           null,
-          2,
+          2
         ) + "\n",
-        "utf8",
+        "utf8"
       );
     } catch {
       /* marker is best-effort — never fail an import over it */
@@ -590,7 +598,7 @@ export async function handleUiImportVault(
   res: ServerResponse,
   vaultPath: string,
   onIndexed?: () => Promise<unknown>,
-  settingsPath?: string,
+  settingsPath?: string
 ): Promise<void> {
   if (!(await getUiEnabled(settingsPath))) {
     sendJsonPlain(res, 404, { error: "ui disabled" });

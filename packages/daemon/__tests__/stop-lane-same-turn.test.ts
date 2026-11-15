@@ -27,10 +27,7 @@ const DECISION_TRANSCRIPT = [
   { role: "assistant", content: "noted" },
 ];
 
-async function withSandbox<T>(
-  extraEnv: Record<string, string>,
-  fn: (dir: string) => Promise<T>,
-): Promise<T> {
+async function withSandbox<T>(extraEnv: Record<string, string>, fn: (dir: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-stop-same-turn-"));
   const env: Record<string, string> = {
     BASTRA_TELEMETRY: "on",
@@ -59,7 +56,7 @@ async function withSandbox<T>(
 function stop(extra: Partial<ClaudeStopPayload> & Record<string, unknown>): Promise<string> {
   return runStopLane(
     { hook_event_name: "Stop", cwd: process.cwd(), transcript: DECISION_TRANSCRIPT, ...extra } as ClaudeStopPayload,
-    "http://127.0.0.1:1",
+    "http://127.0.0.1:1"
   );
 }
 
@@ -109,15 +106,27 @@ test("#757 — the user gets one line in their language, the agent a minimal blo
     assert.equal(lines.filter((l) => /save_memory/.test(l)).length, 1, "save_memory is named once");
 
     await mkdir(join(dir, ".bastra"), { recursive: true });
-    await writeSettingsFixture(join(dir, ".bastra", "cli-settings.json"), JSON.stringify({ language: { primary: "de" } }), "utf8");
+    await writeSettingsFixture(
+      join(dir, ".bastra", "cli-settings.json"),
+      JSON.stringify({ language: { primary: "de" } }),
+      "utf8"
+    );
     const de = JSON.parse(await stop({ session_id: "cc-757-de" })) as Out;
     assert.equal(
       de.systemMessage,
-      "bastra-recall prüft, ob sich aus diesem Gespräch etwas zu merken lohnt — du musst nichts tun.",
+      "bastra-recall prüft, ob sich aus diesem Gespräch etwas zu merken lohnt — du musst nichts tun."
     );
-    assert.equal(de.hookSpecificOutput?.additionalContext, en.hookSpecificOutput?.additionalContext, "the agent block stays English");
+    assert.equal(
+      de.hookSpecificOutput?.additionalContext,
+      en.hookSpecificOutput?.additionalContext,
+      "the agent block stays English"
+    );
 
-    await writeSettingsFixture(join(dir, ".bastra", "cli-settings.json"), JSON.stringify({ language: { primary: "tr" } }), "utf8");
+    await writeSettingsFixture(
+      join(dir, ".bastra", "cli-settings.json"),
+      JSON.stringify({ language: { primary: "tr" } }),
+      "utf8"
+    );
     const tr = JSON.parse(await stop({ session_id: "cc-757-tr" })) as Out;
     assert.equal(tr.systemMessage, en.systemMessage, "a language without a shipped line falls back to English");
   });
@@ -125,7 +134,12 @@ test("#757 — the user gets one line in their language, the agent a minimal blo
 
 test("#757 — the same-turn block is scrubbed from a transcript like every other injected block", () => {
   const block = formatSameTurnBlock([
-    { heuristic: "feature-completion", title: "t", type: "project-fact", body: "5 files (e.g. packages/daemon/src/a.ts)" },
+    {
+      heuristic: "feature-completion",
+      title: "t",
+      type: "project-fact",
+      body: "5 files (e.g. packages/daemon/src/a.ts)",
+    },
   ]);
   const [turn] = normalizeTurns([{ role: "user", content: `before\n${block}\nafter` }]);
   assert.equal(turn.content, "before\n\nafter");
@@ -140,7 +154,7 @@ test("#662 — the same heuristic is delivered once per session", async () => {
     const rows = await events(dir);
     assert.deepEqual(
       rows.map((r) => r.delivery),
-      ["same-turn", "already-delivered", "same-turn"],
+      ["same-turn", "already-delivered", "same-turn"]
     );
   });
 });
@@ -153,7 +167,9 @@ test("#662 — Codex, no session id and BASTRA_STOP_SAME_TURN=0 keep the pending
   ] as const) {
     await withSandbox(env, async (dir) => {
       assert.equal(await stop(extra), "{}", label);
-      const pending = JSON.parse(readAppRecord("pending-suggestions", join(dir, "pending.json"))) as { blocks: string }[];
+      const pending = JSON.parse(readAppRecord("pending-suggestions", join(dir, "pending.json"))) as {
+        blocks: string;
+      }[];
       assert.equal(pending.length, 1, label);
       assert.match(pending[0].blocks, /architecture-decision/, label);
       const [row] = await events(dir);
@@ -170,14 +186,25 @@ test("#662 — a Stop raised by a Stop hook is never re-evaluated (loop guard)",
   });
 });
 
-
 const CORRECTION_TRANSCRIPT = [
   { role: "user", content: "Please keep the answer short and simple" },
   { role: "assistant", content: "Here is a lengthy answer" },
   { role: "user", content: "Please keep the answer short and simple!" },
   { role: "assistant", content: "Here is another lengthy answer" },
-  {type:"assistant",message:{role:"assistant",content:[{type:"tool_use",id:"failed-attempt",name:"Bash",input:{command:"node fixture-fails.mjs"}}]}},
-  {type:"user",message:{role:"user",content:[{type:"tool_result",tool_use_id:"failed-attempt",is_error:true,content:"Fixture failed"}]}},
+  {
+    type: "assistant",
+    message: {
+      role: "assistant",
+      content: [{ type: "tool_use", id: "failed-attempt", name: "Bash", input: { command: "node fixture-fails.mjs" } }],
+    },
+  },
+  {
+    type: "user",
+    message: {
+      role: "user",
+      content: [{ type: "tool_result", tool_use_id: "failed-attempt", is_error: true, content: "Fixture failed" }],
+    },
+  },
   { role: "user", content: "Please keep the answer short and simple!!" },
   { role: "assistant", content: "understood" },
 ];
@@ -193,17 +220,54 @@ test("#1307 correction without save reaches the same-turn path once per session"
 
 test("#1307 a subsequent save_memory prevents the correction reminder; a prior save or prose mention does not", async () => {
   await withSandbox({}, async () => {
-    const save = { message: { role: "assistant", content: [{ type: "tool_use", id: "correction-save", name: "mcp__bastra_recall__save_memory", input: {} }] } };
-    const saved = { message: { role: "user", content: [{ type: "tool_result", tool_use_id: "correction-save", is_error: false, content: JSON.stringify({ id: "correction", file_path: "/fixture/correction.md" }) }] } };
-    const after = JSON.parse(await stop({ session_id: "correction-saved", transcript: [...CORRECTION_TRANSCRIPT, save, saved] }));
+    const save = {
+      message: {
+        role: "assistant",
+        content: [{ type: "tool_use", id: "correction-save", name: "mcp__bastra_recall__save_memory", input: {} }],
+      },
+    };
+    const saved = {
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "correction-save",
+            is_error: false,
+            content: JSON.stringify({ id: "correction", file_path: "/fixture/correction.md" }),
+          },
+        ],
+      },
+    };
+    const after = JSON.parse(
+      await stop({ session_id: "correction-saved", transcript: [...CORRECTION_TRANSCRIPT, save, saved] })
+    );
     assert.deepEqual(after, {}, "a saved correction produces no reminder under either reason");
-    const before = JSON.parse(await stop({ session_id: "correction-prior", transcript: [save, saved, ...CORRECTION_TRANSCRIPT] }));
+    const before = JSON.parse(
+      await stop({ session_id: "correction-prior", transcript: [save, saved, ...CORRECTION_TRANSCRIPT] })
+    );
     assert.match(before.hookSpecificOutput?.additionalContext ?? "", /correction-without-save/);
-    const attempted = JSON.parse(await stop({ session_id: "correction-attempted", transcript: [...CORRECTION_TRANSCRIPT, save] }));
-    assert.match(attempted.hookSpecificOutput?.additionalContext ?? "", /correction-without-save/, "an uncompleted call is not a successful save");
-    const prose = JSON.parse(await stop({ session_id: "correction-prose", transcript: [...CORRECTION_TRANSCRIPT, { role: "assistant", content: "I could call save_memory" }] }));
+    const attempted = JSON.parse(
+      await stop({ session_id: "correction-attempted", transcript: [...CORRECTION_TRANSCRIPT, save] })
+    );
+    assert.match(
+      attempted.hookSpecificOutput?.additionalContext ?? "",
+      /correction-without-save/,
+      "an uncompleted call is not a successful save"
+    );
+    const prose = JSON.parse(
+      await stop({
+        session_id: "correction-prose",
+        transcript: [...CORRECTION_TRANSCRIPT, { role: "assistant", content: "I could call save_memory" }],
+      })
+    );
     assert.match(prose.hookSpecificOutput?.additionalContext ?? "", /correction-without-save/);
-    const unrelated = JSON.parse(await stop({ session_id: "correction-old", transcript: [...CORRECTION_TRANSCRIPT, { role: "user", content: "Build a calendar widget" }] }));
+    const unrelated = JSON.parse(
+      await stop({
+        session_id: "correction-old",
+        transcript: [...CORRECTION_TRANSCRIPT, { role: "user", content: "Build a calendar widget" }],
+      })
+    );
     assert.doesNotMatch(unrelated.hookSpecificOutput?.additionalContext ?? "", /correction-without-save/);
   });
 });
@@ -213,10 +277,15 @@ test("#1311 — approved-copy without receipt passes the loop guard twice, then 
     const sid = "cc-1311-loop";
     await mutateSessionState(sid, (s) => {
       s.activeTask = { id: taskIdFor("approved-copy", 1000), kind: "approved-copy", since: 1000, generation: 0 };
-      s.activeConventions = [{
-        id: "nachrichtenkonvention", revision: null, setAt: 1000, scope: "task",
-        validator: { tool: "validate_artifact", channel: "discord-dm", limit: 2000, unit: "utf16" },
-      }];
+      s.activeConventions = [
+        {
+          id: "nachrichtenkonvention",
+          revision: null,
+          setAt: 1000,
+          scope: "task",
+          validator: { tool: "validate_artifact", channel: "discord-dm", limit: 2000, unit: "utf16" },
+        },
+      ];
     });
     for (const attempt of [1, 2]) {
       const out = JSON.parse(await stop({ session_id: sid, stop_hook_active: attempt > 1 })) as {
@@ -224,7 +293,10 @@ test("#1311 — approved-copy without receipt passes the loop guard twice, then 
         hookSpecificOutput?: { additionalContext?: string };
       };
       assert.equal(out.decision, undefined);
-      assert.match(out.hookSpecificOutput?.additionalContext ?? "", /Copy task without validated receipt: run validate_artifact/);
+      assert.match(
+        out.hookSpecificOutput?.additionalContext ?? "",
+        /Copy task without validated receipt: run validate_artifact/
+      );
     }
     assert.equal(await stop({ session_id: sid, stop_hook_active: true }), "{}");
     assert.equal(await stop({ session_id: sid, stop_hook_active: true }), "{}");

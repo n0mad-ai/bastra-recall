@@ -45,9 +45,7 @@ function formatPinnedLine(e: PinnedFloorLean): string {
   const title = e.title ?? "(id not resolvable — stale floor?)";
   // Affirm-Teil nur, wenn je affirmed wurde (addFloor stampt last_affirmed =
   // floored_at, erst affirm() setzt affirmed_by).
-  const affirmed = e.affirmed_by
-    ? `, last affirmed ${e.last_affirmed.slice(0, 10)} by ${e.affirmed_by}`
-    : "";
+  const affirmed = e.affirmed_by ? `, last affirmed ${e.last_affirmed.slice(0, 10)} by ${e.affirmed_by}` : "";
   const reason = e.reason.length > REASON_MAX ? e.reason.slice(0, REASON_MAX - 1) + "…" : e.reason;
   return `- [${e.memory_id}] ${title} — floored since ${since}${affirmed}: ${reason}`;
 }
@@ -96,7 +94,7 @@ export function formatPinnedBlock(entries: PinnedFloorLean[]): FormattedPinnedBl
   if (truncatedCount > 0) {
     lines.push(
       `… ${truncatedCount} more pinned ${truncatedCount === 1 ? "entry" : "entries"} truncated — ` +
-        `the pinned set exceeds the ${PINNED_BLOCK_CHAR_BUDGET}-char context budget.`,
+        `the pinned set exceeds the ${PINNED_BLOCK_CHAR_BUDGET}-char context budget.`
     );
   }
   const text = [head, HINT_FRAME_NOTE, intro, lines.join("\n"), `</pinned-memories>`].join("\n");
@@ -113,7 +111,7 @@ export function formatPinnedBlock(entries: PinnedFloorLean[]): FormattedPinnedBl
  */
 export function dropPinnedFromRanked<T extends { id: string }>(
   hits: T[],
-  pinned: readonly { memory_id: string }[],
+  pinned: readonly { memory_id: string }[]
 ): T[] {
   if (pinned.length === 0) return hits;
   const pinnedIds = new Set(pinned.map((p) => p.memory_id));

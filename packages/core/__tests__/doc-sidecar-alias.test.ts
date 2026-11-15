@@ -207,7 +207,11 @@ const COERCION_MATRIX: { name: string; fm: string; want: string[] | undefined }[
   { name: "Bare-YAML-Date (aliases: 2026-05-01)", fm: "aliases: 2026-05-01\n", want: ["2026-05-01"] },
   { name: "dangling aliases: (null)", fm: "aliases:\n", want: undefined },
   { name: "leere Liste (aliases: [])", fm: "aliases: []\n", want: undefined },
-  { name: "gemischte Liste (Zahl + String + null-Member)", fm: 'aliases: [2024, "Foto Mai", null]\n', want: ["2024", "Foto Mai"] },
+  {
+    name: "gemischte Liste (Zahl + String + null-Member)",
+    fm: 'aliases: [2024, "Foto Mai", null]\n',
+    want: ["2024", "Foto Mai"],
+  },
 ];
 
 for (const { name, fm, want } of COERCION_MATRIX) {

@@ -76,7 +76,7 @@ export const appliedDaemonEnv = new Set<string>();
 
 export function daemonSpawnEnv(
   clientEnv: NodeJS.ProcessEnv,
-  settingsEnv: Partial<Record<DaemonEnvKey, string>> | undefined,
+  settingsEnv: Partial<Record<DaemonEnvKey, string>> | undefined
 ): { env: NodeJS.ProcessEnv; origin: DaemonEnvOrigin; pinned: DaemonEnvKey[] } {
   const env: NodeJS.ProcessEnv = { ...clientEnv };
   for (const k of CLIENT_ONLY_ENV_KEYS) delete env[k];
@@ -96,14 +96,19 @@ export function daemonSpawnEnv(
 }
 
 /** Read back by the daemon for /health. */
-export function daemonOrigin(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): { startedBy: DaemonStartedBy; envOrigin: DaemonEnvOrigin } {
+export function daemonOrigin(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform
+): { startedBy: DaemonStartedBy; envOrigin: DaemonEnvOrigin } {
   if (env[STARTED_BY_ENV] === "forwarder") {
     const o = env[ENV_ORIGIN_ENV];
     return { startedBy: "forwarder", envOrigin: o === "client+settings" ? "client+settings" : "client" };
   }
-  if (isOnValue(env.BASTRA_AUTOSTART_MANAGED)) return { startedBy: platform === "win32" ? "scheduled-task" : "launchagent", envOrigin: "own" };
+  if (isOnValue(env.BASTRA_AUTOSTART_MANAGED))
+    return { startedBy: platform === "win32" ? "scheduled-task" : "launchagent", envOrigin: "own" };
   // systemd sets INVOCATION_ID for every unit it starts.
-  if (typeof env.INVOCATION_ID === "string" && env.INVOCATION_ID !== "") return { startedBy: "systemd", envOrigin: "own" };
+  if (typeof env.INVOCATION_ID === "string" && env.INVOCATION_ID !== "")
+    return { startedBy: "systemd", envOrigin: "own" };
   return { startedBy: "direct", envOrigin: "own" };
 }
 
@@ -140,12 +145,18 @@ export function configFingerprint(env: Record<string, string | undefined>): stri
   return createHash("sha256").update(JSON.stringify(pairs)).digest("hex").slice(0, 12);
 }
 
-export function applyDaemonSettingsEnv(pins: Record<string, unknown>, env: NodeJS.ProcessEnv = process.env, applied = appliedDaemonEnv): void {
+export function applyDaemonSettingsEnv(
+  pins: Record<string, unknown>,
+  env: NodeJS.ProcessEnv = process.env,
+  applied = appliedDaemonEnv
+): void {
   if (env[STARTED_BY_ENV] === "forwarder" && env[ENV_ORIGIN_ENV] === "client+settings") {
     try {
       const inherited: unknown = JSON.parse(env[ENV_PINS_ENV] ?? "[]");
       if (Array.isArray(inherited)) for (const key of DAEMON_ENV_KEYS) if (inherited.includes(key)) applied.add(key);
-    } catch { /* A malformed provenance marker grants no editable values. */ }
+    } catch {
+      /* A malformed provenance marker grants no editable values. */
+    }
   }
   for (const key of DAEMON_ENV_KEYS) {
     if (typeof pins[key] === "string" && env[key] === undefined) {

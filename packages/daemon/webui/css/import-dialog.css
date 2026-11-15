@@ -1,5 +1,7 @@
 /* ── import dialog (#208): the visual sibling of `bastra import` ── */
-#import-modal[hidden] { display: none !important; } /* explicit display beats [hidden] otherwise */
+#import-modal[hidden] {
+  display: none !important;
+} /* explicit display beats [hidden] otherwise */
 #import-modal {
   position: fixed;
   inset: 0;
@@ -29,7 +31,9 @@
   line-height: 1.5;
   color: var(--text-dim);
 }
-#import-help code { color: var(--text); }
+#import-help code {
+  color: var(--text);
+}
 #import-text {
   width: 100%;
   resize: vertical;
@@ -41,7 +45,9 @@
   line-height: 1.5;
   outline: none;
 }
-#import-text:focus { border-color: var(--accent); }
+#import-text:focus {
+  border-color: var(--accent);
+}
 #import-file-row {
   display: flex;
   align-items: center;
@@ -55,10 +61,20 @@
   cursor: pointer;
   font-size: 12px;
 }
-#import-choose:hover { color: var(--accent); border-color: var(--accent); }
-#import-status { font-size: 12px; color: var(--text-dim); }
-#import-status.ok { color: var(--accent); }
-#import-status.err { color: #d06a6a; }
+#import-choose:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+#import-status {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+#import-status.ok {
+  color: var(--accent);
+}
+#import-status.err {
+  color: #d06a6a;
+}
 #import-actions {
   display: flex;
   gap: 8px;
@@ -73,13 +89,23 @@
   background: transparent;
   color: var(--text);
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
-#import-actions button:hover { border-color: var(--accent); color: var(--accent); }
-#import-stage:disabled { opacity: 0.5; cursor: default; }
+#import-actions button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+#import-stage:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 
 /* #310: open-candidate badge on the topbar import button */
-#import-open { position: relative; }
+#import-open {
+  position: relative;
+}
 #import-badge {
   position: absolute;
   top: -4px;
@@ -95,7 +121,9 @@
   font-weight: 600;
   text-align: center;
 }
-#import-badge[hidden] { display: none; }
+#import-badge[hidden] {
+  display: none;
+}
 
 /* #309: post-staging next step — visible only after a successful stage */
 #import-next {
@@ -106,8 +134,12 @@
   background: var(--accent-soft);
   padding: 8px 12px;
 }
-#import-next[hidden] { display: none; }
-#import-next code { color: var(--text); }
+#import-next[hidden] {
+  display: none;
+}
+#import-next code {
+  color: var(--text);
+}
 
 /* #309: the folder import is a different operation — collapsed by default,
    named in its summary, so the two flows never read as one form */
@@ -120,20 +152,29 @@
   font-size: 12px;
   color: var(--text-dim);
 }
-#import-vault-section > summary:hover { color: var(--accent); }
-#import-vault-section[open] > summary { margin-bottom: 10px; }
-#import-vault-section > :not(summary) { margin-top: 10px; }
+#import-vault-section > summary:hover {
+  color: var(--accent);
+}
+#import-vault-section[open] > summary {
+  margin-bottom: 10px;
+}
+#import-vault-section > :not(summary) {
+  margin-top: 10px;
+}
 #import-vault-help {
   font-size: 12px;
   line-height: 1.5;
   color: var(--text-dim);
 }
-#import-vault-help code { color: var(--text); }
+#import-vault-help code {
+  color: var(--text);
+}
 #import-vault-row {
   display: flex;
   gap: 8px;
 }
-#import-vault-dir, #import-vault-label {
+#import-vault-dir,
+#import-vault-label {
   padding: 8px 12px;
   border: 1px solid var(--panel-border);
   background: transparent;
@@ -141,9 +182,17 @@
   font: 12.5px var(--font-mono);
   outline: none;
 }
-#import-vault-dir { flex: 2; }
-#import-vault-label { flex: 1; min-width: 0; }
-#import-vault-dir:focus, #import-vault-label:focus { border-color: var(--accent); }
+#import-vault-dir {
+  flex: 2;
+}
+#import-vault-label {
+  flex: 1;
+  min-width: 0;
+}
+#import-vault-dir:focus,
+#import-vault-label:focus {
+  border-color: var(--accent);
+}
 #import-vault-run {
   padding: 8px 14px;
   border: 1px solid var(--panel-border);
@@ -151,13 +200,28 @@
   color: var(--text);
   cursor: pointer;
   white-space: nowrap;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
-#import-vault-run:hover { border-color: var(--accent); color: var(--accent); }
-#import-vault-run:disabled { opacity: 0.5; cursor: default; }
-#import-vault-status { font-size: 12px; color: var(--text-dim); }
-#import-vault-status.ok { color: var(--accent); }
-#import-vault-status.err { color: #d06a6a; }
+#import-vault-run:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+#import-vault-run:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+#import-vault-status {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+#import-vault-status.ok {
+  color: var(--accent);
+}
+#import-vault-status.err {
+  color: #d06a6a;
+}
 #import-vault-browse {
   padding: 8px 12px;
   border: 1px solid var(--panel-border);
@@ -166,7 +230,10 @@
   cursor: pointer;
   white-space: nowrap;
 }
-#import-vault-browse:hover { color: var(--accent); border-color: var(--accent); }
+#import-vault-browse:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
 #import-vault-browser {
   display: flex;
   flex-direction: column;
@@ -195,10 +262,21 @@
   color: var(--text);
   cursor: pointer;
 }
-#import-vault-browser-list li:hover { background: var(--accent-soft); color: var(--accent); }
-#import-vault-browser-list li.up { color: var(--text-dim); }
-#import-vault-browser-list li .count { color: var(--text-dim); font-size: 11px; }
-#import-vault-browser-actions { display: flex; justify-content: flex-end; }
+#import-vault-browser-list li:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+#import-vault-browser-list li.up {
+  color: var(--text-dim);
+}
+#import-vault-browser-list li .count {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+#import-vault-browser-actions {
+  display: flex;
+  justify-content: flex-end;
+}
 #import-vault-use {
   padding: 5px 12px;
   border: 1px solid var(--accent);
@@ -207,4 +285,7 @@
   font-size: 12px;
   cursor: pointer;
 }
-#import-vault-use:hover { background: var(--accent); color: var(--bg); }
+#import-vault-use:hover {
+  background: var(--accent);
+  color: var(--bg);
+}

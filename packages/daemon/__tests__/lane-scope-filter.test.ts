@@ -135,19 +135,14 @@ test("ohne Fusion ist die Cross-Scope-Ausnahme zu — fail-closed, mangels Signa
     matched_recall_when: true,
     anchor_strength: "strong",
   });
-  const r = applyLaneScopeFilter(
-    [anchored],
-    "bastra-recall",
-    { ...PROMPT_OPTS, unfused: true },
-    "enforce",
-  );
+  const r = applyLaneScopeFilter([anchored], "bastra-recall", { ...PROMPT_OPTS, unfused: true }, "enforce");
   assert.equal(r.hits.length, 0);
   // Der eigene Scope bleibt davon unberührt — fail-closed gilt nur für fremde.
   const own = applyLaneScopeFilter(
     [hit({ scope: "bastra-recall", score: 98765 })],
     "bastra-recall",
     { ...PROMPT_OPTS, unfused: true },
-    "enforce",
+    "enforce"
   );
   assert.equal(own.hits.length, 1);
 });
@@ -197,12 +192,7 @@ test("der Vault kennt das Projekt nicht → es darf nichts verwerfen", () => {
   // Das ist die Lage bei cwd=/workspace/packages/core: der Filter hieße
   // "packages", und der Vault kennt keinen solchen Scope.
   const hits = [hit({ scope: "bastra-recall" }), hit({ scope: "carnexus" })];
-  const r = applyLaneScopeFilter(
-    hits,
-    "packages",
-    { ...TODO_OPTS, projectKnown: false },
-    "enforce",
-  );
+  const r = applyLaneScopeFilter(hits, "packages", { ...TODO_OPTS, projectKnown: false }, "enforce");
   assert.equal(r.hits.length, 2);
   assert.equal(r.droppedCount, 0);
   assert.equal(r.skipped, "no-scope-evidence");
@@ -217,10 +207,7 @@ test("der Vault kennt das Projekt nicht → es darf nichts verwerfen", () => {
 test("Rückfall ohne project_known: der Beleg kommt aus der Ergebnisliste", () => {
   const noSignal = { ...TODO_OPTS, projectKnown: undefined };
   const hits = [hit({ scope: "bastra-recall" }), hit({ scope: "carnexus" })];
-  assert.equal(
-    applyLaneScopeFilter(hits, "packages", noSignal, "enforce").skipped,
-    "no-scope-evidence",
-  );
+  assert.equal(applyLaneScopeFilter(hits, "packages", noSignal, "enforce").skipped, "no-scope-evidence");
   // Ein eigener Treffer in der Liste belegt — dann filtert auch der Rückfall.
   assert.equal(applyLaneScopeFilter(hits, "bastra-recall", noSignal, "enforce").droppedCount, 1);
 });
@@ -231,12 +218,7 @@ test("globale Scopes sind KEIN Beleg — sie passen zu jedem erfundenen Namen", 
     hit({ scope: "user-preference" }),
     hit({ scope: "bastra-recall" }), // der einzige, der weggeworfen würde
   ];
-  const r = applyLaneScopeFilter(
-    hits,
-    "packages",
-    { ...TODO_OPTS, projectKnown: undefined },
-    "enforce",
-  );
+  const r = applyLaneScopeFilter(hits, "packages", { ...TODO_OPTS, projectKnown: undefined }, "enforce");
   assert.equal(r.hits.length, 3);
   assert.equal(r.skipped, "no-scope-evidence");
 });

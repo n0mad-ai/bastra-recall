@@ -16,23 +16,46 @@
     const timer = setTimeout(() => ctrl.abort(), 10000);
     try {
       const response = await fetch(`http://127.0.0.1:${port}/api/v1/probe`, {
-        method, mode: "cors", credentials: "omit", cache: "no-store", redirect: "error",
-        headers: { ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
-          ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) },
+        method,
+        mode: "cors",
+        credentials: "omit",
+        cache: "no-store",
+        redirect: "error",
+        headers: {
+          ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
+          ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+        },
         ...(method === "POST" ? { body: '{"synthetic":true}' } : {}),
         signal: ctrl.signal,
       });
       const body = await response.json();
-      rows.push({ name, expected, actual: response.status,
+      rows.push({
+        name,
+        expected,
+        actual: response.status,
         pass: response.status === expected && body.synthetic === true,
-        detail: body.synthetic === true ? "synthetic response" : "UNEXPECTED SERVER" });
+        detail: body.synthetic === true ? "synthetic response" : "UNEXPECTED SERVER",
+      });
     } catch (error) {
-      rows.push({ name, expected, actual: "browser rejection", pass: false,
-        detail: String(error) + (port === 16724 ? " — confirm denied OPTIONS in fixture log before calling this a pass" : "") });
-    } finally { clearTimeout(timer); }
+      rows.push({
+        name,
+        expected,
+        actual: "browser rejection",
+        pass: false,
+        detail:
+          String(error) + (port === 16724 ? " — confirm denied OPTIONS in fixture log before calling this a pass" : ""),
+      });
+    } finally {
+      clearTimeout(timer);
+    }
   }
-  const report = { timestamp: new Date().toISOString(), pageOrigin: location.origin,
-    secureContext: window.isSecureContext, userAgent: navigator.userAgent, rows };
+  const report = {
+    timestamp: new Date().toISOString(),
+    pageOrigin: location.origin,
+    secureContext: window.isSecureContext,
+    userAgent: navigator.userAgent,
+    rows,
+  };
   console.table(rows);
   console.log("Synthetic browser bridge report (no app tokens/data):", JSON.stringify(report, null, 2));
   return report;

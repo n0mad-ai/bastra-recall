@@ -23,8 +23,7 @@ export async function openStorage(opts: { vaultPath: string }): Promise<{
   const vault = new Vault(vaultPath);
   const { loaded, skipped } = await vault.init();
   console.error(
-    `[bastra-recall] vault loaded: ${loaded} memorys` +
-      (skipped.length ? `, ${skipped.length} skipped` : ""),
+    `[bastra-recall] vault loaded: ${loaded} memorys` + (skipped.length ? `, ${skipped.length} skipped` : "")
   );
   for (const s of skipped) {
     console.error(`[bastra-recall]   skipped ${s.path}: ${s.err}`);
@@ -75,7 +74,9 @@ export async function openStorage(opts: { vaultPath: string }): Promise<{
         // verify-Loop: Records einlesen — Evidenz fließt ins Fusion-Ranking.
         commonsVerifications = loadVerificationCounts(commonsPath());
         const verified = [...commonsVerifications.values()].reduce((s, v) => s + v.works + v.fails, 0);
-        console.error(`[bastra-recall] commons: enabled (${commonsVault.size()} recipes, ${verified} verification records from ${recipesDir})`);
+        console.error(
+          `[bastra-recall] commons: enabled (${commonsVault.size()} recipes, ${verified} verification records from ${recipesDir})`
+        );
       } catch (err) {
         console.error(`[bastra-recall] commons: failed to load (${(err as Error).message}) — continuing without`);
         commonsSearch = null;

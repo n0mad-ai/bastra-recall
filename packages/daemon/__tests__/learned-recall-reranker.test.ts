@@ -6,7 +6,16 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 
-import { assertLocalOrOptIn, buildRerankPrompt, DEFAULT_NUM_CTX, ollamaChat, parseRerankAnswer, rerank, resolveRerankModel, type RerankCandidate } from "../src/learned-recall/reranker.js";
+import {
+  assertLocalOrOptIn,
+  buildRerankPrompt,
+  DEFAULT_NUM_CTX,
+  ollamaChat,
+  parseRerankAnswer,
+  rerank,
+  resolveRerankModel,
+  type RerankCandidate,
+} from "../src/learned-recall/reranker.js";
 
 const CANDS: RerankCandidate[] = [
   { id: "a", text: "css flexbox note" },
@@ -50,7 +59,10 @@ test("rerank returns null bestId when the model picks none", async () => {
 
 test("rerank handles an empty candidate list without calling the model", async () => {
   let called = 0;
-  const r = await rerank("q", [], async () => { called++; return "1"; });
+  const r = await rerank("q", [], async () => {
+    called++;
+    return "1";
+  });
   assert.equal(called, 0);
   assert.equal(r.bestId, null);
 });
@@ -109,9 +121,7 @@ test("assertLocalOrOptIn lets a malformed URL through (fetch reports it, behavio
 });
 
 /** Capture the request body ollamaChat sends, without a live Ollama. */
-async function captureChatBody(
-  opts: Parameters<typeof ollamaChat>[0],
-): Promise<Record<string, unknown>> {
+async function captureChatBody(opts: Parameters<typeof ollamaChat>[0]): Promise<Record<string, unknown>> {
   const real = globalThis.fetch;
   let body: Record<string, unknown> = {};
   globalThis.fetch = (async (_url: string, init: { body: string }) => {
@@ -163,7 +173,7 @@ test("ollamaChat: a non-positive BASTRA_OLLAMA_NUM_CTX falls back to the default
       assert.deepEqual(
         (await captureChatBody({})).options,
         { temperature: 0, num_ctx: DEFAULT_NUM_CTX },
-        `"${bad}" must not become the context size`,
+        `"${bad}" must not become the context size`
       );
     }
   } finally {
@@ -172,7 +182,7 @@ test("ollamaChat: a non-positive BASTRA_OLLAMA_NUM_CTX falls back to the default
   }
 });
 
-test("ollamaChat returns \"\" for a thinking model's wire shape (#367)", async () => {
+test('ollamaChat returns "" for a thinking model\'s wire shape (#367)', async () => {
   // The exact response gemma4:12b produced: the whole answer in `thinking`,
   // `content` empty. The client must surface that as "" so the expander's
   // empty-generation guard sees it — not throw, and not dig the thinking out.

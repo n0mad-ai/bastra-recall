@@ -58,7 +58,7 @@ test("SessionStart: drei unabhängig degradierende Antworten werden nicht numeri
   assert.deepEqual(
     merged.map((h) => h.id),
     ["fused-1", "raw-1", "fused-2"],
-    "im gemischten Fall wird pro Query reihum genommen, nicht nach Zahl sortiert",
+    "im gemischten Fall wird pro Query reihum genommen, nicht nach Zahl sortiert"
   );
 });
 
@@ -69,7 +69,7 @@ test("SessionStart: fusioniert wird weiterhin nach Score sortiert und geflooert"
   ];
   assert.deepEqual(
     mergeSessionHits(responses, false, 30).map((h) => h.id),
-    ["high", "low"],
+    ["high", "low"]
   );
 });
 
@@ -87,11 +87,18 @@ test("Bash-Lanes: ohne Fusion wird keine Zahl gezeigt, die niemand vergleichen k
 test("die zentrale Banding-Funktion vergibt ohne Fusion kein Band", () => {
   const hits = [hit("a", 405585), hit("b", 1997)];
   const fused = bandHits(hits, 100, false);
-  assert.deepEqual(fused.required.map((h) => h.id), ["a", "b"]);
+  assert.deepEqual(
+    fused.required.map((h) => h.id),
+    ["a", "b"]
+  );
   assert.deepEqual(fused.unbanded, []);
 
   const unfused = bandHits(hits, 100, true);
   assert.deepEqual(unfused.required, []);
   assert.deepEqual(unfused.optional, []);
-  assert.deepEqual(unfused.unbanded.map((h) => h.id), ["a", "b"], "alle Hits, aber ohne Bandanspruch");
+  assert.deepEqual(
+    unfused.unbanded.map((h) => h.id),
+    ["a", "b"],
+    "alle Hits, aber ohne Bandanspruch"
+  );
 });

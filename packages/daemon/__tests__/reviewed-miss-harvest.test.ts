@@ -5,16 +5,36 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { extractReviewedMissChains, harvestReviewedMisses, hash, toCandidate } from "../src/learned-recall/reviewed-miss-harvest.js";
+import {
+  extractReviewedMissChains,
+  harvestReviewedMisses,
+  hash,
+  toCandidate,
+} from "../src/learned-recall/reviewed-miss-harvest.js";
 
-function line(value: unknown): string { return JSON.stringify(value); }
+function line(value: unknown): string {
+  return JSON.stringify(value);
+}
 
 test("harvest keeps an explicit Recall miss separate from its later source", () => {
   const session = [
     line({ type: "user", message: { content: "where is the deployment rail" } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall", input: { query: "rail" } }] } }),
-    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"weak_result":true,"hits":[]}' }] } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] } }),
+    line({
+      type: "assistant",
+      message: {
+        content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall", input: { query: "rail" } }],
+      },
+    }),
+    line({
+      type: "user",
+      message: {
+        content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"weak_result":true,"hits":[]}' }],
+      },
+    }),
+    line({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] },
+    }),
   ].join("\n");
   const [candidate] = harvestReviewedMisses(session, "session.jsonl");
   assert.equal(candidate.status, "candidate");
@@ -27,17 +47,39 @@ test("harvest keeps an explicit Recall miss separate from its later source", () 
 test("nonempty Recall chains remain unreviewed rather than becoming false misses", () => {
   const session = [
     line({ type: "user", message: { content: "where is the deployment rail" } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall", input: { query: "rail" } }] } }),
-    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"hits":[{"id":"wrong-memory"}]}' }] } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] } }),
+    line({
+      type: "assistant",
+      message: {
+        content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall", input: { query: "rail" } }],
+      },
+    }),
+    line({
+      type: "user",
+      message: {
+        content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"hits":[{"id":"wrong-memory"}]}' }],
+      },
+    }),
+    line({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] },
+    }),
   ].join("\n");
   assert.equal(harvestReviewedMisses(session, "session.jsonl")[0].status, "needs-relevance-label");
 });
 
 test("evidence before the matching Recall result cannot form a candidate", () => {
-  const recall = line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] } });
-  const read = line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] } });
-  const result = line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"hits":[]}' }] } });
+  const recall = line({
+    type: "assistant",
+    message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] },
+  });
+  const read = line({
+    type: "assistant",
+    message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] },
+  });
+  const result = line({
+    type: "user",
+    message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"hits":[]}' }] },
+  });
   const intent = line({ type: "user", message: { content: "where is the deployment rail" } });
   // control: the same lines in causal order do form one, so [] below is the ordering, not a broken fixture
   assert.equal(harvestReviewedMisses([intent, recall, result, read].join("\n"), "session.jsonl").length, 1);
@@ -47,8 +89,14 @@ test("evidence before the matching Recall result cannot form a candidate", () =>
 test("a source read without an inspectable identity still records the review boundary", () => {
   const session = [
     line({ type: "user", message: { content: "where is the deployment rail" } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] } }),
-    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"hits":[]}' }] } }),
+    line({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] },
+    }),
+    line({
+      type: "user",
+      message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"hits":[]}' }] },
+    }),
     line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: {} }] } }),
   ].join("\n");
   const [candidate] = harvestReviewedMisses(session, "session.jsonl");
@@ -59,13 +107,29 @@ test("a source read without an inspectable identity still records the review bou
 test("an unrelated empty tool result cannot taint a nonempty Recall", () => {
   const session = [
     line({ type: "user", message: { content: "where is the deployment rail" } }),
-    line({ type: "assistant", message: { content: [
-      { type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" },
-      { type: "tool_use", id: "grep-1", name: "Grep" },
-    ] } }),
-    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "grep-1", content: '{"hits":[]}' }] } }),
-    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"hits":[{"id":"wrong-memory"}]}' }] } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] } }),
+    line({
+      type: "assistant",
+      message: {
+        content: [
+          { type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" },
+          { type: "tool_use", id: "grep-1", name: "Grep" },
+        ],
+      },
+    }),
+    line({
+      type: "user",
+      message: { content: [{ type: "tool_result", tool_use_id: "grep-1", content: '{"hits":[]}' }] },
+    }),
+    line({
+      type: "user",
+      message: {
+        content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"hits":[{"id":"wrong-memory"}]}' }],
+      },
+    }),
+    line({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] },
+    }),
   ].join("\n");
   assert.equal(harvestReviewedMisses(session, "session.jsonl")[0].status, "needs-relevance-label");
 });
@@ -74,9 +138,15 @@ test("a miss is what the envelope states, never a sentence inside a hit", () => 
   const run = (content: string): string => {
     const session = [
       line({ type: "user", message: { content: "where is the deployment rail" } }),
-      line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] } }),
+      line({
+        type: "assistant",
+        message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] },
+      }),
       line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content }] } }),
-      line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] } }),
+      line({
+        type: "assistant",
+        message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] },
+      }),
     ].join("\n");
     return harvestReviewedMisses(session, "session.jsonl")[0]?.status ?? "missing";
   };
@@ -85,7 +155,10 @@ test("a miss is what the envelope states, never a sentence inside a hit", () => 
   assert.equal(run('{"no_home":true,"hits":[{"id":"memory-1"}]}'), "candidate");
   assert.equal(run('{"hits":[]}'), "candidate");
   // the reported defect: a nonempty recall whose hit text names a miss
-  assert.equal(run('{"hits":[{"id":"lesson-about-recall","summary":"no relevant memory was found — lesson"}]}'), "needs-relevance-label");
+  assert.equal(
+    run('{"hits":[{"id":"lesson-about-recall","summary":"no relevant memory was found — lesson"}]}'),
+    "needs-relevance-label"
+  );
   // a nested empty hits array is payload, not envelope
   assert.equal(run('{"hits":[{"id":"memory-1","hits":[]}]}'), "needs-relevance-label");
   // text that is not an envelope carries no miss signal
@@ -94,12 +167,28 @@ test("a miss is what the envelope states, never a sentence inside a hit", () => 
 });
 
 test("the served envelope may arrive as text parts, and its recall_id is read", () => {
-  const envelope = JSON.stringify({ query: "rail", hits: [], recall_id: "11111111-2222-3333-4444-555555555555" }, null, 2);
+  const envelope = JSON.stringify(
+    { query: "rail", hits: [], recall_id: "11111111-2222-3333-4444-555555555555" },
+    null,
+    2
+  );
   const session = [
     line({ type: "user", message: { content: "where is the deployment rail" } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] } }),
-    line({ type: "user", timestamp: "2026-09-13T20:00:00.000Z", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: [{ type: "text", text: envelope }] }] } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "mcp__bastra-recall__load_memory", input: { id: "memory-1" } }] } }),
+    line({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] },
+    }),
+    line({
+      type: "user",
+      timestamp: "2026-09-13T20:00:00.000Z",
+      message: {
+        content: [{ type: "tool_result", tool_use_id: "recall-1", content: [{ type: "text", text: envelope }] }],
+      },
+    }),
+    line({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "mcp__bastra-recall__load_memory", input: { id: "memory-1" } }] },
+    }),
   ].join("\n");
   const [chain] = extractReviewedMissChains(session, "session.jsonl");
   assert.equal(chain.explicitMiss, true);
@@ -110,13 +199,23 @@ test("the served envelope may arrive as text parts, and its recall_id is read", 
 });
 
 test("a session-context block after the envelope does not hide the envelope", () => {
-  const text = JSON.stringify({ query: "rail", hits: [], recall_id: "11111111-2222-3333-4444-555555555555" }, null, 2) +
-    "<bastra-session-context>\nRecalled context — {\"hits\":[{\"id\":\"x\"}]} not the envelope\n</bastra-session-context>";
+  const text =
+    JSON.stringify({ query: "rail", hits: [], recall_id: "11111111-2222-3333-4444-555555555555" }, null, 2) +
+    '<bastra-session-context>\nRecalled context — {"hits":[{"id":"x"}]} not the envelope\n</bastra-session-context>';
   const session = [
     line({ type: "user", message: { content: "where is the deployment rail" } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] } }),
-    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: [{ type: "text", text }] }] } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] } }),
+    line({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] },
+    }),
+    line({
+      type: "user",
+      message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: [{ type: "text", text }] }] },
+    }),
+    line({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] },
+    }),
   ].join("\n");
   const stats = { recalls: 0, withRecallId: 0 };
   const [chain] = extractReviewedMissChains(session, "session.jsonl", stats);
@@ -129,35 +228,76 @@ test("transcript control envelopes cannot become a Recall intent", () => {
   const session = [
     line({ type: "user", message: { content: "real human request" } }),
     line({ type: "assistant", message: { content: [{ type: "tool_use", id: "skill", name: "Skill" }] } }),
-    line({ type: "user", isMeta: true, sourceToolUseID: "skill", message: { content: [{ type: "text", text: "Base directory for this skill: /private/skill" }] } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall", name: "mcp__bastra-recall__recall" }] } }),
-    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall", content: '{"hits":[]}' }] } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] } }),
+    line({
+      type: "user",
+      isMeta: true,
+      sourceToolUseID: "skill",
+      message: { content: [{ type: "text", text: "Base directory for this skill: /private/skill" }] },
+    }),
+    line({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "recall", name: "mcp__bastra-recall__recall" }] },
+    }),
+    line({
+      type: "user",
+      message: { content: [{ type: "tool_result", tool_use_id: "recall", content: '{"hits":[]}' }] },
+    }),
+    line({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] },
+    }),
   ].join("\n");
   const [candidate] = harvestReviewedMisses(session, "session.jsonl");
   assert.equal(candidate.query, "real human request");
 });
 
 test("image placeholders cannot become a Recall intent", () => {
-  const session = (first: unknown) => [
-    line(first),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall", name: "mcp__bastra-recall__recall" }] } }),
-    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall", content: '{"hits":[]}' }] } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] } }),
-  ].join("\n");
+  const session = (first: unknown) =>
+    [
+      line(first),
+      line({
+        type: "assistant",
+        message: { content: [{ type: "tool_use", id: "recall", name: "mcp__bastra-recall__recall" }] },
+      }),
+      line({
+        type: "user",
+        message: { content: [{ type: "tool_result", tool_use_id: "recall", content: '{"hits":[]}' }] },
+      }),
+      line({
+        type: "assistant",
+        message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] },
+      }),
+    ].join("\n");
   // control: a human line in the same slot does become the intent
-  assert.equal(harvestReviewedMisses(session({ type: "user", message: { content: "where is the deployment rail" } }), "session.jsonl").length, 1);
-  assert.deepEqual(harvestReviewedMisses(session({ type: "user", message: { content: "[Image: source: /private/screenshot.png]" } }), "session.jsonl"), []);
+  assert.equal(
+    harvestReviewedMisses(
+      session({ type: "user", message: { content: "where is the deployment rail" } }),
+      "session.jsonl"
+    ).length,
+    1
+  );
+  assert.deepEqual(
+    harvestReviewedMisses(
+      session({ type: "user", message: { content: "[Image: source: /private/screenshot.png]" } }),
+      "session.jsonl"
+    ),
+    []
+  );
 });
 
 test("seeded raw transcript preserves the expected candidate ledger", async () => {
   const fixture = fileURLToPath(new URL("../__fixtures__/reviewed-miss-harvest/explicit-miss.jsonl", import.meta.url));
   const candidates = harvestReviewedMisses(await readFile(fixture, "utf8"), "seed-explicit-miss");
-  assert.deepEqual(candidates.map(({ query, status, evidence }) => ({ query, status, evidence })), [{
-    query: "where is the deployment rail",
-    status: "candidate",
-    evidence: { recall: "explicit-miss", sourceReadAfterRecall: true },
-  }]);
+  assert.deepEqual(
+    candidates.map(({ query, status, evidence }) => ({ query, status, evidence })),
+    [
+      {
+        query: "where is the deployment rail",
+        status: "candidate",
+        evidence: { recall: "explicit-miss", sourceReadAfterRecall: true },
+      },
+    ]
+  );
 });
 
 test("harvest CLI retains its first positional session file when no flags are supplied", () => {
@@ -166,7 +306,10 @@ test("harvest CLI retains its first positional session file when no flags are su
   const result = spawnSync(process.execPath, ["--import", "tsx", script, fixture], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
   const records = JSON.parse(result.stdout) as Array<{ status: string }>;
-  assert.deepEqual(records.map((record) => record.status), ["candidate"]);
+  assert.deepEqual(
+    records.map((record) => record.status),
+    ["candidate"]
+  );
 });
 
 // ─── Bash evidence: cat/head/tail/grep of a single file, nothing else ────
@@ -174,8 +317,14 @@ test("harvest CLI retains its first positional session file when no flags are su
 function bashChain(command: string): string {
   return [
     line({ type: "user", message: { content: "where is the deployment rail" } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] } }),
-    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"hits":[]}' }] } }),
+    line({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] },
+    }),
+    line({
+      type: "user",
+      message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"hits":[]}' }] },
+    }),
     line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash", input: { command } }] } }),
   ].join("\n");
 }
@@ -187,7 +336,10 @@ test("a Bash cat/head/tail/grep of a single file resolves to a file-shaped evide
     ["head -n40 /home/user/sync/reading/mem-pressure.log", "/home/user/sync/reading/mem-pressure.log"],
     ["tail -f /var/log/syslog", "/var/log/syslog"],
     ['grep -v "OK swap=14%" /home/user/sync/reading/mem-pressure.log', "/home/user/sync/reading/mem-pressure.log"],
-    ["grep -c 'Could not resolve hostname' /home/user/sync/reading/chrome-socks5.log", "/home/user/sync/reading/chrome-socks5.log"],
+    [
+      "grep -c 'Could not resolve hostname' /home/user/sync/reading/chrome-socks5.log",
+      "/home/user/sync/reading/chrome-socks5.log",
+    ],
   ];
   for (const [command, path] of cases) {
     const [chain] = extractReviewedMissChains(bashChain(command), "session.jsonl");
@@ -204,7 +356,7 @@ test("a Bash call outside the closed cat/head/tail/grep shape does not manufactu
     "tail -n 60 /home/user/sync/reading/mem-pressure.log", // split "-n 60": ambiguous positional count
     "cat file.log | head -5", // pipe: more than one command
     "cat file.log; echo done", // semicolon: more than one command
-    "echo \"$(cat file.log)\"", // subshell
+    'echo "$(cat file.log)"', // subshell
     "find /home/user -iname '*.log'", // not a read command at all
     "uptime",
     "cat notes.log", // relative — the offline harvester has no session cwd to resolve it against
@@ -224,12 +376,23 @@ test("a Bash call outside the closed cat/head/tail/grep shape does not manufactu
 test("an unparseable Bash call does not lock out a later real evidence step", () => {
   const session = [
     line({ type: "user", message: { content: "where is the deployment rail" } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] } }),
-    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"hits":[]}' }] } }),
-    line({ type: "assistant", message: { content: [
-      { type: "tool_use", name: "Bash", input: { command: "uptime" } },
-      { type: "tool_use", name: "Bash", input: { command: "cat /home/user/sync/reading/mem-pressure.log" } },
-    ] } }),
+    line({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] },
+    }),
+    line({
+      type: "user",
+      message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"hits":[]}' }] },
+    }),
+    line({
+      type: "assistant",
+      message: {
+        content: [
+          { type: "tool_use", name: "Bash", input: { command: "uptime" } },
+          { type: "tool_use", name: "Bash", input: { command: "cat /home/user/sync/reading/mem-pressure.log" } },
+        ],
+      },
+    }),
   ].join("\n");
   const [chain] = extractReviewedMissChains(session, "session.jsonl");
   assert.deepEqual(chain.evidence, { kind: "bash-read", path: "/home/user/sync/reading/mem-pressure.log" });
@@ -241,7 +404,9 @@ test("harvest CLI writes only the explicitly requested queue", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-reviewed-miss-"));
   const output = join(dir, "queue.json");
   try {
-    const result = spawnSync(process.execPath, ["--import", "tsx", script, "--out", output, fixture], { encoding: "utf8" });
+    const result = spawnSync(process.execPath, ["--import", "tsx", script, "--out", output, fixture], {
+      encoding: "utf8",
+    });
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(await readdir(dir), ["queue.json"]);
     const records = JSON.parse(await readFile(output, "utf8")) as Array<{ sourceRef: string | null }>;
@@ -259,10 +424,23 @@ test("an evidence step that resolves to nothing does not shut out the real read 
   // into `evidence` unconditionally and this goes red.
   const session = [
     line({ type: "user", message: { content: "where is the deployment rail" } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall", input: { query: "rail" } }] } }),
-    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"weak_result":true,"hits":[]}' }] } }),
+    line({
+      type: "assistant",
+      message: {
+        content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall", input: { query: "rail" } }],
+      },
+    }),
+    line({
+      type: "user",
+      message: {
+        content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"weak_result":true,"hits":[]}' }],
+      },
+    }),
     line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Grep", input: { pattern: "rail" } }] } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/w/rail.md" } }] } }),
+    line({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/w/rail.md" } }] },
+    }),
   ].join("\n");
   const [chain] = extractReviewedMissChains(session, "s.jsonl");
   assert.deepEqual(chain.evidence, { kind: "file-read", path: "/w/rail.md" });
@@ -274,8 +452,18 @@ test("a chain whose only evidence step is opaque still reports itself as opaque"
   // drop the `opaque` fallback from `emit()` and this chain disappears.
   const session = [
     line({ type: "user", message: { content: "where is the deployment rail" } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall", input: { query: "rail" } }] } }),
-    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"weak_result":true,"hits":[]}' }] } }),
+    line({
+      type: "assistant",
+      message: {
+        content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall", input: { query: "rail" } }],
+      },
+    }),
+    line({
+      type: "user",
+      message: {
+        content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"weak_result":true,"hits":[]}' }],
+      },
+    }),
     line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Grep", input: { pattern: "rail" } }] } }),
   ].join("\n");
   const [chain] = extractReviewedMissChains(session, "s.jsonl");
@@ -288,16 +476,49 @@ test("a second recall in the same turn does not drop the finished chain before i
   // `emit()` before `pending = {…}` and only one chain comes back.
   const session = [
     line({ type: "user", message: { content: "where is the deployment rail" } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall", input: { query: "rail v1" } }] } }),
-    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"weak_result":true,"hits":[]}' }] } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/w/rail-v1.md" } }] } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-2", name: "mcp__bastra-recall__recall", input: { query: "rail v2" } }] } }),
-    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-2", content: '{"weak_result":true,"hits":[]}' }] } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/w/rail-v2.md" } }] } }),
+    line({
+      type: "assistant",
+      message: {
+        content: [
+          { type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall", input: { query: "rail v1" } },
+        ],
+      },
+    }),
+    line({
+      type: "user",
+      message: {
+        content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"weak_result":true,"hits":[]}' }],
+      },
+    }),
+    line({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/w/rail-v1.md" } }] },
+    }),
+    line({
+      type: "assistant",
+      message: {
+        content: [
+          { type: "tool_use", id: "recall-2", name: "mcp__bastra-recall__recall", input: { query: "rail v2" } },
+        ],
+      },
+    }),
+    line({
+      type: "user",
+      message: {
+        content: [{ type: "tool_result", tool_use_id: "recall-2", content: '{"weak_result":true,"hits":[]}' }],
+      },
+    }),
+    line({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/w/rail-v2.md" } }] },
+    }),
   ].join("\n");
   const chains = extractReviewedMissChains(session, "s.jsonl");
   assert.equal(chains.length, 2, "both recalls of the turn are reported");
-  assert.deepEqual(chains.map((c) => (c.evidence as { path: string }).path), ["/w/rail-v1.md", "/w/rail-v2.md"]);
+  assert.deepEqual(
+    chains.map((c) => (c.evidence as { path: string }).path),
+    ["/w/rail-v1.md", "/w/rail-v2.md"]
+  );
 });
 
 test("a find_document reached through the MCP prefix is an evidence step, like a bare one", () => {
@@ -306,14 +527,28 @@ test("a find_document reached through the MCP prefix is an evidence step, like a
   // whose only follow-up was an MCP find_document vanished instead of reporting
   // itself as opaque (the `unresolved-evidence` gap names find_document as its
   // source). Revert-check: drop `(?:^|__)` from `isEvidenceRead`.
-  const session = (tool: string) => [
-    line({ type: "user", message: { content: "where is the deployment rail" } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall", input: { query: "rail" } }] } }),
-    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"weak_result":true,"hits":[]}' }] } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", name: tool, input: { query: "rail" } }] } }),
-  ].join("\n");
+  const session = (tool: string) =>
+    [
+      line({ type: "user", message: { content: "where is the deployment rail" } }),
+      line({
+        type: "assistant",
+        message: {
+          content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall", input: { query: "rail" } }],
+        },
+      }),
+      line({
+        type: "user",
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"weak_result":true,"hits":[]}' }],
+        },
+      }),
+      line({ type: "assistant", message: { content: [{ type: "tool_use", name: tool, input: { query: "rail" } }] } }),
+    ].join("\n");
   const bare = extractReviewedMissChains(session("find_document"), "s.jsonl");
   const prefixed = extractReviewedMissChains(session("mcp__bastra-recall__find_document"), "s.jsonl");
   assert.equal(bare.length, 1);
-  assert.deepEqual(prefixed.map((c) => c.evidence), bare.map((c) => c.evidence));
+  assert.deepEqual(
+    prefixed.map((c) => c.evidence),
+    bare.map((c) => c.evidence)
+  );
 });

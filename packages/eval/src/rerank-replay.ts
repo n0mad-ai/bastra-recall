@@ -128,7 +128,11 @@ function parseArgs(argv: string[]): Args {
   for (let i = 0; i < argv.length; i++) {
     const f = argv[i];
     if (f === "--gold") a.gold.push(argv[++i]);
-    else if (f === "--models") a.models = argv[++i].split(",").map((s) => s.trim()).filter(Boolean);
+    else if (f === "--models")
+      a.models = argv[++i]
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
     else if (f === "--out") a.out = argv[++i];
     else if (f === "--limit") a.limit = Number(argv[++i]);
     else if (f === "--latency") a.latency = true;
@@ -141,7 +145,8 @@ function parseArgs(argv: string[]): Args {
   }
   if (!a.gold.length) throw new Error("--gold is required (repeatable)");
   for (const m of a.models) {
-    if (!MODELS[m]) throw new Error(`unknown model ${JSON.stringify(m)} — registered: ${Object.keys(MODELS).join(", ")}`);
+    if (!MODELS[m])
+      throw new Error(`unknown model ${JSON.stringify(m)} — registered: ${Object.keys(MODELS).join(", ")}`);
   }
   return a;
 }
@@ -226,7 +231,7 @@ async function collectPools(
   search: SearchIndex,
   cases: readonly GoldCase[],
   knownIds: Set<string>,
-  label: string,
+  label: string
 ): Promise<{ rows: CaseRow[]; health: ArmHealth }> {
   const rows: CaseRow[] = [];
   const health: ArmHealth = { vector_timeouts: 0, vector_errors: 0, wait_ms: [], cases: cases.length };
@@ -255,7 +260,7 @@ async function collectPools(
         onCandidatePool: (p) => {
           pool = p;
         },
-      }),
+      })
     );
     const hits = await recall(c.query, c.id);
     rows.push({
@@ -288,7 +293,7 @@ export async function rankArm(
   rows: readonly CaseRow[],
   memoryOf: (id: string) => Memory | undefined,
   label: string,
-  ns: readonly number[] = NS,
+  ns: readonly number[] = NS
 ): Promise<Map<string, ArmRanking>> {
   const deepest = Math.max(...ns);
   const out = new Map<string, ArmRanking>();
@@ -326,7 +331,7 @@ export async function checkBatchInvariance(
   scorer: PairScorer,
   mode: PassageMode,
   row: CaseRow,
-  memoryOf: (id: string) => Memory | undefined,
+  memoryOf: (id: string) => Memory | undefined
 ): Promise<{ maxAbsDelta: number; orderStable: boolean }> {
   const passages = (k: number): string[] =>
     row.baseline.slice(0, k).map((h) => {
@@ -339,7 +344,11 @@ export async function checkBatchInvariance(
   let maxAbsDelta = 0;
   for (let i = 0; i < shallow.length; i++) maxAbsDelta = Math.max(maxAbsDelta, Math.abs(deep[i] - shallow[i]));
   const orderOf = (s: number[]): string =>
-    s.map((v, i) => [v, i] as const).sort((a, b) => (b[0] - a[0]) || (a[1] - b[1])).map(([, i]) => i).join(",");
+    s
+      .map((v, i) => [v, i] as const)
+      .sort((a, b) => b[0] - a[0] || a[1] - b[1])
+      .map(([, i]) => i)
+      .join(",");
   return { maxAbsDelta, orderStable: orderOf(deep.slice(0, 10)) === orderOf(shallow) };
 }
 
@@ -362,7 +371,7 @@ async function main(): Promise<void> {
   if (part.malformed.length > 0) {
     throw new Error(
       `${part.malformed.length} case(s) claim an answer but name no expected id: ` +
-        `${part.malformed.map((c) => c.id).join(", ")}`,
+        `${part.malformed.map((c) => c.id).join(", ")}`
     );
   }
   // B1 guard FIRST, on the UNLIMITED set. Run after `--limit` it would see
@@ -379,7 +388,10 @@ async function main(): Promise<void> {
     // that scores 20 answerable cases against all 79 guard cases spends most
     // of its time on the smoke test's least interesting half.
     answerable = answerable.slice(0, args.limit);
-    guardCases = guardCases.slice(0, Math.max(1, Math.round(args.limit * (part.noAnswer.length / Math.max(1, part.answerable.length)))));
+    guardCases = guardCases.slice(
+      0,
+      Math.max(1, Math.round(args.limit * (part.noAnswer.length / Math.max(1, part.answerable.length))))
+    );
   }
 
   const vault = new Vault(vaultPath);
@@ -397,7 +409,7 @@ async function main(): Promise<void> {
   console.error(`[rerank-replay] ${arm.label}`);
   console.error(
     `[rerank-replay] ${answerable.length} answerable · ${guardCases.length} no_answer guard · ` +
-      `${part.probes} probes excluded · floor ${SCORE_FLOOR} · serve k=${PRODUCTION_K} · sources ${JSON.stringify(sources)}`,
+      `${part.probes} probes excluded · floor ${SCORE_FLOOR} · serve k=${PRODUCTION_K} · sources ${JSON.stringify(sources)}`
   );
 
   const main = await collectPools(search, answerable, knownIds, "answerable");
@@ -409,7 +421,7 @@ async function main(): Promise<void> {
   const POOL_CAP = Math.max(PRODUCTION_K * 4, 20);
   const poolSplit = assignPoolBuckets(rows, POOL_CAP);
   console.error(
-    `[rerank-replay] pool-size median ${poolSplit.median} (cap ${POOL_CAP}) — small ${poolSplit.small} / large ${poolSplit.large}`,
+    `[rerank-replay] pool-size median ${poolSplit.median} (cap ${POOL_CAP}) — small ${poolSplit.small} / large ${poolSplit.large}`
   );
   if (poolSplit.degenerate) {
     console.error(`[rerank-replay] WARNING: by_pool is NOT evaluable — ${poolSplit.degenerate}`);
@@ -419,7 +431,7 @@ async function main(): Promise<void> {
   if (shallow > 0) {
     console.error(
       `[rerank-replay] note: ${shallow} case(s) returned a pool shallower than N=${Math.max(...NS)} — ` +
-        "their deepest windows are the whole pool, which is the honest ceiling, not a truncation bug.",
+        "their deepest windows are the whole pool, which is the honest ceiling, not a truncation bug."
     );
   }
 
@@ -454,13 +466,13 @@ async function main(): Promise<void> {
     const stable = PASSAGE_MODES.every((m) => invariance[`${modelKey}/${m}`]?.orderStable !== false);
     if (!stable) {
       console.error(
-        `[rerank-replay] ${modelKey}: batch invariance FAILED — scoring each N separately (costs more, and is the only correct option)`,
+        `[rerank-replay] ${modelKey}: batch invariance FAILED — scoring each N separately (costs more, and is the only correct option)`
       );
     }
     const rankFor = async (
       mode: PassageMode,
       subject: readonly CaseRow[],
-      label: string,
+      label: string
     ): Promise<Map<string, ArmRanking>> => {
       if (stable) return rankArm(scorer, mode, subject, (id) => vault.get(id), label);
       const merged = new Map<string, ArmRanking>();
@@ -487,7 +499,7 @@ async function main(): Promise<void> {
             serveK: PRODUCTION_K,
             seed: args.seed,
             poolSplit,
-          }),
+          })
         );
         guards[`${label}/N=${n}`] = noAnswerGuard(guardRows, guardRankings, n, PRODUCTION_K, SCORE_FLOOR);
       }
@@ -504,39 +516,47 @@ async function main(): Promise<void> {
   L.push("");
   if (primary) {
     const c = primary.at[PRIMARY.cut];
-    L.push(`  PRIMARY ENDPOINT — ${PRIMARY.model}/${PRIMARY.passage}, N=${PRIMARY.n}, ${PRIMARY.cut}. This cell alone carries a recommendation.`);
+    L.push(
+      `  PRIMARY ENDPOINT — ${PRIMARY.model}/${PRIMARY.passage}, N=${PRIMARY.n}, ${PRIMARY.cut}. This cell alone carries a recommendation.`
+    );
     L.push(
       `    baseline ${pct(c.baseline)} → reranked ${pct(c.reranked)} · Δ ${pp(c.paired.delta)} pp · ` +
         `CI95 [${pp(c.paired.ci95[0])}, ${pp(c.paired.ci95[1])}] · p ${c.paired.p.toFixed(4)} · ` +
-        `better ${c.paired.better} / worse ${c.paired.worse} / unchanged ${c.paired.unchanged}`,
+        `better ${c.paired.better} / worse ${c.paired.worse} / unchanged ${c.paired.unchanged}`
     );
-    L.push(`    rank regression ${pct(primary.rank_regression_share)} · recall_any@${primary.n} ${pct(primary.recall_any_at_n)}`);
+    L.push(
+      `    rank regression ${pct(primary.rank_regression_share)} · recall_any@${primary.n} ${pct(primary.recall_any_at_n)}`
+    );
     const ip = primary.in_pool_only;
     if (ip.at) {
       const d = ip.at[PRIMARY.cut];
       L.push(
         `    EXPLORATORY, same arm over the ${ip.n} cases whose gold is inside the window at all: ` +
-          `Δ ${pp(d.delta)} pp · CI95 [${pp(d.ci95[0])}, ${pp(d.ci95[1])}] — the dilution check, not the endpoint`,
+          `Δ ${pp(d.delta)} pp · CI95 [${pp(d.ci95[0])}, ${pp(d.ci95[1])}] — the dilution check, not the endpoint`
       );
     }
     for (const [k, sl] of Object.entries(primary.by_kind)) {
       const d = sl.at?.[PRIMARY.cut];
-      L.push(`    by kind · ${k.padEnd(12)} n=${String(sl.n).padStart(3)} ${d ? `Δ ${pp(d.delta)} pp · CI95 [${pp(d.ci95[0])}, ${pp(d.ci95[1])}]` : (sl.not_evaluable ?? "")}`);
+      L.push(
+        `    by kind · ${k.padEnd(12)} n=${String(sl.n).padStart(3)} ${d ? `Δ ${pp(d.delta)} pp · CI95 [${pp(d.ci95[0])}, ${pp(d.ci95[1])}]` : (sl.not_evaluable ?? "")}`
+      );
     }
   } else {
     L.push("  PRIMARY ENDPOINT NOT MEASURED — the registered cell is not among the arms this run scored.");
   }
   L.push("");
   L.push(`  EXPLORATORY — ${countIntervals(reports)} confidence intervals in this run. At α=0.05 several are`);
-  L.push("  \"significant\" under pure noise. This table describes; it does not decide.");
-  L.push(`  ${"model/passage".padEnd(16)} | ${"N".padStart(3)} | ${"R@3".padStart(7)} | ${"ΔR@3".padStart(6)} | ${"95% CI".padStart(15)} | ${"ΔR@5".padStart(6)} | any@N | regr`);
+  L.push('  "significant" under pure noise. This table describes; it does not decide.');
+  L.push(
+    `  ${"model/passage".padEnd(16)} | ${"N".padStart(3)} | ${"R@3".padStart(7)} | ${"ΔR@3".padStart(6)} | ${"95% CI".padStart(15)} | ${"ΔR@5".padStart(6)} | any@N | regr`
+  );
   for (const r of reports) {
     const c3 = r.at["r@3"].paired.ci95;
     L.push(
       `  ${`${r.model}/${r.passage}`.padEnd(16)}${r.primary ? "*" : " "}| ${String(r.n).padStart(3)} | ` +
         `${pct(r.at["r@3"].reranked).padStart(7)} | ${pp(r.at["r@3"].paired.delta).padStart(6)} | ` +
         `${`[${pp(c3[0])}, ${pp(c3[1])}]`.padStart(15)} | ${pp(r.at["r@5"].paired.delta).padStart(6)} | ` +
-        `${pct(r.recall_any_at_n)} | ${pct(r.rank_regression_share)}`,
+        `${pct(r.recall_any_at_n)} | ${pct(r.rank_regression_share)}`
     );
   }
   L.push("");
@@ -553,7 +573,7 @@ async function main(): Promise<void> {
       L.push(
         `    ${`${l.model}/${l.passage}`.padEnd(16)} | N=${String(l.n).padStart(2)} | ` +
           `p50 ${fmt(l.warm_p50_ms)} ms | p95 ${fmt(l.warm_p95_ms)} ms | ` +
-          `first ${fmt(l.first_call_ms)} ms${l.first_call_is_cold ? " (cold)" : ""} | n=${l.samples}`,
+          `first ${fmt(l.first_call_ms)} ms${l.first_call_is_cold ? " (cold)" : ""} | n=${l.samples}`
       );
     }
     L.push(`    model load: ${latency[0].load_ms} ms — a prewarm-lane cost (#361), not a recall cost.`);
@@ -568,7 +588,7 @@ async function main(): Promise<void> {
   L.push(
     `  dense-arm health — ${main.health.vector_timeouts + guard.health.vector_timeouts} timeout(s), ` +
       `${main.health.vector_errors + guard.health.vector_errors} error(s) over ${totalCases} recalls. ` +
-      "A dense-arm timeout or error stops the run (gatedHybridRecaller), so a finished run reports 0 here; wait_ms is for the reader to judge.",
+      "A dense-arm timeout or error stops the run (gatedHybridRecaller), so a finished run reports 0 here; wait_ms is for the reader to judge."
   );
   if (Object.keys(invariance).length) {
     L.push("");
@@ -623,9 +643,9 @@ async function main(): Promise<void> {
           batch_invariance: invariance,
         },
         null,
-        2,
+        2
       ) + "\n",
-      { mode: 0o600 },
+      { mode: 0o600 }
     );
     console.error(`[rerank-replay] wrote ${args.out}`);
   }

@@ -149,7 +149,7 @@ export interface GovernorOptions {
 export function governContext(
   items: GovernedItem[],
   budget: GovernorBudget = {},
-  opts: GovernorOptions = {},
+  opts: GovernorOptions = {}
 ): GovernorDecision {
   const tokenBudget = budget.tokens ?? 0;
   const itemBudget = budget.items ?? 0;
@@ -165,9 +165,7 @@ export function governContext(
 
   // Nach Priorität aufnehmen, bei Gleichstand in Eingabereihenfolge — sonst
   // hinge das Ergebnis an der Sortierstabilität der Laufzeit.
-  const order = eligible
-    .map((it, i) => ({ it, i }))
-    .sort((a, b) => a.it.priority - b.it.priority || a.i - b.i);
+  const order = eligible.map((it, i) => ({ it, i })).sort((a, b) => a.it.priority - b.it.priority || a.i - b.i);
 
   const keep = new Set<number>();
   const seenIds = new Set<string>();

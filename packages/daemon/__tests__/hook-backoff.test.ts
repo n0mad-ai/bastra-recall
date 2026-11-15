@@ -160,13 +160,7 @@ test("recordSourceSuppressed: increments skipped; no-op without entry", () => {
 // ── suppression cadence over a simulated event stream ──────────────────────
 
 /** Mimics one injection-worthy hook event: decide, then commit the outcome. */
-function driveEvent(
-  state: SessionState,
-  source: string,
-  consumed: boolean,
-  now: number,
-  hasRequired = false,
-): boolean {
+function driveEvent(state: SessionState, source: string, consumed: boolean, now: number, hasRequired = false): boolean {
   const d = ss.decideBackoff(state.sources?.[source], consumed, hasRequired);
   if (d.suppress) {
     ss.recordSourceSuppressed(state, source);

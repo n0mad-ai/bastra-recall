@@ -183,7 +183,11 @@ export async function buildCodeGraph(opts: BuildOptions): Promise<BuildResult> {
 
   const bin = opts.bin ?? graphifyBinPath();
   if (!isAbsolute(bin)) {
-    return { ok: false, reason: "graphify-missing", detail: "Graphify binary path must be absolute; PATH lookup is not allowed" };
+    return {
+      ok: false,
+      reason: "graphify-missing",
+      detail: "Graphify binary path must be absolute; PATH lookup is not allowed",
+    };
   }
   if (!(await isExecutable(bin))) {
     return { ok: false, reason: "graphify-missing", detail: bin };
@@ -378,7 +382,7 @@ function spawnGraphify(ctx: RunContext): Promise<SpawnOutcome> {
             } ms after SIGKILL — build lock left in place until it goes stale`,
             childAlive: true,
           });
-        }, KILL_GRACE_MS + KILL_BACKSTOP_MS),
+        }, KILL_GRACE_MS + KILL_BACKSTOP_MS)
       );
       for (const t of timers) t.unref?.();
     };
@@ -461,9 +465,28 @@ export const SKIP_DIRS: ReadonlySet<string> = new Set([
 
 /** Extensions Graphify extracts from, and therefore the ones staleness is about. */
 const CODE_EXTS = new Set([
-  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
-  ".py", ".rb", ".go", ".rs", ".java", ".kt", ".swift",
-  ".c", ".h", ".cc", ".cpp", ".hpp", ".cs", ".php", ".scala", ".sh",
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".py",
+  ".rb",
+  ".go",
+  ".rs",
+  ".java",
+  ".kt",
+  ".swift",
+  ".c",
+  ".h",
+  ".cc",
+  ".cpp",
+  ".hpp",
+  ".cs",
+  ".php",
+  ".scala",
+  ".sh",
 ]);
 
 /**
@@ -487,7 +510,9 @@ const MAX_SCAN_FILES = 200_000;
  * edited but not yet staged is exactly the case the marker exists for, and an
  * enabled directory need not be a git repository at all.
  */
-export async function scanFileState(repoRoot: string): Promise<{ count: number; newestMtimeMs: number; signature: string }> {
+export async function scanFileState(
+  repoRoot: string
+): Promise<{ count: number; newestMtimeMs: number; signature: string }> {
   const files: string[] = [];
   let count = 0;
   let newestMtimeMs = 0;

@@ -27,7 +27,13 @@ import { join } from "node:path";
 import { runStopLane, type ClaudeStopPayload } from "../src/stop-lane.js";
 import { expireReceipts } from "../src/receipt-store.js";
 import { REPAIR_INSTRUCTION } from "../src/stop-lane-same-turn.js";
-import { bumpTaskGeneration, loadSessionState, mutateSessionState, taskIdFor, type ActiveConvention } from "../src/session-state.js";
+import {
+  bumpTaskGeneration,
+  loadSessionState,
+  mutateSessionState,
+  taskIdFor,
+  type ActiveConvention,
+} from "../src/session-state.js";
 
 const TRANSCRIPT = [
   { role: "user", content: "passt so, schick es raus" },
@@ -61,7 +67,7 @@ async function withSandbox<T>(fn: (dir: string) => Promise<T>, extraEnv: Record<
 
 async function seed(
   sid: string,
-  opts: { kind?: "approved-copy" | "draft-for-review"; validator?: boolean; since?: number; generation?: number } = {},
+  opts: { kind?: "approved-copy" | "draft-for-review"; validator?: boolean; since?: number; generation?: number } = {}
 ): Promise<string> {
   const kind = opts.kind ?? "approved-copy";
   const since = opts.since ?? 1000;
@@ -77,18 +83,37 @@ async function seed(
 
 async function addReceipt(sid: string, taskId: string, generation: number, hash = "a".repeat(64)): Promise<void> {
   await mutateSessionState(sid, (s) => {
-    (s.receipts ??= []).push({ taskId, generation, hash, receipt: `sha256:${hash}`, channel: "discord-dm", limit: 2000, unit: "max(codepoints,utf16)", at: 1 });
+    (s.receipts ??= []).push({
+      taskId,
+      generation,
+      hash,
+      receipt: `sha256:${hash}`,
+      channel: "discord-dm",
+      limit: 2000,
+      unit: "max(codepoints,utf16)",
+      at: 1,
+    });
   });
 }
 
 function stop(sid: string, extra: Partial<ClaudeStopPayload> & Record<string, unknown> = {}): Promise<string> {
   return runStopLane(
-    { hook_event_name: "Stop", session_id: sid, cwd: process.cwd(), transcript: TRANSCRIPT, ...extra } as ClaudeStopPayload,
-    "http://127.0.0.1:1",
+    {
+      hook_event_name: "Stop",
+      session_id: sid,
+      cwd: process.cwd(),
+      transcript: TRANSCRIPT,
+      ...extra,
+    } as ClaudeStopPayload,
+    "http://127.0.0.1:1"
   );
 }
 
-type Out = { systemMessage?: string; decision?: string; hookSpecificOutput?: { hookEventName?: string; additionalContext?: string } };
+type Out = {
+  systemMessage?: string;
+  decision?: string;
+  hookSpecificOutput?: { hookEventName?: string; additionalContext?: string };
+};
 
 function assertRequest(raw: string, attempt: number): void {
   const out = JSON.parse(raw) as Out;
@@ -191,11 +216,14 @@ test("#1311 — Codex and the same-turn off switch get no repair", async () => {
     assert.equal(await stop("rp-codex", { stop_hook_active: true, bastra_client: "codex" }), "{}");
     assert.equal((await loadSessionState("rp-codex")).repairAttempts, undefined);
   });
-  await withSandbox(async () => {
-    await seed("rp-off");
-    assert.equal(await stop("rp-off", { stop_hook_active: true }), "{}");
-    assert.equal((await loadSessionState("rp-off")).repairAttempts, undefined);
-  }, { BASTRA_STOP_SAME_TURN: "0" });
+  await withSandbox(
+    async () => {
+      await seed("rp-off");
+      assert.equal(await stop("rp-off", { stop_hook_active: true }), "{}");
+      assert.equal((await loadSessionState("rp-off")).repairAttempts, undefined);
+    },
+    { BASTRA_STOP_SAME_TURN: "0" }
+  );
 });
 
 test("#1311 — the repair path stays inside the 1000 ms Stop budget", async () => {
@@ -209,16 +237,19 @@ test("#1311 — the repair path stays inside the 1000 ms Stop budget", async () 
   });
 });
 
-
 test("#1311 — a busy session claim skips immediately and never writes a late repair count", async () => {
   await withSandbox(async (dir) => {
     await seed("rp-busy");
     let release!: () => void;
     let entered!: () => void;
-    const ready = new Promise<void>((resolve) => { entered = resolve; });
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
     const holder = withPathLock(join(dir, "state", "rp-busy.json"), async () => {
       entered();
-      await new Promise<void>((resolve) => { release = resolve; });
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
     });
     await ready;
     try {
@@ -245,13 +276,19 @@ test("#1311 — convention removal queued before repair cannot produce a stale-v
     await seed("rp-removed");
     let release!: () => void;
     let entered!: () => void;
-    const ready = new Promise<void>((resolve) => { entered = resolve; });
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
     const holder = withPathLock(join(dir, "state", "rp-removed.json"), async () => {
       entered();
-      await new Promise<void>((resolve) => { release = resolve; });
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
     });
     await ready;
-    const removal = mutateSessionState("rp-removed", (s) => { delete s.activeConventions; });
+    const removal = mutateSessionState("rp-removed", (s) => {
+      delete s.activeConventions;
+    });
     const checking = checkStopRepair({ hook_event_name: "Stop", session_id: "rp-removed" });
     try {
       // The old implementation reads the validator snapshot, then queues behind removal.
@@ -271,10 +308,14 @@ test("#1311 — an expired response claim never invokes its mutation or writes s
   await withSandbox(async () => {
     await seed("rp-deadline");
     let invoked = false;
-    const persisted = await mutateSessionState("rp-deadline", (s) => {
-      invoked = true;
-      s.repairAttempts = { taskId: s.activeTask!.id, generation: 0, count: 1 };
-    }, { noQueue: true, deadline: Date.now() - 1 });
+    const persisted = await mutateSessionState(
+      "rp-deadline",
+      (s) => {
+        invoked = true;
+        s.repairAttempts = { taskId: s.activeTask!.id, generation: 0, count: 1 };
+      },
+      { noQueue: true, deadline: Date.now() - 1 }
+    );
     assert.equal(persisted, false);
     assert.equal(invoked, false);
     assert.equal((await loadSessionState("rp-deadline")).repairAttempts, undefined);

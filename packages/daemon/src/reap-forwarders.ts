@@ -52,16 +52,12 @@ export function findStaleForwarders(rows: ProcRow[], selfPid: number): number[] 
   const byPid = new Map(rows.map((r) => [r.pid, r]));
   // Kandidaten: jede Zeile, die das Forwarder-Script trägt — echte Forwarder
   // UND Wrapper, die das Script als Argument führen (disclaimer, sh -c …).
-  const candidates = rows.filter(
-    (r) => r.pid !== selfPid && r.command.includes("mcp-forwarder"),
-  );
+  const candidates = rows.filter((r) => r.pid !== selfPid && r.command.includes("mcp-forwarder"));
   // Wrapper strukturell erkennen: Parent eines anderen Kandidaten. Ein Wrapper
   // wird nie selbst geSIGTERMt, solange sein Kind lebt — das Kind ist der
   // Kill-Punkt, der Wrapper stirbt von allein, sobald es weg ist.
   const wrapperPids = new Set(
-    candidates
-      .filter((r) => candidates.some((c) => c !== r && c.ppid === r.pid))
-      .map((r) => r.pid),
+    candidates.filter((r) => candidates.some((c) => c !== r && c.ppid === r.pid)).map((r) => r.pid)
   );
   const stale: number[] = [];
   for (const r of candidates) {

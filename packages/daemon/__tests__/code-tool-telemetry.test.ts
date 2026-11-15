@@ -69,7 +69,7 @@ describe("code tool telemetry", () => {
         note: "…",
         took_ms: 1,
       },
-      { surface: "http", callerSession: "sess-1" },
+      { surface: "http", callerSession: "sess-1" }
     );
     assert.equal(row.unavailable_reason, undefined);
     assert.equal(row.tool, "find_affected_files");

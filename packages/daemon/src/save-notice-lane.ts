@@ -34,7 +34,14 @@ import { defaultLogDir } from "./telemetry.js";
 import { getPrimaryLanguage } from "./settings.js";
 import { hookAgent, hookClientEvidence, type HookAgent, type HookClientEvidence } from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
-import { coveredByDetail, cueDetail, editDetail, formatSaveNotice, type SaveNotice, type SaveNoticeAction } from "./save-notice.js";
+import {
+  coveredByDetail,
+  cueDetail,
+  editDetail,
+  formatSaveNotice,
+  type SaveNotice,
+  type SaveNoticeAction,
+} from "./save-notice.js";
 
 const HOOK_VERSION = "0.1.0";
 
@@ -90,7 +97,10 @@ export async function flushSaveNoticeTelemetry(): Promise<void> {
 export async function runSaveNoticeLane(
   payload: SaveNoticePayload,
   lookup: EntryLookup,
-  opts: { language?: () => Promise<string | undefined>; telemetry?: (payload: SaveNoticeTelemetry) => Promise<void> } = {},
+  opts: {
+    language?: () => Promise<string | undefined>;
+    telemetry?: (payload: SaveNoticeTelemetry) => Promise<void>;
+  } = {}
 ): Promise<string> {
   const startedAt = Date.now();
   let tool: WriteTool | null = null;
@@ -103,7 +113,13 @@ export async function runSaveNoticeLane(
     if (envOff("BASTRA_SAVE_NOTICE")) return "{}";
 
     const language = await (opts.language ?? getPrimaryLanguage)().catch(() => undefined);
-    const notice = describeWrite(tool, payload.tool_input ?? {}, readToolResult(payload.tool_response), lookup, language);
+    const notice = describeWrite(
+      tool,
+      payload.tool_input ?? {},
+      readToolResult(payload.tool_response),
+      lookup,
+      language
+    );
     if (notice !== null) {
       action = notice.action;
       const colour = hookClientEvidence(payload) !== "codex" || isOnValue(envFirst("BASTRA_SAVE_NOTICE_COLOR"));
@@ -114,15 +130,19 @@ export async function runSaveNoticeLane(
   }
   if (tool !== null) {
     // Observability cannot consume the client deadline and discard a valid line.
-    const writing = Promise.resolve().then(() => (opts.telemetry ?? writeTelemetry)({
-      session_id: typeof payload.session_id === "string" ? payload.session_id : null,
-      client: hookClientEvidence(payload),
-      agent: hookAgent(payload),
-      tool,
-      action,
-      shown: stdout !== "{}",
-      latency_ms_total: Date.now() - startedAt,
-    })).catch(() => undefined);
+    const writing = Promise.resolve()
+      .then(() =>
+        (opts.telemetry ?? writeTelemetry)({
+          session_id: typeof payload.session_id === "string" ? payload.session_id : null,
+          client: hookClientEvidence(payload),
+          agent: hookAgent(payload),
+          tool,
+          action,
+          shown: stdout !== "{}",
+          latency_ms_total: Date.now() - startedAt,
+        })
+      )
+      .catch(() => undefined);
     pendingTelemetry.add(writing);
     void writing.then(() => pendingTelemetry.delete(writing));
   }
@@ -165,12 +185,13 @@ export function describeWrite(
   input: Record<string, unknown>,
   result: Record<string, unknown> | null,
   lookup: EntryLookup,
-  language: string | undefined,
+  language: string | undefined
 ): SaveNotice | null {
   if (result === null) return null;
   // An id alone is not a write acknowledgement. Use each tool's result contract.
   if (tool === "save_document") {
-    if (typeof result.sidecar_path !== "string" || !result.sidecar_path.trim() || typeof result.reindexed !== "boolean") return null;
+    if (typeof result.sidecar_path !== "string" || !result.sidecar_path.trim() || typeof result.reindexed !== "boolean")
+      return null;
   } else if (typeof result.created !== "boolean" || (tool === "edit_memory" && result.created !== false)) {
     return null;
   }
@@ -183,7 +204,13 @@ export function describeWrite(
   // title is the one the save carried.
   if (result.claim_gate !== undefined) {
     const claimed = (result.claim_gate as { claimed?: Array<{ id?: unknown }> } | null)?.claimed;
-    if (result.created !== false || !Array.isArray(claimed) || claimed.length === 0 || !claimed.every((c) => str(c?.id))) return null;
+    if (
+      result.created !== false ||
+      !Array.isArray(claimed) ||
+      claimed.length === 0 ||
+      !claimed.every((c) => str(c?.id))
+    )
+      return null;
     const covering = str(claimed[0]?.id);
     return {
       action: "held",
@@ -207,7 +234,7 @@ export function describeWrite(
         append: input.append !== undefined,
         fields: frontmatter && typeof frontmatter === "object" ? Object.keys(frontmatter) : [],
       },
-      language,
+      language
     );
     return { action: "edited", title, type, detail };
   }

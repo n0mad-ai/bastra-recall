@@ -1,6 +1,7 @@
 /** DNS-label names, deliberately separate from UI display text and shell code. */
 // IANA TLD snapshot 2026102900: https://data.iana.org/TLD/tlds-alpha-by-domain.txt
-const TLDS = new Set(`aaa aarp abb abbott abbvie abc able abogado abudhabi ac academy accenture accountant accountants aco actor ad
+const TLDS = new Set(
+  `aaa aarp abb abbott abbvie abc able abogado abudhabi ac academy accenture accountant accountants aco actor ad
 ads adult ae aeg aero aetna af afl africa ag agakhan agency ai aig airbus airforce airtel akdn al alibaba
 alipay allfinanz allstate ally alsace alstom am amazon americanexpress americanfamily amex amfam amica
 amsterdam analytics android anquan anz ao aol apartments app apple aq aquarelle ar arab aramco archi army arpa
@@ -87,12 +88,38 @@ q7ce6a xn--q9jyb4c xn--qcka1pmc xn--qxa6a xn--qxam xn--rhqv96g xn--rovu88b xn--r
 ses554g xn--t60b56a xn--tckwe xn--tiq49xqyj xn--unup4y xn--vermgensberater-ctb xn--vermgensberatung-pwb xn--
 vhquv xn--vuq861b xn--w4r85el8fhu5dnra xn--w4rs40l xn--wgbh1c xn--wgbl6a xn--xhq521b xn--xkc2al3hye2a xn--
 xkc2dl3a5ee0h xn--y9a3aq xn--yfro4i67o xn--ygbi2ammx xn--zfr164b xxx xyz yachts yahoo yamaxun yandex ye
-yodobashi yoga yokohama you youtube yt yun za zappos zara zero zip zm zone zuerich zw`.split(/\s+/));
-const RESERVED = new Set(["home", "corp", "lan", "internal", "localdomain", "localhost", "localhost6", "local", "wpad", "broadcasthost", "ip6-localhost", "ip6-loopback", "invalid", "test", "example"]);
+yodobashi yoga yokohama you youtube yt yun za zappos zara zero zip zm zone zuerich zw`.split(/\s+/)
+);
+const RESERVED = new Set([
+  "home",
+  "corp",
+  "lan",
+  "internal",
+  "localdomain",
+  "localhost",
+  "localhost6",
+  "local",
+  "wpad",
+  "broadcasthost",
+  "ip6-localhost",
+  "ip6-loopback",
+  "invalid",
+  "test",
+  "example",
+]);
 export function normalizeAssistantName(value: string, machineNames: readonly string[] = []): string {
   const name = value.trim().toLowerCase();
-  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(name) || !/[a-z]/.test(name) || RESERVED.has(name) || TLDS.has(name) || name.startsWith("xn--") || machineNames.some(host=>host.toLowerCase().replace(/\.$/, "").split(".")[0]===name)) {
-    throw new Error("Assistentenname: 1–63 Zeichen (a–z, 0–9, Bindestrich), mindestens ein Buchstabe; kein reservierter Name.");
+  if (
+    !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(name) ||
+    !/[a-z]/.test(name) ||
+    RESERVED.has(name) ||
+    TLDS.has(name) ||
+    name.startsWith("xn--") ||
+    machineNames.some((host) => host.toLowerCase().replace(/\.$/, "").split(".")[0] === name)
+  ) {
+    throw new Error(
+      "Assistentenname: 1–63 Zeichen (a–z, 0–9, Bindestrich), mindestens ein Buchstabe; kein reservierter Name."
+    );
   }
   return name;
 }

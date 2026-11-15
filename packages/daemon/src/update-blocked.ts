@@ -50,11 +50,7 @@ export function blockedUpdatePath(home = homedir()): string {
  * cannot be written must not turn a refusal into a crash — the worst case is
  * the silence we had before.
  */
-export async function recordBlockedUpdate(
-  verdict: PreflightResult,
-  version: string,
-  home = homedir(),
-): Promise<void> {
+export async function recordBlockedUpdate(verdict: PreflightResult, version: string, home = homedir()): Promise<void> {
   const record: BlockedUpdate = {
     version,
     reason: verdict.refusal ?? "the update preflight refused without naming a reason",
@@ -112,7 +108,7 @@ export function formatBlockedUpdate(b: BlockedUpdate): string {
   if (b.backup_dir) lines.push(`Copies of the local versions: ${b.backup_dir}`);
   lines.push(
     "No further automatic update will be attempted until `bastra update` has run successfully — " +
-      "the reason above does not resolve itself, so retrying it unattended would only reproduce it.",
+      "the reason above does not resolve itself, so retrying it unattended would only reproduce it."
   );
   return lines.join("\n");
 }

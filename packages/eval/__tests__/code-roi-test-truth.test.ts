@@ -139,7 +139,7 @@ describe("test-based truth: the repository profile", () => {
 describe("test-based truth: static imports", () => {
   it("finds require, import, dynamic import and mock specifiers", () => {
     const specs = specifiersOf(
-      `const a = require("./a");\nimport b from "./b";\nawait import("./c");\njest.mock("./d");\nexport * from "./e";`,
+      `const a = require("./a");\nimport b from "./b";\nawait import("./c");\njest.mock("./d");\nexport * from "./e";`
     );
     assert.deepEqual(specs, ["./a", "./b", "./c", "./d", "./e"]);
   });
@@ -218,7 +218,7 @@ describe("test-based truth: reading TAP", () => {
         "    1..1",
         "not ok 1 - outer",
         "1..1",
-      ].join("\n"),
+      ].join("\n")
     );
     assert.deepEqual([...cases], [["outer > inner", "fail"]]);
     assert.equal(files.get("outer > inner"), "/repo/tests/a.test.js");
@@ -267,7 +267,10 @@ describe("test-based truth: the whole rule on the fixture", () => {
     reset();
     const base = await runSuite(dir, runner, { timeoutMs: 60_000 });
     assert.equal(base.status, "ok", base.detail ?? "");
-    assert.equal([...base.cases.values()].every((s) => s === "pass"), true);
+    assert.equal(
+      [...base.cases.values()].every((s) => s === "pass"),
+      true
+    );
     assert.equal(base.cases.size, 3);
   });
 
@@ -345,7 +348,7 @@ describe("test-based truth: the whole rule on the fixture", () => {
     const base = { commit: "a", file: "src/a.ts", truthRule: TRUTH_RULE, brokenTests: [], blindSpots: [] };
     assert.notEqual(
       truthPopulationHash([{ ...base, truth: ["tests/a.test.ts"] }]),
-      truthPopulationHash([{ ...base, truth: ["tests/b.test.ts"] }]),
+      truthPopulationHash([{ ...base, truth: ["tests/b.test.ts"] }])
     );
   });
 });
@@ -404,7 +407,7 @@ describe("test-based truth: test selection", () => {
 
   it("takes contract-shaped literals from both sides of a diff, not bare words", () => {
     const lits = diffLiterals(
-      ['+const route = "/api/quote";', '-const evt = "vehicle.updated";', '+const word = "hello";'].join("\n"),
+      ['+const route = "/api/quote";', '-const evt = "vehicle.updated";', '+const word = "hello";'].join("\n")
     );
     assert.equal(lits.includes("/api/quote"), true);
     assert.equal(lits.includes("vehicle.updated"), true);
@@ -450,13 +453,13 @@ describe("delivered population: exclusions", () => {
           { file: "packages/foo/b.ts" },
           { file: "packages/foo/a.ts" }, // a repeat within one archive collapses to one file
         ],
-      }),
+      })
     );
     writeFileSync(
       v4Archive,
       JSON.stringify({
         scenarios: [{ file: "packages/foo/b.ts" }, { file: "packages/bar/c.ts" }], // b.ts repeats across archives
-      }),
+      })
     );
     writeFileSync(
       registration,
@@ -467,7 +470,7 @@ describe("delivered population: exclusions", () => {
             files: ["packages/pilot/x.ts"],
           },
         },
-      }),
+      })
     );
   });
 
@@ -476,7 +479,10 @@ describe("delivered population: exclusions", () => {
   it("burns every file that was already a scenario, and the worked-on directories", () => {
     const ex = buildExclusions({ archives: [v2Archive, v4Archive], registration });
     // 3 + 2 scenarios collapse to 3 distinct files — "b.ts" repeats within and across archives.
-    assert.equal(ex.sources.reduce((n: number, s: { scenarios: number }) => n + s.scenarios, 0), 5);
+    assert.equal(
+      ex.sources.reduce((n: number, s: { scenarios: number }) => n + s.scenarios, 0),
+      5
+    );
     assert.deepEqual(ex.files.filter((f: any) => f !== "packages/pilot/x.ts").sort(), [
       "packages/bar/c.ts",
       "packages/foo/a.ts",
@@ -506,7 +512,10 @@ describe("delivered population: exclusions", () => {
       extraFiles: ["packages/core/src/brand-new.ts"],
     });
     assert.notEqual(exclusionsHash(a), exclusionsHash(b));
-    assert.equal(exclusionsHash(a), exclusionsHash(buildExclusions({ archives: [v2Archive, v4Archive], registration })));
+    assert.equal(
+      exclusionsHash(a),
+      exclusionsHash(buildExclusions({ archives: [v2Archive, v4Archive], registration }))
+    );
   });
 
   // Against the real, frozen archives. They hold the actual burned scenarios
@@ -553,10 +562,7 @@ describe("test-based truth: the fixture itself", () => {
       "src/report.js",
       "src/tax.js",
     ]);
-    assert.deepEqual(paths.filter((p) => p.startsWith("tests/")).sort(), [
-      "tests/report.test.js",
-      "tests/tax.test.js",
-    ]);
+    assert.deepEqual(paths.filter((p) => p.startsWith("tests/")).sort(), ["tests/report.test.js", "tests/tax.test.js"]);
     assert.equal(readFileSync(join(dir, "src/tax.js"), "utf8").includes("0.19"), true);
   });
 });

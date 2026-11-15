@@ -28,24 +28,40 @@ export function isGraphReadPath(path: string, prefix: string): boolean {
 }
 
 /** Called only after the enclosing surface's access checks. */
-export async function handleGraphRead(res: ServerResponse, url: string, ctx: GraphReadCtx, includePrivate: boolean): Promise<void> {
+export async function handleGraphRead(
+  res: ServerResponse,
+  url: string,
+  ctx: GraphReadCtx,
+  includePrivate: boolean
+): Promise<void> {
   const { vault, toolDeps, server } = ctx;
   const u = new URL(url, "http://127.0.0.1");
   if (u.pathname.endsWith("/node")) {
     const id = u.searchParams.get("id") ?? "";
     const mem = vault.get(id);
     if (!mem || (!includePrivate && mem.fm.sensitivity === "private")) {
-      sendJson(res, 404, { error: `unknown node: ${id}` }); return;
+      sendJson(res, 404, { error: `unknown node: ${id}` });
+      return;
     }
     const { fm } = mem;
     const visibleTarget = (target: string) => includePrivate || vault.get(target)?.fm.sensitivity !== "private";
     sendJson(res, 200, {
-      id: fm.id, title: fm.title, type: fm.type, scope: fm.scope,
-      sensitivity: fm.sensitivity, topic_path: fm.topic_path, tags: fm.tags,
-      summary: fm.summary, related: fm.related.filter(visibleTarget),
-      source: fm.source ?? null, created: fm.created, updated: fm.updated,
-      body: mem.body, recall_when: fm.recall_when, recall_mode: fm.recall_mode ?? null,
-      related_via: fm.related_via.filter(link => visibleTarget(link.id)),
+      id: fm.id,
+      title: fm.title,
+      type: fm.type,
+      scope: fm.scope,
+      sensitivity: fm.sensitivity,
+      topic_path: fm.topic_path,
+      tags: fm.tags,
+      summary: fm.summary,
+      related: fm.related.filter(visibleTarget),
+      source: fm.source ?? null,
+      created: fm.created,
+      updated: fm.updated,
+      body: mem.body,
+      recall_when: fm.recall_when,
+      recall_mode: fm.recall_mode ?? null,
+      related_via: fm.related_via.filter((link) => visibleTarget(link.id)),
       file: relative(toolDeps.vaultPath, mem.filePath).split(sep).join("/"),
       recall_days: (await recallDaily(defaultLogDir())).get(fm.id) ?? [],
     });
@@ -53,22 +69,31 @@ export async function handleGraphRead(res: ServerResponse, url: string, ctx: Gra
   }
   if (u.pathname.endsWith("/semantic")) {
     const vecs = ctx.embeddingVectors?.() ?? null;
-    if (!vecs || vecs.size === 0) { sendJson(res, 503, { error: "embeddings not ready" }); return; }
+    if (!vecs || vecs.size === 0) {
+      sendJson(res, 503, { error: "embeddings not ready" });
+      return;
+    }
     const cacheKey = includePrivate ? "uiSemanticCache" : "semanticCache";
     const inflightKey = includePrivate ? "uiSemanticInflight" : "semanticInflight";
     const cache = server[cacheKey];
-    if (cache && Date.now() - cache.at <= 60_000) { sendJson(res, 200, cache.body); return; }
+    if (cache && Date.now() - cache.at <= 60_000) {
+      sendJson(res, 200, cache.body);
+      return;
+    }
     server[inflightKey] ??= (async () => {
       const body = await buildSemanticLayout(buildGraph(vault, await listSkills(), { includePrivate }), vecs);
       server[cacheKey] = { at: Date.now(), body };
       return body;
-    })().finally(() => { server[inflightKey] = null; });
+    })().finally(() => {
+      server[inflightKey] = null;
+    });
     sendJson(res, 200, await server[inflightKey]);
     return;
   }
   const graph = buildGraph(vault, await listSkills(), { includePrivate });
   const usage = await readUsage(toolDeps.vaultPath);
-  const heat = computeHeat(usage), reach = computeReach(usage);
+  const heat = computeHeat(usage),
+    reach = computeReach(usage);
   const daily = await recallDaily(defaultLogDir());
   // Explicit zeros distinguish cold nodes from an absent feature (#217/#227).
   for (const n of graph.nodes) {
@@ -79,12 +104,24 @@ export async function handleGraphRead(res: ServerResponse, url: string, ctx: Gra
   sendJson(res, 200, graph);
 }
 
-export function dispatchUiGraph(req: IncomingMessage, res: ServerResponse, method: string, url: string, ctx: GraphReadCtx): boolean {
+export function dispatchUiGraph(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string,
+  url: string,
+  ctx: GraphReadCtx
+): boolean {
   if (!isGraphReadPath(url.split("?", 1)[0]!, "/ui/graph")) return false;
   res.setHeader("Cache-Control", "no-store");
   void (async () => {
-    if (!(await getUiEnabled())) { sendJson(res, 404, { error: "ui disabled" }); return; }
-    if (method !== "GET") { sendJson(res, 405, { error: "method not allowed" }); return; }
+    if (!(await getUiEnabled())) {
+      sendJson(res, 404, { error: "ui disabled" });
+      return;
+    }
+    if (method !== "GET") {
+      sendJson(res, 405, { error: "method not allowed" });
+      return;
+    }
     await handleGraphRead(res, url, ctx, ctx.privateGraph === true);
   })().catch((err: Error) => sendJson(res, 500, { error: err.message }));
   return true;

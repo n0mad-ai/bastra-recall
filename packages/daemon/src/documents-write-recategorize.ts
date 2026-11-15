@@ -1,19 +1,12 @@
 /**
  * `recategorize_document`. Aus documents-write-handler.ts herausgelöst (#680).
  */
-import {
-  stat,
-} from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import type { z } from "zod";
 import type { Vault } from "@bastra-recall/core";
-import {
-  withIdClaim,
-  type IdClaim,
-} from "@bastra-recall/core";
+import { withIdClaim, type IdClaim } from "@bastra-recall/core";
 import { hiddenFromCaller, hiddenOnDisk, type PrivateAccess } from "./private-access.js";
-import {
-  acknowledgeCommittedJournal,
-} from "./recovery-journal.js";
+import { acknowledgeCommittedJournal } from "./recovery-journal.js";
 import { recordAudit } from "./audit-trail.js";
 import type { RecategorizeDocumentArgs } from "./documents-write-handler.js";
 import {
@@ -27,11 +20,7 @@ import {
   renderPatched,
   metadataPatch,
 } from "./documents-write-shared.js";
-import {
-  abortMove,
-  moveDocumentFiles,
-  MovedDocumentFiles,
-} from "./documents-write-move.js";
+import { abortMove, moveDocumentFiles, MovedDocumentFiles } from "./documents-write-move.js";
 
 // ─── recategorize_document ──────────────────────────────────────
 
@@ -39,7 +28,7 @@ export async function recategorizeDocument(
   vault: Vault,
   args: z.infer<typeof RecategorizeDocumentArgs> & { force?: boolean },
   /** #464: transportgebunden — siehe private-access.ts. */
-  caller?: PrivateAccess,
+  caller?: PrivateAccess
 ): Promise<{ id: string; sidecar_path: string; reindexed: boolean; warning?: string }> {
   const m = vault.get(args.id);
   // #464: Wortgleiche Antwort für „gibt es nicht" und „darfst du nicht sehen".
@@ -64,7 +53,7 @@ export async function recategorizeDocument(
       const st = await stat(m.filePath);
       if (st.mtimeMs > m.mtime) {
         throw new Error(
-          `sidecar was edited externally (mtime ${new Date(st.mtimeMs).toISOString()} > vault ${new Date(m.mtime).toISOString()}). Pass force=true to overwrite.`,
+          `sidecar was edited externally (mtime ${new Date(st.mtimeMs).toISOString()} > vault ${new Date(m.mtime).toISOString()}). Pass force=true to overwrite.`
         );
       }
     } catch (err) {
@@ -80,7 +69,7 @@ export async function recategorizeDocument(
   // gewinnt einer, und der andere erfährt es.
   return withIdClaim(
     { vaultRoot: vaultRoot(vault), id: args.id, filePath: m.filePath, op: "recategorize_document" },
-    (claim) => commitRecategorize(claim, vault, args, m, caller),
+    (claim) => commitRecategorize(claim, vault, args, m, caller)
   );
 }
 
@@ -88,8 +77,18 @@ async function commitRecategorize(
   claim: IdClaim,
   vault: Vault,
   args: z.infer<typeof RecategorizeDocumentArgs> & { force?: boolean },
-  m: { fm: Record<string, unknown> & { id: string; title: string; tags: string[]; summary: string; recall_when: string[]; created: string }; filePath: string },
-  caller?: PrivateAccess,
+  m: {
+    fm: Record<string, unknown> & {
+      id: string;
+      title: string;
+      tags: string[];
+      summary: string;
+      recall_when: string[];
+      created: string;
+    };
+    filePath: string;
+  },
+  caller?: PrivateAccess
 ): Promise<{ id: string; sidecar_path: string; reindexed: boolean; warning?: string }> {
   const fm = m.fm as typeof m.fm & {
     original_path?: string;
@@ -108,7 +107,7 @@ async function commitRecategorize(
     throw new Error(
       located.kind === "none"
         ? `document not found on disk: ${args.id}`
-        : `cannot recategorize ${args.id}: the vault scan is not conclusive (${located.kind}).`,
+        : `cannot recategorize ${args.id}: the vault scan is not conclusive (${located.kind}).`
     );
   }
   // #464 (wiedereröffnet): Die Prüfung in `recategorizeDocument` fragte den
@@ -170,13 +169,9 @@ async function commitRecategorize(
       aliases: (raw.data.aliases as string[] | undefined) ?? fm.aliases,
       // #147: Capture-Flags überleben den Patch — Metadaten-Ops ändern nie die
       // Provenienz-Bewertung des Inhalts.
-      injectionFlags:
-        (raw.data.injection_flags as string[] | undefined) ?? fm.injection_flags,
+      injectionFlags: (raw.data.injection_flags as string[] | undefined) ?? fm.injection_flags,
     });
-    updated = patchSidecarFrontmatter(
-      raw.data,
-      metadataPatch(raw.data, rebuilt),
-    );
+    updated = patchSidecarFrontmatter(raw.data, metadataPatch(raw.data, rebuilt));
 
     // Die mtime-Prüfung oben lief VOR dem Claim und sieht nur, was bis dahin
     // passiert ist. Hier wird gegen die Bytes verglichen, auf denen `updated`
@@ -219,6 +214,6 @@ async function commitRecategorize(
     id: m.fm.id,
     sidecar_path: sidecarPath,
     reindexed: true,
-    ...((auditWarning || journalWarning) ? { warning: [auditWarning, journalWarning].filter(Boolean).join("; ") } : {}),
+    ...(auditWarning || journalWarning ? { warning: [auditWarning, journalWarning].filter(Boolean).join("; ") } : {}),
   };
 }

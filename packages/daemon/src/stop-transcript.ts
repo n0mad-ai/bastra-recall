@@ -8,7 +8,12 @@ import { open } from "node:fs/promises";
 // #305: the scrub leaf, never the core barrel — the barrel costs +40ms of
 // process start for a function that lives in a dependency-free module.
 import { scrubInjectedBlocks } from "@bastra-recall/core/scrub";
-import { carriesInjectedBlock, isSystemInjectedTurn, textAfterToolWrappers, textBeforeAgentBand } from "./system-turn.js";
+import {
+  carriesInjectedBlock,
+  isSystemInjectedTurn,
+  textAfterToolWrappers,
+  textBeforeAgentBand,
+} from "./system-turn.js";
 import type { ProvenRead } from "./code-graph/boundary-block.js";
 import {
   claudeToolUseCommands,
@@ -33,8 +38,8 @@ export interface ClaudeStopPayload {
 export interface TranscriptTurn {
   role: "user" | "assistant" | "system" | string;
   /** Explicit transport provenance, when supplied. Non-owner sources never capture. */
-  source?: string | {kind?:string};
-  origin?: string | {kind?:string};
+  source?: string | { kind?: string };
+  origin?: string | { kind?: string };
   stop_hook_active?: boolean;
   isMeta?: boolean;
   /** Harness-written replacement history, never a newly typed user turn. */
@@ -49,8 +54,8 @@ export interface TranscriptTurn {
   /** #675: tool names the turn called — the after-session relay skips what was saved. */
   tools?: string[];
   /** Native call/result linkage; Stop never infers a call from prose or JS source. */
-  calls?: Array<{id?:string;name:string;input?:Record<string,unknown>}>;
-  results?: Array<{id?:string;content:string;failed?:boolean}>;
+  calls?: Array<{ id?: string; name: string; input?: Record<string, unknown> }>;
+  results?: Array<{ id?: string; content: string; failed?: boolean }>;
   /** Nested custom-exec source is not a native record of subcommand execution. */
   opaqueCommands?: boolean;
   /** Claude tool_result.is_error, when explicitly present. */
@@ -158,9 +163,7 @@ export function parseTranscriptFile(raw: string): TranscriptTurn[] {
 function isToolResultContent(content: unknown): boolean {
   return (
     Array.isArray(content) &&
-    content.some(
-      (b) => b && typeof b === "object" && (b as Record<string, unknown>).type === "tool_result",
-    )
+    content.some((b) => b && typeof b === "object" && (b as Record<string, unknown>).type === "tool_result")
   );
 }
 
@@ -172,26 +175,44 @@ function isToolResultContent(content: unknown): boolean {
  * only check: the after-session harvest quoted hook feedback as the user's own
  * words.
  */
-function nonOwnerSource(row: {isMeta?:unknown;isCompactSummary?:unknown;stop_hook_active?:unknown;source?:unknown;origin?:unknown}): boolean {
-  return row.isMeta === true || row.isCompactSummary === true || row.stop_hook_active === true ||
-    [row.source,row.origin].some(source=>{
-      if(source===undefined)return false;
-      const kind=source&&typeof source==="object" ? (source as {kind?:unknown}).kind : source;
-      return kind!=="user" && kind!=="human" && kind!=="typed";
-    });
+function nonOwnerSource(row: {
+  isMeta?: unknown;
+  isCompactSummary?: unknown;
+  stop_hook_active?: unknown;
+  source?: unknown;
+  origin?: unknown;
+}): boolean {
+  return (
+    row.isMeta === true ||
+    row.isCompactSummary === true ||
+    row.stop_hook_active === true ||
+    [row.source, row.origin].some((source) => {
+      if (source === undefined) return false;
+      const kind = source && typeof source === "object" ? (source as { kind?: unknown }).kind : source;
+      return kind !== "user" && kind !== "human" && kind !== "typed";
+    })
+  );
 }
 function effectiveRole(role: string, content: unknown, meta = false): string {
   if (role !== "user") return role;
   if (isToolResultContent(content)) return "tool";
   if (meta) return "system-injected";
   const typed = typedText(content);
-  if (isSystemInjectedTurn(typed) || (typed.trim().length === 0 && stringifyContent(content).trim().length > 0)) return "system-injected";
+  if (isSystemInjectedTurn(typed) || (typed.trim().length === 0 && stringifyContent(content).trim().length > 0))
+    return "system-injected";
   return role;
 }
 
 function nonTextOwnerBoundary(role: string, content: unknown, meta: boolean): boolean {
   if (role !== "user" || meta || isToolResultContent(content)) return false;
-  if (Array.isArray(content) && content.some(block => block && typeof block === "object" && ["image", "input_image"].includes((block as {type?:string}).type ?? ""))) return true;
+  if (
+    Array.isArray(content) &&
+    content.some(
+      (block) =>
+        block && typeof block === "object" && ["image", "input_image"].includes((block as { type?: string }).type ?? "")
+    )
+  )
+    return true;
   return /^\s*<command-name>\/[^<]+<\/command-name>/u.test(stringifyContent(content));
 }
 
@@ -199,8 +220,12 @@ function nonTextOwnerBoundary(role: string, content: unknown, meta: boolean): bo
  *  typed after it is theirs (#994; the prompt lane reads it the same way, #769). */
 function typedText(content: unknown): string {
   const text = stringifyContent(content);
-  const owner=textAfterToolWrappers(text);
-  return owner===null?text:isSystemInjectedTurn(owner)?owner:(textBeforeAgentBand(scrubTurnContent(owner))??"");
+  const owner = textAfterToolWrappers(text);
+  return owner === null
+    ? text
+    : isSystemInjectedTurn(owner)
+      ? owner
+      : (textBeforeAgentBand(scrubTurnContent(owner)) ?? "");
 }
 
 /** Turn text: for a user turn without harness-only content, the typed part. */
@@ -221,8 +246,9 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
   for (const item of items) {
     if (!item || typeof item !== "object") continue;
     const obj = item as Record<string, unknown>;
-    const parsedAt=typeof obj.timestamp==='string'?Date.parse(obj.timestamp):typeof obj.at==='number'?obj.at:Number.NaN;
-    const timing=Number.isFinite(parsedAt)&&parsedAt>=0?{at:parsedAt}:{};
+    const parsedAt =
+      typeof obj.timestamp === "string" ? Date.parse(obj.timestamp) : typeof obj.at === "number" ? obj.at : Number.NaN;
+    const timing = Number.isFinite(parsedAt) && parsedAt >= 0 ? { at: parsedAt } : {};
     // Codex rollout JSONL wraps conversation messages as
     // `{type:"response_item", payload:{type:"message", role, content}}`.
     // Upstream documents this file format as unstable, so this parser remains
@@ -231,8 +257,15 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
     if (obj.type === "response_item" && payload && typeof payload === "object") {
       const p = payload as Record<string, unknown>;
       if (p.type === "message" && typeof p.role === "string") {
-        const role = effectiveRole(p.role, p.content, nonOwnerSource(obj)||nonOwnerSource(p));
-        out.push({ role, content: turnContent(role, p.content), ...timing, ...(nonTextOwnerBoundary(p.role,p.content,nonOwnerSource(obj)||nonOwnerSource(p))?{ownerBoundary:true}:{}) });
+        const role = effectiveRole(p.role, p.content, nonOwnerSource(obj) || nonOwnerSource(p));
+        out.push({
+          role,
+          content: turnContent(role, p.content),
+          ...timing,
+          ...(nonTextOwnerBoundary(p.role, p.content, nonOwnerSource(obj) || nonOwnerSource(p))
+            ? { ownerBoundary: true }
+            : {}),
+        });
         continue;
       }
       // Codex: `{type:"function_call", name:"shell", arguments:"{\"command\":[…]}"}`.
@@ -243,22 +276,39 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
         attachCommands(out, codexFunctionCallCommands(p));
         if (typeof p.name === "string") {
           attachTools(out, [p.name]);
-          let input:Record<string,unknown>|undefined;
-          try { const value=JSON.parse(String(p.arguments)); if(value&&typeof value==='object'&&!Array.isArray(value))input=value; } catch {}
-          const turn=out[out.length-1];
-          if(timing.at!==undefined)turn.at=timing.at;
-          (turn.calls??=[]).push({name:p.name,...(typeof p.call_id==='string'?{id:p.call_id}:{}),...(input?{input}:{})});
+          let input: Record<string, unknown> | undefined;
+          try {
+            const value = JSON.parse(String(p.arguments));
+            if (value && typeof value === "object" && !Array.isArray(value)) input = value;
+          } catch {}
+          const turn = out[out.length - 1];
+          if (timing.at !== undefined) turn.at = timing.at;
+          (turn.calls ??= []).push({
+            name: p.name,
+            ...(typeof p.call_id === "string" ? { id: p.call_id } : {}),
+            ...(input ? { input } : {}),
+          });
         }
         continue;
       }
-      if(p.type==='function_call_output'||p.type==='custom_tool_call_output'){
-        let content=typeof p.output==='string'?p.output:stringifyContent(p.output),failed=p.is_error===true;
-        try {const value=JSON.parse(content);if(value&&typeof value==='object'){
-          if(typeof value.output==='string')content=value.output;
-          else if(typeof value.stdout==='string')content=value.stdout;
-          if(typeof value.exit_code==='number')failed=value.exit_code!==0;
-        }}catch{}
-        out.push({role:'tool',content,failed,...timing,results:[{...(typeof p.call_id==='string'?{id:p.call_id}:{}),content,failed}]});
+      if (p.type === "function_call_output" || p.type === "custom_tool_call_output") {
+        let content = typeof p.output === "string" ? p.output : stringifyContent(p.output),
+          failed = p.is_error === true;
+        try {
+          const value = JSON.parse(content);
+          if (value && typeof value === "object") {
+            if (typeof value.output === "string") content = value.output;
+            else if (typeof value.stdout === "string") content = value.stdout;
+            if (typeof value.exit_code === "number") failed = value.exit_code !== 0;
+          }
+        } catch {}
+        out.push({
+          role: "tool",
+          content,
+          failed,
+          ...timing,
+          results: [{ ...(typeof p.call_id === "string" ? { id: p.call_id } : {}), content, failed }],
+        });
         continue;
       }
       // Current Codex desktop rollouts use a free-form `custom_tool_call`
@@ -267,7 +317,7 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
       // is explicitly unstable and older function_call rows still exist.
       if (p.type === "custom_tool_call") {
         attachCommands(out, codexCustomExecCommands(p));
-        if(out[out.length-1]?.role==='assistant')out[out.length-1].opaqueCommands=true;
+        if (out[out.length - 1]?.role === "assistant") out[out.length - 1].opaqueCommands = true;
         continue;
       }
     }
@@ -275,33 +325,55 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
     const directContent = obj.content;
     if (typeof directRole === "string") {
       const role = effectiveRole(directRole, directContent, nonOwnerSource(obj));
-      out.push({ role, content: turnContent(role, directContent), ...timing, ...(nonTextOwnerBoundary(directRole, directContent, nonOwnerSource(obj)) ? {ownerBoundary:true} : {}) });
+      out.push({
+        role,
+        content: turnContent(role, directContent),
+        ...timing,
+        ...(nonTextOwnerBoundary(directRole, directContent, nonOwnerSource(obj)) ? { ownerBoundary: true } : {}),
+      });
       continue;
     }
     const msg = obj.message;
     if (msg && typeof msg === "object") {
       const m = msg as Record<string, unknown>;
       const role = typeof m.role === "string" ? m.role : "unknown";
-      const eff = effectiveRole(role, m.content, nonOwnerSource(obj)||nonOwnerSource(m));
+      const eff = effectiveRole(role, m.content, nonOwnerSource(obj) || nonOwnerSource(m));
       const turn: TranscriptTurn = { role: eff, content: turnContent(eff, m.content) };
-      if (nonTextOwnerBoundary(role, m.content, nonOwnerSource(obj)||nonOwnerSource(m))) turn.ownerBoundary = true;
+      if (nonTextOwnerBoundary(role, m.content, nonOwnerSource(obj) || nonOwnerSource(m))) turn.ownerBoundary = true;
       if (typeof obj.cwd === "string" && obj.cwd.trim()) turn.cwd = obj.cwd;
       if (typeof obj.gitBranch === "string") turn.branch = obj.gitBranch;
       const at = typeof obj.timestamp === "string" ? Date.parse(obj.timestamp) : Number.NaN;
       if (Number.isFinite(at) && at >= 0) turn.at = at;
       if (eff === "tool" && Array.isArray(m.content)) {
-        const results = m.content.filter((b) => b && typeof b === "object" && b.type === "tool_result" && typeof b.is_error === "boolean");
+        const results = m.content.filter(
+          (b) => b && typeof b === "object" && b.type === "tool_result" && typeof b.is_error === "boolean"
+        );
         if (results.length > 0) turn.failed = results.some((b) => b.is_error === true);
       }
       const commands = claudeToolUseCommands(m.content);
       if (commands.length > 0) turn.commands = commands;
       const tools = claudeToolUseNames(m.content);
       if (tools.length > 0) turn.tools = tools;
-      if(Array.isArray(m.content)){
-        const calls=m.content.filter((b):b is Record<string,unknown>=>!!b&&typeof b==='object'&&b.type==='tool_use'&&typeof b.name==='string');
-        if(calls.length)turn.calls=calls.map(b=>({name:String(b.name),...(typeof b.id==='string'?{id:b.id}:{}),...(b.input&&typeof b.input==='object'?{input:b.input as Record<string,unknown>}:{})}));
-        const results=m.content.filter((b):b is Record<string,unknown>=>!!b&&typeof b==='object'&&b.type==='tool_result');
-        if(results.length)turn.results=results.map(b=>({...(typeof b.tool_use_id==='string'?{id:b.tool_use_id}:{}),content:stringifyContent(b.content),...(typeof b.is_error==='boolean'?{failed:b.is_error}:{})}));
+      if (Array.isArray(m.content)) {
+        const calls = m.content.filter(
+          (b): b is Record<string, unknown> =>
+            !!b && typeof b === "object" && b.type === "tool_use" && typeof b.name === "string"
+        );
+        if (calls.length)
+          turn.calls = calls.map((b) => ({
+            name: String(b.name),
+            ...(typeof b.id === "string" ? { id: b.id } : {}),
+            ...(b.input && typeof b.input === "object" ? { input: b.input as Record<string, unknown> } : {}),
+          }));
+        const results = m.content.filter(
+          (b): b is Record<string, unknown> => !!b && typeof b === "object" && b.type === "tool_result"
+        );
+        if (results.length)
+          turn.results = results.map((b) => ({
+            ...(typeof b.tool_use_id === "string" ? { id: b.tool_use_id } : {}),
+            content: stringifyContent(b.content),
+            ...(typeof b.is_error === "boolean" ? { failed: b.is_error } : {}),
+          }));
       }
       const reads = claudeToolUseReads(m.content);
       if (reads.length > 0) {

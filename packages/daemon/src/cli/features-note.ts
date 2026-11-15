@@ -83,29 +83,52 @@ export function featureLines(s: FeatureState): string[] {
     if (f.hooksDisabledBy) {
       lines.push(row(OFF, `${surface}: recall hooks`, `off (${f.hooksDisabledBy})`, "remove that setting"));
     } else {
-      lines.push(f.recallHooks
-        ? row(ON, `${surface}: recall hooks`, "on")
-        : row(OFF, `${surface}: recall hooks`, "off", `bastra install ${surface}`));
+      lines.push(
+        f.recallHooks
+          ? row(ON, `${surface}: recall hooks`, "on")
+          : row(OFF, `${surface}: recall hooks`, "off", `bastra install ${surface}`)
+      );
     }
-    lines.push(f.stopHook
-      ? row(ON, `${surface}: auto-save suggestions (Stop hook)`, "on")
-      : row(OFF, `${surface}: auto-save suggestions (Stop hook)`, "off", `bastra install ${surface}`));
-    lines.push(f.skill
-      ? row(ON, `${surface}: skill`, "on")
-      : row(OFF, `${surface}: skill`, "off", `bastra install ${surface}`));
+    lines.push(
+      f.stopHook
+        ? row(ON, `${surface}: auto-save suggestions (Stop hook)`, "on")
+        : row(OFF, `${surface}: auto-save suggestions (Stop hook)`, "off", `bastra install ${surface}`)
+    );
+    lines.push(
+      f.skill ? row(ON, `${surface}: skill`, "on") : row(OFF, `${surface}: skill`, "off", `bastra install ${surface}`)
+    );
     if (f.toolSurface === "search") {
-      lines.push(row(OFF, `${surface}: saving from the agent`, "off (BASTRA_TOOL_SURFACE=search: recall only, no save tools)",
-        `set BASTRA_TOOL_SURFACE=write in the bastra-recall entry of ${f.mcpConfig}`));
+      lines.push(
+        row(
+          OFF,
+          `${surface}: saving from the agent`,
+          "off (BASTRA_TOOL_SURFACE=search: recall only, no save tools)",
+          `set BASTRA_TOOL_SURFACE=write in the bastra-recall entry of ${f.mcpConfig}`
+        )
+      );
     }
     if (f.sessionContextOff) {
-      lines.push(row(OFF, `${surface}: session context on the first tool call`, "off (BASTRA_MCP_SESSION_CONTEXT=0)",
-        `remove BASTRA_MCP_SESSION_CONTEXT from the bastra-recall entry of ${f.mcpConfig}`));
+      lines.push(
+        row(
+          OFF,
+          `${surface}: session context on the first tool call`,
+          "off (BASTRA_MCP_SESSION_CONTEXT=0)",
+          `remove BASTRA_MCP_SESSION_CONTEXT from the bastra-recall entry of ${f.mcpConfig}`
+        )
+      );
     }
   }
 
-  lines.push(s.primaryLanguage
-    ? row(ON, "memory language", s.primaryLanguage)
-    : row(OFF, "memory language", "not set, memories are written in English", "bastra config set language.primary <code>  (e.g. de)"));
+  lines.push(
+    s.primaryLanguage
+      ? row(ON, "memory language", s.primaryLanguage)
+      : row(
+          OFF,
+          "memory language",
+          "not set, memories are written in English",
+          "bastra config set language.primary <code>  (e.g. de)"
+        )
+  );
 
   if (s.onboardingDone === true) {
     lines.push(row(ON, "onboarding", "done"));
@@ -113,75 +136,131 @@ export function featureLines(s: FeatureState): string[] {
     // The session hook only nudges a fresh vault; an established one without
     // the interview is worth knowing about, not a problem.
     const fresh = s.vaultSize !== undefined && s.vaultSize < FRESH_VAULT_MAX;
-    lines.push(fresh
-      ? row(OFF, "onboarding", "never done", "bastra onboard")
-      : row(INFO, "onboarding", "never done (optional for a vault that already has memories)", "bastra onboard"));
+    lines.push(
+      fresh
+        ? row(OFF, "onboarding", "never done", "bastra onboard")
+        : row(INFO, "onboarding", "never done (optional for a vault that already has memories)", "bastra onboard")
+    );
   }
 
-  lines.push(s.semanticRecall.state === "on"
-    ? row(ON, "semantic recall", `on (${s.semanticRecall.detail})`)
-    : row(OFF, "semantic recall", `${s.semanticRecall.state} (${s.semanticRecall.detail})`, "bastra embeddings on"));
+  lines.push(
+    s.semanticRecall.state === "on"
+      ? row(ON, "semantic recall", `on (${s.semanticRecall.detail})`)
+      : row(OFF, "semantic recall", `${s.semanticRecall.state} (${s.semanticRecall.detail})`, "bastra embeddings on")
+  );
 
   const para = "background paraphrasing (doc2query)";
   if (s.paraphrasing.state === "on" && s.paraphrasing.modelPulled === false) {
-    lines.push(row(OFF, para, `on, but ${s.paraphrasing.model} is not pulled, so every paraphrase fails`,
-      `ollama pull ${s.paraphrasing.model}  (or BASTRA_TRIGGER_EXPAND=0 in the daemon's environment)`));
+    lines.push(
+      row(
+        OFF,
+        para,
+        `on, but ${s.paraphrasing.model} is not pulled, so every paraphrase fails`,
+        `ollama pull ${s.paraphrasing.model}  (or BASTRA_TRIGGER_EXPAND=0 in the daemon's environment)`
+      )
+    );
   } else if (s.paraphrasing.state === "on") {
-    lines.push(row(ON, para,
-      `on (${s.paraphrasing.model} keeps rewriting memory triggers in the background; BASTRA_TRIGGER_EXPAND=0 stops it)`));
+    lines.push(
+      row(
+        ON,
+        para,
+        `on (${s.paraphrasing.model} keeps rewriting memory triggers in the background; BASTRA_TRIGGER_EXPAND=0 stops it)`
+      )
+    );
   } else if (s.paraphrasing.state === "off") {
     lines.push(row(INFO, para, "off"));
   }
 
   if (s.reflex.enabled) lines.push(row(ON, "reflex memories", "on"));
-  else lines.push(row(OFF, "reflex memories", `off (${s.reflex.offBy})`, s.reflex.offBy?.startsWith("BASTRA_REFLEX")
-    ? "unset BASTRA_REFLEX"
-    : "bastra config set reflex.enabled true"));
+  else
+    lines.push(
+      row(
+        OFF,
+        "reflex memories",
+        `off (${s.reflex.offBy})`,
+        s.reflex.offBy?.startsWith("BASTRA_REFLEX") ? "unset BASTRA_REFLEX" : "bastra config set reflex.enabled true"
+      )
+    );
 
   lines.push("  optional, off by default on purpose:");
-  if (s.proactive) lines.push(row(s.proactive.clientConfigured ? ON : INFO, "proactive task cards",
-    s.proactive.clientConfigured ? "client credential configured; next-contact only while daemon runs; validate: bastra tasks client-status" : s.proactive.accessHint ?? "no client credential; hooks cannot show task cards", "bastra tasks setup-hooks"));
+  if (s.proactive)
+    lines.push(
+      row(
+        s.proactive.clientConfigured ? ON : INFO,
+        "proactive task cards",
+        s.proactive.clientConfigured
+          ? "client credential configured; next-contact only while daemon runs; validate: bastra tasks client-status"
+          : (s.proactive.accessHint ?? "no client credential; hooks cannot show task cards"),
+        "bastra tasks setup-hooks"
+      )
+    );
   if (s.codeAwareness.offByEnv) {
-    lines.push(row(INFO, "code awareness (experimental)", "off (BASTRA_CODE_AWARENESS=off)", "unset BASTRA_CODE_AWARENESS"));
+    lines.push(
+      row(INFO, "code awareness (experimental)", "off (BASTRA_CODE_AWARENESS=off)", "unset BASTRA_CODE_AWARENESS")
+    );
   } else {
-    lines.push(s.codeAwareness.repos > 0
-      ? row(ON, "code awareness (experimental)", `on for ${s.codeAwareness.repos} ${s.codeAwareness.repos === 1 ? "repository" : "repositories"}`)
-      : row(INFO, "code awareness (experimental)", "off", "bastra code enable  (inside a repository)"));
+    lines.push(
+      s.codeAwareness.repos > 0
+        ? row(
+            ON,
+            "code awareness (experimental)",
+            `on for ${s.codeAwareness.repos} ${s.codeAwareness.repos === 1 ? "repository" : "repositories"}`
+          )
+        : row(INFO, "code awareness (experimental)", "off", "bastra code enable  (inside a repository)")
+    );
   }
-  lines.push(s.promptImpact
-    ? row(ON, "change impact in prompts (experimental)", "on")
-    : row(INFO, "change impact in prompts (experimental)", "off, not shown to help yet",
-        "bastra config set promptImpact.enabled true"));
-  lines.push(s.coverageMap
-    ? row(ON, "coverage map from test runs (experimental)", "on — test commands run with NODE_V8_COVERAGE in enabled repositories")
-    : row(INFO, "coverage map from test runs (experimental)", "off",
-        "bastra config set coverageMap.enabled true"));
-  lines.push(s.docsMode !== "off"
-    ? row(ON, "product docs", s.docsMode)
-    : row(INFO, "product docs", "off", "bastra config set docs.mode suggest"));
-  lines.push(s.commons
-    ? row(ON, "Bastra Commons", "on")
-    : row(INFO, "Bastra Commons", "off", "bastra commons enable"));
-  lines.push(s.bridges
-    ? row(ON, "shared recall bridges", "on")
-    : row(INFO, "shared recall bridges", "off", "bastra bridges enable"));
-  lines.push(s.ui
-    ? row(ON, "vault map", "on")
-    : row(INFO, "vault map", "off", "bastra config set ui.enabled true"));
+  lines.push(
+    s.promptImpact
+      ? row(ON, "change impact in prompts (experimental)", "on")
+      : row(
+          INFO,
+          "change impact in prompts (experimental)",
+          "off, not shown to help yet",
+          "bastra config set promptImpact.enabled true"
+        )
+  );
+  lines.push(
+    s.coverageMap
+      ? row(
+          ON,
+          "coverage map from test runs (experimental)",
+          "on — test commands run with NODE_V8_COVERAGE in enabled repositories"
+        )
+      : row(INFO, "coverage map from test runs (experimental)", "off", "bastra config set coverageMap.enabled true")
+  );
+  lines.push(
+    s.docsMode !== "off"
+      ? row(ON, "product docs", s.docsMode)
+      : row(INFO, "product docs", "off", "bastra config set docs.mode suggest")
+  );
+  lines.push(s.commons ? row(ON, "Bastra Commons", "on") : row(INFO, "Bastra Commons", "off", "bastra commons enable"));
+  lines.push(
+    s.bridges
+      ? row(ON, "shared recall bridges", "on")
+      : row(INFO, "shared recall bridges", "off", "bastra bridges enable")
+  );
+  lines.push(s.ui ? row(ON, "vault map", "on") : row(INFO, "vault map", "off", "bastra config set ui.enabled true"));
   const archive = "archiving rm + git snapshots (Claude Code)";
-  lines.push(s.archive === "bastra"
-    ? row(ON, archive,
-        "on (rm -r and lossy git acts run through ~/.bastra/archive without a prompt; " +
-          `cap ${formatSize(s.archiveLimits.cap)}, ` +
-          `per-target limit ${s.archiveLimits.maxItem === null ? "off" : formatSize(s.archiveLimits.maxItem)}; bastra archive list)`)
-    : s.archive === "host"
-      ? row(ON, archive, "host (BASTRA_RM_ARCHIVES=host: the host's own archiving rm, receipt text only)")
-      : row(INFO, archive, "off", "bastra config set archive.enabled on  (docs/hooks.md)"));
+  lines.push(
+    s.archive === "bastra"
+      ? row(
+          ON,
+          archive,
+          "on (rm -r and lossy git acts run through ~/.bastra/archive without a prompt; " +
+            `cap ${formatSize(s.archiveLimits.cap)}, ` +
+            `per-target limit ${s.archiveLimits.maxItem === null ? "off" : formatSize(s.archiveLimits.maxItem)}; bastra archive list)`
+        )
+      : s.archive === "host"
+        ? row(ON, archive, "host (BASTRA_RM_ARCHIVES=host: the host's own archiving rm, receipt text only)")
+        : row(INFO, archive, "off", "bastra config set archive.enabled on  (docs/hooks.md)")
+  );
   const battery = "battery saver (macOS)";
   if (!s.battery.saver) {
     lines.push(row(INFO, battery, "off", "bastra config set battery.saver on"));
   } else if (s.battery.live?.saving) {
-    lines.push(row(ON, battery, "on, on battery now: paraphrasing waits for AC, no warm-ups, model unloads after 60 s idle"));
+    lines.push(
+      row(ON, battery, "on, on battery now: paraphrasing waits for AC, no warm-ups, model unloads after 60 s idle")
+    );
   } else {
     lines.push(row(ON, battery, s.battery.live ? `on (power source: ${s.battery.live.source})` : "on"));
   }
@@ -212,14 +291,15 @@ async function semanticState(live: DaemonProbe | null): Promise<FeatureState["se
 export async function paraphrasingState(
   live: DaemonProbe | null,
   semantic: FeatureState["semanticRecall"],
-  env: NodeJS.ProcessEnv,
+  env: NodeJS.ProcessEnv
 ): Promise<FeatureState["paraphrasing"]> {
   if (semantic.state === "off") return { state: "n/a" };
   // doc2query only runs on Ollama embeddings. The running daemon names its
   // provider ("ollama-<model>"); a cloud provider means no row, not "off".
-  const ollamaEmbeddings = live?.ok && live.embeddingMode
-    ? live.embeddingMode.startsWith("ollama-")
-    : (await resolveEmbeddingChoice()).provider === "ollama";
+  const ollamaEmbeddings =
+    live?.ok && live.embeddingMode
+      ? live.embeddingMode.startsWith("ollama-")
+      : (await resolveEmbeddingChoice()).provider === "ollama";
   if (!ollamaEmbeddings) return { state: "n/a" };
   // Unreachable Ollama proves nothing about the model: no pull hint then.
   const pulled = async (model: string) => (await ollamaModelPulled(model)) ?? undefined;
@@ -239,14 +319,16 @@ export async function paraphrasingState(
 export async function collectFeatureState(
   clients: FeatureState["clients"],
   cliVault: string | null,
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = process.env
 ): Promise<FeatureState> {
   const settings = await readSettings();
   const vault = await resolveVault({ dryRun: true, vaultPath: cliVault });
   const live = await probeDaemon().catch(() => null);
   const semanticRecall = await semanticState(live);
   return {
-    proactive: tasksEnabled(env) ? await taskAgentAccessStatus().then(s => ({ clientConfigured: s.authorized, accessHint: s.hint })) : undefined,
+    proactive: tasksEnabled(env)
+      ? await taskAgentAccessStatus().then((s) => ({ clientConfigured: s.authorized, accessHint: s.hint }))
+      : undefined,
     clients,
     primaryLanguage: settings.language?.primary,
     onboardingDone: "error" in vault ? null : await isOnboardingDone(vault.path),
@@ -263,12 +345,16 @@ export async function collectFeatureState(
     ui: settings.ui?.enabled ?? false,
     // This shell's env; the daemon reads its own (a LaunchAgent may differ).
     archive: archiveMode(settings.archive?.enabled ?? false),
-    archiveLimits: { cap: archiveCap(env, settings.archive?.cap), maxItem: archiveMaxItem(env, settings.archive?.maxItem) },
+    archiveLimits: {
+      cap: archiveCap(env, settings.archive?.cap),
+      maxItem: archiveMaxItem(env, settings.archive?.maxItem),
+    },
     // The running daemon is the witness when it reports the field; else this
     // shell's env over the file.
-    battery: live?.ok && live.power
-      ? { saver: live.power.batterySaver, live: { source: live.power.source, saving: live.power.saving } }
-      : { saver: batterySaverEnabled(settings.battery?.saver, env) },
+    battery:
+      live?.ok && live.power
+        ? { saver: live.power.batterySaver, live: { source: live.power.source, saving: live.power.saving } }
+        : { saver: batterySaverEnabled(settings.battery?.saver, env) },
   };
 }
 

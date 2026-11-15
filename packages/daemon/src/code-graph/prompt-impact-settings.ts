@@ -49,7 +49,7 @@ export const PROMPT_IMPACT_DEFAULT = false;
  */
 export async function getPromptImpactEnabled(
   path: string = settingsFilePath(),
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = process.env
 ): Promise<boolean> {
   if (isOnValue(env.BASTRA_PROMPT_IMPACT)) return true;
   if (isOffValue(env.BASTRA_PROMPT_IMPACT)) return false;

@@ -67,16 +67,10 @@ Diese Tests gehören in M0.5 oder beim ersten Schmerz.
       "M0 eval ergebnis nachschauen",
       "ist FTS5/MiniSearch genug?",
     ],
-    related: [
-      "nexus-recall-ambition-best-memory-tool",
-      "nexus-recall-no-overengineering",
-    ],
+    related: ["nexus-recall-ambition-best-memory-tool", "nexus-recall-no-overengineering"],
     source: "Eval-Lauf 2026-05-01, scripts/eval.ts",
     confidence: 0.9,
-    affects_files: [
-      "packages/daemon/scripts/eval.ts",
-      "packages/daemon/src/search.ts",
-    ],
+    affects_files: ["packages/daemon/scripts/eval.ts", "packages/daemon/src/search.ts"],
   });
   console.log(JSON.stringify(result, null, 2));
 }

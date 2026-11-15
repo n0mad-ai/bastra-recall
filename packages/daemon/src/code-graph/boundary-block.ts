@@ -172,7 +172,7 @@ async function build(opts: BoundaryNoteOptions): Promise<BoundaryNote | null> {
     identity.push(
       repoRoot,
       ...impact.missed.map((m) => `${m.file}<${m.changedFile}`),
-      ...impact.unanswered.map((f) => `?${f}`),
+      ...impact.unanswered.map((f) => `?${f}`)
     );
     // #629: the tests that executed the touched files' changed symbols — the
     // booked `via` of each hit is the changed symbol an edit reached it through.
@@ -183,7 +183,7 @@ async function build(opts: BoundaryNoteOptions): Promise<BoundaryNote | null> {
     const coverage = coverageTestsLine(
       (coverageOn ??= await getCoverageMapEnabled().catch(() => false)) ? readCoverageMapSync(repoRoot) : null,
       changed,
-      new Set([...impact.missed.map((m) => m.file), ...impact.seen, ...impact.touchedFiles]),
+      new Set([...impact.missed.map((m) => m.file), ...impact.seen, ...impact.touchedFiles])
     );
     sections.push(render(repoRoot, impact.missed, impact.seen.length, impact.unanswered, impact.truncated, coverage));
   }
@@ -223,14 +223,11 @@ function render(
   seen: number,
   unanswered: readonly string[],
   truncated: boolean,
-  coverage: string | null = null,
+  coverage: string | null = null
 ): string {
   // Production before tests, #577's measured reason: a file's own tests are
   // the part an agent can already assume.
-  const ordered = [
-    ...missed.filter((m) => !isTestFile(m.file)),
-    ...missed.filter((m) => isTestFile(m.file)),
-  ];
+  const ordered = [...missed.filter((m) => !isTestFile(m.file)), ...missed.filter((m) => isTestFile(m.file))];
   const shown = ordered.slice(0, MAX_IMPACT_FILES);
   // The claim only holds when there is a `missed` dependent behind it. A
   // session can touch more than one repository, and the volume gate is taken
@@ -261,7 +258,7 @@ function render(
   }
   if (unanswered.length > 0) {
     lines.push(
-      `Dependents unknown — no graph could be asked about: ${unanswered.slice(0, MAX_IMPACT_FILES).join(", ")}.`,
+      `Dependents unknown — no graph could be asked about: ${unanswered.slice(0, MAX_IMPACT_FILES).join(", ")}.`
     );
   }
   if (truncated) lines.push("A dependent list was capped on the way; this is not all of them.");
@@ -269,7 +266,7 @@ function render(
   lines.push(
     "Dependents are as the graph had them when each edit was made. A listed file " +
       "may survive the change; a body edit often leaves its callers intact, and " +
-      "the graph cannot tell.",
+      "the graph cannot tell."
   );
   return lines.join("\n");
 }

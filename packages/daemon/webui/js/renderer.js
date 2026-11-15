@@ -169,11 +169,15 @@ export function createRenderer(canvas, sim, initialHues) {
       // both ends past the same viewport side → the strand cannot reach in.
       // The margin covers a bent strand's bulge (≤ 90 / ≤ 9 % of its length).
       {
-        const m = 100 + 3 / camera.scale + (bendCenter ? Math.abs(e.s.x - e.t.x) * 0.1 + Math.abs(e.s.y - e.t.y) * 0.1 : 0);
+        const m =
+          100 + 3 / camera.scale + (bendCenter ? Math.abs(e.s.x - e.t.x) * 0.1 + Math.abs(e.s.y - e.t.y) * 0.1 : 0);
         if (
-          (e.s.x < cullL - m && e.t.x < cullL - m) || (e.s.x > cullR + m && e.t.x > cullR + m) ||
-          (e.s.y < cullT - m && e.t.y < cullT - m) || (e.s.y > cullB + m && e.t.y > cullB + m)
-        ) continue;
+          (e.s.x < cullL - m && e.t.x < cullL - m) ||
+          (e.s.x > cullR + m && e.t.x > cullR + m) ||
+          (e.s.y < cullT - m && e.t.y < cullT - m) ||
+          (e.s.y > cullB + m && e.t.y > cullB + m)
+        )
+          continue;
       }
       const isActive = pivotId !== null && (e.s.id === pivotId || e.t.id === pivotId);
       // second hop: the connections AT the strands' target nodes light up
@@ -250,9 +254,8 @@ export function createRenderer(canvas, sim, initialHues) {
       let r = drawRadius(n);
       // a legend hover is a PREVIEW — while it lasts it outranks the active
       // filter and the focus neighborhood, else its nodes could never light up
-      const dimmed = highlightFn !== null
-        ? !highlightFn(n)
-        : (active && !active.has(n.id)) || (filterFn !== null && !filterFn(n));
+      const dimmed =
+        highlightFn !== null ? !highlightFn(n) : (active && !active.has(n.id)) || (filterFn !== null && !filterFn(n));
       // filter matches breathe: statically drawn nodes get a soft pulse so
       // "what did this filter select" is visible at a glance
       const filterHit = !dimmed && filterFn !== null && filterFn(n);
@@ -260,8 +263,12 @@ export function createRenderer(canvas, sim, initialHues) {
       // Bound the effective (filter-pulsed) radius, salience breathing, bridge
       // halos and beacon strokes. Live flashes/bolts are a separate pass and
       // must still run when their source node is outside this viewport.
-      const cm = Math.max(r * 3.2 * 1.14, 60 / camera.scale,
-        r + 34 + 1.1 / camera.scale, r + 6 * (n.ringScale ?? 1) + 1 / camera.scale);
+      const cm = Math.max(
+        r * 3.2 * 1.14,
+        60 / camera.scale,
+        r + 34 + 1.1 / camera.scale,
+        r + 6 * (n.ringScale ?? 1) + 1 / camera.scale
+      );
       if (n.x < cullL - cm || n.x > cullR + cm || n.y < cullT - cm || n.y > cullB + cm) continue;
       const nodeAlpha = (dimmed ? theme.dim : 1) * fade;
       ctx.globalAlpha = nodeAlpha;
@@ -275,7 +282,6 @@ export function createRenderer(canvas, sim, initialHues) {
         ctx.drawImage(glowSprite(theme.edgeHi), n.x - gr, n.y - gr, gr * 2, gr * 2);
         ctx.globalAlpha = nodeAlpha;
       }
-
 
       if (n.kind === "ghost") {
         const rr = r * (filterHit ? pulse * 1.15 : pulse);
@@ -398,7 +404,19 @@ export function createRenderer(canvas, sim, initialHues) {
       ctx.globalAlpha = 1;
     }
 
-    drawFlashes(now, { ctx, sim, flashes, camera, theme, boltStyle, boltMs, boltSpread, edgeBend, strokeEdge, drawRadius });
+    drawFlashes(now, {
+      ctx,
+      sim,
+      flashes,
+      camera,
+      theme,
+      boltStyle,
+      boltMs,
+      boltSpread,
+      edgeBend,
+      strokeEdge,
+      drawRadius,
+    });
 
     // ── overlay (live supernovae): after nodes, in every view ──
     if (overlayFn) overlayFn(ctx, camera, theme, now);
@@ -455,7 +473,10 @@ export function createRenderer(canvas, sim, initialHues) {
       // on overlapping hits the FRONT node wins (orbit depth), so the tooltip
       // never names a node hidden behind the one actually seen
       const depth = n.orbitDepth ?? 0;
-      if (d < 0 && (best === null ? d < bestD : depth < (best.orbitDepth ?? 0) || (depth === (best.orbitDepth ?? 0) && d < bestD))) {
+      if (
+        d < 0 &&
+        (best === null ? d < bestD : depth < (best.orbitDepth ?? 0) || (depth === (best.orbitDepth ?? 0) && d < bestD))
+      ) {
         bestD = d;
         best = n;
       }
@@ -505,7 +526,8 @@ export function createRenderer(canvas, sim, initialHues) {
       flashes.set(id, { color, born: now, life: lifeMs, boltAt: now, links, spill: spillOf(sim, links) });
     },
     /** Active strands, beacons, filters and live notices keep their full cadence. */
-    hasLiveEffects: () => flashes.size > 0 || hover !== null || focus !== null || filterFn !== null || highlightFn !== null,
+    hasLiveEffects: () =>
+      flashes.size > 0 || hover !== null || focus !== null || filterFn !== null || highlightFn !== null,
     setHover: (n) => (hover = n),
     setFocus: (n) => {
       if ((n?.id ?? null) !== (focus?.id ?? null)) focusSince = performance.now();

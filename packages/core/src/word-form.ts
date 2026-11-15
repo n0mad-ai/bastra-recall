@@ -26,7 +26,6 @@ export function letterCount(token: string): number {
   return n;
 }
 
-
 const LETTERS_ONLY_RE = /^[\p{L}\p{M}]+$/u;
 /** Below this many letters two different tokens are never one word. */
 export const WORD_FORM_MIN_LEN = 4;
@@ -115,8 +114,11 @@ function sameNormalizedWordForm(a: string, b: string): boolean {
   if (LATIN_RE.test(a) && LATIN_RE.test(b)) {
     if (englishMatch(a, b) || [GERMAN, FINNISH, TURKISH].some((s) => suffixMatch(a, b, s, 4))) return true;
     // Swahili ki-/vi- noun classes; never arbitrary swapped first letters.
-    return ((a.startsWith("ki") && b.startsWith("vi")) || (a.startsWith("vi") && b.startsWith("ki"))) &&
-      a.slice(2).length >= 4 && a.slice(2) === b.slice(2);
+    return (
+      ((a.startsWith("ki") && b.startsWith("vi")) || (a.startsWith("vi") && b.startsWith("ki"))) &&
+      a.slice(2).length >= 4 &&
+      a.slice(2) === b.slice(2)
+    );
   }
   if (CYRILLIC_RE.test(a) && CYRILLIC_RE.test(b)) return suffixMatch(a, b, RUSSIAN, 3);
   if (JAPANESE_RE.test(a) && JAPANESE_RE.test(b)) return suffixMatch(a, b, JAPANESE, 4);
@@ -152,9 +154,17 @@ export function hasWordForm(tokens: ReadonlySet<string>, word: string): boolean 
     // Suffix families preserve at least two initial code units. Canonical
     // spelling and the fixed ar/he/sw prefixes are the only exceptions.
     const candidate = normalizedToken(t);
-    if (!prefixed && (candidate.charCodeAt(0) !== w.charCodeAt(0) ||
-      candidate.charCodeAt(1) !== w.charCodeAt(1)) && !PREFIXED_RE.test(candidate)) continue;
-    if (w === candidate || (LETTERS_ONLY_RE.test(w) && LETTERS_ONLY_RE.test(candidate) && sameNormalizedWordForm(w, candidate))) return true;
+    if (
+      !prefixed &&
+      (candidate.charCodeAt(0) !== w.charCodeAt(0) || candidate.charCodeAt(1) !== w.charCodeAt(1)) &&
+      !PREFIXED_RE.test(candidate)
+    )
+      continue;
+    if (
+      w === candidate ||
+      (LETTERS_ONLY_RE.test(w) && LETTERS_ONLY_RE.test(candidate) && sameNormalizedWordForm(w, candidate))
+    )
+      return true;
   }
   return false;
 }
@@ -175,7 +185,7 @@ const ENGLISH_ENDINGS = endings("s es ed ing");
 // Cutting an ending from the wrong language yields a stem that is either the
 // true stem (harmless) or a longer prefix that reaches less (harmless).
 const LATIN_ENDINGS: ReadonlySet<string> = new Set(
-  [GERMAN, FINNISH, TURKISH, ENGLISH_ENDINGS].flatMap((s) => [...s]).filter((e) => e !== ""),
+  [GERMAN, FINNISH, TURKISH, ENGLISH_ENDINGS].flatMap((s) => [...s]).filter((e) => e !== "")
 );
 const byLength = (a: string, b: string): number => b.length - a.length || (a < b ? -1 : 1);
 const SUFFIX_FAMILIES: readonly [RegExp, readonly string[]][] = [

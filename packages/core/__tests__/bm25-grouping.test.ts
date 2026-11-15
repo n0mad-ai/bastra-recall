@@ -39,7 +39,7 @@ test("the identity tokenizer does not re-split what is already a term list", () 
   assert.deepEqual(
     [...roundTrip].sort(),
     [...g.counts.keys()].sort(),
-    "the grouped query must round-trip through the identity tokenizer unchanged",
+    "the grouped query must round-trip through the identity tokenizer unchanged"
   );
 });
 
@@ -64,7 +64,10 @@ test("grouped and ungrouped produce the identical ranking over a real index", as
 
   const words = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"];
   for (let i = 0; i < 30; i++) {
-    const body = words.slice(i % 3, (i % 3) + 4).join(" ").repeat(1 + (i % 4));
+    const body = words
+      .slice(i % 3, (i % 3) + 4)
+      .join(" ")
+      .repeat(1 + (i % 4));
     await writeFile(
       path.join(dir, `m${i}.md`),
       `---
@@ -82,7 +85,7 @@ updated: 2026-07-01
 
 ${body}
 `,
-      "utf8",
+      "utf8"
     );
   }
 
@@ -115,7 +118,7 @@ ${body}
       recall_when_expanded_flat: "",
       topic_path_flat: m.fm.topic_path.join(" "),
       body: m.body,
-    })),
+    }))
   );
 
   const queries = [
@@ -167,7 +170,7 @@ updated: 2026-07-01
 
 ${word} body
 `,
-      "utf8",
+      "utf8"
     );
   }
   const vault = new Vault(dir);
@@ -205,7 +208,7 @@ updated: 2026-07-01
 
 anchorword body
 `,
-    "utf8",
+    "utf8"
   );
   const vault = new Vault(dir);
   await vault.init();
@@ -216,21 +219,21 @@ anchorword body
   // Der Tippfehler lebt allein von der Fuzzy-Expansion.
   assert.ok(
     search.recall("anchorwrd", { k: 3 }).some((h) => h.id === "anchorword-memo"),
-    "precondition: with fuzzy the typo finds the memory",
+    "precondition: with fuzzy the typo finds the memory"
   );
   assert.equal(
     search.recall("anchorwrd", { k: 3, bm25_no_fuzzy: true }).length,
     0,
-    "the fast path trades typo recall for latency — that is the whole price",
+    "the fast path trades typo recall for latency — that is the whole price"
   );
   // Exakt und Präfix müssen weiter tragen, sonst wäre der Pfad wertlos.
   assert.ok(
     search.recall("anchorword", { k: 3, bm25_no_fuzzy: true }).some((h) => h.id === "anchorword-memo"),
-    "the exact term must still hit",
+    "the exact term must still hit"
   );
   assert.ok(
     search.recall("anchorwo", { k: 3, bm25_no_fuzzy: true }).some((h) => h.id === "anchorword-memo"),
-    "and so must a prefix",
+    "and so must a prefix"
   );
 });
 
@@ -243,22 +246,22 @@ test("routeRetrieval picks the mode from cost and availability", async () => {
   assert.equal(
     routeRetrieval({ uniqueTerms: 613, denseAvailable: true, ...budget }).mode,
     "dense-primary",
-    "an expensive lexical arm hands the long prompt to the dense one",
+    "an expensive lexical arm hands the long prompt to the dense one"
   );
   assert.equal(
     routeRetrieval({ uniqueTerms: 25, denseAvailable: false, ...budget }).mode,
     "lexical-full",
-    "without a dense arm a cheap query still gets the full treatment",
+    "without a dense arm a cheap query still gets the full treatment"
   );
   assert.equal(
     routeRetrieval({ uniqueTerms: 613, denseAvailable: false, ...budget }).mode,
     "lexical-fast",
-    "without a dense arm there is nowhere to hand it — the fast path is the only answer",
+    "without a dense arm there is nowhere to hand it — the fast path is the only answer"
   );
   // Ohne Budget gibt es nichts zu unterschreiten.
   assert.equal(
     routeRetrieval({ uniqueTerms: 5000, denseAvailable: true, budgetMs: 0, denseReservedMs: 150 }).mode,
-    "hybrid",
+    "hybrid"
   );
 });
 
@@ -274,7 +277,7 @@ test("the budget uses max(lexical, dense), not their sum", async () => {
   assert.equal(
     routeRetrieval({ uniqueTerms: terms, denseAvailable: true, budgetMs: 200, denseReservedMs: 150 }).mode,
     "hybrid",
-    "a lexical arm cheaper than the dense one costs no extra wall clock at all",
+    "a lexical arm cheaper than the dense one costs no extra wall clock at all"
   );
 
   // Erst wenn der lexikalische Arm den dichten ÜBERHOLT, wird er zum Problem.
@@ -282,6 +285,6 @@ test("the budget uses max(lexical, dense), not their sum", async () => {
   assert.ok(estimateBm25Ms(many) > 200, "precondition: now lexical exceeds the budget by itself");
   assert.equal(
     routeRetrieval({ uniqueTerms: many, denseAvailable: true, budgetMs: 200, denseReservedMs: 150 }).mode,
-    "dense-primary",
+    "dense-primary"
   );
 });

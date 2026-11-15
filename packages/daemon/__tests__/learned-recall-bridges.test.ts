@@ -24,10 +24,7 @@ import {
   type Bridge,
 } from "../src/learned-recall/bridges.js";
 
-async function withPool<T>(
-  bridges: Bridge[],
-  fn: (pool: BridgePool, root: string) => Promise<T>,
-): Promise<T> {
+async function withPool<T>(bridges: Bridge[], fn: (pool: BridgePool, root: string) => Promise<T>): Promise<T> {
   const root = await mkdtemp(join(tmpdir(), "bastra-bridges-"));
   try {
     for (const b of bridges) {
@@ -83,7 +80,7 @@ test("distinctiveTerms filters ephemeral tokens out of trigger and expansion voc
   assert.deepEqual(
     terms.filter((t) => t === "1538865250718318722" || t === "2026" || t === "e77d7dc"),
     [],
-    "ephemeral tokens dropped",
+    "ephemeral tokens dropped"
   );
   assert.ok(terms.includes("panel"));
   assert.ok(terms.includes("resignkey"));
@@ -118,11 +115,20 @@ test("#707: an undetected language still mints — filed under und", () => {
 test("#707: distinctiveTerms keeps every letter — Cyrillic, Greek, Turkish, Devanagari", () => {
   assert.deepEqual(distinctiveTerms("почему сервер падает"), ["почему", "сервер", "падает"]);
   assert.deepEqual(distinctiveTerms("γιατί πέφτει ο διακομιστής"), ["γιατί", "πέφτει", "διακομιστής"]);
-  assert.ok(distinctiveTerms("veritabanı şifresi nerede").includes("şifresi"), "Turkish ş is kept, not cut to 'ifresi'");
+  assert.ok(
+    distinctiveTerms("veritabanı şifresi nerede").includes("şifresi"),
+    "Turkish ş is kept, not cut to 'ifresi'"
+  );
   // Folded like every other matcher (core foldTerm): a capital İ meets the
   // "istanbul" a user types on a keyboard without it, and the word stays whole.
-  assert.ok(distinctiveTerms("İstanbul sunucusu").includes("istanbul"), "a capital İ folds to i and the word stays whole");
-  assert.ok(distinctiveTerms("सर्वर क्रैश होता है").includes("सर्वर"), "Devanagari vowel signs (\\p{M}) stay inside the word");
+  assert.ok(
+    distinctiveTerms("İstanbul sunucusu").includes("istanbul"),
+    "a capital İ folds to i and the word stays whole"
+  );
+  assert.ok(
+    distinctiveTerms("सर्वर क्रैश होता है").includes("सर्वर"),
+    "Devanagari vowel signs (\\p{M}) stay inside the word"
+  );
 });
 
 test("#707: a Russian query mints a bridge and a later Russian query fires it (no language list involved)", async () => {
@@ -203,11 +209,23 @@ test("BridgePool ignores corrupt and unknown-language files", async () => {
     await mkdir(join(root, "bridges", "de"), { recursive: true });
     await mkdir(join(root, "bridges", "not-a-lang"), { recursive: true });
     await mkdir(join(root, "bridges", "fr"), { recursive: true });
-    await writeFile(join(root, "bridges", "de", "ok.json"), JSON.stringify(bridge({ lang: "de", trigger_terms: ["panel"], expansion_terms: ["sheet", "modal"] })), "utf8");
+    await writeFile(
+      join(root, "bridges", "de", "ok.json"),
+      JSON.stringify(bridge({ lang: "de", trigger_terms: ["panel"], expansion_terms: ["sheet", "modal"] })),
+      "utf8"
+    );
     await writeFile(join(root, "bridges", "de", "corrupt.json"), "{ not json", "utf8");
-    await writeFile(join(root, "bridges", "not-a-lang", "x.json"), JSON.stringify(bridge({ lang: "not-a-lang", trigger_terms: ["panel"], expansion_terms: ["sheet"] })), "utf8");
+    await writeFile(
+      join(root, "bridges", "not-a-lang", "x.json"),
+      JSON.stringify(bridge({ lang: "not-a-lang", trigger_terms: ["panel"], expansion_terms: ["sheet"] })),
+      "utf8"
+    );
     // #707: a language without a stopword set is a folder like any other.
-    await writeFile(join(root, "bridges", "fr", "y.json"), JSON.stringify(bridge({ lang: "fr", trigger_terms: ["fenêtre"], expansion_terms: ["panel"] })), "utf8");
+    await writeFile(
+      join(root, "bridges", "fr", "y.json"),
+      JSON.stringify(bridge({ lang: "fr", trigger_terms: ["fenêtre"], expansion_terms: ["panel"] })),
+      "utf8"
+    );
     const pool = BridgePool.load(root);
     assert.equal(pool.size("de"), 1, "corrupt file skipped, valid kept");
     assert.equal(pool.size("fr"), 1, "a language code folder loads whether or not detection knows it");
@@ -219,7 +237,11 @@ test("BridgePool ignores corrupt and unknown-language files", async () => {
 
 test("BridgePool.load caps oversized terms from a foreign repo and drops fully-oversized bridges", async () => {
   const longTerm = "x".repeat(40); // > MAX_SHARE_TERM_LEN (24)
-  const partlyDirty = bridge({ lang: "de", trigger_terms: ["panel", longTerm], expansion_terms: ["resignkey", longTerm] });
+  const partlyDirty = bridge({
+    lang: "de",
+    trigger_terms: ["panel", longTerm],
+    expansion_terms: ["resignkey", longTerm],
+  });
   const allDirty = bridge({ lang: "de", trigger_terms: [longTerm], expansion_terms: [longTerm + "y"] });
   await withPool([partlyDirty, allDirty], async (pool) => {
     assert.equal(pool.size("de"), 1, "bridge with only oversized terms is dropped");
@@ -260,7 +282,13 @@ test("expandQuery on a shadow pool (the default) reports the fire but leaves the
 });
 
 test("expandQuery is a no-op for a null pool; an abstained language consults every folder (#707)", async () => {
-  assert.deepEqual(expandQuery("anything", null), { query: "anything", lang: null, added: [], applied: false, fired: [] });
+  assert.deepEqual(expandQuery("anything", null), {
+    query: "anything",
+    lang: null,
+    added: [],
+    applied: false,
+    fired: [],
+  });
   const deB = bridge({ lang: "de", trigger_terms: ["panel"], expansion_terms: ["resignkey"] });
   const enB = bridge({ lang: "en", trigger_terms: ["nspanel", "observer"], expansion_terms: ["attachedsheet"] });
   await withPool([deB, enB], async (pool) => {
@@ -287,8 +315,11 @@ test("expandQuery caps the base at a word boundary BEFORE appending expansions (
     const base = r.query.slice(0, -" resignkey observer".length);
     assert.ok(base.length <= 4000, `base capped to 4000 (got ${base.length})`);
     assert.ok(
-      base.trim().split(/\s+/).every((w) => w === "panel" || w === "füllwort"),
-      "base cap falls on a word boundary — no half token",
+      base
+        .trim()
+        .split(/\s+/)
+        .every((w) => w === "panel" || w === "füllwort"),
+      "base cap falls on a word boundary — no half token"
     );
   });
 });
@@ -330,20 +361,54 @@ test("#672: MIN_BRIDGE_EVIDENCE is 1 — a first reach is enough to be written a
 
 test("#672: an unconfirmed local bridge loads; legacy (no first_seen) and contributed ones stay inert", async () => {
   const fresh = new Date().toISOString();
-  const local = bridge({ lang: "de", trigger_terms: ["panel", "sheet"], expansion_terms: ["resignkey"], evidence: 1, first_seen: fresh });
-  const legacy = bridge({ lang: "de", trigger_terms: ["fenster", "schließt"], expansion_terms: ["observer"], evidence: 1 });
-  const contributed = bridge({ lang: "de", trigger_terms: ["modal", "dialog"], expansion_terms: ["attachedsheet"], evidence: 1, first_seen: fresh, verifier: "abc" });
+  const local = bridge({
+    lang: "de",
+    trigger_terms: ["panel", "sheet"],
+    expansion_terms: ["resignkey"],
+    evidence: 1,
+    first_seen: fresh,
+  });
+  const legacy = bridge({
+    lang: "de",
+    trigger_terms: ["fenster", "schließt"],
+    expansion_terms: ["observer"],
+    evidence: 1,
+  });
+  const contributed = bridge({
+    lang: "de",
+    trigger_terms: ["modal", "dialog"],
+    expansion_terms: ["attachedsheet"],
+    evidence: 1,
+    first_seen: fresh,
+    verifier: "abc",
+  });
   await withPool([local, legacy, contributed], async (pool) => {
     assert.equal(pool.size("de"), 1, "only the locally minted, stamped single-reach bridge enters the pool");
     assert.deepEqual(pool.expansionsFor("das Panel mit dem Sheet", "de"), ["resignkey"]);
-    assert.deepEqual(pool.expansionsFor("warum schließt das Fenster", "de"), [], "pre-20.08. evidence-1 file stays inert");
+    assert.deepEqual(
+      pool.expansionsFor("warum schließt das Fenster", "de"),
+      [],
+      "pre-20.08. evidence-1 file stays inert"
+    );
   });
 });
 
 test("#672: an unconfirmed bridge past its TTL is not loaded even before the prune ran", async () => {
   const old = new Date(Date.now() - (UNCONFIRMED_BRIDGE_TTL_DAYS + 1) * 86_400_000).toISOString();
-  const expired = bridge({ lang: "de", trigger_terms: ["panel", "sheet"], expansion_terms: ["resignkey"], evidence: 1, first_seen: old });
-  const confirmedOld = bridge({ lang: "de", trigger_terms: ["fenster", "schließt"], expansion_terms: ["observer"], evidence: 2, first_seen: old });
+  const expired = bridge({
+    lang: "de",
+    trigger_terms: ["panel", "sheet"],
+    expansion_terms: ["resignkey"],
+    evidence: 1,
+    first_seen: old,
+  });
+  const confirmedOld = bridge({
+    lang: "de",
+    trigger_terms: ["fenster", "schließt"],
+    expansion_terms: ["observer"],
+    evidence: 2,
+    first_seen: old,
+  });
   await withPool([expired, confirmedOld], async (pool) => {
     assert.equal(pool.size("de"), 1, "a confirmed bridge never expires");
     assert.deepEqual(pool.expansionsFor("warum schließt das Fenster", "de"), ["observer"]);
@@ -359,10 +424,19 @@ test("#672: an unconfirmed bridge widens at reduced weight — half its trigger,
     evidence: 1,
     first_seen: fresh,
   });
-  const confirmed = bridge({ lang: "de", trigger_terms: ["fenster", "schließt"], expansion_terms: ["resignkey", "modal"], evidence: 2 });
+  const confirmed = bridge({
+    lang: "de",
+    trigger_terms: ["fenster", "schließt"],
+    expansion_terms: ["resignkey", "modal"],
+    evidence: 2,
+  });
   await withPool([unconfirmed], async (pool) => {
     // 2 of 4 trigger terms = half → fires; 1 of 4 does not (a confirmed bridge would need 2 too)
-    assert.deepEqual(pool.expansionsFor("warum schließt das Fenster", "de"), ["resignkey", "attachedsheet", "nspanel"], "capped at 3 terms");
+    assert.deepEqual(
+      pool.expansionsFor("warum schließt das Fenster", "de"),
+      ["resignkey", "attachedsheet", "nspanel"],
+      "capped at 3 terms"
+    );
     assert.deepEqual(pool.expansionsFor("das Fenster", "de"), []);
   });
   const eight = bridge({
@@ -386,12 +460,20 @@ test("#672: an unconfirmed bridge widens at reduced weight — half its trigger,
 test("expansionsFor needs two shared trigger terms; a one-term bridge fires on its one term (20.08.)", async () => {
   // The real 20.08. bridge shape: one everyday word („bitte", „issue") used to pull
   // „agenten harness plan …" into every prompt that happened to contain it.
-  const wide = bridge({ lang: "de", trigger_terms: ["milestone", "committen", "issue"], expansion_terms: ["harness", "vollstrecker"] });
+  const wide = bridge({
+    lang: "de",
+    trigger_terms: ["milestone", "committen", "issue"],
+    expansion_terms: ["harness", "vollstrecker"],
+  });
   const narrow = bridge({ lang: "de", trigger_terms: ["lösungsschlüssel"], expansion_terms: ["holdout"] });
   await withPool([wide, narrow], async (pool) => {
     assert.deepEqual(pool.expansionsFor("antwortentwurf zum issue", "de"), [], "one shared word is not a topic");
     assert.deepEqual(pool.expansionsFor("issue zum milestone committen", "de"), ["harness", "vollstrecker"]);
-    assert.deepEqual(pool.expansionsFor("wo liegt der lösungsschlüssel", "de"), ["holdout"], "a one-term bridge keeps firing");
+    assert.deepEqual(
+      pool.expansionsFor("wo liegt der lösungsschlüssel", "de"),
+      ["holdout"],
+      "a one-term bridge keeps firing"
+    );
   });
 });
 
@@ -399,7 +481,6 @@ test("distinctiveTerms drops everyday words so they can never become trigger ter
   const terms = distinctiveTerms("antwortentwurf bitte, ich habe den aktuellen stand kurz geprüft");
   assert.deepEqual(terms, ["antwortentwurf", "geprüft"]);
 });
-
 
 test("legacy folded trigger aliases cannot satisfy the two-word rule", async () => {
   const legacy = bridge({ lang: "de", trigger_terms: ["straße", "strasse"], expansion_terms: ["staging"] });
@@ -410,9 +491,13 @@ test("legacy folded trigger aliases cannot satisfy the two-word rule", async () 
 });
 
 test("legacy folded expansions deduplicate before the reduced expansion cap", async () => {
-  const legacy = bridge({ lang: "de", trigger_terms: ["panel", "sheet"],
+  const legacy = bridge({
+    lang: "de",
+    trigger_terms: ["panel", "sheet"],
     expansion_terms: ["straße", "strasse", "observer", "staging"],
-    evidence: 1, first_seen: new Date().toISOString() });
+    evidence: 1,
+    first_seen: new Date().toISOString(),
+  });
   await withPool([legacy], async (pool) => {
     assert.deepEqual(pool.expansionsFor("panel sheet", "de"), ["strasse", "observer", "staging"]);
     assert.equal(bridgeFiredOn(legacy, new Set(["panel", "sheet"]), ["strasse"]), true);

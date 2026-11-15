@@ -162,7 +162,7 @@ export class AppliesToIndex {
 export function appliesToCandidates(
   index: AppliesToIndex,
   file: string,
-  graph: LoadedGraph | null,
+  graph: LoadedGraph | null
 ): AppliesToCandidate[] {
   const norm = normalizePath(file);
   if (norm === null) return [];
@@ -191,7 +191,7 @@ export function appliesToCandidates(
  */
 export function bandOf(
   candidate: AppliesToCandidate,
-  gate?: "required" | "optional" | "no_answer",
+  gate?: "required" | "optional" | "no_answer"
 ): "required" | "optional" {
   if (candidate.hop === "1-hop") return "optional";
   return gate === "required" ? "required" : "optional";
@@ -236,7 +236,7 @@ export interface UnresolvedEntry {
  */
 export function unresolvedEntries(
   memories: Iterable<AppliesToMemory>,
-  opts: { exists: (file: string) => boolean; graph?: LoadedGraph | null },
+  opts: { exists: (file: string) => boolean; graph?: LoadedGraph | null }
 ): UnresolvedEntry[] {
   const graph = opts.graph ?? null;
   const out: UnresolvedEntry[] = [];
@@ -301,7 +301,7 @@ function wordingOf(reason: UnresolvedReason): string {
 export function suggestAffectsFiles(
   touched: readonly string[],
   existing: readonly string[] = [],
-  limit = 10,
+  limit = 10
 ): string[] {
   const have = new Set<string>();
   for (const e of existing) {
@@ -383,7 +383,7 @@ export function appliesToIndex(): AppliesToIndex | null {
         id: m.fm.id,
         ...(typeof m.fm.title === "string" ? { title: m.fm.title } : {}),
         affects_files: m.fm.affects_files,
-      })),
+      }))
     );
   }
   return cached;

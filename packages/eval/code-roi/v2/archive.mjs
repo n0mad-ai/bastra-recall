@@ -33,7 +33,7 @@ export function writableOut(fallback = resolve(homedir(), ".bastra", "eval", "co
     throw new Error(
       `refusing to write into the frozen v3 archive at ${out}. ` +
         `Set CODE_ROI_OUT to a fresh directory — the v3 report is only ` +
-        `reproducible while that archive is untouched.`,
+        `reproducible while that archive is untouched.`
     );
   }
   return out;

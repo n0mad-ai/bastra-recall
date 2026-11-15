@@ -168,9 +168,7 @@ try {
 const payload = {
   _project: basename(root),
   _head: head,
-  symbols: Object.fromEntries(
-    [...symbols.entries()].map(([name, paths]) => [name, [...paths].sort()]),
-  ),
+  symbols: Object.fromEntries([...symbols.entries()].map(([name, paths]) => [name, [...paths].sort()])),
 };
 
 const dest = join(root, OUT_REL);
@@ -180,6 +178,6 @@ writeFileSync(dest, gzipSync(Buffer.from(JSON.stringify(payload), "utf8")));
 const count = Object.keys(payload.symbols).length;
 console.log(
   `anno-symbols-gen-ts: ${count} symbols from ${files.length} files → ${OUT_REL} ` +
-  `(project ${payload._project}, head ${head.slice(0, 8)})`,
+    `(project ${payload._project}, head ${head.slice(0, 8)})`
 );
 if (!existsSync(dest)) process.exit(1);

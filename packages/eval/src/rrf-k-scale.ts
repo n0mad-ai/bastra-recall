@@ -35,20 +35,18 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import {
-  Vault,
-  SearchIndex,
-  EmbeddingIndex,
-  OllamaEmbeddingProvider,
-  fuseRRF,
-} from "@bastra-recall/core";
+import { Vault, SearchIndex, EmbeddingIndex, OllamaEmbeddingProvider, fuseRRF } from "@bastra-recall/core";
 
 const argv = process.argv.slice(2);
 const arg = (n: string, d: string): string => {
   const i = argv.indexOf(n);
   return i === -1 ? d : (argv[i + 1] ?? d);
 };
-const slug = (id: string): string => id.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const slug = (id: string): string =>
+  id
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 
 /** mulberry32 — see rrf-k-beir.ts for why the textbook LCG is not usable here. */
 function rng(seed: number): () => number {
@@ -136,16 +134,14 @@ async function main(): Promise<void> {
     if (!qrels.has(qid)) qrels.set(qid, new Map());
     qrels.get(qid)!.set(slug(did), Number.parseInt(score ?? "0", 10) || 0);
   }
-  const corpus = await readJsonl<{ _id: string; title: string; text: string }>(
-    path.join(data, "corpus.jsonl"),
-  );
+  const corpus = await readJsonl<{ _id: string; title: string; text: string }>(path.join(data, "corpus.jsonl"));
   const personas: Record<string, Record<string, string>> = personasPath
     ? (JSON.parse(await fs.readFile(personasPath, "utf8")) as { personas: Record<string, Record<string, string>> })
         .personas
     : {};
   const voices = Object.keys(personas);
-  let queries = (await readJsonl<{ _id: string; text: string }>(path.join(data, "queries.jsonl"))).filter(
-    (q) => qrels.has(q._id),
+  let queries = (await readJsonl<{ _id: string; text: string }>(path.join(data, "queries.jsonl"))).filter((q) =>
+    qrels.has(q._id)
   );
   if (voices.length > 0) {
     // only the queries every voice has rephrased, so the arms compare like for like
@@ -206,7 +202,8 @@ async function main(): Promise<void> {
   const voiceVecs = new Map<string, Float32Array>();
   if (voices.length > 0) {
     const pending: { key: string; text: string }[] = [];
-    for (const q of queries) for (const v of voices) pending.push({ key: `${q._id}|${personas[v]![q._id]!}`, text: personas[v]![q._id]! });
+    for (const q of queries)
+      for (const v of voices) pending.push({ key: `${q._id}|${personas[v]![q._id]!}`, text: personas[v]![q._id]! });
     for (let i = 0; i < pending.length; i += 32) {
       const batch = pending.slice(i, i + 32);
       const vecs = await provider.embed(batch.map((b) => b.text));
@@ -348,14 +345,12 @@ async function main(): Promise<void> {
     });
     console.error(
       `${cfg.label.padEnd(17)} docs=${String(subset.size).padStart(4)} n=${diffs.length} ` +
-        `Δ=${st.mean >= 0 ? "+" : ""}${st.mean.toFixed(4)} p=${st.p.toFixed(4)} (${st.wins}/${st.losses})`,
+        `Δ=${st.mean >= 0 ? "+" : ""}${st.mean.toFixed(4)} p=${st.p.toFixed(4)} (${st.wins}/${st.losses})`
     );
   }
 
   console.log(`\n── does the fusion constant matter more at scale? (n=${queries.length} queries) ──`);
-  console.log(
-    `   ${"corpus".padEnd(17)} | docs | bm25   | dense  | k=60   | k=5    | Δ       | 95% CI            | p`,
-  );
+  console.log(`   ${"corpus".padEnd(17)} | docs | bm25   | dense  | k=60   | k=5    | Δ       | 95% CI            | p`);
   console.log("   " + "-".repeat(110));
   for (const r of results as {
     config: string;
@@ -373,7 +368,7 @@ async function main(): Promise<void> {
       `   ${r.config.padEnd(17)} | ${String(r.docs).padStart(4)} | ${r.mrr_bm25.toFixed(4)} | ` +
         `${r.mrr_dense.toFixed(4)} | ${r.mrr_k60.toFixed(4)} | ` +
         `${r.mrr_k5.toFixed(4)} | ${(r.mean >= 0 ? "+" : "") + r.mean.toFixed(4)} | ` +
-        `[${r.lo.toFixed(4)}, ${r.hi.toFixed(4)}] | ${r.p.toFixed(4)}`,
+        `[${r.lo.toFixed(4)}, ${r.hi.toFixed(4)}] | ${r.p.toFixed(4)}`
     );
   }
   if (outPath) await fs.writeFile(outPath, JSON.stringify(results, null, 2));

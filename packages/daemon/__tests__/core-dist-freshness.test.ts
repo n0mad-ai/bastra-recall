@@ -45,7 +45,7 @@ test("core/dist ist nicht älter als core/src — sonst testet der Daemon einen 
   } catch {
     assert.fail(
       "packages/core/dist fehlt. Der Daemon importiert core über dist — ohne Build " +
-        "prüfen die daemon-Tests nichts. `npm run build --workspace=@bastra-recall/core`.",
+        "prüfen die daemon-Tests nichts. `npm run build --workspace=@bastra-recall/core`."
     );
   }
   assert.ok(
@@ -53,6 +53,6 @@ test("core/dist ist nicht älter als core/src — sonst testet der Daemon einen 
     `packages/core/dist ist älter als packages/core/src (${new Date(dist).toISOString()} < ` +
       `${new Date(src).toISOString()}). Die daemon-Tests messen dann den zuletzt gebauten ` +
       `Core, nicht den aktuellen Quellstand — grüne Läufe sagen hier nichts aus. ` +
-      "Abhilfe: npm run build --workspace=@bastra-recall/core (macht pretest automatisch).",
+      "Abhilfe: npm run build --workspace=@bastra-recall/core (macht pretest automatisch)."
   );
 });

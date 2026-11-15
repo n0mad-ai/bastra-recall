@@ -126,23 +126,18 @@ export function assertOwnSubdir(parent: string, dir: string, action = "write"): 
   if (actual !== expected) {
     throw new Error(
       `refusing to ${action}: ${dir} is not ${parent}'s own ${basename(dir)} — ` +
-        `it resolves to ${actual}. Private daemon state must not be a symlink.`,
+        `it resolves to ${actual}. Private daemon state must not be a symlink.`
     );
   }
 }
 
-export function assertInsideDir(
-  boundary: string,
-  dest: string,
-  action = "write",
-  label = boundary,
-): void {
+export function assertInsideDir(boundary: string, dest: string, action = "write", label = boundary): void {
   const boundaryReal = realpathOfNearestExisting(boundary);
   const destReal = realpathOfNearestExisting(dest);
   if (destReal !== boundaryReal && !destReal.startsWith(boundaryReal + sep)) {
     throw new Error(
       `refusing to ${action} outside ${label}: ${dest} resolves to ${destReal}, ` +
-        `which is not inside ${boundaryReal}.`,
+        `which is not inside ${boundaryReal}.`
     );
   }
 }

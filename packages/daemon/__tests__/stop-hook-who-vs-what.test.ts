@@ -97,15 +97,24 @@ describe("stop-lane: who says it vs. what happened", () => {
       },
       { type: "user", message: { role: "user", content: [{ type: "tool_result", content: "" }] } },
     ]);
-    assert.ok(!turns.some((t) => t.role === "user" && /commit/i.test(t.content)), "fixture: no user turn mentions a commit");
+    assert.ok(
+      !turns.some((t) => t.role === "user" && /commit/i.test(t.content)),
+      "fixture: no user turn mentions a commit"
+    );
     const fired = detectFeatureCompletion(turns, ALL_EXIST) !== null;
     assert.equal(fired, !BINDING["feature-completion"].humanBound, BINDING["feature-completion"].why);
   });
 
   it("feature-completion: the current Codex custom_tool_call is also an agent-run commit", () => {
     const turns = normalizeTurns([
-      { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "ok" }] } },
-      { type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: EDITED }] } },
+      {
+        type: "response_item",
+        payload: { type: "message", role: "user", content: [{ type: "input_text", text: "ok" }] },
+      },
+      {
+        type: "response_item",
+        payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: EDITED }] },
+      },
       {
         type: "response_item",
         payload: {
@@ -115,7 +124,10 @@ describe("stop-lane: who says it vs. what happened", () => {
         },
       },
     ]);
-    assert.ok(!turns.some((t) => t.role === "user" && /commit/i.test(t.content)), "fixture: no user turn mentions a commit");
+    assert.ok(
+      !turns.some((t) => t.role === "user" && /commit/i.test(t.content)),
+      "fixture: no user turn mentions a commit"
+    );
     const fired = detectFeatureCompletion(turns, ALL_EXIST) !== null;
     assert.equal(fired, !BINDING["feature-completion"].humanBound, BINDING["feature-completion"].why);
   });
@@ -125,18 +137,29 @@ describe("stop-lane: who says it vs. what happened", () => {
     // Ein Transkript, das alle drei bekannten Signale trägt, liefert alle
     // Heuristik-Namen; jeder muss in BINDING stehen.
     const correction = [
-      {role:"user",content:"Please keep the response short and simple"},
-      {role:"assistant",content:"An attempted response"},
-      {role:"user",content:"Please keep the response short and simple!"},
-      {role:"tool",content:"Fixture failed",failed:true},
-      {role:"user",content:"Please keep the response short and simple!!"},
+      { role: "user", content: "Please keep the response short and simple" },
+      { role: "assistant", content: "An attempted response" },
+      { role: "user", content: "Please keep the response short and simple!" },
+      { role: "tool", content: "Fixture failed", failed: true },
+      { role: "user", content: "Please keep the response short and simple!!" },
     ];
     const choiceAndCommit = [
-      {role:"assistant",content:"Which?\n1. Polling\n2. Queue"}, {role:"user",content:"2"},
-      {role:"assistant",content:EDITED,commands:["git commit -m fixture"]},
-      {role:"tool",content:"[main abc1234] fixture",failed:false},
+      { role: "assistant", content: "Which?\n1. Polling\n2. Queue" },
+      { role: "user", content: "2" },
+      { role: "assistant", content: EDITED, commands: ["git commit -m fixture"] },
+      { role: "tool", content: "[main abc1234] fixture", failed: false },
     ];
-    const names=[...new Set([...evaluateHeuristics(correction,ALL_EXIST),...evaluateHeuristics(choiceAndCommit,ALL_EXIST)].map(s=>s.heuristic))];
-    assert.deepEqual([...names].sort(), Object.keys(BINDING).sort(), "every heuristic must declare its binding in BINDING");
+    const names = [
+      ...new Set(
+        [...evaluateHeuristics(correction, ALL_EXIST), ...evaluateHeuristics(choiceAndCommit, ALL_EXIST)].map(
+          (s) => s.heuristic
+        )
+      ),
+    ];
+    assert.deepEqual(
+      [...names].sort(),
+      Object.keys(BINDING).sort(),
+      "every heuristic must declare its binding in BINDING"
+    );
   });
 });

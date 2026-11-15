@@ -87,10 +87,25 @@ test("Befund 1 — mergeBatchResults: ungleich degradierte Arme sortieren nicht 
   const merged = mergeBatchResults(
     ["hybrid phrasing", "degraded phrasing"],
     [
-      { hits: [{ id: "a", score: 160 }, { id: "c", score: 120 }], recall_id: "r1", score_kind: "rrf" },
-      { hits: [{ id: "b", score: 405585 }, { id: "a", score: 9 }], recall_id: "r2", score_kind: "bm25", unfused: true },
+      {
+        hits: [
+          { id: "a", score: 160 },
+          { id: "c", score: 120 },
+        ],
+        recall_id: "r1",
+        score_kind: "rrf",
+      },
+      {
+        hits: [
+          { id: "b", score: 405585 },
+          { id: "a", score: 9 },
+        ],
+        recall_id: "r2",
+        score_kind: "bm25",
+        unfused: true,
+      },
     ],
-    5,
+    5
   );
 
   assert.equal(merged.hits[0]!.id, "a", "der in BEIDEN Phrasierungen hoch gerankte Hit führt, nicht der große Rohwert");
@@ -109,9 +124,16 @@ test("Befund 1 — mergeBatchResults: gleicher Raum behält den Best-Score-Merge
     ["q1", "q2"],
     [
       { hits: [{ id: "x", score: 50 }], recall_id: "r1", score_kind: "rrf" },
-      { hits: [{ id: "x", score: 120 }, { id: "y", score: 40 }], recall_id: "r2", score_kind: "rrf" },
+      {
+        hits: [
+          { id: "x", score: 120 },
+          { id: "y", score: 40 },
+        ],
+        recall_id: "r2",
+        score_kind: "rrf",
+      },
     ],
-    5,
+    5
   );
   assert.equal(merged.hits[0]!.id, "x");
   assert.equal(merged.hits[0]!.score, 120, "vergleichbare Räume dürfen vergleichen");
@@ -127,17 +149,19 @@ test("Befund 2 — fuseCommonsHits: Commons ist eine zweite Rangliste, kein zwei
     { id: "own", score: 160 } as unknown as RecallHit,
     { id: "own2", score: 90 } as unknown as RecallHit,
   ];
-  const commons = [
-    { id: "recipe", score: 405585 } as unknown as RecallHit,
-  ];
+  const commons = [{ id: "recipe", score: 405585 } as unknown as RecallHit];
   const fused = fuseCommonsHits(personal, commons, () => 0.8, { personalFused: false });
 
-  assert.equal(fused[0]!.id, "own", "ein sechsstelliger BM25-Wert kauft keinen Rang — 0.8 × sechsstellig ist sechsstellig");
+  assert.equal(
+    fused[0]!.id,
+    "own",
+    "ein sechsstelliger BM25-Wert kauft keinen Rang — 0.8 × sechsstellig ist sechsstellig"
+  );
   assert.equal(fused[0]!.score, Math.round((RRF_SCALE / (RRF_K + 1)) * 1000) / 1000);
   // Rang 1 im Commons-Index (×0.8) landet hinter Rang 2 der persönlichen
   // Liste — der Rohwert 405585 kauft keinen einzigen Platz.
   assert.equal(fused[2]!.id, "recipe");
-  assert.equal(fused[2]!.score, Math.round((0.8 * (RRF_SCALE / (RRF_K + 1))) * 1000) / 1000);
+  assert.equal(fused[2]!.score, Math.round(0.8 * (RRF_SCALE / (RRF_K + 1)) * 1000) / 1000);
   for (const h of fused) {
     assert.ok(h.score <= (2 * RRF_SCALE) / (RRF_K + 1), "alles liegt unter der RRF-Obergrenze");
   }
@@ -151,8 +175,8 @@ test("Befund 2 — fuseCommonsHits: ID-Kollision behält das persönliche Memory
   assert.equal(fused[0]!.scope, "personal", "der persönliche Treffer gewinnt die Kollision");
   assert.equal(
     fused[0]!.score,
-    Math.round((1.8 * (RRF_SCALE / (RRF_K + 1))) * 1000) / 1000,
-    "Übereinstimmung beider Ranglisten hebt — genau das kann RRF und die Multiplikation nicht",
+    Math.round(1.8 * (RRF_SCALE / (RRF_K + 1)) * 1000) / 1000,
+    "Übereinstimmung beider Ranglisten hebt — genau das kann RRF und die Multiplikation nicht"
   );
 });
 
@@ -161,7 +185,11 @@ test("Befund 2 — recallHandler: der Commons-Treffer erreicht den Caller auf de
   const dirC = await mkdtemp(join(tmpdir(), "bastra-commons-fuse-c-"));
   try {
     await writeFile(join(dirP, "own.md"), memoryMd("own-note", "flux compensator drift tuning", "Body own."), "utf8");
-    await writeFile(join(dirC, "recipe.md"), memoryMd("spinner-recipe", "button spinner clipped width jumps", "Body recipe."), "utf8");
+    await writeFile(
+      join(dirC, "recipe.md"),
+      memoryMd("spinner-recipe", "button spinner clipped width jumps", "Body recipe."),
+      "utf8"
+    );
 
     const vault = new Vault(dirP);
     await vault.init();
@@ -179,7 +207,7 @@ test("Befund 2 — recallHandler: der Commons-Treffer erreicht den Caller auf de
     assert.equal(
       recipe.score,
       Math.round(0.8 * (RRF_SCALE / (RRF_K + 1)) * 1000) / 1000,
-      "kein roher BM25-Wert × 0.8 mehr, sondern der gewichtete Rang-Beitrag",
+      "kein roher BM25-Wert × 0.8 mehr, sondern der gewichtete Rang-Beitrag"
     );
     assert.equal(res.score_kind, "rrf", "die servierte Zahl liegt in der fusionierten Rang-Skala");
 
@@ -222,7 +250,7 @@ test("Befund 4 — mergeHookRecallHits: Belege bleiben beim Score-Gewinner, kein
   assert.equal(
     merged[0]!.matched_recall_when,
     false,
-    "sonst entsteht ein Treffer mit Score 150 UND Triggerbeleg, den keiner der beiden Recalls je hatte",
+    "sonst entsteht ein Treffer mit Score 150 UND Triggerbeleg, den keiner der beiden Recalls je hatte"
   );
   assert.equal(merged[0]!.anchor_strength, undefined);
 });
@@ -256,7 +284,7 @@ function hookRecall(port: number, payload: Record<string, unknown>): Promise<Rec
         let out = "";
         res.on("data", (c) => (out += c));
         res.on("end", () => resolve(JSON.parse(out || "{}")));
-      },
+      }
     );
     req.on("error", reject);
     req.end(body);
@@ -271,13 +299,17 @@ test("Befund 3 — /hook/recall: ein degradierter Content-Arm mischt seine rohen
   const folder = join(dir, "memories");
   await mkdir(folder, { recursive: true });
   for (let i = 0; i < 200; i++) {
-    await writeFile(join(folder, `f${i}.md`), memoryMd(`filler-${i}`, `filler topic ${i}`, `Body filler ${i}.`), "utf8");
+    await writeFile(
+      join(folder, `f${i}.md`),
+      memoryMd(`filler-${i}`, `filler topic ${i}`, `Body filler ${i}.`),
+      "utf8"
+    );
   }
   await writeFile(join(folder, "p.md"), memoryMd("prompt-hit", "ANCHORWORD", "Body ANCHORWORD."), "utf8");
   await writeFile(
     join(folder, "c.md"),
     memoryMd("content-hit", RARE_TERMS.join(" "), `${RARE_TERMS.join(" ")} ${RARE_TERMS.join(" ")}`),
-    "utf8",
+    "utf8"
   );
 
   const vault = new Vault(dir);
@@ -336,7 +368,7 @@ test("Befund 3 — /hook/recall: ein degradierter Content-Arm mischt seine rohen
   for (const h of hits) {
     assert.ok(
       h.score <= RRF_CEILING,
-      `${h.id} trägt ${h.score} — ein roher BM25-Wert in einer als "rrf" gemeldeten Liste`,
+      `${h.id} trägt ${h.score} — ein roher BM25-Wert in einer als "rrf" gemeldeten Liste`
     );
   }
 });
@@ -350,21 +382,36 @@ test("Befund A — fuseCommonsHits(personalFused): der persönliche Score überl
   const twoArmed = (2 * RRF_SCALE) / (RRF_K + 1);
   const oneArmed = RRF_SCALE / (RRF_K + 1);
   const personal = [
-    { id: "own", score: Math.round(twoArmed * 1000) / 1000, rrf: { rank_bm25: 1, rank_vector: 1, raw: 1 / 3 } } as unknown as RecallHit,
+    {
+      id: "own",
+      score: Math.round(twoArmed * 1000) / 1000,
+      rrf: { rank_bm25: 1, rank_vector: 1, raw: 1 / 3 },
+    } as unknown as RecallHit,
   ];
   const commons = [{ id: "recipe", score: 405585 } as unknown as RecallHit];
 
   const fused = fuseCommonsHits(personal, commons, () => 0.8, { personalFused: true });
 
   assert.equal(fused[0]!.id, "own");
-  assert.equal(fused[0]!.score, Math.round(twoArmed * 1000) / 1000, "unverändert — Commons hat zu diesem Hit nichts beigetragen");
+  assert.equal(
+    fused[0]!.score,
+    Math.round(twoArmed * 1000) / 1000,
+    "unverändert — Commons hat zu diesem Hit nichts beigetragen"
+  );
   assert.equal(fused[1]!.id, "recipe");
   assert.equal(fused[1]!.score, Math.round(0.8 * oneArmed * 1000) / 1000);
 });
 
 test("Befund A — fuseCommonsHits(personalFused): die ID-Kollision addiert auf den bestehenden Score", () => {
   const oneArmed = RRF_SCALE / (RRF_K + 1);
-  const personal = [{ id: "same", score: 163.934, scope: "personal", rrf: { rank_bm25: 1, rank_vector: 1, raw: 1 / 3 } } as unknown as RecallHit];
+  const personal = [
+    {
+      id: "same",
+      score: 163.934,
+      scope: "personal",
+      rrf: { rank_bm25: 1, rank_vector: 1, raw: 1 / 3 },
+    } as unknown as RecallHit,
+  ];
   const fused = fuseCommonsHits(personal, [{ id: "same", score: 7 } as unknown as RecallHit], () => 0.8, {
     personalFused: true,
   });
@@ -376,12 +423,18 @@ test("Befund A — fuseCommonsHits(personalFused): die ID-Kollision addiert auf 
 test("Befund A — fuseCommonsHits(personalFused): der rrf-Beleg überlebt, sonst kippt no_home", () => {
   // `isNoHome` verlangt den `rrf`-Block. Wurde er beim Commons-Merge entfernt,
   // meldete derselbe Recall mit aktivierten Commons plötzlich no_home=false.
-  const personal = [{ id: "own", score: 81.967, rrf: { rank_bm25: 1, rank_vector: null, raw: 1 / 6 } } as unknown as RecallHit];
+  const personal = [
+    { id: "own", score: 81.967, rrf: { rank_bm25: 1, rank_vector: null, raw: 1 / 6 } } as unknown as RecallHit,
+  ];
   const fused = fuseCommonsHits(personal, [{ id: "recipe", score: 5 } as unknown as RecallHit], () => 0.8, {
     personalFused: true,
   });
   const own = fused.find((h) => h.id === "own")!;
-  assert.deepEqual(own.rrf, { rank_bm25: 1, rank_vector: null, raw: 1 / 6 }, "der Beleg beschreibt weiterhin den persönlichen Anteil");
+  assert.deepEqual(
+    own.rrf,
+    { rank_bm25: 1, rank_vector: null, raw: 1 / 6 },
+    "der Beleg beschreibt weiterhin den persönlichen Anteil"
+  );
 });
 
 test("Befund A — recallHandler: ein REQUIRED-Treffer bleibt mit Commons REQUIRED", async () => {
@@ -389,7 +442,11 @@ test("Befund A — recallHandler: ein REQUIRED-Treffer bleibt mit Commons REQUIR
   const dirC = await mkdtemp(join(tmpdir(), "bastra-commons-req-c-"));
   try {
     await writeFile(join(dirP, "own.md"), memoryMd("own-note", "flux compensator drift tuning", "Body own."), "utf8");
-    await writeFile(join(dirC, "recipe.md"), memoryMd("spinner-recipe", "flux compensator drift tuning", "Body recipe."), "utf8");
+    await writeFile(
+      join(dirC, "recipe.md"),
+      memoryMd("spinner-recipe", "flux compensator drift tuning", "Body recipe."),
+      "utf8"
+    );
 
     const vault = new Vault(dirP);
     await vault.init();
@@ -409,12 +466,12 @@ test("Befund A — recallHandler: ein REQUIRED-Treffer bleibt mit Commons REQUIR
     const hits = res.hits as { id: string; score: number }[];
     assert.ok(
       hits.some((h) => h.id === "own-note"),
-      "das persönliche Memory ist Rang 1 in beiden Armen — mit min_score=100 darf Commons es nicht wegdrücken",
+      "das persönliche Memory ist Rang 1 in beiden Armen — mit min_score=100 darf Commons es nicht wegdrücken"
     );
     assert.equal(
       hits.find((h) => h.id === "own-note")!.score,
       Math.round(RRF_CEILING * 1000) / 1000,
-      "der Score ist exakt der beidarmige Anker — die Commons-Runde lässt ihn unangetastet",
+      "der Score ist exakt der beidarmige Anker — die Commons-Runde lässt ihn unangetastet"
     );
     assert.equal(res.score_kind, "rrf");
 
@@ -435,10 +492,25 @@ test("Befund B — mergeBatchResults: im gemischten Batch nennt JEDER Hit seinen
   const merged = mergeBatchResults(
     ["hybrid phrasing", "degraded phrasing"],
     [
-      { hits: [{ id: "a", score: 160 }, { id: "c", score: 120 }], recall_id: "r1", score_kind: "rrf" },
-      { hits: [{ id: "b", score: 405585 }, { id: "a", score: 9 }], recall_id: "r2", score_kind: "bm25", unfused: true },
+      {
+        hits: [
+          { id: "a", score: 160 },
+          { id: "c", score: 120 },
+        ],
+        recall_id: "r1",
+        score_kind: "rrf",
+      },
+      {
+        hits: [
+          { id: "b", score: 405585 },
+          { id: "a", score: 9 },
+        ],
+        recall_id: "r2",
+        score_kind: "bm25",
+        unfused: true,
+      },
     ],
-    5,
+    5
   );
   const byId = new Map(merged.hits.map((h) => [h.id, h]));
   assert.equal(byId.get("a")!.score_kind, "rrf", "160 kam aus der fusionierten Phrasierung");
@@ -475,7 +547,7 @@ test("Befund C — recall-Event trägt den Raum von top_score UND candidate_pool
     assert.equal(
       logged[0]!.candidate_pool_score_version,
       undefined,
-      "auf roher BM25-Skala gibt es keine Formelversion — dieselbe Regel wie beim Haupt-Score",
+      "auf roher BM25-Skala gibt es keine Formelversion — dieselbe Regel wie beim Haupt-Score"
     );
 
     search.stop();
@@ -491,7 +563,11 @@ test("Befund D — recallHandler: scope 'Commons' zählt als Commons-Scope", asy
   const dirP = await mkdtemp(join(tmpdir(), "bastra-commons-case-p-"));
   const dirC = await mkdtemp(join(tmpdir(), "bastra-commons-case-c-"));
   try {
-    await writeFile(join(dirC, "recipe.md"), memoryMd("spinner-recipe", "button spinner clipped width jumps", "Body recipe."), "utf8");
+    await writeFile(
+      join(dirC, "recipe.md"),
+      memoryMd("spinner-recipe", "button spinner clipped width jumps", "Body recipe."),
+      "utf8"
+    );
     const vault = new Vault(dirP);
     await vault.init();
     const search = new SearchIndex(vault);
@@ -505,7 +581,7 @@ test("Befund D — recallHandler: scope 'Commons' zählt als Commons-Scope", asy
     const res = await recallHandler(deps, { query: "button spinner clipped width jumps", k: 5, scope: "Commons" });
     assert.ok(
       (res.hits as { id: string }[]).some((h) => h.id === "spinner-recipe"),
-      "eine großgeschriebene Schreibweise desselben Scopes darf den Commons-Index nicht abschalten",
+      "eine großgeschriebene Schreibweise desselben Scopes darf den Commons-Index nicht abschalten"
     );
 
     commonsSearch.stop();
@@ -543,13 +619,10 @@ test("Befund E — fuseCommonsHits(collapse): der Score erklärt sich auch auf d
   assert.equal(
     rrf!.personal_score,
     Math.round((RRF_SCALE / (RRF_K + 1)) * 1000) / 1000,
-    "der Anteil ohne Commons muss ablesbar bleiben",
+    "der Anteil ohne Commons muss ablesbar bleiben"
   );
   // Und der Beleg muss die ausgelieferte Zahl auch wirklich tragen.
-  assert.equal(
-    fused[0]!.score,
-    Math.round((rrf!.personal_score! + 0.8 * (RRF_SCALE / (RRF_K + 1))) * 1000) / 1000,
-  );
+  assert.equal(fused[0]!.score, Math.round((rrf!.personal_score! + 0.8 * (RRF_SCALE / (RRF_K + 1))) * 1000) / 1000);
 });
 
 /**
@@ -579,11 +652,7 @@ test("Befund F — fuseCommonsHits(personalFused): rrf.raw × RRF_SCALE ergibt w
   const hit = fused[0]!;
   assert.ok(hit.rrf, "ohne Beleg ist die Zahl unerklärt");
   assert.equal(reconstructed(hit), hit.score, "der Beleg muss den ausgelieferten Score tragen");
-  assert.equal(
-    hit.rrf!.personal_score,
-    163.934,
-    "und der Anteil ohne Commons bleibt getrennt lesbar",
-  );
+  assert.equal(hit.rrf!.personal_score, 163.934, "und der Anteil ohne Commons bleibt getrennt lesbar");
 });
 
 test("Befund F — fuseCommonsHits(collapse): rrf.raw trägt auch den kollabierten Score", () => {

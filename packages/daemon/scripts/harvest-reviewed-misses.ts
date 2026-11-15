@@ -22,32 +22,45 @@ import {
   type EvidenceReport,
 } from "../src/learned-recall/reviewed-miss-evidence.js";
 
-const FLAGS_WITH_VALUE = new Set(["--out", "--events", "--vault", "--labels", "--proposals", "--evidence", "--hub-sessions", "--since", "--specimens"]);
+const FLAGS_WITH_VALUE = new Set([
+  "--out",
+  "--events",
+  "--vault",
+  "--labels",
+  "--proposals",
+  "--evidence",
+  "--hub-sessions",
+  "--since",
+  "--specimens",
+]);
 const FLAGS_BARE = new Set(["--hook-lane"]);
 
 function usage(): never {
-  console.error([
-    "usage: tsx scripts/harvest-reviewed-misses.ts [--events DIR] [--vault DIR] [--labels FILE] [--hook-lane]",
-    "         [--out queue.json] [--proposals FILE] [--evidence FILE] [--hub-sessions N] [session.jsonl ...]",
-    "",
-    "  --events DIR      daemon telemetry dir (events-*.jsonl): joins the frozen pool by recall_id",
-    "  --vault DIR       vault root: snapshot for membership proofs; never written",
-    "  --labels FILE     reviewer labels, one JSON object per line: {\"ref\": \"sha256:…\", \"durable\": true}",
-    "  --hook-lane       also observe the hook lane from telemetry alone (needs --events and --vault)",
-    "  --out FILE        write the hashed queue (ledger) here instead of stdout",
-    "  --proposals FILE  write cue proposals here; carries CLEAR memory ids, keep it local",
-    "  --evidence FILE   write heatmap and hot paths here; carries CLEAR memory ids, keep it local",
-    "  --hub-sessions N  distinct sessions above which a memory counts as a hub (default 3)",
-    "  --since DAYS      only telemetry events younger than DAYS (default: all files in the dir)",
-    "  --specimens FILE  write one hashed, query-free specimen per (lane, class) with provenance — live fixtures",
-    "",
-    "Sessions are optional when --hook-lane is given. The evidence report is one JSON line on stderr:",
-    "coverage · observed · gaps (dens) · engines — kept apart so 0 misses and no telemetry never look alike.",
-  ].join("\n"));
+  console.error(
+    [
+      "usage: tsx scripts/harvest-reviewed-misses.ts [--events DIR] [--vault DIR] [--labels FILE] [--hook-lane]",
+      "         [--out queue.json] [--proposals FILE] [--evidence FILE] [--hub-sessions N] [session.jsonl ...]",
+      "",
+      "  --events DIR      daemon telemetry dir (events-*.jsonl): joins the frozen pool by recall_id",
+      "  --vault DIR       vault root: snapshot for membership proofs; never written",
+      '  --labels FILE     reviewer labels, one JSON object per line: {"ref": "sha256:…", "durable": true}',
+      "  --hook-lane       also observe the hook lane from telemetry alone (needs --events and --vault)",
+      "  --out FILE        write the hashed queue (ledger) here instead of stdout",
+      "  --proposals FILE  write cue proposals here; carries CLEAR memory ids, keep it local",
+      "  --evidence FILE   write heatmap and hot paths here; carries CLEAR memory ids, keep it local",
+      "  --hub-sessions N  distinct sessions above which a memory counts as a hub (default 3)",
+      "  --since DAYS      only telemetry events younger than DAYS (default: all files in the dir)",
+      "  --specimens FILE  write one hashed, query-free specimen per (lane, class) with provenance — live fixtures",
+      "",
+      "Sessions are optional when --hook-lane is given. The evidence report is one JSON line on stderr:",
+      "coverage · observed · gaps (dens) · engines — kept apart so 0 misses and no telemetry never look alike.",
+    ].join("\n")
+  );
   process.exit(2);
 }
 
-type ValueFlag = "out" | "events" | "vault" | "labels" | "proposals" | "evidence" | "hub-sessions" | "since" | "specimens";
+type ValueFlag =
+  "out" | "events" | "vault" | "labels" | "proposals" | "evidence" | "hub-sessions" | "since" | "specimens";
 
 interface Args extends Record<ValueFlag, string | null> {
   hookLane: boolean;
@@ -55,7 +68,19 @@ interface Args extends Record<ValueFlag, string | null> {
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { out: null, events: null, vault: null, labels: null, proposals: null, evidence: null, "hub-sessions": null, since: null, specimens: null, hookLane: false, inputs: [] };
+  const args: Args = {
+    out: null,
+    events: null,
+    vault: null,
+    labels: null,
+    proposals: null,
+    evidence: null,
+    "hub-sessions": null,
+    since: null,
+    specimens: null,
+    hookLane: false,
+    inputs: [],
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (FLAGS_WITH_VALUE.has(arg)) {
@@ -109,8 +134,19 @@ async function main(): Promise<void> {
   };
   if (args.vault && engines.snapshot?.idCount === 0) fail(`--vault ${args.vault}: no memory in it`);
 
-  const transcripts = await Promise.all(args.inputs.map(async (input) => ({ jsonl: await readFile(input, "utf8"), fileName: basename(resolve(input)) })));
-  const { transcript: pairs, hook, stats, gaps, heat, hubs, paths, proposals } = observeLanes(transcripts, telemetry, engines, { hookLane: args.hookLane, hubSessions });
+  const transcripts = await Promise.all(
+    args.inputs.map(async (input) => ({ jsonl: await readFile(input, "utf8"), fileName: basename(resolve(input)) }))
+  );
+  const {
+    transcript: pairs,
+    hook,
+    stats,
+    gaps,
+    heat,
+    hubs,
+    paths,
+    proposals,
+  } = observeLanes(transcripts, telemetry, engines, { hookLane: args.hookLane, hubSessions });
   const transcriptRecords = pairs.map((pair) => pair.record);
 
   const byTranscript = countClasses(transcriptRecords);
@@ -135,8 +171,16 @@ async function main(): Promise<void> {
       by_class: { transcript: byTranscript, hook: byHook },
       live_classes: liveClasses(byTranscript, byHook),
       observed_thin: thinClasses(byTranscript, byHook),
-      heatmap_top: heat.slice(0, 8).map(({ memoryId, surfaced, surfacedSessions, loaded, hub, surfacedNeverLoaded }) =>
-        ({ memoryId: hash("id:" + memoryId), surfaced, surfacedSessions, loaded, hub, surfacedNeverLoaded })),
+      heatmap_top: heat
+        .slice(0, 8)
+        .map(({ memoryId, surfaced, surfacedSessions, loaded, hub, surfacedNeverLoaded }) => ({
+          memoryId: hash("id:" + memoryId),
+          surfaced,
+          surfacedSessions,
+          loaded,
+          hub,
+          surfacedNeverLoaded,
+        })),
       hubs: hubs.size,
       surfaced_never_loaded: heat.filter((row) => row.surfacedNeverLoaded).length,
       hot_paths_established: paths.filter((path) => path.established).length,
@@ -158,11 +202,22 @@ async function main(): Promise<void> {
 
   if (args.proposals) await writeFile(args.proposals, JSON.stringify(proposals, null, 2) + "\n", "utf8");
   if (args.evidence) {
-    await writeFile(args.evidence, JSON.stringify({ kind: "reviewed-miss-evidence/v1", hub_sessions: hubSessions, heatmap: heat, hot_paths: paths }, null, 2) + "\n", "utf8");
+    await writeFile(
+      args.evidence,
+      JSON.stringify(
+        { kind: "reviewed-miss-evidence/v1", hub_sessions: hubSessions, heatmap: heat, hot_paths: paths },
+        null,
+        2
+      ) + "\n",
+      "utf8"
+    );
   }
   const queue = [...transcriptRecords.map((record) => ({ lane: "transcript" as const, ...record })), ...hook.records];
   if (args.specimens) {
-    const specimens = specimensOf(queue, { harvested_at: new Date().toISOString(), window_days: sinceDays > 0 ? sinceDays : null });
+    const specimens = specimensOf(queue, {
+      harvested_at: new Date().toISOString(),
+      window_days: sinceDays > 0 ? sinceDays : null,
+    });
     await writeFile(args.specimens, specimens.map((s) => JSON.stringify(s)).join("\n") + "\n", "utf8");
   }
   const rendered = JSON.stringify(queue, null, 2) + "\n";

@@ -1,24 +1,33 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { spawnSync } from "node:child_process";
-import { cmdUpdate, detectInstallMode, packageRootFromCliPath, resolveInstalledRuntime, type UpdateIo } from "../src/cli/update.js";
+import {
+  cmdUpdate,
+  detectInstallMode,
+  packageRootFromCliPath,
+  resolveInstalledRuntime,
+  type UpdateIo,
+} from "../src/cli/update.js";
 import { parseArgs } from "../src/cli/commands.js";
 import { npmInvocation, globalDaemonScript } from "../src/cli/update-npm.js";
 import { verifyProvenance } from "../src/cli/update-preflight.js";
 
-const node = 'C:\\Program Files\\nodejs\\node.exe';
-const wrapper = 'C:\\Program Files\\nodejs\\npm.cmd';
-const npmCli = 'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js';
-const npmPackage = 'C:\\Program Files\\nodejs\\node_modules\\npm\\package.json';
-const prefix = 'C:\\Users\\Jane Doe\\AppData\\Roaming\\npm';
-const root = prefix + '\\node_modules\\@bastra-recall\\daemon';
-const script = root + '\\dist\\index.js';
-const cli = root + '\\dist\\cli.js';
+const node = "C:\\Program Files\\nodejs\\node.exe";
+const wrapper = "C:\\Program Files\\nodejs\\npm.cmd";
+const npmCli = "C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js";
+const npmPackage = "C:\\Program Files\\nodejs\\node_modules\\npm\\package.json";
+const prefix = "C:\\Users\\Jane Doe\\AppData\\Roaming\\npm";
+const root = prefix + "\\node_modules\\@bastra-recall\\daemon";
+const script = root + "\\dist\\index.js";
+const cli = root + "\\dist\\cli.js";
 
 function fixture() {
   const files = new Map<string, string>([
-    [npmCli, "npm cli"], [npmPackage, JSON.stringify({ name: "npm", bin: { npm: "bin/npm-cli.js" } })],
-    [script, "daemon"], [cli, "new cli"], [root + '\\package.json', JSON.stringify({ version: "9.0.0" })],
+    [npmCli, "npm cli"],
+    [npmPackage, JSON.stringify({ name: "npm", bin: { npm: "bin/npm-cli.js" } })],
+    [script, "daemon"],
+    [cli, "new cli"],
+    [root + "\\package.json", JSON.stringify({ version: "9.0.0" })],
   ]);
   const calls: Array<{ bin: string; args: string[]; opts: unknown }> = [];
   const refreshes: unknown[] = [];
@@ -29,50 +38,98 @@ function fixture() {
     return { status: 0, stdout: "", stderr: "" };
   }) as typeof spawnSync;
   const io: UpdateIo = {
-    platform: "win32", node, cliPath: root + '\\dist\\cli\\update.js',
-    find: name => { assert.equal(name, "npm"); return wrapper; },
-    exists: path => files.has(path), file: path => files.has(path),
-    read: path => { const content = files.get(path); if (content === undefined) throw new Error("not found"); return content; },
-    run: (bin, args, opts) => { calls.push({ bin, args, opts }); return { ok: true, signal: false, detail: "ok" }; },
-    captured: (bin, args, opts) => { calls.push({ bin, args, opts }); return { ok: true, signal: false, detail: "ok", stdout: prefix, stderr: "" }; },
+    platform: "win32",
+    node,
+    cliPath: root + "\\dist\\cli\\update.js",
+    find: (name) => {
+      assert.equal(name, "npm");
+      return wrapper;
+    },
+    exists: (path) => files.has(path),
+    file: (path) => files.has(path),
+    read: (path) => {
+      const content = files.get(path);
+      if (content === undefined) throw new Error("not found");
+      return content;
+    },
+    run: (bin, args, opts) => {
+      calls.push({ bin, args, opts });
+      return { ok: true, signal: false, detail: "ok" };
+    },
+    captured: (bin, args, opts) => {
+      calls.push({ bin, args, opts });
+      return { ok: true, signal: false, detail: "ok", stdout: prefix, stderr: "" };
+    },
     spawn,
-    preflight: async options => { assert.equal(options.root, root); assert.ok(options.verify); assert.equal(options.verify(root).ok, true); return { ok: true, dirty: [], notes: [] }; },
+    preflight: async (options) => {
+      assert.equal(options.root, root);
+      assert.ok(options.verify);
+      assert.equal(options.verify(root).ok, true);
+      return { ok: true, dirty: [], notes: [] };
+    },
     reapply: () => {},
-    manifest: async path => ({ root: path, version: "9", created_at: "now", files: [] }),
+    manifest: async (path) => ({ root: path, version: "9", created_at: "now", files: [] }),
     clearBlocked: async () => {},
-    install: async () => { inline = true; return 0; },
-    refreshAddress:async()=>{},
-    refresh: async (_, options) => { refreshes.push(options); return { ok: true, detail: "ok" }; },
+    install: async () => {
+      inline = true;
+      return 0;
+    },
+    refreshAddress: async () => {},
+    refresh: async (_, options) => {
+      refreshes.push(options);
+      return { ok: true, detail: "ok" };
+    },
     service: () => null,
-    ask: installed => { questions.push(installed); return null; },
+    ask: (installed) => {
+      questions.push(installed);
+      return null;
+    },
   };
   return { io, files, calls, refreshes, questions, inline: () => inline };
 }
 
 test("Windows npm paths detect global and ephemeral installs and derive the correct package root", () => {
-  assert.equal(detectInstallMode(root + '\\dist\\cli\\update.js').mode, "npm-global");
-  assert.equal(detectInstallMode('C:\\Users\\Jane\\npm-cache\\_npx\\abc\\node_modules\\@bastra-recall\\daemon\\dist\\cli\\update.js').mode, "npm-global");
-  assert.equal(packageRootFromCliPath(root + '\\dist\\cli\\update.js', "win32"), root);
+  assert.equal(detectInstallMode(root + "\\dist\\cli\\update.js").mode, "npm-global");
+  assert.equal(
+    detectInstallMode(
+      "C:\\Users\\Jane\\npm-cache\\_npx\\abc\\node_modules\\@bastra-recall\\daemon\\dist\\cli\\update.js"
+    ).mode,
+    "npm-global"
+  );
+  assert.equal(packageRootFromCliPath(root + "\\dist\\cli\\update.js", "win32"), root);
   assert.equal(globalDaemonScript(prefix, fixture().io), script);
   assert.equal(globalDaemonScript("relative-prefix", fixture().io), null);
-  assert.equal(detectInstallMode("/opt/homebrew/Cellar/bastra-recall/1/libexec/packages/daemon/dist/cli/update.js").mode, "brew");
-  assert.equal(detectInstallMode("/usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js").mode, "npm-global");
+  assert.equal(
+    detectInstallMode("/opt/homebrew/Cellar/bastra-recall/1/libexec/packages/daemon/dist/cli/update.js").mode,
+    "brew"
+  );
+  assert.equal(
+    detectInstallMode("/usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js").mode,
+    "npm-global"
+  );
 });
 
 for (const staged of [true, false]) {
-  test(`cmdUpdate Windows npm-global executes npm and the new CLI via Node (staged=${staged})`, async t => {
+  test(`cmdUpdate Windows npm-global executes npm and the new CLI via Node (staged=${staged})`, async (t) => {
     t.mock.method(process.stdout, "write", () => true);
     const f = fixture();
-    const args = parseArgs(["update", "--yes", "--vault", 'C:\\Vault & notes', ...(staged ? ["--staged"] : [])]);
+    const args = parseArgs(["update", "--yes", "--vault", "C:\\Vault & notes", ...(staged ? ["--staged"] : [])]);
     assert.equal(await cmdUpdate(args, f.io), 0);
-    const audit = f.calls.find(c => c.args.includes("audit"))!;
+    const audit = f.calls.find((c) => c.args.includes("audit"))!;
     assert.deepEqual([audit.bin, ...audit.args], [node, npmCli, "audit", "signatures"]);
-    const install = f.calls.find(c => c.args.includes("-g") && c.args.includes("install"))!;
+    const install = f.calls.find((c) => c.args.includes("-g") && c.args.includes("install"))!;
     assert.deepEqual([install.bin, ...install.args], [node, npmCli, "install", "-g", "@bastra-recall/daemon@latest"]);
-    const register = f.calls.find(c => c.args[0] === cli)!;
-    assert.deepEqual([register.bin, ...register.args], [node, cli, "install", "all", "--no-ollama", "--no-stop-hook", "--yes", "--vault", 'C:\\Vault & notes']);
+    const register = f.calls.find((c) => c.args[0] === cli)!;
+    assert.deepEqual(
+      [register.bin, ...register.args],
+      [node, cli, "install", "all", "--no-ollama", "--no-stop-hook", "--yes", "--vault", "C:\\Vault & notes"]
+    );
     assert.equal(f.inline(), false, "never pin registration from the old in-memory CLI");
-    assert.deepEqual(f.questions, staged ? [] : [{ node, script, version: "9.0.0" }], "interactive asks once using the installed runtime; staged never asks");
+    assert.deepEqual(
+      f.questions,
+      staged ? [] : [{ node, script, version: "9.0.0" }],
+      "interactive asks once using the installed runtime; staged never asks"
+    );
     assert.deepEqual(f.refreshes, [{ target: { node, script, version: "9.0.0" }, reload: !staged, platform: "win32" }]);
     for (const call of f.calls) {
       assert.equal(call.bin, node, "all Windows update subprocesses execute Node, never .cmd");
@@ -81,25 +138,32 @@ for (const staged of [true, false]) {
   });
 }
 
-test("ephemeral Windows updater hands off to the installed global CLI", async t => {
+test("ephemeral Windows updater hands off to the installed global CLI", async (t) => {
   t.mock.method(process.stdout, "write", () => true);
   const f = fixture();
-  f.io.cliPath = 'C:\\Users\\Jane\\npm-cache\\_npx\\abc\\node_modules\\@bastra-recall\\daemon\\dist\\cli\\update.js';
+  f.io.cliPath = "C:\\Users\\Jane\\npm-cache\\_npx\\abc\\node_modules\\@bastra-recall\\daemon\\dist\\cli\\update.js";
   f.io.preflight = async () => ({ ok: true, dirty: [], notes: [] });
   assert.equal(await cmdUpdate(parseArgs(["update", "--staged"]), f.io), 0);
-  assert.ok(f.calls.some(c => c.bin === node && c.args[0] === cli));
+  assert.ok(f.calls.some((c) => c.bin === node && c.args[0] === cli));
   assert.equal(f.inline(), false);
 });
 
-test("unknown npm wrapper or adjacent package fails explicitly without shell fallback or stale registration", async t => {
+test("unknown npm wrapper or adjacent package fails explicitly without shell fallback or stale registration", async (t) => {
   t.mock.method(process.stdout, "write", () => true);
   t.mock.method(process.stderr, "write", () => true);
   for (const mutation of [
-    (f: ReturnType<typeof fixture>) => { f.io.find = () => 'C:\\Tools\\npm.exe'; },
-    (f: ReturnType<typeof fixture>) => { f.files.delete(npmCli); },
-    (f: ReturnType<typeof fixture>) => { f.files.set(npmPackage, JSON.stringify({ name: "other", bin: { npm: "bin/npm-cli.js" } })); },
+    (f: ReturnType<typeof fixture>) => {
+      f.io.find = () => "C:\\Tools\\npm.exe";
+    },
+    (f: ReturnType<typeof fixture>) => {
+      f.files.delete(npmCli);
+    },
+    (f: ReturnType<typeof fixture>) => {
+      f.files.set(npmPackage, JSON.stringify({ name: "other", bin: { npm: "bin/npm-cli.js" } }));
+    },
   ]) {
-    const f = fixture(); mutation(f);
+    const f = fixture();
+    mutation(f);
     assert.equal(await cmdUpdate(parseArgs(["update", "--staged"]), f.io), 1);
     assert.equal(f.inline(), false);
     assert.equal(f.refreshes.length, 0);
@@ -107,10 +171,11 @@ test("unknown npm wrapper or adjacent package fails explicitly without shell fal
   }
 });
 
-test("missing newly installed CLI refuses the old-process fallback and leaves autostart alone", async t => {
+test("missing newly installed CLI refuses the old-process fallback and leaves autostart alone", async (t) => {
   t.mock.method(process.stdout, "write", () => true);
   t.mock.method(process.stderr, "write", () => true);
-  const f = fixture(); f.files.delete(cli);
+  const f = fixture();
+  f.files.delete(cli);
   assert.equal(await cmdUpdate(parseArgs(["update", "--staged"]), f.io), 1);
   assert.equal(f.inline(), false);
   assert.equal(f.refreshes.length, 0);
@@ -127,8 +192,17 @@ test("Windows installed runtime is resolved from npm prefix and never from the u
 test("POSIX npm invocation and global layout retain the existing executable and lib directory", () => {
   const invocation = npmInvocation({ platform: "linux", find: () => "/usr/local/bin/npm" });
   assert.deepEqual(invocation, { bin: "/usr/local/bin/npm", args: [] });
-  assert.equal(globalDaemonScript("/usr/local", { platform: "linux", exists: path => path === "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js" }), "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js");
-  assert.equal(packageRootFromCliPath("/usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js", "darwin"), "/usr/local/lib/node_modules/@bastra-recall/daemon");
+  assert.equal(
+    globalDaemonScript("/usr/local", {
+      platform: "linux",
+      exists: (path) => path === "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+    }),
+    "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js"
+  );
+  assert.equal(
+    packageRootFromCliPath("/usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js", "darwin"),
+    "/usr/local/lib/node_modules/@bastra-recall/daemon"
+  );
 });
 
 test("provenance audit uses the same shell-free Windows npm invocation", () => {
@@ -138,15 +212,31 @@ test("provenance audit uses the same shell-free Windows npm invocation", () => {
   assert.equal((f.calls[0].opts as { cwd: string }).cwd, root);
 });
 
- test("release C: missing old assistant runtime does not abort managed update refresh", async t => {
-  t.mock.method(process.stdout,"write",()=>true);let warning="";t.mock.method(process.stderr,"write",(s:any)=>{warning+=s;return true;});
-  const f=fixture();(f.io as any).refreshAddress=async()=>{throw Object.assign(Error("old runtime missing"),{code:"ENOENT"});};
-  assert.equal(await cmdUpdate(parseArgs(["update","--staged"]),f.io),0);assert.equal(f.refreshes.length,1);assert.match(warning,/assistant|Assistent/i);
- });
+test("release C: missing old assistant runtime does not abort managed update refresh", async (t) => {
+  t.mock.method(process.stdout, "write", () => true);
+  let warning = "";
+  t.mock.method(process.stderr, "write", (s: any) => {
+    warning += s;
+    return true;
+  });
+  const f = fixture();
+  (f.io as any).refreshAddress = async () => {
+    throw Object.assign(Error("old runtime missing"), { code: "ENOENT" });
+  };
+  assert.equal(await cmdUpdate(parseArgs(["update", "--staged"]), f.io), 0);
+  assert.equal(f.refreshes.length, 1);
+  assert.match(warning, /assistant|Assistent/i);
+});
 
-test("final helper review: installed update refresh runs new code in the installed Node runtime",async t=>{
- t.mock.method(process.stdout,"write",()=>true);const f=fixture();delete f.io.refreshAddress;
- assert.equal(await cmdUpdate(parseArgs(["update","--staged"]),f.io),0);
- const call=f.calls.find(c=>c.args.includes("--input-type=module")&&c.args.some(a=>a.includes("refreshAssistantAddressRuntime")));
- assert.ok(call,"fresh helper refresh must be delegated, never imported in the old updater");assert.equal(call.bin,node);assert.equal(call.args.at(-1),script);
+test("final helper review: installed update refresh runs new code in the installed Node runtime", async (t) => {
+  t.mock.method(process.stdout, "write", () => true);
+  const f = fixture();
+  delete f.io.refreshAddress;
+  assert.equal(await cmdUpdate(parseArgs(["update", "--staged"]), f.io), 0);
+  const call = f.calls.find(
+    (c) => c.args.includes("--input-type=module") && c.args.some((a) => a.includes("refreshAssistantAddressRuntime"))
+  );
+  assert.ok(call, "fresh helper refresh must be delegated, never imported in the old updater");
+  assert.equal(call.bin, node);
+  assert.equal(call.args.at(-1), script);
 });

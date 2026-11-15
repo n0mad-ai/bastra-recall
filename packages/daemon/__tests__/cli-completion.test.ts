@@ -14,13 +14,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import {
-  COMMANDS,
-  SURFACES,
-  SHELLS,
-  completionScript,
-  isShell,
-} from "../src/cli/completion.js";
+import { COMMANDS, SURFACES, SHELLS, completionScript, isShell } from "../src/cli/completion.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -44,7 +38,7 @@ test("completion: every dispatched command is offered by Tab (drift gate)", asyn
   assert.deepEqual(
     missing,
     [],
-    `these commands dispatch but are not completable — add them to COMMANDS in cli/completion.ts: ${missing.join(", ")}`,
+    `these commands dispatch but are not completable — add them to COMMANDS in cli/completion.ts: ${missing.join(", ")}`
   );
 });
 
@@ -73,11 +67,7 @@ test("completion: shell scripts carry their own install instructions", () => {
   // Someone runs `bastra completion zsh`, sees output, and needs to know what
   // to do with it — without that line the command is a riddle.
   for (const shell of SHELLS) {
-    assert.match(
-      completionScript(shell),
-      /install:/,
-      `${shell}: no install hint in the emitted script`,
-    );
+    assert.match(completionScript(shell), /install:/, `${shell}: no install hint in the emitted script`);
   }
 });
 

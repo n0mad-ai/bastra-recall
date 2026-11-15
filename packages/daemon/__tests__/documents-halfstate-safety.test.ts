@@ -16,24 +16,13 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  mkdtemp,
-  writeFile,
-  readFile,
-  rm,
-  readdir,
-  mkdir,
-} from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, rm, readdir, mkdir } from "node:fs/promises";
 import { writeFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import matter from "gray-matter";
 import { Vault } from "@bastra-recall/core";
-import {
-  saveDocument,
-  recategorizeDocument,
-  moveDocument,
-} from "../src/documents-write-handler.js";
+import { saveDocument, recategorizeDocument, moveDocument } from "../src/documents-write-handler.js";
 
 async function harness(t: { after: (fn: () => unknown) => void }) {
   const dir = await mkdtemp(join(tmpdir(), "bastra-dochalf-"));
@@ -136,9 +125,7 @@ test("eine externe Änderung während des Tempdatei-Schreibens geht nicht verlor
   await inflateSidecar(doc.sidecar_path, vault);
   const EXTERN = EXTERNAL_SIDECAR(doc.id);
 
-  const armed = armOnTempFile(join(dir, "documents", "alt"), () =>
-    writeFileSync(doc.sidecar_path, EXTERN, "utf8"),
-  );
+  const armed = armOnTempFile(join(dir, "documents", "alt"), () => writeFileSync(doc.sidecar_path, EXTERN, "utf8"));
   t.after(armed.stop);
 
   const outcome = await recategorizeDocument(vault, {
@@ -146,7 +133,7 @@ test("eine externe Änderung während des Tempdatei-Schreibens geht nicht verlor
     title: "Police 2026",
   }).then(
     () => "fulfilled" as const,
-    (err: Error) => err,
+    (err: Error) => err
   );
   armed.stop();
 
@@ -156,7 +143,7 @@ test("eine externe Änderung während des Tempdatei-Schreibens geht nicht verlor
   assert.equal(
     await readFile(doc.sidecar_path, "utf8"),
     EXTERN,
-    "die externe Bearbeitung muss unangetastet auf der Platte stehen",
+    "die externe Bearbeitung muss unangetastet auf der Platte stehen"
   );
 });
 
@@ -166,9 +153,7 @@ test("force überschreibt auch spät keine fremde Datei am Sidecar-Pfad", async 
   await inflateSidecar(doc.sidecar_path, vault);
   const NOTIZ = "# Meine Gedanken\n\nHandgeschrieben, nirgends sonst.\n";
 
-  const armed = armOnTempFile(join(dir, "documents", "alt"), () =>
-    writeFileSync(doc.sidecar_path, NOTIZ, "utf8"),
-  );
+  const armed = armOnTempFile(join(dir, "documents", "alt"), () => writeFileSync(doc.sidecar_path, NOTIZ, "utf8"));
   t.after(armed.stop);
 
   const outcome = await recategorizeDocument(vault, {
@@ -177,18 +162,14 @@ test("force überschreibt auch spät keine fremde Datei am Sidecar-Pfad", async 
     force: true,
   }).then(
     () => "fulfilled" as const,
-    (err: Error) => err,
+    (err: Error) => err
   );
   armed.stop();
 
   assert.equal(armed.state.fired, true, "das Commit-Fenster wurde getroffen");
   assert.notEqual(outcome, "fulfilled", "force ist kein Freibrief auf den Pfad");
   assert.match((outcome as Error).message, /no longer the sidecar/);
-  assert.equal(
-    await readFile(doc.sidecar_path, "utf8"),
-    NOTIZ,
-    "die fremde Datei muss unangetastet sein",
-  );
+  assert.equal(await readFile(doc.sidecar_path, "utf8"), NOTIZ, "die fremde Datei muss unangetastet sein");
 });
 
 // ── Befund 2: halbe Zustände ────────────────────────────────────
@@ -227,27 +208,17 @@ test("ein gescheiterter Overwrite lässt die Originaldatei unverändert", async 
     },
   };
 
-  await assert.rejects(
-    () => saveDocument(vault, args as unknown as SaveArgs),
-    /changed on disk/,
-  );
+  await assert.rejects(() => saveDocument(vault, args as unknown as SaveArgs), /changed on disk/);
   assert.equal(fired, true, "das Commit-Fenster wurde getroffen");
 
   // Der Endzustand, gemeinsam geprüft.
   assert.equal(
     await readFile(doc.original_path, "utf8"),
     "POLICE-V1",
-    "die Originaldatei darf den Fehlschlag nicht überlebt haben — sie darf ihn " +
-      "gar nicht erst mitgemacht haben",
+    "die Originaldatei darf den Fehlschlag nicht überlebt haben — sie darf ihn " + "gar nicht erst mitgemacht haben"
   );
-  assert.equal(
-    await readFile(doc.sidecar_path, "utf8"),
-    EXTERN,
-    "die externe Bearbeitung bleibt",
-  );
-  const rest = (await readdir(join(dir, "documents", "alt"))).filter(
-    (n) => n.includes(".bak-") || n.includes(".tmp-"),
-  );
+  assert.equal(await readFile(doc.sidecar_path, "utf8"), EXTERN, "die externe Bearbeitung bleibt");
+  const rest = (await readdir(join(dir, "documents", "alt"))).filter((n) => n.includes(".bak-") || n.includes(".tmp-"));
   assert.deepEqual(rest, [], `kein Backup darf liegenbleiben: ${rest.join(", ")}`);
 });
 
@@ -275,7 +246,7 @@ test("ein gescheiterter Ordnerwechsel rollt den Move vollständig zurück", asyn
 
   await assert.rejects(
     () => recategorizeDocument(vault, args as Parameters<typeof recategorizeDocument>[1]),
-    /Kaputt nach dem Move/,
+    /Kaputt nach dem Move/
   );
 
   // Endzustand gemeinsam: beide Ordner, Bytes, Frontmatter, Index.
@@ -283,25 +254,17 @@ test("ein gescheiterter Ordnerwechsel rollt den Move vollständig zurück", asyn
   assert.deepEqual(
     alt.sort(),
     ["Police.pdf", "Police.pdf.md"],
-    `alter Ordner muss wieder vollständig sein: ${alt.join(", ")}`,
+    `alter Ordner muss wieder vollständig sein: ${alt.join(", ")}`
   );
   const neu = await readdir(join(dir, "documents", "neu")).catch(() => []);
   assert.deepEqual(neu, [], `neuer Ordner muss leer sein: ${neu.join(", ")}`);
   assert.equal(await readFile(doc.sidecar_path, "utf8"), before, "Sidecar unverändert");
-  assert.equal(
-    await readFile(doc.original_path, "utf8"),
-    "POLICE-V1",
-    "Original unverändert",
-  );
-  assert.equal(
-    matter(before).data.folder_path,
-    "alt",
-    "das Frontmatter zeigt weiter auf den alten Ordner",
-  );
+  assert.equal(await readFile(doc.original_path, "utf8"), "POLICE-V1", "Original unverändert");
+  assert.equal(matter(before).data.folder_path, "alt", "das Frontmatter zeigt weiter auf den alten Ordner");
   assert.equal(
     vault.get(doc.id)?.filePath,
     doc.sidecar_path,
-    "der Vault-Index kennt das Dokument weiterhin am alten Pfad",
+    "der Vault-Index kennt das Dokument weiterhin am alten Pfad"
   );
 });
 
@@ -330,12 +293,9 @@ test("ein Move, der wegen einer externen Änderung scheitert, lässt keinen halb
     },
   };
 
-  const outcome = await moveDocument(
-    vault,
-    args as Parameters<typeof moveDocument>[1],
-  ).then(
+  const outcome = await moveDocument(vault, args as Parameters<typeof moveDocument>[1]).then(
     () => "fulfilled" as const,
-    (err: Error) => err,
+    (err: Error) => err
   );
 
   assert.equal(seen >= 2, true, "das Commit-Fenster wurde getroffen");
@@ -354,16 +314,13 @@ test("ein Move, der wegen einer externen Änderung scheitert, lässt keinen halb
   assert.equal(
     await readFile(newSidecar, "utf8"),
     EXTERN,
-    "die externe Bearbeitung muss unangetastet auf der Platte stehen",
+    "die externe Bearbeitung muss unangetastet auf der Platte stehen"
   );
-  assert.equal(
-    await readFile(join(dir, "documents", "neu", "Police.pdf"), "utf8"),
-    "POLICE-V1",
-  );
+  assert.equal(await readFile(join(dir, "documents", "neu", "Police.pdf"), "utf8"), "POLICE-V1");
   assert.equal(
     vault.get(doc.id)?.filePath,
     newSidecar,
-    "der Index muss dem stehengebliebenen Move folgen, nicht ins Leere zeigen",
+    "der Index muss dem stehengebliebenen Move folgen, nicht ins Leere zeigen"
   );
 });
 
@@ -402,7 +359,7 @@ test("der Original-Rollback löscht keine externe Fassung", async (t) => {
 
   const outcome = await saveDocument(vault, args as unknown as SaveArgs).then(
     () => "fulfilled" as const,
-    (err: Error) => err,
+    (err: Error) => err
   );
 
   assert.equal(fired, true, "das Commit-Fenster wurde getroffen");
@@ -410,12 +367,12 @@ test("der Original-Rollback löscht keine externe Fassung", async (t) => {
   assert.equal(
     await readFile(doc.original_path, "utf8"),
     "POLICE-V3-EXTERN",
-    "die externe Fassung des Originals darf der Rollback nicht anfassen",
+    "die externe Fassung des Originals darf der Rollback nicht anfassen"
   );
   assert.match(
     (outcome as Error).message,
     /could not be rolled back/,
-    "und der Halbzustand gehört gemeldet, nicht verschwiegen",
+    "und der Halbzustand gehört gemeldet, nicht verschwiegen"
   );
 });
 
@@ -428,14 +385,8 @@ test("ein Move belegt seine Zielpfade und ersetzt dort nichts", async (t) => {
   await mkdir(neu, { recursive: true });
   await writeFile(join(neu, "Police.pdf"), "FREMD-UND-WICHTIG", "utf8");
 
-  await assert.rejects(
-    () => moveDocument(vault, { id: doc.id, folder_path: "neu" }),
-    /already exists/,
-  );
+  await assert.rejects(() => moveDocument(vault, { id: doc.id, folder_path: "neu" }), /already exists/);
   assert.equal(await readFile(join(neu, "Police.pdf"), "utf8"), "FREMD-UND-WICHTIG");
   assert.equal(await readFile(doc.original_path, "utf8"), "POLICE-V1", "nichts wurde bewegt");
-  assert.deepEqual(
-    (await readdir(join(dir, "documents", "alt"))).sort(),
-    ["Police.pdf", "Police.pdf.md"],
-  );
+  assert.deepEqual((await readdir(join(dir, "documents", "alt"))).sort(), ["Police.pdf", "Police.pdf.md"]);
 });

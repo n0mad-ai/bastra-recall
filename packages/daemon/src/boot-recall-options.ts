@@ -5,7 +5,12 @@
  *
  * Moved verbatim out of `main()` in `index.ts`.
  */
-import { getEvidenceGateEnabled, getSharedRecallEnabled, getSharedRecallLanguage, getSharedRecallLive } from "./settings.js";
+import {
+  getEvidenceGateEnabled,
+  getSharedRecallEnabled,
+  getSharedRecallLanguage,
+  getSharedRecallLive,
+} from "./settings.js";
 import { commonsPath } from "./cli/commons.js";
 import { bridgesPath, migrateBridgesPool } from "./cli/bridges.js";
 import { BridgePool } from "./learned-recall/bridges.js";
@@ -27,11 +32,13 @@ export async function resolveRecallOptions(): Promise<{
   const evidenceGateOn = await getEvidenceGateEnabled();
   if (evidenceGateOn) {
     console.error(
-      "[bastra-recall] evidence gate: ACTIVE — no_answer suppresses hits (#264/#422); BASTRA_EVIDENCE_GATE=0 is the instant off-switch",
+      "[bastra-recall] evidence gate: ACTIVE — no_answer suppresses hits (#264/#422); BASTRA_EVIDENCE_GATE=0 is the instant off-switch"
     );
   } else {
     // #422: seit dem Default `true` ist AUS die Abweichung, die man sehen muss.
-    console.error("[bastra-recall] evidence gate: OFF (settings or BASTRA_EVIDENCE_GATE) — legacy bands serve every hit");
+    console.error(
+      "[bastra-recall] evidence gate: OFF (settings or BASTRA_EVIDENCE_GATE) — legacy bands serve every hit"
+    );
   }
 
   // #648: a pool minted before the split still sits in the Commons root; copy
@@ -39,10 +46,14 @@ export async function resolveRecallOptions(): Promise<{
   try {
     const copied = migrateBridgesPool();
     if (copied.length > 0) {
-      console.error(`[bastra-recall] bridges: copied ${copied.join(" + ")} from ${commonsPath()} to ${bridgesPath()} (#648; originals kept)`);
+      console.error(
+        `[bastra-recall] bridges: copied ${copied.join(" + ")} from ${commonsPath()} to ${bridgesPath()} (#648; originals kept)`
+      );
     }
   } catch (err) {
-    console.error(`[bastra-recall] bridges: could not copy the pool from ${commonsPath()} to ${bridgesPath()} (${(err as Error).message}) — minting starts a new pool`);
+    console.error(
+      `[bastra-recall] bridges: could not copy the pool from ${commonsPath()} to ${bridgesPath()} (${(err as Error).message}) — minting starts a new pool`
+    );
   }
 
   let learnedBridges: BridgePool | null = null;
@@ -53,10 +64,12 @@ export async function resolveRecallOptions(): Promise<{
       const lang = await getSharedRecallLanguage();
       sharedRecallLang = isSupportedLanguage(lang) ? lang : null;
       console.error(
-        `[bastra-recall] shared learned-recall: enabled (${learnedBridges.size()} bridges across ${learnedBridges.languages().join(", ") || "no"} languages, query-language ${sharedRecallLang ?? "auto — every folder"}, query expansion ${learnedBridges.live ? "live" : "shadow"})`,
+        `[bastra-recall] shared learned-recall: enabled (${learnedBridges.size()} bridges across ${learnedBridges.languages().join(", ") || "no"} languages, query-language ${sharedRecallLang ?? "auto — every folder"}, query expansion ${learnedBridges.live ? "live" : "shadow"})`
       );
     } catch (err) {
-      console.error(`[bastra-recall] shared learned-recall: failed to load (${(err as Error).message}) — continuing without`);
+      console.error(
+        `[bastra-recall] shared learned-recall: failed to load (${(err as Error).message}) — continuing without`
+      );
       learnedBridges = null;
     }
   }

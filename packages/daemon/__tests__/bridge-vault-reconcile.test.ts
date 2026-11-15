@@ -106,7 +106,7 @@ test("bridge.ts wiring: starts the shared reconcile after startWatching() and cl
   assert.match(
     src,
     /import\s*\{\s*startVaultReconcile\s*\}\s*from\s*"\.\/daemon-jobs\.js"/,
-    "must reuse the daemon's function, not a bridge-local copy",
+    "must reuse the daemon's function, not a bridge-local copy"
   );
   const watchIdx = src.indexOf("vault.startWatching();");
   const startIdx = src.indexOf("startVaultReconcile(vault)");
@@ -114,11 +114,11 @@ test("bridge.ts wiring: starts the shared reconcile after startWatching() and cl
   assert.ok(startIdx >= 0, "startVaultReconcile(vault) must be wired in");
   assert.ok(
     startIdx > watchIdx,
-    "reconcile must start after the watcher is up, the same order the daemon boots it in after vault.init()",
+    "reconcile must start after the watcher is up, the same order the daemon boots it in after vault.init()"
   );
   assert.match(
     src,
     /reconcileTimer[\s\S]*?clearInterval\(reconcileTimer\)/,
-    "the timer handle must be cleared on the bridge's shutdown path (stdin close), not just left to unref()",
+    "the timer handle must be cleared on the bridge's shutdown path (stdin close), not just left to unref()"
   );
 });

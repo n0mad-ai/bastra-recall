@@ -1,6 +1,13 @@
 import { settingEntries, settingEntry, storedSetting, applySettingChanges } from "../settings-registry.js";
 import { readSettings, mutateSettings } from "../settings.js";
-import { envSettingSpecs, envSettingSpec, envSettingsSnapshot, applyEnvSettingChanges, validateEnvPinChanges, validateRawEnvInput } from "../settings-env.js";
+import {
+  envSettingSpecs,
+  envSettingSpec,
+  envSettingsSnapshot,
+  applyEnvSettingChanges,
+  validateEnvPinChanges,
+  validateRawEnvInput,
+} from "../settings-env.js";
 import { notifyAssistantAddressDaemon } from "../assistant-address.js";
 import { configureAssistantName } from "./address-cmd.js";
 import { getAssistantName } from "../assistant-address-settings.js";
@@ -61,9 +68,16 @@ import { archiveCap, archiveMaxItem, formatSize, parseRetain, parseSize, retainD
 import { getPromptImpactEnabled, setPromptImpactEnabled } from "../code-graph/prompt-impact-settings.js";
 import { getCoverageMapEnabled, setCoverageMapEnabled } from "../code-graph/coverage-map-settings.js";
 
-const configKeys = [...settingEntries().filter(entry => !entry.readonly).map(entry => entry.key), ...envSettingSpecs.map(entry => entry.key)];
+const configKeys = [
+  ...settingEntries()
+    .filter((entry) => !entry.readonly)
+    .map((entry) => entry.key),
+  ...envSettingSpecs.map((entry) => entry.key),
+];
 type KnownKey = string;
-function isKnownKey(k: string | null): k is KnownKey { return k !== null && configKeys.includes(k); }
+function isKnownKey(k: string | null): k is KnownKey {
+  return k !== null && configKeys.includes(k);
+}
 
 export async function cmdConfig(args: ParsedArgs): Promise<number> {
   // positional: ["config", action, key, value?]
@@ -88,13 +102,15 @@ export async function cmdConfig(args: ParsedArgs): Promise<number> {
 
 async function cmdConfigGet(key: KnownKey): Promise<number> {
   if (envSettingSpec(key)) {
-    const entry = envSettingsSnapshot(await readSettings()).find(item => item.key === key)!;
+    const entry = envSettingsSnapshot(await readSettings()).find((item) => item.key === key)!;
     process.stdout.write(`${entry.value}\n`);
     if (entry.readonly) process.stdout.write(`  note: ${entry.envName} overrides this setting at runtime\n`);
     return 0;
   }
   switch (key) {
-    case "assistant.name": process.stdout.write(`${await getAssistantName() ?? "(unset)"}\n`); return 0;
+    case "assistant.name":
+      process.stdout.write(`${(await getAssistantName()) ?? "(unset)"}\n`);
+      return 0;
     case "update.mode":
       process.stdout.write(`${await getUpdateMode()}\n`);
       return 0;
@@ -185,8 +201,11 @@ async function cmdConfigGet(key: KnownKey): Promise<number> {
   }
   const entry = settingEntry(key)!;
   const value = storedSetting(await readSettings(), entry) ?? entry.default;
-  process.stdout.write(`${entry.secret && value ? "(configured — masked)" : typeof value === "object" ? JSON.stringify(value) : value ?? "(unset)"}\n`);
-  if (entry.env && process.env[entry.env] !== undefined) process.stdout.write(`  note: ${entry.env} overrides this setting at runtime\n`);
+  process.stdout.write(
+    `${entry.secret && value ? "(configured — masked)" : typeof value === "object" ? JSON.stringify(value) : (value ?? "(unset)")}\n`
+  );
+  if (entry.env && process.env[entry.env] !== undefined)
+    process.stdout.write(`  note: ${entry.env} overrides this setting at runtime\n`);
   return 0;
 }
 
@@ -199,7 +218,10 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
       if (typeof envEntry.default === "boolean") parsed = parseBool(value);
       else if (typeof envEntry.default === "number") parsed = Number(value);
       if (parsed === null) throw new Error("Expected boolean");
-      await mutateSettings(settingsFilePath(), current => applyEnvSettingChanges(current, { [key]: parsed }), { refuseCorrupt: true, requireLock: true });
+      await mutateSettings(settingsFilePath(), (current) => applyEnvSettingChanges(current, { [key]: parsed }), {
+        refuseCorrupt: true,
+        requireLock: true,
+      });
       process.stdout.write(`✓ ${key} updated in daemon.env; restart the daemon to apply\n`);
       return 0;
     } catch {
@@ -209,14 +231,20 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
   }
   switch (key) {
     case "assistant.name": {
-      if(value===null||value==="") {process.stderr.write("Name angeben; entfernen mit bastra address remove.\n");return 2;}
+      if (value === null || value === "") {
+        process.stderr.write("Name angeben; entfernen mit bastra address remove.\n");
+        return 2;
+      }
       await configureAssistantName(value);
-      process.stdout.write(`✓ assistant.name = ${await getAssistantName()}\n  ${assistantUrls(value).local}\n  Einmalige Einrichtung: bastra address setup --yes\n`);return 0;
+      process.stdout.write(
+        `✓ assistant.name = ${await getAssistantName()}\n  ${assistantUrls(value).local}\n  Einmalige Einrichtung: bastra address setup --yes\n`
+      );
+      return 0;
     }
     case "update.mode": {
       if (value === null || !(UPDATE_MODES as readonly string[]).includes(value)) {
         process.stderr.write(
-          `error: update.mode must be one of: ${UPDATE_MODES.join(" | ")} (default: ${DEFAULT_UPDATE_MODE})\n`,
+          `error: update.mode must be one of: ${UPDATE_MODES.join(" | ")} (default: ${DEFAULT_UPDATE_MODE})\n`
         );
         return 2;
       }
@@ -237,7 +265,7 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
       const env = process.env.BASTRA_EMBEDDING_PROVIDER;
       if (env && env.toLowerCase() !== value) {
         process.stdout.write(
-          `  ⚠ BASTRA_EMBEDDING_PROVIDER=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`,
+          `  ⚠ BASTRA_EMBEDDING_PROVIDER=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`
         );
       }
       process.stdout.write("  restart the daemon to apply (activates on next boot).\n");
@@ -259,7 +287,7 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
     case "docs.mode": {
       if (!isDocsMode(value)) {
         process.stderr.write(
-          `error: docs.mode must be one of: ${DOCS_MODES.join(" | ")} (default: ${DEFAULT_DOCS_MODE})\n`,
+          `error: docs.mode must be one of: ${DOCS_MODES.join(" | ")} (default: ${DEFAULT_DOCS_MODE})\n`
         );
         return 2;
       }
@@ -268,7 +296,7 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
       if (value !== "off") {
         process.stdout.write(
           `  product docs land in dokumentationen/<project>/ in your vault ` +
-            `(${value === "auto" ? "written autonomously on feature completion" : "proposed first, written after you agree"}).\n`,
+            `(${value === "auto" ? "written autonomously on feature completion" : "proposed first, written after you agree"}).\n`
         );
       }
       return 0;
@@ -310,7 +338,7 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
           (on
             ? `  Claude Code's rm -r and lossy git acts now run through bastra's archive and are allowed without a prompt (docs/hooks.md).\n`
             : `  rm -r and the lossy git acts get the plain STOP again.\n`) +
-          `  the next Bash call uses it (no restart needed).\n`,
+          `  the next Bash call uses it (no restart needed).\n`
       );
       return 0;
     }
@@ -321,9 +349,14 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
         return 2;
       }
       await setReflexEnabled(on);
-      process.stdout.write(`✓ reflex.enabled = ${on}\n  stored in ${settingsFilePath()}\n  the next prompt uses it (no restart needed).\n`);
+      process.stdout.write(
+        `✓ reflex.enabled = ${on}\n  stored in ${settingsFilePath()}\n  the next prompt uses it (no restart needed).\n`
+      );
       const env = process.env.BASTRA_REFLEX;
-      if (env) process.stdout.write(`  ⚠ BASTRA_REFLEX=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`);
+      if (env)
+        process.stdout.write(
+          `  ⚠ BASTRA_REFLEX=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`
+        );
       return 0;
     }
     case "battery.saver": {
@@ -338,10 +371,13 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
           (on
             ? `  on battery, background paraphrasing waits for AC, model warm-ups are skipped and the model unloads after 60 s idle (macOS).\n`
             : `  background model work runs the same on battery as on AC.\n`) +
-          `  restart the daemon to apply.\n`,
+          `  restart the daemon to apply.\n`
       );
       const env = process.env.BASTRA_BATTERY_SAVER;
-      if (env) process.stdout.write(`  ⚠ BASTRA_BATTERY_SAVER=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`);
+      if (env)
+        process.stdout.write(
+          `  ⚠ BASTRA_BATTERY_SAVER=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`
+        );
       return 0;
     }
     case "promptImpact.enabled": {
@@ -351,9 +387,14 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
         return 2;
       }
       await setPromptImpactEnabled(on);
-      process.stdout.write(`✓ promptImpact.enabled = ${on}\n  stored in ${settingsFilePath()}\n  the next prompt uses it (no restart needed).\n`);
+      process.stdout.write(
+        `✓ promptImpact.enabled = ${on}\n  stored in ${settingsFilePath()}\n  the next prompt uses it (no restart needed).\n`
+      );
       const env = process.env.BASTRA_PROMPT_IMPACT;
-      if (env) process.stdout.write(`  ⚠ BASTRA_PROMPT_IMPACT=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`);
+      if (env)
+        process.stdout.write(
+          `  ⚠ BASTRA_PROMPT_IMPACT=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`
+        );
       return 0;
     }
     case "coverageMap.enabled": {
@@ -367,39 +408,49 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
         `✓ coverageMap.enabled = ${on}\n  stored in ${settingsFilePath()}\n` +
           (on
             ? "  test commands in repositories with code awareness now run with NODE_V8_COVERAGE; the next Bash call uses it (no restart needed).\n"
-            : "  test commands run untouched again.\n"),
+            : "  test commands run untouched again.\n")
       );
       const env = process.env.BASTRA_COVERAGE_MAP;
-      if (env) process.stdout.write(`  ⚠ BASTRA_COVERAGE_MAP=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`);
+      if (env)
+        process.stdout.write(
+          `  ⚠ BASTRA_COVERAGE_MAP=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`
+        );
       return 0;
     }
     case "archive.retain": {
       const parsed = value === null ? null : parseRetain(value);
       if (!parsed || Object.keys(parsed).length === 0) {
-        process.stderr.write("error: archive.retain is days per class, e.g. junk=1,in-git=2,user=2 (fractions allowed)\n");
+        process.stderr.write(
+          "error: archive.retain is days per class, e.g. junk=1,in-git=2,user=2 (fractions allowed)\n"
+        );
         return 2;
       }
       await setArchiveRetain(value as string);
       const r = retainDays({}, value as string);
       process.stdout.write(
         `✓ archive.retain = junk=${r.junk},in-git=${r["in-git"]},user=${r.user}\n  stored in ${settingsFilePath()}\n` +
-          `  the next hourly reconcile uses it (no restart needed).\n`,
+          `  the next hourly reconcile uses it (no restart needed).\n`
       );
       return 0;
     }
     case "archive.cap": {
       const bytes = value === null ? null : parseSize(value);
       if (bytes === null) {
-        process.stderr.write(`error: archive.cap is a size above zero, e.g. 5GB or 500MB (units KB, MB, GB, TB) — got '${value ?? ""}'\n`);
+        process.stderr.write(
+          `error: archive.cap is a size above zero, e.g. 5GB or 500MB (units KB, MB, GB, TB) — got '${value ?? ""}'\n`
+        );
         return 2;
       }
       await setArchiveCap(value as string);
       process.stdout.write(
         `✓ archive.cap = ${formatSize(bytes)}\n  stored in ${settingsFilePath()}\n` +
-          `  the next hourly reconcile uses it (no restart needed): over the cap, build junk goes first, then clean git-tracked files.\n`,
+          `  the next hourly reconcile uses it (no restart needed): over the cap, build junk goes first, then clean git-tracked files.\n`
       );
       const env = process.env.BASTRA_ARCHIVE_CAP;
-      if (env) process.stdout.write(`  ⚠ BASTRA_ARCHIVE_CAP=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`);
+      if (env)
+        process.stdout.write(
+          `  ⚠ BASTRA_ARCHIVE_CAP=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`
+        );
       return 0;
     }
     case "archive.max-item": {
@@ -407,7 +458,7 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
       const bytes = value === null || off ? null : parseSize(value);
       if (bytes === null && !off) {
         process.stderr.write(
-          `error: archive.max-item is a size above zero, e.g. 2GB or 500MB (units KB, MB, GB, TB), or off for no limit — got '${value ?? ""}'\n`,
+          `error: archive.max-item is a size above zero, e.g. 2GB or 500MB (units KB, MB, GB, TB), or off for no limit — got '${value ?? ""}'\n`
         );
         return 2;
       }
@@ -417,10 +468,13 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
           (bytes === null
             ? `  rm archives a target of any size again.\n`
             : `  a larger target is neither archived nor deleted: rm refuses and names /bin/rm and this setting.\n`) +
-          `  the next Bash call uses it (no restart needed).\n`,
+          `  the next Bash call uses it (no restart needed).\n`
       );
       const env = process.env.BASTRA_ARCHIVE_MAX_ITEM;
-      if (env) process.stdout.write(`  ⚠ BASTRA_ARCHIVE_MAX_ITEM=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`);
+      if (env)
+        process.stdout.write(
+          `  ⚠ BASTRA_ARCHIVE_MAX_ITEM=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`
+        );
       return 0;
     }
     case "size.guide": {
@@ -432,7 +486,7 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
       await setSizeGuide(n);
       process.stdout.write(
         `✓ size.guide = ${Math.round(n)}\n  stored in ${settingsFilePath()}\n` +
-          `  the PreToolUse hook now flags source files near/over this guide value (no restart needed).\n`,
+          `  the PreToolUse hook now flags source files near/over this guide value (no restart needed).\n`
       );
       return 0;
     }
@@ -444,27 +498,34 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
       await setPrimaryLanguage(value);
       process.stdout.write(
         `✓ language.primary = ${value.trim().toLowerCase()}\n  stored in ${settingsFilePath()}\n` +
-          `  new memories are now authored in this language (English tech terms kept as anchors, no restart needed).\n`,
+          `  new memories are now authored in this language (English tech terms kept as anchors, no restart needed).\n`
       );
       return 0;
     }
   }
   const entry = settingEntry(key)!;
   try {
-    if(value === null) throw new Error("Expected a value");
+    if (value === null) throw new Error("Expected a value");
     let parsed: unknown = value;
-    if (entry.kind === "boolean") { parsed = parseBool(value); if(parsed === null) throw new Error("Expected boolean"); }
-    else if (entry.kind === "number") parsed = value === null ? NaN : Number(value);
+    if (entry.kind === "boolean") {
+      parsed = parseBool(value);
+      if (parsed === null) throw new Error("Expected boolean");
+    } else if (entry.kind === "number") parsed = value === null ? NaN : Number(value);
     else if (entry.kind === "json") parsed = JSON.parse(value ?? "null");
     if (key === "daemon.env") validateRawEnvInput(parsed);
-    await mutateSettings(settingsFilePath(), current => {
+    await mutateSettings(settingsFilePath(), (current) => {
       const next = applySettingChanges(current, { [key]: parsed });
       if (key === "daemon.env") validateEnvPinChanges(current, next);
       return next;
     });
-    process.stdout.write(`✓ ${key} updated${entry.restartRequired ? "; restart the daemon and clients to apply" : ""}\n`);
+    process.stdout.write(
+      `✓ ${key} updated${entry.restartRequired ? "; restart the daemon and clients to apply" : ""}\n`
+    );
     return 0;
-  } catch { process.stderr.write(`error: invalid value for ${key}\n`); return 2; }
+  } catch {
+    process.stderr.write(`error: invalid value for ${key}\n`);
+    return 2;
+  }
 }
 
 function parseBool(v: string | null): boolean | null {

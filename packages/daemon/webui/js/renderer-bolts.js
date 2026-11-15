@@ -125,7 +125,10 @@ export function spillOf(sim, legs) {
 
 /** One frame of the live-notice flashes — called by the renderer's draw()
  *  after the node layer, inside its camera transform. */
-export function drawFlashes(now, { ctx, sim, flashes, camera, theme, boltStyle, boltMs, boltSpread, edgeBend, strokeEdge, drawRadius }) {
+export function drawFlashes(
+  now,
+  { ctx, sim, flashes, camera, theme, boltStyle, boltMs, boltSpread, edgeBend, strokeEdge, drawRadius }
+) {
   // live-notice flashes (#216): ÜBER der Node-Ebene — in dichten Galaxien
   // würde ein Halo im Painter's-Order sonst von Nachbarn verdeckt. Erst
   // ein expandierender Ring (das bewährte Supernova-Zitat), dann ein
@@ -146,10 +149,7 @@ export function drawFlashes(now, { ctx, sim, flashes, camera, theme, boltStyle, 
     // finished — never the shorter of the two.
     let cascadeEnd = 0;
     for (let hop = 1; hop <= BOLT_HOPS; hop++) {
-      cascadeEnd = Math.max(
-        cascadeEnd,
-        levelStartOffset(hop, boltMs) + legDurationFor(hop, boltMs) + tailMs(),
-      );
+      cascadeEnd = Math.max(cascadeEnd, levelStartOffset(hop, boltMs) + legDurationFor(hop, boltMs) + tailMs());
     }
     const haloT = (now - f.born) / f.life;
     if (haloT >= 1 && chainAge >= cascadeEnd) {

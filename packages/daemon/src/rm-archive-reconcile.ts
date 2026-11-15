@@ -6,11 +6,32 @@
  * manifest readers stay there, and `rm-archive.ts` re-exports everything here,
  * so every import path stays valid.
  */
-import { closeSync, constants as fsConstants, existsSync, fstatSync, openSync, readSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  constants as fsConstants,
+  existsSync,
+  fstatSync,
+  openSync,
+  readSync,
+  renameSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { pinLive, unpin } from "./git-archive.js";
 import { isOffValue } from "./env.js";
-import { archiveDir, archiveRoot, localIso, manifestFiles, manifestRows, parseManifest, under, type ManifestRow } from "./rm-archive.js";
+import {
+  archiveDir,
+  archiveRoot,
+  localIso,
+  manifestFiles,
+  manifestRows,
+  parseManifest,
+  under,
+  type ManifestRow,
+} from "./rm-archive.js";
 
 export type Kind = "junk" | "in-git" | "user";
 export type Retain = Record<Kind, number>;
@@ -25,7 +46,10 @@ export const DEFAULT_RETAIN: Retain = { junk: 1, "in-git": 2, user: 2 };
 /** `junk=1,in-git=2,user=0.5` → the classes it names; null when malformed. */
 export function parseRetain(spec: string): Partial<Retain> | null {
   const out: Partial<Retain> = {};
-  for (const part of spec.split(",").map((p) => p.trim()).filter(Boolean)) {
+  for (const part of spec
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean)) {
     const m = /^(junk|in-git|user)=(\d+(?:\.\d+)?)$/.exec(part);
     if (!m) return null;
     out[m[1] as Kind] = Number(m[2]);
@@ -37,8 +61,8 @@ export function parseRetain(spec: string): Partial<Retain> | null {
 export function retainDays(env: NodeJS.ProcessEnv = process.env, stored?: string): Retain {
   return {
     ...DEFAULT_RETAIN,
-    ...(stored ? parseRetain(stored) ?? {} : {}),
-    ...(env.BASTRA_ARCHIVE_RETAIN ? parseRetain(env.BASTRA_ARCHIVE_RETAIN) ?? {} : {}),
+    ...(stored ? (parseRetain(stored) ?? {}) : {}),
+    ...(env.BASTRA_ARCHIVE_RETAIN ? (parseRetain(env.BASTRA_ARCHIVE_RETAIN) ?? {}) : {}),
   };
 }
 
@@ -64,7 +88,11 @@ export function formatSize(bytes: number): string {
 
 /** #934: the total cap — 10 GB, then `bastra config set archive.cap …`, then BASTRA_ARCHIVE_CAP (env wins). */
 export function archiveCap(env: NodeJS.ProcessEnv = process.env, stored?: string): number {
-  return (env.BASTRA_ARCHIVE_CAP ? parseSize(env.BASTRA_ARCHIVE_CAP) : null) ?? (stored ? parseSize(stored) : null) ?? DEFAULT_CAP_BYTES;
+  return (
+    (env.BASTRA_ARCHIVE_CAP ? parseSize(env.BASTRA_ARCHIVE_CAP) : null) ??
+    (stored ? parseSize(stored) : null) ??
+    DEFAULT_CAP_BYTES
+  );
 }
 
 /**
@@ -135,10 +163,12 @@ export function reconcilePlan(
   now: Date,
   capBytes: number,
   env: NodeJS.ProcessEnv = process.env,
-  retain: Retain = retainDays(env),
+  retain: Retain = retainDays(env)
 ): Drop[] {
   const archive = archiveRoot(env);
-  const live = manifestRows(env).filter((r) => r.action === "archived" && r.dest && inArchive(r.dest, archive) && existsSync(r.dest));
+  const live = manifestRows(env).filter(
+    (r) => r.action === "archived" && r.dest && inArchive(r.dest, archive) && existsSync(r.dest)
+  );
   const drop: Drop[] = [];
   const keep: Array<ManifestRow & { age: number }> = [];
   for (const r of live) {
@@ -155,7 +185,14 @@ export function reconcilePlan(
     const age = (now.getTime() - new Date(r.ts).getTime()) / 86_400_000;
     // pinLive: a ref under refs/bastra-archive/ that is still there — nothing else.
     if (age > retain.user && pinLive(r.orig, r.dest)) {
-      drop.push({ orig: r.orig, dest: r.dest, kind: "user", bytes: 0, why: `git snapshot older than ${retain.user} days`, sha: r.sha });
+      drop.push({
+        orig: r.orig,
+        dest: r.dest,
+        kind: "user",
+        bytes: 0,
+        why: `git snapshot older than ${retain.user} days`,
+        sha: r.sha,
+      });
     }
   }
   let total = keep.reduce((s, r) => s + (r.bytes ?? 0), 0);
@@ -163,7 +200,13 @@ export function reconcilePlan(
   for (const r of keep.sort((a, b) => rank[a.kind ?? "user"] - rank[b.kind ?? "user"] || b.age - a.age)) {
     if (total <= capBytes) break;
     if ((r.kind ?? "user") === "user" && r.age < retain.user) continue;
-    drop.push({ orig: r.orig, dest: r.dest as string, kind: r.kind ?? "user", bytes: r.bytes ?? 0, why: "archive size cap" });
+    drop.push({
+      orig: r.orig,
+      dest: r.dest as string,
+      kind: r.kind ?? "user",
+      bytes: r.bytes ?? 0,
+      why: "archive size cap",
+    });
     total -= r.bytes ?? 0;
   }
   return drop;

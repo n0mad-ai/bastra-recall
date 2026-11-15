@@ -69,9 +69,21 @@ function buildCosmicWeb(env) {
         : null;
 
     universe.galaxies.push({
-      key, center, orbit: null, basis, r: discR, count: members.length,
-      dwarf, nebula, spin, phase: rnd(ci, 151) * Math.PI * 2,
-      morph, sx: 0, sy: 0, d: 0, scale: 1,
+      key,
+      center,
+      orbit: null,
+      basis,
+      r: discR,
+      count: members.length,
+      dwarf,
+      nebula,
+      spin,
+      phase: rnd(ci, 151) * Math.PI * 2,
+      morph,
+      sx: 0,
+      sy: 0,
+      d: 0,
+      scale: 1,
     });
 
     // Sub-areas become star-forming KNOTS on an arm — not a second spiral disc
@@ -88,9 +100,17 @@ function buildCosmicWeb(env) {
     });
 
     layoutMorph({
-      universe, tuning, adj,
-      members, regionOf,
-      center, basis, discR, morph, spin, dwarf,
+      universe,
+      tuning,
+      adj,
+      members,
+      regionOf,
+      center,
+      basis,
+      discR,
+      morph,
+      spin,
+      dwarf,
       seed: ci * 97 + 1,
     });
   });
@@ -123,8 +143,13 @@ function buildMilkyWay(env) {
       // an omega out of this star's own radius here is exactly what wound the
       // arms up, so nothing is derived at this point any more.
       universe.disc.set(n.id, {
-        center: origin, ring: null, basis,
-        x: p.x, y: p.y, z: p.z, spin,
+        center: origin,
+        ring: null,
+        basis,
+        x: p.x,
+        y: p.y,
+        z: p.z,
+        spin,
         omegaScale: p.omegaScale,
         orbit3d: p.orbit3d,
       });
@@ -159,7 +184,10 @@ function buildMilkyWay(env) {
       spin,
       role: c.role,
       phase: rnd(c.count, 151) * Math.PI * 2,
-      sx: 0, sy: 0, d: 0, scale: 1,
+      sx: 0,
+      sy: 0,
+      d: 0,
+      scale: 1,
     });
   }
 
@@ -222,8 +250,15 @@ function layoutMorph(o) {
       });
     });
     universe.systems.push({
-      sunId: sun.id, basis, rings,
-      pulse: rnd(seed, 167) * Math.PI * 2, sunWorld: null, sx: 0, sy: 0, d: 0, scale: 1,
+      sunId: sun.id,
+      basis,
+      rings,
+      pulse: rnd(seed, 167) * Math.PI * 2,
+      sunWorld: null,
+      sx: 0,
+      sy: 0,
+      d: 0,
+      scale: 1,
     });
   }
 
@@ -284,8 +319,15 @@ function attachSystems(o) {
       });
     });
     universe.systems.push({
-      sunId: sun.id, basis, rings,
-      pulse: rnd(seed, 167) * Math.PI * 2, sunWorld: null, sx: 0, sy: 0, d: 0, scale: 1,
+      sunId: sun.id,
+      basis,
+      rings,
+      pulse: rnd(seed, 167) * Math.PI * 2,
+      sunWorld: null,
+      sx: 0,
+      sy: 0,
+      d: 0,
+      scale: 1,
     });
   }
 }

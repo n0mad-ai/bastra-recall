@@ -83,18 +83,11 @@ async function smoke(logDir: string): Promise<void> {
   assert(events[0].kind === "recall", "first event must be recall");
   assert(events[1].kind === "load_memory", "second event must be load_memory");
   assert(events[2].kind === "save_memory", "third event must be save_memory");
+  assert(events[1].follows_recall === events[0].recall_id, "load_memory should reference the recall_id");
+  assert(events[2].follows_recall === events[0].recall_id, "save_memory should reference the recall_id");
   assert(
-    events[1].follows_recall === events[0].recall_id,
-    "load_memory should reference the recall_id",
-  );
-  assert(
-    events[2].follows_recall === events[0].recall_id,
-    "save_memory should reference the recall_id",
-  );
-  assert(
-    events[0].session_id === events[1].session_id &&
-      events[1].session_id === events[2].session_id,
-    "all events from the same Telemetry instance share session_id",
+    events[0].session_id === events[1].session_id && events[1].session_id === events[2].session_id,
+    "all events from the same Telemetry instance share session_id"
   );
 
   // Disable check

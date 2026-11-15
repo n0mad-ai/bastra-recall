@@ -60,7 +60,7 @@ export function looksLikeIndexHub(body: string): boolean {
   // at most an introduction, while a note leaves sentences throughout. List
   // lines don't count either way — notes use lists too.
   const paragraphs = contentLines.filter(
-    (l) => !LIST_LINE_RE.test(l) && proseRest(l).length >= PARAGRAPH_MIN_CHARS,
+    (l) => !LIST_LINE_RE.test(l) && proseRest(l).length >= PARAGRAPH_MIN_CHARS
   ).length;
   return paragraphs / links <= PARAGRAPHS_PER_LINK_MAX;
 }
@@ -106,7 +106,10 @@ export function harvestIndex(sources: string[]): Map<string, IndexEntry> {
       if (!m) continue;
       const targetBase = m[2].split("/").pop();
       if (!targetBase) continue;
-      const after = line.slice(m.index + m[0].length).replace(/^[\s—–\-:·]+/, "").trim();
+      const after = line
+        .slice(m.index + m[0].length)
+        .replace(/^[\s—–\-:·]+/, "")
+        .trim();
       if (!map.has(targetBase)) {
         map.set(targetBase, { section, description: after.length > 0 ? after : null });
       }

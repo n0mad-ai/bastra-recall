@@ -112,13 +112,23 @@ export function hookGateAvailable(payload: unknown): boolean {
 export function decorateHookPayload<T>(payload: T): T {
   // Windows registrations use argv so the compiled stub starts directly,
   // without a POSIX env-prefix or an extra interpreter process.
-  const requested = process.argv.slice(2).find((a) => /^--client=(codex|claude-code)$/.test(a))?.slice(9)
-    ?? process.env.BASTRA_HOOK_CLIENT;
+  const requested =
+    process.argv
+      .slice(2)
+      .find((a) => /^--client=(codex|claude-code)$/.test(a))
+      ?.slice(9) ?? process.env.BASTRA_HOOK_CLIENT;
   if (requested !== "codex" && requested !== "claude-code") return payload;
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
-  const codexVersion = process.argv.slice(2).find((a) => a.startsWith("--codex-version="))?.slice(16)
-    ?? process.env.BASTRA_CODEX_VERSION;
-  return { ...(payload as Record<string, unknown>), bastra_client: requested,
-    ...(requested === "codex" && (codexVersion !== undefined || "bastra_codex_version" in payload) ? { bastra_codex_version: codexGateSupported(codexVersion) ? codexVersion : null } : {}),
+  const codexVersion =
+    process.argv
+      .slice(2)
+      .find((a) => a.startsWith("--codex-version="))
+      ?.slice(16) ?? process.env.BASTRA_CODEX_VERSION;
+  return {
+    ...(payload as Record<string, unknown>),
+    bastra_client: requested,
+    ...(requested === "codex" && (codexVersion !== undefined || "bastra_codex_version" in payload)
+      ? { bastra_codex_version: codexGateSupported(codexVersion) ? codexVersion : null }
+      : {}),
   } as T;
 }

@@ -36,12 +36,7 @@
  */
 
 import { join } from "node:path";
-import {
-  affectedHits,
-  affectedResult,
-  allSymbolsOf,
-  narrowPackageHits,
-} from "./affected.js";
+import { affectedHits, affectedResult, allSymbolsOf, narrowPackageHits } from "./affected.js";
 import type { CodeGraphCache } from "./cache.js";
 import { codeGraphCache } from "./dependents-block.js";
 import { codeAwarenessDisabledByEnv } from "./enabled-repos.js";
@@ -109,9 +104,7 @@ const SILENT: PromptImpactResult = { note: null, dedupeHit: false };
  * regardless of the lane's opt-in default. `deliverPromptImpact()` below is
  * where the live prompt lane's gate lives.
  */
-export async function promptImpactNote(
-  opts: PromptImpactOptions,
-): Promise<PromptImpactResult> {
+export async function promptImpactNote(opts: PromptImpactOptions): Promise<PromptImpactResult> {
   if (codeAwarenessDisabledByEnv()) return SILENT;
   const startedAt = Date.now();
   const budgetMs = opts.budgetMs ?? BUDGET_MS;
@@ -134,11 +127,7 @@ export async function promptImpactNote(
   }
   if (Date.now() - startedAt > budgetMs) return SILENT;
 
-  const hits = await narrowPackageHits(
-    repo,
-    affectedHits(graph, target.file, target.symbols, 1),
-    names,
-  );
+  const hits = await narrowPackageHits(repo, affectedHits(graph, target.file, target.symbols, 1), names);
   const result = affectedResult(target.symbols, hits);
   if (result.files.length === 0) return SILENT;
 
@@ -277,11 +266,7 @@ interface Target {
  * across them — one prompt, one answer, and the ambiguous case is exactly where
  * an injected guess would be wrong.
  */
-function resolveTarget(
-  graph: LoadedGraph,
-  paths: readonly string[],
-  symbols: readonly string[],
-): Target | null {
+function resolveTarget(graph: LoadedGraph, paths: readonly string[], symbols: readonly string[]): Target | null {
   const file = paths.map((p) => resolveFile(graph, p)).find((f) => f !== null) ?? null;
   const named = resolveSymbols(graph, symbols, file);
 
@@ -325,11 +310,7 @@ function resolveFile(graph: LoadedGraph, candidate: string): string | null {
  * `idsByLabel` is keyed on the bare, lowercased name, which is what a user
  * types; Graphify's `()` notation is stripped by `bareLabel` on both sides.
  */
-function resolveSymbols(
-  graph: LoadedGraph,
-  names: readonly string[],
-  file: string | null,
-): CodeSymbol[] {
+function resolveSymbols(graph: LoadedGraph, names: readonly string[], file: string | null): CodeSymbol[] {
   const out: CodeSymbol[] = [];
   const seen = new Set<string>();
   for (const raw of names) {

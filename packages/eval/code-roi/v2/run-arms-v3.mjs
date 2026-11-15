@@ -249,8 +249,7 @@ function promptWithPrefill(s, prefill) {
     JSON.stringify(prefill.result, null, 2),
     "```",
     "",
-    "Treat it as candidates, not as the answer: verify before you rely on it, " +
-      "and add anything it missed.",
+    "Treat it as candidates, not as the answer: verify before you rely on it, " + "and add anything it missed.",
   ].join("\n");
 }
 
@@ -279,13 +278,11 @@ function runArm(
   buildPinSignature,
   model,
   maxTurns,
-  registeredEstimateUsd,
+  registeredEstimateUsd
 ) {
   const transcript = join(dir, `${arm.id}.jsonl`);
   const mcpConfig = join(dir, `${arm.id}-mcp.json`);
-  const servers = arm.graph
-    ? { code: { command: process.execPath, args: [MCP_SERVER, tree, graphRoot] } }
-    : {};
+  const servers = arm.graph ? { code: { command: process.execPath, args: [MCP_SERVER, tree, graphRoot] } } : {};
   writeFileSync(mcpConfig, JSON.stringify({ mcpServers: servers }));
   const allowed = arm.graph ? [...ALLOWED_TOOLS, ...GRAPH_TOOLS] : ALLOWED_TOOLS;
   const args = [
@@ -393,8 +390,8 @@ function runArm(
               stderr: stderr.slice(-4000),
             },
             null,
-            2,
-          ),
+            2
+          )
         );
         resolve({ code, finished, charge });
       });
@@ -542,7 +539,7 @@ export function prepareTreeOf(s, dir, outDir = OUT) {
       `${s.id}: the extracted tree contains a symbolic link (${relative(tree, link)}). ` +
         `The isolation argument rests on the agent's file tools being confined to this ` +
         `directory, and a link is a hole in that whose far side nobody checked. Refusing ` +
-        `to run rather than following it silently.`,
+        `to run rather than following it silently.`
     );
   }
   // The marker vouches for a COMPLETE tree, so it is written last (#593): a
@@ -597,13 +594,13 @@ async function main() {
     if (ARMS[id] === undefined) {
       throw new Error(
         `unknown arm "${id}" — this runner defines ${Object.keys(ARMS).join(", ")} and ` +
-          `${registrationId} registers ${registeredArms.join(", ")}`,
+          `${registrationId} registers ${registeredArms.join(", ")}`
       );
     }
     if (!registeredArms.includes(id)) {
       throw new Error(
         `arm "${id}" is not registered by ${registrationId} (${registeredArms.join(", ")}) — ` +
-          `an arm the registration does not name is an arm nobody decided to run`,
+          `an arm the registration does not name is an arm nobody decided to run`
       );
     }
   }
@@ -635,7 +632,7 @@ async function main() {
       process.stdout.write(
         `preflight failed (scenario_registration_drift): scenarios.json is registration version ` +
           `${scenarioFile.registration_version ?? "missing"}, but ${registrationId} is version ` +
-          `${registration.registration_version} — re-mine/select; never relabel an old population.\n`,
+          `${registration.registration_version} — re-mine/select; never relabel an old population.\n`
       );
       process.exitCode = 1;
       return;
@@ -644,12 +641,12 @@ async function main() {
       registrationId === DEFAULT_REGISTRATION_ID
         ? []
         : (scenarioFile.scenarios ?? []).filter(
-            (s) => s.truthRule !== undefined && s.truthRule !== registration.unit_and_truth?.truth_rule,
+            (s) => s.truthRule !== undefined && s.truthRule !== registration.unit_and_truth?.truth_rule
           );
     if (wrongTruth.length > 0) {
       process.stdout.write(
         `preflight failed (scenario_truth_drift): ${wrongTruth.length} scenarios carry a truth rule ` +
-          `other than ${registration.unit_and_truth?.truth_rule} — re-mine/select.\n`,
+          `other than ${registration.unit_and_truth?.truth_rule} — re-mine/select.\n`
       );
       process.exitCode = 1;
       return;
@@ -660,7 +657,7 @@ async function main() {
     process.stdout.write(
       `preflight failed (build_pin_mismatch): this archive was pinned to a different build than ` +
         `the one on disk now — a resumed helping never re-pins itself, it aborts.\n` +
-        `${formatBuildPinDiff(pinVerdict.diff)}\n`,
+        `${formatBuildPinDiff(pinVerdict.diff)}\n`
     );
     process.exitCode = 1;
     return;
@@ -672,7 +669,7 @@ async function main() {
   process.stdout.write(
     `preflight ok — build ${preflight.pin.headSha.slice(0, 7)} ` +
       `${pinVerdict.write ? (preflightOnly ? "would be pinned" : "pinned") : "matches the archive's pin"} ` +
-      `at ${buildPinPath(OUT)}\n`,
+      `at ${buildPinPath(OUT)}\n`
   );
   if (preflightOnly) return;
   const buildPinSignature = pinSignature(preflight.pin);
@@ -698,7 +695,7 @@ async function main() {
     process.stdout.write(
       `resuming: $${chargedUsd.toFixed(2)} already charged — ${finishedArms} finished arms ` +
         `($${finishedCostUsd.toFixed(2)}) and ${spend.abortedArms} aborted ` +
-        `($${spend.abortedCostUsd.toFixed(2)})\n`,
+        `($${spend.abortedCostUsd.toFixed(2)})\n`
     );
   }
   let started = 0;
@@ -714,7 +711,9 @@ async function main() {
     await buildGraph(tree, graphRoot);
     writeFileSync(
       join(dir, "graph.sha256"),
-      createHash("sha256").update(readFileSync(join(graphRoot, "graphify-out", "graph.json"))).digest("hex") + "\n",
+      createHash("sha256")
+        .update(readFileSync(join(graphRoot, "graphify-out", "graph.json")))
+        .digest("hex") + "\n"
     );
 
     let prefill = null;
@@ -727,7 +726,7 @@ async function main() {
       if (spec === undefined) {
         throw new Error(
           `${s.id}: armOrder contains "${arm}", which is not an arm. ` +
-            `${registrationId} registers ${registeredArms.join(", ")} — re-run select.mjs for this sample.`,
+            `${registrationId} registers ${registeredArms.join(", ")} — re-run select.mjs for this sample.`
         );
       }
       if (!wantedIds.includes(spec.id)) continue;
@@ -741,7 +740,7 @@ async function main() {
           `\nstopping before ${s.id} ${spec.id}: $${chargedUsd.toFixed(2)} charged of the ` +
             `$${costCeilingUsd.toFixed(2)} ceiling (${finishedArms} finished arms at ` +
             `$${finishedCostUsd.toFixed(2)}) — the next arm at $${estimateUsd.toFixed(2)} ` +
-            `would risk crossing it. Raise CODE_ROI_COST_CEILING only by decision.\n`,
+            `would risk crossing it. Raise CODE_ROI_COST_CEILING only by decision.\n`
         );
         return;
       }
@@ -771,7 +770,7 @@ async function main() {
         buildPinSignature,
         model,
         maxTurns,
-        registeredEstimateUsd,
+        registeredEstimateUsd
       );
       chargedUsd += charge.usd;
       if (finished) {
@@ -785,7 +784,7 @@ async function main() {
         // projection: nothing was measured here.
         process.stdout.write(
           `exit ${code}  ABORTED, not finalised; charged $${charge.usd.toFixed(2)} ` +
-            `(${charge.source}, total $${chargedUsd.toFixed(2)})\n`,
+            `(${charge.source}, total $${chargedUsd.toFixed(2)})\n`
         );
       }
     }
@@ -794,7 +793,7 @@ async function main() {
   process.stdout.write(
     `\n${complete} of ${live.length} scenarios complete, ${finishedArms} arms done ` +
       `at $${finishedCostUsd.toFixed(2)}, $${chargedUsd.toFixed(2)} charged of the ` +
-      `$${costCeilingUsd.toFixed(2)} ceiling\n`,
+      `$${costCeilingUsd.toFixed(2)} ceiling\n`
   );
 }
 

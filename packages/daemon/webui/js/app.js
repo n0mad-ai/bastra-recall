@@ -191,7 +191,13 @@ async function main() {
   let viewLoading = false; // semantic layout fetch in flight — don't re-enter
   async function switchView(v) {
     if (v === "tasks" && !tasksEnabled) v = "orbit";
-    if (v === "tasks") { telemetryView.close(); tasksView.open(); markViewButton(v); $('#view-switch [data-view="tasks"]').scrollIntoView({block:"nearest",inline:"nearest"}); return; }
+    if (v === "tasks") {
+      telemetryView.close();
+      tasksView.open();
+      markViewButton(v);
+      $('#view-switch [data-view="tasks"]').scrollIntoView({ block: "nearest", inline: "nearest" });
+      return;
+    }
     tasksView.close();
     markViewButton(currentView);
     if (v === "telemetry") {
@@ -314,9 +320,7 @@ async function main() {
     if (fly) interactions.flyToBounds(neighborhoodOf(node), { padding: 60, maxScale: 2.6 });
     inspector.show(node);
   }
-  $("#inspector-close").addEventListener("click", () =>
-    document.body.classList.remove("inspector-open"),
-  );
+  $("#inspector-close").addEventListener("click", () => document.body.classList.remove("inspector-open"));
 
   /** #307 — a category can come into EXISTENCE live, not just gain members.
    *
@@ -439,9 +443,7 @@ async function main() {
       const sub = document.createElement("div");
       sub.className = "t-sub";
       sub.textContent =
-        n.kind === "ghost"
-          ? `unwritten · linked ${n.degree}×`
-          : `${n.cluster} · ${n.type} · ${n.degree} links`;
+        n.kind === "ghost" ? `unwritten · linked ${n.degree}×` : `${n.cluster} · ${n.type} · ${n.degree} links`;
       tip.append(title, sub);
       tip.hidden = false;
       const pad = 14;
@@ -471,8 +473,7 @@ async function main() {
   const searchApi = createSearch($("#search"), $("#search-results"), sim.nodes, {
     colorOf,
     onPick: (n) => select(n, true),
-    aiSearch: async (q) =>
-      (await fetchSemanticSearch(q)).map((h) => sim.byId.get(h.id)).filter(Boolean),
+    aiSearch: async (q) => (await fetchSemanticSearch(q)).map((h) => sim.byId.get(h.id)).filter(Boolean),
     onOpenChange: (open) => {
       $("#search-dim").classList.toggle("on", open);
       $("#searchbox").classList.toggle("expanded", open);
@@ -505,7 +506,10 @@ async function main() {
   // ── mindspace recenter: one press (or C) fits the universe back in view ──
   function recenterOrbit() {
     if (currentView !== "orbit") return;
-    interactions.flyToBounds(sim.nodes.map((n) => ({ x: n.x, y: n.y })), { padding: 90, maxScale: 1.6, ms: 700 });
+    interactions.flyToBounds(
+      sim.nodes.map((n) => ({ x: n.x, y: n.y })),
+      { padding: 90, maxScale: 1.6, ms: 700 }
+    );
   }
   $("#orbit-recenter").addEventListener("click", recenterOrbit);
   addEventListener("keydown", (ev) => {
@@ -593,7 +597,7 @@ async function main() {
 
   // ── minimap ────────────────────────────────────────────────────
   const minimap = createMinimap($("#minimap"), sim, renderer, colorOf, (x, y, s, ms) =>
-    interactions.flyTo(x, y, s, ms),
+    interactions.flyTo(x, y, s, ms)
   );
 
   // ── render loop (boot/render-loop.js owns the frame + camera warmup) ──
@@ -614,8 +618,9 @@ async function main() {
   loop.start();
   // Mindspace (the universe) is the home view — first visit lands there;
   // afterwards the last-used view wins as before
-  const savedView = location.hash === "#tasks" ? "tasks" : localStorage.getItem(VIEW_KEY) ?? "orbit";
-  if (savedView === "tasks" || savedView === "ring" || savedView === "semantic" || savedView === "orbit") void switchView(savedView);
+  const savedView = location.hash === "#tasks" ? "tasks" : (localStorage.getItem(VIEW_KEY) ?? "orbit");
+  if (savedView === "tasks" || savedView === "ring" || savedView === "semantic" || savedView === "orbit")
+    void switchView(savedView);
 
   // ── choreography/demo runner (opt-in via ?demo=1) ──────────────
   // A self-running show for filming the map on a phone. It drives the real
@@ -624,13 +629,19 @@ async function main() {
   const demoFlag = new URLSearchParams(location.search).get("demo");
   if (demoFlag !== null && demoFlag !== "0") {
     const drive = {
-      switchView, getView: () => currentView, select, openMemoryById,
-      recenterOrbit, sim, renderer, interactions, orbitView, boltDemo,
+      switchView,
+      getView: () => currentView,
+      select,
+      openMemoryById,
+      recenterOrbit,
+      sim,
+      renderer,
+      interactions,
+      orbitView,
+      boltDemo,
     };
     window.__vault = drive; // also handy for hand-tuning the show from the console
-    import("./demo.js")
-      .then((m) => m.runDemo(drive))
-      .catch((err) => console.error("[demo] load failed", err));
+    import("./demo.js").then((m) => m.runDemo(drive)).catch((err) => console.error("[demo] load failed", err));
   }
 
   setTimeout(() => $("#hint").classList.add("fade"), 6000);

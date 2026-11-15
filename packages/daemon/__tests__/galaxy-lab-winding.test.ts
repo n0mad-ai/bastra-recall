@@ -83,16 +83,21 @@ test("the disc turns as one pattern — no star carries its own omega", () => {
   // arms, their knots, and the spur: all of them ride the disc, so none of
   // them may bring an omega of its own. Unset is the disc speed (view: ?? 1).
   const discStars = [
-    "alpha-core-0", "alpha-core-5", // arm core, both ends
-    "alpha-infra-0", "alpha-ui-2", // sub-area knots
-    "beta-0", "gamma-3", "delta-5", // the other arms
-    "epsilon-0", "epsilon-4", // the spur
+    "alpha-core-0",
+    "alpha-core-5", // arm core, both ends
+    "alpha-infra-0",
+    "alpha-ui-2", // sub-area knots
+    "beta-0",
+    "gamma-3",
+    "delta-5", // the other arms
+    "epsilon-0",
+    "epsilon-4", // the spur
   ];
   for (const id of discStars) {
     assert.equal(
       omegaOf(id),
       undefined,
-      `${id} sits in the disc and must not carry its own omega — that is the winding bug`,
+      `${id} sits in the disc and must not carry its own omega — that is the winding bug`
     );
   }
 });
@@ -104,16 +109,11 @@ test("a globular and a satellite each turn at ONE rate, slower than the disc", (
     ["zeta", "zeta", ROLE.HALO],
     ["eta", "eta (import)", ROLE.SATELLITE],
   ] as const) {
-    const omegas = new Set(
-      Array.from({ length: 3 }, (_, i) => omegaOf(`${prefix}-${i}`)),
-    );
+    const omegas = new Set(Array.from({ length: 3 }, (_, i) => omegaOf(`${prefix}-${i}`)));
     assert.equal(omegas.size, 1, `${key} must have ONE omega for all members, got ${[...omegas]}`);
 
     const omega = [...omegas][0]!;
-    assert.ok(
-      omega > 0 && omega < 1,
-      `${key} is halo — it has to drift slower than the disc, got ${omega}`,
-    );
+    assert.ok(omega > 0 && omega < 1, `${key} is halo — it has to drift slower than the disc, got ${omega}`);
 
     // the label has to ride the structure it names, or it slides off it
     const c = clusterFor(key);
@@ -125,10 +125,7 @@ test("a globular and a satellite each turn at ONE rate, slower than the disc", (
 test("the core still laps the disc", () => {
   const { omegaOf } = layout();
   const omega = omegaOf("user-0")!;
-  assert.ok(
-    omega > 1,
-    `the user's accretion disc keeps its ACCRETION_SPEEDUP, got ${omega}`,
-  );
+  assert.ok(omega > 1, `the user's accretion disc keeps its ACCRETION_SPEEDUP, got ${omega}`);
 });
 
 test("after 30 minutes every distance inside a structure is unchanged", () => {
@@ -151,7 +148,7 @@ test("after 30 minutes every distance inside a structure is unchanged", () => {
     const after = dist(at(a, HALF_HOUR), at(b, HALF_HOUR));
     assert.ok(
       Math.abs(after - before) < 1e-6,
-      `${a}↔${b} drifted from ${before.toFixed(2)} to ${after.toFixed(2)} in 30 min`,
+      `${a}↔${b} drifted from ${before.toFixed(2)} to ${after.toFixed(2)} in 30 min`
     );
   }
 
@@ -160,8 +157,5 @@ test("after 30 minutes every distance inside a structure is unchanged", () => {
   assert.ok(moved > 100, `the disc has to rotate, moved only ${moved.toFixed(1)}px`);
 
   // the halo drifts against the disc, which is the whole point of three zones
-  assert.ok(
-    (omegaOf("zeta-0") ?? 1) < 1,
-    "the globular has to fall behind the arms, not ride with them",
-  );
+  assert.ok((omegaOf("zeta-0") ?? 1) < 1, "the globular has to fall behind the arms, not ride with them");
 });

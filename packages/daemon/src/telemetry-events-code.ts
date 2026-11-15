@@ -64,13 +64,7 @@ export interface CodeToolCallEvent extends BaseEvent {
 }
 
 /** What a refresh run did — `started` first, then exactly one terminal outcome. */
-export type CodeGraphRefreshOutcome =
-  | "started"
-  | "ok"
-  | "locked"
-  | "failed"
-  | "given-up"
-  | "skipped";
+export type CodeGraphRefreshOutcome = "started" | "ok" | "locked" | "failed" | "given-up" | "skipped";
 
 /**
  * One refresh of one repository's graph.

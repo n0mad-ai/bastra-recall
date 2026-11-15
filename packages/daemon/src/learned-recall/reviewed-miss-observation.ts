@@ -62,11 +62,7 @@ export interface FrozenCandidatePool {
 }
 
 export type MembershipReason =
-  | "present"
-  | "no-such-object"
-  | "created-after-observation"
-  | "not-a-memory"
-  | "no-observation-time";
+  "present" | "no-such-object" | "created-after-observation" | "not-a-memory" | "no-observation-time";
 
 export interface MembershipProof {
   snapshotId: string;
@@ -133,21 +129,42 @@ function validPool(value: unknown): value is FrozenCandidatePool {
   if (!record(value) || !opaqueId(value.recallRef) || !nonempty(value.observedAt)) return false;
   const ordered = value.orderedCandidateIds;
   const served = value.servedCandidateIds;
-  return stringList(ordered) && ordered.every(opaqueId) && unique(ordered) &&
-    typeof value.depth === "number" && Number.isSafeInteger(value.depth) && value.depth === ordered.length &&
-    stringList(served) && served.every(opaqueId) && unique(served) &&
-    typeof value.vaultSize === "number" && Number.isSafeInteger(value.vaultSize) && value.vaultSize >= 0 &&
-    completeScoreSpace(value.scoreSpace);
+  return (
+    stringList(ordered) &&
+    ordered.every(opaqueId) &&
+    unique(ordered) &&
+    typeof value.depth === "number" &&
+    Number.isSafeInteger(value.depth) &&
+    value.depth === ordered.length &&
+    stringList(served) &&
+    served.every(opaqueId) &&
+    unique(served) &&
+    typeof value.vaultSize === "number" &&
+    Number.isSafeInteger(value.vaultSize) &&
+    value.vaultSize >= 0 &&
+    completeScoreSpace(value.scoreSpace)
+  );
 }
 
 function validFrozen(value: unknown): value is FrozenObservationIds {
-  return record(value) && opaqueId(value.indexSnapshotId) && value.indexIdentityBasis === "telemetry-derived" &&
-    opaqueId(value.vaultSnapshotId) && opaqueId(value.profileSnapshotId);
+  return (
+    record(value) &&
+    opaqueId(value.indexSnapshotId) &&
+    value.indexIdentityBasis === "telemetry-derived" &&
+    opaqueId(value.vaultSnapshotId) &&
+    opaqueId(value.profileSnapshotId)
+  );
 }
 
 function validProof(value: unknown, snapshotId: string, candidateId: string): value is MembershipProof {
   if (!record(value) || value.snapshotId !== snapshotId || value.candidateId !== candidateId) return false;
-  const reasons: MembershipReason[] = ["present", "no-such-object", "created-after-observation", "not-a-memory", "no-observation-time"];
+  const reasons: MembershipReason[] = [
+    "present",
+    "no-such-object",
+    "created-after-observation",
+    "not-a-memory",
+    "no-observation-time",
+  ];
   if (!reasons.includes(value.reason as MembershipReason)) return false;
   if (value.membership === "present") return value.reason === "present";
   return value.membership === "absent" && value.reason !== "present";
@@ -156,12 +173,14 @@ function validProof(value: unknown, snapshotId: string, candidateId: string): va
 function classifyVaultObject(
   target: Record<string, unknown>,
   frozen: FrozenObservationIds,
-  pool: FrozenCandidatePool,
+  pool: FrozenCandidatePool
 ): ReviewedMissClassification {
   if (!opaqueId(target.candidateId)) return "unknown";
   const candidateId = target.candidateId;
-  if (!validProof(target.vaultMembership, frozen.vaultSnapshotId, candidateId) ||
-      !validProof(target.indexMembership, frozen.indexSnapshotId, candidateId)) {
+  if (
+    !validProof(target.vaultMembership, frozen.vaultSnapshotId, candidateId) ||
+    !validProof(target.indexMembership, frozen.indexSnapshotId, candidateId)
+  ) {
     return "unknown";
   }
   const vault = target.vaultMembership;
@@ -199,8 +218,13 @@ export function classifyReviewedMissObservation(value: unknown): ReviewedMissCla
     // task was answered from a source outside the vault.
     if (target.reviewerDurable === true) {
       const checked = target.vaultChecked;
-      if (record(checked) && opaqueId(checked.snapshotId) && typeof checked.idCount === "number" &&
-          Number.isSafeInteger(checked.idCount) && checked.idCount >= 0) {
+      if (
+        record(checked) &&
+        opaqueId(checked.snapshotId) &&
+        typeof checked.idCount === "number" &&
+        Number.isSafeInteger(checked.idCount) &&
+        checked.idCount >= 0
+      ) {
         return "vault-gap";
       }
       return "unknown";

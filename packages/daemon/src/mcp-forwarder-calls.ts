@@ -56,7 +56,7 @@ export async function callDaemon(tool: string, args: unknown): Promise<unknown> 
         headers,
         body: JSON.stringify(args ?? {}),
       },
-      REQUEST_TIMEOUT_MS,
+      REQUEST_TIMEOUT_MS
     );
   };
 
@@ -70,9 +70,7 @@ export async function callDaemon(tool: string, args: unknown): Promise<unknown> 
     try {
       resp = await doFetch();
     } catch (err2) {
-      throw new Error(
-        `daemon unreachable at ${DAEMON_URL}: ${(err2 as Error).message}`,
-      );
+      throw new Error(`daemon unreachable at ${DAEMON_URL}: ${(err2 as Error).message}`);
     }
   }
 
@@ -84,9 +82,9 @@ export async function callDaemon(tool: string, args: unknown): Promise<unknown> 
     throw new Error(`invalid JSON response from daemon: ${text.slice(0, 200)}`);
   }
   if (!resp.ok) {
-    const errMsg =
-      (body as { error?: string })?.error ?? `HTTP ${resp.status}`;
-    if (isTaskTool(tool)) throw Object.assign(new Error(errMsg), { code: (body as { code?: string }).code, status: resp.status });
+    const errMsg = (body as { error?: string })?.error ?? `HTTP ${resp.status}`;
+    if (isTaskTool(tool))
+      throw Object.assign(new Error(errMsg), { code: (body as { code?: string }).code, status: resp.status });
     throw new Error(errMsg);
   }
   return body;
@@ -120,7 +118,14 @@ export async function maybeSessionContextItem(): Promise<{ type: "text"; text: s
     if (!resp.ok) return null;
     const body = (await resp.json()) as { context?: string };
     sessionContextPending = false;
-    return typeof body.context === "string" && body.context ? { type: "text", text: body.context + "\nRulebook: clients without supported hooks receive advisory rules. Codex CLI 0.162.1 and 0.166.0 have bounded checks with installed hooks; apply_patch deny and MCP remain unverified on both versions; Fork is verified only on 0.162.1; other Codex versions are uncertified. Without host session attribution, use rulebook_check with the session_id from the prompt/hook. A missing statusline does not establish missing hook support." } : null;
+    return typeof body.context === "string" && body.context
+      ? {
+          type: "text",
+          text:
+            body.context +
+            "\nRulebook: clients without supported hooks receive advisory rules. Codex CLI 0.162.1 and 0.166.0 have bounded checks with installed hooks; apply_patch deny and MCP remain unverified on both versions; Fork is verified only on 0.162.1; other Codex versions are uncertified. Without host session attribution, use rulebook_check with the session_id from the prompt/hook. A missing statusline does not establish missing hook support.",
+        }
+      : null;
   } catch {
     return null;
   }
@@ -187,7 +192,7 @@ const MCP_VECTOR_DEADLINE_MS = envInt("BASTRA_MCP_VECTOR_DEADLINE_MS", 1500);
 
 export async function callRecallStreaming(
   args: unknown,
-  onStage: (s: RecallStage) => void | Promise<void>,
+  onStage: (s: RecallStage) => void | Promise<void>
 ): Promise<unknown> {
   const a = (args ?? {}) as Record<string, unknown>;
   // #351 batch mode: several phrasings, ONE tool round trip. Sub-recalls run
@@ -204,9 +209,9 @@ export async function callRecallStreaming(
           // Phrasierung — drei Sub-Recalls, jeder für sich im Budget, ergeben
           // zusammen das Dreifache. Es wird unten auf das Ergebnis angewandt.
           { ...a, queries: undefined, max_tokens: undefined, query: q, batch_of: queries.length },
-          i === 0 ? onStage : () => undefined,
-        ),
-      ),
+          i === 0 ? onStage : () => undefined
+        )
+      )
     )) as Parameters<typeof mergeBatchResults>[1];
     const merged = mergeBatchResults(queries, subs, typeof a.k === "number" ? a.k : 5);
     // #421: Die Pool-Reflexe zählen wie auf der Einzelquery ins Budget.
@@ -221,7 +226,7 @@ export async function callRecallStreaming(
         hits: emitted,
         reflex_hits: emittedReflex.length > 0 ? emittedReflex : undefined,
         ...(dropped > 0 ? { truncated_by_budget: true, dropped_by_budget: dropped } : {}),
-      }),
+      })
     ).payload;
     return withDraftBudget(payload, draftHits ?? [], budget);
   }
@@ -274,7 +279,6 @@ export async function callRecallStreaming(
   if (API_TOKEN) headers.Authorization = `Bearer ${API_TOKEN}`;
   const taskAuth = await taskClientAuthorization();
   if (taskAuth) headers["x-bastra-task-authorization"] = taskAuth;
-
 
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
@@ -364,14 +368,27 @@ function parseSseFrame(frame: string): { type: string; data: unknown } | null {
 
 /** Streaming/hookless fallback: explicit authenticated cached due projection. */
 export async function maybeTaskDueItem(): Promise<{ type: "text"; text: string } | null> {
-  const authorization = await taskClientAuthorization(); if (!authorization) return null;
+  const authorization = await taskClientAuthorization();
+  if (!authorization) return null;
   try {
-    const response = await fetchWithTimeout(`${DAEMON_URL}/api/v1/task_due`, {
-      method: "POST", headers: { "Content-Type": "application/json", Authorization: authorization },
-      body: JSON.stringify({ channel: "mcp", session: typeof liveStatusline.cc_session_id === "string" ? liveStatusline.cc_session_id : "unknown" }),
-    }, 500);
+    const response = await fetchWithTimeout(
+      `${DAEMON_URL}/api/v1/task_due`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: authorization },
+        body: JSON.stringify({
+          channel: "mcp",
+          session: typeof liveStatusline.cc_session_id === "string" ? liveStatusline.cc_session_id : "unknown",
+        }),
+      },
+      500
+    );
     if (!response.ok) return null;
-    const body = await response.json() as { cards?: unknown[]; overflow?: number };
-    return body.cards?.length ? { type: "text", text: `<bastra-due coverage="next-contact-only">${JSON.stringify(body)}</bastra-due>` } : null;
-  } catch { return null; }
+    const body = (await response.json()) as { cards?: unknown[]; overflow?: number };
+    return body.cards?.length
+      ? { type: "text", text: `<bastra-due coverage="next-contact-only">${JSON.stringify(body)}</bastra-due>` }
+      : null;
+  } catch {
+    return null;
+  }
 }

@@ -26,11 +26,7 @@
  *    firing stays demoted: it costs nothing, and "never fired" is not evidence.
  * Contributed bridges (with `verifier`) are not ours to change.
  */
-import {
-  bridgeFiredOn,
-  distinctiveTerms,
-  type Bridge,
-} from "./bridges.js";
+import { bridgeFiredOn, distinctiveTerms, type Bridge } from "./bridges.js";
 import {
   appendBridgeLog,
   archiveBridgeFile,
@@ -118,7 +114,12 @@ function statsFor(b: Bridge, fires: Fire[], since: number, until: number): Bridg
 }
 
 /** Fires and outcomes per bridge id over [since, until] — for tests and doctor-style readouts. */
-export function bridgeFireStats(bridges: Bridge[], events: TelemetryEvent[], since: Date, until: Date): Map<string, BridgeFireStats> {
+export function bridgeFireStats(
+  bridges: Bridge[],
+  events: TelemetryEvent[],
+  since: Date,
+  until: Date
+): Map<string, BridgeFireStats> {
   const fires = firesFrom(events);
   return new Map(bridges.map((b) => [b.id, statsFor(b, fires, since.getTime(), until.getTime())]));
 }
@@ -138,7 +139,7 @@ export async function demoteIdleBridges(
   rootDir: string,
   events: TelemetryEvent[],
   now: Date = new Date(),
-  opts: { windowDays?: number; minFires?: number } = {},
+  opts: { windowDays?: number; minFires?: number } = {}
 ): Promise<DemotionResult> {
   const windowMs = (opts.windowDays ?? DEMOTION_WINDOW_DAYS) * DAY_MS;
   const minFires = opts.minFires ?? DEMOTION_MIN_FIRES;
@@ -157,7 +158,13 @@ export async function demoteIdleBridges(
         continue;
       }
       result.demoted++;
-      await appendBridgeLog(rootDir, "demote", bridge, `${s.fires} fires in ${opts.windowDays ?? DEMOTION_WINDOW_DAYS} days, no load or acted-on episode (#129)`, now);
+      await appendBridgeLog(
+        rootDir,
+        "demote",
+        bridge,
+        `${s.fires} fires in ${opts.windowDays ?? DEMOTION_WINDOW_DAYS} days, no load or acted-on episode (#129)`,
+        now
+      );
       continue;
     }
     const s = statsFor(bridge, fires, demotedAt, nowMs);
@@ -178,7 +185,7 @@ export async function demoteIdleBridges(
       path,
       bridge,
       `demoted and ${s.fires} more fires without outcome in the next window (#129)`,
-      now,
+      now
     );
     if (ok) result.archived++;
   }

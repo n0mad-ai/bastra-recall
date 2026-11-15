@@ -103,7 +103,7 @@ echo "{\\"tag_name\\":\\"\${RELEASE_TAG}\\",\\"name\\":\\"Bastra \${RELEASE_TAG}
 
 async function runInstaller(
   script,
-  { upgradeOk = false, cliVersion = "0.9.2", releaseTag = "v1.0.0", installed = true } = {},
+  { upgradeOk = false, cliVersion = "0.9.2", releaseTag = "v1.0.0", installed = true } = {}
 ) {
   const dir = await mkdtemp(join(tmpdir(), "bastra-installer-535-"));
   try {
@@ -153,10 +153,7 @@ for (const script of Object.keys(SCRIPTS)) {
 
   test(`#535 ${script}: a failed upgrade does not re-register against the version that never landed`, async () => {
     const { calls, out } = await runInstaller(script);
-    assert.ok(
-      !/^bastra install/m.test(calls),
-      `setup was re-run after a failed upgrade:\n${calls}\n---\n${out}`,
-    );
+    assert.ok(!/^bastra install/m.test(calls), `setup was re-run after a failed upgrade:\n${calls}\n---\n${out}`);
   });
 
   test(`#535 ${script}: an upgrade that really lands on the requested version finishes green`, async () => {
@@ -185,10 +182,7 @@ for (const script of Object.keys(SCRIPTS)) {
     assert.ok(!out.includes("✓ Done."), `success banner printed anyway:\n${out}`);
     assert.match(out, /1\.0\.0/);
     assert.match(out, /0\.9\.2/);
-    assert.ok(
-      !/^bastra install/m.test(calls),
-      `setup was re-run against a version that never landed:\n${calls}`,
-    );
+    assert.ok(!/^bastra install/m.test(calls), `setup was re-run against a version that never landed:\n${calls}`);
   });
 
   test(`#535 ${script}: a fresh install that lands on an old version is not a success either`, async () => {

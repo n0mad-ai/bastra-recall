@@ -36,23 +36,25 @@ function quote(text: string): string[] {
 }
 
 /** Render the block. Pure; plain markdown only. */
-export function renderConflictBlock(
-  existing: ConflictClaim,
-  incoming: ConflictClaim,
-  markedAt: string,
-): string {
+export function renderConflictBlock(existing: ConflictClaim, incoming: ConflictClaim, markedAt: string): string {
   const L: string[] = [];
   L.push(CONFLICT_START);
   L.push("");
   L.push(`## ⚠️ Unresolved conflict (marked ${markedAt})`);
   L.push("");
-  L.push("The vault disagrees with itself here. Two claims, one of them has to win — nothing was overwritten and nothing was silently duplicated.");
+  L.push(
+    "The vault disagrees with itself here. Two claims, one of them has to win — nothing was overwritten and nothing was silently duplicated."
+  );
   L.push("");
-  L.push(`**This memory's claim**${existing.date ? ` (${existing.date}` : " ("}${existing.source ? `, source: ${existing.source})` : ")"}:`);
+  L.push(
+    `**This memory's claim**${existing.date ? ` (${existing.date}` : " ("}${existing.source ? `, source: ${existing.source})` : ")"}:`
+  );
   L.push("");
   L.push(...quote(existing.statement));
   L.push("");
-  L.push(`**Incoming claim** — a save that was diverted here instead of being created${incoming.date ? ` (${incoming.date}` : " ("}${incoming.source ? `, source: ${incoming.source})` : ")"}:`);
+  L.push(
+    `**Incoming claim** — a save that was diverted here instead of being created${incoming.date ? ` (${incoming.date}` : " ("}${incoming.source ? `, source: ${incoming.source})` : ")"}:`
+  );
   L.push("");
   L.push(...quote(incoming.statement));
   if (incoming.detail && incoming.detail.trim() !== incoming.statement.trim()) {
@@ -62,7 +64,9 @@ export function renderConflictBlock(
     L.push(...quote(incoming.detail));
   }
   L.push("");
-  L.push("Resolve by deciding which claim stands, then re-save this memory with `overwrite=true` carrying that claim — the rewrite removes this block and the audit log records the resolution.");
+  L.push(
+    "Resolve by deciding which claim stands, then re-save this memory with `overwrite=true` carrying that claim — the rewrite removes this block and the audit log records the resolution."
+  );
   L.push(CONFLICT_END);
   return L.join("\n");
 }

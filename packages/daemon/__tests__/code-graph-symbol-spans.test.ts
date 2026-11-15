@@ -35,7 +35,11 @@ describe("symbol spans and the constructs that used to break them", () => {
   const spansOf = async (source: string, symbols: CodeSymbol[]) => {
     const file = `f-${Math.random().toString(36).slice(2)}.ts`;
     await writeFile(join(spanRoot, file), source, "utf8");
-    return symbolSpans(spanRoot, file, symbols.map((s) => ({ ...s, file })));
+    return symbolSpans(
+      spanRoot,
+      file,
+      symbols.map((s) => ({ ...s, file }))
+    );
   };
 
   it("a regex literal holding a brace does not stretch its symbol to the end of the file", async () => {
@@ -60,7 +64,7 @@ describe("symbol spans and the constructs that used to break them", () => {
       [
         [1, 3],
         [5, 7],
-      ],
+      ]
     );
     // The line a later top-level change touches belongs to `second` alone.
     assert.deepEqual(spansCovering(spans!, 6), ["s:second"]);
@@ -88,7 +92,7 @@ describe("symbol spans and the constructs that used to break them", () => {
       [
         [1, 4],
         [6, 8],
-      ],
+      ]
     );
   });
 
@@ -112,7 +116,7 @@ describe("symbol spans and the constructs that used to break them", () => {
       [
         [1, 5],
         [7, 9],
-      ],
+      ]
     );
   });
 
@@ -132,11 +136,14 @@ describe("symbol spans and the constructs that used to break them", () => {
     ].join("\n");
     const spans = await spansOf(source, [sym("f", 1)]);
     assert.notEqual(spans, null);
-    assert.deepEqual(spans!.map((s) => [s.start, s.end]), [[1, 3]]);
+    assert.deepEqual(
+      spans!.map((s) => [s.start, s.end]),
+      [[1, 3]]
+    );
     assert.deepEqual(
       spansCovering(spans!, 5),
       [],
-      "the top-level line stays unattributed, so the whole-file fallback fires",
+      "the top-level line stays unattributed, so the whole-file fallback fires"
     );
   });
 
@@ -164,7 +171,7 @@ describe("symbol spans and the constructs that used to break them", () => {
       [
         [1, 4],
         [8, 8],
-      ],
+      ]
     );
     assert.deepEqual(spansCovering(spans!, 5), [], "the top-level line is nobody's, as it must be");
   });
@@ -189,7 +196,7 @@ describe("symbol spans and the constructs that used to break them", () => {
       [
         [1, 5],
         [7, 9],
-      ],
+      ]
     );
   });
 
@@ -214,7 +221,7 @@ describe("symbol spans and the constructs that used to break them", () => {
         [1, 5],
         [2, 4],
         [7, 9],
-      ],
+      ]
     );
   });
 
@@ -236,7 +243,7 @@ describe("symbol spans and the constructs that used to break them", () => {
       [
         [1, 3],
         [5, 7],
-      ],
+      ]
     );
   });
 
@@ -267,7 +274,10 @@ describe("symbol spans and the constructs that used to break them", () => {
     ].join("\n");
     const spans = await spansOf(source, [sym("help", 1)]);
     assert.notEqual(spans, null, "the column of text is not structure");
-    assert.deepEqual(spans!.map((s) => [s.start, s.end]), [[1, 5]]);
+    assert.deepEqual(
+      spans!.map((s) => [s.start, s.end]),
+      [[1, 5]]
+    );
   });
 
   it("drops the whole file when the brackets do not balance", async () => {
@@ -315,7 +325,7 @@ describe("symbol spans and the constructs that used to break them", () => {
       [
         [1, 4],
         [7, 7],
-      ],
+      ]
     );
     assert.deepEqual(spansCovering(spans!, 6), [], "line 6 is top level, not inside f");
   });
@@ -340,7 +350,7 @@ describe("symbol spans and the constructs that used to break them", () => {
       [
         [1, 3],
         [5, 5],
-      ],
+      ]
     );
     assert.deepEqual(spansCovering(spans!, 4), [], "line 4 is top level, not inside f");
   });
@@ -373,7 +383,7 @@ describe("symbol spans and the constructs that used to break them", () => {
       [
         [1, 13],
         [14, 14],
-      ],
+      ]
     );
   });
 
@@ -397,7 +407,7 @@ describe("symbol spans and the constructs that used to break them", () => {
       [
         [1, 8],
         [9, 9],
-      ],
+      ]
     );
   });
 
@@ -433,7 +443,7 @@ describe("symbol spans and the constructs that used to break them", () => {
         [
           [1, 8],
           [9, 9],
-        ],
+        ]
       );
     });
   }
@@ -458,7 +468,7 @@ describe("symbol spans and the constructs that used to break them", () => {
       [
         [1, 3],
         [4, 6],
-      ],
+      ]
     );
   });
 });

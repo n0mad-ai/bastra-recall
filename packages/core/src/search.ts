@@ -91,10 +91,7 @@ export class SearchIndex {
   // ist memId → { touchTs, status, computedAt }. Invalidiert in `handle()`
   // bei change/remove, plus 12h-TTL gegen Tageswechsel (`aging → stale`
   // ohne Vault-Change).
-  private stalenessCache = new Map<
-    string,
-    { touchTs: number; status: StaleStatus; computedAt: number }
-  >();
+  private stalenessCache = new Map<string, { touchTs: number; status: StaleStatus; computedAt: number }>();
 
   // Curator-Demotions (#155): id-Set, vom Daemon nach jedem Curator-Pass
   // (und beim Boot aus dem State-File) gesetzt. Reiner Score-Mechanismus —
@@ -161,7 +158,7 @@ export class SearchIndex {
 
   constructor(
     private readonly vault: Vault,
-    cues?: CueIndexOptions,
+    cues?: CueIndexOptions
   ) {
     // Freier Parameter (§18.3): Boost und alle Cue-Parameter werden auf dem
     // Auswahlteil bestimmt, nicht hier geraten. Der Default 0 heißt AUS, und
@@ -189,17 +186,7 @@ export class SearchIndex {
         "body",
         ...(this.cues ? (["cues_flat"] as const) : []),
       ],
-      storeFields: [
-        "id",
-        "title",
-        "type",
-        "scope",
-        "summary",
-        "topic_path",
-        "obsolete",
-        "confidence",
-        "sensitivity",
-      ],
+      storeFields: ["id", "title", "type", "scope", "summary", "topic_path", "obsolete", "confidence", "sensitivity"],
       searchOptions: {
         boost: {
           ...FIELD_BOOST,
@@ -249,7 +236,7 @@ export class SearchIndex {
    */
   private bm25Plan(
     query: string,
-    opts: RecallOptions,
+    opts: RecallOptions
   ): {
     lexQuery: string;
     searchOptions: Record<string, unknown>;
@@ -290,9 +277,7 @@ export class SearchIndex {
       }
     }
     const stemOptions =
-      stems.size === 0
-        ? {}
-        : { fuzzy: (term: string) => (stems.has(term) ? false : fuzzy ? fuzzy(term) : BM25_FUZZY) };
+      stems.size === 0 ? {} : { fuzzy: (term: string) => (stems.has(term) ? false : fuzzy ? fuzzy(term) : BM25_FUZZY) };
     return {
       lexQuery: stems.size === 0 ? grouped.query : `${grouped.query} ${[...stems.keys()].join(" ")}`,
       searchOptions: {
@@ -404,7 +389,7 @@ export class SearchIndex {
     opts: RecallOptions,
     stage: StageEmitter,
     /** Gefaltete Query-Terme für den exakten Anker — siehe `matchedRecallWhen`. */
-    queryTerms: ReadonlySet<string>,
+    queryTerms: ReadonlySet<string>
   ): { ranked: RecallHit[]; pool: RecallHit[] } {
     // Pool-Size für Hop-Seeds: max(k*4, 20). Multi-Hop soll Nachbarn auch
     // für Hits sehen, die knapp unter dem k-Cut liegen — sonst gehen die
@@ -421,8 +406,11 @@ export class SearchIndex {
       matched_terms: r.terms ?? [],
       matched_recall_when: matchedRecallWhen(r, queryTerms),
       ...(() => {
-        const a = anchorStrength(r, queryTerms, (t) => this.recallWhenDocFreq(t), (id) =>
-          this.vault.get(id)?.fm.recall_when ?? [],
+        const a = anchorStrength(
+          r,
+          queryTerms,
+          (t) => this.recallWhenDocFreq(t),
+          (id) => this.vault.get(id)?.fm.recall_when ?? []
         );
         return a ? { anchor_strength: a } : {};
       })(),
@@ -443,7 +431,10 @@ export class SearchIndex {
     // seed was multiplied twice (0.2 × 0.2), dropping a fresh neighbour to 4%
     // of its raw score and below downstream floors.
     const tStale = stage.start("staleness.rank");
-    const rankedFull = this.applyStaleness(directFull.map((h) => ({ ...h })), opts);
+    const rankedFull = this.applyStaleness(
+      directFull.map((h) => ({ ...h })),
+      opts
+    );
     const direct = rankedFull.slice(0, k);
     stage.end("staleness.rank", tStale, { reranked_count: direct.length });
 
@@ -463,7 +454,7 @@ export class SearchIndex {
       // its own multiplier.
       const neighbors = this.applyStaleness(
         collectOneHopNeighbors(this.vault, directFull, opts, new Set(direct.map((h) => h.id))),
-        opts,
+        opts
       ).slice(0, k);
       stage.end("hops.expand", tHops, { hop_count: neighbors.length });
       ranked = [...direct, ...neighbors];
@@ -637,9 +628,7 @@ export class SearchIndex {
     const tBm = stage.start("bm25.search");
     const plan = this.bm25Plan(query, opts);
     const lexQuery = plan.lexQuery;
-    const bm25 = this.mini
-      .search(lexQuery, plan.searchOptions)
-      .filter((r) => passesRecallFilters(r, opts));
+    const bm25 = this.mini.search(lexQuery, plan.searchOptions).filter((r) => passesRecallFilters(r, opts));
     const authoredTerms = plan.authoredTerms;
     const bm25Top = bm25.slice(0, 50);
     stage.end("bm25.search", tBm, {
@@ -650,8 +639,13 @@ export class SearchIndex {
       terms_unique: plan.unique,
     });
 
-    const { vectorTop, vectorArmTimedOut, vectorArmErrored } =
-      await awaitDenseArm(vectorArm, this.vault, opts, stage, tVec);
+    const { vectorTop, vectorArmTimedOut, vectorArmErrored } = await awaitDenseArm(
+      vectorArm,
+      this.vault,
+      opts,
+      stage,
+      tVec
+    );
 
     // #240/B1: an empty vector arm is NOT "degraded to BM25" — running RRF
     // on one arm produced a different score space, not the BM25 one. A
@@ -688,30 +682,21 @@ export class SearchIndex {
         hit_count: bm25Only.length,
         vault_size: this.mini.documentCount,
         total_ms: Date.now() - recallStart,
-        degraded: vectorArmTimedOut
-          ? "vector-arm-timeout"
-          : vectorArmErrored
-            ? "vector-arm-error"
-            : "vector-arm-empty",
+        degraded: vectorArmTimedOut ? "vector-arm-timeout" : vectorArmErrored ? "vector-arm-error" : "vector-arm-empty",
       });
       return bm25Only;
     }
 
-    const outFull = fuseArms(
-      bm25Top,
-      vectorTop,
-      k,
-      this.vault,
-      authoredTerms,
-      (t) => this.recallWhenDocFreq(t),
-      stage,
-    );
+    const outFull = fuseArms(bm25Top, vectorTop, k, this.vault, authoredTerms, (t) => this.recallWhenDocFreq(t), stage);
 
     // #240/A7: same ordering fix as the BM25 path — multipliers and re-sort
     // over the full pool, THEN cut to k. Damping runs on a clone so `outFull`
     // keeps raw scores for the hop seeds (see the BM25 path for why).
     const tStale = stage.start("staleness.rank");
-    const rankedFull = this.applyStaleness(outFull.map((h) => ({ ...h })), opts);
+    const rankedFull = this.applyStaleness(
+      outFull.map((h) => ({ ...h })),
+      opts
+    );
     const out = rankedFull.slice(0, k);
     stage.end("staleness.rank", tStale, { reranked_count: out.length });
 
@@ -725,7 +710,7 @@ export class SearchIndex {
       const tHops = stage.start("hops.expand");
       const neighbors = this.applyStaleness(
         collectOneHopNeighbors(this.vault, outFull, opts, new Set(out.map((h) => h.id))),
-        opts,
+        opts
       ).slice(0, k);
       stage.end("hops.expand", tHops, { hop_count: neighbors.length });
       ranked = [...out, ...neighbors];
@@ -801,9 +786,7 @@ export class SearchIndex {
     // add/change gleichermaßen ab, `remove` räumt in `handle()` separat auf,
     // weil dort kein neuer Stand mehr kommt.
     this.forgetRecallWhenTerms(fm.id);
-    const recallWhenTerms = new Set(
-      tokenizeWithIdentifiers(fm.recall_when.join(" ")).map(foldTerm),
-    );
+    const recallWhenTerms = new Set(tokenizeWithIdentifiers(fm.recall_when.join(" ")).map(foldTerm));
     for (const t of recallWhenTerms) {
       this.recallWhenTermFreq.set(t, (this.recallWhenTermFreq.get(t) ?? 0) + 1);
     }
@@ -819,9 +802,7 @@ export class SearchIndex {
       body: m.body,
       // Nur wenn eine Projektion geladen ist. Ein Memory ohne Cues bekommt das
       // Feld leer — es ist dann im Index vorhanden, trägt aber keine Terme.
-      ...(this.cues
-        ? { cues_flat: (this.cues.byMemory.get(fm.id) ?? []).join(" \n ") }
-        : {}),
+      ...(this.cues ? { cues_flat: (this.cues.byMemory.get(fm.id) ?? []).join(" \n ") } : {}),
       type: fm.type,
       scope: fm.scope,
       topic_path: fm.topic_path,

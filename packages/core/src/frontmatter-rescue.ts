@@ -31,9 +31,11 @@ import type { DamagedField } from "./schema.js";
  *  delimiters and therefore no constructed parser input. It runs js-yaml's
  *  safe loader, so no custom tag can instantiate anything. */
 function parseYamlFragment(fragment: string): unknown {
-  return (matter as unknown as {
-    engines: { yaml: { parse: (input: string) => unknown } };
-  }).engines.yaml.parse(fragment);
+  return (
+    matter as unknown as {
+      engines: { yaml: { parse: (input: string) => unknown } };
+    }
+  ).engines.yaml.parse(fragment);
 }
 
 export interface RescueResult {
@@ -181,7 +183,7 @@ export function repairRequired(
   mtime: number,
   body: string,
   damaged: DamagedField[],
-  isPathSafe: (value: string) => boolean,
+  isPathSafe: (value: string) => boolean
 ): void {
   const note = (field: string, reason: string): void => {
     if (!damaged.some((d) => d.field === field)) damaged.push({ field, reason });

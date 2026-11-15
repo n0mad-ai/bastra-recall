@@ -35,7 +35,9 @@ async function todayWithCache(cached, onSet = () => {}) {
   process.env.CLAUDE_CONFIG_DIR = claudeDir;
   CacheManager.getLatestTranscriptMtime = async () => 1;
   CacheManager.getUsageCache = async () => cached;
-  CacheManager.setUsageCache = async () => { onSet(); };
+  CacheManager.setUsageCache = async () => {
+    onSet();
+  };
   try {
     return await new TodayProvider().getTodayInfo();
   } finally {
@@ -61,7 +63,9 @@ test("a cache holding today's entries is still reused", async () => {
 
 test("a valid empty today cache is reused without reading transcripts again", async () => {
   let writes = 0;
-  const info = await todayWithCache([], () => { writes++; });
+  const info = await todayWithCache([], () => {
+    writes++;
+  });
   assert.equal(info.cost, 0);
   assert.equal(writes, 0, "the empty cache was discarded and recomputed");
 });

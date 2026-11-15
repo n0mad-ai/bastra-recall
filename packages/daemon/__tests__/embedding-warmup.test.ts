@@ -177,7 +177,7 @@ const unfusedHit = {
 
 async function withDaemon(
   resp: Record<string, unknown>,
-  fn: (base: string, bodies: Array<Record<string, unknown>>) => Promise<void>,
+  fn: (base: string, bodies: Array<Record<string, unknown>>) => Promise<void>
 ): Promise<void> {
   const seenBodies: Array<Record<string, unknown>> = [];
   const sessionContext = JSON.stringify({
@@ -205,11 +205,7 @@ async function withDaemon(
         }
       }
       const body =
-        path === "/hook/session-context"
-          ? sessionContext
-          : path === "/health"
-            ? JSON.stringify({ ok: true })
-            : "{}";
+        path === "/hook/session-context" ? sessionContext : path === "/health" ? JSON.stringify({ ok: true }) : "{}";
       res.writeHead(200, { "content-type": "application/json" });
       res.end(body);
     });
@@ -243,7 +239,7 @@ test("#490: ein kalter SessionStart antwortet lexikalisch im Budget, benennt es 
       const out = await runSessionLane(
         { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-cold" },
         base,
-        warmup,
+        warmup
       );
       const elapsed = Date.now() - t0;
 
@@ -253,12 +249,17 @@ test("#490: ein kalter SessionStart antwortet lexikalisch im Budget, benennt es 
       // dichter Arm.
       assert.equal(bodies[0].lexical_only, true, "auf kaltem Modell läuft kein dichter Arm");
       assert.equal(bodies[0].vector_deadline_ms, undefined, "wo kein Arm läuft, gibt es keine Frist");
-      assert.equal(bodies[0].hook_budget_ms, SESSION_START_BUDGET_MS, "das Schattenbudget bleibt die Wanduhr dieser Lane");
+      assert.equal(
+        bodies[0].hook_budget_ms,
+        SESSION_START_BUDGET_MS,
+        "das Schattenbudget bleibt die Wanduhr dieser Lane"
+      );
       assert.ok(elapsed < 500, `die Lane bleibt in ihrer Wanduhr (${elapsed} ms)`);
       assert.equal(w.calls(), 1, "der Ladevorgang läuft NEBEN dem Recall an");
 
-      const ctx = (JSON.parse(out) as { hookSpecificOutput?: { additionalContext?: string } })
-        .hookSpecificOutput?.additionalContext ?? "";
+      const ctx =
+        (JSON.parse(out) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput
+          ?.additionalContext ?? "";
       assert.match(ctx, /not in memory/i, "der Block sagt, warum nur ein Arm lief");
       assert.match(ctx, /next recall in this session is fused/i);
       assert.doesNotMatch(ctx, /semantic search is off/i, "das wäre hier schlicht unwahr");
@@ -291,15 +292,24 @@ test("#490: ein warmes Modell behält die 350 ms und löst keinen Warmup aus", a
   const beforeTel = process.env.BASTRA_TELEMETRY;
   process.env.BASTRA_TELEMETRY = "off";
   try {
-    await withDaemon({ ...unfusedHit, score_kind: "rrf", unfused: false, degraded: undefined, hits: [{ ...unfusedHit.hits[0], score: 150 }] }, async (base, bodies) => {
-      await runSessionLane(
-        { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-warm" },
-        base,
-        warmup,
-      );
-      assert.equal(bodies[0].vector_deadline_ms, 350);
-      assert.equal(calls, 0, "ein residentes Modell braucht keinen Embed, der es beweist");
-    });
+    await withDaemon(
+      {
+        ...unfusedHit,
+        score_kind: "rrf",
+        unfused: false,
+        degraded: undefined,
+        hits: [{ ...unfusedHit.hits[0], score: 150 }],
+      },
+      async (base, bodies) => {
+        await runSessionLane(
+          { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-warm" },
+          base,
+          warmup
+        );
+        assert.equal(bodies[0].vector_deadline_ms, 350);
+        assert.equal(calls, 0, "ein residentes Modell braucht keinen Embed, der es beweist");
+      }
+    );
   } finally {
     if (beforeTel === undefined) delete process.env.BASTRA_TELEMETRY;
     else process.env.BASTRA_TELEMETRY = beforeTel;
@@ -313,7 +323,7 @@ test("#490: ohne Koordinator bleibt die Lane, wie sie war — 350 ms", async () 
     await withDaemon(unfusedHit, async (base, bodies) => {
       await runSessionLane(
         { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-no-coord" },
-        base,
+        base
       );
       assert.equal(bodies[0].vector_deadline_ms, 350);
     });
@@ -336,8 +346,16 @@ test("#490: zwei gleichzeitige SessionStarts auf kaltem Modell starten EINEN War
   try {
     await withDaemon(unfusedHit, async (base, bodies) => {
       await Promise.all([
-        runSessionLane({ hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "a" }, base, warmup),
-        runSessionLane({ hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "b" }, base, warmup),
+        runSessionLane(
+          { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "a" },
+          base,
+          warmup
+        ),
+        runSessionLane(
+          { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "b" },
+          base,
+          warmup
+        ),
       ]);
       assert.equal(bodies.length, 2, "beide Sitzungen haben ihren eigenen Recall");
       assert.equal(w.calls(), 1, "aber nur einen gemeinsamen Ladevorgang");

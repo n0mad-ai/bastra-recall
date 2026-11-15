@@ -156,14 +156,17 @@ test("#522: while the lanes only charge in shadow, no versioned document promise
   assert.equal(
     laneSources.every((src) => src.includes("recordBudgetShadow(")),
     true,
-    "Jede automatische Lane verbucht über recordBudgetShadow. Fällt das weg, ist der Governor live — dann zuerst docs/Evolutionsarchitektur V1 zu V2.md ändern (0.1, 16.3, 21.1, 25, 26.1/26.2), danach EN-Architektur, README (EN+DE), PLAN.md und die v1.0-Milestone-Beschreibung.",
+    "Jede automatische Lane verbucht über recordBudgetShadow. Fällt das weg, ist der Governor live — dann zuerst docs/Evolutionsarchitektur V1 zu V2.md ändern (0.1, 16.3, 21.1, 25, 26.1/26.2), danach EN-Architektur, README (EN+DE), PLAN.md und die v1.0-Milestone-Beschreibung."
   );
 
   // Die Stellen, die #522 als Vertragsversprechen benannt hat. Jede muss die
   // Shadow-Einschränkung tragen, solange oben nichts gekürzt wird.
   const PROMISES: Array<[string, string[]]> = [
     ["docs/Evolutionsarchitektur V1 zu V2.md", ["Cross-Lane-Sitzungsledger im Shadow", "im Shadow mitschreibt"]],
-    ["docs/Evolution Architecture V1 to V2.md", ["session ledger running in shadow", "records in shadow what a budget would"]],
+    [
+      "docs/Evolution Architecture V1 to V2.md",
+      ["session ledger running in shadow", "records in shadow what a budget would"],
+    ],
     ["README.md", ["it does not yet enforce a live session-wide limit", "es erzwingt noch keine globale Obergrenze"]],
     ["PLAN.md", ["runs in shadow", "does not yet\nenforce that limit live"]],
   ];
@@ -173,7 +176,7 @@ test("#522: while the lanes only charge in shadow, no versioned document promise
       assert.equal(
         text.includes(needle),
         true,
-        `${rel} verspricht das Sitzungsbudget ohne Shadow-Einschränkung: "${needle}" fehlt.`,
+        `${rel} verspricht das Sitzungsbudget ohne Shadow-Einschränkung: "${needle}" fehlt.`
       );
     }
   }

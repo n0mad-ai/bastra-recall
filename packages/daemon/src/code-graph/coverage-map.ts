@@ -40,7 +40,15 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { closeSync, constants as fsConstants, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from "node:fs";
+import {
+  closeSync,
+  constants as fsConstants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+} from "node:fs";
 import { lstat, mkdir, open, readdir, realpath, rename, stat, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -211,8 +219,13 @@ async function coverageDirs(repoRoot: string, create: boolean): Promise<{ dir: s
 /** One raw file through a `O_NOFOLLOW` handle: parsed, still settling, or unreadable (with its age). */
 async function readRawFile(
   path: string,
-  now: number,
-): Promise<{ kind: "doc"; doc: { result?: RawScript[] } } | { kind: "settling" } | { kind: "unreadable"; ageMs: number } | { kind: "skip" }> {
+  now: number
+): Promise<
+  | { kind: "doc"; doc: { result?: RawScript[] } }
+  | { kind: "settling" }
+  | { kind: "unreadable"; ageMs: number }
+  | { kind: "skip" }
+> {
   let fh;
   try {
     fh = await open(path, READ_FLAGS);
@@ -367,7 +380,8 @@ export function parseMap(text: string | null): CoverageMap | null {
     return {
       version: 1,
       writer: COVERAGE_MAP_WRITER,
-      foldedAt: typeof raw.foldedAt === "string" && !UNSAFE_CHARS.test(raw.foldedAt) ? raw.foldedAt : new Date(0).toISOString(),
+      foldedAt:
+        typeof raw.foldedAt === "string" && !UNSAFE_CHARS.test(raw.foldedAt) ? raw.foldedAt : new Date(0).toISOString(),
       runs: typeof raw.runs === "number" && Number.isFinite(raw.runs) && raw.runs >= 0 ? raw.runs : 0,
       tests,
     };
@@ -416,7 +430,10 @@ export function gitVerdict(repoRoot: string): GitVerdict {
 }
 
 /** Per repository, so switching between repositories does not re-parse; a few at most. */
-const snapshots = new Map<string, { mtimeMs: number; size: number; ctimeMs: number; index: string; map: CoverageMap | null }>();
+const snapshots = new Map<
+  string,
+  { mtimeMs: number; size: number; ctimeMs: number; index: string; map: CoverageMap | null }
+>();
 const MAX_SNAPSHOTS = 8;
 /**
  * A git that gave no clean answer (hung, missing, an error) is not asked again
@@ -448,7 +465,15 @@ export function readCoverageMapSync(repoRoot: string, now = Date.now()): Coverag
     // then changes the stamp the snapshot is checked against, and "tracked" is
     // cached too, so a tracked map costs no git process per read.
     const index = coverageIndexStamp(repoRoot);
-    if (hit !== undefined && index !== null && hit.index === index && hit.mtimeMs === st.mtimeMs && hit.ctimeMs === st.ctimeMs && hit.size === st.size) return hit.map;
+    if (
+      hit !== undefined &&
+      index !== null &&
+      hit.index === index &&
+      hit.mtimeMs === st.mtimeMs &&
+      hit.ctimeMs === st.ctimeMs &&
+      hit.size === st.size
+    )
+      return hit.map;
     if (st.size > MAX_MAP_BYTES) return null;
     const verdict = gitVerdict(repoRoot);
     if (verdict === "unknown") {
@@ -556,7 +581,7 @@ function foldProcess(
   doc: { result?: RawScript[] },
   repoRoot: string,
   sourceOf: (abs: string) => string,
-  map: CoverageMap,
+  map: CoverageMap
 ): boolean {
   const perFile = new Map<string, Set<string>>();
   for (const script of doc.result ?? []) {
@@ -635,7 +660,7 @@ const folds = new Map<string, { timer: NodeJS.Timeout | null; running: boolean; 
 export function scheduleCoverageFold(
   repoRoot: string,
   fold: (repoRoot: string) => Promise<unknown> = foldCoverage,
-  debounceMs = FOLD_DEBOUNCE_MS,
+  debounceMs = FOLD_DEBOUNCE_MS
 ): void {
   let entry = folds.get(repoRoot);
   if (entry === undefined) {
@@ -708,10 +733,7 @@ export function rankTests(map: CoverageMap, changed: ReadonlyMap<string, readonl
   const kept = sharp.length > 0 ? sharp : ranked;
   return kept.sort(
     (a, b) =>
-      b.functions - a.functions ||
-      b.files - a.files ||
-      b.exercised - a.exercised ||
-      a.test.localeCompare(b.test),
+      b.functions - a.functions || b.files - a.files || b.exercised - a.exercised || a.test.localeCompare(b.test)
   );
 }
 
@@ -724,7 +746,7 @@ export function coverageTestsLine(
   map: CoverageMap | null,
   changed: ReadonlyMap<string, readonly string[]>,
   alreadyListed: ReadonlySet<string>,
-  now = Date.now(),
+  now = Date.now()
 ): string | null {
   if (map === null) return null;
   const ranked = rankTests(map, changed).filter((r) => !alreadyListed.has(r.test));

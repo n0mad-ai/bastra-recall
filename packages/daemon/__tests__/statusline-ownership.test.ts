@@ -7,7 +7,8 @@ import { isOurStatusline, patchClaudeCodeStatusline } from "../src/cli/adapters/
 
 const feed = {
   type: "command",
-  command: "/opt/homebrew/Cellar/node@24/24.16.0/bin/node /Users/n0mad/Projekte/bastra-recall/packages/statusline/dist/claude-panel-feed.mjs",
+  command:
+    "/opt/homebrew/Cellar/node@24/24.16.0/bin/node /Users/n0mad/Projekte/bastra-recall/packages/statusline/dist/claude-panel-feed.mjs",
   refreshInterval: 1,
 };
 
@@ -17,11 +18,16 @@ test("#1327: only the marker and complete supported commands grant ownership", (
     "node /pkg/statusline/dist/index.mjs --style=powerline",
     '"/Program Files/node.exe" "C:/pkg/statusline/dist/index.mjs" --style=powerline',
     "/pkg/stub/bastra-hook statusline --style=powerline",
-  ]) assert.equal(isOurStatusline({ command }), true, command);
+  ])
+    assert.equal(isOurStatusline({ command }), true, command);
   for (const command of [
-    "echo bastra-statusline", "bastra-hook statusline-foreign", "bastra-hook statusline ; echo foreign",
-    "node /pkg/statusline/dist/index.mjs.foreign", "node /pkg/statusline/dist/index.mjs && echo foreign",
-  ]) assert.equal(isOurStatusline({ command }), false, command);
+    "echo bastra-statusline",
+    "bastra-hook statusline-foreign",
+    "bastra-hook statusline ; echo foreign",
+    "node /pkg/statusline/dist/index.mjs.foreign",
+    "node /pkg/statusline/dist/index.mjs && echo foreign",
+  ])
+    assert.equal(isOurStatusline({ command }), false, command);
   assert.equal(isOurStatusline({ ...feed, __bastraRecall: true }), true);
   assert.equal(isOurStatusline({ ...feed, __nexusRecall: true }), false);
 });
@@ -39,10 +45,14 @@ for (const stubPresent of [true, false]) {
     assert.equal(await readFile(settingsPath, "utf8"), before);
     const output: string[] = [];
     const log = console.log;
-    console.log = (s) => { output.push(String(s)); };
+    console.log = (s) => {
+      output.push(String(s));
+    };
     try {
       assert.equal((await patchClaudeCodeStatusline("install", { ...opts, force: true })).status, "installed");
-    } finally { console.log = log; }
+    } finally {
+      console.log = log;
+    }
     assert.ok(output.includes(`replacing foreign statusLine ${feed.command}`));
     assert.equal(isOurStatusline(JSON.parse(await readFile(settingsPath, "utf8")).statusLine), true);
   });

@@ -6,7 +6,14 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { activePatches, lastRunPath, patchesDir, readLastRun, type ApplyOutcome, type LastRun } from "./patch-registry.js";
+import {
+  activePatches,
+  lastRunPath,
+  patchesDir,
+  readLastRun,
+  type ApplyOutcome,
+  type LastRun,
+} from "./patch-registry.js";
 import { clearPatchProvenance } from "./patch-provenance.js";
 
 export function writeLastRun(o: ApplyOutcome, home = homedir()): void {
@@ -58,7 +65,7 @@ export function pendingPatchNotice(home = homedir()): string | null {
         `and every patch applied in that run was reversed. ` +
         (stillOn > 0
           ? `${stillOn} patch${stillOn === 1 ? "" : "es"} from an earlier run ${stillOn === 1 ? "is" : "are"} still on this install.`
-          : `bastra is running unpatched.`),
+          : `bastra is running unpatched.`)
     );
     if (rec.smokeError) lines.push(`Boot error: ${rec.smokeError.split("\n")[0]}`);
   } else if (unrestored.length > 0) {
@@ -67,25 +74,25 @@ export function pendingPatchNotice(home = homedir()): string | null {
     lines.push(
       `The last update reapplied local patches, the patched install failed its boot check, and ` +
         `reversing that run did not put everything back. This install is now neither patched nor the ` +
-        `one the updater produced — what did not go back:`,
+        `one the updater produced — what did not go back:`
     );
     for (const u of unrestored) lines.push(`  · ${u}`);
     lines.push(
       `A 3-way merge cannot be undone by reversing the patch, which is why the reversal stopped short. ` +
         `The pre-update backup under ~/.bastra/update-backups still holds these files as they were — ` +
-        `put them back by hand before trusting this install.`,
+        `put them back by hand before trusting this install.`
     );
     if (rec.smokeError) lines.push(`Boot error: ${rec.smokeError.split("\n")[0]}`);
   }
   if (aside.length > 0) {
     lines.push(
       `${aside.length} local patch${aside.length === 1 ? "" : "es"} could not be reapplied after the last update ` +
-        `(${rec.at.slice(0, 10)}) and ${aside.length === 1 ? "was" : "were"} set aside, never forced:`,
+        `(${rec.at.slice(0, 10)}) and ${aside.length === 1 ? "was" : "were"} set aside, never forced:`
     );
     for (const s of aside) lines.push(`  · ${s.id} — ${s.subject}`);
     lines.push(
       `Upstream most likely moved the code they touch. 'bastra patches status' shows the conflicting hunks; ` +
-        `the pre-update backup under ~/.bastra/update-backups still holds the files as they were.`,
+        `the pre-update backup under ~/.bastra/update-backups still holds the files as they were.`
     );
   }
   return lines.join("\n");
@@ -97,7 +104,8 @@ export function formatApplyOutcome(o: ApplyOutcome): string {
   if (o.skipped) return `  ${o.skipped}\n`;
   const lines: string[] = [];
   for (const e of o.applied) lines.push(`  ✓ applied   ${e.id} — ${e.subject}`);
-  for (const e of o.kept ?? []) lines.push(`  = kept      ${e.id} — already present on this install; kept in the series`);
+  for (const e of o.kept ?? [])
+    lines.push(`  = kept      ${e.id} — already present on this install; kept in the series`);
   for (const e of o.retired) lines.push(`  ↩ retired   ${e.id} — merged upstream, dropped from the series`);
   for (const s of o.setAside) {
     lines.push(`  ⚠ set aside ${s.entry.id} — ${s.entry.subject}`);

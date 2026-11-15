@@ -120,7 +120,7 @@ describe("reversing a diff whose content looks like a header", () => {
 
   test("a pure deletion reverses into a pure insertion with the header swapped", () => {
     const diff = ["diff --git a/f.ts b/f.ts", "--- a/f.ts", "+++ b/f.ts", "@@ -5,2 +4,0 @@", "-old1", "-old2"].join(
-      "\n",
+      "\n"
     );
     const back = reverseUnifiedDiff(diff).split("\n");
     assert.deepEqual(back.slice(3), ["@@ -4,0 +5,2 @@", "+old1", "+old2"]);
@@ -163,7 +163,7 @@ describe("reversing a pure rename", () => {
   test("THE REPRODUCTION: `rename from`/`rename to` trade places and the header's sides follow", () => {
     assert.equal(
       reverseUnifiedDiff(RENAME),
-      ["diff --git a/new.ts b/old.ts", "similarity index 100%", "rename from new.ts", "rename to old.ts"].join("\n"),
+      ["diff --git a/new.ts b/old.ts", "similarity index 100%", "rename from new.ts", "rename to old.ts"].join("\n")
     );
   });
 
@@ -183,7 +183,7 @@ describe("reversing a pure rename", () => {
         'diff --git "a/new \\303\\244.ts" "b/old \\303\\244.ts"',
         'rename from "new \\303\\244.ts"',
         'rename to "old \\303\\244.ts"',
-      ].join("\n"),
+      ].join("\n")
     );
   });
 

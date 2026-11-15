@@ -32,12 +32,12 @@ export async function publishCueRun(
   report: CueBatchReport,
   partial: string,
   out: string,
-  overwrite: boolean,
+  overwrite: boolean
 ): Promise<void> {
   if (report.stopped_early || (report.memories_seen > 0 && report.cues_written === 0)) {
     throw new Error(
       `Lauf nicht erfolgreich (${report.stopped_early ? "von der Generierungsbremse gestoppt" : "keine Cues geschrieben"}) — ` +
-        `${JSON.stringify(report)} — bestehendes Sidecar unverändert`,
+        `${JSON.stringify(report)} — bestehendes Sidecar unverändert`
     );
   }
   await publishCueSidecar(partial, out, overwrite);
@@ -48,7 +48,7 @@ export async function publishCueRun(
  * through publishCueRun. */
 export async function finishCueRun(
   report: CueBatchReport,
-  opts: { armLost: string | undefined; dryRun: boolean; partial: string; out: string; overwrite: boolean },
+  opts: { armLost: string | undefined; dryRun: boolean; partial: string; out: string; overwrite: boolean }
 ): Promise<void> {
   if (opts.armLost !== undefined) {
     throw new Error(`der Vektorarm ist während des Laufs ausgefallen (${opts.armLost}) — kein Sidecar geschrieben`);

@@ -20,10 +20,24 @@ import { Telemetry } from "../src/telemetry.js";
 function memoryMarkdown(id: string, title: string): string {
   const ts = new Date().toISOString();
   return [
-    "---", `id: ${id}`, `title: ${title}`, "type: reference", `summary: ${title}`,
-    "topic_path:", "  - test", "tags:", "  - test", "scope: act-test",
-    "recall_when:", `  - ${title}`, `created: ${ts}`, `updated: ${ts}`, "---",
-    "", `Body for ${title}.`, "",
+    "---",
+    `id: ${id}`,
+    `title: ${title}`,
+    "type: reference",
+    `summary: ${title}`,
+    "topic_path:",
+    "  - test",
+    "tags:",
+    "  - test",
+    "scope: act-test",
+    "recall_when:",
+    `  - ${title}`,
+    `created: ${ts}`,
+    `updated: ${ts}`,
+    "---",
+    "",
+    `Body for ${title}.`,
+    "",
   ].join("\n");
 }
 
@@ -43,7 +57,7 @@ function httpReq(port: number, method: string, path: string, payload?: unknown):
       (res) => {
         res.on("data", () => undefined);
         res.on("end", () => resolve(res.statusCode ?? 0));
-      },
+      }
     );
     req.on("error", reject);
     if (body) req.write(body);

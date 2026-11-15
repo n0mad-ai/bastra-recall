@@ -15,11 +15,20 @@
   text-transform: uppercase;
   letter-spacing: 0.14em;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
-#view-switch button + button { border-left: 1px solid var(--panel-border); }
-#view-switch button:hover { color: var(--accent); }
-#view-switch button.active { background: var(--accent-soft); color: var(--accent); }
+#view-switch button + button {
+  border-left: 1px solid var(--panel-border);
+}
+#view-switch button:hover {
+  color: var(--accent);
+}
+#view-switch button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 
 /* ── search: result groups + per-row AI badge ──────────────────── */
 #search-results li.divider {
@@ -31,12 +40,23 @@
   color: var(--text-dim);
   background: var(--chip-bg);
 }
-#search-results li.divider:hover { background: var(--chip-bg); }
-#search-results li.divider.ai { color: var(--accent); background: var(--accent-soft); }
-#search-results li.divider.ai:hover { background: var(--accent-soft); }
+#search-results li.divider:hover {
+  background: var(--chip-bg);
+}
+#search-results li.divider.ai {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+#search-results li.divider.ai:hover {
+  background: var(--accent-soft);
+}
 /* copilot finds sit on top, unmistakably highlighted */
-#search-results li.agent-row { background: var(--accent-soft); }
-#search-results li.agent-row .r-title { font-weight: 600; }
+#search-results li.agent-row {
+  background: var(--accent-soft);
+}
+#search-results li.agent-row .r-title {
+  font-weight: 600;
+}
 
 /* ── search copilot: chat beside the results ───────────────────── */
 #search-chat {
@@ -53,7 +73,9 @@
   -webkit-backdrop-filter: var(--panel-blur);
   box-shadow: var(--shadow);
 }
-#search-chat[hidden] { display: none !important; }
+#search-chat[hidden] {
+  display: none !important;
+}
 #chat-title {
   padding: 6px 12px;
   font: 9px var(--font-mono);
@@ -84,10 +106,26 @@
   white-space: pre-wrap;
   overflow-wrap: break-word;
 }
-#chat-log .msg.user { align-self: flex-end; background: var(--accent-soft); color: var(--text); }
-#chat-log .msg.ai { align-self: flex-start; background: var(--chip-bg); color: var(--text); }
-#chat-log .msg.sys { align-self: flex-start; color: var(--text-dim); font-style: italic; padding: 0 2px; }
-#chat-log .msg.sys.err { color: #d06a6a; font-style: normal; }
+#chat-log .msg.user {
+  align-self: flex-end;
+  background: var(--accent-soft);
+  color: var(--text);
+}
+#chat-log .msg.ai {
+  align-self: flex-start;
+  background: var(--chip-bg);
+  color: var(--text);
+}
+#chat-log .msg.sys {
+  align-self: flex-start;
+  color: var(--text-dim);
+  font-style: italic;
+  padding: 0 2px;
+}
+#chat-log .msg.sys.err {
+  color: #d06a6a;
+  font-style: normal;
+}
 #chat-form {
   border-top: 1px solid var(--panel-border);
 }
@@ -100,7 +138,9 @@
   font: 13px var(--font-display);
   color: var(--text);
 }
-#chat-input::placeholder { color: var(--text-dim); }
+#chat-input::placeholder {
+  color: var(--text-dim);
+}
 .ai-badge {
   flex: none;
   font: 9px var(--font-mono);
@@ -128,8 +168,14 @@
   color: var(--text-dim);
   text-decoration: none;
 }
-#feedback-row a:hover { color: var(--accent); }
-#feedback-row svg { width: 13px; height: 13px; flex: none; }
+#feedback-row a:hover {
+  color: var(--accent);
+}
+#feedback-row svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
 
 /* the semantic view hides the structure row — hidden must beat .seg's
    explicit display (same trap as the cropper) */
@@ -141,11 +187,15 @@
 #mindspace-mode-label[hidden],
 #mindspace-lab-switch[hidden],
 #mindspace-lab-label[hidden],
-#mindspace-galaxy-opts[hidden] { display: none !important; }
+#mindspace-galaxy-opts[hidden] {
+  display: none !important;
+}
 
 /* test-mode switch: two words in one button, so it has to be pinned to a
    single line — a wrapped segment button breaks the row height */
-#mindspace-lab-switch button { white-space: nowrap; }
+#mindspace-lab-switch button {
+  white-space: nowrap;
+}
 
 /* ── view hints (ring, semantic, orbit) ────────────────────────── */
 #ring-hint,
@@ -164,9 +214,15 @@
 }
 
 /* the recenter control is the one interactive bit inside the orbit hint */
-#orbit-hint { pointer-events: auto; }
-#semantic-hint { pointer-events: auto; }
-#semantic-depth-controls[hidden] { display: none; }
+#orbit-hint {
+  pointer-events: auto;
+}
+#semantic-hint {
+  pointer-events: auto;
+}
+#semantic-depth-controls[hidden] {
+  display: none;
+}
 #semantic-spin,
 #orbit-recenter {
   padding: 2px 8px;
@@ -177,4 +233,7 @@
   letter-spacing: 0.05em;
   cursor: pointer;
 }
-#orbit-recenter:hover { color: var(--accent); border-color: var(--accent); }
+#orbit-recenter:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}

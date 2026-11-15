@@ -112,13 +112,7 @@ export type Residency = "warm" | "cold" | "unknown" | "hosted";
  *   `hosted`          — es gibt kein Modell von uns, das kalt werden könnte.
  *   `none`            — noch keinerlei Beleg (`unknown`).
  */
-export type ResidencySource =
-  | "unload-observed"
-  | "provider-load"
-  | "warm-up"
-  | "last-ok"
-  | "hosted"
-  | "none";
+export type ResidencySource = "unload-observed" | "provider-load" | "warm-up" | "last-ok" | "hosted" | "none";
 
 /** Residenz plus die Frage, ob sie gemessen oder geschätzt ist. */
 export interface ResidencyReading {
@@ -178,12 +172,7 @@ export interface WarmupSettle {
 
 /** What `ensureWarm()` decided. */
 export type WarmupOutcome =
-  | "fired"
-  | "skipped-in-flight"
-  | "skipped-warm"
-  | "skipped-no-provider"
-  | "skipped-hosted"
-  | "skipped-battery";
+  "fired" | "skipped-in-flight" | "skipped-warm" | "skipped-no-provider" | "skipped-hosted" | "skipped-battery";
 
 /**
  * WER wärmt (#494). The singleflight, the hosted check and the breaker apply to
@@ -359,18 +348,14 @@ export function createEmbeddingWarmup(opts: WarmupOptions): WarmupCoordinator {
   // ganze Antwort.
   let flight: Promise<boolean> | null = null;
 
-  const ensureWarm = (
-    trigger: WarmupTrigger = "session",
-    sessionStartCallId?: string,
-  ): WarmupOutcome => {
+  const ensureWarm = (trigger: WarmupTrigger = "session", sessionStartCallId?: string): WarmupOutcome => {
     // Asked first, like in the prewarmer: "there is nothing here to warm" is a
     // different event from "the arm is down", and the two must stay apart.
     if (opts.hostedProvider?.() === true) return "skipped-hosted";
     if (opts.deferred?.() === true) return "skipped-battery";
     // #494: Der Boot fragt nur nach dem Provider, alle anderen nach dem
     // dichten Arm — siehe {@link WarmupTrigger}.
-    const available =
-      trigger === "boot" ? (opts.providerAvailable ?? opts.denseArmAvailable) : opts.denseArmAvailable;
+    const available = trigger === "boot" ? (opts.providerAvailable ?? opts.denseArmAvailable) : opts.denseArmAvailable;
     if (!available()) return "skipped-no-provider";
     // The point of the whole file: five sessions starting at once share ONE
     // load. The flag is set before the call and cleared when it settles.
@@ -421,7 +406,7 @@ export function createEmbeddingWarmup(opts: WarmupOptions): WarmupCoordinator {
           opts.onError?.(err);
           settle(false, null);
           return false;
-        },
+        }
       );
     } catch (err) {
       // A `warm` that throws synchronously (misconfigured provider URL) must

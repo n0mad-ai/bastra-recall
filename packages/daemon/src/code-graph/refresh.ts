@@ -491,8 +491,7 @@ export async function graphIsFresh(repoRoot: string): Promise<boolean> {
     const builtMs = Date.parse(manifest.builtAt);
     if (!Number.isFinite(builtMs)) return false;
     const { count, newestMtimeMs, signature } = await scanFileState(repoRoot);
-    return newestMtimeMs <= builtMs && count === manifest.fileState.count
-      && signature === manifest.fileState.signature;
+    return newestMtimeMs <= builtMs && count === manifest.fileState.count && signature === manifest.fileState.signature;
   } catch {
     return false;
   }

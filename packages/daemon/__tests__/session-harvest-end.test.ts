@@ -74,10 +74,14 @@ test("SessionEnd through the Stop lane: harvested on the next pass, no idle wait
     await writeFile(transcript, TRANSCRIPT);
     const out = await runStopLane(
       { hook_event_name: "SessionEnd", session_id: "end-1", transcript_path: transcript, cwd: "/work/release-tool" },
-      "http://127.0.0.1:1",
+      "http://127.0.0.1:1"
     );
     assert.equal(out, "{}");
-    const queue = JSON.parse(await readFile(join(dir, "queue.json"), "utf8")) as { session_id: string; last_stop: number; ended_at?: number }[];
+    const queue = JSON.parse(await readFile(join(dir, "queue.json"), "utf8")) as {
+      session_id: string;
+      last_stop: number;
+      ended_at?: number;
+    }[];
     assert.equal(queue[0].session_id, "end-1");
     assert.equal(queue[0].ended_at, queue[0].last_stop);
 
@@ -99,7 +103,11 @@ test("a Stop after SessionEnd (resumed session) brings the idle rule back", asyn
     await noteSessionForHarvest({ session_id: "end-2", transcript_path: transcript, ended: true, now: t0 });
     await noteSessionForHarvest({ session_id: "end-2", transcript_path: transcript, now: t0 + 5000 });
     const loadTurns = (p: string) => loadTranscript({ transcript_path: p });
-    assert.deepEqual(await runSessionHarvest({ loadTurns, now: t0 + 6000 }), { harvested: 0, candidates: 0, stored: 0 });
+    assert.deepEqual(await runSessionHarvest({ loadTurns, now: t0 + 6000 }), {
+      harvested: 0,
+      candidates: 0,
+      stored: 0,
+    });
     assert.equal(existsSync(join(dir, "pending.json")), false);
     // Ends again: due at once.
     await noteSessionForHarvest({ session_id: "end-2", transcript_path: transcript, ended: true, now: t0 + 7000 });
@@ -144,8 +152,14 @@ test("everything already stored: nothing is relayed", async () => {
 
 // ─── the vault check ─────────────────────────────────────────────────────────
 
-function fakeVault(notes: Array<{ id: string; title: string; summary: string; body?: string }>): { vault: Vault; search: SearchIndex } {
-  const mems = notes.map((n) => ({ fm: { id: n.id, title: n.title, summary: n.summary, tags: [], recall_when: [] }, body: n.body ?? "" }));
+function fakeVault(notes: Array<{ id: string; title: string; summary: string; body?: string }>): {
+  vault: Vault;
+  search: SearchIndex;
+} {
+  const mems = notes.map((n) => ({
+    fm: { id: n.id, title: n.title, summary: n.summary, tags: [], recall_when: [] },
+    body: n.body ?? "",
+  }));
   const vault = { list: () => mems } as unknown as Vault;
   // Candidate generation is not under test: every note is a candidate.
   const search = { recall: () => mems.map((m) => ({ id: m.fm.id })) } as unknown as SearchIndex;
@@ -162,7 +176,11 @@ test("vault check: the same words match, a new fact does not, function words wei
   }));
   const { vault, search } = fakeVault([
     ...filler,
-    { id: "staging-db", title: "Staging database", summary: "Staging always gets its own database, never shared with production." },
+    {
+      id: "staging-db",
+      title: "Staging database",
+      summary: "Staging always gets its own database, never shared with production.",
+    },
   ]);
   const match = storedQuoteMatcher(vault, search);
   assert.equal(match("No — staging always gets its own database, we never share it with production."), "staging-db");
@@ -181,16 +199,18 @@ test("weightedContainment: weights decide, not the raw share of words", () => {
 // ─── registration ────────────────────────────────────────────────────────────
 
 function commandsOf(entries: unknown[] | undefined): string[] {
-  return (entries ?? []).flatMap((e) => ((e as { hooks?: unknown[] }).hooks ?? []).map((h) => (h as { command?: string }).command ?? ""));
+  return (entries ?? []).flatMap((e) =>
+    ((e as { hooks?: unknown[] }).hooks ?? []).map((h) => (h as { command?: string }).command ?? "")
+  );
 }
 
 test("adapter: chat SessionEnd stays required and the harvest companion follows the Stop opt-in", () => {
   const withStop = planHookEntries("install", {}, { includeStop: true, stubPresent: false });
   const end = commandsOf(withStop.after.SessionEnd);
   assert.equal(end.length, 2);
-  assert.equal(end.filter(command => /session-hook\.js$/.test(command)).length, 1);
-  assert.equal(end.filter(command => /stop-hook\.js$/.test(command)).length, 1);
-  assert.ok(end.every(command => command.startsWith("BASTRA_HOOK_CLIENT=claude-code ")));
+  assert.equal(end.filter((command) => /session-hook\.js$/.test(command)).length, 1);
+  assert.equal(end.filter((command) => /stop-hook\.js$/.test(command)).length, 1);
+  assert.ok(end.every((command) => command.startsWith("BASTRA_HOOK_CLIENT=claude-code ")));
 
   const without = planHookEntries("install", {}, { includeStop: false, stubPresent: false });
   const lifecycle = commandsOf(without.after.SessionEnd);
@@ -201,14 +221,18 @@ test("adapter: chat SessionEnd stays required and the harvest companion follows 
   const preserved = planHookEntries(
     "install",
     { Stop: withStop.after.Stop },
-    { includeStop: false, stubPresent: false },
+    { includeStop: false, stubPresent: false }
   );
   assert.equal(preserved.stopPreserved, true);
   const kept = commandsOf(preserved.after.SessionEnd);
   assert.equal(kept.length, 2);
-  assert.equal(kept.filter(command => /stop-hook\.js$/.test(command)).length, 1);
+  assert.equal(kept.filter((command) => /stop-hook\.js$/.test(command)).length, 1);
 
-  const removed = planHookEntries("uninstall", { SessionEnd: withStop.after.SessionEnd }, { includeStop: false, stubPresent: false });
+  const removed = planHookEntries(
+    "uninstall",
+    { SessionEnd: withStop.after.SessionEnd },
+    { includeStop: false, stubPresent: false }
+  );
   assert.equal(commandsOf(removed.after.SessionEnd).length, 0);
 });
 
@@ -216,8 +240,22 @@ test("adapter: chat SessionEnd stays required and the harvest companion follows 
 
 test("stats: harvest line joins the delivering session start to later saves on caller_session", () => {
   const rows: Record<string, unknown>[] = [
-    { kind: "session_harvest", ts: "2026-09-28T10:00:00Z", session_id: "a", candidate_count: 2, stored_count: 1, trigger: "session_end" },
-    { kind: "session_harvest", ts: "2026-09-28T10:05:00Z", session_id: "b", candidate_count: 1, stored_count: 0, trigger: "idle" },
+    {
+      kind: "session_harvest",
+      ts: "2026-09-28T10:00:00Z",
+      session_id: "a",
+      candidate_count: 2,
+      stored_count: 1,
+      trigger: "session_end",
+    },
+    {
+      kind: "session_harvest",
+      ts: "2026-09-28T10:05:00Z",
+      session_id: "b",
+      candidate_count: 1,
+      stored_count: 0,
+      trigger: "idle",
+    },
     { kind: "session_hook_call", ts: "2026-09-28T11:00:00Z", session_id: "c", pending_harvest: 1 },
     { kind: "session_hook_call", ts: "2026-09-28T11:30:00Z", session_id: "d", pending_harvest: 1 },
     { kind: "session_hook_call", ts: "2026-09-28T11:40:00Z", session_id: "e" },
@@ -239,17 +277,32 @@ test("stats: harvest line joins the delivering session start to later saves on c
 
   // #887: a row with `skipped_reason` is a session the job could NOT read —
   // it has its own count and never raises "session(s) read".
-  const skipped = { kind: "session_harvest", ts: "2026-09-28T10:06:00Z", session_id: "r", candidate_count: 0, stored_count: 0, trigger: "session_end", skipped_reason: "transcript_path not readable: ENOENT" };
+  const skipped = {
+    kind: "session_harvest",
+    ts: "2026-09-28T10:06:00Z",
+    session_id: "r",
+    candidate_count: 0,
+    stored_count: 0,
+    trigger: "session_end",
+    skipped_reason: "transcript_path not readable: ENOENT",
+  };
   const withSkipped = aggregateHarvest([...rows, skipped]);
   assert.equal(withSkipped?.harvestedSessions, 2);
   assert.equal(withSkipped?.bySessionEnd, 1);
   assert.equal(withSkipped?.skippedSessions, 1);
   assert.match(
     renderStats(aggregate([...rows, skipped]), 600),
-    /session harvest — 2 session\(s\) read \(1 on SessionEnd\), 3 quote\(s\) relayed, 1 already in the vault, 1 skipped \(transcript not readable on this host\)/,
+    /session harvest — 2 session\(s\) read \(1 on SessionEnd\), 3 quote\(s\) relayed, 1 already in the vault, 1 skipped \(transcript not readable on this host\)/
   );
-  assert.equal(aggregateHarvest([skipped])?.harvestedSessions, 0, "a window of skipped sessions only still reports them");
+  assert.equal(
+    aggregateHarvest([skipped])?.harvestedSessions,
+    0,
+    "a window of skipped sessions only still reports them"
+  );
   const text = renderStats(aggregate(rows), 600);
-  assert.match(text, /session harvest — 2 session\(s\) read \(1 on SessionEnd\), 3 quote\(s\) relayed, 1 already in the vault/);
+  assert.match(
+    text,
+    /session harvest — 2 session\(s\) read \(1 on SessionEnd\), 3 quote\(s\) relayed, 1 already in the vault/
+  );
   assert.match(text, /delivered to 2 session start\(s\), 1 of them saved afterwards/);
 });

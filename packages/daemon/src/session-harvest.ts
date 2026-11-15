@@ -123,7 +123,10 @@ function lastLine(s: string): string {
  * pass already harvested.
  */
 export function harvestCandidates(
-  turns: HarvestTurn[], from = 0, max = HARVEST_MAX_CANDIDATES, includeSaved = false,
+  turns: HarvestTurn[],
+  from = 0,
+  max = HARVEST_MAX_CANDIDATES,
+  includeSaved = false
 ): HarvestCandidate[] {
   turns = turns.map(normalizeOwnerTurn);
   const userIdx: number[] = [];
@@ -172,15 +175,13 @@ export function harvestCandidates(
   }
 
   const rank: Record<HarvestKind, number> = { restated: 0, correction: 1, answer: 2 };
-  return [...found.values()]
-    .sort((a, b) => rank[a.kind] - rank[b.kind] || b.turn - a.turn)
-    .slice(0, max);
+  return [...found.values()].sort((a, b) => rank[a.kind] - rank[b.kind] || b.turn - a.turn).slice(0, max);
 }
 
 /** The relay entry for one finished session. */
 export function formatHarvestBlock(
   entry: { session_id: string; cwd?: string },
-  candidates: HarvestCandidate[],
+  candidates: HarvestCandidate[]
 ): string {
   const where = entry.cwd ? ` project="${escapeAttr(basename(entry.cwd))}"` : "";
   const lines = [
@@ -202,7 +203,8 @@ async function readQueue(path: string): Promise<QueueEntry[]> {
     const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
     if (!Array.isArray(parsed)) return [];
     return (parsed as QueueEntry[]).filter(
-      (e) => typeof e?.session_id === "string" && typeof e?.transcript_path === "string" && typeof e?.last_stop === "number",
+      (e) =>
+        typeof e?.session_id === "string" && typeof e?.transcript_path === "string" && typeof e?.last_stop === "number"
     );
   } catch {
     return [];
@@ -281,7 +283,11 @@ export async function runSessionHarvest(opts: {
    *  Absent = no vault check. */
   storedIn?: () => (quote: string) => string | null;
   vaultId?: string;
-  relay?: (entry: { session_id: string; cwd?: string }, candidates: HarvestCandidate[], captured: boolean) => Promise<void>;
+  relay?: (
+    entry: { session_id: string; cwd?: string },
+    candidates: HarvestCandidate[],
+    captured: boolean
+  ) => Promise<void>;
   now?: number;
 }): Promise<HarvestPassResult> {
   const result: HarvestPassResult = { harvested: 0, candidates: 0, stored: 0 };
@@ -295,7 +301,7 @@ export async function runSessionHarvest(opts: {
     const due = await withPathLock(path, async () => {
       const entries = await readQueue(path);
       return entries.filter(
-        (e) => isFinished(e, now) && (e.harvested_at === undefined || e.harvested_at < e.last_stop),
+        (e) => isFinished(e, now) && (e.harvested_at === undefined || e.harvested_at < e.last_stop)
       );
     });
     const progress = new Map<string, { upto: number; at: number }>();
@@ -318,7 +324,7 @@ export async function runSessionHarvest(opts: {
           [],
           0,
           ended,
-          `transcript_path not readable: ${(err as NodeJS.ErrnoException).code ?? "unknown"}`,
+          `transcript_path not readable: ${(err as NodeJS.ErrnoException).code ?? "unknown"}`
         );
         continue;
       }
@@ -345,7 +351,17 @@ export async function runSessionHarvest(opts: {
       // Draft capture is independent of shape selection and the relay cap.
       let drafts = { count: 0, appended: 0, evicted: 0, ids: [] as string[], omitted: 0, stored: 0, error: false };
       try {
-        drafts = { ...await captureTypedDrafts(turns, e, now, shapes, opts.storedIn ? (storedIn ??= opts.storedIn()) : undefined, opts.vaultId), error: false };
+        drafts = {
+          ...(await captureTypedDrafts(
+            turns,
+            e,
+            now,
+            shapes,
+            opts.storedIn ? (storedIn ??= opts.storedIn()) : undefined,
+            opts.vaultId
+          )),
+          error: false,
+        };
       } catch {
         // A malformed/newer draft store must not stop the existing relay.
         drafts.error = true;
@@ -372,7 +388,7 @@ export async function runSessionHarvest(opts: {
       }
       await writeQueue(
         path,
-        entries.filter((e) => now - e.last_stop <= QUEUE_MAX_AGE_MS),
+        entries.filter((e) => now - e.last_stop <= QUEUE_MAX_AGE_MS)
       );
     });
   } catch {
@@ -388,8 +404,16 @@ async function writeHarvestTelemetry(
   stored: number,
   ended: boolean,
   skippedReason?: string,
-  drafts?: { count: number; appended: number; evicted: number; ids: string[]; omitted: number; stored: number; error: boolean },
-  storedMemoryIds: string[] = [],
+  drafts?: {
+    count: number;
+    appended: number;
+    evicted: number;
+    ids: string[];
+    omitted: number;
+    stored: number;
+    error: boolean;
+  },
+  storedMemoryIds: string[] = []
 ): Promise<void> {
   if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
@@ -409,7 +433,17 @@ async function writeHarvestTelemetry(
       stored_count: stored,
       stored_memory_ids: storedMemoryIds,
       trigger: ended ? "session_end" : "idle",
-      ...(drafts ? { draft_count: drafts.count, draft_evicted_count: drafts.evicted, draft_evidence_count: drafts.appended, draft_ids_omitted: drafts.omitted, draft_ids: drafts.ids, draft_stored_count: drafts.stored, draft_error: drafts.error } : {}),
+      ...(drafts
+        ? {
+            draft_count: drafts.count,
+            draft_evicted_count: drafts.evicted,
+            draft_evidence_count: drafts.appended,
+            draft_ids_omitted: drafts.omitted,
+            draft_ids: drafts.ids,
+            draft_stored_count: drafts.stored,
+            draft_error: drafts.error,
+          }
+        : {}),
       ...(skippedReason ? { skipped_reason: skippedReason } : {}),
     };
     await appendFile(join(logDir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify(event) + "\n", "utf8");
