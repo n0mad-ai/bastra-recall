@@ -46,7 +46,22 @@ export default [
       sourceType: "module",
     },
     plugins: { "@typescript-eslint": tseslint.plugin },
-    rules: correctnessRules,
+    rules: {
+      ...correctnessRules,
+      complexity: ["error", { max: 15, variant: "classic" }],
+      "max-depth": ["error", 4],
+      "max-lines-per-function": ["warn", { max: 100, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    files: ["packages/daemon/__tests__/gate-lane-wiring.test.ts"],
+    // Preserve the existing inline exception: this request-draining binding is intentionally unread.
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { ...correctnessRules["@typescript-eslint/no-unused-vars"][1], varsIgnorePattern: "^_$" },
+      ],
+    },
   },
   {
     files: ["packages/daemon/webui/v22/**/*.{ts,mts,js,mjs}"],

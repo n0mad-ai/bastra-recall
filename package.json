@@ -34,12 +34,22 @@
     "probe:save62-claude": "bash tools/probes/claude-code-long-save/run.sh",
     "openapi:generate": "node --import tsx packages/daemon/scripts/generate-openapi.ts",
     "openapi:check": "node --import tsx packages/daemon/scripts/generate-openapi.ts --check",
-    "lint": "eslint packages scripts tools",
+    "lint": "npm run lint:baselines && npm run lint:structure && npm run lint:cycles && npm run lint:clones",
     "format": "prettier --write \"{packages,scripts,tools}/**/*.{ts,mts,js,mjs,css,html,json}\"",
-    "format:check": "prettier --check \"{packages,scripts,tools}/**/*.{ts,mts,js,mjs,css,html,json}\""
+    "format:check": "prettier --check \"{packages,scripts,tools}/**/*.{ts,mts,js,mjs,css,html,json}\"",
+    "lint:structure": "node scripts/lint-structure.mjs",
+    "lint:cycles": "node scripts/check-cycles.mjs",
+    "lint:clones": "node scripts/check-clones.mjs",
+    "lint:baselines": "node scripts/check-lint-baselines.mjs",
+    "lint:prune": "npm run lint:structure:prune && npm run lint:cycles:prune && npm run lint:clones:prune",
+    "lint:structure:prune": "node scripts/lint-structure.mjs --prune",
+    "lint:cycles:prune": "node scripts/check-cycles.mjs --prune",
+    "lint:clones:prune": "node scripts/check-clones.mjs --prune"
   },
   "devDependencies": {
+    "dependency-cruiser": "18.7.2",
     "eslint": "10.15.0",
+    "jscpd": "5.4.3",
     "prettier": "3.10.1",
     "typescript": "^6.0.3",
     "typescript-eslint": "8.72.2"

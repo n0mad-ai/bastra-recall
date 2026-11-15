@@ -1,0 +1,27 @@
+{
+  "path": ["."],
+  "format": ["javascript", "typescript", "jsx", "tsx"],
+  "crossFormats": "js-ts",
+  "minLines": 20,
+  "minTokens": 150,
+  "mode": "weak",
+  "gitignore": true,
+  "ignorePattern": ["(?ms)^import\\s[^;]+;"],
+  "ignore": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/coverage/**",
+    "**/vendor/**",
+    "packages/eval/fixtures/**",
+    "**/__fixtures__/**",
+    "**/stress-fixtures/**",
+    "**/goldset/**",
+    "packages/daemon/stub/build-info.ts",
+    "tools/model-compare/data/**",
+    "tools/model-compare/results/**",
+    "tools/probes/convention-e2e/fixtures.mjs",
+    "**/__tests__/fixtures/**"
+  ],
+  "pattern": "{packages,scripts,tools}/**/*.{ts,mts,js,mjs,tsx,jsx}"
+}
