@@ -21,6 +21,7 @@ import { INJECTED_BLOCK_TAGS, scrubInjectedBlocks } from "@bastra-recall/core/sc
 import { ONBOARDING_BLOCK_TAG } from "../src/session-onboarding-block.js";
 import { formatSameTurnBlock } from "../src/stop-lane-same-turn.js";
 import { formatHarvestBlock } from "../src/session-harvest.js";
+import { buildSoulBlock } from "../src/soul.js";
 
 test("the Stop lane's same-turn block is scrubbed whole", () => {
   const block = formatSameTurnBlock([
@@ -38,6 +39,15 @@ test("the session-harvest relay block is scrubbed whole", () => {
   const { text, removed } = scrubInjectedBlocks(`typed text\n${block}`);
   assert.equal(text.trim(), "typed text");
   assert.ok(removed.includes("session-harvest" as never), `removed: ${removed.join(",")}`);
+});
+
+test("the preferred interaction block is scrubbed whole, preserving surrounding prose", () => {
+  const block = buildSoulBlock({ direction: "direct", text: "Keep replies brief." });
+  const { text, removed } = scrubInjectedBlocks(`typed text${block}\ntail`);
+  assert.equal(text, "typed text\n\ntail");
+  assert.deepEqual(removed, ["preferred-interaction"]);
+  const mention = "The <preferred-interaction> tag contains style preferences.";
+  assert.equal(scrubInjectedBlocks(mention).text, mention);
 });
 
 test("every hook block tag the daemon sources close is in INJECTED_BLOCK_TAGS", () => {

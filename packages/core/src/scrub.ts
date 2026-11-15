@@ -32,6 +32,7 @@ export const INJECTED_BLOCK_TAGS = [
   "draft-hints",
   "draft-review",
   "session-context",
+  "preferred-interaction",
   "pinned-memories",
   "vault-taxonomy",
   "bastra-update",
