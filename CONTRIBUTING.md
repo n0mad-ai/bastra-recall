@@ -195,6 +195,15 @@ scripts/      One-off telemetry / eval / backfill scripts
   bug fix does not require a simultaneous complete rewrite. Split responsibilities using
   existing modules and useful interfaces; do not chop code into tiny helpers
   merely to satisfy a number or add suppression comments.
+- **One root lint configuration:** all `.js`, `.mjs`, `.cjs`, `.jsx`, `.ts`,
+  `.mts`, `.cts`, and `.tsx` files are checked throughout the repository,
+  including new directories outside `packages`, `scripts`, and `tools`.
+  The structure runner pins `eslint.config.mjs` and rejects additional
+  `eslint.config.*` files. Directly supplied unconfigured source files fail.
+  Shared exclusions in `scripts/lint-scope.mjs` name actual generated, vendor,
+  and frozen-data paths; a directory named `build`, `vendor`, `coverage`, or
+  `goldset` is not automatically exempt. Other languages keep their existing
+  checks; this does not introduce a blanket ban on CSS, HTML, or Python files.
 - **Copies:** the same lint command runs jscpd (`npm run lint:clones`): production
   clones need at least 20 lines and 150 tokens; test-inclusive clones need 40
   lines and 300 tokens. Import blocks, generated/vendor code and frozen fixtures

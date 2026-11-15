@@ -2,6 +2,15 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 const base = process.env.LINT_BASE_REF || "HEAD";
+try {
+  execFileSync("git", ["rev-parse", "--verify", `${base}^{commit}`], { stdio: ["ignore", "pipe", "pipe"] });
+} catch {
+  console.error(
+    `Unknown lint baseline revision: ${base}. Fetch the CI base commit or set LINT_BASE_REF to an existing commit.`
+  );
+  process.exit(1);
+}
+
 const files = ["eslint-structure-baseline.json", ".lint-cycle-baseline.json", "clone-baseline.json"];
 
 function readBase(file) {

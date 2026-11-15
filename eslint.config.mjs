@@ -1,4 +1,5 @@
 import tseslint from "typescript-eslint";
+import { CODE_PATTERN, codeIgnores } from "./scripts/lint-scope.mjs";
 
 const correctnessRules = {
   "no-duplicate-case": "error",
@@ -20,30 +21,17 @@ const correctnessRules = {
 export default [
   {
     // Generated output, upstream code, and frozen test inputs have other owners.
-    ignores: [
-      "**/node_modules/**",
-      "**/dist/**",
-      "**/build/**",
-      "**/coverage/**",
-      "**/vendor/**",
-      "packages/eval/fixtures/**",
-      "**/__fixtures__/**",
-      "**/stress-fixtures/**",
-      "**/goldset/**",
-      "packages/daemon/stub/build-info.ts",
-      "tools/model-compare/data/**",
-      "tools/model-compare/results/**",
-      "tools/probes/convention-e2e/fixtures.mjs",
-    ],
+    ignores: codeIgnores,
   },
   {
-    files: ["{packages,scripts,tools}/**/*.{ts,mts,js,mjs}"],
+    files: [CODE_PATTERN],
     // Existing directives for rules outside this small set remain meaningful.
     linterOptions: { reportUnusedDisableDirectives: "off" },
     languageOptions: {
       parser: tseslint.parser,
       ecmaVersion: "latest",
       sourceType: "module",
+      parserOptions: { ecmaFeatures: { jsx: true } },
     },
     plugins: { "@typescript-eslint": tseslint.plugin },
     rules: {
@@ -52,6 +40,10 @@ export default [
       "max-depth": ["error", 4],
       "max-lines-per-function": ["warn", { max: 100, skipBlankLines: true, skipComments: true }],
     },
+  },
+  {
+    files: ["**/*.{cjs,cts}"],
+    languageOptions: { sourceType: "commonjs" },
   },
   {
     files: ["packages/daemon/__tests__/gate-lane-wiring.test.ts"],
@@ -64,7 +56,7 @@ export default [
     },
   },
   {
-    files: ["packages/daemon/webui/v22/**/*.{ts,mts,js,mjs}"],
+    files: ["packages/daemon/webui/v22/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"],
     // Concurrent UI work: report all findings, but do not rewrite this tree.
     rules: Object.fromEntries(
       Object.entries(correctnessRules).map(([name, setting]) => [

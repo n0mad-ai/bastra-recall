@@ -58,10 +58,12 @@ function ordinalSegment(node, part, path, ordinals) {
   return part;
 }
 
-export function analyzeFunctions(source) {
+export function analyzeFunctions(source, filePath) {
   const { ast, visitorKeys } = tseslint.parser.parseForESLint(source, {
     ecmaVersion: "latest",
     sourceType: "module",
+    ecmaFeatures: { jsx: true },
+    ...(filePath ? { filePath } : {}),
     range: true,
     loc: true,
     tokens: true,

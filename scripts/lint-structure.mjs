@@ -1,15 +1,33 @@
-import { readFileSync, writeFileSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ESLint } from "eslint";
 import { analyzeFunctions, functionAt, legacyFingerprint } from "./lint-function-identities.mjs";
+import { assertSingleRootConfig, listCodeFiles } from "./lint-scope.mjs";
 
 const baselinePath = new URL("../eslint-structure-baseline.json", import.meta.url);
 const structuralRules = new Set(["complexity", "max-depth"]);
-export async function inspectStructure(paths = ["packages", "scripts", "tools"], { legacy = false } = {}) {
+function rejectUnconfiguredFiles(results) {
+  for (const result of results) {
+    for (const message of result.messages) {
+      if (message.ruleId === null && message.message.includes("no matching configuration")) {
+        message.severity = 2;
+        message.message += " Unsupported source type: configure coverage before adding this code file.";
+      }
+    }
+  }
+}
+
+export async function inspectStructure(paths = listCodeFiles(), { legacy = false } = {}) {
   // Read raw findings: native file/rule counters cannot freeze individual functions.
-  const eslint = new ESLint({ applySuppressions: false, allowInlineConfig: false });
+  assertSingleRootConfig();
+  const eslint = new ESLint({
+    applySuppressions: false,
+    allowInlineConfig: false,
+    overrideConfigFile: fileURLToPath(new URL("../eslint.config.mjs", import.meta.url)),
+  });
   const results = await eslint.lintFiles(paths);
+  rejectUnconfiguredFiles(results);
   const findings = {};
   const legacyFindings = {};
   for (const result of results) {
@@ -17,7 +35,7 @@ export async function inspectStructure(paths = ["packages", "scripts", "tools"],
     if (!messages.length) continue;
     const source = result.source ?? readFileSync(result.filePath, "utf8");
     const file = relative(process.cwd(), result.filePath).split("\\").join("/");
-    const parsed = analyzeFunctions(source);
+    const parsed = analyzeFunctions(source, result.filePath);
     for (const message of messages) {
       const owner = functionAt(message, source, parsed);
       const key = JSON.stringify([file, owner.identity, message.ruleId]);
@@ -96,4 +114,15 @@ async function main() {
   process.exitCode = errors || (!prune && !paths.length && removed.length) ? 1 : 0;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
+if (
+  process.argv[1] &&
+  existsSync(process.argv[1]) &&
+  realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+) {
+  try {
+    await main();
+  } catch (error) {
+    console.error(`Structure check failed: ${error.message}`);
+    process.exitCode = 1;
+  }
+}

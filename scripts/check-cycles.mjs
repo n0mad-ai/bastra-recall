@@ -1,6 +1,9 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { cruise } from "dependency-cruiser";
 import config from "../.dependency-cruiser.mjs";
+import { assertSingleRootConfig, listCodeFiles } from "./lint-scope.mjs";
+
+assertSingleRootConfig();
 
 const baselinePath = ".lint-cycle-baseline.json";
 const mode = process.argv[2];
@@ -8,13 +11,21 @@ if (mode && !["--prune", "--report"].includes(mode)) {
   throw new Error("Usage: node scripts/check-cycles.mjs [--prune|--report]");
 }
 
-const result = await cruise(["packages", "scripts", "tools"], {
+const result = await cruise(listCodeFiles(), {
   ...config.options,
   ruleSet: { forbidden: config.forbidden },
   validate: true,
   outputType: "json",
 });
 const report = typeof result.output === "string" ? JSON.parse(result.output) : result.output;
+const unresolved = report.summary.violations.filter(
+  ({ rule }) => rule.name === "workspace-import-must-resolve-to-source"
+);
+if (unresolved.length) {
+  console.error("Workspace imports must resolve to real source entry points; no dist or invented fallback entries:");
+  for (const { from, to } of unresolved) console.error(`  ${from} -> ${to}`);
+  process.exit(1);
+}
 const edges = report.modules.flatMap(({ source, dependencies }) =>
   dependencies.filter((dependency) => dependency.circular).map(({ resolved }) => [source, resolved])
 );

@@ -2,6 +2,9 @@ import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { assertSingleRootConfig, listCodeFiles } from "./lint-scope.mjs";
+
+assertSingleRootConfig();
 
 const baselinePath = resolve("clone-baseline.json");
 const previous = JSON.parse(readFileSync(baselinePath, "utf8"));
@@ -14,6 +17,11 @@ let failed = false;
 
 function scan(group) {
   const nativeBaseline = join(temporary, `${group}-baseline.json`);
+  const scanConfig = join(temporary, "config.json");
+  writeFileSync(
+    scanConfig,
+    JSON.stringify({ ...config, path: listCodeFiles().map((file) => resolve(file)), gitignore: false })
+  );
   writeFileSync(nativeBaseline, JSON.stringify(previous[group]));
   const extra =
     group === "production"
@@ -27,7 +35,7 @@ function scan(group) {
       "--workers",
       "1",
       "--config",
-      ".jscpd.json",
+      scanConfig,
       "--baseline",
       nativeBaseline,
       "--update-baseline",

@@ -9,19 +9,24 @@
   "ignorePattern": ["(?ms)^import\\s[^;]+;"],
   "ignore": [
     "**/node_modules/**",
-    "**/dist/**",
-    "**/build/**",
-    "**/coverage/**",
-    "**/vendor/**",
+    ".claude-arbeitsstand-v22-2026-11-14/design-ui-zip/**",
+    "packages/core/dist/**",
+    "packages/daemon/dist/**",
+    "packages/statusline/dist/**",
+    "packages/daemon/mcpb/build/**",
+    "packages/daemon/vendor/**",
+    "packages/daemon/webui/vendor/**",
+    "packages/daemon/webui/v22/vendor/**",
     "packages/eval/fixtures/**",
-    "**/__fixtures__/**",
-    "**/stress-fixtures/**",
-    "**/goldset/**",
+    "packages/eval/goldset/**",
+    "packages/daemon/__fixtures__/**",
+    "packages/daemon/scripts/stress-fixtures/**",
     "packages/daemon/stub/build-info.ts",
     "tools/model-compare/data/**",
     "tools/model-compare/results/**",
     "tools/probes/convention-e2e/fixtures.mjs",
-    "**/__tests__/fixtures/**"
+    "packages/core/__tests__/fixtures/**",
+    "packages/daemon/__tests__/fixtures/**"
   ],
-  "pattern": "{packages,scripts,tools}/**/*.{ts,mts,js,mjs,tsx,jsx}"
+  "pattern": "**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"
 }
