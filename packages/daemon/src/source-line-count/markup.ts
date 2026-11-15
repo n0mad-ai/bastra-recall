@@ -36,6 +36,7 @@ export class MarkupScanner {
       this.enterTextExpression();
       return true;
     }
+    // Do not consume '<' as text: the next boundary phase must open the tag.
     if (s.c === "<") return false;
     if (/\S/.test(s.c)) s.code = true;
     s.index++;
@@ -121,6 +122,8 @@ export class MarkupScanner {
       this.expressions.pop();
       this.active = true;
       this.tag = expression.tag;
+      // Consuming Vue's second '}' advances index but deliberately leaves c/next
+      // at this step's opening character; source-token handling uses that snapshot.
       if (expression.doubleBrace && s.next === "}") s.index++;
     }
   }

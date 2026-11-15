@@ -97,12 +97,17 @@ export class LiteralScanner {
   }
 
   scanStart(): boolean {
-    return this.startRustRaw() || this.startSwiftRaw() || this.startQuoted();
+    // Quote characters and raw-string prefixes are disjoint. Dispatch by the
+    // actual opener/family instead of calling unrelated scanners per character.
+    if (this.startsQuote()) return this.startQuoted();
+    if (this.cursor.ext === ".rs") return this.startRustRaw();
+    if (this.cursor.ext === ".swift") return this.startSwiftRaw();
+    return false;
   }
 
   private startRustRaw(): boolean {
     const s = this.cursor;
-    const match = s.ext === ".rs" && /[rbc]/.test(s.c) ? /^(?:b|c)?r(#+|)"/.exec(s.line.slice(s.index)) : null;
+    const match = /[rbc]/.test(s.c) ? /^(?:b|c)?r(#+|)"/.exec(s.line.slice(s.index)) : null;
     if (!match) return false;
     this.quote = `"${match[1]}`;
     this.literalRaw = true;
@@ -112,7 +117,7 @@ export class LiteralScanner {
 
   private startSwiftRaw(): boolean {
     const s = this.cursor;
-    if (s.ext !== ".swift" || s.c !== "#") return false;
+    if (s.c !== "#") return false;
     const start = s.index;
     while (s.line[s.index] === "#") s.index++;
     if (s.line[s.index] === '"') {
@@ -127,7 +132,6 @@ export class LiteralScanner {
 
   private startQuoted(): boolean {
     const s = this.cursor;
-    if (!this.startsQuote()) return false;
     if (this.consumeRustLifetime()) return true;
     this.quote = (s.python || s.ext === ".swift") && s.line.startsWith(s.c.repeat(3), s.index) ? s.c.repeat(3) : s.c;
     this.literalRaw = s.ext === ".go" && s.c === "`";
@@ -142,6 +146,7 @@ export class LiteralScanner {
 
   private consumeRustLifetime(): boolean {
     const s = this.cursor;
+    // Rust lifetimes ('a, 'static) are identifiers, not unterminated strings.
     const lifetime = s.ext === ".rs" && s.c === "'" ? /^'[A-Za-z_]\w*/.exec(s.line.slice(s.index)) : null;
     if (!lifetime || s.line[s.index + lifetime[0].length] === "'") return false;
     s.index += lifetime[0].length;
@@ -174,7 +179,9 @@ export class LiteralScanner {
 
   finishLine(): void {
     const s = this.cursor;
-    // Regex cannot span physical JS lines; preserve other unterminated data.
+    // JavaScript regex literals cannot contain physical line terminators, so an
+    // unterminated regex must not hide the following source line. Other literal
+    // data may be multiline and is therefore retained conservatively.
     this.regex = false;
     if (s.javascript && (this.quote === "'" || this.quote === '"') && !s.line.endsWith("\\")) this.quote = "";
   }
