@@ -198,8 +198,11 @@ scripts/      One-off telemetry / eval / backfill scripts
 - **One root lint configuration:** all `.js`, `.mjs`, `.cjs`, `.jsx`, `.ts`,
   `.mts`, `.cts`, and `.tsx` files are checked throughout the repository,
   including new directories outside `packages`, `scripts`, and `tools`.
-  The structure runner pins `eslint.config.mjs` and rejects additional
-  `eslint.config.*` files. Directly supplied unconfigured source files fail.
+  Hidden directories directly under the repository root contain session or
+  hosting metadata and are excluded. Root files and hidden subdirectories below
+  visible product directories remain covered. The structure runner pins
+  `eslint.config.mjs` and rejects additional `eslint.config.*` files outside the
+  excluded root directories. Directly supplied unconfigured source files fail.
   Shared exclusions in `scripts/lint-scope.mjs` name actual generated, vendor,
   and frozen-data paths; a directory named `build`, `vendor`, `coverage`, or
   `goldset` is not automatically exempt. Other languages keep their existing

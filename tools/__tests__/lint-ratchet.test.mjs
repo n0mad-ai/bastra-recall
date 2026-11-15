@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeFunctions, functionAt } from "../../scripts/lint-function-identities.mjs";
+import { isCodeIgnored, cycleIgnorePatterns } from "../../scripts/lint-scope.mjs";
 
 const repository = fileURLToPath(new URL("../../", import.meta.url));
 const scriptNames = /^(?:lint-.*|check-(?:cycles|clones|lint-baselines))\.mjs$/;
@@ -221,6 +222,48 @@ test("generic generated-looking folder names cannot hide tracked application cod
   for (const folder of ["build", "coverage", "vendor", "goldset"]) {
     assert.ok(result.output.includes(`${folder}/new.ts`), result.output);
   }
+});
+
+test("only hidden root directories are excluded from every code check", async (t) => {
+  const root = await fixture(t);
+  for (const folder of [".claude-run", ".codex-run", ".github"]) {
+    await put(root, `${folder}/eslint.config.mjs`, 'export default [{ rules: { complexity: "off" } }];');
+    await put(root, `${folder}/source.ts`, branches("hidden", 25));
+    await put(root, `${folder}/a.ts`, 'import "./b.js"; export const a = 1;');
+    await put(root, `${folder}/b.ts`, 'import "./a.js"; export const b = 1;');
+    assert.equal(isCodeIgnored(`${folder}/source.ts`), true);
+    assert.ok(cycleIgnorePatterns.some((pattern) => new RegExp(pattern).test(`${folder}/source.ts`)));
+  }
+  const hidden = tool(root, "lint-structure.mjs");
+  assert.equal(hidden.status, 0, hidden.output);
+  const cycles = tool(root, "check-cycles.mjs", "--report");
+  assert.equal(cycles.status, 0, cycles.output);
+  assert.deepEqual(JSON.parse(cycles.stdout), []);
+  const clones = tool(root, "check-clones.mjs");
+  assert.equal(clones.status, 0, clones.output);
+  for (const file of ["probe.mjs", "plugins/x.mjs", ".root-file.mjs", "packages/.hidden/source.ts"]) {
+    await put(root, file, branches("mustBeChecked", 15));
+    assert.equal(isCodeIgnored(file), false);
+    assert.equal(
+      cycleIgnorePatterns.some((pattern) => new RegExp(pattern).test(file)),
+      false
+    );
+  }
+  const visible = tool(root, "lint-structure.mjs");
+  assert.equal(visible.status, 1, visible.output);
+  for (const file of ["probe.mjs", "plugins/x.mjs", ".root-file.mjs", "packages/.hidden/source.ts"]) {
+    assert.ok(visible.output.includes(file), visible.output);
+  }
+  await put(root, "probe.mjs", 'import "./.root-file.mjs";\n' + branches("visibleClone", 60));
+  await put(root, ".root-file.mjs", 'import "./probe.mjs";\n' + branches("visibleClone", 60));
+  const visibleCycles = tool(root, "check-cycles.mjs", "--report");
+  assert.equal(visibleCycles.status, 0, visibleCycles.output);
+  assert.equal(JSON.parse(visibleCycles.stdout).length, 2);
+  const visibleClones = tool(root, "check-clones.mjs");
+  assert.equal(visibleClones.status, 1, visibleClones.output);
+  assert.match(visibleClones.output, /New copied code/);
+  assert.match(visibleClones.output, /\.root-file\.mjs/);
+  assert.match(visibleClones.output, /probe\.mjs/);
 });
 
 test("a nested eslint.config cannot disable the root limits", async (t) => {

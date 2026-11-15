@@ -9,7 +9,6 @@
   "ignorePattern": ["(?ms)^import\\s[^;]+;"],
   "ignore": [
     "**/node_modules/**",
-    ".claude-arbeitsstand-v22-2026-11-14/design-ui-zip/**",
     "packages/core/dist/**",
     "packages/daemon/dist/**",
     "packages/statusline/dist/**",

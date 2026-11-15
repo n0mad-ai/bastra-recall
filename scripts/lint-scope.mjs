@@ -2,10 +2,14 @@ import { execFileSync } from "node:child_process";
 import { basename, resolve } from "node:path";
 import { existsSync } from "node:fs";
 
+// Root dot-directories hold session, editor and repository metadata, not application code.
+// Keep root dot-files and hidden directories inside visible source trees in scope.
+const ROOT_HIDDEN_DIRECTORY = /^\.[^/]+\//;
+
 export const CODE_PATTERN = "**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}";
 export const codeIgnores = [
   "**/node_modules/**",
-  ".claude-arbeitsstand-v22-2026-11-14/design-ui-zip/**",
+  ".*/**",
   "packages/core/dist/**",
   "packages/daemon/dist/**",
   "packages/statusline/dist/**",
@@ -40,6 +44,7 @@ export function repositoryFiles(root = process.cwd()) {
 export function isCodeIgnored(file) {
   if (file.split("/").includes("node_modules")) return true;
   return codeIgnores.slice(1).some((pattern) => {
+    if (pattern === ".*/**") return ROOT_HIDDEN_DIRECTORY.test(file);
     const prefix = pattern.replace(/\/\*\*$/, "");
     return pattern.endsWith("/**") ? file === prefix || file.startsWith(`${prefix}/`) : file === prefix;
   });
@@ -51,7 +56,8 @@ export function listCodeFiles(root = process.cwd()) {
 
 export function assertSingleRootConfig(root = process.cwd()) {
   const extra = repositoryFiles(root).filter(
-    (file) => /^eslint\.config\./.test(basename(file)) && file !== "eslint.config.mjs"
+    (file) =>
+      !ROOT_HIDDEN_DIRECTORY.test(file) && /^eslint\.config\./.test(basename(file)) && file !== "eslint.config.mjs"
   );
   if (extra.length)
     throw new Error(
@@ -60,6 +66,7 @@ export function assertSingleRootConfig(root = process.cwd()) {
 }
 
 export const cycleIgnorePatterns = codeIgnores.map((pattern) => {
+  if (pattern === ".*/**") return ROOT_HIDDEN_DIRECTORY.source;
   if (pattern.startsWith("**/")) return "(^|/)node_modules/";
   const prefix = pattern.replace(/\/\*\*$/, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return pattern.endsWith("/**") ? `^${prefix}(?:/|$)` : `^${prefix}$`;
