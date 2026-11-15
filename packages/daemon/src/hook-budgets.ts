@@ -37,9 +37,6 @@
  * and every import there is process-start cost on every single hook call.
  */
 
-/** Trigger classes the UserPromptSubmit lane splits into. */
-export type PromptLaneMode = "retrieval" | "assertion" | "generic" | "none";
-
 /**
  * The assertion lane's budget. Also the budget the UserPromptSubmit CLIENTS
  * must allow: the trigger class is decided daemon-side, after the payload has
@@ -72,11 +69,6 @@ export const PROMPT_QUIET_P90_TARGET_MS = 300;
 /** The assertion lane's target is its budget minus the headroom the
  *  reconstruction leaves: worst reconstructed call 975–1015ms. */
 export const ASSERTION_P90_TARGET_MS = 900;
-
-/** The wall clock the daemon-side prompt lane gives itself for `mode`. */
-export function promptBudgetMs(mode: PromptLaneMode): number {
-  return mode === "assertion" ? PROMPT_ASSERTION_BUDGET_MS : RECALL_BUDGET_MS;
-}
 
 /** Session restoration includes a fresh kernel and a bounded legacy fallback. */
 export const SESSION_START_BUDGET_MS = 1500;

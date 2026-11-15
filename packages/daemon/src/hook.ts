@@ -171,7 +171,7 @@ async function main(): Promise<void> {
 
   // SKIP-GATE (#20/#28): the cheap path ends here, without any HTTP.
   // toolInput feeds the #297 memory-shape exception (lazy, .md branch only).
-  if (shouldSkipPath(filePath, payload.cwd, toolInput)) {
+  if (shouldSkipPath(filePath, toolInput)) {
     emitEmpty();
     await writeClientTelemetry(
       "write",

@@ -605,11 +605,3 @@ export async function readChatTranscriptEvents(
     return [];
   }
 }
-export async function readChatPeerEvents(
-  target: ChatSession,
-  opts: ChatRegistryOptions = {}
-): Promise<Record<string, unknown>[]> {
-  return (await readChatTranscriptEvents(target, opts)).filter(
-    (e) => (e.origin as { kind?: string } | undefined)?.kind === "peer"
-  );
-}

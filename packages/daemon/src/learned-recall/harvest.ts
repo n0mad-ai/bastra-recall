@@ -696,8 +696,3 @@ export async function archiveMachineBridges(rootDir: string, now: Date = new Dat
   }
   return archived;
 }
-
-/** True when a bridges/ dir already exists under root (for status/CLI messaging). */
-export function hasBridgeDir(rootDir: string): boolean {
-  return existsSync(join(rootDir, "bridges"));
-}

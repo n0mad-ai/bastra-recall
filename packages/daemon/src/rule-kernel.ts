@@ -15,10 +15,7 @@ export type { KernelCandidates, KernelEntry, KernelGroup } from "./rulebook-cata
 export const RULE_KERNEL_CHAR_BUDGET = 9400;
 /** ~2k tokens; total host additionalContext must remain below 10k characters. */
 export const RULEBOOK_ALWAYS_CHAR_BUDGET = 8000;
-export const RULE_KERNEL_SHORT_BODY_CHARS = 1500;
 export const RULE_KERNEL_TOOL_CALLS = 25;
-/** No catalog entry cap. Kept as an API compatibility constant. */
-export const RULE_KERNEL_MAX_ENTRIES = Infinity;
 export const RULE_KERNEL_ASK_LINE =
   "Rule applicability is decided from the descriptions; bodies are available through load_memory(id).";
 export const RULE_KERNEL_LEXICAL_LINE = "Rulebook membership is independent of search and embeddings.";

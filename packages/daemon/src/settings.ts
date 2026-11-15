@@ -359,10 +359,6 @@ export async function getExperimentConfig(path?: string): Promise<{
   };
 }
 
-export async function setEvidenceGateEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({ ...current, evidenceGate: { enabled: on } }));
-}
-
 export async function setSharedRecallEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
   await mutateSettings(path, (current) => ({ ...current, sharedRecall: { ...current.sharedRecall, enabled: on } }));
 }

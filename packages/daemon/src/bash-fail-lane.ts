@@ -538,12 +538,6 @@ export function formatHintBlock(
   return [head, HINT_FRAME_NOTE, stripFenceMarkers(lines.join("\n")), tail].join("\n");
 }
 
-export function throttleFile(sessionId: string): string {
-  // sanitize sessionId — keep alnum + dash, fall back if empty
-  const safe = sessionId.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || "default";
-  return join(sessionStateDir(), `fail-throttle-${safe}.ts`);
-}
-
 function throttleKey(sessionId: string): string {
   return sessionId.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || "default";
 }

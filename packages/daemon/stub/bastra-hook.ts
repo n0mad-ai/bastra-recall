@@ -245,7 +245,7 @@ async function main(): Promise<void> {
     const filePath = typeof toolInput.file_path === "string" ? toolInput.file_path : null;
     if (!filePath) return emitOnce("{}");
     // toolInput feeds the #297 memory-shape exception (lazy, .md branch only).
-    if (shouldSkipPath(filePath, payload.cwd, toolInput)) {
+    if (shouldSkipPath(filePath, toolInput)) {
       emitOnce("{}");
       await writeClientTelemetry(
         "write",

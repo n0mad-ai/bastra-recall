@@ -64,9 +64,7 @@ export const SKILL_SOURCE_PATH = firstExisting([
  *  and npm-package layouts stay in step. */
 export const SKILL_SOURCE_DIR = dirname(SKILL_SOURCE_PATH);
 export const SKILL_TARGET_DIR = resolve(homedir(), ".claude/skills/bastra-recall");
-export const SKILL_TARGET_FILE = resolve(SKILL_TARGET_DIR, "SKILL.md");
 export const CODEX_SKILL_TARGET_DIR = resolve(homedir(), ".agents/skills/bastra-recall");
-export const CODEX_SKILL_TARGET_FILE = resolve(CODEX_SKILL_TARGET_DIR, "SKILL.md");
 
 /** Cursor's convention layer. Unlike the Claude skill this has no global home:
  *  Cursor's User Rules live in its settings UI, not on disk, so project rules

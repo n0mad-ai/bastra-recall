@@ -81,17 +81,13 @@ export function pendingWriteHead(filePath: string, toolInput?: Record<string, un
  * Returns `true` if the path should be skipped (no recall round-trip).
  * Returns `false` if the file is plausibly source code worth recalling for.
  *
- * `cwd` is currently informational only — kept in the signature so future
- * refinements (e.g. respect a project-level skip-list) don't have to break
- * the call sites.
- *
  * `toolInput` (#297) feeds the memory-shape exception: a `.md` outside
  * `docs/` normally skips, but a memory-shaped one (recognized `type:` in
  * frontmatter) must reach the daemon — that is the only place the
  * vault-location check can run. Looked at lazily, only on the branch that
  * would otherwise skip.
  */
-export function shouldSkipPath(filePath: string, _cwd?: string, toolInput?: Record<string, unknown>): boolean {
+export function shouldSkipPath(filePath: string, toolInput?: Record<string, unknown>): boolean {
   if (!filePath) return true;
   const norm = filePath.replace(/\\/g, "/");
   const ext = path.extname(norm).toLowerCase();

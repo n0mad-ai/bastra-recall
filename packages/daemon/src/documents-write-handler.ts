@@ -14,9 +14,7 @@
  *   `save_memory`-Pattern. Damit ist `save+find im selben Turn` zuverlässig.
  *   Triage-Acceptance: erfüllt.
  */
-import { stat } from "node:fs/promises";
 import { z } from "zod";
-import type { Vault } from "@bastra-recall/core";
 
 // ─── Argument schemas ───────────────────────────────────────────
 
@@ -168,30 +166,3 @@ export { buildFrontmatter, isProductDoc, isDocumentSidecar } from "./documents-w
 export { saveDocument, type SaveDocumentResult } from "./documents-write-save.js";
 export { recategorizeDocument } from "./documents-write-recategorize.js";
 export { moveDocument, type MoveRollbackResult } from "./documents-write-move.js";
-
-// ─── Conflict-Detection (Phase 3.2 — basic mtime-Check) ─────────
-
-/**
- * Vergleicht die mtime des Original-Files mit der Cache-mtime im Vault.
- * Wenn die Datei seit dem letzten Vault-Read jünger ist, signalisieren wir
- * einen Conflict — der Caller (UI) entscheidet ob er trotzdem überschreibt.
- */
-export async function detectExternalEdit(vault: Vault, id: string): Promise<{ conflict: boolean; reason?: string }> {
-  const m = vault.get(id);
-  if (!m) return { conflict: false };
-  const fm = m.fm as typeof m.fm & { original_path?: string };
-  const target = fm.original_path ?? m.filePath;
-  let st;
-  try {
-    st = await stat(target);
-  } catch {
-    return { conflict: false }; // File weg → kein Konflikt, nur Fehler-Pfad
-  }
-  if (st.mtimeMs > m.mtime) {
-    return {
-      conflict: true,
-      reason: `file changed externally at ${new Date(st.mtimeMs).toISOString()} (vault mtime ${new Date(m.mtime).toISOString()})`,
-    };
-  }
-  return { conflict: false };
-}

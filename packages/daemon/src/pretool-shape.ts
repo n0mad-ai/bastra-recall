@@ -24,8 +24,6 @@ import { repoRelative } from "./code-graph/dependents-block.js";
 import { envFirst } from "./env.js";
 import { escapeAttr } from "./escape-attr.js";
 
-/** At most this many candidates in the default document. */
-export const PRETOOL_MAX_CANDIDATES = 1;
 /** Hard ceiling of the default hint block in characters (~150 tokens at 4 chars/token). */
 export const PRETOOL_HINT_CHAR_CEILING = 600;
 /** Longest rule line before the ceiling is even considered. */

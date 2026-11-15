@@ -28,9 +28,6 @@ import { join } from "node:path";
 /** Recall's manifest file, inside the graph directory. */
 export const MANIFEST_NAME = ".bastra-manifest.json";
 
-/** Graphify's own build cache — read-only for us, and never written. */
-export const GRAPHIFY_MANIFEST_NAME = "manifest.json";
-
 export interface CodeGraphManifest {
   /** Version the pinned Graphify binary reported when this graph was built. */
   graphifyVersion: string;

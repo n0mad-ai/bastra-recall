@@ -9,8 +9,6 @@
 //   veil(frame, true)            old content dimmed, scan band runs over it
 //   loadingBlock(text)           placeholder while there is nothing to show yet
 //   loadingInline(text)          one line with flow and caret (widgets, notes)
-//   track(fn, el?)               setBusy around an async action (el defaults to
-//                                the focused control, i.e. the one clicked)
 import { h } from "../dom.js";
 import { addStrings, t } from "../i18n.js";
 import { state, subscribe } from "../state.js";
@@ -52,12 +50,6 @@ export function loadingInline(text, cls = "") {
 export function touched() {
   const el = document.activeElement;
   return el && el !== document.body && el.closest?.("#app") && el.matches?.("button, a, [role=button], input, select, li") ? el : null;
-}
-
-/** Runs fn with a busy marker on el (default: the touched control). */
-export async function track(fn, el = touched()) {
-  setBusy(el, true);
-  try { return await fn(); } finally { setBusy(el, false); }
 }
 
 // Vault views before the first graph answer: one placeholder over the stage,

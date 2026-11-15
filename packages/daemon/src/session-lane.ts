@@ -247,9 +247,8 @@ export async function runSessionLane(
   // compact and clear release both; resume releases neither.
   // Rulebook A+B is delivered on every lifecycle entry, including startup
   // and resume. Read active membership before compact/clear/fork reset it.
-  const kernelWanted = true;
   let kernelActive: ActiveConvention[] = [];
-  if (kernelWanted && payload.session_id) {
+  if (payload.session_id) {
     try {
       kernelActive = [...((await loadSessionState(payload.session_id)).activeConventions ?? [])];
     } catch {
@@ -340,7 +339,7 @@ export async function runSessionLane(
           hook_budget_ms: SESSION_HOOK_BUDGET_MS,
           // #493: siehe `sessionStartCallId` oben.
           session_start_call_id: sessionStartCallId,
-          ...(kernelWanted ? { kernel: { active: kernelActive } } : {}),
+          kernel: { active: kernelActive },
           budget: { time_ms: remainingMs },
         },
         remainingMs
@@ -703,13 +702,13 @@ export async function runSessionLane(
   // #1305: the rule kernel heads the block. Rendered here from the daemon's
   // candidates; a cold dense arm says so, the kernel itself never needs one.
   let kernel: RenderedKernel = { text: "", full: [], degraded: [], omitted: 0 };
-  if (kernelWanted && sideData?.kernel) {
+  if (sideData?.kernel) {
     kernel = renderRuleKernel(sideData.kernel, {
       trigger: `after ${payload.source ?? "startup"}`,
       lexicalOnly: denseCold,
     });
   }
-  if (kernelWanted && !sideData?.kernel)
+  if (!sideData?.kernel)
     kernel.text =
       "Rulebook unavailable at session start; the complete catalog remains available through list_rules().\n";
   const kernelHead = kernel.text === "" ? "" : kernel.text + "\n";
@@ -862,18 +861,14 @@ export async function runSessionLane(
     pending_lanes: pendingLanes,
     ...(pendingHarvest > 0 ? { pending_harvest: pendingHarvest } : {}),
     constants_skipped: constantsSkipped,
-    ...(kernelWanted
-      ? {
-          kernel: {
-            full_ids: kernel.full,
-            degraded_ids: kernel.degraded,
-            omitted: kernel.omitted,
-            paged_index: kernel.paged_index,
-            unconfirmed_legacy: sideData?.kernel?.unconfirmed_legacy,
-            chars: kernel.text.length,
-          },
-        }
-      : {}),
+    kernel: {
+      full_ids: kernel.full,
+      degraded_ids: kernel.degraded,
+      omitted: kernel.omitted,
+      paged_index: kernel.paged_index,
+      unconfirmed_legacy: sideData?.kernel?.unconfirmed_legacy,
+      chars: kernel.text.length,
+    },
     status,
     error: errMsg,
   });

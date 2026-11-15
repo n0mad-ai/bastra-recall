@@ -421,11 +421,3 @@ export async function readDraftVectorState(
   }
   return { vectors, decisions: cache.decisions };
 }
-
-/** Compatibility reader for callers that only need the same-model vectors. */
-export async function readDraftVectors(
-  opts: DraftShadowOptions,
-  drafts: Draft[]
-): Promise<ReadonlyMap<string, Float32Array> | null> {
-  return (await readDraftVectorState(opts, drafts)).vectors;
-}
