@@ -183,6 +183,26 @@ scripts/      One-off telemetry / eval / backfill scripts
 - **Formatting and linting are enforced.** CI runs `npm run format:check`
   (Prettier) and `npm run lint` (ESLint). Run `npm run format` before you
   commit; don't reformat files your change doesn't touch.
+- **Structure limits:** `npm run lint` checks classic cyclomatic complexity ≤15
+  and nesting depth ≤4, including `webui/v22`. Functions above 100 code lines
+  (comments and blank lines excluded) produce a warning only. Import cycles
+  are forbidden everywhere; type-only and dynamic imports are excluded.
+  Existing violations are frozen by function fingerprint or exact cycle edge.
+  New and changed functions must meet the limits. Split responsibilities using
+  existing modules and useful interfaces; do not chop code into tiny helpers
+  merely to satisfy a number or add suppression comments.
+- **Copies:** the same lint command runs jscpd (`npm run lint:clones`): production
+  clones need at least 20 lines and 150 tokens; test-inclusive clones need 40
+  lines and 300 tokens. Import blocks, generated/vendor code and frozen fixtures
+  are excluded. Inspect a finding for a suitable existing helper; do not merge
+  code automatically. A domain-correct copy requires a documented, reviewed
+  exception. Never manually expand a baseline to get a new violation through.
+- **Lower the baseline after cleanup:** run `npm run lint:prune` and commit the
+  smaller baseline files with the cleanup. This command refuses new violations.
+  Normal lint fails on obsolete entries; CI also compares all baselines against
+  the PR base (or previous push) and rejects additions/increased counts. A
+  justified new copy needs a separate explicit maintainer policy decision.
+  Area/public-interface boundaries will be added with the folder changes in #1519.
 - **No new dependencies without an issue first.** Every dependency is a
   long-term cost.
 
