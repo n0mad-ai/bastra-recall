@@ -37,7 +37,10 @@ test("note fires from ~90% of guide, escalates past critical, silent below", () 
   const nearNote = formatSizeNote("/x/app.js", 460, t);
   assert.ok(nearNote?.includes('level="guide"') && nearNote.includes('lines="460"'));
   const critNote = formatSizeNote("/x/app.js", 950, t);
-  assert.ok(critNote?.includes('level="critical"') && critNote.includes("propose a coherent module split"));
+  assert.ok(critNote);
+  assert.ok(critNote.includes('level="critical"') && critNote.includes("review whether coherent responsibilities"));
+  assert.ok(critNote.includes("not a growth ban"));
+  assert.ok(nearNote?.includes("review modularization"));
 });
 
 test("throwaway contexts are exempt, ordinary source of the same shape is not (#280)", () => {
@@ -97,7 +100,7 @@ test("size.exemptPaths from cli-settings silences extra paths, nothing else", ()
 test("exempt paths stay silent end-to-end while the same file elsewhere warns", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-size-exempt-"));
   try {
-    const body = Array.from({ length: 1299 }, (_, i) => `// line ${i}`).join("\n");
+    const body = Array.from({ length: 1299 }, (_, i) => `const value${i} = ${i};`).join("\n");
     const lab = join(dir, "mindspace-lab-anims.js");
     const sandboxDir = join(dir, "sandbox");
     const plain = join(dir, "anims.js");
@@ -140,12 +143,192 @@ test("fileSizeNote measures real files; new files and kill-switch stay silent", 
     const big = join(dir, "big.js");
     await writeFile(big, Array.from({ length: 900 }, (_, i) => `// line ${i}`).join("\n"), "utf8");
     const note = await fileSizeNote(big, settingsPath);
-    assert.ok(note?.includes('level="critical"'), "900-line js file must warn");
+    assert.equal(note, null, "900 comment-only lines do not contribute code");
+    await writeFile(big, Array.from({ length: 900 }, (_, i) => `const value${i} = ${i};`).join("\n"), "utf8");
+    assert.ok((await fileSizeNote(big, settingsPath))?.includes('level="critical"'), "900 code lines must warn");
 
     assert.equal(await fileSizeNote(join(dir, "does-not-exist.js"), settingsPath), null, "new file → silent");
 
     process.env.BASTRA_SIZE_CHECK = "off";
     assert.equal(await fileSizeNote(big, settingsPath), null, "kill-switch silences the check");
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("fileSizeNote excludes comments and blank source lines but preserves literal data", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-size-lexical-"));
+  const cases: { name: string; ext: string; source: string; lines: number }[] = [
+    { name: "empty source", ext: "ts", source: "\n \t\n", lines: 0 },
+    { name: "line and block comments", ext: "ts", source: "// ignored\n/* ignored\n still ignored */\n", lines: 0 },
+    {
+      name: "mixed comments and code",
+      ext: "js",
+      source: "/* before */ const x = 1; // after\n/* only */\n/* before\n */ const y = 2;",
+      lines: 2,
+    },
+    {
+      name: "CRLF and final newline",
+      ext: "mjs",
+      source: "const x = 1;\r\n// ignored\r\n\r\nconst y = 2;\r\n",
+      lines: 2,
+    },
+    {
+      name: "escaped quotes and URL markers",
+      ext: "cjs",
+      source: String.raw`const url = "https://example.org/*";
+const text = 'it\'s /* data */';
+// ignored
+const end = 1;`,
+      lines: 3,
+    },
+    {
+      name: "regex character classes and escapes",
+      ext: "ts",
+      source: String.raw`const markers = /[/*]/;
+const url = /https?:\/\/[^/*]+/;
+// ignored
+const quotient = 8 / 2; /* ignored */`,
+      lines: 3,
+    },
+    {
+      name: "regex after keyword",
+      ext: "js",
+      source: "function match() {\nreturn /[/*]/.test('x');\n}\n/* ignored */",
+      lines: 3,
+    },
+    {
+      name: "template data excluding blank lines",
+      ext: "js",
+      source: "const text = `\n// literal\n \t\n/* literal */\n`;\n// ignored",
+      lines: 4,
+    },
+    // Interpolations intentionally stay literal in this small lexer; they are
+    // not recursively parsed as another JavaScript program.
+    {
+      name: "template interpolation is retained conservatively",
+      ext: "ts",
+      source: "const text = `\n${ /* retained */\n1 }\n`;",
+      lines: 4,
+    },
+    {
+      name: "Python comments and quoted hash",
+      ext: "py",
+      source: "# ignored\nx = '# /* data */' # ignored\ny = 'https://example.org'\n",
+      lines: 2,
+    },
+    {
+      name: "Python triple quoted data and docstrings",
+      ext: "py",
+      source: '"""\n# literal\n\n"""\n# ignored\nx = 1',
+      lines: 4,
+    },
+    {
+      name: "Python single triple quotes",
+      ext: "py",
+      source: "x = '''\n// literal\n/* literal */\n'''\n# ignored",
+      lines: 4,
+    },
+    { name: "Go raw strings", ext: "go", source: "var text = `\n// literal\n\n/* literal */\n`\n// ignored", lines: 4 },
+    {
+      name: "Rust raw string and lifetimes",
+      ext: "rs",
+      source: 'let text = r##"\n/* literal */\n"# still literal\n"##;\nfn use_ref<\'a>(x: &\'a str) {}\n// ignored',
+      lines: 5,
+    },
+    {
+      name: "nested Rust block comments",
+      ext: "rs",
+      source: "/* outer\n/* inner */\nstill outer */\nlet x = 1;",
+      lines: 1,
+    },
+    {
+      name: "Swift multiline and raw strings",
+      ext: "swift",
+      source: 'let text = """\n// literal\n"""\nlet raw = #"/* literal */"#\n// ignored',
+      lines: 4,
+    },
+    {
+      name: "nested Swift block comments",
+      ext: "swift",
+      source: "/* outer\n/* inner */\nstill outer */\nlet x = 1",
+      lines: 1,
+    },
+    {
+      name: "CSS URLs and block comments",
+      ext: "css",
+      source:
+        '/* ignored\nstill ignored */\na { background: url(https://example.org/a); }\nb::after { content: "/* literal */"; }',
+      lines: 2,
+    },
+    {
+      name: "SCSS line comments",
+      ext: "scss",
+      source: '// ignored\na { content: "https://example.org"; } // ignored\n/* ignored */',
+      lines: 1,
+    },
+    {
+      name: "JSX comments and raw text",
+      ext: "jsx",
+      source:
+        "const view = <div>\n{/* ignored\nstill ignored */}\nhttps://example.org\n/* literal text\nit's text\n</div>;\n// ignored",
+      lines: 5,
+    },
+    {
+      name: "TSX attribute strings and expressions",
+      ext: "tsx",
+      source: 'const view = <div title="/* literal */" value={\n// ignored\nvalue\n}>text</div>;\n// ignored',
+      lines: 3,
+    },
+    {
+      name: "Svelte control directives return to markup",
+      ext: "svelte",
+      source: "{#if ok}\n<!-- ignored -->\n<p>text</p>\n{:else}\n<p>other</p>\n{/if}\n<!-- ignored -->",
+      lines: 5,
+    },
+    {
+      name: "nested JSX returns to the surrounding expression",
+      ext: "tsx",
+      source: "const view = <div>{\nitems.map(x => <span>{x}</span>)\n// ignored\n}</div>;\n// ignored",
+      lines: 3,
+    },
+    {
+      name: "Vue single braces preserve literal JSX-looking text",
+      ext: "vue",
+      source: "<p>\n{/* literal text */}\n</p>",
+      lines: 3,
+    },
+    {
+      name: "Vue multiline single braces stay literal",
+      ext: "vue",
+      source: "<p>\n{/* literal\ntext */}\n</p>",
+      lines: 4,
+    },
+    {
+      name: "Vue double braces enter an expression",
+      ext: "vue",
+      source: "<p>\n{{\n// ignored\nvalue\n}}\n</p>",
+      lines: 5,
+    },
+    ...["vue", "svelte"].map((ext) => ({
+      name: `${ext} markup, script and style`,
+      ext,
+      source:
+        '<div>\nhttps://example.org /* literal\n<!-- ignored\nstill ignored -->\n</div>\n<script>\n// ignored\nconst x = "/* literal */";\n</script>\n<style>\n/* ignored\nstill ignored */\na { background: url(https://example.org); }\n</style>',
+      lines: 9,
+    })),
+  ];
+  try {
+    const settingsPath = join(dir, "cli-settings.json");
+    // Keep the public hook entry point observable even for tiny snippets,
+    // without exporting an implementation detail or changing configuration.
+    const prefix = "0;\n".repeat(450);
+    for (const { name, ext, source, lines } of cases) {
+      const path = join(dir, `source.${ext}`);
+      await writeFile(path, prefix + source, "utf8");
+      const note = await fileSizeNote(path, settingsPath);
+      assert.equal(note?.match(/ lines="(\d+)"/)?.[1], String(450 + lines), name);
+    }
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }

@@ -1,23 +1,19 @@
 import { readRuntimeSettingsRecord } from "./runtime-feature-settings.js";
 import { bastraDataDir } from "./platform-paths.js";
 /**
- * Deterministischer Dateigrößen-Check im PreToolUse-Hook (Daniel, 19.07.2026).
+ * Deterministic file-size check in the PreToolUse hook (Daniel, 19.07.2026).
  *
- * Die Datei-Größen-Konvention (~500 Zeilen Richtwert, >800 kritisch; Tests
- * 700/1000) hing bisher daran, dass der Agent im Schreibmoment an sie DENKT —
- * und genau da verliert sie gegen den Feature-Fokus (zweimal passiert am
- * 19.07.: orbit-view 678→959, app.js →915, ohne Hinweis). Ein Memory löst das
- * nicht: probabilistischer Abruf erzwingt keine deterministische Regel.
+ * The convention (~500 code lines as a guide, >800 for critical review;
+ * tests 700/1000) previously depended on the agent remembering it while
+ * writing. Feature work repeatedly displaced that consideration, so the hook
+ * measures source lines without comments or blank lines before each edit.
  *
- * Darum misst der Hook selbst: vor jedem Write/Edit auf eine Code-Datei wird
- * die aktuelle Zeilenzahl gezählt und ab Richtwert-Nähe als kompakter
- * `<file-size-check>`-Block injiziert — der Agent bekommt die Zahl
- * hingehalten, statt sich erinnern zu müssen. Pure stdlib, budget-sicher,
- * Kill-Switch BASTRA_SIZE_CHECK=off.
+ * A compact `<file-size-check>` block makes the measurement available without
+ * relying on recall. Pure stdlib, bounded input, kill switch BASTRA_SIZE_CHECK=off.
  *
- * Wichtig (Daniels Klarstellung): 500 ist RICHTWERT, kein Limit — 670/700
- * sind okay, wenn die Größe kohärent begründet ist. Der Block fordert deshalb
- * einen Split-VORSCHLAG vor spürbarem Wachstum, nie ein Auto-Split.
+ * The guide is not a limit: a coherent, justified larger file is fine. The
+ * note asks for a modularization review before substantial growth, never
+ * an automatic split or a blanket growth ban.
  */
 import { readFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
@@ -173,16 +169,228 @@ export async function readSizeSettings(
 }
 
 /** The injected note, or null while the file is comfortably under the guide.
- *  Fires from ~90 % of the guide value so the split proposal can happen
- *  BEFORE the write that crosses the line. */
+ * Fires from ~90 % so responsibilities can be reviewed before substantial growth. */
 export function formatSizeNote(filePath: string, lines: number, t: SizeThresholds): string | null {
   if (lines < Math.floor(t.guide * 0.9)) return null;
   const level = lines > t.critical ? "critical" : "guide";
   const msg =
     level === "critical"
-      ? `over the ${t.critical}-line ceiling — do NOT grow this file further; propose a coherent module split FIRST (file-size convention: cut responsibilities, not line counts).`
-      : `at/near the ~${t.guide}-line guide value — if this edit adds noticeable growth, propose a module split BEFORE writing (file-size convention; a justified ${t.guide + 200}-line file is fine, silent growth is not).`;
+      ? `over the ~${t.critical} code-line review threshold (comments and blank lines excluded) — review whether coherent responsibilities should become separate modules before substantial growth; explain why splitting or keeping this file is appropriate. This is a review prompt, not a growth ban.`
+      : `at/near the ~${t.guide} code-line guide (comments and blank lines excluded) — before noticeable growth, review modularization; a coherent, justified larger file is fine. Split by responsibilities, not line counts.`;
   return `<file-size-check file="${escapeAttr(basename(filePath))}" lines="${lines}" level="${level}">${msg}</file-size-check>`;
+}
+
+/** A small lexical estimate, not a compiler: count each line containing source
+ * or literal data once. Comments and blank source lines contribute nothing.
+ * Nonblank literal contents remain data, even Python triple
+ * quotes used as docstrings. Regex starts and JSX tags use lexical heuristics;
+ * ambiguous grammar, template interpolations and preprocessor branches are not
+ * parsed. Prefer retaining literal data over discarding it as documentation. */
+function countCodeLines(raw: string, ext: string): number {
+  const python = ext === ".py";
+  const javascript = /\.(?:[cm]?js|jsx|tsx?|vue|svelte)$/.test(ext);
+  const component = ext === ".vue" || ext === ".svelte";
+  const jsx = ext === ".jsx" || ext === ".tsx";
+  let markup = component;
+  let tag = false;
+  let tagName = "";
+  let closingTag = false;
+  let markupDepth = 0;
+  let embedded = "";
+  const expressions: { depth: number; tag: boolean; doubleBrace?: boolean }[] = [];
+  const jsxReturns: number[] = [];
+  let block = "";
+  let blockDepth = 0;
+  let quote = "";
+  let literalRaw = false;
+  let regex = false;
+  let regexClass = false;
+  let canRegex = true;
+  let count = 0;
+
+  for (const line of raw.split(/\r\n|\n|\r/)) {
+    let code = quote.length > 0;
+    for (let i = 0; i < line.length;) {
+      const c = line[i];
+      const next = line[i + 1];
+      if (block) {
+        if (block === "*/" && (ext === ".rs" || ext === ".swift") && line.startsWith("/*", i)) {
+          blockDepth++;
+          i += 2;
+        } else if (line.startsWith(block, i)) {
+          i += block.length;
+          if (--blockDepth === 0) block = "";
+        } else i++;
+        continue;
+      }
+      if (quote) {
+        code = true;
+        if (line.startsWith(quote, i)) {
+          i += quote.length;
+          quote = "";
+          canRegex = false;
+        } else if (!literalRaw && c === "\\") i += 2;
+        else i++;
+        continue;
+      }
+      if (regex) {
+        code = true;
+        if (c === "\\") i += 2;
+        else {
+          if (c === "[") regexClass = true;
+          if (c === "]") regexClass = false;
+          if (c === "/" && !regexClass) {
+            regex = false;
+            canRegex = false;
+          }
+          i++;
+        }
+        continue;
+      }
+      if (markup && !tag) {
+        if (line.startsWith("<!--", i)) {
+          block = "-->";
+          blockDepth = 1;
+          i += 4;
+          continue;
+        }
+        if (jsx && line.startsWith("{/*", i)) {
+          block = "*/}";
+          blockDepth = 1;
+          i += 3;
+          continue;
+        }
+        if (c === "{" && (ext !== ".vue" || next === "{")) {
+          code = true;
+          const doubleBrace = ext === ".vue";
+          expressions.push({ depth: 1, tag: false, doubleBrace });
+          markup = false;
+          // A Svelte closing directive is markup control, not a regex literal.
+          const closingDirective = ext === ".svelte" && next === "/";
+          canRegex = !closingDirective;
+          i += doubleBrace || closingDirective ? 2 : 1;
+          continue;
+        }
+        if (c !== "<") {
+          if (/\S/.test(c)) code = true;
+          i++;
+          continue;
+        }
+      }
+      if (embedded && line.startsWith(`</${embedded}`, i)) {
+        embedded = "";
+        markup = true;
+      }
+      if ((!markup && jsx && c === "<" && /[A-Za-z/>]/.test(next ?? "")) || (markup && !tag && c === "<")) {
+        if (!markup) jsxReturns.push(markupDepth);
+        const match = /^<(\/?)([\w:.-]*)/.exec(line.slice(i));
+        closingTag = match?.[1] === "/";
+        tagName = (match?.[2] ?? "").toLowerCase();
+        markup = true;
+        tag = true;
+        code = true;
+        i += match?.[0].length ?? 1;
+        continue;
+      }
+      if (tag && c === ">") {
+        if (closingTag) markupDepth--;
+        else if (line[i - 1] !== "/") markupDepth++;
+        tag = false;
+        if (component && !closingTag && /^(script|style)$/.test(tagName)) {
+          embedded = tagName;
+          markup = false;
+        } else if (jsxReturns.length > 0 && markupDepth === jsxReturns[jsxReturns.length - 1]) {
+          jsxReturns.pop();
+          markup = false;
+          canRegex = false;
+        }
+        code = true;
+        i++;
+        continue;
+      }
+      if (tag && c === "{" && ext !== ".vue") {
+        expressions.push({ depth: 1, tag: true });
+        tag = markup = false;
+        canRegex = true;
+        code = true;
+        i++;
+        continue;
+      }
+      if (
+        !tag &&
+        ((python && c === "#") || (!python && c === "/" && next === "/" && ext !== ".css" && embedded !== "style"))
+      )
+        break;
+      if (!tag && !python && c === "/" && next === "*") {
+        block = "*/";
+        blockDepth = 1;
+        i += 2;
+        continue;
+      }
+      if (/\s/.test(c)) {
+        i++;
+        continue;
+      }
+      code = true;
+      // Rust raw strings allow arbitrary hash delimiters; Go backticks and
+      // Python/Swift triple quotes keep comment-looking text intact as well.
+      const rustRaw = ext === ".rs" && /[rbc]/.test(c) ? /^(?:b|c)?r(#+|)"/.exec(line.slice(i)) : null;
+      if (rustRaw) {
+        quote = `"${rustRaw[1]}`;
+        literalRaw = true;
+        i += rustRaw[0].length;
+        continue;
+      }
+      const swiftRaw = ext === ".swift" && c === "#" ? /^(#+)("""|")/.exec(line.slice(i)) : null;
+      if (swiftRaw) {
+        quote = `${swiftRaw[2]}${swiftRaw[1]}`;
+        literalRaw = true;
+        i += swiftRaw[0].length;
+        continue;
+      }
+      if (c === '"' || c === "'" || (c === "`" && (javascript || ext === ".go"))) {
+        // Rust lifetimes ('a, 'static) are identifiers, not unterminated strings.
+        const lifetime = ext === ".rs" && c === "'" ? /^'[A-Za-z_]\w*/.exec(line.slice(i)) : null;
+        if (lifetime && line[i + lifetime[0].length] !== "'") {
+          i += lifetime[0].length;
+          continue;
+        }
+        quote = (python || ext === ".swift") && line.startsWith(c.repeat(3), i) ? c.repeat(3) : c;
+        literalRaw = ext === ".go" && c === "`";
+        i += quote.length;
+        continue;
+      }
+      if (javascript && embedded !== "style" && !tag && c === "/" && canRegex) {
+        regex = true;
+        regexClass = false;
+        i++;
+        continue;
+      }
+      if (!markup) {
+        const expression = expressions[expressions.length - 1];
+        if (expression && c === "{") expression.depth++;
+        if (expression && c === "}" && --expression.depth === 0) {
+          expressions.pop();
+          markup = true;
+          tag = expression.tag;
+          if (expression.doubleBrace && next === "}") i++;
+        }
+        if (/[A-Za-z_$]/.test(c)) {
+          const word = /^[\w$]+/.exec(line.slice(i))![0];
+          canRegex = /^(return|throw|case|delete|void|typeof|yield|await|in|of|instanceof|new)$/.test(word);
+          i += word.length;
+          continue;
+        }
+        canRegex = /[({[=,:;!?&|+*%~^<>-]/.test(c);
+      }
+      i++;
+    }
+    if (code && line.trim().length > 0) count++;
+    // JS regex literals cannot span physical lines. Other unterminated
+    // literals are kept conservatively because multiline data is common.
+    regex = false;
+  }
+  return count;
 }
 
 /** Measure + format in one step — the hook's entry point. Never throws:
@@ -194,7 +402,7 @@ export async function fileSizeNote(filePath: string, settingsPath?: string, cwd?
   try {
     const raw = await readFile(filePath, "utf8");
     if (raw.length > MAX_BYTES) return null;
-    return formatSizeNote(filePath, raw.split("\n").length, t);
+    return formatSizeNote(filePath, countCodeLines(raw, extname(filePath).toLowerCase()), t);
   } catch {
     return null;
   }
