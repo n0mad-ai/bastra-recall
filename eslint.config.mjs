@@ -26,7 +26,7 @@ export default [
       "**/build/**",
       "**/coverage/**",
       "**/vendor/**",
-      "**/fixtures/**",
+      "packages/eval/fixtures/**",
       "**/__fixtures__/**",
       "**/stress-fixtures/**",
       "**/goldset/**",
