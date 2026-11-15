@@ -177,10 +177,12 @@ scripts/      One-off telemetry / eval / backfill scripts
   import { foo } from "./helpers.js"; // ✓
   import { foo } from "./helpers";    // ✗ — won't run
   ```
-- **Small files.** Soft ceiling ~800 lines per file. If a file grows past
-  that, propose a split (or implement one in your PR).
-- **Match the existing style.** No drive-by reformatting; `prettier` /
-  `eslint` aren't enforced yet.
+- **Small files.** Soft ceiling ~800 lines of code per file (comments and
+  blank lines don't count). If a file grows past that, propose a split (or
+  implement one in your PR).
+- **Formatting and linting are enforced.** CI runs `npm run format:check`
+  (Prettier) and `npm run lint` (ESLint). Run `npm run format` before you
+  commit; don't reformat files your change doesn't touch.
 - **No new dependencies without an issue first.** Every dependency is a
   long-term cost.
 
