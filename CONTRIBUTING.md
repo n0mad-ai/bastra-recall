@@ -187,8 +187,12 @@ scripts/      One-off telemetry / eval / backfill scripts
   and nesting depth ≤4, including `webui/v22`. Functions above 100 code lines
   (comments and blank lines excluded) produce a warning only. Import cycles
   are forbidden everywhere; type-only and dynamic imports are excluded.
-  Existing violations are frozen by function fingerprint or exact cycle edge.
-  New and changed functions must meet the limits. Split responsibilities using
+  Existing violations are frozen by stable function identity and individual metric
+  value, or by exact cycle edge. Existing over-limit functions may change without
+  increasing either metric; lower values require a baseline reduction. New
+  functions and functions already within the limits must stay within 15/4.
+  Refactor legacy functions through their dedicated refactoring issue; a small
+  bug fix does not require a simultaneous complete rewrite. Split responsibilities using
   existing modules and useful interfaces; do not chop code into tiny helpers
   merely to satisfy a number or add suppression comments.
 - **Copies:** the same lint command runs jscpd (`npm run lint:clones`): production

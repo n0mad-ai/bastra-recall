@@ -1,78 +1,42 @@
-import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ESLint } from "eslint";
-import tseslint from "typescript-eslint";
+import { analyzeFunctions, functionAt, legacyFingerprint } from "./lint-function-identities.mjs";
 
 const baselinePath = new URL("../eslint-structure-baseline.json", import.meta.url);
 const structuralRules = new Set(["complexity", "max-depth"]);
-const functionTypes = new Set([
-  "FunctionDeclaration",
-  "FunctionExpression",
-  "ArrowFunctionExpression",
-  "StaticBlock",
-  "PropertyDefinition",
-]);
-
-function functionRanges(source) {
-  const { ast, visitorKeys } = tseslint.parser.parseForESLint(source, {
-    ecmaVersion: "latest",
-    sourceType: "module",
-    range: true,
-    loc: true,
-    tokens: true,
-  });
-  const ranges = [];
-  function visit(node, parent) {
-    if (functionTypes.has(node.type)) {
-      const owner = ["MethodDefinition", "Property", "VariableDeclarator"].includes(parent?.type) ? parent : node;
-      ranges.push(owner.range);
-    }
-    for (const key of visitorKeys[node.type] ?? []) {
-      const children = Array.isArray(node[key]) ? node[key] : [node[key]];
-      for (const child of children) {
-        if (child?.type) visit(child, node);
-      }
-    }
-  }
-  visit(ast, null);
-  return { ranges, tokens: ast.tokens };
-}
-
-function fingerprint(message, source, parsed) {
-  const lines = source.split("\n");
-  const offset = lines.slice(0, message.line - 1).reduce((sum, line) => sum + line.length + 1, 0);
-  const position = offset + message.column - 1;
-  const range = parsed.ranges
-    .filter(([start, end]) => start <= position && position < end)
-    .sort((a, b) => a[1] - a[0] - (b[1] - b[0]))[0] ?? [0, source.length];
-  const tokens = parsed.tokens
-    .filter((token) => token.range[0] >= range[0] && token.range[1] <= range[1])
-    .map((token) => [token.type, token.value]);
-  return createHash("sha256")
-    .update(JSON.stringify([message.message, tokens]))
-    .digest("hex");
-}
-
-export async function inspectStructure(paths = ["packages", "scripts", "tools"]) {
+export async function inspectStructure(paths = ["packages", "scripts", "tools"], { legacy = false } = {}) {
   // Read raw findings: native file/rule counters cannot freeze individual functions.
   const eslint = new ESLint({ applySuppressions: false, allowInlineConfig: false });
   const results = await eslint.lintFiles(paths);
   const findings = {};
+  const legacyFindings = {};
   for (const result of results) {
     const messages = result.messages.filter((message) => structuralRules.has(message.ruleId));
     if (!messages.length) continue;
     const source = result.source ?? readFileSync(result.filePath, "utf8");
-    const parsed = functionRanges(source);
     const file = relative(process.cwd(), result.filePath).split("\\").join("/");
+    const parsed = analyzeFunctions(source);
     for (const message of messages) {
-      const key = `${file}:${message.ruleId}:${fingerprint(message, source, parsed)}`;
-      findings[key] = (findings[key] ?? 0) + 1;
+      const owner = functionAt(message, source, parsed);
+      const key = JSON.stringify([file, owner.identity, message.ruleId]);
+      const metric = message.message.match(/(?:complexity of |too deeply \()(\d+)/);
+      if (!metric) throw new Error(`Unrecognized structural finding: ${message.message}`);
+      findings[key] = Math.max(findings[key] ?? 0, Number(metric[1]));
       message.baselineKey = key;
+      if (legacy) {
+        const oldKey = `${file}:${message.ruleId}:${legacyFingerprint(message, owner, parsed)}`;
+        legacyFindings[oldKey] = (legacyFindings[oldKey] ?? 0) + 1;
+      }
     }
   }
-  return { eslint, results, findings: Object.fromEntries(Object.entries(findings).sort()) };
+  return {
+    eslint,
+    results,
+    findings: Object.fromEntries(Object.entries(findings).sort()),
+    ...(legacy ? { legacyFindings } : {}),
+  };
 }
 
 function compareBaseline(baseline, findings) {
@@ -81,11 +45,25 @@ function compareBaseline(baseline, findings) {
   return { added, removed };
 }
 
+function explainExceeded(keys, baseline, findings) {
+  for (const key of keys) {
+    const [file, identity, rule] = JSON.parse(key);
+    const limit = rule === "complexity" ? 15 : 4;
+    const prior = baseline[key];
+    const instruction = prior
+      ? `frozen maximum ${prior}, actual ${findings[key]}; do not worsen this function. Refactor separately via the associated refactoring issue (#1508–#1519)`
+      : `new function or previously compliant metric maximum ${limit}, actual ${findings[key]}; split responsibilities using existing modules`;
+    console.error(`${file} ${identity} ${rule}: ${instruction}. Do not expand the baseline.`);
+  }
+}
+
 async function main() {
   const prune = process.argv.includes("--prune");
   const paths = process.argv.slice(2).filter((argument) => argument !== "--prune");
   if (prune && paths.length) throw new Error("Prune requires the complete project; omit file arguments.");
-  const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
+  const snapshot = JSON.parse(readFileSync(baselinePath, "utf8"));
+  if (snapshot.schema !== 2) throw new Error("Structure baseline requires schema 2 function maxima.");
+  const baseline = snapshot.functions;
   const { eslint, results, findings } = await inspectStructure(paths.length ? paths : undefined);
   const { added, removed } = compareBaseline(baseline, findings);
   const allowed = new Set(Object.keys(baseline).filter((key) => !added.includes(key)));
@@ -101,16 +79,17 @@ async function main() {
   const formatter = await eslint.loadFormatter("stylish");
   process.stdout.write(formatter.format(visible));
   if (added.length) {
+    explainExceeded(added, baseline, findings);
     console.error(
-      "Structure limit exceeded: complexity <=15, nesting <=4. Split responsibilities using existing modules; preserve useful module interfaces. Changed functions must meet the limits. Do not add suppressions or expand the baseline."
+      "Structure limit exceeded: new functions need complexity <=15 and nesting <=4; existing functions must not exceed their frozen individual maxima. Reuse existing modules and split responsibilities where appropriate. Do not add suppressions or expand the baseline."
     );
   }
   if (prune && !added.length) {
-    writeFileSync(baselinePath, JSON.stringify(findings, null, 2) + "\n");
-    console.log(`Structure baseline lowered: ${removed.length} obsolete entries removed.`);
+    writeFileSync(baselinePath, JSON.stringify({ schema: 2, functions: findings }, null, 2) + "\n");
+    console.log(`Structure baseline lowered: ${removed.length} maxima reduced or removed.`);
   } else if (removed.length && !paths.length) {
     console.error(
-      `Structure baseline has ${removed.length} obsolete entries. Run npm run lint:prune after the cleanup and commit the smaller baseline.`
+      `Structure baseline has ${removed.length} outdated function maxima. Run npm run lint:prune after the cleanup and commit the smaller baseline.`
     );
   }
   const errors = visible.reduce((sum, result) => sum + result.errorCount, 0);

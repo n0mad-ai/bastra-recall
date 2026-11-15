@@ -19,14 +19,30 @@ function counts(value) {
       )
     );
   }
-  return value.fingerprints ?? value;
+  return value.functions ?? value.fingerprints ?? value;
+}
+
+async function isVerifiedMigration(file, previous, candidate) {
+  if (file !== "eslint-structure-baseline.json" || previous.schema || candidate.schema !== 2) return false;
+  const { inspectStructure } = await import("./lint-structure.mjs");
+  const { findings, legacyFindings } = await inspectStructure(undefined, { legacy: true });
+  const canonical = (value) => JSON.stringify(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)));
+  if (canonical(previous) !== canonical(legacyFindings) || canonical(candidate.functions) !== canonical(findings)) {
+    throw new Error(
+      "Structure baseline migration must preserve the exact legacy findings and measured function values. Restore the unchanged legacy code before migrating."
+    );
+  }
+  console.log("Verified structure baseline migration: unchanged legacy findings, measured per-function budgets.");
+  return true;
 }
 
 for (const file of files) {
   const previous = readBase(file);
   if (!previous) continue;
+  const candidate = JSON.parse(readFileSync(file, "utf8"));
+  if (await isVerifiedMigration(file, previous, candidate)) continue;
   const before = counts(previous);
-  const after = counts(JSON.parse(readFileSync(file, "utf8")));
+  const after = counts(candidate);
   const added = Object.keys(after).filter((key) => after[key] > (before[key] ?? 0));
   if (!added.length) continue;
   console.error(
