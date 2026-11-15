@@ -158,8 +158,15 @@ test("fileSizeNote measures real files; new files and kill-switch stay silent", 
 
 test("fileSizeNote excludes comments and blank source lines but preserves literal data", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-size-lexical-"));
-  const cases: { name: string; ext: string; source: string; lines: number }[] = [
+  const cases: { name: string; ext: string; source: string; lines: number; atStart?: boolean }[] = [
     { name: "empty source", ext: "ts", source: "\n \t\n", lines: 0 },
+    {
+      name: "JavaScript shebang is comment trivia only at the file start",
+      ext: "mjs",
+      source: "#!/usr/bin/env node\n// ignored\nconst end = 1;",
+      lines: 1,
+      atStart: true,
+    },
     { name: "line and block comments", ext: "ts", source: "// ignored\n/* ignored\n still ignored */\n", lines: 0 },
     {
       name: "mixed comments and code",
@@ -203,13 +210,54 @@ const quotient = 8 / 2; /* ignored */`,
       source: "const text = `\n// literal\n \t\n/* literal */\n`;\n// ignored",
       lines: 4,
     },
-    // Interpolations intentionally stay literal in this small lexer; they are
-    // not recursively parsed as another JavaScript program.
     {
-      name: "template interpolation is retained conservatively",
+      name: "template interpolation retains source around comments",
       ext: "ts",
       source: "const text = `\n${ /* retained */\n1 }\n`;",
       lines: 4,
+    },
+    {
+      name: "nested templates cannot turn literal comment openers into comments",
+      ext: "js",
+      source: "const a = `${x ? `/* a` : ''}`;\nconst b = 1;\nconst c = 2;\n/* ignored */",
+      lines: 3,
+    },
+    {
+      name: "shell quoting with regex and nested template quotes",
+      ext: "ts",
+      source: "const quote = s => `'${s.replace(/'/g, `'\\\\''`)}'`;\n// ignored\n/* ignored */\nconst end = 1;",
+      lines: 2,
+    },
+    {
+      name: "nested interpolation braces and comment-only expression lines",
+      ext: "ts",
+      source: "const x = `${\n/* ignored */\nJSON.stringify({ a: `nested ${value}` })\n}`;\n// ignored\nconst end = 1;",
+      lines: 4,
+    },
+    {
+      name: "regex statement with quote after closing block",
+      ext: "js",
+      source: "function f() {}\n/'/.test(s);\n// ignored\nconst end = 1;",
+      lines: 3,
+    },
+    {
+      name: "TSX type arguments stay in JavaScript",
+      ext: "tsx",
+      source:
+        "const [a] = useState<string>('');\n// ignored\n/* ignored */\nfunction f() {/* ignored */}\nconst end = 1;",
+      lines: 3,
+    },
+    {
+      name: "JSX less-than comparison stays in JavaScript",
+      ext: "jsx",
+      source: "const a = b <c;\n// ignored\nconst end = 1;",
+      lines: 2,
+    },
+    {
+      name: "Swift failed raw prefix does not hide following source",
+      ext: "swift",
+      source: '################\n// ignored\nlet raw = ###"/* literal */"###\n/* ignored */\nlet end = 1',
+      lines: 3,
     },
     {
       name: "Python comments and quoted hash",
@@ -323,9 +371,9 @@ const quotient = 8 / 2; /* ignored */`,
     // Keep the public hook entry point observable even for tiny snippets,
     // without exporting an implementation detail or changing configuration.
     const prefix = "0;\n".repeat(450);
-    for (const { name, ext, source, lines } of cases) {
+    for (const { name, ext, source, lines, atStart } of cases) {
       const path = join(dir, `source.${ext}`);
-      await writeFile(path, prefix + source, "utf8");
+      await writeFile(path, atStart ? source + "\n" + prefix : prefix + source, "utf8");
       const note = await fileSizeNote(path, settingsPath);
       assert.equal(note?.match(/ lines="(\d+)"/)?.[1], String(450 + lines), name);
     }

@@ -184,8 +184,9 @@ export function formatSizeNote(filePath: string, lines: number, t: SizeThreshold
  * or literal data once. Comments and blank source lines contribute nothing.
  * Nonblank literal contents remain data, even Python triple
  * quotes used as docstrings. Regex starts and JSX tags use lexical heuristics;
- * ambiguous grammar, template interpolations and preprocessor branches are not
- * parsed. Prefer retaining literal data over discarding it as documentation. */
+ * ambiguous grammar (including JSX versus generic arrows at expression start)
+ * and preprocessor branches are not parsed. Prefer retaining literal data over
+ * discarding it as documentation. */
 function countCodeLines(raw: string, ext: string): number {
   const python = ext === ".py";
   const javascript = /\.(?:[cm]?js|jsx|tsx?|vue|svelte)$/.test(ext);
@@ -199,6 +200,9 @@ function countCodeLines(raw: string, ext: string): number {
   let embedded = "";
   const expressions: { depth: number; tag: boolean; doubleBrace?: boolean }[] = [];
   const jsxReturns: number[] = [];
+  // Each interpolation owns its brace depth; nested templates suspend the
+  // surrounding interpolation until their closing backtick.
+  const templates: number[] = [];
   let block = "";
   let blockDepth = 0;
   let quote = "";
@@ -207,8 +211,12 @@ function countCodeLines(raw: string, ext: string): number {
   let regexClass = false;
   let canRegex = true;
   let count = 0;
+  let firstLine = true;
 
   for (const line of raw.split(/\r\n|\n|\r/)) {
+    const shebang = firstLine && javascript && line.startsWith("#!");
+    firstLine = false;
+    if (shebang) continue;
     let code = quote.length > 0;
     for (let i = 0; i < line.length;) {
       const c = line[i];
@@ -225,7 +233,12 @@ function countCodeLines(raw: string, ext: string): number {
       }
       if (quote) {
         code = true;
-        if (line.startsWith(quote, i)) {
+        if (javascript && quote === "`" && c === "$" && next === "{") {
+          templates.push(1);
+          quote = "";
+          canRegex = true;
+          i += 2;
+        } else if (line.startsWith(quote, i)) {
           i += quote.length;
           quote = "";
           canRegex = false;
@@ -281,7 +294,7 @@ function countCodeLines(raw: string, ext: string): number {
         embedded = "";
         markup = true;
       }
-      if ((!markup && jsx && c === "<" && /[A-Za-z/>]/.test(next ?? "")) || (markup && !tag && c === "<")) {
+      if ((!markup && jsx && canRegex && c === "<" && /[A-Za-z/>]/.test(next ?? "")) || (markup && !tag && c === "<")) {
         if (!markup) jsxReturns.push(markupDepth);
         const match = /^<(\/?)([\w:.-]*)/.exec(line.slice(i));
         closingTag = match?.[1] === "/";
@@ -341,11 +354,17 @@ function countCodeLines(raw: string, ext: string): number {
         i += rustRaw[0].length;
         continue;
       }
-      const swiftRaw = ext === ".swift" && c === "#" ? /^(#+)("""|")/.exec(line.slice(i)) : null;
-      if (swiftRaw) {
-        quote = `${swiftRaw[2]}${swiftRaw[1]}`;
-        literalRaw = true;
-        i += swiftRaw[0].length;
+      if (ext === ".swift" && c === "#") {
+        const start = i;
+        while (line[i] === "#") i++;
+        if (line[i] === '"') {
+          const delimiter = line.startsWith('"""', i) ? '"""' : '"';
+          quote = delimiter + line.slice(start, i);
+          literalRaw = true;
+          i += delimiter.length;
+        }
+        // Also consume failed raw-string prefixes once: retrying each suffix
+        // of a long hash run makes Swift directives quadratic.
         continue;
       }
       if (c === '"' || c === "'" || (c === "`" && (javascript || ext === ".go"))) {
@@ -367,6 +386,17 @@ function countCodeLines(raw: string, ext: string): number {
         continue;
       }
       if (!markup) {
+        if (templates.length > 0) {
+          const top = templates.length - 1;
+          if (c === "{") templates[top]++;
+          if (c === "}" && --templates[top] === 0) {
+            templates.pop();
+            quote = "`";
+            literalRaw = false;
+            i++;
+            continue;
+          }
+        }
         const expression = expressions[expressions.length - 1];
         if (expression && c === "{") expression.depth++;
         if (expression && c === "}" && --expression.depth === 0) {
@@ -381,7 +411,9 @@ function countCodeLines(raw: string, ext: string): number {
           i += word.length;
           continue;
         }
-        canRegex = /[({[=,:;!?&|+*%~^<>-]/.test(c);
+        // A closing block can precede a regex statement. Object literals and
+        // blocks remain lexically ambiguous without parsing JavaScript grammar.
+        canRegex = /[({[}=,:;!?&|+*%~^<>-]/.test(c);
       }
       i++;
     }
@@ -389,6 +421,7 @@ function countCodeLines(raw: string, ext: string): number {
     // JS regex literals cannot span physical lines. Other unterminated
     // literals are kept conservatively because multiline data is common.
     regex = false;
+    if (javascript && (quote === "'" || quote === '"') && !line.endsWith("\\")) quote = "";
   }
   return count;
 }
