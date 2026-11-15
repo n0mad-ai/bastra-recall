@@ -248,8 +248,6 @@
     "[\"packages/daemon/src/edit-memory-handler.ts\",\"[\\\"function:editMemoryHandler\\\",\\\"variable:outcome\\\",\\\"call:mutateMemoryFile:#1\\\",\\\"property:frontmatter\\\",\\\"function:ArrowFunctionExpression#1\\\"]\",\"complexity\"]": 50,
     "[\"packages/daemon/src/edit-memory-handler.ts\",\"[\\\"function:editMemoryHandler\\\"]\",\"complexity\"]": 29,
     "[\"packages/daemon/src/executed-vault-write.ts\",\"[\\\"function:withExecutedVaultWrite\\\"]\",\"complexity\"]": 17,
-    "[\"packages/daemon/src/file-size-check.ts\",\"[\\\"function:countCodeLines\\\"]\",\"complexity\"]": 129,
-    "[\"packages/daemon/src/file-size-check.ts\",\"[\\\"function:countCodeLines\\\"]\",\"max-depth\"]": 5,
     "[\"packages/daemon/src/floors.ts\",\"[\\\"function:addFloor\\\"]\",\"complexity\"]": 16,
     "[\"packages/daemon/src/gate-lane.ts\",\"[\\\"function:gate\\\",\\\"block#2\\\",\\\"variable:persisted\\\",\\\"call:mutateSessionState:#1\\\",\\\"function:argument:1#1\\\"]\",\"complexity\"]": 82,
     "[\"packages/daemon/src/gate-lane.ts\",\"[\\\"function:gate\\\",\\\"block#2\\\",\\\"variable:persisted\\\",\\\"call:mutateSessionState:#1\\\",\\\"function:argument:1#1\\\"]\",\"max-depth\"]": 6,
