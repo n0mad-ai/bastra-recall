@@ -1,6 +1,8 @@
 /** Task reports: an agent's final report for the owner, filed after larger or
  * autonomous work instead of a long chat answer. The owner reads it in the
- * Tasks area of the Recall UI and deletes it once read. Not bound to a task
+ * Tasks area of the Recall UI, marks it read or unread there by hand (reading
+ * the body never changes that state, neither for the UI nor for an agent) and
+ * deletes it when done. Not bound to a task
  * run (executor reports are, see task-app-api.ts) and no action authority.
  * One app record next to the task snapshot; visibility follows the task
  * domain rule (every owner domain must belong to the caller). */
@@ -28,10 +30,12 @@ export const taskReportSaveInput = z.strictObject({
   origin: z.strictObject({ client: line(120), session: line(200).optional() }),
 });
 const idInput = z.strictObject({ id: z.string().uuid() });
+const markInput = z.strictObject({ id: z.string().uuid(), read: z.boolean() });
 export const TASK_REPORT_INPUTS = {
   task_report_save: taskReportSaveInput,
   task_report_list: z.strictObject({}),
   task_report_read: idInput,
+  task_report_mark: markInput,
   task_report_delete: idInput,
 };
 export type TaskReportOperation = keyof typeof TASK_REPORT_INPUTS;
@@ -137,12 +141,21 @@ function saveReport(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) 
   });
 }
 
+/** Reading is side-effect free: an agent opening a report must not mark it read for the owner. */
 function readReport(ctx: ReportContext, principal: TaskPrincipal, id: string) {
+  const report = readReports(storePath(ctx)).find((r) => r.id === id && visible(r, principal));
+  if (!report) throw notFound();
+  return { ...meta(report), body: report.body };
+}
+
+/** Idempotent: read=true keeps the first read time, read=false puts the report back to unread. */
+function markReport(ctx: ReportContext, principal: TaskPrincipal, id: string, read: boolean) {
   return changeReports(storePath(ctx), (reports) => {
     const report = reports.find((r) => r.id === id && visible(r, principal));
     if (!report) throw notFound();
-    report.read_at ??= (ctx.now ?? Date.now)();
-    return { ...meta(report), body: report.body };
+    if (read) report.read_at ??= (ctx.now ?? Date.now)();
+    else delete report.read_at;
+    return meta(report);
   });
 }
 
@@ -164,6 +177,10 @@ export async function callTaskReport(
   const principal = await authenticateTask(authorization, ctx.authPath);
   if (operation === "task_report_save") return saveReport(ctx, principal, raw);
   if (operation === "task_report_read") return readReport(ctx, principal, idInput.parse(raw).id);
+  if (operation === "task_report_mark") {
+    const input = markInput.parse(raw);
+    return markReport(ctx, principal, input.id, input.read);
+  }
   if (operation === "task_report_delete") return deleteReport(ctx, principal, idInput.parse(raw).id);
   TASK_REPORT_INPUTS.task_report_list.parse(raw);
   const reports = readReports(storePath(ctx))

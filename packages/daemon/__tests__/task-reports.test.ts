@@ -1,5 +1,6 @@
 // Task reports: an agent files its final report in Recall, the owner reads it
-// in the UI and deletes it. Store, MCP tool and UI session access.
+// in the UI, marks it read or unread by hand and deletes it. Store, MCP tool
+// and UI session access.
 import "./tasks-opt-in.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -35,7 +36,7 @@ const report = (extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
-test("save → list → read → delete keeps the report text exactly and marks it read on open", async () => {
+test("save → list → read → mark → delete keeps the report text exactly; only mark changes the read state", async () => {
   const f = await fixture();
   const body = `# Bericht\n\n${"Zeile mit Inhalt äöü 🙂\n".repeat(4000)}\n\`\`\`ts\n\tconst x = 1;\n\`\`\`\n| a | b |\n|---|---|\n| 1 | 2 |\n`;
   const saved = await f.call("task_report_save", report({ body, project: "bastra-recall" }));
@@ -61,15 +62,26 @@ test("save → list → read → delete keeps the report text exactly and marks 
   f.setNow(5_000);
   const read = await f.call("task_report_read", { id: saved.id });
   assert.equal(read.body, body, "long markdown with line breaks, tabs and emoji comes back unchanged");
-  assert.equal(read.read_at, 5_000);
+  assert.equal(read.read_at, undefined, "reading never marks the report read");
+  assert.equal((await f.call("task_report_list", {})).unread, 1);
+
+  const marked = await f.call("task_report_mark", { id: saved.id, read: true });
+  assert.equal(marked.read_at, 5_000);
+  assert.equal(marked.body, undefined, "the mark answer is metadata only");
   f.setNow(9_000);
-  assert.equal((await f.call("task_report_read", { id: saved.id })).read_at, 5_000, "first open stays the read time");
+  assert.equal((await f.call("task_report_mark", { id: saved.id, read: true })).read_at, 5_000, "idempotent");
+  assert.equal((await f.call("task_report_read", { id: saved.id })).read_at, 5_000);
   assert.equal((await f.call("task_report_list", {})).unread, 0);
+
+  assert.equal((await f.call("task_report_mark", { id: saved.id, read: false })).read_at, undefined, "back to unread");
+  assert.equal((await f.call("task_report_mark", { id: saved.id, read: false })).read_at, undefined, "idempotent");
+  assert.equal((await f.call("task_report_list", {})).unread, 1);
 
   assert.deepEqual(await f.call("task_report_delete", { id: saved.id }), { deleted: true, id: saved.id });
   assert.deepEqual((await f.call("task_report_list", {})).reports, []);
   await assert.rejects(f.call("task_report_read", { id: saved.id }), { code: "not_found" });
   await assert.rejects(f.call("task_report_delete", { id: saved.id }), { code: "not_found" });
+  await assert.rejects(f.call("task_report_mark", { id: saved.id, read: true }), { code: "not_found" });
 });
 
 test("list puts unread reports first, newest first within each group", async () => {
@@ -79,7 +91,7 @@ test("list puts unread reports first, newest first within each group", async () 
     f.setNow(1_000 + i * 1_000);
     ids.push((await f.call("task_report_save", report({ title }))).id);
   }
-  await f.call("task_report_read", { id: ids[2] });
+  await f.call("task_report_mark", { id: ids[2], read: true });
   const titles = (await f.call("task_report_list", {})).reports.map((r: any) => r.title);
   assert.deepEqual(titles, ["mitte", "alt", "neu"]);
 });
@@ -99,6 +111,10 @@ test("invalid input is rejected, never shortened or stored", async () => {
   ];
   for (const input of bad) await assert.rejects(f.call("task_report_save", input), (e) => e instanceof z.ZodError);
   await assert.rejects(f.call("task_report_read", { id: "../../etc" }), (e) => e instanceof z.ZodError);
+  const saved = await f.call("task_report_save", report());
+  for (const input of [{ id: saved.id }, { id: saved.id, read: "yes" }, { id: saved.id, read: true, at: 1 }])
+    await assert.rejects(f.call("task_report_mark", input), (e) => e instanceof z.ZodError);
+  await f.call("task_report_delete", { id: saved.id });
   assert.deepEqual((await f.call("task_report_list", {})).reports, []);
 });
 
@@ -116,6 +132,8 @@ test("reports follow the task domain rule: other domains neither see, read nor d
   assert.deepEqual((await f.call("task_report_list", {}, f.other)).reports, []);
   await assert.rejects(f.call("task_report_read", { id: saved.id }, f.other), { code: "not_found" });
   await assert.rejects(f.call("task_report_delete", { id: saved.id }, f.other), { code: "not_found" });
+  await assert.rejects(f.call("task_report_mark", { id: saved.id, read: true }, f.other), { code: "not_found" });
+  assert.equal((await f.call("task_report_list", {})).unread, 1, "a foreign mark changes nothing");
   await assert.rejects(f.call("task_report_list", {}, "Bearer invalid"), { code: "unauthorized" });
   assert.equal((await f.call("task_report_list", {})).reports.length, 1);
 });
@@ -129,7 +147,13 @@ test("the store refuses new reports beyond its limit instead of dropping old one
 
 test("MCP: report tools are registered task tools with strict schemas and a clear purpose", async () => {
   const f = await fixture();
-  for (const name of ["task_report_save", "task_report_list", "task_report_read", "task_report_delete"]) {
+  for (const name of [
+    "task_report_save",
+    "task_report_list",
+    "task_report_read",
+    "task_report_mark",
+    "task_report_delete",
+  ]) {
     assert.ok((TASK_CRUD_OPERATIONS as readonly string[]).includes(name), name);
     assert.ok(taskTools.some((t) => t.name === name));
   }
@@ -137,6 +161,8 @@ test("MCP: report tools are registered task tools with strict schemas and a clea
   assert.match(save.description, /final report/i);
   assert.match(save.description, /instead of/i);
   assert.equal(taskTools.find((t) => t.name === "task_report_list")!.annotations.readOnlyHint, true);
+  assert.equal(taskTools.find((t) => t.name === "task_report_read")!.annotations.readOnlyHint, true);
+  assert.equal(taskTools.find((t) => t.name === "task_report_mark")!.annotations.readOnlyHint, false);
   assert.equal(taskTools.find((t) => t.name === "task_report_delete")!.annotations.destructiveHint, true);
   const ok = await callTaskMcp("task_report_save", report(), f.auth, f.ctx);
   assert.equal(ok.isError, undefined);
@@ -182,6 +208,9 @@ test("UI: report operations sit behind the local task session and its CSRF token
     assert.equal(list.unread, 1);
     const read = (await (await post("/ui/tasks/api/task_report_read", { id: saved.id }, headers)).json()) as any;
     assert.equal(read.body, report().body);
+    const mark = await post("/ui/tasks/api/task_report_mark", { id: saved.id, read: true }, headers);
+    assert.equal(mark.status, 200);
+    assert.equal(((await (await post("/ui/tasks/api/task_report_list", {}, headers)).json()) as any).unread, 0);
     assert.equal((await post("/ui/tasks/api/task_report_delete", { id: saved.id }, headers)).status, 200);
   } finally {
     server.closeAllConnections();

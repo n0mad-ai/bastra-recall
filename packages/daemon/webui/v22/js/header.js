@@ -279,8 +279,9 @@ function renderStatus(L) {
 }
 
 // ── ticker ────────────────────────────────────────────────────────────────
+/** Unread reports run first: an agent's final report is the newest thing waiting for the user. */
 function tickerItems() {
-  return [...dueTickerItems(), ...reportTickerItems()];
+  return [...reportTickerItems(), ...dueTickerItems()];
 }
 
 function dueTickerItems() {

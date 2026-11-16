@@ -139,6 +139,7 @@ export const TASK_CRUD_OPERATIONS = [
   "task_report_save",
   "task_report_list",
   "task_report_read",
+  "task_report_mark",
   "task_report_delete",
 ] as const;
 export type TaskCrudOperation = (typeof TASK_CRUD_OPERATIONS)[number];

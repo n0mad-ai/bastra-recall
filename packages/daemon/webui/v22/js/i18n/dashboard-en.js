@@ -38,6 +38,8 @@ export default {
   "db.w.deadlines.d": "Due dates of your tasks, counting down.",
   "db.w.memory.t": "Memory",
   "db.w.memory.d": "How the vault grows: new memories per day and the busiest areas.",
+  "db.w.reports.t": "Reports",
+  "db.w.reports.d": "Final reports from your agents: unread first, one click opens the report.",
 
   "db.b.meta": "{time} · KW {w}",
   "db.b.due": "tasks due",
@@ -93,6 +95,10 @@ export default {
   "db.dl.empty": "No due dates ahead.",
 
   "db.m.meta": "vault",
+  "db.rp.empty": "No reports.",
+  "db.rp.new": "NEW",
+  "db.rp.meta": "{n} unread",
+  "db.rp.all": "Open all reports",
   "db.m.week": "{n} THIS WEEK",
   "db.m.days": "14 DAYS",
   "db.m.today": "TODAY",

@@ -1,5 +1,6 @@
 // Dashboard widgets of the free build: Today, Weather, Tasks, Deadlines,
-// Memory (prototype W-00, W-01, W-02, W-04, W-07). Mail, Week/Calendar and
+// Memory, Reports (prototype W-00, W-01, W-02, W-04, W-07; W-08 added
+// 16.11.2026). Mail, Week/Calendar and
 // Coding agents are Pro and come in through window.recallUi.registerWidget().
 //
 // A widget is { type, code, titleKey|title, descKey|desc, icon, w, h, minW,
@@ -9,6 +10,8 @@ import { h, s } from "../dom.js";
 import { t, LANG, numberFmt } from "../i18n.js";
 import { data, dueAt } from "../data.js";
 import { openTask } from "./tasks-store.js";
+import { openReport, openReports } from "./tasks-reports.js";
+import { unreadCount } from "./tasks-reports-model.js";
 import { loadingInline } from "./loading.js";
 import { placeWeather, weatherPicker } from "../weather-place.js";
 
@@ -628,6 +631,49 @@ function renderMemory(body, env) {
   return { meta: t("db.m.meta") };
 }
 
+// ── W-08 Reports (data.reports: the rows behind the nav dot and the ticker) ─
+function renderReports(body, env) {
+  if (!tasksOn()) {
+    body.append(empty(t("db.tk.off")));
+    return { meta: "" };
+  }
+  const rows = data.reports,
+    unread = unreadCount(rows);
+  if (!rows.length) body.append(empty(t("db.rp.empty")));
+  else
+    body.append(
+      h(
+        "div.dw-rows",
+        null,
+        rows.slice(0, Math.max(1, env.item.h * 2 - 1)).map((r) => {
+          const d = new Date(r.createdAt),
+            fresh = r.readAt === null;
+          return h(
+            "button.dw-row",
+            {
+              vars: { "--dot": fresh ? "var(--accent)" : "var(--line-45)" },
+              on: { click: () => openReport(r.id) },
+            },
+            h("span.dw-row__dot"),
+            h(
+              "span.dw-row__main",
+              null,
+              h("span.dw-row__t", { text: r.title }),
+              h("span.dw-row__s", { text: [r.project, `${dateShort(d)} ${hhmm(d)}`].filter(Boolean).join(" · ") })
+            ),
+            h("span.dw-row__tag", { text: fresh ? t("db.rp.new") : "" })
+          );
+        })
+      )
+    );
+  return {
+    meta: t("db.rp.meta", { n: unread }),
+    tone: unread ? "accent" : "muted",
+    onMeta: openReports,
+    metaTitle: t("db.rp.all"),
+  };
+}
+
 export const BUILTIN = [
   {
     type: "briefing",
@@ -688,5 +734,18 @@ export const BUILTIN = [
     minH: 2,
     icon: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z",
     render: renderMemory,
+  },
+  {
+    type: "reports",
+    code: "W-08",
+    titleKey: "db.w.reports.t",
+    descKey: "db.w.reports.d",
+    w: 4,
+    h: 3,
+    minW: 3,
+    minH: 2,
+    defaultOn: true, // joins boards the user has not arranged; arranged boards add it via + WIDGET
+    icon: "M6 3h9l4 4v14H6ZM15 3v4h4M9 12h7M9 16h5",
+    render: renderReports,
   },
 ];

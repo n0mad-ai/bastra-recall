@@ -38,6 +38,8 @@ export default {
   "db.w.deadlines.d": "Fälligkeiten deiner Aufgaben als Countdown.",
   "db.w.memory.t": "Memory",
   "db.w.memory.d": "Wie der Vault wächst: neue Memories pro Tag und die aktivsten Bereiche.",
+  "db.w.reports.t": "Berichte",
+  "db.w.reports.d": "Abschlussberichte der Agenten: ungelesene zuerst, ein Klick öffnet den Bericht.",
 
   "db.b.meta": "{time} · KW {w}",
   "db.b.due": "fällig",
@@ -93,6 +95,10 @@ export default {
   "db.dl.empty": "Keine Fristen in Sicht.",
 
   "db.m.meta": "Vault",
+  "db.rp.empty": "Keine Berichte.",
+  "db.rp.new": "NEU",
+  "db.rp.meta": "{n} ungelesen",
+  "db.rp.all": "Alle Berichte öffnen",
   "db.m.week": "{n} DIESE WOCHE",
   "db.m.days": "14 TAGE",
   "db.m.today": "HEUTE",

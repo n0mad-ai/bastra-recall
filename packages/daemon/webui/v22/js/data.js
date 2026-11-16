@@ -104,25 +104,40 @@ async function fetchGraph() {
   }
 }
 
-let taskCsrf = null;
-async function taskApi(name, input = {}) {
-  if (!taskCsrf) {
-    const s = await getJson("/ui/tasks/session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: "{}",
+// One session request at a time: loadTasks and loadReports start together, and
+// two cookie-less session requests would each open a session; the browser keeps
+// only the second cookie, so the first caller's CSRF token was refused and its
+// list (e.g. the reports for the ticker) stayed empty until the next 60 s poll.
+let taskCsrf = null,
+  taskSession = null;
+function taskSessionCsrf() {
+  taskSession ??= getJson("/ui/tasks/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  })
+    .then((s) => {
+      taskCsrf = typeof s.csrf === "string" ? s.csrf : null;
+      if (!taskCsrf) throw new Error("no task session");
+      return taskCsrf;
+    })
+    .finally(() => {
+      taskSession = null;
     });
-    taskCsrf = typeof s.csrf === "string" ? s.csrf : null;
-    if (!taskCsrf) throw new Error("no task session");
-  }
+  return taskSession;
+}
+async function taskApi(name, input = {}, retry = true) {
+  const csrf = taskCsrf ?? (await taskSessionCsrf());
   const r = await fetch(`/ui/tasks/api/task_${name}`, {
     method: "POST",
     credentials: "same-origin",
-    headers: { "Content-Type": "application/json", "x-bastra-task-csrf": taskCsrf },
+    headers: { "Content-Type": "application/json", "x-bastra-task-csrf": csrf },
     body: JSON.stringify(input),
   });
   if (r.status === 401 || r.status === 403) {
-    taskCsrf = null;
+    // Expired or replaced session (daemon restart, the Tasks area's own session request): renew once.
+    if (taskCsrf === csrf) taskCsrf = null;
+    if (retry) return taskApi(name, input, false);
     throw new Error("task session expired");
   }
   if (!r.ok) throw new Error(`task_${name} → ${r.status}`);

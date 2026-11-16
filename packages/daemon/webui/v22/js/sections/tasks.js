@@ -36,7 +36,14 @@ import { KEYS, label, ICON as KICON, onSelect, endDrag } from "./tasks-cal.js";
 import { splitPanel, weekDays, monthStart, rangeOf } from "./tasks-ledger.js";
 import { overlayRenderer } from "./tasks-overlays.js";
 import { detailTab, viewTab, controlTab, statusTiles, dueList } from "./tasks-panel.js";
-import { reportsButton, reportsRenderer, escapeReports, hasUnreadReports } from "./tasks-reports.js";
+import {
+  reportsButton,
+  reportsRenderer,
+  reportsOpen,
+  resetReports,
+  escapeReports,
+  hasUnreadReports,
+} from "./tasks-reports.js";
 import en from "../i18n/tasks-en.js";
 import de from "../i18n/tasks-de.js";
 
@@ -238,7 +245,7 @@ let root = null,
   drawOverlays = null,
   drawReports = null;
 function drawCal() {
-  if (!calSlot || S.drag) return;
+  if (!calSlot || S.drag || reportsOpen()) return; // the reading view stands in for the calendar
   endDrag();
   clear(calSlot).append(calendar());
 }
@@ -261,6 +268,7 @@ function draw() {
   clear(headSlot).append(head());
   drawOverlays();
   drawReports();
+  calSlot.hidden = reportsOpen();
   clear(calSlot);
   if (content || wait) calSlot.append(content || wait);
   if (!content && !wait) drawCal();
@@ -272,7 +280,7 @@ function mount(el, ctx) {
   root.classList.add("tk");
   headSlot = h("div.tk-headslot");
   const overlaySlot = h("div.tk-overlays"),
-    reportSlot = h("div.tk-overlays");
+    reportSlot = h("div.tk-repslot", { hidden: true });
   calSlot = h("div.tk-calslot");
   root.append(headSlot, overlaySlot, reportSlot, calSlot);
   drawOverlays = overlayRenderer(overlaySlot);
@@ -295,13 +303,13 @@ function mount(el, ctx) {
     if (state.view === "tasks") ctx.refreshLens();
   });
   const key = (e) => {
-    if (e.key === "Escape" && escapeReports()) e.stopPropagation();
-    else if (e.key === "Escape" && (S.compose || S.showDue || S.proposal)) {
+    if (e.key !== "Escape") return;
+    if (S.compose || S.showDue || S.proposal) {
       e.stopPropagation();
       S.compose = S.showDue = false;
       S.proposal = null;
       emit();
-    }
+    } else if (!document.querySelector(".mb.is-on") && escapeReports()) e.stopPropagation(); // an open memory browser keeps its own Escape
   };
   window.addEventListener("keydown", key, true);
   draw();
@@ -323,6 +331,7 @@ function mount(el, ctx) {
     clearInterval(poll);
     clearInterval(tick);
     window.removeEventListener("keydown", key, true);
+    resetReports();
     root = null;
     calSlot = null;
     headSlot = null;

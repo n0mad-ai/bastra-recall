@@ -28,11 +28,13 @@ const TASK_HELP: Partial<Record<TaskCrudOperation, string>> = {
   task_result_report:
     "Persist an attributed executor report with expected_revision; at, actor and generation come from the server. This never executes an action, resolves a task or grants new action authority.",
   task_report_save:
-    "Final report for the user. After larger or autonomous work (for example a commissioned job that ran for hours), file the closing report here instead of a long chat answer, then point to it in one or two chat sentences. title is one line; body is Markdown of any length up to the request limit and is stored unchanged, never shortened; optional project; origin {client, session} names the agent and session. Not bound to a task: actor, domains and time come from the server. The user reads it under Tasks › Reports in the Recall UI and deletes it there. Grants no action authority.",
+    "Final report for the user. After larger or autonomous work (for example a commissioned job that ran for hours), file the closing report here instead of a long chat answer, then point to it in one or two chat sentences. title is one line; body is Markdown of any length up to the request limit and is stored unchanged, never shortened; optional project; origin {client, session} names the agent and session. Not bound to a task: actor, domains and time come from the server. The user reads it under Tasks › Reports in the Recall UI, marks it read there and deletes it. Grants no action authority.",
   task_report_list:
     "Reports visible in your domains, unread first, metadata only (no body). Use it to confirm a report arrived; a report disappears once the user deleted it.",
   task_report_read:
-    "Open one report with its full body; the first open marks it read. Meant for the Recall UI: agents open a report only when the user asks.",
+    "Open one report with its full body. Reading never changes its read state, so opening a report does not mark it read for the user. Meant for the Recall UI: agents open a report only when the user asks.",
+  task_report_mark:
+    "Set one report read (read=true) or back to unread (read=false). Idempotent: marking read again keeps the first read time. The Recall UI marks on the user's click; agents mark only when the user asks.",
   task_report_delete: "Delete one report by id when the user asks for it. The Recall UI deletes on the user's click.",
   task_pause: "Pause evaluation and delivery without ending or disarming the task.",
   task_resume:
@@ -81,7 +83,8 @@ export const taskTools = TASK_CRUD_OPERATIONS.map((name) => ({
       name === "task_status" ||
       name === "task_proposal" ||
       name === "task_result_get" ||
-      name === "task_report_list",
+      name === "task_report_list" ||
+      name === "task_report_read",
     destructiveHint: name === "task_delete" || name === "task_report_delete",
   },
 }));
