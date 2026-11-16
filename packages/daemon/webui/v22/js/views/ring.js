@@ -11,6 +11,7 @@ import { vault, areaCol as col, timeWindow, inWindow, windowKey } from "./vault-
 import { buildRing, SMALL_KEY, TAU } from "./ring-layout.js";
 import { zoomBar, overlay, areaCard, memoryCard, dock, park, dateStr, TC, INK, ACC } from "./chrome.js";
 import { mountMemoryBrowser } from "./memory-browser.js";
+import { mountLinks, nodeTier } from "./ring-links.js";
 
 // Upper bound for the label scale (SVG units per screen pixel). The bands keep
 // the prototype's widths in SVG units (30 main, 22 rules); at 2.5 a label's cap
@@ -332,6 +333,8 @@ export function mountRing(stage) {
       )
     );
     kids.push(ghostG);
+    const links = mountLinks();
+    kids.push(links.el);
     if (ghosts.length) {
       const num = s("tspan", { fill: "#7d92a8", "font-family": MONO, "font-weight": 400 }, String(ghosts.length));
       const text = s(
@@ -393,6 +396,7 @@ export function mountRing(stage) {
       hovMark,
       selMark,
       pulse,
+      links,
     };
     hovDot = null;
     glideDot = null;
@@ -453,10 +457,14 @@ export function mountRing(stage) {
     const hv = state.hover ?? state.focus;
     return hv && ring && ring.smallKeys.has(hv) ? SMALL_KEY : hv;
   };
+  // segment of the selected memory (its other dots are dimmed slightly)
+  const selKey = () =>
+    selMem && ring?.dotOf.has(selMem.id) ? (ring.smallKeys.has(selMem.area) ? SMALL_KEY : selMem.area) : null;
 
   function paint() {
     if (!refs) return;
     const hover = hoverKey(),
+      sk = selKey(),
       win = timeWindow(),
       v = vault();
     if (hovDot && !inWindow(v.byId.get(hovDot.id), win)) {
@@ -465,11 +473,13 @@ export function mountRing(stage) {
     }
     for (const r of refs.segRefs) {
       const on = hover === r.x.key,
-        dim = !!hover && !on;
+        tier = nodeTier(r.x.key, hover, sk),
+        dim = tier === "dim";
       r.wedge.setAttribute("fill", col(r.x.key, on ? 0.09 : 0.03));
       r.cell.setAttribute("fill", on ? "rgba(56,217,245,.14)" : col(r.x.key, 0.06));
       r.edge.setAttribute("stroke", col(r.x.key, dim ? 0.25 : 0.85));
       r.nodes.classList.toggle("is-dim", dim);
+      r.nodes.classList.toggle("is-soft", tier === "soft");
       r.text.classList.toggle("is-dim", dim);
       r.x.pts.forEach((p, j) => r.dots[j].classList.toggle("is-out", !inWindow(v.byId.get(p.id), win)));
     }
@@ -659,6 +669,7 @@ export function mountRing(stage) {
         opening = false;
       }
       selMem = m;
+      paint();
       place();
     }, 430);
   }
@@ -672,6 +683,7 @@ export function mountRing(stage) {
       hovMark.setAttribute("r", (hovDot.r + 2.5 / kk).toFixed(2));
     }
     const sd = glideDot || (selMem && ring.dotOf.get(selMem.id));
+    showLinks(hovDot || sd || null);
     selMark.classList.toggle("is-on", !!sd);
     if (sd) {
       const px = 1 / kk,
@@ -692,6 +704,14 @@ export function mountRing(stage) {
           .join("")
       );
     }
+  }
+
+  // links of the hovered, else the selected dot (ring-links.js); rebuilt only
+  // when that dot or the time window changes
+  function showLinks(src) {
+    const v = vault(),
+      win = timeWindow();
+    refs.links.show(src, src && v?.byId.get(src.id), ring.dotOf, (id) => inWindow(v.byId.get(id), win), windowKey());
   }
 
   function placeCard(kk, cx, _cy) {

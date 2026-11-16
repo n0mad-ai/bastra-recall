@@ -6,6 +6,7 @@ import { setState } from "../state.js";
 import { ask } from "../agent.js";
 import { vault, areaCol, recentIn, ago } from "./vault-data.js";
 import { openMemoryBrowser } from "./memory-browser.js";
+import { dockGeometry, ZB_W, ZB_H } from "./dock-geometry.js";
 
 export const ACC = "#38d9f5",
   AMB = "#d9a441",
@@ -13,6 +14,8 @@ export const ACC = "#38d9f5",
   MUT = "#7d92a8";
 /** Display class colours (memory-lenses.js TC, prototype TYPE_COLOR). */
 export const TC = { decision: ACC, fact: INK, rule: AMB, convention: AMB, note: MUT, reference: "#a0b4cd" };
+/** Link colours by relation (vault-data.js REL: written | derived). */
+export const RC = { linked: INK, derived: MUT };
 
 /** Zoom bar, bottom right (prototype `zoomable`). */
 export function zoomBar({ onIn, onOut, onFit }) {
@@ -210,17 +213,11 @@ export function dateStr(ms) {
   });
 }
 
-// Zoom bar footprint at the stage's bottom right corner (142 × 30 px + 12 px gap).
-const ZB_W = 154,
-  ZB_H = 42;
-
 /**
  * Dock a card to an anchor (prototype ring focus geometry, renderValsDark):
  * arm = anchor → elbow (ex, ey) → card edge; the side accent line runs
- * symmetrically around the docking point (DESIGN-SYSTEM §1.8).
- * When the card cannot sit beside the elbow (the ring fills the stage), it is
- * placed below (or above) the elbow and the arm docks on that edge instead,
- * so the arm never runs underneath the card.
+ * symmetrically around the docking point (DESIGN-SYSTEM §1.8). The geometry
+ * (dock-geometry.js) keeps the arm off the card at every zoom and pan.
  */
 export function dock(card, ov, { ax, ay, ex, ey, right, x, W, H, color }) {
   // An anchor outside the stage (panned or zoomed away) gets no arm.
@@ -230,62 +227,13 @@ export function dock(card, ov, { ax, ay, ex, ey, right, x, W, H, color }) {
   }
   const cardH = card.el.offsetHeight || 300,
     CW = card.el.offsetWidth || 350;
-  // Callers provide the original 260px-card anchor; preserve its near edge.
-  if (!right) x -= CW - 260;
+  const g = dockGeometry({ ax, ay, ex, ey, right, x, W, H, CW, cardH });
   const side = card.side;
   side.classList.remove("is-left", "is-right", "is-top", "is-bottom");
-  // Keep the card clear of the zoom bar.
-  const Hx = (cx0) => (cx0 + CW > W - ZB_W ? H - ZB_H : H);
-  // A card too tall for the space above the zoom bar moves left of it.
-  const fitX = (cx0) => {
-    cx0 = Math.max(0, Math.min(cx0, W - CW));
-    return Hx(cx0) < cardH ? Math.max(0, Math.min(cx0, W - ZB_W - CW)) : cx0;
-  };
-  x = fitX(x);
-  // The elbow stays on the stage and off the zoom bar (it lies on the ring's
-  // outer edge, which leaves the stage when zoomed in).
-  ex = Math.max(8, Math.min(W - 8, ex));
-  ey = Math.max(8, Math.min(Hx(ex - CW) - 8, ey));
-  if (right ? x >= ex + 8 : x + CW <= ex - 8) {
-    const y = Math.max(0, Math.min(ey - 28, Hx(x) - cardH));
-    const lx = right ? x : x + CW;
-    const pts = [
-      [ax, ay],
-      [ex, ey],
-      [lx, ey],
-    ];
-    const outside = ey < y || ey > y + cardH;
-    if (outside) pts.push([lx, y + 14]);
-    const hitY = outside ? y + 14 : ey;
-    setVars(card.el, { "--cx": `${x}px`, "--cy": `${y}px` });
-    side.classList.add(right ? "is-left" : "is-right");
-    setVars(side, { "--sh": `${Math.min(cardH, Math.max(2, 2 * (hitY - y) + 1)).toFixed(0)}px` });
-    ov.arm(pts, color);
-    reveal(card);
-    return;
-  }
-  const cx = fitX(ex - CW / 2),
-    Hb = Hx(cx);
-  const below = ey + 24 + cardH <= Hb || ey < Hb / 2;
-  const y = below ? Math.max(0, Math.min(ey + 24, Hb - cardH)) : Math.max(0, Math.min(ey - 24, Hb) - cardH);
-  const dx = Math.max(14, Math.min(CW - 14, ex - cx));
-  setVars(card.el, { "--cx": `${cx}px`, "--cy": `${y}px` });
-  if (!below) {
-    side.classList.add("is-bottom");
-    setVars(side, {
-      "--sx": `${(dx - Math.min(dx, CW - dx)).toFixed(0)}px`,
-      "--sw": `${(2 * Math.min(dx, CW - dx) + 1).toFixed(0)}px`,
-    });
-  }
-  ov.arm(
-    [
-      [ax, ay],
-      [ex, ey],
-      [cx + dx, ey],
-      [cx + dx, below ? y : y + cardH],
-    ].filter((p, i, a) => i === 0 || p[0] !== a[i - 1][0] || p[1] !== a[i - 1][1]),
-    color
-  );
+  if (g.side) side.classList.add(g.side);
+  setVars(side, g.sideVars);
+  setVars(card.el, { "--cx": `${g.x}px`, "--cy": `${g.y}px` });
+  ov.arm(g.pts, color);
   reveal(card);
 }
 

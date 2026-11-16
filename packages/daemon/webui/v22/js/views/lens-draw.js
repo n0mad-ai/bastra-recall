@@ -5,9 +5,8 @@
 // the vault's own edges (written | derived).
 import { t as tr, LANG } from "../i18n.js";
 import { hash } from "./vault-data.js";
-import { TC, ACC, AMB, INK, MUT } from "./chrome.js";
+import { TC, RC, ACC, AMB, INK, MUT } from "./chrome.js";
 
-const RC = { linked: INK, derived: MUT };
 const MONO = "'IBM Plex Mono', ui-monospace, monospace",
   SANS = "'IBM Plex Sans Condensed', system-ui, sans-serif";
 const LOC = LANG === "de" ? "de-DE" : "en-GB";

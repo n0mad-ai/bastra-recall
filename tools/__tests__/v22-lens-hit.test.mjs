@@ -14,7 +14,7 @@ async function loadLensDraw() {
   vm.runInContext(
     `
     const tr = (k) => k, LANG = "en";
-    const TC = {}, ACC = "#38d9f5", AMB = "#d9a441", INK = "#d7e3f4", MUT = "#7d92a8";
+    const TC = {}, ACC = "#38d9f5", AMB = "#d9a441", INK = "#d7e3f4", MUT = "#7d92a8", RC = { linked: INK, derived: MUT };
     function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967295; }
     ${body}
     globalThis.api = { prep, VIEWS };`,

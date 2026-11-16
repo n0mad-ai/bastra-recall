@@ -101,6 +101,13 @@
 .rg-nodes.is-dim {
   opacity: 0.16;
 }
+/* rest of the selected memory's segment: dimmed less than other segments */
+.rg-nodes.is-soft {
+  opacity: 0.5;
+}
+.rg-links {
+  pointer-events: none;
+}
 .rg-text.is-dim {
   opacity: 0.35;
 }

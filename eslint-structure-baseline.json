@@ -493,7 +493,6 @@
     "[\"packages/daemon/webui/v22/js/sections/telemetry-render.js\",\"[\\\"function:section\\\"]\",\"complexity\"]": 18,
     "[\"packages/daemon/webui/v22/js/sections/telemetry-render.js\",\"[\\\"function:table\\\",\\\"variable:rows\\\",\\\"call:b.rows.map:#1\\\",\\\"function:argument:0#1\\\",\\\"call:h:\\\\\\\"div.tv-tr\\\\\\\"#1\\\",\\\"call:r.map:#1\\\",\\\"function:argument:0#1\\\"]\",\"complexity\"]": 21,
     "[\"packages/daemon/webui/v22/js/sections/telemetry.js\",\"[\\\"function:load\\\"]\",\"complexity\"]": 17,
-    "[\"packages/daemon/webui/v22/js/views/chrome.js\",\"[\\\"function:dock\\\"]\",\"complexity\"]": 19,
     "[\"packages/daemon/webui/v22/js/views/engine-host.js\",\"[\\\"function:frame\\\"]\",\"complexity\"]": 24,
     "[\"packages/daemon/webui/v22/js/views/engine-live.js\",\"[\\\"function:installLive\\\",\\\"function:apply\\\"]\",\"complexity\"]": 16,
     "[\"packages/daemon/webui/v22/js/views/engine-view.js\",\"[\\\"function:mountEngineView\\\",\\\"function:place\\\"]\",\"complexity\"]": 38,
