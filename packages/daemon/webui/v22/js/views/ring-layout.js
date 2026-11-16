@@ -149,13 +149,14 @@ export function buildRing(v, smallLabel, lf = 1) {
   });
   const orbit = metaBand.ro + 36;
   const n = v.ghosts.length;
-  const ghosts = Array.from({ length: n }, (_, i) => {
+  // unwritten memories on the orbit: dots like the others (hover, click, links)
+  const ghosts = v.ghosts.map((g, i) => {
     const a = -Math.PI / 2 + 0.5 + ((TAU - 1) * i) / Math.max(1, n - 1);
-    return { x: Math.cos(a) * orbit, y: Math.sin(a) * orbit };
+    return { id: g.id, k: g.area, x: Math.cos(a) * orbit, y: Math.sin(a) * orbit, r: 2.6, ghost: true };
   });
   const smallKeys = new Set(small.map(([k]) => k));
   const dotOf = new Map();
-  for (const s of [...segs, ...metaSegs]) for (const p of s.pts) dotOf.set(p.id, p);
+  for (const p of [...segs.flatMap((s) => s.pts), ...metaSegs.flatMap((s) => s.pts), ...ghosts]) dotOf.set(p.id, p);
   return {
     segs,
     band,

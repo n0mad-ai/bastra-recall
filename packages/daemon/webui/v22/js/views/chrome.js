@@ -124,6 +124,16 @@ function actionButton(cls, key, click) {
   });
 }
 
+/** One memory row of a card list (class square, title, age); click → onMemory(m). */
+const memRow = (m, onMemory) =>
+  h(
+    "button.vcard__mem",
+    { on: { click: () => onMemory(m) } },
+    h("span.vcard__sq", { vars: { "--tc": TC[m.cls] || INK } }),
+    h("span.vcard__mt", { text: m.title }),
+    h("span.vcard__ago", { text: Number.isFinite(m.at) ? ago(m.at) : "" })
+  );
+
 /** Area card (prototype `insp`): rank, name, three stats, recent memories, actions. */
 export function areaCard(key, { compact, onMemory }) {
   const v = vault(),
@@ -150,15 +160,7 @@ export function areaCard(key, { compact, onMemory }) {
     h(
       "div.vcard__list",
       null,
-      recentIn(key, compact ? 2 : 3).map((m) =>
-        h(
-          "button.vcard__mem",
-          { on: { click: () => onMemory(m) } },
-          h("span.vcard__sq", { vars: { "--tc": TC[m.cls] || INK } }),
-          h("span.vcard__mt", { text: m.title }),
-          h("span.vcard__ago", { text: Number.isFinite(m.at) ? ago(m.at) : "" })
-        )
-      )
+      recentIn(key, compact ? 2 : 3).map((m) => memRow(m, onMemory))
     ),
     h(
       "div.vcard__acts",
@@ -172,8 +174,12 @@ export function areaCard(key, { compact, onMemory }) {
   return { el, side };
 }
 
-/** Memory card: one memory, opened by a click in a lens or in the ring card. */
-export function memoryCard(m, { onClose }) {
+/**
+ * Memory card: one memory, opened by a click in a lens or in the ring card.
+ * An unwritten memory (kind "ghost") has no text: the card says so and, with
+ * `onMemory`, lists the memories that link to it.
+ */
+export function memoryCard(m, { onClose, onMemory }) {
   const c = TC[m.cls] || INK;
   const { el, side } = shell(c, onClose, h("span.vcard__chip", { text: t(`vv.cls.${m.cls}`), vars: { "--tc": c } }));
   el.querySelector(".vcard__head").insertBefore(
@@ -188,7 +194,11 @@ export function memoryCard(m, { onClose }) {
         .filter(Boolean)
         .join(" · "),
     }),
-    m.summary ? h("p.vcard__sum", { text: m.summary }) : null,
+    ...[
+      m.kind === "ghost" && h("p.vcard__sum", { text: t("ev.ghostSum") }),
+      m.summary && h("p.vcard__sum", { text: m.summary }),
+      m.kind === "ghost" && onMemory && referrers(m, onMemory),
+    ].filter(Boolean),
     h(
       "div.vcard__acts",
       null,
@@ -202,6 +212,20 @@ export function memoryCard(m, { onClose }) {
     )
   );
   return { el, side };
+}
+
+// memories that link to an unwritten one, as a scrolling card list
+function referrers(m, onMemory) {
+  const v = vault();
+  return h(
+    "div.vcard__list.is-refs",
+    null,
+    h("div.vcard__lh", { text: t("vv.linkedFrom") }),
+    m.links
+      .map((l) => v?.byId.get(l.id))
+      .filter(Boolean)
+      .map((x) => memRow(x, onMemory))
+  );
 }
 
 export function dateStr(ms) {

@@ -27,6 +27,8 @@ export default {
   "vv.cls.fact": "Fakt",
   "vv.cls.note": "Notiz",
   "vv.cls.reference": "Referenz",
+  "vv.cls.ghost": "ungeschrieben",
+  "vv.linkedFrom": "Verweisen darauf",
   "vv.rel.linked": "geschriebene Verknüpfung",
   "vv.rel.derived": "abgeleitete Verknüpfung",
   "vv.lens.bandSub": "{n} Memories · ein Punkt je 3 Tage",

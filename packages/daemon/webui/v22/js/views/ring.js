@@ -11,7 +11,7 @@ import { vault, areaCol as col, timeWindow, inWindow, windowKey } from "./vault-
 import { buildRing, SMALL_KEY, TAU } from "./ring-layout.js";
 import { zoomBar, overlay, areaCard, memoryCard, dock, park, dateStr, TC, INK, ACC } from "./chrome.js";
 import { mountMemoryBrowser } from "./memory-browser.js";
-import { mountLinks, nodeTier } from "./ring-links.js";
+import { mountLinks, nodeTier, GHOST } from "./ring-links.js";
 
 // Upper bound for the label scale (SVG units per screen pixel). The bands keep
 // the prototype's widths in SVG units (30 main, 22 rules); at 2.5 a label's cap
@@ -26,6 +26,10 @@ const sector = (r0, r1, a0, a1) => {
   const L = a1 - a0 > Math.PI ? 1 : 0;
   return `M${P(r1, a0)}A${r1} ${r1} 0 ${L} 1 ${P(r1, a1)}L${P(r0, a1)}A${r0} ${r0} 0 ${L} 0 ${P(r0, a0)}Z`;
 };
+// a ring dot's memory: written (byId) or unwritten (ghostOf, the orbit dots);
+// unwritten ones have no date and stay shown in every time window
+const memOf = (id) => vault()?.byId.get(id) || vault()?.ghostOf.get(id);
+const visible = (m, win) => !!m && (m.kind === "ghost" || inWindow(m, win));
 const arc = (r, a0, a1, rev) => {
   const L = a1 - a0 > Math.PI ? 1 : 0;
   return rev ? `M${P(r, a1)}A${r} ${r} 0 ${L} 0 ${P(r, a0)}` : `M${P(r, a0)}A${r} ${r} 0 ${L} 1 ${P(r, a1)}`;
@@ -48,7 +52,7 @@ export function mountRing(stage) {
       if (!p) return;
       e.stopPropagation();
       e.preventDefault();
-      if (inWindow(vault().byId.get(p.id), timeWindow())) openDot(p);
+      if (visible(memOf(p.id), timeWindow())) openDot(p);
     },
     true
   );
@@ -99,7 +103,8 @@ export function mountRing(stage) {
     glideDot = null,
     openT = 0,
     opening = false,
-    swapCard = false;
+    swapCard = false,
+    linking = false;
   // closing a memory card (×, Escape, another area) glides back to the fit
   const zoomHome = () => ringTo(1, 0, 0, true);
   function closeMem() {
@@ -325,11 +330,8 @@ export function mountRing(stage) {
         s("circle", {
           cx: g.x.toFixed(1),
           cy: g.y.toFixed(1),
-          r: 2.6,
-          fill: "#060a13",
-          stroke: "rgba(160,180,205,.75)",
-          "stroke-width": 0.9,
-          "stroke-dasharray": "1.6 1.4",
+          r: g.r,
+          ...GHOST,
         })
       )
     );
@@ -466,23 +468,23 @@ export function mountRing(stage) {
       sk = selKey(),
       win = timeWindow(),
       v = vault();
-    if (hovDot && !inWindow(v.byId.get(hovDot.id), win)) {
+    if (hovDot && !visible(memOf(hovDot.id), win)) {
       hoverDot(null);
       wrap.classList.add("is-out-dot");
     }
     for (const r of refs.segRefs) {
       const on = hover === r.x.key,
-        tier = nodeTier(r.x.key, hover, sk),
-        dim = tier === "dim";
+        tier = nodeTier(r.x.key, hover, sk, linking),
+        dim = tier === "dim" || tier === "far";
       r.wedge.setAttribute("fill", col(r.x.key, on ? 0.09 : 0.03));
       r.cell.setAttribute("fill", on ? "rgba(56,217,245,.14)" : col(r.x.key, 0.06));
       r.edge.setAttribute("stroke", col(r.x.key, dim ? 0.25 : 0.85));
-      r.nodes.classList.toggle("is-dim", dim);
-      r.nodes.classList.toggle("is-soft", tier === "soft");
+      for (const c of ["dim", "soft", "back", "far"]) r.nodes.classList.toggle(`is-${c}`, tier === c);
       r.text.classList.toggle("is-dim", dim);
       r.x.pts.forEach((p, j) => r.dots[j].classList.toggle("is-out", !inWindow(v.byId.get(p.id), win)));
     }
     refs.ghostG.classList.toggle("is-dim", !!hover);
+    refs.ghostG.classList.toggle("is-far", linking);
     const hs = refs.allSegs.find((x) => x.key === hover);
     refs.emblem.setAttribute("stroke", hs ? col(hs.key, 0.9) : "rgba(56,217,245,.75)");
     const T = (y, txt, o) => s("text", { y, "text-anchor": "middle", ...o }, txt);
@@ -592,12 +594,12 @@ export function mountRing(stage) {
   function onMove(e) {
     if (moved) return;
     let p = dotAt(e);
-    const out = !!p && !inWindow(vault().byId.get(p.id), timeWindow());
+    const out = !!p && !visible(memOf(p.id), timeWindow());
     wrap.classList.toggle("is-out-dot", out);
     if (out) p = null;
     hoverDot(p);
     if (!p) return;
-    const m = vault().byId.get(p.id),
+    const m = memOf(p.id),
       c = TC[m.cls] || INK;
     if (tip.dataset.id !== m.id) {
       tip.dataset.id = m.id;
@@ -643,7 +645,7 @@ export function mountRing(stage) {
   // Click: selection mark + pulse, glide the dot to the centre, then open the
   // memory card with its arm (as in the lenses: 430 ms after the click).
   function openDot(p) {
-    const m = vault()?.byId.get(p.id);
+    const m = memOf(p.id);
     if (!m) return;
     hoverDot(null);
     glideDot = p;
@@ -707,13 +709,29 @@ export function mountRing(stage) {
   }
 
   // links of the hovered, else the selected dot (ring-links.js); rebuilt only
-  // when that dot, the ring or the time window changes
+  // when that dot, the ring or the time window changes. While links are drawn
+  // the other dots step back (paint → nodeTier).
   function showLinks(src, kk) {
     const v = vault(),
       win = timeWindow();
     links.scale(kk);
-    links.show(src, src && v?.byId.get(src.id), ring.dotOf, (id) => inWindow(v.byId.get(id), win), windowKey());
+    const on = links.show(src, src && memOf(src.id), ring.dotOf, (id) => inWindow(v.byId.get(id), win), windowKey());
     links.dodge(card?.el, W, H);
+    if (on === linking) return;
+    linking = on;
+    paint();
+  }
+
+  // radius the card arm leaves from: the segment's outer edge, the orbit for an unwritten dot
+  const armR = (dot, sf) => (dot && dot.ghost ? ring.orbit : sf.ro);
+  // a memory row in a card: its dot, else the card alone
+  function openMem(m) {
+    const p = ring.dotOf.get(m.id);
+    if (p) openDot(p);
+    else {
+      selMem = m;
+      place();
+    }
   }
 
   function placeCard(kk, cx, _cy) {
@@ -724,18 +742,8 @@ export function mountRing(stage) {
       card = null;
       if (state.focus && vault()) {
         card = selMem
-          ? memoryCard(selMem, { onClose: closeMem })
-          : areaCard(state.focus, {
-              compact: H < 420,
-              onMemory: (m) => {
-                const p = ring.dotOf.get(m.id);
-                if (p) openDot(p);
-                else {
-                  selMem = m;
-                  place();
-                }
-              },
-            });
+          ? memoryCard(selMem, { onClose: closeMem, onMemory: openMem })
+          : areaCard(state.focus, { compact: H < 420, onMemory: openMem });
         cardHost.append(card.el);
         if (swapCard) card.el.classList.add("is-swap");
       }
@@ -753,7 +761,7 @@ export function mountRing(stage) {
       return;
     }
     const m = dot ? Math.atan2(dot.y, dot.x) : (sf.s.a0 + sf.s.a1) / 2,
-      R = sf.ro;
+      R = armR(dot, sf);
     const [ax, ay] = dot ? toScr(dot.x, dot.y) : toScr(Math.cos(m) * R, Math.sin(m) * R);
     const [ex, ey] = toScr(Math.cos(m) * (R + 26), Math.sin(m) * (R + 26));
     const right = Math.cos(m) >= 0;
@@ -813,7 +821,7 @@ export function mountRing(stage) {
     build();
     if (!had || !card) return;
     if (selMem) {
-      const m = v.byId.get(selMem.id);
+      const m = memOf(selMem.id);
       if (!m) {
         closeMem();
         return;

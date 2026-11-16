@@ -105,20 +105,43 @@
 .rg-nodes.is-soft {
   opacity: 0.5;
 }
+/* links drawn (ring-links.js nodeTier): every dot steps back, the active
+   segment a little less; the source and its linked dots are drawn on top.
+   Fading back waits a moment, so sweeping over many dots does not flicker. */
+.rg-nodes.is-back {
+  opacity: 0.2;
+}
+.rg-nodes.is-far,
+.rg-ghosts.is-far,
+.rg-ghosts.is-dim.is-far {
+  opacity: 0.08;
+}
+.rg-nodes:not(.is-back, .is-far) {
+  transition: opacity 0.2s 0.12s;
+}
 .rg-links {
   pointer-events: none;
 }
 /* links of one memory (ring-links.js): --px = SVG units per screen pixel, so
    widths, dashes and the impact gap stay the same on screen at every zoom */
-.rg-link {
+.rg-link,
+.rg-halo {
   fill: none;
   stroke-width: calc(1.3px * var(--px, 1));
   stroke-linecap: round;
 }
-.rg-link.is-derived {
+.rg-link.is-derived,
+.rg-halo.is-derived {
   stroke-width: calc(1.2px * var(--px, 1));
   stroke-dasharray: calc(4px * var(--px, 1)) calc(3px * var(--px, 1));
   stroke-linecap: butt;
+}
+/* dark contour under each link: keeps it visible on light area colours */
+.rg-halo,
+.rg-halo.is-derived {
+  stroke: #060a13;
+  stroke-opacity: 0.75;
+  stroke-width: calc(3.4px * var(--px, 1));
 }
 .rg-impact {
   fill: none;
@@ -577,6 +600,18 @@
   -webkit-line-clamp: 6;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+/* unwritten memory: the memories that link to it (chrome.js referrers) */
+.vcard__list.is-refs {
+  max-height: 210px;
+  overflow-y: auto;
+}
+.vcard__lh {
+  padding: 0 8px 4px;
+  font: 10px var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 /* ── engine views while the map loads (engine-view.js loading()) ────────── */

@@ -5,10 +5,12 @@
 // curve bent towards the centre would send every link through the face. The
 // links follow the ring instead (linkPath): the short way round, dipping
 // further in the farther the target is, never inside the inner track and never
-// outside the ring. Written links are solid, derived ones dashed; a legend
+// outside the ring. Each link runs on a dark halo, so it stays visible on dots
+// of any area colour. Written links are solid, derived ones dashed; a legend
 // names both with their counts while links are drawn. Links to memories that
 // are not shown are left out. The source and its linked dots are drawn again
-// on top at full strength, so the segment dimming (nodeTier) never hides them.
+// on top at full strength, so the segment dimming (nodeTier) never hides them;
+// while links are drawn all other dots step back further.
 // Stroke widths, dashes and the impact gap are screen pixels at every zoom:
 // scale() sets --px (SVG units per screen pixel) and views.css multiplies.
 import { h, s, clear } from "../dom.js";
@@ -22,18 +24,27 @@ export const TRACK = 86;
 /**
  * Dimming tier of a segment's dots: "dim" outside the hovered/focused
  * segment, "soft" for the rest of the segment that holds the selected memory,
- * "on" otherwise. Keys are ring segment keys (small areas share one).
+ * "on" otherwise. While links are drawn (`linking`) every segment steps back:
+ * "back" for the hovered/focused one, "far" for the others. Keys are ring
+ * segment keys (small areas share one).
  */
-export function nodeTier(segKey, hoverKey, selKey) {
-  if (hoverKey && segKey !== hoverKey) return "dim";
+export function nodeTier(segKey, hoverKey, selKey, linking = false) {
+  const dim = hoverKey && segKey !== hoverKey;
+  if (linking) return dim ? "far" : "back";
+  if (dim) return "dim";
   return selKey && segKey === selKey ? "soft" : "on";
 }
 
 /**
- * Path a → b around the ring centre (0, 0): the angle runs the short way, the
- * radius from a's to b's and dips towards TRACK, barely for close dots and up
- * to 95 % for opposite ones, so links to farther targets nest inside the
- * nearer ones and close targets get short, flat arcs.
+ * Path a → b around the ring centre (0, 0): the angle runs the short way
+ * (u = 0…1), the radius from a's to b's minus one parabolic dip
+ * 4·D·u·(1 − u). D grows with the square of the angle, so the bend per angle
+ * is the same for every link of a dot: near targets get flat arcs along the
+ * ring, farther ones dip deeper and nest inside them, and no link changes its
+ * bending direction (that needs r > d²r/dθ² = 8·D/dt², kept by D ≤ TRACK·dt²/8).
+ * (√p + √q)² / 4 is the deepest dip that still clears TRACK; 95 % of it at 180°.
+ * Drawn as a polyline of ~1.5-unit steps at 0.001 precision, so neither the
+ * corners nor the rounding show at any zoom.
  */
 export function linkPath(a, b) {
   const ra = Math.hypot(a.x, a.y),
@@ -42,13 +53,14 @@ export function linkPath(a, b) {
   let dt = Math.atan2(b.y, b.x) - ta;
   if (dt > Math.PI) dt -= 2 * Math.PI;
   if (dt < -Math.PI) dt += 2 * Math.PI;
-  const dip = 0.95 * Math.pow(Math.abs(dt) / Math.PI, 1.25),
-    n = 4 + Math.ceil(Math.abs(dt) * 64),
-    f = (v) => v.toFixed(1);
+  const room = (Math.sqrt(Math.max(0, ra - TRACK)) + Math.sqrt(Math.max(0, rb - TRACK))) ** 2 / 4,
+    D = dt * dt * Math.min((0.95 * room) / (Math.PI * Math.PI), TRACK / 8),
+    n = 4 + Math.ceil((Math.abs(dt) * (ra + rb)) / 3 + Math.abs(rb - ra) / 1.5),
+    f = (v) => v.toFixed(3);
   let d = `M${f(a.x)} ${f(a.y)}`;
   for (let i = 1; i < n; i++) {
     const u = i / n,
-      r = TRACK + (ra + (rb - ra) * u - TRACK) * (1 - dip * Math.sin(Math.PI * u)),
+      r = ra + (rb - ra) * u - 4 * D * u * (1 - u),
       th = ta + dt * u;
     d += `L${f(Math.cos(th) * r)} ${f(Math.sin(th) * r)}`;
   }
@@ -56,15 +68,16 @@ export function linkPath(a, b) {
 }
 
 /**
- * Stroke of one link: lens colour (RC), dashed when derived; calmer when many.
- * Dashes of the darker derived colour fade out sooner, so they keep more.
+ * Stroke of one link: lens colour (RC), dashed when derived. Written links
+ * calm down when many; the darker derived dashes keep 0.85, so they reach
+ * contrast 4.7 on the dark halo every link runs on (views.css .rg-halo).
  */
 export function linkStyle(rel, n) {
   const dashed = rel === "derived";
   return {
     stroke: RC[rel] || MUT,
     dashed,
-    opacity: Math.max(dashed ? 0.65 : 0.45, n <= 8 ? 0.85 : 0.85 * Math.sqrt(8 / n)),
+    opacity: dashed ? 0.85 : Math.max(0.6, n <= 8 ? 0.85 : 0.85 * Math.sqrt(8 / n)),
   };
 }
 
@@ -103,18 +116,28 @@ export function legendSpot(box, W, H, L) {
   return (spots.find(free) || spots[0])[0];
 }
 
+/** Unwritten memory on the outer orbit: hollow dashed dot (ring.js ghosts). */
+export const GHOST = {
+  fill: "#060a13",
+  stroke: "rgba(160,180,205,.75)",
+  "stroke-width": 0.9,
+  "stroke-dasharray": "1.6 1.4",
+};
 const f2 = (v) => v.toFixed(2);
-const dot = (p) => s("circle", { cx: f2(p.x), cy: f2(p.y), r: f2(p.r), fill: areaCol(p.k, 0.92) });
+const dot = (p) =>
+  s("circle", { cx: f2(p.x), cy: f2(p.y), r: f2(p.r), ...(p.ghost ? GHOST : { fill: areaCol(p.k, 0.92) }) });
 // impact: hollow accent ring set off from the linked dot (Half-life: r + 3, 1.2 px)
 const impact = (p) => s("circle.rg-impact", { cx: f2(p.x), cy: f2(p.y), stroke: ACC, vars: { "--r": f2(p.r) } });
 
+// one link: the line and its dark halo underneath (same path and dashes)
 function curve(src, { p, rel }, n) {
-  const st = linkStyle(rel, n);
-  return s(`path.rg-link${st.dashed ? ".is-derived" : ""}`, {
-    d: linkPath(src, p),
-    stroke: st.stroke,
-    "stroke-opacity": st.opacity.toFixed(2),
-  });
+  const st = linkStyle(rel, n),
+    d = linkPath(src, p),
+    cls = st.dashed ? ".is-derived" : "";
+  return [
+    s(`path.rg-halo${cls}`, { d }),
+    s(`path.rg-link${cls}`, { d, stroke: st.stroke, "stroke-opacity": st.opacity.toFixed(2) }),
+  ];
 }
 
 function legendRow([rel, n]) {
@@ -129,13 +152,15 @@ function legendRow([rel, n]) {
 
 /** SVG layer plus its HTML legend; show() rebuilds only when the source dot, the ring or `stamp` changes. */
 export function mountLinks() {
-  const curves = s("g"),
+  const halos = s("g"),
+    curves = s("g"),
     dots = s("g");
-  const el = s("g.rg-links", null, curves, dots);
+  const el = s("g.rg-links", null, halos, curves, dots);
   const legend = h("div.rg-legend");
   let key = "",
     ring = null,
-    spot = "";
+    spot = "",
+    drawn = false;
   return {
     el,
     legend,
@@ -159,21 +184,27 @@ export function mountLinks() {
      * @param {Map} dotOf ring dots by memory id
      * @param {(id:string) => boolean} shown target is visible (time window)
      * @param {string} stamp changes when visibility changes
+     * @returns {boolean} links are drawn
      */
     show(src, m, dotOf, shown, stamp) {
       const k = src && m ? `${src.id}|${stamp}` : "";
-      if (k === key && dotOf === ring) return;
+      if (k === key && dotOf === ring) return drawn;
       key = k;
       ring = dotOf;
+      clear(halos);
       clear(curves);
       clear(dots);
       clear(legend);
       const ends = k ? linkedDots(m, dotOf, shown) : [];
-      legend.classList.toggle("is-on", ends.length > 0);
-      if (!ends.length) return;
-      curves.append(...ends.map((e) => curve(src, e, ends.length)));
+      drawn = ends.length > 0;
+      legend.classList.toggle("is-on", drawn);
+      if (!drawn) return false;
+      const pairs = ends.map((e) => curve(src, e, ends.length));
+      halos.append(...pairs.map(([halo]) => halo));
+      curves.append(...pairs.map(([, line]) => line));
       dots.append(...ends.map(({ p }) => dot(p)), ...ends.map(({ p }) => impact(p)), dot(src));
       legend.append(...relCounts(ends).map(legendRow));
+      return true;
     },
   };
 }

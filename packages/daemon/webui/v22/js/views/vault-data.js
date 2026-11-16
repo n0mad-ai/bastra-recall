@@ -45,12 +45,38 @@ export function hash(s) {
 const str = (v) => (typeof v === "string" ? v : "");
 const num = (v) => (Number.isFinite(v) ? v : 0);
 
+/** Unwritten memory (graph node kind "ghost") in the memory shape; links are filled from the edges. */
+const ghostMem = (n) => ({
+  id: n.id,
+  area: n.cluster,
+  title: str(n.title) || n.id,
+  kind: "ghost",
+  cls: "ghost",
+  summary: "",
+  at: NaN,
+  created: NaN,
+  recalled: num(n.reach?.loaded),
+  acted: num(n.reach?.acted_on),
+  links: [],
+});
+
+/** Links of the unwritten memories: the memories that link to them. */
+function linkGhosts(edges, byId, ghostOf) {
+  for (const e of edges) {
+    const a = e && byId.get(e.source),
+      gh = e && ghostOf.get(e.target);
+    if (a && gh) gh.links.push({ id: a.id, rel: REL[e.via] || "derived" });
+  }
+}
+
 let built = null,
   builtFor = null;
 
 /**
- * { mems, byId, areas: [{ key, count, meta }], ghosts, total, linksOf(area) }
+ * { mems, byId, areas: [{ key, count, meta }], ghosts, ghostOf, total, linksOf(area) }
  * mems: { id, area, title, type, kind, cls, at, created, recalled, acted, links: [{ id, rel }] }
+ * ghosts (unwritten, kind "ghost"): the same shape; their links are the
+ * memories that link to them. They are not in mems/byId.
  */
 export function vault() {
   const g = data.graph;
@@ -58,12 +84,15 @@ export function vault() {
   if (builtFor === g) return built;
   const mems = [],
     ghosts = [],
+    ghostOf = new Map(),
     byId = new Map(),
     metaKeys = new Set();
   for (const n of g.nodes) {
     if (!n || typeof n.id !== "string" || typeof n.cluster !== "string") continue;
     if (n.kind === "ghost") {
-      ghosts.push({ id: n.id, area: n.cluster });
+      const gh = ghostMem(n);
+      ghosts.push(gh);
+      ghostOf.set(gh.id, gh);
       continue;
     }
     if (n.kind !== "memory" && n.kind !== "doc") continue;
@@ -94,6 +123,7 @@ export function vault() {
     if (!a || !b || a === b) continue;
     a.links.push({ id: b.id, rel: REL[e.via] || "derived" });
   }
+  linkGhosts(g.edges, byId, ghostOf);
   const counts = new Map();
   for (const m of mems) counts.set(m.area, (counts.get(m.area) || 0) + 1);
   // Order follows GET /ui/graph clusters (same order as the Areas list and its colours).
@@ -108,7 +138,7 @@ export function vault() {
       areaLinks.set(m.area, (areaLinks.get(m.area) || 0) + 1);
       if (o.area !== m.area) areaLinks.set(o.area, (areaLinks.get(o.area) || 0) + 1);
     }
-  built = { mems, byId, areas, ghosts, total: mems.length, linksOf: (k) => areaLinks.get(k) || 0 };
+  built = { mems, byId, areas, ghosts, ghostOf, total: mems.length, linksOf: (k) => areaLinks.get(k) || 0 };
   builtFor = g;
   return built;
 }

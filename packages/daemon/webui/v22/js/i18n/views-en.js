@@ -27,6 +27,8 @@ export default {
   "vv.cls.fact": "fact",
   "vv.cls.note": "note",
   "vv.cls.reference": "reference",
+  "vv.cls.ghost": "unwritten",
+  "vv.linkedFrom": "Linked from",
   "vv.rel.linked": "written link",
   "vv.rel.derived": "derived link",
   "vv.lens.bandSub": "{n} memories · one dot per 3 days",

@@ -15,9 +15,33 @@ async function links() {
 }
 
 type Pt = { x: number; y: number };
-/** Points of an "M x y L x y …" path. */
-const pts = (d: string): Pt[] =>
-  [...d.matchAll(/[ML](-?[\d.]+) (-?[\d.]+)/g)].map((m) => ({ x: Number(m[1]), y: Number(m[2]) }));
+/**
+ * Points along a path: "M a Q c b" (one quadratic curve) sampled at `n` steps,
+ * any other "M … L …" path as its corner points.
+ */
+const pts = (d: string, n = 200): Pt[] => {
+  const v = [...d.matchAll(/-?[\d.]+/g)].map((m) => Number(m[0]));
+  if (!/Q/.test(d)) return Array.from({ length: v.length / 2 }, (_, i) => ({ x: v[2 * i], y: v[2 * i + 1] }));
+  const [ax, ay, cx, cy, bx, by] = v;
+  return Array.from({ length: n + 1 }, (_, i) => {
+    const u = i / n,
+      a = (1 - u) * (1 - u),
+      c = 2 * u * (1 - u),
+      b = u * u;
+    return { x: a * ax + c * cx + b * bx, y: a * ay + c * cy + b * by };
+  });
+};
+/** Turn (radians, signed) between consecutive steps of a sampled curve. */
+const turns = (p: Pt[]): number[] => {
+  const out: number[] = [];
+  for (let i = 1; i < p.length - 1; i++) {
+    let d = Math.atan2(p[i + 1].y - p[i].y, p[i + 1].x - p[i].x) - Math.atan2(p[i].y - p[i - 1].y, p[i].x - p[i - 1].x);
+    if (d > Math.PI) d -= 2 * Math.PI;
+    if (d < -Math.PI) d += 2 * Math.PI;
+    out.push(d);
+  }
+  return out;
+};
 const rad = (p: Pt) => Math.hypot(p.x, p.y);
 const polar = (r: number, deg: number): Pt => ({
   x: r * Math.cos((deg * Math.PI) / 180),
@@ -36,6 +60,18 @@ test("ring dimming: selected segment soft, other segments dim, no selection unch
   assert.equal(nodeTier("vault", "vault", null), "on");
   assert.equal(nodeTier("bastra-recall", "vault", null), "dim");
   assert.equal(nodeTier("vault", null, null), "on");
+});
+
+test("ring dimming: while links are drawn every segment steps back, the active one less", async () => {
+  const { nodeTier } = await links();
+  // hovered dot with links: its segment "back", all others "far"
+  assert.equal(nodeTier("vault", "vault", null, true), "back");
+  assert.equal(nodeTier("bastra-recall", "vault", null, true), "far");
+  // selected memory with links: its segment "back" as well
+  assert.equal(nodeTier("bastra-recall", "bastra-recall", "bastra-recall", true), "back");
+  assert.equal(nodeTier("vault", "bastra-recall", "bastra-recall", true), "far");
+  // no links drawn: as before
+  assert.equal(nodeTier("bastra-recall", "bastra-recall", "bastra-recall", false), "soft");
 });
 
 test("ring links: only targets that are on the ring and shown, each once", async () => {
@@ -92,6 +128,39 @@ test("ring links: path stays between the inner track and the outer of both dots"
   assert.ok(TRACK > 78 && TRACK < 90);
 });
 
+test("ring links: one smooth curve — no kink, no change of bending direction", async () => {
+  const { linkPath } = await links();
+  for (const [ra, rb] of [
+    [150, 150],
+    [110, 180],
+    [180, 110],
+    [97, 240],
+    [240, 97],
+  ])
+    for (const deg of [5, 10, 20, 30, 45, 60, 90, 120, 150, 175, 180]) {
+      const tt = turns(pts(linkPath(polar(ra, 0), polar(rb, deg))));
+      const max = Math.max(...tt.map(Math.abs));
+      assert.ok(max < (1.5 * Math.PI) / 180, `kink ${((max * 180) / Math.PI).toFixed(2)}° at ${ra}→${rb}, ${deg}°`);
+      // turns below 0.05° are the 0.001 rounding of nearly straight steps
+      const bent = tt.filter((x) => Math.abs(x) > (0.05 * Math.PI) / 180);
+      assert.ok(
+        bent.every((x) => Math.sign(x) === Math.sign(bent[0])),
+        `bending flips at ${ra}→${rb}, ${deg}°`
+      );
+    }
+});
+
+test("ring links: every curve bends the same way as the ring, farther targets more", async () => {
+  const { linkPath } = await links();
+  // total turn along the curve, same sign as the ring (counter-clockwise for a positive angle)
+  const total = (deg: number) => turns(pts(linkPath(polar(150, 0), polar(150, deg)))).reduce((a, b) => a + b, 0);
+  let prev = 0;
+  for (const deg of [5, 15, 30, 60, 90, 120, 150, 180]) {
+    assert.ok(total(deg) > prev, `at ${deg}°: ${total(deg)} after ${prev}`);
+    prev = total(deg);
+  }
+});
+
 test("ring links: path runs the short way round", async () => {
   const { linkPath } = await links();
   // 170° → -170°: across 180°, not through 0°
@@ -135,10 +204,11 @@ test("ring links: opacity stays up for few links and calms down for many", async
   const op = (n: number) => linkStyle("linked", n).opacity;
   assert.equal(op(1), op(8));
   assert.ok(op(12) < op(8) && op(25) < op(12));
-  assert.ok(op(200) >= 0.45);
-  // the darker dashed derived links keep more
-  assert.ok(linkStyle("derived", 25).opacity > op(25));
-  assert.ok(linkStyle("derived", 25).opacity <= linkStyle("derived", 3).opacity);
+  // never below 0.6: contrast ≥ 6 on the dark halo
+  assert.ok(op(200) >= 0.6);
+  // the darker dashed derived links keep 0.85 (contrast 4.7 on the halo)
+  assert.equal(linkStyle("derived", 3).opacity, 0.85);
+  assert.equal(linkStyle("derived", 25).opacity, 0.85);
 });
 
 test("ring links: legend counts per relation in RC order, only those present", async () => {
@@ -162,4 +232,79 @@ test("ring links: legend sits bottom left and dodges the card", async () => {
   assert.equal(legendSpot({ x: 0, y: 420, w: 350, h: 320 }, 1340, 760, L), "is-top");
   // card reaching both left corners: top right
   assert.equal(legendSpot({ x: 0, y: 0, w: 350, h: 760 }, 1340, 760, L), "is-top is-right");
+});
+
+test("ring ghosts: unwritten memories carry the memories that link to them, apart from the written ones", async () => {
+  const source = await readFile(new URL("../webui/v22/js/views/vault-data.js", import.meta.url), "utf8");
+  const graph = {
+    nodes: [
+      { id: "a", cluster: "x", kind: "memory", title: "A" },
+      { id: "b", cluster: "y", kind: "memory", title: "B" },
+      { id: "g", cluster: "x", kind: "ghost", title: "g-slug", reach: { loaded: 4 } },
+    ],
+    edges: [
+      { source: "a", target: "g", via: "related" },
+      { source: "b", target: "g", via: "related_via" },
+      { source: "a", target: "b", via: "related" },
+    ],
+  };
+  const { vault } = runInNewContext(
+    source.replace(/^import [\s\S]*?;$/gm, "").replace(/^export /gm, "") + "\n({ vault })",
+    { data: { graph, clusters: [] }, state: {}, range: () => null, Map, Set, Date, Number, Math }
+  );
+  const v = vault();
+  const g = v.ghostOf.get("g");
+  assert.equal(g.kind, "ghost");
+  assert.equal(g.title, "g-slug");
+  assert.equal(g.recalled, 4);
+  assert.deepEqual(JSON.parse(JSON.stringify(g.links)), [
+    { id: "a", rel: "linked" },
+    { id: "b", rel: "derived" },
+  ]);
+  // not a written memory: not in byId, not counted, not among a's links
+  assert.equal(v.byId.has("g"), false);
+  assert.equal(v.total, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(v.byId.get("a").links)), [{ id: "b", rel: "linked" }]);
+});
+
+test("ring ghosts: each unwritten memory is a ring dot on the orbit (hit test, card, links)", async () => {
+  const source = await readFile(new URL("../webui/v22/js/views/ring-layout.js", import.meta.url), "utf8");
+  const { buildRing } = runInNewContext(
+    source.replace(/^import [\s\S]*?;$/gm, "").replace(/^export /gm, "") + "\n({ buildRing })",
+    {
+      hash: () => 0.5,
+      // label widths: 6 units per character
+      document: {
+        createElement: () => ({ getContext: () => ({ measureText: (s: string) => ({ width: 6 * s.length }) }) }),
+      },
+      Map,
+      Set,
+      Math,
+      Array,
+      Number,
+    }
+  );
+  const mems = Array.from({ length: 20 }, (_, i) => ({ id: `m${i}`, area: i < 12 ? "x" : "y" }));
+  const ring = buildRing(
+    {
+      areas: [
+        { key: "x", count: 12, meta: false },
+        { key: "y", count: 8, meta: false },
+      ],
+      mems,
+      ghosts: [
+        { id: "g1", area: "x" },
+        { id: "g2", area: "y" },
+      ],
+      total: 20,
+    },
+    (n: number) => `${n} small`
+  );
+  for (const id of ["g1", "g2"]) {
+    const p = ring.dotOf.get(id);
+    assert.ok(p && p.ghost && p.r > 0, id);
+    assert.ok(Math.abs(Math.hypot(p.x, p.y) - ring.orbit) < 1e-6);
+  }
+  assert.equal(ring.dotOf.get("g2").k, "y");
+  assert.equal(ring.dotOf.size, 22);
 });
