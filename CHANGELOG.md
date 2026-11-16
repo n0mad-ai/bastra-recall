@@ -134,9 +134,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   changed since its full delivery; IDs and revisions stay (#1371).
 - **The web UI is on by default on macOS.** There it is bound to the macOS
   account that owns the vault, so it is on for new installations and for
-  existing ones without a stored choice; the setup preselects "On". On Linux
-  and other systems this account binding does not exist yet, so the web UI
-  stays off until you switch it on with `bastra map` or
+  existing ones without a stored choice; the setup preselects the current
+  state. On Linux and other systems this account binding does not exist yet,
+  so the web UI stays off until you switch it on with `bastra map` or
   `bastra config set ui.enabled true`. Linux has not yet been properly tested
   in real use; that will follow. If you switched the web UI off, it stays off;
   if you switched it on, it stays on. To switch it off:
@@ -221,7 +221,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Under the user's own `deny` rule an archiving `rm` no longer gets an allow,
   a rewrite or "No confirmation needed"; it keeps the STOP and one line naming
   the rule. Thanks to @zzallirog (#650, #1362).
-
 - With the archive opt-in on, a destructive command from a hook registration
   without a client marker now says why it stops and how to add the marker. A
   `deny` rule gets no such line (#657, #1362).

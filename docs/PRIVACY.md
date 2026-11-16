@@ -23,7 +23,7 @@ Bastra Recall stores memories as files in your chosen vault. Keyword search runs
 - Installation and model setup download software and models from the selected distribution services.
 - Update detection checks GitHub for releases. `BASTRA_UPDATE_CHECK=off` disables the update check.
 - The statusline can refresh model pricing information.
-- Optional map weather/geocoding sends a coarse location after you choose a place. It does not need memory contents.
+- Optional weather in the web UI: nothing is sent until you search for a place or use GPS. Your browser then asks Open-Meteo directly: the place search sends the text you type, the forecast sends the place's coordinates rounded to one decimal (about 11 km). With GPS, the browser also asks BigDataCloud for the place name, with the same rounded coordinates. No memory contents are sent.
 
 These requests are distinct from uploading a vault. Local telemetry records activity and timings; the map's telemetry view reads local logs. Before sharing logs or a bug report, check for personal information, tokens and private paths.
 
@@ -223,7 +223,7 @@ Bastra Recall speichert Erinnerungen als Dateien in deinem gewählten Vault. Die
 - Installation und Modelleinrichtung laden Software und Modelle von den gewählten Bezugsquellen herunter.
 - Die Update-Erkennung fragt GitHub nach Releases. `BASTRA_UPDATE_CHECK=off` deaktiviert diese Prüfung.
 - Die Statusline kann Modellpreise aktualisieren.
-- Die optionale Wetter-/Geocoding-Funktion der Map sendet nach deiner Ortswahl einen groben Standort. Sie benötigt keine Erinnerungsinhalte.
+- Optionales Wetter in der Weboberfläche: Gesendet wird erst, wenn du nach einem Ort suchst oder GPS nutzt. Dann fragt dein Browser Open-Meteo direkt: Die Ortssuche sendet den eingetippten Text, die Vorhersage die Koordinaten des Orts, auf eine Nachkommastelle gerundet (etwa 11 km). Bei GPS fragt der Browser zusätzlich BigDataCloud nach dem Ortsnamen, mit denselben gerundeten Koordinaten. Erinnerungsinhalte werden nicht gesendet.
 
 Diese Anfragen sind vom Hochladen eines Vaults zu unterscheiden. Lokale Telemetrie zeichnet Aktivitäten und Laufzeiten auf; die Telemetrieansicht der Map liest lokale Logs. Prüfe Logs und Fehlerberichte vor dem Teilen auf persönliche Angaben, Tokens und private Pfade.
 

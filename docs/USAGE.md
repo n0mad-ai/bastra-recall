@@ -301,7 +301,7 @@ Existing root `Wait=false` installations remain compatible and can still start s
 
 ### Web UI — on by default on macOS
 
-Since 1.2.0 the web UI (`bastra map`, `/ui/` on the local daemon) is on by default on macOS. There it answers only to programs of the macOS account that owns the vault. This applies to new installations and to existing ones without a stored choice; the setup preselects "On". On Linux and other systems this account binding does not exist yet, so the web UI stays off until you switch it on: `bastra map` offers it, or run `bastra config set ui.enabled true`. Linux has not yet been properly tested in real use; that will follow. If you switched the web UI off before, it stays off; if you switched it on, it stays on. Switch it off with `bastra config set ui.enabled false`. No restart is needed. [Settings](./Settings.md#english).
+Since 1.2.0 the web UI (`bastra map`, `/ui/` on the local daemon) is on by default on macOS. There it answers only to programs of the macOS account that owns the vault. This applies to new installations and to existing ones without a stored choice; the setup preselects the current state. On Linux and other systems this account binding does not exist yet, so the web UI stays off until you switch it on: `bastra map` offers it, or run `bastra config set ui.enabled true`. Linux has not yet been properly tested in real use; that will follow. If you switched the web UI off before, it stays off; if you switched it on, it stays on. Switch it off with `bastra config set ui.enabled false`. No restart is needed. [Settings](./Settings.md#english).
 
 ### Edit a memory in the memory browser
 
@@ -1001,7 +1001,7 @@ Bestehende Root-`Wait=false`-Einrichtungen bleiben kompatibel und können weiter
 
 ### Weboberfläche — unter macOS standardmäßig an
 
-Seit 1.2.0 ist die Weboberfläche (`bastra map`, `/ui/` am lokalen Daemon) unter macOS standardmäßig an. Dort antwortet sie nur Programmen des macOS-Kontos, dem der Vault gehört. Das gilt für neue Installationen und für bestehende ohne gespeicherte Wahl; die Einrichtung wählt „An“ vor. Unter Linux und anderen Systemen gibt es diese Kontobindung noch nicht; dort bleibt die Weboberfläche aus, bis du sie einschaltest: `bastra map` bietet es an, oder `bastra config set ui.enabled true`. Linux ist im echten Einsatz noch nicht richtig getestet; das wird nachgeholt. Wer die Weboberfläche früher ausgeschaltet hat, behält das; wer sie eingeschaltet hat, ebenso. Ausschalten mit `bastra config set ui.enabled false`. Ein Neustart ist nicht nötig. [Einstellungen](./Settings.md#deutsch).
+Seit 1.2.0 ist die Weboberfläche (`bastra map`, `/ui/` am lokalen Daemon) unter macOS standardmäßig an. Dort antwortet sie nur Programmen des macOS-Kontos, dem der Vault gehört. Das gilt für neue Installationen und für bestehende ohne gespeicherte Wahl; die Einrichtung wählt den aktuellen Zustand vor. Unter Linux und anderen Systemen gibt es diese Kontobindung noch nicht; dort bleibt die Weboberfläche aus, bis du sie einschaltest: `bastra map` bietet es an, oder `bastra config set ui.enabled true`. Linux ist im echten Einsatz noch nicht richtig getestet; das wird nachgeholt. Wer die Weboberfläche früher ausgeschaltet hat, behält das; wer sie eingeschaltet hat, ebenso. Ausschalten mit `bastra config set ui.enabled false`. Ein Neustart ist nicht nötig. [Einstellungen](./Settings.md#deutsch).
 
 ### Memory im Memory-Browser bearbeiten
 
