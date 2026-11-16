@@ -178,7 +178,6 @@ export const SETTINGS_REGISTRY = {
       label: "Gelernte Brücken",
       default: false,
       restartRequired: true,
-      required: true,
     }),
     language: setting(
       z
@@ -266,10 +265,13 @@ export const SETTINGS_REGISTRY = {
     enabled: setting(bool, {
       area: "general",
       label: "Web-Oberfläche",
+      // Not `required`: the default below is recomputed per platform on every
+      // read (getUiEnabled, the gateway, effectiveSetting), so storing it would
+      // pin today's default over a later change of `webUiOnByDefault()`.
+      // Nothing is stored until the user picks a side.
       get default() {
         return webUiOnByDefault();
       },
-      required: true,
     }),
     backdrop: setting(z.string().trim().regex(BACKDROP_ID), {
       area: "general",
@@ -401,7 +403,6 @@ export const SETTINGS_REGISTRY = {
       default: TASKS_DEFAULT,
       env: "BASTRA_TASKS",
       restartRequired: true,
-      required: true,
     }),
     notifications: setting(bool, { area: "tasks", label: "Mac-Mitteilungen bei fälligen Aufgaben", default: true }),
     chatActiveMinutes: setting(z.number().int().min(1).max(1440), {
@@ -478,7 +479,12 @@ export function parseSettingValue(key: string, value: unknown): unknown {
   if (!parsed.success) throw new Error(`Invalid value for ${entry.key}`);
   return parsed.data;
 }
-/** Lenient legacy normalization: invalid leaves are dropped, required blocks stay atomic. */
+/**
+ * Lenient legacy normalization: invalid leaves are dropped, required blocks stay atomic.
+ * `required` marks a field without which its stored block means nothing (no usable default),
+ * or the only field of its group. A field with a usable default beside other fields is not
+ * required: missing means default, so neither its siblings get dropped nor its default stored.
+ */
 export function parseStoredSettings(raw: unknown): CliSettings {
   const source = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   const out: Record<string, unknown> = { update: { mode: DEFAULT_UPDATE_MODE } };
@@ -510,18 +516,21 @@ export function applySettingChanges(current: CliSettings, changes: Record<string
       if (next[group]) delete next[group][field];
       continue;
     }
-    const parsed = parseSettingValue(key, value);
     next[group] ??= {};
-    next[group][field] = parsed;
-    for (const required of settingEntries().filter((e) => e.path[0] === group && e.required)) {
-      if (!(required.path[1] in next[group]) && required.default !== null)
-        next[group][required.path[1]] = required.default;
-    }
+    next[group][field] = parseSettingValue(key, value);
   }
   const normalized = parseStoredSettings(next);
-  for (const [key, value] of Object.entries(changes)) {
-    if (value !== null && storedSetting(normalized, settingEntry(key)!) === undefined)
+  assertNothingLost(current, changes, normalized);
+  return normalized;
+}
+/** Every set value and every untouched stored value must still be stored: a change that would
+ *  leave an atomic block incomplete is refused instead of silently dropping the rest (#1582). */
+function assertNothingLost(current: CliSettings, changes: Record<string, unknown>, normalized: CliSettings): void {
+  const changed = new Map(Object.entries(changes).map(([key, value]) => [settingEntry(key)!.path.join("."), value]));
+  for (const entry of settingEntries()) {
+    const path = entry.path.join(".");
+    const wanted = changed.has(path) ? changed.get(path) : storedSetting(current, entry);
+    if (wanted !== null && wanted !== undefined && storedSetting(normalized, entry) === undefined)
       throw new Error("Incomplete settings block");
   }
-  return normalized;
 }

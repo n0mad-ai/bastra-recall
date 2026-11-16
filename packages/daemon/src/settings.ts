@@ -283,11 +283,7 @@ export async function getSharedRecallLive(path?: string): Promise<boolean> {
 export async function setSharedRecallLive(on: boolean, path: string = settingsFilePath()): Promise<void> {
   await mutateSettings(path, (current) => ({
     ...current,
-    sharedRecall: {
-      ...current.sharedRecall,
-      enabled: current.sharedRecall?.enabled ?? SETTINGS_REGISTRY.sharedRecall.enabled.default,
-      live: on,
-    },
+    sharedRecall: { ...current.sharedRecall, live: on },
   }));
 }
 
@@ -371,24 +367,18 @@ export async function getSharedRecallLanguage(path?: string): Promise<string | u
 export async function setSharedRecallLanguage(language: string, path: string = settingsFilePath()): Promise<void> {
   await mutateSettings(path, (current) => ({
     ...current,
-    sharedRecall: {
-      ...current.sharedRecall,
-      enabled: current.sharedRecall?.enabled ?? SETTINGS_REGISTRY.sharedRecall.enabled.default,
-      language: language.trim().toLowerCase(),
-    },
+    sharedRecall: { ...current.sharedRecall, language: language.trim().toLowerCase() },
   }));
 }
 
 /** Clears the query-language override, restoring per-query auto-detection. Writes
  *  the sharedRecall block WITHOUT a `language` key (a plain spread would preserve it). */
 export async function clearSharedRecallLanguage(path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({
-    ...current,
-    sharedRecall: {
-      enabled: current.sharedRecall?.enabled ?? SETTINGS_REGISTRY.sharedRecall.enabled.default,
-      ...(current.sharedRecall?.live !== undefined ? { live: current.sharedRecall.live } : {}),
-    },
-  }));
+  await mutateSettings(path, (current) => {
+    const next = { ...current, sharedRecall: { ...current.sharedRecall } };
+    delete next.sharedRecall.language;
+    return next;
+  });
 }
 
 /** Product-docs capture mode. Default "off" (opt-in). */

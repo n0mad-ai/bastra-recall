@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { settingEntries, parseSettingValue, parseStoredSettings } from "../src/settings-registry.js";
+import {
+  settingEntries,
+  parseSettingValue,
+  parseStoredSettings,
+  applySettingChanges,
+} from "../src/settings-registry.js";
 import { readSettings, mutateSettings } from "../src/settings-file.js";
 import { effectiveSetting } from "../src/settings-effective.js";
 import { readSizeSettings } from "../src/file-size-check.js";
@@ -62,4 +67,79 @@ test("registry presentation matches the existing defaults and special environmen
     value: false,
     envNames: ["BASTRA_TASKS"],
   });
+});
+
+test("resetting one field keeps the other stored settings of its group, including consent (#1582)", () => {
+  const current = parseStoredSettings({
+    ui: { enabled: true, backdrop: "aurora", backdropDim: 60 },
+    tasks: { enabled: false, notifications: false, chatActiveMinutes: 45, chatConsent: "accepted" },
+    sharedRecall: { enabled: true, language: "de", live: true },
+  });
+  const next = applySettingChanges(current, {
+    "ui.enabled": null,
+    "tasks.enabled": null,
+    "sharedRecall.enabled": null,
+  });
+  assert.deepEqual(next.ui, { backdrop: "aurora", backdropDim: 60 });
+  assert.deepEqual(next.tasks, { notifications: false, chatActiveMinutes: 45, chatConsent: "accepted" });
+  assert.deepEqual(next.sharedRecall, { language: "de", live: true });
+  // What is stored this way also survives the next read.
+  assert.deepEqual(parseStoredSettings(JSON.parse(JSON.stringify(next))), next);
+});
+
+test("a stored block without its switch keeps its other settings on read (#1582)", () => {
+  const settings = parseStoredSettings({
+    ui: { backdrop: "aurora" },
+    tasks: { chatConsent: "declined" },
+    sharedRecall: { language: "de" },
+  });
+  assert.deepEqual(settings.ui, { backdrop: "aurora" });
+  assert.deepEqual(settings.tasks, { chatConsent: "declined" });
+  assert.deepEqual(settings.sharedRecall, { language: "de" });
+});
+
+test("no reset silently drops other stored settings of the group (#1582)", () => {
+  const experiment = { name: "x", arms: ["a", "b"], registration: "r", registration_version: 1 };
+  const current = parseStoredSettings({ experiment });
+  // An atomic block cannot lose one of its parts: the reset is refused instead of dropping the rest.
+  assert.throws(() => applySettingChanges(current, { "experiment.name": null }), /Incomplete settings block/);
+  // Resetting all of its parts together still clears it.
+  const cleared = applySettingChanges(current, {
+    "experiment.name": null,
+    "experiment.arms": null,
+    "experiment.registration": null,
+    "experiment.registration_version": null,
+  });
+  assert.equal(cleared.experiment, undefined);
+});
+
+test("a required field only makes sense without a usable default or as the only field of its group", () => {
+  for (const entry of settingEntries().filter((e) => e.required)) {
+    const siblings = settingEntries().filter((e) => e.path[0] === entry.path[0]).length;
+    const usableDefault = entry.schema.safeParse(entry.default).success;
+    assert.ok(siblings === 1 || !usableDefault, `${entry.key} has a usable default and must not be required`);
+  }
+});
+
+test("saving another value of a group does not store the default of its switch (#1576)", async () => {
+  const current = parseStoredSettings({});
+  // Runs on every platform: the getter default of ui.enabled (webUiOnByDefault) differs by platform,
+  // but in no case may it be written into the file.
+  const next = applySettingChanges(current, {
+    "ui.backdrop": "aurora",
+    "tasks.notifications": false,
+    "sharedRecall.live": true,
+  });
+  assert.deepEqual(next.ui, { backdrop: "aurora" });
+  assert.deepEqual(next.tasks, { notifications: false });
+  assert.deepEqual(next.sharedRecall, { live: true });
+  // An explicit value keeps winning over the default.
+  const explicit = applySettingChanges(current, { "ui.enabled": true, "ui.backdrop": "aurora" });
+  assert.equal(explicit.ui?.enabled, true);
+  // End to end: the saved backdrop survives a read, still without ui.enabled.
+  const path = join(await mkdtemp(join(tmpdir(), "settings-ui-default-")), "cli-settings.json");
+  await mutateSettings(path, (s) => applySettingChanges(s, { "ui.backdrop": "aurora" }));
+  const stored = await readSettings(path);
+  assert.equal(stored.ui?.backdrop, "aurora");
+  assert.equal(stored.ui?.enabled, undefined);
 });
