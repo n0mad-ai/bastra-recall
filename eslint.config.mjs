@@ -55,14 +55,4 @@ export default [
       ],
     },
   },
-  {
-    files: ["packages/daemon/webui/v22/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"],
-    // Concurrent UI work: report all findings, but do not rewrite this tree.
-    rules: Object.fromEntries(
-      Object.entries(correctnessRules).map(([name, setting]) => [
-        name,
-        Array.isArray(setting) ? ["warn", ...setting.slice(1)] : setting === "error" ? "warn" : setting,
-      ])
-    ),
-  },
 ];
