@@ -67,22 +67,10 @@
   height: 40px;
   margin-bottom: 10px;
 }
-.nav__logo svg {
+.nav__logo img {
   width: 32px;
   height: 32px;
-}
-.nav__logo .r-base {
-  fill: none;
-  stroke: var(--line-35);
-  stroke-width: 1;
-}
-.nav__logo .r-arc {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 1.6;
-}
-.nav__logo .r-core {
-  fill: var(--accent);
+  object-fit: contain;
 }
 .nav__scroll {
   position: relative;

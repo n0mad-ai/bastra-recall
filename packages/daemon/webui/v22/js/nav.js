@@ -1,7 +1,7 @@
 // Left navigation rail (prototype NAV:START … NAV:END). The Vault button
 // opens the last chosen vault view; the views are picked in the right panel
 // › View (Daniel, 14.11.2026; js/lens.js, js/views/pro-views.js).
-import { h, s, icon, clear, setVars } from "./dom.js";
+import { h, icon, clear, setVars } from "./dom.js";
 import { t } from "./i18n.js";
 import { ICON, VAULT_VIEWS, GROUPS, areasIn } from "./areas.js";
 import { state, setState } from "./state.js";
@@ -20,14 +20,13 @@ export function mountNav(app, ctx) {
     h(
       "div.nav__logo",
       { title: "bastravault" },
-      s(
-        "svg",
-        { viewBox: "0 0 40 40" },
-        s("circle.r-base", { cx: 20, cy: 20, r: 17 }),
-        s("circle.r-arc", { cx: 20, cy: 20, r: 17, "stroke-dasharray": "26 81", transform: "rotate(-90 20 20)" }),
-        s("circle.r-base", { cx: 20, cy: 20, r: 10 }),
-        s("circle.r-core", { cx: 20, cy: 20, r: 3.2 })
-      )
+      h("img", {
+        src: "img/logo-64.png",
+        srcset: "img/logo-64.png 2x, img/logo-96.png 3x",
+        alt: "Recall",
+        width: 32,
+        height: 32,
+      })
     ),
     scrollEl,
     h("div.nav__foot", null, verEl)
