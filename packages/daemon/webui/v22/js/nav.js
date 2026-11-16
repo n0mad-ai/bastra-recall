@@ -7,6 +7,7 @@ import { ICON, VAULT_VIEWS, GROUPS, areasIn } from "./areas.js";
 import { state, setState } from "./state.js";
 import { data } from "./data.js";
 import { lastVaultView, rememberVaultView } from "./views/pro-views.js";
+import { openMemoryBrowser, closeMemoryBrowser } from "./views/memory-browser.js";
 
 let navEl, scrollEl, indEl, verEl;
 
@@ -44,10 +45,34 @@ function navButton({ id, label, title, iconPath, on, onClick, badge, badgeAccent
   if (dot && dot()) ic.append(h("span.dot.nav__dot"));
   return h(
     "button.nav__btn",
-    { cls: on ? "is-on" : "", title: title || label, "data-nav": id, on: { click: onClick } },
+    {
+      cls: on ? "is-on" : "",
+      title: title || label,
+      "aria-label": title || label,
+      "data-nav": id,
+      on: { click: onClick },
+    },
     ic,
     h("span.nav__label", { text: label })
   );
+}
+
+/** Memory browser entry (below Vault): a layer over the vault views, so it is
+ *  lit while the window stands (cover("mb"), js/cover.js) and the next click
+ *  closes it like its ESC button; the area underneath stays as it was. */
+function browserButton() {
+  const open = state.covered && !!document.querySelector(".mb.is-grow");
+  return navButton({
+    id: "browser",
+    label: t("nav.browser"),
+    title: t("nav.browserTitle"),
+    iconPath: ICON.browser,
+    on: open,
+    onClick: (e) => {
+      if (!open) openMemoryBrowser("all", null, e.currentTarget.getBoundingClientRect());
+      else closeMemoryBrowser();
+    },
+  });
 }
 
 function render(ctx) {
@@ -71,7 +96,7 @@ function render(ctx) {
         },
       });
       if (inVault) vb.dataset.active = "1";
-      scrollEl.append(vb);
+      scrollEl.append(vb, browserButton());
     }
     for (const a of items) {
       const label = a.label || t(a.labelKey);
@@ -122,7 +147,7 @@ export function mountNavAgent(el) {
 
 export function updateNav(ctx, changed) {
   if (changed.has("view")) rememberVaultView(state.view);
-  if (changed.has("view") || changed.has("data")) render(ctx);
+  if (changed.has("view") || changed.has("data") || changed.has("covered")) render(ctx);
   const v = data.health?.version;
   if (v && verEl.lastChild.textContent !== `v${v}`) {
     verEl.lastChild.textContent = `v${v}`;

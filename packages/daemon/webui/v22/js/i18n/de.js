@@ -2,6 +2,8 @@ export default {
   "brand": "BASTRAVAULT",
   "nav.dashboard": "Dashboard",
   "nav.vault": "Vault",
+  "nav.browser": "Browser",
+  "nav.browserTitle": "Memory-Browser öffnen",
   "nav.telemetry": "Telemetry",
   "nav.tasks": "Aufgaben",
   "nav.areas": "Areas",
