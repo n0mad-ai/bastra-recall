@@ -1,0 +1,132 @@
+// Vault care in the memory browser's reader (old map inspector): the open
+// flags of a memory — each editable in place — plus the kind buttons and the
+// note for a new flag. Flags go to vault-care.md via POST /ui/annotate; an
+// edit sends the entry as last read (`previous`) so the daemon replaces
+// exactly that one, or answers 409 when it changed meanwhile.
+import { h } from "../dom.js";
+import { t } from "../i18n.js";
+import { noteEditor } from "./care-note.js";
+
+const str = (v) => (typeof v === "string" ? v : "");
+
+// ── pure state of one saved flag: "view" → "edit" → (save) "view" | (cancel) "view" ──
+/** Events: edit, cancel, saved. */
+export function flagStep(mode, ev) {
+  if (ev.type === "edit") return mode === "view" ? "edit" : mode;
+  if (ev.type === "cancel" || ev.type === "saved") return mode === "edit" ? "view" : mode;
+  return mode;
+}
+
+/** HTTP status of a failed save → i18n key. */
+export function careSaveError(status) {
+  if (status === 409) return "mb.careConflict";
+  if (status === 413) return "mb.careTooLong";
+  return "mb.careFail";
+}
+
+async function postCare(payload) {
+  const r = await fetch("/ui/annotate", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).catch(() => null);
+  if (!r?.ok) throw new Error(t(careSaveError(r?.status ?? 0)));
+  const b = await r.json().catch(() => ({}));
+  return b?.entry && typeof b.entry === "object" ? b.entry : null;
+}
+
+/** One saved flag: kind · note · date, "edit" swaps the note for the editor. */
+function flagItem(m, a, rerender) {
+  let mode = "view";
+  const item = h("div.mb-care__item");
+  function paint() {
+    item.classList.toggle("is-editing", mode === "edit");
+    const head = [h("span.mb-care__kind", { text: t(`mb.careKind.${a.kind}`) })];
+    if (mode === "view") {
+      item.replaceChildren(
+        ...head,
+        h("span.mb-care__note-text", { text: str(a.note) || "—" }),
+        h("span.mb-care__date", { text: str(a.date) }),
+        h("button.mb-btn.is-quiet.mb-care__edit", {
+          type: "button",
+          text: t("mb.careEdit"),
+          on: { click: () => go({ type: "edit" }) },
+        })
+      );
+      return;
+    }
+    const ed = noteEditor({
+      value: str(a.note),
+      required: true,
+      saveLabel: t("mb.careSave"),
+      busyLabel: t("mb.careSaving"),
+      onCancel: () => go({ type: "cancel" }),
+      onSave: async (note) => {
+        const previous = { kind: a.kind, date: str(a.date), note: str(a.note) };
+        const entry = await postCare({ id: m.id, kind: a.kind, note, previous });
+        Object.assign(a, entry || { note });
+        go({ type: "saved" });
+        rerender();
+      },
+    });
+    item.replaceChildren(...head, h("span.mb-care__date", { text: str(a.date) }), ed.el);
+    ed.focus();
+  }
+  function go(ev) {
+    mode = flagStep(mode, ev);
+    paint();
+  }
+  paint();
+  return item;
+}
+
+/**
+ * The care section of one memory. `care`: the loaded flag list (entries are
+ * updated in place on edit); `add(entry)`: store a new flag; `rerender()`:
+ * redraw the reader.
+ */
+export function careBlock(m, { care, add, rerender }) {
+  let kind = null;
+  const open = care.filter((a) => a.id === m.id && !a.done);
+  const compose = noteEditor({
+    saveLabel: t("mb.careSend"),
+    busyLabel: t("mb.careSending"),
+    onSave: async (note) => {
+      const entry = await postCare({ id: m.id, kind, note });
+      add(entry || { id: m.id, kind, note, date: new Date().toISOString().slice(0, 10), done: false });
+      rerender();
+    },
+  });
+  compose.el.hidden = true;
+  const kinds = ["edit", "delete", "note"].map((k) =>
+    h("button.mb-btn.is-quiet", {
+      type: "button",
+      text: t(`mb.care.${k}`),
+      "data-k": k,
+      on: {
+        click: (e) => {
+          kind = k;
+          kinds.forEach((b) => b.classList.toggle("is-on", b === e.currentTarget));
+          compose.el.hidden = false;
+          compose.focus();
+        },
+      },
+    })
+  );
+  return h(
+    "div.mb-care",
+    null,
+    h("div.mb-rd__k", { text: t("mb.care") }),
+    h("div.mb-care__hint", { text: t("mb.careHint") }),
+    open.length
+      ? h(
+          "div.mb-care__open",
+          null,
+          open.map((a) => flagItem(m, a, rerender))
+        )
+      : null,
+    h("div.mb-care__kinds", null, kinds),
+    compose.el
+  );
+}

@@ -13,10 +13,10 @@
 //   last recalled, tags, scope        — the same graph nodes (reach.last_at …)
 //   reader text, topic, source        — GET /ui/graph/node?id= (as the old map inspector)
 //   semantic hits                     — GET /ui/search?q= (as the old map search)
-//   vault care flags                  — GET /ui/annotations, POST /ui/annotate (old inspector)
+//   vault care flags                  — GET /ui/annotations, POST /ui/annotate (membrowser-care.js)
 // The prototype's recall_when, version, file path, sessions, reflex mode and
 // per-day recall heat are not served by the daemon; those parts stay out.
-import { h, s, clear, setVars, growTextarea } from "../dom.js";
+import { h, s, clear, setVars } from "../dom.js";
 import { t, addStrings, numberFmt } from "../i18n.js";
 import { state, setState } from "../state.js";
 import { data, onData } from "../data.js";
@@ -25,6 +25,7 @@ import { cover } from "../cover.js";
 import { vault, areaCol, ago } from "./vault-data.js";
 import { TC, INK, ACC, MUT, dateStr, lastPress } from "./chrome.js";
 import { viewLocked, lastVaultView } from "./pro-views.js";
+import { careBlock } from "./membrowser-care.js";
 import en from "../i18n/membrowser-en.js";
 import de from "../i18n/membrowser-de.js";
 
@@ -848,7 +849,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
             })
           : null
       ),
-      careBlock(m)
+      careBlock(m, careDeps())
     );
     reader.append(el);
     const fill = (d) => {
@@ -903,79 +904,15 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     el.textContent = i >= 0 ? `${i + 1} / ${order.length}` : "";
   }
 
-  // Vault care (old map inspector): open flags + kind buttons + note.
-  function careBlock(m) {
-    let kind = null;
-    const open = (care || []).filter((a) => a.id === m.id && !a.done);
-    const note = h("textarea.mb-care__note", {
-      rows: "2",
-      placeholder: t("mb.careNote"),
-      on: { input: () => growTextarea(note) },
-    });
-    const send = h("button.mb-btn.is-primary.mb-care__send", { text: t("mb.careSend"), on: { click: submit } });
-    const compose = h("div.mb-care__compose", { hidden: true }, note, send);
-    const kinds = ["edit", "delete", "note"].map((k) =>
-      h("button.mb-btn.is-quiet", {
-        text: t(`mb.care.${k}`),
-        "data-k": k,
-        on: {
-          click: (e) => {
-            kind = k;
-            kinds.forEach((b) => b.classList.toggle("is-on", b === e.currentTarget));
-            compose.hidden = false;
-            note.focus();
-          },
-        },
-      })
-    );
-    async function submit() {
-      if (!kind) return;
-      send.disabled = true;
-      send.textContent = t("mb.careSending");
-      try {
-        const r = await fetch("/ui/annotate", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: m.id, kind, note: note.value.trim() }),
-        });
-        if (!r.ok) throw new Error(String(r.status));
-        const b = await r.json().catch(() => ({}));
-        (care ||= []).push(
-          b?.entry && typeof b.entry === "object"
-            ? b.entry
-            : { id: m.id, kind, note: note.value.trim(), date: new Date().toISOString().slice(0, 10), done: false }
-        );
-        if (!dead) renderReader(true);
-      } catch (err) {
-        send.disabled = false;
-        send.textContent = err.message === "413" ? t("mb.careTooLong") : t("mb.careFail");
-      }
-    }
-    return h(
-      "div.mb-care",
-      null,
-      h("div.mb-rd__k", { text: t("mb.care") }),
-      h("div.mb-care__hint", { text: t("mb.careHint") }),
-      open.length
-        ? h(
-            "div.mb-care__open",
-            null,
-            open.map((a) =>
-              h(
-                "div.mb-care__item",
-                null,
-                h("span.mb-care__kind", { text: t(`mb.careKind.${a.kind}`) }),
-                h("span.mb-care__note-text", { text: str(a.note) || "—" }),
-                h("span.mb-care__date", { text: str(a.date) })
-              )
-            )
-          )
-        : null,
-      h("div.mb-care__kinds", null, kinds),
-      compose
-    );
-  }
+  // Vault care block (membrowser-care.js): the loaded flags, how a new one is
+  // kept, and the redraw after a save.
+  const careDeps = () => ({
+    care: care || [],
+    add: (entry) => (care ||= []).push(entry),
+    rerender: () => {
+      if (!dead) renderReader(true);
+    },
+  });
 
   // ── search: local filter at once, semantic recall (≥ 3 chars) after a pause ──
   function onInput() {

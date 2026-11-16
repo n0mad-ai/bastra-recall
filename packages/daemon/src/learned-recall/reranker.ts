@@ -28,8 +28,10 @@ export interface RerankResult {
   chosenRank: number | null;
 }
 
-/** Injectable chat function: prompt in, raw model reply out. */
-export type ChatFn = (prompt: string) => Promise<string>;
+/** Injectable chat function: prompt in, raw model reply out. An optional
+ *  `system` text goes in as the system message (instructions kept apart from
+ *  the user content, e.g. the note text of the UI's "improve text"). */
+export type ChatFn = (prompt: string, system?: string) => Promise<string>;
 
 // The 16 GB baseline text model — kept in sync with settings.GENERATION_MODEL_DEFAULT.
 // A 4B instruction model, chosen over the older vision-language qwen3-vl:4b.
@@ -65,7 +67,7 @@ export function ollamaChat(
   const timeoutMs = opts.timeoutMs ?? 30_000;
   const envCtx = Number.parseInt(process.env.BASTRA_OLLAMA_NUM_CTX ?? "", 10);
   const numCtx = opts.numCtx ?? (envCtx > 0 ? envCtx : DEFAULT_NUM_CTX);
-  return async (prompt: string): Promise<string> => {
+  return async (prompt: string, system?: string): Promise<string> => {
     const ctrl = new AbortController();
     const tid = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
@@ -74,7 +76,7 @@ export function ollamaChat(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model,
-          messages: [{ role: "user", content: prompt }],
+          messages: [...(system ? [{ role: "system", content: system }] : []), { role: "user", content: prompt }],
           stream: false,
           // A thinking model otherwise puts its whole answer in
           // `message.thinking` and returns an empty `content` — 0 phrases, no

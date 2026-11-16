@@ -1,0 +1,27 @@
+/* Vault-care note editor (js/views/care-note.js): growing note field with
+ * save, "improve text" (local model) and undo, plus the status line. */
+.cn__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.cn__improve.is-busy {
+  border-color: var(--accent);
+  color: var(--accent);
+  cursor: progress;
+}
+.cn__row .mb-btn[hidden] {
+  display: none;
+}
+.mb-care__note:read-only {
+  opacity: 0.7;
+}
+.cn__msg {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--amber);
+}
+.cn__msg:empty {
+  display: none;
+}

@@ -303,6 +303,8 @@ Existing root `Wait=false` installations remain compatible and can still start s
 
 Memories age: titles go stale, duplicates creep in, ghosts point at notes you never wrote. bastra-recall turns tending the vault into a two-step loop instead of a chore. From any node's inspector on the vault map you flag a memory — *delete*, *edit*, *write* (for ghosts), or *note* — and the flags land as checkbox lines in an open `vault-care.md` at the vault root. Your **next AI session sees the open flags automatically** (session hook) and offers to work the list off with you: one guided cleanup pass, your call on every item. No hidden state, no separate app — a markdown checklist any editor can open.
 
+In the memory browser of the web UI, a saved flag can be **edited** later: *Edit* opens its note in the same field, *Save* replaces exactly that entry in `vault-care.md` (kind, date and tick stay; a flag that was changed or removed meanwhile is reported, never overwritten). **Improve text** next to the note field hands a dictated note to your local generation model (Ollama, `generation.model`): fillers, repetitions and self-corrections go, names, numbers and IDs stay, the language stays the note's own. The result replaces the text in the field with *Undo* beside it; nothing is stored until you save.
+
 ### Local patches — a fix of your own that survives an update
 
 If you run a local fix — a patch you wrote, or one from a PR that has not landed yet — an update would normally overwrite it. `bastra patches` keeps an ordered series of `git format-patch` files under `~/.bastra/patches/` and reapplies them after every successful update.
@@ -972,6 +974,8 @@ Bestehende Root-`Wait=false`-Einrichtungen bleiben kompatibel und können weiter
 ### Vault-Pflege — jetzt markieren, später aufräumen
 
 Memories altern: Titel veralten, Dubletten schleichen sich ein, Ghosts zeigen auf nie geschriebene Notizen. bastra-recall macht aus der Vault-Pflege einen Zwei-Schritt-Loop statt einer lästigen Pflicht. Aus dem Inspector jeder Node auf der Vault-Map markierst du ein Memory — *delete*, *edit*, *write* (für Ghosts) oder *note* — und die Flags landen als Checkbox-Zeilen in einer offenen `vault-care.md` im Vault-Root. Deine **nächste AI-Session sieht die offenen Flags automatisch** (Session-Hook) und bietet an, die Liste gemeinsam abzuarbeiten: ein geführter Aufräum-Durchgang, jede Entscheidung bleibt bei dir. Kein versteckter State, keine Extra-App — eine Markdown-Checkliste, die jeder Editor öffnen kann.
+
+Im Memory-Browser der Weboberfläche lässt sich eine gespeicherte Markierung später **bearbeiten**: *Bearbeiten* öffnet ihre Notiz im selben Feld, *Speichern* ersetzt genau diesen Eintrag in `vault-care.md` (Art, Datum und Haken bleiben; wurde die Markierung inzwischen geändert oder entfernt, kommt eine Meldung statt eines Überschreibens). **Text verbessern** neben dem Notizfeld gibt eine eingesprochene Notiz an dein lokales Generierungsmodell (Ollama, `generation.model`): Füllwörter, Wiederholungen und Selbstkorrekturen fallen weg, Namen, Zahlen und IDs bleiben, die Sprache bleibt die der Notiz. Das Ergebnis ersetzt den Text im Feld, daneben steht *Rückgängig*; gespeichert wird erst, wenn du speicherst.
 
 ### Lokale Patches — ein eigener Fix, der ein Update übersteht
 

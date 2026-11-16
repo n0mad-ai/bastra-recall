@@ -75,4 +75,17 @@ export default {
   "mb.careKind.delete": "delete",
   "mb.careKind.note": "note",
   "mb.careKind.write": "write",
+  "mb.careEdit": "EDIT",
+  "mb.careSave": "SAVE",
+  "mb.careSaving": "saving…",
+  "mb.careCancel": "CANCEL",
+  "mb.careConflict":
+    "This flag was changed or removed meanwhile — nothing overwritten. Please reopen the vault browser.",
+  "mb.improve": "IMPROVE TEXT",
+  "mb.improving": "improving…",
+  "mb.undo": "UNDO",
+  "mb.improveNoModel": "No local model available — text unchanged.",
+  "mb.improveSlow": "The model did not answer in time — text unchanged.",
+  "mb.improveTooLong": "Text too long to improve — text unchanged.",
+  "mb.improveFail": "Improving failed — text unchanged.",
 };

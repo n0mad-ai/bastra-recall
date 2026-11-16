@@ -74,4 +74,17 @@ export default {
   "mb.careKind.delete": "löschen",
   "mb.careKind.note": "Notiz",
   "mb.careKind.write": "schreiben",
+  "mb.careEdit": "BEARBEITEN",
+  "mb.careSave": "SPEICHERN",
+  "mb.careSaving": "speichere …",
+  "mb.careCancel": "ABBRECHEN",
+  "mb.careConflict":
+    "Markierung wurde inzwischen geändert oder entfernt – nichts überschrieben. Bitte den Vault-Browser neu öffnen.",
+  "mb.improve": "TEXT VERBESSERN",
+  "mb.improving": "verbessere …",
+  "mb.undo": "RÜCKGÄNGIG",
+  "mb.improveNoModel": "Kein lokales Modell verfügbar – Text bleibt unverändert.",
+  "mb.improveSlow": "Das Modell antwortet nicht rechtzeitig – Text bleibt unverändert.",
+  "mb.improveTooLong": "Text zu lang zum Verbessern – Text bleibt unverändert.",
+  "mb.improveFail": "Verbessern fehlgeschlagen – Text bleibt unverändert.",
 };

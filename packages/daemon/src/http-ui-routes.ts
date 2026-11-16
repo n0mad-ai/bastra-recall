@@ -21,6 +21,7 @@ import {
   handleUiVaultImagePost,
 } from "./webui.js";
 import { handleUiChat, type ChatFn } from "./webui-chat.js";
+import { handleUiImproveText } from "./webui-improve.js";
 import { chatHistory, dispatchChatHistory } from "./chat-history.js";
 import { handleHookImport, handleUiImport } from "./import-review.js";
 import { handleUiImportVault, handleUiFsBrowse } from "./import-vault.js";
@@ -182,24 +183,14 @@ export function dispatchUiRoutes(
     }).catch(() => sendJson(res, 500, { error: "ui error" }));
     return true;
   }
+  // "Improve text" on a vault-care note: same local chat client, nothing stored.
+  if (dispatchUiImprove(req, res, method, url, ctx.uiChat)) return true;
   // Agent window history (chat-history.ts): list, open, delete conversations.
   if (dispatchChatHistory(req, res, method, url)) return true;
   // Background image of the web UI: local uploads + current settings.
   if (dispatchUiBackdrop(req, res, method, url)) return true;
 
-  // Ring-view center emblem (#207): stored as vault-image.<ext> at the
-  // vault root — an open file like everything else the daemon writes.
-  // Path-only match: the viewer cache-busts with ?ts=.
-  if (url.split("?")[0] === "/ui/vault-image") {
-    if (method === "GET") {
-      handleUiVaultImageGet(res, url, toolDeps.vaultPath).catch(() => sendJson(res, 404, { error: "no vault image" }));
-      return true;
-    }
-    if (method === "POST") {
-      handleUiVaultImagePost(req, res, url, toolDeps.vaultPath).catch(() => sendJson(res, 500, { error: "ui error" }));
-      return true;
-    }
-  }
+  if (dispatchVaultImage(req, res, method, url, toolDeps.vaultPath)) return true;
 
   // Vault map web UI (#207): static viewer, opt-in via ui.enabled. Sits
   // outside /api/v1/* → loopback-only through the host gate above.
@@ -209,4 +200,38 @@ export function dispatchUiRoutes(
   }
 
   return false;
+}
+
+// Ring-view center emblem (#207): stored as vault-image.<ext> at the
+// vault root — an open file like everything else the daemon writes.
+// Path-only match: the viewer cache-busts with ?ts=.
+function dispatchVaultImage(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string,
+  url: string,
+  vaultPath: string
+): boolean {
+  if (url.split("?")[0] !== "/ui/vault-image") return false;
+  if (method === "GET") {
+    handleUiVaultImageGet(res, url, vaultPath).catch(() => sendJson(res, 404, { error: "no vault image" }));
+    return true;
+  }
+  if (method === "POST") {
+    handleUiVaultImagePost(req, res, url, vaultPath).catch(() => sendJson(res, 500, { error: "ui error" }));
+    return true;
+  }
+  return false;
+}
+
+function dispatchUiImprove(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string,
+  url: string,
+  chat: ChatFn | null | undefined
+): boolean {
+  if (method !== "POST" || url !== "/ui/improve-text") return false;
+  handleUiImproveText(req, res, chat ?? null).catch(() => sendJson(res, 500, { error: "ui error" }));
+  return true;
 }

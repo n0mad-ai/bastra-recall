@@ -17,6 +17,16 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SearchIndex } from "@bastra-recall/core";
 import { getPrimaryLanguage, getUiEnabled } from "./settings.js";
 import { MAX_BODY_BYTES, readJsonBody } from "./http-util.js";
+import {
+  CARE_FILE,
+  CARE_HEADER,
+  CARE_KINDS,
+  CareConflictError,
+  formatCareEntry,
+  parseCareFile,
+  rewriteCareNote,
+  type CareTarget,
+} from "./vault-care.js";
 
 /**
  * Content-Security-Policy for the map (#217).
@@ -88,69 +98,9 @@ export function resolveWebUiDir(): string {
   return join(dirname(fileURLToPath(import.meta.url)), "..", "webui");
 }
 
-// ─── vault care — annotations from the map, worked off in an AI session ────
-//
-// The map never edits memories. Instead the user flags them ("delete",
-// "edit", "write this unwritten note", free note); each flag is appended to
-// `vault-care.md` at the vault root — plain markdown with checkbox lines and
-// wikilinks, readable by Obsidian, any AI session, and any viewer (#140).
-// An AI session works the list off together with the user and ticks entries
-// `[x]`; the map only shows unticked ones.
-
-export const CARE_FILE = "vault-care.md";
-export const CARE_KINDS = ["delete", "edit", "write", "note"] as const;
-export type CareKind = (typeof CARE_KINDS)[number];
-
-const CARE_HEADER = `# Vault Care
-
-Flags from the vault map. In an AI session, say "let's work off the vault
-care list" — go through the open entries together, apply them via the memory
-tools, and tick them \`[x]\` here when done.
-
-`;
-const CARE_LINE_RE = /^- \[([ x])\] (\d{4}-\d{2}-\d{2}) · (\w+) · \[\[([^\]]+)\]\](?: — (.*))?$/;
-
-export interface CareEntry {
-  done: boolean;
-  date: string;
-  kind: string;
-  id: string;
-  note: string;
-}
-
-/** Multi-line notes: the entry line carries the first line, every further line
- *  follows indented by two spaces (a markdown list-item continuation, so
- *  Obsidian and agents read it as one entry). Blank note lines stay empty. */
-const CARE_CONT = "  ";
-
-export function formatCareEntry(e: Omit<CareEntry, "done">): string {
-  const [first, ...rest] = e.note.split("\n");
-  const head = `- [ ] ${e.date} · ${e.kind} · [[${e.id}]]${first ? ` — ${first}` : ""}`;
-  return [head, ...rest.map((l) => (l ? CARE_CONT + l : ""))].join("\n") + "\n";
-}
-
-export function parseCareFile(content: string): CareEntry[] {
-  const out: CareEntry[] = [];
-  let blanks = 0;
-  let open = false; // the last entry may still take continuation lines
-  for (const raw of content.split("\n")) {
-    const line = raw.replace(/\r$/, "");
-    const m = CARE_LINE_RE.exec(line.trimEnd());
-    if (m) {
-      out.push({ done: m[1] === "x", date: m[2], kind: m[3], id: m[4], note: m[5] ?? "" });
-      blanks = 0;
-      open = true;
-    } else if (line.trim() === "") {
-      blanks++;
-    } else if (open && line.startsWith(CARE_CONT)) {
-      out[out.length - 1].note += "\n".repeat(blanks + 1) + line.slice(CARE_CONT.length);
-      blanks = 0;
-    } else {
-      open = false;
-    }
-  }
-  return out;
-}
+// ─── vault care — the file format lives in vault-care.ts ────────────────────
+export { CARE_FILE, CARE_KINDS, formatCareEntry, parseCareFile };
+export type { CareEntry, CareKind } from "./vault-care.js";
 
 export function sendJsonPlain(res: ServerResponse, status: number, payload: unknown): void {
   const body = JSON.stringify(payload);
@@ -330,9 +280,36 @@ export async function handleUiAnnotations(
   }
 }
 
-/** POST /ui/annotate {id, kind, note?} — append one care entry. The note is
- *  stored unabridged; only the shared HTTP body cap (MAX_BODY_BYTES) applies,
- *  answered with 413 and nothing written. */
+/** `previous` of an edit: the entry as the UI last read it (kind, date, note). */
+function careTarget(id: string, v: unknown): CareTarget | null {
+  const p = v as { kind?: unknown; date?: unknown; note?: unknown } | null;
+  if (!p || typeof p !== "object") return null;
+  if (typeof p.kind !== "string" || typeof p.date !== "string" || typeof p.note !== "string") return null;
+  return { id, kind: p.kind, date: p.date, note: p.note };
+}
+
+/** Edit: replace the note of exactly the entry `previous` names. An emptied
+ *  note is refused (removing a flag is not an edit); an entry changed or
+ *  removed meanwhile answers 409 and nothing is written. */
+async function editCareNote(res: ServerResponse, file: string, target: CareTarget, note: string): Promise<void> {
+  if (!note) {
+    sendJsonPlain(res, 400, { error: "note required to edit" });
+    return;
+  }
+  try {
+    sendJsonPlain(res, 200, { ok: true, entry: await rewriteCareNote(file, target, note) });
+  } catch (err) {
+    const gone = err instanceof CareConflictError || (err as NodeJS.ErrnoException).code === "ENOENT";
+    sendJsonPlain(res, gone ? 409 : 500, {
+      error: gone ? "entry changed or removed meanwhile" : (err as Error).message,
+    });
+  }
+}
+
+/** POST /ui/annotate {id, kind, note?, previous?} — append one care entry, or
+ *  with `previous` {kind, date, note} replace the note of that entry in place.
+ *  The note is stored unabridged; only the shared HTTP body cap
+ *  (MAX_BODY_BYTES) applies, answered with 413 and nothing written. */
 export async function handleUiAnnotate(
   req: IncomingMessage,
   res: ServerResponse,
@@ -343,7 +320,7 @@ export async function handleUiAnnotate(
     sendJsonPlain(res, 404, { error: "ui disabled" });
     return;
   }
-  let body: { id?: unknown; kind?: unknown; note?: unknown };
+  let body: { id?: unknown; kind?: unknown; note?: unknown; previous?: unknown };
   try {
     body = await readJsonBody(req, MAX_BODY_BYTES);
   } catch (err) {
@@ -359,9 +336,18 @@ export async function handleUiAnnotate(
     sendJsonPlain(res, 400, { error: "need id and kind (delete|edit|write|note)" });
     return;
   }
+  const file = join(vaultPath, CARE_FILE);
+  if (body.previous !== undefined) {
+    const target = careTarget(id, body.previous);
+    if (!target || target.kind !== kind) {
+      sendJsonPlain(res, 400, { error: "previous needs the entry's kind, date and note" });
+      return;
+    }
+    await editCareNote(res, file, target, note);
+    return;
+  }
   const date = new Date().toISOString().slice(0, 10);
   const line = formatCareEntry({ date, kind, id, note });
-  const file = join(vaultPath, CARE_FILE);
   try {
     // "wx" creates the header only when the file does not exist yet —
     // atomic, no stat-then-write race with a concurrent flag request.

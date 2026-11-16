@@ -15,8 +15,9 @@ import { buildSoulBlock, readSoulPreference, type SoulPreference } from "./soul.
 import { sendJsonPlain } from "./webui.js";
 import type { ChatHistory } from "./chat-history.js";
 
-/** Same shape as the doc2query ChatFn: prompt in, raw model reply out. */
-export type ChatFn = (prompt: string) => Promise<string>;
+/** Same shape as the reranker's ollamaChat: prompt in, raw model reply out;
+ *  `system` optional (the improve-text route sends its instructions there). */
+export type ChatFn = (prompt: string, system?: string) => Promise<string>;
 
 export interface CopilotDeps {
   search: SearchIndex;
