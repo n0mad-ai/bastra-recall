@@ -38,6 +38,7 @@ export function mountLensView(kind, stage) {
     focus: state.focus || null,
     hoverArea: state.hover || null,
     areaColor: areaCol,
+    paused: !!state.covered, // frozen under the memory browser / a dialog (js/cover.js)
   });
 
   const lens = mountLens(canvas, {
@@ -124,6 +125,7 @@ export function mountLensView(kind, stage) {
     if (ch("focus") && selMem) closeCard();
     if (ch("focus") || ch("hover") || windowKey() !== prevWin)
       lens.update({ ...opts(), replay: windowKey() !== prevWin });
+    if (ch("covered")) lens.update({ paused: !!st.covered });
     if (ch("hits")) place();
     prev = { ...st };
     prevWin = windowKey();

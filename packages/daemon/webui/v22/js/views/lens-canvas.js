@@ -8,6 +8,7 @@ import { h, setVars } from "../dom.js";
 import { t as tr } from "../i18n.js";
 import { TC, ACC, INK } from "./chrome.js";
 import { VIEWS, prep, rgba, dstr } from "./lens-draw.js";
+import { loopContinues, frameClock, pausedFor } from "./lens-clock.js";
 
 const ease = (x) => 1 - Math.pow(1 - x, 3);
 const TAU = Math.PI * 2;
@@ -37,7 +38,8 @@ export function mountLens(canvas, opts) {
     drag = null,
     lastZ = -1,
     openT = 0,
-    resync = false;
+    resync = false,
+    pausedAt = opts.paused ? performance.now() : null; // covered: frame loop stands still
   const ZMIN = 1,
     ZMAX = 6;
   const clampT = (zz, x, y) => [Math.min(0, Math.max(w - w * zz, x)), Math.min(0, Math.max(h0 - h0 * zz, y))];
@@ -130,9 +132,10 @@ export function mountLens(canvas, opts) {
   function req() {
     if (!raf && !dead) raf = requestAnimationFrame(frame);
   }
-  function frame(now) {
+  function frame(ts) {
     raf = 0;
     if (dead) return;
+    const now = frameClock(pausedAt, ts);
     prog = Math.min(1, (now - t0) / 1100);
     const k = drag ? 1 : 0.22;
     z += (Z - z) * k;
@@ -216,7 +219,7 @@ export function mountLens(canvas, opts) {
       o.onZoom(lastZ);
     }
     o.onFrame && o.onFrame();
-    if (prog < 1 || moving || fx.length) req();
+    if (loopContinues(pausedAt != null, prog < 1 || moving || fx.length)) req();
   }
   const toW = (x, y) => [(x - tx) / z, (y - ty) / z];
   function hitAt(x, y) {
@@ -331,7 +334,21 @@ export function mountLens(canvas, opts) {
   canvas.addEventListener("pointerup", onUp);
   canvas.addEventListener("wheel", onWheel, { passive: false });
   canvas.addEventListener("dblclick", onDbl);
+  // covered ↔ open: hold the clock, or skip the paused time so nothing jumps
+  function setPaused(on) {
+    if (on == null || !!on === (pausedAt != null)) return;
+    if (on) {
+      pausedAt = performance.now();
+      return;
+    }
+    const gap = pausedFor(pausedAt, performance.now());
+    pausedAt = null;
+    t0 += gap;
+    fx.forEach((f) => (f.t += gap));
+    req();
+  }
   function update(n) {
+    setPaused(n.paused);
     const kindChanged = n.kind && n.kind !== o.kind;
     const changed =
       kindChanged || n.focus !== o.focus || n.hoverArea !== o.hoverArea || (n.vault && n.vault !== Pv) || !P;

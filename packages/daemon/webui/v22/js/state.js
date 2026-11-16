@@ -16,7 +16,6 @@ export const state = {
   lensOpen: saved.lensOpen ?? true,
   lensPeek: false,
   tab: "areas",
-  vpOpen: false,
   vw: window.innerWidth,
   vh: window.innerHeight,
   agent: "idle",
