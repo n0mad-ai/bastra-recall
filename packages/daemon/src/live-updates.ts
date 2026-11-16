@@ -37,6 +37,7 @@ import { sendJsonPlain } from "./webui.js";
 import { getUiEnabled } from "./settings.js";
 import { envInt } from "./env.js";
 import type { RecallBand } from "./telemetry.js";
+import { hiddenFromCaller } from "./private-access.js";
 
 export type LiveUpdateKind = "add" | "change" | "delete" | "read";
 
@@ -112,6 +113,7 @@ interface PendingEntry {
   count: number;
   timer: ReturnType<typeof setTimeout>;
   firstAt: number; // when this window opened — the max-wait cap measures from here
+  hidden: boolean; // any event in the window came from a private memory
 }
 
 export function createLiveUpdates(
@@ -123,7 +125,12 @@ export function createLiveUpdates(
     maxWaitMs?: number;
   } = {}
 ): {
-  handleUiUpdates: (req: IncomingMessage, res: ServerResponse, settingsPath?: string) => Promise<void>;
+  handleUiUpdates: (
+    req: IncomingMessage,
+    res: ServerResponse,
+    settingsPath?: string,
+    showPrivate?: boolean
+  ) => Promise<void>;
   notifyRead: (id: string, band?: RecallBand) => void;
   stop: () => void;
 } {
@@ -137,6 +144,22 @@ export function createLiveUpdates(
   /** id → ms epoch der letzten finalisierten Notice (Sperre für "read"). */
   const announcedAt = new Map<string, number>();
   let seq = 0;
+  // Private memories reach only a caller whose account was proven, like the
+  // graph (`privateGraph`). Seeded from the index so a later delete of a memory
+  // that was never announced still knows it was private.
+  const privateIds = new Set(
+    vault
+      .list()
+      .filter((m) => hiddenFromCaller(undefined, m.fm))
+      .map((m) => m.fm.id)
+  );
+  const hiddenEntries = new WeakSet<LiveUpdate>();
+  const hiddenMemory = (m: Memory): boolean => {
+    const hidden = hiddenFromCaller(undefined, m.fm);
+    if (hidden) privateIds.add(m.fm.id);
+    else privateIds.delete(m.fm.id);
+    return hidden;
+  };
 
   const baseFields = (m: Memory, kind: LiveUpdateKind): LiveUpdate => ({
     id: m.fm.id,
@@ -159,7 +182,9 @@ export function createLiveUpdates(
     const p = pending.get(id);
     if (!p) return;
     pending.delete(id);
-    recent.push({ ...p.update, seq: ++seq, count: p.count });
+    const entry = { ...p.update, seq: ++seq, count: p.count };
+    if (p.hidden) hiddenEntries.add(entry);
+    recent.push(entry);
     if (recent.length > maxEntries) recent.splice(0, recent.length - maxEntries);
     // Sperrfenster startet erst beim Finalisieren — die Karte ist ab JETZT
     // sichtbar, also läuft die Ruhe ab jetzt und nicht ab dem ersten Ereignis.
@@ -177,10 +202,11 @@ export function createLiveUpdates(
   // Collapse an event into the pending entry for its id (or open one) and
   // (re)arm the quiet-window timer. Nothing is delivered until the window
   // elapses — that is what turns a burst into one finalized entry.
-  const ingest = (next: LiveUpdate): void => {
+  const ingest = (next: LiveUpdate, hidden: boolean): void => {
     const cur = pending.get(next.id);
     if (cur) {
       clearTimeout(cur.timer);
+      cur.hidden ||= hidden;
       // keep the hotter kind (newborn stays "add" through its enrich burst; a
       // delete always wins), take the rest of the data from the latest event
       const kind = KIND_RANK[next.kind] >= KIND_RANK[cur.update.kind] ? next.kind : cur.update.kind;
@@ -201,13 +227,21 @@ export function createLiveUpdates(
         count: 1,
         timer: setTimeout(() => finalize(next.id), debounceMs),
         firstAt: Date.now(),
+        hidden,
       });
     }
   };
 
+  /** A removed memory is gone from the index; its last known entry or the
+   *  seeded private set still says whether it was private. */
+  const removedWasPrivate = (id: string, prior: LiveUpdate | undefined): boolean => {
+    const known = privateIds.delete(id);
+    return known || pending.get(id)?.hidden === true || (prior !== undefined && hiddenEntries.has(prior));
+  };
+
   const unsubscribe = vault.on((e) => {
-    if (e.kind === "add") ingest(baseFields(e.memory, "add"));
-    else if (e.kind === "change") ingest(baseFields(e.memory, "change"));
+    if (e.kind === "add") ingest(baseFields(e.memory, "add"), hiddenMemory(e.memory));
+    else if (e.kind === "change") ingest(baseFields(e.memory, "change"), hiddenMemory(e.memory));
     else if (e.kind === "remove") {
       // das File ist weg — Titel/Cluster aus dem letzten bekannten Snapshot
       // (noch pending, sonst der jüngste finalisierte Eintrag der id)
@@ -215,20 +249,24 @@ export function createLiveUpdates(
       for (let i = recent.length - 1; !prior && i >= 0; i--) {
         if (recent[i].id === e.id) prior = recent[i];
       }
-      ingest({
-        id: e.id,
-        kind: "delete",
-        title: prior?.title ?? e.id,
-        type: prior?.type ?? "memory",
-        scope: prior?.scope ?? "",
-        cluster: prior?.cluster ?? "",
-        group: prior?.group ?? "",
-        sub: prior?.sub ?? "",
-        summary: prior?.summary ?? "",
-        at: Date.now(),
-        seq: 0,
-        count: 1,
-      });
+      const hidden = removedWasPrivate(e.id, prior);
+      ingest(
+        {
+          id: e.id,
+          kind: "delete",
+          title: prior?.title ?? e.id,
+          type: prior?.type ?? "memory",
+          scope: prior?.scope ?? "",
+          cluster: prior?.cluster ?? "",
+          group: prior?.group ?? "",
+          sub: prior?.sub ?? "",
+          summary: prior?.summary ?? "",
+          at: Date.now(),
+          seq: 0,
+          count: 1,
+        },
+        hidden
+      );
     }
   });
 
@@ -249,13 +287,18 @@ export function createLiveUpdates(
         if (last !== undefined && Date.now() - last < reannounceMs) return;
       }
       const m = vault.get(id);
-      if (m) ingest({ ...baseFields(m, "read"), ...(band ? { band } : {}) });
+      if (m) ingest({ ...baseFields(m, "read"), ...(band ? { band } : {}) }, hiddenMemory(m));
     } catch {
       /* Notices sind Telemetrie-of-Telemetrie — nie einen Load brechen */
     }
   };
 
-  async function handleUiUpdates(req: IncomingMessage, res: ServerResponse, settingsPath?: string): Promise<void> {
+  async function handleUiUpdates(
+    req: IncomingMessage,
+    res: ServerResponse,
+    settingsPath?: string,
+    showPrivate = false
+  ): Promise<void> {
     if (!(await getUiEnabled(settingsPath))) {
       sendJsonPlain(res, 404, { error: "ui disabled" });
       return;
@@ -270,7 +313,7 @@ export function createLiveUpdates(
       return;
     }
     const since = Number(sinceRaw) || 0;
-    const updates = recent.filter((e) => e.seq > since);
+    const updates = recent.filter((e) => e.seq > since && (showPrivate || !hiddenEntries.has(e)));
     sendJsonPlain(res, 200, { updates, seq, minSeq });
   }
 

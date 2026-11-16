@@ -101,7 +101,13 @@ import { type ChatFn } from "./webui-chat.js";
 import { type CuratorRunDeps } from "./curator-run.js";
 import type { EmbeddingStatus } from "./embedding-status.js";
 import { sendCors, sendJson } from "./http-util.js";
-import { isLoopbackHost, hasForwardingHeaders, safeEqual, resolveCorsOrigin, gateLocalPost } from "./http-auth.js";
+import {
+  canonicalRequestTarget,
+  forwardedWithoutToken,
+  isLoopbackHost,
+  resolveCorsOrigin,
+  gateLocalPost,
+} from "./http-auth.js";
 import { dispatchUiRoutes } from "./http-ui-routes.js";
 import { dispatchLocalRoutes } from "./http-local-routes.js";
 import { codeGraphRefresher } from "./code-graph/service.js";
@@ -239,6 +245,13 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     const url = req.url ?? "";
     const method = req.method ?? "GET";
 
+    // Every gate below and every router must see the same path; a target that
+    // `new URL` would resolve differently never gets that far (http-auth.ts).
+    if (!canonicalRequestTarget(url)) {
+      sendJson(res, 400, { error: "invalid request path" });
+      return;
+    }
+
     // #1279: the OAuth discovery documents are public and secret-free; remote
     // MCP clients fetch them through the tunnel, so they answer ahead of the
     // rebinding gate below (oauth-server.ts).
@@ -255,11 +268,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     // #1264: a proxy may rewrite Host to localhost. Hooks and UI must then
     // authenticate too, before any handler can read data or apply a write.
     const pathname = url.split("?", 1)[0]!;
-    if (
-      (pathname.startsWith("/hook/") || pathname === "/ui" || pathname.startsWith("/ui/")) &&
-      hasForwardingHeaders(req) &&
-      (!ctx.apiToken || !safeEqual(req.headers.authorization ?? "", `Bearer ${ctx.apiToken}`))
-    ) {
+    if (forwardedWithoutToken(req, pathname, ctx.apiToken)) {
       sendJson(res, 401, { error: "unauthorized" });
       return;
     }

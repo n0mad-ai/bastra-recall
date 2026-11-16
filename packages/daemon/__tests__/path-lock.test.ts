@@ -7,6 +7,8 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync, spawn } from "node:child_process";
+import { once } from "node:events";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
@@ -580,4 +582,25 @@ test("#1207: owner cleanup leaves a replacement guard inode untouched", async (t
     "held"
   );
   assert.equal(swapped, true);
+});
+
+// Code scanning js/file-system-race: the reclaim-marker cleanup used to stat
+// the marker by path and then read it by path. A FIFO in its place made that
+// read block forever; now one non-blocking descriptor is inspected and read.
+test("a FIFO in place of the reclaim marker cannot wedge strict-local acquisition", { timeout: 30_000 }, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-path-lock-fifo-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const state = join(dir, "state.json");
+  const lock = pathLockFilePath(state);
+  await writeFile(lock, JSON.stringify({ pid: 999_999_999, host: hostname(), ts: Date.now(), token: "dead" }));
+  execFileSync("mkfifo", [`${lock}.reclaim`]);
+  const source = new URL("../src/path-lock.ts", import.meta.url).href;
+  const code = `const {withPathLock,PathLockUnavailableError}=await import(${JSON.stringify(source)}); try{await withPathLock(${JSON.stringify(state)},async()=>{process.exit(1)},{strictLocal:true})}catch(e){process.exit(e instanceof PathLockUnavailableError?23:2)}`;
+  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code], { stdio: "ignore" });
+  const timer = setTimeout(() => child.kill("SIGKILL"), 20_000);
+  const [status, signal] = await once(child, "exit");
+  clearTimeout(timer);
+  assert.equal(signal, null, "the acquisition hung on the FIFO marker");
+  assert.equal(status, 23);
+  assert.ok(existsSync(`${lock}.reclaim`), "an unknown marker stays for explicit recovery");
 });

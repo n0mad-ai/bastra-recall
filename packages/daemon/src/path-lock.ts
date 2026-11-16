@@ -362,6 +362,28 @@ function deadLocal(raw: string): boolean {
   }
 }
 
+/** Recover the *same* marker inode only when its local owner provably died.
+ * Once removed, this contender backs off; the next acquisition retries.
+ * Inspect and read ONE open descriptor: O_NOFOLLOW refuses a symlink and
+ * O_NONBLOCK keeps a FIFO from wedging the event loop (#1213). */
+function removeDeadMarker(mark: string): void {
+  let fd: number;
+  try {
+    fd = openSync(mark, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  } catch {
+    return; // unknown marker stays blocked for explicit operator recovery
+  }
+  try {
+    const original = fstatSync(fd);
+    if (original.isFile() && deadLocal(readFileSync(fd, "utf8")) && statSync(mark).ino === original.ino)
+      unlinkSync(mark);
+  } catch {
+    /* unknown marker stays blocked for explicit operator recovery */
+  } finally {
+    closeSync(fd);
+  }
+}
+
 function reclaimDeadLocal(lockPath: string, replacement: string): boolean {
   let stale: string;
   try {
@@ -382,14 +404,8 @@ function reclaimDeadLocal(lockPath: string, replacement: string): boolean {
     } catch {
       return false;
     }
-    // Recover the *same* marker inode only when its local owner provably died.
-    // Once removed, this contender backs off; the next acquisition retries.
     try {
-      const original = statSync(mark);
-      const raw = readFileSync(mark, "utf8");
-      if (deadLocal(raw) && statSync(mark).ino === original.ino && readFileSync(mark, "utf8") === raw) unlinkSync(mark);
-    } catch {
-      /* unknown marker stays blocked for explicit operator recovery */
+      removeDeadMarker(mark);
     } finally {
       closeSync(cleanupFd);
       try {

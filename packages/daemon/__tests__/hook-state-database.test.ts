@@ -206,3 +206,47 @@ test("#1339 stage2: Bash failure throttle migrates with its original 30s timesta
   assert.equal(await isThrottled("fresh"), true);
   await assert.rejects(stat(join(dir, "fail-throttle-fresh.ts")), { code: "ENOENT" });
 });
+
+const posix = process.platform !== "win32";
+
+test("legacy hook state in a directory other accounts may write is not imported", { skip: !posix }, async () => {
+  const dir = await root();
+  const raw = '{"shown":{"planted":{"count":9,"at":1}}}';
+  await writeFile(join(dir, "shared.json"), raw);
+  await fs.chmod(dir, 0o777);
+  try {
+    const state = await ss.loadSessionState("shared");
+    assert.equal(state.shown.planted, undefined, "foreign-writable state is treated as absent");
+    assert.equal(await readFile(join(dir, "shared.json"), "utf8"), raw, "and left untouched");
+    await assert.rejects(stat(join(dir, "shared.json.pre-sqlite")), { code: "ENOENT" });
+  } finally {
+    await fs.chmod(dir, 0o700);
+  }
+});
+
+test(
+  "a FIFO or symlink in place of a legacy file or its original is never read and never blocks",
+  { skip: !posix },
+  async () => {
+    const dir = await root();
+    const raw = '{"shown":{"memo":{"count":1,"at":1}}}';
+    const fifo = join(dir, "pipe");
+    execFileSync("mkfifo", [fifo]);
+    await writeFile(join(dir, "fifo-original.json"), raw);
+    await fs.symlink(fifo, join(dir, "fifo-original.json.pre-sqlite"));
+    execFileSync("mkfifo", [join(dir, "fifo-state.json")]);
+    await fs.symlink(fifo, join(dir, "linked-state.json"));
+    const started = Date.now();
+    const state = await ss.loadSessionState("fifo-original");
+    assert.ok(Date.now() - started < 5000, "hydrate returned without waiting on a FIFO");
+    assert.equal(state.shown.memo.count, 1, "the regular legacy file is still imported");
+    assert.equal(
+      await readFile(join(dir, "fifo-original.json"), "utf8"),
+      raw,
+      "original kept beside the foreign entry"
+    );
+    assert.ok((await fs.lstat(join(dir, "fifo-original.json.pre-sqlite"))).isSymbolicLink());
+    assert.equal((await ss.loadSessionState("fifo-state")).shown.memo, undefined);
+    assert.equal((await ss.loadSessionState("linked-state")).shown.memo, undefined);
+  }
+);

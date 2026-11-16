@@ -235,6 +235,8 @@ test("GET /api/v1/graph/semantic: concurrent requests share one layout build", a
     embedding: { on: false, providerId: null, source: "none" },
     embeddingVectors: () => vectors,
   });
+  // Server start reads the vault once (live updates learn which memories are private).
+  builds = 0;
   try {
     const got = await Promise.all([1, 2, 3].map(() => httpGet(handle.port!, "/api/v1/graph/semantic")));
     assert.deepEqual(

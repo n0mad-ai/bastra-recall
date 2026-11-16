@@ -9,7 +9,7 @@
  * unticked ones. The routes live in webui.ts; this module owns the format:
  * reading, formatting, and replacing the note of one entry in place.
  */
-import { appendFile, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { appendFile, open, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { withPathLock } from "./path-lock.js";
 
@@ -123,11 +123,19 @@ export function rewriteCareNote(file: string, target: CareTarget, note: string):
 }
 
 async function rewriteCareNoteLocked(file: string, target: CareTarget, note: string): Promise<CareEntry> {
-  const before = await readFile(file, "utf8");
+  // Content and mode come from one open descriptor, never two path lookups.
+  const handle = await open(file, "r");
+  let before: string, mode: number;
+  try {
+    before = await handle.readFile("utf8");
+    mode = (await handle.stat()).mode & 0o777;
+  } finally {
+    await handle.close();
+  }
   const next = replaceCareNote(before, target, note);
   if (next === null) throw new CareConflictError("entry changed or removed");
   const tmp = `${file}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`;
-  await writeFile(tmp, next, { encoding: "utf8", mode: (await stat(file)).mode & 0o777, flag: "wx" });
+  await writeFile(tmp, next, { encoding: "utf8", mode, flag: "wx" });
   try {
     if ((await readFile(file, "utf8")) !== before) throw new CareConflictError("file changed meanwhile");
     await rename(tmp, file);

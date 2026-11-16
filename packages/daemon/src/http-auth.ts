@@ -23,6 +23,42 @@ export function hasForwardingHeaders(req: IncomingMessage): boolean {
   return ["forwarded", "x-forwarded-for", "x-forwarded-host"].some((name) => Object.hasOwn(req.headers, name));
 }
 
+/** #1264: a proxy may rewrite Host to localhost, so a forwarded hook or UI
+ * request must carry the API token before any handler reads or writes. */
+export function forwardedWithoutToken(req: IncomingMessage, pathname: string, apiToken: string | undefined): boolean {
+  if (!(pathname.startsWith("/hook/") || pathname === "/ui" || pathname.startsWith("/ui/"))) return false;
+  if (!hasForwardingHeaders(req)) return false;
+  return !apiToken || !safeEqual(req.headers.authorization ?? "", `Bearer ${apiToken}`);
+}
+
+/**
+ * One path view for every decision. The account, host and forwarding gates and
+ * the routers read the raw request target, while `new URL` resolves dot
+ * segments and backslashes. A target where the two could disagree is refused
+ * before any gate runs, so no gate and no route ever sees a different path.
+ *
+ * Legitimate targets stay accepted: percent-encoded names (`%20`, `%C3%BC`),
+ * dots inside a segment (`app.js`, `a%2Eb`) and any query string. Refused:
+ * absolute-form and `//host` targets, `.`/`..` in any encoding, backslashes,
+ * a fragment, whitespace/control characters and encoded `/`, `\` or NUL — no
+ * route takes any of them. Exported for unit tests.
+ */
+export function canonicalRequestTarget(url: string): boolean {
+  const query = url.indexOf("?");
+  const path = query < 0 ? url : url.slice(0, query);
+  if (!path.startsWith("/") || path.startsWith("//")) return false;
+  // Space, control characters and DEL lie outside both visible ranges.
+  if (/[^!-~\u0080-￿]|[\\#]|%(?:2f|5c|00)/i.test(path)) return false;
+  const segments = path.split("/");
+  if (segments.some((segment) => /^(?:\.|%2e){1,2}$/i.test(segment))) return false;
+  try {
+    // Defence in depth: the parser must keep every segment the raw path has.
+    return new URL(path, "http://localhost").pathname.split("/").length === segments.length;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Constant-time string equality for the Bearer-token check. The early return
  * on length mismatch leaks only the length — not secret here, the token has

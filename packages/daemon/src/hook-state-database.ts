@@ -1,12 +1,15 @@
 /** Persistent hook state with immutable, process-local read snapshots.
  * Lanes only mutate through a short SQLite transaction; no vault I/O occurs.
  * Legacy tmpdir files are imported once and retained for downgrade recovery. */
-import { constants } from "node:fs";
-import { open, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { readdir, rename, writeFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { defaultAppDatabasePath, openAppDatabase, type AppDatabase } from "./app-database.js";
+import { privateDirState, readPrivateFile } from "./private-state-dir.js";
+
+/** Legacy state files are small JSON or empty touch files. */
+const MAX_LEGACY_BYTES = 8 * 1024 * 1024;
 
 interface StoredState {
   raw: string;
@@ -34,14 +37,28 @@ function databasePath(dir: string): string {
 async function retainOriginal(file: string): Promise<void> {
   const target = `${file}.pre-sqlite`;
   try {
-    const old = await readFile(target);
-    if (!old.equals(await readFile(file)))
+    // A symlink, FIFO or foreign file in place of either one is never read.
+    const old = (await readPrivateFile(target, MAX_LEGACY_BYTES)).bytes;
+    if (!old.equals((await readPrivateFile(file, MAX_LEGACY_BYTES)).bytes))
       throw new Error("Different pre-SQLite original already exists; both files preserved");
     return;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    const code = (error as NodeJS.ErrnoException).code;
+    // The rows are already committed; both paths simply stay as they are.
+    if (code === "ELOOP" || code === "EUNSAFE") return;
+    if (code !== "ENOENT") throw error;
   }
   await rename(file, target);
+}
+
+/** The legacy directory sits in a shared tmpdir on Linux. One that another
+ * account owns or may write is treated like no legacy state at all. */
+async function legacyFileNames(dir: string): Promise<string[]> {
+  if ((await privateDirState(dir)) !== "private") return [];
+  return readdir(dir).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
 }
 
 async function hydrate(dir: string, dbPath: string): Promise<HookSnapshot> {
@@ -57,10 +74,7 @@ async function hydrate(dir: string, dbPath: string): Promise<HookSnapshot> {
     throttles: new Map(),
   };
   try {
-    const files = await readdir(dir).catch((error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") return [];
-      throw error;
-    });
+    const files = await legacyFileNames(dir);
     const imports: { file: string; bytes: Buffer; namespace: string; key: string; value: StoredState | number }[] = [];
     for (const name of files) {
       const session = /^([a-zA-Z0-9_-]+)\.json$/.exec(name);
@@ -70,21 +84,12 @@ async function hydrate(dir: string, dbPath: string): Promise<HookSnapshot> {
       const file = join(dir, name);
       // Read and inspect the same descriptor: a path swap cannot import a
       // symlink target or give its contents a different file's timestamp.
-      let handle;
-      try {
-        handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-      } catch (error) {
-        if (["ENOENT", "ELOOP"].includes((error as NodeJS.ErrnoException).code ?? "")) continue;
-        throw error;
-      }
       let bytes: Buffer, at: number;
       try {
-        const info = await handle.stat();
-        if (!info.isFile()) continue;
-        bytes = await handle.readFile();
-        at = info.mtimeMs;
-      } finally {
-        await handle.close();
+        ({ bytes, mtimeMs: at } = await readPrivateFile(file, MAX_LEGACY_BYTES));
+      } catch (error) {
+        if (["ENOENT", "ELOOP", "EUNSAFE"].includes((error as NodeJS.ErrnoException).code ?? "")) continue;
+        throw error;
       }
       if (session) {
         const raw = bytes.toString("utf8");

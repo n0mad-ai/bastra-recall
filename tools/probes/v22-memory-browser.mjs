@@ -264,7 +264,13 @@ try {
     } else if (msg.method === "Runtime.exceptionThrown")
       errors.push(msg.params.exceptionDetails.exception?.description || msg.params.exceptionDetails.text);
     else if (msg.method === "Runtime.consoleAPICalled" && msg.params.args[0]?.value === "MB-PROBE")
-      console.log(msg.params.args.map((a) => a.value).join(" "));
+      // One probe result per line: the page under test cannot forge further lines.
+      console.log(
+        msg.params.args
+          .map((a) => a.value)
+          .join(" ")
+          .replace(/[\r\n]+/g, " ")
+      );
   });
   await send("Runtime.enable");
   await send("Page.enable");

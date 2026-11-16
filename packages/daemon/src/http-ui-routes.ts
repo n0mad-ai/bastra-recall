@@ -104,7 +104,10 @@ export function dispatchUiRoutes(
   }
   // Live updates (#216): freshly saved memories for the map's live mode.
   if (method === "GET" && url.startsWith("/ui/updates")) {
-    liveUpdates.handleUiUpdates(req, res).catch(() => sendJson(res, 500, { error: "updates error" }));
+    // Private entries only for a proven owner account, like the graph.
+    liveUpdates
+      .handleUiUpdates(req, res, undefined, ctx.privateGraph === true)
+      .catch(() => sendJson(res, 500, { error: "updates error" }));
     return true;
   }
   // Areas manager (#216): list / create / rename / delete the vault's
@@ -245,16 +248,18 @@ function dispatchVaultImage(
 
 /** Exact "METHOD /path" routes (no prefix, no query). Add new simple routes
  *  here: the dispatcher's complexity stays the same however many there are. */
-const EXACT_UI_ROUTES: Record<string, (req: IncomingMessage, res: ServerResponse, ctx: UiRouteCtx) => Promise<void>> = {
+// A Map, not an object: a request-chosen key can only ever find one of these
+// entries, never an inherited property such as "constructor".
+const EXACT_UI_ROUTES = new Map<string, (req: IncomingMessage, res: ServerResponse, ctx: UiRouteCtx) => Promise<void>>([
   // "Improve text" on a vault-care note: same local chat client, nothing stored.
-  "POST /ui/improve-text": (req, res, ctx) => handleUiImproveText(req, res, ctx.uiChat ?? null),
+  ["POST /ui/improve-text", (req, res, ctx) => handleUiImproveText(req, res, ctx.uiChat ?? null)],
   // "Save as memory" under an agent answer (#1445): the normal save_memory path, user-directed.
-  "POST /ui/save-memory": (req, res, ctx) => handleUiSaveMemory(req, res, ctx.toolDeps, undefined, ctx.privateGraph),
+  ["POST /ui/save-memory", (req, res, ctx) => handleUiSaveMemory(req, res, ctx.toolDeps, undefined, ctx.privateGraph)],
   // Memory browser edits in the reader (#1446): edit_memory / archive_memory / restore, revision-checked.
-  "POST /ui/memory/edit": handleUiMemoryEdit,
-  "POST /ui/memory/archive": handleUiMemoryArchive,
-  "POST /ui/memory/restore": handleUiMemoryRestore,
-};
+  ["POST /ui/memory/edit", handleUiMemoryEdit],
+  ["POST /ui/memory/archive", handleUiMemoryArchive],
+  ["POST /ui/memory/restore", handleUiMemoryRestore],
+]);
 
 function dispatchExactUi(
   req: IncomingMessage,
@@ -263,7 +268,7 @@ function dispatchExactUi(
   url: string,
   ctx: UiRouteCtx
 ): boolean {
-  const route = Object.hasOwn(EXACT_UI_ROUTES, `${method} ${url}`) ? EXACT_UI_ROUTES[`${method} ${url}`] : undefined;
+  const route = EXACT_UI_ROUTES.get(`${method} ${url}`);
   if (!route) return false;
   route(req, res, ctx).catch(() => sendJson(res, 500, { error: "ui error" }));
   return true;

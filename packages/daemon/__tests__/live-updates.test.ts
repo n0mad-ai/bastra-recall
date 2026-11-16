@@ -465,3 +465,67 @@ test("live updates: an area born after page load arrives WITH its grouping (#307
     await h.cleanup();
   }
 });
+
+test("live updates: private memories reach only a caller with private access, deletes included", async () => {
+  const vaultDir = await mkdtemp(join(tmpdir(), "live-private-"));
+  const settingsDir = await mkdtemp(join(tmpdir(), "live-private-settings-"));
+  const settingsPath = join(settingsDir, "cli-settings.json");
+  await writeFile(settingsPath, JSON.stringify({ ui: { enabled: true } }));
+  const memDir = join(vaultDir, "memories", "projects", "live-test");
+  await mkdir(memDir, { recursive: true });
+  const privateMd = (id: string) =>
+    memoryMarkdown(id, `Secret ${id}`).replace("---\n\nBody.", "sensitivity: private\n---\n\nBody.");
+  // Indexed before the subscription: its later delete has no earlier entry.
+  await writeFile(join(memDir, "old-secret.md"), privateMd("old-secret"));
+  await writeFile(join(memDir, "gone-secret.md"), privateMd("gone-secret"));
+  const vault = new Vault(vaultDir);
+  await vault.init();
+  const live = createLiveUpdates(vault, { debounceMs: DEBOUNCE, maxEntries: 500 });
+  const server = createServer((req, res) => {
+    void live.handleUiUpdates(req, res, settingsPath, req.headers["x-fixture-private"] === "1");
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as { port: number }).port;
+  const call = (showPrivate: boolean): Promise<LiveUpdate[]> =>
+    new Promise((resolve, reject) => {
+      const rq = request(
+        {
+          hostname: "127.0.0.1",
+          port,
+          path: "/ui/updates?since=0",
+          headers: showPrivate ? { "x-fixture-private": "1" } : {},
+        },
+        (res) => {
+          let raw = "";
+          res.on("data", (c) => (raw += c));
+          res.on("end", () => resolve(JSON.parse(raw).updates));
+        }
+      );
+      rq.on("error", reject);
+      rq.end();
+    });
+  try {
+    await writeFile(join(memDir, "open-note.md"), memoryMarkdown("open-note", "Open note"));
+    await vault.reindexFile(join(memDir, "open-note.md"));
+    await writeFile(join(memDir, "new-secret.md"), privateMd("new-secret"));
+    await vault.reindexFile(join(memDir, "new-secret.md"));
+    live.notifyRead("old-secret");
+    vault.forgetFile(join(memDir, "old-secret.md"));
+    vault.forgetFile(join(memDir, "gone-secret.md"));
+    await delay(AFTER);
+    const outside = await call(false);
+    assert.deepEqual(
+      outside.map((u) => u.id),
+      ["open-note"]
+    );
+    assert.ok(!JSON.stringify(outside).includes("Secret") && !JSON.stringify(outside).includes("secret"));
+    const owner = await call(true);
+    assert.deepEqual(owner.map((u) => u.id).sort(), ["gone-secret", "new-secret", "old-secret", "open-note"]);
+    assert.equal(owner.find((u) => u.id === "old-secret")?.kind, "delete");
+  } finally {
+    live.stop();
+    server.close();
+    await rm(vaultDir, { recursive: true, force: true });
+    await rm(settingsDir, { recursive: true, force: true });
+  }
+});

@@ -24,7 +24,7 @@
  *     mit Zeitstempel des Vortags; die Datei wählt der Zeitstempel).
  * Zeilen von Tagen, deren Logdatei die Retention gelöscht hat, werden entfernt.
  */
-import { readFile, stat } from "node:fs/promises";
+import { open, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { openAppDatabase, type AppDatabase } from "./app-database.js";
@@ -223,10 +223,19 @@ export class TelemetryDayStore implements FinishedDaySource {
    * Tag wird dann aus dem Log gelesen.
    */
   async eventsOf(logDir: string, file: string, day: string): Promise<ReportEvent[]> {
-    const path = join(logDir, file);
-    // stat vor dem Lesen: wächst die Datei dazwischen, passt die gespeicherte
-    // Größe nicht mehr und der Tag wird beim nächsten Mal neu gelesen.
-    const st = await stat(path);
+    // Größe und Inhalt kommen aus DEMSELBEN geöffneten Deskriptor: stat vor
+    // dem Lesen — wächst die Datei dazwischen, passt die gespeicherte Größe
+    // nicht mehr und der Tag wird beim nächsten Mal neu gelesen.
+    const handle = await open(join(logDir, file), "r");
+    try {
+      return await this.eventsFromHandle(handle, logDir, day);
+    } finally {
+      await handle.close();
+    }
+  }
+
+  private async eventsFromHandle(handle: FileHandle, logDir: string, day: string): Promise<ReportEvent[]> {
+    const st = await handle.stat();
     try {
       const row = this.db.sqlite
         .prepare("SELECT version,file_size,file_mtime_ms,events_json_gz FROM telemetry_days WHERE log_dir=? AND day=?")
@@ -242,7 +251,7 @@ export class TelemetryDayStore implements FinishedDaySource {
     } catch {
       /* database unavailable: read the log below */
     }
-    const events = parseEventLines(await readFile(path, "utf8")).map(slimEvent);
+    const events = parseEventLines(await handle.readFile("utf8")).map(slimEvent);
     try {
       this.db.sqlite
         .prepare(
