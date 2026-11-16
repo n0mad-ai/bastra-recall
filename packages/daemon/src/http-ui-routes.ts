@@ -183,8 +183,8 @@ export function dispatchUiRoutes(
     }).catch(() => sendJson(res, 500, { error: "ui error" }));
     return true;
   }
-  // "Improve text" on a vault-care note: same local chat client, nothing stored.
-  if (dispatchUiImprove(req, res, method, url, ctx.uiChat)) return true;
+  // Exact "METHOD /path" routes: a new one is a table entry, not a branch.
+  if (dispatchExactUi(req, res, method, url, ctx)) return true;
   // Agent window history (chat-history.ts): list, open, delete conversations.
   if (dispatchChatHistory(req, res, method, url)) return true;
   // Background image of the web UI: local uploads + current settings.
@@ -224,14 +224,22 @@ function dispatchVaultImage(
   return false;
 }
 
-function dispatchUiImprove(
+/** Exact "METHOD /path" routes (no prefix, no query). Add new simple routes
+ *  here: the dispatcher's complexity stays the same however many there are. */
+const EXACT_UI_ROUTES: Record<string, (req: IncomingMessage, res: ServerResponse, ctx: UiRouteCtx) => Promise<void>> = {
+  // "Improve text" on a vault-care note: same local chat client, nothing stored.
+  "POST /ui/improve-text": (req, res, ctx) => handleUiImproveText(req, res, ctx.uiChat ?? null),
+};
+
+function dispatchExactUi(
   req: IncomingMessage,
   res: ServerResponse,
   method: string,
   url: string,
-  chat: ChatFn | null | undefined
+  ctx: UiRouteCtx
 ): boolean {
-  if (method !== "POST" || url !== "/ui/improve-text") return false;
-  handleUiImproveText(req, res, chat ?? null).catch(() => sendJson(res, 500, { error: "ui error" }));
+  const route = Object.hasOwn(EXACT_UI_ROUTES, `${method} ${url}`) ? EXACT_UI_ROUTES[`${method} ${url}`] : undefined;
+  if (!route) return false;
+  route(req, res, ctx).catch(() => sendJson(res, 500, { error: "ui error" }));
   return true;
 }

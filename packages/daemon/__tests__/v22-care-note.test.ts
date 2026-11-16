@@ -59,11 +59,38 @@ test("note field: a failed improve keeps the original text and shows the reason"
   assert.equal(noteView(s).canImprove, true, "can try again");
   assert.equal(improveError(504), "mb.improveSlow");
   assert.equal(improveError(413), "mb.improveTooLong");
-  assert.equal(improveError(0), "mb.improveFail");
-  assert.equal(improveError(502), "mb.improveFail");
   assert.equal(noteStep(s, { type: "input", text: "x" }).error, null, "typing clears the message");
   // late answers after the field moved on are ignored
   assert.equal(noteStep(noteInit("a"), { type: "improved", text: "b" }).text, "a");
+});
+
+test("note field: every failure of the daemon answer maps to a visible message, the text stays", async () => {
+  const { noteInit, noteStep, noteView, improveOutcome, improveError } = await load(
+    "care-note.js",
+    "noteInit, noteStep, noteView, improveOutcome, improveError"
+  );
+  const cases: Array<[unknown, unknown, string]> = [
+    [404, { error: "not found: POST /ui/improve-text" }, "mb.improveOld"], // daemon not restarted yet
+    [405, null, "mb.improveOld"],
+    [500, { error: "ui error" }, "mb.improveFail"],
+    [502, { error: "model failed" }, "mb.improveModel"],
+    [503, { error: "no local chat model available" }, "mb.improveNoModel"],
+    [504, { error: "model did not answer in time" }, "mb.improveSlow"],
+    ["timeout", null, "mb.improveSlow"], // the page's own 60 s limit
+    ["offline", null, "mb.improveOffline"], // fetch threw: daemon down
+    [200, { text: "   " }, "mb.improveEmpty"],
+    [200, null, "mb.improveEmpty"], // not JSON
+  ];
+  for (const [status, body, key] of cases) {
+    const out = typeof status === "number" ? improveOutcome(status, body) : { error: improveError(status) };
+    assert.equal(out.error, key, `${status}`);
+    let s = noteStep(noteInit("Originaltext"), { type: "improve" });
+    s = noteStep(s, { type: "failed", error: out.error });
+    assert.equal(s.text, "Originaltext", `${status}: text unchanged`);
+    assert.equal(noteView(s).error, key, `${status}: message shown`);
+    assert.equal(noteView(s).working, false);
+  }
+  assert.deepEqual({ ...improveOutcome(200, { text: "Klar." }) }, { text: "Klar." });
 });
 
 test("note field: empty text cannot be improved; editing a saved note needs text to save", async () => {
@@ -79,6 +106,7 @@ test("note field: empty text cannot be improved; editing a saved note needs text
 test("saved flag: view → edit → cancel/save → view; save errors by status", async () => {
   const { flagStep, careSaveError } = await load("membrowser-care.js", "flagStep, careSaveError");
   assert.equal(flagStep("view", { type: "edit" }), "edit");
+  assert.equal(flagStep("view", { type: "improve" }), "edit", "the overview's improve opens the editor");
   assert.equal(flagStep("edit", { type: "cancel" }), "view");
   assert.equal(flagStep("edit", { type: "saved" }), "view");
   assert.equal(flagStep("view", { type: "cancel" }), "view");

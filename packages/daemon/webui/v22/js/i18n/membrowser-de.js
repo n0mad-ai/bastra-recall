@@ -87,4 +87,10 @@ export default {
   "mb.improveSlow": "Das Modell antwortet nicht rechtzeitig – Text bleibt unverändert.",
   "mb.improveTooLong": "Text zu lang zum Verbessern – Text bleibt unverändert.",
   "mb.improveFail": "Verbessern fehlgeschlagen – Text bleibt unverändert.",
+  "mb.improveOld":
+    "Der laufende Daemon kennt „Text verbessern“ noch nicht – bitte Recall neu starten bzw. aktualisieren. Text bleibt unverändert.",
+  "mb.improveModel":
+    "Das lokale Modell ist nicht erreichbar oder lieferte nichts Brauchbares – Text bleibt unverändert.",
+  "mb.improveOffline": "Recall ist nicht erreichbar – Text bleibt unverändert.",
+  "mb.improveEmpty": "Das Modell lieferte keinen Text – Text bleibt unverändert.",
 };

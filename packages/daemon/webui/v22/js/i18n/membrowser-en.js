@@ -88,4 +88,9 @@ export default {
   "mb.improveSlow": "The model did not answer in time — text unchanged.",
   "mb.improveTooLong": "Text too long to improve — text unchanged.",
   "mb.improveFail": "Improving failed — text unchanged.",
+  "mb.improveOld":
+    "The running daemon does not know “improve text” yet — please restart or update Recall. Text unchanged.",
+  "mb.improveModel": "The local model is unreachable or returned nothing usable — text unchanged.",
+  "mb.improveOffline": "Recall is not reachable — text unchanged.",
+  "mb.improveEmpty": "The model returned no text — text unchanged.",
 };

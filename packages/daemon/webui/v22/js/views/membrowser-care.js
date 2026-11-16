@@ -10,9 +10,10 @@ import { noteEditor } from "./care-note.js";
 const str = (v) => (typeof v === "string" ? v : "");
 
 // ── pure state of one saved flag: "view" → "edit" → (save) "view" | (cancel) "view" ──
-/** Events: edit, cancel, saved. */
+/** Events: edit, improve (the overview's "improve text": opens the editor and
+ *  starts the model there), cancel, saved. */
 export function flagStep(mode, ev) {
-  if (ev.type === "edit") return mode === "view" ? "edit" : mode;
+  if (ev.type === "edit" || ev.type === "improve") return mode === "view" ? "edit" : mode;
   if (ev.type === "cancel" || ev.type === "saved") return mode === "edit" ? "view" : mode;
   return mode;
 }
@@ -48,11 +49,22 @@ function flagItem(m, a, rerender) {
         ...head,
         h("span.mb-care__note-text", { text: str(a.note) || "—" }),
         h("span.mb-care__date", { text: str(a.date) }),
-        h("button.mb-btn.is-quiet.mb-care__edit", {
-          type: "button",
-          text: t("mb.careEdit"),
-          on: { click: () => go({ type: "edit" }) },
-        })
+        h(
+          "div.mb-care__acts",
+          null,
+          h("button.mb-btn.is-quiet.mb-care__edit", {
+            type: "button",
+            text: t("mb.careEdit"),
+            on: { click: () => go({ type: "edit" }) },
+          }),
+          str(a.note).trim()
+            ? h("button.mb-btn.is-quiet.mb-care__edit", {
+                type: "button",
+                text: t("mb.improve"),
+                on: { click: () => go({ type: "improve" }) },
+              })
+            : null
+        )
       );
       return;
     }
@@ -71,11 +83,15 @@ function flagItem(m, a, rerender) {
       },
     });
     item.replaceChildren(...head, h("span.mb-care__date", { text: str(a.date) }), ed.el);
-    ed.focus();
+    return ed;
   }
   function go(ev) {
     mode = flagStep(mode, ev);
-    paint();
+    const ed = paint();
+    if (!ed) return;
+    // the overview's "improve text" runs right in the opened editor
+    if (ev.type === "improve") ed.improve();
+    else ed.focus();
   }
   paint();
   return item;

@@ -45,35 +45,54 @@ export function noteView(s, required = false) {
   };
 }
 
-/** i18n key for a failed improve, by HTTP status (0 = no answer at all). */
+// The daemon gives the model 45 s; the page waits a little longer, never forever.
+const CLIENT_TIMEOUT_MS = 60_000;
+
+/** i18n key for a failed improve: an HTTP status, or "offline" (no answer
+ *  at all), "timeout" (the page gave up), "empty" (200 without usable text).
+ *  404/405 = a daemon that predates the route — it needs a restart. */
 export function improveError(status) {
   if (status === 503) return "mb.improveNoModel";
-  if (status === 504) return "mb.improveSlow";
+  if (status === 504 || status === "timeout") return "mb.improveSlow";
+  if (status === 502) return "mb.improveModel";
   if (status === 413) return "mb.improveTooLong";
+  if (status === 404 || status === 405) return "mb.improveOld";
+  if (status === "offline") return "mb.improveOffline";
+  if (status === "empty") return "mb.improveEmpty";
   return "mb.improveFail";
 }
 
+/** The daemon's answer → { text } or { error: i18n key }. */
+export function improveOutcome(status, body) {
+  if (status < 200 || status > 299) return { error: improveError(status) };
+  return typeof body?.text === "string" && body.text.trim() ? { text: body.text } : { error: improveError("empty") };
+}
+
 async function requestImprove(text) {
-  let r;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), CLIENT_TIMEOUT_MS);
   try {
-    r = await fetch("/ui/improve-text", {
+    const r = await fetch("/ui/improve-text", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),
+      signal: ctrl.signal,
     });
-  } catch {
-    return { error: improveError(0) };
+    return improveOutcome(r.status, await r.json().catch(() => null));
+  } catch (err) {
+    return { error: improveError(err?.name === "AbortError" ? "timeout" : "offline") };
+  } finally {
+    clearTimeout(timer);
   }
-  const b = await r.json().catch(() => null);
-  return r.ok && typeof b?.text === "string" && b.text.trim() ? { text: b.text } : { error: improveError(r.status) };
 }
 
 /**
  * The note editor. `saveLabel` / `busyLabel` name the save button at rest and
  * while storing. `onSave(text)` resolves when stored or rejects with an
  * Error whose message is shown; `onCancel` adds a cancel button (editing).
- * Returns { el, focus }.
+ * Returns { el, focus, improve } — `improve()` starts "improve text" as if
+ * its button was clicked (the saved flag's overview button uses it).
  */
 export function noteEditor({ value = "", required = false, saveLabel, busyLabel, onSave, onCancel }) {
   let s = noteInit(value);
@@ -96,6 +115,10 @@ export function noteEditor({ value = "", required = false, saveLabel, busyLabel,
     ? h("button.mb-btn.is-quiet", { type: "button", text: t("mb.careCancel"), on: { click: onCancel } })
     : null;
   const msg = h("div.cn__msg", { role: "status" });
+  const row = h("div.cn__row", null, save, improve, undo, cancel);
+  // The status sits right above the buttons and both are scrolled into view,
+  // so a click always shows its effect — even at the bottom of the reader.
+  const reveal = () => row.isConnected && row.scrollIntoView({ block: "nearest" });
 
   function paint() {
     const v = noteView(s, required);
@@ -118,8 +141,10 @@ export function noteEditor({ value = "", required = false, saveLabel, busyLabel,
     if (!noteView(s).canImprove) return;
     const text = s.text;
     step({ type: "improve" });
+    reveal();
     const r = await requestImprove(text);
     step(r.text !== undefined ? { type: "improved", text: r.text } : { type: "failed", error: r.error });
+    reveal();
   }
   async function runSave() {
     if (!noteView(s, required).canSave || saving) return;
@@ -136,9 +161,10 @@ export function noteEditor({ value = "", required = false, saveLabel, busyLabel,
       saving = false;
       save.textContent = saveLabel;
       if (save.isConnected) paint();
+      if (saveError) reveal();
     }
   }
-  const el = h("div.mb-care__compose", null, area, h("div.cn__row", null, save, improve, undo, cancel), msg);
+  const el = h("div.mb-care__compose", null, area, msg, row);
   paint();
   return {
     el,
@@ -146,5 +172,6 @@ export function noteEditor({ value = "", required = false, saveLabel, busyLabel,
       area.focus();
       growTextarea(area);
     },
+    improve: runImprove,
   };
 }
