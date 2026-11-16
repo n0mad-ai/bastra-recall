@@ -396,7 +396,10 @@ async function fixture(projection = false) {
     try {
       const done = new Promise<number | null>((resolve, reject) => {
         child.once("error", reject);
-        child.once("exit", resolve);
+        // "exit" can fire before the stdout pipe is drained, and the hook's
+        // answer then reads as "" (CI: "Unexpected end of JSON input").
+        // "close" waits until every stdio stream has ended.
+        child.once("close", resolve);
       });
       child.stdin.end(JSON.stringify({ session_id, cwd, bastra_client: "claude-code", ...input }));
       assert.equal(await done, 0, `real ${program} failed: ${stderr}`);

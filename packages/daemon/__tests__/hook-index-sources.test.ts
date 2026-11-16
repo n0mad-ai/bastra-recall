@@ -13,6 +13,11 @@ import { cachedRulebookCatalog, collectRulebookCatalog } from "../src/rulebook-c
 import { renderRuleKernel } from "../src/rule-kernel.js";
 let root: string;
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/** The blocked rule file never resolves, so a path that waited on it would
+ * never finish: the race only has to outlast real work, not measure it. The
+ * gate creates its SQLite state with synchronous=FULL; on a loaded CI runner
+ * that took 160-210 ms and tripped the former 150 ms bound. */
+const NEVER_SETTLES_BOUND_MS = 5_000;
 const opts = { project: null, active: [], floors: async () => [] };
 before(async () => {
   root = await mkdtemp(join(tmpdir(), "hook-index-sources-"));
@@ -61,7 +66,10 @@ function block(t: any, path: string) {
 test("fix8: recall hint sources use indexed revision, metadata and privacy with a hung rule file", async (t) => {
   const f = fixture(),
     reads = block(t, f.m.filePath);
-  const out = await Promise.race([readRulebookSources(f.vault, [f.m.fm.id]), wait(120).then(() => null)]);
+  const out = await Promise.race([
+    readRulebookSources(f.vault, [f.m.fm.id]),
+    wait(NEVER_SETTLES_BOUND_MS).then(() => null),
+  ]);
   assert.ok(out, "hint projection must not wait for rule-file IO");
   const source = out.get(f.m.fm.id)!;
   assert.equal(source.revision, f.m.revision);
@@ -91,7 +99,7 @@ test("fix8: prompt convention/revision adapters and reflex gate never reopen the
         { reflexPool: () => [f.m] }
       );
     })(),
-    wait(150).then(() => null),
+    wait(NEVER_SETTLES_BOUND_MS).then(() => null),
   ]);
   assert.ok(result, "hook adapters must not block on rule-file IO");
   assert.match(result, /deny/);

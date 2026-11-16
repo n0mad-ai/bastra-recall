@@ -11,6 +11,7 @@ import { runPromptLane } from "../src/prompt-lane.js";
 import { runStopLane } from "../src/stop-lane.js";
 import { recordRulebookCheck, RulebookCheckArgs } from "../src/rulebook-check.js";
 import { loadSessionState } from "../src/session-state.js";
+import { drainRulebookFailures } from "../src/rulebook-spool.js";
 import { renderRuleKernel } from "../src/rule-kernel.js";
 import type { KernelCandidates } from "../src/rulebook-catalog.js";
 const validator = { tool: "validate_artifact", channel: "discord", limit: 2000, unit: "codepoints" } as const;
@@ -55,6 +56,26 @@ after(async () => {
   else process.env.BASTRA_HOOK_STATE_DIR = previous;
   await rm(dir, { recursive: true, force: true });
 });
+/** "{}" is also the gate's fail-open answer when its 150 ms rulebook budget
+ * runs out, as on a loaded CI runner ("parity ru", 16.11.2026). That path
+ * spools one failure for the session; only then is the same call repeated,
+ * after the 5 s catalog backoff `catalogFor` sets for the session. */
+const CATALOG_BACKOFF_MS = 5_000;
+async function gateDecision(action: Parameters<typeof runGateLane>[0]) {
+  for (let attempt = 1; ; attempt++) {
+    const out = JSON.parse(await runGateLane(action, deps));
+    if (out.hookSpecificOutput || attempt === 3 || !(await budgetRanOut(String(action.session_id)))) return out;
+    await new Promise((resolve) => setTimeout(resolve, CATALOG_BACKOFF_MS + 100));
+  }
+}
+async function budgetRanOut(sid: string): Promise<boolean> {
+  // The timeout path spools without awaiting; give the write a moment to land.
+  for (let poll = 0; poll < 25; poll++) {
+    if ((await drainRulebookFailures(sid)) > 0) return true;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  return false;
+}
 const p = (sid: string) => ({ session_id: sid, bastra_client: "claude-code", hook_event_name: "PreToolUse" });
 // Task stages are explicit reports, independent of user wording.
 const report = async (sid: string, task: string, ids = ["messages"]) =>
@@ -110,7 +131,7 @@ for (const [lang, incoming] of Object.entries({
     assert.equal(state.activeTask?.kind, "approved-copy");
     for (const command of ["gh issue create --title fixture", "gh pr edit 42 --title fixture"]) {
       const action = { ...p(sid + command), tool_name: "Bash", tool_input: { command } };
-      assert.equal(JSON.parse(await runGateLane(action, deps)).hookSpecificOutput.permissionDecision, "deny");
+      assert.equal((await gateDecision(action)).hookSpecificOutput?.permissionDecision, "deny");
       await recordRulebookCheck(action.session_id, { applicable: ["issues"] }, catalog);
       assert.notEqual(JSON.parse(await runGateLane(action, deps)).hookSpecificOutput?.permissionDecision, "deny");
     }
