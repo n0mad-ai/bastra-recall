@@ -9,7 +9,7 @@ import { h, clear } from "./dom.js";
 import { t } from "./i18n.js";
 import { loadWeather } from "./data.js";
 import { loadingInline, setBusy } from "./sections/loading.js";
-import { createWeather } from "../../js/managers/weather.js";
+import { createWeather } from "../engines/managers/weather.js";
 
 let shared = null;
 const listeners = new Set();

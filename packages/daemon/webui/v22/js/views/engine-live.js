@@ -5,10 +5,10 @@
 // colour. The notice cards and the session history belong to the Live tab and
 // are not drawn here. Events come from data.js (onUpdates); the engines and
 // the shared live-kinds table are imported unchanged from the old UI.
-import { clusterHues } from "../../../js/graph-data.js";
-import { createLiveNodes } from "../../../js/live-nodes.js";
-import { drawBurstAt, BURST_LIFE } from "../../../js/managers/orbit-view.js";
-import { KIND_META } from "../../../js/managers/live-kinds.js";
+import { clusterHues } from "../../engines/graph-data.js";
+import { createLiveNodes } from "../../engines/live-nodes.js";
+import { drawBurstAt, BURST_LIFE } from "../../engines/managers/orbit-view.js";
+import { KIND_META } from "../../engines/managers/live-kinds.js";
 
 const str = (v) => (typeof v === "string" ? v : "");
 

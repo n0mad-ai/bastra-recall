@@ -11,7 +11,7 @@ import { zoomBar, overlay, areaCard, memoryCard, dock, park, TC, INK } from "./c
 import { mountMemoryBrowser } from "./memory-browser.js";
 import { attach, engine } from "./engine-host.js";
 import { signalMatch } from "./signals.js";
-import { CORES } from "../../../js/managers/orbit-core.js";
+import { CORES } from "../../engines/managers/orbit-core.js";
 import { weatherPicker } from "../weather-place.js";
 import { loadingBlock } from "../sections/loading.js";
 

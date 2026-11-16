@@ -20,9 +20,9 @@ import { promisify } from "node:util";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { createServer, request } from "node:http";
-import { handleWebUi, resolveWebUiDir } from "../src/webui.js";
+import { handleWebUi, resolveEngineDir, resolveWebUiDir } from "../src/webui.js";
 
 interface Res {
   status: number;
@@ -59,6 +59,22 @@ async function fetchAsset(path: string): Promise<Res> {
     await rm(assets, { recursive: true, force: true });
     await rm(settingsDir, { recursive: true, force: true });
   }
+}
+
+/** The shipped scripts of the UI: its own and the engines it hosts (its vendor/ stays untouched and is skipped). */
+async function shippedScripts(): Promise<string[]> {
+  const root = resolveWebUiDir();
+  const files: string[] = [];
+  const walk = async (dir: string): Promise<void> => {
+    for (const e of await readdir(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) await walk(p);
+      else if (e.name.endsWith(".js")) files.push(p);
+    }
+  };
+  await walk(join(root, "js"));
+  await walk(resolveEngineDir());
+  return files;
 }
 
 test("CSP: the document carries a policy that bounds where the map may talk", async () => {
@@ -117,20 +133,12 @@ test("CSP: every host the shipped web UI fetches from is declared", async () => 
   // eingebautes fetch-Ziel zu fangen, das niemand in die Policy eingetragen
   // hat. Nur fetch() zählt — <a href> ist Navigation und wird von connect-src
   // nicht berührt, sonst würden die GitHub-Feedback-Links hier falsch feuern.
-  const jsDir = join(resolveWebUiDir(), "js");
-  const files: string[] = [];
-  const walk = async (dir: string): Promise<void> => {
-    for (const e of await readdir(dir, { withFileTypes: true })) {
-      const p = join(dir, e.name);
-      if (e.isDirectory()) await walk(p);
-      else if (e.name.endsWith(".js")) files.push(p);
-    }
-  };
-  await walk(jsDir);
+  const files = await shippedScripts();
   assert.ok(files.length > 0, "expected to find the shipped web UI sources");
 
   const hosts = new Set<string>();
-  for (const f of files) {
+  // Translation tables hold display text (an example like "https://host"), never a fetch target.
+  for (const f of files.filter((f) => !f.includes(`${sep}i18n${sep}`))) {
     const src = await readFile(f, "utf8");
     // Nur Hosts in STRING-LITERALEN — das voranstehende Anführungszeichen ist
     // der Unterschied zwischen einem echten Ziel und einer Doku-URL in einem
@@ -161,20 +169,8 @@ test("CSP: the shipped web UI writes no inline style attribute that style-src 's
   // style-src has no 'unsafe-inline'. A style="" in markup or in an HTML string
   // assigned via innerHTML is then dropped by the browser; colour and layout set
   // through the CSSOM (el.style.x = …) are not governed by the directive.
-  // vendor/ctxmenu.js can set a style attribute only from an item's `style`
-  // field, which nothing in this app populates; its injected <style> element
-  // is covered by the two tests below.
   const root = resolveWebUiDir();
-  const files: string[] = [join(root, "index.html")];
-  const walk = async (dir: string): Promise<void> => {
-    for (const e of await readdir(dir, { withFileTypes: true })) {
-      const p = join(dir, e.name);
-      if (e.isDirectory()) {
-        if (e.name !== "vendor") await walk(p);
-      } else if (e.name.endsWith(".js")) files.push(p);
-    }
-  };
-  await walk(join(root, "js"));
+  const files = [join(root, "index.html"), ...(await shippedScripts())];
   const hits: string[] = [];
   for (const f of files) {
     const lines = (await readFile(f, "utf8")).split("\n");
@@ -187,23 +183,9 @@ test("CSP: the shipped web UI writes no inline style attribute that style-src 's
 });
 
 test("CSP: the app injects no <style> element that style-src 'self' would block", async () => {
-  // A <style> element created at runtime is inline style too. The only one the
-  // shipped UI ever had is vendor/ctxmenu.js's; its rules live in overlays.css
-  // (next test), the vendor file stays untouched and is skipped here.
+  // A <style> element created at runtime is inline style too.
   const root = resolveWebUiDir();
-  const files: string[] = [join(root, "index.html")];
-  // The local-only recording choreography (.gitignore: not shipped, loaded
-  // behind ?demo=1) is not part of the UI this pins.
-  const localDemo = join(root, "js", "demo.js");
-  const walk = async (dir: string): Promise<void> => {
-    for (const e of await readdir(dir, { withFileTypes: true })) {
-      const p = join(dir, e.name);
-      if (e.isDirectory()) {
-        if (e.name !== "vendor") await walk(p);
-      } else if (e.name.endsWith(".js") && p !== localDemo) files.push(p);
-    }
-  };
-  await walk(join(root, "js"));
+  const files = [join(root, "index.html"), ...(await shippedScripts())];
   const hits: string[] = [];
   for (const f of files) {
     const lines = (await readFile(f, "utf8")).split("\n");
@@ -215,59 +197,32 @@ test("CSP: the app injects no <style> element that style-src 'self' would block"
   assert.deepEqual(hits, [], "an injected <style> element is blocked by style-src 'self'");
 });
 
-test("CSP: overlays.css carries every base rule ctxmenu.js would inject", async () => {
-  // vendor/ctxmenu.js injects its base stylesheet as a <style> element, which
-  // style-src 'self' blocks. Without these rules the right-click menu loses
-  // position:fixed and its z-index and lands in the page flow. The test reads
-  // the rules out of the vendor file, so a vendor update cannot drift past it.
-  const root = resolveWebUiDir();
-  const vendor = await readFile(join(root, "vendor", "ctxmenu.js"), "utf8");
-  const injected = /var styles = '([^']*)'/.exec(vendor)?.[1];
-  assert.ok(injected, "ctxmenu.js no longer carries its styles string — re-check what it injects");
-
-  const norm = (d: string): string =>
-    d
-      .trim()
-      .replace(/\s*([:,])\s*/g, "$1")
-      .replace(/\s+/g, " ");
-  const rulesOf = (css: string): Map<string, Set<string>> => {
-    const rules = new Map<string, Set<string>>();
-    for (const m of css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^}]*)\}/g)) {
-      const sel = m[1].trim().replace(/\s+/g, " ");
-      const decls = rules.get(sel) ?? new Set<string>();
-      for (const d of m[2].split(";")) if (d.trim()) decls.add(norm(d));
-      rules.set(sel, decls);
-    }
-    return rules;
-  };
-  const shipped = rulesOf(await readFile(join(root, "css", "overlays.css"), "utf8"));
-  const missing: string[] = [];
-  for (const [sel, decls] of rulesOf(injected)) {
-    if (sel === "html") continue; // html{min-height:100%}: base.css gives html height:100%
-    for (const d of decls) if (!shipped.get(sel)?.has(d)) missing.push(`${sel} { ${d} }`);
-  }
-  assert.deepEqual(missing, [], "a ctxmenu base rule is missing from overlays.css");
-});
-
-test("CSP exclusion: the local demo is excluded from the npm package, not just git", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "bastra-demo-pack-"));
-  try {
-    await mkdir(join(dir, "webui", "js"), { recursive: true });
-    await writeFile(join(dir, "package.json"), await readFile(new URL("../package.json", import.meta.url), "utf8"));
-    const ignore = await readFile(new URL("../webui/js/.npmignore", import.meta.url), "utf8").catch(() => "");
-    await writeFile(join(dir, "webui", "js", ".npmignore"), ignore);
-    await writeFile(join(dir, "webui", "js", "main.js"), "export const shipped = true;");
-    await writeFile(join(dir, "webui", "js", "demo.js"), 'document.createElement("style");');
-    const { stdout } = await promisify(execFile)("npm", ["pack", "--ignore-scripts", "--dry-run", "--json"], {
-      cwd: dir,
-      env: { ...process.env, npm_config_cache: join(dir, "cache") },
-    });
-    const paths = (JSON.parse(stdout) as Array<{ files: Array<{ path: string }> }>)[0].files.map((f) => f.path);
-    assert.ok(paths.includes("webui/js/main.js"), "the regular web UI must still ship");
-    assert.ok(!paths.includes("webui/js/demo.js"), "a file skipped by the shipped-code CSP test must not ship");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
+test("package: the npm package ships the UI v2 with its engines and nothing of the first UI", async () => {
+  const { stdout } = await promisify(execFile)("npm", ["pack", "--ignore-scripts", "--dry-run", "--json"], {
+    cwd: new URL("..", import.meta.url),
+  });
+  const paths = (JSON.parse(stdout) as Array<{ files: Array<{ path: string }> }>)[0].files.map((f) => f.path);
+  const ui = paths.filter((p) => p.startsWith("webui/"));
+  for (const p of [
+    "webui/v22/index.html",
+    "webui/v22/js/main.js",
+    "webui/js/renderer.js",
+    "webui/js/managers/orbit-view.js",
+  ])
+    assert.ok(ui.includes(p), `${p} must ship`);
+  for (const p of [
+    "webui/index.html",
+    "webui/js/app.js",
+    "webui/js/tasks.js",
+    "webui/css/app.css",
+    "webui/vendor/ctxmenu.js",
+  ])
+    assert.ok(!ui.includes(p), `${p} belongs to the first UI and must not ship`);
+  assert.deepEqual(
+    ui.filter((p) => !p.startsWith("webui/v22/") && !p.startsWith("webui/js/")),
+    [],
+    "the daemon serves webui/v22/ and the engines in webui/js/, nothing else"
+  );
 });
 
 test("integrated task view retains the main map framing boundary", async () => {

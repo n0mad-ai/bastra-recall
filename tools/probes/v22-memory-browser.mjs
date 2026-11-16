@@ -25,11 +25,11 @@ const send = (method, params = {}) =>
 
 async function browserProbe(quick = false) {
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const { data } = await import("/ui/v22/js/data.js");
-  const { setState } = await import("/ui/v22/js/state.js");
-  const { vault, inWindow, timeWindow } = await import("/ui/v22/js/views/vault-data.js");
-  const { openMemoryBrowser } = await import("/ui/v22/js/views/memory-browser.js");
-  const { memoryCard, areaCard } = await import("/ui/v22/js/views/chrome.js");
+  const { data } = await import("/ui/js/data.js");
+  const { setState } = await import("/ui/js/state.js");
+  const { vault, inWindow, timeWindow } = await import("/ui/js/views/vault-data.js");
+  const { openMemoryBrowser } = await import("/ui/js/views/memory-browser.js");
+  const { memoryCard, areaCard } = await import("/ui/js/views/chrome.js");
   for (let i = 0; i < 100 && !data.graph; i++) await sleep(100);
   const v = vault();
   if (!v?.total) throw new Error("No graph available");
@@ -172,7 +172,7 @@ async function browserProbe(quick = false) {
   // Exercise the real agent-source button with a mocked chat response,
   // without persisting a conversation or calling an LLM.
   const originalFetch = window.fetch;
-  const { ask } = await import("/ui/v22/js/agent.js");
+  const { ask } = await import("/ui/js/agent.js");
   try {
     window.fetch = (url, init) =>
       String(url).includes("/ui/chat")
@@ -269,7 +269,7 @@ try {
   await send("Runtime.enable");
   await send("Page.enable");
   await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
-  await send("Page.navigate", { url: "http://127.0.0.1:6723/ui/v22/index.html" });
+  await send("Page.navigate", { url: "http://127.0.0.1:6723/ui/" });
   await sleep(2500);
   const result = await send("Runtime.evaluate", {
     expression: `(${browserProbe.toString()})(${process.argv[3] === "quick"})`,

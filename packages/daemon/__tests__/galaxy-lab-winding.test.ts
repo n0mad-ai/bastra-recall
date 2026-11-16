@@ -17,7 +17,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 // @ts-expect-error — plain browser module, no types (same as the map modules
-// live-updates.test.ts and memory-counter.test.ts pull in).
+// live-updates.test.ts pulls in).
 import { milkyWayLayout, ROLE } from "../webui/js/managers/orbit-cosmos.js";
 
 type Member = { id: string; sub?: string; group?: string };

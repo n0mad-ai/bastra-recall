@@ -1,9 +1,11 @@
 import { tasksEnabled } from "./tasks-enabled.js";
 /**
- * Vault map web UI (#207) — static file serving for /ui.
+ * Web UI (#207) — static file serving for /ui.
  *
- * Serves the self-contained viewer bundled in `packages/daemon/webui/`
- * (plain HTML/CSS/JS, vendored assets only, zero external requests). Opt-in:
+ * Serves the self-contained UI v2 bundled in `packages/daemon/webui/v22/`
+ * (plain HTML/CSS/JS, vendored assets only) at /ui/, and the unchanged map
+ * engines it hosts (Mindspace, Clouds, Semantic) from `webui/js/` at
+ * /ui/engines/. The former /ui/v22/ address redirects to /ui/. Opt-in:
  * gated per-request on the `ui.enabled` cli-setting, so
  * `bastra config set ui.enabled true|false` takes effect without a daemon
  * restart. Loopback-only by construction: the route sits outside /api/v1/*,
@@ -41,21 +43,14 @@ import {
  * Derived from what the page actually uses, verified against the sources:
  *   default-src 'self'  — everything not named below stays same-origin
  *   connect-src         — the daemon + exactly the three weather services
- *                         (managers/weather.js: forecast · geocode · reverse)
- *   img-src data:       — the inline SVG favicon in index.html
- *           blob:       — components/image-cropper.js previews a picked file
- *   style-src           — 'self' only. The three style="" attributes
- *                         that once justified 'unsafe-inline' here are gone
- *                         from index.html, and the colour dots in search.js
- *                         and inspector.js are set through the CSSOM after
- *                         insertion; the .style assignments across the
- *                         managers are CSSOM writes and were never governed
- *                         by this directive. ctxmenu.js injects a <style>
- *                         element with its base rules, which this blocks;
- *                         those rules live in css/overlays.css instead. It
- *                         can also set an inline style attribute from an
- *                         item's `style` field, but nothing in this app
- *                         populates it.
+ *                         (webui/js/managers/weather.js: forecast · geocode
+ *                         · reverse)
+ *   img-src data: blob: — unused by the UI v2 today (the first UI's favicon
+ *                         and image cropper needed them); left as it was
+ *   style-src           — 'self' only, no 'unsafe-inline': no style=""
+ *                         attribute and no injected <style> element; the
+ *                         .style assignments in the scripts are CSSOM writes
+ *                         and were never governed by this directive.
  *   object-src 'none' · frame-ancestors 'none' · base-uri 'self' — the page
  *                         embeds no plugins, must not be framed, and must not
  *                         let an injected <base> retarget its relative URLs.
@@ -93,9 +88,29 @@ const CONTENT_TYPES: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
-/** dist/webui.js → ../webui — the asset folder ships at the package root. */
+/** dist/webui.js → ../webui/v22 — the asset folder ships at the package root. */
 export function resolveWebUiDir(): string {
-  return join(dirname(fileURLToPath(import.meta.url)), "..", "webui");
+  return join(dirname(fileURLToPath(import.meta.url)), "..", "webui", "v22");
+}
+
+/** dist/webui.js → ../webui/js — the map engines, served at /ui/engines/. */
+export function resolveEngineDir(): string {
+  return join(dirname(fileURLToPath(import.meta.url)), "..", "webui", "js");
+}
+
+const ENGINE_PREFIX = "engines/";
+
+/** The UI v2 was served at /ui/v22/ before it became /ui/ — old bookmarks
+ *  and links still land: /ui/v22[/index.html][?q] → /ui/[?q], any other
+ *  /ui/v22/<path> → /ui/<path>. The target always starts with /ui/, so it
+ *  never leaves the daemon. null = not a former address. */
+export function legacyUiLocation(url: string): string | null {
+  const rest = url.slice("/ui/v22".length);
+  if (!url.startsWith("/ui/v22") || (rest !== "" && rest[0] !== "/" && rest[0] !== "?")) return null;
+  const q = rest.indexOf("?");
+  const path = q < 0 ? rest : rest.slice(0, q);
+  const query = q < 0 ? "" : rest.slice(q);
+  return (path === "" || path === "/" || path === "/index.html" ? "/ui/" : `/ui${path}`) + query;
 }
 
 // ─── vault care — the file format lives in vault-care.ts ────────────────────
@@ -374,23 +389,36 @@ function sendPlain(res: ServerResponse, status: number, msg: string): void {
   res.end(msg);
 }
 
+/** The file behind a /ui/ path, or null when it would leave its folder:
+ *  /ui/engines/<p> → <engineDir>/<p>, any other /ui/<p> → <webUiDir>/<p>. */
+function uiFile(rel: string, webUiDir: string, engineDir: string): string | null {
+  const engine = rel.startsWith(ENGINE_PREFIX);
+  // Traversal guard: the resolved target must stay inside its asset dir.
+  const root = resolve(engine ? engineDir : webUiDir);
+  const target = resolve(root, normalize(engine ? rel.slice(ENGINE_PREFIX.length) : rel));
+  return target === root || target.startsWith(root + sep) ? target : null;
+}
+
 /** Handles GET /ui and GET /ui/* — call only after the host gate passed.
- *  `webUiDir`/`settingsPath` are injectable for tests only. */
+ *  `webUiDir`/`settingsPath`/`engineDir` are injectable for tests only. */
 export async function handleWebUi(
   req: IncomingMessage,
   res: ServerResponse,
   url: string,
   webUiDir: string = resolveWebUiDir(),
-  settingsPath?: string
+  settingsPath?: string,
+  engineDir: string = resolveEngineDir()
 ): Promise<void> {
   if (!(await getUiEnabled(settingsPath))) {
     sendPlain(res, 404, "vault map UI is disabled — enable with: bastra config set ui.enabled true");
     return;
   }
 
-  // /ui → /ui/ so relative asset paths in index.html resolve.
-  if (url === "/ui") {
-    res.writeHead(302, { Location: "/ui/" });
+  // /ui → /ui/ so relative asset paths in index.html resolve; former
+  // /ui/v22/ addresses follow the UI to its root.
+  const location = url === "/ui" ? "/ui/" : legacyUiLocation(url);
+  if (location !== null) {
+    res.writeHead(302, { Location: location, "Cache-Control": "no-store" });
     res.end();
     return;
   }
@@ -398,10 +426,8 @@ export async function handleWebUi(
   const pathname = decodeURIComponent(new URL(url, "http://127.0.0.1").pathname);
   const rel = pathname === "/ui/" ? "index.html" : pathname.slice("/ui/".length);
 
-  // Traversal guard: the resolved target must stay inside the asset dir.
-  const root = resolve(webUiDir);
-  const target = resolve(root, normalize(rel));
-  if (target !== root && !target.startsWith(root + sep)) {
+  const target = uiFile(rel, webUiDir, engineDir);
+  if (target === null) {
     sendPlain(res, 403, "forbidden");
     return;
   }
@@ -415,7 +441,7 @@ export async function handleWebUi(
   try {
     let html: string | undefined;
     let contentLength: number;
-    if (rel === "index.html" || rel === "v22/index.html") {
+    if (rel === "index.html") {
       // Bind validation and reading to one descriptor (#1238, CodeQL).
       const file = await open(target, "r");
       try {
@@ -427,9 +453,10 @@ export async function handleWebUi(
         const enabled = tasksEnabled();
         // UI language follows language.primary: "de" → German, anything else → English.
         const lang = (await getPrimaryLanguage(settingsPath)) === "de" ? "de" : "en";
-        html = (await file.readFile("utf8"))
-          .replace("<html", `<html data-tasks-enabled="${enabled}" data-lang="${lang}"`)
-          .replace('data-view="tasks" hidden', enabled ? 'data-view="tasks"' : 'data-view="tasks" hidden');
+        html = (await file.readFile("utf8")).replace(
+          "<html",
+          `<html data-tasks-enabled="${enabled}" data-lang="${lang}"`
+        );
         contentLength = Buffer.byteLength(html);
       } finally {
         await file.close();

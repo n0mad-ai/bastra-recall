@@ -22,7 +22,7 @@ import { Vault, buildGraph } from "@bastra-recall/core";
 import { createLiveUpdates, type LiveUpdate } from "../src/live-updates.js";
 // #307 pins BOTH halves of the live path, so the map modules the entry ends up
 // in are exercised for real instead of being restated in the test.
-// @ts-expect-error — plain browser module, no types (same as memory-counter.test.ts).
+// @ts-expect-error — plain browser module, no types.
 import { createSimulation } from "../webui/js/simulation.js";
 // @ts-expect-error — plain browser module, no types.
 import { createLiveNodes } from "../webui/js/live-nodes.js";

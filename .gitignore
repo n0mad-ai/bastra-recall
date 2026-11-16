@@ -83,13 +83,6 @@ temp/
 packages/daemon/mcpb/build/
 packages/daemon/mcpb/*.mcpb
 
-# Local-only webui labs / previews (experiments, not shipped)
-packages/daemon/webui/mindspace-lab*
-# Local-only demo/recording choreography for the map (filmed, not shipped).
-# app.js loads it dynamically behind ?demo=1 and catches the failed import, so
-# a checkout without this file behaves exactly as before.
-packages/daemon/webui/js/demo.js
-
 # Stress-eval report: contains vault-derived query texts, memory ids and the
 # vault path. §18.1/C-025 allow only aggregated reports without vault-derived
 # query text in the public repo, so this now lands in the private run artifact

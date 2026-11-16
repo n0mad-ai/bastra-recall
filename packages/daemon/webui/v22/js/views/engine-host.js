@@ -1,6 +1,6 @@
 // Host for the old map engines (Mindspace = orbit, Clouds, Semantic).
 //
-// The engines are imported unchanged from the old UI (../../../js/ = /ui/js/):
+// The engines are imported unchanged from the old UI (webui/js/, served as /ui/engines/):
 // simulation, canvas renderer, pan/zoom/hover interactions, orbit and
 // semantic view managers. This file only does what the old app.js and
 // boot/render-loop.js did around them — build them once from the graph,
@@ -14,14 +14,14 @@
 // sits at a negative offset inside a clipping box that covers the stage; the
 // part under the rail and header is clipped away. getInsets() tells the
 // engines which part is visible, so every fit centres in the stage.
-import { createSimulation } from "../../../js/simulation.js";
-import { createRenderer } from "../../../js/renderer.js";
-import { createInteractions } from "../../../js/interactions.js";
-import { clusterHues } from "../../../js/graph-data.js";
-import { createOrbitView } from "../../../js/managers/orbit-view.js";
-import { createSemanticView } from "../../../js/managers/semantic-view.js";
+import { createSimulation } from "../../engines/simulation.js";
+import { createRenderer } from "../../engines/renderer.js";
+import { createInteractions } from "../../engines/interactions.js";
+import { clusterHues } from "../../engines/graph-data.js";
+import { createOrbitView } from "../../engines/managers/orbit-view.js";
+import { createSemanticView } from "../../engines/managers/semantic-view.js";
 import { placeWeather, onPlaceWeather } from "../weather-place.js";
-import { createBoltDemo } from "../../../js/managers/bolt-demo.js";
+import { createBoltDemo } from "../../engines/managers/bolt-demo.js";
 import { h, setVars } from "../dom.js";
 import { data, onUpdates, loadWeather } from "../data.js";
 import { state } from "../state.js";

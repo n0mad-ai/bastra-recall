@@ -21,10 +21,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The web UI is now the UI v2.** `/ui/` (and `bastra map`, the assistant's
+  local address and every other link that opened the web UI) shows it. The
+  preview address `/ui/v22/` redirects to `/ui/` and keeps its query, so
+  bookmarks keep working. The Mindspace, Clouds and Semantic views run on the
+  unchanged map engines.
 - **Node 22.22 or newer is now required** (was Node 22). Supported versions
   are Node 22.22 to 26. On an older Node 22, update Node before updating
   Bastra Recall; `node --version` shows what you run (#1368).
 - The vault file watcher now uses chokidar 6, which needs Node 22.22 (#1368).
+
+### Removed
+
+- The first web UI (its page, styles, scripts, right-click menu and the
+  local Mindspace lab pages). Its views live on in the UI v2. Three of its
+  actions have no place in the UI v2 yet: setting a vault image for the ring
+  centre, marking a ghost as a skill from the map (`bastra skills add` still
+  declares skills) and flagging a ghost with *write* for vault care.
 
 ### Security
 

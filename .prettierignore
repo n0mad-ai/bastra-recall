@@ -25,9 +25,6 @@ tools/probes/convention-e2e/fixtures.mjs
 **/*.mdx
 # Frozen inline secret-redaction corpus.
 packages/core/__tests__/redact-secrets-corpus.test.ts
-# Strict HTML mode still inserts text whitespace nodes: keep DOM bytes intact.
-packages/daemon/webui/index.html
-scripts/mindspace-perf/page.html
 # tool-surface-parity.test.ts asserts this exact single-line dispatch fragment.
 packages/daemon/src/boot-stdio.ts
 # Frozen registration/evaluation evidence has byte-hash contracts.
@@ -39,5 +36,3 @@ tools/draft-judge-eval/cases.json
 packages/daemon/__tests__/binary/hook-stub-binary-parity-546.test.ts
 # D3 test mutates the exact numeric spelling DRAFT_REPEAT_COSINE_MIN = 0.70.
 packages/daemon/src/draft-promote.ts
-# webui-csp.test.ts compares declarations textually with unformatted vendor CSS.
-packages/daemon/webui/css/overlays.css

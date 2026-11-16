@@ -164,7 +164,7 @@ for (const existing of [false, true])
       for (const name of names) assert.equal(await readFile(join(data, name), "utf8"), `untouched existing ${name}\n`);
   });
 
-test("served UI shows Tasks by default and hides the same tab with opt-out", async () => {
+test("served UI marks Tasks enabled by default and disabled with opt-out", async () => {
   const { createServer } = await import("node:http");
   const { handleWebUi, resolveWebUiDir } = await import("../src/webui.js");
   const root = await mkdtemp(join(tmpdir(), "tasks-ui-preview-")),
@@ -186,7 +186,6 @@ test("served UI shows Tasks by default and hides the same tab with opt-out", asy
           html = await response.text();
         assert.equal(response.status, 200);
         assert.match(html, new RegExp(`data-tasks-enabled="${enabled}"`));
-        assert.equal(/data-view="tasks" hidden/.test(html), !enabled);
         assert.equal(response.headers.get("cache-control"), "no-store");
         assert.equal(Number(response.headers.get("content-length")), Buffer.byteLength(html));
       }

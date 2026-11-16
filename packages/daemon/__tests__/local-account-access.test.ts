@@ -277,7 +277,7 @@ async function burstGateway(
               {
                 host: "127.0.0.1",
                 port,
-                path: `/ui/v22/asset-${i}.js`,
+                path: `/ui/asset-${i}.js`,
                 agent: false,
                 headers: { Host: "jarvis.localhost" },
               },
