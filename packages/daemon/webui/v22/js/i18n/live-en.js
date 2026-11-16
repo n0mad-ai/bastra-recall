@@ -15,4 +15,5 @@ export default {
   "live.empty":
     "Nothing has happened in this session yet. New, changed and read memories show up here the moment it happens.",
   "live.off": "Live is off. Switch it on at the top right to follow new events.",
+  "live.gone": "This memory is no longer in the vault.",
 };

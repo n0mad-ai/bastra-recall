@@ -84,6 +84,8 @@ export function closeMemoryBrowser(after) {
 export function openMemoryBrowser(scope, sel, from, nav = false) {
   const asArea = nav || state.browser === "nav";
   const browser = asArea ? "nav" : "vault";
+  // Already standing (not shrinking away): it switches in place, no new grow.
+  const standing = M.open && !!state.browser;
   Object.assign(M, {
     nav: asArea,
     open: true,
@@ -96,8 +98,8 @@ export function openMemoryBrowser(scope, sel, from, nav = false) {
     limit: PAGE,
     sem: [],
     semQ: "",
-    from: box(from) || pressBox(),
-    grow: true,
+    from: standing ? M.from : box(from) || pressBox(),
+    grow: !standing,
     focus: !!sel,
   });
   // The browser lives in the vault views (ring, lenses, map engines), which
@@ -109,7 +111,7 @@ export function openMemoryBrowser(scope, sel, from, nav = false) {
     // A departure may still be shrinking this mounted browser. Reopening is
     // a new navigation intent: restore its host before cancelling that timer.
     setState({ view: inst.view, browser });
-    inst.show(true);
+    inst.show(!standing);
   } else setState({ view: asArea || viewLocked("ring") ? lastVaultView() : "ring", browser });
 }
 

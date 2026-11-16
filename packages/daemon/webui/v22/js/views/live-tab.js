@@ -14,7 +14,7 @@
 import { h } from "../dom.js";
 import { t, addStrings } from "../i18n.js";
 import { state, setState, subscribe } from "../state.js";
-import { onUpdates } from "../data.js";
+import { onUpdates, loadGraph } from "../data.js";
 import { vault } from "./vault-data.js";
 import { showInView, openMemoryBrowser } from "./memory-browser.js";
 import { createFeed, shortAge, arrivals } from "./live-feed.js";
@@ -37,12 +37,21 @@ window.__recallLive = {
   },
 };
 
-/** Open an event's memory in the active view (glide / fly + info card); a
- *  memory the loaded graph does not know yet opens in the memory browser. */
-function openEvent(e, ev) {
+/** Open an event's memory in both places (Daniel 16.11.2026): the vault view
+ *  focuses it (glide / fly + info card, set even while the browser covers the
+ *  view, so it stands selected once the browser closes), and the memory
+ *  browser selects it — an open one in its mode, a closed one opens as a layer
+ *  growing out of the clicked row. A memory the loaded graph does not know
+ *  waits for a fresh graph (a new one may just be arriving); one that is gone
+ *  by then gets a notice instead of an empty browser. */
+async function openEvent(e, ev) {
   if (e.kind === "delete") return;
-  if (vault()?.byId.has(e.id) && showInView(e.id)) return;
-  openMemoryBrowser(e.cluster || "all", e.id, ev.currentTarget.getBoundingClientRect());
+  const from = ev.currentTarget.getBoundingClientRect();
+  if (!vault()?.byId.has(e.id)) await loadGraph();
+  const m = vault()?.byId.get(e.id);
+  if (!m) return setState({ toast: t("live.gone") });
+  showInView(m.id);
+  openMemoryBrowser(m.area, m.id, from);
 }
 
 const metaOf = (e) => [e.cluster, e.type, e.via ? t(`live.via.${e.via}`) : ""].filter(Boolean).join(" · ");
