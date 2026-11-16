@@ -8,6 +8,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Tasks and reminders in conversation.** Agents create, edit, postpone,
+  acknowledge, resolve, cancel, archive and delete tasks of every level. A task
+  the user asks for is created active; the agent asks only when goal, date,
+  time, time zone or repeat is missing or unclear. A deadline or promised
+  follow-up the agent notices itself becomes a reminder, announced in one
+  line. Due tasks are mentioned briefly at the start of the agent's answer.
+- Repeating tasks can run without an end, can be paused and resumed, and end
+  with an explicit "end series"; finishing one occurrence leaves later dates
+  active. A task can have an optional validity end (`expires_at`) and, for a
+  one-off task with registered evidence, an opt-in completion once that
+  evidence is verified.
+- **Mac notifications for due tasks** (`tasks.notifications`, on by default
+  while tasks are on). They also appear without an open chat, never start an
+  agent and do not count as read.
+- **Due tasks in the open chat.** A due task can reach the chat in which the
+  user last typed, within `tasks.chatActiveMinutes` (default 30). Claude Code
+  needs a one-time consent during setup (`bastra install` or
+  `bastra tasks setup-hooks`) (#1421); Codex CLI terminals started with
+  `bastra codex` take part in the same selection (#1425). Leases of active
+  chats are renewed and old sessions retired (#1426).
+- Tasks can carry what they wait on, their origin (mail or memory), an agent
+  note and who holds them (you or Recall).
+- Local snapshot sources for projects, worktrees, task phases, symbols and
+  metadata can trigger tasks (#1420). A local app contract adds an event
+  stream, an explicit read receipt and execution results for a future app; it
+  starts no agent.
+- **Task reports.** After larger or autonomous work, agents file their final
+  report with `task_report_save` instead of a long chat answer;
+  `task_report_list`, `task_report_read`, `task_report_mark` and
+  `task_report_delete` complete the set. Reading never marks a report read.
+  Before storing, Recall removes injected context blocks and replaces secrets
+  with placeholders. Up to 200 reports are kept; beyond that new reports are
+  refused and nothing is dropped. In the web UI, Tasks › Reports shows a list
+  and the report with separate Mark read, Mark unread and Delete; unread
+  reports show as a dot in the navigation, in the header ticker and in a
+  dashboard widget.
+- **Local app database.** Settings, tasks, drafts, hook state and other local
+  app state move into `~/.bastra/recall.db` (SQLite); memories stay Markdown
+  files in the vault. The move happens once, keeps the old files under a new
+  name and backs up the database before every upgrade step (#1339).
+- **Settings page** in the web UI, built from one registry that also drives
+  `bastra config` (#1294, #1295, #1296). It covers tasks, telemetry, twelve
+  existing environment options, autostart and login registration. Invalid JSON
+  blocks saving; an explicit environment variable still wins.
+- **Web UI areas:** a dashboard with widgets you can add and arrange;
+  Telemetry; Tasks with a calendar, the due cards, a new-task form and a
+  details, view and control panel; Areas, Import and Settings.
+- **Memory browser** as its own area: search and read memories, with recall
+  hints, facts, recall statistics and a 30-day curve.
+- **Agent window** in the web UI: a small assistant on your local model that
+  searches the vault, answers task questions from the real task list in every
+  area and opens an area on request. Conversations are kept in the app
+  database and can be reopened or deleted. Under each answer, **Save as
+  memory** opens an editable preview; only your confirmation writes the memory
+  (#1445).
+- **Assistant name in any language and script.** The local web address is
+  derived from it; a name that yields no address is still saved and the
+  current address stays.
+- **Personality:** choose a base personality (balanced, direct, warm, playful,
+  sparring partner) and describe in your own words how you want to be
+  treated. It applies to the agent window and to new sessions of connected
+  clients; it does not learn yet (#1504).
+- **Vault care notes** can be edited after saving. **Improve text** lets the
+  local model tidy a note; the result can be undone before saving.
+- The Ring view draws links as arcs with link kinds and a legend. Vault views
+  zoom to a chosen memory and pause while a card is open. Notices run in the
+  header ticker. A live list shows memories that are new, changed, deleted or
+  read.
+- Background image (presets or your own pictures, which you can delete again)
+  and weather for a place you choose.
+- Locked views say they belong to **Recall Pulse** (coming soon): the vault
+  views Chronos, Radiant, Spiral, Half-life and Weave, and the task calendar
+  styles Flow, Stream and Relay. Recall Pulse is the paid tier and is not
+  available yet.
+- Rule proposals can be confirmed or rejected in chat; the agent passes the
+  user's decision with `edit_memory` and `expected_revision` (#1387). Saving
+  or editing a rule asks the agent to review the complete lasting rule text
+  (#1378).
+- A save suggestion the user rejected can be switched off for that project and
+  restored later (#1389).
 - `bastra archive put <path>...` moves paths into the archive with the same
   move and restore as the archiving `rm`, and never deletes. A user who denies
   `Bash(rm:*)` in Claude Code can allow `Bash(bastra archive put:*)` on its
@@ -21,11 +101,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Proactive tasks and reminders are on by default**, for new and existing
+  installations. An explicit earlier opt-out stays in effect. Switch them off
+  in Settings › Tasks, with `bastra config set tasks.enabled false` or with
+  `BASTRA_TASKS=0`, then restart the daemon and the clients. Switching off
+  cancels no task. Remote MCP still offers no `task_*` tools (#1289).
+- **The user's instruction in chat is the approval**, also for the execute
+  level. The agent records who asked, in which program and session and with
+  which words; Recall adds the time. No key file, signature or separate
+  approval step is needed. If the agent proposes a consequential action the
+  user did not ask for, it asks once in chat (#1424). `bastra tasks keys`,
+  `approve` and `deny` only explain this and change nothing; the old key
+  registry is kept as a backup and renamed. Prepare unfinished actions again
+  with the user's instruction (#1428).
+- On macOS, the web UI and the task routes answer only to programs of the
+  macOS account that owns the vault (#1419). There the web UI shows private
+  memories too; on other systems it keeps showing no private memories.
+- Telemetry stores finished days in the app database and keeps the report
+  until its data changes. The first time Telemetry opens, it fills the table
+  from the existing log files (#1438).
+- Document write tools are listed only when `BASTRA_DOCUMENT_WRITE` is on;
+  before, agents saw them although the daemon refused them (#1458).
+- **The source code was reformatted once** with Prettier and ESLint, which CI
+  now enforces. If you keep your own patches on the installed code
+  (`bastra patches`), they can conflict after this update; recreate such a
+  patch on the new code (#1537).
+- An assistant name whose address form has `--` in positions 3 and 4 gets an
+  address only if it is a valid international domain name; such names are
+  still saved.
+- The onboarding interview waits while the user is in the middle of concrete
+  work (#1411). The rulebook guidance in each round is shortened when nothing
+  changed since its full delivery; IDs and revisions stay (#1371).
 - **The web UI is now the UI v2.** `/ui/` (and `bastra map`, the assistant's
   local address and every other link that opened the web UI) shows it. The
-  preview address `/ui/v22/` redirects to `/ui/` and keeps its query, so
-  bookmarks keep working. The Mindspace, Clouds and Semantic views run on the
-  unchanged map engines.
+  Mindspace, Clouds and Semantic views run on the unchanged map engines.
 - **Node 22.22 or newer is now required** (was Node 22). Supported versions
   are Node 22.22 to 26. On an older Node 22, update Node before updating
   Bastra Recall; `node --version` shows what you run (#1368).
@@ -49,10 +158,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   local Mindspace lab pages). Its views live on in the UI v2. Three of its
   actions have no place in the UI v2 yet: setting a vault image for the ring
   centre, marking a ghost as a skill from the map (`bastra skills add` still
-  declares skills) and flagging a ghost with *write* for vault care.
+  declares skills) and flagging a ghost with *write* for vault care (#1561).
 
 ### Security
 
+- The web UI serves private memories, vault care notes of private memories and
+  the details of linked private targets only after the caller's macOS account
+  was confirmed; elsewhere it serves the filtered view. Saving from the agent
+  window no longer reveals whether a hidden memory exists.
+- A source that cannot be judged (deleted, unreadable or with broken
+  frontmatter) now counts as private for untrusted callers, and
+  `load_memory` returns the revision of the text it actually delivered
+  (#1334).
+- Requests forwarded to the local assistant address need a token (#1264). The
+  number of waiting requests and address helpers is bounded, slow clients can
+  no longer hold every helper, and dropped requests are reclaimed (#1335,
+  #1401).
+- Migration and probe files, the execute target and offline lock files are
+  opened through checked file handles (#1213). The rulebook spool checks its
+  base directory before it creates anything below it.
 - Hardened request handling: the daemon rejects ambiguous request paths
   before any access check, keeps private memories out of live updates for
   unverified callers, and reads legacy hook state only from private
@@ -86,6 +210,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The memory browser's reader no longer shows a memory's old text after it
   changed with the vault total unchanged, also after reopening; a late answer
   for the old version never overwrites the new one (#1449).
+- Saving and editing now always say whether a rule applies, is only proposed,
+  is inactive or is a note. A user-directed note turned into a rule applies at
+  once, overwrites keep the stored user origin, and obsolete or superseded
+  rules are reported as inactive (#1384, #1385, #1392, #1395, #1398, #1399).
+  A later binding write drops the superseded proposal, and a private
+  declaration is reported as bound, not delivered (#1386, #1393, #1394).
+- `rulebook_check` answers from the catalog of the session's rule index, and
+  an over-long `not_applicable` ID no longer discards the whole check (#1364,
+  #1374, #1397). GitHub rules that must be loaded are bound to the current
+  action and catalog and still arrive after the denial budget; ordinary note
+  advice comes once per session (#1372, #1377, #1391, #1396).
+- Stop hook: no save suggestion after a save or edit in the same round,
+  answered suggestions are booked, compact summaries are not read as user
+  turns, and a continuation needs evidence from the current round and shows no
+  error notice (#1365, #1370, #1373, #1376, #1390). Large context sections are
+  evicted within a bound and protected overflow is kept (#1363).
+- Tasks: board sessions stay valid for the daemon's lifetime, and a full
+  session table gives way to the session that has been idle longest (at least
+  10 minutes) (#1410). Cold archived tasks can be deleted explicitly (#1408).
+  Metadata traversal is bounded (#1423), failed action and session refreshes
+  recover (#1219), and areas without enrolled ownership are reported (#1321).
+- Settings: a draft with invalid JSON blocks stale saves and keeps its
+  restart hint (#1407); an unreadable settings database is no longer treated
+  as missing (#1418); the assistant address reads migrated settings (#1417).
+- Old assistant address launchers are migrated on first start (#1335), and a
+  normal browser load of the local address no longer gets 403 or 503.
+- A cloud placeholder that cannot be read is reported instead of skipped
+  (#1242). Code-graph diffs handle tab suffixes in headerless paths (#1250).
+- Hook timeout telemetry is written before the client exits (#1433), and a
+  timed-out background status request is aborted (#1402).
+- The injected personality block is removed from stored text like the other
+  injected blocks.
+- The skill's description is quoted as valid YAML.
 
 ## [1.1.8] — 2026-10-31
 

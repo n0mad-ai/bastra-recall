@@ -36,7 +36,7 @@ Keep external Ollama running yourself. Alternatively, explicitly select OpenAI w
 - Statusline installation and updates preserve your chosen `refreshInterval`; the default stays one second. Each tick reads Git status and ahead/behind together. Resumed Claude sessions resolve terminal/feed information per parent process.
 - Concurrent saves recover abandoned claims without allowing two writers to commit the same target. A write conflict can be retried after rereading the note.
 - Hint-block attributes are escaped so external metadata cannot break the wrapper boundaries.
-- On prepared main for v1.2.0 (published v1.1.8 remains opt-in), proactive tasks are on by default from v1.2.0 for new and existing installations; an explicit earlier opt-out is preserved. Disable them with `tasks.enabled=false` in Settings or `BASTRA_TASKS=0`, then restart the daemon and clients/hooks. Existing task data is retained, and remote MCP exposes no `task_*` tools. See the [task guide](./Proactive%20Tasks.md).
+- Since 1.2.0, proactive tasks are on by default for new and existing installations; an explicit earlier opt-out is preserved. Disable them with `tasks.enabled=false` in Settings or `BASTRA_TASKS=0`, then restart the daemon and clients/hooks. Existing task data is retained, and remote MCP exposes no `task_*` tools. See the [task guide](./Proactive%20Tasks.md).
 
 ### Agent review of local candidates (#157, steps 1–2)
 
@@ -695,7 +695,7 @@ Halte externes Ollama selbst am Laufen. Alternativ wählst du OpenAI ausdrückli
 - Statusline-Installation und Updates behalten dein gewähltes `refreshInterval`; der Standard bleibt eine Sekunde. Jeder Tick liest Git-Status und voraus/zurück gemeinsam. Fortgesetzte Claude-Sitzungen bestimmen Terminal-/Feed-Daten je Elternprozess neu.
 - Gleichzeitiges Speichern räumt verwaiste Claims auf, ohne zwei Schreibern denselben Ziel-Commit zu erlauben. Nach einem Schreibkonflikt die Notiz erneut lesen und den Aufruf wiederholen.
 - Attribute der Hinweisblöcke werden maskiert, damit externe Metadaten ihre Grenzen nicht aufbrechen.
-- Auf dem vorbereiteten main für v1.2.0 (die veröffentlichte v1.1.8 bleibt Opt-in) sind proaktive Aufgaben ab v1.2.0 bei neuen und bestehenden Installationen standardmäßig an; eine ausdrücklich frühere Abschaltung bleibt erhalten. Mit `tasks.enabled=false` in den Einstellungen oder `BASTRA_TASKS=0` ausschalten, danach Daemon und Clients/Hooks neu starten. Vorhandene Aufgabendaten bleiben erhalten; die MCP-Fernzugangstür bietet keine `task_*`-Werkzeuge. Siehe die [Aufgaben-Anleitung](./Proaktive%20Aufgaben.md).
+- Seit 1.2.0 sind proaktive Aufgaben bei neuen und bestehenden Installationen standardmäßig an; eine ausdrücklich frühere Abschaltung bleibt erhalten. Mit `tasks.enabled=false` in den Einstellungen oder `BASTRA_TASKS=0` ausschalten, danach Daemon und Clients/Hooks neu starten. Vorhandene Aufgabendaten bleiben erhalten; die MCP-Fernzugangstür bietet keine `task_*`-Werkzeuge. Siehe die [Aufgaben-Anleitung](./Proaktive%20Aufgaben.md).
 
 ### Agent prüft lokale Kandidaten (#157, Schritte 1–2)
 

@@ -2,7 +2,7 @@
 
 ## English
 
-Current main prepares Claude Code and Codex CLI chat delivery for v1.2.0; this does not change published v1.1.8. A due task can wake the registered chat in which you last sent a real human message, within `tasks.chatActiveMinutes` (default **30 minutes**). Both clients participate in the same selection: if your latest input was in an attached Codex terminal, the task goes there; if it was in Claude Code, it goes there. Received task messages, agent turns and system events do not extend that window. An unavailable, closed, unsupported or ambiguous latest chat never redirects delivery to an older chat. When no eligible chat is active, the task remains on the board and the optional macOS notification is the immediate channel.
+Since 1.2.0, Recall can deliver due tasks to Claude Code and Codex CLI chats. A due task can wake the registered chat in which you last sent a real human message, within `tasks.chatActiveMinutes` (default **30 minutes**). Both clients participate in the same selection: if your latest input was in an attached Codex terminal, the task goes there; if it was in Claude Code, it goes there. Received task messages, agent turns and system events do not extend that window. An unavailable, closed, unsupported or ambiguous latest chat never redirects delivery to an older chat. When no eligible chat is active, the task remains on the board and the optional macOS notification is the immediate channel.
 
 ### Codex CLI
 
@@ -38,7 +38,7 @@ A registration initially lasts 24 hours. Proven human activity renews the same c
 
 ## Deutsch
 
-Das aktuelle main bereitet die Chat-Zustellung für Claude Code und Codex CLI in v1.2.0 vor; die veröffentlichte v1.1.8 ändert sich dadurch nicht. Eine fällige Aufgabe kann den registrierten Chat wecken, in dem du zuletzt selbst geschrieben hast, innerhalb von `tasks.chatActiveMinutes` (Standard **30 Minuten**). Beide Programme nehmen an derselben Auswahl teil: War deine letzte Eingabe im angebundenen Codex-Terminal, kommt die Aufgabe dort an; war sie in Claude Code, kommt sie dort an. Empfangene Aufgabenmeldungen, Agentenrunden und Systemereignisse verlängern diese Zeit nicht. Ein nicht erreichbarer, geschlossener, nicht unterstützter oder nicht eindeutig bestimmbarer letzter Chat führt nie zum Ausweichen auf einen älteren Chat. Ist kein geeigneter Chat aktiv, bleibt die Aufgabe auf dem Brett; die optionale Mac-Mitteilung ist der unmittelbare Kanal.
+Seit 1.2.0 kann Recall fällige Aufgaben in Chats von Claude Code und Codex CLI zustellen. Eine fällige Aufgabe kann den registrierten Chat wecken, in dem du zuletzt selbst geschrieben hast, innerhalb von `tasks.chatActiveMinutes` (Standard **30 Minuten**). Beide Programme nehmen an derselben Auswahl teil: War deine letzte Eingabe im angebundenen Codex-Terminal, kommt die Aufgabe dort an; war sie in Claude Code, kommt sie dort an. Empfangene Aufgabenmeldungen, Agentenrunden und Systemereignisse verlängern diese Zeit nicht. Ein nicht erreichbarer, geschlossener, nicht unterstützter oder nicht eindeutig bestimmbarer letzter Chat führt nie zum Ausweichen auf einen älteren Chat. Ist kein geeigneter Chat aktiv, bleibt die Aufgabe auf dem Brett; die optionale Mac-Mitteilung ist der unmittelbare Kanal.
 
 ### Codex CLI
 

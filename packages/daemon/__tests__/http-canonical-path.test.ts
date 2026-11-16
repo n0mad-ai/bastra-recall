@@ -48,7 +48,7 @@ const CANONICAL = [
   "/ui/updates?since=0",
   "/ui/updates?since=../../x",
   "/ui/engines/simulation.js",
-  "/ui/v22/index.html?q=1",
+  "/ui/index.html?q=1",
   "/ui/chat/conversations/Notiz%20mit%20Leerzeichen",
   "/ui/chat/conversations/M%C3%BCller",
   "/ui/files/a.b..c/app.min.js",
@@ -135,7 +135,7 @@ test("a foreign account gets no data through any path variant; legitimate paths 
     assert.equal(updates.status, 200);
     assert.match(updates.body, /Fixture title secret/, "the proven owner still sees private live entries");
     assert.equal((await raw(port, "/ui/health")).status, 200);
-    assert.equal((await raw(port, "/ui/v22/index.html?q=1")).status, 302);
+    assert.equal((await raw(port, "/ui/index.html?q=1")).status, 200);
     for (const target of [
       "/ui/chat/conversations/Notiz%20mit%20Leerzeichen",
       "/ui/chat/conversations/M%C3%BCller",

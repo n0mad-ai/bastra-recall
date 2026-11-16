@@ -1,6 +1,6 @@
 # Local task state adapters
 
-Prepared main for v1.2.0 adds local snapshot sources to the existing task journal. These sources notify or prepare work; they cannot supply final execution authority. They do not launch agents, wake clients, connect to providers or access remote services.
+Since 1.2.0, Recall adds local snapshot sources to the existing task journal. These sources notify or prepare work; they cannot supply final execution authority. They do not launch agents, wake clients, connect to providers or access remote services.
 
 | Source kind | Registration fields | Observed state |
 |---|---|---|
@@ -38,7 +38,7 @@ See [Proactive Tasks](Proactive%20Tasks.md) and [owner approval key limits](Owne
 
 ## Deutsch
 
-Das vorbereitete main für v1.2.0 ergänzt lokale Zustandsquellen im bestehenden Aufgabenjournal. Diese Quellen melden oder bereiten Arbeit vor; sie liefern keine abschließende Ausführungsautorität. Sie starten keine Agenten, wecken keine Clients und verbinden sich nicht mit Anbietern oder entfernten Diensten.
+Seit 1.2.0 ergänzt Recall lokale Zustandsquellen im bestehenden Aufgabenjournal. Diese Quellen melden oder bereiten Arbeit vor; sie liefern keine abschließende Ausführungsautorität. Sie starten keine Agenten, wecken keine Clients und verbinden sich nicht mit Anbietern oder entfernten Diensten.
 
 | Quellenart | Registrierungsfelder | Beobachteter Zustand |
 |---|---|---|

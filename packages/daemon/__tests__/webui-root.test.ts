@@ -1,10 +1,10 @@
 /**
  * The UI v2 is the web UI at /ui/ (16.11.2026). Pins the switch against the
- * real shipped folders: the root and /ui/index.html serve the UI v2, the former
- * /ui/v22/ address redirects to the root, files of the first UI are gone, the
- * engines the UI v2 hosts (webui/js/) are served at /ui/engines/, and nothing
- * outside those two folders is reachable. The access gates key on the /ui
- * prefix, so they cover the root and the former address alike.
+ * real shipped folders: the root and /ui/index.html serve the UI v2, the
+ * preview address of the development branch is an unknown path (404), files of
+ * the first UI are gone, the engines the UI v2 hosts (webui/js/) are served at
+ * /ui/engines/, and nothing outside those two folders is reachable. The access
+ * gates key on the /ui prefix.
  *
  * Runner: node --import tsx --test packages/daemon/__tests__/webui-root.test.ts
  */
@@ -14,7 +14,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleWebUi, legacyUiLocation, resolveWebUiDir } from "../src/webui.js";
+import { handleWebUi, resolveWebUiDir } from "../src/webui.js";
 import { localAccountPath } from "../src/local-account-access.js";
 
 interface Res {
@@ -72,33 +72,20 @@ test("/ui/ and /ui/index.html serve the UI v2 with its CSP", async () => {
   });
 });
 
-test("the former /ui/v22/ address redirects to the root, query kept", async () => {
+test("the development preview address is an unknown path like any other", async () => {
   await withUi(async (get) => {
-    for (const [from, to] of [
-      ["/ui/v22", "/ui/"],
-      ["/ui/v22/", "/ui/"],
-      ["/ui/v22/index.html", "/ui/"],
-      ["/ui/v22/index.html?view=orbit", "/ui/?view=orbit"],
-      ["/ui/v22/?a=1&b=2", "/ui/?a=1&b=2"],
-      ["/ui/v22?x", "/ui/?x"],
-      ["/ui/v22/js/main.js", "/ui/js/main.js"],
+    for (const path of [
+      "/ui/v22",
+      "/ui/v22/",
+      "/ui/v22/index.html",
+      "/ui/v22/index.html?view=orbit",
+      "/ui/v22/js/main.js",
     ]) {
-      const res = await get(from);
-      assert.equal(res.status, 302, from);
-      assert.equal(res.location, to, from);
+      const res = await get(path);
+      assert.equal(res.status, 404, path);
+      assert.equal(res.location, undefined, path);
     }
   });
-});
-
-test("legacyUiLocation: only the former address, and never a target outside /ui/", () => {
-  assert.equal(legacyUiLocation("/ui/v22x/index.html"), null);
-  assert.equal(legacyUiLocation("/ui/v2"), null);
-  assert.equal(legacyUiLocation("/ui/"), null);
-  assert.equal(legacyUiLocation("/ui/js/main.js"), null);
-  for (const url of ["/ui/v22//evil.example", "/ui/v22/..%2F..%2Fpackage.json", "/ui/v22/%2F%2Fevil.example"]) {
-    const target = legacyUiLocation(url);
-    assert.ok(target?.startsWith("/ui/"), `${url} → ${target}`);
-  }
 });
 
 test("the engines the UI v2 hosts are served from its folder", async () => {
@@ -152,7 +139,7 @@ test("nothing outside the UI folder is reachable", async () => {
   });
 });
 
-test("the account gate covers the new root and the former address alike", () => {
-  for (const path of ["/ui", "/ui/", "/ui/index.html", "/ui/engines/renderer.js", "/ui/v22/", "/ui/v22/index.html"])
+test("the account gate covers the web UI root and its files", () => {
+  for (const path of ["/ui", "/ui/", "/ui/index.html", "/ui/engines/renderer.js"])
     assert.equal(localAccountPath(path), true, path);
 });

@@ -437,7 +437,7 @@
     "[\"packages/daemon/src/vault-report.ts\",\"[\\\"function:renderVaultHealthReport\\\"]\",\"complexity\"]": 39,
     "[\"packages/daemon/src/webui-areas-rename.ts\",\"[\\\"function:renameAreaLocked\\\"]\",\"complexity\"]": 19,
     "[\"packages/daemon/src/webui-chat.ts\",\"[\\\"function:handleUiChat\\\"]\",\"complexity\"]": 18,
-    "[\"packages/daemon/src/webui.ts\",\"[\\\"function:handleWebUi\\\"]\",\"complexity\"]": 17,
+    "[\"packages/daemon/src/webui.ts\",\"[\\\"function:handleWebUi\\\"]\",\"complexity\"]": 16,
     "[\"packages/daemon/src/write-lane.ts\",\"[\\\"function:runWriteLane\\\"]\",\"complexity\"]": 100,
     "[\"packages/daemon/stub/bastra-hook.ts\",\"[\\\"function:main\\\"]\",\"complexity\"]": 25,
     "[\"packages/daemon/webui/js/managers/orbit-cosmos.js\",\"[\\\"function:cosmicWebPlacement\\\"]\",\"complexity\"]": 16,

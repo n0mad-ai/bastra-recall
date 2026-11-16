@@ -54,7 +54,7 @@ Coverage is bounded: `write_stdin` input/polls of an existing process do not cre
 
 The prompt hook also carries the [task contract and active conventions](./hooks.md#task-contract-and-active-conventions-prompt-hook-1306) across short follow-ups. The [host capability matrix](../packages/daemon/src/host-capabilities.ts) records the evidence and limits for each surface; a task-state block does not itself deny tools or validate an answer.
 
-### Due tasks in the open terminal (prepared v1.2.0)
+### Due tasks in the open terminal (since 1.2.0)
 
 Start a Codex terminal with `bastra codex`, passing your usual CLI options, for example `bastra codex -C /path/to/project`. The launcher starts a private App Server and attaches the real terminal UI to it; it changes no Codex configuration and requires no extra approval. Codex retains its existing OpenAI authentication. The local bridge uses a separate private transport credential.
 
@@ -163,7 +163,7 @@ Die Abdeckung bleibt begrenzt: `write_stdin`-Eingaben und Abfragen eines bestehe
 
 Der Prompt-Hook erhält außerdem den [Aufgabenvertrag und aktive Konventionen](./hooks.md#aufgabenvertrag-und-aktive-konventionen-prompt-hook-1306) bei kurzen Folgeprompts. Die [Host-Capability-Matrix](../packages/daemon/src/host-capabilities.ts) nennt Belege und Grenzen pro Oberfläche; der Aufgabenblock selbst verweigert keine Tools und prüft keine fertige Antwort.
 
-### Fällige Aufgaben im offenen Terminal (vorbereitet für v1.2.0)
+### Fällige Aufgaben im offenen Terminal (seit 1.2.0)
 
 Starte ein Codex-Terminal mit `bastra codex` und gib deine gewohnten CLI-Optionen weiter, etwa `bastra codex -C /pfad/zum/projekt`. Der Starter öffnet einen privaten App Server und verbindet die echte Terminaloberfläche damit. Er ändert keine Codex-Konfiguration und verlangt keine zusätzliche Freigabe. Die vorhandene OpenAI-Anmeldung bleibt bei Codex; die lokale Verbindung verwendet einen eigenen privaten Transportzugang.
 

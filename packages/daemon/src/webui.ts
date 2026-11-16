@@ -5,7 +5,7 @@ import { tasksEnabled } from "./tasks-enabled.js";
  * Serves the self-contained UI v2 bundled in `packages/daemon/webui/v22/`
  * (plain HTML/CSS/JS, vendored assets only) at /ui/, and the unchanged map
  * engines it hosts (Mindspace, Clouds, Semantic) from `webui/js/` at
- * /ui/engines/. The former /ui/v22/ address redirects to /ui/. Opt-in:
+ * /ui/engines/. Opt-in:
  * gated per-request on the `ui.enabled` cli-setting, so
  * `bastra config set ui.enabled true|false` takes effect without a daemon
  * restart. Loopback-only by construction: the route sits outside /api/v1/*,
@@ -99,19 +99,6 @@ export function resolveEngineDir(): string {
 }
 
 const ENGINE_PREFIX = "engines/";
-
-/** The UI v2 was served at /ui/v22/ before it became /ui/ — old bookmarks
- *  and links still land: /ui/v22[/index.html][?q] → /ui/[?q], any other
- *  /ui/v22/<path> → /ui/<path>. The target always starts with /ui/, so it
- *  never leaves the daemon. null = not a former address. */
-export function legacyUiLocation(url: string): string | null {
-  const rest = url.slice("/ui/v22".length);
-  if (!url.startsWith("/ui/v22") || (rest !== "" && rest[0] !== "/" && rest[0] !== "?")) return null;
-  const q = rest.indexOf("?");
-  const path = q < 0 ? rest : rest.slice(0, q);
-  const query = q < 0 ? "" : rest.slice(q);
-  return (path === "" || path === "/" || path === "/index.html" ? "/ui/" : `/ui${path}`) + query;
-}
 
 // ─── vault care — the file format lives in vault-care.ts ────────────────────
 export { CARE_FILE, CARE_KINDS, formatCareEntry, parseCareFile };
@@ -414,11 +401,9 @@ export async function handleWebUi(
     return;
   }
 
-  // /ui → /ui/ so relative asset paths in index.html resolve; former
-  // /ui/v22/ addresses follow the UI to its root.
-  const location = url === "/ui" ? "/ui/" : legacyUiLocation(url);
-  if (location !== null) {
-    res.writeHead(302, { Location: location, "Cache-Control": "no-store" });
+  // /ui → /ui/ so relative asset paths in index.html resolve.
+  if (url === "/ui") {
+    res.writeHead(302, { Location: "/ui/", "Cache-Control": "no-store" });
     res.end();
     return;
   }
