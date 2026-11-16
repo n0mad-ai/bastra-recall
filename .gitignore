@@ -106,3 +106,7 @@ graphify-out/
 
 packages/daemon/stub/bastra-hook.exe
 packages/daemon/stub/bastra-hook.exe.partial
+
+# Local agent handovers and work notes: never publish
+.codex-*
+.claude-*
