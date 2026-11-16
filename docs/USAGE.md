@@ -309,6 +309,26 @@ Memories age: titles go stale, duplicates creep in, ghosts point at notes you ne
 
 In the memory browser of the web UI, a saved flag can be **edited** later: *Edit* opens its note in the same field, *Save* replaces exactly that entry in `vault-care.md` (kind, date and tick stay; a flag that was changed or removed meanwhile is reported, never overwritten). **Improve text** next to the note field hands a dictated note to your local generation model (Ollama, `generation.model`): fillers, repetitions and self-corrections go, names, numbers and IDs stay, the language stays the note's own. The result replaces the text in the field with *Undo* beside it; nothing is stored until you save.
 
+### Updating — what `bastra update` installs
+
+`bastra update` updates Bastra Recall the way you installed it, then registers it again with your AI clients and restarts the background service:
+
+| Installed with | What `bastra update` runs |
+| --- | --- |
+| The macOS installer or `curl … \| bash` (both use Homebrew), or `brew install` | `brew upgrade bastra-recall` |
+| `npm install -g bastra-recall` (the README's npm install) | `npm install -g bastra-recall@latest` |
+| `npm install -g @bastra-recall/daemon` | `npm install -g @bastra-recall/daemon@latest` |
+| A source checkout | nothing — run `git pull && npm ci && npm run build:deploy` yourself first; `bastra update` then checks the build and re-registers |
+
+It tells the two npm packages apart by where it runs from. If it cannot tell (for example when started with `npx`) and npm fails, the message names both manual commands. `bastra update --dry-run` shows the command before anything runs.
+
+**From 1.1.8 or older, installed with `npm install -g bastra-recall`:** the update is run by the version you have, and up to 1.1.8 it tried the wrong npm package, so `bastra update` and the automatic update stop with an error. Nothing is changed. Update once by hand, then let the new version finish:
+
+```bash
+npm install -g bastra-recall@latest
+bastra update
+```
+
 ### Local patches — a fix of your own that survives an update
 
 If you run a local fix — a patch you wrote, or one from a PR that has not landed yet — an update would normally overwrite it. `bastra patches` keeps an ordered series of `git format-patch` files under `~/.bastra/patches/` and reapplies them after every successful update.
@@ -984,6 +1004,26 @@ Im Memory-Browser der Weboberfläche macht **Bearbeiten** unter einem Memory aus
 Memories altern: Titel veralten, Dubletten schleichen sich ein, Ghosts zeigen auf nie geschriebene Notizen. bastra-recall macht aus der Vault-Pflege einen Zwei-Schritt-Loop statt einer lästigen Pflicht. Im Memory-Browser der Weboberfläche markierst du ein Memory — *delete*, *edit* oder *note* — und die Flags landen als Checkbox-Zeilen in einer offenen `vault-care.md` im Vault-Root. Deine **nächste AI-Session sieht die offenen Flags automatisch** (Session-Hook) und bietet an, die Liste gemeinsam abzuarbeiten: ein geführter Aufräum-Durchgang, jede Entscheidung bleibt bei dir. Kein versteckter State, keine Extra-App — eine Markdown-Checkliste, die jeder Editor öffnen kann.
 
 Im Memory-Browser der Weboberfläche lässt sich eine gespeicherte Markierung später **bearbeiten**: *Bearbeiten* öffnet ihre Notiz im selben Feld, *Speichern* ersetzt genau diesen Eintrag in `vault-care.md` (Art, Datum und Haken bleiben; wurde die Markierung inzwischen geändert oder entfernt, kommt eine Meldung statt eines Überschreibens). **Text verbessern** neben dem Notizfeld gibt eine eingesprochene Notiz an dein lokales Generierungsmodell (Ollama, `generation.model`): Füllwörter, Wiederholungen und Selbstkorrekturen fallen weg, Namen, Zahlen und IDs bleiben, die Sprache bleibt die der Notiz. Das Ergebnis ersetzt den Text im Feld, daneben steht *Rückgängig*; gespeichert wird erst, wenn du speicherst.
+
+### Aktualisieren — was `bastra update` installiert
+
+`bastra update` aktualisiert Bastra Recall auf dem Weg, auf dem du es installiert hast, registriert es danach neu bei deinen KI-Clients und startet den Hintergrunddienst neu:
+
+| Installiert mit | Was `bastra update` ausführt |
+| --- | --- |
+| Dem macOS-Installer oder `curl … \| bash` (beide nutzen Homebrew) oder `brew install` | `brew upgrade bastra-recall` |
+| `npm install -g bastra-recall` (die npm-Installation aus der README) | `npm install -g bastra-recall@latest` |
+| `npm install -g @bastra-recall/daemon` | `npm install -g @bastra-recall/daemon@latest` |
+| Einem Quellcode-Checkout | nichts — erst selbst `git pull && npm ci && npm run build:deploy` ausführen; `bastra update` prüft dann den Build und registriert neu |
+
+Welches der beiden npm-Pakete installiert ist, erkennt es daran, von wo es läuft. Kann es das nicht erkennen (etwa beim Start über `npx`) und npm scheitert, nennt die Meldung beide Befehle zum Selbstausführen. `bastra update --dry-run` zeigt den Befehl, bevor etwas passiert.
+
+**Von 1.1.8 oder älter, installiert mit `npm install -g bastra-recall`:** Das Update führt die Version aus, die du hast, und bis 1.1.8 versuchte sie das falsche npm-Paket. `bastra update` und das automatische Update brechen deshalb mit einem Fehler ab. Geändert wird dabei nichts. Einmal von Hand aktualisieren, den Rest erledigt dann die neue Version:
+
+```bash
+npm install -g bastra-recall@latest
+bastra update
+```
 
 ### Lokale Patches — ein eigener Fix, der ein Update übersteht
 

@@ -7,6 +7,7 @@
  */
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, resolve, win32 } from "node:path";
+import { CLI_PACKAGE } from "./cli-on-path.js";
 import { findExecutable, run, runCaptured } from "./exec.js";
 
 export interface UpdateRuntimeIo {
@@ -74,7 +75,22 @@ export function captureUpdateNpm(args: string[], opts: Parameters<typeof runCapt
   }
   return (io.captured ?? runCaptured)(command.bin, [...command.args, ...args], opts);
 }
-export function globalDaemonScript(prefix: string, io: UpdateRuntimeIo = {}): string | null {
+/** The npm package that carries the daemon; the wrapper (CLI_PACKAGE) pins it. */
+export const DAEMON_NPM_PACKAGE = "@bastra-recall/daemon";
+
+/**
+ * `npm install -g bastra-recall` (the README's install) puts the daemon BELOW
+ * the wrapper: <global node_modules>/bastra-recall/node_modules/@bastra-recall/daemon/.
+ * Both packages declare the `bastra` command, so installing the daemon package
+ * over a wrapper install fails with EEXIST — the update has to go through the
+ * wrapper. Only this nested layout counts; an npx cache keeps the two packages
+ * side by side, which says nothing about what is installed globally.
+ */
+export function isWrapperInstallPath(cliPath: string): boolean {
+  return cliPath.replace(/\\/g, "/").includes(`/node_modules/${CLI_PACKAGE}/node_modules/${DAEMON_NPM_PACKAGE}/`);
+}
+
+export function globalDaemonScript(prefix: string, io: UpdateRuntimeIo = {}, viaWrapper = false): string | null {
   const platform = io.platform ?? process.platform;
   const paths = updatePaths(platform);
   if (!(platform === "win32" ? win32.isAbsolute(prefix) : prefix.startsWith("/"))) return null;
@@ -82,6 +98,7 @@ export function globalDaemonScript(prefix: string, io: UpdateRuntimeIo = {}): st
     prefix,
     ...(platform === "win32" ? [] : ["lib"]),
     "node_modules",
+    ...(viaWrapper ? [CLI_PACKAGE, "node_modules"] : []),
     "@bastra-recall",
     "daemon",
     "dist",

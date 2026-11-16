@@ -198,6 +198,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `bastra update` now works for installs made with `npm install -g
+  bastra-recall`, the npm install the README shows. It used to install
+  `@bastra-recall/daemon` on top, which npm refuses because both packages
+  bring the `bastra` command, so the update stopped with an error and changed
+  nothing. It now updates `bastra-recall` itself and finds the new version
+  inside it for the restart and the re-registration, also on Windows. An npm
+  install under Homebrew's Node (`/opt/homebrew/lib/node_modules`) is no
+  longer mistaken for a Homebrew install. Installs of `@bastra-recall/daemon`
+  update as before. Coming from 1.1.8 or older with `npm install -g
+  bastra-recall`: the old version still runs the update, so run
+  `npm install -g bastra-recall@latest` once, then `bastra update`.
 - Under the user's own `deny` rule an archiving `rm` no longer gets an allow,
   a rewrite or "No confirmation needed"; it keeps the STOP and one line naming
   the rule. Thanks to @zzallirog (#650, #1362).

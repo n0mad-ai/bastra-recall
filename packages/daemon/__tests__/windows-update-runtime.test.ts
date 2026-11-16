@@ -21,13 +21,15 @@ const root = prefix + "\\node_modules\\@bastra-recall\\daemon";
 const script = root + "\\dist\\index.js";
 const cli = root + "\\dist\\cli.js";
 
-function fixture() {
+const wrapperRoot = prefix + "\\node_modules\\bastra-recall\\node_modules\\@bastra-recall\\daemon";
+
+function fixture(installRoot = root) {
   const files = new Map<string, string>([
     [npmCli, "npm cli"],
     [npmPackage, JSON.stringify({ name: "npm", bin: { npm: "bin/npm-cli.js" } })],
-    [script, "daemon"],
-    [cli, "new cli"],
-    [root + "\\package.json", JSON.stringify({ version: "9.0.0" })],
+    [installRoot + "\\dist\\index.js", "daemon"],
+    [installRoot + "\\dist\\cli.js", "new cli"],
+    [installRoot + "\\package.json", JSON.stringify({ version: "9.0.0" })],
   ]);
   const calls: Array<{ bin: string; args: string[]; opts: unknown }> = [];
   const refreshes: unknown[] = [];
@@ -40,7 +42,7 @@ function fixture() {
   const io: UpdateIo = {
     platform: "win32",
     node,
-    cliPath: root + "\\dist\\cli\\update.js",
+    cliPath: installRoot + "\\dist\\cli\\update.js",
     find: (name) => {
       assert.equal(name, "npm");
       return wrapper;
@@ -62,9 +64,9 @@ function fixture() {
     },
     spawn,
     preflight: async (options) => {
-      assert.equal(options.root, root);
+      assert.equal(options.root, installRoot);
       assert.ok(options.verify);
-      assert.equal(options.verify(root).ok, true);
+      assert.equal(options.verify(installRoot).ok, true);
       return { ok: true, dirty: [], notes: [] };
     },
     reapply: () => {},
@@ -137,6 +139,20 @@ for (const staged of [true, false]) {
     }
   });
 }
+
+test("Windows wrapper install updates bastra-recall and hands off to the nested new CLI", async (t) => {
+  t.mock.method(process.stdout, "write", () => true);
+  const f = fixture(wrapperRoot);
+  assert.equal(await cmdUpdate(parseArgs(["update", "--yes", "--staged"]), f.io), 0);
+  const install = f.calls.find((c) => c.args.includes("-g") && c.args.includes("install"))!;
+  assert.deepEqual([install.bin, ...install.args], [node, npmCli, "install", "-g", "bastra-recall@latest"]);
+  const newCli = wrapperRoot + "\\dist\\cli.js";
+  assert.ok(f.calls.some((c) => c.bin === node && c.args[0] === newCli));
+  assert.equal(f.inline(), false);
+  assert.deepEqual(f.refreshes, [
+    { target: { node, script: wrapperRoot + "\\dist\\index.js", version: "9.0.0" }, reload: false, platform: "win32" },
+  ]);
+});
 
 test("ephemeral Windows updater hands off to the installed global CLI", async (t) => {
   t.mock.method(process.stdout, "write", () => true);

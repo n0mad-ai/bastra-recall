@@ -158,7 +158,7 @@ If a vault root recorded in `~/.bastra/vault-roots.json` later disappears (for e
 
 - [Import existing memories](https://github.com/n0mad-ai/bastra-recall/wiki/Importing-Memories) — lists, chat exports, rules and memory folders. Folder imports go directly into a separate intake area; the other paths stage candidates for review.
 - [Vault map](https://github.com/n0mad-ai/bastra-recall/wiki/Vault-Map) — explore, search and flag memories for care.
-- [Updates](https://github.com/n0mad-ai/bastra-recall/wiki/Updating) — update with `bastra update`, or opt into automatic updates.
+- [Updates](https://github.com/n0mad-ai/bastra-recall/wiki/Updating) — update with `bastra update`, or opt into automatic updates. `bastra update` updates the way you installed: Homebrew, or the npm package you installed (`bastra-recall` or `@bastra-recall/daemon`). Coming from 1.1.8 or older with `npm install -g bastra-recall`? Run `npm install -g bastra-recall@latest` once, then `bastra update` ([details](./docs/USAGE.md#updating--what-bastra-update-installs)).
 - [Model recommendations](./docs/USAGE.md#model-recommendations--when-a-release-suggests-a-different-local-text-model) — a release can suggest a better local text model; you are asked, never switched automatically.
 - [Reviewed-miss harvester](./docs/reviewed-miss-harvester.md) — an offline repository tool for reviewing missed recall opportunities; it applies nothing automatically.
 - [Remote access](./docs/REMOTE-ACCESS.md) — connect ChatGPT on the web and phone to your own Recall through your own HTTPS address.
@@ -330,7 +330,7 @@ Verschwindet ein in `~/.bastra/vault-roots.json` vermerkter Vault-Root später (
 
 - [Vorhandene Erinnerungen importieren](https://github.com/n0mad-ai/bastra-recall/wiki/Importing-Memories) – Listen, Chat-Exporte, Regeln und Memory-Ordner. Ordnerimporte landen direkt in einem getrennten Bereich; die anderen Wege bereiten Kandidaten zur Prüfung vor.
 - [Vault-Map](https://github.com/n0mad-ai/bastra-recall/wiki/Vault-Map) – Erinnerungen erkunden, suchen und zur Pflege markieren.
-- [Updates](https://github.com/n0mad-ai/bastra-recall/wiki/Updating) – mit `bastra update` aktualisieren oder automatische Updates aktivieren.
+- [Updates](https://github.com/n0mad-ai/bastra-recall/wiki/Updating) – mit `bastra update` aktualisieren oder automatische Updates aktivieren. `bastra update` aktualisiert so, wie du installiert hast: über Homebrew oder das npm-Paket, das du installiert hast (`bastra-recall` oder `@bastra-recall/daemon`). Du kommst von 1.1.8 oder älter und hast mit `npm install -g bastra-recall` installiert? Dann einmal `npm install -g bastra-recall@latest` ausführen, danach `bastra update` ([Details](./docs/USAGE.md#aktualisieren--was-bastra-update-installiert)).
 - [Modell-Empfehlungen](./docs/USAGE.md#modell-empfehlungen--wenn-ein-release-ein-anderes-lokales-textmodell-vorschlägt) – ein Release kann ein besseres lokales Textmodell vorschlagen; du wirst gefragt, nie automatisch umgestellt.
 - [Reviewed-Miss-Harvester](./docs/reviewed-miss-harvester.md#deutsch) — ein Offline-Repo-Werkzeug zum Prüfen verpasster Abrufchancen; es wendet nichts automatisch an.
 - [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch) – ChatGPT im Web und auf dem Handy über deine eigene HTTPS-Adresse mit deinem Recall verbinden.

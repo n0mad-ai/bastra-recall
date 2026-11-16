@@ -35,8 +35,8 @@ Commands:
                              Install click stays in Desktop's dialog)
   uninstall <surface|all>    Remove the registration (the shared skill is
                              removed once no surface references it anymore)
-  update                     brew upgrade (if brew-installed) + re-register +
-                             daemon restart. From a source checkout: run it
+  update                     brew or npm upgrade (whichever installed it) +
+                             re-register + daemon restart. From a source checkout: run it
                              after pulling AND building (it verifies the build,
                              it never runs one).
   address <status|setup [name]|remove>  Eigener Assistentenname als Browser-Adresse.
@@ -510,9 +510,10 @@ user unit.`,
 Usage:
   bastra update [options]
 
-Upgrades the installed package (brew upgrade when brew-installed, npm for a
-global install, nothing for a source checkout), re-registers every surface and
-restarts the daemon.
+Upgrades the installed package (brew upgrade when brew-installed; for a global
+npm install the package you installed: 'npm install -g bastra-recall@latest',
+or '@bastra-recall/daemon@latest' when you installed that one; nothing for a
+source checkout), re-registers every surface and restarts the daemon.
 
 A source checkout is never pulled, installed or built by this command: it only
 verifies that the checkout's build is not older than its sources, and stops

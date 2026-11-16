@@ -2,7 +2,16 @@ import { stubFreshness, stubFreshnessLines, type StubFreshnessIo } from "./stub-
 import { refreshAssistantAddressRuntime } from "../assistant-address.js";
 /** Installer update orchestration and cross-client restart guidance (#15). */
 import { spawnSync } from "node:child_process";
-import { captureUpdateNpm, runUpdateNpm, globalDaemonScript, updatePaths, type UpdateRuntimeIo } from "./update-npm.js";
+import {
+  captureUpdateNpm,
+  runUpdateNpm,
+  globalDaemonScript,
+  isWrapperInstallPath,
+  DAEMON_NPM_PACKAGE,
+  updatePaths,
+  type UpdateRuntimeIo,
+} from "./update-npm.js";
+import { CLI_PACKAGE } from "./cli-on-path.js";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,13 +46,17 @@ export interface InstallMode {
   cliPath: string;
   detail: string;
   updateCommand: string;
+  /** npm-global only: the package `npm install -g` updates. */
+  npmPackage?: string;
 }
 
 /**
  * Heuristic — uses the on-disk path of this CLI module:
- *   /opt/homebrew or /Cellar    → brew
+ *   …/node_modules/bastra-recall/node_modules/@bastra-recall/daemon/…
+ *                                → npm-global via the wrapper (`npm install -g bastra-recall`)
  *   …/node_modules/@bastra-recall/daemon/dist/cli/update.js
- *     (npm prefix root)        → npm-global
+ *     (npm prefix root)        → npm-global, the daemon package itself
+ *   /opt/homebrew or /Cellar    → brew
  *   path under a git working tree (sibling package.json + .git up the tree)
  *                                → source
  *   else                          → unknown
@@ -51,6 +64,25 @@ export interface InstallMode {
 export function detectInstallMode(cliPathOverride?: string): InstallMode {
   const cliPath = cliPathOverride ?? fileURLToPath(import.meta.url);
   const normalizedPath = cliPath.replace(/\\/g, "/");
+
+  // npm-global: cliPath sits inside a `node_modules/@bastra-recall/daemon/` tree.
+  // Checked BEFORE Homebrew: Homebrew's own node uses /opt/homebrew as the npm
+  // prefix, so an npm install lands in /opt/homebrew/lib/node_modules — while
+  // the Homebrew formula runs from Cellar/…/libexec/packages/daemon and never
+  // from a node_modules path.
+  if (normalizedPath.includes("/node_modules/@bastra-recall/") || normalizedPath.includes("/lib/node_modules/")) {
+    const npmPackage = isWrapperInstallPath(cliPath) ? CLI_PACKAGE : DAEMON_NPM_PACKAGE;
+    return {
+      mode: "npm-global",
+      cliPath,
+      detail:
+        npmPackage === CLI_PACKAGE
+          ? `installed via npm (global, package ${CLI_PACKAGE})`
+          : "installed via npm (global)",
+      updateCommand: `npm install -g ${npmPackage}@latest`,
+      npmPackage,
+    };
+  }
 
   // Homebrew Cellar
   if (
@@ -64,16 +96,6 @@ export function detectInstallMode(cliPathOverride?: string): InstallMode {
       cliPath,
       detail: "installed via Homebrew",
       updateCommand: "brew upgrade bastra-recall",
-    };
-  }
-
-  // npm-global: cliPath sits inside a `node_modules/@bastra-recall/daemon/` tree.
-  if (normalizedPath.includes("/node_modules/@bastra-recall/") || normalizedPath.includes("/lib/node_modules/")) {
-    return {
-      mode: "npm-global",
-      cliPath,
-      detail: "installed via npm (global)",
-      updateCommand: "npm install -g @bastra-recall/daemon@latest",
     };
   }
 
@@ -131,6 +153,7 @@ export function packageRootFromCliPath(cliPath: string, platform: NodeJS.Platfor
  */
 export function reRegisterViaInstalledBinary(
   args: ParsedArgs,
+  viaWrapper: boolean,
   io: UpdateRuntimeIo = {},
   spawn: typeof spawnSync = spawnSync
 ): number | null {
@@ -144,7 +167,7 @@ export function reRegisterViaInstalledBinary(
   // guess: it is the name of the npm WRAPPER package (`npx bastra-recall`) and
   // has been seen in a Homebrew prefix, so a global root may carry it. Never
   // assumed to exist; the list is ordered by what is actually declared.
-  const script = platform === "win32" ? globalDaemonScript(root, io) : null;
+  const script = platform === "win32" ? globalDaemonScript(root, io, viaWrapper) : null;
   const windowsCli = script ? updatePaths(platform).resolve(updatePaths(platform).dirname(script), "cli.js") : null;
   const candidates =
     platform === "win32"
@@ -315,7 +338,7 @@ function installedDaemonScript(mode: InstallMode, io: UpdateRuntimeIo = {}): str
     const r = captureUpdateNpm(["prefix", "-g"], { timeoutMs: 60_000 }, io);
     const root = r.stdout.trim();
     if (!r.ok || !root) return null;
-    return globalDaemonScript(root, io);
+    return globalDaemonScript(root, io, mode.npmPackage === CLI_PACKAGE);
   }
   return existsFile(DAEMON_SCRIPT_PATH);
 }
@@ -411,6 +434,35 @@ export function askModelRecommendation(
   // child prints and returns at once, so nothing unattended waits on this.
   // Its exit code is not the update's: the update is done at this point.
   return spawnSync(installed.node, [cli, "models", "ask"], { stdio, timeout: 3_600_000 });
+}
+
+/**
+ * What to tell the user when `npm install -g` failed. Updating the daemon
+ * package fails with EEXIST when the `bastra` command belongs to the wrapper
+ * package, and the layout cannot always show which one is installed (an npx
+ * run, for one) — so that case names the wrapper's command as well.
+ */
+export function npmInstallFailure(npmPackage: string, detail: string): string {
+  const manual = `npm install -g ${npmPackage}@latest`;
+  const wrapperHint =
+    npmPackage === CLI_PACKAGE
+      ? ""
+      : `  If you installed with 'npm install -g ${CLI_PACKAGE}', update with this instead:\n` +
+        `    npm install -g ${CLI_PACKAGE}@latest\n`;
+  return (
+    `\n✗ npm install failed (${detail})\n` +
+    `  Update by hand:\n    ${manual}\n` +
+    wrapperHint +
+    `  Then run 'bastra update' again.\n`
+  );
+}
+
+/** Step 1 for npm installs: update the package that is actually installed. */
+function installNpmUpdate(mode: InstallMode, io: UpdateRuntimeIo): boolean {
+  const npmPackage = mode.npmPackage ?? DAEMON_NPM_PACKAGE;
+  const r = runUpdateNpm(["install", "-g", `${npmPackage}@latest`], { timeoutMs: 300_000, showProgress: true }, io);
+  if (!r.ok) process.stdout.write(npmInstallFailure(npmPackage, r.detail));
+  return r.ok;
 }
 
 function existsFile(path: string): string | null {
@@ -587,15 +639,7 @@ async function performUpdate(args: ParsedArgs, io: UpdateIo): Promise<number> {
   } else if (mode.mode === "npm-global") {
     process.stdout.write(`→ ${mode.updateCommand}\n`);
     if (!args.dryRun) {
-      const r = runUpdateNpm(
-        ["install", "-g", "@bastra-recall/daemon@latest"],
-        { timeoutMs: 300_000, showProgress: true },
-        io
-      );
-      if (!r.ok) {
-        process.stdout.write(`\n✗ npm install failed (${r.detail}) — fix it manually, then re-run 'bastra update'\n`);
-        return 1;
-      }
+      if (!installNpmUpdate(mode, io)) return 1;
     } else {
       process.stdout.write(`  would run: ${mode.updateCommand}\n`);
     }
@@ -721,7 +765,7 @@ async function performUpdate(args: ParsedArgs, io: UpdateIo): Promise<number> {
     (isEphemeralInstallPath(mode.cliPath) || (platform === "win32" && mode.mode === "npm-global")) &&
     !args.dryRun
   ) {
-    installRC = reRegisterViaInstalledBinary(args, io, io.spawn);
+    installRC = reRegisterViaInstalledBinary(args, mode.npmPackage === CLI_PACKAGE, io, io.spawn);
     if (installRC === null) {
       if (platform === "win32") {
         process.stderr.write(
