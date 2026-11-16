@@ -1,12 +1,23 @@
 // Ring view (UI v2): the links of one memory — the hovered dot, else the
-// selected one — as curves to its linked dots, like the lenses draw them
-// (lens-draw.js: relation colour RC at 0.8, 1 px, bent towards the centre;
-// links to memories that are not shown are left out). The source and its
-// linked dots are drawn again on top at full strength, so the segment dimming
-// (nodeTier) never hides them, across area borders too.
-import { s, clear } from "../dom.js";
+// selected one — drawn as in the Half-life lens (lens-draw.js): relation
+// colour RC, each linked dot marked with a hollow accent ring set off from the
+// dot (its "impact"). Unlike a lens, the ring keeps all dots on one band, so a
+// curve bent towards the centre would send every link through the face. The
+// links follow the ring instead (linkPath): the short way round, dipping
+// further in the farther the target is, never inside the inner track and never
+// outside the ring. Written links are solid, derived ones dashed; a legend
+// names both with their counts while links are drawn. Links to memories that
+// are not shown are left out. The source and its linked dots are drawn again
+// on top at full strength, so the segment dimming (nodeTier) never hides them.
+// Stroke widths, dashes and the impact gap are screen pixels at every zoom:
+// scale() sets --px (SVG units per screen pixel) and views.css multiplies.
+import { h, s, clear } from "../dom.js";
+import { t } from "../i18n.js";
 import { RC, MUT, ACC } from "./chrome.js";
 import { areaCol } from "./vault-data.js";
+
+// Inner track: between the face rim (r 78) and the wedges' inner edge (96 − 6).
+export const TRACK = 86;
 
 /**
  * Dimming tier of a segment's dots: "dim" outside the hovered/focused
@@ -18,10 +29,50 @@ export function nodeTier(segKey, hoverKey, selKey) {
   return selKey && segKey === selKey ? "soft" : "on";
 }
 
-/** Quadratic curve a → b, bent halfway towards the ring centre (0, 0). */
-export function linkCurve(a, b) {
-  const f = (v) => v.toFixed(1);
-  return `M${f(a.x)} ${f(a.y)}Q${f((a.x + b.x) / 4)} ${f((a.y + b.y) / 4)} ${f(b.x)} ${f(b.y)}`;
+/**
+ * Path a → b around the ring centre (0, 0): the angle runs the short way, the
+ * radius from a's to b's and dips towards TRACK, barely for close dots and up
+ * to 95 % for opposite ones, so links to farther targets nest inside the
+ * nearer ones and close targets get short, flat arcs.
+ */
+export function linkPath(a, b) {
+  const ra = Math.hypot(a.x, a.y),
+    rb = Math.hypot(b.x, b.y),
+    ta = Math.atan2(a.y, a.x);
+  let dt = Math.atan2(b.y, b.x) - ta;
+  if (dt > Math.PI) dt -= 2 * Math.PI;
+  if (dt < -Math.PI) dt += 2 * Math.PI;
+  const dip = 0.95 * Math.pow(Math.abs(dt) / Math.PI, 1.25),
+    n = 4 + Math.ceil(Math.abs(dt) * 64),
+    f = (v) => v.toFixed(1);
+  let d = `M${f(a.x)} ${f(a.y)}`;
+  for (let i = 1; i < n; i++) {
+    const u = i / n,
+      r = TRACK + (ra + (rb - ra) * u - TRACK) * (1 - dip * Math.sin(Math.PI * u)),
+      th = ta + dt * u;
+    d += `L${f(Math.cos(th) * r)} ${f(Math.sin(th) * r)}`;
+  }
+  return `${d}L${f(b.x)} ${f(b.y)}`;
+}
+
+/**
+ * Stroke of one link: lens colour (RC), dashed when derived; calmer when many.
+ * Dashes of the darker derived colour fade out sooner, so they keep more.
+ */
+export function linkStyle(rel, n) {
+  const dashed = rel === "derived";
+  return {
+    stroke: RC[rel] || MUT,
+    dashed,
+    opacity: Math.max(dashed ? 0.65 : 0.45, n <= 8 ? 0.85 : 0.85 * Math.sqrt(8 / n)),
+  };
+}
+
+/** Legend rows [rel, count] in RC order, only relations that occur. */
+export function relCounts(ends) {
+  return Object.keys(RC)
+    .map((rel) => [rel, ends.filter((e) => e.rel === rel).length])
+    .filter(([, n]) => n > 0);
 }
 
 /** Linked dots of memory m that are on the ring and shown, once per target. */
@@ -37,24 +88,71 @@ export function linkedDots(m, dotOf, shown) {
   return out;
 }
 
-const NS = { "vector-effect": "non-scaling-stroke" };
-const dot = (p, ring) =>
-  s("circle", {
-    cx: p.x.toFixed(1),
-    cy: p.y.toFixed(1),
-    r: p.r.toFixed(2),
-    fill: areaCol(p.k, 0.92),
-    ...(ring ? { stroke: ACC, "stroke-width": 1.2, ...NS } : null),
-  });
+/**
+ * Legend corner (classes) that keeps clear of the card box {x, y, w, h}:
+ * bottom left (""), else top left, else top right; all in stage pixels.
+ */
+export function legendSpot(box, W, H, L) {
+  const spots = [
+    ["", 16, H - 16 - L.h],
+    ["is-top", 16, 16],
+    ["is-top is-right", W - 16 - L.w, 16],
+  ];
+  const free = ([, x, y]) =>
+    !box || x > box.x + box.w + 8 || x + L.w < box.x - 8 || y > box.y + box.h + 8 || y + L.h < box.y - 8;
+  return (spots.find(free) || spots[0])[0];
+}
 
-/** SVG layer; show() rebuilds only when the source dot or `stamp` changes. */
+const f2 = (v) => v.toFixed(2);
+const dot = (p) => s("circle", { cx: f2(p.x), cy: f2(p.y), r: f2(p.r), fill: areaCol(p.k, 0.92) });
+// impact: hollow accent ring set off from the linked dot (Half-life: r + 3, 1.2 px)
+const impact = (p) => s("circle.rg-impact", { cx: f2(p.x), cy: f2(p.y), stroke: ACC, vars: { "--r": f2(p.r) } });
+
+function curve(src, { p, rel }, n) {
+  const st = linkStyle(rel, n);
+  return s(`path.rg-link${st.dashed ? ".is-derived" : ""}`, {
+    d: linkPath(src, p),
+    stroke: st.stroke,
+    "stroke-opacity": st.opacity.toFixed(2),
+  });
+}
+
+function legendRow([rel, n]) {
+  return h(
+    "div.rg-legend__row",
+    null,
+    h(`span.rg-legend__line.is-${rel}`, { vars: { "--c": RC[rel] || MUT } }),
+    h("span", { text: t(`vv.rel.${rel}`) }),
+    h("span.rg-legend__n", { text: String(n) })
+  );
+}
+
+/** SVG layer plus its HTML legend; show() rebuilds only when the source dot, the ring or `stamp` changes. */
 export function mountLinks() {
   const curves = s("g"),
     dots = s("g");
   const el = s("g.rg-links", null, curves, dots);
-  let key = "";
+  const legend = h("div.rg-legend");
+  let key = "",
+    ring = null,
+    spot = "";
   return {
     el,
+    legend,
+    /** @param {number} kk screen pixels per SVG unit */
+    scale(kk) {
+      el.style.setProperty("--px", (1 / kk).toFixed(4));
+    },
+    /** Keep the legend clear of the focus card (an element in the stage, or null). */
+    dodge(card, W, H) {
+      if (!legend.classList.contains("is-on")) return;
+      const box = card && { x: card.offsetLeft, y: card.offsetTop, w: card.offsetWidth, h: card.offsetHeight };
+      const c = legendSpot(box, W, H, { w: legend.offsetWidth, h: legend.offsetHeight });
+      if (c === spot) return;
+      spot = c;
+      legend.classList.remove("is-top", "is-right");
+      if (c) legend.classList.add(...c.split(" "));
+    },
     /**
      * @param {object|null} src ring dot ({ id, x, y, r, k }) or null
      * @param {object|null} m its memory ({ links })
@@ -64,25 +162,18 @@ export function mountLinks() {
      */
     show(src, m, dotOf, shown, stamp) {
       const k = src && m ? `${src.id}|${stamp}` : "";
-      if (k === key) return;
+      if (k === key && dotOf === ring) return;
       key = k;
+      ring = dotOf;
       clear(curves);
       clear(dots);
-      if (!k) return;
-      const ends = linkedDots(m, dotOf, shown);
-      curves.append(
-        ...ends.map(({ p, rel }) =>
-          s("path", {
-            d: linkCurve(src, p),
-            fill: "none",
-            stroke: RC[rel] || MUT,
-            "stroke-opacity": 0.8,
-            "stroke-width": 1,
-            ...NS,
-          })
-        )
-      );
-      dots.append(...ends.map(({ p }) => dot(p, true)), dot(src, false));
+      clear(legend);
+      const ends = k ? linkedDots(m, dotOf, shown) : [];
+      legend.classList.toggle("is-on", ends.length > 0);
+      if (!ends.length) return;
+      curves.append(...ends.map((e) => curve(src, e, ends.length)));
+      dots.append(...ends.map(({ p }) => dot(p)), ...ends.map(({ p }) => impact(p)), dot(src));
+      legend.append(...relCounts(ends).map(legendRow));
     },
   };
 }

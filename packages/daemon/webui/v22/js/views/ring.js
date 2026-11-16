@@ -69,7 +69,8 @@ export function mountRing(stage) {
   const ov = overlay(stage);
   const cardHost = h("div");
   const tip = h("div.ltip");
-  stage.append(cardHost, tip);
+  const links = mountLinks();
+  stage.append(cardHost, tip, links.legend);
   const unMb = mountMemoryBrowser(stage, {
     showMemory: (id) => {
       const p = ring?.dotOf.get(id);
@@ -333,7 +334,6 @@ export function mountRing(stage) {
       )
     );
     kids.push(ghostG);
-    const links = mountLinks();
     kids.push(links.el);
     if (ghosts.length) {
       const num = s("tspan", { fill: "#7d92a8", "font-family": MONO, "font-weight": 400 }, String(ghosts.length));
@@ -362,7 +362,7 @@ export function mountRing(stage) {
     kids.push(emblem, centre);
     const hovMark = s("circle.rg-hov", {
       fill: "none",
-      stroke: ACC,
+      stroke: INK,
       "stroke-width": 1.2,
       "vector-effect": "non-scaling-stroke",
     });
@@ -396,7 +396,6 @@ export function mountRing(stage) {
       hovMark,
       selMark,
       pulse,
-      links,
     };
     hovDot = null;
     glideDot = null;
@@ -555,6 +554,7 @@ export function mountRing(stage) {
     jarvis?.setActive(showCore && !state.covered); // frozen under the memory browser / a dialog (js/cover.js)
     placeMarks(kk);
     placeCard(kk, cx, cy);
+    links.dodge(card?.el, W, H);
     const hits = Array.isArray(state.hits) ? state.hits : [];
     ov.marks(
       hits
@@ -683,7 +683,7 @@ export function mountRing(stage) {
       hovMark.setAttribute("r", (hovDot.r + 2.5 / kk).toFixed(2));
     }
     const sd = glideDot || (selMem && ring.dotOf.get(selMem.id));
-    showLinks(hovDot || sd || null);
+    showLinks(hovDot || sd || null, kk);
     selMark.classList.toggle("is-on", !!sd);
     if (sd) {
       const px = 1 / kk,
@@ -707,11 +707,13 @@ export function mountRing(stage) {
   }
 
   // links of the hovered, else the selected dot (ring-links.js); rebuilt only
-  // when that dot or the time window changes
-  function showLinks(src) {
+  // when that dot, the ring or the time window changes
+  function showLinks(src, kk) {
     const v = vault(),
       win = timeWindow();
-    refs.links.show(src, src && v?.byId.get(src.id), ring.dotOf, (id) => inWindow(v.byId.get(id), win), windowKey());
+    links.scale(kk);
+    links.show(src, src && v?.byId.get(src.id), ring.dotOf, (id) => inWindow(v.byId.get(id), win), windowKey());
+    links.dodge(card?.el, W, H);
   }
 
   function placeCard(kk, cx, _cy) {

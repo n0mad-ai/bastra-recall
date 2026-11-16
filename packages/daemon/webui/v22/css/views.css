@@ -108,6 +108,67 @@
 .rg-links {
   pointer-events: none;
 }
+/* links of one memory (ring-links.js): --px = SVG units per screen pixel, so
+   widths, dashes and the impact gap stay the same on screen at every zoom */
+.rg-link {
+  fill: none;
+  stroke-width: calc(1.3px * var(--px, 1));
+  stroke-linecap: round;
+}
+.rg-link.is-derived {
+  stroke-width: calc(1.2px * var(--px, 1));
+  stroke-dasharray: calc(4px * var(--px, 1)) calc(3px * var(--px, 1));
+  stroke-linecap: butt;
+}
+.rg-impact {
+  fill: none;
+  r: calc(var(--r, 2) * 1px + 3px * var(--px, 1));
+  stroke-width: calc(1.2px * var(--px, 1));
+}
+.rg-legend {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  z-index: 4;
+  display: none;
+  pointer-events: none;
+  padding: 6px 10px;
+  background: rgba(6, 10, 19, 0.82);
+  border: 1px solid var(--line-25);
+  font: 10px var(--mono);
+  color: var(--muted);
+}
+.rg-legend.is-on {
+  display: block;
+}
+.rg-legend.is-top {
+  top: 16px;
+  bottom: auto;
+}
+.rg-legend.is-right {
+  left: auto;
+  right: 16px;
+}
+.rg-legend__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 16px;
+}
+.rg-legend__line {
+  width: 16px;
+  height: 1.5px;
+  background: var(--c);
+}
+.rg-legend__line.is-derived {
+  height: 1px;
+  background: repeating-linear-gradient(90deg, var(--c) 0 4px, transparent 4px 7px);
+}
+.rg-legend__n {
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--ink);
+}
 .rg-text.is-dim {
   opacity: 0.35;
 }
@@ -144,7 +205,12 @@
 .rg-pulse.is-on {
   display: inline;
 }
+/* non-scaling-stroke ignores the stage zoom (CSS scale --rz on .rg__in) */
+.rg-hov {
+  stroke-width: calc(1.2px / var(--rz, 1));
+}
 .rg-sel {
+  stroke-width: calc(1.5px / var(--rz, 1));
   filter: drop-shadow(0 0 4px rgba(56, 217, 245, 0.8));
 }
 .rg-pulse {
