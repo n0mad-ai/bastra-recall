@@ -266,10 +266,13 @@ export const SETTINGS_REGISTRY = {
     enabled: setting(bool, {
       area: "general",
       label: "Web-Oberfläche",
+      // Not `required`: the default below is recomputed per platform on every
+      // read (getUiEnabled, the gateway, effectiveSetting), so storing it would
+      // pin today's default over a later change of `webUiOnByDefault()`.
+      // Nothing is stored until the user picks a side.
       get default() {
         return webUiOnByDefault();
       },
-      required: true,
     }),
     backdrop: setting(z.string().trim().regex(BACKDROP_ID), {
       area: "general",
