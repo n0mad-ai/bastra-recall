@@ -7,7 +7,7 @@ import { ICON, VAULT_VIEWS, GROUPS, areasIn } from "./areas.js";
 import { state, setState } from "./state.js";
 import { data } from "./data.js";
 import { lastVaultView, rememberVaultView } from "./views/pro-views.js";
-import { openMemoryBrowser, closeMemoryBrowser } from "./views/memory-browser.js";
+import { openMemoryBrowserArea, closeMemoryBrowser } from "./views/memory-browser.js";
 
 let navEl, scrollEl, indEl, verEl;
 
@@ -38,7 +38,7 @@ export function mountNav(app, ctx) {
   render(ctx);
 }
 
-function navButton({ id, label, title, iconPath, on, onClick, badge, badgeAccent, dot }) {
+function navButton({ id, label, title, iconPath, on, sub, onClick, badge, badgeAccent, dot }) {
   const ic = h("span.nav__icon", null, icon(iconPath));
   if (badge) ic.append(h(`span.nav__badge${badgeAccent ? ".nav__badge--accent" : ""}`, { text: String(badge) }));
   // dot: a second, separate signal next to the count (Tasks: unread reports beside "due").
@@ -46,9 +46,11 @@ function navButton({ id, label, title, iconPath, on, onClick, badge, badgeAccent
   return h(
     "button.nav__btn",
     {
-      cls: on ? "is-on" : "",
+      cls: on ? "is-on" : sub ? "is-sub" : "",
       title: title || label,
       "aria-label": title || label,
+      // the lit entry is the page; the second mark is open beside it
+      "aria-current": on ? "page" : sub ? "true" : null,
       "data-nav": id,
       on: { click: onClick },
     },
@@ -57,47 +59,63 @@ function navButton({ id, label, title, iconPath, on, onClick, badge, badgeAccent
   );
 }
 
-/** Memory browser entry (below Vault): a layer over the vault views, so it is
- *  lit while the window stands (cover("mb"), js/cover.js) and the next click
- *  closes it like its ESC button; the area underneath stays as it was. */
-function browserButton() {
-  const open = state.covered && !!document.querySelector(".mb.is-grow");
-  return navButton({
+/** Which of Vault and Browser the rail lights (Daniel 16.11.2026). The browser
+ *  opened from the rail is its own area: only Browser is lit. Opened from a
+ *  vault view it is a layer: Vault stays lit and Browser gets the second mark.
+ *  state.browser changes at the click, so the marks never wait for the grow. */
+export function railMarks(view, browser) {
+  const inVault = VAULT_VIEWS.includes(view);
+  return {
+    vault: inVault && browser !== "nav",
+    browser: browser === "nav" ? "on" : browser === "vault" && inVault ? "sub" : null,
+  };
+}
+
+/** Memory browser entry (below Vault): opens the browser as an area. Like the
+ *  other entries a second click keeps it; another entry leaves it (stage.js). */
+function browserButton(mark) {
+  const b = navButton({
     id: "browser",
     label: t("nav.browser"),
     title: t("nav.browserTitle"),
     iconPath: ICON.browser,
-    on: open,
-    onClick: (e) => {
-      if (!open) openMemoryBrowser("all", null, e.currentTarget.getBoundingClientRect());
-      else closeMemoryBrowser();
+    on: mark === "on",
+    sub: mark === "sub",
+    onClick: (e) => openMemoryBrowserArea(e.currentTarget.getBoundingClientRect()),
+  });
+  if (mark === "on") b.dataset.active = "1";
+  return b;
+}
+
+/** The Vault entry: named after the current vault view; lit unless the browser stands as an area over it. */
+function vaultButton(view, on) {
+  const cur = VAULT_VIEWS.includes(view) ? view : null;
+  const b = navButton({
+    id: "vault",
+    label: cur ? t(`view.${cur}`) : t("nav.vault"),
+    title: t("nav.vault"),
+    iconPath: ICON[cur || lastVaultView()],
+    on,
+    onClick: () => {
+      // from the browser area back to the vault view it stands on
+      if (state.browser === "nav") closeMemoryBrowser();
+      else if (!on) setState({ view: lastVaultView(), hover: null, tab: "areas" });
     },
   });
+  if (on) b.dataset.active = "1";
+  return b;
 }
 
 function render(ctx) {
   clear(scrollEl).append(indEl);
   const view = state.view;
-  const inVault = VAULT_VIEWS.includes(view);
+  const marks = railMarks(view, state.browser);
+  const inVault = marks.vault; // the vault-view segments belong to a lit Vault
   for (const group of GROUPS) {
     const items = areasIn(group);
     if (group !== "vault" && !items.length) continue;
     scrollEl.append(h("div.nav__div"));
-    if (group === "vault") {
-      const cur = inVault ? view : null;
-      const vb = navButton({
-        id: "vault",
-        label: cur ? t(`view.${cur}`) : t("nav.vault"),
-        title: t("nav.vault"),
-        iconPath: ICON[cur || lastVaultView()],
-        on: inVault,
-        onClick: () => {
-          if (!inVault) setState({ view: lastVaultView(), hover: null, tab: "areas" });
-        },
-      });
-      if (inVault) vb.dataset.active = "1";
-      scrollEl.append(vb, browserButton());
-    }
+    if (group === "vault") scrollEl.append(vaultButton(view, inVault), browserButton(marks.browser));
     for (const a of items) {
       const label = a.label || t(a.labelKey);
       const title = a.titleKey ? t(a.titleKey) : label;
@@ -147,7 +165,7 @@ export function mountNavAgent(el) {
 
 export function updateNav(ctx, changed) {
   if (changed.has("view")) rememberVaultView(state.view);
-  if (changed.has("view") || changed.has("data") || changed.has("covered")) render(ctx);
+  if (changed.has("view") || changed.has("data") || changed.has("browser")) render(ctx);
   const v = data.health?.version;
   if (v && verEl.lastChild.textContent !== `v${v}`) {
     verEl.lastChild.textContent = `v${v}`;

@@ -55,6 +55,7 @@ const M = {
   from: null,
   grow: false,
   focus: false,
+  nav: false, // opened from the rail as its own area: no close, Esc does not close (state.browser)
 };
 let inst = null;
 
@@ -78,8 +79,13 @@ export function closeMemoryBrowser(after) {
 /** `from` is where the user clicked: the clicked element's DOMRect (or a
  *  { left, top, right, bottom } box) taken at click time — the window grows
  *  out of exactly that spot and shrinks back into it. */
-export function openMemoryBrowser(scope, sel, from) {
+/** `nav`: opened from the rail as its own area (Daniel 16.11.2026); a link
+ *  followed while the browser stands as an area keeps it one. */
+export function openMemoryBrowser(scope, sel, from, nav = false) {
+  const asArea = nav || state.browser === "nav";
+  const browser = asArea ? "nav" : "vault";
   Object.assign(M, {
+    nav: asArea,
     open: true,
     scope: scope || "all",
     sel: sel || null,
@@ -96,13 +102,28 @@ export function openMemoryBrowser(scope, sel, from) {
   });
   // The browser lives in the vault views (ring, lenses, map engines), which
   // mount it; from anywhere else the ring takes over and plays the same grow
-  // (the last free view while the Pro views are locked, pro-views.js).
+  // (the last free view while the Pro views are locked, pro-views.js). As an
+  // area it opens over the last vault view, which the rail's Vault then shows.
+  // state.browser is set at once, so the rail is right before the grow ends.
   if (inst) {
     // A departure may still be shrinking this mounted browser. Reopening is
     // a new navigation intent: restore its host before cancelling that timer.
-    if (state.view !== inst.view) setState({ view: inst.view });
+    setState({ view: inst.view, browser });
     inst.show(true);
-  } else setState({ view: viewLocked("ring") ? lastVaultView() : "ring" });
+  } else setState({ view: asArea || viewLocked("ring") ? lastVaultView() : "ring", browser });
+}
+
+/** The rail's Browser entry: opens the browser as an area; one already open
+ *  as a vault layer becomes the area in place (selection and filters stay). */
+export function openMemoryBrowserArea(from) {
+  if (state.browser === "nav") return;
+  if (state.browser === "vault" && inst) {
+    M.nav = true;
+    setState({ browser: "nav" });
+    inst.mode();
+    return;
+  }
+  openMemoryBrowser("all", null, from, true);
 }
 
 const box = (r) =>
@@ -295,6 +316,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     bars = h("div.mb__bars");
   const list = h("div.mb__list"),
     reader = h("div.mb__reader");
+  const esc = h("button.mb__esc", { title: t("mb.close"), text: t("mb.esc"), on: { click: () => hide() } });
   const root = h(
     "div.mb",
     null,
@@ -325,7 +347,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
         input,
         hits
       ),
-      h("button.mb__esc", { title: t("mb.close"), text: t("mb.esc"), on: { click: () => hide() } })
+      esc
     ),
     h("div.mb__bar", null, chips, sorts),
     h(
@@ -356,10 +378,16 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     glideT = 0;
 
   // ── open / close (prototype openMB / closeMB) ──
+  /** As an area (rail) the browser has no close: the rail leaves it. */
+  function mode() {
+    root.classList.toggle("is-nav", M.nav);
+    esc.hidden = M.nav;
+  }
   function show(anim) {
     clearTimeout(closeT);
     details.invalidate(); // a reopened browser reads every memory fresh
     input.value = M.q;
+    mode();
     if (!care)
       loadCare().then(() => {
         if (!dead && M.open) renderReader(true);
@@ -405,6 +433,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     }, 520);
   }
   function hide(after) {
+    if (state.browser) setState({ browser: null }); // the rail follows at once, not after the shrink
     M.menu = false;
     renderHead();
     root.classList.remove("is-grow");
@@ -997,26 +1026,28 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     }, 220);
   }
 
-  // ── keys: Esc closes (menu, then query, then window); ↑ ↓ walk the list ──
+  // ── keys: Esc closes (menu, then query, then window — not an area); ↑ ↓ walk the list ──
   function onKey(e) {
     if (!M.open || !root.classList.contains("is-grow")) return;
     const tag = e.target?.tagName;
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      if (M.menu) {
-        M.menu = false;
-        renderHead();
-      } else if (e.target === input && M.q) {
-        input.value = "";
-        onInput();
-      } else hide();
-      return;
-    }
+    if (e.key === "Escape") return onEscape(e);
     if ((e.key === "ArrowDown" || e.key === "ArrowUp") && tag !== "INPUT" && tag !== "TEXTAREA") {
       e.preventDefault();
       step(e.key === "ArrowDown" ? 1 : -1);
     }
+  }
+  function onEscape(e) {
+    const clearQuery = e.target === input && M.q;
+    if (M.nav && !M.menu && !clearQuery) return; // an area is left through the rail
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (M.menu) {
+      M.menu = false;
+      renderHead();
+    } else if (clearQuery) {
+      input.value = "";
+      onInput();
+    } else hide();
   }
   window.addEventListener("keydown", onKey, true);
   const onDoc = (e) => {
@@ -1042,7 +1073,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     if (M.open) render();
   });
 
-  inst = { show, showMemory, hide, view: hostView };
+  inst = { show, showMemory, hide, mode, view: hostView };
   if (M.open) show(M.grow);
 
   return () => {
@@ -1053,6 +1084,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     clearTimeout(semT);
     // A close that was still animating finishes here.
     if (!root.classList.contains("is-grow")) M.open = false;
+    if (!M.open && state.browser) setState({ browser: null });
     cover("mb", false); // the next vault view covers again if the browser stays open
     window.removeEventListener("keydown", onKey, true);
     document.removeEventListener("pointerdown", onDoc);

@@ -121,6 +121,11 @@
   color: var(--ink);
   background: var(--line-08);
 }
+/* Second mark: the memory browser open as a layer over the lit Vault (js/nav.js). */
+.nav__btn.is-sub {
+  color: var(--amber);
+  box-shadow: inset 0 0 0 1px var(--amber-35);
+}
 .nav__icon {
   position: relative;
   display: block;

@@ -196,6 +196,9 @@
   letter-spacing: 0.12em;
   cursor: pointer;
 }
+.mb__esc[hidden] {
+  display: none;
+}
 .mb__esc:hover {
   color: var(--ink);
   border-color: var(--accent);
@@ -479,9 +482,8 @@
   color: var(--muted);
 }
 
-/* reader */
+/* reader: text, editor and care notes use the full reader column (Daniel 16.11.2026) */
 .mb-rd {
-  max-width: 760px;
   padding: 20px 26px 30px;
 }
 .mb-rd__back {

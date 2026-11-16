@@ -35,6 +35,9 @@ export const state = {
   ftDw: false,
   // A layer covers the stage (js/cover.js): the vault view under it is frozen.
   covered: false,
+  // Memory browser (views/memory-browser.js): "nav" when opened from the rail
+  // as its own area, "vault" when opened as a layer from a vault view, else null.
+  browser: null,
   isMin: false,
   isDrag: false,
   isPos: (() => {
