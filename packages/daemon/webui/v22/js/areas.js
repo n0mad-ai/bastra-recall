@@ -2,7 +2,7 @@
 //
 // The free build registers its own areas below. Pro areas (mail, terminal,
 // documents, images, links, full dashboard, live voice) live in the private
-// recall-pro repository and are added through registerArea() — this file is
+// recall-pulse repository and are added through registerArea() — this file is
 // the docking point, it carries no Pro code.
 //
 // ── Adding an area (Dashboard, Telemetry, Tasks, Settings, …) ─────────────

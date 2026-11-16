@@ -5,7 +5,7 @@ export default {
   "tk.dueBtn": "DUE · {n}",
   "tk.new": "NEW TASK +",
   "tk.f.create": "CREATE TASK",
-  "tk.proSoon": "PRO · coming soon",
+  "tk.proSoon": "PULSE · coming soon",
   "tk.offlineBadge": "Unavailable",
   "tk.retry": "TRY AGAIN",
   "tk.loading": "loading …",
@@ -254,8 +254,9 @@ export default {
   "tk.fail.source": "The source is currently unavailable; the check will be repeated later",
 
   "tk.view.title": "View",
-  "tk.view.text": "How your tasks are shown. Ledger is the default. The other views belong to Recall Pro.",
-  "tk.proHint": "This view belongs to Recall Pro.",
+  "tk.view.text":
+    "How your tasks are shown. Ledger is the default. The other views belong to Recall Pulse (coming soon).",
+  "tk.proHint": "This view belongs to Recall Pulse – coming soon.",
   "tk.std": "DEFAULT",
   "tk.style.ledger": "Ledger",
   "tk.style.ledger.d": "Week or month as a clear grid. For every day.",

@@ -1,6 +1,6 @@
 // Tasks area (SCREENS.md › Aufgaben, prototype STAGE › isTasks): compact head
 // with status pills, calendar (setting calStyle: ledger here; flow | stream |
-// relay belong to Recall Pro and dock in via tasks-styles.js), drag & drop with drop zones, pop-overs that dim and
+// relay belong to Recall Pulse and dock in via tasks-styles.js), drag & drop with drop zones, pop-overs that dim and
 // blur the calendar, form "New task", panel tabs Details / View / Control.
 // Real data and actions through the old UI's endpoints (tasks-store.js).
 //

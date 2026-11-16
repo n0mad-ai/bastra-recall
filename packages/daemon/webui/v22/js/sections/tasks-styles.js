@@ -1,6 +1,6 @@
 // Tasks calendar — docking point for calendar styles (setting calStyle).
 // The free build registers "ledger" (tasks-ledger.js). Pro styles (flow,
-// stream, relay) live in the private recall-pro repository and register
+// stream, relay) live in the private recall-pulse repository and register
 // through window.recallUi.registerCalendarStyle() — this file carries no Pro
 // code. Until one is registered, the View tab shows it as a Pro hint.
 //
@@ -43,7 +43,7 @@ export function onCalendarStyles(fn) {
   return () => listeners.delete(fn);
 }
 
-/** Styles of Recall Pro shown as a hint in the View tab while not registered (prototype TK_STYLES). */
+/** Styles of Recall Pulse shown as a hint in the View tab while not registered (prototype TK_STYLES). */
 export const PRO_STYLES = [
   ["flow", "M3 4h7v7H3ZM14 4h7v7h-7ZM3 14h7v7H3ZM14 14h7v7h-7Z"],
   ["stream", "M3 7h12M7 12h14M3 17h9"],

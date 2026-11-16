@@ -3,7 +3,7 @@
 // rows; row height Compact / Regular / Fit view. The layout persists in
 // localStorage. Free build: Today, Weather, Tasks, Deadlines, Memory
 // (js/sections/dashboard-widgets.js). Mail, Week/Calendar and Coding agents
-// are Pro: recall-pro adds them through window.recallUi.registerWidget().
+// are Pro: recall-pulse adds them through window.recallUi.registerWidget().
 //
 // registerWidget({ type, code, title|titleKey, desc|descKey, icon, w, h,
 //   minW, minH, defaultOn?, render(body, env) → { meta?, tone? } })
@@ -709,5 +709,5 @@ registerArea({
 });
 
 for (const w of BUILTIN) registerWidget(w);
-// Docking point for recall-pro (Mail, Week/Calendar, Coding agents).
+// Docking point for recall-pulse (Mail, Week/Calendar, Coding agents).
 extendRecallUi({ registerWidget });

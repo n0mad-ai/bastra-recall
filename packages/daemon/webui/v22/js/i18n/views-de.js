@@ -60,7 +60,7 @@ export default {
   // Ansichtswahl im rechten Panel › Ansicht (js/views/pro-views.js, js/lens.js)
   "vv.views": "Vault-Ansichten",
   "vv.viewsText":
-    "Wie dein Vault dargestellt wird. Mindspace, Clouds, Semantic und Ring gehören zum freien Recall, die übrigen Ansichten zu Recall Pro.",
-  "vv.proSoon": "PRO · bald verfügbar",
-  "vv.proHint": "Diese Ansicht gehört zu Recall Pro – bald verfügbar.",
+    "Wie dein Vault dargestellt wird. Mindspace, Clouds, Semantic und Ring gehören zum freien Recall, die übrigen Ansichten zu Recall Pulse (bald verfügbar).",
+  "vv.proSoon": "PULSE · bald verfügbar",
+  "vv.proHint": "Diese Ansicht gehört zu Recall Pulse – bald verfügbar.",
 };

@@ -6,7 +6,7 @@ export default {
   "tk.dueBtn": "FÄLLIG · {n}",
   "tk.new": "NEUE AUFGABE +",
   "tk.f.create": "AUFGABE ANLEGEN",
-  "tk.proSoon": "PRO · bald verfügbar",
+  "tk.proSoon": "PULSE · bald verfügbar",
   "tk.offlineBadge": "Nicht erreichbar",
   "tk.retry": "ERNEUT VERSUCHEN",
   "tk.loading": "lädt …",
@@ -266,8 +266,8 @@ export default {
   // view tab
   "tk.view.title": "Ansicht",
   "tk.view.text":
-    "Wie deine Aufgaben dargestellt werden. Ledger ist der Standard. Die anderen Ansichten gehören zu Recall Pro.",
-  "tk.proHint": "Diese Ansicht gehört zu Recall Pro.",
+    "Wie deine Aufgaben dargestellt werden. Ledger ist der Standard. Die anderen Ansichten gehören zu Recall Pulse (bald verfügbar).",
+  "tk.proHint": "Diese Ansicht gehört zu Recall Pulse – bald verfügbar.",
   "tk.std": "STANDARD",
   "tk.style.ledger": "Ledger",
   "tk.style.ledger.d": "Woche oder Monat als klares Raster. Für den Alltag.",
