@@ -31,7 +31,7 @@ import { probeDaemon, resolveVault, type DaemonProbe } from "./helpers.js";
 import type { ClientFeatures } from "./types.js";
 import { archiveMode, type ArchiveMode } from "../bash-pre-patterns.js";
 import { batterySaverEnabled } from "../power-source.js";
-import { archiveCap, archiveMaxItem, formatSize } from "../rm-archive.js";
+import { archiveCap, archiveMaxItem, archiveRootProblem, formatSize } from "../rm-archive.js";
 import { isOffValue } from "../env.js";
 
 export interface FeatureState {
@@ -63,6 +63,8 @@ export interface FeatureState {
   archive: ArchiveMode;
   /** #934: the archive's effective total cap and per-target limit, in bytes (null = no limit). */
   archiveLimits: { cap: number; maxItem: number | null };
+  /** Why the archive directory is refused (another account's), when the archive is on. */
+  archiveProblem?: string | null;
   /** #632: battery mode. `live` = what the running daemon reports, absent when
    *  it is not running or predates the field. */
   battery: { saver: boolean; live?: { source: string; saving: boolean } };
@@ -241,20 +243,7 @@ export function featureLines(s: FeatureState): string[] {
       : row(INFO, "shared recall bridges", "off", "bastra bridges enable")
   );
   lines.push(s.ui ? row(ON, "vault map", "on") : row(INFO, "vault map", "off", "bastra config set ui.enabled true"));
-  const archive = "archiving rm + git snapshots (Claude Code)";
-  lines.push(
-    s.archive === "bastra"
-      ? row(
-          ON,
-          archive,
-          "on (rm -r and lossy git acts run through ~/.bastra/archive without a prompt; " +
-            `cap ${formatSize(s.archiveLimits.cap)}, ` +
-            `per-target limit ${s.archiveLimits.maxItem === null ? "off" : formatSize(s.archiveLimits.maxItem)}; bastra archive list)`
-        )
-      : s.archive === "host"
-        ? row(ON, archive, "host (BASTRA_RM_ARCHIVES=host: the host's own archiving rm, receipt text only)")
-        : row(INFO, archive, "off", "bastra config set archive.enabled on  (docs/hooks.md)")
-  );
+  lines.push(archiveLine(s));
   const battery = "battery saver (macOS)";
   if (!s.battery.saver) {
     lines.push(row(INFO, battery, "off", "bastra config set battery.saver on"));
@@ -266,6 +255,32 @@ export function featureLines(s: FeatureState): string[] {
     lines.push(row(ON, battery, s.battery.live ? `on (power source: ${s.battery.live.source})` : "on"));
   }
   return lines;
+}
+
+/** The archive's row; out of featureLines to keep that one's complexity. */
+function archiveLine(s: FeatureState): string {
+  const archive = "archiving rm + git snapshots (Claude Code)";
+  if (s.archive === "bastra" && s.archiveProblem) return row(OFF, archive, `on, but not usable: ${s.archiveProblem}`);
+  return s.archive === "bastra"
+    ? row(
+        ON,
+        archive,
+        "on (rm -r and lossy git acts run through ~/.bastra/archive without a prompt; " +
+          `cap ${formatSize(s.archiveLimits.cap)}, ` +
+          `per-target limit ${s.archiveLimits.maxItem === null ? "off" : formatSize(s.archiveLimits.maxItem)}; bastra archive list)`
+      )
+    : s.archive === "host"
+      ? row(ON, archive, "host (BASTRA_RM_ARCHIVES=host: the host's own archiving rm, receipt text only)")
+      : row(INFO, archive, "off", "bastra config set archive.enabled on  (docs/hooks.md)");
+}
+
+/** The archive mode, and why its directory is refused when it is on (doctor). */
+function archiveFeature(
+  enabled: boolean | undefined,
+  env: NodeJS.ProcessEnv
+): Pick<FeatureState, "archive" | "archiveProblem"> {
+  const archive = archiveMode(enabled ?? false);
+  return { archive, archiveProblem: archive === "bastra" ? archiveRootProblem(env) : null };
 }
 
 function reflexState(settings: CliSettings, env: NodeJS.ProcessEnv): FeatureState["reflex"] {
@@ -345,7 +360,7 @@ export async function collectFeatureState(
     bridges: settings.sharedRecall?.enabled ?? false,
     ui: settings.ui?.enabled ?? SETTINGS_REGISTRY.ui.enabled.default,
     // This shell's env; the daemon reads its own (a LaunchAgent may differ).
-    archive: archiveMode(settings.archive?.enabled ?? false),
+    ...archiveFeature(settings.archive?.enabled, env),
     archiveLimits: {
       cap: archiveCap(env, settings.archive?.cap),
       maxItem: archiveMaxItem(env, settings.archive?.maxItem),

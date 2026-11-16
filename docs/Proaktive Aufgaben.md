@@ -12,7 +12,7 @@ Ausgeschaltet laufen weder Aufgaben-Laufzeit, Polling, Zustellung, Quellenprüfu
 
 ## Aufgaben im Gespräch
 
-Bitte den Agenten um eine Aufgabe oder Erinnerung: Beauftragte oder bestätigte Aufgaben werden auf jeder Stufe direkt scharf angelegt. Der Agent fragt nur bei fehlendem oder mehrdeutigem Ziel, Datum, Uhrzeit, Zeitzone oder Wiederholung nach; dazu gehört eine mehrdeutige Sommerzeit-Uhrzeit. Bemerkt er selbst eine Frist oder zugesagte Wiedervorlage, trägt er sie ohne Rückfrage ein: `→ Erinnerung eingetragen: <was> – <wann>`.
+Bitte den Agenten um eine Aufgabe oder Erinnerung: Beauftragte oder bestätigte Aufgaben werden auf jeder Stufe direkt scharf angelegt. Der Agent fragt nur bei fehlendem oder mehrdeutigem Ziel, Datum, Uhrzeit, Zeitzone oder Wiederholung nach; dazu gehört eine mehrdeutige Sommerzeit-Uhrzeit. Bemerkt er selbst eine Frist oder zugesagte Wiedervorlage, trägt er sie ohne Rückfrage ein und bestätigt das in einer Zeile in deiner Sprache, zum Beispiel `→ Erinnerung eingetragen: <was> – <wann>`.
 
 Fällige Karten spricht er am Antwortanfang kurz an. „Erledigt“, „morgen nochmal“ oder „vergiss es“ bedient er für Aufgaben aller Stufen im Gespräch. Herkunft „auf Ansage“ / „vom Agenten bemerkt“, Client, Sitzung und geschwärzter Anlass bleiben sichtbar. Es gibt keine Tages- oder Offen-Obergrenze; gleiche Anlässe zur gleichen Zeit werden zusammengeführt. Technische Speicher-/Zustellbudgets bleiben. `BASTRA_CONVERSATIONAL_REMINDERS=0` schaltet den Gesprächsweg ab; dann wird nur unscharf gespeichert und dies mitgeteilt. Einmalige Arbeitsaufträge erzeugen keine Erinnerung.
 
@@ -98,7 +98,7 @@ Status nennt An/Aus, Zustandszahlen, nächste Prüfung, letzte Zustellung, Fehle
 
 Lebende Reservierungen stehen in `status`. Wenn „bereits reserviert“ erscheint: zuerst Wirkungsstatus/Quittungen prüfen. Nur deine eigene Reservierung kannst du mit `bastra tasks release ID` freigeben; andernfalls ihren Ablauf nach höchstens 30 Sekunden abwarten. Dies macht keine Wirkung rückgängig und erneuert keine Freigabe. Der Browser verhindert Doppelklicks und gibt nach einem fehlgeschlagenen Versuch seine eigene Reservierung frei. Den Vorschlag erneut öffnen und prüfen; keine automatische Wiederholung bei unklarem Ausgang.
 
-`--json` gibt das Maschinenformat aus. Ohne diesen Schalter sind Ergebnisse und Fehler lesbare deutsche Meldungen. Erweiterte Quellen/Evidenz können weiterhin per `--input` übergeben werden.
+`--json` gibt das Maschinenformat aus. Ohne diesen Schalter sind Ergebnisse und Fehler lesbare deutsche Meldungen, unabhängig von `language.primary`. Erweiterte Quellen/Evidenz können weiterhin per `--input` übergeben werden.
 
 ## Browser und Entscheidung prüfen
 
@@ -216,7 +216,7 @@ Agenten legen ihren Abschlussbericht nach größerer oder autonomer Arbeit in Re
 
 ## Lokale Mitteilungen und gespeicherter Aufgabenstand
 
-Bei eingeschalteten Aufgaben ist `tasks.notifications` in den Einstellungen standardmäßig true. Mit false lassen sich native Mitteilungen ausschalten, ohne Aufgaben abzusagen. macOS ist unterstützt; andere Plattformen bleiben bei Zustellung zum nächsten Kontakt. Der Status nennt Unterstützung und Aktivität des nativen Daemon-Hosts. Die Mitteilungszentrale kann die Anzeige gemäß den OS-Einstellungen unterdrücken.
+Bei eingeschalteten Aufgaben ist `tasks.notifications` in den Einstellungen standardmäßig true. Mit false lassen sich native Mitteilungen ausschalten, ohne Aufgaben abzusagen. macOS ist unterstützt; andere Plattformen bleiben bei Zustellung zum nächsten Kontakt. Der Status nennt Unterstützung und Aktivität des nativen Daemon-Hosts. Die Mitteilungszentrale kann die Anzeige gemäß den OS-Einstellungen unterdrücken. Das Wort, das eine abgelaufene Aufgabe kennzeichnet, folgt `language.primary` (Englisch, wenn nichts gesetzt ist oder es für die Sprache noch keinen Wortlaut gibt).
 
 Eine dauerhafte Terminquittung trennt native Zustellreservierung und OS-Übergabe vom Gelesenstatus. Eine Anzeige im Chat hält die Mac-Mitteilung nicht auf: Sie wird je Vorkommen einmal gesendet, außer das Vorkommen ist schon quittiert oder erledigt oder die Aufgabe ist pausiert oder stummgeschaltet. Eine übergebene native Mitteilung unterdrückt doppelte passive Dialogzustellung; ausdrücklicher Abruf und Brett zeigen weiter ungelesene Arbeit und `already_notified`. Ein eindeutiger OS-Fehler kann nach dem Wiederholungsintervall erneut versucht werden. Bei Timeout oder Absturz mit unklarem Übergabeergebnis bleibt die Reservierung erhalten, um eine mögliche Doppelmeldung zu vermeiden; menschliches Lesen wird nicht behauptet. Das Brett bleibt zur Prüfung verfügbar.
 

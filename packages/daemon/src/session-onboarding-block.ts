@@ -3,6 +3,8 @@
  * Concrete user work takes priority; without active work the interview starts
  * immediately. The agent interprets task intent, without matching user wording.
  * Deferral leaves onboarding pending and does not alter rule delivery.
+ * #1595: started at most once per session, and the opening sentence claims
+ * only what the daemon knows (a new vault, not necessarily an empty one).
  * These instructions and their delivery telemetry do not certify host behavior.
  */
 
@@ -25,9 +27,11 @@ export function buildOnboardingBlock(onboardingNeeded: boolean): string {
     `interview to a later turn with no active task. Deferral is not a decline: do not run ` +
     `\`bastra onboard skip\` or \`bastra onboard done\` for it. ` +
     `When there is no active task, RUN THE ONBOARDING INTERVIEW NOW in your first response: ` +
-    `open with one sentence saying the memory is empty and that ~5 minutes of questions ` +
+    `open with one sentence saying the memory is new and that ~5 minutes of questions ` +
     `will seed it, then ask question (1) in the same response — do not ask for permission ` +
     `first and do not wait for a better moment. ` +
+    `Start it at most once per session: if the user does not take it up, do not ask, offer ` +
+    `or remind again in this session unless the user raises it. ` +
     `If the user declines or wants to do it later, accept that immediately, run ` +
     `\`bastra onboard skip\`, and carry on with their request. Declining is THEIR decision to ` +
     `make, not yours to make for them. Interview ` +

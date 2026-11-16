@@ -567,3 +567,52 @@ test("GET /ui/telemetry keeps the finished report while the data is unchanged an
     await rm(settingsDir, { recursive: true, force: true });
   }
 });
+
+test(
+  "a FIFO under a log name skips that day instead of waiting forever",
+  { skip: process.platform === "win32" ? "no mkfifo on Windows" : false, timeout: 30_000 },
+  async () => {
+    const { execFileSync, spawn } = await import("node:child_process");
+    const logDir = await mkdtemp(join(tmpdir(), "bastra-tdays-logs-"));
+    const dbPath = dbFixture();
+    try {
+      await writeLog(logDir);
+      await unlink(join(logDir, "events-2026-09-02.jsonl"));
+      // A finished day (the stored-day path) and the running day (direct read).
+      execFileSync("mkfifo", [join(logDir, "events-2026-09-02.jsonl")]);
+      execFileSync("mkfifo", [join(logDir, "events-2026-09-04.jsonl")]);
+      // The reads run in a child with a kill timer: a blocking open() of a FIFO
+      // would freeze this test's own event loop and the whole test run.
+      const src = (file: string) => JSON.stringify(new URL(`../src/${file}`, import.meta.url).href);
+      const code = `const { isDeepStrictEqual } = await import("node:util");
+const { openAppDatabase } = await import(${src("app-database.ts")});
+const { buildTelemetryReport, readEventWindow } = await import(${src("telemetry-report.ts")});
+const { TelemetryDayStore } = await import(${src("telemetry-day-store.ts")});
+const db = openAppDatabase({ path: ${JSON.stringify(dbPath)} });
+const now = Date.parse("2026-09-04T08:30:00.000Z");
+const report = (w) => buildTelemetryReport(w, 7, ${JSON.stringify(T)}, 90);
+const stored = await readEventWindow(${JSON.stringify(logDir)}, 7, now, false, new TelemetryDayStore(db));
+const direct = await readEventWindow(${JSON.stringify(logDir)}, 7, now);
+const days = db.sqlite.prepare("SELECT day FROM telemetry_days").all().map((r) => r.day);
+db.close();
+process.stdout.write(JSON.stringify({ same: isDeepStrictEqual(report(stored), report(direct)), days }));`;
+      const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code], {
+        stdio: ["ignore", "pipe", "inherit"],
+      });
+      let out = "";
+      child.stdout!.on("data", (chunk) => (out += chunk));
+      const timer = setTimeout(() => child.kill("SIGKILL"), 20_000);
+      const [status, signal] = await new Promise<[number | null, string | null]>((resolve) =>
+        child.once("exit", (c, sig) => resolve([c, sig]))
+      );
+      clearTimeout(timer);
+      assert.equal(signal, null, "reading the planted FIFO hung");
+      assert.equal(status, 0);
+      const result = JSON.parse(out) as { same: boolean; days: string[] };
+      assert.equal(result.same, true, "the stored and the direct report agree");
+      assert.ok(!result.days.includes("2026-09-02"), "nothing is stored for the planted day");
+    } finally {
+      await rm(logDir, { recursive: true, force: true });
+    }
+  }
+);

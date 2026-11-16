@@ -161,7 +161,9 @@ function localPath(path: string): string {
 }
 
 function syncFile(path: string): void {
-  const fd = openSync(path, "r");
+  // #1580: Windows flushes only through a writable handle (EPERM with "r").
+  // Every caller flushes a file this process just created with mode 0600.
+  const fd = openSync(path, "r+");
   try {
     fsyncSync(fd);
   } finally {
@@ -266,7 +268,12 @@ export class AppDatabase {
       this.sqlite.exec("COMMIT");
       return result;
     } catch (error) {
-      this.sqlite.exec("ROLLBACK");
+      try {
+        this.sqlite.exec("ROLLBACK");
+      } catch {
+        // #1589: SQLite already rolled back on its own (full disk, I/O error).
+        // Report the cause, not "cannot rollback - no transaction is active".
+      }
       throw error;
     } finally {
       this.inTransaction = false;

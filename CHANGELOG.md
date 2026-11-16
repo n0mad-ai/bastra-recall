@@ -6,6 +6,112 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+Fixes reported in a contributor audit of the 1.2.0 hardening.
+
+- **Forwarded requests need the token on every local route.** A request that
+  carries a proxy header now needs the API token on all local routes, not only
+  on hooks and the web UI; only the public OAuth discovery documents under
+  `/.well-known/` stay open, as before. `X-Real-IP`, `X-Forwarded-Proto` and
+  `Via` now count as proxy headers too. `/api/v1/*` keeps its own token and
+  sign-in rules; direct local tools are unchanged.
+- **A lock that is not a regular file can no longer stall the service.** The
+  shared lock for the daemon's settings and state files, the code map's build
+  lock and the log files read for the telemetry report are now read without
+  waiting. A special file, a link or an empty folder in place of that shared
+  lock is removed (only the link, never the file it points to); where an
+  unknown owner must never be replaced, it is refused with the normal "lock
+  unavailable" error instead. A folder with content is never deleted and is
+  handled as before.
+  The code map replaces a special file or a link like any other broken lock
+  after its short grace period, and the telemetry report skips such a log
+  file. Locks inside the vault folder itself and a few other marker files of
+  the daemon are not covered by this change yet.
+- **The patched hono versions now reach every install.** `hono` (4.13.19 or a
+  later 4.x) and `@hono/node-server` (2.1.8 or a later 2.x) are direct
+  dependencies of the daemon package, so a plain `npm install` gets them too.
+  The Claude Desktop extension is built with the repository's version pins and
+  checked against them, including nested copies; a prerelease does not pass.
+- Live updates in the web UI: the update counter that a caller without access
+  to private memories sees now counts only the updates that caller may see.
+- **The archive directory itself must be yours.** A directory set with
+  `BASTRA_ARCHIVE_DIR` that belongs to another account (for example a shared
+  folder) is no longer used. The archiving `rm` and the git snapshots then
+  stop with a clear message and leave every file where it is; `bastra doctor`
+  shows the problem. Your own directory that was open to others is closed to
+  you alone, as before.
+
+### Fixed
+
+- Web UI: clicking a memory in the Live list now jumps to it in the vault view
+  and in the memory browser; a closed browser opens on that memory. Before,
+  an open browser stayed on the memory it showed.
+- A request path with invalid percent-encoding is answered with `400` instead
+  of `500`.
+- `save_memory`: three failed attempts no longer tell an unrelated save to
+  stop retrying. The limit now counts per memory and caller, so a first
+  attempt at another memory gets its own error message (#1593).
+- Setup question in a new vault: the agent starts it at most once per session
+  and no longer calls a vault with a few memories empty (#1595).
+- `bastra drafts list` says when the draft store is full and new first
+  captures are being dropped (#1592).
+- Settings: resetting one setting to its default no longer removes the other
+  stored settings of its group. Resetting `tasks.enabled` kept losing the
+  stored Claude chat setup answer (`tasks.chatConsent`), and resetting
+  `ui.enabled` the background image. A reset that would leave the experiment
+  settings incomplete is refused instead of silently clearing them (#1582).
+- Settings: saving one value (for example the background image) no longer
+  stores the current default of `ui.enabled`, `tasks.enabled` or
+  `sharedRecall.enabled` as if it had been chosen, so a later change of these
+  defaults reaches everyone who never picked a side (#1576; `ui.enabled` part
+  proposed by @bfs2021 in #1577).
+- Tasks: a task lock left behind by a process that ended before the last
+  restart of the computer is taken over automatically, even when its process
+  number now belongs to another program. On macOS the lock of an ended
+  process is also taken over after the computer's network name changed. A
+  lock of a running process is never taken over.
+  The error now names the task store instead of the settings file (#1587).
+- Local app data: a read that loses a race with another process finishing the
+  same first-time move into `recall.db` returns the stored state instead of
+  "no state", which could lead to defaults being written over it (#1579).
+- Local app data: a process using a different `BASTRA_DB_PATH` than the one
+  the state was moved into now stops with `ESTATEELSEWHERE` and names both
+  places, instead of reading "no state" and starting a second, diverging copy
+  (#1588).
+- Local app database: a full disk or I/O error inside a transaction is
+  reported as such, not as "cannot rollback - no transaction is active"
+  (#1589).
+- Local app database: backups before a migration or import no longer fail
+  with `EPERM` on Windows (#1580).
+- Hook state: a legacy hook state file that reappears with content different
+  from its retained original no longer makes every hook state load fail; both
+  files and the stored state stay as they are (#1584).
+- Tasks: a recurring calendar reminder whose time falls into the hour skipped
+  by a daylight saving change now fires right after that hour on that day and
+  keeps running, instead of being switched off for good. One-off reminders at
+  such a time are still refused when you create them (#1585).
+- Tasks: editing a field that does not change the time (for example the area
+  or the end of validity) no longer fires an already delivered reminder again
+  with a large missed count. A reminder you have not seen yet is shown once
+  more (#1586).
+- Tasks: a chat announcement that is stopped before anything is sent is tried
+  again later, and the reminder stays visible on the next contact (#1583).
+- Tasks: one task whose history is full no longer stops all other reminders.
+  That task is switched off with a visible error instead (#1581).
+- Tasks: the Mac notification for an expired task follows `language.primary`,
+  with English as the fallback; the reminder confirmation is no longer
+  prescribed in German, and texts meant for the agent are English (#1594). The
+  `bastra tasks` CLI stays German as before, error messages included, so one
+  dialog never mixes two languages; a missing terminal now gets its own message.
+- Tasks: recording the Claude chat setup answer no longer stores the current
+  default of `tasks.enabled` as if it had been chosen.
+
+### Documentation
+
+- Linux: Recall cannot yet check which local user account a request comes
+  from. Run it there only on a computer with a single user.
+
 ## [1.2.0] — 2026-11-16
 
 ### Added

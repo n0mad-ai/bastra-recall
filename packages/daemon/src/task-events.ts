@@ -14,7 +14,7 @@ import { promisify } from "node:util";
 import { z } from "zod";
 import { authenticateTask, requireTaskDomains, requireTaskOwner } from "./task-auth.js";
 import { taskSourceSchema, taskIdentitySchema, type TaskStore, type Task } from "./task-schema.js";
-import { transactTaskStore, readTaskStore } from "./task-store.js";
+import { transactTaskStore, readTaskStore, TASK_HISTORY_RESERVE } from "./task-store.js";
 import { latestTimeSlot, timeSlot } from "./task-clock.js";
 import type { TaskServiceContext } from "./task-service.js";
 const exec = promisify(execFile);
@@ -191,6 +191,27 @@ function fire(store: TaskStore, task: Task, key: string, due: number, now: numbe
   delete task.snoozed_until;
   audit(task, now, "fire");
 }
+/** A task whose history reached the store reserve stops visibly on its own: it
+ * is disarmed with a failure the owner sees, instead of making the whole
+ * evaluation fail for every other task (#1581). */
+function historyFull(task: Task, now: number): boolean {
+  if (!task.armed || task.history.length < TASK_HISTORY_RESERVE - 1) return false;
+  if (task.history.length < TASK_HISTORY_RESERVE) {
+    task.armed = false;
+    task.last_failure = { at: now, code: "history_capacity", message: "Task history is full; owner review needed" };
+    audit(task, now, "history-full");
+  }
+  return true;
+}
+/** Gaps no longer end a series (#1585); a slot that still cannot be computed
+ * disarms the task under the code of what actually failed. */
+function slotFailed(task: Task, error: unknown, now: number): void {
+  const code = (error as { reason?: string }).reason ?? "schedule_error";
+  if (task.last_failure?.code === code) return;
+  task.armed = false;
+  task.last_failure = { at: now, code, message: "Time slot needs owner review" };
+  audit(task, now, "source-failed");
+}
 /** Pure bounded transaction; journal and logical occurrences commit together. */
 export function evaluateTaskSnapshot(store: TaskStore, now: number): void {
   if (!store.controls.enabled || !store.tasks.length) return;
@@ -200,6 +221,7 @@ export function evaluateTaskSnapshot(store: TaskStore, now: number): void {
   while (visited < store.tasks.length && remaining > 0) {
     const task = store.tasks[(start + visited++) % store.tasks.length];
     remaining--;
+    if (historyFull(task, now)) continue;
     if (!["resolved", "cancelled", "expired"].includes(task.state) && taskValidityExpired(task, now)) {
       const id = taskValueHash(JSON.stringify(["task-expiry-v1", task.id, task.generation, task.expires_at]));
       for (const occurrence of store.occurrences.filter(
@@ -346,12 +368,8 @@ export function evaluateTaskSnapshot(store: TaskStore, now: number): void {
         delete task.snoozed_until;
         audit(task, now, "unsnooze");
       }
-    } catch {
-      if (task.last_failure?.code !== "calendar_gap") {
-        task.armed = false;
-        task.last_failure = { at: now, code: "calendar_gap", message: "Calendar slot needs owner review" };
-        audit(task, now, "source-failed");
-      }
+    } catch (error) {
+      slotFailed(task, error, now);
     }
   }
   store.evaluation_cursor = (start + visited) % store.tasks.length;

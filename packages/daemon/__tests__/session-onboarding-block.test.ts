@@ -80,3 +80,17 @@ test("#1411: first use without active work still starts the interview immediatel
   assert.match(block, /When there is no active task, RUN THE ONBOARDING INTERVIEW NOW in your first response/);
   assert.match(block, /then ask question \(1\) in the same response/);
 });
+
+test("#1595: the interview starts at most once per session, then stays quiet unless the user raises it", () => {
+  assert.match(
+    block,
+    /Start it at most once per session: if the user does not take it up, do not ask, offer or remind again in this session unless the user raises it/
+  );
+});
+
+test("#1595: the opening sentence claims nothing the daemon does not know about the vault", () => {
+  // The block goes out for any vault below the fresh-vault limit, not only an
+  // empty one; "empty" was false as soon as one memory existed.
+  assert.doesNotMatch(block, /memory is empty/i);
+  assert.match(block, /saying the memory is new/);
+});

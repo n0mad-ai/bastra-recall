@@ -41,7 +41,7 @@ So the stop costs a little every time and saved nothing that could be found. But
 
 Globs, variables and `cd` are expanded by the shell as usual. The shim receives exactly the arguments the system `rm` would have received. The hint says bastra runs this command with its archiving `rm`, instead of STOP.
 
-**2. The shim** (`shims/rm` → `rm-shim.js`, source `packages/daemon/src/rm-archive.ts`) moves each target to `~/.bastra/archive/<date>/<HHMMSS-pid>/<full path>`. On the same filesystem this is a rename. A target on another filesystem goes to `<mount>/.bastra-archive`. The shim keeps `rm`'s exit codes and messages (`-f`, missing operand, "Is a directory", `-d`).
+**2. The shim** (`shims/rm` → `rm-shim.js`, source `packages/daemon/src/rm-archive.ts`) moves each target to `~/.bastra/archive/<date>/<HHMMSS-pid>/<full path>`. On the same filesystem this is a rename. A target on another filesystem goes to `<mount>/.bastra-archive`. `BASTRA_ARCHIVE_DIR` sets another archive directory. It must belong to your own user and must not be writable by others; otherwise Recall does not use it, and `rm` archives and removes nothing until you choose a directory of your own or remove `BASTRA_ARCHIVE_DIR`. `bastra doctor` shows this on the archive line. The shim keeps `rm`'s exit codes and messages (`-f`, missing operand, "Is a directory", `-d`).
 
 - Temp ground (`/tmp`, `/var/tmp`, `/dev/shm`, `/run/user/<uid>`, `$TMPDIR`, macOS `/private/tmp` and `/private/var/folders`, Claude Code's scratchpads) is **really deleted**.
 - `/`, `~`, system dirs, the temp roots themselves, the archive and its ancestors, and `.`/`..` are refused.
@@ -266,7 +266,7 @@ Der Stopp kostet also jedes Mal ein wenig und hat nachweisbar nichts gerettet. V
 
 Globs, Variablen und `cd` expandiert die Shell wie immer. Der Shim bekommt genau die Argumente, die das System-`rm` bekommen hätte. Der Hinweis sagt, dass bastra den Befehl mit seinem archivierenden `rm` ausführt, statt STOP.
 
-**2. Der Shim** (`shims/rm` → `rm-shim.js`, Quelle `packages/daemon/src/rm-archive.ts`) verschiebt jedes Ziel nach `~/.bastra/archive/<Datum>/<HHMMSS-PID>/<voller Pfad>`. Auf demselben Dateisystem ist das ein Umbenennen. Ein Ziel auf einem anderen Dateisystem geht nach `<mount>/.bastra-archive`. Exit-Codes und Meldungen von `rm` bleiben (`-f`, fehlender Operand, „Is a directory", `-d`).
+**2. Der Shim** (`shims/rm` → `rm-shim.js`, Quelle `packages/daemon/src/rm-archive.ts`) verschiebt jedes Ziel nach `~/.bastra/archive/<Datum>/<HHMMSS-PID>/<voller Pfad>`. Auf demselben Dateisystem ist das ein Umbenennen. Ein Ziel auf einem anderen Dateisystem geht nach `<mount>/.bastra-archive`. `BASTRA_ARCHIVE_DIR` legt ein anderes Archivverzeichnis fest. Es muss dem eigenen Benutzer gehören und darf für andere nicht beschreibbar sein; sonst nutzt Recall es nicht, und `rm` archiviert und löscht nichts, bis du ein eigenes Verzeichnis wählst oder `BASTRA_ARCHIVE_DIR` entfernst. `bastra doctor` zeigt das in der Archiv-Zeile. Exit-Codes und Meldungen von `rm` bleiben (`-f`, fehlender Operand, „Is a directory", `-d`).
 
 - Temp-Bereiche (`/tmp`, `/var/tmp`, `/dev/shm`, `/run/user/<uid>`, `$TMPDIR`, unter macOS `/private/tmp` und `/private/var/folders`, Claude Codes Scratchpads) werden **wirklich gelöscht**.
 - `/`, `~`, Systemverzeichnisse, die Temp-Wurzeln selbst, das Archiv und seine Elternverzeichnisse sowie `.`/`..` werden verweigert.

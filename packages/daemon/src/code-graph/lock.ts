@@ -97,13 +97,16 @@
  * with a quorum is not what a code-graph rebuild is worth.
  */
 
-import { link, mkdir, open, readdir, readFile, rename, rm, stat, type FileHandle } from "node:fs/promises";
+import { constants } from "node:fs";
+import { link, mkdir, open, readdir, rename, rm, stat, type FileHandle } from "node:fs/promises";
 import { hostname } from "node:os";
 import { createHash, randomBytes } from "node:crypto";
 import { join } from "node:path";
 
 /** The lock file, inside the graph directory next to the manifest. */
 export const LOCK_NAME = ".bastra-build.lock";
+/** A lock record is a few hundred bytes; a larger file is unreadable junk. */
+const LOCK_MAX_BYTES = 64 * 1024;
 
 /**
  * A lock whose heartbeat is this old may be taken over. Six renew intervals:
@@ -576,7 +579,7 @@ type LockState =
 async function readState(path: string): Promise<LockState> {
   let text: string;
   try {
-    text = await readFile(path, "utf8");
+    text = await readLockText(path);
   } catch (err) {
     return (err as NodeJS.ErrnoException).code === "ENOENT"
       ? { kind: "free" }
@@ -584,6 +587,38 @@ async function readState(path: string): Promise<LockState> {
   }
   const record = parseRecord(text);
   return record === null ? { kind: "unreadable", text } : { kind: "held", record };
+}
+
+/** Read flags for the lock: a symlink is refused, a FIFO never waits. Windows
+ * has neither flag. */
+const LOCK_READ_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+
+/**
+ * The lock file's text through ONE non-blocking descriptor: a FIFO, device,
+ * directory or symlink here is junk to be judged, never a read that waits
+ * forever (contributor audit). The owner is deliberately NOT checked: a regular
+ * lock of another account (a daemon once started with sudo, a shared folder)
+ * is still a holder to be judged by its record, not junk to be replaced.
+ */
+async function readLockText(path: string): Promise<string> {
+  const handle = await open(path, LOCK_READ_FLAGS);
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || info.size > LOCK_MAX_BYTES)
+      throw Object.assign(new Error(`not a lock file: ${path}`), { code: "EUNSAFE" });
+    // One spare byte proves the file did not grow past the limit meanwhile.
+    const buffer = Buffer.alloc(LOCK_MAX_BYTES + 1);
+    let length = 0;
+    for (;;) {
+      const { bytesRead } = await handle.read(buffer, length, buffer.length - length, length);
+      if (bytesRead === 0) break;
+      length += bytesRead;
+      if (length > LOCK_MAX_BYTES) throw Object.assign(new Error(`lock file grew: ${path}`), { code: "EUNSAFE" });
+    }
+    return buffer.toString("utf8", 0, length);
+  } finally {
+    await handle.close();
+  }
 }
 
 function parseRecord(text: string): LockRecord | null {

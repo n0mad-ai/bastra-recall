@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, symlink, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readSettings } from "../src/settings-file.js";
+import { mutateSettings, readSettings } from "../src/settings-file.js";
+import type { CliSettings } from "../src/settings-registry.js";
 import { settingEntry, parseSettingValue } from "../src/settings-registry.js";
 import { applyTaskChatConsent, inspectTaskChatSetup, taskChatSettings } from "../src/task-chat-settings.js";
 
@@ -30,6 +31,19 @@ test("no consent is closed; explicit no is persisted and is never asked again", 
   assert.equal((await applyTaskChatConsent(false, f)).answer, "declined");
   assert.equal((await inspectTaskChatSetup(f)).ask, false);
   await assert.rejects(readFile(f.userPath), { code: "ENOENT" });
+});
+test("recording the chat answer never turns the tasks default into a stored choice", async () => {
+  const f = await fixture();
+  await applyTaskChatConsent(false, f);
+  const stored = (await readSettings(f.settingsPath)).tasks!;
+  assert.equal(stored.chatConsent, "declined");
+  assert.equal("enabled" in stored, false, "an unset tasks.enabled stays unset");
+  for (const enabled of [false, true]) {
+    const g = await fixture();
+    await mutateSettings(g.settingsPath, () => ({ tasks: { enabled } }) as CliSettings);
+    await applyTaskChatConsent(false, g);
+    assert.equal((await readSettings(g.settingsPath)).tasks?.enabled, enabled, "a stored choice is kept");
+  }
 });
 test("an absent or non-boolean answer never silently records no or enables chat", async () => {
   for (const value of [undefined, null, "yes", "no", 1, 0]) {

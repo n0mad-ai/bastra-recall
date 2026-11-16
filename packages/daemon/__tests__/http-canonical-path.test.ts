@@ -37,6 +37,12 @@ const NON_CANONICAL = [
   "/ui/updates%00",
   "/ui/updates#frag",
   "*",
+  // Percent-encoding that does not decode: answered 400, never 500.
+  "/ui/%e0%80%af",
+  "/ui/%zz",
+  "/ui/100%",
+  "/ui/%C3",
+  "/hook/%ff?x=1",
 ];
 
 const CANONICAL = [
@@ -47,6 +53,7 @@ const CANONICAL = [
   "/ui/health",
   "/ui/updates?since=0",
   "/ui/updates?since=../../x",
+  "/ui/search?q=%zz",
   "/ui/engines/simulation.js",
   "/ui/index.html?q=1",
   "/ui/chat/conversations/Notiz%20mit%20Leerzeichen",

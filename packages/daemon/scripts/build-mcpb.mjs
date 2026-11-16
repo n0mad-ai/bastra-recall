@@ -18,6 +18,7 @@ import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertOverrides } from "./mcpb-pins.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const daemonRoot = resolve(here, "..");
@@ -33,11 +34,18 @@ const run = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, stdio: "inherit" 
 // 1. Clean staging. The server dir gets its OWN package.json so npm anchors
 // there — without it, npm climbs up to the daemon workspace and rewrites
 // the real package.json/lockfile.
+//
+// The staging dir has no lockfile of its own (the repo lock describes the
+// workspaces, not this tree), so `npm ci` is not possible here. npm honors
+// `overrides` only from the root package.json of an install — this one — so
+// the repo's pins (patched hono, @hono/node-server, …) are copied in, and the
+// bundle is checked against them after the install (step 4).
+const overrides = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")).overrides ?? {};
 rmSync(buildDir, { recursive: true, force: true });
 mkdirSync(join(buildDir, "server"), { recursive: true });
 writeFileSync(
   join(buildDir, "server", "package.json"),
-  JSON.stringify({ name: "bastra-recall-mcpb-server", version: "0.0.0", private: true }, null, 2) + "\n",
+  JSON.stringify({ name: "bastra-recall-mcpb-server", version: "0.0.0", private: true, overrides }, null, 2) + "\n",
   "utf8"
 );
 
@@ -67,9 +75,11 @@ if (local) {
   run("npm", [...installArgs, `@bastra-recall/daemon@${version}`], join(buildDir, "server"));
 }
 
-// 4. Sanity: the entry point must exist in the staged bundle.
+// 4. Sanity: the entry point must exist in the staged bundle, and every
+// pinned package in it must satisfy the repo's pin.
 const entry = join(buildDir, "server", "node_modules", "@bastra-recall", "daemon", "dist", "mcp-forwarder.js");
 readFileSync(entry);
+assertOverrides(join(buildDir, "server"), overrides);
 
 // 5. Pack + validate via the official CLI (devDependency @anthropic-ai/mcpb).
 const out = join(mcpbDir, `bastra-recall-${version}.mcpb`);

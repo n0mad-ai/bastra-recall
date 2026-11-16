@@ -25,7 +25,19 @@ legacy file is then renamed to `<original>.pre-db` with owner-only permissions.
 It is never deleted. If the process stops after the database commit but before
 the rename, the next read finishes the rename without importing the file again.
 An existing retained original is never overwritten. Later reads produce no new
-import backups. Corrupt or unreadable legacy files stay in place.
+import backups. Corrupt or unreadable legacy files stay in place. When two
+processes finish the same rename at once, the one that loses still returns the
+committed state; it never reports the state as absent.
+
+A read, write or delete that finds no record, no legacy file, but a retained
+`<original>.pre-db` fails with code `ESTATEELSEWHERE` instead of `ENOENT`. The
+state was imported into a different database: a process with another
+`BASTRA_DB_PATH` (or none), or a `recall.db` restored from a backup older than
+the import. Nothing is read or written, so the other side never overwrites
+real state with defaults. Use the same `BASTRA_DB_PATH`, or none, for the
+daemon, the CLI and the hooks. To import the original into the active database
+deliberately, stop all bastra processes and rename the `.pre-db` file back to
+its original name.
 
 ## Return to the version before the migration
 

@@ -258,7 +258,8 @@ export async function deliverTaskChats(ctx: TaskServiceContext, options: TaskCha
       "control"
     );
     if (!content) continue;
-    let submitted = false;
+    let submitted = false,
+      sending = false;
     try {
       const current = await select(selection);
       if (
@@ -281,20 +282,25 @@ export async function deliverTaskChats(ctx: TaskServiceContext, options: TaskCha
         )
       )
         throw new Error("chat_occurrence_changed");
+      sending = true;
       await (options.send ?? sendInbox)(target, content);
       submitted = true;
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === "ENOENT" || code === "ECONNREFUSED") await invalidateChatTarget(target).catch(() => undefined);
-      // Unknown outcomes are never automatically replayed. Board remains authoritative.
+      // Unknown outcomes after send() started are never automatically replayed. Board remains authoritative.
     }
     await transactTaskStore(
       ctx.path,
       undefined,
       (store) => {
-        const claim = store.occurrences.find((o) => o.id === candidate.id)?.chat_delivery;
+        const occurrence = store.occurrences.find((o) => o.id === candidate.id);
+        const claim = occurrence?.chat_delivery;
         if (claim?.event_id !== eventId) return;
-        if (submitted) claim.submitted_at = now;
+        // Nothing left the daemon before send(): release the claim so a later
+        // tick or the next-contact lane can still announce it (#1583).
+        if (!sending) delete occurrence!.chat_delivery;
+        else if (submitted) claim.submitted_at = now;
         else claim.failed_at = now;
       },
       "control"

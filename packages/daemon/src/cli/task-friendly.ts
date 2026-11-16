@@ -1,6 +1,11 @@
 /** User-facing task options and plain text output; JSON remains explicit. */
 import { randomUUID } from "node:crypto";
 import { localWall, ambiguousTaskCalendar, resolveTaskCalendar } from "../task-clock.js";
+import { localTaskCardText } from "../task-card-text.js";
+/** The task CLI's language. Its questions, lists and results are still written in
+ *  German; error and card texts follow the same language so one dialog never mixes
+ *  two. Switches to language.primary once the whole task CLI does (#1594 follow-up). */
+export const TASK_CLI_LANGUAGE = "de";
 export const TASK_VALUE_FLAGS = [
   "--goal",
   "--when",
@@ -145,7 +150,19 @@ export function friendlyTaskCreate(options: Record<string, string | boolean>, no
   };
 }
 export const friendlyWhyNow = (why: string) =>
-  why.startsWith("Registered condition") ? "Der Auslöser ist fällig. Zeitablauf bestätigt kein Messergebnis." : why;
+  why.startsWith("Registered condition")
+    ? "Der Auslöser ist fällig. Zeitablauf bestätigt kein Messergebnis."
+    : localTaskCardText(why, TASK_CLI_LANGUAGE);
+const agentAccessHint = (access: { reason: string; hint: string }) => accessHint[access.reason] ?? access.hint;
+const accessHint: Record<string, string> = {
+  disabled: "Gesprächserinnerungen sind ausgeschaltet.",
+  "unsafe-or-corrupt":
+    "Erinnerungszugang beschädigt oder zu offen; Karten bleiben stumm. Owner: bastra tasks setup-hooks.",
+  missing: "Erinnerungszugang fehlt. Daemon starten; falls weiterhin fehlend: bastra tasks setup-hooks.",
+  ready: "Bei nächstem Kontakt, solange der Daemon läuft.",
+  "owner-not-for-agents": "Owner-Zugang nicht für automatische Agent-Karten verwenden.",
+  "revoked-or-invalid": "Erinnerungszugang widerrufen/ungültig; Karten bleiben stumm. Owner: bastra tasks setup-hooks.",
+};
 const reviewName: Record<string, string> = {
   "Explicit owner review required": "Owner muss ausdrücklich scharf schalten.",
   "Owner review required before arming": "Owner muss ausdrücklich scharf schalten.",
@@ -173,55 +190,140 @@ export function taskDisplayTime(value: number | undefined, timezone = "Europe/Ma
         new Date(value)
       );
 }
-export function friendlyTaskError(code: string, sub: string | null, reason?: string): string {
-  const reasons: Record<string, string> = {
-    calendar_gap: "Diese Ortszeit existiert wegen der Sommerzeit-Umstellung nicht. Andere Uhrzeit wählen.",
-    recurrence_limit_required: "Wiederholung braucht --count oder --end.",
-    snooze_past: "Die Zielzeit liegt in der Vergangenheit. Eine zukünftige Zielzeit wählen.",
-    owner_declined: "Nicht bestätigt. Nichts geändert.",
-    targets_syntax:
-      "Syntax: bastra tasks targets register|update ID --root ARBEITSORDNER --path DATEI --domain DOMÄNE; targets remove ID.",
-    target_path_missing:
-      "Wurzel oder Zieldatei fehlt bzw. ist nicht lesbar. Vorhandenen Arbeitsordner und Datei wählen.",
-    target_boundary: "Ziel liegt außerhalb des gewählten Arbeitsordners oder hat eine Symlink-Grenze.",
-    target_protected:
-      "Dieser Ort ist gesperrt: Aufgaben/Schlüssel, Vault, Client-/Hook-/Dienst-Konfiguration, Git-Steuerung, automatische Ausführungsorte oder Shell-Profil. Separaten Arbeitsordner wählen.",
-  };
-  if (reason && reasons[reason]) return `${sub ?? "Aufgaben"}: ${reasons[reason]}`;
-  const errors: Record<string, string> = {
-    owner_cache_invalid:
-      "Die private Owner-Ablage ist ungültig oder nicht ausreichend geschützt. Mit bastra tasks owner-login erneuern.",
-    not_found: "Aufgabe oder Vorkommen unbekannt. Prüfe die ID mit bastra tasks list.",
-    conflict: "Der Stand hat sich geändert oder die Aufgabe ist bereits beendet. Mit bastra tasks get <id> neu laden.",
-    validation: "Eingabe nicht lesbar. Beispiel: --after 7d oder --when 2026-10-12T18:00 --timezone Europe/Madrid.",
-    unauthorized: "Zugang fehlt oder wurde widerrufen. Zuerst Owner-Zugang anlegen, dann bastra tasks setup-hooks.",
-    forbidden:
-      "Zugang oder Domänen reichen für diese Operation nicht aus. task_status zeigt die zugewiesenen Bereiche.",
-    protected_boundary_required:
-      "Nutzeranweisung im Chat erfassen und das registrierte lokale Ziel prüfen. Keine Schlüssel- oder Zusatzbestätigung erforderlich.",
-    approval_stale: "Die Freigabe passt nicht mehr zum aktuellen Stand. Aufgabe/Vorschlag neu laden und erneut prüfen.",
-    approval_expired:
-      "Bindung abgelaufen. Gegen den aktuellen Stand neu vorbereiten und den bestehenden Nutzerauftrag übernehmen.",
-    approval_revoked: "Freigabe widerrufen. Es wird nichts geschrieben.",
-    approval_denied: "Dieser Vorschlag wurde abgelehnt. Es wird nichts geschrieben.",
-    key_unlock_failed: "Der Owner-Schlüssel konnte mit dieser Passphrase nicht entsperrt werden.",
-    adapter_not_reversible:
-      "Der Vorzustand ist mit diesem Referenzadapter nicht rückrollbar (z. B. Tab/CRLF/BOM oder mehr als 16384 Zeichen). Nichts geändert.",
-    capacity: "Aufgabenspeicher voll. Owner muss abgeschlossene Einträge archivieren; offene Arbeit bleibt erhalten.",
-    adapter_disabled:
-      "Lokaler Adapter ist aus. Auf Nutzeranweisung mit bastra tasks execution-enable --agent aktivieren.",
-    execution_stopped:
-      "Ausführung gestoppt. Auf Nutzeranweisung mit execution-enable --agent fortsetzen; einen ausdrücklichen Stopp beachten.",
-    lease_busy:
-      "Diese Ausführung ist bereits reserviert (höchstens 30 Sekunden). Mit bastra tasks status die Reservierungs-ID prüfen; eigene Reservierung mit bastra tasks release ID freigeben oder Ablauf abwarten. Vor erneutem Schreiben Wirkungsstatus prüfen.",
-    lease_expired: "Die Ausführungsreservierung ist abgelaufen. Neu prüfen und reservieren.",
-    corrupt:
-      "Aufgabenspeicher beschädigt; nichts überschrieben. Owner-Recovery nach Stoppen der Task-Prozesse erforderlich.",
-    unavailable: "Daemon oder Zugang nicht erreichbar. bastra tasks client-status und bastra tasks status prüfen.",
-    lock_unavailable:
-      "Ein anderer Vorgang hält den Aufgabenspeicher gesperrt. Nichts überschrieben. Task-Prozesse stoppen; für unbekannte verwaiste Sperren am Owner-Terminal: bastra tasks recover --lock.",
-  };
-  return `${sub ?? "Aufgaben"}: ${errors[code] ?? "Vorgang nicht möglich. Aktuellen Stand mit bastra tasks status prüfen."}`;
+/** One CLI text by language; an unlisted language gets English. */
+type TaskCliText = Readonly<{ en: string } & Record<string, string>>;
+const inLanguage = (text: TaskCliText, language: string | undefined) => text[language ?? "en"] ?? text.en;
+const TASKS_PREFIX: TaskCliText = { en: "Tasks", de: "Aufgaben" };
+const TASK_ERROR_FALLBACK: TaskCliText = {
+  en: "Operation not possible. Check the current state with bastra tasks status.",
+  de: "Vorgang nicht möglich. Aktuellen Stand mit bastra tasks status prüfen.",
+};
+const TASK_ERROR_REASONS: Record<string, TaskCliText> = {
+  calendar_gap: {
+    de: "Diese Ortszeit existiert wegen der Sommerzeit-Umstellung nicht. Andere Uhrzeit wählen.",
+    en: "This local time does not exist because of a daylight saving change. Choose another time.",
+  },
+  recurrence_limit_required: {
+    de: "Wiederholung braucht --count oder --end.",
+    en: "A repetition needs --count or --end.",
+  },
+  snooze_past: {
+    de: "Die Zielzeit liegt in der Vergangenheit. Eine zukünftige Zielzeit wählen.",
+    en: "The target time is in the past. Choose a future time.",
+  },
+  owner_declined: { de: "Nicht bestätigt. Nichts geändert.", en: "Not confirmed. Nothing changed." },
+  owner_terminal_required: {
+    de: "Dieser Befehl braucht ein interaktives Terminal für den Owner-Zugang. Ohne Terminal: --agent mit dem Agent-Zugang verwenden.",
+    en: "This command needs an interactive terminal for owner access. Without a terminal, use --agent with the agent access.",
+  },
+  targets_syntax: {
+    de: "Syntax: bastra tasks targets register|update ID --root ARBEITSORDNER --path DATEI --domain DOMÄNE; targets remove ID.",
+    en: "Syntax: bastra tasks targets register|update ID --root WORKFOLDER --path FILE --domain DOMAIN; targets remove ID.",
+  },
+  target_path_missing: {
+    de: "Wurzel oder Zieldatei fehlt bzw. ist nicht lesbar. Vorhandenen Arbeitsordner und Datei wählen.",
+    en: "The root or target file is missing or not readable. Choose an existing work folder and file.",
+  },
+  target_boundary: {
+    de: "Ziel liegt außerhalb des gewählten Arbeitsordners oder hat eine Symlink-Grenze.",
+    en: "The target is outside the chosen work folder or crosses a symlink.",
+  },
+  target_protected: {
+    de: "Dieser Ort ist gesperrt: Aufgaben/Schlüssel, Vault, Client-/Hook-/Dienst-Konfiguration, Git-Steuerung, automatische Ausführungsorte oder Shell-Profil. Separaten Arbeitsordner wählen.",
+    en: "This location is protected: tasks/keys, vault, client/hook/service configuration, Git control, automatic run locations or shell profile. Choose a separate work folder.",
+  },
+};
+const TASK_ERRORS: Record<string, TaskCliText> = {
+  owner_cache_invalid: {
+    de: "Die private Owner-Ablage ist ungültig oder nicht ausreichend geschützt. Mit bastra tasks owner-login erneuern.",
+    en: "The private owner store is invalid or not protected enough. Renew it with bastra tasks owner-login.",
+  },
+  not_found: {
+    de: "Aufgabe oder Vorkommen unbekannt. Prüfe die ID mit bastra tasks list.",
+    en: "Unknown task or occurrence. Check the ID with bastra tasks list.",
+  },
+  conflict: {
+    de: "Der Stand hat sich geändert oder die Aufgabe ist bereits beendet. Mit bastra tasks get <id> neu laden.",
+    en: "The state changed or the task has already ended. Reload it with bastra tasks get <id>.",
+  },
+  validation: {
+    de: "Eingabe nicht lesbar. Beispiel: --after 7d oder --when 2026-10-12T18:00 --timezone Europe/Madrid.",
+    en: "Input not readable. Example: --after 7d or --when 2026-10-12T18:00 --timezone Europe/Madrid.",
+  },
+  unauthorized: {
+    de: "Zugang fehlt oder wurde widerrufen. Zuerst Owner-Zugang anlegen, dann bastra tasks setup-hooks.",
+    en: "Access is missing or was revoked. Create owner access first, then run bastra tasks setup-hooks.",
+  },
+  forbidden: {
+    de: "Zugang oder Domänen reichen für diese Operation nicht aus. task_status zeigt die zugewiesenen Bereiche.",
+    en: "Access or domains are not sufficient for this operation. task_status shows the assigned areas.",
+  },
+  protected_boundary_required: {
+    de: "Nutzeranweisung im Chat erfassen und das registrierte lokale Ziel prüfen. Keine Schlüssel- oder Zusatzbestätigung erforderlich.",
+    en: "Record the user's instruction from the chat and check the registered local target. No key or extra confirmation is needed.",
+  },
+  approval_stale: {
+    de: "Die Freigabe passt nicht mehr zum aktuellen Stand. Aufgabe/Vorschlag neu laden und erneut prüfen.",
+    en: "The approval no longer matches the current state. Reload the task or proposal and check it again.",
+  },
+  approval_expired: {
+    de: "Bindung abgelaufen. Gegen den aktuellen Stand neu vorbereiten und den bestehenden Nutzerauftrag übernehmen.",
+    en: "The binding expired. Prepare again against the current state and carry over the existing user instruction.",
+  },
+  approval_revoked: {
+    de: "Freigabe widerrufen. Es wird nichts geschrieben.",
+    en: "Approval revoked. Nothing is written.",
+  },
+  approval_denied: {
+    de: "Dieser Vorschlag wurde abgelehnt. Es wird nichts geschrieben.",
+    en: "This proposal was declined. Nothing is written.",
+  },
+  key_unlock_failed: {
+    de: "Der Owner-Schlüssel konnte mit dieser Passphrase nicht entsperrt werden.",
+    en: "The owner key could not be unlocked with this passphrase.",
+  },
+  adapter_not_reversible: {
+    de: "Der Vorzustand ist mit diesem Referenzadapter nicht rückrollbar (z. B. Tab/CRLF/BOM oder mehr als 16384 Zeichen). Nichts geändert.",
+    en: "The previous state cannot be rolled back with this reference adapter (for example tab/CRLF/BOM or more than 16384 characters). Nothing changed.",
+  },
+  capacity: {
+    de: "Aufgabenspeicher voll. Owner muss abgeschlossene Einträge archivieren; offene Arbeit bleibt erhalten.",
+    en: "Task store is full. The owner needs to archive finished entries; open work is kept.",
+  },
+  adapter_disabled: {
+    de: "Lokaler Adapter ist aus. Auf Nutzeranweisung mit bastra tasks execution-enable --agent aktivieren.",
+    en: "The local adapter is off. On the user's instruction, turn it on with bastra tasks execution-enable --agent.",
+  },
+  execution_stopped: {
+    de: "Ausführung gestoppt. Auf Nutzeranweisung mit execution-enable --agent fortsetzen; einen ausdrücklichen Stopp beachten.",
+    en: "Execution is stopped. On the user's instruction, continue with execution-enable --agent; respect an explicit stop.",
+  },
+  lease_busy: {
+    de: "Diese Ausführung ist bereits reserviert (höchstens 30 Sekunden). Mit bastra tasks status die Reservierungs-ID prüfen; eigene Reservierung mit bastra tasks release ID freigeben oder Ablauf abwarten. Vor erneutem Schreiben Wirkungsstatus prüfen.",
+    en: "This execution is already reserved (at most 30 seconds). Check the reservation ID with bastra tasks status; release your own reservation with bastra tasks release ID or wait for it to expire. Check the outcome before writing again.",
+  },
+  lease_expired: {
+    de: "Die Ausführungsreservierung ist abgelaufen. Neu prüfen und reservieren.",
+    en: "The execution reservation expired. Check again and reserve again.",
+  },
+  corrupt: {
+    de: "Aufgabenspeicher beschädigt; nichts überschrieben. Owner-Recovery nach Stoppen der Task-Prozesse erforderlich.",
+    en: "Task store is damaged; nothing was overwritten. Owner recovery is needed after stopping the task processes.",
+  },
+  unavailable: {
+    de: "Daemon oder Zugang nicht erreichbar. bastra tasks client-status und bastra tasks status prüfen.",
+    en: "Daemon or access not reachable. Check bastra tasks client-status and bastra tasks status.",
+  },
+  lock_unavailable: {
+    de: "Ein anderer Vorgang hält den Aufgabenspeicher gesperrt. Nichts überschrieben. Task-Prozesse stoppen; für unbekannte verwaiste Sperren am Owner-Terminal: bastra tasks recover --lock.",
+    en: "Another operation holds the task store lock. Nothing was overwritten. Stop the task processes; for an unknown orphaned lock, at the owner terminal: bastra tasks recover --lock.",
+  },
+};
+/** CLI error text for a person, in `language` (English when unlisted). */
+export function friendlyTaskError(code: string, sub: string | null, reason?: string, language?: string): string {
+  const prefix = sub ?? inLanguage(TASKS_PREFIX, language);
+  const reasonText = reason ? TASK_ERROR_REASONS[reason] : undefined;
+  return `${prefix}: ${inLanguage(reasonText ?? TASK_ERRORS[code] ?? TASK_ERROR_FALLBACK, language)}`;
 }
 export function friendlyVerification(t: any): string {
   const names: Record<string, string> = {
@@ -297,8 +399,8 @@ export function friendlyTaskResult(sub: string, result: any): string {
       ? result.cards
           .map((c: any) =>
             c.kind === "availability"
-              ? `${c.summary} Details: ${c.detail_command}`
-              : `${quote(c.goal)} · fällig ${taskDisplayTime(c.due_at, c.timezone)} · ${c.timezone}${c.acknowledged ? " · quittiert, noch offen" : ""}\n  ${quote(friendlyWhyNow(c.why_now))}${c.action_outcome ? `\n  Wirkung: ${actionStateName[c.action_outcome.receipt_outcome ?? c.action_outcome.state] ?? c.action_outcome.state} · Absicht ${c.action_outcome.intent_id} · ${c.action_outcome.temp_cleanup_pending ? "Temp-Rest, sichere Bereinigung nötig · " : ""}${c.action_outcome.review_hint ?? actionStateName[c.action_outcome.receipt_outcome] ?? "Quittung vorhanden"}` : ""}\n  Aufgabe ${c.task_id}${c.compact ? `\n  Gekürzt; Details: ${c.detail_command}` : ""}\n  Vorkommen ${c.occurrence_id}\n  Quittieren: bastra tasks acknowledge ${c.task_id} --occurrence ${c.occurrence_id}${c.presentation === "owner-inspection-delivery-paused" ? "\n  Zustellung ist stumm/aus; Owner sieht Fälliges hier trotzdem." : ""}`
+              ? `${friendlyWhyNow(c.summary)} Details: ${c.detail_command}`
+              : `${quote(c.goal)} · fällig ${taskDisplayTime(c.due_at, c.timezone)} · ${c.timezone}${c.acknowledged ? " · quittiert, noch offen" : ""}\n  ${quote(friendlyWhyNow(c.why_now))}${c.action_outcome ? `\n  Wirkung: ${actionStateName[c.action_outcome.receipt_outcome ?? c.action_outcome.state] ?? c.action_outcome.state} · Absicht ${c.action_outcome.intent_id} · ${c.action_outcome.temp_cleanup_pending ? "Temp-Rest, sichere Bereinigung nötig · " : ""}${friendlyWhyNow(c.action_outcome.review_hint ?? actionStateName[c.action_outcome.receipt_outcome] ?? "Quittung vorhanden")}` : ""}\n  Aufgabe ${c.task_id}${c.compact ? `\n  Gekürzt; Details: ${c.detail_command}` : ""}\n  Vorkommen ${c.occurrence_id}\n  Quittieren: bastra tasks acknowledge ${c.task_id} --occurrence ${c.occurrence_id}${c.presentation === "owner-inspection-delivery-paused" ? "\n  Zustellung ist stumm/aus; Owner sieht Fälliges hier trotzdem." : ""}`
           )
           .join("\n\n") + (result.overflow ? `\nWeitere fällige Karten: ${result.overflow}; due erneut aufrufen.` : "")
       : "Keine aktuelle fällige Karte. Unscharfe/zurückgestellte/offene Aufgaben und Zustellgründe: bastra tasks status.";
@@ -325,7 +427,7 @@ export function friendlyTaskResult(sub: string, result: any): string {
       .flatMap((t: any) => t.deliveries.map((d: any) => ({ at: d.last_attempt, timezone: t.timezone })))
       .filter((d: any) => d.at)
       .sort((a: any, b: any) => b.at - a.at);
-    return `${result.agent_access ? "Erinnerungszugang: " + result.agent_access.hint + "\n" : ""}Funktion: ${result.controls.enabled ? "an" : "aus"} · Automatik: ${!result.controls.enabled ? "aus" : result.runtime.running ? "läuft" : "nicht aktiv"} · Zustellung: bei nächstem Kontakt\nStumm: ${result.controls.muted ? "ja" : "nein"} · Ausführung gestoppt: ${result.controls.execution_stopped ? "ja (auf Nutzeranweisung execution-enable --agent)" : "nein"}\n${counts}\nNächste Prüfung: ${result.controls.enabled ? taskDisplayTime(result.runtime.next_tick || undefined) : "keine, Funktion aus"}\nLetzte Zustellung: ${attempts.length ? taskDisplayTime(attempts[0].at, attempts[0].timezone) + " " + attempts[0].timezone : "noch keine"}\nLetzter Job-Fehler: ${result.runtime.last_error ?? "keiner"} · Backoff: ${result.runtime.backoff_ms ?? 0} ms\nGlobale Budgets: höchstens 10 Quellprüfungen/5s pro Lauf, 60s Poll; Dateizugriff höchstens 1s pro Quelle.\nArchive: ${result.archives?.map((a: any) => `${a.id} (${a.task_count} Aufgaben)`).join(", ") || "keine"}\nWirkungen: ${result.capacity.intents}/${result.capacity.intent_limit} Absichten · ${result.capacity.receipts}/${result.capacity.receipt_limit} Quittungen\n${result.intents.map((i: any) => `Absicht ${i.id}: ${actionStateName[i.state] ?? i.state}${i.temp_cleanup_pending ? " · Temp-Rest, sichere Bereinigung nötig" : ""}${i.review_hint ? ` · ${i.review_hint}` : ""}; Ziel ${i.target_id}`).join("\n")}\n${result.receipts.map((r: any) => `Quittung ${r.id}: ${actionStateName[r.outcome] ?? r.outcome}; Ziel ${r.target_id}; Rückabwicklung ${r.rollback_available ? "mit Nutzerauftrag und frischem Zielabgleich prüfbar" : "nein"}`).join("\n")}\nQuellen: ${result.sources.map((s: any) => `${s.id} ${s.enabled ? "an" : "aus"}`).join(", ") || "keine"}\nAdapter: ${result.adapters.map((a: any) => `${a.id} ${a.enabled ? "an" : "aus"}`).join(", ") || "keine"}\nReservierungen: ${result.leases?.map((l: any) => `${l.id} · ${l.state === "active" ? "reserviert" : l.state === "released" ? "freigegeben" : "abgelaufen"}; bis ${taskDisplayTime(l.expires_at)}; eigene Freigabe: bastra tasks release ${l.id}`).join("\n") || "keine"}\nFreigabe: Nutzeranweisung im Chat · Vertrauensgrenze: lokales Konto\n${(result.authorizations ?? []).map((row: any) => `Chat-Auftrag ${row.task_id}: ${quote(row.authorization.user_request)} · ${quote(row.authorization.program)} · Sitzung ${quote(row.authorization.session_id)} · ${taskDisplayTime(row.authorization.at)} · ${row.revoked_at !== undefined ? "widerrufen" : row.decision === "deny" ? "abgelehnt" : row.consumed ? "verbraucht" : "erfasst"}`).join("\n")}\n${result.tasks.length ? result.tasks.map(taskLine).join("\n\n") : "Keine Aufgaben."}`;
+    return `${result.agent_access ? "Erinnerungszugang: " + agentAccessHint(result.agent_access) + "\n" : ""}Funktion: ${result.controls.enabled ? "an" : "aus"} · Automatik: ${!result.controls.enabled ? "aus" : result.runtime.running ? "läuft" : "nicht aktiv"} · Zustellung: bei nächstem Kontakt\nStumm: ${result.controls.muted ? "ja" : "nein"} · Ausführung gestoppt: ${result.controls.execution_stopped ? "ja (auf Nutzeranweisung execution-enable --agent)" : "nein"}\n${counts}\nNächste Prüfung: ${result.controls.enabled ? taskDisplayTime(result.runtime.next_tick || undefined) : "keine, Funktion aus"}\nLetzte Zustellung: ${attempts.length ? taskDisplayTime(attempts[0].at, attempts[0].timezone) + " " + attempts[0].timezone : "noch keine"}\nLetzter Job-Fehler: ${result.runtime.last_error ?? "keiner"} · Backoff: ${result.runtime.backoff_ms ?? 0} ms\nGlobale Budgets: höchstens 10 Quellprüfungen/5s pro Lauf, 60s Poll; Dateizugriff höchstens 1s pro Quelle.\nArchive: ${result.archives?.map((a: any) => `${a.id} (${a.task_count} Aufgaben)`).join(", ") || "keine"}\nWirkungen: ${result.capacity.intents}/${result.capacity.intent_limit} Absichten · ${result.capacity.receipts}/${result.capacity.receipt_limit} Quittungen\n${result.intents.map((i: any) => `Absicht ${i.id}: ${actionStateName[i.state] ?? i.state}${i.temp_cleanup_pending ? " · Temp-Rest, sichere Bereinigung nötig" : ""}${i.review_hint ? ` · ${friendlyWhyNow(i.review_hint)}` : ""}; Ziel ${i.target_id}`).join("\n")}\n${result.receipts.map((r: any) => `Quittung ${r.id}: ${actionStateName[r.outcome] ?? r.outcome}; Ziel ${r.target_id}; Rückabwicklung ${r.rollback_available ? "mit Nutzerauftrag und frischem Zielabgleich prüfbar" : "nein"}`).join("\n")}\nQuellen: ${result.sources.map((s: any) => `${s.id} ${s.enabled ? "an" : "aus"}`).join(", ") || "keine"}\nAdapter: ${result.adapters.map((a: any) => `${a.id} ${a.enabled ? "an" : "aus"}`).join(", ") || "keine"}\nReservierungen: ${result.leases?.map((l: any) => `${l.id} · ${l.state === "active" ? "reserviert" : l.state === "released" ? "freigegeben" : "abgelaufen"}; bis ${taskDisplayTime(l.expires_at)}; eigene Freigabe: bastra tasks release ${l.id}`).join("\n") || "keine"}\nFreigabe: Nutzeranweisung im Chat · Vertrauensgrenze: lokales Konto\n${(result.authorizations ?? []).map((row: any) => `Chat-Auftrag ${row.task_id}: ${quote(row.authorization.user_request)} · ${quote(row.authorization.program)} · Sitzung ${quote(row.authorization.session_id)} · ${taskDisplayTime(row.authorization.at)} · ${row.revoked_at !== undefined ? "widerrufen" : row.decision === "deny" ? "abgelehnt" : row.consumed ? "verbraucht" : "erfasst"}`).join("\n")}\n${result.tasks.length ? result.tasks.map(taskLine).join("\n\n") : "Keine Aufgaben."}`;
   }
   if (result.tasks) return result.tasks.length ? result.tasks.map(taskLine).join("\n\n") : "Keine Aufgaben.";
   if (result.schedule) return taskLine(result);

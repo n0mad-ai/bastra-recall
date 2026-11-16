@@ -73,8 +73,29 @@ function finishArchive(path: string, value: RecordValue): void {
   // The commit is authoritative after interruption. Never reimport an old file
   // and never overwrite any retained original while completing the rename.
   const destination = localEntry(value.archive) ? `${value.archive}-${randomUUID()}` : value.archive;
-  chmodSync(path, 0o600);
-  renameSync(path, destination);
+  try {
+    chmodSync(path, 0o600);
+    renameSync(path, destination);
+  } catch (error) {
+    // #1579: a concurrent reader finished the same rename first. The committed
+    // row stays authoritative; a lost race is never "no state". A file that
+    // reappears meanwhile is archived by the next read.
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+}
+/** #1588: no record here and no legacy file, but the retained original says
+ * this state was imported — into another database (a different
+ * BASTRA_DB_PATH or path spelling) or one restored from an older backup.
+ * Reading that as "absent" would let the next write replace real state. */
+function assertNotElsewhere(db: AppDatabase, path: string): void {
+  const archive = `${path}.pre-db`;
+  if (!localEntry(archive)) return;
+  throw Object.assign(
+    new Error(
+      `App state for ${path} was moved into a database (original kept as ${archive}), but ${db.path} has no record of it. Nothing was read or written. Use the same BASTRA_DB_PATH (or none) for the daemon, CLI and hooks; to import the original again, rename it back to ${path}.`
+    ),
+    { code: "ESTATEELSEWHERE", path }
+  );
 }
 function readLocalStateText(path: string): string {
   // Overrides are still regular local files. A FIFO must never turn a legacy
@@ -112,7 +133,8 @@ function importLegacy(db: AppDatabase, namespace: string, path: string, validate
   });
 }
 
-/** Throws ENOENT for absent/deleted state, matching readFile's old contract. */
+/** Throws ENOENT for absent/deleted state, matching readFile's old contract;
+ * ESTATEELSEWHERE when the state exists, but not in this database. */
 export function readAppRecord(
   namespace: string,
   legacyPath: string,
@@ -124,7 +146,10 @@ export function readAppRecord(
   const db = openAppDatabase({ path: appRecordDatabasePath(path), busyTimeoutMs: options.busyTimeoutMs });
   try {
     const value = row(db, namespace, path) ?? importLegacy(db, namespace, path, validate);
-    if (!value) throw missing(path);
+    if (!value) {
+      assertNotElsewhere(db, path);
+      throw missing(path);
+    }
     finishArchive(path, value);
     if (value.text === null) throw missing(path);
     return value.text;
@@ -148,6 +173,7 @@ export function writeAppRecord(
     validate?.(text);
     const value = row(db, namespace, path) ?? importLegacy(db, namespace, path, validate);
     if (value) finishArchive(path, value);
+    else assertNotElsewhere(db, path);
     db.transaction(() => put(db, namespace, path, { ...value, text }));
   } finally {
     db.close();
@@ -167,6 +193,7 @@ export function deleteAppRecord(
   try {
     const value = row(db, namespace, path) ?? importLegacy(db, namespace, path, validate);
     if (value) finishArchive(path, value);
+    else assertNotElsewhere(db, path);
     db.transaction(() => put(db, namespace, path, { ...value, text: null }));
   } finally {
     db.close();

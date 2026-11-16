@@ -144,6 +144,11 @@ export function createLiveUpdates(
   /** id → ms epoch der letzten finalisierten Notice (Sperre für "read"). */
   const announcedAt = new Map<string, number>();
   let seq = 0;
+  // A caller who may not see private entries gets its own cursor, counted over
+  // the visible entries alone, so a gap in `seq` never reveals that private
+  // activity happened (contributor audit). The proven owner keeps `seq`.
+  let publicSeq = 0;
+  const publicSeqOf = new WeakMap<LiveUpdate, number>();
   // Private memories reach only a caller whose account was proven, like the
   // graph (`privateGraph`). Seeded from the index so a later delete of a memory
   // that was never announced still knows it was private.
@@ -184,6 +189,7 @@ export function createLiveUpdates(
     pending.delete(id);
     const entry = { ...p.update, seq: ++seq, count: p.count };
     if (p.hidden) hiddenEntries.add(entry);
+    else publicSeqOf.set(entry, ++publicSeq);
     recent.push(entry);
     if (recent.length > maxEntries) recent.splice(0, recent.length - maxEntries);
     // Sperrfenster startet erst beim Finalisieren — die Karte ist ab JETZT
@@ -305,16 +311,30 @@ export function createLiveUpdates(
     }
     const u = new URL(req.url ?? "/", "http://127.0.0.1");
     const sinceRaw = u.searchParams.get("since");
-    const minSeq = recent.length > 0 ? recent[0].seq : seq;
+    const view = showPrivate ? ownerView() : publicView();
     if (sinceRaw === null) {
       // no cursor yet → baseline the client to the high-water mark without
       // replaying history (matches the old "only events after opening" contract)
-      sendJsonPlain(res, 200, { updates: [], seq, minSeq });
+      sendJsonPlain(res, 200, { updates: [], seq: view.seq, minSeq: view.minSeq });
       return;
     }
     const since = Number(sinceRaw) || 0;
-    const updates = recent.filter((e) => e.seq > since && (showPrivate || !hiddenEntries.has(e)));
-    sendJsonPlain(res, 200, { updates, seq, minSeq });
+    const updates = view.entries.filter((e) => e.seq > since);
+    sendJsonPlain(res, 200, { updates, seq: view.seq, minSeq: view.minSeq });
+  }
+
+  /** Every entry under the full cursor. */
+  function ownerView(): { entries: LiveUpdate[]; seq: number; minSeq: number } {
+    return { entries: recent, seq, minSeq: recent.length > 0 ? recent[0].seq : seq };
+  }
+
+  /** Visible entries only, renumbered by their own cursor. */
+  function publicView(): { entries: LiveUpdate[]; seq: number; minSeq: number } {
+    const entries = recent.flatMap((e) => {
+      const visibleSeq = publicSeqOf.get(e);
+      return visibleSeq === undefined ? [] : [{ ...e, seq: visibleSeq }];
+    });
+    return { entries, seq: publicSeq, minSeq: entries.length > 0 ? entries[0].seq : publicSeq };
   }
 
   const stop = (): void => {

@@ -172,8 +172,9 @@ for that.
 
 Local tools such as the MCP forwarder reach `/api/v1/*` without a token. The
 daemon allows that only when the connection comes from `127.0.0.1` **and** the
-`Host` header is `127.0.0.1`, `localhost` or `[::1]` (#526), and no `Forwarded`,
-`X-Forwarded-For` or `X-Forwarded-Host` header is present (#1264). A tunnel running
+`Host` header is `127.0.0.1`, `localhost` or `[::1]` (#526), and no forwarding
+header is present (#1264): `Forwarded`, `X-Forwarded-For`, `X-Forwarded-Host`,
+`X-Forwarded-Proto`, `X-Real-IP` or `Via`. A tunnel running
 on the same computer also connects from `127.0.0.1`, so the `Host` header is
 what tells a tunnelled request from a local tool: requests through the tunnel
 carry `Host: recall.example.com` and therefore need a token.
@@ -183,19 +184,36 @@ unchanged. **Do not** set cloudflared's `httpHostHeader` (or nginx's default
 upstream Host, or `ngrok --host-header=rewrite`). A rewritten
 `Host: 127.0.0.1` without forwarding headers would make requests from the
 internet look like a local tool and skip the token check. Forwarding headers
-disable that exception even with empty or localhost values; `/hook/*`, `/ui`
-and `/ui/*` also require a Bearer token when they are present. Keep hooks and
-the UI private. The required `401` check in
+disable that exception even with empty or localhost values; every other local
+route (`/hook/*`, `/ui`, `/health`, `/tools` and the rest outside `/api/v1/*`,
+except the public OAuth discovery documents under `/.well-known/`) also
+requires the Bearer token when one of them is present. Keep these routes
+private all the same. The required `401` check in
 [Step 4](#step-4-verify-from-outside) proves that unauthenticated requests are
 rejected by your actual tunnel setup.
 
+**Never publish Recall through a proxy or port forward that sets `Host` to a
+loopback address and adds no forwarding header** — for example nginx with a
+bare `proxy_pass`, `ssh -L` or `socat`. The daemon cannot tell such a request
+from a local tool, so it gets in without a token. Publish only `/api/v1/*` and
+the OAuth discovery documents listed in the [security model](#security-model).
+
 Deutsch: Die tokenlose Ausnahme gilt nur bei lokalem Peer und Loopback-Host
-ohne `Forwarded`, `X-Forwarded-For` oder `X-Forwarded-Host`. Jeder dieser Header
-erzwingt ein gültiges Bearer-Token, auch mit leerem Wert oder localhost-Angabe;
-das gilt ebenfalls für `/hook/*`, `/ui` und `/ui/*`. Öffentliche Proxys müssen
+ohne Weiterleitungs-Header (`Forwarded`, `X-Forwarded-For`, `X-Forwarded-Host`,
+`X-Forwarded-Proto`, `X-Real-IP`, `Via`). Jeder dieser Header erzwingt ein
+gültiges Bearer-Token, auch mit leerem Wert oder localhost-Angabe; das gilt
+ebenfalls für jede andere lokale Route außerhalb von `/api/v1/*` (`/hook/*`,
+`/ui`, `/health`, `/tools` usw.; ausgenommen die öffentlichen
+OAuth-Dokumente unter `/.well-known/`). Öffentliche Proxys müssen
 den öffentlichen `Host` erhalten: Werden sowohl Host als auch Weiterleitungs-
 Header entfernt, sieht der Daemon einen direkten lokalen Aufruf. Hooks und UI
 bleiben privat. Der externe `401`-Test prüft den Schutz des tatsächlichen Tunnels.
+**Veröffentliche Recall nie über einen Proxy oder eine Portweiterleitung, die
+`Host` auf eine Loopback-Adresse setzt und keinen Weiterleitungs-Header
+hinzufügt** – etwa nginx mit bloßem `proxy_pass`, `ssh -L` oder `socat`. Der
+Daemon kann eine solche Anfrage nicht von einem lokalen Werkzeug
+unterscheiden; sie kommt ohne Token durch. Veröffentliche nur `/api/v1/*` und
+die OAuth-Dokumente aus dem [Sicherheitsmodell](#security-model).
 
 `BASTRA_AUTH_LOOPBACK_SKIP=0` in the daemon's environment is optional extra
 hardening: it requires the token from local callers too, so even a rewritten
@@ -360,6 +378,7 @@ Remote access has not been tested on either system. Also note the
 [platform support](../README.md#supported-platforms): Linux has no
 bastra-managed daemon service yet ([#566](https://github.com/n0mad-ai/bastra-recall/issues/566)),
 so a daemon started on demand by a client exits after 30 minutes without work.
+On Linux, Recall cannot yet check which user account a local request comes from: every program of every user on the computer reaches the local service. Run it there only on a computer with a single user — not on a shared computer, and not in a container that shares its network with others. Private memories stay hidden from such callers there too.
 Windows support is experimental; `bastra autostart on` there creates a
 Task Scheduler task whose real-machine acceptance is still pending.
 

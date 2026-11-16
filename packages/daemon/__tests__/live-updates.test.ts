@@ -532,3 +532,84 @@ test("live updates: private memories reach only a caller with private access, de
     await rm(settingsDir, { recursive: true, force: true });
   }
 });
+
+test("live updates: the cursor an outside caller sees does not count private entries", async () => {
+  const vaultDir = await mkdtemp(join(tmpdir(), "live-private-seq-"));
+  const settingsDir = await mkdtemp(join(tmpdir(), "live-private-seq-settings-"));
+  const settingsPath = join(settingsDir, "cli-settings.json");
+  await writeFile(settingsPath, JSON.stringify({ ui: { enabled: true } }));
+  const memDir = join(vaultDir, "memories", "projects", "live-test");
+  await mkdir(memDir, { recursive: true });
+  const vault = new Vault(vaultDir);
+  await vault.init();
+  const live = createLiveUpdates(vault, { debounceMs: DEBOUNCE, maxEntries: 500 });
+  const server = createServer((req, res) => {
+    void live.handleUiUpdates(req, res, settingsPath, req.headers["x-fixture-private"] === "1");
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as { port: number }).port;
+  type Body = { updates: LiveUpdate[]; seq: number; minSeq: number };
+  const call = (since: number | null, showPrivate: boolean): Promise<Body> =>
+    new Promise((resolve, reject) => {
+      const rq = request(
+        {
+          hostname: "127.0.0.1",
+          port,
+          path: since === null ? "/ui/updates" : `/ui/updates?since=${since}`,
+          headers: showPrivate ? { "x-fixture-private": "1" } : {},
+        },
+        (res) => {
+          let raw = "";
+          res.on("data", (c) => (raw += c));
+          res.on("end", () => resolve(JSON.parse(raw)));
+        }
+      );
+      rq.on("error", reject);
+      rq.end();
+    });
+  const add = async (id: string, secret: boolean) => {
+    const md = memoryMarkdown(id, `Title ${id}`);
+    await writeFile(
+      join(memDir, `${id}.md`),
+      secret ? md.replace("---\n\nBody.", "sensitivity: private\n---\n\nBody.") : md
+    );
+    await vault.reindexFile(join(memDir, `${id}.md`));
+    await delay(AFTER);
+  };
+  try {
+    const start = await call(null, false);
+    await add("first-open", false);
+    await add("private-a", true);
+    await add("private-b", true);
+    await add("second-open", false);
+    const outside = await call(start.seq, false);
+    // Two visible entries, numbered without a gap: nothing hints at the two private ones.
+    assert.deepEqual(
+      outside.updates.map((u) => [u.id, u.seq]),
+      [
+        ["first-open", 1],
+        ["second-open", 2],
+      ]
+    );
+    assert.equal(outside.seq, 2);
+    assert.equal(outside.minSeq, 1);
+    // An outside cursor keeps working across polls: nothing lost, nothing repeated.
+    await add("third-open", false);
+    assert.deepEqual(
+      (await call(outside.seq, false)).updates.map((u) => u.id),
+      ["third-open"]
+    );
+    // The proven owner keeps the full cursor.
+    const owner = await call(0, true);
+    assert.equal(owner.seq, 5);
+    assert.deepEqual(
+      owner.updates.map((u) => u.seq),
+      [1, 2, 3, 4, 5]
+    );
+  } finally {
+    live.stop();
+    server.close();
+    await rm(vaultDir, { recursive: true, force: true });
+    await rm(settingsDir, { recursive: true, force: true });
+  }
+});

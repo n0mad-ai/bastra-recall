@@ -59,7 +59,7 @@ export async function taskAgentAccessStatus(path = tasksPath(), authPath = taskA
       configured: false,
       authorized: false,
       reason: "disabled",
-      hint: "Gesprächserinnerungen sind ausgeschaltet.",
+      hint: "Conversation reminders are turned off.",
     };
   const config = join(dirname(path), "task-hook-token.json"),
     token = taskClientToken(config);
@@ -74,8 +74,8 @@ export async function taskAgentAccessStatus(path = tasksPath(), authPath = taskA
       authorized: false,
       reason: present ? "unsafe-or-corrupt" : "missing",
       hint: present
-        ? "Erinnerungszugang beschädigt oder zu offen; Karten bleiben stumm. Owner: bastra tasks setup-hooks."
-        : "Erinnerungszugang fehlt. Daemon starten; falls weiterhin fehlend: bastra tasks setup-hooks.",
+        ? "Reminder access is damaged or too open; cards stay silent. Owner: bastra tasks setup-hooks."
+        : "Reminder access is missing. Start the daemon; if it is still missing: bastra tasks setup-hooks.",
     };
   }
   try {
@@ -86,15 +86,15 @@ export async function taskAgentAccessStatus(path = tasksPath(), authPath = taskA
       reason: p.role === "agent" ? "ready" : "owner-not-for-agents",
       hint:
         p.role === "agent"
-          ? "Bei nächstem Kontakt, solange der Daemon läuft."
-          : "Owner-Zugang nicht für automatische Agent-Karten verwenden.",
+          ? "On next contact while the daemon runs."
+          : "Do not use owner access for automatic agent cards.",
     };
   } catch {
     return {
       configured: true,
       authorized: false,
       reason: "revoked-or-invalid",
-      hint: "Erinnerungszugang widerrufen/ungültig; Karten bleiben stumm. Owner: bastra tasks setup-hooks.",
+      hint: "Reminder access is revoked or invalid; cards stay silent. Owner: bastra tasks setup-hooks.",
     };
   }
 }
@@ -109,6 +109,6 @@ export function cachedTaskAccessWarning(path: string): string | undefined {
   return startupAccess?.path === path &&
     !startupAccess.configured &&
     ["existing-config-unsafe", "existing-credential-revoked-or-invalid"].includes(startupAccess.reason)
-    ? "Erinnerungszugang beschädigt, zu offen oder widerrufen; Karten bleiben stumm. Owner: bastra tasks setup-hooks."
+    ? "Reminder access is damaged, too open or revoked; cards stay silent. Owner: bastra tasks setup-hooks."
     : undefined;
 }

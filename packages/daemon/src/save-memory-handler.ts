@@ -59,26 +59,36 @@ export interface SaveMemoryResult {
 
 // ─── #150: anti-thrash — consecutive-failure cap on save_memory ─────────
 // A repeatedly failing save (schema retry loop, path issue) must never eat
-// the turn: after SAVE_FAILURE_CAP consecutive failures the error turns
-// terminal ("STOP retrying") until a save succeeds or the window expires.
-// Deliberately daemon-global rather than per-session: this is a local
-// single-user daemon, the CC session id does not reach this handler, and the
-// time window bounds any cross-session bleed.
+// the turn: after SAVE_FAILURE_CAP consecutive failures of THE SAME save the
+// error turns terminal ("STOP retrying") until a save succeeds or the window
+// expires.
+// #1593: the streak is keyed by what is being retried — the save's id/title
+// plus the caller's session_id/agent_id when present. A daemon-global
+// counter told an unrelated first attempt (another memory, another session)
+// to stop saving, and a model that obeyed dropped a fact the user wanted kept.
 export const SAVE_FAILURE_CAP = 3;
 export const SAVE_FAILURE_WINDOW_MS = 10 * 60_000;
-let saveFailureCount = 0;
-let saveFailureLastAt = 0;
+const saveFailures = new Map<string, { count: number; lastAt: number }>();
 
-export function noteSaveFailure(now: number = Date.now()): number {
-  if (now - saveFailureLastAt > SAVE_FAILURE_WINDOW_MS) saveFailureCount = 0;
-  saveFailureLastAt = now;
-  saveFailureCount += 1;
-  return saveFailureCount;
+/** #1593: which save is being retried — only identity fields, never content. */
+export function saveFailureKey(rawArgs: unknown): string {
+  if (!rawArgs || typeof rawArgs !== "object") return "";
+  const args = rawArgs as Record<string, unknown>;
+  const text = (value: unknown): string => (typeof value === "string" ? value : "");
+  return JSON.stringify([text(args.id) || text(args.title), text(args.session_id), text(args.agent_id)]);
+}
+
+export function noteSaveFailure(now: number = Date.now(), key = ""): number {
+  for (const [k, entry] of saveFailures) {
+    if (now - entry.lastAt > SAVE_FAILURE_WINDOW_MS) saveFailures.delete(k);
+  }
+  const count = (saveFailures.get(key)?.count ?? 0) + 1;
+  saveFailures.set(key, { count, lastAt: now });
+  return count;
 }
 
 export function resetSaveFailures(): void {
-  saveFailureCount = 0;
-  saveFailureLastAt = 0;
+  saveFailures.clear();
 }
 
 export async function saveMemoryHandler(
@@ -117,7 +127,7 @@ export async function saveMemoryHandler(
     // consecutive-failure cap below, whose message tells the model to stop
     // saving altogether.
     if (err instanceof BodySentinelError) throw err;
-    const failures = noteSaveFailure();
+    const failures = noteSaveFailure(Date.now(), saveFailureKey(rawArgs));
     if (failures >= SAVE_FAILURE_CAP) {
       // No reset here: every further attempt stays terminal until a success
       // or the window expiry clears the streak.

@@ -173,3 +173,47 @@ describe("malformed MCP save arguments", () => {
     }
   });
 });
+
+describe("#1593: the failure streak belongs to one save, not to the daemon", () => {
+  beforeEach(() => resetSaveFailures());
+
+  const invalid = (title: string, extra: Record<string, string> = {}) => ({
+    title,
+    type: "lesson",
+    summary: "s",
+    body: "b",
+    scope: "test",
+    recall_when: ["x"],
+    ...extra,
+  });
+
+  it("a first attempt at another memory gets its own validation error", async () => {
+    for (const title of ["probe 1kb", "probe 4kb", "probe 16kb"]) {
+      await assert.rejects(saveMemoryHandler(DUMMY_DEPS, invalid(title)));
+    }
+    await assert.rejects(
+      saveMemoryHandler(DUMMY_DEPS, invalid("probe 64kb")),
+      (err: Error) => !err.message.includes("STOP retrying") && /tags|topic_path/.test(err.message),
+      "an unrelated first attempt must see the plain validation error"
+    );
+  });
+
+  it("the same save from another session starts at zero", async () => {
+    for (let i = 0; i < SAVE_FAILURE_CAP; i++) {
+      await assert.rejects(saveMemoryHandler(DUMMY_DEPS, invalid("shared title", { session_id: "s1" })));
+    }
+    await assert.rejects(
+      saveMemoryHandler(DUMMY_DEPS, invalid("shared title", { session_id: "s2" })),
+      (err: Error) => !err.message.includes("STOP retrying")
+    );
+  });
+
+  it("three failures of the same save still turn terminal", async () => {
+    for (let i = 1; i < SAVE_FAILURE_CAP; i++) {
+      await assert.rejects(saveMemoryHandler(DUMMY_DEPS, invalid("same save")));
+    }
+    await assert.rejects(saveMemoryHandler(DUMMY_DEPS, invalid("same save")), (err: Error) =>
+      err.message.includes("STOP retrying")
+    );
+  });
+});

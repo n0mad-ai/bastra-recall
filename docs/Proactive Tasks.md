@@ -12,7 +12,7 @@ While disabled there is no task runtime, polling, delivery, source checking or a
 
 ## Tasks in conversation
 
-Ask the agent to create a task or reminder: a commissioned or confirmed task is created armed at any action level. The agent asks only for missing or ambiguous goal/date/time/timezone/recurrence, including DST ambiguity. When it notices a deadline or promised follow-up itself, it adds it without a question and acknowledges in one line: `→ Erinnerung eingetragen: <was> – <wann>`.
+Ask the agent to create a task or reminder: a commissioned or confirmed task is created armed at any action level. The agent asks only for missing or ambiguous goal/date/time/timezone/recurrence, including DST ambiguity. When it notices a deadline or promised follow-up itself, it adds it without a question and acknowledges it in one line in your language, naming what and when, for example `→ Reminder saved: <what> – <when>`.
 
 Due cards are briefly mentioned at response start. “Done”, “tomorrow again” or “forget it” control tasks of every level in conversation. Origin (user request / agent observed), client, session and scrubbed cause remain visible. There are no daily or open-reminder limits; identical cause/time is deduplicated. Physical store/delivery budgets still apply. `BASTRA_CONVERSATIONAL_REMINDERS=0` disables conversational arming; the agent reports an unarmed draft instead. One-off work requests do not become reminders.
 
@@ -68,7 +68,7 @@ bastra tasks acknowledge TASK_ID --occurrence OCCURRENCE_ID
 bastra tasks resolve TASK_ID
 ```
 
-Copy IDs from the card. Acknowledge means seen, still open. resolve completes a one-off task or the selected/latest due occurrence of a series. end_series ends the whole series. cancel stops it; rearm brings it back **unarmed**, with no renewed old approval. The normal CLI uses readable German output; --json remains the machine format.
+Copy IDs from the card. Acknowledge means seen, still open. resolve completes a one-off task or the selected/latest due occurrence of a series. end_series ends the whole series. cancel stops it; rearm brings it back **unarmed**, with no renewed old approval. The normal CLI uses readable German output, error messages included, whatever `language.primary` says; --json remains the machine format.
 
 ## 2 Time, repeats and postponement
 
@@ -199,7 +199,7 @@ Agents file their final report after larger or autonomous work in Recall instead
 
 ## Local notifications and persisted task state
 
-With tasks enabled, `tasks.notifications` defaults to true in Settings. Set it false to disable native notifications without cancelling tasks. macOS is supported; other platforms keep next-contact delivery. Status reports actual support and whether the native daemon host is running. Notification Center may suppress presentation according to the user’s OS settings.
+With tasks enabled, `tasks.notifications` defaults to true in Settings. Set it false to disable native notifications without cancelling tasks. macOS is supported; other platforms keep next-contact delivery. Status reports actual support and whether the native daemon host is running. Notification Center may suppress presentation according to the user’s OS settings. The word that marks an expired task follows `language.primary` (English when it is unset or has no wording yet).
 
 A durable occurrence receipt records a native claim and OS submission separately from acknowledgement. A chat display does not stop the Mac notification: it is sent once per occurrence unless the occurrence was already acknowledged or resolved, or the task is paused or muted. A submitted native notification suppresses duplicate passive conversation delivery; explicit due/board inspection still shows unread work and `already_notified`. A definite OS failure may retry after the task’s retry interval. A timeout or crash with an uncertain submission keeps its claim to avoid a possible duplicate; it does not claim human reading. The board remains available for inspection.
 

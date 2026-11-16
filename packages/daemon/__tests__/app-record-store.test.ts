@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, readdir, symlink, writeFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rename, symlink, writeFile, rm, stat } from "node:fs/promises";
+import fs, { type Mode, type PathLike } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -88,4 +90,56 @@ test("explicit store paths and store kinds cannot collide", async (t) => {
   assert.equal(readAppRecord("skills", first), "one");
   assert.equal(readAppRecord("skills", second), "two");
   assert.equal(readAppRecord("floors", first), "three");
+});
+
+test("#1579: losing the archive rename to a concurrent reader still returns the committed state", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-record-race-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const path = join(dir, "settings.json");
+  await writeFile(path, '{"mode":"auto"}');
+  assert.equal(readAppRecord("settings", path), '{"mode":"auto"}');
+  // The row is committed; the legacy file is back as in the post-commit window.
+  await rename(`${path}.pre-db`, path);
+  // Another process completes the same rename between this reader's presence
+  // check and its own chmod/rename.
+  const real = fs.chmodSync;
+  fs.chmodSync = ((file: PathLike, mode: Mode) => {
+    if (String(file) === path) fs.renameSync(path, `${path}.pre-db`);
+    return real(file, mode);
+  }) as typeof fs.chmodSync;
+  syncBuiltinESMExports();
+  try {
+    assert.equal(readAppRecord("settings", path), '{"mode":"auto"}');
+  } finally {
+    fs.chmodSync = real;
+    syncBuiltinESMExports();
+  }
+  assert.equal(await readFile(`${path}.pre-db`, "utf8"), '{"mode":"auto"}');
+});
+
+test("#1588: a database without the record of an already archived file is not read as 'no state'", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-record-elsewhere-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const previous = process.env.BASTRA_DB_PATH;
+  t.after(() => {
+    if (previous === undefined) delete process.env.BASTRA_DB_PATH;
+    else process.env.BASTRA_DB_PATH = previous;
+  });
+  const path = join(dir, "cli-settings.json");
+  await writeFile(path, '{"update":{"mode":"auto"}}');
+  process.env.BASTRA_DB_PATH = join(dir, "alt", "recall.db");
+  assert.equal(readAppRecord("settings", path), '{"update":{"mode":"auto"}}');
+  assert.equal(await readFile(`${path}.pre-db`, "utf8"), '{"update":{"mode":"auto"}}');
+  // A process without the override opens a different database.
+  delete process.env.BASTRA_DB_PATH;
+  const elsewhere = (error: NodeJS.ErrnoException) =>
+    error.code === "ESTATEELSEWHERE" && error.message.includes(`${path}.pre-db`) && error.message.includes("recall.db");
+  assert.throws(() => readAppRecord("settings", path), elsewhere);
+  assert.throws(() => writeAppRecord("settings", path, '{"update":{"mode":"off"}}'), elsewhere);
+  assert.throws(() => deleteAppRecord("settings", path), elsewhere);
+  process.env.BASTRA_DB_PATH = join(dir, "alt", "recall.db");
+  assert.equal(readAppRecord("settings", path), '{"update":{"mode":"auto"}}', "the real state is unchanged");
+  // Without any archived original, a store that never existed stays absent.
+  delete process.env.BASTRA_DB_PATH;
+  assert.throws(() => readAppRecord("settings", join(dir, "never.json")), { code: "ENOENT" });
 });

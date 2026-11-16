@@ -69,14 +69,17 @@ import {
   closeSync,
   statSync,
   unlinkSync,
-  readFileSync,
+  readSync,
   renameSync,
+  rmdirSync,
   lstatSync,
   fstatSync,
+  readFileSync,
   constants,
   type Stats,
 } from "node:fs";
-import { mkdir, open, readFile, stat, unlink } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { lstat, mkdir, open, stat, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -121,13 +124,18 @@ export interface PathLockOptions {
 
 /** The cross-process lock was required (`requireLock`) and not acquired. */
 export class PathLockUnavailableError extends Error {
-  constructor() {
-    super(
-      "could not get the lock on the settings file — another bastra process holds it, or one was interrupted; nothing was written. Try again in a few seconds"
-    );
+  constructor(
+    message = "could not get the lock on the settings file — another bastra process holds it, or one was interrupted; nothing was written. Try again in a few seconds"
+  ) {
+    super(message);
     this.name = "PathLockUnavailableError";
   }
 }
+
+/** Strict-local stores (tasks, assistant addresses) are not the settings file
+ * (#1587). No path: strict diagnostics never name the private store. */
+const STRICT_LOCK_UNAVAILABLE =
+  "could not get the lock on a private bastra store (tasks or assistant addresses) — another bastra process holds it, or one was interrupted; nothing was written. Try again in a few seconds. A lock whose process has ended, or that dates from before the last restart of this computer, is taken over automatically";
 
 export function pathLockFilePath(path: string): string {
   return `${path}.lock`;
@@ -146,6 +154,37 @@ interface LockBody {
   host: string;
   ts: number;
   token: string;
+  /** Strict leases only (#1587): this kernel boot's random id, when readable. */
+  boot?: unknown;
+}
+
+let bootCache: string | null | undefined;
+/** This kernel boot's random identity, fixed for the life of the process:
+ * Linux `boot_id`, macOS `kern.bootsessionuuid`. Null when unreadable
+ * (Windows, sandboxes): then only the host + pid rule applies, as before. */
+function currentBoot(): string | null {
+  if (bootCache !== undefined) return bootCache;
+  let id = "";
+  try {
+    if (process.platform === "linux") id = readFileSync("/proc/sys/kernel/random/boot_id", "utf8");
+    else if (process.platform === "darwin")
+      id = execFileSync("/usr/sbin/sysctl", ["-n", "kern.bootsessionuuid"], {
+        encoding: "utf8",
+        timeout: 2_000,
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+  } catch {
+    /* unknown boot */
+  }
+  id = id.trim().toLowerCase();
+  bootCache = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id) ? id : null;
+  return bootCache;
+}
+
+/** Strict leases also carry the boot identity that proves a later boot (#1587). */
+function newLeaseBody(token: string, strictLocal: boolean): string {
+  const boot = strictLocal ? currentBoot() : null;
+  return JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token, ...(boot && { boot }) });
 }
 
 /**
@@ -162,7 +201,7 @@ async function acquireFileLock(
 ): Promise<string | null> {
   const lockPath = pathLockFilePath(path);
   const token = randomUUID();
-  const body = JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token });
+  const body = newLeaseBody(token, strictLocal);
   const deadline = Date.now() + LOCK_WAIT_MS;
   // The lock sits next to the state file; on the very first write the
   // directory may not exist yet (the writers create it themselves otherwise).
@@ -198,21 +237,9 @@ async function acquireFileLock(
         return null;
       }
     }
-    // Capture the body BEFORE the age check: a replacement between this
-    // snapshot and removal must never become the object of the old decision.
-    try {
-      const observed = strictLocal ? undefined : await readFile(lockPath, "utf8");
-      const st = await stat(lockPath);
-      if (strictLocal) {
-        if (reclaimDeadLocal(lockPath, body)) return token;
-      } else if (Date.now() - st.mtimeMs > LOCK_STALE_MS) {
-        if (removeStaleLock(lockPath, observed!)) continue;
-      }
-    } catch {
-      if (strictLocal) continue; // Preserve the strict-local retry policy.
-      // A missing lease can also mean an interrupted mutation guard. Still
-      // honor the acquisition deadline instead of spinning forever.
-    }
+    const next = await inspectHeldLock(lockPath, body, strictLocal);
+    if (next === "acquired") return token;
+    if (next === "retry") continue;
     if (Date.now() >= deadline) {
       process.stderr.write(
         `[bastra-recall] lock ${strictLocal ? "[private store]" : lockPath} busy for ${LOCK_WAIT_MS}ms — ${giveUp}\n`
@@ -220,6 +247,32 @@ async function acquireFileLock(
       return null;
     }
     await delay(5 + Math.floor(Math.random() * 10));
+  }
+}
+
+/** What to do about a lease that already exists: strict-local reclaims only a
+ * dead local owner; the other lane removes an aged or invalid lease. */
+async function inspectHeldLock(
+  lockPath: string,
+  body: string,
+  strictLocal: boolean
+): Promise<"acquired" | "retry" | "wait"> {
+  try {
+    if (strictLocal) {
+      // lstat, not stat: a dangling symlink exists and must not spin this loop.
+      await lstat(lockPath);
+      return reclaimDeadLocal(lockPath, body) ? "acquired" : "wait";
+    }
+    // Capture the body BEFORE the age check: a replacement between this
+    // snapshot and removal must never become the object of the old decision.
+    const observed = readMarker(lockPath);
+    if (!observed.regular || Date.now() - (await stat(lockPath)).mtimeMs > LOCK_STALE_MS)
+      return removeStaleLock(lockPath, observed) ? "retry" : "wait";
+    return "wait";
+  } catch {
+    // Strict-local retries at once; a missing lease in the other lane can also
+    // mean an interrupted mutation guard, so it honors the deadline instead.
+    return strictLocal ? "retry" : "wait";
   }
 }
 
@@ -269,33 +322,75 @@ function releaseMutationGuard(path: string, fd: number): void {
   }
 }
 
-/** Read metadata and contents through the same open descriptor. */
-function mutationSnapshot(path: string): { raw: string; st: Stats } {
-  // Read-only: mode is unused by Node, but explicit for temp-file analyzers.
-  const fd = openSync(path, "r", 0o600);
+/** A lock body is about 150 bytes; anything larger is read as an empty body. */
+const MARKER_MAX_BYTES = 64 * 1024;
+
+/** A lock-family file as found. `regular: false` is a FIFO, device, socket,
+ * directory or symlink — nothing this module ever writes, so never an owner. */
+interface Marker {
+  raw: string;
+  st: Stats;
+  regular: boolean;
+}
+
+/** Inspect and read ONE descriptor: O_NOFOLLOW refuses a symlink, O_NONBLOCK
+ * keeps a FIFO from wedging the event loop, and only a regular file is read,
+ * at most {@link MARKER_MAX_BYTES} (contributor audit, after #1213). A missing
+ * file throws ENOENT as before. */
+function readMarker(path: string): Marker {
+  let fd: number;
   try {
-    return { raw: readFileSync(fd, "utf8"), st: fstatSync(fd) };
+    // Windows has neither flag; there a symlink is followed as before.
+    fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+  } catch (err) {
+    const st = lstatSync(path); // ENOENT surfaces here
+    if (st.isFile()) throw err;
+    return { raw: "", st, regular: false };
+  }
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile()) return { raw: "", st, regular: false };
+    // An oversized regular file stays a regular file: judged by age like any
+    // unparsable body, never as "not an owner".
+    if (st.size > MARKER_MAX_BYTES) return { raw: "", st, regular: true };
+    const bytes = Buffer.alloc(MARKER_MAX_BYTES + 1);
+    // Read to EOF: a short read must not hand a cut body to the decisions.
+    let length = 0;
+    while (length < bytes.length) {
+      const n = readSync(fd, bytes, length, bytes.length - length, length);
+      if (n === 0) break;
+      length += n;
+    }
+    return { raw: length > MARKER_MAX_BYTES ? "" : bytes.toString("utf8", 0, length), st, regular: true };
   } finally {
     closeSync(fd);
   }
 }
 
-function sameMutationSnapshot(a: { raw: string; st: Stats }, b: { raw: string; st: Stats }): boolean {
+/** Remove a lock-family entry found as `st`. A directory is removed only when
+ * it is empty (rmdir fails otherwise and the caller keeps its normal error);
+ * nothing here ever deletes recursively. */
+function removeEntry(path: string, st: Stats): void {
+  if (st.isDirectory()) rmdirSync(path);
+  else unlinkSync(path);
+}
+
+function sameMutationSnapshot(a: Marker, b: Marker): boolean {
   return a.st.ino === b.st.ino && a.st.dev === b.st.dev && a.st.mtimeMs === b.st.mtimeMs && a.raw === b.raw;
 }
 
-function expiredMutation(snapshot: { raw: string; st: Stats }): boolean {
-  return Date.now() - snapshot.st.mtimeMs > MUTATION_STALE_MS || deadLocal(snapshot.raw);
+function expiredMutation(snapshot: Marker): boolean {
+  return !snapshot.regular || Date.now() - snapshot.st.mtimeMs > MUTATION_STALE_MS || deadLocal(snapshot.raw);
 }
 
 /** Validate the still-named inode immediately before deletion. */
-function removeObservedMutation(path: string, observed: { raw: string; st: Stats }): boolean {
-  const current = mutationSnapshot(path);
+function removeObservedMutation(path: string, observed: Marker): boolean {
+  const current = readMarker(path);
   if (!sameMutationSnapshot(observed, current) || !expiredMutation(current)) return false;
   const named = lstatSync(path);
   if (named.ino !== current.st.ino || named.dev !== current.st.dev || named.mtimeMs !== current.st.mtimeMs)
     return false;
-  unlinkSync(path);
+  removeEntry(path, named);
   return true;
 }
 
@@ -303,7 +398,7 @@ function removeObservedMutation(path: string, observed: { raw: string; st: Stats
  * Both marker sections are synchronous; age bounds even unknown owners. */
 function recoverMutationGuard(guard: string): boolean {
   try {
-    const observed = mutationSnapshot(guard);
+    const observed = readMarker(guard);
     if (!expiredMutation(observed)) return false;
     const recovery = `${guard}.recover`;
     let fd: number;
@@ -313,7 +408,7 @@ function recoverMutationGuard(guard: string): boolean {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") return false;
       // An interrupted recovery must not wedge the next recovery forever.
       // Back off after cleanup; contenders still acquire this marker via wx.
-      removeObservedMutation(recovery, mutationSnapshot(recovery));
+      removeObservedMutation(recovery, readMarker(recovery));
       return false;
     }
     try {
@@ -331,14 +426,21 @@ function recoverMutationGuard(guard: string): boolean {
   } // Real filesystem failures remain conservative.
 }
 
-function removeStaleLock(lockPath: string, observed: string): boolean {
+function removeStaleLock(lockPath: string, observed: Marker): boolean {
   return (
     mutateLock(lockPath, () => {
-      // Exact bytes bind the age decision to the token as well as every other
-      // field. Keep age recovery of legacy/empty bodies, too, as before.
-      if (readFileSync(lockPath, "utf8") !== observed || Date.now() - statSync(lockPath).mtimeMs <= LOCK_STALE_MS)
-        return false;
-      unlinkSync(lockPath);
+      const current = readMarker(lockPath);
+      // A non-regular lease is never an owner; remove that same inode only.
+      // Otherwise exact bytes bind the age decision to the token as well as
+      // every other field. Keep age recovery of legacy/empty bodies, too.
+      const invalid = !observed.regular && !current.regular && current.st.ino === observed.st.ino;
+      const stale =
+        observed.regular &&
+        current.regular &&
+        current.raw === observed.raw &&
+        Date.now() - statSync(lockPath).mtimeMs > LOCK_STALE_MS;
+      if (!invalid && !stale) return false;
+      removeEntry(lockPath, current.st);
       return true;
     }) === true
   );
@@ -346,11 +448,22 @@ function removeStaleLock(lockPath: string, observed: string): boolean {
 
 /** Strict local reclaim has no age-only live-owner takeover. The existing
  * claim remains present until an exclusive reclaimer atomically replaces it.
- * Unknown owner or an interrupted reclaim marker requires explicit recovery. */
+ * Unknown owner or an interrupted reclaim marker requires explicit recovery.
+ *
+ * A writer is dead only on proof (#1587): no process outlives its kernel boot,
+ * so this host's lease from another boot is ownerless whoever has its pid now.
+ * Within one boot the pid decides. A boot id is random per boot; on macOS
+ * (one process table) the same boot proves the same machine, so a renamed
+ * host is judged by its pid. Linux containers share a boot id across pid
+ * namespaces, so there a foreign host name still proves nothing. */
 function deadLocal(raw: string): boolean {
   try {
     const body = JSON.parse(raw) as LockBody;
-    if (body.host !== hostnameSafe() || !Number.isSafeInteger(body.pid) || body.pid <= 0 || !body.token) return false;
+    if (!Number.isSafeInteger(body.pid) || body.pid <= 0 || !body.token) return false;
+    const boot = typeof body.boot === "string" ? currentBoot() : null;
+    const sameHost = body.host === hostnameSafe();
+    if (sameHost && boot && body.boot !== boot) return true;
+    if (!sameHost && !(process.platform === "darwin" && boot && body.boot === boot)) return false;
     try {
       process.kill(body.pid, 0);
       return false;
@@ -364,34 +477,31 @@ function deadLocal(raw: string): boolean {
 
 /** Recover the *same* marker inode only when its local owner provably died.
  * Once removed, this contender backs off; the next acquisition retries.
- * Inspect and read ONE open descriptor: O_NOFOLLOW refuses a symlink and
- * O_NONBLOCK keeps a FIFO from wedging the event loop (#1213). */
+ * Read through {@link readMarker}: one non-blocking descriptor, no symlink,
+ * bounded size (#1213). An oversized body has no owner to prove dead. */
 function removeDeadMarker(mark: string): void {
-  let fd: number;
   try {
-    fd = openSync(mark, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-  } catch {
-    return; // unknown marker stays blocked for explicit operator recovery
-  }
-  try {
-    const original = fstatSync(fd);
-    if (original.isFile() && deadLocal(readFileSync(fd, "utf8")) && statSync(mark).ino === original.ino)
-      unlinkSync(mark);
+    const original = readMarker(mark);
+    if (original.regular && deadLocal(original.raw) && statSync(mark).ino === original.st.ino) unlinkSync(mark);
   } catch {
     /* unknown marker stays blocked for explicit operator recovery */
-  } finally {
-    closeSync(fd);
+  }
+}
+
+/** The body of a regular lease, or null for a missing or non-regular one. A
+ * non-regular strict lease is an unknown owner: refused, never reclaimed. */
+function leaseBody(lockPath: string): string | null {
+  try {
+    const marker = readMarker(lockPath);
+    return marker.regular ? marker.raw : null;
+  } catch {
+    return null;
   }
 }
 
 function reclaimDeadLocal(lockPath: string, replacement: string): boolean {
-  let stale: string;
-  try {
-    stale = readFileSync(lockPath, "utf8");
-  } catch {
-    return false;
-  }
-  if (!deadLocal(stale)) return false;
+  const stale = leaseBody(lockPath);
+  if (stale === null || !deadLocal(stale)) return false;
   const mark = `${lockPath}.reclaim`;
   let fd: number;
   try {
@@ -419,7 +529,7 @@ function reclaimDeadLocal(lockPath: string, replacement: string): boolean {
   const tmp = `${mark}.${randomUUID()}.tmp`;
   try {
     writeFileSync(fd, replacement, "utf8");
-    if (readFileSync(lockPath, "utf8") !== stale || !deadLocal(stale)) return false;
+    if (leaseBody(lockPath) !== stale || !deadLocal(stale)) return false;
     writeFileSync(tmp, replacement, { encoding: "utf8", mode: 0o600, flag: "wx" });
     // No empty-lock interval; all other strict reclaimers see the marker.
     renameSync(tmp, lockPath);
@@ -444,12 +554,12 @@ function reclaimDeadLocal(lockPath: string, replacement: string): boolean {
 function ownershipCheck(path: string, token: string): () => void {
   return () => {
     try {
-      const current = JSON.parse(readFileSync(pathLockFilePath(path), "utf8")) as LockBody;
+      const current = JSON.parse(leaseBody(pathLockFilePath(path)) ?? "") as LockBody;
       if (current.token === token && current.pid === process.pid && current.host === hostnameSafe()) return;
     } catch {
       /* unknown is not ours */
     }
-    throw new PathLockUnavailableError();
+    throw new PathLockUnavailableError(STRICT_LOCK_UNAVAILABLE);
   };
 }
 
@@ -469,7 +579,7 @@ async function releaseFileLock(path: string, token: string, strictLocal = false)
     do {
       try {
         const released = mutateLock(lockPath, () => {
-          const current = JSON.parse(readFileSync(lockPath, "utf8")) as LockBody;
+          const current = JSON.parse(leaseBody(lockPath) ?? "") as LockBody;
           if (current.token === token) unlinkSync(lockPath);
           return true;
         });
@@ -482,8 +592,7 @@ async function releaseFileLock(path: string, token: string, strictLocal = false)
     } while (true);
   }
   try {
-    const raw = await readFile(lockPath, "utf8");
-    const lock = JSON.parse(raw) as LockBody;
+    const lock = JSON.parse(leaseBody(lockPath) ?? "") as LockBody;
     if (lock.token !== token) return; // not our lock any more
   } catch {
     return;
@@ -511,7 +620,8 @@ export function withPathLock<T>(
     opts.crossProcess || opts.strictLocal
       ? async (): Promise<T> => {
           const token = await acquireFileLock(path, required ? "not writing" : undefined, opts.strictLocal);
-          if (token === null && required) throw new PathLockUnavailableError();
+          if (token === null && required)
+            throw new PathLockUnavailableError(opts.strictLocal ? STRICT_LOCK_UNAVAILABLE : undefined);
           try {
             return await fn(token && opts.strictLocal ? ownershipCheck(path, token) : () => {});
           } finally {

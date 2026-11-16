@@ -14,7 +14,7 @@ export function localWall(at: number, timezone: string): string {
   const get = (key: string) => parts.find((p) => p.type === key)!.value;
   return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}`;
 }
-function calendarCandidates(local: string, timezone: string): Array<{ at: number; offset_minutes: number }> {
+function offsetCandidates(local: string, timezone: string): Array<{ at: number; offset_minutes: number }> {
   const wall = Date.parse(`${local}Z`);
   if (!Number.isFinite(wall) || new Date(wall).toISOString().slice(0, 19) !== local)
     throw new Error("invalid calendar wall time");
@@ -23,16 +23,29 @@ function calendarCandidates(local: string, timezone: string): Array<{ at: number
     const sample = wall + hours * 3600000;
     offsets.add(Date.parse(`${localWall(sample, timezone)}Z`) - sample);
   }
-  const candidates = [...offsets]
+  return [...offsets]
     .map((offset) => ({ at: wall - offset, offset_minutes: offset / 60000 }))
-    .filter((c) => c.at >= 0 && Number.isInteger(c.offset_minutes) && localWall(c.at, timezone) === local)
+    .filter((c) => c.at >= 0 && Number.isInteger(c.offset_minutes))
     .sort((a, b) => a.at - b.at);
+}
+function calendarCandidates(local: string, timezone: string): Array<{ at: number; offset_minutes: number }> {
+  const candidates = offsetCandidates(local, timezone).filter((c) => localWall(c.at, timezone) === local);
   if (!candidates.length)
-    throw Object.assign(
-      new Error("Diese Ortszeit existiert wegen der Sommerzeit-Umstellung nicht. Andere Uhrzeit wählen."),
-      { code: "validation", reason: "calendar_gap" }
-    );
+    throw Object.assign(new Error("This local time does not exist because of a daylight saving change."), {
+      code: "validation",
+      reason: "calendar_gap",
+    });
   return candidates;
+}
+/** Later slots of a series: a time skipped by a DST gap uses the offset before
+ * the gap (RFC 5545), so it fires right after the gap instead of ending the series. */
+function seriesCalendar(local: string, timezone: string): { at: number; offset_minutes: number } {
+  const candidates = offsetCandidates(local, timezone);
+  return (
+    candidates.find((c) => localWall(c.at, timezone) === local) ??
+    candidates.find((c) => localWall(c.at, timezone) > local) ??
+    resolveTaskCalendar(local, timezone)
+  );
 }
 export function resolveTaskCalendar(local: string, timezone: string): { at: number; offset_minutes: number } {
   return calendarCandidates(local, timezone)[0];
@@ -58,7 +71,7 @@ export function timeSlot(
   if (task.recurrence.kind === "calendar") {
     if (task.schedule.kind !== "calendar") throw new Error("calendar recurrence requires calendar schedule");
     const local_time = shiftedWall(task.schedule.local_time, task.recurrence.interval * index);
-    return { ...resolveTaskCalendar(local_time, task.timezone), local_time, key: local_time };
+    return { ...seriesCalendar(local_time, task.timezone), local_time, key: local_time };
   }
   const at = task.schedule.at + task.recurrence.interval * index;
   if (!Number.isSafeInteger(at)) throw new Error("recurrence instant overflow");

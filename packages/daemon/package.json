@@ -69,7 +69,9 @@
     "@bastra-recall/core": "1.2.0",
     "@bastra-recall/statusline": "1.2.0",
     "@clack/prompts": "^1.8.1",
+    "@hono/node-server": "^2.1.8",
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "hono": "^4.13.19",
     "web-tree-sitter": "0.27.1",
     "ws": "^8.22.2",
     "zod": "^4.6.7"

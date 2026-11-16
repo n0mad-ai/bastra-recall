@@ -7,7 +7,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cmdDrafts } from "../src/cli/drafts-cmd.js";
@@ -128,4 +128,25 @@ test("reject without an id prints usage", (t) =>
   fixture(t, async (_dir, out) => {
     assert.equal(await cmdDrafts(parseArgs(["drafts", "reject"])), 2);
     assert.match(out.stderr, /reject <id>\.\.\./);
+  }));
+
+test("#1592: list says when the store is full and new first captures are dropped", (t) =>
+  fixture(t, async (dir, out) => {
+    const rows = Array.from({ length: 500 }, (_, i) => ({
+      ...row(i),
+      evidence: [
+        { session_id: `full-${i}-a`, turn: 1, ts: now },
+        { session_id: `full-${i}-b`, turn: 1, ts: now },
+      ],
+    }));
+    await writeFile(join(dir, "drafts.json"), JSON.stringify({ version: 1, rows }));
+    assert.equal(await cmdDrafts(parseArgs(["drafts", "list"])), 0);
+    assert.match(out.stdout, /Draft store is full \(500 of 500 rows\): new first captures are dropped/);
+  }));
+
+test("#1592: list stays quiet below the cap", (t) =>
+  fixture(t, async (_dir, out) => {
+    await upsertDraft(row(1), now);
+    assert.equal(await cmdDrafts(parseArgs(["drafts", "list"])), 0);
+    assert.doesNotMatch(out.stdout, /Draft store is full/);
   }));

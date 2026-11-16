@@ -256,6 +256,10 @@ test("#1331: task_create tells agents to arm clear requested/confirmed notify wi
   assert.match(description, /no (?:additional )?owner review/i);
   assert.doesNotMatch(description, /For user requests first confirm/);
 });
+test("#1594 task tool texts never tell the model to answer in a fixed language", () => {
+  for (const tool of taskTools) assert.doesNotMatch(tool.description, /[äöüÄÖÜß]|Erinnerung|Aufgabe/, tool.name);
+  assert.match(taskTools.find((t) => t.name === "task_create")!.description, /in the user's language/);
+});
 
 test("agent delete shares MCP, HTTP DELETE and CLI revision semantics", async () => {
   const f = await fixture();

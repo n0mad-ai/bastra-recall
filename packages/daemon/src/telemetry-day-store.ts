@@ -28,7 +28,7 @@ import { open, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { openAppDatabase, type AppDatabase } from "./app-database.js";
-import { parseEventLines, type FinishedDaySource, type ReportEvent } from "./telemetry-report.js";
+import { LOG_READ_FLAGS, parseEventLines, type FinishedDaySource, type ReportEvent } from "./telemetry-report.js";
 
 /**
  * Version des gespeicherten Auszugs. Erhöhen, wenn ein Berichtsabschnitt ein
@@ -226,7 +226,9 @@ export class TelemetryDayStore implements FinishedDaySource {
     // Größe und Inhalt kommen aus DEMSELBEN geöffneten Deskriptor: stat vor
     // dem Lesen — wächst die Datei dazwischen, passt die gespeicherte Größe
     // nicht mehr und der Tag wird beim nächsten Mal neu gelesen.
-    const handle = await open(join(logDir, file), "r");
+    // Non-blocking and without following a link: a FIFO or device planted under a
+    // log name must fail this day, not wait forever (contributor audit).
+    const handle = await open(join(logDir, file), LOG_READ_FLAGS);
     try {
       return await this.eventsFromHandle(handle, logDir, day);
     } finally {
@@ -236,6 +238,7 @@ export class TelemetryDayStore implements FinishedDaySource {
 
   private async eventsFromHandle(handle: FileHandle, logDir: string, day: string): Promise<ReportEvent[]> {
     const st = await handle.stat();
+    if (!st.isFile()) throw Object.assign(new Error(`not a log file: ${day}`), { code: "EUNSAFE" });
     try {
       const row = this.db.sqlite
         .prepare("SELECT version,file_size,file_mtime_ms,events_json_gz FROM telemetry_days WHERE log_dir=? AND day=?")

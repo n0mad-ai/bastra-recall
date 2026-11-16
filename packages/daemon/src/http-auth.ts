@@ -16,17 +16,31 @@ export function isLoopback(req: IncomingMessage): boolean {
   return addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1";
 }
 
+/** Headers a reverse proxy adds (RFC 7239 `Forwarded`, the `X-Forwarded-*`
+ * family, nginx's usual `X-Real-IP`, RFC 9110 `Via`). No local client of
+ * Recall sends any of them. */
+const FORWARDING_HEADERS = [
+  "forwarded",
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+  "x-real-ip",
+  "via",
+];
+
 /** #1264: presence alone marks a forwarded request, even an empty header or
  * a claimed localhost value. Never trust proxy-supplied addresses as proof
  * that the original caller was local. Node lowercases incoming header names. */
 export function hasForwardingHeaders(req: IncomingMessage): boolean {
-  return ["forwarded", "x-forwarded-for", "x-forwarded-host"].some((name) => Object.hasOwn(req.headers, name));
+  return FORWARDING_HEADERS.some((name) => Object.hasOwn(req.headers, name));
 }
 
-/** #1264: a proxy may rewrite Host to localhost, so a forwarded hook or UI
- * request must carry the API token before any handler reads or writes. */
+/** #1264: a proxy may rewrite Host to localhost, so a forwarded request to any
+ * local route must carry the API token before any handler reads or writes.
+ * `/api/v1/*` is exempt here only because its own gate (bearer token, OAuth,
+ * task credentials) already treats every forwarded request as remote. */
 export function forwardedWithoutToken(req: IncomingMessage, pathname: string, apiToken: string | undefined): boolean {
-  if (!(pathname.startsWith("/hook/") || pathname === "/ui" || pathname.startsWith("/ui/"))) return false;
+  if (pathname.startsWith("/api/v1/")) return false;
   if (!hasForwardingHeaders(req)) return false;
   return !apiToken || !safeEqual(req.headers.authorization ?? "", `Bearer ${apiToken}`);
 }
@@ -40,8 +54,9 @@ export function forwardedWithoutToken(req: IncomingMessage, pathname: string, ap
  * Legitimate targets stay accepted: percent-encoded names (`%20`, `%C3%BC`),
  * dots inside a segment (`app.js`, `a%2Eb`) and any query string. Refused:
  * absolute-form and `//host` targets, `.`/`..` in any encoding, backslashes,
- * a fragment, whitespace/control characters and encoded `/`, `\` or NUL — no
- * route takes any of them. Exported for unit tests.
+ * a fragment, whitespace/control characters, encoded `/`, `\` or NUL and
+ * percent-encoding that does not decode — no route takes any of them.
+ * Exported for unit tests.
  */
 export function canonicalRequestTarget(url: string): boolean {
   const query = url.indexOf("?");
@@ -52,6 +67,9 @@ export function canonicalRequestTarget(url: string): boolean {
   const segments = path.split("/");
   if (segments.some((segment) => /^(?:\.|%2e){1,2}$/i.test(segment))) return false;
   try {
+    // A route that decodes its path must not meet invalid percent-encoding
+    // (`%zz`, an overlong UTF-8 sequence): refuse it here as 400, not as 500.
+    decodeURIComponent(path);
     // Defence in depth: the parser must keep every segment the raw path has.
     return new URL(path, "http://localhost").pathname.split("/").length === segments.length;
   } catch {

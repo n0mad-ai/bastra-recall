@@ -9,6 +9,7 @@ import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { friendlyTaskCreate, friendlyTaskResult, friendlyTaskError } from "../src/cli/task-friendly.js";
+import { TASK_CARD_TEXT, localTaskCardText } from "../src/task-card-text.js";
 import { parseArgs } from "../src/cli/commands.js";
 import { mintTaskCredential, revokeTaskCredential } from "../src/task-auth.js";
 import { callTaskCrud } from "../src/task-service.js";
@@ -241,8 +242,8 @@ test("readable states, local times, controls, off-status and errors keep machine
   assert.match(friendlyTaskResult("status", base), /unklar\/strittig.*andere Prämisse/);
   assert.match(friendlyTaskResult("mute", { controls: base.controls, resumed_authority: false }), /Stumm geschaltet/);
   assert.ok(!friendlyTaskResult("stop", { controls: base.controls, resumed_authority: false }).startsWith("{"));
-  assert.match(friendlyTaskError("not_found", "cancel"), /unbekannt/);
-  assert.match(friendlyTaskError("protected_boundary_required", "resume"), /Nutzeranweisung/);
+  assert.match(friendlyTaskError("not_found", "cancel", undefined, "de"), /unbekannt/);
+  assert.match(friendlyTaskError("protected_boundary_required", "resume", undefined, "de"), /Nutzeranweisung/);
 });
 test("human recurrence supports optional bounds and ambiguous autumn time stays visibly unarmed", () => {
   const repeating = friendlyTaskCreate({
@@ -310,13 +311,12 @@ test("private owner cache is separate from hook access, rejects automation and r
 });
 
 test("mid-flow errors name DST gap and past snooze; declining resume is not an agent error", async () => {
-  assert.throws(
-    () => friendlyTaskCreate({ goal: "Gap", when: "2026-03-29T02:30", timezone: "Europe/Madrid" }),
-    /Sommerzeit/
-  );
+  assert.throws(() => friendlyTaskCreate({ goal: "Gap", when: "2026-03-29T02:30", timezone: "Europe/Madrid" }), {
+    reason: "calendar_gap",
+  });
   assert.equal((friendlyTaskCreate({ goal: "Repeat", after: "7d", every: "1d" }) as any).recurrence.until, undefined);
-  assert.match(friendlyTaskError("validation", "snooze", "snooze_past"), /Vergangenheit/);
-  assert.match(friendlyTaskError("forbidden", "resume", "owner_declined"), /Nicht bestätigt/);
+  assert.match(friendlyTaskError("validation", "snooze", "snooze_past", "de"), /Vergangenheit/);
+  assert.match(friendlyTaskError("forbidden", "resume", "owner_declined", "de"), /Nicht bestätigt/);
   const f: any = {
     id: "t",
     goal: "Test",
@@ -355,4 +355,77 @@ test("#1331: friendly agent notify defaults armed and help describes the actual 
   );
   assert.doesNotMatch(COMMAND_HELP.tasks, /--arm braucht Owner-Rolle/);
   assert.match(COMMAND_HELP.tasks, /Aufgaben.*--agent.*scharf/s);
+});
+
+test("#1594 error texts are per-language data with English as the fallback", () => {
+  for (const language of [undefined, "en", "fr"]) {
+    const text = friendlyTaskError("forbidden", "list", undefined, language);
+    assert.equal(
+      text,
+      "list: Access or domains are not sufficient for this operation. task_status shows the assigned areas."
+    );
+    assert.match(friendlyTaskError("validation", null, "calendar_gap", language), /^Tasks: .*daylight saving/);
+    assert.match(friendlyTaskError("nope", null, undefined, language), /^Tasks: Operation not possible/);
+  }
+  assert.match(friendlyTaskError("forbidden", null, undefined, "de"), /^Aufgaben: Zugang oder Domänen/);
+  assert.match(friendlyTaskError("nope", null, undefined, "de"), /^Aufgaben: Vorgang nicht möglich/);
+});
+
+test("#1594 the task CLI speaks one language: its errors match its German questions for every language.primary", async () => {
+  const { setPrimaryLanguage, getPrimaryLanguage } = await import("../src/settings.js");
+  const { settingsFilePath, mutateSettings } = await import("../src/settings-file.js");
+  const { cmdTasks } = await import("../src/cli/tasks-cmd.js");
+  const before = await getPrimaryLanguage();
+  const stderr = process.stderr.write;
+  try {
+    for (const language of [undefined, "en", "de"]) {
+      if (language) await setPrimaryLanguage(language);
+      let output = "";
+      process.stderr.write = ((chunk: any) => {
+        output += String(chunk);
+        return true;
+      }) as any;
+      try {
+        assert.equal(await cmdTasks({ sub: "list", positional: [], argv: ["tasks", "list"] }), 1);
+      } finally {
+        process.stderr.write = stderr;
+      }
+      assert.equal(
+        output,
+        "list: Dieser Befehl braucht ein interaktives Terminal für den Owner-Zugang. Ohne Terminal: --agent mit dem Agent-Zugang verwenden.\n",
+        `names the missing terminal in the CLI's language (language.primary=${language})`
+      );
+    }
+  } finally {
+    await mutateSettings(
+      settingsFilePath(),
+      (s) => ({ ...s, language: { ...s.language, primary: before } }) as typeof s
+    );
+  }
+});
+
+test("#1594 card texts reach the model in English and the CLI in its language, by key", () => {
+  const due = friendlyTaskResult("due", {
+    cards: [
+      {
+        kind: "occurrence",
+        goal: "Demo",
+        due_at: 0,
+        timezone: "Europe/Berlin",
+        why_now: TASK_CARD_TEXT.premise,
+        action_outcome: { intent_id: "i1", state: "unknown", review_hint: TASK_CARD_TEXT.reconcile },
+        task_id: "t1",
+        occurrence_id: "o1",
+      },
+      { kind: "availability", summary: TASK_CARD_TEXT.waiting, detail_command: "bastra tasks due" },
+    ],
+  });
+  assert.match(due, /Geprüfte Prämissenänderung/);
+  assert.match(due, /Abgleich nötig/);
+  assert.match(due, /Fällige Aufgaben warten auf Prüfung/);
+  assert.doesNotMatch(due, /Reconciliation required|Verified premise/);
+  assert.equal(localTaskCardText(TASK_CARD_TEXT.reconcile, "de"), "Abgleich nötig");
+  for (const language of [undefined, "en", "fr"])
+    assert.equal(localTaskCardText(TASK_CARD_TEXT.reconcile, language), "Reconciliation required");
+  assert.equal(localTaskCardText("A goal the user wrote", "de"), "A goal the user wrote");
 });

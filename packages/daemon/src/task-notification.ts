@@ -60,12 +60,20 @@ function eligible(
     (receipt.failed_at !== undefined && now - receipt.failed_at >= task.notification_policy.retry_interval_ms)
   );
 }
+/** The notice is read by a person: it follows language.primary. Text the product
+ *  writes, never matched against user text; an unlisted language gets English. */
+const EXPIRED_PREFIX_BY_LANGUAGE: Readonly<Record<string, string>> = { en: "Expired: ", de: "Abgelaufen: " };
+function expiredPrefix(settings: { language?: { primary?: string } }): string {
+  return EXPIRED_PREFIX_BY_LANGUAGE[settings.language?.primary ?? "en"] ?? EXPIRED_PREFIX_BY_LANGUAGE.en;
+}
 export async function notifyDueTasks(ctx: TaskServiceContext, options: TaskNotificationOptions = {}): Promise<void> {
   if ((options.platform ?? process.platform) !== "darwin") return;
   // Production default never emits real desktop notifications from test children.
   if (!options.send && process.env.NODE_TEST_CONTEXT) return;
-  const enabled = options.enabled ?? (await readSettings()).tasks?.notifications ?? true;
+  const settings = await readSettings();
+  const enabled = options.enabled ?? settings.tasks?.notifications ?? true;
   if (!enabled) return;
+  const expired = expiredPrefix(settings);
   const now = (ctx.now ?? Date.now)();
   const snapshot = await readTaskStore(ctx.path);
   const candidates = snapshot.occurrences
@@ -90,7 +98,7 @@ export async function notifyDueTasks(ctx: TaskServiceContext, options: TaskNotif
         occurrence.notification = { claimed_at: now };
         message = {
           title: "Bastra Recall",
-          body: `${isTaskExpiryNotice(task, occurrence) ? "Abgelaufen: " : ""}${task.goal.slice(0, 200)}`,
+          body: `${isTaskExpiryNotice(task, occurrence) ? expired : ""}${task.goal.slice(0, 200)}`,
         };
       },
       "control"

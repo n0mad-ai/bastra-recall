@@ -154,7 +154,6 @@ export function assistantGatewayHandler(opts: AssistantGatewayOptions) {
         "transfer-encoding",
         "te",
         "trailer",
-        "x-forwarded-proto",
       ])
         delete headers[key];
       if (headers.origin !== undefined) headers.origin = target.origin;

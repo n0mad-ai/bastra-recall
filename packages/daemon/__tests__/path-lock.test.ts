@@ -457,7 +457,8 @@ test(
     let observedFd, paused = false;
     fs.openSync = (...args) => {
       const fd = open(...args);
-      if (role === 'B' && args[0] === guard && args[1] === 'r') observedFd = fd;
+      // The read-only snapshot: numeric O_RDONLY flags (access mode bits 0).
+      if (role === 'B' && args[0] === guard && typeof args[1] === 'number' && (args[1] & 3) === 0) observedFd = fd;
       return fd;
     };
     fs.fstatSync = (...args) => {

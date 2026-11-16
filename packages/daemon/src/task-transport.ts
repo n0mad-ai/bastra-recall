@@ -42,7 +42,7 @@ const TASK_HELP: Partial<Record<TaskCrudOperation, string>> = {
   task_end_series:
     "Explicitly end a recurring series. task_resolve completes one occurrence (occurrence_id, or the latest unresolved occurrence) and preserves the next scheduled slot.",
   task_create:
-    "Agent tasks use enrolled owner_domains; missing or unregistered areas are mapped automatically. Projects belong in scope.name. A request to save an Aufgabe/Erinnerung/task means task_create; a TODO memory never replaces it. Owner decision 2026-10-30: tasks of any action_level requested or confirmed by the user must be created immediately with arm=true and origin={kind:user-request,client,session,context}; no additional Owner review or repeated approval is needed. Confirm only missing or ambiguous goal/date/time/timezone/recurrence, including DST, using the client selection tool; never guess. Attributable agent tasks default to armed when arm is omitted; explicit drafts remain unarmed. For an observed deadline or promised follow-up, directly create notify with arm=true and origin={kind:user-request|agent-observed,client,session,context}; then say → Erinnerung eingetragen: <was> – <wann>. No reminder for one-off work requests or incidental memory dates. No daily/open limits; The server deduplicates only the same actual goal/request/cause/time using scrub-safe identity; matching redaction placeholders are not equality. If disabled, report saved unarmed. Agent task management includes editing, rescheduling, resolving, cancelling, archiving and deleting all levels. The user’s instruction or Yes in chat is also execution authorization; provide its user-directed provenance, client/program, session and user wording. Never ask for a signature, key, passphrase, approval command, Touch ID or repeated confirmation. Optional board fields: waits_on[], source {kind:mail|memory, ref}, agent_note, assignee user|recall (see task_edit).",
+    "Agent tasks use enrolled owner_domains; missing or unregistered areas are mapped automatically. Projects belong in scope.name. A request in any language to save a task or reminder means task_create; a TODO memory never replaces it. Owner decision 2026-10-30: tasks of any action_level requested or confirmed by the user must be created immediately with arm=true and origin={kind:user-request,client,session,context}; no additional Owner review or repeated approval is needed. Confirm only missing or ambiguous goal/date/time/timezone/recurrence, including DST, using the client selection tool; never guess. Attributable agent tasks default to armed when arm is omitted; explicit drafts remain unarmed. For an observed deadline or promised follow-up, directly create notify with arm=true and origin={kind:user-request|agent-observed,client,session,context}; then confirm it in one short line in the user's language, naming what and when. No reminder for one-off work requests or incidental memory dates. No daily/open limits; The server deduplicates only the same actual goal/request/cause/time using scrub-safe identity; matching redaction placeholders are not equality. If disabled, report saved unarmed. Agent task management includes editing, rescheduling, resolving, cancelling, archiving and deleting all levels. The user’s instruction or Yes in chat is also execution authorization; provide its user-directed provenance, client/program, session and user wording. Never ask for a signature, key, passphrase, approval command, Touch ID or repeated confirmation. Optional board fields: waits_on[], source {kind:mail|memory, ref}, agent_note, assignee user|recall (see task_edit).",
   task_edit:
     "Patch with expected_revision. Board fields: area is scope.name; waits_on (what the task waits on, [] clears), source {kind:mail|memory, ref: mail message id or memory id}, agent_note (the agent's own note), assignee user|recall (who holds the task now: hand over with patch {assignee}); null clears source, agent_note and assignee. They never change schedule, arming or generation.",
   task_due:
@@ -170,7 +170,7 @@ export function taskFailure(error: unknown): {
         reason: "owner_domain_not_enrolled",
         rejected: error.rejected,
         allowed: error.allowed,
-        hint: "owner_domains must be a subset of your enrolled domains; see task_status → domains. / owner_domains muss aus deinen eingeschriebenen Domänen stammen; siehe task_status → domains.",
+        hint: "owner_domains must be a subset of your enrolled domains; see task_status → domains.",
       },
     };
   const detail = (error as { reason?: string })?.reason;
@@ -179,6 +179,7 @@ export function taskFailure(error: unknown): {
     "recurrence_limit_required",
     "snooze_past",
     "owner_declined",
+    "owner_terminal_required",
     "targets_syntax",
     "target_path_missing",
     "target_boundary",

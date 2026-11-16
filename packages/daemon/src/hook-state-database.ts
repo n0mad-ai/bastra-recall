@@ -38,9 +38,10 @@ async function retainOriginal(file: string): Promise<void> {
   const target = `${file}.pre-sqlite`;
   try {
     // A symlink, FIFO or foreign file in place of either one is never read.
-    const old = (await readPrivateFile(target, MAX_LEGACY_BYTES)).bytes;
-    if (!old.equals((await readPrivateFile(file, MAX_LEGACY_BYTES)).bytes))
-      throw new Error("Different pre-SQLite original already exists; both files preserved");
+    await readPrivateFile(target, MAX_LEGACY_BYTES);
+    // #1584: an original is already retained. Whether a reappearing file (an
+    // older binary still writing) matches it or not, both stay untouched and
+    // the committed rows win; a difference must not block every later load.
     return;
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;

@@ -455,13 +455,13 @@ test("unknown action is visible in bounded owner status and card; explicit recon
   assert.equal(result.state, "unknown");
   await assert.rejects(readFile(tmp));
   const status = (await callTaskCrud(f.ctx, f.ownerAuth, "task_status", {})) as any;
-  assert.equal(status.intents[0].review_hint, "Abgleich nötig");
+  assert.equal(status.intents[0].review_hint, "Reconciliation required");
   assert.equal(status.receipts[0].outcome, "unknown");
   assert.equal(status.receipts[0].rollback_available, false);
   assert.match(status.tasks[0].review_reason, /Abgleich nötig/);
   assert.ok(!JSON.stringify(status.intents).includes(f.root));
   const due = (await callTaskCrud(f.ctx, f.ownerAuth, "task_due", {})) as any;
-  assert.equal(due.cards[0].action_outcome.review_hint, "Abgleich nötig");
+  assert.equal(due.cards[0].action_outcome.review_hint, "Reconciliation required");
   assert.equal(
     ((await callTaskCrud(f.ctx, f.ownerAuth, "task_intent_reconcile", { intent_id: pending.id })) as any).state,
     "unknown"

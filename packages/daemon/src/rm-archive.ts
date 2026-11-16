@@ -93,25 +93,69 @@ export function archiveDir(env: NodeJS.ProcessEnv): string {
   return env.BASTRA_ARCHIVE_DIR || join(bastraDataDir(), "archive");
 }
 
-export function archiveRoot(env: NodeJS.ProcessEnv = process.env): string {
+/**
+ * The archive directory, made 0700 if it is new. Throws, before anything is
+ * moved, when it is not a directory of this user: another account's (say
+ * BASTRA_ARCHIVE_DIR=/var/tmp) or a link another account made. There, others
+ * could read the manifest or put their own files where the archive writes.
+ */
+export function archiveRoot(env: NodeJS.ProcessEnv = process.env, uid = myUid()): string {
   const raw = archiveDir(env);
   // Only the user reads the archive: what moves in keeps its own mode, the
   // directories around it are new and must not open it to others.
   mkdirSync(raw, { recursive: true, mode: 0o700 });
   const root = realpathSync(raw);
+  const problem = rootProblem(raw, root, env, uid);
+  if (problem) throw new Error(problem);
   // An archive made before 0700 stays open to others: close it once, with the
   // dated directories and manifests in it. The configured path may be a
   // symlink the user set on purpose; what is checked is where it leads.
-  if (archiveDirState(root) === "open") {
+  if (archiveDirState(root, uid) === "open") {
     chmodSync(root, 0o700);
     for (const name of readdirSync(root)) {
       const p = join(root, name);
       const st = lstatSync(p);
+      // While it was open, anyone could have put a file or link here first —
+      // a planted manifest.jsonl would be written through or read back.
+      if (st.isSymbolicLink() || (uid >= 0 && st.uid !== uid)) {
+        throw new Error(
+          `the archive directory '${raw}' was open to other accounts and holds '${name}', which is not yours — ` +
+            "Recall does not use it. Move that entry away, or choose another directory of your own"
+        );
+      }
       if (st.isDirectory()) chmodSync(p, 0o700);
       else if (st.isFile() && name.startsWith("manifest")) chmodSync(p, 0o600);
     }
   }
   return root;
+}
+
+/** Why the archive directory is not this user's, or null. A symlink the user
+ *  made is fine (checked is where it leads); one another account made is not. */
+function rootProblem(raw: string, root: string, env: NodeJS.ProcessEnv, uid: number): string | null {
+  const link = lstatSync(raw);
+  const foreignLink = link.isSymbolicLink() && uid >= 0 && link.uid !== uid;
+  if (!foreignLink && archiveDirState(root, uid) !== "foreign") return null;
+  return (
+    `the archive directory '${raw}' does not belong to you (another account's directory, not a directory, ` +
+    "or a link another account made), so Recall does not use it. " +
+    (env.BASTRA_ARCHIVE_DIR
+      ? "Set BASTRA_ARCHIVE_DIR to a directory of your own, or remove BASTRA_ARCHIVE_DIR to use the default"
+      : "Make it a directory of your own (chmod 700), or set BASTRA_ARCHIVE_DIR to one")
+  );
+}
+
+/** For doctor: why the archive directory would be refused, or null. Creates
+ *  nothing; a directory that is not there yet is made 0700 on first use. */
+export function archiveRootProblem(env: NodeJS.ProcessEnv = process.env, uid = myUid()): string | null {
+  const raw = archiveDir(env);
+  let root: string;
+  try {
+    root = realpathSync(raw);
+  } catch {
+    return null;
+  }
+  return rootProblem(raw, root, env, uid);
 }
 
 /** The manifest is created 0600: it names every archived path. */
@@ -459,6 +503,29 @@ const tooLarge = (t: string, counted: number, limit: number): string =>
   `(counted ${formatSize(counted)} and stopped). Not archived, not deleted. ` +
   "Delete it for real with `/bin/rm`, or raise the limit: `bastra config set archive.max-item <size>`";
 
+/**
+ * Before any target: what rm itself rejects (a bad option, no operand), then
+ * the archive. A number is the exit code to stop with. Without a usable
+ * archive every target stays where it is — never a delete without one.
+ */
+function shimArchive(parsed: Parsed, env: NodeJS.ProcessEnv, err: (s: string) => void): string | number {
+  if (parsed.error) {
+    err(parsed.error);
+    return 1;
+  }
+  if (parsed.targets.length === 0) {
+    if (parsed.flags.has("f")) return 0;
+    err("rm: missing operand");
+    return 1;
+  }
+  try {
+    return archiveRoot(env);
+  } catch (e) {
+    err(`rm: nothing archived, nothing removed — ${(e as Error).message}`);
+    return 1;
+  }
+}
+
 /** `rm` with the system's exit codes and messages, archiving instead of unlinking. */
 export function runRmShim(argv: string[], io: ShimIo = {}): number {
   const env = io.env ?? process.env;
@@ -466,17 +533,10 @@ export function runRmShim(argv: string[], io: ShimIo = {}): number {
   const now = io.now ?? new Date();
   const out = io.out ?? ((s: string) => process.stdout.write(s + "\n"));
   const err = io.err ?? ((s: string) => process.stderr.write(s + "\n"));
-  const { flags, targets, error } = parseRmArgs(argv);
-  if (error) {
-    err(error);
-    return 1;
-  }
-  if (targets.length === 0) {
-    if (flags.has("f")) return 0;
-    err("rm: missing operand");
-    return 1;
-  }
-  const archive = archiveRoot(env);
+  const parsed = parseRmArgs(argv);
+  const { flags, targets } = parsed;
+  const archive = shimArchive(parsed, env, err);
+  if (typeof archive === "number") return archive;
   const maxItem = archiveMaxItem(env);
   const eph = io.ephemeral ?? ephemeralRoots(env);
   const call = env.BASTRA_RM_CALL ?? "";

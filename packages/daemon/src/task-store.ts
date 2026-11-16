@@ -22,6 +22,8 @@ import {
   type Task,
 } from "./task-schema.js";
 
+/** History rows a normal mutation may reach; the rest is kept for control operations. */
+export const TASK_HISTORY_RESERVE = 9900;
 export class TaskStoreError extends Error {
   constructor(
     public readonly code: "corrupt" | "unsupported_version" | "conflict" | "capacity" | "invalid_backup",
@@ -305,7 +307,16 @@ export async function withTaskStoreGuard<T>(
         if (canonicalTaskValue(next) === canonicalTaskValue(store)) return structuredClone(store);
         next.revision = store.revision + 1;
         next.recovery_epoch = store.recovery_epoch;
-        if (kind === "normal" && next.tasks.some((t) => t.history.length > 9900))
+        // Only a task whose own history grows past the reserve is refused; a full
+        // task must not block normal writes to every other task (#1581).
+        if (
+          kind === "normal" &&
+          next.tasks.some(
+            (t) =>
+              t.history.length > TASK_HISTORY_RESERVE &&
+              t.history.length > (store.tasks.find((o) => o.id === t.id)?.history.length ?? 0)
+          )
+        )
           throw new TaskStoreError("capacity", "task history reserve reached; control operations remain available");
         const validated = taskStoreSchema.parse(next);
         const payload = JSON.stringify(validated);

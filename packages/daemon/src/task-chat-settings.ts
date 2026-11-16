@@ -7,7 +7,6 @@ import { randomUUID } from "node:crypto";
 import { managedSettingsPath } from "./cc-permissions.js";
 import { readSettings, mutateSettings, settingsFilePath } from "./settings-file.js";
 import { SETTINGS_REGISTRY } from "./settings-registry.js";
-import { TASKS_DEFAULT } from "./settings-defaults.js";
 import { withPathLock } from "./path-lock.js";
 
 export interface TaskChatSetupPaths {
@@ -165,7 +164,7 @@ export async function applyTaskChatConsent(answer: boolean, input: TaskChatSetup
         p.settingsPath,
         (settings) => ({
           ...settings,
-          tasks: { enabled: settings.tasks?.enabled ?? TASKS_DEFAULT, ...settings.tasks, chatConsent: result.answer },
+          tasks: { ...settings.tasks, chatConsent: result.answer },
         }),
         { refuseCorrupt: true, requireLock: true }
       );

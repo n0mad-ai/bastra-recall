@@ -178,6 +178,37 @@ function audit(task: Task, principal: TaskPrincipal, operation: string, now: num
     reason: operation,
   });
 }
+type TriggerEdit = "schedule" | "reopen" | "keep";
+/** How an edit touches the trigger; undefined when no trigger field changes. */
+function editedTrigger(store: TaskStore, task: Task, patch: Record<string, unknown>): TriggerEdit | undefined {
+  const changed = (key: string) => key in patch && canonical(patch[key]) !== canonical(task[key as keyof Task]);
+  if (["schedule", "timezone", "recurrence"].some(changed)) return "schedule";
+  if (!["decision", "evidence", "owner_domains", "scope", "action_level", "expires_at", "auto_resolve"].some(changed))
+    return undefined;
+  // The latest fired slot of this generation, if nobody has seen or settled it yet.
+  const latest = store.occurrences
+    .filter((o) => o.task_id === task.id && o.generation === task.generation && o.kind !== "expired")
+    .sort((a, b) => a.due_at - b.due_at)
+    .at(-1);
+  return (task.slots_checked ?? 0) > 0 && latest && !latest.acknowledgement && !latest.resolution ? "reopen" : "keep";
+}
+function restartTrigger(store: TaskStore, task: Task, trigger: TriggerEdit): void {
+  task.generation++;
+  delete task.snoozed_until;
+  task.last_event_sequence = store.events.at(-1)?.sequence ?? 0;
+  delete task.last_material_hash;
+  // Only a schedule change moves the slots. Other trigger fields keep the
+  // cursor, so an already delivered slot never fires again (#1586); an open
+  // reminder is presented once more under the new generation.
+  if (trigger === "schedule") {
+    delete task.slots_checked;
+    delete task.next_slot;
+  } else if (trigger === "reopen") {
+    task.slots_checked = task.slots_checked! - 1;
+    delete task.next_slot;
+  }
+  if (!["resolved", "cancelled", "expired"].includes(task.state)) task.state = "pending";
+}
 function hash(value: unknown): string {
   return createHash("sha256").update(canonical(value)).digest("hex");
 }
@@ -501,33 +532,12 @@ async function callTaskCrudInner(
         )
           patch.owner_domains = [...principal.domains];
         if (patch.owner_domains) requireTaskDomains(principal, patch.owner_domains);
-        const triggerChanged = [
-          "schedule",
-          "timezone",
-          "recurrence",
-          "decision",
-          "evidence",
-          "owner_domains",
-          "scope",
-          "action_level",
-          "expires_at",
-          "auto_resolve",
-        ].some(
-          (key) => key in patch && canonical(patch[key as keyof typeof patch]) !== canonical(task[key as keyof Task])
-        );
+        const trigger = editedTrigger(s, task, patch);
         Object.assign(task, patch);
         delete task.reminder_fingerprint;
         for (const key of CLEARABLE) if (patch[key] === null) delete task[key];
         if (patch.waits_on?.length === 0) delete task.waits_on;
-        if (triggerChanged) {
-          task.generation++;
-          delete task.snoozed_until;
-          task.last_event_sequence = s.events.at(-1)?.sequence ?? 0;
-          delete task.last_material_hash;
-          delete task.slots_checked;
-          delete task.next_slot;
-          if (!["resolved", "cancelled", "expired"].includes(task.state)) task.state = "pending";
-        }
+        if (trigger) restartTrigger(s, task, trigger);
         if (task.armed && task.schedule.kind === "event") validateEventBinding(s, task.schedule, task.owner_domains);
         if (task.armed && (await taskDecisionStatus(ctx, task)))
           throw new TaskStoreError("conflict", "decision binding requires review");

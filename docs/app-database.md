@@ -13,6 +13,8 @@ Markdown in the vault; this database never replaces them.
 `transaction(syncCallback)`, `backup(destination)`, `exportJson(destination)`,
 and `close()`. Transactions use `BEGIN IMMEDIATE` and prohibit nested/async
 callbacks. Do not start filesystem, network, or asynchronous work inside them.
+A failed callback or commit rethrows its own error, also when SQLite has
+already rolled the transaction back itself (full disk, I/O error).
 Each process owns its connection; a ten-second SQLite busy timeout serializes
 writers. Hook hot paths should retain in-memory snapshots.
 Hooks may pass `busyTimeoutMs: 0` when opening to fail immediately on writer
@@ -29,7 +31,8 @@ the migration. Repeated successful startup does not migrate or back up again.
 
 Backups live beside the database in `recall.db.backups/before-v<VERSION>-<UUID>.db`.
 Each is a standalone SQLite file. The database and backups have owner-only
-file permissions. Existing backup/export destinations are never overwritten.
+file permissions. Backups and exports are flushed through a writable
+handle; Windows refuses to flush a read-only one. Existing backup/export destinations are never overwritten.
 JSON export includes schema SQL, version and table rows, for diagnostics and
 portable inspection; use the SQLite snapshot for restoration.
 
@@ -78,6 +81,10 @@ snapshot is saved as `recall.db.backups/before-hook-state-<UUID>.db` before new
 rows are imported. After commit the originals are renamed to
 `<original>.pre-sqlite`; an interrupted rename is completed on restart without
 overwriting newer database state. Corrupt files and symlinks are left intact.
+If a legacy file reappears (an older binary still running) while its
+`.pre-sqlite` original exists, both files stay untouched, whether their bytes
+match or not; an already committed row is never replaced by it, and loading
+the hook state continues.
 The original timestamps and 30-second throttle window are preserved.
 
 For a downgrade, stop the daemon, copy each `.pre-sqlite` original back to its

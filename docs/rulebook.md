@@ -6,7 +6,7 @@ Tracking: [#1336](https://github.com/n0mad-ai/bastra-recall/issues/1336), under 
 
 - A: `rulebook: always` delivers complete bodies within an explicit 8,000-character budget. Overflow names missing rules.
 - B: `rulebook: on-demand` delivers a complete description index; overflow uses cursor pagination with catalog hash, total count and end marker. The model loads applicable bodies. Keywords and embeddings never decide membership.
-- C: check evidence before mutations on verified hook hosts. Reads remain available. At most two denials per round, then allow and report a violation. Observable outages fail open and are counted. No human input is needed to unblock an autonomous run.
+- C: check evidence before mutations, and once per round at Stop, on verified hook hosts (see [Round check](#round-check-and-bounded-actionstop-control)). Reads remain available. At most two denials per round, then allow and report a violation. Observable outages fail open and are counted. No human input is needed to unblock an autonomous run.
 
 A+B delivery, bounded C checking, category-based action rules and the synthetic multilingual Phase 5 replay are implemented. See the dated host-probe evidence for review findings and limits. Semantic compliance can be checked only where an appropriate validator exists. Hookless clients receive one advisory notice. Answer language remains `language.primary`.
 
@@ -29,7 +29,7 @@ Small always-on context plus a description index and model-loaded bodies follows
 
 ## Deutsch
 
-Das Regelbuch wird schrittweise gebaut: vollständige Zustellung oder ehrliche Überlaufhinweise und begrenzte Prüfung vor Änderungen. Lesen bleibt frei, autonome Läufe bleiben ohne menschliche Eingabe arbeitsfähig. Semantische Befolgung ist nur mit passenden Validatoren prüfbar. Noch nicht umgesetzte Phasen sind keine Produktgarantie.
+Das Regelbuch wird schrittweise gebaut: vollständige Zustellung oder ehrliche Überlaufhinweise und begrenzte Prüfung vor Änderungen sowie einmal je Runde am Stop. Lesen bleibt frei, autonome Läufe bleiben ohne menschliche Eingabe arbeitsfähig. Semantische Befolgung ist nur mit passenden Validatoren prüfbar. Noch nicht umgesetzte Phasen sind keine Produktgarantie.
 
 ## Schema stage
 

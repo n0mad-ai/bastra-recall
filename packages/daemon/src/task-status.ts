@@ -1,4 +1,5 @@
 import { readApprovalRegistry, migrateTaskApprovalRegistry } from "./task-approval-keys.js";
+import { TASK_CARD_TEXT } from "./task-card-text.js";
 import { taskAgentAccessStatus } from "./task-auto-setup.js";
 import { LOCAL_TASK_STATE_COVERAGE, isLocalTaskState } from "./task-local-state.js";
 import { taskNotificationStatus } from "./task-notification.js";
@@ -135,7 +136,7 @@ export async function taskStatus(ctx: TaskServiceContext, authorization: string 
         target_id: store.proposals.find((p) => p.id === i.proposal_id)?.target_id,
         before_hash: i.before_hash,
         after_hash: i.after_hash,
-        review_hint: ["pending", "unknown"].includes(i.state) ? "Abgleich nötig" : undefined,
+        review_hint: ["pending", "unknown"].includes(i.state) ? TASK_CARD_TEXT.reconcile : undefined,
       })),
     receipts: store.receipts
       .filter((r) => tasks.some((t) => t.id === r.task_id))
@@ -150,7 +151,7 @@ export async function taskStatus(ctx: TaskServiceContext, authorization: string 
         before_hash: r.before_hash,
         after_hash: r.after_hash,
         rollback_available: ["succeeded", "reconciled"].includes(r.outcome),
-        review_hint: r.outcome === "unknown" ? "Abgleich nötig" : undefined,
+        review_hint: r.outcome === "unknown" ? TASK_CARD_TEXT.reconcile : undefined,
       })),
     proposals: store.proposals
       .filter((p) => tasks.some((t) => t.id === p.task_id))

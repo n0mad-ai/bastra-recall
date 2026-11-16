@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync, readFileSync, readdirSync, mkdirSync, symlinkSync, existsSync } from "node:fs";
+import fs, { mkdtempSync, readFileSync, readdirSync, mkdirSync, symlinkSync, existsSync } from "node:fs";
+import type { Mode, OpenMode, PathLike } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -179,4 +181,50 @@ test("process termination during migration leaves previous version usable and re
   });
   assert.equal(retry.sqlite.prepare("PRAGMA user_version").get()?.user_version, 2);
   retry.close();
+});
+
+test("#1589: a failure SQLite already rolled back keeps its own error", () => {
+  const db = openAppDatabase({ path: fixture() });
+  try {
+    const pages = Number(db.sqlite.prepare("PRAGMA page_count").get()?.page_count);
+    // A full database makes SQLite roll the transaction back on its own.
+    db.sqlite.exec(`PRAGMA max_page_count=${pages + 5}`);
+    assert.throws(
+      () =>
+        db.transaction(() => {
+          db.sqlite.prepare("INSERT INTO app_records VALUES('n','k',?)").run(JSON.stringify("x".repeat(2_000_000)));
+        }),
+      (error: Error) => !/cannot rollback/.test(error.message) && /full/i.test(error.message)
+    );
+    db.sqlite.exec("PRAGMA max_page_count=1073741823");
+    // No transaction is left open: the next one starts and commits normally.
+    db.transaction(() => db.sqlite.prepare("INSERT INTO app_records VALUES('n','k','1')").run());
+    assert.equal(db.sqlite.prepare("SELECT value FROM app_records WHERE namespace='n'").get()?.value, "1");
+  } finally {
+    db.close();
+  }
+});
+
+test("#1580: backups and exports flush through a writable handle (Windows refuses fsync on read-only)", () => {
+  const path = fixture();
+  const db = openAppDatabase({ path });
+  const targets = new Set([`${path}.copy`, `${path}.json`]);
+  const flags: unknown[] = [];
+  const real = fs.openSync;
+  fs.openSync = ((file: PathLike, mode: OpenMode = "r", permissions?: Mode | null) => {
+    if (targets.has(String(file))) flags.push(mode);
+    return real(file, mode, permissions);
+  }) as typeof fs.openSync;
+  syncBuiltinESMExports();
+  try {
+    db.backup(`${path}.copy`);
+    db.exportJson(`${path}.json`);
+  } finally {
+    fs.openSync = real;
+    syncBuiltinESMExports();
+    db.close();
+  }
+  // Creation uses "wx"; the flush must not use the read-only "r".
+  assert.ok(flags.length >= 2, "both destinations are flushed");
+  assert.ok(!flags.includes("r"), `flush flags: ${JSON.stringify(flags)}`);
 });

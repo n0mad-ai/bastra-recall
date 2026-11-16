@@ -17,6 +17,7 @@
  * Gelesen wird tageweise: Die Logdateien tragen den Tag im Namen, also
  * werden nur die Dateien geöffnet, die im Fenster liegen können.
  */
+import { constants } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveRetentionDays } from "./log-retention.js";
@@ -63,6 +64,10 @@ export {
 } from "./telemetry-report-tokens.js";
 
 export const TELEMETRY_REPORT_VERSION = 1;
+
+/** Read flags for a telemetry log: a FIFO or device planted under a log name
+ * must not wait forever (contributor audit). Windows has neither flag. */
+export const LOG_READ_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
 
 const EVENT_FILE = /^events-(\d{4}-\d{2}-\d{2})\.jsonl$/;
 
@@ -145,7 +150,7 @@ export async function readEventWindow(
       parsed =
         finished && fileDay < today
           ? await finished.eventsOf(logDir, f, fileDay)
-          : parseEventLines(await readFile(join(logDir, f), "utf8"));
+          : parseEventLines(await readFile(join(logDir, f), { encoding: "utf8", flag: LOG_READ_FLAGS }));
     } catch {
       continue;
     }

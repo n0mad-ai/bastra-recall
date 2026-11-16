@@ -265,7 +265,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
       return;
     }
 
-    // #1264: a proxy may rewrite Host to localhost. Hooks and UI must then
+    // #1264: a proxy may rewrite Host to localhost. Every local route must then
     // authenticate too, before any handler can read data or apply a write.
     const pathname = url.split("?", 1)[0]!;
     if (forwardedWithoutToken(req, pathname, ctx.apiToken)) {

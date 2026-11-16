@@ -12,8 +12,9 @@ import { execFileSync } from "node:child_process";
 import { mintTaskCredential } from "../src/task-auth.js";
 import { callTaskCrud } from "../src/task-service.js";
 import { readTaskStore } from "../src/task-store.js";
-import { observeTaskSources, reconcileTaskTime, taskValueHash } from "../src/task-events.js";
-import { resolveTaskCalendar } from "../src/task-clock.js";
+import { evaluateTaskSnapshot, observeTaskSources, reconcileTaskTime, taskValueHash } from "../src/task-events.js";
+import { ambiguousTaskCalendar, localWall, resolveTaskCalendar } from "../src/task-clock.js";
+import { emptyTaskStore } from "../src/task-schema.js";
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "task-events-"));
   let now = 1000;
@@ -95,7 +96,7 @@ test("bounded elapsed recurrence catches up latest with missed slots and durable
   assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 2);
 });
 test("Madrid gap rejects; overlap resolves earlier and cannot double fire; calendar days differ from durations", async () => {
-  assert.throws(() => resolveTaskCalendar("2026-03-29T02:30:00", "Europe/Madrid"), /Sommerzeit/);
+  assert.throws(() => resolveTaskCalendar("2026-03-29T02:30:00", "Europe/Madrid"), { reason: "calendar_gap" });
   assert.equal(resolveTaskCalendar("2026-10-25T02:30:00", "Europe/Madrid").at, Date.parse("2026-10-25T00:30:00Z"));
   const f = await fixture();
   await callTaskCrud(f.ctx, f.auth, "task_create", {
@@ -348,7 +349,7 @@ test("events before owner arming never fire; reconcile rejects agents and owners
   const other = await mintTaskCredential(f.ctx.authPath, { actor_id: "other", domains: ["other"], role: "owner" });
   await assert.rejects(callTaskCrud(f.ctx, `Bearer ${other.token}`, "task_reconcile", {}), { code: "forbidden" });
 });
-test("calendar recurrence rejects its later gap slot and clock rollback cannot duplicate a saved slot", async () => {
+test("calendar recurrence shifts its later gap slot past the gap and clock rollback cannot duplicate a saved slot", async () => {
   const f = await fixture();
   const at = resolveTaskCalendar("2026-03-28T02:30:00", "Europe/Madrid").at;
   await callTaskCrud(f.ctx, f.auth, "task_create", {
@@ -366,8 +367,10 @@ test("calendar recurrence rejects its later gap slot and clock rollback cannot d
   });
   f.setNow(at);
   const s = await reconcileTaskTime(f.ctx);
-  assert.equal(s.tasks[0].armed, false);
-  assert.equal(s.tasks[0].last_failure?.code, "calendar_gap");
+  assert.equal(s.tasks[0].armed, true);
+  assert.equal(s.tasks[0].last_failure, undefined);
+  assert.equal(s.tasks[0].next_slot?.local_time, "2026-03-29T02:30:00");
+  assert.equal(localWall(s.tasks[0].next_slot!.at, "Europe/Madrid"), "2026-03-29T03:30:00");
   assert.equal(s.occurrences.length, 1);
   f.setNow(at - 86400000);
   await reconcileTaskTime(f.ctx);
@@ -510,4 +513,183 @@ test("legacy dedup lookup preserves own IDs but never accepts another source's c
   })) as any;
   assert.notEqual(second.event_id, legacy);
   assert.equal((await readTaskStore(f.ctx.path)).events.length, 2);
+});
+const DAY = 86400000;
+async function dailySeries(f: Awaited<ReturnType<typeof fixture>>, fired: number) {
+  await callTaskCrud(f.ctx, f.auth, "task_create", {
+    ...f.input,
+    recurrence: { kind: "elapsed", interval: DAY, catch_up: "latest" },
+  });
+  for (let d = 0; d < fired; d++) {
+    f.setNow(2000 + d * DAY + 1000);
+    await reconcileTaskTime(f.ctx);
+  }
+  const s = await readTaskStore(f.ctx.path);
+  return { store: s, id: s.tasks[0].id };
+}
+test("#1586 editing a non-schedule trigger field never re-fires an acknowledged slot", async () => {
+  const f = await fixture();
+  const { store, id } = await dailySeries(f, 3);
+  assert.equal(store.occurrences.length, 3);
+  let t = (await callTaskCrud(f.ctx, f.auth, "task_get", { id })) as any;
+  t = await callTaskCrud(f.ctx, f.auth, "task_acknowledge", {
+    id,
+    expected_revision: t.expected_revision,
+    occurrence_id: store.occurrences.at(-1)!.id,
+  });
+  for (const patch of [{ scope: { kind: "personal", name: "renamed" } }, { expires_at: 2000 + 400 * DAY }]) {
+    t = await callTaskCrud(f.ctx, f.auth, "task_edit", { id, expected_revision: t.expected_revision, patch });
+    await reconcileTaskTime(f.ctx);
+    t = await callTaskCrud(f.ctx, f.auth, "task_get", { id });
+  }
+  let s = await readTaskStore(f.ctx.path);
+  assert.equal(s.tasks[0].generation, 2, "trigger edits still bump the generation");
+  assert.equal(s.occurrences.length, 3, "the delivered slot is not fired again");
+  f.setNow(2000 + 3 * DAY + 1000);
+  await reconcileTaskTime(f.ctx);
+  s = await readTaskStore(f.ctx.path);
+  assert.equal(s.occurrences.length, 4);
+  assert.equal(s.occurrences.at(-1)!.missed_count, 0);
+  assert.equal(s.occurrences.at(-1)!.due_at, 2000 + 3 * DAY);
+});
+test("#1586 an open reminder stays visible once after a trigger edit, without a false missed count", async () => {
+  const f = await fixture();
+  const { id } = await dailySeries(f, 3);
+  const t = (await callTaskCrud(f.ctx, f.auth, "task_get", { id })) as any;
+  await callTaskCrud(f.ctx, f.auth, "task_edit", {
+    id,
+    expected_revision: t.expected_revision,
+    patch: { scope: { kind: "personal", name: "renamed" } },
+  });
+  await reconcileTaskTime(f.ctx);
+  await reconcileTaskTime(f.ctx);
+  const s = await readTaskStore(f.ctx.path);
+  const current = s.occurrences.filter((o) => o.generation === s.tasks[0].generation);
+  assert.equal(current.length, 1);
+  assert.equal(current[0].due_at, 2000 + 2 * DAY);
+  assert.equal(current[0].missed_count, 0);
+  assert.equal(s.tasks[0].state, "due");
+});
+test("#1586 a schedule edit still resets the slot cursor", async () => {
+  const f = await fixture();
+  const { id } = await dailySeries(f, 3);
+  const t = (await callTaskCrud(f.ctx, f.auth, "task_get", { id })) as any;
+  await callTaskCrud(f.ctx, f.auth, "task_edit", {
+    id,
+    expected_revision: t.expected_revision,
+    patch: { recurrence: { kind: "elapsed", interval: 2 * DAY, catch_up: "latest" } },
+  });
+  const s = await readTaskStore(f.ctx.path);
+  assert.equal(s.tasks[0].slots_checked, undefined);
+  assert.equal(s.tasks[0].next_slot, undefined);
+});
+function calendarSeries(local: string, timezone: string) {
+  const task: any = {
+    id: "t1",
+    generation: 0,
+    revision: 0,
+    history: [],
+    state: "pending",
+    armed: true,
+    owner_domains: ["d"],
+    timezone,
+    evidence: [],
+    schedule: {
+      kind: "calendar",
+      at: resolveTaskCalendar(local, timezone).at,
+      local_time: local,
+      timezone,
+      gap: "reject",
+      overlap: "earlier",
+    },
+    recurrence: { kind: "calendar", interval: 1, catch_up: "latest" },
+  };
+  const store: any = emptyTaskStore();
+  store.tasks.push(task);
+  return { task, store };
+}
+// Evaluates every 5 minutes across the change days; every slot must fire exactly once.
+function runSeries(local: string, timezone: string, from: string, to: string) {
+  const { task, store } = calendarSeries(local, timezone);
+  for (let now = Date.parse(from); now <= Date.parse(to); now += 300000) {
+    evaluateTaskSnapshot(store, now);
+    if (task.state === "due") task.state = "pending";
+  }
+  return { task, store };
+}
+const dayOf = (day: string, delta: number) => new Date(Date.parse(`${day}T00:00:00Z`) + delta * DAY).toISOString();
+function assertDaily(store: any, first: string, days: number, local: string) {
+  const keys = store.occurrences.map((o: any) => o.event_key);
+  assert.equal(new Set(keys).size, keys.length, "no slot fires twice");
+  for (let d = 0; d < days; d++) assert.ok(keys.includes(`time:${dayOf(first, d).slice(0, 10)}T${local}`), `day ${d}`);
+}
+for (const [timezone, gapDay, overlapDay, local, overlapLocal] of [
+  ["Europe/Berlin", "2027-03-28", "2027-10-31", "02:30:00", "02:30:00"],
+  ["America/New_York", "2027-03-14", "2027-11-07", "02:30:00", "01:30:00"],
+  ["Australia/Lord_Howe", "2027-10-03", "2027-04-04", "02:15:00", "01:45:00"],
+] as const) {
+  test(`#1585 a daily series over the ${timezone} DST gap fires once right after the gap and stays armed`, () => {
+    const start = dayOf(gapDay, -3).slice(0, 10);
+    const { task, store } = runSeries(`${start}T${local}`, timezone, dayOf(start, -1), dayOf(gapDay, 3));
+    assert.equal(task.armed, true);
+    assert.equal(task.last_failure, undefined);
+    assertDaily(store, start, 6, local);
+    assert.throws(() => resolveTaskCalendar(`${gapDay}T${local}`, timezone), { reason: "calendar_gap" });
+    const gap = store.occurrences.find((o: any) => o.event_key === `time:${gapDay}T${local}`);
+    assert.ok(gap, "the gap day still gets its reminder");
+    assert.ok(localWall(gap.due_at, timezone) > `${gapDay}T${local}`, "it fires after the gap");
+    assert.ok(gap.due_at - resolveTaskCalendar(`${dayOf(gapDay, -1).slice(0, 10)}T${local}`, timezone).at <= DAY);
+  });
+  test(`#1585 a daily series over the ${timezone} repeated hour fires once, at the earlier instant`, () => {
+    const start = dayOf(overlapDay, -2).slice(0, 10);
+    const { task, store } = runSeries(`${start}T${overlapLocal}`, timezone, dayOf(start, -1), dayOf(overlapDay, 3));
+    assert.equal(task.armed, true);
+    assertDaily(store, start, 5, overlapLocal);
+    const overlap = store.occurrences.find((o: any) => o.event_key === `time:${overlapDay}T${overlapLocal}`);
+    assert.ok(ambiguousTaskCalendar(`${overlapDay}T${overlapLocal}`, timezone), "the fixture hits the repeated hour");
+    assert.equal(overlap.due_at, resolveTaskCalendar(`${overlapDay}T${overlapLocal}`, timezone).at);
+  });
+}
+test("#1585 a one-off calendar time in a DST gap is still rejected", () => {
+  assert.throws(() => resolveTaskCalendar("2027-03-28T02:30:00", "Europe/Berlin"), { reason: "calendar_gap" });
+});
+async function fullHistoryFixture(rows: number) {
+  const f = await fixture();
+  await callTaskCrud(f.ctx, f.auth, "task_create", {
+    ...f.input,
+    idempotency_key: "series",
+    goal: "Every minute",
+    recurrence: { kind: "elapsed", interval: 60000, catch_up: "latest" },
+  });
+  await callTaskCrud(f.ctx, f.auth, "task_create", {
+    ...f.input,
+    idempotency_key: "once",
+    goal: "One reminder",
+    original_request: "One reminder",
+    schedule: { kind: "instant", at: 500000 },
+  });
+  const s = await readTaskStore(f.ctx.path);
+  const series = s.tasks.find((t) => t.goal === "Every minute")!;
+  const row = series.history[0];
+  while (series.history.length < rows) series.history.push({ ...row, operation: "fire", reason: "fire" });
+  await writeAppRecord("tasks", f.ctx.path, JSON.stringify(s));
+  f.setNow(600000);
+  return { f, seriesId: series.id };
+}
+test("#1581 a series at its history reserve stops visibly and never blocks other tasks", async () => {
+  const { f, seriesId } = await fullHistoryFixture(9899);
+  const s = await reconcileTaskTime(f.ctx);
+  const series = s.tasks.find((t) => t.id === seriesId)!;
+  assert.equal(series.armed, false);
+  assert.equal(series.last_failure?.code, "history_capacity");
+  assert.ok(series.history.length <= 9900);
+  const once = s.tasks.find((t) => t.goal === "One reminder")!;
+  assert.equal(once.state, "due", "the unrelated one-shot reminder still fires");
+  assert.equal(s.occurrences.filter((o) => o.task_id === once.id).length, 1);
+});
+test("#1581 a task already past the reserve does not stop time evaluation for every task", async () => {
+  const { f, seriesId } = await fullHistoryFixture(9901);
+  const s = await reconcileTaskTime(f.ctx);
+  assert.equal(s.tasks.find((t) => t.goal === "One reminder")!.state, "due");
+  assert.equal(s.tasks.find((t) => t.id === seriesId)!.history.length, 9901);
 });

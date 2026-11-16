@@ -7,6 +7,7 @@ import {
   friendlyTaskCreate,
   friendlyTaskResult,
   friendlyTaskError,
+  TASK_CLI_LANGUAGE,
   parseTaskOptions,
   taskWhen,
 } from "./task-friendly.js";
@@ -42,6 +43,14 @@ export async function readTaskInputFile(path: string): Promise<unknown> {
       "Die Eingabedatei fehlt, ist nicht lesbar oder enthält kein gültiges JSON (höchstens 256 KiB)."
     );
   }
+}
+/** Error text for the terminal, in the task CLI's language (#1594). */
+function taskCliErrorText(error: unknown, sub: string | null, json?: boolean): string {
+  const failure = taskFailure(error).body;
+  if (error instanceof TaskCliInputError) failure.error = error.message;
+  if (json) return JSON.stringify(failure);
+  if (error instanceof TaskCliInputError && !failure.reason) return `${sub ?? "Aufgaben"}: ${failure.error}`;
+  return friendlyTaskError(failure.code, sub, failure.reason, TASK_CLI_LANGUAGE);
 }
 /** Agent mode is explicit. Owner mode always asks privately, ignoring agent env. */
 export async function taskCliCall(
@@ -287,15 +296,7 @@ export async function cmdTasks(args: {
       );
     return 0;
   } catch (error) {
-    const failure = taskFailure(error).body;
-    if (error instanceof TaskCliInputError) failure.error = error.message;
-    process.stderr.write(
-      (args.json
-        ? JSON.stringify(failure)
-        : error instanceof TaskCliInputError
-          ? `${args.sub ?? "Aufgaben"}: ${failure.error}`
-          : friendlyTaskError(failure.code, args.sub, failure.reason)) + "\n"
-    );
+    process.stderr.write(taskCliErrorText(error, args.sub, args.json) + "\n");
     return 1;
   }
 }

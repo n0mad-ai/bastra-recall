@@ -441,6 +441,65 @@ describe("the build lock against adversarial interleavings", () => {
     assert.equal(held, TAKEOVER_ROUNDS, `more holders than rounds: ${shown}`);
     assert.equal(violations, 0, `two holders inside the critical section: ${shown}`);
   });
+
+  it(
+    "never waits on a FIFO or a device symlink at the lock path; an aged one is replaced",
+    { skip: process.platform === "win32" ? "no mkfifo on Windows" : false, timeout: 60_000 },
+    async (t) => {
+      const { execFileSync } = await import("node:child_process");
+      const { symlink } = await import("node:fs/promises");
+      for (const kind of ["fifo", "device"] as const) {
+        const dir = await tempDir("bastra-lock-special-");
+        t.after(() => rm(dir, { recursive: true, force: true }));
+        if (kind === "fifo") execFileSync("mkfifo", [lockPath(dir)]);
+        else await symlink("/dev/zero", lockPath(dir));
+        if (kind === "fifo") {
+          const old = new Date(Date.now() - UNREADABLE_GRACE_MS - 1_000);
+          await utimes(lockPath(dir), old, old);
+        }
+        // A child with a kill timer: a blocking read would never return here.
+        const code = `const { acquireRepoLock } = await import(${JSON.stringify(LOCK_MODULE)});
+const lock = await acquireRepoLock(${JSON.stringify(dir)}, { heartbeat: false });
+process.stdout.write(lock ? "taken" : "busy");
+await lock?.release();`;
+        const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code], {
+          cwd: REPO_ROOT,
+          stdio: ["ignore", "pipe", "ignore"],
+        });
+        let out = "";
+        child.stdout!.on("data", (chunk) => (out += chunk));
+        const timer = setTimeout(() => child.kill("SIGKILL"), 20_000);
+        const signal = await new Promise((resolve) => child.once("exit", (_code, sig) => resolve(sig)));
+        clearTimeout(timer);
+        assert.equal(signal, null, `${kind}: the acquisition hung`);
+        assert.equal(out, "taken", kind);
+      }
+    }
+  );
+
+  it("keeps a live holder's REGULAR lock of another account (sudo, shared folder)", async (t) => {
+    // A regular lock file is a holder judged by its record, whoever owns the
+    // file. Reading it with an owner check made it "unreadable", and after the
+    // two-second grace a second build replaced the lock of a live holder.
+    const dir = await tempDir("bastra-lock-foreign-");
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    const now = new Date().toISOString();
+    const record = { pid: process.pid, host: hostname(), token: "f".repeat(24), startedAt: now, renewedAt: now };
+    const text = `${JSON.stringify({ ...record, gen: 1, state: "held" }, null, 2)}\n`;
+    await writeFile(lockPath(dir), text, "utf8");
+    const old = new Date(Date.now() - UNREADABLE_GRACE_MS - 1_000);
+    await utimes(lockPath(dir), old, old);
+    // Simulate a file of another account: this process now claims another uid.
+    const realGetuid = process.getuid;
+    process.getuid = () => (realGetuid?.call(process) ?? 0) + 4242;
+    try {
+      assert.equal(await acquireRepoLock(dir, { heartbeat: false }), null, "a live holder is busy, not junk");
+      assert.equal((await readLock(dir))?.token, record.token);
+    } finally {
+      process.getuid = realGetuid;
+    }
+    assert.equal(await readFile(lockPath(dir), "utf8"), text, "the lock was not replaced");
+  });
 });
 
 /**

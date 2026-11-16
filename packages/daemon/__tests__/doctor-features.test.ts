@@ -441,3 +441,12 @@ test("#635 claude-code: both env keys in ~/.claude.json reach the features row",
   assert.equal(features.sessionContextOff, true);
   assert.equal(features.mcpConfig, join(home, ".claude.json"));
 });
+
+test("doctor says when the archive directory is not the user's own", () => {
+  const line = lineFor(
+    featureLines({ ...allOn(), archiveProblem: "the archive directory '/var/tmp' does not belong to you" }),
+    "archiving rm + git snapshots (Claude Code)"
+  );
+  assert.match(line, /○ .*on, but not usable: the archive directory '\/var\/tmp' does not belong to you/);
+  assert.match(lineFor(featureLines(allOn()), "archiving rm + git snapshots (Claude Code)"), /✓ .*: on \(/);
+});

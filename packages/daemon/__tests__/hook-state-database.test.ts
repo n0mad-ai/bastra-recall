@@ -250,3 +250,34 @@ test(
     assert.equal((await ss.loadSessionState("linked-state")).shown.memo, undefined);
   }
 );
+
+test("#1584: a reappearing legacy file with other content never blocks loading or destroys either copy", async () => {
+  const dir = await root();
+  const source = new URL("../src/hook-state-database.ts", import.meta.url).href;
+  const out = join(dir, "result.txt");
+  // Each read runs in a fresh process: hydration is cached per process.
+  const read = async (keys: string[]) => {
+    execFileSync(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "--import",
+        "./scripts/test-env.mjs",
+        "--input-type=module",
+        "-e",
+        `import {writeFileSync} from "node:fs"; const h = await import(${JSON.stringify(source)}); const dir = ${JSON.stringify(dir)}; const values = []; for (const key of ${JSON.stringify(keys)}) values.push((await h.readHookState(dir, key)) ?? null); writeFileSync(${JSON.stringify(out)}, JSON.stringify(values));`,
+      ],
+      { env: process.env, encoding: "utf8", timeout: 10_000 }
+    );
+    return JSON.parse(await readFile(out, "utf8")) as (string | null)[];
+  };
+  await writeFile(join(dir, "abc.json"), '{"shown":["a"]}');
+  assert.deepEqual(await read(["abc"]), ['{"shown":["a"]}']);
+  // An older binary recreates the legacy file with different content.
+  await writeFile(join(dir, "abc.json"), '{"shown":["b"]}');
+  for (let attempt = 0; attempt < 2; attempt++)
+    assert.deepEqual(await read(["abc", "zzz"]), ['{"shown":["a"]}', null], "committed state wins; other keys load");
+  assert.equal(await readFile(join(dir, "abc.json.pre-sqlite"), "utf8"), '{"shown":["a"]}');
+  assert.equal(await readFile(join(dir, "abc.json"), "utf8"), '{"shown":["b"]}');
+});

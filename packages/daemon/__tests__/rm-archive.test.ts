@@ -28,6 +28,7 @@ import {
   SHIM_DIR,
   applyReconcile,
   archiveRoot,
+  archiveRootProblem,
   callReport,
   manifestFiles,
   manifestRows,
@@ -1332,4 +1333,85 @@ describe("the home archive closes itself, and the move checks every directory on
     assert.deepEqual(readdirSync(elsewhere), [], "nothing went through the symlink");
     assert.match(errs.join("\n"), /not moved to the archive: a directory under .* is not this user's own/);
   });
+});
+
+describe("the archive root itself must be the user's own (BASTRA_ARCHIVE_DIR=/var/tmp and the like)", () => {
+  const me = process.getuid?.() ?? 0;
+  const posix = process.platform !== "win32" && me !== 0;
+
+  it(
+    "a root of another account is refused before anything is written, and doctor can say why",
+    { skip: !posix },
+    () => {
+      // Revert-check: drop the rootProblem check in archiveRoot → the foreign root (and the 0777 one) is used.
+      const { env } = sandbox();
+      const root = archiveRoot(env);
+      assert.equal(archiveRootProblem(env), null, "the user's own private archive is fine");
+      assert.throws(() => archiveRoot(env, me + 1), /does not belong to you.*remove BASTRA_ARCHIVE_DIR/);
+      assert.match(archiveRootProblem(env, me + 1) ?? "", /does not belong to you/);
+      chmodSync(root, 0o777);
+      assert.throws(() => archiveRoot(env, me + 1), /does not belong to you/, "open to everyone and not ours");
+      assert.equal(statSync(root).mode & 0o777, 0o777, "another account's directory is not chmodded");
+      assert.deepEqual(readdirSync(root), [], "nothing written into it");
+    }
+  );
+
+  it("rm with another account's root (or a link to one) archives nothing and removes nothing", { skip: !posix }, () => {
+    // Revert-check: drop the try/catch around archiveRoot in runRmShim → the error escapes as a stack trace.
+    const foreign = "/usr";
+    if (!existsSync(foreign) || statSync(foreign).uid === me) return;
+    const { dir, env } = sandbox();
+    const target = join(dir, "keep.txt");
+    writeFileSync(target, "keep\n");
+    const link = join(dir, "archive-link");
+    symlinkSync(foreign, link);
+    for (const archive of [foreign, link]) {
+      const errs: string[] = [];
+      const rc = runRmShim([target], {
+        env: { ...env, BASTRA_ARCHIVE_DIR: archive },
+        cwd: dir,
+        out: () => {},
+        err: (s) => errs.push(s),
+      });
+      assert.equal(rc, 1);
+      assert.equal(readFileSync(target, "utf8"), "keep\n", "the target is where it was");
+      assert.match(
+        errs.join("\n"),
+        /nothing archived, nothing removed — the archive directory .* does not belong to you/
+      );
+    }
+  });
+
+  it("the user's own root that was open to everyone is closed and used", { skip: !posix }, () => {
+    // Revert-check: refuse an own "open" root instead of closing it → this rm fails.
+    const { dir, env } = sandbox();
+    const root = archiveRoot(env);
+    chmodSync(root, 0o777);
+    const target = join(dir, "x.txt");
+    writeFileSync(target, "x");
+    assert.equal(runRmShim([target], { env, cwd: dir, ...quiet }), 0);
+    assert.equal(statSync(root).mode & 0o777, 0o700);
+    assert.equal(manifestRows(env).at(-1)?.action, "archived");
+  });
+
+  it(
+    "an own root that was open and holds a planted link is refused; the link is not written through",
+    { skip: !posix },
+    () => {
+      // Revert-check: drop the symlink/owner check in archiveRoot's closing loop → the manifest goes through the link.
+      const { dir, env } = sandbox();
+      const root = archiveRoot(env);
+      chmodSync(root, 0o777);
+      const bait = join(dir, "bait.jsonl");
+      writeFileSync(bait, "");
+      symlinkSync(bait, join(root, "manifest.jsonl"));
+      const target = join(dir, "y.txt");
+      writeFileSync(target, "y");
+      const errs: string[] = [];
+      assert.equal(runRmShim([target], { env, cwd: dir, out: () => {}, err: (s) => errs.push(s) }), 1);
+      assert.equal(readFileSync(target, "utf8"), "y", "the target stays");
+      assert.equal(readFileSync(bait, "utf8"), "", "nothing written through the link");
+      assert.match(errs.join("\n"), /holds 'manifest\.jsonl', which is not yours/);
+    }
+  );
 });

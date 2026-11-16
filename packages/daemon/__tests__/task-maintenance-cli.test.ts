@@ -12,6 +12,8 @@ import { mintTaskCredential } from "../src/task-auth.js";
 import { callTaskCrud } from "../src/task-service.js";
 import { readTaskStore } from "../src/task-store.js";
 import { readApprovalRegistry } from "../src/task-approval-keys.js";
+import { getPrimaryLanguage, setPrimaryLanguage } from "../src/settings.js";
+import { mutateSettings, settingsFilePath } from "../src/settings-file.js";
 const cli = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
 const py = `import os,pty,subprocess,select,time,sys
 m,s=pty.openpty()
@@ -34,6 +36,25 @@ try:
 except OSError:pass
 os.close(m);sys.stdout.buffer.write(out);sys.stdout.write('\\nCLI_EXIT='+str(p.returncode)+'\\n')
 `;
+/** #1594: the dialog's questions are German, so its error is too, whatever language.primary says. */
+async function assertOneDialogLanguage(run: (mode: string) => Promise<string>) {
+  const before = await getPrimaryLanguage();
+  for (const language of ["en", "de"]) {
+    await setPrimaryLanguage(language);
+    try {
+      const denied = await run("live");
+      assert.match(denied, /Owner-Aufgaben-Token/);
+      assert.match(denied, /recover: Ein anderer Vorgang hält den Aufgabenspeicher gesperrt/, language);
+      assert.doesNotMatch(denied, /Another operation/, language);
+      assert.match(denied, /CLI_EXIT=1/);
+    } finally {
+      await mutateSettings(
+        settingsFilePath(),
+        (s) => ({ ...s, language: { ...s.language, primary: before } }) as typeof s
+      );
+    }
+  }
+}
 test("real owner CLI recover --lock refuses live owner, repairs unknown owner, and reports No honestly", async () => {
   const root = await mkdtemp(join(tmpdir(), "task-recovery-cli-")),
     ctx = { path: join(root, "tasks.json"), authPath: join(root, "task-auth.json") };
@@ -77,6 +98,7 @@ test("real owner CLI recover --lock refuses live owner, repairs unknown owner, a
   await writeAppRecord("tasks", ctx.path, "broken");
   const live = JSON.stringify({ pid: process.pid, host: hostname(), token: "live" });
   await writeFile(ctx.path + ".lock", live, { mode: 0o600 });
+  await assertOneDialogLanguage(run);
   const denied = await run("live");
   assert.match(denied, /Aufgabenspeicher gesperrt/);
   assert.match(denied, /CLI_EXIT=1/);

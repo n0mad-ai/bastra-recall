@@ -3,9 +3,18 @@ import { PendingRelayAccessError } from "../pending-suggestions.js";
 import { Vault } from "@bastra-recall/core";
 import { undoDraftPromotion } from "../draft-promote.js";
 import { resolveVault } from "./helpers.js";
-import { listDrafts, purgeDrafts } from "../draft-store.js";
+import { DRAFT_MAX_ROWS, listDrafts, purgeDrafts } from "../draft-store.js";
 import { rejectDrafts } from "../draft-review.js";
 import type { ParsedArgs } from "./types.js";
+
+/** #1592: at the row cap a new first capture is the row the store drops;
+ *  say so where the user looks at the store. */
+function writeFullStoreNotice(rows: number): void {
+  if (rows < DRAFT_MAX_ROWS) return;
+  process.stdout.write(
+    `Draft store is full (${rows} of ${DRAFT_MAX_ROWS} rows): new first captures are dropped until older drafts expire or are rejected (bastra drafts reject <id>).\n`
+  );
+}
 
 export async function cmdDrafts(args: ParsedArgs): Promise<number> {
   const sub = args.positional[1] ?? "list";
@@ -61,12 +70,14 @@ export async function cmdDrafts(args: ParsedArgs): Promise<number> {
       const rows = await listDrafts();
       if (args.json) process.stdout.write(JSON.stringify(rows) + "\n");
       else if (!rows.length) process.stdout.write("No local drafts.\n");
-      else
+      else {
         for (const row of rows) {
           process.stdout.write(
             `${row.id}  ${row.state}  ${new Date(row.last_touched).toISOString()}\n  ${row.quote.replace(/[\r\n\x00-\x1f\x7f]/g, " ")}\n`
           );
         }
+        writeFullStoreNotice(rows.length);
+      }
     }
     return 0;
   } catch (error) {

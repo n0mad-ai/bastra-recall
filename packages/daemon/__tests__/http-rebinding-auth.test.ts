@@ -37,6 +37,7 @@ import { gateLocalPost } from "../src/http-auth.js";
 import { Telemetry } from "../src/telemetry.js";
 import { setUiEnabled } from "../src/settings.js";
 import { assistantGatewayHandler } from "../src/assistant-address-gateway.js";
+import { patchAssistantHosts } from "../src/assistant-address-files.js";
 
 const TOKEN = "rebinding-test-token";
 const FOREIGN = "evil.example";
@@ -252,11 +253,86 @@ test("#1264: forwarded loopback API, hook and UI requests require a token", asyn
   }
 });
 
+// Contributor audit after 1.2.0: the token rule applied only to /hook/* and
+// /ui*. A proxy that publishes everything and rewrites Host (nginx's default
+// proxy_pass) reached every other local route without a token.
+const FORWARDING: Array<[string, string]> = [
+  ["Forwarded", "for=203.0.113.7"],
+  ["X-Forwarded-For", "127.0.0.1"],
+  ["X-Forwarded-Host", "localhost"],
+  ["X-Forwarded-Proto", "https"],
+  ["X-Real-IP", "127.0.0.1"],
+  ["Via", "1.1 proxy"],
+  ["X-Real-IP", ""],
+];
+
+test("forwarded requests need the token on every local route, with the same 401", async () => {
+  const routes = [
+    { method: "GET", path: "/health" },
+    { method: "GET", path: "/tools" },
+    { method: "GET", path: "/vault/count" },
+    { method: "GET", path: "/settings/docs" },
+    { method: "GET", path: "/curator/state" },
+    { method: "POST", path: "/code/refresh", body: "{}" },
+    { method: "GET", path: "/hook/taxonomy" },
+    { method: "GET", path: "/ui/health" },
+    { method: "GET", path: "/no-such-route" },
+  ];
+  for (const token of ["set", "unset"] as const) {
+    await withServer({ token }, async (port) => {
+      for (const route of routes) {
+        const headers = { ...JSON_HEADERS, host: `localhost:${port}` };
+        const direct = await call(port, route.method, route.path, headers, route.body);
+        assert.notEqual(direct.status, 401, `${route.path} direct local stays tokenless`);
+        for (const [name, value] of FORWARDING) {
+          const forwarded = await call(port, route.method, route.path, { ...headers, [name]: value }, route.body);
+          assert.equal(forwarded.status, 401, `${token} ${route.path} ${name}=${value}`);
+          assert.deepEqual(JSON.parse(forwarded.body), { error: "unauthorized" });
+          const valid = await call(
+            port,
+            route.method,
+            route.path,
+            { ...headers, [name]: value, authorization: `Bearer ${TOKEN}` },
+            route.body
+          );
+          assert.equal(valid.status, token === "set" ? direct.status : 401, `${token} ${route.path} ${name}: token`);
+        }
+      }
+    });
+  }
+});
+
+test("forwarded requests: /api/v1 keeps its own gate, the OAuth discovery stays public", async () => {
+  await withServer({ token: "set" }, async (port) => {
+    const headers = { host: `localhost:${port}` };
+    assert.equal((await call(port, "GET", "/api/v1/health", headers)).status, 200, "direct local");
+    for (const [name, value] of FORWARDING) {
+      const proxied = { ...headers, [name]: value };
+      assert.equal((await call(port, "GET", "/api/v1/health", proxied)).status, 401, `${name}: no token`);
+      assert.equal(
+        (await call(port, "GET", "/api/v1/health", { ...proxied, authorization: `Bearer ${TOKEN}` })).status,
+        200,
+        `${name}: token`
+      );
+      assert.equal(
+        (await call(port, "GET", "/.well-known/oauth-authorization-server", proxied)).status,
+        200,
+        `${name}: OAuth discovery`
+      );
+    }
+  });
+});
+
 test("#1264: assistant gateway preserves forwarding evidence and bearer authentication", async () => {
   await withServer({ token: "set" }, async (daemonPort) => {
     const dir = await mkdtemp(join(tmpdir(), "bastra-1264-gateway-"));
     const settingsPath = join(dir, "settings.json");
     await writeFile(settingsPath, JSON.stringify({ assistant: { name: "Jarvis" }, ui: { enabled: true } }));
+    // The bare short name is served only with Recall's own hosts entry.
+    await writeFile(
+      join(dir, "hosts"),
+      patchAssistantHosts("127.0.0.1 localhost\n", "jarvis", String(process.getuid?.() ?? 0))
+    );
     const gateway = createServer(
       assistantGatewayHandler({
         settingsPath,
@@ -267,14 +343,26 @@ test("#1264: assistant gateway preserves forwarding evidence and bearer authenti
     try {
       await new Promise<void>((resolve) => gateway.listen(0, "127.0.0.1", resolve));
       const port = (gateway.address() as AddressInfo).port;
-      assert.equal((await call(port, "GET", "/ui/health", {})).status, 200);
-      for (const name of ["Forwarded", "X-Forwarded-For", "X-Forwarded-Host"]) {
-        assert.equal((await call(port, "GET", "/ui/health", { [name]: "localhost" })).status, 401, name);
-        assert.equal(
-          (await call(port, "GET", "/ui/health", { [name]: "localhost", authorization: `Bearer ${TOKEN}` })).status,
-          200,
-          name
-        );
+      for (const host of [`127.0.0.1:${port}`, `jarvis:${port}`, `jarvis.localhost:${port}`]) {
+        // Without proxy headers the short name works unchanged, tokenless.
+        assert.equal((await call(port, "GET", "/ui/health", { host })).status, 200, host);
+        for (const name of [
+          "Forwarded",
+          "X-Forwarded-For",
+          "X-Forwarded-Host",
+          "X-Forwarded-Proto",
+          "X-Real-IP",
+          "Via",
+        ]) {
+          // The gateway passes the header on, so the daemon sees a proxy.
+          assert.equal((await call(port, "GET", "/ui/health", { host, [name]: "localhost" })).status, 401, name);
+          assert.equal(
+            (await call(port, "GET", "/ui/health", { host, [name]: "localhost", authorization: `Bearer ${TOKEN}` }))
+              .status,
+            200,
+            `${host} ${name}`
+          );
+        }
       }
     } finally {
       gateway.closeAllConnections();

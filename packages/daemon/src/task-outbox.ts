@@ -1,5 +1,6 @@
 import { reconsiderationCard } from "./task-reconsideration.js";
 import { isTaskExpiryNotice } from "./task-validity.js";
+import { TASK_CARD_TEXT } from "./task-card-text.js";
 /** Durable occurrences own delivery attempts; relay consumption owns nothing here. */
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -122,7 +123,7 @@ export function taskDueProjection(
               temp_cleanup_pending: i.temp_cleanup_pending === true,
               receipt_id: i.receipt_id,
               receipt_outcome: store.receipts.find((r) => r.id === i.receipt_id)?.outcome,
-              review_hint: ["pending", "unknown"].includes(i.state) ? "Abgleich nötig" : undefined,
+              review_hint: ["pending", "unknown"].includes(i.state) ? TASK_CARD_TEXT.reconcile : undefined,
             }
           : undefined;
       })(),
@@ -165,8 +166,8 @@ export function taskDueProjection(
         goal: task.goal.slice(0, 80),
         due_at: occurrence.due_at,
         timezone: task.timezone,
-        why_now: "Abgleich nötig: unklarer Ausführungsausgang",
-        action_outcome: { intent_id: action!.id, state: action!.state, review_hint: "Abgleich nötig" },
+        why_now: TASK_CARD_TEXT.reconcileUnknown,
+        action_outcome: { intent_id: action!.id, state: action!.state, review_hint: TASK_CARD_TEXT.reconcile },
         controls: ["inspect", "reconcile"],
       };
     const encodedBytes = (value: unknown) =>
@@ -182,11 +183,7 @@ export function taskDueProjection(
         due_at: occurrence.due_at,
         timezone: task.timezone,
         acknowledged: !!occurrence.acknowledgement,
-        why_now: r
-          ? "Geprüfte Prämissenänderung: Entscheidung neu bewerten, keine automatische Umkehr."
-          : unseenReview
-            ? "Abgleich nötig"
-            : "Fälliger Auslöser, kein bestätigtes Ergebnis.",
+        why_now: r ? TASK_CARD_TEXT.premise : unseenReview ? TASK_CARD_TEXT.reconcile : TASK_CARD_TEXT.due,
         compact: true,
         detail_command: `bastra tasks get ${task.id}`,
         ...(r
@@ -206,7 +203,7 @@ export function taskDueProjection(
                   observed_at: r.new_evidence.observed_at,
                   state_updated_at: r.new_evidence.state_updated_at,
                 },
-                uncertainty: "Gekürzte Daten; Details prüfen. Keine Alternative gewählt.",
+                uncertainty: TASK_CARD_TEXT.shortened,
                 choices: r.choices,
               },
             }
@@ -223,15 +220,13 @@ export function taskDueProjection(
           due_at: occurrence.due_at,
           timezone: task.timezone,
           compact: true,
-          why_now: r
-            ? "Neubewertung fällig; geänderte Prämisse, keine automatische Umkehr."
-            : "Fällig; Details prüfen.",
+          why_now: r ? TASK_CARD_TEXT.premiseShort : TASK_CARD_TEXT.dueShort,
           detail_command: `bastra tasks get ${task.id}`,
         };
     }
     if (isTaskExpiryNotice(task, occurrence)) {
       card.state = "expired";
-      card.why_now = "Die Gültigkeit ist abgelaufen; die Aufgabe wurde nicht als erledigt bestätigt.";
+      card.why_now = TASK_CARD_TEXT.expired;
       card.controls = ["inspect", "acknowledge"];
     }
     const size = encodedBytes(card);
@@ -246,7 +241,7 @@ export function taskDueProjection(
   if (!cards.length && overflow && candidates.length) {
     cards.push({
       kind: "availability",
-      summary: "Fällige Aufgaben warten auf Prüfung.",
+      summary: TASK_CARD_TEXT.waiting,
       detail_command: "bastra tasks due",
     });
   }

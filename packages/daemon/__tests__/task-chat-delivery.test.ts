@@ -209,7 +209,26 @@ test("latest-chat changes after the atomic claim cannot send to the older chat",
     ++selections === 1 ? f.target : { ...f.target, sessionId: "newer-codex", client: "codex" };
   await deliverTaskChats(f.ctx, f.options);
   assert.equal(f.sent.length, 0);
-  assert.ok((await readTaskStore(f.ctx.path)).occurrences[0].chat_delivery, "uncertain claim is never reused");
+  assert.equal(
+    (await readTaskStore(f.ctx.path)).occurrences[0].chat_delivery,
+    undefined,
+    "nothing was sent, so the claim is released instead of hiding the reminder"
+  );
+});
+test("#1583 a claim aborted before sending is retried later and stays visible on next contact", async () => {
+  const f = await fixture();
+  let n = 0;
+  f.options.validate = async () => ++n !== 2;
+  await deliverTaskChats(f.ctx, f.options);
+  assert.equal(f.sent.length, 0);
+  const s = await readTaskStore(f.ctx.path);
+  assert.equal(s.occurrences[0].chat_delivery, undefined);
+  const principal = await authenticateTask(f.auth, f.ctx.authPath);
+  assert.equal(taskDueProjection(s, principal, taskDueInput.parse({}), 3000, true).cards.length, 1);
+  await deliverTaskChats(f.ctx, f.options);
+  await deliverTaskChats(f.ctx, f.options);
+  assert.equal(f.sent.length, 1, "one later attempt sends exactly once");
+  assert.ok((await readTaskStore(f.ctx.path)).occurrences[0].chat_delivery?.submitted_at);
 });
 test("pending and confirmed inbox deliveries never reappear in normal agent contact", async () => {
   const f = await fixture();

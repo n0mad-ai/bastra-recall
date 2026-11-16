@@ -170,10 +170,22 @@ function compose() {
   );
 }
 
+// Card texts arrive in English (model context, #1594); show them in the UI language.
+const CARD_TEXT = {
+  "Reconciliation required": "tk.card.reconcile",
+  "Reconciliation required: execution outcome unknown": "tk.card.reconcileUnknown",
+  "Verified premise change: reconsider the decision; nothing is reversed automatically.": "tk.card.premise",
+  "Reconsideration due; premise changed, nothing is reversed automatically.": "tk.card.premiseShort",
+  "Trigger is due; no confirmed result.": "tk.card.due",
+  "Due; check details.": "tk.card.dueShort",
+  "Validity ended; the task was not confirmed as done.": "tk.card.expired",
+  "Due tasks are waiting for review.": "tk.card.waiting",
+};
+const cardText = (text) => (CARD_TEXT[text] ? t(CARD_TEXT[text]) : text);
 const whyNow = (c) =>
   typeof c.why_now === "string" && c.why_now.startsWith("Registered condition")
     ? t("tk.why.registered")
-    : c.why_now || t("tk.why.default");
+    : cardText(c.why_now) || t("tk.why.default");
 const OUT = (k) => t(`tk.outcome.${k}`);
 
 /** One due card (old UI task_due dialog), including reconsideration choices. */
@@ -182,7 +194,7 @@ function dueCard(c) {
     return h(
       "div.tk-due__c",
       null,
-      h("p.tk-due__why", { text: `${c.summary ?? ""} ${c.detail_command ?? ""}`.trim() })
+      h("p.tk-due__why", { text: `${cardText(c.summary ?? "")} ${c.detail_command ?? ""}`.trim() })
     );
   const ack = async () =>
     act(async () => {
@@ -201,7 +213,7 @@ function dueCard(c) {
       ? h("p.tk-due__why", {
           text: t("tk.due.outcome", {
             o: OUT(c.action_outcome.receipt_outcome ?? c.action_outcome.state),
-            hint: c.action_outcome.review_hint ?? "",
+            hint: cardText(c.action_outcome.review_hint ?? ""),
             intent: c.action_outcome.intent_id ?? "",
           }),
         })

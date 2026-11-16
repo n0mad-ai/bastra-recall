@@ -440,6 +440,17 @@ function inTheWay(top: string, rel: string): string | null {
   return null;
 }
 
+/** Why the act cannot run under the allow — the repository would run its own
+ *  code, or there is no archive of this user's to record the pin in — or the archive. */
+function readyToAct(no: string | null, sub: string, env: NodeJS.ProcessEnv): { refused: string } | { archive: string } {
+  if (no) return { refused: `this repository ${no} — \`git ${sub}\` not run under bastra's allow (nothing changed)` };
+  try {
+    return { archive: archiveRoot(env) };
+  } catch (e) {
+    return { refused: `${(e as Error).message} — \`git ${sub}\` not run (nothing changed)` };
+  }
+}
+
 /** `git` with the system's behaviour, saving what the act would lose first. */
 export function runGitShim(argv: string[], io: ShimIo = {}): number {
   const env = io.env ?? process.env;
@@ -503,13 +514,12 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
   const home = top ?? (act.kind === "branch" ? git(["rev-parse", "--absolute-git-dir"]) : null);
   if (home === null) return passThrough(); // not a repository, or no worktree: git says so itself
   const out1 = "Ask the user to run it, or BASTRA_GIT_SHIM=0 for the normal permission prompt.";
-  const no = refusal({ git, raw, plain, hash }, act, cwd, top);
-  if (no) {
-    err(`bastra: this repository ${no} — \`git ${p.sub}\` not run under bastra's allow (nothing changed). ${out1}`);
+  const ready = readyToAct(refusal({ git, raw, plain, hash }, act, cwd, top), p.sub, env);
+  if ("refused" in ready) {
+    err(`bastra: ${ready.refused}. ${out1}`);
     return 1;
   }
-
-  const archive = archiveRoot(env);
+  const archive = ready.archive;
   const now = io.now ?? new Date();
   const ts = localIso(now);
   const call = env.BASTRA_RM_CALL ?? "";

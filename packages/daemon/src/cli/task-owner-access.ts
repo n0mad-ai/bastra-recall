@@ -18,7 +18,8 @@ export function ownerTaskAccessPath() {
   return join(dirname(tasksPath()), "task-owner-token.json");
 }
 export async function ownerTaskAuthorization(): Promise<string> {
-  if (!process.stdin.isTTY) throw Object.assign(new Error("Owner terminal required"), { code: "forbidden" });
+  if (!process.stdin.isTTY)
+    throw Object.assign(new Error("Owner terminal required"), { code: "forbidden", reason: "owner_terminal_required" });
   let saved: unknown;
   try {
     saved = await privateJson(ownerTaskAccessPath());

@@ -158,3 +158,42 @@ test("conversation delivery keeps the additional Mac notification", async () => 
   await notifyDueTasks(f.ctx, options);
   assert.equal(sent, 1);
 });
+test("#1594 the expiry notice follows language.primary and falls back to English", async () => {
+  const { setPrimaryLanguage, getPrimaryLanguage } = await import("../src/settings.js");
+  const { settingsFilePath, mutateSettings } = await import("../src/settings-file.js");
+  const before = await getPrimaryLanguage();
+  try {
+    const bodies: string[] = [];
+    for (const language of [undefined, "fr", "de"]) {
+      if (language) await setPrimaryLanguage(language);
+      const f = await fixture();
+      await callTaskCrud(f.ctx, f.auth, "task_create", {
+        idempotency_key: "expiring",
+        original_request: "Expiring request",
+        goal: "Expiring",
+        resolution_condition: "Done",
+        schedule: { kind: "instant", at: 9_000_000 },
+        expires_at: 4000,
+        timezone: "Europe/Berlin",
+        scope: { kind: "personal", name: "fixture" },
+        owner_domains: ["personal"],
+        arm: true,
+      });
+      f.setNow(5000);
+      await reconcileTaskTime(f.ctx);
+      await notifyDueTasks(f.ctx, {
+        platform: "darwin",
+        enabled: true,
+        send: async (message) => {
+          if (/Expiring/.test(message.body)) bodies.push(message.body);
+        },
+      });
+    }
+    assert.deepEqual(bodies, ["Expired: Expiring", "Expired: Expiring", "Abgelaufen: Expiring"]);
+  } finally {
+    await mutateSettings(
+      settingsFilePath(),
+      (s) => ({ ...s, language: { ...s.language, primary: before } }) as typeof s
+    );
+  }
+});

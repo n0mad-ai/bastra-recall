@@ -277,11 +277,11 @@ test("missing managed token retires former automatic access; unsafe file is visi
     const { taskAttachment } = await import("../src/task-delivery.js");
     const ctx = { path: join(root, "tasks.json"), authPath: join(root, "task-auth.json") };
     const warning = await taskAttachment(ctx, undefined, "access-fixture", "prompt");
-    assert.match(warning?.text ?? "", /Karten bleiben stumm/);
+    assert.match(warning?.text ?? "", /cards stay silent/);
     assert.equal(await taskAttachment(ctx, undefined, "access-fixture", "prompt"), undefined);
     const access = await taskAgentAccessStatus();
     assert.equal(access.authorized, false);
-    assert.match(access.hint, /stumm/);
+    assert.match(access.hint, /stay silent/);
     const { callTaskCrud } = await import("../src/task-service.js");
     const owner = await mintTaskCredential(join(root, "task-auth.json"), {
       actor_id: "owner",
