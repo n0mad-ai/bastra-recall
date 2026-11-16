@@ -143,3 +143,22 @@ test("saving another value of a group does not store the default of its switch (
   assert.equal(stored.ui?.backdrop, "aurora");
   assert.equal(stored.ui?.enabled, undefined);
 });
+
+test("saving another ui.* value leaves the ui.enabled default unstored", async () => {
+  const { applySettingChanges } = await import("../src/settings-registry.js");
+  const current = parseStoredSettings({});
+  // Runs on every platform: the getter default (webUiOnByDefault) differs by
+  // platform, but in no case may it be written into the file.
+  const next = applySettingChanges(current, { "ui.backdrop": "aurora" });
+  assert.equal(next.ui?.backdrop, "aurora");
+  assert.equal(next.ui?.enabled, undefined, "a plain default must not become a stored choice");
+  // An explicit ui.enabled keeps winning over the platform default.
+  const explicit = applySettingChanges(current, { "ui.enabled": true, "ui.backdrop": "aurora" });
+  assert.equal(explicit.ui?.enabled, true);
+  // End to end: the saved backdrop survives a read, still without ui.enabled.
+  const path = join(await mkdtemp(join(tmpdir(), "settings-ui-default-")), "cli-settings.json");
+  await mutateSettings(path, (s) => applySettingChanges(s, { "ui.backdrop": "aurora" }));
+  const stored = await readSettings(path);
+  assert.equal(stored.ui?.backdrop, "aurora");
+  assert.equal(stored.ui?.enabled, undefined);
+});
