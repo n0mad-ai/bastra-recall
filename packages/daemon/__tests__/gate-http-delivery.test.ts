@@ -128,14 +128,28 @@ test(
       if (!restored) await new Promise<void>((r) => setImmediate(r));
     }
     assert.equal(restored, true, "undelivered C, pending and reflex claims must all recover");
-    const get = async () => {
-      const r = await fetch(`http://127.0.0.1:${port}/hook/gate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+    // node:http, not fetch: the undici bundled with Node 24.20.0 (7.29.0) waits on
+    // the global setTimeout when it reuses a connection, which the mock never fires.
+    const get = () =>
+      new Promise<any>((resolve, reject) => {
+        const call = request(
+          {
+            host: "127.0.0.1",
+            port,
+            path: "/hook/gate",
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          },
+          (res) => {
+            let body = "";
+            res.setEncoding("utf8");
+            res.on("data", (chunk) => (body += chunk));
+            res.on("end", () => resolve(JSON.parse(body)));
+          }
+        );
+        call.on("error", reject);
+        call.end(JSON.stringify(payload));
       });
-      return r.json() as Promise<any>;
-    };
     const first = await get();
     assert.equal(first.hookSpecificOutput?.permissionDecision, "deny");
     assert.match(first.hookSpecificOutput.permissionDecisionReason, /fixture-pending/);
