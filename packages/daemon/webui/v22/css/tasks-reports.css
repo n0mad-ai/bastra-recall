@@ -1,0 +1,159 @@
+/* Recall UI v22 — Tasks › reports (js/sections/tasks-reports.js): head button,
+ * list pop-over and the report in the detail panel. Built from the Tasks
+ * area's own pieces (tk-duebtn, tk-pop, tk-dt); only the deltas live here. */
+
+/* head button: the "FÄLLIG" button with an accent dot while reports are unread */
+.tk-duebtn__dot.tk-repbtn__dot {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+.tk-duebtn__dot.tk-repbtn__dot.is-off {
+  background: var(--line-45);
+  box-shadow: none;
+}
+.tk-duebtn.tk-repbtn.is-on {
+  border-color: var(--accent-55);
+}
+
+/* list pop-over */
+.tk-pop__k.tk-rep__k {
+  color: var(--accent);
+}
+.tk-rep__list {
+  display: flex;
+  flex-direction: column;
+}
+.tk-rep__row {
+  display: grid;
+  grid-template-columns: 6px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--line-10);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    box-shadow 0.2s;
+}
+.tk-rep__row:hover {
+  background: var(--accent-07);
+}
+.tk-rep__row.is-on {
+  background: var(--accent-08);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.tk-rep__dot {
+  width: 6px;
+  height: 6px;
+  margin-top: 7px;
+  border: 1px solid var(--line-45);
+  border-radius: 50%;
+}
+.tk-rep__row.is-new .tk-rep__dot {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+.tk-rep__txt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.tk-rep__t {
+  font-size: 14.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: #b9c6d8;
+  overflow-wrap: anywhere;
+}
+.tk-rep__row.is-new .tk-rep__t,
+.tk-rep__row.is-on .tk-rep__t {
+  color: var(--ink);
+}
+.tk-rep__m {
+  font: 10.5px var(--mono);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* report text in the detail panel (same scale as the memory reader, panel size) */
+.tk-rep__md {
+  max-width: 72ch;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-14);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink);
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+.tk-rep__md p,
+.tk-rep__md ul,
+.tk-rep__md pre {
+  margin: 0 0 10px;
+}
+.tk-rep__md > :last-child {
+  margin-bottom: 0;
+}
+.tk-rep__md ul {
+  padding-left: 18px;
+}
+.tk-rep__md h3 {
+  margin: 16px 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.tk-rep__md > h3:first-child {
+  margin-top: 0;
+}
+.tk-rep__md code {
+  font: 12px var(--mono);
+  color: var(--accent);
+}
+.tk-rep__md pre {
+  padding: 10px 12px;
+  border: 1px solid var(--line-14);
+  background: var(--surface-tile);
+  font: 11.5px var(--mono);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.tk-rep__md a {
+  color: var(--accent);
+}
+.tk-rep__md strong {
+  font-weight: 600;
+}
+.tk-rep__tbl {
+  margin: 0 0 10px;
+  overflow-x: auto;
+  border: 1px solid var(--line-14);
+}
+.tk-rep__tbl table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 11.5px var(--mono);
+  line-height: 1.45;
+  overflow-wrap: normal;
+}
+.tk-rep__tbl th,
+.tk-rep__tbl td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line-10);
+  text-align: left;
+  vertical-align: top;
+}
+.tk-rep__tbl th {
+  font-weight: 500;
+  color: var(--muted);
+  background: var(--surface-tile);
+}
+.tk-rep__tbl tr:last-child td {
+  border-bottom: 0;
+}

@@ -37,9 +37,11 @@ export function mountNav(app, ctx) {
   render(ctx);
 }
 
-function navButton({ id, label, title, iconPath, on, onClick, badge, badgeAccent }) {
+function navButton({ id, label, title, iconPath, on, onClick, badge, badgeAccent, dot }) {
   const ic = h("span.nav__icon", null, icon(iconPath));
   if (badge) ic.append(h(`span.nav__badge${badgeAccent ? ".nav__badge--accent" : ""}`, { text: String(badge) }));
+  // dot: a second, separate signal next to the count (Tasks: unread reports beside "due").
+  if (dot && dot()) ic.append(h("span.dot.nav__dot"));
   return h(
     "button.nav__btn",
     { cls: on ? "is-on" : "", title: title || label, "data-nav": id, on: { click: onClick } },
@@ -83,6 +85,7 @@ function render(ctx) {
         iconPath: a.icon,
         on,
         badge,
+        dot: a.dot,
         onClick: () => (a.kind === "action" ? ctx.runAction(a) : setState({ view: a.id, hover: null, tab: "areas" })),
       });
       if (on) b.dataset.active = "1";

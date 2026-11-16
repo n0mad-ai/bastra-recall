@@ -1,6 +1,7 @@
 import { deleteTaskRows } from "./task-delete.js";
 import { taskValidityExpired } from "./task-validity.js";
 import { callTaskResult, taskResultGetInput, taskResultReportInput } from "./task-app-api.js";
+import { callTaskReport, isTaskReportOperation, TASK_REPORT_INPUTS } from "./task-reports.js";
 import { reminderDuplicate, reminderFingerprint } from "./task-conversation.js";
 import { privateContentComparison, privateTaskComparison, publicTaskResult } from "./task-private-comparison.js";
 import { recoverTasks, taskRecoverInput } from "./task-maintenance.js";
@@ -135,6 +136,10 @@ export const TASK_CRUD_OPERATIONS = [
   "task_end_series",
   "task_result_get",
   "task_result_report",
+  "task_report_save",
+  "task_report_list",
+  "task_report_read",
+  "task_report_delete",
 ] as const;
 export type TaskCrudOperation = (typeof TASK_CRUD_OPERATIONS)[number];
 export class TaskServiceError extends Error {
@@ -625,6 +630,7 @@ export const TASK_INPUT_SCHEMAS = {
   task_resolve: lifecycleInput,
   task_cancel: lifecycleInput,
   task_rearm: lifecycleInput,
+  ...TASK_REPORT_INPUTS,
 };
 
 export async function callTaskCrud(
@@ -633,7 +639,9 @@ export async function callTaskCrud(
   operation: TaskCrudOperation,
   raw: unknown
 ): Promise<unknown> {
-  const result = await callTaskCrudInner(ctx, authorization, operation, raw);
+  const result = isTaskReportOperation(operation)
+    ? await callTaskReport(ctx, authorization, operation, raw)
+    : await callTaskCrudInner(ctx, authorization, operation, raw);
   requestTaskReconciliation(ctx.path); // queue work; never evaluate sources on a caller's hot path
   return publicTaskResult(result);
 }

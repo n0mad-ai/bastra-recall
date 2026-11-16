@@ -5940,6 +5940,312 @@
         ]
       }
     },
+    "/task_report_delete": {
+      "post": {
+        "operationId": "local_post_task_report_delete",
+        "summary": "local post task report delete",
+        "description": "Local-only tasks; mapped task credential and loopback Host required. task_report_delete: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, snooze, cancel, archive and delete. Rearm remains unarmed...",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                },
+                "required": [
+                  "id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful JSON result; fields depend on the operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "x-local-only": true,
+        "security": [
+          {
+            "taskCredential": []
+          }
+        ]
+      }
+    },
+    "/task_report_list": {
+      "post": {
+        "operationId": "local_post_task_report_list",
+        "summary": "local post task report list",
+        "description": "Local-only tasks; mapped task credential and loopback Host required. task_report_list: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, snooze, cancel, archive and delete. Rearm remains unarmed. ...",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful JSON result; fields depend on the operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "x-local-only": true,
+        "security": [
+          {
+            "taskCredential": []
+          }
+        ]
+      }
+    },
+    "/task_report_read": {
+      "post": {
+        "operationId": "local_post_task_report_read",
+        "summary": "local post task report read",
+        "description": "Local-only tasks; mapped task credential and loopback Host required. task_report_read: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, snooze, cancel, archive and delete. Rearm remains unarmed. ...",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                },
+                "required": [
+                  "id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful JSON result; fields depend on the operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "x-local-only": true,
+        "security": [
+          {
+            "taskCredential": []
+          }
+        ]
+      }
+    },
+    "/task_report_save": {
+      "post": {
+        "operationId": "local_post_task_report_save",
+        "summary": "local post task report save",
+        "description": "Local-only tasks; mapped task credential and loopback Host required. task_report_save: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, snooze, cancel, archive and delete. Rearm remains unarmed. ...",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "pattern": "\\S"
+                  },
+                  "body": {
+                    "type": "string",
+                    "maxLength": 262144,
+                    "pattern": "\\S"
+                  },
+                  "project": {
+                    "type": "string",
+                    "maxLength": 120,
+                    "pattern": "\\S"
+                  },
+                  "origin": {
+                    "type": "object",
+                    "properties": {
+                      "client": {
+                        "type": "string",
+                        "maxLength": 120,
+                        "pattern": "\\S"
+                      },
+                      "session": {
+                        "type": "string",
+                        "maxLength": 200,
+                        "pattern": "\\S"
+                      }
+                    },
+                    "required": [
+                      "client"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "title",
+                  "body",
+                  "origin"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful JSON result; fields depend on the operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "x-local-only": true,
+        "security": [
+          {
+            "taskCredential": []
+          }
+        ]
+      }
+    },
     "/task_resolve": {
       "post": {
         "operationId": "local_post_task_resolve",

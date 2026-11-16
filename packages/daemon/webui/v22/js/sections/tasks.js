@@ -36,6 +36,7 @@ import { KEYS, label, ICON as KICON, onSelect, endDrag } from "./tasks-cal.js";
 import { splitPanel, weekDays, monthStart, rangeOf } from "./tasks-ledger.js";
 import { overlayRenderer } from "./tasks-overlays.js";
 import { detailTab, viewTab, controlTab, statusTiles, dueList } from "./tasks-panel.js";
+import { reportsButton, reportsRenderer, escapeReports, hasUnreadReports } from "./tasks-reports.js";
 import en from "../i18n/tasks-en.js";
 import de from "../i18n/tasks-de.js";
 
@@ -52,6 +53,7 @@ function head() {
     title: S.W >= 700 ? t("tk.title") : "",
     side: [
       ...(S.W >= 760 ? hudPills(statusTiles()) : []),
+      reportsButton(),
       h(
         "button.tk-duebtn",
         {
@@ -233,7 +235,8 @@ function calendar() {
 let root = null,
   calSlot = null,
   headSlot = null,
-  drawOverlays = null;
+  drawOverlays = null,
+  drawReports = null;
 function drawCal() {
   if (!calSlot || S.drag) return;
   endDrag();
@@ -257,6 +260,7 @@ function draw() {
   const wait = !content && !S.snap ? loadingBlock(t("ld.tasks")) : null;
   clear(headSlot).append(head());
   drawOverlays();
+  drawReports();
   clear(calSlot);
   if (content || wait) calSlot.append(content || wait);
   if (!content && !wait) drawCal();
@@ -267,10 +271,12 @@ function mount(el, ctx) {
   root = el;
   root.classList.add("tk");
   headSlot = h("div.tk-headslot");
-  const overlaySlot = h("div.tk-overlays");
+  const overlaySlot = h("div.tk-overlays"),
+    reportSlot = h("div.tk-overlays");
   calSlot = h("div.tk-calslot");
-  root.append(headSlot, overlaySlot, calSlot);
+  root.append(headSlot, overlaySlot, reportSlot, calSlot);
   drawOverlays = overlayRenderer(overlaySlot);
+  drawReports = reportsRenderer(reportSlot);
   const sro = new ResizeObserver(() => {
     const w = el.clientWidth;
     if (w > 0 && Math.abs(w - S.W) > 1) {
@@ -289,7 +295,8 @@ function mount(el, ctx) {
     if (state.view === "tasks") ctx.refreshLens();
   });
   const key = (e) => {
-    if (e.key === "Escape" && (S.compose || S.showDue || S.proposal)) {
+    if (e.key === "Escape" && escapeReports()) e.stopPropagation();
+    else if (e.key === "Escape" && (S.compose || S.showDue || S.proposal)) {
       e.stopPropagation();
       S.compose = S.showDue = false;
       S.proposal = null;
@@ -320,6 +327,7 @@ function mount(el, ctx) {
     calSlot = null;
     headSlot = null;
     drawOverlays = null;
+    drawReports = null;
     bodyEl = null;
   };
 }
@@ -331,6 +339,7 @@ registerArea({
   labelKey: "nav.tasks",
   icon: ICON.tasks,
   pinAgent: true,
+  dot: hasUnreadReports, // unread task reports: own dot next to the due badge (js/nav.js)
   section: { frame: false, fit: true },
   greetingKey: "agent.greeting.tasks",
   presetKeys: ["agent.sug.due", "agent.sug.remind"],

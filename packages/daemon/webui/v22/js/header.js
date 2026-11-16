@@ -5,6 +5,8 @@ import { t, numberFmt } from "./i18n.js";
 import { state, setState } from "./state.js";
 import { data, dueAt } from "./data.js";
 import { openTask } from "./sections/tasks-store.js";
+import { reportTickerItems } from "./sections/tasks-reports.js";
+import { unreadCount } from "./sections/tasks-reports-model.js";
 import { getArea } from "./areas.js";
 import { placeWeather, weatherPicker } from "./weather-place.js";
 
@@ -278,6 +280,10 @@ function renderStatus(L) {
 
 // ── ticker ────────────────────────────────────────────────────────────────
 function tickerItems() {
+  return [...dueTickerItems(), ...reportTickerItems()];
+}
+
+function dueTickerItems() {
   return data.dueTasks.map((task) => {
     const at = dueAt(task);
     const time = at
@@ -377,7 +383,7 @@ function tickerButton(it, i) {
 }
 
 function syncPlay() {
-  const items = data.dueTasks.length;
+  const items = data.dueTasks.length + unreadCount(data.reports);
   tkrTrack.classList.toggle("is-paused", !items || tk.paused || tk.open !== null || tk.hold || note.on);
 }
 

@@ -1,3 +1,4 @@
+@import "./tasks-reports.css";
 /* Recall UI v22 — Tasks area (prototype STAGE › isTasks, lens tabTaskDetail /
  * tabViewTask / tabTaskControl). Values are the prototype's inline styles.
  * Dynamic geometry comes in as custom properties (CSP: no style attributes). */

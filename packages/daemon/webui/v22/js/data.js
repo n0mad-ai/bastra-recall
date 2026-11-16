@@ -1,5 +1,6 @@
 // Daemon data for the shell. Every answer is external input: shapes are
 // checked before use and failures leave the previous value in place.
+import { reportRows } from "./sections/tasks-reports-model.js";
 const listeners = new Set();
 
 export const data = {
@@ -10,6 +11,7 @@ export const data = {
   weekStart: null, // Date of week 0
   dueTasks: [], // tasks in state "due"
   tasks: [], // open tasks (pending | due | snoozed), for the dashboard
+  reports: [], // task reports (task_report_list rows, unread first): nav dot, ticker, Tasks › Reports
   newSince: 0, // live updates since page load (all kinds, incl. reads)
   newMemories: 0, // memories created since page load (kind "add" only)
   weather: null, // { temp, city }
@@ -146,6 +148,19 @@ export async function loadTasks() {
   }
 }
 
+/** Task reports for the nav dot, the ticker and the Tasks area; rides on the task polling. */
+export async function loadReports() {
+  if (document.documentElement.dataset.tasksEnabled !== "true") return;
+  try {
+    const next = reportRows(await taskApi("report_list"));
+    if (JSON.stringify(next) === JSON.stringify(data.reports)) return;
+    data.reports = next;
+    emit();
+  } catch {
+    /* keep last; an older daemon has no reports */
+  }
+}
+
 export function dueAt(t) {
   return t.snoozed_until ?? t.next_slot?.at ?? t.schedule?.at ?? t.next_check_at;
 }
@@ -242,6 +257,7 @@ export function startPolling() {
   loadHealth();
   loadGraph();
   loadTasks();
+  loadReports();
   pollUpdates();
   loadWeather();
   setInterval(() => {
@@ -252,6 +268,7 @@ export function startPolling() {
   setInterval(() => {
     if (!document.hidden) {
       loadTasks();
+      loadReports();
       loadHealth();
     }
   }, 60000);

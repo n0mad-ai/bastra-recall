@@ -159,6 +159,12 @@
 .nav__badge--accent {
   background: var(--accent);
 }
+/* Second signal beside the count (Tasks: unread reports); size and glow from .dot. */
+.nav__dot {
+  position: absolute;
+  top: -3px;
+  left: -8px;
+}
 .nav__foot {
   flex: none;
   padding-top: 8px;

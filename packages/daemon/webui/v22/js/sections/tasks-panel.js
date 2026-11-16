@@ -43,6 +43,7 @@ import {
   waitsView,
 } from "./tasks-api.js";
 import { toggle } from "./tasks-overlays.js";
+import { reportPanel } from "./tasks-reports.js";
 import { loadingInline } from "./loading.js";
 
 export const dueList = () => S.items.filter((x) => x.k === "due" && !x.t.archived);
@@ -563,6 +564,11 @@ function detail(x) {
 }
 
 export function detailTab(body) {
+  const report = reportPanel(body);
+  if (report) {
+    body.append(report);
+    return;
+  }
   const x = S.sel ? byId(S.sel) : null;
   body.append(
     h("div.tk-pn", null, x ? detail(x) : h("p.tk-pn__empty", { text: S.error && !S.snap ? S.error : t("tk.dt.none") }))
