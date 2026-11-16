@@ -26,6 +26,7 @@ import { createLiveUpdates, type LiveUpdate } from "../src/live-updates.js";
 import { createSimulation } from "../webui/js/simulation.js";
 // @ts-expect-error — plain browser module, no types.
 import { createLiveNodes } from "../webui/js/live-nodes.js";
+import { setUiEnabled } from "../src/settings.js";
 
 const DEBOUNCE = 150; // injected quiet window
 const AFTER = 340; // wait comfortably past one window before asserting
@@ -100,7 +101,7 @@ async function harness(
     live,
     memDir,
     settingsPath,
-    enableUi: () => writeFile(settingsPath, JSON.stringify({ ui: { enabled: true } })),
+    enableUi: () => setUiEnabled(true, settingsPath),
     call,
     cleanup: async () => {
       live.stop();
@@ -118,6 +119,8 @@ test("live updates: coalescing finalizes after the quiet window; seq delivers lo
   const reindex = (id: string) => vault.reindexFile(join(memDir, `${id}.md`));
 
   try {
+    // Stored off: the default is on under macOS.
+    await setUiEnabled(false, h.settingsPath);
     assert.equal((await call()).status, 404, "ui disabled → 404");
     await h.enableUi();
 

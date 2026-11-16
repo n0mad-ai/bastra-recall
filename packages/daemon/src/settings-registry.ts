@@ -20,6 +20,7 @@ import { parseRetain, parseSize } from "./rm-archive-reconcile.js";
 import { isDaemonEnvKey, type DaemonEnvKey } from "./daemon-spawn-env.js";
 import { isSupportedLanguage } from "./learned-recall/language.js";
 import { SOUL_DIRECTIONS, SOUL_TEXT_MAX } from "./soul.js";
+import { webUiOnByDefault } from "./local-account-access.js";
 
 export const UPDATE_MODES = ["notify", "auto", "off"] as const;
 export const EMBEDDING_PROVIDERS = ["ollama", "openai", "none"] as const;
@@ -46,8 +47,9 @@ interface Metadata {
   readonly?: boolean;
   alias?: string;
 }
-function setting<S extends z.ZodType, M extends Metadata>(schema: S, metadata: M) {
-  return { schema, ...metadata };
+/** Property descriptors are copied, not values, so a getter default (ui.enabled) is read on every access. */
+function setting<S extends z.ZodType, M extends Metadata>(schema: S, metadata: M): { schema: S } & M {
+  return Object.defineProperties({ schema }, Object.getOwnPropertyDescriptors(metadata)) as { schema: S } & M;
 }
 const bool = z.boolean(),
   text = z.string().trim().min(1),
@@ -260,7 +262,15 @@ export const SETTINGS_REGISTRY = {
     }),
   },
   ui: {
-    enabled: setting(bool, { area: "general", label: "Web-Oberfläche", default: false, required: true }),
+    // On where the web UI is bound to the vault owner's account (macOS), off elsewhere.
+    enabled: setting(bool, {
+      area: "general",
+      label: "Web-Oberfläche",
+      get default() {
+        return webUiOnByDefault();
+      },
+      required: true,
+    }),
     backdrop: setting(z.string().trim().regex(BACKDROP_ID), {
       area: "general",
       label: "Hintergrundbild",

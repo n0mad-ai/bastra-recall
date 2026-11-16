@@ -23,6 +23,7 @@ import {
   type ReportEvent,
 } from "../src/telemetry-report.js";
 import { handleUiTelemetry, parseDays } from "../src/webui-telemetry.js";
+import { setUiEnabled } from "../src/settings.js";
 
 const T = { mustLoadScore: 100, scoreFloor: 30 };
 const ts = (day: string, hh = "10") => `${day}T${hh}:00:00.000Z`;
@@ -442,9 +443,11 @@ test("#463 window: only day files inside the window are read, and the route is u
           .end();
       });
     try {
+      // Stored off: the default is on under macOS.
+      await setUiEnabled(false, settingsPath);
       const off = await get("/ui/telemetry");
       assert.equal(off.status, 404, "ui.enabled off → 404 like every other /ui route");
-      await writeFile(settingsPath, JSON.stringify({ update: { mode: "notify" }, ui: { enabled: true } }));
+      await setUiEnabled(true, settingsPath);
       const on = await get("/ui/telemetry?days=90");
       assert.equal(on.status, 200);
       const body = JSON.parse(on.body) as {

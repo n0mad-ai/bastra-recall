@@ -253,7 +253,7 @@ export async function setCommonsEnabled(on: boolean, path: string = settingsFile
   await mutateSettings(path, (current) => ({ ...current, commons: { enabled: on } }));
 }
 
-/** Vault map web UI (#207) enabled? Default false (opt-in). */
+/** Web UI (#207) enabled? A stored value wins; otherwise on where the account binding runs (macOS), off elsewhere. */
 export async function getUiEnabled(path?: string): Promise<boolean> {
   return (await readSettings(path)).ui?.enabled ?? SETTINGS_REGISTRY.ui.enabled.default;
 }

@@ -17,6 +17,7 @@ import { startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
 import { recordUsage } from "../src/usage-sidecar.js";
 import { handleWebUi, handleUiAnnotate, handleUiAnnotations, parseCareFile, CARE_FILE } from "../src/webui.js";
+import { setUiEnabled } from "../src/settings.js";
 
 function memoryMarkdown(
   id: string,
@@ -289,12 +290,13 @@ test("/ui: gated on ui.enabled, serves index, blocks traversal", async () => {
   const port = (server.address() as { port: number }).port;
 
   try {
-    // disabled (no settings file) → 404 with the enable hint
+    // disabled (stored off; without a stored value the default is on under macOS) → 404 with the enable hint
+    await setUiEnabled(false, settingsPath);
     const off = await httpGet(port, "/ui/");
     assert.equal(off.status, 404);
     assert.match(off.body, /ui\.enabled/);
 
-    await writeFile(settingsPath, JSON.stringify({ update: { mode: "notify" }, ui: { enabled: true } }));
+    await setUiEnabled(true, settingsPath);
 
     const redirect = await new Promise<number>((resolve, reject) => {
       const req = request({ hostname: "127.0.0.1", port, path: "/ui", method: "GET" }, (res) => {

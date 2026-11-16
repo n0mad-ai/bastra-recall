@@ -135,6 +135,12 @@ export const macosPeerUid = createPeerUidLookup(lsofScan);
 export function accountBindingEnforced(options: LocalAccountOptions = {}): boolean {
   return platformOf(options) === "darwin";
 }
+/** Default of `ui.enabled` (owner decision 2026-11-16, v1.2.0): the web UI is on
+ * by default only where it is bound to the vault owner's account. A stored
+ * `ui.enabled` always wins over this default. */
+export function webUiOnByDefault(options: LocalAccountOptions = {}): boolean {
+  return accountBindingEnforced(options);
+}
 export function localAccountPath(url: string): boolean {
   let path: string;
   try {

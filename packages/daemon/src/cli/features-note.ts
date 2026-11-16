@@ -21,6 +21,7 @@ import { taskAgentAccessStatus } from "../task-auto-setup.js";
  *     listed so they can be found, marked as intentional, never as a warning.
  */
 import { readSettings, resolveEmbeddingChoice, resolveGenerationModel, type CliSettings } from "../settings.js";
+import { SETTINGS_REGISTRY } from "../settings-registry.js";
 import { ollamaModelPulled } from "./ollama.js";
 import { FRESH_VAULT_MAX, isOnboardingDone } from "../onboarding.js";
 import { codeAwarenessDisabledByEnv, enabledRepos } from "../code-graph/enabled-repos.js";
@@ -342,7 +343,7 @@ export async function collectFeatureState(
     docsMode: settings.docs?.mode ?? "off",
     commons: settings.commons?.enabled ?? false,
     bridges: settings.sharedRecall?.enabled ?? false,
-    ui: settings.ui?.enabled ?? false,
+    ui: settings.ui?.enabled ?? SETTINGS_REGISTRY.ui.enabled.default,
     // This shell's env; the daemon reads its own (a LaunchAgent may differ).
     archive: archiveMode(settings.archive?.enabled ?? false),
     archiveLimits: {

@@ -196,7 +196,7 @@
     "[\"packages/daemon/src/cli/update.ts\",\"[\\\"function:performUpdate\\\"]\",\"complexity\"]": 81,
     "[\"packages/daemon/src/cli/update.ts\",\"[\\\"function:reRegisterViaInstalledBinary\\\"]\",\"complexity\"]": 18,
     "[\"packages/daemon/src/cli/windows-service.ts\",\"[\\\"function:windowsService\\\",\\\"function:status\\\"]\",\"complexity\"]": 23,
-    "[\"packages/daemon/src/cli/wizard.ts\",\"[\\\"function:runInstallWizard\\\"]\",\"complexity\"]": 74,
+    "[\"packages/daemon/src/cli/wizard.ts\",\"[\\\"function:runInstallWizard\\\"]\",\"complexity\"]": 72,
     "[\"packages/daemon/src/code-awareness-stats.ts\",\"[\\\"function:aggregateCodeAwareness\\\"]\",\"complexity\"]": 37,
     "[\"packages/daemon/src/code-graph/affected.ts\",\"[\\\"function:changedLines\\\"]\",\"complexity\"]": 23,
     "[\"packages/daemon/src/code-graph/boundary-block.ts\",\"[\\\"function:build\\\"]\",\"complexity\"]": 35,

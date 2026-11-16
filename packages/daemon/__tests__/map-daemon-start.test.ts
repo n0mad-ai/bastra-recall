@@ -347,6 +347,8 @@ test("map: an unresolvable vault is reported, not opened into", async () => {
 test("map: still disabled + no TTY → the old opt-in message, and no daemon is started", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-map-off-"));
   try {
+    // Stored off: without a stored value the map is on by default under macOS.
+    await setUiEnabled(false, join(dir, "cli-settings.json"));
     let ensured = 0;
     const opened: string[] = [];
     const { result, err } = await withCapture(() =>

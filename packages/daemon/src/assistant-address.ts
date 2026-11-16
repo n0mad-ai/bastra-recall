@@ -6,7 +6,7 @@ import { join, dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mkdir, readFile, writeFile, rename, rm, stat } from "node:fs/promises";
 import { withPathLock, PathLockUnavailableError } from "./path-lock.js";
-import { readSettings, settingsFilePath } from "./settings-file.js";
+import { readSettings, settingsFilePath, SETTINGS_REGISTRY } from "./settings-file.js";
 import { appRecordDatabasePath } from "./app-record-store.js";
 import {
   normalizeAssistantName,
@@ -997,7 +997,7 @@ async function removeAssistantAddressUnlocked(options: AssistantAddressOptions =
 async function assistantAddressStatusUnlocked(options: AssistantAddressOptions = {}) {
   const o = assistantAddressOptions(options),
     name = await getAssistantName(o.settingsPath),
-    enabled = (await readSettings(o.settingsPath)).ui?.enabled ?? false;
+    enabled = (await readSettings(o.settingsPath)).ui?.enabled ?? SETTINGS_REGISTRY.ui.enabled.default;
   let registered: string | null = null,
     error: string | undefined;
   try {

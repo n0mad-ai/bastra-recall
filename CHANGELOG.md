@@ -132,6 +132,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The onboarding interview waits while the user is in the middle of concrete
   work (#1411). The rulebook guidance in each round is shortened when nothing
   changed since its full delivery; IDs and revisions stay (#1371).
+- **The web UI is on by default on macOS.** There it is bound to the macOS
+  account that owns the vault, so it is on for new installations and for
+  existing ones without a stored choice; the setup preselects "On". On Linux
+  and other systems this account binding does not exist yet, so the web UI
+  stays off until you switch it on with `bastra map` or
+  `bastra config set ui.enabled true`. Linux has not yet been properly tested
+  in real use; that will follow. If you switched the web UI off, it stays off;
+  if you switched it on, it stays on. To switch it off:
+  `bastra config set ui.enabled false`.
 - **The web UI is now the UI v2.** `/ui/` (and `bastra map`, the assistant's
   local address and every other link that opened the web UI) shows it. The
   Mindspace, Clouds and Semantic views run on the unchanged map engines.

@@ -24,6 +24,7 @@ import {
   ONBOARD_MARKER,
   FRESH_VAULT_MAX,
 } from "../src/onboarding.js";
+import { setUiEnabled } from "../src/settings.js";
 
 test("questionsFor: persona steers the catalog, mixed gets one follow-up per persona", () => {
   assert.deepEqual(
@@ -137,9 +138,11 @@ test("GET/POST /ui/onboarding: gated on ui.enabled, saves user-directed memories
     });
 
   try {
+    // Stored off: the default is on under macOS.
+    await setUiEnabled(false, settingsPath);
     assert.equal((await call("GET")).status, 404, "ui disabled → 404");
 
-    await writeFile(settingsPath, JSON.stringify({ ui: { enabled: true } }));
+    await setUiEnabled(true, settingsPath);
 
     const cat = await call("GET");
     assert.equal(cat.status, 200);

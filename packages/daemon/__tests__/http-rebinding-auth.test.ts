@@ -35,6 +35,7 @@ import { startHttpServer } from "../src/http.js";
 import { gateApiRequest } from "../src/http-auth.js";
 import { gateLocalPost } from "../src/http-auth.js";
 import { Telemetry } from "../src/telemetry.js";
+import { setUiEnabled } from "../src/settings.js";
 import { assistantGatewayHandler } from "../src/assistant-address-gateway.js";
 
 const TOKEN = "rebinding-test-token";
@@ -162,6 +163,8 @@ async function withServer(
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;
   }
+  // /ui stays off in this fixture on every platform (the default is on under macOS).
+  await setUiEnabled(false);
   const search = new SearchIndex(vault);
   search.start();
   const telemetry = new Telemetry();

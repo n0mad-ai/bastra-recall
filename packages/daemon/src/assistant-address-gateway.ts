@@ -1,4 +1,4 @@
-import { createLocalAccountGuard, type LocalAccountOptions } from "./local-account-access.js";
+import { createLocalAccountGuard, webUiOnByDefault, type LocalAccountOptions } from "./local-account-access.js";
 /** UI-only loopback gateway. This module and its pure imports also run from a
  * launchd inetd socket as the installing user, never as root. */
 import { createServer, request, type IncomingMessage, type ServerResponse, type Server } from "node:http";
@@ -22,14 +22,20 @@ export interface AssistantGatewayOptions {
   daemonUrl: string;
   owner?: string;
 }
+/** `enabled` follows ui.enabled; without a stored value it is on only where this gateway's account check runs. */
 export async function readAssistantGatewayConfig(
   path: string,
-  databasePath?: string
+  databasePath?: string,
+  localAccount?: LocalAccountOptions
 ): Promise<{ name: string; enabled: boolean } | null> {
   try {
     const stored = readRuntimeSettingsRecord(path, databasePath);
     const data = JSON.parse(stored === undefined ? await readFile(path, "utf8") : (stored ?? "{}"));
-    return { name: normalizeAssistantName(data.assistant?.name), enabled: data.ui?.enabled === true };
+    const uiEnabled = data.ui?.enabled;
+    return {
+      name: normalizeAssistantName(data.assistant?.name),
+      enabled: typeof uiEnabled === "boolean" ? uiEnabled : webUiOnByDefault(localAccount),
+    };
   } catch {
     return null;
   }
@@ -88,7 +94,7 @@ export function assistantGatewayHandler(opts: AssistantGatewayOptions) {
           return reply(res, 503, "assistant runtime changed; retry the request");
         }
       }
-      const config = await readAssistantGatewayConfig(opts.settingsPath, opts.databasePath);
+      const config = await readAssistantGatewayConfig(opts.settingsPath, opts.databasePath, opts.localAccount);
       if (!config?.enabled) return reply(res, 404, "assistant UI is disabled");
       const rawHost = req.headers.host?.toLowerCase() ?? "";
       const host = gatewayHost(req.headers.host, req.socket.localPort);
@@ -190,7 +196,7 @@ export function createAssistantAddressListener(opts: AssistantGatewayOptions, po
   return {
     refresh(): Promise<{ ready: boolean; port?: number; error?: string }> {
       const work = async () => {
-        const config = await readAssistantGatewayConfig(opts.settingsPath, opts.databasePath);
+        const config = await readAssistantGatewayConfig(opts.settingsPath, opts.databasePath, opts.localAccount);
         if (!config?.enabled) {
           await close();
           return { ready: false };

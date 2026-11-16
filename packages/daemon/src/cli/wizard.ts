@@ -55,6 +55,7 @@ import {
   setSharedRecallEnabled,
   setUpdateMode,
   setDocsMode,
+  getUiEnabled,
   setUiEnabled,
   DEFAULT_UPDATE_MODE,
   DEFAULT_DOCS_MODE,
@@ -63,6 +64,7 @@ import {
 } from "../settings.js";
 import type { InstallResult, ParsedArgs } from "./types.js";
 import { askTaskChatConsent, finishTaskChatConsent } from "./task-chat-setup.js";
+import { webUiOnByDefault } from "../local-account-access.js";
 
 /**
  * Pure gate — exported for tests. The wizard replaces the bare-`install`
@@ -222,6 +224,34 @@ function bailed(value: unknown): value is symbol {
 const CANCEL_MSG = "Setup cancelled — nothing was changed.";
 
 /**
+ * The vault-map question — pure, exported for tests. The preselection is the
+ * map's current state: a fresh macOS install starts on (the web UI is bound to
+ * the vault owner's account there), elsewhere off, and a stored choice is kept
+ * when the user just presses Enter.
+ */
+export function vaultMapQuestion(url: string, currentlyOn: boolean, accountBound: boolean) {
+  const enableLater = "enable later: bastra config set ui.enabled true";
+  return {
+    message: `Enable the vault map? (interactive graph of your memory at ${url} — local only)`,
+    options: [
+      {
+        value: "on",
+        label: "On — serve the map on /ui",
+        ...(accountBound ? { hint: "only your user account can open it" } : {}),
+      },
+      {
+        value: "off",
+        label: "Off",
+        hint: accountBound
+          ? enableLater
+          : `the binding to your user account exists only on macOS so far — ${enableLater}`,
+      },
+    ],
+    initialValue: currentlyOn ? "on" : "off",
+  };
+}
+
+/**
  * The closing vault-map line — pure, exported for tests (the wizard itself is
  * the @clack shell around it). A map whose daemon never came up must not be
  * handed over as a link: that URL was the one the #322 reporter clicked.
@@ -261,13 +291,35 @@ export async function vaultMapSetupStep(
   opts: { vaultPath?: string; onStarting?: () => void } = {},
   io: Partial<VaultMapStepIO> = {}
 ): Promise<{ level: "success" | "warn"; text: string }> {
-  const enableMap = io.enableMap ?? (() => setUiEnabled(true));
+  // Only an off map is switched on: a map that is on by default stays a default.
+  const enableMap =
+    io.enableMap ??
+    (async () => {
+      if (!(await getUiEnabled())) await setUiEnabled(true);
+    });
   const ensureDaemon = io.ensureDaemon ?? ensureDaemonRunning;
   const url = io.url ?? mapUrl;
 
   await enableMap();
   const daemon = await ensureDaemon({ vaultPath: opts.vaultPath, onStarting: opts.onStarting });
   return vaultMapOutcomeLine(daemon, url());
+}
+
+/** Applies the vault-map answer. Off is stored only where the map is on (by
+ *  default or by an earlier choice); On goes through the setup step. */
+async function applyVaultMapChoice(on: boolean, wasOn: boolean, vaultPath: string | undefined): Promise<void> {
+  if (!on) {
+    if (!wasOn) return;
+    await setUiEnabled(false);
+    p.log.info("Vault map: off — enable later: bastra config set ui.enabled true");
+    return;
+  }
+  const line = await vaultMapSetupStep({
+    vaultPath,
+    onStarting: () => p.log.step("Starting the daemon so the vault map is reachable…"),
+  });
+  if (line.level === "success") p.log.success(line.text);
+  else p.log.warn(line.text);
 }
 
 export async function runInstallWizard(args: ParsedArgs): Promise<number> {
@@ -542,16 +594,10 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   }
 
   // ── 9. vault map UI (#207) ─────────────────────────────────────────────────
-  let uiOn = false;
+  const uiBefore = await getUiEnabled();
+  let uiOn = uiBefore;
   {
-    const ans = await p.select({
-      message: `Enable the vault map? (interactive graph of your memory at ${mapUrl()} — local only)`,
-      options: [
-        { value: "on", label: "On — serve the map on /ui" },
-        { value: "off", label: "Off", hint: "enable later: bastra config set ui.enabled true" },
-      ],
-      initialValue: "off",
-    });
+    const ans = await p.select(vaultMapQuestion(mapUrl(), uiBefore, webUiOnByDefault()));
     if (bailed(ans)) {
       p.cancel(CANCEL_MSG);
       return 1;
@@ -749,14 +795,7 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
     await setDocsMode(docsMode);
     p.log.success(`Product-doc capture: ${docsMode}`);
   }
-  if (uiOn) {
-    const line = await vaultMapSetupStep({
-      vaultPath: vaultPath ?? undefined,
-      onStarting: () => p.log.step("Starting the daemon so the vault map is reachable…"),
-    });
-    if (line.level === "success") p.log.success(line.text);
-    else p.log.warn(line.text);
-  }
+  await applyVaultMapChoice(uiOn, uiBefore, vaultPath ?? undefined);
 
   // The CLI itself (#317) — last, because its absence is the one thing the user
   // would otherwise discover only after the setup declared success. Runs solely

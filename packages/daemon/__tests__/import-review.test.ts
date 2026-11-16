@@ -24,6 +24,7 @@ import {
   handleUiImport,
   IMPORT_FILE,
 } from "../src/import-review.js";
+import { setUiEnabled } from "../src/settings.js";
 
 test("extractCandidates: strips bullets/numbering, drops noise, dedupes", () => {
   const raw = [
@@ -156,12 +157,13 @@ test("POST /ui/import: gated on ui.enabled, stages like the CLI", async () => {
     });
 
   try {
-    // ui disabled → 404, nothing staged
+    // ui disabled → 404, nothing staged (stored off: the default is on under macOS)
+    await setUiEnabled(false, settingsPath);
     const off = await post({ text: "- Prefers concise replies without preamble", source: "chatgpt" });
     assert.equal(off.status, 404);
     assert.equal(await countOpenImports(vaultDir), 0);
 
-    await writeFile(settingsPath, JSON.stringify({ ui: { enabled: true } }));
+    await setUiEnabled(true, settingsPath);
 
     const ok = await post({
       text: "- Prefers concise replies without preamble\n- short\n- Works at a small AI startup in Berlin",
