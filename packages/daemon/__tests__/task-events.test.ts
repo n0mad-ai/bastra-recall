@@ -691,5 +691,7 @@ test("#1581 a task already past the reserve does not stop time evaluation for ev
   const { f, seriesId } = await fullHistoryFixture(9901);
   const s = await reconcileTaskTime(f.ctx);
   assert.equal(s.tasks.find((t) => t.goal === "One reminder")!.state, "due");
-  assert.equal(s.tasks.find((t) => t.id === seriesId)!.history.length, 9901);
+  assert.equal(s.tasks.find((t) => t.id === seriesId)!.history.length, 9902);
+  assert.equal(s.tasks.find((t) => t.id === seriesId)!.armed, false);
+  assert.equal(s.tasks.find((t) => t.id === seriesId)!.last_failure?.code, "history_capacity");
 });

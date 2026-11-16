@@ -858,8 +858,10 @@ BASTRA_ARCHIVE_MAX_ITEM win):
   bastra config set archive.max-item 2GB   largest target it takes (default:
                                            none; off removes it). A larger one
                                            is refused, not archived, not deleted.
-Another archive directory: BASTRA_ARCHIVE_DIR. It must be your own and not
-writable by others; otherwise it is not used, and nothing is archived or removed.
+Another archive directory: BASTRA_ARCHIVE_DIR. It must be your own; if it is
+open to others, it is closed to you alone. One of another account, or one that
+directly holds a link or another account's entry, is not used, and nothing is
+archived or removed.
 Only the rm part off: BASTRA_RM_SHIM=0.
 
 bastra archive put <path>... makes the archiving rm's move by hand, opt-in

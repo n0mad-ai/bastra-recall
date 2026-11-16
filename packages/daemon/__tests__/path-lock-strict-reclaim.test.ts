@@ -115,6 +115,10 @@ test("#1587: a live or unprovable owner is never displaced", { timeout: 60_000 }
     ["remote-no-boot", { pid: DEAD_PID, host: "other-host" }],
     // A non-string boot proves nothing.
     ["live-odd-boot", { pid: process.pid, host, boot: 42 }],
+    // Nor does a damaged one: only the form of a real boot id can prove a reboot.
+    ["live-empty-boot", { pid: process.pid, host, boot: "" }],
+    ["live-text-boot", { pid: process.pid, host, boot: "not-a-boot-id" }],
+    ["live-null-boot", { pid: process.pid, host, boot: null }],
   ];
   const results = await Promise.all(cases.map(([name, body]) => attempt(dir, name, body)));
   results.forEach((result, index) => {

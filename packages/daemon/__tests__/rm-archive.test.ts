@@ -1331,7 +1331,7 @@ describe("the home archive closes itself, and the move checks every directory on
     assert.equal(runRmShim([target], { env, cwd: dir, now, out: () => {}, err: (s) => errs.push(s) }), 1);
     assert.equal(readFileSync(target, "utf8"), "keep\n", "the target is untouched");
     assert.deepEqual(readdirSync(elsewhere), [], "nothing went through the symlink");
-    assert.match(errs.join("\n"), /not moved to the archive: a directory under .* is not this user's own/);
+    assert.match(errs.join("\n"), /nothing archived, nothing removed.*holds .*which is not yours or is a link/);
   });
 });
 

@@ -159,6 +159,8 @@ interface LockBody {
 }
 
 let bootCache: string | null | undefined;
+/** The form a real boot id has (lowercase UUID); anything else proves nothing. */
+const BOOT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /** This kernel boot's random identity, fixed for the life of the process:
  * Linux `boot_id`, macOS `kern.bootsessionuuid`. Null when unreadable
  * (Windows, sandboxes): then only the host + pid rule applies, as before. */
@@ -177,7 +179,7 @@ function currentBoot(): string | null {
     /* unknown boot */
   }
   id = id.trim().toLowerCase();
-  bootCache = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id) ? id : null;
+  bootCache = BOOT_ID.test(id) ? id : null;
   return bootCache;
 }
 
@@ -460,7 +462,8 @@ function deadLocal(raw: string): boolean {
   try {
     const body = JSON.parse(raw) as LockBody;
     if (!Number.isSafeInteger(body.pid) || body.pid <= 0 || !body.token) return false;
-    const boot = typeof body.boot === "string" ? currentBoot() : null;
+    // A damaged or foreign boot field is treated as absent: host + pid decide.
+    const boot = typeof body.boot === "string" && BOOT_ID.test(body.boot) ? currentBoot() : null;
     const sameHost = body.host === hostnameSafe();
     if (sameHost && boot && body.boot !== boot) return true;
     if (!sameHost && !(process.platform === "darwin" && boot && body.boot === boot)) return false;

@@ -110,22 +110,21 @@ export function archiveRoot(env: NodeJS.ProcessEnv = process.env, uid = myUid())
   // An archive made before 0700 stays open to others: close it once, with the
   // dated directories and manifests in it. The configured path may be a
   // symlink the user set on purpose; what is checked is where it leads.
-  if (archiveDirState(root, uid) === "open") {
-    chmodSync(root, 0o700);
-    for (const name of readdirSync(root)) {
-      const p = join(root, name);
-      const st = lstatSync(p);
-      // While it was open, anyone could have put a file or link here first —
-      // a planted manifest.jsonl would be written through or read back.
-      if (st.isSymbolicLink() || (uid >= 0 && st.uid !== uid)) {
-        throw new Error(
-          `the archive directory '${raw}' was open to other accounts and holds '${name}', which is not yours — ` +
-            "Recall does not use it. Move that entry away, or choose another directory of your own"
-        );
-      }
-      if (st.isDirectory()) chmodSync(p, 0o700);
-      else if (st.isFile() && name.startsWith("manifest")) chmodSync(p, 0o600);
+  const wasOpen = archiveDirState(root, uid) === "open";
+  if (wasOpen) chmodSync(root, 0o700);
+  // Check even after an earlier refusal closed the root: chmod is not proof
+  // that entries planted while it was open have been removed.
+  for (const name of readdirSync(root)) {
+    const p = join(root, name);
+    const st = lstatSync(p);
+    if (st.isSymbolicLink() || (uid >= 0 && st.uid !== uid)) {
+      throw new Error(
+        `the archive directory '${raw}' holds '${name}', which is not yours or is a link — ` +
+          "Recall does not use it. Move that entry away, or choose another directory of your own"
+      );
     }
+    if (wasOpen && st.isDirectory()) chmodSync(p, 0o700);
+    else if (wasOpen && st.isFile() && name.startsWith("manifest")) chmodSync(p, 0o600);
   }
   return root;
 }

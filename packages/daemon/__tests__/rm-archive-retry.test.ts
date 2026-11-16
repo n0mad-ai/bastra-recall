@@ -1,0 +1,31 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, chmodSync, writeFileSync, symlinkSync, readFileSync, statSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { runRmShim, archiveRoot } from "../src/rm-archive.js";
+
+test("a refused archive with planted manifest remains refused on retry", () => {
+  const dir = mkdtempSync(join(tmpdir(), "review121-archive-retry-"));
+  const root = join(dir, "archive");
+  const env = { ...process.env, BASTRA_ARCHIVE_DIR: root, BASTRA_RM_TEMP_ROOTS: "" };
+  archiveRoot(env);
+  chmodSync(root, 0o777);
+  const bait = join(dir, "bait.jsonl");
+  writeFileSync(bait, "victim original\n");
+  symlinkSync(bait, join(root, "manifest.jsonl"));
+  const target = join(dir, "keep.txt");
+  writeFileSync(target, "keep");
+  const errors: string[] = [];
+  const io = { env, cwd: dir, ephemeral: [], out: () => {}, err: (s: string) => errors.push(s) };
+  const first = runRmShim([target], io);
+  assert.equal(first, 1);
+  assert.equal(readFileSync(target, "utf8"), "keep");
+  const second = runRmShim([target], io);
+  assert.equal(statSync(root).mode & 0o777, 0o700);
+  assert.equal(existsSync(target), true);
+  assert.equal(errors.length, 2);
+  assert.equal(second, 1, "the planted manifest must still prevent use on retry");
+  assert.equal(readFileSync(bait, "utf8"), "victim original\n");
+  assert.equal(readFileSync(target, "utf8"), "keep");
+});

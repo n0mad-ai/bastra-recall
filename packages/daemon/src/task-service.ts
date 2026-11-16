@@ -183,8 +183,10 @@ type TriggerEdit = "schedule" | "reopen" | "keep";
 function editedTrigger(store: TaskStore, task: Task, patch: Record<string, unknown>): TriggerEdit | undefined {
   const changed = (key: string) => key in patch && canonical(patch[key]) !== canonical(task[key as keyof Task]);
   if (["schedule", "timezone", "recurrence"].some(changed)) return "schedule";
-  if (!["decision", "evidence", "owner_domains", "scope", "action_level", "expires_at", "auto_resolve"].some(changed))
-    return undefined;
+  const bindingChanged = ["decision", "evidence", "owner_domains", "action_level", "auto_resolve"].some(changed);
+  // An event has no time cursor to reopen. Harmless metadata edits keep its
+  // current occurrence; the edit revision still invalidates action proposals.
+  if (!bindingChanged && (!["scope", "expires_at"].some(changed) || task.schedule.kind === "event")) return undefined;
   // The latest fired slot of this generation, if nobody has seen or settled it yet.
   const latest = store.occurrences
     .filter((o) => o.task_id === task.id && o.generation === task.generation && o.kind !== "expired")

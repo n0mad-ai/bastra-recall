@@ -41,6 +41,12 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   stop with a clear message and leave every file where it is; `bastra doctor`
   shows the problem. Your own directory that was open to others is closed to
   you alone, as before.
+- **The archive is not used while it holds something that is not yours.** If
+  a link or an entry of another account lies directly in the archive
+  directory, the archiving `rm` and the git snapshots stop and leave every
+  file where it is. This also applies to a link you made there yourself. The
+  message names the entry; move it out of the archive directory to use the
+  archive again.
 
 ### Fixed
 
@@ -93,15 +99,19 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   such a time are still refused when you create them (#1585).
 - Tasks: editing a field that does not change the time (for example the area
   or the end of validity) no longer fires an already delivered reminder again
-  with a large missed count. A reminder you have not seen yet is shown once
-  more (#1586).
+  with a large missed count. A time reminder you have not seen yet is shown
+  once more; a reminder triggered by an event stays as it is when only the
+  area or the end of validity changes (#1586).
 - Tasks: a chat announcement that is stopped before anything is sent is tried
   again later, and the reminder stays visible on the next contact (#1583).
-- Tasks: one task whose history is full no longer stops all other reminders.
-  That task is switched off with a visible error instead (#1581).
+- Tasks: one task whose history is full no longer stops all other reminders,
+  also when several events for it arrive at once. That task is switched off
+  with a visible error instead (#1581).
 - Tasks: the Mac notification for an expired task follows `language.primary`,
   with English as the fallback; the reminder confirmation is no longer
-  prescribed in German, and texts meant for the agent are English (#1594). The
+  prescribed in German, and the task cards and reminder access hints the agent
+  reads are English. Some stored error and review texts still reach the agent
+  in German (#1594). The
   `bastra tasks` CLI stays German as before, error messages included, so one
   dialog never mixes two languages; a missing terminal now gets its own message.
 - Tasks: recording the Claude chat setup answer no longer stores the current

@@ -172,7 +172,7 @@ function fire(store: TaskStore, task: Task, key: string, due: number, now: numbe
   const id = taskValueHash(
     JSON.stringify(["task-occurrence-v1", task.id, task.generation, [...task.owner_domains].sort(), key])
   );
-  if (store.occurrences.some((o) => o.id === id)) return;
+  if (!task.armed || store.occurrences.some((o) => o.id === id) || historyFull(task, now)) return;
   store.occurrences.push({
     id,
     task_id: task.id,
@@ -195,8 +195,8 @@ function fire(store: TaskStore, task: Task, key: string, due: number, now: numbe
  * is disarmed with a failure the owner sees, instead of making the whole
  * evaluation fail for every other task (#1581). */
 function historyFull(task: Task, now: number): boolean {
-  if (!task.armed || task.history.length < TASK_HISTORY_RESERVE - 1) return false;
-  if (task.history.length < TASK_HISTORY_RESERVE) {
+  if (task.history.length < TASK_HISTORY_RESERVE - 1) return false;
+  if (task.armed) {
     task.armed = false;
     task.last_failure = { at: now, code: "history_capacity", message: "Task history is full; owner review needed" };
     audit(task, now, "history-full");
@@ -382,10 +382,17 @@ export function evaluateTaskSnapshot(store: TaskStore, now: number): void {
   store.checkpoint = Math.max(store.checkpoint, cursor);
 }
 export async function reconcileTaskTime(ctx: TaskServiceContext): Promise<TaskStore> {
-  return transactTaskStore(ctx.path, undefined, async (s) => {
-    await checkTaskDecisions(ctx, s);
-    evaluateTaskSnapshot(s, (ctx.now ?? Date.now)());
-  });
+  // Automatic disarming needs its audit row even at the normal history
+  // reserve, so it uses the space kept for control operations (#1581).
+  return transactTaskStore(
+    ctx.path,
+    undefined,
+    async (s) => {
+      await checkTaskDecisions(ctx, s);
+      evaluateTaskSnapshot(s, (ctx.now ?? Date.now)());
+    },
+    "control"
+  );
 }
 /** Registered local paths observe snapshots, not every intermediate write. */
 export async function observeTaskSources(
