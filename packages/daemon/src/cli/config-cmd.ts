@@ -8,9 +8,9 @@ import {
   validateEnvPinChanges,
   validateRawEnvInput,
 } from "../settings-env.js";
-import { notifyAssistantAddressDaemon } from "../assistant-address.js";
+import { notifyAssistantAddressDaemon, assistantAddressFor } from "../assistant-address.js";
 import { configureAssistantName } from "./address-cmd.js";
-import { getAssistantDisplayName } from "../assistant-address-settings.js";
+import { getAssistantDisplayName, getAssistantName } from "../assistant-address-settings.js";
 import { assistantUrls } from "../assistant-address-name.js";
 /**
  * `bastra config get|set <key> [value]` — settings access from the CLI.
@@ -98,6 +98,17 @@ export async function cmdConfig(args: ParsedArgs): Promise<number> {
   }
 
   return action === "get" ? cmdConfigGet(key) : cmdConfigSet(key, value);
+}
+
+/** Confirmation after `config set assistant.name`: the name as saved and which address applies. */
+async function assistantNameReport(value: string): Promise<string> {
+  const derived = assistantAddressFor(value),
+    name = await getAssistantName(),
+    head = `✓ assistant.name = ${await getAssistantDisplayName()}\n`;
+  if (derived !== null)
+    return `${head}  ${assistantUrls(derived).local}\n  Einmalige Einrichtung: bastra address setup --yes\n`;
+  const current = name ? `es gilt weiter ${assistantUrls(name).local}` : "es ist keine Adresse eingerichtet";
+  return `${head}  Aus diesem Namen lässt sich keine Browser-Adresse bilden; ${current}.\n`;
 }
 
 async function cmdConfigGet(key: KnownKey): Promise<number> {
@@ -236,9 +247,7 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
         return 2;
       }
       await configureAssistantName(value);
-      process.stdout.write(
-        `✓ assistant.name = ${await getAssistantDisplayName()}\n  ${assistantUrls(value).local}\n  Einmalige Einrichtung: bastra address setup --yes\n`
-      );
+      process.stdout.write(await assistantNameReport(value));
       return 0;
     }
     case "update.mode": {

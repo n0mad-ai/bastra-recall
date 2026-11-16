@@ -1,4 +1,5 @@
 /** DNS-label names, deliberately separate from UI display text and shell code. */
+import { domainToASCII, domainToUnicode } from "node:url";
 // IANA TLD snapshot 2026102900: https://data.iana.org/TLD/tlds-alpha-by-domain.txt
 const TLDS = new Set(
   `aaa aarp abb abbott abbvie abc able abogado abudhabi ac academy accenture accountant accountants aco actor ad
@@ -107,20 +108,59 @@ const RESERVED = new Set([
   "test",
   "example",
 ]);
+const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+/** Strict check of an address name (an ASCII DNS label, A-labels `xn--…` included). Only such a label
+ * reaches hosts, Firefox preferences and the gateway's Host check. */
+const NO_ADDRESS =
+  "Assistentenname: Aus diesem Namen lässt sich keine lokale Adresse bilden (Buchstaben oder Ziffern nötig, höchstens 63 Zeichen in Adressform, kein reservierter Name).";
 export function normalizeAssistantName(value: string, machineNames: readonly string[] = []): string {
   const name = value.trim().toLowerCase();
   if (
-    !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(name) ||
+    !LABEL.test(name) ||
     !/[a-z]/.test(name) ||
     RESERVED.has(name) ||
     TLDS.has(name) ||
-    name.startsWith("xn--") ||
+    (name.startsWith("xn--") && domainToASCII(name) !== name) ||
     machineNames.some((host) => host.toLowerCase().replace(/\.$/, "").split(".")[0] === name)
   ) {
-    throw new Error(
-      "Assistentenname: 1–63 Zeichen (a–z, 0–9, Bindestrich), mindestens ein Buchstabe; kein reservierter Name."
-    );
+    throw new Error(NO_ADDRESS);
   }
+  return name;
+}
+/** The address name a display name derives to, or null when none can be formed. Language-independent:
+ * runs of characters other than letters, marks and digits become one hyphen (typed hyphens stay as they
+ * are), then IDNA/UTS #46 (`domainToASCII`) lower-cases and encodes the label, e.g. Jürgen → xn--jrgen-kva. */
+export function deriveAssistantAddress(value: string, machineNames: readonly string[] = []): string | null {
+  const label = value
+    .normalize("NFC")
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, (run) => (/^-+$/.test(run) ? run : "-"))
+    .replace(/^-+|-+$/g, "");
+  try {
+    return normalizeAssistantName(domainToASCII(label), machineNames);
+  } catch {
+    return null;
+  }
+}
+/** deriveAssistantAddress for a step that needs an address (setup): no address is an error there. */
+export function requireAssistantAddress(value: string, machineNames: readonly string[] = []): string {
+  const name = deriveAssistantAddress(value, machineNames);
+  if (name === null) throw new Error(NO_ADDRESS);
+  return name;
+}
+/** The form a person types and reads (xn--jrgen-kva → jürgen). */
+export function readableAssistantName(name: string): string {
+  return domainToUnicode(name) || name;
+}
+const ASSISTANT_DISPLAY_NAME_MAX = 64;
+/** The name as typed: trimmed and NFC-normalized. Only technical limits apply (1–64 code points, no
+ * control characters, line breaks or lone surrogates); whether an address derives does not matter. */
+export function normalizeAssistantDisplayName(value: string): string {
+  const name = value.normalize("NFC").trim();
+  const length = [...name].length;
+  if (length < 1 || length > ASSISTANT_DISPLAY_NAME_MAX || /[\p{Cc}\p{Cs}\p{Zl}\p{Zp}]/u.test(name))
+    throw new Error(
+      `Assistentenname: 1–${ASSISTANT_DISPLAY_NAME_MAX} Zeichen, ohne Steuerzeichen oder Zeilenumbrüche.`
+    );
   return name;
 }
 export function assistantUrls(value: string) {

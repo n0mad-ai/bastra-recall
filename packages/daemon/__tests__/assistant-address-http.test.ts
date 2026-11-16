@@ -96,7 +96,26 @@ test("#1332: actual settings route preserves local CSRF and performs no system c
   assert.equal((await post("/ui/assistant-address", { name: "ruby" })).status, 409);
   assert.equal((await post("/ui/assistant-address", { name: "ruby", systemConsent: true })).status, 200);
   assert.doesNotMatch(await readFile(hostsPath, "utf8"), /jarvis/);
-  const invalid = await post("/ui/assistant-address", { name: "Jürgen", systemConsent: true });
+  const idn = await post("/ui/assistant-address", { name: "Jürgen", systemConsent: true });
+  assert.equal(idn.status, 200, "special characters are a valid name");
+  const idnBody = (await idn.json()) as any;
+  assert.deepEqual(
+    [idnBody.displayName, idnBody.name, idnBody.readableName, idnBody.targetName, idnBody.targetReadableName],
+    ["Jürgen", "xn--jrgen-kva", "jürgen", "xn--jrgen-kva", "jürgen"],
+    "the daemon names both forms; the UI derives nothing"
+  );
+  assert.match(await readFile(hostsPath, "utf8"), /127\.0\.0\.1 xn--jrgen-kva xn--jrgen-kva\.localhost/);
+  const before = admins;
+  const none = await post("/ui/assistant-address", { name: "🤖", systemConsent: true });
+  assert.equal(none.status, 200, "a name without derivable address is still saved");
+  const noneBody = (await none.json()) as any;
+  assert.deepEqual(
+    [noneBody.displayName, noneBody.name, noneBody.targetName],
+    ["🤖", "xn--jrgen-kva", null],
+    "the previous address stays"
+  );
+  assert.equal(admins, before, "nothing is set up");
+  const invalid = await post("/ui/assistant-address", { name: "a\nb", systemConsent: true });
   assert.equal(invalid.status, 400);
   assert.equal(((await invalid.json()) as any).code, "invalid_name");
 });

@@ -26,13 +26,23 @@ test("display name keeps the typed spelling; the address name derives from it", 
   assert.equal(await getAssistantDisplayName(path), "Jarvis", "the same address keeps the display name");
   await setAssistantName("ruby", path);
   assert.equal(await getAssistantDisplayName(path), "ruby", "a different address drops a stale display name");
-  for (const bad of ["Jürgen", "Mein Jarvis", "!!!", "a\u0007b", "x".repeat(64), "localhost"])
+  for (const bad of ["", "a\u0007b", "a\nb", "x".repeat(65)])
     await assert.rejects(setAssistantDisplayName(bad, path), /Assistentenname/, bad);
   assert.equal(await getAssistantDisplayName(path), "ruby", "rejected input changes nothing");
+  for (const free of ["Jürgen", "Mein Jarvis", "!!!", "localhost", "🤖"]) {
+    await setAssistantDisplayName(free, path);
+    assert.equal(await getAssistantDisplayName(path), free, "any spelling is kept as typed");
+    assert.equal(await getAssistantName(path), "ruby", "the address does not change through the display name");
+  }
+  await setAssistantDisplayName("Jürgen", path);
+  await setAssistantName("xn--jrgen-kva", path);
+  assert.equal(await getAssistantDisplayName(path), "Jürgen", "coupling uses the same derivation, not lower case");
   // Externally edited data is validated on read.
-  await mutateSettings(path, (s) => ({ ...s, assistant: { name: "ruby", displayName: "Ru by" } }) as never);
+  await mutateSettings(path, (s) => ({ ...s, assistant: { name: "ruby", displayName: "Ru\nby" } }) as never);
   assert.equal((await readSettings(path)).assistant?.displayName, undefined);
   assert.equal(await getAssistantDisplayName(path), "ruby");
+  await mutateSettings(path, (s) => ({ ...s, assistant: { name: "xn--jrgen-kva" } }) as never);
+  assert.equal(await getAssistantDisplayName(path), "jürgen", "without a display name the address reads as typed");
 });
 
 async function fixture(t: { after: (fn: () => Promise<void>) => void }, platform: NodeJS.Platform = "darwin") {
@@ -118,9 +128,10 @@ test("settings save: a failed address setup still applies the display name and s
 
 test("settings save: invalid names write nothing; without macOS no admin step runs", async (t) => {
   const { options, admin } = await fixture(t, "linux");
-  for (const bad of ["Jürgen", "Mein Jarvis", "---", ""])
+  for (const bad of ["", "   ", "a\nb", "x".repeat(65)])
     await assert.rejects(renameAssistant(bad, { ...options, systemConsent: true }), /Assistentenname/, bad);
   assert.equal(await getAssistantName(options.settingsPath), null);
+  assert.equal(await getAssistantDisplayName(options.settingsPath), null);
   assert.deepEqual(await renameAssistant("Jarvis", { ...options, systemConsent: true }), { warning: undefined });
   assert.equal(admin.calls, 0);
   assert.equal(await getAssistantName(options.settingsPath), "jarvis");
@@ -133,4 +144,64 @@ test("settings save without consent keeps the existing consent gate for a set-up
   await assert.rejects(renameAssistant("Ruby", options), /consent|Zustimmung/i);
   assert.equal(admin.calls, 1);
   assert.equal(await getAssistantDisplayName(options.settingsPath), "jarvis");
+});
+
+test("settings save: a name with special characters sets up its A-label address and keeps the spelling", async (t) => {
+  const { options, admin, hostsPath } = await fixture(t);
+  await renameAssistant("Jürgen", { ...options, systemConsent: true });
+  assert.equal(admin.calls, 1);
+  assert.equal(await getAssistantName(options.settingsPath), "xn--jrgen-kva");
+  assert.equal(await getAssistantDisplayName(options.settingsPath), "Jürgen");
+  assert.match(await readFile(hostsPath, "utf8"), /^127\.0\.0\.1 xn--jrgen-kva xn--jrgen-kva\.localhost$/m);
+  const hosts = await readFile(hostsPath, "utf8");
+  await renameAssistant("JÜRGEN", { ...options, systemConsent: true });
+  assert.equal(admin.calls, 1, "same derived address: nothing is set up again");
+  assert.equal(await readFile(hostsPath, "utf8"), hosts);
+  assert.equal(await getAssistantDisplayName(options.settingsPath), "JÜRGEN");
+});
+
+test("settings save: a name without derivable address is kept; the set-up address stays untouched", async (t) => {
+  const { options, admin, hostsPath } = await fixture(t);
+  assert.deepEqual(await renameAssistant("🤖", { ...options, systemConsent: true }), { warning: undefined });
+  assert.equal(admin.calls, 0, "no address, no system step");
+  assert.equal(await getAssistantName(options.settingsPath), null, "still no address");
+  assert.equal(await getAssistantDisplayName(options.settingsPath), "🤖");
+  await renameAssistant("Jarvis", { ...options, systemConsent: true });
+  assert.equal(admin.calls, 1);
+  const hosts = await readFile(hostsPath, "utf8");
+  for (const name of ["🤖", "!!!", "localhost", "a".repeat(64)]) {
+    assert.deepEqual(await renameAssistant(name, { ...options, systemConsent: true }), { warning: undefined }, name);
+    assert.equal(await getAssistantDisplayName(options.settingsPath), name);
+    assert.equal(await getAssistantName(options.settingsPath), "jarvis", "the previous address still applies");
+  }
+  assert.equal(admin.calls, 1);
+  assert.equal(await readFile(hostsPath, "utf8"), hosts);
+  await assert.doesNotReject(renameAssistant("🤖", options), "without consent too: nothing to set up");
+});
+
+test("security: only the checked ASCII label reaches hosts, Firefox and the admin plan", async (t) => {
+  const { options, hostsPath } = await fixture(t);
+  const plans: any[] = [];
+  const runAdmin = options.runAdmin;
+  options.runAdmin = async (plan: any) => {
+    plans.push(plan);
+    await runAdmin(plan);
+  };
+  await mkdir(join(options.firefoxRoot, "p.default"));
+  await writeFile(join(options.firefoxRoot, "profiles.ini"), "[Profile0]\nPath=p.default\nIsRelative=1\n");
+  const typed = "Mein $(Jarvis) `id`; Jürgen | x & y > z";
+  await renameAssistant(typed, { ...options, systemConsent: true });
+  const name = await getAssistantName(options.settingsPath);
+  assert.match(name ?? "", /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/);
+  assert.equal(await getAssistantDisplayName(options.settingsPath), typed);
+  const hosts = await readFile(hostsPath, "utf8");
+  assert.ok(hosts.includes(`127.0.0.1 ${name} ${name}.localhost\n`));
+  const userJs = await readFile(join(options.firefoxRoot, "p.default", "user.js"), "utf8");
+  assert.ok(userJs.includes(`browser.fixup.domainwhitelist.${name}"`), userJs);
+  // Everything that may carry the name: hosts, Firefox prefs, the admin plan (helper plists name no one).
+  const helpers = plans.map((p) => `${p.helperAfter ?? ""}${p.companion?.after ?? ""}`).join("");
+  assert.ok(!helpers.includes(name!) && !helpers.includes("Jarvis"), "the helper arguments do not carry the name");
+  for (const text of [hosts, userJs, plans.map((p) => p.hostsAfter).join("")])
+    for (const bad of ["$(", "`", "|", " & ", "ü", "Jarvis", "Mein "]) assert.ok(!text.includes(bad), bad);
+  assert.ok(!hosts.includes(";"));
 });

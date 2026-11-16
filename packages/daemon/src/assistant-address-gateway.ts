@@ -4,6 +4,7 @@ import { createLocalAccountGuard, type LocalAccountOptions } from "./local-accou
 import { createServer, request, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import { Socket } from "node:net";
 import { readFile } from "node:fs/promises";
+import { domainToASCII } from "node:url";
 import { normalizeAssistantName } from "./assistant-address-name.js";
 import { managedAssistantHostsName } from "./assistant-address-files.js";
 import { gateLocalPost, isLoopback } from "./http-auth.js";
@@ -32,6 +33,15 @@ export async function readAssistantGatewayConfig(
   } catch {
     return null;
   }
+}
+/** Host header without port and trailing dot, as an ASCII host. Browsers and Node send an IDN as its
+ * A-label (xn--…); clients without IDN support (macOS curl) send the UTF-8 bytes, which Node hands over
+ * as latin1 (decoded before lower-casing, which would alter those bytes). Both map to the same A-label;
+ * an undecodable host becomes empty, so only the configured ASCII name can ever match. */
+function gatewayHost(header: string | undefined, localPort: number | undefined): string {
+  const host = (header ?? "").replace(new RegExp(`:${localPort}$`), "").replace(/\.$/, "");
+  if (/^[\x21-\x7e]*$/.test(host)) return host.toLowerCase();
+  return domainToASCII(Buffer.from(host, "latin1").toString("utf8")) || "";
 }
 function reply(res: ServerResponse, code: number, error: string) {
   res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store" });
@@ -81,7 +91,7 @@ export function assistantGatewayHandler(opts: AssistantGatewayOptions) {
       const config = await readAssistantGatewayConfig(opts.settingsPath, opts.databasePath);
       if (!config?.enabled) return reply(res, 404, "assistant UI is disabled");
       const rawHost = req.headers.host?.toLowerCase() ?? "";
-      const host = rawHost.replace(new RegExp(`:${req.socket.localPort}$`), "").replace(/\.$/, "");
+      const host = gatewayHost(req.headers.host, req.socket.localPort);
       let bareReady = false;
       if (host === config.name) {
         try {

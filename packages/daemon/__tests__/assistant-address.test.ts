@@ -3,7 +3,13 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { normalizeAssistantName, assistantUrls } from "../src/assistant-address-name.js";
+import {
+  normalizeAssistantName,
+  assistantUrls,
+  deriveAssistantAddress,
+  readableAssistantName,
+  normalizeAssistantDisplayName,
+} from "../src/assistant-address-name.js";
 import { patchAssistantHosts, patchFirefoxUserJs } from "../src/assistant-address-files.js";
 import { getAssistantName, setAssistantName } from "../src/assistant-address-settings.js";
 import { setUiEnabled, readSettings } from "../src/settings.js";
@@ -37,6 +43,65 @@ test("#1332: DNS name validation rejects injection, reserved/IP-like labels and 
   assert.equal(assistantUrls("Jarvis").local, "http://jarvis.localhost/ui/");
   assert.equal(assistantUrls("Jarvis").bare, "http://jarvis/ui/");
 });
+test("address derivation: any language yields an IDNA A-label or no address, never an unsafe label", () => {
+  const cases: Array<[string, string | null]> = [
+    ["Jarvis", "jarvis"],
+    [" JARVIS ", "jarvis"],
+    ["Jürgen", "xn--jrgen-kva"],
+    ["Mein Jarvis", "mein-jarvis"],
+    ["José  María!", "xn--jos-mara-d1a8b"],
+    ["Ñandú", "xn--and-6ma2c"],
+    ["Straße", "xn--strae-oqa"], // UTS #46 nontransitional: ß stays ß
+    ["İsmail", "xn--ismail-pyd"], // Unicode case mapping, no Turkish table
+    ["ısık", "xn--sk-gpab"],
+    ["東京", "xn--1lqs71d"],
+    ["محمد", "xn--sgbe8db"], // right-to-left
+    ["שלום", "xn--9dbne9b"],
+    ["नमस्ते", "xn--h2bhs4b8d8a"],
+    ["abcمحمد", null], // mixed directions fail the IDNA bidi rule
+    ["🤖", null],
+    ["🤖 Jarvis", "jarvis"],
+    ["!!!", null],
+    ["   ", null],
+    ["a.b", "a-b"],
+    ["ab--cd", "ab--cd"], // typed hyphens stay as typed
+    ["xn--jrgen-kva", "xn--jrgen-kva"], // an A-label is already its own address
+    ["XN--JRGEN-KVA", "xn--jrgen-kva"],
+    ["xn--abc", null], // not a valid A-label
+    ["a".repeat(63), "a".repeat(63)],
+    ["a".repeat(64), null],
+    ["ü".repeat(60), null], // the A-label would exceed 63 characters
+    ["localhost", null],
+    ["Com", null], // TLD
+    ["123", null],
+    ["$(id); rm", "id-rm"],
+    ["a\nroot", "a-root"],
+  ];
+  for (const [input, expected] of cases) {
+    const address = deriveAssistantAddress(input);
+    assert.equal(address, expected, input);
+    if (address !== null) {
+      assert.match(address, /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/, `only a checked ASCII label: ${input}`);
+      assert.equal(normalizeAssistantName(address), address, "strict check accepts its own result");
+      assert.equal(deriveAssistantAddress(address), address, "derivation is stable");
+    }
+  }
+  assert.equal(deriveAssistantAddress("Jarvis", ["Jarvis.local"]), null, "the machine's own host name stays reserved");
+  assert.equal(readableAssistantName("xn--jrgen-kva"), "jürgen");
+  assert.equal(readableAssistantName("jarvis"), "jarvis");
+  assert.equal(assistantUrls("xn--jrgen-kva").bare, "http://xn--jrgen-kva/ui/");
+  assert.throws(() => assistantUrls("Jürgen"), /Assistentenname/, "URLs only from a checked address name");
+});
+
+test("display name: free spelling in any script, only technical limits", () => {
+  assert.equal(normalizeAssistantDisplayName("  Mein Jarvis "), "Mein Jarvis");
+  assert.equal(normalizeAssistantDisplayName("Ju\u0308rgen"), "Jürgen", "NFC");
+  for (const ok of ["Jürgen", "🤖", "محمد", "東京", "x".repeat(64), "👨‍👩‍👧‍👦".repeat(9)])
+    assert.equal(normalizeAssistantDisplayName(ok), ok, ok);
+  for (const bad of ["", "   ", "x".repeat(65), "a\nb", "a\rb", "a\tb", "a\u0007b", "a\u2028b", "a\ud800b"])
+    assert.throws(() => normalizeAssistantDisplayName(bad), /Assistentenname/, JSON.stringify(bad));
+});
+
 test("#1332: name persists across unrelated settings writes without touching user text", async (t) => {
   const d = await mkdtemp(join(tmpdir(), "assistant-setting-"));
   t.after(() => rm(d, { recursive: true, force: true }));
@@ -80,6 +145,30 @@ test("#1332: address CLI flags/help cover consent and a dry-run does not install
   assert.match(COMMAND_HELP.address, /browser|Browser/);
   assert.match(COMMAND_HELP.address, /--yes/);
   assert.deepEqual(parseArgs(["config", "set", "assistant.name", "Jarvis"]).errors, []);
+});
+
+test("address CLI: setup takes names with special characters through the same derivation", async () => {
+  const { parseArgs } = await import("../src/cli/commands.js"),
+    { cmdAddress } = await import("../src/cli/address-cmd.js");
+  const run = async (name: string) => {
+    let out = "";
+    const write = process.stdout.write,
+      error = process.stderr.write;
+    process.stdout.write = ((chunk: string) => ((out += chunk), true)) as typeof process.stdout.write;
+    process.stderr.write = ((chunk: string) => ((out += chunk), true)) as typeof process.stderr.write;
+    try {
+      return { code: await cmdAddress(parseArgs(["address", "setup", name, "--dry-run"])), out };
+    } finally {
+      process.stdout.write = write;
+      process.stderr.write = error;
+    }
+  };
+  const idn = await run("Jürgen");
+  assert.equal(idn.code, 0);
+  assert.match(idn.out, /http:\/\/xn--jrgen-kva\.localhost\/ui\//);
+  const none = await run("🤖");
+  assert.equal(none.code, 1, "setup needs an address");
+  assert.match(none.out, /keine lokale Adresse bilden/);
 });
 
 test("release D: UID prefixes in foreign hosts and Firefox markers remain foreign", () => {

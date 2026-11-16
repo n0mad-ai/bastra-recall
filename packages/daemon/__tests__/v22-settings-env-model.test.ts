@@ -136,7 +136,7 @@ test("v22 agent group: the name comes first, is editable and saves through the a
     calls.push({ path, body: options.body ? JSON.parse(options.body) : undefined });
     if (path.endsWith("/session")) return { ok: true, json: async () => ({ csrf: "fixture" }) };
     if (path === "/ui/assistant-address") {
-      if (options.body && JSON.parse(options.body).name === "Jürgen")
+      if (options.body && JSON.parse(options.body).name === "a\u0007b")
         return { ok: false, status: 400, json: async () => ({ error: "Assistentenname: …", code: "invalid_name" }) };
       if (options.body) saved = JSON.parse(options.body).name;
       return { ok: true, json: async () => ({ name: saved.toLowerCase(), displayName: saved, ready: true }) };
@@ -159,10 +159,10 @@ test("v22 agent group: the name comes first, is editable and saves through the a
   assert.equal(m.assistantName(), "Jarvis", "shown as typed");
   assert.equal(m.store.address.displayName, "Jarvis");
   assert.equal(m.store.error, "");
-  m.setValue("assistant.name", "Jürgen");
+  m.setValue("assistant.name", "a\u0007b");
   await m.apply();
   assert.equal(m.store.error, "st.addr.invalid", "a short, translated message");
-  assert.equal(m.store.changes.get("assistant.name"), "Jürgen", "the rejected input stays for correction");
+  assert.equal(m.store.changes.get("assistant.name"), "a\u0007b", "the rejected input stays for correction");
   assert.equal(m.assistantName(), "Jarvis");
 });
 
@@ -172,13 +172,37 @@ test("v22 address note: honest state of http://<name>/ for the saved name", asyn
     source.replace(/^import .*;$/gm, "").replace(/^export /gm, "") + "\n({ addressNote })",
     { t: (key: string, v?: any) => (v ? `${key} ${JSON.stringify(v)}` : key), store: {}, h() {} }
   );
-  const ok = { name: "jarvis", registeredName: "jarvis", ready: true, systemSetupSupported: true };
-  assert.match(addressNote("Jarvis", ok).text, /st\.addr\.ready .*http:\/\/jarvis\//);
+  const ok = {
+    name: "jarvis",
+    registeredName: "jarvis",
+    targetName: "jarvis",
+    ready: true,
+    systemSetupSupported: true,
+  };
+  assert.match(addressNote("Jarvis", ok).text, /st\.addr\.ready .*http:\/\/jarvis\/"/);
   assert.equal(addressNote("Jarvis", ok).retry, false);
-  const failed = { ...ok, warning: "Systemeinrichtung abgebrochen, nichts geändert." };
+  const failed = { ...ok, targetName: "ruby", warning: "Systemeinrichtung abgebrochen, nichts geändert." };
   const pending = addressNote("Ruby", failed);
   assert.match(pending.text, /st\.addr\.todo .*http:\/\/ruby\/.* Systemeinrichtung abgebrochen/);
   assert.equal(pending.retry, true);
-  assert.match(addressNote("ruby", { name: "ruby", systemSetupSupported: false }).text, /ruby\.localhost/);
+  assert.match(
+    addressNote("ruby", { name: "ruby", targetName: "ruby", systemSetupSupported: false }).text,
+    /ruby\.localhost/
+  );
   assert.equal(addressNote(null, ok), null);
+  // Special characters: the readable form first, the technical one only in addition; the daemon supplies both.
+  const idn = {
+    ...ok,
+    name: "xn--jrgen-kva",
+    registeredName: "xn--jrgen-kva",
+    readableName: "jürgen",
+    targetName: "xn--jrgen-kva",
+    targetReadableName: "jürgen",
+  };
+  assert.equal(addressNote("Jürgen", idn).text, 'st.addr.ready {"url":"http://jürgen/ (http://xn--jrgen-kva/)"}');
+  // No address derivable: say so, and which address still applies (or that there is none).
+  const none = addressNote("🤖", { ...idn, targetName: null, targetReadableName: null });
+  assert.equal(none.text, 'st.addr.none {"url":"http://jürgen/ (http://xn--jrgen-kva/)"}');
+  assert.equal(none.retry, false);
+  assert.equal(addressNote("🤖", { name: null, targetName: null, systemSetupSupported: true }).text, "st.addr.noneYet");
 });

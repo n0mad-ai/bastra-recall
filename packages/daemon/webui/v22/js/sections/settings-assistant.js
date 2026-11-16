@@ -1,19 +1,34 @@
-// Name row of the agent group: the ordinary text field plus the state of the local address
-// derived from the saved name (lower case: http://<name>/). Daemon text is shown as text only.
+// Name row of the agent group: the ordinary text field plus the state of the local address the
+// daemon derives from the saved name (http://<address>/). The UI does not derive the address itself;
+// it shows the daemon's names, as text only.
 import { h } from "../dom.js";
 import { t } from "../i18n.js";
 import { store, retryAddress } from "./settings-model.js";
 
+/** http://<readable>/, plus the technical form when it differs (http://jürgen/ (http://xn--jrgen-kva/)). */
+function addressText(name, readable) {
+  const shown = readable || name;
+  return shown === name ? `http://${name}/` : `http://${shown}/ (http://${name}/)`;
+}
+
 /** What the note says about the address of the saved name, or null while there is nothing to say. */
 export function addressNote(saved, s) {
-  if (!s || typeof s.name !== "string" || typeof saved !== "string" || !saved.trim()) return null;
-  const name = saved.trim().toLowerCase(),
-    url = `http://${name}/`;
+  if (!s || typeof saved !== "string" || !saved.trim()) return null;
   if (s.pending) return { text: t("st.addr.pending"), retry: false };
-  if (s.ready && s.name === name && s.registeredName === name)
+  const current = s.name ? addressText(s.name, s.readableName) : null;
+  // The saved name derives no address: say so and which address (if any) still applies.
+  if (!s.targetName)
+    return { text: current ? t("st.addr.none", { url: current }) : t("st.addr.noneYet"), retry: false };
+  return targetNote(s, addressText(s.targetName, s.targetReadableName));
+}
+
+function targetNote(s, url) {
+  if (s.ready && s.name === s.targetName && s.registeredName === s.targetName)
     return { text: t("st.addr.ready", { url }), retry: false };
   if (!s.systemSetupSupported)
-    return { text: t("st.addr.manual", { url: `http://${s.name}.localhost/` }), retry: false };
+    return s.name
+      ? { text: t("st.addr.manual", { url: `http://${s.readableName || s.name}.localhost/` }), retry: false }
+      : null;
   const reason = [s.warning, s.error].find((x) => typeof x === "string" && x) || "";
   return { text: `${t("st.addr.todo", { url })}${reason ? ` ${reason}` : ""}`, retry: true };
 }

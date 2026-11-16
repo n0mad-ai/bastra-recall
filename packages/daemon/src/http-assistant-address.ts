@@ -10,9 +10,10 @@ import {
   setupAssistantAddress,
   assistantAddressStatus,
   openAssistantAddress,
+  assistantAddressFor,
   type AssistantAddressOptions,
 } from "./assistant-address.js";
-import { normalizeAssistantName } from "./assistant-address-name.js";
+import { normalizeAssistantDisplayName, readableAssistantName } from "./assistant-address-name.js";
 import { managedAssistantHostsName } from "./assistant-address-files.js";
 import { getAssistantName, getAssistantDisplayName, setAssistantDisplayName } from "./assistant-address-settings.js";
 const change = z.strictObject({ name: z.string().min(1), systemConsent: z.boolean().optional() });
@@ -28,32 +29,56 @@ async function registeredAddress(o: ReturnType<typeof assistantAddressOptions>):
   }
 }
 
-/** Saves the name as typed; the address name derives from it (lower case). With systemConsent (the save is
- * the user's instruction) a macOS address not yet set up for the derived name is set up. If that part fails,
- * the display name still applies and the warning says why; the address stays as it was. */
+/** Saves the name as typed; the address name derives from it (deriveAssistantAddress). With systemConsent
+ * (the save is the user's instruction) a macOS address not yet set up for the derived name is set up. If
+ * that part fails, the display name still applies and the warning says why; the address stays as it was.
+ * A name that derives no address is saved all the same and leaves the address (or none) unchanged. */
 export async function renameAssistant(value: string, options: AssistantAddressOptions = {}) {
   const o = assistantAddressOptions(options),
-    name = normalizeAssistantName(value),
-    system = !!o.systemConsent && o.platform === "darwin",
+    displayName = normalizeAssistantDisplayName(value),
+    name = assistantAddressFor(displayName, o);
+  let warning: string | undefined;
+  if (name !== null) warning = await applyAddress(name, options, o);
+  await setAssistantDisplayName(displayName, o.settingsPath);
+  return { warning };
+}
+
+/** The address part of a rename: save the derived address name and, with consent, set it up. */
+async function applyAddress(
+  name: string,
+  options: AssistantAddressOptions,
+  o: ReturnType<typeof assistantAddressOptions>
+): Promise<string | undefined> {
+  const system = !!o.systemConsent && o.platform === "darwin",
     openBrowser = o.openBrowser ?? openAssistantAddress;
   // Same address: the existing transaction only repairs an interrupted setup (with consent), nothing else.
-  if ((await getAssistantName(o.settingsPath)) === name) await changeAssistantName(value, { ...options, openBrowser });
+  if ((await getAssistantName(o.settingsPath)) === name) await changeAssistantName(name, { ...options, openBrowser });
   else
     try {
-      await changeAssistantName(value, { ...options, systemConsent: false }); // no address yet: saved directly
+      await changeAssistantName(name, { ...options, systemConsent: false }); // no address yet: saved directly
     } catch (error) {
       // A set-up address (or a finished partial setup) needs the system step; the setup below does it.
       if (!system || !/consent|Zustimmung|Systemfreigabe/i.test((error as Error).message)) throw error;
     }
-  let warning: string | undefined;
-  if (system && (await registeredAddress(o)) !== name)
-    try {
-      ({ warning } = await setupAssistantAddress({ ...options, name, openBrowser }));
-    } catch (error) {
-      warning = (error as Error).message;
-    }
-  await setAssistantDisplayName(value, o.settingsPath);
-  return { warning };
+  if (!system || (await registeredAddress(o)) === name) return undefined;
+  try {
+    return (await setupAssistantAddress({ ...options, name, openBrowser })).warning;
+  } catch (error) {
+    return (error as Error).message;
+  }
+}
+
+/** What the settings row shows: the name as typed, the readable form of the set address and the address
+ * the typed name derives to (target; null when it derives none). Text only, computed here, not in the UI. */
+async function nameForms(name: string | null, options: AssistantAddressOptions) {
+  const displayName = await getAssistantDisplayName(options.settingsPath),
+    target = displayName === null ? null : assistantAddressFor(displayName, options);
+  return {
+    displayName,
+    readableName: name === null ? null : readableAssistantName(name),
+    targetName: target,
+    targetReadableName: target === null ? null : readableAssistantName(target),
+  };
 }
 
 export async function handleAssistantAddressUi(
@@ -94,10 +119,11 @@ export async function handleAssistantAddressUi(
       return;
     }
     const listener = await refresh();
+    const status = await assistantAddressStatus({ ...options, gatewayPort: listener.port ?? options.gatewayPort });
     sendJson(res, 200, {
       warning,
-      ...(await assistantAddressStatus({ ...options, gatewayPort: listener.port ?? options.gatewayPort })),
-      displayName: await getAssistantDisplayName(options.settingsPath),
+      ...status,
+      ...(await nameForms(status.name, options)),
       fallbackUrl: `${options.daemonUrl}/ui/`,
     });
   } catch (e) {

@@ -15,7 +15,7 @@ export {
 } from "./settings-defaults.js";
 /** The settings contract: type, validation, defaults and presentation share one entry. */
 import { z } from "zod";
-import { normalizeAssistantName } from "./assistant-address-name.js";
+import { normalizeAssistantName, normalizeAssistantDisplayName } from "./assistant-address-name.js";
 import { parseRetain, parseSize } from "./rm-archive-reconcile.js";
 import { isDaemonEnvKey, type DaemonEnvKey } from "./daemon-spawn-env.js";
 import { isSupportedLanguage } from "./learned-recall/language.js";
@@ -68,13 +68,16 @@ const strings = z
     rows.filter((v): v is string => typeof v === "string" && v.trim().length > 0).map((v) => v.trim())
   );
 const nonemptyStrings = strings.refine((rows) => rows.length > 0);
-function isAssistantName(value: string): boolean {
-  try {
-    normalizeAssistantName(value);
-    return true;
-  } catch {
-    return false;
-  }
+/** Zod schema from a throwing normalizer (assistant names). */
+function normalized(normalize: (value: string) => string, message: string) {
+  return z.string().transform((value, ctx) => {
+    try {
+      return normalize(value);
+    } catch {
+      ctx.addIssue({ code: "custom", message });
+      return z.NEVER;
+    }
+  });
 }
 export function normalizeCorsOrigin(v: unknown): string | null {
   if (typeof v !== "string") return null;
@@ -271,19 +274,14 @@ export const SETTINGS_REGISTRY = {
     backdropBlur: setting(bool, { area: "general", label: "Hintergrundbild weichzeichnen", default: false }),
   },
   assistant: {
-    name: setting(
-      z.string().transform((value, ctx) => {
-        try {
-          return normalizeAssistantName(value);
-        } catch {
-          ctx.addIssue({ code: "custom", message: "Invalid assistant name" });
-          return z.NEVER;
-        }
-      }),
-      { area: "general", label: "Name des Assistenten", default: null, required: true }
-    ),
+    // Address name (ASCII DNS label). Optional: a display name that derives no address may stand alone.
+    name: setting(normalized(normalizeAssistantName, "Invalid assistant name"), {
+      area: "general",
+      label: "Name des Assistenten",
+      default: null,
+    }),
     // Written with the name through the address endpoint; the UI shows it in place of the address name.
-    displayName: setting(z.string().trim().refine(isAssistantName), {
+    displayName: setting(normalized(normalizeAssistantDisplayName, "Invalid assistant display name"), {
       area: "general",
       label: "Anzeigename des Assistenten",
       default: null,

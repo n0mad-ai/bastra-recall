@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer, request } from "node:http";
+import { connect } from "node:net";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -295,4 +296,62 @@ test("IPv4-only test listener: curl -4 succeeds, -6 refuses, dual resolution fal
   const dual = await run("/usr/bin/curl", args);
   assert.match(dual.stdout, /200$/);
   t.diagnostic(`dual resolution connect/total/status: ${dual.stdout}`);
+});
+
+test("IDN address: the gateway accepts the A-label Host browsers send and the UTF-8 form of non-IDN clients", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "assistant-gateway-idn-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const settingsPath = join(dir, "settings.json"),
+    hostsPath = join(dir, "hosts");
+  await writeFile(settingsPath, JSON.stringify({ ui: { enabled: true }, assistant: { name: "xn--jrgen-kva" } }));
+  await writeFile(
+    hostsPath,
+    patchAssistantHosts("127.0.0.1 localhost\n", "xn--jrgen-kva", String(process.getuid?.() ?? 0))
+  );
+  const backend = createServer((req, res) => {
+    req.resume();
+    res.end("idn-ui");
+  });
+  await new Promise<void>((resolve) => backend.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise<void>((resolve) => backend.close(() => resolve())));
+  const daemonUrl = `http://127.0.0.1:${(backend.address() as { port: number }).port}`;
+  const gateway = createServer(assistantGatewayHandler({ settingsPath, hostsPath, daemonUrl }));
+  await new Promise<void>((resolve) => gateway.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise<void>((resolve) => gateway.close(() => resolve())));
+  const port = (gateway.address() as { port: number }).port;
+  // Raw bytes on the wire, exactly as a client writes the Host header.
+  const status = (host: Buffer) =>
+    new Promise<number>((resolve, reject) => {
+      const socket = connect(port, "127.0.0.1", () =>
+        socket.write(
+          Buffer.concat([
+            Buffer.from("GET /ui/ HTTP/1.1\r\nHost: "),
+            host,
+            Buffer.from(`:${port}\r\nConnection: close\r\n\r\n`),
+          ])
+        )
+      );
+      let text = "";
+      socket.on("data", (chunk) => (text += chunk.toString("latin1")));
+      socket.on("end", () => resolve(Number(/^HTTP\/1\.1 (\d{3})/.exec(text)?.[1])));
+      socket.on("error", reject);
+    });
+  // Node (like browsers) converts an IDN to its A-label before sending.
+  assert.equal(new URL(`http://jürgen.localhost:${port}/`).host, `xn--jrgen-kva.localhost:${port}`);
+  assert.equal(await status(Buffer.from(new URL(`http://jürgen.localhost:${port}/`).hostname)), 200);
+  assert.equal(
+    await status(Buffer.from(new URL(`http://Jürgen:${port}/`).hostname)),
+    200,
+    "bare name with hosts entry"
+  );
+  // macOS curl has no IDN support and sends the UTF-8 bytes.
+  assert.equal(await status(Buffer.from("jürgen.localhost", "utf8")), 200);
+  assert.equal(await status(Buffer.from("JÜRGEN", "utf8")), 200);
+  const foreign: Array<[string, BufferEncoding]> = [
+    ["jurgen.localhost", "utf8"],
+    ["jürgen.evil.example", "utf8"],
+    ["xn--jrgen-kva.evil.example", "utf8"],
+    ["jürgen.localhost", "latin1"], // not UTF-8: undecodable, never matches
+  ];
+  for (const [host, encoding] of foreign) assert.equal(await status(Buffer.from(host, encoding)), 403, host);
 });

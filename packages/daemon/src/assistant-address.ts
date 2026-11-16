@@ -8,7 +8,12 @@ import { mkdir, readFile, writeFile, rename, rm, stat } from "node:fs/promises";
 import { withPathLock, PathLockUnavailableError } from "./path-lock.js";
 import { readSettings, settingsFilePath } from "./settings-file.js";
 import { appRecordDatabasePath } from "./app-record-store.js";
-import { normalizeAssistantName, assistantUrls } from "./assistant-address-name.js";
+import {
+  normalizeAssistantName,
+  deriveAssistantAddress,
+  requireAssistantAddress,
+  assistantUrls,
+} from "./assistant-address-name.js";
 import {
   patchAssistantHosts,
   managedAssistantHostsName,
@@ -199,6 +204,10 @@ function machineNames(o: ReturnType<typeof assistantAddressOptions>): readonly s
       /* hostname remains reserved */
     }
   return names;
+}
+/** The address name a typed name derives to on this machine (its own host names stay reserved), or null. */
+export function assistantAddressFor(value: string, options: AssistantAddressOptions = {}): string | null {
+  return deriveAssistantAddress(value, machineNames(assistantAddressOptions(options)));
 }
 async function requireFirefoxClosed(
   o: ReturnType<typeof assistantAddressOptions>,
@@ -732,7 +741,7 @@ async function changeAssistantNameUnlocked(
   recovering = false
 ): Promise<void> {
   const o = assistantAddressOptions(options),
-    name = normalizeAssistantName(value, machineNames(o)),
+    name = requireAssistantAddress(value, machineNames(o)),
     before = await getAssistantName(o.settingsPath);
   patchAssistantHosts((await optional(o.hostsPath)) ?? "", name, o.uid); // check conflicts before saving
   if (recovering || (before !== name && (await hasSystem(o)))) {
@@ -745,7 +754,10 @@ async function changeAssistantNameUnlocked(
 }
 async function setupAssistantAddressUnlocked(options: AssistantAddressOptions & { name?: string } = {}) {
   const o = assistantAddressOptions(options),
-    name = normalizeAssistantName(options.name ?? (await getAssistantName(o.settingsPath)) ?? "", machineNames(o));
+    name =
+      options.name === undefined
+        ? normalizeAssistantName((await getAssistantName(o.settingsPath)) ?? "", machineNames(o))
+        : requireAssistantAddress(options.name, machineNames(o));
   if (!o.systemConsent) throw new Error("Systemeinrichtung braucht ausdrückliche Zustimmung (system consent)");
   if (o.platform !== "darwin")
     throw new Error(

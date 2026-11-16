@@ -6,9 +6,10 @@ import {
   notifyAssistantAddressDaemon,
   addressRemovalNeedsConsent,
   openAssistantAddress,
+  assistantAddressFor,
   type AssistantAddressOptions,
 } from "../assistant-address.js";
-import { normalizeAssistantName, assistantUrls } from "../assistant-address-name.js";
+import { requireAssistantAddress, normalizeAssistantDisplayName, assistantUrls } from "../assistant-address-name.js";
 import { getAssistantDisplayName, setAssistantDisplayName } from "../assistant-address-settings.js";
 import { confirm } from "./prompt.js";
 import type { ParsedArgs } from "./types.js";
@@ -32,9 +33,9 @@ export async function cmdAddress(args: ParsedArgs, options?: AssistantAddressOpt
     if (!["setup", "remove"].includes(action))
       throw new Error("bastra address status | setup [name] [--yes] | remove [--yes]");
     if (args.dryRun) {
-      if (value) normalizeAssistantName(value);
+      const name = value ? requireAssistantAddress(value) : null;
       process.stdout.write(
-        `Würde lokale Adresse ${action === "remove" ? "entfernen" : "einrichten"}: ${value ? JSON.stringify(assistantUrls(value)) : "gespeicherter Name"}. hosts und eigener Socket-Helfer brauchen Systemfreigabe; nur eigene Firefox-Prefs werden verändert.\n`
+        `Würde lokale Adresse ${action === "remove" ? "entfernen" : "einrichten"}: ${name ? JSON.stringify(assistantUrls(name)) : "gespeicherter Name"}. hosts und eigener Socket-Helfer brauchen Systemfreigabe; nur eigene Firefox-Prefs werden verändert.\n`
       );
       return 0;
     }
@@ -69,9 +70,17 @@ export async function cmdAddress(args: ParsedArgs, options?: AssistantAddressOpt
     return 1;
   }
 }
+/** Saves the name as typed. A name that derives no address keeps the existing address (or none). */
 export async function configureAssistantName(value: string): Promise<void> {
+  const displayName = normalizeAssistantDisplayName(value),
+    name = assistantAddressFor(displayName);
+  if (name !== null) await changeAddressName(name);
+  await setAssistantDisplayName(displayName);
+  await notifyAssistantAddressDaemon();
+}
+async function changeAddressName(name: string): Promise<void> {
   try {
-    await changeAssistantName(value);
+    await changeAssistantName(name);
   } catch (e) {
     if (
       /consent|Zustimmung/i.test((e as Error).message) &&
@@ -79,9 +88,7 @@ export async function configureAssistantName(value: string): Promise<void> {
       process.stdout.isTTY &&
       (await confirm("Eigene Systemadresse für den neuen Namen ändern? macOS fragt nach Administratorrechten."))
     )
-      await changeAssistantName(value, { systemConsent: true, openBrowser: openAssistantAddress });
+      await changeAssistantName(name, { systemConsent: true, openBrowser: openAssistantAddress });
     else throw e;
   }
-  await setAssistantDisplayName(value);
-  await notifyAssistantAddressDaemon();
 }

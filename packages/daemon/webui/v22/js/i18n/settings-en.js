@@ -160,15 +160,16 @@ export default {
     "Turns this web interface on. It is reachable from this computer only, not from the network. Applies at once, no restart. If you turn it off you can no longer open this page.",
   "st.k.assistant.name": "Assistant name",
   "st.k.assistant.name.d":
-    "Your assistant's name, spelled the way you type it. Its local address uses the name in lower case, for example http://jarvis/. Allowed are the letters a–z, digits and hyphens.",
+    "Your assistant's name, spelled the way you type it – in any language and script, spaces included. Its local address is formed from it, for example http://jarvis/ or http://jürgen/. If no address can be formed from a name, the name still applies.",
   "st.k.assistant.name.p": "e.g. Jarvis",
   "st.addr.ready": "Reachable at {url}",
   "st.addr.todo": "The address {url} is not set up yet.",
   "st.addr.pending": "Setting up the address is still waiting for the administrator's confirmation.",
   "st.addr.manual": "Reachable at {url}. On this system an administrator sets up the short name without .localhost.",
   "st.addr.retry": "Set up address",
-  "st.addr.invalid":
-    "This name cannot be used: 1–63 characters from the letters a–z, digits and hyphens, at least one letter, no accents or spaces, no reserved name.",
+  "st.addr.invalid": "This name cannot be used: 1–64 characters, no control characters or line breaks.",
+  "st.addr.none": "No browser address can be formed from this name. {url} still applies.",
+  "st.addr.noneYet": "No browser address can be formed from this name. No address is set up.",
   "st.k.daemon.env": "Daemon environment",
   "st.k.daemon.env.d":
     "For advanced users: extra BASTRA_… settings as JSON that the daemon starts with. The values are never shown, a new entry replaces the stored one completely. Leave it alone if unsure. Restart required.",
