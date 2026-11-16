@@ -9,8 +9,9 @@
  * unticked ones. The routes live in webui.ts; this module owns the format:
  * reading, formatting, and replacing the note of one entry in place.
  */
-import { readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { appendFile, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
+import { withPathLock } from "./path-lock.js";
 
 export const CARE_FILE = "vault-care.md";
 export const CARE_KINDS = ["delete", "edit", "write", "note"] as const;
@@ -117,7 +118,11 @@ export class CareConflictError extends Error {}
  * appended, Obsidian saved), the temp file is dropped and CareConflictError
  * thrown — never a blind overwrite.
  */
-export async function rewriteCareNote(file: string, target: CareTarget, note: string): Promise<CareEntry> {
+export function rewriteCareNote(file: string, target: CareTarget, note: string): Promise<CareEntry> {
+  return withPathLock(file, () => rewriteCareNoteLocked(file, target, note));
+}
+
+async function rewriteCareNoteLocked(file: string, target: CareTarget, note: string): Promise<CareEntry> {
   const before = await readFile(file, "utf8");
   const next = replaceCareNote(before, target, note);
   if (next === null) throw new CareConflictError("entry changed or removed");
@@ -133,4 +138,17 @@ export async function rewriteCareNote(file: string, target: CareTarget, note: st
     (e) => e.id === target.id && e.kind === target.kind && e.date === target.date && e.note === note
   );
   return entry ?? { done: false, ...target, note };
+}
+
+/** Append and rewrite share the same transaction queue: a successful append
+ * cannot disappear under an overlapping rewrite's rename. */
+export function appendCareEntry(file: string, entry: Omit<CareEntry, "done">): Promise<void> {
+  return withPathLock(file, async () => {
+    try {
+      await writeFile(file, CARE_HEADER, { encoding: "utf8", flag: "wx" });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
+    await appendFile(file, formatCareEntry(entry), "utf8");
+  });
 }

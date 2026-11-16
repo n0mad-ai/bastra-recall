@@ -10,7 +10,7 @@ import { tasksEnabled } from "./tasks-enabled.js";
  * so http.ts's DNS-rebinding host gate already covers it.
  */
 import { createReadStream } from "node:fs";
-import { appendFile, open, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { open, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -19,7 +19,7 @@ import { getPrimaryLanguage, getUiEnabled } from "./settings.js";
 import { MAX_BODY_BYTES, readJsonBody } from "./http-util.js";
 import {
   CARE_FILE,
-  CARE_HEADER,
+  appendCareEntry,
   CARE_KINDS,
   CareConflictError,
   formatCareEntry,
@@ -347,16 +347,8 @@ export async function handleUiAnnotate(
     return;
   }
   const date = new Date().toISOString().slice(0, 10);
-  const line = formatCareEntry({ date, kind, id, note });
   try {
-    // "wx" creates the header only when the file does not exist yet —
-    // atomic, no stat-then-write race with a concurrent flag request.
-    try {
-      await writeFile(file, CARE_HEADER, { encoding: "utf8", flag: "wx" });
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-    }
-    await appendFile(file, line, "utf8");
+    await appendCareEntry(file, { date, kind, id, note });
     sendJsonPlain(res, 200, { ok: true, entry: { done: false, date, kind, id, note } });
   } catch (err) {
     sendJsonPlain(res, 500, { error: (err as Error).message });

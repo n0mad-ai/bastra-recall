@@ -11,7 +11,14 @@ import { createServer } from "node:http";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CARE_FILE, parseCareFile, replaceCareNote, rewriteCareNote, CareConflictError } from "../src/vault-care.js";
+import {
+  CARE_FILE,
+  parseCareFile,
+  replaceCareNote,
+  rewriteCareNote,
+  appendCareEntry,
+  CareConflictError,
+} from "../src/vault-care.js";
 import { handleUiAnnotate } from "../src/webui.js";
 
 const FILE = [
@@ -132,6 +139,48 @@ test("rewriteCareNote: atomic replace, no temp file left, conflict when the entr
       CareConflictError
     );
     assert.deepEqual(await readdir(dir), [CARE_FILE]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("concurrent note edits preserve every acknowledged edit", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-care-concurrent-"));
+  const targets = Array.from({ length: 24 }, (_, i) => ({
+    id: `note-${i}`,
+    kind: "note",
+    date: "2026-11-16",
+    note: `before-${i}`,
+  }));
+  try {
+    const file = join(dir, CARE_FILE);
+    await writeFile(file, targets.map((t) => `- [ ] ${t.date} · ${t.kind} · [[${t.id}]] — ${t.note}\n`).join(""));
+    const results = await Promise.allSettled(targets.map((t, i) => rewriteCareNote(file, t, `after-${i}`)));
+    const entries = parseCareFile(await readFile(file, "utf8"));
+    results.forEach((result, i) => {
+      if (result.status === "fulfilled")
+        assert.equal(entries.find((e) => e.id === targets[i].id)?.note, `after-${i}`, "an acknowledged edit survives");
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("overlapping appends and rewrites preserve all successful flags", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-care-append-"));
+  try {
+    const file = join(dir, CARE_FILE);
+    await writeFile(file, FILE);
+    const target = { id: "gamma", kind: "edit", date: "2026-11-03", note: "" };
+    await Promise.all([
+      rewriteCareNote(file, target, "edited gamma"),
+      ...Array.from({ length: 20 }, (_, i) =>
+        appendCareEntry(file, { id: `new-${i}`, kind: "note", date: "2026-11-16", note: `flag ${i}` })
+      ),
+    ]);
+    const entries = parseCareFile(await readFile(file, "utf8"));
+    assert.equal(entries.find((e) => e.id === "gamma")?.note, "edited gamma");
+    for (let i = 0; i < 20; i++) assert.equal(entries.find((e) => e.id === `new-${i}`)?.note, `flag ${i}`);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

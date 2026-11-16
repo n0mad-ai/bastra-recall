@@ -16,12 +16,9 @@
  *   path would clamp it), the request body has the general /ui size limit.
  * - Private memories: the same visibility as GET /ui/graph — only when the
  *   peer account was proven (`privateGraph`), never via a request field.
- * - Rules: the edit path decides whether a rule binds (#1385). When the user
- *   declares a rule on a note that had no pending proposal and the path files
- *   it as a proposal, the user's own click is the decision — it is accepted
- *   with `rulebook_decision` (write_origin user-directed), the path's own
- *   attestation for exactly that (Owner decision 04.11.2026: a rule the user
- *   asks for is a rule, not a note or a proposal).
+ * - Rules: the transport-attributed user declaration binds directly in the
+ *   edit path (#1385), without accepting unrelated pending proposal fields
+ *   (Owner decision 04.11.2026: a rule the user asks for is a rule).
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -247,33 +244,14 @@ async function edit(ctx: MemoryEditCtx, r: UiEditRequest) {
   const args = editArgs(mem, r);
   const result = await editMemoryHandler(deps, args, access(ctx), UI_ORIGIN);
   if (!("revision" in result)) throw new UiEditError(409, "the edit was held by the trigger check — nothing written");
-  let { revision } = result;
-  const warnings = [result.warning];
-  // The user's own rule declaration on a note: their click is the decision.
-  if (args.frontmatter?.rulebook && !mem.fm.rulebook_proposed && result.delivery?.startsWith("proposal")) {
-    const accepted = await editMemoryHandler(
-      deps,
-      {
-        id: r.id,
-        expected_revision: revision,
-        rulebook_decision: { decision: "accept", write_origin: "user-directed" },
-      },
-      access(ctx),
-      UI_ORIGIN
-    ).catch((err: Error) => {
-      warnings.push(`saved, but the rule stays a proposal: ${err.message}`);
-      return null;
-    });
-    if (accepted && "revision" in accepted) revision = accepted.revision;
-  }
+  const { revision, warning } = result;
   const after = deps.vault.get(r.id);
-  const warning = warnings.filter(Boolean).join(" ");
   return { id: r.id, revision, rule: after ? ruleInfo(after.fm) : null, ...(warning ? { warning } : {}) };
 }
 
 async function archive(ctx: MemoryEditCtx, r: z.infer<typeof UiArchiveRequest>) {
   current(ctx, r.id, r.expected_revision);
-  const out = await archiveMemoryHandler(ctx.toolDeps, { id: r.id }, access(ctx), UI_ORIGIN);
+  const out = await archiveMemoryHandler(ctx.toolDeps, { id: r.id }, access(ctx), UI_ORIGIN, r.expected_revision);
   return { id: r.id, archived_to: relative(ctx.toolDeps.vaultPath, out.archived_to).split(sep).join("/") };
 }
 

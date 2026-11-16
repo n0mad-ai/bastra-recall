@@ -26,6 +26,7 @@ import { sendJsonPlain } from "./webui.js";
 import { saveMemoryHandler } from "./save-memory-handler.js";
 import { vaultLocator } from "./vault-locator.js";
 import type { ToolDeps } from "./tool-deps.js";
+import { hiddenFromCaller, TRUSTED_LOCAL_APP, type PrivateAccess } from "./private-access.js";
 
 /** Authored types. `doc` and `bookmark` come from importers and carry fields
  *  of their own, so the preview never offers them. */
@@ -131,10 +132,13 @@ async function readDraft(req: IncomingMessage): Promise<UiSaveDraft> {
   return parseDraft(raw);
 }
 
-const named = (deps: ToolDeps, ids: string[]) => ids.map((id) => ({ id, title: deps.vault.get(id)?.fm.title ?? id }));
+const named = (deps: ToolDeps, ids: string[], access?: PrivateAccess) =>
+  ids
+    .filter((id) => !hiddenFromCaller(access, deps.vault.get(id)?.fm))
+    .map((id) => ({ id, title: deps.vault.get(id)?.fm.title ?? id }));
 
 /** The one save: the normal handler with the user's draft. */
-async function saveDraft(deps: ToolDeps, draft: UiSaveDraft): Promise<Record<string, unknown>> {
+async function saveDraft(deps: ToolDeps, draft: UiSaveDraft, access?: PrivateAccess): Promise<Record<string, unknown>> {
   const privateSources = draft.sources.filter((id) => deps.vault.get(id)?.fm.sensitivity === "private");
   const input = {
     title: draft.title,
@@ -154,15 +158,16 @@ async function saveDraft(deps: ToolDeps, draft: UiSaveDraft): Promise<Record<str
   if (deps.vault.get(target))
     throw new UiSaveError(409, "a memory with this title already exists", {
       code: "exists",
-      existing: named(deps, [target]),
+      existing: named(deps, [target], access),
     });
-  const result = await saveMemoryHandler(deps, input);
+  const result = await saveMemoryHandler(deps, input, access);
   if ("claim_gate" in result)
     throw new UiSaveError(409, "another memory already covers this situation", {
       code: "held",
       existing: named(
         deps,
-        result.claim_gate.claimed.map((c) => c.id)
+        result.claim_gate.claimed.map((c) => c.id),
+        access
       ),
     });
   const fm = deps.vault.get(result.id)?.fm;
@@ -171,8 +176,11 @@ async function saveDraft(deps: ToolDeps, draft: UiSaveDraft): Promise<Record<str
     title: fm?.title ?? draft.title,
     type: draft.type,
     scope: fm?.scope ?? draft.scope,
-    sensitivity: input.sensitivity ?? "team",
-    private_sources: privateSources.length,
+    // The stored sensitivity always inherits the strongest source. Only a
+    // proven account may learn which source IDs are private from this reply.
+    ...(access?.trustedPrivate
+      ? { sensitivity: input.sensitivity ?? "team", private_sources: privateSources.length }
+      : {}),
   };
 }
 
@@ -184,14 +192,16 @@ export async function handleUiSaveMemory(
   req: IncomingMessage,
   res: ServerResponse,
   deps: ToolDeps,
-  settingsPath?: string
+  settingsPath?: string,
+  /** Set by the UI dispatcher after the same peer check as /ui/graph. */
+  privateGraph = false
 ): Promise<void> {
   if (!(await getUiEnabled(settingsPath))) {
     sendJsonPlain(res, 404, { error: "ui disabled" });
     return;
   }
   try {
-    sendJsonPlain(res, 200, await saveDraft(deps, await readDraft(req)));
+    sendJsonPlain(res, 200, await saveDraft(deps, await readDraft(req), privateGraph ? TRUSTED_LOCAL_APP : undefined));
   } catch (err) {
     if (err instanceof UiSaveError) sendJsonPlain(res, err.status, { error: err.message, ...err.extra });
     else sendJsonPlain(res, 500, { error: `save failed: ${(err as Error).message}` });

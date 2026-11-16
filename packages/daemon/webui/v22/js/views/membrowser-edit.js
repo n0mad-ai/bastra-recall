@@ -158,7 +158,8 @@ function editorForm(rule, act) {
  * the memory selected next. Returns { badge, acts, attach(detail) }.
  */
 export function readerEdit(m, { anchor, box, text, refresh, rerender, reload, archived }) {
-  let s = states.get(m.id) || editInit();
+  const session = states.get(m.id) || { value: editInit(), paint: null };
+  let s = session.value;
   let form = null;
   const badge = h("span.mb-rd__rule", { hidden: true });
   const msg = h("div.cn__msg.mb-ed__msg", { role: "status" });
@@ -190,20 +191,21 @@ export function readerEdit(m, { anchor, box, text, refresh, rerender, reload, ar
     reload: runReload,
     useStash: () => {
       go({ type: "useStash" });
-      form?.fill(s.draft);
+      session.fill();
       paint();
     },
   };
 
   function go(ev) {
     const was = s.mode;
-    s = editStep(s, ev);
+    s = editStep(session.value, ev);
+    session.value = s;
     if (s.mode === "view") states.delete(m.id);
     else {
-      states.set(m.id, s);
+      states.set(m.id, session);
       guardUnload();
     }
-    paint();
+    session.paint();
     if (was === "view" && s.mode === "edit") form?.focus();
   }
 
@@ -220,6 +222,7 @@ export function readerEdit(m, { anchor, box, text, refresh, rerender, reload, ar
   }
 
   function paint() {
+    s = session.value;
     const v = editView(s, m.id);
     const proposal = !v.editing && s.rule?.state === "proposal" && !s.rule.archive;
     badge.hidden = !s.rule;
@@ -251,7 +254,7 @@ export function readerEdit(m, { anchor, box, text, refresh, rerender, reload, ar
     const d = await reload(m.id);
     if (!d) return;
     go({ type: "reloaded", detail: d });
-    form?.fill(s.draft);
+    session.fill();
     paint();
   }
 
@@ -278,6 +281,8 @@ export function readerEdit(m, { anchor, box, text, refresh, rerender, reload, ar
     } else msg.textContent = r.conflict ? t("mb.ed.staleView") : errorText(r);
   }
 
+  session.paint = paint;
+  session.fill = () => form?.fill(session.value.draft);
   paint();
   return {
     badge,

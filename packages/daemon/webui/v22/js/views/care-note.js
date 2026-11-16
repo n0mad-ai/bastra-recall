@@ -94,10 +94,10 @@ async function requestImprove(text) {
  * Returns { el, focus, improve } — `improve()` starts "improve text" as if
  * its button was clicked (the saved flag's overview button uses it).
  */
-export function noteEditor({ value = "", required = false, saveLabel, busyLabel, onSave, onCancel }) {
-  let s = noteInit(value);
-  let saving = false;
-  let saveError = "";
+export function noteEditor({ value = "", required = false, saveLabel, busyLabel, onSave, onCancel, draft = {} }) {
+  draft.state ||= noteInit(value);
+  draft.saving ||= false;
+  draft.saveError ||= "";
   const area = h("textarea.mb-care__note", {
     rows: "2",
     placeholder: t("mb.careNote"),
@@ -121,25 +121,29 @@ export function noteEditor({ value = "", required = false, saveLabel, busyLabel,
   const reveal = () => row.isConnected && row.scrollIntoView({ block: "nearest" });
 
   function paint() {
+    const s = draft.state;
     const v = noteView(s, required);
     if (area.value !== s.text) area.value = s.text; // result and undo as plain text, never markup
-    area.readOnly = v.working;
+    area.readOnly = v.working || draft.saving;
     growTextarea(area);
     improve.textContent = t(v.working ? "mb.improving" : "mb.improve");
-    improve.disabled = !v.canImprove || saving;
+    improve.disabled = !v.canImprove || draft.saving;
     improve.classList.toggle("is-busy", v.working);
     undo.hidden = !v.canUndo;
-    save.disabled = !v.canSave || saving;
-    msg.textContent = v.error ? t(v.error) : saveError;
+    save.disabled = !v.canSave || draft.saving;
+    save.textContent = draft.saving ? busyLabel : saveLabel;
+    if (cancel) cancel.disabled = v.working || draft.saving;
+    msg.textContent = v.error ? t(v.error) : draft.saveError;
   }
   function step(ev) {
-    if (ev.type === "input") saveError = "";
-    s = noteStep(s, ev);
-    paint();
+    if (ev.type === "input" && draft.saving) return;
+    if (ev.type === "input") draft.saveError = "";
+    draft.state = noteStep(draft.state, ev);
+    draft.paint();
   }
   async function runImprove() {
-    if (!noteView(s).canImprove) return;
-    const text = s.text;
+    if (!noteView(draft.state).canImprove) return;
+    const text = draft.state.text;
     step({ type: "improve" });
     reveal();
     const r = await requestImprove(text);
@@ -147,24 +151,25 @@ export function noteEditor({ value = "", required = false, saveLabel, busyLabel,
     reveal();
   }
   async function runSave() {
-    if (!noteView(s, required).canSave || saving) return;
-    saving = true;
-    saveError = "";
+    if (!noteView(draft.state, required).canSave || draft.saving) return;
+    draft.saving = true;
+    draft.saveError = "";
     save.textContent = busyLabel;
     paint();
     try {
-      await onSave(s.text.trim());
+      await onSave(draft.state.text.trim());
       step({ type: "saved" });
     } catch (err) {
-      saveError = err?.message || t("mb.careFail");
+      draft.saveError = err?.message || t("mb.careFail");
     } finally {
-      saving = false;
+      draft.saving = false;
       save.textContent = saveLabel;
-      if (save.isConnected) paint();
-      if (saveError) reveal();
+      draft.paint();
+      if (draft.saveError) reveal();
     }
   }
   const el = h("div.mb-care__compose", null, area, msg, row);
+  draft.paint = paint;
   paint();
   return {
     el,

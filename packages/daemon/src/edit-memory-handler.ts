@@ -206,6 +206,17 @@ class EditPreconditionError extends Error {
   }
 }
 
+/** A transport-attributed user declaration binds directly, even on an agent's
+ * note with an existing proposal. Callers cannot supply this audit origin in args. */
+function bindsRuleDirectly(fm: Record<string, unknown>, legacy: boolean, origin?: AuditOrigin): boolean {
+  return (
+    origin?.actor === "user" ||
+    RulebookSchema.safeParse(fm.rulebook).success ||
+    legacy ||
+    fm.write_origin === "user-directed"
+  );
+}
+
 /**
  * Body in den vom Menschen geschriebenen Teil und den maschinell angehängten
  * Auto-Related-Block trennen.
@@ -414,8 +425,7 @@ export async function editMemoryHandler(
         const patch = args.frontmatter;
         const previous = FrontmatterSchema.safeParse(fm);
         const legacy = previous.success ? resolveRulebook(previous.data) : undefined;
-        const bindsDirectly =
-          RulebookSchema.safeParse(fm.rulebook).success || !!legacy || fm.write_origin === "user-directed";
+        const bindsDirectly = bindsRuleDirectly(fm, !!legacy, origin);
         if (
           patch?.rulebook !== undefined ||
           patch?.applies_when !== undefined ||
@@ -436,6 +446,7 @@ export async function editMemoryHandler(
             throw new Error("rulebook edits require rulebook and applies_when (or existing values)");
           if (bindsDirectly) {
             Object.assign(next, proposal.data);
+            if (origin?.actor === "user") next.write_origin = "user-directed";
             // #1386: binding supersedes the pending proposal it answers.
             if (fm.rulebook === undefined) {
               const rest = remainingProposal(

@@ -258,6 +258,22 @@ test("edit: a stale revision is a conflict — nothing overwritten", async () =>
   }
 });
 
+test("archive refuses an on-disk revision newer than the reader even before index refresh", async () => {
+  const f = await fixture();
+  try {
+    const port = await f.start();
+    const { revision } = await f.node(port, "note");
+    const updated = memory("note", ["write_origin: user-directed"], "Newer work saved in another editor.\n");
+    await writeFile(join(f.dir, "note.md"), updated);
+    const r = await call(port, "POST", "/ui/memory/archive", { id: "note", expected_revision: revision });
+    assert.equal(r.status, 409, JSON.stringify(r.body));
+    assert.equal(r.body.conflict, true);
+    assert.equal(await f.file("note"), updated, "the unseen newer version remains active");
+  } finally {
+    await f.close();
+  }
+});
+
 test("private memories: editable and archivable only where the UI shows them", async () => {
   const f = await fixture();
   try {
@@ -310,6 +326,74 @@ test("archive moves into the vault trash, restore brings it back", async () => {
     assert.ok(f.vault.get("note"));
     assert.equal((await call(port, "POST", "/ui/memory/restore", { id: "note" })).status, 404, "trash is empty again");
     assert.equal((await call(port, "POST", "/ui/memory/restore", { id: "never-was" })).status, 404);
+  } finally {
+    await f.close();
+  }
+});
+
+test("save-memory hides private collision and source metadata without a proven account", async () => {
+  const f = await fixture();
+  try {
+    const port = await f.start("linux");
+    const base = { type: "reference", scope: "save-privacy", body: "Synthetic answer." };
+    const collision = await call(port, "POST", "/ui/save-memory", { ...base, title: "Secret" });
+    assert.equal(collision.status, 409);
+    assert.deepEqual(collision.body.existing, [], "a hidden collision exposes no private id or title");
+    const held = await call(port, "POST", "/ui/save-memory", {
+      ...base,
+      title: "Fixture",
+      type: "lesson",
+      scope: "edit-fixture",
+    });
+    assert.equal(held.status, 409);
+    assert.ok(
+      held.body.existing.every((item: { id: string }) => item.id !== "secret"),
+      "claim metadata hides private memories"
+    );
+    const saved = await call(port, "POST", "/ui/save-memory", {
+      ...base,
+      title: "Answer from a protected source",
+      sources: ["secret"],
+    });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    assert.equal(f.vault.get(saved.body.id)?.fm.sensitivity, "private", "the stored protection is never reduced");
+    assert.equal(saved.body.private_sources, undefined, "source classifications require a proven account");
+    assert.equal(saved.body.sensitivity, undefined, "source classification cannot be inferred from the saved metadata");
+  } finally {
+    await f.close();
+  }
+});
+
+test("the user's explicit rule declaration binds on a proposed note without accepting an archive proposal", async () => {
+  const f = await fixture();
+  try {
+    const path = join(f.dir, "proposal.md");
+    await writeFile(
+      path,
+      memory("proposal", [
+        "write_origin: agent-session",
+        "rulebook_proposed:",
+        "  rulebook: always",
+        "  applies_when: In every fixture session.",
+        "  archive: true",
+      ])
+    );
+    await f.vault.reindexFile(path);
+    const port = await f.start();
+    const { revision } = await f.node(port, "proposal");
+    const r = await call(port, "POST", "/ui/memory/edit", {
+      id: "proposal",
+      expected_revision: revision,
+      rule: { rulebook: "on-demand", applies_when: "When the user edits a fixture." },
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.rule.state, "rule", "the user's explicit declaration is binding");
+    const fm = f.vault.get("proposal")!.fm;
+    assert.equal(fm.write_origin, "user-directed");
+    assert.equal(fm.rulebook, "on-demand");
+    assert.equal(fm.applies_when, "When the user edits a fixture.");
+    assert.equal(fm.rulebook_proposed?.archive, true, "an unrelated archive proposal is not accepted");
+    assert.ok(existsSync(path), "the memory stays active");
   } finally {
     await f.close();
   }

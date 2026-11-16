@@ -11,7 +11,13 @@
  */
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
-import { mutateMemoryFile, withIdClaim, moveToTrashUnderClaim, SaveMemoryInput } from "@bastra-recall/core";
+import {
+  mutateMemoryFile,
+  memoryRevision,
+  withIdClaim,
+  moveToTrashUnderClaim,
+  SaveMemoryInput,
+} from "@bastra-recall/core";
 import { auditOrigin, recordAudit, type AuditOrigin } from "./audit-trail.js";
 
 import type { ToolDeps } from "./tool-deps.js";
@@ -73,7 +79,9 @@ export async function archiveMemoryHandler(
   /** #464: transportgebunden — siehe private-access.ts. */
   access?: PrivateAccess,
   /** #1446: the web UI records its own archive as the user's; default MCP. */
-  origin?: AuditOrigin
+  origin?: AuditOrigin,
+  /** The UI reader's revision, checked on disk under the archive claim. */
+  expectedRevision?: string
 ): Promise<{ id: string; archived_to: string; superseded_by: string | null }> {
   const parsed = ArchiveMemoryArgs.safeParse(args);
   if (!parsed.success) {
@@ -124,6 +132,8 @@ export async function archiveMemoryHandler(
       if (hiddenOnDisk(access, preimage)) {
         throw new Error(`unknown memory: ${id} — archive_memory only archives memories that exist in the vault.`);
       }
+      if (expectedRevision !== undefined && memoryRevision(preimage) !== expectedRevision)
+        throw new Error(`cannot archive "${id}": changed since it was loaded — nothing was written.`);
       // Codex-Gegenreview Runde 10 (P1-4): Hier stand ein eigener Read, dessen
       // Ergebnis als `diff_before` ins Ledger ging — ohne Bindung an die
       // Fassung, die gleich danach wegwanderte. Beweis und Bewegung kommen

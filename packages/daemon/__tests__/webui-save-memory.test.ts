@@ -67,7 +67,7 @@ async function withRoute(
   search.start();
   resetSaveFailures();
   const deps: ToolDeps = { vault, search, telemetry: new Telemetry(), vaultPath };
-  const server = createServer((req, res) => void handleUiSaveMemory(req, res, deps, settingsPath));
+  const server = createServer((req, res) => void handleUiSaveMemory(req, res, deps, settingsPath, true));
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as { port: number };
   try {

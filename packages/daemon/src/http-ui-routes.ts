@@ -232,7 +232,7 @@ const EXACT_UI_ROUTES: Record<string, (req: IncomingMessage, res: ServerResponse
   // "Improve text" on a vault-care note: same local chat client, nothing stored.
   "POST /ui/improve-text": (req, res, ctx) => handleUiImproveText(req, res, ctx.uiChat ?? null),
   // "Save as memory" under an agent answer (#1445): the normal save_memory path, user-directed.
-  "POST /ui/save-memory": (req, res, ctx) => handleUiSaveMemory(req, res, ctx.toolDeps),
+  "POST /ui/save-memory": (req, res, ctx) => handleUiSaveMemory(req, res, ctx.toolDeps, undefined, ctx.privateGraph),
   // Memory browser edits in the reader (#1446): edit_memory / archive_memory / restore, revision-checked.
   "POST /ui/memory/edit": handleUiMemoryEdit,
   "POST /ui/memory/archive": handleUiMemoryArchive,

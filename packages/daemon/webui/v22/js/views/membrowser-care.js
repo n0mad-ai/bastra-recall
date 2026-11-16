@@ -5,7 +5,10 @@
 // exactly that one, or answers 409 when it changed meanwhile.
 import { h } from "../dom.js";
 import { t } from "../i18n.js";
-import { noteEditor } from "./care-note.js";
+import { noteEditor, noteInit } from "./care-note.js";
+
+// Drafts live for the page session, independent of reader DOM and selection.
+const drafts = new Map();
 
 const str = (v) => (typeof v === "string" ? v : "");
 
@@ -38,13 +41,14 @@ async function postCare(payload) {
 }
 
 /** One saved flag: kind · note · date, "edit" swaps the note for the editor. */
-function flagItem(m, a, rerender) {
-  let mode = "view";
+function flagItem(m, a, rerender, draft) {
+  draft.mode ||= "view";
+  draft.rerender = rerender;
   const item = h("div.mb-care__item");
   function paint() {
-    item.classList.toggle("is-editing", mode === "edit");
+    item.classList.toggle("is-editing", draft.mode === "edit");
     const head = [h("span.mb-care__kind", { text: t(`mb.careKind.${a.kind}`) })];
-    if (mode === "view") {
+    if (draft.mode === "view") {
       item.replaceChildren(
         ...head,
         h("span.mb-care__note-text", { text: str(a.note) || "—" }),
@@ -70,6 +74,7 @@ function flagItem(m, a, rerender) {
     }
     const ed = noteEditor({
       value: str(a.note),
+      draft,
       required: true,
       saveLabel: t("mb.careSave"),
       busyLabel: t("mb.careSaving"),
@@ -79,14 +84,15 @@ function flagItem(m, a, rerender) {
         const entry = await postCare({ id: m.id, kind: a.kind, note, previous });
         Object.assign(a, entry || { note });
         go({ type: "saved" });
-        rerender();
+        draft.rerender();
       },
     });
     item.replaceChildren(...head, h("span.mb-care__date", { text: str(a.date) }), ed.el);
     return ed;
   }
   function go(ev) {
-    mode = flagStep(mode, ev);
+    draft.mode = flagStep(draft.mode, ev);
+    if (ev.type === "cancel") draft.state = undefined;
     const ed = paint();
     if (!ed) return;
     // the overview's "improve text" runs right in the opened editor
@@ -103,26 +109,32 @@ function flagItem(m, a, rerender) {
  * redraw the reader.
  */
 export function careBlock(m, { care, add, rerender }) {
-  let kind = null;
+  if (!drafts.has(m.id)) drafts.set(m.id, { kind: null, compose: {}, flags: new Map() });
+  const draft = drafts.get(m.id);
+  draft.rerender = rerender;
   const open = care.filter((a) => a.id === m.id && !a.done);
   const compose = noteEditor({
+    draft: draft.compose,
     saveLabel: t("mb.careSend"),
     busyLabel: t("mb.careSending"),
     onSave: async (note) => {
-      const entry = await postCare({ id: m.id, kind, note });
-      add(entry || { id: m.id, kind, note, date: new Date().toISOString().slice(0, 10), done: false });
-      rerender();
+      const entry = await postCare({ id: m.id, kind: draft.kind, note });
+      add(entry || { id: m.id, kind: draft.kind, note, date: new Date().toISOString().slice(0, 10), done: false });
+      draft.kind = null;
+      draft.compose.state = noteInit();
+      draft.rerender();
     },
   });
-  compose.el.hidden = true;
+  compose.el.hidden = !draft.kind;
   const kinds = ["edit", "delete", "note"].map((k) =>
     h("button.mb-btn.is-quiet", {
       type: "button",
       text: t(`mb.care.${k}`),
       "data-k": k,
+      cls: draft.kind === k ? "is-on" : "",
       on: {
         click: (e) => {
-          kind = k;
+          draft.kind = k;
           kinds.forEach((b) => b.classList.toggle("is-on", b === e.currentTarget));
           compose.el.hidden = false;
           compose.focus();
@@ -139,7 +151,11 @@ export function careBlock(m, { care, add, rerender }) {
       ? h(
           "div.mb-care__open",
           null,
-          open.map((a) => flagItem(m, a, rerender))
+          open.map((a) => {
+            const key = JSON.stringify([a.kind, a.date, a.note]);
+            if (!draft.flags.has(key)) draft.flags.set(key, {});
+            return flagItem(m, a, rerender, draft.flags.get(key));
+          })
         )
       : null,
     h("div.mb-care__kinds", null, kinds),
