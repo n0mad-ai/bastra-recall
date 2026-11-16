@@ -1072,7 +1072,7 @@ daemon's own telemetry id there. The forwarder sends the Claude Code id as the
 `x-bastra-cc-session` header, and every tool event of a forwarded call records
 it as `caller_session` — join on `caller_session` = hook `session_id`, falling
 back to `session_id` for rows without it (written before #708). A forwarded
-call without the header (Codex, Cursor, or any client whose forwarder has no
+call without the header (Codex, or any client whose forwarder has no
 Claude Code session) records `caller_session: null`; a call that did not come
 through the forwarder has no field. `bastra logs --stats` and the Telemetry
 tab print the join as "save suggestions — N session(s) got one, M of them
@@ -1711,7 +1711,7 @@ redelivery as a deny. See [the rulebook contract](rulebook.md) for membership,
 privacy, budgets, bounded action/Stop checking and host limitations.
 
 The kernel arrives only through these hooks. Clients without Bastra hooks
-(Claude Desktop, Cursor, remote MCP) do not receive it automatically; there
+(for example Claude Desktop and remote MCP) do not receive it automatically; there
 the assistant reads the rulebook with `list_rules`.
 
 #### Agent-reported task stage and active conventions (#1306)
@@ -2992,8 +2992,8 @@ tragen dort die eigene Telemetrie-ID des Daemons. Der Forwarder schickt die
 Claude-Code-ID als Header `x-bastra-cc-session`, und jedes Tool-Event eines
 weitergeleiteten Aufrufs schreibt sie als `caller_session` mit — verknüpft wird
 über `caller_session` = Hook-`session_id`, bei Zeilen ohne das Feld (vor #708
-geschrieben) über `session_id`. Ein weitergeleiteter Aufruf ohne Header (Codex,
-Cursor oder jeder Client, dessen Forwarder keine Claude-Code-Session kennt)
+geschrieben) über `session_id`. Ein weitergeleiteter Aufruf ohne Header (Codex
+oder jeder Client, dessen Forwarder keine Claude-Code-Session kennt)
 schreibt `caller_session: null`; ein Aufruf, der nicht über den Forwarder kam,
 hat das Feld gar nicht. `bastra logs --stats` und der Telemetrie-Tab zeigen die
 Verknüpfung als „save suggestions — N session(s) got one, M of them saved,
@@ -3623,8 +3623,8 @@ Kern erneut, ohne diese Zustellung als Sperre zu verwenden. Der
 [Regelbuch-Vertrag](rulebook.md) beschreibt Mitgliedschaft, Datenschutz,
 Budgets, begrenzte Aktions-/Stop-Prüfung und Host-Grenzen.
 
-Der Kern kommt nur über diese Hooks an. Clients ohne Bastra-Hooks (Claude
-Desktop, Cursor, Remote-MCP) bekommen ihn nicht automatisch; dort liest der
+Der Kern kommt nur über diese Hooks an. Clients ohne Bastra-Hooks (etwa Claude
+Desktop und Remote-MCP) bekommen ihn nicht automatisch; dort liest der
 Assistent das Regelbuch mit `list_rules`.
 
 #### Gemeldete Aufgabenstufe und aktive Konventionen (#1306)

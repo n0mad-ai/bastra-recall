@@ -30,10 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   are Node 22.22 to 26. On an older Node 22, update Node before updating
   Bastra Recall; `node --version` shows what you run (#1368).
 - The vault file watcher now uses chokidar 6, which needs Node 22.22 (#1368).
-- Documentation now states the tested clients honestly: Claude Code CLI and
-  Codex CLI are tested; Claude Desktop and ChatGPT Desktop run but their smoke
-  test is pending; Cursor waits for an integration test; claude.ai connectors
-  and other MCP clients are untested; Linux is untested in real use (#1451).
+- Documentation now names only the tested clients: Claude Code (CLI), Codex
+  (CLI), Claude Desktop, ChatGPT (web and phone app, over remote MCP) and the
+  ChatGPT desktop app with Codex. Untested clients are no longer listed; other
+  MCP clients may work and are added once tested. Linux is untested in real
+  use (#1451).
 - The skill and the guides no longer promise OCR: Recall searches document text
   that is already in the vault, and OCR for scans is a Recall Pulse feature of
   the Mac app (#1450).
@@ -52,6 +53,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Security
 
+- Hardened request handling: the daemon rejects ambiguous request paths
+  before any access check, keeps private memories out of live updates for
+  unverified callers, and reads legacy hook state only from private
+  directories. A stale lock marker that is not a regular file can no longer
+  stall the daemon.
 - The archive's directories are created 0700, and a volume's own
   `.bastra-archive` is used only when it is a real directory of this user (not
   a symlink, closed to 0700 if open). On a mount root writable by everyone,

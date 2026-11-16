@@ -1,12 +1,12 @@
-# Remote access: ChatGPT and other cloud clients
+# Remote access for ChatGPT
 
 This guide connects ChatGPT on the web and on your phone to **your own** Bastra
 Recall installation. It covers what gets exposed, how the login works, a
 complete Cloudflare Tunnel setup, and how to check, manage and revoke access.
 
-**Status:** included since release 1.1.8. ChatGPT on the web and the ChatGPT
-iPhone app were verified end to end on 2026-10-29 through a Cloudflare Tunnel. claude.ai custom connectors can use the
-same address but have **not** been tested, and no test is planned. There is no hosted Bastra relay:
+**Status:** included since release 1.1.8. ChatGPT on the web and in the phone
+app is tested and connects through a Cloudflare Tunnel. Other MCP clients may
+work over the same address but are not tested. There is no hosted Bastra relay:
 you publish your own installation under your own domain.
 
 Contents:
@@ -201,7 +201,7 @@ bleiben privat. Der externe `401`-Test prüft den Schutz des tatsächlichen Tunn
 hardening: it requires the token from local callers too, so even a rewritten
 Host would not get through. It has a cost: local MCP forwarders read the token
 only from their own `BASTRA_API_TOKEN` environment variable, so every
-registered client (Claude Code, Claude Desktop, Codex, Cursor) then needs that
+registered local client (for example Claude Code, Claude Desktop or Codex) then needs that
 variable in its MCP configuration, or its tool calls fail with `401`. With the
 Host preserved and the `401` check passing, it is not needed.
 
@@ -430,18 +430,7 @@ once on the web and once on the phone.
 
 ## Other clients
 
-### claude.ai custom connectors (untested)
-
-claude.ai custom connectors also use OAuth, and `claude.ai` / `claude.com` are
-on the redirect allowlist. Add a custom connector with the same URL,
-`https://recall.example.com/api/v1/mcp`, leave client ID and secret empty, and
-approve on the Recall page if the shown host is `claude.ai` or `claude.com`.
-This has **not** been tested. claude.ai has open, publicly reported problems
-with servers whose MCP endpoint is not at the plain path `/mcp`, which applies
-to Recall's `/api/v1/mcp`; see
-[Troubleshooting](#claudeai-connector-does-not-connect).
-
-### Claude Code and other tools with a static token
+### Claude Code with a static token
 
 Tools that can send a fixed header don't need OAuth. They use the API token
 directly. On the computer that runs Recall, the normal local setup
@@ -530,20 +519,6 @@ connector and add it again with the new URL.
 forwarders too; add `BASTRA_API_TOKEN` to each client's MCP configuration, or
 remove the setting (see [The Host rule](#the-host-rule-why-the-tunnel-must-not-rewrite-host)).
 
-### claude.ai connector does not connect
-
-Untested with Recall. Public reports in Anthropic's issue tracker describe
-claude.ai custom connectors failing for servers whose MCP endpoint is on a
-multi-segment path or on any path other than `/mcp`
-([#738](https://github.com/anthropics/claude-ai-mcp/issues/738),
-[#878](https://github.com/anthropics/claude-ai-mcp/issues/878)), and claude.ai
-sometimes ignoring the advertised `authorization_endpoint` in favour of a
-fixed `/authorize`
-([#962](https://github.com/anthropics/claude-ai-mcp/issues/962)). Recall's
-endpoint is `/api/v1/mcp` and its login is at `/api/v1/oauth/authorize`, so
-these reports may apply. If claude.ai fails, look at the tunnel log to see which
-paths it requested.
-
 ## Limits
 
 - **Your computer must be on, awake and online.** Recall's vault lives there;
@@ -555,6 +530,6 @@ paths it requested.
   gets the same tool set.
 - **No task tools remotely.** Task tools need a local caller and their own
   credentials, so the remote door leaves them out.
-- **Untested:** claude.ai, the ChatGPT Android app, Linux and Windows hosts,
+- **Untested:** the ChatGPT Android app, Linux and Windows hosts,
   and tunnels other than Cloudflare.
 - ChatGPT plan and workspace restrictions are set by OpenAI and may change.

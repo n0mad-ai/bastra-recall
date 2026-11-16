@@ -8,7 +8,7 @@
 
 On the same machine, Bastra Recall uses `~/.codex/config.toml`, which is shared by Codex and the ChatGPT desktop app. Authentication remains entirely OpenAI-owned: Codex manages the ChatGPT sign-in or OpenAI API key, and Bastra Recall needs no separate OpenAI credential for this integration. Storage and keyword search run locally. Retrieved memories are handed to the connected AI client as context; see [privacy](./PRIVACY.md).
 
-**Test status:** Codex CLI is tested. ChatGPT Desktop (with Codex Desktop) runs, but its recorded smoke test is still pending ([#1452](https://github.com/n0mad-ai/bastra-recall/issues/1452)). The Codex IDE extension is untested.
+**Test status:** Codex CLI and the ChatGPT desktop app with Codex are tested.
 
 ### Installation
 
@@ -24,9 +24,9 @@ The adapter:
 2. installs the skill at `~/.agents/skills/bastra-recall`, including `agents/openai.yaml`;
 3. merges Bastra-owned entries into `~/.codex/hooks.json` while preserving foreign entries — an entry is Bastra's by the hook client its command runs, not by its name, and a look-alike is reported as `hooks left alone` (#683);
 4. backs up existing configuration before changes and pins ephemeral `npx` runtimes;
-5. activates the same integration for Codex CLI, Codex IDE, and ChatGPT desktop on this host.
+5. activates the same integration for Codex CLI and the ChatGPT desktop app on this host.
 
-On the first Codex start, review and trust the displayed Bastra hooks (nine on verified Codex 0.162.1 or 0.166.0, eight without Stop; other versions keep eight/seven legacy entries); the same dialog remains available through `/hooks`. Codex binds trust to the exact hook hash and asks for review again after substantive changes. Restart ChatGPT desktop, existing Codex sessions, and the IDE extension afterward.
+On the first Codex start, review and trust the displayed Bastra hooks (nine on verified Codex 0.162.1 or 0.166.0, eight without Stop; other versions keep eight/seven legacy entries); the same dialog remains available through `/hooks`. Codex binds trust to the exact hook hash and asks for review again after substantive changes. Restart the ChatGPT desktop app and existing Codex sessions afterward.
 
 ### Reflex layer
 
@@ -117,7 +117,7 @@ verify what loaded.
 
 Bastra Recall verwendet auf demselben Rechner die von Codex und der ChatGPT-Desktop-App gemeinsam gelesene Datei `~/.codex/config.toml`. Die Anmeldung bleibt vollständig bei OpenAI: ChatGPT-Login oder OpenAI-API-Key werden von Codex verwaltet; Bastra Recall benötigt dafür keinen eigenen OpenAI-Schlüssel. Speicherung und Stichwortsuche laufen lokal. Abgerufene Erinnerungen werden dem verbundenen KI-Client als Kontext übergeben; siehe [Datenschutz](./PRIVACY.md#deutsch).
 
-**Prüfstand:** Codex CLI ist getestet. ChatGPT Desktop (mit Codex Desktop) läuft, der festgehaltene Kurztest steht aber noch aus ([#1452](https://github.com/n0mad-ai/bastra-recall/issues/1452)). Die Codex-IDE-Erweiterung ist ungetestet.
+**Prüfstand:** Codex CLI und die ChatGPT-Desktop-App mit Codex sind getestet.
 
 ### Installation
 
@@ -133,9 +133,9 @@ Der Adapter:
 2. installiert den Skill nach `~/.agents/skills/bastra-recall` einschließlich `agents/openai.yaml`;
 3. führt Bastra-eigene Einträge in `~/.codex/hooks.json` zusammen und bewahrt fremde Einträge — Bastra-eigen ist ein Eintrag nach dem Hook-Client, den sein Befehl ausführt, nicht nach dem Namen; ein nur ähnlich benannter wird als `hooks left alone` gemeldet (#683);
 4. sichert vorhandene Konfigurationen vor Änderungen und pinnt flüchtige `npx`-Runtimes;
-5. aktiviert dieselbe Integration für Codex CLI, Codex IDE und ChatGPT Desktop auf diesem Host.
+5. aktiviert dieselbe Integration für Codex CLI und die ChatGPT-Desktop-App auf diesem Host.
 
-Beim ersten Codex-Start die angezeigten Bastra-Hooks prüfen und vertrauen (neun auf verifiziertem Codex 0.162.1 oder 0.166.0, acht ohne Stop; andere Versionen behalten acht/sieben bisherige Einträge); später ist derselbe Dialog über `/hooks` erreichbar. Codex bindet Vertrauen an den exakten Hook-Hash und fordert nach inhaltlichen Änderungen erneut zur Prüfung auf. Danach ChatGPT Desktop, bestehende Codex-Sitzungen und die IDE-Erweiterung neu starten.
+Beim ersten Codex-Start die angezeigten Bastra-Hooks prüfen und vertrauen (neun auf verifiziertem Codex 0.162.1 oder 0.166.0, acht ohne Stop; andere Versionen behalten acht/sieben bisherige Einträge); später ist derselbe Dialog über `/hooks` erreichbar. Codex bindet Vertrauen an den exakten Hook-Hash und fordert nach inhaltlichen Änderungen erneut zur Prüfung auf. Danach die ChatGPT-Desktop-App und bestehende Codex-Sitzungen neu starten.
 
 ### Reflex-Layer
 

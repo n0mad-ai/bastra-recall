@@ -191,7 +191,7 @@ More: [architecture.md](./architecture.md), [hooks.md](./hooks.md), [triggers.md
 
 ### Fully manual install — fallback
 
-Add the MCP server block to your client's config (`~/.claude.json` for Claude Code, `~/Library/Application Support/Claude/claude_desktop_config.json` for Claude Desktop, `~/.cursor/mcp.json` for Cursor).
+Add the MCP server block to your client's config (`~/.claude.json` for Claude Code, `~/Library/Application Support/Claude/claude_desktop_config.json` for Claude Desktop).
 
 Codex and ChatGPT Desktop share TOML rather than these JSON blocks. Use `bastra install codex` (recommended) or the official `codex mcp add` flow documented in [CODEX.md](./CODEX.md).
 
@@ -207,7 +207,7 @@ Codex and ChatGPT Desktop share TOML rather than these JSON blocks. Use `bastra 
 }
 ```
 
-The forwarder is a thin stdio-MCP wrapper that talks to a single local HTTP daemon (port 6723 by default). All MCP clients — Claude Code, Claude Desktop, Codex/ChatGPT Desktop, Cursor, additional sessions — share the same vault state, embedding index, and telemetry. The forwarder starts a daemon on demand, giving an installed managed macOS service a 10-second chance first.
+The forwarder is a thin stdio-MCP wrapper that talks to a single local HTTP daemon (port 6723 by default). All local MCP clients — Claude Code, Claude Desktop, Codex/ChatGPT Desktop, additional sessions — share the same vault state, embedding index, and telemetry. The forwarder starts a daemon on demand, giving an installed managed macOS service a 10-second chance first.
 
 **Standalone mode (one MCP client only, no sharing):**
 
@@ -376,7 +376,7 @@ Link targets that live on another surface (say, your Claude Code skills) can be 
 
 ### Cursor rules
 
-`bastra install cursor` registers the MCP server globally. The behavioural layer — *recall before editing, save durable rules* — is a second step, once per project:
+Cursor is not tested. The commands exist: `bastra install cursor` registers the MCP server globally. The behavioural layer — *recall before editing, save durable rules* — is a second step, once per project:
 
 ```bash
 cd your-project
@@ -641,7 +641,7 @@ To compare two settings profiles on the identical turns, start a second daemon w
 
 - **Ollama says `using already-running ollama on 11434`** — another server answered after the first check. Bastra reuses it without starting a competing server; a brew or systemd start label appears only after that start command succeeded.
 - **Daemon not reachable / `ECONNREFUSED`** — the MCP forwarder normally auto-spawns the daemon on the first tool call. Check with `curl -sS http://127.0.0.1:6723/health`; `bastra status` shows the same thing in readable form. If the forwarder was disabled (`BASTRA_FORWARDER_SPAWN=0`), remove that override and restart your AI client.
-- **MCP is not registered with Claude Code, Claude Desktop, Codex/ChatGPT Desktop, or Cursor** — run `bastra doctor` to see which config is missing or broken, then re-run `bastra install <surface>`. The config paths are printed in both outputs.
+- **MCP is not registered with Claude Code, Claude Desktop or Codex/ChatGPT Desktop** — run `bastra doctor` to see which config is missing or broken, then re-run `bastra install <surface>`. The config paths are printed in both outputs.
 - **A feature seems to do nothing** (memories come out in English, no save suggestions, recall never looks at the vault first) — `bastra doctor` ends with a **features** section: one line per feature, on or off, and for every off item the command that turns it on (`bastra config set language.primary <code>`, `bastra config set reflex.enabled true`, `bastra config set promptImpact.enabled true`, `bastra onboard`, `bastra embeddings on`, `bastra install <surface>` …). Claude Code's own `"disableAllHooks": true` shows up there too. So do two env keys in a client's MCP entry that narrow what the model can do: `BASTRA_TOOL_SURFACE=search` (recall only, the agent can never save) and `BASTRA_MCP_SESSION_CONTEXT=0` (no session context on the first tool call), each with the entry to edit. Features that are off by default on purpose — code awareness, the experimental change-impact block, product docs, Commons, bridges, the vault map, the archiving `rm` for Claude Code — are listed under their own heading as intentional, not as a problem. None of it changes doctor's exit code, and `--fix` never switches a feature on.
 - **`the settings file exists but cannot be read`** — `~/.bastra/cli-settings.json` is there, but your user may not read it (or it is a directory). bastra stops instead of writing a fresh file over it, because that would drop every setting in it. Fix the permissions (`chmod 600 ~/.bastra/cli-settings.json`) and run the command again. This holds for every command that stores a setting.
 - **`could not get the lock on the settings file`** — a model answer or switch found `~/.bastra/cli-settings.json.lock` held by another bastra process, or left behind by one that was interrupted. Nothing was written. Wait a few seconds and repeat the command; a lock nobody holds any more is taken over after about ten seconds.
@@ -860,7 +860,7 @@ Mehr: [architecture.md](./architecture.md), [hooks.md](./hooks.md), [triggers.md
 
 ### Komplett manuelle Installation — Fallback
 
-MCP-Server-Block in die Client-Config eintragen (für Claude Code: `~/.claude.json`, für Claude Desktop: `~/Library/Application Support/Claude/claude_desktop_config.json`, für Cursor: `~/.cursor/mcp.json`).
+MCP-Server-Block in die Client-Config eintragen (für Claude Code: `~/.claude.json`, für Claude Desktop: `~/Library/Application Support/Claude/claude_desktop_config.json`).
 
 Codex und ChatGPT Desktop teilen sich TOML statt dieser JSON-Blöcke. Empfohlen ist `bastra install codex`; der offizielle manuelle `codex mcp add`-Weg steht in [CODEX.md](./CODEX.md).
 
@@ -876,7 +876,7 @@ Codex und ChatGPT Desktop teilen sich TOML statt dieser JSON-Blöcke. Empfohlen 
 }
 ```
 
-Der Forwarder ist ein dünner stdio-MCP-Wrapper, der mit einem einzigen lokalen HTTP-Daemon spricht (Standard-Port 6723). Alle MCP-Clients — Claude Code, Claude Desktop, Codex/ChatGPT Desktop, Cursor, weitere Sitzungen — teilen sich denselben Vault-State, Embedding-Index und Telemetry-Stream. Der Forwarder spawnt den Daemon beim ersten Start automatisch, falls noch keiner läuft.
+Der Forwarder ist ein dünner stdio-MCP-Wrapper, der mit einem einzigen lokalen HTTP-Daemon spricht (Standard-Port 6723). Alle lokalen MCP-Clients — Claude Code, Claude Desktop, Codex/ChatGPT Desktop, weitere Sitzungen — teilen sich denselben Vault-State, Embedding-Index und Telemetry-Stream. Der Forwarder spawnt den Daemon beim ersten Start automatisch, falls noch keiner läuft.
 
 **Standalone-Modus (nur ein MCP-Client, kein Sharing):**
 
@@ -1052,7 +1052,7 @@ Link-Ziele, die auf einer anderen Surface leben (etwa deine Claude-Code-Skills),
 
 ### Cursor-Rules
 
-`bastra install cursor` registriert den MCP-Server global. Die Verhaltens-Schicht — *Recall vor dem Editieren, dauerhafte Regeln speichern* — ist ein zweiter Schritt, einmal pro Projekt:
+Cursor ist nicht getestet. Die Befehle gibt es: `bastra install cursor` registriert den MCP-Server global. Die Verhaltens-Schicht — *Recall vor dem Editieren, dauerhafte Regeln speichern* — ist ein zweiter Schritt, einmal pro Projekt:
 
 ```bash
 cd dein-projekt
@@ -1326,7 +1326,7 @@ Um zwei Einstellungsprofile auf identischen Turns zu vergleichen, startest du ei
 
 - **Ollama meldet `using already-running ollama on 11434`** — nach der ersten Prüfung hat ein anderer Server geantwortet. Bastra nutzt ihn, ohne einen zweiten Server zu starten; ein brew- oder systemd-Start wird nur nach einem erfolgreichen Startbefehl gemeldet.
 - **Daemon nicht erreichbar / `ECONNREFUSED`** — der MCP-Forwarder startet den Daemon normalerweise beim ersten Tool-Aufruf selbst. Prüfen mit `curl -sS http://127.0.0.1:6723/health`; `bastra status` zeigt dasselbe in lesbar. Falls der Forwarder abgeschaltet wurde (`BASTRA_FORWARDER_SPAWN=0`), die Variable entfernen und den AI-Client neu starten.
-- **MCP ist in Claude Code, Claude Desktop, Codex/ChatGPT Desktop oder Cursor nicht registriert** — `bastra doctor` zeigt, welche Config fehlt oder kaputt ist, danach `bastra install <surface>` erneut ausführen. Die Config-Pfade stehen in beiden Ausgaben.
+- **MCP ist in Claude Code, Claude Desktop oder Codex/ChatGPT Desktop nicht registriert** — `bastra doctor` zeigt, welche Config fehlt oder kaputt ist, danach `bastra install <surface>` erneut ausführen. Die Config-Pfade stehen in beiden Ausgaben.
 - **Eine Funktion scheint nichts zu tun** (Memories kommen auf Englisch, keine Speichervorschläge, Recall schaut nie zuerst in den Vault) — `bastra doctor` endet mit dem Abschnitt **features**: eine Zeile pro Funktion, an oder aus, und für jede ausgeschaltete der Befehl zum Einschalten (`bastra config set language.primary <code>`, `bastra config set reflex.enabled true`, `bastra config set promptImpact.enabled true`, `bastra onboard`, `bastra embeddings on`, `bastra install <surface>` …). Auch Claude Codes eigenes `"disableAllHooks": true` taucht dort auf. Ebenso zwei Env-Schlüssel im MCP-Eintrag eines Clients, die einschränken, was das Modell tun kann: `BASTRA_TOOL_SURFACE=search` (nur Recall, der Agent kann nie speichern) und `BASTRA_MCP_SESSION_CONTEXT=0` (kein Sitzungskontext beim ersten Tool-Aufruf), jeweils mit dem Eintrag, der zu ändern ist. Funktionen, die bewusst standardmäßig aus sind — Code-Awareness, der experimentelle Change-Impact-Block, Produktdoku, Commons, Bridges, die Vault-Karte, das archivierende `rm` für Claude Code — stehen unter einer eigenen Überschrift als gewollt, nicht als Problem. Nichts davon ändert den Exit-Code von doctor, und `--fix` schaltet nie eine Funktion ein.
 - **`the settings file exists but cannot be read`** — `~/.bastra/cli-settings.json` ist da, aber dein User darf sie nicht lesen (oder sie ist ein Verzeichnis). bastra hält an, statt eine frische Datei darüberzuschreiben, weil dabei jede Einstellung darin verloren ginge. Rechte korrigieren (`chmod 600 ~/.bastra/cli-settings.json`) und den Befehl erneut ausführen. Das gilt für jeden Befehl, der eine Einstellung speichert.
 - **`could not get the lock on the settings file`** — eine Modell-Antwort oder ein Wechsel hat `~/.bastra/cli-settings.json.lock` von einem anderen bastra-Prozess gehalten vorgefunden, oder von einem abgebrochenen zurückgelassen. Es wurde nichts geschrieben. Ein paar Sekunden warten und den Befehl wiederholen; eine Sperre, die niemand mehr hält, wird nach etwa zehn Sekunden übernommen.

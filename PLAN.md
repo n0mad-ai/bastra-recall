@@ -8,7 +8,7 @@ what has shipped, the next planned releases and longer-term work.
 
 - Local Markdown memory storage, search and retrieval through MCP and REST.
 - Guided setup, updates and diagnostics through the `bastra` CLI.
-- Memory guidance and supported client integrations. The [README support matrix](./README.md#supported-surfaces) shows which clients are tested and which are not.
+- Memory guidance and supported client integrations. The [README support matrix](./README.md#supported-surfaces) lists the tested clients.
 - A local browser-based web UI, memory import, onboarding and memory care.
 - Optional semantic search and community recipes.
 - Since 1.1.8: the rulebook and remote MCP with OAuth ([remote access](./docs/REMOTE-ACCESS.md)).
@@ -45,7 +45,7 @@ tracked in [#458](https://github.com/n0mad-ai/bastra-recall/issues/458).
 
 ## Later
 
-- Verify additional clients, including claude.ai over [remote MCP](./docs/REMOTE-ACCESS.md), and follow up the ChatGPT connection with a plugin ([#1279](https://github.com/n0mad-ai/bastra-recall/issues/1279)); the Custom GPT Actions route is retired with OpenAI's 2026-12-11 deadline.
+- Test further MCP clients and add them to the support matrix once tested, and follow up the ChatGPT connection with a plugin ([#1279](https://github.com/n0mad-ai/bastra-recall/issues/1279)); the Custom GPT Actions route is retired with OpenAI's 2026-12-11 deadline.
 - Evaluate deeper retrieval, episodic memory, consolidation and learned ranking before enabling them in normal use.
 - Continue the native Mac app as a separate interface over the same memory service.
 

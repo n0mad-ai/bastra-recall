@@ -113,22 +113,27 @@ test("hookless/replay capability claims do not imply live denial; validation nee
   for (const surface of ["write", "full"] as const) assert.ok(isToolAllowed("validate_artifact", surface));
 });
 
-test("both README capability tables match the evidence ledger", () => {
+test("both README capability tables match the evidence ledger", async () => {
   const readme = read("README.md");
+  // The README names only tested clients (owner decision 2026-11-16); untested
+  // installable surfaces stay in the ledger but not in the user-facing table.
+  const { UNTESTED_SURFACES } = await import(new URL("tools/support-matrix.mjs", repo).href);
+  const documented = (row: (typeof HOST_CAPABILITIES)[number]) => !UNTESTED_SURFACES.includes(row.surface);
   const table = [
     "| Surface | Runtime | Bastra pre_tool_deny | Bastra must_load_gate |",
     "|---|---|---|---|",
-    ...[...HOST_CAPABILITIES.slice(0, 2), hostCapabilities("codex", "0.166.0"), ...HOST_CAPABILITIES.slice(2)].map(
-      (row) =>
-        `| ${row.surface} | ${row.runtime.verifiedVersion ?? "unverified / not version-pinned"} | ${row.capabilities.pre_tool_deny.bastra} | ${row.capabilities.must_load_gate.bastra} |`
-    ),
+    ...[...HOST_CAPABILITIES.slice(0, 2), hostCapabilities("codex", "0.166.0"), ...HOST_CAPABILITIES.slice(2)]
+      .filter(documented)
+      .map(
+        (row) =>
+          `| ${row.surface} | ${row.runtime.verifiedVersion ?? "unverified / not version-pinned"} | ${row.capabilities.pre_tool_deny.bastra} | ${row.capabilities.must_load_gate.bastra} |`
+      ),
   ].join("\n");
   assert.equal(readme.split(table).length - 1, 2, "EN and DE summaries must agree with the canonical data");
   assert.equal(readme.split("[host-capabilities.ts](./packages/daemon/src/host-capabilities.ts)").length - 1, 2);
-  // Existing support rows make narrower installation claims than the capability ledger.
-  assert.match(readme, /\*\*Cursor\*\*[^\n]+MCP/);
+  // Support rows make narrower installation claims than the capability ledger.
   assert.match(readme, /\*\*Claude Desktop\*\*[^\n]+MCP/);
-  assert.match(readme, /\*\*Codex IDE \+ ChatGPT Desktop\*\*[^\n]+not yet field-tested/);
+  for (const surface of UNTESTED_SURFACES) assert.doesNotMatch(readme, new RegExp(`^\\| ${surface} \\|`, "m"));
 });
 
 test("README hook registration counts match the Claude Code installer in both languages", () => {

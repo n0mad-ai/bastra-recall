@@ -8,7 +8,7 @@ Dieses Plugin ergänzt ChatGPT und Codex um die Bastra-Recall-Anleitung zum Spei
 npx bastra-recall install codex --vault ~/BastraVault
 ```
 
-Beim ersten Codex-Start die sieben Bastra-Hooks prüfen und vertrauen (`/hooks`); danach ChatGPT Desktop, laufende Codex-Sitzungen und die IDE-Erweiterung neu starten. Auf demselben Rechner verwenden sie gemeinsam `~/.codex/config.toml`; der Skill liegt unter `~/.agents/skills/bastra-recall`.
+Beim ersten Codex-Start die sieben Bastra-Hooks prüfen und vertrauen (`/hooks`); danach die ChatGPT-Desktop-App und laufende Codex-Sitzungen neu starten. Auf demselben Rechner verwenden sie gemeinsam `~/.codex/config.toml`; der Skill liegt unter `~/.agents/skills/bastra-recall`.
 
 ## English
 
@@ -18,7 +18,7 @@ This plugin adds Bastra Recall guidance for saving and retrieving memories in Ch
 npx bastra-recall install codex --vault ~/BastraVault
 ```
 
-On the first Codex start, review and trust the seven Bastra hooks (`/hooks`), then restart ChatGPT desktop, active Codex sessions, and the IDE extension. On the same machine they share `~/.codex/config.toml`; the skill lives at `~/.agents/skills/bastra-recall`.
+On the first Codex start, review and trust the seven Bastra hooks (`/hooks`), then restart the ChatGPT desktop app and active Codex sessions. On the same machine they share `~/.codex/config.toml`; the skill lives at `~/.agents/skills/bastra-recall`.
 
 ---
 

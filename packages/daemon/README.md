@@ -22,7 +22,7 @@ For project-level docs (vision, install, REST API, roadmap), see the [top-level 
 | MCP (stdio, standalone) | `dist/index.js` | Single-client setup; each session spawns its own embedded daemon |
 | MCP forwarder (stdio → loopback HTTP) | `dist/mcp-forwarder.js` | **Default for multi-client setups.** Starts a missing daemon on demand, first giving an installed managed macOS service up to ten seconds. All sessions share one vault state, one index, one telemetry stream |
 | HTTP REST | `http://127.0.0.1:6723/api/v1/{tool}` | Non-MCP clients (web apps, scripts, legacy Custom GPT Actions). Bearer auth + CORS supported |
-| MCP over HTTP | `POST /api/v1/mcp` (Streamable HTTP, stateless) | Remote clients such as ChatGPT web/phone and claude.ai, through your own HTTPS tunnel. Bearer token or the daemon's own OAuth 2.1 login. [Remote access](../../docs/REMOTE-ACCESS.md) |
+| MCP over HTTP | `POST /api/v1/mcp` (Streamable HTTP, stateless) | Remote clients such as ChatGPT on the web and phone, through your own HTTPS tunnel. Bearer token or the daemon's own OAuth 2.1 login. [Remote access](../../docs/REMOTE-ACCESS.md) |
 | Hooks | `dist/hook.js` (PreToolUse), `dist/session-hook.js` (SessionStart) | Both POST to the daemon's `/hook/recall` |
 | CLI | `dist/cli.js` (`bastra` bin) | Install / uninstall / doctor across every supported AI client |
 
@@ -46,7 +46,7 @@ See the [top-level README](../../README.md). Paths, in order of friction:
 
 1. **`curl -fsSL https://bastra.io/install | bash`** — installs Homebrew + tap + binary + runs the guided setup. The recommended non-developer path.
 2. **`Install Bastra.command` doubleclick** — same steps, but a browser download is quarantined and mode 644, so it needs right-click → Open (#320).
-3. **`bastra install all`** — single CLI call that registers MCP + Skill + the default quiet Hooks across Claude Code, Claude Desktop, Codex/ChatGPT Desktop, and Cursor. On a first run with no vault configured, an interactive install offers to create `~/BastraVault` for you (non-interactive/`--yes`/`--dry-run` runs keep the deterministic error).
+3. **`bastra install all`** — single CLI call that registers MCP + Skill + the default quiet Hooks across Claude Code, Claude Desktop and Codex/ChatGPT Desktop; it also registers Cursor, which is not tested. On a first run with no vault configured, an interactive install offers to create `~/BastraVault` for you (non-interactive/`--yes`/`--dry-run` runs keep the deterministic error).
 4. **Fully manual JSON snippets** — fallback.
 
 All paths end with the client configs patched. Whether the daemon is already **running** differs: the interactive Map wizard starts it, and the MCP forwarder starts it on the first tool call — `bastra install all` only registers, it neither starts nor health-checks the daemon. `bastra doctor` is what probes the endpoint (#525).
@@ -154,4 +154,4 @@ See [`../../docs/memory-schema.md`](../../docs/memory-schema.md) for the full me
 
 - **Shared process.** The forwarder starts the daemon on demand. On macOS, `bastra autostart on` manages an optional LaunchAgent for keeping it running; use `bastra autostart off` to return to on-demand operation.
 - **Cloud-storage mounts** (Google Drive, iCloud, Dropbox) need polling-mode in chokidar — enabled by default, but watcher latency can be a few seconds.
-- **Cursor rules are per project.** `bastra install cursor` registers MCP. Run `bastra rules cursor` inside each project to install the shared memory guidance.
+- **Cursor rules are per project.** Cursor is not tested. `bastra install cursor` registers MCP. Run `bastra rules cursor` inside each project to install the shared memory guidance.

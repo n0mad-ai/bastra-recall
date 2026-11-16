@@ -52,6 +52,19 @@ export function hookClientTargets() {
     .filter(Boolean);
 }
 
+/**
+ * Installable surfaces that are not tested. The owner decided on 2026-11-16
+ * that the user-facing client lists name only tested clients; `bastra install`
+ * still registers these, so the CLI and Homebrew caveat keep them, but the
+ * README support matrix and the package description leave them out.
+ */
+export const UNTESTED_SURFACES = ["cursor"];
+
+/** The installable surfaces the support matrix names as tested. */
+export function testedSurfaces() {
+  return installableSurfaces().filter((s) => !UNTESTED_SURFACES.includes(s));
+}
+
 /** How each installable surface is spelled in user-facing prose. */
 export const SURFACE_LABELS = {
   "claude-code": "Claude Code",

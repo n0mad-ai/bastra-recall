@@ -18,6 +18,8 @@ import assert from "node:assert/strict";
 
 import {
   installableSurfaces,
+  testedSurfaces,
+  UNTESTED_SURFACES,
   hookClientTargets,
   formulaCaveatClients,
   readRepoFile,
@@ -26,23 +28,30 @@ import {
 
 const README = readRepoFile("README.md");
 
-test("the CLI's surface list is the four clients the matrix names", () => {
+test("the CLI's surface list is the four installable clients", () => {
   assert.deepEqual(installableSurfaces().sort(), ["claude-code", "claude-desktop", "codex", "cursor"]);
 });
 
-test("README names every installable client in both language matrices", () => {
+test("README names exactly the tested installable clients in both language matrices", () => {
   // Match whole heading lines: "### Why not just CLAUDE.md?" also starts with "### Why".
   const en = README.slice(README.indexOf("### Supported surfaces"), README.indexOf("\n### Why\n"));
   const de = README.slice(README.indexOf("### Unterstützte Oberflächen"), README.indexOf("\n### Warum\n"));
   assert.ok(en.length > 0 && de.length > 0, "both matrix sections must exist");
-  for (const surface of installableSurfaces()) {
+  for (const surface of testedSurfaces()) {
     const label = SURFACE_LABELS[surface];
     assert.ok(label, `no prose label registered for '${surface}'`);
-    // "Codex/ChatGPT Desktop" is written "Codex + ChatGPT Desktop" in the
-    // table; compare on the distinguishing word.
+    // "Codex/ChatGPT Desktop" is written differently in the table; compare on
+    // the distinguishing word.
     const needle = label.split(/[/ +]/)[0];
     assert.match(en, new RegExp(needle), `EN matrix does not name ${label}`);
     assert.match(de, new RegExp(needle), `DE matrix does not name ${label}`);
+  }
+  // Untested clients are not listed at all, not even with a status.
+  for (const surface of UNTESTED_SURFACES) {
+    assert.ok(installableSurfaces().includes(surface), `'${surface}' is no longer installable; drop it`);
+    const pattern = new RegExp(SURFACE_LABELS[surface], "i");
+    assert.doesNotMatch(en, pattern, `EN matrix still names untested ${surface}`);
+    assert.doesNotMatch(de, pattern, `DE matrix still names untested ${surface}`);
   }
 });
 
@@ -72,9 +81,16 @@ test("the Homebrew caveat's on-demand sentence names the same clients", () => {
 
 test("the published package descriptions do not contradict the matrix", () => {
   const installer = JSON.parse(readRepoFile("packages/bastra-recall/package.json"));
-  for (const surface of installableSurfaces()) {
+  for (const surface of testedSurfaces()) {
     const needle = SURFACE_LABELS[surface].split(/[/ +]/)[0];
     assert.match(installer.description, new RegExp(needle), `the bastra-recall package description forgets ${needle}`);
+  }
+  for (const surface of UNTESTED_SURFACES) {
+    assert.doesNotMatch(
+      installer.description,
+      new RegExp(SURFACE_LABELS[surface]),
+      `the description names untested ${surface}`
+    );
   }
   const daemon = JSON.parse(readRepoFile("packages/daemon/package.json"));
   // #525: it described itself as exposing recall + load_memory only, long

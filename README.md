@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/github-banner.jpg" alt="Bastra Recall — persistent memory for AI coding agents: works with Claude Code, Cursor and MCP, stores memories as readable Markdown, open source" width="100%" />
+  <img src="./assets/github-banner.jpg" alt="Bastra Recall — persistent memory for AI coding agents: connects over MCP, stores memories as readable Markdown, open source" width="100%" />
 </p>
 
 # Bastra Recall
@@ -97,18 +97,15 @@ You can repeat the lookup in another connected client using the same vault. This
 
 | AI client | Status | Setup and behavior |
 |---|---|---|
-| **Claude Code** (CLI) | Tested — in daily use | MCP, Skill, 12 hook registrations (10 without optional Stop/harvest). Stop is on by default; `--no-stop-hook` leaves it out. Required chat lifecycle cleanup at SessionEnd, save notices and statusline. [Hooks](./docs/hooks.md) |
-| **Claude Desktop** | Runs; smoke test pending ([#1452](https://github.com/n0mad-ai/bastra-recall/issues/1452)) | MCP and memory guidance; session context on the first tool call. [Setup](https://github.com/n0mad-ai/bastra-recall/wiki/Claude-Desktop), including the macOS `.mcpb` extension |
+| **Claude Code** (CLI) | Tested | MCP, Skill, 12 hook registrations (10 without optional Stop/harvest). Stop is on by default; `--no-stop-hook` leaves it out. Required chat lifecycle cleanup at SessionEnd, save notices and statusline. [Hooks](./docs/hooks.md) |
+| **Claude Desktop** | Tested | MCP and memory guidance; session context on the first tool call. [Setup](https://github.com/n0mad-ai/bastra-recall/wiki/Claude-Desktop), including the macOS `.mcpb` extension |
 | **Codex CLI** | Tested | MCP, Skill and native hooks. [Setup](./docs/CODEX.md) |
-| **Codex IDE + ChatGPT Desktop** | ChatGPT Desktop (with Codex Desktop): runs, smoke test pending ([#1452](https://github.com/n0mad-ai/bastra-recall/issues/1452)). Codex IDE: not yet field-tested | Share the local Codex configuration. [Setup and limitations](./docs/CODEX.md) |
-| **Cursor** | Pending — integration test to follow | MCP registration; add project rules with `bastra rules cursor` |
-| **ChatGPT web + iPhone app** | Checked end to end on 2026-10-29; remote MCP included since 1.1.8 | Remote MCP with OAuth through your own HTTPS address and tunnel; the computer running Recall must be online. [Remote access](./docs/REMOTE-ACCESS.md) |
-| **claude.ai custom connectors** | Untested, not planned | Same remote MCP address and OAuth login. [Remote access](./docs/REMOTE-ACCESS.md#claudeai-custom-connectors-untested) |
-| **ChatGPT Custom GPT Actions** | Legacy | OpenAI retires Custom GPTs on 2026-12-11; use the remote MCP connection instead. [Legacy setup](./docs/openapi-generation.md#legacy-custom-gpt-action) |
+| **ChatGPT desktop app with Codex** | Tested | Shares the local Codex configuration with Codex CLI. [Setup and limitations](./docs/CODEX.md) |
+| **ChatGPT** (web and phone app) | Tested; connects over remote MCP, included since 1.1.8 | Remote MCP with OAuth through your own HTTPS address and tunnel; the computer running Recall must be online. [Remote access](./docs/REMOTE-ACCESS.md) |
 
-Other MCP clients can connect through the forwarder, or remotely over [`/api/v1/mcp`](./docs/REMOTE-ACCESS.md), but are untested and not planned. Scripts and other integrations can use the [REST API](./docs/USAGE.md#rest-api-for-non-mcp-clients). MCP is the protocol that lets an AI assistant use external tools such as this memory service.
+Recall speaks MCP. Other MCP clients may work, but they are not tested; we add them here once they are. The older ChatGPT Custom GPT Actions route is legacy: OpenAI retires Custom GPTs on 2026-12-11 ([legacy setup](./docs/openapi-generation.md#legacy-custom-gpt-action)). Scripts and other integrations can use the [REST API](./docs/USAGE.md#rest-api-for-non-mcp-clients). MCP is the protocol that lets an AI assistant use external tools such as this memory service.
 
-The evidence ledger in [host-capabilities.ts](./packages/daemon/src/host-capabilities.ts) separates host capabilities from the shipped Bastra path and records sources, runtime evidence, all eight capabilities and tool coverage. The summary below concerns Bastra's hook paths; Cursor/Desktop/remote MCP have no Bastra hook gate. Codex CLI 0.162.1 and 0.166.0 have verified deny coverage for `exec_command`/Bash and `view_image`; `apply_patch` deny and MCP remain unverified on both versions; Fork is verified only on 0.162.1. Hosted WebSearch is unsupported; `write_stdin` has no fresh deny boundary. Other Codex versions remain preparation-only. Stop continuation never guarantees that text is hidden before display. `validate_artifact` requires connected Recall MCP with the write/full tool surface.
+The evidence ledger in [host-capabilities.ts](./packages/daemon/src/host-capabilities.ts) separates host capabilities from the shipped Bastra path and records sources, runtime evidence, all eight capabilities and tool coverage. The summary below concerns Bastra's hook paths; Claude Desktop and remote MCP have no Bastra hook gate. Codex CLI 0.162.1 and 0.166.0 have verified deny coverage for `exec_command`/Bash and `view_image`; `apply_patch` deny and MCP remain unverified on both versions; Fork is verified only on 0.162.1. Hosted WebSearch is unsupported; `write_stdin` has no fresh deny boundary. Other Codex versions remain preparation-only. Stop continuation never guarantees that text is hidden before display. `validate_artifact` requires connected Recall MCP with the write/full tool surface.
 
 | Surface | Runtime | Bastra pre_tool_deny | Bastra must_load_gate |
 |---|---|---|---|
@@ -116,7 +113,6 @@ The evidence ledger in [host-capabilities.ts](./packages/daemon/src/host-capabil
 | codex | 0.162.1 | supported | supported |
 | codex | 0.166.0 | supported | supported |
 | codex | unverified / not version-pinned | preparation-only | preparation-only |
-| cursor | unverified / not version-pinned | unsupported | unsupported |
 | claude-desktop | unverified / not version-pinned | unsupported | unsupported |
 | replay | unverified / not version-pinned | preparation-only | preparation-only |
 | remote-mcp | unverified / not version-pinned | unsupported | unsupported |
@@ -273,18 +269,15 @@ Wiederhole die Abfrage bei Bedarf in einem anderen verbundenen Client mit demsel
 
 | KI-Client | Status | Einrichtung und Verhalten |
 |---|---|---|
-| **Claude Code** (CLI) | Getestet – im täglichen Einsatz | MCP, Skill, 12 Hook-Registrierungen (10 ohne optionalen Stop/Harvest). Stop ist standardmäßig an; `--no-stop-hook` lässt ihn weg. Verpflichtendes Aufräumen der Chat-Registrierung bei SessionEnd, Speicherhinweise und Statusline. [Hooks](./docs/hooks.md#deutsch) |
-| **Claude Desktop** | Läuft; Kurztest steht aus ([#1452](https://github.com/n0mad-ai/bastra-recall/issues/1452)) | MCP und Memory-Anleitung; Sitzungskontext beim ersten Tool-Aufruf. [Einrichtung](https://github.com/n0mad-ai/bastra-recall/wiki/Claude-Desktop), einschließlich macOS-Extension `.mcpb` |
+| **Claude Code** (CLI) | Getestet | MCP, Skill, 12 Hook-Registrierungen (10 ohne optionalen Stop/Harvest). Stop ist standardmäßig an; `--no-stop-hook` lässt ihn weg. Verpflichtendes Aufräumen der Chat-Registrierung bei SessionEnd, Speicherhinweise und Statusline. [Hooks](./docs/hooks.md#deutsch) |
+| **Claude Desktop** | Getestet | MCP und Memory-Anleitung; Sitzungskontext beim ersten Tool-Aufruf. [Einrichtung](https://github.com/n0mad-ai/bastra-recall/wiki/Claude-Desktop), einschließlich macOS-Extension `.mcpb` |
 | **Codex CLI** | Getestet | MCP, Skill und native Hooks. [Einrichtung](./docs/CODEX.md) |
-| **Codex IDE + ChatGPT Desktop** | ChatGPT Desktop (mit Codex Desktop): läuft, Kurztest steht aus ([#1452](https://github.com/n0mad-ai/bastra-recall/issues/1452)). Codex IDE: ungetestet | Nutzen die lokale Codex-Konfiguration gemeinsam. [Einrichtung und Grenzen](./docs/CODEX.md) |
-| **Cursor** | Ausstehend – Integrationstest folgt | MCP-Registrierung; Projektregeln mit `bastra rules cursor` ergänzen |
-| **ChatGPT Web + iPhone-App** | Am 29.10.2026 durchgehend geprüft; Remote-MCP seit 1.1.8 enthalten | Remote-MCP mit OAuth über deine eigene HTTPS-Adresse und einen Tunnel; der Rechner mit Recall muss online sein. [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch) |
-| **claude.ai Custom Connectors** | Ungetestet, nicht geplant | Dieselbe Remote-MCP-Adresse und derselbe OAuth-Login. [Fernzugriff](./docs/REMOTE-ACCESS.md#claudeai-custom-connectors-untested) (Englisch) |
-| **ChatGPT Custom GPT Actions** | Veraltet | OpenAI stellt Custom GPTs am 11.12.2026 ein; nutze stattdessen die Remote-MCP-Verbindung. [Bisherige Einrichtung](./docs/openapi-generation.md#legacy-custom-gpt-action) |
+| **ChatGPT-Desktop-App mit Codex** | Getestet | Nutzt dieselbe lokale Codex-Konfiguration wie Codex CLI. [Einrichtung und Grenzen](./docs/CODEX.md) |
+| **ChatGPT** (Web und Handy-App) | Getestet; verbindet sich über Remote-MCP, seit 1.1.8 enthalten | Remote-MCP mit OAuth über deine eigene HTTPS-Adresse und einen Tunnel; der Rechner mit Recall muss online sein. [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch) |
 
-Weitere MCP-Clients können den Forwarder oder aus der Ferne [`/api/v1/mcp`](./docs/REMOTE-ACCESS.md) verwenden, sind aber ungetestet und nicht geplant. Skripte und andere Integrationen nutzen die [REST-API](./docs/USAGE.md#rest-api-für-nicht-mcp-clients). MCP ist das Protokoll, mit dem ein KI-Assistent externe Werkzeuge wie diesen Gedächtnisdienst verwendet.
+Recall spricht MCP. Andere MCP-Clients können funktionieren, sind aber nicht getestet; wir nehmen sie hier auf, sobald sie getestet sind. Der ältere Weg über ChatGPT Custom GPT Actions ist veraltet: OpenAI stellt Custom GPTs am 11.12.2026 ein ([bisherige Einrichtung](./docs/openapi-generation.md#legacy-custom-gpt-action)). Skripte und andere Integrationen nutzen die [REST-API](./docs/USAGE.md#rest-api-für-nicht-mcp-clients). MCP ist das Protokoll, mit dem ein KI-Assistent externe Werkzeuge wie diesen Gedächtnisdienst verwendet.
 
-Die Belegtabelle in [host-capabilities.ts](./packages/daemon/src/host-capabilities.ts) trennt Host-Fähigkeiten vom ausgelieferten Bastra-Pfad und nennt Quellen, Laufzeitbelege, alle acht Fähigkeiten und Tool-Grenzen. Die Übersicht beschreibt Bastras Hook-Pfade; Cursor/Desktop/Remote-MCP haben kein Bastra-Hook-Gate. Für Codex CLI 0.162.1 und 0.166.0 ist Deny bei `exec_command`/Bash und `view_image` belegt; `apply_patch`-Deny und MCP bleiben auf beiden Versionen ungeprüft; Fork ist nur auf 0.162.1 belegt. Hosted WebSearch ist nicht unterstützt; `write_stdin` hat keine neue Deny-Grenze. Andere Codex-Versionen bleiben Vorbereitung. Eine Stop-Fortsetzung garantiert nie, dass Text vor der Anzeige zurückgehalten wird. `validate_artifact` braucht verbundenes Recall-MCP mit der Tool-Oberfläche write/full.
+Die Belegtabelle in [host-capabilities.ts](./packages/daemon/src/host-capabilities.ts) trennt Host-Fähigkeiten vom ausgelieferten Bastra-Pfad und nennt Quellen, Laufzeitbelege, alle acht Fähigkeiten und Tool-Grenzen. Die Übersicht beschreibt Bastras Hook-Pfade; Claude Desktop und Remote-MCP haben kein Bastra-Hook-Gate. Für Codex CLI 0.162.1 und 0.166.0 ist Deny bei `exec_command`/Bash und `view_image` belegt; `apply_patch`-Deny und MCP bleiben auf beiden Versionen ungeprüft; Fork ist nur auf 0.162.1 belegt. Hosted WebSearch ist nicht unterstützt; `write_stdin` hat keine neue Deny-Grenze. Andere Codex-Versionen bleiben Vorbereitung. Eine Stop-Fortsetzung garantiert nie, dass Text vor der Anzeige zurückgehalten wird. `validate_artifact` braucht verbundenes Recall-MCP mit der Tool-Oberfläche write/full.
 
 | Surface | Runtime | Bastra pre_tool_deny | Bastra must_load_gate |
 |---|---|---|---|
@@ -292,7 +285,6 @@ Die Belegtabelle in [host-capabilities.ts](./packages/daemon/src/host-capabiliti
 | codex | 0.162.1 | supported | supported |
 | codex | 0.166.0 | supported | supported |
 | codex | unverified / not version-pinned | preparation-only | preparation-only |
-| cursor | unverified / not version-pinned | unsupported | unsupported |
 | claude-desktop | unverified / not version-pinned | unsupported | unsupported |
 | replay | unverified / not version-pinned | preparation-only | preparation-only |
 | remote-mcp | unverified / not version-pinned | unsupported | unsupported |

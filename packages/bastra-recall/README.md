@@ -1,6 +1,6 @@
 # bastra-recall
 
-Keep preferences, decisions and lessons available across AI sessions. Bastra Recall stores memories as readable Markdown files and connects them to Claude Code, Claude Desktop, Codex, ChatGPT Desktop and Cursor. Check the [support matrix](https://github.com/n0mad-ai/bastra-recall#supported-surfaces) for each integration’s tested status.
+Keep preferences, decisions and lessons available across AI sessions. Bastra Recall stores memories as readable Markdown files and connects them to your AI clients. Tested: Claude Code (CLI), Codex (CLI), Claude Desktop, ChatGPT (web and phone app, over remote MCP) and the ChatGPT desktop app with Codex. Other MCP clients may work but are not tested; see the [support matrix](https://github.com/n0mad-ai/bastra-recall#supported-surfaces).
 
 This package provides the installer and `bastra` command. Storage and keyword search are local; retrieved context is passed to your AI client. See [privacy and network use](https://github.com/n0mad-ai/bastra-recall/blob/main/docs/PRIVACY.md).
 
@@ -18,10 +18,10 @@ bastra install
 Both expose the `bastra` CLI. After installing, restart your AI client.
 
 - `bastra install` — guided setup (interactive): pick vault, AI clients, semantic recall.
-- `bastra install all` — register the MCP server, Skill, and hooks across ChatGPT Desktop/Codex, Claude Code, Claude Desktop, and Cursor (script-friendly).
+- `bastra install all` — register the MCP server, Skill, and hooks across ChatGPT Desktop/Codex, Claude Code and Claude Desktop (script-friendly); it also registers Cursor, which is not tested.
 - `bastra install codex` — install the shared Codex/ChatGPT Desktop MCP entry, native hooks, and `~/.agents/skills/bastra-recall`.
 - `bastra doctor` — check registrations; add `--fix` to repair them.
-- `bastra rules cursor` — add memory guidance in the current Cursor project.
+- `bastra rules cursor` — add memory guidance in the current Cursor project (Cursor is not tested).
 - `bastra uninstall all` — unregister every client again. The installed package, your vault, logs and settings stay; removing the package is a separate `brew uninstall` / `npm uninstall -g`.
 
 The CLI itself ships in [`@bastra-recall/daemon`](https://www.npmjs.com/package/@bastra-recall/daemon); this package just re-exports its `bastra` entry point under the unscoped name.

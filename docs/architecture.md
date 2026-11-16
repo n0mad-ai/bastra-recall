@@ -8,7 +8,7 @@
 
 ### Goal
 
-Bastra.Recall is a local-first memory layer for AI assistants. It gives Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor and other MCP/HTTP clients (see the [support matrix](../README.md#supported-surfaces); packaged ChatGPT Actions remain planned) one shared vault of durable lessons, preferences, project facts, decisions, workflows, bookmarks, and document sidecars.
+Bastra.Recall is a local-first memory layer for AI assistants. It gives the connected AI clients one shared vault of durable lessons, preferences, project facts, decisions, workflows, bookmarks, and document sidecars. Tested clients: Claude Code (CLI), Codex (CLI), Claude Desktop, ChatGPT (web and phone app, over remote MCP) and the ChatGPT desktop app with Codex; see the [support matrix](../README.md#supported-surfaces). Other MCP and HTTP clients may work but are not tested.
 
 The operating goal is simple: the user should not have to re-explain stable context. The assistant saves durable memories when a lesson or rule is learned, and recalls relevant memories before acting.
 
@@ -387,7 +387,7 @@ Storage and keyword search run locally. MCP results and hook context are handed 
 | Vault parsing | `gray-matter` + Zod frontmatter schema |
 | File watching | `chokidar` with polling on cloud mounts |
 | HTTP | Node `http` server |
-| CLI/install adapters | Claude Code, Claude Desktop, Codex/ChatGPT Desktop, Cursor |
+| CLI/install adapters | Claude Code, Claude Desktop, Codex/ChatGPT Desktop, Cursor (adapter present, not tested) |
 
 ### Historical Note
 
@@ -399,7 +399,7 @@ Early design docs described a SQLite/FTS5 index and HTTP MCP on port `7891`. Tha
 
 ### Ziel
 
-Bastra.Recall ist eine lokal ausgerichtete Gedächtnisschicht für KI-Assistenten. Sie gibt Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor und anderen MCP-/HTTP-Clients (siehe die [Support-Matrix](../README.md#unterstützte-oberflächen); paketierte ChatGPT Actions sind weiterhin geplant) einen gemeinsamen Vault mit dauerhaften Lessons, Präferenzen, Projektfakten, Entscheidungen, Workflows, Lesezeichen und Dokument-Sidecars.
+Bastra.Recall ist eine lokal ausgerichtete Gedächtnisschicht für KI-Assistenten. Sie gibt den verbundenen KI-Clients einen gemeinsamen Vault mit dauerhaften Lessons, Präferenzen, Projektfakten, Entscheidungen, Workflows, Lesezeichen und Dokument-Sidecars. Getestete Clients: Claude Code (CLI), Codex (CLI), Claude Desktop, ChatGPT (Web und Handy-App, über Remote-MCP) und die ChatGPT-Desktop-App mit Codex; siehe die [Support-Matrix](../README.md#unterstützte-oberflächen). Andere MCP- und HTTP-Clients können funktionieren, sind aber nicht getestet.
 
 Das Betriebsziel ist einfach: Der Nutzer soll stabilen Kontext nicht erneut erklären müssen. Der Assistent speichert dauerhafte Erinnerungen, wenn eine Lesson oder Regel gelernt wurde, und ruft relevante Erinnerungen ab, bevor er handelt.
 
@@ -774,7 +774,7 @@ Speicherung und Stichwortsuche laufen lokal. MCP-Ergebnisse und Hook-Kontext wer
 | Vault-Parsing | `gray-matter` + Zod-Frontmatter-Schema |
 | Dateiüberwachung | `chokidar` mit Polling auf Cloud-Mounts |
 | HTTP | Node-`http`-Server |
-| CLI-/Installations-Adapter | Claude Code, Claude Desktop, Codex/ChatGPT Desktop, Cursor |
+| CLI-/Installations-Adapter | Claude Code, Claude Desktop, Codex/ChatGPT Desktop, Cursor (Adapter vorhanden, nicht getestet) |
 
 ### Historischer Hinweis
 
