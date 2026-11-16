@@ -3,7 +3,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Bastra.Recall REST API",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "description": "Generated from HTTP dispatchers and shared input schemas. JSON syntax is valid YAML 1.2. Result bodies are intentionally open objects: handlers have no shared response schemas. Public clients require an HTTPS tunnel and BASTRA_API_TOKEN. Task routes are local-only and enabled by default from v1.2.0; BASTRA_TASKS=0 disables them."
   },
   "servers": [
