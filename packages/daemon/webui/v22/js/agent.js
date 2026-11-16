@@ -12,6 +12,7 @@ import { TC, INK } from "./views/chrome.js";
 import { assistantName } from "./sections/settings-model.js";
 import { loadingInline, setBusy } from "./sections/loading.js";
 import { showInView, openMemoryBrowser, markdown } from "./views/memory-browser.js";
+import { saveAction } from "./agent-save.js";
 
 const STATE_COLOR = {
   idle: "var(--muted)",
@@ -31,6 +32,7 @@ let panel,
   convBox,
   caption,
   srcBox,
+  actBox,
   msgBox,
   sugBox,
   inBox,
@@ -64,6 +66,7 @@ export function mountAgent(app) {
   qBox = h("div.msg.msg--you");
   caption = h("div.agent__caption.agent__md");
   srcBox = h("div.agent__srcs");
+  actBox = h("div");
   msgBox = h("div");
   convBox = h("div.agent__convs", { hidden: true });
   sugBox = h("div.agent__sugs");
@@ -118,7 +121,7 @@ export function mountAgent(app) {
       )
     ),
     h("div.agent__face", null, faceCanvas),
-    h("div.agent__body", null, convBox, qBox, caption, srcBox, msgBox, sugBox),
+    h("div.agent__body", null, convBox, qBox, caption, srcBox, actBox, msgBox, sugBox),
     h("div.agent__foot", null, inBox)
   );
 
@@ -178,7 +181,7 @@ export function ask(q) {
   if (chatState.shown)
     chatState.msgs.push(
       { role: "you", text: chatState.shown.q },
-      { role: "recall", text: chatState.shown.a, sources: chatState.shown.sources }
+      { role: "recall", text: chatState.shown.a, sources: chatState.shown.sources, saveable: chatState.shown.saveable }
     );
   chatState.shown = null;
   chatState.typed = "";
@@ -193,7 +196,9 @@ export function ask(q) {
       if (seq !== chatState.seq) return;
       let answer,
         sources = [];
-      if (ok && typeof body.reply === "string") {
+      // Only a real model answer can be saved as a memory (agent-save.js).
+      const saveable = ok && typeof body.reply === "string";
+      if (saveable) {
         answer = body.reply;
         if (typeof body.navigate === "string") {
           if (VAULT_VIEWS.includes(body.navigate)) pickVaultView(body.navigate);
@@ -224,10 +229,10 @@ export function ask(q) {
       } else answer = t("agent.error");
       if (seq !== chatState.seq) return;
       chatState.history.push({ role: "user", content: q }, { role: "assistant", content: answer });
-      typeOut({ q, a: answer, sources });
+      typeOut({ q, a: answer, sources, saveable });
     })
     .catch(() => {
-      if (seq === chatState.seq) typeOut({ q, a: t("agent.error"), sources: [] });
+      if (seq === chatState.seq) typeOut({ q, a: t("agent.error"), sources: [], saveable: false });
     });
 }
 
@@ -436,7 +441,7 @@ function renderConvs() {
   convBox.hidden = !open;
   histBtn.classList.toggle("is-on", open);
   histBtn.setAttribute("aria-pressed", String(open));
-  for (const el of [qBox, caption, srcBox, msgBox, sugBox]) el.classList.toggle("is-off", open);
+  for (const el of [qBox, caption, srcBox, actBox, msgBox, sugBox]) el.classList.toggle("is-off", open);
   if (!open) {
     clear(convBox);
     return;
@@ -494,6 +499,12 @@ function openSource(id, el) {
   if (m && inWindow(m, timeWindow()) && showInView(id)) return;
   openMemoryBrowser(m?.area || "all", id, el?.getBoundingClientRect());
 }
+
+// A memory saved from an answer opens in the memory browser.
+const openSaved = (id) => openSource(id, null);
+/** "Save as memory" under the answer on screen (js/agent-save.js), also for stored ones. */
+const answerActions = () =>
+  chatState.shown && state.agent === "idle" ? saveAction(chatState.shown, openSaved, render) : [];
 
 function send() {
   const q = input.value.trim();
@@ -554,6 +565,7 @@ export function render(L) {
   clear(srcBox);
   if (chatState.shown && ag === "idle" && chatState.shown.sources.length)
     srcBox.append(h("span.agent__srcs-l", { text: t("agent.sources") }), ...srcButtons(chatState.shown.sources));
+  clear(actBox).append(...answerActions());
   // Earlier exchanges below, newest first, each question above its answer
   // and the answer's sources (clickable as above).
   const pairs = [];
@@ -564,6 +576,11 @@ export function render(L) {
       h("div.msg.msg--you", { text: you.text }),
       h("div.msg.msg--recall.agent__md", null, ...md(rec.text)),
       ...(rec.sources?.length ? [h("div.agent__srcs.agent__srcs--old", null, ...srcButtons(rec.sources))] : []),
+      ...saveAction(
+        { q: you.text, a: rec.text, sources: rec.sources || [], saveable: rec.saveable },
+        openSaved,
+        render
+      ),
     ])
   );
   msgBox.className = pairs.length ? "agent__srcs agent__hist" : "";

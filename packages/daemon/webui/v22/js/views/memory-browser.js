@@ -11,7 +11,9 @@
 // Real data:
 //   list, chips, pulse, stats, links — vault() from GET /ui/graph
 //   last recalled, tags, scope        — the same graph nodes (reach.last_at …)
-//   reader text, topic, source        — GET /ui/graph/node?id= (as the old map inspector)
+//   reader text, topic, source        — GET /ui/graph/node?id= (as the old map inspector;
+//                                        cached per generation, membrowser-detail.js)
+//   edit, archive, undo, rule state   — POST /ui/memory/edit | archive | restore (membrowser-edit.js)
 //   semantic hits                     — GET /ui/search?q= (as the old map search)
 //   vault care flags                  — GET /ui/annotations, POST /ui/annotate (membrowser-care.js)
 // The prototype's recall_when, version, file path, sessions, reflex mode and
@@ -19,13 +21,16 @@
 import { h, s, clear, setVars } from "../dom.js";
 import { t, addStrings, numberFmt } from "../i18n.js";
 import { state, setState } from "../state.js";
-import { data, onData } from "../data.js";
+import { data, onData, loadGraph } from "../data.js";
 import { ask } from "../agent.js";
 import { cover } from "../cover.js";
 import { vault, areaCol, ago } from "./vault-data.js";
 import { TC, INK, ACC, MUT, dateStr, lastPress } from "./chrome.js";
 import { viewLocked, lastVaultView } from "./pro-views.js";
 import { careBlock } from "./membrowser-care.js";
+import { detailCache, readerKey, readerPlan } from "./membrowser-detail.js";
+import { readerEdit, archiveNotice, editing } from "./membrowser-edit.js";
+import { nextSelection } from "./membrowser-edit-model.js";
 import en from "../i18n/membrowser-en.js";
 import de from "../i18n/membrowser-de.js";
 
@@ -155,22 +160,8 @@ function heat(el, days, hot) {
 }
 const NO_DAYS = new Array(30).fill(0);
 
-const detail = new Map(); // id → node detail | null (failed)
-async function loadDetail(id) {
-  if (detail.has(id)) return detail.get(id);
-  let d = null;
-  try {
-    const r = await fetch(`/ui/graph/node?id=${encodeURIComponent(id)}`, { credentials: "same-origin" });
-    if (r.ok) {
-      const b = await r.json();
-      if (b && typeof b === "object") d = b;
-    }
-  } catch {
-    /* stays null */
-  }
-  detail.set(id, d);
-  return d;
-}
+// Node details for the reader: a new generation on every graph change and reopen (#1449).
+const details = detailCache();
 
 let care = null; // [{ id, kind, note, date, done }] from GET /ui/annotations
 async function loadCare() {
@@ -356,7 +347,9 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     semT = 0,
     semSeq = 0,
     order = [],
-    readerFor = null,
+    readerFor = undefined, // readerKey of the drawn reader (membrowser-detail.js)
+    keepTop = null, // { id, top }: reader scroll to restore once a refreshed reader is filled
+    seenGraph = data.graph,
     view = null,
     growing = false,
     glideId = null,
@@ -365,6 +358,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
   // ── open / close (prototype openMB / closeMB) ──
   function show(anim) {
     clearTimeout(closeT);
+    details.invalidate(); // a reopened browser reads every memory fresh
     input.value = M.q;
     if (!care)
       loadCare().then(() => {
@@ -724,16 +718,19 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     const narrow = root.clientWidth > 0 && root.clientWidth < 760;
     root.classList.toggle("is-narrow", narrow);
     root.classList.toggle("is-reading", !!m && M.reader);
-    const key = m ? `${m.id}|${v.total}|${narrow}` : "";
-    if (!force && key === readerFor) {
+    const key = readerKey(m, v, narrow, details.gen);
+    const plan = force ? "rebuild" : readerPlan(readerFor, key, readerBusy());
+    if (plan === "keep") {
       updatePos();
       return;
     }
+    if (plan === "refresh") return refreshReader(key);
     readerFor = key;
     clear(reader);
     reader.scrollTop = 0;
     if (!m) {
-      reader.append(h("div.mb__nosel", null, t("mb.pick"), h("br"), t("mb.pickKeys")));
+      const nosel = h("div.mb__nosel", null, t("mb.pick"), h("br"), t("mb.pickKeys"));
+      reader.append(...[archiveNotice(M.sel, editDeps), nosel].filter(Boolean));
       return;
     }
     const c = TC[m.cls] || INK,
@@ -751,6 +748,8 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
       h("div.mb-rd__boxv", { text: m.summary })
     );
     const reflex = h("span.mb-rd__flag", { text: "REFLEX", hidden: true });
+    const title = h("h2.mb-rd__h", { text: m.title });
+    const ed = readerEdit(m, { anchor: title, box, text, ...editDeps });
     const stats = [
       [numberFmt.format(m.recalled), "recalled", INK],
       [numberFmt.format(m.acted), "acted", ACC],
@@ -761,6 +760,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     const el = h(
       "div.mb-rd",
       null,
+      archiveNotice(M.sel, editDeps),
       narrow
         ? h("button.mb-rd__back", {
             text: t("mb.back"),
@@ -791,10 +791,11 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
           m.area
         ),
         m.type ? h("span", { text: m.type }) : null,
+        ed.badge,
         reflex,
         pos
       ),
-      h("h2.mb-rd__h", { text: m.title }),
+      title,
       m.summary ? box : null,
       text,
       h(
@@ -847,7 +848,8 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
                 },
               },
             })
-          : null
+          : null,
+        ed.acts
       ),
       careBlock(m, careDeps())
     );
@@ -874,7 +876,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     };
     fill(null);
     updatePos(pos);
-    loadDetail(m.id).then((d) => {
+    details.load(m.id).then((d) => {
       if (dead || readerFor !== key) return;
       fill(d);
       // RECALL WHEN (prototype box): the memory's own triggers
@@ -896,6 +898,30 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
         text.classList.add("is-wait");
         text.textContent = t("mb.noBody");
       }
+      ed.attach(d);
+      restoreScroll(m.id);
+    });
+  }
+  /** After a refresh: back to where the reader stood (#1449). */
+  function restoreScroll(id) {
+    if (keepTop?.id !== id) return;
+    reader.scrollTop = keepTop.top;
+    keepTop = null;
+  }
+  /** An open editor or a field the user types in: a refresh waits for it. */
+  function readerBusy() {
+    const f = document.activeElement;
+    return editing(M.sel) || (reader.contains(f) && /^(TEXTAREA|INPUT|SELECT)$/.test(f.tagName));
+  }
+  /** Same memory, newer data (#1449): fetch first, then redraw at the same
+   *  scroll position — no flash of "loading", the selection stays. */
+  function refreshReader(key) {
+    readerFor = key;
+    details.load(key.id).then(() => {
+      if (dead || readerFor !== key) return;
+      // a refresh that overtook another keeps the position from before both
+      if (keepTop?.id !== key.id) keepTop = { id: key.id, top: reader.scrollTop };
+      renderReader(true);
     });
   }
   function updatePos(el = reader.querySelector(".mb-rd__pos")) {
@@ -903,6 +929,34 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     const i = order.indexOf(M.sel);
     el.textContent = i >= 0 ? `${i + 1} / ${order.length}` : "";
   }
+
+  // Editing in the reader (membrowser-edit.js): after a write the graph and
+  // this reader reload; an archived memory hands the selection to its neighbour.
+  function afterWrite() {
+    details.invalidate();
+    // the new graph redraws list, counts and reader (onData); without one, the reader alone
+    loadGraph().finally(() => {
+      if (!dead) renderReader();
+    });
+  }
+  const editDeps = {
+    refresh: afterWrite,
+    rerender: () => renderReader(),
+    reload: (id) => {
+      details.invalidate();
+      return details.load(id);
+    },
+    archived: (id) => {
+      M.sel = nextSelection(order, id);
+      M.reader = !!M.sel;
+      afterWrite();
+      return M.sel;
+    },
+    restored: (id) => {
+      Object.assign(M, { sel: id, reader: true, focus: true });
+      afterWrite();
+    },
+  };
 
   // Vault care block (membrowser-care.js): the loaded flags, how a new one is
   // kept, and the redraw after a save.
@@ -980,6 +1034,11 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
   });
   ro.observe(root);
   const unData = onData(() => {
+    // #1449: a new graph means memories may have changed — details are stale.
+    if (data.graph !== seenGraph) {
+      seenGraph = data.graph;
+      details.invalidate();
+    }
     if (M.open) render();
   });
 

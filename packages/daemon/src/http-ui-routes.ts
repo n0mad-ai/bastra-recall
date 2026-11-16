@@ -22,6 +22,8 @@ import {
 } from "./webui.js";
 import { handleUiChat, type ChatFn } from "./webui-chat.js";
 import { handleUiImproveText } from "./webui-improve.js";
+import { handleUiMemoryArchive, handleUiMemoryEdit, handleUiMemoryRestore } from "./webui-memory-edit.js";
+import { handleUiSaveMemory } from "./webui-save-memory.js";
 import { chatHistory, dispatchChatHistory } from "./chat-history.js";
 import { handleHookImport, handleUiImport } from "./import-review.js";
 import { handleUiImportVault, handleUiFsBrowse } from "./import-vault.js";
@@ -229,6 +231,12 @@ function dispatchVaultImage(
 const EXACT_UI_ROUTES: Record<string, (req: IncomingMessage, res: ServerResponse, ctx: UiRouteCtx) => Promise<void>> = {
   // "Improve text" on a vault-care note: same local chat client, nothing stored.
   "POST /ui/improve-text": (req, res, ctx) => handleUiImproveText(req, res, ctx.uiChat ?? null),
+  // "Save as memory" under an agent answer (#1445): the normal save_memory path, user-directed.
+  "POST /ui/save-memory": (req, res, ctx) => handleUiSaveMemory(req, res, ctx.toolDeps),
+  // Memory browser edits in the reader (#1446): edit_memory / archive_memory / restore, revision-checked.
+  "POST /ui/memory/edit": handleUiMemoryEdit,
+  "POST /ui/memory/archive": handleUiMemoryArchive,
+  "POST /ui/memory/restore": handleUiMemoryRestore,
 };
 
 function dispatchExactUi(

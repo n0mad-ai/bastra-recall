@@ -66,7 +66,7 @@ import {
   clampSummary,
   SUMMARY_MAX,
 } from "@bastra-recall/core";
-import { recordAudit } from "./audit-trail.js";
+import { auditOrigin, recordAudit, type AuditOrigin } from "./audit-trail.js";
 import { claimGateResult, unansweredClaims, GENERATED_TRIGGER_TYPES, type ClaimGateResult } from "./claim-gate.js";
 import { hiddenFromCaller, hiddenOnDisk, type PrivateAccess } from "./private-access.js";
 import { scoreSaveQuality, type SaveQualityResult } from "./save-quality.js";
@@ -298,7 +298,9 @@ export async function editMemoryHandler(
   /** #464: transportgebunden — siehe `private-access.ts`. Die beiden
    *  öffentlichen Transporte (REST-Dispatcher, stdio-MCP-Server) übergeben
    *  NICHTS, und das Fehlen ist die sichere Antwort. */
-  access?: PrivateAccess
+  access?: PrivateAccess,
+  /** #1446: the web UI records its own writes as the user's; default MCP. */
+  origin?: AuditOrigin
 ): Promise<EditMemoryResult | ClaimGateResult> {
   // #519: Der alte Feldname wird LAUT abgelehnt statt still verworfen. Wer ihn
   // schickt, will genau die Absicherung, die Zod ihm sonst kommentarlos
@@ -547,8 +549,7 @@ export async function editMemoryHandler(
     vaultRoot: deps.vaultPath,
     memoryId: mem.fm.id,
     operation: "update",
-    actor: "assistant",
-    actorDetail: "mcp:edit_memory",
+    ...auditOrigin(origin, "mcp:edit_memory"),
     diffBefore: outcome.before,
     diffAfter: outcome.after,
     filePath: mem.filePath,

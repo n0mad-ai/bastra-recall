@@ -13,6 +13,7 @@ import { recallDaily } from "./recall-daily.js";
 import { defaultLogDir } from "./learned-recall/harvest.js";
 import { getUiEnabled } from "./settings.js";
 import { sendJson } from "./http-util.js";
+import { memoryEditInfo } from "./webui-memory-edit.js";
 
 export interface GraphReadCtx {
   vault: Vault;
@@ -64,6 +65,8 @@ export async function handleGraphRead(
       related_via: fm.related_via.filter((link) => visibleTarget(link.id)),
       file: relative(toolDeps.vaultPath, mem.filePath).split(sep).join("/"),
       recall_days: (await recallDaily(defaultLogDir())).get(fm.id) ?? [],
+      // #1446: the memory browser edits against this revision and shows the rule state.
+      ...memoryEditInfo(mem),
     });
     return;
   }

@@ -56,6 +56,13 @@ function logFor(vaultRoot: string): AuditLog {
   return log;
 }
 
+/** Who a shared write handler records as author: MCP/REST callers by default,
+ *  the user for the web UI's own writes (#1446, `webui-memory-edit.ts`). */
+export type AuditOrigin = Pick<AuditTrailInput, "actor" | "actorDetail">;
+export function auditOrigin(origin: AuditOrigin | undefined, mcpDetail: string): AuditOrigin {
+  return origin ?? { actor: "assistant", actorDetail: mcpDetail };
+}
+
 export interface AuditTrailInput {
   vaultRoot: string;
   memoryId: string;

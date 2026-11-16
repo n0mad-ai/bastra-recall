@@ -202,12 +202,14 @@ test("#1264: forwarded loopback API, hook and UI requests require a token", asyn
         { method: "GET", path: "/ui/health", body: undefined },
         { method: "GET", path: "/ui", body: undefined },
         { method: "POST", path: "/ui/improve-text", body: '{"text":"x"}' },
+        { method: "POST", path: "/ui/save-memory", body: '{"title":"x"}' },
+        { method: "POST", path: "/ui/memory/edit", body: '{"id":"a1"}' },
       ];
       for (const route of routes) {
         const headers = { ...JSON_HEADERS, host: `localhost:${port}` };
         const direct = await call(port, route.method, route.path, headers, route.body);
         // /ui itself is disabled in this fixture; preserve its normal 404 too.
-        const uiOff = route.path === "/ui" || route.path === "/ui/improve-text";
+        const uiOff = ["/ui", "/ui/improve-text", "/ui/save-memory", "/ui/memory/edit"].includes(route.path);
         const expected = uiOff ? 404 : route.path === "/api/v1/mcp" ? 405 : 200;
         assert.equal(direct.status, expected, `${route.path} direct local`);
         for (const [name, value] of [
@@ -281,7 +283,17 @@ test("#1264: assistant gateway preserves forwarding evidence and bearer authenti
 
 test("local POST gate: foreign and opaque browser origins cannot reach local writes", async () => {
   await withServer({ token: "unset" }, async (port) => {
-    for (const path of ["/ui/areas", "/settings/docs", "/ui/onboarding", "/ui/improve-text", "/hook/hinted"]) {
+    for (const path of [
+      "/ui/areas",
+      "/settings/docs",
+      "/ui/onboarding",
+      "/ui/improve-text",
+      "/ui/save-memory",
+      "/ui/memory/edit",
+      "/ui/memory/archive",
+      "/ui/memory/restore",
+      "/hook/hinted",
+    ]) {
       for (const origin of ["https://attacker.example", "null"]) {
         const result = await call(
           port,

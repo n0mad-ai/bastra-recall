@@ -40,8 +40,9 @@ async function call(url, body) {
 // ── dialog frame ──────────────────────────────────────────────────────────
 let openDlg = null;
 
-/** Opens a modal pop-over; returns { box, body, close }. onClose runs once. */
-function dialog({ kicker, title, cls = "", onClose, canClose = () => true }) {
+/** Opens a modal pop-over; returns { box, body, close }. onClose runs once.
+ *  Also the frame of the agent window's "save as memory" preview (js/agent-save.js). */
+export function dialog({ kicker, title, cls = "", onClose, canClose = () => true }) {
   openDlg?.close();
   const body = h("div.dlg__body");
   const box = h(
@@ -96,9 +97,9 @@ function dialog({ kicker, title, cls = "", onClose, canClose = () => true }) {
   return { box, body, close };
 }
 
-const btn = (text, onClick, cls = "") => h("button.dlg-btn", { cls, text, on: { click: onClick } });
-const status = () => h("span.dlg__status");
-function setStatus(el, text, kind = "") {
+export const btn = (text, onClick, cls = "") => h("button.dlg-btn", { cls, text, on: { click: onClick } });
+export const status = () => h("span.dlg__status");
+export function setStatus(el, text, kind = "") {
   el.className = `dlg__status${kind ? " is-" + kind : ""}`;
   // busy: the request is on its way (run indicator, js/sections/loading.js)
   if (kind === "busy") clear(el).append(loadingInline(text));

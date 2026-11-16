@@ -1,0 +1,43 @@
+// Agent window: "Save as memory" under an answer (js/agent-save.js), English.
+export default {
+  "agent.save.btn": "SAVE AS MEMORY",
+  "agent.save.btnTitle": "Save this answer to the vault as a memory after you review it",
+  "agent.save.saved": "SAVED",
+  "agent.save.savedTitle": "Saved as “{title}” – open in the memory browser",
+  "agent.save.kicker": "AGENT · SAVE AS MEMORY",
+  "agent.save.title": "Answer as memory",
+  "agent.save.help":
+    "Check title, type, area and text. Nothing is saved until you press “Save”: exactly one memory, marked as directed by you.",
+  "agent.save.fTitle": "TITLE",
+  "agent.save.fType": "TYPE",
+  "agent.save.fScope": "AREA",
+  "agent.save.fBody": "TEXT",
+  "agent.save.scopePh": "pick an existing one or type a new one",
+  "agent.save.privateHint": "One source of this answer is private, so the memory is saved as private.",
+  "agent.save.save": "SAVE",
+  "agent.save.cancel": "CANCEL",
+  "agent.save.saving": "saving…",
+  "agent.save.done": "Saved: “{title}”",
+  "agent.save.donePrivate": "Saved as private because a source is private.",
+  "agent.save.open": "OPEN IN MEMORY BROWSER",
+  "agent.save.close": "CLOSE",
+  "agent.save.openExisting": "Open this memory in the memory browser",
+  "agent.save.exists":
+    "A memory with this title already exists. Nothing was saved. Change the title or open the existing one:",
+  "agent.save.held":
+    "An existing memory already covers this situation. Nothing was saved. Add to that one instead, or choose a more specific title:",
+  "agent.save.invalid": "Some details are missing or invalid. Check title, type and area.",
+  "agent.save.tooLarge": "The text is too long to save.",
+  "agent.save.off": "The web UI is switched off. Nothing was saved.",
+  "agent.save.offline": "Recall cannot be reached right now. Your input stays, try again in a moment.",
+  "agent.save.failed": "Saving did not work. Your input stays, try again.",
+
+  "agent.save.type.reference": "Knowledge",
+  "agent.save.type.project-fact": "Project fact",
+  "agent.save.type.decision": "Decision",
+  "agent.save.type.lesson": "Lesson",
+  "agent.save.type.workflow": "Workflow",
+  "agent.save.type.preference": "Preference",
+  "agent.save.type.user-preference": "Personal preference",
+  "agent.save.type.meta-working": "Working together",
+};

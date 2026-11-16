@@ -12,7 +12,7 @@
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import { mutateMemoryFile, withIdClaim, moveToTrashUnderClaim, SaveMemoryInput } from "@bastra-recall/core";
-import { recordAudit } from "./audit-trail.js";
+import { auditOrigin, recordAudit, type AuditOrigin } from "./audit-trail.js";
 
 import type { ToolDeps } from "./tool-deps.js";
 import { hiddenFromCaller, hiddenOnDisk, type PrivateAccess } from "./private-access.js";
@@ -71,7 +71,9 @@ export async function archiveMemoryHandler(
   deps: ToolDeps,
   args: Record<string, unknown>,
   /** #464: transportgebunden — siehe private-access.ts. */
-  access?: PrivateAccess
+  access?: PrivateAccess,
+  /** #1446: the web UI records its own archive as the user's; default MCP. */
+  origin?: AuditOrigin
 ): Promise<{ id: string; archived_to: string; superseded_by: string | null }> {
   const parsed = ArchiveMemoryArgs.safeParse(args);
   if (!parsed.success) {
@@ -156,8 +158,7 @@ export async function archiveMemoryHandler(
     vaultRoot: deps.vaultPath,
     memoryId: id,
     operation: "delete",
-    actor: "assistant",
-    actorDetail: "mcp:archive_memory",
+    ...auditOrigin(origin, "mcp:archive_memory"),
     diffBefore: diffBefore ?? { ...mem.fm },
     diffAfter: null,
     filePath: originalPath,

@@ -1,0 +1,118 @@
+/* Editing a memory in the memory browser's reader (js/views/membrowser-edit.js):
+ * the rule-state chip, the fields that take the summary's and text's place,
+ * and the note after an archive. Fields reuse the vault-care textarea
+ * (.mb-care__note) and the settings text/select (.st-text, .st-select). */
+.mb-rd__rule {
+  height: 20px;
+  padding: 0 7px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--line-30);
+  color: var(--muted);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.mb-rd__rule[data-state="rule"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.mb-rd__rule[data-state="proposal"] {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.mb-rd__rule[hidden],
+.mb-rd__box[hidden],
+.mb-rd__text[hidden],
+.mb-rd__acts .mb-btn[hidden] {
+  display: none;
+}
+.mb-ed__msg {
+  flex-basis: 100%;
+}
+
+.mb-ed {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+.mb-ed__f {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.mb-ed__f[hidden] {
+  display: none;
+}
+.mb-ed__k {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.mb-ed__count {
+  font: 9.5px var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+.mb-ed__count.is-over {
+  color: var(--amber);
+}
+/* the fields grow with their text; the reader scrolls, nothing is cut */
+.mb-ed__ta {
+  max-height: none;
+  overflow-y: hidden;
+}
+.mb-ed__ta[name="body"] {
+  min-height: 160px;
+  font: 12.5px var(--mono);
+  line-height: 1.55;
+}
+.mb-ed__tags {
+  max-width: none;
+}
+.mb-ed__rule {
+  display: grid;
+  grid-template-columns: minmax(0, 240px) minmax(0, 1fr);
+  gap: 14px;
+}
+.mb.is-narrow .mb-ed__rule {
+  grid-template-columns: minmax(0, 1fr);
+}
+.mb-ed__fixed {
+  margin: 0;
+}
+
+.mb-ed__notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-22);
+  background: var(--accent-05);
+  font: 11px var(--mono);
+  line-height: 1.45;
+}
+.mb-ed__done {
+  flex: 1 1 240px;
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.mb-ed__x {
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.mb-ed__x:hover {
+  color: var(--ink);
+}
+.mb-ed__notice .cn__msg {
+  flex-basis: 100%;
+}

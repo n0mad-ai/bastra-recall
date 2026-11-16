@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `Bash(rm:*)` in Claude Code can allow `Bash(bastra archive put:*)` on its
   own; the line under the deny names that rule. The hook never rewrites `rm`
   into it (#1383).
+- The web UI's memory browser edits memories directly in the reader: summary,
+  text, tags and rule fields through the `edit_memory` path with the shown
+  revision (a change made meanwhile is refused, the draft stays), archive into
+  the vault trash with undo, and a chip that says whether a rule applies, is
+  proposed or the memory is a note (#1446).
 
 ### Changed
 
@@ -48,6 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `deny` rule gets no such line (#657, #1362).
 - Reading permission rules from a repository settings file can no longer hang
   the Bash hook: no regex for globs, no FIFOs, no files over 1 MB.
+- The memory browser's reader no longer shows a memory's old text after it
+  changed with the vault total unchanged, also after reopening; a late answer
+  for the old version never overwrites the new one (#1449).
 
 ## [1.1.8] — 2026-10-31
 
