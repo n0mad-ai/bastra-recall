@@ -52,6 +52,33 @@ export function createFeed({ max = 300 } = {}) {
   };
 }
 
+// Arrival stagger: entries of one delivery start one after another (oldest
+// first, as they happened), but never more than MAX_WAIT after it came in.
+export const STEP = 160;
+export const MAX_WAIT = 800;
+
+/**
+ * Which entries of `events` (newest first) are new since the previous call,
+ * and when each one's arrival animation starts.
+ * arrivals(prev, events, now) → { seen, nextAt, fresh: [{ key, delay }] }
+ * - prev null (first render): everything counts as already shown, nothing animates.
+ * - An entry is reported at most once; `fresh` keeps the list order (newest first).
+ * - Deliveries in quick succession queue behind the previous one (nextAt).
+ */
+export function arrivals(prev, events, now) {
+  const seen = new Set(events.map((e) => e.key));
+  if (!prev) return { seen, nextAt: now, fresh: [] };
+  const keys = events.filter((e) => !prev.seen.has(e.key)).map((e) => e.key);
+  let at = Math.max(now, prev.nextAt);
+  const delays = [];
+  for (let i = keys.length - 1; i >= 0; i--) {
+    delays[i] = Math.min(at - now, MAX_WAIT);
+    at += STEP;
+  }
+  const fresh = keys.map((key, i) => ({ key, delay: delays[i] }));
+  return { seen, nextAt: keys.length ? at : prev.nextAt, fresh };
+}
+
 /** Short age for a row: "12s" under a minute, then "3m", "2h", "1d". */
 export function shortAge(ms, now = Date.now()) {
   const s = Math.max(0, Math.floor((now - ms) / 1000));

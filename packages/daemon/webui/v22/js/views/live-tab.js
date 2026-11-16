@@ -5,16 +5,19 @@
 //
 // Layout is the prototype's "This session" feed (Recall UI v22, tabLive).
 // From the old UI's live deck (js/managers/live-deck.js, css/live.css) it
-// keeps the arrival: a new entry slides in from the right and its dot flares
-// once (Daniel, 12.11.2026). Motion only plays for events that arrive while
-// the tab is open; an idle tab runs no animation (only the age labels tick).
+// keeps the arrival: a new entry slides in from the right (Daniel, 12.11.2026).
+// Since 16.11.2026 it is more prominent and lasts longer: the rows below glide
+// down, the new row lights up in its kind's colour and its dot pulses, all
+// fading out over ~3 s (css/live.css). Motion only plays for events that
+// arrive while the tab is open (live-feed.js arrivals); an idle tab runs no
+// animation (only the age labels tick).
 import { h } from "../dom.js";
 import { t, addStrings } from "../i18n.js";
 import { state, setState, subscribe } from "../state.js";
 import { onUpdates } from "../data.js";
 import { vault } from "./vault-data.js";
 import { showInView, openMemoryBrowser } from "./memory-browser.js";
-import { createFeed, shortAge } from "./live-feed.js";
+import { createFeed, shortAge, arrivals } from "./live-feed.js";
 import en from "../i18n/live-en.js";
 import de from "../i18n/live-de.js";
 
@@ -53,10 +56,16 @@ function countsText() {
     .join(" · ");
 }
 
-const row = (e, fresh) =>
+/** One entry; `delay` (ms) marks it as newly arrived and starts its animation. */
+const row = (e, delay) =>
   h(
     "button.lvB__row",
-    { cls: [`k-${e.kind}`, fresh ? "is-new" : ""].join(" "), type: "button", on: { click: (ev) => openEvent(e, ev) } },
+    {
+      cls: [`k-${e.kind}`, delay === undefined ? "" : "is-new"].join(" "),
+      vars: delay === undefined ? null : { "--lv-d": `${delay}ms` },
+      type: "button",
+      on: { click: (ev) => openEvent(e, ev) },
+    },
     h("span.lvB__dot"),
     h(
       "span.lvB__txt",
@@ -67,6 +76,18 @@ const row = (e, fresh) =>
     ),
     h("span.lvB__ago", { "data-at": String(e.at), text: shortAge(e.at) })
   );
+
+/** After `n` rows were prepended, the rows below glide down from where they
+ *  were instead of jumping (one layout read; only the first rows, the rest
+ *  is out of view). */
+function glideDown(list, n) {
+  const first = list.children[n];
+  if (!first || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const dy = first.offsetTop - list.children[0].offsetTop;
+  const easing = getComputedStyle(list).getPropertyValue("--ease-knob").trim() || "ease-out";
+  for (const el of [...list.children].slice(n, n + 30))
+    el.animate([{ transform: `translateY(${-dy}px)` }, { transform: "none" }], { duration: 380, easing });
+}
 
 export const liveTab = {
   id: "live",
@@ -106,12 +127,16 @@ export const liveTab = {
       empty.hidden = feed.events.length > 0;
       list.hidden = !feed.events.length;
     }
-    list.append(...feed.events.map((e) => row(e, false)));
+    let shown = arrivals(null, feed.events, performance.now()); // already there: no animation
+    list.append(...feed.events.map((e) => row(e)));
     head();
     requestAnimationFrame(fitSum); // widths are known once the tab is laid out
 
     const unAdd = feed.onAdd((fresh) => {
-      list.prepend(...fresh.map((e) => row(e, true)));
+      shown = arrivals(shown, feed.events, performance.now());
+      const delay = new Map(shown.fresh.map((f) => [f.key, f.delay]));
+      list.prepend(...fresh.map((e) => row(e, delay.get(e.key))));
+      glideDown(list, fresh.length);
       while (list.children.length > feed.events.length) list.lastChild.remove();
       head();
     });

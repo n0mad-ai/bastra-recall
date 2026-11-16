@@ -126,17 +126,56 @@
   overflow-wrap: anywhere;
 }
 
-/* Arrival (old live deck, css/live.css `live-in`): slide in from the right,
- * then the dot flares once. Plays only on rows added while the tab is open. */
+/* Arrival — only rows that come in while the tab is open (live-feed.js
+ * arrivals; --lv-d staggers one delivery, oldest first). live-tab.js lets the
+ * rows below glide down into the opened gap. Then, all fading out over ~3 s:
+ * a wash of the kind colour behind the row, a stripe at the panel edge, the
+ * dot flaring and sending out three rings (like the ring's click pulse,
+ * css/views.css rg-pulse). Only transform / opacity / box-shadow animate.
+ * --lv-t: the row starts once the gap has mostly opened (glide: 380 ms). */
 .lvB__row.is-new {
-  animation: lv-in 0.45s var(--ease-knob) both;
+  --lv-t: calc(var(--lv-d, 0ms) + 0.2s);
+  isolation: isolate;
+  animation: lv-in 0.38s var(--ease-knob) var(--lv-t) both;
+}
+.lvB__row.is-new::before,
+.lvB__row.is-new::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 2px;
+  bottom: 2px;
+  left: -18px;
+  pointer-events: none;
+  opacity: 0;
+}
+.lvB__row.is-new::before {
+  width: 2px;
+  background: var(--k);
+  box-shadow: 0 0 10px var(--k);
+  animation: lv-stripe 3s ease-in var(--lv-t) both;
+}
+.lvB__row.is-new::after {
+  right: -18px;
+  background: linear-gradient(90deg, var(--k), transparent 75%);
+  animation: lv-wash 2.8s ease-in var(--lv-t) both;
 }
 .lvB__row.is-new .lvB__dot {
-  animation: lv-flare 1.4s ease-out 0.2s both;
+  position: relative;
+  animation: lv-flare 2.4s ease-out calc(var(--lv-t) + 0.15s) both;
+}
+.lvB__row.is-new .lvB__dot::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border: 1px solid var(--k);
+  border-radius: 50%;
+  opacity: 0;
+  animation: lv-ring 0.8s var(--ease-knob) calc(var(--lv-t) + 0.15s) 3;
 }
 @keyframes lv-in {
   from {
-    transform: translateX(40px);
+    transform: translateX(24px);
     opacity: 0;
   }
   to {
@@ -144,13 +183,50 @@
     opacity: 1;
   }
 }
+@keyframes lv-wash {
+  0% {
+    opacity: 0;
+  }
+  8% {
+    opacity: 0.2;
+  }
+  35% {
+    opacity: 0.14;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes lv-stripe {
+  0% {
+    opacity: 0;
+  }
+  8%,
+  40% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes lv-ring {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(4);
+  }
+}
 @keyframes lv-flare {
   0% {
     transform: scale(1);
     box-shadow: 0 0 8px var(--k);
   }
-  25% {
-    transform: scale(1.9);
+  15%,
+  45% {
+    transform: scale(1.7);
     box-shadow:
       0 0 6px 3px var(--k),
       0 0 22px 6px var(--k);
@@ -158,5 +234,13 @@
   100% {
     transform: scale(1);
     box-shadow: 0 0 8px var(--k);
+  }
+}
+/* No movement: the row is simply there, only the wash and stripe fade out. */
+@media (prefers-reduced-motion: reduce) {
+  .lvB__row.is-new,
+  .lvB__row.is-new .lvB__dot,
+  .lvB__row.is-new .lvB__dot::after {
+    animation: none;
   }
 }
