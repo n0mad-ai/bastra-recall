@@ -10,7 +10,7 @@ import { defaultTaskContext } from "./task-transport.js";
 import { callTaskCrud } from "./task-service.js";
 import { taskClientToken } from "./task-client-auth.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Vault, SearchIndex } from "@bastra-recall/core";
+import { buildGraph, type Vault, type SearchIndex } from "@bastra-recall/core";
 import type { ToolDeps } from "./tool-handlers.js";
 import {
   handleWebUi,
@@ -27,7 +27,7 @@ import { handleUiSaveMemory } from "./webui-save-memory.js";
 import { chatHistory, dispatchChatHistory } from "./chat-history.js";
 import { handleHookImport, handleUiImport } from "./import-review.js";
 import { handleUiImportVault, handleUiFsBrowse } from "./import-vault.js";
-import { handleUiSkills } from "./skills-registry.js";
+import { handleUiSkills, listSkills } from "./skills-registry.js";
 import { handleUiAreas } from "./webui-areas.js";
 import { handleUiTelemetry } from "./webui-telemetry.js";
 import type { createLiveUpdates } from "./live-updates.js";
@@ -36,6 +36,7 @@ import { handleSessionContext, handleSessionContextPost } from "./session-contex
 import { sendJson } from "./http-util.js";
 import { dispatchUiBackdrop } from "./ui-backdrop.js";
 import { dispatchUiGraph, type GraphReadCtx } from "./http-graph-reads.js";
+import { hiddenFromCaller } from "./private-access.js";
 
 export interface UiRouteCtx extends GraphReadCtx {
   vault: Vault;
@@ -63,7 +64,9 @@ export function dispatchUiRoutes(
   // vault (open format — an AI session works the list off). Loopback-only
   // like /ui, gated on ui.enabled inside the handlers.
   if (method === "GET" && url === "/ui/annotations") {
-    handleUiAnnotations(res, toolDeps.vaultPath).catch(() => sendJson(res, 500, { error: "ui error" }));
+    careVisibility(ctx)
+      .then((visible) => handleUiAnnotations(res, toolDeps.vaultPath, undefined, visible))
+      .catch(() => sendJson(res, 500, { error: "ui error" }));
     return true;
   }
   // Import review (#208): open candidate count for the session hook —
@@ -113,7 +116,9 @@ export function dispatchUiRoutes(
     return true;
   }
   if (method === "POST" && url === "/ui/annotate") {
-    handleUiAnnotate(req, res, toolDeps.vaultPath).catch(() => sendJson(res, 500, { error: "ui error" }));
+    careVisibility(ctx)
+      .then((visible) => handleUiAnnotate(req, res, toolDeps.vaultPath, undefined, visible))
+      .catch(() => sendJson(res, 500, { error: "ui error" }));
     return true;
   }
   // Onboarding interview: needed-flag for the session hook (loopback, not
@@ -202,6 +207,18 @@ export function dispatchUiRoutes(
   }
 
   return false;
+}
+
+/** Reuse the graph's projection so genuine public ghost/skill targets stay
+ * writable, while a hidden memory and an unknown ID are indistinguishable. */
+async function careVisibility(ctx: UiRouteCtx): Promise<ReadonlySet<string> | null> {
+  if (ctx.privateGraph) return null;
+  const nodes = buildGraph(ctx.vault, await listSkills()).nodes;
+  // A registered skill alias may share a hidden memory's ID. The underlying
+  // memory's sensitivity still wins over the synthetic node's visibility.
+  return new Set(
+    nodes.filter((node) => !hiddenFromCaller(undefined, ctx.vault.get(node.id)?.fm)).map((node) => node.id)
+  );
 }
 
 // Ring-view center emblem (#207): stored as vault-image.<ext> at the

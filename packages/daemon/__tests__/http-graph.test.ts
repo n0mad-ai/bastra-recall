@@ -331,9 +331,9 @@ test("vault care: annotate appends to vault-care.md, annotations parses it back"
 
   const server = createServer((req, res) => {
     if (req.method === "POST" && req.url === "/ui/annotate") {
-      void handleUiAnnotate(req, res, vaultDir, settingsPath);
+      void handleUiAnnotate(req, res, vaultDir, settingsPath, null);
     } else {
-      void handleUiAnnotations(res, vaultDir, settingsPath);
+      void handleUiAnnotations(res, vaultDir, settingsPath, null);
     }
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));

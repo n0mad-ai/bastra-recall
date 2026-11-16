@@ -192,7 +192,7 @@ test("POST /ui/annotate with previous edits in place; 409 on conflict, 400 on an
   const settingsPath = join(settingsDir, "cli-settings.json");
   await writeFile(settingsPath, JSON.stringify({ ui: { enabled: true } }));
   await writeFile(join(vaultDir, CARE_FILE), FILE);
-  const server = createServer((req, res) => void handleUiAnnotate(req, res, vaultDir, settingsPath));
+  const server = createServer((req, res) => void handleUiAnnotate(req, res, vaultDir, settingsPath, null));
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const { port } = server.address() as { port: number };
   const post = async (payload: unknown) => {

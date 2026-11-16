@@ -262,11 +262,18 @@ export async function handleHookCare(res: ServerResponse, vaultPath: string): Pr
   }
 }
 
+/** Both care reads and writes use the same transport-derived projection. */
+function careTargetVisible(visibleIds: ReadonlySet<string> | null, id: string): boolean {
+  return visibleIds === null || visibleIds.has(id);
+}
+
 /** GET /ui/annotations — the parsed care list. */
 export async function handleUiAnnotations(
   res: ServerResponse,
   vaultPath: string,
-  settingsPath?: string
+  settingsPath?: string,
+  /** Internal graph projection; null only after a proven peer-account check. */
+  visibleIds: ReadonlySet<string> | null = new Set()
 ): Promise<void> {
   if (!(await getUiEnabled(settingsPath))) {
     sendJsonPlain(res, 404, { error: "ui disabled" });
@@ -274,7 +281,8 @@ export async function handleUiAnnotations(
   }
   try {
     const content = await readFile(join(vaultPath, CARE_FILE), "utf8");
-    sendJsonPlain(res, 200, { annotations: parseCareFile(content) });
+    const annotations = parseCareFile(content).filter((entry) => careTargetVisible(visibleIds, entry.id));
+    sendJsonPlain(res, 200, { annotations });
   } catch {
     sendJsonPlain(res, 200, { annotations: [] }); // no file yet = empty list
   }
@@ -314,7 +322,9 @@ export async function handleUiAnnotate(
   req: IncomingMessage,
   res: ServerResponse,
   vaultPath: string,
-  settingsPath?: string
+  settingsPath?: string,
+  /** Internal graph projection; null only after a proven peer-account check. */
+  visibleIds: ReadonlySet<string> | null = new Set()
 ): Promise<void> {
   if (!(await getUiEnabled(settingsPath))) {
     sendJsonPlain(res, 404, { error: "ui disabled" });
@@ -334,6 +344,10 @@ export async function handleUiAnnotate(
   const note = typeof body.note === "string" ? body.note.replace(/\r\n?/g, "\n").trim() : "";
   if (!id || !(CARE_KINDS as readonly string[]).includes(kind)) {
     sendJsonPlain(res, 400, { error: "need id and kind (delete|edit|write|note)" });
+    return;
+  }
+  if (!careTargetVisible(visibleIds, id)) {
+    sendJsonPlain(res, 404, { error: "annotation target unavailable" });
     return;
   }
   const file = join(vaultPath, CARE_FILE);

@@ -331,6 +331,57 @@ test("archive moves into the vault trash, restore brings it back", async () => {
   }
 });
 
+test("care annotations hide private notes and reject edits like unknown IDs while public ghosts remain writable", async () => {
+  const f = await fixture();
+  try {
+    const publicPath = join(f.dir, "user-note.md");
+    await writeFile(publicPath, memory("user-note", ["related: [public-ghost]"]));
+    await f.vault.reindexFile(publicPath);
+    const carePath = join(f.dir, "vault-care.md");
+    const initial = [
+      "- [ ] 2026-11-16 · note · [[secret]] — Private care text.",
+      "- [ ] 2026-11-16 · note · [[note]] — Public care text.",
+      "- [ ] 2026-11-16 · write · [[public-ghost]] — Public unwritten note.",
+      "- [ ] 2026-11-16 · note · [[unknown]] — Orphan care text.",
+      "",
+    ].join("\n");
+    await writeFile(carePath, initial);
+    const unproven = await f.start("linux");
+    const owner = await f.start("darwin");
+    const skill = await call(unproven, "POST", "/ui/skills", { id: "secret" });
+    assert.equal(skill.status, 200, "a skill alias cannot grant access to a private memory with that ID");
+    const list = await call(unproven, "GET", "/ui/annotations");
+    assert.equal(list.status, 200);
+    assert.deepEqual(
+      list.body.annotations.map((a: { id: string }) => a.id),
+      ["note", "public-ghost"]
+    );
+    const full = await call(owner, "GET", "/ui/annotations");
+    assert.equal(full.body.annotations.length, 4, "a proven owner sees the complete care list");
+    const edit = (id: string, note: string) => ({
+      id,
+      kind: "note",
+      note: "Unauthorized change.",
+      previous: { kind: "note", date: "2026-11-16", note },
+    });
+    const hidden = await call(unproven, "POST", "/ui/annotate", edit("secret", "Private care text."));
+    const absent = await call(unproven, "POST", "/ui/annotate", edit("unknown", "Orphan care text."));
+    assert.equal(hidden.status, 404);
+    assert.deepEqual(hidden, absent, "hidden and unknown targets have the same generic response");
+    assert.equal(await readFile(carePath, "utf8"), initial, "neither denied request edits the care file");
+    const ghost = await call(unproven, "POST", "/ui/annotate", {
+      id: "public-ghost",
+      kind: "write",
+      note: "Edited public ghost.",
+      previous: { kind: "write", date: "2026-11-16", note: "Public unwritten note." },
+    });
+    assert.equal(ghost.status, 200, JSON.stringify(ghost.body));
+    assert.match(await readFile(carePath, "utf8"), /Private care text/);
+  } finally {
+    await f.close();
+  }
+});
+
 test("save-memory hides private collision and source metadata without a proven account", async () => {
   const f = await fixture();
   try {
