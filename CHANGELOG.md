@@ -30,6 +30,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   are Node 22.22 to 26. On an older Node 22, update Node before updating
   Bastra Recall; `node --version` shows what you run (#1368).
 - The vault file watcher now uses chokidar 6, which needs Node 22.22 (#1368).
+- Documentation now states the tested clients honestly: Claude Code CLI and
+  Codex CLI are tested; Claude Desktop and ChatGPT Desktop run but their smoke
+  test is pending; Cursor waits for an integration test; claude.ai connectors
+  and other MCP clients are untested; Linux is untested in real use (#1451).
+- The skill and the guides no longer promise OCR: Recall searches document text
+  that is already in the vault, and OCR for scans is a Recall Pulse feature of
+  the Mac app (#1450).
+- README and hooks guide now agree that the Stop hook is on by default, give
+  the SessionStart budget of 1500 ms, and say that clients without hooks read
+  the rulebook with `list_rules` (#1453). The remote access guide and the
+  roadmap describe the current release state (#1454).
 
 ### Removed
 

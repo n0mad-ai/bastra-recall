@@ -466,7 +466,7 @@ test("#464: a document write the caller may not see is not a Pro-feature questio
         ccSessionId: null,
       }
     ),
-    /Pro feature/
+    /Recall Pulse feature/
   );
 });
 

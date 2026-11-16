@@ -38,7 +38,7 @@ For project-level docs (vision, install, REST API, roadmap), see the [top-level 
 | `read_document(id)` | Load extracted text + metadata for a document |
 | `open_document(id)` | macOS-only: open in the system handler |
 | `find_code(query, mode?, repo?, depth?)` | Locate a symbol or file in the code graph; one hop of dependents (#576) |
-| `save_document` / `recategorize_document` / `move_document` | Document write path (Pro Mac-app uses this; OSS callers may need `BASTRA_DOCUMENT_WRITE=1`) |
+| `save_document` / `recategorize_document` / `move_document` | Document write path (Recall Pulse; works only with `BASTRA_DOCUMENT_WRITE=1`, stores the text the caller passes in, no OCR) |
 
 ## Install + register
 

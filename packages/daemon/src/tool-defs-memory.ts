@@ -154,7 +154,13 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "not a similarity — a top hit is high by construction. When the " +
       "response carries top-level `weak_result: true`, no returned hit has " +
       "a recall_when or title match: the high scores are likely " +
-      "rank-1-of-nothing, so prefer not to load them.\n" +
+      "rank-1-of-nothing, so prefer not to load them. `weak_result` (like " +
+      "the bands) only exists on that hybrid path: without an embedding " +
+      'model (`score_kind: "bm25"`) it never appears, so its absence ' +
+      "there is no sign of a match — judge those hits yourself.\n" +
+      "This tool applies no evidence gate: it returns up to k hits above " +
+      "`min_score`. The evidence gate only filters what the hooks inject " +
+      "into the prompt.\n" +
       "\n" +
       "recall returns lean CANDIDATES (no bodies). This is step 1 of a " +
       "two-step flow: call load_memory ONLY for the hits you actually " +
@@ -239,7 +245,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
             "construction and the 30 floor practically only bites in " +
             "BM25-only mode (no embeddings). Raise it to require stronger " +
             "rank agreement; see the top-level `weak_result` flag for a " +
-            "no-match signal.",
+            "no-match signal (hybrid path only).",
         },
       },
       required: ["query"],

@@ -53,8 +53,9 @@ import {
   type RecallStage,
 } from "@bastra-recall/core";
 import {
-  ALL_TOOL_DEFS,
+  documentWriteEnabledFromEnv,
   filterToolDefsForSurface,
+  servedToolDefs,
   isToolAllowed,
   toolSurfaceDenial,
   toolSurfaceFrom,
@@ -140,9 +141,9 @@ async function main(): Promise<void> {
     // validate (→ "argument arrives undefined"). ALL_TOOL_DEFS is the fallback
     // when the daemon isn't reachable yet (or is too old to expose /tools); the
     // first CallTool spawns it and every call thereafter hits it regardless.
-    // Document-Write-Tools are always listed — the daemon decides per call
-    // whether BASTRA_DOCUMENT_WRITE=1 and otherwise returns a clear Pro-feature
-    // error.
+    // #1458: the document write tools come only from a daemon that accepts
+    // them (BASTRA_DOCUMENT_WRITE). The fallback reads the same switch from
+    // this process — the env a forwarder hands to the daemon it spawns.
     //
     // Wait for the daemon boot first (the same gate CallTool uses) so the schema
     // comes from the RUNNING daemon, not the bundled fallback — otherwise a slow
@@ -171,7 +172,7 @@ async function main(): Promise<void> {
     } catch {
       // daemon down / old daemon without /tools → fall back to the bundled defs
     }
-    return { tools: filterToolDefsForSurface(ALL_TOOL_DEFS, toolSurface) };
+    return { tools: filterToolDefsForSurface(servedToolDefs(documentWriteEnabledFromEnv()), toolSurface) };
   });
 
   const banterMode = banterModeFromEnv(process.env);

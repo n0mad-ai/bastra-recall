@@ -1,10 +1,10 @@
 /**
  * Document-Hub MCP-Tool-Handler. Read-only — Phase 2.1 lebt komplett hier in
  * bastra-recall (OSS, MIT) und ist für jeden MCP-fähigen Coding-Agent ohne
- * Pro-Lizenz nutzbar (Triage-Repo-Split aus Issue #24).
+ * Recall-Pulse-Lizenz nutzbar (Triage-Repo-Split aus Issue #24).
  *
  * Schreib-Tools (`save_document`/`recategorize`/`move_document`) leben in
- * bastra-pro hinter Lizenz-Gate.
+ * recall-pulse (privates Repo) hinter Lizenz-Gate.
  */
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";

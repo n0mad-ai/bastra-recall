@@ -57,7 +57,7 @@ function rawPost(port: number, path: string, headers: Record<string, string>, bo
   });
 }
 
-async function withServer(fn: (port: number) => Promise<void>): Promise<void> {
+async function withServer(fn: (port: number) => Promise<void>, documentWriteEnabled = false): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-mcphttp-"));
   await writeFile(join(dir, "alpha.md"), memoryMarkdown("alpha", "alpha bravo"), "utf8");
   const vault = new Vault(dir);
@@ -72,7 +72,7 @@ async function withServer(fn: (port: number) => Promise<void>): Promise<void> {
     telemetry,
     version: "test-version",
     toolDeps: { vault, search, telemetry, vaultPath: dir },
-    documentWriteEnabled: false,
+    documentWriteEnabled,
     onActivity: () => {},
     embedding: { on: false, providerId: null, source: "none" },
     origin: { startedBy: "direct", envOrigin: "own", configFingerprint: "0123456789ab" },
@@ -171,4 +171,45 @@ test("mcp http: GET is refused — the stateless door has no event stream", asyn
     });
     assert.equal(status, 405);
   });
+});
+
+// #1458: both doors list exactly the document write tools the daemon accepts.
+// `GET /tools` is what the stdio forwarder hands its client; /api/v1/mcp is
+// the remote door. Without BASTRA_DOCUMENT_WRITE the daemon refuses every
+// write call, so neither may list one.
+async function listedOnBothDoors(port: number): Promise<{ local: string[]; remote: string[] }> {
+  const resp = await fetch(`http://127.0.0.1:${port}/tools?surface=full`);
+  const local = ((await resp.json()) as { tools: { name: string }[] }).tools.map((t) => t.name);
+  const client = new Client({ name: "test", version: "0" });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/api/v1/mcp`), {
+      requestInit: { headers: { Authorization: `Bearer ${TOKEN}` } },
+    })
+  );
+  try {
+    return { local, remote: (await client.listTools()).tools.map((t) => t.name) };
+  } finally {
+    await client.close();
+  }
+}
+
+test("#1458: without document write, neither /tools nor the remote door lists a document write tool", async () => {
+  await withServer(async (port) => {
+    const { local, remote } = await listedOnBothDoors(port);
+    assert.ok(local.includes("find_document") && remote.includes("find_document"));
+    for (const n of ["save_document", "recategorize_document", "move_document"]) {
+      assert.ok(!local.includes(n), `${n} listed on /tools although the daemon refuses it`);
+      assert.ok(!remote.includes(n), `${n} listed remotely although the daemon refuses it`);
+    }
+  });
+});
+
+test("#1458: with document write on, /tools lists all three and the remote door its write-surface share", async () => {
+  await withServer(async (port) => {
+    const { local, remote } = await listedOnBothDoors(port);
+    for (const n of ["save_document", "recategorize_document", "move_document"]) {
+      assert.ok(local.includes(n), `${n} missing from /tools`);
+    }
+    assert.ok(remote.includes("save_document"), "save_document belongs to the write surface");
+  }, true);
 });

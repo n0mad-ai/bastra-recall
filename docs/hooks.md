@@ -85,9 +85,15 @@ slow answer.
 | `PreToolUse` Write/Edit | 600 ms | 200 ms | 2 % |
 | `UserPromptSubmit` — retrieval / generic / none | 600 ms | 300 ms | 2 % |
 | `UserPromptSubmit` — assertion | **1000 ms** | 900 ms | 5 % |
-| `PreToolUse` plan, Bash pre/post, SessionStart | 600 / 500 ms | — | — |
+| `PreToolUse` plan | 600 ms | — | — |
+| `PreToolUse` / `PostToolUse` Bash | 500 ms | — | — |
+| `SessionStart` | 1500 ms | — | — |
 | `PreToolUse` gate (every tool, #1303) | 500 ms | — | — |
 | `Stop` | 1000 ms | — | — |
+
+`SessionStart` has the largest budget because it also renders a fresh rule
+kernel and a bounded fallback; its hook clients wait 100 ms longer than the
+daemon for the transport.
 
 `#305`'s original framing was "cut the ceiling to 200 ms" for everything. That
 target now applies to the fast lanes, which hold it (measured p90 87 ms), and
@@ -136,7 +142,7 @@ wordings are frozen per version in `packages/core/src/scrub.ts`
 (`FROZEN_FRAME_NOTES`), which is also what the ingest scrub (#149) uses to drop
 quoted note lines from transcripts before capture heuristics run.
 
-There are twelve Claude Code hook registrations by default: ten required entries plus optional Stop and its SessionEnd harvest companion. The required SessionEnd entry only closes the chat endpoint registration. Several share a binary; registrations and binary counts are different. `--no-stop-hook` leaves ten. The PostToolUse write-tool entry supplies save notices.
+`bastra install claude-code` writes twelve Claude Code hook registrations by default: ten required entries plus Stop and its SessionEnd harvest companion, which are on by default and can be left out. The required SessionEnd entry only closes the chat endpoint registration. Several share a binary; registrations and binary counts are different. `--no-stop-hook` leaves ten. The re-registration that `bastra update` runs adds no Stop hook that was not there before; it keeps one that was. The PostToolUse write-tool entry supplies save notices.
 
 ### Installed binaries
 
@@ -152,7 +158,7 @@ After `npm run build` the daemon package exposes these bin entries:
 | `bastra-recall-gate-hook`         | `PreToolUse`       | `*` (every tool)                          | One-time must-load and action-time reflex deny (#1303)    |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse` / `PostToolUseFailure` | `Bash` (every completed or failed command) | Act-signal for acted_on (#144); lesson recall on failure (#37) |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse`      | Recall's own write tools (`save_memory`, `edit_memory`, `save_document`, `save_product_doc`) | Save notice: one line that says what was saved or edited |
-| `bastra-recall-stop-hook`         | `Stop` / `SessionEnd` | —                                      | Optional autonomous save-eval at end of session (#35); SessionEnd books the finished session for the harvest (#675) |
+| `bastra-recall-stop-hook`         | `Stop` / `SessionEnd` | —                                      | Save-eval at the end of a turn, on by default (#35); SessionEnd books the finished session for the harvest (#675) |
 
 ### Activation snippet for `~/.claude/settings.json`
 
@@ -1704,6 +1710,10 @@ the kernel after 25 tool calls without a user prompt, without using that
 redelivery as a deny. See [the rulebook contract](rulebook.md) for membership,
 privacy, budgets, bounded action/Stop checking and host limitations.
 
+The kernel arrives only through these hooks. Clients without Bastra hooks
+(Claude Desktop, Cursor, remote MCP) do not receive it automatically; there
+the assistant reads the rulebook with `list_rules`.
+
 #### Agent-reported task stage and active conventions (#1306)
 
 Only the main agent's explicit `rulebook_check.task` creates, changes or ends a
@@ -1965,9 +1975,15 @@ langsame Antwort.
 | `PreToolUse` Write/Edit | 600 ms | 200 ms | 2 % |
 | `UserPromptSubmit` — Retrieval / generisch / keine | 600 ms | 300 ms | 2 % |
 | `UserPromptSubmit` — Assertion | **1000 ms** | 900 ms | 5 % |
-| `PreToolUse` Plan, Bash pre/post, SessionStart | 600 / 500 ms | — | — |
+| `PreToolUse` Plan | 600 ms | — | — |
+| `PreToolUse` / `PostToolUse` Bash | 500 ms | — | — |
+| `SessionStart` | 1500 ms | — | — |
 | `PreToolUse` Gate (jedes Tool, #1303) | 500 ms | — | — |
 | `Stop` | 1000 ms | — | — |
+
+`SessionStart` hat das größte Budget, weil dort zusätzlich ein frischer
+Regelkern und ein begrenzter Rückfallweg entstehen; seine Hook-Clients warten
+100 ms länger als der Daemon, als Spielraum für die Übertragung.
 
 Die ursprüngliche Formulierung von `#305` war „die Obergrenze auf 200 ms
 senken“, für alles. Dieses Ziel gilt jetzt für die schnellen Lanes, die es
@@ -2022,7 +2038,7 @@ eingefroren. Darauf greift auch der Ingest-Scrub (#149) zurück, um zitierte
 Notizzeilen aus Transkripten zu entfernen, bevor die Capture-Heuristiken
 laufen.
 
-Standardmäßig gibt es zwölf Claude-Code-Hook-Registrierungen: zehn Pflichteinträge plus optionalen Stop und dessen SessionEnd-Harvest-Begleiter. Der verpflichtende SessionEnd-Eintrag schließt nur die Chat-Endpunktregistrierung. Mehrere teilen ein Programm; Registrierungen und Programmzahl sind verschieden. `--no-stop-hook` lässt zehn. Der PostToolUse-Eintrag für Schreibwerkzeuge liefert Speicherhinweise.
+`bastra install claude-code` schreibt standardmäßig zwölf Claude-Code-Hook-Registrierungen: zehn Pflichteinträge plus Stop und dessen SessionEnd-Harvest-Begleiter, die standardmäßig an sind und sich weglassen lassen. Der verpflichtende SessionEnd-Eintrag schließt nur die Chat-Endpunktregistrierung. Mehrere teilen ein Programm; Registrierungen und Programmzahl sind verschieden. `--no-stop-hook` lässt zehn. Die Neuregistrierung durch `bastra update` fügt keinen Stop-Hook hinzu, der vorher fehlte; einen vorhandenen behält sie. Der PostToolUse-Eintrag für Schreibwerkzeuge liefert Speicherhinweise.
 
 ### Installierte Programme
 
@@ -2038,7 +2054,7 @@ Nach `npm run build` stellt das Daemon-Paket diese Bin-Einträge bereit:
 | `bastra-recall-gate-hook`         | `PreToolUse`       | `*` (jedes Tool)                          | Einmaliges Must-Load- und Reflex-Deny am Toolaufruf (#1303) |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse` / `PostToolUseFailure` | `Bash` (jeder abgeschlossene oder fehlgeschlagene Befehl) | Handlungssignal für acted_on (#144); Lesson-Recall bei Fehlern (#37) |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse`      | Recalls eigene Schreib-Tools (`save_memory`, `edit_memory`, `save_document`, `save_product_doc`) | Speicherzeile: eine Zeile, die sagt, was gespeichert oder bearbeitet wurde |
-| `bastra-recall-stop-hook`         | `Stop` / `SessionEnd` | —                                      | Optionale autonome Speicherbewertung am Session-Ende (#35); SessionEnd trägt die beendete Session für den Harvest ein (#675) |
+| `bastra-recall-stop-hook`         | `Stop` / `SessionEnd` | —                                      | Speicherbewertung am Ende eines Turns, standardmäßig an (#35); SessionEnd trägt die beendete Session für den Harvest ein (#675) |
 
 ### Aktivierungs-Snippet für `~/.claude/settings.json`
 
@@ -3606,6 +3622,10 @@ wiederherstellen. Nach 25 Toolaufrufen ohne Nutzerprompt liefert das Gate den
 Kern erneut, ohne diese Zustellung als Sperre zu verwenden. Der
 [Regelbuch-Vertrag](rulebook.md) beschreibt Mitgliedschaft, Datenschutz,
 Budgets, begrenzte Aktions-/Stop-Prüfung und Host-Grenzen.
+
+Der Kern kommt nur über diese Hooks an. Clients ohne Bastra-Hooks (Claude
+Desktop, Cursor, Remote-MCP) bekommen ihn nicht automatisch; dort liest der
+Assistent das Regelbuch mit `list_rules`.
 
 #### Gemeldete Aufgabenstufe und aktive Konventionen (#1306)
 

@@ -55,21 +55,22 @@ export interface HookDef {
   stubSubcommand?: string;
 }
 
-// Held separately from the list below because a run that does NOT register the
-// Stop hook still needs its definition — to refresh an already-registered one
+// Held separately from the list below because the Stop hook is registered by
+// default but can be left out (`--no-stop-hook`), and a run that leaves it out
+// still needs its definition — to refresh an already-registered one
 // (see planHookEntries).
 const STOP_HOOK_DEF: HookDef = {
   event: "Stop",
   bin: STOP_HOOK_BIN,
   timeout: 3,
-  note: "bastra-recall Stop hook (optional autonomous save-eval, #35)",
+  note: "bastra-recall Stop hook (autonomous save-eval, #35)",
   stubSubcommand: "stop",
 };
 
 // #675: the Stop lane's end-of-session signal. Same client and daemon route as
 // Stop; the lane only books the session as finished, so the after-session
 // harvest does not wait 30 minutes of quiet. Registered and kept together
-// with Stop: it is part of the same opt-in. Claude Code gives all SessionEnd
+// with Stop, so `--no-stop-hook` leaves out both. Claude Code gives all SessionEnd
 // hooks 1.5 s together unless one asks for more; 2 s covers the stop client's
 // own 1 s budget.
 const SESSION_END_HOOK_DEF: HookDef = {
@@ -87,11 +88,13 @@ const CHAT_SESSION_END_HOOK_DEF: HookDef = {
   stubSubcommand: "session",
 };
 
-// Single source of truth for the reflex layer. The Stop hook is ON by default
-// since the #48 redesign made it SILENT: suggestions go to
+// Single source of truth for the reflex layer. `bastra install claude-code`
+// registers 12 entries by default (10 base + Stop + SessionEnd harvest);
+// `--no-stop-hook` leaves 10. The Stop hook is on by default since the #48
+// redesign made it silent: suggestions go to
 // ~/.bastra/pending-suggestions.json (read by the next SessionStart as
 // additionalContext) instead of systemMessage, which Claude Code rendered 1:1
-// into the chat. Live-validated → default on; opt out with --no-stop-hook.
+// into the chat. Live-validated, hence the default; opt out with --no-stop-hook.
 export function hookDefinitions(opts: { includeStop?: boolean } = {}): HookDef[] {
   const defs: HookDef[] = [
     CHAT_SESSION_END_HOOK_DEF,
@@ -561,6 +564,16 @@ export function planHookEntries(
   };
 }
 
+/** The lane list behind the "N hooks registered" line. Names every registered
+ *  entry, the chat SessionEnd included; Stop and the harvest SessionEnd are
+ *  on by default and only missing under `--no-stop-hook`. */
+export function installedLanes(includeStop: boolean, stopPreserved: boolean): string {
+  const base = "SessionStart, SessionEnd (chat), UserPromptSubmit, PreToolUse×4, PostToolUse×2, PostToolUseFailure";
+  if (includeStop) return `${base}, Stop, SessionEnd (harvest)`;
+  if (stopPreserved) return `${base}; Stop + SessionEnd (harvest) kept at current path`;
+  return `${base}; Stop + SessionEnd (harvest) off: --no-stop-hook`;
+}
+
 export async function patchClaudeCodeHooks(
   action: "install" | "uninstall",
   opts: {
@@ -603,7 +616,7 @@ export async function patchClaudeCodeHooks(
     ? ""
     : stopPreserved
       ? " (existing Stop hook kept at current path)"
-      : " (Stop hook optional/off)";
+      : " (Stop hook off: --no-stop-hook)";
 
   const currentMatches = HOOK_EVENTS.every((ev) => JSON.stringify(before[ev]) === JSON.stringify(after[ev]));
 
@@ -639,7 +652,7 @@ export async function patchClaudeCodeHooks(
   return action === "install"
     ? {
         status: "installed",
-        detail: `${sourceDefs.length} hooks registered (SessionStart, UserPromptSubmit, PreToolUse×4, PostToolUse×2, PostToolUseFailure${includeStop ? ", Stop, SessionEnd" : stopPreserved ? "; Stop + SessionEnd kept at current path" : "; Stop optional/off"})`,
+        detail: `${sourceDefs.length} hooks registered (${installedLanes(includeStop, stopPreserved)})`,
         backupPath: backupPath ?? undefined,
         note,
       }

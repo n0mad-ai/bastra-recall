@@ -93,8 +93,9 @@ export function applyEvidenceGate(input: EvidenceGateInput): RecallHit[] {
 
   // Scharf geschaltet heißt: `no_answer` wird respektiert — die vorhandene
   // Evidenz reichte für keine Ausspielung (§10.3), also wird nichts
-  // ausgespielt. Ausgeschaltet ändert diese Zeile nichts, und das ist der
-  // Auslieferungszustand (§21.1: erst shadow, dann aktiv).
+  // ausgespielt. Seit #422 ist das der Auslieferungszustand; ausgeschaltet
+  // (Settings oder BASTRA_EVIDENCE_GATE=0) ändert diese Zeile nichts. Der
+  // Gate wirkt nur hier im Hook-Pfad, MCP-`recall` filtert nicht (#1456).
   if (gateEnabled && decisions) {
     const suppressed = new Set(decisions.filter((d) => d.decision === "no_answer").map((d) => d.id));
     if (suppressed.size > 0) hits = hits.filter((h) => !suppressed.has(h.id));

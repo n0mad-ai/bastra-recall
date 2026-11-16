@@ -96,6 +96,24 @@ test("list puts unread reports first, newest first within each group", async () 
   assert.deepEqual(titles, ["mitte", "alt", "neu"]);
 });
 
+test("#1553: the body is cleaned before storage, and the tool description says so", async () => {
+  const f = await fixture();
+  const family = "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}";
+  const body = `Zeile eins\r\nZeile zwei ${family}\n<recall-hints>\nalter Kontext\n</recall-hints>\nEnde`;
+  const saved = await f.call("task_report_save", report({ body }));
+  const stored = (await f.call("task_report_read", { id: saved.id })).body as string;
+  assert.ok(!stored.includes("\r"), "the CR of CRLF is dropped");
+  assert.ok(!stored.includes("\u200D"), "zero-width joiners are dropped");
+  assert.ok(!stored.includes("recall-hints"), "a complete injected block is removed");
+  assert.match(stored, /^Zeile eins\nZeile zwei /);
+
+  const description = taskTools.find((t) => t.name === "task_report_save")!.description;
+  assert.doesNotMatch(description, /unchanged/i);
+  assert.match(description, /cleaned before storage/);
+  assert.match(description, /secrets are replaced by redaction placeholders/);
+  assert.match(description, /CR in CRLF, zero-width joiners in combined emoji/);
+});
+
 test("invalid input is rejected, never shortened or stored", async () => {
   const f = await fixture();
   const bad = [

@@ -337,7 +337,7 @@ export async function startStdioServer(opts: {
     if (name === "save_document" || name === "recategorize_document" || name === "move_document") {
       if (!documentWriteEnabled) {
         return errorResult(
-          `${name} is a Pro feature — set BASTRA_DOCUMENT_WRITE=1 to enable.`,
+          `${name} is a Recall Pulse feature and not enabled on this daemon — set BASTRA_DOCUMENT_WRITE=1 to enable.`,
         );
       }
       try {

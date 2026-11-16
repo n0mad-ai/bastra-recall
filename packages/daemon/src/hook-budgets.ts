@@ -50,8 +50,9 @@ export const PROMPT_ASSERTION_BUDGET_MS = 1000;
 /** Every other prompt class, plus the two recall lanes (write, plan). */
 export const RECALL_BUDGET_MS = 600;
 
-/** Bash pre/post and the session lane: pattern work and a preload, not a
- *  dense recall. Unchanged — they have always run on 500ms. */
+/** Bash pre/post and the gate lane: pattern work, not a dense recall.
+ *  Unchanged — they have always run on 500ms. SessionStart has its own,
+ *  longer budget (SESSION_START_BUDGET_MS, 1500ms). */
 export const FAST_BUDGET_MS = 500;
 
 /** The Stop lane scans a transcript and answers `{}` either way. Unchanged. */

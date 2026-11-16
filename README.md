@@ -59,7 +59,7 @@ https://github.com/user-attachments/assets/58e68703-8b0d-46c3-b468-33063e8ebf83
 
 </details>
 
-1.1.8 adds the rulebook: your saved rules reach the assistant in full, with bounded checks on supported hook hosts. It also adds remote MCP with OAuth, Windows setup improvements and English status panels. Reliability targets remain unmeasured. After updating, rerun `bastra install claude-code` or `bastra install codex`. Node 22.22–26 are supported. [Changelog](./CHANGELOG.md) · [rulebook](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [remote access](./docs/REMOTE-ACCESS.md).
+1.1.8 adds the rulebook. With hooks (on supported hook hosts), your saved rules reach the assistant at session start, with bounded checks: always-rules in full, the others as a list. Clients without hooks get the rules only when the assistant calls `list_rules`. It also adds remote MCP with OAuth, Windows setup improvements and English status panels. Reliability targets remain unmeasured. After updating, rerun `bastra install claude-code` or `bastra install codex`. Node 22.22–26 are supported. [Changelog](./CHANGELOG.md) · [rulebook](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [remote access](./docs/REMOTE-ACCESS.md).
 
 On `main`, users confirm rule proposals in chat, and rule saves and edits request a review of the complete lasting guidance, without classifying wording. [Rulebook guide](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook). Explicitly rejected save suggestions can be suppressed individually per project and restored. [Suggestion controls](https://github.com/n0mad-ai/bastra-recall/wiki/Pending-Relay). On macOS, local UI and task access are bound to the vault owner account. [Account boundary](https://github.com/n0mad-ai/bastra-recall/wiki/Local-Account-Boundary).
 
@@ -97,16 +97,16 @@ You can repeat the lookup in another connected client using the same vault. This
 
 | AI client | Status | Setup and behavior |
 |---|---|---|
-| **Claude Code** | Tested — in daily use | MCP, Skill, 12 hook registrations (10 without optional Stop/harvest), required chat lifecycle cleanup at SessionEnd, save notices and statusline. [Hooks](./docs/hooks.md) |
-| **Claude Desktop** | Tested | MCP and memory guidance; session context on the first tool call. [Setup](https://github.com/n0mad-ai/bastra-recall/wiki/Claude-Desktop), including the macOS `.mcpb` extension |
-| **Codex CLI** | Verified for the v1.0 integration | MCP, Skill and native hooks. [Setup](./docs/CODEX.md) |
-| **Codex IDE + ChatGPT Desktop** | Implemented; not yet field-tested | Share the local Codex configuration. [Setup and limitations](./docs/CODEX.md) |
-| **Cursor** | Implemented; not yet field-tested | MCP registration; add project rules with `bastra rules cursor` |
-| **ChatGPT web + iPhone app** | Tested; remote MCP included in 1.1.8 | Remote MCP with OAuth through your own HTTPS address and tunnel; the computer running Recall must be online. [Remote access](./docs/REMOTE-ACCESS.md) |
-| **claude.ai custom connectors** | Untested | Same remote MCP address and OAuth login; expected to work. [Remote access](./docs/REMOTE-ACCESS.md#claudeai-custom-connectors-untested) |
+| **Claude Code** (CLI) | Tested — in daily use | MCP, Skill, 12 hook registrations (10 without optional Stop/harvest). Stop is on by default; `--no-stop-hook` leaves it out. Required chat lifecycle cleanup at SessionEnd, save notices and statusline. [Hooks](./docs/hooks.md) |
+| **Claude Desktop** | Runs; smoke test pending ([#1452](https://github.com/n0mad-ai/bastra-recall/issues/1452)) | MCP and memory guidance; session context on the first tool call. [Setup](https://github.com/n0mad-ai/bastra-recall/wiki/Claude-Desktop), including the macOS `.mcpb` extension |
+| **Codex CLI** | Tested | MCP, Skill and native hooks. [Setup](./docs/CODEX.md) |
+| **Codex IDE + ChatGPT Desktop** | ChatGPT Desktop (with Codex Desktop): runs, smoke test pending ([#1452](https://github.com/n0mad-ai/bastra-recall/issues/1452)). Codex IDE: not yet field-tested | Share the local Codex configuration. [Setup and limitations](./docs/CODEX.md) |
+| **Cursor** | Pending — integration test to follow | MCP registration; add project rules with `bastra rules cursor` |
+| **ChatGPT web + iPhone app** | Checked end to end on 2026-10-29; remote MCP included since 1.1.8 | Remote MCP with OAuth through your own HTTPS address and tunnel; the computer running Recall must be online. [Remote access](./docs/REMOTE-ACCESS.md) |
+| **claude.ai custom connectors** | Untested, not planned | Same remote MCP address and OAuth login. [Remote access](./docs/REMOTE-ACCESS.md#claudeai-custom-connectors-untested) |
 | **ChatGPT Custom GPT Actions** | Legacy | OpenAI retires Custom GPTs on 2026-12-11; use the remote MCP connection instead. [Legacy setup](./docs/openapi-generation.md#legacy-custom-gpt-action) |
 
-Other MCP clients can connect through the forwarder, or remotely over [`/api/v1/mcp`](./docs/REMOTE-ACCESS.md), but are untested. Scripts and other integrations can use the [REST API](./docs/USAGE.md#rest-api-for-non-mcp-clients). MCP is the protocol that lets an AI assistant use external tools such as this memory service.
+Other MCP clients can connect through the forwarder, or remotely over [`/api/v1/mcp`](./docs/REMOTE-ACCESS.md), but are untested and not planned. Scripts and other integrations can use the [REST API](./docs/USAGE.md#rest-api-for-non-mcp-clients). MCP is the protocol that lets an AI assistant use external tools such as this memory service.
 
 The evidence ledger in [host-capabilities.ts](./packages/daemon/src/host-capabilities.ts) separates host capabilities from the shipped Bastra path and records sources, runtime evidence, all eight capabilities and tool coverage. The summary below concerns Bastra's hook paths; Cursor/Desktop/remote MCP have no Bastra hook gate. Codex CLI 0.162.1 and 0.166.0 have verified deny coverage for `exec_command`/Bash and `view_image`; `apply_patch` deny and MCP remain unverified on both versions; Fork is verified only on 0.162.1. Hosted WebSearch is unsupported; `write_stdin` has no fresh deny boundary. Other Codex versions remain preparation-only. Stop continuation never guarantees that text is hidden before display. `validate_artifact` requires connected Recall MCP with the write/full tool surface.
 
@@ -126,7 +126,7 @@ The evidence ledger in [host-capabilities.ts](./packages/daemon/src/host-capabil
 | Platform | Status | Availability |
 |---|---|---|
 | **macOS** (Apple Silicon and Intel) | Supported | Homebrew and npm installation, `bastra autostart`, Claude Desktop `.mcpb` extension (release builds carry the verified compiled hook client manifest, like npm; the client itself is downloaded only after you opt in), `open_document` and compiled hook client |
-| **Linux** (x86_64 and arm64) | Daemon, CLI, MCP and hooks | Install with npm; compiled hook client available. No Homebrew install path, macOS LaunchAgent (`bastra autostart`), `.mcpb` extension installation or `open_document`. The forwarder starts the daemon on demand. |
+| **Linux** (x86_64 and arm64) | Untested in real use (the test suite runs on Linux in CI) — daemon, CLI, MCP and hooks | Install with npm; compiled hook client available. No Homebrew install path, macOS LaunchAgent (`bastra autostart`), `.mcpb` extension installation or `open_document`. The forwarder starts the daemon on demand. |
 | **Windows** (x64) | Experimental preparation only | Hook-client cross-build and `.exe` registration configured; executable production and real Windows use not validated. [Acceptance pending (#348)](https://github.com/n0mad-ai/bastra-recall/issues/348). |
 
 ### Why
@@ -235,7 +235,7 @@ https://github.com/user-attachments/assets/58e68703-8b0d-46c3-b468-33063e8ebf83
 
 </details>
 
-1.1.8 bringt das Regelbuch: Deine gespeicherten Regeln erreichen den Assistenten vollständig, mit begrenzten Prüfungen auf unterstützten Hook-Hosts. Dazu kommen Remote-MCP mit OAuth, eine verbesserte Windows-Einrichtung und englische Status-Panels. Zuverlässigkeitsziele sind weiterhin ungemessen. Nach dem Update `bastra install claude-code` oder `bastra install codex` erneut ausführen. Node 22.22–26 werden unterstützt. [Changelog](./CHANGELOG.md) · [Regelbuch](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch).
+1.1.8 bringt das Regelbuch. Mit Hooks (auf unterstützten Hook-Hosts) erreichen deine gespeicherten Regeln den Assistenten beim Sitzungsstart, mit begrenzten Prüfungen: Always-Regeln vollständig, die übrigen als Liste. Clients ohne Hooks bekommen die Regeln nur, wenn der Assistent `list_rules` aufruft. Dazu kommen Remote-MCP mit OAuth, eine verbesserte Windows-Einrichtung und englische Status-Panels. Zuverlässigkeitsziele sind weiterhin ungemessen. Nach dem Update `bastra install claude-code` oder `bastra install codex` erneut ausführen. Node 22.22–26 werden unterstützt. [Changelog](./CHANGELOG.md) · [Regelbuch](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch).
 
 Auf `main` bestätigen Nutzer Regelvorschläge im Chat; Regel-Saves und -Edits bitten um Prüfung der vollständigen dauerhaften Vorgabe, ohne Wortlauterkennung. [Regelbuch-Anleitung](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook). Ausdrücklich abgelehnte Speichervorschläge lassen sich einzeln je Projekt ausblenden und zurücksetzen. [Vorschlagssteuerung](https://github.com/n0mad-ai/bastra-recall/wiki/Pending-Relay#deutsch). Auf macOS sind lokale Oberfläche und Aufgaben-Zugriff an das Besitzerkonto des Vaults gebunden. [Kontogrenze](https://github.com/n0mad-ai/bastra-recall/wiki/Local-Account-Boundary#deutsch).
 
@@ -273,16 +273,16 @@ Wiederhole die Abfrage bei Bedarf in einem anderen verbundenen Client mit demsel
 
 | KI-Client | Status | Einrichtung und Verhalten |
 |---|---|---|
-| **Claude Code** | Getestet – im täglichen Einsatz | MCP, Skill, 12 Hook-Registrierungen (10 ohne optionalen Stop/Harvest), verpflichtendes Aufräumen der Chat-Registrierung bei SessionEnd, Speicherhinweise und Statusline. [Hooks](./docs/hooks.md#deutsch) |
-| **Claude Desktop** | Getestet | MCP und Memory-Anleitung; Sitzungskontext beim ersten Tool-Aufruf. [Einrichtung](https://github.com/n0mad-ai/bastra-recall/wiki/Claude-Desktop), einschließlich macOS-Extension `.mcpb` |
-| **Codex CLI** | Für die v1.0-Integration verifiziert | MCP, Skill und native Hooks. [Einrichtung](./docs/CODEX.md) |
-| **Codex IDE + ChatGPT Desktop** | Implementiert; noch nicht im Feld getestet | Nutzen die lokale Codex-Konfiguration gemeinsam. [Einrichtung und Grenzen](./docs/CODEX.md) |
-| **Cursor** | Implementiert; noch nicht im Feld getestet | MCP-Registrierung; Projektregeln mit `bastra rules cursor` ergänzen |
-| **ChatGPT Web + iPhone-App** | Getestet; Remote-MCP in 1.1.8 enthalten | Remote-MCP mit OAuth über deine eigene HTTPS-Adresse und einen Tunnel; der Rechner mit Recall muss online sein. [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch) |
-| **claude.ai Custom Connectors** | Ungetestet | Dieselbe Remote-MCP-Adresse und derselbe OAuth-Login; sollte funktionieren. [Fernzugriff](./docs/REMOTE-ACCESS.md#claudeai-custom-connectors-untested) (Englisch) |
+| **Claude Code** (CLI) | Getestet – im täglichen Einsatz | MCP, Skill, 12 Hook-Registrierungen (10 ohne optionalen Stop/Harvest). Stop ist standardmäßig an; `--no-stop-hook` lässt ihn weg. Verpflichtendes Aufräumen der Chat-Registrierung bei SessionEnd, Speicherhinweise und Statusline. [Hooks](./docs/hooks.md#deutsch) |
+| **Claude Desktop** | Läuft; Kurztest steht aus ([#1452](https://github.com/n0mad-ai/bastra-recall/issues/1452)) | MCP und Memory-Anleitung; Sitzungskontext beim ersten Tool-Aufruf. [Einrichtung](https://github.com/n0mad-ai/bastra-recall/wiki/Claude-Desktop), einschließlich macOS-Extension `.mcpb` |
+| **Codex CLI** | Getestet | MCP, Skill und native Hooks. [Einrichtung](./docs/CODEX.md) |
+| **Codex IDE + ChatGPT Desktop** | ChatGPT Desktop (mit Codex Desktop): läuft, Kurztest steht aus ([#1452](https://github.com/n0mad-ai/bastra-recall/issues/1452)). Codex IDE: ungetestet | Nutzen die lokale Codex-Konfiguration gemeinsam. [Einrichtung und Grenzen](./docs/CODEX.md) |
+| **Cursor** | Ausstehend – Integrationstest folgt | MCP-Registrierung; Projektregeln mit `bastra rules cursor` ergänzen |
+| **ChatGPT Web + iPhone-App** | Am 29.10.2026 durchgehend geprüft; Remote-MCP seit 1.1.8 enthalten | Remote-MCP mit OAuth über deine eigene HTTPS-Adresse und einen Tunnel; der Rechner mit Recall muss online sein. [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch) |
+| **claude.ai Custom Connectors** | Ungetestet, nicht geplant | Dieselbe Remote-MCP-Adresse und derselbe OAuth-Login. [Fernzugriff](./docs/REMOTE-ACCESS.md#claudeai-custom-connectors-untested) (Englisch) |
 | **ChatGPT Custom GPT Actions** | Veraltet | OpenAI stellt Custom GPTs am 11.12.2026 ein; nutze stattdessen die Remote-MCP-Verbindung. [Bisherige Einrichtung](./docs/openapi-generation.md#legacy-custom-gpt-action) |
 
-Weitere MCP-Clients können den Forwarder oder aus der Ferne [`/api/v1/mcp`](./docs/REMOTE-ACCESS.md) verwenden, sind aber ungetestet. Skripte und andere Integrationen nutzen die [REST-API](./docs/USAGE.md#rest-api-für-nicht-mcp-clients). MCP ist das Protokoll, mit dem ein KI-Assistent externe Werkzeuge wie diesen Gedächtnisdienst verwendet.
+Weitere MCP-Clients können den Forwarder oder aus der Ferne [`/api/v1/mcp`](./docs/REMOTE-ACCESS.md) verwenden, sind aber ungetestet und nicht geplant. Skripte und andere Integrationen nutzen die [REST-API](./docs/USAGE.md#rest-api-für-nicht-mcp-clients). MCP ist das Protokoll, mit dem ein KI-Assistent externe Werkzeuge wie diesen Gedächtnisdienst verwendet.
 
 Die Belegtabelle in [host-capabilities.ts](./packages/daemon/src/host-capabilities.ts) trennt Host-Fähigkeiten vom ausgelieferten Bastra-Pfad und nennt Quellen, Laufzeitbelege, alle acht Fähigkeiten und Tool-Grenzen. Die Übersicht beschreibt Bastras Hook-Pfade; Cursor/Desktop/Remote-MCP haben kein Bastra-Hook-Gate. Für Codex CLI 0.162.1 und 0.166.0 ist Deny bei `exec_command`/Bash und `view_image` belegt; `apply_patch`-Deny und MCP bleiben auf beiden Versionen ungeprüft; Fork ist nur auf 0.162.1 belegt. Hosted WebSearch ist nicht unterstützt; `write_stdin` hat keine neue Deny-Grenze. Andere Codex-Versionen bleiben Vorbereitung. Eine Stop-Fortsetzung garantiert nie, dass Text vor der Anzeige zurückgehalten wird. `validate_artifact` braucht verbundenes Recall-MCP mit der Tool-Oberfläche write/full.
 
@@ -302,7 +302,7 @@ Die Belegtabelle in [host-capabilities.ts](./packages/daemon/src/host-capabiliti
 | Plattform | Status | Verfügbarkeit |
 |---|---|---|
 | **macOS** (Apple Silicon und Intel) | Unterstützt | Homebrew- und npm-Installation, `bastra autostart`, Claude-Desktop-Extension `.mcpb` (Release-Builds enthalten wie npm das Manifest des verifizierten kompilierten Hook-Clients; den Client selbst lädt es erst, wenn du zustimmst), `open_document` und kompilierter Hook-Client |
-| **Linux** (x86_64 und arm64) | Daemon, CLI, MCP und Hooks | Installation mit npm; kompilierter Hook-Client verfügbar. Kein Homebrew-Installationsweg, macOS-LaunchAgent (`bastra autostart`), `.mcpb`-Extension-Installation oder `open_document`. Der Forwarder startet den Daemon bei Bedarf. |
+| **Linux** (x86_64 und arm64) | Im echten Einsatz ungetestet (die Testsuite läuft in der CI unter Linux) – Daemon, CLI, MCP und Hooks | Installation mit npm; kompilierter Hook-Client verfügbar. Kein Homebrew-Installationsweg, macOS-LaunchAgent (`bastra autostart`), `.mcpb`-Extension-Installation oder `open_document`. Der Forwarder startet den Daemon bei Bedarf. |
 | **Windows** (x64) | Experimentell vorbereitet | Cross-Build des Hook-Clients und `.exe`-Registrierung eingerichtet; Erzeugung einer ausführbaren Datei und Nutzung auf echtem Windows noch nicht geprüft. [Abnahme offen (#348)](https://github.com/n0mad-ai/bastra-recall/issues/348). |
 
 ### Warum

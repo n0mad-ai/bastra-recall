@@ -22,10 +22,10 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import {
-  ALL_TOOL_DEFS,
   INSTALL_TOOL_SURFACE,
   filterToolDefsForSurface,
   isToolAllowed,
+  servedToolDefs,
   toolSurfaceDenial,
 } from "./tool-defs.js";
 import { dispatchApi, type DispatchCtx } from "./http-api-routes.js";
@@ -46,7 +46,9 @@ function buildServer(ctx: DispatchCtx): Server {
   );
 
   server.setRequestHandler(ListToolsRequestSchema, () => ({
-    tools: filterToolDefsForSurface(ALL_TOOL_DEFS, REMOTE_SURFACE).filter((t) => remoteAllows(t.name)),
+    tools: filterToolDefsForSurface(servedToolDefs(ctx.documentWriteEnabled), REMOTE_SURFACE).filter((t) =>
+      remoteAllows(t.name)
+    ),
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {

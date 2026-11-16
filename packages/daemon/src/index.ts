@@ -17,7 +17,7 @@ import { tasksEnabled } from "./tasks-enabled.js";
 import { ensureLocalTaskAgent } from "./task-auto-setup.js";
 import { mayExitOnBusyPort, probeDaemonPort } from "./http.js";
 import { startBackgroundJobs } from "./daemon-jobs.js";
-import { envFirst, envOff, isOnValue } from "./env.js";
+import { envFirst, envOff } from "./env.js";
 import { startBackgroundCheck } from "./update-check.js";
 import { DAEMON_VERSION } from "./version.js";
 import { logDirFor } from "./telemetry.js";
@@ -34,10 +34,11 @@ import { startStdioServer } from "./boot-stdio.js";
 import { registerShutdown } from "./boot-shutdown.js";
 import { daemonOrigin } from "./daemon-spawn-env.js";
 import { waitForForwarderPort } from "./daemon-port-wait.js";
+import { documentWriteEnabledFromEnv } from "./tool-defs.js";
 
-// Triage Issue #24: Write-Tools sind Pro-Feature. Aktuelles Gate ist ein
-// env-Flag — wenn ein Pro-License-Service kommt, ersetzt der das hier.
-const DOCUMENT_WRITE_ENABLED = isOnValue(envFirst("BASTRA_DOCUMENT_WRITE", "NEXUS_DOCUMENT_WRITE"));
+// Triage Issue #24: Write-Tools sind Recall-Pulse-Feature. Aktuelles Gate ist ein
+// env-Flag — wenn ein Recall-Pulse-License-Service kommt, ersetzt der das hier.
+const DOCUMENT_WRITE_ENABLED = documentWriteEnabledFromEnv();
 
 // One truth for the port, read twice: once by the #483 bind probe at the very
 // top of main(), once by the real listen() further down — and since #531 the

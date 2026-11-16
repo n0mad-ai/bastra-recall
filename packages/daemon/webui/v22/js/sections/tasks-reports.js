@@ -77,7 +77,8 @@ export async function openReports() {
   await loadReports();
 }
 
-/** Head button in the style of "FÄLLIG · n"; the dot glows while reports are unread. */
+/** Head button in the style of "FÄLLIG · n": n counts the UNREAD reports, so new ones stand out at once
+ *  (#1553); the dot glows while there are any. */
 export function reportsButton() {
   const unread = unreadCount(data.reports);
   return h(
@@ -89,7 +90,7 @@ export function reportsButton() {
       on: { click: () => (R.open ? closeReports() : openReports()) },
     },
     h("span.tk-duebtn__dot.tk-repbtn__dot", { cls: unread ? "" : "is-off" }),
-    t("tk.rep.btn", { n: data.reports.length })
+    t("tk.rep.btn", { n: unread })
   );
 }
 

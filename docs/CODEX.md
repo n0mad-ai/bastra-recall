@@ -8,7 +8,7 @@
 
 On the same machine, Bastra Recall uses `~/.codex/config.toml`, which is shared by Codex and the ChatGPT desktop app. Authentication remains entirely OpenAI-owned: Codex manages the ChatGPT sign-in or OpenAI API key, and Bastra Recall needs no separate OpenAI credential for this integration. Storage and keyword search run locally. Retrieved memories are handed to the connected AI client as context; see [privacy](./PRIVACY.md).
 
-**Verification status:** Codex CLI is verified for the v1.0 integration. Desktop and IDE are implemented but not yet field-tested.
+**Test status:** Codex CLI is tested. ChatGPT Desktop (with Codex Desktop) runs, but its recorded smoke test is still pending ([#1452](https://github.com/n0mad-ai/bastra-recall/issues/1452)). The Codex IDE extension is untested.
 
 ### Installation
 
@@ -117,7 +117,7 @@ verify what loaded.
 
 Bastra Recall verwendet auf demselben Rechner die von Codex und der ChatGPT-Desktop-App gemeinsam gelesene Datei `~/.codex/config.toml`. Die Anmeldung bleibt vollständig bei OpenAI: ChatGPT-Login oder OpenAI-API-Key werden von Codex verwaltet; Bastra Recall benötigt dafür keinen eigenen OpenAI-Schlüssel. Speicherung und Stichwortsuche laufen lokal. Abgerufene Erinnerungen werden dem verbundenen KI-Client als Kontext übergeben; siehe [Datenschutz](./PRIVACY.md#deutsch).
 
-**Prüfstand:** Codex CLI ist für die v1.0-Integration verifiziert. Desktop und IDE sind implementiert, aber noch nicht im Feld getestet.
+**Prüfstand:** Codex CLI ist getestet. ChatGPT Desktop (mit Codex Desktop) läuft, der festgehaltene Kurztest steht aber noch aus ([#1452](https://github.com/n0mad-ai/bastra-recall/issues/1452)). Die Codex-IDE-Erweiterung ist ungetestet.
 
 ### Installation
 

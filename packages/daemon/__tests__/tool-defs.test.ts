@@ -13,6 +13,7 @@ import {
   ALL_TOOL_DEFS,
   filterToolDefsForSurface,
   isToolAllowed,
+  servedToolDefs,
   toolSurfaceDenial,
   toolSurfaceFrom,
 } from "../src/tool-defs.js";
@@ -167,4 +168,25 @@ test("#1238: a task tool denied by the preview switch says how to opt in, not to
     if (prev === undefined) delete process.env.BASTRA_TASKS;
     else process.env.BASTRA_TASKS = prev;
   }
+});
+
+test("#1458: the served list carries the document write tools only when the switch is on", () => {
+  const writeTools = ["save_document", "recategorize_document", "move_document"];
+  const off = servedToolDefs(false).map((d) => d.name);
+  for (const n of writeTools) assert.ok(!off.includes(n), `${n} served although document write is off`);
+  assert.equal(off.length, ALL_TOOL_DEFS.length - writeTools.length, "only the document write tools drop out");
+  assert.deepEqual(
+    servedToolDefs(true).map((d) => d.name),
+    ALL_TOOL_DEFS.map((d) => d.name)
+  );
+});
+
+test("#1456: recall says weak_result is hybrid-only and that this tool applies no evidence gate", () => {
+  const description = (ALL_TOOL_DEFS as { name: string; description: string }[]).find(
+    (d) => d.name === "recall"
+  )!.description;
+  assert.match(description, /`weak_result` \(like the bands\) only exists on that hybrid path/);
+  assert.match(description, /without an embedding model \(`score_kind: "bm25"`\) it never appears/);
+  assert.match(description, /This tool applies no evidence gate/);
+  assert.match(description, /The evidence gate only filters what the hooks inject/);
 });

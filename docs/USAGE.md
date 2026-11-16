@@ -25,7 +25,7 @@ bastra doctor
 
 Keep external Ollama running yourself. Alternatively, explicitly select OpenAI with `bastra config set embedding.provider openai` and supply `OPENAI_API_KEY` or `BASTRA_EMBEDDING_KEY` in the daemon environment, then restart the daemon. OpenAI sends recall queries and indexed memory text to api.openai.com. A key alone does not enable it. Without a working embedding provider, recall uses keyword search (BM25); `bastra doctor` reports the provider/model state and the Windows setup limitation.
 
-**Documents/OCR: macOS today, Windows planned** ([#85](https://github.com/n0mad-ai/bastra-recall/issues/85)). Windows has no supported document import/OCR backend yet. `find_document` and `read_document` can still search and read document text already extracted into the vault. `open_document` cannot launch the original on Windows; it returns a clear message and the path so you can open it manually. This does not perform OCR.
+**Documents and OCR.** Recall itself has no text recognition (OCR) and no PDF text extraction, on any platform. `find_document` and `read_document` search and read document text that is already stored in the vault, on Windows too. `save_document` keeps only the text the caller passes in, and works only when the daemon runs with `BASTRA_DOCUMENT_WRITE=1`. OCR for scans is a Recall Pulse feature of the Mac app (coming soon). `open_document` cannot launch the original on Windows; it returns a clear message and the path so you can open it manually.
 
 ### Changes in 1.1.1
 
@@ -345,7 +345,7 @@ Without a path, `bastra reconcile` looks for copies (#339): the vault paths in t
 
 ### Onboarding — five minutes to a warm start
 
-A fresh vault offers to seed itself. Pick what your memory will mainly hold — code & projects, company & decisions, life & knowledge, or a mix — and answer a handful of persona-aware questions; every answer becomes a profile memory your AI recalls from day one. Two surfaces run it for certain: the vault map auto-opens it on a fresh vault, and `bastra onboard` runs it in the terminal (`bastra onboard --answers <file>` saves prepared answers from a JSON/YAML file, no terminal needed — see `bastra onboard --help`; a file with only the persona is valid, but one where nothing is usable and an entry was skipped — a mistyped question id, a value that is not text — fails with exit code 2 and leaves onboarding open). On top of that, an AI session with hooks (Claude Code, Codex) is handed the interview at session start and usually opens it for you — the most adaptive of the three, it follows up where an answer is thin. Skippable everywhere, never asked twice.
+A fresh vault offers to seed itself. Pick what your memory will mainly hold — code & projects, company & decisions, life & knowledge, or a mix — and answer a handful of persona-aware questions; every answer becomes a profile memory your AI recalls from day one. Two surfaces run it for certain: the web UI opens it on its own on a fresh vault, and `bastra onboard` runs it in the terminal (`bastra onboard --answers <file>` saves prepared answers from a JSON/YAML file, no terminal needed — see `bastra onboard --help`; a file with only the persona is valid, but one where nothing is usable and an entry was skipped — a mistyped question id, a value that is not text — fails with exit code 2 and leaves onboarding open). On top of that, an AI session with hooks (Claude Code, Codex) is handed the interview at session start and usually opens it for you — the most adaptive of the three, it follows up where an answer is thin. Skippable everywhere, never asked twice.
 
 ### Importing memories — skip the cold start
 
@@ -361,7 +361,7 @@ bastra import clients              # every Claude Code (~/.claude/projects/*/mem
 
 A folder import builds each note's `recall_when` from the source's description and title: the memory type word (`feedback`, `reference`, …) stays a tag, never a trigger, and an entry longer than 200 characters is cut at a word boundary (the description stays in `summary`). If that leaves no trigger because the title is itself a type word, the first line of the note's body that says something becomes the trigger. Each such fix is printed as a warning; the note is imported anyway. Only a note that holds nothing but a type word in title, description and body is skipped, with the reason. Notes imported before this change keep their old triggers until you run the same `bastra import vault` again (#710).
 
-A `conversations.json` never stages raw chat history: only **your own messages** are kept (assistant turns dropped), queued locally under `~/.bastra/` — the queue is deleted when mining completes, and `bastra import clear` discards it anytime. Text read by your assistant becomes its context and may be processed by its cloud provider; see [privacy](./PRIVACY.md). Your AI session combs the queue chunk-wise (`bastra import mine`) and stages candidate lessons, decisions and preferences for your review. The vault map carries a visual import dialog (topbar ↓) for the paste path and the folder path.
+A `conversations.json` never stages raw chat history: only **your own messages** are kept (assistant turns dropped), queued locally under `~/.bastra/` — the queue is deleted when mining completes, and `bastra import clear` discards it anytime. Text read by your assistant becomes its context and may be processed by its cloud provider; see [privacy](./PRIVACY.md). Your AI session combs the queue chunk-wise (`bastra import mine`) and stages candidate lessons, decisions and preferences for your review. The web UI has an import dialog (**Import** in its navigation) for the paste path and the folder path.
 
 `import vault` is the fourth path and skips the gate on purpose: a folder of already-structured memory files (Claude Code's `name`/`description`/`type` frontmatter — both its variants — or plain markdown notes) carries every field a memory needs, so it maps deterministically. The set lands isolated under `memories/imported/<label>/` with its own scope and namespaced ids — nothing existing is read or modified, and deleting that one folder removes the whole set. An identical re-import is a true no-op (#530): unchanged memories are not rewritten, no audit event is appended and the `.bastra-imported` marker stays put — the run reports `created · updated · unchanged` so you can see which it was.
 
@@ -372,7 +372,7 @@ Link targets that live on another surface (say, your Claude Code skills) can be 
 
 ### Feedback
 
-`bastra feedback bug` / `bastra feedback idea` opens a prefilled GitHub issue form in your browser. The bug form carries a sanitized diagnostics block — version, OS, Node, embedding mode, vault size; never file paths, never vault content — and you review and submit it yourself. The vault map links both forms in its sidebar.
+`bastra feedback bug` / `bastra feedback idea` opens a prefilled GitHub issue form in your browser. The bug form carries a sanitized diagnostics block — version, OS, Node, embedding mode, vault size; never file paths, never vault content — and you review and submit it yourself. The web UI links both forms at the bottom of its side panel.
 
 ### Cursor rules
 
@@ -508,7 +508,7 @@ Endpoints (all `POST`, JSON body):
 | `/api/v1/edit_memory` | edit_memory |
 | `/api/v1/find_document` / `read_document` / `open_document` | document search |
 | `/api/v1/find_code` | code graph lookup |
-| `/api/v1/save_document` / `recategorize_document` / `move_document` | document write (Pro) |
+| `/api/v1/save_document` / `recategorize_document` / `move_document` | document write (Recall Pulse; needs `BASTRA_DOCUMENT_WRITE=1`) |
 | `/api/v1/save_product_doc` | product docs |
 
 In addition, `GET`/`POST /settings/docs` reads/writes the product-docs settings (`{mode, language}`) — loopback-only like `/hook/*`, intended for local UIs such as the Bastra Mac app's options pane.
@@ -526,7 +526,7 @@ Auth and CORS:
 
 To reach this daemon from a hosted web app (e.g. a site's admin talking to the user's *local* vault from the browser), set `BASTRA_CORS_ORIGIN` to the site origin, run `bastra token`, and paste the token into the site. When that site is served over **HTTPS** (e.g. `https://bastra.io`), Chrome sends a **Private Network Access** preflight for the public-origin → localhost call; the daemon answers it automatically with `Access-Control-Allow-Private-Network: true` for allowed origins — no extra config. For the manual hosted-page Safari check, use the synthetic [browser bridge probe](./browser-bridge-verification.md). The generated local REST contract lives in [openapi.yaml](./openapi.yaml). ChatGPT (web and phone) and other cloud clients cannot reach `127.0.0.1`; they connect over MCP at `/api/v1/mcp` through your own public HTTPS address. [Remote access](./REMOTE-ACCESS.md) covers the tunnel, the OAuth login and how to revoke clients.
 
-> **Status:** the REST contract is generated from the routes. Remote MCP for ChatGPT web and the ChatGPT iPhone app is verified on `main` (not yet released). The Custom GPT Action path is [legacy](./openapi-generation.md#legacy-custom-gpt-action): OpenAI retires Custom GPTs on 2026-12-11.
+> **Status:** the REST contract is generated from the routes. Remote MCP for ChatGPT web and the ChatGPT iPhone app is included since 1.1.8 and was checked end to end on 2026-10-29. The Custom GPT Action path is [legacy](./openapi-generation.md#legacy-custom-gpt-action): OpenAI retires Custom GPTs on 2026-12-11.
 
 ### Model recommendations — when a release suggests a different local text model
 
@@ -684,7 +684,7 @@ bastra doctor
 
 Halte externes Ollama selbst am Laufen. Alternativ wählst du OpenAI ausdrücklich mit `bastra config set embedding.provider openai`, setzt `OPENAI_API_KEY` oder `BASTRA_EMBEDDING_KEY` in der Daemon-Umgebung und startest den Daemon neu. OpenAI sendet Recall-Anfragen und den indexierten Notiztext an api.openai.com. Ein Schlüssel allein aktiviert es nicht. Ohne funktionierenden Embedding-Provider arbeitet Recall mit Stichwortsuche (BM25); `bastra doctor` nennt den Provider-/Modellzustand und die Windows-Einschränkung.
 
-**Dokumente/OCR: heute macOS, Windows geplant** ([#85](https://github.com/n0mad-ai/bastra-recall/issues/85)). Windows hat noch kein unterstütztes Backend für Dokumentimport/OCR. `find_document` und `read_document` können bereits extrahierten Dokumenttext im Vault weiterhin suchen und lesen. `open_document` kann das Original unter Windows nicht starten; es liefert eine klare Meldung und den Pfad zum manuellen Öffnen. Dabei findet keine OCR statt.
+**Dokumente und OCR.** Recall selbst hat keine Texterkennung (OCR) und keine PDF-Textextraktion, auf keiner Plattform. `find_document` und `read_document` suchen und lesen Dokumenttext, der schon im Vault liegt, auch unter Windows. `save_document` übernimmt nur den Text, den der Aufrufer mitgibt, und funktioniert nur, wenn der Daemon mit `BASTRA_DOCUMENT_WRITE=1` läuft. OCR für Scans ist eine Funktion von Recall Pulse in der Mac-App (bald verfügbar). `open_document` kann das Original unter Windows nicht starten; es liefert eine klare Meldung und den Pfad zum manuellen Öffnen.
 
 ### Änderungen in 1.1.1
 
@@ -1021,7 +1021,7 @@ Ohne Pfad sucht `bastra reconcile` nach Kopien (#339): die Vault-Pfade in den Cl
 
 ### Onboarding — in fünf Minuten zum Warmstart
 
-Ein frischer Vault bietet an, sich selbst zu befüllen. Du wählst, was dein Gedächtnis hauptsächlich halten soll — Code & Projekte, Firma & Entscheidungen, Leben & Wissen oder ein Mix — und beantwortest eine Handvoll persona-bewusster Fragen; jede Antwort wird ein Profil-Memory, das deine KI vom ersten Tag an abruft. Zwei Oberflächen führen es verlässlich: Die Vault-Map öffnet es bei frischem Vault automatisch, `bastra onboard` führt es im Terminal (`bastra onboard --answers <datei>` speichert vorbereitete Antworten aus einer JSON-/YAML-Datei, ganz ohne Terminal — siehe `bastra onboard --help`; eine Datei nur mit der Persona ist gültig, aber eine, in der nichts verwertbar ist und ein Eintrag übergangen wurde — vertippte Fragen-ID, ein Wert, der kein Text ist —, scheitert mit Exit-Code 2 und lässt das Onboarding offen). Darüber hinaus bekommt eine AI-Sitzung mit Hooks (Claude Code, Codex) das Interview beim Sitzungsstart übergeben und beginnt es in aller Regel von selbst — die adaptivste der drei, sie hakt nach, wo eine Antwort dünn ist. Überall überspringbar, nie doppelt gefragt.
+Ein frischer Vault bietet an, sich selbst zu befüllen. Du wählst, was dein Gedächtnis hauptsächlich halten soll — Code & Projekte, Firma & Entscheidungen, Leben & Wissen oder ein Mix — und beantwortest eine Handvoll persona-bewusster Fragen; jede Antwort wird ein Profil-Memory, das deine KI vom ersten Tag an abruft. Zwei Oberflächen führen es verlässlich: Die Weboberfläche öffnet es bei frischem Vault von selbst, `bastra onboard` führt es im Terminal (`bastra onboard --answers <datei>` speichert vorbereitete Antworten aus einer JSON-/YAML-Datei, ganz ohne Terminal — siehe `bastra onboard --help`; eine Datei nur mit der Persona ist gültig, aber eine, in der nichts verwertbar ist und ein Eintrag übergangen wurde — vertippte Fragen-ID, ein Wert, der kein Text ist —, scheitert mit Exit-Code 2 und lässt das Onboarding offen). Darüber hinaus bekommt eine AI-Sitzung mit Hooks (Claude Code, Codex) das Interview beim Sitzungsstart übergeben und beginnt es in aller Regel von selbst — die adaptivste der drei, sie hakt nach, wo eine Antwort dünn ist. Überall überspringbar, nie doppelt gefragt.
 
 ### Memories importieren — den Kaltstart überspringen
 
@@ -1037,7 +1037,7 @@ bastra import clients              # alle Memory-Ordner von Claude Code (~/.clau
 
 Ein Ordner-Import baut `recall_when` jeder Notiz aus Beschreibung und Titel der Quelle: Das Typwort (`feedback`, `reference`, …) bleibt ein Tag, nie ein Trigger, und ein Eintrag über 200 Zeichen wird an einer Wortgrenze gekürzt (die Beschreibung bleibt in `summary`). Bleibt danach kein Trigger übrig, weil der Titel selbst ein Typwort ist, wird die erste aussagekräftige Zeile des Notiztexts zum Trigger. Jede solche Korrektur erscheint als Warnung; die Notiz wird trotzdem importiert. Nur eine Notiz, die in Titel, Beschreibung und Text nichts als ein Typwort enthält, wird mit Begründung übersprungen. Vorher importierte Notizen behalten ihre alten Trigger, bis du denselben `bastra import vault` erneut ausführst (#710).
 
-Eine `conversations.json` staged nie rohe Chat-History: Nur **deine eigenen Messages** bleiben (Assistant-Antworten fliegen raus), lokal gequeued unter `~/.bastra/` — wird nach dem Mining gelöscht, `bastra import clear` verwirft jederzeit. Vom Assistenten gelesene Abschnitte werden zu seinem Kontext und können bei seinem Cloud-Anbieter verarbeitet werden; siehe [Datenschutz](./PRIVACY.md#deutsch). Deine AI-Session kämmt die Queue Chunk-weise durch (`bastra import mine`) und staged Kandidaten-Lessons, -Entscheidungen und -Präferenzen für deine Review. Die Vault-Map hat einen visuellen Import-Dialog (Topbar ↓) für den Paste-Weg und den Ordner-Weg.
+Eine `conversations.json` staged nie rohe Chat-History: Nur **deine eigenen Messages** bleiben (Assistant-Antworten fliegen raus), lokal gequeued unter `~/.bastra/` — wird nach dem Mining gelöscht, `bastra import clear` verwirft jederzeit. Vom Assistenten gelesene Abschnitte werden zu seinem Kontext und können bei seinem Cloud-Anbieter verarbeitet werden; siehe [Datenschutz](./PRIVACY.md#deutsch). Deine AI-Session kämmt die Queue Chunk-weise durch (`bastra import mine`) und staged Kandidaten-Lessons, -Entscheidungen und -Präferenzen für deine Review. Die Weboberfläche hat einen Import-Dialog (**Import** in ihrer Navigation) für den Paste-Weg und den Ordner-Weg.
 
 `import vault` ist der vierte Weg und überspringt das Gate bewusst: Ein Ordner bereits strukturierter Memory-Dateien (Claude Codes `name`/`description`/`type`-Frontmatter — beide Varianten — oder schlichte Markdown-Notizen) trägt jedes Feld, das ein Memory braucht, und mappt deshalb deterministisch. Der Satz landet isoliert unter `memories/imported/<label>/` mit eigenem Scope und namespaced ids — nichts Bestehendes wird gelesen oder verändert, und das Löschen dieses einen Ordners entfernt den ganzen Satz. Ein identischer Re-Import ist ein echtes No-Op (#530): Unveränderte Memories werden nicht neu geschrieben, es entsteht kein Audit-Eintrag und der Marker `.bastra-imported` bleibt stehen — der Lauf meldet `created · updated · unchanged`, damit sichtbar ist, was davon zutraf.
 
@@ -1048,7 +1048,7 @@ Link-Ziele, die auf einer anderen Surface leben (etwa deine Claude-Code-Skills),
 
 ### Feedback
 
-`bastra feedback bug` / `bastra feedback idea` öffnet ein vorausgefülltes GitHub-Issue-Formular im Browser. Das Bug-Formular trägt einen sanitisierten Diagnose-Block — Version, OS, Node, Embedding-Modus, Vault-Größe; nie Dateipfade, nie Vault-Inhalte — und du prüfst und sendest es selbst. Die Vault-Map verlinkt beide Formulare in ihrer Sidebar.
+`bastra feedback bug` / `bastra feedback idea` öffnet ein vorausgefülltes GitHub-Issue-Formular im Browser. Das Bug-Formular trägt einen sanitisierten Diagnose-Block — Version, OS, Node, Embedding-Modus, Vault-Größe; nie Dateipfade, nie Vault-Inhalte — und du prüfst und sendest es selbst. Die Weboberfläche verlinkt beide Formulare unten in ihrem Seitenbereich.
 
 ### Cursor-Rules
 
@@ -1193,7 +1193,7 @@ Endpoints (alle `POST`, JSON-Body):
 | `/api/v1/edit_memory` | edit_memory |
 | `/api/v1/find_document` / `read_document` / `open_document` | Document-Suche |
 | `/api/v1/find_code` | Code-Graph-Abfrage |
-| `/api/v1/save_document` / `recategorize_document` / `move_document` | Document-Schreiben (Pro) |
+| `/api/v1/save_document` / `recategorize_document` / `move_document` | Document-Schreiben (Recall Pulse; braucht `BASTRA_DOCUMENT_WRITE=1`) |
 | `/api/v1/save_product_doc` | Produkt-Doku |
 
 Zusätzlich liest/schreibt `GET`/`POST /settings/docs` die Produkt-Doku-Settings (`{mode, language}`) — loopback-only wie `/hook/*`, gedacht für lokale UIs wie die Options-Pane der Bastra Mac-App.
@@ -1211,7 +1211,7 @@ Auth und CORS:
 
 Um diesen Daemon aus einer gehosteten Web-App zu erreichen (z.B. das Admin einer Seite, das aus dem Browser auf den *lokalen* Vault des Users zugreift): `BASTRA_CORS_ORIGIN` auf die Seiten-Origin setzen, `bastra token` ausführen und das Token in der Seite hinterlegen. Läuft die Seite über **HTTPS** (z.B. `https://bastra.io`), schickt Chrome für den Public-Origin-→-localhost-Call einen **Private-Network-Access**-Preflight; der Daemon beantwortet ihn für erlaubte Origins automatisch mit `Access-Control-Allow-Private-Network: true` — ohne Zusatzkonfiguration. Für den manuellen Safari-Test von der gehosteten Seite gibt es die synthetische [Browser-Bridge-Probe](./browser-bridge-verification.md). Der generierte lokale REST-Vertrag liegt in [openapi.yaml](./openapi.yaml). ChatGPT (Web und Handy) und andere Cloud-Clients erreichen `127.0.0.1` nicht; sie verbinden sich per MCP unter `/api/v1/mcp` über deine eigene öffentliche HTTPS-Adresse. [Fernzugriff](./REMOTE-ACCESS.md) (Englisch) beschreibt Tunnel, OAuth-Login und das Widerrufen von Clients.
 
-> **Status:** Der REST-Vertrag wird aus den Routen generiert. Remote-MCP für ChatGPT im Web und in der ChatGPT-iPhone-App ist auf `main` geprüft (noch nicht veröffentlicht). Der Weg über Custom-GPT-Actions ist [veraltet](./openapi-generation.md#legacy-custom-gpt-action): OpenAI stellt Custom GPTs am 11.12.2026 ein.
+> **Status:** Der REST-Vertrag wird aus den Routen generiert. Remote-MCP für ChatGPT im Web und in der ChatGPT-iPhone-App ist seit 1.1.8 enthalten und wurde am 29.10.2026 durchgehend geprüft. Der Weg über Custom-GPT-Actions ist [veraltet](./openapi-generation.md#legacy-custom-gpt-action): OpenAI stellt Custom GPTs am 11.12.2026 ein.
 
 ### Modell-Empfehlungen — wenn ein Release ein anderes lokales Textmodell vorschlägt
 

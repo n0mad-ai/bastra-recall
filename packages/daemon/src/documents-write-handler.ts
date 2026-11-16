@@ -2,8 +2,8 @@
  * Document-Hub WRITE Tools — `save_document`/`recategorize_document`/
  * `move_document`. Triage Issue #24:
  *
- * - Pro-Feature: Triage will diese hinter Lizenz-Gate. Bis das Pro-License-
- *   Service da ist (separates Issue), gaten wir mit env-Flag
+ * - Recall-Pulse-Feature: Triage will diese hinter Lizenz-Gate. Bis das Recall-Pulse-
+ *   License-Service da ist (separates Issue), gaten wir mit env-Flag
  *   `BASTRA_DOCUMENT_WRITE=1` (Legacy: `NEXUS_DOCUMENT_WRITE`). Tool-Liste
  *   wird komplett ausgeblendet wenn das Flag fehlt — externe MCP-Caller
  *   sehen nur Read-Tools.

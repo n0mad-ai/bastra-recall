@@ -25,6 +25,7 @@ import { documentWriteTools } from "./documents-write-handler.js";
 import { productDocTools } from "./product-doc-handler.js";
 import { codeTools } from "./code-graph/find-code.js";
 import { affectedTools } from "./code-graph/find-affected-files.js";
+import { envFirst, isOnValue } from "./env.js";
 
 export const ALL_TOOL_DEFS = [
   ...MEMORY_TOOL_DEFS,
@@ -38,6 +39,24 @@ export const ALL_TOOL_DEFS = [
   ...saveSuggestionTools,
   ...validateArtifactTools,
 ];
+
+/** The document write switch (Triage #24), read the same way by the daemon and the forwarder. */
+export function documentWriteEnabledFromEnv(): boolean {
+  return isOnValue(envFirst("BASTRA_DOCUMENT_WRITE", "NEXUS_DOCUMENT_WRITE"));
+}
+
+const DOCUMENT_WRITE_TOOL_NAMES: ReadonlySet<string> = new Set(documentWriteTools.map((t) => t.name));
+
+/**
+ * #1458: the definitions a daemon actually serves. Without the document write
+ * switch the daemon refuses `save_document`, `recategorize_document` and
+ * `move_document` on every call, so it does not list them either — the rule
+ * the stdio server already applied, now shared by `GET /tools` (what the
+ * forwarder lists) and the remote MCP door.
+ */
+export function servedToolDefs(documentWriteEnabled: boolean): typeof ALL_TOOL_DEFS {
+  return documentWriteEnabled ? ALL_TOOL_DEFS : ALL_TOOL_DEFS.filter((d) => !DOCUMENT_WRITE_TOOL_NAMES.has(d.name));
+}
 
 /**
  * #481: the tool surface a single MCP client sees. Chosen at install time

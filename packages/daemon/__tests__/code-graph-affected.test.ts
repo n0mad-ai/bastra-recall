@@ -385,18 +385,14 @@ describe("an unavailable answer is honest about why", () => {
   });
 
   it("the frozen measurement surface is untouched by any of this (#582)", async () => {
-    // The registration pins these two hashes; changing a note must not move
+    // The registration pins these hashes; changing a note must not move
     // them, or the run measures something other than what was registered.
+    // The code clause is the exception since #1457 — see the next two tests.
     const sha = (v: string) => createHash("sha256").update(v).digest("hex");
     assert.equal(
       sha(JSON.stringify(affectedTools[0])),
       "e8e51b5e0c80e6d7e18e009d18624265de9a515c26b95c728ec3b0507ed48b96",
       "find_affected_files tool definition changed — arms.frozen_surface in the registration no longer matches"
-    );
-    assert.equal(
-      sha(serverInstructions(true)),
-      "63a1bac0f13ff91069ca72dde2a5a8be859922df0c83e85d89c30594220bd07c",
-      "server instructions changed — arms.frozen_surface in the registration no longer matches"
     );
     // THE PARTS, SEPARATELY. The combined hash alone let the two come apart:
     // 2f9dc47 rewrote the code clause, updated the combined hash and left
@@ -408,10 +404,22 @@ describe("an unavailable answer is honest about why", () => {
       "0b92d332e295c9ce32d925bfc53d5186afb1c6f2073d8611bacfaea5496ce78b",
       "the memory policy changed — memory_part_sha256 in the registration no longer matches"
     );
+  });
+
+  it("#1457: the code clause promises no more than was measured", () => {
+    // CODE-AWARENESS-MEASUREMENTS.md found no gain over plain search, so the
+    // clause offers candidates to confirm with grep — never "better than any
+    // text search", never a step owed "before any Grep".
+    assert.doesNotMatch(CODE_AWARENESS_CLAUSE, /better than/i);
+    assert.doesNotMatch(CODE_AWARENESS_CLAUSE, /before any grep/i);
+    assert.match(CODE_AWARENESS_CLAUSE, /`find_affected_files` with that file gives a candidate list/);
+    assert.match(CODE_AWARENESS_CLAUSE, /candidates, not proof and not a complete list: confirm them with grep/);
+    assert.equal(serverInstructions(true), SERVER_INSTRUCTIONS + CODE_AWARENESS_CLAUSE);
+    const sha = (v: string) => createHash("sha256").update(v).digest("hex");
     assert.equal(
       sha(CODE_AWARENESS_CLAUSE),
-      "df5bea2ca78a20343767657b0165983d8f23b4f9e1b1a34be86a663b7e041348",
-      "the code clause changed — code_clause_sha256 in the registration no longer matches"
+      "38ea3d77b03cc651a35b80f34eee6aacd159693a53e2e91d6432af013859f1c3",
+      "the code clause changed — a measurement registered against it would no longer match"
     );
   });
 
@@ -420,13 +428,16 @@ describe("an unavailable answer is honest about why", () => {
     // a test that only pins the code would not have caught it either.
     const reg = JSON.parse(
       await readFile(new URL("../../eval/registrations/code-awareness-change-impact.json", import.meta.url), "utf8")
-    ) as { arms: { frozen_surface: Record<string, string> } };
+    ) as { status: string; arms: { frozen_surface: Record<string, string> } };
     const sha = (v: string) => createHash("sha256").update(v).digest("hex");
     const frozen = reg.arms.frozen_surface;
-    assert.equal(frozen.server_instructions_sha256, sha(serverInstructions(true)));
     assert.equal(frozen.memory_part_sha256, sha(SERVER_INSTRUCTIONS));
-    assert.equal(frozen.code_clause_sha256, sha(CODE_AWARENESS_CLAUSE));
     assert.equal(frozen.tool_definition_sha256, sha(JSON.stringify(affectedTools[0])));
+    // #1457: the clause the v6 run measured was rewritten after the run, to say
+    // what the run found. That is only allowed because the run is over; a new
+    // measurement is a new registration that pins the clause as it is now.
+    assert.notEqual(frozen.code_clause_sha256, sha(CODE_AWARENESS_CLAUSE));
+    assert.equal(reg.status, "run_completed", "a code clause may only move away from a completed registration");
   });
 });
 

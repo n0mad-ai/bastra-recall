@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { CAPABILITY_KEYS, HOST_CAPABILITIES, hostCapabilities } from "../src/host-capabilities.js";
 import { CODEX_GATE_MIN_VERSION, codexGateSupported } from "../src/codex-gate-capability.js";
-import { hookDefinitions } from "../src/cli/adapters/claude-code-hooks.js";
+import { hookDefinitions, installedLanes } from "../src/cli/adapters/claude-code-hooks.js";
 import { planCodexHooks } from "../src/cli/adapters/codex.js";
 import { isToolAllowed } from "../src/tool-defs.js";
 
@@ -137,6 +137,24 @@ test("README hook registration counts match the Claude Code installer in both la
   const withoutStop = hookDefinitions({ includeStop: false }).length;
   assert.ok(readme.includes(`${withStop} hook registrations (${withoutStop} without optional Stop/harvest)`));
   assert.ok(readme.includes(`${withStop} Hook-Registrierungen (${withoutStop} ohne optionalen Stop/Harvest)`));
+});
+
+test("the install detail line names every registered Claude Code hook, chat SessionEnd included", () => {
+  for (const includeStop of [true, false]) {
+    const defs = hookDefinitions({ includeStop });
+    const line = installedLanes(includeStop, false);
+    const registeredSessionEnds = defs.filter((d) => d.event === "SessionEnd").length;
+    assert.equal(
+      line
+        .split(";")[0]
+        .split(", ")
+        .filter((l) => l.startsWith("SessionEnd")).length,
+      registeredSessionEnds
+    );
+    assert.equal(line.includes("Stop,"), includeStop);
+    assert.equal(line.includes("off: --no-stop-hook"), !includeStop);
+    assert.doesNotMatch(line, /optional/);
+  }
 });
 
 test("Codex 0.166.0 certifies only the probed paths", () => {

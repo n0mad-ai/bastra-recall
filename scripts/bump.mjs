@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * bump.mjs — set README release lines and versions across workspace packages; keep the
- * internal cross-dependency pins in lockstep.
+ * bump.mjs — set README release lines and versions across workspace packages and the
+ * Codex plugin manifest; keep the internal cross-dependency pins in lockstep.
  *
  * Why: `npm version --workspaces` bumps each package's own version but does
  * NOT rewrite the internal pins (e.g. the daemon's `"@bastra-recall/core":
@@ -17,7 +17,7 @@
  *
  * Does NOT touch git — commit, tag and `gh release create` stay manual.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { README_RELEASE_LINE, README_RELEASE_TARGET_LINE, isPrereleaseVersion } from "./release-docs.mjs";
@@ -102,6 +102,19 @@ for (const { path, json } of pkgs) {
 
   if (!dryRun && dirty) {
     writeFileSync(path, JSON.stringify(json, null, 2) + "\n");
+  }
+}
+
+// 3a) The Codex plugin manifest (#1455) carries its own version and ships
+// beside the packages, so it moves with them — otherwise plugin directories
+// show users an old release.
+const codexPluginPath = resolve(repoRoot, "plugins/bastra-recall/.codex-plugin/plugin.json");
+if (existsSync(codexPluginPath)) {
+  const plugin = JSON.parse(readFileSync(codexPluginPath, "utf8"));
+  if (plugin.version !== version) {
+    changes.push(`plugins/bastra-recall/.codex-plugin/plugin.json: version ${plugin.version} → ${version}`);
+    plugin.version = version;
+    if (!dryRun) writeFileSync(codexPluginPath, JSON.stringify(plugin, null, 2) + "\n");
   }
 }
 

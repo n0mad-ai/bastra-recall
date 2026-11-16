@@ -50,9 +50,9 @@ import { tasksEnabled } from "./tasks-enabled.js";
  *   POST /api/v1/find_document           → wie MCP-Tool find_document
  *   POST /api/v1/read_document           → wie MCP-Tool read_document
  *   POST /api/v1/open_document           → wie MCP-Tool open_document
- *   POST /api/v1/save_document           → Pro-gated
- *   POST /api/v1/recategorize_document   → Pro-gated
- *   POST /api/v1/move_document           → Pro-gated
+ *   POST /api/v1/save_document           → Recall-Pulse-gated
+ *   POST /api/v1/recategorize_document   → Recall-Pulse-gated
+ *   POST /api/v1/move_document           → Recall-Pulse-gated
  *
  *   Floor-Registry (#141/#142, Auth wie die anderen /api/v1-Tools):
  *   POST /api/v1/floors                  → Floor hinzufügen/rewriten
@@ -350,6 +350,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
         healthPayload: ctx.healthPayload,
         curator: opts.curator,
         codeRefresh: codeGraphRefresher(),
+        documentWriteEnabled,
       })
     ) {
       return;

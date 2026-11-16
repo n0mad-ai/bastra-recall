@@ -214,7 +214,16 @@ describe("the build pin knows which registration it pinned", () => {
     assert.equal(verdict.reason, "run_completed");
   });
 
-  test("the v6 frozen surface still matches — a second registration changed nothing", async () => {
+  test("the v6 frozen surface still matches — a second registration changed nothing", async (t) => {
+    if (V6.status === "run_completed") {
+      // #1457: the v6 run measured the code-awareness clause and found its
+      // "before any Grep" claim unsupported, so the clause was reworded. As
+      // with the delivered registration above, a completed run keeps its
+      // hashes as a record of what was served; dist moves on, and a new
+      // measurement needs a new registration.
+      t.skip("v6 is run_completed — dist is expected to move on from its pin");
+      return;
+    }
     assert.deepEqual(frozenSurfaceMismatches(await frozenSurfaceOf(V6), V6), []);
   });
 

@@ -30,7 +30,7 @@ it in later conversations. These prompts are examples you can adapt.
 7. **Home servers and personal matters.** Save useful locations, routines and decisions for everyday life as well as code.
    “Remember where the home-server backup script lives and when I should check it.”
 
-8. **Scans and PDFs.** Once documents are indexed, with text extraction or OCR where needed, ask about their contents instead of remembering filenames.
+8. **Scans and PDFs.** Once a document's text is stored in the vault, ask about its contents instead of remembering filenames. Recall searches that stored text; it does not read scans itself. Text recognition (OCR) for scans is a Recall Pulse feature of the Mac app (coming soon).
    “Which document contains the warranty terms, and when does the warranty end?”
 
 9. **Learned filing conventions.** Establish a convention for a recurring subject and ask the assistant to apply it when saving related notes.
@@ -85,7 +85,7 @@ Kontext festzuhalten und später wieder abzurufen. Die Beispiele kannst du anpas
 7. **Heimserver und Privates.** Speichere nützliche Orte, Abläufe und Entscheidungen für den Alltag ebenso wie für Code.
    „Merke dir, wo das Backup-Skript des Heimservers liegt und wann ich es prüfen sollte.“
 
-8. **Scans und PDFs.** Sind Dokumente mit Textextraktion oder nötiger OCR indexiert, kannst du nach ihrem Inhalt fragen, statt Dateinamen zu kennen.
+8. **Scans und PDFs.** Liegt der Text eines Dokuments im Vault, kannst du nach seinem Inhalt fragen, statt Dateinamen zu kennen. Recall durchsucht diesen gespeicherten Text; Scans liest es nicht selbst. Texterkennung (OCR) für Scans ist eine Funktion von Recall Pulse in der Mac-App (bald verfügbar).
    „Welches Dokument enthält die Garantiebedingungen, und wann endet die Garantie?“
 
 9. **Gelernte Ablage-Konventionen.** Lege für ein wiederkehrendes Thema eine Konvention fest und lass sie bei späteren Notizen anwenden.

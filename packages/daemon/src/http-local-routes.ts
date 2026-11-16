@@ -53,7 +53,7 @@ import {
   isDocsLanguage,
   DOCS_MODES,
 } from "./settings.js";
-import { ALL_TOOL_DEFS, filterToolDefsForSurface, toolSurfaceFrom } from "./tool-defs.js";
+import { filterToolDefsForSurface, servedToolDefs, toolSurfaceFrom } from "./tool-defs.js";
 import { MAX_BODY_BYTES, readJsonBody, sendJson } from "./http-util.js";
 import { handleHookRecall } from "./http-hook-routes.js";
 import { appendDraftNotice } from "./draft-notice.js";
@@ -78,6 +78,8 @@ export interface LocalRouteCtx {
   curator?: CuratorRunDeps;
   /** Code-graph refresh state and the manual trigger (#1148), for /code/refresh. */
   codeRefresh?: CodeRefreshDeps;
+  /** #1458: /tools lists the document write tools only when this daemon accepts them. */
+  documentWriteEnabled: boolean;
 }
 
 export function dispatchLocalRoutes(
@@ -106,7 +108,7 @@ export function dispatchLocalRoutes(
   // tool surface allows. Absent or unknown → `full`, today's behaviour.
   if (method === "GET" && (url === "/tools" || url.startsWith("/tools?"))) {
     const surface = toolSurfaceFrom(new URL(url, "http://127.0.0.1").searchParams.get("surface") ?? undefined);
-    sendJson(res, 200, { tools: filterToolDefsForSurface(ALL_TOOL_DEFS, surface) });
+    sendJson(res, 200, { tools: filterToolDefsForSurface(servedToolDefs(ctx.documentWriteEnabled), surface) });
     return true;
   }
 

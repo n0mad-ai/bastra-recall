@@ -4,10 +4,9 @@ This guide connects ChatGPT on the web and on your phone to **your own** Bastra
 Recall installation. It covers what gets exposed, how the login works, a
 complete Cloudflare Tunnel setup, and how to check, manage and revoke access.
 
-**Status:** available on `main`, not yet in a release. ChatGPT on the web and
-the ChatGPT iPhone app were verified end to end on 2026-10-29 through a
-Cloudflare Tunnel. claude.ai custom connectors are expected to work with the
-same address but have **not** been tested. There is no hosted Bastra relay:
+**Status:** included since release 1.1.8. ChatGPT on the web and the ChatGPT
+iPhone app were verified end to end on 2026-10-29 through a Cloudflare Tunnel. claude.ai custom connectors can use the
+same address but have **not** been tested, and no test is planned. There is no hosted Bastra relay:
 you publish your own installation under your own domain.
 
 Contents:

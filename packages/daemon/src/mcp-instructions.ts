@@ -36,8 +36,8 @@ export const SERVER_INSTRUCTIONS =
  * Three things it must not do, each learned the hard way:
  *
  *   It must not displace the recall. The memory policy above asks for a recall
- *   before acting on a task; this paragraph slots in AFTER that and before
- *   Grep, so an agent following both does not have to choose.
+ *   before acting on a task; this paragraph adds to that, so an agent
+ *   following both does not have to choose.
  *
  *   It must not lead. bastra-recall is the memory first, and these
  *   instructions reach every client — ChatGPT, Codex, a user who never asked
@@ -56,20 +56,26 @@ export const SERVER_INSTRUCTIONS =
  *
  *   It must not be shouted. The memory paragraph states its policy plainly and
  *   this one says no more than it needs to.
+ *
+ *   It must not promise more than was measured (#1457). The measurements in
+ *   packages/eval/code-roi/v2/CODE-AWARENESS-MEASUREMENTS.md found no gain
+ *   over plain search (tool unused 0/44 in v3; no recall gain in v6; the
+ *   delivered block 45.8 % against 46.9 % without). So the tool is offered as
+ *   a candidate list to confirm with grep — not as better than text search,
+ *   and not as a step owed before every grep. The v6 registration froze the
+ *   earlier wording; that run is completed, so the change does not touch it.
  */
 export const CODE_AWARENESS_CLAUSE =
-  "\n\nCODE. This vault also indexes the user's code, and there is one question the index answers " +
-  "better than any text search: what a change would break. When that is the question — before or " +
-  "after you edit an exported symbol, when you are handed a diff and asked " +
-  "what else must be adapted, when you are asked which files would stop compiling, or which call " +
-  "sites you might have missed — call `find_affected_files` with that file after the recall above and " +
-  "before any Grep. If your client lists tools but loads their details on demand, load it the way " +
-  "that client does; if it is already available, just call it. " +
-  "It reads the repository's import and call graph and names the files that may break, including the " +
-  "ones reached through a workspace package (`@scope/pkg`), which a grep for the symbol name inside " +
-  "the changed package cannot find. Its answer is candidates, not proof: grep them to confirm. " +
-  "`find_code` locates a symbol or a file in the same graph, and the same goes for it. Should either " +
-  "be genuinely unavailable in this session, say so once and use Grep — do not keep retrying.";
+  "\n\nCODE. This vault also indexes the user's code. When the question is what a change would break — " +
+  "before or after you edit an exported symbol, when you are handed a diff and asked what else must be " +
+  "adapted, which files would stop compiling, or which call sites you might have missed — " +
+  "`find_affected_files` with that file gives a candidate list next to your usual text search. If your " +
+  "client lists tools but loads their details on demand, load it the way that client does; if it is " +
+  "already available, just call it. It reads the repository's import and call graph and names the files " +
+  "that may break, including ones reached through a workspace package (`@scope/pkg`). Its answer is " +
+  "candidates, not proof and not a complete list: confirm them with grep. `find_code` locates a symbol " +
+  "or a file in the same graph, and the same goes for it. Should either be genuinely unavailable in this " +
+  "session, say so once and use Grep — do not keep retrying.";
 
 /**
  * The instructions this client gets. The code paragraph is appended only when

@@ -244,7 +244,9 @@ async function dispatchTool(
     case "recategorize_document":
     case "move_document": {
       if (!documentWriteEnabled) {
-        throw new Error(`${tool} is a Pro feature — set BASTRA_DOCUMENT_WRITE=1 to enable.`);
+        throw new Error(
+          `${tool} is a Recall Pulse feature and not enabled on this daemon — set BASTRA_DOCUMENT_WRITE=1 to enable.`
+        );
       }
       if (tool === "save_document") {
         const parsed = SaveDocumentArgs.safeParse(body);

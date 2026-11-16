@@ -45,3 +45,11 @@ test("the reports widget is a built-in widget that joins only boards the user ha
   const board = await read("js/sections/dashboard.js");
   assert.doesNotMatch(/const DEFAULT = \[[\s\S]*?\];/.exec(board)![0], /reports/, "a saved layout is never rewritten");
 });
+
+test("#1553: the head button counts unread reports, like the docs say", async () => {
+  const reports = await read("js/sections/tasks-reports.js");
+  const button = /export function reportsButton\(\) \{[\s\S]*?\n\}/.exec(reports)?.[0] ?? "";
+  assert.match(button, /const unread = unreadCount\(data\.reports\);/);
+  assert.match(button, /t\("tk\.rep\.btn", \{ n: unread \}\)/);
+  assert.doesNotMatch(button, /data\.reports\.length/, "the total belongs to the list header, not the button");
+});
