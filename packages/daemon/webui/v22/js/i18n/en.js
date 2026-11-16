@@ -53,8 +53,10 @@ export default {
   "agent.thinking": "Searching {n} memories…",
   "agent.greeting": "Ask me anything about the vault.",
   "agent.greetingNew": "{n} new memories arrived since you opened Recall. Ask me anything about the vault.",
-  "agent.greeting.dashboard": "This board is yours. Ask me for a briefing, or tell me what to add, move or resize — I can arrange it for you.",
-  "agent.greeting.settings": "I can go through every setting with you. Ask what something does and I'll explain it, or tell me what you want and I'll change it — nothing is written until you apply.",
+  "agent.greeting.dashboard":
+    "This board is yours. Ask me for a briefing, or tell me what to add, move or resize — I can arrange it for you.",
+  "agent.greeting.settings":
+    "I can go through every setting with you. Ask what something does and I'll explain it, or tell me what you want and I'll change it — nothing is written until you apply.",
   "agent.greeting.tasks": "Just tell me what to remind you of or what to prepare. I create the task for you.",
   "agent.sources": "SOURCES · MARKED ON THE MAP",
   "agent.srcOpen": "Open source",
@@ -79,7 +81,8 @@ export default {
   "agent.askLong": "Ask or search the vault…",
   "agent.send": "Send",
   "agent.error": "I could not reach the vault just now. Try again in a moment.",
-  "agent.noModel": "No language model is set up for answers yet. I can still search: the matching memories are listed below.",
+  "agent.noModel":
+    "No language model is set up for answers yet. I can still search: the matching memories are listed below.",
   "agent.sug.ring": "What did we decide about the ring view?",
   "agent.sug.week": "What changed this week?",
   "agent.sug.unwritten": "Which notes are still unwritten?",

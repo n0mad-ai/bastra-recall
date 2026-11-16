@@ -39,9 +39,14 @@ let eng = null; // { graph, sim, renderer, interactions, orbit, semantic, canvas
 function engineDom() {
   let box = document.getElementById("ev-engine-dom");
   if (box) return box;
-  box = h("div", { id: "ev-engine-dom", hidden: true },
-    h("div", { id: "orbit-hint", hidden: true }), h("div", { id: "semantic-hint", hidden: true }),
-    h("div", { id: "semantic-depth-controls", hidden: true }), h("button", { id: "semantic-spin", type: "button" }));
+  box = h(
+    "div",
+    { id: "ev-engine-dom", hidden: true },
+    h("div", { id: "orbit-hint", hidden: true }),
+    h("div", { id: "semantic-hint", hidden: true }),
+    h("div", { id: "semantic-depth-controls", hidden: true }),
+    h("button", { id: "semantic-spin", type: "button" })
+  );
   document.body.append(box);
   return box;
 }
@@ -54,12 +59,22 @@ function engineGraph(g) {
   const nodes = [];
   for (const n of g.nodes) {
     if (!n || typeof n.id !== "string" || typeof n.cluster !== "string") continue;
-    nodes.push({ ...n, title: str(n.title) || n.id, type: str(n.type), summary: str(n.summary), group: str(n.group) || n.cluster,
-      tags: Array.isArray(n.tags) ? n.tags.filter((x) => typeof x === "string") : [], degree: num(n.degree), baseCluster: n.cluster });
+    nodes.push({
+      ...n,
+      title: str(n.title) || n.id,
+      type: str(n.type),
+      summary: str(n.summary),
+      group: str(n.group) || n.cluster,
+      tags: Array.isArray(n.tags) ? n.tags.filter((x) => typeof x === "string") : [],
+      degree: num(n.degree),
+      baseCluster: n.cluster,
+    });
   }
   const edges = g.edges.filter((e) => e && typeof e.source === "string" && typeof e.target === "string");
   const clusters = data.clusters.map((c) => ({ key: c.key, count: c.count }));
-  const groups = (Array.isArray(g.groups) ? g.groups : []).filter((c) => c && typeof c.key === "string" && Number.isFinite(c.count)).map((c) => ({ key: c.key, count: c.count }));
+  const groups = (Array.isArray(g.groups) ? g.groups : [])
+    .filter((c) => c && typeof c.key === "string" && Number.isFinite(c.count))
+    .map((c) => ({ key: c.key, count: c.count }));
   return { nodes, edges, clusters, groups };
 }
 
@@ -68,21 +83,48 @@ function build() {
   const graph = engineGraph(data.graph);
   const canvas = h("canvas.ev__cv");
   const clip = h("div.ev", null, canvas);
-  const e = { src: data.graph, graph, canvas, clip, structure: "clusters", view: null, stage: null, hooks: null,
-    transition: null, token: 0, raf: 0, awakeUntil: 0, rect: null, wasBusy: false, userTouched: false, saveT: 0,
-    cloudSnapshot: null, spin: (() => { try { return localStorage.getItem(SPIN_KEY) === "on"; } catch { return false; } })() };
+  const e = {
+    src: data.graph,
+    graph,
+    canvas,
+    clip,
+    structure: "clusters",
+    view: null,
+    stage: null,
+    hooks: null,
+    transition: null,
+    token: 0,
+    raf: 0,
+    awakeUntil: 0,
+    rect: null,
+    wasBusy: false,
+    userTouched: false,
+    saveT: 0,
+    cloudSnapshot: null,
+    spin: (() => {
+      try {
+        return localStorage.getItem(SPIN_KEY) === "on";
+      } catch {
+        return false;
+      }
+    })(),
+  };
   e.hues = clusterHues(graph.clusters);
   e.sim = createSimulation(graph, innerWidth, innerHeight, loadAnchors(e));
   e.renderer = createRenderer(canvas, e.sim, e.hues);
   // Mindspace: a burning supernova wins every click in its radius (old app.js)
   const burstAt = (sx, sy) => {
     if (e.view !== "orbit" || sx === undefined) return null;
-    const w = e.renderer.toWorld(sx, sy), b = e.orbit.pickBurst(w.x, w.y);
-    return b ? e.sim.byId.get(b.id) ?? null : null;
+    const w = e.renderer.toWorld(sx, sy),
+      b = e.orbit.pickBurst(w.x, w.y);
+    return b ? (e.sim.byId.get(b.id) ?? null) : null;
   };
   e.interactions = createInteractions(canvas, e.renderer, e.sim, {
     onSelect: (n, sx, sy) => e.hooks?.onSelect(burstAt(sx, sy) ?? n),
-    onHoverChange: (n, x, y) => { if (!n && burstAt(x, y)) canvas.style.cursor = "pointer"; e.hooks?.onHover(n, x, y); },
+    onHoverChange: (n, x, y) => {
+      if (!n && burstAt(x, y)) canvas.style.cursor = "pointer";
+      e.hooks?.onHover(n, x, y);
+    },
     onClusterDragEnd: () => saveAnchorsSoon(e),
     getInsets: () => insets(e),
     canDragClusters: () => e.view === "clouds",
@@ -93,39 +135,92 @@ function build() {
   // whole UI (js/weather-place.js), so a place chosen on the Dashboard is
   // the one the backdrop uses.
   e.weather = placeWeather();
-  e.offWeather = onPlaceWeather(() => { awake(e); void loadWeather(); });
-  e.orbit = createOrbitView({ sim: e.sim, renderer: e.renderer, getInteractions: () => e.interactions, getHues: () => e.hues, getSatLight: satLight, getWeather: () => e.weather.get() });
+  e.offWeather = onPlaceWeather(() => {
+    awake(e);
+    void loadWeather();
+  });
+  e.orbit = createOrbitView({
+    sim: e.sim,
+    renderer: e.renderer,
+    getInteractions: () => e.interactions,
+    getHues: () => e.hues,
+    getSatLight: satLight,
+    getWeather: () => e.weather.get(),
+  });
   e.semantic = createSemanticView({ sim: e.sim, renderer: e.renderer, getInteractions: () => e.interactions });
-  e.live = installLive(e, { awake: (ms) => awake(e, ms), regroup: () => { e.sim.regroup(loadAnchors(e)); e.wasBusy = true; } });
+  e.live = installLive(e, {
+    awake: (ms) => awake(e, ms),
+    regroup: () => {
+      e.sim.regroup(loadAnchors(e));
+      e.wasBusy = true;
+    },
+  });
   e.boltDemo = createBoltDemo({ renderer: e.renderer, sim: e.sim });
   const wake = () => awake(e);
-  for (const type of ["pointerdown", "pointermove", "pointerleave", "wheel"]) clip.addEventListener(type, wake, { passive: true });
-  clip.addEventListener("pointerdown", () => { e.userTouched = true; }, { passive: true });
-  clip.addEventListener("wheel", () => { e.userTouched = true; }, { passive: true });
+  for (const type of ["pointerdown", "pointermove", "pointerleave", "wheel"])
+    clip.addEventListener(type, wake, { passive: true });
+  clip.addEventListener(
+    "pointerdown",
+    () => {
+      e.userTouched = true;
+    },
+    { passive: true }
+  );
+  clip.addEventListener(
+    "wheel",
+    () => {
+      e.userTouched = true;
+    },
+    { passive: true }
+  );
   return e;
 }
 
 const anchorsKey = (e) => `${ANCHORS_KEY}:${e.structure}`;
-function loadAnchors(e) { try { return JSON.parse(localStorage.getItem(anchorsKey(e)) ?? "null"); } catch { return null; } }
+function loadAnchors(e) {
+  try {
+    return JSON.parse(localStorage.getItem(anchorsKey(e)) ?? "null");
+  } catch {
+    return null;
+  }
+}
 function saveAnchorsSoon(e) {
   clearTimeout(e.saveT);
-  e.saveT = setTimeout(() => { try { localStorage.setItem(anchorsKey(e), JSON.stringify(e.sim.anchorPositions())); } catch { /* storage blocked */ } }, 400);
+  e.saveT = setTimeout(() => {
+    try {
+      localStorage.setItem(anchorsKey(e), JSON.stringify(e.sim.anchorPositions()));
+    } catch {
+      /* storage blocked */
+    }
+  }, 400);
 }
 
 function insets(e) {
   const r = e.rect;
   // cardInset: the memory card's column on the right — flights keep clear of it
-  return r ? { left: r.left, top: r.top, right: e.cardInset || 0, bottom: 0 } : { left: 0, top: 0, right: 0, bottom: 0 };
+  return r
+    ? { left: r.left, top: r.top, right: e.cardInset || 0, bottom: 0 }
+    : { left: 0, top: 0, right: 0, bottom: 0 };
 }
 
 /** Canvas = viewport origin … stage bottom-right; keeps the picture in place
  *  relative to the stage when the stage moves or resizes. */
 function syncGeometry(e) {
   const b = e.stage.getBoundingClientRect();
-  const r = { left: Math.round(b.left), top: Math.round(b.top), right: Math.round(b.right), bottom: Math.round(b.bottom) };
+  const r = {
+    left: Math.round(b.left),
+    top: Math.round(b.top),
+    right: Math.round(b.right),
+    bottom: Math.round(b.bottom),
+  };
   const p = e.rect;
   if (p && p.left === r.left && p.top === r.top && p.right === r.right && p.bottom === r.bottom) return false;
-  setVars(e.canvas, { "--ev-l": `${-r.left}px`, "--ev-t": `${-r.top}px`, "--ev-w": `${Math.max(1, r.right)}px`, "--ev-h": `${Math.max(1, r.bottom)}px` });
+  setVars(e.canvas, {
+    "--ev-l": `${-r.left}px`,
+    "--ev-t": `${-r.top}px`,
+    "--ev-w": `${Math.max(1, r.right)}px`,
+    "--ev-h": `${Math.max(1, r.bottom)}px`,
+  });
   if (p) {
     const cam = e.renderer.camera;
     cam.x += (r.left + r.right - p.left - p.right) / 2;
@@ -145,7 +240,15 @@ function awake(e, ms = AWAKE_MS) {
  *  like the old render loop (Mindspace rendering and live animations are
  *  frozen, smoothness included). Only a truly still picture stops drawing. */
 function cadence(e, now) {
-  if (e.transition || e.zoomAnim || e.interactions.isFlying() || now < e.awakeUntil || e.wasBusy || e.boltDemo.isRunning()) return "full";
+  if (
+    e.transition ||
+    e.zoomAnim ||
+    e.interactions.isFlying() ||
+    now < e.awakeUntil ||
+    e.wasBusy ||
+    e.boltDemo.isRunning()
+  )
+    return "full";
   if (e.view === "orbit") return "full"; // the universe always moves (discs, planets, drift)
   if (e.view === "semantic" && e.semantic.getMode() === "3d" && e.spin) return "full";
   // focus beacon, filter pulse, flares, supernovae
@@ -157,23 +260,33 @@ function frame(e, now) {
   if (!e.stage || document.hidden || e.frozen) return;
   if (syncGeometry(e)) e.awakeUntil = Math.max(e.awakeUntil, now + 200);
   const mode = cadence(e, now);
-  if (mode === "stop") { e.hooks?.onFrame(); return; }
+  if (mode === "stop") {
+    e.hooks?.onFrame();
+    return;
+  }
   const tr = e.transition;
   if (tr) {
     // nodes fly between layouts; physics and view ticks pause meanwhile
     const t = Math.min((now - tr.t0) / tr.ms, 1);
     const k = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
     for (const n of e.sim.nodes) {
-      const a = tr.from.get(n.id), b = tr.to.get(n.id);
-      if (a && b) { n.x = a.x + (b.x - a.x) * k; n.y = a.y + (b.y - a.y) * k; }
+      const a = tr.from.get(n.id),
+        b = tr.to.get(n.id);
+      if (a && b) {
+        n.x = a.x + (b.x - a.x) * k;
+        n.y = a.y + (b.y - a.y) * k;
+      }
     }
     if (t >= 1) e.transition = null;
   }
   const za = e.zoomAnim;
   if (za) {
-    const t = Math.min((now - za.t0) / 240, 1), k = 1 - Math.pow(1 - t, 3), cam = e.renderer.camera;
+    const t = Math.min((now - za.t0) / 240, 1),
+      k = 1 - Math.pow(1 - t, 3),
+      cam = e.renderer.camera;
     cam.scale = za.s0 + (za.s1 - za.s0) * k;
-    cam.x = za.px - za.wx * cam.scale; cam.y = za.py - za.wy * cam.scale;
+    cam.x = za.px - za.wx * cam.scale;
+    cam.y = za.py - za.wy * cam.scale;
     if (t >= 1) e.zoomAnim = null;
   }
   if (!e.transition) {
@@ -196,14 +309,16 @@ function frame(e, now) {
 /** Rotations stop for an open memory card (engine-view.js) or a freeze. */
 function applyHold(e) {
   const on = !!(e.cardHold || e.frozen);
-  if (e.view === "orbit") e.orbit.hold(on); else if (e.view === "semantic") e.semantic.hold(on);
+  if (e.view === "orbit") e.orbit.hold(on);
+  else if (e.view === "semantic") e.semantic.hold(on);
 }
 
 /** One held tick outside the loop: the motion clocks catch up to now at zero
  *  speed (orbit-view.js clock(), semantic-view.js tick()). */
 function settleClocks(e) {
   const now = performance.now();
-  if (e.view === "orbit") e.orbit.tick(now); else if (e.view === "semantic") e.semantic.tick(now);
+  if (e.view === "orbit") e.orbit.tick(now);
+  else if (e.view === "semantic") e.semantic.tick(now);
 }
 
 /** Visible nodes for fits (ghosts included, as in the old fitAll). */
@@ -212,9 +327,18 @@ const fitPoints = (e, map) => (map ? [...map.values()] : e.sim.nodes.map((n) => 
 /** Scale the old flyToBounds would pick for these points (zoom % = 100 there). */
 function fitScale(e, pts, padding = 90, maxScale = 1.6) {
   if (!pts.length || !e.rect) return 1;
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
-  const W = e.rect.right - e.rect.left, H = e.rect.bottom - e.rect.top;
+  let x0 = Infinity,
+    y0 = Infinity,
+    x1 = -Infinity,
+    y1 = -Infinity;
+  for (const p of pts) {
+    x0 = Math.min(x0, p.x);
+    y0 = Math.min(y0, p.y);
+    x1 = Math.max(x1, p.x);
+    y1 = Math.max(y1, p.y);
+  }
+  const W = e.rect.right - e.rect.left,
+    H = e.rect.bottom - e.rect.top;
   return Math.min((W - padding * 2) / Math.max(x1 - x0, 1), (H - padding * 2) / Math.max(y1 - y0, 1), maxScale);
 }
 
@@ -249,7 +373,10 @@ async function enterView(e, v) {
     // the stage moved on while the layout loaded: undo the late semantic
     // enter and restore the renderer state of the view now on screen
     e.semantic.exit();
-    if (e.view === "orbit") { e.orbit.exit(); e.orbit.enter(); }
+    if (e.view === "orbit") {
+      e.orbit.exit();
+      e.orbit.enter();
+    }
     return;
   }
   const from = new Map(e.sim.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
@@ -261,8 +388,12 @@ async function enterView(e, v) {
     // final layout, so the landing hands over to the live physics seamlessly
     for (const n of e.sim.nodes) {
       const p = e.cloudSnapshot?.get(n.id);
-      if (p) { n.x = p.x; n.y = p.y; }
-      n.vx = 0; n.vy = 0;
+      if (p) {
+        n.x = p.x;
+        n.y = p.y;
+      }
+      n.vx = 0;
+      n.vy = 0;
     }
     e.sim.regroup(loadAnchors(e));
     for (let i = 0; i < 220 && e.sim.tick(); i++);
@@ -282,40 +413,82 @@ async function enterView(e, v) {
  * Returns detach().
  */
 export function attach(stage, v, hooks) {
-  if (eng && eng.src !== data.graph) { detachAll(eng); eng = null; }
+  if (eng && eng.src !== data.graph) {
+    detachAll(eng);
+    eng = null;
+  }
   if (!eng) eng = build();
   const e = eng;
-  e.stage = stage; e.hooks = hooks; e.rect = null;
+  e.stage = stage;
+  e.hooks = hooks;
+  e.rect = null;
   stage.prepend(e.clip);
   syncGeometry(e);
   if (e.view) exitView(e);
-  enterView(e, v).then(() => { if (e.stage === stage) { hooks.onReady?.(); awake(e); } }).catch((err) => { if (e.stage === stage) hooks.onError?.(err); });
+  enterView(e, v)
+    .then(() => {
+      if (e.stage === stage) {
+        hooks.onReady?.();
+        awake(e);
+      }
+    })
+    .catch((err) => {
+      if (e.stage === stage) hooks.onError?.(err);
+    });
   awake(e);
-  const onVis = () => { if (!document.hidden) awake(e); };
+  const onVis = () => {
+    if (!document.hidden) awake(e);
+  };
   document.addEventListener("visibilitychange", onVis);
   return () => {
     document.removeEventListener("visibilitychange", onVis);
     if (e.stage !== stage) return;
-    cancelAnimationFrame(e.raf); e.raf = 0;
+    cancelAnimationFrame(e.raf);
+    e.raf = 0;
     if (e.view === "clouds") e.cloudSnapshot = new Map(e.sim.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
     // finish a running flight so the next view starts from real positions
-    if (e.transition) { for (const n of e.sim.nodes) { const b = e.transition.to.get(n.id); if (b) { n.x = b.x; n.y = b.y; } } e.transition = null; }
+    if (e.transition) {
+      for (const n of e.sim.nodes) {
+        const b = e.transition.to.get(n.id);
+        if (b) {
+          n.x = b.x;
+          n.y = b.y;
+        }
+      }
+      e.transition = null;
+    }
     exitView(e);
     e.token++; // a semantic layout still loading must not enter after this
     e.boltDemo.stop(); // a workbench light: it goes out when you leave (bolt-demo.js)
-    e.renderer.setFocus(null); e.renderer.setHover(null); e.renderer.setHighlight(null); e.renderer.setFilter(null);
-    e.stage = null; e.hooks = null; e.zoomAnim = null; e.cardInset = 0;
-    e.cardHold = false; e.frozen = false; // the next view sets its own (engine-view.js)
+    e.renderer.setFocus(null);
+    e.renderer.setHover(null);
+    e.renderer.setHighlight(null);
+    e.renderer.setFilter(null);
+    e.stage = null;
+    e.hooks = null;
+    e.zoomAnim = null;
+    e.cardInset = 0;
+    e.cardHold = false;
+    e.frozen = false; // the next view sets its own (engine-view.js)
     e.clip.remove();
-    e.canvas.width = 0; e.canvas.height = 0; // free the backing store while hidden
+    e.canvas.width = 0;
+    e.canvas.height = 0; // free the backing store while hidden
   };
 }
 
 // Live events reach the engine whether or not one of its views is on screen,
 // so the map is current when it is opened again. Live off → nothing applied.
-onUpdates((list) => { if (eng && state.live && Array.isArray(list)) for (const u of list) eng.live.apply(u); });
+onUpdates((list) => {
+  if (eng && state.live && Array.isArray(list)) for (const u of list) eng.live.apply(u);
+});
 
-function detachAll(e) { cancelAnimationFrame(e.raf); e.offWeather?.(); e.clip.remove(); e.canvas.width = 0; e.canvas.height = 0; }
+function detachAll(e) {
+  cancelAnimationFrame(e.raf);
+  e.offWeather?.();
+  e.clip.remove();
+  e.canvas.width = 0;
+  e.canvas.height = 0;
+}
 
 // ── controls used by the v22 frame (engine-view.js) ────────────────────────
 export const engine = {
@@ -324,19 +497,28 @@ export const engine = {
   view: () => eng?.view ?? null,
   busy: () => !!eng?.transition,
   /** Stage-local screen position of a world point. */
-  toStage(x, y) { const e = eng, c = e.renderer.camera; return [x * c.scale + c.x - e.rect.left, y * c.scale + c.y - e.rect.top]; },
+  toStage(x, y) {
+    const e = eng,
+      c = e.renderer.camera;
+    return [x * c.scale + c.x - e.rect.left, y * c.scale + c.y - e.rect.top];
+  },
   zoomPct: () => (eng ? Math.round((eng.renderer.camera.scale / (eng.baseScale || 1)) * 100) : 100),
   /** Zoom about the stage centre (zoom bar buttons). */
   zoomBy(f) {
-    const e = eng; if (!e || !e.rect) return;
-    const c = e.renderer.camera, px = (e.rect.left + e.rect.right) / 2, py = (e.rect.top + e.rect.bottom) / 2;
+    const e = eng;
+    if (!e || !e.rect) return;
+    const c = e.renderer.camera,
+      px = (e.rect.left + e.rect.right) / 2,
+      py = (e.rect.top + e.rect.bottom) / 2;
     const s1 = Math.min(Math.max((e.zoomAnim?.s1 ?? c.scale) * f, 0.12), 8);
     e.userTouched = true;
     e.zoomAnim = { t0: performance.now(), s0: c.scale, s1, px, py, wx: (px - c.x) / c.scale, wy: (py - c.y) / c.scale };
     awake(e, 400);
   },
   fit: () => eng && fit(eng, 700),
-  setCardInset(px) { if (eng) eng.cardInset = px; },
+  setCardInset(px) {
+    if (eng) eng.cardInset = px;
+  },
   /** Explicit flight (focus, memory): it owns the camera, so the settle fit
    *  after the physics comes to rest must not take it back. */
   flyTo(points, { maxZoom, ...opts } = {}) {
@@ -349,21 +531,32 @@ export const engine = {
   },
   structure: () => eng?.structure ?? "clusters",
   setStructure(mode) {
-    const e = eng; if (!e || e.view !== "clouds" || e.transition || mode === e.structure) return;
+    const e = eng;
+    if (!e || e.view !== "clouds" || e.transition || mode === e.structure) return;
     applyStructure(e, mode);
-    e.sim.regroup(loadAnchors(e)); e.wasBusy = true; e.userTouched = false;
+    e.sim.regroup(loadAnchors(e));
+    e.wasBusy = true;
+    e.userTouched = false;
     awake(e);
   },
   resetLayout() {
-    const e = eng; if (!e || e.view !== "clouds") return;
+    const e = eng;
+    if (!e || e.view !== "clouds") return;
     clearTimeout(e.saveT);
-    try { localStorage.removeItem(anchorsKey(e)); } catch { /* storage blocked */ }
-    e.sim.regroup(null); e.wasBusy = true; e.userTouched = false;
+    try {
+      localStorage.removeItem(anchorsKey(e));
+    } catch {
+      /* storage blocked */
+    }
+    e.sim.regroup(null);
+    e.wasBusy = true;
+    e.userTouched = false;
     awake(e);
   },
   semanticMode: () => eng?.semantic.getMode() ?? "2d",
   setSemanticMode(m) {
-    const e = eng; if (!e || e.view !== "semantic" || e.transition || m === e.semantic.getMode()) return;
+    const e = eng;
+    if (!e || e.view !== "semantic" || e.transition || m === e.semantic.getMode()) return;
     const from = new Map(e.sim.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
     e.semantic.setMode(m);
     const to = e.semantic.targetsForMode(m);
@@ -374,38 +567,87 @@ export const engine = {
   /** The semantic view keeps its spin flag private and toggles it on its own
    *  button (#semantic-spin); the v22 control clicks that button. */
   setSpin(on) {
-    const e = eng; if (!e || !!on === e.spin) return;
+    const e = eng;
+    if (!e || !!on === e.spin) return;
     document.getElementById("semantic-spin")?.click();
     e.spin = !!on;
     awake(e);
   },
   orbitMode: () => eng?.orbit.getMode() ?? "universe",
-  setOrbitMode(m) { const e = eng; if (!e || e.view !== "orbit" || e.transition || m === e.orbit.getMode()) return; e.orbit.setMode(m); e.orbit.relayout(); fit(e, 700); },
+  setOrbitMode(m) {
+    const e = eng;
+    if (!e || e.view !== "orbit" || e.transition || m === e.orbit.getMode()) return;
+    e.orbit.setMode(m);
+    e.orbit.relayout();
+    fit(e, 700);
+  },
   distance: () => eng?.orbit.getDistanceMode() ?? "woven",
-  setDistance(m) { const e = eng; if (!e || e.view !== "orbit" || e.transition || m === e.orbit.getDistanceMode()) return; e.orbit.setDistanceMode(m); e.orbit.relayout(); awake(e); },
+  setDistance(m) {
+    const e = eng;
+    if (!e || e.view !== "orbit" || e.transition || m === e.orbit.getDistanceMode()) return;
+    e.orbit.setDistanceMode(m);
+    e.orbit.relayout();
+    awake(e);
+  },
   core: () => eng?.orbit.getCore() ?? "classic",
-  setCore(k) { const e = eng; if (!e) return; if (e.orbit.setCore(k) && e.view === "orbit") e.orbit.relayout(); awake(e); },
+  setCore(k) {
+    const e = eng;
+    if (!e) return;
+    if (e.orbit.setCore(k) && e.view === "orbit") e.orbit.relayout();
+    awake(e);
+  },
   weather: () => eng?.weather ?? null,
   boltStyle: () => eng?.renderer.getBoltStyle() ?? "bolt",
-  setBoltStyle(id) { eng?.renderer.setBoltStyle(id); },
+  setBoltStyle(id) {
+    eng?.renderer.setBoltStyle(id);
+  },
   boltMs: () => eng?.renderer.getBoltMs() ?? 420,
-  setBoltMs(ms) { eng?.renderer.setBoltMs(ms); },
+  setBoltMs(ms) {
+    eng?.renderer.setBoltMs(ms);
+  },
   boltSpread: () => eng?.renderer.getBoltSpread() ?? 1,
-  setBoltSpread(v) { eng?.renderer.setBoltSpread(v); },
+  setBoltSpread(v) {
+    eng?.renderer.setBoltSpread(v);
+  },
   demo: () => !!eng?.boltDemo.isRunning(),
-  setDemo(on) { const e = eng; if (!e) return; if (on) e.boltDemo.start(); else e.boltDemo.stop(); awake(e); },
+  setDemo(on) {
+    const e = eng;
+    if (!e) return;
+    if (on) e.boltDemo.start();
+    else e.boltDemo.stop();
+    awake(e);
+  },
   drift: () => eng?.orbit.getDrift() ?? true,
-  setDrift(on) { const e = eng; if (!e) return; e.orbit.setDrift(on); awake(e); },
+  setDrift(on) {
+    const e = eng;
+    if (!e) return;
+    e.orbit.setDrift(on);
+    awake(e);
+  },
   /** Hold every rotation still while a memory card is open; releasing eases
    *  it back in (orbit-view.js / semantic-view.js hold). Clouds do not turn. */
-  hold(on) { const e = eng; if (!e) return; e.cardHold = !!on; applyHold(e); awake(e); },
+  hold(on) {
+    const e = eng;
+    if (!e) return;
+    e.cardHold = !!on;
+    applyHold(e);
+    awake(e);
+  },
   /** Freeze the picture while a layer covers the stage (js/cover.js): the
    *  loop stops, and the turning clocks are held across the pause, so on
    *  release the motion eases back in from where it stood (no jump). */
   freeze(on) {
-    const e = eng; if (!e || !!e.frozen === !!on) return;
-    if (on) { e.frozen = true; applyHold(e); settleClocks(e); return; }
+    const e = eng;
+    if (!e || !!e.frozen === !!on) return;
+    if (on) {
+      e.frozen = true;
+      applyHold(e);
+      settleClocks(e);
+      return;
+    }
     settleClocks(e); // still held: swallows the frozen time without turning
-    e.frozen = false; applyHold(e); awake(e);
+    e.frozen = false;
+    applyHold(e);
+    awake(e);
   },
 };

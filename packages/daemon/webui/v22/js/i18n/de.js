@@ -52,10 +52,14 @@ export default {
   "agent.state.speaking": "SPRICHT",
   "agent.thinking": "Durchsuche {n} Memories …",
   "agent.greeting": "Frag mich alles über den Vault.",
-  "agent.greetingNew": "Seit du Recall geöffnet hast, sind {n} neue Memories dazugekommen. Frag mich alles über den Vault.",
-  "agent.greeting.dashboard": "Dieses Board gehört dir. Frag mich nach einem Überblick oder sag mir, was ich hinzufügen, verschieben oder vergrößern soll.",
-  "agent.greeting.settings": "Ich gehe jede Einstellung mit dir durch. Frag, was etwas bewirkt, oder sag mir, was du ändern willst — geschrieben wird erst, wenn du übernimmst.",
-  "agent.greeting.tasks": "Sag mir einfach, woran ich dich erinnern oder was ich vorbereiten soll. Ich lege die Aufgabe an.",
+  "agent.greetingNew":
+    "Seit du Recall geöffnet hast, sind {n} neue Memories dazugekommen. Frag mich alles über den Vault.",
+  "agent.greeting.dashboard":
+    "Dieses Board gehört dir. Frag mich nach einem Überblick oder sag mir, was ich hinzufügen, verschieben oder vergrößern soll.",
+  "agent.greeting.settings":
+    "Ich gehe jede Einstellung mit dir durch. Frag, was etwas bewirkt, oder sag mir, was du ändern willst — geschrieben wird erst, wenn du übernimmst.",
+  "agent.greeting.tasks":
+    "Sag mir einfach, woran ich dich erinnern oder was ich vorbereiten soll. Ich lege die Aufgabe an.",
   "agent.sources": "QUELLEN · AUF DER KARTE MARKIERT",
   "agent.srcOpen": "Quelle öffnen",
   "agent.earlier": "FRÜHER",
@@ -79,7 +83,8 @@ export default {
   "agent.askLong": "Frag oder durchsuche den Vault …",
   "agent.send": "Senden",
   "agent.error": "Ich erreiche den Vault gerade nicht. Versuch es gleich noch einmal.",
-  "agent.noModel": "Für Antworten ist noch kein Sprachmodell eingerichtet. Suchen kann ich trotzdem: Die passenden Memories stehen unten.",
+  "agent.noModel":
+    "Für Antworten ist noch kein Sprachmodell eingerichtet. Suchen kann ich trotzdem: Die passenden Memories stehen unten.",
   "agent.sug.ring": "Was haben wir zur Ring-Ansicht entschieden?",
   "agent.sug.week": "Was hat sich diese Woche geändert?",
   "agent.sug.unwritten": "Welche Notizen sind noch ungeschrieben?",

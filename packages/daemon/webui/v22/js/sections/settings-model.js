@@ -14,13 +14,56 @@ export const SETTINGS_FILE = "~/.bastra/cli-settings.json";
 /** Groups in prototype order (settings-spec-v20.js SECTIONS), mapped onto real keys. */
 export const GROUPS = [
   { id: "appearance", keys: ["ui.footer", "ui.timeline", "ui.backdrop", "ui.backdropDim", "ui.backdropBlur"] },
-  { id: "general", keys: ["update.mode", "language.primary", "autostart", "battery.saver", "ui.enabled", "assistant.name", "daemon.env"] },
+  {
+    id: "general",
+    keys: [
+      "update.mode",
+      "language.primary",
+      "autostart",
+      "battery.saver",
+      "ui.enabled",
+      "assistant.name",
+      "daemon.env",
+    ],
+  },
   { id: "personality", keys: ["soul.direction", "soul.text"] },
-  { id: "models", keys: ["embedding.provider", "embedding.model", "ollama.autostart", "ollama.url", "generation.model", "ollama.keepAlive", "modelRecommendation.id", "modelRecommendation.answer", "modelRecommendation.at"] },
-  { id: "recall", keys: ["recall.floor", "reflex.enabled", "reflex.maxPerTurn", "prompt.hookMode", "hint.suppress", "hint.suppressAfter", "evidenceGate.enabled", "scope.filterLanes", "experiment.name", "experiment.arms", "experiment.registration", "experiment.registration_version"] },
+  {
+    id: "models",
+    keys: [
+      "embedding.provider",
+      "embedding.model",
+      "ollama.autostart",
+      "ollama.url",
+      "generation.model",
+      "ollama.keepAlive",
+      "modelRecommendation.id",
+      "modelRecommendation.answer",
+      "modelRecommendation.at",
+    ],
+  },
+  {
+    id: "recall",
+    keys: [
+      "recall.floor",
+      "reflex.enabled",
+      "reflex.maxPerTurn",
+      "prompt.hookMode",
+      "hint.suppress",
+      "hint.suppressAfter",
+      "evidenceGate.enabled",
+      "scope.filterLanes",
+      "experiment.name",
+      "experiment.arms",
+      "experiment.registration",
+      "experiment.registration_version",
+    ],
+  },
   { id: "sharing", keys: ["commons.enabled", "sharedRecall.enabled", "sharedRecall.language", "sharedRecall.live"] },
   { id: "code", keys: ["code.repos", "promptImpact.enabled", "coverageMap.enabled"] },
-  { id: "writing", keys: ["docs.mode", "docs.language", "size.guide", "size.critical", "size.exemptPaths", "saveNotice"] },
+  {
+    id: "writing",
+    keys: ["docs.mode", "docs.language", "size.guide", "size.critical", "size.exemptPaths", "saveNotice"],
+  },
   { id: "archive", keys: ["archive.enabled", "archive.retain", "archive.cap", "archive.max-item"] },
   { id: "tasks", keys: ["tasks.enabled", "tasks.notifications", "tasks.chatActiveMinutes", "tasks.chatConsent"] },
   { id: "api", keys: ["api.token", "cors.origins"], oauth: true },
@@ -59,7 +102,15 @@ export const OPTIONS = {
   "embedding.model": { vals: nums("embeddinggemma"), models: true, custom: true },
   "ollama.url": { vals: nums("http://localhost:11434"), custom: true },
   "ollama.keepAlive": { vals: nums("0", "5m", "10m", "30m", "1h", "24h"), custom: true },
-  "archive.retain": { vals: ["junk=1,in-git=1,user=1", "junk=1,in-git=2,user=2", "junk=3,in-git=7,user=7", "junk=7,in-git=14,user=30"].map((v, i) => ({ v, k: `r${i}` })), custom: true },
+  "archive.retain": {
+    vals: [
+      "junk=1,in-git=1,user=1",
+      "junk=1,in-git=2,user=2",
+      "junk=3,in-git=7,user=7",
+      "junk=7,in-git=14,user=30",
+    ].map((v, i) => ({ v, k: `r${i}` })),
+    custom: true,
+  },
   "archive.cap": { vals: nums("1GB", "5GB", "10GB", "25GB", "50GB"), custom: true },
   "archive.max-item": { vals: nums(null, "100MB", "500MB", "1GB", "2GB", "5GB"), custom: true },
   "size.guide": { vals: nums(200, 300, 500, 800, 1000), custom: true },
@@ -72,32 +123,46 @@ export const OPTIONS = {
 };
 
 /** Runtime metadata takes precedence over presentation hints. */
-export const metaOf = (e) => ({ ...(META[e.key] || {}), ...Object.fromEntries(
-  ["min", "max", "step", "unit", "experimental"].filter((k) => e[k] !== undefined).map((k) => [k, e[k]])) });
+export const metaOf = (e) => ({
+  ...(META[e.key] || {}),
+  ...Object.fromEntries(
+    ["min", "max", "step", "unit", "experimental"].filter((k) => e[k] !== undefined).map((k) => [k, e[k]])
+  ),
+});
 
 /** UI settings of this browser (state.js › localStorage recall-v22-ui), applied at once. */
 export const LOCAL = [
-  { key: "ui.footer", kind: "string", choices: ["console", "mirror", "anchored", "drawer", "island"], stateKey: "footer" },
+  {
+    key: "ui.footer",
+    kind: "string",
+    choices: ["console", "mirror", "anchored", "drawer", "island"],
+    stateKey: "footer",
+  },
   { key: "ui.timeline", kind: "string", choices: ["bars", "pulse"], stateKey: "timeline" },
 ];
 
 // ── store ────────────────────────────────────────────────────────────────
 export const store = {
-  model: null,          // GET /ui/settings snapshot
-  error: "",            // load / save error text (server message)
-  changes: new Map(),   // key → pending value (null = back to default)
+  model: null, // GET /ui/settings snapshot
+  error: "", // load / save error text (server message)
+  changes: new Map(), // key → pending value (null = back to default)
   query: "",
-  sel: "appearance",    // group shown as current in the Find tab
-  saved: "",            // "HH:MM" of the last successful apply
-  savedRestart: false,  // last apply touched restart-only keys
+  sel: "appearance", // group shown as current in the Find tab
+  saved: "", // "HH:MM" of the last successful apply
+  savedRestart: false, // last apply touched restart-only keys
   busy: false,
   restarting: false,
-  models: [],           // installed Ollama models (empty when Ollama is not reachable)
+  models: [], // installed Ollama models (empty when Ollama is not reachable)
 };
 
 const listeners = new Set();
-export function onStore(fn) { listeners.add(fn); return () => listeners.delete(fn); }
-export function emit(what = "all") { for (const fn of listeners) fn(what); }
+export function onStore(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+export function emit(what = "all") {
+  for (const fn of listeners) fn(what);
+}
 
 let csrf = null;
 
@@ -108,10 +173,16 @@ async function call(path, body) {
     ...(body === undefined ? {} : { method: "POST", body: JSON.stringify(body) }),
   });
   let json = null;
-  try { json = await res.json(); } catch { /* empty or non-JSON body */ }
+  try {
+    json = await res.json();
+  } catch {
+    /* empty or non-JSON body */
+  }
   if (!res.ok) {
     if (res.status === 401) csrf = null;
-    throw Object.assign(new Error(json && typeof json.error === "string" ? json.error : `HTTP ${res.status}`), { status: res.status });
+    throw Object.assign(new Error(json && typeof json.error === "string" ? json.error : `HTTP ${res.status}`), {
+      status: res.status,
+    });
   }
   return json;
 }
@@ -125,7 +196,9 @@ async function session() {
 /** Runs fn with a settings session; a lapsed session (401) is renewed once. */
 async function withSession(fn) {
   if (!csrf) await session();
-  try { return await fn(); } catch (err) {
+  try {
+    return await fn();
+  } catch (err) {
     if (err.status !== 401) throw err;
     await session();
     return fn();
@@ -134,14 +207,20 @@ async function withSession(fn) {
 
 function accept(snapshot) {
   if (!snapshot || !Array.isArray(snapshot.entries)) throw new Error("invalid settings snapshot");
-  store.model = { entries: snapshot.entries.filter((e) => e && typeof e.key === "string"),
+  store.model = {
+    entries: snapshot.entries.filter((e) => e && typeof e.key === "string"),
     oauthClients: Array.isArray(snapshot.oauthClients) ? snapshot.oauthClients : [],
-    restartAvailable: !!snapshot.restartAvailable };
+    restartAvailable: !!snapshot.restartAvailable,
+  };
 }
 
 export async function load() {
   store.error = "";
-  try { accept(await withSession(() => call("/ui/settings"))); } catch (err) { store.error = err.message; }
+  try {
+    accept(await withSession(() => call("/ui/settings")));
+  } catch (err) {
+    store.error = err.message;
+  }
   emit();
 }
 
@@ -149,14 +228,23 @@ export async function load() {
 export async function loadModels() {
   try {
     const r = await withSession(() => call("/ui/settings/models"));
-    const models = Array.isArray(r?.models) ? r.models.filter((m) => typeof m === "string").map((m) => m.replace(/:latest$/, "")) : [];
-    if (JSON.stringify(models) !== JSON.stringify(store.models)) { store.models = models; emit(); }
-  } catch { /* suggestions only */ }
+    const models = Array.isArray(r?.models)
+      ? r.models.filter((m) => typeof m === "string").map((m) => m.replace(/:latest$/, ""))
+      : [];
+    if (JSON.stringify(models) !== JSON.stringify(store.models)) {
+      store.models = models;
+      emit();
+    }
+  } catch {
+    /* suggestions only */
+  }
 }
 
 export async function apply() {
   if (!store.changes.size || store.busy) return;
-  store.busy = true; store.error = ""; emit("bar");
+  store.busy = true;
+  store.error = "";
+  emit("bar");
   // Login-service registration is a separate OS write, outside the settings DB.
   const pending = [...store.changes.entries()];
   const batches = [pending.filter(([k]) => k !== "autostart"), pending.filter(([k]) => k === "autostart")];
@@ -170,7 +258,9 @@ export async function apply() {
       store.saved = new Date().toTimeString().slice(0, 5);
       store.savedRestart ||= restart;
     }
-  } catch (err) { store.error = err.message; }
+  } catch (err) {
+    store.error = err.message;
+  }
   store.busy = false;
   if (!store.error) setState({ toast: { text: t("st.savedNote") } });
   emit();
@@ -178,32 +268,55 @@ export async function apply() {
 
 export async function revokeOauth(clientId) {
   store.error = "";
-  try { accept(await withSession(() => call("/ui/settings/oauth/revoke", { clientId }))); } catch (err) { store.error = err.message; }
+  try {
+    accept(await withSession(() => call("/ui/settings/oauth/revoke", { clientId })));
+  } catch (err) {
+    store.error = err.message;
+  }
   emit();
 }
 
 /** Controlled daemon restart (classic UI: "Daemon kontrolliert neu starten"), then reload. */
 export async function restart() {
   if (store.restarting || store.changes.size) return;
-  store.restarting = true; store.error = ""; emit("bar");
+  store.restarting = true;
+  store.error = "";
+  emit("bar");
   try {
     await withSession(() => call("/ui/settings/restart", {}));
     csrf = null;
     // The daemon goes away and comes back; wait for health, then reload the snapshot.
     for (let i = 0; i < 40; i++) {
       await new Promise((r) => setTimeout(r, 1500));
-      try { const r = await fetch("/ui/health", { cache: "no-store" }); if (r.ok) break; } catch { /* still down */ }
+      try {
+        const r = await fetch("/ui/health", { cache: "no-store" });
+        if (r.ok) break;
+      } catch {
+        /* still down */
+      }
     }
     store.savedRestart = false;
     store.restarting = false;
     await load();
-  } catch (err) { store.restarting = false; store.error = err.message; emit(); }
+  } catch (err) {
+    store.restarting = false;
+    store.error = err.message;
+    emit();
+  }
 }
 
 // ── values ───────────────────────────────────────────────────────────────
 export function entry(key) {
   const local = LOCAL.find((x) => x.key === key);
-  if (local) return { ...local, local: true, value: state[local.stateKey], effective: state[local.stateKey], envOverride: [], isSet: true };
+  if (local)
+    return {
+      ...local,
+      local: true,
+      value: state[local.stateKey],
+      effective: state[local.stateKey],
+      envOverride: [],
+      isSet: true,
+    };
   return store.model?.entries.find((e) => e.key === key) || null;
 }
 
@@ -231,9 +344,14 @@ export function shown(e) {
 export function setValue(key, value) {
   const e = entry(key);
   if (!e || locked(e)) return;
-  if (e.local) { setState({ [e.stateKey]: value }); emit("value"); return; }
+  if (e.local) {
+    setState({ [e.stateKey]: value });
+    emit("value");
+    return;
+  }
   const same = JSON.stringify(value) === JSON.stringify(e.value) && !(value === null && e.isSet);
-  if (same) store.changes.delete(key); else store.changes.set(key, value);
+  if (same) store.changes.delete(key);
+  else store.changes.set(key, value);
   emit("value");
 }
 
@@ -242,12 +360,21 @@ const BACKDROP = { "ui.backdrop": "backdrop", "ui.backdropDim": "dim", "ui.backd
 onStore(() => {
   if (!store.model) return;
   const patch = {};
-  for (const [key, field] of Object.entries(BACKDROP)) { const e = entry(key); if (e) patch[field] = shown(e) ?? e.default; }
+  for (const [key, field] of Object.entries(BACKDROP)) {
+    const e = entry(key);
+    if (e) patch[field] = shown(e) ?? e.default;
+  }
   setBackdrop(patch);
 });
 
-export function revert(key) { store.changes.delete(key); emit(); }
-export function discard() { store.changes.clear(); emit(); }
+export function revert(key) {
+  store.changes.delete(key);
+  emit();
+}
+export function discard() {
+  store.changes.clear();
+  emit();
+}
 
 export function changeList() {
   return [...store.changes.entries()].map(([key, value]) => ({ key, value, e: entry(key) })).filter((c) => c.e);
@@ -266,9 +393,20 @@ export function cliOf(e, v) {
 export function matches(e, name, desc, q) {
   if (!q) return true;
   const meta = metaOf(e);
-  const text = [name, e.key, e.envName || "", desc, ...(e.envOverride || []).map((x) => x.name),
-    e.restartRequired ? "restart" : "", meta.experimental ? "experimental" : "", e.envOverride?.length ? "env" : "",
-    e.secret ? "token secret" : "", e.local ? "ui local" : ""].join(" ").toLowerCase();
+  const text = [
+    name,
+    e.key,
+    e.envName || "",
+    desc,
+    ...(e.envOverride || []).map((x) => x.name),
+    e.restartRequired ? "restart" : "",
+    meta.experimental ? "experimental" : "",
+    e.envOverride?.length ? "env" : "",
+    e.secret ? "token secret" : "",
+    e.local ? "ui local" : "",
+  ]
+    .join(" ")
+    .toLowerCase();
   return text.includes(q);
 }
 

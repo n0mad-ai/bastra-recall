@@ -4,61 +4,273 @@
  * Soft focus: the fade-in class is dropped when it ends, so the filtered image is no
  * composited layer afterwards and gets rasterised once, not per frame (measured, see report). */
 
-.bd { position: absolute; inset: 12px; z-index: 0; pointer-events: none; overflow: hidden; }
-.bd[hidden] { display: none; }
-.bd__img { position: absolute; inset: -24px; }
-.bd__img.is-in { animation: bd-in .8s ease-out both; }
-.bd.is-blur .bd__img { filter: blur(14px) saturate(1.1); }
-.bd__shade { position: absolute; inset: 0; background: rgba(6,10,19,var(--bd-dim, .8)); transition: background .6s ease; }
+.bd {
+  position: absolute;
+  inset: 12px;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.bd[hidden] {
+  display: none;
+}
+.bd__img {
+  position: absolute;
+  inset: -24px;
+}
+.bd__img.is-in {
+  animation: bd-in 0.8s ease-out both;
+}
+.bd.is-blur .bd__img {
+  filter: blur(14px) saturate(1.1);
+}
+.bd__shade {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 10, 19, var(--bd-dim, 0.8));
+  transition: background 0.6s ease;
+}
 /* Vault views draw onto the image, so only the image is dimmed further there (js/backdrop.js):
  * ring and lenses (.is-vault) — evenly, the image glows through faintly;
  * mindspace, clouds, semantic (.is-hole) — a round cut-out: no image in the stage centre,
  * rising towards the stage edges between the side panels. The ellipse is sized from the
  * stage (--glow-x/-y = stage centre, --c-l = stage left, --panel-t = stage top; all
  * relative to the app, .bd sits 12px inside). Static gradient, only opacity animates. */
-.bd.is-vault .bd__shade { background: rgba(6,10,19,var(--bd-dim-vault, .96)); }
-.bd.is-hole .bd__shade { background: rgba(6,10,19,var(--bd-dim-hole, .96)); }
-.bd__hole { position: absolute; inset: 0; opacity: 0; transition: opacity .6s ease;
-  background: radial-gradient(calc(var(--glow-x, 50%) - var(--c-l, 0px)) calc(var(--glow-y, 50%) - var(--panel-t, 0px)) at calc(var(--glow-x, 50%) - 12px) calc(var(--glow-y, 50%) - 12px),
-    #060a13 0%, #060a13 70%, rgba(6,10,19,.7) 90%, rgba(6,10,19,0) 108%); }
-.bd.is-hole .bd__hole { opacity: 1; }
-.bd__vig { position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 45%, rgba(6,10,19,0) 45%, rgba(6,10,19,.7)); }
-@keyframes bd-in { from { opacity: 0; transform: scale(1.03); } to { opacity: 1; transform: none; } }
+.bd.is-vault .bd__shade {
+  background: rgba(6, 10, 19, var(--bd-dim-vault, 0.96));
+}
+.bd.is-hole .bd__shade {
+  background: rgba(6, 10, 19, var(--bd-dim-hole, 0.96));
+}
+.bd__hole {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  background: radial-gradient(
+    calc(var(--glow-x, 50%) - var(--c-l, 0px)) calc(var(--glow-y, 50%) - var(--panel-t, 0px)) at
+      calc(var(--glow-x, 50%) - 12px) calc(var(--glow-y, 50%) - 12px),
+    #060a13 0%,
+    #060a13 70%,
+    rgba(6, 10, 19, 0.7) 90%,
+    rgba(6, 10, 19, 0) 108%
+  );
+}
+.bd.is-hole .bd__hole {
+  opacity: 1;
+}
+.bd__vig {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 90% at 50% 45%, rgba(6, 10, 19, 0) 45%, rgba(6, 10, 19, 0.7));
+}
+@keyframes bd-in {
+  from {
+    opacity: 0;
+    transform: scale(1.03);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 
 /* Presets ship with Recall as CSS (prototype BD_PRESETS), no image files. */
-.bd-p--none { background: #060a13; }
-.bd-p--aurora { background: radial-gradient(55% 60% at 22% 30%, hsla(188,90%,55%,.75), transparent 70%), radial-gradient(45% 55% at 78% 72%, hsla(262,80%,62%,.6), transparent 70%), radial-gradient(40% 40% at 60% 20%, hsla(160,80%,50%,.35), transparent 70%), linear-gradient(160deg, #03121c, #0b0a24); }
-.bd-p--deepsea { background: radial-gradient(70% 50% at 50% 0%, rgba(120,220,255,.45), transparent 70%), repeating-linear-gradient(100deg, rgba(56,217,245,.07) 0 2px, transparent 2px 38px), linear-gradient(180deg, #032033, #062a3d 55%, #020d16); }
-.bd-p--ember { background: radial-gradient(60% 55% at 70% 80%, rgba(240,140,40,.6), transparent 70%), radial-gradient(35% 35% at 25% 25%, rgba(217,164,65,.35), transparent 70%), linear-gradient(200deg, #140a05, #1d0c0a 60%, #07060a); }
-.bd-p--topo { background: repeating-radial-gradient(circle at 28% 38%, transparent 0 21px, rgba(56,217,245,.32) 21px 22px), repeating-radial-gradient(circle at 76% 70%, transparent 0 27px, rgba(126,164,210,.22) 27px 28px), linear-gradient(160deg, #07131f, #0a0f1c); }
-.bd-p--grid { background: linear-gradient(rgba(56,217,245,.18) 1px, transparent 1px) 0 0 / 46px 46px, linear-gradient(90deg, rgba(56,217,245,.18) 1px, transparent 1px) 0 0 / 46px 46px, radial-gradient(60% 60% at 50% 40%, rgba(40,110,170,.55), transparent 75%), #061322; }
-.bd-p--dusk { background: linear-gradient(180deg, #0b0c26 0%, #2a1240 48%, #6b2a3a 72%, #c76a3c 88%, #f0a35a 100%); }
-.bd-p--upload { background: var(--bd-url) center / cover no-repeat; }
+.bd-p--none {
+  background: #060a13;
+}
+.bd-p--aurora {
+  background:
+    radial-gradient(55% 60% at 22% 30%, hsla(188, 90%, 55%, 0.75), transparent 70%),
+    radial-gradient(45% 55% at 78% 72%, hsla(262, 80%, 62%, 0.6), transparent 70%),
+    radial-gradient(40% 40% at 60% 20%, hsla(160, 80%, 50%, 0.35), transparent 70%),
+    linear-gradient(160deg, #03121c, #0b0a24);
+}
+.bd-p--deepsea {
+  background:
+    radial-gradient(70% 50% at 50% 0%, rgba(120, 220, 255, 0.45), transparent 70%),
+    repeating-linear-gradient(100deg, rgba(56, 217, 245, 0.07) 0 2px, transparent 2px 38px),
+    linear-gradient(180deg, #032033, #062a3d 55%, #020d16);
+}
+.bd-p--ember {
+  background:
+    radial-gradient(60% 55% at 70% 80%, rgba(240, 140, 40, 0.6), transparent 70%),
+    radial-gradient(35% 35% at 25% 25%, rgba(217, 164, 65, 0.35), transparent 70%),
+    linear-gradient(200deg, #140a05, #1d0c0a 60%, #07060a);
+}
+.bd-p--topo {
+  background:
+    repeating-radial-gradient(circle at 28% 38%, transparent 0 21px, rgba(56, 217, 245, 0.32) 21px 22px),
+    repeating-radial-gradient(circle at 76% 70%, transparent 0 27px, rgba(126, 164, 210, 0.22) 27px 28px),
+    linear-gradient(160deg, #07131f, #0a0f1c);
+}
+.bd-p--grid {
+  background:
+    linear-gradient(rgba(56, 217, 245, 0.18) 1px, transparent 1px) 0 0 / 46px 46px,
+    linear-gradient(90deg, rgba(56, 217, 245, 0.18) 1px, transparent 1px) 0 0 / 46px 46px,
+    radial-gradient(60% 60% at 50% 40%, rgba(40, 110, 170, 0.55), transparent 75%),
+    #061322;
+}
+.bd-p--dusk {
+  background: linear-gradient(180deg, #0b0c26 0%, #2a1240 48%, #6b2a3a 72%, #c76a3c 88%, #f0a35a 100%);
+}
+.bd-p--upload {
+  background: var(--bd-url) center / cover no-repeat;
+}
 
 /* ── Settings row: picker grid under the row (prototype isBackdrop) ───── */
-.bd-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 10px; }
-.bd-opt { display: flex; flex-direction: column; gap: 6px; padding: 0; border: 0; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
-.bd-opt.is-on { color: var(--accent); }
-.bd-opt__pic { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--line-25); box-shadow: none; overflow: hidden; transition: border-color .2s, box-shadow .25s; }
-.bd-opt.is-on .bd-opt__pic { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 18px var(--accent-35); }
-.bd-opt__shade { position: absolute; inset: 0; background: rgba(6,10,19,.25); }
-.bd-opt--none .bd-opt__shade { background: transparent; }
-.bd-opt__ok { position: absolute; right: 6px; top: 6px; width: 16px; height: 16px; display: grid; place-items: center; background: var(--accent); color: var(--bg); font: 600 10px var(--mono); }
-.bd-opt__cap { display: flex; justify-content: space-between; gap: 6px; font: 10.5px var(--mono); }
-.bd-opt__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bd-opt__tag { color: var(--muted); }
-.bd-up { display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
-.bd-up input { display: none; }
-.bd-up__box { width: 100%; aspect-ratio: 16 / 9; display: grid; place-items: center; border: 1px dashed var(--line-40); color: var(--accent); font: 500 10.5px var(--mono); letter-spacing: .14em; transition: border-color .2s, background .2s; }
-.bd-up:hover .bd-up__box { border-color: var(--accent); background: var(--accent-06); }
-.bd-up__cap { font: 10.5px var(--mono); color: var(--muted); }
-.bd-up.is-busy { cursor: progress; }
-.bd-up.is-busy .bd-up__box { border-style: solid; color: var(--muted); }
-.bd-err { grid-column: 1 / -1; font: 10.5px var(--mono); color: var(--amber); }
+.bd-pick {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  gap: 10px;
+}
+.bd-opt {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.bd-opt.is-on {
+  color: var(--accent);
+}
+.bd-opt__pic {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--line-25);
+  box-shadow: none;
+  overflow: hidden;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.25s;
+}
+.bd-opt.is-on .bd-opt__pic {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 0 18px var(--accent-35);
+}
+.bd-opt__shade {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 10, 19, 0.25);
+}
+.bd-opt--none .bd-opt__shade {
+  background: transparent;
+}
+.bd-opt__ok {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: var(--bg);
+  font: 600 10px var(--mono);
+}
+.bd-opt__cap {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font: 10.5px var(--mono);
+}
+.bd-opt__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bd-opt__tag {
+  color: var(--muted);
+}
+.bd-up {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+}
+.bd-up input {
+  display: none;
+}
+.bd-up__box {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line-40);
+  color: var(--accent);
+  font: 500 10.5px var(--mono);
+  letter-spacing: 0.14em;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
+}
+.bd-up:hover .bd-up__box {
+  border-color: var(--accent);
+  background: var(--accent-06);
+}
+.bd-up__cap {
+  font: 10.5px var(--mono);
+  color: var(--muted);
+}
+.bd-up.is-busy {
+  cursor: progress;
+}
+.bd-up.is-busy .bd-up__box {
+  border-style: solid;
+  color: var(--muted);
+}
+.bd-err {
+  grid-column: 1 / -1;
+  font: 10.5px var(--mono);
+  color: var(--amber);
+}
 /* Own image: remove on the tile (hover/focus), armed state like the Areas dialog (.dlg-btn.is-armed). */
-.bd-own { position: relative; display: flex; min-width: 0; }
-.bd-own > .bd-opt { flex: 1; min-width: 0; }
-.bd-del { position: absolute; left: 6px; top: 6px; height: 18px; padding: 0 6px; border: 1px solid var(--line-30); background: rgba(6,10,19,.85); color: var(--muted); font: 500 9.5px var(--mono); letter-spacing: .12em; cursor: pointer; opacity: 0; transition: opacity .2s, border-color .2s, color .2s; }
-.bd-own:hover .bd-del, .bd-del:focus-visible, .bd-del.is-armed { opacity: 1; }
-.bd-del:hover, .bd-del.is-armed { border-color: var(--danger); color: var(--danger); }
-.bd-del:disabled { cursor: progress; opacity: .6; }
+.bd-own {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+.bd-own > .bd-opt {
+  flex: 1;
+  min-width: 0;
+}
+.bd-del {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid var(--line-30);
+  background: rgba(6, 10, 19, 0.85);
+  color: var(--muted);
+  font: 500 9.5px var(--mono);
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.2s,
+    border-color 0.2s,
+    color 0.2s;
+}
+.bd-own:hover .bd-del,
+.bd-del:focus-visible,
+.bd-del.is-armed {
+  opacity: 1;
+}
+.bd-del:hover,
+.bd-del.is-armed {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.bd-del:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}

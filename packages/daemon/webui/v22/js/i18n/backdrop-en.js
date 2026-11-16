@@ -1,7 +1,8 @@
 // Background image strings (js/backdrop.js, js/sections/settings-backdrop.js). Merged via addStrings().
 export default {
   "st.k.ui.backdrop": "Background image",
-  "st.k.ui.backdrop.d": "Shown behind every view, inside the frame. Presets ship with Recall; uploads stay on this machine.",
+  "st.k.ui.backdrop.d":
+    "Shown behind every view, inside the frame. Presets ship with Recall; uploads stay on this machine.",
   "st.k.ui.backdropDim": "Darkening",
   "st.k.ui.backdropDim.d": "How much the image is dimmed under the content.",
   "st.k.ui.backdropBlur": "Soft focus",

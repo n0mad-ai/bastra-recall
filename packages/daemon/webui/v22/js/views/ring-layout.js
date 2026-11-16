@@ -17,9 +17,13 @@ export const TAU = Math.PI * 2;
  * @param {number} [lf] SVG units per screen pixel the labels are drawn at
  */
 export function buildRing(v, smallLabel, lf = 1) {
-  const R0 = 96, GAP = 0.022;
+  const R0 = 96,
+    GAP = 0.022;
   const byArea = new Map();
-  for (const m of v.mems) { if (!byArea.has(m.area)) byArea.set(m.area, []); byArea.get(m.area).push(m); }
+  for (const m of v.mems) {
+    if (!byArea.has(m.area)) byArea.set(m.area, []);
+    byArea.get(m.area).push(m);
+  }
   const RAW = v.areas.map((a) => [a.key, a.count]);
   const META = new Set(v.areas.filter((a) => a.meta).map((a) => a.key));
   const meta = RAW.filter(([k]) => META.has(k));
@@ -27,7 +31,13 @@ export function buildRing(v, smallLabel, lf = 1) {
   const smallMin = RAW.reduce((sum, [, c]) => sum + c, 0) * SMALL_SHARE;
   const small = rest.filter(([, c]) => c < smallMin);
   const content = rest.filter(([, c]) => c >= smallMin).map(([k, c]) => ({ key: k, count: c, members: [[k, c]] }));
-  if (small.length) content.push({ key: SMALL_KEY, label: smallLabel(small.length), count: small.reduce((s, [, c]) => s + c, 0), members: small });
+  if (small.length)
+    content.push({
+      key: SMALL_KEY,
+      label: smallLabel(small.length),
+      count: small.reduce((s, [, c]) => s + c, 0),
+      members: small,
+    });
   const mc = document.createElement("canvas").getContext("2d");
   const labelArc = (txt, c) => {
     mc.font = "700 10.5px 'IBM Plex Sans Condensed', 'Avenir Next', system-ui, sans-serif";
@@ -36,30 +46,45 @@ export function buildRing(v, smallLabel, lf = 1) {
     const b = mc.measureText(String(c)).width + String(c).length * 0.4;
     return (a + 6 + b) * lf;
   };
-  const nodesFor = (members) => members.flatMap(([k]) => (byArea.get(k) || []).map((m) => ({ k, id: m.id, r: 1.5 + hash(m.id) * 2.3 }))).sort((a, b) => a.r - b.r);
+  const nodesFor = (members) =>
+    members
+      .flatMap(([k]) => (byArea.get(k) || []).map((m) => ({ k, id: m.id, r: 1.5 + hash(m.id) * 2.3 })))
+      .sort((a, b) => a.r - b.r);
 
   function pack(nodes, a0, span, startR) {
-    let i = 0, rowInner = startR;
+    let i = 0,
+      rowInner = startR;
     const out = [];
     while (i < nodes.length) {
       const scale = Math.min(0.6 + (rowInner - R0) / 140, 1);
       const budget = span * rowInner;
-      const row = []; let used = 0, rowMax = 0;
+      const row = [];
+      let used = 0,
+        rowMax = 0;
       while (i < nodes.length) {
         const er = Math.min(nodes[i].r * scale, (budget - 4) / 2);
         const cost = er * 2 + 3.2;
         if (row.length && used + cost > budget) break;
-        row.push({ ...nodes[i], er }); used += cost; rowMax = Math.max(rowMax, er); i++;
+        row.push({ ...nodes[i], er });
+        used += cost;
+        rowMax = Math.max(rowMax, er);
+        i++;
       }
       const r = rowInner + rowMax;
       let a = a0 + Math.max((span - used / r) / 2, 0);
-      for (const n of row) { const sh = (n.er * 2 + 3.2) / r; const na = a + sh / 2; out.push({ x: Math.cos(na) * r, y: Math.sin(na) * r, r: n.er, k: n.k, id: n.id }); a += sh; }
+      for (const n of row) {
+        const sh = (n.er * 2 + 3.2) / r;
+        const na = a + sh / 2;
+        out.push({ x: Math.cos(na) * r, y: Math.sin(na) * r, r: n.er, k: n.k, id: n.id });
+        a += sh;
+      }
       rowInner = r + rowMax + 2.6;
     }
     return { pts: out, outer: rowInner };
   }
 
-  const BAND = 30, PADA = 8;
+  const BAND = 30,
+    PADA = 8;
   function allocate(Rt, usable) {
     const w = content.map((s) => Math.sqrt(s.count));
     const need = content.map((s) => (labelArc(s.label ?? s.key, s.count) + PADA) / Rt);
@@ -77,12 +102,17 @@ export function buildRing(v, smallLabel, lf = 1) {
   // start where the labels can fit at all (large `lf` would otherwise use up
   // the iterations growing by 4 % steps and never lay out a segment)
   const labelSum = content.reduce((sum, s) => sum + labelArc(s.label ?? s.key, s.count) + PADA, 0);
-  let Rb = Math.max(150, labelSum / (usable * 0.94) - BAND / 2), segs = [];
+  let Rb = Math.max(150, labelSum / (usable * 0.94) - BAND / 2),
+    segs = [];
   for (let iter = 0; iter < 60; iter++) {
     const Rt = Rb + BAND / 2;
     const { spans, needSum } = allocate(Rt, usable);
-    if (needSum > usable * 0.94) { Rb *= 1.04; continue; }
-    let a = -Math.PI / 2, maxOuter = R0;
+    if (needSum > usable * 0.94) {
+      Rb *= 1.04;
+      continue;
+    }
+    let a = -Math.PI / 2,
+      maxOuter = R0;
     segs = content.map((s, i) => {
       const p = pack(nodesFor(s.members), a, spans[i], R0);
       maxOuter = Math.max(maxOuter, p.outer);
@@ -90,14 +120,21 @@ export function buildRing(v, smallLabel, lf = 1) {
       a += spans[i] + GAP;
       return seg;
     });
-    if (maxOuter + 10 > Rb) { Rb = maxOuter + 10; continue; }
+    if (maxOuter + 10 > Rb) {
+      Rb = maxOuter + 10;
+      continue;
+    }
     break;
   }
   const band = { ri: Rb, ro: Rb + BAND };
-  segs.forEach((s) => { s.mid = Rb + BAND / 2; s.half = (s.a1 - s.a0) / 2; });
+  segs.forEach((s) => {
+    s.mid = Rb + BAND / 2;
+    s.half = (s.a1 - s.a0) / 2;
+  });
 
   const mR0 = band.ro + 12;
-  let ma = -Math.PI / 2 + 0.42, mOuter = mR0;
+  let ma = -Math.PI / 2 + 0.42,
+    mOuter = mR0;
   const metaSegs = meta.map(([k, c]) => {
     const span = Math.max((labelArc(k, c) + 18) / (mR0 + 20), 0.12);
     const p = pack(nodesFor([[k, c]]), ma, span, mR0);
@@ -107,12 +144,29 @@ export function buildRing(v, smallLabel, lf = 1) {
     return s;
   });
   const metaBand = { ri: mOuter + 4, ro: mOuter + 26 };
-  metaSegs.forEach((s) => { s.mid = (metaBand.ri + metaBand.ro) / 2; });
+  metaSegs.forEach((s) => {
+    s.mid = (metaBand.ri + metaBand.ro) / 2;
+  });
   const orbit = metaBand.ro + 36;
   const n = v.ghosts.length;
-  const ghosts = Array.from({ length: n }, (_, i) => { const a = -Math.PI / 2 + 0.5 + ((TAU - 1) * i) / Math.max(1, n - 1); return { x: Math.cos(a) * orbit, y: Math.sin(a) * orbit }; });
+  const ghosts = Array.from({ length: n }, (_, i) => {
+    const a = -Math.PI / 2 + 0.5 + ((TAU - 1) * i) / Math.max(1, n - 1);
+    return { x: Math.cos(a) * orbit, y: Math.sin(a) * orbit };
+  });
   const smallKeys = new Set(small.map(([k]) => k));
   const dotOf = new Map();
   for (const s of [...segs, ...metaSegs]) for (const p of s.pts) dotOf.set(p.id, p);
-  return { segs, band, metaSegs, metaBand, orbit, ghosts, extent: orbit + 30 * Math.max(1, lf), smallKeys, dotOf, total: v.total, lf };
+  return {
+    segs,
+    band,
+    metaSegs,
+    metaBand,
+    orbit,
+    ghosts,
+    extent: orbit + 30 * Math.max(1, lf),
+    smallKeys,
+    dotOf,
+    total: v.total,
+    lf,
+  };
 }

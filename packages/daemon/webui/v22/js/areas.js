@@ -21,14 +21,17 @@
 // HUD head box, tiles, chips and buttons: js/sections/hud.js.
 export const ICON = {
   dashboard: "M4 4h7v9H4ZM13 4h7v5h-7ZM13 11h7v9h-7ZM4 15h7v5H4Z",
-  mindspace: "M12 10a2 2 0 1 0 0 4a2 2 0 1 0 0-4M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6M7 9.5a5.5 5.5 0 0 1 8.5-1.7M17 14.5a5.5 5.5 0 0 1-8.5 1.7",
+  mindspace:
+    "M12 10a2 2 0 1 0 0 4a2 2 0 1 0 0-4M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6M7 9.5a5.5 5.5 0 0 1 8.5-1.7M17 14.5a5.5 5.5 0 0 1-8.5 1.7",
   clouds: "M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.2 9.1A4.5 4.5 0 0 0 7 18Z",
   ring: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8M12 3v5M21 12h-5",
   semantic: "M6 6l6 12l6-12ZM6 6a1 1 0 1 0 0 .01M18 6a1 1 0 1 0 0 .01M12 18a1 1 0 1 0 0 .01",
   chronos: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M12 7v5l3 2M12 3v2M21 12h-2M12 21v-2M3 12h2",
-  radiant: "M12 10a2 2 0 1 0 0 4a2 2 0 1 0 0-4M12 3v5M12 16v5M3 12h5M16 12h5M5.6 5.6l3.2 3.2M15.2 15.2l3.2 3.2M18.4 5.6l-3.2 3.2M8.8 15.2l-3.2 3.2",
+  radiant:
+    "M12 10a2 2 0 1 0 0 4a2 2 0 1 0 0-4M12 3v5M12 16v5M3 12h5M16 12h5M5.6 5.6l3.2 3.2M15.2 15.2l3.2 3.2M18.4 5.6l-3.2 3.2M8.8 15.2l-3.2 3.2",
   spiral: "M12 12a1 1 0 0 1 2 0a2 2 0 0 1-4 0a3 3 0 0 1 6 0a4 4 0 0 1-8 0a5 5 0 0 1 10 0a6 6 0 0 1-12 0",
-  halflife: "M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M12 12m-6 0a6 6 0 1 0 12 0a6 6 0 1 0-12 0M12 12m-10 0a10 10 0 1 0 20 0a10 10 0 1 0-20 0M12 12l7-5",
+  halflife:
+    "M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M12 12m-6 0a6 6 0 1 0 12 0a6 6 0 1 0-12 0M12 12m-10 0a10 10 0 1 0 20 0a10 10 0 1 0-20 0M12 12l7-5",
   weave: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M5 8c5 2 9 2 14 0M5 16c4-4 10-4 14 0M8 4.5c2 5 2 10 0 15",
   telemetry: "M3 12h4l3-7l4 14l3-7h4",
   tasks: "M4 5h16v15H4ZM4 9h16M9 3v4M15 3v4M8 14l2.5 2.5L16 12",
@@ -38,7 +41,17 @@ export const ICON = {
 };
 
 /** Vault views in pop-over order (prototype VIEWS without telemetry). */
-export const VAULT_VIEWS = ["mindspace", "clouds", "ring", "semantic", "chronos", "radiant", "spiral", "halflife", "weave"];
+export const VAULT_VIEWS = [
+  "mindspace",
+  "clouds",
+  "ring",
+  "semantic",
+  "chronos",
+  "radiant",
+  "spiral",
+  "halflife",
+  "weave",
+];
 
 /** Navigation groups, top to bottom; a divider precedes every non-empty group. */
 export const GROUPS = ["home", "vault", "work", "library", "manage", "system"];
@@ -81,24 +94,87 @@ export function areasIn(group) {
   return [...registry.values()].filter((a) => a.group === group).sort((a, b) => a.order - b.order);
 }
 
-export function getArea(id) { return registry.get(id); }
-export function isPinned(view) { return PINNED.has(view); }
+export function getArea(id) {
+  return registry.get(id);
+}
+export function isPinned(view) {
+  return PINNED.has(view);
+}
 
 // ── free build ────────────────────────────────────────────────────────────
-registerArea({ id: "dashboard", group: "home", order: 1, labelKey: "nav.dashboard", icon: ICON.dashboard, pinAgent: true,
-  greetingKey: "agent.greeting.dashboard", presetKeys: ["agent.sug.brief"],
-  tabs: [{ id: "areas", labelKey: "lens.widgets" }, { id: "layout", labelKey: "lens.layout" }] });
+registerArea({
+  id: "dashboard",
+  group: "home",
+  order: 1,
+  labelKey: "nav.dashboard",
+  icon: ICON.dashboard,
+  pinAgent: true,
+  greetingKey: "agent.greeting.dashboard",
+  presetKeys: ["agent.sug.brief"],
+  tabs: [
+    { id: "areas", labelKey: "lens.widgets" },
+    { id: "layout", labelKey: "lens.layout" },
+  ],
+});
 // "vault" is the pop-over button itself; telemetry sits right below it.
-registerArea({ id: "telemetry", group: "vault", order: 2, labelKey: "nav.telemetry", icon: ICON.telemetry,
-  tabs: [{ id: "areas", labelKey: "lens.find" }, { id: "view", labelKey: "lens.view" }] });
-registerArea({ id: "tasks", group: "work", order: 1, labelKey: "nav.tasks", icon: ICON.tasks, pinAgent: true,
-  greetingKey: "agent.greeting.tasks", presetKeys: ["agent.sug.due", "agent.sug.remind"],
-  tabs: [{ id: "areas", labelKey: "lens.details" }, { id: "view", labelKey: "lens.view" }, { id: "control", labelKey: "lens.control" }] });
-registerArea({ id: "areas", group: "manage", order: 1, labelKey: "nav.areas", titleKey: "nav.areasTitle", icon: ICON.areas, kind: "action" });
-registerArea({ id: "import", group: "manage", order: 2, labelKey: "nav.import", titleKey: "nav.importTitle", icon: ICON.import, kind: "action" });
-registerArea({ id: "settings", group: "system", order: 1, labelKey: "nav.settings", icon: ICON.settings, pinAgent: true,
-  greetingKey: "agent.greeting.settings", presetKeys: ["agent.sug.settings"],
-  tabs: [{ id: "areas", labelKey: "lens.find" }, { id: "changes", labelKey: "lens.changes" }] });
+registerArea({
+  id: "telemetry",
+  group: "vault",
+  order: 2,
+  labelKey: "nav.telemetry",
+  icon: ICON.telemetry,
+  tabs: [
+    { id: "areas", labelKey: "lens.find" },
+    { id: "view", labelKey: "lens.view" },
+  ],
+});
+registerArea({
+  id: "tasks",
+  group: "work",
+  order: 1,
+  labelKey: "nav.tasks",
+  icon: ICON.tasks,
+  pinAgent: true,
+  greetingKey: "agent.greeting.tasks",
+  presetKeys: ["agent.sug.due", "agent.sug.remind"],
+  tabs: [
+    { id: "areas", labelKey: "lens.details" },
+    { id: "view", labelKey: "lens.view" },
+    { id: "control", labelKey: "lens.control" },
+  ],
+});
+registerArea({
+  id: "areas",
+  group: "manage",
+  order: 1,
+  labelKey: "nav.areas",
+  titleKey: "nav.areasTitle",
+  icon: ICON.areas,
+  kind: "action",
+});
+registerArea({
+  id: "import",
+  group: "manage",
+  order: 2,
+  labelKey: "nav.import",
+  titleKey: "nav.importTitle",
+  icon: ICON.import,
+  kind: "action",
+});
+registerArea({
+  id: "settings",
+  group: "system",
+  order: 1,
+  labelKey: "nav.settings",
+  icon: ICON.settings,
+  pinAgent: true,
+  greetingKey: "agent.greeting.settings",
+  presetKeys: ["agent.sug.settings"],
+  tabs: [
+    { id: "areas", labelKey: "lens.find" },
+    { id: "changes", labelKey: "lens.changes" },
+  ],
+});
 
 // ── window.recallUi: the one docking point for Pro bundles ────────────────
 // Only this file assigns window.recallUi. Modules that offer a further hook

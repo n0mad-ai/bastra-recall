@@ -14,7 +14,10 @@ import { getArea, VAULT_VIEWS } from "./areas.js";
 import { closeMemoryBrowser } from "./views/memory-browser.js";
 import { viewLocked, proOpen, lastVaultView } from "./views/pro-views.js";
 
-let stage, current = null, unmount = null, closing = false;
+let stage,
+  current = null,
+  unmount = null,
+  closing = false;
 
 export function mountStage(app) {
   stage = h("main.stage");
@@ -24,7 +27,10 @@ export function mountStage(app) {
 export function render(ctx) {
   // Reopening the browser cancels a pending departure by restoring its host
   // view. Its show() cancels the shrink timeout, so clear our guard here too.
-  if (current === state.view) { closing = false; return; }
+  if (current === state.view) {
+    closing = false;
+    return;
+  }
   if (closing) return;
   // A locked Pro view (views/pro-views.js) never reaches the stage, whatever
   // route asked for it: before /ui/health answers nothing mounts yet, then it
@@ -42,7 +48,13 @@ export function render(ctx) {
     // cover(false) can synchronously reenter render through the state store.
     // Guard before calling hide, not after, to avoid scheduling it twice.
     closing = true;
-    if (closeMemoryBrowser(() => { closing = false; render(ctx); })) return;
+    if (
+      closeMemoryBrowser(() => {
+        closing = false;
+        render(ctx);
+      })
+    )
+      return;
     closing = false;
   }
   current = state.view;
@@ -50,16 +62,33 @@ export function render(ctx) {
   unmount = null;
   clear(stage);
   const area = getArea(state.view);
-  if (area && typeof area.mount === "function") { unmount = area.mount(area.section ? sectionFrame(area.section) : stage, ctx) || null; return; }
-  stage.append(h("div.stage__wip", null, h("div.stage__wip-in", null,
-    h("span.wip-badge", { text: t("wip") }),
-    h("span.stage__wip-t", { text: ctx.viewLabel(state.view) }),
-    h("p.stage__wip-p", { text: t("wip.stage") }))));
+  if (area && typeof area.mount === "function") {
+    unmount = area.mount(area.section ? sectionFrame(area.section) : stage, ctx) || null;
+    return;
+  }
+  stage.append(
+    h(
+      "div.stage__wip",
+      null,
+      h(
+        "div.stage__wip-in",
+        null,
+        h("span.wip-badge", { text: t("wip") }),
+        h("span.stage__wip-t", { text: ctx.viewLabel(state.view) }),
+        h("p.stage__wip-p", { text: t("wip.stage") })
+      )
+    )
+  );
 }
 
 function sectionFrame({ frame = false, fit = false }) {
   const inner = h("div.sx__in");
-  stage.append(h("section.sx", { cls: [frame ? "sx--frame" : "", fit ? "sx--fit" : ""].join(" ") },
-    fit ? inner : h("div.sx__scroll", null, inner)));
+  stage.append(
+    h(
+      "section.sx",
+      { cls: [frame ? "sx--frame" : "", fit ? "sx--fit" : ""].join(" ") },
+      fit ? inner : h("div.sx__scroll", null, inner)
+    )
+  );
   return inner;
 }

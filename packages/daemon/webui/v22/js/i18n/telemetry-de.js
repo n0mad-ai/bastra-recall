@@ -5,8 +5,10 @@ export default {
   "tv.kicker": "TELEMETRIE · LOKALE EREIGNISPROTOKOLLE",
   "tv.title": "Was Recall mit deinem Kontext macht",
   "tv.titleLong": "Telemetrie — was Recall mit deinem Kontext macht",
-  "tv.text": "Deine eigenen Ereignisprotokolle, lokal gelesen — nichts wird hochgeladen oder geteilt. Jede Zahl ist die Reihe aus {code}, dargestellt; hat eine Reihe eine bekannte Lücke, steht das da, statt eine Linie hindurchzuziehen.",
-  "tv.textShort": "Jede Zahl ist die Reihe aus {code}, dargestellt; hat eine Reihe eine bekannte Lücke, steht das da, statt eine Linie hindurchzuziehen.",
+  "tv.text":
+    "Deine eigenen Ereignisprotokolle, lokal gelesen — nichts wird hochgeladen oder geteilt. Jede Zahl ist die Reihe aus {code}, dargestellt; hat eine Reihe eine bekannte Lücke, steht das da, statt eine Linie hindurchzuziehen.",
+  "tv.textShort":
+    "Jede Zahl ist die Reihe aus {code}, dargestellt; hat eine Reihe eine bekannte Lücke, steht das da, statt eine Linie hindurchzuziehen.",
   "tv.window": "ZEITFENSTER · {d}",
   "tv.last24": "LETZTE 24 STUNDEN",
   "tv.lastDays": "LETZTE {n} TAGE",
@@ -46,17 +48,20 @@ export default {
 
   // section titles, questions, key figures
   "tv.s.quality": "Recall-Qualität",
-  "tv.q.quality": "Welche Hinweis-Kandidaten führten zu einem expliziten load_memory-Aufruf, und haben diese geladenen Hinweise die nächste Tool-Eingabe verändert?",
+  "tv.q.quality":
+    "Welche Hinweis-Kandidaten führten zu einem expliziten load_memory-Aufruf, und haben diese geladenen Hinweise die nächste Tool-Eingabe verändert?",
   "tv.s.context": "Kontext-Last",
   "tv.q.context": "Wie viele Tokens schreibt Recall ins Transkript — Hook-Einblendungen und Tool-Antworten zusammen?",
   "tv.s.suppression": "Sitzungsübergreifende Hinweis-Unterdrückung",
   "tv.q.suppression": "Welche wiederholt ignorierten Fakten-Hinweise wurden aus automatischen Hook-Antworten {v}?",
   "tv.s.budget": "Kontext-Budget — Schatten",
-  "tv.q.budget": "Was hätte ein gemeinsames Budget pro Sitzung über alle sechs Lanes gekürzt? Gekürzt wird noch nichts — die Entscheidung wird nur protokolliert.",
+  "tv.q.budget":
+    "Was hätte ein gemeinsames Budget pro Sitzung über alle sechs Lanes gekürzt? Gekürzt wird noch nichts — die Entscheidung wird nur protokolliert.",
   "tv.s.latency": "Latenz",
   "tv.q.latency": "Wie lange brauchen die Hook-Lanes und die Suche des Daemons — Median und p95, über die Zeit?",
   "tv.s.evidence": "Evidence-Gate",
-  "tv.q.evidence": "Ist die deterministische Entscheidung (§10.3) abgenommen, und wo weicht sie vom bisherigen Banding ab?",
+  "tv.q.evidence":
+    "Ist die deterministische Entscheidung (§10.3) abgenommen, und wo weicht sie vom bisherigen Banding ab?",
   "tv.s.saves": "Speichervorgänge",
   "tv.q.saves": "Wie viele Speichervorgänge wurden zur Datei, und wie viele kamen nie dort an?",
   "tv.s.code": "Code-Wissen (experimentell)",
@@ -218,8 +223,10 @@ export default {
   "tv.hs.payloadAvoided": "eingesparte Hook-Nutzlast",
   "tv.hs.matched": "Am häufigsten erfasst",
   "tv.hs.suppressed": "Am häufigsten unterdrückt",
-  "tv.hs.tokNoteShadow": "Die Token-Zahlen schätzen den serialisierten schlanken Treffer mit Zeichen/4 und lassen das umgebende Markup weg; Schatten-Aufrufe haben nichts entfernt, dieser Teil ist also keine Einsparung.",
-  "tv.hs.tokNoteLive": "Die Einsparung schätzt den serialisierten schlanken Treffer mit Zeichen/4 und lässt das umgebende Markup weg.",
+  "tv.hs.tokNoteShadow":
+    "Die Token-Zahlen schätzen den serialisierten schlanken Treffer mit Zeichen/4 und lassen das umgebende Markup weg; Schatten-Aufrufe haben nichts entfernt, dieser Teil ist also keine Einsparung.",
+  "tv.hs.tokNoteLive":
+    "Die Einsparung schätzt den serialisierten schlanken Treffer mit Zeichen/4 und lässt das umgebende Markup weg.",
   "tv.hs.mode": "Modus: {m}",
   "tv.hs.hints": "Hinweise, die {v}",
   "tv.hs.calls": "{n} Hook-Recall(s)",
@@ -241,7 +248,8 @@ export default {
   "tv.f.followedSub": "{a} von {b} Blöcken",
 
   // verdicts
-  "tv.v.budget": "Schatten-Budget {b} Tokens pro Sitzung · {a} von {s} Sitzung(en) wären betroffen gewesen · {t} von {n} Tokens ({p}) wären nicht eingeblendet worden",
+  "tv.v.budget":
+    "Schatten-Budget {b} Tokens pro Sitzung · {a} von {s} Sitzung(en) wären betroffen gewesen · {t} von {n} Tokens ({p}) wären nicht eingeblendet worden",
   "tv.v.reached": "Schatten-Abnahme ERREICHT über den Weg {r} — offen ist nur noch die Prüfung der Abweichungen unten",
   "tv.v.notYet": "Schatten-Abnahme noch nicht erreicht — {m}; oder {a}/{b} Tage",
 
@@ -265,13 +273,15 @@ export default {
   "tv.e.sessions": "keine zuordenbaren Sitzungen",
   "tv.e.none": "keine in diesem Zeitfenster",
   "tv.e.suppression": "keine Memory-Version hat in diesem Zeitfenster die Unterdrückungsschwelle erreicht",
-  "tv.e.budget": "keine budget_shadow-Ereignisse in diesem Zeitfenster — das Schatten-Konto zählt ab dem ersten Lane-Aufruf nach dem Daemon, der es mitbringt",
+  "tv.e.budget":
+    "keine budget_shadow-Ereignisse in diesem Zeitfenster — das Schatten-Konto zählt ab dem ersten Lane-Aufruf nach dem Daemon, der es mitbringt",
   "tv.e.latency": "keine Latenzfelder in diesem Zeitfenster",
   "tv.e.evidence": "keine evidence_decision-Ereignisse in diesem Zeitfenster",
   "tv.e.comparable": "keine vergleichbaren Entscheidungen",
   "tv.e.saves": "keine save_memory- oder save_hold-Ereignisse in diesem Zeitfenster",
   "tv.e.held": "in diesem Zeitfenster wurde nichts angehalten",
-  "tv.e.code": "keine Code-Wissen-Ereignisse in diesem Zeitfenster — kein Tool-Aufruf, kein Abhängigen-Block, keine Auffrischung",
+  "tv.e.code":
+    "keine Code-Wissen-Ereignisse in diesem Zeitfenster — kein Tool-Aufruf, kein Abhängigen-Block, keine Auffrischung",
   "tv.e.toolCall": "kein Tool-Aufruf in diesem Zeitfenster",
   "tv.e.refresh": "keine Auffrischung in diesem Zeitfenster",
   "tv.e.delivered": "in diesem Zeitfenster wurde kein Block geliefert",
@@ -281,44 +291,69 @@ export default {
   "tv.e.pending": "noch kein Start trägt pending_lanes (#513)",
 
   // notes
-  "tv.n.bands": "Kandidaten sind die Top-k der Suche vor Score-Schwelle, Bereichsfilter und Dedup je Sitzung im Hook, nicht das tatsächlich Eingeblendete; die eingeblendete Zahl steht nicht in dieser Tabelle. Geladen / Kandidaten ist nur eine Untergrenze der Nachverfolgung: Ein Client kann einen eingeblendeten Hinweis ohne load_memory anwenden, und dieser Weg ist nicht beobachtbar. Die Nutzungsrate beschreibt nur die explizit geladenen Fälle (genutzt / geladen).",
+  "tv.n.bands":
+    "Kandidaten sind die Top-k der Suche vor Score-Schwelle, Bereichsfilter und Dedup je Sitzung im Hook, nicht das tatsächlich Eingeblendete; die eingeblendete Zahl steht nicht in dieser Tabelle. Geladen / Kandidaten ist nur eine Untergrenze der Nachverfolgung: Ein Client kann einen eingeblendeten Hinweis ohne load_memory anwenden, und dieser Weg ist nicht beobachtbar. Die Nutzungsrate beschreibt nur die explizit geladenen Fälle (genutzt / geladen).",
   "tv.n.directLoads": "{n} direkte Ladung(en) ohne vorherigen Hinweis zählen in keinem Band mit (#77).",
   "tv.n.noCandidate": "{n} Aufruf(e) hatten gar keinen Kandidaten (Daemon nicht erreichbar oder leere Anfrage).",
-  "tv.n.estimator": "Schätzer überall {e}, deshalb stehen Hook- und Antwortgrößen in derselben Spalte. Gesamt {n} Tokens = Lanes {a} + Antworten {b}.",
-  "tv.n.unknownSize": "{n} Ausgabe(n) tragen kein Größenfeld (Zeilen vor #457/#72) und zählen als unbekannt, nie als null — die Summe ist eine Untergrenze.",
-  "tv.n.attributed": "Tool-Antworten werden der aufrufenden Sitzung zugeordnet, wo der Forwarder eine mitgeschickt hat; Hook-Lanes ihrer eigenen Sitzungs-ID.",
-  "tv.n.unknownTyped": "{n} davon stammen aus Ereignissen vor hinted_types (#354) — Typ ungeprüft, bleibt in der Liste, ist aber kein Beleg.",
-  "tv.n.directives": "Eine Regel, die wirkt, erzeugt kein acted_on-Signal: Sie wirkt, indem nichts passiert. Diese Liste ist kein Beleg für Verschwendung.",
+  "tv.n.estimator":
+    "Schätzer überall {e}, deshalb stehen Hook- und Antwortgrößen in derselben Spalte. Gesamt {n} Tokens = Lanes {a} + Antworten {b}.",
+  "tv.n.unknownSize":
+    "{n} Ausgabe(n) tragen kein Größenfeld (Zeilen vor #457/#72) und zählen als unbekannt, nie als null — die Summe ist eine Untergrenze.",
+  "tv.n.attributed":
+    "Tool-Antworten werden der aufrufenden Sitzung zugeordnet, wo der Forwarder eine mitgeschickt hat; Hook-Lanes ihrer eigenen Sitzungs-ID.",
+  "tv.n.unknownTyped":
+    "{n} davon stammen aus Ereignissen vor hinted_types (#354) — Typ ungeprüft, bleibt in der Liste, ist aber kein Beleg.",
+  "tv.n.directives":
+    "Eine Regel, die wirkt, erzeugt kein acted_on-Signal: Sie wirkt, indem nichts passiert. Diese Liste ist kein Beleg für Verschwendung.",
   "tv.n.typeCoverage": "Typ-Abdeckung: {a} Hinweis-Ausgabe(n) tragen hinted_types, {b} sind älter als das Feld.",
-  "tv.n.suppressionScope": "Gefiltert wird nur die automatische Hook-Einblendung. Manuelles recall und load_memory bleiben verfügbar; Direktiv-Memories und ausdrücklich verdrahtete Reflexe sind ausgenommen.",
-  "tv.n.versionLocal": "Die Unterdrückung gilt je Version: Wer den Memory-Text oder recall_when ändert, gibt ihr einen neuen Versuch. {x}",
+  "tv.n.suppressionScope":
+    "Gefiltert wird nur die automatische Hook-Einblendung. Manuelles recall und load_memory bleiben verfügbar; Direktiv-Memories und ausdrücklich verdrahtete Reflexe sind ausgenommen.",
+  "tv.n.versionLocal":
+    "Die Unterdrückung gilt je Version: Wer den Memory-Text oder recall_when ändert, gibt ihr einen neuen Versuch. {x}",
   "tv.n.firstOver": "In betroffenen Sitzungen wurde das Budget erstmals bei Ausgabe {n} überschritten (Median).",
-  "tv.n.budgetChanged": "Das Budget hat sich in diesem Zeitfenster geändert ({b} Tokens) — Zeilen vor der Änderung wurden gegen den älteren Wert entschieden.",
-  "tv.n.granularity": "Entschieden wird einmal je Ausgabe, wie beim Was-wäre-wenn in stats.ts: Ein Block, der nicht mehr passt, fällt ganz weg. Der Live-Governor wird je Eintrag entscheiden, das hier ist also eine Obergrenze dessen, was ein Budget berührt.",
-  "tv.n.ledger": "Das Konto liegt im Speicher des Daemons und zählt ab dem ersten Lane-Aufruf; ein Daemon-Neustart setzt jede laufende Sitzung auf null. `clear` setzt eine Sitzung zurück, `compact` und `resume` nicht.",
-  "tv.n.latency": "hook_call / *_hook_call messen den ganzen Hook-Prozess (latency_ms_total); hook_recall und recall messen nur die Suche des Daemons.",
-  "tv.n.calls": "{a} Schatten-Aufruf(e) mit {b} Entscheidungen über {d} Tag(e); {c} Live-Aufruf(e) mit {e} Entscheidungen",
+  "tv.n.budgetChanged":
+    "Das Budget hat sich in diesem Zeitfenster geändert ({b} Tokens) — Zeilen vor der Änderung wurden gegen den älteren Wert entschieden.",
+  "tv.n.granularity":
+    "Entschieden wird einmal je Ausgabe, wie beim Was-wäre-wenn in stats.ts: Ein Block, der nicht mehr passt, fällt ganz weg. Der Live-Governor wird je Eintrag entscheiden, das hier ist also eine Obergrenze dessen, was ein Budget berührt.",
+  "tv.n.ledger":
+    "Das Konto liegt im Speicher des Daemons und zählt ab dem ersten Lane-Aufruf; ein Daemon-Neustart setzt jede laufende Sitzung auf null. `clear` setzt eine Sitzung zurück, `compact` und `resume` nicht.",
+  "tv.n.latency":
+    "hook_call / *_hook_call messen den ganzen Hook-Prozess (latency_ms_total); hook_recall und recall messen nur die Suche des Daemons.",
+  "tv.n.calls":
+    "{a} Schatten-Aufruf(e) mit {b} Entscheidungen über {d} Tag(e); {c} Live-Aufruf(e) mit {e} Entscheidungen",
   "tv.n.active": " — das Gate ist AKTIV",
-  "tv.n.excluded": "Ausgeschlossen: {a} beeinträchtigte(r) Lauf/Läufe — ein Budget-Abbruch ist keine Enthaltung (C-047); {b} fehlgeschlagene Entscheidung(en) — ein Fehler im Controller geht in keine Statistik ein (C-052).",
+  "tv.n.excluded":
+    "Ausgeschlossen: {a} beeinträchtigte(r) Lauf/Läufe — ein Budget-Abbruch ist keine Enthaltung (C-047); {b} fehlgeschlagene Entscheidung(en) — ein Fehler im Controller geht in keine Statistik ein (C-052).",
   "tv.n.abstain": "Enthaltungsgründe: {l}",
   "tv.n.byHop": "required nach Hop-Herkunft: {l}",
   "tv.n.viaHop": "{n} required-Treffer kamen über einen Graph-Hop — C-046 verbietet das; Prädikat prüfen.",
-  "tv.n.bm25": "Im BM25-Ausweichweg ist der Score unbegrenzt und die Schnitte bei 30/100 sagen nichts aus (§9.4), deshalb werden nicht fusionierte Läufe nicht verglichen.",
-  "tv.n.unfused": "{a} Entscheidung(en) aus nicht fusionierten Läufen übersprungen; {b} ohne hook_recall in diesem Zeitfenster (Score-Raum unbekannt).",
-  "tv.n.claim": "Das Claim-Gate nannte {a} bereits vergebene Memories in {b} angehaltenen Vorgängen — jede ist ein Nachfolger, ein Widerspruch oder ein bewusstes Paar, auf das noch niemand geantwortet hat.",
-  "tv.n.heldPrivate": "Ein angehaltener Speichervorgang trägt weder Titel noch Text noch Auslöser ins Protokoll: Was er sagen wollte, gehört dir — ein abgelehnter genauso wie ein angenommener.",
+  "tv.n.bm25":
+    "Im BM25-Ausweichweg ist der Score unbegrenzt und die Schnitte bei 30/100 sagen nichts aus (§9.4), deshalb werden nicht fusionierte Läufe nicht verglichen.",
+  "tv.n.unfused":
+    "{a} Entscheidung(en) aus nicht fusionierten Läufen übersprungen; {b} ohne hook_recall in diesem Zeitfenster (Score-Raum unbekannt).",
+  "tv.n.claim":
+    "Das Claim-Gate nannte {a} bereits vergebene Memories in {b} angehaltenen Vorgängen — jede ist ein Nachfolger, ein Widerspruch oder ein bewusstes Paar, auf das noch niemand geantwortet hat.",
+  "tv.n.heldPrivate":
+    "Ein angehaltener Speichervorgang trägt weder Titel noch Text noch Auslöser ins Protokoll: Was er sagen wollte, gehört dir — ein abgelehnter genauso wie ein angenommener.",
   "tv.n.joined": "Verknüpft über caller_session: {a} von {b} Speichervorgängen tragen eine",
   "tv.n.joinedLower": " — der Rest lässt sich nicht verknüpfen, die Zahl der gespeicherten ist also eine Untergrenze.",
   "tv.n.joinedEnd": ".",
-  "tv.n.unavailable": "`unavailable` ist kein Fehler und sagt nichts darüber, ob das Symbol existiert — abgeschaltet, nicht indexiert, lädt noch und verweigert sind vier verschiedene Welten, und nur `degraded` ist ein Defekt.",
-  "tv.n.refresh": "Die Baudauer umfasst erfolgreiche und fehlgeschlagene Builds; Sperrprüfungen und übersprungene Läufe zählen nicht. `interrupted` ist ein Start ohne Ergebniszeile — der Daemon wurde mitten im Bau neu gestartet.",
+  "tv.n.unavailable":
+    "`unavailable` ist kein Fehler und sagt nichts darüber, ob das Symbol existiert — abgeschaltet, nicht indexiert, lädt noch und verweigert sind vier verschiedene Welten, und nur `degraded` ist ein Defekt.",
+  "tv.n.refresh":
+    "Die Baudauer umfasst erfolgreiche und fehlgeschlagene Builds; Sperrprüfungen und übersprungene Läufe zählen nicht. `interrupted` ist ein Start ohne Ergebniszeile — der Daemon wurde mitten im Bau neu gestartet.",
   "tv.n.triggered": "ausgelöst durch: {l}",
   "tv.n.failures": "Fehler: {l}",
-  "tv.n.broken": "Ein Workspace-Repository hat 0 seiner externen Knoten aufgelöst — paketübergreifende Auswirkungen werden nicht gefunden. Mit `bastra code index` neu bauen; bleibt es bei 0, ist es die ID-Format-Regression aus #582.",
-  "tv.n.wholeFile": "`whole_file` als Basis ist kein Fehler — es ist die ehrliche Antwort, wenn die Änderung etwas außerhalb jedes Symbols berührt (einen Import, Code auf oberster Ebene). Häufen sie sich, lohnt sich die Eingrenzung allerdings nicht.",
-  "tv.n.costReach": "Kosten und Reichweite, nicht Nutzen: `followed` heißt, ein späterer Schreibvorgang in derselben Sitzung hat eine Datei berührt, die der Block genannt hat — ein Hinweis, dass die Liste zählte, kein Beweis, dass sie die Änderung verursacht hat. Was Code-Wissen EINGESPART hat, braucht den Kontrollarm in packages/eval/code-roi.",
-  "tv.n.predate": "{a} von {b} Start(s) sind älter als hint_tokens_by_part (#462) — sie tragen nur eine Summe und fehlen in den Anteilen oben.",
-  "tv.n.cadence": "Derselbe Block wird bei startup, clear, compact und resume zusammengesetzt — ein Teil, der sich über alle Quellen gleich wiederholt, ist eine Frage des Takts, nicht des Inhalts.",
+  "tv.n.broken":
+    "Ein Workspace-Repository hat 0 seiner externen Knoten aufgelöst — paketübergreifende Auswirkungen werden nicht gefunden. Mit `bastra code index` neu bauen; bleibt es bei 0, ist es die ID-Format-Regression aus #582.",
+  "tv.n.wholeFile":
+    "`whole_file` als Basis ist kein Fehler — es ist die ehrliche Antwort, wenn die Änderung etwas außerhalb jedes Symbols berührt (einen Import, Code auf oberster Ebene). Häufen sie sich, lohnt sich die Eingrenzung allerdings nicht.",
+  "tv.n.costReach":
+    "Kosten und Reichweite, nicht Nutzen: `followed` heißt, ein späterer Schreibvorgang in derselben Sitzung hat eine Datei berührt, die der Block genannt hat — ein Hinweis, dass die Liste zählte, kein Beweis, dass sie die Änderung verursacht hat. Was Code-Wissen EINGESPART hat, braucht den Kontrollarm in packages/eval/code-roi.",
+  "tv.n.predate":
+    "{a} von {b} Start(s) sind älter als hint_tokens_by_part (#462) — sie tragen nur eine Summe und fehlen in den Anteilen oben.",
+  "tv.n.cadence":
+    "Derselbe Block wird bei startup, clear, compact und resume zusammengesetzt — ein Teil, der sich über alle Quellen gleich wiederholt, ist eine Frage des Takts, nicht des Inhalts.",
   "tv.n.pendingPredate": "{n} Start(s) sind älter als pending_lanes (#513) und werden hier nicht gezählt.",
 
   // right panel

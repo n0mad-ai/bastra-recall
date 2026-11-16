@@ -26,17 +26,32 @@ const HOLE_VIEWS = ["mindspace", "clouds", "semantic"];
 export const backdrop = { cfg: { backdrop: "none", dim: 80, blur: false }, uploads: [] };
 
 const listeners = new Set();
-export function onBackdrop(fn) { listeners.add(fn); return () => listeners.delete(fn); }
-const emit = () => { for (const fn of listeners) fn(); };
+export function onBackdrop(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+const emit = () => {
+  for (const fn of listeners) fn();
+};
 
-let layer = null, img = null, shownId = "";
+let layer = null,
+  img = null,
+  shownId = "";
 
 export function mountBackdrop(app) {
   img = h("div.bd__img");
   img.addEventListener("animationend", () => img.classList.remove("is-in"));
-  layer = h("div.bd", { hidden: true, "aria-hidden": "true" }, img, h("div.bd__shade"), h("div.bd__hole"), h("div.bd__vig"));
+  layer = h(
+    "div.bd",
+    { hidden: true, "aria-hidden": "true" },
+    img,
+    h("div.bd__shade"),
+    h("div.bd__hole"),
+    h("div.bd__vig")
+  );
   const glow = app.querySelector(".glow");
-  if (glow) glow.after(layer); else app.prepend(layer);
+  if (glow) glow.after(layer);
+  else app.prepend(layer);
   render();
   load();
   // Only the view switch toggles the class; the shade fades via its CSS transition.
@@ -61,17 +76,25 @@ function render() {
   const { backdrop: id, dim, blur } = backdrop.cfg;
   const look = id === "none" ? null : lookOf(id);
   layer.hidden = !look;
-  if (!look) { shownId = ""; return; }
+  if (!look) {
+    shownId = "";
+    return;
+  }
   if (id !== shownId) {
     img.className = `bd__img ${look.cls}`;
     img.style.removeProperty("--bd-url");
     if (look.vars) setVars(img, look.vars);
     // Fade in once per image; the class goes again on animationend (no lasting layer).
-    void img.offsetWidth; img.classList.add("is-in");
+    void img.offsetWidth;
+    img.classList.add("is-in");
     shownId = id;
   }
   const d = Math.min(95, Math.max(50, Number(dim) || 80));
-  setVars(layer, { "--bd-dim": (d / 100).toFixed(2), "--bd-dim-vault": (Math.max(d, VAULT_DIM) / 100).toFixed(2), "--bd-dim-hole": (Math.max(d, HOLE_DIM) / 100).toFixed(2) });
+  setVars(layer, {
+    "--bd-dim": (d / 100).toFixed(2),
+    "--bd-dim-vault": (Math.max(d, VAULT_DIM) / 100).toFixed(2),
+    "--bd-dim-hole": (Math.max(d, HOLE_DIM) / 100).toFixed(2),
+  });
   markView(state);
   layer.classList.toggle("is-blur", !!blur);
 }
@@ -82,14 +105,29 @@ export async function load() {
     if (!r.ok) return;
     const j = await r.json();
     if (!j || typeof j !== "object") return;
-    backdrop.uploads = Array.isArray(j.uploads) ? j.uploads.filter((u) => u && typeof u.id === "string" && typeof u.url === "string" && u.url.startsWith("/ui/backdrop/")) : [];
-    backdrop.cfg = { backdrop: typeof j.backdrop === "string" ? j.backdrop : "none", dim: Number.isFinite(j.dim) ? j.dim : 80, blur: j.blur === true };
-    render(); emit();
-  } catch { /* daemon away: no image */ }
+    backdrop.uploads = Array.isArray(j.uploads)
+      ? j.uploads.filter(
+          (u) => u && typeof u.id === "string" && typeof u.url === "string" && u.url.startsWith("/ui/backdrop/")
+        )
+      : [];
+    backdrop.cfg = {
+      backdrop: typeof j.backdrop === "string" ? j.backdrop : "none",
+      dim: Number.isFinite(j.dim) ? j.dim : 80,
+      blur: j.blur === true,
+    };
+    render();
+    emit();
+  } catch {
+    /* daemon away: no image */
+  }
 }
 
 /** Preview / apply at once (patch of { backdrop, dim, blur }). */
-export function setBackdrop(patch) { backdrop.cfg = { ...backdrop.cfg, ...patch }; render(); emit(); }
+export function setBackdrop(patch) {
+  backdrop.cfg = { ...backdrop.cfg, ...patch };
+  render();
+  emit();
+}
 
 /** Stores an image on this machine; resolves with its id. Errors carry code type | size | count | fail. */
 export async function uploadBackdrop(file) {
@@ -98,14 +136,26 @@ export async function uploadBackdrop(file) {
   if (file.size > UPLOAD_MAX) throw fail("size");
   let r;
   try {
-    r = await fetch(`/ui/backdrop?name=${encodeURIComponent(file.name)}`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": file.type }, body: file });
-  } catch (err) { throw fail("fail", err.message); }
+    r = await fetch(`/ui/backdrop?name=${encodeURIComponent(file.name)}`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": file.type },
+      body: file,
+    });
+  } catch (err) {
+    throw fail("fail", err.message);
+  }
   let j = null;
-  try { j = await r.json(); } catch { /* empty body */ }
+  try {
+    j = await r.json();
+  } catch {
+    /* empty body */
+  }
   if (r.status === 413) throw fail("size");
   if (r.status === 415) throw fail("type");
   if (r.status === 409) throw fail("count");
-  if (!r.ok || !j || typeof j.id !== "string") throw fail("fail", j && typeof j.error === "string" ? j.error : `HTTP ${r.status}`);
+  if (!r.ok || !j || typeof j.id !== "string")
+    throw fail("fail", j && typeof j.error === "string" ? j.error : `HTTP ${r.status}`);
   backdrop.uploads = [...backdrop.uploads, { id: j.id, name: String(j.name || ""), url: j.url }];
   emit();
   return j.id;
@@ -115,9 +165,14 @@ export async function uploadBackdrop(file) {
 export async function removeBackdrop(id) {
   const r = await fetch(`/ui/backdrop/${encodeURIComponent(id)}`, { method: "DELETE", credentials: "same-origin" });
   let j = null;
-  try { j = await r.json(); } catch { /* empty body */ }
+  try {
+    j = await r.json();
+  } catch {
+    /* empty body */
+  }
   if (!r.ok) throw new Error(j && typeof j.error === "string" ? j.error : `HTTP ${r.status}`);
   backdrop.uploads = backdrop.uploads.filter((u) => u.id !== id);
   if (backdrop.cfg.backdrop === id) backdrop.cfg = { ...backdrop.cfg, backdrop: "none" };
-  render(); emit();
+  render();
+  emit();
 }

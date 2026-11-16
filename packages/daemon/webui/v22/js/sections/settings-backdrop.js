@@ -11,21 +11,46 @@ export function backdropCtl(e, { shown, setValue, revert, reload }) {
   const input = h("input", { type: "file", accept: "image/png,image/jpeg,image/webp" });
   const upBox = h("span.bd-up__box", { text: t("bd.upload") });
   const up = h("label.bd-up", null, input, upBox, h("span.bd-up__cap", { text: t("bd.upload.cap") }));
-  let tiles = [], armed = null, armT = 0;
+  let tiles = [],
+    armed = null,
+    armT = 0;
 
   // Own images: "REMOVE" on the tile, a second click within 4 s deletes (Areas dialog pattern).
-  const disarm = () => { clearTimeout(armT); if (armed) { armed.classList.remove("is-armed"); armed.textContent = t("bd.remove"); } armed = null; };
+  const disarm = () => {
+    clearTimeout(armT);
+    if (armed) {
+      armed.classList.remove("is-armed");
+      armed.textContent = t("bd.remove");
+    }
+    armed = null;
+  };
   const removeBtn = (id, name) => {
     const b = h("button.bd-del", { type: "button", text: t("bd.remove"), title: t("bd.remove.t", { name }) });
     b.addEventListener("click", async () => {
-      if (armed !== b) { disarm(); armed = b; b.classList.add("is-armed"); b.textContent = t("bd.sure"); armT = setTimeout(disarm, 4000); return; }
-      disarm(); b.disabled = true; err.hidden = true;
+      if (armed !== b) {
+        disarm();
+        armed = b;
+        b.classList.add("is-armed");
+        b.textContent = t("bd.sure");
+        armT = setTimeout(disarm, 4000);
+        return;
+      }
+      disarm();
+      b.disabled = true;
+      err.hidden = true;
       const wasShown = shown(e) === id;
       try {
         await removeBackdrop(id);
         // The daemon reset ui.backdrop when this image was active: drop a pending pick and reload the snapshot.
-        if (wasShown) { revert(e.key); reload(); }
-      } catch (x) { err.textContent = t("bd.err.remove", { err: x.message }); err.hidden = false; b.disabled = false; }
+        if (wasShown) {
+          revert(e.key);
+          reload();
+        }
+      } catch (x) {
+        err.textContent = t("bd.err.remove", { err: x.message });
+        err.hidden = false;
+        b.disabled = false;
+      }
     });
     return b;
   };
@@ -35,10 +60,16 @@ export function backdropCtl(e, { shown, setValue, revert, reload }) {
     input.value = "";
     if (!f) return;
     err.hidden = true;
-    up.classList.add("is-busy"); upBox.textContent = t("bd.upload.busy");
-    try { setValue(e.key, await uploadBackdrop(f)); }
-    catch (x) { err.textContent = x.code === "fail" ? t("bd.err.fail", { err: x.message }) : t(`bd.err.${x.code}`); err.hidden = false; }
-    up.classList.remove("is-busy"); upBox.textContent = t("bd.upload");
+    up.classList.add("is-busy");
+    upBox.textContent = t("bd.upload.busy");
+    try {
+      setValue(e.key, await uploadBackdrop(f));
+    } catch (x) {
+      err.textContent = x.code === "fail" ? t("bd.err.fail", { err: x.message }) : t(`bd.err.${x.code}`);
+      err.hidden = false;
+    }
+    up.classList.remove("is-busy");
+    upBox.textContent = t("bd.upload");
   });
 
   const options = () => [
@@ -53,8 +84,17 @@ export function backdropCtl(e, { shown, setValue, revert, reload }) {
       if (look?.vars) setVars(pic, look.vars);
       const ok = h("span.bd-opt__ok", { text: "✓", hidden: true });
       pic.append(ok);
-      const btn = h("button.bd-opt", { type: "button", title: o.name, cls: o.id === "none" ? "bd-opt--none" : "", on: { click: () => setValue(e.key, o.id) } },
-        pic, h("span.bd-opt__cap", null, h("span.bd-opt__name", { text: o.name }), h("span.bd-opt__tag", { text: o.tag })));
+      const btn = h(
+        "button.bd-opt",
+        {
+          type: "button",
+          title: o.name,
+          cls: o.id === "none" ? "bd-opt--none" : "",
+          on: { click: () => setValue(e.key, o.id) },
+        },
+        pic,
+        h("span.bd-opt__cap", null, h("span.bd-opt__name", { text: o.name }), h("span.bd-opt__tag", { text: o.tag }))
+      );
       // Upload tiles get a wrapper: the remove button cannot sit inside the tile button.
       const el = o.upload ? h("div.bd-own", null, btn, removeBtn(o.id, o.name)) : btn;
       return { id: o.id, btn, ok, el };
@@ -66,15 +106,26 @@ export function backdropCtl(e, { shown, setValue, revert, reload }) {
 
   const sync = () => {
     const v = shown(e);
-    for (const x of tiles) { const on = x.id === v; x.btn.classList.toggle("is-on", on); x.btn.setAttribute("aria-pressed", String(on)); x.ok.hidden = !on; }
+    for (const x of tiles) {
+      const on = x.id === v;
+      x.btn.classList.toggle("is-on", on);
+      x.btn.setAttribute("aria-pressed", String(on));
+      x.ok.hidden = !on;
+    }
   };
 
   // Uploads arrive after boot (GET /ui/backdrop) or from the input above.
   // A rebuilt or left settings page drops this grid; its listener goes with it.
   let count = backdrop.uploads.length;
   const off = onBackdrop(() => {
-    if (!grid.isConnected) { off(); return; }
-    if (backdrop.uploads.length !== count) { count = backdrop.uploads.length; draw(); } else sync();
+    if (!grid.isConnected) {
+      off();
+      return;
+    }
+    if (backdrop.uploads.length !== count) {
+      count = backdrop.uploads.length;
+      draw();
+    } else sync();
   });
   draw();
   return { nodes: [], below: grid, sync };

@@ -1,7 +1,8 @@
 // Hintergrundbild (js/backdrop.js, js/sections/settings-backdrop.js). Über addStrings() eingebunden.
 export default {
   "st.k.ui.backdrop": "Hintergrundbild",
-  "st.k.ui.backdrop.d": "Liegt hinter jeder Ansicht, innerhalb des Rahmens. Vorlagen liefert Recall mit; eigene Bilder bleiben auf diesem Rechner.",
+  "st.k.ui.backdrop.d":
+    "Liegt hinter jeder Ansicht, innerhalb des Rahmens. Vorlagen liefert Recall mit; eigene Bilder bleiben auf diesem Rechner.",
   "st.k.ui.backdropDim": "Abdunkeln",
   "st.k.ui.backdropDim.d": "Wie stark das Bild unter dem Inhalt abgedunkelt wird.",
   "st.k.ui.backdropBlur": "Weichzeichnen",

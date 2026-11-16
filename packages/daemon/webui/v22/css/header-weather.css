@@ -1,21 +1,95 @@
 /* Header weather hangs from the right tab; surface/details match the ticker preview. */
-button.wx { position: relative; align-self: flex-start; height: 42px; border: 0; background: transparent; color: var(--ink); cursor: pointer; }
-button.wx:hover { color: var(--accent); }
-button.wx:hover .wx__c { color: var(--accent); }
-button.wx[aria-expanded="true"] { background: var(--panel-2); }
-button.wx[aria-expanded="true"]::before { content: ""; position: absolute; inset: 1px 0 0; border: 1px solid var(--accent); border-bottom: 0; pointer-events: none; }
-.htab-r .htab-r__tail { order: 1; padding: 0 4px 0 0; }
-.htab-r__tail:empty { display: none; }
-button.wx { order: 2; }
-.htab-r.is-weather-open { z-index: 61; }
-.wx.is-empty .wx__t { font: 11px var(--mono); }
-.wx-pop { position: absolute; z-index: 60; left: var(--wx-x); top: var(--wx-y); width: var(--wx-width, 320px); border: 1px solid var(--accent); border-top: 0; background: var(--panel-2); filter: drop-shadow(0 10px 14px var(--shade-55)) drop-shadow(0 34px 44px var(--shade-60)); }
-.wx-pop::before, .wx-pop::after { content: ""; position: absolute; top: 0; border-top: 1px solid var(--accent); pointer-events: none; }
-.wx-pop::before { left: -1px; width: var(--wx-tab-left); }
-.wx-pop::after { right: -1px; width: var(--wx-tab-tail); }
-.wx-pop .tp__head, .wx-pop .tp__body { animation: none; }
-.wx-pop .tp__head, .wx-pop .tp__body { padding: 12px; }
-.wx-pop .vt__wx, .wx-pop .vt__wxs { gap: 12px; }
-.wx-pop .vt__wxl { max-height: var(--wx-results-max, 240px); overflow-y: auto; overscroll-behavior: contain; }
-.wx-pop .vt__btn, .wx-pop .vt__wxp { font-size: 10.5px; }
-.wx-pop .vt__in, .wx-pop .vt__wxo { font-size: 12.5px; }
+button.wx {
+  position: relative;
+  align-self: flex-start;
+  height: 42px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+button.wx:hover {
+  color: var(--accent);
+}
+button.wx:hover .wx__c {
+  color: var(--accent);
+}
+button.wx[aria-expanded="true"] {
+  background: var(--panel-2);
+}
+button.wx[aria-expanded="true"]::before {
+  content: "";
+  position: absolute;
+  inset: 1px 0 0;
+  border: 1px solid var(--accent);
+  border-bottom: 0;
+  pointer-events: none;
+}
+.htab-r .htab-r__tail {
+  order: 1;
+  padding: 0 4px 0 0;
+}
+.htab-r__tail:empty {
+  display: none;
+}
+button.wx {
+  order: 2;
+}
+.htab-r.is-weather-open {
+  z-index: 61;
+}
+.wx.is-empty .wx__t {
+  font: 11px var(--mono);
+}
+.wx-pop {
+  position: absolute;
+  z-index: 60;
+  left: var(--wx-x);
+  top: var(--wx-y);
+  width: var(--wx-width, 320px);
+  border: 1px solid var(--accent);
+  border-top: 0;
+  background: var(--panel-2);
+  filter: drop-shadow(0 10px 14px var(--shade-55)) drop-shadow(0 34px 44px var(--shade-60));
+}
+.wx-pop::before,
+.wx-pop::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  border-top: 1px solid var(--accent);
+  pointer-events: none;
+}
+.wx-pop::before {
+  left: -1px;
+  width: var(--wx-tab-left);
+}
+.wx-pop::after {
+  right: -1px;
+  width: var(--wx-tab-tail);
+}
+.wx-pop .tp__head,
+.wx-pop .tp__body {
+  animation: none;
+}
+.wx-pop .tp__head,
+.wx-pop .tp__body {
+  padding: 12px;
+}
+.wx-pop .vt__wx,
+.wx-pop .vt__wxs {
+  gap: 12px;
+}
+.wx-pop .vt__wxl {
+  max-height: var(--wx-results-max, 240px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.wx-pop .vt__btn,
+.wx-pop .vt__wxp {
+  font-size: 10.5px;
+}
+.wx-pop .vt__in,
+.wx-pop .vt__wxo {
+  font-size: 12.5px;
+}

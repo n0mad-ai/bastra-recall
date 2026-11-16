@@ -57,7 +57,8 @@ export default {
   "vv.lens.openFirst": "Klicken, um die erste zu öffnen",
   // Ansichtswahl im rechten Panel › Ansicht (js/views/pro-views.js, js/lens.js)
   "vv.views": "Vault-Ansichten",
-  "vv.viewsText": "Wie dein Vault dargestellt wird. Mindspace, Clouds, Semantic und Ring gehören zum freien Recall, die übrigen Ansichten zu Recall Pro.",
+  "vv.viewsText":
+    "Wie dein Vault dargestellt wird. Mindspace, Clouds, Semantic und Ring gehören zum freien Recall, die übrigen Ansichten zu Recall Pro.",
   "vv.proSoon": "PRO · bald verfügbar",
   "vv.proHint": "Diese Ansicht gehört zu Recall Pro – bald verfügbar.",
 };

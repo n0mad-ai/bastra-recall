@@ -13,7 +13,10 @@ export function computeLayout(s) {
   const isl = ft === "island" || ft === "mirror";
   const jOpen = !isl && pinAgent ? true : s.jOpen;
   const wide = s.vw >= 1280;
-  const G = 12, jL = 24 + 64 + G, panelT = 54 + G, stT = panelT;
+  const G = 12,
+    jL = 24 + 64 + G,
+    panelT = 54 + G,
+    stT = panelT;
   const lensW = wide ? 320 : 288;
   const narrowSet = pinAgent && s.vw < 1200;
   const compact = s.vw < 1400;
@@ -22,36 +25,83 @@ export function computeLayout(s) {
   const cL = jOpen && !isl ? jL + jW + 12 : jL;
   const cR = lensOpen && !compact ? 24 + lensW + 12 : 24;
   const podW = jOpen ? jW : 250;
-  const ftM = ft === "mirror", ftDw = ft === "drawer" && !pinAgent, ftIs = ft === "island";
+  const ftM = ft === "mirror",
+    ftDw = ft === "drawer" && !pinAgent,
+    ftIs = ft === "island";
   const fB = ftM ? 88 : pinAgent || ftIs ? 24 : ftDw ? 76 : 92;
-  const W = Math.max(240, s.vw - cL - cR), H = Math.max(200, s.vh - stT - fB);
+  const W = Math.max(240, s.vw - cL - cR),
+    H = Math.max(200, s.vh - stT - fB);
   const panelH = s.vh - panelT - 92;
-  const L = { pinAgent, ft, tl, jOpen, wide, jL, panelT, stT, lensW, compact, lensOpen, jW, cL, cR, podW, fB, W, H, panelH, showTimeline: !pinAgent, ftDw };
+  const L = {
+    pinAgent,
+    ft,
+    tl,
+    jOpen,
+    wide,
+    jL,
+    panelT,
+    stT,
+    lensW,
+    compact,
+    lensOpen,
+    jW,
+    cL,
+    cR,
+    podW,
+    fB,
+    W,
+    H,
+    panelH,
+    showTimeline: !pinAgent,
+    ftDw,
+  };
 
   // Agent window (prototype apL/apT/apW/ftPanelB) and footer left edge (ftCL).
   L.ag = { l: jL, t: panelT, w: jW, b: ft === "anchored" ? 24 : ftDw ? 76 : 92, below: false };
   L.ftCL = ft === "anchored" ? (jOpen ? cL : jL) : jL + podW + 12;
   L.pod = ft === "console" || (ft === "drawer" && !ftDw);
   if (ftM) {
-    const tight = s.vw < 1100, lensR = lensOpen && !narrowSet;
-    L.mirror = { tight, lw: tight ? jL - 12 + 64 : jL - 12 + jW, padL: tight ? jL - 12 + 14 : 92,
-      rw: lensR ? lensW + 12 : Math.min(360, Math.max(240, Math.round(s.vw * 0.22))) };
+    const tight = s.vw < 1100,
+      lensR = lensOpen && !narrowSet;
+    L.mirror = {
+      tight,
+      lw: tight ? jL - 12 + 64 : jL - 12 + jW,
+      padL: tight ? jL - 12 + 14 : 92,
+      rw: lensR ? lensW + 12 : Math.min(360, Math.max(240, Math.round(s.vw * 0.22))),
+    };
     L.ag.b = 12 + 64 - 1;
   }
   if (ftDw) L.drawer = { l: Math.max(cL, jL), r: cR };
   if (ftIs) {
-    const Lx = jL, R = s.vw - cR, w = Math.min(660, Math.max(560, R - Lx - 48), s.vw - 24);
+    const Lx = jL,
+      R = s.vw - cR,
+      w = Math.min(660, Math.max(560, R - Lx - 48), s.vw - 24);
     const pos = s.isPos || { x: Math.round(Lx + (R - Lx - w) / 2), y: s.vh - 24 - 64 - 24 };
-    const x = Math.min(Math.max(jL, pos.x), s.vw - w - 12), y = Math.min(Math.max(12, pos.y), s.vh - 64 - 12);
+    const x = Math.min(Math.max(jL, pos.x), s.vw - w - 12),
+      y = Math.min(Math.max(12, pos.y), s.vh - 64 - 12);
     const pH = Math.min(440, Math.max(300, s.vh - 150));
-    let pT = y - pH + 1, below = false; if (pT < 12) { pT = y + 64 - 1; below = true; }
+    let pT = y - pH + 1,
+      below = false;
+    if (pT < 12) {
+      pT = y + 64 - 1;
+      below = true;
+    }
     L.island = { x, y, w: Math.round(w), wide: w >= 600, below, mini: !!s.isMin };
     L.ag = { l: x, t: pT, w: Math.round(w), b: Math.max(12, s.vh - pT - pH), below };
     if (s.isMin) {
-      const mw = 360, mh = 52, mx = Math.min(Math.max(jL, pos.x), s.vw - mw - 12), my = Math.min(Math.max(12, pos.y), s.vh - mh - 12);
+      const mw = 360,
+        mh = 52,
+        mx = Math.min(Math.max(jL, pos.x), s.vw - mw - 12),
+        my = Math.min(Math.max(12, pos.y), s.vh - mh - 12);
       const aH = Math.min(420, Math.max(300, s.vh - 130));
-      let aT = my - aH + 1, mBelow = false; if (aT < 12) { aT = my + mh - 1; mBelow = true; }
-      L.island.mx = mx; L.island.my = my;
+      let aT = my - aH + 1,
+        mBelow = false;
+      if (aT < 12) {
+        aT = my + mh - 1;
+        mBelow = true;
+      }
+      L.island.mx = mx;
+      L.island.my = my;
       L.ag = { l: mx, t: aT, w: mw, b: Math.max(12, s.vh - aT - aH), below: mBelow };
     }
   }

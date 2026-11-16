@@ -2,7 +2,13 @@
 // they own; nothing here touches the DOM.
 const listeners = new Set();
 
-const saved = (() => { try { return JSON.parse(localStorage.getItem("recall-v22-ui") || "{}"); } catch { return {}; } })();
+const saved = (() => {
+  try {
+    return JSON.parse(localStorage.getItem("recall-v22-ui") || "{}");
+  } catch {
+    return {};
+  }
+})();
 
 export const state = {
   view: saved.view || "chronos",
@@ -32,19 +38,45 @@ export const state = {
   covered: false,
   isMin: false,
   isDrag: false,
-  isPos: (() => { try { return JSON.parse(localStorage.getItem("recall-v22-island") || "null"); } catch { return null; } })(),
+  isPos: (() => {
+    try {
+      return JSON.parse(localStorage.getItem("recall-v22-island") || "null");
+    } catch {
+      return null;
+    }
+  })(),
 };
 
 export function setState(patch) {
   const next = typeof patch === "function" ? patch(state) : patch;
   let changed = false;
-  for (const [k, v] of Object.entries(next)) if (state[k] !== v) { state[k] = v; changed = true; }
+  for (const [k, v] of Object.entries(next))
+    if (state[k] !== v) {
+      state[k] = v;
+      changed = true;
+    }
   if (!changed) return;
-  try { localStorage.setItem("recall-v22-ui", JSON.stringify({ view: state.view, jOpen: state.jOpen, lensOpen: state.lensOpen, footer: state.footer, timeline: state.timeline })); } catch { /* storage blocked */ }
+  try {
+    localStorage.setItem(
+      "recall-v22-ui",
+      JSON.stringify({
+        view: state.view,
+        jOpen: state.jOpen,
+        lensOpen: state.lensOpen,
+        footer: state.footer,
+        timeline: state.timeline,
+      })
+    );
+  } catch {
+    /* storage blocked */
+  }
   for (const fn of listeners) fn(state);
 }
 
-export function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
+export function subscribe(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
 
 // Test hook (no settings page yet): window.__recallState.setState({ footer: "island" }).
 window.__recallState = { state, setState };

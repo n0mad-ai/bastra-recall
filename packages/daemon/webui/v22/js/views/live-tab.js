@@ -28,7 +28,11 @@ onUpdates((list) => {
 
 // Test hook, same spirit as window.__recallState: feeds simulated events
 // through the real path, e.g. __recallLive.inject([{ id, kind: "read", title }]).
-window.__recallLive = { inject: (list) => { if (state.live && feed.ingest(list).length) setState({ liveN: feed.events.length }); } };
+window.__recallLive = {
+  inject: (list) => {
+    if (state.live && feed.ingest(list).length) setState({ liveN: feed.events.length });
+  },
+};
 
 /** Open an event's memory in the active view (glide / fly + info card); a
  *  memory the loaded graph does not know yet opens in the memory browser. */
@@ -43,13 +47,26 @@ const metaOf = (e) => [e.cluster, e.type, e.via ? t(`live.via.${e.via}`) : ""].f
 /** "2 new · 1 read" — kinds with no event this session are left out. */
 function countsText() {
   const c = feed.counts();
-  return ["add", "change", "read", "delete"].filter((k) => c[k]).map((k) => t(`live.n.${k}`, { n: c[k] })).join(" · ");
+  return ["add", "change", "read", "delete"]
+    .filter((k) => c[k])
+    .map((k) => t(`live.n.${k}`, { n: c[k] }))
+    .join(" · ");
 }
 
-const row = (e, fresh) => h("button.lvB__row", { cls: [`k-${e.kind}`, fresh ? "is-new" : ""].join(" "), type: "button", on: { click: (ev) => openEvent(e, ev) } },
-  h("span.lvB__dot"),
-  h("span.lvB__txt", null, h("span.lvB__kind", { text: t(`live.kind.${e.kind}`) + (e.count > 1 ? ` ×${e.count}` : "") }), h("span.lvB__title", { text: e.title }), h("span.lvB__meta", { text: metaOf(e) })),
-  h("span.lvB__ago", { "data-at": String(e.at), text: shortAge(e.at) }));
+const row = (e, fresh) =>
+  h(
+    "button.lvB__row",
+    { cls: [`k-${e.kind}`, fresh ? "is-new" : ""].join(" "), type: "button", on: { click: (ev) => openEvent(e, ev) } },
+    h("span.lvB__dot"),
+    h(
+      "span.lvB__txt",
+      null,
+      h("span.lvB__kind", { text: t(`live.kind.${e.kind}`) + (e.count > 1 ? ` ×${e.count}` : "") }),
+      h("span.lvB__title", { text: e.title }),
+      h("span.lvB__meta", { text: metaOf(e) })
+    ),
+    h("span.lvB__ago", { "data-at": String(e.at), text: shortAge(e.at) })
+  );
 
 export const liveTab = {
   id: "live",
@@ -61,19 +78,33 @@ export const liveTab = {
     const off = h("p.lv-note");
     const empty = h("p.lv-empty", { text: t("live.empty") });
     const list = h("div.lvB");
-    body.append(h("div.lens__sec.lvt", null, h("div.lens__h", null, h("span.lens__h-t", { text: t("live.title") }), sum), off, empty, list));
+    body.append(
+      h(
+        "div.lens__sec.lvt",
+        null,
+        h("div.lens__h", null, h("span.lens__h-t", { text: t("live.title") }), sum),
+        off,
+        empty,
+        list
+      )
+    );
 
     // One line: whole segments give way from the end ("3 new · 1 changed · …"),
     // the full text stays in the title.
     function fitSum() {
-      const full = sum.title, parts = full.split(" · ");
+      const full = sum.title,
+        parts = full.split(" · ");
       sum.textContent = full;
-      for (let n = parts.length - 1; n > 0 && sum.scrollWidth > sum.clientWidth; n--) sum.textContent = `${parts.slice(0, n).join(" · ")} · …`;
+      for (let n = parts.length - 1; n > 0 && sum.scrollWidth > sum.clientWidth; n--)
+        sum.textContent = `${parts.slice(0, n).join(" · ")} · …`;
     }
     function head() {
-      sum.title = countsText(); fitSum();
-      off.hidden = state.live; off.textContent = state.live ? "" : t("live.off");
-      empty.hidden = feed.events.length > 0; list.hidden = !feed.events.length;
+      sum.title = countsText();
+      fitSum();
+      off.hidden = state.live;
+      off.textContent = state.live ? "" : t("live.off");
+      empty.hidden = feed.events.length > 0;
+      list.hidden = !feed.events.length;
     }
     list.append(...feed.events.map((e) => row(e, false)));
     head();
@@ -85,10 +116,20 @@ export const liveTab = {
       head();
     });
     let wasLive = state.live;
-    const unSub = subscribe((st) => { if (st.live !== wasLive) { wasLive = st.live; head(); } });
+    const unSub = subscribe((st) => {
+      if (st.live !== wasLive) {
+        wasLive = st.live;
+        head();
+      }
+    });
     const ages = setInterval(() => {
-      if (!document.hidden) for (const el of list.querySelectorAll(".lvB__ago")) el.textContent = shortAge(Number(el.dataset.at));
+      if (!document.hidden)
+        for (const el of list.querySelectorAll(".lvB__ago")) el.textContent = shortAge(Number(el.dataset.at));
     }, 1000);
-    return () => { unAdd(); unSub(); clearInterval(ages); };
+    return () => {
+      unAdd();
+      unSub();
+      clearInterval(ages);
+    };
   },
 };

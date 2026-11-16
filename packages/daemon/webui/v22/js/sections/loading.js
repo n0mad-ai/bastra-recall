@@ -23,50 +23,76 @@ addStrings(en, de);
 export function setBusy(el, on) {
   if (!el || !el.classList) return;
   el.classList.toggle("ld-on", !!on);
-  if (on) el.setAttribute("aria-busy", "true"); else el.removeAttribute("aria-busy");
+  if (on) el.setAttribute("aria-busy", "true");
+  else el.removeAttribute("aria-busy");
 }
 
 /** Dims the content of a container and runs the scan band over it. */
 export function veil(el, on) {
   if (!el || !el.classList) return;
   el.classList.toggle("ld-veil", !!on);
-  if (on) el.setAttribute("aria-busy", "true"); else el.removeAttribute("aria-busy");
+  if (on) el.setAttribute("aria-busy", "true");
+  else el.removeAttribute("aria-busy");
 }
 
 /** HUD-style placeholder: corner marks, label with caret, flowing line, skeleton rows. */
 export function loadingBlock(text, { rows = 3, cls = "" } = {}) {
-  return h("div.ld-block", { cls, role: "status", "aria-live": "polite" }, h("span.ld-block__corners"),
+  return h(
+    "div.ld-block",
+    { cls, role: "status", "aria-live": "polite" },
+    h("span.ld-block__corners"),
     h("div.ld-block__t", null, h("span", { text }), h("span.ld-caret")),
     h("span.ld-flow"),
-    Array.from({ length: rows }, (_, i) => h("span.ld-sk", { cls: `ld-sk--${i % 3}` })));
+    Array.from({ length: rows }, (_, i) => h("span.ld-sk", { cls: `ld-sk--${i % 3}` }))
+  );
 }
 
 /** One-line indicator for small places (widgets, dialog status, panel notes). */
 export function loadingInline(text, cls = "") {
-  return h("span.ld-inline", { cls, role: "status" }, h("span.ld-inline__dot"), h("span", { text }), h("span.ld-caret"));
+  return h(
+    "span.ld-inline",
+    { cls, role: "status" },
+    h("span.ld-inline__dot"),
+    h("span", { text }),
+    h("span.ld-caret")
+  );
 }
 
 /** The control that started an action: the focused button/link/input inside the app. */
 export function touched() {
   const el = document.activeElement;
-  return el && el !== document.body && el.closest?.("#app") && el.matches?.("button, a, [role=button], input, select, li") ? el : null;
+  return el &&
+    el !== document.body &&
+    el.closest?.("#app") &&
+    el.matches?.("button, a, [role=button], input, select, li")
+    ? el
+    : null;
 }
 
 // Vault views before the first graph answer: one placeholder over the stage,
 // without touching the view modules. Runs after the shell's render (rAF),
 // because a view change clears the stage.
-let stageNode = null, stageRaf = 0;
+let stageNode = null,
+  stageRaf = 0;
 function checkStage() {
   if (stageRaf) return;
   stageRaf = requestAnimationFrame(() => {
     stageRaf = 0;
     const stage = document.querySelector("main.stage");
     const need = !!stage && VAULT_VIEWS.includes(state.view) && !data.graph;
-    if (!need) { stageNode?.remove(); stageNode = null; return; }
+    if (!need) {
+      stageNode?.remove();
+      stageNode = null;
+      return;
+    }
     const err = !!data.graphError;
     if (stageNode && stage.contains(stageNode) && stageNode.dataset.err === String(err)) return;
     stageNode?.remove();
-    stageNode = h("div.ld-stage", { "data-err": String(err) }, loadingBlock(t(err ? "ld.vaultErr" : "ld.vault"), { cls: err ? "is-err" : "" }));
+    stageNode = h(
+      "div.ld-stage",
+      { "data-err": String(err) },
+      loadingBlock(t(err ? "ld.vaultErr" : "ld.vault"), { cls: err ? "is-err" : "" })
+    );
     stage.append(stageNode);
   });
 }

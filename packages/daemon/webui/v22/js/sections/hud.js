@@ -29,20 +29,38 @@ import { h } from "../dom.js";
  */
 export function hud({ kicker, title, text, side, compact = false, cls = "" }) {
   if (compact) {
-    return h("div.hud.hud--compact", { cls }, h("span.hud__corners"),
-      h("div.hud__main", null, h("span.hud__kicker", { text: kicker }), title ? h("span.hud__title", { text: title }) : null),
-      side?.length ? h("div.hud__acts", null, side) : null);
+    return h(
+      "div.hud.hud--compact",
+      { cls },
+      h("span.hud__corners"),
+      h(
+        "div.hud__main",
+        null,
+        h("span.hud__kicker", { text: kicker }),
+        title ? h("span.hud__title", { text: title }) : null
+      ),
+      side?.length ? h("div.hud__acts", null, side) : null
+    );
   }
-  return h("div.hud", { cls }, h("span.hud__corners"),
-    h("div.hud__main", null,
+  return h(
+    "div.hud",
+    { cls },
+    h("span.hud__corners"),
+    h(
+      "div.hud__main",
+      null,
       h("span.hud__kicker", { text: kicker }),
       title ? h("h1.hud__title", { text: title }) : null,
-      text ? h("p.hud__text", null, text) : null),
-    side?.length ? h("div.hud__side", null, side) : null);
+      text ? h("p.hud__text", null, text) : null
+    ),
+    side?.length ? h("div.hud__side", null, side) : null
+  );
 }
 
 /** Row of chips in the HUD side column. */
-export function hudRow(...nodes) { return h("div.hud__row", null, nodes); }
+export function hudRow(...nodes) {
+  return h("div.hud__row", null, nodes);
+}
 
 /**
  * Small status chip. dot: CSS colour of the leading dot; on: accent state
@@ -59,7 +77,9 @@ export function hudButton(text, onClick) {
 }
 
 /** Mono note under the chips (Telemetry window note). */
-export function hudNote(text) { return h("span.hud-note", { text }); }
+export function hudNote(text) {
+  return h("span.hud-note", { text });
+}
 
 /**
  * Figure tiles under the head box.
@@ -68,16 +88,31 @@ export function hudNote(text) { return h("span.hud-note", { text }); }
  * @param {{ large?: boolean, cls?: string }} [o] large: 30px values (Telemetry) instead of 24px.
  */
 export function hudTiles(tiles, { large = false, cls = "" } = {}) {
-  return h("div.hud-tiles", { cls: [large ? "hud-tiles--lg" : "", cls].join(" ") }, tiles.map((o) =>
-    h("div.hud-tile", { vars: { "--c": o.color || "var(--ink)", "--tick": o.tick || "var(--line-45)" } },
-      h("span.hud-tile__tick"),
-      h("span.hud-tile__k", { text: o.k }),
-      h("span.hud-tile__v", { text: String(o.v) }),
-      o.sub ? h("span.hud-tile__sub", { text: o.sub }) : null)));
+  return h(
+    "div.hud-tiles",
+    { cls: [large ? "hud-tiles--lg" : "", cls].join(" ") },
+    tiles.map((o) =>
+      h(
+        "div.hud-tile",
+        { vars: { "--c": o.color || "var(--ink)", "--tick": o.tick || "var(--line-45)" } },
+        h("span.hud-tile__tick"),
+        h("span.hud-tile__k", { text: o.k }),
+        h("span.hud-tile__v", { text: String(o.v) }),
+        o.sub ? h("span.hud-tile__sub", { text: o.sub }) : null
+      )
+    )
+  );
 }
 
 /** The same figures as pills for the compact head (title attribute = sub line). */
 export function hudPills(tiles) {
-  return tiles.map((o) => h("span.hud-pill", { title: o.sub || null, vars: { "--c": o.color || "var(--ink)", "--tick": o.tick || "var(--line-45)" } },
-    h("span.hud-pill__tick"), o.k, h("span.hud-pill__v", { text: String(o.v) })));
+  return tiles.map((o) =>
+    h(
+      "span.hud-pill",
+      { title: o.sub || null, vars: { "--c": o.color || "var(--ink)", "--tick": o.tick || "var(--line-45)" } },
+      h("span.hud-pill__tick"),
+      o.k,
+      h("span.hud-pill__v", { text: String(o.v) })
+    )
+  );
 }

@@ -27,7 +27,8 @@ const styles = new Map();
 const listeners = new Set();
 
 export function registerCalendarStyle(style) {
-  if (!style || typeof style.id !== "string" || typeof style.render !== "function") throw new TypeError("registerCalendarStyle({ id, render })");
+  if (!style || typeof style.id !== "string" || typeof style.render !== "function")
+    throw new TypeError("registerCalendarStyle({ id, render })");
   if (style.strings) addStrings(style.strings.en || {}, style.strings.de || {});
   styles.set(style.id, { pro: true, ...style });
   for (const fn of listeners) fn();
@@ -37,7 +38,10 @@ extendRecallUi({ registerCalendarStyle });
 
 export const calendarStyle = (id) => styles.get(id);
 export const calendarStyles = () => [...styles.values()];
-export function onCalendarStyles(fn) { listeners.add(fn); return () => listeners.delete(fn); }
+export function onCalendarStyles(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
 
 /** Styles of Recall Pro shown as a hint in the View tab while not registered (prototype TK_STYLES). */
 export const PRO_STYLES = [

@@ -11,6 +11,7 @@ export default {
   "live.kind.delete": "GELÖSCHT",
   "live.via.recall": "recall",
   "live.via.load_memory": "load_memory",
-  "live.empty": "In dieser Sitzung ist noch nichts passiert. Neue, geänderte und gelesene Memories erscheinen hier, sobald es passiert.",
+  "live.empty":
+    "In dieser Sitzung ist noch nichts passiert. Neue, geänderte und gelesene Memories erscheinen hier, sobald es passiert.",
   "live.off": "Live ist aus. Oben rechts einschalten, um neue Ereignisse zu verfolgen.",
 };

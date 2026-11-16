@@ -8,6 +8,7 @@ const by = new Set();
 
 /** key: who covers ("mb", "dlg"); on: whether it covers the stage now. */
 export function cover(key, on) {
-  if (on) by.add(key); else by.delete(key);
+  if (on) by.add(key);
+  else by.delete(key);
   setState({ covered: by.size > 0 });
 }

@@ -100,7 +100,8 @@ export default {
 
   "db.lib.t": "Widgets",
   "db.lib.count": "{n} von {m} auf dem Board",
-  "db.lib.text": "Füge ein Widget hinzu und forme es auf dem Board. Die Breite rastet in Zwölfteln ein, die Höhe in Zeilen.",
+  "db.lib.text":
+    "Füge ein Widget hinzu und forme es auf dem Board. Die Breite rastet in Zwölfteln ein, die Höhe in Zeilen.",
   "db.lib.on": "AUF DEM BOARD",
   "db.lib.add": "+ HINZUFÜGEN",
   "db.lay.t": "Layout",

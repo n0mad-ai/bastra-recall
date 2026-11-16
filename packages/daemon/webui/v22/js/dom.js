@@ -50,4 +50,7 @@ export function icon(d, cls = "") {
   return s(`svg${cls ? "." + cls : ""}`, { viewBox: "0 0 24 24", "aria-hidden": "true" }, s("path.ico", { d }));
 }
 
-export function clear(el) { el.replaceChildren(); return el; }
+export function clear(el) {
+  el.replaceChildren();
+  return el;
+}

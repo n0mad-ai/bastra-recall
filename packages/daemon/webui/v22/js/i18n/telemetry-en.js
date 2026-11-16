@@ -5,8 +5,10 @@ export default {
   "tv.kicker": "TELEMETRY · LOCAL EVENT LOGS",
   "tv.title": "What recall does with your context",
   "tv.titleLong": "Telemetry — what recall does with your context",
-  "tv.text": "Your own event logs, read locally — nothing is uploaded or shared. Every number is the {code} series, rendered; where a series has a known gap it says so instead of drawing a line through it.",
-  "tv.textShort": "Every number is the {code} series, rendered; where a series has a known gap it says so instead of drawing a line through it.",
+  "tv.text":
+    "Your own event logs, read locally — nothing is uploaded or shared. Every number is the {code} series, rendered; where a series has a known gap it says so instead of drawing a line through it.",
+  "tv.textShort":
+    "Every number is the {code} series, rendered; where a series has a known gap it says so instead of drawing a line through it.",
   "tv.window": "WINDOW · {d}",
   "tv.last24": "LAST 24 HOURS",
   "tv.lastDays": "LAST {n} DAYS",
@@ -46,13 +48,15 @@ export default {
 
   // section titles, questions, key figures
   "tv.s.quality": "Recall quality",
-  "tv.q.quality": "Which hint candidates led to an explicit load_memory call, and did those loaded hints change the next tool input?",
+  "tv.q.quality":
+    "Which hint candidates led to an explicit load_memory call, and did those loaded hints change the next tool input?",
   "tv.s.context": "Context tax",
   "tv.q.context": "How many tokens does recall write into the transcript — hook injections and tool payloads together?",
   "tv.s.suppression": "Cross-session hint suppression",
   "tv.q.suppression": "Which repeatedly ignored fact hints were {v} from automatic hook responses?",
   "tv.s.budget": "Context budget — shadow",
-  "tv.q.budget": "What would one cumulative budget per session, across all six lanes, have trimmed? Nothing is trimmed yet — the decision is only logged.",
+  "tv.q.budget":
+    "What would one cumulative budget per session, across all six lanes, have trimmed? Nothing is trimmed yet — the decision is only logged.",
   "tv.s.latency": "Latency",
   "tv.q.latency": "How long do the hook lanes and the daemon's recall take — median and p95, over time?",
   "tv.s.evidence": "Evidence gate",
@@ -218,7 +222,8 @@ export default {
   "tv.hs.payloadAvoided": "hook payload avoided",
   "tv.hs.matched": "Most often matched",
   "tv.hs.suppressed": "Most often suppressed",
-  "tv.hs.tokNoteShadow": "Token figures estimate the serialized lean hit at chars/4 and exclude wrapper markup; shadow calls removed nothing, so that part is not a saving.",
+  "tv.hs.tokNoteShadow":
+    "Token figures estimate the serialized lean hit at chars/4 and exclude wrapper markup; shadow calls removed nothing, so that part is not a saving.",
   "tv.hs.tokNoteLive": "Token savings estimate the serialized lean hit at chars/4 and exclude wrapper markup.",
   "tv.hs.mode": "mode: {m}",
   "tv.hs.hints": "hints {v}",
@@ -241,7 +246,8 @@ export default {
   "tv.f.followedSub": "{a} of {b} blocks",
 
   // verdicts
-  "tv.v.budget": "shadow budget {b} tokens per session · {a} of {s} session(s) would have been touched · {t} of {n} tokens ({p}) would not have been injected",
+  "tv.v.budget":
+    "shadow budget {b} tokens per session · {a} of {s} session(s) would have been touched · {t} of {n} tokens ({p}) would not have been injected",
   "tv.v.reached": "shadow acceptance REACHED via the {r} route — divergence review below is the remaining condition",
   "tv.v.notYet": "shadow acceptance not yet — {m}; or {a}/{b} days",
 
@@ -265,7 +271,8 @@ export default {
   "tv.e.sessions": "no attributable sessions",
   "tv.e.none": "none in this window",
   "tv.e.suppression": "no memory version reached the suppression threshold in this window",
-  "tv.e.budget": "no budget_shadow events in this window — the shadow ledger records from the first lane call after the daemon that carries it",
+  "tv.e.budget":
+    "no budget_shadow events in this window — the shadow ledger records from the first lane call after the daemon that carries it",
   "tv.e.latency": "no latency fields in this window",
   "tv.e.evidence": "no evidence_decision events in this window",
   "tv.e.comparable": "no comparable decisions",
@@ -281,44 +288,68 @@ export default {
   "tv.e.pending": "no start carries pending_lanes yet (#513)",
 
   // notes
-  "tv.n.bands": "Candidates are the engine's top-k before the hook's score floor, scope filter and per-session dedup, not what was actually injected; the injected count is not in this table. Loaded / candidates is only a lower bound on follow-through: a client can apply an injected hint without calling load_memory, and that path is not observable. Use-rate describes the explicit-load population only (acted on / loaded).",
+  "tv.n.bands":
+    "Candidates are the engine's top-k before the hook's score floor, scope filter and per-session dedup, not what was actually injected; the injected count is not in this table. Loaded / candidates is only a lower bound on follow-through: a client can apply an injected hint without calling load_memory, and that path is not observable. Use-rate describes the explicit-load population only (acted on / loaded).",
   "tv.n.directLoads": "{n} direct load(s) without a preceding hint are excluded from every band quota (#77).",
   "tv.n.noCandidate": "{n} call(s) had no candidate at all (daemon unreachable or empty query).",
-  "tv.n.estimator": "Estimator {e} everywhere, so hook and payload sizes sit in the same column. Total {n} tokens = lanes {a} + payloads {b}.",
-  "tv.n.unknownSize": "{n} emission(s) carry no size field (rows before #457/#72) and count as unknown, never as zero — the total is a lower bound.",
-  "tv.n.attributed": "Tool payloads are attributed to the caller session where the forwarder sent one; hook lanes to their own session id.",
-  "tv.n.unknownTyped": "{n} of these come from events before hinted_types existed (#354) — type unverified, kept in this list but not evidence.",
-  "tv.n.directives": "A rule that works produces no acted_on signal: it works by nothing happening. This list is not evidence of waste.",
+  "tv.n.estimator":
+    "Estimator {e} everywhere, so hook and payload sizes sit in the same column. Total {n} tokens = lanes {a} + payloads {b}.",
+  "tv.n.unknownSize":
+    "{n} emission(s) carry no size field (rows before #457/#72) and count as unknown, never as zero — the total is a lower bound.",
+  "tv.n.attributed":
+    "Tool payloads are attributed to the caller session where the forwarder sent one; hook lanes to their own session id.",
+  "tv.n.unknownTyped":
+    "{n} of these come from events before hinted_types existed (#354) — type unverified, kept in this list but not evidence.",
+  "tv.n.directives":
+    "A rule that works produces no acted_on signal: it works by nothing happening. This list is not evidence of waste.",
   "tv.n.typeCoverage": "Type coverage: {a} hinting emission(s) carry hinted_types, {b} predate the field.",
-  "tv.n.suppressionScope": "Only automatic hook injection is filtered. Manual recall and load_memory remain available; directive memories and explicit reflex wiring are exempt.",
-  "tv.n.versionLocal": "Suppression is version-local: changing the memory text or recall_when gives it a clean trial. {x}",
+  "tv.n.suppressionScope":
+    "Only automatic hook injection is filtered. Manual recall and load_memory remain available; directive memories and explicit reflex wiring are exempt.",
+  "tv.n.versionLocal":
+    "Suppression is version-local: changing the memory text or recall_when gives it a clean trial. {x}",
   "tv.n.firstOver": "In affected sessions the budget was first exceeded at emission {n} (median).",
-  "tv.n.budgetChanged": "The budget changed inside this window ({b} tokens) — rows before the change were decided against the older value.",
-  "tv.n.granularity": "Granularity is one decision per emission, like the what-if in stats.ts: a block that no longer fits falls whole. The live governor will decide per entry, so this is an upper bound on what a budget touches.",
-  "tv.n.ledger": "The ledger lives in the daemon's memory and counts from the first lane call; a daemon restart starts every running session at zero. `clear` resets a session, `compact` and `resume` do not.",
-  "tv.n.latency": "hook_call / *_hook_call measure the whole hook process (latency_ms_total); hook_recall and recall measure the daemon's search alone.",
+  "tv.n.budgetChanged":
+    "The budget changed inside this window ({b} tokens) — rows before the change were decided against the older value.",
+  "tv.n.granularity":
+    "Granularity is one decision per emission, like the what-if in stats.ts: a block that no longer fits falls whole. The live governor will decide per entry, so this is an upper bound on what a budget touches.",
+  "tv.n.ledger":
+    "The ledger lives in the daemon's memory and counts from the first lane call; a daemon restart starts every running session at zero. `clear` resets a session, `compact` and `resume` do not.",
+  "tv.n.latency":
+    "hook_call / *_hook_call measure the whole hook process (latency_ms_total); hook_recall and recall measure the daemon's search alone.",
   "tv.n.calls": "{a} shadow call(s) with {b} decisions over {d} day(s); {c} live call(s) with {e} decisions",
   "tv.n.active": " — the gate is ACTIVE",
-  "tv.n.excluded": "Excluded: {a} degraded run(s) — a budget abort is not an abstention (C-047); {b} failed decision(s) — a controller defect enters neither statistic (C-052).",
+  "tv.n.excluded":
+    "Excluded: {a} degraded run(s) — a budget abort is not an abstention (C-047); {b} failed decision(s) — a controller defect enters neither statistic (C-052).",
   "tv.n.abstain": "abstain reasons: {l}",
   "tv.n.byHop": "required by hop origin: {l}",
   "tv.n.viaHop": "{n} required hit(s) came via a graph hop — C-046 forbids that; check the predicate.",
-  "tv.n.bm25": "On the BM25 fallback the score is unbounded and the 30/100 cuts describe nothing (§9.4), so unfused runs are not compared.",
-  "tv.n.unfused": "{a} decision(s) on unfused runs skipped; {b} with no hook_recall in this window (score space unknown).",
-  "tv.n.claim": "The claim gate named {a} already-owned memories across {b} hold(s) — each one is a successor, a contradiction or a deliberate pair that nobody answered yet.",
-  "tv.n.heldPrivate": "A held save carries no title, body or trigger text into the log: what a save wanted to say is yours, and a rejected one says it just as much as an accepted one.",
+  "tv.n.bm25":
+    "On the BM25 fallback the score is unbounded and the 30/100 cuts describe nothing (§9.4), so unfused runs are not compared.",
+  "tv.n.unfused":
+    "{a} decision(s) on unfused runs skipped; {b} with no hook_recall in this window (score space unknown).",
+  "tv.n.claim":
+    "The claim gate named {a} already-owned memories across {b} hold(s) — each one is a successor, a contradiction or a deliberate pair that nobody answered yet.",
+  "tv.n.heldPrivate":
+    "A held save carries no title, body or trigger text into the log: what a save wanted to say is yours, and a rejected one says it just as much as an accepted one.",
   "tv.n.joined": "Joined on caller_session: {a} of {b} save(s) carry one",
   "tv.n.joinedLower": " — the rest cannot be joined, so the saved count is a lower bound.",
   "tv.n.joinedEnd": ".",
-  "tv.n.unavailable": "`unavailable` is not an error and says nothing about whether the symbol exists — off, not indexed, still loading and refused are four different worlds and only `degraded` is a defect.",
-  "tv.n.refresh": "Build duration covers successful and failed builds; lock checks and skipped runs are excluded. `interrupted` is a start with no outcome row — the daemon restarted mid-build.",
+  "tv.n.unavailable":
+    "`unavailable` is not an error and says nothing about whether the symbol exists — off, not indexed, still loading and refused are four different worlds and only `degraded` is a defect.",
+  "tv.n.refresh":
+    "Build duration covers successful and failed builds; lock checks and skipped runs are excluded. `interrupted` is a start with no outcome row — the daemon restarted mid-build.",
   "tv.n.triggered": "triggered by: {l}",
   "tv.n.failures": "failures: {l}",
-  "tv.n.broken": "A workspace repository resolved 0 of its external nodes — cross-package impact is not being found. Rebuild with `bastra code index`; if it stays 0, that is #582's id-format regression.",
-  "tv.n.wholeFile": "`whole_file` as a basis is not a failure — it is the honest answer when the change touches something outside every symbol (an import, top-level code). A run of them does mean the narrowing is not earning its keep.",
-  "tv.n.costReach": "Cost and reach, not value: `followed` means a later write in the same session touched a file the block named — evidence the list mattered, not proof it caused the edit. What code awareness SAVED needs the control arm in packages/eval/code-roi.",
-  "tv.n.predate": "{a} of {b} start(s) predate hint_tokens_by_part (#462) — they carry a total only and are not in the shares above.",
-  "tv.n.cadence": "The same block is assembled on startup, clear, compact and resume — a part that repeats identically across sources is a cadence question, not a content one.",
+  "tv.n.broken":
+    "A workspace repository resolved 0 of its external nodes — cross-package impact is not being found. Rebuild with `bastra code index`; if it stays 0, that is #582's id-format regression.",
+  "tv.n.wholeFile":
+    "`whole_file` as a basis is not a failure — it is the honest answer when the change touches something outside every symbol (an import, top-level code). A run of them does mean the narrowing is not earning its keep.",
+  "tv.n.costReach":
+    "Cost and reach, not value: `followed` means a later write in the same session touched a file the block named — evidence the list mattered, not proof it caused the edit. What code awareness SAVED needs the control arm in packages/eval/code-roi.",
+  "tv.n.predate":
+    "{a} of {b} start(s) predate hint_tokens_by_part (#462) — they carry a total only and are not in the shares above.",
+  "tv.n.cadence":
+    "The same block is assembled on startup, clear, compact and resume — a part that repeats identically across sources is a cadence question, not a content one.",
   "tv.n.pendingPredate": "{n} start(s) predate pending_lanes (#513) and are not counted here.",
 
   // right panel

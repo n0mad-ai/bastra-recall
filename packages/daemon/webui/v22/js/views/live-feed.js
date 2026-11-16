@@ -21,8 +21,14 @@ export function createFeed({ max = 300 } = {}) {
       for (const u of list) {
         if (!u || typeof u !== "object" || typeof u.id !== "string" || !u.id || !KINDS.includes(u.kind)) continue;
         fresh.unshift({
-          key: `e${++n}`, id: u.id, kind: u.kind, title: str(u.title) || u.id, type: str(u.type), cluster: str(u.cluster),
-          summary: str(u.summary), count: Number.isInteger(u.count) && u.count > 1 ? u.count : 1,
+          key: `e${++n}`,
+          id: u.id,
+          kind: u.kind,
+          title: str(u.title) || u.id,
+          type: str(u.type),
+          cluster: str(u.cluster),
+          summary: str(u.summary),
+          count: Number.isInteger(u.count) && u.count > 1 ? u.count : 1,
           // A read carries the recall band (#221); load_memory reads carry none.
           via: u.kind === "read" ? (u.band === "required" || u.band === "optional" ? "recall" : "load_memory") : "",
           at: now,
@@ -39,12 +45,21 @@ export function createFeed({ max = 300 } = {}) {
       for (const e of events) c[e.kind]++;
       return c;
     },
-    onAdd(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+    onAdd(fn) {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
   };
 }
 
 /** Short age for a row: "12s" under a minute, then "3m", "2h", "1d". */
 export function shortAge(ms, now = Date.now()) {
   const s = Math.max(0, Math.floor((now - ms) / 1000));
-  return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 86400)}d`;
+  return s < 60
+    ? `${s}s`
+    : s < 3600
+      ? `${Math.floor(s / 60)}m`
+      : s < 86400
+        ? `${Math.floor(s / 3600)}h`
+        : `${Math.floor(s / 86400)}d`;
 }

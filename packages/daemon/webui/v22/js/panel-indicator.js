@@ -20,13 +20,21 @@ export function panelIndicator(layer, panel, clip, visible) {
   function measure() {
     queued = false;
     const show = visible();
-    const ar = panel.getBoundingClientRect(), cr = clip.getBoundingClientRect();
+    const ar = panel.getBoundingClientRect(),
+      cr = clip.getBoundingClientRect();
     const spots = [];
-    if (show && ar.width >= 10) for (const el of panel.querySelectorAll('[data-lsel="1"]')) {
-      const r = el.getBoundingClientRect(), top = Math.max(r.top, cr.top), bot = Math.min(r.bottom, cr.bottom);
-      if (bot - top < 4) continue;
-      spots.push({ top: Math.round(top), h: Math.round(bot - top), c: getComputedStyle(el).getPropertyValue("--lsel-c").trim() });
-    }
+    if (show && ar.width >= 10)
+      for (const el of panel.querySelectorAll('[data-lsel="1"]')) {
+        const r = el.getBoundingClientRect(),
+          top = Math.max(r.top, cr.top),
+          bot = Math.min(r.bottom, cr.bottom);
+        if (bot - top < 4) continue;
+        spots.push({
+          top: Math.round(top),
+          h: Math.round(bot - top),
+          c: getComputedStyle(el).getPropertyValue("--lsel-c").trim(),
+        });
+      }
     while (lines.length > spots.length) lines.pop().remove();
     spots.forEach((p, i) => {
       let el = lines[i];
@@ -42,8 +50,18 @@ export function panelIndicator(layer, panel, clip, visible) {
     });
   }
 
-  const schedule = () => { if (!queued) { queued = true; requestAnimationFrame(measure); } };
-  new MutationObserver(schedule).observe(panel, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-lsel", "class"] });
+  const schedule = () => {
+    if (!queued) {
+      queued = true;
+      requestAnimationFrame(measure);
+    }
+  };
+  new MutationObserver(schedule).observe(panel, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ["data-lsel", "class"],
+  });
   clip.addEventListener("scroll", schedule, { passive: true });
   window.addEventListener("resize", schedule, { passive: true });
   return schedule;

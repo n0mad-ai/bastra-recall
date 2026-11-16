@@ -5,7 +5,8 @@ export default {
 
   "ar.kicker": "VAULT · BEREICHE",
   "ar.title": "Vault-Bereiche",
-  "ar.help": "Die obersten Bereiche des Vaults — Projekte und Ordner wie people. Umbenennen und Löschen verschieben ganze Ordner; Memory-IDs (und ihre Verknüpfungen) bleiben erhalten. Löschen verschiebt den Bereich in den Vault-Papierkorb (.bastra/trash/areas/), nichts wird vernichtet. System-Bereiche sind gesperrt.",
+  "ar.help":
+    "Die obersten Bereiche des Vaults — Projekte und Ordner wie people. Umbenennen und Löschen verschieben ganze Ordner; Memory-IDs (und ihre Verknüpfungen) bleiben erhalten. Löschen verschiebt den Bereich in den Vault-Papierkorb (.bastra/trash/areas/), nichts wird vernichtet. System-Bereiche sind gesperrt.",
   "ar.project": "Projekt",
   "ar.folder": "Ordner",
   "ar.system": "SYSTEM",
@@ -23,9 +24,12 @@ export default {
 
   "im.kicker": "VAULT · IMPORT",
   "im.title": "Memories importieren",
-  "im.help": "Füge eine Memory-Liste aus einem anderen KI-Tool ein — ein Fakt pro Zeile. Die Kandidaten landen zur Prüfung in import-review.md; deine nächste KI-Sitzung arbeitet die angenommenen mit dir durch. Nichts wird ohne dein Okay gespeichert.",
-  "im.hint.chatgpt": "ChatGPT: Einstellungen → Personalisierung → Erinnerungen verwalten — Liste kopieren und hier einfügen. Ganzer Chatverlauf (conversations.json)? Dann im Terminal bastra import <datei> ausführen.",
-  "im.hint.claude": "Claude: Einstellungen → Memory — Memory-Text kopieren und hier einfügen. Ganzer Chatverlauf (conversations.json)? Dann im Terminal bastra import <datei> ausführen.",
+  "im.help":
+    "Füge eine Memory-Liste aus einem anderen KI-Tool ein — ein Fakt pro Zeile. Die Kandidaten landen zur Prüfung in import-review.md; deine nächste KI-Sitzung arbeitet die angenommenen mit dir durch. Nichts wird ohne dein Okay gespeichert.",
+  "im.hint.chatgpt":
+    "ChatGPT: Einstellungen → Personalisierung → Erinnerungen verwalten — Liste kopieren und hier einfügen. Ganzer Chatverlauf (conversations.json)? Dann im Terminal bastra import <datei> ausführen.",
+  "im.hint.claude":
+    "Claude: Einstellungen → Memory — Memory-Text kopieren und hier einfügen. Ganzer Chatverlauf (conversations.json)? Dann im Terminal bastra import <datei> ausführen.",
   "im.hint.gemini": "Gemini: Einstellungen → Gespeicherte Infos — Einträge kopieren und hier einfügen.",
   "im.hint.text": "Jede einfache Liste geht — ein Fakt pro Zeile, Aufzählungszeichen und Nummern sind in Ordnung.",
   "im.src.text": "Text",
@@ -38,10 +42,13 @@ export default {
   "im.open": " · {n} offen",
   "im.loaded": "{name} geladen",
   "im.own": "{name} schreibt bastra selbst — keine Importquelle",
-  "im.next": "✓ In import-review.md abgelegt — noch ist nichts eine Memory. Als Nächstes: Öffne eine KI-Sitzung und sag „arbeite meine Import-Prüfung durch“; dort nimmst du jeden Kandidaten an oder lehnst ihn ab. Du kannst diesen Dialog gefahrlos schließen.",
-  "im.waiting": "{n} abgelegte(r) Kandidat(en) warten auf Prüfung — öffne eine KI-Sitzung und sag „arbeite meine Import-Prüfung durch“.",
+  "im.next":
+    "✓ In import-review.md abgelegt — noch ist nichts eine Memory. Als Nächstes: Öffne eine KI-Sitzung und sag „arbeite meine Import-Prüfung durch“; dort nimmst du jeden Kandidaten an oder lehnst ihn ab. Du kannst diesen Dialog gefahrlos schließen.",
+  "im.waiting":
+    "{n} abgelegte(r) Kandidat(en) warten auf Prüfung — öffne eine KI-Sitzung und sag „arbeite meine Import-Prüfung durch“.",
   "im.folder": "Etwas anderes: einen ganzen Ordner importieren — direkt, getrennt, ohne Prüfung",
-  "im.folderHelp": "Zeig auf einen Ordner mit Memory-Dateien — z. B. ein Claude-Code-Memory-Verzeichnis (~/.claude/projects/<repo>/memory). Er wird umgewandelt und als eigener, getrennter Satz unter memories/imported/ importiert; nichts Bestehendes wird angefasst, eine Prüfung pro Eintrag ist nicht nötig. Den ganzen Satz kannst du jederzeit löschen oder neu importieren.",
+  "im.folderHelp":
+    "Zeig auf einen Ordner mit Memory-Dateien — z. B. ein Claude-Code-Memory-Verzeichnis (~/.claude/projects/<repo>/memory). Er wird umgewandelt und als eigener, getrennter Satz unter memories/imported/ importiert; nichts Bestehendes wird angefasst, eine Prüfung pro Eintrag ist nicht nötig. Den ganzen Satz kannst du jederzeit löschen oder neu importieren.",
   "im.dir": "/pfad/zu/einem/memory-ordner",
   "im.label": "Bezeichnung (optional)",
   "im.browse": "DURCHSUCHEN…",
@@ -55,7 +62,8 @@ export default {
 
   "ob.kicker": "VAULT · ONBOARDING",
   "ob.title": "Mach diesen Vault zu deinem",
-  "ob.help": "Fünf Minuten, eine Handvoll Fragen — jede Antwort wird eine Memory, an die sich deine KI vom ersten Tag an erinnert. Überspring, was du willst; später verfeinerst du alles, indem du es deiner KI einfach sagst.",
+  "ob.help":
+    "Fünf Minuten, eine Handvoll Fragen — jede Antwort wird eine Memory, an die sich deine KI vom ersten Tag an erinnert. Überspring, was du willst; später verfeinerst du alles, indem du es deiner KI einfach sagst.",
   "ob.persona": "Was soll dein Gedächtnis hauptsächlich enthalten?",
   "ob.step": "{i} / {n}",
   "ob.optional": " · optional — leer überspringt",
@@ -66,5 +74,6 @@ export default {
   "ob.save": "PROFIL SPEICHERN",
   "ob.saving": "SPEICHERT…",
   "ob.done": "FERTIG",
-  "ob.saved": "{n} Profil-Memories gespeichert — deine KI kennt dich ab der nächsten Sitzung. Verfeinern kannst du jederzeit, indem du es ihr einfach sagst. Memories in anderen KI-Tools? Import holt sie herein.",
+  "ob.saved":
+    "{n} Profil-Memories gespeichert — deine KI kennt dich ab der nächsten Sitzung. Verfeinern kannst du jederzeit, indem du es ihr einfach sagst. Memories in anderen KI-Tools? Import holt sie herein.",
 };

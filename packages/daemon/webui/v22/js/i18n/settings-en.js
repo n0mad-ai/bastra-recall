@@ -22,7 +22,8 @@ export default {
 
   "st.kicker": "SETTINGS · {file}",
   "st.title": "How recall runs on this machine",
-  "st.text": "Every option bastra knows today, from the CLI and its config file. Environment variables always win over the file — where one is set, the setting shows it and stays read-only here. Nothing is written until you apply.",
+  "st.text":
+    "Every option bastra knows today, from the CLI and its config file. Environment variables always win over the file — where one is set, the setting shows it and stays read-only here. Nothing is written until you apply.",
   "st.daemon": "daemon v{v}",
   "st.allSaved": "all saved",
   "st.unsaved": "{n} unsaved",
@@ -112,7 +113,8 @@ export default {
 
   // groups (prototype settings-spec-v20.js SECTIONS)
   "st.g.appearance": "Appearance",
-  "st.g.appearance.q": "How the interface frames your vault — the footer that holds Recall, the timeline and what sits behind it. Images stay inside the frame and are darkened so content keeps its contrast.",
+  "st.g.appearance.q":
+    "How the interface frames your vault — the footer that holds Recall, the timeline and what sits behind it. Images stay inside the frame and are darkened so content keeps its contrast.",
   "st.g.general": "General",
   "st.g.general.q": "How recall updates itself, which language it writes in, and how it treats this machine.",
   "st.g.models": "Models & embeddings",
@@ -138,132 +140,187 @@ export default {
 
   // rows
   "st.k.ui.footer": "Footer",
-  "st.k.ui.footer.d": "Where the Recall input and the timeline sit. Console: both as floating panels. Mirror: Recall in a bar at the bottom. Anchored: Recall in the navigation rail. Drawer: just a slim strip, the timeline slides up when needed. Island: a small module under the content. Pure taste, applies at once.",
+  "st.k.ui.footer.d":
+    "Where the Recall input and the timeline sit. Console: both as floating panels. Mirror: Recall in a bar at the bottom. Anchored: Recall in the navigation rail. Drawer: just a slim strip, the timeline slides up when needed. Island: a small module under the content. Pure taste, applies at once.",
   "st.k.ui.timeline": "Timeline",
-  "st.k.ui.timeline.d": "How the timeline looks. Bars: one column per week. Pulse: a glowing curve across the chosen period. Looks only, applies at once.",
+  "st.k.ui.timeline.d":
+    "How the timeline looks. Bars: one column per week. Pulse: a glowing curve across the chosen period. Looks only, applies at once.",
   "st.k.update.mode": "Update mode",
-  "st.k.update.mode.d": "What Recall does when a new version is out. Notify: just tells you (default, recommended). Automatic: Recall installs it itself. Off: never checks for updates.",
+  "st.k.update.mode.d":
+    "What Recall does when a new version is out. Notify: just tells you (default, recommended). Automatic: Recall installs it itself. Off: never checks for updates.",
   "st.k.language.primary": "Memory language",
-  "st.k.language.primary.d": "The language Recall writes your memories in (title and summary). Pick the language you mostly work in. English technical terms stay as search anchors.",
+  "st.k.language.primary.d":
+    "The language Recall writes your memories in (title and summary). Pick the language you mostly work in. English technical terms stay as search anchors.",
   "st.k.language.primary.p": "ISO code, e.g. de",
   "st.k.battery.saver": "Battery saver",
-  "st.k.battery.saver.d": "Saves power: on battery, Recall postpones heavy work with the local models until later. Useful on laptops, pointless on a desktop. Restart required.",
+  "st.k.battery.saver.d":
+    "Saves power: on battery, Recall postpones heavy work with the local models until later. Useful on laptops, pointless on a desktop. Restart required.",
   "st.k.ui.enabled": "Vault map",
-  "st.k.ui.enabled.d": "Turns this web interface on. It is reachable from this computer only, not from the network. Applies at once, no restart. If you turn it off you can no longer open this page.",
+  "st.k.ui.enabled.d":
+    "Turns this web interface on. It is reachable from this computer only, not from the network. Applies at once, no restart. If you turn it off you can no longer open this page.",
   "st.k.assistant.name": "Assistant name",
-  "st.k.assistant.name.d": "The name your voice assistant answers to, together with its local address. Changed through its own setup step, because several things have to match.",
+  "st.k.assistant.name.d":
+    "The name your voice assistant answers to, together with its local address. Changed through its own setup step, because several things have to match.",
   "st.k.daemon.env": "Daemon environment",
-  "st.k.daemon.env.d": "For advanced users: extra BASTRA_… settings as JSON that the daemon starts with. The values are never shown, a new entry replaces the stored one completely. Leave it alone if unsure. Restart required.",
+  "st.k.daemon.env.d":
+    "For advanced users: extra BASTRA_… settings as JSON that the daemon starts with. The values are never shown, a new entry replaces the stored one completely. Leave it alone if unsure. Restart required.",
   "st.k.embedding.provider": "Embedding provider",
-  "st.k.embedding.provider.d": "Where semantic search gets its embeddings (numbers describing the meaning of a text). Ollama: local on your computer, private and free (recommended). OpenAI: an online service, needs the key OPENAI_API_KEY. None: plain keyword search only (BM25). Restart required.",
+  "st.k.embedding.provider.d":
+    "Where semantic search gets its embeddings (numbers describing the meaning of a text). Ollama: local on your computer, private and free (recommended). OpenAI: an online service, needs the key OPENAI_API_KEY. None: plain keyword search only (BM25). Restart required.",
   "st.k.ollama.autostart": "Start Ollama",
-  "st.k.ollama.autostart.d": "Starts Ollama (the program for local AI models) together with the daemon if it is not running. Recommended on while Ollama is your embedding provider. Restart required.",
+  "st.k.ollama.autostart.d":
+    "Starts Ollama (the program for local AI models) together with the daemon if it is not running. Recommended on while Ollama is your embedding provider. Restart required.",
   "st.k.generation.model": "Generation model",
-  "st.k.generation.model.d": "The local AI model that rephrases search queries and re-ranks results. Larger (e.g. 12b) = more accurate but more memory and waiting. Smaller (1b) = faster but coarser. Default: gemma3:4b. A model that is not installed yet has to be pulled with Ollama first. Restart required.",
+  "st.k.generation.model.d":
+    "The local AI model that rephrases search queries and re-ranks results. Larger (e.g. 12b) = more accurate but more memory and waiting. Smaller (1b) = faster but coarser. Default: gemma3:4b. A model that is not installed yet has to be pulled with Ollama first. Restart required.",
   "st.k.modelRecommendation.id": "Model recommendation",
-  "st.k.modelRecommendation.id.d": "Which model recommendation you were last shown. Recall writes this itself, view only.",
+  "st.k.modelRecommendation.id.d":
+    "Which model recommendation you were last shown. Recall writes this itself, view only.",
   "st.k.modelRecommendation.answer": "Your answer",
-  "st.k.modelRecommendation.answer.d": "How you answered the recommendation (switched, later, dismissed or asked). With “later” Recall asks again after 7 days. View only.",
+  "st.k.modelRecommendation.answer.d":
+    "How you answered the recommendation (switched, later, dismissed or asked). With “later” Recall asks again after 7 days. View only.",
   "st.k.modelRecommendation.at": "Answered at",
   "st.k.reflex.enabled": "Reflex memories",
-  "st.k.reflex.enabled.d": "Lets memories surface on their own when you set them to “reflex”. Without this switch even those memories stay quiet. Default: on.",
+  "st.k.reflex.enabled.d":
+    "Lets memories surface on their own when you set them to “reflex”. Without this switch even those memories stay quiet. Default: on.",
   "st.k.reflex.maxPerTurn": "Reflex per prompt",
-  "st.k.reflex.maxPerTurn.d": "The most reflex memories Recall shows per message. More = more hints but also more text in the conversation. Fewer = calmer. Default: 2.",
+  "st.k.reflex.maxPerTurn.d":
+    "The most reflex memories Recall shows per message. More = more hints but also more text in the conversation. Fewer = calmer. Default: 2.",
   "st.k.evidenceGate.enabled": "Evidence gate",
-  "st.k.evidenceGate.enabled.d": "A fixed rule (no AI guessing) decides whether a result is backed well enough to be shown. Default: on. Only change it if you are deliberately testing this behaviour. Restart required.",
+  "st.k.evidenceGate.enabled.d":
+    "A fixed rule (no AI guessing) decides whether a result is backed well enough to be shown. Default: on. Only change it if you are deliberately testing this behaviour. Restart required.",
   "st.k.experiment.name": "Experiment",
-  "st.k.experiment.name.d": "Tests only: the name of a running comparison experiment (A/B). Name, groups, registration and version belong together and are set together. Normally leave empty.",
+  "st.k.experiment.name.d":
+    "Tests only: the name of a running comparison experiment (A/B). Name, groups, registration and version belong together and are set together. Normally leave empty.",
   "st.k.experiment.arms": "Experiment arms",
-  "st.k.experiment.arms.d": "The groups (variants) the experiment spreads events across. At least two, otherwise nothing is assigned. Normally leave empty.",
+  "st.k.experiment.arms.d":
+    "The groups (variants) the experiment spreads events across. At least two, otherwise nothing is assigned. Normally leave empty.",
   "st.k.experiment.arms.p": "arm name, Enter to add",
   "st.k.experiment.registration": "Experiment registration",
-  "st.k.experiment.registration.d": "Identifier of the experiment plan the results are reported against. Experiments only, otherwise leave empty.",
+  "st.k.experiment.registration.d":
+    "Identifier of the experiment plan the results are reported against. Experiments only, otherwise leave empty.",
   "st.k.experiment.registration_version": "Registration version",
   "st.k.experiment.registration_version.d": "Version number of that experiment plan. Experiments only.",
   "st.k.commons.enabled": "Bastra Commons",
-  "st.k.commons.enabled.d": "Loads the community collection “Bastra Commons” (recipes from other users) as an extra, read-only search source. Your own memories stay untouched. Default: off. Restart required.",
+  "st.k.commons.enabled.d":
+    "Loads the community collection “Bastra Commons” (recipes from other users) as an extra, read-only search source. Your own memories stay untouched. Default: off. Restart required.",
   "st.k.sharedRecall.enabled": "Shared bridges",
-  "st.k.sharedRecall.enabled.d": "Recall adds learned word bridges, shared via Git, to your search queries so you also find results worded differently. Optional, default: off. Restart required.",
+  "st.k.sharedRecall.enabled.d":
+    "Recall adds learned word bridges, shared via Git, to your search queries so you also find results worded differently. Optional, default: off. Restart required.",
   "st.k.sharedRecall.language": "Query language",
-  "st.k.sharedRecall.language.d": "Language of the word bridges. Automatic: Recall detects it itself (default). Pick a fixed language if you almost always search in it. Supported: German and English.",
+  "st.k.sharedRecall.language.d":
+    "Language of the word bridges. Automatic: Recall detects it itself (default). Pick a fixed language if you almost always search in it. Supported: German and English.",
   "st.k.sharedRecall.language.p": "auto-detect",
   "st.k.sharedRecall.live": "Live bridges",
-  "st.k.sharedRecall.live.d": "Experimental: actually applies the bridges to your search. Off (default): they are only logged in the background and change no result. Turn on only once the logs look good.",
+  "st.k.sharedRecall.live.d":
+    "Experimental: actually applies the bridges to your search. Off (default): they are only logged in the background and change no result. Turn on only once the logs look good.",
   "st.k.code.repos": "Repositories",
-  "st.k.code.repos.d": "The project folders (full paths) for which Recall understands the code and remembers how files relate. Add only folders you work in, all others stay untouched. Applies to this computer only.",
+  "st.k.code.repos.d":
+    "The project folders (full paths) for which Recall understands the code and remembers how files relate. Add only folders you work in, all others stay untouched. Applies to this computer only.",
   "st.k.code.repos.p": "absolute path, Enter to add",
   "st.k.promptImpact.enabled": "Prompt impact",
-  "st.k.promptImpact.enabled.d": "Experimental: before a change, Recall points out which other files may be affected. This prevents mistakes but adds text to your prompt. Default: off.",
+  "st.k.promptImpact.enabled.d":
+    "Experimental: before a change, Recall points out which other files may be affected. This prevents mistakes but adds text to your prompt. Default: off.",
   "st.k.coverageMap.enabled": "Coverage map",
-  "st.k.coverageMap.enabled.d": "Experimental: remembers which parts of the code are covered by tests when the agent runs its tests. Helps judge what a change puts at risk. Default: off.",
+  "st.k.coverageMap.enabled.d":
+    "Experimental: remembers which parts of the code are covered by tests when the agent runs its tests. Helps judge what a change puts at risk. Default: off.",
   "st.k.docs.mode": "Product docs",
-  "st.k.docs.mode.d": "Whether Recall also writes product docs (guides for your project). Off: nothing (default). Suggest: at the end of a session Recall proposes texts and you decide. Automatic: Recall writes without asking.",
+  "st.k.docs.mode.d":
+    "Whether Recall also writes product docs (guides for your project). Off: nothing (default). Suggest: at the end of a session Recall proposes texts and you decide. Automatic: Recall writes without asking.",
   "st.k.docs.language": "Docs language",
   "st.k.docs.language.d": "The language product docs are written in. Pick your readers’ language. Default: English.",
   "st.k.docs.language.p": "e.g. de",
   "st.k.size.guide": "Size guide",
-  "st.k.size.guide.d": "From this many lines on, Recall recommends splitting a source file. Lower = smaller files, hints more often. Higher = more relaxed. Default: 500 lines.",
+  "st.k.size.guide.d":
+    "From this many lines on, Recall recommends splitting a source file. Lower = smaller files, hints more often. Higher = more relaxed. Default: 500 lines.",
   "st.k.size.critical": "Size critical",
-  "st.k.size.critical.d": "From this many lines on, Recall clearly warns that a file is too large. Never set it lower than the guide value. Default: 800 lines.",
+  "st.k.size.critical.d":
+    "From this many lines on, Recall clearly warns that a file is too large. Never set it lower than the guide value. Default: 800 lines.",
   "st.k.size.exemptPaths": "Exempt paths",
-  "st.k.size.exemptPaths.d": "Files whose path contains one of these pieces (e.g. “webui/mindspace”) are skipped by the size check. Handy for generated code or deliberately large files. Normally empty.",
+  "st.k.size.exemptPaths.d":
+    "Files whose path contains one of these pieces (e.g. “webui/mindspace”) are skipped by the size check. Handy for generated code or deliberately large files. Normally empty.",
   "st.k.size.exemptPaths.p": "path part, Enter to add",
   "st.k.archive.enabled": "Archiving rm & git snapshots",
-  "st.k.archive.enabled.d": "Instead of deleting files for good with “rm”, Recall moves them into an archive. Before risky Git commands it also takes a safety snapshot. Protects against slips, uses some disk space. Default: off.",
+  "st.k.archive.enabled.d":
+    "Instead of deleting files for good with “rm”, Recall moves them into an archive. Before risky Git commands it also takes a safety snapshot. Protects against slips, uses some disk space. Default: off.",
   "st.k.archive.retain": "Retention",
-  "st.k.archive.retain.d": "How many days an archived item stays before it is deleted for good, per kind: junk (the agent’s throwaway files), in-git (backed up in Git) and user (your own files). The numbers follow this order. Default: 1 · 2 · 2 days. The archive is a safety net, not a backup.",
+  "st.k.archive.retain.d":
+    "How many days an archived item stays before it is deleted for good, per kind: junk (the agent’s throwaway files), in-git (backed up in Git) and user (your own files). The numbers follow this order. Default: 1 · 2 · 2 days. The archive is a safety net, not a backup.",
   "st.k.archive.cap": "Total cap",
-  "st.k.archive.cap.d": "How much disk space the archive may use in total. When it is full, Recall clears throwaway files first, then Git-backed ones. Default: 10 GB.",
+  "st.k.archive.cap.d":
+    "How much disk space the archive may use in total. When it is full, Recall clears throwaway files first, then Git-backed ones. Default: 10 GB.",
   "st.k.archive.max-item": "Largest item",
-  "st.k.archive.max-item.d": "The largest single item the archive still accepts; anything bigger is not archived. “No limit” (default) archives everything as long as the total size allows.",
+  "st.k.archive.max-item.d":
+    "The largest single item the archive still accepts; anything bigger is not archived. “No limit” (default) archives everything as long as the total size allows.",
   "st.k.archive.max-item.p": "e.g. 2GB",
   "st.k.tasks.enabled": "Tasks",
-  "st.k.tasks.enabled.d": "Turns on proactive tasks and reminders: Recall remembers what is due and gets in touch about it. Default: on. Restart required.",
+  "st.k.tasks.enabled.d":
+    "Turns on proactive tasks and reminders: Recall remembers what is due and gets in touch about it. Default: on. Restart required.",
   "st.k.tasks.notifications": "Mac notifications",
-  "st.k.tasks.notifications.d": "Shows a Mac notification when a task is due. Turn it off if notifications annoy you. The task stays visible in Recall.",
+  "st.k.tasks.notifications.d":
+    "Shows a Mac notification when a task is due. Turn it off if notifications annoy you. The task stays visible in Recall.",
   "st.k.tasks.chatActiveMinutes": "Chat active window",
-  "st.k.tasks.chatActiveMinutes.d": "How long after your last message a chat still counts as “active”. Only then does Recall deliver due tasks straight into the chat. Shorter = fewer interruptions, longer = tasks reach you after breaks too. Default: 30 minutes.",
+  "st.k.tasks.chatActiveMinutes.d":
+    "How long after your last message a chat still counts as “active”. Only then does Recall deliver due tasks straight into the chat. Shorter = fewer interruptions, longer = tasks reach you after breaks too. Default: 30 minutes.",
   "st.k.tasks.chatConsent": "Claude chat delivery",
-  "st.k.tasks.chatConsent.d": "Your answer on whether tasks may be delivered into the Claude chat (accepted, declined or blocked). Comes from setup, view only.",
+  "st.k.tasks.chatConsent.d":
+    "Your answer on whether tasks may be delivered into the Claude chat (accepted, declined or blocked). Comes from setup, view only.",
   "st.k.api.token": "API token",
-  "st.k.api.token.d": "Access key that web apps and other browser programs must present when they talk to the daemon. Never shown, a new value replaces the old one. Only needed if you connect such programs. Restart required.",
+  "st.k.api.token.d":
+    "Access key that web apps and other browser programs must present when they talk to the daemon. Never shown, a new value replaces the old one. Only needed if you connect such programs. Restart required.",
   "st.k.cors.origins": "Allowed origins",
-  "st.k.cors.origins.d": "Websites (addresses like https://example.com) allowed to call the API from a browser. Empty = all are rejected, which is the safest setting. Restart required.",
+  "st.k.cors.origins.d":
+    "Websites (addresses like https://example.com) allowed to call the API from a browser. Empty = all are rejected, which is the safest setting. Restart required.",
   "st.k.cors.origins.p": "https://host[:port], Enter to add",
   "st.k.telemetry.enabled": "Event logs",
-  "st.k.telemetry.enabled.d": "Writes local logs about how Recall works (duration, hits, errors). They stay on your computer and feed the telemetry view. Off = no new logs. Default: on. Restart required.",
+  "st.k.telemetry.enabled.d":
+    "Writes local logs about how Recall works (duration, hits, errors). They stay on your computer and feed the telemetry view. Off = no new logs. Default: on. Restart required.",
   "st.unit.days": "days",
   "st.unit.surfaces": "surfaces",
   "st.k.autostart": "Start at login",
-  "st.k.autostart.d": "Starts Recall automatically when you log in to the Mac. Turning it off does not stop the daemon that is running now. Recommended on so Recall is always ready.",
+  "st.k.autostart.d":
+    "Starts Recall automatically when you log in to the Mac. Turning it off does not stop the daemon that is running now. Recommended on so Recall is always ready.",
   "st.k.embedding.model": "Embedding model",
-  "st.k.embedding.model.d": "The Ollama model that turns your memories into numbers (“embeddings”) so Recall can search by meaning. Default: embeddinggemma. After a change the numbers may have to be recomputed, so leave it unless you know why.",
+  "st.k.embedding.model.d":
+    "The Ollama model that turns your memories into numbers (“embeddings”) so Recall can search by meaning. Default: embeddinggemma. After a change the numbers may have to be recomputed, so leave it unless you know why.",
   "st.k.ollama.url": "Ollama URL",
-  "st.k.ollama.url.d": "The address Recall uses to reach Ollama. Default is your own computer (http://localhost:11434). Change it only if Ollama runs on another port or machine.",
+  "st.k.ollama.url.d":
+    "The address Recall uses to reach Ollama. Default is your own computer (http://localhost:11434). Change it only if Ollama runs on another port or machine.",
   "st.k.ollama.keepAlive": "Model keep-alive",
-  "st.k.ollama.keepAlive.d": "How long Ollama keeps a model in memory after its last use. Longer = answers without load time but the memory stays occupied. Shorter = frees memory sooner, the next request starts slower. “0” unloads at once. Default: 10 minutes.",
+  "st.k.ollama.keepAlive.d":
+    "How long Ollama keeps a model in memory after its last use. Longer = answers without load time but the memory stays occupied. Shorter = frees memory sooner, the next request starts slower. “0” unloads at once. Default: 10 minutes.",
   "st.k.recall.floor": "Score floor",
-  "st.k.recall.floor.d": "The minimum score (0–100) a result needs to be shown to you. Higher = fewer but better-fitting results. Lower = more results, also vague ones. Default: 30.",
+  "st.k.recall.floor.d":
+    "The minimum score (0–100) a result needs to be shown to you. Higher = fewer but better-fitting results. Lower = more results, also vague ones. Default: 30.",
   "st.k.prompt.hookMode": "Prompt hook",
-  "st.k.prompt.hookMode.d": "What Recall adds automatically to every message. All (default): results plus extra blocks. Results only: just the Recall results, which keeps your message lean.",
+  "st.k.prompt.hookMode.d":
+    "What Recall adds automatically to every message. All (default): results plus extra blocks. Results only: just the Recall results, which keeps your message lean.",
   "st.k.hint.suppress": "Hint suppression",
-  "st.k.hint.suppress.d": "What happens to hints you keep ignoring. Observe (default): Recall only counts them in the log. Off: no counting. Either way hints are not hidden.",
+  "st.k.hint.suppress.d":
+    "What happens to hints you keep ignoring. Observe (default): Recall only counts them in the log. Off: no counting. Either way hints are not hidden.",
   "st.k.hint.suppressAfter": "Suppress after",
-  "st.k.hint.suppressAfter.d": "After how many ignored appearances a hint counts as “not needed”. Lower = quicker verdict, higher = more patience. 0 to 30, default: 8.",
+  "st.k.hint.suppressAfter.d":
+    "After how many ignored appearances a hint counts as “not needed”. Lower = quicker verdict, higher = more patience. 0 to 30, default: 8.",
   "st.k.scope.filterLanes": "Scope filter",
-  "st.k.scope.filterLanes.d": "Whether hints outside your current project (scope) get noticed. Observe (default): Recall only measures how often that happens. Enforce: such hints are really hidden.",
+  "st.k.scope.filterLanes.d":
+    "Whether hints outside your current project (scope) get noticed. Observe (default): Recall only measures how often that happens. Enforce: such hints are really hidden.",
   "st.k.saveNotice": "Save notice",
-  "st.k.saveNotice.d": "Shows a short note in the session as soon as Recall has saved a memory, so you always know what was remembered. Default: on.",
+  "st.k.saveNotice.d":
+    "Shows a short note in the session as soon as Recall has saved a memory, so you always know what was remembered. Default: on.",
   "st.k.logs.retention": "Retention",
-  "st.k.logs.retention.d": "How many days logs are kept, older ones are deleted. Longer = more history to analyse but more disk space. Allowed: 30–365 days. Default: 90.",
+  "st.k.logs.retention.d":
+    "How many days logs are kept, older ones are deleted. Longer = more history to analyse but more disk space. Allowed: 30–365 days. Default: 90.",
   "st.k.logs.path": "Log folder",
   "st.k.logs.path.d": "Folder holding the daily logs. Default: the “logs” folder inside the Bastra data folder.",
   "st.k.training.capture": "Training capture",
-  "st.k.training.capture.d": "Stores search queries and their results so you can train your own local model from them. Optional, default: off.",
+  "st.k.training.capture.d":
+    "Stores search queries and their results so you can train your own local model from them. Optional, default: off.",
   "st.readonly.autostart-unsupported": "Autostart cannot be managed here on this operating system.",
   "st.readonly.autostart-unmanaged": "This login service is managed outside Bastra and is read-only here.",
-  "st.k.ui.backdrop.d": "The picture behind the interface: a bundled motif, none, or your own image to upload. It is dimmed so text stays readable.",
-  "st.k.ui.backdropDim.d": "How strongly the background image is dimmed (50–95 %). Higher = darker and easier to read, lower = the image glows more. Default: 80 %.",
+  "st.k.ui.backdrop.d":
+    "The picture behind the interface: a bundled motif, none, or your own image to upload. It is dimmed so text stays readable.",
+  "st.k.ui.backdropDim.d":
+    "How strongly the background image is dimmed (50–95 %). Higher = darker and easier to read, lower = the image glows more. Default: 80 %.",
   "st.k.ui.backdropBlur.d": "Blurs the background image so it distracts less from the content. Default: off.",
   "st.k.modelRecommendation.at.d": "When you answered the recommendation. View only.",
   "st.k.ui.backdrop": "Background image",

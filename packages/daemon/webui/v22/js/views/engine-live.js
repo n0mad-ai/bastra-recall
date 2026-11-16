@@ -33,7 +33,10 @@ export function installLive(e, { awake, regroup }) {
       let count = 0;
       for (const n of e.sim.nodes) if (keyOf(n) === key) count += 1;
       const hit = list.find((c) => c.key === key);
-      if (hit) { hit.count = count; return false; }
+      if (hit) {
+        hit.count = count;
+        return false;
+      }
       list.push({ key, count });
       return true;
     };
@@ -48,7 +51,10 @@ export function installLive(e, { awake, regroup }) {
 
   // supernovae in every engine view, above the nodes (old live-updates overlay)
   e.renderer.setOverlay((ctx, camera, theme, now) => {
-    if (e.view === "orbit") { e.orbit.renderBursts(ctx, camera, theme, now); return; }
+    if (e.view === "orbit") {
+      e.orbit.renderBursts(ctx, camera, theme, now);
+      return;
+    }
     for (const b of e.orbit.listBursts()) {
       const age = (now - b.born) / 1000;
       if (age > BURST_LIFE) continue;
@@ -60,7 +66,13 @@ export function installLive(e, { awake, regroup }) {
   function apply(raw) {
     // external data: only well-formed events of a known kind
     if (!raw || typeof raw.id !== "string" || !KIND_META[raw.kind]) return;
-    const u = { ...raw, title: str(raw.title) || raw.id, type: str(raw.type), summary: str(raw.summary), count: Number.isFinite(raw.count) ? raw.count : 1 };
+    const u = {
+      ...raw,
+      title: str(raw.title) || raw.id,
+      type: str(raw.type),
+      summary: str(raw.summary),
+      count: Number.isFinite(raw.count) ? raw.count : 1,
+    };
     if (u.kind === "add") {
       if (typeof u.cluster !== "string" || !u.cluster) return;
       nodes.adoptLiveNode(u); // a real node first (#217), then the star above it
@@ -72,14 +84,23 @@ export function installLive(e, { awake, regroup }) {
     if (!n) return;
     const flash = KIND_META[u.kind].flash;
     // the flare's lifetime carries how much happened (×N coalesced hits)
-    if (flash) { e.renderer.flashNode(n.id, flash, 5000 + Math.min(u.count - 1, 4) * 2500); awake(e.renderer.getBoltMs() + 1500); }
+    if (flash) {
+      e.renderer.flashNode(n.id, flash, 5000 + Math.min(u.count - 1, 4) * 2500);
+      awake(e.renderer.getBoltMs() + 1500);
+    }
     if (u.kind === "change") {
-      n.title = u.title; n.summary = u.summary;
-      if (typeof u.salience === "number") n.salience = u.salience; else delete n.salience;
-      if (typeof u.emotion === "string" && u.emotion) n.emotion = u.emotion; else delete n.emotion;
+      n.title = u.title;
+      n.summary = u.summary;
+      if (typeof u.salience === "number") n.salience = u.salience;
+      else delete n.salience;
+      if (typeof u.emotion === "string" && u.emotion) n.emotion = u.emotion;
+      else delete n.emotion;
     } else if (u.kind === "delete") {
       e.sim.byId.delete(u.id);
-      setTimeout(() => { n.ringHidden = true; awake(300); }, 1400);
+      setTimeout(() => {
+        n.ringHidden = true;
+        awake(300);
+      }, 1400);
     }
   }
 

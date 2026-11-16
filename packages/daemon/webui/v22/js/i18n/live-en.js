@@ -12,6 +12,7 @@ export default {
   "live.kind.delete": "DELETED",
   "live.via.recall": "recall",
   "live.via.load_memory": "load_memory",
-  "live.empty": "Nothing has happened in this session yet. New, changed and read memories show up here the moment it happens.",
+  "live.empty":
+    "Nothing has happened in this session yet. New, changed and read memories show up here the moment it happens.",
   "live.off": "Live is off. Switch it on at the top right to follow new events.",
 };

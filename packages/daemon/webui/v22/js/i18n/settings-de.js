@@ -22,7 +22,8 @@ export default {
 
   "st.kicker": "EINSTELLUNGEN · {file}",
   "st.title": "Wie Recall auf diesem Rechner läuft",
-  "st.text": "Jede Option, die bastra heute kennt, aus der CLI und ihrer Konfigurationsdatei. Umgebungsvariablen gehen der Datei immer vor — ist eine gesetzt, zeigt die Einstellung sie an und bleibt hier schreibgeschützt. Geschrieben wird erst, wenn du übernimmst.",
+  "st.text":
+    "Jede Option, die bastra heute kennt, aus der CLI und ihrer Konfigurationsdatei. Umgebungsvariablen gehen der Datei immer vor — ist eine gesetzt, zeigt die Einstellung sie an und bleibt hier schreibgeschützt. Geschrieben wird erst, wenn du übernimmst.",
   "st.daemon": "Daemon v{v}",
   "st.allSaved": "alles gespeichert",
   "st.unsaved": "{n} ungespeichert",
@@ -104,16 +105,19 @@ export default {
   "st.ch.title": "Änderungen",
   "st.ch.unsaved": "{n} UNGESPEICHERT",
   "st.ch.allSaved": "ALLES GESPEICHERT",
-  "st.ch.empty": "Keine ungespeicherten Änderungen. Jede Änderung landet zuerst hier, neben dem CLI-Befehl, für den sie steht.",
+  "st.ch.empty":
+    "Keine ungespeicherten Änderungen. Jede Änderung landet zuerst hier, neben dem CLI-Befehl, für den sie steht.",
   "st.ch.saved": "Gespeichert {at} · geschrieben nach {file}",
   "st.ch.needRestart": "Einige gespeicherte Optionen wirken erst nach einem Neustart von Daemon und Clients.",
   "st.revert": "ZURÜCK",
   "st.cli.default": "zurück auf Standard — kein CLI-Befehl",
 
   "st.g.appearance": "Darstellung",
-  "st.g.appearance.q": "Wie die Oberfläche deinen Vault rahmt — der Footer mit Recall, die Zeitleiste und was dahinter liegt. Bilder bleiben im Rahmen und werden abgedunkelt, damit der Inhalt seinen Kontrast behält.",
+  "st.g.appearance.q":
+    "Wie die Oberfläche deinen Vault rahmt — der Footer mit Recall, die Zeitleiste und was dahinter liegt. Bilder bleiben im Rahmen und werden abgedunkelt, damit der Inhalt seinen Kontrast behält.",
   "st.g.general": "Allgemein",
-  "st.g.general.q": "Wie Recall sich aktualisiert, in welcher Sprache es schreibt und wie es mit diesem Rechner umgeht.",
+  "st.g.general.q":
+    "Wie Recall sich aktualisiert, in welcher Sprache es schreibt und wie es mit diesem Rechner umgeht.",
   "st.g.models": "Modelle & Embeddings",
   "st.g.models.q": "Woher die semantische Suche kommt und welche lokalen Modelle die Arbeit machen.",
   "st.g.recall": "Recall-Verhalten",
@@ -121,7 +125,8 @@ export default {
   "st.g.sharing": "Teilen",
   "st.g.sharing.q": "Freiwillige Quellen, die Recall über diesen Vault hinaus erweitern.",
   "st.g.code": "Code-Kenntnis",
-  "st.g.code.q": "Repositories, für die Recall einen Code-Graphen baut. Für Ordner, die es nur zufällig sieht, entsteht nichts.",
+  "st.g.code.q":
+    "Repositories, für die Recall einen Code-Graphen baut. Für Ordner, die es nur zufällig sieht, entsteht nichts.",
   "st.g.writing": "Schreiben & Doku",
   "st.g.writing.q": "Erfassung von Produktdoku und die Dateigrößen-Konvention, die der PreToolUse-Hook prüft.",
   "st.g.archive": "Archiv & Sicherheit",
@@ -136,132 +141,190 @@ export default {
   "st.g.more.q": "Einstellungen, die der Daemon kennt und die hier noch keinem Bereich zugeordnet sind.",
 
   "st.k.ui.footer": "Footer",
-  "st.k.ui.footer.d": "Wo das Recall-Eingabefeld und die Zeitleiste sitzen. Konsole: beides als schwebende Fenster. Spiegel: Recall in einer Leiste unten. Verankert: Recall in der Navigationsleiste. Schublade: nur ein schmaler Streifen, die Zeitleiste fährt bei Bedarf hoch. Insel: ein kleines Modul unter dem Inhalt. Reine Geschmackssache, wirkt sofort.",
+  "st.k.ui.footer.d":
+    "Wo das Recall-Eingabefeld und die Zeitleiste sitzen. Konsole: beides als schwebende Fenster. Spiegel: Recall in einer Leiste unten. Verankert: Recall in der Navigationsleiste. Schublade: nur ein schmaler Streifen, die Zeitleiste fährt bei Bedarf hoch. Insel: ein kleines Modul unter dem Inhalt. Reine Geschmackssache, wirkt sofort.",
   "st.k.ui.timeline": "Zeitleiste",
-  "st.k.ui.timeline.d": "Wie die Zeitleiste aussieht. Säulen: eine Säule pro Woche. Puls: eine leuchtende Kurve über den gewählten Zeitraum. Nur Optik, wirkt sofort.",
+  "st.k.ui.timeline.d":
+    "Wie die Zeitleiste aussieht. Säulen: eine Säule pro Woche. Puls: eine leuchtende Kurve über den gewählten Zeitraum. Nur Optik, wirkt sofort.",
   "st.k.update.mode": "Aktualisierungen",
-  "st.k.update.mode.d": "Was Recall tun soll, wenn es eine neue Version gibt. Hinweisen: Recall zeigt es dir nur an (Standard, empfohlen). Automatisch: Recall installiert selbst. Aus: Recall sucht gar nicht nach Updates.",
+  "st.k.update.mode.d":
+    "Was Recall tun soll, wenn es eine neue Version gibt. Hinweisen: Recall zeigt es dir nur an (Standard, empfohlen). Automatisch: Recall installiert selbst. Aus: Recall sucht gar nicht nach Updates.",
   "st.k.language.primary": "Sprache der Memories",
-  "st.k.language.primary.d": "In dieser Sprache schreibt Recall deine Erinnerungen (Titel und Zusammenfassung). Wähle die Sprache, in der du meistens arbeitest. Englische Fachbegriffe bleiben als Suchanker erhalten.",
+  "st.k.language.primary.d":
+    "In dieser Sprache schreibt Recall deine Erinnerungen (Titel und Zusammenfassung). Wähle die Sprache, in der du meistens arbeitest. Englische Fachbegriffe bleiben als Suchanker erhalten.",
   "st.k.language.primary.p": "ISO-Code, z. B. de",
   "st.k.battery.saver": "Akkumodus",
-  "st.k.battery.saver.d": "Spart Strom: Läuft dein Mac im Akkubetrieb, schiebt Recall rechenintensive Arbeit mit den lokalen Modellen auf später. Sinnvoll für Laptops, an einem Desktop-Rechner unnötig. Neustart nötig.",
+  "st.k.battery.saver.d":
+    "Spart Strom: Läuft dein Mac im Akkubetrieb, schiebt Recall rechenintensive Arbeit mit den lokalen Modellen auf später. Sinnvoll für Laptops, an einem Desktop-Rechner unnötig. Neustart nötig.",
   "st.k.ui.enabled": "Vault-Karte",
-  "st.k.ui.enabled.d": "Schaltet diese Weboberfläche ein. Sie ist nur auf diesem Rechner erreichbar, nicht aus dem Netzwerk. Wirkt sofort ohne Neustart. Schaltest du sie aus, kommst du hier nicht mehr hin.",
+  "st.k.ui.enabled.d":
+    "Schaltet diese Weboberfläche ein. Sie ist nur auf diesem Rechner erreichbar, nicht aus dem Netzwerk. Wirkt sofort ohne Neustart. Schaltest du sie aus, kommst du hier nicht mehr hin.",
   "st.k.assistant.name": "Name des Assistenten",
-  "st.k.assistant.name.d": "Der Name, auf den dein Sprachassistent hört, samt seiner lokalen Adresse. Wird über einen eigenen Einrichtungsschritt geändert, weil dabei mehrere Dinge zusammenpassen müssen.",
+  "st.k.assistant.name.d":
+    "Der Name, auf den dein Sprachassistent hört, samt seiner lokalen Adresse. Wird über einen eigenen Einrichtungsschritt geändert, weil dabei mehrere Dinge zusammenpassen müssen.",
   "st.k.daemon.env": "Daemon-Umgebung",
-  "st.k.daemon.env.d": "Für Fortgeschrittene: zusätzliche BASTRA_…-Einstellungen im JSON-Format, mit denen der Daemon startet. Die Werte werden nie angezeigt, ein neuer Eintrag ersetzt den gespeicherten komplett. Im Zweifel nicht anfassen. Neustart nötig.",
+  "st.k.daemon.env.d":
+    "Für Fortgeschrittene: zusätzliche BASTRA_…-Einstellungen im JSON-Format, mit denen der Daemon startet. Die Werte werden nie angezeigt, ein neuer Eintrag ersetzt den gespeicherten komplett. Im Zweifel nicht anfassen. Neustart nötig.",
   "st.k.embedding.provider": "Embedding-Anbieter",
-  "st.k.embedding.provider.d": "Woher die Bedeutungssuche ihre „Embeddings“ (Zahlen, die den Sinn eines Textes beschreiben) bekommt. Ollama: lokal auf deinem Rechner, privat und kostenlos (empfohlen). OpenAI: ein Online-Dienst, braucht den Schlüssel OPENAI_API_KEY. Keiner: nur einfache Stichwortsuche (BM25). Neustart nötig.",
+  "st.k.embedding.provider.d":
+    "Woher die Bedeutungssuche ihre „Embeddings“ (Zahlen, die den Sinn eines Textes beschreiben) bekommt. Ollama: lokal auf deinem Rechner, privat und kostenlos (empfohlen). OpenAI: ein Online-Dienst, braucht den Schlüssel OPENAI_API_KEY. Keiner: nur einfache Stichwortsuche (BM25). Neustart nötig.",
   "st.k.ollama.autostart": "Ollama starten",
-  "st.k.ollama.autostart.d": "Startet Ollama (das Programm für lokale KI-Modelle) automatisch mit dem Daemon, falls es nicht läuft. Empfohlen an, solange Ollama dein Embedding-Anbieter ist. Neustart nötig.",
+  "st.k.ollama.autostart.d":
+    "Startet Ollama (das Programm für lokale KI-Modelle) automatisch mit dem Daemon, falls es nicht läuft. Empfohlen an, solange Ollama dein Embedding-Anbieter ist. Neustart nötig.",
   "st.k.generation.model": "Generierungsmodell",
-  "st.k.generation.model.d": "Das lokale KI-Modell, das Suchanfragen umformuliert und Treffer neu sortiert. Größer (z. B. 12b) = genauer, aber mehr Speicher und Wartezeit. Kleiner (1b) = schneller, aber gröber. Standard: gemma3:4b. Ein Modell, das noch nicht installiert ist, musst du zuerst mit Ollama laden. Neustart nötig.",
+  "st.k.generation.model.d":
+    "Das lokale KI-Modell, das Suchanfragen umformuliert und Treffer neu sortiert. Größer (z. B. 12b) = genauer, aber mehr Speicher und Wartezeit. Kleiner (1b) = schneller, aber gröber. Standard: gemma3:4b. Ein Modell, das noch nicht installiert ist, musst du zuerst mit Ollama laden. Neustart nötig.",
   "st.k.modelRecommendation.id": "Modell-Empfehlung",
-  "st.k.modelRecommendation.id.d": "Welche Modellempfehlung dir zuletzt gezeigt wurde. Trägt Recall selbst ein, hier nur zur Ansicht.",
+  "st.k.modelRecommendation.id.d":
+    "Welche Modellempfehlung dir zuletzt gezeigt wurde. Trägt Recall selbst ein, hier nur zur Ansicht.",
   "st.k.modelRecommendation.answer": "Deine Antwort",
-  "st.k.modelRecommendation.answer.d": "Wie du auf die Empfehlung geantwortet hast (gewechselt, später, abgelehnt oder nachgefragt). Bei „später“ fragt Recall nach 7 Tagen erneut. Nur zur Ansicht.",
+  "st.k.modelRecommendation.answer.d":
+    "Wie du auf die Empfehlung geantwortet hast (gewechselt, später, abgelehnt oder nachgefragt). Bei „später“ fragt Recall nach 7 Tagen erneut. Nur zur Ansicht.",
   "st.k.modelRecommendation.at": "Beantwortet am",
   "st.k.reflex.enabled": "Reflex-Memories",
-  "st.k.reflex.enabled.d": "Erlaubt Memories, sich von selbst einzublenden, wenn du sie auf „Reflex“ gestellt hast. Ohne diesen Schalter bleiben auch diese Memories still. Standard: an.",
+  "st.k.reflex.enabled.d":
+    "Erlaubt Memories, sich von selbst einzublenden, wenn du sie auf „Reflex“ gestellt hast. Ohne diesen Schalter bleiben auch diese Memories still. Standard: an.",
   "st.k.reflex.maxPerTurn": "Reflex je Prompt",
-  "st.k.reflex.maxPerTurn.d": "Wie viele Reflex-Memories Recall pro Nachricht höchstens einblendet. Mehr = mehr Hinweise, aber auch mehr Text im Gespräch. Weniger = ruhiger. Standard: 2.",
+  "st.k.reflex.maxPerTurn.d":
+    "Wie viele Reflex-Memories Recall pro Nachricht höchstens einblendet. Mehr = mehr Hinweise, aber auch mehr Text im Gespräch. Weniger = ruhiger. Standard: 2.",
   "st.k.evidenceGate.enabled": "Evidenzentscheid",
-  "st.k.evidenceGate.enabled.d": "Eine feste Regel (kein KI-Raten) entscheidet, ob ein Treffer gut genug belegt ist, um angezeigt zu werden. Standard: an. Nur ändern, wenn du dieses Verhalten gezielt testest. Neustart nötig.",
+  "st.k.evidenceGate.enabled.d":
+    "Eine feste Regel (kein KI-Raten) entscheidet, ob ein Treffer gut genug belegt ist, um angezeigt zu werden. Standard: an. Nur ändern, wenn du dieses Verhalten gezielt testest. Neustart nötig.",
   "st.k.experiment.name": "Experiment",
-  "st.k.experiment.name.d": "Nur für Tests: der Name eines laufenden Vergleichsversuchs (A/B). Name, Gruppen, Registrierung und Version gehören zusammen und werden gemeinsam gesetzt. Normalerweise leer lassen.",
+  "st.k.experiment.name.d":
+    "Nur für Tests: der Name eines laufenden Vergleichsversuchs (A/B). Name, Gruppen, Registrierung und Version gehören zusammen und werden gemeinsam gesetzt. Normalerweise leer lassen.",
   "st.k.experiment.arms": "Experiment-Arme",
-  "st.k.experiment.arms.d": "Die Gruppen (Varianten), auf die der Versuch Ereignisse verteilt. Mindestens zwei, sonst wird nichts zugeteilt. Normalerweise leer lassen.",
+  "st.k.experiment.arms.d":
+    "Die Gruppen (Varianten), auf die der Versuch Ereignisse verteilt. Mindestens zwei, sonst wird nichts zugeteilt. Normalerweise leer lassen.",
   "st.k.experiment.arms.p": "Armname, Enter zum Hinzufügen",
   "st.k.experiment.registration": "Experiment-Registrierung",
-  "st.k.experiment.registration.d": "Kennung der Versuchsplanung, gegen die die Ergebnisse berichtet werden. Nur für Versuche, sonst leer lassen.",
+  "st.k.experiment.registration.d":
+    "Kennung der Versuchsplanung, gegen die die Ergebnisse berichtet werden. Nur für Versuche, sonst leer lassen.",
   "st.k.experiment.registration_version": "Registrierungsversion",
   "st.k.experiment.registration_version.d": "Versionsnummer dieser Versuchsplanung. Nur für Versuche.",
   "st.k.commons.enabled": "Bastra Commons",
-  "st.k.commons.enabled.d": "Lädt die Community-Sammlung „Bastra Commons“ (Rezepte anderer Nutzer) als zusätzliche, schreibgeschützte Suchquelle. Deine eigenen Memories bleiben unverändert. Standard: aus. Neustart nötig.",
+  "st.k.commons.enabled.d":
+    "Lädt die Community-Sammlung „Bastra Commons“ (Rezepte anderer Nutzer) als zusätzliche, schreibgeschützte Suchquelle. Deine eigenen Memories bleiben unverändert. Standard: aus. Neustart nötig.",
   "st.k.sharedRecall.enabled": "Gelernte Brücken",
-  "st.k.sharedRecall.enabled.d": "Recall ergänzt deine Suchanfragen um gelernte Wortbrücken, die per Git geteilt werden, damit du auch Treffer findest, die anders formuliert sind. Freiwillig, Standard: aus. Neustart nötig.",
+  "st.k.sharedRecall.enabled.d":
+    "Recall ergänzt deine Suchanfragen um gelernte Wortbrücken, die per Git geteilt werden, damit du auch Treffer findest, die anders formuliert sind. Freiwillig, Standard: aus. Neustart nötig.",
   "st.k.sharedRecall.language": "Suchsprache",
-  "st.k.sharedRecall.language.d": "Sprache der Wortbrücken. Automatisch: Recall erkennt sie selbst (Standard). Wähle eine feste Sprache, wenn du fast immer nur in ihr suchst. Unterstützt: Deutsch und Englisch.",
+  "st.k.sharedRecall.language.d":
+    "Sprache der Wortbrücken. Automatisch: Recall erkennt sie selbst (Standard). Wähle eine feste Sprache, wenn du fast immer nur in ihr suchst. Unterstützt: Deutsch und Englisch.",
   "st.k.sharedRecall.language.p": "automatisch",
   "st.k.sharedRecall.live": "Live-Brücken",
-  "st.k.sharedRecall.live.d": "Experimentell: wendet die Brücken wirklich auf deine Suche an. Aus (Standard): sie werden nur im Hintergrund mitprotokolliert und ändern kein Ergebnis. Erst einschalten, wenn die Protokolle gut aussehen.",
+  "st.k.sharedRecall.live.d":
+    "Experimentell: wendet die Brücken wirklich auf deine Suche an. Aus (Standard): sie werden nur im Hintergrund mitprotokolliert und ändern kein Ergebnis. Erst einschalten, wenn die Protokolle gut aussehen.",
   "st.k.code.repos": "Repositories",
-  "st.k.code.repos.d": "Die Projektordner (vollständige Pfade), für die Recall den Code versteht und Zusammenhänge zwischen Dateien merkt. Füge nur Ordner hinzu, an denen du arbeitest, alle anderen bleiben unberührt. Gilt nur für diesen Rechner.",
+  "st.k.code.repos.d":
+    "Die Projektordner (vollständige Pfade), für die Recall den Code versteht und Zusammenhänge zwischen Dateien merkt. Füge nur Ordner hinzu, an denen du arbeitest, alle anderen bleiben unberührt. Gilt nur für diesen Rechner.",
   "st.k.code.repos.p": "absoluter Pfad, Enter zum Hinzufügen",
   "st.k.promptImpact.enabled": "Änderungsfolgen im Prompt",
-  "st.k.promptImpact.enabled.d": "Experimentell: Recall weist dich vor einer Änderung darauf hin, welche anderen Dateien davon betroffen sein könnten. Das beugt Fehlern vor, fügt aber Text in deinen Prompt ein. Standard: aus.",
+  "st.k.promptImpact.enabled.d":
+    "Experimentell: Recall weist dich vor einer Änderung darauf hin, welche anderen Dateien davon betroffen sein könnten. Das beugt Fehlern vor, fügt aber Text in deinen Prompt ein. Standard: aus.",
   "st.k.coverageMap.enabled": "Testabdeckung",
-  "st.k.coverageMap.enabled.d": "Experimentell: merkt sich, welche Teile des Codes von Tests abgedeckt sind, wenn der Agent seine Tests ausführt. Hilft einzuschätzen, was eine Änderung gefährdet. Standard: aus.",
+  "st.k.coverageMap.enabled.d":
+    "Experimentell: merkt sich, welche Teile des Codes von Tests abgedeckt sind, wenn der Agent seine Tests ausführt. Hilft einzuschätzen, was eine Änderung gefährdet. Standard: aus.",
   "st.k.docs.mode": "Produktdoku",
-  "st.k.docs.mode.d": "Ob Recall Produktdoku (Anleitungen zu deinem Projekt) mitschreibt. Aus: nichts (Standard). Vorschlagen: am Sitzungsende schlägt Recall Texte vor, du entscheidest. Automatisch: Recall schreibt ohne Rückfrage.",
+  "st.k.docs.mode.d":
+    "Ob Recall Produktdoku (Anleitungen zu deinem Projekt) mitschreibt. Aus: nichts (Standard). Vorschlagen: am Sitzungsende schlägt Recall Texte vor, du entscheidest. Automatisch: Recall schreibt ohne Rückfrage.",
   "st.k.docs.language": "Sprache der Doku",
-  "st.k.docs.language.d": "In welcher Sprache die Produktdoku geschrieben wird. Wähle die Sprache deiner Leser. Standard: Englisch.",
+  "st.k.docs.language.d":
+    "In welcher Sprache die Produktdoku geschrieben wird. Wähle die Sprache deiner Leser. Standard: Englisch.",
   "st.k.docs.language.p": "z. B. de",
   "st.k.size.guide": "Dateigröße: Richtwert",
-  "st.k.size.guide.d": "Ab dieser Zeilenzahl empfiehlt Recall, eine Quelldatei aufzuteilen. Niedriger = kleinere Dateien, öfter ein Hinweis. Höher = großzügiger. Standard: 500 Zeilen.",
+  "st.k.size.guide.d":
+    "Ab dieser Zeilenzahl empfiehlt Recall, eine Quelldatei aufzuteilen. Niedriger = kleinere Dateien, öfter ein Hinweis. Höher = großzügiger. Standard: 500 Zeilen.",
   "st.k.size.critical": "Dateigröße: Warnschwelle",
-  "st.k.size.critical.d": "Ab dieser Zeilenzahl warnt Recall deutlich vor einer zu großen Datei. Setze sie nie niedriger als den Richtwert. Standard: 800 Zeilen.",
+  "st.k.size.critical.d":
+    "Ab dieser Zeilenzahl warnt Recall deutlich vor einer zu großen Datei. Setze sie nie niedriger als den Richtwert. Standard: 800 Zeilen.",
   "st.k.size.exemptPaths": "Ausgenommene Pfade",
-  "st.k.size.exemptPaths.d": "Dateien, deren Pfad eines dieser Stücke enthält (z. B. „webui/mindspace“), werden bei der Größenprüfung übersprungen. Praktisch für erzeugten Code oder bewusst große Dateien. Normalerweise leer.",
+  "st.k.size.exemptPaths.d":
+    "Dateien, deren Pfad eines dieser Stücke enthält (z. B. „webui/mindspace“), werden bei der Größenprüfung übersprungen. Praktisch für erzeugten Code oder bewusst große Dateien. Normalerweise leer.",
   "st.k.size.exemptPaths.p": "Pfadteil, Enter zum Hinzufügen",
   "st.k.archive.enabled": "Archivierendes rm & Git-Snapshots",
-  "st.k.archive.enabled.d": "Statt Dateien mit „rm“ endgültig zu löschen, legt Recall sie in ein Archiv. Vor riskanten Git-Befehlen macht es außerdem einen Sicherungs-Schnappschuss. Schützt vor Versehen, belegt etwas Speicherplatz. Standard: aus.",
+  "st.k.archive.enabled.d":
+    "Statt Dateien mit „rm“ endgültig zu löschen, legt Recall sie in ein Archiv. Vor riskanten Git-Befehlen macht es außerdem einen Sicherungs-Schnappschuss. Schützt vor Versehen, belegt etwas Speicherplatz. Standard: aus.",
   "st.k.archive.retain": "Aufbewahrung",
-  "st.k.archive.retain.d": "Wie viele Tage ein archivierter Eintrag liegen bleibt, bevor er endgültig gelöscht wird, getrennt nach Art: junk (Wegwerfdateien des Agenten), in-git (in Git gesichert) und user (deine eigenen Dateien). Die Zahlen stehen in dieser Reihenfolge. Standard: 1 · 2 · 2 Tage. Das Archiv ist ein Sicherheitsnetz, kein Backup.",
+  "st.k.archive.retain.d":
+    "Wie viele Tage ein archivierter Eintrag liegen bleibt, bevor er endgültig gelöscht wird, getrennt nach Art: junk (Wegwerfdateien des Agenten), in-git (in Git gesichert) und user (deine eigenen Dateien). Die Zahlen stehen in dieser Reihenfolge. Standard: 1 · 2 · 2 Tage. Das Archiv ist ein Sicherheitsnetz, kein Backup.",
   "st.k.archive.cap": "Gesamtgröße",
-  "st.k.archive.cap.d": "Wie viel Speicherplatz das Archiv insgesamt belegen darf. Ist es voll, räumt Recall zuerst Wegwerfdateien weg, dann in Git gesicherte. Standard: 10 GB.",
+  "st.k.archive.cap.d":
+    "Wie viel Speicherplatz das Archiv insgesamt belegen darf. Ist es voll, räumt Recall zuerst Wegwerfdateien weg, dann in Git gesicherte. Standard: 10 GB.",
   "st.k.archive.max-item": "Größtes Element",
-  "st.k.archive.max-item.d": "Größtes einzelnes Ziel, das das Archiv noch aufnimmt; Größeres wird nicht archiviert. „Ohne Grenze“ (Standard) archiviert alles, solange die Gesamtgröße reicht.",
+  "st.k.archive.max-item.d":
+    "Größtes einzelnes Ziel, das das Archiv noch aufnimmt; Größeres wird nicht archiviert. „Ohne Grenze“ (Standard) archiviert alles, solange die Gesamtgröße reicht.",
   "st.k.archive.max-item.p": "z. B. 2GB",
   "st.k.tasks.enabled": "Aufgaben",
-  "st.k.tasks.enabled.d": "Schaltet proaktive Aufgaben und Erinnerungen ein: Recall merkt sich Fälliges und meldet sich dazu. Standard: an. Neustart nötig.",
+  "st.k.tasks.enabled.d":
+    "Schaltet proaktive Aufgaben und Erinnerungen ein: Recall merkt sich Fälliges und meldet sich dazu. Standard: an. Neustart nötig.",
   "st.k.tasks.notifications": "Mac-Mitteilungen",
-  "st.k.tasks.notifications.d": "Zeigt eine Mac-Mitteilung, wenn eine Aufgabe fällig ist. Schalte es aus, wenn dich Mitteilungen stören. Die Aufgabe bleibt in Recall sichtbar.",
+  "st.k.tasks.notifications.d":
+    "Zeigt eine Mac-Mitteilung, wenn eine Aufgabe fällig ist. Schalte es aus, wenn dich Mitteilungen stören. Die Aufgabe bleibt in Recall sichtbar.",
   "st.k.tasks.chatActiveMinutes": "Chat gilt als aktiv",
-  "st.k.tasks.chatActiveMinutes.d": "Wie lange nach deiner letzten Nachricht ein Chat noch als „aktiv“ gilt. Nur dann liefert Recall fällige Aufgaben direkt in den Chat. Kürzer = seltener Unterbrechungen, länger = Aufgaben erreichen dich auch nach Pausen. Standard: 30 Minuten.",
+  "st.k.tasks.chatActiveMinutes.d":
+    "Wie lange nach deiner letzten Nachricht ein Chat noch als „aktiv“ gilt. Nur dann liefert Recall fällige Aufgaben direkt in den Chat. Kürzer = seltener Unterbrechungen, länger = Aufgaben erreichen dich auch nach Pausen. Standard: 30 Minuten.",
   "st.k.tasks.chatConsent": "Zustellung in den Claude-Chat",
-  "st.k.tasks.chatConsent.d": "Deine Antwort darauf, ob Aufgaben in den Claude-Chat zugestellt werden dürfen (angenommen, abgelehnt oder blockiert). Kommt aus der Einrichtung, nur zur Ansicht.",
+  "st.k.tasks.chatConsent.d":
+    "Deine Antwort darauf, ob Aufgaben in den Claude-Chat zugestellt werden dürfen (angenommen, abgelehnt oder blockiert). Kommt aus der Einrichtung, nur zur Ansicht.",
   "st.k.api.token": "API-Zugangsschlüssel",
-  "st.k.api.token.d": "Zugangsschlüssel, den Web-Apps und andere Browser-Programme vorzeigen müssen, wenn sie mit dem Daemon sprechen. Wird nie angezeigt, ein neuer Wert ersetzt den alten. Nur nötig, wenn du solche Programme anbindest. Neustart nötig.",
+  "st.k.api.token.d":
+    "Zugangsschlüssel, den Web-Apps und andere Browser-Programme vorzeigen müssen, wenn sie mit dem Daemon sprechen. Wird nie angezeigt, ein neuer Wert ersetzt den alten. Nur nötig, wenn du solche Programme anbindest. Neustart nötig.",
   "st.k.cors.origins": "Erlaubte Browser-Ursprünge",
-  "st.k.cors.origins.d": "Webseiten (Adressen wie https://beispiel.de), die im Browser auf die API zugreifen dürfen. Leer = alle werden abgelehnt, das ist die sicherste Einstellung. Neustart nötig.",
+  "st.k.cors.origins.d":
+    "Webseiten (Adressen wie https://beispiel.de), die im Browser auf die API zugreifen dürfen. Leer = alle werden abgelehnt, das ist die sicherste Einstellung. Neustart nötig.",
   "st.k.cors.origins.p": "https://host[:port], Enter zum Hinzufügen",
   "st.k.telemetry.enabled": "Ereignisprotokolle",
-  "st.k.telemetry.enabled.d": "Schreibt lokale Protokolle darüber, wie Recall arbeitet (Dauer, Treffer, Fehler). Sie bleiben auf deinem Rechner und speisen die Telemetrie-Ansicht. Aus = keine neuen Protokolle. Standard: an. Neustart nötig.",
+  "st.k.telemetry.enabled.d":
+    "Schreibt lokale Protokolle darüber, wie Recall arbeitet (Dauer, Treffer, Fehler). Sie bleiben auf deinem Rechner und speisen die Telemetrie-Ansicht. Aus = keine neuen Protokolle. Standard: an. Neustart nötig.",
   "st.unit.days": "Tage",
   "st.unit.surfaces": "Einblendungen",
   "st.k.autostart": "Bei Anmeldung starten",
-  "st.k.autostart.d": "Startet Recall automatisch, sobald du dich am Mac anmeldest. Ausschalten beendet den gerade laufenden Daemon nicht. Empfohlen an, damit Recall immer bereit ist.",
+  "st.k.autostart.d":
+    "Startet Recall automatisch, sobald du dich am Mac anmeldest. Ausschalten beendet den gerade laufenden Daemon nicht. Empfohlen an, damit Recall immer bereit ist.",
   "st.k.embedding.model": "Embedding-Modell",
-  "st.k.embedding.model.d": "Das Ollama-Modell, das deine Memories in Zahlen („Embeddings“) umwandelt, damit Recall nach Bedeutung sucht. Standard: embeddinggemma. Nach einem Wechsel müssen die Zahlen unter Umständen neu berechnet werden, im Zweifel nicht ändern.",
+  "st.k.embedding.model.d":
+    "Das Ollama-Modell, das deine Memories in Zahlen („Embeddings“) umwandelt, damit Recall nach Bedeutung sucht. Standard: embeddinggemma. Nach einem Wechsel müssen die Zahlen unter Umständen neu berechnet werden, im Zweifel nicht ändern.",
   "st.k.ollama.url": "Ollama-URL",
-  "st.k.ollama.url.d": "Die Adresse, unter der Recall Ollama erreicht. Standard ist dein eigener Rechner (http://localhost:11434). Nur ändern, wenn Ollama auf einem anderen Port oder Rechner läuft.",
+  "st.k.ollama.url.d":
+    "Die Adresse, unter der Recall Ollama erreicht. Standard ist dein eigener Rechner (http://localhost:11434). Nur ändern, wenn Ollama auf einem anderen Port oder Rechner läuft.",
   "st.k.ollama.keepAlive": "Modell geladen halten",
-  "st.k.ollama.keepAlive.d": "Wie lange Ollama ein Modell nach der letzten Nutzung im Arbeitsspeicher hält. Länger = Antworten ohne Ladezeit, aber der Speicher bleibt belegt. Kürzer = gibt Speicher früher frei, die nächste Anfrage startet langsamer. „0“ entlädt sofort. Standard: 10 Minuten.",
+  "st.k.ollama.keepAlive.d":
+    "Wie lange Ollama ein Modell nach der letzten Nutzung im Arbeitsspeicher hält. Länger = Antworten ohne Ladezeit, aber der Speicher bleibt belegt. Kürzer = gibt Speicher früher frei, die nächste Anfrage startet langsamer. „0“ entlädt sofort. Standard: 10 Minuten.",
   "st.k.recall.floor": "Score-Untergrenze",
-  "st.k.recall.floor.d": "Mindestpunktzahl (0–100), die ein Treffer braucht, um dir angezeigt zu werden. Höher = weniger, dafür passendere Treffer. Niedriger = mehr Treffer, auch vage. Standard: 30.",
+  "st.k.recall.floor.d":
+    "Mindestpunktzahl (0–100), die ein Treffer braucht, um dir angezeigt zu werden. Höher = weniger, dafür passendere Treffer. Niedriger = mehr Treffer, auch vage. Standard: 30.",
   "st.k.prompt.hookMode": "Prompt-Hook",
-  "st.k.prompt.hookMode.d": "Was Recall bei jeder Nachricht automatisch einblendet. Alles (Standard): Treffer plus weitere Zusatzblöcke. Nur Treffer: ausschließlich die Recall-Treffer, das hält deine Nachricht schlank.",
+  "st.k.prompt.hookMode.d":
+    "Was Recall bei jeder Nachricht automatisch einblendet. Alles (Standard): Treffer plus weitere Zusatzblöcke. Nur Treffer: ausschließlich die Recall-Treffer, das hält deine Nachricht schlank.",
   "st.k.hint.suppress": "Hinweise unterdrücken",
-  "st.k.hint.suppress.d": "Was mit Hinweisen passiert, die du immer wieder ignorierst. Beobachten (Standard): Recall zählt sie nur im Protokoll mit. Aus: die Zählung entfällt. In beiden Fällen werden Hinweise nicht ausgeblendet.",
+  "st.k.hint.suppress.d":
+    "Was mit Hinweisen passiert, die du immer wieder ignorierst. Beobachten (Standard): Recall zählt sie nur im Protokoll mit. Aus: die Zählung entfällt. In beiden Fällen werden Hinweise nicht ausgeblendet.",
   "st.k.hint.suppressAfter": "Schwelle für ignorierte Hinweise",
-  "st.k.hint.suppressAfter.d": "Nach wie vielen ignorierten Einblendungen ein Hinweis als „wird nicht gebraucht“ gilt. Niedriger = schnelleres Urteil, höher = mehr Geduld. 0 bis 30, Standard: 8.",
+  "st.k.hint.suppressAfter.d":
+    "Nach wie vielen ignorierten Einblendungen ein Hinweis als „wird nicht gebraucht“ gilt. Niedriger = schnelleres Urteil, höher = mehr Geduld. 0 bis 30, Standard: 8.",
   "st.k.scope.filterLanes": "Scope-Filter",
-  "st.k.scope.filterLanes.d": "Ob Hinweise außerhalb deines aktuellen Projekts (Scope) auffallen. Beobachten (Standard): Recall misst nur, wie oft das vorkommt. Erzwingen: solche Hinweise werden wirklich ausgeblendet.",
+  "st.k.scope.filterLanes.d":
+    "Ob Hinweise außerhalb deines aktuellen Projekts (Scope) auffallen. Beobachten (Standard): Recall misst nur, wie oft das vorkommt. Erzwingen: solche Hinweise werden wirklich ausgeblendet.",
   "st.k.saveNotice": "Speicherhinweis",
-  "st.k.saveNotice.d": "Zeigt in der Sitzung einen kurzen Hinweis, sobald Recall eine Memory gespeichert hat, damit du immer weißt, was gemerkt wurde. Standard: an.",
+  "st.k.saveNotice.d":
+    "Zeigt in der Sitzung einen kurzen Hinweis, sobald Recall eine Memory gespeichert hat, damit du immer weißt, was gemerkt wurde. Standard: an.",
   "st.k.logs.retention": "Aufbewahrungsdauer",
-  "st.k.logs.retention.d": "Wie viele Tage Protokolle aufbewahrt werden, ältere werden gelöscht. Länger = mehr Verlauf zum Auswerten, aber mehr Speicher. Erlaubt: 30–365 Tage. Standard: 90.",
+  "st.k.logs.retention.d":
+    "Wie viele Tage Protokolle aufbewahrt werden, ältere werden gelöscht. Länger = mehr Verlauf zum Auswerten, aber mehr Speicher. Erlaubt: 30–365 Tage. Standard: 90.",
   "st.k.logs.path": "Protokollordner",
-  "st.k.logs.path.d": "Ordner, in dem die täglichen Protokolle liegen. Standard: der Ordner „logs“ im Bastra-Datenordner.",
+  "st.k.logs.path.d":
+    "Ordner, in dem die täglichen Protokolle liegen. Standard: der Ordner „logs“ im Bastra-Datenordner.",
   "st.k.training.capture": "Trainingsdaten erfassen",
-  "st.k.training.capture.d": "Speichert Suchanfragen und die zugehörigen Treffer, damit du daraus ein eigenes lokales Modell trainieren kannst. Freiwillig, Standard: aus.",
+  "st.k.training.capture.d":
+    "Speichert Suchanfragen und die zugehörigen Treffer, damit du daraus ein eigenes lokales Modell trainieren kannst. Freiwillig, Standard: aus.",
   "st.readonly.autostart-unsupported": "Autostart lässt sich auf diesem Betriebssystem hier nicht verwalten.",
-  "st.readonly.autostart-unmanaged": "Dieser Anmeldedienst wird außerhalb von Bastra verwaltet und bleibt hier schreibgeschützt.",
-  "st.k.ui.backdrop.d": "Das Bild hinter der Oberfläche: ein mitgeliefertes Motiv, „Keins“ oder ein eigenes Bild zum Hochladen. Es wird abgedunkelt, damit Texte lesbar bleiben.",
-  "st.k.ui.backdropDim.d": "Wie stark das Hintergrundbild abgedunkelt wird (50–95 %). Höher = dunkler und Texte besser lesbar, niedriger = das Bild leuchtet stärker. Standard: 80 %.",
+  "st.readonly.autostart-unmanaged":
+    "Dieser Anmeldedienst wird außerhalb von Bastra verwaltet und bleibt hier schreibgeschützt.",
+  "st.k.ui.backdrop.d":
+    "Das Bild hinter der Oberfläche: ein mitgeliefertes Motiv, „Keins“ oder ein eigenes Bild zum Hochladen. Es wird abgedunkelt, damit Texte lesbar bleiben.",
+  "st.k.ui.backdropDim.d":
+    "Wie stark das Hintergrundbild abgedunkelt wird (50–95 %). Höher = dunkler und Texte besser lesbar, niedriger = das Bild leuchtet stärker. Standard: 80 %.",
   "st.k.ui.backdropBlur.d": "Macht das Hintergrundbild unscharf, damit es weniger vom Inhalt ablenkt. Standard: aus.",
   "st.k.modelRecommendation.at.d": "Wann du die Empfehlung beantwortet hast. Nur zur Ansicht.",
   "st.k.ui.backdrop": "Hintergrundbild",

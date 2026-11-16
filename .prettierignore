@@ -1,5 +1,3 @@
-# Concurrent UI work; format after it lands.
-packages/daemon/webui/v22/
 # Dependencies, output, and upstream sources.
 **/node_modules/
 **/dist/
