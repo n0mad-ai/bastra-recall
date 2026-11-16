@@ -10,7 +10,7 @@ import {
 } from "../settings-env.js";
 import { notifyAssistantAddressDaemon } from "../assistant-address.js";
 import { configureAssistantName } from "./address-cmd.js";
-import { getAssistantName } from "../assistant-address-settings.js";
+import { getAssistantDisplayName } from "../assistant-address-settings.js";
 import { assistantUrls } from "../assistant-address-name.js";
 /**
  * `bastra config get|set <key> [value]` — settings access from the CLI.
@@ -109,7 +109,7 @@ async function cmdConfigGet(key: KnownKey): Promise<number> {
   }
   switch (key) {
     case "assistant.name":
-      process.stdout.write(`${(await getAssistantName()) ?? "(unset)"}\n`);
+      process.stdout.write(`${(await getAssistantDisplayName()) ?? "(unset)"}\n`);
       return 0;
     case "update.mode":
       process.stdout.write(`${await getUpdateMode()}\n`);
@@ -237,7 +237,7 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
       }
       await configureAssistantName(value);
       process.stdout.write(
-        `✓ assistant.name = ${await getAssistantName()}\n  ${assistantUrls(value).local}\n  Einmalige Einrichtung: bastra address setup --yes\n`
+        `✓ assistant.name = ${await getAssistantDisplayName()}\n  ${assistantUrls(value).local}\n  Einmalige Einrichtung: bastra address setup --yes\n`
       );
       return 0;
     }

@@ -9,7 +9,12 @@ import { mutateSettings, readSettings } from "../src/settings-file.js";
 
 test("local settings session/CSRF, atomic validation and secret masking", async (t) => {
   const path = join(await mkdtemp(join(tmpdir(), "settings-ui-")), "cli-settings.json");
-  await mutateSettings(path, (s) => ({ ...s, ui: { enabled: true }, api: { token: "secret-sentinel" } }));
+  await mutateSettings(path, (s) => ({
+    ...s,
+    ui: { enabled: true },
+    api: { token: "secret-sentinel" },
+    assistant: { name: "jarvis", displayName: "Jarvis" },
+  }));
   let restarts = 0;
   const server = createServer((req, res) => {
     if (
@@ -55,6 +60,20 @@ test("local settings session/CSRF, atomic validation and secret masking", async 
   const text = await read.text();
   assert.equal(read.status, 200);
   assert.ok(!text.includes("secret-sentinel"));
+  const entries = (JSON.parse(text) as { entries: Array<{ key: string; value: unknown; managed?: boolean }> }).entries;
+  const name = entries.find((e) => e.key === "assistant.name");
+  assert.equal(name?.value, "Jarvis", "the name row shows the spelling the user typed");
+  assert.equal(name?.managed, true, "it is saved through the address endpoint");
+  assert.ok(!entries.some((e) => e.key === "assistant.displayName"), "no separate display-name row");
+  for (const key of ["assistant.name", "assistant.displayName"]) {
+    const bypass = await fetch(origin + "/ui/settings", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ changes: { [key]: "Ruby" } }),
+    });
+    assert.equal(bypass.status, 400, key);
+  }
+  assert.equal((await readSettings(path)).assistant?.displayName, "Jarvis");
   assert.equal(
     (
       await fetch(origin + "/ui/settings", {

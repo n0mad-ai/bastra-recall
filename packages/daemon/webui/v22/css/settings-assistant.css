@@ -1,0 +1,19 @@
+/* Agent name row: address state of the saved name below the text field. */
+.st-addr {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px 8px;
+}
+.st-addr[hidden],
+.st-addr [hidden] {
+  display: none;
+}
+.st-addr__t {
+  font: 11px var(--mono);
+  line-height: 1.5;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}

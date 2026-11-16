@@ -68,6 +68,14 @@ const strings = z
     rows.filter((v): v is string => typeof v === "string" && v.trim().length > 0).map((v) => v.trim())
   );
 const nonemptyStrings = strings.refine((rows) => rows.length > 0);
+function isAssistantName(value: string): boolean {
+  try {
+    normalizeAssistantName(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
 export function normalizeCorsOrigin(v: unknown): string | null {
   if (typeof v !== "string") return null;
   try {
@@ -274,6 +282,13 @@ export const SETTINGS_REGISTRY = {
       }),
       { area: "general", label: "Name des Assistenten", default: null, required: true }
     ),
+    // Written with the name through the address endpoint; the UI shows it in place of the address name.
+    displayName: setting(z.string().trim().refine(isAssistantName), {
+      area: "general",
+      label: "Anzeigename des Assistenten",
+      default: null,
+      readonly: true,
+    }),
   },
   soul: {
     direction: setting(z.enum(SOUL_DIRECTIONS), { area: "general", label: "Persönlichkeit", default: "balanced" }),

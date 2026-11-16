@@ -24,7 +24,7 @@ export function createAssistantAddressSettings() {
     return data;
   }
   function render(data) {
-    input.value = data.name || "";
+    input.value = data.displayName || data.name || "";
     links.replaceChildren();
     if (data.urls)
       for (const [label, url] of [

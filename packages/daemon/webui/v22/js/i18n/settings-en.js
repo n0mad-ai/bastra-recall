@@ -1,8 +1,9 @@
 // Settings area strings (js/sections/settings*.js). Merged via addStrings().
 // Row texts: st.k.<key> (name), st.k.<key>.d (description), st.k.<key>.p (placeholder).
 export default {
-  "st.g.personality": "Personality",
-  "st.g.personality.q": "Choose how Recall speaks with you. This affects tone, not facts or permissions.",
+  "st.g.personality": "Agent and personality",
+  "st.g.personality.q":
+    "Choose what your agent is called and how it speaks with you. Tone does not change facts or permissions.",
   "st.k.soul.direction": "Basic personality",
   "st.k.soul.direction.d": "Applies in the agent window and in new sessions of connected assistants.",
   "st.k.soul.text": "In your own words",
@@ -70,7 +71,6 @@ export default {
   "st.chip.experimental": "EXPERIMENTAL",
   "st.chip.env": "ENV",
   "st.envSet": "{env} is set — env wins, read-only here",
-  "st.managed": "Changed with its own setup step: {cli}",
   "st.readonly": "Written by recall itself — read-only here",
   "st.local": "Stored in this browser · applies at once",
 
@@ -160,7 +160,15 @@ export default {
     "Turns this web interface on. It is reachable from this computer only, not from the network. Applies at once, no restart. If you turn it off you can no longer open this page.",
   "st.k.assistant.name": "Assistant name",
   "st.k.assistant.name.d":
-    "The name your voice assistant answers to, together with its local address. Changed through its own setup step, because several things have to match.",
+    "Your assistant's name, spelled the way you type it. Its local address uses the name in lower case, for example http://jarvis/. Allowed are the letters a–z, digits and hyphens.",
+  "st.k.assistant.name.p": "e.g. Jarvis",
+  "st.addr.ready": "Reachable at {url}",
+  "st.addr.todo": "The address {url} is not set up yet.",
+  "st.addr.pending": "Setting up the address is still waiting for the administrator's confirmation.",
+  "st.addr.manual": "Reachable at {url}. On this system an administrator sets up the short name without .localhost.",
+  "st.addr.retry": "Set up address",
+  "st.addr.invalid":
+    "This name cannot be used: 1–63 characters from the letters a–z, digits and hyphens, at least one letter, no accents or spaces, no reserved name.",
   "st.k.daemon.env": "Daemon environment",
   "st.k.daemon.env.d":
     "For advanced users: extra BASTRA_… settings as JSON that the daemon starts with. The values are never shown, a new entry replaces the stored one completely. Leave it alone if unsure. Restart required.",

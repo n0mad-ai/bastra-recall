@@ -478,7 +478,6 @@
     "[\"packages/daemon/webui/v22/js/sections/dashboard.js\",\"[\\\"function:widgetEl\\\"]\",\"complexity\"]": 23,
     "[\"packages/daemon/webui/v22/js/sections/settings-panel.js\",\"[\\\"function:changesTab\\\",\\\"variable:sync\\\",\\\"function:ArrowFunctionExpression#1\\\"]\",\"complexity\"]": 19,
     "[\"packages/daemon/webui/v22/js/sections/settings.js\",\"[\\\"function:mount\\\",\\\"variable:drawBar\\\",\\\"function:ArrowFunctionExpression#1\\\"]\",\"complexity\"]": 17,
-    "[\"packages/daemon/webui/v22/js/sections/settings.js\",\"[\\\"function:row\\\"]\",\"complexity\"]": 17,
     "[\"packages/daemon/webui/v22/js/sections/tasks-api.js\",\"[\\\"function:boardPatch\\\"]\",\"complexity\"]": 18,
     "[\"packages/daemon/webui/v22/js/sections/tasks-api.js\",\"[\\\"function:createInput\\\"]\",\"complexity\"]": 18,
     "[\"packages/daemon/webui/v22/js/sections/tasks-overlays.js\",\"[\\\"function:dueCard\\\"]\",\"complexity\"]": 18,

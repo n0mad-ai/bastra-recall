@@ -1,8 +1,9 @@
 // Settings area strings (js/sections/settings*.js). Merged via addStrings().
 // Row texts: st.k.<key> (name), st.k.<key>.d (description), st.k.<key>.p (placeholder).
 export default {
-  "st.g.personality": "Persönlichkeit",
-  "st.g.personality.q": "Lege fest, wie Recall mit dir spricht. Das verändert den Ton, nicht Fakten oder Rechte.",
+  "st.g.personality": "Agent und Persönlichkeit",
+  "st.g.personality.q":
+    "Lege fest, wie dein Agent heißt und wie er mit dir spricht. Der Ton verändert keine Fakten oder Rechte.",
   "st.k.soul.direction": "Grundpersönlichkeit",
   "st.k.soul.direction.d": "Wirkt im Agentenfenster und in neuen Sitzungen angebundener Assistenten.",
   "st.k.soul.text": "In eigenen Worten",
@@ -70,7 +71,6 @@ export default {
   "st.chip.experimental": "EXPERIMENTELL",
   "st.chip.env": "ENV",
   "st.envSet": "{env} ist gesetzt — die Umgebung gewinnt, hier schreibgeschützt",
-  "st.managed": "Wird über einen eigenen Einrichtungsschritt geändert: {cli}",
   "st.readonly": "Schreibt Recall selbst — hier schreibgeschützt",
   "st.local": "In diesem Browser gespeichert · wirkt sofort",
 
@@ -161,7 +161,16 @@ export default {
     "Schaltet diese Weboberfläche ein. Sie ist nur auf diesem Rechner erreichbar, nicht aus dem Netzwerk. Wirkt sofort ohne Neustart. Schaltest du sie aus, kommst du hier nicht mehr hin.",
   "st.k.assistant.name": "Name des Assistenten",
   "st.k.assistant.name.d":
-    "Der Name, auf den dein Sprachassistent hört, samt seiner lokalen Adresse. Wird über einen eigenen Einrichtungsschritt geändert, weil dabei mehrere Dinge zusammenpassen müssen.",
+    "Der Name deines Assistenten, so geschrieben, wie du ihn eingibst. Daraus entsteht seine lokale Adresse in Kleinbuchstaben, etwa http://jarvis/. Erlaubt sind Buchstaben a–z, Ziffern und Bindestrich.",
+  "st.k.assistant.name.p": "z. B. Jarvis",
+  "st.addr.ready": "Erreichbar unter {url}",
+  "st.addr.todo": "Die Adresse {url} ist noch nicht eingerichtet.",
+  "st.addr.pending": "Die Einrichtung der Adresse wartet noch auf die Bestätigung des Administrators.",
+  "st.addr.manual":
+    "Erreichbar unter {url}. Den Kurznamen ohne .localhost richtet auf diesem System der Administrator ein.",
+  "st.addr.retry": "Adresse einrichten",
+  "st.addr.invalid":
+    "Dieser Name geht nicht: 1–63 Zeichen aus Buchstaben a–z, Ziffern und Bindestrich, mindestens ein Buchstabe, keine Umlaute oder Leerzeichen, kein reservierter Name.",
   "st.k.daemon.env": "Daemon-Umgebung",
   "st.k.daemon.env.d":
     "Für Fortgeschrittene: zusätzliche BASTRA_…-Einstellungen im JSON-Format, mit denen der Daemon startet. Die Werte werden nie angezeigt, ein neuer Eintrag ersetzt den gespeicherten komplett. Im Zweifel nicht anfassen. Neustart nötig.",

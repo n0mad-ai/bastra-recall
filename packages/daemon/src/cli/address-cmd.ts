@@ -9,6 +9,7 @@ import {
   type AssistantAddressOptions,
 } from "../assistant-address.js";
 import { normalizeAssistantName, assistantUrls } from "../assistant-address-name.js";
+import { getAssistantDisplayName, setAssistantDisplayName } from "../assistant-address-settings.js";
 import { confirm } from "./prompt.js";
 import type { ParsedArgs } from "./types.js";
 export async function cmdAddress(args: ParsedArgs, options?: AssistantAddressOptions): Promise<number> {
@@ -17,11 +18,14 @@ export async function cmdAddress(args: ParsedArgs, options?: AssistantAddressOpt
     const action = args.surface ?? "status",
       value = args.positional[2];
     if (action === "status") {
-      const s = await assistantAddressStatus(options);
+      const s = {
+        ...(await assistantAddressStatus(options)),
+        displayName: await getAssistantDisplayName(options.settingsPath),
+      };
       process.stdout.write(
         args.json
           ? JSON.stringify(s) + "\n"
-          : `${s.name ?? "Kein Assistentenname gesetzt"}\n${s.urls ? `${s.urls.local}\n${s.urls.bare}\n` : ""}${s.ready ? "Adresse erreichbar" : "Adresse noch nicht eingerichtet oder Dienst nicht erreichbar"}\n${s.bareNameNotice}\n${s.repair ?? ""}\n${s.processBoundUpgrade ? `Für die Prozessgrenze einmal bestätigt neu einrichten: ${s.processBoundUpgrade}\n` : ""}`
+          : `${s.displayName ?? "Kein Assistentenname gesetzt"}\n${s.urls ? `${s.urls.local}\n${s.urls.bare}\n` : ""}${s.ready ? "Adresse erreichbar" : "Adresse noch nicht eingerichtet oder Dienst nicht erreichbar"}\n${s.bareNameNotice}\n${s.repair ?? ""}\n${s.processBoundUpgrade ? `Für die Prozessgrenze einmal bestätigt neu einrichten: ${s.processBoundUpgrade}\n` : ""}`
       );
       return 0;
     }
@@ -78,5 +82,6 @@ export async function configureAssistantName(value: string): Promise<void> {
       await changeAssistantName(value, { systemConsent: true, openBrowser: openAssistantAddress });
     else throw e;
   }
+  await setAssistantDisplayName(value);
   await notifyAssistantAddressDaemon();
 }

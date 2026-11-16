@@ -83,7 +83,9 @@ test("#1332: actual settings route preserves local CSRF and performs no system c
   assert.equal((await post("/ui/assistant-address", { name: "jarvis" }, "https://evil.example")).status, 403);
   const saved = await post("/ui/assistant-address", { name: "Jarvis" });
   assert.equal(saved.status, 200);
-  assert.equal(((await saved.json()) as any).name, "jarvis");
+  const savedBody = (await saved.json()) as any;
+  assert.equal(savedBody.name, "jarvis", "address name");
+  assert.equal(savedBody.displayName, "Jarvis", "the name as typed");
   assert.equal(admins, 0);
   assert.equal((await post("/ui/assistant-address/setup", { systemConsent: false })).status, 409);
   assert.equal(admins, 0);
@@ -94,4 +96,7 @@ test("#1332: actual settings route preserves local CSRF and performs no system c
   assert.equal((await post("/ui/assistant-address", { name: "ruby" })).status, 409);
   assert.equal((await post("/ui/assistant-address", { name: "ruby", systemConsent: true })).status, 200);
   assert.doesNotMatch(await readFile(hostsPath, "utf8"), /jarvis/);
+  const invalid = await post("/ui/assistant-address", { name: "Jürgen", systemConsent: true });
+  assert.equal(invalid.status, 400);
+  assert.equal(((await invalid.json()) as any).code, "invalid_name");
 });

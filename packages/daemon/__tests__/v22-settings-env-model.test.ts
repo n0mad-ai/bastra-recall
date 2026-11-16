@@ -10,7 +10,7 @@ async function model(fetch?: Function) {
       .replace(/^import .*;$/gm, "")
       .replace(/^export /gm, "")
       .replace(/^\{ state \};$/gm, "") +
-      "\n({GROUPS, store, groupKeys, entry, shown, setValue, revert, changeList, cliOf, matches, metaOf, apply, assistantName})",
+      "\n({GROUPS, store, groupKeys, entry, shown, setValue, revert, changeList, cliOf, matches, metaOf, apply, assistantName, locked})",
     {
       state: {},
       setState() {},
@@ -127,4 +127,58 @@ test("v22 assistant name is the saved name only while the user has set one", asy
   assert.equal(m.assistantName(), "jarvis");
   m.store.model = { entries: [{ key: "assistant.name", value: "  ", isSet: true }] };
   assert.equal(m.assistantName(), null);
+});
+
+test("v22 agent group: the name comes first, is editable and saves through the address endpoint", async () => {
+  const calls: Array<{ path: string; body: any }> = [];
+  let saved = "jarvis";
+  const m = await model(async (path: string, options: any = {}) => {
+    calls.push({ path, body: options.body ? JSON.parse(options.body) : undefined });
+    if (path.endsWith("/session")) return { ok: true, json: async () => ({ csrf: "fixture" }) };
+    if (path === "/ui/assistant-address") {
+      if (options.body && JSON.parse(options.body).name === "Jürgen")
+        return { ok: false, status: 400, json: async () => ({ error: "Assistentenname: …", code: "invalid_name" }) };
+      if (options.body) saved = JSON.parse(options.body).name;
+      return { ok: true, json: async () => ({ name: saved.toLowerCase(), displayName: saved, ready: true }) };
+    }
+    return {
+      ok: true,
+      json: async () => ({ entries: [{ key: "assistant.name", value: saved, isSet: true, managed: true }] }),
+    };
+  });
+  const group = m.GROUPS.find((g: any) => g.id === "personality");
+  assert.deepEqual([...group.keys], ["assistant.name", "soul.direction", "soul.text"]);
+  assert.ok(!m.GROUPS.find((g: any) => g.id === "general").keys.includes("assistant.name"));
+  m.store.model = { entries: [{ key: "assistant.name", value: "jarvis", isSet: true, managed: true }] };
+  assert.ok(!m.locked(m.entry("assistant.name")), "the name is no longer locked");
+  m.setValue("assistant.name", "Jarvis");
+  await m.apply();
+  const write = calls.find((c) => c.path === "/ui/assistant-address" && c.body);
+  assert.deepEqual(write?.body, { name: "Jarvis", systemConsent: true }, "the save is the instruction");
+  assert.ok(!calls.some((c) => c.path === "/ui/settings" && c.body?.changes), "not through the settings route");
+  assert.equal(m.assistantName(), "Jarvis", "shown as typed");
+  assert.equal(m.store.address.displayName, "Jarvis");
+  assert.equal(m.store.error, "");
+  m.setValue("assistant.name", "Jürgen");
+  await m.apply();
+  assert.equal(m.store.error, "st.addr.invalid", "a short, translated message");
+  assert.equal(m.store.changes.get("assistant.name"), "Jürgen", "the rejected input stays for correction");
+  assert.equal(m.assistantName(), "Jarvis");
+});
+
+test("v22 address note: honest state of http://<name>/ for the saved name", async () => {
+  const source = await readFile(new URL("../webui/v22/js/sections/settings-assistant.js", import.meta.url), "utf8");
+  const { addressNote } = runInNewContext(
+    source.replace(/^import .*;$/gm, "").replace(/^export /gm, "") + "\n({ addressNote })",
+    { t: (key: string, v?: any) => (v ? `${key} ${JSON.stringify(v)}` : key), store: {}, h() {} }
+  );
+  const ok = { name: "jarvis", registeredName: "jarvis", ready: true, systemSetupSupported: true };
+  assert.match(addressNote("Jarvis", ok).text, /st\.addr\.ready .*http:\/\/jarvis\//);
+  assert.equal(addressNote("Jarvis", ok).retry, false);
+  const failed = { ...ok, warning: "Systemeinrichtung abgebrochen, nichts geändert." };
+  const pending = addressNote("Ruby", failed);
+  assert.match(pending.text, /st\.addr\.todo .*http:\/\/ruby\/.* Systemeinrichtung abgebrochen/);
+  assert.equal(pending.retry, true);
+  assert.match(addressNote("ruby", { name: "ruby", systemSetupSupported: false }).text, /ruby\.localhost/);
+  assert.equal(addressNote(null, ok), null);
 });

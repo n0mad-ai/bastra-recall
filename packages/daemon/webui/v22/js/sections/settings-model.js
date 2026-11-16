@@ -16,17 +16,10 @@ export const GROUPS = [
   { id: "appearance", keys: ["ui.footer", "ui.timeline", "ui.backdrop", "ui.backdropDim", "ui.backdropBlur"] },
   {
     id: "general",
-    keys: [
-      "update.mode",
-      "language.primary",
-      "autostart",
-      "battery.saver",
-      "ui.enabled",
-      "assistant.name",
-      "daemon.env",
-    ],
+    keys: ["update.mode", "language.primary", "autostart", "battery.saver", "ui.enabled", "daemon.env"],
   },
-  { id: "personality", keys: ["soul.direction", "soul.text"] },
+  // Shown as "Agent and personality": the agent's own settings join here.
+  { id: "personality", keys: ["assistant.name", "soul.direction", "soul.text"] },
   {
     id: "models",
     keys: [
@@ -153,6 +146,7 @@ export const store = {
   busy: false,
   restarting: false,
   models: [], // installed Ollama models (empty when Ollama is not reachable)
+  address: null, // GET /ui/assistant-address status of the assistant's local address
 };
 
 const listeners = new Set();
@@ -182,6 +176,7 @@ async function call(path, body) {
     if (res.status === 401) csrf = null;
     throw Object.assign(new Error(json && typeof json.error === "string" ? json.error : `HTTP ${res.status}`), {
       status: res.status,
+      code: json && typeof json.code === "string" ? json.code : undefined,
     });
   }
   return json;
@@ -222,6 +217,49 @@ export async function load() {
     store.error = err.message;
   }
   emit();
+  void loadAddress();
+}
+
+/** Address status for the name row; without it the row just shows no address note. */
+async function loadAddress() {
+  try {
+    store.address = await call("/ui/assistant-address");
+  } catch {
+    store.address = null;
+  }
+  emit("value");
+}
+
+const NAME = "assistant.name";
+/** The name has its own endpoint: saving it is the user's instruction to set up the matching
+ *  address too (macOS asks once for an administrator password). The display name applies even
+ *  when that part fails; store.address then carries the reason. */
+async function saveName(name) {
+  if (typeof name !== "string" || !name.trim()) throw Object.assign(new Error(""), { code: "invalid_name" });
+  store.address = await call("/ui/assistant-address", { name, systemConsent: true });
+  accept(await withSession(() => call("/ui/settings")));
+}
+
+/** Address step again for the saved name (button in the name row). */
+export async function retryAddress() {
+  if (store.busy) return;
+  store.busy = true;
+  store.error = "";
+  emit("bar");
+  try {
+    await saveName(entry(NAME)?.value);
+  } catch (err) {
+    store.error = errorText(err);
+  }
+  store.busy = false;
+  emit();
+}
+
+const errorText = (err) => (err.code === "invalid_name" ? t("st.addr.invalid") : err.message);
+
+function saveBatch(batch) {
+  if (batch[0][0] === NAME) return saveName(batch[0][1]);
+  return withSession(() => call("/ui/settings", { changes: Object.fromEntries(batch) })).then(accept);
 }
 
 /** Installed Ollama models for the model pickers; a failure just leaves the static suggestions. */
@@ -245,13 +283,14 @@ export async function apply() {
   store.busy = true;
   store.error = "";
   emit("bar");
-  // Login-service registration is a separate OS write, outside the settings DB.
+  // Login-service registration and the name/address are separate OS writes, outside the settings DB.
   const pending = [...store.changes.entries()];
-  const batches = [pending.filter(([k]) => k !== "autostart"), pending.filter(([k]) => k === "autostart")];
+  const own = (k) => k === "autostart" || k === NAME;
+  const batches = [pending.filter(([k]) => !own(k)), ...pending.filter(([k]) => own(k)).map((c) => [c])];
   try {
     for (const batch of batches.filter((b) => b.length)) {
       const restart = batch.some(([k]) => entry(k)?.restartRequired);
-      accept(await withSession(() => call("/ui/settings", { changes: Object.fromEntries(batch) })));
+      await saveBatch(batch);
       for (const [key, value] of batch) {
         if (JSON.stringify(store.changes.get(key)) === JSON.stringify(value)) store.changes.delete(key);
       }
@@ -259,7 +298,7 @@ export async function apply() {
       store.savedRestart ||= restart;
     }
   } catch (err) {
-    store.error = err.message;
+    store.error = errorText(err);
   }
   store.busy = false;
   if (!store.error) setState({ toast: { text: t("st.savedNote") } });
@@ -336,7 +375,7 @@ export function groupKeys(g) {
   return store.model.entries.map((e) => e.key).filter((k) => !mapped.has(k));
 }
 
-export const locked = (e) => !!e && !e.local && (e.envOverride?.length > 0 || e.readonly || e.managed);
+export const locked = (e) => !!e && !e.local && (e.envOverride?.length > 0 || e.readonly);
 export const changed = (key) => store.changes.has(key);
 
 /** Value the control shows: pending change, else stored value, else what is in effect. */

@@ -5,8 +5,15 @@ import { dirname, join, resolve } from "node:path";
 import { isLoopback, isLoopbackHost, hasForwardingHeaders, gateLocalPost, safeEqual } from "./http-auth.js";
 import { readJsonBody, sendJson } from "./http-util.js";
 import { getUiEnabled, mutateSettings, readSettings, settingsFilePath } from "./settings.js";
-import { settingEntries, storedSetting, applySettingChanges } from "./settings-registry.js";
+import {
+  settingEntries,
+  storedSetting,
+  applySettingChanges,
+  type CliSettings,
+  type SettingEntry,
+} from "./settings-registry.js";
 import { effectiveSetting } from "./settings-effective.js";
+import { assistantDisplayName } from "./assistant-address-settings.js";
 import {
   envSettingsSnapshot,
   envSettingSpec,
@@ -35,35 +42,44 @@ export interface SettingsUiOptions {
 function failure(status: number): never {
   throw Object.assign(new Error("Settings request denied"), { status });
 }
+/** The assistant name row shows the name as typed; its stored companion field is not a row of its own. */
+const DISPLAY_NAME_KEY = "assistant.displayName";
+function shownSetting(settings: CliSettings, entry: SettingEntry) {
+  const effective = effectiveSetting(entry, settings);
+  if (entry.key !== "assistant.name") return { stored: storedSetting(settings, entry), effective };
+  const name = assistantDisplayName(settings) ?? undefined;
+  return { stored: name, effective: { ...effective, value: name ?? effective.value } };
+}
 async function snapshot(path: string, options: SettingsUiOptions) {
   const settings = await readSettings(path);
   return {
     entries: [
-      ...settingEntries().map((entry) => {
-        const stored = storedSetting(settings, entry),
-          effective = effectiveSetting(entry, settings),
-          mask = (value: unknown) =>
-            entry.secret ? (value === undefined || value === null ? null : "••••••••") : value;
-        return {
-          key: entry.key,
-          label: entry.label,
-          area: entry.area,
-          kind: entry.kind,
-          choices: entry.choices,
-          default: mask(entry.default),
-          value: mask(stored ?? entry.default),
-          effective: mask(effective.value),
-          isSet: stored !== undefined,
-          secret: !!entry.secret,
-          readonly: !!entry.readonly,
-          managed: entry.key === "assistant.name",
-          restartRequired: !!entry.restartRequired,
-          envOverride: effective.envNames.map((name) => ({
-            name,
-            value: entry.secret ? "••••••••" : process.env[name],
-          })),
-        };
-      }),
+      ...settingEntries()
+        .filter((entry) => entry.key !== DISPLAY_NAME_KEY)
+        .map((entry) => {
+          const { stored, effective } = shownSetting(settings, entry),
+            mask = (value: unknown) =>
+              entry.secret ? (value === undefined || value === null ? null : "••••••••") : value;
+          return {
+            key: entry.key,
+            label: entry.label,
+            area: entry.area,
+            kind: entry.kind,
+            choices: entry.choices,
+            default: mask(entry.default),
+            value: mask(stored ?? entry.default),
+            effective: mask(effective.value),
+            isSet: stored !== undefined,
+            secret: !!entry.secret,
+            readonly: !!entry.readonly,
+            managed: entry.key === "assistant.name",
+            restartRequired: !!entry.restartRequired,
+            envOverride: effective.envNames.map((name) => ({
+              name,
+              value: entry.secret ? "••••••••" : process.env[name],
+            })),
+          };
+        }),
       ...envSettingsSnapshot(settings),
       await autostartSnapshot(options.autostart),
     ],

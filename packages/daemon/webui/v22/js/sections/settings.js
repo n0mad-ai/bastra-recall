@@ -39,6 +39,7 @@ import {
 import { findTab, changesTab } from "./settings-panel.js";
 import { backdropCtl } from "./settings-backdrop.js";
 import { soulControl } from "./settings-soul.js";
+import { assistantNameCtl } from "./settings-assistant.js";
 import en from "../i18n/settings-en.js";
 import de from "../i18n/settings-de.js";
 
@@ -380,7 +381,7 @@ function secretCtl(e) {
   };
 }
 
-/** Read-only value (registry readonly, managed, or pinned by env). */
+/** Read-only value (registry readonly or pinned by env). */
 function valueCtl(e) {
   const v = h("span.st-ro");
   return {
@@ -392,7 +393,8 @@ function valueCtl(e) {
 }
 
 function controlFor(e) {
-  if (e.managed || e.readonly) return valueCtl(e);
+  if (e.readonly) return valueCtl(e);
+  if (e.key === "assistant.name") return assistantNameCtl(e, textCtl(e));
   if (e.key === "soul.direction" || e.key === "soul.text") return soulControl(e);
   if (e.key === "ui.backdrop") return backdropCtl(e, { shown, setValue, revert, reload: load });
   if (e.secret) return e.envOverride?.length ? valueCtl(e) : secretCtl(e);
@@ -413,13 +415,11 @@ function row(e) {
   const mod = chip(t("st.chip.modified"), "st-chip--mod");
   const note = env.length
     ? h("div.st-row__env.is-set", { text: t("st.envSet", { env: env.map((x) => `${x.name}=${x.value}`).join(", ") }) })
-    : e.managed
-      ? h("div.st-row__env", { text: t("st.managed", { cli: `bastra config set ${e.key} <name>` }) })
-      : e.readonly
-        ? h("div.st-row__env", { text: tx(`st.readonly.${e.readonlyCode}`, t("st.readonly")) })
-        : e.local
-          ? h("div.st-row__env", { text: t("st.local") })
-          : null;
+    : e.readonly
+      ? h("div.st-row__env", { text: tx(`st.readonly.${e.readonlyCode}`, t("st.readonly")) })
+      : e.local
+        ? h("div.st-row__env", { text: t("st.local") })
+        : null;
   const el = h(
     "div.st-row",
     null,
@@ -439,7 +439,7 @@ function row(e) {
       descOf(e) ? h("p.st-row__desc", { text: descOf(e) }) : null,
       note
     ),
-    h("div.st-row__ctl", { cls: isLocked && !e.managed && !e.readonly ? "is-locked" : "" }, ctl.nodes)
+    h("div.st-row__ctl", { cls: isLocked && !e.readonly ? "is-locked" : "" }, ctl.nodes)
   );
   if (ctl.wide) el.classList.add("st-row--wide");
   if (ctl.below) el.append(ctl.below);
