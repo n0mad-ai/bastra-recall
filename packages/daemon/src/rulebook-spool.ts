@@ -18,6 +18,10 @@ const key = (sid: string | null) =>
 export async function spoolRulebookFailure(sid: string | null, count = 1): Promise<void> {
   try {
     const dir = directory();
+    // Check the base before creating anything below it: a recursive mkdir
+    // through a planted symlink would create the spool wherever it points.
+    await mkdir(base(), { recursive: true, mode: 0o700 });
+    if ((await privateDirState(base())) !== "private") return;
     await mkdir(dir, { recursive: true, mode: 0o700 });
     if (!(await privateSpool())) return;
     await writeFile(join(dir, `${key(sid)}-${randomUUID()}.json`), JSON.stringify({ count }), {

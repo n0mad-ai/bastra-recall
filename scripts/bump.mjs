@@ -17,7 +17,7 @@
  *
  * Does NOT touch git — commit, tag and `gh release create` stay manual.
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { README_RELEASE_LINE, README_RELEASE_TARGET_LINE, isPrereleaseVersion } from "./release-docs.mjs";
@@ -109,8 +109,14 @@ for (const { path, json } of pkgs) {
 // beside the packages, so it moves with them — otherwise plugin directories
 // show users an old release.
 const codexPluginPath = resolve(repoRoot, "plugins/bastra-recall/.codex-plugin/plugin.json");
-if (existsSync(codexPluginPath)) {
-  const plugin = JSON.parse(readFileSync(codexPluginPath, "utf8"));
+let codexPluginRaw;
+try {
+  codexPluginRaw = readFileSync(codexPluginPath, "utf8");
+} catch (error) {
+  if (error.code !== "ENOENT") throw error;
+}
+if (codexPluginRaw !== undefined) {
+  const plugin = JSON.parse(codexPluginRaw);
   if (plugin.version !== version) {
     changes.push(`plugins/bastra-recall/.codex-plugin/plugin.json: version ${plugin.version} → ${version}`);
     plugin.version = version;

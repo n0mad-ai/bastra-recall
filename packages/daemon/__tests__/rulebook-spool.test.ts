@@ -1,7 +1,7 @@
 /** The outage spool lives below tmpdir, which Linux shares between accounts. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, readdir } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, symlink } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -36,6 +36,27 @@ test(
       assert.equal(await drainRulebookFailures("spool-sid"), 0);
     } finally {
       await chmod(base, 0o700);
+      if (previous === undefined) delete process.env.BASTRA_HOOK_STATE_DIR;
+      else process.env.BASTRA_HOOK_STATE_DIR = previous;
+    }
+  }
+);
+
+test(
+  "a symlink planted at the spool base creates nothing where it points",
+  { skip: process.platform === "win32" },
+  async () => {
+    const previous = process.env.BASTRA_HOOK_STATE_DIR;
+    const root = await mkdtemp(join(tmpdir(), "spool-link-"));
+    const target = join(root, "elsewhere");
+    await mkdir(target);
+    await symlink(target, join(root, "bastra-hook"));
+    process.env.BASTRA_HOOK_STATE_DIR = join(root, "bastra-hook");
+    try {
+      await spoolRulebookFailure("spool-sid", 1);
+      assert.deepEqual(await readdir(target), [], "no spool directory appears in the symlink target");
+      assert.equal(await drainRulebookFailures("spool-sid"), 0);
+    } finally {
       if (previous === undefined) delete process.env.BASTRA_HOOK_STATE_DIR;
       else process.env.BASTRA_HOOK_STATE_DIR = previous;
     }
