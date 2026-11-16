@@ -134,6 +134,16 @@ const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
  * reaches hosts, Firefox preferences and the gateway's Host check. */
 const NO_ADDRESS =
   "Assistentenname: Aus diesem Namen lässt sich keine lokale Adresse bilden (Buchstaben oder Ziffern nötig, höchstens 63 Zeichen in Adressform, kein reservierter Name).";
+/** Hyphens in positions 3 and 4 are reserved (RFC 5890 §2.3.1, RFC 5891 §4.2.3.1); only a valid A-label
+ * may carry them: it decodes to a different label that encodes back to exactly itself. Checked by round
+ * trip because Node versions disagree on invalid `xn--` labels: Ada before 4 (Node 22, early 24) maps them
+ * to "", Ada 4 (Node 24.22+, 26) returns them unchanged. */
+function reservedLabel(name: string): boolean {
+  if (name.slice(2, 4) !== "--") return false;
+  if (!name.startsWith("xn--")) return true;
+  const unicode = domainToUnicode(name);
+  return unicode === name || domainToASCII(unicode) !== name;
+}
 export function normalizeAssistantName(value: string, machineNames: readonly string[] = []): string {
   const name = value.trim().toLowerCase();
   if (
@@ -141,7 +151,7 @@ export function normalizeAssistantName(value: string, machineNames: readonly str
     !/[a-z]/.test(name) ||
     RESERVED.has(name) ||
     TLDS.has(name) ||
-    (name.startsWith("xn--") && domainToASCII(name) !== name) ||
+    reservedLabel(name) ||
     machineNames.some((host) => host.toLowerCase().replace(/\.$/, "").split(".")[0] === name)
   ) {
     throw new AssistantAddressError("invalid_name", NO_ADDRESS);

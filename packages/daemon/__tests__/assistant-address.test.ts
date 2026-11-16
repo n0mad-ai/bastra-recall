@@ -64,10 +64,12 @@ test("address derivation: any language yields an IDNA A-label or no address, nev
     ["!!!", null],
     ["   ", null],
     ["a.b", "a-b"],
-    ["ab--cd", "ab--cd"], // typed hyphens stay as typed
+    ["abc--d", "abc--d"], // typed hyphens stay as typed
+    ["ab--cd", null], // hyphens in positions 3 and 4 are reserved for A-labels (RFC 5890 §2.3.1)
     ["xn--jrgen-kva", "xn--jrgen-kva"], // an A-label is already its own address
     ["XN--JRGEN-KVA", "xn--jrgen-kva"],
     ["xn--abc", null], // not a valid A-label
+    ["xn--jarvis", null],
     ["a".repeat(63), "a".repeat(63)],
     ["a".repeat(64), null],
     ["ü".repeat(60), null], // the A-label would exceed 63 characters
@@ -91,6 +93,26 @@ test("address derivation: any language yields an IDNA A-label or no address, nev
   assert.equal(readableAssistantName("jarvis"), "jarvis");
   assert.equal(assistantUrls("xn--jrgen-kva").bare, "http://xn--jrgen-kva/ui/");
   assert.throws(() => assistantUrls("Jürgen"), /Assistentenname/, "URLs only from a checked address name");
+});
+test("A-labels: only a lossless round trip counts, whatever this Node version's domainToASCII does", () => {
+  // Node 22 maps invalid xn-- labels to "", Node 24.22+/26 (Ada 4) return them unchanged; the result must not differ.
+  for (const label of ["xn--mnchen-3ya", "xn--jrgen-kva", "xn--zca", "xn--1lqs71d"])
+    assert.equal(normalizeAssistantName(label), label, label);
+  for (const label of [
+    "xn--abc", // undecodable
+    "xn--jarvis",
+    "xn--a",
+    "xn--ab--cd",
+    "xn--abc-", // decodes to the ASCII label "abc"
+    "ab--cd", // reserved hyphens without the A-label prefix
+    "zz--top",
+  ]) {
+    assert.throws(() => normalizeAssistantName(label), { name: "Error" }, label);
+    assert.equal(deriveAssistantAddress(label), null, label);
+  }
+  // Decodes on Node 22 to "mnchen-3ya", never back to itself; derivation trims the hyphen first.
+  assert.throws(() => normalizeAssistantName("xn--mnchen-3ya-"), { name: "Error" });
+  assert.equal(deriveAssistantAddress("xn--mnchen-3ya-"), "xn--mnchen-3ya");
 });
 
 test("display name: free spelling in any script, only technical limits", () => {
