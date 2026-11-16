@@ -54,3 +54,10 @@ export function clear(el) {
   el.replaceChildren();
   return el;
 }
+
+/** Textarea without a length limit: grows with its content up to the CSS
+ *  max-height, then scrolls. */
+export function growTextarea(ta) {
+  ta.style.height = "auto";
+  ta.style.height = `${ta.scrollHeight}px`;
+}

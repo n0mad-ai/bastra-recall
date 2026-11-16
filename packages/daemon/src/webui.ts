@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SearchIndex } from "@bastra-recall/core";
 import { getPrimaryLanguage, getUiEnabled } from "./settings.js";
+import { MAX_BODY_BYTES, readJsonBody } from "./http-util.js";
 
 /**
  * Content-Security-Policy for the map (#217).
@@ -117,11 +118,36 @@ export interface CareEntry {
   note: string;
 }
 
+/** Multi-line notes: the entry line carries the first line, every further line
+ *  follows indented by two spaces (a markdown list-item continuation, so
+ *  Obsidian and agents read it as one entry). Blank note lines stay empty. */
+const CARE_CONT = "  ";
+
+export function formatCareEntry(e: Omit<CareEntry, "done">): string {
+  const [first, ...rest] = e.note.split("\n");
+  const head = `- [ ] ${e.date} · ${e.kind} · [[${e.id}]]${first ? ` — ${first}` : ""}`;
+  return [head, ...rest.map((l) => (l ? CARE_CONT + l : ""))].join("\n") + "\n";
+}
+
 export function parseCareFile(content: string): CareEntry[] {
   const out: CareEntry[] = [];
-  for (const line of content.split("\n")) {
+  let blanks = 0;
+  let open = false; // the last entry may still take continuation lines
+  for (const raw of content.split("\n")) {
+    const line = raw.replace(/\r$/, "");
     const m = CARE_LINE_RE.exec(line.trimEnd());
-    if (m) out.push({ done: m[1] === "x", date: m[2], kind: m[3], id: m[4], note: m[5] ?? "" });
+    if (m) {
+      out.push({ done: m[1] === "x", date: m[2], kind: m[3], id: m[4], note: m[5] ?? "" });
+      blanks = 0;
+      open = true;
+    } else if (line.trim() === "") {
+      blanks++;
+    } else if (open && line.startsWith(CARE_CONT)) {
+      out[out.length - 1].note += "\n".repeat(blanks + 1) + line.slice(CARE_CONT.length);
+      blanks = 0;
+    } else {
+      open = false;
+    }
   }
   return out;
 }
@@ -304,7 +330,9 @@ export async function handleUiAnnotations(
   }
 }
 
-/** POST /ui/annotate {id, kind, note?} — append one care entry. */
+/** POST /ui/annotate {id, kind, note?} — append one care entry. The note is
+ *  stored unabridged; only the shared HTTP body cap (MAX_BODY_BYTES) applies,
+ *  answered with 413 and nothing written. */
 export async function handleUiAnnotate(
   req: IncomingMessage,
   res: ServerResponse,
@@ -315,36 +343,24 @@ export async function handleUiAnnotate(
     sendJsonPlain(res, 404, { error: "ui disabled" });
     return;
   }
-  let raw = "";
-  for await (const chunk of req) {
-    raw += chunk;
-    if (raw.length > 4096) {
-      sendJsonPlain(res, 413, { error: "body too large" });
-      return;
-    }
-  }
   let body: { id?: unknown; kind?: unknown; note?: unknown };
   try {
-    body = JSON.parse(raw);
-  } catch {
-    sendJsonPlain(res, 400, { error: "invalid json" });
+    body = await readJsonBody(req, MAX_BODY_BYTES);
+  } catch (err) {
+    const msg = (err as Error).message;
+    sendJsonPlain(res, msg.startsWith("body too large") ? 413 : 400, { error: msg });
     return;
   }
   const id = typeof body.id === "string" ? body.id.replace(/[[\]\n\r]/g, "").trim() : "";
   const kind = typeof body.kind === "string" ? body.kind : "";
-  const note =
-    typeof body.note === "string"
-      ? body.note
-          .replace(/[\n\r]+/g, " ")
-          .trim()
-          .slice(0, 500)
-      : "";
+  // No content limit: the note is kept in full, line breaks included.
+  const note = typeof body.note === "string" ? body.note.replace(/\r\n?/g, "\n").trim() : "";
   if (!id || !(CARE_KINDS as readonly string[]).includes(kind)) {
     sendJsonPlain(res, 400, { error: "need id and kind (delete|edit|write|note)" });
     return;
   }
   const date = new Date().toISOString().slice(0, 10);
-  const line = `- [ ] ${date} · ${kind} · [[${id}]]${note ? ` — ${note}` : ""}\n`;
+  const line = formatCareEntry({ date, kind, id, note });
   const file = join(vaultPath, CARE_FILE);
   try {
     // "wx" creates the header only when the file does not exist yet —

@@ -378,7 +378,7 @@ test("vault care: annotate appends to vault-care.md, annotations parses it back"
         ["ghost-x", "write", false],
       ]
     );
-    assert.ok(!annotations[1].note.includes("\n"), "newlines are flattened");
+    assert.equal(annotations[1].note, "worth writing\nwith newline", "newlines are kept");
 
     // the file itself is the open format: checkbox lines with wikilinks,
     // and ticking [x] by hand (Obsidian / AI session) marks it done
@@ -386,6 +386,26 @@ test("vault care: annotate appends to vault-care.md, annotations parses it back"
     assert.match(raw, /- \[ \] \d{4}-\d{2}-\d{2} · delete · \[\[old-note\]\] — superseded by v2/);
     const ticked = raw.replace("- [ ] ", "- [x] ");
     assert.equal(parseCareFile(ticked).filter((a) => a.done).length, 1);
+
+    // a long dictated note (several thousand chars, line breaks, blank lines,
+    // indentation) is stored and read back unchanged — no silent cut
+    const long = Array.from({ length: 100 }, (_, i) => `Absatz ${i}: ${"wort ".repeat(9).trim()}`)
+      .join("\n\n")
+      .replace("Absatz 3:", "  - Absatz 3 eingerückt:");
+    assert.ok(long.length > 5000);
+    const big = await post({ id: "long-one", kind: "edit", note: long });
+    assert.equal(big.status, 200);
+    assert.equal(JSON.parse(big.body).entry.note, long);
+    const again = JSON.parse((await httpGet(port, "/ui/annotations")).body).annotations;
+    assert.equal(again.length, 3);
+    assert.equal(again[2].id, "long-one");
+    assert.equal(again[2].note, long);
+    assert.equal(again.filter((a: { done: boolean }) => !a.done).length, 3);
+
+    // beyond the technical body cap: clear 413, nothing written
+    const huge = await post({ id: "huge", kind: "note", note: "x".repeat(300 * 1024) });
+    assert.equal(huge.status, 413);
+    assert.equal(JSON.parse((await httpGet(port, "/ui/annotations")).body).annotations.length, 3);
   } finally {
     await new Promise<void>((r) => server.close(() => r()));
     await rm(vaultDir, { recursive: true, force: true });

@@ -10,6 +10,7 @@ export default {
   "st.k.soul.text.d": "Ergänze, wie du behandelt werden möchtest. Fakten, Regeln und Rechte gelten weiterhin.",
   "st.k.soul.text.p": "Sei direkt, hinterfrage meine Ideen, aber behandle mich bei Stress ruhig und ohne Ironie.",
   "st.soul.count": "{n} / {max} Zeichen",
+  "st.soul.over": "{n} / {max} Zeichen – zu lang, bitte kürzen. Der Text bleibt erhalten.",
   "st.soul.balanced": "Ausgewogen",
   "st.soul.balanced.d": "Sachlich und freundlich, mit ausgewogenem Ton.",
   "st.soul.direct": "Direkt",

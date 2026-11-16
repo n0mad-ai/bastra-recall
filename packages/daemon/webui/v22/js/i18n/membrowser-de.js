@@ -69,6 +69,7 @@ export default {
   "mb.careSend": "FÜR SITZUNG MARKIEREN",
   "mb.careSending": "markiere …",
   "mb.careFail": "fehlgeschlagen – erneut",
+  "mb.careTooLong": "Notiz zu lang für eine Übertragung – Text bleibt erhalten, bitte kürzen oder teilen",
   "mb.careKind.edit": "ändern",
   "mb.careKind.delete": "löschen",
   "mb.careKind.note": "Notiz",

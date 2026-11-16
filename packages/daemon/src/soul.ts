@@ -1,7 +1,7 @@
 /** User-chosen base personality only. No learning, episodes or action rights. */
 export const SOUL_DIRECTIONS = ["balanced", "direct", "warm", "playful", "sparring"] as const;
 export type SoulDirection = (typeof SOUL_DIRECTIONS)[number];
-export const SOUL_TEXT_MAX = 600;
+export const SOUL_TEXT_MAX = 8000; // protective limit only: the text rides in every agent session, but is never cut
 export interface SoulPreference {
   direction?: SoulDirection;
   text?: string;
@@ -29,7 +29,7 @@ const TONES: Record<SoulDirection, string> = {
  * framing characters so even a closing tag in user text stays inside the data. */
 export function buildSoulBlock(soul?: SoulPreference): string {
   const direction = soul?.direction && SOUL_DIRECTIONS.includes(soul.direction) ? soul.direction : "balanced";
-  const text = typeof soul?.text === "string" ? soul.text.trim().slice(0, SOUL_TEXT_MAX) : "";
+  const text = typeof soul?.text === "string" ? soul.text.trim() : "";
   if (direction === "balanced" && !text) return "";
   const data = JSON.stringify({
     direction,

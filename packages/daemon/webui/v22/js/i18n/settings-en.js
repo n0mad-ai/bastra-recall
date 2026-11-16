@@ -10,6 +10,7 @@ export default {
   "st.k.soul.text.d": "Add how you want to be treated. Facts, rules and permissions still apply.",
   "st.k.soul.text.p": "Be direct, question my ideas, but stay calm and avoid irony when I am stressed.",
   "st.soul.count": "{n} / {max} characters",
+  "st.soul.over": "{n} / {max} characters — too long, please shorten. Your text is kept.",
   "st.soul.balanced": "Balanced",
   "st.soul.balanced.d": "Factual and friendly, with a balanced tone.",
   "st.soul.direct": "Direct",

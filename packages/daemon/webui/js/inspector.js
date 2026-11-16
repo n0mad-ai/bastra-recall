@@ -143,7 +143,7 @@ export function createInspector(el, contentEl, { knownIds, onNavigate, clusterCo
         .map((k) => `<button class="care-kind" data-kind="${k}">${k}</button>`)
         .join("")}</div>
       <div class="care-compose" hidden>
-        <textarea class="care-note" rows="2" maxlength="500" placeholder="what should happen with this note?"></textarea>
+        <textarea class="care-note" rows="2" placeholder="what should happen with this note?"></textarea>
         <button class="care-submit">Flag for session</button>
       </div>`;
   }

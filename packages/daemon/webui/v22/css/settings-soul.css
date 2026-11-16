@@ -13,9 +13,14 @@ textarea.st-soul__text {
   width: 100%;
   max-width: 420px;
   min-height: 80px;
+  max-height: 40vh;
+  overflow-y: auto;
   padding: 8px 10px;
   resize: vertical;
   line-height: 1.5;
+}
+.st-soul__count[hidden] {
+  display: none;
 }
 .st-soul__count {
   flex-basis: 100%;

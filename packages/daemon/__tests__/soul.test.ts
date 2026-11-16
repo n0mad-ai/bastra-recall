@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Vault } from "@bastra-recall/core";
 import type { ToolDeps } from "../src/tool-handlers.js";
-import { SOUL_DIRECTIONS, buildSoulBlock, readSoulPreference } from "../src/soul.js";
+import { SOUL_DIRECTIONS, SOUL_TEXT_MAX, buildSoulBlock, readSoulPreference } from "../src/soul.js";
 import { applySettingChanges, parseSettingValue, settingEntry } from "../src/settings-registry.js";
 import { readSettings, mutateSettings, settingsFilePath } from "../src/settings-file.js";
 import { buildAnswerPrompt } from "../src/webui-chat.js";
@@ -14,12 +14,12 @@ import { buildSessionContext } from "../src/session-context.js";
 import { runSessionLane } from "../src/session-lane.js";
 import { capSessionContext } from "../src/session-context-cap.js";
 
-test("Soul registry validates directions and 600-character free text without a restart", () => {
+test("Soul registry validates directions and long free text (protective limit 8000) without a restart", () => {
   for (const direction of SOUL_DIRECTIONS) assert.equal(parseSettingValue("soul.direction", direction), direction);
   assert.throws(() => parseSettingValue("soul.direction", "invented"));
-  assert.throws(() => parseSettingValue("soul.text", "x".repeat(601)));
+  assert.throws(() => parseSettingValue("soul.text", "x".repeat(SOUL_TEXT_MAX + 1)));
   assert.equal(parseSettingValue("soul.text", "  freundlich  "), "freundlich");
-  assert.equal(parseSettingValue("soul.text", "x".repeat(600)), "x".repeat(600));
+  assert.equal(parseSettingValue("soul.text", "x".repeat(SOUL_TEXT_MAX)), "x".repeat(SOUL_TEXT_MAX));
   assert.equal(settingEntry("soul.direction")?.default, "balanced");
   assert.equal(settingEntry("soul.direction")?.restartRequired, undefined);
   const configured = applySettingChanges(
@@ -55,6 +55,20 @@ test("Soul is optional style data, with escaped framing and unchanged facts/navi
   assert.ok(configured.endsWith('Actual user question: "Was ist heute fällig?"'));
   const capped = capSessionContext("<other>" + "x".repeat(12000) + "</other>" + block, [block]);
   assert.ok(capped.text.includes(block), "required personality survives the existing session soft cap");
+});
+
+test("a long Soul text (5,000 chars, line breaks) is stored and delivered unabridged", () => {
+  const long = Array.from({ length: 100 }, (_, i) => `Zeile ${i}: ${"wort ".repeat(9).trim()}`).join("\n");
+  assert.ok(long.length > 5000);
+  assert.equal(parseSettingValue("soul.text", long), long);
+  const block = buildSoulBlock({ direction: "direct", text: long });
+  const data = JSON.parse(
+    block
+      .split("\n")
+      .at(-2)!
+      .replace(/\\u([0-9a-f]{4})/g, (_, c) => String.fromCharCode(parseInt(c, 16)))
+  );
+  assert.equal(data.user_style_preference, long);
 });
 
 test("stored Soul reaches both hookless and actual SessionStart delivery, default emits nothing", async () => {

@@ -16,7 +16,7 @@
 //   vault care flags                  — GET /ui/annotations, POST /ui/annotate (old inspector)
 // The prototype's recall_when, version, file path, sessions, reflex mode and
 // per-day recall heat are not served by the daemon; those parts stay out.
-import { h, s, clear, setVars } from "../dom.js";
+import { h, s, clear, setVars, growTextarea } from "../dom.js";
 import { t, addStrings, numberFmt } from "../i18n.js";
 import { state, setState } from "../state.js";
 import { data, onData } from "../data.js";
@@ -907,7 +907,11 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
   function careBlock(m) {
     let kind = null;
     const open = (care || []).filter((a) => a.id === m.id && !a.done);
-    const note = h("textarea.mb-care__note", { rows: "2", maxlength: "500", placeholder: t("mb.careNote") });
+    const note = h("textarea.mb-care__note", {
+      rows: "2",
+      placeholder: t("mb.careNote"),
+      on: { input: () => growTextarea(note) },
+    });
     const send = h("button.mb-btn.is-primary.mb-care__send", { text: t("mb.careSend"), on: { click: submit } });
     const compose = h("div.mb-care__compose", { hidden: true }, note, send);
     const kinds = ["edit", "delete", "note"].map((k) =>
@@ -943,9 +947,9 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
             : { id: m.id, kind, note: note.value.trim(), date: new Date().toISOString().slice(0, 10), done: false }
         );
         if (!dead) renderReader(true);
-      } catch {
+      } catch (err) {
         send.disabled = false;
-        send.textContent = t("mb.careFail");
+        send.textContent = err.message === "413" ? t("mb.careTooLong") : t("mb.careFail");
       }
     }
     return h(
@@ -962,7 +966,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
                 "div.mb-care__item",
                 null,
                 h("span.mb-care__kind", { text: t(`mb.careKind.${a.kind}`) }),
-                h("span", { text: str(a.note) || "—" }),
+                h("span.mb-care__note-text", { text: str(a.note) || "—" }),
                 h("span.mb-care__date", { text: str(a.date) })
               )
             )

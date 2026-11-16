@@ -70,6 +70,7 @@ export default {
   "mb.careSend": "FLAG FOR SESSION",
   "mb.careSending": "flagging…",
   "mb.careFail": "failed — retry",
+  "mb.careTooLong": "note too large to send — text is kept, please shorten or split",
   "mb.careKind.edit": "edit",
   "mb.careKind.delete": "delete",
   "mb.careKind.note": "note",

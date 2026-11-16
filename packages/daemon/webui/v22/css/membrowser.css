@@ -795,6 +795,12 @@
   font: 11px var(--mono);
   color: var(--ink);
 }
+.mb-care__note-text {
+  max-height: 12em;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .mb-care__kind {
   padding: 1px 6px;
   border: 1px solid var(--amber);
@@ -823,6 +829,8 @@
 .mb-care__note {
   width: 100%;
   min-height: 54px;
+  max-height: 40vh;
+  overflow-y: auto;
   resize: vertical;
   padding: 8px 10px;
   border: 1px solid var(--line-22);
