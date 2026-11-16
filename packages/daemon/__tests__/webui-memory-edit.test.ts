@@ -12,6 +12,7 @@ import { Vault, SearchIndex, AUTO_RELATED_START } from "@bastra-recall/core";
 import { startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
 import { readSettings, mutateSettings, settingsFilePath } from "../src/settings-file.js";
+import { resetSaveFailures, saveMemoryHandler } from "../src/tool-handlers.js";
 
 function memory(id: string, extra: string[] = [], body = `Body fixture ${id}.\n`): string {
   return [
@@ -112,6 +113,7 @@ async function fixture() {
     dir,
     vault,
     search,
+    toolDeps: { vault, search, telemetry, vaultPath: dir },
     start,
     file: (id: string) => readFile(join(dir, `${id}.md`), "utf8"),
     async node(port: number, id: string) {
@@ -387,9 +389,35 @@ test("save-memory hides private collision and source metadata without a proven a
   try {
     const port = await f.start("linux");
     const base = { type: "reference", scope: "save-privacy", body: "Synthetic answer." };
+    const secretBefore = await f.file("secret"),
+      filesBefore = (await readdir(f.dir, { recursive: true })).sort();
+    // Reference: what the public save path (/api/v1, stdio — no access) answers for the same title.
+    resetSaveFailures();
+    const publicRefusal = await saveMemoryHandler(f.toolDeps, {
+      ...base,
+      title: "Secret",
+      summary: "Synthetic answer.",
+      topic_path: ["save-privacy"],
+      tags: ["save-privacy"],
+      recall_when: ["Secret"],
+    }).then(
+      () => assert.fail("the public save path must refuse a hidden target"),
+      (error: Error) => error.message
+    );
+    resetSaveFailures();
     const collision = await call(port, "POST", "/ui/save-memory", { ...base, title: "Secret" });
-    assert.equal(collision.status, 409);
-    assert.deepEqual(collision.body.existing, [], "a hidden collision exposes no private id or title");
+    assert.deepEqual(
+      collision,
+      { status: 500, body: { error: `save failed: ${publicRefusal}` } },
+      "a hidden collision is a plain save failure, worded like the public save path: no code, no existing, no 409"
+    );
+    assert.equal(await f.file("secret"), secretBefore, "the private memory is untouched");
+    assert.deepEqual((await readdir(f.dir, { recursive: true })).sort(), filesBefore, "no new file, no duplicate");
+    const proven = await call(await f.start("darwin"), "POST", "/ui/save-memory", { ...base, title: "Secret" });
+    assert.equal(proven.status, 409, "a proven account keeps the named collision");
+    assert.equal(proven.body.code, "exists");
+    assert.deepEqual(proven.body.existing, [{ id: "secret", title: "Fixture secret" }]);
+    resetSaveFailures();
     const held = await call(port, "POST", "/ui/save-memory", {
       ...base,
       title: "Fixture",

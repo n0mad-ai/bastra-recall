@@ -11,6 +11,7 @@ import {
 } from "../assistant-address.js";
 import { requireAssistantAddress, normalizeAssistantDisplayName, assistantUrls } from "../assistant-address-name.js";
 import { getAssistantDisplayName, setAssistantDisplayName } from "../assistant-address-settings.js";
+import { hasAddressErrorCode } from "../assistant-address-name.js";
 import { confirm } from "./prompt.js";
 import type { ParsedArgs } from "./types.js";
 export async function cmdAddress(args: ParsedArgs, options?: AssistantAddressOptions): Promise<number> {
@@ -83,7 +84,7 @@ async function changeAddressName(name: string): Promise<void> {
     await changeAssistantName(name);
   } catch (e) {
     if (
-      /consent|Zustimmung/i.test((e as Error).message) &&
+      hasAddressErrorCode(e, "system_consent_required") &&
       process.stdin.isTTY &&
       process.stdout.isTTY &&
       (await confirm("Eigene Systemadresse für den neuen Namen ändern? macOS fragt nach Administratorrechten."))

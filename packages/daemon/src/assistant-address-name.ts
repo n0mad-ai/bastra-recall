@@ -1,5 +1,26 @@
 /** DNS-label names, deliberately separate from UI display text and shell code. */
 import { domainToASCII, domainToUnicode } from "node:url";
+/** Assistant-address failures a caller decides on. The code is the contract; the message is display text
+ * only and may be reworded or translated without changing any decision (#1556). Defined here because
+ * this module is part of the self-contained address runtime and must not gain imports. */
+export type AssistantAddressErrorCode =
+  | "invalid_name" // outside the technical name limits, or no address can be formed from it
+  | "system_consent_required" // the step changes the system and runs only with explicit consent
+  | "partial_needs_consent" // a finished partial setup can only be restored or removed with consent
+  | "address_pending" // another address setup is still waiting for its administrator dialog
+  | "settings_conflict"; // the address setting changed while a system step was running
+
+export class AssistantAddressError extends Error {
+  constructor(
+    readonly code: AssistantAddressErrorCode,
+    message: string
+  ) {
+    super(message);
+  }
+}
+
+export const hasAddressErrorCode = (error: unknown, ...codes: AssistantAddressErrorCode[]): boolean =>
+  error instanceof AssistantAddressError && codes.includes(error.code);
 // IANA TLD snapshot 2026102900: https://data.iana.org/TLD/tlds-alpha-by-domain.txt
 const TLDS = new Set(
   `aaa aarp abb abbott abbvie abc able abogado abudhabi ac academy accenture accountant accountants aco actor ad
@@ -123,7 +144,7 @@ export function normalizeAssistantName(value: string, machineNames: readonly str
     (name.startsWith("xn--") && domainToASCII(name) !== name) ||
     machineNames.some((host) => host.toLowerCase().replace(/\.$/, "").split(".")[0] === name)
   ) {
-    throw new Error(NO_ADDRESS);
+    throw new AssistantAddressError("invalid_name", NO_ADDRESS);
   }
   return name;
 }
@@ -144,7 +165,7 @@ export function deriveAssistantAddress(value: string, machineNames: readonly str
 /** deriveAssistantAddress for a step that needs an address (setup): no address is an error there. */
 export function requireAssistantAddress(value: string, machineNames: readonly string[] = []): string {
   const name = deriveAssistantAddress(value, machineNames);
-  if (name === null) throw new Error(NO_ADDRESS);
+  if (name === null) throw new AssistantAddressError("invalid_name", NO_ADDRESS);
   return name;
 }
 /** The form a person types and reads (xn--jrgen-kva → jürgen). */
@@ -158,7 +179,8 @@ export function normalizeAssistantDisplayName(value: string): string {
   const name = value.normalize("NFC").trim();
   const length = [...name].length;
   if (length < 1 || length > ASSISTANT_DISPLAY_NAME_MAX || /[\p{Cc}\p{Cs}\p{Zl}\p{Zp}]/u.test(name))
-    throw new Error(
+    throw new AssistantAddressError(
+      "invalid_name",
       `Assistentenname: 1–${ASSISTANT_DISPLAY_NAME_MAX} Zeichen, ohne Steuerzeichen oder Zeilenumbrüche.`
     );
   return name;

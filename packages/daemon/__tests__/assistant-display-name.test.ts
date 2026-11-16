@@ -9,7 +9,8 @@ import {
   setAssistantName,
   setAssistantDisplayName,
 } from "../src/assistant-address-settings.js";
-import { renameAssistant } from "../src/http-assistant-address.js";
+import { renameAssistant, needsSystemStep, addressErrorReply } from "../src/http-assistant-address.js";
+import { AssistantAddressError, type AssistantAddressErrorCode } from "../src/assistant-address-name.js";
 import { setupAssistantAddress } from "../src/assistant-address.js";
 import { mutateSettings, readSettings } from "../src/settings.js";
 
@@ -142,8 +143,36 @@ test("settings save without consent keeps the existing consent gate for a set-up
   const { options, admin } = await fixture(t);
   await renameAssistant("jarvis", { ...options, systemConsent: true });
   await assert.rejects(renameAssistant("Ruby", options), /consent|Zustimmung/i);
+  await assert.rejects(renameAssistant("Ruby", options), { code: "system_consent_required" });
   assert.equal(admin.calls, 1);
   assert.equal(await getAssistantDisplayName(options.settingsPath), "jarvis");
+});
+
+test("#1556: the address outcome is decided by the error code, never by words in the message", () => {
+  const coded = (code: AssistantAddressErrorCode) => new AssistantAddressError(code, "Something went wrong.");
+  // The code decides even when the text carries none of the former words …
+  assert.equal(needsSystemStep(coded("system_consent_required")), true);
+  assert.equal(needsSystemStep(coded("partial_needs_consent")), true);
+  assert.equal(needsSystemStep(coded("settings_conflict")), true);
+  assert.deepEqual(addressErrorReply(coded("system_consent_required")), {
+    status: 409,
+    body: { error: "Something went wrong.", code: "system_consent_required" },
+  });
+  assert.deepEqual(addressErrorReply(coded("invalid_name")), {
+    status: 400,
+    body: { error: "Something went wrong.", code: "invalid_name" },
+  });
+  // … and those words without the code decide nothing.
+  for (const text of ["consent Zustimmung Systemfreigabe", "Assistentenname: x"]) {
+    assert.equal(needsSystemStep(new Error(text)), false, text);
+    assert.deepEqual(addressErrorReply(new Error(text)), {
+      status: 400,
+      body: { error: text, code: "address_setup_failed" },
+    });
+  }
+  // A pending operation stays a setup failure that the rename must not swallow.
+  assert.equal(needsSystemStep(coded("address_pending")), false);
+  assert.equal(addressErrorReply(coded("address_pending")).body.code, "address_setup_failed");
 });
 
 test("settings save: a name with special characters sets up its A-label address and keeps the spelling", async (t) => {

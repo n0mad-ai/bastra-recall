@@ -151,6 +151,9 @@ test("earlier answers omit absent source elements before native append and prese
     h: (tag, props, ...children) => ({ tag, text: props?.text, children }),
     md: (text) => [text],
     srcButtons: () => [sourceNode],
+    saveAction: () => [],
+    openSaved: () => {},
+    render: () => {},
     t: (key) => key,
   });
   vm.runInContext(history, context);

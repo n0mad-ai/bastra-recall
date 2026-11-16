@@ -21,6 +21,7 @@ import {
   retiredFirefoxPreference,
 } from "./assistant-address-files.js";
 import { getAssistantName, setAssistantName } from "./assistant-address-settings.js";
+import { AssistantAddressError } from "./assistant-address-name.js";
 import {
   renderAssistantSocketPair,
   runMacAddressAdmin,
@@ -544,10 +545,10 @@ async function assistantHelperLoaded(
   return loaded.includes(false) ? false : loaded.includes(null) ? null : true;
 }
 class AddressIntentError extends Error {}
-class AddressPendingError extends Error {}
-class AddressSettingsConflictError extends Error {
+class AddressPendingError extends AssistantAddressError {}
+class AddressSettingsConflictError extends AssistantAddressError {
   constructor(readonly settled: boolean) {
-    super("Einstellung während Systemfreigabe geändert.");
+    super("settings_conflict", "Einstellung während Systemfreigabe geändert.");
   }
 }
 
@@ -746,7 +747,10 @@ async function changeAssistantNameUnlocked(
   patchAssistantHosts((await optional(o.hostsPath)) ?? "", name, o.uid); // check conflicts before saving
   if (recovering || (before !== name && (await hasSystem(o)))) {
     if (!o.systemConsent)
-      throw new Error("Systemänderung braucht Zustimmung (system consent); bastra address setup <name> --yes");
+      throw new AssistantAddressError(
+        "system_consent_required",
+        "Systemänderung braucht Zustimmung (system consent); bastra address setup <name> --yes"
+      );
     await setupAssistantAddressUnlocked({ ...o, name } as AssistantAddressOptions & { name: string });
     return;
   }
@@ -758,7 +762,11 @@ async function setupAssistantAddressUnlocked(options: AssistantAddressOptions & 
       options.name === undefined
         ? normalizeAssistantName((await getAssistantName(o.settingsPath)) ?? "", machineNames(o))
         : requireAssistantAddress(options.name, machineNames(o));
-  if (!o.systemConsent) throw new Error("Systemeinrichtung braucht ausdrückliche Zustimmung (system consent)");
+  if (!o.systemConsent)
+    throw new AssistantAddressError(
+      "system_consent_required",
+      "Systemeinrichtung braucht ausdrückliche Zustimmung (system consent)"
+    );
   if (o.platform !== "darwin")
     throw new Error(
       "Automatische Systemeinrichtung ist nur auf macOS verfügbar; hosts/Port-80-Freigabe unter Windows/Linux durch den Administrator einrichten."
@@ -912,7 +920,11 @@ async function removeAssistantAddressUnlocked(options: AssistantAddressOptions =
     ownedHelper = helperBefore?.includes(`<key>BASTRA_ASSISTANT_ADDRESS_OWNER</key><string>${o.uid}</string>`) ?? false;
   let pending: PendingAddress | undefined;
   if (hostsAfter !== hostsBefore || ownedHelper || companionBefore !== null) {
-    if (!o.systemConsent) throw new Error("Entfernen der Systemadresse braucht Zustimmung (system consent)");
+    if (!o.systemConsent)
+      throw new AssistantAddressError(
+        "system_consent_required",
+        "Entfernen der Systemadresse braucht Zustimmung (system consent)"
+      );
     if (o.platform !== "darwin") throw new Error("Systemadresse durch den Administrator entfernen");
     const plan: AddressAdminPlan = {
       hostsPath: o.hostsPath,
@@ -1119,11 +1131,13 @@ async function addressOperation<T>(
       }
       if (result === "pending" && !allowPending)
         throw new AddressPendingError(
+          "address_pending",
           "Systemeinrichtung noch ausstehend; laufenden Dialog abwarten und bastra address status erneut prüfen."
         );
       if (result === "partial" && !allowPending) {
         if (!o.systemConsent && !(kind === "remove" && !(await addressRemovalNeedsConsent(o))))
           throw new AddressPendingError(
+            "partial_needs_consent",
             "Abgeschlossener Teilzustand: Wiederherstellen oder Entfernen braucht ausdrückliche Systemfreigabe."
           );
         recovering = true; // keep the original marker until a replacement transaction succeeds

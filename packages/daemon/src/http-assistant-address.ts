@@ -16,9 +16,29 @@ import {
 import { normalizeAssistantDisplayName, readableAssistantName } from "./assistant-address-name.js";
 import { managedAssistantHostsName } from "./assistant-address-files.js";
 import { getAssistantName, getAssistantDisplayName, setAssistantDisplayName } from "./assistant-address-settings.js";
+import { AssistantAddressError, hasAddressErrorCode } from "./assistant-address-name.js";
 const change = z.strictObject({ name: z.string().min(1), systemConsent: z.boolean().optional() });
-const consent = z.strictObject({ systemConsent: z.literal(true) });
-const needsConsent = (message: string) => /consent|Zustimmung/i.test(message);
+const consent = z.strictObject({ systemConsent: z.boolean().optional() });
+
+/** A direct rename that only the system step can complete (#1556: decided by code, never by message text):
+ * a set-up address needs consent, a finished partial setup needs it to be restored, or the setting moved
+ * during an earlier system step. With consent the setup in applyAddress does that step. */
+export const needsSystemStep = (error: unknown) =>
+  hasAddressErrorCode(error, "system_consent_required", "partial_needs_consent", "settings_conflict");
+
+/** HTTP status and body for a failed request; the message stays as the daemon wrote it. */
+export function addressErrorReply(error: unknown): { status: number; body: { error: string; code: string } } {
+  const message = (error as Error).message;
+  if (hasAddressErrorCode(error, "system_consent_required"))
+    return { status: 409, body: { error: message, code: "system_consent_required" } };
+  return {
+    status: 400,
+    body: {
+      error: message,
+      code: hasAddressErrorCode(error, "invalid_name") ? "invalid_name" : "address_setup_failed",
+    },
+  };
+}
 
 /** Address name this user's own hosts block registers; a damaged block counts as none (setup reports it). */
 async function registeredAddress(o: ReturnType<typeof assistantAddressOptions>): Promise<string | null> {
@@ -58,7 +78,7 @@ async function applyAddress(
       await changeAssistantName(name, { ...options, systemConsent: false }); // no address yet: saved directly
     } catch (error) {
       // A set-up address (or a finished partial setup) needs the system step; the setup below does it.
-      if (!system || !/consent|Zustimmung|Systemfreigabe/i.test((error as Error).message)) throw error;
+      if (!system || !needsSystemStep(error)) throw error;
     }
   if (!system || (await registeredAddress(o)) === name) return undefined;
   try {
@@ -99,6 +119,11 @@ export async function handleAssistantAddressUi(
       const body = await readJsonBody(req, 4096);
       if (path === "/ui/assistant-address/setup") {
         const input = consent.parse(body);
+        if (input.systemConsent !== true)
+          throw new AssistantAddressError(
+            "system_consent_required",
+            "Systemeinrichtung braucht ausdrückliche Zustimmung (system consent)"
+          );
         const result = await setupAssistantAddress({
           ...options,
           systemConsent: input.systemConsent,
@@ -127,15 +152,7 @@ export async function handleAssistantAddressUi(
       fallbackUrl: `${options.daemonUrl}/ui/`,
     });
   } catch (e) {
-    const error = (e as Error).message,
-      consentMissing = needsConsent(error);
-    sendJson(res, consentMissing ? 409 : 400, {
-      error,
-      code: consentMissing
-        ? "system_consent_required"
-        : /^Assistentenname:/.test(error)
-          ? "invalid_name"
-          : "address_setup_failed",
-    });
+    const reply = addressErrorReply(e);
+    sendJson(res, reply.status, reply.body);
   }
 }

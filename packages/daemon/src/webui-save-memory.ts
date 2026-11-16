@@ -10,6 +10,8 @@
  * Held or refused saves are not swallowed: an existing memory under the same
  * id, or one that already declares the same situation (claim gate, #360),
  * comes back as 409 with that memory's id and title. Nothing is written then.
+ * A memory the caller may not read is never named: a collision with it fails
+ * like the public save_memory does (#464), without a code or a name.
  *
  * Sensitivity: the default of the normal save (team). When one of the
  * answer's sources is private, the new memory is private too — it is never
@@ -154,8 +156,12 @@ async function saveDraft(deps: ToolDeps, draft: UiSaveDraft, access?: PrivateAcc
   };
   // Same target resolution the save uses: an existing memory under this id is
   // named to the user instead of surfacing as a thrown "already exists".
-  const target = resolveMemoryTarget(deps.vaultPath, input, vaultLocator(deps.vault)).id;
-  if (deps.vault.get(target))
+  // A memory this caller may not read is not named: the save path below
+  // refuses it exactly as it refuses a public save_memory caller (#464), so
+  // this route says no more about it than the public API already does.
+  const target = resolveMemoryTarget(deps.vaultPath, input, vaultLocator(deps.vault)).id,
+    existing = deps.vault.get(target);
+  if (existing && !hiddenFromCaller(access, existing.fm))
     throw new UiSaveError(409, "a memory with this title already exists", {
       code: "exists",
       existing: named(deps, [target], access),

@@ -13,6 +13,7 @@ test("user area counts include memories and documents while synthetic nodes stay
   ];
   const ctx = vm.createContext({
     document: { title: "" },
+    reportRows: () => [],
     fetch: async () => ({
       ok: true,
       json: async () => ({
@@ -25,7 +26,10 @@ test("user area counts include memories and documents while synthetic nodes stay
       }),
     }),
   });
-  vm.runInContext(source.replaceAll("export ", "") + ";globalThis.api = { loadGraph, data };", ctx);
+  vm.runInContext(
+    source.replace(/^import .*;\n/gm, "").replaceAll("export ", "") + ";globalThis.api = { loadGraph, data };",
+    ctx
+  );
   await ctx.api.loadGraph();
   assert.deepEqual(JSON.parse(JSON.stringify(ctx.api.data.clusters)), [{ key: "area", count: 2 }]);
   assert.equal(ctx.api.data.graph.nodes.length, 4, "raw graph and engines keep synthetic references");
@@ -40,6 +44,7 @@ test("live graph refresh coalesces a batch, covers changes/deletes, skips reads 
     nodes = [{ id: "existing", title: "Old" }];
   const context = vm.createContext({
     document: { title: "" },
+    reportRows: () => [],
     fetch: async (url) => ({
       ok: true,
       json: async () => {
@@ -52,7 +57,11 @@ test("live graph refresh coalesces a batch, covers changes/deletes, skips reads 
       },
     }),
   });
-  vm.runInContext(source.replaceAll("export ", "") + ";globalThis.api = { loadGraph, pollUpdates, data };", context);
+  vm.runInContext(
+    source.replace(/^import .*;\n/gm, "").replaceAll("export ", "") +
+      ";globalThis.api = { loadGraph, pollUpdates, data };",
+    context
+  );
   const { loadGraph, pollUpdates, data } = context.api;
   await loadGraph();
   await pollUpdates();
@@ -89,6 +98,7 @@ test("a mutation arriving during initial graph load fetches a fresh snapshot aft
     finishInitial;
   const ctx = vm.createContext({
     document: { title: "" },
+    reportRows: () => [],
     fetch: async (url) => {
       if (url === "/ui/graph") {
         calls++;
@@ -101,7 +111,11 @@ test("a mutation arriving during initial graph load fetches a fresh snapshot aft
       return { ok: true, json: async () => ({ seq, updates: [{ kind: "add" }] }) };
     },
   });
-  vm.runInContext(source.replaceAll("export ", "") + ";globalThis.api = { loadGraph, pollUpdates, data };", ctx);
+  vm.runInContext(
+    source.replace(/^import .*;\n/gm, "").replaceAll("export ", "") +
+      ";globalThis.api = { loadGraph, pollUpdates, data };",
+    ctx
+  );
   const api = ctx.api;
   await api.pollUpdates();
   const initial = api.loadGraph();
