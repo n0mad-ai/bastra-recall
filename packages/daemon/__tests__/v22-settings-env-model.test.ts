@@ -10,7 +10,7 @@ async function model(fetch?: Function) {
       .replace(/^import .*;$/gm, "")
       .replace(/^export /gm, "")
       .replace(/^\{ state \};$/gm, "") +
-      "\n({GROUPS, store, groupKeys, entry, shown, setValue, revert, changeList, cliOf, matches, metaOf, apply})",
+      "\n({GROUPS, store, groupKeys, entry, shown, setValue, revert, changeList, cliOf, matches, metaOf, apply, assistantName})",
     {
       state: {},
       setState() {},
@@ -116,4 +116,15 @@ test("v22 keeps a newer edit made while an earlier value is being saved", async 
   assert.equal(m.entry("logs.retention").value, 100);
   assert.equal(m.store.changes.get("logs.retention"), 110);
   assert.equal(m.shown(m.entry("logs.retention")), 110);
+});
+
+test("v22 assistant name is the saved name only while the user has set one", async () => {
+  const m = await model();
+  assert.equal(m.assistantName(), null);
+  m.store.model = { entries: [{ key: "assistant.name", value: null, isSet: false }] };
+  assert.equal(m.assistantName(), null);
+  m.store.model = { entries: [{ key: "assistant.name", value: "jarvis", isSet: true }] };
+  assert.equal(m.assistantName(), "jarvis");
+  m.store.model = { entries: [{ key: "assistant.name", value: "  ", isSet: true }] };
+  assert.equal(m.assistantName(), null);
 });

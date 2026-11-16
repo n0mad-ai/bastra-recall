@@ -11,6 +11,7 @@ import * as agent from "./agent.js";
 import * as footer from "./footer.js";
 import * as lens from "./lens.js";
 import * as stage from "./stage.js";
+import { assistantName, load as loadSettings, onStore } from "./sections/settings-model.js";
 import { mountBackdrop } from "./backdrop.js";
 import "./views/index.js";
 import "./sections/index.js";
@@ -69,6 +70,14 @@ subscribe((s) => {
   update(changed);
 });
 onData(() => update(new Set(["data"])));
+// The assistant name comes with the settings snapshot; a save in Settings updates it.
+let shownName = assistantName();
+onStore(() => {
+  if (assistantName() === shownName) return;
+  shownName = assistantName();
+  update(new Set(["data"]));
+});
+void loadSettings();
 
 window.addEventListener("resize", () => setState({ vw: window.innerWidth, vh: window.innerHeight }));
 window.addEventListener("keydown", (e) => {

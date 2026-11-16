@@ -320,6 +320,12 @@ export function entry(key) {
   return store.model?.entries.find((e) => e.key === key) || null;
 }
 
+/** The assistant name the user has set, or null while none is set (the shown default is then the product name). */
+export function assistantName() {
+  const e = store.model?.entries.find((x) => x.key === "assistant.name");
+  return e?.isSet && typeof e.value === "string" && e.value.trim() ? e.value.trim() : null;
+}
+
 /** Keys of a group that the daemon (or this browser) actually knows. */
 export function groupKeys(g) {
   const known = new Set(store.model?.entries.map((e) => e.key) || []);

@@ -6,7 +6,7 @@ import { t } from "./i18n.js";
 import { state, setState } from "./state.js";
 import { mountJarvis } from "../vendor/jarvis-v13.js";
 import { mountNavAgent } from "./nav.js";
-import { ask, podInfo, onPodChange } from "./agent.js";
+import { ask, podInfo, onPodChange, agentName } from "./agent.js";
 import { makeGraph, timeOpts, summary, axis, timeLabel } from "./timeline.js";
 
 let Lc = null;
@@ -19,7 +19,7 @@ const C = {},
 
 const orb = () => h("span.orb", null, h("span.orb__ring"), h("span.orb__rim"), h("span.orb__core"));
 const toggleAgent = () => setState({ jOpen: !Lc.jOpen });
-const podTitle = () => (Lc.pinAgent ? t("agent.name") : Lc.jOpen ? t("pod.title.close") : t("pod.title.open"));
+const podTitle = () => (Lc.pinAgent ? agentName() : Lc.jOpen ? t("pod.title.close") : t("pod.title.open"));
 
 export function mountFooter(app) {
   // console / anchored: timeline right of the pod
@@ -293,6 +293,7 @@ export function render(L) {
 function renderPod() {
   const p = podInfo(),
     L = Lc;
+  A.label.textContent = I.lab.textContent = agentName().toUpperCase();
   for (const o of [M.orb, D.orb, I.orb, N.orb]) o.classList.toggle("is-fast", p.busy);
   for (const el of [M.el, D.bar, I.el, N.el, A.el]) setVars(el, { "--state-c": p.color });
   if (railFace) railFace.set(state.agent);

@@ -9,6 +9,7 @@ import { pickVaultView } from "./views/pro-views.js";
 import { mountJarvis } from "../vendor/jarvis-v13.js";
 import { vault, typeClass, inWindow, timeWindow } from "./views/vault-data.js";
 import { TC, INK } from "./views/chrome.js";
+import { assistantName } from "./sections/settings-model.js";
 import { loadingInline, setBusy } from "./sections/loading.js";
 import { showInView, openMemoryBrowser, markdown } from "./views/memory-browser.js";
 
@@ -37,6 +38,7 @@ let panel,
   pod,
   podOrb,
   podState,
+  nameEl,
   podLine,
   podChev;
 // conv: id of the stored conversation (daemon, recall.db); seq drops answers
@@ -46,9 +48,19 @@ const chatState = { msgs: [], shown: null, typed: "", question: "", history: [],
 let convs = null;
 let typeTimer = 0;
 
+// The name the user gave the assistant; the product name until one is set.
+export const agentName = () => assistantName() ?? t("agent.name");
+
+function syncName() {
+  const name = agentName();
+  nameEl.textContent = name;
+  panel.setAttribute("aria-label", name);
+  faceCanvas.title = name;
+}
+
 export function mountAgent(app) {
   stateEl = h("span.agent__state", null, h("span.dot"), h("span"));
-  faceCanvas = h("canvas", { title: t("agent.name") });
+  faceCanvas = h("canvas", { title: agentName() });
   qBox = h("div.msg.msg--you");
   caption = h("div.agent__caption.agent__md");
   srcBox = h("div.agent__srcs");
@@ -87,11 +99,11 @@ export function mountAgent(app) {
   );
   panel = h(
     "section.agent",
-    { "aria-label": t("agent.name") },
+    { "aria-label": agentName() },
     h(
       "div.agent__head",
       null,
-      h("span.agent__name", { text: t("agent.name") }),
+      (nameEl = h("span.agent__name", { text: agentName() })),
       h("span.agent__role", { text: t("agent.role") }),
       stateEl,
       (histBtn = h(
@@ -139,7 +151,12 @@ export function onPodChange(fn) {
 }
 export function podInfo() {
   const ag = state.agent;
-  return { state: `RECALL · ${t(`agent.state.${ag}`)}`, color: STATE_COLOR[ag], busy: ag !== "idle", text: podText };
+  return {
+    state: `${agentName().toUpperCase()} · ${t(`agent.state.${ag}`)}`,
+    color: STATE_COLOR[ag],
+    busy: ag !== "idle",
+    text: podText,
+  };
 }
 
 function syncInput() {
@@ -488,10 +505,11 @@ function send() {
 }
 
 export function render(L) {
+  syncName();
   if (L) {
     panel.classList.toggle("is-open", L.jOpen);
     jarvis?.setActive?.(L.jOpen);
-    pod.title = L.pinAgent ? t("agent.name") : L.jOpen ? t("pod.title.close") : t("pod.title.open");
+    pod.title = L.pinAgent ? agentName() : L.jOpen ? t("pod.title.close") : t("pod.title.open");
     podChev.textContent = L.pinAgent ? "" : L.jOpen ? "◂" : "▸";
     pod.classList.toggle("is-lit", L.jOpen || state.agent !== "idle");
   }
@@ -502,7 +520,7 @@ export function render(L) {
   stateEl.lastChild.textContent = t(`agent.state.${ag}`);
   pod.classList.toggle("is-busy", ag !== "idle");
   podOrb.classList.toggle("is-fast", ag !== "idle");
-  podState.textContent = `RECALL · ${t(`agent.state.${ag}`)}`;
+  podState.textContent = podInfo().state;
   const total = numberFmt.format(data.health?.vault_size ?? 0);
   const cap =
     ag === "speaking"
