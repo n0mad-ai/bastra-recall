@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-11-16
+
 ### Added
 
 - **Tasks and reminders in conversation.** Agents create, edit, postpone,
@@ -171,6 +173,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Security
 
+- hono is updated to 4.13.19 and @hono/node-server to 2.1.8. Both come in
+  through the MCP SDK; the updates close the open advisories for them.
 - The web UI serves private memories, vault care notes of private memories and
   the details of linked private targets only after the caller's macOS account
   was confirmed; elsewhere it serves the filtered view. Saving from the agent
@@ -3737,7 +3741,8 @@ edges. Dogfooded daily against a real vault.
 - CI (GitHub Actions): `npm ci` → build → type-check → test on a Node 20/22
   matrix, on every push and PR.
 
-[Unreleased]: https://github.com/n0mad-ai/bastra-recall/compare/v1.1.8...HEAD
+[Unreleased]: https://github.com/n0mad-ai/bastra-recall/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/n0mad-ai/bastra-recall/compare/v1.1.8...v1.2.0
 [1.1.8]: https://github.com/n0mad-ai/bastra-recall/compare/v1.1.1...v1.1.8
 [1.1.1]: https://github.com/n0mad-ai/bastra-recall/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/n0mad-ai/bastra-recall/compare/v1.0.1...v1.1.0

@@ -44,7 +44,7 @@ Bastra Recall picks up there:
 
 Keep your CLAUDE.md. Recall adds the knowledge that doesn't belong in every session.
 
-**Version 1.1.8 is available.** Find published downloads in the [latest release](https://github.com/n0mad-ai/bastra-recall/releases/latest), changes in the [changelog](./CHANGELOG.md), and tested integrations in the [support matrix](#supported-surfaces).
+**Version 1.2.0 is available.** Find published downloads in the [latest release](https://github.com/n0mad-ai/bastra-recall/releases/latest), changes in the [changelog](./CHANGELOG.md), and tested integrations in the [support matrix](#supported-surfaces).
 
 <p align="center">
   <img src="./assets/recall-demo-cmux.gif" alt="Real work in cmux: Claude Code and Codex retrieve memories with Bastra Recall, exchange findings and use expanded live Ember panels." width="100%" />
@@ -216,7 +216,7 @@ Bastra Recall setzt dort an:
 
 Deine CLAUDE.md kann bleiben. Recall ergänzt sie um das Wissen, das nicht in jede Sitzung gehört.
 
-**Version 1.1.8 ist verfügbar.** Veröffentlichte Downloads findest du im [aktuellen Release](https://github.com/n0mad-ai/bastra-recall/releases/latest), Änderungen im [Changelog](./CHANGELOG.md) und getestete Integrationen in der [Support-Matrix](#unterstützte-oberflächen).
+**Version 1.2.0 ist verfügbar.** Veröffentlichte Downloads findest du im [aktuellen Release](https://github.com/n0mad-ai/bastra-recall/releases/latest), Änderungen im [Changelog](./CHANGELOG.md) und getestete Integrationen in der [Support-Matrix](#unterstützte-oberflächen).
 
 <p align="center">
   <img src="./assets/recall-demo-cmux.gif" alt="Echte Arbeit in cmux: Claude Code und Codex laden Erinnerungen mit Bastra Recall, tauschen Befunde aus und nutzen vollständig geöffnete Ember-Panels mit Live-Daten." width="100%" />

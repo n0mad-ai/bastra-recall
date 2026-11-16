@@ -1,6 +1,6 @@
 {
   "name": "bastra-recall",
-  "version": "1.1.8",
+  "version": "1.2.0",
   "description": "Proactive local memory skill for Bastra Recall in ChatGPT and Codex.",
   "author": {
     "name": "n0mad.ai"
