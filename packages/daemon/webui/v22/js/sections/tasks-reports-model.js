@@ -1,5 +1,5 @@
 // Task reports — pure model (no DOM, no imports): validates the daemon's list
-// answer, orders it, counts unread reports, splits Markdown into prose and
+// answer, orders it, counts unread reports, filters it by a search, splits Markdown into prose and
 // pipe tables and validates the notes the owner left on a report. Tested in __tests__/v22-task-reports-model.test.ts.
 
 const str = (v) => typeof v === "string" && v.trim() !== "";
@@ -33,6 +33,23 @@ export const unreadCount = (rows) => rows.filter((r) => r.readAt === null).lengt
 
 /** "claude-code · s-12" — who filed the report. */
 export const originText = (r) => [r.client, r.session].filter(Boolean).join(" · ");
+
+/** Case and Unicode form never decide a match: "ÜBER", "über" and a decomposed "über" are one word. */
+const fold = (s) =>
+  String(s ?? "")
+    .toLowerCase()
+    .normalize("NFKC");
+
+/** Search over the list (#1597): the rows whose title or project hold every word of the query.
+ *  The list rows carry no report text, so the text itself is not searched. */
+export function matchReports(rows, query) {
+  const words = fold(query).split(/\s+/).filter(Boolean);
+  if (!words.length) return rows;
+  return rows.filter((r) => {
+    const hay = fold(`${r.title}\n${r.project}`);
+    return words.every((w) => hay.includes(w));
+  });
+}
 
 // ── Markdown blocks: the shared mini renderer has no tables, so pipe tables
 // are cut out here and rendered as a text-only table; everything else stays

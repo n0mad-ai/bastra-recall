@@ -53,3 +53,20 @@ test("#1553: the head button counts unread reports, like the docs say", async ()
   assert.match(button, /t\("tk\.rep\.btn", \{ n: unread \}\)/);
   assert.doesNotMatch(button, /data\.reports\.length/, "the total belongs to the list header, not the button");
 });
+
+test("#1597: the search texts and all other report texts exist in both languages", async () => {
+  const keys = async (lang: string) =>
+    Object.keys(await strings(`js/i18n/tasks-${lang}.js`))
+      .filter((k) => k.startsWith("tk.rep."))
+      .sort();
+  const de = await keys("de");
+  assert.deepEqual(de, await keys("en"));
+  for (const key of [
+    "tk.rep.find.ph",
+    "tk.rep.find.label",
+    "tk.rep.find.count",
+    "tk.rep.find.none",
+    "tk.rep.find.clear",
+  ])
+    assert.ok(de.includes(key), key);
+});

@@ -50,6 +50,24 @@ export function icon(d, cls = "") {
   return s(`svg${cls ? "." + cls : ""}`, { viewBox: "0 0 24 24", "aria-hidden": "true" }, s("path.ico", { d }));
 }
 
+/** The magnifier in front of a search field (memory browser, settings, reports). */
+export function searchIcon() {
+  return s(
+    "svg",
+    { viewBox: "0 0 24 24", "aria-hidden": "true" },
+    s("circle", { cx: "10.5", cy: "10.5", r: "6.5", fill: "none", stroke: "currentColor", "stroke-width": "2" }),
+    s("line", {
+      x1: "15.5",
+      y1: "15.5",
+      x2: "21",
+      y2: "21",
+      stroke: "currentColor",
+      "stroke-width": "2",
+      "stroke-linecap": "round",
+    })
+  );
+}
+
 export function clear(el) {
   el.replaceChildren();
   return el;

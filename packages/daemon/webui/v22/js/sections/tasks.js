@@ -309,7 +309,7 @@ function mount(el, ctx) {
       S.compose = S.showDue = false;
       S.proposal = null;
       emit();
-    } else if (!document.querySelector(".mb.is-on") && escapeReports()) e.stopPropagation(); // an open memory browser keeps its own Escape
+    } else if (!document.querySelector(".mb.is-on") && escapeReports(e.target)) e.stopPropagation(); // an open memory browser keeps its own Escape
   };
   window.addEventListener("keydown", key, true);
   draw();

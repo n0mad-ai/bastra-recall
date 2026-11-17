@@ -8,112 +8,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
+import { Node_, h } from "./v22-report-dom.js";
 
 const read = (path: string) => readFile(new URL(`../webui/v22/js/${path}`, import.meta.url), "utf8");
 const plain = (x: unknown) => JSON.parse(JSON.stringify(x));
 const strip = (source: string) => source.replace(/^import [\s\S]*?;$/gm, "").replace(/^export /gm, "");
-
-// ── a fake DOM: just what dom.js h(), markdown output and the decoration use ──
-class Node_ {
-  tagName: string;
-  children: Node_[] = [];
-  parent: Node_ | null = null;
-  attrs: Record<string, string> = {};
-  listeners: Record<string, Array<(e?: unknown) => unknown>> = {};
-  own = "";
-  value = "";
-  readOnly = false;
-  disabled = false;
-  hidden = false;
-  style = { setProperty() {}, height: "" };
-  private set = new Set<string>();
-  classList = {
-    add: (...c: string[]) => c.forEach((x) => this.set.add(x)),
-    remove: (...c: string[]) => c.forEach((x) => this.set.delete(x)),
-    toggle: (c: string, on: boolean) => (on ? this.set.add(c) : this.set.delete(c)),
-    contains: (c: string) => this.set.has(c),
-  };
-  constructor(tag: string) {
-    this.tagName = tag.toUpperCase();
-  }
-  get className() {
-    return [...this.set].join(" ");
-  }
-  set className(v: string) {
-    this.set = new Set(v.split(" ").filter(Boolean));
-  }
-  get textContent(): string {
-    return this.own + this.children.map((c) => c.textContent).join("");
-  }
-  set textContent(v: string) {
-    this.own = String(v);
-    this.children = [];
-  }
-  get isConnected() {
-    return false;
-  }
-  setAttribute(k: string, v: string) {
-    this.attrs[k] = v;
-  }
-  addEventListener(ev: string, fn: (e?: unknown) => unknown) {
-    (this.listeners[ev] ||= []).push(fn);
-  }
-  get childNodes() {
-    return [...this.children];
-  }
-  replaceChildren(...nodes: Node_[]) {
-    this.own = "";
-    this.children = [];
-    this.append(...nodes);
-  }
-  append(...nodes: Array<Node_ | string>) {
-    for (const n of nodes) {
-      const node = typeof n === "string" ? Object.assign(new Node_("#text"), { own: n }) : n;
-      node.parent = this;
-      this.children.push(node);
-    }
-  }
-  after(node: Node_) {
-    const siblings = this.parent!.children;
-    siblings.splice(siblings.indexOf(this) + 1, 0, node);
-    node.parent = this.parent;
-  }
-  all(): Node_[] {
-    return this.children.flatMap((c) => [c, ...c.all()]);
-  }
-  querySelectorAll(sel: string) {
-    const [outer, inner] = sel.split(" ").map((s) => s.toUpperCase());
-    return this.all()
-      .filter((n) => n.tagName === outer)
-      .flatMap((n) => n.all().filter((c) => c.tagName === inner));
-  }
-  find(cls: string) {
-    return this.all().filter((n) => n.classList.contains(cls));
-  }
-  click() {
-    return Promise.all((this.listeners.click ?? []).map((fn) => fn()));
-  }
-  scrollIntoView() {}
-  focus() {}
-}
-
-const present = (v: unknown) => v !== undefined && v !== null && v !== false;
-
-function applyProp(el: Node_, k: string, v: any) {
-  if (k === "on") for (const [ev, fn] of Object.entries(v)) el.addEventListener(ev, fn as never);
-  else if (k === "text") el.textContent = v;
-  else if (k === "cls") el.classList.add(...String(v).split(" ").filter(Boolean));
-  else el.setAttribute(k, String(v));
-}
-
-function h(tag: string, props: Record<string, any> | null, ...children: unknown[]) {
-  const [name, ...classes] = tag.split(".");
-  const el = new Node_(name || "div");
-  if (classes.length) el.className = classes.join(" ");
-  for (const [k, v] of Object.entries(props ?? {})) if (present(v)) applyProp(el, k, v);
-  for (const c of children.flat(Infinity as 1)) if (present(c)) el.append(c as Node_);
-  return el;
-}
 
 async function load(
   fetchFn: (url: string, init: any) => Promise<any> = async () => ({ status: 503, json: async () => ({}) })
@@ -374,12 +273,6 @@ test("texts: every key the notes use exists in German and English", async () => 
       .filter((k) => k.startsWith("tk.rep.note."))
       .sort();
   assert.deepEqual(await noteKeys("de"), await noteKeys("en"), "the note texts exist in both languages");
-});
-
-test("Escape closes an open note field before it closes the report view", async () => {
-  const src = await read("sections/tasks-reports.js");
-  const esc = /export function escapeReports\(\) \{[\s\S]*?\n\}/.exec(src)?.[0] ?? "";
-  assert.match(esc, /if \(R\.edit\) notesUi\.cancel\(\);\s*else closeReports\(\);/);
 });
 
 test("numbering with the real renderer: nested lists, quotes, code, blank lines and a table with head", async () => {

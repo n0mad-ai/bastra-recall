@@ -18,7 +18,7 @@
 //   vault care flags                  — GET /ui/annotations, POST /ui/annotate (membrowser-care.js)
 // The prototype's recall_when, version, file path, sessions, reflex mode and
 // per-day recall heat are not served by the daemon; those parts stay out.
-import { h, s, clear, setVars } from "../dom.js";
+import { h, clear, setVars, searchIcon } from "../dom.js";
 import { t, addStrings, numberFmt } from "../i18n.js";
 import { state, setState } from "../state.js";
 import { data, onData, loadGraph } from "../data.js";
@@ -329,26 +329,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
       h("span.mb__title", { text: t("mb.title") }),
       h("span.mb__slash", { text: "/" }),
       h("div.mb__scope", null, scopeBtn, menu),
-      h(
-        "label.mb__search",
-        null,
-        s(
-          "svg",
-          { viewBox: "0 0 24 24" },
-          s("circle", { cx: "10.5", cy: "10.5", r: "6.5", fill: "none", stroke: "currentColor", "stroke-width": "2" }),
-          s("line", {
-            x1: "15.5",
-            y1: "15.5",
-            x2: "21",
-            y2: "21",
-            stroke: "currentColor",
-            "stroke-width": "2",
-            "stroke-linecap": "round",
-          })
-        ),
-        input,
-        hits
-      ),
+      h("label.mb__search", null, searchIcon(), input, hits),
       esc
     ),
     h("div.mb__bar", null, chips, sorts),

@@ -6,7 +6,8 @@ import { runInNewContext } from "node:vm";
 async function model() {
   const source = await readFile(new URL("../webui/v22/js/sections/tasks-reports-model.js", import.meta.url), "utf8");
   return runInNewContext(
-    source.replace(/^export /gm, "") + "\n({ reportRows, unreadCount, originText, reportBlocks, byUnread })",
+    source.replace(/^export /gm, "") +
+      "\n({ reportRows, unreadCount, originText, reportBlocks, byUnread, matchReports })",
     {}
   );
 }
@@ -86,4 +87,27 @@ test("blocks: pipe tables become table blocks, prose and code stay for the Markd
     },
   ]);
   assert.deepEqual(plain(m.reportBlocks("")), [{ kind: "md", text: "" }]);
+});
+
+test("search (#1597): title and project, case and Unicode form never decide, every word must match", async () => {
+  const m = await model();
+  const rows = m.reportRows({
+    reports: [
+      { id: "a", title: "Überblick über die Förderung", project: "FÖRDERUNG", origin: {}, created_at: 3 },
+      { id: "b", title: "Straße und Weg", project: "bastra-recall", origin: {}, created_at: 2 },
+      { id: "c", title: "Ohne Projekt", origin: {}, created_at: 1 },
+    ],
+  });
+  const ids = (q: string) => m.matchReports(rows, q).map((r: any) => r.id);
+  assert.deepEqual(ids(""), ["a", "b", "c"], "an empty query keeps the list");
+  assert.deepEqual(ids("   "), ["a", "b", "c"]);
+  assert.deepEqual(ids("ÜBERBLICK"), ["a"]);
+  assert.deepEqual(ids("förderung"), ["a"], "lower case finds the upper-case project");
+  assert.deepEqual(ids("FO\u0308RDERUNG"), ["a"], "a decomposed umlaut finds the composed one");
+  assert.deepEqual(ids("u\u0308berblick".normalize("NFD")), ["a"]);
+  assert.deepEqual(ids("STRASSE"), [], "no language rules: ß is not spelled out");
+  assert.deepEqual(ids("straße"), ["b"]);
+  assert.deepEqual(ids("bastra weg"), ["b"], "words may come from title and project");
+  assert.deepEqual(ids("bastra förderung"), [], "every word has to match");
+  assert.deepEqual(ids("projekt"), ["c"], "a report without a project is found by its title");
 });

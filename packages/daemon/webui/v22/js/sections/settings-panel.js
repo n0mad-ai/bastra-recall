@@ -3,7 +3,7 @@
 // Changes (old → new, the CLI line it stands for, Revert, Discard / Apply).
 // Both tabs update in place from the settings store, so the search field keeps focus.
 import { t } from "../i18n.js";
-import { h, s, clear } from "../dom.js";
+import { h, clear, searchIcon } from "../dom.js";
 import {
   SETTINGS_FILE,
   store,
@@ -21,23 +21,6 @@ import {
 import { nameOf, descOf, fmt } from "./settings.js";
 
 const CHIPS = ["env", "restart", "experimental", "ollama", "token"];
-
-function searchIcon() {
-  return s(
-    "svg",
-    { viewBox: "0 0 24 24", "aria-hidden": "true" },
-    s("circle", { cx: "10.5", cy: "10.5", r: "6.5", fill: "none", stroke: "currentColor", "stroke-width": "2" }),
-    s("line", {
-      x1: "15.5",
-      y1: "15.5",
-      x2: "21",
-      y2: "21",
-      stroke: "currentColor",
-      "stroke-width": "2",
-      "stroke-linecap": "round",
-    })
-  );
-}
 
 const setQuery = (q) => {
   store.query = q;
