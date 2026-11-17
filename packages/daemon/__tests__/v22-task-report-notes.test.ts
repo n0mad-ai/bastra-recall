@@ -58,6 +58,14 @@ class Node_ {
   addEventListener(ev: string, fn: (e?: unknown) => unknown) {
     (this.listeners[ev] ||= []).push(fn);
   }
+  get childNodes() {
+    return [...this.children];
+  }
+  replaceChildren(...nodes: Node_[]) {
+    this.own = "";
+    this.children = [];
+    this.append(...nodes);
+  }
   append(...nodes: Array<Node_ | string>) {
     for (const n of nodes) {
       const node = typeof n === "string" ? Object.assign(new Node_("#text"), { own: n }) : n;
@@ -217,7 +225,7 @@ test("blocks: headings, paragraphs, list items and table body rows are numbered 
   );
 });
 
-test("decoration: a note button per block, saved notes below their block, the open field, lost notes at the end", async () => {
+test("decoration: a button at plain blocks, a card at annotated ones, the open field, lost notes at the end", async () => {
   const m = await load();
   const opened: unknown[] = [];
   const notes = m.noteRows({
@@ -243,42 +251,78 @@ test("decoration: a note button per block, saved notes below their block, the op
   };
   const nodes = rendered();
   const out = m.annotateReport(nodes, ui);
-  const [heading, editorBox, list, para, , table, lost] = out.nodes;
+  const [headCard, list, para, , table, lost] = out.nodes;
+  const within = (n: Node_, cls: string) => [n, ...n.all()].filter((x) => x.classList.contains(cls));
 
-  const buttons = out.nodes
-    .flatMap((n: Node_) => [n, ...n.all()])
-    .filter((n: Node_) => n.classList.contains("tk-an__btn"));
-  assert.equal(buttons.length, 6, "one button per annotatable block");
+  const buttons = out.nodes.flatMap((n: Node_) => within(n, "tk-an__btn"));
+  assert.equal(buttons.length, 3, "only the blocks without notes or an open field get the note button");
   assert.equal(buttons[0].attrs.type, "button", "a native button: reachable and usable by keyboard");
-  assert.match(buttons[1].attrs["aria-label"], /Preis- und Abrechnungsmodell/);
+  assert.match(buttons[0].attrs["aria-label"], /"excerpt":"Name"/);
   await buttons[1].click();
-  assert.deepEqual(JSON.parse(JSON.stringify(opened)), [
-    { kind: "item", index: 2, excerpt: "Preis- und Abrechnungsmodell für Pulse" },
-  ]);
+  assert.deepEqual(plain(opened), [{ kind: "paragraph", index: 4, excerpt: "Ein Absatz." }]);
 
-  assert.equal(heading.tagName, "H3");
-  assert.ok(editorBox.classList.contains("tk-an__box"), "the open field sits right below the heading");
-  assert.equal(editorBox.find("mb-care__note").length, 1, "the vault-care note field");
-  assert.equal(editorBox.find("cn__improve").length, 1, "with its improve-text button");
+  // a field opened at a block without notes already forms the card around that block
+  assert.ok(headCard.classList.contains("tk-an__card"), "the heading with the open field is wrapped into a card");
+  assert.equal(headCard.children[0].tagName, "H3");
+  assert.ok(headCard.children[0].classList.contains("tk-an__subj"), "the heading is the card's subject");
+  assert.equal(headCard.find("mb-care__note").length, 1, "the vault-care note field");
+  assert.equal(headCard.find("cn__improve").length, 1, "with its improve-text button");
+  assert.equal(headCard.find("tk-an__more").length, 0, "no second-note action while the field is open there");
   assert.equal(typeof out.focus, "function");
 
   const item = list.children[0];
+  assert.ok(item.classList.contains("tk-an__card"), "the annotated list item is the card");
   assert.ok(item.classList.contains("has-open"));
+  assert.equal(within(item, "tk-an__btn").length, 0, "no note button behind an annotated place");
+  assert.equal(item.children[0].textContent, "Preis- und Abrechnungsmodell für Pulse", "the item text is the subject");
   assert.match(item.find("tk-an__box")[0].textContent, /Preise verifizieren/);
+  assert.match(item.find("tk-an__state")[0].textContent, /tk\.rep\.note\.open/);
+  const more = item.find("tk-an__more");
+  assert.equal(more.length, 1, "a further note is added at the bottom of the card");
+  assert.match(more[0].textContent, /tk\.rep\.note\.more/);
+  await more[0].click();
+  assert.deepEqual(plain(opened[1]), { kind: "item", index: 2, excerpt: "Preis- und Abrechnungsmodell für Pulse" });
   assert.equal(list.children[1].find("tk-an__box").length, 0, "no notes, no box");
+  assert.ok(!list.children[1].classList.contains("tk-an__card"));
   assert.equal(para.tagName, "P");
 
   const rows = table.querySelectorAll("tbody tr");
   assert.equal(rows.length, 3, "a note row follows the annotated table row");
+  assert.ok(rows[1].classList.contains("is-marked"), "the annotated row is marked");
+  assert.equal(within(rows[1], "tk-an__btn").length, 0, "and has no note button");
+  assert.equal(rows[1].children.length, 3, "but keeps the button column, so the table stays aligned");
   assert.ok(rows[2].classList.contains("tk-an__tr"));
   assert.equal(rows[2].children[0].attrs.colspan, "3");
   assert.match(rows[2].textContent, /tk\.rep\.note\.done/);
-  assert.match(rows[2].textContent, /Name steht\./);
+  assert.match(rows[2].find("tk-an__reply")[0].textContent, /tk\.rep\.note\.reply.*Name steht\./);
+  assert.equal(rows[2].find("tk-an__more").length, 1);
   assert.equal(table.querySelectorAll("thead tr")[0].children.length, 3, "the head row gets the button column too");
 
   assert.ok(lost.classList.contains("tk-an__lost"), "a note whose block is gone is still shown");
-  assert.match(lost.textContent, /alter Absatz/);
+  assert.equal(lost.find("tk-an__card").length, 1, "as a card of its own");
+  assert.match(lost.find("tk-an__subj")[0].textContent, /alter Absatz/);
   assert.match(lost.textContent, /verloren\?/);
+});
+
+test("decoration: editing a saved note keeps its card, without the second-note action", async () => {
+  const m = await load();
+  const [note] = m.noteRows({ notes: [stored({ anchor: { kind: "paragraph", index: 4, excerpt: "Ein Absatz." } })] });
+  const out = m.annotateReport(rendered(), {
+    notes: [note],
+    editing: { anchor: { kind: "paragraph", index: 4, excerpt: "Ein Absatz." }, noteId: note.id, draft: {} },
+    open() {},
+    edit() {},
+    remove() {},
+    save: async () => {},
+    cancel() {},
+  });
+  const card = out.nodes[2];
+  assert.ok(card.classList.contains("tk-an__card"));
+  assert.equal(card.children[0].tagName, "P");
+  assert.equal(card.find("mb-care__note").length, 1);
+  assert.equal(card.find("mb-care__note")[0].value, note.text, "the field holds the saved text");
+  assert.equal(card.find("tk-an__more").length, 0);
+  assert.equal(card.find("tk-an__btn").length, 0);
 });
 
 test("the note field is the vault-care field: improve text, undo, and the same answer without a local model", async () => {
@@ -325,6 +369,11 @@ test("texts: every key the notes use exists in German and English", async () => 
     const table = await strings(lang);
     for (const key of keys) assert.equal(typeof table[key], "string", `${key} in tasks-${lang}`);
   }
+  const noteKeys = async (lang: string) =>
+    Object.keys(await strings(lang))
+      .filter((k) => k.startsWith("tk.rep.note."))
+      .sort();
+  assert.deepEqual(await noteKeys("de"), await noteKeys("en"), "the note texts exist in both languages");
 });
 
 test("Escape closes an open note field before it closes the report view", async () => {

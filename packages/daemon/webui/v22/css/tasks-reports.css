@@ -108,8 +108,10 @@
   border-bottom: 0;
 }
 
-/* notes on single places of a report (js/sections/tasks-report-notes.js): the "note" button
- * appears on hover or keyboard focus; saved notes sit below their block with the amber edge */
+/* notes on single places of a report (js/sections/tasks-report-notes.js). A place without notes
+ * shows the "note" button on hover or keyboard focus only; it keeps its room while hidden, so the
+ * text never moves. A place with notes (or an open note field) becomes an amber card: the report
+ * text on top as the subject, the notes as their own indented surfaces below (Daniel 17.11.2026). */
 .tk-an__btn {
   margin-left: 8px;
   padding: 0 6px;
@@ -126,9 +128,7 @@
 }
 .tk-an:hover > .tk-an__btn,
 .tk-an:hover > .tk-an__cell > .tk-an__btn,
-.tk-an__btn:focus-visible,
-.tk-an.has-open > .tk-an__btn,
-.tk-an.has-open > .tk-an__cell > .tk-an__btn {
+.tk-an__btn:focus-visible {
   opacity: 1;
 }
 .tk-an__btn:hover,
@@ -137,82 +137,215 @@
   color: var(--amber);
   outline: 0;
 }
+/* no hover on touch screens: the button stays faintly visible there */
+@media (hover: none) {
+  .tk-an__btn {
+    opacity: 0.7;
+  }
+}
 .tk-rep__tbl .tk-an__cell {
   width: 1%;
   white-space: nowrap;
   text-align: right;
 }
+
+/* the card: the annotated place and its notes as one framed unit, set apart from the report */
+.tk-an__card {
+  margin: 18px 0 20px;
+  padding: 12px 14px 14px;
+  border: 1px solid rgba(217, 164, 65, 0.4);
+  background: rgba(217, 164, 65, 0.05);
+  box-shadow: inset 0 2px 0 rgba(217, 164, 65, 0.8);
+}
+/* a list item is the card itself: it spans the text width, its marker moves into the card */
+.mb-rd__text li.tk-an__card {
+  margin-left: -18px;
+  list-style: none;
+}
+li.tk-an__card > .tk-an__subj::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin: 0 9px 0 1px;
+  vertical-align: middle;
+  background: var(--amber);
+}
+/* the subject: the place the notes are about */
+.tk-an__card > .tk-an__subj {
+  margin: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(217, 164, 65, 0.22);
+  color: #f2f7fd;
+}
+.tk-an__card > p.tk-an__subj,
+.tk-an__card > div.tk-an__subj {
+  font-weight: 500;
+}
 .tk-an__box {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin: 0 0 12px;
+  gap: 8px;
+  margin: 12px 0 0 14px;
+  min-width: 0;
 }
-li > .tk-an__box {
-  margin: 6px 0 4px;
-}
+
+/* one note: its own dark surface, warmer text than the report */
 .tk-an__note {
-  padding: 6px 10px;
-  border-left: 2px solid var(--amber);
-  font: 13px var(--sans);
-  color: var(--ink);
+  min-width: 0;
+  padding: 10px 12px 11px;
+  border: 1px solid var(--line-14);
+  background: var(--surface-tile);
+  font: 14px var(--sans);
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: 0;
+  color: #f1e4c8;
+  text-align: left;
 }
 .tk-an__note.is-done {
-  border-left-color: var(--line-45);
+  color: #d3c8b2;
+}
+.tk-an__note.is-editing {
+  color: var(--ink);
 }
 .tk-an__head {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
   font: 10px var(--mono);
   letter-spacing: 0.1em;
   color: var(--muted);
 }
 .tk-an__state {
+  padding: 3px 7px 2px;
+  border: 1px solid rgba(217, 164, 65, 0.45);
+  background: rgba(217, 164, 65, 0.16);
   color: var(--amber);
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  white-space: nowrap;
 }
 .tk-an__note.is-done .tk-an__state {
-  color: var(--muted);
+  border-color: rgba(95, 211, 154, 0.3);
+  background: rgba(95, 211, 154, 0.08);
+  color: var(--ok);
+}
+.tk-an__at {
+  white-space: nowrap;
 }
 .tk-an__acts {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   margin-left: auto;
 }
-.tk-an__act {
-  height: 22px;
-  padding: 0 8px;
-  font-size: 9.5px;
+.tk-an__act,
+.tk-an__more {
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: 10px var(--mono);
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+.tk-an__act:hover {
+  color: var(--ink);
+}
+.tk-an__act:last-child:hover {
+  color: var(--danger);
+}
+.tk-an__act:focus-visible,
+.tk-an__more:focus-visible {
+  outline: 1px solid var(--amber);
+  outline-offset: 1px;
+  color: var(--ink);
 }
 .tk-an__text {
-  margin-top: 4px;
+  margin-top: 8px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* the agent's reply to a done note: its own block with the cyan accent */
 .tk-an__reply {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid var(--line-10);
-  white-space: pre-wrap;
-  color: var(--muted);
+  margin: 10px 0 0 10px;
+  padding: 8px 10px 9px;
+  border-left: 2px solid var(--accent-60);
+  background: var(--accent-05);
+  font-size: 13.5px;
 }
 .tk-an__rk {
-  margin-right: 8px;
-  font: 10px var(--mono);
-  letter-spacing: 0.1em;
+  margin-bottom: 4px;
+  font: 9.5px var(--mono);
+  letter-spacing: 0.16em;
+  color: var(--accent);
 }
+.tk-an__rtext {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+.tk-an__more {
+  align-self: flex-start;
+  padding-left: 0;
+  color: rgba(217, 164, 65, 0.8);
+}
+.tk-an__more:hover {
+  color: var(--amber);
+}
+/* the note field inside the card: buttons in one row, the error below them */
+.tk-an__note .mb-care__compose {
+  margin-top: 0;
+}
+.tk-an__note .cn__msg {
+  order: 1;
+}
+
+/* table rows: the row is marked, its notes follow in a full-width row in the card's style */
+.tk-rep__tbl tr.is-marked > td {
+  border-bottom: 0;
+  background: rgba(217, 164, 65, 0.08);
+  color: #f2f7fd;
+}
+.tk-rep__tbl tr.is-marked > td:first-child,
+.tk-rep__tbl td.tk-an__tcell {
+  box-shadow: inset 3px 0 0 var(--amber);
+}
+.tk-rep__tbl td.tk-an__tcell {
+  padding: 0 10px 12px;
+  border-bottom: 1px solid rgba(217, 164, 65, 0.35);
+  background: rgba(217, 164, 65, 0.05);
+}
+.tk-an__tcell .tk-an__box {
+  margin: 10px 0 0 4px;
+}
+
 .tk-an__count {
   color: var(--amber);
 }
+/* notes whose place is no longer found: the same cards, the stored excerpt as subject */
 .tk-an__lost {
-  margin-top: 16px;
+  margin-top: 22px;
   padding-top: 12px;
   border-top: 1px solid var(--line-12);
 }
-.tk-an__lh,
-.tk-an__excerpt {
-  margin-bottom: 6px;
+.tk-an__lh {
   font: 10px var(--mono);
   letter-spacing: 0.1em;
   color: var(--muted);
+}
+.tk-an__card > .tk-an__excerpt {
+  font: 12px var(--mono);
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+@media (max-width: 640px) {
+  .tk-an__card {
+    padding: 10px 10px 12px;
+  }
+  .tk-an__box {
+    margin-left: 0;
+  }
 }
