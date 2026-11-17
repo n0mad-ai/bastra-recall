@@ -42,6 +42,7 @@ import { cmdPatches } from "./cli/patches-cmd.js";
 import { cmdPanel } from "./cli/panel.js";
 import { cmdAutostart } from "./cli/autostart.js";
 import { maybeEmitUpdateHint } from "./cli/update-hint.js";
+import { warnOnUnsupportedNode } from "./node-support.js";
 
 // A reader such as `head` intentionally closes its pipe. Stop producing output
 // quietly, but never turn a failure into success: a closed stderr leaves the
@@ -201,6 +202,7 @@ async function main(): Promise<number> {
     return 2;
   }
 
+  warnOnUnsupportedNode(args.command);
   const code = await dispatch(args);
   // Known from here on, also to a reader-gone exit during the update hint.
   process.exitCode = code;

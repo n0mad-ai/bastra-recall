@@ -8,7 +8,7 @@ Der Auftrag im Chat ist die Freigabe, auch für Ausführen. Die folgenden Freiga
 
 ## Start
 
-Im gebauten Checkout am eigenen Terminal (Node 22.22 oder neuer, Bash):
+Im gebauten Checkout am eigenen Terminal (Node 24.16 oder neuer, Bash):
 
 ```sh
 npm run build

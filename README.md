@@ -73,7 +73,7 @@ curl -fsSL https://bastra.io/install | bash
 
 The script installs Homebrew if needed, installs Bastra Recall and starts setup. Choose a folder for your memories and the AI clients you want to connect. [Read the installer](./distribution/install.sh) before running it if you prefer.
 
-**macOS or Linux — with Node 22.22–26:**
+**macOS or Linux — with Node 24.16–26:**
 
 ```bash
 npx bastra-recall install
@@ -245,7 +245,7 @@ curl -fsSL https://bastra.io/install | bash
 
 Das Skript installiert bei Bedarf Homebrew, installiert Bastra Recall und startet die Einrichtung. Wähle einen Ordner für deine Erinnerungen und die KI-Clients, die du verbinden möchtest. Du kannst das [Installationsskript vorher lesen](./distribution/install.sh).
 
-**macOS oder Linux – mit Node 22.22–26:**
+**macOS oder Linux – mit Node 24.16–26:**
 
 ```bash
 npx bastra-recall install

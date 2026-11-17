@@ -138,6 +138,27 @@ async function readTelemetryEvents(dir: string): Promise<Record<string, unknown>
   return out;
 }
 
+/** #1612: the delivered row is written fire-and-forget (`void logDeliveredBlock`), so the lane can
+ * return before the append lands. Wait for the row instead of assuming it; a half-written line is
+ * read again on the next turn. */
+async function waitForTelemetryEvent(
+  dir: string,
+  match: (e: Record<string, unknown>) => boolean,
+  timeoutMs = 5_000
+): Promise<Record<string, unknown> | undefined> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      const found = (await readTelemetryEvents(dir)).find(match);
+      if (found) return found;
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+    }
+    if (Date.now() >= deadline) return undefined;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
 async function inScratch<T>(fn: (logDir: string, stateDir: string) => Promise<T>): Promise<T> {
   const logDir = await mkdtemp(join(tmpdir(), "bastra-prompt-impact-gate-log-"));
   const stateDir = await mkdtemp(join(tmpdir(), "bastra-prompt-impact-gate-state-"));
@@ -187,9 +208,11 @@ describe("#607: prompt-lane delivery defaults to off", () => {
         runLane("gate-file-on", logDir, stateDir)
       );
       assert.match(stdout, /code-impact/, "stored opt-in restores delivery");
-      const events = await readTelemetryEvents(logDir);
       assert.ok(
-        events.find((e) => e.kind === "code_tool_call" && e.surface === "delivered" && e.delivered_lane === "prompt"),
+        await waitForTelemetryEvent(
+          logDir,
+          (e) => e.kind === "code_tool_call" && e.surface === "delivered" && e.delivered_lane === "prompt"
+        ),
         "delivered/prompt telemetry row must be written once opted in"
       );
     });

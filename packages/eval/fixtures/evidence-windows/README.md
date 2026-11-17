@@ -1,6 +1,6 @@
 # Evidence delivery experiment (#563)
 
-Run from the repository root (Node 22/24, after `npm ci`):
+Run from the repository root (Node 24.16 or newer, after `npm ci`):
 
 ```sh
 npm run evidence-windows --workspace=@bastra-recall/eval -- \

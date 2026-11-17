@@ -8,24 +8,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **Notes on task reports.** While reading a report under Tasks › Reports,
-  you can leave a note on a single place: a heading, a paragraph, a list item
-  or a table row ("research the prices again", "this is how it should be").
-  Hover or focus the place and choose **Note**; the field has the same
-  **Improve text** as the vault-care field in the memory browser. Saved notes
-  stand right below their place with an amber edge, can be edited and deleted,
-  and the report list shows how many notes are still open. Leaving a note does
-  not change the report's read state. The next agent session is told at
-  session start, the same way as open vault-care flags, which reports carry
-  open notes; the agent reads them with `task_report_read`, treats the note
-  texts as your instructions (the report text stays reference material), and
-  closes each one with `task_report_note_done` and a short reply that appears
-  under the note. Done notes are no longer announced; editing a note opens it
-  again. Notes are cleaned like report text, hold up to 4,000 characters each,
-  live inside their report and go with it when the report is deleted. Only the
-  Recall UI writes, edits and deletes notes; an agent's tool or `/api/v1` call
-  is refused, so no agent can leave an "instruction" in your name. New agent
-  tool: `task_report_note_done`.
+- **Notes on task reports, handed over to the agent when you say so.** While
+  reading a report under Tasks › Reports, you can leave a note on a single
+  place: a heading, a paragraph, a list item or a table row ("research the
+  prices again", "this is how it should be"). Hover or focus the place and
+  choose **Note**; the field has the same **Improve text** as the vault-care
+  field in the memory browser. A new note is a draft that stays with you: no
+  agent sees it. **Hand over to agent** in the report's head hands every draft
+  of that report over in one click, with a short confirmation and no further
+  question. Only then does an agent learn about it: the next session start
+  names the reports with handed-over open notes, the agent reads them with
+  `task_report_read`, treats the note texts as your instructions (the report
+  text stays reference material) and closes each one with
+  `task_report_note_done` and a short reply that appears under the note. Each
+  note shows its state (draft, handed over · open, done), a place whose notes
+  are all done turns green, and the report list and head show drafts (✎) and
+  handed-over open notes (➜) apart. Editing a note makes it a draft again.
+  Notes written before the hand-over existed count as drafts until you hand
+  them over. Notes are cleaned like report text, hold up to 4,000 characters
+  each, live inside their report and go with it when the report is deleted;
+  leaving one does not change the report's read state. Only the Recall UI
+  writes, edits, deletes and hands over notes; an agent's tool or `/api/v1`
+  call is refused, so no agent can leave an "instruction" in your name. New
+  agent tool: `task_report_note_done`.
+- **Report actions stay in reach, and a search finds a report.** In the
+  reports view, **Mark read**, **Mark unread** and **Delete** sit in the
+  report's head, which stays on top while a long report scrolls. A search
+  field above the list filters the reports by title and project.
+- **Reports in the left rail.** A **Reports** entry right below **Tasks**,
+  built like every other entry, opens the reports view and is lit while it is
+  open. Its cyan badge counts the unread reports (it replaces the dot that sat
+  on **Tasks**); its tooltip also names reports with notes not handed over
+  yet. The **Reports** button in the Tasks head stays.
+
+### Changed
+
+- **Node 22 is no longer supported; Node 24.16 or newer is required.**
+  Supported versions are Node 24.16 to 26. Update Node before updating
+  Bastra Recall; `node --version` shows what you run. On an older Node,
+  every `bastra` command now warns, and `bastra update` installs nothing
+  and says why (an automatic update is held back and reported at the next
+  session start). CI no longer tests Node 22.
 
 ## [1.2.1] — 2026-11-16
 

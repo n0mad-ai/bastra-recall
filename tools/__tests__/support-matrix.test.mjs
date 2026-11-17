@@ -100,6 +100,49 @@ test("the published package descriptions do not contradict the matrix", () => {
   }
 });
 
+test("every statement of the Node.js floor names MIN_NODE_VERSION, and CI no longer tests Node 22", () => {
+  const source = readRepoFile("packages/daemon/src/node-support.ts");
+  const floor = source.match(/export const MIN_NODE_VERSION = "((\d+)\.(\d+)\.\d+)";/);
+  assert.ok(floor, "MIN_NODE_VERSION is gone or no longer a plain x.y.z string");
+  const [, full, major, minor] = floor;
+  const engines = [
+    "package.json",
+    "packages/core/package.json",
+    "packages/daemon/package.json",
+    "packages/statusline/package.json",
+    "packages/bastra-recall/package.json",
+    "packages/eval/package.json",
+  ];
+  for (const file of engines) {
+    assert.equal(JSON.parse(readRepoFile(file)).engines?.node, `>=${full}`, `${file} engines.node`);
+  }
+  const lock = JSON.parse(readRepoFile("package-lock.json"));
+  for (const [path, entry] of Object.entries(lock.packages)) {
+    if (path === "" || path.startsWith("packages/")) {
+      assert.equal(entry.engines?.node, `>=${full}`, `package-lock.json "${path}" engines.node`);
+    }
+  }
+  const mcpb = JSON.parse(readRepoFile("packages/daemon/mcpb/manifest.template.json"));
+  assert.equal(mcpb.compatibility.runtimes.node, `>=${full}`, "the desktop extension's Node requirement");
+
+  const shown = `${major}.${minor}`;
+  assert.match(README, new RegExp(`with Node ${shown}–`), "EN README install line");
+  assert.match(README, new RegExp(`mit Node ${shown}–`), "DE README install line");
+  assert.match(readRepoFile("docs/INSTALL.md"), new RegExp(`Supported Node versions are ${shown}–`));
+  assert.match(readRepoFile("packages/bastra-recall/README.md"), new RegExp(`Node ${shown} or newer`));
+
+  const ci = readRepoFile(".github/workflows/ci.yml").match(/^\s+node: \[(.+)\]$/m);
+  assert.ok(ci, "the CI Node matrix could not be read");
+  const tested = ci[1].split(",").map((v) => Number(v.trim().replace(/'/g, "")));
+  assert.ok(!tested.includes(22), "CI still tests Node 22");
+  assert.ok(Math.min(...tested) >= Number(major), "CI tests a Node major below the floor");
+  for (const workflow of ["publish-npm.yml", "formula-drift.yml"]) {
+    for (const m of readRepoFile(`.github/workflows/${workflow}`).matchAll(/node-version: "?(\d+)/g)) {
+      assert.ok(Number(m[1]) >= Number(major), `${workflow} runs Node ${m[1]}, below the floor`);
+    }
+  }
+});
+
 test("the platform matrix matches configured hook-client targets and their validation boundaries", () => {
   const targets = hookClientTargets();
   assert.deepEqual(targets.sort(), [

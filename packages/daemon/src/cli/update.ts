@@ -32,6 +32,7 @@ import {
 } from "./source-build.js";
 import { describeLiveRevision, liveRevisionOfDaemon } from "./live-revision.js";
 import { clearBlockedUpdate, recordBlockedUpdate } from "../update-blocked.js";
+import { unsupportedNode } from "../node-support.js";
 import type { ParsedArgs } from "./types.js";
 
 import { autostartService, refreshManagedAutostart, stableNodeBin } from "./autostart.js";
@@ -483,6 +484,8 @@ export interface UpdateIo extends UpdateRuntimeIo {
   refreshAddress?: typeof refreshAssistantAddressRuntime;
   ask?: typeof askModelRecommendation;
   service?: typeof autostartService;
+  /** Test seam for the Node.js floor check; defaults to the running Node. */
+  nodeVersion?: string;
 }
 /** Run the new package's helper module in its own Node process after installation. */
 export async function refreshAddressFromInstalledRuntime(
@@ -497,8 +500,25 @@ export async function refreshAddressFromInstalledRuntime(
   });
   if (result.error || result.status !== 0) throw Error("newly installed assistant runtime refresh failed");
 }
+/**
+ * Below the supported Node.js floor nothing is installed: a newer release may
+ * need what this Node lacks, and swapping the files first would leave the
+ * surfaces and the autostart on code that cannot run. The staged path has no
+ * reader, so it leaves the reason for the next SessionStart (#268 channel),
+ * which also stops further unattended attempts until `bastra update` succeeds.
+ */
+async function refuseOnUnsupportedNode(args: ParsedArgs, io: UpdateIo): Promise<boolean> {
+  const reason = unsupportedNode(io.nodeVersion);
+  if (!reason) return false;
+  const refusal = `${reason}. Update Node.js first, then run 'bastra update'.`;
+  process.stdout.write(`✗ ${refusal}\n  Nothing was installed — the current version is untouched.\n`);
+  if (args.staged) await recordBlockedUpdate({ ok: false, dirty: [], refusal, notes: [] }, VERSION);
+  return true;
+}
+
 export async function cmdUpdate(args: ParsedArgs, io: UpdateIo = {}): Promise<number> {
   try {
+    if (await refuseOnUnsupportedNode(args, io)) return 1;
     return await performUpdate(args, io);
   } catch (error) {
     process.stderr.write(`error: update stopped: ${(error as Error).message}\n`);

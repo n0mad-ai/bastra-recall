@@ -39,9 +39,10 @@ branch in your fork.
 
 ### Requirements
 
-- Node ≥ 22.22 (`node --version`) — the runtime floor in the workspace
-  `engines` field (chokidar 6 needs it); it also covers the build tool
-  (tsdown 0.23 needs ≥ 22.18)
+- Node ≥ 24.16 (`node --version`) — the runtime floor in the workspace
+  `engines` field and `MIN_NODE_VERSION` in
+  `packages/daemon/src/node-support.ts`; CI tests Node 24 and 26. Node 22
+  is no longer supported
 - macOS for the full experience (Linux works for daemon + CLI; some
   adapters are macOS-only)
 - npm (comes with Node)
