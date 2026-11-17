@@ -294,7 +294,7 @@ function scan(): Set<string> {
 
 // ─── tests ───────────────────────────────────────────────────────────────────
 
-test("#679: no new language-bound matcher in daemon/core sources", () => {
+test("INV-LANG-01: #679: no new language-bound matcher in daemon/core sources", () => {
   const unlisted = [...scan()].filter((k) => !(k in ALLOWLIST));
   assert.deepEqual(
     unlisted,
@@ -320,7 +320,7 @@ test("#679: every allowlist entry names an issue", () => {
   for (const [key, why] of Object.entries(ALLOWLIST)) assert.match(why, /#\d+/, key);
 });
 
-test("#679: the detectors see each shape they are for (the guard cannot go blind)", () => {
+test("INV-LANG-01: #679: the detectors see each shape they are for (the guard cannot go blind)", () => {
   // Revert-check: break any one detector and its line here fails.
   assert.deepEqual(findLanguageBound(`const LOOKUP_RU = /^(найди|где)/;`), ["name LOOKUP_RU"]);
   assert.deepEqual(findLanguageBound(`const ACKS = {\n  en: ["ok"],\n};`), ["keyed ACKS"]);

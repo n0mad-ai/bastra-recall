@@ -104,7 +104,7 @@ function assertConflict(reason: unknown): asserts reason is MemoryWriteConflictE
   assert.match(reason.message, /Retry from the current file/);
 }
 
-test("concurrent creates: exactly one wins and the loser reports a stable conflict", async (t) => {
+test("INV-VAULT-07: concurrent creates: exactly one wins and the loser reports a stable conflict", async (t) => {
   const vault = await harness(t);
   const file = targetFor(vault);
 

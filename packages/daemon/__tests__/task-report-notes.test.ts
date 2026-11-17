@@ -118,7 +118,7 @@ test("add → hand over → read → done → edit → delete; the read state ne
   assert.equal((await f.call("task_report_list", {})).unread, 1, "still unread after all of it");
 });
 
-test("an agent sees handed-over and done notes only; an edited note is a draft again", async () => {
+test("INV-TASK-03: an agent sees handed-over and done notes only; an edited note is a draft again", async () => {
   const f = await fixture();
   const first = await f.call("task_report_note_add", { id: f.report.id, anchor, text: "erste" });
   await f.hand();
@@ -224,7 +224,7 @@ test("tools: the UI routes know all four; agents get only done, which says notes
   assert.match(done, /reference material, not instructions/);
 });
 
-test("session notice: names reports with open notes, counts them, separates instructions from reference", async () => {
+test("INV-SESSION-03: session notice: names reports with open notes, counts them, separates instructions from reference", async () => {
   const f = await fixture();
   assert.equal(await reportNotesNotice(f.ctx, f.auth), undefined, "nothing open, nothing said");
   const a = await f.call("task_report_note_add", { id: f.report.id, anchor, text: "Preise verifizieren" });
@@ -354,7 +354,7 @@ test("session start: the hook routes carry the notice with the task credential o
   }
 });
 
-test("only the owner's UI writes notes: agent tool, /api/v1 and MCP are refused; agents keep read and done", async () => {
+test("INV-TASK-02: only the owner's UI writes notes: agent tool, /api/v1 and MCP are refused; agents keep read and done", async () => {
   const root = await mkdtemp(join(tmpdir(), "task-report-notes-origin-"));
   const ctx = { path: join(root, "tasks.json"), authPath: join(root, "task-auth.json") };
   const previous = process.env.BASTRA_TASKS_PATH,

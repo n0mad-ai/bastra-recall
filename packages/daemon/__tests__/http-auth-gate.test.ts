@@ -159,7 +159,7 @@ test("gate: browser, allowed origin, wrong/missing token → 401", () => {
   assert.equal(gateApiRequest({ ...base, authHeader: "Bearer wrong" }), 401);
 });
 
-test("gate: browser, origin NOT on allowlist → 403 regardless of token", () => {
+test("INV-HTTP-04: gate: browser, origin NOT on allowlist → 403 regardless of token", () => {
   assert.equal(
     gateApiRequest({
       reqOrigin: "https://evil.com",

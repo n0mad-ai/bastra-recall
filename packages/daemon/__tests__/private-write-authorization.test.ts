@@ -170,7 +170,7 @@ function assertUnchanged(before: Map<string, string>, after: Map<string, string>
 
 // ─── The trust boundary itself ──────────────────────────────────
 
-test("#464: a REST caller cannot grant itself private read access through the request body", async (t) => {
+test("INV-PRIV-01: #464: a REST caller cannot grant itself private read access through the request body", async (t) => {
   const { deps } = await harness(t);
 
   await assert.rejects(
@@ -193,7 +193,7 @@ test("#464: a REST caller cannot grant itself private read access through the re
   assert.match(open.body, /A public body\./);
 });
 
-test("#464: a stdio MCP caller cannot grant itself private read access either", async (t) => {
+test("INV-PRIV-01: #464: a stdio MCP caller cannot grant itself private read access either", async (t) => {
   const { deps } = await harness(t);
   // index.ts passes the client's tool arguments into the handler verbatim.
   await assert.rejects(
@@ -230,7 +230,7 @@ const OVERWRITE_PAYLOAD = {
   overwrite: true,
 };
 
-test("#464: save_memory(overwrite) on a hidden private memory is refused and changes nothing", async (t) => {
+test("INV-PRIV-02: #464: save_memory(overwrite) on a hidden private memory is refused and changes nothing", async (t) => {
   const { dir, deps } = await harness(t);
   const before = await snapshot(dir);
 

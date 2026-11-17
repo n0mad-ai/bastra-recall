@@ -19,7 +19,7 @@ function block(tag: string, attrs = "", body = "quoted scaffolding"): string {
   return `<${tag}${attrs}>\n${body}\n</${tag}>`;
 }
 
-test("scrub removes a complete block for every inventoried tag", () => {
+test("INV-SCRUB-02: scrub removes a complete block for every inventoried tag", () => {
   for (const tag of INJECTED_BLOCK_TAGS) {
     const input = `before\n${block(tag)}\nafter`;
     const { text, removed } = scrubInjectedBlocks(input);
@@ -54,7 +54,7 @@ test("scrub removes multiple blocks of mixed families mid-text", () => {
   assert.deepEqual(removed, ["session-context", "save-eval", "system-reminder"]);
 });
 
-test("bare tag mentions survive — memories documenting the hook format stay intact", () => {
+test("INV-SCRUB-02: bare tag mentions survive — memories documenting the hook format stay intact", () => {
   const input = "Der Stop-Hook emittiert <save-eval>-Blöcke; der Session-Hook <vault-taxonomy>.";
   const { text, removed } = scrubInjectedBlocks(input);
   assert.equal(text, input);

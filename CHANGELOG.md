@@ -50,6 +50,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   and says why (an automatic update is held back and reported at the next
   session start). CI no longer tests Node 22.
 
+### Internal
+
+- **Invariants: the product's promises in one catalog and one command**
+  (#1570). `docs/invariants.md` lists 44 promises whose breach would harm a
+  user, grouped by area: no silent data loss on save and edit, private
+  memories, injection and secret scrubbing, the rulebook (a user-directed rule
+  applies at once, an agent's declaration stays a proposal), the session start
+  context, recall answers, tasks and reports, the daemon's HTTP boundary, the
+  external contracts, Node.js support and the two languages of the web UI.
+  Each one names the test that holds it; the test's title starts with the ID.
+  `npm run test:invariants` runs exactly these tests (they also run in
+  `npm test`), and a catalog check fails when an entry loses its test or a
+  test claims an ID the catalog does not list. Most promises were already
+  held by existing tests, which now carry the ID; new tests pin that a save
+  without `overwrite` never replaces a memory, that a saved memory is found
+  by its id after a restart, that every TCP listener binds to 127.0.0.1, and
+  that the German and English UI catalogs match key for key and placeholder
+  for placeholder. CONTRIBUTING.md says when to add an invariant and that an
+  invariant test is never weakened without changing its catalog entry.
+
 ## [1.2.1] — 2026-11-16
 
 ### Security

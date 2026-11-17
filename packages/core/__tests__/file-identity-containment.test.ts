@@ -196,7 +196,7 @@ test("Befund 4: Re-Filing nur der Schreibweise nach trasht die geschriebene Date
 
 // ── Befund 5: Containment über realpath ──────────────────────────────────
 
-test("Befund 5: ein Symlink im folder führt nicht aus dem Vault heraus", async () => {
+test("INV-VAULT-08: Befund 5: ein Symlink im folder führt nicht aus dem Vault heraus", async () => {
   const v = await vault();
   const outside = await mkdtemp(join(tmpdir(), "outside-"));
   try {

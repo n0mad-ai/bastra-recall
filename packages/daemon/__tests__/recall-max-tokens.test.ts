@@ -167,7 +167,7 @@ test("#487: ein Budget, das reicht, liefert byte-gleich zur Antwort ohne Budget"
 
 // ── 2./3./4. Mit Budget: Grenze, Toleranz, Meldung ───────────────
 
-test("#487: das Payload bleibt im Budget, um höchstens einen Treffer daneben", async (t) => {
+test("INV-RECALL-03: #487: das Payload bleibt im Budget, um höchstens einen Treffer daneben", async (t) => {
   const { deps } = await makeDeps(t);
   const voll = (await recallHandler(deps, { query: "deployen", k: 8, min_score: 0 })) as unknown as Record<
     string,
@@ -196,7 +196,7 @@ test("#487: das Payload bleibt im Budget, um höchstens einen Treffer daneben", 
   assert.equal(res.dropped_by_budget, alle - emitted);
 });
 
-test("#487: k bleibt die harte Obergrenze — ein großes Budget liefert nicht mehr", async (t) => {
+test("INV-RECALL-02: #487: k bleibt die harte Obergrenze — ein großes Budget liefert nicht mehr", async (t) => {
   const { deps } = await makeDeps(t);
   const res = (await recallHandler(deps, {
     query: "deployen",

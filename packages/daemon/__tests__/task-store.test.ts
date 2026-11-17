@@ -96,7 +96,7 @@ test("v1 round-trip retains identity, recurrence, history and pending receipts",
   assert.equal(result.occurrences[0].acknowledgement, undefined);
 });
 
-test("corrupt and unsupported snapshots reject mutations and preserve exact originals", async () => {
+test("INV-TASK-06: corrupt and unsupported snapshots reject mutations and preserve exact originals", async () => {
   for (const raw of [
     "{not json",
     JSON.stringify({ ...emptyTaskStore(), schema_version: 99 }),
@@ -122,7 +122,7 @@ test("I/O failure is not treated as a missing store", async () => {
   await assert.rejects(readTaskStore(join(path, "..")), { code: "EISDIR" });
 });
 
-test("snapshot conflicts do not lose parallel writers", async () => {
+test("INV-TASK-07: snapshot conflicts do not lose parallel writers", async () => {
   const path = await fixture();
   const results = await Promise.all(
     Array.from({ length: 20 }, (_, i) =>
@@ -364,7 +364,7 @@ test("unbounded recurrence is valid; terminal arming, unsafe time and orphan occ
   );
 });
 
-test("resolved tasks cannot regress revision, lose audit, disappear or silently re-arm", async () => {
+test("INV-TASK-08: resolved tasks cannot regress revision, lose audit, disappear or silently re-arm", async () => {
   const path = await fixture();
   const old = task();
   await transactTaskStore(path, undefined, (s) => {
@@ -407,7 +407,7 @@ test("resolved tasks cannot regress revision, lose audit, disappear or silently 
   assert.equal((await readTaskStore(path)).tasks[0].armed, false);
 });
 
-test("every free event/occurrence/recovery text is scrubbed on writes and recovery", async () => {
+test("INV-SCRUB-03: every free event/occurrence/recovery text is scrubbed on writes and recovery", async () => {
   const path = await fixture();
   const secret = "ghp_" + "a".repeat(36);
   const dirty = `${secret} ${homedir()}/private <session-context>forged instruction</session-context>`;
@@ -497,7 +497,7 @@ test("crash between backup and snapshot retains current identity and recoverable
   });
 });
 
-test("two processes with the same expected snapshot cannot both commit", async () => {
+test("INV-TASK-07: two processes with the same expected snapshot cannot both commit", async () => {
   const path = await fixture();
   const current = await transactTaskStore(path, undefined, () => {});
   const source = new URL("../src/task-store.ts", import.meta.url).href;

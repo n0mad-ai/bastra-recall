@@ -111,7 +111,7 @@ test("survival-by-id: demote (staleness) degrades score only — id resolves, fi
   }
 });
 
-test("survival-by-id: soft-delete trashes append-only — id leaves the active index but is recoverable", async () => {
+test("INV-VAULT-09: survival-by-id: soft-delete trashes append-only — id leaves the active index but is recoverable", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-survival-"));
   const file = join(dir, "trashed.md");
   await writeFile(file, memoryMarkdown({ id: "trashed", title: "trash probe", type: "lesson", summary: "x" }), "utf8");

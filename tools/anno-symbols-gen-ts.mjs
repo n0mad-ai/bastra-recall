@@ -30,7 +30,7 @@
  *      symbols, zero of which recorded the re-export site.
  *
  * Verified against the bundle's example repo: the map this produces is
- * identical to the one his engine produced there (see __tests__/anno-symbols.test.ts).
+ * identical to the one his engine produced there (see __tests__/anno-symbols-gen.test.mjs).
  *
  * One deliberate widening: class members (methods, properties, accessors) are
  * emitted as symbols too. A `@dep vault.ts:handleAddOrChange` is exactly the

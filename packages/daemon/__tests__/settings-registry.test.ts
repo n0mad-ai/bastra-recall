@@ -13,7 +13,7 @@ import { readSettings, mutateSettings } from "../src/settings-file.js";
 import { effectiveSetting } from "../src/settings-effective.js";
 import { readSizeSettings } from "../src/file-size-check.js";
 
-test("registry owns every CLI/UI key and validates values without secret diagnostics", () => {
+test("INV-SETTINGS-02: registry owns every CLI/UI key and validates values without secret diagnostics", () => {
   assert.ok(settingEntries().find((e) => e.key === "archive.max-item"));
   assert.ok(settingEntries().find((e) => e.key === "tasks.enabled")?.restartRequired);
   assert.equal(parseSettingValue("tasks.enabled", false), false);
@@ -98,7 +98,7 @@ test("a stored block without its switch keeps its other settings on read (#1582)
   assert.deepEqual(settings.sharedRecall, { language: "de" });
 });
 
-test("no reset silently drops other stored settings of the group (#1582)", () => {
+test("INV-SETTINGS-01: no reset silently drops other stored settings of the group (#1582)", () => {
   const experiment = { name: "x", arms: ["a", "b"], registration: "r", registration_version: 1 };
   const current = parseStoredSettings({ experiment });
   // An atomic block cannot lose one of its parts: the reset is refused instead of dropping the rest.

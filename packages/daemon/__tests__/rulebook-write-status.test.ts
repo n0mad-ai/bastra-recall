@@ -38,7 +38,7 @@ async function fixture(t: { after: (fn: () => Promise<void>) => void }): Promise
   return { vault, search, telemetry: new Telemetry(), vaultPath: root };
 }
 
-test("#1384: every save_memory response names the delivery tier; a user-directed behavioural note without rulebook says it is no rule", async (t) => {
+test("INV-RULE-01: #1384: every save_memory response names the delivery tier; a user-directed behavioural note without rulebook says it is no rule", async (t) => {
   const deps = await fixture(t);
   const save = async (args: Record<string, unknown>) =>
     (await saveMemoryHandler(deps, { ...base, recall_when: [`invented ${args.id}`], ...args })) as SaveMemoryResult;
@@ -84,7 +84,7 @@ test("#1384: every save_memory response names the delivery tier; a user-directed
   assert.match(legacy.delivery ?? "", /applies_when/);
 });
 
-test("#1385: edit_memory binds a declaration on a user-directed note, keeps it a proposal on an agent note, and says which", async (t) => {
+test("INV-RULE-02: #1385: edit_memory binds a declaration on a user-directed note, keeps it a proposal on an agent note, and says which", async (t) => {
   const deps = await fixture(t);
   const save = (args: Record<string, unknown>) =>
     saveMemoryHandler(deps, { ...base, recall_when: [`invented ${args.id}`], ...args });

@@ -35,7 +35,7 @@ const vaultOf = (all: Memory[]) => ({ list: () => all, get: (id: string) => all.
 const collect = (all: Memory[]) =>
   collectRuleKernel(vaultOf(all), { project: null, active: [], floors: async () => [] });
 
-test("catalog has no top-k or 40-entry cap and all entries are reachable with a proved end", async () => {
+test("INV-RULE-04: catalog has no top-k or 40-entry cap and all entries are reachable with a proved end", async () => {
   for (const n of [1, 18, 100, 500]) {
     const all = Array.from({ length: n }, (_, i) => memory(`fixture-${String(i).padStart(4, "0")}`));
     const c = await collect(all);
@@ -57,7 +57,7 @@ test("catalog has no top-k or 40-entry cap and all entries are reachable with a 
   }
 });
 
-test("always text is whole or explicitly overflowed; B index/pagination stays within hook cap", async () => {
+test("INV-SESSION-01: always text is whole or explicitly overflowed; B index/pagination stays within hook cap", async () => {
   const all = [
     memory("small-always", { rulebook: "always" }, "UNIQUE_COMPLETE_RULE_END"),
     memory("large-always", { rulebook: "always" }, "unbroken ".repeat(3000)),
@@ -77,7 +77,7 @@ test("always text is whole or explicitly overflowed; B index/pagination stays wi
   assert.ok(!rendered.text.includes("ask the user"));
 });
 
-test("unconfirmed candidates are counted, never silently promoted; proposals never change catalog hash", async () => {
+test("INV-RULE-03: unconfirmed candidates are counted, never silently promoted; proposals never change catalog hash", async () => {
   const confirmed = memory("confirmed");
   const possible = Array.from({ length: 94 }, (_, i) =>
     memory(`legacy-${i}`, {

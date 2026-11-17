@@ -110,7 +110,7 @@ test("a healthy hybrid call reports the fused score space", async (t) => {
   assert.equal(res.degraded, undefined);
 });
 
-test("a provider that dies mid-call makes the answer say so", async (t) => {
+test("INV-RECALL-01: a provider that dies mid-call makes the answer say so", async (t) => {
   const h = await harness();
   t.after(h.close);
 

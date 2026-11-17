@@ -193,7 +193,7 @@ async function listedOnBothDoors(port: number): Promise<{ local: string[]; remot
   }
 }
 
-test("#1458: without document write, neither /tools nor the remote door lists a document write tool", async () => {
+test("INV-CONTRACT-02: #1458: without document write, neither /tools nor the remote door lists a document write tool", async () => {
   await withServer(async (port) => {
     const { local, remote } = await listedOnBothDoors(port);
     assert.ok(local.includes("find_document") && remote.includes("find_document"));

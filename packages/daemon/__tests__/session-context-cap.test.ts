@@ -13,7 +13,7 @@ test("empty kernel does not discard other fitting session sections", () => {
   assert.deepEqual(r.deferred, ["vault-taxonomy"]);
   assert.match(r.text, /Deferred session sections: vault-taxonomy/);
 });
-test("only necessary whole sections are deferred and named; kernel and language stay whole", () => {
+test("INV-SESSION-02: only necessary whole sections are deferred and named; kernel and language stay whole", () => {
   const kernel = `<rule-kernel>${"a".repeat(7000)}</rule-kernel>`;
   const language = "<memory-language>de</memory-language>";
   const care = `<vault-care>${"c".repeat(1000)}</vault-care>`;

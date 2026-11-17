@@ -14,7 +14,7 @@ import { cmdUpdate, type UpdateIo } from "../src/cli/update.js";
 import { parseArgs } from "../src/cli/commands.js";
 import { readBlockedUpdate } from "../src/update-blocked.js";
 
-test("the floor: below is refused with a way to check, at or above is fine", () => {
+test("INV-NODE-01: the floor: below is refused with a way to check, at or above is fine", () => {
   assert.equal(unsupportedNode(MIN_NODE_VERSION), null);
   assert.equal(unsupportedNode("v26.1.0"), null);
   assert.equal(unsupportedNode(process.versions.node), null, "the suite itself runs on a supported Node");

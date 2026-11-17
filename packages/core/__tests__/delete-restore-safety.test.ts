@@ -77,7 +77,7 @@ test("auditedSoftDelete evicts the memory from the index itself — no waiting f
   }
 });
 
-test("auditedRestore refuses a destination outside the vault", async () => {
+test("INV-VAULT-08: auditedRestore refuses a destination outside the vault", async () => {
   const { root, vault, auditLog } = await makeVault("bastra-restore-");
   const outside = join(dirname(root), `${"escape-"}${process.pid}`);
   try {

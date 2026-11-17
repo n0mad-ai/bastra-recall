@@ -196,7 +196,7 @@ async function withServer(
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
-test("#1264: forwarded loopback API, hook and UI requests require a token", async () => {
+test("INV-HTTP-03: #1264: forwarded loopback API, hook and UI requests require a token", async () => {
   for (const token of ["set", "empty", "unset"] as const) {
     await withServer({ token }, async (port) => {
       const routes = [
@@ -372,7 +372,7 @@ test("#1264: assistant gateway preserves forwarding evidence and bearer authenti
   });
 });
 
-test("local POST gate: foreign and opaque browser origins cannot reach local writes", async () => {
+test("INV-HTTP-05: local POST gate: foreign and opaque browser origins cannot reach local writes", async () => {
   await withServer({ token: "unset" }, async (port) => {
     for (const path of [
       "/ui/areas",
@@ -471,7 +471,7 @@ for (const tokenState of ["set", "empty", "unset"] as const) {
   }
 }
 
-test("#526: a foreign Host cannot bluff its way in when NO token is configured", async () => {
+test("INV-HTTP-02: #526: a foreign Host cannot bluff its way in when NO token is configured", async () => {
   for (const tokenState of ["empty", "unset"] as const) {
     await withServer({ token: tokenState }, async (port) => {
       // Irgendein Bearer — es gibt kein konfiguriertes Token, das passen könnte.
@@ -683,7 +683,7 @@ async function withRawForwarder(target: number, fn: (port: number) => Promise<vo
   }
 }
 
-test("#526: a MISSING Host header is no loopback proof — raw tunnel and direct socket both need the token", async () => {
+test("INV-HTTP-02: #526: a MISSING Host header is no loopback proof — raw tunnel and direct socket both need the token", async () => {
   await withServer({ token: "set" }, async (port) => {
     await withRawForwarder(port, async (fwdPort) => {
       // Der Angriff: roher Port-Forwarder davor, Request von Hand ohne Host.

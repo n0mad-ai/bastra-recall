@@ -100,7 +100,7 @@ test("the published package descriptions do not contradict the matrix", () => {
   }
 });
 
-test("every statement of the Node.js floor names MIN_NODE_VERSION, and CI no longer tests Node 22", () => {
+test("INV-NODE-01: every statement of the Node.js floor names MIN_NODE_VERSION, and CI no longer tests Node 22", () => {
   const source = readRepoFile("packages/daemon/src/node-support.ts");
   const floor = source.match(/export const MIN_NODE_VERSION = "((\d+)\.(\d+)\.\d+)";/);
   assert.ok(floor, "MIN_NODE_VERSION is gone or no longer a plain x.y.z string");

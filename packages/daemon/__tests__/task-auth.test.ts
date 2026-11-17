@@ -27,7 +27,7 @@ test("minted credentials are private hashes; token never persists in registry", 
   requireTaskDomains(p, ["personal"]);
   assert.throws(() => requireTaskDomains(p, ["other"]), { code: "forbidden" });
 });
-test("agent role and missing/legacy/forged credentials cannot become owner", async () => {
+test("INV-TASK-01: agent role and missing/legacy/forged credentials cannot become owner", async () => {
   const path = await fixture();
   const c = await mintTaskCredential(path, { ...owner, role: "agent" });
   assert.throws(() => requireTaskOwner({ ...owner, credential_id: "fixture", role: "agent" }), { code: "forbidden" });

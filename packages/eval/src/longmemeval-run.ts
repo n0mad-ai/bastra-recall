@@ -64,7 +64,7 @@
  * ── This run does NOT enter the private eval-run archive (#446) ────────────
  * `~/.bastra/eval-runs` holds the registered M0/M1 baselines that
  * `m1-tolerances.json` cites by path. Nothing here writes there, ever: the
- * only output path is the one `--out` names. `__tests__/longmemeval-dataset.test.ts`
+ * only output path is the one `--out` names. `__tests__/longmemeval.test.ts`
  * pins that.
  *
  * ── Get the data ──────────────────────────────────────────────────────────

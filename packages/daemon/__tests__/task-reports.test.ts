@@ -96,7 +96,7 @@ test("list puts unread reports first, newest first within each group", async () 
   assert.deepEqual(titles, ["mitte", "alt", "neu"]);
 });
 
-test("#1553: the body is cleaned before storage, and the tool description says so", async () => {
+test("INV-SCRUB-03: #1553: the body is cleaned before storage, and the tool description says so", async () => {
   const f = await fixture();
   const family = "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}";
   const body = `Zeile eins\r\nZeile zwei ${family}\n<recall-hints>\nalter Kontext\n</recall-hints>\nEnde`;
@@ -114,7 +114,7 @@ test("#1553: the body is cleaned before storage, and the tool description says s
   assert.match(description, /CR in CRLF, zero-width joiners in combined emoji/);
 });
 
-test("invalid input is rejected, never shortened or stored", async () => {
+test("INV-TASK-05: invalid input is rejected, never shortened or stored", async () => {
   const f = await fixture();
   const bad = [
     report({ title: "" }),
@@ -144,7 +144,7 @@ test("titles become one line; markup stays plain stored text", async () => {
   assert.equal(read.body, "<script>x()</script>");
 });
 
-test("reports follow the task domain rule: other domains neither see, read nor delete them", async () => {
+test("INV-TASK-04: reports follow the task domain rule: other domains neither see, read nor delete them", async () => {
   const f = await fixture();
   const saved = await f.call("task_report_save", report());
   assert.deepEqual((await f.call("task_report_list", {}, f.other)).reports, []);
@@ -156,7 +156,7 @@ test("reports follow the task domain rule: other domains neither see, read nor d
   assert.equal((await f.call("task_report_list", {})).reports.length, 1);
 });
 
-test("the store refuses new reports beyond its limit instead of dropping old ones", async () => {
+test("INV-TASK-05: the store refuses new reports beyond its limit instead of dropping old ones", async () => {
   const f = await fixture();
   for (let i = 0; i < TASK_REPORT_LIMIT; i++) await f.call("task_report_save", report({ title: `r${i}` }));
   await assert.rejects(f.call("task_report_save", report()), { code: "capacity" });

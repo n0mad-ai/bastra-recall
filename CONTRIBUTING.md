@@ -111,6 +111,27 @@ are included. Global files (for example `package.json`) and test fixtures
 already select the full suite. Other uncertainties do not automatically trigger
 a full run: they stay visible and nonzero, keeping the local command predictable.
 
+### Invariants
+
+[docs/invariants.md](docs/invariants.md) lists the promises bastra-recall makes
+to its users: no silent data loss, the security boundaries, honest answers and
+the external contracts. `npm run test:invariants` builds core and daemon and
+runs exactly the tests that hold them, in about ten seconds; run it before
+you hand in a change. They also run in `npm test`.
+
+Add an invariant when a change creates a promise whose breach would harm a
+user (lost or overwritten data, an opened boundary, a wrong answer, a broken
+client contract) and no listed invariant covers it. Implementation details and
+"nice to have" checks do not belong there. If an existing test already holds
+the promise, prefix its title with the new ID instead of writing a second test;
+otherwise write the test in a `*.invariant.test.ts` file in the package's
+`__tests__` folder. Then add the row to the catalog.
+
+An invariant test is never weakened, skipped or deleted on its own. If a promise
+really changes, change or remove its catalog entry first, on purpose, and say
+why in the commit message. `tools/__tests__/invariants-catalog.test.mjs` fails
+when the catalog and the tests disagree.
+
 ### Run the daemon locally
 
 ```bash

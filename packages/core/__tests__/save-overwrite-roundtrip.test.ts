@@ -78,7 +78,7 @@ async function seed(dir: string): Promise<string> {
   return file;
 }
 
-test("overwrite without a field preserves it instead of resetting to the default", async (t) => {
+test("INV-VAULT-03: overwrite without a field preserves it instead of resetting to the default", async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), "bastra-save-roundtrip-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const file = await seed(dir);

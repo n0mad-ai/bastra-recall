@@ -12,7 +12,7 @@ import {
 import { TASK_HTTP_ROUTES, matchTaskHttpRoute } from "../src/task-http-routes.js";
 import { taskTools } from "../src/task-transport.js";
 
-test("generator is byte deterministic and the checked-in artifacts have no drift", () => {
+test("INV-CONTRACT-01: generator is byte deterministic and the checked-in artifacts have no drift", () => {
   const artifacts = generatedArtifacts();
   assert.deepEqual(generatedArtifacts(), artifacts);
   assert.deepEqual(checkArtifacts(artifacts), []);
@@ -79,7 +79,7 @@ test("actual dispatcher branches determine coverage and shared tool schemas dete
   );
   assert.equal(taskGet.requestBody, undefined);
 });
-test("new routes or changed schemas cannot silently keep the old artifacts", () => {
+test("INV-CONTRACT-01: new routes or changed schemas cannot silently keep the old artifacts", () => {
   const postSource = readFileSync(new URL("../src/http-api-routes.ts", import.meta.url), "utf8");
   assert.throws(
     () =>

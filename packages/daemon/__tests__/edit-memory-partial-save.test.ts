@@ -224,7 +224,7 @@ test("#661: ein Listen-Patch mit allen alten Einträgen meldet nichts als verlor
 
 // ── Ein nicht zutreffendes Suchmuster schreibt NICHTS ────────────────
 
-test("#519: str_replace mit fehlendem old_str schreibt NICHTS und sagt warum", async (t) => {
+test("INV-VAULT-04: #519: str_replace mit fehlendem old_str schreibt NICHTS und sagt warum", async (t) => {
   const { deps, seed } = await fixture(t);
   const path = await seed();
   const before = await bytes(path);
@@ -241,7 +241,7 @@ test("#519: str_replace mit fehlendem old_str schreibt NICHTS und sagt warum", a
   assert.equal(await bytes(path), before);
 });
 
-test("#519: str_replace mit mehrdeutigem old_str schreibt NICHTS und sagt, wie oft es vorkam", async (t) => {
+test("INV-VAULT-04: #519: str_replace mit mehrdeutigem old_str schreibt NICHTS und sagt, wie oft es vorkam", async (t) => {
   const { deps, seed } = await fixture(t);
   const path = await seed({ body: "Zeile.\n\nZeile.\n" });
   const before = await bytes(path);
@@ -273,7 +273,7 @@ test("#519: str_replace tauscht genau die eine eindeutige Stelle", async (t) => 
   assert.equal(body.includes("\nZweite Zeile.\n"), false);
 });
 
-test("#519: expected_revision hält eine Änderung, die auf einem veralteten Stand rechnet", async (t) => {
+test("INV-VAULT-05: #519: expected_revision hält eine Änderung, die auf einem veralteten Stand rechnet", async (t) => {
   const { deps, seed } = await fixture(t);
   const path = await seed();
   const before = await bytes(path);
@@ -411,7 +411,7 @@ test("#519: der Index wird über den Schreibpfad aktualisiert, nicht dem Watcher
 
 // ── Nebenläufigkeit ─────────────────────────────────────────────────
 
-test("#519: nebenläufige Teiländerungen verlieren nichts", async (t) => {
+test("INV-VAULT-06: #519: nebenläufige Teiländerungen verlieren nichts", async (t) => {
   const { deps, seed } = await fixture(t);
   const path = await seed();
 

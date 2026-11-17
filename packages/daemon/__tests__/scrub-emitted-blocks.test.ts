@@ -51,7 +51,7 @@ test("the preferred interaction block is scrubbed whole, preserving surrounding 
   assert.equal(scrubInjectedBlocks(mention).text, mention);
 });
 
-test("every hook block tag the daemon sources close is in INJECTED_BLOCK_TAGS", () => {
+test("INV-SCRUB-01: every hook block tag the daemon sources close is in INJECTED_BLOCK_TAGS", () => {
   // A hook block is emitted as `<tag …>` … `</tag>`, so the literal closing tag
   // in a source file names it. A new block whose tag is not added to the
   // inventory turns this red. The vault-onboarding and report-notes tags are
