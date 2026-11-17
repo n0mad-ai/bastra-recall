@@ -382,13 +382,22 @@ function renderSaveSuggestions(s: SaveSuggestionStats | null): string[] {
   ];
 }
 
+/** The non-idle triggers of the harvest passes, e.g. ` (1 on SessionEnd, 2 before compaction)`. */
+function harvestTriggers(s: HarvestStats): string {
+  const parts: string[] = [];
+  if (s.bySessionEnd > 0) parts.push(`${s.bySessionEnd} on SessionEnd`);
+  // #1628: PreCompact (#1486) books its own passes; older logs carry none.
+  if (s.byPreCompact > 0) parts.push(`${s.byPreCompact} before compaction`);
+  return parts.length > 0 ? ` (${parts.join(", ")})` : "";
+}
+
 /** #675 — the harvest line. "saved after" counts any save of the receiving
  *  session, so it bounds the harvest's effect from above. */
 function renderHarvest(s: HarvestStats | null): string[] {
   if (!s) return [];
   return [
     `  session harvest — ${s.harvestedSessions} session(s) read` +
-      (s.bySessionEnd > 0 ? ` (${s.bySessionEnd} on SessionEnd)` : "") +
+      harvestTriggers(s) +
       `, ${s.candidates} quote(s) relayed, ${s.stored} already in the vault` +
       (s.skippedSessions > 0 ? `, ${s.skippedSessions} skipped (transcript not readable on this host)` : ""),
     `    delivered to ${s.deliveredSessions} session start(s), ${s.savedAfterDelivery} of them saved afterwards ` +

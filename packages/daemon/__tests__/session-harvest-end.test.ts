@@ -270,6 +270,7 @@ test("stats: harvest line joins the delivering session start to later saves on c
     candidates: 3,
     stored: 1,
     bySessionEnd: 1,
+    byPreCompact: 0,
     deliveredSessions: 2,
     savedAfterDelivery: 1,
   });
@@ -305,4 +306,38 @@ test("stats: harvest line joins the delivering session start to later saves on c
     /session harvest — 2 session\(s\) read \(1 on SessionEnd\), 3 quote\(s\) relayed, 1 already in the vault/
   );
   assert.match(text, /delivered to 2 session start\(s\), 1 of them saved afterwards/);
+});
+
+test("stats #1628: passes booked before compaction get their own count; logs from before #1486 stay unchanged", () => {
+  const harvestRow = (sessionId: string, minute: string, candidates: number, trigger: string) => ({
+    kind: "session_harvest",
+    ts: `2026-09-28T10:${minute}:00Z`,
+    session_id: sessionId,
+    candidate_count: candidates,
+    stored_count: 0,
+    trigger,
+  });
+  const before: Record<string, unknown>[] = [harvestRow("a", "00", 2, "session_end"), harvestRow("b", "05", 1, "idle")];
+  const after: Record<string, unknown>[] = [
+    ...before,
+    harvestRow("c", "10", 1, "pre_compact"),
+    harvestRow("d", "15", 0, "pre_compact"),
+  ];
+  const old = aggregateHarvest(before);
+  const now = aggregateHarvest(after);
+  assert.equal(old?.byPreCompact, 0);
+  assert.equal(now?.byPreCompact, 2);
+  assert.equal(now?.bySessionEnd, old?.bySessionEnd);
+  assert.equal(now?.harvestedSessions, 4);
+  const oldText = renderStats(aggregate(before), 600);
+  assert.match(oldText, /session harvest — 2 session\(s\) read \(1 on SessionEnd\), 3 quote\(s\) relayed/);
+  assert.doesNotMatch(oldText, /before compaction/);
+  assert.match(
+    renderStats(aggregate(after), 600),
+    /session harvest — 4 session\(s\) read \(1 on SessionEnd, 2 before compaction\), 4 quote\(s\) relayed/
+  );
+  assert.match(
+    renderStats(aggregate(after.filter((r) => r.trigger !== "session_end")), 600),
+    /session harvest — 3 session\(s\) read \(2 before compaction\)/
+  );
 });

@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { assistantGatewayHandler } from "../src/assistant-address-gateway.js";
 import { patchAssistantHosts } from "../src/assistant-address-files.js";
 import { writeAppRecord, deleteAppRecord, appRecordDatabasePath } from "../src/app-record-store.js";
+import { observeLookupsInProcess, summarizeLookups } from "./account-lookup-diagnostics.js";
 
 test("DB-only settings: gateway serves UI, reloads changes and honors tombstones", async (t) => {
   assert.ok(process.env.BASTRA_TEST_RUN_ROOT, "gateway fixtures require the isolated test environment");
@@ -56,6 +57,7 @@ test("DB-only settings: gateway serves UI, reloads changes and honors tombstones
 });
 
 test("#1332: named gateway serves only UI, rejects rebinding/foreign origins, and reloads name", async (t) => {
+  const lookups = observeLookupsInProcess(t);
   const dir = await mkdtemp(join(tmpdir(), "assistant-gateway-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const settingsPath = join(dir, "settings.json"),
@@ -100,7 +102,13 @@ test("#1332: named gateway serves only UI, rejects rebinding/foreign origins, an
       q.on("error", reject);
       q.end(method === "POST" ? "{}" : undefined);
     });
-  assert.equal((await call("/")).location, "/ui/");
+  // #1435: the one recorded failure here said only "Location undefined".
+  const first = await call("/");
+  assert.equal(
+    first.location,
+    "/ui/",
+    `first redirect: status ${first.status}, body ${JSON.stringify(first.body.slice(0, 200))}; ${summarizeLookups(lookups)}`
+  );
   assert.equal((await call("/ui/")).body, "ui-ok");
   assert.equal((await call("/ui/", `jarvis:${port}`)).status, 200);
   assert.equal((await call("/ui/", `jarvis.:${port}`)).status, 200);

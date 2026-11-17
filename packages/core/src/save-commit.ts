@@ -45,10 +45,14 @@ export async function fileExists(path: string): Promise<boolean> {
  * Read a commit snapshot without treating I/O failures as "missing".
  * `access()`-style probes collapse EACCES/EIO and ENOENT; a writer must fail
  * closed because only ENOENT proves that an id is free.
+ *
+ * #1620: through the regular-file reader, so a FIFO or other special file at
+ * a memory path is refused at once (EUNSAFE, a symlink ELOOP) instead of
+ * hanging the save. A memory has no size bound, hence no byte cap here.
  */
 export async function readTarget(path: string): Promise<string | null> {
   try {
-    return await readFile(path, "utf8");
+    return (await readRegularFile(path, Number.POSITIVE_INFINITY)).raw;
   } catch (err) {
     if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return null;
     throw err;

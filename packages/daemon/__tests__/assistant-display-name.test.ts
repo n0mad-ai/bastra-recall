@@ -28,7 +28,7 @@ test("display name keeps the typed spelling; the address name derives from it", 
   await setAssistantName("ruby", path);
   assert.equal(await getAssistantDisplayName(path), "ruby", "a different address drops a stale display name");
   for (const bad of ["", "a\u0007b", "a\nb", "x".repeat(65)])
-    await assert.rejects(setAssistantDisplayName(bad, path), /Assistentenname/, bad);
+    await assert.rejects(setAssistantDisplayName(bad, path), { code: "invalid_name" }, bad);
   assert.equal(await getAssistantDisplayName(path), "ruby", "rejected input changes nothing");
   for (const free of ["Jürgen", "Mein Jarvis", "!!!", "localhost", "🤖"]) {
     await setAssistantDisplayName(free, path);
@@ -111,6 +111,22 @@ test("settings save: a new name sets up its derived address once and keeps the s
   assert.equal(await getAssistantDisplayName(options.settingsPath), "Ruby");
 });
 
+test("#1621 settings save: the invalid-name message follows language.primary, the code stays", async (t) => {
+  const { options } = await fixture(t, "linux");
+  const save = (name: string) => renameAssistant(name, { ...options, systemConsent: true });
+  await assert.rejects(save("a\nb"), {
+    code: "invalid_name",
+    message: "Assistant name: 1–64 characters, no control characters or line breaks.",
+  });
+  await mutateSettings(options.settingsPath, (current) => ({ ...current, language: { primary: "de" } }));
+  await assert.rejects(save("a\nb"), {
+    code: "invalid_name",
+    message: "Assistentenname: 1–64 Zeichen, ohne Steuerzeichen oder Zeilenumbrüche.",
+  });
+  await mutateSettings(options.settingsPath, (current) => ({ ...current, language: { primary: "ru" } }));
+  await assert.rejects(save(""), { code: "invalid_name", message: /^Assistant name: / }, "unlisted → English");
+});
+
 test("settings save: a failed address setup still applies the display name and says so", async (t) => {
   const { options, admin, hostsPath } = await fixture(t);
   await renameAssistant("jarvis", { ...options, systemConsent: true });
@@ -130,7 +146,7 @@ test("settings save: a failed address setup still applies the display name and s
 test("settings save: invalid names write nothing; without macOS no admin step runs", async (t) => {
   const { options, admin } = await fixture(t, "linux");
   for (const bad of ["", "   ", "a\nb", "x".repeat(65)])
-    await assert.rejects(renameAssistant(bad, { ...options, systemConsent: true }), /Assistentenname/, bad);
+    await assert.rejects(renameAssistant(bad, { ...options, systemConsent: true }), { code: "invalid_name" }, bad);
   assert.equal(await getAssistantName(options.settingsPath), null);
   assert.equal(await getAssistantDisplayName(options.settingsPath), null);
   assert.deepEqual(await renameAssistant("Jarvis", { ...options, systemConsent: true }), { warning: undefined });

@@ -129,13 +129,15 @@ test("A-labels: only a lossless round trip counts, whatever this Node version's 
   assert.equal(deriveAssistantAddress("xn--mnchen-3ya-"), "xn--mnchen-3ya");
 });
 
-test("display name: free spelling in any script, only technical limits", () => {
+test("display name: free spelling in any script, only technical limits (#1621: message in de/en)", () => {
   assert.equal(normalizeAssistantDisplayName("  Mein Jarvis "), "Mein Jarvis");
   assert.equal(normalizeAssistantDisplayName("Ju\u0308rgen"), "Jürgen", "NFC");
   for (const ok of ["Jürgen", "🤖", "محمد", "東京", "x".repeat(64), "👨‍👩‍👧‍👦".repeat(9)])
     assert.equal(normalizeAssistantDisplayName(ok), ok, ok);
   for (const bad of ["", "   ", "x".repeat(65), "a\nb", "a\rb", "a\tb", "a\u0007b", "a\u2028b", "a\ud800b"])
-    assert.throws(() => normalizeAssistantDisplayName(bad), /Assistentenname/, JSON.stringify(bad));
+    assert.throws(() => normalizeAssistantDisplayName(bad), { code: "invalid_name" }, JSON.stringify(bad));
+  assert.throws(() => normalizeAssistantDisplayName("", "de"), { message: /^Assistentenname: 1–64 Zeichen/ });
+  assert.throws(() => normalizeAssistantDisplayName("", "en"), { message: /^Assistant name: 1–64 characters/ });
 });
 
 test("#1332: name persists across unrelated settings writes without touching user text", async (t) => {

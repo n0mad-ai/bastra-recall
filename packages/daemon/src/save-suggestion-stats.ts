@@ -97,6 +97,9 @@ export interface HarvestStats {
   stored: number;
   /** Harvest passes started by a SessionEnd instead of the idle window. */
   bySessionEnd: number;
+  /** #1628: passes booked by a PreCompact hook (#1486). Zero in logs written
+   *  before that trigger existed. */
+  byPreCompact: number;
   /** Session starts that delivered at least one harvest block. */
   deliveredSessions: number;
   /** Of those, sessions with a `save_memory` after the delivery. */
@@ -110,6 +113,7 @@ export function aggregateHarvest(events: readonly Row[]): HarvestStats | null {
   let candidates = 0;
   let stored = 0;
   let bySessionEnd = 0;
+  let byPreCompact = 0;
   const delivered = new Map<string, string>();
   for (const e of events) {
     if (e.kind === "session_harvest") {
@@ -121,6 +125,7 @@ export function aggregateHarvest(events: readonly Row[]): HarvestStats | null {
       if (typeof e.candidate_count === "number") candidates += e.candidate_count;
       if (typeof e.stored_count === "number") stored += e.stored_count;
       if (e.trigger === "session_end") bySessionEnd++;
+      byPreCompact += Number(e.trigger === "pre_compact");
       continue;
     }
     if (e.kind !== "session_hook_call") continue;
@@ -146,6 +151,7 @@ export function aggregateHarvest(events: readonly Row[]): HarvestStats | null {
     candidates,
     stored,
     bySessionEnd,
+    byPreCompact,
     deliveredSessions: delivered.size,
     savedAfterDelivery: saved.size,
   };

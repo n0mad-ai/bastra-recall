@@ -1,9 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import { once } from "node:events";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Worker } from "node:worker_threads";
 import { ENTER_PAUSE_MS, agentEnvelope, sendAgentMessage } from "../cmux-agent-send.mjs";
 
 /** Tests never sleep; the #1155 test below checks where the pause happens. */
 const noPause = () => {};
+
+const scratch = fs.mkdtempSync(join(tmpdir(), "bastra-cmux-send-"));
+test.after(() => fs.rmSync(scratch, { recursive: true, force: true }));
 
 const text = "Claude: please review this change.\nCodex: I will prepare the fixtures.";
 const options = {
@@ -11,6 +19,7 @@ const options = {
   from: "codex",
   surface: "11111111-1111-4111-8111-111111111111",
   workspace: "22222222-2222-4222-8222-222222222222",
+  lockRoot: join(scratch, "locks"),
 };
 test("cmux sender marks the whole payload and sends to the same explicit target without a shell", () => {
   const calls = [];
@@ -145,4 +154,114 @@ test("#1155 Return waits a pause after the text, and a failed send neither pause
     /no Enter was sent/
   );
   assert.deepEqual(steps, ["surface.send_text"]);
+});
+
+/**
+ * #1636: a fake pane shared through files, so a sender on another thread sees
+ * the same input. `send_text` appends to the input line, `send_key` submits it.
+ */
+function fakeTerminal(dir, fsApi) {
+  const input = `${dir}/input`;
+  return (cmd, args) => {
+    const payload = JSON.parse(args[2]);
+    if (args[1] === "surface.send_text") fsApi.appendFileSync(input, payload.text);
+    if (args[1] === "surface.send_key") {
+      const line = fsApi.existsSync(input) ? fsApi.readFileSync(input, "utf8") : "";
+      fsApi.appendFileSync(`${dir}/submissions`, JSON.stringify(line) + "\n");
+      fsApi.writeFileSync(input, "");
+    }
+    return { status: 0 };
+  };
+}
+
+/** Runs in a worker: the second sender. It flags 1 when it has to wait for
+ *  the target and 2 when it is done, and waits for real (a few ms per poll)
+ *  because the first sender only finishes on the main thread. */
+const SECOND_SENDER = `
+const fs = require("node:fs");
+const { workerData } = require("node:worker_threads");
+const flag = new Int32Array(workerData.flag);
+const signal = (v) => { Atomics.store(flag, 0, v); Atomics.notify(flag, 0); };
+const makeTerminal = ${fakeTerminal.toString()};
+import(workerData.moduleUrl).then(({ sendAgentMessage, LOCK_POLL_MS }) => {
+  const run = makeTerminal(workerData.dir, fs);
+  try {
+    sendAgentMessage(workerData.options, run, (ms) => {
+      if (ms === LOCK_POLL_MS) signal(1);
+      Atomics.wait(flag, 1, 0, 5);
+    });
+  } finally {
+    signal(2);
+  }
+});
+`;
+
+test("#1636 two senders to one pane: the second waits for the first Return, both submit alone", async () => {
+  const dir = fs.mkdtempSync(join(scratch, "pane-"));
+  const lockRoot = join(dir, "locks");
+  const flag = new SharedArrayBuffer(8);
+  let worker;
+  let waitedFor = "timeout";
+  sendAgentMessage({ ...options, text: "first", lockRoot }, fakeTerminal(dir, fs), (ms) => {
+    assert.equal(ms, ENTER_PAUSE_MS);
+    worker = new Worker(SECOND_SENDER, {
+      eval: true,
+      workerData: {
+        moduleUrl: new URL("../cmux-agent-send.mjs", import.meta.url).href,
+        options: { ...options, from: "claude", text: "second", lockRoot },
+        dir,
+        flag,
+      },
+    });
+    // Inside the first sender's #1155 pause: the second one must not get through.
+    waitedFor = Atomics.wait(new Int32Array(flag), 0, 0, 10_000);
+  });
+  const [code] = await once(worker, "exit");
+  assert.equal(code, 0);
+  assert.notEqual(waitedFor, "timed-out", "the second sender neither waited nor finished");
+  const submissions = fs
+    .readFileSync(join(dir, "submissions"), "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.equal(submissions.length, 2);
+  assert.match(submissions[0], /^<agent-message from="codex"[^>]*>"first"<\/agent-message>$/);
+  assert.match(submissions[1], /^<agent-message from="claude"[^>]*>"second"<\/agent-message>$/);
+  assert.deepEqual(fs.readdirSync(lockRoot), [], "no lock is left behind");
+});
+
+test("#1636 a failed send releases the target; a lock left by a dead sender is taken over", () => {
+  const lockRoot = join(fs.mkdtempSync(join(scratch, "pane-")), "locks");
+  assert.throws(() => sendAgentMessage({ ...options, lockRoot }, () => ({ status: 1 }), noPause), /no Enter/);
+  assert.deepEqual(fs.readdirSync(lockRoot), []);
+  const pauses = [];
+  sendAgentMessage(
+    { ...options, lockRoot },
+    () => ({ status: 0 }),
+    (ms) => pauses.push(ms)
+  );
+  assert.deepEqual(pauses, [ENTER_PAUSE_MS], "a free target is not waited for");
+
+  // A sender killed between text and Return leaves its lock behind; once it is
+  // older than the longest possible hold, the next sender takes it over.
+  let lockName;
+  sendAgentMessage(
+    { ...options, lockRoot },
+    () => {
+      [lockName] = fs.readdirSync(lockRoot);
+      return { status: 0 };
+    },
+    noPause
+  );
+  const stale = new Date(Date.now() - 60_000);
+  fs.mkdirSync(join(lockRoot, lockName));
+  fs.utimesSync(join(lockRoot, lockName), stale, stale);
+  pauses.length = 0;
+  sendAgentMessage(
+    { ...options, lockRoot },
+    () => ({ status: 0 }),
+    (ms) => pauses.push(ms)
+  );
+  assert.deepEqual(pauses, [ENTER_PAUSE_MS]);
+  assert.deepEqual(fs.readdirSync(lockRoot), []);
 });

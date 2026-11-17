@@ -183,16 +183,19 @@ export function readableAssistantName(name: string): string {
   return domainToUnicode(name) || name;
 }
 const ASSISTANT_DISPLAY_NAME_MAX = 64;
+/** #1621: the limits message by language (language.primary, like the web UI and CLI); English when unset
+ * or unlisted. Display text only: callers decide on the code `invalid_name`. */
+const DISPLAY_NAME_LIMITS: Readonly<{ en: string } & Record<string, string>> = {
+  en: `Assistant name: 1–${ASSISTANT_DISPLAY_NAME_MAX} characters, no control characters or line breaks.`,
+  de: `Assistentenname: 1–${ASSISTANT_DISPLAY_NAME_MAX} Zeichen, ohne Steuerzeichen oder Zeilenumbrüche.`,
+};
 /** The name as typed: trimmed and NFC-normalized. Only technical limits apply (1–64 code points, no
  * control characters, line breaks or lone surrogates); whether an address derives does not matter. */
-export function normalizeAssistantDisplayName(value: string): string {
+export function normalizeAssistantDisplayName(value: string, language?: string): string {
   const name = value.normalize("NFC").trim();
   const length = [...name].length;
   if (length < 1 || length > ASSISTANT_DISPLAY_NAME_MAX || /[\p{Cc}\p{Cs}\p{Zl}\p{Zp}]/u.test(name))
-    throw new AssistantAddressError(
-      "invalid_name",
-      `Assistentenname: 1–${ASSISTANT_DISPLAY_NAME_MAX} Zeichen, ohne Steuerzeichen oder Zeilenumbrüche.`
-    );
+    throw new AssistantAddressError("invalid_name", DISPLAY_NAME_LIMITS[language ?? "en"] ?? DISPLAY_NAME_LIMITS.en);
   return name;
 }
 export function assistantUrls(value: string) {

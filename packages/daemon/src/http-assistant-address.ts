@@ -2,7 +2,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
-import { getUiEnabled } from "./settings.js";
+import { getPrimaryLanguage, getUiEnabled } from "./settings.js";
 import { sendJson, readJsonBody } from "./http-util.js";
 import {
   assistantAddressOptions,
@@ -55,7 +55,7 @@ async function registeredAddress(o: ReturnType<typeof assistantAddressOptions>):
  * A name that derives no address is saved all the same and leaves the address (or none) unchanged. */
 export async function renameAssistant(value: string, options: AssistantAddressOptions = {}) {
   const o = assistantAddressOptions(options),
-    displayName = normalizeAssistantDisplayName(value),
+    displayName = normalizeAssistantDisplayName(value, await getPrimaryLanguage(o.settingsPath)),
     name = assistantAddressFor(displayName, o);
   let warning: string | undefined;
   if (name !== null) warning = await applyAddress(name, options, o);

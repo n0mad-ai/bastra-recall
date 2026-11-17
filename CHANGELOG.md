@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `bastra logs --stats` counts harvest passes booked before compaction
+  separately from SessionEnd passes; older logs keep their existing totals
+  (#1628).
 - **Notes on task reports, handed over to the agent when you say so.** While
   reading a report under Tasks › Reports, you can leave a note on a single
   place: a heading, a paragraph, a list item or a table row ("research the
@@ -223,6 +226,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Concurrent `tools/cmux-agent-send.mjs` senders to the same terminal target
+  take turns from message text through Return, keeping submissions separate
+  (#1636).
 - Vault: of two files in one folder that carry the same memory id, the copy
   could win the index — `Alpha (1).md` sorts before `Alpha.md`, and a copy
   indexed first kept its entry when the original arrived — so a correction
@@ -313,6 +319,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Telemetry: old recall rows from a tool lane (such as the fixed session-start
   queries) are no longer counted as agent recalls in the demand-gap report
   (#1266).
+- OAuth: a connector sign-in that runs past the 10-minute expiry for unused
+  registrations now completes; the client is kept while its sign-in page is
+  open or its code is unredeemed. Idle registrations still expire (#1619).
+- Saving a memory refuses a FIFO or other special file at the memory's path
+  at once instead of hanging (#1620).
+- The daemon's error for an invalid assistant name follows `language.primary`
+  (German or English) instead of always being German (#1621).
 
 - Installer backups are private: `bastra install` and `bastra doctor --fix`
   write `*.bak-<time>` copies of client configs with mode 600 from the first
@@ -359,6 +372,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Internal
 
+- The architecture reference describes audited document writes and their
+  sidecar-only, best-effort limits (#1633).
+- The interrupted stub-staging ignore test isolates Git's global configuration
+  and proves a missing repository rule is detected (#1627).
 - **Six import cycles gone, task CLI and task evaluation cut along their
   decisions: same behaviour** (#1515 B1–B7, #1518, #1514, #1520 D6, #1526).
   Shared pieces moved into small modules below their users (lean summary cut,

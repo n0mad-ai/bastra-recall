@@ -526,6 +526,43 @@ test("#1280 oauth: open logins have a global cap that refuses instead of evictin
   });
 });
 
+test("#1619 oauth: a sign-in outlives the unused-registration expiry; an idle registration still expires", async () => {
+  await withServer(async (port, storePath) => {
+    const userClient = await register(port);
+    const idleClient = await register(port, "idle");
+    const { verifier, challenge } = pkce();
+    const requestId = await openAuthorize(port, userClient, challenge);
+    // The clock moves past the 10-minute expiry for both registrations while
+    // the user's authorize page is still open.
+    const data = JSON.parse(readAppRecord("oauth", storePath)) as { clients: { created_at: string }[] };
+    for (const c of data.clients) c.created_at = new Date(Date.now() - 11 * 60_000).toISOString();
+    writeAppRecord("oauth", storePath, JSON.stringify(data));
+
+    const approved = await approve(port, requestId, TOKEN);
+    assert.equal(approved.status, 302, approved.text);
+    const exchanged = await call(
+      port,
+      "POST",
+      "/api/v1/oauth/token",
+      form({
+        grant_type: "authorization_code",
+        code: new URL(String(approved.headers.location)).searchParams.get("code")!,
+        redirect_uri: REDIRECT,
+        client_id: userClient,
+        code_verifier: verifier,
+      })
+    );
+    assert.equal(exchanged.status, 200, `the sign-in failed after the registration expiry: ${exchanged.text}`);
+    const after = JSON.parse(readAppRecord("oauth", storePath)) as { clients: { client_id: string }[] };
+    assert.deepEqual(
+      after.clients.map((c) => c.client_id),
+      [userClient],
+      "the idle registration expires as before, the signed-in one stays"
+    );
+    assert.ok(idleClient);
+  });
+});
+
 test("oauth: deny redirects with access_denied", async () => {
   await withServer(async (port) => {
     const clientId = await register(port);

@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 /** Agent-to-agent cmux sender (#1105). stdin is always agent prose, never owner evidence. */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { mkdirSync, rmdirSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export function agentEnvelope(text, from) {
@@ -29,8 +32,52 @@ function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+/**
+ * #1636: text and Return are two calls, so a second sender to the same pane
+ * could paste its envelope inside the first one's pause and both would leave
+ * in one submission. One lock directory per target (workspace + surface) spans
+ * text, pause and Return. A held lock is waited for in LOCK_POLL_MS steps; one
+ * older than LOCK_STALE_MS outlived both 5 s calls plus the pause, so its
+ * holder died and the lock is taken over. After LOCK_WAIT_MS nothing is sent.
+ */
+export const LOCK_POLL_MS = 50;
+const LOCK_STALE_MS = 15_000;
+const LOCK_WAIT_MS = 20_000;
+
+function acquireTargetLock(targets, pause, lockRoot = join(tmpdir(), "bastra-cmux-agent-send")) {
+  mkdirSync(lockRoot, { recursive: true, mode: 0o700 });
+  const key = createHash("sha256").update(`${targets.workspace_id}\n${targets.surface_id}`.toLowerCase()).digest("hex");
+  const lock = join(lockRoot, key.slice(0, 32));
+  const started = Date.now();
+  for (;;) {
+    try {
+      mkdirSync(lock, { mode: 0o700 });
+      return lock;
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+    }
+    let age;
+    try {
+      age = Date.now() - statSync(lock).mtimeMs;
+    } catch {
+      continue; // released between mkdir and stat: try again at once
+    }
+    if (age > LOCK_STALE_MS) {
+      try {
+        rmdirSync(lock);
+      } catch {
+        /* another waiter took the stale lock over first */
+      }
+      continue;
+    }
+    if (Date.now() - started > LOCK_WAIT_MS)
+      throw new Error("cmux target busy with another agent message; nothing was sent");
+    pause(LOCK_POLL_MS);
+  }
+}
+
 export function sendAgentMessage(
-  { text, from, surface, workspace, print = false },
+  { text, from, surface, workspace, print = false, lockRoot },
   run = spawnSync,
   pause = sleepSync
 ) {
@@ -65,7 +112,12 @@ export function sendAgentMessage(
       throw new Error("cmux explicit terminal target unresolved; no Enter was sent");
     targets = { workspace_id: caller.workspace_id, surface_id: caller.surface_id };
   }
-  sendThenSubmit(run, pause, targets, envelope, options);
+  const lock = acquireTargetLock(targets, pause, lockRoot);
+  try {
+    sendThenSubmit(run, pause, targets, envelope, options);
+  } finally {
+    rmdirSync(lock);
+  }
   return "";
 }
 

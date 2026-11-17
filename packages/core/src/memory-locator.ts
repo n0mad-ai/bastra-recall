@@ -23,7 +23,7 @@ import { isCloudPlaceholderError } from "./cloud-placeholder.js";
  * Dateinamen, und beides muss hier genauso gelten, sonst weichen Index und
  * Save-Pfad in ihrer Vorstellung davon ab, was existiert.
  */
-import { constants, readdirSync, readFileSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readdirSync, readFileSync } from "node:fs";
 import { readdir, readFile, open } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import matter from "gray-matter";
@@ -88,10 +88,29 @@ export interface MemoryLocator {
  * Ein PARSE-Fehler ist etwas anderes als ein Lesefehler: Die Datei existiert
  * und ist lesbar, sie ist nur kein Memory — `foreign`, und damit geschützt.
  */
+/** #1620: this read is synchronous, so a FIFO at a memory or sidecar path used
+ *  to block the whole process (the save, and the daemon with it). Opened
+ *  without waiting, and only a regular file is read; anything else is
+ *  `unreadable` (EUNSAFE; a directory EISDIR as before) and stays protected.
+ *  A symlink is still followed. */
+function readRegularFileSync(filePath: string): string {
+  const fd = openSync(filePath, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+  try {
+    const info = fstatSync(fd);
+    if (!info.isFile())
+      throw Object.assign(new Error(`not a regular file: ${filePath}`), {
+        code: info.isDirectory() ? "EISDIR" : "EUNSAFE",
+      });
+    return readFileSync(fd, "utf8");
+  } finally {
+    closeSync(fd);
+  }
+}
+
 export function readOccupant(filePath: string): Occupant {
   let raw: string;
   try {
-    raw = readFileSync(filePath, "utf8");
+    raw = readRegularFileSync(filePath);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException)?.code;
     if (code === "ENOENT" || code === "ENOTDIR") return { kind: "absent" };

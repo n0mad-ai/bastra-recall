@@ -67,6 +67,13 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import ts from "typescript";
 import { ensureAssistantAddressRuntime } from "../src/assistant-address.js";
+import { histogram, observeLookupsInCopy, readLookupLog, summarizeLookups } from "./account-lookup-diagnostics.js";
+
+const lookupLogOf = (root: string) => join(root, "account-lookups.jsonl");
+/** #1435: the one recorded failure of the overload fixture said only "0, expected 16". */
+const overloadDiagnostics = (entered: number, early: number[], root: string) =>
+  `backend admitted ${entered}; answered early: ${histogram(early)}; ` +
+  summarizeLookups(readLookupLog(lookupLogOf(root)));
 
 async function runtime(t: test.TestContext) {
   const root = await mkdtemp(join(tmpdir(), "assistant-bound-runtime-"));
@@ -82,10 +89,13 @@ async function runtime(t: test.TestContext) {
     "http-auth",
   ]) {
     const text = await readFile(new URL(`../src/${name}.ts`, import.meta.url), "utf8");
+    const js = ts.transpileModule(text, {
+      compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+    }).outputText;
+    // #1435: the gateway processes log each account scan for the failure message.
     await writeFile(
       join(source, name + ".js"),
-      ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } })
-        .outputText
+      name === "local-account-access" ? observeLookupsInCopy(js, lookupLogOf(root)) : js
     );
   }
   const reader = await readFile(new URL("../../core/src/runtime-settings.ts", import.meta.url), "utf8");
@@ -217,8 +227,9 @@ test("#1335: both inherited listeners use two real processes for 24 connections,
   for (const until = Date.now() + 6000; Date.now() < until && entered < 16;)
     await new Promise((r) => setTimeout(r, 20));
   await new Promise((r) => setTimeout(r, 200));
-  assert.equal(entered, 16);
-  assert.equal(results.length, 0, `queued requests must not be rejected: ${results.join(",")}`);
+  const diagnostics = () => overloadDiagnostics(entered, results, o.home);
+  assert.equal(entered, 16, diagnostics());
+  assert.equal(results.length, 0, `queued requests must not be rejected: ${diagnostics()}`);
   const processes = execFileSync("/bin/ps", ["-ww", "-p", children.map((c) => c.pid).join(","), "-o", "args="], {
     encoding: "utf8",
   })
@@ -232,9 +243,9 @@ test("#1335: both inherited listeners use two real processes for 24 connections,
   releases.splice(0).forEach((r) => r());
   for (const until = Date.now() + 6000; Date.now() < until && entered < 24;)
     await new Promise((r) => setTimeout(r, 20));
-  assert.equal(entered, 24);
+  assert.equal(entered, 24, diagnostics());
   releases.splice(0).forEach((r) => r());
-  assert.deepEqual(await Promise.all(pending), Array(24).fill(200));
+  assert.deepEqual(await Promise.all(pending), Array(24).fill(200), diagnostics());
   const exits = children.map((c) => once(c, "exit"));
   await ensureAssistantAddressRuntime({ ...o, daemonUrl: "http://127.0.0.1:9" });
   await Promise.race([

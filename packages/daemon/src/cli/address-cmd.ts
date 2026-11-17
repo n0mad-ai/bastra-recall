@@ -13,6 +13,7 @@ import { requireAssistantAddress, normalizeAssistantDisplayName, assistantUrls }
 import { getAssistantDisplayName, setAssistantDisplayName } from "../assistant-address-settings.js";
 import { hasAddressErrorCode } from "../assistant-address-name.js";
 import { confirm } from "./prompt.js";
+import { getPrimaryLanguage } from "../settings.js";
 import type { ParsedArgs } from "./types.js";
 export async function cmdAddress(args: ParsedArgs, options?: AssistantAddressOptions): Promise<number> {
   options ??= {};
@@ -73,7 +74,7 @@ export async function cmdAddress(args: ParsedArgs, options?: AssistantAddressOpt
 }
 /** Saves the name as typed. A name that derives no address keeps the existing address (or none). */
 export async function configureAssistantName(value: string): Promise<void> {
-  const displayName = normalizeAssistantDisplayName(value),
+  const displayName = normalizeAssistantDisplayName(value, await getPrimaryLanguage()),
     name = assistantAddressFor(displayName);
   if (name !== null) await changeAddressName(name);
   await setAssistantDisplayName(displayName);

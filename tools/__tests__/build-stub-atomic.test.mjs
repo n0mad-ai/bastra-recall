@@ -73,12 +73,30 @@ test("interrupted stub staging directories are ignored by git", (t) => {
   const repo = mkdtempSync(join(tmpdir(), "bastra-stub-ignore-"));
   t.after(() => rmSync(repo, { recursive: true, force: true }));
   copyFileSync(new URL("../../.gitignore", import.meta.url), join(repo, ".gitignore"));
-  const init = spawnSync("git", ["init", "--quiet"], { cwd: repo, encoding: "utf8" });
+  // #1627: the result must come from this repository, never the user's Git config.
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
+  const options = { cwd: repo, encoding: "utf8", env, timeout: 5000 };
+  const init = spawnSync("git", ["init", "--quiet"], options);
   assert.equal(init.status, 0, init.stdout + init.stderr);
-  const run = spawnSync(
-    "git",
-    ["check-ignore", "--no-index", "packages/daemon/stub/.bastra-hook-build-interrupted/bastra-hook"],
-    { cwd: repo, encoding: "utf8" }
-  );
+  const path = "packages/daemon/stub/.bastra-hook-build-interrupted/bastra-hook";
+  const args = ["check-ignore", "--no-index", path];
+  const run = spawnSync("git", args, options);
   assert.equal(run.status, 0, run.stdout + run.stderr);
+
+  const ignore = join(repo, ".gitignore");
+  writeFileSync(
+    ignore,
+    readFileSync(ignore, "utf8").replace(/^packages\/daemon\/stub\/\.bastra-hook-build-\*\/\r?\n/m, "")
+  );
+  const globalExclude = join(repo, "global-excludes");
+  writeFileSync(globalExclude, path + "\n");
+  const globalConfig = join(repo, "global-config");
+  writeFileSync(globalConfig, `[core]\nexcludesFile = ${globalExclude}\n`);
+  const contaminated = spawnSync("git", args, {
+    ...options,
+    env: { ...env, GIT_CONFIG_GLOBAL: globalConfig },
+  });
+  assert.equal(contaminated.status, 0, "the global exclude alone would mask a missing repository rule");
+  const withoutRule = spawnSync("git", args, options);
+  assert.equal(withoutRule.status, 1, "removing the repository rule must make this path visible");
 });

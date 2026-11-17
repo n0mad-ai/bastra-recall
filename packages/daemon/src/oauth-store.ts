@@ -119,23 +119,29 @@ function granted(data: OAuthFile): Set<string> {
   return new Set(data.grants.map((g) => g.client_id));
 }
 
-function prune(data: OAuthFile, now: number): void {
+/** #1619: `inUse` (clients mid-login, see registerClient) outlive the unused
+ *  TTL — a login that started late in it must still be able to finish. */
+function prune(data: OAuthFile, now: number, inUse: ReadonlySet<string>): void {
   data.grants = data.grants.filter((g) => g.refresh_expires_at > now);
   const used = granted(data);
   data.clients = data.clients.filter(
-    (c) => used.has(c.client_id) || now - Date.parse(c.created_at) < UNUSED_CLIENT_TTL_MS
+    (c) => used.has(c.client_id) || inUse.has(c.client_id) || now - Date.parse(c.created_at) < UNUSED_CLIENT_TTL_MS
   );
 }
 
 /** Read-modify-write under the path lock; skips the write when nothing changed. */
-async function mutate<T>(path: string, fn: (data: OAuthFile, now: number) => T): Promise<T> {
+async function mutate<T>(
+  path: string,
+  fn: (data: OAuthFile, now: number) => T,
+  inUse: ReadonlySet<string> = new Set()
+): Promise<T> {
   return withPathLock(
     path,
     async () => {
       const data = await load(path);
       const before = JSON.stringify(data);
       const now = Date.now();
-      prune(data, now);
+      prune(data, now, inUse);
       const result = fn(data, now);
       const after = JSON.stringify(data, null, 2);
       if (JSON.stringify(data) !== before) {
@@ -160,24 +166,28 @@ export async function registerClient(
   path = oauthStorePath(),
   inUse: ReadonlySet<string> = new Set()
 ): Promise<OAuthClient | null> {
-  return mutate(path, (data) => {
-    if (data.clients.length >= MAX_CLIENTS) {
-      const used = granted(data);
-      const victim = data.clients
-        .filter((c) => !used.has(c.client_id) && !inUse.has(c.client_id))
-        .sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
-      if (!victim) return null;
-      data.clients = data.clients.filter((c) => c !== victim);
-    }
-    const client: OAuthClient = {
-      client_id: randomUUID(),
-      client_name: sanitizeClientName(meta.client_name),
-      redirect_uris: meta.redirect_uris,
-      created_at: new Date().toISOString(),
-    };
-    data.clients.push(client);
-    return client;
-  });
+  return mutate(
+    path,
+    (data) => {
+      if (data.clients.length >= MAX_CLIENTS) {
+        const used = granted(data);
+        const victim = data.clients
+          .filter((c) => !used.has(c.client_id) && !inUse.has(c.client_id))
+          .sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
+        if (!victim) return null;
+        data.clients = data.clients.filter((c) => c !== victim);
+      }
+      const client: OAuthClient = {
+        client_id: randomUUID(),
+        client_name: sanitizeClientName(meta.client_name),
+        redirect_uris: meta.redirect_uris,
+        created_at: new Date().toISOString(),
+      };
+      data.clients.push(client);
+      return client;
+    },
+    inUse
+  );
 }
 
 export async function getClient(clientId: string, path = oauthStorePath()): Promise<OAuthClient | null> {
@@ -198,65 +208,83 @@ function issueInto(grant: OAuthGrant, now: number): IssuedTokens {
 
 export async function createGrant(
   p: { client_id: string; resource: string; scope: string },
-  path = oauthStorePath()
+  path = oauthStorePath(),
+  inUse: ReadonlySet<string> = new Set()
 ): Promise<{ grantId: string; tokens: IssuedTokens } | null> {
-  return mutate(path, (data, now) => {
-    if (!data.clients.some((c) => c.client_id === p.client_id)) return null;
-    const grant: OAuthGrant = {
-      id: randomUUID(),
-      client_id: p.client_id,
-      resource: p.resource,
-      scope: p.scope,
-      created_at: new Date(now).toISOString(),
-      last_used_at: new Date(now).toISOString(),
-      access_hash: "",
-      access_expires_at: 0,
-      refresh_hash: "",
-      refresh_expires_at: 0,
-      prev_refresh_hash: null,
-    };
-    const tokens = issueInto(grant, now);
-    data.grants.push(grant);
-    return { grantId: grant.id, tokens };
-  });
+  return mutate(
+    path,
+    (data, now) => {
+      if (!data.clients.some((c) => c.client_id === p.client_id)) return null;
+      const grant: OAuthGrant = {
+        id: randomUUID(),
+        client_id: p.client_id,
+        resource: p.resource,
+        scope: p.scope,
+        created_at: new Date(now).toISOString(),
+        last_used_at: new Date(now).toISOString(),
+        access_hash: "",
+        access_expires_at: 0,
+        refresh_hash: "",
+        refresh_expires_at: 0,
+        prev_refresh_hash: null,
+      };
+      const tokens = issueInto(grant, now);
+      data.grants.push(grant);
+      return { grantId: grant.id, tokens };
+    },
+    inUse
+  );
 }
 
 /** Drops one grant — used when its authorization code is presented twice. */
-export async function revokeGrant(grantId: string, path = oauthStorePath()): Promise<void> {
-  await mutate(path, (data) => {
-    data.grants = data.grants.filter((g) => g.id !== grantId);
-  });
+export async function revokeGrant(
+  grantId: string,
+  path = oauthStorePath(),
+  inUse: ReadonlySet<string> = new Set()
+): Promise<void> {
+  await mutate(
+    path,
+    (data) => {
+      data.grants = data.grants.filter((g) => g.id !== grantId);
+    },
+    inUse
+  );
 }
 
 /** Rotates a refresh token. `null` = invalid; a replayed old token (outside
  *  the grace window, or used twice) also revokes the grant it belonged to. */
 export async function refreshGrant(
   p: { refresh_token: string; client_id: string; resource: string | null },
-  path = oauthStorePath()
+  path = oauthStorePath(),
+  inUse: ReadonlySet<string> = new Set()
 ): Promise<IssuedTokens | null> {
   const h = hashToken(p.refresh_token);
-  return mutate(path, (data, now) => {
-    const grant = data.grants.find(
-      (g) => g.refresh_hash === h || g.prev_refresh_hash === h || g.retired_hashes?.includes(h)
-    );
-    if (!grant) return null;
-    const inGrace = grant.prev_refresh_hash === h && now - (grant.rotated_at ?? 0) < REFRESH_GRACE_MS;
-    if (grant.refresh_hash !== h && !inGrace) {
-      data.grants = data.grants.filter((g) => g !== grant);
-      return null;
-    }
-    if (grant.client_id !== p.client_id || grant.refresh_expires_at <= now) return null;
-    if (p.resource !== null && p.resource !== grant.resource) return null;
-    if (!data.clients.some((c) => c.client_id === grant.client_id)) return null;
-    // The token replaced before now retires for good; the one replaced now
-    // gets the grace window. A grace use therefore spends that token's grace.
-    if (grant.prev_refresh_hash) {
-      grant.retired_hashes = [...(grant.retired_hashes ?? []), grant.prev_refresh_hash].slice(-MAX_RETIRED);
-    }
-    grant.prev_refresh_hash = grant.refresh_hash;
-    grant.rotated_at = now;
-    return issueInto(grant, now);
-  });
+  return mutate(
+    path,
+    (data, now) => {
+      const grant = data.grants.find(
+        (g) => g.refresh_hash === h || g.prev_refresh_hash === h || g.retired_hashes?.includes(h)
+      );
+      if (!grant) return null;
+      const inGrace = grant.prev_refresh_hash === h && now - (grant.rotated_at ?? 0) < REFRESH_GRACE_MS;
+      if (grant.refresh_hash !== h && !inGrace) {
+        data.grants = data.grants.filter((g) => g !== grant);
+        return null;
+      }
+      if (grant.client_id !== p.client_id || grant.refresh_expires_at <= now) return null;
+      if (p.resource !== null && p.resource !== grant.resource) return null;
+      if (!data.clients.some((c) => c.client_id === grant.client_id)) return null;
+      // The token replaced before now retires for good; the one replaced now
+      // gets the grace window. A grace use therefore spends that token's grace.
+      if (grant.prev_refresh_hash) {
+        grant.retired_hashes = [...(grant.retired_hashes ?? []), grant.prev_refresh_hash].slice(-MAX_RETIRED);
+      }
+      grant.prev_refresh_hash = grant.refresh_hash;
+      grant.rotated_at = now;
+      return issueInto(grant, now);
+    },
+    inUse
+  );
 }
 
 /** True when `token` is a live access token bound to `resource`. */

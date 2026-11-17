@@ -362,7 +362,9 @@ export function dispatchOAuthApi(
   return true;
 }
 
-/** #1280: clients mid-login — an open authorize page or an unredeemed code. */
+/** #1280: clients mid-login — an open authorize page or an unredeemed code.
+ *  #1619: every store mutation from here passes them on, so neither eviction
+ *  nor the unused-registration expiry removes a client during its sign-in. */
 function clientsInUse(state: OAuthState, now: number): Set<string> {
   sweep(state.pending, now);
   sweep(state.codes, now);
@@ -576,7 +578,7 @@ async function handleToken(
       // OAuth 2.1 §4.1.3: a code presented twice was intercepted — whatever
       // it already bought is revoked too.
       state.used.delete(form.code);
-      await revokeGrant(reused.grant_id);
+      await revokeGrant(reused.grant_id, undefined, clientsInUse(state, now));
       return oauthError(res, 400, "invalid_grant", "code was already used");
     }
     const code = state.codes.get(form.code ?? "");
@@ -595,11 +597,18 @@ async function handleToken(
     }
     if (resource !== null && resource !== code.resource)
       return oauthError(res, 400, "invalid_target", "resource does not match");
-    const created = await createGrant({ client_id: clientId, resource: code.resource, scope: SCOPE });
+    // #1619: the code was spent above, so its client is named explicitly — an
+    // older-than-TTL registration must survive until this grant exists.
+    const inUse = clientsInUse(state, now).add(clientId);
+    const created = await createGrant({ client_id: clientId, resource: code.resource, scope: SCOPE }, undefined, inUse);
     if (created) state.used.set(form.code, { grant_id: created.grantId, expires_at: code.expires_at });
     tokens = created?.tokens ?? null;
   } else if (form.grant_type === "refresh_token") {
-    tokens = await refreshGrant({ refresh_token: form.refresh_token ?? "", client_id: clientId, resource });
+    tokens = await refreshGrant(
+      { refresh_token: form.refresh_token ?? "", client_id: clientId, resource },
+      undefined,
+      clientsInUse(state, Date.now())
+    );
   } else {
     return oauthError(res, 400, "unsupported_grant_type");
   }

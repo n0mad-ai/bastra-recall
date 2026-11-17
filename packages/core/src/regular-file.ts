@@ -7,7 +7,8 @@
  * core cannot import.
  *
  * Errors: ENOENT and ELOOP (a symlink) keep their codes; a FIFO, device,
- * socket, directory or oversized file throws with code EUNSAFE. Windows has
+ * socket or oversized file throws with code EUNSAFE, a directory with EISDIR
+ * (as a plain readFile would). Windows has
  * neither flag; there a symlink is followed and only the file type is checked.
  */
 import { constants } from "node:fs";
@@ -32,7 +33,11 @@ export async function readRegularFile(
   try {
     const info = await handle.stat();
     if (!info.isFile() || info.size > maxBytes)
-      throw Object.assign(new Error(`not a regular file within ${maxBytes} bytes: ${path}`), { code: "EUNSAFE" });
+      throw Object.assign(
+        new Error(`not a regular file${Number.isFinite(maxBytes) ? ` within ${maxBytes} bytes` : ""}: ${path}`),
+        // #1620: a directory keeps the code a plain readFile gave it (EISDIR).
+        { code: info.isDirectory() ? "EISDIR" : "EUNSAFE" }
+      );
     // A regular file within the bound: read it from this same descriptor, and
     // refuse it if it grew past the bound meanwhile.
     const raw = await handle.readFile("utf8");
