@@ -570,7 +570,6 @@
     "[\"packages/statusline/src/tui/renderer.ts\",\"[\\\"function:renderTuiPanel\\\"]\",\"complexity\"]": 19,
     "[\"packages/statusline/src/tui/sections-parts.ts\",\"[\\\"function:formatGitParts\\\"]\",\"complexity\"]": 21,
     "[\"packages/statusline/src/tui/sections-parts.ts\",\"[\\\"function:formatMetricsParts\\\"]\",\"complexity\"]": 20,
-    "[\"packages/statusline/src/tui/sections.ts\",\"[\\\"function:collectFooterParts\\\"]\",\"complexity\"]": 24,
     "[\"packages/statusline/src/utils/cache.ts\",\"[\\\"class:CacheManager\\\",\\\"static-property:getLatestTranscriptMtime\\\",\\\"function:FunctionExpression#1\\\"]\",\"max-depth\"]": 5,
     "[\"packages/statusline/src/utils/claude.ts\",\"[\\\"function:findAgentTranscripts\\\"]\",\"max-depth\"]": 5,
     "[\"packages/statusline/src/utils/claude.ts\",\"[\\\"function:findProjectPaths\\\"]\",\"max-depth\"]": 5,

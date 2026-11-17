@@ -3,7 +3,7 @@ import type { PowerlineColors } from "../themes";
 import type { TuiData, SymbolSet, RenderCtx, SegmentTemplate, JustifyValue } from "./types";
 import { visibleLength } from "../utils/terminal";
 
-import { formatDuration, formatModelName, formatResponseTime, abbreviateFishStyle } from "../utils/formatters";
+import { formatDuration, formatModelName, abbreviateFishStyle } from "../utils/formatters";
 import { colorize } from "./primitives";
 import { resolveIconVisibility } from "../utils/icon-visibility";
 import { resolveThresholdStyle, getDirectoryDisplay } from "./sections-shared";
@@ -179,35 +179,15 @@ export function collectFooterParts(
     parts.push(colorize(`tmux:${data.tmuxSessionId}`, colors.tmuxFg, reset, colors.tmuxBold));
   }
 
-  if (data.metricsInfo) {
-    const metricParts: string[] = [];
-    if (
-      data.metricsInfo.responseTime !== null &&
-      !isNaN(data.metricsInfo.responseTime) &&
-      data.metricsInfo.responseTime > 0
-    ) {
-      metricParts.push(`${sym.metrics_response} ${formatResponseTime(data.metricsInfo.responseTime)}`);
-    }
-    if (data.metricsInfo.linesAdded !== null && data.metricsInfo.linesAdded > 0) {
-      metricParts.push(`${sym.metrics_lines_added}${data.metricsInfo.linesAdded}`);
-    }
-    if (data.metricsInfo.linesRemoved !== null && data.metricsInfo.linesRemoved > 0) {
-      metricParts.push(`${sym.metrics_lines_removed}${data.metricsInfo.linesRemoved}`);
-    }
-    if (metricParts.length > 0) {
-      parts.push(colorize(metricParts.join(" · "), colors.metricsFg, reset, colors.metricsBold));
-    }
+  // The footer omits lastResponse, but shares the metric formatting with the grid.
+  const metrics = formatMetricsParts(data, sym);
+  const metricParts = [metrics.response, metrics.added, metrics.removed].filter(Boolean);
+  if (metricParts.length > 0) {
+    parts.push(colorize(metricParts.join(" · "), colors.metricsFg, reset, colors.metricsBold));
   }
 
-  const envConfig = config.display.lines.map((line) => line.segments.env).find((env) => env?.enabled);
-
-  if (envConfig && envConfig.variable) {
-    const envVal = globalThis.process?.env?.[envConfig.variable];
-    if (envVal) {
-      const prefix = envConfig.prefix ?? envConfig.variable;
-      parts.push(colorize(prefix ? `${prefix}:${envVal}` : envVal, colors.envFg, reset, colors.envBold));
-    }
-  }
+  const envText = formatEnvSegment(config);
+  if (envText) parts.push(colorize(envText, colors.envFg, reset, colors.envBold));
 
   // #53: bastra parity with the powerline path — shown whenever the
   // per-session feed answers (BastraProvider fail-opens to null).

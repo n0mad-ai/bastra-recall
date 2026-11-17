@@ -10,7 +10,7 @@ import { createHash } from "node:crypto";
 import { PowerlineRenderer } from "../../packages/statusline/src/powerline.ts";
 import { DEFAULT_CONFIG } from "../../packages/statusline/src/config/defaults.ts";
 import { SYMBOLS, TEXT_SYMBOLS } from "../../packages/statusline/src/utils/constants.ts";
-import { resolveSegments } from "../../packages/statusline/src/tui/sections.ts";
+import { collectFooterParts, resolveSegments } from "../../packages/statusline/src/tui/sections.ts";
 
 const NOW = Date.parse("2026-11-17T10:00:00.000Z");
 const ENV_VAR = "BASTRA_TUI_SEGMENTS_TEST_ENV";
@@ -267,3 +267,56 @@ test("resolved segments stay byte-identical for every data and symbol set (golde
 
 // Generated from main before the #1530 split.
 const GOLDEN_SEGMENTS = "daeea7e0d047ebf4ee52467ffc6dd484f79b8a89c9ae2d183837e2feeb77a818";
+
+test("#1626 footer display parts stay byte-identical across optional data and settings", (t) => {
+  withEnv(t);
+  const missingEnv = "BASTRA_TUI_SEGMENTS_TEST_MISSING";
+  const previous = process.env[missingEnv];
+  delete process.env[missingEnv];
+  t.after(() => {
+    if (previous !== undefined) process.env[missingEnv] = previous;
+  });
+  const s = setup();
+  const out = [];
+  for (const sym of [SYMBOLS, TEXT_SYMBOLS]) {
+    const variants = [fullData(s.colors), emptyData(s.colors)];
+    for (const responseTime of [null, NaN, 0, -1, 3.2])
+      variants.push({ ...fullData(s.colors), metricsInfo: { responseTime, linesAdded: 0, linesRemoved: null } });
+    for (const bastraInfo of [
+      { state: "idle", vaultSize: 12, recallCount: 0 },
+      { state: "done", recallCount: 1, totalHits: 1, totalMs: 4 },
+      { state: "done", recallCount: 2, totalHits: 0, totalMs: 0 },
+      {
+        state: "running",
+        recallCount: 2,
+        totalHits: 3,
+        totalMs: 4,
+        currentStage: "search",
+        currentStageStartedAt: NOW - 10,
+        currentRecallStartedAt: NOW - 20,
+      },
+    ])
+      variants.push({ ...fullData(s.colors), bastraInfo });
+    for (const elapsedSeconds of [0, 300, 3600])
+      variants.push({ ...fullData(s.colors), cacheTimerInfo: { elapsedSeconds, detectedTtlSeconds: 300 } });
+    for (const data of variants) out.push(collectFooterParts(data, sym, s.config, "\x1b[0m", s.colors));
+    for (const prefix of [undefined, ""]) {
+      const config = structuredClone(s.config);
+      config.display.lines[0].segments.env.prefix = prefix;
+      out.push(collectFooterParts(fullData(s.colors), sym, config, "\x1b[0m", s.colors));
+    }
+    const disabled = structuredClone(s.config);
+    for (const line of disabled.display.lines) {
+      line.segments.cacheTimer = { enabled: false };
+      line.segments.thinking = { enabled: false };
+      line.segments.env = { enabled: true, variable: "BASTRA_TUI_SEGMENTS_TEST_MISSING" };
+    }
+    out.push(collectFooterParts(fullData(s.colors), sym, disabled, "\x1b[0m", s.colors));
+  }
+  const digest = createHash("sha256").update(JSON.stringify(out)).digest("hex");
+  assert.equal(
+    digest,
+    "ed268e4753abed4d30956a15e3fdf342f4f31eaa315ccef50a3e3cc9a6c006b2",
+    `footer parts changed: ${digest}`
+  );
+});

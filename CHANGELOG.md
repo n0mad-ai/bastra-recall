@@ -376,6 +376,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   sidecar-only, best-effort limits (#1633).
 - The interrupted stub-staging ignore test isolates Git's global configuration
   and proves a missing repository rule is detected (#1627).
+- The TUI footer reuses the existing metric and environment formatters, with
+  its full display output pinned before the structural change (#1626).
 - **Six import cycles gone, task CLI and task evaluation cut along their
   decisions: same behaviour** (#1515 B1–B7, #1518, #1514, #1520 D6, #1526).
   Shared pieces moved into small modules below their users (lean summary cut,
