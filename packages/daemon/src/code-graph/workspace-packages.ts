@@ -212,11 +212,7 @@ function childDirs(repoRoot: string, base: string): string[] {
 
 /** One path segment of a glob as a regex. `*` matches within the segment. */
 function globSegment(segment: string): RegExp {
-  return new RegExp(`^${segment.split("*").map(escapeRe).join("[^/]*")}$`);
-}
-
-function escapeRe(literal: string): string {
-  return literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${segment.split("*").map(RegExp.escape).join("[^/]*")}$`);
 }
 
 /**
@@ -291,7 +287,7 @@ function wildcardTargets(repoRoot: string, dir: string, target: string): Array<[
   for (const pattern of sourcePatternsOf(rel)) {
     const star = pattern.indexOf("*");
     if (star < 0 || pattern.indexOf("*", star + 1) >= 0) continue;
-    const re = new RegExp(`^${escapeRe(pattern.slice(0, star))}(.+)${escapeRe(pattern.slice(star + 1))}$`);
+    const re = new RegExp(`^${RegExp.escape(pattern.slice(0, star))}(.+)${RegExp.escape(pattern.slice(star + 1))}$`);
     const head = pattern.split("/")[0];
     const out: Array<[string, string]> = [];
     for (const file of filesUnder(repoRoot, dir, head.includes("*") ? "" : head)) {

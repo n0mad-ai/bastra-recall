@@ -175,7 +175,7 @@ function hasExactIdentifier(input: DecisionInput): boolean {
  * Identifier mit Segmenten.
  */
 function startsWhole(text: string, term: string): boolean {
-  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escaped = RegExp.escape(term);
   const edge = String.raw`(?<![\p{L}\p{N}_])`;
   const left = /^\p{N}/u.test(term) ? `(?:${edge}|(?<=${edge}v))` : edge;
   return new RegExp(left + escaped, "u").test(text);

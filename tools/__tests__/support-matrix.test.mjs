@@ -117,10 +117,11 @@ test("INV-NODE-01: every statement of the Node.js floor names MIN_NODE_VERSION, 
     assert.equal(JSON.parse(readRepoFile(file)).engines?.node, `>=${full}`, `${file} engines.node`);
   }
   const lock = JSON.parse(readRepoFile("package-lock.json"));
-  for (const [path, entry] of Object.entries(lock.packages)) {
-    if (path === "" || path.startsWith("packages/")) {
-      assert.equal(entry.engines?.node, `>=${full}`, `package-lock.json "${path}" engines.node`);
-    }
+  // Dependencies may live under packages/*/node_modules; only our workspace
+  // entries share the project's floor. Missing workspace entries still fail.
+  for (const file of engines) {
+    const path = file === "package.json" ? "" : file.slice(0, -"/package.json".length);
+    assert.equal(lock.packages[path]?.engines?.node, `>=${full}`, `package-lock.json "${path}" engines.node`);
   }
   const mcpb = JSON.parse(readRepoFile("packages/daemon/mcpb/manifest.template.json"));
   assert.equal(mcpb.compatibility.runtimes.node, `>=${full}`, "the desktop extension's Node requirement");

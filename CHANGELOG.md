@@ -137,6 +137,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Node.js type definitions now track Node 24, and literal regex patterns use
+  its built-in `RegExp.escape`; install instructions state the macOS 13.5
+  minimum (#1225).
+
 - **Node 22 is no longer supported; Node 24.16 or newer is required.**
   Supported versions are Node 24.16 to 26. Update Node before updating
   Bastra Recall; `node --version` shows what you run. On an older Node,

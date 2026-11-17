@@ -10,6 +10,8 @@ For the guided setup, start with the [README](../README.md#install). The [suppor
 
 ### macOS download
 
+Requires macOS 13.5 or later, the [minimum supported by Node.js 24](https://github.com/nodejs/node/blob/v24.16.0/BUILDING.md#platform-list).
+
 Download **Install Bastra.command** from the [latest release](https://github.com/n0mad-ai/bastra-recall/releases/latest), then **right-click → Open**. macOS may block a normal double-click on a downloaded script. If the file has lost its executable permission, run:
 
 ```bash
@@ -94,6 +96,8 @@ verify what loaded.
 Für das geführte Setup beginne mit der [README](../README.md#installation). Die [Support-Matrix](../README.md#unterstützte-plattformen) nennt Plattformgrenzen.
 
 ### macOS-Download
+
+Benötigt macOS 13.5 oder neuer, die [Mindestversion für Node.js 24](https://github.com/nodejs/node/blob/v24.16.0/BUILDING.md#platform-list).
 
 Lade **Install Bastra.command** aus dem [aktuellen Release](https://github.com/n0mad-ai/bastra-recall/releases/latest), dann **Rechtsklick → Öffnen**. macOS kann einen normalen Doppelklick auf ein heruntergeladenes Skript blockieren. Fehlt die Ausführungsberechtigung, führe Folgendes aus:
 

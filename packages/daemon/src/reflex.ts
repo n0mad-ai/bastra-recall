@@ -53,7 +53,7 @@ const DEFAULT_MAX_PER_TURN = 2;
 /** #707: „oder"/„or"/„или" … aus den Sprachdaten, plus die strukturellen
  *  Trenner „/" und „|" (nur freistehend — `src/app` bleibt ein Token). */
 const ALTERNATIVE_SPLIT_RE = new RegExp(
-  `\\s+(?:${[...ALTERNATIVE_WORDS].map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\s+|\\s+[/|]\\s+`,
+  `\\s+(?:${[...ALTERNATIVE_WORDS].map(RegExp.escape).join("|")})\\s+|\\s+[/|]\\s+`,
   "iu"
 );
 

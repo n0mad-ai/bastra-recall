@@ -36,7 +36,7 @@ export function namespaceWikilinks(body: string, label: string, idByBase: Map<st
  */
 /** Escape a label for use inside a RegExp — labels are user-supplied. */
 export function escapeRe(raw: string): string {
-  return raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return RegExp.escape(raw);
 }
 
 export function linkKey(raw: string): string | null {
