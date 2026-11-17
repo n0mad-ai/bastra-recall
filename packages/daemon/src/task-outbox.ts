@@ -1,6 +1,7 @@
 import { reconsiderationCard } from "./task-reconsideration.js";
 import { isTaskExpiryNotice } from "./task-validity.js";
 import { TASK_CARD_TEXT } from "./task-card-text.js";
+import { liveTaskChatClaim } from "./task-chat-delivery.js";
 /** Durable occurrences own delivery attempts; relay consumption owns nothing here. */
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -88,7 +89,7 @@ export function taskDueProjection(
     // An inbox claim may already be visible even without a receipt. Never
     // repeat an ambiguous chat announcement through the next-contact lane.
     // Explicit owner inspection still exposes every unresolved occurrence.
-    if (!ownerInspect && !unseenReview && occurrence.chat_delivery) {
+    if (!ownerInspect && !unseenReview && liveTaskChatClaim(occurrence.chat_delivery, now)) {
       retryBlocked++;
       continue;
     }

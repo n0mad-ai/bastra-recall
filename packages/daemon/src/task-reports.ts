@@ -2,7 +2,7 @@
  * autonomous work instead of a long chat answer. The owner reads it in the
  * Tasks area of the Recall UI, marks it read or unread there by hand (reading
  * the body never changes that state, neither for the UI nor for an agent) and
- * deletes it when done. While reading, the owner can leave notes on single
+ * deletes it when done (undone within RESTORE_WINDOW_MS). While reading, the owner can leave notes on single
  * places of a report (heading, paragraph, list item, table row); they live in
  * the report's record and go with it on delete. A note is the owner's draft
  * until the owner hands the report's drafts over to the agents in one click;
@@ -36,6 +36,8 @@ export const taskReportSaveInput = z.strictObject({
   origin: z.strictObject({ client: line(120), session: line(200).optional() }),
 });
 const idInput = z.strictObject({ id: z.string().uuid() });
+/** Words to find in title, project and text (#1597); every word must occur. */
+const listInput = z.strictObject({ query: z.string().max(200).optional() });
 const markInput = z.strictObject({ id: z.string().uuid(), read: z.boolean() });
 /** A note is the owner's own text (external input): bounded, never shortened. */
 export const NOTE_MAX_CHARS = 4000;
@@ -57,10 +59,11 @@ const noteDeleteInput = z.strictObject(noteRef);
 const noteDoneInput = z.strictObject({ ...noteRef, reply: line(REPLY_MAX_CHARS).optional() });
 export const TASK_REPORT_INPUTS = {
   task_report_save: taskReportSaveInput,
-  task_report_list: z.strictObject({}),
+  task_report_list: listInput,
   task_report_read: idInput,
   task_report_mark: markInput,
   task_report_delete: idInput,
+  task_report_restore: idInput,
   task_report_note_add: noteAddInput,
   task_report_note_edit: noteEditInput,
   task_report_note_delete: noteDeleteInput,
@@ -69,9 +72,12 @@ export const TASK_REPORT_INPUTS = {
 };
 export type TaskReportOperation = keyof typeof TASK_REPORT_INPUTS;
 
-const noteSchema = z.strictObject({
+// The stored records tolerate fields a later version adds (#1611): such a field is kept as it
+// is on every write (looseObject), so going back one version neither locks the store nor drops
+// the field, and it never leaves through an answer (the strip-mode shapes below project it away).
+const anchorShape = { kind: z.enum(NOTE_KINDS), index: z.number().int().min(1), excerpt: z.string() };
+const noteShape = {
   id: z.string().uuid(),
-  anchor: z.strictObject({ kind: z.enum(NOTE_KINDS), index: z.number().int().min(1), excerpt: z.string() }),
   text: z.string(),
   actor: z.string(),
   created_at: z.number().int().nonnegative(),
@@ -83,15 +89,19 @@ const noteSchema = z.strictObject({
   done_at: z.number().int().nonnegative().optional(),
   reply: z.string().optional(),
   done_by: z.string().optional(),
-});
+};
+const noteSchema = z.looseObject({ ...noteShape, anchor: z.looseObject(anchorShape) });
 type ReportNote = z.infer<typeof noteSchema>;
+/** A note as answers carry it: the known fields only. */
+const noteOut = z.object({ ...noteShape, anchor: z.object(anchorShape) });
+const shownNote = (n: ReportNote) => noteOut.parse(n);
 
-const reportSchema = z.strictObject({
+const reportSchema = z.looseObject({
   id: z.string().uuid(),
   title: z.string(),
   body: z.string(),
   project: z.string().optional(),
-  origin: z.strictObject({ client: z.string(), session: z.string().optional() }),
+  origin: z.looseObject({ client: z.string(), session: z.string().optional() }),
   actor: z.string(),
   owner_domains: z.array(z.string()).min(1),
   created_at: z.number().int().nonnegative(),
@@ -100,7 +110,8 @@ const reportSchema = z.strictObject({
   notes: z.array(noteSchema).optional(),
 });
 type TaskReport = z.infer<typeof reportSchema>;
-const storeSchema = z.strictObject({ version: z.literal(1), reports: z.array(reportSchema) });
+const storeSchema = z.looseObject({ version: z.literal(1), reports: z.array(reportSchema) });
+type ReportStore = z.infer<typeof storeSchema>;
 
 export interface ReportContext {
   path: string;
@@ -132,40 +143,95 @@ function cleanBody(value: string): string {
   );
 }
 
-function readReports(path: string): TaskReport[] {
+function readStore(path: string): ReportStore {
   let text: string;
   try {
     text = readAppRecord(NAMESPACE, path);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { version: 1, reports: [] };
     throw error;
   }
   const parsed = storeSchema.safeParse(JSON.parse(text));
   if (!parsed.success) throw Object.assign(new Error("Task report store unreadable"), { code: "corrupt" });
-  return parsed.data.reports;
+  return parsed.data;
 }
+const readReports = (path: string) => readStore(path).reports;
+const storeFull = () => Object.assign(new Error("Task report store full"), { code: "capacity" });
 
-/** Read-modify-write under a cross-process lock: MCP clients and the daemon may write at once. */
-function changeReports<T>(path: string, change: (reports: TaskReport[]) => T): Promise<T> {
+/** Read-modify-write under a cross-process lock: MCP clients and the daemon may write at once.
+ * Fields of the store a later version added are written back as they were. `written` runs once
+ * the store is on disk, still under the lock. */
+function changeReports<T>(path: string, change: (reports: TaskReport[]) => T, written?: () => void): Promise<T> {
   return withPathLock(
     path,
     async () => {
-      const reports = readReports(path);
-      const result = change(reports);
-      const payload = JSON.stringify({ version: 1, reports });
-      if (Buffer.byteLength(payload) > STORE_MAX_BYTES)
-        throw Object.assign(new Error("Task report store full"), { code: "capacity" });
+      const store = readStore(path);
+      const result = change(store.reports);
+      const payload = JSON.stringify(store);
+      if (Buffer.byteLength(payload) > STORE_MAX_BYTES) throw storeFull();
       writeAppRecord(NAMESPACE, path, payload);
+      written?.();
       return result;
     },
     { crossProcess: true, requireLock: true }
   );
 }
 
+// ── Undo for delete (#1559): a deleted report waits in a record of its own for RESTORE_WINDOW_MS,
+// then restore puts it back with text, read state and notes. Apart from the report store, so an
+// older daemon still reads that store; never listed or read. Expired entries leave on the next
+// delete or restore. Written only under the report store's lock.
+export const RESTORE_WINDOW_MS = 10 * 60 * 1000;
+const TRASH_NAMESPACE = "task-report-trash";
+/** The latest deletes that can be undone; older ones are gone for good. */
+const TRASH_MAX = 20;
+const trashSchema = z.looseObject({
+  version: z.literal(1),
+  deleted: z.array(z.looseObject({ deleted_at: z.number().int().nonnegative(), report: reportSchema })),
+});
+type Deleted = z.infer<typeof trashSchema>["deleted"][number];
+const trashPath = (ctx: ReportContext) => join(dirname(ctx.path), "task-report-trash.json");
+
+/** The deletes still in their window. */
+function readTrash(path: string, now: number): Deleted[] {
+  let text: string;
+  try {
+    text = readAppRecord(TRASH_NAMESPACE, path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  const parsed = trashSchema.safeParse(JSON.parse(text));
+  if (!parsed.success) throw Object.assign(new Error("Task report trash unreadable"), { code: "corrupt" });
+  return parsed.data.deleted.filter((d) => d.deleted_at + RESTORE_WINDOW_MS > now);
+}
+
+/** Newest last; the oldest give way when the record would grow past the store's size limit. */
+function writeTrash(path: string, deleted: Deleted[]) {
+  const kept = deleted.slice(-TRASH_MAX);
+  let payload = JSON.stringify({ version: 1, deleted: kept });
+  while (kept.length && Buffer.byteLength(payload) > STORE_MAX_BYTES) {
+    kept.shift();
+    payload = JSON.stringify({ version: 1, deleted: kept });
+  }
+  writeAppRecord(TRASH_NAMESPACE, path, payload);
+}
+
+/** Keeps a deleted report for undo. Delete never fails over this: an unreadable trash only
+ * means no undo for this report (and stays untouched). True when it can be restored. */
+function keepDeleted(path: string, report: TaskReport, now: number): boolean {
+  try {
+    writeTrash(path, [...readTrash(path, now), { deleted_at: now, report }]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** A draft is the owner's alone: an agent neither sees it nor counts it nor closes it. */
 const isDraft = (n: ReportNote) => n.state === "open" && n.handed_at === undefined;
 /** The notes this caller sees: the owner's UI all of them, an agent the handed-over and done ones. */
-const notesFor = (r: TaskReport, owner: boolean) => (r.notes ?? []).filter((n) => owner || !isDraft(n));
+const notesFor = (r: TaskReport, owner: boolean) => (r.notes ?? []).filter((n) => owner || !isDraft(n)).map(shownNote);
 const handedOpen = (r: TaskReport) => (r.notes ?? []).filter((n) => n.state === "open" && !isDraft(n));
 const isOwner = (ctx: ReportContext) => ctx.ownerUi === true;
 
@@ -178,7 +244,10 @@ function meta(r: TaskReport, owner: boolean) {
     id: r.id,
     title: r.title,
     ...(r.project === undefined ? {} : { project: r.project }),
-    origin: r.origin,
+    origin: {
+      client: r.origin.client,
+      ...(r.origin.session === undefined ? {} : { session: r.origin.session }),
+    },
     actor: r.actor,
     created_at: r.created_at,
     ...(r.read_at === undefined ? {} : { read_at: r.read_at }),
@@ -234,13 +303,49 @@ function markReport(ctx: ReportContext, principal: TaskPrincipal, id: string, re
   });
 }
 
+/** restorable_until: until when task_report_restore brings the report back (absent: no undo). */
 function deleteReport(ctx: ReportContext, principal: TaskPrincipal, id: string) {
+  const now = (ctx.now ?? Date.now)();
   return changeReports(storePath(ctx), (reports) => {
     const index = reports.findIndex((r) => r.id === id && visible(r, principal));
     if (index < 0) throw notFound();
-    reports.splice(index, 1);
-    return { deleted: true, id };
+    const [gone] = reports.splice(index, 1);
+    const kept = keepDeleted(trashPath(ctx), gone!, now);
+    return { deleted: true, id, ...(kept ? { restorable_until: now + RESTORE_WINDOW_MS } : {}) };
   });
+}
+
+/** Undo a delete within its window: the report returns as it was. The report limit holds here
+ * too. The trash entry leaves only once the report is back in the store. */
+function restoreReport(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
+  const { id } = idInput.parse(raw);
+  const now = (ctx.now ?? Date.now)();
+  const path = trashPath(ctx);
+  const trash = () => readTrash(path, now);
+  return changeReports(
+    storePath(ctx),
+    (reports) => {
+      const entry = trash().find((d) => d.report.id === id && visible(d.report, principal));
+      if (!entry) throw notFound();
+      if (!reports.some((r) => r.id === id)) {
+        if (reports.length >= TASK_REPORT_LIMIT)
+          throw Object.assign(new Error("Task report limit reached"), { code: "capacity" });
+        reports.push(entry.report);
+      }
+      return meta(entry.report, isOwner(ctx));
+    },
+    () => {
+      // The report is back either way; a stale entry is dropped by the next restore or delete.
+      try {
+        writeTrash(
+          path,
+          trash().filter((d) => d.report.id !== id)
+        );
+      } catch {
+        /* see above */
+      }
+    }
+  );
 }
 
 /** One open note on a block of the report. Adding a note leaves the read state alone. */
@@ -312,7 +417,7 @@ function handNotes(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
   return changeReport(ctx, principal, id, (report) => {
     const drafts = (report.notes ?? []).filter(isDraft);
     for (const note of drafts) note.handed_at = at;
-    return { handed: drafts.length, report: meta(report, true), notes: report.notes ?? [] };
+    return { handed: drafts.length, report: meta(report, true), notes: (report.notes ?? []).map(shownNote) };
   });
 }
 
@@ -336,7 +441,7 @@ function changeNote(
     const note = report.notes?.find((n) => n.id === ref.note_id);
     if (!note) throw noteNotFound();
     change(note);
-    return { report: meta(report, isOwner(ctx)), note };
+    return { report: meta(report, isOwner(ctx)), note: shownNote(note) };
   });
 }
 
@@ -355,10 +460,22 @@ export function reportsWithHandedNotes(ctx: ReportContext, principal: TaskPrinci
     }));
 }
 
+/** Case and Unicode form never decide a match (as in the UI's list search). */
+const fold = (s: string) => s.toLowerCase().normalize("NFKC");
+/** Every word of the query occurs in title, project or text; an empty query matches all. */
+function matches(r: TaskReport, query: string | undefined) {
+  const words = fold(query ?? "")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!words.length) return true;
+  const hay = fold(`${r.title}\n${r.project ?? ""}\n${r.body}`);
+  return words.every((w) => hay.includes(w));
+}
+
 function listReports(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
-  TASK_REPORT_INPUTS.task_report_list.parse(raw);
+  const { query } = listInput.parse(raw);
   const reports = readReports(storePath(ctx))
-    .filter((r) => visible(r, principal))
+    .filter((r) => visible(r, principal) && matches(r, query))
     .sort(order);
   const owner = isOwner(ctx);
   return { reports: reports.map((r) => meta(r, owner)), unread: reports.filter((r) => r.read_at === undefined).length };
@@ -373,6 +490,7 @@ const HANDLERS: Record<TaskReportOperation, (ctx: ReportContext, principal: Task
     return markReport(ctx, p, input.id, input.read);
   },
   task_report_delete: (ctx, p, raw) => deleteReport(ctx, p, idInput.parse(raw).id),
+  task_report_restore: restoreReport,
   task_report_note_add: addNote,
   task_report_note_edit: editNote,
   task_report_note_delete: deleteNote,

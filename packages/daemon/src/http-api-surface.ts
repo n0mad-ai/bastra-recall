@@ -24,6 +24,7 @@ import { MAX_BODY_BYTES, readJsonBody, sendCors, sendJson } from "./http-util.js
 import { isLoopback, isLoopbackHost, hasForwardingHeaders, resolveCorsOrigin, gateApiRequest } from "./http-auth.js";
 import { dispatchTaskHttp, defaultTaskContext } from "./task-transport.js";
 import { dispatchApi } from "./http-api-routes.js";
+import { clientLabel } from "./caller-session.js";
 import { handleMcpHttp } from "./http-mcp.js";
 import { dispatchOAuthApi, mcpChallenge, verifyMcpBearer, MCP_PATH } from "./oauth-server.js";
 
@@ -97,14 +98,15 @@ export function dispatchApiSurface(
   // token opens nothing else under /api/v1/. A 401 here names the protected
   // resource metadata, which is how an OAuth client finds the login.
   if (isMcp) {
-    const mcpCtx = { toolDeps, documentWriteEnabled, ccSessionId: null };
+    const mcpCtx = { toolDeps, documentWriteEnabled, ccSessionId: null, transport: "mcp-http" as const, client: null };
     if (gate === 200) {
       handleMcpHttp(req, res, method, mcpCtx);
       return true;
     }
     verifyMcpBearer(req)
-      .then((ok) => {
-        if (ok) return handleMcpHttp(req, res, method, mcpCtx);
+      .then((oauthClient) => {
+        // #1469: an OAuth caller is named in the audit by its registered client.
+        if (oauthClient) return handleMcpHttp(req, res, method, { ...mcpCtx, client: oauthClient });
         const challenge = mcpChallenge(req, Boolean(req.headers.authorization));
         if (challenge) res.setHeader("WWW-Authenticate", challenge);
         sendJson(res, 401, { error: "unauthorized" });
@@ -178,6 +180,8 @@ export function dispatchApiSurface(
   const agentId =
     typeof actorHeader === "string" && actorHeader ? (actorHeader === "main" ? null : actorHeader) : undefined;
   const ccTurnKey = typeof ccTurnHeader === "string" ? Number(ccTurnHeader) : null;
+  // #1469: the forwarder names its MCP client; a call without it is plain REST.
+  const client = clientLabel(decodedHeader(req.headers["x-bastra-client"]));
   const projectHeader = req.headers["x-bastra-project"];
   let callerProject: string | null = null;
   if (typeof projectHeader === "string") {
@@ -198,6 +202,8 @@ export function dispatchApiSurface(
           ccSessionId,
           agentId,
           project: callerProject,
+          transport: client ? "forwarder" : "http",
+          client,
         });
         if (result === undefined) {
           sendJson(res, 404, { error: `unknown tool: ${tool}` });
@@ -212,4 +218,14 @@ export function dispatchApiSurface(
       sendJson(res, 400, { error: err.message });
     });
   return true;
+}
+
+/** A percent-encoded header value, or undefined when absent or malformed. */
+function decodedHeader(value: string | string[] | undefined): string | undefined {
+  if (typeof value !== "string") return undefined;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return undefined;
+  }
 }

@@ -1,6 +1,7 @@
 // Editing a memory directly in the memory browser's reader (#1446).
 //
-// "EDIT" swaps the summary and the text for fields in the same place; save
+// "EDIT" swaps the title, the summary and the text for fields in the same
+// place (type, sensitivity and recall mode beside them, #1558); save
 // goes to POST /ui/memory/edit (the daemon's edit_memory path) with the
 // revision the reader showed, so a change made meanwhile is refused (409):
 // the draft stays in the fields and "reload" fetches the current version,
@@ -17,8 +18,11 @@ import {
   editView,
   editPatch,
   ruleEditable,
+  typeEditable,
   writeOutcome,
   SUMMARY_MAX,
+  TYPES,
+  SENSITIVITIES,
 } from "./membrowser-edit-model.js";
 
 const states = new Map(); // id → an open editor's state (view states are not kept)
@@ -66,8 +70,68 @@ const LEVELS = [
   ["always", "mb.ed.always"],
 ];
 
+/** A select whose choice goes to the draft as `name`. */
+function choice(name, options, act) {
+  const el = h(
+    "select.st-select",
+    { name },
+    options.map(([value, text]) => h("option", { value, text }))
+  );
+  el.addEventListener("change", () => act.input(name, el.value));
+  return el;
+}
+
+/** Title, type, sensitivity and recall mode (#1558). */
+function propFields(type, act) {
+  const title = h("input.st-text.mb-ed__title", { type: "text", name: "title" });
+  title.addEventListener("input", () => act.input("title", title.value));
+  // documents and bookmarks keep their type: shown, not offered
+  const types = typeEditable(type) ? TYPES : [type];
+  const selects = [
+    choice(
+      "type",
+      types.map((x) => [x, x]),
+      act
+    ),
+    choice(
+      "sensitivity",
+      SENSITIVITIES.map((x) => [x, t(`mb.sens.${x}`)]),
+      act
+    ),
+    choice(
+      "recall_mode",
+      [
+        ["deliberate", t("mb.mode.auto")],
+        ["reflex", t("mb.mode.reflex")],
+      ],
+      act
+    ),
+  ];
+  const [typeSel] = selects;
+  const label = (key, el) =>
+    h("label.mb-ed__f", null, h("span.mb-rd__k", { text: t(key) }), h("span.st-selw", null, el));
+  return {
+    title: h("label.mb-ed__f", null, h("span.mb-rd__k", { text: t("mb.ed.title") }), title),
+    props: h(
+      "div.mb-ed__props",
+      null,
+      label("mb.ed.type", selects[0]),
+      label("mb.ed.sensitivity", selects[1]),
+      label("mb.ed.mode", selects[2])
+    ),
+    fill(d) {
+      title.value = d.title;
+      for (const el of selects) el.value = d[el.name];
+    },
+    lock(saving) {
+      title.readOnly = saving;
+      for (const el of selects) el.disabled = saving || (el === typeSel && types.length < 2);
+    },
+  };
+}
+
 /** The edit fields, built once per open editor; typing never repaints them. */
-function editorForm(rule, act) {
+function editorForm(rule, type, act) {
   const area = (name, rows) => {
     const ta = h("textarea.mb-care__note.mb-ed__ta", { rows: String(rows), name });
     ta.addEventListener("input", () => {
@@ -103,9 +167,12 @@ function editorForm(rule, act) {
   const reload = h("button.mb-btn", { type: "button", text: t("mb.ed.reload"), on: { click: act.reload } });
   const stash = h("button.mb-btn.is-quiet", { type: "button", text: t("mb.ed.useStash"), on: { click: act.useStash } });
   const row = h("div.cn__row", null, save, reload, stash, cancel);
+  const props = propFields(type, act);
   const el = h(
     "div.mb-ed",
     null,
+    props.title,
+    props.props,
     h(
       "label.mb-ed__f",
       null,
@@ -122,6 +189,7 @@ function editorForm(rule, act) {
   return {
     el,
     fill(d) {
+      props.fill(d);
       summary.value = d.summary;
       body.value = d.body;
       tags.value = d.tags;
@@ -137,6 +205,7 @@ function editorForm(rule, act) {
       if (!whenField.hidden) growTextarea(when);
       for (const f of [summary, body, tags, level, when]) f.readOnly = v.saving;
       level.disabled = v.saving;
+      props.lock(v.saving);
       save.disabled = !v.canSave;
       save.textContent = t(v.saving ? "mb.ed.saving" : "mb.ed.save");
       reload.hidden = !v.conflict;
@@ -211,7 +280,7 @@ export function readerEdit(m, { anchor, box, text, refresh, rerender, reload, ar
 
   function paintForm(v) {
     if (v.editing && !form && anchor.parentNode) {
-      form = editorForm(s.rule, act);
+      form = editorForm(s.rule, s.base.type, act);
       anchor.after(form.el);
       form.fill(s.draft); // on screen first: the fields measure their height
     } else if (!v.editing && form) {
@@ -230,7 +299,7 @@ export function readerEdit(m, { anchor, box, text, refresh, rerender, reload, ar
       badge.textContent = ruleText(s.rule);
       badge.dataset.state = s.rule.state;
     }
-    box.hidden = text.hidden = v.editing;
+    anchor.hidden = box.hidden = text.hidden = v.editing;
     editBtn.hidden = archiveBtn.hidden = v.editing;
     editBtn.disabled = archiveBtn.disabled = !s.revision;
     accept.hidden = reject.hidden = !proposal;

@@ -24,6 +24,7 @@
 import { envInt } from "./env.js";
 import { readStdin, daemonBaseUrl, postLane, classifyTransportError } from "./thin-client.js";
 import { decorateHookPayload } from "./hook-surface.js";
+import { emitStdout, exitAfterStdout } from "./hook-stdout.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_STOP_HOOK_TIMEOUT_MS", 1000);
 
@@ -39,7 +40,7 @@ async function recordFailure(): Promise<void> {
 function emitOnce(payload: string): void {
   if (stdoutEmitted) return;
   stdoutEmitted = true;
-  process.stdout.write(payload);
+  emitStdout(payload);
 }
 
 async function main(): Promise<void> {
@@ -92,14 +93,14 @@ const isMain = (() => {
 if (isMain) {
   const killSwitch = setTimeout(() => {
     emitOnce("{}");
-    void recordFailure().finally(() => process.exit(0));
+    void recordFailure().finally(() => exitAfterStdout());
   }, HOOK_TIMEOUT_MS + 50);
   killSwitch.unref();
 
   main()
-    .then(() => process.exit(0))
+    .then(() => exitAfterStdout())
     .catch(() => {
       emitOnce("{}");
-      process.exit(0);
+      void exitAfterStdout();
     });
 }

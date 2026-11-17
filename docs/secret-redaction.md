@@ -1,4 +1,4 @@
-# Secret redaction in local drafts and the suggestion relay
+# Secret redaction in local drafts, the suggestion relay and the vault write path
 
 The local draft store removes recognizable credential values and keeps useful
 locations. It uses technical binding names, provider prefixes, private-key
@@ -47,6 +47,20 @@ safe relay text; credential-only differences therefore do not stack identical
 visible suggestions, as with draft fingerprints. The harvest's already-stored
 vault comparison still sees the original quote before relay storage. Provisional
 withdrawal compares safe text and returns the original caller strings.
+
+## Vault write path
+
+Since 1.3.0 (#1470) the same filter runs on the main write path before anything
+is written: `save_memory` (title, summary, body, `recall_when`, `applies_when`,
+`verify_cmd`), `edit_memory` (the new text of `str_replace` and `append`, and the
+patched summary, `recall_when` and `applies_when`; never `old_str`, which must
+match the stored body) and `save_document` (title, summary, body,
+`recall_when`). This covers every transport, the web UI included. The write goes
+through without a confirmation prompt. The receipt names each field and how many
+values it lost in `secrets_redacted`, and `warning` says so in one sentence.
+Paths stay verbatim here (no home-directory abbreviation), and text without a
+recognized credential is written byte for byte. Memories written before 1.3.0
+are not rewritten.
 
 ## Fixed acceptance corpus
 
@@ -197,6 +211,20 @@ Eine ursprüngliche Unverändert-Zeile enthält einen Credential-förmigen Heade
 geschwärzt; die ursprüngliche Unverändert-Erwartung gilt als Grenze, während ein
 separater Regressionstest den URL-Suffix erhält. Diese Beispiele enthalten keine
 echten Zugangsdaten oder Inhalte eines privaten Vaults.
+
+## Deutsch: Schreibpfad in den Vault
+
+Seit 1.3.0 (#1470) läuft derselbe Filter auf dem Hauptschreibpfad, bevor etwas
+geschrieben wird: `save_memory` (Titel, Summary, Body, `recall_when`,
+`applies_when`, `verify_cmd`), `edit_memory` (der neue Text von `str_replace` und
+`append` sowie gepatchte Summary, `recall_when` und `applies_when`; nie `old_str`,
+das zum gespeicherten Body passen muss) und `save_document` (Titel, Summary, Body,
+`recall_when`). Das gilt für jeden Zugangsweg, auch die Weboberfläche. Geschrieben
+wird ohne Rückfrage. Die Quittung nennt in `secrets_redacted` jedes Feld und wie
+viele Werte es verloren hat, `warning` sagt es in einem Satz. Pfade bleiben hier
+unverändert (keine Abkürzung des Home-Verzeichnisses), und Text ohne erkannte
+Zugangsdaten wird Byte für Byte geschrieben. Vor 1.3.0 geschriebene Memories werden
+nicht umgeschrieben.
 
 ## Deutsch: Vorschlags-Relay
 

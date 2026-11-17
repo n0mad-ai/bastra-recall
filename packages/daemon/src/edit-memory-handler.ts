@@ -67,6 +67,7 @@ import {
   SUMMARY_MAX,
 } from "@bastra-recall/core";
 import { auditOrigin, recordAudit, type AuditOrigin } from "./audit-trail.js";
+import { WriteRedaction, withRedactionReceipt, type RedactionReceipt, type SecretsRedacted } from "./save-redaction.js";
 import { claimGateResult, unansweredClaims, GENERATED_TRIGGER_TYPES, type ClaimGateResult } from "./claim-gate.js";
 import { hiddenFromCaller, hiddenOnDisk, type PrivateAccess } from "./private-access.js";
 import { scoreSaveQuality, type SaveQualityResult } from "./save-quality.js";
@@ -162,6 +163,22 @@ export const EditMemoryArgs = z
   });
 export type EditMemoryArgs = z.infer<typeof EditMemoryArgs>;
 
+/**
+ * #1558: what the user may change in the web UI's reader beyond the patch —
+ * title, type, sensitivity and recall mode. Deliberately NOT part of
+ * the edit_memory tool's whitelist: an agent keeps save_memory for these. The
+ * UI route validates the values; here they ride the same claim, revision
+ * check, audit and reindex as every other edit. The file stays where it is.
+ */
+export type UserFields = Partial<Pick<Memory["fm"], "title" | "type" | "sensitivity" | "recall_mode">>;
+
+/** A credential in the user's new title is redacted like the patch's text (#1470). */
+function redactUserFields(redaction: WriteRedaction, fields: UserFields | undefined): UserFields | undefined {
+  return fields?.title === undefined ? fields : { ...fields, title: redaction.text("title", fields.title) };
+}
+
+const userFieldOps = (fields: UserFields | undefined): string[] => (fields ? ["fields"] : []);
+
 export interface EditMemoryResult {
   id: string;
   file_path: string;
@@ -182,6 +199,8 @@ export interface EditMemoryResult {
    *  schickt, löscht die alten. Das muss in der Antwort stehen, nicht erst
    *  Wochen später auffallen, wenn die Regel nicht mehr feuert. */
   dropped?: Partial<Record<(typeof LIST_FIELDS)[number], string[]>>;
+  /** #1470: credential values replaced per field before writing. */
+  secrets_redacted?: SecretsRedacted;
   /** #1385: rule state after the edit — rule, proposal or note only. */
   delivery?: string;
   note: string;
@@ -311,7 +330,9 @@ export async function editMemoryHandler(
    *  NICHTS, und das Fehlen ist die sichere Antwort. */
   access?: PrivateAccess,
   /** #1446: the web UI records its own writes as the user's; default MCP. */
-  origin?: AuditOrigin
+  origin?: AuditOrigin,
+  /** #1558: fields only the user changes from the web UI's reader (validated there). */
+  userFields?: UserFields
 ): Promise<EditMemoryResult | ClaimGateResult> {
   // #519: Der alte Feldname wird LAUT abgelehnt statt still verworfen. Wer ihn
   // schickt, will genau die Absicherung, die Zod ihm sonst kommentarlos
@@ -328,6 +349,8 @@ export async function editMemoryHandler(
   if (!parsed.success) {
     throw new Error(`invalid edit_memory args: ${parsed.error.issues.map((i) => i.message).join(", ")}`);
   }
+  // #1470: before the summary clamp, so the placeholder counts against the budget.
+  const { receipt: redacted, fields } = redactEditArgs(parsed.data, userFields);
   // The summary budget of a full save applies to a patch too — an
   // over-long summary is cut with a note, not written as-is.
   const summaryPatch = parsed.data.frontmatter?.summary;
@@ -417,7 +440,7 @@ export async function editMemoryHandler(
         // bleiben unangetastet: gepatcht wird über den Bestand, nicht neu
         // gebaut. Das ist der ganze Unterschied zum vollen Save.
         dropped = droppedListEntries(fm, args.frontmatter);
-        const next: Record<string, unknown> = { ...fm, ...(args.frontmatter ?? {}), updated: today };
+        const next: Record<string, unknown> = { ...fm, ...(args.frontmatter ?? {}), ...fields, updated: today };
         // Existing rules may be edited directly (Owner decision #1336).
         // #1385: a note the user directed binds a new declaration directly,
         // the same way save_memory does (Owner decision 2026-11-04). New agent
@@ -549,6 +572,7 @@ export async function editMemoryHandler(
     ...(args.append !== undefined ? ["append"] : []),
     ...(args.frontmatter ? ["frontmatter"] : []),
     ...(args.rulebook_decision ? [`rulebook_${args.rulebook_decision.decision}`] : []),
+    ...userFieldOps(fields),
   ];
   // Der Beleg. `operation: "update"`, weil `AuditOperation` eine geschlossene
   // Menge ist und eine Teiländerung nichts anderes ist als eine Änderung; WAS
@@ -578,7 +602,7 @@ export async function editMemoryHandler(
     ? `summary was auto-truncated to ${SUMMARY_MAX} chars; the full text belongs in the body.`
     : undefined;
   const warning = [droppedWarning, truncatedWarning, auditWarning].filter(Boolean).join(" ");
-  return {
+  const result: EditMemoryResult = {
     id: mem.fm.id,
     file_path: mem.filePath,
     created: false,
@@ -594,6 +618,24 @@ export async function editMemoryHandler(
     note: "Edit complete — do not repeat this edit_memory call.",
     ...(warning ? { warning } : {}),
   };
+  return withRedactionReceipt(result, redacted);
+}
+
+/** #1470: redact the new text an edit brings — never `old_str`, which has to
+ *  match the stored body. Patched list fields are rewritten only when sent. */
+function redactEditArgs(
+  data: EditMemoryArgs,
+  userFields: UserFields | undefined
+): { receipt: RedactionReceipt; fields: UserFields | undefined } {
+  const redaction = new WriteRedaction();
+  if (data.str_replace) data.str_replace.new_str = redaction.text("body", data.str_replace.new_str);
+  if (data.append !== undefined) data.append = redaction.text("body", data.append);
+  const patch = data.frontmatter;
+  if (patch?.summary !== undefined) patch.summary = redaction.text("summary", patch.summary);
+  if (patch?.recall_when) patch.recall_when = redaction.list("recall_when", patch.recall_when);
+  if (patch?.applies_when !== undefined) patch.applies_when = redaction.text("applies_when", patch.applies_when);
+  const fields = redactUserFields(redaction, userFields); // #1558: before the receipt is taken
+  return { receipt: redaction.receipt(), fields };
 }
 
 /** #661: welche bestehenden Listeneinträge der Patch nicht mehr enthält. */

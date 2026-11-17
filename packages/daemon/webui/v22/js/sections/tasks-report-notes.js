@@ -11,8 +11,8 @@
 // 17.11.2026: a thin edge alone did not set the note apart from the report).
 // Table rows are marked and get their notes in a full-width row right below.
 // The note field is the vault-care field with "improve text" (views/care-note.js).
-// A note whose block is no longer found (another renderer) is listed at the end
-// as a card of its own, never lost. Report and note texts are external data:
+// A note whose block is no longer found (another renderer: kind, number or
+// excerpt differ, #1608) is listed at the end as a card of its own, never lost. Report and note texts are external data:
 // text nodes only.
 import { h } from "../dom.js";
 import { t } from "../i18n.js";
@@ -164,7 +164,7 @@ export function annotateReport(nodes, ui) {
   const placed = new Set();
   for (const b of reportBlocksIn(nodes)) {
     const anchor = { kind: b.kind, index: b.index, excerpt: b.excerpt };
-    const list = notesAt(ui.notes, b.kind, b.index);
+    const list = notesAt(ui.notes, b.kind, b.index, b.excerpt);
     for (const n of list) placed.add(n.id);
     b.el.classList.add("tk-an");
     if (list.some((n) => !n.done)) b.el.classList.add("has-open");

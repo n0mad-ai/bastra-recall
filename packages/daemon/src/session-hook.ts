@@ -25,6 +25,7 @@ import { envInt } from "./env.js";
 import { readStdin, daemonBaseUrl, postLane, classifyTransportError } from "./thin-client.js";
 import { decorateHookPayload } from "./hook-surface.js";
 import { registerChatHook } from "./task-chat-registry.js";
+import { emitStdout, exitAfterStdout } from "./hook-stdout.js";
 
 const LANE_BUDGET_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", SESSION_START_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_TIMEOUT_MS = LANE_BUDGET_MS + 100;
@@ -33,7 +34,7 @@ let stdoutEmitted = false;
 function emitOnce(payload: string): void {
   if (stdoutEmitted) return;
   stdoutEmitted = true;
-  process.stdout.write(payload);
+  emitStdout(payload);
 }
 
 async function main(): Promise<void> {
@@ -86,14 +87,14 @@ const isCliEntry =
 if (isCliEntry) {
   const killSwitch = setTimeout(() => {
     emitOnce("{}");
-    process.exit(0);
+    void exitAfterStdout();
   }, HOOK_TIMEOUT_MS + 50);
   killSwitch.unref();
 
   main()
-    .then(() => process.exit(0))
+    .then(() => exitAfterStdout())
     .catch(() => {
       emitOnce("{}");
-      process.exit(0);
+      void exitAfterStdout();
     });
 }

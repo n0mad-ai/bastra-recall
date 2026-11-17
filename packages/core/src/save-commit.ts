@@ -29,6 +29,7 @@ import {
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { MemoryWriteConflictError } from "./save-schema.js";
+import { NO_WAIT_TEXT, readRegularFile } from "./regular-file.js";
 import { newOperationId, reportMutationIncident } from "./mutation-incident.js";
 
 export async function fileExists(path: string): Promise<boolean> {
@@ -116,14 +117,10 @@ async function inspectCommitClaim(lockPath: string): Promise<{ raw: string | nul
   let ageMs: number;
   try {
     // Read bytes and age from one inode, even if the path is replaced meanwhile.
-    const handle = await open(lockPath, "r");
-    try {
-      const [content, info] = await Promise.all([handle.readFile("utf8"), handle.stat()]);
-      raw = content;
-      ageMs = Date.now() - info.mtimeMs;
-    } finally {
-      await handle.close();
-    }
+    // #1604: never through a symlink or into a FIFO planted at the lock path.
+    const file = await readRegularFile(lockPath);
+    raw = file.raw;
+    ageMs = Date.now() - file.mtimeMs;
   } catch (err) {
     // No checked generation remains to reclaim. Unknown is never free.
     return { raw: null, abandoned: (err as NodeJS.ErrnoException)?.code === "ENOENT" };
@@ -335,7 +332,7 @@ const RECLAIM_MARK_STALE_MS = COMMIT_CLAIM_STALE_MS * 2;
  * Only marker expiry needs reservations. An unmodified main process still has
  * its own blind stale-marker deletion race; new code cannot fence that reader. */
 async function reclaimStaleClaim(lockPath: string, prepared: string, body: string, checked: string): Promise<boolean> {
-  if ((await readFile(lockPath, "utf8").catch(() => null)) !== checked) return false;
+  if ((await readFile(lockPath, NO_WAIT_TEXT).catch(() => null)) !== checked) return false;
   const digest = createHash("sha256").update(checked).digest("hex").slice(0, 16);
   const claim = JSON.parse(body) as CommitClaim;
   const updated = JSON.stringify({ ...claim, reclaimed_from: digest });
@@ -360,7 +357,7 @@ async function reclaimStaleClaim(lockPath: string, prepared: string, body: strin
     }
     if (predecessor?.reclaimed_from && /^[0-9a-f]{16}$/.test(predecessor.reclaimed_from)) {
       await removeOwnedMarker(`${lockPath}.reclaim-${predecessor.reclaimed_from}`, predecessor.token);
-      if ((await readFile(lockPath, "utf8").catch(() => null)) !== checked) return false;
+      if ((await readFile(lockPath, NO_WAIT_TEXT).catch(() => null)) !== checked) return false;
     }
     if (!(await markerOwnedBy(marker, claim.token))) return false;
     await unlink(lockPath);
@@ -370,7 +367,7 @@ async function reclaimStaleClaim(lockPath: string, prepared: string, body: strin
     // Do not report acquisition after observable lease loss or replacement.
     const [stillOwned, published] = await Promise.all([
       markerOwnedBy(marker, claim.token),
-      readFile(lockPath, "utf8").then((raw) => (JSON.parse(raw) as CommitClaim).token === claim.token),
+      readFile(lockPath, NO_WAIT_TEXT).then((raw) => (JSON.parse(raw) as CommitClaim).token === claim.token),
     ]);
     if (!stillOwned || !published) {
       await releaseCommitClaim(lockPath, claim.token);
@@ -387,7 +384,7 @@ async function reclaimStaleClaim(lockPath: string, prepared: string, body: strin
 
 async function markerOwnedBy(marker: string, token: string): Promise<boolean> {
   try {
-    return (JSON.parse(await readFile(marker, "utf8")) as CommitClaim).token === token;
+    return (JSON.parse(await readFile(marker, NO_WAIT_TEXT)) as CommitClaim).token === token;
   } catch {
     return false;
   }
@@ -396,7 +393,7 @@ async function markerOwnedBy(marker: string, token: string): Promise<boolean> {
 async function removeOwnedMarker(marker: string, token: string): Promise<void> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      if ((JSON.parse(await readFile(marker, "utf8")) as CommitClaim).token !== token) return;
+      if ((JSON.parse(await readFile(marker, NO_WAIT_TEXT)) as CommitClaim).token !== token) return;
       await unlink(marker);
       return;
     } catch {
@@ -405,14 +402,8 @@ async function removeOwnedMarker(marker: string, token: string): Promise<void> {
   }
 }
 
-async function markerSnapshot(path: string): Promise<{ raw: string; mtimeMs: number }> {
-  const handle = await open(path, "r");
-  try {
-    const [raw, info] = await Promise.all([handle.readFile("utf8"), handle.stat()]);
-    return { raw, mtimeMs: info.mtimeMs };
-  } finally {
-    await handle.close();
-  }
+function markerSnapshot(path: string): Promise<{ raw: string; mtimeMs: number }> {
+  return readRegularFile(path);
 }
 
 async function takeReclaimMark(lockPath: string, marker: string, prepared: string, raw: string): Promise<boolean> {
@@ -503,7 +494,7 @@ async function cleanupReservations(lockPath: string): Promise<void> {
 export async function releaseCommitClaim(lockPath: string, token: string): Promise<void> {
   let claim: CommitClaim;
   try {
-    claim = JSON.parse(await readFile(lockPath, "utf8")) as CommitClaim;
+    claim = JSON.parse(await readFile(lockPath, NO_WAIT_TEXT)) as CommitClaim;
     if (claim.token !== token) return;
   } catch {
     return;
@@ -512,7 +503,7 @@ export async function releaseCommitClaim(lockPath: string, token: string): Promi
     await removeOwnedMarker(`${lockPath}.reclaim-${claim.reclaimed_from}`, token);
     // Preserve the final token-read/unlink boundary after the rare cleanup.
     try {
-      if ((JSON.parse(await readFile(lockPath, "utf8")) as CommitClaim).token !== token) return;
+      if ((JSON.parse(await readFile(lockPath, NO_WAIT_TEXT)) as CommitClaim).token !== token) return;
     } catch {
       return;
     }

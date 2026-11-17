@@ -54,14 +54,16 @@ const fold = (s) =>
     .toLowerCase()
     .normalize("NFKC");
 
-/** Search over the list (#1597): the rows whose title or project hold every word of the query.
- *  The list rows carry no report text, so the text itself is not searched. */
-export function matchReports(rows, query) {
+/** Search over the list (#1597): the rows whose title or project hold every word of the query,
+ *  at once and here. The list rows carry no report text: `hits` are the ids the daemon found for
+ *  the same query in title, project and text (task_report_list with query), joined in once they
+ *  arrived (null: not yet, or a Recall without the text search). */
+export function matchReports(rows, query, hits = null) {
   const words = fold(query).split(/\s+/).filter(Boolean);
   if (!words.length) return rows;
   return rows.filter((r) => {
     const hay = fold(`${r.title}\n${r.project}`);
-    return words.every((w) => hay.includes(w));
+    return words.every((w) => hay.includes(w)) || !!hits?.has(r.id);
   });
 }
 
@@ -150,5 +152,8 @@ export function noteRows(answer) {
   return (Array.isArray(answer?.notes) ? answer.notes : []).map(note).filter(Boolean);
 }
 
-/** The notes left on one block. */
-export const notesAt = (notes, kind, index) => notes.filter((n) => n.kind === kind && n.index === index);
+/** The notes left on one block: kind and number name the place, and the stored excerpt must still be
+ *  the block's text (#1608). Should the rendering of a report ever change, a note whose block now holds
+ *  other text is collected at the end instead of sitting silently at a wrong place. */
+export const notesAt = (notes, kind, index, excerpt) =>
+  notes.filter((n) => n.kind === kind && n.index === index && n.excerpt === excerpt);

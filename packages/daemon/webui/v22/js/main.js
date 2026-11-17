@@ -5,7 +5,7 @@ import { state, setState, subscribe } from "./state.js";
 import { computeLayout, applyLayout } from "./layout.js";
 import { getArea } from "./areas.js";
 import { data, onData, startPolling } from "./data.js";
-import { mountNav, updateNav } from "./nav.js";
+import { mountNav, updateNav, followHash } from "./nav.js";
 import { mountHeader, updateHeader } from "./header.js";
 import * as agent from "./agent.js";
 import * as footer from "./footer.js";
@@ -114,4 +114,5 @@ document.addEventListener(
 );
 
 update(new Set(["init", "view", "vw", "data"]));
+followHash(ctx); // /ui/#tasks opens Tasks (#1560)
 startPolling();

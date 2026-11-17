@@ -40,6 +40,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   open. Its cyan badge counts the unread reports (it replaces the dot that sat
   on **Tasks**); its tooltip also names reports with notes not handed over
   yet. The **Reports** button in the Tasks head stays.
+- **Search inside the report text, and undo for delete.** The search field
+  over the reports list now also finds words in the text of a report, not
+  only in its title and project; title and project still filter at once, text
+  hits join a moment later. Right after **Delete**, a notice above the next
+  report offers **Undo**; Recall keeps a deleted report for 10 minutes and
+  brings it back with its text, read state and notes. For agents,
+  `task_report_list` takes an optional `query`, `task_report_delete` answers
+  with `restorable_until`, and the new tool `task_report_restore` undoes a
+  delete when you ask for it (#1597, #1559).
+- **Title, type, sensitivity and recall mode in the memory browser.** The
+  editor in the reader now also changes a memory's title, type, sensitivity
+  and recall mode, through the same revision-checked `edit_memory` path as
+  the other fields: a change made meanwhile is refused and your draft stays.
+  The file stays in its folder; documents and bookmarks keep their type. A
+  memory set to private leaves the views that may not show private memories
+  at once. The area cannot be changed here yet (#1558).
+- **`/ui/#tasks` opens the Tasks area.** The web UI reads the area from the
+  address (`#tasks`, `#reports`, a vault view such as `#chronos`) on load and
+  when it changes; unknown names are ignored. The address follows the area
+  you open, without new history entries (#1560).
+- **Archived memories come back without the Mac app.** `bastra trash list`
+  shows the memories archived into the vault trash (newest first), and
+  `bastra trash restore <id>` puts one back where it lived. Agents get the
+  same as the new tool `restore_memory` (without `id` it lists, with `id` it
+  restores), on the full tool surface like `archive_memory`. The restore is
+  written to the audit log; a memory that is live again under the same id is
+  never overwritten, and private memories stay with the memory browser (#1471).
+- **The audit log says who wrote.** Every write through a tool call
+  (`save_memory`, `edit_memory`, `archive_memory`, `restore_memory`, documents,
+  product docs) records `transport` (`stdio`, `forwarder`, `http`,
+  `mcp-http`), `client` (the MCP client's name and version, or the OAuth client
+  of a remote connector) and `caller_session` (the Claude Code session the
+  forwarder reports). A record for tracing, not an access rule: nothing is
+  refused or asked because of it (#1469).
 
 ### Changed
 
@@ -49,6 +83,135 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   every `bastra` command now warns, and `bastra update` installs nothing
   and says why (an automatic update is held back and reported at the next
   session start). CI no longer tests Node 22.
+- **`find_affected_files` says what was measured.** Its description no longer
+  asks to be called first and before grep; it offers a candidate list next to
+  the usual text search, not proof and not a complete list, like the server
+  instructions since #1457 (#1562). The completed change-impact registration
+  keeps the hash it measured; a new measurement needs a new registration.
+- **The README says where Recall stands.** New short sections: how Recall
+  relates to the built-in memory of Claude Code, Codex and Copilot (#1478);
+  what is measured, with its limits (LongMemEval-S retrieval, the own gold set,
+  abstention) and links to the registrations (#1477); what is free and what
+  belongs to Recall Pulse (#1475). CONTRIBUTING.md states that document
+  writing and OCR were never free. Commons is described as on hold: off by
+  default and not developed further for now (#1498). The V2 evolution plan
+  lists the owner decisions that replace its older release and approval rules
+  (#1476).
+- **`bastra tasks` speaks your language as a whole.** Its questions, lists,
+  results and errors follow `language.primary`: German when it is `de`,
+  English otherwise and when it is not set. Before, the task CLI was German
+  for everyone. Texts that only the model reads (stored task errors and review
+  reasons, `--json` output) are English and keep their codes (#1602).
+- **Subagents no longer get the full rule kernel again and again.** After 25
+  tool calls without a prompt, an agent that already holds the unchanged rule
+  kernel gets a short reminder with the catalog hash and how to fetch the
+  rules again (`list_rules`, `load_memory`) instead of up to 9,400 characters.
+  A changed rulebook, a new agent and every compact or clear still bring the
+  full text. Measured before the change: 89 % of 848 re-deliveries in two
+  weeks were byte-identical repeats (#1461).
+- **Hints before a tool call have an upper size.** Each pre-tool lane
+  (Write/Edit, plan, Bash) keeps its optional text within 4,000 characters:
+  code-impact blocks, lower-ranked plan hints and draft quotes are left out
+  whole when they would cross it. Warnings, the file-size note and rules wired
+  to the action are never left out. The draft quote now also counts inside the
+  prompt hook's 10,000 characters (#1460).
+- **On Linux, hook state no longer lives in the shared temp directory.** It
+  moved to `~/.bastra/hook-state`, so another account on the same machine
+  cannot occupy its directory or lock names. Stored state is found as before,
+  and old files in the former location are still imported. macOS and Windows
+  keep their per-user temp directory (#1569).
+- **Credentials are redacted before a memory is written.** `save_memory`,
+  `edit_memory` and `save_document` run the same detector as drafts and tasks
+  on their text fields; a recognized key, token or password becomes
+  `[REDACTED]` before it reaches the vault. The write goes through without a
+  question, and the answer names each field in `secrets_redacted` and says so
+  in `warning`. Text without a credential is written byte for byte; paths and
+  `$VARIABLE` references stay. Memories written earlier are not rewritten
+  (#1470).
+- **An expired memory is no longer shown automatically.** Once a memory's own
+  `valid_until` has passed, the hooks (prompt, session start, reflex rules)
+  leave it out; `recall` still finds it and marks it `expired_on`. Calendar
+  aging only lowers the rank as before (#1468).
+- **Hints cannot hide text or pose as host markup.** Memory text that a hook
+  shows loses invisible characters (zero-width, bidi controls, Unicode tag
+  characters, control characters; joiners inside words and emoji stay), and
+  anything shaped like a tag or a chat-template token keeps its words but
+  loses its angle brackets (`‹system›`). New invariant INV-SCRUB-04 (#1467).
+
+### Fixed
+
+- Releases: `publish-release-set.mjs --verify` now waits up to 20 minutes
+  (was five) for npm to serve a fresh release, and asks again after a failed
+  registry read instead of failing the release; on 1.2.0 a package appeared
+  only after the old window had closed and `promote` had to be rerun (#1076).
+- OAuth: a burst of anonymous client registrations can no longer push out a
+  client that is in the middle of signing in (an open sign-in page or a code
+  not yet exchanged); when every slot is busy, a new registration is refused.
+  Open sign-in pages have a limit over all clients, and at the limit a new one
+  is refused instead of closing someone else's (#1280).
+- `tools/cmux-agent-send.mjs` waits 300 ms between the message and Return, so
+  an idle Codex pane submits it instead of keeping it in the input field
+  (#1155).
+- Windows: the offer to install the `bastra` command at the end of the setup
+  runs npm through `node.exe` and npm's `npm-cli.js`, like `bastra update`,
+  instead of starting `npm.cmd`, which current Node refuses without a shell
+  (#1274). Checked with a simulated Windows platform only.
+- Web UI switched off: the vault image and the import count no longer answer;
+  `/ui/health` (the same answer as `/health`) and the address refresh the CLI
+  uses stay open on purpose (#1571).
+- Live updates: many private changes in a short time no longer push public
+  changes out of the update buffer before a caller without private access has
+  fetched them (#1605).
+- `bastra doctor` names a link or another account's entry inside the archive
+  directory on the archive line, the same entry the archiving `rm` stops at
+  (#1606).
+- Lock and marker files in the vault folder (save claims, area marks), the
+  update-check cache and staged marker, the task comparison marker and the
+  vault care list are read without following a link or waiting on a FIFO; a
+  special file there is refused at once instead of hanging (#1604).
+- Assistant address: the names of 17 internationalized top-level domains
+  (for example `москва`, `在线`) were split in the built-in block list and
+  could be taken as an address; they are refused again (#1555).
+- Task reports: a note is shown at its place only while that place still holds
+  the text the note was left on; otherwise it is listed under "Notes whose
+  place is no longer found" instead of at a wrong place (#1608). A full report
+  store now says so and that deleting old reports makes room, instead of a
+  generic error (#1609). When the reports view is rebuilt while you type a
+  note (a live update), the cursor, the selection and the field's scroll
+  place stay where they were (#1610). The report store now keeps fields a
+  later version adds instead of refusing the whole store, so going back one
+  version no longer locks you out of your reports from now on (#1611).
+- Web UI: changing the time window while the lens is covered by the memory
+  browser no longer stops the lens from drawing; the replay starts when the
+  cover closes (#1552). Two identical vault-care flags on one memory keep
+  separate drafts in the reader (#1554).
+- Docs: the README no longer asks you to rerun `bastra install` after an
+  update; `bastra update` registers the clients again by itself (#1489). The
+  hooks guide names `npm install -g bastra-recall` as the install path, like
+  the README (#1575). The README says that a suppressed save suggestion is
+  restored by its proposal ID and that there is no list of them yet (#1466).
+- Tasks: archiving or deleting a task is no longer refused while the task
+  store is above 75 % of its limit, as long as it makes the store smaller, so
+  a full store can be cleared again. The automatic time evaluation no longer
+  uses the space kept for the owner's own control operations; it only uses it
+  for the one history row that switches a full task off (#1599). A chat
+  announcement left behind by a crash between claiming and sending no longer
+  hides the reminder for good: after five minutes it is announced again and
+  shows on the next contact; once sending may have begun, it is never
+  announced twice (#1600). Source errors and review reasons stored in a task
+  are English (#1602).
+- Hooks: the file-size note before an edit has its own deadline (a quarter of
+  the lane budget); a slow disk can no longer spend the time of the recall
+  that follows. Measured over 1,741 repository files: median 0.4 ms, max
+  5.4 ms, against a lane median of 47 ms (#1538).
+- Hooks: every hook client waits until its answer is fully written before it
+  exits. On macOS and Linux a large answer read slowly by the host could be
+  cut off, because writes to a pipe are asynchronous there (#1573).
+- `bastra logs --stats` judges the session lane against the 1,500 ms
+  SessionStart budget it runs with, not 500 ms (#1564).
+- Telemetry: old recall rows from a tool lane (such as the fixed session-start
+  queries) are no longer counted as agent recalls in the demand-gap report
+  (#1266).
 
 ### Internal
 
@@ -69,6 +232,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   that the German and English UI catalogs match key for key and placeholder
   for placeholder. CONTRIBUTING.md says when to add an invariant and that an
   invariant test is never weakened without changing its catalog entry.
+- **A unit test for the Claude Desktop adapter** (#1566): install writes the
+  MCP registration and the skill and keeps foreign servers, a second install
+  changes nothing, uninstall removes only Recall, and the evidence ledger row
+  matches the tested adapter.
+- **The Codex gate probe takes `--expected-version`** (#1541), like the Stop
+  probe, and `docs/rulebook-host-probes.md` lists the steps to check a new
+  Codex release. Codex CLI 0.167.0 is not probed yet and stays advisory.
+- **Abstention figures registered** (#1463):
+  `packages/eval/registrations/abstention-1463.json` reads the 79 unanswerable
+  gold-set questions from the registered September runs. The preregistered
+  follow-up run is still open.
+- **The passive-delivery bridge test no longer hangs on a bridge that already
+  exited** (for example a missing `dist/bridge.js`): cleanup returns at once,
+  is bounded and keeps the test's own error (#1324).
+- **Hook context load can be measured again.** `npm run hook-context-load
+  --workspace @bastra-recall/eval` reports from the event log what each hook
+  lane injected, the draft quotes, the rule-kernel re-deliveries and the plan
+  lane's follow-through. The #1371 measurement report is checked in under
+  `packages/eval/reports/` (its transcript scripts were lost and are marked as
+  missing), with a baseline for #1460, #1461 and #1464 (#1465, #1464).
+- Hook lanes share one request type for `/hook/recall`; the session hook's
+  unused `postRecall` is gone (#448).
+- `redactSecrets` is split into one step per pattern family; every function
+  is within the complexity limits and the output is byte-identical on the
+  frozen corpus. `bastra logs` moved out of the CLI dispatch table (#1528).
 
 ## [1.2.1] — 2026-11-16
 

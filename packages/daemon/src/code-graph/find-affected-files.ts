@@ -89,16 +89,16 @@ export const affectedTools = [
     name: "find_affected_files",
     annotations: { readOnlyHint: true, destructiveHint: false },
     description:
-      "GRAPH-FIRST change impact: given a file you are about to change or have " +
-      "just changed, list the files that may break, from the repository's code " +
-      "graph. Call it BEFORE editing an exported symbol and AFTER changing one " +
-      "— whenever the question is 'what breaks if I change this?', 'who uses " +
+      "Change impact from the repository's code graph: given a file you are " +
+      "about to change or have just changed, list the files that may break. " +
+      "Useful before editing an exported symbol and after changing one — " +
+      "whenever the question is 'what breaks if I change this?', 'who uses " +
       "this?', 'did I miss a call site?'\n" +
       "\n" +
-      "Ask it first, then grep. It reads import and call edges across the " +
-      "whole repository in one call, including imports that go through a " +
-      "workspace package (`@scope/pkg`), which a grep for the symbol name in " +
-      "the changed package will not find.\n" +
+      "It gives a candidate list next to your usual text search, not instead " +
+      "of it. It reads import and call edges across the whole repository in " +
+      "one call, including imports that go through a workspace package " +
+      "(`@scope/pkg`).\n" +
       "\n" +
       "Pass `file` alone and it derives the changed symbols from the working- " +
       "tree diff of that file (staged changes included); with no diff it " +
@@ -108,10 +108,10 @@ export const affectedTools = [
       "\n" +
       "Returns `files` (the answer) and `hits` (one line of evidence each: " +
       "`location` file:line of the depending site, `via` the changed symbol, " +
-      "`relation` the edge). These are CANDIDATES, not proof: the graph has no " +
-      "types, so a listed file may survive the change, and a caller reached " +
-      "through reflection or a string-keyed table is not listed at all. Grep " +
-      "the symbol names to confirm before acting.\n" +
+      "`relation` the edge). These are candidates, not proof and not a " +
+      "complete list: the graph has no types, so a listed file may survive the " +
+      "change, and a caller reached through reflection or a string-keyed table " +
+      "is not listed at all. Grep the symbol names to confirm before acting.\n" +
       "\n" +
       '`status: "unavailable"` means the graph is not in memory for this ' +
       "repository (loading, not indexed, or code awareness is off). It is not " +

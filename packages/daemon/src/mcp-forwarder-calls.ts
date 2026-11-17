@@ -21,8 +21,16 @@ import {
 } from "./forwarder-daemon-client.js";
 import { liveStatusline } from "./mcp-forwarder-statusline.js";
 
+/** #1469: the MCP client this forwarder serves (`name/version` from the
+ *  initialize handshake), sent so the daemon's audit names the writer. */
+let forwarderClient: string | null = null;
+export function setForwarderClient(label: string | null): void {
+  forwarderClient = label;
+}
+
 function ccTurnHeaders(): Record<string, string> {
   const h: Record<string, string> = {};
+  if (forwarderClient) h["x-bastra-client"] = encodeURIComponent(forwarderClient);
   // Send only the project key, not the client's absolute filesystem path.
   if (CLIENT_FILTER_PROJECT) h["x-bastra-project"] = encodeURIComponent(CLIENT_FILTER_PROJECT);
   // Only the Claude statusline identifies this host. Inherited Codex env is foreign.

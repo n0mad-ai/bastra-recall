@@ -34,6 +34,7 @@ import {
   bookPendingMustLoad,
   bumpShown,
   clearPendingMustLoad,
+  clearShown,
   loadSessionState,
   mutateSessionState,
   recordActiveConventions,
@@ -319,6 +320,43 @@ describe("#1305 rule kernel: re-delivery by the gate lane", () => {
     assert.doesNotMatch(kernel, /Never call fixture_send_message/);
     assert.equal(kernel.split("\n").at(-2), RULE_KERNEL_ASK_LINE);
     assert.equal((await loadSessionState(sid)).toolCalls, 0);
+  });
+
+  it("INV-RULE-05: an unchanged kernel goes to the same agent once in full, then as a reminder (#1461)", async () => {
+    const sid = "kernel-gate-unchanged";
+    const kernelAt = async (deps2: typeof deps, agent?: string) => {
+      let text = "";
+      for (let i = 0; i < RULE_KERNEL_TOOL_CALLS; i++) {
+        const out = parse(await runGateLane({ ...call(sid), ...(agent ? { agent_id: agent } : {}) }, deps2));
+        text = out.hookSpecificOutput?.additionalContext ?? text;
+      }
+      return text;
+    };
+    const first = await kernelAt(deps);
+    assert.match(first, /Rule index/);
+    const second = await kernelAt(deps);
+    assert.match(second, /<rule-kernel trigger="25 tool calls without a prompt" unchanged="[0-9a-f]{16}">/);
+    assert.match(second, /Rulebook unchanged: 2 rules; catalog=/);
+    assert.match(second, /list_rules\(\)/);
+    assert.doesNotMatch(second, /Rule index/);
+    assert.ok(second.length < 600, `reminder is short (${second.length})`);
+    // Another agent in the same session has not seen it yet.
+    assert.match(await kernelAt(deps, "sub-1"), /Rule index/);
+    assert.match(await kernelAt(deps, "sub-1"), /unchanged=/);
+    // A changed rulebook brings the full text again.
+    const changed = {
+      ...deps,
+      kernel: (active: readonly { id: string; revision: string | null; setAt: number }[], project: string | null) =>
+        collectRuleKernel(indexOf([RULE, memory("task-rule", {}, "Task rule body, revised.")]), {
+          project,
+          active,
+          floors: async () => [],
+        }),
+    };
+    assert.match(await kernelAt(changed), /Rule index/);
+    // A compact/clear drops what the context held: full text again.
+    await clearShown(sid);
+    assert.match(await kernelAt(changed), /Rule index/);
   });
 
   it("a user prompt resets the count", async () => {

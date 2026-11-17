@@ -67,7 +67,7 @@ async function harness(
   memDir: string;
   settingsPath: string;
   enableUi: () => Promise<void>;
-  call: (since?: number) => Promise<Poll>;
+  call: (since?: number, showPrivate?: boolean) => Promise<Poll>;
   cleanup: () => Promise<void>;
 }> {
   const vaultDir = await mkdtemp(join(tmpdir(), "live-vault-"));
@@ -79,15 +79,16 @@ async function harness(
   await vault.init();
   const live = createLiveUpdates(vault, { debounceMs: DEBOUNCE, maxEntries: 500, ...opts });
   const server = createServer((req, res) => {
-    void live.handleUiUpdates(req, res, settingsPath);
+    void live.handleUiUpdates(req, res, settingsPath, req.headers["x-fixture-private"] === "1");
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const port = (server.address() as { port: number }).port;
 
-  const call = (since?: number): Promise<Poll> =>
+  const call = (since?: number, showPrivate = false): Promise<Poll> =>
     new Promise((resolve, reject) => {
       const path = since === undefined ? "/ui/updates" : `/ui/updates?since=${since}`;
-      const rq = request({ hostname: "127.0.0.1", port, path, method: "GET" }, (res) => {
+      const headers = showPrivate ? { "x-fixture-private": "1" } : {};
+      const rq = request({ hostname: "127.0.0.1", port, path, method: "GET", headers }, (res) => {
         let raw = "";
         res.on("data", (c) => (raw += c));
         res.on("end", () => resolve({ status: res.statusCode ?? 0, json: raw ? JSON.parse(raw) : {} }));
@@ -611,5 +612,43 @@ test("live updates: the cursor an outside caller sees does not count private ent
     server.close();
     await rm(vaultDir, { recursive: true, force: true });
     await rm(settingsDir, { recursive: true, force: true });
+  }
+});
+
+test("#1605 live updates: a burst of private entries cannot push out public ones a caller has not fetched", async () => {
+  const h = await harness({ maxEntries: 3 });
+  const { vault, memDir, call } = h;
+  const write = async (id: string, secret: boolean) => {
+    const md = memoryMarkdown(id, `Title ${id}`);
+    await writeFile(
+      join(memDir, `${id}.md`),
+      secret ? md.replace("---\n\nBody.", "sensitivity: private\n---\n\nBody.") : md
+    );
+    await vault.reindexFile(join(memDir, `${id}.md`));
+  };
+  try {
+    await h.enableUi();
+    const start = await call();
+    await write("open-a", false);
+    await write("open-b", false);
+    await delay(AFTER);
+    for (let i = 0; i < 6; i++) await write(`private-${i}`, true);
+    await delay(AFTER);
+
+    const outside = await call(start.json.seq);
+    assert.deepEqual(
+      outside.json.updates.map((u) => u.id),
+      ["open-a", "open-b"],
+      "six private entries pushed public ones out of a three-slot buffer"
+    );
+    assert.equal(outside.json.minSeq, 1, "nothing visible was lost");
+
+    // The owner sees the private overflow honestly: three private entries are
+    // gone, so the cursor learns of a gap instead of skipping it silently.
+    const owner = await call(0, true);
+    assert.equal(owner.json.updates.filter((u) => u.id.startsWith("private-")).length, 3);
+    assert.ok(owner.json.minSeq > 1, "the owner's cursor must see the dropped private entries as a gap");
+  } finally {
+    await h.cleanup();
   }
 });

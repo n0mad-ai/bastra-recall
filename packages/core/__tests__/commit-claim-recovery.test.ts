@@ -10,6 +10,11 @@ import { fork } from "node:child_process";
 import { once } from "node:events";
 import * as mainClaims from "./fixtures/commit-claim-main.js";
 import { acquireCommitClaim, releaseCommitClaim } from "../src/save-commit.js";
+import { NO_WAIT_READ_FLAGS } from "../src/regular-file.js";
+
+/** A claim or marker opened for reading — #1604 opens them with flags that
+ *  neither follow a link nor wait on a FIFO instead of plain "r". */
+const readOpen = (flags: unknown) => flags === "r" || flags === NO_WAIT_READ_FLAGS;
 const gate = () => {
   let resolve!: () => void;
   const promise = new Promise<void>((r) => {
@@ -78,7 +83,7 @@ test(
     }) as typeof fs.readFile;
     fs.open = (async (...args: any[]) => {
       const h = await Reflect.apply(open, fs, args);
-      if (args[0] === mark && args[1] === "r") {
+      if (args[0] === mark && readOpen(args[1])) {
         const st = h.stat;
         h.stat = (async (...a: any[]) => {
           const result = await Reflect.apply(st, h, a);
@@ -89,7 +94,7 @@ test(
           return result;
         }) as typeof h.stat;
       }
-      if (args[0] === lock && args[1] === "r") {
+      if (args[0] === lock && readOpen(args[1])) {
         const read = h.readFile;
         h.readFile = (async (...a: any[]) => {
           const result = await Reflect.apply(read, h, a);
@@ -155,7 +160,7 @@ test("an empty legacy generation cannot displace a newly published claim", { tim
   }) as typeof fs.readFile;
   fs.open = (async (...args: any[]) => {
     const h = await Reflect.apply(open, fs, args);
-    if (args[0] === lock && args[1] === "r") {
+    if (args[0] === lock && readOpen(args[1])) {
       const read = h.readFile;
       h.readFile = (async (...a: any[]) => {
         await beforeRead(lock);
@@ -261,7 +266,7 @@ test("release cannot clear a different reclaimer’s fresh generation", { timeou
   }) as typeof fs.readFile;
   fs.open = (async (...args: any[]) => {
     const h = await Reflect.apply(original.open, fs, args);
-    if (args[0] === lock && args[1] === "r") {
+    if (args[0] === lock && readOpen(args[1])) {
       const read = h.readFile;
       h.readFile = (async (...a: any[]) => {
         const raw = await Reflect.apply(read, h, a);
@@ -340,7 +345,7 @@ test("a new reclaimer holds main’s canonical marker until publication", { time
   }) as typeof fs.readFile;
   fs.open = (async (...args: any[]) => {
     const h = await Reflect.apply(original.open, fs, args);
-    if (args[0] === lock && args[1] === "r") {
+    if (args[0] === lock && readOpen(args[1])) {
       const read = h.readFile;
       h.readFile = (async (...a: any[]) => {
         const raw = await Reflect.apply(read, h, a);

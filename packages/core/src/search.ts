@@ -43,6 +43,7 @@ export {
   DOC_TYPE_DAMPING,
   salienceRankCap,
   computeStaleness,
+  pastValidUntil,
   applyStalenessMultiplier,
 } from "./search-staleness.js";
 

@@ -18,6 +18,7 @@ import { githubConventionGate } from "./github-conventions-lane.js";
  * is the point, and it must emit unconditionally.
  */
 import { appendLaneDrafts, type DraftNote } from "./draft-search.js";
+import { PRE_TOOL_CONTEXT_CHAR_BUDGET } from "./pretool-budget.js";
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -33,6 +34,7 @@ import {
   hookClientEvidence,
   type HookAgent,
   type HookClientEvidence,
+  type HookRecallRequest,
 } from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
 import { governContext } from "./context-governor.js";
@@ -175,7 +177,8 @@ async function runBashPreLaneOriginal(
       1,
       false,
       draftNotes ? () => draftNotes(command) : undefined,
-      startedAt + HOOK_TIMEOUT_MS
+      startedAt + HOOK_TIMEOUT_MS,
+      PRE_TOOL_CONTEXT_CHAR_BUDGET
     );
   }
 
@@ -207,7 +210,7 @@ async function runBashPreLaneOriginal(
           // #263: siehe bash-fail-lane — die Lane weist sich aus.
           ...hookCaller(payload),
           hook_source: "bash-pre",
-        },
+        } satisfies HookRecallRequest,
         remainingMs
       )
     ) as RecallResponse;
@@ -445,7 +448,8 @@ async function runBashPreLaneOriginal(
     1,
     false,
     undefined,
-    startedAt + HOOK_TIMEOUT_MS
+    startedAt + HOOK_TIMEOUT_MS,
+    PRE_TOOL_CONTEXT_CHAR_BUDGET
   );
 }
 

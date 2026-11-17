@@ -36,6 +36,7 @@ import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
 import { shouldSkipPath } from "./hook-skip.js";
 import { decorateHookPayload } from "./hook-surface.js";
 import { normalizeWritePayload } from "./hook-write-input.js";
+import { emitStdout, exitAfterStdout } from "./hook-stdout.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 600, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_VERSION = "0.4.0-thin";
@@ -65,7 +66,7 @@ let stdoutEmitted = false;
 function emitOnce(payload: string): void {
   if (stdoutEmitted) return;
   stdoutEmitted = true;
-  process.stdout.write(payload);
+  emitStdout(payload);
 }
 
 function emitEmpty(): void {
@@ -227,14 +228,14 @@ const isMain = (() => {
 if (isMain) {
   const killSwitch = setTimeout(() => {
     emitEmpty();
-    process.exit(0);
+    void exitAfterStdout();
   }, HOOK_TIMEOUT_MS + 50);
   killSwitch.unref();
 
   main()
-    .then(() => process.exit(0))
+    .then(() => exitAfterStdout())
     .catch(() => {
       emitEmpty();
-      process.exit(0);
+      void exitAfterStdout();
     });
 }

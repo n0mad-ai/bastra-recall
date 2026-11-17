@@ -191,6 +191,11 @@ const version = pkgs[0].version;
  * from "not visible yet", and treating the second as the first fails a release
  * that actually succeeded.
  *
+ * #1076: five minutes was still too short — on 1.2.0 `@bastra-recall/daemon`
+ * became readable only after that window had closed, and each release needed a
+ * manual rerun of `promote`. The default window is now 20 minutes (240 polls of
+ * a 5-second base interval; the deadline, not the poll count, ends the wait).
+ *
  * Overridable so the tests can drive the same convergence without sleeping.
  */
 function verifySetting(name, fallback, minimum) {
@@ -202,7 +207,7 @@ function verifySetting(name, fallback, minimum) {
   }
   return value;
 }
-const VERIFY_ATTEMPTS = verifySetting("BASTRA_VERIFY_ATTEMPTS", 60, 1);
+const VERIFY_ATTEMPTS = verifySetting("BASTRA_VERIFY_ATTEMPTS", 240, 1);
 const VERIFY_INTERVAL_MS = verifySetting("BASTRA_VERIFY_INTERVAL_MS", 5000, 0);
 const VERIFY_WINDOW_MS = VERIFY_ATTEMPTS * VERIFY_INTERVAL_MS;
 if (!Number.isSafeInteger(VERIFY_WINDOW_MS))
@@ -214,12 +219,27 @@ function sleepSync(ms) {
 }
 
 /**
- * One five-minute window for the whole set, not one slot per package. Only
- * unfinished packages are polled again; a later package is never left waiting
- * behind an earlier one. Read requests share the remaining time budget too.
+ * One window for the whole set, not one slot per package. Only unfinished
+ * packages are polled again; a later package is never left waiting behind an
+ * earlier one. Read requests share the remaining time budget too.
  * The existing test controls bound poll rounds; interval zero disables waits
  * and the wall-clock deadline so tests exercise propagation without sleeping.
+ *
+ * A failed registry read (a 5xx, a dropped connection) is "not known yet", not
+ * a verdict: `--verify` publishes nothing, so asking again is safe, and the
+ * package is listed with that error if the window closes first. A visible
+ * artifact that is NOT this release stays a hard failure at any time.
  */
+/** Record a failed registry read on `row`; true when it ran into the deadline. */
+function lookupTimedOut(error, row) {
+  if (error.cause?.code === "ETIMEDOUT") {
+    row.reason = "registry lookup exceeded the verification window";
+    return true;
+  }
+  row.reason = `registry lookup failed: ${error.message.split("\n").slice(0, 2).join(" ").trim()}`;
+  return false;
+}
+
 function awaitVisibleSet(packages) {
   const rows = packages.map((pkg) => ({ pkg, ok: false, reason: "is not on the registry" }));
   const deadline = VERIFY_WINDOW_MS === 0 ? Infinity : performance.now() + VERIFY_WINDOW_MS;
@@ -229,26 +249,30 @@ function awaitVisibleSet(packages) {
   for (let attempt = 1; attempt <= VERIFY_ATTEMPTS; attempt++) {
     for (const row of rows.filter((row) => !row.ok)) {
       if (performance.now() >= deadline) break;
+      let seen;
       try {
-        const seen = fetchPublished(row.pkg.name, row.pkg.version, remaining());
-        if (!seen) {
-          row.reason = "is not on the registry";
-          continue;
-        }
-        const mismatch = mismatchReason(row.pkg, seen, null);
-        if (mismatch)
-          throw new Error(
-            `${row.pkg.name}@${row.pkg.version} is already published but is NOT this release: ${mismatch}`
-          );
-        if (performance.now() >= deadline) break;
-        const latest = fetchLatestTag(row.pkg.name, remaining());
-        row.ok = latest === row.pkg.version;
-        row.reason = `dist-tag latest is ${latest ?? "unset"}, expected ${row.pkg.version}`;
+        seen = fetchPublished(row.pkg.name, row.pkg.version, remaining());
       } catch (error) {
-        if (error.cause?.code !== "ETIMEDOUT" && performance.now() < deadline) throw error;
-        row.reason = "registry lookup exceeded the verification window";
-        break;
+        if (lookupTimedOut(error, row)) break;
+        continue;
       }
+      if (!seen) {
+        row.reason = "is not on the registry";
+        continue;
+      }
+      const mismatch = mismatchReason(row.pkg, seen, null);
+      if (mismatch)
+        throw new Error(`${row.pkg.name}@${row.pkg.version} is already published but is NOT this release: ${mismatch}`);
+      if (performance.now() >= deadline) break;
+      let latest;
+      try {
+        latest = fetchLatestTag(row.pkg.name, remaining());
+      } catch (error) {
+        if (lookupTimedOut(error, row)) break;
+        continue;
+      }
+      row.ok = latest === row.pkg.version;
+      row.reason = `dist-tag latest is ${latest ?? "unset"}, expected ${row.pkg.version}`;
     }
     if (rows.every((row) => row.ok) || attempt === VERIFY_ATTEMPTS || performance.now() >= deadline) break;
     sleepSync(Math.min(delay, deadline - performance.now()));
@@ -287,6 +311,8 @@ if (!verifyOnly) {
 }
 
 if (verifyOnly) {
+  if (VERIFY_WINDOW_MS > 0)
+    console.log(`Waiting up to ${Math.round(VERIFY_WINDOW_MS / 60_000)} minutes for the registry to serve the set.`);
   const results = awaitVisibleSet(pkgs);
   for (const { pkg, ok, reason } of results) {
     if (ok) console.log(`✓ ${pkg.name}@${pkg.version} published and tagged latest`);

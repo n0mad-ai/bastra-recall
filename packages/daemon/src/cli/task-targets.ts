@@ -13,12 +13,13 @@ import { atomicWrite, tasksPath, transactTaskStore } from "../task-store.js";
 import { withPathLock } from "../path-lock.js";
 import { ownerTaskAuthorization } from "./task-owner-access.js";
 import { confirm } from "./prompt.js";
+import { taskCliLanguage, taskCliWords } from "./task-cli-words.js";
 import { taskClientAuthorization } from "../task-transport.js";
 export async function registerOwnerTaskTarget(authorization: string, input: unknown, replace = false) {
   await migrateTaskApprovalRegistry();
   const owner = await authenticateTask(authorization);
   const normalized = await normalizedOwnerTarget(input),
-    { outside_current_workdir: _warning, execution_warning: _execution, ...target } = normalized;
+    { outside_current_workdir: _warning, package_scripts: _scripts, ...target } = normalized;
   requireTaskDomains(owner, target.owner_domains);
   // Stop before changing the registry, even if an overlapping edit later fails.
   await transactTaskStore(
@@ -68,7 +69,8 @@ export async function ownerTaskTargets(words: string[], options: Record<string, 
   if (words[0] === "agent") words.shift();
   const authorization = agent ? await taskClientAuthorization() : await ownerTaskAuthorization();
   if (!authorization) throw Object.assign(new Error("Mapped task credential required"), { code: "unauthorized" });
-  const principal = await authenticateTask(authorization);
+  const principal = await authenticateTask(authorization),
+    w = taskCliWords(await taskCliLanguage());
   if (words[0] === "list") {
     const registry = await readApprovalRegistry(),
       targets = registry?.targets.filter((t) => t.owner_domains.every((d) => principal.domains.includes(d))) ?? [];
@@ -77,7 +79,7 @@ export async function ownerTaskTargets(words: string[], options: Record<string, 
         ? JSON.stringify({ targets })
         : targets
             .map((t) => `${t.id}: ${resolve(t.root, t.path)} · ${t.owner_domains.join(",")} · ${t.sensitivity}`)
-            .join("\n") || "Keine Ziele registriert.") + "\n"
+            .join("\n") || w.noTargets) + "\n"
     );
     return;
   }
@@ -89,19 +91,12 @@ export async function ownerTaskTargets(words: string[], options: Record<string, 
     if (!target) throw Object.assign(new Error("Target absent"), { code: "not_found" });
     requireTaskDomains(principal, target.owner_domains);
     process.stdout.write(
-      `Ziel ${target.id}: ${resolve(target.root, target.path)}; Domänen ${target.owner_domains.join(",")}.\n`
+      w.targetLine(target.id, resolve(target.root, target.path), target.owner_domains.join(",")) + "\n"
     );
-    if (
-      !agent &&
-      !(await confirm("Ziel entfernen? Ausführung stoppen, alte Vorschläge veralten; alte Freigaben werden veraltet."))
-    )
+    if (!agent && !(await confirm(w.targetRemoveConfirm)))
       throw Object.assign(new Error("Owner declined removal"), { code: "forbidden", reason: "owner_declined" });
     await removeOwnerTaskTarget(authorization, target.id);
-    process.stdout.write(
-      json
-        ? JSON.stringify({ removed: true, id: target.id }) + "\n"
-        : "Ziel entfernt; Ausführung gestoppt, alte Vorschläge veraltet.\n"
-    );
+    process.stdout.write(json ? JSON.stringify({ removed: true, id: target.id }) + "\n" : w.targetRemoved + "\n");
     return;
   }
   if (!["register", "update"].includes(words[0]) || !words[1] || !options.root || !options.path || !options.domain)
@@ -116,28 +111,16 @@ export async function ownerTaskTargets(words: string[], options: Record<string, 
   };
   const normalized = await normalizedOwnerTarget(input);
   requireTaskDomains(principal, normalized.owner_domains);
+  const update = words[0] === "update";
   process.stdout.write(
-    `Lokales Ziel ${words[1]}: ${resolve(normalized.root, normalized.path)}; aufgelöster Arbeitsordner ${normalized.root}; Domänen ${options.domain}. Adapter ersetzt genau diese UTF-8-Datei, kein Anbieter.\n`
+    w.targetPreview(words[1], resolve(normalized.root, normalized.path), normalized.root, String(options.domain)) + "\n"
   );
-  if (normalized.execution_warning) process.stdout.write(normalized.execution_warning + "\n");
-  if (normalized.outside_current_workdir)
-    process.stdout.write(
-      "WARNUNG: Dieser gewählte Arbeitsordner liegt außerhalb des aktuellen Projektordners. Nur ausdrücklich freigegebene Arbeitsdateien verwenden; Konfiguration, Schlüssel und Vault sind gesperrt.\n"
-    );
-  if (
-    !agent &&
-    !(await confirm(
-      `Dieses lokale Ziel ${words[0] === "update" ? "ändern" : "registrieren"}? Ausführung wird gestoppt, alte Vorschläge veralten.`
-    ))
-  )
+  if (normalized.package_scripts) process.stdout.write(w.packageScripts + "\n");
+  if (normalized.outside_current_workdir) process.stdout.write(w.outsideWorkdir + "\n");
+  if (!agent && !(await confirm(w.targetConfirm(update))))
     throw Object.assign(new Error("Owner declined target"), { code: "forbidden", reason: "owner_declined" });
-  const result = await registerOwnerTaskTarget(authorization, input, words[0] === "update");
-  process.stdout.write(
-    (json
-      ? JSON.stringify(result)
-      : `Ziel ${result.id} ${words[0] === "update" ? "geändert" : "registriert"}. Ausführung gestoppt. Die Anweisung im Chat ist die Freigabe.`) +
-      "\n"
-  );
+  const result = await registerOwnerTaskTarget(authorization, input, update);
+  process.stdout.write((json ? JSON.stringify(result) : w.targetDone(result.id, update)) + "\n");
 }
 export async function removeOwnerTaskTarget(authorization: string, id: string) {
   await migrateTaskApprovalRegistry();

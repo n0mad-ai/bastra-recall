@@ -47,6 +47,7 @@ export function applyStaleness(
       entry = { touchTs, status, computedAt: nowMs };
       stalenessCache.set(h.id, entry);
     }
+    markExpired(h, fm, now);
     let mult = STALE_MULTIPLIERS[entry.status];
     if (curatorDemotions.has(h.id)) mult *= CURATOR_DEMOTION_MULTIPLIER;
     if (!opts.type && h.type === "doc") mult *= DOC_TYPE_DAMPING;
@@ -197,6 +198,24 @@ export function computeStaleness(fm: Record<string, unknown>, now: Date = new Da
   if (ratio >= 1.0) return "stale";
   if (ratio >= AGING_THRESHOLD_FRACTION) return "aging";
   return "fresh";
+}
+
+/**
+ * #1468: true once the memory's explicit `valid_until` has passed — the
+ * owner's end date, not calendar aging (`expires_after_days` and the type
+ * defaults only demote). Same boundary as `computeStaleness`.
+ */
+export function pastValidUntil(fm: Record<string, unknown>, now: Date = new Date()): boolean {
+  const validUntil = parseDateValue(fm.valid_until);
+  return validUntil != null && now.getTime() >= validUntil;
+}
+
+/** #1468: the owner's own end date has passed — marked on the hit, so a
+ *  recall says so; automatic hook delivery drops such a hit entirely. */
+function markExpired(hit: RecallHit, fm: Record<string, unknown>, now: Date): void {
+  if (!pastValidUntil(fm, now)) return;
+  const raw = fm.valid_until;
+  hit.expired_on = raw instanceof Date ? raw.toISOString().slice(0, 10) : String(raw);
 }
 
 function parseDateValue(raw: unknown): number | null {

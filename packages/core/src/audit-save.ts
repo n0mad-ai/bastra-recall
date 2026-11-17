@@ -27,6 +27,10 @@ export const AuditContext = z.object({
   actor_detail: z.string().optional(),
   reason: z.string().optional(),
   session_id: z.string().optional(),
+  /** #1469: transport, client and client session of the tool call (see AuditEntry). */
+  transport: z.string().optional(),
+  client: z.string().nullable().optional(),
+  caller_session: z.string().nullable().optional(),
 });
 export type AuditContext = z.infer<typeof AuditContext>;
 
@@ -333,6 +337,9 @@ async function publishRestore(a: {
     file_path: dest,
     reason: context.reason,
     session_id: context.session_id,
+    transport: context.transport,
+    client: context.client,
+    caller_session: context.caller_session,
   });
 
   return { id: memoryID, restoredTo: dest, ...recorded };

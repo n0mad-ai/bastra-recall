@@ -40,9 +40,10 @@ import {
   registerClient,
   revokeGrant,
   sanitizeClientName,
-  verifyAccessToken,
+  accessTokenClient,
 } from "./oauth-store.js";
 import { renderAuthorizePage, renderErrorPage } from "./oauth-page.js";
+import { clientLabel } from "./caller-session.js";
 
 export const MCP_PATH = "/api/v1/mcp";
 const SCOPE = "mcp";
@@ -53,6 +54,10 @@ const PENDING_TTL_MS = 10 * 60_000;
 /** Open logins per client. A full client evicts its own oldest, so anonymous
  *  GETs against some other client_id never push out the user's open page. */
 const MAX_PENDING_PER_CLIENT = 5;
+/** #1280: open logins over all clients. Far above one user's logins; at the
+ *  cap a new authorize request is refused (fail closed) instead of pushing out
+ *  another client's open page, which an attacker could otherwise flush. */
+const MAX_PENDING_TOTAL = 200;
 const CODE_TTL_MS = 2 * 60_000;
 /** Brute force on the authorize form: a pending request dies after this many
  *  wrong API tokens, so a guesser has to open a new one each time. Per
@@ -138,11 +143,14 @@ export function mcpChallenge(req: IncomingMessage, invalidToken: boolean): strin
 
 /** Does the request carry an OAuth access token issued for THIS MCP URL?
  *  Only /api/v1/mcp asks — the token is worthless on every other route. */
-export async function verifyMcpBearer(req: IncomingMessage): Promise<boolean> {
+/** The OAuth client behind a valid MCP bearer as `name [client_id]` (#1469,
+ *  for the audit), or null when the bearer does not open /api/v1/mcp. */
+export async function verifyMcpBearer(req: IncomingMessage): Promise<string | null> {
   const m = /^Bearer\s+([A-Za-z0-9_-]{20,200})$/.exec(req.headers.authorization ?? "");
   const origin = publicOrigin(req);
-  if (!m || !origin) return false;
-  return verifyAccessToken(m[1], origin + MCP_PATH);
+  if (!m || !origin) return null;
+  const client = await accessTokenClient(m[1], origin + MCP_PATH);
+  return client ? (clientLabel(`${client.client_name} [${client.client_id}]`) ?? client.client_id) : null;
 }
 
 // ─── well-known metadata ─────────────────────────────────────────
@@ -315,7 +323,7 @@ type PublicOAuthRoute = (
   ctx: OAuthApiCtx
 ) => Promise<void>;
 const PUBLIC_OAUTH_ROUTES = new Map<string, ReadonlyMap<string, PublicOAuthRoute>>([
-  ["register", new Map([["POST", (req, res) => handleRegister(req, res)]])],
+  ["register", new Map([["POST", (req, res, _url, _origin, ctx) => handleRegister(req, res, ctx.state)]])],
   [
     "authorize",
     new Map([
@@ -354,7 +362,14 @@ export function dispatchOAuthApi(
   return true;
 }
 
-async function handleRegister(req: IncomingMessage, res: ServerResponse): Promise<void> {
+/** #1280: clients mid-login — an open authorize page or an unredeemed code. */
+function clientsInUse(state: OAuthState, now: number): Set<string> {
+  sweep(state.pending, now);
+  sweep(state.codes, now);
+  return new Set([...state.pending.values(), ...state.codes.values()].map((entry) => entry.client_id));
+}
+
+async function handleRegister(req: IncomingMessage, res: ServerResponse, state: OAuthState): Promise<void> {
   let body: Record<string, unknown>;
   try {
     body = JSON.parse(await readRaw(req)) as Record<string, unknown>;
@@ -385,16 +400,17 @@ async function handleRegister(req: IncomingMessage, res: ServerResponse): Promis
     return oauthError(res, 400, "invalid_client_metadata", "only response_type code is supported");
   }
   const rawName = typeof body.client_name === "string" ? sanitizeClientName(body.client_name).trim() : "";
-  const client = await registerClient({
-    client_name: rawName.slice(0, 120) || "Unnamed client",
-    redirect_uris: uris as string[],
-  });
+  const client = await registerClient(
+    { client_name: rawName.slice(0, 120) || "Unnamed client", redirect_uris: uris as string[] },
+    undefined,
+    clientsInUse(state, Date.now())
+  );
   if (!client)
     return oauthError(
       res,
       400,
       "invalid_client_metadata",
-      "too many registered clients — revoke some with `bastra oauth revoke`"
+      "too many registered clients or sign-ins in progress — try again in a few minutes, or revoke clients with `bastra oauth revoke`"
     );
   res.setHeader("Cache-Control", "no-store");
   sendJson(res, 201, {
@@ -406,6 +422,15 @@ async function handleRegister(req: IncomingMessage, res: ServerResponse): Promis
     response_types: ["code"],
     token_endpoint_auth_method: "none",
   });
+}
+
+/** A full client evicts its own oldest open login. False when all clients
+ *  together hold MAX_PENDING_TOTAL (#1280): then nothing is evicted. */
+function makeRoomForPending(state: OAuthState, clientId: string, now: number): boolean {
+  sweep(state.pending, now);
+  const own = [...state.pending].filter(([, p]) => p.client_id === clientId);
+  for (const [key] of own.slice(0, Math.max(0, own.length - MAX_PENDING_PER_CLIENT + 1))) state.pending.delete(key);
+  return state.pending.size < MAX_PENDING_TOTAL;
 }
 
 async function handleAuthorizeGet(res: ServerResponse, url: string, origin: string, state: OAuthState): Promise<void> {
@@ -439,9 +464,8 @@ async function handleAuthorizeGet(res: ServerResponse, url: string, origin: stri
   const stateParam = q.get("state");
 
   const now = Date.now();
-  sweep(state.pending, now);
-  const own = [...state.pending].filter(([, p]) => p.client_id === client.client_id);
-  for (const [key] of own.slice(0, Math.max(0, own.length - MAX_PENDING_PER_CLIENT + 1))) state.pending.delete(key);
+  if (!makeRoomForPending(state, client.client_id, now))
+    return sendHtml(res, 503, renderErrorPage("Too many sign-ins are open right now. Try again in a few minutes."));
   // The pending id doubles as the form's CSRF token: unguessable, bound to
   // the validated request server-side, single use. A foreign page can submit
   // the form only if it can read this page — which CSP and SOP prevent.

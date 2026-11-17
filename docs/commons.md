@@ -6,6 +6,8 @@
 
 ## English
 
+> **Status: on hold.** Commons stays in the free package and stays off by default. It is not promoted and not developed further until delivery that caps trust by origin ([#1482](https://github.com/n0mad-ai/bastra-recall/issues/1482)) is in place and there are users; then it will be decided again. The description below is the current behaviour for anyone who switches it on.
+
 Bastra Commons is a **separate, opt-in, default-OFF, PR-gated public Git repo** of
 community-proven engineering recipes — **never your private vault**. Reading it is
 one-way and read-only; every contribution goes through a human-reviewed PR. There is
@@ -345,6 +347,8 @@ inside recipes: CC0 1.0 (paste into any codebase, no attribution).
 <a id="deutsch"></a>
 
 ## Deutsch
+
+> **Stand: ruht.** Commons bleibt im freien Paket und standardmäßig aus. Es wird nicht beworben und nicht weiterentwickelt, bis eine Auslieferung steht, die das Vertrauen nach Herkunft begrenzt ([#1482](https://github.com/n0mad-ai/bastra-recall/issues/1482)), und es Nutzer gibt; dann wird neu entschieden. Die Beschreibung unten gilt für alle, die es einschalten.
 
 Bastra Commons ist ein **separates, optionales, standardmäßig ausgeschaltetes, per PR abgesichertes öffentliches Git-Repo** mit von der Community erprobten Engineering-Rezepten — **niemals dein privater Vault**. Das Lesen läuft nur in eine Richtung und nur lesend; jeder Beitrag durchläuft einen von Menschen geprüften PR. Es gibt
 **keinen automatischen Datenabfluss**: Nichts verlässt deinen Rechner ohne einen ausdrücklichen, geprüften PR.

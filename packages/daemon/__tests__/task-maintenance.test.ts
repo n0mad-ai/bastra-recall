@@ -240,7 +240,7 @@ test("protected paths and encompassing roots reject before registry writes; expl
     const { normalizedOwnerTarget } = await import("../src/cli/task-target-safety.js");
     assert.equal((await normalizedOwnerTarget({ ...input, root: alias })).root, work);
     await writeFile(join(work, "package.json"), JSON.stringify({ scripts: { test: "echo synthetic" } }));
-    assert.match((await normalizedOwnerTarget({ ...input, path: "package.json" })).execution_warning!, /Skripte/);
+    assert.equal((await normalizedOwnerTarget({ ...input, path: "package.json" })).package_scripts, true);
     await registerOwnerTaskTarget(f.auth, input);
     await writeFile(join(work, "second.txt"), "second\n");
     await registerOwnerTaskTarget(f.auth, { ...input, path: "second.txt" }, true);

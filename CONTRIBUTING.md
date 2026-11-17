@@ -10,6 +10,10 @@ workflow is light — but a few conventions keep things smooth.
 - **One maintainer.** Response times vary; a clear example or reproduction helps.
 - **Scope rule:** the OSS core must stay fully functional **without** the
   paid Mac app. Don't propose changes that move OSS features behind a tier.
+  What is free stays free. Writing documents (`save_document`) and text
+  recognition (OCR) were never part of the free feature set: document writing
+  has been off behind `BASTRA_DOCUMENT_WRITE=1` since it was added, and both
+  belong to the paid tier, Recall Pulse ([README](./README.md#free-and-recall-pulse)).
 
 ## Ways to contribute
 

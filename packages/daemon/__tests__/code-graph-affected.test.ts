@@ -387,13 +387,9 @@ describe("an unavailable answer is honest about why", () => {
   it("the frozen measurement surface is untouched by any of this (#582)", async () => {
     // The registration pins these hashes; changing a note must not move
     // them, or the run measures something other than what was registered.
-    // The code clause is the exception since #1457 — see the next two tests.
+    // The code clause (#1457) and the tool definition (#1562) are the
+    // exceptions — see the next tests.
     const sha = (v: string) => createHash("sha256").update(v).digest("hex");
-    assert.equal(
-      sha(JSON.stringify(affectedTools[0])),
-      "e8e51b5e0c80e6d7e18e009d18624265de9a515c26b95c728ec3b0507ed48b96",
-      "find_affected_files tool definition changed — arms.frozen_surface in the registration no longer matches"
-    );
     // THE PARTS, SEPARATELY. The combined hash alone let the two come apart:
     // 2f9dc47 rewrote the code clause, updated the combined hash and left
     // `code_clause_sha256` at version 5's value, and nothing said so for a day
@@ -423,6 +419,22 @@ describe("an unavailable answer is honest about why", () => {
     );
   });
 
+  it("#1562: the tool definition promises no more than was measured", () => {
+    // Same finding as #1457, on the tool's own text: a candidate list next to
+    // the usual text search — never "graph-first", never "ask it first".
+    const description = affectedTools[0].description;
+    assert.doesNotMatch(description, /graph-first/i);
+    assert.doesNotMatch(description, /ask it first/i);
+    assert.match(description, /candidate list next to your usual text search/);
+    assert.match(description, /candidates, not proof and not a complete list/);
+    const sha = (v: string) => createHash("sha256").update(v).digest("hex");
+    assert.equal(
+      sha(JSON.stringify(affectedTools[0])),
+      "f387dda1ef06b3c861cb027796a07cabdeb4e041de5a464bd3f505c16a26f59e",
+      "find_affected_files tool definition changed — a measurement registered against it would no longer match"
+    );
+  });
+
   it("the registration carries the very hashes this test pins (#582 review)", async () => {
     // The drift above was between the FILE and the code, not inside either, so
     // a test that only pins the code would not have caught it either.
@@ -432,12 +444,13 @@ describe("an unavailable answer is honest about why", () => {
     const sha = (v: string) => createHash("sha256").update(v).digest("hex");
     const frozen = reg.arms.frozen_surface;
     assert.equal(frozen.memory_part_sha256, sha(SERVER_INSTRUCTIONS));
-    assert.equal(frozen.tool_definition_sha256, sha(JSON.stringify(affectedTools[0])));
-    // #1457: the clause the v6 run measured was rewritten after the run, to say
-    // what the run found. That is only allowed because the run is over; a new
-    // measurement is a new registration that pins the clause as it is now.
+    // #1457 / #1562: the clause and the tool text the v6 run measured were
+    // rewritten after the run, to say what the run found. That is only allowed
+    // because the run is over; a new measurement is a new registration that
+    // pins both as they are now.
     assert.notEqual(frozen.code_clause_sha256, sha(CODE_AWARENESS_CLAUSE));
-    assert.equal(reg.status, "run_completed", "a code clause may only move away from a completed registration");
+    assert.notEqual(frozen.tool_definition_sha256, sha(JSON.stringify(affectedTools[0])));
+    assert.equal(reg.status, "run_completed", "the measured surface may only move away from a completed registration");
   });
 });
 

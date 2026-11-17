@@ -172,7 +172,7 @@ These optional fields affect staleness and recall ranking:
 
 | Field | Meaning |
 |---|---|
-| `valid_until` | Explicit ISO date after which the memory expires |
+| `valid_until` | Explicit ISO date after which the memory expires. From that date on, hooks no longer show it automatically (prompt, session start, reflex rules); `recall` still finds it, marked `expired_on` (#1468) |
 | `expires_after_days` | Override for type-based expiration defaults |
 | `last_reviewed_at` | ISO date of the last manual review |
 | `stale_status` | Optional persisted status: `fresh`, `aging`, `stale`, `expired` |
@@ -862,7 +862,7 @@ Diese optionalen Felder beeinflussen Veralterung und Recall-Ranking:
 
 | Feld | Bedeutung |
 |---|---|
-| `valid_until` | Explizites ISO-Datum, nach dem die Erinnerung abläuft |
+| `valid_until` | Explizites ISO-Datum, nach dem die Erinnerung abläuft. Ab diesem Datum zeigen Hooks sie nicht mehr automatisch (Prompt, Sitzungsstart, Reflex-Regeln); `recall` findet sie weiter, markiert mit `expired_on` (#1468) |
 | `expires_after_days` | Überschreibt die typabhängigen Ablauf-Standardwerte |
 | `last_reviewed_at` | ISO-Datum der letzten manuellen Prüfung |
 | `stale_status` | Optional gespeicherter Status: `fresh`, `aging`, `stale`, `expired` |

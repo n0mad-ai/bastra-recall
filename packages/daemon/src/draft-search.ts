@@ -221,6 +221,23 @@ export function deferDraftFeedback(
 
 /** Pure memory lookup/claim and rendering. The normal lane response is final
  * before this runs; any band error returns those exact original bytes. */
+interface HookEnvelope {
+  hookSpecificOutput?: { hookEventName?: string; additionalContext?: string };
+}
+
+/** #1460: would `block` push the lane's additionalContext past `max`? */
+function overBudget(envelope: HookEnvelope, block: string, max: number | undefined): boolean {
+  if (max === undefined) return false;
+  const existing = envelope.hookSpecificOutput?.additionalContext;
+  return (existing ? existing.length + 1 : 0) + block.length > max;
+}
+
+function appendContext(envelope: HookEnvelope, event: string, block: string): void {
+  const output = envelope.hookSpecificOutput ?? { hookEventName: event };
+  output.additionalContext = output.additionalContext ? `${output.additionalContext}\n${block}` : block;
+  envelope.hookSpecificOutput = output;
+}
+
 export async function appendLaneDrafts(
   stdout: string,
   event: string,
@@ -230,7 +247,10 @@ export async function appendLaneDrafts(
   limit = 1,
   compact = false,
   getNotes?: () => DraftNote[],
-  deadlineAt = Date.now() + DRAFT_BAND_MAX_MS
+  deadlineAt = Date.now() + DRAFT_BAND_MAX_MS,
+  /** #1460: the lane's context budget — the draft block counts inside it and
+   *  is left out (unclaimed) when the lane's text plus the block would cross it. */
+  maxTotalChars?: number
 ): Promise<string> {
   if (!draftHintsEnabled() || !sessionId || (compact && notes.length > 0)) return stdout;
   const started = performance.now();
@@ -268,8 +288,9 @@ export async function appendLaneDrafts(
       ];
       if (!hits.length) return stdout;
     }
-    if (Date.now() >= deadline) return stdout;
-    const envelope = JSON.parse(stdout);
+    const envelope = JSON.parse(stdout) as HookEnvelope;
+    if (Date.now() >= deadline || overBudget(envelope, formatDraftHints(hits.slice(0, limit)), maxTotalChars))
+      return stdout;
     const ids = new Set(
       claimDraftHints(
         sessionId,
@@ -281,9 +302,7 @@ export async function appendLaneDrafts(
     const selected = hits.filter((hit) => ids.has(hit.id));
     if (!selected.length) return stdout;
     const block = formatDraftHints(selected);
-    const output = envelope.hookSpecificOutput ?? { hookEventName: event };
-    output.additionalContext = output.additionalContext ? `${output.additionalContext}\n${block}` : block;
-    envelope.hookSpecificOutput = output;
+    appendContext(envelope, event, block);
     const rendered = JSON.stringify(envelope);
     markDraftDelivery(
       sessionId,

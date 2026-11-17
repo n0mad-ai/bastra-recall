@@ -18,7 +18,22 @@ export function agentEnvelope(text, from) {
   return `<agent-message from="${from}" transport="cmux" id="${randomUUID()}">${JSON.stringify(text)}</agent-message>`;
 }
 
-export function sendAgentMessage({ text, from, surface, workspace, print = false }, run = spawnSync) {
+/**
+ * #1155: an idle Codex pane took an Enter that arrived right behind the pasted
+ * text as part of the paste and left the message unsubmitted; two separate CLI
+ * calls, with their natural gap, always submitted. So Return waits this long.
+ */
+export const ENTER_PAUSE_MS = 300;
+
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+export function sendAgentMessage(
+  { text, from, surface, workspace, print = false },
+  run = spawnSync,
+  pause = sleepSync
+) {
   const envelope = agentEnvelope(text, from);
   if (print) return envelope + "\n";
   const target = /^(?:[a-z]+:\d+|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i;
@@ -50,12 +65,18 @@ export function sendAgentMessage({ text, from, surface, workspace, print = false
       throw new Error("cmux explicit terminal target unresolved; no Enter was sent");
     targets = { workspace_id: caller.workspace_id, surface_id: caller.surface_id };
   }
+  sendThenSubmit(run, pause, targets, envelope, options);
+  return "";
+}
+
+/** The text, a pause, then Return on the same target — never Return after a failed send. */
+function sendThenSubmit(run, pause, targets, envelope, options) {
   const sent = run("cmux", ["rpc", "surface.send_text", JSON.stringify({ ...targets, text: envelope })], options);
   if (sent.error || sent.status !== 0) throw new Error("cmux send failed; no Enter was sent");
+  pause(ENTER_PAUSE_MS);
   const submitted = run("cmux", ["rpc", "surface.send_key", JSON.stringify({ ...targets, key: "enter" })], options);
   if (submitted.error || submitted.status !== 0)
     throw new Error("cmux Enter failed; marked text may remain in the target input; inspect before retrying");
-  return "";
 }
 
 async function main() {

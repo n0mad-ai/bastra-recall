@@ -19,7 +19,6 @@
  */
 import { appendLaneDrafts } from "./draft-search.js";
 import { isAbsolute, resolve } from "node:path";
-import { request } from "node:http";
 import { detectTopics, extractContentExcerpt } from "@bastra-recall/core";
 import { envInt } from "./env.js";
 import { recordBudgetShadow } from "./session-budget.js";
@@ -32,7 +31,8 @@ import { codeGraphCache, repoRelative } from "./code-graph/dependents-block.js";
 import { logDeliveredBlock } from "./code-delivered-telemetry.js";
 import { memoryLocationNote } from "./memory-location.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookCaller } from "./hook-surface.js";
+import { hookCaller, hookClient, hookAgent, hookClientEvidence } from "./hook-surface.js";
+import { postHookRecall } from "./hook-recall-post.js";
 import {
   formatCompactHint,
   isBindingAnchored,
@@ -57,6 +57,7 @@ import {
 } from "./session-state.js";
 import { MUST_LOAD_SCORE, formatHintBlock, type RecallHit } from "./write-format.js";
 import { writeTelemetry, type HookStatus } from "./write-lane-telemetry.js";
+import { fitOptional, PRE_TOOL_CONTEXT_CHAR_BUDGET } from "./pretool-budget.js";
 
 // #680: formatting and the telemetry row live in their own modules; the lane's
 // public surface is re-exported unchanged.
@@ -132,7 +133,11 @@ export async function runWriteLane(
   // Recall-Call und wird in JEDEM Emit-Pfad mitgesendet. Same-machine
   // assumption is safe: daemon and hook share the filesystem by definition
   // of a loopback-only endpoint.
-  const sizeNote = await fileSizeNote(filePath, undefined, payload.cwd).catch(() => null);
+  // #1538: bounded by a quarter of the lane budget, so a slow disk or a busy
+  // daemon cannot spend the recall's time on it; past it the note is skipped.
+  const sizeNote = await fileSizeNote(filePath, undefined, payload.cwd, startedAt + HOOK_TIMEOUT_MS / 4).catch(
+    () => null
+  );
 
   // #297: memory-shaped .md outside the vault root — same discipline as the
   // size note: deterministic, rides through suppression, fail-open. The two
@@ -161,7 +166,7 @@ export async function runWriteLane(
   let status: HookStatus = "ok";
   let errMsg: string | null = null;
   try {
-    resp = await postRecall(
+    resp = await postHookRecall<RecallResponse>(
       selfBaseUrl,
       {
         query: topics.query,
@@ -274,33 +279,10 @@ export async function runWriteLane(
       return { repoRoot, impact, applies };
     })
   );
-  const codeNotes = perTarget.map((t) => t.impact.note).filter((n): n is ImpactNote => n !== null);
-  const memoryCodeNotes = perTarget.map((t) => t.applies).filter((n): n is AppliesToNote => n !== null);
-  // #606: one `code_tool_call` row per delivered block, and one per dedupe hit
-  // — the two silences that are worth telling apart. Fire-and-forget: the row
-  // is the measurement, not part of the answer.
-  for (const t of perTarget) {
-    if (t.impact.note === null && !t.impact.dedupeHit) continue;
-    void logDeliveredBlock({
-      sessionId: payload.session_id ?? null,
-      lane: "write",
-      repo: t.repoRoot,
-      dedupeHit: t.impact.dedupeHit,
-      ...(t.impact.note !== null
-        ? {
-            basis: t.impact.note.basis,
-            files: t.impact.note.files,
-            truncated: t.impact.note.truncated,
-            tokensEst: t.impact.note.tokensEst,
-            tookMs: t.impact.note.tookMs,
-          }
-        : {}),
-    });
-  }
-  for (const n of [...codeNotes, ...memoryCodeNotes]) {
-    const key = n.dedupeKey;
-    stateDeltas.push((s) => bumpShown(s, key, Date.now()));
-  }
+  // #1460: candidates only — which of them fit the pre-tool budget is decided
+  // once the recall hints are known (below); only those are logged and booked.
+  const candidateCodeNotes = perTarget.map((t) => t.impact.note).filter((n): n is ImpactNote => n !== null);
+  const candidateMemoryCodeNotes = perTarget.map((t) => t.applies).filter((n): n is AppliesToNote => n !== null);
   // #572: book what this call is about to write, block or no block. The
   // per-edit answer above dedupes by design, so the session-wide union can
   // only come from an accumulator — the Stop lane reads it at the task
@@ -341,10 +323,8 @@ export async function runWriteLane(
     stateDeltas.push((s) => recordTouched(s, repoRoot, rel, null));
   }
 
-  const detNote =
-    [sizeNote, locationNote, ...codeNotes.map((n) => n.note), ...memoryCodeNotes.map((n) => n.note)]
-      .filter((n): n is string => n !== null)
-      .join("\n") || null;
+  // The size and location notes are convention enforcement: always sent.
+  const fixedNotes = [sizeNote, locationNote].filter((n): n is string => n !== null);
 
   const survivingHits: RecallHit[] = [];
   let droppedDedupCount = 0;
@@ -435,6 +415,42 @@ export async function runWriteLane(
         additionalContext: context,
       },
     });
+  const hintsBlock =
+    totalHints === 0
+      ? null
+      : compactHit
+        ? formatCompactHint(compactHit, project, client, hintReason as "first-touch" | "binding-anchored")
+        : formatHintBlock(
+            requiredHits,
+            optionalHits,
+            project,
+            resp?.weak_result === true,
+            resp?.no_home === true,
+            resp?.unfused === true,
+            client,
+            resp?.degraded
+          );
+  // #1460: the code-impact and applies-to blocks fill what the budget leaves
+  // next to the fixed notes and the delivered hints; one that does not fit is
+  // left out whole, never cut.
+  const sent = [...fixedNotes, ...(hintsBlock !== null && !suppressed ? [hintsBlock] : [])];
+  const fitted = fitOptional(
+    Math.max(0, sent.reduce((n, t) => n + t.length + 1, 0) - 1),
+    [...candidateCodeNotes, ...candidateMemoryCodeNotes],
+    (n) => n.note.length,
+    PRE_TOOL_CONTEXT_CHAR_BUDGET
+  );
+  const keptNotes = new Set<ImpactNote | AppliesToNote>(fitted.kept);
+  const codeNotes = candidateCodeNotes.filter((n) => keptNotes.has(n));
+  const memoryCodeNotes = candidateMemoryCodeNotes.filter((n) => keptNotes.has(n));
+  logImpactBlocks(payload.session_id ?? null, perTarget, keptNotes);
+  for (const n of fitted.kept) {
+    const key = n.dedupeKey;
+    stateDeltas.push((s) => bumpShown(s, key, Date.now()));
+  }
+  const detNote =
+    [...fixedNotes, ...codeNotes.map((n) => n.note), ...memoryCodeNotes.map((n) => n.note)].join("\n") || null;
+
   let stdout: string;
   if (totalHints === 0) {
     // no recall hints — the deterministic notes (size, #297 location) still go out
@@ -453,34 +469,11 @@ export async function runWriteLane(
     } else {
       stdout = "{}";
     }
-    const block = compactHit
-      ? formatCompactHint(compactHit, project, client, hintReason as "first-touch" | "binding-anchored")
-      : formatHintBlock(
-          requiredHits,
-          optionalHits,
-          project,
-          resp?.weak_result === true,
-          resp?.no_home === true,
-          resp?.unfused === true,
-          client,
-          resp?.degraded
-        );
+    const block = hintsBlock!;
     suppressedTokensEst = Math.ceil(block.length / 4);
     stateDeltas.push((s) => recordSourceSuppressed(s, BACKOFF_SOURCE));
   } else {
-    const hintsBlock = compactHit
-      ? formatCompactHint(compactHit, project, client, hintReason as "first-touch" | "binding-anchored")
-      : formatHintBlock(
-          requiredHits,
-          optionalHits,
-          project,
-          resp?.weak_result === true,
-          resp?.no_home === true,
-          resp?.unfused === true,
-          client,
-          resp?.degraded
-        );
-    const block = detNote ? `${detNote}\n${hintsBlock}` : hintsBlock;
+    const block = detNote ? `${detNote}\n${hintsBlock!}` : hintsBlock!;
     hintTokensEst = Math.ceil(block.length / 4);
     hintedIds = [...requiredHits, ...optionalHits].map((h) => h.id);
     hintedTypes = [...requiredHits, ...optionalHits].map((h) => h.type);
@@ -562,6 +555,7 @@ export async function runWriteLane(
         }
       : {}),
     code_targets: targets,
+    ...(fitted.dropped > 0 ? { budget_dropped_count: fitted.dropped } : {}),
     ...(memoryCodeNotes.length > 0
       ? {
           applies_to_tokens_est: memoryCodeNotes.reduce((n, c) => n + Math.ceil(c.note.length / 4), 0),
@@ -590,71 +584,44 @@ export async function runWriteLane(
     1,
     true,
     undefined,
-    startedAt + HOOK_TIMEOUT_MS
+    startedAt + HOOK_TIMEOUT_MS,
+    PRE_TOOL_CONTEXT_CHAR_BUDGET
   );
 }
 
-// ─── loopback self-call ─────────────────────────────────────────────────────
-
-/** #445: die Identitätsfelder aus #263 kommen aus `HookCaller` — siehe todo-lane.ts. */
-interface RecallRequestBody extends HookCaller {
-  query: string;
-  topics: string[];
-  project: string | null;
-  tool_name: string;
-  tool_input_excerpt: string;
-  k: number;
-  scope?: string;
-  hook_source: string;
-}
-
-function postRecall(baseUrl: string, body: RecallRequestBody, timeoutMs: number): Promise<RecallResponse> {
-  return new Promise((resolve, reject) => {
-    let url: URL;
-    try {
-      url = new URL("/hook/recall", baseUrl);
-    } catch (err) {
-      reject(err);
-      return;
-    }
-    const payload = Buffer.from(JSON.stringify(body), "utf8");
-    const req = request(
-      {
-        method: "POST",
-        hostname: url.hostname,
-        port: url.port || 80,
-        path: url.pathname,
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          "Content-Length": payload.byteLength.toString(),
-        },
-        timeout: timeoutMs,
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (c: Buffer) => chunks.push(c));
-        res.on("end", () => {
-          const raw = Buffer.concat(chunks).toString("utf8");
-          if ((res.statusCode ?? 500) >= 400) {
-            reject(new Error(`HTTP ${res.statusCode}: ${raw.slice(0, 200)}`));
-            return;
+/**
+ * #606: one `code_tool_call` row per delivered block, and one per dedupe hit —
+ * the two silences that are worth telling apart. #1460: a block the budget
+ * left out was not delivered and gets no row. Fire-and-forget: the row is the
+ * measurement, not part of the answer.
+ */
+function logImpactBlocks(
+  sessionId: string | null,
+  perTarget: readonly { repoRoot: string; impact: ImpactResult }[],
+  delivered: ReadonlySet<ImpactNote | AppliesToNote>
+): void {
+  for (const t of perTarget) {
+    const note = t.impact.note !== null && delivered.has(t.impact.note) ? t.impact.note : null;
+    if (note === null && !t.impact.dedupeHit) continue;
+    void logDeliveredBlock({
+      sessionId,
+      lane: "write",
+      repo: t.repoRoot,
+      dedupeHit: t.impact.dedupeHit,
+      ...(note !== null
+        ? {
+            basis: note.basis,
+            files: note.files,
+            truncated: note.truncated,
+            tokensEst: note.tokensEst,
+            tookMs: note.tookMs,
           }
-          try {
-            resolve(JSON.parse(raw) as RecallResponse);
-          } catch {
-            reject(new Error("invalid JSON response from daemon"));
-          }
-        });
-      }
-    );
-    req.on("timeout", () => {
-      req.destroy(new Error("timeout"));
+        : {}),
     });
-    req.on("error", reject);
-    req.write(payload);
-    req.end();
-  });
+  }
 }
+
+// ─── loopback self-call ─────────────────────────────────────────────────────
 
 /**
  * Most targets of one call that get code blocks. A Codex patch can touch a

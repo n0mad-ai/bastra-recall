@@ -11,6 +11,30 @@ V2 and V3 scopes. It describes planned work, not shipped capabilities. The
 [technical architecture](./Evolution%20Architecture%20V1%20to%20V2.md), especially
 sections 42–45, preserves the detailed contracts. German is the governing version.
 
+### Decisions in force since October 2026
+
+Later owner decisions take precedence over this plan where the two differ (#1476):
+
+- **Versions, 14.11.2026:** releases stay in the 1.x line; V2 features ship in them
+  as they become ready. After v1.2.0 comes v1.3.0, with only emergency patch releases
+  (such as 1.2.1) in between. `2.0.0-beta.N` below is not used.
+- **One milestone at a time, 30.10.2026:** the roadmap is worked through one
+  milestone after another. A milestone is done when its tests pass and its everyday
+  test runs the core case cleanly; only then is it tagged. Small items may be slotted in.
+- **Approval, 10.11.2026 (#1424):** the user's instruction in chat is the approval
+  for an agent action, recorded with its origin. No key file, signature or extra
+  approval step is added; the boundary is the computer account that owns the vault.
+- **Multi-user, 09.11.2026:** sign-in and several users are the last roadmap item
+  ([milestone #36](https://github.com/n0mad-ai/bastra-recall/milestone/36)).
+- **Free and paid, 10.11. / 14.11. / 16.11.2026:** free Recall manages tasks and
+  surfaces due ones; Recall starting an agent by itself, a hosted agent, the phone and
+  connections to mail, calendar and other services belong to the paid tier, Recall Pulse.
+  Writing documents and OCR belong to Recall Pulse too. Commons stays free, off by
+  default and on hold. What is free stays free.
+- **Code awareness, 25.09.2026:** frozen in [milestone #29](https://github.com/n0mad-ai/bastra-recall/milestone/29)
+  and marked experimental; bug fixes, further work only when time allows.
+- **V3 milestone, 14.11.2026:** milestone #31 was closed, because V2 and V3 are one plan.
+
 ### One roadmap, three kinds of work
 
 - **Build:** [milestone #19](https://github.com/n0mad-ai/bastra-recall/milestone/19),
@@ -27,7 +51,7 @@ V3 functions do not require a fully measured or released V2 first.
 
 ### Beta and stable releases
 
-Incremental releases with outstanding confirmations use `2.0.0-beta.N`. Their
+Incremental releases with outstanding confirmations use `2.0.0-beta.N` (superseded: releases stay 1.x, see above). Their
 release notes identify enabled features, opt-in/shadow modes, pending/failed/not-evaluable
 evidence, known limitations and rollback. Beta may include safe, explicitly opted-in
 feature trials before longitudinal proof; it never silently promotes an unconfirmed
@@ -147,6 +171,32 @@ für die bisherigen V2- und V3-Umfänge. Sie beschreibt geplante Arbeit, keine b
 ausgelieferten Fähigkeiten. Die [technische Architektur](./Evolutionsarchitektur%20V1%20zu%20V2.md),
 insbesondere Abschnitte 42–45, erhält die detaillierten Verträge. Deutsch ist maßgeblich.
 
+### Geltende Entscheidungen seit Oktober 2026
+
+Spätere Entscheidungen des Product Owners gehen diesem Plan vor, wo beide sich unterscheiden (#1476):
+
+- **Versionen, 14.11.2026:** Releases bleiben in der 1.x-Reihe; V2-Funktionen kommen
+  darin, sobald sie fertig sind. Nach v1.2.0 folgt v1.3.0, dazwischen nur
+  Notfall-Zwischenreleases (etwa 1.2.1). `2.0.0-beta.N` unten wird nicht verwendet.
+- **Ein Milestone nach dem anderen, 30.10.2026:** Die Roadmap wird Milestone für
+  Milestone abgearbeitet. Ein Milestone ist fertig, wenn seine Tests grün sind und sein
+  Alltagstest den Kernfall sauber durchläuft; erst dann gibt es Tag und Release.
+  Zwischenpunkte dürfen eingeschoben werden.
+- **Freigabe, 10.11.2026 (#1424):** Die Anweisung des Nutzers im Chat ist die
+  Freigabe für eine Agentenaktion und wird mit Herkunft festgehalten. Es gibt keine
+  Schlüsseldatei, keine Unterschrift und keinen zusätzlichen Freigabeschritt; die
+  Grenze ist das Rechnerkonto, dem der Vault gehört.
+- **Mehrbenutzer, 09.11.2026:** Anmeldung und mehrere Nutzer sind der letzte
+  Roadmap-Punkt ([Milestone #36](https://github.com/n0mad-ai/bastra-recall/milestone/36)).
+- **Frei und bezahlt, 10.11. / 14.11. / 16.11.2026:** Das freie Recall verwaltet
+  Aufgaben und meldet fällige; dass Recall selbst einen Agenten startet, ein gehosteter
+  Agent, das Handy und Verbindungen zu Mail, Kalender und anderen Diensten gehören zur
+  bezahlten Stufe Recall Pulse. Dokumente schreiben und OCR gehören ebenfalls zu
+  Recall Pulse. Commons bleibt frei, standardmäßig aus und ruht. Was frei ist, bleibt frei.
+- **Code-Awareness, 25.09.2026:** eingefroren in [Milestone #29](https://github.com/n0mad-ai/bastra-recall/milestone/29)
+  und als experimentell markiert; Fehlerbehebungen, Weiterbau nur bei Zeit.
+- **V3-Milestone, 14.11.2026:** Milestone #31 wurde geschlossen, weil V2 und V3 ein Plan sind.
+
 ### Eine Roadmap, drei Arten von Arbeit
 
 - **Bauen:** [Milestone #19](https://github.com/n0mad-ai/bastra-recall/milestone/19),
@@ -165,7 +215,7 @@ vermessenen oder freigegebenen V2-Release.
 
 ### Beta und stabile Releases
 
-Zwischenreleases mit offenen Funktionsbestätigungen heißen `2.0.0-beta.N`.
+Zwischenreleases mit offenen Funktionsbestätigungen heißen `2.0.0-beta.N` (abgelöst: Releases bleiben 1.x, siehe oben).
 Ihre Releasehinweise nennen aktive Funktionen, Opt-in-/Shadow-Modi, offene,
 gescheiterte oder nicht auswertbare Nachweise, Einschränkungen und Rollback.
 Beta darf sichere, ausdrücklich aktivierte Funktionsversuche vor einem Langzeitnachweis

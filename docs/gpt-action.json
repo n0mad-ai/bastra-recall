@@ -398,7 +398,7 @@
       "post": {
         "operationId": "find_affected_files",
         "summary": "find affected files",
-        "description": "GRAPH-FIRST change impact: given a file you are about to change or have just changed, list the files that may break, from the repository's code graph. Call it BEFORE editing an exported symbol and AFTER changing one — whenever the question is 'what breaks if I change this?', 'who uses t...",
+        "description": "Change impact from the repository's code graph: given a file you are about to change or have just changed, list the files that may break. Useful before editing an exported symbol and after changing one — whenever the question is 'what breaks if I change this?', 'who uses this?', 'did I ...",
         "requestBody": {
           "required": true,
           "content": {
@@ -1561,6 +1561,71 @@
                 "required": [
                   "id"
                 ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful JSON result; fields depend on the operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/restore_memory": {
+      "post": {
+        "operationId": "restore_memory",
+        "summary": "restore memory",
+        "description": "Undo archive_memory: bring an archived memory back from the vault trash to where it lived. Without id: list the archived memories that can be restored (newest first). With id: restore that memory; refused if a memory with the same id is live again.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100
+                  }
+                }
               }
             }
           }

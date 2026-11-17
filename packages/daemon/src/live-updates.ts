@@ -74,7 +74,11 @@ export interface LiveUpdate {
   band?: RecallBand;
 }
 
-const MAX_ENTRIES = 500; // ring buffer — lossless within realistic poll gaps
+/** Ring buffer size PER VISIBILITY — lossless within realistic poll gaps.
+ *  #1605: private and public entries each get their own share, so a burst of
+ *  private activity can never push out entries a caller without private
+ *  access has not fetched yet. */
+const MAX_ENTRIES = 500;
 const DEBOUNCE_MS = 600; // quiet window per memory id before an entry finalizes
 /**
  * Hard ceiling on the quiet window, measured from an entry's FIRST event.
@@ -144,6 +148,9 @@ export function createLiveUpdates(
   /** id → ms epoch der letzten finalisierten Notice (Sperre für "read"). */
   const announcedAt = new Map<string, number>();
   let seq = 0;
+  let hiddenCount = 0;
+  /** Highest seq ever dropped from the buffer — the owner's gap signal. */
+  let droppedSeq = 0;
   // A caller who may not see private entries gets its own cursor, counted over
   // the visible entries alone, so a gap in `seq` never reveals that private
   // activity happened (contributor audit). The proven owner keeps `seq`.
@@ -191,7 +198,9 @@ export function createLiveUpdates(
     if (p.hidden) hiddenEntries.add(entry);
     else publicSeqOf.set(entry, ++publicSeq);
     recent.push(entry);
-    if (recent.length > maxEntries) recent.splice(0, recent.length - maxEntries);
+    if (p.hidden) hiddenCount += 1;
+    const share = p.hidden ? hiddenCount : recent.length - hiddenCount;
+    if (share > maxEntries) dropOldest(p.hidden);
     // Sperrfenster startet erst beim Finalisieren — die Karte ist ab JETZT
     // sichtbar, also läuft die Ruhe ab jetzt und nicht ab dem ersten Ereignis.
     const now = Date.now();
@@ -203,6 +212,14 @@ export function createLiveUpdates(
         if (now - at > reannounceMs) announcedAt.delete(key);
       }
     }
+  };
+
+  /** Evicts the oldest entry of one visibility; the other share is untouched. */
+  const dropOldest = (hidden: boolean): void => {
+    const index = recent.findIndex((e) => hiddenEntries.has(e) === hidden);
+    droppedSeq = Math.max(droppedSeq, recent[index].seq);
+    if (hidden) hiddenCount -= 1;
+    recent.splice(index, 1);
   };
 
   // Collapse an event into the pending entry for its id (or open one) and
@@ -323,9 +340,12 @@ export function createLiveUpdates(
     sendJsonPlain(res, 200, { updates, seq: view.seq, minSeq: view.minSeq });
   }
 
-  /** Every entry under the full cursor. */
+  /** Every entry under the full cursor. An eviction can leave a hole between
+   *  surviving entries (#1605), so minSeq starts after the newest dropped seq:
+   *  a cursor before it learns that changes were lost instead of missing them. */
   function ownerView(): { entries: LiveUpdate[]; seq: number; minSeq: number } {
-    return { entries: recent, seq, minSeq: recent.length > 0 ? recent[0].seq : seq };
+    const oldest = recent.length > 0 ? recent[0].seq : seq;
+    return { entries: recent, seq, minSeq: Math.max(oldest, droppedSeq + 1) };
   }
 
   /** Visible entries only, renumbered by their own cursor. */

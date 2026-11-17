@@ -38,6 +38,7 @@ import {
   rmdirSync,
   rmSync,
   statSync,
+  type Stats,
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -117,16 +118,23 @@ export function archiveRoot(env: NodeJS.ProcessEnv = process.env, uid = myUid())
   for (const name of readdirSync(root)) {
     const p = join(root, name);
     const st = lstatSync(p);
-    if (st.isSymbolicLink() || (uid >= 0 && st.uid !== uid)) {
-      throw new Error(
-        `the archive directory '${raw}' holds '${name}', which is not yours or is a link — ` +
-          "Recall does not use it. Move that entry away, or choose another directory of your own"
-      );
-    }
+    if (foreignEntry(st, uid)) throw new Error(foreignEntryProblem(raw, name));
     if (wasOpen && st.isDirectory()) chmodSync(p, 0o700);
     else if (wasOpen && st.isFile() && name.startsWith("manifest")) chmodSync(p, 0o600);
   }
   return root;
+}
+
+/** An entry directly in the archive that is a link or another account's. */
+function foreignEntry(st: Stats, uid: number): boolean {
+  return st.isSymbolicLink() || (uid >= 0 && st.uid !== uid);
+}
+
+function foreignEntryProblem(raw: string, name: string): string {
+  return (
+    `the archive directory '${raw}' holds '${name}', which is not yours or is a link — ` +
+    "Recall does not use it. Move that entry away, or choose another directory of your own"
+  );
 }
 
 /** Why the archive directory is not this user's, or null. A symlink the user
@@ -144,8 +152,10 @@ function rootProblem(raw: string, root: string, env: NodeJS.ProcessEnv, uid: num
   );
 }
 
-/** For doctor: why the archive directory would be refused, or null. Creates
- *  nothing; a directory that is not there yet is made 0700 on first use. */
+/** For doctor: why the archive directory would be refused, or null — the
+ *  directory itself or (#1606) a link or foreign entry directly inside it, the
+ *  same entries archiveRoot stops at. Creates and changes nothing; a directory
+ *  that is not there yet is made 0700 on first use. */
 export function archiveRootProblem(env: NodeJS.ProcessEnv = process.env, uid = myUid()): string | null {
   const raw = archiveDir(env);
   let root: string;
@@ -154,7 +164,18 @@ export function archiveRootProblem(env: NodeJS.ProcessEnv = process.env, uid = m
   } catch {
     return null;
   }
-  return rootProblem(raw, root, env, uid);
+  const problem = rootProblem(raw, root, env, uid);
+  if (problem) return problem;
+  for (const name of readdirSync(root)) {
+    let st: Stats;
+    try {
+      st = lstatSync(join(root, name));
+    } catch {
+      continue; // gone between listing and look: nothing left to refuse
+    }
+    if (foreignEntry(st, uid)) return foreignEntryProblem(raw, name);
+  }
+  return null;
 }
 
 /** The manifest is created 0600: it names every archived path. */

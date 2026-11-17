@@ -479,3 +479,8 @@ li.tk-an__card.is-done > .tk-an__subj::before {
     margin-left: 0;
   }
 }
+
+/* After "Delete": the undo notice above the next report (#1559), aligned with the reader's text. */
+.tk-rep__undo {
+  margin: 16px 26px 0;
+}

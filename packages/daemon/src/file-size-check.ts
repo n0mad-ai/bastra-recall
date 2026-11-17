@@ -183,15 +183,38 @@ export function formatSizeNote(filePath: string, lines: number, t: SizeThreshold
 
 /** Measure + format in one step — the hook's entry point. Never throws:
  *  a new/unreadable file simply has nothing to warn about. */
-export async function fileSizeNote(filePath: string, settingsPath?: string, cwd?: string): Promise<string | null> {
+/**
+ * #1538: `deadline` (epoch ms) bounds the note inside a hook budget. Past it the
+ * answer is null — the lane continues without the note, as on any error. The
+ * waits (settings, file read) are raced against it; the synchronous line scan
+ * starts only before it and is itself bounded by MAX_BYTES.
+ */
+export async function fileSizeNote(
+  filePath: string,
+  settingsPath?: string,
+  cwd?: string,
+  deadline = Infinity
+): Promise<string | null> {
   if (envOff("BASTRA_SIZE_CHECK")) return null;
-  const t = thresholdsFor(filePath, await readSizeSettings(settingsPath), cwd);
-  if (!t) return null;
-  try {
+  const note = async (): Promise<string | null> => {
+    const t = thresholdsFor(filePath, await readSizeSettings(settingsPath), cwd);
+    if (!t) return null;
     const raw = await readFile(filePath, "utf8");
-    if (raw.length > MAX_BYTES) return null;
+    if (raw.length > MAX_BYTES || Date.now() >= deadline) return null;
     return formatSizeNote(filePath, countCodeLines(raw, extname(filePath).toLowerCase()), t);
+  };
+  if (deadline === Infinity) return note().catch(() => null);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      note(),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), Math.max(0, deadline - Date.now()));
+      }),
+    ]);
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }

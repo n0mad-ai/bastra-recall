@@ -42,6 +42,7 @@ import { FAST_BUDGET_MS, PROMPT_ASSERTION_BUDGET_MS, RECALL_BUDGET_MS, STOP_BUDG
 import { shouldSkipPath } from "../src/hook-skip.js";
 import { decorateHookPayload } from "../src/hook-surface.js";
 import { normalizeWritePayload } from "../src/hook-write-input.js";
+import { emitStdout, exitAfterStdout, stdoutFlushed } from "../src/hook-stdout.js";
 import { STUB_BUILD_INFO } from "./build-info.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", RECALL_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
@@ -115,7 +116,7 @@ let failureWrite: Promise<void> | undefined;
 function emitOnce(payload: string): void {
   if (stdoutEmitted) return;
   stdoutEmitted = true;
-  process.stdout.write(payload);
+  emitStdout(payload);
 }
 
 /**
@@ -328,7 +329,7 @@ if (process.argv[2] === "version") {
   const killSwitch = setTimeout(
     () => {
       emitOnce("{}");
-      if (lane !== "gate" && lane !== "stop") process.exit(0);
+      if (lane !== "gate" && lane !== "stop") return void exitAfterStdout();
       failureWrite ??= (async () => {
         const { spoolRulebookFailure } = await import("../src/rulebook-spool.js");
         await spoolRulebookFailure(callSessionId);
@@ -353,6 +354,7 @@ if (process.argv[2] === "version") {
     try {
       await failureWrite;
     } finally {
+      await stdoutFlushed();
       process.exit(0);
     }
   }

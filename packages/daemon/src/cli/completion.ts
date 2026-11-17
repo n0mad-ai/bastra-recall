@@ -40,6 +40,7 @@ export const COMMANDS = [
   "patches",
   "feedback",
   "archive",
+  "trash",
   "reconcile",
   "completion",
   "help",

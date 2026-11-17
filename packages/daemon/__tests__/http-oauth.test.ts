@@ -445,6 +445,87 @@ test("oauth: open logins are capped per client, so foreign GETs cannot evict the
   });
 });
 
+test("#1280 oauth: registration churn cannot evict a client that is mid-login", async () => {
+  await withServer(async (port, storePath) => {
+    // The user's client is the OLDEST never-granted registration — the one the
+    // cap used to push out — and its authorize page is open.
+    const userClient = await register(port);
+    const { verifier, challenge } = pkce();
+    const requestId = await openAuthorize(port, userClient, challenge);
+    for (let i = 0; i < 99; i++)
+      await registerClient({ client_name: `churn${i}`, redirect_uris: [REDIRECT] }, storePath);
+    await register(port, "churn-at-cap");
+
+    const approved = await approve(port, requestId, TOKEN);
+    assert.equal(approved.status, 302, approved.text);
+    const exchanged = await call(
+      port,
+      "POST",
+      "/api/v1/oauth/token",
+      form({
+        grant_type: "authorization_code",
+        code: new URL(String(approved.headers.location)).searchParams.get("code")!,
+        redirect_uri: REDIRECT,
+        client_id: userClient,
+        code_verifier: verifier,
+      })
+    );
+    assert.equal(exchanged.status, 200, `the user's login failed after registration churn: ${exchanged.text}`);
+  });
+});
+
+test("#1280 oauth: an unredeemed code protects its client too, and a cap full of logins fails closed", async () => {
+  await withServer(async (port, storePath) => {
+    const userClient = await register(port);
+    const approved = await approve(port, await openAuthorize(port, userClient, pkce().challenge), TOKEN);
+    assert.equal(approved.status, 302);
+    const busy: string[] = [];
+    for (let i = 0; i < 99; i++) {
+      const c = await registerClient({ client_name: "ChatGPT", redirect_uris: [REDIRECT] }, storePath);
+      busy.push(c!.client_id);
+    }
+    for (const id of busy) await openAuthorize(port, id, pkce().challenge);
+    const refused = await call(port, "POST", "/api/v1/oauth/register", {
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ client_name: "late", redirect_uris: [REDIRECT] }),
+    });
+    assert.equal(refused.status, 400, refused.text);
+    assert.match(refused.text, /sign-ins in progress/);
+    const data = JSON.parse(readAppRecord("oauth", storePath)) as { clients: { client_id: string }[] };
+    assert.equal(data.clients.length, 100);
+    assert.ok(
+      data.clients.some((c) => c.client_id === userClient),
+      "the client holding a code was evicted"
+    );
+  });
+});
+
+test("#1280 oauth: open logins have a global cap that refuses instead of evicting others", async () => {
+  await withServer(async (port) => {
+    const userClient = await register(port);
+    const users = await openAuthorize(port, userClient, pkce().challenge);
+    const q = (clientId: string) =>
+      new URLSearchParams({
+        response_type: "code",
+        client_id: clientId,
+        redirect_uri: REDIRECT,
+        code_challenge: pkce().challenge,
+        code_challenge_method: "S256",
+      });
+    let refused = 0;
+    for (let c = 0; c < 41; c++) {
+      const other = await register(port, "ChatGPT");
+      for (let i = 0; i < 5; i++) {
+        const r = await call(port, "GET", `/api/v1/oauth/authorize?${q(other)}`);
+        if (r.status === 503) refused++;
+        else assert.equal(r.status, 200, r.text);
+      }
+    }
+    assert.ok(refused > 0, "the global cap never refused an authorize request");
+    assert.equal((await approve(port, users, TOKEN)).status, 302, "the user's open page was pushed out");
+  });
+});
+
 test("oauth: deny redirects with access_denied", async () => {
   await withServer(async (port) => {
     const clientId = await register(port);

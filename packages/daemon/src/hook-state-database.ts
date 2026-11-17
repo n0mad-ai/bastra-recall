@@ -4,9 +4,8 @@
 import { readdir, rename, writeFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
-import { tmpdir } from "node:os";
 import { defaultAppDatabasePath, openAppDatabase, type AppDatabase } from "./app-database.js";
-import { privateDirState, readPrivateFile } from "./private-state-dir.js";
+import { defaultHookStateDir, legacyHookStateDir, privateDirState, readPrivateFile } from "./private-state-dir.js";
 
 /** Legacy state files are small JSON or empty touch files. */
 const MAX_LEGACY_BYTES = 8 * 1024 * 1024;
@@ -26,12 +25,25 @@ interface HookSnapshot {
 }
 const snapshots = new Map<string, Promise<HookSnapshot>>();
 
+/** The default location and the tmpdir one before it (#1569) are one store. */
+function isDefaultDir(dir: string): boolean {
+  return resolve(dir) === resolve(defaultHookStateDir()) || resolve(dir) === resolve(legacyHookStateDir());
+}
+
 function databasePath(dir: string): string {
-  return process.env.BASTRA_DB_PATH
-    ? defaultAppDatabasePath()
-    : resolve(dir) !== resolve(join(tmpdir(), "bastra-hook"))
-      ? join(dir, "recall.db")
-      : defaultAppDatabasePath();
+  return process.env.BASTRA_DB_PATH || isDefaultDir(dir) ? defaultAppDatabasePath() : join(dir, "recall.db");
+}
+
+/** #1569: rows keep the namespace of the location that wrote them first, so a
+ * moved default directory still finds every stored session. */
+function storeIdentity(dir: string): string {
+  return isDefaultDir(dir) ? resolve(legacyHookStateDir()) : resolve(dir);
+}
+
+/** Directories legacy state files are imported from: the store's own, and for
+ * the default store also the old tmpdir one (only when this account owns it). */
+function legacySources(dir: string): string[] {
+  return isDefaultDir(dir) ? [...new Set([resolve(dir), resolve(legacyHookStateDir())])] : [dir];
 }
 
 async function retainOriginal(file: string): Promise<void> {
@@ -62,9 +74,17 @@ async function legacyFileNames(dir: string): Promise<string[]> {
   });
 }
 
+/** Every legacy file name with the directory it was found in. */
+async function legacyFiles(dir: string): Promise<{ source: string; name: string }[]> {
+  const files: { source: string; name: string }[] = [];
+  for (const source of legacySources(dir))
+    for (const name of await legacyFileNames(source)) files.push({ source, name });
+  return files;
+}
+
 async function hydrate(dir: string, dbPath: string): Promise<HookSnapshot> {
   const db = openAppDatabase({ path: dbPath, busyTimeoutMs: 0 });
-  const suffix = createHash("sha256").update(resolve(dir)).digest("hex");
+  const suffix = createHash("sha256").update(storeIdentity(dir)).digest("hex");
   const snapshot: HookSnapshot = {
     db,
     sessionsNamespace: `hook-session:${suffix}`,
@@ -75,14 +95,14 @@ async function hydrate(dir: string, dbPath: string): Promise<HookSnapshot> {
     throttles: new Map(),
   };
   try {
-    const files = await legacyFileNames(dir);
+    const files = await legacyFiles(dir);
     const imports: { file: string; bytes: Buffer; namespace: string; key: string; value: StoredState | number }[] = [];
-    for (const name of files) {
+    for (const { source, name } of files) {
       const session = /^([a-zA-Z0-9_-]+)\.json$/.exec(name);
       const marker = /^loaded-([a-zA-Z0-9_.-]+)\.touch$/.exec(name);
       const throttle = /^fail-throttle-([a-zA-Z0-9_-]+)\.ts$/.exec(name);
       if (!session && !marker && !throttle) continue;
-      const file = join(dir, name);
+      const file = join(source, name);
       // Read and inspect the same descriptor: a path swap cannot import a
       // symlink target or give its contents a different file's timestamp.
       let bytes: Buffer, at: number;
@@ -160,7 +180,7 @@ async function hydrate(dir: string, dbPath: string): Promise<HookSnapshot> {
 
 function getSnapshot(dir: string): Promise<HookSnapshot> {
   const dbPath = databasePath(dir);
-  const key = `${dbPath}\0${resolve(dir)}`;
+  const key = `${dbPath}\0${storeIdentity(dir)}`;
   let pending = snapshots.get(key);
   if (!pending) {
     pending = hydrate(dir, dbPath);

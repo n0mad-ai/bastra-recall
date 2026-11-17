@@ -195,3 +195,119 @@ test("a care save completing after the reader was closed clears only its saved d
   assert.ok(find(reopened, (el) => el.textContent === "Saved note"));
   assert.equal(find(reopened, (el) => el.tag === "div.cn__msg")?.textContent, "");
 });
+
+test("identical care entries keep separate drafts, also after a reopen with fresh entries (#1554)", async () => {
+  const { careBlock } = await load();
+  const entry = () => ({ id: "a", kind: "note", note: "Same", date: "2026-11-16", done: false });
+  const deps = () => ({ care: [entry(), entry()], add() {}, rerender() {} });
+  const original = careBlock({ id: "a" }, deps());
+  const editors = (node: Element) => find(node, (el) => el.tag === "div.mb-care__open")!.children;
+  button(editors(original)[0], "mb.careEdit").events.click();
+  type(textarea(editors(original)[0]), "Only the first");
+  const reopened = careBlock({ id: "a" }, deps()); // freshly parsed, equal objects
+  const [first, second] = editors(reopened);
+  assert.equal(textarea(first)?.value, "Only the first");
+  assert.equal(textarea(second), undefined); // the twin stays in view mode
+  button(second, "mb.careEdit").events.click();
+  type(textarea(second), "Second draft");
+  assert.equal(textarea(first).value, "Only the first");
+  const again = editors(careBlock({ id: "a" }, deps()));
+  assert.deepEqual(
+    again.map((el) => textarea(el)?.value),
+    ["Only the first", "Second draft"]
+  );
+});
+
+test("the reader's editor offers title, type, sensitivity and recall mode and sends their change (#1558)", async () => {
+  const files = ["membrowser-edit-model.js", "membrowser-edit.js"];
+  const sources = await Promise.all(
+    files.map((file) => readFile(new URL(`../webui/v22/js/views/${file}`, import.meta.url), "utf8"))
+  );
+  const sent: any[] = [];
+  const { readerEdit } = runInNewContext(
+    sources.map((s) => s.replace(/^import[\s\S]*?;\n/gm, "").replace(/^export /gm, "")).join("\n") + "\n({readerEdit})",
+    {
+      h: element,
+      growTextarea() {},
+      t: (key: string) => key,
+      window: { addEventListener() {} },
+      fetch: async (_path: string, init: { body: string }) => {
+        sent.push(JSON.parse(init.body));
+        return { status: 200, json: async () => ({ revision: "r2", rule: { state: "note" } }) };
+      },
+    }
+  );
+  const anchor = element("h2", null);
+  const deps = {
+    anchor,
+    box: element("div", null),
+    text: element("div", null),
+    refresh() {},
+    rerender() {},
+    reload: async () => null,
+    archived() {},
+  };
+  const ed = readerEdit({ id: "fields" }, deps);
+  ed.attach({
+    title: "Old title",
+    type: "lesson",
+    sensitivity: "team",
+    recall_mode: null,
+    body: "Body",
+    summary: "Summary",
+    tags: ["tag"],
+    revision: "r1",
+    rule: { state: "note" },
+  });
+  ed.acts[0].events.click();
+  const field = (name: string) => find(anchor, (el) => el.name === name)!;
+  assert.equal(anchor.hidden, true, "the title field takes the title's place");
+  assert.equal(field("title").value, "Old title");
+  assert.deepEqual(
+    [field("type").value, field("sensitivity").value, field("recall_mode").value],
+    ["lesson", "team", "deliberate"]
+  );
+  field("title").value = "New title";
+  field("title").events.input();
+  field("type").value = "decision";
+  field("type").events.change();
+  await button(anchor, "mb.ed.save").events.click();
+  assert.deepEqual(sent, [{ id: "fields", expected_revision: "r1", title: "New title", type: "decision" }]);
+});
+
+test("a document's type is shown in the editor, not offered (#1558)", async () => {
+  const files = ["membrowser-edit-model.js", "membrowser-edit.js"];
+  const sources = await Promise.all(
+    files.map((file) => readFile(new URL(`../webui/v22/js/views/${file}`, import.meta.url), "utf8"))
+  );
+  const { readerEdit } = runInNewContext(
+    sources.map((s) => s.replace(/^import[\s\S]*?;\n/gm, "").replace(/^export /gm, "")).join("\n") + "\n({readerEdit})",
+    { h: element, growTextarea() {}, t: (key: string) => key, window: { addEventListener() {} } }
+  );
+  const anchor = element("h2", null);
+  const ed = readerEdit(
+    { id: "doc" },
+    {
+      anchor,
+      box: element("div", null),
+      text: element("div", null),
+      refresh() {},
+      rerender() {},
+      reload: async () => null,
+      archived() {},
+    }
+  );
+  ed.attach({
+    title: "A doc",
+    type: "doc",
+    body: "B",
+    summary: "S",
+    tags: ["t"],
+    revision: "r1",
+    rule: { state: "note" },
+  });
+  ed.acts[0].events.click();
+  const type = find(anchor, (el) => el.name === "type")!;
+  assert.equal(type.children.length, 1);
+  assert.equal(type.disabled, true);
+});

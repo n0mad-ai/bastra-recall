@@ -3,9 +3,9 @@
  * decides whether the setup has to offer anything at all, the PATH check that
  * keeps a "successful" global install honest, and the wording of every outcome.
  *
- * `installCliGlobally` itself is not exercised — it runs `npm install -g`, and
- * a test that does that is a test that changes the machine it runs on. Every
- * decision it makes before and after the spawn is pure and covered here.
+ * `installCliGlobally` never runs a real `npm install -g` here — that would
+ * change the machine the test runs on. #1274 drives it with a stand-in
+ * platform and recorded spawns instead; a real Windows run is not part of it.
  *
  * Run: npx tsx --test packages/daemon/__tests__/cli-on-path.test.ts
  */
@@ -20,7 +20,9 @@ import {
   binDirOnPath,
   decideCliOnPath,
   formatGlobalInstallOutcome,
+  installCliGlobally,
 } from "../src/cli/cli-on-path.js";
+import { VERSION } from "../src/cli/helpers.js";
 
 const NPX_CLI = "/Users/x/.npm/_npx/0123abcd/node_modules/@bastra-recall/daemon/dist/mcp-forwarder.js";
 const NPX_BIN = "/Users/x/.npm/_npx/0123abcd/node_modules/.bin/bastra";
@@ -122,4 +124,80 @@ test("declining still leaves a usable CLI — the note names npx and the global 
 test("the npx fallback is a runnable command, not a description", () => {
   assert.match(NPX_FALLBACK_HINT, /^npx bastra-recall <command>/);
   assert.match(NPX_FALLBACK_HINT, /npx bastra-recall doctor/);
+});
+
+// ─── installCliGlobally (#1274) ─────────────────────────────────────────────
+
+const WIN_NODE = "C:\\Program Files\\nodejs\\node.exe";
+const WIN_NPM = "C:\\Program Files\\nodejs\\npm.cmd";
+const WIN_NPM_CLI = "C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js";
+const WIN_NPM_PKG = "C:\\Program Files\\nodejs\\node_modules\\npm\\package.json";
+const WIN_PREFIX = "C:\\Users\\Jane Doe\\AppData\\Roaming\\npm";
+
+function windowsIo(npm = WIN_NPM) {
+  const spawns: Array<{ bin: string; args: string[] }> = [];
+  const files = new Set([WIN_NPM_CLI, `${WIN_PREFIX}\\bastra.cmd`]);
+  const io = {
+    platform: "win32" as const,
+    node: WIN_NODE,
+    find: () => npm,
+    file: (path: string) => files.has(path),
+    exists: (path: string) => files.has(path),
+    read: (path: string) => {
+      if (path !== WIN_NPM_PKG) throw new Error("not found");
+      return JSON.stringify({ name: "npm", bin: { npm: "bin/npm-cli.js" } });
+    },
+    run: (bin: string, args: string[]) => {
+      spawns.push({ bin, args });
+      return { ok: true, signal: false, detail: "ok" };
+    },
+    captured: (bin: string, args: string[]) => {
+      spawns.push({ bin, args });
+      return { ok: true, signal: false, detail: "ok", stdout: `${WIN_PREFIX}\r\n`, stderr: "" };
+    },
+  };
+  return { io, spawns };
+}
+
+test("#1274 installCliGlobally on Windows runs node.exe + npm-cli.js, never npm.cmd", () => {
+  const { io, spawns } = windowsIo();
+  const out = installCliGlobally(io);
+  assert.equal(out.ok, true, out.detail);
+  assert.deepEqual(spawns, [
+    { bin: WIN_NODE, args: [WIN_NPM_CLI, "install", "-g", `${CLI_PACKAGE}@${VERSION}`] },
+    { bin: WIN_NODE, args: [WIN_NPM_CLI, "prefix", "-g"] },
+  ]);
+  assert.equal(out.binPath, `${WIN_PREFIX}\\bastra.cmd`, "global bins sit directly in the prefix on Windows");
+});
+
+test("#1274 installCliGlobally refuses an unknown Windows npm wrapper without spawning", () => {
+  const { io, spawns } = windowsIo("C:\\Tools\\npm.exe");
+  const out = installCliGlobally(io);
+  assert.equal(out.ok, false);
+  assert.match(out.detail, /unsupported Windows npm wrapper/);
+  assert.deepEqual(spawns, []);
+});
+
+test("#1274 installCliGlobally elsewhere still runs the trusted npm directly", () => {
+  const spawns: Array<{ bin: string; args: string[] }> = [];
+  const out = installCliGlobally({
+    platform: "linux",
+    find: () => "/usr/local/bin/npm",
+    exists: (path) => path === "/usr/local/bin/bastra",
+    run: (bin, args) => {
+      spawns.push({ bin, args });
+      return { ok: true, signal: false, detail: "ok" };
+    },
+    captured: (bin, args) => {
+      spawns.push({ bin, args });
+      return { ok: true, signal: false, detail: "ok", stdout: "/usr/local\n", stderr: "" };
+    },
+  });
+  assert.equal(out.ok, true);
+  assert.equal(out.binPath, "/usr/local/bin/bastra");
+  assert.deepEqual(
+    spawns.map((s) => s.bin),
+    ["/usr/local/bin/npm", "/usr/local/bin/npm"]
+  );
+  assert.equal(installCliGlobally({ find: () => null }).ok, false, "no npm on a trusted PATH is a failure");
 });

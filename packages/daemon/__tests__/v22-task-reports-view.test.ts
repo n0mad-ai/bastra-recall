@@ -1,7 +1,7 @@
 // UI v2 task reports — the reading view (js/sections/tasks-reports.js) with a
 // fake DOM: the actions sit in the reader's head and nowhere below the report,
 // the search above the list filters by title and project (#1597) while the
-// shown report stays open, and Escape closes the note field, then empties the
+// shown report stays open, the daemon's text hits join in once they arrive, and Escape closes the note field, then empties the
 // search, then leaves the view. With drafts among the notes, "Hand over to
 // agent" leads the head and "Read" steps back. The real module runs in a VM
 // context; its imports are replaced by small stand-ins.
@@ -14,6 +14,8 @@ import { Node_, h } from "./v22-report-dom.js";
 const read = (path: string) => readFile(new URL(`../webui/v22/js/${path}`, import.meta.url), "utf8");
 const strip = (source: string) => source.replace(/^import [\s\S]*?;$/gm, "").replace(/^export /gm, "");
 const ID = (n: number) => `00000000-0000-4000-8000-00000000000${n}`;
+/** Report texts the stand-in daemon searches (task_report_list with query). */
+const BODIES: Record<string, string> = { [ID(3)]: "die preise steigen weiter." };
 
 const REPORTS = [
   { id: ID(1), title: "Überblick: Förderung", project: "FÖRDERUNG", origin: { client: "codex" }, created_at: 30 },
@@ -31,6 +33,7 @@ const REPORTS = [
 
 async function view(notes: unknown[] = []) {
   const calls: Array<[string, unknown]> = [];
+  const timers: Array<() => unknown> = [];
   const said: Array<[string, unknown]> = [];
   const events: string[] = [];
   const source = strip(await read("sections/tasks-reports-model.js")) + strip(await read("sections/tasks-reports.js"));
@@ -57,8 +60,15 @@ async function view(notes: unknown[] = []) {
         said.push([(e as Error).message, "error"]);
       }
     },
-    api: async (name: string, input: unknown) => {
+    api: async (name: string, input: any) => {
       calls.push([name, input]);
+      if (knobs.capacity && name !== "report_read" && name !== "report_list")
+        throw Object.assign(new Error("tk.err.generic"), { code: "capacity" });
+      if (name === "report_list")
+        return { reports: REPORTS.filter((r) => (BODIES[r.id] ?? "").includes(input.query.toLowerCase())) };
+      if (name === "report_delete") return { deleted: true, id: input.id, restorable_until: 99 };
+      if (name === "report_restore" && knobs.restore)
+        throw Object.assign(new Error(`tk.err.${knobs.restore}`), { code: knobs.restore });
       if (name === "report_notes_hand") {
         if (hand.fail) throw Object.assign(new Error("tk.err.not_found"), { code: "not_found" });
         return { handed: 1, notes: notes.map((n: any) => ({ ...n, handed_at: 99 })) };
@@ -73,8 +83,12 @@ async function view(notes: unknown[] = []) {
       constructor(public type: string) {}
     },
     JSON,
+    // a pause (the text search waits for typing to stop) runs when the test says so, never by the clock
+    setTimeout: (fn: () => unknown) => timers.push(fn),
+    clearTimeout() {},
   };
   const hand = { fail: false };
+  const knobs: { capacity: boolean; restore: string | null } = { capacity: false, restore: null };
   const v = runInNewContext(
     source +
       "\n({ R, notesUi, reportRows, openReport, openReports, closeReports, reportsRenderer, escapeReports, reportsOpen, matchReports, reportsArea, tasksLit, showCalendar })",
@@ -85,7 +99,10 @@ async function view(notes: unknown[] = []) {
   host.clientWidth = 1000;
   const draw = v.reportsRenderer(host);
   context.emit = () => draw();
-  return { v, host, draw, calls, said, events, hand, context };
+  const flush = async () => {
+    while (timers.length) await timers.shift()!();
+  };
+  return { v, host, draw, calls, said, events, hand, knobs, flush, context };
 }
 
 const byClass = (root: Node_, cls: string) => root.find(cls);
@@ -323,4 +340,125 @@ test("rail: 'Reports' is lit while the view is open and 'Tasks' otherwise; both 
   });
   assert.equal(area.badge(), 0, "nothing unread, no badge");
   assert.equal(area.tip(), 'nav.reports · nav.reportsDrafts {"n":3}', "reports with notes not handed over");
+});
+
+test("#1597: the report text is searched by the daemon; its hits join the list once they arrive", async () => {
+  const { v, host, calls, flush } = await view();
+  await v.openReport(ID(1));
+  type(host, "Preise");
+  assert.equal(listRows(host).length, 0, "no title or project holds it");
+  assert.ok(!calls.some(([name]) => name === "report_list"), "the daemon is asked once typing pauses");
+  await flush();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1))), ["report_list", { query: "Preise" }]);
+  assert.deepEqual(
+    listRows(host).map((r) => r.children[1].textContent),
+    ["Lint nachgezogen"],
+    "found in its text"
+  );
+  type(host, "Preise x");
+  assert.equal(listRows(host).length, 0, "hits of an older search never stand for a new one");
+  type(host, "");
+  assert.equal(listRows(host).length, 3);
+});
+
+test("#1597: a late answer to an older search is dropped", async () => {
+  const { v, host, flush, context } = await view();
+  await v.openReport(ID(1));
+  const api = context.api as (n: string, i: unknown) => Promise<unknown>;
+  let release!: () => void;
+  context.api = (name: string, input: any) =>
+    name === "report_list" && input.query === "preise"
+      ? new Promise((resolve) => (release = () => resolve(api(name, input))))
+      : api(name, input);
+  type(host, "preise");
+  const first = flush();
+  type(host, "lint");
+  await flush();
+  release();
+  await first;
+  assert.deepEqual(
+    listRows(host).map((r) => r.children[1].textContent),
+    ["Lint nachgezogen"]
+  );
+  assert.equal(v.R.hits.q, "lint", "the older answer did not overwrite the newer one");
+});
+
+test("#1609: a full report store says so and how to make room", async () => {
+  const { v, host, said, knobs } = await view([NOTE(1)]);
+  await v.openReport(ID(1));
+  knobs.capacity = true;
+  await one(host, "tk-rep__acts").children[1].click();
+  assert.deepEqual(said.at(-1), ["tk.rep.full", "error"], "mark read");
+  await one(host, "tk-rep__hand").click();
+  assert.deepEqual(said.at(-1), ["tk.rep.full", "error"], "hand-over");
+  v.notesUi.open({ kind: "paragraph", index: 1, excerpt: "Erster Absatz." });
+  await assert.rejects(v.notesUi.save("Neu"), { message: "tk.rep.full" }, "the note field shows it, keeps the text");
+});
+
+test("#1559: after Delete the next report shows an Undo notice; Undo brings the report back", async () => {
+  const { v, host, calls, said } = await view();
+  await v.openReport(ID(1));
+  await one(one(host, "tk-rep__acts"), "is-quiet").click();
+  assert.ok(calls.some(([name, input]) => name === "report_delete" && (input as any).id === ID(1)));
+  assert.equal(v.R.sel, ID(2), "the next report is shown");
+  const notice = one(host, "tk-rep__undo");
+  assert.equal(notice.children[0].textContent, 'tk.rep.deletedNamed {"title":"Überblick: Förderung"}');
+  assert.ok(!said.some(([text]) => text === "tk.rep.deleted"), "the notice replaces the plain confirmation");
+
+  await notice.children[1].click();
+  assert.ok(calls.some(([name, input]) => name === "report_restore" && (input as any).id === ID(1)));
+  assert.deepEqual(said.at(-1), ["tk.rep.restored", undefined]);
+  assert.equal(v.R.sel, ID(1), "the restored report is shown again");
+  assert.equal(byClass(host, "tk-rep__undo").length, 0);
+});
+
+test("#1559: the notice goes when the user moves on or closes it; an expired undo says so", async () => {
+  const { v, host, said, knobs } = await view();
+  const del = async () => {
+    await v.openReport(ID(1));
+    await one(one(host, "tk-rep__acts"), "is-quiet").click();
+  };
+  await del();
+  await v.openReport(ID(3));
+  assert.equal(byClass(host, "tk-rep__undo").length, 0, "moved on: the delete stays");
+  await v.openReport(ID(2));
+  assert.equal(byClass(host, "tk-rep__undo").length, 0, "and does not come back");
+
+  await del();
+  await one(host, "tk-rep__undo").children[2].click();
+  assert.equal(byClass(host, "tk-rep__undo").length, 0, "× closes it");
+
+  await del();
+  knobs.restore = "not_found";
+  await one(host, "tk-rep__undo").children[1].click();
+  assert.deepEqual(said.at(-1), ["tk.rep.undoGone", "error"]);
+  assert.equal(byClass(host, "tk-rep__undo").length, 0);
+});
+
+test("#1610: a rebuild while a note is typed keeps the cursor, the selection and the field's scroll place", async () => {
+  const { v, draw, context } = await view();
+  const doc = context.document as { activeElement: unknown };
+  context.annotateReport = (nodes: Node_[], ui: any) => {
+    if (!ui.editing) return { nodes, focus: null };
+    const area = h("textarea", null);
+    area.value = "Bitte die Preise nochmal prüfen";
+    return { nodes: [...nodes, area], focus: () => (doc.activeElement = area) };
+  };
+  await v.openReport(ID(1));
+  v.notesUi.open({ kind: "paragraph", index: 1, excerpt: "Erster Absatz." });
+  const typed = doc.activeElement as Node_;
+  assert.equal(typed.tagName, "TEXTAREA", "the opened field has the cursor");
+  typed.setSelectionRange(6, 9, "backward");
+  typed.scrollTop = 40;
+
+  (context.data as { reports: unknown }).reports = v.reportRows({
+    reports: REPORTS.map((r) => (r.id === ID(1) ? { ...r, notes_open: 1 } : r)),
+  });
+  draw(); // a live update rebuilds the reader
+  const now = doc.activeElement as Node_;
+  assert.notEqual(now, typed, "the field was rebuilt");
+  assert.deepEqual(
+    [now.selectionStart, now.selectionEnd, now.selectionDirection, now.scrollTop],
+    [6, 9, "backward", 40]
+  );
 });

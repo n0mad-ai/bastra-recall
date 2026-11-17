@@ -29,7 +29,13 @@ import {
   GATE_LANE_BY_KIND,
   DEFAULT_HOOK_BUDGET_MS,
 } from "../src/cli/log-stats.js";
-import { FAST_BUDGET_MS, PROMPT_ASSERTION_BUDGET_MS, RECALL_BUDGET_MS, STOP_BUDGET_MS } from "../src/hook-budgets.js";
+import {
+  FAST_BUDGET_MS,
+  PROMPT_ASSERTION_BUDGET_MS,
+  RECALL_BUDGET_MS,
+  SESSION_START_BUDGET_MS,
+  STOP_BUDGET_MS,
+} from "../src/hook-budgets.js";
 
 function promptCall(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -240,6 +246,8 @@ test("#305: every release threshold names the budget its lane really enforces", 
   for (const mode of ["pretooluse", "none", "retrieval", "generic"]) {
     assert.equal(RELEASE_THRESHOLDS[mode].budgetMs, RECALL_BUDGET_MS, `${mode} budget drifted`);
   }
+  // #1564: SessionStart enforces its own 1500 ms, not the 500 ms fast budget.
+  assert.equal(RELEASE_THRESHOLDS.session.budgetMs, SESSION_START_BUDGET_MS);
   // The assertion lane must be the slow one, or the split has no point.
   assert.ok(RELEASE_THRESHOLDS.assertion.budgetMs > RELEASE_THRESHOLDS.pretooluse.budgetMs);
   // #305's 200ms target survives on the fast lane and nowhere else.
@@ -730,7 +738,9 @@ test("#305: every gate lane has a threshold, and every threshold names a real bu
     const t = RELEASE_THRESHOLDS[mode];
     assert.ok(t, `${mode} is counted as a lane but has no release threshold`);
     assert.ok(
-      [RECALL_BUDGET_MS, FAST_BUDGET_MS, STOP_BUDGET_MS, PROMPT_ASSERTION_BUDGET_MS].includes(t.budgetMs),
+      [RECALL_BUDGET_MS, FAST_BUDGET_MS, STOP_BUDGET_MS, PROMPT_ASSERTION_BUDGET_MS, SESSION_START_BUDGET_MS].includes(
+        t.budgetMs
+      ),
       `${mode}: ${t.budgetMs}ms is not one of the budgets hook-budgets.ts enforces`
     );
     // #542: p90TargetMs is null only for prompt-total (not a REQUIRED_LANES

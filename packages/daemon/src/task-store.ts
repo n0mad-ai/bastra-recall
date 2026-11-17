@@ -258,7 +258,19 @@ export async function atomicWrite(path: string, payload: string, assertOwnership
   }
 }
 
-export type TaskMutationKind = "normal" | "control" | "archive" | "delete";
+/** `automatic` is the time evaluation: it may write a full task's own history
+ * like a control operation, but it stays under the normal byte limit so the
+ * space above it remains for the owner's control operations (#1599). */
+export type TaskMutationKind = "normal" | "control" | "automatic" | "archive" | "delete";
+/** Control operations may fill the store; everything else stops at 75 %, except
+ * archiving or deleting that makes the store smaller: that is the way out of a
+ * full store and is never refused for size (#1599). */
+function taskByteLimit(kind: TaskMutationKind, payload: string, store: TaskStore): number {
+  if (kind === "control") return TASK_MAX_BYTES;
+  const shrinks =
+    (kind === "archive" || kind === "delete") && Buffer.byteLength(payload) < Buffer.byteLength(JSON.stringify(store));
+  return shrinks ? TASK_MAX_BYTES : TASK_MAX_BYTES * 0.75;
+}
 /** One strict local lock spans durable intent, target CAS and receipt commits. */
 export async function withTaskStoreGuard<T>(
   path: string,
@@ -320,8 +332,7 @@ export async function withTaskStoreGuard<T>(
           throw new TaskStoreError("capacity", "task history reserve reached; control operations remain available");
         const validated = taskStoreSchema.parse(next);
         const payload = JSON.stringify(validated);
-        const limit = kind === "control" ? TASK_MAX_BYTES : TASK_MAX_BYTES * 0.75;
-        if (Buffer.byteLength(payload) > limit)
+        if (Buffer.byteLength(payload) > taskByteLimit(kind, payload, store))
           throw new TaskStoreError("capacity", "task capacity reached; pending work preserved");
         // Preserve last valid snapshot before replacing it; never back up corruption.
         // Absence has no recoverable predecessor; do not advertise an empty backup.

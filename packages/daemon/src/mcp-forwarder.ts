@@ -75,7 +75,8 @@ import {
   primeDaemon,
   awaitDaemonReady,
 } from "./forwarder-daemon-client.js";
-import { callDaemon, callRecallStreaming, maybeSessionContextItem } from "./mcp-forwarder-calls.js";
+import { callDaemon, callRecallStreaming, maybeSessionContextItem, setForwarderClient } from "./mcp-forwarder-calls.js";
+import { mcpClientLabel } from "./caller-session.js";
 import { liveStatusline, syncStatuslineTurn, flushStatusline } from "./mcp-forwarder-statusline.js";
 
 async function main(): Promise<void> {
@@ -127,6 +128,8 @@ async function main(): Promise<void> {
       ),
     }
   );
+  // #1469: name the MCP client in every forwarded call, for the daemon's audit.
+  server.oninitialized = () => setForwarderClient(mcpClientLabel(server.getClientVersion()));
 
   // #481: the surface THIS client runs on. Read once — it comes from the
   // server block the installer wrote, and a client restart is what applies a

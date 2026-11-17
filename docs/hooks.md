@@ -95,6 +95,14 @@ slow answer.
 kernel and a bounded fallback; its hook clients wait 100 ms longer than the
 daemon for the transport.
 
+Text budgets (#1460): `SessionStart` stays below 10,000 characters and a
+`UserPromptSubmit` answer below 10,000 characters including its draft quote.
+Each pre-tool lane (Write/Edit, plan, Bash) keeps its optional text within
+4,000 characters (`packages/daemon/src/pretool-budget.ts`): code-impact and
+applies-to blocks, lower-ranked plan hints and draft quotes are left out whole,
+never cut. Mandatory text (tripwire warnings, the file-size and location notes,
+rules wired to the action) is never dropped for it.
+
 `#305`'s original framing was "cut the ceiling to 200 ms" for everything. That
 target now applies to the fast lanes, which hold it (measured p90 87 ms), and
 not to the assertion lane, which never could.
@@ -229,9 +237,13 @@ Default shape written by `bastra install claude-code`:
 }
 ```
 
-The bins are installed by Homebrew or `npm install -g @bastra-recall/daemon`.
-Prefer `bastra install claude-code`; it writes the exact shape above, keeps
-foreign hook entries, and backs up the settings file first.
+The hook programs come with Recall itself, installed by Homebrew or
+`npm install -g bastra-recall` (see the README). Prefer `bastra install
+claude-code`; it writes the shape above with the full path of each program in
+that installation, keeps foreign hook entries, and backs up the settings file
+first. The short `bastra-recall-*-hook` names in the snippet are the bin names
+of the `@bastra-recall/daemon` package; a hand-written entry with them needs
+those bins on your `PATH`.
 
 An entry counts as bastra's by what its command runs: one of the hook scripts
 (`…/daemon/dist/prompt-hook.js` and its siblings), the compiled `bastra-hook`
@@ -768,7 +780,11 @@ usual. Two jobs, one locked state write per call:
   `BASTRA_REFLEX=off` silences it like the prompt reflex.
 - **Rule kernel (#1305).** After 25 tool calls without a user prompt the gate
   answers the rule kernel as `additionalContext`, never as a deny (see "Rule
-  kernel" below).
+  kernel" below). An agent (the main thread or one subagent) that already
+  received the identical kernel in this session gets a short reminder with the
+  catalog hash and the way back (`list_rules`, `load_memory`) instead of the
+  full text; a changed kernel, a new agent, or a compact/clear brings the full
+  text again (#1461).
 
 Always passes: every Recall MCP tool (`mcp__bastra-recall__*`, also the
 plugin form `mcp__plugin_…_bastra-recall__*`) and a `ToolSearch` whose query
@@ -819,8 +835,10 @@ The query skips leading `cd`/`pushd` clauses: `cd dir && npm test` names
 head. This is not a full shell parser: `(cd dir && cmd)`, `VAR=1 cd x && y`
 and `cd dir || exit` can still give an incomplete or misleading command head.
 
-The fail-recall is throttled to one hint per 30 s per session (marker file in
-`$TMPDIR/bastra-hook/fail-throttle-<session>.ts`); the act-signal is not.
+The fail-recall is throttled to one hint per 30 s per session (a throttle row
+in the hook state, which lives in the app database; the hook state directory
+is `$TMPDIR/bastra-hook` on macOS and Windows and `~/.bastra/hook-state` on
+Linux, where tmpdir is shared between accounts, #1569); the act-signal is not.
 With a real session ID it also shares the shown-memory counter with the other
 recall lanes: default **one delivered hint per memory per session**
 (`BASTRA_HOOK_MAX_SHOW`, minimum 1). A newer `load_memory` marker permits another
@@ -1707,7 +1725,8 @@ previously fully loaded current revision can satisfy an action load requirement;
 a per-round applicability declaration remains separate. A fork with a new
 session ID cannot restore an unknown parent's active task. The gate redelivers
 the kernel after 25 tool calls without a user prompt, without using that
-redelivery as a deny. See [the rulebook contract](rulebook.md) for membership,
+redelivery as a deny; an unchanged kernel the same agent already holds comes as
+a short reminder (#1461). See [the rulebook contract](rulebook.md) for membership,
 privacy, budgets, bounded action/Stop checking and host limitations.
 
 The kernel arrives only through these hooks. Clients without Bastra hooks
@@ -1985,6 +2004,15 @@ langsame Antwort.
 Regelkern und ein begrenzter Rückfallweg entstehen; seine Hook-Clients warten
 100 ms länger als der Daemon, als Spielraum für die Übertragung.
 
+Textbudgets (#1460): `SessionStart` bleibt unter 10.000 Zeichen, eine
+`UserPromptSubmit`-Antwort einschließlich ihres Entwurfszitats unter 10.000
+Zeichen. Jede Pre-Tool-Lane (Write/Edit, Plan, Bash) hält ihren optionalen Text
+innerhalb von 4.000 Zeichen (`packages/daemon/src/pretool-budget.ts`):
+Code-Auswirkungs- und Applies-to-Blöcke, niedriger gerankte Plan-Hinweise und
+Entwurfszitate fallen ganz weg, nie abgeschnitten. Pflichttext (Tripwire-Warnungen,
+Dateigrößen- und Ablagehinweis, an die Aktion gebundene Regeln) wird dafür nie
+weggelassen.
+
 Die ursprüngliche Formulierung von `#305` war „die Obergrenze auf 200 ms
 senken“, für alles. Dieses Ziel gilt jetzt für die schnellen Lanes, die es
 einhalten (gemessenes p90: 87 ms), und nicht für die Assertion-Lane, die es nie
@@ -2125,10 +2153,13 @@ Standardform, die `bastra install claude-code` schreibt:
 }
 ```
 
-Die Programme werden über Homebrew oder `npm install -g @bastra-recall/daemon`
-installiert. Nutze bevorzugt `bastra install claude-code`; es schreibt genau die
-Form oben, behält fremde Hook-Einträge bei und sichert die Settings-Datei
-vorher.
+Die Hook-Programme kommen mit Recall selbst, installiert über Homebrew oder
+`npm install -g bastra-recall` (siehe README). Nutze bevorzugt `bastra install
+claude-code`; es schreibt die Form oben mit dem vollen Pfad jedes Programms in
+dieser Installation, behält fremde Hook-Einträge bei und sichert die
+Settings-Datei vorher. Die kurzen Namen `bastra-recall-*-hook` im Beispiel sind
+die Programmnamen des Pakets `@bastra-recall/daemon`; ein von Hand
+geschriebener Eintrag mit ihnen braucht diese Programme im `PATH`.
 
 Ein Eintrag gilt als Bastra-eigen nach dem, was sein Befehl ausführt: eines der
 Hook-Skripte (`…/daemon/dist/prompt-hook.js` und seine Geschwister), den
@@ -2658,7 +2689,11 @@ State-Schreibvorgang pro Aufruf:
   Prompt-Reflex.
 - **Regelkern (#1305).** Nach 25 Toolaufrufen ohne Prompt des Nutzers liefert
   das Gate den Regelkern als `additionalContext`, nie als Deny (siehe
-  „Regelkern" unten).
+  „Regelkern" unten). Ein Agent (der Hauptthread oder ein einzelner Subagent),
+  der denselben Kern in dieser Session schon bekommen hat, erhält statt des
+  Volltexts eine kurze Erinnerung mit Katalog-Hash und dem Rückweg
+  (`list_rules`, `load_memory`); ein geänderter Kern, ein neuer Agent oder ein
+  compact/clear bringt wieder den Volltext (#1461).
 
 Immer durch: jedes Recall-MCP-Tool (`mcp__bastra-recall__*`, auch die
 Plugin-Form `mcp__plugin_…_bastra-recall__*`) und ein `ToolSearch`, dessen
@@ -2715,7 +2750,10 @@ und `cd dir || exit` können weiterhin einen unvollständigen oder irreführende
 Befehlskopf liefern.
 
 Der Fehler-Recall ist auf einen Hinweis pro 30 s pro Session gedrosselt
-(Markerdatei in `$TMPDIR/bastra-hook/fail-throttle-<session>.ts`); das
+(eine Drossel-Zeile im Hook-Zustand, der in der App-Datenbank liegt; das
+Verzeichnis des Hook-Zustands ist `$TMPDIR/bastra-hook` unter macOS und Windows
+und `~/.bastra/hook-state` unter Linux, wo tmpdir zwischen Konten geteilt ist,
+#1569); das
 Handlungssignal nicht. Bei echter Session-ID teilt er außerdem den Zähler
 bereits gezeigter Erinnerungen mit den anderen Recall-Lanes: standardmäßig
 **ein gelieferter Hinweis pro Memory und Session** (`BASTRA_HOOK_MAX_SHOW`,
@@ -3619,7 +3657,8 @@ bereits vollständig geladene aktuelle Revision eine Aktions-Ladepflicht erfüll
 die Erklärung zur Anwendbarkeit je Runde bleibt davon getrennt. Ein Fork mit
 neuer Session-ID kann die aktive Aufgabe eines unbekannten Elternkontexts nicht
 wiederherstellen. Nach 25 Toolaufrufen ohne Nutzerprompt liefert das Gate den
-Kern erneut, ohne diese Zustellung als Sperre zu verwenden. Der
+Kern erneut, ohne diese Zustellung als Sperre zu verwenden; einen unveränderten
+Kern, den derselbe Agent schon hat, nur als kurze Erinnerung (#1461). Der
 [Regelbuch-Vertrag](rulebook.md) beschreibt Mitgliedschaft, Datenschutz,
 Budgets, begrenzte Aktions-/Stop-Prüfung und Host-Grenzen.
 

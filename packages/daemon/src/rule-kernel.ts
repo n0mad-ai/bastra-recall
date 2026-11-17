@@ -1,4 +1,5 @@
 /** A: complete always bodies. B: description index plus a complete paged catalog. */
+import { createHash } from "node:crypto";
 import { HINT_FRAME_NOTE } from "@bastra-recall/core/scrub";
 import {
   catalogHash,
@@ -19,6 +20,33 @@ export const RULE_KERNEL_TOOL_CALLS = 25;
 export const RULE_KERNEL_ASK_LINE =
   "Rule applicability is decided from the descriptions; bodies are available through load_memory(id).";
 export const RULE_KERNEL_LEXICAL_LINE = "Rulebook membership is independent of search and embeddings.";
+/**
+ * #1461: identity of one rendered kernel. The gate lane remembers it per agent
+ * and session; an identical kernel is then answered with
+ * {@link renderKernelReminder} instead of the full text.
+ */
+export function kernelFingerprint(text: string): string {
+  return createHash("sha256").update(text).digest("hex").slice(0, 16);
+}
+
+/**
+ * #1461: the short form of an unchanged kernel. It names the catalog it stands
+ * for and the way back to the full text, so a context that lost the kernel
+ * (compaction the hooks did not see) can still recover every rule.
+ */
+export function renderKernelReminder(
+  candidates: KernelCandidates,
+  opts: { trigger: string; fingerprint: string }
+): string {
+  const trigger = oneLine(opts.trigger).slice(0, 120).replaceAll('"', "&quot;");
+  return [
+    `<rule-kernel trigger="${trigger}" unchanged="${opts.fingerprint}">`,
+    `Rulebook unchanged: ${candidates.entries.length} rules; catalog=${catalogHash(candidates)}. The full rule kernel (Always texts and index) was delivered earlier in this context and still applies; it is not repeated.`,
+    "If it is no longer in your context, list_rules() returns the complete catalog and load_memory(id) each body.",
+    "</rule-kernel>",
+  ].join("\n");
+}
+
 export interface RenderedKernel {
   text: string;
   full: string[];

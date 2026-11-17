@@ -141,6 +141,7 @@ export const TASK_CRUD_OPERATIONS = [
   "task_report_read",
   "task_report_mark",
   "task_report_delete",
+  "task_report_restore",
   "task_report_note_add",
   "task_report_note_edit",
   "task_report_note_delete",
@@ -343,7 +344,7 @@ async function callTaskCrudInner(
             archive_failure: snapshot.receipts.some(
               (r) => r.task_id === t.id && ["failed", "unknown"].includes(r.outcome)
             )
-              ? "Ausführung fehlgeschlagen oder Abgleich nötig"
+              ? "Execution failed or reconciliation required"
               : undefined,
           })),
       };

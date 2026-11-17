@@ -7,13 +7,25 @@
 //                                                   | conflict "conflict"
 // "conflict" keeps the draft; reloaded → "edit" on the current version with
 // the draft kept aside (`stash`), useStash puts it back. cancel → "view".
-// What the daemon cannot change here (title, type, area, sensitivity, recall
-// mode) is not a field at all.
+// Title, type, sensitivity and recall mode are fields too (#1558); the area
+// is not (it follows the folder), so it is not a field at all.
 
 // The daemon's auto-related block (core save-text.ts AUTO_RELATED_START) is
 // generated; the editor shows and replaces only the text above it.
 export const AUTO_RELATED_START = "<!-- bastra:auto-related:start -->";
 export const SUMMARY_MAX = 400; // core summary.ts — longer is refused, never cut
+/** Types a memory can take here; documents and bookmarks keep theirs (core MemoryTypeEnum). */
+export const TYPES = [
+  "lesson",
+  "preference",
+  "project-fact",
+  "meta-working",
+  "decision",
+  "workflow",
+  "reference",
+  "user-preference",
+];
+export const SENSITIVITIES = ["public", "team", "private"];
 
 const str = (v) => (typeof v === "string" ? v : "");
 
@@ -37,8 +49,22 @@ export function editFields(d) {
     tags: (Array.isArray(d?.tags) ? d.tags.filter((x) => typeof x === "string") : []).join(", "),
     rulebook: rule ? str(rule.rulebook) || "on-demand" : "",
     applies_when: rule ? str(rule.applies_when) : "",
+    ...ownFields(d),
   };
 }
+
+/** Title, type, sensitivity and recall mode of a node detail (#1558). */
+function ownFields(d) {
+  return {
+    title: str(d?.title),
+    type: str(d?.type),
+    sensitivity: str(d?.sensitivity) || "team", // the schema's default
+    recall_mode: d?.recall_mode === "reflex" ? "reflex" : "deliberate",
+  };
+}
+
+/** Whether the type may be changed here (not for documents and bookmarks). */
+export const typeEditable = (type) => TYPES.includes(type);
 
 export const splitTags = (text) =>
   str(text)
@@ -126,11 +152,27 @@ function ruleChanges(d, b) {
   return { out: { rule: { rulebook: d.rulebook, applies_when: d.applies_when.trim() } } };
 }
 
+/** Title, type, sensitivity and recall mode (#1558): only what changed. */
+function fieldChanges(d, b) {
+  const out = {};
+  if (d.title.trim() !== b.title.trim()) {
+    if (!d.title.trim()) return { error: "mb.ed.needTitle" };
+    out.title = d.title.trim();
+  }
+  for (const k of ["type", "sensitivity", "recall_mode"]) if (d[k] !== b[k]) out[k] = d[k];
+  return { out };
+}
+
 /** The request for a save: { payload } (null when nothing changed) or
  *  { error: i18n key } when a field is not valid. */
 export function editPatch(s, id) {
   if (!s.draft || !s.base) return { payload: null };
-  const parts = [textChanges(s.draft, s.base), tagChanges(s.draft, s.base), ruleChanges(s.draft, s.base)];
+  const parts = [
+    fieldChanges(s.draft, s.base),
+    textChanges(s.draft, s.base),
+    tagChanges(s.draft, s.base),
+    ruleChanges(s.draft, s.base),
+  ];
   const bad = parts.find((p) => p.error);
   if (bad) return { error: bad.error };
   const changes = Object.assign({}, ...parts.map((p) => p.out));

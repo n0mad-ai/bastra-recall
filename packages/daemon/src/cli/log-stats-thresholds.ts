@@ -54,6 +54,7 @@ import {
   PROMPT_ASSERTION_BUDGET_MS,
   PROMPT_QUIET_P90_TARGET_MS,
   RECALL_BUDGET_MS,
+  SESSION_START_BUDGET_MS,
   STOP_BUDGET_MS,
 } from "../hook-budgets.js";
 import type { LaneStats } from "./log-stats.js";
@@ -218,7 +219,8 @@ export const RELEASE_THRESHOLDS: Record<string, LaneThreshold> = {
   },
   // TodoWrite / update_plan: a recall lane like the quiet prompt classes.
   plan: { budgetMs: RECALL_BUDGET_MS, p90TargetMs: PROMPT_QUIET_P90_TARGET_MS, maxFailureRate: 0.02 },
-  session: { budgetMs: FAST_BUDGET_MS, p90TargetMs: PROMPT_QUIET_P90_TARGET_MS, maxFailureRate: 0.02 },
+  // #1564: SessionStart runs with its own 1500 ms budget (hook-budgets.ts).
+  session: { budgetMs: SESSION_START_BUDGET_MS, p90TargetMs: PROMPT_QUIET_P90_TARGET_MS, maxFailureRate: 0.02 },
   "bash-pre": { budgetMs: FAST_BUDGET_MS, p90TargetMs: FAST_LANE_P90_TARGET_MS, maxFailureRate: 0.02 },
   "bash-post": { budgetMs: FAST_BUDGET_MS, p90TargetMs: FAST_LANE_P90_TARGET_MS, maxFailureRate: 0.02 },
   // The Stop lane is allowed a full second because it scans a transcript; it

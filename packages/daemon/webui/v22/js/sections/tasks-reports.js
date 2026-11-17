@@ -6,7 +6,9 @@
 // narrow detail panel). Opening a report does not mark it read: "Gelesen" /
 // "Ungelesen" set that state by hand, "Löschen" removes it (Daniel 16.11.2026);
 // the three sit in the reader's head, which stays on top while a long report
-// scrolls. A search field above the list filters it by title and project (#1597).
+// scrolls. A search field above the list filters it by title and project at once and by the
+// report text as soon as the daemon answers (#1597). After "Löschen" a notice offers "Rückgängig"
+// while the report shown next is on screen (#1559, like archiving in the memory browser).
 // The list itself is data.reports (js/data.js, rides on the shell polling), so
 // the nav dot and the header ticker see the same rows.
 // Report text is external data: rendered through the shared mini Markdown
@@ -26,6 +28,7 @@ import { ago } from "../views/vault-data.js";
 import { S, emit, say, act } from "./tasks-store.js";
 import { api, fmtAt } from "./tasks-api.js";
 import {
+  reportRows,
   unreadCount,
   draftReports,
   noteCounts,
@@ -43,7 +46,21 @@ import { annotateReport } from "./tasks-report-notes.js";
 // lens: the detail panel was open when the view opened; it is folded away meanwhile (a report needs
 // the width, the panel has nothing to show for it) and comes back when the view closes
 // q: the search over the list; the shown report stays open even when the search hides its row
-const R = { open: false, sel: null, body: null, notes: [], edit: null, order: [], list: false, lens: false, q: "" };
+// hits: { q, ids } the daemon's text search found for q · undo: { id, title, next } the last delete, undoable
+// while `next` (the report shown after it, null for none) is on screen
+const R = {
+  open: false,
+  sel: null,
+  body: null,
+  notes: [],
+  edit: null,
+  order: [],
+  list: false,
+  lens: false,
+  q: "",
+  hits: null,
+  undo: null,
+};
 /** Below this slot width list and reader share one column (memory browser: 760 px for list + reader;
  *  the report list is narrower, so two columns still fit at 640). */
 const NARROW = 640;
@@ -53,6 +70,7 @@ onData(() => {
   const key = JSON.stringify(data.reports);
   if (key === lastKey) return;
   lastKey = key;
+  if (R.q.trim()) searchText(); // new or changed reports: the text search runs again
   if (R.sel && !data.reports.some((r) => r.id === R.sel)) R.sel = null; // deleted elsewhere
   if (R.open && !R.sel && data.reports.length) openReport((shown()[0] ?? listed()[0]).id);
   else emit("reports");
@@ -79,6 +97,7 @@ export function resetReports() {
   if (!R.open) return;
   R.open = false;
   R.q = "";
+  R.hits = R.undo = null;
   if (R.lens) setState({ lensOpen: true });
   railChanged();
 }
@@ -155,6 +174,7 @@ export const reportsArea = {
 /** Shows a report in the reading view (list row, header ticker); reading leaves its read state alone. */
 export async function openReport(id) {
   enter();
+  if (R.undo && R.undo.next !== id) R.undo = null; // moved on: the delete stays
   R.sel = id;
   R.body = null;
   R.notes = [];
@@ -174,10 +194,20 @@ export async function openReport(id) {
   emit();
 }
 
+/** A change the report store can refuse when it is full (#1609): then the message says so and how to
+ *  make room, instead of the generic one. */
+async function write(name, input) {
+  try {
+    return await api(name, input);
+  } catch (e) {
+    throw e.code === "capacity" ? Object.assign(new Error(t("tk.rep.full")), { code: e.code }) : e;
+  }
+}
+
 /** "Gelesen" / "Ungelesen": counters, nav dot and ticker follow with the reloaded list. */
 function mark(id, read) {
   return act(async () => {
-    await api("report_mark", { id, read });
+    await write("report_mark", { id, read });
     await loadReports();
   });
 }
@@ -188,7 +218,7 @@ function handOver(id) {
   return act(async () => {
     let r;
     try {
-      r = await api("report_notes_hand", { id });
+      r = await write("report_notes_hand", { id });
     } catch (e) {
       if (e.code !== "not_found") throw e;
       await loadReports();
@@ -201,24 +231,71 @@ function handOver(id) {
   });
 }
 
-/** Deletes the report and moves on to the row below it (or above, at the end of the list). */
+/** Deletes the report and moves on to the row below it (or above, at the end of the list). While that
+ *  one is on screen, a notice offers to undo the delete (the daemon keeps it for a while). */
 function remove(id) {
   const rows = shown(),
     at = rows.findIndex((r) => r.id === id),
-    next = rows[at + 1] ?? rows[at - 1];
+    next = rows[at + 1] ?? rows[at - 1],
+    title = rows[at]?.title ?? "";
   return act(async () => {
+    let r = null;
     try {
-      await api("report_delete", { id });
+      r = await api("report_delete", { id });
     } catch (e) {
       if (e.code !== "not_found") throw e;
     }
+    R.undo = Number.isFinite(r?.restorable_until) ? { id, title, next: next?.id ?? null } : null;
     if (R.sel === id) {
       R.sel = null;
       if (R.open && next) openReport(next.id);
     }
+    emit("reports");
     await loadReports();
-    return t("tk.rep.deleted");
+    return R.undo ? "" : t("tk.rep.deleted");
   });
+}
+
+/** "Rückgängig": the report comes back with text, read state and notes and is shown again. */
+function undoDelete(u) {
+  return act(async () => {
+    try {
+      await write("report_restore", { id: u.id });
+    } catch (e) {
+      if (e.code !== "not_found") throw e;
+      R.undo = null;
+      emit("reports");
+      throw new Error(t("tk.rep.undoGone"));
+    }
+    R.undo = null;
+    await loadReports();
+    openReport(u.id);
+    return t("tk.rep.restored");
+  });
+}
+
+/** The notice after a delete, while the report shown next (or the empty reader) is on screen. */
+function undoNotice() {
+  const u = R.undo;
+  if (!u || u.next !== R.sel) return null;
+  return h(
+    "div.mb-ed__notice.tk-rep__undo",
+    { role: "status" },
+    h("span.mb-ed__done", { text: t("tk.rep.deletedNamed", { title: u.title }) }),
+    h("button.mb-btn.is-quiet", { type: "button", text: t("tk.rep.undo"), on: { click: () => undoDelete(u) } }),
+    h("button.mb-ed__x", {
+      type: "button",
+      text: "×",
+      title: t("tk.rep.undoDismiss"),
+      "aria-label": t("tk.rep.undoDismiss"),
+      on: {
+        click: () => {
+          R.undo = null;
+          emit("reports");
+        },
+      },
+    })
+  );
 }
 
 // ── notes: the open field, saving, deleting. The list reloads for its "open notes" count.
@@ -249,8 +326,8 @@ const notesUi = {
       e = R.edit;
     if (text.length > NOTE_MAX) throw new Error(t("tk.rep.note.tooLong", { max: NOTE_MAX }));
     const r = e.noteId
-      ? await api("report_note_edit", { id, note_id: e.noteId, text })
-      : await api("report_note_add", { id, anchor: e.anchor, text });
+      ? await write("report_note_edit", { id, note_id: e.noteId, text })
+      : await write("report_note_add", { id, anchor: e.anchor, text });
     const [saved] = noteRows({ notes: [r?.note] });
     if (R.sel !== id || !saved) return;
     R.notes = e.noteId ? R.notes.map((n) => (n.id === saved.id ? saved : n)) : [...R.notes, saved];
@@ -279,11 +356,37 @@ function listed() {
   const at = (r) => R.order.indexOf(r.id);
   return [...data.reports].sort((a, b) => at(a) - at(b));
 }
+/** The daemon's text hits, while they belong to the current search. */
+const hitsNow = () => (R.hits && R.hits.q === R.q.trim() ? R.hits.ids : null);
 /** The rows the search leaves in the list. */
-const shown = () => matchReports(listed(), R.q);
+const shown = () => matchReports(listed(), R.q, hitsNow());
+
+/** The daemon searches the report text too (#1597); a short pause after typing, the latest search wins.
+ *  A Recall without the text search refuses the query: then title and project stay the search. */
+const SEARCH_MS = 250;
+const QUERY_MAX = 200;
+let searchTimer = 0,
+  searchSeq = 0;
+function searchText() {
+  clearTimeout(searchTimer);
+  const q = R.q.trim();
+  if (!q || q.length > QUERY_MAX) return;
+  searchTimer = setTimeout(async () => {
+    const seq = ++searchSeq;
+    try {
+      const r = await api("report_list", { query: q });
+      if (seq !== searchSeq || R.q.trim() !== q) return;
+      R.hits = { q, ids: new Set(reportRows(r).map((x) => x.id)) };
+      emit("reports");
+    } catch {
+      /* the title and project match stays */
+    }
+  }, SEARCH_MS);
+}
 
 function setQuery(q) {
   R.q = q;
+  searchText();
   emit("reports");
 }
 
@@ -453,20 +556,39 @@ function reader(r, narrow) {
   );
 }
 
-/** Rebuilds the reader when its report, its notes or the open note field changed. A rebuilt
- *  reader keeps its scroll place; an opened (or still open) note field gets the cursor. */
+/** Where the cursor stands in the note field being typed in, so a rebuild can put it back (#1610). */
+const caretOf = (el) =>
+  el?.tagName === "TEXTAREA"
+    ? { start: el.selectionStart, end: el.selectionEnd, dir: el.selectionDirection, top: el.scrollTop }
+    : null;
+function putCaret(el, c) {
+  if (!c || el?.tagName !== "TEXTAREA") return;
+  el.setSelectionRange(c.start, c.end, c.dir);
+  el.scrollTop = c.top;
+}
+
+/** Rebuilds the reader when its report, its notes, the open note field or the undo notice changed.
+ *  A rebuilt reader keeps its scroll place; an opened (or still open) note field gets the cursor, and
+ *  a field typed in during the rebuild (a live update) keeps selection and scroll place. */
 function paintReader(read, rows, narrow, seen) {
   const r = rows.find((x) => x.id === R.sel);
-  const key = JSON.stringify([r, narrow, R.notes, R.edit && [R.edit.anchor, R.edit.noteId]]);
+  const key = JSON.stringify([r, narrow, R.notes, R.edit && [R.edit.anchor, R.edit.noteId], R.undo]);
   if (key === seen.key && R.body === seen.body) return;
   const top = read.scrollTop,
-    hadFocus = read.contains(document.activeElement);
+    hadFocus = read.contains(document.activeElement),
+    caret = hadFocus && seen.edit === R.edit ? caretOf(document.activeElement) : null;
   focusNote = null;
   read.replaceChildren(
-    r ? reader(r, narrow) : h("div.mb__nosel", { text: t(rows.length ? "tk.rep.pick" : "tk.rep.none") })
+    ...[
+      undoNotice(),
+      r ? reader(r, narrow) : h("div.mb__nosel", { text: t(rows.length ? "tk.rep.pick" : "tk.rep.none") }),
+    ].filter(Boolean)
   );
   read.scrollTop = seen.sel !== R.sel ? 0 : top;
-  if (focusNote && (seen.edit !== R.edit || hadFocus)) focusNote();
+  if (focusNote && (seen.edit !== R.edit || hadFocus)) {
+    focusNote();
+    putCaret(document.activeElement, caret);
+  }
   Object.assign(seen, { key, body: R.body, edit: R.edit, sel: R.sel });
 }
 
@@ -540,7 +662,7 @@ export function reportsRenderer(host) {
     }
     if (host.firstChild !== view) host.replaceChildren(view);
     const all = listed(),
-      rows = matchReports(all, R.q),
+      rows = matchReports(all, R.q, hitsNow()),
       narrow = host.clientWidth > 0 && host.clientWidth < NARROW;
     if (!narrow || !R.sel) R.list = !R.sel;
     view.classList.toggle("is-narrow", narrow);

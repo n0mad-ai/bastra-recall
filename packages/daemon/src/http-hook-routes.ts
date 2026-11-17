@@ -19,7 +19,7 @@ import { computeTrustShadow, trustRankMode, usageForShadow } from "./trust-shado
 import { toLeanHit } from "./tool-handlers.js";
 import { expandQuery, type BridgePool } from "./learned-recall/bridges.js";
 import { type SupportedLanguage } from "./learned-recall/language.js";
-import { isWeakResult, isNoHome, decideHits } from "@bastra-recall/core";
+import { isWeakResult, isNoHome, decideHits, pastValidUntil } from "@bastra-recall/core";
 import { armsOf, currentScoreVersion } from "./score-space.js";
 import { effectiveHintSuppressionMode, suppressRepeatedUnused } from "./hint-suppression.js";
 import { applyCallerScopeFilter } from "./recall-pipeline.js";
@@ -225,6 +225,16 @@ export interface HookRecallDeps {
  * Wirft bei einem leeren `query` NICHT — die Route prüft das vorher, weil es
  * eine Eingabeprüfung ist und keine Retrieval-Entscheidung.
  */
+/**
+ * #1468: a memory past its own valid_until is not shown automatically. The
+ * forwarder's MCP recall (`hook_source: "mcp"`) still gets it, marked
+ * `expired_on`, like a direct recall.
+ */
+function withoutExpiredForHooks(hits: RecallHit[], vault: Vault, hookSource: unknown): RecallHit[] {
+  if (hookSource === "mcp") return hits;
+  return hits.filter((h) => !pastValidUntil(vault.get(h.id)?.fm ?? {}));
+}
+
 export async function runHookRecall(
   body: Record<string, unknown>,
   query: string,
@@ -484,6 +494,7 @@ export async function runHookRecall(
     promptFused,
   });
   hits = content.hits;
+  hits = withoutExpiredForHooks(hits, vault, body.hook_source);
   const contentRecall = content.contentRecall;
   clearInterval(loopProbe);
   const recallLatencyMs = Date.now() - tRecall0;

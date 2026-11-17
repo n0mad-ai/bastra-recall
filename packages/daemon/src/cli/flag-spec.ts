@@ -119,6 +119,7 @@ export const COMMAND_FLAGS: Record<string, readonly string[]> = {
   patches: [],
   completion: [],
   archive: ["--json", "--yes", "-y"],
+  trash: ["--json"],
   reconcile: ["--dry-run", "--yes", "-y", "--json", "--vault"],
   logs: ["--follow", "-f", "--since", "--source", "--lines", "--stats", "--conventions", "--include-eval"],
 };

@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Real pinned Codex CLI, isolated config, synthetic local Responses provider only."""
-import struct,zlib,base64,http.server,json,os,pathlib,shlex,shutil,subprocess,tempfile,threading
+import argparse,struct,zlib,base64,http.server,json,os,pathlib,shlex,shutil,subprocess,tempfile,threading
 REPO=pathlib.Path(__file__).resolve().parents[3]
-ROOT=pathlib.Path(tempfile.mkdtemp(prefix='bastra-codex-gate-probe-'))
+parser=argparse.ArgumentParser()
+parser.add_argument('--expected-version',default='0.166.0')
+EXPECTED=parser.parse_args().expected_version
 VERSION=subprocess.check_output(['codex','--version'],text=True).strip()
-assert VERSION=='codex-cli 0.166.0',VERSION
+if VERSION!='codex-cli '+EXPECTED:raise SystemExit('Expected codex-cli '+EXPECTED+'; found '+VERSION)
+ROOT=pathlib.Path(tempfile.mkdtemp(prefix='bastra-codex-gate-probe-'))
 HOOK=ROOT/'gate.mts'
 HOOK.write_text(r'''
 import {appendFile,writeFile} from 'node:fs/promises';
@@ -22,11 +25,11 @@ if(process.env.PROBE_MODE==='bastra'){
  await mutateSessionState(native.session_id,s=>{
   if(!s.constants?.probeSeeded){(s.constants??={}).probeSeeded='1';s.pendingMustLoad=[{id:'invented-probe-rule',block:'probe',at:Date.now()}];}
  });
- out=await runGateLane({...native,bastra_client:'codex',bastra_codex_version:'0.166.0'},{reflexPool:()=>[]});
+ out=await runGateLane({...native,bastra_client:'codex',bastra_codex_version:'__VERSION__'},{reflexPool:()=>[]});
 }
 await appendFile(root+'/payloads.jsonl',JSON.stringify({native,returned:JSON.parse(out)})+'\n');
 process.stdout.write(out);
-'''.replace('__REPO__',str(REPO)))
+'''.replace('__REPO__',str(REPO)).replace('__VERSION__',EXPECTED))
 
 def tool_names(obj):
  out=[]

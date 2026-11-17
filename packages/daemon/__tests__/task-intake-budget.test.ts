@@ -159,7 +159,7 @@ test("actual Memory locator reports its byte limit rather than generic unavailab
     await observeTaskSources(ctx);
     const s = await readTaskStore(ctx.path);
     assert.equal(s.tasks[0].last_failure?.code, "source_budget");
-    assert.equal(s.tasks[0].last_failure?.message, "Quell-Bytegrenze überschritten");
+    assert.equal(s.tasks[0].last_failure?.message, "Source byte limit exceeded");
     assert.equal(s.events.length, 0);
     assert.equal(s.occurrences.length, 0);
   } finally {

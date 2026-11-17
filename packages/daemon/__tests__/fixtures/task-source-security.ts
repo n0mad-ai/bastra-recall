@@ -44,7 +44,7 @@ if (process.argv[2] === "fifo") {
   const rejected = await readTaskStore(ctx.path);
   assert.equal(rejected.events.length, 0);
   assert.equal(rejected.tasks[0].last_failure?.code, "source_unavailable");
-  assert.match(rejected.tasks[0].last_failure!.message, /mehrere Hardlinks/);
+  assert.match(rejected.tasks[0].last_failure!.message, /several hard links/);
   await unlink(target); await writeFile(target, "inside");
   await observeTaskSources(ctx);
   const recovered = await readTaskStore(ctx.path);

@@ -77,7 +77,8 @@ test("save → list → read → mark → delete keeps the report text exactly; 
   assert.equal((await f.call("task_report_mark", { id: saved.id, read: false })).read_at, undefined, "idempotent");
   assert.equal((await f.call("task_report_list", {})).unread, 1);
 
-  assert.deepEqual(await f.call("task_report_delete", { id: saved.id }), { deleted: true, id: saved.id });
+  const deleted = await f.call("task_report_delete", { id: saved.id });
+  assert.deepEqual(deleted, { deleted: true, id: saved.id, restorable_until: deleted.restorable_until });
   assert.deepEqual((await f.call("task_report_list", {})).reports, []);
   await assert.rejects(f.call("task_report_read", { id: saved.id }), { code: "not_found" });
   await assert.rejects(f.call("task_report_delete", { id: saved.id }), { code: "not_found" });
@@ -154,6 +155,15 @@ test("INV-TASK-04: reports follow the task domain rule: other domains neither se
   assert.equal((await f.call("task_report_list", {})).unread, 1, "a foreign mark changes nothing");
   await assert.rejects(f.call("task_report_list", {}, "Bearer invalid"), { code: "unauthorized" });
   assert.equal((await f.call("task_report_list", {})).reports.length, 1);
+});
+
+test("INV-TASK-04: a deleted report is restored only within its domains (#1559)", async () => {
+  const f = await fixture();
+  const saved = await f.call("task_report_save", report());
+  await f.call("task_report_delete", { id: saved.id });
+  await assert.rejects(f.call("task_report_restore", { id: saved.id }, f.other), { code: "not_found" });
+  assert.deepEqual((await f.call("task_report_list", {}, f.other)).reports, []);
+  assert.equal((await f.call("task_report_restore", { id: saved.id })).id, saved.id, "its own domain gets it back");
 });
 
 test("INV-TASK-05: the store refuses new reports beyond its limit instead of dropping old ones", async () => {

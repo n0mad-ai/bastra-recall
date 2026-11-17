@@ -7,11 +7,11 @@ import {
   friendlyTaskCreate,
   friendlyTaskResult,
   friendlyTaskError,
-  TASK_CLI_LANGUAGE,
   parseTaskOptions,
   taskWhen,
 } from "./task-friendly.js";
 import { setupTaskHooks, taskClientCoverage } from "./task-setup.js";
+import { taskCliLanguage, taskCliWords } from "./task-cli-words.js";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
@@ -25,8 +25,15 @@ import {
 import { isTaskTool, taskClientAuthorization, taskFailure } from "../task-transport.js";
 import { confirm } from "./prompt.js";
 
+/** A CLI input error with a stable reason the person reads in the CLI's language. */
 export class TaskCliInputError extends Error {
   readonly code = "validation";
+  constructor(
+    message: string,
+    readonly reason?: string
+  ) {
+    super(message);
+  }
 }
 export async function readTaskInputFile(path: string): Promise<unknown> {
   try {
@@ -40,17 +47,17 @@ export async function readTaskInputFile(path: string): Promise<unknown> {
     }
   } catch {
     throw new TaskCliInputError(
-      "Die Eingabedatei fehlt, ist nicht lesbar oder enthält kein gültiges JSON (höchstens 256 KiB)."
+      "The input file is missing, not readable or not valid JSON (at most 256 KiB)",
+      "input_file_unreadable"
     );
   }
 }
-/** Error text for the terminal, in the task CLI's language (#1594). */
-function taskCliErrorText(error: unknown, sub: string | null, json?: boolean): string {
+/** Error text for the terminal, in the task CLI's language (#1594, #1602). */
+function taskCliErrorText(error: unknown, sub: string | null, language: string, json?: boolean): string {
   const failure = taskFailure(error).body;
-  if (error instanceof TaskCliInputError) failure.error = error.message;
+  if (error instanceof TaskCliInputError) Object.assign(failure, { error: error.message, reason: error.reason });
   if (json) return JSON.stringify(failure);
-  if (error instanceof TaskCliInputError && !failure.reason) return `${sub ?? "Aufgaben"}: ${failure.error}`;
-  return friendlyTaskError(failure.code, sub, failure.reason, TASK_CLI_LANGUAGE);
+  return friendlyTaskError(failure.code, sub, failure.reason, language);
 }
 /** Agent mode is explicit. Owner mode always asks privately, ignoring agent env. */
 export async function taskCliCall(
@@ -101,10 +108,11 @@ export async function cmdTasks(args: {
     );
     return 0;
   }
+  const language = await taskCliLanguage(),
+    w = taskCliWords(language);
   // Compatibility notice only: retired commands never read credentials or keys.
   if (["keys", "approve", "deny"].includes(args.sub ?? "")) {
-    const hint =
-      "Die Anweisung im Chat ist die Freigabe. Schlüssel und separate Unterschriften werden nicht mehr benötigt.";
+    const hint = w.retired;
     process.stderr.write((args.json ? JSON.stringify({ code: "retired_command", hint }) : hint) + "\n");
     return 1;
   }
@@ -117,9 +125,7 @@ export async function cmdTasks(args: {
       return 0;
     }
     if (args.sub === "ui") {
-      process.stdout.write(
-        `${resolveDaemonEndpoint().baseUrl}/ui/#tasks (UI aktivieren: bastra config set ui.enabled true)\n`
-      );
+      process.stdout.write(`${resolveDaemonEndpoint().baseUrl}/ui/#tasks ${w.uiHint}\n`);
       return 0;
     }
     if (args.sub === "boundary") {
@@ -135,7 +141,7 @@ export async function cmdTasks(args: {
       process.stdout.write(
         (args.json
           ? JSON.stringify(status)
-          : `${status.authorized ? "Client-Kennung gültig (Daemon muss laufen)" : "Keine Karten für diesen Client"}: ${status.coverage}${"remedy" in status ? `; ${status.remedy}` : ""}`) +
+          : `${status.authorized ? w.clientValid : w.clientNoCards}: ${status.coverage}${"remedy" in status ? `; ${status.remedy}` : ""}`) +
           "\n"
       );
       return 0;
@@ -153,20 +159,13 @@ export async function cmdTasks(args: {
       return 0;
     }
     if (args.sub === "auth") {
-      if (
-        !process.stdin.isTTY ||
-        !(await confirm(
-          "Zugang als Owner am Terminal verwalten? Token-Dateien müssen außerhalb des Agent-Zugriffs liegen."
-        ))
-      )
+      if (!process.stdin.isTTY || !(await confirm(w.authConfirm)))
         throw Object.assign(new Error("Interactive owner command required"), { code: "forbidden" });
       const [operation, role, actor, domains, destination, previous] = words;
       if (operation === "revoke") {
         await revokeTaskCredential(taskAuthPath(), role);
         process.stdout.write(
-          (args.json
-            ? JSON.stringify({ revoked: true, credential_id: role })
-            : `Zugang ${role} widerrufen. Dieser Client erhält keine Karten mehr.`) + "\n"
+          (args.json ? JSON.stringify({ revoked: true, credential_id: role }) : w.authRevoked(role)) + "\n"
         );
         return 0;
       }
@@ -187,8 +186,7 @@ export async function cmdTasks(args: {
         process.stdout.write(
           (args.json
             ? JSON.stringify({ credential_id: credential.credential_id, token_written: true })
-            : `Zugang angelegt: ${role === "owner" ? "Owner" : "Agent"} ${actor}, Domänen ${domains}. Token privat in der gewählten Datei; jetzt bastra tasks setup-hooks. Kennung ${credential.credential_id}.`) +
-            "\n"
+            : w.authMinted(role, actor, domains, credential.credential_id)) + "\n"
         );
       } finally {
         await out.close();
@@ -204,9 +202,9 @@ export async function cmdTasks(args: {
             try {
               return friendlyTaskCreate(options);
             } catch (error) {
-              throw Object.assign(
-                new TaskCliInputError(error instanceof Error ? error.message : "Zeit/Optionen ungültig"),
-                { reason: (error as any)?.reason }
+              throw new TaskCliInputError(
+                error instanceof Error ? error.message : "Invalid time or options",
+                (error as any)?.reason
               );
             }
           })()
@@ -262,7 +260,7 @@ export async function cmdTasks(args: {
         try {
           input.until = taskWhen(String(options.until), task.timezone);
         } catch {
-          throw new TaskCliInputError("Zeit nicht lesbar");
+          throw new TaskCliInputError("Time not readable", "time_format");
         }
       }
       if (args.sub === "edit" && options.expires)
@@ -288,15 +286,13 @@ export async function cmdTasks(args: {
       baseUrl
     );
     process.stdout.write(
-      (args.json ? JSON.stringify(result, null, 2) : friendlyTaskResult(args.sub ?? "list", result)) + "\n"
+      (args.json ? JSON.stringify(result, null, 2) : friendlyTaskResult(args.sub ?? "list", result, language)) + "\n"
     );
     if (!args.json && args.sub === "create" && options.goal && !options.timezone)
-      process.stdout.write(
-        `Zeitzone aus dem System angenommen: ${(result as any).timezone}. Mit --timezone bewusst festlegen.\n`
-      );
+      process.stdout.write(w.timezoneAssumed((result as any).timezone) + "\n");
     return 0;
   } catch (error) {
-    process.stderr.write(taskCliErrorText(error, args.sub, args.json) + "\n");
+    process.stderr.write(taskCliErrorText(error, args.sub, language, args.json) + "\n");
     return 1;
   }
 }

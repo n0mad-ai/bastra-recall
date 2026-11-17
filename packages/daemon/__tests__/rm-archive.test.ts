@@ -1356,6 +1356,16 @@ describe("the archive root itself must be the user's own (BASTRA_ARCHIVE_DIR=/va
     }
   );
 
+  it("#1606 doctor names a link inside the archive directory, the same entry rm stops at", { skip: !posix }, () => {
+    const { dir, env } = sandbox();
+    const root = archiveRoot(env);
+    assert.equal(archiveRootProblem(env), null);
+    symlinkSync(join(dir, "elsewhere"), join(root, "planted"));
+    assert.match(archiveRootProblem(env) ?? "", /holds 'planted', which is not yours or is a link/);
+    assert.throws(() => archiveRoot(env), /holds 'planted'/);
+    assert.match(archiveRootProblem(env, me + 1) ?? "", /does not belong to you/, "the root's own problem comes first");
+  });
+
   it("rm with another account's root (or a link to one) archives nothing and removes nothing", { skip: !posix }, () => {
     // Revert-check: drop the try/catch around archiveRoot in runRmShim → the error escapes as a stack trace.
     const foreign = "/usr";

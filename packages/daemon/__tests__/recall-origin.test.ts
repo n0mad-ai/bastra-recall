@@ -116,3 +116,17 @@ test("#704 a prompt-lane row without the field is not the owner and teaches no b
     true
   );
 });
+
+test("#1266: a pre-#704 recall row from a tool lane is the tool's, not an agent recall", () => {
+  const row = (dimensions: Record<string, unknown>): TelemetryEvent => ({
+    kind: "recall",
+    ts: "2026-09-20T10:00:00.000Z",
+    query: "session-start preferences active context",
+    dimensions,
+  });
+  assert.equal(queryOrigin(row({ hook_source: "session-context", experiment_session: "s1" })), "tool");
+  assert.equal(teachesBridges(row({ hook_source: "session-context" })), false);
+  // Without a tool lane, a kind=recall row stays the model's own call.
+  assert.equal(queryOrigin(row({})), "agent");
+  assert.equal(queryOrigin(row({ hook_source: "mcp" })), "agent");
+});

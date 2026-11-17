@@ -5,7 +5,7 @@ import { projectForFilter } from "../scope-filter.js";
 import { getApiToken } from "../settings.js";
 
 export async function rulebookCliCall(
-  tool: "list_rules" | "load_memory" | "edit_memory" | "review_save_suggestion",
+  tool: "list_rules" | "load_memory" | "edit_memory" | "review_save_suggestion" | "restore_memory",
   input: unknown
 ): Promise<any> {
   const token = process.env.BASTRA_API_TOKEN || (await getApiToken());

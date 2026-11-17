@@ -1,0 +1,54 @@
+{
+  "$comment": "Abstention on the 79 unanswerable gold-set questions (#1463), read from the per-case rows of the two identical run-A artifacts that v1-baseline.json already registers. No new run: a fresh gold-set run opens the live vault (Vault.init records the vault root outside the vault) and was not allowed in this round. This is a SECONDARY ANALYSIS of existing rows, not the preregistered follow-up run the issue asks for; the open cells are listed under `not_measured`.",
+  "schema_version": 1,
+  "issue": 1463,
+  "status": "secondary_analysis_registered",
+  "registered_at": "2026-11-17",
+  "source_runs": {
+    "registration": "registrations/v1-baseline.json (offline_half, run A)",
+    "artifacts": [
+      {
+        "artifact": "~/.bastra/eval-runs/2026-09-27-fefe84981fa8/results.json",
+        "sha256": "2b8eab0c86be48bb8a1096536d8fb1c574ff75ef1f7384792c90117428c90ff5"
+      },
+      {
+        "artifact": "~/.bastra/eval-runs/2026-09-27-4ede67f2cc05/results.json",
+        "sha256": "c0f9e0dd198a1b6ddb802863e91b03097850e5879667ca6174d081d6b4d2f9a4"
+      }
+    ],
+    "command": "BASTRA_VAULT_PATH=<vault> npx tsx src/goldset-run.ts --gold <12 gold files> --hybrid --gate --out <file>",
+    "code_git": "8c6bdcb00509dc85fe63f71e214f7af723a84e89",
+    "dataset_sha256": "69e1475010c64a0a02eee0b2fbc6929f3a33de1029ffc14eea36b91316dced00",
+    "vault_size": 1335,
+    "arm": "Hybrid (BM25 + Vector RRF), ollama embeddinggemma, store copied from vault",
+    "production_k": 10,
+    "score_floor": 30,
+    "repeat_identical": true
+  },
+  "definitions": {
+    "population": "main denominator 663 = 79 no_answer + 584 answerable; the 36 probe cases are excluded, as in v1-baseline",
+    "mcp_path": "MCP `recall` applies no evidence gate (tool-defs-memory.ts). Its only absence signals are: nothing above the score floor (`abstained`), and `weak_result`, which exists only on the hybrid path",
+    "hook_path": "The hook path drops every hit the evidence decision marks `no_answer` (hook-recall-evidence.ts, gate on by default). `gate silent` = the decision kept no hit (required + optional = 0) for the case. The runner computes the decision with `decideHits` the way the daemon does, but unscoped (`scope: null`), which makes `required` rarer than in a scoped hook call",
+    "mandatory_load": "a case where the decision marked at least one hit `required`"
+  },
+  "results": {
+    "hybrid_mcp_path_no_gate": {
+      "no_answer_below_floor": { "count": "0/79", "value": 0, "wilson_95_ci": [0, 0.0464] },
+      "no_answer_weak_result": { "count": "1/79", "value": 0.0127, "wilson_95_ci": [0.0022, 0.0683] },
+      "answerable_weak_result": { "count": "0/584", "value": 0, "wilson_95_ci": [0, 0.0065] }
+    },
+    "hybrid_hook_path_gate_on": {
+      "no_answer_gate_silent": { "count": "2/79", "value": 0.0253, "wilson_95_ci": [0.007, 0.0877] },
+      "no_answer_mandatory_load": { "count": "14/79", "value": 0.1772, "wilson_95_ci": [0.1086, 0.2758] },
+      "answerable_false_abstention": { "count": "2/584", "value": 0.0034, "wilson_95_ci": [0.0009, 0.0124] }
+    },
+    "reading": "On this gold set Recall almost never says 'I don't have it'. Without the gate (MCP path) 0 of 79 unanswerable questions come back empty and weak_result flags 1 of 79. With the gate (hook path) the hook stays silent on 2 of 79 and marks at least one hit as must-load on 14 of 79. The gate costs 2 of 584 answerable questions."
+  },
+  "not_measured": [
+    "BM25-only arm (no embedding model), gate on and off: no artifact exists; weak_result is undefined there",
+    "the shipped code: the evidence decision changed after 8c6bdcb0 (6dea17f5 Unicode case folding, b384354e identifier anchor), so these figures describe the September predicate",
+    "the full hook pipeline (scope, band assignment, budget) beyond the evidence decision on the k=10 pool",
+    "a preregistered new run with gate on/off x embeddings on/off x hook/MCP path, as #1463 asks; it needs a read-only gold-set run against the live vault and the gold files under ~/.bastra/eval-goldset"
+  ],
+  "gate": "none; descriptive only, no threshold and no product change"
+}

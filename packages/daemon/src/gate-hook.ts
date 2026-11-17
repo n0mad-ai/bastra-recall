@@ -14,6 +14,7 @@
 import { envInt } from "./env.js";
 import { FAST_BUDGET_MS } from "./hook-budgets.js";
 import { readStdin, daemonBaseUrl, postLane, classifyTransportError } from "./thin-client.js";
+import { emitStdout, stdoutFlushed } from "./hook-stdout.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", FAST_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
 
@@ -21,7 +22,7 @@ let stdoutEmitted = false;
 function emitOnce(payload: string): void {
   if (stdoutEmitted) return;
   stdoutEmitted = true;
-  process.stdout.write(payload);
+  emitStdout(payload);
 }
 
 const startedAt = Date.now();
@@ -83,6 +84,7 @@ if (isCliEntry) {
     try {
       await failureWrite;
     } finally {
+      await stdoutFlushed();
       process.exit(0);
     }
   }

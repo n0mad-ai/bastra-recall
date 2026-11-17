@@ -44,6 +44,10 @@ Bastra Recall picks up there:
 
 Keep your CLAUDE.md. Recall adds the knowledge that doesn't belong in every session.
 
+### Recall and the built-in memory
+
+Claude Code, Codex and GitHub Copilot now keep a memory of their own. Recall works alongside it, not against it. Their own documentation describes that memory as context, not as enforced rules: Claude Code keeps it on one machine ([docs](https://code.claude.com/docs/en/memory)), Codex calls it a recall layer and keeps rules that must always apply in AGENTS.md ([docs](https://learn.chatgpt.com/docs/customization/memories)), and Copilot keeps it inside GitHub ([docs](https://docs.github.com/en/copilot/concepts/agents/copilot-memory)). Recall adds one memory that several tools share, a rulebook whose rules hooks deliver and check on supported hook hosts, and readable Markdown files on your computer.
+
 **Version 1.2.1 is available.** Find published downloads in the [latest release](https://github.com/n0mad-ai/bastra-recall/releases/latest), changes in the [changelog](./CHANGELOG.md), and tested integrations in the [support matrix](#supported-surfaces).
 
 <p align="center">
@@ -59,9 +63,9 @@ https://github.com/user-attachments/assets/58e68703-8b0d-46c3-b468-33063e8ebf83
 
 </details>
 
-1.1.8 adds the rulebook. With hooks (on supported hook hosts), your saved rules reach the assistant at session start, with bounded checks: always-rules in full, the others as a list. Clients without hooks get the rules only when the assistant calls `list_rules`. It also adds remote MCP with OAuth, Windows setup improvements and English status panels. Reliability targets remain unmeasured. After updating, rerun `bastra install claude-code` or `bastra install codex`. Node 22.22–26 are supported. [Changelog](./CHANGELOG.md) · [rulebook](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [remote access](./docs/REMOTE-ACCESS.md).
+1.1.8 adds the rulebook. With hooks (on supported hook hosts), your saved rules reach the assistant at session start, with bounded checks: always-rules in full, the others as a list. Clients without hooks get the rules only when the assistant calls `list_rules`. It also adds remote MCP with OAuth, Windows setup improvements and English status panels. Reliability targets remain unmeasured. `bastra update` registers the clients again by itself; no separate `bastra install` is needed. [Changelog](./CHANGELOG.md) · [rulebook](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [remote access](./docs/REMOTE-ACCESS.md).
 
-Since 1.2.0, users confirm rule proposals in chat, and rule saves and edits request a review of the complete lasting guidance, without classifying wording. [Rulebook guide](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook). Explicitly rejected save suggestions can be suppressed individually per project and restored. [Suggestion controls](https://github.com/n0mad-ai/bastra-recall/wiki/Pending-Relay). On macOS, local UI and task access are bound to the vault owner account. [Account boundary](https://github.com/n0mad-ai/bastra-recall/wiki/Local-Account-Boundary).
+Since 1.2.0, users confirm rule proposals in chat, and rule saves and edits request a review of the complete lasting guidance, without classifying wording. [Rulebook guide](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook). Explicitly rejected save suggestions can be suppressed individually per project and restored by their proposal ID (`review_save_suggestion` with `decision: reset`, or `bastra suggestions reset`); there is no list of suppressed suggestions yet. [Suggestion controls](https://github.com/n0mad-ai/bastra-recall/wiki/Pending-Relay). On macOS, local UI and task access are bound to the vault owner account. [Account boundary](https://github.com/n0mad-ai/bastra-recall/wiki/Local-Account-Boundary).
 
 ### Install
 
@@ -136,6 +140,12 @@ A project decision made on Monday should still be available on Thursday, even if
 
 [Examples from a working week](./docs/USAGE.md#cookbook) show how these fit together.
 
+### Measured
+
+- **LongMemEval-S** (cleaned, 500 questions): hybrid search finds a session with the answer in the top 5 for 98.2 %. That measures retrieval only, with no answer model, on a benchmark that gives every question its own small history. [Setup and comparison](./packages/eval/README.md) · [registration](./packages/eval/registrations/longmemeval-run.json)
+- **Own gold set** (663 questions about the maintainer's vault of 1,335 memories, September 2026): for the 584 answerable ones, an expected memory is in the top 3 for 39 % and in the top 10 for 56 %. Of 79 questions the vault cannot answer, recall came back empty for none; with the evidence gate the hooks stayed silent for 2. [Baseline](./packages/eval/registrations/v1-baseline.json) · [abstention](./packages/eval/registrations/abstention-1463.json)
+- Not measured yet: whether Recall saves you from repeating yourself.
+
 ### Code awareness (experimental)
 
 Experimental, optional, off until you switch it on per repository with `bastra code enable`. Recall then tells your assistant, before it edits a file, which other files import or call into it — and adds a `find_code` lookup so a symbol can be found by name instead of grepped for. The code map is built locally by [Graphify](https://github.com/Graphify-Labs/graphify), reads only code, is never committed, and no language model ever sees your source. It can help an agent find its way into an unfamiliar or large repository; for “what breaks if I change this” it measurably did not beat plain search on repositories like ours, and it costs context and background CPU. [How to use it](./docs/USAGE.md#code-awareness--what-depends-on-the-file-you-are-editing). macOS and Linux for now.
@@ -164,7 +174,7 @@ If a vault root recorded in `~/.bastra/vault-roots.json` later disappears (for e
 - [Remote access](./docs/REMOTE-ACCESS.md) — connect ChatGPT on the web and phone to your own Recall through your own HTTPS address.
 - [Statusline and terminal panels](./packages/statusline/README.md#english) — setup, views and data limits for Claude Code and Codex.
 - [Product docs](https://github.com/n0mad-ai/bastra-recall/wiki/Product-Docs) — let the assistant maintain user guides for your projects.
-- [Bastra Commons](https://github.com/n0mad-ai/bastra-recall/wiki/Bastra-Commons) — optional community recipes with verification records.
+- [Bastra Commons](./docs/commons.md) — on hold: off by default and not developed further for now.
 - [Usage and troubleshooting](./docs/USAGE.md) · [Memory format](./docs/memory-schema.md) · [Architecture](./docs/architecture.md) · [Hooks](./docs/hooks.md) · [Archiving `rm` and git snapshots](./docs/archiving-rm-and-git-snapshots.md) · [Save and recall triggers](./docs/triggers.md) · [Taxonomy](./docs/taxonomy.md) · [Valence and reflex](https://github.com/n0mad-ai/bastra-recall/wiki/Valence-and-Reflex)
 
 ### Roadmap
@@ -172,6 +182,10 @@ If a vault root recorded in `~/.bastra/vault-roots.json` later disappears (for e
 The 1.x release line focuses on measured recall quality, relevant session context and clearer control over memory use. The cumulative session context budget is being measured in shadow mode; it does not yet enforce a live session-wide limit. [Roadmap and release boundaries](./PLAN.md).
 
 A native Bastra Mac app is in development. The open-source package already includes the local browser-based vault map and works independently of that app.
+
+### Free and Recall Pulse
+
+Recall is free and open source. Recall Pulse, the paid tier around a personal agent, is not available yet. Decided so far: in free Recall, agents create, move, complete and delete tasks, due tasks show up in the running session, as a macOS notification and on the board, and the session's agent may do them after your OK. Recall Pulse adds Recall starting an agent by itself, a hosted agent, the phone, and connections to mail, calendar and other services. Writing documents (`save_document`) and text recognition (OCR) for scans belong to Recall Pulse; document writing has been off by default behind `BASTRA_DOCUMENT_WRITE=1` since it was added. What is free stays free.
 
 ### License and contact
 
@@ -216,6 +230,10 @@ Bastra Recall setzt dort an:
 
 Deine CLAUDE.md kann bleiben. Recall ergänzt sie um das Wissen, das nicht in jede Sitzung gehört.
 
+### Recall und das eingebaute Gedächtnis
+
+Claude Code, Codex und GitHub Copilot haben inzwischen ein eigenes Gedächtnis. Recall arbeitet daneben, nicht dagegen. Die Hersteller beschreiben dieses Gedächtnis selbst als Kontext, nicht als durchgesetzte Regeln: Claude Code hält es auf einem Rechner ([Doku](https://code.claude.com/docs/en/memory)), Codex nennt es eine Erinnerungshilfe und legt Regeln, die immer gelten müssen, in die AGENTS.md ([Doku](https://learn.chatgpt.com/docs/customization/memories)), Copilot hält es innerhalb von GitHub ([Doku](https://docs.github.com/en/copilot/concepts/agents/copilot-memory)). Recall ergänzt ein Gedächtnis, das sich mehrere Tools teilen, ein Regelbuch, dessen Regeln Hooks auf unterstützten Hook-Hosts einbringen und prüfen, und lesbare Markdown-Dateien auf deinem Rechner.
+
 **Version 1.2.1 ist verfügbar.** Veröffentlichte Downloads findest du im [aktuellen Release](https://github.com/n0mad-ai/bastra-recall/releases/latest), Änderungen im [Changelog](./CHANGELOG.md) und getestete Integrationen in der [Support-Matrix](#unterstützte-oberflächen).
 
 <p align="center">
@@ -231,9 +249,9 @@ https://github.com/user-attachments/assets/58e68703-8b0d-46c3-b468-33063e8ebf83
 
 </details>
 
-1.1.8 bringt das Regelbuch. Mit Hooks (auf unterstützten Hook-Hosts) erreichen deine gespeicherten Regeln den Assistenten beim Sitzungsstart, mit begrenzten Prüfungen: Always-Regeln vollständig, die übrigen als Liste. Clients ohne Hooks bekommen die Regeln nur, wenn der Assistent `list_rules` aufruft. Dazu kommen Remote-MCP mit OAuth, eine verbesserte Windows-Einrichtung und englische Status-Panels. Zuverlässigkeitsziele sind weiterhin ungemessen. Nach dem Update `bastra install claude-code` oder `bastra install codex` erneut ausführen. Node 22.22–26 werden unterstützt. [Changelog](./CHANGELOG.md) · [Regelbuch](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch).
+1.1.8 bringt das Regelbuch. Mit Hooks (auf unterstützten Hook-Hosts) erreichen deine gespeicherten Regeln den Assistenten beim Sitzungsstart, mit begrenzten Prüfungen: Always-Regeln vollständig, die übrigen als Liste. Clients ohne Hooks bekommen die Regeln nur, wenn der Assistent `list_rules` aufruft. Dazu kommen Remote-MCP mit OAuth, eine verbesserte Windows-Einrichtung und englische Status-Panels. Zuverlässigkeitsziele sind weiterhin ungemessen. `bastra update` richtet die Clients selbst neu ein; ein eigenes `bastra install` ist nicht nötig. [Changelog](./CHANGELOG.md) · [Regelbuch](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch).
 
-Seit 1.2.0 bestätigen Nutzer Regelvorschläge im Chat; Regel-Saves und -Edits bitten um Prüfung der vollständigen dauerhaften Vorgabe, ohne Wortlauterkennung. [Regelbuch-Anleitung](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook). Ausdrücklich abgelehnte Speichervorschläge lassen sich einzeln je Projekt ausblenden und zurücksetzen. [Vorschlagssteuerung](https://github.com/n0mad-ai/bastra-recall/wiki/Pending-Relay#deutsch). Auf macOS sind lokale Oberfläche und Aufgaben-Zugriff an das Besitzerkonto des Vaults gebunden. [Kontogrenze](https://github.com/n0mad-ai/bastra-recall/wiki/Local-Account-Boundary#deutsch).
+Seit 1.2.0 bestätigen Nutzer Regelvorschläge im Chat; Regel-Saves und -Edits bitten um Prüfung der vollständigen dauerhaften Vorgabe, ohne Wortlauterkennung. [Regelbuch-Anleitung](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook). Ausdrücklich abgelehnte Speichervorschläge lassen sich einzeln je Projekt ausblenden und über ihre Vorschlags-ID wieder freigeben (`review_save_suggestion` mit `decision: reset` oder `bastra suggestions reset`); eine Liste ausgeblendeter Vorschläge gibt es noch nicht. [Vorschlagssteuerung](https://github.com/n0mad-ai/bastra-recall/wiki/Pending-Relay#deutsch). Auf macOS sind lokale Oberfläche und Aufgaben-Zugriff an das Besitzerkonto des Vaults gebunden. [Kontogrenze](https://github.com/n0mad-ai/bastra-recall/wiki/Local-Account-Boundary#deutsch).
 
 ### Installation
 
@@ -308,6 +326,12 @@ Eine Projektentscheidung vom Montag soll am Donnerstag noch verfügbar sein, auc
 
 [Beispiele aus einer Arbeitswoche](./docs/USAGE.md#kochbuch) zeigen das Zusammenspiel.
 
+### Gemessen
+
+- **LongMemEval-S** (bereinigt, 500 Fragen): Die hybride Suche findet bei 98,2 % eine Sitzung mit der Antwort unter den ersten 5. Das misst nur das Finden, ohne Antwortmodell, auf einem Benchmark, der jeder Frage einen eigenen kleinen Verlauf gibt. [Aufbau und Vergleich](./packages/eval/README.md) (Englisch) · [Registrierung](./packages/eval/registrations/longmemeval-run.json)
+- **Eigener Goldsatz** (663 Fragen zum Vault des Maintainers mit 1.335 Erinnerungen, September 2026): Bei den 584 beantwortbaren steht eine erwartete Erinnerung bei 39 % unter den ersten 3 und bei 56 % unter den ersten 10. Von 79 Fragen, die der Vault nicht beantworten kann, kam bei keiner eine leere Antwort; mit dem Evidenz-Gate blieben die Hooks bei 2 still. [Basislinie](./packages/eval/registrations/v1-baseline.json) · [Enthaltung](./packages/eval/registrations/abstention-1463.json)
+- Noch nicht gemessen: ob Recall dir Wiederholungen erspart.
+
 ### Code-Awareness (experimentell)
 
 Experimentell, optional und standardmäßig aus; pro Repository mit `bastra code enable` einzuschalten. Recall sagt deinem Assistenten dann vor einer Dateiänderung, welche anderen Dateien sie importieren oder aufrufen — dazu kommt `find_code`, das ein Symbol beim Namen findet, statt danach zu suchen. Die Code-Karte baut [Graphify](https://github.com/Graphify-Labs/graphify) lokal, sie liest ausschließlich Code, wird nie committet, und kein Sprachmodell sieht deinen Quelltext. Sie kann einem Agenten helfen, sich in einem unbekannten oder großen Repository zurechtzufinden; bei „was geht kaputt, wenn ich das ändere?“ war sie auf Repositories wie unserem messbar nicht besser als eine einfache Suche, und sie kostet Kontext und Rechenzeit im Hintergrund. [Wie du sie nutzt](./docs/USAGE.md#code-awareness--was-von-der-datei-abhängt-die-du-gerade-bearbeitest). Vorerst macOS und Linux.
@@ -336,7 +360,7 @@ Verschwindet ein in `~/.bastra/vault-roots.json` vermerkter Vault-Root später (
 - [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch) – ChatGPT im Web und auf dem Handy über deine eigene HTTPS-Adresse mit deinem Recall verbinden.
 - [Statusline und Terminal-Panels](./packages/statusline/README.md#deutsch) – Einrichtung, Ansichten und Datengrenzen für Claude Code und Codex.
 - [Produkt-Dokumentation](https://github.com/n0mad-ai/bastra-recall/wiki/Product-Docs) – Anleitungen deiner Projekte vom Assistenten pflegen lassen.
-- [Bastra Commons](https://github.com/n0mad-ai/bastra-recall/wiki/Bastra-Commons) – optionale Community-Rezepte mit Prüfnachweisen.
+- [Bastra Commons](./docs/commons.md) – ruht: standardmäßig aus und vorerst nicht weiterentwickelt.
 - [Nutzung und Fehlerbehebung](./docs/USAGE.md) · [Memory-Format](./docs/memory-schema.md) · [Architektur](./docs/architecture.md) · [Hooks](./docs/hooks.md) · [Archivierendes `rm` und Git-Schnappschüsse](./docs/archiving-rm-and-git-snapshots.md#deutsch) · [Speicher- und Abrufauslöser](./docs/triggers.md) · [Taxonomie](./docs/taxonomy.md) · [Valenz und Reflex](https://github.com/n0mad-ai/bastra-recall/wiki/Valence-and-Reflex)
 
 ### Roadmap
@@ -344,6 +368,10 @@ Verschwindet ein in `~/.bastra/vault-roots.json` vermerkter Vault-Root später (
 Die 1.x-Release-Reihe konzentriert sich auf gemessene Abrufqualität, passenden Sitzungskontext und klarere Kontrolle über die Gedächtnisnutzung. Das kumulative Kontextbudget einer Sitzung wird im Shadow-Modus gemessen; es erzwingt noch keine globale Obergrenze. [Roadmap und Release-Grenzen](./PLAN.md).
 
 Eine native Bastra-Mac-App ist in Entwicklung. Das Open-Source-Paket enthält bereits die lokale browserbasierte Vault-Map und funktioniert unabhängig von dieser App.
+
+### Frei und Recall Pulse
+
+Recall ist frei und quelloffen. Recall Pulse, die bezahlte Stufe rund um einen persönlichen Agenten, ist noch nicht verfügbar. Bisher entschieden: Im freien Recall legen Agenten Aufgaben an, verschieben, erledigen und löschen sie; fällige Aufgaben melden sich in der laufenden Sitzung, als macOS-Mitteilung und auf dem Brett, und der Agent der Sitzung darf sie nach deinem Ok erledigen. Recall Pulse ergänzt, dass Recall selbst einen Agenten startet, einen gehosteten Agenten, das Handy sowie Verbindungen zu Mail, Kalender und anderen Diensten. Dokumente schreiben (`save_document`) und Texterkennung (OCR) für Scans gehören zu Recall Pulse; das Dokument-Schreiben ist seit seiner Einführung standardmäßig aus und nur mit `BASTRA_DOCUMENT_WRITE=1` an. Was frei ist, bleibt frei.
 
 ### Lizenz und Kontakt
 

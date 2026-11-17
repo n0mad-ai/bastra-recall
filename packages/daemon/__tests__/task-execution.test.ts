@@ -458,7 +458,7 @@ test("unknown action is visible in bounded owner status and card; explicit recon
   assert.equal(status.intents[0].review_hint, "Reconciliation required");
   assert.equal(status.receipts[0].outcome, "unknown");
   assert.equal(status.receipts[0].rollback_available, false);
-  assert.match(status.tasks[0].review_reason, /Abgleich nötig/);
+  assert.match(status.tasks[0].review_reason, /Reconciliation required/);
   assert.ok(!JSON.stringify(status.intents).includes(f.root));
   const due = (await callTaskCrud(f.ctx, f.ownerAuth, "task_due", {})) as any;
   assert.equal(due.cards[0].action_outcome.review_hint, "Reconciliation required");
@@ -617,8 +617,8 @@ test("commissioned CLI resume uses mapped agent access without a terminal or ano
     });
     const [code] = await once(child, "exit");
     assert.equal(code, 0, errors);
-    assert.match(output, /Ausführungsstopp aufgehoben/);
-    assert.doesNotMatch(output, /Passphrase|Token \(verborgen\)|\[y\/N\]/);
+    assert.match(output, /execution stop lifted/, "English without language.primary (#1602)");
+    assert.doesNotMatch(output, /Passphrase|Token \((verborgen|hidden)\)|\[y\/N\]/);
     const after = await readTaskStore(f.ctx.path);
     assert.equal(after.controls.execution_stopped, false);
     assert.equal(after.controls.adapters["local-artifact-v1"].enabled, true);

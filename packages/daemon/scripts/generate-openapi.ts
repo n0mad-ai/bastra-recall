@@ -19,6 +19,7 @@ import { VaultWriteAttribution } from "../src/executed-vault-write.js";
 import { FindDocumentArgs, ReadDocumentArgs, OpenDocumentArgs } from "../src/documents-handler.js";
 import { SaveDocumentArgs, RecategorizeDocumentArgs, MoveDocumentArgs } from "../src/documents-write-handler.js";
 import { SaveProductDocArgs } from "../src/product-doc-handler.js";
+import { RestoreMemoryArgs } from "../src/restore-memory-handler.js";
 import { ReviewDraftArgs } from "../src/draft-review-handler.js";
 import { ValidateArtifactArgs } from "../src/validate-artifact-handler.js";
 import { FindCodeArgs } from "../src/code-graph/find-code.js";
@@ -161,6 +162,7 @@ const inputValidators: Record<string, z.ZodType> = {
   save_memory: SaveMemoryInput.and(VaultWriteAttribution),
   edit_memory: EditMemoryArgs.and(VaultWriteAttribution),
   archive_memory: ArchiveMemoryArgs,
+  restore_memory: RestoreMemoryArgs,
   find_document: FindDocumentArgs,
   read_document: ReadDocumentArgs,
   open_document: OpenDocumentArgs,

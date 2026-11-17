@@ -48,7 +48,7 @@ for (const sub of ["keys", "approve", "deny"]) {
       assert.equal(code, 1, errors);
       const reply = JSON.parse(output || errors);
       assert.equal(reply.code, "retired_command");
-      assert.match(reply.hint, /Anweisung im Chat.*Freigabe/);
+      assert.match(reply.hint, /instruction in chat is the approval/);
       assert.deepEqual(await readdir(root), []);
     }
   });

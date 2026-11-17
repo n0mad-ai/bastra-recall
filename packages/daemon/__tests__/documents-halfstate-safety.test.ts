@@ -17,7 +17,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, readFile, rm, readdir, mkdir } from "node:fs/promises";
-import { writeFileSync, readdirSync } from "node:fs";
+import { writeFileSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import matter from "gray-matter";
@@ -181,7 +181,9 @@ test("force überschreibt auch spät keine fremde Datei am Sidecar-Pfad", async 
  * written here" behauptete.
  *
  * Das Fenster wird über `args.summary` getroffen: der Handler liest das Feld
- * erst NACH dem Kopieren der Originaldatei.
+ * auch NACH dem Kopieren der Originaldatei. Seit #1470 liest die
+ * Schwärzung es schon vorher einmal — der Getter feuert deshalb erst, wenn
+ * die Kopie (V2) im Vault steht.
  */
 test("ein gescheiterter Overwrite lässt die Originaldatei unverändert", async (t) => {
   const { dir, vault } = await harness(t);
@@ -200,7 +202,7 @@ test("ein gescheiterter Overwrite lässt die Originaldatei unverändert", async 
     original_path: v2,
     overwrite: true,
     get summary(): string | undefined {
-      if (!fired) {
+      if (!fired && readFileSync(doc.original_path, "utf8") === "REPLACEMENT-V2") {
         fired = true;
         writeFileSync(doc.sidecar_path, EXTERN, "utf8");
       }
@@ -345,7 +347,7 @@ test("der Original-Rollback löscht keine externe Fassung", async (t) => {
     original_path: v2,
     overwrite: true,
     get summary(): string | undefined {
-      if (!fired) {
+      if (!fired && readFileSync(doc.original_path, "utf8") === "REPLACEMENT-V2") {
         fired = true;
         // Beides im selben Fenster — die Kopie steht schon, der Sidecar noch
         // nicht: eine fremde Fassung des ORIGINALS und eine fremde Fassung des

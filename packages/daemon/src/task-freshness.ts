@@ -78,7 +78,7 @@ export function taskMemoryReader(deps: Pick<ToolDeps, "vault" | "vaultPath">) {
       },
     });
     if (limit)
-      throw Object.assign(new Error("Memory-Aufnahmebudget überschritten"), {
+      throw Object.assign(new Error("Memory intake budget exceeded"), {
         code: limit === "timeout" ? "source_timeout" : "source_budget",
         reason: limit === "files" ? "memory_scan_budget" : undefined,
       });

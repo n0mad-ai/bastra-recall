@@ -1,9 +1,10 @@
 /** Private per-store comparison material. Never part of a task export or transport. */
 import { constants } from "node:fs";
-import { open, mkdir, readFile, readdir, unlink } from "node:fs/promises";
+import { open, mkdir, readdir, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createHmac, createHash, randomBytes } from "node:crypto";
 import { withPathLock } from "./path-lock.js";
+import { readPrivateFile } from "./private-state-dir.js";
 import { atomicWrite, TaskStoreError, decodeTaskStore } from "./task-store.js";
 import { canonicalTaskValue } from "./task-canonical.js";
 import { readTaskSnapshotText, writeTaskSnapshotText } from "./task-database.js";
@@ -223,7 +224,8 @@ export async function migrateTaskComparisons(path: string): Promise<void> {
       if (main === undefined && backup === undefined) return;
       const plan: Array<{ id: string; before: string; after: string }> = [];
       try {
-        const saved = JSON.parse(await readFile(marker, "utf8"));
+        // #1604: one descriptor, no symlink, no FIFO; a plan of 1000 entries fits.
+        const saved = JSON.parse((await readPrivateFile(marker, 1024 * 1024)).bytes.toString("utf8"));
         if (
           !Array.isArray(saved) ||
           saved.length > 1000 ||

@@ -36,6 +36,7 @@ import {
   MIN_SIGNIFICANT_TOKEN_LEN,
   ALTERNATIVE_WORDS,
   hasWordForm,
+  pastValidUntil,
 } from "@bastra-recall/core";
 import type { Vault, Memory } from "@bastra-recall/core";
 import { envFirst, envInt, isOffValue } from "./env.js";
@@ -212,7 +213,12 @@ export function reflexPool(vault: Vault): Memory[] {
 /** Die eine Pool-Bedingung, auch für Pools, die nicht aus einem Vault kommen. */
 export function isReflexPoolMember(m: Memory): boolean {
   return (
-    m.fm.recall_mode === "reflex" && m.fm.obsolete !== true && m.fm.sensitivity !== "private" && !m.fm.superseded_by
+    m.fm.recall_mode === "reflex" &&
+    m.fm.obsolete !== true &&
+    m.fm.sensitivity !== "private" &&
+    !m.fm.superseded_by &&
+    // #1468: a rule past its own valid_until no longer fires automatically.
+    !pastValidUntil(m.fm)
   );
 }
 

@@ -182,8 +182,18 @@ async function findVaultImage(dir: string): Promise<{ file: string; type: string
   return null;
 }
 
-/** GET /ui/vault-image[?entity=…] — serve the emblem (404 → monogram). */
-export async function handleUiVaultImageGet(res: ServerResponse, url: string, vaultPath: string): Promise<void> {
+/** GET /ui/vault-image[?entity=…] — serve the emblem (404 → monogram).
+ *  #1571: under ui.enabled like the POST beside it; nothing else reads it. */
+export async function handleUiVaultImageGet(
+  res: ServerResponse,
+  url: string,
+  vaultPath: string,
+  settingsPath?: string
+): Promise<void> {
+  if (!(await getUiEnabled(settingsPath))) {
+    sendJsonPlain(res, 404, { error: "ui disabled" });
+    return;
+  }
   const found = await findVaultImage(imageDirFor(vaultPath, url));
   if (!found) {
     sendJsonPlain(res, 404, { error: "no vault image" });

@@ -326,6 +326,9 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
       );
       return;
     }
+    // #1571: deliberately NOT gated on ui.enabled. It is the same payload as
+    // the loopback /health route, which answers with the web UI off too, so a
+    // gate would hide nothing; the settings page polls it across a restart.
     if (method === "GET" && url === "/ui/health") {
       sendJson(res, 200, ctx.healthPayload());
       return;

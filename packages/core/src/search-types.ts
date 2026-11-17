@@ -39,6 +39,9 @@ export interface RecallHit {
    * keine Absichtserklärung.
    */
   anchor_strength?: "strong" | "weak";
+  /** #1468: the memory's own `valid_until` (as written) has passed. Recall
+   *  still returns the hit, marked; automatic hook delivery leaves it out. */
+  expired_on?: string;
   /** #230: RRF-Herkunft des Scores auf dem Hybrid-Pfad. Der `score` ist eine
    *  skalierte Rang-Summe, keine Content-Similarity — dieses Feld macht
    *  dekomponierbar, woraus die Zahl besteht. Nur auf dem Hybrid-Pfad gesetzt

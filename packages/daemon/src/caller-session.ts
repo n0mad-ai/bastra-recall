@@ -30,3 +30,39 @@ export function callerSessionField(): { caller_session?: string | null } {
   const value = callerSessionStore.getStore();
   return value === undefined ? {} : { caller_session: value };
 }
+
+/**
+ * #1469 — who wrote: transport, client and the client's session, for the
+ * audit entry of every write that runs inside a tool call. Set once per call
+ * at each transport's boundary (REST dispatcher, remote MCP, stdio server);
+ * `recordAudit` reads it, so no write handler has to pass it down. A record
+ * for a finding aid, never an access filter: nothing is refused or asked here.
+ *
+ * Outside a tool call (web UI, CLI, background jobs) the store is empty and
+ * the audit entry carries `actor`/`actor_detail` only, as before.
+ */
+export type WriteTransport = "stdio" | "forwarder" | "http" | "mcp-http";
+export interface WriteCaller {
+  transport: WriteTransport;
+  /** MCP client (`name/version`) or OAuth client (`name [client_id]`); null = unknown. */
+  client: string | null;
+  /** The client's own session id when the transport carries one; null = unknown. */
+  session: string | null;
+}
+export const writeCallerStore = new AsyncLocalStorage<WriteCaller>();
+
+/** Client-supplied labels go into an append-only log: one line, bounded. */
+export function clientLabel(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const clean = value
+    .replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return clean ? clean.slice(0, 160) : null;
+}
+
+/** `name/version` from an MCP initialize handshake, or null before it. */
+export function mcpClientLabel(info: { name?: string; version?: string } | undefined): string | null {
+  if (!info?.name) return null;
+  return clientLabel(info.version ? `${info.name}/${info.version}` : info.name);
+}

@@ -195,3 +195,16 @@ Deutsch: Die echte CLI 0.166.0 wurde mit leerem temporärem Profil und lokaler k
 ## Claude Code non-error Stop feedback — 2026-11-07 (#1370)
 
 The [official Stop contract](https://code.claude.com/docs/en/hooks#stop-decision-control) now explicitly gives `hookSpecificOutput.additionalContext` the same continuation and loop protections as `decision: block`, while displaying feedback instead of an error. The [isolated reproducer and result](../tools/probes/claude-rulebook-stop/README.md) verify Claude Code 2.1.319 with a local deterministic provider: both forms cause a further provider request and execute the test MCP `rulebook_check`; only block emits an error notification. No real-model compliance rate or interactive TUI certification is claimed. The installed version superseded the issue's 2.1.316; that older binary was not tested. Bastra now uses non-error feedback for Claude, keeping the existing one-request budget, deferred work and separate repair lane. Codex retains its certified block output.
+
+## Checking a new Codex CLI release (#1541)
+
+A new Codex release keeps advisory mode until it has passed the same two probes. There is no version range: `CODEX_GATE_VERIFIED_VERSIONS` in `packages/daemon/src/codex-gate-capability.ts` lists only probed versions.
+
+1. Read the installed version with `codex --version` (for example `codex-cli 0.167.0`). Use a clean Codex account/config without unrelated or managed hooks; never disable or replace live hooks to make a probe run.
+2. In an isolated source copy (a separate git worktree), add the candidate to `CODEX_GATE_VERIFIED_VERSIONS`. The Bastra source-adapter cases need that switch; the native deny/control cases do not depend on it.
+3. Run `python3 tools/probes/codex-native-gate/run.py --expected-version <version>` and `python3 tools/probes/codex-rulebook-stop/run.py --expected-version <version>`. Both runners refuse any other installed version before launching Codex, use a local scripted Responses server and empty temporary profiles, and invoke no real model.
+4. Only when both print their PASS line: commit the raw `result.json` from the printed artifact directory as `result-<version>.json` next to the runner, add the version to `CODEX_GATE_VERIFIED_VERSIONS` in the real tree, extend the `codexGateSupported` test, and add a section here. On a failure, record what differs and keep advisory mode.
+
+Status of Codex CLI 0.167.0: not probed yet. It stays in advisory mode (`codexGateSupported` returns false), so the rulebook deny is off for that client until the steps above pass.
+
+Deutsch: Eine neue Codex-Version bleibt im beratenden Modus, bis sie dieselben zwei Prüfungen bestanden hat. Beide Prüfprogramme nehmen `--expected-version <Version>` und verweigern jede andere installierte Version, bevor Codex startet. Die Kandidatenversion wird nur in einer getrennten Quellkopie freigeschaltet; erst nach bestandenem Lauf kommen Rohergebnis, Versionseintrag und Test ins Repository. Codex CLI 0.167.0 ist noch nicht geprüft und bleibt beratend.

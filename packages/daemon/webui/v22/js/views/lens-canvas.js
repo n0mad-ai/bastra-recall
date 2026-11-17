@@ -40,6 +40,8 @@ export function mountLens(canvas, opts) {
     openT = 0,
     resync = false,
     pausedAt = opts.paused ? performance.now() : null; // covered: frame loop stands still
+  // Start times of animations use the frame clock: held while covered (#1552).
+  const clockNow = () => frameClock(pausedAt, performance.now());
   const ZMIN = 1,
     ZMAX = 6;
   const clampT = (zz, x, y) => [Math.min(0, Math.max(w - w * zz, x)), Math.min(0, Math.max(h0 - h0 * zz, y))];
@@ -282,7 +284,7 @@ export function mountLens(canvas, opts) {
     drag = null;
     if (!hov) return;
     const h1 = hov,
-      now = performance.now();
+      now = clockNow();
     const id = h1.m ? h1.m.id : h1.items && h1.items.length ? h1.items[0].m.id : null;
     if (id) {
       sel = { x: h1._x, y: h1._y, r: h1._r || 3, id };
@@ -358,13 +360,13 @@ export function mountLens(canvas, opts) {
     // when asked (footer range change, as in the prototype) — not for a live
     // vault update, which keeps zoom, pan, hover and selection as they are.
     if (n.vault && n.vault !== Pv) {
-      if (!P || n.replay) t0 = performance.now();
+      if (!P || n.replay) t0 = clockNow();
       Pv = n.vault;
       P = prep(n.vault);
       resync = true;
     }
     if (kindChanged) {
-      t0 = performance.now();
+      t0 = clockNow();
       hov = null;
       hideTip();
       sel = null;
@@ -410,7 +412,7 @@ export function mountLens(canvas, opts) {
       const [x, y, r] = p,
         m = vault0(id);
       sel = { x, y, r: r || 3, id };
-      fx.push({ x, y, r: r || 3, c: (m && TC[m.cls]) || ACC, t: performance.now() });
+      fx.push({ x, y, r: r || 3, c: (m && TC[m.cls]) || ACC, t: clockNow() });
       focusOn(x, y, Math.max(Z, 2.4));
       req();
       clearTimeout(openT);

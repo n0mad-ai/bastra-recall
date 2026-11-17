@@ -2,10 +2,9 @@
  * One exclusive file per observation avoids cross-process append/drain races. */
 import { mkdir, writeFile, readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
-import { privateDirState, readPrivateFile } from "./private-state-dir.js";
-const base = () => process.env.BASTRA_HOOK_STATE_DIR || join(tmpdir(), "bastra-hook");
+import { defaultHookStateDir, privateDirState, readPrivateFile } from "./private-state-dir.js";
+const base = () => process.env.BASTRA_HOOK_STATE_DIR || defaultHookStateDir();
 const directory = () => join(base(), "rulebook-failures");
 /** Linux shares tmpdir: a spool another account owns or may write is not used. */
 const privateSpool = async (): Promise<boolean> =>

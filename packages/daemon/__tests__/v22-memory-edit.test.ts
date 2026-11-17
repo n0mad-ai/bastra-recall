@@ -5,10 +5,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
-import { AUTO_RELATED_START, SUMMARY_MAX } from "@bastra-recall/core";
+import { AUTO_RELATED_START, MemoryTypeEnum, SUMMARY_MAX } from "@bastra-recall/core";
 
 const NAMES =
-  "AUTO_RELATED_START, SUMMARY_MAX, authoredBody, editFields, editInit, editStep, editPatch, editView, writeOutcome, nextSelection, ruleEditable, splitTags";
+  "AUTO_RELATED_START, SUMMARY_MAX, TYPES, SENSITIVITIES, authoredBody, editFields, editInit, editStep, editPatch, editView, writeOutcome, nextSelection, ruleEditable, splitTags, typeEditable";
 
 async function load() {
   const source = await readFile(new URL("../webui/v22/js/views/membrowser-edit-model.js", import.meta.url), "utf8");
@@ -155,4 +155,68 @@ test("answers and the selection after an archive", async () => {
   assert.equal(m.nextSelection(["a", "b", "c"], "b"), "c");
   assert.equal(m.nextSelection(["a", "b", "c"], "c"), "b");
   assert.equal(m.nextSelection(["a"], "a"), null, "an empty list shows the hint, not a ghost");
+});
+
+// ── #1558: title, type, sensitivity and recall mode ──
+
+test("the offered types and sensitivities mirror the daemon's schema (documents and bookmarks excluded)", async () => {
+  const m = await load();
+  assert.deepEqual(
+    [...m.TYPES],
+    MemoryTypeEnum.options.filter((x) => x !== "doc" && x !== "bookmark")
+  );
+  assert.deepEqual([...m.SENSITIVITIES], ["public", "team", "private"]);
+  assert.equal(m.typeEditable("lesson"), true);
+  assert.equal(m.typeEditable("doc"), false);
+  assert.equal(m.typeEditable("bookmark"), false);
+});
+
+test("title, type, sensitivity and recall mode: read from the detail, sent only when changed", async () => {
+  const m = await load();
+  const d = detail({ title: "Old title", type: "lesson", sensitivity: "team", recall_mode: null });
+  const f = m.editFields(d);
+  assert.deepEqual([f.title, f.type, f.sensitivity, f.recall_mode], ["Old title", "lesson", "team", "deliberate"]);
+  assert.equal(m.editFields(detail({ sensitivity: undefined })).sensitivity, "team", "the schema default");
+  let s = m.editStep(m.editInit(), { type: "load", detail: d });
+  s = m.editStep(s, { type: "edit" });
+  s = m.editStep(s, { type: "input", field: "title", value: "  New title " });
+  s = m.editStep(s, { type: "input", field: "sensitivity", value: "private" });
+  s = m.editStep(s, { type: "input", field: "recall_mode", value: "reflex" });
+  assert.deepEqual(JSON.parse(JSON.stringify(m.editPatch(s, "m1").payload)), {
+    id: "m1",
+    expected_revision: "sha256:0000000000000001",
+    title: "New title",
+    sensitivity: "private",
+    recall_mode: "reflex",
+  });
+  s = m.editStep(s, { type: "input", field: "title", value: "Old title" });
+  s = m.editStep(s, { type: "input", field: "sensitivity", value: "team" });
+  s = m.editStep(s, { type: "input", field: "recall_mode", value: "deliberate" });
+  s = m.editStep(s, { type: "input", field: "type", value: "decision" });
+  assert.deepEqual(JSON.parse(JSON.stringify(m.editPatch(s, "m1").payload)), {
+    id: "m1",
+    expected_revision: "sha256:0000000000000001",
+    type: "decision",
+  });
+  s = m.editStep(s, { type: "input", field: "title", value: "   " });
+  assert.equal(m.editPatch(s, "m1").error, "mb.ed.needTitle");
+  assert.equal(m.editView(s, "m1").canSave, false);
+});
+
+test("a conflict keeps the changed title aside; reload shows the current one, the draft can be put back", async () => {
+  const m = await load();
+  let s = m.editStep(m.editInit(), { type: "load", detail: detail({ title: "Old title", type: "lesson" }) });
+  s = m.editStep(s, { type: "edit" });
+  s = m.editStep(s, { type: "input", field: "title", value: "My title" });
+  s = m.editStep(s, { type: "save" });
+  s = m.editStep(s, { type: "conflict" });
+  assert.equal(s.draft.title, "My title", "the draft stays");
+  s = m.editStep(s, {
+    type: "reloaded",
+    detail: detail({ title: "Their title", type: "lesson", revision: "sha256:0000000000000002" }),
+  });
+  assert.equal(s.draft.title, "Their title");
+  s = m.editStep(s, { type: "useStash" });
+  assert.equal(s.draft.title, "My title");
+  assert.equal(m.editPatch(s, "m1").payload.expected_revision, "sha256:0000000000000002");
 });

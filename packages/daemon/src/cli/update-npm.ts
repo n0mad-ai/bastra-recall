@@ -7,8 +7,12 @@
  */
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, resolve, win32 } from "node:path";
-import { CLI_PACKAGE } from "./cli-on-path.js";
 import { findExecutable, run, runCaptured } from "./exec.js";
+
+/** The npm package carrying the `bastra` bin — the name the README documents.
+ *  Defined here, not in cli-on-path.ts, so both modules can share the npm
+ *  invocation without an import cycle; cli-on-path.ts re-exports it. */
+export const CLI_PACKAGE = "bastra-recall";
 
 export interface UpdateRuntimeIo {
   platform?: NodeJS.Platform;

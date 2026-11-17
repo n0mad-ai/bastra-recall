@@ -13,6 +13,8 @@ import { startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
 import { readSettings, mutateSettings, settingsFilePath } from "../src/settings-file.js";
 import { resetSaveFailures, saveMemoryHandler } from "../src/tool-handlers.js";
+import { createServer } from "node:http";
+import { handleUiMemoryEdit } from "../src/webui-memory-edit.js";
 
 function memory(id: string, extra: string[] = [], body = `Body fixture ${id}.\n`): string {
   return [
@@ -159,8 +161,16 @@ test("edit: strict validation — nothing written, nothing shortened", async () 
       ["{not json", null],
       [{ id: "note", summary: "x" }, /expected_revision/],
       [{ id: "note", expected_revision: "updated-today", summary: "x" }, /expected_revision/],
-      [{ id: "note", expected_revision: revision, title: "Renamed" }, /title|Unrecognized/],
-      [{ id: "note", expected_revision: revision, sensitivity: "private" }, /sensitivity|Unrecognized/],
+      [{ id: "note", expected_revision: revision, write_origin: "user-directed" }, /Unrecognized/],
+      [{ id: "note", expected_revision: revision, title: "  " }, /title/],
+      [{ id: "note", expected_revision: revision, title: "Two\nlines" }, /title/],
+      [{ id: "note", expected_revision: revision, scope: "other-area" }, /Unrecognized/],
+      [{ id: "note", expected_revision: revision, type: "doc" }, /type/],
+      [{ id: "note", expected_revision: revision, type: "novel" }, /type/],
+      [{ id: "note", expected_revision: revision, sensitivity: "secret" }, /sensitivity/],
+      [{ id: "note", expected_revision: revision, recall_mode: "always" }, /recall_mode/],
+      [{ id: "note", expected_revision: revision, title: "Fixture note", type: "lesson" }, /nothing to change/],
+      [{ id: "note", expected_revision: revision, rule_decision: "accept", title: "x" }, /stands alone/],
       [{ id: "note", expected_revision: revision, summary: "y".repeat(401) }, /at most 400/],
       [{ id: "note", expected_revision: revision, summary: "   " }, /summary/],
       [{ id: "note", expected_revision: revision, tags: [] }, /tags/],
@@ -532,6 +542,162 @@ test("rule memories: state shown, a rule's applies_when edits directly, the user
     });
     assert.equal(rejected.status, 400, "no pending proposal to decide");
   } finally {
+    await f.close();
+  }
+});
+
+// ── #1558: title, type, sensitivity and recall mode from the reader ──
+
+const GITHUB_TOKEN = ["gh", "p_", "a1B2c3D4e5F6", "g7H8i9J0k1L2", "m3N4o5P6q7R8"].join("");
+
+test("user fields: title, type and recall mode land in the file and in recall; the file stays put", async () => {
+  const f = await fixture();
+  try {
+    const port = await f.start();
+    const node = await f.node(port, "note");
+    const r = await call(port, "POST", "/ui/memory/edit", {
+      id: "note",
+      expected_revision: node.revision,
+      title: "  Renamed quokkafield  ",
+      type: "decision",
+      recall_mode: "reflex",
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const text = await f.file("note");
+    assert.match(text, /title: Renamed quokkafield\n/);
+    assert.match(text, /type: decision/);
+    assert.match(text, /scope: edit-fixture/, "the area is not changed here");
+    assert.match(text, /recall_mode: reflex/);
+    assert.match(text, /write_origin: agent-session/, "origin is not rewritten");
+    assert.match(text, /summary: Summary of note/, "untouched fields stay");
+    assert.deepEqual(await readdir(f.dir).then((x) => x.filter((n) => n.endsWith(".md")).sort()), [
+      "note.md",
+      "proposal.md",
+      "rule.md",
+      "secret.md",
+      "user-note.md",
+    ]);
+    const after = await f.node(port, "note");
+    assert.equal(after.revision, r.body.revision);
+    assert.equal(after.title, "Renamed quokkafield");
+    assert.equal(after.type, "decision");
+    assert.equal(after.recall_mode, "reflex");
+    const hits = await f.search.recallHybrid("quokkafield", { k: 5, allow_private: false });
+    assert.equal(hits[0]?.id, "note", "recall finds the new title");
+    const audit = await readFile(join(f.dir, ".bastra", "audit-log.ndjson"), "utf8");
+    const last = JSON.parse(audit.trim().split("\n").pop()!);
+    assert.equal(last.actor, "user");
+    assert.match(last.reason, /fields/);
+    // a user-directed memory set to reflex becomes a rule, as after a save
+    const user = await f.node(port, "user-note");
+    const reflex = await call(port, "POST", "/ui/memory/edit", {
+      id: "user-note",
+      expected_revision: user.revision,
+      recall_mode: "reflex",
+    });
+    assert.equal(reflex.status, 200, JSON.stringify(reflex.body));
+    assert.equal(reflex.body.rule.state, "rule");
+  } finally {
+    await f.close();
+  }
+});
+
+test("user fields: a stale revision is a conflict, a credential in the title is redacted", async () => {
+  const f = await fixture();
+  try {
+    const port = await f.start();
+    const { revision } = await f.node(port, "user-note");
+    const first = await call(port, "POST", "/ui/memory/edit", {
+      id: "user-note",
+      expected_revision: revision,
+      body: "x",
+    });
+    assert.equal(first.status, 200);
+    const before = await f.file("user-note");
+    const stale = await call(port, "POST", "/ui/memory/edit", {
+      id: "user-note",
+      expected_revision: revision,
+      title: "Stale rename",
+      sensitivity: "public",
+    });
+    assert.equal(stale.status, 409);
+    assert.equal(stale.body.conflict, true);
+    assert.equal(await f.file("user-note"), before, "nothing written");
+    const secret = await call(port, "POST", "/ui/memory/edit", {
+      id: "user-note",
+      expected_revision: first.body.revision,
+      title: `Deploy key ${GITHUB_TOKEN}`,
+    });
+    assert.equal(secret.status, 200, JSON.stringify(secret.body));
+    const text = await f.file("user-note");
+    assert.ok(!text.includes(GITHUB_TOKEN), "the token never reaches the file");
+    assert.match(text, /title: .*\[REDACTED\]/);
+  } finally {
+    await f.close();
+  }
+});
+
+test("user fields: to private leaves the unproven views at once; from private only where it is shown", async () => {
+  const f = await fixture();
+  try {
+    const owner = await f.start("darwin"),
+      unproven = await f.start("linux");
+    // public → private from a view that cannot show private memories: allowed (it only hides more)
+    const note = await f.node(unproven, "note");
+    const hide = await call(unproven, "POST", "/ui/memory/edit", {
+      id: "note",
+      expected_revision: note.revision,
+      sensitivity: "private",
+    });
+    assert.equal(hide.status, 200, JSON.stringify(hide.body));
+    assert.match(await f.file("note"), /sensitivity: private/);
+    assert.equal((await call(unproven, "GET", "/ui/graph/node?id=note")).status, 404);
+    const graph = (await call(unproven, "GET", "/ui/graph")).body;
+    assert.ok(!graph.nodes.some((n: { id: string }) => n.id === "note"), "gone from the unproven graph");
+    const hits = await f.search.recallHybrid("Fixture note", { k: 10, allow_private: false });
+    assert.ok(!hits.some((h) => h.id === "note"), "recall without private access no longer finds it");
+    assert.equal((await f.node(owner, "note")).sensitivity, "private", "the owner still sees it");
+    // private → public: only where the memory is shown
+    const secret = await f.node(owner, "secret");
+    const blind = await call(unproven, "POST", "/ui/memory/edit", {
+      id: "secret",
+      expected_revision: secret.revision,
+      sensitivity: "public",
+    });
+    assert.equal(blind.status, 404);
+    assert.doesNotMatch(JSON.stringify(blind.body), /Summary of secret/);
+    assert.match(await f.file("secret"), /sensitivity: private/);
+    const shown = await call(owner, "POST", "/ui/memory/edit", {
+      id: "secret",
+      expected_revision: secret.revision,
+      sensitivity: "public",
+    });
+    assert.equal(shown.status, 200);
+    assert.equal((await call(unproven, "GET", "/ui/graph/node?id=secret")).status, 200);
+  } finally {
+    await f.close();
+  }
+});
+
+test("user fields: a sensitivity change drops the cached semantic layouts", async () => {
+  const f = await fixture();
+  const layout = () => ({ at: Date.now(), body: { nodes: [{ id: "note", title: "Fixture note" }] } as never });
+  const server = { semanticCache: layout(), uiSemanticCache: layout() };
+  const ctx = { toolDeps: f.toolDeps, privateGraph: true, server };
+  const http = createServer((req, res) => void handleUiMemoryEdit(req, res, ctx));
+  await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
+  try {
+    const port = (http.address() as { port: number }).port;
+    const revision = () => f.vault.get("note")!.revision;
+    const title = await call(port, "POST", "/", { id: "note", expected_revision: revision(), title: "Renamed" });
+    assert.equal(title.status, 200, JSON.stringify(title.body));
+    assert.ok(server.semanticCache && server.uiSemanticCache, "other fields keep the caches");
+    const hide = await call(port, "POST", "/", { id: "note", expected_revision: revision(), sensitivity: "private" });
+    assert.equal(hide.status, 200, JSON.stringify(hide.body));
+    assert.equal(server.semanticCache, null, "the filtered layout must not keep the now private memory");
+    assert.equal(server.uiSemanticCache, null);
+  } finally {
+    await new Promise<void>((resolve) => http.close(() => resolve()));
     await f.close();
   }
 });

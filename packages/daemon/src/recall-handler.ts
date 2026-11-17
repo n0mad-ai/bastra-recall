@@ -265,7 +265,9 @@ export const truncateSummary = (summary: string): string => truncateSummaryTo(su
  *  Validieren braucht. Dropt `matched_terms` (größter variabler Fresser),
  *  `mode`, `hop`, `topic_path` und kürzt `summary` auf einen Snippet.
  *  `verbosity:"full"` liefert alle Felder + volle summary. */
-export function toLeanHit(hit: RecallHit): Pick<RecallHit, "id" | "title" | "type" | "scope" | "summary" | "score"> {
+export function toLeanHit(
+  hit: RecallHit
+): Pick<RecallHit, "id" | "title" | "type" | "scope" | "summary" | "score" | "expired_on"> {
   return {
     id: hit.id,
     title: hit.title,
@@ -273,6 +275,8 @@ export function toLeanHit(hit: RecallHit): Pick<RecallHit, "id" | "title" | "typ
     scope: hit.scope,
     summary: truncateSummary(hit.summary),
     score: hit.score,
+    // #1468: an expired memory is still found, and says so.
+    ...(hit.expired_on ? { expired_on: hit.expired_on } : {}),
   };
 }
 

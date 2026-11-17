@@ -95,11 +95,11 @@ test("compiled bastra tasks due exists, is readable and preserves --json machine
     const due = await run(["due", "--agent"]);
     assert.equal(due.code, 0, due.errors);
     assert.match(due.output, /Evaluierung/);
-    assert.match(due.output, /fällig/);
+    assert.match(due.output, /due /, "English without language.primary");
     assert.match(due.output, /Europe\/Madrid/);
     const list = await run(["list", "--agent"]);
     assert.equal(list.code, 0);
-    assert.match(list.output, /scharf/);
+    assert.match(list.output, / armed /);
     const json = await run(["list", "--agent", "--json"]);
     assert.equal(JSON.parse(json.output).tasks.length, 1);
     const capture = await run([
@@ -113,11 +113,11 @@ test("compiled bastra tasks due exists, is readable and preserves --json machine
       "Europe/Madrid",
     ]);
     assert.equal(capture.code, 0, capture.errors);
-    assert.match(capture.output, /scharf/);
-    assert.doesNotMatch(capture.output, /unscharf/);
+    assert.match(capture.output, / armed /);
+    assert.doesNotMatch(capture.output, /unarmed/);
     const armed = await run(["create", "--agent", "--goal", "Erinnern", "--after", "7d", "--arm"]);
     assert.equal(armed.code, 0, armed.errors);
-    assert.match(armed.output, /scharf/);
+    assert.match(armed.output, / armed /);
     const prepared = await run([
       "create",
       "--agent",
@@ -130,7 +130,7 @@ test("compiled bastra tasks due exists, is readable and preserves --json machine
       "prepare",
     ]);
     assert.equal(prepared.code, 0, prepared.errors);
-    assert.match(prepared.output, /scharf/);
+    assert.match(prepared.output, / armed /);
     assert.equal((await readTaskStore(ctx.path)).tasks.length, 4);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -205,9 +205,9 @@ test("readable states, local times, controls, off-status and errors keep machine
     snoozed_until: Date.parse("2026-10-13T16:00:00Z"),
     deliveries: [],
   };
-  assert.match(friendlyTaskResult("snooze", task), /zurückgestellt/);
-  assert.match(friendlyTaskResult("snooze", task), /18:00/);
-  assert.match(friendlyTaskResult("rearm", task), /UNSCHARF/);
+  assert.match(friendlyTaskResult("snooze", task, "de"), /zurückgestellt/);
+  assert.match(friendlyTaskResult("snooze", task, "de"), /18:00/);
+  assert.match(friendlyTaskResult("rearm", task, "de"), /UNSCHARF/);
   const base = {
     controls: { enabled: false, muted: true, execution_stopped: true },
     runtime: { running: true, next_tick: 0, last_error: null, backoff_ms: 0 },
@@ -230,7 +230,7 @@ test("readable states, local times, controls, off-status and errors keep machine
     task_id: "task",
     decision: "approve",
   };
-  const status = friendlyTaskResult("status", { ...base, authorizations: [provenance] });
+  const status = friendlyTaskResult("status", { ...base, authorizations: [provenance] }, "de");
   assert.match(status, /Bitte diese Änderung ausführen/);
   assert.match(status, /chat-session/);
   assert.match(status, /codex/);
@@ -239,8 +239,11 @@ test("readable states, local times, controls, off-status and errors keep machine
   assert.match(status, /Letzte Zustellung: noch keine/);
   assert.match(status, /Letzter Job-Fehler: keiner/);
   task.verification = { outcome: "inconclusive", reason: "irrelevant_claim", checked_at: 123 };
-  assert.match(friendlyTaskResult("status", base), /unklar\/strittig.*andere Prämisse/);
-  assert.match(friendlyTaskResult("mute", { controls: base.controls, resumed_authority: false }), /Stumm geschaltet/);
+  assert.match(friendlyTaskResult("status", base, "de"), /unklar\/strittig.*andere Prämisse/);
+  assert.match(
+    friendlyTaskResult("mute", { controls: base.controls, resumed_authority: false }, "de"),
+    /Stumm geschaltet/
+  );
   assert.ok(!friendlyTaskResult("stop", { controls: base.controls, resumed_authority: false }).startsWith("{"));
   assert.match(friendlyTaskError("not_found", "cancel", undefined, "de"), /unbekannt/);
   assert.match(friendlyTaskError("protected_boundary_required", "resume", undefined, "de"), /Nutzeranweisung/);
@@ -264,7 +267,7 @@ test("human recurrence supports optional bounds and ambiguous autumn time stays 
   }) as any;
   assert.equal(ambiguous.arm, false);
   assert.match(
-    friendlyTaskResult("create", { ...ambiguous, id: "fixture", state: "pending", armed: false }),
+    friendlyTaskResult("create", { ...ambiguous, id: "fixture", state: "pending", armed: false }, "de"),
     /Mehrdeutige Ortszeit/
   );
 });
@@ -371,7 +374,7 @@ test("#1594 error texts are per-language data with English as the fallback", () 
   assert.match(friendlyTaskError("nope", null, undefined, "de"), /^Aufgaben: Vorgang nicht möglich/);
 });
 
-test("#1594 the task CLI speaks one language: its errors match its German questions for every language.primary", async () => {
+test("#1602 the whole task CLI follows language.primary, English when unset", async () => {
   const { setPrimaryLanguage, getPrimaryLanguage } = await import("../src/settings.js");
   const { settingsFilePath, mutateSettings } = await import("../src/settings-file.js");
   const { cmdTasks } = await import("../src/cli/tasks-cmd.js");
@@ -392,7 +395,9 @@ test("#1594 the task CLI speaks one language: its errors match its German questi
       }
       assert.equal(
         output,
-        "list: Dieser Befehl braucht ein interaktives Terminal für den Owner-Zugang. Ohne Terminal: --agent mit dem Agent-Zugang verwenden.\n",
+        language === "de"
+          ? "list: Dieser Befehl braucht ein interaktives Terminal für den Owner-Zugang. Ohne Terminal: --agent mit dem Agent-Zugang verwenden.\n"
+          : "list: This command needs an interactive terminal for owner access. Without a terminal, use --agent with the agent access.\n",
         `names the missing terminal in the CLI's language (language.primary=${language})`
       );
     }
@@ -405,21 +410,25 @@ test("#1594 the task CLI speaks one language: its errors match its German questi
 });
 
 test("#1594 card texts reach the model in English and the CLI in its language, by key", () => {
-  const due = friendlyTaskResult("due", {
-    cards: [
-      {
-        kind: "occurrence",
-        goal: "Demo",
-        due_at: 0,
-        timezone: "Europe/Berlin",
-        why_now: TASK_CARD_TEXT.premise,
-        action_outcome: { intent_id: "i1", state: "unknown", review_hint: TASK_CARD_TEXT.reconcile },
-        task_id: "t1",
-        occurrence_id: "o1",
-      },
-      { kind: "availability", summary: TASK_CARD_TEXT.waiting, detail_command: "bastra tasks due" },
-    ],
-  });
+  const due = friendlyTaskResult(
+    "due",
+    {
+      cards: [
+        {
+          kind: "occurrence",
+          goal: "Demo",
+          due_at: 0,
+          timezone: "Europe/Berlin",
+          why_now: TASK_CARD_TEXT.premise,
+          action_outcome: { intent_id: "i1", state: "unknown", review_hint: TASK_CARD_TEXT.reconcile },
+          task_id: "t1",
+          occurrence_id: "o1",
+        },
+        { kind: "availability", summary: TASK_CARD_TEXT.waiting, detail_command: "bastra tasks due" },
+      ],
+    },
+    "de"
+  );
   assert.match(due, /Geprüfte Prämissenänderung/);
   assert.match(due, /Abgleich nötig/);
   assert.match(due, /Fällige Aufgaben warten auf Prüfung/);

@@ -695,3 +695,68 @@ test("#1581 a task already past the reserve does not stop time evaluation for ev
   assert.equal(s.tasks.find((t) => t.id === seriesId)!.armed, false);
   assert.equal(s.tasks.find((t) => t.id === seriesId)!.last_failure?.code, "history_capacity");
 });
+const NORMAL_LIMIT = (4 * 1024 * 1024 * 3) / 4;
+/** Pads the store to exactly `target` bytes with history rows of one task. */
+async function padStore(path: string, taskId: string, target: number) {
+  const s = await readTaskStore(path);
+  const task = s.tasks.find((t) => t.id === taskId)!;
+  const row = { ...task.history[0], operation: "pad", reason: "x".repeat(2000) };
+  const rowBytes = Buffer.byteLength(JSON.stringify(row)) + 1;
+  // Leaves between 300 bytes and one row for the last row, whose reason fits its 4096 limit.
+  const count = Math.floor((target - Buffer.byteLength(JSON.stringify(s)) - 300) / rowBytes);
+  for (let i = 0; i < count; i++) task.history.push({ ...row });
+  const last = { ...row, reason: "x" };
+  task.history.push(last);
+  last.reason = "x".repeat(target - Buffer.byteLength(JSON.stringify(s)) + 1);
+  const raw = JSON.stringify(s);
+  assert.equal(Buffer.byteLength(raw), target);
+  await writeAppRecord("tasks", path, raw);
+}
+const storeBytes = (path: string) => Buffer.byteLength(readAppRecord("tasks", path));
+test("#1599 the automatic evaluation does not use the owner's control reserve", async () => {
+  const f = await fixture();
+  await callTaskCrud(f.ctx, f.auth, "task_create", f.input);
+  const id = (await readTaskStore(f.ctx.path)).tasks[0].id;
+  await padStore(f.ctx.path, id, NORMAL_LIMIT - 50);
+  f.setNow(3000);
+  await assert.rejects(reconcileTaskTime(f.ctx), { code: "capacity" });
+  const s = await readTaskStore(f.ctx.path);
+  assert.equal(s.occurrences.length, 0, "the refused evaluation wrote nothing");
+  assert.ok(Buffer.byteLength(JSON.stringify(s)) <= NORMAL_LIMIT);
+  // The reserve above the normal limit is still there for the owner.
+  await callTaskCrud(f.ctx, f.auth, "task_cancel", {
+    id,
+    expected_revision: `${s.recovery_epoch}:${s.tasks[0].revision}`,
+  });
+  assert.equal((await readTaskStore(f.ctx.path)).tasks[0].state, "cancelled");
+});
+test("#1599 above the normal limit the evaluation still switches a full task off with one audit row", async () => {
+  const { f, seriesId } = await fullHistoryFixture(9899);
+  const once = (await readTaskStore(f.ctx.path)).tasks.find((t) => t.goal === "One reminder")!;
+  await padStore(f.ctx.path, once.id, NORMAL_LIMIT - 50);
+  await assert.rejects(reconcileTaskTime(f.ctx), { code: "capacity" });
+  const s = await readTaskStore(f.ctx.path);
+  const series = s.tasks.find((t) => t.id === seriesId)!;
+  assert.equal(series.armed, false);
+  assert.equal(series.last_failure?.code, "history_capacity");
+  assert.equal(series.history.length, 9900, "exactly one audit row");
+  assert.equal(s.occurrences.length, 0, "nothing else used the reserve");
+});
+test("#1599 deleting a task is allowed above the normal limit because it makes the store smaller", async () => {
+  const f = await fixture();
+  await callTaskCrud(f.ctx, f.auth, "task_create", f.input);
+  await callTaskCrud(f.ctx, f.auth, "task_create", { ...f.input, idempotency_key: "second", goal: "Second" });
+  const first = (await readTaskStore(f.ctx.path)).tasks[0];
+  await padStore(f.ctx.path, first.id, NORMAL_LIMIT + 100_000);
+  const s = await readTaskStore(f.ctx.path);
+  await callTaskCrud(f.ctx, f.auth, "task_delete", {
+    id: first.id,
+    expected_revision: `${s.recovery_epoch}:${s.tasks[0].revision}`,
+  });
+  const after = await readTaskStore(f.ctx.path);
+  assert.deepEqual(
+    after.tasks.map((t) => t.goal),
+    ["Second"]
+  );
+  assert.ok(storeBytes(f.ctx.path) < NORMAL_LIMIT);
+});

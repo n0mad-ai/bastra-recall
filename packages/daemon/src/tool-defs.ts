@@ -23,12 +23,14 @@ import { MEMORY_TOOL_DEFS } from "./tool-handlers.js";
 import { documentTools } from "./documents-handler.js";
 import { documentWriteTools } from "./documents-write-handler.js";
 import { productDocTools } from "./product-doc-handler.js";
+import { restoreMemoryTools } from "./restore-memory-handler.js";
 import { codeTools } from "./code-graph/find-code.js";
 import { affectedTools } from "./code-graph/find-affected-files.js";
 import { envFirst, isOnValue } from "./env.js";
 
 export const ALL_TOOL_DEFS = [
   ...MEMORY_TOOL_DEFS,
+  ...restoreMemoryTools,
   ...(tasksEnabled() ? taskTools : []),
   ...documentTools,
   ...documentWriteTools,
@@ -68,7 +70,7 @@ export function servedToolDefs(documentWriteEnabled: boolean): typeof ALL_TOOL_D
  * - `write`  — search + save_memory, edit_memory, save_document, save_product_doc
  * - `full`   — everything, including the lifecycle operations
  *
- * Lifecycle operations (archive_memory, move_document, recategorize_document)
+ * Lifecycle operations (archive_memory, restore_memory, move_document, recategorize_document)
  * reshape the vault, and an agent reaching them through the same list as
  * `recall` is the whole reason for this: nothing structural made a 47-memory
  * move a deliberate act. They stay `full`-only, and so does anything not

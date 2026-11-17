@@ -10,6 +10,7 @@ import { lstat, mkdir, open, unlink, realpath } from "node:fs/promises";
 import { dirname, join, resolve, relative } from "node:path";
 import { authenticateTask, requireTaskDomains, requireTaskOwner } from "./task-auth.js";
 import { taskIdentitySchema as id, type TaskStore, type Task } from "./task-schema.js";
+import { TASK_CARD_TEXT } from "./task-card-text.js";
 import { cleanText, withTaskStoreGuard, TaskStoreError } from "./task-store.js";
 import {
   taskActionRegistry,
@@ -123,14 +124,15 @@ function markUnknown(store: TaskStore, taskId: string, now: number) {
   if (!task) return;
   const before = task.revision++;
   task.updated_at = now;
-  task.review_reason = "Abgleich nötig: Ausgang der Dateiänderung unklar";
+  // Stored texts are model context and stay English; people see them localized (#1602).
+  task.review_reason = TASK_CARD_TEXT.reconcileUnknown;
   task.history.push({
     at: now,
     actor: "task-action-recovery",
     operation: "action-unknown",
     before_revision: before,
     after_revision: task.revision,
-    reason: "Abgleich nötig",
+    reason: TASK_CARD_TEXT.reconcile,
   });
 }
 async function cleanupIntentTemp(

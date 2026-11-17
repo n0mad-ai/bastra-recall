@@ -135,6 +135,8 @@ Commands:
                              Move a path into ~/.bastra/archive yourself, see
                              what the agent's rm moved there, put a path back,
                              or let old entries go
+  trash <list|restore ID>    Archived memories (archive_memory, the vault
+                             trash): list them, or put one back where it lived
   reconcile [other-store]    Two copies of the same vault: which one is ahead,
                              per memory (dry run; --yes copies with backup,
                              conflicts are only listed); no argument lists
@@ -829,6 +831,21 @@ Usage:
 'bug' attaches a sanitized diagnostics block: version, OS, node, embedding
 mode, vault size, daemon status. Never a file path, never vault content. The
 browser opens with the form filled in — you read it and submit it yourself.
+`,
+
+  trash: `bastra trash — archived memories, back from the vault trash
+
+Usage:
+  bastra trash list              archived memories that can be restored (newest first)
+  bastra trash restore <id>      put an archived memory back where it lived
+
+archive_memory (and Archive in the memory browser) moves a memory into the
+vault trash, <vault>/.bastra/trash/ — never a hard delete. This command asks
+the running daemon (restore_memory) to list or restore them; the restore is
+written to the vault's audit log. A memory with the same id that is live
+again is not overwritten: the restore is refused. Private memories are not
+listed or restored here; restore them in the memory browser.
+--json prints the list as JSON.
 `,
 
   archive: `bastra archive — the archive behind the agent's rm

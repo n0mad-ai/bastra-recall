@@ -13,6 +13,7 @@
  */
 import { envInt } from "./env.js";
 import { readStdin, daemonBaseUrl, postLane, classifyTransportError } from "./thin-client.js";
+import { emitStdout, exitAfterStdout } from "./hook-stdout.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 500, "NEXUS_HOOK_TIMEOUT_MS");
 
@@ -20,7 +21,7 @@ let stdoutEmitted = false;
 function emitOnce(payload: string): void {
   if (stdoutEmitted) return;
   stdoutEmitted = true;
-  process.stdout.write(payload);
+  emitStdout(payload);
 }
 
 async function main(): Promise<void> {
@@ -67,14 +68,14 @@ const isCliEntry =
 if (isCliEntry) {
   const killSwitch = setTimeout(() => {
     emitOnce("{}");
-    process.exit(0);
+    void exitAfterStdout();
   }, HOOK_TIMEOUT_MS + 50);
   killSwitch.unref();
 
   main()
-    .then(() => process.exit(0))
+    .then(() => exitAfterStdout())
     .catch(() => {
       emitOnce("{}");
-      process.exit(0);
+      void exitAfterStdout();
     });
 }

@@ -20,6 +20,7 @@
     "pool-depth": "tsx src/pool-depth.ts",
     "rrf-k-beir": "tsx src/rrf-k-beir.ts",
     "tripwire-usage": "tsx src/tripwire-usage.ts",
+    "hook-context-load": "tsx src/hook-context-load.ts",
     "bm25-expansion": "tsx src/bm25-expansion.ts",
     "candidate-union": "tsx src/candidate-union.ts",
     "longmemeval": "tsx src/longmemeval-run.ts",

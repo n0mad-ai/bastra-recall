@@ -5,6 +5,26 @@
  * no uid and no POSIX mode bits; there only the file type is checked. */
 import { constants, type Stats } from "node:fs";
 import { lstat, open } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { bastraDataDir } from "@bastra-recall/core/platform-paths";
+
+/** The tmpdir location every earlier version used. It stays the identity of
+ * the stored hook state (hook-state-database.ts) and a source of legacy files. */
+export function legacyHookStateDir(): string {
+  return join(tmpdir(), "bastra-hook");
+}
+
+/**
+ * #1569: where hook state lives by default. macOS gives every account its own
+ * tmpdir and Windows its own %TEMP%, so the old location stays there. Elsewhere
+ * (Linux and other Unixes) tmpdir is shared between accounts, and another
+ * account could occupy the directory or a lock name in advance; the state
+ * moves below this account's data directory.
+ */
+export function defaultHookStateDir(platform: NodeJS.Platform = process.platform): string {
+  return platform === "darwin" || platform === "win32" ? legacyHookStateDir() : join(bastraDataDir(), "hook-state");
+}
 
 const ownUid = (): number | undefined => process.getuid?.();
 
@@ -28,7 +48,10 @@ export async function privateDirState(dir: string): Promise<"absent" | "private"
 
 /** Reads a regular file of this account up to `maxBytes`. ENOENT and ELOOP
  * (a symlink) surface with their codes; any other unsafe file throws EUNSAFE. */
-export async function readPrivateFile(path: string, maxBytes: number): Promise<{ bytes: Buffer; mtimeMs: number }> {
+export async function readPrivateFile(
+  path: string,
+  maxBytes: number
+): Promise<{ bytes: Buffer; mtimeMs: number; mode: number }> {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const info = await handle.stat();
@@ -43,7 +66,7 @@ export async function readPrivateFile(path: string, maxBytes: number): Promise<{
       length += bytesRead;
       if (length > info.size) throw Object.assign(new Error(`state file grew: ${path}`), { code: "EUNSAFE" });
     }
-    return { bytes: buffer.subarray(0, length), mtimeMs: info.mtimeMs };
+    return { bytes: buffer.subarray(0, length), mtimeMs: info.mtimeMs, mode: info.mode & 0o777 };
   } finally {
     await handle.close();
   }

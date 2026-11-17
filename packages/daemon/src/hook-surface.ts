@@ -91,6 +91,24 @@ export interface HookCaller {
   agent: HookAgent | null;
 }
 
+/**
+ * #448: the body every lane posts to `/hook/recall`. The identity fields come
+ * from {@link HookCaller}, and `hook_source` is required, so a new lane built
+ * on this type cannot compile while forgetting one of them (#445: four of five
+ * lanes had dropped a different one).
+ */
+export interface HookRecallRequest extends HookCaller {
+  query: string;
+  topics: string[];
+  project: string | null;
+  tool_name: string;
+  tool_input_excerpt?: string;
+  k: number;
+  scope?: string;
+  type?: string;
+  hook_source: string;
+}
+
 export function hookCaller(payload: unknown): HookCaller {
   const sid = payload && typeof payload === "object" ? (payload as Record<string, unknown>).session_id : undefined;
   return {

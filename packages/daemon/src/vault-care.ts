@@ -9,9 +9,10 @@
  * unticked ones. The routes live in webui.ts; this module owns the format:
  * reading, formatting, and replacing the note of one entry in place.
  */
-import { appendFile, open, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { appendFile, rename, unlink, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { withPathLock } from "./path-lock.js";
+import { readPrivateFile } from "./private-state-dir.js";
 
 export const CARE_FILE = "vault-care.md";
 export const CARE_KINDS = ["delete", "edit", "write", "note"] as const;
@@ -122,22 +123,22 @@ export function rewriteCareNote(file: string, target: CareTarget, note: string):
   return withPathLock(file, () => rewriteCareNoteLocked(file, target, note));
 }
 
+/** A care list is text the user and the map append to; far below this. */
+const CARE_FILE_MAX_BYTES = 16 * 1024 * 1024;
+
 async function rewriteCareNoteLocked(file: string, target: CareTarget, note: string): Promise<CareEntry> {
-  // Content and mode come from one open descriptor, never two path lookups.
-  const handle = await open(file, "r");
-  let before: string, mode: number;
-  try {
-    before = await handle.readFile("utf8");
-    mode = (await handle.stat()).mode & 0o777;
-  } finally {
-    await handle.close();
-  }
+  // Content and mode come from one open descriptor, never two path lookups —
+  // and (#1604) never through a symlink or into a FIFO at the care file's path.
+  const current = await readPrivateFile(file, CARE_FILE_MAX_BYTES);
+  const before = current.bytes.toString("utf8"),
+    mode = current.mode;
   const next = replaceCareNote(before, target, note);
   if (next === null) throw new CareConflictError("entry changed or removed");
   const tmp = `${file}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`;
   await writeFile(tmp, next, { encoding: "utf8", mode, flag: "wx" });
   try {
-    if ((await readFile(file, "utf8")) !== before) throw new CareConflictError("file changed meanwhile");
+    const again = (await readPrivateFile(file, CARE_FILE_MAX_BYTES)).bytes.toString("utf8");
+    if (again !== before) throw new CareConflictError("file changed meanwhile");
     await rename(tmp, file);
   } finally {
     await unlink(tmp).catch(() => undefined);

@@ -38,6 +38,7 @@
       "$comment": "What arm B is offered, pinned so a later edit cannot quietly change what was measured. Hashes are of the built artefacts (packages/daemon/dist). TUNED ON DEVELOPMENT DATA: the wording was arrived at over several rounds on the BURNED v3 scenarios of bastra-recall, never on a bastra-io scenario and never on the 7 fresh bastra-recall ones. The adoption threshold therefore tests it on unseen data, which is the only reason a tuned description may be measured at all.",
       "tool_definition": "packages/daemon/src/code-graph/find-affected-files.ts -> affectedTools[0]",
       "tool_definition_sha256": "e8e51b5e0c80e6d7e18e009d18624265de9a515c26b95c728ec3b0507ed48b96",
+      "$after_the_run": "Kept as measured. After the run was completed, the code clause (#1457) and the tool description (#1562) were rewritten to claim no more than the result shows: a candidate list next to the usual text search, not proof, not a complete list. The current code therefore no longer matches code_clause_sha256 and tool_definition_sha256; a new measurement needs a new registration that pins the current text.",
       "server_instructions": "packages/daemon/src/mcp-instructions.ts -> serverInstructions(true) = SERVER_INSTRUCTIONS + CODE_AWARENESS_CLAUSE",
       "server_instructions_sha256": "63a1bac0f13ff91069ca72dde2a5a8be859922df0c83e85d89c30594220bd07c",
       "memory_part_sha256": "0b92d332e295c9ce32d925bfc53d5186afb1c6f2073d8611bacfaea5496ce78b",

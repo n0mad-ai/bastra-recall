@@ -34,6 +34,7 @@ import type { createLiveUpdates } from "./live-updates.js";
 import { handleHookOnboarding, handleUiOnboarding } from "./onboarding.js";
 import { handleSessionContext, handleSessionContextPost } from "./session-context.js";
 import { sendJson } from "./http-util.js";
+import { getUiEnabled } from "./settings.js";
 import { dispatchUiBackdrop } from "./ui-backdrop.js";
 import { dispatchUiGraph, type GraphReadCtx } from "./http-graph-reads.js";
 import { hiddenFromCaller } from "./private-access.js";
@@ -69,12 +70,7 @@ export function dispatchUiRoutes(
       .catch(() => sendJson(res, 500, { error: "ui error" }));
     return true;
   }
-  // Import review (#208): open candidate count for the session hook —
-  // loopback-only like /hook/care.
-  if (method === "GET" && (url === "/hook/import" || url === "/ui/import-count")) {
-    handleHookImport(res, toolDeps.vaultPath).catch(() => sendJson(res, 500, { error: "import error" }));
-    return true;
-  }
+  if (dispatchImportCount(res, method, url, toolDeps.vaultPath)) return true;
   // Visual import (#208): the map's import dialog stages candidates the
   // same way `bastra import` does. Staging only, never saves memories.
   if (method === "POST" && url === "/ui/import") {
@@ -222,6 +218,21 @@ async function careVisibility(ctx: UiRouteCtx): Promise<ReadonlySet<string> | nu
   return new Set(
     nodes.filter((node) => !hiddenFromCaller(undefined, ctx.vault.get(node.id)?.fm)).map((node) => node.id)
   );
+}
+
+/**
+ * Import review (#208): the open candidate count. /hook/import is the session
+ * hook's — loopback-only like /hook/care, and not gated on ui.enabled (the hook
+ * runs whether or not the web UI is on). #1571: the web UI's nav badge reads
+ * the same count at /ui/import-count, under ui.enabled like every /ui route.
+ */
+function dispatchImportCount(res: ServerResponse, method: string, url: string, vaultPath: string): boolean {
+  if (method !== "GET" || (url !== "/hook/import" && url !== "/ui/import-count")) return false;
+  const gate = url === "/hook/import" ? Promise.resolve(true) : getUiEnabled();
+  gate
+    .then((on) => (on ? handleHookImport(res, vaultPath) : sendJson(res, 404, { error: "ui disabled" })))
+    .catch(() => sendJson(res, 500, { error: "import error" }));
+  return true;
 }
 
 // Ring-view center emblem (#207): stored as vault-image.<ext> at the

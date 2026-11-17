@@ -109,6 +109,10 @@ export async function handleAssistantAddressUi(
   options: AssistantAddressOptions,
   refresh: () => Promise<{ port?: number }>
 ) {
+  // #1571: refresh is deliberately NOT gated on ui.enabled. The CLI calls it
+  // after an address change (notifyAssistantAddressDaemon, cli/address-cmd.ts)
+  // so the daemon picks up the new listener, with or without the web UI; its
+  // answer is the address status only, no memory content.
   if (path !== "/ui/assistant-address/refresh" && !(await getUiEnabled(options.settingsPath))) {
     sendJson(res, 404, { error: "UI is disabled" });
     return;

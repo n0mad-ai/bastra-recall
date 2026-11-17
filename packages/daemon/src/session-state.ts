@@ -16,10 +16,10 @@ import {
   readHookMarker,
 } from "./hook-state-database.js";
 import * as path from "node:path";
-import * as os from "node:os";
 import { createHash } from "node:crypto";
 import { envInt } from "./env.js";
 import { resolveStatePath } from "./state-path.js";
+import { defaultHookStateDir } from "./private-state-dir.js";
 import { withPathLock, tryWithPathLock } from "./path-lock.js";
 import { decodeActiveTask, taskIdFor, type ActiveTask } from "./task-state.js";
 import { parseRepairWindows, type RepairWindows } from "./stop-repair-window.js";
@@ -309,10 +309,8 @@ export const RESET_WINDOW_MS = 4 * 60 * 60 * 1000;
  *  was still running and re-opened exactly the hole the dedup closes. */
 export const STATE_MAX_AGE_MS = 36 * 60 * 60 * 1000;
 
-const DEFAULT_DIR = path.join(os.tmpdir(), "bastra-hook");
-
 export function sessionStateDir(): string {
-  return process.env.BASTRA_HOOK_STATE_DIR || DEFAULT_DIR;
+  return process.env.BASTRA_HOOK_STATE_DIR || defaultHookStateDir();
 }
 
 function sessionFile(sessionId: string, dir = sessionStateDir()): string {

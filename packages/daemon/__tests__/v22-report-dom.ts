@@ -14,6 +14,9 @@ export class Node_ {
   disabled = false;
   hidden = false;
   scrollTop = 0;
+  selectionStart = 0;
+  selectionEnd = 0;
+  selectionDirection = "none";
   dataset: Record<string, string> = {};
   clientWidth = 0;
   style = { setProperty() {}, height: "" };
@@ -89,6 +92,9 @@ export class Node_ {
   }
   click() {
     return Promise.all((this.listeners.click ?? []).map((fn) => fn()));
+  }
+  setSelectionRange(start: number, end: number, direction = "none") {
+    Object.assign(this, { selectionStart: start, selectionEnd: end, selectionDirection: direction });
   }
   scrollIntoView() {}
   focus() {}

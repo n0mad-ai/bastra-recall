@@ -30,7 +30,7 @@
  * für die dieselben Regeln gelten wie für Trash und Locks: eigenes
  * Unterverzeichnis, kein Symlink.
  */
-import { readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
@@ -38,6 +38,7 @@ import { assertInsideDir, assertOwnSubdir } from "./file-identity.js";
 import { acquireCommitClaim, claimIsAbandoned, releaseCommitClaim } from "./save-commit.js";
 import { newOperationId, reportMutationIncident } from "./mutation-incident.js";
 import { normalizeScopeKey } from "./scope.js";
+import { readRegularFile } from "./regular-file.js";
 import { ensureVaultDir } from "./vault-root-guard.js";
 
 const AUDIT_DIR = ".bastra";
@@ -76,7 +77,8 @@ function markPathFor(vaultRoot: string, name: string): string {
 export async function readAreaMark(vaultRoot: string, name: string): Promise<AreaMark | null> {
   let raw: string;
   try {
-    raw = await readFile(markPathFor(vaultRoot, name), "utf8");
+    // #1604: no symlink, no FIFO — a planted special file must not hang the save.
+    raw = (await readRegularFile(markPathFor(vaultRoot, name))).raw;
   } catch (err) {
     // Nur „gibt es nicht" beweist, dass der Name frei ist. Ein Lesefehler ist
     // eine offene Frage und darf nicht als Freigabe durchgehen — dieselbe

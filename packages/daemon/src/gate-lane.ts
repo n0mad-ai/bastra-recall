@@ -29,6 +29,10 @@ import { confirmLaneDelivery } from "./lane-delivery.js";
  * as `additionalContext` — never a deny — and starts the count again. A
  * must-load the agent answered with a load and a reflex rule the gate
  * delivered become the session's active conventions, which head the kernel.
+ * #1461: a kernel this agent (main thread or one subagent) already received
+ * byte-identically in this session comes as a short reminder instead; a
+ * changed kernel, a new agent, or a compact/clear (which drops the session's
+ * constants) gets the full text again.
  *
  * A denial is not a load and not a surfaced hint: this lane reports nothing to
  * /hook/hinted and writes no usage. A load the agent makes after a denial is an
@@ -61,7 +65,8 @@ import {
 } from "./session-state.js";
 import { recordBudgetShadow } from "./session-budget.js";
 import { projectForLane } from "./scope-filter.js";
-import { RULE_KERNEL_TOOL_CALLS, renderRuleKernel } from "./rule-kernel.js";
+import { renderKernelReminder, RULE_KERNEL_TOOL_CALLS, renderRuleKernel } from "./rule-kernel.js";
+import { kernelSeen, kernelUnchanged, rememberKernel, type KernelSeen } from "./rule-kernel-seen.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", FAST_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_VERSION = "0.1.0";
@@ -311,7 +316,7 @@ async function gate(
   let claimedReflex: ReflexMatch[] = [];
   let kernelActive: ActiveConvention[] | null = null;
   const kernelToken = randomUUID();
-  const finishKernel = (delivered: boolean, backoff = false) => {
+  const finishKernel = (delivered: boolean, backoff = false, seen?: KernelSeen) => {
     void mutateSessionState(sessionId, (state) => {
       let marker;
       try {
@@ -321,6 +326,7 @@ async function gate(
       }
       if (marker?.token !== kernelToken) return;
       delete state.constants![KERNEL_DELIVERY];
+      if (delivered && seen) rememberKernel(state.constants!, seen);
       if (!delivered) {
         state.toolCalls = (state.toolCalls ?? 0) + (marker.calls ?? RULE_KERNEL_TOOL_CALLS);
         if (backoff) state.constants![KERNEL_RETRY_AT] = String(Date.now() + 5000);
@@ -705,13 +711,14 @@ async function boundedRulebookAction(
 /**
  * #1305: periodic rule context, never a deny. The count stays due until a
  * context delivery is confirmed; an unavailable catalog retries next call.
+ * #1461: an unchanged kernel this agent already received goes out as a reminder.
  */
 async function redeliverKernel(
   payload: GatePayload,
   kernel: NonNullable<GateDeps["kernel"]>,
   active: readonly ActiveConvention[],
   startedAt: number,
-  finishKernel: (delivered: boolean, backoff?: boolean) => void,
+  finishKernel: (delivered: boolean, backoff?: boolean, seen?: KernelSeen) => void,
   outerDeadline?: number
 ): Promise<string> {
   const project = projectForLane(typeof payload.cwd === "string" && payload.cwd ? payload.cwd : process.cwd());
@@ -721,7 +728,8 @@ async function redeliverKernel(
       () => kernel(active, project, "content"),
       Math.min(deadline, Date.now() + RULEBOOK_CATALOG_BUDGET_MS)
     );
-    const rendered = renderRuleKernel(candidates, { trigger: `${RULE_KERNEL_TOOL_CALLS} tool calls without a prompt` });
+    const trigger = `${RULE_KERNEL_TOOL_CALLS} tool calls without a prompt`;
+    const rendered = renderRuleKernel(candidates, { trigger });
     if (Date.now() >= deadline) {
       finishKernel(false);
       return "{}";
@@ -730,25 +738,37 @@ async function redeliverKernel(
       finishKernel(true);
       return "{}";
     }
-    recordBudgetShadow(payload.session_id ?? null, "hook_call", Math.ceil(rendered.text.length / 4), {
+    const seen = kernelSeen(payload.agent_id, rendered.text);
+    const unchanged = await kernelUnchanged(payload.session_id ?? "", seen);
+    const text = unchanged
+      ? renderKernelReminder(candidates, { trigger, fingerprint: seen.fingerprint })
+      : rendered.text;
+    recordBudgetShadow(payload.session_id ?? null, "hook_call", Math.ceil(text.length / 4), {
       source: "rule-kernel",
     });
-    void writeTelemetry(payload, startedAt, {
-      outcome: "pass",
-      kernel_ids: rendered.full,
-      kernel_degraded_ids: rendered.degraded,
-      kernel_omitted: rendered.omitted,
-      kernel_paged_index: rendered.paged_index ?? 0,
-      kernel_chars: rendered.text.length,
-    });
+    void writeTelemetry(
+      payload,
+      startedAt,
+      unchanged
+        ? { outcome: "pass", kernel_reminder_chars: text.length, kernel_fingerprint: seen.fingerprint }
+        : {
+            outcome: "pass",
+            kernel_ids: rendered.full,
+            kernel_degraded_ids: rendered.degraded,
+            kernel_omitted: rendered.omitted,
+            kernel_paged_index: rendered.paged_index ?? 0,
+            kernel_chars: rendered.text.length,
+            kernel_fingerprint: seen.fingerprint,
+          }
+    );
     await confirmLaneDelivery(
       async (delivered) => {
-        finishKernel(delivered);
+        finishKernel(delivered, false, unchanged ? undefined : seen);
       },
       deadline,
       "context"
     );
-    return JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: rendered.text } });
+    return JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: text } });
   } catch {
     finishKernel(false, true);
     // Restore the claim, with backoff instead of charging every subsequent reader.

@@ -273,3 +273,68 @@ test("busy-session queued peer command has a receipt only for its visible assist
   await deliverTaskChats(f.ctx, f.options);
   assert.equal((await readTaskStore(f.ctx.path)).occurrences[0].chat_delivery?.processed_at, 3000);
 });
+test("#1600 a claim left behind by a crash before sending expires and the reminder comes back", async () => {
+  for (const sendMayHaveStarted of [false, true]) {
+    const f = await fixture();
+    const crashedAt = 3000;
+    await transactTaskStore(f.ctx.path, undefined, (s) => {
+      s.occurrences[0].chat_delivery = {
+        event_id: "crashed-claim",
+        session_id: f.target.sessionId,
+        generation: f.target.generation,
+        content_hash: "0".repeat(64),
+        claimed_at: crashedAt,
+        ...(sendMayHaveStarted ? { failed_at: crashedAt } : {}),
+      };
+    });
+    const principal = await authenticateTask(f.auth, f.ctx.authPath);
+    const visible = async (now: number) =>
+      taskDueProjection(await readTaskStore(f.ctx.path), principal, taskDueInput.parse({}), now, true).cards.length;
+    assert.equal(await visible(crashedAt + 1000), 0, "a fresh claim may still be sending");
+    const later = crashedAt + 10 * 60 * 1000;
+    f.ctx.now = () => later;
+    f.target.lastHumanAt = later - 1000;
+    await deliverTaskChats(f.ctx, f.options);
+    const claim = (await readTaskStore(f.ctx.path)).occurrences[0].chat_delivery!;
+    if (sendMayHaveStarted) {
+      assert.equal(f.sent.length, 0, "a send that may have started is never announced twice");
+      assert.equal(claim.event_id, "crashed-claim");
+      assert.equal(await visible(later), 0);
+    } else {
+      assert.equal(f.sent.length, 1, "the never-sent claim is announced again, once");
+      assert.notEqual(claim.event_id, "crashed-claim");
+      assert.ok(claim.submitted_at);
+      assert.equal(claim.failed_at, undefined);
+    }
+  }
+});
+test("#1600 the unknown-outcome mark is durable before send() starts", async () => {
+  const f = await fixture();
+  let seen: unknown;
+  f.options.send = async () => {
+    seen = (await readTaskStore(f.ctx.path)).occurrences[0].chat_delivery;
+  };
+  await deliverTaskChats(f.ctx, f.options);
+  assert.ok(
+    (seen as { failed_at?: number }).failed_at,
+    "a crash during send leaves an unknown outcome, not a fresh claim"
+  );
+  const done = (await readTaskStore(f.ctx.path)).occurrences[0].chat_delivery!;
+  assert.ok(done.submitted_at);
+  assert.equal(done.failed_at, undefined);
+});
+test("#1600 an abandoned claim is visible on next contact even when no chat is reachable", async () => {
+  const f = await fixture();
+  await transactTaskStore(f.ctx.path, undefined, (s) => {
+    s.occurrences[0].chat_delivery = {
+      event_id: "crashed-claim",
+      session_id: f.target.sessionId,
+      generation: f.target.generation,
+      content_hash: "0".repeat(64),
+      claimed_at: 3000,
+    };
+  });
+  const principal = await authenticateTask(f.auth, f.ctx.authPath);
+  const s = await readTaskStore(f.ctx.path);
+  assert.equal(taskDueProjection(s, principal, taskDueInput.parse({}), 3000 + 10 * 60 * 1000, true).cards.length, 1);
+});

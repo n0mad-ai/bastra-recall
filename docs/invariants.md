@@ -61,6 +61,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md#invariants) for when to add one.
 | INV-SCRUB-01 | Every block tag the daemon's hooks emit is in `INJECTED_BLOCK_TAGS`. | An unlisted block is re-captured as memory content and feeds back into recall. | `packages/daemon/__tests__/scrub-emitted-blocks.test.ts` |
 | INV-SCRUB-02 | Scrubbing removes a complete block of every listed tag, while a bare mention of a tag survives. | Injected context must not be stored; memories about the hook format must stay writable. | `packages/core/__tests__/scrub.test.ts` |
 | INV-SCRUB-03 | Free text in tasks and task reports is redacted for secrets and scrubbed of injected blocks before it is stored. | Tokens and passwords must not land in plain-text stores. | `packages/daemon/__tests__/task-store.test.ts`, `packages/daemon/__tests__/task-reports.test.ts` |
+| INV-SCRUB-04 | Vault text embedded in a hook hint keeps no invisible format or control character (except a joiner inside a word or emoji) and no tag-shaped markup. | Hidden or reordered text and imitated host markup slip past the reference-only frame. | `packages/core/__tests__/scrub-markup.test.ts` |
 
 ## Rulebook
 
@@ -70,6 +71,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md#invariants) for when to add one.
 | INV-RULE-02 | `edit_memory` binds a declaration on a user-directed note at once and keeps it a proposal on an agent note, and says which. | Same decision on the edit path (#1385). | `packages/daemon/__tests__/rulebook-write-status.test.ts` |
 | INV-RULE-03 | Unconfirmed candidates and proposals are never silently promoted to rules. | An agent must not make its own rules binding. | `packages/daemon/__tests__/rulebook-delivery.test.ts` |
 | INV-RULE-04 | The rule catalog has no top-k cap; every rule is reachable with a proven end. | A rule that cannot be listed is a rule no agent follows. | `packages/daemon/__tests__/rulebook-delivery.test.ts` |
+| INV-RULE-05 | The gate sends the short rule-kernel reminder instead of the full kernel only to an agent that already received the byte-identical kernel in the same context; a changed kernel, another agent, or a compact/clear gets the full text. | A reminder in place of rules the agent never saw, or lost with its context, is a rule no agent follows (#1461). | `packages/daemon/__tests__/rule-kernel.test.ts` |
 
 ## Session start context
 
@@ -94,11 +96,12 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md#invariants) for when to add one.
 | INV-TASK-01 | An agent credential, or a missing, legacy or forged one, can never become the owner. | Owner rights decide approvals and what agents may do. | `packages/daemon/__tests__/task-auth.test.ts` |
 | INV-TASK-02 | Only the owner's UI writes, edits, deletes and hands over report notes; agent tools, `/api/v1` and MCP are refused. | No agent can leave an "instruction" in the owner's name. | `packages/daemon/__tests__/task-report-notes.test.ts` |
 | INV-TASK-03 | An agent sees only handed-over and done notes; an edited note is a draft again. | A draft is the owner's alone until they hand it over. | `packages/daemon/__tests__/task-report-notes.test.ts` |
-| INV-TASK-04 | Reports follow the task domain rule: other domains neither see, read nor delete them. | Reports from one project must not leak into another. | `packages/daemon/__tests__/task-reports.test.ts` |
+| INV-TASK-04 | Reports follow the task domain rule: other domains neither see, read, delete nor restore them. | Reports from one project must not leak into another. | `packages/daemon/__tests__/task-reports.test.ts` |
 | INV-TASK-05 | Invalid report input is rejected, never shortened, and a full store refuses new reports instead of dropping old ones. | Silent truncation or eviction loses the owner's reports. | `packages/daemon/__tests__/task-reports.test.ts` |
 | INV-TASK-06 | A corrupt or unsupported task store rejects every change and keeps the original bytes. | Writing over a damaged store destroys what recovery could save. | `packages/daemon/__tests__/task-store.test.ts` |
 | INV-TASK-07 | Parallel writers of the task store never lose an update; two commits from the same snapshot cannot both succeed. | Lost updates drop tasks or their history. | `packages/daemon/__tests__/task-store.test.ts` |
 | INV-TASK-08 | A resolved task cannot regress its revision, lose its audit, disappear or re-arm by itself. | A finished task that fires again acts without the owner. | `packages/daemon/__tests__/task-store.test.ts` |
+| INV-TASK-09 | The report store keeps fields a later version added on every write and never hands them out. | Going back one version must neither lock the owner out of their reports nor drop what the newer version stored. | `packages/daemon/__tests__/task-report-store.invariant.test.ts` |
 
 ## HTTP boundary of the daemon
 

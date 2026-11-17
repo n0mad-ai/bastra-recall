@@ -9,6 +9,7 @@ import { privateJson } from "../task-approval-keys.js";
 import { withPathLock } from "../path-lock.js";
 import { taskPrivatePrompt } from "./task-private-prompt.js";
 import { confirm } from "./prompt.js";
+import { taskCliLanguage, taskCliWords } from "./task-cli-words.js";
 const ownerCacheSchema = z.strictObject({
   schema_version: z.literal(1),
   token: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
@@ -30,7 +31,9 @@ export async function ownerTaskAuthorization(): Promise<string> {
   const parsed = saved === undefined ? undefined : ownerCacheSchema.safeParse(saved);
   if (parsed && !parsed.success)
     throw Object.assign(new Error("Owner credential cache invalid"), { code: "owner_cache_invalid" });
-  const token = parsed?.success ? parsed.data.token : await taskPrivatePrompt("Owner-Aufgaben-Token (verborgen): ");
+  const token = parsed?.success
+    ? parsed.data.token
+    : await taskPrivatePrompt(taskCliWords(await taskCliLanguage()).ownerTokenPrompt);
   if (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token))
     throw Object.assign(new Error("Owner credential invalid"), { code: "unauthorized" });
   const authorization = `Bearer ${token}`,
@@ -57,15 +60,10 @@ export async function saveOwnerTaskAccess(authorization: string) {
   );
 }
 export async function loginOwnerTaskAccess() {
-  if (
-    !(await confirm(
-      "Owner-Zugang nur für interaktive CLI privat speichern? Dieses Datenverzeichnis muss außerhalb des Agent-Zugriffs liegen; Hooks/MCP bekommen diesen Token nie."
-    ))
-  )
+  const w = taskCliWords(await taskCliLanguage());
+  if (!(await confirm(w.ownerLoginConfirm)))
     throw Object.assign(new Error("Owner declined credential cache"), { code: "forbidden" });
-  const authorization = `Bearer ${await taskPrivatePrompt("Owner-Aufgaben-Token (verborgen): ")}`;
+  const authorization = `Bearer ${await taskPrivatePrompt(w.ownerTokenPrompt)}`;
   await saveOwnerTaskAccess(authorization);
-  process.stdout.write(
-    "Owner-Zugang privat für die interaktive CLI gespeichert. Wird bei jedem Befehl frisch geprüft; Die Anweisung im Chat ist die Ausführungsfreigabe.\n"
-  );
+  process.stdout.write(w.ownerLoginDone + "\n");
 }

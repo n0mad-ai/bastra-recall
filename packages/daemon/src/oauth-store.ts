@@ -148,16 +148,23 @@ async function mutate<T>(path: string, fn: (data: OAuthFile, now: number) => T):
 }
 
 /** At the cap the oldest never-granted registration makes room; only a file
- *  full of clients the user actually approved refuses a new one. */
+ *  full of clients the user actually approved refuses a new one.
+ *
+ *  #1280: `inUse` names the clients that are mid-login right now (an open
+ *  authorize page or an unredeemed code — state only the server holds). They
+ *  are never evicted: otherwise anyone churning anonymous registrations could
+ *  push out the user's fresh ChatGPT/Claude client between registration and
+ *  approval. When every candidate is in use, the registration fails closed. */
 export async function registerClient(
   meta: { client_name: string; redirect_uris: string[] },
-  path = oauthStorePath()
+  path = oauthStorePath(),
+  inUse: ReadonlySet<string> = new Set()
 ): Promise<OAuthClient | null> {
   return mutate(path, (data) => {
     if (data.clients.length >= MAX_CLIENTS) {
       const used = granted(data);
       const victim = data.clients
-        .filter((c) => !used.has(c.client_id))
+        .filter((c) => !used.has(c.client_id) && !inUse.has(c.client_id))
         .sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
       if (!victim) return null;
       data.clients = data.clients.filter((c) => c !== victim);
@@ -254,11 +261,21 @@ export async function refreshGrant(
 
 /** True when `token` is a live access token bound to `resource`. */
 export async function verifyAccessToken(token: string, resource: string, path = oauthStorePath()): Promise<boolean> {
+  return (await accessTokenClient(token, resource, path)) !== null;
+}
+
+/** #1469: the registered client a live access token bound to `resource`
+ *  belongs to, or null when the token is not one. */
+export async function accessTokenClient(
+  token: string,
+  resource: string,
+  path = oauthStorePath()
+): Promise<OAuthClient | null> {
   const h = hashToken(token);
   const data = await load(path);
   const grant = data.grants.find((g) => g.access_hash === h);
-  if (!grant || grant.access_expires_at <= Date.now() || grant.resource !== resource) return false;
-  return data.clients.some((c) => c.client_id === grant.client_id);
+  if (!grant || grant.access_expires_at <= Date.now() || grant.resource !== resource) return null;
+  return data.clients.find((c) => c.client_id === grant.client_id) ?? null;
 }
 
 export interface ClientListing extends OAuthClient {

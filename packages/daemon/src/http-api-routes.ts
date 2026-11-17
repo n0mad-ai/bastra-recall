@@ -38,10 +38,11 @@ import { FindAffectedFilesArgs, findAffectedFiles } from "./code-graph/find-affe
 import { findAffectedFilesEvent, findCodeEvent } from "./code-graph/tool-telemetry.js";
 import { addFloor, affirm, release } from "./floors.js";
 import { saveProductDocHandler } from "./product-doc-handler.js";
+import { restoreMemoryHandler } from "./restore-memory-handler.js";
 import { recoverCallArguments } from "./call-corruption.js";
 import { TOOL_ARG_EXPECTATIONS } from "./tool-defs.js";
 import { projectForFilter } from "./scope-filter.js";
-import { callerSessionStore } from "./caller-session.js";
+import { callerSessionStore, writeCallerStore, type WriteTransport } from "./caller-session.js";
 import { withExecutedVaultWrite } from "./executed-vault-write.js";
 
 // ─── /api/v1 dispatcher ──────────────────────────────────────────
@@ -53,6 +54,10 @@ export interface DispatchCtx {
   ccSessionId?: string | null;
   /** Explicit caller actor: null is verified main, absent is unknown. */
   agentId?: string | null;
+  /** #1469: the transport this call arrived through and its client, for the
+   *  audit entry of every write. Absent = plain REST without a client label. */
+  transport?: WriteTransport;
+  client?: string | null;
   /** Caller context is a scope hint, never a privacy/authorization boundary. */
   cwd?: string;
   project?: string | null;
@@ -65,8 +70,20 @@ export async function dispatchApi(
 ): Promise<unknown | undefined> {
   // #708: every MCP tool event a forwarded call writes carries the caller's
   // Claude Code session — see caller-session.ts. `null` = forwarded, no header.
+  const writer = { transport: ctx.transport ?? "http", client: ctx.client ?? null, session: ctx.ccSessionId ?? null };
+  // #1471: restore_memory sits beside the switch — dispatchTool is frozen at
+  // its complexity budget (#1507) until its own refactor.
+  const run = (): Promise<unknown | undefined> => {
+    switch (tool) {
+      case "restore_memory":
+        // Public transport (#464): like its siblings, no private capability.
+        return restoreMemoryHandler(ctx.toolDeps, body, undefined);
+      default:
+        return dispatchTool(tool, body, ctx);
+    }
+  };
   return callerSessionStore.run(ctx.ccSessionId ?? null, () =>
-    withExecutedVaultWrite(tool, ctx, () => dispatchTool(tool, body, ctx), body)
+    writeCallerStore.run(writer, () => withExecutedVaultWrite(tool, ctx, run, body))
   );
 }
 

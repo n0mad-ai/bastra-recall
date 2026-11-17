@@ -13,6 +13,7 @@ import { hiddenFromCaller, type PrivateAccess } from "./private-access.js";
 import { acknowledgeCommittedJournal, openRecoveryJournal, type RecoveryJournalHandle } from "./recovery-journal.js";
 import { qualifyDocumentTriggers } from "./document-triggers.js";
 import { recordAudit } from "./audit-trail.js";
+import { WriteRedaction, withRedactionReceipt, type RedactionReceipt, type SecretsRedacted } from "./save-redaction.js";
 import { legacyDocId, makeDocId } from "./document-id.js";
 import { ensureVaultDir } from "@bastra-recall/core";
 import type { SaveDocumentArgs } from "./documents-write-handler.js";
@@ -46,6 +47,8 @@ export interface SaveDocumentResult {
   injection_warning?: string;
   /** #452: gesetzt, wenn der Audit-Eintrag nicht geschrieben werden konnte. */
   warning?: string;
+  /** #1470: credential values replaced per field before writing. */
+  secrets_redacted?: SecretsRedacted;
 }
 
 export async function saveDocument(
@@ -70,6 +73,9 @@ export async function saveDocument(
     throw new Error(`source is not a regular file: ${args.original_path}`);
   }
 
+  // #1470: credentials in the sidecar text never reach the vault; named in the receipt.
+  const redacted = redactDocumentArgs(args);
+
   const root = vaultRoot(vault);
   const docsRoot = join(root, DOCUMENTS_ROOT);
   const folder = resolveDocsFolder(root, docsRoot, args.folder_path);
@@ -93,9 +99,21 @@ export async function saveDocument(
   // slugifizieren auf DIESELBE id `doc-a-b-pdf` — beide legten ein Sidecar an,
   // und der Vault lud beim nächsten Start still nur eines davon. Ab hier gilt
   // dieselbe Sperre und dieselbe autoritative Auskunft wie im Save-Pfad.
-  return withIdClaim({ vaultRoot: root, id: docID, filePath: sidecarPath, op: "save_document" }, (claim) =>
-    commitDocument(claim, vault, args, { root, filename, docID, sidecarPath, originalDest }, caller)
+  const result = await withIdClaim(
+    { vaultRoot: root, id: docID, filePath: sidecarPath, op: "save_document" },
+    (claim) => commitDocument(claim, vault, args, { root, filename, docID, sidecarPath, originalDest }, caller)
   );
+  return withRedactionReceipt(result, redacted);
+}
+
+/** #1470: the sidecar's text fields, rewritten only when sent. */
+function redactDocumentArgs(args: z.infer<typeof SaveDocumentArgs>): RedactionReceipt {
+  const redaction = new WriteRedaction();
+  args.title = redaction.text("title", args.title);
+  if (args.summary !== undefined) args.summary = redaction.text("summary", args.summary);
+  if (args.body !== undefined) args.body = redaction.text("body", args.body);
+  if (args.recall_when !== undefined) args.recall_when = redaction.list("recall_when", args.recall_when);
+  return redaction.receipt();
 }
 
 /** Der schreibende Teil von {@link saveDocument} — vollständig unter der

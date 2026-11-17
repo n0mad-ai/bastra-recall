@@ -15,7 +15,8 @@ test("missing, malformed and oversized CLI input are clear validation failures",
   for (const path of [join(root, "absent.json"), bad, big, root])
     await assert.rejects(readTaskInputFile(path), (error: any) => {
       assert.equal(error.code, "validation");
-      assert.match(error.message, /nicht lesbar.*gültiges JSON/);
+      assert.match(error.message, /not readable or not valid JSON/);
+      assert.equal(error.reason, "input_file_unreadable");
       assert.equal(taskFailure(error).status, 400);
       return true;
     });

@@ -10,8 +10,13 @@
  *
  * - `expected_revision` is required: the browser always edits a known state,
  *   and a concurrent change answers 409 instead of being overwritten.
- * - Fields the edit path does not change (title, type, scope, sensitivity,
- *   recall_mode) are not accepted — `.strict()` refuses them loudly.
+ * - Title, type, sensitivity and recall mode (#1558) are the user's own
+ *   fields: they ride the same edit as `userFields` (not part of the
+ *   edit_memory tool), the file stays where it is. Documents and bookmarks
+ *   keep their type (their own tools file them). The area is not changed
+ *   here: the browser's area follows the folder, so it would mean moving
+ *   the file (owner decision open). Any other field is refused loudly by
+ *   `.strict()`.
  * - Nothing is shortened silently: an over-long summary is refused (the edit
  *   path would clamp it), the request body has the general /ui size limit.
  * - Private memories: the same visibility as GET /ui/graph — only when the
@@ -26,13 +31,14 @@ import { relative, sep } from "node:path";
 import { z } from "zod";
 import {
   AuditLog,
+  MemoryTypeEnum,
   RulebookSchema,
   SUMMARY_MAX,
   auditedRestore,
   latestTrashPathFor,
   type Memory,
 } from "@bastra-recall/core";
-import { editMemoryHandler, splitAuthoredBody, type EditMemoryArgs } from "./edit-memory-handler.js";
+import { editMemoryHandler, splitAuthoredBody, type EditMemoryArgs, type UserFields } from "./edit-memory-handler.js";
 import { archiveMemoryHandler } from "./tool-handlers.js";
 import { catalogDeclaration } from "./rulebook-catalog.js";
 import { TRUSTED_LOCAL_APP, hiddenFromCaller, hiddenOnDisk, type PrivateAccess } from "./private-access.js";
@@ -41,12 +47,15 @@ import type { ToolDeps } from "./tool-deps.js";
 import { getUiEnabled } from "./settings.js";
 import { MAX_BODY_BYTES, readJsonBody } from "./http-util.js";
 import { sendJsonPlain } from "./webui.js";
+import type { HttpServerContext } from "./http-context.js";
 
 /** What the routes need from the UI dispatcher's context. */
 export interface MemoryEditCtx {
   toolDeps: ToolDeps;
   /** Set by http.ts only after a proven peer-account check (as /ui/graph). */
   privateGraph?: boolean;
+  /** The semantic layout caches, dropped when a sensitivity changes (#1558). */
+  server?: Pick<HttpServerContext, "semanticCache" | "uiSemanticCache">;
 }
 
 /** The audit trail names the user and the surface, not the MCP tool. */
@@ -107,6 +116,11 @@ export const UiEditRequest = z
     tags: z.array(z.string()).max(100).optional(),
     rule: z.object({ rulebook: RulebookSchema, applies_when: z.string() }).strict().optional(),
     rule_decision: z.enum(["accept", "reject"]).optional(),
+    // #1558: the user's own fields (see userFieldsOf)
+    title: z.string().optional(),
+    type: MemoryTypeEnum.optional(),
+    sensitivity: z.enum(["public", "team", "private"]).optional(),
+    recall_mode: z.enum(["reflex", "deliberate"]).optional(),
   })
   .strict();
 export type UiEditRequest = z.infer<typeof UiEditRequest>;
@@ -178,6 +192,35 @@ function summaryOf(text: string): string {
   return summary;
 }
 
+// Documents and bookmarks are filed by their own tools; a memory does not become one here.
+const OWN_TOOL_TYPES = new Set(["doc", "bookmark"]);
+
+function titleOf(text: string): string {
+  const title = text.trim();
+  if (!title) throw new UiEditError(400, "title: must not be empty");
+  if (/[\r\n]/.test(title)) throw new UiEditError(400, "title: one line");
+  return title;
+}
+
+function typeOf(mem: Memory, type: Memory["fm"]["type"]): Memory["fm"]["type"] {
+  if (type !== mem.fm.type && (OWN_TOOL_TYPES.has(type) || OWN_TOOL_TYPES.has(mem.fm.type)))
+    throw new UiEditError(400, "type: documents and bookmarks keep their type");
+  return type;
+}
+
+/** #1558: the user's own fields that differ from the memory, or none. */
+export function userFieldsOf(mem: Memory, r: UiEditRequest): UserFields | undefined {
+  const next: UserFields = {
+    ...(r.title !== undefined ? { title: titleOf(r.title) } : {}),
+    ...(r.type !== undefined ? { type: typeOf(mem, r.type) } : {}),
+    ...(r.sensitivity !== undefined ? { sensitivity: r.sensitivity } : {}),
+    ...(r.recall_mode !== undefined ? { recall_mode: r.recall_mode } : {}),
+  };
+  const fm = mem.fm as Record<string, unknown>;
+  const changed = Object.entries(next).filter(([k, v]) => fm[k] !== v);
+  return changed.length ? Object.fromEntries(changed) : undefined;
+}
+
 type Patch = NonNullable<EditMemoryArgs["frontmatter"]>;
 
 function frontmatterPatch(mem: Memory, r: UiEditRequest): Patch | undefined {
@@ -193,23 +236,34 @@ function frontmatterPatch(mem: Memory, r: UiEditRequest): Patch | undefined {
   return Object.keys(patch).length ? patch : undefined;
 }
 
-/** The edit_memory arguments for one browser save, or 400 when nothing changes. */
-export function editArgs(mem: Memory, r: UiEditRequest): EditMemoryArgs {
+const USER_FIELDS = ["title", "type", "sensitivity", "recall_mode"] as const;
+
+/** The edit_memory arguments for one browser save (with the user's own
+ *  fields apart, #1558), or 400 when nothing changes. */
+export function editArgs(mem: Memory, r: UiEditRequest): { args: EditMemoryArgs; fields?: UserFields } {
   const base = { id: mem.fm.id, expected_revision: r.expected_revision };
   if (r.rule_decision) {
-    if (r.body !== undefined || r.summary !== undefined || r.tags !== undefined || r.rule)
+    if (
+      r.body !== undefined ||
+      r.summary !== undefined ||
+      r.tags !== undefined ||
+      r.rule ||
+      USER_FIELDS.some((k) => r[k] !== undefined)
+    )
       throw new UiEditError(400, "rule_decision stands alone");
-    return { ...base, rulebook_decision: { decision: r.rule_decision, write_origin: "user-directed" } };
+    return { args: { ...base, rulebook_decision: { decision: r.rule_decision, write_origin: "user-directed" } } };
   }
   const frontmatter = frontmatterPatch(mem, r);
+  const fields = userFieldsOf(mem, r);
   const args = {
     ...base,
     ...(r.body !== undefined ? bodyOp(mem, r.body) : {}),
-    ...(frontmatter ? { frontmatter } : {}),
+    // edit_memory needs one operation; the user's fields alone are an empty patch
+    ...(frontmatter || fields ? { frontmatter: frontmatter ?? {} } : {}),
   };
   if (!args.str_replace && args.append === undefined && !args.frontmatter)
     throw new UiEditError(400, "nothing to change");
-  return args;
+  return { args, ...(fields ? { fields } : {}) };
 }
 
 /** A thrown edit/archive error → status. Refused preconditions are conflicts. */
@@ -241,8 +295,10 @@ async function respond(res: ServerResponse, run: () => Promise<unknown>): Promis
 async function edit(ctx: MemoryEditCtx, r: UiEditRequest) {
   const deps = ctx.toolDeps;
   const mem = current(ctx, r.id, r.expected_revision);
-  const args = editArgs(mem, r);
-  const result = await editMemoryHandler(deps, args, access(ctx), UI_ORIGIN);
+  const { args, fields } = editArgs(mem, r);
+  const result = await editMemoryHandler(deps, args, access(ctx), UI_ORIGIN, fields);
+  // A memory that became private must leave the cached layouts at once (#1558).
+  if (fields?.sensitivity && ctx.server) ctx.server.semanticCache = ctx.server.uiSemanticCache = null;
   if (!("revision" in result)) throw new UiEditError(409, "the edit was held by the trigger check — nothing written");
   const { revision, warning } = result;
   const after = deps.vault.get(r.id);
@@ -274,7 +330,8 @@ async function restore(ctx: MemoryEditCtx, r: z.infer<typeof UiRestoreRequest>) 
   return { id: r.id };
 }
 
-/** POST /ui/memory/edit {id, expected_revision, body?, summary?, tags?, rule? | rule_decision}
+/** POST /ui/memory/edit {id, expected_revision, body?, summary?, tags?, rule?, title?, type?,
+ *  sensitivity?, recall_mode? | rule_decision}
  *  → {id, revision, rule}; 409 {conflict} when the memory moved on. */
 export async function handleUiMemoryEdit(req: IncomingMessage, res: ServerResponse, ctx: MemoryEditCtx) {
   await respond(res, async () => edit(ctx, await readRequest(req, UiEditRequest)));

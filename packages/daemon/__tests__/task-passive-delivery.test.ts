@@ -1,6 +1,6 @@
 import { readAppRecord } from "../src/app-record-store.js";
 import "./tasks-opt-in.js";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -39,6 +39,25 @@ async function fixture() {
   const job = startProactiveTaskJob(ctx);
   await job.runtime.ready;
   return { root, ctx, owner, agent, job, vaultPath };
+}
+/**
+ * Stops a spawned child without hanging and without throwing, so a failing
+ * test keeps its own error. A child that already exited (for example a
+ * missing dist/bridge.js) returns at once; the exit listener is installed
+ * before the kill, and a child that ignores SIGTERM gets SIGKILL after a bound.
+ */
+async function stopChild(child: ChildProcess, boundMs = 5000): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const exited = once(child, "exit").then(
+    () => true,
+    () => true
+  );
+  const bounded = (ms: number) =>
+    Promise.race([exited, new Promise<false>((resolve) => setTimeout(() => resolve(false), ms).unref())]);
+  child.kill();
+  if (await bounded(boundMs)) return;
+  child.kill("SIGKILL");
+  await bounded(boundMs);
 }
 async function closeServer(server: ReturnType<typeof createServer>) {
   await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -196,8 +215,10 @@ test("compiled bridge catches up and attaches cards to ordinary replies with ded
       ready += chunk;
     });
     const deadline = Date.now() + 10000;
-    while (!ready.includes("ready") && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
-    assert.match(ready, /ready/);
+    while (!ready.includes("ready") && child.exitCode === null && Date.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    // A bridge that never started (e.g. core/daemon not built) fails here with its stderr, not in cleanup.
+    assert.match(ready, /ready/, `bridge did not become ready (exit code ${child.exitCode}): ${ready}`);
     // Ready is not a task job barrier; the client contact also queues catch-up.
     for (let id = 1; id <= 50 && !output.includes("proactive_due"); id++) {
       child.stdin.write(JSON.stringify({ id, method: "vault_status" }) + "\n");
@@ -212,9 +233,31 @@ test("compiled bridge catches up and attaches cards to ordinary replies with ded
     assert.equal(reply.proactive_due.cards.length, 1);
     assert.equal((await readTaskStore(f.ctx.path)).occurrences[0].acknowledgement, undefined);
   } finally {
-    child.kill();
-    await once(child, "exit");
+    await stopChild(child);
   }
+});
+
+test("child cleanup returns for a child that already exited and keeps the test error (#1324)", async () => {
+  const child = spawn(process.execPath, ["-e", "process.exit(3)"], { stdio: "ignore" });
+  await once(child, "exit");
+  const started = Date.now();
+  await stopChild(child, 60_000);
+  assert.ok(Date.now() - started < 1000, "cleanup must not wait for an exit event that already fired");
+  const live = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  await stopChild(live);
+  assert.notEqual(live.exitCode ?? live.signalCode, null);
+  await assert.rejects(
+    (async () => {
+      const early = spawn(process.execPath, ["-e", "process.exit(4)"], { stdio: "ignore" });
+      try {
+        await once(early, "exit");
+        throw new Error("original failure");
+      } finally {
+        await stopChild(early, 60_000);
+      }
+    })(),
+    /original failure/
+  );
 });
 
 test("due text frames original requests as data and cannot close its own block", async () => {

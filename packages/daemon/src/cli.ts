@@ -28,6 +28,7 @@ import { cmdOnboard } from "./cli/onboard-cmd.js";
 import { cmdSkills } from "./cli/skills-cmd.js";
 import { cmdFeedback } from "./cli/feedback-cmd.js";
 import { cmdArchive } from "./cli/archive-cmd.js";
+import { cmdTrash } from "./cli/trash-cmd.js";
 import { cmdReconcile } from "./cli/reconcile-cmd.js";
 import { cmdLogs, parseSince } from "./cli/logs.js";
 import { cmdConventions } from "./cli/log-conventions.js";
@@ -132,6 +133,8 @@ async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
       return cmdFeedback(args);
     case "archive":
       return cmdArchive(args);
+    case "trash":
+      return cmdTrash(args);
     case "reconcile":
       return cmdReconcile(args);
     case "rules":
@@ -148,40 +151,45 @@ async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
       return cmdPatches(args);
     case "completion":
       return cmdCompletion(args.surface);
-    case "logs": {
-      const sinceMs = args.since === null ? 5 * 60_000 : parseSince(args.since);
-      if (sinceMs === null) {
-        process.stderr.write(`error: cannot read --since '${args.since}' — try 30s, 10min, 2h, 1d\n`);
-        return 2;
-      }
-      const source = args.source ?? "all";
-      if (source !== "daemon" && source !== "hook" && source !== "all") {
-        process.stderr.write(`error: --source must be daemon, hook or all (got '${source}')\n`);
-        return 2;
-      }
-      const lines = args.lines === null ? 200 : Number(args.lines);
-      if (!Number.isFinite(lines) || lines <= 0) {
-        process.stderr.write(`error: --lines must be a positive number (got '${args.lines}')\n`);
-        return 2;
-      }
-      // --stats reads the same files, but aggregated instead of line by line.
-      // Default window is wider: a per-lane rate needs days, not five minutes.
-      if (args.conventions) {
-        return cmdConventions({
-          sinceMs: args.since === null ? 7 * 86_400_000 : sinceMs,
-          includeEval: args.includeEval,
-        });
-      }
-      if (args.stats) {
-        const statsSince = args.since === null ? 7 * 86_400_000 : sinceMs;
-        return cmdLogStats({ sinceMs: statsSince, includeEval: args.includeEval });
-      }
-      return cmdLogs({ follow: args.follow, sinceMs, source, lines: Math.floor(lines) });
-    }
+    case "logs":
+      return cmdLogsCommand(args);
     default:
       process.stderr.write(`error: unknown command '${args.command}' — run 'bastra help'\n`);
       return 2;
   }
+}
+
+/** `bastra logs [--stats|--conventions]` — split out of `dispatch` so the
+ *  dispatch table stays within its complexity budget (#1507). */
+async function cmdLogsCommand(args: ReturnType<typeof parseArgs>): Promise<number> {
+  const sinceMs = args.since === null ? 5 * 60_000 : parseSince(args.since);
+  if (sinceMs === null) {
+    process.stderr.write(`error: cannot read --since '${args.since}' — try 30s, 10min, 2h, 1d\n`);
+    return 2;
+  }
+  const source = args.source ?? "all";
+  if (source !== "daemon" && source !== "hook" && source !== "all") {
+    process.stderr.write(`error: --source must be daemon, hook or all (got '${source}')\n`);
+    return 2;
+  }
+  const lines = args.lines === null ? 200 : Number(args.lines);
+  if (!Number.isFinite(lines) || lines <= 0) {
+    process.stderr.write(`error: --lines must be a positive number (got '${args.lines}')\n`);
+    return 2;
+  }
+  // --stats reads the same files, but aggregated instead of line by line.
+  // Default window is wider: a per-lane rate needs days, not five minutes.
+  if (args.conventions) {
+    return cmdConventions({
+      sinceMs: args.since === null ? 7 * 86_400_000 : sinceMs,
+      includeEval: args.includeEval,
+    });
+  }
+  if (args.stats) {
+    const statsSince = args.since === null ? 7 * 86_400_000 : sinceMs;
+    return cmdLogStats({ sinceMs: statsSince, includeEval: args.includeEval });
+  }
+  return cmdLogs({ follow: args.follow, sinceMs, source, lines: Math.floor(lines) });
 }
 
 async function main(): Promise<number> {

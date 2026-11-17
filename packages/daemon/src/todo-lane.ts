@@ -28,7 +28,6 @@ import {
   type ScopeFilterMode,
 } from "./scope-filter.js";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
-import { request } from "node:http";
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -36,13 +35,14 @@ import { envFirst, envOff, envInt } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow } from "./session-budget.js";
 import { reportHinted } from "./hook-hinted.js";
+import { trimToBudget } from "./pretool-budget.js";
+import { postHookRecall } from "./hook-recall-post.js";
 import {
   hookCaller,
   hookClient,
   hookAgent,
   hookClientEvidence,
   type HookAgent,
-  type HookCaller,
   type HookClientEvidence,
 } from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
@@ -326,7 +326,7 @@ export async function runTodoLane(payload: ClaudeHookPayload, selfBaseUrl: strin
   let status: "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error" | "low-confidence" = "ok";
   let errMsg: string | null = null;
   try {
-    resp = await postRecall(
+    resp = await postHookRecall<RecallResponse>(
       url,
       {
         query: extraction.query,
@@ -384,6 +384,7 @@ export async function runTodoLane(payload: ClaudeHookPayload, selfBaseUrl: strin
   // in keiner Kontextrechnung.
   let hintTokensEst = 0;
   let out = "{}";
+  let shown = filtered;
   if (filtered.length === 0) {
     // stays "{}"
   } else {
@@ -402,7 +403,13 @@ export async function runTodoLane(payload: ClaudeHookPayload, selfBaseUrl: strin
     const decision = decideBackoff(entry, consumed, hasRequired);
     backoffStreak = decision.streak;
     suppressed = decision.suppress;
-    const block = formatHintBlock(filtered, project, extraction.topics, unfused, client, toolName, resp?.degraded);
+    // #1460: lowest-ranked hits leave whole until the block fits the pre-tool budget.
+    const degraded = resp?.degraded;
+    const fitted = trimToBudget(filtered, (hits) =>
+      formatHintBlock([...hits], project, extraction.topics, unfused, client, toolName, degraded)
+    );
+    shown = fitted.kept;
+    const block = fitted.text;
     if (suppressed) {
       // Suppressed emits {} exactly like the empty path (#161).
       suppressedTokensEst = Math.ceil(block.length / 4);
@@ -417,12 +424,12 @@ export async function runTodoLane(payload: ClaudeHookPayload, selfBaseUrl: strin
           additionalContext: block,
         },
       });
-      const emitted = filtered.map((h) => h.id);
+      const emitted = shown.map((h) => h.id);
       await mutateSessionState(sessionId, (s) => recordSourceEmit(s, BACKOFF_SOURCE, emitted, consumed));
       // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
       await reportHinted(
         url,
-        filtered.map((h) => h.id),
+        shown.map((h) => h.id),
         payload.session_id ?? null
       );
     }
@@ -440,7 +447,7 @@ export async function runTodoLane(payload: ClaudeHookPayload, selfBaseUrl: strin
     query_chars: extraction.query.length,
     daemon_url: url,
     daemon_reachable: resp !== null,
-    hit_count: suppressed ? 0 : filtered.length,
+    hit_count: suppressed ? 0 : shown.length,
     top_score: resp?.hits?.[0]?.score ?? null,
     latency_ms_total: Date.now() - startedAt,
     backoff_streak: backoffStreak,
@@ -526,68 +533,6 @@ export function formatHintBlock(
   }
 
   return [head, HINT_FRAME_NOTE, stripFenceMarkers(sections.join("\n")), tail].join("\n");
-}
-
-interface RecallRequestBody extends HookCaller {
-  query: string;
-  topics: string[];
-  project: string | null;
-  tool_name: string;
-  k: number;
-  scope?: string;
-  type?: string;
-  /** #445: die Identitätsfelder aus #263 fehlten in diesem Typ, und das
-   *  ist der Grund, warum die Lane sie nie mitschickte — der Empfänger liest
-   *  sie aus genau diesem Body. Seitdem kommen sie aus `HookCaller`. */
-  hook_source: string;
-}
-
-function postRecall(baseUrl: string, body: RecallRequestBody, timeoutMs: number): Promise<RecallResponse> {
-  return new Promise((resolve, reject) => {
-    let url: URL;
-    try {
-      url = new URL("/hook/recall", baseUrl);
-    } catch (err) {
-      reject(err);
-      return;
-    }
-    const payload = Buffer.from(JSON.stringify(body), "utf8");
-    const req = request(
-      {
-        method: "POST",
-        hostname: url.hostname,
-        port: url.port || 80,
-        path: url.pathname,
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          "Content-Length": payload.byteLength.toString(),
-        },
-        timeout: timeoutMs,
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (c: Buffer) => chunks.push(c));
-        res.on("end", () => {
-          const data = Buffer.concat(chunks).toString("utf8");
-          if ((res.statusCode ?? 500) >= 400) {
-            reject(new Error(`HTTP ${res.statusCode}: ${data.slice(0, 200)}`));
-            return;
-          }
-          try {
-            resolve(JSON.parse(data) as RecallResponse);
-          } catch {
-            reject(new Error("invalid JSON response from daemon"));
-          }
-        });
-      }
-    );
-    req.on("timeout", () => {
-      req.destroy(new Error("timeout"));
-    });
-    req.on("error", reject);
-    req.write(payload);
-    req.end();
-  });
 }
 
 interface TodoHookTelemetry {

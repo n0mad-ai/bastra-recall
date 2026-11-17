@@ -21,6 +21,7 @@
   color: var(--amber);
 }
 .mb-rd__rule[hidden],
+.mb-rd__h[hidden],
 .mb-rd__box[hidden],
 .mb-rd__text[hidden],
 .mb-rd__acts .mb-btn[hidden] {
@@ -68,8 +69,18 @@
   font: 12.5px var(--mono);
   line-height: 1.55;
 }
-.mb-ed__tags {
+.mb-ed__tags,
+.mb-ed__title {
   max-width: none;
+}
+/* type · sensitivity · recall mode (#1558), side by side like the rule fields */
+.mb-ed__props {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.mb.is-narrow .mb-ed__props {
+  grid-template-columns: minmax(0, 1fr);
 }
 .mb-ed__rule {
   display: grid;

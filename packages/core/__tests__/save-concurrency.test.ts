@@ -24,6 +24,7 @@ import { acquireCommitClaim, commitLockPathFor } from "../src/save-commit.js";
 import { scanVaultForId } from "../src/memory-locator.js";
 import { MEMORY_WRITE_CONFLICT, MemoryWriteConflictError } from "../src/save-schema.js";
 import type { SaveMemoryInput } from "../src/save-schema.js";
+import { NO_WAIT_READ_FLAGS } from "../src/regular-file.js";
 
 const ID = "shared-memory";
 
@@ -540,7 +541,7 @@ test("late reclaimer cannot displace a live successor of the generation it check
   }) as typeof fsPromises.readFile;
   fsPromises.open = (async (file: unknown, ...args: unknown[]) => {
     const handle = await Reflect.apply(originalOpen, fsPromises, [file, ...args]);
-    if (file === lock && args[0] === "r") {
+    if (file === lock && (args[0] === "r" || args[0] === NO_WAIT_READ_FLAGS)) {
       const read = handle.readFile;
       handle.readFile = async (...readArgs: unknown[]) => {
         await beforeRead(file);

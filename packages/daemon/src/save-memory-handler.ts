@@ -15,6 +15,7 @@ import {
 import { fireAndForget } from "./telemetry.js";
 import type { SaveHoldEvent } from "./telemetry-events.js";
 import { recordAudit } from "./audit-trail.js";
+import { redactSaveInput, withRedactionReceipt, type SecretsRedacted } from "./save-redaction.js";
 import { markConflict } from "./conflict-marking.js";
 import { claimGateResult, unansweredClaims, GENERATED_TRIGGER_TYPES, type ClaimGateResult } from "./claim-gate.js";
 
@@ -51,6 +52,8 @@ export interface SaveMemoryResult {
   conflict_marked?: true;
   /** Present only when saveMemory auto-truncated an over-long summary. */
   summary_note?: string;
+  /** #1470: credential values replaced per field before writing. */
+  secrets_redacted?: SecretsRedacted;
   /** Present only when a re-file left the old file behind under the same id. */
   warning?: string;
   /** #150: terminal success marker — tells the model not to re-issue the save. */
@@ -189,6 +192,9 @@ async function saveMemoryInner(
   // end of the body, the repaired body ends exactly at the sentinel and the
   // sentinel confirms the repair; where the repair cut real content, it fails.
   assertBodyTail(parsed.data.body, parsed.data.body_ends_with);
+  // #1470: credentials never reach the vault. After the sentinel check (it
+  // verifies the body as sent) and before the target id is derived from the title.
+  const redacted = redactSaveInput(parsed.data);
 
   // Die effektive id muss VOR dem Quality-Scoring feststehen — sonst schließt
   // scoreSaveQuality das Memory nicht von seinen eigenen Duplikat- und
@@ -218,7 +224,7 @@ async function saveMemoryInner(
   // diverted before any quality scoring or file I/O touches the vault.
   if (parsed.data.conflict_with) {
     noteSaveHold(deps, "conflict_redirect", finalId, parsed.data);
-    return markConflict(deps, parsed.data, finalId);
+    return withRedactionReceipt(await markConflict(deps, parsed.data, finalId), redacted);
   }
 
   const asString = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
@@ -447,11 +453,14 @@ async function saveMemoryInner(
   // gehen, der `save_memory` ruft.
   const { audit_before: _b, audit_after: _a, ...payload } = result;
   // #1395: from the frontmatter this save wrote, not from the index a later writer may have changed.
-  return {
-    ...payload,
-    save_quality: saveQuality,
-    rule_text_review: ruleTextReview(result.audit_after as Memory["fm"]),
-    delivery: rulebookDelivery(result.audit_after as Memory["fm"]),
-    ...(warning ? { warning } : {}),
-  };
+  return withRedactionReceipt(
+    {
+      ...payload,
+      save_quality: saveQuality,
+      rule_text_review: ruleTextReview(result.audit_after as Memory["fm"]),
+      delivery: rulebookDelivery(result.audit_after as Memory["fm"]),
+      ...(warning ? { warning } : {}),
+    },
+    redacted
+  );
 }

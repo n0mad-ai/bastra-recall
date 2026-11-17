@@ -133,7 +133,84 @@ function openArea(a, ctx) {
   else setState({ view: a.id, hover: null, tab: "areas" });
 }
 
+// ── address hash (#1560): /ui/#tasks opens that area ─────────────────────
+// Names are the rail's ids: the vault views and every area that can be the
+// lit place (no plain actions such as Import). Read on load and on
+// hashchange, unknown names are ignored; after the start the hash follows the
+// lit place (replaceState: no history entries, no hashchange).
+let hashOn = false,
+  pendingHash = "",
+  startPlace = null;
+
+const places = () => GROUPS.flatMap(areasIn).filter((a) => a.kind !== "action" || a.lit);
+const hashName = () => {
+  try {
+    return decodeURIComponent(location.hash.slice(1));
+  } catch {
+    return ""; // a malformed address is no area name
+  }
+};
+
+/** The place a hash name opens: a vault view, an area, or null when unknown. */
+export function hashTarget(name) {
+  if (VAULT_VIEWS.includes(name)) return { view: name };
+  const area = places().find((a) => a.id === name);
+  return area ? { area } : null;
+}
+
+/** The rail's lit place: an area by its own rule, else the shown view. */
+export function litPlace(view) {
+  const lit = places().find((a) => (a.lit ? a.lit() : a.id === view));
+  return lit ? lit.id : VAULT_VIEWS.includes(view) ? view : null;
+}
+
+function openHash(ctx, name) {
+  const to = hashTarget(name);
+  if (!to) return false;
+  if (to.area) openArea(to.area, ctx);
+  else {
+    if (state.browser === "nav") closeMemoryBrowser();
+    setState({ view: to.view, hover: null, tab: "areas" });
+  }
+  return true;
+}
+
+/** Start code: open the area of the address hash, then follow hash changes. */
+export function followHash(ctx) {
+  const name = hashName();
+  // a Pro area may register after the start: keep its name until it does or
+  // the user goes elsewhere
+  if (name && !openHash(ctx, name)) {
+    pendingHash = name;
+    startPlace = litPlace(state.view);
+  }
+  window.addEventListener("hashchange", () => {
+    pendingHash = "";
+    openHash(ctx, hashName());
+  });
+  hashOn = true;
+  syncHash();
+}
+
+function syncHash() {
+  if (!hashOn || pendingHash) return;
+  const id = litPlace(state.view);
+  if (id && hashName() !== id) history.replaceState(history.state, "", `#${id}`);
+}
+
+function followPending(ctx) {
+  if (!pendingHash) return;
+  const name = pendingHash;
+  if (litPlace(state.view) !== startPlace) pendingHash = "";
+  else if (hashTarget(name)) {
+    pendingHash = "";
+    openHash(ctx, name);
+  }
+}
+
 function render(ctx) {
+  followPending(ctx);
+  syncHash();
   clear(scrollEl).append(indEl);
   const view = state.view;
   const marks = railMarks(view, state.browser);

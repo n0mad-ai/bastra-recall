@@ -16,18 +16,22 @@ import { bastraDataDir } from "./platform-paths.js";
  *   - GitHub-API call is unauthenticated, 5 s timeout.
  */
 import { request as httpsRequest } from "node:https";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { effectiveUpdateMode } from "./settings.js";
 import { isOffValue } from "./env.js";
 import { readBlockedUpdate } from "./update-blocked.js";
+import { readPrivateFile } from "./private-state-dir.js";
 
 export const GITHUB_RELEASES_LATEST_URL = "https://api.github.com/repos/n0mad-ai/bastra-recall/releases/latest";
 export const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 export const FETCH_TIMEOUT_MS = 5000;
 const USER_AGENT = "bastra-recall update-check";
+/** #1604: the cache and the staged marker are a few hundred bytes; read them
+ *  through one descriptor that cannot follow a link or wait on a FIFO. */
+const STATE_FILE_MAX_BYTES = 64 * 1024;
 
 export interface LatestRelease {
   tag: string;
@@ -103,7 +107,8 @@ function parseSemver(v: string): [number, number, number] {
 
 async function readCache(path: string): Promise<CacheFile | null> {
   try {
-    const raw = await readFile(path, "utf8");
+    // #1604: a FIFO or symlink at the cache path must not hang the check.
+    const raw = (await readPrivateFile(path, STATE_FILE_MAX_BYTES)).bytes.toString("utf8");
     const data = JSON.parse(raw) as CacheFile;
     if (
       typeof data.last_checked_at !== "string" ||
@@ -369,7 +374,7 @@ function todayISO(): string {
 /** Shared once-per-day throttle for staged updates (SessionStart hook + daemon). */
 export async function stagedToday(): Promise<boolean> {
   try {
-    const raw = await readFile(stagedMarkerPath(), "utf8");
+    const raw = (await readPrivateFile(stagedMarkerPath(), STATE_FILE_MAX_BYTES)).bytes.toString("utf8");
     return raw.split("\n").some((line) => line.trim() === todayISO());
   } catch {
     return false;
@@ -382,9 +387,11 @@ export async function markStagedToday(): Promise<void> {
     await mkdir(dirname(path), { recursive: true });
     let existing = "";
     try {
-      existing = await readFile(path, "utf8");
-    } catch {
-      /* may not exist */
+      existing = (await readPrivateFile(path, STATE_FILE_MAX_BYTES)).bytes.toString("utf8");
+    } catch (error) {
+      // Only a missing marker is written fresh; a FIFO, link or unreadable
+      // file there is left alone rather than written through (#1604).
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return;
     }
     const lines = existing
       .split("\n")

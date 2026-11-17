@@ -46,3 +46,82 @@ test("lens-canvas and lens-view wire the pause", async () => {
   assert.match(canvas, /loopContinues\(pausedAt != null,/);
   assert.match(view, /ch\("covered"\)\) lens\.update\(\{ paused: !!st\.covered \}\)/);
 });
+
+// #1552: a footer replay (or a lens switch) while a covering layer is open used
+// to restart the animation at the wall clock while frames stay on the held
+// clock, so the progress went negative (Half-life rings: negative radius,
+// IndexSizeError). The real lens canvas runs here with a fake canvas and clock.
+async function lensUnderCover() {
+  const read = (file: string) => readFile(new URL(`../webui/v22/js/views/${file}`, import.meta.url), "utf8");
+  const strip = (source: string) => source.replace(/^import [\s\S]*?;$/gm, "").replace(/^export /gm, "");
+  const source = strip(await read("lens-clock.js")) + "\n" + strip(await read("lens-canvas.js"));
+  const clock = { now: 1000 };
+  const frames: Array<(ts: number) => void> = [];
+  const drawn: number[] = [];
+  const node = () => ({
+    append() {},
+    appendChild() {},
+    remove() {},
+    replaceChildren() {},
+    addEventListener() {},
+    removeEventListener() {},
+    classList: { add() {}, remove() {} },
+    dataset: {},
+    getBoundingClientRect: () => ({ width: 400, height: 300, left: 0, top: 0 }),
+  });
+  const canvas = Object.assign(node(), {
+    parentElement: node(),
+    getContext: () => new Proxy({}, { get: () => () => {} }),
+  });
+  const lens = runInNewContext(source + "\n({ mountLens })", {
+    Math,
+    performance: { now: () => clock.now },
+    requestAnimationFrame: (fn: (ts: number) => void) => frames.push(fn),
+    cancelAnimationFrame() {},
+    setTimeout,
+    clearTimeout,
+    ResizeObserver: class {
+      observe() {}
+      disconnect() {}
+    },
+    window: { devicePixelRatio: 1 },
+    document: {},
+    h: () => node(),
+    setVars() {},
+    tr: (key: string) => key,
+    TC: {},
+    ACC: "#fff",
+    INK: "#fff",
+    VIEWS: { half: ({ t }: { t: number }) => drawn.push(t) },
+    prep: (vault: unknown) => vault,
+    rgba: () => "",
+    dstr: () => "",
+  }).mountLens(canvas, { kind: "half", vault: { n: 1 } });
+  // one frame at the current time (the loop asks for the next one while busy)
+  const flush = () => frames.splice(0).forEach((frame) => frame(clock.now));
+  return { lens, clock, drawn, flush };
+}
+
+test("a replay under a covering layer starts on the held clock and plays after resume (#1552)", async () => {
+  const { lens, clock, drawn, flush } = await lensUnderCover();
+  flush();
+  lens.update({ paused: true }); // covered at 1000
+  clock.now = 6000;
+  lens.update({ vault: { n: 2 }, replay: true }); // footer range change while covered
+  lens.update({ kind: "chronos" }); // and a lens switch
+  lens.update({ kind: "half" });
+  drawn.length = 0;
+  clock.now = 8000;
+  lens.update({ paused: false });
+  flush();
+  assert.ok(drawn.length > 0);
+  assert.ok(
+    drawn.every((t) => t >= 0 && t <= 1),
+    `progress left 0..1: ${drawn.join(", ")}`
+  );
+  assert.equal(drawn[0], 0); // the sweep starts at resume, not before
+  clock.now = 8550;
+  lens.update({ focus: "x" });
+  flush();
+  assert.ok(drawn.at(-1)! > 0 && drawn.at(-1)! < 1); // still playing halfway
+});

@@ -54,6 +54,12 @@ export interface AuditEntry {
   reason?: string;
   /** Korreliert mit Telemetry-session-id (UUID v4). */
   session_id?: string;
+  /** #1469: transport of the tool call that wrote — `stdio`, `forwarder`, `http`, `mcp-http`. */
+  transport?: string;
+  /** #1469: the writing client (MCP `name/version` or OAuth client); null = transport knows none. */
+  client?: string | null;
+  /** #1469: the client's own session id (e.g. the Claude Code session); null = transport carries none. */
+  caller_session?: string | null;
 }
 
 const AUDIT_DIR = ".bastra";
@@ -87,6 +93,8 @@ export class AuditLog {
       ...(input.file_path ? { file_path: input.file_path } : {}),
       ...(input.reason ? { reason: input.reason } : {}),
       ...(input.session_id ? { session_id: input.session_id } : {}),
+      ...(input.transport ? { transport: input.transport, client: input.client ?? null } : {}),
+      ...(input.transport ? { caller_session: input.caller_session ?? null } : {}),
     };
 
     const filePath = this.filePath();

@@ -286,7 +286,9 @@ async function runPromptLaneInner(
   opts: PromptLaneOptions = {}
 ): Promise<string> {
   const startedAt = Date.now();
-  let remainingContext = 10000 - (opts.roundNotice?.length ?? 0) - 1;
+  // #1363 cap for everything this lane adds; #1460: the draft quote counts in it.
+  const contextBudget = 10000 - (opts.roundNotice?.length ?? 0) - 1;
+  let remainingContext = contextBudget;
   const fitBlock = (block: string | null): string | null => {
     if (!block || block.length + 1 > remainingContext) return null;
     remainingContext -= block.length + 1;
@@ -933,7 +935,8 @@ async function runPromptLaneInner(
     1,
     false,
     undefined,
-    startedAt + laneBudgetMs(detectedMode)
+    startedAt + laneBudgetMs(detectedMode),
+    contextBudget
   );
 }
 

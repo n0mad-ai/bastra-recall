@@ -27,6 +27,36 @@ export interface TaskChatDeliveryOptions {
   send?: (target: ChatSession, content: string) => Promise<void>;
 }
 const digest = (text: string) => createHash("sha256").update(text).digest("hex");
+/** Claim to send takes seconds; a claim this old was left behind by a crash. */
+const ABANDONED_CLAIM_MS = 5 * 60 * 1000;
+/** A claim that never reached send() (no submitted_at, no failed_at) and is
+ * older than a few minutes was left behind by a crash between claim and send.
+ * Nothing left the daemon, so it must not hide the reminder (#1600). */
+function abandonedTaskChatClaim(claim: Occurrence["chat_delivery"], now: number): boolean {
+  return (
+    !!claim &&
+    claim.submitted_at === undefined &&
+    claim.failed_at === undefined &&
+    now - claim.claimed_at > ABANDONED_CLAIM_MS
+  );
+}
+/** A chat claim that may still mean the reminder was announced in chat. */
+export function liveTaskChatClaim(claim: Occurrence["chat_delivery"], now: number): boolean {
+  return !!claim && !abandonedTaskChatClaim(claim, now);
+}
+async function releaseAbandonedClaims(ctx: TaskServiceContext, now: number): Promise<void> {
+  const snapshot = await readTaskStore(ctx.path);
+  if (!snapshot.occurrences.some((o) => abandonedTaskChatClaim(o.chat_delivery, now))) return;
+  await transactTaskStore(
+    ctx.path,
+    undefined,
+    (store) => {
+      for (const occurrence of store.occurrences)
+        if (abandonedTaskChatClaim(occurrence.chat_delivery, now)) delete occurrence.chat_delivery;
+    },
+    "control"
+  );
+}
 const receiptCursors = new Map<string, number>();
 function eligible(store: TaskStore, task: Task | undefined, occurrence: Occurrence): task is Task {
   return (
@@ -205,6 +235,7 @@ export async function deliverTaskChats(ctx: TaskServiceContext, options: TaskCha
   // Test children must opt into their own fake or isolated inbox explicitly.
   if (process.env.NODE_TEST_CONTEXT && !options.send) return;
   const now = (ctx.now ?? Date.now)();
+  await releaseAbandonedClaims(ctx, now);
   await collectReceipts(ctx, options, now);
   const settings = await (options.settings ?? taskChatSettings)();
   const select = options.latest ?? latestChatTarget;
@@ -282,6 +313,19 @@ export async function deliverTaskChats(ctx: TaskServiceContext, options: TaskCha
         )
       )
         throw new Error("chat_occurrence_changed");
+      // Durably mark the outcome as unknown before send() starts: a crash from
+      // here on may already have announced it, so it is never replayed (#1600).
+      // A confirmed send replaces the mark with submitted_at below.
+      await transactTaskStore(
+        ctx.path,
+        undefined,
+        (store) => {
+          const claim = store.occurrences.find((o) => o.id === candidate.id)?.chat_delivery;
+          if (claim?.event_id !== eventId) throw new Error("chat_occurrence_changed");
+          claim.failed_at = now;
+        },
+        "control"
+      );
       sending = true;
       await (options.send ?? sendInbox)(target, content);
       submitted = true;
@@ -300,8 +344,10 @@ export async function deliverTaskChats(ctx: TaskServiceContext, options: TaskCha
         // Nothing left the daemon before send(): release the claim so a later
         // tick or the next-contact lane can still announce it (#1583).
         if (!sending) delete occurrence!.chat_delivery;
-        else if (submitted) claim.submitted_at = now;
-        else claim.failed_at = now;
+        else if (submitted) {
+          claim.submitted_at = now;
+          delete claim.failed_at;
+        } else claim.failed_at = now;
       },
       "control"
     );

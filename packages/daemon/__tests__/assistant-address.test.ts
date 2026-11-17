@@ -43,6 +43,20 @@ test("#1332: DNS name validation rejects injection, reserved/IP-like labels and 
   assert.equal(assistantUrls("Jarvis").local, "http://jarvis.localhost/ui/");
   assert.equal(assistantUrls("Jarvis").bare, "http://jarvis/ui/");
 });
+test("#1555: IDN top-level domains in the blocklist stay whole, also where the snapshot used to wrap them", () => {
+  // `xn--3ds443g` (在线) and `xn--80adxhks` (москва) were split across lines in
+  // the snapshot and so slipped past the lookup.
+  for (const [label, unicode] of [
+    ["xn--3ds443g", "在线"],
+    ["xn--80adxhks", "москва"],
+    ["xn--p1ai", "рф"],
+  ]) {
+    assert.throws(() => normalizeAssistantName(label), { name: "Error" }, label);
+    assert.equal(deriveAssistantAddress(unicode), null, unicode);
+    // The display name itself stays allowed; only the address is unavailable.
+    assert.equal(normalizeAssistantDisplayName(unicode), unicode);
+  }
+});
 test("address derivation: any language yields an IDNA A-label or no address, never an unsafe label", () => {
   const cases: Array<[string, string | null]> = [
     ["Jarvis", "jarvis"],

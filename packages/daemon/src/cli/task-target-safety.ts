@@ -111,10 +111,8 @@ export async function normalizedOwnerTarget(input: unknown) {
     ...target,
     root,
     path,
-    execution_warning:
-      basename(absolute).toLowerCase() === "package.json"
-        ? "WARNUNG: package.json kann Install-/Test-/Start-Skripte definieren, die später Code ausführen. Exakte Skriptänderungen vor der Freigabe prüfen."
-        : undefined,
+    // The CLI shows its warning in its own language (#1602).
+    package_scripts: basename(absolute).toLowerCase() === "package.json",
     outside_current_workdir: !inside(await canonical(process.cwd()), root),
   };
 }

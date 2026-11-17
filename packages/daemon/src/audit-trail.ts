@@ -42,6 +42,7 @@ import {
   type SaveMemoryInput,
   type SaveMemoryResult,
 } from "@bastra-recall/core";
+import { writeCallerStore } from "./caller-session.js";
 
 /** One AuditLog per vault — it caches reads, and re-creating it per write
  *  would throw that cache away on every save. */
@@ -54,6 +55,13 @@ function logFor(vaultRoot: string): AuditLog {
     logs.set(vaultRoot, log);
   }
   return log;
+}
+
+/** #1469: transport, client and client session of the tool call this write
+ *  runs in — set at the transport boundary (see caller-session.ts). */
+export function writerFields(): { transport?: string; client?: string | null; caller_session?: string | null } {
+  const caller = writeCallerStore.getStore();
+  return caller ? { transport: caller.transport, client: caller.client, caller_session: caller.session } : {};
 }
 
 /** Who a shared write handler records as author: MCP/REST callers by default,
@@ -108,6 +116,7 @@ export async function recordAudit(input: AuditTrailInput): Promise<string | unde
       ...(input.filePath ? { file_path: input.filePath } : {}),
       ...(input.reason ? { reason: input.reason } : {}),
       ...(input.sessionId ? { session_id: input.sessionId } : {}),
+      ...writerFields(),
     });
   } catch (err) {
     console.error(

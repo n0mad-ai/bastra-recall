@@ -14,7 +14,7 @@ import { promisify } from "node:util";
 import { z } from "zod";
 import { authenticateTask, requireTaskDomains, requireTaskOwner } from "./task-auth.js";
 import { taskSourceSchema, taskIdentitySchema, type TaskStore, type Task } from "./task-schema.js";
-import { transactTaskStore, readTaskStore, TASK_HISTORY_RESERVE } from "./task-store.js";
+import { transactTaskStore, readTaskStore, TaskStoreError, TASK_HISTORY_RESERVE } from "./task-store.js";
 import { latestTimeSlot, timeSlot } from "./task-clock.js";
 import type { TaskServiceContext } from "./task-service.js";
 const exec = promisify(execFile);
@@ -382,17 +382,33 @@ export function evaluateTaskSnapshot(store: TaskStore, now: number): void {
   store.checkpoint = Math.max(store.checkpoint, cursor);
 }
 export async function reconcileTaskTime(ctx: TaskServiceContext): Promise<TaskStore> {
-  // Automatic disarming needs its audit row even at the normal history
-  // reserve, so it uses the space kept for control operations (#1581).
-  return transactTaskStore(
-    ctx.path,
-    undefined,
-    async (s) => {
-      await checkTaskDecisions(ctx, s);
-      evaluateTaskSnapshot(s, (ctx.now ?? Date.now)());
-    },
-    "control"
-  );
+  // Automatic disarming needs its audit row even at the history reserve
+  // (#1581), but the evaluation stays under the normal byte limit (#1599).
+  try {
+    return await transactTaskStore(
+      ctx.path,
+      undefined,
+      async (s) => {
+        await checkTaskDecisions(ctx, s);
+        evaluateTaskSnapshot(s, (ctx.now ?? Date.now)());
+      },
+      "automatic"
+    );
+  } catch (error) {
+    if (!(error instanceof TaskStoreError) || error.code !== "capacity") throw error;
+    // Only the audit row that switches a full task off may use the owner's
+    // control reserve; the refused evaluation itself stays visible.
+    const now = (ctx.now ?? Date.now)();
+    await transactTaskStore(
+      ctx.path,
+      undefined,
+      (s) => {
+        if (s.controls.enabled) for (const task of s.tasks) historyFull(task, now);
+      },
+      "control"
+    );
+    throw error;
+  }
 }
 /** Registered local paths observe snapshots, not every intermediate write. */
 export async function observeTaskSources(
@@ -577,12 +593,12 @@ export async function observeTaskSources(
       const message =
         code === "source_budget"
           ? (error as any)?.reason === "memory_scan_budget"
-            ? "Memory-Suchgrenze überschritten"
-            : "Quell-Bytegrenze überschritten"
+            ? "Memory scan limit exceeded"
+            : "Source byte limit exceeded"
           : code === "source_timeout"
-            ? "Zeitbudget der Quelle überschritten"
+            ? "Source time budget exceeded"
             : (error as any)?.code === "source_hardlink"
-              ? "Dateiquelle hat mehrere Hardlinks; nur Dateien mit einem Link werden beobachtet"
+              ? "File source has several hard links; only files with a single link are observed"
               : "Registered source cannot be observed";
       await transactTaskStore(
         ctx.path,

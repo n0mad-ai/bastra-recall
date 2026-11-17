@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { agentEnvelope, sendAgentMessage } from "../cmux-agent-send.mjs";
+import { ENTER_PAUSE_MS, agentEnvelope, sendAgentMessage } from "../cmux-agent-send.mjs";
+
+/** Tests never sleep; the #1155 test below checks where the pause happens. */
+const noPause = () => {};
 
 const text = "Claude: please review this change.\nCodex: I will prepare the fixtures.";
 const options = {
@@ -11,10 +14,14 @@ const options = {
 };
 test("cmux sender marks the whole payload and sends to the same explicit target without a shell", () => {
   const calls = [];
-  sendAgentMessage(options, (...args) => {
-    calls.push(args);
-    return { status: 0 };
-  });
+  sendAgentMessage(
+    options,
+    (...args) => {
+      calls.push(args);
+      return { status: 0 };
+    },
+    noPause
+  );
   assert.equal(calls.length, 2);
   assert.equal(calls[0][0], "cmux");
   assert.deepEqual(calls[0][1].slice(0, 2), ["rpc", "surface.send_text"]);
@@ -49,7 +56,10 @@ test("print mode does not send; send failure never submits an unmarked partial m
   );
   assert.equal(calls, 1);
   calls = 0;
-  assert.throws(() => sendAgentMessage(options, () => ({ status: ++calls === 1 ? 0 : 1 })), /inspect before retrying/);
+  assert.throws(
+    () => sendAgentMessage(options, () => ({ status: ++calls === 1 ? 0 : 1 }), noPause),
+    /inspect before retrying/
+  );
 });
 test("invalid sender, missing targets, controls and oversized input never reach cmux", () => {
   for (const patch of [
@@ -75,10 +85,14 @@ test("sender rejects ambiguous control text and uses raw JSON RPC plus canonical
   for (const text of ["hello\tworld", "hello\u009bworld", "hello\u2028world", "hello\u202eworld"])
     assert.throws(() => agentEnvelope(text, "codex"));
   const calls = [];
-  sendAgentMessage(options, (...args) => {
-    calls.push(args);
-    return { status: 0 };
-  });
+  sendAgentMessage(
+    options,
+    (...args) => {
+      calls.push(args);
+      return { status: 0 };
+    },
+    noPause
+  );
   assert.equal(calls[0][1][1], "surface.send_text");
   assert.equal(JSON.parse(calls[1][1][2]).key, "enter");
   assert.ok(!JSON.parse(calls[0][1][2]).text.includes("\n"));
@@ -86,16 +100,49 @@ test("sender rejects ambiguous control text and uses raw JSON RPC plus canonical
 
 test("explicit refs are resolved read-only to terminal UUIDs before raw RPC", () => {
   const calls = [];
-  sendAgentMessage({ ...options, workspace: "workspace:2", surface: "surface:4" }, (cmd, args) => {
-    calls.push(args);
-    return {
-      status: 0,
-      stdout: JSON.stringify({
-        caller: { workspace_id: options.workspace, surface_id: options.surface, surface_type: "terminal" },
-      }),
-    };
-  });
+  sendAgentMessage(
+    { ...options, workspace: "workspace:2", surface: "surface:4" },
+    (cmd, args) => {
+      calls.push(args);
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          caller: { workspace_id: options.workspace, surface_id: options.surface, surface_type: "terminal" },
+        }),
+      };
+    },
+    noPause
+  );
   assert.equal(calls.length, 3);
   assert.ok(calls[0].includes("identify"));
   assert.deepEqual(JSON.parse(calls[1][2]).surface_id, options.surface);
+});
+
+test("#1155 Return waits a pause after the text, and a failed send neither pauses nor presses Return", () => {
+  const steps = [];
+  sendAgentMessage(
+    options,
+    (cmd, args) => {
+      steps.push(args[1]);
+      return { status: 0 };
+    },
+    (ms) => steps.push(`pause ${ms}`)
+  );
+  assert.deepEqual(steps, ["surface.send_text", `pause ${ENTER_PAUSE_MS}`, "surface.send_key"]);
+  assert.ok(ENTER_PAUSE_MS >= 100, "the gap must be a real pause, not a tick");
+
+  steps.length = 0;
+  assert.throws(
+    () =>
+      sendAgentMessage(
+        options,
+        (cmd, args) => {
+          steps.push(args[1]);
+          return { status: 1 };
+        },
+        (ms) => steps.push(`pause ${ms}`)
+      ),
+    /no Enter was sent/
+  );
+  assert.deepEqual(steps, ["surface.send_text"]);
 });

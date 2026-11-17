@@ -163,9 +163,11 @@ export function queryOrigin(e: TelemetryEvent): QueryOrigin {
   if (explicit === "agent") return "agent";
   const source = dims.hook_source;
   if (source === "prompt" || e.tool_name === "UserPromptSubmit") return "unknown";
+  // #1266: a lane's own hook_source wins over the event kind — a fixed
+  // session-start query logged as kind=recall before #704 is the tool's.
+  if (typeof source === "string" && TOOL_HOOK_SOURCES.has(source)) return "tool";
   if (e.kind === "recall") return "agent";
   if (source === "mcp") return "agent";
-  if (typeof source === "string" && TOOL_HOOK_SOURCES.has(source)) return "tool";
   if (e.tool_name === "mcp-forwarder") return "agent";
   if (typeof e.tool_name === "string" && e.tool_name.length > 0) return "tool";
   return "unknown";

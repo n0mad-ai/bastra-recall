@@ -15,8 +15,8 @@ while p.poll() is None and time.time()<deadline:
  elif stage==1 and b'crossSessionInbound=accept' in out:os.write(m,b'n');checkpoint=len(out);stage=2
  elif stage==2 and b'Claude chat delivery declined and saved' in out[checkpoint:]:checkpoint=out.index(b'Claude chat delivery declined and saved',checkpoint)+len(b'Claude chat delivery declined and saved');stage=3
  elif stage==3 and b'bastra-demo> ' in out[checkpoint:]:os.write(m,b'bastra tasks targets register demo --root "$task_demo_root/work" --path artifact.txt --domain personal\\n');stage=4
- elif stage==4 and b'Dieses lokale Ziel' in out:os.write(m,b'yes\\n');stage=5
- elif stage==5 and b'Ziel demo registriert' in out:os.write(m,b'demo-restart\\n');stage=6
+ elif stage==4 and b'this local target?' in out:os.write(m,b'yes\\n');stage=5
+ elif stage==5 and b'Target demo registered' in out:os.write(m,b'demo-restart\\n');stage=6
  elif stage==6 and b'Demo-Daemon wieder bereit; nur eigene Instanz' in out:os.write(m,b'demo-reconsider prepare\\n');stage=7
  elif stage==7 and b'Erfundene Dateien vorbereitet' in out:os.write(m,b'demo-reconsider simulate\\n');stage=8
  elif stage==8 and b'Keine automatische Umkehr' in out:os.write(m,b'demo-reconsider check\\n');stage=9
@@ -50,7 +50,7 @@ test("documented isolated demo shell runs actual hook setup and guarded owner ta
   assert.match(output, /Nur Wegwerf-Daten/);
   assert.match(output, /Claude chat delivery declined and saved/);
   assert.ok(!output.includes("Claude chat delivery enabled"));
-  assert.match(output, /Ziel demo registriert/);
+  assert.match(output, /Target demo registered/, "the task CLI is English without language.primary (#1602)");
   assert.match(output, /DEMO_EXIT=0/);
   assert.match(output, /Demo-Daemon wieder bereit/);
   assert.match(output, /Erfundene Dateien vorbereitet/);

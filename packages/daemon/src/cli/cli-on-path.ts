@@ -19,15 +19,14 @@
  * the `bastra` command to one version forever — the stale-pin failure #304
  * exists to surface, reintroduced at the entry point.
  */
-import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { delimiter, dirname, resolve } from "node:path";
-import { findExecutable, run } from "./exec.js";
+import { run, runCaptured } from "./exec.js";
 import { VERSION } from "./helpers.js";
 import { isEphemeralInstallPath } from "./stable-runtime.js";
+import { CLI_PACKAGE, npmInvocation, updatePaths, type NpmInvocation, type UpdateRuntimeIo } from "./update-npm.js";
 
-/** The npm package carrying the `bastra` bin — the name the README documents. */
-export const CLI_PACKAGE = "bastra-recall";
+export { CLI_PACKAGE };
 
 /** Reaching the CLI without a global install. Always available, always works. */
 export const NPX_FALLBACK_HINT = `npx ${CLI_PACKAGE} <command>   (e.g. npx ${CLI_PACKAGE} doctor)`;
@@ -88,17 +87,20 @@ export function binDirOnPath(binPath: string, pathEnv: string = process.env.PATH
 }
 
 /**
- * `<npm prefix -g>/bin/bastra`, or null when npm cannot say / the bin is not
- * there. `npm prefix -g` rather than findExecutable("bastra"): PATH inside an
- * npx run still prefers the cache's own bin, so a name lookup would report the
- * old process as the freshly installed one (same trap as update.ts's hand-off).
+ * `<npm prefix -g>/bin/bastra` (Windows: `<prefix>\\bastra.cmd`), or null when
+ * npm cannot say / the bin is not there. `npm prefix -g` rather than
+ * findExecutable("bastra"): PATH inside an npx run still prefers the cache's
+ * own bin, so a name lookup would report the old process as the freshly
+ * installed one (same trap as update.ts's hand-off). Global executables sit
+ * directly in the prefix on Windows: https://docs.npmjs.com/cli/configuring-npm/folders
  */
-function globalBinPath(npmBin: string): string | null {
-  const prefix = spawnSync(npmBin, ["prefix", "-g"], { encoding: "utf8", timeout: 30_000 });
-  const root = `${prefix.stdout ?? ""}`.trim();
-  if (prefix.status !== 0 || !root) return null;
-  const bin = resolve(root, "bin", "bastra");
-  return existsSync(bin) ? bin : null;
+function globalBinPath(npm: NpmInvocation, io: UpdateRuntimeIo): string | null {
+  const prefix = (io.captured ?? runCaptured)(npm.bin, [...npm.args, "prefix", "-g"], { timeoutMs: 30_000 });
+  const root = prefix.stdout.trim();
+  if (!prefix.ok || !root) return null;
+  const windows = (io.platform ?? process.platform) === "win32";
+  const bin = windows ? updatePaths("win32").resolve(root, "bastra.cmd") : resolve(root, "bin", "bastra");
+  return (io.exists ?? existsSync)(bin) ? bin : null;
 }
 
 /**
@@ -110,17 +112,27 @@ function globalBinPath(npmBin: string): string | null {
  * report every surface as a STALE PIN (#304) the first time `bastra doctor`
  * runs — a setup that ends by breaking its own health check.
  */
-export function installCliGlobally(): GlobalInstallOutcome {
-  const npmBin = findExecutable("npm");
-  if (!npmBin) return { ok: false, detail: "npm not found on a trusted PATH" };
-  const r = run(npmBin, ["install", "-g", `${CLI_PACKAGE}@${VERSION}`], {
+/*
+ * #1274: npm is started through the update path's helper — on Windows that is
+ * node.exe + the validated npm-cli.js beside npm.cmd, because Node refuses to
+ * spawn a .cmd without a shell since CVE-2024-27980 (EINVAL), and a shell is
+ * not an option. `io` exists so tests can stand in for the platform.
+ */
+export function installCliGlobally(io: UpdateRuntimeIo = {}): GlobalInstallOutcome {
+  let npm: NpmInvocation;
+  try {
+    npm = npmInvocation(io);
+  } catch (error) {
+    return { ok: false, detail: (error as Error).message };
+  }
+  const r = (io.run ?? run)(npm.bin, [...npm.args, "install", "-g", `${CLI_PACKAGE}@${VERSION}`], {
     timeoutMs: 300_000,
     // npm streams its own progress — a spinner over it would hide the output
     // of the one step that most often needs reading (registry/permission errors).
     showProgress: true,
   });
   if (!r.ok) return { ok: false, detail: r.detail };
-  const bin = globalBinPath(npmBin);
+  const bin = globalBinPath(npm, io);
   if (!bin) return { ok: true, detail: "installed" };
   return { ok: true, binPath: bin, offPath: !binDirOnPath(bin), detail: "installed" };
 }

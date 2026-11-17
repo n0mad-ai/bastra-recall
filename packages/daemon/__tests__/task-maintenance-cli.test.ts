@@ -23,7 +23,7 @@ while p.poll() is None and time.time()<deadline:
  if select.select([m],[],[],0.1)[0]:
   try:out+=os.read(m,65536)
   except OSError:break
- for label,reply in [('Owner-Aufgaben-Token (verborgen): '.encode(),os.environ['SYNTHETIC_OWNER'].encode()+b'\\n'),(b'Backup wiederherstellen?',b'\\n' if os.environ['CASE']=='decline' else b'yes\\n'),(b'Auch unbekannte Sperre privat sichern?',b'yes\\n'),(b'Dieses lokale Ziel',b'\\n' if os.environ['CASE']=='target-decline' else b'yes\\n'),(b'Ziel entfernen?',b'yes\\n')]:
+ for label,reply in [('Owner-Aufgaben-Token (verborgen): '.encode(),os.environ['SYNTHETIC_OWNER'].encode()+b'\\n'),(b'Backup wiederherstellen?',b'\\n' if os.environ['CASE']=='decline' else b'yes\\n'),(b'Auch unbekannte Sperre privat sichern?',b'yes\\n'),(b'Dieses lokale Ziel',b'\\n' if os.environ['CASE']=='target-decline' else b'yes\\n'),(b'Ziel entfernen?',b'yes\\n'),('Owner task token (hidden): '.encode(),os.environ['SYNTHETIC_OWNER'].encode()+b'\\n'),(b'Restore the backup?',b'\\n' if os.environ['CASE']=='decline' else b'yes\\n'),(b'Also store an unknown lock privately?',b'yes\\n')]:
   if label in out and label not in sent:os.write(m,reply);sent.add(label)
 if p.poll() is None:p.kill()
 p.wait()
@@ -36,16 +36,22 @@ try:
 except OSError:pass
 os.close(m);sys.stdout.buffer.write(out);sys.stdout.write('\\nCLI_EXIT='+str(p.returncode)+'\\n')
 `;
-/** #1594: the dialog's questions are German, so its error is too, whatever language.primary says. */
+/** #1594, #1602: one dialog, one language — questions and errors follow language.primary. */
 async function assertOneDialogLanguage(run: (mode: string) => Promise<string>) {
   const before = await getPrimaryLanguage();
   for (const language of ["en", "de"]) {
     await setPrimaryLanguage(language);
     try {
       const denied = await run("live");
-      assert.match(denied, /Owner-Aufgaben-Token/);
-      assert.match(denied, /recover: Ein anderer Vorgang hält den Aufgabenspeicher gesperrt/, language);
-      assert.doesNotMatch(denied, /Another operation/, language);
+      if (language === "de") {
+        assert.match(denied, /Owner-Aufgaben-Token/);
+        assert.match(denied, /recover: Ein anderer Vorgang hält den Aufgabenspeicher gesperrt/, language);
+        assert.doesNotMatch(denied, /Another operation|Owner task token/, language);
+      } else {
+        assert.match(denied, /Owner task token/);
+        assert.match(denied, /recover: Another operation holds the task store lock/, language);
+        assert.doesNotMatch(denied, /Aufgabenspeicher|Owner-Aufgaben-Token/, language);
+      }
       assert.match(denied, /CLI_EXIT=1/);
     } finally {
       await mutateSettings(
@@ -98,6 +104,26 @@ test("real owner CLI recover --lock refuses live owner, repairs unknown owner, a
   await writeAppRecord("tasks", ctx.path, "broken");
   const live = JSON.stringify({ pid: process.pid, host: hostname(), token: "live" });
   await writeFile(ctx.path + ".lock", live, { mode: 0o600 });
+  const previousLanguage = await getPrimaryLanguage();
+  await setPrimaryLanguage("de");
+  try {
+    await germanOwnerDialog(run, ctx, live);
+  } finally {
+    await mutateSettings(
+      settingsFilePath(),
+      (s) => ({ ...s, language: { ...s.language, primary: previousLanguage } }) as typeof s
+    );
+  }
+  const registry = await readApprovalRegistry(join(root, "task-action-registry.json"));
+  assert.equal(registry?.targets.length, 0);
+  assert.equal(registry?.protected_boundary, false);
+});
+/** The rest of the owner dialog, driven through its German prompts. */
+async function germanOwnerDialog(
+  run: (mode: string, args?: string[]) => Promise<string>,
+  ctx: { path: string },
+  live: string
+) {
   await assertOneDialogLanguage(run);
   const denied = await run("live");
   assert.match(denied, /Aufgabenspeicher gesperrt/);
@@ -146,10 +172,7 @@ test("real owner CLI recover --lock refuses live owner, repairs unknown owner, a
     /Ziel artifact geändert/
   );
   assert.match(await run("remove", ["targets", "remove", "artifact"]), /Ziel entfernt/);
-  const registry = await readApprovalRegistry(join(root, "task-action-registry.json"));
-  assert.equal(registry?.targets.length, 0);
-  assert.equal(registry?.protected_boundary, false);
-});
+}
 
 test("instructed agent CLI registers, lists and removes a target without an owner terminal or confirmation", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "task-target-agent-cli-"))),
@@ -184,12 +207,12 @@ test("instructed agent CLI registers, lists and removes a target without an owne
   };
   assert.match(
     await run(["register", "artifact", "--root", work, "--path", "artifact.txt", "--domain", "personal"]),
-    /Ziel artifact registriert/
+    /Target artifact registered/
   );
   const registry = await readApprovalRegistry(join(data, "task-action-registry.json"));
   assert.deepEqual(registry?.keys, []);
   assert.equal(registry?.protected_boundary, false);
   assert.match(await run(["list"]), /artifact/);
-  assert.match(await run(["remove", "artifact"]), /Ziel entfernt/);
+  assert.match(await run(["remove", "artifact"]), /Target removed/);
   assert.equal((await readApprovalRegistry(join(data, "task-action-registry.json")))?.targets.length, 0);
 });

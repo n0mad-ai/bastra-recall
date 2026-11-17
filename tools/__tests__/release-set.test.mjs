@@ -139,6 +139,11 @@ is_published() {
 }
 if [ "$1" = "view" ]; then
   if [ "\${SLOW_VIEW:-}" = "1" ]; then exec sleep 2; fi
+  # $FLAKY_PACKAGE answers its first $FLAKY_FOR reads with a registry error.
+  if [ -n "\${FLAKY_PACKAGE:-}" ] && [ "\${2%@*}" = "\${FLAKY_PACKAGE}" ]; then
+    n=$(grep -c "npm view \${FLAKY_PACKAGE}" "$NPM_LOG" 2>/dev/null || echo 0)
+    if [ "$n" -le "\${FLAKY_FOR:-1}" ]; then echo "npm error code E503" >&2; exit 1; fi
+  fi
   if [ "\${3:-}" = "dist-tags.latest" ]; then
     if is_published "$2"; then echo "\${LATEST_TAG:-$SET_VERSION}"; exit 0; fi
     exit 1
@@ -392,6 +397,37 @@ test("#1076 verify: the global deadline bounds an npm lookup and lists every unf
   for (const name of ["@bastra-recall/core", "@bastra-recall/statusline", "@bastra-recall/daemon", "bastra-recall"])
     assert.ok(out.includes(`✗ ${name}@`), out);
   assert.deepEqual(publishedWorkspaces(calls), []);
+});
+
+test("#1076 verify: the default window is 20 minutes, beyond the ten-minute delay seen on 1.2.0", async () => {
+  // Everything is visible at once, so the default schedule never has to sleep.
+  const { code, out } = await runPublish(["--verify"], {
+    PUBLISHED: "@bastra-recall/core @bastra-recall/statusline @bastra-recall/daemon bastra-recall",
+    BASTRA_VERIFY_ATTEMPTS: undefined,
+    BASTRA_VERIFY_INTERVAL_MS: undefined,
+  });
+  assert.equal(code, 0, out);
+  assert.match(out, /Waiting up to 20 minutes for the registry/);
+});
+
+test("#1076 verify: a failing registry read is asked again instead of failing the release", async () => {
+  const { code, out } = await runPublish(["--verify"], {
+    PUBLISHED: "@bastra-recall/core @bastra-recall/statusline @bastra-recall/daemon bastra-recall",
+    FLAKY_PACKAGE: "@bastra-recall/daemon",
+    FLAKY_FOR: "1",
+  });
+  assert.equal(code, 0, `one registry error ended the verification:\n${out}`);
+  assert.match(out, /✓ @bastra-recall\/daemon@/);
+});
+
+test("#1076 verify: a registry error that never clears is named when the window closes", async () => {
+  const { code, out } = await runPublish(["--verify"], {
+    PUBLISHED: "@bastra-recall/core @bastra-recall/statusline @bastra-recall/daemon bastra-recall",
+    FLAKY_PACKAGE: "@bastra-recall/daemon",
+    FLAKY_FOR: "99",
+  });
+  assert.notEqual(code, 0, out);
+  assert.match(out, /✗ @bastra-recall\/daemon@.*registry lookup failed: npm view .*E503/);
 });
 
 test("#553 publish set: invalid retry settings fail instead of looping forever", async () => {

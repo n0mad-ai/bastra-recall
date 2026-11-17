@@ -105,8 +105,9 @@ test("model: list rows carry the open-note count; notes are validated as externa
     ["h", "item", 2, false, false, 10, ""],
   ]);
   assert.deepEqual(plain(m.noteCounts(notes)), { drafts: 1, handed: 1 }, "without handed_at a note is a draft");
-  assert.equal(m.notesAt(notes, "item", 2).length, 3);
-  assert.equal(m.notesAt(notes, "row", 2).length, 0);
+  const at = "Preis- und Abrechnungsmodell für Pulse";
+  assert.equal(m.notesAt(notes, "item", 2, at).length, 3);
+  assert.equal(m.notesAt(notes, "row", 2, at).length, 0);
   assert.equal(m.excerptOf("  a\n\n b  "), "a b");
   const long = m.excerptOf("x".repeat(400));
   assert.equal(long.length, 160);
@@ -370,4 +371,25 @@ test("numbering with the real renderer: nested lists, quotes, code, blank lines 
   // The same body renders the same numbers again: a stored anchor lands on its block.
   const again = m.reportBlocksIn(renderer.render(md));
   assert.deepEqual(plain(again.map((b: any) => b.excerpt)), plain(blocks.map((b: any) => b.excerpt)));
+});
+
+test("#1608: a note sits at its place only while the place still holds the stored excerpt", async () => {
+  const m = await load();
+  const notes = m.noteRows({
+    notes: [
+      stored({}),
+      // same kind and number, but the block there now holds other text (a changed renderer)
+      stored({ id: "moved", anchor: { kind: "item", index: 3, excerpt: "Preis" }, text: "gehört woanders hin" }),
+    ],
+  });
+  const ui = { notes, editing: null, open() {}, edit() {}, remove() {}, save: async () => {}, cancel() {} };
+  const out = m.annotateReport(rendered(), ui);
+  const [, list] = out.nodes;
+  assert.match(list.children[0].textContent, /Preise verifizieren/, "a matching excerpt: the note at its place");
+  assert.ok(!list.children[1].classList.contains("tk-an__card"), "item 3 ('Name') does not take the other note");
+  const lost = out.nodes.at(-1);
+  assert.ok(lost.classList.contains("tk-an__lost"));
+  assert.match(lost.textContent, /gehört woanders hin/, "it is collected at the end instead");
+  assert.equal(plain(m.notesAt(notes, "item", 2, "Preis- und Abrechnungsmodell für Pulse")).length, 1);
+  assert.equal(plain(m.notesAt(notes, "item", 3, "Name")).length, 0);
 });

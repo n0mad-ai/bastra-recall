@@ -151,8 +151,11 @@ export function careBlock(m, { care, add, rerender }) {
       ? h(
           "div.mb-care__open",
           null,
-          open.map((a) => {
-            const key = JSON.stringify([a.kind, a.date, a.note]);
+          open.map((a, i) => {
+            // identical entries are allowed: the occurrence keeps their drafts
+            // apart and survives a reopen with freshly parsed entries (#1554)
+            const same = open.slice(0, i).filter((b) => b.kind === a.kind && b.date === a.date && b.note === a.note);
+            const key = JSON.stringify([a.kind, a.date, a.note, same.length]);
             if (!draft.flags.has(key)) draft.flags.set(key, {});
             return flagItem(m, a, rerender, draft.flags.get(key));
           })

@@ -69,8 +69,10 @@ import {
   moveDocument,
 } from "./documents-write-handler.js";
 import { productDocTools, saveProductDocHandler } from "./product-doc-handler.js";
+import { restoreMemoryMcp, restoreMemoryTools } from "./restore-memory-handler.js";
 import { DAEMON_VERSION } from "./version.js";
 import { projectForFilter } from "./scope-filter.js";
+import { mcpClientLabel, writeCallerStore } from "./caller-session.js";
 
 export async function startStdioServer(opts: {
   vault: Vault;
@@ -90,6 +92,7 @@ export async function startStdioServer(opts: {
   server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: [
       ...MEMORY_TOOL_DEFS,
+      ...restoreMemoryTools,
       ...(tasksEnabled() && ownsVault ? taskTools : []),
       ...draftReviewTools,
       ...saveSuggestionTools,
@@ -114,6 +117,16 @@ export async function startStdioServer(opts: {
   const banterLang = (process.env.BASTRA_BANTER_LANG ?? "en").toLowerCase() === "de" ? "de" : "en";
 
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
+    // #1469: every write in this call is audited with the stdio transport and
+    // its MCP client. `enterWith`, not `run`: the SDK starts each handler in its
+    // own promise job, so the store covers exactly this call, and the tool chain
+    // below keeps its shape (frozen complexity budget, #1507).
+    writeCallerStore.enterWith({ transport: "stdio", client: mcpClientLabel(server.getClientVersion()), session: null });
+    // #1471: beside the tool chain for the same reason.
+    if (req.params.name === "restore_memory") {
+      markActivity();
+      return restoreMemoryMcp(toolDeps, req.params.arguments, undefined); // public transport (#464)
+    }
     const result = await (async () => {
     markActivity();
     const { name, arguments: rawArgs } = req.params;

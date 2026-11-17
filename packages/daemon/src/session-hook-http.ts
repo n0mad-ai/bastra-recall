@@ -1,6 +1,6 @@
 /**
  * HTTP client half of the session-start hook — every call the hook makes to
- * the local daemon (recall, floors, taxonomy, care/import counts, onboarding
+ * the local daemon (session context, floors, taxonomy, care/import counts, onboarding
  * flag, health probe) plus the request/response shapes. Split out of
  * session-hook.ts (file-size convention).
  *
@@ -9,7 +9,6 @@
  * The hook-CLI import rule (#305) applies here too: node stdlib and sibling
  * leafs only, never the @bastra-recall/core barrel.
  */
-import { taskClientHeaders } from "./task-client-auth.js";
 import { request } from "node:http";
 import type { HookRecallResponse as RecallResponse } from "./hook-recall-response.js";
 import type { PinnedFloorLean } from "./pinned-block.js";
@@ -44,14 +43,6 @@ interface TaxonomyResponse {
   conventions: ConventionLean[];
 }
 
-export interface RecallRequestBody {
-  query: string;
-  scope?: string;
-  k: number;
-  project: string | null;
-  source: string | null;
-}
-
 /**
  * Die Antwort des projektbewussten Session-Assemblers (#265).
  *
@@ -77,7 +68,7 @@ export interface SessionContextResponse {
  * Die Lane holte Recalls, Floors, Taxonomie, Care, Import und Onboarding in
  * sechs einzelnen Loopback-Requests. Der Assembler erhebt dasselbe serverseitig
  * und nebenläufig; hier bleibt der Transport. Gleiche Disziplin wie
- * `postRecall`: harter Timeout, Fehler nach oben, der Aufrufer entscheidet.
+ * die Lane-Recalls: harter Timeout, Fehler nach oben, der Aufrufer entscheidet.
  */
 export function postSessionContext(
   baseUrl: string,
@@ -116,55 +107,6 @@ export function postSessionContext(
           }
           try {
             resolve(JSON.parse(raw) as SessionContextResponse);
-          } catch {
-            reject(new Error("invalid JSON response from daemon"));
-          }
-        });
-      }
-    );
-    req.on("timeout", () => {
-      req.destroy(new Error("timeout"));
-    });
-    req.on("error", reject);
-    req.write(payload);
-    req.end();
-  });
-}
-
-export function postRecall(baseUrl: string, body: RecallRequestBody, timeoutMs: number): Promise<RecallResponse> {
-  return new Promise((resolve, reject) => {
-    let url: URL;
-    try {
-      url = new URL("/hook/recall", baseUrl);
-    } catch (err) {
-      reject(err);
-      return;
-    }
-    const payload = Buffer.from(JSON.stringify(body), "utf8");
-    const req = request(
-      {
-        method: "POST",
-        hostname: url.hostname,
-        port: url.port || 80,
-        path: url.pathname,
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          ...taskClientHeaders(),
-          "Content-Length": payload.byteLength.toString(),
-        },
-        timeout: timeoutMs,
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (c: Buffer) => chunks.push(c));
-        res.on("end", () => {
-          const raw = Buffer.concat(chunks).toString("utf8");
-          if ((res.statusCode ?? 500) >= 400) {
-            reject(new Error(`HTTP ${res.statusCode}: ${raw.slice(0, 200)}`));
-            return;
-          }
-          try {
-            resolve(JSON.parse(raw) as RecallResponse);
           } catch {
             reject(new Error("invalid JSON response from daemon"));
           }
