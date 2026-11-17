@@ -6,6 +6,7 @@ import { recordRulebookEvent } from "./rulebook-events.js";
 import { randomUUID } from "node:crypto";
 import { compactContextNotice, resetContextNotices } from "./context-notice.js";
 import { z } from "zod";
+import { readCheckState, sessionRulebookProject, type CheckState } from "./rulebook-round-state.js";
 import {
   loadSessionState,
   mutateSessionState,
@@ -30,36 +31,6 @@ import { drainRulebookFailures, spoolRulebookFailure } from "./rulebook-spool.js
 import { hasCorrespondenceEvidence, isCorrespondenceTool } from "./stop-evidence.js";
 import type { TranscriptTurn } from "./stop-transcript.js";
 
-const RuleRef = z.object({ id: z.string(), revision: z.string().nullable() });
-const RoundRule = RuleRef.extend({ validator: ConventionValidatorSchema.optional() });
-const Actor = z.object({
-  correspondenceEvidence: z.boolean().default(false),
-  roundApplied: z.array(RoundRule).default([]),
-  roundDismissed: z.array(RuleRef).default([]),
-  repairs: z.number().default(0),
-  repairProse: z.boolean().default(false),
-  required: z.array(RuleRef).default([]),
-  loaded: z.array(RuleRef).default([]),
-  dismissed: z.array(RuleRef).default([]),
-  key: z.string(),
-  checked: z.boolean().default(false),
-  ids: z.array(z.string()).default([]),
-  denies: z.number().default(0),
-  stops: z.number().default(0),
-  deferredStop: z.boolean().default(false),
-});
-// #1374: the project the session's rule index was built for; rulebook_check answers from the same catalog.
-const State = z.object({
-  project: z.string().nullable().optional(),
-  copyViolations: z.number().default(0),
-  blockedDismissals: z.array(z.string()).default([]),
-  context: z.string(),
-  round: z.number(),
-  actors: z.array(Actor),
-  unchecked: z.number(),
-  exceptions: z.array(z.string()).default([]),
-});
-type CheckState = z.infer<typeof State>;
 export interface RulebookPayload {
   session_id?: string;
   agent_id?: string;
@@ -69,27 +40,6 @@ export interface RulebookPayload {
   stop_hook_active?: boolean;
   tool_name?: string;
   tool_input?: unknown;
-}
-function read(state: { readonly rulebookCheck?: string }): CheckState {
-  try {
-    return State.parse(JSON.parse(state.rulebookCheck ?? ""));
-  } catch {
-    return {
-      context: randomUUID(),
-      round: 0,
-      actors: [],
-      unchecked: 0,
-      copyViolations: 0,
-      blockedDismissals: [],
-      exceptions: [],
-    };
-  }
-}
-/** Indexed null is global scope; undefined retains the legacy caller-project fallback. */
-export function sessionRulebookProject(
-  state: { readonly rulebookCheck?: string } | undefined
-): string | null | undefined {
-  return state?.rulebookCheck ? read(state).project : undefined;
 }
 function put(state: SessionState, value: CheckState) {
   state.rulebookCheck = JSON.stringify(value);
@@ -142,7 +92,7 @@ export async function resetRulebookContext(sessionId: string): Promise<void> {
   if (sessionId)
     await mutateSessionState(sessionId, (s) => {
       resetContextNotices(s);
-      const old = read(s);
+      const old = readCheckState(s);
       put(s, {
         project: old.project,
         context: randomUUID(),
@@ -162,7 +112,7 @@ export async function beginRulebookRound(p: RulebookPayload, catalog: KernelCand
     blockedDismissals: string[] = [];
   let copyViolations = 0;
   const persisted = await mutateSessionState(p.session_id, (s) => {
-    const old = read(s);
+    const old = readCheckState(s);
     unchecked += old.unchecked;
     exceptions = old.exceptions;
     blockedDismissals = old.blockedDismissals;
@@ -365,7 +315,7 @@ export async function recordRulebookCheck(
       taskGeneration = s.activeTask?.generation ?? 0;
       acceptedTask = { kind: task, generation: taskGeneration };
     }
-    const state = read(s),
+    const state = readCheckState(s),
       a = actor(state, input.agent_id ? `agent:${input.agent_id}` : "main");
     const correspondence = catalog.entries.filter(isCorrespondenceRule);
     const protectedIds = new Set(a.roundApplied.map((r) => r.id));
@@ -552,7 +502,7 @@ export async function recordRulebookLoad(
 ): Promise<void> {
   if (!sessionId) return;
   await mutateSessionState(sessionId, (s) => {
-    const state = read(s),
+    const state = readCheckState(s),
       a = actor(state, agentId ? `agent:${agentId}` : "main");
     const obligated = a.required.some((r) => r.id === id);
     if (
@@ -609,7 +559,7 @@ export async function requireActionRules(
   const persisted = await mutateSessionState(
     p.session_id,
     (s) => {
-      const state = read(s),
+      const state = readCheckState(s),
         a = actor(state, identity(p));
       for (const ref of refs) {
         const loaded =
@@ -633,7 +583,7 @@ export async function requireActionRules(
 }
 /** Context-only delivery history is never a full load and cannot outlive its round. */
 export function actionRulebookScope(state: { readonly rulebookCheck?: string }): string {
-  const current = read(state);
+  const current = readCheckState(state);
   return JSON.stringify([current.context, current.round]);
 }
 export type CatalogProvider = (
@@ -687,7 +637,7 @@ export async function rulebookBoundary(
   const persisted = await mutateSessionState(
     p.session_id,
     (s) => {
-      const state = read(s),
+      const state = readCheckState(s),
         a = actor(state, identity(p));
       context = state.context;
       round = state.round;
@@ -754,7 +704,7 @@ export async function rulebookBoundary(
       if (delivered) return;
       // Rollback is bookkeeping, never part of the response's latency budget.
       void mutateSessionState(p.session_id!, (s) => {
-        const current = read(s);
+        const current = readCheckState(s);
         if (current.context !== context || current.round !== round) return;
         const a = current.actors.find((a) => a.key === identity(p));
         if (a) a.denies = Math.max(0, a.denies - 1);
@@ -825,12 +775,12 @@ export async function rulebookBoundary(
 export async function takeDeferredRulebookStop(p: RulebookPayload): Promise<boolean> {
   if (!p.session_id) return false;
   const snapshot = await loadSessionState(p.session_id);
-  if (!snapshot.rulebookCheck || !read(snapshot).actors.some((a) => a.key === identity(p) && a.deferredStop))
+  if (!snapshot.rulebookCheck || !readCheckState(snapshot).actors.some((a) => a.key === identity(p) && a.deferredStop))
     return false;
   let pending = false;
   const persisted = await mutateSessionState(p.session_id, (s) => {
     if (!s.rulebookCheck) return;
-    const state = read(s),
+    const state = readCheckState(s),
       a = actor(state, identity(p));
     pending = a.deferredStop;
     a.deferredStop = false;
@@ -853,7 +803,7 @@ export function roundCorrespondence(
   >,
   p: RulebookPayload = { bastra_client: "claude-code" }
 ) {
-  const value = read(state),
+  const value = readCheckState(state),
     a = value.actors.find((a) => a.key === identity(p));
   const rules = [...(a?.roundApplied ?? [])];
   if (identity(p) === "main" && hasReportedTask(state))
@@ -886,7 +836,7 @@ export function claimRoundRepair(
 ): number | null {
   const current = roundCorrespondence(state, p);
   if (current.key !== key || current.repairs > 2) return null;
-  const value = read(state),
+  const value = readCheckState(state),
     a = actor(value, identity(p)),
     count = Math.max(a.repairs, minimum);
   if (count > 2) return null;
@@ -904,8 +854,8 @@ export function refreshRoundValidators(
   before: { readonly rulebookCheck?: string },
   sources: ReadonlyMap<string, import("./convention-source.js").ConventionSource>
 ): void {
-  const value = read(state),
-    old = read(before);
+  const value = readCheckState(state),
+    old = readCheckState(before);
   if (value.context !== old.context || value.round !== old.round) return;
   for (const a of value.actors)
     for (const rule of a.roundApplied) {

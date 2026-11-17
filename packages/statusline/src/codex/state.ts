@@ -84,6 +84,54 @@ function toolResult(value: unknown): Record<string, any> {
   return {};
 }
 
+function timestampOf(value: unknown): number | null {
+  const parsed = Date.parse(value as string);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+const TURN_ENDS = new Set(["task_complete", "task_interrupted", "turn_completed"]);
+const SEARCH_TOOLS = new Set(["recall", "find_document"]);
+const LOAD_TOOLS = new Set(["load_memory", "read_document"]);
+const SAVE_TOOLS = new Set(["save_memory", "save_document", "save_product_doc", "edit_memory"]);
+
+/** Null/missing limits mean "no update", never 0%. */
+function rateLimits(value: unknown): CodexStatus["limits"] | null {
+  if (!value || typeof value !== "object") return null;
+  const rate = object(value);
+  const limits: CodexStatus["limits"] = [];
+  for (const key of ["primary", "secondary"]) {
+    const r = object(rate[key]);
+    const minutes = finite(r.window_minutes),
+      used = finite(r.used_percent);
+    if (minutes !== null && minutes > 0 && used !== null) limits.push({ minutes, used, resetsAt: finite(r.resets_at) });
+  }
+  return limits;
+}
+
+function callFailed(item: Record<string, any>, result: Record<string, any>): boolean {
+  return (
+    item.status === "failed" ||
+    item.status === "error" ||
+    Boolean(item.error) ||
+    object(item.result).isError === true ||
+    Boolean(result.error) ||
+    result.isError === true
+  );
+}
+
+function callMs(item: Record<string, any>): number {
+  const duration = object(item.duration);
+  return finite(item.durationMs) ?? (finite(duration.secs) ?? 0) * 1000 + (finite(duration.nanos) ?? 0) / 1e6;
+}
+
+function isRecallCall(item: Record<string, any>): boolean {
+  return (
+    ["McpToolCall", "mcpToolCall"].includes(item.type) &&
+    typeof item.server === "string" &&
+    /^bastra[-_]recall$/.test(item.server)
+  );
+}
+
 /** Holds only bounded metadata: never stores prompts, tool arguments or memory bodies. */
 export class CodexProjection {
   state = emptyStatus();
@@ -92,118 +140,116 @@ export class CodexProjection {
   accept(record: unknown): void {
     const row = object(record);
     const p = object(row.payload);
-    const s = this.state;
-    if (row.type === "session_meta") {
-      s.sessionId = text(p.id) ?? text(p.session_id);
-      s.cwd = text(p.cwd) ?? s.cwd;
-      s.branch = text(object(p.git).branch);
-      s.contextWindow = finite(p.context_window) ?? s.contextWindow;
-      const started = Date.parse(p.timestamp ?? row.timestamp);
-      s.startedAt = Number.isFinite(started) ? started : null;
-    }
-    if (row.type === "turn_context") {
-      s.model = text(p.model) ?? s.model;
-      s.effort = text(p.effort) ?? s.effort;
-      s.cwd = text(p.cwd) ?? s.cwd;
-    }
+    if (row.type === "session_meta") this.sessionMeta(row, p);
+    if (row.type === "turn_context") this.turnContext(p);
     if (row.type !== "event_msg") return;
-    if (p.type === "task_started" || p.type === "turn_started") {
-      const id = text(p.turn_id);
-      if (id !== s.turnId || id === null) {
-        Object.assign(s, {
-          turnId: id,
-          calls: 0,
-          searches: 0,
-          loads: 0,
-          saves: 0,
-          hits: 0,
-          ms: 0,
-          errors: 0,
-          lastTool: null,
-          lastAt: null,
-          loadedTitles: [],
-        });
-        this.completed.clear();
-      }
-      s.active = true;
-      const started = Date.parse(row.timestamp);
-      s.turnStartedAt = Number.isFinite(started) ? started : null;
-      s.contextWindow = finite(p.model_context_window) ?? s.contextWindow;
+    if (p.type === "task_started" || p.type === "turn_started") this.turnStarted(row, p);
+    if (TURN_ENDS.has(p.type) && !this.otherTurn(p)) this.state.active = false;
+    if (p.type === "token_count") this.tokenCount(p);
+    if (p.type === "item_completed") this.itemCompleted(row, p);
+  }
+
+  /** A record that names a turn other than the current one. */
+  private otherTurn(p: Record<string, any>): boolean {
+    return Boolean(this.state.turnId) && typeof p.turn_id === "string" && p.turn_id !== this.state.turnId;
+  }
+
+  private sessionMeta(row: Record<string, any>, p: Record<string, any>): void {
+    const s = this.state;
+    s.sessionId = text(p.id) ?? text(p.session_id);
+    s.cwd = text(p.cwd) ?? s.cwd;
+    s.branch = text(object(p.git).branch);
+    s.contextWindow = finite(p.context_window) ?? s.contextWindow;
+    s.startedAt = timestampOf(p.timestamp ?? row.timestamp);
+  }
+
+  private turnContext(p: Record<string, any>): void {
+    const s = this.state;
+    s.model = text(p.model) ?? s.model;
+    s.effort = text(p.effort) ?? s.effort;
+    s.cwd = text(p.cwd) ?? s.cwd;
+  }
+
+  private turnStarted(row: Record<string, any>, p: Record<string, any>): void {
+    const s = this.state;
+    const id = text(p.turn_id);
+    if (id !== s.turnId || id === null) {
+      Object.assign(s, {
+        turnId: id,
+        calls: 0,
+        searches: 0,
+        loads: 0,
+        saves: 0,
+        hits: 0,
+        ms: 0,
+        errors: 0,
+        lastTool: null,
+        lastAt: null,
+        loadedTitles: [],
+      });
+      this.completed.clear();
     }
-    if (
-      (p.type === "task_complete" || p.type === "task_interrupted" || p.type === "turn_completed") &&
-      (!s.turnId || typeof p.turn_id !== "string" || p.turn_id === s.turnId)
-    )
-      s.active = false;
-    if (p.type === "token_count") {
-      const info = object(p.info);
-      s.tokens = finite(object(info.total_token_usage).total_tokens) ?? s.tokens;
-      s.cachedInputTokens = finite(object(info.total_token_usage).cached_input_tokens) ?? s.cachedInputTokens;
-      s.inputTokens = finite(object(info.total_token_usage).input_tokens) ?? s.inputTokens;
-      s.contextUsed = finite(object(info.last_token_usage).total_tokens) ?? s.contextUsed;
-      s.contextWindow = finite(info.model_context_window) ?? s.contextWindow;
-      // Null/missing limits mean "no update", never 0%.
-      if (p.rate_limits && typeof p.rate_limits === "object") {
-        const rate = object(p.rate_limits);
-        const limits: CodexStatus["limits"] = [];
-        for (const key of ["primary", "secondary"]) {
-          const r = object(rate[key]);
-          const minutes = finite(r.window_minutes),
-            used = finite(r.used_percent);
-          if (minutes !== null && minutes > 0 && used !== null)
-            limits.push({ minutes, used, resetsAt: finite(r.resets_at) });
-        }
-        s.limits = limits;
-      }
-    }
-    if (p.type !== "item_completed") return;
-    if (s.turnId && typeof p.turn_id === "string" && p.turn_id !== s.turnId) return;
+    s.active = true;
+    s.turnStartedAt = timestampOf(row.timestamp);
+    s.contextWindow = finite(p.model_context_window) ?? s.contextWindow;
+  }
+
+  private tokenCount(p: Record<string, any>): void {
+    const s = this.state;
+    const info = object(p.info);
+    const total = object(info.total_token_usage);
+    s.tokens = finite(total.total_tokens) ?? s.tokens;
+    s.cachedInputTokens = finite(total.cached_input_tokens) ?? s.cachedInputTokens;
+    s.inputTokens = finite(total.input_tokens) ?? s.inputTokens;
+    s.contextUsed = finite(object(info.last_token_usage).total_tokens) ?? s.contextUsed;
+    s.contextWindow = finite(info.model_context_window) ?? s.contextWindow;
+    s.limits = rateLimits(p.rate_limits) ?? s.limits;
+  }
+
+  private itemCompleted(row: Record<string, any>, p: Record<string, any>): void {
+    if (this.otherTurn(p)) return;
     const item = object(p.item);
     // The final answer is already visible when the terminal lifecycle event is
     // delayed or absent. Commentary must keep the current turn active.
     if (["AgentMessage", "agentMessage"].includes(item.type) && item.phase === "final_answer") {
-      s.active = false;
+      this.state.active = false;
       return;
     }
-    if (!["McpToolCall", "mcpToolCall"].includes(item.type)) return;
-    if (typeof item.server !== "string" || !/^bastra[-_]recall$/.test(item.server)) return;
+    if (!isRecallCall(item)) return;
     const id = text(item.id);
     if (!id || this.completed.has(id)) return;
     // Bound the dedup table even if a malformed transcript never changes turn.
     if (this.completed.size >= 4096) this.completed.delete(this.completed.values().next().value!);
     this.completed.add(id);
+    this.recallCall(row, item);
+  }
+
+  private recallCall(row: Record<string, any>, item: Record<string, any>): void {
+    const s = this.state;
     const tool = text(item.tool) ?? "tool";
     const result = toolResult(item.result);
-    const error =
-      item.status === "failed" ||
-      item.status === "error" ||
-      Boolean(item.error) ||
-      object(item.result).isError === true ||
-      Boolean(result.error) ||
-      result.isError === true;
     s.calls++;
-    if (error) s.errors++;
-    else {
-      if (tool === "recall" || tool === "find_document") {
-        s.searches++;
-        s.hits += Array.isArray(result.hits) ? result.hits.length : 0;
-      }
-      if (tool === "load_memory" || tool === "read_document") {
-        s.loads++;
-        const title = text(object(result.frontmatter).title) ?? text(result.title) ?? text(result.id);
-        if (title && !s.loadedTitles.includes(title)) s.loadedTitles.push(title);
-        if (s.loadedTitles.length > 32) s.loadedTitles.shift();
-      }
-      if (tool === "save_memory" || tool === "save_document" || tool === "save_product_doc" || tool === "edit_memory")
-        s.saves++;
-    }
-    const duration = object(item.duration);
-    const ms = finite(item.durationMs) ?? (finite(duration.secs) ?? 0) * 1000 + (finite(duration.nanos) ?? 0) / 1e6;
-    s.ms += ms;
+    if (callFailed(item, result)) s.errors++;
+    else this.recallResult(tool, result);
+    s.ms += callMs(item);
     s.lastTool = tool;
-    const timestamp = Date.parse(row.timestamp);
-    s.lastAt = Number.isFinite(timestamp) ? timestamp : null;
+    s.lastAt = timestampOf(row.timestamp);
     s.vaultSize = finite(result.vault_size) ?? s.vaultSize;
+  }
+
+  private recallResult(tool: string, result: Record<string, any>): void {
+    const s = this.state;
+    if (SEARCH_TOOLS.has(tool)) {
+      s.searches++;
+      s.hits += Array.isArray(result.hits) ? result.hits.length : 0;
+    }
+    if (LOAD_TOOLS.has(tool)) {
+      s.loads++;
+      const title = text(object(result.frontmatter).title) ?? text(result.title) ?? text(result.id);
+      if (title && !s.loadedTitles.includes(title)) s.loadedTitles.push(title);
+      if (s.loadedTitles.length > 32) s.loadedTitles.shift();
+    }
+    if (SAVE_TOOLS.has(tool)) s.saves++;
   }
 }
 

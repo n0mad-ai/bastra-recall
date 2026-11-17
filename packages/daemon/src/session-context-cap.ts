@@ -131,11 +131,8 @@ export function capSessionContext(
     .map((p) => p.text)
     .join("");
   let suffix = names.size ? `${prefix}${deferred.join(", ")}.` : "";
-  if (keptText.length + suffix.length > limit) {
-    // Names are metadata, never a reason to throw or truncate mandatory text.
-    // Required rule/language sections take precedence over the soft cap.
-    suffix = `${prefix}${names.size} sections (names in deferred metadata).`;
-    if (keptText.length + suffix.length > limit) suffix = "";
-  }
+  // If mandatory text consumes the soft cap, carry the notice with it.
+  // Bound the notice itself when the list of section names is unusually large.
+  if (suffix.length > limit) suffix = `\n${names.size} session sections were deferred.`;
   return { text: keptText + suffix, deferred };
 }

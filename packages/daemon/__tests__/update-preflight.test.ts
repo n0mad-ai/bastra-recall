@@ -163,6 +163,29 @@ test("a modified file is detected AND copied aside before anything replaces it",
   });
 });
 
+test(
+  "the copy of a modified file is private (0600) and a re-run replaces it (#1524)",
+  { skip: process.platform === "win32" },
+  async () => {
+    await withSandbox(async (s) => {
+      await fakeInstall(s.root);
+      await baseline(s);
+      const local = join(s.root, "dist", "index.js");
+      await writeFile(local, "// first local patch\n", { encoding: "utf8", mode: 0o644 });
+      const copy = join(backupRoot(s.home), VERSION_UNDER_TEST, "dist", "index.js");
+
+      await preflight({ root: s.root, unattended: false, force: true, checkProvenance: false, home: s.home });
+      assert.equal((await stat(copy)).mode & 0o777, 0o600);
+
+      await writeFile(local, "// second local patch\n", "utf8");
+      const r = await preflight({ root: s.root, unattended: false, force: true, checkProvenance: false, home: s.home });
+      assert.deepEqual(r.backupFailed ?? [], [], "an earlier copy must not turn into a failed backup");
+      assert.equal(await readFile(copy, "utf8"), "// second local patch\n");
+      assert.equal((await stat(copy)).mode & 0o777, 0o600);
+    });
+  }
+);
+
 test("unattended (--staged) refuses on dirty files, names the count, and ignores --force", async () => {
   await withSandbox(async (s) => {
     await fakeInstall(s.root);

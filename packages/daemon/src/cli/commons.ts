@@ -1,4 +1,3 @@
-import { bastraDataDir } from "../platform-paths.js";
 /**
  * `bastra commons` — Bastra Commons, der Community-Rezept-Vault.
  *
@@ -9,24 +8,15 @@ import { bastraDataDir } from "../platform-paths.js";
  * persönlichen Memories gerankt. Es wird NIE in das Repo geschrieben;
  * Beiträge laufen über PRs (siehe Commons-CONTRIBUTING).
  */
-import {
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { arch, homedir, platform } from "node:os";
+import { homedir } from "node:os";
 import { join, basename, dirname } from "node:path";
 import { findExecutable, run } from "./exec.js";
 import { getCommonsEnabled, setCommonsEnabled } from "../settings.js";
 import { isOnValue } from "../env.js";
+import { buildVerificationRecord, commonsPath, verificationRecordPath } from "../commons-store.js";
 
 export const COMMONS_REPO_URL = process.env.BASTRA_COMMONS_REPO ?? "https://github.com/n0mad-ai/bastra-commons.git";
 
@@ -93,10 +83,6 @@ function noteCommonsOverride(action: string): void {
   process.stdout.write(`! commons target overridden (${COMMONS_OPT_IN_ENV}=1): ${action} → ${COMMONS_REPO_URL}\n`);
 }
 
-export function commonsPath(): string {
-  return process.env.BASTRA_COMMONS_PATH ?? join(bastraDataDir(), "commons");
-}
-
 export async function cmdCommons(opts: { sub: string | null; positional?: string[] }): Promise<number> {
   const sub = opts.sub ?? "status";
   switch (sub) {
@@ -137,40 +123,6 @@ export async function cmdCommons(opts: { sub: string | null; positional?: string
 }
 
 // ─── verify-Loop (das Herzstück) ─────────────────────────────────────────────
-// Ein Verification-Record ist die kleinste Beweis-Einheit: "works/fails for
-// me" + Umgebung. Ein Record pro Verifier+Rezept — die Datei wird bei
-// Meinungsänderung überschrieben, die Historie liegt im git-Log (append-only
-// durch git, nicht durch uns). Aus den Records entsteht die Hitlist: Status
-// wird berechnet, nie vergeben.
-
-export interface VerificationRecord {
-  recipe_id: string;
-  result: "works" | "fails";
-  environment: { os: string; arch: string; node: string; note: string | null };
-  verifier: string;
-  date: string;
-}
-
-export function buildVerificationRecord(
-  recipeId: string,
-  result: "works" | "fails",
-  note: string | null,
-  verifier: string,
-  date: string = new Date().toISOString().slice(0, 10)
-): VerificationRecord {
-  return {
-    recipe_id: recipeId,
-    result,
-    environment: { os: platform(), arch: arch(), node: process.version, note },
-    verifier,
-    date,
-  };
-}
-
-export function verificationRecordPath(rootDir: string, recipeId: string, verifier: string): string {
-  return join(rootDir, "verifications", recipeId, `${verifier}.json`);
-}
-
 /** Pseudonymer, stabiler Verifier-Schlüssel: Kurzhash der git-Mail. Der
  *  Klarname steht ohnehin im PR; der Hash macht nur den Dateinamen
  *  deterministisch ("ein Record pro User+Solution"). */
@@ -179,42 +131,6 @@ export function verifierId(): string {
   const email = r.status === 0 ? String(r.stdout).trim() : "";
   const seed = email || `${homedir()}`;
   return createHash("sha256").update(seed).digest("hex").slice(0, 12);
-}
-
-/** Liest alle Records unter <root>/verifications → counts pro Rezept-ID.
- *  Synchron + defensiv; der Daemon ruft das einmal beim Boot. */
-export function loadVerificationCounts(rootDir: string): Map<string, { works: number; fails: number }> {
-  const counts = new Map<string, { works: number; fails: number }>();
-  const base = join(rootDir, "verifications");
-  try {
-    for (const recipeDir of readdirSync(base, { withFileTypes: true })) {
-      if (!recipeDir.isDirectory()) continue;
-      const entry = { works: 0, fails: 0 };
-      for (const f of readdirSync(join(base, recipeDir.name))) {
-        if (!f.endsWith(".json")) continue;
-        try {
-          const rec = JSON.parse(readFileSync(join(base, recipeDir.name, f), "utf8")) as { result?: string };
-          if (rec.result === "works") entry.works++;
-          else if (rec.result === "fails") entry.fails++;
-        } catch {
-          /* skip corrupt record */
-        }
-      }
-      counts.set(recipeDir.name, entry);
-    }
-  } catch {
-    /* no verifications dir yet */
-  }
-  return counts;
-}
-
-/** Evidenz → Ranking: Basis-Dämpfung 0.8 (persönliche Memories gewinnen),
- *  unabhängige works heben (bis +0.15), fails senken. Geclampt, damit ein
- *  Rezept nie über persönliche Hits hinaus geboostet wird oder ganz
- *  verschwindet — Abstieg ist sichtbar, nicht Zensur. */
-export function commonsRankFactor(works: number, fails: number): number {
-  const factor = 0.8 + Math.min(0.15, works * 0.05) - Math.min(0.25, fails * 0.08);
-  return Math.max(0.5, Math.min(0.95, factor));
 }
 
 async function cmdVerify(recipeId: string | null, result: string | null, note: string | null): Promise<number> {

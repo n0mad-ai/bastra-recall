@@ -38,44 +38,14 @@ import { isTaskTool, defaultTaskContext, taskClientAuthorization, taskFailure } 
 import { taskAttachment } from "./task-delivery.js";
 import type { TaskServiceContext } from "./task-service.js";
 import { callTaskCrud } from "./task-service.js";
-import {
-  Vault,
-  SearchIndex,
-  EmbeddingIndex,
-  OllamaEmbeddingProvider,
-  RelatedEnricher,
-  type EmbeddingProvider,
-  SaveMemoryInput,
-  AuditLog,
-  AuditContext,
-  auditedSave,
-  auditedSoftDelete,
-  auditedRestore,
-  scopeEquals,
-} from "@bastra-recall/core";
+import { Vault, SearchIndex, EmbeddingIndex, RelatedEnricher, AuditLog } from "@bastra-recall/core";
 import { envFirst, envInt, envFloat, envBool } from "./env.js";
 import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
-import {
-  embeddingStatusLine,
-  cloudConsentNotice,
-  type EmbeddingStatus,
-  type EmbeddingSource,
-} from "./embedding-status.js";
-import { cloudEmbeddingProvider } from "./embedding-cloud.js";
-import {
-  getDocsMode,
-  setDocsMode,
-  getDocsLanguage,
-  setDocsLanguage,
-  isDocsMode,
-  isDocsLanguage,
-  DOCS_MODES,
-  getSharedRecallEnabled,
-  getSharedRecallLanguage,
-  getSharedRecallLive,
-  resolveEmbeddingChoice,
-} from "./settings.js";
-import { expandQuery, BridgePool } from "./learned-recall/bridges.js";
+import { embeddingStatusLine, cloudConsentNotice } from "./embedding-status.js";
+import { resolveEmbedding } from "./embedding-provider.js";
+import { getSharedRecallEnabled, getSharedRecallLanguage, getSharedRecallLive } from "./settings.js";
+import { BridgePool } from "./learned-recall/bridges.js";
+import { createBridgeMethods, type BridgeMethod } from "./bridge-methods.js";
 import { isSupportedLanguage, type SupportedLanguage } from "./learned-recall/language.js";
 import { bridgesPath, migrateBridgesPool } from "./cli/bridges.js";
 import { startVaultReconcile } from "./daemon-jobs.js";
@@ -97,7 +67,14 @@ import * as path from "node:path";
  * Daemon unabhängig vom spawnenden Client erreicht.
  */
 async function attachEmbeddings(search: SearchIndex, vault: Vault): Promise<void> {
-  const { provider, status } = await resolveEmbedding();
+  // As before, the bridge sends no Ollama keep_alive; only the daemon's power plan does (#78).
+  const { provider, status } = await resolveEmbedding({
+    keepAlive: false,
+    onInvalidEnv: (raw) =>
+      process.stderr.write(
+        `[bastra-recall.bridge] ignoring invalid BASTRA_EMBEDDING_PROVIDER ${JSON.stringify(raw)} — falling through to cli-settings\n`
+      ),
+  });
   // Same wording as the daemon (index.ts) via the shared helper; bridge keeps
   // its own tag. Logged on every path including success (the silence was #79).
   process.stderr.write(embeddingStatusLine(status, "[bastra-recall.bridge]") + "\n");
@@ -171,43 +148,6 @@ async function probeDaemonHealth(): Promise<boolean> {
   }
 }
 
-/**
- * Provider resolution via the shared resolveEmbeddingChoice (settings.ts) —
- * identical precedence to index.ts and the CLI: env > cli-settings.json >
- * none. Env always wins, so the Pro app's spawn-env choice is never
- * overridden by the file; the file only fills the gap when no env is set
- * (owner decision on #79: the persisted setting reaches the daemon regardless
- * of which client spawned it).
- */
-async function resolveEmbedding(): Promise<{ provider: EmbeddingProvider | null; status: EmbeddingStatus }> {
-  const choice = await resolveEmbeddingChoice({
-    onInvalidEnv: (raw) =>
-      process.stderr.write(
-        `[bastra-recall.bridge] ignoring invalid BASTRA_EMBEDDING_PROVIDER ${JSON.stringify(raw)} — falling through to cli-settings\n`
-      ),
-  });
-  if (choice.provider === "ollama") return ollamaE(choice.source);
-  const cloud = cloudEmbeddingProvider(choice);
-  if (cloud) return { provider: cloud, status: { on: true, providerId: cloud.id, source: choice.source } };
-  return offE(choice.source);
-}
-
-function ollamaE(source: EmbeddingSource): { provider: EmbeddingProvider; status: EmbeddingStatus } {
-  const baseURL = process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434";
-  const model = process.env.BASTRA_EMBEDDING_MODEL ?? "embeddinggemma";
-  // Optional dim override for non-default models (e.g. bge-m3 at 1024 dim).
-  // Number.isFinite guard: `NaN ?? default` keeps NaN, poisoning the index dim.
-  const dimEnv = process.env.BASTRA_EMBEDDING_DIM;
-  const parsed = dimEnv ? Number.parseInt(dimEnv, 10) : undefined;
-  const dim = parsed !== undefined && Number.isFinite(parsed) ? parsed : undefined;
-  const provider = new OllamaEmbeddingProvider({ baseURL, model, dim });
-  return { provider, status: { on: true, providerId: provider.id, source } };
-}
-
-function offE(source: EmbeddingSource): { provider: null; status: EmbeddingStatus } {
-  return { provider: null, status: { on: false, providerId: null, source } };
-}
-
 const VAULT_PATH = envFirst("BASTRA_VAULT_PATH", "NEXUS_VAULT_PATH");
 if (!VAULT_PATH) {
   process.stderr.write("[bastra-recall.bridge] FATAL: BASTRA_VAULT_PATH is not set\n");
@@ -232,6 +172,67 @@ function send(payload: object): void {
     write(attachment ? { ...payload, proactive_due: attachment.due } : payload);
     attachment?.record();
   })().catch(() => write(payload));
+}
+
+/** One request line: task tools go to the task service, everything else to the method table. */
+async function handleLine(line: string, vault: Vault, methods: Record<string, BridgeMethod>): Promise<void> {
+  let req: Request;
+  try {
+    req = JSON.parse(line);
+  } catch {
+    return; // malformed → silently drop, no id to reply to
+  }
+  const { id, method, params } = req;
+  try {
+    if (isTaskTool(method)) {
+      if (!tasksEnabled())
+        throw Object.assign(new Error("Tasks disabled; enable in Settings or with BASTRA_TASKS=1"), {
+          code: "feature_disabled",
+        });
+      const result = isTaskExecution(method)
+        ? await forwardTaskExecution(method, params ?? {}, await taskClientAuthorization())
+        : await callTaskCrud(
+            defaultTaskContext({ vault, vaultPath: VAULT_PATH! }),
+            await taskClientAuthorization(),
+            method,
+            params ?? {}
+          );
+      process.stdout.write(JSON.stringify({ id, result }) + "\n");
+      return;
+    }
+    const run = typeof method === "string" && Object.hasOwn(methods, method) ? methods[method] : undefined;
+    if (!run) throw new Error(`unknown method: ${method}`);
+    send({ id, result: await run(params) });
+  } catch (err) {
+    send({
+      id,
+      error: isTaskTool(method) ? taskFailure(err).body : { message: err instanceof Error ? err.message : String(err) },
+    });
+  }
+}
+
+/**
+ * Shared learned-recall (#120): the bridge pool, so the Mac-app recall surface
+ * widens queries consistently with the MCP + hook paths. Same gate as index.ts —
+ * off ⇒ null pool ⇒ expandQuery is a no-op. Degrades to the raw query.
+ */
+async function loadSharedRecall(): Promise<{
+  learnedBridges: BridgePool | null;
+  sharedRecallLang: SupportedLanguage | null;
+}> {
+  if (!(await getSharedRecallEnabled())) return { learnedBridges: null, sharedRecallLang: null };
+  try {
+    migrateBridgesPool(); // #648: the app may start before the daemon does
+  } catch {
+    /* the daemon's own start retries and logs it */
+  }
+  try {
+    const learnedBridges = BridgePool.load(bridgesPath(), undefined, { live: await getSharedRecallLive() });
+    const lang = await getSharedRecallLanguage();
+    return { learnedBridges, sharedRecallLang: isSupportedLanguage(lang) ? lang : null };
+  } catch {
+    return { learnedBridges: null, sharedRecallLang: null };
+  }
 }
 
 async function main(): Promise<void> {
@@ -262,25 +263,15 @@ async function main(): Promise<void> {
   search.start();
   const auditLog = new AuditLog(VAULT_PATH!);
 
-  // Shared learned-recall (#120): load the bridge pool so the Mac-app recall
-  // surface widens queries consistently with the MCP + hook paths. Same gate as
-  // index.ts — off ⇒ null pool ⇒ expandQuery is a no-op. Degrades to raw query.
-  let learnedBridges: BridgePool | null = null;
-  let sharedRecallLang: SupportedLanguage | null = null;
-  if (await getSharedRecallEnabled()) {
-    try {
-      migrateBridgesPool(); // #648: the app may start before the daemon does
-    } catch {
-      /* the daemon's own start retries and logs it */
-    }
-    try {
-      learnedBridges = BridgePool.load(bridgesPath(), undefined, { live: await getSharedRecallLive() });
-      const lang = await getSharedRecallLanguage();
-      sharedRecallLang = isSupportedLanguage(lang) ? lang : null;
-    } catch {
-      learnedBridges = null;
-    }
-  }
+  const { learnedBridges, sharedRecallLang } = await loadSharedRecall();
+  const methods = createBridgeMethods({
+    vault,
+    search,
+    auditLog,
+    vaultPath: VAULT_PATH!,
+    learnedBridges,
+    sharedRecallLang,
+  });
 
   // Optional: Embedding-Index für semantische Recall-Suche. Provider wird per
   // BASTRA_EMBEDDING_PROVIDER gewählt (ollama|openai|none) und mit BM25 via RRF
@@ -305,287 +296,7 @@ async function main(): Promise<void> {
 
   const rl = readline.createInterface({ input: process.stdin });
 
-  rl.on("line", async (line) => {
-    let req: Request;
-    try {
-      req = JSON.parse(line);
-    } catch {
-      return; // malformed → silently drop, no id to reply to
-    }
-    const { id, method, params } = req;
-    try {
-      let result: unknown;
-      if (isTaskTool(method)) {
-        if (!tasksEnabled())
-          throw Object.assign(new Error("Tasks disabled; enable in Settings or with BASTRA_TASKS=1"), {
-            code: "feature_disabled",
-          });
-        const result = isTaskExecution(method)
-          ? await forwardTaskExecution(method, params ?? {}, await taskClientAuthorization())
-          : await callTaskCrud(
-              defaultTaskContext({ vault, vaultPath: VAULT_PATH! }),
-              await taskClientAuthorization(),
-              method,
-              params ?? {}
-            );
-        process.stdout.write(JSON.stringify({ id, result }) + "\n");
-        return;
-      }
-      switch (method) {
-        case "vault_status":
-          result = { size: vault.size() };
-          break;
-        case "recall": {
-          // Hybrid (BM25 + Vector via RRF) wenn EmbeddingIndex registriert,
-          // sonst plain BM25 (sync). Mac-App sieht IMMER den vollen Vault
-          // inkl. private-Memories → allow_private: true hardgecoded; der
-          // MCP-Server (index.ts) ist die richtige Stelle für externen
-          // Filter. #464: hardgecodet, nicht aus `params` — ein Wert aus der
-          // Nachricht wäre wieder eine selbst ausgestellte Erlaubnis. expand_hops/scope/type sind optional vom Caller.
-          const opts = {
-            k: params?.k as number | undefined,
-            scope: params?.scope as string | undefined,
-            type: params?.type as string | undefined,
-            allow_private: true,
-            expand_hops: (params?.expand_hops === 1 ? 1 : 0) as 0 | 1,
-          };
-          const authoredQuery = String(params?.query ?? "");
-          const recallQuery = expandQuery(authoredQuery, learnedBridges, {
-            configuredLang: sharedRecallLang,
-          }).query;
-          // Anker und Berechtigungen nur aus der authored Query — die
-          // Erweiterung darf Treffer finden, aber keine Absicht behaupten.
-          const anchoredOpts = { ...opts, authored_query: authoredQuery };
-          if (search.hasEmbeddings()) {
-            search
-              .recallHybrid(recallQuery, anchoredOpts)
-              .then((hits) => send({ id, result: hits }))
-              .catch((err: Error) => send({ id, error: { message: err.message } }));
-            return;
-          }
-          result = search.recall(recallQuery, anchoredOpts);
-          break;
-        }
-        case "list_memorys": {
-          const wantType = params?.type as string | undefined;
-          const wantScope = params?.scope as string | undefined;
-          const all = vault.list();
-          const filtered = all
-            .filter((m) => !m.fm.obsolete)
-            .filter((m) => !wantType || m.fm.type === wantType)
-            .filter((m) => !wantScope || scopeEquals(m.fm.scope, wantScope));
-          result = filtered.map((m) => m.fm);
-          break;
-        }
-        case "load_memory": {
-          const m = search.loadFull(String(params?.id ?? ""));
-          result = m
-            ? {
-                id: m.fm.id,
-                frontmatter: m.fm,
-                body: m.body,
-                file_path: m.filePath,
-              }
-            : null;
-          break;
-        }
-        case "save_memory": {
-          // Caller-supplied audit_context wird vor dem Save-Schema getrennt;
-          // Default-Actor für Mac-App-Aufrufe ist "user" (kein expliziter Reason nötig).
-          const rawParams = (params ?? {}) as Record<string, unknown>;
-          const ctxRaw = rawParams.audit_context as Record<string, unknown> | undefined;
-          const { audit_context: _ignored, ...rest } = rawParams;
-          void _ignored;
-          const ctx = AuditContext.parse(ctxRaw ?? { actor: "user" });
-          const parsed = SaveMemoryInput.safeParse(rest);
-          if (!parsed.success) {
-            throw new Error(parsed.error.message);
-          }
-          auditedSave({
-            vault,
-            auditLog,
-            vaultRoot: VAULT_PATH!,
-            input: parsed.data,
-            context: ctx,
-          })
-            .then(async ({ result, audit, audit_warning }) => {
-              await vault.reindexFile(result.file_path);
-              // Codex-Gegenreview Runde 10 (Security): Der Spread schickte
-              // `audit_before`/`audit_after` mit — vollständige
-              // Frontmatter-Abbilder inklusive `sensitivity: private`. Der
-              // MCP-Pfad entfernt sie seit langem ausdrücklich
-              // (`tool-handlers.ts`), die Bridge tat es nicht; derselbe Client
-              // bekam über den einen Weg Audit-Material, über den anderen nicht.
-              const { audit_before: _b, audit_after: _a, ...payload } = result;
-              send({
-                id,
-                result: {
-                  ...payload,
-                  audit_id: audit?.id ?? null,
-                  ...(audit_warning ? { audit_warning } : {}),
-                },
-              });
-            })
-            .catch((err: Error) => {
-              send({ id, error: { message: err.message } });
-            });
-          return;
-        }
-        case "delete_memory": {
-          const targetId = String(params?.id ?? "").trim();
-          if (!targetId) throw new Error("id is required");
-          const ctxRaw = (params as Record<string, unknown> | undefined)?.audit_context as
-            Record<string, unknown> | undefined;
-          const ctx = AuditContext.parse(ctxRaw ?? { actor: "user" });
-          auditedSoftDelete({
-            vault,
-            auditLog,
-            vaultRoot: VAULT_PATH!,
-            memoryID: targetId,
-            context: ctx,
-          })
-            .then(({ id: deletedId, trashPath, audit, audit_warning }) => {
-              send({
-                id,
-                result: {
-                  id: deletedId,
-                  file_path: trashPath,
-                  deleted: true,
-                  audit_id: audit?.id ?? null,
-                  ...(audit_warning ? { audit_warning } : {}),
-                },
-              });
-            })
-            .catch((err: Error) => {
-              send({ id, error: { message: err.message } });
-            });
-          return;
-        }
-        case "restore_memory": {
-          const targetId = String(params?.id ?? "").trim();
-          if (!targetId) throw new Error("id is required");
-          const ctxRaw = (params as Record<string, unknown> | undefined)?.audit_context as
-            Record<string, unknown> | undefined;
-          const ctx = AuditContext.parse(ctxRaw ?? { actor: "user" });
-          const destOverride =
-            typeof (params as Record<string, unknown> | undefined)?.dest_file_path === "string"
-              ? ((params as Record<string, unknown>).dest_file_path as string)
-              : undefined;
-          auditedRestore({
-            auditLog,
-            vault,
-            vaultRoot: VAULT_PATH!,
-            memoryID: targetId,
-            destFilePath: destOverride,
-            context: ctx,
-          })
-            .then(async ({ id: restoredId, restoredTo, audit, audit_warning }) => {
-              // Restore = neuer File-Add für den Vault — explicit reindex.
-              await vault.reindexFile(restoredTo);
-              send({
-                id,
-                result: {
-                  id: restoredId,
-                  file_path: restoredTo,
-                  audit_id: audit?.id ?? null,
-                  ...(audit_warning ? { audit_warning } : {}),
-                },
-              });
-            })
-            .catch((err: Error) => {
-              send({ id, error: { message: err.message } });
-            });
-          return;
-        }
-        case "reindex_file": {
-          // Cloud-Storage chokidar-Watcher kann mehrere Sekunden lagged
-          // sein. Mac-App ruft das nach direktem Sidecar-Write um sofortige
-          // Recall-Konsistenz zu erzwingen (Document-Hub Phase 1.4).
-          const filePath = String(params?.file_path ?? "").trim();
-          if (!filePath) throw new Error("file_path is required");
-          vault
-            .reindexFile(filePath)
-            .then(() => send({ id, result: { reindexed: true, file_path: filePath } }))
-            .catch((err: Error) => send({ id, error: { message: err.message } }));
-          return;
-        }
-        // Produkt-Doku-Settings für die Options-Pane der Mac-App — dünne
-        // Wrapper über das OSS-Settings-File (~/.bastra/cli-settings.json),
-        // damit die App das File nie direkt anfasst.
-        case "docs_settings_get": {
-          Promise.all([getDocsMode(), getDocsLanguage()])
-            .then(([mode, language]) => send({ id, result: { mode, language } }))
-            .catch((err: Error) => send({ id, error: { message: err.message } }));
-          return;
-        }
-        case "docs_settings_set": {
-          const mode = params?.mode;
-          const language = params?.language;
-          (async () => {
-            if (mode !== undefined) {
-              if (!isDocsMode(mode)) {
-                throw new Error(`mode must be one of: ${DOCS_MODES.join(" | ")}`);
-              }
-              await setDocsMode(mode);
-            }
-            if (language !== undefined) {
-              if (!isDocsLanguage(language)) {
-                throw new Error("language must be a short tag like 'en', 'de', 'pt-br'");
-              }
-              await setDocsLanguage(language);
-            }
-            return { mode: await getDocsMode(), language: await getDocsLanguage() };
-          })()
-            .then((result) => send({ id, result }))
-            .catch((err: Error) => send({ id, error: { message: err.message } }));
-          return;
-        }
-        case "audit_history": {
-          const memoryID = String(params?.memory_id ?? "").trim();
-          if (!memoryID) throw new Error("memory_id is required");
-          auditLog
-            .forMemory(memoryID)
-            .then((entries) => send({ id, result: entries }))
-            .catch((err: Error) =>
-              send({
-                id,
-                error: { message: err.message },
-              })
-            );
-          return;
-        }
-        case "audit_recent": {
-          const sinceISO = String(params?.since ?? "");
-          if (!sinceISO) throw new Error("since (ISO timestamp) is required");
-          const filterActor = params?.actor as string | undefined;
-          const filterOp = params?.operation as string | undefined;
-          auditLog
-            .since(sinceISO, {
-              actor: filterActor as never,
-              operation: filterOp as never,
-            })
-            .then((entries) => send({ id, result: entries }))
-            .catch((err: Error) =>
-              send({
-                id,
-                error: { message: err.message },
-              })
-            );
-          return;
-        }
-        default:
-          throw new Error(`unknown method: ${method}`);
-      }
-      send({ id, result });
-    } catch (err) {
-      send({
-        id,
-        error: isTaskTool(method)
-          ? taskFailure(err).body
-          : { message: err instanceof Error ? err.message : String(err) },
-      });
-    }
-  });
+  rl.on("line", (line) => void handleLine(line, vault, methods));
 
   rl.on("close", () => {
     // Stop the reconcile loop explicitly on the bridge's one shutdown path

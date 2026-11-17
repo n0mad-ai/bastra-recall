@@ -137,11 +137,14 @@ function idsOf(value: unknown): string[] {
  * score space, which on such an event can only be its own `score_kind` and
  * `score_arms` — and a daemon that names its arms records the pool on every
  * path, a warm query cache included (#121, #365). Hits without a pool, or no
- * `hits` at all, prove nothing about the pool.
+ * `hits` at all, prove nothing about the pool. Neither does an event that
+ * contradicts itself (#1126): a `hit_count` above zero next to an empty `hits`
+ * list is foreign or damaged telemetry, not an empty pool.
  */
 function provesEmptyPool(event: Record<string, unknown>): boolean {
   const pool = event.candidate_pool;
   if (pool !== undefined && !(Array.isArray(pool) && pool.length === 0)) return false;
+  if (event.hit_count !== undefined && event.hit_count !== 0) return false;
   return Array.isArray(event.hits) && event.hits.length === 0;
 }
 

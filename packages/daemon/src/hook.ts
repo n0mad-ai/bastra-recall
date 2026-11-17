@@ -28,8 +28,6 @@
  * one table for every lane and both client shapes, because a per-file copy is
  * how two lanes once came to write a third lane's event kind.
  */
-import { request as httpRequest } from "node:http";
-import { request as httpsRequest } from "node:https";
 import { envInt } from "./env.js";
 import { writeClientTelemetry } from "./hook-client-telemetry.js";
 import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
@@ -37,6 +35,9 @@ import { shouldSkipPath } from "./hook-skip.js";
 import { decorateHookPayload } from "./hook-surface.js";
 import { normalizeWritePayload } from "./hook-write-input.js";
 import { emitStdout, exitAfterStdout } from "./hook-stdout.js";
+// #1508: the shared wire transport, without the task authorization header
+// thin-client.ts adds — this client never sent it.
+import { classifyTransportError, postHookBody, readStdin } from "./hook-transport.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 600, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_VERSION = "0.4.0-thin";
@@ -51,16 +52,6 @@ interface ClaudeHookPayload {
   tool_input?: Record<string, unknown>;
 }
 
-function readStdin(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (chunk) => (data += chunk));
-    process.stdin.on("end", () => resolve(data));
-    process.stdin.on("error", reject);
-  });
-}
-
 // Ein-Emit-Kontrakt: Claude Code parst stdout als EIN JSON-Dokument.
 let stdoutEmitted = false;
 function emitOnce(payload: string): void {
@@ -71,75 +62,6 @@ function emitOnce(payload: string): void {
 
 function emitEmpty(): void {
   emitOnce("{}");
-}
-
-/** POST the raw payload; resolve with the response body VERBATIM. */
-function postWriteLane(baseUrl: string, body: unknown, timeoutMs: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let url: URL;
-    try {
-      url = new URL("/hook/write", baseUrl);
-    } catch (err) {
-      reject(err);
-      return;
-    }
-    const payload = Buffer.from(JSON.stringify(body), "utf8");
-    // An https:// daemon URL must use TLS, not fall through to plain
-    // HTTP because `request` was always the node:http one regardless of
-    // url.protocol; and `net.isIP()` (which node:http/net use to skip DNS for
-    // a literal address) does not recognize URL's bracketed IPv6 hostname
-    // ("[::1]"), so passing it through as-is sent that literal string to the
-    // resolver and failed with EAI_AGAIN instead of connecting.
-    const isHttps = url.protocol === "https:";
-    const transport = isHttps ? httpsRequest : httpRequest;
-    const defaultPort = isHttps ? 443 : 80;
-    let settled = false;
-    // `timeout` on the options object is Node's socket-IDLE timeout — a
-    // response dripping data never goes idle and never trips it. A plain
-    // setTimeout that destroys the request regardless of activity is a real
-    // deadline.
-    const deadline = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      req.destroy();
-      reject(new Error("timeout"));
-    }, timeoutMs);
-    const req = transport(
-      {
-        method: "POST",
-        hostname: url.hostname.replace(/^\[|\]$/g, ""),
-        port: url.port || defaultPort,
-        path: url.pathname,
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          "Content-Length": payload.byteLength.toString(),
-        },
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (c: Buffer) => chunks.push(c));
-        res.on("end", () => {
-          if (settled) return;
-          clearTimeout(deadline);
-          settled = true;
-          const data = Buffer.concat(chunks).toString("utf8");
-          if ((res.statusCode ?? 500) >= 400) {
-            reject(new Error(`HTTP ${res.statusCode}: ${data.slice(0, 200)}`));
-            return;
-          }
-          resolve(data);
-        });
-      }
-    );
-    req.on("error", (err) => {
-      if (settled) return;
-      clearTimeout(deadline);
-      settled = true;
-      reject(err);
-    });
-    req.write(payload);
-    req.end();
-  });
 }
 
 async function main(): Promise<void> {
@@ -186,17 +108,12 @@ async function main(): Promise<void> {
 
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
   try {
-    const body = await postWriteLane(url, { payload }, remainingMs);
+    const body = await postHookBody(url, "/hook/write", { payload }, remainingMs);
     emitOnce(body);
   } catch (err) {
     const e = err as NodeJS.ErrnoException;
     emitOnce("{}");
-    const status =
-      e.code === "ECONNREFUSED" || e.code === "ENOTFOUND" || e.code === "EHOSTUNREACH"
-        ? "daemon-unreachable"
-        : e.message === "timeout"
-          ? "timeout"
-          : "error";
+    const status = classifyTransportError(e);
     await writeClientTelemetry(
       "write",
       {

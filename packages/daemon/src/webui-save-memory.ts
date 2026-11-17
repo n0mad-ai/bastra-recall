@@ -29,19 +29,12 @@ import { saveMemoryHandler } from "./save-memory-handler.js";
 import { vaultLocator } from "./vault-locator.js";
 import type { ToolDeps } from "./tool-deps.js";
 import { hiddenFromCaller, TRUSTED_LOCAL_APP, type PrivateAccess } from "./private-access.js";
+import { USER_SAVE_TYPES, userDirectedSaveInput } from "./user-save-input.js";
 
-/** Authored types. `doc` and `bookmark` come from importers and carry fields
- *  of their own, so the preview never offers them. */
-export const UI_SAVE_TYPES = [
-  "reference",
-  "project-fact",
-  "decision",
-  "lesson",
-  "workflow",
-  "preference",
-  "user-preference",
-  "meta-working",
-] as const;
+export { summaryFrom } from "./user-save-input.js";
+
+/** Authored types: the preview offers the same ones as `bastra save`. */
+export const UI_SAVE_TYPES = USER_SAVE_TYPES;
 
 export const SAVE_TITLE_MAX = 200;
 const SCOPE_MAX = 80;
@@ -63,21 +56,6 @@ class UiSaveError extends Error {
   ) {
     super(message);
   }
-}
-
-/** First line of the answer as plain text, markdown marks removed; the title
- *  when the answer has no readable line. An over-long summary is clamped by
- *  the save itself. */
-export function summaryFrom(body: string, title: string): string {
-  for (const line of body.split("\n")) {
-    const plain = line
-      .replace(/^\s*(?:#{1,6}|>|[-*+]|\d+[.)])\s+/, "")
-      .replace(/[*_`~]+/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (plain) return plain;
-  }
-  return title;
 }
 
 function textField(raw: unknown, name: string): string {
@@ -143,15 +121,7 @@ const named = (deps: ToolDeps, ids: string[], access?: PrivateAccess) =>
 async function saveDraft(deps: ToolDeps, draft: UiSaveDraft, access?: PrivateAccess): Promise<Record<string, unknown>> {
   const privateSources = draft.sources.filter((id) => deps.vault.get(id)?.fm.sensitivity === "private");
   const input = {
-    title: draft.title,
-    type: draft.type,
-    scope: draft.scope,
-    body: draft.body,
-    summary: summaryFrom(draft.body, draft.title),
-    topic_path: [draft.scope],
-    tags: [draft.scope],
-    recall_when: [draft.title],
-    write_origin: "user-directed" as const,
+    ...userDirectedSaveInput(draft),
     ...(privateSources.length ? { sensitivity: "private" as const } : {}),
   };
   // Same target resolution the save uses: an existing memory under this id is

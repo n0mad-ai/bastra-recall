@@ -2,10 +2,9 @@ import { privateContentComparison } from "./task-private-comparison.js";
 import { isLocalTaskState, readLocalTaskState } from "./task-local-state.js";
 import { taskValidityExpired } from "./task-validity.js";
 import { checkTaskDecisions } from "./task-reconsideration.js";
-import { canonicalTaskValue } from "./task-canonical.js";
+import { canonicalTaskValue, taskValueHash } from "./task-canonical.js";
 /** Single task-owned journal and evaluator; no in-memory timer owns work. */
-import { verifyTaskEvent, taskBindingHash } from "./task-freshness.js";
-import { createHash } from "node:crypto";
+import { verifyTaskEvent, taskBindingHash, type TaskEvent, type Verification } from "./task-freshness.js";
 import { realpath, lstat } from "node:fs/promises";
 import { openTaskSourceFile } from "./task-source-file.js";
 import { relative, resolve, isAbsolute } from "node:path";
@@ -18,9 +17,7 @@ import { transactTaskStore, readTaskStore, TaskStoreError, TASK_HISTORY_RESERVE 
 import { latestTimeSlot, timeSlot } from "./task-clock.js";
 import type { TaskServiceContext } from "./task-service.js";
 const exec = promisify(execFile);
-export function taskValueHash(value: string): string {
-  return createHash("sha256").update(value, "utf8").digest("hex");
-}
+export { taskValueHash };
 export const taskEventInput = z.strictObject({
   source_id: taskIdentitySchema,
   source_revision: z.number().int().nonnegative().safe(),
@@ -212,6 +209,8 @@ function slotFailed(task: Task, error: unknown, now: number): void {
   task.last_failure = { at: now, code, message: "Time slot needs owner review" };
   audit(task, now, "source-failed");
 }
+const TERMINAL_STATES = ["resolved", "cancelled", "expired"];
+
 /** Pure bounded transaction; journal and logical occurrences commit together. */
 export function evaluateTaskSnapshot(store: TaskStore, now: number): void {
   if (!store.controls.enabled || !store.tasks.length) return;
@@ -222,159 +221,197 @@ export function evaluateTaskSnapshot(store: TaskStore, now: number): void {
     const task = store.tasks[(start + visited++) % store.tasks.length];
     remaining--;
     if (historyFull(task, now)) continue;
-    if (!["resolved", "cancelled", "expired"].includes(task.state) && taskValidityExpired(task, now)) {
-      const id = taskValueHash(JSON.stringify(["task-expiry-v1", task.id, task.generation, task.expires_at]));
-      for (const occurrence of store.occurrences.filter(
-        (o) => o.task_id === task.id && o.generation === task.generation
-      ))
-        occurrence.resolution ??= { at: now, actor: "task-source-reader", reason: "Task validity ended" };
-      if (!store.occurrences.some((o) => o.id === id))
-        store.occurrences.push({
-          id,
-          task_id: task.id,
-          task_revision: task.revision,
-          generation: task.generation,
-          kind: "expired",
-          event_key: `expiry:${task.expires_at}`,
-          due_at: task.expires_at!,
-          why: "Task validity ended; the task expired without a completion claim",
-          missed_count: 0,
-          attempts: [],
-        });
-      task.state = "expired";
-      task.armed = false;
-      delete task.paused;
-      delete task.snoozed_until;
-      delete task.next_slot;
-      delete task.next_check_at;
-      audit(task, now, "expire");
-      continue;
-    }
-    if (
-      !task.armed ||
-      task.paused ||
-      ["resolved", "cancelled", "expired"].includes(task.state) ||
-      (task.state === "snoozed" && task.snoozed_until! > now)
-    )
-      continue;
-    if (task.schedule.kind === "event") {
-      const before = task.last_event_sequence ?? 0;
-      const beforeRevision = task.revision;
-      let checked = 0;
-      for (const event of store.events) {
-        if (event.sequence <= before) continue;
-        if (remaining-- <= 0 || checked++ >= 10) break;
-        if (task.schedule.source_id !== event.source_id) {
-          task.last_event_sequence = event.sequence;
-          continue;
-        }
-        const source = store.sources.find((s) => s.id === event.source_id && s.enabled);
-        if (
-          !source ||
-          !source.owner_domains.every((d) => task.owner_domains.includes(d)) ||
-          !event.value_hash ||
-          !task.schedule.expected_hash
-        ) {
-          task.last_event_sequence = event.sequence;
-          continue;
-        }
-        let verification = verifyTaskEvent(task, event, store, now);
-        if (
-          verification.reason === "premise_requires_evidence_verifier" ||
-          (task.evidence.length && ["verified", "refuted"].includes(verification.outcome))
-        ) {
-          const cached = task.verification;
-          if (
-            !cached ||
-            cached.event_id !== event.id ||
-            cached.binding_hash !== taskBindingHash(task) ||
-            cached.state_updated_at === undefined ||
-            cached.state_updated_at > now ||
-            cached.state_updated_at > cached.observed_at ||
-            !task.evidence.every(
-              (e) =>
-                store.sources.some((s) => s.id === e.source_id && s.enabled) &&
-                (e.state_updated_at === undefined || (e.state_updated_at <= now && e.state_updated_at <= e.observed_at))
-            ) ||
-            now - cached.state_updated_at > cached.max_age_ms
-          ) {
-            break; // ordered evidence checks: never skip an unassessed middle event
-          }
-          verification = cached;
-        }
-        if (!["verified", "refuted"].includes(verification.outcome)) {
-          if (store.events.some((e) => e.source_id === event.source_id && e.sequence > event.sequence)) {
-            task.last_event_sequence = event.sequence;
-            continue;
-          }
-          break; // latest unavailable/inconclusive event stays retryable after recovery
-        }
-        task.last_event_sequence = event.sequence;
-        const materialChanged = task.last_material_hash !== (event.claim?.value_hash ?? event.value_hash);
-        task.last_material_hash = event.claim?.value_hash ?? event.value_hash;
-        const matches =
-          task.schedule.predicate === "equals"
-            ? verification.outcome === "verified"
-            : verification.outcome === "refuted";
-        if (matches && materialChanged) fire(store, task, `event:${event.id}`, event.observed_at, now);
-      }
-      if (task.last_event_sequence !== before && task.revision === beforeRevision) audit(task, now, "journal-check");
-      if (task.state === "snoozed") {
-        task.state = "due";
-        delete task.snoozed_until;
-        audit(task, now, "unsnooze");
-      }
-      continue;
-    }
-    try {
-      if (task.evidence.length) {
-        const verification = task.verification;
-        if (
-          !verification ||
-          verification.binding_hash !== taskBindingHash(task) ||
-          verification.outcome !== "verified" ||
-          verification.state_updated_at === undefined ||
-          verification.state_updated_at > now ||
-          verification.state_updated_at > verification.observed_at ||
-          !task.evidence.every(
-            (e) =>
-              store.sources.some((s) => s.id === e.source_id && s.enabled) &&
-              (e.state_updated_at === undefined || (e.state_updated_at <= now && e.state_updated_at <= e.observed_at))
-          ) ||
-          now - verification.state_updated_at > verification.max_age_ms
-        )
-          continue;
-      }
-      // The saved next slot is frozen across restarts/tzdata changes.
-      if (task.next_slot && task.next_slot.at > now) continue;
-      const latest = latestTimeSlot(task, now);
-      if (latest && latest.index >= (task.slots_checked ?? 0)) {
-        const slot = task.next_slot?.index === latest.index ? task.next_slot : latest.slot;
-        fire(store, task, `time:${slot.key}`, slot.at, now, latest.index - (task.slots_checked ?? 0));
-        task.slots_checked = latest.index + 1;
-        const next =
-          task.recurrence && (task.recurrence.count === undefined || task.slots_checked < task.recurrence.count)
-            ? timeSlot(task, task.slots_checked)
-            : undefined;
-        if (next && (task.recurrence?.until === undefined || next.at <= task.recurrence.until)) {
-          task.next_slot = { ...next, index: task.slots_checked };
-          task.next_check_at = next.at;
-        } else {
-          delete task.next_slot;
-          delete task.next_check_at;
-        }
-      } else if (task.state === "snoozed") {
-        task.state = "due";
-        delete task.snoozed_until;
-        audit(task, now, "unsnooze");
-      }
-    } catch (error) {
-      slotFailed(task, error, now);
+    if (!TERMINAL_STATES.includes(task.state) && taskValidityExpired(task, now)) expireTask(store, task, now);
+    else if (!taskRests(task, now)) {
+      if (task.schedule.kind === "event") remaining = evaluateEventTask(store, task, now, remaining);
+      else evaluateTimeTask(store, task, now);
     }
   }
   store.evaluation_cursor = (start + visited) % store.tasks.length;
+  advanceEventCheckpoint(store);
+}
+
+/** Validity ended: open occurrences resolve, one expiry occurrence, the task stops. */
+function expireTask(store: TaskStore, task: Task, now: number): void {
+  const id = taskValueHash(JSON.stringify(["task-expiry-v1", task.id, task.generation, task.expires_at]));
+  for (const occurrence of store.occurrences.filter((o) => o.task_id === task.id && o.generation === task.generation))
+    occurrence.resolution ??= { at: now, actor: "task-source-reader", reason: "Task validity ended" };
+  if (!store.occurrences.some((o) => o.id === id))
+    store.occurrences.push({
+      id,
+      task_id: task.id,
+      task_revision: task.revision,
+      generation: task.generation,
+      kind: "expired",
+      event_key: `expiry:${task.expires_at}`,
+      due_at: task.expires_at!,
+      why: "Task validity ended; the task expired without a completion claim",
+      missed_count: 0,
+      attempts: [],
+    });
+  task.state = "expired";
+  task.armed = false;
+  delete task.paused;
+  delete task.snoozed_until;
+  delete task.next_slot;
+  delete task.next_check_at;
+  audit(task, now, "expire");
+}
+
+/** Unarmed, paused, finished or still snoozed tasks are not evaluated. */
+function taskRests(task: Task, now: number): boolean {
+  return (
+    !task.armed ||
+    Boolean(task.paused) ||
+    TERMINAL_STATES.includes(task.state) ||
+    (task.state === "snoozed" && task.snoozed_until! > now)
+  );
+}
+
+function unsnooze(task: Task, now: number): void {
+  if (task.state !== "snoozed") return;
+  task.state = "due";
+  delete task.snoozed_until;
+  audit(task, now, "unsnooze");
+}
+
+/** A stored verification still holds: same binding, plausible and young enough
+ *  state times, and every evidence source still enabled. */
+function verificationStillFresh(store: TaskStore, task: Task, verification: Verification, now: number): boolean {
+  return !(
+    verification.binding_hash !== taskBindingHash(task) ||
+    verification.state_updated_at === undefined ||
+    verification.state_updated_at > now ||
+    verification.state_updated_at > verification.observed_at ||
+    !task.evidence.every(
+      (e) =>
+        store.sources.some((s) => s.id === e.source_id && s.enabled) &&
+        (e.state_updated_at === undefined || (e.state_updated_at <= now && e.state_updated_at <= e.observed_at))
+    ) ||
+    now - verification.state_updated_at > verification.max_age_ms
+  );
+}
+
+/** Walks at most ten new journal events in order; returns the remaining budget. */
+function evaluateEventTask(store: TaskStore, task: Task, now: number, remaining: number): number {
+  const before = task.last_event_sequence ?? 0;
+  const beforeRevision = task.revision;
+  let checked = 0;
+  for (const event of store.events) {
+    if (event.sequence <= before) continue;
+    if (remaining-- <= 0 || checked++ >= 10) break;
+    if (!eventConcernsTask(store, task, event)) {
+      task.last_event_sequence = event.sequence;
+      continue;
+    }
+    if (!applyTaskEvent(store, task, event, now)) break;
+  }
+  if (task.last_event_sequence !== before && task.revision === beforeRevision) audit(task, now, "journal-check");
+  unsnooze(task, now);
+  return remaining;
+}
+
+/** The event comes from the task's enabled source within its domains and carries hashes to compare. */
+function eventConcernsTask(store: TaskStore, task: Task, event: TaskEvent): boolean {
+  if (task.schedule.kind !== "event" || task.schedule.source_id !== event.source_id) return false;
+  const source = store.sources.find((s) => s.id === event.source_id && s.enabled);
+  return Boolean(
+    source &&
+    source.owner_domains.every((d) => task.owner_domains.includes(d)) &&
+    event.value_hash &&
+    task.schedule.expected_hash
+  );
+}
+
+/** The event's verification; with bound evidence only the assessed, fresh cached
+ *  result for exactly this event counts. Null: stop, never skip an unassessed middle event. */
+function eventVerification(
+  store: TaskStore,
+  task: Task,
+  event: TaskEvent,
+  now: number
+): ReturnType<typeof verifyTaskEvent> | Verification | null {
+  const verification = verifyTaskEvent(task, event, store, now);
+  if (
+    verification.reason !== "premise_requires_evidence_verifier" &&
+    !(task.evidence.length && ["verified", "refuted"].includes(verification.outcome))
+  )
+    return verification;
+  const cached = task.verification;
+  if (!cached || cached.event_id !== event.id || !verificationStillFresh(store, task, cached, now)) return null;
+  return cached;
+}
+
+/** One relevant event: verify, advance the journal, fire on a material match.
+ *  Returns false where the walk must stop so the event stays retryable. */
+function applyTaskEvent(store: TaskStore, task: Task, event: TaskEvent, now: number): boolean {
+  const verification = eventVerification(store, task, event, now);
+  if (!verification) return false;
+  if (!["verified", "refuted"].includes(verification.outcome)) {
+    // latest unavailable/inconclusive event stays retryable after recovery
+    if (!store.events.some((e) => e.source_id === event.source_id && e.sequence > event.sequence)) return false;
+    task.last_event_sequence = event.sequence;
+    return true;
+  }
+  task.last_event_sequence = event.sequence;
+  const materialChanged = task.last_material_hash !== (event.claim?.value_hash ?? event.value_hash);
+  task.last_material_hash = event.claim?.value_hash ?? event.value_hash;
+  const matches =
+    task.schedule.kind === "event" && task.schedule.predicate === "equals"
+      ? verification.outcome === "verified"
+      : verification.outcome === "refuted";
+  if (matches && materialChanged) fire(store, task, `event:${event.id}`, event.observed_at, now);
+  return true;
+}
+
+/** Time tasks fire their latest due slot once bound evidence is verified and fresh. */
+function evaluateTimeTask(store: TaskStore, task: Task, now: number): void {
+  try {
+    if (task.evidence.length) {
+      const verification = task.verification;
+      if (
+        !verification ||
+        verification.outcome !== "verified" ||
+        !verificationStillFresh(store, task, verification, now)
+      )
+        return;
+    }
+    // The saved next slot is frozen across restarts/tzdata changes.
+    if (task.next_slot && task.next_slot.at > now) return;
+    const latest = latestTimeSlot(task, now);
+    if (latest && latest.index >= (task.slots_checked ?? 0)) fireTimeSlot(store, task, latest, now);
+    else unsnooze(task, now);
+  } catch (error) {
+    slotFailed(task, error, now);
+  }
+}
+
+function fireTimeSlot(
+  store: TaskStore,
+  task: Task,
+  latest: NonNullable<ReturnType<typeof latestTimeSlot>>,
+  now: number
+): void {
+  const slot = task.next_slot?.index === latest.index ? task.next_slot : latest.slot;
+  fire(store, task, `time:${slot.key}`, slot.at, now, latest.index - (task.slots_checked ?? 0));
+  task.slots_checked = latest.index + 1;
+  const next =
+    task.recurrence && (task.recurrence.count === undefined || task.slots_checked < task.recurrence.count)
+      ? timeSlot(task, task.slots_checked)
+      : undefined;
+  if (next && (task.recurrence?.until === undefined || next.at <= task.recurrence.until)) {
+    task.next_slot = { ...next, index: task.slots_checked };
+    task.next_check_at = next.at;
+  } else {
+    delete task.next_slot;
+    delete task.next_check_at;
+  }
+}
+
+/** The journal checkpoint never passes an armed event watcher. */
+function advanceEventCheckpoint(store: TaskStore): void {
   const watchers = store.tasks.filter(
-    (t) => t.armed && t.schedule.kind === "event" && !["resolved", "cancelled", "expired"].includes(t.state)
+    (t) => t.armed && t.schedule.kind === "event" && !TERMINAL_STATES.includes(t.state)
   );
   const cursor = watchers.length
     ? Math.min(...watchers.map((t) => t.last_event_sequence ?? 0))

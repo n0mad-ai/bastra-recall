@@ -74,6 +74,8 @@ test(
       assert.ok(result.details);
       assert.equal(result.features.recallHooks, true);
       assert.equal(result.features.stopHook, scenario !== "optional-stop");
+      // #1474: the fixture CLI reports no parseable version, so no gate is claimed.
+      assert.deepEqual(result.features.rulebookGate, { version: null, verified: false });
       assert.match(result.message, /save notice missing.*bastra install codex/);
       assert.match(result.details["save-notice-hook"], /MISSING/);
       assert.match(result.details["hook-trust"], /\/hooks/);

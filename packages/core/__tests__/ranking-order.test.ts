@@ -31,7 +31,10 @@ function flush(emb: EmbeddingIndex): Promise<void> {
   return (emb as unknown as { flushQueue(): Promise<void> }).flushQueue();
 }
 
-function memoryMd(id: string, opts: { updated?: string; type?: string; marker?: string; scope?: string } = {}): string {
+function memoryMd(
+  id: string,
+  opts: { updated?: string; type?: string; marker?: string; scope?: string; expiresAfterDays?: number } = {}
+): string {
   const marker = opts.marker ?? "ANCHORWORD";
   return `---
 id: ${id}
@@ -44,7 +47,7 @@ scope: ${opts.scope ?? "t"}
 recall_when: ["${marker}"]
 created: 2020-01-01
 updated: ${opts.updated ?? "2026-07-01"}
----
+${opts.expiresAfterDays !== undefined ? `expires_after_days: ${opts.expiresAfterDays}\n` : ""}---
 
 Body ${marker} ${id}.
 `;
@@ -89,18 +92,26 @@ async function vaultWith(t: { after: (fn: () => unknown) => void }, files: Recor
 }
 
 test("A7: k=1 returns the true top-1 after lifecycle damping, not before", async (t) => {
-  // Two equally-matching notes: one scores higher raw but is long expired
-  // (multiplier 0.2), the other is fresh. With the cut before the multiplier,
-  // k=1 served the expired one.
+  // The higher raw score loses only after an explicit deadline applies the
+  // 0.2 multiplier. Cutting first would keep the expired note at k=1.
   const { search } = await vaultWith(t, {
-    "expired.md": memoryMd("expired-hi", { updated: "2020-01-01", marker: "ANCHORWORD ANCHORWORD" }),
+    "expired.md": memoryMd("expired-hi", {
+      updated: "2020-01-01",
+      marker: "ANCHORWORD ANCHORWORD",
+      expiresAfterDays: 180,
+    }),
     "fresh.md": memoryMd("fresh-lo", { updated: "2026-07-01", marker: "ANCHORWORD" }),
   });
-
-  const top10 = search.recall("ANCHORWORD", { k: 10 });
+  assert.equal(
+    search.recall("ANCHORWORD", { k: 1, reference_time: new Date("2020-02-01T00:00:00Z") })[0].id,
+    "expired-hi",
+    "before expiration the higher raw score must win"
+  );
+  const reference_time = new Date("2026-07-15T00:00:00Z");
+  const top10 = search.recall("ANCHORWORD", { k: 10, reference_time });
   const trueTop = top10[0].id;
 
-  const top1 = search.recall("ANCHORWORD", { k: 1 });
+  const top1 = search.recall("ANCHORWORD", { k: 1, reference_time });
   assert.equal(top1.length, 1);
   assert.equal(top1[0].id, trueTop, `k=1 must serve the same winner as k=10 (got ${top1[0].id}, true top ${trueTop})`);
   assert.equal(trueTop, "fresh-lo", "the fresh note must win once damping is applied");

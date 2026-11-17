@@ -206,24 +206,21 @@ function readTrash(path: string, now: number): Deleted[] {
   return parsed.data.deleted.filter((d) => d.deleted_at + RESTORE_WINDOW_MS > now);
 }
 
-/** Newest last; the oldest give way when the record would grow past the store's size limit. */
+/** Keep the latest deletes. A byte-capacity failure leaves earlier undo entries intact. */
 function writeTrash(path: string, deleted: Deleted[]) {
-  const kept = deleted.slice(-TRASH_MAX);
-  let payload = JSON.stringify({ version: 1, deleted: kept });
-  while (kept.length && Buffer.byteLength(payload) > STORE_MAX_BYTES) {
-    kept.shift();
-    payload = JSON.stringify({ version: 1, deleted: kept });
-  }
+  const payload = JSON.stringify({ version: 1, deleted: deleted.slice(-TRASH_MAX) });
+  if (Buffer.byteLength(payload) > STORE_MAX_BYTES) throw storeFull();
   writeAppRecord(TRASH_NAMESPACE, path, payload);
 }
 
-/** Keeps a deleted report for undo. Delete never fails over this: an unreadable trash only
- * means no undo for this report (and stays untouched). True when it can be restored. */
+/** Keeps a deleted report for undo. An unreadable trash stays untouched and does
+ * not block deletion, but exceeding the byte limit leaves the report active. */
 function keepDeleted(path: string, report: TaskReport, now: number): boolean {
   try {
     writeTrash(path, [...readTrash(path, now), { deleted_at: now, report }]);
     return true;
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "capacity") throw error;
     return false;
   }
 }
@@ -461,7 +458,7 @@ export function reportsWithHandedNotes(ctx: ReportContext, principal: TaskPrinci
 }
 
 /** Case and Unicode form never decide a match (as in the UI's list search). */
-const fold = (s: string) => s.toLowerCase().normalize("NFKC");
+const fold = (s: string) => s.normalize("NFKC").toLowerCase();
 /** Every word of the query occurs in title, project or text; an empty query matches all. */
 function matches(r: TaskReport, query: string | undefined) {
   const words = fold(query ?? "")

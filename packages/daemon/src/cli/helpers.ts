@@ -1,5 +1,5 @@
 /** Shared installer helpers, including Codex vault discovery (#15). */
-import { copyFile, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { request as httpRequest } from "node:http";
@@ -224,12 +224,28 @@ export async function readJsonConfig(p: string): Promise<ParsedConfig | { error:
   }
 }
 
+/**
+ * Copy a config aside before an installer rewrites it (#1524). The backup is
+ * created private (0600) by the very write that creates it: `copyFile` would
+ * carry the source mode over, and a chmod afterwards leaves a window. "wx"
+ * never writes through an existing path or a symlink planted at the
+ * predictable name; a collision within the same millisecond gets a suffix so
+ * the first backup (the user's original) is never replaced by a later one.
+ */
 export async function backupConfig(configPath: string): Promise<string | null> {
   if (!(await fileExists(configPath))) return null;
+  const content = await readFile(configPath);
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
-  const backupPath = `${configPath}.bak-${ts}`;
-  await copyFile(configPath, backupPath);
-  return backupPath;
+  const base = `${configPath}.bak-${ts}`;
+  for (let n = 0; ; n++) {
+    const backupPath = n === 0 ? base : `${base}-${n}`;
+    try {
+      await writeFile(backupPath, content, { flag: "wx", mode: 0o600 });
+      return backupPath;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST" || n >= 99) throw e;
+    }
+  }
 }
 
 export async function atomicWriteJson(configPath: string, data: unknown): Promise<void> {

@@ -29,10 +29,9 @@ import { confirmLaneDelivery } from "./lane-delivery.js";
  * as `additionalContext` — never a deny — and starts the count again. A
  * must-load the agent answered with a load and a reflex rule the gate
  * delivered become the session's active conventions, which head the kernel.
- * #1461: a kernel this agent (main thread or one subagent) already received
- * byte-identically in this session comes as a short reminder instead; a
- * changed kernel, a new agent, or a compact/clear (which drops the session's
- * constants) gets the full text again.
+ * #1461: an identical kernel directly delivered to the same agent in this
+ * context can be replaced by a short reminder. HTTP finish settles the
+ * cadence; the next due HTTP hook receives the full text.
  *
  * A denial is not a load and not a surfaced hint: this lane reports nothing to
  * /hook/hinted and writes no usage. A load the agent makes after a denial is an
@@ -56,9 +55,19 @@ import { dimensionsFrom } from "./telemetry-dimensions.js";
 import { defaultLogDir } from "./telemetry.js";
 import { isReflexPoolMember, matchReflexPool, reflexConfig, reflexPool, type ReflexMatch } from "./reflex.js";
 import {
+  actionClaimable,
+  claimActionRules,
+  claimPendingMustLoad,
+  claimReflex,
+  countAndExpireDelivery,
+  reserveKernel,
+  KERNEL_DELIVERY,
+  KERNEL_RETRY_AT,
+  type ActionMustLoad,
+} from "./gate-lane-claims.js";
+import {
   loadSessionState,
   mutateSessionState,
-  recordActiveConventions,
   recordClaimedMustLoad,
   type ActiveConvention,
   type PendingMustLoad,
@@ -78,9 +87,6 @@ export const MAX_ACTION_CONTEXT_CHARS = 8 * 1024 - 1;
 /** Body characters one deny may carry; past it a rule is named, not quoted. */
 export const REFLEX_BODY_BUDGET_CHARS = 4000;
 /** Reflex claims remembered per session. */
-const DENIED_REFLEX_CAP = 200;
-const KERNEL_DELIVERY = "rule-kernel-delivery";
-const KERNEL_RETRY_AT = "rule-kernel-retry-at";
 /** Pool eligibility: only a rule the user dictated and rated as weighty. */
 const MIN_SALIENCE = 0.8;
 
@@ -101,14 +107,7 @@ export interface GateDeps {
   /** A tool-specific inline gate must not double count the catch-all call. */
   countTool?: boolean;
   /** Tool-specific rules delivered to this subagent, independent of its parent hints. */
-  actionMustLoad?: {
-    ids: readonly string[];
-    key: string;
-    summaries?: ReadonlyMap<string, string>;
-    origins?: ReadonlyMap<string, string | undefined>;
-    revisions?: ReadonlyMap<string, string | null>;
-    onClaim?: (ids: readonly string[]) => void;
-  };
+  actionMustLoad?: ActionMustLoad;
   /** The action-time reflex pool, already filtered (see actionReflexPool). */
   reflexPool: () => readonly Memory[];
   /** Testable advisory telemetry; failure must never alter gate delivery. */
@@ -417,146 +416,54 @@ async function gate(
   try {
     const persisted = await mutateSessionState(
       sessionId,
+      // #1525: the decisions are named steps (gate-lane-claims.ts), run here in
+      // one locked mutation in their original order.
       (state) => {
-        if (deps.countTool !== false) state.toolCalls = (state.toolCalls ?? 0) + 1;
-        let delivery;
-        try {
-          delivery = JSON.parse(state.constants?.[KERNEL_DELIVERY] ?? "null");
-        } catch {
-          /* invalid marker */
-        }
-        if (delivery && Date.now() >= delivery.deadline) {
-          delete state.constants![KERNEL_DELIVERY];
-          state.toolCalls = (state.toolCalls ?? 0) + (delivery.calls ?? RULE_KERNEL_TOOL_CALLS);
-          delivery = null;
-        }
+        const delivery = countAndExpireDelivery(state, deps.countTool !== false);
         claimedMustLoad = [];
         claimedReflex = [];
         kernelActive = null;
         previousActive = [...(state.activeConventions ?? [])];
         previousClaims = [...(state.claimedMustLoad ?? [])];
-        if (!subagent && state.pendingMustLoad !== undefined && state.pendingMustLoad.length > 0) {
-          claimedMustLoad = state.pendingMustLoad;
+        const pending = claimPendingMustLoad(state, subagent);
+        if (pending) {
+          claimedMustLoad = pending;
           legacyPending = [...claimedMustLoad];
-          delete state.pendingMustLoad;
         }
         const action = deps.actionMustLoad;
-        if (action && requiredActionIds.length && actionScope === actionRulebookScope(state) && !expired()) {
-          if (state.constants?.[`${action.key}:scope`] !== actionScope) {
-            const prefix = `${action.key}:attempt:`;
-            for (const key of Object.keys(state.constants ?? {}))
-              if (key.startsWith(prefix)) {
-                try {
-                  if (JSON.parse(state.constants![key]).newClaim)
-                    state.claimedMustLoad = state.claimedMustLoad?.filter((id) => id !== key.slice(prefix.length));
-                } catch {}
-                delete state.constants![key];
-              }
-            (state.constants ??= {})[action.key] = "[]";
-            state.constants[`${action.key}:revisions`] = "{}";
-            state.constants[`${action.key}:scope`] = actionScope;
-          }
-          const seen = new Set<string>(JSON.parse(state.constants?.[action.key] ?? "[]"));
-          const revisions = JSON.parse(state.constants?.[`${action.key}:revisions`] ?? "{}");
-          for (const id of seen)
-            if (
-              Object.hasOwn(revisions, id) &&
-              action.revisions?.has(id) &&
-              revisions[id] !== action.revisions.get(id)
-            ) {
-              seen.delete(id);
-              delete revisions[id];
-            }
-          if (state.constants?.[`${action.key}:revisions`])
-            state.constants[`${action.key}:revisions`] = JSON.stringify(revisions);
-          // A process crash or dropped response leaves a reservation, not a spent delivery.
-          for (const id of seen) {
-            const key = `${action.key}:attempt:${id}`,
-              raw = state.constants?.[key];
-            if (!raw) continue;
-            try {
-              const marker = JSON.parse(raw);
-              if (
-                (!marker.delivered && Date.now() >= marker.deadline) ||
-                (action.revisions?.has(id) && marker.revision !== action.revisions.get(id))
-              ) {
-                seen.delete(id);
-                delete state.constants![key];
-                if (marker.newClaim) state.claimedMustLoad = state.claimedMustLoad?.filter((value) => value !== id);
-              }
-            } catch {
-              /* legacy marker */
-            }
-          }
-          // C has already resolved actual full loads and accepted exceptions for
-          // this actor/revision. Applicability alone never answers an action rule.
-          const pending = new Set(requiredActionIds);
-          const ids = action.ids.filter((id) => pending.has(id) && !seen.has(id)).slice(0, 20);
-          actionIds = ids;
-          newActionClaims = rulebookDenied
-            ? ids.filter((id) => !state.claimedMustLoad?.includes(id) && !claimedMustLoad.some((e) => e.id === id))
-            : [];
-          const alreadyClaimed = new Set(claimedMustLoad.map((e) => e.id));
-          for (const id of ids) {
-            seen.add(id);
-            if (rulebookDenied && !alreadyClaimed.has(id))
-              claimedMustLoad.push({ id, block: action.key, at: Date.now() });
-          }
-          if (ids.length) {
-            (state.constants ??= {})[action.key] = JSON.stringify([...seen].slice(-200));
-            for (const old of [...seen].slice(0, -200)) delete state.constants[`${action.key}:attempt:${old}`];
-            for (const id of ids)
-              state.constants[`${action.key}:attempt:${id}`] = JSON.stringify({
-                token: actionToken,
-                deadline: Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity),
-                delivered: false,
-                revision: action.revisions?.get(id) ?? null,
-                newClaim: newActionClaims.includes(id),
-              });
-          }
-          action.onClaim?.(ids);
+        if (actionClaimable(state, action, requiredActionIds, actionScope, expired())) {
+          const claim = claimActionRules(state, {
+            action,
+            requiredActionIds,
+            actionScope,
+            rulebookDenied,
+            claimedMustLoad,
+            token: actionToken,
+            deadline: Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity),
+          });
+          actionIds = claim.ids;
+          newActionClaims = claim.newClaims;
         }
-        if (reflexCandidates.length > 0) {
-          const denied = new Set(state.deniedReflex ?? []);
-          claimedReflex = reflexCandidates.filter((m) => !denied.has(m.memory.fm.id));
-          if (claimedReflex.length > 0) {
-            for (const m of claimedReflex) denied.add(m.memory.fm.id);
-            state.deniedReflex = [...denied].slice(-DENIED_REFLEX_CAP);
-            recordActiveConventions(
-              state,
-              claimedReflex.map((m) => ({
-                id: m.memory.fm.id,
-                ...(reflexRevisions.get(m.memory.fm.id) ?? { revision: null }),
-              }))
-            );
-          }
-        }
+        claimedReflex = claimReflex(state, reflexCandidates, reflexRevisions);
         if (claimedMustLoad.length > 0)
           recordClaimedMustLoad(
             state,
             claimedMustLoad.map((e) => e.id)
           );
         // A deny or action context carries its own message; the kernel waits.
-        if (
-          deps.kernel &&
+        const quiet =
+          !!deps.kernel &&
           !rulebookDenied &&
           actionIds.length === 0 &&
           claimedMustLoad.length === 0 &&
-          claimedReflex.length === 0 &&
-          !delivery &&
-          Date.now() >= Number(state.constants?.[KERNEL_RETRY_AT] ?? 0) &&
-          (state.toolCalls ?? 0) >= RULE_KERNEL_TOOL_CALLS
-        ) {
-          kernelActive = [...(state.activeConventions ?? [])];
-          const calls = state.toolCalls ?? 0;
-          state.toolCalls = 0;
-          (state.constants ??= {})[KERNEL_DELIVERY] = JSON.stringify({
-            token: kernelToken,
-            calls,
-            deadline: Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity),
-          });
-          delete state.constants[KERNEL_RETRY_AT];
-        }
+          claimedReflex.length === 0;
+        kernelActive = reserveKernel(
+          state,
+          quiet,
+          delivery,
+          kernelToken,
+          Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity)
+        );
       },
       { deadline: Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity) }
     );
@@ -711,7 +618,7 @@ async function boundedRulebookAction(
 /**
  * #1305: periodic rule context, never a deny. The count stays due until a
  * context delivery is confirmed; an unavailable catalog retries next call.
- * #1461: an unchanged kernel this agent already received goes out as a reminder.
+ * #1461: directly observed, unchanged context can be shortened to a reminder.
  */
 async function redeliverKernel(
   payload: GatePayload,
@@ -738,7 +645,7 @@ async function redeliverKernel(
       finishKernel(true);
       return "{}";
     }
-    const seen = kernelSeen(payload.agent_id, rendered.text);
+    const seen = kernelSeen(payload, rendered.text);
     const unchanged = await kernelUnchanged(payload.session_id ?? "", seen);
     const text = unchanged
       ? renderKernelReminder(candidates, { trigger, fingerprint: seen.fingerprint })

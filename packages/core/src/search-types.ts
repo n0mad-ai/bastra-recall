@@ -207,6 +207,12 @@ export interface RecallOptions {
    * `query` selbst die authored Query — Aufrufer ohne Expansion ändern nichts.
    */
   authored_query?: string;
+  /**
+   * #1568: the clock the staleness step reads. Unset = now. Only measurements
+   * set it, so two gold-set runs on different days rank the same vault alike;
+   * a pinned call bypasses the staleness cache (see `applyStaleness`).
+   */
+  reference_time?: Date;
 }
 
 export interface IndexDoc {

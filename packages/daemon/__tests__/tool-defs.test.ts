@@ -20,6 +20,7 @@ import {
 
 interface ToolDef {
   name: string;
+  description: string;
   inputSchema: { properties?: Record<string, { type?: string }>; required?: string[] };
 }
 
@@ -73,7 +74,7 @@ test("tool names are unique (no accidental double-registration)", () => {
 
 // ─── #481: the per-client tool surface ───────────────────────────────
 
-const LIFECYCLE_TOOLS = ["archive_memory", "move_document", "recategorize_document"];
+const LIFECYCLE_TOOLS = ["archive_memory", "restore_memory", "move_document", "recategorize_document"];
 
 test("the search surface lists exactly the read tools", () => {
   const names = filterToolDefsForSurface(ALL_TOOL_DEFS as ToolDef[], "search").map((d) => d.name);
@@ -189,4 +190,12 @@ test("#1456: recall says weak_result is hybrid-only and that this tool applies n
   assert.match(description, /without an embedding model \(`score_kind: "bm25"`\) it never appears/);
   assert.match(description, /This tool applies no evidence gate/);
   assert.match(description, /The evidence gate only filters what the hooks inject/);
+});
+
+test("rulebook_check describes the substantive reason required for correspondence exceptions", () => {
+  assert.match(tool("rulebook_check").description, /10\+ substantive characters/);
+});
+
+test("save_memory keeps the stable-preference exception for sensitive personal data", () => {
+  assert.match(tool("save_memory").description, /sensitive personal data unless it is a stable preference/i);
 });

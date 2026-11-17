@@ -14,6 +14,7 @@ import {
   revert,
   restart,
   changeList,
+  changed,
   cliOf,
   entry,
   matches,
@@ -90,7 +91,7 @@ export function findTab(body) {
           const e = entry(k);
           total++;
           if (q && matches(e, nameOf(e), descOf(e), q)) hits++;
-          if (store.changes.has(k)) mods++;
+          if (changed(k)) mods++;
         }
         hitsAll += hits;
         return h(
@@ -128,7 +129,7 @@ export function changesTab(body) {
       n = list.length,
       rsN = list.filter((c) => c.e.restartRequired).length;
     const cards = list.map((c) => {
-      const cli = c.e.local ? null : cliOf(c.e, c.value);
+      const cli = c.invalid || c.e.local ? null : cliOf(c.e, c.value);
       return h(
         "div.st-ch",
         null,
@@ -143,14 +144,18 @@ export function changesTab(body) {
             on: { click: () => revert(c.key) },
           })
         ),
-        h(
-          "div.st-ch__v",
-          null,
-          h("span.st-ch__from", { text: fmt(c.e, c.e.value) }),
-          h("span.st-ch__arr", { text: "→" }),
-          h("span.st-ch__to", { text: fmt(c.e, c.value) })
-        ),
-        h("div.st-ch__cli", null, cli ? [h("span.st-ch__p", { text: "$ " }), cli] : t("st.cli.default"))
+        c.invalid
+          ? h("div.st-ch__v", { text: t("st.json.invalidShort") })
+          : [
+              h(
+                "div.st-ch__v",
+                null,
+                h("span.st-ch__from", { text: fmt(c.e, c.e.value) }),
+                h("span.st-ch__arr", { text: "→" }),
+                h("span.st-ch__to", { text: fmt(c.e, c.value) })
+              ),
+              h("div.st-ch__cli", null, cli ? [h("span.st-ch__p", { text: "$ " }), cli] : t("st.cli.default")),
+            ]
       );
     });
     clear(wrap).append(

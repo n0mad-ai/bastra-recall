@@ -87,7 +87,17 @@ function readPkg(dir) {
 }
 
 function npm(args, timeout) {
-  return spawnSync("npm", args, { cwd: repoRoot, encoding: "utf8", ...(timeout === undefined ? {} : { timeout }) });
+  return spawnSync("npm", args, {
+    cwd: repoRoot,
+    encoding: "utf8",
+    // A synchronous spawn waits for the child to close after a timeout.
+    ...(timeout === undefined ? {} : { timeout, killSignal: "SIGKILL" }),
+  });
+}
+
+function npmViewError(spec, res, output) {
+  const detail = output.trim() || res.error?.message || "no output";
+  return new Error(`npm view ${spec} failed (${res.status}):\n${detail}`, { cause: res.error });
 }
 
 /**
@@ -106,14 +116,13 @@ function fetchPublished(name, version, timeout) {
   }
   const err = `${res.stdout ?? ""}${res.stderr ?? ""}`;
   if (/E404|is not in this registry|no such package/i.test(err)) return null;
-  throw new Error(`npm view ${name}@${version} failed (${res.status}):\n${err.trim()}`, { cause: res.error });
+  throw npmViewError(`${name}@${version}`, res, err);
 }
 
 /** The version the registry currently serves as `latest` for `name`. */
 function fetchLatestTag(name, timeout) {
   const res = npm(["view", name, "dist-tags.latest", ...(verifyOnly ? ["--prefer-online"] : [])], timeout);
-  if (res.error?.code === "ETIMEDOUT") throw new Error(`npm view ${name} timed out`, { cause: res.error });
-  if (res.status !== 0) return null;
+  if (res.status !== 0) throw npmViewError(name, res, `${res.stdout ?? ""}${res.stderr ?? ""}`);
   return (res.stdout ?? "").trim() || null;
 }
 

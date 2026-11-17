@@ -33,7 +33,7 @@ import {
   buildVerificationRecord,
   verificationRecordPath,
   loadVerificationCounts,
-} from "../src/cli/commons.js";
+} from "../src/commons-store.js";
 
 const LONG_SUMMARY =
   "alpha bravo charlie delta echo foxtrot golf hotel india juliett kilo lima mike november " +

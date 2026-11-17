@@ -33,8 +33,6 @@ import { SESSION_START_BUDGET_MS } from "../src/hook-budgets.js";
  * both runtimes and plain node can run this file unchanged — which is also
  * the fallback: `node stub/bastra-hook.ts` behaves identically, just slower.
  */
-import { request as httpRequest } from "node:http";
-import { request as httpsRequest } from "node:https";
 import { envInt } from "../src/env.js";
 import { writeClientTelemetry, type ClientLane } from "../src/hook-client-telemetry.js";
 import { resolveDaemonEndpoint } from "../src/daemon-endpoint.js";
@@ -43,6 +41,10 @@ import { shouldSkipPath } from "../src/hook-skip.js";
 import { decorateHookPayload } from "../src/hook-surface.js";
 import { normalizeWritePayload } from "../src/hook-write-input.js";
 import { emitStdout, exitAfterStdout, stdoutFlushed } from "../src/hook-stdout.js";
+// #1508: the same wire transport as the node clients. No task authorization
+// header — the stub never sent one, and the credential reader stays out of
+// the binary.
+import { classifyTransportError, postHookBody, readStdin } from "../src/hook-transport.js";
 import { STUB_BUILD_INFO } from "./build-info.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", RECALL_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
@@ -98,16 +100,6 @@ interface HookPayload {
   user_message?: string;
 }
 
-function readStdin(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (chunk: string) => (data += chunk));
-    process.stdin.on("end", () => resolve(data));
-    process.stdin.on("error", reject);
-  });
-}
-
 let stdoutEmitted = false;
 /** #1303: what the kill switch needs to leave the gate's failure row. */
 let callStartedAt = Date.now();
@@ -117,86 +109,6 @@ function emitOnce(payload: string): void {
   if (stdoutEmitted) return;
   stdoutEmitted = true;
   emitStdout(payload);
-}
-
-/**
- * `URL#hostname` keeps the brackets for an IPv6 literal (`"[::1]"`),
- * but `net.isIP()` — the check node:http/net use to skip DNS for a literal
- * address — does not recognize a bracketed string as one. Passing it through
- * as `hostname` sent "[::1]" itself to the resolver, which failed with
- * EAI_AGAIN instead of connecting.
- */
-function unbracketHostname(hostname: string): string {
-  return hostname.replace(/^\[|\]$/g, "");
-}
-
-function postLane(baseUrl: string, path: string, body: unknown, timeoutMs: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let url: URL;
-    try {
-      url = new URL(path, baseUrl);
-    } catch (err) {
-      reject(err);
-      return;
-    }
-    const payload = Buffer.from(JSON.stringify(body), "utf8");
-    // An https:// daemon URL must use TLS, not fall through to a
-    // plain-HTTP socket because `request` was always the node:http one.
-    const isHttps = url.protocol === "https:";
-    const transport = isHttps ? httpsRequest : httpRequest;
-    const defaultPort = isHttps ? 443 : 80;
-    let settled = false;
-    // `timeout` on the options object is Node's socket-IDLE timeout — a
-    // response dripping data never goes idle and never trips it. A plain
-    // setTimeout that destroys the request regardless of activity is a real
-    // deadline.
-    const deadline = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      req.destroy();
-      reject(new Error("timeout"));
-    }, timeoutMs);
-    const req = transport(
-      {
-        method: "POST",
-        hostname: unbracketHostname(url.hostname),
-        port: url.port || defaultPort,
-        path: url.pathname,
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          "Content-Length": payload.byteLength.toString(),
-        },
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (c: Buffer) => chunks.push(c));
-        res.on("end", () => {
-          if (settled) return;
-          clearTimeout(deadline);
-          settled = true;
-          const data = Buffer.concat(chunks).toString("utf8");
-          if ((res.statusCode ?? 500) >= 400) {
-            reject(new Error(`HTTP ${res.statusCode}: ${data.slice(0, 200)}`));
-            return;
-          }
-          resolve(data);
-        });
-      }
-    );
-    req.on("error", (err) => {
-      if (settled) return;
-      clearTimeout(deadline);
-      settled = true;
-      reject(err);
-    });
-    req.write(payload);
-    req.end();
-  });
-}
-
-function classifyError(e: NodeJS.ErrnoException): "daemon-unreachable" | "timeout" | "error" {
-  if (e.code === "ECONNREFUSED" || e.code === "ENOTFOUND" || e.code === "EHOSTUNREACH") return "daemon-unreachable";
-  return e.message === "timeout" ? "timeout" : "error";
 }
 
 async function main(): Promise<void> {
@@ -275,37 +187,57 @@ async function main(): Promise<void> {
 
   const remainingMs = Math.max(50, laneBudgetMs(lane) - (Date.now() - startedAt));
   try {
-    const out = await postLane(url, path, body, remainingMs);
+    const out = await postHookBody(url, path, body, remainingMs);
     emitOnce(out);
   } catch (err) {
-    const e = err as NodeJS.ErrnoException;
-    emitOnce("{}");
-    const status = classifyError(e);
-    failureWrite ??= (async () => {
-      if (lane === "gate" || lane === "stop") {
-        const { spoolRulebookFailure } = await import("../src/rulebook-spool.js");
-        await spoolRulebookFailure(payload.session_id ?? null);
-      }
-      await writeClientTelemetry(
-        lane,
-        {
-          daemon_url: url,
-          status,
-          error: status === "error" ? (e.message ?? String(err)) : null,
-          ...(lane === "gate" ? { non_conformance: status === "timeout" ? "gate_timeout" : "gate_unavailable" } : {}),
-          ...(lane === "write"
-            ? {
-                tool_name: payload.tool_name ?? "",
-                file_path: (payload.tool_input as { file_path?: string } | undefined)?.file_path ?? null,
-              }
-            : {}),
-        },
-        startedAt,
-        payload.session_id ?? null,
-        STUB_VERSION
-      );
-    })();
+    await answerFailure(lane, url, err as NodeJS.ErrnoException, payload, startedAt);
   }
+}
+
+/** A call that did not get its answer from the daemon: write the fail-open
+ *  answer now, and start the failure row the exit waits for. */
+async function answerFailure(
+  lane: Lane,
+  url: string,
+  e: NodeJS.ErrnoException,
+  payload: HookPayload,
+  startedAt: number
+): Promise<void> {
+  const status = classifyTransportError(e);
+  // #1473: an unreachable daemon is said once per session (prompt and
+  // session lanes), not answered silently empty. Lazy: only a failure
+  // pays for the import.
+  if (status === "daemon-unreachable")
+    emitOnce(
+      await import("../src/hook-unreachable-notice.js")
+        .then((m) => m.unreachableAnswer(lane, payload.session_id))
+        .catch(() => "{}")
+    );
+  emitOnce("{}");
+  failureWrite ??= (async () => {
+    if (lane === "gate" || lane === "stop") {
+      const { spoolRulebookFailure } = await import("../src/rulebook-spool.js");
+      await spoolRulebookFailure(payload.session_id ?? null);
+    }
+    await writeClientTelemetry(
+      lane,
+      {
+        daemon_url: url,
+        status,
+        error: status === "error" ? (e.message ?? String(e)) : null,
+        ...(lane === "gate" ? { non_conformance: status === "timeout" ? "gate_timeout" : "gate_unavailable" } : {}),
+        ...(lane === "write"
+          ? {
+              tool_name: payload.tool_name ?? "",
+              file_path: (payload.tool_input as { file_path?: string } | undefined)?.file_path ?? null,
+            }
+          : {}),
+      },
+      startedAt,
+      payload.session_id ?? null,
+      STUB_VERSION
+    );
+  })();
 }
 
 if (process.argv[2] === "version") {

@@ -9,6 +9,7 @@
  */
 import { z } from "zod";
 import type { MemoryLocator } from "./memory-locator.js";
+import type { WriteOriginEvidence } from "./schema.js";
 import {
   ConventionValidatorSchema,
   DerivedClaimSchema,
@@ -385,6 +386,13 @@ export interface SaveMemoryCommitOptions {
    * keinen Bestand, über den zu entscheiden wäre.
    */
   precondition?: (previousFrontmatter: Record<string, unknown>) => void;
+  /**
+   * #1496: transport evidence for a save that declares
+   * `write_origin: user-directed`. Set by the daemon from the tool call's
+   * transport, never from the input — `SaveMemoryInput` has no such field, so
+   * a caller cannot write its own.
+   */
+  originEvidence?: WriteOriginEvidence;
   /**
    * KEIN `authority`-Feld mehr. Codex-Gegenreview (P0): Solange die öffentliche
    * Core-API erlaubte, die Auskunft „wo lebt diese id" selbst mitzubringen, war

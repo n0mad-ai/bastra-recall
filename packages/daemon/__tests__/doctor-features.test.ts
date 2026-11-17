@@ -48,6 +48,7 @@ function allOff(): FeatureState {
     ui: false,
     archive: "off",
     archiveLimits: { cap: 10 * 2 ** 30, maxItem: null },
+    documentWrite: false,
     battery: { saver: false },
   };
 }
@@ -69,6 +70,7 @@ function allOn(): FeatureState {
     ui: true,
     archive: "bastra",
     archiveLimits: { cap: 10 * 2 ** 30, maxItem: null },
+    documentWrite: true,
     battery: { saver: true, live: { source: "ac", saving: false } },
   };
 }
@@ -449,4 +451,49 @@ test("doctor says when the archive directory is not the user's own", () => {
   );
   assert.match(line, /○ .*on, but not usable: the archive directory '\/var\/tmp' does not belong to you/);
   assert.match(lineFor(featureLines(allOn()), "archiving rm + git snapshots (Claude Code)"), /✓ .*: on \(/);
+});
+
+test("#1474: Codex rulebook gate shows the installed version and whether it is verified", () => {
+  const s = allOn();
+  s.clients = [
+    {
+      surface: "codex",
+      features: {
+        recallHooks: true,
+        stopHook: true,
+        skill: true,
+        rulebookGate: { version: "0.166.0", verified: true },
+      },
+    },
+  ];
+  assert.match(lineFor(featureLines(s), "codex: rulebook gate"), /✓.*blocking.*0\.166\.0/);
+
+  s.clients[0].features.rulebookGate = { version: "0.167.0", verified: false };
+  const advisory = lineFor(featureLines(s), "codex: rulebook gate");
+  assert.match(advisory, /○.*advisory only.*Codex 0\.167\.0 is not verified/);
+  assert.match(advisory, /verified: 0\.162\.1, 0\.166\.0/);
+
+  s.clients[0].features.rulebookGate = { version: null, verified: false };
+  assert.match(lineFor(featureLines(s), "codex: rulebook gate"), /advisory only.*version unknown/);
+
+  // Clients without a gate (Claude Code) get no such row.
+  assert.ok(!featureLines(allOff()).some((l) => l.includes("rulebook gate")));
+});
+
+test("#1474: document writing is shown on and off, read from the injected environment", async (t) => {
+  assert.match(lineFor(featureLines(allOn()), "document writing (Recall Pulse)"), /✓.*on/);
+  assert.match(lineFor(featureLines(allOff()), "document writing (Recall Pulse)"), /·.*off.*BASTRA_DOCUMENT_WRITE=1/);
+
+  const home = await mkdtemp(join(tmpdir(), "bastra-doctor-docwrite-"));
+  const saved = { HOME: process.env.HOME, URL: process.env.BASTRA_DAEMON_URL };
+  process.env.BASTRA_DAEMON_URL = "http://127.0.0.1:1";
+  process.env.HOME = home;
+  t.after(async () => {
+    process.env.HOME = saved.HOME;
+    if (saved.URL === undefined) delete process.env.BASTRA_DAEMON_URL;
+    else process.env.BASTRA_DAEMON_URL = saved.URL;
+    await rm(home, { recursive: true, force: true });
+  });
+  assert.equal((await collectFeatureState([], null, {})).documentWrite, false);
+  assert.equal((await collectFeatureState([], null, { BASTRA_DOCUMENT_WRITE: "1" })).documentWrite, true);
 });

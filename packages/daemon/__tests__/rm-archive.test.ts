@@ -1366,6 +1366,22 @@ describe("the archive root itself must be the user's own (BASTRA_ARCHIVE_DIR=/va
     assert.match(archiveRootProblem(env, me + 1) ?? "", /does not belong to you/, "the root's own problem comes first");
   });
 
+  it(
+    "#1606 doctor reports an unreadable archive without throwing or changing its permissions",
+    { skip: !posix },
+    () => {
+      const { env } = sandbox();
+      const root = archiveRoot(env);
+      chmodSync(root, 0o300);
+      try {
+        assert.match(archiveRootProblem(env) ?? "", /cannot inspect the archive directory .*EACCES/);
+        assert.equal(statSync(root).mode & 0o777, 0o300);
+      } finally {
+        chmodSync(root, 0o700);
+      }
+    }
+  );
+
   it("rm with another account's root (or a link to one) archives nothing and removes nothing", { skip: !posix }, () => {
     // Revert-check: drop the try/catch around archiveRoot in runRmShim → the error escapes as a stack trace.
     const foreign = "/usr";

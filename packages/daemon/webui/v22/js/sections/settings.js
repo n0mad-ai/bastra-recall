@@ -31,9 +31,11 @@ import {
   groupKeys,
   locked,
   changed,
+  pendingKeys,
   shown,
   setValue,
   revert,
+  setInvalid,
   matches,
 } from "./settings-model.js";
 import { findTab, changesTab } from "./settings-panel.js";
@@ -352,7 +354,7 @@ function secretCtl(e) {
     on: {
       input: () => {
         const raw = input.value.trim();
-        input.classList.remove("is-bad");
+        setInvalid(e.key, null);
         if (!raw) {
           revert(e.key);
           return;
@@ -364,17 +366,26 @@ function secretCtl(e) {
         }
         try {
           store.changes.set(e.key, JSON.parse(raw));
-          emit("value");
         } catch {
-          input.classList.add("is-bad");
+          // The visible text is what Apply must save; until it parses, Apply stays blocked.
+          setInvalid(e.key, input.value);
         }
+        emit("value");
       },
     },
   });
   return {
     nodes: [mask, input],
     wide: true,
+    focus: () => input.focus(),
     sync: () => {
+      const draft = store.invalid.get(e.key);
+      input.classList.toggle("is-bad", draft !== undefined);
+      if (draft !== undefined) {
+        if (document.activeElement !== input) input.value = draft;
+        mask.textContent = t("st.json.invalidShort");
+        return;
+      }
       mask.textContent = changed(e.key) ? t("st.secret.pending") : e.isSet ? "••••••••••••" : t("st.secret.unset");
       if (!changed(e.key) && document.activeElement !== input) input.value = "";
     },
@@ -449,6 +460,7 @@ function row(e) {
     key: e.key,
     e,
     text,
+    focus: ctl.focus,
     sync: () => {
       const c = changed(e.key);
       mod.hidden = !c;
@@ -522,7 +534,7 @@ function mount(el, ctx) {
     sections = [];
 
   const drawHead = () => {
-    const n = store.changes.size;
+    const n = pendingKeys().length;
     clear(head).append(
       hud({
         cls: "st-hud",
@@ -622,8 +634,9 @@ function mount(el, ctx) {
   };
 
   const drawBar = () => {
-    const n = store.changes.size,
-      rsN = [...store.changes.keys()].filter((k) => entry(k)?.restartRequired).length;
+    const keys = pendingKeys(),
+      n = keys.length,
+      rsN = keys.filter((k) => entry(k)?.restartRequired).length;
     const needRestart = !n && store.savedRestart;
     bar.hidden = !n && !needRestart && !store.restarting && !(store.error && store.model);
     if (bar.hidden) return;
@@ -725,12 +738,26 @@ function mount(el, ctx) {
     flashT = setTimeout(() => s.el.classList.remove("is-flash"), 1800);
   };
 
-  let count = store.changes.size;
+  let count = pendingKeys().length;
   const offStore = onStore((what) => {
     // The Changes tab badge lives in the panel's tab row; rebuild it when the count moves.
-    if (store.changes.size !== count) {
-      count = store.changes.size;
+    const nextCount = pendingKeys().length;
+    if (nextCount !== count) {
+      count = nextCount;
       ctx.refreshLens();
+    }
+    if (what === "invalid") {
+      sync();
+      const first = rows.find((r) => store.invalid.has(r.key));
+      if (!first?.focus) return;
+      if (first.el.hidden) {
+        // A search hid the row: clear it so the field can be shown and focused.
+        store.query = "";
+        filter();
+        ctx.refreshLens();
+      }
+      first.focus();
+      return;
     }
     if (what === "value" || what === "bar" || what === "sel") {
       if (what !== "sel") sync();
@@ -768,7 +795,7 @@ registerArea({
   presetKeys: [ASK_ALL, ASK_RECALL, ASK_ENV],
   tabs: [
     { id: "areas", labelKey: "lens.find", render: findTab },
-    { id: "changes", labelKey: "lens.changes", badge: () => store.changes.size, render: changesTab },
+    { id: "changes", labelKey: "lens.changes", badge: () => pendingKeys().length, render: changesTab },
   ],
   mount,
 });

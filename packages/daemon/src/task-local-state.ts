@@ -5,7 +5,7 @@ import { realpath, lstat } from "node:fs/promises";
 import { resolve, relative, isAbsolute } from "node:path";
 import matter from "gray-matter";
 import { canonicalTaskValue } from "./task-canonical.js";
-import { boundedTaskRead } from "./task-freshness.js";
+import { boundedTaskRead } from "./task-source-file.js";
 import { safeNode } from "./code-graph/validate.js";
 import { CODE_FILE_TYPE } from "./code-graph/limits.js";
 import type { TaskSource, TaskStore } from "./task-schema.js";

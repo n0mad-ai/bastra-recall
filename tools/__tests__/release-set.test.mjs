@@ -139,12 +139,14 @@ is_published() {
 }
 if [ "$1" = "view" ]; then
   if [ "\${SLOW_VIEW:-}" = "1" ]; then exec sleep 2; fi
+  if [ "$SLOW_VIEW" = "ignores-term" ]; then trap '' TERM; exec sleep 2; fi
   # $FLAKY_PACKAGE answers its first $FLAKY_FOR reads with a registry error.
   if [ -n "\${FLAKY_PACKAGE:-}" ] && [ "\${2%@*}" = "\${FLAKY_PACKAGE}" ]; then
     n=$(grep -c "npm view \${FLAKY_PACKAGE}" "$NPM_LOG" 2>/dev/null || echo 0)
     if [ "$n" -le "\${FLAKY_FOR:-1}" ]; then echo "npm error code E503" >&2; exit 1; fi
   fi
   if [ "\${3:-}" = "dist-tags.latest" ]; then
+    if [ "$2" = "$FAIL_LATEST_PACKAGE" ]; then echo "npm error code E503" >&2; exit 1; fi
     if is_published "$2"; then echo "\${LATEST_TAG:-$SET_VERSION}"; exit 0; fi
     exit 1
   fi
@@ -428,6 +430,33 @@ test("#1076 verify: a registry error that never clears is named when the window 
   });
   assert.notEqual(code, 0, out);
   assert.match(out, /✗ @bastra-recall\/daemon@.*registry lookup failed: npm view .*E503/);
+});
+
+test("#1076 verify: a failed latest-tag lookup is reported as a registry error", async () => {
+  const { code, out, calls } = await runPublish(["--verify"], {
+    PUBLISHED: "@bastra-recall/core @bastra-recall/statusline @bastra-recall/daemon bastra-recall",
+    FAIL_LATEST_PACKAGE: "@bastra-recall/daemon",
+  });
+  assert.notEqual(code, 0, out);
+  assert.match(out, /✗ @bastra-recall\/daemon@.*registry lookup failed: npm view .*E503/);
+  assert.equal(
+    calls.split("\n").filter((line) => line.includes("view @bastra-recall/daemon dist-tags.latest")).length,
+    3
+  );
+  assert.deepEqual(publishedWorkspaces(calls), []);
+});
+
+test("#1076 verify: a lookup that ignores SIGTERM cannot extend the window", async () => {
+  const start = performance.now();
+  const { code, out, calls } = await runPublish(["--verify"], {
+    SLOW_VIEW: "ignores-term",
+    BASTRA_VERIFY_ATTEMPTS: "2",
+    BASTRA_VERIFY_INTERVAL_MS: "40",
+  });
+  assert.notEqual(code, 0, out);
+  assert.ok(performance.now() - start < 1000, "a lookup must exit at its verification deadline");
+  assert.match(out, /registry lookup exceeded the verification window/);
+  assert.deepEqual(publishedWorkspaces(calls), []);
 });
 
 test("#553 publish set: invalid retry settings fail instead of looping forever", async () => {

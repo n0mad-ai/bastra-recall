@@ -82,6 +82,7 @@ import {
   type CaseRow,
 } from "./rerank-report.js";
 import { measureLatency, type LatencyReport } from "./rerank-latency.js";
+import { archiveIfRequested, takeArchiveFlag } from "./run-archive.js";
 
 /** Registered in `registrations/rerank-decision.json`; #501 names the three. */
 export const NS = [10, 20, 30] as const;
@@ -112,9 +113,12 @@ interface Args {
   latencySample: number;
   checkBatchInvariance: boolean;
   seed: number;
+  /** #503: also file the --out artefact under ~/.bastra/rerank-replay-runs/. */
+  archive: boolean;
 }
 
-function parseArgs(argv: string[]): Args {
+function parseArgs(all: string[]): Args {
+  const { archive, rest: argv } = takeArchiveFlag(all);
   const a: Args = {
     gold: [],
     models: ["en-de"],
@@ -124,6 +128,7 @@ function parseArgs(argv: string[]): Args {
     latencySample: 40,
     checkBatchInvariance: false,
     seed: 20260909,
+    archive,
   };
   for (let i = 0; i < argv.length; i++) {
     const f = argv[i];
@@ -648,6 +653,7 @@ async function main(): Promise<void> {
       { mode: 0o600 }
     );
     console.error(`[rerank-replay] wrote ${args.out}`);
+    archiveIfRequested(args.archive, "rerank-replay", [args.out]);
   }
 
   await arm.cleanup();

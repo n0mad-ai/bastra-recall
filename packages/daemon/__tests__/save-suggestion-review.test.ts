@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFile } from "node:child_process";
@@ -78,7 +78,7 @@ import { cmdSaveSuggestions } from "../src/cli/save-suggestions-cmd.js";
 import { parseArgs } from "../src/cli/commands.js";
 import { dispatchApi } from "../src/http-api-routes.js";
 
-async function isolated(work: () => Promise<void>) {
+async function isolated(work: (dir: string) => Promise<void>) {
   const dir = await mkdtemp(join(tmpdir(), "save-review-integration-"));
   const env = {
     BASTRA_DB_PATH: join(dir, "recall.db"),
@@ -90,7 +90,7 @@ async function isolated(work: () => Promise<void>) {
   const before = new Map(Object.keys(env).map((k) => [k, process.env[k]]));
   Object.assign(process.env, env);
   try {
-    await work();
+    await work(dir);
   } finally {
     for (const [k, v] of before)
       if (v === undefined) delete process.env[k];
@@ -132,9 +132,12 @@ test("source identities survive neutral tool additions and distinguish full ques
   );
 });
 test("same-turn and pending re-enqueue honor exact explicit rejection and project-bound reset", () =>
-  isolated(async () => {
-    const cwd = process.cwd(),
-      project = projectForFilter(cwd);
+  isolated(async (dir) => {
+    // #1488: the project is a temp folder with its own `.git`, so the test also
+    // holds in a copy of this code without `.git` (archive, tarball).
+    const cwd = join(dir, "review-project");
+    await mkdir(join(cwd, ".git"), { recursive: true });
+    const project = projectForFilter(cwd);
     assert.ok(project);
     const payload = { hook_event_name: "Stop", cwd, transcript: choice() };
     const first = await runStopLane({ ...payload, session_id: "real-review-a" }, "http://127.0.0.1:1");

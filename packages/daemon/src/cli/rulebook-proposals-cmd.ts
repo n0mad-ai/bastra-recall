@@ -3,9 +3,17 @@
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 import { projectForFilter } from "../scope-filter.js";
 import { getApiToken } from "../settings.js";
+import { DAEMON_VERSION } from "../version.js";
 
 export async function rulebookCliCall(
-  tool: "list_rules" | "load_memory" | "edit_memory" | "review_save_suggestion" | "restore_memory",
+  tool:
+    | "list_rules"
+    | "load_memory"
+    | "edit_memory"
+    | "review_save_suggestion"
+    | "restore_memory"
+    | "recall"
+    | "save_memory",
   input: unknown
 ): Promise<any> {
   const token = process.env.BASTRA_API_TOKEN || (await getApiToken());
@@ -13,6 +21,7 @@ export async function rulebookCliCall(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "User-Agent": `bastra-cli/${DAEMON_VERSION}`,
       "x-bastra-project": encodeURIComponent(projectForFilter(process.cwd()) ?? ""),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },

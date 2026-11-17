@@ -373,6 +373,7 @@ export async function callTaskAction(
     ? { schema_version: 1 as const, revision: 0, protected_boundary: false, keys: [], targets: [] }
     : await taskActionRegistry(ctx);
   let result: unknown;
+  const call: TaskActionCall = { ctx, principal, registry, raw, now };
   if (!["task_release", "task_revoke_approval"].includes(operation)) {
     const snapshot = await readTaskStore(ctx.path);
     const input = raw as { id?: string; proposal_id?: string; challenge_id?: string };
@@ -394,277 +395,322 @@ export async function callTaskAction(
       const current = await authenticateTask(authorization, ctx.authPath);
       if (current.actor_id !== principal.actor_id || current.credential_id !== principal.credential_id)
         return conflict("Credential changed");
-      if (operation === "task_prepare") {
-        const input = TASK_ACTION_INPUTS.task_prepare.parse(raw);
-        const task = store.tasks.find(
-          (t) => t.id === input.id && t.owner_domains.every((d) => principal.domains.includes(d))
-        );
-        if (!task) throw Object.assign(new Error("Task absent"), { code: "not_found" });
-        if (`${store.recovery_epoch}:${task.revision}` !== input.expected_revision)
-          return fail("approval_stale", "Freshness advanced task revision; fetch current task and prepare again");
-        if (
-          !store.controls.enabled ||
-          !task.armed ||
-          task.paused ||
-          taskValidityExpired(task, now) ||
-          task.action_level === "notify"
-        )
-          return conflict("Task is not reviewed for preparation");
-        if (
-          cleanText(input.payload) !== input.payload ||
-          /[\p{Cc}\p{Cf}]/u.test(input.payload.replaceAll("\n", "").replaceAll("\t", ""))
-        )
-          throw Object.assign(new Error("Exact payload cannot be safely previewed"), { code: "validation" });
-        const target = registry.targets.find((t) => t.id === input.target_id);
-        if (!target) return conflict("Target absent");
-        const sourceIds = new Set([
-          ...task.evidence.map((e) => e.source_id),
-          ...(task.schedule.kind === "event" ? [task.schedule.source_id] : []),
-        ]);
-        const sources = store.sources.filter((s) => sourceIds.has(s.id));
-        if (sources.length !== sourceIds.size || sources.some((s) => !s.enabled)) return conflict("Source unavailable");
-        const domains = [
-          ...new Set([...task.owner_domains, ...target.owner_domains, ...sources.flatMap((s) => s.owner_domains)]),
-        ].sort();
-        requireTaskDomains(principal, domains);
-        if (
-          (target.sensitivity === "restricted" && task.sensitivity !== "restricted") ||
-          sources.some((s) => s.sensitivity === "restricted" && task.sensitivity !== "restricted")
-        )
-          return conflict("Sensitivity boundary incomplete");
-        const observed = await readTaskTarget(registry, input.target_id);
-        requireReversiblePayload(observed.payload);
-        const body = {
-          revision: 0,
-          task_id: task.id,
-          task_revision: task.revision,
-          generation: task.generation,
-          recovery_epoch: store.recovery_epoch,
-          actor: principal.actor_id,
-          target_id: input.target_id,
-          target_hash: observed.hash,
-          operation: "replace-utf8" as const,
-          payload: input.payload,
-          payload_hash: bytesHash(input.payload),
-          task_binding: taskBindingHash(task),
-          binding_version: 2 as const,
-          registry_hash: registryHash(registry),
-          required_domains: domains,
-          source_revisions: sources
-            .map((s) => ({ id: s.id, revision: String(s.revision) }))
-            .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
-          scope: task.scope,
-          sensitivity: task.sensitivity,
-          status: "prepared" as const,
-        };
-        const proposal = { ...body, id: actionHash(["task-proposal-v1", body]), created_at: now };
-        await validateTaskProposal(ctx, store, proposal, registry);
-        const existing = store.proposals.find((p) => p.id === proposal.id);
-        if (!existing) store.proposals.push(proposal);
-        if (input.authorization)
-          recordChatAuthorization(
-            ctx,
-            store,
-            existing ?? proposal,
-            registry,
-            principal,
-            input.authorization,
-            "approve",
-            now
-          );
-        result = {
-          proposal: existing ?? proposal,
-          preview: { before: observed.payload, after: input.payload },
-          executes: false,
-          ...taskApprovalStatus(ctx, store, existing ?? proposal, registry),
-        };
-        return;
-      }
-      if (operation === "task_revoke_approval") {
-        const input = TASK_ACTION_INPUTS.task_revoke_approval.parse(raw);
-        const approval = store.approvals.find((a) => a.id === input.approval_id);
-        if (!approval) throw Object.assign(new Error("Approval absent"), { code: "not_found" });
-        if (!approval.authorization || approval.actor !== principal.actor_id) requireTaskOwner(principal);
-        requireTaskDomains(principal, [approval.domain]);
-        approval.revoked_at ??= now;
-        result = { revoked: true };
-        return;
-      }
-      if (operation === "task_release") {
-        const input = TASK_ACTION_INPUTS.task_release.parse(raw);
-        const lease = store.leases.find((l) => l.id === input.lease_id && l.actor === principal.actor_id);
-        if (!lease) return conflict("Lease holder mismatch");
-        const proposal = store.proposals.find((p) => p.id === lease.proposal_id);
-        if (principal.role === "owner" && input.holder_token === undefined && input.fence === undefined) {
-          if (!proposal) return conflict("Proposal absent");
-          requireTaskDomains(principal, proposal.required_domains);
-        } else if (
-          lease.fence !== input.fence ||
-          !input.holder_token ||
-          lease.holder_token_hash !== bytesHash(input.holder_token)
-        )
-          return conflict("Lease holder mismatch");
-        if (lease.state !== "active" || !liveActionDeadline(ctx, lease))
-          return fail("lease_expired", "Lease expired or released");
-        lease.state = "released";
-        result = { released: true };
-        return;
-      }
-      if (operation === "task_approval") {
-        const input = TASK_ACTION_INPUTS.task_approval.parse(raw);
-        if ("authorization" in input) {
-          const proposal = findProposal(store, input.proposal_id, principal);
-          await validateTaskProposal(ctx, store, proposal, registry);
-          result = recordChatAuthorization(
-            ctx,
-            store,
-            proposal,
-            registry,
-            principal,
-            input.authorization,
-            input.decision,
-            now
-          );
-          return;
-        }
-        requireTaskOwner(principal);
-        const challenge = store.challenges.find((c) => c.id === input.challenge_id);
-        if (!challenge) throw Object.assign(new Error("Challenge absent"), { code: "not_found" });
-        requireTaskDomains(principal, [challenge.domain]);
-        const proposal = findProposal(store, challenge.proposal_id, principal);
-        await validateTaskProposal(ctx, store, proposal, registry);
-        if (challenge.consumed_at !== undefined) return fail("approval_consumed", "Challenge consumed");
-        if (!liveActionDeadline(ctx, challenge)) return fail("approval_expired", "Challenge expired");
-        if (challenge.binding_hash !== actionHash(proposal)) return fail("approval_stale", "Challenge binding stale");
-        const key = registry.keys.find((k) => k.domain === challenge.domain);
-        if (
-          !key ||
-          !verifyTaskApproval(key.public_key, approvalBinding(proposal, challenge, input.decision), input.signature)
-        )
-          return conflict("Owner signature required");
-        challenge.consumed_at = now;
-        const approval = {
-          id: randomUUID(),
-          proposal_id: proposal.id,
-          domain: challenge.domain,
-          challenge_id: challenge.id,
-          key_id: key.id,
-          binding_hash: challenge.binding_hash,
-          registry_hash: registryHash(registry),
-          signature: input.signature,
-          decision: input.decision,
-          created_at: now,
-          expires_at: challenge.expires_at,
-          boot_id: challenge.boot_id,
-          monotonic_deadline: challenge.monotonic_deadline,
-        };
-        store.approvals.push(approval);
-        if (input.decision === "deny") proposal.status = "denied";
-        result = { approval_id: approval.id, ...taskApprovalStatus(ctx, store, proposal, registry) };
-        return;
-      }
-      const input = (operation === "task_challenge" ? TASK_ACTION_INPUTS.task_challenge : proposalInput).parse(raw);
-      const proposal = findProposal(store, input.proposal_id, principal);
-      if (operation === "task_proposal") {
-        if (principal.role !== "owner") requireTaskDomains(principal, proposal.required_domains);
-        if (proposal.status === "stale") {
-          result = {
-            proposal: { id: proposal.id, task_id: proposal.task_id, target_id: proposal.target_id, status: "stale" },
-            binding_status: "approval_stale",
-            review_reason: "Private binding retired; prepare again",
-            ...taskApprovalStatus(ctx, store, proposal, registry),
-          };
-          return;
-        }
-        let binding_status = "current";
-        try {
-          await validateTaskProposal(ctx, store, proposal, registry);
-        } catch (error) {
-          binding_status = (error as { code?: string }).code ?? "approval_stale";
-        }
-        const target = await readTaskTarget(registry, proposal.target_id);
-        result = {
-          proposal,
-          binding_status,
-          preview: { before: target.payload, after: proposal.payload },
-          ...taskApprovalStatus(ctx, store, proposal, registry),
-        };
-        return;
-      }
-      await validateTaskProposal(ctx, store, proposal, registry);
-      const observed = await readTaskTarget(registry, proposal.target_id);
-      if (observed.hash !== proposal.target_hash) return fail("approval_stale", "Target changed; prepare again");
-      if (operation === "task_challenge") {
-        if (!store.controls.enabled) return fail("feature_disabled", "Task feature disabled");
-        const domain = TASK_ACTION_INPUTS.task_challenge.parse(raw).domain;
-        requireTaskOwner(principal);
-        requireTaskDomains(principal, [domain]);
-        if (!proposal.required_domains.includes(domain) || !registry.keys.some((k) => k.domain === domain))
-          return conflict("Owner domain has no enrolled key");
-        const c = clock(ctx);
-        if (c.boot_id === "unsupported") return conflict("Boot clock unsupported");
-        const challenge = {
-          id: randomUUID(),
-          proposal_id: proposal.id,
-          domain,
-          nonce: randomBytes(32).toString("base64url"),
-          binding_hash: actionHash(proposal),
-          created_at: now,
-          expires_at: now + 300000,
-          boot_id: c.boot_id,
-          monotonic_deadline: c.monotonic + 300000,
-        };
-        const existing = store.challenges.find(
-          (c) =>
-            c.proposal_id === proposal.id &&
-            c.domain === domain &&
-            c.binding_hash === challenge.binding_hash &&
-            c.consumed_at === undefined &&
-            liveActionDeadline(ctx, c)
-        );
-        if (!existing) store.challenges.push(challenge);
-        result = {
-          challenge: existing ?? challenge,
-          proposal,
-          task_goal: store.tasks.find((t) => t.id === proposal.task_id)?.goal,
-          preview: { before: observed.payload, after: proposal.payload },
-        };
-        return;
-      }
-      requireTaskDomains(principal, proposal.required_domains);
-      requireTaskActionEnabled(store);
-      const approvalState = taskApprovalStatus(ctx, store, proposal, registry);
-      const missing = approvalState.domain_status.find((d) => d.reason !== "approved");
-      if (missing) fail(missing.reason, "All exact owner approvals required");
-      if (
-        (!proposal.rollback_of && store.tasks.find((t) => t.id === proposal.task_id)?.action_level !== "execute") ||
-        proposal.actor !== principal.actor_id ||
-        !store.controls.enabled ||
-        store.controls.execution_stopped ||
-        !taskApprovalStatus(ctx, store, proposal, registry).approved
-      )
-        return conflict("All exact owner approvals and execution enabled are required for a lease");
-      const active = store.leases.find((l) => l.proposal_id === proposal.id && l.state === "active");
-      if (active && liveActionDeadline(ctx, active)) return fail("lease_busy", "Active lease already held");
-      if (active) active.state = "expired";
-      const holderToken = randomBytes(32).toString("base64url"),
-        c = clock(ctx);
-      const lease = {
-        id: randomUUID(),
-        task_id: proposal.task_id,
-        proposal_id: proposal.id,
-        actor: principal.actor_id,
-        holder_token_hash: bytesHash(holderToken),
-        fence: ++store.fencing_counter,
-        expires_at: now + 30000,
-        boot_id: c.boot_id,
-        monotonic_deadline: c.monotonic + 30000,
-        state: "active" as const,
-      };
-      store.leases.push(lease);
-      result = { lease, holder_token: holderToken };
+      result = await (DIRECT_TASK_ACTIONS[operation] ?? proposalBoundAction)(store, call, operation);
     },
     operation === "task_revoke_approval" || operation === "task_release" ? "control" : "normal"
   );
   return result;
+}
+
+interface TaskActionCall {
+  ctx: TaskServiceContext;
+  principal: TaskPrincipal;
+  registry: ApprovalRegistry;
+  raw: unknown;
+  now: number;
+}
+type TaskActionHandler = (store: TaskStore, call: TaskActionCall, operation: TaskActionOperation) => Promise<unknown>;
+
+/** Operations that do not start from an existing proposal. */
+const DIRECT_TASK_ACTIONS: Partial<Record<TaskActionOperation, TaskActionHandler>> = {
+  task_prepare: prepareTaskProposal,
+  task_revoke_approval: revokeTaskApproval,
+  task_release: releaseTaskLease,
+  task_approval: recordTaskApproval,
+};
+
+/** Freeze one exact reversible change of a reviewed task as a proposal. */
+async function prepareTaskProposal(store: TaskStore, { ctx, principal, registry, raw, now }: TaskActionCall) {
+  const input = TASK_ACTION_INPUTS.task_prepare.parse(raw);
+  const task = store.tasks.find(
+    (t) => t.id === input.id && t.owner_domains.every((d) => principal.domains.includes(d))
+  );
+  if (!task) throw Object.assign(new Error("Task absent"), { code: "not_found" });
+  requirePreparableTask(store, task, input, now);
+  const target = registry.targets.find((t) => t.id === input.target_id);
+  if (!target) return conflict("Target absent");
+  const { sources, domains } = preparationReach(store, task, target, principal);
+  const observed = await readTaskTarget(registry, input.target_id);
+  requireReversiblePayload(observed.payload);
+  const body = {
+    revision: 0,
+    task_id: task.id,
+    task_revision: task.revision,
+    generation: task.generation,
+    recovery_epoch: store.recovery_epoch,
+    actor: principal.actor_id,
+    target_id: input.target_id,
+    target_hash: observed.hash,
+    operation: "replace-utf8" as const,
+    payload: input.payload,
+    payload_hash: bytesHash(input.payload),
+    task_binding: taskBindingHash(task),
+    binding_version: 2 as const,
+    registry_hash: registryHash(registry),
+    required_domains: domains,
+    source_revisions: sources
+      .map((s) => ({ id: s.id, revision: String(s.revision) }))
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+    scope: task.scope,
+    sensitivity: task.sensitivity,
+    status: "prepared" as const,
+  };
+  const proposal = { ...body, id: actionHash(["task-proposal-v1", body]), created_at: now };
+  await validateTaskProposal(ctx, store, proposal, registry);
+  const existing = store.proposals.find((p) => p.id === proposal.id);
+  if (!existing) store.proposals.push(proposal);
+  if (input.authorization)
+    recordChatAuthorization(ctx, store, existing ?? proposal, registry, principal, input.authorization, "approve", now);
+  return {
+    proposal: existing ?? proposal,
+    preview: { before: observed.payload, after: input.payload },
+    executes: false,
+    ...taskApprovalStatus(ctx, store, existing ?? proposal, registry),
+  };
+}
+
+async function revokeTaskApproval(store: TaskStore, { principal, raw, now }: TaskActionCall) {
+  const input = TASK_ACTION_INPUTS.task_revoke_approval.parse(raw);
+  const approval = store.approvals.find((a) => a.id === input.approval_id);
+  if (!approval) throw Object.assign(new Error("Approval absent"), { code: "not_found" });
+  if (!approval.authorization || approval.actor !== principal.actor_id) requireTaskOwner(principal);
+  requireTaskDomains(principal, [approval.domain]);
+  approval.revoked_at ??= now;
+  return { revoked: true };
+}
+
+/** The holder releases with its token and fence; the owner may release its own lease without them. */
+async function releaseTaskLease(store: TaskStore, { ctx, principal, raw }: TaskActionCall) {
+  const input = TASK_ACTION_INPUTS.task_release.parse(raw);
+  const lease = store.leases.find((l) => l.id === input.lease_id && l.actor === principal.actor_id);
+  if (!lease) return conflict("Lease holder mismatch");
+  const proposal = store.proposals.find((p) => p.id === lease.proposal_id);
+  if (principal.role === "owner" && input.holder_token === undefined && input.fence === undefined) {
+    if (!proposal) return conflict("Proposal absent");
+    requireTaskDomains(principal, proposal.required_domains);
+  } else if (
+    lease.fence !== input.fence ||
+    !input.holder_token ||
+    lease.holder_token_hash !== bytesHash(input.holder_token)
+  )
+    return conflict("Lease holder mismatch");
+  if (lease.state !== "active" || !liveActionDeadline(ctx, lease))
+    return fail("lease_expired", "Lease expired or released");
+  lease.state = "released";
+  return { released: true };
+}
+
+/** A chat authorization, or a signed owner decision on a live challenge. */
+async function recordTaskApproval(store: TaskStore, { ctx, principal, registry, raw, now }: TaskActionCall) {
+  const input = TASK_ACTION_INPUTS.task_approval.parse(raw);
+  if ("authorization" in input) {
+    const proposal = findProposal(store, input.proposal_id, principal);
+    await validateTaskProposal(ctx, store, proposal, registry);
+    return recordChatAuthorization(ctx, store, proposal, registry, principal, input.authorization, input.decision, now);
+  }
+  requireTaskOwner(principal);
+  const challenge = store.challenges.find((c) => c.id === input.challenge_id);
+  if (!challenge) throw Object.assign(new Error("Challenge absent"), { code: "not_found" });
+  requireTaskDomains(principal, [challenge.domain]);
+  const proposal = findProposal(store, challenge.proposal_id, principal);
+  await validateTaskProposal(ctx, store, proposal, registry);
+  if (challenge.consumed_at !== undefined) return fail("approval_consumed", "Challenge consumed");
+  if (!liveActionDeadline(ctx, challenge)) return fail("approval_expired", "Challenge expired");
+  if (challenge.binding_hash !== actionHash(proposal)) return fail("approval_stale", "Challenge binding stale");
+  const key = registry.keys.find((k) => k.domain === challenge.domain);
+  if (
+    !key ||
+    !verifyTaskApproval(key.public_key, approvalBinding(proposal, challenge, input.decision), input.signature)
+  )
+    return conflict("Owner signature required");
+  challenge.consumed_at = now;
+  const approval = {
+    id: randomUUID(),
+    proposal_id: proposal.id,
+    domain: challenge.domain,
+    challenge_id: challenge.id,
+    key_id: key.id,
+    binding_hash: challenge.binding_hash,
+    registry_hash: registryHash(registry),
+    signature: input.signature,
+    decision: input.decision,
+    created_at: now,
+    expires_at: challenge.expires_at,
+    boot_id: challenge.boot_id,
+    monotonic_deadline: challenge.monotonic_deadline,
+  };
+  store.approvals.push(approval);
+  if (input.decision === "deny") proposal.status = "denied";
+  return { approval_id: approval.id, ...taskApprovalStatus(ctx, store, proposal, registry) };
+}
+
+/** task_proposal, task_challenge and task_lease start from an existing proposal. */
+async function proposalBoundAction(store: TaskStore, call: TaskActionCall, operation: TaskActionOperation) {
+  const { ctx, principal, registry, raw } = call;
+  const input = (operation === "task_challenge" ? TASK_ACTION_INPUTS.task_challenge : proposalInput).parse(raw);
+  const proposal = findProposal(store, input.proposal_id, principal);
+  if (operation === "task_proposal") return describeTaskProposal(store, call, proposal);
+  await validateTaskProposal(ctx, store, proposal, registry);
+  const observed = await readTaskTarget(registry, proposal.target_id);
+  if (observed.hash !== proposal.target_hash) return fail("approval_stale", "Target changed; prepare again");
+  if (operation === "task_challenge") return issueTaskChallenge(store, call, proposal, observed);
+  return grantTaskLease(store, call, proposal);
+}
+
+/** Read-only view of a proposal with its current binding status and preview. */
+async function describeTaskProposal(
+  store: TaskStore,
+  { ctx, principal, registry }: TaskActionCall,
+  proposal: Proposal
+) {
+  if (principal.role !== "owner") requireTaskDomains(principal, proposal.required_domains);
+  if (proposal.status === "stale")
+    return {
+      proposal: { id: proposal.id, task_id: proposal.task_id, target_id: proposal.target_id, status: "stale" },
+      binding_status: "approval_stale",
+      review_reason: "Private binding retired; prepare again",
+      ...taskApprovalStatus(ctx, store, proposal, registry),
+    };
+  let binding_status = "current";
+  try {
+    await validateTaskProposal(ctx, store, proposal, registry);
+  } catch (error) {
+    binding_status = (error as { code?: string }).code ?? "approval_stale";
+  }
+  const target = await readTaskTarget(registry, proposal.target_id);
+  return {
+    proposal,
+    binding_status,
+    preview: { before: target.payload, after: proposal.payload },
+    ...taskApprovalStatus(ctx, store, proposal, registry),
+  };
+}
+
+/** A five-minute owner challenge for one enrolled domain; a live identical one is reused. */
+async function issueTaskChallenge(
+  store: TaskStore,
+  { ctx, principal, registry, raw, now }: TaskActionCall,
+  proposal: Proposal,
+  observed: Awaited<ReturnType<typeof readTaskTarget>>
+) {
+  if (!store.controls.enabled) return fail("feature_disabled", "Task feature disabled");
+  const domain = TASK_ACTION_INPUTS.task_challenge.parse(raw).domain;
+  requireTaskOwner(principal);
+  requireTaskDomains(principal, [domain]);
+  if (!proposal.required_domains.includes(domain) || !registry.keys.some((k) => k.domain === domain))
+    return conflict("Owner domain has no enrolled key");
+  const c = clock(ctx);
+  if (c.boot_id === "unsupported") return conflict("Boot clock unsupported");
+  const challenge = {
+    id: randomUUID(),
+    proposal_id: proposal.id,
+    domain,
+    nonce: randomBytes(32).toString("base64url"),
+    binding_hash: actionHash(proposal),
+    created_at: now,
+    expires_at: now + 300000,
+    boot_id: c.boot_id,
+    monotonic_deadline: c.monotonic + 300000,
+  };
+  const existing = store.challenges.find(
+    (c) =>
+      c.proposal_id === proposal.id &&
+      c.domain === domain &&
+      c.binding_hash === challenge.binding_hash &&
+      c.consumed_at === undefined &&
+      liveActionDeadline(ctx, c)
+  );
+  if (!existing) store.challenges.push(challenge);
+  return {
+    challenge: existing ?? challenge,
+    proposal,
+    task_goal: store.tasks.find((t) => t.id === proposal.task_id)?.goal,
+    preview: { before: observed.payload, after: proposal.payload },
+  };
+}
+
+/** A fenced 30-second execution lease once every exact approval holds and execution is enabled. */
+async function grantTaskLease(store: TaskStore, { ctx, principal, registry, now }: TaskActionCall, proposal: Proposal) {
+  requireTaskDomains(principal, proposal.required_domains);
+  requireTaskActionEnabled(store);
+  const approvalState = taskApprovalStatus(ctx, store, proposal, registry);
+  const missing = approvalState.domain_status.find((d) => d.reason !== "approved");
+  if (missing) fail(missing.reason, "All exact owner approvals required");
+  if (
+    (!proposal.rollback_of && store.tasks.find((t) => t.id === proposal.task_id)?.action_level !== "execute") ||
+    proposal.actor !== principal.actor_id ||
+    !store.controls.enabled ||
+    store.controls.execution_stopped ||
+    !taskApprovalStatus(ctx, store, proposal, registry).approved
+  )
+    return conflict("All exact owner approvals and execution enabled are required for a lease");
+  const active = store.leases.find((l) => l.proposal_id === proposal.id && l.state === "active");
+  if (active && liveActionDeadline(ctx, active)) return fail("lease_busy", "Active lease already held");
+  if (active) active.state = "expired";
+  const holderToken = randomBytes(32).toString("base64url"),
+    c = clock(ctx);
+  const lease = {
+    id: randomUUID(),
+    task_id: proposal.task_id,
+    proposal_id: proposal.id,
+    actor: principal.actor_id,
+    holder_token_hash: bytesHash(holderToken),
+    fence: ++store.fencing_counter,
+    expires_at: now + 30000,
+    boot_id: c.boot_id,
+    monotonic_deadline: c.monotonic + 30000,
+    state: "active" as const,
+  };
+  store.leases.push(lease);
+  return { lease, holder_token: holderToken };
+}
+
+/** Current revision, reviewed for action, and a payload that previews exactly. */
+function requirePreparableTask(
+  store: TaskStore,
+  task: Task,
+  input: z.infer<typeof TASK_ACTION_INPUTS.task_prepare>,
+  now: number
+): void {
+  if (`${store.recovery_epoch}:${task.revision}` !== input.expected_revision)
+    return fail("approval_stale", "Freshness advanced task revision; fetch current task and prepare again");
+  if (
+    !store.controls.enabled ||
+    !task.armed ||
+    task.paused ||
+    taskValidityExpired(task, now) ||
+    task.action_level === "notify"
+  )
+    return conflict("Task is not reviewed for preparation");
+  if (
+    cleanText(input.payload) !== input.payload ||
+    /[\p{Cc}\p{Cf}]/u.test(input.payload.replaceAll("\n", "").replaceAll("\t", ""))
+  )
+    throw Object.assign(new Error("Exact payload cannot be safely previewed"), { code: "validation" });
+}
+
+/** The task's enabled sources and every domain the change reaches; the principal must hold all,
+ *  and a restricted target or source needs a restricted task. */
+function preparationReach(
+  store: TaskStore,
+  task: Task,
+  target: ApprovalRegistry["targets"][number],
+  principal: TaskPrincipal
+) {
+  const sourceIds = new Set([
+    ...task.evidence.map((e) => e.source_id),
+    ...(task.schedule.kind === "event" ? [task.schedule.source_id] : []),
+  ]);
+  const sources = store.sources.filter((s) => sourceIds.has(s.id));
+  if (sources.length !== sourceIds.size || sources.some((s) => !s.enabled)) return conflict("Source unavailable");
+  const domains = [
+    ...new Set([...task.owner_domains, ...target.owner_domains, ...sources.flatMap((s) => s.owner_domains)]),
+  ].sort();
+  requireTaskDomains(principal, domains);
+  if (
+    (target.sensitivity === "restricted" && task.sensitivity !== "restricted") ||
+    sources.some((s) => s.sensitivity === "restricted" && task.sensitivity !== "restricted")
+  )
+    return conflict("Sensitivity boundary incomplete");
+  return { sources, domains };
 }

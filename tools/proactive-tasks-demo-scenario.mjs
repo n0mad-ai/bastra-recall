@@ -15,7 +15,7 @@ if (
   throw new Error("Nur in der isolierten Demo-Shell möglich");
 const { memoryRevision } = await import("../packages/core/dist/index.js"),
   { ownerTaskAuthorization } = await import("../packages/daemon/dist/cli/task-owner-access.js"),
-  { taskCliCall } = await import("../packages/daemon/dist/cli/tasks-cmd.js");
+  { taskCliCall } = await import("../packages/daemon/dist/cli/task-cli-call.js");
 const authorization = await ownerTaskAuthorization(),
   base = process.env.BASTRA_DAEMON_URL;
 if (!base || new URL(base).hostname !== "127.0.0.1" || new URL(base).port === "6723")

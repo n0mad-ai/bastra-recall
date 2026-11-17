@@ -18,7 +18,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -74,22 +74,24 @@ test("without --hybrid the harness reports BM25-only and says so in the report",
   assert.equal(res.runs.length, 1, "the run artifact lands in the test's own BASTRA_EVAL_RUNS_DIR (#446)");
 });
 
-test("--out refuses a path inside a git working tree", () => {
+test("--out refuses a path inside a git working tree", (t) => {
   // Same leak class as the tracked stress-report.md: the JSON carries every
   // paraphrase query and gold id, and --out resolves against the cwd, which is
   // normally this checkout. Refusing costs nothing — results.json in the run
   // artifact holds the identical data.
-  const res = runStress(["--slice", "anti", "--out", "./should-never-exist.json"], {});
+  // #1488: the working tree is a temp folder with its own `.git`, so the test
+  // also holds in a copy of this code without `.git` (archive, tarball).
+  const repo = mkdtempSync(join(tmpdir(), "bastra-stress-arm-repo-"));
+  t.after(() => rmSync(repo, { recursive: true, force: true }));
+  mkdirSync(join(repo, ".git"));
+  const target = join(repo, "nested", "should-never-exist.json");
+  const res = runStress(["--slice", "anti", "--out", target], {});
 
   const out = `${res.stdout ?? ""}${res.stderr ?? ""}`;
   assert.notEqual(res.status, 0, "writing vault-derived rows into the repo must fail the run");
   assert.match(out, /points inside a git working tree/);
   assert.match(out, /eval-runs/, "the message names where the data already is");
-  assert.equal(
-    existsSync(resolve(import.meta.dirname, "..", "..", "..", "should-never-exist.json")),
-    false,
-    "and nothing was written"
-  );
+  assert.equal(existsSync(target), false, "and nothing was written");
 });
 
 test("the label-shuffle null is reported but does not decide the verdict (#799)", () => {

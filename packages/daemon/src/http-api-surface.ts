@@ -13,7 +13,7 @@
  * Split out of http.ts (file-size convention); route order preserved. The
  * per-tool POST logic lives in http-api-routes.ts, unchanged.
  */
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:http";
 import type { Vault } from "@bastra-recall/core";
 import type { ToolDeps } from "./tool-handlers.js";
 import type { HttpServerContext } from "./http-context.js";
@@ -24,6 +24,7 @@ import { MAX_BODY_BYTES, readJsonBody, sendCors, sendJson } from "./http-util.js
 import { isLoopback, isLoopbackHost, hasForwardingHeaders, resolveCorsOrigin, gateApiRequest } from "./http-auth.js";
 import { dispatchTaskHttp, defaultTaskContext } from "./task-transport.js";
 import { dispatchApi } from "./http-api-routes.js";
+import { isDryRun } from "./save-memory-handler.js";
 import { clientLabel } from "./caller-session.js";
 import { handleMcpHttp } from "./http-mcp.js";
 import { dispatchOAuthApi, mcpChallenge, verifyMcpBearer, MCP_PATH } from "./oauth-server.js";
@@ -180,8 +181,7 @@ export function dispatchApiSurface(
   const agentId =
     typeof actorHeader === "string" && actorHeader ? (actorHeader === "main" ? null : actorHeader) : undefined;
   const ccTurnKey = typeof ccTurnHeader === "string" ? Number(ccTurnHeader) : null;
-  // #1469: the forwarder names its MCP client; a call without it is plain REST.
-  const client = clientLabel(decodedHeader(req.headers["x-bastra-client"]));
+  const caller = apiWriteCaller(req.headers);
   const projectHeader = req.headers["x-bastra-project"];
   let callerProject: string | null = null;
   if (typeof projectHeader === "string") {
@@ -195,15 +195,16 @@ export function dispatchApiSurface(
   readJsonBody(req, MAX_BODY_BYTES)
     .then(async (body) => {
       try {
-        toolDeps.telemetry.ensureTurn(ccSessionId, ccTurnKey);
+        if (tool !== "save_memory" || !isDryRun(body)) {
+          toolDeps.telemetry.ensureTurn(ccSessionId, ccTurnKey);
+        }
         const result = await dispatchApi(tool, body, {
           toolDeps,
           documentWriteEnabled,
           ccSessionId,
           agentId,
           project: callerProject,
-          transport: client ? "forwarder" : "http",
-          client,
+          ...caller,
         });
         if (result === undefined) {
           sendJson(res, 404, { error: `unknown tool: ${tool}` });
@@ -218,6 +219,15 @@ export function dispatchApiSurface(
       sendJson(res, 400, { error: err.message });
     });
   return true;
+}
+
+/** Client identifiers are diagnostic. The CLI uses REST, while the MCP
+ * forwarder names the client from its initialize handshake. */
+function apiWriteCaller(headers: IncomingHttpHeaders) {
+  const client = clientLabel(decodedHeader(headers["x-bastra-client"]));
+  if (client) return { transport: "forwarder", client } as const;
+  const agent = headers["user-agent"];
+  return { transport: "http", client: agent?.startsWith("bastra-cli/") ? clientLabel(agent) : null } as const;
 }
 
 /** A percent-encoded header value, or undefined when absent or malformed. */

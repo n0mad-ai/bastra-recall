@@ -38,3 +38,26 @@ export function openTaskSourceFileSync(path: string): number {
     throw error;
   }
 }
+
+/** Read a whole source within a byte budget (#1515 B6: below task freshness and local state). */
+export async function boundedTaskRead(
+  path: string,
+  max: number,
+  strictUtf8 = false,
+  singleLink = false
+): Promise<string> {
+  const handle = await openTaskSourceFile(path);
+  try {
+    const info = await handle.stat(); // openTaskSourceFile already requires a regular file
+    if (singleLink && info.nlink !== 1) throw new Error("source has multiple hard links");
+    if (info.size > max) throw Object.assign(new Error("source byte budget"), { code: "source_budget" });
+    const bytes = Buffer.alloc(max + 1);
+    const result = await handle.read(bytes, 0, bytes.length, 0);
+    if (result.bytesRead > max) throw Object.assign(new Error("source byte budget"), { code: "source_budget" });
+    return strictUtf8
+      ? new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes.subarray(0, result.bytesRead))
+      : bytes.subarray(0, result.bytesRead).toString("utf8");
+  } finally {
+    await handle.close();
+  }
+}

@@ -306,254 +306,195 @@ export interface ResolvedSegments {
   templates: Record<string, ResolvedTemplate>;
 }
 
-export function resolveSegments(data: TuiData, ctx: RenderCtx): ResolvedSegments {
+interface PartStyle {
+  fg: string;
+  bold: boolean;
+}
+
+/** Writes a segment's whole value and its parts. The whole value takes the
+ *  segment's part colour if one is configured; each part its own, then the
+ *  segment's, then the theme colour. */
+function putSegment(
+  result: Record<string, string>,
+  ctx: RenderCtx,
+  segment: string,
+  text: string,
+  parts: Record<string, string>,
+  style: PartStyle
+): void {
+  const pf = ctx.colors.partFg;
+  result[segment] = text ? colorize(text, pf?.[segment] ?? style.fg, ctx.reset, style.bold) : "";
+  addParts(result, segment, parts, style.fg, ctx.reset, pf, style.bold);
+}
+
+function resolveHeadSegments(result: Record<string, string>, data: TuiData, ctx: RenderCtx): void {
   const { sym, config, reset, colors } = ctx;
-  const pf = colors.partFg;
-
-  const colorizeOrEmpty = (text: string, color: string, bold = false): string =>
-    text ? colorize(text, color, reset, bold) : "";
-
-  const result: Record<string, string> = {};
-
-  const iconVisible = {
-    model: resolveIconVisibility(config, "model"),
-    context: resolveIconVisibility(config, "context"),
-    block: resolveIconVisibility(config, "block"),
-    session: resolveIconVisibility(config, "session"),
-    today: resolveIconVisibility(config, "today"),
-    weekly: resolveIconVisibility(config, "weekly"),
-    git: resolveIconVisibility(config, "git"),
-    directory: resolveIconVisibility(config, "directory"),
-    version: resolveIconVisibility(config, "version"),
-    agent: resolveIconVisibility(config, "agent"),
-    thinking: resolveIconVisibility(config, "thinking"),
-    cacheTimer: resolveIconVisibility(config, "cacheTimer"),
-  };
-
   // Model
-  const rawModelName = data.hookData.model?.display_name || "Claude";
-  const modelName = formatModelName(rawModelName).toLowerCase();
-  const modelColor = pf?.["model"] ?? colors.modelFg;
-  const modelIcon = iconVisible.model ? sym.model : "";
-  result.model = colorizeOrEmpty(modelIcon ? `${modelIcon} ${modelName}` : modelName, modelColor, colors.modelBold);
-  addParts(result, "model", { icon: modelIcon, value: modelName }, colors.modelFg, reset, pf, colors.modelBold);
+  const modelName = formatModelName(data.hookData.model?.display_name || "Claude").toLowerCase();
+  const modelIcon = resolveIconVisibility(config, "model") ? sym.model : "";
+  putSegment(
+    result,
+    ctx,
+    "model",
+    modelIcon ? `${modelIcon} ${modelName}` : modelName,
+    { icon: modelIcon, value: modelName },
+    { fg: colors.modelFg, bold: colors.modelBold }
+  );
 
   // Context (bar is width-dependent, resolved later via lateResolve)
-  const contextLine = buildContextLine(data, ctx.contentWidth, sym, reset, colors);
-  result.context = contextLine ?? "";
-  const ctxParts = formatContextParts(data, sym, iconVisible.context);
+  result.context = buildContextLine(data, ctx.contentWidth, sym, reset, colors) ?? "";
+  const ctxParts = formatContextParts(data, sym, resolveIconVisibility(config, "context"));
   const ctxStyle = data.contextInfo
     ? resolveThresholdStyle(data.contextInfo.usablePercentage, colors.contextFg, colors.contextBold, colors)
     : { fg: colors.contextFg, bold: colors.contextBold };
-  addParts(result, "context", ctxParts, ctxStyle.fg, reset, pf, ctxStyle.bold);
+  addParts(result, "context", ctxParts, ctxStyle.fg, reset, colors.partFg, ctxStyle.bold);
+}
 
-  // Block
-  if (data.blockInfo) {
-    const blockColor = pf?.["block"] ?? colors.blockFg;
-    result.block = colorizeOrEmpty(
-      formatBlockSegment(data.blockInfo, sym, config, iconVisible.block),
-      blockColor,
-      colors.blockBold
-    );
-    addParts(
+/** Block, session, today and weekly exist only with their usage data; without it they stay empty. */
+function resolveUsageSegments(result: Record<string, string>, data: TuiData, ctx: RenderCtx): void {
+  const { sym, config, colors } = ctx;
+  const icon = (segment: "block" | "session" | "today" | "weekly") => resolveIconVisibility(config, segment);
+  const block = data.blockInfo;
+  if (block)
+    putSegment(
       result,
+      ctx,
       "block",
-      formatBlockParts(data.blockInfo, sym, config, iconVisible.block),
-      colors.blockFg,
-      reset,
-      pf,
-      colors.blockBold
+      formatBlockSegment(block, sym, config, icon("block")),
+      formatBlockParts(block, sym, config, icon("block")),
+      { fg: colors.blockFg, bold: colors.blockBold }
     );
-  } else {
-    result.block = "";
-  }
+  else result.block = "";
 
-  // Session
-  if (data.usageInfo) {
-    const sessionColor = pf?.["session"] ?? colors.sessionFg;
-    result.session = colorizeOrEmpty(
-      formatSessionSegment(data.usageInfo, sym, config, iconVisible.session),
-      sessionColor,
-      colors.sessionBold
-    );
-    addParts(
+  const usage = data.usageInfo;
+  if (usage)
+    putSegment(
       result,
+      ctx,
       "session",
-      formatSessionParts(data.usageInfo, sym, config, iconVisible.session),
-      colors.sessionFg,
-      reset,
-      pf,
-      colors.sessionBold
+      formatSessionSegment(usage, sym, config, icon("session")),
+      formatSessionParts(usage, sym, config, icon("session")),
+      { fg: colors.sessionFg, bold: colors.sessionBold }
     );
-  } else {
-    result.session = "";
-  }
+  else result.session = "";
 
-  // Today
-  if (data.todayInfo) {
-    const todayColor = pf?.["today"] ?? colors.todayFg;
-    result.today = colorizeOrEmpty(
-      formatTodaySegment(data.todayInfo, sym, config, iconVisible.today),
-      todayColor,
-      colors.todayBold
-    );
-    addParts(
+  const today = data.todayInfo;
+  if (today)
+    putSegment(
       result,
+      ctx,
       "today",
-      formatTodayParts(data.todayInfo, sym, config, iconVisible.today),
-      colors.todayFg,
-      reset,
-      pf,
-      colors.todayBold
+      formatTodaySegment(today, sym, config, icon("today")),
+      formatTodayParts(today, sym, config, icon("today")),
+      { fg: colors.todayFg, bold: colors.todayBold }
     );
-  } else {
-    result.today = "";
-  }
+  else result.today = "";
 
-  // Weekly
   const sevenDay = data.hookData.rate_limits?.seven_day;
-  if (sevenDay) {
-    const weeklyColor = pf?.["weekly"] ?? colors.weeklyFg;
-    result.weekly = colorizeOrEmpty(
-      formatWeeklySegment(sevenDay, sym, iconVisible.weekly),
-      weeklyColor,
-      colors.weeklyBold
-    );
-    addParts(
+  if (sevenDay)
+    putSegment(
       result,
+      ctx,
       "weekly",
-      formatWeeklyParts(sevenDay, sym, iconVisible.weekly),
-      colors.weeklyFg,
-      reset,
-      pf,
-      colors.weeklyBold
+      formatWeeklySegment(sevenDay, sym, icon("weekly")),
+      formatWeeklyParts(sevenDay, sym, icon("weekly")),
+      { fg: colors.weeklyFg, bold: colors.weeklyBold }
     );
-  } else {
-    result.weekly = "";
-  }
+  else result.weekly = "";
+}
 
-  // Git
-  const gitColor = pf?.["git"] ?? colors.gitFg;
-  result.git = colorizeOrEmpty(formatGitSegment(data, sym, iconVisible.git), gitColor, colors.gitBold);
-  addParts(result, "git", formatGitParts(data, sym, iconVisible.git), colors.gitFg, reset, pf, colors.gitBold);
-
-  // Dir
-  const dirColor = pf?.["dir"] ?? colors.modeFg;
-  result.dir = colorizeOrEmpty(formatDirValue(data, config), dirColor, colors.modeBold);
-  addParts(
+function resolveWorkspaceSegments(result: Record<string, string>, data: TuiData, ctx: RenderCtx): void {
+  const { sym, config, colors } = ctx;
+  const gitIcon = resolveIconVisibility(config, "git");
+  putSegment(result, ctx, "git", formatGitSegment(data, sym, gitIcon), formatGitParts(data, sym, gitIcon), {
+    fg: colors.gitFg,
+    bold: colors.gitBold,
+  });
+  putSegment(
     result,
+    ctx,
     "dir",
-    formatDirParts(data, config, sym, iconVisible.directory),
-    colors.modeFg,
-    reset,
-    pf,
-    colors.modeBold
+    formatDirValue(data, config),
+    formatDirParts(data, config, sym, resolveIconVisibility(config, "directory")),
+    { fg: colors.modeFg, bold: colors.modeBold }
   );
-
-  // Version
-  const versionColor = pf?.["version"] ?? colors.versionFg;
-  result.version = colorizeOrEmpty(
-    formatVersionSegment(data, sym, iconVisible.version),
-    versionColor,
-    colors.versionBold
-  );
-  addParts(
+  const versionIcon = resolveIconVisibility(config, "version");
+  putSegment(
     result,
+    ctx,
     "version",
-    formatVersionParts(data, sym, iconVisible.version),
-    colors.versionFg,
-    reset,
-    pf,
-    colors.versionBold
+    formatVersionSegment(data, sym, versionIcon),
+    formatVersionParts(data, sym, versionIcon),
+    { fg: colors.versionFg, bold: colors.versionBold }
   );
+  putSegment(result, ctx, "tmux", formatTmuxSegment(data), formatTmuxParts(data), {
+    fg: colors.tmuxFg,
+    bold: colors.tmuxBold,
+  });
+}
 
-  // Tmux
-  const tmuxColor = pf?.["tmux"] ?? colors.tmuxFg;
-  result.tmux = colorizeOrEmpty(formatTmuxSegment(data), tmuxColor, colors.tmuxBold);
-  addParts(result, "tmux", formatTmuxParts(data), colors.tmuxFg, reset, pf, colors.tmuxBold);
-
-  // Metrics
-  const metricsColor = pf?.["metrics"] ?? colors.metricsFg;
-  result.metrics = colorizeOrEmpty(formatMetricsSegment(data, sym), metricsColor, colors.metricsBold);
-  addParts(result, "metrics", formatMetricsParts(data, sym), colors.metricsFg, reset, pf, colors.metricsBold);
-
-  // Activity
-  const activityColor = pf?.["activity"] ?? colors.metricsFg;
-  result.activity = colorizeOrEmpty(formatActivitySegment(data, sym), activityColor, colors.metricsBold);
-  addParts(result, "activity", formatActivityParts(data, sym), colors.metricsFg, reset, pf, colors.metricsBold);
-
-  // Env
-  const envColor = pf?.["env"] ?? colors.envFg;
-  result.env = colorizeOrEmpty(formatEnvSegment(config), envColor, colors.envBold);
-  addParts(result, "env", formatEnvParts(config), colors.envFg, reset, pf, colors.envBold);
-
-  // Agent
-  const agentColor = pf?.["agent"] ?? colors.agentFg;
-  result.agent = colorizeOrEmpty(
-    formatAgentSegment(data, sym, config, iconVisible.agent),
-    agentColor,
-    colors.agentBold
-  );
-  addParts(
+function resolveActivitySegments(result: Record<string, string>, data: TuiData, ctx: RenderCtx): void {
+  const { sym, config, colors } = ctx;
+  const metricsStyle = { fg: colors.metricsFg, bold: colors.metricsBold };
+  putSegment(result, ctx, "metrics", formatMetricsSegment(data, sym), formatMetricsParts(data, sym), metricsStyle);
+  putSegment(result, ctx, "activity", formatActivitySegment(data, sym), formatActivityParts(data, sym), metricsStyle);
+  putSegment(result, ctx, "env", formatEnvSegment(config), formatEnvParts(config), {
+    fg: colors.envFg,
+    bold: colors.envBold,
+  });
+  const agentIcon = resolveIconVisibility(config, "agent");
+  putSegment(
     result,
+    ctx,
     "agent",
-    formatAgentParts(data, sym, iconVisible.agent),
-    colors.agentFg,
-    reset,
-    pf,
-    colors.agentBold
+    formatAgentSegment(data, sym, config, agentIcon),
+    formatAgentParts(data, sym, agentIcon),
+    { fg: colors.agentFg, bold: colors.agentBold }
   );
 
   // Thinking (combined enabled + effort)
   const thinkingSegConfig = config.display.lines.map((line) => line.segments.thinking).find((t) => t?.enabled);
-  const thinkingColor = pf?.["thinking"] ?? colors.thinkingFg;
-  result.thinking = colorizeOrEmpty(
-    formatThinkingSegment(data, sym, thinkingSegConfig, iconVisible.thinking),
-    thinkingColor,
-    colors.thinkingBold
-  );
-  addParts(
+  const thinkingIcon = resolveIconVisibility(config, "thinking");
+  putSegment(
     result,
+    ctx,
     "thinking",
-    formatThinkingParts(data, sym, thinkingSegConfig, iconVisible.thinking),
-    colors.thinkingFg,
-    reset,
-    pf,
-    colors.thinkingBold
+    formatThinkingSegment(data, sym, thinkingSegConfig, thinkingIcon),
+    formatThinkingParts(data, sym, thinkingSegConfig, thinkingIcon),
+    { fg: colors.thinkingFg, bold: colors.thinkingBold }
   );
 
-  // CacheTimer
-  const cacheTimerElapsed = data.cacheTimerInfo?.elapsedSeconds ?? 0;
-  const cacheTimerStyleResolved = cacheTimerStyle(cacheTimerElapsed, colors, cacheTimerTtl(config, data));
-  const cacheTimerColor = pf?.["cacheTimer"] ?? cacheTimerStyleResolved.fg;
-  result.cacheTimer = colorizeOrEmpty(
-    formatCacheTimerSegment(data, sym, iconVisible.cacheTimer),
-    cacheTimerColor,
-    cacheTimerStyleResolved.bold
-  );
-  addParts(
+  // CacheTimer: colour follows the elapsed share of the cache TTL
+  const cacheTimerIcon = resolveIconVisibility(config, "cacheTimer");
+  putSegment(
     result,
+    ctx,
     "cacheTimer",
-    formatCacheTimerParts(data, sym, iconVisible.cacheTimer),
-    cacheTimerStyleResolved.fg,
-    reset,
-    pf,
-    cacheTimerStyleResolved.bold
+    formatCacheTimerSegment(data, sym, cacheTimerIcon),
+    formatCacheTimerParts(data, sym, cacheTimerIcon),
+    cacheTimerStyle(data.cacheTimerInfo?.elapsedSeconds ?? 0, colors, cacheTimerTtl(config, data))
   );
+}
 
-  // Apply segment templates: resolve items and compose default value
+/** Applies segment templates: resolves their items and composes the default value. */
+function resolveTemplates(result: Record<string, string>, config: PowerlineConfig): Record<string, ResolvedTemplate> {
   const templates: Record<string, ResolvedTemplate> = {};
-  const segmentConfigs = config.display.tui?.segments;
-  if (segmentConfigs) {
-    for (const [segRef, tmpl] of Object.entries(segmentConfigs)) {
-      const items = resolveTemplateItems(tmpl, segRef, result);
-      const gap = tmpl.gap ?? 1;
-      const justify = tmpl.justify ?? "start";
-      templates[segRef] = { items, gap, justify };
-      // Compose default (without cell width for "between")
-      result[segRef] = composeTemplate(items, gap, justify === "between" ? "start" : justify);
-    }
+  for (const [segRef, tmpl] of Object.entries(config.display.tui?.segments ?? {})) {
+    const items = resolveTemplateItems(tmpl, segRef, result);
+    const gap = tmpl.gap ?? 1;
+    const justify = tmpl.justify ?? "start";
+    templates[segRef] = { items, gap, justify };
+    // Compose default (without cell width for "between")
+    result[segRef] = composeTemplate(items, gap, justify === "between" ? "start" : justify);
   }
+  return templates;
+}
 
-  return { data: result, templates };
+export function resolveSegments(data: TuiData, ctx: RenderCtx): ResolvedSegments {
+  const result: Record<string, string> = {};
+  resolveHeadSegments(result, data, ctx);
+  resolveUsageSegments(result, data, ctx);
+  resolveWorkspaceSegments(result, data, ctx);
+  resolveActivitySegments(result, data, ctx);
+  return { data: result, templates: resolveTemplates(result, ctx.config) };
 }

@@ -37,7 +37,8 @@ import { readFile } from "node:fs/promises";
 import { CANDIDATES_ONLY_NOTICE } from "./band-wording.js";
 import { join } from "node:path";
 import type { Vault } from "@bastra-recall/core";
-import { abandonAfter } from "@bastra-recall/core";
+import { abandonAfter, pastValidUntil } from "@bastra-recall/core";
+import { stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { recallHandler, type ToolDeps } from "./tool-handlers.js";
 import { governContext, estimateTokens } from "./context-governor.js";
 import { runHookRecall, type HookRecallDeps } from "./http-hook-routes.js";
@@ -325,6 +326,10 @@ interface RecallShape {
   degraded?: string;
 }
 
+function hasNotExpired(vault: Vault, id: string): boolean {
+  return !pastValidUntil(vault.get(id)?.fm ?? {});
+}
+
 function clip(s: string, max: number): string {
   const t = s.replace(/\s+/g, " ").trim();
   return t.length > max ? `${t.slice(0, max - 1)}…` : t;
@@ -431,6 +436,9 @@ export async function assembleSessionSections(
         }
       )) as RecallShape;
     }
+    // The direct recall fallback may include expired hits. Neither rendered
+    // hints nor the raw data the SessionStart lane renders should show them.
+    if (result.hits) result = { ...result, hits: result.hits.filter((hit) => hasNotExpired(vault, hit.id)) };
     recalls.push({ scope, resp: result, order });
     sawRecall = true;
     if (result.degraded) sawDegraded = true;
@@ -438,7 +446,7 @@ export async function assembleSessionSections(
     const out: string[] = [];
     for (const h of result.hits ?? []) {
       if (h.score < 30) continue;
-      out.push(`- ${h.id} (${h.type}): ${clip(h.summary, 200)}`);
+      out.push(stripFenceMarkers(`- ${h.id} (${h.type}): ${clip(h.summary, 200)}`));
     }
     return out;
   };
@@ -454,15 +462,15 @@ export async function assembleSessionSections(
         // `0` heißt ungekappt — die Lane zeigt seit jeher alle Floors, und
         // `Infinity` überlebt kein JSON.
         const capped = opts.caps?.pinned ?? MAX_PINNED;
-        const floors = (project ? all : all.filter((e) => !e.scope)).slice(0, capped > 0 ? capped : undefined);
+        const floors = all
+          .filter((e) => (project || !e.scope) && hasNotExpired(vault, e.memory_id))
+          .slice(0, capped > 0 ? capped : undefined);
         rawFloors = floors;
-        return floors.map(
-          (f) =>
-            `- [pinned] ${f.memory_id}` +
-            (vault.get(f.memory_id)
-              ? `: ${clip(vault.get(f.memory_id)!.fm.summary ?? vault.get(f.memory_id)!.fm.title, 180)}`
-              : "")
-        );
+        return floors.map((f) => {
+          const fm = vault.get(f.memory_id)?.fm;
+          const summary = fm ? `: ${clip(fm.summary ?? fm.title, 180)}` : "";
+          return stripFenceMarkers(`- [pinned] ${f.memory_id}${summary}`);
+        });
       },
     },
     {
@@ -494,7 +502,7 @@ export async function assembleSessionSections(
         return conventions.length > 0
           ? [
               `- Conventions (BINDING when saving in these clusters — load_memory(id) for the rule): ` +
-                conventions.map((c) => c.id).join(", "),
+                conventions.map((c) => stripFenceMarkers(c.id)).join(", "),
             ]
           : [];
       },

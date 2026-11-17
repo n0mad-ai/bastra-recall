@@ -1,0 +1,622 @@
+[
+  {
+    "request": {
+      "method": "vault_status"
+    },
+    "reply": {
+      "id": 1,
+      "result": {
+        "size": 0
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "save_memory",
+      "params": {
+        "title": "Bridge golden memory",
+        "type": "lesson",
+        "summary": "A memory written through the bridge for the protocol characterization.",
+        "body": "The bridge answers line by line on stdout.",
+        "topic_path": [
+          "bridge",
+          "golden"
+        ],
+        "tags": [
+          "bridge"
+        ],
+        "scope": "golden",
+        "recall_when": [
+          "checking the bridge protocol"
+        ],
+        "dry_run": true
+      }
+    },
+    "reply": {
+      "id": 2,
+      "error": {
+        "message": "save_memory: preview is unavailable on the app bridge. Nothing was written."
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "save_memory",
+      "params": {
+        "title": "Bridge golden memory",
+        "type": "lesson",
+        "summary": "A memory written through the bridge for the protocol characterization.",
+        "body": "The bridge answers line by line on stdout.",
+        "topic_path": [
+          "bridge",
+          "golden"
+        ],
+        "tags": [
+          "bridge"
+        ],
+        "scope": "golden",
+        "recall_when": [
+          "checking the bridge protocol"
+        ],
+        "dry_run": "true"
+      }
+    },
+    "reply": {
+      "id": 3,
+      "error": {
+        "message": "save_memory: dry_run must be true or false. Nothing was written."
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "vault_status"
+    },
+    "reply": {
+      "id": 4,
+      "result": {
+        "size": 0
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "audit_history",
+      "params": {
+        "memory_id": "bridge-golden-memory"
+      }
+    },
+    "reply": {
+      "id": 5,
+      "result": []
+    }
+  },
+  {
+    "request": {
+      "method": "save_memory",
+      "params": {
+        "title": "",
+        "type": "lesson",
+        "summary": "A memory written through the bridge for the protocol characterization.",
+        "body": "The bridge answers line by line on stdout.",
+        "topic_path": [
+          "bridge",
+          "golden"
+        ],
+        "tags": [
+          "bridge"
+        ],
+        "scope": "golden",
+        "recall_when": [
+          "checking the bridge protocol"
+        ]
+      }
+    },
+    "reply": {
+      "id": 6,
+      "error": {
+        "message": "[\n  {\n    \"origin\": \"string\",\n    \"code\": \"too_small\",\n    \"minimum\": 1,\n    \"inclusive\": true,\n    \"path\": [\n      \"title\"\n    ],\n    \"message\": \"Too small: expected string to have >=1 characters\"\n  }\n]"
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "save_memory",
+      "params": {
+        "title": "Bridge golden memory",
+        "type": "lesson",
+        "summary": "A memory written through the bridge for the protocol characterization.",
+        "body": "The bridge answers line by line on stdout.",
+        "topic_path": [
+          "bridge",
+          "golden"
+        ],
+        "tags": [
+          "bridge"
+        ],
+        "scope": "golden",
+        "recall_when": [
+          "checking the bridge protocol"
+        ]
+      }
+    },
+    "reply": {
+      "id": 7,
+      "result": {
+        "id": "bridge-golden-memory",
+        "file_path": "<VAULT>/memories/projects/golden/bridge-golden-memory.md",
+        "created": true,
+        "audit_id": "<AUDIT>"
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "vault_status"
+    },
+    "reply": {
+      "id": 8,
+      "result": {
+        "size": 1
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "list_memorys"
+    },
+    "reply": {
+      "id": 9,
+      "result": [
+        {
+          "id": "bridge-golden-memory",
+          "title": "Bridge golden memory",
+          "type": "lesson",
+          "summary": "A memory written through the bridge for the protocol characterization.",
+          "topic_path": [
+            "bridge",
+            "golden"
+          ],
+          "tags": [
+            "bridge"
+          ],
+          "scope": "golden",
+          "recall_when": [
+            "checking the bridge protocol"
+          ],
+          "related": [],
+          "related_via": [],
+          "sensitivity": "team",
+          "write_origin": "agent-session",
+          "confidence": 1,
+          "created": "<DATE>",
+          "updated": "<DATE>",
+          "affects_files": [],
+          "issues": [],
+          "categories": []
+        }
+      ]
+    }
+  },
+  {
+    "request": {
+      "method": "list_memorys",
+      "params": {
+        "type": "decision"
+      }
+    },
+    "reply": {
+      "id": 10,
+      "result": []
+    }
+  },
+  {
+    "request": {
+      "method": "list_memorys",
+      "params": {
+        "scope": "golden"
+      }
+    },
+    "reply": {
+      "id": 11,
+      "result": [
+        {
+          "id": "bridge-golden-memory",
+          "title": "Bridge golden memory",
+          "type": "lesson",
+          "summary": "A memory written through the bridge for the protocol characterization.",
+          "topic_path": [
+            "bridge",
+            "golden"
+          ],
+          "tags": [
+            "bridge"
+          ],
+          "scope": "golden",
+          "recall_when": [
+            "checking the bridge protocol"
+          ],
+          "related": [],
+          "related_via": [],
+          "sensitivity": "team",
+          "write_origin": "agent-session",
+          "confidence": 1,
+          "created": "<DATE>",
+          "updated": "<DATE>",
+          "affects_files": [],
+          "issues": [],
+          "categories": []
+        }
+      ]
+    }
+  },
+  {
+    "request": {
+      "method": "load_memory",
+      "params": {
+        "id": "bridge-golden-memory"
+      }
+    },
+    "reply": {
+      "id": 12,
+      "result": {
+        "id": "bridge-golden-memory",
+        "frontmatter": {
+          "id": "bridge-golden-memory",
+          "title": "Bridge golden memory",
+          "type": "lesson",
+          "summary": "A memory written through the bridge for the protocol characterization.",
+          "topic_path": [
+            "bridge",
+            "golden"
+          ],
+          "tags": [
+            "bridge"
+          ],
+          "scope": "golden",
+          "recall_when": [
+            "checking the bridge protocol"
+          ],
+          "related": [],
+          "related_via": [],
+          "sensitivity": "team",
+          "write_origin": "agent-session",
+          "confidence": 1,
+          "created": "<DATE>",
+          "updated": "<DATE>",
+          "affects_files": [],
+          "issues": [],
+          "categories": []
+        },
+        "body": "\nThe bridge answers line by line on stdout.\n",
+        "file_path": "<VAULT>/memories/projects/golden/bridge-golden-memory.md"
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "load_memory",
+      "params": {
+        "id": "absent"
+      }
+    },
+    "reply": {
+      "id": 13,
+      "result": null
+    }
+  },
+  {
+    "request": {
+      "method": "recall",
+      "params": {
+        "query": "bridge protocol",
+        "k": 3
+      }
+    },
+    "reply": {
+      "id": 14,
+      "result": [
+        {
+          "id": "bridge-golden-memory",
+          "title": "Bridge golden memory",
+          "type": "lesson",
+          "scope": "golden",
+          "summary": "A memory written through the bridge for the protocol characterization.",
+          "topic_path": [
+            "bridge",
+            "golden"
+          ],
+          "score": "<N>",
+          "matched_terms": [
+            "bridge",
+            "protocol"
+          ],
+          "matched_recall_when": true,
+          "anchor_strength": "strong",
+          "mode": "bm25",
+          "hop": "direct"
+        }
+      ]
+    }
+  },
+  {
+    "request": {
+      "method": "recall",
+      "params": {
+        "query": "nothing matches zzzz"
+      }
+    },
+    "reply": {
+      "id": 15,
+      "result": []
+    }
+  },
+  {
+    "request": {
+      "method": "reindex_file",
+      "params": {}
+    },
+    "reply": {
+      "id": 16,
+      "error": {
+        "message": "file_path is required"
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "docs_settings_get"
+    },
+    "reply": {
+      "id": 17,
+      "result": {
+        "mode": "off",
+        "language": "en"
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "docs_settings_set",
+      "params": {
+        "mode": "bogus"
+      }
+    },
+    "reply": {
+      "id": 18,
+      "error": {
+        "message": "mode must be one of: off | suggest | auto"
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "docs_settings_set",
+      "params": {
+        "language": "not a tag"
+      }
+    },
+    "reply": {
+      "id": 19,
+      "error": {
+        "message": "language must be a short tag like 'en', 'de', 'pt-br'"
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "docs_settings_set",
+      "params": {
+        "mode": "suggest",
+        "language": "DE"
+      }
+    },
+    "reply": {
+      "id": 20,
+      "result": {
+        "mode": "suggest",
+        "language": "de"
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "audit_history",
+      "params": {}
+    },
+    "reply": {
+      "id": 21,
+      "error": {
+        "message": "memory_id is required"
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "audit_history",
+      "params": {
+        "memory_id": "bridge-golden-memory"
+      }
+    },
+    "reply": {
+      "id": 22,
+      "result": [
+        {
+          "id": "<AUDIT>",
+          "memory_id": "bridge-golden-memory",
+          "timestamp": "<TS>",
+          "actor": "user",
+          "operation": "create",
+          "diff_before": null,
+          "diff_after": {
+            "id": "bridge-golden-memory",
+            "title": "Bridge golden memory",
+            "type": "lesson",
+            "summary": "A memory written through the bridge for the protocol characterization.",
+            "topic_path": [
+              "bridge",
+              "golden"
+            ],
+            "tags": [
+              "bridge"
+            ],
+            "scope": "golden",
+            "recall_when": [
+              "checking the bridge protocol"
+            ],
+            "related": [],
+            "related_via": [],
+            "sensitivity": "team",
+            "write_origin": "agent-session",
+            "confidence": 1,
+            "created": "<DATE>",
+            "updated": "<DATE>",
+            "affects_files": [],
+            "issues": []
+          },
+          "file_path": "<VAULT>/memories/projects/golden/bridge-golden-memory.md"
+        }
+      ]
+    }
+  },
+  {
+    "request": {
+      "method": "audit_recent",
+      "params": {}
+    },
+    "reply": {
+      "id": 23,
+      "error": {
+        "message": "since (ISO timestamp) is required"
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "audit_recent",
+      "params": {
+        "since": "<TS>",
+        "operation": "save"
+      }
+    },
+    "reply": {
+      "id": 24,
+      "result": []
+    }
+  },
+  {
+    "request": {
+      "method": "delete_memory",
+      "params": {}
+    },
+    "reply": {
+      "id": 25,
+      "error": {
+        "message": "id is required"
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "delete_memory",
+      "params": {
+        "id": "bridge-golden-memory"
+      }
+    },
+    "reply": {
+      "id": 26,
+      "result": {
+        "id": "bridge-golden-memory",
+        "file_path": "<VAULT>/.bastra/trash/bridge-golden-memory.md",
+        "deleted": true,
+        "audit_id": "<AUDIT>"
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "restore_memory",
+      "params": {}
+    },
+    "reply": {
+      "id": 27,
+      "error": {
+        "message": "id is required"
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "restore_memory",
+      "params": {
+        "id": "bridge-golden-memory"
+      }
+    },
+    "reply": {
+      "id": 28,
+      "result": {
+        "id": "bridge-golden-memory",
+        "file_path": "<VAULT>/memories/projects/golden/bridge-golden-memory.md",
+        "audit_id": "<AUDIT>"
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "vault_status"
+    },
+    "reply": {
+      "id": 29,
+      "result": {
+        "size": 1
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "no_such_method"
+    },
+    "reply": {
+      "id": 30,
+      "error": {
+        "message": "unknown method: no_such_method"
+      }
+    }
+  },
+  {
+    "request": {
+      "method": [
+        "vault_status"
+      ]
+    },
+    "reply": {
+      "id": 31,
+      "error": {
+        "message": "unknown method: vault_status"
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "task_list",
+      "params": {}
+    },
+    "reply": {
+      "id": 32,
+      "error": {
+        "error": "Task operation failed: feature_disabled",
+        "code": "feature_disabled",
+        "retryable": false,
+        "status": 409
+      }
+    }
+  },
+  {
+    "unsolicited": [
+      "vault_changed",
+      "vault_changed",
+      "vault_changed",
+      "vault_changed"
+    ]
+  }
+]

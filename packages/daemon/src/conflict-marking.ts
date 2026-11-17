@@ -6,8 +6,18 @@
  * (rendering lives in core/conflict.ts), the index is refreshed, and the
  * audit log records the diversion (which puts it in the #288 journal too).
  */
-import { mutateMemoryFile, renderConflictBlock, type SaveMemoryInput } from "@bastra-recall/core";
+import { readFile } from "node:fs/promises";
+import {
+  assertInsideVault,
+  mutateMemoryFile,
+  NO_WAIT_TEXT,
+  parseMemory,
+  renderConflictBlock,
+  type Memory,
+  type SaveMemoryInput,
+} from "@bastra-recall/core";
 import { recordAudit } from "./audit-trail.js";
+import { hiddenFromCaller, type PrivateAccess } from "./private-access.js";
 import type { ToolDeps } from "./tool-deps.js";
 
 export interface ConflictMarkResult {
@@ -23,50 +33,86 @@ function str(v: unknown): string | undefined {
   return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
-export async function markConflict(
-  deps: ToolDeps,
-  input: SaveMemoryInput,
-  finalId: string
-): Promise<ConflictMarkResult> {
-  const targetId = input.conflict_with;
-  if (!targetId) throw new Error("markConflict called without conflict_with");
-  if (targetId === finalId) {
-    throw new Error(`conflict_with: a memory cannot conflict with itself (${finalId}).`);
-  }
-  const target = deps.vault.get(targetId);
-  if (!target) {
-    throw new Error(
-      `conflict_with: unknown memory '${targetId}' — it must exist in the vault. ` +
-        `To simply store a new fact, drop the conflict_with field.`
-    );
-  }
+function unknownTarget(id: string): Error {
+  return new Error(
+    `conflict_with: unknown memory '${id}' — it must exist in the vault. ` +
+      `To simply store a new fact, drop the conflict_with field.`
+  );
+}
 
+function conflictTarget(deps: ToolDeps, input: SaveMemoryInput, finalId: string, access?: PrivateAccess): Memory {
+  const id = input.conflict_with;
+  if (!id) throw new Error("markConflict called without conflict_with");
+  if (id === finalId) throw new Error(`conflict_with: a memory cannot conflict with itself (${finalId}).`);
+  const target = deps.vault.get(id);
+  if (!target || hiddenFromCaller(access, target.fm)) throw unknownTarget(id);
+  return target;
+}
+
+function identityMismatch(target: Memory, found: string | null): Error {
+  return new Error(
+    `conflict_with: ${target.filePath} does not hold memory '${target.fm.id}' ` +
+      `(found ${found ?? "no memory"}) — refusing to mark a conflict on a foreign file.`
+  );
+}
+
+function conflictBlock(raw: string, target: Memory, input: SaveMemoryInput, access?: PrivateAccess): string {
+  let fm: Memory["fm"];
+  try {
+    fm = parseMemory(raw, target.filePath, 0).fm;
+  } catch {
+    throw identityMismatch(target, null);
+  }
+  if (hiddenFromCaller(access, fm)) throw unknownTarget(target.fm.id);
+  if (fm.id !== target.fm.id) throw identityMismatch(target, fm.id);
   const today = new Date().toISOString().slice(0, 10);
-  const block = renderConflictBlock(
+  return renderConflictBlock(
     {
-      statement: str(target.fm.summary) ?? str(target.fm.title) ?? targetId,
-      date: str(target.fm.updated) ?? str(target.fm.created),
-      source: str(target.fm.source),
+      statement: str(fm.summary) ?? str(fm.title) ?? fm.id,
+      date: str(fm.updated) ?? str(fm.created),
+      source: str(fm.source),
     },
     { statement: input.summary, detail: input.body, date: today, source: input.source },
     today
   );
-  // Über `mutateMemoryFile`: atomar (ein direktes writeFile ließ die Datei
-  // kurzzeitig halb geschrieben), mit Identitätsprüfung (ein Pfad beweist
-  // nicht, welches Memory dort liegt) und mit Vergleich vor dem Commit, damit
-  // ein paralleler Save nicht rückgängig gemacht wird.
+}
+
+/** #1484: read the same target as the write, without taking the mutation claim. */
+export async function previewConflictMark(
+  deps: ToolDeps,
+  input: SaveMemoryInput,
+  finalId: string,
+  access?: PrivateAccess
+): Promise<Omit<ConflictMarkResult, "conflict_marked" | "note"> & { conflict_block: string }> {
+  const target = conflictTarget(deps, input, finalId, access);
+  assertInsideVault(deps.vaultPath, target.filePath);
+  const raw = await readFile(target.filePath, NO_WAIT_TEXT).catch(() => null);
+  if (raw === null) throw identityMismatch(target, null);
+  const block = conflictBlock(raw, target, input, access);
+  return { id: target.fm.id, file_path: target.filePath, created: false, conflict_block: block };
+}
+
+export async function markConflict(
+  deps: ToolDeps,
+  input: SaveMemoryInput,
+  finalId: string,
+  access?: PrivateAccess
+): Promise<ConflictMarkResult> {
+  const target = conflictTarget(deps, input, finalId, access);
+  const targetId = target.fm.id;
+  let block: string;
   const outcome = await mutateMemoryFile(
     target.filePath,
     targetId,
-    { body: (content) => `${content.replace(/\s*$/, "")}\n\n${block}\n` },
+    {
+      precondition: (raw) => {
+        block = conflictBlock(raw, target, input, access);
+      },
+      body: (content) => `${content.replace(/\s*$/, "")}\n\n${block}\n`,
+    },
     { vaultRoot: deps.vaultPath }
   );
-  if (outcome.kind === "identity-mismatch") {
-    throw new Error(
-      `conflict_with: ${target.filePath} does not hold memory '${targetId}' ` +
-        `(found ${outcome.found ?? "no memory"}) — refusing to mark a conflict on a foreign file.`
-    );
-  }
+  if (outcome.kind === "identity-mismatch") throw identityMismatch(target, outcome.found);
   if (outcome.kind === "raced") {
     throw new Error(
       `conflict_with: '${targetId}' changed while the conflict block was being written — ` +

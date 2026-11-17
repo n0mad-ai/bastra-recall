@@ -1,0 +1,1572 @@
+{
+  "usage and unknown key": {
+    "results": [
+      {
+        "argv": [
+          "frobnicate"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "usage: bastra config get <key> | bastra config set <key> <value>\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+      },
+      {
+        "argv": [
+          "get",
+          "no.such.key"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: unknown config key 'no.such.key'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+      },
+      {
+        "argv": [
+          "set"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: unknown config key ''\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+      }
+    ],
+    "stored": null
+  },
+  "update.mode": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "update.mode"
+        ],
+        "code": 0,
+        "stdout": "notify\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "update.mode",
+          "auto"
+        ],
+        "code": 0,
+        "stdout": "✓ update.mode = auto\n  stored in <HOME>/.bastra/cli-settings.json\n  bastra will now stage updates at session start (no restart mid-session).\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "update.mode",
+          "off"
+        ],
+        "code": 0,
+        "stdout": "✓ update.mode = off\n  stored in <HOME>/.bastra/cli-settings.json\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "update.mode",
+          "bogus"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: update.mode must be one of: notify | auto | off (default: notify)\n"
+      },
+      {
+        "argv": [
+          "get",
+          "update.mode"
+        ],
+        "code": 0,
+        "stdout": "off\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "off"
+      }
+    }
+  },
+  "embedding.provider": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "embedding.provider"
+        ],
+        "code": 0,
+        "stdout": "(unset — falls through to env, else BM25)\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "embedding.provider",
+          "ollama"
+        ],
+        "code": 0,
+        "stdout": "✓ embedding.provider = ollama\n  stored in <HOME>/.bastra/cli-settings.json\n  restart the daemon to apply (activates on next boot).\n  needs Ollama + the embeddinggemma model — run `bastra embeddings on` if not set up.\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "embedding.provider",
+          "none"
+        ],
+        "code": 0,
+        "stdout": "✓ embedding.provider = none\n  stored in <HOME>/.bastra/cli-settings.json\n  restart the daemon to apply (activates on next boot).\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "embedding.provider",
+          "bogus"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: embedding.provider must be one of: ollama | openai | none\n"
+      },
+      {
+        "argv": [
+          "get",
+          "embedding.provider"
+        ],
+        "code": 0,
+        "stdout": "none\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "embedding": {
+        "provider": "none"
+      }
+    }
+  },
+  "embedding.provider with env": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "embedding.provider",
+          "ollama"
+        ],
+        "code": 0,
+        "stdout": "✓ embedding.provider = ollama\n  stored in <HOME>/.bastra/cli-settings.json\n  ⚠ BASTRA_EMBEDDING_PROVIDER=openai (env) is set and OVERRIDES this — unset it for the file to take effect.\n  restart the daemon to apply (activates on next boot).\n  needs Ollama + the embeddinggemma model — run `bastra embeddings on` if not set up.\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "embedding.provider",
+          "openai"
+        ],
+        "code": 0,
+        "stdout": "✓ embedding.provider = openai\n  stored in <HOME>/.bastra/cli-settings.json\n  restart the daemon to apply (activates on next boot).\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "embedding.provider"
+        ],
+        "code": 0,
+        "stdout": "openai\n  note: BASTRA_EMBEDDING_PROVIDER=openai (env) overrides this file at runtime\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "embedding": {
+        "provider": "openai"
+      }
+    }
+  },
+  "ollama.autostart on/off/invalid/missing": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "ollama.autostart",
+          "on"
+        ],
+        "code": 0,
+        "stdout": "✓ ollama.autostart = true\n  stored in <HOME>/.bastra/cli-settings.json\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "ollama.autostart"
+        ],
+        "code": 0,
+        "stdout": "true\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "ollama.autostart",
+          "false"
+        ],
+        "code": 0,
+        "stdout": "✓ ollama.autostart = false\n  stored in <HOME>/.bastra/cli-settings.json\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "ollama.autostart",
+          "maybe"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: ollama.autostart must be one of: true | false (also on|off)\n"
+      },
+      {
+        "argv": [
+          "set",
+          "ollama.autostart"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: ollama.autostart must be one of: true | false (also on|off)\n"
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "ollama": {
+        "autostart": false
+      }
+    }
+  },
+  "docs.mode": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "docs.mode"
+        ],
+        "code": 0,
+        "stdout": "off\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "docs.mode",
+          "auto"
+        ],
+        "code": 0,
+        "stdout": "✓ docs.mode = auto\n  stored in <HOME>/.bastra/cli-settings.json\n  product docs land in dokumentationen/<project>/ in your vault (written autonomously on feature completion).\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "docs.mode",
+          "suggest"
+        ],
+        "code": 0,
+        "stdout": "✓ docs.mode = suggest\n  stored in <HOME>/.bastra/cli-settings.json\n  product docs land in dokumentationen/<project>/ in your vault (proposed first, written after you agree).\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "docs.mode",
+          "off"
+        ],
+        "code": 0,
+        "stdout": "✓ docs.mode = off\n  stored in <HOME>/.bastra/cli-settings.json\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "docs.mode",
+          "bogus"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: docs.mode must be one of: off | suggest | auto (default: off)\n"
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "docs": {
+        "mode": "off"
+      }
+    }
+  },
+  "docs.language": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "docs.language"
+        ],
+        "code": 0,
+        "stdout": "en\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "docs.language",
+          "PT-BR"
+        ],
+        "code": 0,
+        "stdout": "✓ docs.language = pt-br\n  stored in <HOME>/.bastra/cli-settings.json\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "docs.language",
+          "not a tag"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: docs.language must be a short tag like 'en', 'de', 'pt-br'\n"
+      },
+      {
+        "argv": [
+          "get",
+          "docs.language"
+        ],
+        "code": 0,
+        "stdout": "pt-br\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "docs": {
+        "language": "pt-br"
+      }
+    }
+  },
+  "ui.enabled on/off/invalid/missing": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "ui.enabled",
+          "on"
+        ],
+        "code": 0,
+        "stdout": "✓ ui.enabled = true\n  stored in <HOME>/.bastra/cli-settings.json\n  vault map: http://127.0.0.1:<PORT>/ui (or just: bastra map — no daemon restart needed)\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "ui.enabled"
+        ],
+        "code": 0,
+        "stdout": "true\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "ui.enabled",
+          "false"
+        ],
+        "code": 0,
+        "stdout": "✓ ui.enabled = false\n  stored in <HOME>/.bastra/cli-settings.json\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "ui.enabled",
+          "maybe"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: ui.enabled must be one of: true | false (also on|off)\n"
+      },
+      {
+        "argv": [
+          "set",
+          "ui.enabled"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: ui.enabled must be one of: true | false (also on|off)\n"
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "ui": {
+        "enabled": false
+      }
+    }
+  },
+  "archive.enabled on/off/invalid/missing": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "archive.enabled",
+          "on"
+        ],
+        "code": 0,
+        "stdout": "✓ archive.enabled = true\n  stored in <HOME>/.bastra/cli-settings.json\n  Claude Code's rm -r and lossy git acts now run through bastra's archive and are allowed without a prompt (docs/hooks.md).\n  the next Bash call uses it (no restart needed).\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "archive.enabled"
+        ],
+        "code": 0,
+        "stdout": "true\n  note: BASTRA_RM_ARCHIVES=0 (env) overrides this file at runtime\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "archive.enabled",
+          "false"
+        ],
+        "code": 0,
+        "stdout": "✓ archive.enabled = false\n  stored in <HOME>/.bastra/cli-settings.json\n  rm -r and the lossy git acts get the plain STOP again.\n  the next Bash call uses it (no restart needed).\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "archive.enabled",
+          "maybe"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: archive.enabled must be one of: true | false (also on|off)\n"
+      },
+      {
+        "argv": [
+          "set",
+          "archive.enabled"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: archive.enabled must be one of: true | false (also on|off)\n"
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "archive": {
+        "enabled": false
+      }
+    }
+  },
+  "archive.enabled with env override": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "archive.enabled",
+          "yes"
+        ],
+        "code": 0,
+        "stdout": "✓ archive.enabled = true\n  stored in <HOME>/.bastra/cli-settings.json\n  Claude Code's rm -r and lossy git acts now run through bastra's archive and are allowed without a prompt (docs/hooks.md).\n  the next Bash call uses it (no restart needed).\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "archive.enabled"
+        ],
+        "code": 0,
+        "stdout": "true\n  note: BASTRA_RM_ARCHIVES=1 (env) overrides this file at runtime\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "archive": {
+        "enabled": true
+      }
+    }
+  },
+  "reflex.enabled on/off/invalid/missing": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "reflex.enabled",
+          "on"
+        ],
+        "code": 0,
+        "stdout": "✓ reflex.enabled = true\n  stored in <HOME>/.bastra/cli-settings.json\n  the next prompt uses it (no restart needed).\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "reflex.enabled"
+        ],
+        "code": 0,
+        "stdout": "true\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "reflex.enabled",
+          "false"
+        ],
+        "code": 0,
+        "stdout": "✓ reflex.enabled = false\n  stored in <HOME>/.bastra/cli-settings.json\n  the next prompt uses it (no restart needed).\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "reflex.enabled",
+          "maybe"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: reflex.enabled must be one of: true | false (also on|off)\n"
+      },
+      {
+        "argv": [
+          "set",
+          "reflex.enabled"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: reflex.enabled must be one of: true | false (also on|off)\n"
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "reflex": {
+        "enabled": false
+      }
+    }
+  },
+  "reflex.enabled with env override": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "reflex.enabled",
+          "yes"
+        ],
+        "code": 0,
+        "stdout": "✓ reflex.enabled = true\n  stored in <HOME>/.bastra/cli-settings.json\n  the next prompt uses it (no restart needed).\n  ⚠ BASTRA_REFLEX=1 (env) is set and OVERRIDES this — unset it for the file to take effect.\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "reflex.enabled"
+        ],
+        "code": 0,
+        "stdout": "true\n  note: BASTRA_REFLEX=1 (env) overrides this file at runtime\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "reflex": {
+        "enabled": true
+      }
+    }
+  },
+  "battery.saver on/off/invalid/missing": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "battery.saver",
+          "on"
+        ],
+        "code": 0,
+        "stdout": "✓ battery.saver = true\n  stored in <HOME>/.bastra/cli-settings.json\n  on battery, background paraphrasing waits for AC, model warm-ups are skipped and the model unloads after 60 s idle (macOS).\n  restart the daemon to apply.\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "battery.saver"
+        ],
+        "code": 0,
+        "stdout": "true\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "battery.saver",
+          "false"
+        ],
+        "code": 0,
+        "stdout": "✓ battery.saver = false\n  stored in <HOME>/.bastra/cli-settings.json\n  background model work runs the same on battery as on AC.\n  restart the daemon to apply.\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "battery.saver",
+          "maybe"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: battery.saver must be one of: true | false (also on|off)\n"
+      },
+      {
+        "argv": [
+          "set",
+          "battery.saver"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: battery.saver must be one of: true | false (also on|off)\n"
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "battery": {
+        "saver": false
+      }
+    }
+  },
+  "battery.saver with env override": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "battery.saver",
+          "yes"
+        ],
+        "code": 0,
+        "stdout": "✓ battery.saver = true\n  stored in <HOME>/.bastra/cli-settings.json\n  on battery, background paraphrasing waits for AC, model warm-ups are skipped and the model unloads after 60 s idle (macOS).\n  restart the daemon to apply.\n  ⚠ BASTRA_BATTERY_SAVER=1 (env) is set and OVERRIDES this — unset it for the file to take effect.\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "battery.saver"
+        ],
+        "code": 0,
+        "stdout": "true\n  note: BASTRA_BATTERY_SAVER=1 (env) overrides this file at runtime\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "battery": {
+        "saver": true
+      }
+    }
+  },
+  "promptImpact.enabled on/off/invalid/missing": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "promptImpact.enabled",
+          "on"
+        ],
+        "code": 0,
+        "stdout": "✓ promptImpact.enabled = true\n  stored in <HOME>/.bastra/cli-settings.json\n  the next prompt uses it (no restart needed).\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "promptImpact.enabled"
+        ],
+        "code": 0,
+        "stdout": "true\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "promptImpact.enabled",
+          "false"
+        ],
+        "code": 0,
+        "stdout": "✓ promptImpact.enabled = false\n  stored in <HOME>/.bastra/cli-settings.json\n  the next prompt uses it (no restart needed).\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "promptImpact.enabled",
+          "maybe"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: promptImpact.enabled must be one of: true | false (also on|off)\n"
+      },
+      {
+        "argv": [
+          "set",
+          "promptImpact.enabled"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: promptImpact.enabled must be one of: true | false (also on|off)\n"
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "promptImpact": {
+        "enabled": false
+      }
+    }
+  },
+  "promptImpact.enabled with env override": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "promptImpact.enabled",
+          "yes"
+        ],
+        "code": 0,
+        "stdout": "✓ promptImpact.enabled = true\n  stored in <HOME>/.bastra/cli-settings.json\n  the next prompt uses it (no restart needed).\n  ⚠ BASTRA_PROMPT_IMPACT=1 (env) is set and OVERRIDES this — unset it for the file to take effect.\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "promptImpact.enabled"
+        ],
+        "code": 0,
+        "stdout": "true\n  note: BASTRA_PROMPT_IMPACT=1 (env) overrides this file at runtime\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "promptImpact": {
+        "enabled": true
+      }
+    }
+  },
+  "coverageMap.enabled on/off/invalid/missing": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "coverageMap.enabled",
+          "on"
+        ],
+        "code": 0,
+        "stdout": "✓ coverageMap.enabled = true\n  stored in <HOME>/.bastra/cli-settings.json\n  test commands in repositories with code awareness now run with NODE_V8_COVERAGE; the next Bash call uses it (no restart needed).\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "coverageMap.enabled"
+        ],
+        "code": 0,
+        "stdout": "true\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "coverageMap.enabled",
+          "false"
+        ],
+        "code": 0,
+        "stdout": "✓ coverageMap.enabled = false\n  stored in <HOME>/.bastra/cli-settings.json\n  test commands run untouched again.\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "coverageMap.enabled",
+          "maybe"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: coverageMap.enabled must be one of: true | false (also on|off)\n"
+      },
+      {
+        "argv": [
+          "set",
+          "coverageMap.enabled"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: coverageMap.enabled must be one of: true | false (also on|off)\n"
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "coverageMap": {
+        "enabled": false
+      }
+    }
+  },
+  "coverageMap.enabled with env override": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "coverageMap.enabled",
+          "yes"
+        ],
+        "code": 0,
+        "stdout": "✓ coverageMap.enabled = true\n  stored in <HOME>/.bastra/cli-settings.json\n  test commands in repositories with code awareness now run with NODE_V8_COVERAGE; the next Bash call uses it (no restart needed).\n  ⚠ BASTRA_COVERAGE_MAP=1 (env) is set and OVERRIDES this — unset it for the file to take effect.\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "coverageMap.enabled"
+        ],
+        "code": 0,
+        "stdout": "true\n  note: BASTRA_COVERAGE_MAP=1 (env) overrides this file at runtime\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "coverageMap": {
+        "enabled": true
+      }
+    }
+  },
+  "archive.retain": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "archive.retain"
+        ],
+        "code": 0,
+        "stdout": "junk=1,in-git=2,user=2  (default)\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "archive.retain",
+          "junk=1,in-git=2.5,user=3"
+        ],
+        "code": 0,
+        "stdout": "✓ archive.retain = junk=1,in-git=2.5,user=3\n  stored in <HOME>/.bastra/cli-settings.json\n  the next hourly reconcile uses it (no restart needed).\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "archive.retain",
+          "bogus"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: archive.retain is days per class, e.g. junk=1,in-git=2,user=2 (fractions allowed)\n"
+      },
+      {
+        "argv": [
+          "get",
+          "archive.retain"
+        ],
+        "code": 0,
+        "stdout": "junk=1,in-git=2.5,user=3\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "archive": {
+        "retain": "junk=1,in-git=2.5,user=3"
+      }
+    }
+  },
+  "archive.retain with env": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "archive.retain"
+        ],
+        "code": 0,
+        "stdout": "junk=9,in-git=2,user=2  (default)\n  note: BASTRA_ARCHIVE_RETAIN=junk=9 (env) overrides this file at runtime\n",
+        "stderr": ""
+      }
+    ],
+    "stored": null
+  },
+  "archive.cap": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "archive.cap"
+        ],
+        "code": 0,
+        "stdout": "10 GB  (default)\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "archive.cap",
+          "5GB"
+        ],
+        "code": 0,
+        "stdout": "✓ archive.cap = 5 GB\n  stored in <HOME>/.bastra/cli-settings.json\n  the next hourly reconcile uses it (no restart needed): over the cap, build junk goes first, then clean git-tracked files.\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "archive.cap",
+          "0"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: archive.cap is a size above zero, e.g. 5GB or 500MB (units KB, MB, GB, TB) — got '0'\n"
+      },
+      {
+        "argv": [
+          "get",
+          "archive.cap"
+        ],
+        "code": 0,
+        "stdout": "5 GB\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "archive": {
+        "cap": "5GB"
+      }
+    }
+  },
+  "archive.cap with env": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "archive.cap",
+          "500MB"
+        ],
+        "code": 0,
+        "stdout": "✓ archive.cap = 500 MB\n  stored in <HOME>/.bastra/cli-settings.json\n  the next hourly reconcile uses it (no restart needed): over the cap, build junk goes first, then clean git-tracked files.\n  ⚠ BASTRA_ARCHIVE_CAP=1GB (env) is set and OVERRIDES this — unset it for the file to take effect.\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "archive.cap"
+        ],
+        "code": 0,
+        "stdout": "500 MB\n  note: BASTRA_ARCHIVE_CAP=1GB (env) overrides this file at runtime\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "archive": {
+        "cap": "500MB"
+      }
+    }
+  },
+  "archive.max-item": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "archive.max-item"
+        ],
+        "code": 0,
+        "stdout": "(unset — no per-target limit)\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "archive.max-item",
+          "2GB"
+        ],
+        "code": 0,
+        "stdout": "✓ archive.max-item = 2 GB\n  stored in <HOME>/.bastra/cli-settings.json\n  a larger target is neither archived nor deleted: rm refuses and names /bin/rm and this setting.\n  the next Bash call uses it (no restart needed).\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "archive.max-item"
+        ],
+        "code": 0,
+        "stdout": "2 GB\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "archive.max-item",
+          "off"
+        ],
+        "code": 0,
+        "stdout": "✓ archive.max-item = off (no per-target limit)\n  stored in <HOME>/.bastra/cli-settings.json\n  rm archives a target of any size again.\n  the next Bash call uses it (no restart needed).\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "archive.max-item",
+          "none"
+        ],
+        "code": 0,
+        "stdout": "✓ archive.max-item = off (no per-target limit)\n  stored in <HOME>/.bastra/cli-settings.json\n  rm archives a target of any size again.\n  the next Bash call uses it (no restart needed).\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "archive.max-item",
+          "bogus"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: archive.max-item is a size above zero, e.g. 2GB or 500MB (units KB, MB, GB, TB), or off for no limit — got 'bogus'\n"
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "archive": {}
+    }
+  },
+  "archive.max-item with env": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "archive.max-item",
+          "2GB"
+        ],
+        "code": 0,
+        "stdout": "✓ archive.max-item = 2 GB\n  stored in <HOME>/.bastra/cli-settings.json\n  a larger target is neither archived nor deleted: rm refuses and names /bin/rm and this setting.\n  the next Bash call uses it (no restart needed).\n  ⚠ BASTRA_ARCHIVE_MAX_ITEM=1GB (env) is set and OVERRIDES this — unset it for the file to take effect.\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "archive.max-item"
+        ],
+        "code": 0,
+        "stdout": "2 GB\n  note: BASTRA_ARCHIVE_MAX_ITEM=1GB (env) overrides this file at runtime\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "archive": {
+        "maxItem": "2GB"
+      }
+    }
+  },
+  "size.guide": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "size.guide"
+        ],
+        "code": 0,
+        "stdout": "(unset — default 500)\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "size.guide",
+          "300.4"
+        ],
+        "code": 0,
+        "stdout": "✓ size.guide = 300\n  stored in <HOME>/.bastra/cli-settings.json\n  the PreToolUse hook now flags source files near/over this guide value (no restart needed).\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "size.guide",
+          "50"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: size.guide must be a line count between 100 and 5000 (default 500)\n"
+      },
+      {
+        "argv": [
+          "set",
+          "size.guide",
+          "x"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: size.guide must be a line count between 100 and 5000 (default 500)\n"
+      },
+      {
+        "argv": [
+          "get",
+          "size.guide"
+        ],
+        "code": 0,
+        "stdout": "300\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "size": {
+        "guide": 300
+      }
+    }
+  },
+  "size.guide with env": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "size.guide"
+        ],
+        "code": 0,
+        "stdout": "(unset — default 500)\n  note: BASTRA_SIZE_GUIDE=800 (env) overrides this file at runtime\n",
+        "stderr": ""
+      }
+    ],
+    "stored": null
+  },
+  "language.primary": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "language.primary"
+        ],
+        "code": 0,
+        "stdout": "(unset — memories authored in English by default)\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "language.primary",
+          " DE "
+        ],
+        "code": 0,
+        "stdout": "✓ language.primary = de\n  stored in <HOME>/.bastra/cli-settings.json\n  new memories are now authored in this language (English tech terms kept as anchors, no restart needed).\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "language.primary",
+          "deu"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: language.primary must be a 2-letter ISO code like 'de', 'en', 'ru'\n"
+      },
+      {
+        "argv": [
+          "get",
+          "language.primary"
+        ],
+        "code": 0,
+        "stdout": "de\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "language": {
+        "primary": "de"
+      }
+    }
+  },
+  "assistant.name get and empty set": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "assistant.name"
+        ],
+        "code": 0,
+        "stdout": "(unset)\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "assistant.name"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "Name angeben; entfernen mit bastra address remove.\n"
+      },
+      {
+        "argv": [
+          "set",
+          "assistant.name",
+          ""
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "Name angeben; entfernen mit bastra address remove.\n"
+      }
+    ],
+    "stored": null
+  },
+  "registry keys": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "tasks.enabled"
+        ],
+        "code": 0,
+        "stdout": "true\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "tasks.enabled",
+          "on"
+        ],
+        "code": 0,
+        "stdout": "✓ tasks.enabled updated; restart the daemon and clients to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "tasks.enabled",
+          "maybe"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for tasks.enabled\n"
+      },
+      {
+        "argv": [
+          "get",
+          "tasks.enabled"
+        ],
+        "code": 0,
+        "stdout": "true\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "reflex.maxPerTurn",
+          "3"
+        ],
+        "code": 0,
+        "stdout": "✓ reflex.maxPerTurn updated\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "reflex.maxPerTurn"
+        ],
+        "code": 0,
+        "stdout": "3\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "size.exemptPaths",
+          "[\"a/**\"]"
+        ],
+        "code": 0,
+        "stdout": "✓ size.exemptPaths updated\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "size.exemptPaths",
+          "[broken"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for size.exemptPaths\n"
+      },
+      {
+        "argv": [
+          "get",
+          "size.exemptPaths"
+        ],
+        "code": 0,
+        "stdout": "[\"a/**\"]\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "soul.text"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for soul.text\n"
+      },
+      {
+        "argv": [
+          "get",
+          "api.token"
+        ],
+        "code": 0,
+        "stdout": "null\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "api.token",
+          "secret-value"
+        ],
+        "code": 0,
+        "stdout": "✓ api.token updated; restart the daemon and clients to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "api.token"
+        ],
+        "code": 0,
+        "stdout": "(configured — masked)\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "api": {
+        "token": "secret-value"
+      },
+      "reflex": {
+        "maxPerTurn": 3
+      },
+      "size": {
+        "exemptPaths": [
+          "a/**"
+        ]
+      },
+      "tasks": {
+        "enabled": true
+      }
+    }
+  },
+  "registry key with env": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "tasks.enabled"
+        ],
+        "code": 0,
+        "stdout": "true\n  note: BASTRA_TASKS overrides this setting at runtime\n",
+        "stderr": ""
+      }
+    ],
+    "stored": null
+  },
+  "daemon.env": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "daemon.env",
+          "{\"BASTRA_LOG_RETENTION_DAYS\":\"60\"}"
+        ],
+        "code": 0,
+        "stdout": "✓ daemon.env updated; restart the daemon and clients to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "daemon.env",
+          "{broken"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for daemon.env\n"
+      },
+      {
+        "argv": [
+          "get",
+          "daemon.env"
+        ],
+        "code": 0,
+        "stdout": "(configured — masked)\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "daemon": {
+        "env": {
+          "BASTRA_LOG_RETENTION_DAYS": "60"
+        }
+      }
+    }
+  },
+  "env-backed keys": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "logs.retention"
+        ],
+        "code": 0,
+        "stdout": "90\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "logs.retention",
+          "120"
+        ],
+        "code": 0,
+        "stdout": "✓ logs.retention updated in daemon.env; restart the daemon to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "logs.retention",
+          "abc"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid or environment-controlled value for logs.retention\n"
+      },
+      {
+        "argv": [
+          "set",
+          "logs.retention"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid or environment-controlled value for logs.retention\n"
+      },
+      {
+        "argv": [
+          "get",
+          "logs.retention"
+        ],
+        "code": 0,
+        "stdout": "120\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "hint.suppress",
+          "on"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid or environment-controlled value for hint.suppress\n"
+      },
+      {
+        "argv": [
+          "set",
+          "hint.suppress",
+          "maybe"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid or environment-controlled value for hint.suppress\n"
+      },
+      {
+        "argv": [
+          "set",
+          "ollama.url",
+          "http://localhost:11434"
+        ],
+        "code": 0,
+        "stdout": "✓ ollama.url updated in daemon.env; restart the daemon to apply\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "daemon": {
+        "env": {
+          "BASTRA_LOG_RETENTION_DAYS": "120",
+          "BASTRA_OLLAMA_URL": "http://localhost:11434"
+        }
+      }
+    }
+  }
+}

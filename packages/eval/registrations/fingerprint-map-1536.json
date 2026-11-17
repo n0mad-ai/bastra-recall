@@ -1,0 +1,141 @@
+{
+  "$comment": "#1536: source fingerprints across the one-time Prettier commit 0f9f0604 (behaviour-neutral; AST equivalence verified in #1506). Frozen registrations are not rewritten. Decision for every case: keep the byte fingerprint (it is the stricter proof, and repo_commit beside it names the state) and record the mapping here. Generated with packages/eval/scripts/fingerprint-history.mjs, which recomputes any recipe at every commit; `node packages/eval/scripts/fingerprint-history.mjs <sha256>` places a hash in history. __tests__/fingerprint-history.test.ts recomputes every pair below from git.",
+  "schema_version": 1,
+  "issue": 1536,
+  "registered_at": "2026-11-17",
+  "formatter_commit": "0f9f06045626232114100592fca7dd533a5eb6cb",
+  "decision": "documented mapping; no new fingerprint form",
+  "formatter_breaks": [
+    {
+      "recipe": "chunk-maxsim-run.ts code",
+      "registrations": [
+        "chunk-maxsim-dense-results.json",
+        "chunk-maxsim-lexical-results.json"
+      ],
+      "registered_sha256": "0fad72ed22f72c8f4ac06f6e88ddeee17ca77a18a3e5c7867942788e6af59f92",
+      "registered_at_commit": "630d5fde917c320b36141305b55bcd5b883e477c",
+      "after_reformat_sha256": "c2a9f71816bd359db2b12bec22a736be5ad5b45fa9d5ac65e963625fb7fba902",
+      "later_changes": "real change from cb23b903 on: a rerun after it is a different program, as it should read"
+    },
+    {
+      "recipe": "chunk-vault-coverage.ts code_sha256",
+      "registrations": [
+        "chunk-vault-coverage-results.json"
+      ],
+      "registered_sha256": "d26877950eb21cf46fe64ebc46de5d8b3b549fe9b6211ff37d832e08812e2ca0",
+      "registered_at_commit": "630d5fde917c320b36141305b55bcd5b883e477c",
+      "after_reformat_sha256": "826c5e9cfe896d67448169628a2d0def28299077f4a4c082162270aa72382336",
+      "later_changes": "none: the reformatted bytes are still the current ones"
+    },
+    {
+      "recipe": "correction-sequences.ts code_sha256 (own bytes)",
+      "registrations": [
+        "correction-sequences-results.json"
+      ],
+      "registered_sha256": "152c9139f2ada830ccc056a99c5d35727d360edb42c800097aaf140151243935",
+      "registered_at_commit": "630d5fde917c320b36141305b55bcd5b883e477c",
+      "after_reformat_sha256": "e19a367dcb8e9eae1ab3774d5b75bf1317a40874daaf157118627f1f32a7ee53",
+      "later_changes": "none: the reformatted bytes are still the current ones"
+    },
+    {
+      "recipe": "draft-csls.mjs code_sha256 (own bytes)",
+      "registrations": [
+        "draft-csls-results.json"
+      ],
+      "registered_sha256": "c6905bbdf1fdd72cca613767ae27d324fd43632ae7396672a1b87a2662268363",
+      "registered_at_commit": "630d5fde917c320b36141305b55bcd5b883e477c",
+      "after_reformat_sha256": "b1e4de0ba38d86790a873f39f579f84230009ffe38f66d5587dcc9abefef2969",
+      "later_changes": "none: the reformatted bytes are still the current ones"
+    },
+    {
+      "recipe": "flat-scale-subset.ts code_sha256 (own bytes)",
+      "registrations": [
+        "flat-scale-subset-results.json"
+      ],
+      "registered_sha256": "8dd41255dc388f8f2526dc17e138ff8eada0231acab51eb586ebe3421ca12d41",
+      "registered_at_commit": "630d5fde917c320b36141305b55bcd5b883e477c",
+      "after_reformat_sha256": "24705450ac665f3d20e485969e328e0c570000ed87f065be5deff3941d9fe16c",
+      "later_changes": "none: the reformatted bytes are still the current ones"
+    },
+    {
+      "recipe": "longmemeval-run.ts code_hash",
+      "registrations": [
+        "longmemeval-results.json",
+        "longmemeval-run.json",
+        "measurement-b-scorecard.json"
+      ],
+      "registered_sha256": "771642995ba6aa2107fdace0dd5b2cf5cf84d2418f9e879ed89296b393f0a78d",
+      "registered_at_commit": "8bb5ec0cc5ba20decd0e88c957e0d76db04f4148",
+      "after_reformat_sha256": "f844df7499800f957a588f9f4bf0f0fe83f9e7a7b854eb1e31ca16b48d15dbbf",
+      "later_changes": "real change from cb23b903 on: a rerun after it is a different program, as it should read"
+    },
+    {
+      "recipe": "supersession-durability.ts code_sha256 (own bytes)",
+      "registrations": [
+        "supersession-durability-results.json"
+      ],
+      "registered_sha256": "337c08041d912585f6feeaadd828e1aa2c9d60a62a1a7efb9620ae4077517dd5",
+      "registered_at_commit": "630d5fde917c320b36141305b55bcd5b883e477c",
+      "after_reformat_sha256": "dcd0af8c723ec9ac2d7f2db0ae13eb578d50ac1b5f9bdb189f352977fb762124",
+      "later_changes": "none: the reformatted bytes are still the current ones"
+    },
+    {
+      "recipe": "supersession-hybrid.ts code_sha256 (own bytes)",
+      "registrations": [
+        "supersession-hybrid-results.json"
+      ],
+      "registered_sha256": "2605605c3bdb62b2d588df3f8db5d810b35c17cc3ae14bb22be2f3bc06818959",
+      "registered_at_commit": "630d5fde917c320b36141305b55bcd5b883e477c",
+      "after_reformat_sha256": "99f60c249771fd426dc6bf4e719e75687130997eab99f96fa4ae9d18a9942843",
+      "later_changes": "none: the reformatted bytes are still the current ones"
+    }
+  ],
+  "other_cases": [
+    {
+      "recipe": "longmemeval-run.ts code_hash",
+      "registrations": [
+        "longmemeval-results.json",
+        "longmemeval-run.json"
+      ],
+      "registered_sha256": "36bb59514190b3f35f6a2d51bca3c949d76546175d67234e6a5c5b609bdf44e8",
+      "registered_at_commit": "d955191c9bf5095962c5243b69691b15392c24df",
+      "case": "code changed in 0ec27f07 before the reformatting; not a formatter break"
+    },
+    {
+      "recipe": "longmemeval-run.ts code_hash",
+      "registrations": [
+        "longmemeval-results.json"
+      ],
+      "registered_sha256": "cefd790e6d625be4e1718d1c2815dce578769b521e3b6a1898db01aa2c680743",
+      "registered_at_commit": null,
+      "case": "produced by no committed state of longmemeval-run.ts + longmemeval-dataset.ts: a run from an uncommitted working tree. The script cannot place it, and says so"
+    },
+    {
+      "recipe": "goldset-run.ts hashes.code",
+      "registrations": [
+        "v1-baseline.json"
+      ],
+      "registered_sha256": "a807c674d052c5dcb9815b403b09cc0a3dcaddea2d73ce85bf7b28ff6aec2704",
+      "registered_at_commit": "58d48c0c7d37900e649d26fff9d73df78afacdab",
+      "case": "code changed in 8bb5ec0c before the reformatting; not a formatter break"
+    },
+    {
+      "recipe": "*.py code_sha256 (mcp-scope-shadow, model2vec-local-check, recount-test-events)",
+      "registrations": [
+        "mcp-scope-shadow-results.json",
+        "model2vec-local-check-results.json",
+        "test-event-recount-results.json"
+      ],
+      "case": "Python sources were not reformatted; their registered hashes are still the current bytes"
+    },
+    {
+      "recipe": "evidence-windows-run.ts implementation_sha256",
+      "registrations": [],
+      "case": "no registration stores this hash (evidence-windows.json holds the protocol only)"
+    },
+    {
+      "recipe": "core_src_sha256 (chunk-maxsim-run, flat-scale-subset, correction-sequences, supersession-*)",
+      "case": "hashes every file of packages/core/src, so it moves with any core change and is read together with repo_commit beside it; the reformatting is one of many such changes and needs no mapping"
+    }
+  ]
+}

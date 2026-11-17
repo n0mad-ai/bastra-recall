@@ -351,7 +351,6 @@ async function assistantRuntimeBundle(o: ReturnType<typeof assistantAddressOptio
     "assistant-address-name.js",
     "assistant-address-files.js",
     "http-auth.js",
-    "runtime-feature-settings.js",
     "runtime-settings.js",
   ];
   const contents = await Promise.all(
@@ -362,10 +361,10 @@ async function assistantRuntimeBundle(o: ReturnType<typeof assistantAddressOptio
           : join(source, name);
       const text = await readFile(path, "utf8");
       // The private launchd runtime has no node_modules; retain the shared reader
-      // implementation and resolve the shim's exact package subpath locally.
+      // implementation and resolve the gateway's exact package subpath locally.
       return [
         name,
-        name === "runtime-feature-settings.js"
+        name === "assistant-address-gateway.js"
           ? text.replace(/(["'])@bastra-recall\/core\/runtime-settings\1/g, '"./runtime-settings.js"')
           : text,
       ] as const;

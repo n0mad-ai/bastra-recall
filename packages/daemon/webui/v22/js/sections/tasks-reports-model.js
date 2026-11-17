@@ -51,8 +51,8 @@ export const originText = (r) => [r.client, r.session].filter(Boolean).join(" ·
 /** Case and Unicode form never decide a match: "ÜBER", "über" and a decomposed "über" are one word. */
 const fold = (s) =>
   String(s ?? "")
-    .toLowerCase()
-    .normalize("NFKC");
+    .normalize("NFKC")
+    .toLowerCase();
 
 /** Search over the list (#1597): the rows whose title or project hold every word of the query,
  *  at once and here. The list rows carry no report text: `hits` are the ids the daemon found for

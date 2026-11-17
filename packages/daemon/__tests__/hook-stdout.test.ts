@@ -43,3 +43,28 @@ test("#1573: exitAfterStdout leaves only after a large answer reached a slow rea
   assert.equal(code, 0);
   assert.equal(bytes, SIZE);
 });
+
+test("#1573: a closed host pipe does not crash the hook client", { skip: process.platform === "win32" }, async () => {
+  const child = spawn(
+    process.execPath,
+    [
+      "--import",
+      "tsx",
+      "--input-type=module",
+      "-e",
+      `import { emitStdout, exitAfterStdout } from ${JSON.stringify(helper)};
+       emitStdout("x".repeat(${SIZE}));
+       void exitAfterStdout();`,
+    ],
+    { stdio: ["ignore", "pipe", "pipe"], timeout: 5000 }
+  );
+  child.stdout.destroy();
+  let stderr = "";
+  child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+  const code = await new Promise<number | null>((resolve, reject) => {
+    child.on("error", reject);
+    child.on("close", resolve);
+  });
+  assert.equal(code, 0, stderr);
+  assert.equal(stderr, "");
+});

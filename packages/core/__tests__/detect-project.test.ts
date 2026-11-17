@@ -5,6 +5,9 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { detectProject, detectProjectDetailed } from "../src/topics.js";
 
 test("detectProjectDetailed: root-match when a known repo-root segment precedes it", () => {
@@ -17,16 +20,21 @@ test("detectProjectDetailed: root-match when a known repo-root segment precedes 
   assert.equal(d.confidence, "root-match");
 });
 
-test("detectProjectDetailed: ein echtes .git schlägt die Container-Heuristik", () => {
-  // Dieses Repo hat ein `.git` — geprüft wird die Auskunft, nicht der Name:
-  // in einem git-worktree heißt das Checkout-Verzeichnis anders als das Repo,
-  // und ein fest verdrahtetes "bastra-recall" ließ den Test dort scheitern.
-  // `key` ist die normalisierte Form; der Ordnername behält seine
-  // Schreibweise, also wird hier gegen die normalisierte Erwartung geprüft —
-  // sonst scheitert der Test in jedem Checkout mit Großbuchstaben im Pfad.
-  const root = decodeURIComponent(new URL("../../..", import.meta.url).pathname).replace(/\/$/, "");
-  const d = detectProjectDetailed(decodeURIComponent(new URL("..", import.meta.url).pathname));
-  assert.equal(d.key, root.slice(root.lastIndexOf("/") + 1).toLowerCase());
+test("detectProjectDetailed: ein echtes .git schlägt die Container-Heuristik", (t) => {
+  // #1488: das Repo wird im Temp-Ordner selbst angelegt — eine Kopie dieses
+  // Codes ohne `.git` (Archiv, Tarball) darf den Test nicht rot färben.
+  // Unter einem Container-Segment ("Projekte") hätte die Heuristik "company"
+  // geraten; das `.git` darunter muss gewinnen. `.git` ist hier eine DATEI wie
+  // in einem git-worktree, und das Checkout-Verzeichnis trägt Großbuchstaben:
+  // `key` ist normalisiert, `raw` behält die Schreibweise.
+  const base = mkdtempSync(join(tmpdir(), "detect-project-git-"));
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  const repo = join(base, "Projekte", "company", "Real-Repo");
+  mkdirSync(join(repo, "packages", "core"), { recursive: true });
+  writeFileSync(join(repo, ".git"), "gitdir: /nirgendwo/.git/worktrees/real-repo\n");
+  const d = detectProjectDetailed(join(repo, "packages", "core"));
+  assert.equal(d.raw, "Real-Repo");
+  assert.equal(d.key, "real-repo");
   assert.equal(d.confidence, "git-root");
 });
 

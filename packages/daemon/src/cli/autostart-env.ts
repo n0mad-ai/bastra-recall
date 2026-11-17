@@ -54,3 +54,24 @@ export async function legacySnapshotWarning(backupDir: string): Promise<string |
     ? `${readable} legacy LaunchAgent snapshot(s) are readable beyond the owner; old snapshots were left unchanged. Review their permissions and any legacy credentials separately.`
     : null;
 }
+
+/**
+ * #1523 — hand-made `.bak` copies of the managed plist next to it in the
+ * LaunchAgents folder (`<label>.plist.bak-…`, `<label>.bak.plist`). They can
+ * hold the same environment as the plist, and nothing of ours ever looked at
+ * them. Read-only like the check above: report path and a repair command,
+ * never chmod, delete or read the contents.
+ */
+export async function launchAgentBackupWarning(launchAgentsDir: string, label: string): Promise<string | null> {
+  const files = await readdir(launchAgentsDir).catch(() => []);
+  const exposed: string[] = [];
+  for (const name of files.sort()) {
+    if (!name.startsWith(`${label}.`) || !name.slice(label.length).includes(".bak")) continue;
+    const path = join(launchAgentsDir, name);
+    const info = await lstat(path).catch(() => null);
+    if (info?.isFile() && (info.mode & 0o077) !== 0) exposed.push(path);
+  }
+  if (!exposed.length) return null;
+  const quoted = exposed.map((p) => `'${p.replaceAll("'", `'\\''`)}'`).join(" ");
+  return `${exposed.length} LaunchAgent backup copy(ies) are readable beyond the owner and may hold environment values: ${exposed.join(", ")}. Restrict them with: chmod 600 ${quoted}`;
+}

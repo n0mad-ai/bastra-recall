@@ -1,7 +1,9 @@
 /**
- * UserPromptSubmit lane — the loopback self-call to /hook/recall and
- * /hook/reflex on this same server (split out of prompt-lane.ts, #680; why it
- * stays a loopback call is documented at the top of prompt-lane.ts).
+ * The daemon lanes' loopback self-calls to this same server: the prompt
+ * lane's /hook/recall and /hook/reflex (split out of prompt-lane.ts, #680; why
+ * it stays a loopback call is documented at the top of prompt-lane.ts), and
+ * since #1508 the session lane's and Stop lane's calls and the hinted ping,
+ * which each carried their own copy of this block.
  */
 import { request } from "node:http";
 
@@ -51,6 +53,52 @@ export function postJson<T>(baseUrl: string, path: string, body: unknown, timeou
     });
     req.on("error", reject);
     req.write(payload);
+    req.end();
+  });
+}
+
+/** GET `path` (a query string included); resolve with the parsed body on
+ *  HTTP 200, `null` on anything else — non-200, unparsable body, timeout,
+ *  connection error. Never rejects: its callers are fail-silent lookups. */
+export function getJson<T>(baseUrl: string, path: string, timeoutMs: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    let url: URL;
+    try {
+      url = new URL(path, baseUrl);
+    } catch {
+      resolve(null);
+      return;
+    }
+    const req = request(
+      {
+        method: "GET",
+        hostname: url.hostname,
+        port: url.port || 80,
+        path: url.pathname + url.search,
+        timeout: timeoutMs,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c: Buffer) => chunks.push(c));
+        res.on("end", () => {
+          try {
+            const data = JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
+            if ((res.statusCode ?? 500) === 200) {
+              resolve(data);
+              return;
+            }
+          } catch {
+            /* fallthrough */
+          }
+          resolve(null);
+        });
+      }
+    );
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(null);
+    });
+    req.on("error", () => resolve(null));
     req.end();
   });
 }

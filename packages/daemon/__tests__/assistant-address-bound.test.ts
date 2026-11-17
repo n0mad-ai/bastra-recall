@@ -80,7 +80,6 @@ async function runtime(t: test.TestContext) {
     "assistant-address-name",
     "assistant-address-files",
     "http-auth",
-    "runtime-feature-settings",
   ]) {
     const text = await readFile(new URL(`../src/${name}.ts`, import.meta.url), "utf8");
     await writeFile(

@@ -4,7 +4,7 @@
  * No request parameter can select the privileged projection. */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { relative, sep } from "node:path";
-import { buildGraph, buildSemanticLayout, type Vault } from "@bastra-recall/core";
+import { buildGraph, buildSemanticLayout, type SemanticLayout, type Vault } from "@bastra-recall/core";
 import type { HttpServerContext } from "./http-context.js";
 import type { ToolDeps } from "./tool-handlers.js";
 import { listSkills } from "./skills-registry.js";
@@ -28,6 +28,39 @@ export function isGraphReadPath(path: string, prefix: string): boolean {
   return path === prefix || path === `${prefix}/node` || path === `${prefix}/semantic`;
 }
 
+/** Share a layout only while its projection is still current. A sensitivity
+ *  edit drops both the cached layout and any build that could repopulate it. */
+async function sendSemanticLayout(res: ServerResponse, ctx: GraphReadCtx, includePrivate: boolean): Promise<void> {
+  const { server, vault } = ctx;
+  const vecs = ctx.embeddingVectors?.() ?? null;
+  if (!vecs || vecs.size === 0) {
+    sendJson(res, 503, { error: "embeddings not ready" });
+    return;
+  }
+  const cacheKey = includePrivate ? "uiSemanticCache" : "semanticCache";
+  const inflightKey = includePrivate ? "uiSemanticInflight" : "semanticInflight";
+  const cache = server[cacheKey];
+  if (cache && Date.now() - cache.at <= 60_000) {
+    sendJson(res, 200, cache.body);
+    return;
+  }
+  if (!server[inflightKey]) {
+    const build: Promise<SemanticLayout> = listSkills()
+      .then((skills) => buildSemanticLayout(buildGraph(vault, skills, { includePrivate }), vecs))
+      .then((body) => {
+        if (server[inflightKey] === build) server[cacheKey] = { at: Date.now(), body };
+        return body;
+      })
+      .finally(() => {
+        if (server[inflightKey] === build) server[inflightKey] = null;
+      });
+    server[inflightKey] = build;
+  }
+  const body = await server[inflightKey];
+  if (server[cacheKey]?.body !== body) return sendSemanticLayout(res, ctx, includePrivate);
+  sendJson(res, 200, body);
+}
+
 /** Called only after the enclosing surface's access checks. */
 export async function handleGraphRead(
   res: ServerResponse,
@@ -35,12 +68,18 @@ export async function handleGraphRead(
   ctx: GraphReadCtx,
   includePrivate: boolean
 ): Promise<void> {
-  const { vault, toolDeps, server } = ctx;
+  const { vault, toolDeps } = ctx;
   const u = new URL(url, "http://127.0.0.1");
   if (u.pathname.endsWith("/node")) {
     const id = u.searchParams.get("id") ?? "";
-    const mem = vault.get(id);
-    if (!mem || (!includePrivate && mem.fm.sensitivity === "private")) {
+    const visibleMemory = () => {
+      const candidate = vault.get(id);
+      return candidate && (includePrivate || candidate.fm.sensitivity !== "private") ? candidate : null;
+    };
+    // Skip telemetry reads for unavailable notes; check again after a possible sensitivity change.
+    const daily = visibleMemory() ? await recallDaily(defaultLogDir()) : null;
+    const mem = daily && visibleMemory();
+    if (!daily || !mem) {
       sendJson(res, 404, { error: `unknown node: ${id}` });
       return;
     }
@@ -64,40 +103,19 @@ export async function handleGraphRead(
       recall_mode: fm.recall_mode ?? null,
       related_via: fm.related_via.filter((link) => visibleTarget(link.id)),
       file: relative(toolDeps.vaultPath, mem.filePath).split(sep).join("/"),
-      recall_days: (await recallDaily(defaultLogDir())).get(fm.id) ?? [],
+      recall_days: daily.get(fm.id) ?? [],
       // #1446: the memory browser edits against this revision and shows the rule state.
       ...memoryEditInfo(mem),
     });
     return;
   }
-  if (u.pathname.endsWith("/semantic")) {
-    const vecs = ctx.embeddingVectors?.() ?? null;
-    if (!vecs || vecs.size === 0) {
-      sendJson(res, 503, { error: "embeddings not ready" });
-      return;
-    }
-    const cacheKey = includePrivate ? "uiSemanticCache" : "semanticCache";
-    const inflightKey = includePrivate ? "uiSemanticInflight" : "semanticInflight";
-    const cache = server[cacheKey];
-    if (cache && Date.now() - cache.at <= 60_000) {
-      sendJson(res, 200, cache.body);
-      return;
-    }
-    server[inflightKey] ??= (async () => {
-      const body = await buildSemanticLayout(buildGraph(vault, await listSkills(), { includePrivate }), vecs);
-      server[cacheKey] = { at: Date.now(), body };
-      return body;
-    })().finally(() => {
-      server[inflightKey] = null;
-    });
-    sendJson(res, 200, await server[inflightKey]);
-    return;
-  }
-  const graph = buildGraph(vault, await listSkills(), { includePrivate });
+  if (u.pathname.endsWith("/semantic")) return sendSemanticLayout(res, ctx, includePrivate);
+  const skills = await listSkills();
   const usage = await readUsage(toolDeps.vaultPath);
   const heat = computeHeat(usage),
     reach = computeReach(usage);
   const daily = await recallDaily(defaultLogDir());
+  const graph = buildGraph(vault, skills, { includePrivate });
   // Explicit zeros distinguish cold nodes from an absent feature (#217/#227).
   for (const n of graph.nodes) {
     n.heat = heat[n.id] ?? 0;

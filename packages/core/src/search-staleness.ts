@@ -35,20 +35,17 @@ export function applyStaleness(
   opts: RecallOptions = {},
   now: Date = new Date()
 ): RecallHit[] {
-  const nowMs = now.getTime();
+  // #1568: a measurement pins the clock. The cache is keyed to the wall clock
+  // (its TTL compares against `computedAt`), so a pinned run neither reads nor
+  // fills it: a status computed for another reference time must not leak in.
+  const pinned = referenceTimeOf(opts);
+  if (pinned) now = pinned;
   for (const h of hits) {
     const fm = vault.get(h.id)?.fm as Record<string, unknown> | undefined;
     if (!fm) continue;
-    const touchTs = computeTouchTs(fm);
-    let entry = stalenessCache.get(h.id);
-    const ttlExpired = entry != null && nowMs - entry.computedAt > STALENESS_CACHE_TTL_MS;
-    if (!entry || entry.touchTs !== touchTs || ttlExpired) {
-      const status = computeStaleness(fm, now);
-      entry = { touchTs, status, computedAt: nowMs };
-      stalenessCache.set(h.id, entry);
-    }
+    const status = pinned ? computeStaleness(fm, now) : cachedStaleness(stalenessCache, h.id, fm, now);
     markExpired(h, fm, now);
-    let mult = STALE_MULTIPLIERS[entry.status];
+    let mult = multiplierFor(status, fm);
     if (curatorDemotions.has(h.id)) mult *= CURATOR_DEMOTION_MULTIPLIER;
     if (!opts.type && h.type === "doc") mult *= DOC_TYPE_DAMPING;
     // #217: Salience boostet nur im Live-Modus (default: shadow-only im
@@ -68,6 +65,25 @@ export function applyStaleness(
   direct.sort((a, b) => b.score - a.score);
   hops.sort((a, b) => b.score - a.score);
   return [...direct, ...hops];
+}
+
+/** The wall-clock status of one memory through the cache (#29): recomputed
+ *  when the touch stamp changed or the entry is older than the TTL. */
+function cachedStaleness(
+  cache: Map<string, { touchTs: number; status: StaleStatus; computedAt: number }>,
+  id: string,
+  fm: Record<string, unknown>,
+  now: Date
+): StaleStatus {
+  const nowMs = now.getTime();
+  const touchTs = computeTouchTs(fm);
+  let entry = cache.get(id);
+  const ttlExpired = entry != null && nowMs - entry.computedAt > STALENESS_CACHE_TTL_MS;
+  if (!entry || entry.touchTs !== touchTs || ttlExpired) {
+    entry = { touchTs, status: computeStaleness(fm, now), computedAt: nowMs };
+    cache.set(id, entry);
+  }
+  return entry.status;
 }
 
 /** Prefer a retrieved successor without burying the matching old value.
@@ -116,12 +132,56 @@ const AGING_THRESHOLD_FRACTION = 0.75;
  */
 export type StaleStatus = "fresh" | "aging" | "stale" | "expired";
 
-const STALE_MULTIPLIERS: Record<StaleStatus, number> = {
+/**
+ * #1567: strong demotion only where the owner set the deadline — an explicit
+ * `valid_until` or `expires_after_days`. Replaced notes are handled apart from
+ * this, by successor promotion.
+ */
+const EXPLICIT_DEADLINE_MULTIPLIERS: Record<StaleStatus, number> = {
   fresh: 1.0,
   aging: 0.85,
   stale: 0.5,
   expired: 0.2,
 };
+
+/**
+ * #1567 (owner decision 16.11.2026): age alone demotes only mildly. A project
+ * fact nobody replaced is usually still the right answer; with the explicit
+ * factors above it lost four fifths of its score 135 days after its last edit.
+ * Measured on a copy of a real vault (15.11.2026, 577 answerable gold
+ * questions): R@3 170 → 257 with these factors for the type defaults.
+ */
+const TYPE_DEFAULT_MULTIPLIERS: Record<StaleStatus, number> = {
+  fresh: 1.0,
+  aging: 0.85,
+  stale: 0.7,
+  expired: 0.7,
+};
+
+/** #1567: a rule (`rulebook` declared) never ages in search. */
+function isRule(fm: Record<string, unknown>): boolean {
+  return fm.rulebook === "always" || fm.rulebook === "on-demand";
+}
+
+/**
+ * Which deadline `computeStaleness` measured against — the same branch order:
+ * a parseable `valid_until` first, then a numeric `expires_after_days`, else
+ * the type default.
+ */
+function hasExplicitDeadline(fm: Record<string, unknown>): boolean {
+  return parseDateValue(fm.valid_until) != null || typeof fm.expires_after_days === "number";
+}
+
+function multiplierFor(status: StaleStatus, fm: Record<string, unknown>): number {
+  if (hasExplicitDeadline(fm)) return EXPLICIT_DEADLINE_MULTIPLIERS[status];
+  return isRule(fm) ? 1.0 : TYPE_DEFAULT_MULTIPLIERS[status];
+}
+
+/** #1568: the pinned reference time of a measurement, when it is a real date. */
+function referenceTimeOf(opts: RecallOptions): Date | undefined {
+  const t = opts.reference_time;
+  return t instanceof Date && !Number.isNaN(t.getTime()) ? t : undefined;
+}
 
 /**
  * Curator-Demotion (#155): Score-Faktor für Memories, die der deterministische
@@ -255,8 +315,7 @@ export function applyStalenessMultiplier(
   for (const h of hits) {
     const fm = resolveFrontmatter(h.id);
     if (!fm) continue;
-    const status = computeStaleness(fm, now);
-    const mult = STALE_MULTIPLIERS[status];
+    const mult = multiplierFor(computeStaleness(fm, now), fm);
     if (mult !== 1.0) {
       h.score = round(h.score * mult);
     }

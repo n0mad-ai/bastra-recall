@@ -29,6 +29,7 @@ import { cmdSkills } from "./cli/skills-cmd.js";
 import { cmdFeedback } from "./cli/feedback-cmd.js";
 import { cmdArchive } from "./cli/archive-cmd.js";
 import { cmdTrash } from "./cli/trash-cmd.js";
+import { cmdRecall, cmdSave } from "./cli/memory-cmd.js";
 import { cmdReconcile } from "./cli/reconcile-cmd.js";
 import { cmdLogs, parseSince } from "./cli/logs.js";
 import { cmdConventions } from "./cli/log-conventions.js";
@@ -62,7 +63,9 @@ const pipeError =
 process.stdout.on("error", pipeError(process.stdout));
 process.stderr.on("error", pipeError(process.stderr));
 
-async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
+/** What answers before the command switch: --version, --help, the bare
+ *  panel and `help`. Null = dispatch the command. */
+async function beforeDispatch(args: ReturnType<typeof parseArgs>): Promise<number | null> {
   if (args.showVersion) {
     showVersion();
     return 0;
@@ -82,6 +85,12 @@ async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
     showHelp(args.surface);
     return 0;
   }
+  return null;
+}
+
+async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
+  const early = await beforeDispatch(args);
+  if (early !== null) return early;
 
   switch (args.command) {
     case "version":
@@ -135,6 +144,10 @@ async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
       return cmdArchive(args);
     case "trash":
       return cmdTrash(args);
+    case "recall":
+      return cmdRecall(process.argv.slice(2));
+    case "save":
+      return cmdSave(process.argv.slice(2));
     case "reconcile":
       return cmdReconcile(args);
     case "rules":

@@ -78,8 +78,9 @@ for an unknown flag, a missing value, no input at all, or `--hook-lane` without
   served `hits`, `candidate_pool` and score space; `load_memory` events with
   the recall the daemon linked them to. A recall event without a
   `candidate_pool` counts as a known empty pool only when the event shows it:
-  an empty `hits` list and its own `score_kind` / `score_arms`. Otherwise the
-  pool is missing.
+  an empty `hits` list and its own `score_kind` / `score_arms`. An event that
+  contradicts itself — a `hit_count` above zero next to an empty `hits` list —
+  proves nothing (#1126). Otherwise the pool is missing.
 - **The vault.** File paths, memory ids, each file's birth time and its
   declared `created`.
 - **Reviewer labels**, if given.
@@ -157,10 +158,15 @@ and a verdict: `den` when at least 2 witnesses showed it, `noise` for fewer,
   them is reported as a gap and not classified. A batch that was collapsed to
   a single phrasing is judged like a plain recall.
 - **A step in the same message as the recall** is not taken as evidence; only
-  steps after the recall's result count.
-- **After a slash command or an interrupt** recalls are ignored until the
-  owner types again.
-- **Subagent records** in a transcript are read like the main thread's.
+  steps after the recall's result count. When a first result is already in and
+  the same message holds a second recall and the step, the step is judged
+  against the results it could see; the second recall leaves the chain
+  (#1126).
+- **After a slash command or an interrupt** recalls form no chain until the
+  owner types again. They still count in `transcript_recalls` (#1126).
+- **Subagent records** (`isSidechain: true`) are skipped: a subagent's prompt
+  is no intent of the owner and its steps are not the main thread's (#1126).
+- **A byte-order mark** in front of a file's first line is ignored (#1126).
 - **Shell reads** are recognised only in the simple shapes named above; pipes,
   globs, variables and relative paths are not.
 - **Thresholds** (hub 3 sessions, den 2 witnesses, hot path 30 minutes and 2
@@ -247,7 +253,9 @@ Wert, ganz ohne Eingabe oder bei `--hook-lane` ohne `--events` und `--vault`.
   mit dem Recall, dem der Daemon sie zugeordnet hat. Ein Recall-Ereignis ohne
   `candidate_pool` gilt nur dann als bekannter leerer Pool, wenn das Ereignis
   es selbst zeigt: eine leere `hits`-Liste und eigene `score_kind` /
-  `score_arms`. Sonst fehlt der Pool.
+  `score_arms`. Ein Ereignis, das sich selbst widerspricht — `hit_count` über
+  null neben einer leeren `hits`-Liste —, beweist nichts (#1126). Sonst fehlt
+  der Pool.
 - **Den Vault.** Dateipfade, Erinnerungs-Ids, die Entstehungszeit jeder Datei
   und ihr angegebenes `created`.
 - **Prüfer-Markierungen**, falls angegeben.
@@ -332,11 +340,18 @@ mindestens 2 Zeugen sie gezeigt haben, `noise` bei weniger, `none` bei null.
   Batch, der auf eine einzige Formulierung zusammengestrichen wurde, wird wie
   ein einfacher Recall beurteilt.
 - **Ein Schritt in derselben Nachricht wie der Recall** gilt nicht als Beleg;
-  es zählen nur Schritte nach dem Ergebnis des Recalls.
-- **Nach einem Slash-Befehl oder einem Abbruch** werden Recalls ignoriert, bis
-  der Besitzer wieder tippt.
-- **Subagenten-Einträge** in einem Protokoll werden wie die des Hauptstrangs
-  gelesen.
+  es zählen nur Schritte nach dem Ergebnis des Recalls. Liegt ein erstes
+  Ergebnis schon vor und stehen ein zweiter Recall und der Schritt in derselben
+  Nachricht, wird der Schritt gegen die Ergebnisse beurteilt, die er sehen
+  konnte; der zweite Recall fällt aus der Kette (#1126).
+- **Nach einem Slash-Befehl oder einem Abbruch** bilden Recalls keine Kette,
+  bis der Besitzer wieder tippt. In `transcript_recalls` zählen sie trotzdem
+  (#1126).
+- **Subagenten-Einträge** (`isSidechain: true`) werden übersprungen: Der
+  Auftrag an einen Subagenten ist keine Absicht des Besitzers, und seine
+  Schritte sind nicht die des Hauptstrangs (#1126).
+- **Ein Byte-Order-Mark** vor der ersten Zeile einer Datei wird ignoriert
+  (#1126).
 - **Shell-Lesezugriffe** werden nur in den oben genannten einfachen Formen
   erkannt; Pipes, Platzhalter, Variablen und relative Pfade nicht.
 - **Schwellen** (Hub 3 Sitzungen, `den` 2 Zeugen, Hot Path 30 Minuten und 2

@@ -12,10 +12,13 @@
  */
 import { after, before, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { createServer } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Memory } from "@bastra-recall/core";
 import { memoryRevision } from "@bastra-recall/core";
 import {
@@ -27,6 +30,7 @@ import {
   type KernelCandidates,
 } from "../src/rule-kernel.js";
 import { runGateLane, actionReflexPool } from "../src/gate-lane.js";
+import { dispatchLaneRoutes } from "../src/http-lane-routes.js";
 import { runPromptLane } from "../src/prompt-lane.js";
 import { runSessionLane } from "../src/session-lane.js";
 import type { WarmupCoordinator } from "../src/embedding-warmup.js";
@@ -357,6 +361,112 @@ describe("#1305 rule kernel: re-delivery by the gate lane", () => {
     // A compact/clear drops what the context held: full text again.
     await clearShown(sid);
     assert.match(await kernelAt(changed), /Rule index/);
+  });
+
+  it(
+    "INV-RULE-05: a finished HTTP response can be lost before the hook reaches the host",
+    { timeout: 6000 },
+    async (t) => {
+      t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+      const sid = "kernel-gate-host-pipe";
+      const fullRule = "Follow the complete fixture rule.";
+      const catalog: KernelCandidates = {
+        entries: [
+          {
+            id: "host-pipe-rule",
+            title: "Fixture rule",
+            group: "explicit",
+            body: fullRule,
+            updated: null,
+            stale_status: "unknown",
+            rulebook: "always",
+            revision: null,
+          },
+        ],
+        omitted: 0,
+      };
+      const fixture = { reflexPool: () => [], kernel: async () => catalog };
+      const payload = call(sid, "Read", { file_path: "/fixture.ts" });
+      let finished = 0;
+      const server = createServer((req, res) => {
+        res.once("finish", () => {
+          if (res.statusCode === 200) finished++;
+        });
+        dispatchLaneRoutes(
+          req,
+          res,
+          "POST",
+          "/hook/gate",
+          undefined,
+          undefined,
+          undefined,
+          fixture.reflexPool,
+          fixture.kernel
+        );
+      });
+      t.after(async () => {
+        server.closeAllConnections();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      });
+      server.listen(0, "127.0.0.1");
+      await once(server, "listening");
+      const address = server.address();
+      assert.ok(address && typeof address !== "string");
+      const env = {
+        ...process.env,
+        BASTRA_DAEMON_URL: `http://127.0.0.1:${address.port}`,
+        BASTRA_HOOK_TIMEOUT_MS: "2000",
+      };
+      const setDue = () =>
+        mutateSessionState(sid, (state) => {
+          assert.equal(state.toolCalls ?? 0, 0);
+          state.toolCalls = RULE_KERNEL_TOOL_CALLS - 1;
+        });
+      const runHook = async (closeHostPipe: boolean) => {
+        await setDue();
+        const child = spawn(process.execPath, [fileURLToPath(new URL("../dist/gate-hook.js", import.meta.url))], {
+          env,
+          timeout: 3000,
+          stdio: ["pipe", "pipe", "inherit"],
+        });
+        let output = "";
+        if (closeHostPipe) child.stdout.destroy();
+        else child.stdout.setEncoding("utf8").on("data", (chunk: string) => (output += chunk));
+        child.stdin.end(JSON.stringify(payload));
+        assert.deepEqual(await once(child, "close"), [0, null]);
+        return output;
+      };
+      assert.equal(await runHook(true), "");
+      assert.equal(finished, 1, "the daemon finished its response after the host pipe was closed");
+      const second = parse(await runHook(false)).hookSpecificOutput?.additionalContext ?? "";
+      assert.ok(second.includes(fullRule), second);
+      assert.doesNotMatch(second, /unchanged=/);
+      assert.equal(finished, 2);
+      await setDue();
+      const direct = parse(await runGateLane(payload, fixture)).hookSpecificOutput?.additionalContext ?? "";
+      assert.equal(direct, second, "HTTP must not record evidence usable by direct callers");
+      assert.equal(parse(await runHook(false)).hookSpecificOutput?.additionalContext, second);
+      await mutateSessionState(sid, () => {});
+    }
+  );
+
+  it("INV-RULE-05: main, unattributed, and distinct workers do not share kernel receipts", async () => {
+    const sid = "kernel-actor-receipts";
+    const atCadence = async (actor: { agent_id?: string; bastra_client?: string }) => {
+      await mutateSessionState(sid, (state) => {
+        state.toolCalls = RULE_KERNEL_TOOL_CALLS - 1;
+      });
+      const out = parse(await runGateLane({ ...call(sid), ...actor }, deps));
+      return out.hookSpecificOutput?.additionalContext ?? "";
+    };
+    assert.match(await atCadence({}), /Rule index/);
+    assert.match(await atCadence({ agent_id: "main" }), /Rule index/);
+    const shared = "a".repeat(200);
+    assert.match(await atCadence({ agent_id: shared + "1" }), /Rule index/);
+    assert.match(await atCadence({ agent_id: shared + "2" }), /Rule index/);
+    assert.match(await atCadence({ bastra_client: undefined }), /Rule index/);
+    assert.match(await atCadence({ bastra_client: undefined }), /Rule index/);
+    assert.match(await atCadence({}), /unchanged=/);
   });
 
   it("a user prompt resets the count", async () => {

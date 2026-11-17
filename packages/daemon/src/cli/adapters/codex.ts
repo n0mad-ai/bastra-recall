@@ -5,6 +5,7 @@ import {
   CODEX_GATE_VERIFIED_VERSIONS,
 } from "../../codex-gate-capability.js";
 import { windowsHookToken } from "./command-paths.js";
+import { clientMcpSurface } from "../doctor-delivery.js";
 /**
  * Codex + ChatGPT desktop adapter (#15).
  *
@@ -815,11 +816,14 @@ async function codexDoctor(): Promise<DoctorResult> {
   // #531 — the key names the endpoint that was actually probed.
   details[`daemon-at-${probe.endpoint?.label ?? "?"}`] = probe.ok ? `reachable (${probe.detail})` : probe.detail;
   if (!registered) return { status: "missing", message: "MCP not registered with Codex/ChatGPT desktop", details };
+  const transport = current.server?.transport;
   const features = {
     recallHooks: !hooksBroken,
     stopHook: stopHookRegistered,
     skill: skillState.status !== "missing",
-    ...mcpEnvFeatures(current.server?.transport, CODEX_CONFIG),
+    ...mcpEnvFeatures(transport, CODEX_CONFIG),
+    rulebookGate: { version: codexVersion, verified: gateEligible },
+    mcpSurface: clientMcpSurface(transport),
   };
   const broken =
     forwarderBroken ||

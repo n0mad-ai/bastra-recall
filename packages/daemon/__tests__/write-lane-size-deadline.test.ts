@@ -12,7 +12,9 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
+import { promisify } from "node:util";
+import { constants } from "node:fs";
 import { mkdtemp, open, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -66,8 +68,8 @@ test("#1538: a size note that never finishes does not hold the lane past its dea
       assert.equal(out, "{}");
     });
   } finally {
-    // Release the blocked reader: a writer opens and closes the pipe (EOF).
-    await (await open(fifo, "w")).close();
+    // Release a pending reader, if any, without waiting for one to exist.
+    await (await open(fifo, constants.O_RDWR | constants.O_NONBLOCK)).close();
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -81,6 +83,32 @@ test("#1538: before its deadline the note is unchanged; past it the answer is nu
     assert.match(open ?? "", /900/);
     assert.equal(await fileSizeNote(file, join(dir, "none.json"), dir, Date.now() + 5000), open);
     assert.equal(await fileSizeNote(file, join(dir, "none.json"), dir, Date.now() - 1), null);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("#1538: a skipped FIFO does not leave a blocking filesystem request alive", async (t) => {
+  if (process.platform === "win32") return t.skip("named pipes via mkfifo are POSIX-only");
+  const dir = await mkdtemp(join(tmpdir(), "bastra-size-fifo-exit-"));
+  const fifo = join(dir, "stuck.ts");
+  execFileSync("mkfifo", [fifo]);
+  try {
+    const { stdout } = await promisify(execFile)(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "--input-type=module",
+        "-e",
+        `import { fileSizeNote } from ${JSON.stringify(new URL("../src/file-size-check.ts", import.meta.url).href)};
+         const note = await fileSizeNote(${JSON.stringify(fifo)}, ${JSON.stringify(join(dir, "none.json"))},
+           ${JSON.stringify(dir)}, Date.now() + 150);
+         console.log(JSON.stringify(note));`,
+      ],
+      { timeout: 2500 }
+    );
+    assert.equal(stdout.trim(), "null");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

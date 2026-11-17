@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import matter from "gray-matter";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -496,6 +496,17 @@ test("#1387: CLI displays full proposal then sends the exact revision over the e
     cmdRules({ positional: ["rules", ...words], dryRun } as any);
   const { dispatchApi } = await import("../src/http-api-routes.js");
   const { projectForFilter } = await import("../src/scope-filter.js");
+  // #1488: the CLI derives its project from the cwd. Run it inside a temp
+  // folder with its own `.git`, so the test also holds in a copy of this code
+  // without `.git` (archive, tarball).
+  const project = await mkdtemp(join(tmpdir(), "bastra-rules-cli-project-"));
+  await mkdir(join(project, ".git"));
+  const cwd = process.cwd();
+  process.chdir(project);
+  t.after(async () => {
+    process.chdir(cwd);
+    await rm(project, { recursive: true, force: true });
+  });
   const deps = await fixture(t);
   await saveMemoryHandler(deps, {
     ...base,

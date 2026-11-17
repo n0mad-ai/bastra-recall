@@ -175,6 +175,18 @@ test("der projektlose Weg fragt kein Projekt ab und filtert Floors auf global", 
   });
 });
 
+test("#1467 session hints render ordinary markup as readable text", async () => {
+  await withDeps(async (toolDeps, vault) => {
+    const { fn } = recallStub({ "user-preference": { hits: [hit("m1", "Use the <em> tag for emphasis.")] } });
+    const text = await buildSessionContext(toolDeps, vault, {
+      recallFn: fn,
+      listFloorsFn: noFloors,
+      listConventionsFn: noConventions,
+    });
+    assert.match(text, /Use the ‹em› tag for emphasis\./);
+  });
+});
+
 // ── 2. Projektbewusst ───────────────────────────────────────────
 
 test("mit Projekt kommt der Projektblock dazu — vor den Präferenzen", async () => {

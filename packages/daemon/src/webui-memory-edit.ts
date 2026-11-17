@@ -54,8 +54,8 @@ export interface MemoryEditCtx {
   toolDeps: ToolDeps;
   /** Set by http.ts only after a proven peer-account check (as /ui/graph). */
   privateGraph?: boolean;
-  /** The semantic layout caches, dropped when a sensitivity changes (#1558). */
-  server?: Pick<HttpServerContext, "semanticCache" | "uiSemanticCache">;
+  /** The semantic layouts and their builds, dropped when sensitivity changes (#1558). */
+  server?: Pick<HttpServerContext, "semanticCache" | "uiSemanticCache" | "semanticInflight" | "uiSemanticInflight">;
 }
 
 /** The audit trail names the user and the surface, not the MCP tool. */
@@ -298,7 +298,10 @@ async function edit(ctx: MemoryEditCtx, r: UiEditRequest) {
   const { args, fields } = editArgs(mem, r);
   const result = await editMemoryHandler(deps, args, access(ctx), UI_ORIGIN, fields);
   // A memory that became private must leave the cached layouts at once (#1558).
-  if (fields?.sensitivity && ctx.server) ctx.server.semanticCache = ctx.server.uiSemanticCache = null;
+  if (fields?.sensitivity && ctx.server) {
+    ctx.server.semanticCache = ctx.server.uiSemanticCache = null;
+    ctx.server.semanticInflight = ctx.server.uiSemanticInflight = null;
+  }
   if (!("revision" in result)) throw new UiEditError(409, "the edit was held by the trigger check — nothing written");
   const { revision, warning } = result;
   const after = deps.vault.get(r.id);

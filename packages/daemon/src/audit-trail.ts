@@ -41,6 +41,7 @@ import {
   type SaveMemoryCommitOptions,
   type SaveMemoryInput,
   type SaveMemoryResult,
+  type WriteOriginEvidence,
 } from "@bastra-recall/core";
 import { writeCallerStore } from "./caller-session.js";
 
@@ -62,6 +63,19 @@ function logFor(vaultRoot: string): AuditLog {
 export function writerFields(): { transport?: string; client?: string | null; caller_session?: string | null } {
   const caller = writeCallerStore.getStore();
   return caller ? { transport: caller.transport, client: caller.client, caller_session: caller.session } : {};
+}
+
+/**
+ * #1496: the evidence a `write_origin: user-directed` save carries in its
+ * frontmatter — the same transport facts as the audit entry, plus the time.
+ * Outside a tool call (web UI, CLI, background jobs) there is no transport to
+ * read, and the save carries none rather than a guess.
+ */
+export function writeOriginEvidence(now: Date = new Date()): WriteOriginEvidence | undefined {
+  const caller = writeCallerStore.getStore();
+  return caller
+    ? { transport: caller.transport, client: caller.client, session: caller.session, at: now.toISOString() }
+    : undefined;
 }
 
 /** Who a shared write handler records as author: MCP/REST callers by default,

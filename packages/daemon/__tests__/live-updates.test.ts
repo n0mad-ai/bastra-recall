@@ -652,3 +652,28 @@ test("#1605 live updates: a burst of private entries cannot push out public ones
     await h.cleanup();
   }
 });
+
+test("live updates: a sensitivity change hides retained fixture history from public callers", async () => {
+  const h = await harness({ debounceMs: 5 });
+  const file = join(h.memDir, "visibility-fixture.md");
+  const original = memoryMarkdown("visibility-fixture", "Visibility fixture");
+  try {
+    await h.enableUi();
+    await writeFile(file, original);
+    await h.vault.reindexFile(file);
+    await delay(40);
+    assert.equal((await h.call(0)).json.updates.length, 1);
+
+    await writeFile(file, original.replace("---\n\nBody.", "sensitivity: private\n---\n\nBody."));
+    await h.vault.reindexFile(file);
+    await delay(40);
+    assert.deepEqual((await h.call(0)).json.updates, [], "retained public history is no longer public");
+    assert.ok((await h.call(0, true)).json.updates.length >= 2, "owner retains the fixture history");
+
+    h.vault.forgetFile(file);
+    await delay(40);
+    assert.deepEqual((await h.call(0)).json.updates, [], "deleting the private fixture does not expose old history");
+  } finally {
+    await h.cleanup();
+  }
+});

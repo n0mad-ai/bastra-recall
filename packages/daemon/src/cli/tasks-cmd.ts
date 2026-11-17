@@ -15,14 +15,9 @@ import { taskCliLanguage, taskCliWords } from "./task-cli-words.js";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
-import {
-  authenticateTask,
-  mintTaskCredential,
-  revokeTaskCredential,
-  taskAuthPath,
-  TaskDomainError,
-} from "../task-auth.js";
-import { isTaskTool, taskClientAuthorization, taskFailure } from "../task-transport.js";
+import { authenticateTask, mintTaskCredential, revokeTaskCredential, taskAuthPath } from "../task-auth.js";
+import { taskClientAuthorization, taskFailure } from "../task-transport.js";
+import { taskCliCall } from "./task-cli-call.js";
 import { confirm } from "./prompt.js";
 
 /** A CLI input error with a stable reason the person reads in the CLI's language. */
@@ -59,47 +54,42 @@ function taskCliErrorText(error: unknown, sub: string | null, language: string, 
   if (json) return JSON.stringify(failure);
   return friendlyTaskError(failure.code, sub, failure.reason, language);
 }
-/** Agent mode is explicit. Owner mode always asks privately, ignoring agent env. */
-export async function taskCliCall(
-  sub: string,
-  input: unknown,
-  authorization: string,
-  baseUrl: string
-): Promise<unknown> {
-  const operation = `task_${sub.replaceAll("-", "_")}`;
-  if (!isTaskTool(operation)) throw Object.assign(new Error("Unknown task operation"), { code: "validation" });
-  const resp = await fetch(`${baseUrl}/api/v1/${operation}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: authorization },
-    body: JSON.stringify(input),
-    signal: AbortSignal.timeout(10000),
-  });
-  const body = (await resp.json()) as {
-    error?: string;
-    code?: string;
-    reason?: string;
-    rejected?: string[];
-    allowed?: string[];
-  };
-  if (
-    resp.status === 403 &&
-    body.code === "forbidden" &&
-    body.reason === "owner_domain_not_enrolled" &&
-    Array.isArray(body.rejected) &&
-    Array.isArray(body.allowed) &&
-    [...body.rejected, ...body.allowed].every((d) => typeof d === "string" && /^[a-z0-9][a-z0-9._:-]{0,95}$/.test(d))
-  )
-    throw new TaskDomainError(body.rejected, body.allowed);
-  if (!resp.ok)
-    throw Object.assign(new Error(body.error), { code: body.code, reason: body.reason, status: resp.status });
-  return body;
+type TaskCliArgs = { sub: string | null; positional: string[]; argv?: string[]; json?: boolean };
+type TaskCliOptions = ReturnType<typeof parseTaskOptions>["options"];
+interface LocalTaskCommand {
+  args: TaskCliArgs;
+  words: string[];
+  options: TaskCliOptions;
+  w: ReturnType<typeof taskCliWords>;
 }
-export async function cmdTasks(args: {
-  sub: string | null;
-  positional: string[];
-  argv?: string[];
-  json?: boolean;
-}): Promise<number> {
+
+/** Sub-commands handled on this machine; everything else is a task API call. */
+const localTaskCommands = new Map<string, (command: LocalTaskCommand) => Promise<unknown>>([
+  ["owner-login", () => loginOwnerTaskAccess()],
+  [
+    "ui",
+    async ({ w }) => {
+      process.stdout.write(`${resolveDaemonEndpoint().baseUrl}/ui/#tasks ${w.uiHint}\n`);
+    },
+  ],
+  ["boundary", () => declareTaskBoundary()],
+  ["setup-hooks", () => setupTaskHooks()],
+  ["client-status", printTaskClientStatus],
+  ["targets", ({ words, options, args }) => ownerTaskTargets(words, options, args.json)],
+  ["auth", ownerTaskCredentialCommand],
+]);
+
+/** Plain switches of the task runtime, sent as `task_controls`. */
+const TASK_CONTROLS: Record<string, object> = {
+  mute: { muted: true },
+  unmute: { muted: false },
+  off: { enabled: false },
+  on: { enabled: true },
+  stop: { execution_stopped: true },
+  resume: { execution_stopped: false },
+};
+
+export async function cmdTasks(args: TaskCliArgs): Promise<number> {
   if (!tasksEnabled()) {
     process.stdout.write(
       (args.json
@@ -117,182 +107,198 @@ export async function cmdTasks(args: {
     return 1;
   }
   try {
-    const parsed = parseTaskOptions(args.argv ?? args.positional);
-    const words = parsed.words,
-      options = parsed.options;
-    if (args.sub === "owner-login") {
-      await loginOwnerTaskAccess();
-      return 0;
-    }
-    if (args.sub === "ui") {
-      process.stdout.write(`${resolveDaemonEndpoint().baseUrl}/ui/#tasks ${w.uiHint}\n`);
-      return 0;
-    }
-    if (args.sub === "boundary") {
-      await declareTaskBoundary();
-      return 0;
-    }
-    if (args.sub === "setup-hooks") {
-      await setupTaskHooks();
-      return 0;
-    }
-    if (args.sub === "client-status") {
-      const status = await taskClientCoverage();
-      process.stdout.write(
-        (args.json
-          ? JSON.stringify(status)
-          : `${status.authorized ? w.clientValid : w.clientNoCards}: ${status.coverage}${"remedy" in status ? `; ${status.remedy}` : ""}`) +
-          "\n"
-      );
-      return 0;
-    }
-    if (
-      ["recover", "archive-restore", ...(options.agent || words[0] === "agent" ? [] : ["archive"])].includes(
-        args.sub ?? ""
-      )
-    ) {
+    const { words, options } = parseTaskOptions(args.argv ?? args.positional);
+    const local = localTaskCommands.get(args.sub ?? "");
+    if (local) await local({ args, words, options, w });
+    else if (isOwnerMaintenance(args.sub, words, options))
       await ownerTaskMaintenance(args.sub!, words, options, args.json);
-      return 0;
-    }
-    if (args.sub === "targets") {
-      await ownerTaskTargets(words, options, args.json);
-      return 0;
-    }
-    if (args.sub === "auth") {
-      if (!process.stdin.isTTY || !(await confirm(w.authConfirm)))
-        throw Object.assign(new Error("Interactive owner command required"), { code: "forbidden" });
-      const [operation, role, actor, domains, destination, previous] = words;
-      if (operation === "revoke") {
-        await revokeTaskCredential(taskAuthPath(), role);
-        process.stdout.write(
-          (args.json ? JSON.stringify({ revoked: true, credential_id: role }) : w.authRevoked(role)) + "\n"
-        );
-        return 0;
-      }
-      if (!["mint", "rotate"].includes(operation) || !["owner", "agent"].includes(role) || !destination)
-        throw Object.assign(
-          new Error("Use auth mint|rotate owner|agent actor domain[,domain] new-token-file [previous-id]"),
-          { code: "validation" }
-        );
-      const out = await open(destination, "wx", 0o600);
-      try {
-        const credential = await mintTaskCredential(
-          taskAuthPath(),
-          { role: role as "owner" | "agent", actor_id: actor, domains: domains.split(",") },
-          operation === "rotate" ? previous : undefined
-        );
-        await out.writeFile(credential.token);
-        await out.sync();
-        process.stdout.write(
-          (args.json
-            ? JSON.stringify({ credential_id: credential.credential_id, token_written: true })
-            : w.authMinted(role, actor, domains, credential.credential_id)) + "\n"
-        );
-      } finally {
-        await out.close();
-      }
-      return 0;
-    }
-    const agent = words[0] === "agent" || options.agent === true;
-    if (words[0] === "agent") words.shift();
-    let input: any = options.input
-      ? await readTaskInputFile(String(options.input))
-      : args.sub === "create" && options.goal
-        ? (() => {
-            try {
-              return friendlyTaskCreate(options);
-            } catch (error) {
-              throw new TaskCliInputError(
-                error instanceof Error ? error.message : "Invalid time or options",
-                (error as any)?.reason
-              );
-            }
-          })()
-        : words[0]?.endsWith(".json")
-          ? await readTaskInputFile(words[0])
-          : {};
-    if (args.sub === "release" && words[0] && !words[0].endsWith(".json")) input.lease_id = words[0];
-    if (args.sub !== "release" && (options.id || (words[0] && !words[0].endsWith(".json"))))
-      input.id = String(options.id ?? words[0]);
-    if (options.revision) input.expected_revision = options.revision;
-    if (options.archive) input.archive_id = String(options.archive);
-    if (options.occurrence) input.occurrence_id = options.occurrence;
-    const authorization = agent ? await taskClientAuthorization() : await ownerTaskAuthorization();
-    if (!authorization) throw Object.assign(new Error("Agent task credential required"), { code: "unauthorized" });
-    // Owner commands cannot accidentally inherit an agent mapping from a pasted token.
-    if (!agent) {
-      const principal = await authenticateTask(authorization);
-      if (principal.role !== "owner")
-        throw Object.assign(new Error("Owner credential required"), { code: "forbidden" });
-    }
-    if (args.sub === "execution-enable" || (args.sub === "resume" && !input.id)) {
-      await enableTaskExecution(authorization);
-      return 0;
-    }
-    if (agent && args.sub === "archive") {
-      const { readTaskStore, tasksPath } = await import("../task-store.js");
-      const snapshot = await readTaskStore(tasksPath());
-      input = {
-        task_ids: words.length
-          ? words
-          : String(options.id ?? "")
-              .split(",")
-              .filter(Boolean),
-        expected_revision: snapshot.revision,
-        recovery_epoch: snapshot.recovery_epoch,
-      };
-    }
-    const baseUrl = resolveDaemonEndpoint().baseUrl;
-    if (
-      input.id &&
-      !["get", "create"].includes(args.sub ?? "list") &&
-      (!input.expected_revision || options.until || options.expires)
-    ) {
-      const task =
-        input.archive_id && args.sub === "delete"
-          ? ((await taskCliCall("list", { archive_id: input.archive_id }, authorization, baseUrl)) as any).tasks.find(
-              (t: any) => t.id === input.id
-            )
-          : ((await taskCliCall("get", { id: input.id }, authorization, baseUrl)) as any);
-      if (!task) throw Object.assign(new Error("Task absent"), { code: "not_found" });
-      input.expected_revision ??= task.expected_revision;
-      if (options.until) {
-        try {
-          input.until = taskWhen(String(options.until), task.timezone);
-        } catch {
-          throw new TaskCliInputError("Time not readable", "time_format");
-        }
-      }
-      if (args.sub === "edit" && options.expires)
-        input.patch = {
-          ...input.patch,
-          expires_at: options.expires === "none" ? null : taskWhen(String(options.expires), task.timezone),
-        };
-    }
-    if (args.sub === "due") input = { include_acknowledged: true, max_bytes: 16384 };
-    const controls: Record<string, object> = {
-      mute: { muted: true },
-      unmute: { muted: false },
-      off: { enabled: false },
-      on: { enabled: true },
-      stop: { execution_stopped: true },
-      resume: { execution_stopped: false },
-    };
-    const control = args.sub === "resume" && input.id ? undefined : controls[args.sub ?? ""];
-    const result = await taskCliCall(
-      control ? "controls" : (args.sub ?? "list"),
-      control ?? input,
-      authorization,
-      baseUrl
-    );
-    process.stdout.write(
-      (args.json ? JSON.stringify(result, null, 2) : friendlyTaskResult(args.sub ?? "list", result, language)) + "\n"
-    );
-    if (!args.json && args.sub === "create" && options.goal && !options.timezone)
-      process.stdout.write(w.timezoneAssumed((result as any).timezone) + "\n");
+    else await runTaskApiCommand(args, words, options, language, w);
     return 0;
   } catch (error) {
     process.stderr.write(taskCliErrorText(error, args.sub, language, args.json) + "\n");
     return 1;
   }
+}
+
+async function printTaskClientStatus({ args, w }: LocalTaskCommand): Promise<void> {
+  const status = await taskClientCoverage();
+  process.stdout.write(
+    (args.json
+      ? JSON.stringify(status)
+      : `${status.authorized ? w.clientValid : w.clientNoCards}: ${status.coverage}${"remedy" in status ? `; ${status.remedy}` : ""}`) +
+      "\n"
+  );
+}
+
+/** Owner archive maintenance; `archive` in agent mode is an API call instead. */
+function isOwnerMaintenance(sub: string | null, words: string[], options: TaskCliOptions): boolean {
+  return ["recover", "archive-restore", ...(options.agent || words[0] === "agent" ? [] : ["archive"])].includes(
+    sub ?? ""
+  );
+}
+
+/** `tasks auth mint|rotate|revoke`: interactive owner credential management. */
+async function ownerTaskCredentialCommand({ args, words, w }: LocalTaskCommand): Promise<void> {
+  if (!process.stdin.isTTY || !(await confirm(w.authConfirm)))
+    throw Object.assign(new Error("Interactive owner command required"), { code: "forbidden" });
+  const [operation, role, actor, domains, destination, previous] = words;
+  if (operation === "revoke") {
+    await revokeTaskCredential(taskAuthPath(), role);
+    process.stdout.write(
+      (args.json ? JSON.stringify({ revoked: true, credential_id: role }) : w.authRevoked(role)) + "\n"
+    );
+    return;
+  }
+  if (!["mint", "rotate"].includes(operation) || !["owner", "agent"].includes(role) || !destination)
+    throw Object.assign(
+      new Error("Use auth mint|rotate owner|agent actor domain[,domain] new-token-file [previous-id]"),
+      {
+        code: "validation",
+      }
+    );
+  const out = await open(destination, "wx", 0o600);
+  try {
+    const credential = await mintTaskCredential(
+      taskAuthPath(),
+      { role: role as "owner" | "agent", actor_id: actor, domains: domains.split(",") },
+      operation === "rotate" ? previous : undefined
+    );
+    await out.writeFile(credential.token);
+    await out.sync();
+    process.stdout.write(
+      (args.json
+        ? JSON.stringify({ credential_id: credential.credential_id, token_written: true })
+        : w.authMinted(role, actor, domains, credential.credential_id)) + "\n"
+    );
+  } finally {
+    await out.close();
+  }
+}
+
+/** One call to the daemon's task API, with the body built from words and options. */
+async function runTaskApiCommand(
+  args: TaskCliArgs,
+  words: string[],
+  options: TaskCliOptions,
+  language: string,
+  w: ReturnType<typeof taskCliWords>
+): Promise<void> {
+  const agent = words[0] === "agent" || options.agent === true;
+  if (words[0] === "agent") words.shift();
+  let input = addTaskTargets(args.sub, await readTaskCliInput(args.sub, words, options), words, options);
+  const authorization = await taskCliAuthorization(agent);
+  if (args.sub === "execution-enable" || (args.sub === "resume" && !input.id))
+    return enableTaskExecution(authorization);
+  if (agent && args.sub === "archive") input = await agentArchiveInput(words, options);
+  const baseUrl = resolveDaemonEndpoint().baseUrl;
+  await fillFromCurrentTask(args.sub, input, options, authorization, baseUrl);
+  const [operation, body] = taskApiRequest(args.sub, input);
+  const result = await taskCliCall(operation, body, authorization, baseUrl);
+  process.stdout.write(
+    (args.json ? JSON.stringify(result, null, 2) : friendlyTaskResult(args.sub ?? "list", result, language)) + "\n"
+  );
+  if (!args.json && args.sub === "create" && options.goal && !options.timezone)
+    process.stdout.write(w.timezoneAssumed((result as any).timezone) + "\n");
+}
+
+/** Which task operation the sub-command calls, and with which body. */
+function taskApiRequest(sub: string | null, input: any): [string, unknown] {
+  if (sub === "due") return ["due", { include_acknowledged: true, max_bytes: 16384 }];
+  const control = sub === "resume" && input.id ? undefined : TASK_CONTROLS[sub ?? ""];
+  return control ? ["controls", control] : [sub ?? "list", input];
+}
+
+/** The request body: an input file, the friendly create options, or empty. */
+async function readTaskCliInput(sub: string | null, words: string[], options: TaskCliOptions): Promise<any> {
+  if (options.input) return readTaskInputFile(String(options.input));
+  if (sub === "create" && options.goal) {
+    try {
+      return friendlyTaskCreate(options);
+    } catch (error) {
+      throw new TaskCliInputError(
+        error instanceof Error ? error.message : "Invalid time or options",
+        (error as any)?.reason
+      );
+    }
+  }
+  return words[0]?.endsWith(".json") ? readTaskInputFile(words[0]) : {};
+}
+
+/** Task, lease, revision, archive and occurrence named on the command line. */
+function addTaskTargets(sub: string | null, input: any, words: string[], options: TaskCliOptions): any {
+  const named = words[0] && !words[0].endsWith(".json");
+  if (sub === "release" && named) input.lease_id = words[0];
+  if (sub !== "release" && (options.id || named)) input.id = String(options.id ?? words[0]);
+  if (options.revision) input.expected_revision = options.revision;
+  if (options.archive) input.archive_id = String(options.archive);
+  if (options.occurrence) input.occurrence_id = options.occurrence;
+  return input;
+}
+
+/** Agent mode is explicit. Owner mode always asks privately, ignoring agent env. */
+async function taskCliAuthorization(agent: boolean): Promise<string> {
+  const authorization = agent ? await taskClientAuthorization() : await ownerTaskAuthorization();
+  if (!authorization) throw Object.assign(new Error("Agent task credential required"), { code: "unauthorized" });
+  // Owner commands cannot accidentally inherit an agent mapping from a pasted token.
+  if (!agent) {
+    const principal = await authenticateTask(authorization);
+    if (principal.role !== "owner") throw Object.assign(new Error("Owner credential required"), { code: "forbidden" });
+  }
+  return authorization;
+}
+
+/** `tasks archive --agent`: the named tasks against the current store revision. */
+async function agentArchiveInput(words: string[], options: TaskCliOptions) {
+  const { readTaskStore, tasksPath } = await import("../task-store.js");
+  const snapshot = await readTaskStore(tasksPath());
+  return {
+    task_ids: words.length
+      ? words
+      : String(options.id ?? "")
+          .split(",")
+          .filter(Boolean),
+    expected_revision: snapshot.revision,
+    recovery_epoch: snapshot.recovery_epoch,
+  };
+}
+
+/** For a named task without a revision, or with a time to resolve in its timezone,
+ *  revision and times come from the task as the daemon has it now. */
+async function fillFromCurrentTask(
+  sub: string | null,
+  input: any,
+  options: TaskCliOptions,
+  authorization: string,
+  baseUrl: string
+): Promise<void> {
+  if (
+    !input.id ||
+    ["get", "create"].includes(sub ?? "list") ||
+    (input.expected_revision && !options.until && !options.expires)
+  )
+    return;
+  const task = await currentTask(sub, input, authorization, baseUrl);
+  if (!task) throw Object.assign(new Error("Task absent"), { code: "not_found" });
+  input.expected_revision ??= task.expected_revision;
+  if (options.until) {
+    try {
+      input.until = taskWhen(String(options.until), task.timezone);
+    } catch {
+      throw new TaskCliInputError("Time not readable", "time_format");
+    }
+  }
+  if (sub === "edit" && options.expires)
+    input.patch = {
+      ...input.patch,
+      expires_at: options.expires === "none" ? null : taskWhen(String(options.expires), task.timezone),
+    };
+}
+
+/** The named task, from its archive when deleting an archived one. */
+async function currentTask(sub: string | null, input: any, authorization: string, baseUrl: string): Promise<any> {
+  return input.archive_id && sub === "delete"
+    ? ((await taskCliCall("list", { archive_id: input.archive_id }, authorization, baseUrl)) as any).tasks.find(
+        (t: any) => t.id === input.id
+      )
+    : ((await taskCliCall("get", { id: input.id }, authorization, baseUrl)) as any);
 }

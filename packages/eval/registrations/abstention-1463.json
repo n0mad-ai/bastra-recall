@@ -50,5 +50,132 @@
     "the full hook pipeline (scope, band assignment, budget) beyond the evidence decision on the k=10 pool",
     "a preregistered new run with gate on/off x embeddings on/off x hook/MCP path, as #1463 asks; it needs a read-only gold-set run against the live vault and the gold files under ~/.bastra/eval-goldset"
   ],
-  "gate": "none; descriptive only, no threshold and no product change"
+  "gate": "none; descriptive only, no threshold and no product change",
+  "$comment_follow_up_2026_11_17": "ADDITIONS ONLY: everything above is unchanged. A new run of the current code, isolated from the live vault and from ~/.bastra: a 2026-11-15 copy of the vault in a scratch directory, the gold set filtered by one rule fixed before the run (cases whose ids are no longer in the vault are dropped: 7 answerable). Gate on (--gate), once hybrid and once BM25 only. MCP vs hook path is read off the same rows as in the secondary analysis above.",
+  "follow_up_run_2026_11_17": {
+    "code": {
+      "git_base": "eba66497",
+      "note": "working tree of release 1.3.0 wave 2: #1567 staleness policy and #1568 reference time laid over eba66497 (search-staleness.ts sha256 0b1986073022a28ae5bbccbe1af6aee316c72f224a94a452cd99a805f4ab4f70, goldset-run.ts 7520195a9f0d41c69ad4f889d2cd097901f8e4298b8ab4c53c4db39343510c81); evidence decision unchanged since eba66497"
+    },
+    "vault": {
+      "notes": 1631,
+      "fingerprint_sha256": "a9faad4103655f5abb377ff0f45b934d21de775dea94efd95929ab2c1bd40b5f"
+    },
+    "dataset": {
+      "sha256": "43612e62dd25dc153737db964197211cc7988575b1a4298583f018d2ec4cbf12",
+      "answerable": 577,
+      "no_answer": 79,
+      "probes_excluded": 36
+    },
+    "reference_time": "2026-11-15T00:00:00Z for the staleness step; the evidence decision's temporal status still reads the wall clock (2026-11-17)",
+    "commands": [
+      "goldset-run.ts --gold <12 filtered gold files> --hybrid --gate",
+      "goldset-run.ts --gold <12 filtered gold files> --gate"
+    ],
+    "artifacts_results_sha256": {
+      "hybrid": "6a59fd55554316eaddda7885f002e7842614ec74d0c07e39b96b4fc22e0c89ef",
+      "bm25_only": "13a7a5b75eba26d90998531a85667a4090ea80e78ffd1f80dd3ade590babd6e5"
+    },
+    "results": {
+      "hybrid_mcp_path_no_gate": {
+        "no_answer_below_floor": {
+          "count": "0/79",
+          "wilson_95_ci": [
+            0,
+            0.0464
+          ]
+        },
+        "no_answer_weak_result": {
+          "count": "2/79",
+          "wilson_95_ci": [
+            0.007,
+            0.0877
+          ]
+        },
+        "answerable_weak_result": {
+          "count": "3/577",
+          "wilson_95_ci": [
+            0.0018,
+            0.0152
+          ]
+        }
+      },
+      "hybrid_hook_path_gate_on": {
+        "no_answer_gate_silent": {
+          "count": "3/79",
+          "wilson_95_ci": [
+            0.013,
+            0.1058
+          ]
+        },
+        "no_answer_mandatory_load": {
+          "count": "16/79",
+          "wilson_95_ci": [
+            0.1287,
+            0.304
+          ]
+        },
+        "answerable_false_abstention": {
+          "count": "11/577",
+          "wilson_95_ci": [
+            0.0107,
+            0.0338
+          ]
+        },
+        "answerable_mandatory_load": {
+          "count": "239/577",
+          "wilson_95_ci": [
+            0.3747,
+            0.4548
+          ]
+        }
+      },
+      "bm25_mcp_path_no_gate": {
+        "no_answer_below_floor": {
+          "count": "1/79",
+          "wilson_95_ci": [
+            0.0022,
+            0.0683
+          ]
+        },
+        "note": "weak_result is defined only on the hybrid path (0/79 and 0/577 by construction)"
+      },
+      "bm25_hook_path_gate_on": {
+        "no_answer_gate_silent": {
+          "count": "4/79",
+          "wilson_95_ci": [
+            0.0199,
+            0.1231
+          ]
+        },
+        "no_answer_mandatory_load": {
+          "count": "13/79",
+          "wilson_95_ci": [
+            0.0988,
+            0.2615
+          ]
+        },
+        "answerable_false_abstention": {
+          "count": "22/577",
+          "wilson_95_ci": [
+            0.0253,
+            0.0571
+          ]
+        },
+        "answerable_mandatory_load": {
+          "count": "157/577",
+          "wilson_95_ci": [
+            0.2374,
+            0.3098
+          ]
+        }
+      },
+      "reading": "Still almost no 'I don't have it': with the gate the hook stays silent on 3 (hybrid) or 4 (BM25) of 79 unanswerable questions and marks a must-load hit on 16 or 13 of them; it costs 11 or 22 of 577 answerable questions. Not comparable 1:1 with the September rows above: other vault (1631 vs 1335 notes), 577 vs 584 answerable, newer evidence decision and staleness policy."
+    },
+    "still_not_measured": [
+      "gate on/off as separate runs with an unscoped vs scoped call; the scope signal stays off (scope: null)",
+      "the full hook pipeline (band assignment, budget) beyond the evidence decision",
+      "a run against the live vault"
+    ]
+  }
 }

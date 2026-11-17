@@ -168,8 +168,19 @@ export function createLiveUpdates(
   const hiddenEntries = new WeakSet<LiveUpdate>();
   const hiddenMemory = (m: Memory): boolean => {
     const hidden = hiddenFromCaller(undefined, m.fm);
-    if (hidden) privateIds.add(m.fm.id);
-    else privateIds.delete(m.fm.id);
+    if (hidden) {
+      privateIds.add(m.fm.id);
+      // Revoking visibility also revokes retained public notices. Keep the
+      // history for the owner, including after the private memory is deleted.
+      for (const entry of recent) {
+        if (entry.id === m.fm.id && publicSeqOf.has(entry)) {
+          publicSeqOf.delete(entry);
+          hiddenEntries.add(entry);
+          hiddenCount += 1;
+        }
+      }
+      while (hiddenCount > maxEntries) dropOldest(true);
+    } else privateIds.delete(m.fm.id);
     return hidden;
   };
 

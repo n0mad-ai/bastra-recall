@@ -5,18 +5,25 @@
  */
 import {
   saveMemory,
+  previewMemory,
   mutateMemoryFile,
   resolveMemoryTarget,
   SaveMemoryInput,
   assertBodyTail,
   BodySentinelError,
   type Memory,
+  type WriteOriginEvidence,
 } from "@bastra-recall/core";
 import { fireAndForget } from "./telemetry.js";
 import type { SaveHoldEvent } from "./telemetry-events.js";
-import { recordAudit } from "./audit-trail.js";
-import { redactSaveInput, withRedactionReceipt, type SecretsRedacted } from "./save-redaction.js";
-import { markConflict } from "./conflict-marking.js";
+import { recordAudit, writeOriginEvidence } from "./audit-trail.js";
+import {
+  redactSaveInput,
+  withRedactionReceipt,
+  type RedactionReceipt,
+  type SecretsRedacted,
+} from "./save-redaction.js";
+import { markConflict, previewConflictMark } from "./conflict-marking.js";
 import { claimGateResult, unansweredClaims, GENERATED_TRIGGER_TYPES, type ClaimGateResult } from "./claim-gate.js";
 
 import type { ToolDeps } from "./tool-deps.js";
@@ -26,6 +33,8 @@ import { scoreSaveQuality, type SaveQualityResult } from "./save-quality.js";
 import { rulebookDelivery } from "./rulebook-status.js";
 import { ruleTextReview, type RuleTextReview } from "./rule-text-review.js";
 import { MEMORY_TOOL_DEFS } from "./tool-defs-memory.js";
+import { isDryRun } from "./save-preview-request.js";
+export { isDryRun } from "./save-preview-request.js";
 import {
   callCorruptionMessage,
   detectCallCorruption,
@@ -54,11 +63,23 @@ export interface SaveMemoryResult {
   summary_note?: string;
   /** #1470: credential values replaced per field before writing. */
   secrets_redacted?: SecretsRedacted;
+  /** #1496: transport, client, session and time of a user-directed save. */
+  write_origin_evidence?: WriteOriginEvidence;
   /** Present only when a re-file left the old file behind under the same id. */
   warning?: string;
   /** #150: terminal success marker — tells the model not to re-issue the save. */
   note?: string;
+  /** #1484: set on a preview — nothing was written, indexed or audited. */
+  dry_run?: true;
+  /** #1484: the complete file a preview would write (frontmatter + body). */
+  content?: string;
+  /** #1484: the block a previewed `conflict_with` save would append to `id`. */
+  conflict_block?: string;
 }
+
+/** #1484: what a preview tells the model instead of the success marker. */
+export const SAVE_PREVIEW_NOTE =
+  "Preview only (dry_run) — NOTHING was written, indexed or audited. " + "To save, repeat the call without dry_run.";
 
 // ─── #150: anti-thrash — consecutive-failure cap on save_memory ─────────
 // A repeatedly failing save (schema retry loop, path issue) must never eat
@@ -120,9 +141,10 @@ export async function saveMemoryHandler(
     if (!repaired) throw new Error(callCorruptionMessage("save_memory", corruption));
     rawArgs = repaired;
   }
+  const dryRun = isDryRun(rawArgs);
   let result: SaveMemoryResult | ClaimGateResult;
   try {
-    result = await saveMemoryInner(deps, rawArgs, access);
+    result = await saveMemoryInner(deps, rawArgs, access, dryRun);
   } catch (err) {
     // #544: a failed tail sentinel is not a failing save — it is the guard
     // doing its job on a body that lost its end in transit. Resending the
@@ -130,6 +152,8 @@ export async function saveMemoryHandler(
     // consecutive-failure cap below, whose message tells the model to stop
     // saving altogether.
     if (err instanceof BodySentinelError) throw err;
+    // #1484: a refused preview is an answer, not a failed save.
+    if (dryRun) throw err;
     const failures = noteSaveFailure(Date.now(), saveFailureKey(rawArgs));
     if (failures >= SAVE_FAILURE_CAP) {
       // No reset here: every further attempt stays terminal until a success
@@ -142,6 +166,8 @@ export async function saveMemoryHandler(
     }
     throw err;
   }
+  // #1484: a preview must never carry the "save complete" marker.
+  if (dryRun) return { ...result, note: [SAVE_PREVIEW_NOTE, result.note].filter(Boolean).join(" ") };
   resetSaveFailures();
   // Terminal success marker: no state echo beyond the advisory — a re-issued
   // identical save is thrash, not diligence. A conflict diversion (#205)
@@ -177,7 +203,8 @@ function noteSaveHold(
 async function saveMemoryInner(
   deps: ToolDeps,
   rawArgs: unknown,
-  access?: PrivateAccess
+  access: PrivateAccess | undefined,
+  dryRun: boolean
 ): Promise<SaveMemoryResult | ClaimGateResult> {
   const parsed = SaveMemoryInput.safeParse(rawArgs);
   if (!parsed.success) throw new Error(parsed.error.message);
@@ -207,6 +234,10 @@ async function saveMemoryInner(
   // für Memories, die in memorys/ oder einem folder-Regal liegen); sie fasst
   // nichts an und ist deshalb auch vor dem Schreiben die richtige Auskunft.
   const finalId = resolveMemoryTarget(deps.vaultPath, parsed.data, vaultLocator(deps.vault)).id;
+  // #1484: a preview attempted no save, so it records no hold either.
+  const hold = (reason: SaveHoldEvent["reason"], claimedCount = 0): void => {
+    if (!dryRun) noteSaveHold(deps, reason, finalId, parsed.data, claimedCount);
+  };
 
   // #464: Das Ziel steht fest — und wenn dort ein Memory liegt, das dieser
   // Caller nicht LESEN darf, darf er es auch nicht ersetzen. Vor jeder
@@ -216,15 +247,18 @@ async function saveMemoryInner(
   // Fall trifft beide Wege: explizite `id` UND die implizite Slug-Kollision,
   // weil `resolveMemoryTarget` bereits beide auf dieselbe Ziel-Id faltet.
   if (hiddenFromCaller(access, deps.vault.get(finalId)?.fm)) {
-    noteSaveHold(deps, "private_refused", finalId, parsed.data);
+    hold("private_refused");
     throw new Error(`memory not found: ${finalId}`);
   }
 
   // #205: a save declaring a contradiction is a conflict report, not a write —
   // diverted before any quality scoring or file I/O touches the vault.
   if (parsed.data.conflict_with) {
-    noteSaveHold(deps, "conflict_redirect", finalId, parsed.data);
-    return withRedactionReceipt(await markConflict(deps, parsed.data, finalId), redacted);
+    hold("conflict_redirect");
+    const diverted = dryRun
+      ? { ...(await previewConflictMark(deps, parsed.data, finalId, access)), dry_run: true as const }
+      : await markConflict(deps, parsed.data, finalId, access);
+    return withRedactionReceipt(diverted, redacted);
   }
 
   const asString = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
@@ -272,8 +306,8 @@ async function saveMemoryInner(
       supersededChain
     );
     if (claimed.length > 0) {
-      noteSaveHold(deps, "claim_gate", finalId, parsed.data, claimed.length);
-      return claimGateResult(finalId, claimed, saveQuality);
+      hold("claim_gate", claimed.length);
+      return { ...claimGateResult(finalId, claimed, saveQuality), ...(dryRun ? { dry_run: true } : {}) };
     }
   }
 
@@ -283,7 +317,7 @@ async function saveMemoryInner(
   const supersedes = parsed.data.replaces;
   if (supersedes !== undefined) {
     if (supersedes === finalId) {
-      noteSaveHold(deps, "unresolved_replaces", finalId, parsed.data);
+      hold("unresolved_replaces");
       throw new Error(`replaces: a memory cannot supersede itself (${finalId}).`);
     }
     // #464: Ein privater Vorgänger ist für diesen Caller nicht vorhanden —
@@ -292,7 +326,7 @@ async function saveMemoryInner(
     // und „darfst du nicht sehen" wäre am Ausgang ablesbar.
     const predecessor = deps.vault.get(supersedes);
     if (!predecessor || hiddenFromCaller(access, predecessor.fm)) {
-      noteSaveHold(deps, "unresolved_replaces", finalId, parsed.data);
+      hold("unresolved_replaces");
       throw new Error(
         `replaces: unknown memory '${supersedes}' — it must exist in the vault. ` +
           `Note that an archived memory is no longer in the living vault and cannot be superseded.`
@@ -307,13 +341,62 @@ async function saveMemoryInner(
   // die alte Datei in den Trash verschieben (recoverbar, kein Hard-Delete).
   const previous = deps.vault.get(finalId);
   if (previous && !parsed.data.overwrite) {
-    noteSaveHold(deps, "id_exists", finalId, parsed.data);
+    hold("id_exists");
     throw new Error(
       `memory already exists: ${finalId} (at ${previous.filePath}). ` +
         `Pass overwrite=true to replace it — a changed folder/scope moves the file.`
     );
   }
 
+  const plan: SavePlan = { data: parsed.data, finalId, supersedes, saveQuality, redacted, access };
+  return dryRun ? previewSave(deps, plan) : writeSave(deps, plan);
+}
+
+/** Everything the checks above settled, handed to the write or the preview. */
+interface SavePlan {
+  data: SaveMemoryInput;
+  finalId: string;
+  supersedes: string | undefined;
+  saveQuality: SaveQualityResult;
+  redacted: RedactionReceipt;
+  access: PrivateAccess | undefined;
+}
+
+/**
+ * #1484 — the save as it would land, without landing it: the same redaction,
+ * quality advisory and claim gate ran above; `previewMemory` runs the same
+ * target, collision and occupant checks as the write. No file, no index, no
+ * audit entry, no telemetry, no supersede stamp.
+ */
+async function previewSave(deps: ToolDeps, plan: SavePlan): Promise<SaveMemoryResult> {
+  const { data, finalId, saveQuality, redacted, access } = plan;
+  const preview = await previewMemory(deps.vaultPath, data, {
+    locator: vaultLocator(deps.vault),
+    originEvidence: data.write_origin === "user-directed" ? writeOriginEvidence() : undefined,
+    precondition: (prevFm) => {
+      if (hiddenFromCaller(access, prevFm)) throw new Error(`memory not found: ${finalId}`);
+    },
+  });
+  const fm = preview.frontmatter as Memory["fm"];
+  return withRedactionReceipt(
+    {
+      id: preview.id,
+      file_path: preview.file_path,
+      created: preview.created,
+      dry_run: true,
+      content: preview.content,
+      save_quality: saveQuality,
+      rule_text_review: ruleTextReview(fm),
+      delivery: rulebookDelivery(fm),
+      ...(fm.write_origin_evidence ? { write_origin_evidence: fm.write_origin_evidence } : {}),
+      ...(preview.summary_note ? { summary_note: preview.summary_note } : {}),
+    },
+    redacted
+  );
+}
+
+async function writeSave(deps: ToolDeps, plan: SavePlan): Promise<SaveMemoryResult> {
+  const { data, finalId, supersedes, saveQuality, redacted, access } = plan;
   // Codex-Gegenreview (P0): Hier stand eine Ordner-Injektion — ein Overwrite
   // ohne expliziten `folder` bekam den Ordner der INDEXIERTEN Datei mit, damit
   // das Default-Routing das Memory nicht bei jeder Bearbeitung verschiebt. Das
@@ -326,8 +409,9 @@ async function saveMemoryInner(
   // ausdrücklichen `folder` zeigt es unter dem Claim auf die Datei, die die
   // PLATTE nennt. Aus demselben Grund entfällt auch die Aliases-Injektion —
   // die Patch-Basis ist seither die Quelldatei, nicht der Index.
-  const result = await saveMemory(deps.vaultPath, parsed.data, {
+  const result = await saveMemory(deps.vaultPath, data, {
     locator: vaultLocator(deps.vault),
+    originEvidence: data.write_origin === "user-directed" ? writeOriginEvidence() : undefined,
     // #464 (wiedereröffnet): Die Prüfung oben fragte den INDEX — und zwischen
     // Index und Schreibvorgang liegt ein Fenster, in dem die Datei auf der
     // Platte längst `sensitivity: private` tragen kann (Cloud-Sync, fremder
@@ -336,7 +420,7 @@ async function saveMemoryInner(
     // schützt. Wortgleiche Antwort wie der Lesepfad.
     precondition: (prevFm) => {
       if (hiddenFromCaller(access, prevFm)) {
-        noteSaveHold(deps, "private_refused", finalId, parsed.data);
+        noteSaveHold(deps, "private_refused", finalId, data);
         throw new Error(`memory not found: ${finalId}`);
       }
     },
@@ -406,13 +490,13 @@ async function saveMemoryInner(
   fireAndForget(
     deps.telemetry.logSaveMemory({
       id: result.id,
-      type: parsed.data.type,
-      scope: parsed.data.scope,
-      title: parsed.data.title,
-      tag_count: parsed.data.tags.length,
-      recall_when_count: parsed.data.recall_when.length,
-      body_chars: parsed.data.body.length,
-      overwrite: parsed.data.overwrite ?? false,
+      type: data.type,
+      scope: data.scope,
+      title: data.title,
+      tag_count: data.tags.length,
+      recall_when_count: data.recall_when.length,
+      body_chars: data.body.length,
+      overwrite: data.overwrite ?? false,
       created: result.created,
       follows_recall: deps.telemetry.recentRecallId(),
     })
@@ -452,13 +536,15 @@ async function saveMemoryInner(
   // `sensitivity: private`) und würden über den Spread still an jeden Client
   // gehen, der `save_memory` ruft.
   const { audit_before: _b, audit_after: _a, ...payload } = result;
+  const written = result.audit_after as Memory["fm"];
   // #1395: from the frontmatter this save wrote, not from the index a later writer may have changed.
   return withRedactionReceipt(
     {
       ...payload,
+      ...(written.write_origin_evidence ? { write_origin_evidence: written.write_origin_evidence } : {}),
       save_quality: saveQuality,
-      rule_text_review: ruleTextReview(result.audit_after as Memory["fm"]),
-      delivery: rulebookDelivery(result.audit_after as Memory["fm"]),
+      rule_text_review: ruleTextReview(written),
+      delivery: rulebookDelivery(written),
       ...(warning ? { warning } : {}),
     },
     redacted

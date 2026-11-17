@@ -59,6 +59,11 @@ export interface ClientFeatures {
   sessionContextOff?: true;
   /** The config file holding that MCP entry; set together with either field above. */
   mcpConfig?: string;
+  /** #1474 (Codex only): the installed runtime and whether the rulebook gate is
+   *  verified for exactly that version; otherwise it runs as hints only. */
+  rulebookGate?: { version: string | null; verified: boolean };
+  /** #1472: the tool surface the client's MCP entry selects, for the delivery probe. */
+  mcpSurface?: "search" | "write" | "full";
 }
 
 export interface Adapter {

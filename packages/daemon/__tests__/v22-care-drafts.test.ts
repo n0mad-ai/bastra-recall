@@ -218,6 +218,30 @@ test("identical care entries keep separate drafts, also after a reopen with fres
   );
 });
 
+test("saving one of two identical care entries keeps the other draft (#1554)", async () => {
+  const entry = { id: "a", kind: "note", note: "Same", date: "2026-11-16", done: false };
+  const care = [{ ...entry }, { ...entry }];
+  const { careBlock } = await load(async () => ({
+    ok: true,
+    json: async () => ({ entry: { ...entry, note: "Saved first" } }),
+  }));
+  const render = () => careBlock({ id: "a" }, { care, add() {}, rerender() {} });
+  const editors = (node: Element) => find(node, (el) => el.tag === "div.mb-care__open")!.children;
+  const [first, second] = editors(render());
+  button(first, "mb.careEdit").events.click();
+  button(second, "mb.careEdit").events.click();
+  type(textarea(first), "Saved first");
+  type(textarea(second), "Unsaved second");
+
+  await button(first, "mb.careSave").events.click();
+  const [saved, remaining] = editors(render());
+  assert.equal(find(saved, (el) => el.textContent === "Saved first")?.textContent, "Saved first");
+  assert.equal(textarea(remaining)?.value, "Unsaved second");
+  const fresh = care.map((a) => ({ ...a }));
+  const reopened = careBlock({ id: "a" }, { care: fresh, add() {}, rerender() {} });
+  assert.equal(textarea(editors(reopened)[1])?.value, "Unsaved second");
+});
+
 test("the reader's editor offers title, type, sensitivity and recall mode and sends their change (#1558)", async () => {
   const files = ["membrowser-edit-model.js", "membrowser-edit.js"];
   const sources = await Promise.all(

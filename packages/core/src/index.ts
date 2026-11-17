@@ -39,6 +39,8 @@ export { pickPhrase, pickToolPhrase, banterModeFromEnv } from "./recall-banter.j
 export type { BanterMode, BanterLang } from "./recall-banter.js";
 
 export { saveMemory, deleteMemoryFile } from "./save.js";
+export { previewMemory, type MemoryPreview } from "./save-plan.js";
+export { isConflictCopyName, type ConflictCopy } from "./sync-conflict.js";
 export {
   ensureVaultDir,
   assertVaultRootHistory,
@@ -85,8 +87,16 @@ export {
   RulebookSchema,
   RuleCategoriesSchema,
   RulebookProposalSchema,
+  WriteOriginEvidenceSchema,
 } from "./schema.js";
-export type { ConventionValidator, DerivedClaim, Memory, MemoryType, Frontmatter } from "./schema.js";
+export type {
+  ConventionValidator,
+  DerivedClaim,
+  Memory,
+  MemoryType,
+  Frontmatter,
+  WriteOriginEvidence,
+} from "./schema.js";
 
 export { truncateSummaryTo, clampSummary, SUMMARY_MAX } from "./summary.js";
 
@@ -109,6 +119,7 @@ export {
 export type { ToolIntent, TopicResult, DetectedProject, HookQueryVocabulary } from "./topics.js";
 
 export { isMarkdownFile } from "./markdown-file.js";
+export { NO_WAIT_TEXT } from "./regular-file.js";
 export { mutateMemoryFile, memoryRevision } from "./memory-mutate.js";
 export {
   loadStore,

@@ -45,7 +45,12 @@ import { homedir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 import { tasksEnabled, TASKS_DEFAULT } from "../tasks-enabled.js";
 import { runtimeFeatureSetting } from "../runtime-feature-settings.js";
-import { cleanManagedEnv, safeLaunchAgentSnapshot, legacySnapshotWarning } from "./autostart-env.js";
+import {
+  cleanManagedEnv,
+  safeLaunchAgentSnapshot,
+  legacySnapshotWarning,
+  launchAgentBackupWarning,
+} from "./autostart-env.js";
 import { randomUUID } from "node:crypto";
 import { DAEMON_SCRIPT_PATH } from "./paths.js";
 import { probeDaemon, resolveVault } from "./helpers.js";
@@ -811,9 +816,14 @@ export async function refreshWindowsAutostart(
 export async function autostartWarning(
   service = autostartService(),
   clientEnv: NodeJS.ProcessEnv = process.env,
-  backupDir = join(homedir(), ".bastra", "backups")
+  backupDir = join(homedir(), ".bastra", "backups"),
+  launchAgentsDir = dirname(plistPath())
 ): Promise<string | null> {
-  const warnings = await Promise.all([managedServiceWarning(service, clientEnv), legacySnapshotWarning(backupDir)]);
+  const warnings = await Promise.all([
+    managedServiceWarning(service, clientEnv),
+    legacySnapshotWarning(backupDir),
+    launchAgentBackupWarning(launchAgentsDir, LAUNCH_AGENT_LABEL),
+  ]);
   return warnings.filter(Boolean).join("; ") || null;
 }
 

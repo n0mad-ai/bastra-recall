@@ -32,7 +32,8 @@ import type { ClientFeatures } from "./types.js";
 import { archiveMode, type ArchiveMode } from "../bash-pre-patterns.js";
 import { batterySaverEnabled } from "../power-source.js";
 import { archiveCap, archiveMaxItem, archiveRootProblem, formatSize } from "../rm-archive.js";
-import { isOffValue } from "../env.js";
+import { isOffValue, isOnValue } from "../env.js";
+import { CODEX_GATE_VERIFIED_VERSIONS } from "../codex-gate-capability.js";
 
 export interface FeatureState {
   /** Clients whose MCP server is registered, with their hook/skill state. */
@@ -65,6 +66,8 @@ export interface FeatureState {
   archiveLimits: { cap: number; maxItem: number | null };
   /** Why the archive directory is refused (another account's), when the archive is on. */
   archiveProblem?: string | null;
+  /** #1474: Recall Pulse document writing (BASTRA_DOCUMENT_WRITE), as this shell sees it. */
+  documentWrite: boolean;
   /** #632: battery mode. `live` = what the running daemon reports, absent when
    *  it is not running or predates the field. */
   battery: { saver: boolean; live?: { source: string; saving: boolean } };
@@ -110,6 +113,7 @@ export function featureLines(s: FeatureState): string[] {
         )
       );
     }
+    lines.push(...rulebookGateLines(surface, f.rulebookGate));
     if (f.sessionContextOff) {
       lines.push(
         row(
@@ -244,6 +248,7 @@ export function featureLines(s: FeatureState): string[] {
   );
   lines.push(s.ui ? row(ON, "vault map", "on") : row(INFO, "vault map", "off", "bastra config set ui.enabled true"));
   lines.push(archiveLine(s));
+  lines.push(documentWriteLine(s.documentWrite));
   const battery = "battery saver (macOS)";
   if (!s.battery.saver) {
     lines.push(row(INFO, battery, "off", "bastra config set battery.saver on"));
@@ -255,6 +260,40 @@ export function featureLines(s: FeatureState): string[] {
     lines.push(row(ON, battery, s.battery.live ? `on (power source: ${s.battery.live.source})` : "on"));
   }
   return lines;
+}
+
+/**
+ * #1474: the rulebook gate is verified per exact Codex version. Every other
+ * version, newer ones included, gets hints only; an update switches the
+ * blocking check off without a word, so the row says which case applies.
+ */
+function rulebookGateLines(surface: string, gate: ClientFeatures["rulebookGate"]): string[] {
+  if (!gate) return [];
+  const name = `${surface}: rulebook gate`;
+  if (gate.verified) return [row(ON, name, `blocking (verified for Codex ${gate.version})`)];
+  return [
+    row(
+      OFF,
+      name,
+      `advisory only: Codex ${gate.version ?? "version unknown"} is not verified ` +
+        `(verified: ${CODEX_GATE_VERIFIED_VERSIONS.join(", ")})`,
+      "nothing to switch on; the gate blocks once this Codex version is verified"
+    ),
+  ];
+}
+
+/** #1474: Recall Pulse document writing, as this shell's environment sets it. */
+function documentWriteLine(on: boolean): string {
+  const name = "document writing (Recall Pulse)";
+  return on
+    ? row(ON, name, "on (this shell's environment; the daemon reads its own)")
+    : row(INFO, name, "off", "BASTRA_DOCUMENT_WRITE=1 in the daemon's environment");
+}
+
+/** Same switch and legacy alias as documentWriteEnabledFromEnv, but from the
+ *  injected env, so a test never sees the developer's shell. */
+function documentWriteFrom(env: NodeJS.ProcessEnv): boolean {
+  return isOnValue(env.BASTRA_DOCUMENT_WRITE || env.NEXUS_DOCUMENT_WRITE);
 }
 
 /** The archive's row; out of featureLines to keep that one's complexity. */
@@ -361,6 +400,7 @@ export async function collectFeatureState(
     ui: settings.ui?.enabled ?? SETTINGS_REGISTRY.ui.enabled.default,
     // This shell's env; the daemon reads its own (a LaunchAgent may differ).
     ...archiveFeature(settings.archive?.enabled, env),
+    documentWrite: documentWriteFrom(env),
     archiveLimits: {
       cap: archiveCap(env, settings.archive?.cap),
       maxItem: archiveMaxItem(env, settings.archive?.maxItem),

@@ -1,5 +1,3 @@
-import { projectForFilter } from "./scope-filter.js";
-import { filterPendingSaveSuggestions } from "./save-suggestion-review.js";
 import { SESSION_START_BUDGET_MS } from "./hook-budgets.js";
 import { resetRulebookContext } from "./rulebook-check.js";
 import { capSessionContext } from "./session-context-cap.js";
@@ -36,7 +34,7 @@ import { buildSoulBlock, readSoulPreference } from "./soul.js";
  * Discipline unchanged: hard wall-clock budget, fail-silent on every error
  * path, telemetry best-effort.
  */
-import { suppressReviewedHarvestQuotes, type DraftReviewDelivery } from "./draft-review.js";
+import type { DraftReviewDelivery } from "./draft-review.js";
 import { appendLaneDrafts } from "./draft-search.js";
 // #305: subpath leafs, never the core barrel — measured +40ms of process
 // start against +0.8ms for the three leafs, on a fresh spawn per event.
@@ -45,21 +43,19 @@ import { projectForLane } from "./scope-filter.js";
 import { isUnfused } from "./hook-recall-response.js";
 import { randomUUID } from "node:crypto";
 import { envInt } from "./env.js";
-import { effectiveUpdateMode, getDocsLanguage, getDocsMode, getPrimaryLanguage } from "./settings.js";
-import { formatDokuBlock, isDokuProject } from "./doku-block.js";
 import { buildOnboardingBlock } from "./session-onboarding-block.js";
 import { recordBudgetShadow, resetBudgetOnSource } from "./session-budget.js";
-import { spawnStagedUpdate, stagedToday, markStagedToday } from "./update-check.js";
-import { formatBlockedUpdate, readBlockedUpdate } from "./update-blocked.js";
 import { pendingModelNotice, type ModelOffer } from "./model-recommendation.js";
 import { appendModelSessionNotice } from "./model-session-notice.js";
-import { pendingPatchNotice } from "./patch-report.js";
 import {
-  PENDING_BLOCK_CHAR_BUDGET,
-  formatPendingRelay,
-  isCountableSessionStart,
-  takePendingRelay,
-} from "./pending-suggestions.js";
+  careBlockFor,
+  dokuBlockFor,
+  importBlockFor,
+  languageBlock,
+  patchBlock,
+  pendingRelayBlocks,
+  updateBlockFor,
+} from "./session-lane-blocks.js";
 import {
   bookPendingMustLoad,
   bumpShown,
@@ -82,11 +78,17 @@ import {
   postSessionContext,
   probeHealth,
   type ConventionLean,
+  type HealthResponse,
   type RecallResponse,
   type SessionContextResponse,
 } from "./session-hook-http.js";
 import { SCORE_FLOOR, formatBlock, formatTaxonomyBlock, mergeSessionHits } from "./session-format.js";
-import { tokensByPart, writeTelemetry, type SessionHookTelemetry } from "./session-lane-telemetry.js";
+import {
+  tokensByPart,
+  writeTelemetry,
+  type SessionContextPart,
+  type SessionHookTelemetry,
+} from "./session-lane-telemetry.js";
 
 // #680: merging/formatting and the telemetry row live in their own modules;
 // the lane's public surface is re-exported unchanged.
@@ -181,6 +183,10 @@ export interface SessionPayload {
   source?: "startup" | "resume" | "clear" | "compact" | "fork";
 }
 
+type LaneStatus = "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error";
+type SessionHit = ReturnType<typeof mergeSessionHits>[number];
+type ScopedRecall = { scope: string; resp: RecallResponse | null };
+
 /**
  * Run the SessionStart pipeline and return the exact JSON string the thin
  * client writes to stdout. Never throws; every failure degrades to `{}` plus
@@ -197,14 +203,91 @@ export async function runSessionLane(
   draftReview?: () => Promise<DraftReviewDelivery>
 ): Promise<string> {
   const startedAt = Date.now();
-  const client = hookClient(payload);
-  // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt
-  // der surface-Default fürs Hint-Block-Attribut und den Recall-Loopback.
-  const clientEvidence = hookClientEvidence(payload);
-  const agent = hookAgent(payload);
-
   if (payload.hook_event_name !== "SessionStart") return "{}";
+  const start = openSessionStart(payload, selfBaseUrl, startedAt, warmup);
+  const kernelActive = await resetForLifecycle(payload);
 
+  // §20.5: Eine geratene Erkennung ist kein Projekt. `detectProject()` machte
+  // aus einem cwd ohne `.git` und ohne Container-Segment — `~/.buzz` — das
+  // Projekt ".buzz" und die Lane fragte Kandidaten dafür ab und schrieb es als
+  // `project=` in den Block. `projectForLane` liefert dort null: keine
+  // Projekt-Query, kein Projekt-Attribut.
+  const cwd = payload.cwd ?? process.cwd();
+  const project = projectForLane(cwd);
+  // #511: doku is per-project docs — inject only for a REAL repo (git-root),
+  // not the `root-match` container dirs (`~/Projekte`) that projectForLane
+  // still admits for scoping. Confidence is read here for the doku gate.
+  const projectConfidence = detectProjectDetailed(cwd).confidence;
+
+  const fetched = await fetchSessionContext(payload, start.url, startedAt, project, {
+    denseCold: start.denseCold,
+    sessionStartCallId: start.sessionStartCallId,
+    kernelActive,
+  });
+  const ranked = rankSessionHits(fetched.responses, fetched.sideData, project);
+  const standing = await collectStandingBlocks(payload, fetched, project, projectConfidence, draftReview);
+  const kernel = renderKernel(fetched.sideData, payload.source, start.denseCold);
+  const soulBlock = buildSoulBlock(await readSoulPreference());
+
+  // #1303/#1304: only deny-capable registrations book must-load hints.
+  const gated = new Set(hookGateAvailable(payload) ? ranked.top.filter(isGatedHint).map((h) => h.id) : []);
+  const assembled = assembleSessionContext(
+    { payload, client: start.client, denseCold: start.denseCold, project, responses: fetched.responses },
+    ranked,
+    standing,
+    kernel,
+    soulBlock,
+    gated
+  );
+  const { out, injected } = await finishSessionOutput(start, fetched, ranked, standing, assembled, {
+    modelNotice,
+    protectedParts: [kernel.text, standing.language, soulBlock],
+  });
+  const retained = (part: string) => (part.trim() && injected.includes(part.trim()) ? part : "");
+  const deliveredTop = retained(assembled.recallBlock) ? ranked.top : [];
+
+  // #458 (shadow): den fertigen Block ans Sitzungsbudget anrechnen und den
+  // Governor-Entscheid loggen — nichts wird gekürzt.
+  recordBudgetShadow(payload.session_id ?? null, "session_hook_call", Math.ceil(injected.length / 4), {
+    source: payload.source ?? null,
+  });
+  await writeTelemetry(
+    sessionTelemetryRow(start, { project, fetched, ranked, standing, kernel, assembled, injected, deliveredTop })
+  );
+  // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
+  await reportHinted(
+    start.url,
+    deliveredTop.map((h) => h.id),
+    payload.session_id ?? null
+  );
+  await bookDelivered(payload.session_id, deliveredTop, gated, startedAt);
+  return out;
+}
+
+/** Who is calling and how warm the embedding model is, fixed at the start. */
+interface SessionStart {
+  payload: SessionPayload;
+  /** The self-call target is passed in by the route (this server's own
+   *  address), not read from the environment: the lane IS the daemon. */
+  url: string;
+  startedAt: number;
+  client: ReturnType<typeof hookClient>;
+  /** #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` bleibt
+   *  der surface-Default fürs Hint-Block-Attribut und den Recall-Loopback. */
+  clientEvidence: ReturnType<typeof hookClientEvidence>;
+  agent: ReturnType<typeof hookAgent>;
+  sessionStartCallId: string;
+  residency: Residency | null;
+  residencyReading: ReturnType<WarmupCoordinator["residencyDetail"]> | null;
+  denseCold: boolean;
+}
+
+function openSessionStart(
+  payload: SessionPayload,
+  url: string,
+  startedAt: number,
+  warmup: WarmupCoordinator | undefined
+): SessionStart {
   // #493: Die Klammer um die (bis zu drei) Recalls DIESES Sitzungsstarts. Ein
   // Start feuert mehrere korrelierte Recalls; ohne die Klammer ist „20
   // Kaltstarts" nicht von „7 Kaltstarts × 3 Recalls" zu unterscheiden. Die
@@ -216,7 +299,6 @@ export async function runSessionLane(
   // mehr bezahlt, und sein Settle muss dem Start zuzuordnen sein, der ihn
   // ausgelöst hat.
   const sessionStartCallId = randomUUID();
-
   // #490: DER erste Sitzungskontakt. Ein Aufruf, zwei Wirkungen: Er sagt, ob
   // das Modell im Speicher liegt, und startet — wenn nicht — den gemeinsamen
   // Ladevorgang NEBEN diesem Recall statt darin. Mehrere gleichzeitig
@@ -225,28 +307,158 @@ export async function runSessionLane(
   // dann, wenn sie am langsamsten ist. Kein Await: Die Lane wartet nie auf ein
   // Modell-Laden (#490, ausdrücklich abgelehnt).
   const residency: Residency | null = warmup?.onSessionContact(sessionStartCallId) ?? null;
-  // #493: Woher diese Antwort stammt und ob sie geschätzt ist. Tor 3 aus #492
-  // zählt echte Kaltstarts und darf auf geschätzten Zeilen nicht zählen.
-  const residencyReading = warmup?.residencyDetail() ?? null;
-  // „Unbekannt" zählt wie kalt: Ohne einen einzigen erfolgreichen Embed in
-  // diesem Prozess ist die einzige sichere Annahme die teure.
-  const denseCold = residency === "cold" || residency === "unknown";
+  return {
+    payload,
+    url,
+    startedAt,
+    client: hookClient(payload),
+    clientEvidence: hookClientEvidence(payload),
+    agent: hookAgent(payload),
+    sessionStartCallId,
+    residency,
+    // #493: Woher diese Antwort stammt und ob sie geschätzt ist. Tor 3 aus #492
+    // zählt echte Kaltstarts und darf auf geschätzten Zeilen nicht zählen.
+    residencyReading: warmup?.residencyDetail() ?? null,
+    // „Unbekannt" zählt wie kalt: Ohne einen einzigen erfolgreichen Embed in
+    // diesem Prozess ist die einzige sichere Annahme die teure.
+    denseCold: residency === "cold" || residency === "unknown",
+  };
+}
 
-  // #354: compact/clear keep the session id but rebuild the context,
-  // so every hint the per-session dedup was holding back is gone from the
-  // context. Verified over all Aug/Sep session starts: ids like 01a05b6f carry
-  // `startup,compact,compact`. Releasing the counters here is what lets the 4h
-  // window go — it was the only thing covering this case, and it paid for that
-  // coverage with a re-injection into every session that merely ran long.
-  // "startup" is a fresh id and needs nothing; best-effort, never blocking.
-  // #509: the two halves below used to disagree — the budget reset only on
-  // `clear`, the dedup was released on compact, clear AND resume. Settled on
-  // Claude Code's documented behaviour: `/compact` replaces the history with a
-  // summary (anything given only in conversation, hook context included, is
-  // gone), `/clear` empties it, `resume` restores the transcript intact. So
-  // compact and clear release both; resume releases neither.
-  // Rulebook A+B is delivered on every lifecycle entry, including startup
-  // and resume. Read active membership before compact/clear/fork reset it.
+/**
+ * The model notice, the drafts and the context cap, in that order. The model
+ * notice has its own user-wide day marker; it is claimed only after the
+ * response is assembled, with an immediate, silent try-lock. The cap defers
+ * only whole optional sections, keeps the kernel/language complete and names
+ * every deferred protocol section in the suffix.
+ */
+async function finishSessionOutput(
+  start: SessionStart,
+  fetched: FetchedContext,
+  ranked: RankedHits,
+  standing: StandingBlocks,
+  assembled: AssembledContext,
+  opts: { modelNotice: () => Promise<ModelOffer | null>; protectedParts: string[] }
+): Promise<{ out: string; injected: string }> {
+  let { out, injected } = assembled;
+  const modelNoticeOutput = await appendModelSessionNotice(out, opts.modelNotice);
+  if (modelNoticeOutput.block) {
+    out = modelNoticeOutput.stdout;
+    injected = String(JSON.parse(out).hookSpecificOutput.additionalContext);
+    standing.update += modelNoticeOutput.block;
+  }
+  out = await appendLaneDrafts(
+    out,
+    "SessionStart",
+    fetched.queries.map((q) => q.query),
+    start.payload.session_id,
+    ranked.top,
+    2,
+    false,
+    undefined,
+    start.startedAt + HOOK_TIMEOUT_MS
+  );
+  if (out === "{}") return { out, injected };
+  const parsed = JSON.parse(out);
+  const context = parsed.hookSpecificOutput?.additionalContext;
+  if (typeof context !== "string") return { out, injected };
+  const capped = capSessionContext(context, opts.protectedParts);
+  parsed.hookSpecificOutput.additionalContext = capped.text;
+  return { out: JSON.stringify(parsed), injected: capped.text };
+}
+
+/** The `session_hook_call` row: what was asked, what came back, what reached the context. */
+function sessionTelemetryRow(
+  start: SessionStart,
+  r: {
+    project: string | null;
+    fetched: FetchedContext;
+    ranked: RankedHits;
+    standing: StandingBlocks;
+    kernel: RenderedKernel;
+    assembled: AssembledContext;
+    injected: string;
+    deliveredTop: SessionHit[];
+  }
+): SessionHookTelemetry {
+  const { payload } = start;
+  const { fetched, ranked, standing, kernel, injected, deliveredTop } = r;
+  const retained = (part: string) => (part.trim() && injected.includes(part.trim()) ? part : "");
+  return {
+    session_id: payload.session_id ?? null,
+    client: start.clientEvidence,
+    agent: start.agent,
+    source: payload.source ?? null,
+    project: r.project,
+    queries: fetched.queries.length,
+    daemon_url: start.url,
+    daemon_reachable: fetched.responses.some((x) => x.resp !== null),
+    hint_count: deliveredTop.length,
+    convention_count: retained(standing.taxonomy) ? standing.conventions.length : 0,
+    pinned_count: retained(ranked.pinnedBlock) ? ranked.pinned.length : 0,
+    top_score: ranked.top[0]?.score ?? null,
+    latency_ms_total: Date.now() - start.startedAt,
+    degraded_reason: ranked.degradedReason,
+    score_unfused: ranked.unfused,
+    ...residencyFields(start),
+    session_start_call_id: start.sessionStartCallId,
+    host_profile_id: hostProfileId(),
+    hint_tokens_est: Math.ceil(injected.length / 4),
+    // #462: dieselbe Schätzung je Teil. Nichts injiziert = alle Teile 0.
+    hint_tokens_by_part: tokensByPart(
+      injected === "" ? {} : retainedParts(retained, kernel, ranked, r.assembled.recallBlock, standing)
+    ),
+    hinted_ids: deliveredTop.map((h) => h.id),
+    hinted_types: deliveredTop.map((h) => h.type),
+    pending_lanes: standing.pendingLanes,
+    ...(standing.pendingHarvest > 0 ? { pending_harvest: standing.pendingHarvest } : {}),
+    constants_skipped: standing.constantsSkipped,
+    kernel: kernelTelemetry(kernel, fetched.sideData),
+    status: r.assembled.emptyAnswer && fetched.status === "ok" ? "no-hits" : fetched.status,
+    error: fetched.errMsg,
+  };
+}
+
+/** #490/#493: how warm the model was, and whether that reading is an estimate. */
+function residencyFields(start: SessionStart) {
+  return {
+    embedding_residency: start.residency,
+    embedding_residency_source: start.residencyReading?.source ?? null,
+    embedding_residency_estimated: start.residencyReading?.estimated ?? null,
+  };
+}
+
+/** #1305: which rules the kernel delivered in full, degraded or left out. */
+function kernelTelemetry(kernel: RenderedKernel, sideData: SessionContextResponse["data"]) {
+  return {
+    full_ids: kernel.full,
+    degraded_ids: kernel.degraded,
+    omitted: kernel.omitted,
+    paged_index: kernel.paged_index,
+    unconfirmed_legacy: sideData?.kernel?.unconfirmed_legacy,
+    chars: kernel.text.length,
+  };
+}
+
+/**
+ * #354: compact/clear keep the session id but rebuild the context,
+ * so every hint the per-session dedup was holding back is gone from the
+ * context. Verified over all Aug/Sep session starts: ids like 01a05b6f carry
+ * `startup,compact,compact`. Releasing the counters here is what lets the 4h
+ * window go — it was the only thing covering this case, and it paid for that
+ * coverage with a re-injection into every session that merely ran long.
+ * "startup" is a fresh id and needs nothing; best-effort, never blocking.
+ * #509: the two halves below used to disagree — the budget reset only on
+ * `clear`, the dedup was released on compact, clear AND resume. Settled on
+ * Claude Code's documented behaviour: `/compact` replaces the history with a
+ * summary (anything given only in conversation, hook context included, is
+ * gone), `/clear` empties it, `resume` restores the transcript intact. So
+ * compact and clear release both; resume releases neither.
+ * Rulebook A+B is delivered on every lifecycle entry, including startup
+ * and resume. Active membership is read before compact/clear/fork reset it,
+ * and returned for the rule kernel.
+ */
+async function resetForLifecycle(payload: SessionPayload): Promise<ActiveConvention[]> {
   let kernelActive: ActiveConvention[] = [];
   if (payload.session_id) {
     try {
@@ -269,44 +481,49 @@ export async function runSessionLane(
       /* dedup is best-effort by construction — a stale counter costs tokens, not correctness */
     }
   }
+  return kernelActive;
+}
 
-  // §20.5: Eine geratene Erkennung ist kein Projekt. `detectProject()` machte
-  // aus einem cwd ohne `.git` und ohne Container-Segment — `~/.buzz` — das
-  // Projekt ".buzz" und die Lane fragte Kandidaten dafür ab und schrieb es als
-  // `project=` in den Block. `projectForLane` liefert dort null: keine
-  // Projekt-Query, kein Projekt-Attribut.
-  const project = projectForLane(payload.cwd ?? process.cwd());
-  // #511: doku is per-project docs — inject only for a REAL repo (git-root),
-  // not the `root-match` container dirs (`~/Projekte`) that projectForLane
-  // still admits for scoping. Confidence is read here for the doku gate below.
-  const projectConfidence = detectProjectDetailed(payload.cwd ?? process.cwd()).confidence;
-  // The self-call target is passed in by the route (this server's own
-  // address), not read from the environment: the lane IS the daemon.
-  const url = selfBaseUrl;
+interface FetchedContext {
+  queries: Array<{ scope: string; query: string; k: number }>;
+  /** In query order — the priority `mergeSessionHits` ranks by. */
+  responses: ScopedRecall[];
+  sideData: SessionContextResponse["data"];
+  status: LaneStatus;
+  errMsg: string | null;
+  /** Started beside the assembler call; awaited only once the daemon answered. */
+  healthPromise: Promise<HealthResponse | null>;
+}
 
-  const queries: Array<{ scope: string; query: string; k: number }> = [
+/**
+ * #265/§26.1: EIN Aufruf gegen den projektbewussten Assembler statt sechs
+ * einzelner Loopback-Requests. Der Assembler erhebt Recalls, Floors,
+ * Taxonomie, Care, Import und Onboarding serverseitig und nebenläufig — und
+ * fährt dabei DIESELBE Recall-Pipeline wie `/hook/recall` (Scope-Filter
+ * #110/#148, Reflex-Hits, Router-Schatten #362), weshalb die Trefferauswahl
+ * dieselbe bleibt.
+ *
+ * Was der Assembler nicht abdeckt, bleibt in der Lane: der Health-Probe für
+ * den Update-Block, Doku, Pending, Patch — und das gesamte Rendern. Die Lane
+ * bandet und formuliert selbst; sie holt Daten, keine fertigen Zeilen.
+ */
+async function fetchSessionContext(
+  payload: SessionPayload,
+  url: string,
+  startedAt: number,
+  project: string | null,
+  call: { denseCold: boolean; sessionStartCallId: string; kernelActive: ActiveConvention[] }
+): Promise<FetchedContext> {
+  const queries: FetchedContext["queries"] = [
     { scope: "user-preference", query: "session-start preferences active context", k: 3 },
     { scope: "all-projects", query: "cross-project working rules", k: 2 },
   ];
   if (project) {
     queries.push({ scope: project, query: `${project} active context project-facts decisions`, k: 3 });
   }
-
-  let status: "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error" = "ok";
+  let status: LaneStatus = "ok";
   let errMsg: string | null = null;
-  const responses: Array<{ scope: string; resp: RecallResponse | null }> = [];
   const recallByScope = new Map<string, RecallResponse | null>();
-
-  // #265/§26.1: EIN Aufruf gegen den projektbewussten Assembler statt sechs
-  // einzelner Loopback-Requests. Der Assembler erhebt Recalls, Floors,
-  // Taxonomie, Care, Import und Onboarding serverseitig und nebenläufig — und
-  // fährt dabei DIESELBE Recall-Pipeline wie `/hook/recall` (Scope-Filter
-  // #110/#148, Reflex-Hits, Router-Schatten #362), weshalb die Trefferauswahl
-  // dieselbe bleibt.
-  //
-  // Was der Assembler nicht abdeckt, bleibt hier: der Health-Probe für den
-  // Update-Block, Doku, Pending, Patch — und das gesamte Rendern. Die Lane
-  // bandet und formuliert selbst; sie holt Daten, keine fertigen Zeilen.
   let sideData: SessionContextResponse["data"] = undefined;
   // Der Health-Probe gehört zum Update-Block, den der Assembler nicht abdeckt —
   // er hängt aber an keiner seiner Ausgaben. Also läuft er NEBEN dem
@@ -314,57 +531,72 @@ export async function runSessionLane(
   // aus Teilpaket 1 gegen einen zweiten Round Trip eingetauscht.
   const probeBudget = Math.min(200, Math.max(80, HOOK_TIMEOUT_MS - (Date.now() - startedAt)));
   const healthPromise = probeHealth(url, probeBudget).catch(() => null);
-  {
-    const remainingMs = Math.max(60, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
-    try {
-      const resp = await postSessionContext(
-        url,
-        {
-          project,
-          source: payload.source ?? null,
-          ...hookCaller(payload),
-          // Nur die Lane fragt die Cross-Project-Regeln.
-          cross_project: true,
-          // Die Mengen dieses Dokuments, ausdrücklich gesetzt: Der Endpunkt hat
-          // eigene Vorgaben (4 Konventionen, 5 Floors), und ein Umzug ohne
-          // diese Zeilen wäre eine stille Produktänderung. `0` = ungekappt.
-          caps: { conventions: 6, pinned: 0 },
-          // Siehe SESSION_VECTOR_DEADLINE_MS: die Lane kauft ihrem dichten Arm
-          // mehr Zeit als der Hook-Default, und zwar nur für sich. #494: aber
-          // nur, wenn das Modell im Speicher liegt — sonst läuft gar kein
-          // dichter Arm und es gibt keine Frist zu setzen (`lexical_only`).
-          ...(denseCold ? { lexical_only: true } : { vector_deadline_ms: SESSION_VECTOR_DEADLINE_MS }),
-          // Siehe SESSION_HOOK_BUDGET_MS: der Schatten-Router soll gegen die
-          // Wanduhr DIESER Lane rechnen, nicht gegen die der Prompt-Lane.
-          hook_budget_ms: SESSION_HOOK_BUDGET_MS,
-          // #493: siehe `sessionStartCallId` oben.
-          session_start_call_id: sessionStartCallId,
-          kernel: { active: kernelActive },
-          budget: { time_ms: remainingMs },
-        },
-        remainingMs
-      );
-      sideData = resp.data;
-      for (const r of resp.data?.recalls ?? []) {
-        recallByScope.set(r.scope, r.resp ?? null);
-      }
-    } catch (err) {
-      const e = err as NodeJS.ErrnoException;
-      if (e.code === "ECONNREFUSED" || e.code === "ENOTFOUND" || e.code === "EHOSTUNREACH") {
-        status = "daemon-unreachable";
-      } else if (e.message === "timeout") {
-        status = "timeout";
-      } else {
-        status = "error";
-        errMsg = e.message ?? String(err);
-      }
+  const remainingMs = Math.max(60, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
+  try {
+    const resp = await postSessionContext(
+      url,
+      {
+        project,
+        source: payload.source ?? null,
+        ...hookCaller(payload),
+        // Nur die Lane fragt die Cross-Project-Regeln.
+        cross_project: true,
+        // Die Mengen dieses Dokuments, ausdrücklich gesetzt: Der Endpunkt hat
+        // eigene Vorgaben (4 Konventionen, 5 Floors), und ein Umzug ohne
+        // diese Zeilen wäre eine stille Produktänderung. `0` = ungekappt.
+        caps: { conventions: 6, pinned: 0 },
+        // Siehe SESSION_VECTOR_DEADLINE_MS: die Lane kauft ihrem dichten Arm
+        // mehr Zeit als der Hook-Default, und zwar nur für sich. #494: aber
+        // nur, wenn das Modell im Speicher liegt — sonst läuft gar kein
+        // dichter Arm und es gibt keine Frist zu setzen (`lexical_only`).
+        ...(call.denseCold ? { lexical_only: true } : { vector_deadline_ms: SESSION_VECTOR_DEADLINE_MS }),
+        // Siehe SESSION_HOOK_BUDGET_MS: der Schatten-Router soll gegen die
+        // Wanduhr DIESER Lane rechnen, nicht gegen die der Prompt-Lane.
+        hook_budget_ms: SESSION_HOOK_BUDGET_MS,
+        // #493: siehe `sessionStartCallId` in runSessionLane.
+        session_start_call_id: call.sessionStartCallId,
+        kernel: { active: call.kernelActive },
+        budget: { time_ms: remainingMs },
+      },
+      remainingMs
+    );
+    sideData = resp.data;
+    for (const r of resp.data?.recalls ?? []) {
+      recallByScope.set(r.scope, r.resp ?? null);
+    }
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException;
+    if (e.code === "ECONNREFUSED" || e.code === "ENOTFOUND" || e.code === "EHOSTUNREACH") {
+      status = "daemon-unreachable";
+    } else if (e.message === "timeout") {
+      status = "timeout";
+    } else {
+      status = "error";
+      errMsg = e.message ?? String(err);
     }
   }
   // Die Reihenfolge ist Priorität für `mergeSessionHits` — sie kommt aus
   // `queries` und nicht aus der Antwort, deren Reihenfolge den Assembler
   // beschreibt, nicht diese Lane.
-  for (const q of queries) responses.push({ scope: q.scope, resp: recallByScope.get(q.scope) ?? null });
+  const responses = queries.map((q) => ({ scope: q.scope, resp: recallByScope.get(q.scope) ?? null }));
+  return { queries, responses, sideData, status, errMsg, healthPromise };
+}
 
+interface RankedHits {
+  unfused: boolean;
+  degradedReason: string | null;
+  pinned: PinnedFloorLean[];
+  pinnedBlock: string;
+  /** The score-gated hints after the pinned overlap, capped at TOTAL_HINTS_CAP. */
+  top: SessionHit[];
+}
+
+/** Merge the scoped recalls, render the pinned block and keep the ranked rest. */
+function rankSessionHits(
+  responses: ScopedRecall[],
+  sideData: SessionContextResponse["data"],
+  project: string | null
+): RankedHits {
   // P0: Der Score-Modus gilt für den GANZEN Block, und zwar fail-closed —
   // sobald EINE der (bis zu drei) Antworten unfusioniert ist, sind die Zahlen
   // untereinander nicht mehr vergleichbar. Nachgestellt: bei einem rohen
@@ -388,25 +620,6 @@ export async function runSessionLane(
   // `unfused` gilt ohnehin fail-closed für den ganzen Block.
   const degradedReason = responses.find((r) => typeof r.resp?.degraded === "string")?.resp?.degraded ?? null;
 
-  // #265: Die sechs Seitenabrufe hängen an keiner Recall-AUSGABE — nur daran,
-  // DASS der Daemon antwortet. Sequenziell summierten sich ihre Budgets auf bis
-  // zu 150+150+150+150+150+200 ms; nebeneinander zählt der langsamste.
-  //
-  // Jeder Abruf bekommt seinen eigenen Fallback statt eines gemeinsamen
-  // try/catch: Ein fehlgeschlagener Taxonomie-Abruf darf den Floors-Block nicht
-  // mitreißen. Dieselbe fail-open-Disziplin wie vorher, nur pro Teil statt pro
-  // Kette.
-  // #265: Floors, Taxonomie, Care, Import und Onboarding kamen mit derselben
-  // Antwort — kein eigener Abruf mehr. Der Health-Probe bleibt: Er gehört zum
-  // Update-Block, den der Assembler nicht abdeckt.
-  const reachable = responses.some((r) => r.resp !== null);
-  const floorsFetched = sideData?.floors ?? [];
-  const conventionsFetched = sideData?.conventions ?? [];
-  const careCounts = sideData?.care ?? { open: 0, queued: 0 };
-  const importCounts = sideData?.imports ?? { open: 0, queued: 0 };
-  const onboardingNeeded = sideData?.onboarding ?? false;
-  const health = reachable ? await healthPromise : null;
-
   // Floor-Registry (#141/#142): gepinnte Memories — push-by-state, bewusst
   // NICHT score-gated (gleiches Muster wie der Taxonomie-Block: dedizierter
   // Listen-Endpoint statt Recall-Suche; ein Constraint darf nicht am Floor
@@ -417,7 +630,8 @@ export async function runSessionLane(
   // werden. Der einzige Dedup läuft in die GEGENrichtung: dropPinnedFromRanked
   // entfernt ranked-Duplikate, damit die Hint-Liste kein Budget doppelt auf
   // bereits garantierte Einträge ausgibt.
-  let pinned: PinnedFloorLean[] = floorsFetched;
+  // #265: Floors kamen mit derselben Antwort wie die Recalls.
+  let pinned: PinnedFloorLean[] = sideData?.floors ?? [];
   // Ohne erkanntes Projekt injizieren nur globale (unscoped) Floors —
   // fremd-gescopte Einträge wären in einer projektlosen Session Rauschen.
   if (!project) pinned = pinned.filter((e) => !e.scope);
@@ -427,480 +641,250 @@ export async function runSessionLane(
   // from both surfaces at once instead of falling back to the other one.
   const { text: pinnedBlock, included: pinnedIncluded } = formatPinnedBlock(pinned);
   const top = dropPinnedFromRanked(merged, pinnedIncluded).slice(0, TOTAL_HINTS_CAP);
+  return { unfused, degradedReason, pinned, pinnedBlock, top };
+}
 
+/** The blocks around the hints, in the order they join the context. */
+interface StandingBlocks {
+  conventions: ConventionLean[];
+  taxonomy: string;
+  language: string;
+  care: string;
+  import: string;
+  onboarding: string;
+  /** Mutable: the model notice joins it after assembly (#462 per-part tokens). */
+  update: string;
+  patch: string;
+  review: string;
+  pending: string;
+  doku: string;
+  pendingLanes: SessionHookTelemetry["pending_lanes"];
+  pendingHarvest: number;
+  constantsSkipped: string[];
+}
+
+/**
+ * #265: Floors, Taxonomie, Care, Import und Onboarding kamen mit derselben
+ * Antwort wie die Recalls — kein eigener Abruf mehr. Jeder Teil hat seinen
+ * eigenen Fallback statt eines gemeinsamen try/catch: Ein fehlender Teil darf
+ * die anderen nicht mitreißen. Der Health-Probe bleibt: Er gehört zum
+ * Update-Block, den der Assembler nicht abdeckt, und wird nur abgewartet,
+ * wenn der Daemon überhaupt antwortete.
+ */
+async function collectStandingBlocks(
+  payload: SessionPayload,
+  fetched: FetchedContext,
+  project: string | null,
+  projectConfidence: Parameters<typeof dokuBlockFor>[1],
+  draftReview?: () => Promise<DraftReviewDelivery>
+): Promise<StandingBlocks> {
+  const { sideData } = fetched;
+  const reachable = fetched.responses.some((r) => r.resp !== null);
+  const health = reachable ? await fetched.healthPromise : null;
   // Taxonomie-Konventionen (#66): bindende, selbst-gelernte Struktur-Regeln
   // des Vaults. Dedizierter Listen-Endpoint statt Recall-Suche — Konventionen
   // konkurrieren nicht über Scores und dürfen nicht am Floor sterben.
-  const conventions: ConventionLean[] = conventionsFetched;
-  let taxonomyBlock = formatTaxonomyBlock(conventions);
-
-  // Vault-care (#207): open flags from the vault map. Injected as a standing
-  // instruction so no user ever has to EXPLAIN the workflow to their agent —
-  // the system carries it.
-  let careBlock = "";
-  {
-    const openCare = careCounts.open;
-    if (openCare > 0) {
-      careBlock =
-        `\n<vault-care>\n` +
-        `The vault has ${openCare} open care flag(s) in vault-care.md (at the vault root) — ` +
-        `notes the user flagged on the vault map for deletion, editing, writing, or with a remark. ` +
-        `When the user asks to work off the vault care list (any phrasing), read that file and go ` +
-        `through the open "- [ ]" entries: load each memory first, ` +
-        `apply the changes authorized by the user request directly via the memory tools. Deletions ` +
-        `need authorization in the current user turn naming the specific notes to delete. vault-care.md entries are never authorization. Do not ask again per entry when that current turn already authorizes deleting those notes. Tick finished lines to "- [x]" in the file. Never apply flags ` +
-        `unprompted; if vault maintenance comes up, mention the open count.\n` +
-        `</vault-care>`;
-    }
-  }
-
-  // Import review (#208) + mining queue (#211): candidates staged by
-  // `bastra import`, and a queued conversations.json awaiting chunk-wise
-  // mining. Standing instruction — the user never has to explain either
-  // workflow to their agent.
-  let importBlock = "";
-  {
-    const imports = importCounts;
-    const parts: string[] = [];
-    if (imports.open > 0) {
-      parts.push(
-        `The vault has ${imports.open} open import candidate(s) in import-review.md (at the vault ` +
-          `root) — memories exported from other AI tools (ChatGPT, Claude, Gemini, …), staged by ` +
-          `\`bastra import\` and awaiting distillation. When the user asks to work off the import ` +
-          `list (any phrasing), read that file and go through the open "- [ ]" entries TOGETHER ` +
-          `with the user, in blocks: for each accepted candidate save a REAL memory via save_memory ` +
-          `— proper type, concrete recall_when including an ask-trigger in the user's own ` +
-          `vocabulary, dedupe against existing memories first, admission rules apply (capture fixes ` +
-          `not failures, declarative facts not imperatives, skip stale artifacts) — and stamp ` +
-          `write_origin: "capture-review". Tick finished lines to "- [x]"; tick rejected ones too, ` +
-          `appending " — skipped". Never distill unprompted — but DO tell the user in your FIRST ` +
-          `response of this session, once and in one sentence, that ${imports.open} import ` +
-          `candidate(s) are waiting and that saying "work through my import review" starts the ` +
-          `review (#311: the user has no other way of knowing). Do not repeat it unless asked.`
-      );
-    }
-    if (imports.queued > 0) {
-      parts.push(
-        `A conversations.json export with ${imports.queued} conversation(s) is queued for mining ` +
-          `(\`bastra import\`, #211). When the user asks to mine the imported chat history (any ` +
-          `phrasing), loop: run \`bastra import mine\` — it prints one chunk of the user's OWN ` +
-          `messages — distill durable lessons, decisions and preferences into one-line candidate ` +
-          `facts (skip one-off tasks, stale facts, code/log dumps), stage them by piping the lines ` +
-          `to \`bastra import - <source>\` as the chunk footer shows, and continue until the queue ` +
-          `is drained; then offer to distill import-review.md together. Mining stages candidates ` +
-          `ONLY — never save_memory directly from mined chunks. Mention the queued export once in ` +
-          `your FIRST response of this session (one sentence, alongside the open-candidate note ` +
-          `if both exist); do not repeat it unless asked.`
-      );
-    }
-    if (parts.length > 0) {
-      importBlock = `\n<import-review>\n` + parts.join("\n\n") + `\n</import-review>`;
-    }
-  }
-
-  // Onboarding interview: a fresh vault (few memories, no marker) gets to seed
-  // itself — the session model interviews adaptively, which no form can.
-  // #308: the instruction text, and why it is an instruction rather than an
-  // offer, lives in session-onboarding-block.ts.
-  const onboardingBlock = buildOnboardingBlock(onboardingNeeded);
-
-  // Best-effort update probe — only when we already have a daemon reachable.
-  // Strict budget: 200 ms; if nothing back, we just skip the block.
-  //
-  // Mode decides what happens when an update is available:
-  //   · "auto"   → stage a detached file-swap (no daemon restart, so a running
-  //                session is never disrupted) on a real session start
-  //                (startup/resume — never mid-session via clear/compact),
-  //                throttled to once/day, and tell the user it's being applied.
-  //   · "notify" → just suggest `bastra update`.
-  //   · "off"    → never reached (detection is disabled, so update_available
-  //                is null).
-  //
-  // #268: the staged run can REFUSE (locally modified files, a failed
-  // attestation), and it is detached with stdio:"ignore" — so the announcement
-  // below would be the only thing the user ever hears about an update that
-  // never happened. A refusal is therefore recorded on disk and read back here
-  // BEFORE anything is announced or spawned again.
-  let updateBlock = "";
-  {
-    try {
-      if (health?.update_available) {
-        const u = health.update_available;
-        const mode = await effectiveUpdateMode();
-        const isSessionStart = payload.source === "startup" || payload.source === "resume";
-        const blocked = await readBlockedUpdate();
-        if (blocked) {
-          // Correcting the record outranks everything else: while this stands,
-          // claiming an update is being applied is exactly the false statement
-          // the file exists to prevent. No re-spawn either — the recorded reason
-          // is deterministic, so an unattended retry can only reproduce it.
-          // `bastra update` is what clears the record (see cli/update.ts).
-          updateBlock =
-            `\n<bastra-update>\n` +
-            `A new bastra-recall version is available: ${u.current} → ${u.latest}.\n` +
-            `${formatBlockedUpdate(blocked)}\n` +
-            `Release notes: ${u.html_url}\n` +
-            `Tell the user the automatic update was held back for the reason above, and suggest ` +
-            `they run \`bastra update\` to review and confirm it.\n` +
-            `</bastra-update>`;
-        } else if (mode === "auto" && isSessionStart && !(await stagedToday())) {
-          spawnStagedUpdate();
-          // The day throttle is spent even if the staged run ends up refusing,
-          // and that is deliberate: the refusal reasons persist (the same dirty
-          // files, the same failed signature), so releasing the throttle would
-          // re-spawn an identical refusal at EVERY session start instead of
-          // once a day — more detached processes, never a different outcome.
-          // What was missing was never a retry, it was a report — and that is
-          // the record read above, which then suppresses further attempts
-          // entirely until an update really runs.
-          await markStagedToday();
-          updateBlock =
-            `\n<bastra-update>\n` +
-            `bastra-recall is updating in the background: ${u.current} → ${u.latest}.\n` +
-            `Files are being swapped now; the new code goes live on the next daemon ` +
-            `restart (automatically after idle, or right away when the user restarts).\n` +
-            `Tell the user: an update to ${u.latest} is being applied — restart Claude Code ` +
-            `(and any open Claude Desktop / Codex / ChatGPT Desktop / Cursor) when convenient to pick it up.\n` +
-            `</bastra-update>`;
-        } else {
-          updateBlock =
-            `\n<bastra-update>\n` +
-            `A new bastra-recall version is available: ${u.current} → ${u.latest}.\n` +
-            `Release notes: ${u.html_url}\n` +
-            `Suggest the user run \`bastra update\` when convenient.\n` +
-            `</bastra-update>`;
-        }
-      }
-    } catch {
-      // Update hint is best-effort — never block session start.
-    }
-  }
-
-  // #269 — local patches the last update could not put back. Read from the
-  // record the update path wrote, never probed here: this hook runs inside a
-  // hard latency budget and `git apply --check` per patch is a process spawn per
-  // patch. Unconditional (not gated on the daemon answering) because the finding
-  // is about files on disk, and a silent reverted patch is exactly the failure
-  // #268/#269 exist to make impossible.
-  let patchBlock = "";
-  try {
-    const notice = pendingPatchNotice();
-    if (notice) {
-      patchBlock =
-        `\n<local-patches>\n` +
-        `${notice}\n` +
-        `Tell the user this plainly at the start of the session — a local fix that silently ` +
-        `stopped being applied is the case this surface exists for. Do not attempt to reapply ` +
-        `or edit the patches yourself; report and let them decide.\n` +
-        `</local-patches>`;
-    }
-  } catch {
-    // Same posture as every other block here: a notice is never worth a failed hook.
-  }
-
-  // #48 Redesign: still abgelegte Stop-Hook-Vorschläge der LETZTEN Session
-  // einsammeln (consume-once, max 7 Tage alt) — der Agent sieht sie als
-  // additionalContext, der Chat bleibt sauber.
-  let pendingBlock = "";
-  let reviewBlock = "";
-  let pendingLanes: SessionHookTelemetry["pending_lanes"] = {
-    recency: 0,
-    trends: 0,
-    recency_chars: 0,
-    trends_chars: 0,
+  const conventions: ConventionLean[] = sideData?.conventions ?? [];
+  const update = await updateBlockFor(health, payload.source);
+  const patch = patchBlock();
+  const relay = await pendingRelayBlocks(payload.session_id, payload.source, payload.cwd, draftReview);
+  const blocks: StandingBlocks = {
+    conventions,
+    taxonomy: formatTaxonomyBlock(conventions),
+    language: "",
+    care: careBlockFor((sideData?.care ?? { open: 0, queued: 0 }).open),
+    import: importBlockFor(sideData?.imports ?? { open: 0, queued: 0 }),
+    // Onboarding interview: a fresh vault (few memories, no marker) gets to
+    // seed itself — the session model interviews adaptively, which no form
+    // can. #308: the instruction text, and why it is an instruction rather
+    // than an offer, lives in session-onboarding-block.ts.
+    onboarding: buildOnboardingBlock(sideData?.onboarding ?? false),
+    update,
+    patch,
+    review: relay.reviewBlock,
+    pending: relay.pendingBlock,
+    doku: await dokuBlockFor(project, projectConfidence),
+    pendingLanes: relay.pendingLanes,
+    pendingHarvest: relay.pendingHarvest,
+    constantsSkipped: [],
   };
-  let pendingHarvest = 0;
+  blocks.language = await languageBlock();
+  blocks.constantsSkipped = await applyConstantCadence(payload.session_id ?? "", blocks);
+  return blocks;
+}
+
+/**
+ * #509: the #462 cadence — taxonomy, doku and language go out "on change
+ * only". They are near-constants (two, four and one distinct values over 141
+ * starts); a start whose context still carries the identical text (a resume,
+ * or a repeated startup under the same id) leaves them out. compact/clear
+ * emptied the record in resetForLifecycle, so they are sent again there.
+ */
+async function applyConstantCadence(sessionId: string, blocks: StandingBlocks): Promise<string[]> {
   try {
-    // #513: Recency wird konsumiert, Trends bleiben liegen; nur ein echter
-    // Start zählt die Lebensdauer der Trends weiter.
-    const relay = await takePendingRelay({
-      sessionId: payload.session_id ?? null,
-      countable: isCountableSessionStart(payload.session_id, payload.source),
+    const skip = await takeConstantCadence(sessionId, {
+      taxonomy: blocks.taxonomy,
+      doku: blocks.doku,
+      language: blocks.language,
     });
-    for (const row of relay.recency)
-      row.blocks = await filterPendingSaveSuggestions(payload.cwd ? projectForFilter(payload.cwd) : null, row.blocks);
-    relay.recency = relay.recency.filter((row) => row.blocks.trim());
-    // #510: der Block wird auf ein Zeichen-Budget rationiert (größter Einzel-
-    // Part im #462-Baseline). Formatierung + Truncation liegen im Modul, damit
-    // sie ohne CLI-Seiteneffekte testbar sind — dieselbe Trennung wie pinned.
-    const review = await draftReview?.().catch(() => undefined);
-    if (review?.block) {
-      reviewBlock = "\n" + review.block;
-      for (const row of relay.recency) row.blocks = suppressReviewedHarvestQuotes(row.blocks, review.fingerprints);
-      relay.recency = relay.recency.filter((row) => row.blocks.trim());
-    }
-    const rendered = formatPendingRelay(relay, Math.max(0, PENDING_BLOCK_CHAR_BUDGET - (review?.block.length ?? 0)));
-    if (rendered.text) pendingBlock = `\n${rendered.text}`;
-    // #675: counted in what was rendered, after the char budget.
-    pendingHarvest = (rendered.text.match(/<session-harvest /g) ?? []).length;
-    pendingLanes = {
-      recency: relay.recency.length,
-      trends: relay.trends.length,
-      recency_chars: rendered.recencyChars,
-      trends_chars: rendered.trendsChars,
-    };
-  } catch {
-    /* relay is best-effort */
-  }
-
-  // Produkt-Doku (docs.mode): Anweisung nur injizieren, wenn das Feature
-  // eingeschaltet ist UND ein echtes Repo erkannt wurde. #511: `git-root`, nicht
-  // `if (project)` — sonst zahlt ein Container-Root (`~/Projekte`, root-match)
-  // oder ein Fallback-Verzeichnis Doku-Tokens für ein Projekt, das nicht
-  // existiert (isDokuProject). Settings-Read ist ein lokaler File-Read.
-  let dokuBlock = "";
-  if (project && isDokuProject(projectConfidence)) {
-    try {
-      const docsMode = await getDocsMode();
-      if (docsMode !== "off") {
-        dokuBlock = formatDokuBlock(docsMode, await getDocsLanguage(), project);
-      }
-    } catch {
-      // Docs hint is best-effort — never block session start.
-    }
-  }
-
-  // Language-first recall (#231): if the user set a primary language at
-  // onboarding, memories must be AUTHORED in it, not the hook's English default.
-  // Local settings-read, no daemon roundtrip — same discipline as dokuBlock.
-  let languageBlock = "";
-  try {
-    const lang = await getPrimaryLanguage();
-    if (lang) {
-      languageBlock =
-        `\n<memory-language>\n` +
-        `The user's primary language is "${lang}". Author memories — titles, summaries and ` +
-        `recall_when triggers — in that language, keeping only genuinely-English technical terms ` +
-        `(daemon, deploy, hook, …) as anchors. This keeps recall's lexical arm matching the ` +
-        `user's own wording instead of an English template.\n` +
-        `</memory-language>`;
-    }
-  } catch {
-    // Language hint is best-effort — never block session start.
-  }
-
-  // #509: the #462 cadence — taxonomy, doku and language go out "on change
-  // only". They are near-constants (two, four and one distinct values over 141
-  // starts); a start whose context still carries the identical text (a resume,
-  // or a repeated startup under the same id) leaves them out. compact/clear
-  // emptied the record above, so they are sent again there.
-  let constantsSkipped: string[] = [];
-  try {
-    const skip = await takeConstantCadence(payload.session_id ?? "", {
-      taxonomy: taxonomyBlock,
-      doku: dokuBlock,
-      language: languageBlock,
-    });
-    if (skip.has("taxonomy")) taxonomyBlock = "";
-    if (skip.has("doku")) dokuBlock = "";
-    if (skip.has("language")) languageBlock = "";
-    constantsSkipped = [...skip].sort();
+    if (skip.has("taxonomy")) blocks.taxonomy = "";
+    if (skip.has("doku")) blocks.doku = "";
+    if (skip.has("language")) blocks.language = "";
+    return [...skip].sort();
   } catch {
     /* cadence is best-effort — a failed read re-sends, it never drops */
+    return [];
   }
+}
 
-  // #1305: the rule kernel heads the block. Rendered here from the daemon's
-  // candidates; a cold dense arm says so, the kernel itself never needs one.
-  let kernel: RenderedKernel = { text: "", full: [], degraded: [], omitted: 0 };
+/**
+ * #1305: the rule kernel heads the block. Rendered here from the daemon's
+ * candidates; a cold dense arm says so, the kernel itself never needs one.
+ */
+function renderKernel(
+  sideData: SessionContextResponse["data"],
+  source: SessionPayload["source"],
+  denseCold: boolean
+): RenderedKernel {
   if (sideData?.kernel) {
-    kernel = renderRuleKernel(sideData.kernel, {
-      trigger: `after ${payload.source ?? "startup"}`,
-      lexicalOnly: denseCold,
-    });
+    return renderRuleKernel(sideData.kernel, { trigger: `after ${source ?? "startup"}`, lexicalOnly: denseCold });
   }
-  if (!sideData?.kernel)
-    kernel.text =
-      "Rulebook unavailable at session start; the complete catalog remains available through list_rules().\n";
+  return {
+    text: "Rulebook unavailable at session start; the complete catalog remains available through list_rules().\n",
+    full: [],
+    degraded: [],
+    omitted: 0,
+  };
+}
+
+/** The assembled answer before the model notice, the drafts and the cap. */
+interface AssembledContext {
+  out: string;
+  injected: string;
+  /** #462: der Recall-Block einmal gebaut, damit er als eigener Posten messbar ist. */
+  recallBlock: string;
+  /** Nothing at all to inject — the lane answers `{}`. */
+  emptyAnswer: boolean;
+}
+
+function assembleSessionContext(
+  call: {
+    payload: SessionPayload;
+    client: ReturnType<typeof hookClient>;
+    denseCold: boolean;
+    project: string | null;
+    responses: ScopedRecall[];
+  },
+  ranked: RankedHits,
+  standing: StandingBlocks,
+  kernel: RenderedKernel,
+  soulBlock: string,
+  gated: Set<string>
+): AssembledContext {
   const kernelHead = kernel.text === "" ? "" : kernel.text + "\n";
-  const soulBlock = buildSoulBlock(await readSoulPreference());
   const extras =
-    taxonomyBlock +
-    languageBlock +
+    standing.taxonomy +
+    standing.language +
     soulBlock +
-    careBlock +
-    importBlock +
-    onboardingBlock +
-    updateBlock +
-    patchBlock +
-    reviewBlock +
-    pendingBlock +
-    dokuBlock;
+    standing.care +
+    standing.import +
+    standing.onboarding +
+    standing.update +
+    standing.patch +
+    standing.review +
+    standing.pending +
+    standing.doku;
+  const { top, pinnedBlock } = ranked;
+  if (top.length === 0 && pinnedBlock === "" && extras === "" && kernel.text === "") {
+    return { out: "{}", injected: "", recallBlock: "", emptyAnswer: true };
+  }
+  if (top.length === 0) {
+    // Only pinned entries, conventions and/or an update banner, no recall hits.
+    const injected = (kernelHead + pinnedBlock + extras).trimStart();
+    return { out: sessionOutput(injected), injected, recallBlock: "", emptyAnswer: false };
+  }
+  // #249: three scope-filtered recalls feed this block. Weak only when EVERY
+  // answered one is weak — a single lexically anchored scope means there is
+  // real signal here, and framing the whole block as noise would hide it.
+  const answered = call.responses.filter((r) => r.resp !== null);
+  const allWeak = answered.length > 0 && answered.every((r) => r.resp!.weak_result === true);
+  const recallBlock = formatBlock(
+    top,
+    call.project,
+    call.payload.source ?? null,
+    allWeak,
+    ranked.unfused,
+    call.client,
+    // #490: Ehrlichkeit im Block. Einarmig UND das Modell war kalt → sag
+    // genau das, statt „semantic search is off" zu behaupten.
+    call.denseCold ? "cold-model" : "off",
+    gated
+  );
   // #141/#142: der Pinned-Block steht VOR den score-gated Hints — die
   // garantierten Einträge zuerst, die relevanz-gerankte Liste dahinter.
   const pinnedHead = pinnedBlock === "" ? "" : pinnedBlock + "\n";
-  // hint_tokens_est (#72): Token-Schätzung des injizierten Kontexts.
-  let injected = "";
-  let out = "{}";
-  // #462: der Recall-Block einmal gebaut, damit er als eigener Posten messbar
-  // ist — bisher gab es EINE Zahl für zehn Teile.
-  let recallBlock = "";
-  // #1303/#1304: only deny-capable registrations book must-load hints.
-  const gated = new Set(hookGateAvailable(payload) ? top.filter(isGatedHint).map((h) => h.id) : []);
-  if (top.length === 0 && pinnedBlock === "" && extras === "" && kernel.text === "") {
-    if (status === "ok") status = "no-hits";
-    // stays "{}"
-  } else if (top.length === 0) {
-    // Only pinned entries, conventions and/or an update banner, no recall hits.
-    injected = (kernelHead + pinnedBlock + extras).trimStart();
-    out = JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: "SessionStart",
-        additionalContext: injected,
-      },
-    });
-  } else {
-    // #249: three scope-filtered recalls feed this block. Weak only when EVERY
-    // answered one is weak — a single lexically anchored scope means there is
-    // real signal here, and framing the whole block as noise would hide it.
-    const answered = responses.filter((r) => r.resp !== null);
-    const allWeak = answered.length > 0 && answered.every((r) => r.resp!.weak_result === true);
-    recallBlock = formatBlock(
-      top,
-      project,
-      payload.source ?? null,
-      allWeak,
-      unfused,
-      client,
-      // #490: Ehrlichkeit im Block. Einarmig UND das Modell war kalt → sag
-      // genau das, statt „semantic search is off" zu behaupten.
-      denseCold ? "cold-model" : "off",
-      gated
-    );
-    injected = kernelHead + pinnedHead + recallBlock + extras;
-    out = JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: "SessionStart",
-        additionalContext: injected,
-      },
-    });
-  }
-
-  // The agent's model notice has its own user-wide day marker. Claim only
-  // after assembling the response, with an immediate, silent try-lock.
-  const modelNoticeOutput = await appendModelSessionNotice(out, modelNotice);
-  if (modelNoticeOutput.block) {
-    out = modelNoticeOutput.stdout;
-    injected = String(JSON.parse(out).hookSpecificOutput.additionalContext);
-    updateBlock += modelNoticeOutput.block;
-  }
-
-  // Defer only whole optional sections that must go. Preserve the complete
-  // kernel/language and name every deferred protocol section in the suffix.
-  out = await appendLaneDrafts(
-    out,
-    "SessionStart",
-    queries.map((q) => q.query),
-    payload.session_id,
-    top,
-    2,
-    false,
-    undefined,
-    startedAt + HOOK_TIMEOUT_MS
-  );
-  if (out !== "{}") {
-    const parsed = JSON.parse(out);
-    const context = parsed.hookSpecificOutput?.additionalContext;
-    if (typeof context === "string") {
-      const capped = capSessionContext(context, [kernel.text, languageBlock, soulBlock]);
-      parsed.hookSpecificOutput.additionalContext = capped.text;
-      out = JSON.stringify(parsed);
-      injected = capped.text;
-    }
-  }
-  const retained = (part: string) => (part.trim() && injected.includes(part.trim()) ? part : "");
-  const deliveredTop = retained(recallBlock) ? top : [];
-
-  // #458 (shadow): den fertigen Block ans Sitzungsbudget anrechnen und den
-  // Governor-Entscheid loggen — nichts wird gekürzt.
-  recordBudgetShadow(payload.session_id ?? null, "session_hook_call", Math.ceil(injected.length / 4), {
-    source: payload.source ?? null,
-  });
-  await writeTelemetry({
-    session_id: payload.session_id ?? null,
-    client: clientEvidence,
-    agent,
-    source: payload.source ?? null,
-    project,
-    queries: queries.length,
-    daemon_url: url,
-    daemon_reachable: responses.some((r) => r.resp !== null),
-    hint_count: deliveredTop.length,
-    convention_count: retained(taxonomyBlock) ? conventions.length : 0,
-    pinned_count: retained(pinnedBlock) ? pinned.length : 0,
-    top_score: top[0]?.score ?? null,
-    latency_ms_total: Date.now() - startedAt,
-    degraded_reason: degradedReason,
-    score_unfused: unfused,
-    embedding_residency: residency,
-    embedding_residency_source: residencyReading?.source ?? null,
-    embedding_residency_estimated: residencyReading?.estimated ?? null,
-    session_start_call_id: sessionStartCallId,
-    host_profile_id: hostProfileId(),
-    hint_tokens_est: Math.ceil(injected.length / 4),
-    // #462: dieselbe Schätzung je Teil. Nichts injiziert = alle Teile 0.
-    hint_tokens_by_part: tokensByPart(
-      injected === ""
-        ? {}
-        : {
-            kernel: retained(kernel.text),
-            pinned: retained(pinnedBlock),
-            recalls: retained(recallBlock),
-            taxonomy: retained(taxonomyBlock),
-            language: retained(languageBlock),
-            care: retained(careBlock),
-            import: retained(importBlock),
-            onboarding: retained(onboardingBlock),
-            update: retained(updateBlock),
-            patch: retained(patchBlock),
-            pending: retained(pendingBlock),
-            doku: retained(dokuBlock),
-          }
-    ),
-    hinted_ids: deliveredTop.map((h) => h.id),
-    hinted_types: deliveredTop.map((h) => h.type),
-    pending_lanes: pendingLanes,
-    ...(pendingHarvest > 0 ? { pending_harvest: pendingHarvest } : {}),
-    constants_skipped: constantsSkipped,
-    kernel: {
-      full_ids: kernel.full,
-      degraded_ids: kernel.degraded,
-      omitted: kernel.omitted,
-      paged_index: kernel.paged_index,
-      unconfirmed_legacy: sideData?.kernel?.unconfirmed_legacy,
-      chars: kernel.text.length,
-    },
-    status,
-    error: errMsg,
-  });
-  // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
-  await reportHinted(
-    url,
-    deliveredTop.map((h) => h.id),
-    payload.session_id ?? null
-  );
-  // #621: what this start put into the context counts as delivered for the
-  // PreToolUse and prompt dedup as well — the #354 rule the other lanes follow.
-  if (payload.session_id && deliveredTop.length > 0) {
-    try {
-      await mutateSessionState(payload.session_id, (s) => {
-        for (const h of deliveredTop) bumpShown(s, h.id);
-        // #1303: beside the shown-state, the must-load the gate will claim.
-        bookPendingMustLoad(
-          s,
-          [...gated],
-          `session:${startedAt.toString(36)}`,
-          Date.now(),
-          new Map(deliveredTop.map((h) => [h.id, h.revision ?? null]))
-        );
-      });
-    } catch {
-      // State is an optional dedup cache. Never discard the context that was
-      // already assembled when its directory is unavailable.
-    }
-  }
-  return out;
+  const injected = kernelHead + pinnedHead + recallBlock + extras;
+  return { out: sessionOutput(injected), injected, recallBlock, emptyAnswer: false };
 }
 
-// spawnStagedUpdate / stagedToday / markStagedToday wohnen seit #81 in
-// update-check.ts — der Daemon-Self-Update-Pfad teilt denselben Tages-
-// Throttle, damit Hook und Daemon nicht am selben Tag doppelt stagen.
+function sessionOutput(injected: string): string {
+  return JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: "SessionStart",
+      additionalContext: injected,
+    },
+  });
+}
+
+/** #462: each part as far as it survived into the injected text. */
+function retainedParts(
+  retained: (part: string) => string,
+  kernel: RenderedKernel,
+  ranked: RankedHits,
+  recallBlock: string,
+  standing: StandingBlocks
+): Partial<Record<SessionContextPart, string>> {
+  return {
+    kernel: retained(kernel.text),
+    pinned: retained(ranked.pinnedBlock),
+    recalls: retained(recallBlock),
+    taxonomy: retained(standing.taxonomy),
+    language: retained(standing.language),
+    care: retained(standing.care),
+    import: retained(standing.import),
+    onboarding: retained(standing.onboarding),
+    update: retained(standing.update),
+    patch: retained(standing.patch),
+    pending: retained(standing.pending),
+    doku: retained(standing.doku),
+  };
+}
+
+/**
+ * #621: what this start put into the context counts as delivered for the
+ * PreToolUse and prompt dedup as well — the #354 rule the other lanes follow.
+ */
+async function bookDelivered(
+  sessionId: string | undefined,
+  deliveredTop: SessionHit[],
+  gated: Set<string>,
+  startedAt: number
+): Promise<void> {
+  if (!sessionId || deliveredTop.length === 0) return;
+  try {
+    await mutateSessionState(sessionId, (s) => {
+      for (const h of deliveredTop) bumpShown(s, h.id);
+      // #1303: beside the shown-state, the must-load the gate will claim.
+      bookPendingMustLoad(
+        s,
+        [...gated],
+        `session:${startedAt.toString(36)}`,
+        Date.now(),
+        new Map(deliveredTop.map((h) => [h.id, h.revision ?? null]))
+      );
+    });
+  } catch {
+    // State is an optional dedup cache. Never discard the context that was
+    // already assembled when its directory is unavailable.
+  }
+}

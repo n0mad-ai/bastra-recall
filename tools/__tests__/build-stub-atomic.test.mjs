@@ -66,8 +66,15 @@ test("explicit stub output creates missing parent directories before staging", (
   assert.deepEqual(readdirSync(join(root, "missing", "nested")), ["bastra-hook"]);
 });
 
-test("interrupted stub staging directories are ignored by git", () => {
-  const repo = new URL("../../", import.meta.url);
+test("interrupted stub staging directories are ignored by git", (t) => {
+  // #1488: check the checked-in .gitignore inside a throwaway repository, so the
+  // test also holds in a copy of this code without `.git` (archive, tarball).
+  // The root .gitignore is the only one on this path (packages/daemon has none).
+  const repo = mkdtempSync(join(tmpdir(), "bastra-stub-ignore-"));
+  t.after(() => rmSync(repo, { recursive: true, force: true }));
+  copyFileSync(new URL("../../.gitignore", import.meta.url), join(repo, ".gitignore"));
+  const init = spawnSync("git", ["init", "--quiet"], { cwd: repo, encoding: "utf8" });
+  assert.equal(init.status, 0, init.stdout + init.stderr);
   const run = spawnSync(
     "git",
     ["check-ignore", "--no-index", "packages/daemon/stub/.bastra-hook-build-interrupted/bastra-hook"],

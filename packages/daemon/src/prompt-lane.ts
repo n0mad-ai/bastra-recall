@@ -29,18 +29,15 @@ import { beginRulebookRound, catalogFor, type CatalogProvider, type RulebookPayl
  */
 import { appendLaneDrafts } from "./draft-search.js";
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
-import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLane } from "./scope-filter.js";
+import { projectConfidence } from "./scope-filter.js";
 
-import { envFirst, envInt } from "./env.js";
-import { PROMPT_ASSERTION_BUDGET_MS, RECALL_BUDGET_MS } from "./hook-budgets.js";
 import { recordBudgetShadow } from "./session-budget.js";
 import { claudeSessionPidFrom, sessionFeedPath, STATUSLINE_DIR } from "./statusline-session.js";
 import { idleStatuslineState } from "./statusline-feed.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookGateAvailable, hookCaller, hookClient, hookAgent, hookClientEvidence } from "./hook-surface.js";
+import { hookGateAvailable, hookClient, hookAgent, hookClientEvidence } from "./hook-surface.js";
 import { ownerPromptText } from "./system-turn.js";
-import { governContext } from "./context-governor.js";
-import { deliverPromptImpact, NO_PROMPT_IMPACT } from "./code-graph/prompt-impact.js";
+import type { DeliveredPromptImpact } from "./code-graph/prompt-impact.js";
 import { getPromptImpactEnabled } from "./code-graph/prompt-impact-settings.js";
 import { repoRootSync } from "./code-graph/git-paths.js";
 import { logDeliveredBlock } from "./code-delivered-telemetry.js";
@@ -48,34 +45,29 @@ import type { Prewarmer, PrewarmOutcome } from "./embedding-prewarm.js";
 import {
   bumpShown,
   decideBackoff,
-  getLoadedMarkerMtime,
   loadSessionState,
   recordSourceEmit,
   recordSourceSuppressed,
   mutateSessionState,
-  shouldDropHit,
   takeBoundary,
   takeParkedBoundary,
   wasEmitConsumed,
   bookPendingMustLoad,
   resetToolCalls,
+  type ReadonlySessionState,
   type TakenBoundary,
 } from "./session-state.js";
 import { isGatedHint } from "./hook-recall-response.js";
-import {
-  MUST_LOAD_SCORE,
-  SCORE_FLOOR,
-  classifyPromptMode,
-  detectPreviousConvention,
-  effectiveScoreFloor,
-  extractPrompt,
-  isTrivialPrompt,
-  type ClaudeHookPayload,
-  type DetectedMode,
-} from "./prompt-classify.js";
+import { MUST_LOAD_SCORE, extractPrompt, isTrivialPrompt, type ClaudeHookPayload } from "./prompt-classify.js";
 import { formatHintBlock, formatReflexBlock, type PromptReflexHit, type RecallHit } from "./prompt-format.js";
 import { writeTelemetry, type PromptHookTelemetry } from "./prompt-lane-telemetry.js";
-import { postJson } from "./prompt-loopback.js";
+import {
+  laneBudgetMs,
+  runPromptSearch,
+  selectPromptHints,
+  type PromptHintSelection,
+  type PromptSearch,
+} from "./prompt-lane-search.js";
 import type { ConventionSource } from "./convention-source.js";
 import { runTaskStep } from "./prompt-task.js";
 
@@ -93,66 +85,8 @@ export type { ClaudeHookPayload, DetectedMode } from "./prompt-classify.js";
 export { formatHintBlock, formatReflexBlock } from "./prompt-format.js";
 export type { PromptReflexHit, RecallHit } from "./prompt-format.js";
 
-// Per trigger class since #305 — see hook-budgets.ts for the measurement.
-// 600ms for the quiet classes, 1000ms for assertion: that lane sits at the
-// start of a turn, pays a cold embedding model by construction, and was being
-// cut off on 23.4% of its calls against the flat 600ms. `BASTRA_HOOK_TIMEOUT_MS`
-// still overrides, for the classes that had it.
-const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", RECALL_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
-function laneBudgetMs(mode: DetectedMode): number {
-  return mode === "assertion" ? PROMPT_ASSERTION_BUDGET_MS : HOOK_TIMEOUT_MS;
-}
 // #161: backoff source key — prompt-lookup hints back off independently.
 const BACKOFF_SOURCE = "prompt-lookup";
-
-/**
- * "all" (default since #677) — every non-trivial prompt recalls, and what a
- * prompt the lookup/assertion cues do not recognise may inject is gated by
- * score (MUST_LOAD_SCORE), not by the language it is written in. Those cues
- * cover a few languages (lexicon.ts): a contributor's month had 0 of 1,039
- * prompts recognised as a lookup (#671), so under the old default a user
- * writing any other language got a silent lane. "retrieval-only" keeps the
- * pre-#677 behaviour (cue-gated recall) as an explicit opt-out.
- */
-type PromptHookMode = "retrieval-only" | "all";
-const hookMode = (): PromptHookMode =>
-  envFirst("BASTRA_PROMPT_HOOK_MODE") === "retrieval-only" ? "retrieval-only" : "all";
-
-interface RecallResponse {
-  hits: RecallHit[];
-  /** 20.08.: reflex-wired memories from the deeper candidate pool that the
-   *  top-k cut left out — same lean shape, filtered by the same floors. */
-  reflex_hits?: RecallHit[];
-  vault_size: number;
-  latency_ms: number;
-  recall_id: string;
-  /** #249: no returned hit lexically anchors — the top score is rank-1-of-
-   *  nothing. Absent means "not weak". */
-  weak_result?: boolean;
-  /** #230: stricter subset of weak_result — the fact has no home in this vault. */
-  no_home?: boolean;
-  /**
-   * #302/P0: RRF lief NICHT — der Vector-Arm fehlte, lief in seine Deadline
-   * oder fiel aus, und `score` trägt rohe MiniSearch-Werte statt der fusionierten
-   * Skala. Die sind nach oben offen (sechsstellig auf einem echten Vault), also
-   * beschreiben die Floors 50/100 dort gar nichts.
-   *
-   * Die Lane las das Feld bisher nicht und maß rohe Werte trotzdem an
-   * MUST_LOAD_SCORE: alles wurde REQUIRED, umging den Backoff und wurde als
-   * „beide Suchpfade waren sich einig" angekündigt, während nur einer lief.
-   */
-  unfused?: boolean;
-  /** Codex-Gegenreview: Kennt der VAULT den mitgeschickten Projektnamen als
-   *  Scope (oder Familienmitglied)? Nur der Daemon kann das beantworten — die
-   *  Lane sieht den Vault nicht. `false` heißt: nicht filtern. */
-  project_known?: boolean;
-  /** #342: warum die Fusion ausfiel — `vector-arm-timeout` | `vector-arm-error`
-   *  | `vector-arm-empty`. Trennt „diese Maschine degradiert gerade" von
-   *  „Embeddings sind hier aus". */
-  degraded?: string;
-  /** #702: ids of the learned bridges whose trigger matched the query. */
-  bridges_fired?: string[];
-}
 
 /**
  * #702: what a caller may hang on the lane besides the payload. Today one
@@ -170,11 +104,6 @@ export interface PromptLaneOptions {
    *  `revision=unknown` and cannot notice a revision change. */
   revisionOf?: (id: string) => Promise<string | null>;
   conventionOf?: (id: string) => Promise<ConventionSource>;
-}
-
-interface ReflexResponse {
-  hits: PromptReflexHit[];
-  recall_id: string | null;
 }
 
 // ─── session-pid resolution (#343) ──────────────────────────────────────────
@@ -269,6 +198,119 @@ export async function runPromptLane(
   return JSON.stringify(parsed);
 }
 
+/**
+ * #1363 cap for everything this lane adds to the transcript; #1460: the draft
+ * quote counts in it. Blocks are fitted in the order the lane builds them.
+ */
+class ContextBudget {
+  remaining: number;
+  constructor(readonly total: number) {
+    this.remaining = total;
+  }
+  /** The block if it still fits (and books its length), otherwise null. */
+  fit(block: string | null): string | null {
+    if (!block || block.length + 1 > this.remaining) return null;
+    this.remaining -= block.length + 1;
+    return block;
+  }
+}
+
+/** What every stage of one prompt turn needs to know about the call. */
+interface PromptTurn {
+  payload: ClaudeHookPayload;
+  selfBaseUrl: string;
+  opts: PromptLaneOptions;
+  startedAt: number;
+  /** `payload.session_id`, or "" — the session-state key. */
+  sessionKey: string;
+  budget: ContextBudget;
+  client: ReturnType<typeof hookClient>;
+  /** #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` bleibt
+   *  der surface-Default fürs Hint-Block-Attribut und den Recall-Loopback. */
+  clientEvidence: ReturnType<typeof hookClientEvidence>;
+  agent: ReturnType<typeof hookAgent>;
+  /**
+   * #702: a replayed prompt runs the whole lane — classification, recall,
+   * reflex, dedup, backoff, scope filter — and leaves no trace outside its own
+   * `replay-` session state and the replay telemetry file: no statusline feed,
+   * no code-graph block, no usage sidecar, no budget ledger, no draft claims.
+   * What the user sees in the report is what the hook would have injected.
+   */
+  replay: boolean;
+  prewarmOutcome: PrewarmOutcome | undefined;
+}
+
+function openTurn(payload: ClaudeHookPayload, selfBaseUrl: string, opts: PromptLaneOptions): PromptTurn {
+  const clientEvidence = hookClientEvidence(payload);
+  return {
+    payload,
+    selfBaseUrl,
+    opts,
+    startedAt: Date.now(),
+    sessionKey: payload.session_id ?? "",
+    budget: new ContextBudget(10000 - (opts.roundNotice?.length ?? 0) - 1),
+    client: hookClient(payload),
+    clientEvidence,
+    agent: hookAgent(payload),
+    replay: clientEvidence === "replay",
+    prewarmOutcome: undefined,
+  };
+}
+
+async function emitTelemetry(turn: PromptTurn, row: PromptHookTelemetry): Promise<void> {
+  row.hint_tokens_est = (row.hint_tokens_est ?? 0) + Math.ceil((turn.opts.roundNotice?.length ?? 0) / 4);
+  await writeTelemetry(row);
+  turn.opts.onTelemetry?.(row);
+}
+
+/** The telemetry row of a turn that ran no recall. */
+function gatedRow(turn: PromptTurn, promptChars: number, extra: Partial<PromptHookTelemetry>): PromptHookTelemetry {
+  return {
+    session_id: turn.payload.session_id ?? null,
+    client: turn.clientEvidence,
+    agent: turn.agent,
+    detected_mode: "none",
+    gated: true,
+    ...extra,
+    prompt_chars: promptChars,
+    daemon_url: turn.selfBaseUrl,
+    daemon_reachable: true,
+    hint_count: 0,
+    hint_tokens_est: 0,
+    top_score: null,
+    latency_ms_total: Date.now() - turn.startedAt,
+    status: "gated",
+    error: null,
+    prewarm: turn.prewarmOutcome,
+  };
+}
+
+/** The lane's stdout for the blocks that made it into the budget. */
+function promptOutput(blocks: string[]): string {
+  return blocks.length === 0
+    ? "{}"
+    : JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: "UserPromptSubmit",
+          additionalContext: blocks.join("\n"),
+        },
+      });
+}
+
+/** Explicitly reported active conventions, refreshed and rendered (#1306). */
+function taskBlockFor(turn: PromptTurn, snapshot: ReadonlySessionState): Promise<string | null> {
+  return runTaskStep({
+    sessionId: turn.sessionKey,
+    snapshot,
+    revisionOf: turn.opts.revisionOf,
+    conventionOf: turn.opts.conventionOf,
+    surface: turn.client,
+    maxChars: turn.budget.remaining,
+    actorKey:
+      (turn.payload as RulebookPayload).agent_id ?? (hookAgent(turn.payload) === "main" ? "main" : "unattributed"),
+  });
+}
+
 async function runPromptLaneInner(
   payload: ClaudeHookPayload,
   clientPpid: number | null,
@@ -285,32 +327,7 @@ async function runPromptLaneInner(
   reflexPool?: () => string[],
   opts: PromptLaneOptions = {}
 ): Promise<string> {
-  const startedAt = Date.now();
-  // #1363 cap for everything this lane adds; #1460: the draft quote counts in it.
-  const contextBudget = 10000 - (opts.roundNotice?.length ?? 0) - 1;
-  let remainingContext = contextBudget;
-  const fitBlock = (block: string | null): string | null => {
-    if (!block || block.length + 1 > remainingContext) return null;
-    remainingContext -= block.length + 1;
-    return block;
-  };
-  const client = hookClient(payload);
-  // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt
-  // der surface-Default fürs Hint-Block-Attribut und den Recall-Loopback.
-  const clientEvidence = hookClientEvidence(payload);
-  const agent = hookAgent(payload);
-  // #702: a replayed prompt runs the whole lane — classification, recall,
-  // reflex, dedup, backoff, scope filter — and leaves no trace outside its own
-  // `replay-` session state and the replay telemetry file: no statusline feed,
-  // no code-graph block, no usage sidecar, no budget ledger, no draft claims.
-  // What the user sees in the report is what the hook would have injected.
-  const replay = clientEvidence === "replay";
-  const emitTelemetry = async (row: PromptHookTelemetry): Promise<void> => {
-    row.hint_tokens_est = (row.hint_tokens_est ?? 0) + Math.ceil((opts.roundNotice?.length ?? 0) / 4);
-    await writeTelemetry(row);
-    opts.onTelemetry?.(row);
-  };
-
+  const turn = openTurn(payload, selfBaseUrl, opts);
   if (payload.hook_event_name !== "UserPromptSubmit") return "{}";
 
   // #361: the turn has started — warm the embedding model NOW, so the first
@@ -320,18 +337,18 @@ async function runPromptLaneInner(
   // slash command starts a turn full of tool calls just as much as a question
   // does, and the debounce is what keeps the warm cheap, not the gate.
   // Synchronous by construction — the call inside is never awaited here.
-  const prewarmOutcome: PrewarmOutcome | undefined = prewarm?.();
+  turn.prewarmOutcome = prewarm?.();
 
   // New user turn → reset statusline counters to idle. Needs the client's
   // process-tree position; without a resolvable ppid the reset is skipped
   // (statusline is cosmetic, the lane is not).
-  const sessionPid = replay ? null : resolveSessionPid(clientPpid);
+  const sessionPid = turn.replay ? null : resolveSessionPid(clientPpid);
   if (sessionPid !== null) resetStatuslineFeed(sessionPid, payload.session_id ?? null);
 
   // #1305: every prompt starts a new count for the gate lane's rule-kernel
   // re-delivery ("N tool calls without a prompt"). One state read when
   // nothing is counted; a replay leaves the real session alone.
-  if (!replay) await resetToolCalls(payload.session_id ?? "");
+  if (!turn.replay) await resetToolCalls(turn.sessionKey);
 
   const submitted = extractPrompt(payload);
   if (!submitted) return "{}";
@@ -346,492 +363,89 @@ async function runPromptLaneInner(
   // and text typed after a leading <system-reminder> block is the prompt.
   const prompt = ownerPromptText(submitted);
   if (prompt === null) {
-    await emitTelemetry({
-      session_id: payload.session_id ?? null,
-      client: clientEvidence,
-      agent,
-      detected_mode: "none",
-      gated: true,
-      gated_reason: "system-injected",
-      origin: "system",
-      prompt_chars: submitted.length,
-      daemon_url: selfBaseUrl,
-      daemon_reachable: true,
-      hint_count: 0,
-      hint_tokens_est: 0,
-      top_score: null,
-      latency_ms_total: Date.now() - startedAt,
-      status: "gated",
-      error: null,
-      prewarm: prewarmOutcome,
-    });
+    await emitTelemetry(turn, gatedRow(turn, submitted.length, { gated_reason: "system-injected", origin: "system" }));
     return "{}";
   }
 
   // #151: gate before any recall work — the saved tokens surface in stats
   // via status:"gated" + gated:true.
-  if (isTrivialPrompt(prompt)) {
-    await emitTelemetry({
-      session_id: payload.session_id ?? null,
-      client: clientEvidence,
-      agent,
-      detected_mode: "none",
-      gated: true,
-      prompt_chars: prompt.length,
-      daemon_url: selfBaseUrl,
-      daemon_reachable: true,
-      hint_count: 0,
-      hint_tokens_est: 0,
-      top_score: null,
-      latency_ms_total: Date.now() - startedAt,
-      status: "gated",
-      error: null,
-      prewarm: prewarmOutcome,
-    });
-    // #572: a trivial prompt skips the RECALL, not the task-boundary block. "ok"
-    // and "go on" after a finished task are exactly the turn it was parked
-    // for, and handing it over costs one state read when nothing is parked.
-    // #607: behind the prompt lane's opt-in, like every other delivery of this
-    // lane. The gate is asked only once a block is actually parked, so a
-    // trivial prompt still costs the one state read it always did.
-    const trivialSnapshot = await loadSessionState(payload.session_id ?? "");
-    const parkedForTrivial =
-      trivialSnapshot.boundary && trivialSnapshot.boundary.note.length + 1 > remainingContext
-        ? null
-        : await takeParkedBoundary(payload.session_id ?? "", getPromptImpactEnabled);
-    if (parkedForTrivial !== null) {
-      logBoundaryDelivery(payload.session_id ?? null, payload.cwd ?? process.cwd(), parkedForTrivial);
-    }
-    // Explicit task state stays visible even when the prompt skips recall.
-    // Prompt words never approve copy; rulebook_check reports that decision.
-    const taskBlock = await runTaskStep({
-      sessionId: payload.session_id ?? "",
-      snapshot: await loadSessionState(payload.session_id ?? ""),
-      revisionOf: opts.revisionOf,
-      conventionOf: opts.conventionOf,
-      surface: client,
-      maxChars: remainingContext,
-      actorKey: (payload as RulebookPayload).agent_id ?? (hookAgent(payload) === "main" ? "main" : "unattributed"),
-    });
-    const trivialBlocks = [parkedForTrivial?.note ?? null, taskBlock]
-      .map(fitBlock)
-      .filter((b): b is string => b !== null);
-    if (trivialBlocks.length > 0) {
-      if (taskBlock !== null && !replay)
-        recordBudgetShadow(payload.session_id ?? null, "prompt_hook_call", Math.ceil(taskBlock.length / 4));
-      return JSON.stringify({
-        hookSpecificOutput: {
-          hookEventName: "UserPromptSubmit",
-          additionalContext: trivialBlocks.join("\n"),
-        },
-      });
-    }
-    return "{}";
+  if (isTrivialPrompt(prompt)) return deliverTrivialTurn(turn, prompt);
+  return runRecallTurn(turn, prompt, reflexPool);
+}
+
+/**
+ * #572: a trivial prompt skips the RECALL, not the task-boundary block. "ok"
+ * and "go on" after a finished task are exactly the turn it was parked for,
+ * and handing it over costs one state read when nothing is parked.
+ * #607: behind the prompt lane's opt-in, like every other delivery of this
+ * lane. The gate is asked only once a block is actually parked, so a trivial
+ * prompt still costs the one state read it always did.
+ */
+async function deliverTrivialTurn(turn: PromptTurn, prompt: string): Promise<string> {
+  await emitTelemetry(turn, gatedRow(turn, prompt.length, {}));
+  const trivialSnapshot = await loadSessionState(turn.sessionKey);
+  const parkedForTrivial =
+    trivialSnapshot.boundary && trivialSnapshot.boundary.note.length + 1 > turn.budget.remaining
+      ? null
+      : await takeParkedBoundary(turn.sessionKey, getPromptImpactEnabled);
+  if (parkedForTrivial !== null) {
+    logBoundaryDelivery(turn.payload.session_id ?? null, turn.payload.cwd ?? process.cwd(), parkedForTrivial);
   }
+  // Explicit task state stays visible even when the prompt skips recall.
+  // Prompt words never approve copy; rulebook_check reports that decision.
+  const taskBlock = await taskBlockFor(turn, await loadSessionState(turn.sessionKey));
+  const trivialBlocks = [parkedForTrivial?.note ?? null, taskBlock]
+    .map((b) => turn.budget.fit(b))
+    .filter((b): b is string => b !== null);
+  if (trivialBlocks.length === 0) return "{}";
+  if (taskBlock !== null && !turn.replay)
+    recordBudgetShadow(turn.payload.session_id ?? null, "prompt_hook_call", Math.ceil(taskBlock.length / 4));
+  return promptOutput(trivialBlocks);
+}
 
-  const detectedMode = classifyPromptMode(prompt, hookMode());
-  const forcedRetrieval = detectPreviousConvention(prompt);
+/**
+ * What the recall contributes to this turn after the backoff, and what was
+ * dropped again for want of room. The hit lists and gate sets shrink in place
+ * when their block does not fit — booking and telemetry read them afterwards.
+ */
+interface RecallEmit {
+  recallHits: RecallHit[];
+  reflexKept: PromptReflexHit[];
+  gatedRecall: Set<string>;
+  gatedReflex: Set<string>;
+  recallBlock: string | null;
+  reflexBlock: string | null;
+  suppressed: boolean;
+  suppressedTokensEst: number;
+  backoffStreak: number;
+  consumedForEmit: boolean;
+}
 
-  const cwd = payload.cwd ?? process.cwd();
-  // §20.5: geratene Erkennung = kein Projekt (projectForLane) — sonst fragt
-  // die Lane Kandidaten für ein erfundenes Projekt ab und schreibt dessen
-  // Namen als `project=` in den Block.
-  const project = projectForLane(cwd);
-  // §20.5: geratenes Projekt filtert nicht — siehe projectForFilter.
-  const filterProject = projectForFilter(cwd);
-  const remainingMs = Math.max(50, laneBudgetMs(detectedMode) - (Date.now() - startedAt));
-
-  // #217 Reflex-Lane: feuert unabhängig vom Retrieval-Gate — auch bei
-  // detectedMode "none". Parallel zum bedingten Recall, sonst sprengt die
-  // Serialisierung das Budget. Fehler → still keine Reflex-Hits.
-  const reflexPromise: Promise<ReflexResponse | null> = postJson<ReflexResponse>(
-    selfBaseUrl,
-    "/hook/reflex",
-    { context: prompt, project, session_id: payload.session_id ?? null, client: clientEvidence },
-    remainingMs
-  ).catch(() => null);
-
-  // For "generic" mode we only show top-tier hits, so request fewer (k=3).
-  const k = detectedMode === "generic" ? 3 : 5;
-  const effectiveFloor = effectiveScoreFloor(detectedMode);
-
-  const sessionId = payload.session_id ?? "";
-  const state = await loadSessionState(sessionId);
-
-  // #606: a change-impact question gets the graph's answer delivered before
-  // the first search runs. Started here so it overlaps the recall; gated twice
-  // (phrasing, then resolution against the graph) inside, so an ordinary
-  // prompt costs one regex pass and nothing else.
-  const impactPromise = replay
-    ? Promise.resolve(NO_PROMPT_IMPACT)
-    : deliverPromptImpact({
-        prompt,
-        cwd,
-        sessionId: payload.session_id ?? null,
-        session: state,
-      });
-
-  // #371: in mode "none" the recall can only ever contribute a memory that
-  // the user wired as `recall_mode: reflex` (the filter below) and that this
-  // session has not already shown inside the 4h window (the dedup further
-  // down). Both questions are independent of the query and answerable in
-  // microseconds — the vault index and the session-state file are already in
-  // hand. Asked BEFORE the recall they turn ~210ms of full-vault hybrid search
-  // into nothing on exactly the prompts whose result was going to be thrown
-  // away. Measured on the 19.–24.08. log: 91% of prompts run in mode "none",
-  // 83.5% of those inject nothing, and 10.9% ran inside a window in which
-  // every wired memory was already suppressed.
-  //
-  // What this deliberately is NOT: a restriction of the recall's CANDIDATE
-  // SPACE to the wired pool. The floor of 50 in mode "none" means "top 4 of an
-  // arm over the WHOLE vault" — RRF_SCALE/(RRF_K + rank) ≥ 50 ⇔ rank ≤ 4 —
-  // and ranked against a two-document pool every wired memory scores 70–164 by
-  // construction, so the gate would stop gating and both conventions would
-  // inject on the first prompt of every 4h window instead of on the prompt
-  // they belong to (#371). The recall that still runs here is byte-identical
-  // to the one that ran before; only whether it runs at all is new.
-  let recallSkipped: "reflex-pool-empty" | "reflex-all-suppressed" | undefined;
-  // #1306: during a correspondence task the existing recall can identify a
-  // new topic outside the conventions in force. A recall miss alone keeps
-  // the task active; no second search is added for task tracking.
-  const taskInProgress = (state.activeTask?.kind ?? "none") !== "none";
-  if (detectedMode === "none" && reflexPool && !taskInProgress) {
-    const wired = reflexPool();
-    if (wired.length === 0) {
-      recallSkipped = "reflex-pool-empty";
-    } else {
-      let anyEligible = false;
-      for (const id of wired) {
-        if (!shouldDropHit(state.shown[id], await getLoadedMarkerMtime(id))) {
-          anyEligible = true;
-          break;
-        }
-      }
-      if (!anyEligible) recallSkipped = "reflex-all-suppressed";
-    }
-  }
-
-  let resp: RecallResponse | null = null;
-  let status: "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error" = "ok";
-  let errMsg: string | null = null;
-  // Mode "none" no longer skips the recall (19.08. incident): a reflex-wired
-  // convention ("Nachrichtenkonvention", salience 0.9) never surfaced while a
-  // message was being drafted — the hard token-AND of the reflex lane cannot
-  // survive German inflection ("entwirfst" vs "entwerfen"), and the hybrid
-  // recall that DOES understand it never ran on ordinary work prompts. Now it
-  // runs on every non-trivial prompt; what may inject in mode "none" is
-  // filtered below to user-wired reflex memories at REQUIRED strength.
-  // #371 narrowed "every non-trivial prompt" to "every non-trivial prompt on
-  // which a wired memory could actually be injected" — see the gate above.
-  if (recallSkipped !== undefined) {
-    // The same outcome the filter below would have produced, without the
-    // search: no hits, and the status the telemetry series already carries for
-    // this case (`resp` stays null, so the `no-hits` line below cannot fire).
-    status = "no-hits";
-  } else {
-    try {
-      resp = await postJson<RecallResponse>(
-        selfBaseUrl,
-        "/hook/recall",
-        {
-          query: prompt,
-          project,
-          k,
-          tool_name: "UserPromptSubmit",
-          // #445: die Lane weist sich aus — wie bash-pre/bash-fail seit #263.
-          // Ohne die Felder liest der Empfänger `unknown/unknown`.
-          ...hookCaller(payload),
-          hook_source: "prompt",
-        },
-        remainingMs
-      );
-    } catch (err) {
-      const e = err as NodeJS.ErrnoException;
-      // Self-call on the own server: connection-class errors cannot really
-      // mean "daemon down" anymore, but the status vocabulary stays — the
-      // telemetry series must remain comparable across the migration.
-      if (e.code === "ECONNREFUSED" || e.code === "ENOTFOUND" || e.code === "EHOSTUNREACH") {
-        status = "daemon-unreachable";
-      } else if (e.message === "timeout") {
-        status = "timeout";
-      } else {
-        status = "error";
-        errMsg = e.message ?? String(err);
-      }
-    }
-  }
-  const reflexResp = await reflexPromise;
-
-  const filtered: RecallHit[] = [];
-  if (resp && Array.isArray(resp.hits)) {
-    // Wired reflex memories ride along from below the top-k cut (20.08.: the
-    // convention sat at pool rank 6 behind k=5). They pass the same floor.
-    const candidates = [...resp.hits, ...(Array.isArray(resp.reflex_hits) ? resp.reflex_hits : [])];
-    for (const h of candidates) {
-      const wired = h.recall_mode === "reflex";
-      // #677: "generic" replaced "none" as the default for unrecognised
-      // prompts, so it must not lose what "none" delivered — a user-wired
-      // reflex memory keeps the normal floor there (the 19.08. prompt ranked
-      // the convention at 84, see below).
-      const floor = detectedMode === "generic" && wired ? SCORE_FLOOR : effectiveFloor;
-      if (h.score < floor) continue;
-      // #677: the generic gate IS the score — on the unfused scale (raw BM25,
-      // open-ended) MUST_LOAD_SCORE says nothing, and passing everything
-      // would inject the top k on every prompt exactly while the vector arm
-      // is down. Without fusion only wired memories inject, as in "none".
-      if (detectedMode === "generic" && resp.unfused === true && !wired) continue;
-      // Without fusion the floor reads a raw BM25 number, and short function
-      // words shared with a wired memory's body ("la", "de", "los") push it
-      // over — in the languages whose articles are long enough to count. A
-      // wired memory outside an explicit question then needs its own
-      // triggers anchored by the prompt (two content words or a rare
-      // identifier, search.ts anchorStrength): evidence, not a raw score.
-      if (resp.unfused === true && wired && detectedMode !== "retrieval" && h.anchor_strength !== "strong") continue;
-      // Semantic reflex: in mode "none" only memories the USER wired as
-      // reflex may inject — the semantic arm gives them hearing beyond
-      // literal token matches. Deliberately at the normal floor, not
-      // MUST_LOAD_SCORE: the 19.08. real prompt ranked the wired convention
-      // at 84 (a long convoluted prompt dilutes the rank), and the pool is
-      // tiny and explicitly authorized — the wiring is the noise gate, the
-      // backoff still dampens sub-REQUIRED repeats.
-      if (detectedMode === "none" && !wired) continue;
-      filtered.push(h);
-    }
-  }
-  if (resp && filtered.length === 0) status = "no-hits";
-
-  // #217: Session-Dedup für Reflex-Hits (max 1×/4h pro Memory, wie hook.ts).
-  // Danach id-Dedup gegen die Recall-Liste — Reflex ist das vom User
-  // verdrahtete, stärkere Signal und behält den Hit.
-  const rawReflexHits: PromptReflexHit[] = Array.isArray(reflexResp?.hits) ? reflexResp.hits : [];
-  // #266: dieselbe Entscheidung wie in der Bash-Lane, über denselben Governor.
-  // Was „bereits gezeigt" heißt, bleibt bei `shouldDropHit` (4h-Fenster,
-  // MAX_SHOW, Load-Marker); ohne Budget aufgerufen, weil diese Lane heute
-  // keines hat — Mechanik vereinheitlichen, nicht verschärfen.
-  const reflexGoverned = governContext(
-    await Promise.all(
-      rawReflexHits.map(async (h, i) => ({
-        id: h.id,
-        priority: i,
-        text: h.summary ?? "",
-        alreadyShown: shouldDropHit(state.shown[h.id], await getLoadedMarkerMtime(h.id)),
-      }))
-    ),
-    {}
-  );
-  const reflexKeptIds = new Set(reflexGoverned.kept.map((g) => g.id));
-  const reflexKept: PromptReflexHit[] = rawReflexHits.filter((h) => reflexKeptIds.has(h.id));
-  // #565: der eine Reflex-Miss, den die hook_reflex-Zeile nicht sehen kann —
-  // der Trigger hat gefeuert, der Session-Dedup hat den Hit einbehalten.
-  const reflexDeduped = rawReflexHits.filter((h) => !reflexKeptIds.has(h.id)).map((h) => h.id);
-  const reflexIds = new Set(reflexKept.map((h) => h.id));
-  let recallHits = filtered.filter((h) => !reflexIds.has(h.id));
-  // Per-memory session dedup for ordinary recall hits, in EVERY detected mode
-  // (#541). It started as the semantic-reflex guard of mode "none" (zzalli's
-  // context-contamination report, 19.08.): the same wired convention must not
-  // re-inject on every drafting prompt of a session. The other hint modes were
-  // left "backoff-governed as before" — but the backoff governs the source's
-  // cadence, not the repetition of one memory, and REQUIRED-band hits bypass it
-  // entirely. Measured over 2026-09-04→09-12: in `assertion` mode 811 first
-  // injections against 832 re-injections of text still standing in the same
-  // transcript, ~86k est. tokens, 10.4% of the whole context tax. Write lane
-  // and bash-pre lane apply this pair unconditionally and show 8.5% / 1.6%.
-  // #354's principle: a hint already in the transcript buys nothing by being
-  // repeated. Reset stays by signal — the load marker, and `clearShown` on
-  // compact/clear (#509: not resume) — never by timer.
-  {
-    const governed = governContext(
-      await Promise.all(
-        recallHits.map(async (h, i) => ({
-          id: h.id,
-          priority: i,
-          text: h.summary ?? "",
-          alreadyShown: shouldDropHit(state.shown[h.id], await getLoadedMarkerMtime(h.id)),
-        }))
-      ),
-      {}
-    );
-    const keptIds = new Set(governed.kept.map((g) => g.id));
-    recallHits = recallHits.filter((h) => keptIds.has(h.id));
-  }
-
-  // §20.5: Diese Lane filterte nie nach Projekt-Scope — fremde Treffer kamen
-  // durch, während Write-Lane und SessionStart seit #110 hart filtern. Der
-  // Filter läuft hier zuerst im SHADOW-Modus: er misst, was er verwerfen
-  // würde, und verwirft nichts. Die Anker-Ausnahme bleibt (ein hand-
-  // geschriebener Trigger aus einem anderen Projekt IST eine Absicht),
-  // Reflex-Treffer sind ausgenommen, und ohne Fusion ist die Ausnahme zu.
-  const scopeFilter = applyLaneScopeFilter(recallHits, filterProject, {
-    allowAnchoredCrossScope: true,
-    mustLoadScore: MUST_LOAD_SCORE,
-    unfused: resp?.unfused === true,
-    exemptReflex: true,
-    projectKnown: resp?.project_known,
+/** The full turn: search, select, back off, fit, book, emit. */
+async function runRecallTurn(turn: PromptTurn, prompt: string, reflexPool?: () => string[]): Promise<string> {
+  const search = await runPromptSearch({
+    payload: turn.payload,
+    prompt,
+    selfBaseUrl: turn.selfBaseUrl,
+    clientEvidence: turn.clientEvidence,
+    replay: turn.replay,
+    startedAt: turn.startedAt,
+    reflexPool,
   });
-  recallHits = scopeFilter.hits;
-  // Codex-Gegenreview: `no-hits` wurde oben bestimmt, VOR diesem Filter. Trägt
-  // er im enforce-Modus alles ab, meldete die Telemetrie weiter "ok" bei null
-  // injizierten Treffern — die Serie hätte den Filter nicht von einem stillen
-  // Recall unterscheiden können, also genau das nicht gezeigt, wofür der
-  // Shadow-Modus da ist.
-  if (resp && recallHits.length === 0) status = "no-hits";
-
-  let backoffStreak = 0;
-  let suppressed = false;
-  let suppressedTokensEst = 0;
-  let consumedForEmit = false;
-  let recallBlock: string | null = null;
-  // #1303/#1304: only deny-capable registrations book must-load hints;
-  // legacy Codex and shadow replays keep context-only guidance.
-  const gateActive = hookGateAvailable(payload) && !replay;
-  const gatedRecall = new Set(gateActive ? recallHits.filter(isGatedHint).map((h) => h.id) : []);
-  // A reflex hit is user-wired by definition; only its type decides.
-  const gatedReflex = new Set(
-    gateActive ? reflexKept.filter((h) => isGatedHint({ ...h, recall_mode: "reflex" })).map((h) => h.id) : []
-  );
-  const noStoredRule =
-    forcedRetrieval &&
-    resp !== null &&
-    Array.isArray(resp.hits) &&
-    rawReflexHits.length === 0 &&
-    ![...resp.hits, ...(Array.isArray(resp.reflex_hits) ? resp.reflex_hits : [])].some((h) => h.matched_recall_when);
-  if (recallHits.length > 0 || noStoredRule) {
-    // #161 empty-streak backoff (see session-state.ts): unconsumed injection
-    // streaks widen the cadence; any load of an emitted candidate resets.
-    // REQUIRED-band hits bypass suppression (decideBackoff hasRequired), and
-    // retrieval mode is exempt entirely — the user explicitly asked for a
-    // lookup, answering it is never noise. Streak bookkeeping stays regular
-    // either way; only consumption resets the streak. Reflex-Hits laufen
-    // an diesem Backoff komplett vorbei (#217): vom User verdrahtet = nie Noise.
-    const entry = state.sources?.[BACKOFF_SOURCE];
-    consumedForEmit = await wasEmitConsumed(entry);
-    // P0: Auf der unfused Skala ist `>= MUST_LOAD_SCORE` keine Aussage — rohe
-    // BM25-Werte reißen die 100 fast immer. Ein Bypass daraus hieße: Der
-    // Backoff hört genau dann auf zu greifen, wenn der Recall am wenigsten
-    // weiß. Ohne Fusion gibt es deshalb kein REQUIRED und keinen Bypass.
-    const hasRequired = resp?.unfused !== true && recallHits.some((h) => h.score >= MUST_LOAD_SCORE);
-    const decision = decideBackoff(entry, consumedForEmit, hasRequired);
-    backoffStreak = decision.streak;
-    suppressed = detectedMode === "retrieval" ? false : decision.suppress;
-    const block = formatHintBlock(
-      recallHits,
-      project,
-      detectedMode,
-      resp?.weak_result === true,
-      resp?.unfused === true,
-      client,
-      resp?.degraded,
-      resp?.recall_id,
-      gatedRecall,
-      noStoredRule
-    );
-    if (suppressed) {
-      // Suppressed drops only the recall block (#161); reflex still emits.
-      suppressedTokensEst = Math.ceil(block.length / 4);
-      // The `skipped` delta is booked below, inside mutateSessionState —
-      // mutating `state` here would write into the early snapshot, which
-      // #539 no longer saves.
-    } else {
-      recallBlock = block;
-    }
-  }
-
-  const reflexBlock = fitBlock(
-    reflexKept.length > 0 ? formatReflexBlock(reflexKept, project, client, gatedReflex) : null
-  );
-  if (!reflexBlock) {
-    reflexKept.length = 0;
-    gatedReflex.clear();
-  }
-  const unbudgetedRecallBlock = recallBlock;
-  recallBlock = fitBlock(recallBlock);
-  if (unbudgetedRecallBlock && !recallBlock) {
-    recallHits = [];
-    gatedRecall.clear();
-  }
-  const rawImpact = await impactPromise;
-  const impact = { ...rawImpact, block: fitBlock(rawImpact.block) };
-
-  // #572: the task-boundary block the last Stop parked for THIS session.
-  // #607: behind the prompt lane's own opt-in (b3a6f80) — same lane, same
-  // delivery nobody has measured yet, so the same switch and the same default
-  // (off).
-  //
-  // Taken inside the save below rather than through `takeParkedBoundary`: that
-  // would open the session state a SECOND time on a path with a 200 ms ceiling
-  // (#305), next to the snapshot above and the mutation below. The snapshot
-  // only decides whether there is anything to take; the take, the dedupe check
-  // and the marking still happen in one locked mutation, so a crash between
-  // them can neither duplicate nor lose the block. A Stop that parks between
-  // the snapshot and the lock keeps its block for the next prompt, which is
-  // where it was headed anyway.
-  const takeBoundaryNow =
-    state.boundary !== undefined &&
-    state.boundary.note.length + 1 <= remainingContext &&
-    (await getPromptImpactEnabled());
-  let boundary: TakenBoundary | null = null;
-
-  // State-Bookkeeping in einem Save: Backoff-Streak nur für die
-  // prompt-lookup-Lane, Reflex bucht nur die Session-Dedup.
-  //
-  // #539: the deltas run against the state as it is on disk when the lock is
-  // taken, not against the snapshot read before the recall — the other four
-  // lanes write the same file in the meantime.
-  if (recallHits.length > 0 || reflexKept.length > 0 || impact.dedupeKey !== null || takeBoundaryNow) {
-    const gateBlockId = `prompt:${startedAt.toString(36)}`;
-    const recallIds = recallHits.map((h) => h.id);
-    const impactKey = impact.dedupeKey;
-    await mutateSessionState(sessionId, (s) => {
-      if (takeBoundaryNow) boundary = takeBoundary(s);
-      // #606: booked only when the block actually reached the transcript, so a
-      // suppressed turn does not silence the next one.
-      if (impactKey !== null) bumpShown(s, impactKey);
-      if (recallBlock) {
-        recordSourceEmit(s, BACKOFF_SOURCE, recallIds, consumedForEmit);
-      } else if (suppressed) {
-        // #539: without this the backoff window never fills, so the lane
-        // suppresses forever instead of probing again after `streak` skips.
-        recordSourceSuppressed(s, BACKOFF_SOURCE);
-      }
-      for (const h of reflexKept) bumpShown(s, h.id);
-      // Every injected recall hit books the shown-state, in every mode (#541)
-      // — without this the dedup above has nothing to count and the block
-      // repeats on every qualifying prompt. Only what actually reached the
-      // transcript is booked: a suppressed emit leaves `recallBlock` null.
-      if (recallBlock) {
-        for (const h of recallHits) bumpShown(s, h.id);
-      }
-      // #1303: beside the shown-state, the must-load the gate will claim —
-      // again only for what reached the transcript.
-      bookPendingMustLoad(
-        s,
-        [...gatedReflex, ...(recallBlock ? gatedRecall : [])],
-        gateBlockId,
-        Date.now(),
-        new Map([...recallHits, ...reflexKept].map((h) => [h.id, h.revision ?? null]))
-      );
-    });
-  }
-  // The assignment happens inside the mutation callback, which TypeScript's
-  // control flow does not follow — without the cast it narrows `boundary` to
-  // the `null` it was declared with.
-  const takenBoundary = boundary as TakenBoundary | null;
+  const selection = await selectPromptHints(search);
+  const emit = await decideRecallBlock(turn, search, selection);
+  fitHintBlocks(turn, search, emit);
+  const rawImpact = await search.impactPromise;
+  const impact = { ...rawImpact, block: turn.budget.fit(rawImpact.block) };
+  const takenBoundary = await bookPromptTurn(turn, search, emit, impact);
   if (takenBoundary !== null) {
-    fitBlock(takenBoundary.note);
-    logBoundaryDelivery(payload.session_id ?? null, cwd, takenBoundary);
+    turn.budget.fit(takenBoundary.note);
+    logBoundaryDelivery(turn.payload.session_id ?? null, search.cwd, takenBoundary);
   }
 
   // Refresh and render explicitly reported active conventions. Recall hits
   // are hints; they no longer decide task membership.
-  const taskBlock = await runTaskStep({
-    sessionId,
-    snapshot: state,
-    revisionOf: opts.revisionOf,
-    conventionOf: opts.conventionOf,
-    surface: client,
-    maxChars: remainingContext,
-    actorKey: (payload as RulebookPayload).agent_id ?? (hookAgent(payload) === "main" ? "main" : "unattributed"),
-  });
+  const taskBlock = await taskBlockFor(turn, search.state);
 
   // The impact block goes FIRST: it is the answer to what the user just asked,
   // and it is there to be read before the first search, not after the memory
@@ -841,55 +455,254 @@ async function runPromptLaneInner(
   // #572: the boundary block rides ahead of it for the same reason: it is about
   // what the agent just did, and it is worth reading before the next thing is
   // done on top of it.
-  const blocks = [takenBoundary?.note ?? null, impact.block, reflexBlock, recallBlock, fitBlock(taskBlock)].filter(
-    (b): b is string => b !== null
-  );
-  const stdout =
-    blocks.length === 0
-      ? "{}"
-      : JSON.stringify({
-          hookSpecificOutput: {
-            hookEventName: "UserPromptSubmit",
-            additionalContext: blocks.join("\n"),
-          },
-        });
+  const blocks = [
+    takenBoundary?.note ?? null,
+    impact.block,
+    emit.reflexBlock,
+    emit.recallBlock,
+    turn.budget.fit(taskBlock),
+  ].filter((b): b is string => b !== null);
+  const stdout = promptOutput(blocks);
 
+  if (!turn.replay) await recordDelivery(turn, emit, blocks);
+  await emitTelemetry(turn, recallTurnRow(turn, prompt, search, selection, emit, blocks, impact));
+
+  if (turn.replay) return stdout;
+  return appendLaneDrafts(
+    stdout,
+    "UserPromptSubmit",
+    prompt,
+    turn.payload.session_id,
+    [...(search.resp?.hits ?? []), ...emit.reflexKept],
+    1,
+    false,
+    undefined,
+    turn.startedAt + laneBudgetMs(search.detectedMode),
+    turn.budget.total
+  );
+}
+
+/** What reached the transcript, booked outside the session state. A replay books nothing. */
+async function recordDelivery(turn: PromptTurn, emit: RecallEmit, blocks: string[]): Promise<void> {
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
   const injectedIds = [
-    ...(reflexBlock ? reflexKept.map((h) => h.id) : []),
-    ...(recallBlock ? recallHits.map((h) => h.id) : []),
+    ...(emit.reflexBlock ? emit.reflexKept.map((h) => h.id) : []),
+    ...(emit.recallBlock ? emit.recallHits.map((h) => h.id) : []),
   ];
-  if (injectedIds.length > 0 && !replay) {
-    await reportHinted(selfBaseUrl, injectedIds, payload.session_id ?? null);
+  if (injectedIds.length > 0) {
+    await reportHinted(turn.selfBaseUrl, injectedIds, turn.payload.session_id ?? null);
   }
-
   // #458 (shadow): den fertigen Block ans Sitzungsbudget anrechnen und den
   // Governor-Entscheid loggen — nichts wird gekürzt.
-  if (!replay)
-    recordBudgetShadow(
-      payload.session_id ?? null,
-      "prompt_hook_call",
-      Math.ceil(((opts.roundNotice?.length ?? 0) + blocks.join("\n").length) / 4)
+  recordBudgetShadow(
+    turn.payload.session_id ?? null,
+    "prompt_hook_call",
+    Math.ceil(((turn.opts.roundNotice?.length ?? 0) + blocks.join("\n").length) / 4)
+  );
+}
+
+/**
+ * #1307: a previous-convention cue forced a lookup, the recall answered, and
+ * nothing that came back — reflex or recall — is a stored rule for it.
+ */
+function reportsMissingRule(search: PromptSearch, rawReflexHits: PromptReflexHit[]): boolean {
+  const resp = search.resp;
+  if (!search.forcedRetrieval || resp === null || !Array.isArray(resp.hits) || rawReflexHits.length > 0) return false;
+  return ![...resp.hits, ...(Array.isArray(resp.reflex_hits) ? resp.reflex_hits : [])].some(
+    (h) => h.matched_recall_when
+  );
+}
+
+/** Must-load booking (#1303/#1304), the #161 backoff and the recall block. */
+async function decideRecallBlock(
+  turn: PromptTurn,
+  search: PromptSearch,
+  selection: PromptHintSelection
+): Promise<RecallEmit> {
+  const { resp, detectedMode } = search;
+  const { recallHits, reflexKept } = selection;
+  // #1303/#1304: only deny-capable registrations book must-load hints;
+  // legacy Codex and shadow replays keep context-only guidance.
+  const gateActive = hookGateAvailable(turn.payload) && !turn.replay;
+  const emit: RecallEmit = {
+    recallHits,
+    reflexKept,
+    gatedRecall: new Set(gateActive ? recallHits.filter(isGatedHint).map((h) => h.id) : []),
+    // A reflex hit is user-wired by definition; only its type decides.
+    gatedReflex: new Set(
+      gateActive ? reflexKept.filter((h) => isGatedHint({ ...h, recall_mode: "reflex" })).map((h) => h.id) : []
+    ),
+    recallBlock: null,
+    reflexBlock: null,
+    suppressed: false,
+    suppressedTokensEst: 0,
+    backoffStreak: 0,
+    consumedForEmit: false,
+  };
+  const noStoredRule = reportsMissingRule(search, selection.rawReflexHits);
+  if (recallHits.length === 0 && !noStoredRule) return emit;
+  // #161 empty-streak backoff (see session-state.ts): unconsumed injection
+  // streaks widen the cadence; any load of an emitted candidate resets.
+  // REQUIRED-band hits bypass suppression (decideBackoff hasRequired), and
+  // retrieval mode is exempt entirely — the user explicitly asked for a
+  // lookup, answering it is never noise. Streak bookkeeping stays regular
+  // either way; only consumption resets the streak. Reflex-Hits laufen
+  // an diesem Backoff komplett vorbei (#217): vom User verdrahtet = nie Noise.
+  const entry = search.state.sources?.[BACKOFF_SOURCE];
+  emit.consumedForEmit = await wasEmitConsumed(entry);
+  // P0: Auf der unfused Skala ist `>= MUST_LOAD_SCORE` keine Aussage — rohe
+  // BM25-Werte reißen die 100 fast immer. Ein Bypass daraus hieße: Der
+  // Backoff hört genau dann auf zu greifen, wenn der Recall am wenigsten
+  // weiß. Ohne Fusion gibt es deshalb kein REQUIRED und keinen Bypass.
+  const hasRequired = resp?.unfused !== true && recallHits.some((h) => h.score >= MUST_LOAD_SCORE);
+  const decision = decideBackoff(entry, emit.consumedForEmit, hasRequired);
+  emit.backoffStreak = decision.streak;
+  emit.suppressed = detectedMode === "retrieval" ? false : decision.suppress;
+  const block = formatHintBlock(
+    recallHits,
+    search.project,
+    detectedMode,
+    resp?.weak_result === true,
+    resp?.unfused === true,
+    turn.client,
+    resp?.degraded,
+    resp?.recall_id,
+    emit.gatedRecall,
+    noStoredRule
+  );
+  // Suppressed drops only the recall block (#161); reflex still emits. The
+  // `skipped` delta is booked inside mutateSessionState — mutating the
+  // snapshot here would write into state #539 no longer saves.
+  if (emit.suppressed) emit.suppressedTokensEst = Math.ceil(block.length / 4);
+  else emit.recallBlock = block;
+  return emit;
+}
+
+/** Reflex block first, then the recall block; what does not fit is not shown. */
+function fitHintBlocks(turn: PromptTurn, search: PromptSearch, emit: RecallEmit): void {
+  emit.reflexBlock = turn.budget.fit(
+    emit.reflexKept.length > 0
+      ? formatReflexBlock(emit.reflexKept, search.project, turn.client, emit.gatedReflex)
+      : null
+  );
+  if (!emit.reflexBlock) {
+    emit.reflexKept.length = 0;
+    emit.gatedReflex.clear();
+  }
+  const unbudgetedRecallBlock = emit.recallBlock;
+  emit.recallBlock = turn.budget.fit(emit.recallBlock);
+  if (unbudgetedRecallBlock && !emit.recallBlock) {
+    emit.recallHits = [];
+    emit.gatedRecall.clear();
+  }
+}
+
+/**
+ * State-Bookkeeping in einem Save: Backoff-Streak nur für die
+ * prompt-lookup-Lane, Reflex bucht nur die Session-Dedup.
+ *
+ * #539: the deltas run against the state as it is on disk when the lock is
+ * taken, not against the snapshot read before the recall — the other four
+ * lanes write the same file in the meantime.
+ *
+ * #572: the task-boundary block the last Stop parked for THIS session.
+ * #607: behind the prompt lane's own opt-in (b3a6f80) — same lane, same
+ * delivery nobody has measured yet, so the same switch and the same default
+ * (off). Taken inside this save rather than through `takeParkedBoundary`: that
+ * would open the session state a SECOND time on a path with a 200 ms ceiling
+ * (#305), next to the snapshot and this mutation. The snapshot only decides
+ * whether there is anything to take; the take, the dedupe check and the
+ * marking still happen in one locked mutation, so a crash between them can
+ * neither duplicate nor lose the block. A Stop that parks between the
+ * snapshot and the lock keeps its block for the next prompt, which is where
+ * it was headed anyway.
+ */
+async function bookPromptTurn(
+  turn: PromptTurn,
+  search: PromptSearch,
+  emit: RecallEmit,
+  impact: DeliveredPromptImpact
+): Promise<TakenBoundary | null> {
+  const state = search.state;
+  const takeBoundaryNow =
+    state.boundary !== undefined &&
+    state.boundary.note.length + 1 <= turn.budget.remaining &&
+    (await getPromptImpactEnabled());
+  if (emit.recallHits.length === 0 && emit.reflexKept.length === 0 && impact.dedupeKey === null && !takeBoundaryNow) {
+    return null;
+  }
+  let boundary: TakenBoundary | null = null;
+  const gateBlockId = `prompt:${turn.startedAt.toString(36)}`;
+  const recallIds = emit.recallHits.map((h) => h.id);
+  const impactKey = impact.dedupeKey;
+  const { recallBlock, recallHits, reflexKept } = emit;
+  await mutateSessionState(turn.sessionKey, (s) => {
+    if (takeBoundaryNow) boundary = takeBoundary(s);
+    // #606: booked only when the block actually reached the transcript, so a
+    // suppressed turn does not silence the next one.
+    if (impactKey !== null) bumpShown(s, impactKey);
+    if (recallBlock) {
+      recordSourceEmit(s, BACKOFF_SOURCE, recallIds, emit.consumedForEmit);
+    } else if (emit.suppressed) {
+      // #539: without this the backoff window never fills, so the lane
+      // suppresses forever instead of probing again after `streak` skips.
+      recordSourceSuppressed(s, BACKOFF_SOURCE);
+    }
+    for (const h of reflexKept) bumpShown(s, h.id);
+    // Every injected recall hit books the shown-state, in every mode (#541)
+    // — without this the dedup has nothing to count and the block repeats on
+    // every qualifying prompt. Only what actually reached the transcript is
+    // booked: a suppressed emit leaves `recallBlock` null.
+    if (recallBlock) {
+      for (const h of recallHits) bumpShown(s, h.id);
+    }
+    // #1303: beside the shown-state, the must-load the gate will claim —
+    // again only for what reached the transcript.
+    bookPendingMustLoad(
+      s,
+      [...emit.gatedReflex, ...(recallBlock ? emit.gatedRecall : [])],
+      gateBlockId,
+      Date.now(),
+      new Map([...recallHits, ...reflexKept].map((h) => [h.id, h.revision ?? null]))
     );
-  await emitTelemetry({
-    session_id: payload.session_id ?? null,
-    client: clientEvidence,
-    agent,
-    detected_mode: detectedMode,
+  });
+  // The assignment happens inside the mutation callback, which TypeScript's
+  // control flow does not follow — without the cast it narrows `boundary` to
+  // the `null` it was declared with.
+  return boundary as TakenBoundary | null;
+}
+
+/** The `prompt_hook_call` row of a turn that reached the search stage. */
+function recallTurnRow(
+  turn: PromptTurn,
+  prompt: string,
+  search: PromptSearch,
+  selection: PromptHintSelection,
+  emit: RecallEmit,
+  blocks: string[],
+  impact: DeliveredPromptImpact
+): PromptHookTelemetry {
+  const { resp } = search;
+  const shown = emit.suppressed ? [] : [...emit.recallHits, ...emit.reflexKept];
+  return {
+    session_id: turn.payload.session_id ?? null,
+    client: turn.clientEvidence,
+    agent: turn.agent,
+    detected_mode: search.detectedMode,
     prompt_chars: prompt.length,
-    daemon_url: selfBaseUrl,
+    daemon_url: turn.selfBaseUrl,
     // A skipped recall (#371) is not an unreachable daemon: the lane IS the
     // daemon and the vault answered the question locally.
-    daemon_reachable: resp !== null || reflexResp !== null || recallSkipped !== undefined,
-    hint_count: suppressed ? 0 : recallHits.length,
-    reflex_hint_count: reflexKept.length,
-    ...(reflexDeduped.length > 0 ? { reflex_deduped_ids: reflexDeduped } : {}),
+    daemon_reachable: resp !== null || search.reflexResp !== null || search.recallSkipped !== undefined,
+    hint_count: emit.suppressed ? 0 : emit.recallHits.length,
+    reflex_hint_count: emit.reflexKept.length,
+    ...(selection.reflexDeduped.length > 0 ? { reflex_deduped_ids: selection.reflexDeduped } : {}),
     // #354: which memories this lane actually injected, and of what type.
     // The prompt lane was the one hint source the context-tax evaluation could
     // not see per memory — it reported only counts. Suppressed emits stay
     // empty: nothing reached the transcript, so nothing was taxed.
-    hinted_ids: suppressed ? [] : [...recallHits, ...reflexKept].map((h) => h.id),
-    hinted_types: suppressed ? [] : [...recallHits, ...reflexKept].map((h) => h.type),
+    hinted_ids: shown.map((h) => h.id),
+    hinted_types: shown.map((h) => h.type),
     hint_tokens_est: blocks.length === 0 ? 0 : Math.ceil(blocks.join("\n").length / 4),
     // #606: the code block's own cost and reach, separate from the memory
     // hints — the ROI question is what the CODE context costs, and
@@ -901,43 +714,44 @@ async function runPromptLaneInner(
         }
       : {}),
     top_score: resp?.hits?.[0]?.score ?? null,
-    latency_ms_total: Date.now() - startedAt,
-    backoff_streak: backoffStreak,
-    // §20.5 Shadow-Messung: was ein Scope-Filter hier verwerfen WÜRDE, plus
-    // der Kontext, in dem die Entscheidung fällt — Modus (shadow/enforce),
-    // Projekt-Scope, Retrieval-Modus (steht schon als detected_mode oben) und
-    // `unfused`. Die Scope-Namen kommen mit, damit sich auswerten lässt, ob
-    // dieselben zwei Fremdprojekte alles ausmachen oder ob es breit streut.
+    latency_ms_total: Date.now() - turn.startedAt,
+    backoff_streak: emit.backoffStreak,
+    ...scopeFilterFields(selection.scopeFilter, search.cwd),
+    ...recallQualityFields(resp),
+    suppressed: emit.suppressed,
+    suppressed_tokens_est: emit.suppressedTokensEst,
+    status: emit.suppressed ? "suppressed" : selection.status,
+    error: search.errMsg,
+    prewarm: turn.prewarmOutcome,
+    recall_skipped: search.recallSkipped,
+  };
+}
+
+/**
+ * §20.5 Shadow-Messung: was ein Scope-Filter hier verwerfen WÜRDE, plus der
+ * Kontext, in dem die Entscheidung fällt — Modus (shadow/enforce),
+ * Projekt-Scope, Retrieval-Modus (steht schon als detected_mode in der Zeile)
+ * und `unfused`. Die Scope-Namen kommen mit, damit sich auswerten lässt, ob
+ * dieselben zwei Fremdprojekte alles ausmachen oder ob es breit streut.
+ */
+function scopeFilterFields(scopeFilter: PromptHintSelection["scopeFilter"], cwd: string) {
+  return {
     scope_filter_mode: scopeFilter.mode,
     dropped_scope_count: scopeFilter.droppedCount,
     project_confidence: projectConfidence(cwd),
     filter_project: scopeFilter.filterProject,
     ...(scopeFilter.skipped ? { scope_filter_skipped: scopeFilter.skipped } : {}),
     ...(scopeFilter.droppedScopes.length > 0 ? { dropped_scopes: scopeFilter.droppedScopes } : {}),
+  };
+}
+
+/** How the recall degraded (#302/#342) and which bridges fired (#702); absent when not. */
+function recallQualityFields(resp: PromptSearch["resp"]) {
+  return {
     ...(resp?.unfused === true ? { unfused: true } : {}),
     ...(resp?.degraded ? { degraded: resp.degraded } : {}),
     ...(resp?.bridges_fired?.length ? { bridges_fired: resp.bridges_fired } : {}),
-    suppressed,
-    suppressed_tokens_est: suppressedTokensEst,
-    status: suppressed ? "suppressed" : status,
-    error: errMsg,
-    prewarm: prewarmOutcome,
-    recall_skipped: recallSkipped,
-  });
-
-  if (replay) return stdout;
-  return appendLaneDrafts(
-    stdout,
-    "UserPromptSubmit",
-    prompt,
-    payload.session_id,
-    [...(resp?.hits ?? []), ...reflexKept],
-    1,
-    false,
-    undefined,
-    startedAt + laneBudgetMs(detectedMode),
-    contextBudget
-  );
+  };
 }
 
 /**

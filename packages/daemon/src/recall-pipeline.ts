@@ -13,10 +13,19 @@
  * unterscheidet, sind Parameter (Floor, ob ein Aufrufer-Projekt vorliegt) —
  * nicht der Code.
  */
-import type { RecallHit, Vault } from "@bastra-recall/core";
-import { truncateSummary } from "./recall-handler.js";
+import { truncateSummaryTo, type RecallHit, type Vault } from "@bastra-recall/core";
 import { applyLaneScopeFilter, laneScopeFilterMode, vaultKnowsProject, type ScopeFilterMode } from "./scope-filter.js";
-import { MUST_LOAD_SCORE } from "./prompt-lane.js";
+import { MUST_LOAD_SCORE } from "./prompt-classify.js";
+
+/** Max-Länge der `summary` im lean-Modus (#50). Lang genug zum Validieren,
+ *  kurz genug um Context zu sparen. `verbosity:"full"` umgeht das. */
+const LEAN_SUMMARY_MAX = 160;
+
+/** Kürzt auf max. `LEAN_SUMMARY_MAX` Zeichen an der letzten Wortgrenze und
+ *  hängt „…" an. Nie mitten im Wort. Kürzere Summaries bleiben unverändert.
+ *  Lebt hier (nicht im recallHandler), damit Handler und Pipeline ohne
+ *  Importzyklus dieselbe Kürzung nutzen (#1515 B1). */
+export const truncateSummary = (summary: string): string => truncateSummaryTo(summary, LEAN_SUMMARY_MAX);
 
 /** Ein Reflex-Treffer aus dem Kandidatenpool, in der Form, die
  *  `/hook/recall` seit 20.08. als `reflex_hits` liefert. */

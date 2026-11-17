@@ -139,6 +139,7 @@ export const store = {
   model: null, // GET /ui/settings snapshot
   error: "", // load / save error text (server message)
   changes: new Map(), // key → pending value (null = back to default)
+  invalid: new Map(), // key → raw text of a draft that is not valid JSON; blocks Apply and restart
   query: "",
   sel: "appearance", // group shown as current in the Find tab
   saved: "", // "HH:MM" of the last successful apply
@@ -278,8 +279,16 @@ export async function loadModels() {
   }
 }
 
+/** An invalid draft blocks Apply and restart: the error names it and the view focuses its field. */
+function blockedByInvalid() {
+  if (!store.invalid.size) return false;
+  store.error = t("st.json.invalid");
+  emit("invalid");
+  return true;
+}
+
 export async function apply() {
-  if (!store.changes.size || store.busy) return;
+  if (store.busy || blockedByInvalid() || !store.changes.size) return;
   store.busy = true;
   store.error = "";
   emit("bar");
@@ -317,7 +326,7 @@ export async function revokeOauth(clientId) {
 
 /** Controlled daemon restart (classic UI: "Daemon kontrolliert neu starten"), then reload. */
 export async function restart() {
-  if (store.restarting || store.changes.size) return;
+  if (store.restarting || blockedByInvalid() || store.changes.size) return;
   store.restarting = true;
   store.error = "";
   emit("bar");
@@ -376,7 +385,8 @@ export function groupKeys(g) {
 }
 
 export const locked = (e) => !!e && !e.local && (e.envOverride?.length > 0 || e.readonly);
-export const changed = (key) => store.changes.has(key);
+export const changed = (key) => store.changes.has(key) || store.invalid.has(key);
+export const pendingKeys = () => [...new Set([...store.changes.keys(), ...store.invalid.keys()])];
 
 /** Value the control shows: pending change, else stored value, else what is in effect. */
 export function shown(e) {
@@ -412,17 +422,35 @@ onStore(() => {
   setBackdrop(patch);
 });
 
+/** Records (raw text) or clears (null) a draft that is not valid JSON. */
+export function setInvalid(key, raw) {
+  if (raw !== null) {
+    store.invalid.set(key, raw);
+    return;
+  }
+  if (store.invalid.delete(key)) clearInvalidError();
+}
+
+function clearInvalidError() {
+  if (!store.invalid.size && store.error === t("st.json.invalid")) store.error = "";
+}
+
 export function revert(key) {
   store.changes.delete(key);
+  setInvalid(key, null);
   emit();
 }
 export function discard() {
   store.changes.clear();
+  store.invalid.clear();
+  clearInvalidError();
   emit();
 }
 
 export function changeList() {
-  return [...store.changes.entries()].map(([key, value]) => ({ key, value, e: entry(key) })).filter((c) => c.e);
+  return pendingKeys()
+    .map((key) => ({ key, value: store.changes.get(key), invalid: store.invalid.has(key), e: entry(key) }))
+    .filter((c) => c.e);
 }
 
 /** config set routes env-backed keys through the daemon.env merge as the UI does. */

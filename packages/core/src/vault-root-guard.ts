@@ -233,6 +233,37 @@ export function vaultRootPresent(vaultRoot: string): boolean {
   return true;
 }
 
+async function inspectRoot(vaultRoot: string, root: string, createRoot: boolean) {
+  const roots = readRoots();
+  if (!roots) throw historyReadError();
+  const present = await stat(root).then(
+    (st) => {
+      if (!st.isDirectory()) throw new Error(`the vault path ${vaultRoot} is not a directory`);
+      return true;
+    },
+    (err: NodeJS.ErrnoException) => {
+      if (err.code === "ENOENT" || err.code === "ENOTDIR") return false;
+      throw err;
+    }
+  );
+  if (!present) {
+    const firstSeen = firstSeenIn(roots, root) ?? (seenThisRun(root) ? "earlier in this run" : null);
+    if (firstSeen || !createRoot) throw new VaultRootMissingError(vaultRoot, firstSeen);
+  }
+  return { roots, present };
+}
+
+/** The root check for a save preview. It neither creates nor marks a root. */
+export async function assertVaultCanStartSave(vaultRoot: string): Promise<void> {
+  const root = resolve(vaultRoot);
+  const { present } = await inspectRoot(vaultRoot, root, true);
+  if (present) return;
+  const parent = dirname(root);
+  if (!(await stat(parent).catch(() => null))?.isDirectory()) {
+    throw new VaultRootMissingError(vaultRoot, null, parent);
+  }
+}
+
 /**
  * Create `dir` (recursively) under `vaultRoot` — the replacement for every
  * `mkdir(dir, { recursive: true })` under the vault. `dir` may be the root
@@ -251,22 +282,9 @@ export async function ensureVaultDir(
   if (child === ".." || child.startsWith(`..${sep}`) || isAbsolute(child)) {
     throw new Error(`directory ${dir} is outside vault root ${vaultRoot}`);
   }
-  const roots = readRoots();
-  if (!roots) throw historyReadError();
+  const { roots, present } = await inspectRoot(vaultRoot, root, opts.createRoot === true);
   if (!roots.has(root)) persisted.delete(root); // marker removed since this process last wrote it
-  const present = await stat(root).then(
-    (st) => {
-      if (!st.isDirectory()) throw new Error(`the vault path ${vaultRoot} is not a directory`);
-      return true;
-    },
-    (err: NodeJS.ErrnoException) => {
-      if (err.code === "ENOENT" || err.code === "ENOTDIR") return false;
-      throw err;
-    }
-  );
   if (!present) {
-    const firstSeen = firstSeenIn(roots, root) ?? (seenThisRun(root) ? "earlier in this run" : null);
-    if (firstSeen || !opts.createRoot) throw new VaultRootMissingError(vaultRoot, firstSeen);
     // Only this explicit first-create path may make the root, and only one
     // level: a missing parent is an unmounted drive until proven otherwise.
     try {

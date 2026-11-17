@@ -158,24 +158,19 @@ function rootProblem(raw: string, root: string, env: NodeJS.ProcessEnv, uid: num
  *  that is not there yet is made 0700 on first use. */
 export function archiveRootProblem(env: NodeJS.ProcessEnv = process.env, uid = myUid()): string | null {
   const raw = archiveDir(env);
-  let root: string;
   try {
-    root = realpathSync(raw);
-  } catch {
-    return null;
-  }
-  const problem = rootProblem(raw, root, env, uid);
-  if (problem) return problem;
-  for (const name of readdirSync(root)) {
-    let st: Stats;
-    try {
-      st = lstatSync(join(root, name));
-    } catch {
-      continue; // gone between listing and look: nothing left to refuse
+    const root = realpathSync(raw);
+    const problem = rootProblem(raw, root, env, uid);
+    if (problem) return problem;
+    for (const name of readdirSync(root)) {
+      const st = lstatSync(join(root, name), { throwIfNoEntry: false });
+      if (st && foreignEntry(st, uid)) return foreignEntryProblem(raw, name);
     }
-    if (foreignEntry(st, uid)) return foreignEntryProblem(raw, name);
+    return null;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    return `cannot inspect the archive directory '${raw}': ${(error as Error).message}`;
   }
-  return null;
 }
 
 /** The manifest is created 0600: it names every archived path. */

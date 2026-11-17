@@ -144,3 +144,47 @@ test("#1329 legacy backups: Doctor warns about old readable snapshots without mo
   assert.equal(after.mode, before.mode);
   assert.equal(after.mtimeMs, before.mtimeMs);
 });
+
+test(
+  "#1523: Doctor names open .bak copies of the managed plist in LaunchAgents, and only those",
+  { skip: process.platform === "win32" },
+  async (t) => {
+    const { autostartWarning, LAUNCH_AGENT_LABEL } = await import("../src/cli/autostart.js");
+    const { chmod, stat, readFile } = await import("node:fs/promises");
+    const d = await dir(t);
+    const emptyBackups = join(d, "no-backups");
+    const open = join(d, `${LAUNCH_AGENT_LABEL}.plist.bak-2026-09-06`);
+    const closed = join(d, `${LAUNCH_AGENT_LABEL}.plist.bak-vor-managed`);
+    const foreign = join(d, "ai.example.other.plist.bak");
+    const live = join(d, `${LAUNCH_AGENT_LABEL}.plist`);
+    for (const [p, mode] of [
+      [open, 0o644],
+      [closed, 0o600],
+      [foreign, 0o644],
+      [live, 0o644],
+    ] as const) {
+      await writeFile(p, "<plist>secret env</plist>", { mode });
+      await chmod(p, mode);
+    }
+    const before = await stat(open);
+
+    const warning = await autostartWarning(null, {}, emptyBackups, d);
+    assert.ok(warning);
+    assert.ok(warning.includes(open), "the open copy is named with its path");
+    assert.ok(warning.includes(`chmod 600 '${open}'`), "with a concrete repair command");
+    assert.ok(!warning.includes(closed), "a 0600 copy is fine");
+    assert.ok(!warning.includes(foreign), "another program's backup is not ours to judge");
+    assert.match(warning, /^1 LaunchAgent backup/);
+
+    const after = await stat(open);
+    assert.equal(after.mode, before.mode, "doctor never chmods");
+    assert.equal(after.mtimeMs, before.mtimeMs);
+    assert.equal(await readFile(open, "utf8"), "<plist>secret env</plist>");
+  }
+);
+
+test("#1523: no LaunchAgents folder (Linux, Windows) is no warning", async (t) => {
+  const { autostartWarning } = await import("../src/cli/autostart.js");
+  const d = await dir(t);
+  assert.equal(await autostartWarning(null, {}, join(d, "a"), join(d, "missing")), null);
+});

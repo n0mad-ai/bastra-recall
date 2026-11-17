@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { bridgesPath, migrateBridgesPool } from "../src/cli/bridges.js";
-import { commonsPath } from "../src/cli/commons.js";
+import { commonsPath } from "../src/commons-store.js";
 
 function restoreEnv(saved: { c: string | undefined; b: string | undefined }): void {
   if (saved.c === undefined) delete process.env.BASTRA_COMMONS_PATH;

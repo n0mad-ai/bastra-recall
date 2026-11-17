@@ -1,0 +1,241 @@
+exports[`#1525 gate state golden — a subagent leaves the pending must-load alone 1`] = `
+{
+  "outputs": [
+    {}
+  ],
+  "state": {
+    "shown": {},
+    "pendingMustLoad": [
+      {
+        "id": "m1",
+        "block": "prompt:test",
+        "at": 1800000000000
+      }
+    ],
+    "toolCalls": 1
+  }
+}
+`;
+
+exports[`#1525 gate state golden — a tool count without a kernel only counts 1`] = `
+{
+  "outputs": [
+    {}
+  ],
+  "state": {
+    "shown": {},
+    "toolCalls": 4
+  }
+}
+`;
+
+exports[`#1525 gate state golden — action rules alone become context, a stale foreign attempt is dropped 1`] = `
+{
+  "outputs": [
+    {
+      "hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": "bastra-recall must-load: fixture-issue-rule, fixture-other-rule — shown as must-load and not loaded yet. load_memory(id) or dismiss via load_memory(id, verbosity:'lean'). This call was interrupted once; retrying it goes through.\\nMUST-LOAD — concrete action rules: fixture-issue-rule, fixture-other-rule. Load each with load_memory({\\"id\\":\\"fixture-issue-rule\\",\\"session_id\\":\\"gate-golden-action-rules-alone-become-context-a-stale-foreign-attempt-is-dropped\\"}) (replace id for each requirement). applicable:[] cannot discharge these IDs. An explicit rulebook_check({not_applicable:[{id,reason}],applicable:[]}) for each exact ID records a visible exception.\\n<recall-hints trigger=\\"github-write\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nMUST-LOAD — load the applicable saved issue/PR conventions before deciding:\\n- fixture-issue-rule: load_memory(\\"fixture-issue-rule\\")\\n- fixture-other-rule: load_memory(\\"fixture-other-rule\\")\\n</recall-hints>"
+      }
+    }
+  ],
+  "state": {
+    "shown": {},
+    "rulebookCheck": {
+      "copyViolations": 0,
+      "blockedDismissals": [],
+      "context": "<uuid>",
+      "round": 0,
+      "actors": [
+        {
+          "correspondenceEvidence": false,
+          "roundApplied": [],
+          "roundDismissed": [],
+          "repairs": 0,
+          "repairProse": false,
+          "required": [
+            {
+              "id": "fixture-issue-rule",
+              "revision": null
+            },
+            {
+              "id": "fixture-other-rule",
+              "revision": null
+            }
+          ],
+          "loaded": [],
+          "dismissed": [],
+          "key": "main",
+          "checked": false,
+          "ids": [],
+          "denies": 1,
+          "stops": 0,
+          "deferredStop": false
+        }
+      ],
+      "unchecked": 0,
+      "exceptions": []
+    },
+    "constants": {
+      "github-action-conventions-v2:main:scope": [
+        "<uuid>",
+        0
+      ],
+      "github-action-conventions-v2:main": [
+        "fixture-issue-rule",
+        "fixture-other-rule"
+      ],
+      "github-action-conventions-v2:main:revisions": {
+        "fixture-issue-rule": null,
+        "fixture-other-rule": null
+      }
+    },
+    "toolCalls": 1,
+    "claimedMustLoad": [
+      "fixture-issue-rule",
+      "fixture-other-rule"
+    ]
+  }
+}
+`;
+
+exports[`#1525 gate state golden — must-load, reflex and action rules in one call 1`] = `
+{
+  "outputs": [
+    {
+      "hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": "bastra-recall must-load: m1, fixture-issue-rule, fixture-other-rule — shown as must-load and not loaded yet. load_memory(id) or dismiss via load_memory(id, verbosity:'lean'). This call was interrupted once; retrying it goes through.\\n\\nbastra-recall reflex rule rule-send (\\"Title rule-send\\", trigger \\"fixture_send_message\\") applies to this action:\\nNever call fixture_send_message without an approved copy.\\n\\nEach rule interrupts once per session; retrying the call goes through.\\nMUST-LOAD — concrete action rules: fixture-issue-rule, fixture-other-rule. Load each with load_memory({\\"id\\":\\"fixture-issue-rule\\",\\"session_id\\":\\"gate-golden-must-load-reflex-and-action-rules-in-one-call\\"}) (replace id for each requirement). applicable:[] cannot discharge these IDs. An explicit rulebook_check({not_applicable:[{id,reason}],applicable:[]}) for each exact ID records a visible exception.\\n<recall-hints trigger=\\"github-write\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nMUST-LOAD — load the applicable saved issue/PR conventions before deciding:\\n- fixture-issue-rule: load_memory(\\"fixture-issue-rule\\")\\n- fixture-other-rule: load_memory(\\"fixture-other-rule\\")\\n</recall-hints>"
+      }
+    },
+    {
+      "hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": "MUST-LOAD — concrete action rules: fixture-issue-rule, fixture-other-rule. Load each with load_memory({\\"id\\":\\"fixture-issue-rule\\",\\"session_id\\":\\"gate-golden-must-load-reflex-and-action-rules-in-one-call\\"}) (replace id for each requirement). applicable:[] cannot discharge these IDs. An explicit rulebook_check({not_applicable:[{id,reason}],applicable:[]}) for each exact ID records a visible exception."
+      }
+    }
+  ],
+  "state": {
+    "shown": {},
+    "rulebookCheck": {
+      "copyViolations": 0,
+      "blockedDismissals": [],
+      "context": "<uuid>",
+      "round": 0,
+      "actors": [
+        {
+          "correspondenceEvidence": false,
+          "roundApplied": [],
+          "roundDismissed": [],
+          "repairs": 0,
+          "repairProse": false,
+          "required": [
+            {
+              "id": "fixture-issue-rule",
+              "revision": "sha256:A"
+            },
+            {
+              "id": "fixture-other-rule",
+              "revision": null
+            }
+          ],
+          "loaded": [],
+          "dismissed": [],
+          "key": "main",
+          "checked": false,
+          "ids": [],
+          "denies": 2,
+          "stops": 0,
+          "deferredStop": false
+        }
+      ],
+      "unchecked": 0,
+      "exceptions": []
+    },
+    "constants": {
+      "github-action-conventions-v2:main": [
+        "fixture-issue-rule",
+        "fixture-other-rule"
+      ],
+      "github-action-conventions-v2:main:revisions": {
+        "fixture-issue-rule": "sha256:A",
+        "fixture-other-rule": null
+      },
+      "github-action-conventions-v2:main:scope": [
+        "<uuid>",
+        0
+      ]
+    },
+    "deniedReflex": [
+      "rule-send"
+    ],
+    "toolCalls": 2,
+    "claimedMustLoad": [
+      "m1",
+      "fixture-issue-rule",
+      "fixture-other-rule"
+    ],
+    "activeConventions": [
+      {
+        "id": "rule-send",
+        "revision": null,
+        "setAt": 1800000000000
+      }
+    ]
+  }
+}
+`;
+
+exports[`#1525 gate state golden — pending must-load is claimed into a deny 1`] = `
+{
+  "outputs": [
+    {
+      "hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": "bastra-recall must-load: m1, m2 — shown as must-load and not loaded yet. load_memory(id) or dismiss via load_memory(id, verbosity:'lean'). This call was interrupted once; retrying it goes through."
+      }
+    }
+  ],
+  "state": {
+    "shown": {},
+    "toolCalls": 1,
+    "claimedMustLoad": [
+      "m1",
+      "m2"
+    ]
+  }
+}
+`;
+
+exports[`#1525 gate state golden — reflex claim records denied and active conventions 1`] = `
+{
+  "outputs": [
+    {
+      "hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": "bastra-recall reflex rule rule-send (\\"Title rule-send\\", trigger \\"fixture_send_message\\") applies to this action:\\nNever call fixture_send_message without an approved copy.\\n\\nEach rule interrupts once per session; retrying the call goes through."
+      }
+    },
+    {}
+  ],
+  "state": {
+    "shown": {},
+    "deniedReflex": [
+      "rule-send"
+    ],
+    "toolCalls": 2,
+    "activeConventions": [
+      {
+        "id": "rule-send",
+        "revision": null,
+        "setAt": 1800000000000
+      }
+    ]
+  }
+}
+`;

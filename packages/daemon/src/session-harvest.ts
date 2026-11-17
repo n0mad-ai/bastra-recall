@@ -15,6 +15,10 @@ import { bastraDataDir } from "./platform-paths.js";
  *     write, no transcript work in the Stop budget.
  *     Where the client sends `SessionEnd`, the same lane books the session as
  *     finished (`ended: true`), so it does not wait for the idle window.
+ *     Claude Code's `PreCompact` books it the same way (`compacting: true`,
+ *     #1486): the turns the compaction summarises are harvested on the next
+ *     pass instead of after 30 quiet minutes. The transcript file keeps them,
+ *     so the pass reads the same turns the session had before compacting.
  *  2. A daemon job (`runSessionHarvest`, daemon-jobs.ts) picks the sessions
  *     that ended or have been quiet for {@link HARVEST_IDLE_MS}, reads their
  *     transcript, captures typed turns into the local draft store, and extracts
@@ -90,6 +94,9 @@ interface QueueEntry {
    *  Stop (a resumed session) moves `last_stop` past it and the idle rule is
    *  back. */
   ended_at?: number;
+  /** A PreCompact hook arrived (#1486): harvest what is there on the next pass,
+   *  without the idle wait. Due until a pass ran after it; the session goes on. */
+  compact_at?: number;
 }
 
 export function harvestQueuePath(): string {
@@ -222,6 +229,7 @@ async function writeQueue(path: string, entries: QueueEntry[]): Promise<void> {
  * Stop lane: book the session for a later harvest. Only a transcript on disk
  * can be harvested after the fact, so an inline transcript is not booked.
  * `ended` comes from a SessionEnd hook: the session is finished now.
+ * `compacting` comes from a PreCompact hook: harvest now, the session goes on.
  * Best-effort, never throws.
  */
 export async function noteSessionForHarvest(p: {
@@ -230,6 +238,7 @@ export async function noteSessionForHarvest(p: {
   cwd?: unknown;
   client?: string;
   ended?: boolean;
+  compacting?: boolean;
   now?: number;
 }): Promise<void> {
   if (!sessionHarvestEnabled()) return;
@@ -252,11 +261,35 @@ export async function noteSessionForHarvest(p: {
         entries.push(row);
       }
       if (p.ended) row.ended_at = now;
+      if (p.compacting) row.compact_at = now;
       await writeQueue(path, entries.slice(-QUEUE_MAX_ENTRIES));
     });
   } catch {
     /* booking is best-effort — never break the Stop lane */
   }
+}
+
+/**
+ * The Stop lane's answer to every event that is not a Stop. Claude Code's
+ * PreCompact (#1486) books the session for the next harvest pass; any other
+ * event is left alone. The answer is always `{}`. A PreCompact hook's plain-text
+ * stdout becomes instructions for the compaction summary; one JSON object with
+ * no fields is read as hook output and steers nothing
+ * (code.claude.com/docs/en/hooks, PreCompact output / exit code 0).
+ */
+export async function bookPreCompact(
+  payload: { hook_event_name?: unknown; session_id?: unknown; transcript_path?: unknown; cwd?: unknown },
+  client?: string
+): Promise<string> {
+  if (payload.hook_event_name !== "PreCompact") return "{}";
+  await noteSessionForHarvest({
+    session_id: payload.session_id,
+    transcript_path: payload.transcript_path,
+    cwd: payload.cwd,
+    client,
+    compacting: true,
+  });
+  return "{}";
 }
 
 export interface HarvestPassResult {
@@ -266,10 +299,19 @@ export interface HarvestPassResult {
   stored: number;
 }
 
-/** Ended by a SessionEnd after its last Stop, or quiet for the idle window. */
+/** Why a booked session is due without the idle wait, or null. */
+function dueNow(e: QueueEntry): "session_end" | "pre_compact" | null {
+  if (e.ended_at !== undefined && e.ended_at >= e.last_stop) return "session_end";
+  // Not tied to the last Stop: an auto-compaction fires mid-turn and the Stop
+  // that ends the turn follows within seconds, before the next pass runs.
+  if (e.compact_at !== undefined && (e.harvested_at === undefined || e.harvested_at < e.compact_at))
+    return "pre_compact";
+  return null;
+}
+
+/** Ended by a SessionEnd or compacting after its last Stop, or quiet for the idle window. */
 function isFinished(e: QueueEntry, now: number): boolean {
-  if (e.ended_at !== undefined && e.ended_at >= e.last_stop) return true;
-  return now - e.last_stop >= HARVEST_IDLE_MS;
+  return dueNow(e) !== null || now - e.last_stop >= HARVEST_IDLE_MS;
 }
 
 /**
@@ -307,10 +349,10 @@ export async function runSessionHarvest(opts: {
     const progress = new Map<string, { upto: number; at: number }>();
     let storedIn: ((quote: string) => string | null) | null = null;
     for (const e of due) {
-      const ended = e.ended_at !== undefined && e.ended_at >= e.last_stop;
+      const trigger = dueNow(e) ?? "idle";
       try {
         const st = await stat(e.transcript_path);
-        if (!ended && now - st.mtimeMs < HARVEST_IDLE_MS) continue; // still being written
+        if (trigger === "idle" && now - st.mtimeMs < HARVEST_IDLE_MS) continue; // still being written
       } catch (err) {
         // A transcript this HOST cannot stat — e.g. a remote daemon whose
         // transcript_path is local to the client — used to be marked harvested
@@ -323,7 +365,7 @@ export async function runSessionHarvest(opts: {
           0,
           [],
           0,
-          ended,
+          trigger,
           `transcript_path not readable: ${(err as NodeJS.ErrnoException).code ?? "unknown"}`
         );
         continue;
@@ -375,7 +417,7 @@ export async function runSessionHarvest(opts: {
       result.harvested += 1;
       result.candidates += candidates.length;
       result.stored += stored;
-      await writeHarvestTelemetry(e, turns.length, candidates, stored, ended, undefined, drafts, storedMemoryIds);
+      await writeHarvestTelemetry(e, turns.length, candidates, stored, trigger, undefined, drafts, storedMemoryIds);
     }
     await withPathLock(path, async () => {
       const entries = await readQueue(path);
@@ -402,7 +444,7 @@ async function writeHarvestTelemetry(
   turnCount: number,
   candidates: HarvestCandidate[],
   stored: number,
-  ended: boolean,
+  trigger: "session_end" | "pre_compact" | "idle",
   skippedReason?: string,
   drafts?: {
     count: number;
@@ -432,7 +474,7 @@ async function writeHarvestTelemetry(
       candidate_kinds: kinds,
       stored_count: stored,
       stored_memory_ids: storedMemoryIds,
-      trigger: ended ? "session_end" : "idle",
+      trigger,
       ...(drafts
         ? {
             draft_count: drafts.count,

@@ -41,6 +41,8 @@ export const COMMANDS = [
   "feedback",
   "archive",
   "trash",
+  "recall",
+  "save",
   "reconcile",
   "completion",
   "help",

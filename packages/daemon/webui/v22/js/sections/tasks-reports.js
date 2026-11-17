@@ -72,7 +72,7 @@ onData(() => {
   lastKey = key;
   if (R.q.trim()) searchText(); // new or changed reports: the text search runs again
   if (R.sel && !data.reports.some((r) => r.id === R.sel)) R.sel = null; // deleted elsewhere
-  if (R.open && !R.sel && data.reports.length) openReport((shown()[0] ?? listed()[0]).id);
+  if (R.open && !R.sel && !R.undo && data.reports.length) openReport((shown()[0] ?? listed()[0]).id);
   else emit("reports");
 });
 
@@ -234,9 +234,10 @@ function handOver(id) {
 /** Deletes the report and moves on to the row below it (or above, at the end of the list). While that
  *  one is on screen, a notice offers to undo the delete (the daemon keeps it for a while). */
 function remove(id) {
-  const rows = shown(),
+  const filtered = shown(),
+    rows = filtered.some((r) => r.id === id) ? filtered : listed(),
     at = rows.findIndex((r) => r.id === id),
-    next = rows[at + 1] ?? rows[at - 1],
+    next = at < 0 ? null : (rows[at + 1] ?? rows[at - 1]),
     title = rows[at]?.title ?? "";
   return act(async () => {
     let r = null;
@@ -277,7 +278,7 @@ function undoDelete(u) {
 /** The notice after a delete, while the report shown next (or the empty reader) is on screen. */
 function undoNotice() {
   const u = R.undo;
-  if (!u || u.next !== R.sel) return null;
+  if (!u || (R.sel && u.next !== R.sel)) return null;
   return h(
     "div.mb-ed__notice.tk-rep__undo",
     { role: "status" },
@@ -369,10 +370,10 @@ let searchTimer = 0,
   searchSeq = 0;
 function searchText() {
   clearTimeout(searchTimer);
+  const seq = ++searchSeq;
   const q = R.q.trim();
   if (!q || q.length > QUERY_MAX) return;
   searchTimer = setTimeout(async () => {
-    const seq = ++searchSeq;
     try {
       const r = await api("report_list", { query: q });
       if (seq !== searchSeq || R.q.trim() !== q) return;
@@ -385,6 +386,7 @@ function searchText() {
 }
 
 function setQuery(q) {
+  if (R.q.trim() !== q.trim()) R.hits = null;
   R.q = q;
   searchText();
   emit("reports");
@@ -664,7 +666,7 @@ export function reportsRenderer(host) {
     const all = listed(),
       rows = matchReports(all, R.q, hitsNow()),
       narrow = host.clientWidth > 0 && host.clientWidth < NARROW;
-    if (!narrow || !R.sel) R.list = !R.sel;
+    if (!narrow || !R.sel) R.list = !R.sel && !R.undo;
     view.classList.toggle("is-narrow", narrow);
     view.classList.toggle("is-reading", !R.list);
     hits.textContent = t("tk.rep.count", { u: unreadCount(all), n: all.length });

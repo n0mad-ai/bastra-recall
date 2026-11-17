@@ -170,6 +170,19 @@ test("#1274 installCliGlobally on Windows runs node.exe + npm-cli.js, never npm.
   assert.equal(out.binPath, `${WIN_PREFIX}\\bastra.cmd`, "global bins sit directly in the prefix on Windows");
 });
 
+test("#1274 Windows setup recognizes the npm prefix on PATH with different casing", () => {
+  const originalPath = process.env.PATH;
+  try {
+    process.env.PATH = `C:\\Windows\\System32;${WIN_PREFIX.toLowerCase()}`;
+    const installed = installCliGlobally(windowsIo().io);
+    assert.equal(installed.offPath, false);
+    assert.equal(formatGlobalInstallOutcome(installed).level, "success");
+  } finally {
+    if (originalPath === undefined) delete process.env.PATH;
+    else process.env.PATH = originalPath;
+  }
+});
+
 test("#1274 installCliGlobally refuses an unknown Windows npm wrapper without spawning", () => {
   const { io, spawns } = windowsIo("C:\\Tools\\npm.exe");
   const out = installCliGlobally(io);

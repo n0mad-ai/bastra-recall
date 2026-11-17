@@ -44,8 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   over the reports list now also finds words in the text of a report, not
   only in its title and project; title and project still filter at once, text
   hits join a moment later. Right after **Delete**, a notice above the next
-  report offers **Undo**; Recall keeps a deleted report for 10 minutes and
-  brings it back with its text, read state and notes. For agents,
+  report offers **Undo**, including when the list is empty or the open report
+  changes. Recall keeps a deleted report for 10 minutes and brings it back
+  with its text, read state and notes. If the trash would run out of space,
+  the new deletion is refused so earlier undo entries remain usable. For agents,
   `task_report_list` takes an optional `query`, `task_report_delete` answers
   with `restorable_until`, and the new tool `task_report_restore` undoes a
   delete when you ask for it (#1597, #1559).
@@ -75,6 +77,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   forwarder reports). A record for tracing, not an access rule: nothing is
   refused or asked because of it (#1469).
 
+- **`bastra doctor` shows more of what is really in effect.** Per installed
+  client it now asks the daemon for that client's MCP tool list, as the client
+  itself does, and prints how many tools arrive and roughly how many tokens
+  they cost at every session start; when the daemon does not answer, it says
+  so, because the client then works from the bundled list (#1472). The
+  features block shows whether Codex's rulebook gate blocks or only gives
+  hints: it names the installed Codex version and the verified ones, since
+  every unverified version, newer ones included, runs advisory only. It also
+  shows document writing (Recall Pulse) on or off (#1474). Under "autostart",
+  `.bak` copies of Recall's own LaunchAgent plist in `~/Library/LaunchAgents`
+  that other users can read are named with a `chmod 600` command to fix them;
+  doctor itself changes nothing (#1523).
+- **Search and save from the terminal: `bastra recall` and `bastra save`.**
+  `bastra recall "<question>"` searches the vault without an agent and prints
+  the matching memories; `--limit`, `--scope`, `--type` and `--json` for
+  scripts. `bastra save --title … --type … --scope … "text"` (or the text piped
+  in) saves a memory yourself through the daemon's normal `save_memory` path,
+  with every check an agent's save gets, recorded as your own instruction
+  (`write_origin: user-directed`) and attributed to the CLI. Fields left out
+  are filled like *Save as memory* in the web UI. Both need the running daemon
+  (#1492, #1496).
+- **Harvest before compaction (Claude Code).** A `PreCompact` hook, registered
+  with the Stop hook (`--no-stop-hook` leaves it out), books the session so the
+  next harvest pass reads the turns the compaction summary replaces instead of
+  waiting 30 quiet minutes. Same rules as the after-session harvest; the hook
+  adds nothing to the summary. Run `bastra update` or `bastra install
+  claude-code` to register it (#1486).
+- **Preview a save.** `save_memory` takes `dry_run: true`: it runs every
+  check of a real save (credential redaction, quality hints, claim gate,
+  `replaces` and collision checks) and returns the file it would write and
+  whether it would become a rule, a proposal or a note. The preview leaves
+  the vault, audit and session state untouched. The stdio app bridge
+  declines preview requests with an explicit error (#1484).
+- `save_quality` warns when a save re-asserts a claim that was already
+  replaced and names the successor; advisory only, `replaces: <successor>`
+  silences it (#643).
+- A `write_origin: user-directed` save records transport, client, session and
+  time of the call in `write_origin_evidence`, shown in the save receipt and
+  in `list_rules`. No extra approval step (#1496).
+- `bastra doctor` lists Syncthing conflict copies
+  (`Alpha.sync-conflict-<date>-<time>-<device>.md` with the same memory id as
+  `Alpha.md`). Other services do not document their copy names and are not
+  matched by name (#1485).
+- `REPORT.md` has a *Low-signal memories* section: memories with no or
+  one-word triggers, a trigger that only repeats the summary, almost no body
+  or a date-only title, with the reasons per entry. Report only (#642).
+- **An unreachable Recall service is said once, not answered silently
+  empty.** When a hook cannot reach the daemon, the first prompt or session
+  start of that session shows one line: "bastra-recall: the Recall service is
+  not reachable, so this session gets no memories. Check it with `bastra
+  doctor`." (German on a German system). Later calls in the same session stay
+  silent; tool calls are never interrupted by it. Works in Claude Code and
+  Codex, once the installed hook program is the one from this release
+  (#1473).
+
 ### Changed
 
 - **Node 22 is no longer supported; Node 24.16 or newer is required.**
@@ -102,13 +159,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   English otherwise and when it is not set. Before, the task CLI was German
   for everyone. Texts that only the model reads (stored task errors and review
   reasons, `--json` output) are English and keep their codes (#1602).
-- **Subagents no longer get the full rule kernel again and again.** After 25
-  tool calls without a prompt, an agent that already holds the unchanged rule
-  kernel gets a short reminder with the catalog hash and how to fetch the
-  rules again (`list_rules`, `load_memory`) instead of up to 9,400 characters.
-  A changed rulebook, a new agent and every compact or clear still bring the
-  full text. Measured before the change: 89 % of 848 re-deliveries in two
-  weeks were byte-identical repeats (#1461).
+- **Rule-kernel reminders require directly observed delivery.** When the
+  rule kernel is due, an in-process caller can receive a short reminder with
+  the catalog hash and how to fetch the rules (`list_rules`, `load_memory`)
+  after it directly observed the byte-identical kernel for the same agent
+  and context. Native hook clients using HTTP still receive the full text
+  when it is due. The daemon can confirm that an HTTP response finished,
+  but the hook can still lose its output before writing to the host. A
+  changed kernel, a new agent and every compact or clear require the full
+  text when the kernel is delivered (#1461).
 - **Hints before a tool call have an upper size.** Each pre-tool lane
   (Write/Edit, plan, Bash) keeps its optional text within 4,000 characters:
   code-impact blocks, lower-ranked plan hints and draft quotes are left out
@@ -130,20 +189,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   (#1470).
 - **An expired memory is no longer shown automatically.** Once a memory's own
   `valid_until` has passed, the hooks (prompt, session start, reflex rules)
-  leave it out; `recall` still finds it and marks it `expired_on`. Calendar
-  aging only lowers the rank as before (#1468).
+  leave it out; `recall` still finds it and marks it `expired_on`. The
+  type's default lifetime still affects ranking without hiding the memory
+  from the hooks (#1468).
 - **Hints cannot hide text or pose as host markup.** Memory text that a hook
   shows loses invisible characters (zero-width, bidi controls, Unicode tag
   characters, control characters; joiners inside words and emoji stay), and
   anything shaped like a tag or a chat-template token keeps its words but
   loses its angle brackets (`‹system›`). New invariant INV-SCRUB-04 (#1467).
 
+- **Shorter tool descriptions: about a quarter less context per session.**
+  The texts of `save_memory`, `edit_memory`, `recall`, `load_memory`,
+  `archive_memory`, `list_rules` and `rulebook_check` say the same in fewer
+  words, and the rulebook field descriptions are no longer sent a second time
+  inside `rulebook_proposed`. Without the task tools the catalogue a client
+  lists shrinks from about 57 kB to 42 kB (`save_memory` alone from 20.9 kB to
+  12.6 kB). A test now caps each description, each tool and the catalogue
+  (#1462).
+
+- **Search: age alone now costs a note at most 30 % of its score, and rules
+  do not age in search.** A project fact or lesson that nobody replaced used
+  to lose half or four fifths of its score just by passing its type's default
+  lifetime (90 days for project facts), and dropped out of the first results
+  although it was still the answer. Now the type default ages a note mildly
+  (stale and expired keep 70 %), a note with a rulebook declaration does not
+  age in search at all, and the strong demotion stays where you set the
+  deadline yourself (`valid_until`, `expires_after_days`). Replaced notes still
+  yield to their successor. The staleness label a note shows is unchanged.
+  Measured on a copy of a real vault (577 gold questions, fixed reference
+  date): the right note among the first three rose from 170 to 253, with no
+  question lost there (`packages/eval/registrations/staleness-policy-1567.json`)
+  (#1567).
+
 ### Fixed
 
+- Vault: of two files in one folder that carry the same memory id, the copy
+  could win the index — `Alpha (1).md` sorts before `Alpha.md`, and a copy
+  indexed first kept its entry when the original arrived — so a correction
+  could disappear from recall. When one name extends the other, the shorter
+  name (the original) now keeps the entry, at startup and in the watcher; the
+  check reads no words. Other duplicates are handled as before (#1485).
 - Releases: `publish-release-set.mjs --verify` now waits up to 20 minutes
   (was five) for npm to serve a fresh release, and asks again after a failed
-  registry read instead of failing the release; on 1.2.0 a package appeared
-  only after the old window had closed and `promote` had to be rerun (#1076).
+  registry read. A failed `latest` lookup remains a registry error, and a
+  hung npm process cannot outlast the verification window (#1076).
 - OAuth: a burst of anonymous client registrations can no longer push out a
   client that is in the middle of signing in (an open sign-in page or a code
   not yet exchanged); when every slot is busy, a new registration is refused.
@@ -155,16 +244,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Windows: the offer to install the `bastra` command at the end of the setup
   runs npm through `node.exe` and npm's `npm-cli.js`, like `bastra update`,
   instead of starting `npm.cmd`, which current Node refuses without a shell
-  (#1274). Checked with a simulated Windows platform only.
+  (#1274). Setup recognizes the npm directory on PATH regardless of case.
+  Checked with a simulated Windows platform only.
 - Web UI switched off: the vault image and the import count no longer answer;
   `/ui/health` (the same answer as `/health`) and the address refresh the CLI
   uses stay open on purpose (#1571).
 - Live updates: many private changes in a short time no longer push public
   changes out of the update buffer before a caller without private access has
-  fetched them (#1605).
+  fetched them (#1605). When a memory becomes private, callers without
+  private access also stop receiving its buffered history (#1618). Graph and
+  semantic views recheck visibility before returning data from an overlapping
+  read (#1617).
 - `bastra doctor` names a link or another account's entry inside the archive
   directory on the archive line, the same entry the archiving `rm` stops at
-  (#1606).
+  (#1606). It also reports an unreadable archive directory and continues its
+  other checks.
 - Lock and marker files in the vault folder (save claims, area marks), the
   update-check cache and staged marker, the task comparison marker and the
   vault care list are read without following a link or waiting on a FIFO; a
@@ -180,7 +274,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   note (a live update), the cursor, the selection and the field's scroll
   place stay where they were (#1610). The report store now keeps fields a
   later version adds instead of refusing the whole store, so going back one
-  version no longer locks you out of your reports from now on (#1611).
+  version no longer locks you out of your reports from now on (#1611). Search
+  handles Unicode compatibility letters regardless of case, and older search
+  responses cannot replace results for the current input (#1597).
 - Web UI: changing the time window while the lens is covered by the memory
   browser no longer stops the lens from drawing; the replay starts when the
   cover closes (#1552). Two identical vault-care flags on one memory keep
@@ -194,27 +290,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   store is above 75 % of its limit, as long as it makes the store smaller, so
   a full store can be cleared again. The automatic time evaluation no longer
   uses the space kept for the owner's own control operations; it only uses it
-  for the one history row that switches a full task off (#1599). A chat
-  announcement left behind by a crash between claiming and sending no longer
-  hides the reminder for good: after five minutes it is announced again and
-  shows on the next contact; once sending may have begun, it is never
-  announced twice (#1600). Source errors and review reasons stored in a task
-  are English (#1602).
+  for the one history row that switches a full task off (#1599). Already due
+  reminders still reach their delivery paths when a new evaluation runs out
+  of space. After five minutes, a reminder is eligible for chat delivery again
+  when a crash occurred before sending. Once sending may have begun, the
+  claim prevents another announcement, including when upgrading with an
+  older claim of uncertain delivery (#1600). Source errors and review
+  reasons stored in a task are English (#1602).
 - Hooks: the file-size note before an edit has its own deadline (a quarter of
   the lane budget); a slow disk can no longer spend the time of the recall
-  that follows. Measured over 1,741 repository files: median 0.4 ms, max
-  5.4 ms, against a lane median of 47 ms (#1538).
+  that follows. A named pipe no longer keeps the hook running past that
+  deadline (#1538).
 - Hooks: every hook client waits until its answer is fully written before it
   exits. On macOS and Linux a large answer read slowly by the host could be
-  cut off, because writes to a pipe are asynchronous there (#1573).
+  cut off, because writes to a pipe are asynchronous there. A closed output
+  pipe is handled without an unhandled stream error (#1573).
+- Session start names deferred context even if the required sections exceed
+  the budget. When many sections are deferred, the notice can show their
+  count (#1639).
 - `bastra logs --stats` judges the session lane against the 1,500 ms
   SessionStart budget it runs with, not 500 ms (#1564).
 - Telemetry: old recall rows from a tool lane (such as the fixed session-start
   queries) are no longer counted as agent recalls in the demand-gap report
   (#1266).
 
+- Installer backups are private: `bastra install` and `bastra doctor --fix`
+  write `*.bak-<time>` copies of client configs with mode 600 from the first
+  write and never overwrite an earlier backup; the same holds for
+  `bastra rules` and the copies `bastra update` keeps of locally modified
+  files. Existing backups are left as they are (#1524).
+- **Reviewed-miss harvester: five edge cases.** A byte-order mark no longer
+  costs a transcript its first record; subagent (`isSidechain`) records are
+  skipped; a load in the same message as a second recall is judged only
+  against the results it could see; a recall after a slash command counts in
+  `transcript_recalls`; and `hit_count` above zero next to an empty `hits`
+  list is no longer read as an empty pool (#1126).
+- **Invalid JSON in the `daemon.env` setting blocks Apply again.** Since the
+  new web UI, an invalid edit was only marked red, and Apply stored the last
+  valid text typed before it instead of what the field showed. Apply and the
+  daemon restart are refused again while the field holds invalid JSON: the
+  bar names the problem and the cursor jumps into the field. Correcting the
+  text or clearing the field allows Apply; the invalid text survives a
+  refresh of the settings view. Even when it is the only edit, the change
+  list shows the error and offers a reset without displaying the field's
+  contents.
+- **Task errors and review notes in the web UI follow the UI language.**
+  Stored task error and review texts are English (#1602). The task details
+  and the failure column now show them in German or English by their fixed
+  code: source limits and timeouts, an unreachable source, a full task
+  history, a time that does not exist because of a clock change, a changed or
+  ended bound decision, reminders from the chat being off, and the archive's
+  execution failure. A text without a known code is shown as stored.
+- Conflict marking checks whether the caller can see the target before
+  preparing a preview or writing a conflict block. Preview and save now
+  apply the same guard when a previously known vault is missing (#1484, #464).
+- The app bridge validates the RPC method as a string before routing.
+- The installed assistant-address helper loads its settings reader from its
+  own runtime directory so it can serve the UI outside the npm installation.
+- `bastra save` preserves UTF-8 characters from piped input when their bytes
+  arrive in separate chunks (#1492).
+- Restore the requirement for a substantive reason to the rulebook
+  exception tool description, and clarify the stable-preference exception
+  in the memory-save guidance.
+- Evaluation keeps both statements of a typed pair on the same side of
+  the development/holdout boundary by excluding pairs that cross it. Run
+  archiving keeps an output named `SHA256SUMS` separate from its checksum
+  list (#1578, #503).
+
 ### Internal
 
+- **Six import cycles gone, task CLI and task evaluation cut along their
+  decisions: same behaviour** (#1515 B1–B7, #1518, #1514, #1520 D6, #1526).
+  Shared pieces moved into small modules below their users (lean summary cut,
+  `commons-store.ts`, `rulebook-round-state.ts`, `draft-use-proof.ts`,
+  `task-canonical.ts`/`task-source-file.ts`, `cli/task-cli-call.ts`); the
+  backend no longer imports from `cli/`. `bastra tasks` dispatches through a
+  handler table, pinned per sub-command (daemon calls, output, exit code) by a
+  characterization test. The task snapshot evaluation and the task action
+  transaction run as one function per decision. The draft search snapshot uses
+  the store's expiry rule. Cycle baseline 39 → 27 edges.
+- **Settings, embedding provider and bridge: same behaviour, less branching**
+  (#1510, #1529, #1520 D7). `bastra config get|set` uses a table per key
+  instead of two long switch statements; its output and stored settings are
+  pinned per key by a characterization test. The thin-client feature read
+  (tasks, telemetry) takes the data directory from the shared host paths and
+  parses in one small function. The daemon and the app bridge build their
+  embedding provider in one place (`embedding-provider.ts`; only the daemon
+  sends Ollama `keep_alive`, as before). The bridge's request methods live in
+  `bridge-methods.ts`; a test pins every method's reply before and after.
 - **Invariants: the product's promises in one catalog and one command**
   (#1570). `docs/invariants.md` lists 44 promises whose breach would harm a
   user, grouped by area: no silent data loss on save and edit, private
@@ -257,6 +420,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `redactSecrets` is split into one step per pattern family; every function
   is within the complexity limits and the output is byte-identical on the
   frozen corpus. `bastra logs` moved out of the CLI dispatch table (#1528).
+- **Unit tests for the panels and the status line** (#1490): the three panel
+  designs (Classic, Orbital, Ember) are checked for exact width, colour on
+  and off and their content in every session state, the Codex panel data for
+  each source state, the Codex transcript reader for each record type and the
+  TUI status line segments; golden digests pin the full output.
+- The Codex transcript reader, the Codex panel's data preparation and the TUI
+  segment resolution are split into steps within the complexity limits; the
+  rendered status line and panel data are byte-identical (#1530).
+- Five tests that needed the repository's own `.git` now build their git
+  folder in a temp directory, so the suite also runs in a copy of the code
+  without `.git`, for example from an archive (#1488).
+- Gold-set runs use a fixed reference date for the staleness step
+  (`--reference-time`, default 2026-11-15) and report a second set of numbers
+  at the day of the run, so runs on different days are comparable (#1568).
+- `--archive` on `longmemeval-run`, `rerank-replay`, `rerank-longmemeval` and
+  `rerank-pool-coverage` files the `--out` artefact under
+  `~/.bastra/<harness>-runs/<date>/` with a `SHA256SUMS` line; the gold-set
+  runner writes `SHA256SUMS` into its run directory (#503).
+- `packages/eval/scripts/fingerprint-history.mjs` places a registered source
+  fingerprint in git history; `registrations/fingerprint-map-1536.json` maps
+  the fingerprints the one-time reformatting changed (#1536).
+- `tools/draft-judge-eval/label.mts`: label captured draft-check examples by
+  hand (blind to the model's verdict, stratified by verdict class, one
+  statement in five held out); the labels are the reserved `human` records of
+  the local training capture file (#1578).
+- One shared seeded random generator for the eval split, control arm and
+  bootstrap, with its sequence pinned by a test (#1520).
+- Report on associative gold-set misses:
+  `packages/eval/reports/associative-misses-1491-2026-11-17.md` (#1491).
+- **Hook transport and lanes cut along their steps: same behaviour**
+  (#1508, #1525, #1513). Every hook client (node clients, `hook.ts`, the
+  compiled stub) now uses one wire transport, `hook-transport.ts`; the
+  daemon's own loopback calls (session context, floors, taxonomy, health,
+  drift, the hinted ping) share `prompt-loopback.ts`. `runWriteLane` runs
+  named steps from `write-lane-hints.ts` and `write-lane-code.ts`; the gate
+  lane's locked state mutation runs named steps from `gate-lane-claims.ts`;
+  `runHookRecall`'s stage timings, event-loop probe and telemetry row live in
+  `hook-recall-measure.ts`, its shadow measurements in
+  `hook-recall-shadow.ts`. Pinned by golden-master tests recorded on the
+  unsplit code (`write-lane-golden`, `gate-lane-state-golden`,
+  `hook-recall-golden`, `hook-transport-contract`,
+  `loopback-helpers-contract`).
 
 ## [1.2.1] — 2026-11-16
 

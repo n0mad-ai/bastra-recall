@@ -462,3 +462,26 @@ query's top hit** side by side. They are 70.3 and 163.9 on the same run. Print
 the first under the second's name and a reader concludes the top-hit median
 moved when it did not — it is still the structural ceiling, exactly where #302's
 own table put it.
+
+## Gold-set runs over time, and keeping the evidence (`src/goldset-run.ts`)
+
+The staleness step of the search reads a clock. A gold-set run used to take
+today's date, so the same candidate lists gave R@3 225, 170 or 150 depending on
+the day (#1568). Every run now ranks at a fixed reference time,
+`GOLDSET_REFERENCE_TIME` (2026-11-15) unless `--reference-time <ISO date>` says
+otherwise, and scores the main arm a second time at the wall clock of the run.
+`results.json` carries both: the comparable numbers at `reference_time`, and
+`today` beside them so the effect of ageing stays visible. Registrations name
+the reference time.
+
+The run directory under `BASTRA_EVAL_RUNS_DIR` (default `~/.bastra/eval-runs`)
+gets a `SHA256SUMS` file. The other runners (`longmemeval-run`,
+`rerank-replay`, `rerank-longmemeval`, `rerank-pool-coverage`) take `--archive`:
+the `--out` artefact is copied to `~/.bastra/<harness>-runs/<date>/`
+(root: `BASTRA_EVAL_ARCHIVE_DIR`), never overwriting an archived file, with a
+`SHA256SUMS` line, and the archived path is printed (#503).
+
+Source fingerprints: runners that hash their own source are matched to git
+history by `node scripts/fingerprint-history.mjs [<sha256>]`;
+`registrations/fingerprint-map-1536.json` maps the hashes the one-time
+reformatting changed (#1536).

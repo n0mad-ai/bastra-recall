@@ -18,21 +18,15 @@ import {
   Vault,
   SearchIndex,
   EmbeddingIndex,
-  OllamaEmbeddingProvider,
   RelatedEnricher,
   TriggerExpander,
   type EmbeddingProvider,
 } from "@bastra-recall/core";
 import * as path from "node:path";
 import type { Telemetry } from "./telemetry.js";
-import {
-  embeddingStatusLine,
-  cloudConsentNotice,
-  type EmbeddingStatus,
-  type EmbeddingSource,
-} from "./embedding-status.js";
-import { cloudEmbeddingProvider } from "./embedding-cloud.js";
-import { resolveEmbeddingChoice, resolveGenerationModel, getBatterySaver } from "./settings.js";
+import { embeddingStatusLine, cloudConsentNotice, type EmbeddingStatus } from "./embedding-status.js";
+import { resolveEmbedding, type OllamaInfo } from "./embedding-provider.js";
+import { resolveGenerationModel, getBatterySaver } from "./settings.js";
 import { batterySaverEnabled, createPowerMonitor, type PowerMonitor } from "./power-source.js";
 import { ollamaChat } from "./learned-recall/reranker.js";
 import { envInt, envFloat, envBool } from "./env.js";
@@ -77,7 +71,17 @@ export async function startEmbeddings(opts: {
   // Beim Boot einmal gelesen, damit das Profil einen Neustart überlebt. Ein
   // Fehlschlag ist ein leeres Profil, kein Bootfehler.
   await latencyProfile.load().catch(() => {});
-  const { provider: rawProvider, status: embeddingStatus, ollama } = await resolveEmbedding();
+  const {
+    provider: rawProvider,
+    status: embeddingStatus,
+    ollama,
+  } = await resolveEmbedding({
+    keepAlive: true,
+    onInvalidEnv: (raw) =>
+      console.error(
+        `[bastra-recall] ignoring invalid BASTRA_EMBEDDING_PROVIDER ${JSON.stringify(raw)} — falling through to cli-settings`
+      ),
+  });
   console.error(embeddingStatusLine(embeddingStatus));
   // #520: an installation that used to ride the OPENAI_API_KEY fallback must
   // see WHY it is on BM25 now, instead of degrading silently.
@@ -315,55 +319,4 @@ export async function startEmbeddings(opts: {
   };
 }
 
-export interface OllamaInfo {
-  baseURL: string;
-  model: string;
-  keepAlive: string | number;
-}
-
-/**
- * Resolve the embedding provider. The PRECEDENCE (env > cli-settings > none)
- * lives in ONE shared place — resolveEmbeddingChoice in settings.ts, also used
- * by bridge.ts and the CLI (#79) — this function only turns the resolved name
- * into a provider instance + /health status. The cloud provider is built by
- * the one shared gate in embedding-cloud.ts (#520).
- */
-async function resolveEmbedding(): Promise<{
-  provider: EmbeddingProvider | null;
-  status: EmbeddingStatus;
-  ollama?: OllamaInfo;
-}> {
-  const choice = await resolveEmbeddingChoice({
-    onInvalidEnv: (raw) =>
-      console.error(
-        `[bastra-recall] ignoring invalid BASTRA_EMBEDDING_PROVIDER ${JSON.stringify(raw)} — falling through to cli-settings`
-      ),
-  });
-  if (choice.provider === "ollama") return ollamaEmbedding(choice.source);
-  const cloud = cloudEmbeddingProvider(choice);
-  if (cloud) return { provider: cloud, status: { on: true, providerId: cloud.id, source: choice.source } };
-  return offEmbedding(choice.source);
-}
-
-function ollamaEmbedding(source: EmbeddingSource): {
-  provider: EmbeddingProvider;
-  status: EmbeddingStatus;
-  ollama: OllamaInfo;
-} {
-  const baseURL = process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434";
-  const model = process.env.BASTRA_EMBEDDING_MODEL ?? "embeddinggemma";
-  const dimEnv = process.env.BASTRA_EMBEDDING_DIM;
-  const parsed = dimEnv ? Number.parseInt(dimEnv, 10) : undefined;
-  // Number.isFinite guard: `NaN ?? 768` keeps NaN (NaN isn't nullish), which
-  // would poison the index dim. A non-numeric env value → fall back to default.
-  const dim = parsed !== undefined && Number.isFinite(parsed) ? parsed : undefined;
-  // keep_alive pro Embed-Request (#78 Power-Plan): hält das Modell während
-  // aktiver Arbeit warm, ohne es für immer im RAM zu pinnen.
-  const keepAlive = process.env.BASTRA_OLLAMA_KEEP_ALIVE ?? "10m";
-  const provider = new OllamaEmbeddingProvider({ baseURL, model, dim, keepAlive });
-  return { provider, status: { on: true, providerId: provider.id, source }, ollama: { baseURL, model, keepAlive } };
-}
-
-function offEmbedding(source: EmbeddingSource): { provider: null; status: EmbeddingStatus } {
-  return { provider: null, status: { on: false, providerId: null, source } };
-}
+export type { OllamaInfo };

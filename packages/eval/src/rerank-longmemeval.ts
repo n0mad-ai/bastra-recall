@@ -52,6 +52,7 @@ import { MODELS, loadCrossEncoder, type PassageMode } from "./rerank-model.js";
 import { NS, PRIMARY, rankArm, checkBatchInvariance } from "./rerank-replay.js";
 import { recallAny } from "./rerank-metrics.js";
 import { assignPoolBuckets, countIntervals, reportArm, served, type ArmReport, type CaseRow } from "./rerank-report.js";
+import { archiveIfRequested, takeArchiveFlag } from "./run-archive.js";
 
 /** #500's default, and the k its published figures were produced at. */
 const LME_K = 20;
@@ -64,9 +65,12 @@ interface Args {
   limit: number;
   out: string | null;
   seed: number;
+  /** #503: also file the --out artefact under ~/.bastra/rerank-longmemeval-runs/. */
+  archive: boolean;
 }
 
-function parseArgs(argv: string[]): Args {
+function parseArgs(all: string[]): Args {
+  const { archive, rest: argv } = takeArchiveFlag(all);
   const a: Args = {
     corpus: path.join(os.homedir(), ".cache", "longmemeval", "longmemeval_s_cleaned.json"),
     models: ["en-de"],
@@ -74,6 +78,7 @@ function parseArgs(argv: string[]): Args {
     limit: 0,
     out: null,
     seed: 20260909,
+    archive,
   };
   for (let i = 0; i < argv.length; i++) {
     const f = argv[i];
@@ -288,6 +293,7 @@ async function main(): Promise<void> {
       { mode: 0o600 }
     );
     console.error(`[rerank-lme] wrote ${args.out}`);
+    archiveIfRequested(args.archive, "rerank-longmemeval", [args.out]);
   }
 }
 

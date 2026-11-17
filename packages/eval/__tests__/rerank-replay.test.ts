@@ -2,15 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import {
-  mean,
-  pairedComparison,
-  recallAny,
-  firstExpectedRank,
-  rerankWindow,
-  seededRandom,
-  sliceBy,
-} from "../src/rerank-metrics.js";
+import { mean, pairedComparison, recallAny, firstExpectedRank, rerankWindow, sliceBy } from "../src/rerank-metrics.js";
+import { seededRandom } from "../src/seeded-random.js";
 import {
   BODY_CHARS,
   CACHE_DIR,

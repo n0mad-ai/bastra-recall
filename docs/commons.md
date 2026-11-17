@@ -34,7 +34,7 @@ clone is loaded **read-only** as a second BM25 index; its hits are fused into
 
 - Rank: `commonsRankFactor` = baseline `0.8`, raised by independent `works`
   (up to +0.15), lowered by `fails`, clamped to `[0.5, 0.95]`
-  (`packages/daemon/src/cli/commons.ts:138`). A recipe can never outrank a
+  (`packages/daemon/src/commons-store.ts:86`). A recipe can never outrank a
   personal hit, nor disappear entirely.
 - On an **id collision**, the personal memory wins — the commons hit is dropped
   (`packages/daemon/src/tool-handlers.ts:244`).
@@ -337,7 +337,8 @@ inside recipes: CC0 1.0 (paste into any codebase, no attribution).
 
 ### Key files
 
-- `packages/daemon/src/cli/commons.ts` — enable/update/verify, rank factor, verifier id
+- `packages/daemon/src/cli/commons.ts` — enable/update/verify, verifier id
+- `packages/daemon/src/commons-store.ts` — clone path, verification records, rank factor (read by the daemon)
 - `packages/daemon/src/cli/bridges.ts` — bridges CLI (enable/mint/harvest/contribute)
 - `packages/daemon/src/learned-recall/bridges.ts` — Bridge type, mint, scrub, pool
 - `packages/daemon/src/learned-recall/harvest.ts` — reach reconstruction + harvest
@@ -373,7 +374,7 @@ Klon **nur lesend** als zweiter BM25-Index geladen; seine Treffer fließen unter
 
 - Rang: `commonsRankFactor` = Basiswert `0.8`, erhöht durch unabhängige `works`
   (bis zu +0.15), gesenkt durch `fails`, begrenzt auf `[0.5, 0.95]`
-  (`packages/daemon/src/cli/commons.ts:138`). Ein Rezept kann nie über einem
+  (`packages/daemon/src/commons-store.ts:86`). Ein Rezept kann nie über einem
   persönlichen Treffer landen und auch nie ganz verschwinden.
 - Bei einer **ID-Kollision** gewinnt die persönliche Erinnerung — der Commons-Treffer wird verworfen
   (`packages/daemon/src/tool-handlers.ts:244`).
@@ -688,7 +689,8 @@ in Rezepten: CC0 1.0 (in jede Codebasis einfügbar, ohne Namensnennung).
 
 ### Wichtige Dateien
 
-- `packages/daemon/src/cli/commons.ts` — enable/update/verify, Rangfaktor, Verifizierer-ID
+- `packages/daemon/src/cli/commons.ts` — enable/update/verify, Verifizierer-ID
+- `packages/daemon/src/commons-store.ts` — Klon-Pfad, Verifikationseinträge, Rangfaktor (liest der Daemon)
 - `packages/daemon/src/cli/bridges.ts` — Bridges-CLI (enable/mint/harvest/contribute)
 - `packages/daemon/src/learned-recall/bridges.ts` — Bridge-Typ, Erzeugen, Bereinigen, Pool
 - `packages/daemon/src/learned-recall/harvest.ts` — Rekonstruktion der Treffer + Ernte

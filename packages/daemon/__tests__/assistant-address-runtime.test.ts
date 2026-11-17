@@ -24,7 +24,6 @@ async function fixture(t: test.TestContext) {
     "assistant-address-name",
     "assistant-address-files",
     "http-auth",
-    "runtime-feature-settings",
   ]) {
     const text = await readFile(new URL(`../src/${name}.ts`, import.meta.url), "utf8");
     await writeFile(
@@ -260,10 +259,9 @@ test("DB-only override settings serve UI through the copied runtime without inhe
     version = join(o.runtimeDir, "versions", current.version);
   assert.equal(current.databasePath, database);
   assert.equal(existsSync(join(version, "runtime-settings.js")), true);
-  assert.doesNotMatch(
-    await readFile(join(version, "runtime-feature-settings.js"), "utf8"),
-    /@bastra-recall\/core\/runtime-settings/
-  );
+  const gateway = await readFile(join(version, "assistant-address-gateway.js"), "utf8");
+  assert.match(gateway, /from ["']\.\/runtime-settings\.js["']/);
+  assert.doesNotMatch(gateway, /@bastra-recall\/core\//);
   const port = await accepted(t, o, "127.0.0.1", 0, { BASTRA_DB_PATH: undefined });
   const response = await call(port);
   assert.equal(response.status, 200);
@@ -357,7 +355,7 @@ test("daemon startup refreshes changed complete protocol-2 runtimes without syst
   assert.equal(after.daemonUrl, `http://127.0.0.1:${handle.port}`);
   assert.equal(
     await readFile(join(o.runtimeDir, "versions", after.version, "assistant-address-gateway.js"), "utf8"),
-    fresh
+    fresh.replace('from "@bastra-recall/core/runtime-settings"', 'from "./runtime-settings.js"')
   );
   assert.equal(await readFile(o.helperPath, "utf8"), helper);
   assert.equal(admins, 0);

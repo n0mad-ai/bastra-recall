@@ -1,4 +1,5 @@
 import { printRulebookDoctorNote } from "./rulebook-note.js";
+import { printConflictCopiesNote } from "./conflict-copies-note.js";
 import {
   assistantAddressStatus,
   hasManagedAssistantAddress,
@@ -47,6 +48,7 @@ import { affectsFilesLines, defaultAffectsFilesIo } from "./affects-files-note.j
 import { defaultDerivedClaimsIo, derivedClaimsLines } from "./derived-claims-note.js";
 import { clientMemoryLines, findClientMemoryDirs } from "./client-memory.js";
 import { printFeaturesNote, type FeatureState } from "./features-note.js";
+import { printDeliveryNote } from "./doctor-delivery.js";
 import { cmdDoctorReplay } from "./doctor-replay.js";
 import { configuredState, daemonOriginLines } from "./daemon-origin-note.js";
 import { installCodeAwarenessStep } from "./code-cmd.js";
@@ -556,7 +558,12 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   await printBridgeLearningNote();
   await printClientMemoryNote(resolveVaultPath(args.vaultPath));
   const rulebookVault = await resolveVault({ dryRun: true, vaultPath: resolveVaultPath(args.vaultPath) });
-  if (!("error" in rulebookVault)) await printRulebookDoctorNote(rulebookVault.path);
+  if (!("error" in rulebookVault)) {
+    await printRulebookDoctorNote(rulebookVault.path);
+    await printConflictCopiesNote(rulebookVault.path);
+  }
+  // #1472: does the tool list reach each client, and what does it cost.
+  await printDeliveryNote(clientFeatures.map((c) => ({ surface: c.surface, mcpSurface: c.features.mcpSurface })));
   // What is switched off, as opposed to broken — never flips the exit code,
   // and --fix never turns a feature on.
   await printFeaturesNote(clientFeatures, resolveVaultPath(args.vaultPath));

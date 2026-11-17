@@ -8,6 +8,12 @@ interface Delivery {
   register(receipt: Receipt, deadline: number, kind: DeliveryKind): void;
 }
 const currentDelivery = new AsyncLocalStorage<Delivery>();
+
+/** In-process callers observe the lane document directly. */
+export function observesLaneContextDirectly(): boolean {
+  return currentDelivery.getStore() === undefined;
+}
+
 export async function confirmLaneDelivery(
   receipt: Receipt,
   deadline: number,

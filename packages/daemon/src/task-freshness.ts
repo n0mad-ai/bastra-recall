@@ -1,9 +1,8 @@
 import { privateContentComparison } from "./task-private-comparison.js";
-import { canonicalTaskValue } from "./task-canonical.js";
+import { canonicalTaskValue, taskValueHash } from "./task-canonical.js";
 import { taskValidityExpired } from "./task-validity.js";
 /** Registered bounded evidence only; verify_cmd is never executable. */
 import { realpath } from "node:fs/promises";
-import { openTaskSourceFile } from "./task-source-file.js";
 import { relative, resolve, isAbsolute } from "node:path";
 import { z } from "zod";
 import matter from "gray-matter";
@@ -18,7 +17,9 @@ import type { ToolDeps } from "./tool-deps.js";
 import type { Task, TaskStore, TaskSource } from "./task-schema.js";
 import { cleanText, readTaskStore, transactTaskStore } from "./task-store.js";
 import type { TaskServiceContext } from "./task-service.js";
-import { taskValueHash } from "./task-events.js";
+import { boundedTaskRead } from "./task-source-file.js";
+
+export { boundedTaskRead };
 export type TaskEvent = TaskStore["events"][number];
 export type Verification = NonNullable<Task["verification"]>;
 export interface TaskMemorySnapshot {
@@ -40,27 +41,6 @@ export function taskBindingHash(task: Task): string {
       ...(task.auto_resolve ? { auto_resolve: task.auto_resolve } : {}),
     })
   );
-}
-export async function boundedTaskRead(
-  path: string,
-  max: number,
-  strictUtf8 = false,
-  singleLink = false
-): Promise<string> {
-  const handle = await openTaskSourceFile(path);
-  try {
-    const info = await handle.stat(); // openTaskSourceFile already requires a regular file
-    if (singleLink && info.nlink !== 1) throw new Error("source has multiple hard links");
-    if (info.size > max) throw Object.assign(new Error("source byte budget"), { code: "source_budget" });
-    const bytes = Buffer.alloc(max + 1);
-    const result = await handle.read(bytes, 0, bytes.length, 0);
-    if (result.bytesRead > max) throw Object.assign(new Error("source byte budget"), { code: "source_budget" });
-    return strictUtf8
-      ? new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes.subarray(0, result.bytesRead))
-      : bytes.subarray(0, result.bytesRead).toString("utf8");
-  } finally {
-    await handle.close();
-  }
 }
 export function taskMemoryReader(deps: Pick<ToolDeps, "vault" | "vaultPath">) {
   return async (id: string, budget?: { max_bytes: number; timeout_ms: number }): Promise<TaskMemorySnapshot> => {

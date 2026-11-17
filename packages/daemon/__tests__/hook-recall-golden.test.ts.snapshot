@@ -1,0 +1,1007 @@
+exports[`#1513 golden master — MCP caller with scope filter and budget 1`] = `
+{
+  "payload": {
+    "hits": [],
+    "vault_size": 2,
+    "latency_ms": "<ms>",
+    "recall_id": "<uuid>",
+    "project_known": true,
+    "score_kind": "rrf",
+    "score_arms": [
+      "bm25",
+      "vector"
+    ],
+    "score_version": "rrf-2",
+    "truncated_by_budget": true,
+    "dropped_by_budget": 2
+  },
+  "rows": [
+    {
+      "kind": "hook_recall",
+      "session_id": "golden-session",
+      "recall_id": "<uuid>",
+      "query": "how do we deploy the release branch after the tag",
+      "topics": [],
+      "tool_name": null,
+      "project": "alpha",
+      "k": 3,
+      "scope": null,
+      "type": null,
+      "vault_size": 2,
+      "hit_count": 2,
+      "top_score": 108.197,
+      "hits": [
+        {
+          "id": "a",
+          "score": 108.197,
+          "type": "lesson",
+          "hop": "direct"
+        },
+        {
+          "id": "b",
+          "score": 104.918,
+          "type": "lesson",
+          "hop": "direct"
+        }
+      ],
+      "latency_ms_recall": "<ms>",
+      "latency_ms_total": "<ms>",
+      "recall_stages": {
+        "query_parse_ms": "<ms>",
+        "terms_emitted": 10,
+        "terms_unique": 9,
+        "bm25_search_ms": "<ms>",
+        "vector_wait_ms": "<ms>",
+        "vector_search_ms": "<ms>",
+        "rrf_fuse_ms": "<ms>",
+        "staleness_rank_ms": "<ms>",
+        "hops_expand_ms": "<ms>"
+      },
+      "shadow_route": {
+        "mode": "hybrid",
+        "estimated_lexical_ms": "<ms>",
+        "lexical_fits": true,
+        "unique_terms": 9
+      },
+      "scope_filter_mode": "shadow",
+      "dropped_scope_count": 1,
+      "dropped_scopes": [
+        "beta"
+      ],
+      "filter_project": "alpha",
+      "candidate_pool": [
+        {
+          "id": "a",
+          "score": 108.197,
+          "rank_bm25": 2,
+          "rank_vector": 1,
+          "content_hash": "<hash>"
+        },
+        {
+          "id": "b",
+          "score": 104.918,
+          "rank_bm25": 1,
+          "rank_vector": 2,
+          "content_hash": "<hash>"
+        }
+      ],
+      "score_kind": "rrf",
+      "score_arms": [
+        "bm25",
+        "vector"
+      ],
+      "score_version": "rrf-2",
+      "candidate_pool_score_kind": "rrf",
+      "candidate_pool_score_arms": [
+        "bm25",
+        "vector"
+      ],
+      "candidate_pool_score_version": "rrf-2",
+      "max_tokens": 60,
+      "dropped_by_budget": 2,
+      "payload_chars": 290,
+      "payload_tokens_est": 73,
+      "origin": "agent",
+      "turn_id": "<uuid>",
+      "turn_source": "inferred",
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "mcp",
+        "experiment_session": "1e591f4cbe50d9d3",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "stages": [
+    "query.parse",
+    "query.parse",
+    "vector.search",
+    "bm25.search",
+    "bm25.search",
+    "vector.search",
+    "rrf.fuse",
+    "rrf.fuse",
+    "staleness.rank",
+    "staleness.rank",
+    "hops.expand",
+    "hops.expand",
+    "done"
+  ]
+}
+`;
+
+exports[`#1513 golden master — caller asks lexical only 1`] = `
+{
+  "payload": {
+    "hits": [
+      {
+        "id": "b",
+        "title": "Rule b",
+        "type": "lesson",
+        "scope": "beta",
+        "summary": "deploy only after the tag and the approval",
+        "score": 42.461,
+        "matched_recall_when": true,
+        "anchor_strength": "weak",
+        "revision": "sha256:7bbdcf434f8f3b39"
+      },
+      {
+        "id": "a",
+        "title": "Rule a",
+        "type": "lesson",
+        "scope": "alpha",
+        "summary": "deploy over the release branch with a smoke test",
+        "score": 39.096,
+        "matched_recall_when": true,
+        "anchor_strength": "weak",
+        "revision": "sha256:dd89ece97ef231be"
+      }
+    ],
+    "vault_size": 2,
+    "latency_ms": "<ms>",
+    "recall_id": "<uuid>",
+    "score_kind": "bm25",
+    "score_arms": [
+      "bm25"
+    ],
+    "unfused": true
+  },
+  "rows": [
+    {
+      "kind": "hook_recall",
+      "session_id": "golden-session",
+      "recall_id": "<uuid>",
+      "query": "how do we deploy the release branch after the tag",
+      "topics": [],
+      "tool_name": null,
+      "project": null,
+      "k": 3,
+      "scope": null,
+      "type": null,
+      "vault_size": 2,
+      "hit_count": 2,
+      "top_score": 42.461,
+      "hits": [
+        {
+          "id": "b",
+          "score": 42.461,
+          "type": "lesson",
+          "hop": "direct"
+        },
+        {
+          "id": "a",
+          "score": 39.096,
+          "type": "lesson",
+          "hop": "direct"
+        }
+      ],
+      "latency_ms_recall": "<ms>",
+      "latency_ms_total": "<ms>",
+      "recall_stages": {
+        "query_parse_ms": "<ms>",
+        "terms_emitted": 10,
+        "terms_unique": 9,
+        "bm25_search_ms": "<ms>",
+        "staleness_rank_ms": "<ms>",
+        "hops_expand_ms": "<ms>"
+      },
+      "shadow_route": {
+        "mode": "hybrid",
+        "estimated_lexical_ms": "<ms>",
+        "lexical_fits": true,
+        "unique_terms": 9
+      },
+      "candidate_pool": [
+        {
+          "id": "b",
+          "score": 42.461,
+          "content_hash": "<hash>"
+        },
+        {
+          "id": "a",
+          "score": 39.096,
+          "content_hash": "<hash>"
+        }
+      ],
+      "score_kind": "bm25",
+      "score_arms": [
+        "bm25"
+      ],
+      "candidate_pool_score_kind": "bm25",
+      "candidate_pool_score_arms": [
+        "bm25"
+      ],
+      "lexical_only": true,
+      "turn_id": "<uuid>",
+      "turn_source": "inferred",
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "unknown",
+        "experiment_session": "1e591f4cbe50d9d3",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "stages": [
+    "query.parse",
+    "query.parse",
+    "bm25.search",
+    "bm25.search",
+    "staleness.rank",
+    "staleness.rank",
+    "hops.expand",
+    "hops.expand",
+    "done"
+  ]
+}
+`;
+
+exports[`#1513 golden master — hybrid machine, ordinary query 1`] = `
+{
+  "payload": {
+    "hits": [
+      {
+        "id": "a",
+        "title": "Rule a",
+        "type": "lesson",
+        "scope": "alpha",
+        "summary": "deploy over the release branch with a smoke test",
+        "score": 108.197,
+        "matched_recall_when": true,
+        "anchor_strength": "weak",
+        "revision": "sha256:dd89ece97ef231be"
+      },
+      {
+        "id": "b",
+        "title": "Rule b",
+        "type": "lesson",
+        "scope": "beta",
+        "summary": "deploy only after the tag and the approval",
+        "score": 104.918,
+        "matched_recall_when": true,
+        "anchor_strength": "weak",
+        "revision": "sha256:7bbdcf434f8f3b39"
+      }
+    ],
+    "vault_size": 2,
+    "latency_ms": "<ms>",
+    "recall_id": "<uuid>",
+    "score_kind": "rrf",
+    "score_arms": [
+      "bm25",
+      "vector"
+    ],
+    "score_version": "rrf-2"
+  },
+  "rows": [
+    {
+      "kind": "hook_recall",
+      "session_id": "golden-session",
+      "recall_id": "<uuid>",
+      "query": "how do we deploy the release branch after the tag",
+      "topics": [],
+      "tool_name": null,
+      "project": null,
+      "k": 3,
+      "scope": null,
+      "type": null,
+      "vault_size": 2,
+      "hit_count": 2,
+      "top_score": 108.197,
+      "hits": [
+        {
+          "id": "a",
+          "score": 108.197,
+          "type": "lesson",
+          "hop": "direct"
+        },
+        {
+          "id": "b",
+          "score": 104.918,
+          "type": "lesson",
+          "hop": "direct"
+        }
+      ],
+      "latency_ms_recall": "<ms>",
+      "latency_ms_total": "<ms>",
+      "recall_stages": {
+        "query_parse_ms": "<ms>",
+        "terms_emitted": 10,
+        "terms_unique": 9,
+        "bm25_search_ms": "<ms>",
+        "vector_wait_ms": "<ms>",
+        "vector_search_ms": "<ms>",
+        "rrf_fuse_ms": "<ms>",
+        "staleness_rank_ms": "<ms>",
+        "hops_expand_ms": "<ms>"
+      },
+      "shadow_route": {
+        "mode": "hybrid",
+        "estimated_lexical_ms": "<ms>",
+        "lexical_fits": true,
+        "unique_terms": 9
+      },
+      "candidate_pool": [
+        {
+          "id": "a",
+          "score": 108.197,
+          "rank_bm25": 2,
+          "rank_vector": 1,
+          "content_hash": "<hash>"
+        },
+        {
+          "id": "b",
+          "score": 104.918,
+          "rank_bm25": 1,
+          "rank_vector": 2,
+          "content_hash": "<hash>"
+        }
+      ],
+      "score_kind": "rrf",
+      "score_arms": [
+        "bm25",
+        "vector"
+      ],
+      "score_version": "rrf-2",
+      "candidate_pool_score_kind": "rrf",
+      "candidate_pool_score_arms": [
+        "bm25",
+        "vector"
+      ],
+      "candidate_pool_score_version": "rrf-2",
+      "origin": "owner",
+      "turn_id": "<uuid>",
+      "turn_source": "inferred",
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "prompt",
+        "experiment_session": "1e591f4cbe50d9d3",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "stages": [
+    "query.parse",
+    "query.parse",
+    "vector.search",
+    "bm25.search",
+    "bm25.search",
+    "vector.search",
+    "rrf.fuse",
+    "rrf.fuse",
+    "staleness.rank",
+    "staleness.rank",
+    "hops.expand",
+    "hops.expand",
+    "done"
+  ]
+}
+`;
+
+exports[`#1513 golden master — hybrid machine, short query in router shadow 1`] = `
+{
+  "payload": {
+    "hits": [
+      {
+        "id": "a",
+        "title": "Rule a",
+        "type": "lesson",
+        "scope": "alpha",
+        "summary": "deploy over the release branch with a smoke test",
+        "score": 108.197,
+        "matched_recall_when": true,
+        "anchor_strength": "weak",
+        "revision": "sha256:dd89ece97ef231be"
+      },
+      {
+        "id": "b",
+        "title": "Rule b",
+        "type": "lesson",
+        "scope": "beta",
+        "summary": "deploy only after the tag and the approval",
+        "score": 104.918,
+        "matched_recall_when": true,
+        "anchor_strength": "weak",
+        "revision": "sha256:7bbdcf434f8f3b39"
+      }
+    ],
+    "vault_size": 2,
+    "latency_ms": "<ms>",
+    "recall_id": "<uuid>",
+    "score_kind": "rrf",
+    "score_arms": [
+      "bm25",
+      "vector"
+    ],
+    "score_version": "rrf-2"
+  },
+  "rows": [
+    {
+      "kind": "hook_recall",
+      "session_id": "golden-session",
+      "recall_id": "<uuid>",
+      "query": "deploy",
+      "topics": [],
+      "tool_name": null,
+      "project": null,
+      "k": 3,
+      "scope": null,
+      "type": null,
+      "vault_size": 2,
+      "hit_count": 2,
+      "top_score": 108.197,
+      "hits": [
+        {
+          "id": "a",
+          "score": 108.197,
+          "type": "lesson",
+          "hop": "direct"
+        },
+        {
+          "id": "b",
+          "score": 104.918,
+          "type": "lesson",
+          "hop": "direct"
+        }
+      ],
+      "latency_ms_recall": "<ms>",
+      "latency_ms_total": "<ms>",
+      "recall_stages": {
+        "query_parse_ms": "<ms>",
+        "terms_emitted": 1,
+        "terms_unique": 1,
+        "bm25_search_ms": "<ms>",
+        "vector_wait_ms": "<ms>",
+        "vector_search_ms": "<ms>",
+        "rrf_fuse_ms": "<ms>",
+        "staleness_rank_ms": "<ms>",
+        "hops_expand_ms": "<ms>"
+      },
+      "query_route": {
+        "arms": "bm25",
+        "reason": "short",
+        "unique_terms": 1,
+        "identifier_terms": 0,
+        "mode": "shadow",
+        "applied": false,
+        "would_save_ms": "<ms>"
+      },
+      "shadow_route": {
+        "mode": "hybrid",
+        "estimated_lexical_ms": "<ms>",
+        "lexical_fits": true,
+        "unique_terms": 1
+      },
+      "candidate_pool": [
+        {
+          "id": "a",
+          "score": 108.197,
+          "rank_bm25": 2,
+          "rank_vector": 1,
+          "content_hash": "<hash>"
+        },
+        {
+          "id": "b",
+          "score": 104.918,
+          "rank_bm25": 1,
+          "rank_vector": 2,
+          "content_hash": "<hash>"
+        }
+      ],
+      "score_kind": "rrf",
+      "score_arms": [
+        "bm25",
+        "vector"
+      ],
+      "score_version": "rrf-2",
+      "candidate_pool_score_kind": "rrf",
+      "candidate_pool_score_arms": [
+        "bm25",
+        "vector"
+      ],
+      "candidate_pool_score_version": "rrf-2",
+      "turn_id": "<uuid>",
+      "turn_source": "inferred",
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "unknown",
+        "experiment_session": "1e591f4cbe50d9d3",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "stages": [
+    "query.parse",
+    "query.parse",
+    "vector.search",
+    "bm25.search",
+    "bm25.search",
+    "vector.search",
+    "rrf.fuse",
+    "rrf.fuse",
+    "staleness.rank",
+    "staleness.rank",
+    "hops.expand",
+    "hops.expand",
+    "done"
+  ]
+}
+`;
+
+exports[`#1513 golden master — hybrid machine, short query routed live 1`] = `
+{
+  "payload": {
+    "hits": [
+      {
+        "id": "b",
+        "title": "Rule b",
+        "type": "lesson",
+        "scope": "beta",
+        "summary": "deploy only after the tag and the approval",
+        "score": 1.55,
+        "matched_recall_when": true,
+        "anchor_strength": "weak",
+        "revision": "sha256:7bbdcf434f8f3b39"
+      },
+      {
+        "id": "a",
+        "title": "Rule a",
+        "type": "lesson",
+        "scope": "alpha",
+        "summary": "deploy over the release branch with a smoke test",
+        "score": 1.514,
+        "matched_recall_when": true,
+        "anchor_strength": "weak",
+        "revision": "sha256:dd89ece97ef231be"
+      }
+    ],
+    "vault_size": 2,
+    "latency_ms": "<ms>",
+    "recall_id": "<uuid>",
+    "score_kind": "bm25",
+    "score_arms": [
+      "bm25"
+    ],
+    "unfused": true
+  },
+  "rows": [
+    {
+      "kind": "hook_recall",
+      "session_id": "golden-session",
+      "recall_id": "<uuid>",
+      "query": "deploy",
+      "topics": [],
+      "tool_name": null,
+      "project": null,
+      "k": 3,
+      "scope": null,
+      "type": null,
+      "vault_size": 2,
+      "hit_count": 2,
+      "top_score": 1.55,
+      "hits": [
+        {
+          "id": "b",
+          "score": 1.55,
+          "type": "lesson",
+          "hop": "direct"
+        },
+        {
+          "id": "a",
+          "score": 1.514,
+          "type": "lesson",
+          "hop": "direct"
+        }
+      ],
+      "latency_ms_recall": "<ms>",
+      "latency_ms_total": "<ms>",
+      "recall_stages": {
+        "query_parse_ms": "<ms>",
+        "terms_emitted": 1,
+        "terms_unique": 1,
+        "bm25_search_ms": "<ms>",
+        "staleness_rank_ms": "<ms>",
+        "hops_expand_ms": "<ms>"
+      },
+      "query_route": {
+        "arms": "bm25",
+        "reason": "short",
+        "unique_terms": 1,
+        "identifier_terms": 0,
+        "mode": "live",
+        "applied": true
+      },
+      "shadow_route": {
+        "mode": "hybrid",
+        "estimated_lexical_ms": "<ms>",
+        "lexical_fits": true,
+        "unique_terms": 1
+      },
+      "candidate_pool": [
+        {
+          "id": "b",
+          "score": 1.55,
+          "content_hash": "<hash>"
+        },
+        {
+          "id": "a",
+          "score": 1.514,
+          "content_hash": "<hash>"
+        }
+      ],
+      "score_kind": "bm25",
+      "score_arms": [
+        "bm25"
+      ],
+      "candidate_pool_score_kind": "bm25",
+      "candidate_pool_score_arms": [
+        "bm25"
+      ],
+      "turn_id": "<uuid>",
+      "turn_source": "inferred",
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "unknown",
+        "experiment_session": "1e591f4cbe50d9d3",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "stages": [
+    "query.parse",
+    "query.parse",
+    "bm25.search",
+    "bm25.search",
+    "staleness.rank",
+    "staleness.rank",
+    "hops.expand",
+    "hops.expand",
+    "done"
+  ]
+}
+`;
+
+exports[`#1513 golden master — lexical machine, prompt lane 1`] = `
+{
+  "payload": {
+    "hits": [
+      {
+        "id": "b",
+        "title": "Rule b",
+        "type": "lesson",
+        "scope": "beta",
+        "summary": "deploy only after the tag and the approval",
+        "score": 42.461,
+        "matched_recall_when": true,
+        "anchor_strength": "weak",
+        "revision": "sha256:7bbdcf434f8f3b39"
+      },
+      {
+        "id": "a",
+        "title": "Rule a",
+        "type": "lesson",
+        "scope": "alpha",
+        "summary": "deploy over the release branch with a smoke test",
+        "score": 39.096,
+        "matched_recall_when": true,
+        "anchor_strength": "weak",
+        "revision": "sha256:dd89ece97ef231be"
+      }
+    ],
+    "vault_size": 2,
+    "latency_ms": "<ms>",
+    "recall_id": "<uuid>",
+    "score_kind": "bm25",
+    "score_arms": [
+      "bm25"
+    ],
+    "unfused": true
+  },
+  "rows": [
+    {
+      "kind": "hook_recall",
+      "session_id": "golden-session",
+      "recall_id": "<uuid>",
+      "query": "how do we deploy the release branch after the tag",
+      "topics": [],
+      "tool_name": "UserPromptSubmit",
+      "project": null,
+      "k": 3,
+      "scope": null,
+      "type": null,
+      "vault_size": 2,
+      "hit_count": 2,
+      "top_score": 42.461,
+      "hits": [
+        {
+          "id": "b",
+          "score": 42.461,
+          "type": "lesson",
+          "hop": "direct"
+        },
+        {
+          "id": "a",
+          "score": 39.096,
+          "type": "lesson",
+          "hop": "direct"
+        }
+      ],
+      "latency_ms_recall": "<ms>",
+      "latency_ms_total": "<ms>",
+      "recall_stages": {
+        "query_parse_ms": "<ms>",
+        "terms_emitted": 10,
+        "terms_unique": 9,
+        "bm25_search_ms": "<ms>",
+        "staleness_rank_ms": "<ms>",
+        "hops_expand_ms": "<ms>"
+      },
+      "shadow_route": {
+        "mode": "lexical-full",
+        "estimated_lexical_ms": "<ms>",
+        "lexical_fits": true,
+        "unique_terms": 9
+      },
+      "candidate_pool": [
+        {
+          "id": "b",
+          "score": 42.461
+        },
+        {
+          "id": "a",
+          "score": 39.096
+        }
+      ],
+      "score_kind": "bm25",
+      "score_arms": [
+        "bm25"
+      ],
+      "candidate_pool_score_kind": "bm25",
+      "candidate_pool_score_arms": [
+        "bm25"
+      ],
+      "origin": "owner",
+      "turn_id": "<uuid>",
+      "turn_source": "session",
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "prompt",
+        "experiment_session": "1e591f4cbe50d9d3",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "stages": [
+    "query.parse",
+    "query.parse",
+    "bm25.search",
+    "bm25.search",
+    "staleness.rank",
+    "staleness.rank",
+    "hops.expand",
+    "hops.expand",
+    "done"
+  ]
+}
+`;
+
+exports[`#1513 golden master — nothing matches 1`] = `
+{
+  "payload": {
+    "hits": [],
+    "vault_size": 2,
+    "latency_ms": "<ms>",
+    "recall_id": "<uuid>",
+    "score_kind": "bm25",
+    "score_arms": [
+      "bm25"
+    ],
+    "unfused": true
+  },
+  "rows": [
+    {
+      "kind": "hook_recall",
+      "session_id": "golden-session",
+      "recall_id": "<uuid>",
+      "query": "zzqx unmatched",
+      "topics": [],
+      "tool_name": null,
+      "project": null,
+      "k": 3,
+      "scope": null,
+      "type": null,
+      "vault_size": 2,
+      "hit_count": 0,
+      "top_score": null,
+      "hits": [],
+      "latency_ms_recall": "<ms>",
+      "latency_ms_total": "<ms>",
+      "recall_stages": {
+        "query_parse_ms": "<ms>",
+        "terms_emitted": 2,
+        "terms_unique": 2,
+        "bm25_search_ms": "<ms>",
+        "staleness_rank_ms": "<ms>",
+        "hops_expand_ms": "<ms>"
+      },
+      "shadow_route": {
+        "mode": "lexical-full",
+        "estimated_lexical_ms": "<ms>",
+        "lexical_fits": true,
+        "unique_terms": 2
+      },
+      "score_kind": "bm25",
+      "score_arms": [
+        "bm25"
+      ],
+      "turn_id": "<uuid>",
+      "turn_source": "inferred",
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "unknown",
+        "experiment_session": "1e591f4cbe50d9d3",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "stages": [
+    "query.parse",
+    "query.parse",
+    "bm25.search",
+    "bm25.search",
+    "staleness.rank",
+    "staleness.rank",
+    "hops.expand",
+    "hops.expand",
+    "done"
+  ]
+}
+`;
+
+exports[`#1513 golden master — write lane with a tool input excerpt and topics 1`] = `
+{
+  "payload": {
+    "hits": [
+      {
+        "id": "b",
+        "title": "Rule b",
+        "type": "lesson",
+        "scope": "beta",
+        "summary": "deploy only after the tag and the approval",
+        "score": 42.461,
+        "matched_recall_when": true,
+        "anchor_strength": "weak",
+        "revision": "sha256:7bbdcf434f8f3b39"
+      },
+      {
+        "id": "a",
+        "title": "Rule a",
+        "type": "lesson",
+        "scope": "alpha",
+        "summary": "deploy over the release branch with a smoke test",
+        "score": 39.096,
+        "matched_recall_when": true,
+        "anchor_strength": "weak",
+        "revision": "sha256:dd89ece97ef231be"
+      }
+    ],
+    "vault_size": 2,
+    "latency_ms": "<ms>",
+    "recall_id": "<uuid>",
+    "score_kind": "bm25",
+    "score_arms": [
+      "bm25"
+    ],
+    "unfused": true
+  },
+  "rows": [
+    {
+      "kind": "hook_recall",
+      "session_id": "golden-session",
+      "recall_id": "<uuid>",
+      "query": "how do we deploy the release branch after the tag",
+      "topics": [
+        "deploy"
+      ],
+      "tool_name": "Edit",
+      "project": null,
+      "k": 3,
+      "scope": null,
+      "type": null,
+      "vault_size": 2,
+      "hit_count": 2,
+      "top_score": 42.461,
+      "hits": [
+        {
+          "id": "b",
+          "score": 42.461,
+          "type": "lesson",
+          "hop": "direct"
+        },
+        {
+          "id": "a",
+          "score": 39.096,
+          "type": "lesson",
+          "hop": "direct"
+        }
+      ],
+      "latency_ms_recall": "<ms>",
+      "latency_ms_total": "<ms>",
+      "recall_stages": {
+        "query_parse_ms": "<ms>",
+        "terms_emitted": 10,
+        "terms_unique": 9,
+        "bm25_search_ms": "<ms>",
+        "staleness_rank_ms": "<ms>",
+        "hops_expand_ms": "<ms>"
+      },
+      "shadow_route": {
+        "mode": "lexical-full",
+        "estimated_lexical_ms": "<ms>",
+        "lexical_fits": true,
+        "unique_terms": 9
+      },
+      "candidate_pool": [
+        {
+          "id": "b",
+          "score": 42.461,
+          "content_hash": "<hash>"
+        },
+        {
+          "id": "a",
+          "score": 39.096,
+          "content_hash": "<hash>"
+        }
+      ],
+      "score_kind": "bm25",
+      "score_arms": [
+        "bm25"
+      ],
+      "candidate_pool_score_kind": "bm25",
+      "candidate_pool_score_arms": [
+        "bm25"
+      ],
+      "origin": "tool",
+      "turn_id": "<uuid>",
+      "turn_source": "inferred",
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "1e591f4cbe50d9d3",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "stages": [
+    "query.parse",
+    "query.parse",
+    "bm25.search",
+    "bm25.search",
+    "staleness.rank",
+    "staleness.rank",
+    "hops.expand",
+    "hops.expand",
+    "done"
+  ]
+}
+`;

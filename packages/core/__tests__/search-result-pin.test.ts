@@ -42,6 +42,8 @@ class HashProvider implements EmbeddingProvider {
   }
 }
 
+const REFERENCE_TIME = new Date("2026-11-15T00:00:00Z");
+
 const QUERIES: [string, RecallOptions][] = [
   ["vault hook", {}],
   ["recall anchor budget", { k: 10 }],
@@ -99,7 +101,7 @@ async function writeFixture(dir: string): Promise<void> {
   const phrase = (n: number) => Array.from({ length: n }, pick).join(" ");
   for (let i = 0; i < 1000; i++) {
     const ageDays = i % 5 === 0 ? 200 : i % 3;
-    const ts = new Date(Date.now() - ageDays * 86400_000).toISOString();
+    const ts = new Date(REFERENCE_TIME.getTime() - ageDays * 86400_000).toISOString();
     const related = i % 7 === 0 ? `related_via:\n  - id: m${(i * 31) % 1000}\n    reason: test\n    score: 0.8` : "";
     const lines = [
       "---",
@@ -164,9 +166,10 @@ test("#1039: 20 fixed queries serve the pinned result order on the BM25 and the 
   const hybrid: { id: string }[][] = [];
   for (const [q, o] of QUERIES) {
     idx.setDemotions([]); // empties the query cache: every call takes the cold path
-    bm25.push(idx.recall(q, o));
+    const opts = { ...o, reference_time: REFERENCE_TIME };
+    bm25.push(idx.recall(q, opts));
     idx.setDemotions([]);
-    hybrid.push(await idx.recallHybrid(q, o));
+    hybrid.push(await idx.recallHybrid(q, opts));
   }
 
   assert.deepEqual(
@@ -181,6 +184,7 @@ test("#1039: 20 fixed queries serve the pinned result order on the BM25 and the 
     hybrid.flat().some((h) => (h as { mode?: string }).mode === "hybrid"),
     "the dense arm took part"
   );
-  assert.equal(hashIds(bm25), "3fbeef07735841ac", "BM25 result order changed");
-  assert.equal(hashIds(hybrid), "47c642b146ad6be7", "hybrid result order changed");
+  // #1567 deliberately changed the order by reducing the default age penalty.
+  assert.equal(hashIds(bm25), "74c08a161cb76a98", "BM25 result order changed");
+  assert.equal(hashIds(hybrid), "4de272ec6cf66beb", "hybrid result order changed");
 });

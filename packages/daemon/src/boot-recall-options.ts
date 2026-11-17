@@ -11,7 +11,7 @@ import {
   getSharedRecallLanguage,
   getSharedRecallLive,
 } from "./settings.js";
-import { commonsPath } from "./cli/commons.js";
+import { commonsPath } from "./commons-store.js";
 import { bridgesPath, migrateBridgesPool } from "./cli/bridges.js";
 import { BridgePool } from "./learned-recall/bridges.js";
 import { isSupportedLanguage, type SupportedLanguage } from "./learned-recall/language.js";

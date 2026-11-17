@@ -7,6 +7,7 @@ import { memoryRevision } from "./memory-mutate.js";
 import { isMarkdownFile } from "./markdown-file.js";
 import { vaultRootPresent } from "./vault-root-guard.js";
 import { type Memory, parseMemoryWith, NotAMemoryFile } from "./schema.js";
+import { extendsName, isConflictCopyName, type ConflictCopy } from "./sync-conflict.js";
 
 /**
  * A file could not be READ (ENOENT, EIO, EACCES, an unmaterialised cloud
@@ -178,17 +179,8 @@ export class Vault {
       // and reported `loaded: 1`; cleaning up the copy then took the winner
       // with it. First path wins deterministically, the rest are quarantined
       // out of the index and reported.
-      const claimed = this.memorys.get(r.memory.fm.id);
-      if (claimed) {
-        skipped.push({
-          path: r.file,
-          err: duplicateIdSkipMessage(r.memory.fm.id, claimed.filePath),
-        });
-        this.rememberDuplicate(r.memory.fm.id, r.file);
-        continue;
-      }
-      this.memorys.set(r.memory.fm.id, r.memory);
-      this.filePathToId.set(r.file, r.memory.fm.id);
+      const refused = this.claimAtInit(r.memory, r.file);
+      if (refused) skipped.push(refused);
     }
     return { loaded: this.memorys.size, skipped };
   }
@@ -382,6 +374,82 @@ export class Vault {
     else this.duplicatePaths.set(id, new Set([filePath]));
   }
 
+  /** Index one file at init, or say why it stays out (#240/A2.3, #1485). */
+  private claimAtInit(memory: Memory, file: string): { path: string; err: string } | undefined {
+    const claimed = this.memorys.get(memory.fm.id);
+    let refused: { path: string; err: string } | undefined;
+    // #1485: the shorter name keeps the id over a longer name next to it
+    // (`Alpha (1).md` sorts before `Alpha.md` and used to win the index).
+    if (claimed && extendsName(claimed.filePath, file)) {
+      refused = { path: claimed.filePath, err: this.yieldToOriginal(claimed, file) };
+    } else if (claimed) {
+      this.rememberDuplicate(memory.fm.id, file);
+      return { path: file, err: duplicateIdSkipMessage(memory.fm.id, claimed.filePath) };
+    }
+    this.memorys.set(memory.fm.id, memory);
+    this.filePathToId.set(file, memory.fm.id);
+    return refused;
+  }
+
+  /** May `filePath` hold `m`'s id? False when another file keeps it (#240/A2.3, #1485). */
+  private admitClaim(m: Memory, filePath: string, kind: "add" | "change"): boolean {
+    const claimed = this.memorys.get(m.fm.id);
+    // #1485: the original arriving after a longer-named copy of it takes the
+    // id back; the copy is quarantined like any other second file with this id.
+    if (claimed && extendsName(claimed.filePath, filePath)) {
+      // A different id this path held before goes first (no-op when none).
+      this.handleRemove(filePath);
+      console.warn(`[vault] ${this.yieldToOriginal(claimed, filePath)}`);
+      this.filePathToId.set(filePath, m.fm.id);
+    } else if (claimed && claimed.filePath !== filePath) {
+      // #355 follow-up: the skip fires before the A2.1 block below, so a
+      // file this vault knew under ANOTHER id — and whose id was just
+      // edited onto a claimed one — kept its old node in the map and in
+      // BM25 with the pre-edit body, while the file on disk no longer
+      // carried that id. Drop the file's old claim first (handleRemove
+      // already knows whether this path owns it and emits the remove);
+      // for a path that was never indexed this is a no-op.
+      this.handleRemove(filePath);
+      this.rememberDuplicate(m.fm.id, filePath);
+      if (!this.duplicateSkipLogged.has(filePath)) {
+        this.duplicateSkipLogged.add(filePath);
+        console.warn(
+          `[vault] ${kind} skipped (${basename(filePath)}): ` + duplicateIdSkipMessage(m.fm.id, claimed.filePath)
+        );
+      }
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * #1485: `copy` holds the id, but its name extends `originalPath`'s in the
+   * same folder — quarantine the copy so the original can take the id.
+   * Returns the line the caller reports.
+   */
+  private yieldToOriginal(copy: Memory, originalPath: string): string {
+    this.filePathToId.delete(copy.filePath);
+    this.fileStats.delete(copy.filePath);
+    this.rememberDuplicate(copy.fm.id, copy.filePath);
+    this.duplicateSkipLogged.add(copy.filePath);
+    return (
+      `${basename(copy.filePath)} carries the same id '${copy.fm.id}' as ${basename(originalPath)} next to it ` +
+      `and looks like a copy of it. Not indexed; compare the two files, keep what is right in ` +
+      `${basename(originalPath)} and remove the copy.`
+    );
+  }
+
+  /** #1485: every quarantined file that is a conflict copy of the indexed one. */
+  conflictCopies(): ConflictCopy[] {
+    const out: ConflictCopy[] = [];
+    for (const [id, paths] of this.duplicatePaths) {
+      const original = this.memorys.get(id)?.filePath;
+      if (!original) continue;
+      for (const copy of paths) if (isConflictCopyName(copy, original)) out.push({ id, copy, original });
+    }
+    return out;
+  }
+
   private forgetDuplicate(filePath: string): void {
     for (const [id, set] of this.duplicatePaths) {
       if (!set.delete(filePath)) continue;
@@ -468,25 +536,7 @@ export class Vault {
       // claim. If the winner is gone, handleRemove already dropped it, and
       // this path is free to take the id — that is how a leftover conflict
       // copy becomes the memory.
-      const claimed = this.memorys.get(m.fm.id);
-      if (claimed && claimed.filePath !== filePath) {
-        // #355 follow-up: the skip fires before the A2.1 block below, so a
-        // file this vault knew under ANOTHER id — and whose id was just
-        // edited onto a claimed one — kept its old node in the map and in
-        // BM25 with the pre-edit body, while the file on disk no longer
-        // carried that id. Drop the file's old claim first (handleRemove
-        // already knows whether this path owns it and emits the remove);
-        // for a path that was never indexed this is a no-op.
-        this.handleRemove(filePath);
-        this.rememberDuplicate(m.fm.id, filePath);
-        if (!this.duplicateSkipLogged.has(filePath)) {
-          this.duplicateSkipLogged.add(filePath);
-          console.warn(
-            `[vault] ${kind} skipped (${basename(filePath)}): ` + duplicateIdSkipMessage(m.fm.id, claimed.filePath)
-          );
-        }
-        return;
-      }
+      if (!this.admitClaim(m, filePath, kind)) return;
       // #240/A2.1: If the id changed, the vault dropped the old mapping but
       // emitted only `change(new)` — so SearchIndex and EmbeddingIndex never
       // learned the old id must go. The stale entry outlived reconcile() and

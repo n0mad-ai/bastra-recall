@@ -5,7 +5,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { request } from "node:http";
 import { mkdtemp, writeFile, readFile, rm, stat, readdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault, SearchIndex, AUTO_RELATED_START } from "@bastra-recall/core";
@@ -15,6 +16,12 @@ import { readSettings, mutateSettings, settingsFilePath } from "../src/settings-
 import { resetSaveFailures, saveMemoryHandler } from "../src/tool-handlers.js";
 import { createServer } from "node:http";
 import { handleUiMemoryEdit } from "../src/webui-memory-edit.js";
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => (resolve = done));
+  return { promise, resolve };
+}
 
 function memory(id: string, extra: string[] = [], body = `Body fixture ${id}.\n`): string {
   return [
@@ -96,7 +103,10 @@ async function fixture() {
   await mutateSettings(settingsFilePath(), (s) => ({ ...s, ui: { ...s.ui, enabled: true } }));
   const owner = (await stat(dir)).uid;
   const handles: Array<Awaited<ReturnType<typeof startHttpServer>>> = [];
-  const start = async (platform: NodeJS.Platform = "darwin") => {
+  const start = async (
+    platform: NodeJS.Platform = "darwin",
+    embeddingVectors?: () => ReadonlyMap<string, Float32Array> | null
+  ) => {
     const handle = await startHttpServer({
       port: 0,
       vault,
@@ -106,6 +116,7 @@ async function fixture() {
       toolDeps: { vault, search, telemetry, vaultPath: dir },
       documentWriteEnabled: false,
       embedding: { on: false, providerId: null, source: "none" },
+      embeddingVectors,
       localAccount: { platform, euid: () => owner, lookup: async () => owner },
     });
     handles.push(handle);
@@ -682,7 +693,12 @@ test("user fields: to private leaves the unproven views at once; from private on
 test("user fields: a sensitivity change drops the cached semantic layouts", async () => {
   const f = await fixture();
   const layout = () => ({ at: Date.now(), body: { nodes: [{ id: "note", title: "Fixture note" }] } as never });
-  const server = { semanticCache: layout(), uiSemanticCache: layout() };
+  const server = {
+    semanticCache: layout(),
+    uiSemanticCache: layout(),
+    semanticInflight: null,
+    uiSemanticInflight: null,
+  };
   const ctx = { toolDeps: f.toolDeps, privateGraph: true, server };
   const http = createServer((req, res) => void handleUiMemoryEdit(req, res, ctx));
   await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
@@ -698,6 +714,106 @@ test("user fields: a sensitivity change drops the cached semantic layouts", asyn
     assert.equal(server.uiSemanticCache, null);
   } finally {
     await new Promise<void>((resolve) => http.close(() => resolve()));
+    await f.close();
+  }
+});
+
+test("a layout in progress cannot re-publish a memory the reader made private", { timeout: 5000 }, async () => {
+  const f = await fixture();
+  const vectors = new Map([
+    ["note", new Float32Array([1, 0, 0])],
+    ["user-note", new Float32Array([0, 1, 0])],
+  ]);
+  const held = deferred<() => void>();
+  const getVector = vectors.get.bind(vectors);
+  const immediate = globalThis.setImmediate;
+  let intercepted = false;
+  vectors.get = (id) => {
+    if (id === "note" && !intercepted) {
+      intercepted = true;
+      // The graph is already snapshotted. Hold only the layout's first PCA yield,
+      // then restore the scheduler before the UI sends its write.
+      globalThis.setImmediate = ((continuation: () => void) => {
+        globalThis.setImmediate = immediate;
+        held.resolve(continuation);
+      }) as typeof setImmediate;
+    }
+    return getVector(id);
+  };
+  try {
+    const port = await f.start("darwin", () => vectors);
+    const path = "/api/v1/graph/semantic";
+    const pending = call(port, "GET", path);
+    const resume = await held.promise;
+    let hidden: Res;
+    try {
+      const expected_revision = f.vault.get("note")!.revision;
+      hidden = await call(port, "POST", "/ui/memory/edit", { id: "note", expected_revision, sensitivity: "private" });
+    } finally {
+      resume();
+    }
+    assert.equal(hidden.status, 200, JSON.stringify(hidden.body));
+    for (const response of [await pending, await call(port, "GET", path)]) {
+      assert.equal(response.status, 200);
+      assert.deepEqual(
+        response.body.positions.map((p: { id: string }) => p.id),
+        ["user-note"]
+      );
+      assert.deepEqual(response.body.edges, []);
+    }
+    const owner = await call(port, "GET", "/ui/graph/semantic");
+    assert.equal(owner.status, 200);
+    assert.deepEqual(owner.body.positions.map((p: { id: string }) => p.id).sort(), ["note", "user-note"]);
+  } finally {
+    globalThis.setImmediate = immediate;
+    await f.close();
+  }
+});
+
+test("graph reads in progress use the visibility in effect when they answer", { timeout: 5000 }, async () => {
+  const f = await fixture();
+  const readDir = fs.readdir;
+  const entered = deferred<void>();
+  const resume = deferred<void>();
+  let pending = 0;
+  try {
+    const port = await f.start();
+    fs.readdir = (async (...args: Parameters<typeof readDir>) => {
+      const [path] = args;
+      if (path === process.env.BASTRA_LOG_PATH) {
+        if (++pending === 2) entered.resolve();
+        await resume.promise;
+      }
+      return readDir(...args);
+    }) as typeof fs.readdir;
+    syncBuiltinESMExports();
+    const graph = call(port, "GET", "/api/v1/graph");
+    const node = call(port, "GET", "/api/v1/graph/node?id=note");
+    await entered.promise;
+    try {
+      const expected_revision = f.vault.get("note")!.revision;
+      const hidden = await call(port, "POST", "/ui/memory/edit", {
+        id: "note",
+        expected_revision,
+        sensitivity: "private",
+      });
+      assert.equal(hidden.status, 200, JSON.stringify(hidden.body));
+    } finally {
+      resume.resolve();
+    }
+    const [detail, result] = await Promise.all([node, graph]);
+    assert.deepEqual(
+      {
+        detail: detail.status,
+        graph: result.status,
+        published: result.body.nodes.some((n: { id: string }) => n.id === "note"),
+      },
+      { detail: 404, graph: 200, published: false }
+    );
+  } finally {
+    fs.readdir = readDir;
+    syncBuiltinESMExports();
+    resume.resolve();
     await f.close();
   }
 });

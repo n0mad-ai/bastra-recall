@@ -32,9 +32,6 @@ import { bastraDataDir } from "./platform-paths.js";
  *     log the calls that never reached it, and that rate is exactly what
  *     #346's fallback will be judged against.
  */
-import { taskClientHeaders } from "./task-client-auth.js";
-import { request as httpRequest } from "node:http";
-import { request as httpsRequest } from "node:https";
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -43,6 +40,9 @@ import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
 import { PROMPT_ASSERTION_BUDGET_MS } from "./hook-budgets.js";
 import { decorateHookPayload } from "./hook-surface.js";
 import { emitStdout, exitAfterStdout } from "./hook-stdout.js";
+// #1508: the shared transport — postLane decorates the payload and adds the
+// task authorization header, which is what this client always sent.
+import { classifyTransportError, postLane, readStdin } from "./thin-client.js";
 
 // #305: the trigger class is decided daemon-side, AFTER this POST, so the
 // client cannot know whether it is serving the 600ms quiet path or the 1000ms
@@ -54,16 +54,6 @@ import { emitStdout, exitAfterStdout } from "./hook-stdout.js";
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", PROMPT_ASSERTION_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_VERSION = "0.3.0-thin";
 
-function readStdin(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (chunk) => (data += chunk));
-    process.stdin.on("end", () => resolve(data));
-    process.stdin.on("error", reject);
-  });
-}
-
 // Ein-Emit-Kontrakt: Claude Code parst stdout als EIN JSON-Dokument. Der
 // unref'te Kill-Switch kann feuern, während main() noch am Request hängt —
 // ohne Guard schriebe er ein zweites "{}" hinter die Antwort.
@@ -72,76 +62,6 @@ function emitOnce(payload: string): void {
   if (stdoutEmitted) return;
   stdoutEmitted = true;
   emitStdout(payload);
-}
-
-/** POST the raw payload; resolve with the response body VERBATIM. */
-function postPromptLane(baseUrl: string, body: unknown, timeoutMs: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let url: URL;
-    try {
-      url = new URL("/hook/prompt", baseUrl);
-    } catch (err) {
-      reject(err);
-      return;
-    }
-    const payload = Buffer.from(JSON.stringify(body), "utf8");
-    // An https:// daemon URL must use TLS, not fall through to plain
-    // HTTP because `request` was always the node:http one regardless of
-    // url.protocol; and `net.isIP()` (which node:http/net use to skip DNS for
-    // a literal address) does not recognize URL's bracketed IPv6 hostname
-    // ("[::1]"), so passing it through as-is sent that literal string to the
-    // resolver and failed with EAI_AGAIN instead of connecting.
-    const isHttps = url.protocol === "https:";
-    const transport = isHttps ? httpsRequest : httpRequest;
-    const defaultPort = isHttps ? 443 : 80;
-    let settled = false;
-    // `timeout` on the options object is Node's socket-IDLE timeout — a
-    // response dripping data never goes idle and never trips it. A plain
-    // setTimeout that destroys the request regardless of activity is a real
-    // deadline.
-    const deadline = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      req.destroy();
-      reject(new Error("timeout"));
-    }, timeoutMs);
-    const req = transport(
-      {
-        method: "POST",
-        hostname: url.hostname.replace(/^\[|\]$/g, ""),
-        port: url.port || defaultPort,
-        path: url.pathname,
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          ...taskClientHeaders(),
-          "Content-Length": payload.byteLength.toString(),
-        },
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (c: Buffer) => chunks.push(c));
-        res.on("end", () => {
-          if (settled) return;
-          clearTimeout(deadline);
-          settled = true;
-          const data = Buffer.concat(chunks).toString("utf8");
-          if ((res.statusCode ?? 500) >= 400) {
-            reject(new Error(`HTTP ${res.statusCode}: ${data.slice(0, 200)}`));
-            return;
-          }
-          resolve(data);
-        });
-      }
-    );
-    req.on("error", (err) => {
-      if (settled) return;
-      clearTimeout(deadline);
-      settled = true;
-      reject(err);
-    });
-    req.write(payload);
-    req.end();
-  });
 }
 
 /** Minimal client-side telemetry for the calls the daemon never saw. Same
@@ -217,23 +137,22 @@ async function main(): Promise<void> {
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
 
   try {
-    const body = await postPromptLane(
-      url,
-      { payload: decorateHookPayload(payload), client_ppid: process.ppid },
-      remainingMs
-    );
+    const body = await postLane(url, "/hook/prompt", { payload, client_ppid: process.ppid }, remainingMs);
     emitOnce(body);
   } catch (err) {
     const e = err as NodeJS.ErrnoException;
-    emitOnce("{}");
-    const status =
-      e.code === "ECONNREFUSED" || e.code === "ENOTFOUND" || e.code === "EHOSTUNREACH"
-        ? "daemon-unreachable"
-        : e.message === "timeout"
-          ? "timeout"
-          : "error";
+    const status = classifyTransportError(e);
     const p = payload as { session_id?: unknown } | null;
     const hookSessionId = typeof p?.session_id === "string" ? p.session_id : null;
+    // #1473: an unreachable daemon is said once per session, not answered
+    // silently empty. Lazy: only a failure pays for the import (#305).
+    if (status === "daemon-unreachable")
+      emitOnce(
+        await import("./hook-unreachable-notice.js")
+          .then((m) => m.unreachableAnswer("prompt", hookSessionId))
+          .catch(() => "{}")
+      );
+    emitOnce("{}");
     await writeClientTelemetry(
       url,
       status,

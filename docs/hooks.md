@@ -17,7 +17,10 @@ emit `{}` and Claude continues unaffected. The one exception is the gate lane
 is on disk. They share three discipline rules:
 
 - Hard wall-clock budget, **per lane** (#305 — see the table below).
-- Any failure path emits `{}` and exits 0.
+- Any failure path emits `{}` and exits 0. One exception (#1473): when the
+  daemon is unreachable, the first prompt or session-start call of a session
+  answers with one `systemMessage` line naming `bastra doctor` instead of
+  `{}`; every later call in that session stays `{}`.
 - Telemetry is best-effort, never breaks the hook.
 
 For per-surface/runtime evidence, tool coverage and the distinction between
@@ -150,7 +153,7 @@ wordings are frozen per version in `packages/core/src/scrub.ts`
 (`FROZEN_FRAME_NOTES`), which is also what the ingest scrub (#149) uses to drop
 quoted note lines from transcripts before capture heuristics run.
 
-`bastra install claude-code` writes twelve Claude Code hook registrations by default: ten required entries plus Stop and its SessionEnd harvest companion, which are on by default and can be left out. The required SessionEnd entry only closes the chat endpoint registration. Several share a binary; registrations and binary counts are different. `--no-stop-hook` leaves ten. The re-registration that `bastra update` runs adds no Stop hook that was not there before; it keeps one that was. The PostToolUse write-tool entry supplies save notices.
+`bastra install claude-code` writes thirteen Claude Code hook registrations by default: ten required entries plus Stop and its two harvest companions, SessionEnd and PreCompact, which are on by default and can be left out. The required SessionEnd entry only closes the chat endpoint registration. Several share a binary; registrations and binary counts are different. `--no-stop-hook` leaves ten. The re-registration that `bastra update` runs adds no Stop hook that was not there before; it keeps one that was. The PostToolUse write-tool entry supplies save notices.
 
 ### Installed binaries
 
@@ -166,7 +169,7 @@ After `npm run build` the daemon package exposes these bin entries:
 | `bastra-recall-gate-hook`         | `PreToolUse`       | `*` (every tool)                          | One-time must-load and action-time reflex deny (#1303)    |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse` / `PostToolUseFailure` | `Bash` (every completed or failed command) | Act-signal for acted_on (#144); lesson recall on failure (#37) |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse`      | Recall's own write tools (`save_memory`, `edit_memory`, `save_document`, `save_product_doc`) | Save notice: one line that says what was saved or edited |
-| `bastra-recall-stop-hook`         | `Stop` / `SessionEnd` | —                                      | Save-eval at the end of a turn, on by default (#35); SessionEnd books the finished session for the harvest (#675) |
+| `bastra-recall-stop-hook`         | `Stop` / `SessionEnd` / `PreCompact` | —                       | Save-eval at the end of a turn, on by default (#35); SessionEnd books the finished session for the harvest (#675), PreCompact the session about to be compacted (#1486) |
 
 ### Activation snippet for `~/.claude/settings.json`
 
@@ -232,6 +235,11 @@ Default shape written by `bastra install claude-code`:
       {
         "hooks": [{ "type": "command", "command": "bastra-recall-stop-hook", "timeout": 2 }]
       }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [{ "type": "command", "command": "bastra-recall-stop-hook", "timeout": 2 }]
+      }
     ]
   }
 }
@@ -256,7 +264,7 @@ Re-install also keeps a shell wrapper around a Bastra hook runner and foreign
 handlers placed beside it in the same entry; quoted wrapper labels stay intact.
 
 The Stop hook is registered by default, together with its `SessionEnd`
-harvest companion (#675). Leave these two optional entries out with `bastra install claude-code
+and `PreCompact` harvest companions (#675, #1486). Leave these three optional entries out with `bastra install claude-code
 --no-stop-hook` (`--with-stop-hook` is still accepted). The separate required
 `SessionEnd` entry remains and closes only the private chat registration (#1421). If you remove only
 `bastra-recall-stop-hook`, Doctor reports it as intentionally disabled instead
@@ -780,11 +788,10 @@ usual. Two jobs, one locked state write per call:
   `BASTRA_REFLEX=off` silences it like the prompt reflex.
 - **Rule kernel (#1305).** After 25 tool calls without a user prompt the gate
   answers the rule kernel as `additionalContext`, never as a deny (see "Rule
-  kernel" below). An agent (the main thread or one subagent) that already
-  received the identical kernel in this session gets a short reminder with the
-  catalog hash and the way back (`list_rules`, `load_memory`) instead of the
-  full text; a changed kernel, a new agent, or a compact/clear brings the full
-  text again (#1461).
+  kernel" below). HTTP hooks repeat the full kernel at that cadence. A short
+  reminder with the catalog hash and lookup tools (`list_rules`, `load_memory`)
+  requires direct delivery of the identical kernel to the same agent in the
+  same context (#1461).
 
 Always passes: every Recall MCP tool (`mcp__bastra-recall__*`, also the
 plugin form `mcp__plugin_…_bastra-recall__*`) and a `ToolSearch` whose query
@@ -1114,7 +1121,21 @@ Codex has a `SessionEnd` hook in current builds with the same input, and the
 daemon accepts it on the same route, but `bastra install codex` does not
 register it: Codex rejects a whole `hooks.json` that names an event it does
 not know, so on an older Codex this one entry would switch off every hook.
-Codex sessions keep the idle rule. The job reads the transcript and picks at
+Codex sessions keep the idle rule.
+
+Before a compaction (#1486), Claude Code's `PreCompact` hook — registered with
+the Stop hook on the same client and route, for manual `/compact` and
+auto-compaction alike — books the session the same way, so the next pass
+harvests the turns the summary is about to replace instead of waiting for 30
+quiet minutes. The transcript file keeps those turns, so the pass reads what
+the session had before compacting; the same rules apply (drafts, redaction,
+vault check). The session goes on: a pass after the compaction only reads the
+turns added since. The hook answers `{}`, so it adds nothing to the
+compaction summary. Codex has a `PreCompact` hook in current builds too;
+`bastra install codex` does not register it, for the same reason as
+`SessionEnd`.
+
+The job reads the transcript and picks at
 most three user turns by the shape of the conversation, with no word lists, so
 it works in any language:
 
@@ -1725,9 +1746,13 @@ previously fully loaded current revision can satisfy an action load requirement;
 a per-round applicability declaration remains separate. A fork with a new
 session ID cannot restore an unknown parent's active task. The gate redelivers
 the kernel after 25 tool calls without a user prompt, without using that
-redelivery as a deny; an unchanged kernel the same agent already holds comes as
-a short reminder (#1461). See [the rulebook contract](rulebook.md) for membership,
-privacy, budgets, bounded action/Stop checking and host limitations.
+redelivery as a deny. HTTP completion confirms transport through the daemon
+response. The hook can still lose its stdout connection to the host, so HTTP
+hooks send the full kernel at every due interval. In-process callers observing
+the lane output directly can receive a short reminder when the same agent and
+context have already received the identical kernel (#1461). See
+[the rulebook contract](rulebook.md) for membership, privacy, budgets, bounded
+action/Stop checking and host limitations.
 
 The kernel arrives only through these hooks. Clients without Bastra hooks
 (for example Claude Desktop and remote MCP) do not receive it automatically; there
@@ -1922,7 +1947,11 @@ einzige Ausnahme ist die Gate-Lane (#1303, unten): Sie darf einen Toolaufruf
 teilen drei Disziplinregeln:
 
 - Festes Zeitbudget (Wall-Clock), **pro Lane** (#305 — siehe Tabelle unten).
-- Jeder Fehlerpfad gibt `{}` aus und endet mit Exit-Code 0.
+- Jeder Fehlerpfad gibt `{}` aus und endet mit Exit-Code 0. Eine Ausnahme
+  (#1473): Ist der Daemon nicht erreichbar, antwortet der erste Prompt- oder
+  Sitzungsstart-Aufruf einer Sitzung mit einer `systemMessage`-Zeile, die auf
+  `bastra doctor` verweist, statt mit `{}`; jeder weitere Aufruf dieser
+  Sitzung bleibt `{}`.
 - Telemetrie ist Best-Effort und bricht den Hook nie.
 
 Belege je Oberfläche/Laufzeitversion, Tool-Grenzen und die Trennung zwischen
@@ -2066,7 +2095,7 @@ eingefroren. Darauf greift auch der Ingest-Scrub (#149) zurück, um zitierte
 Notizzeilen aus Transkripten zu entfernen, bevor die Capture-Heuristiken
 laufen.
 
-`bastra install claude-code` schreibt standardmäßig zwölf Claude-Code-Hook-Registrierungen: zehn Pflichteinträge plus Stop und dessen SessionEnd-Harvest-Begleiter, die standardmäßig an sind und sich weglassen lassen. Der verpflichtende SessionEnd-Eintrag schließt nur die Chat-Endpunktregistrierung. Mehrere teilen ein Programm; Registrierungen und Programmzahl sind verschieden. `--no-stop-hook` lässt zehn. Die Neuregistrierung durch `bastra update` fügt keinen Stop-Hook hinzu, der vorher fehlte; einen vorhandenen behält sie. Der PostToolUse-Eintrag für Schreibwerkzeuge liefert Speicherhinweise.
+`bastra install claude-code` schreibt standardmäßig dreizehn Claude-Code-Hook-Registrierungen: zehn Pflichteinträge plus Stop und dessen zwei Harvest-Begleiter SessionEnd und PreCompact, die standardmäßig an sind und sich weglassen lassen. Der verpflichtende SessionEnd-Eintrag schließt nur die Chat-Endpunktregistrierung. Mehrere teilen ein Programm; Registrierungen und Programmzahl sind verschieden. `--no-stop-hook` lässt zehn. Die Neuregistrierung durch `bastra update` fügt keinen Stop-Hook hinzu, der vorher fehlte; einen vorhandenen behält sie. Der PostToolUse-Eintrag für Schreibwerkzeuge liefert Speicherhinweise.
 
 ### Installierte Programme
 
@@ -2082,7 +2111,7 @@ Nach `npm run build` stellt das Daemon-Paket diese Bin-Einträge bereit:
 | `bastra-recall-gate-hook`         | `PreToolUse`       | `*` (jedes Tool)                          | Einmaliges Must-Load- und Reflex-Deny am Toolaufruf (#1303) |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse` / `PostToolUseFailure` | `Bash` (jeder abgeschlossene oder fehlgeschlagene Befehl) | Handlungssignal für acted_on (#144); Lesson-Recall bei Fehlern (#37) |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse`      | Recalls eigene Schreib-Tools (`save_memory`, `edit_memory`, `save_document`, `save_product_doc`) | Speicherzeile: eine Zeile, die sagt, was gespeichert oder bearbeitet wurde |
-| `bastra-recall-stop-hook`         | `Stop` / `SessionEnd` | —                                      | Speicherbewertung am Ende eines Turns, standardmäßig an (#35); SessionEnd trägt die beendete Session für den Harvest ein (#675) |
+| `bastra-recall-stop-hook`         | `Stop` / `SessionEnd` / `PreCompact` | —                       | Speicherbewertung am Ende eines Turns, standardmäßig an (#35); SessionEnd trägt die beendete Session für den Harvest ein (#675), PreCompact die Session vor der Kompaktierung (#1486) |
 
 ### Aktivierungs-Snippet für `~/.claude/settings.json`
 
@@ -2148,6 +2177,11 @@ Standardform, die `bastra install claude-code` schreibt:
       {
         "hooks": [{ "type": "command", "command": "bastra-recall-stop-hook", "timeout": 2 }]
       }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [{ "type": "command", "command": "bastra-recall-stop-hook", "timeout": 2 }]
+      }
     ]
   }
 }
@@ -2174,8 +2208,8 @@ Bei einer erneuten Installation bleiben auch ein Shell-Wrapper um den
 Bastra-Hook und fremde Handler im selben Eintrag erhalten; gequotete
 Wrapper-Argumente werden nicht verändert.
 
-Der Stop-Hook wird standardmäßig registriert, zusammen mit seinem
-`SessionEnd`-Harvest-Begleiter (#675). Diese beiden optionalen Einträge lässt `bastra install claude-code
+Der Stop-Hook wird standardmäßig registriert, zusammen mit seinen
+Harvest-Begleitern `SessionEnd` und `PreCompact` (#675, #1486). Diese drei optionalen Einträge lässt `bastra install claude-code
 --no-stop-hook` weg (`--with-stop-hook` wird weiter angenommen). Der separate
 verpflichtende `SessionEnd`-Eintrag bleibt und schließt nur die private Chat-Registrierung (#1421). Wenn du nur
 `bastra-recall-stop-hook` entfernst, meldet Doctor ihn als absichtlich
@@ -2689,11 +2723,10 @@ State-Schreibvorgang pro Aufruf:
   Prompt-Reflex.
 - **Regelkern (#1305).** Nach 25 Toolaufrufen ohne Prompt des Nutzers liefert
   das Gate den Regelkern als `additionalContext`, nie als Deny (siehe
-  „Regelkern" unten). Ein Agent (der Hauptthread oder ein einzelner Subagent),
-  der denselben Kern in dieser Session schon bekommen hat, erhält statt des
-  Volltexts eine kurze Erinnerung mit Katalog-Hash und dem Rückweg
-  (`list_rules`, `load_memory`); ein geänderter Kern, ein neuer Agent oder ein
-  compact/clear bringt wieder den Volltext (#1461).
+  „Regelkern" unten). HTTP-Hooks wiederholen den Volltext in diesem Takt.
+  Eine kurze Erinnerung mit Katalog-Hash und den Abrufwerkzeugen
+  (`list_rules`, `load_memory`) setzt voraus, dass derselbe Agent den
+  identischen Kern im selben Kontext direkt erhalten hat (#1461).
 
 Immer durch: jedes Recall-MCP-Tool (`mcp__bastra-recall__*`, auch die
 Plugin-Form `mcp__plugin_…_bastra-recall__*`) und ein `ToolSearch`, dessen
@@ -3058,7 +3091,22 @@ Eingabe, und der Daemon nimmt ihn auf derselben Route an, aber
 `bastra install codex` registriert ihn nicht: Codex verwirft eine ganze
 `hooks.json`, die ein unbekanntes Event nennt, auf einem älteren Codex würde
 dieser eine Eintrag also alle Hooks abschalten. Codex-Sessions behalten die
-Ruhe-Regel. Der Job liest das Transcript und wählt höchstens drei Nutzer-Turns
+Ruhe-Regel.
+
+Vor einer Kompaktierung (#1486) trägt der `PreCompact`-Hook von Claude Code
+die Session genauso ein. Er ist mit dem Stop-Hook über denselben Client und
+dieselbe Route registriert, für `/compact` von Hand ebenso wie für die
+automatische Kompaktierung. Der nächste Lauf erntet so die Turns, die die
+Zusammenfassung gleich ersetzt, statt 30 ruhige Minuten abzuwarten. Die
+Transcript-Datei behält diese Turns, der Lauf liest also, was die Session vor
+der Kompaktierung hatte; es gelten dieselben Regeln (Entwürfe, Schwärzen,
+Vault-Abgleich). Die Session läuft weiter: Ein Lauf nach der Kompaktierung
+liest nur die seither neuen Turns. Der Hook antwortet `{}` und fügt der
+Zusammenfassung damit nichts hinzu. Auch Codex hat in aktuellen Versionen einen
+`PreCompact`-Hook; `bastra install codex` registriert ihn aus demselben Grund
+wie `SessionEnd` nicht.
+
+Der Job liest das Transcript und wählt höchstens drei Nutzer-Turns
 nach der Form des Gesprächs aus, ohne Wortlisten, also in jeder Sprache:
 
 - `restated` — ein Nutzer-Turn, der einen früheren wiederholt (die
@@ -3657,10 +3705,14 @@ bereits vollständig geladene aktuelle Revision eine Aktions-Ladepflicht erfüll
 die Erklärung zur Anwendbarkeit je Runde bleibt davon getrennt. Ein Fork mit
 neuer Session-ID kann die aktive Aufgabe eines unbekannten Elternkontexts nicht
 wiederherstellen. Nach 25 Toolaufrufen ohne Nutzerprompt liefert das Gate den
-Kern erneut, ohne diese Zustellung als Sperre zu verwenden; einen unveränderten
-Kern, den derselbe Agent schon hat, nur als kurze Erinnerung (#1461). Der
-[Regelbuch-Vertrag](rulebook.md) beschreibt Mitgliedschaft, Datenschutz,
-Budgets, begrenzte Aktions-/Stop-Prüfung und Host-Grenzen.
+Kern erneut, ohne diese Zustellung als Sperre zu verwenden. Der HTTP-Abschluss
+bestätigt den Versand der Daemon-Antwort. Die Ausgabeverbindung des Hooks zum
+Host kann danach noch verloren gehen. HTTP-Hooks liefern deshalb bei jeder
+Wiederholung den Volltext. Aufrufer im selben Prozess sehen die Lane-Ausgabe
+direkt und können eine kurze Erinnerung erhalten, wenn derselbe Agent den
+identischen Kern im selben Kontext bereits erhalten hat (#1461). Der
+[Regelbuch-Vertrag](rulebook.md) beschreibt Mitgliedschaft, Datenschutz, Budgets,
+begrenzte Aktions-/Stop-Prüfung und Host-Grenzen.
 
 Der Kern kommt nur über diese Hooks an. Clients ohne Bastra-Hooks (etwa Claude
 Desktop und Remote-MCP) bekommen ihn nicht automatisch; dort liest der

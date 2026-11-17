@@ -21,6 +21,8 @@ import {
   RulebookSchema,
   RulebookProposalSchema,
   FrontmatterSchema,
+  WriteOriginEvidenceSchema,
+  type WriteOriginEvidence,
 } from "./schema.js";
 import { remainingProposal, resolveRulebook, unboundProposal } from "./rulebook.js";
 import { clampSummary } from "./summary.js";
@@ -71,6 +73,7 @@ export const SAVE_MANAGED_FRONTMATTER_KEYS: ReadonlySet<string> = new Set([
   "related_via",
   "sensitivity",
   "write_origin",
+  "write_origin_evidence",
   "confidence",
   "created",
   "updated",
@@ -119,6 +122,25 @@ export interface BuiltFrontmatter {
 }
 
 /**
+ * #1496: the transport evidence travels with `write_origin: user-directed`.
+ * A save that declares user-directed itself gets the evidence of ITS call (or
+ * none, when the caller is no tool call — an older session's evidence would
+ * name the wrong instruction). A save that inherits the origin keeps the stored
+ * evidence. Any other origin carries none.
+ */
+function originEvidenceField(
+  input: SaveMemoryInput,
+  prev: Record<string, unknown>,
+  existingOrigin: string | undefined,
+  evidence: WriteOriginEvidence | undefined
+): { write_origin_evidence?: WriteOriginEvidence } {
+  if (input.write_origin === "user-directed") return evidence ? { write_origin_evidence: evidence } : {};
+  if (input.write_origin !== undefined || existingOrigin !== "user-directed") return {};
+  const stored = WriteOriginEvidenceSchema.safeParse(prev.write_origin_evidence);
+  return stored.success ? { write_origin_evidence: stored.data } : {};
+}
+
+/**
  * Baut das Frontmatter für EINEN Save.
  *
  * `prev` ist das Frontmatter der bestehenden Datei (leer bei einer Neuanlage),
@@ -130,7 +152,8 @@ export function buildFrontmatter(
   input: SaveMemoryInput,
   prev: Record<string, unknown>,
   id: string,
-  scope: string
+  scope: string,
+  evidence?: WriteOriginEvidence
 ): BuiltFrontmatter {
   /** Übernimmt den Bestandswert nur, wenn er den erwarteten Typ hat. */
   const kept = <T>(value: unknown, ok: (v: unknown) => boolean): T | undefined =>
@@ -200,6 +223,7 @@ export function buildFrontmatter(
     // #158: Provenance-Stempel — Bestands-Memories ohne Feld gelten als
     // agent-session (Backfill per Default-Semantik, kein Massen-Rewrite)
     write_origin: input.write_origin ?? existingOrigin ?? "agent-session",
+    ...originEvidenceField(input, prev, existingOrigin, evidence),
     // Maschinell erzeugte Trigger-Expansion (#117): der Save baut das
     // Frontmatter neu, also fielen doc2query-Trigger bei jedem Overwrite raus
     // und mussten vom Background-Pass neu berechnet werden.

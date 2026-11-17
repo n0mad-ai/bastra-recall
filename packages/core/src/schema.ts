@@ -180,6 +180,21 @@ export const RulebookProposalSchema = z
   })
   .strict();
 
+/**
+ * #1496 — where a `user-directed` instruction arrived: the transport, the
+ * client and the client's session of the tool call that saved it, and when.
+ * Stamped by the daemon from the transport, never taken from the caller's
+ * arguments. A finding aid for whoever reads the rule, not authentication:
+ * nothing is refused or asked because of it. `null` = the transport did not say.
+ */
+export const WriteOriginEvidenceSchema = z.object({
+  transport: z.string(),
+  client: z.string().nullable(),
+  session: z.string().nullable(),
+  at: z.string(),
+});
+export type WriteOriginEvidence = z.infer<typeof WriteOriginEvidenceSchema>;
+
 export const FrontmatterSchema = z.object({
   rulebook: RulebookSchema.optional(),
   rule_categories: RuleCategoriesSchema.optional(),
@@ -267,6 +282,8 @@ export const FrontmatterSchema = z.object({
    * - `capture-review`: aus einem Post-Session-Review-Pass (#157).
    */
   write_origin: z.enum(["user-directed", "agent-session", "capture-review"]).optional(),
+  /** #1496: a hand-edited, malformed value is dropped, never a load failure. */
+  write_origin_evidence: WriteOriginEvidenceSchema.optional().catch(undefined),
   source: z.string().optional(),
   confidence: z.number().min(0).max(1).default(1.0),
   /**

@@ -36,14 +36,19 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
     name: "rulebook_check",
     annotations: READ_ONLY,
     description:
-      "Record an honest self-report that you checked the rulebook index for this round. Read applicable rules with load_memory first. " +
-      "Pass applicable: [IDs] or applicable: [] when none applies. No approval, full-catalog receipt or action binding required. " +
-      "Valid only for the caller session, current context and round; subagents use their own agent_id. " +
-      "When transport attribution is missing, session_id must be the exact hook session. Missing actor IDs default to main; callers must supply their worker agent_id. A Claude subagent that omits its ID cannot be distinguished from main. " +
-      "task optionally reports the workflow stage: translate-only, draft-for-review, approved-copy or none. Only this explicit main-agent report creates, changes or ends the stage; prompt wording never does. This is a self-report, may be wrong and does not prove user approval or permission to send. Fences and quotes are size-checked in every stage when validators apply. Ordinary prose is checked only in reported approved-copy, and only in the final assistant text. Unmarked long final prose without approved-copy is not measured (#1351). A validation receipt is required for approved-copy; receipts remain task/generation-bound, not proof of later delivered bytes (#1325). " +
-      'When the current round actually handles correspondence (reported stage, structurally measured copy under an applied validator, or a native external message/draft tool call), every correspondence rule (validator or correspondence category) needs an explicit current-round decision: applicable IDs, actual full loads, or not_applicable entries with at least 10 substantive characters for each remaining ID. An empty applicable list alone is insufficient. One call can declare every unprotected correspondence rule using not_applicable:[{category:"correspondence",reason}]. Rules loaded/declared applicable in this round cannot be dismissed. Prior-round task bindings, loads and reflexes can be dismissed in later rounds; a retained stage does not replace the current round declaration. Category exceptions exclude current-round protected rules and all concrete action-required IDs. Only an exact {id,reason} exception can discharge an action-required ID. Explicit attempts are ignored and counted as violations; other valid declarations in the same check are retained. Declared validators also check oversized fenced/quoted copy without a task; no approval is inferred. Codex records violations only, without same-turn length repair. Concrete action-required IDs cannot be discharged by applicable:[] or by listing IDs. Load each exact rule with load_memory. Alternatively provide not_applicable:[{id,reason}] for the exact outstanding ID; the reason is audited and counted as a visible exception. ' +
-      "Non-applicability exceptions expire at the next user round; actual full loads and pending action obligations retain their own lifecycle. " +
-      "Workers omit task. Hookless clients remain advisory; self-reports do not attest user approval or authorize sending.",
+      "Self-report that you checked the rulebook index this round. Load applicable rules with load_memory first, then pass applicable:[IDs] or applicable:[]. " +
+      "No approval, catalog receipt or action binding is required. Valid only for the caller's session, context and round. " +
+      "Workers pass their own agent_id (a Claude subagent without one counts as main); without transport attribution, session_id must be the exact hook session. " +
+      "task (main agent only; workers omit it) reports the workflow stage: translate-only, draft-for-review, approved-copy or none. Only this report changes the stage, never prompt wording. " +
+      "A self-report may be wrong and proves neither user approval nor permission to send. " +
+      "Validators size-check fences and quotes in every stage, ordinary prose only in approved-copy and only in the final assistant text; unmarked long prose without approved-copy is not measured (#1351). Declared validators also check oversized fenced/quoted copy without a task. " +
+      "approved-copy needs a validation receipt, bound to task and generation, not proof of later delivered bytes (#1325). " +
+      "When the round handles correspondence (reported stage, measured copy under an applied validator, or a native message/draft tool call), every correspondence rule needs a current-round decision: applicable ID, full load, or not_applicable with a reason of 10+ substantive characters; applicable:[] alone is not enough. " +
+      'not_applicable:[{category:"correspondence",reason}] covers every unprotected correspondence rule at once, but never rules loaded or declared applicable this round, nor action-required IDs. ' +
+      "An action-required ID is discharged only by loading that exact rule or by not_applicable:[{id,reason}] for it (audited, counted as a visible exception); other attempts are ignored and counted as violations, the rest of the check stays valid. " +
+      "Prior-round bindings, loads and reflexes may be dismissed later; a retained stage does not replace this round's declaration. " +
+      "Exceptions expire at the next user round; loads and pending action obligations keep their own lifecycle. " +
+      "Codex records violations only, without same-turn length repair. Hookless clients stay advisory.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -86,11 +91,10 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
     name: "list_rules",
     annotations: READ_ONLY,
     description:
-      "Read the complete scoped rulebook catalog without search or relevance filtering. " +
-      "Returns total, catalog_hash, rule IDs/titles/applies_when, next_cursor and an explicit end marker. " +
-      "Continue with the returned cursor until end=true. A changed catalog restarts at page one with restarted=true. " +
-      "Descriptions are facts; decide applicability yourself and read bodies with load_memory(id). " +
-      "Unconfirmed legacy candidates are counted, never silently promoted. Set proposals:true to list pending proposals in the same scope; load_memory(id) gives the complete proposed text and current revision. No write or approval is involved.",
+      "Read the complete scoped rulebook catalog, unfiltered. Returns total, catalog_hash, rule IDs/titles/applies_when, next_cursor and an end marker; " +
+      "continue with the cursor until end=true (a changed catalog restarts at page one with restarted=true). " +
+      "Decide applicability yourself and read bodies with load_memory(id). Unconfirmed legacy candidates are counted, never promoted. " +
+      "proposals:true lists pending proposals instead. Read-only.",
     inputSchema: {
       type: "object",
       properties: {
@@ -110,77 +114,26 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
     name: "recall",
     annotations: READ_ONLY,
     description:
-      "Search the memory vault. Returns top-k matching memorys " +
-      "(id, title, type, scope, summary, score). " +
-      "\n\n" +
-      "WHEN TO CALL (recall is part of acting, not a separate step):\n" +
-      "- At session start (once): query for active-project + " +
-      "user-preferences to load durable context.\n" +
-      "- Before writing/editing a file: query with a description of " +
-      "what you are about to write (e.g. 'creating React input with " +
-      "focus styles'). This catches lessons before mistakes.\n" +
-      "- Before giving a multi-step plan or recommendation: query for " +
-      "preferences that shape format/scope.\n" +
-      "- When the user's prompt touches a topic that may have a stored " +
-      "lesson, decision, preference, or project-fact.\n" +
-      "- Before save_memory: query to avoid creating a duplicate.\n" +
-      "\n" +
-      "WHAT TO DO WITH HITS:\n" +
-      "READ `score_kind` FIRST — the bands below only exist on the fused " +
-      "scale.\n" +
-      '- `score_kind: "rrf"` (fused rank sum, bounded): score >= ~100 with ' +
-      "title/recall_when match: load_memory and apply the lesson before " +
-      "acting. score 30-100: read the summary, load if directly relevant. " +
-      "score < 30: usually noise; skip unless the summary is a perfect " +
-      "topic match.\n" +
-      '- `score_kind: "bm25"` (also flagged `unfused: true`): the vector ' +
-      "arm did not run — no embedding model, a cold-start timeout, or an " +
-      "open circuit breaker (`degraded` names which). These are raw " +
-      "MiniSearch scores on an OPEN scale — six figures on a real vault — " +
-      "so 100 means nothing here and every hit would look REQUIRED. Judge " +
-      "those hits by title, summary and recall_when match, and by their " +
-      "ORDER, never by the number.\n" +
-      "Never ignore a `lesson` hit with strong recall_when match.\n" +
-      "Two scores are comparable only within the same `score_arms` (and the " +
-      "same `score_version`): the fused scale reaches 163.934 with the two " +
-      "personal arms and 241.803 once the Bastra Commons contribute a third. " +
-      'Under `score_version: "rrf-2"` rank 1 in both arms is 163.934, rank ' +
-      "1 in the BM25 arm only ≈ 65.6, in the vector arm only ≈ 98.4 " +
-      "(`rrf-1`: 81.967 for either). " +
-      "A batch response whose phrasings disagreed on that reports " +
-      '`merged_by: "query-rank-fusion"` and drops back to `unfused` — its ' +
-      "order is meaningful, its numbers are not a band.\n" +
-      "On the hybrid (BM25 + vector) path the score is a scaled rank sum, " +
-      "not a similarity — a top hit is high by construction. When the " +
-      "response carries top-level `weak_result: true`, no returned hit has " +
-      "a recall_when or title match: the high scores are likely " +
-      "rank-1-of-nothing, so prefer not to load them. `weak_result` (like " +
-      "the bands) only exists on that hybrid path: without an embedding " +
-      'model (`score_kind: "bm25"`) it never appears, so its absence ' +
-      "there is no sign of a match — judge those hits yourself.\n" +
-      "This tool applies no evidence gate: it returns up to k hits above " +
-      "`min_score`. The evidence gate only filters what the hooks inject " +
-      "into the prompt.\n" +
-      "\n" +
-      "recall returns lean CANDIDATES (no bodies). This is step 1 of a " +
-      "two-step flow: call load_memory ONLY for the hits you actually " +
-      "need — do not load every hit.",
+      "Search the memory vault. Returns lean CANDIDATES (id, title, type, scope, summary, score), no bodies: call load_memory only for the hits you need.\n\n" +
+      "WHEN TO CALL (recall is part of acting, not a separate step): at session start (active project, user preferences); " +
+      "before writing or editing a file (describe what you are about to write); before a multi-step plan or recommendation; " +
+      "when the prompt touches a stored lesson, decision, preference or project fact; before save_memory, to avoid a duplicate.\n\n" +
+      "SCORES: read `score_kind` first.\n" +
+      '- "rrf" (hybrid BM25 + vector; a scaled rank sum, not a similarity, so a top hit is high by construction): >= ~100 with a title/recall_when match → load and apply before acting; 30-100 → load if the summary is directly relevant; < 30 → usually noise. ' +
+      'Under `score_version: "rrf-2"` rank 1 in both arms is 163.934 (241.803 with the Bastra Commons as third arm), rank 1 in one arm only ≈ 65.6 (BM25) or 98.4 (vector); `rrf-1`: 81.967 for either. Compare scores only within the same `score_arms` and `score_version`.\n' +
+      '- "bm25" (`unfused: true`; `degraded` says why the vector arm did not run): raw scores on an open scale. Judge hits by title, summary, recall_when match and order, never by the number.\n' +
+      '- A batch with `merged_by: "query-rank-fusion"` is unfused too: its order counts, its numbers are no band.\n' +
+      "`weak_result: true` means no hit matches by title or recall_when; prefer not to load them. " +
+      '`weak_result` (like the bands) only exists on that hybrid path: without an embedding model (`score_kind: "bm25"`) it never appears, so its absence there is no sign of a match. ' +
+      "Never ignore a `lesson` hit with a strong recall_when match.\n" +
+      "This tool applies no evidence gate: it returns up to k hits above `min_score`. The evidence gate only filters what the hooks inject into the prompt.",
     inputSchema: {
       type: "object",
       properties: {
         query: {
           type: "string",
           description:
-            "Natural-language query OR a description of what you are " +
-            "about to do (e.g. 'creating new input component', " +
-            "'about to give a multi-option plan'). Ask the vault what " +
-            "only memory can answer — durable preferences, lessons, " +
-            "decisions, past facts, documents. Do NOT query for what is " +
-            "already in the prompt or an upload, or findable by reading " +
-            "the project's files and logs: recall is memory, not a " +
-            "search over the current context. Decide what you are " +
-            "looking for, then phrase THAT. For several angles in one " +
-            "turn, use `queries` instead.",
+            "What only memory can answer (preferences, lessons, decisions, past facts, documents), or what you are about to do (e.g. 'creating new input component'). Not what is already in the prompt or readable in the project's files and logs. Several angles: use `queries`.",
         },
         queries: {
           type: "array",
@@ -188,16 +141,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
           minItems: 2,
           maxItems: 4,
           description:
-            "#351 batch mode — 2-4 DISTINCT queries, ONE round trip. Each " +
-            "entry carries exactly ONE intent: either a real paraphrase of " +
-            "the same question in different vocabulary, or a cleanly " +
-            "separated sub-question. Never pack several concepts from a " +
-            "convoluted prompt into one query, and never send re-mixes of " +
-            "the same words — near-duplicates are collapsed server-side " +
-            "before searching and waste the batch. Use this instead of " +
-            "firing several recall calls in the same turn: results are " +
-            "merged (deduped, best score per hit), so the score bands " +
-            "above stay valid. Pass query OR queries, not both.",
+            "#351 batch: 2-4 DISTINCT queries in one round trip, each ONE intent (a real paraphrase or a separate sub-question). Near-duplicates are collapsed and waste the batch. Results are merged (best score per hit). Pass query OR queries.",
         },
         k: {
           type: "number",
@@ -206,16 +150,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         max_tokens: {
           type: "number",
           description:
-            "Optional context budget for THIS call, in estimated tokens " +
-            "(~4 characters each). Hits are emitted in rank order until the " +
-            "payload would exceed it; the rest are dropped and the response " +
-            "says so with `truncated_by_budget: true` and " +
-            "`dropped_by_budget: <n>`. Use it when you know how much window " +
-            "you can spend — `k` counts results, not context, and a k=5 " +
-            "answer varies by more than 2x in size. `k` stays the hard upper " +
-            "bound: this can only drop hits, never add them. Leave unset for " +
-            "no budget. If the response comes back truncated, re-query with " +
-            "a larger budget or load_memory the ids you need.",
+            "Optional context budget for this call (~4 characters per token). Hits are emitted in rank order until it is reached; the response then carries `truncated_by_budget: true` and `dropped_by_budget`. `k` stays the upper bound.",
         },
         scope: {
           type: "string",
@@ -229,23 +164,12 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
           type: "string",
           enum: ["lean", "full"],
           description:
-            "'lean' (default) returns id, title, type, scope, summary, " +
-            "score per hit. 'full' adds matched_terms, mode, hop, " +
-            "topic_path and the stages timing block — for debugging / the " +
-            "Mac-App. Leave unset to keep the context footprint small.",
+            "'lean' (default): id, title, type, scope, summary, score. 'full' adds matched_terms, mode, hop, topic_path and timings (debugging).",
         },
         min_score: {
           type: "number",
           description:
-            "Drop hits below this score (default 30). On the hybrid " +
-            "(BM25 + vector) path the score is a scaled reciprocal-rank " +
-            "sum, not a content similarity: the bands describe how much " +
-            "the two arms agree on rank (~164 = rank 1 in both arms, ~82 " +
-            "= rank 1 in one arm only), so a top hit is high by " +
-            "construction and the 30 floor practically only bites in " +
-            "BM25-only mode (no embeddings). Raise it to require stronger " +
-            "rank agreement; see the top-level `weak_result` flag for a " +
-            "no-match signal (hybrid path only).",
+            "Drop hits below this score (default 30). On the hybrid path the score is a rank sum (~164 = rank 1 in both arms, ~82 = in one), so the floor mostly bites in BM25-only mode.",
         },
       },
       required: ["query"],
@@ -255,14 +179,10 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
     name: "load_memory",
     annotations: READ_ONLY,
     description:
-      "Load the content (frontmatter + body) of a single memory by id. " +
-      "Step 2 of the recall flow — call this only for the candidates " +
-      "recall() surfaced that you actually need. Returns essential " +
-      "frontmatter + body by default; pass verbosity:'full' for the raw " +
-      "frontmatter (related_via cosines, source, …). " +
-      "The result carries a `revision` — hand it to " +
-      "edit_memory({ expected_revision }) to have your change refused if the " +
-      "memory moved on meanwhile (#519). For exact action-required loads, supply the hook session_id and your worker agent_id when transport attribution is absent. Known transport attribution wins. This records an actual successful current full read; explicit lean dismissal cannot fulfill a concrete action requirement.",
+      "Load one memory (frontmatter + body) by id: step 2 after recall, only for the hits you need. verbosity:'full' adds the raw frontmatter. " +
+      "The result's `revision` goes to edit_memory({ expected_revision }) so a change is refused if the memory moved on (#519). " +
+      "For an action-required load without transport attribution, pass the hook session_id and your worker agent_id; known transport attribution wins. " +
+      "This records a full read; a lean dismissal cannot fulfil an action requirement.",
     inputSchema: {
       type: "object",
       properties: {
@@ -276,9 +196,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
           type: "string",
           enum: ["lean", "full"],
           description:
-            "'lean' (default) returns essential frontmatter + body without " +
-            "the auto-related block. 'full' returns the complete frontmatter " +
-            "and raw body — for debugging / the Mac-App.",
+            "'lean' (default): essential frontmatter + body. 'full': complete frontmatter and raw body (debugging).",
         },
       },
       required: ["id"],
@@ -287,121 +205,30 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
   {
     name: "save_memory",
     description:
-      "When transport attribution is absent, pass session_id and your worker agent_id (main omits agent_id) for current Stop execution evidence. These are not memory metadata. " +
-      "Persist a new memory into the vault as a markdown file with YAML " +
-      "frontmatter. This is YOUR long-term memory — save autonomously " +
-      "when a memory-worthy moment occurs, do not wait to be asked.\n" +
-      "\n" +
-      "STRONG SIGNALS — save without confirmation, then 1-line ack. " +
-      "The cues below are EXAMPLES in whatever language the user writes: " +
-      "match the situation, not the sample words (#476).\n" +
-      "- User expresses repetition/frustration about a recurring issue " +
-      "  ('not again', 'schon wieder', 'снова … опять', 'how often', emphatic " +
-      "  caps in any script; the bare word 'again'/'wieder'/'снова' alone is " +
-      "  no signal) → lesson, emotion:'frustration', salience:0.8\n" +
-      "- User states an explicit durable rule ('always X', 'never Y', " +
-      "  'on this project we use Z') → preference / workflow\n" +
-      "- User corrects a recurring tendency in your behavior → " +
-      "  meta-working\n" +
-      "- An architectural decision is finalized after weighing options " +
-      "  → decision\n" +
-      "- User confirms a workflow ('let's always do it this way') → " +
-      "  workflow\n" +
-      "- A bug got fixed after >2 iterations with non-obvious root " +
-      "  cause → lesson (capture the FAILED PATH too, not just the fix), " +
-      "  emotion:'success', salience:0.7\n" +
-      "- User marks something as important ('this is important', " +
-      "  'remember that') → salience:0.9 on the memory you save\n" +
-      "\n" +
-      "VALENCE (#217): salience/emotion mark how emotionally charged the " +
-      "capture moment was — high salience ages slower and may rank higher. " +
-      "Set them ONLY when a capture rule above fires or the user marks " +
-      "importance; never invent them. Omit both for routine saves.\n" +
-      "\n" +
-      "ANTI-SIGNALS — do NOT save:\n" +
-      "- One-off task descriptions ('please build me X') — that's a " +
-      "  task, not a memory\n" +
-      "- Speculation, 'maybe' statements, tentative ideas\n" +
-      "- Anything derivable from code/git/CLAUDE.md\n" +
-      "- Sensitive personal data (unless a stable preference)\n" +
-      "- When unsure: default to NOT saving. False saves erode trust.\n" +
-      "\n" +
-      "ADMISSION RULES — memories that were true once quietly poison " +
-      "later behavior:\n" +
-      "- NO negative capability claims ('X tool is broken', 'Y does not " +
-      "  work') — they harden into standing refusals that outlive the " +
-      "  problem. If something failed due to setup state, capture the FIX " +
-      "  (install step, config, env var), never the failure as a constraint.\n" +
-      "- NO stale-in-7-days artifacts: task progress, PR numbers, " +
-      "  'phase N done' belong in git/issues, not in memory.\n" +
-      "- Declarative facts, not self-directives: 'User prefers concise " +
-      "  replies' ✓ — 'Always reply concisely' ✗. Imperative phrasing " +
-      "  gets re-read as a directive in unrelated later contexts.\n" +
-      "\n" +
-      "BEFORE SAVING: call recall() with the title/topic to check for " +
-      "an existing memory you should update (overwrite=true) instead " +
-      "of creating a duplicate.\n" +
-      "\n" +
-      "THE CLAIM GATE: a save whose recall_when declares a situation " +
-      "another memory already declares is HELD — nothing is written, and " +
-      "the result carries `claim_gate` naming that memory, both triggers, " +
-      "ITS BODY, and `delta.new_terms` — the content words your text would " +
-      "add to it. Read that first: if your save adds nothing (empty " +
-      "new_terms, or only filler words), DROP it — say the memory already " +
-      "covers it, do not link it, do not re-send. If it adds a real fact " +
-      "that belongs there, do not create a second memory: re-save THAT one " +
-      "with overwrite=true, its id, and a body carrying its existing " +
-      "content plus your addition. Only a genuinely separate memory needs " +
-      "one of the three links. Two memories answering one cue is a " +
-      "successor, a contradiction, or a deliberate pair, and only you can " +
-      "tell which. " +
-      "Re-send the save with `replaces: <id>` (the older one is out of " +
-      "date), `conflict_with: <id>` (both current, incompatible), or " +
-      "`sibling_of: [<id>]` (different entities that share wording and " +
-      "both apply forever) — or narrow this save's recall_when so it stops " +
-      "claiming their situation. Never re-send it unchanged: the gate is " +
-      "deterministic and will hold it again. Writing sharp, situation-" +
-      "specific triggers in the first place is what keeps this rare.\n" +
-      "\n" +
-      "QUALITY BARS:\n" +
-      "- Title: short, specific, non-generic.\n" +
-      "- Summary: one sentence, aim ~250-300 chars, core gist in the first " +
-      "  160 (the lean-recall snippet). Hard cap 400 — over-long is " +
-      "  auto-truncated at a word boundary, never rejected; still keep it short.\n" +
-      "- Body: lead with the rule/fact, then **Why:** (root cause / " +
-      "  reason / incident) and **How to apply:** (when this kicks in). " +
-      "  For lessons, capture the failure path AND the fix.\n" +
-      "- recall_when (CRITICAL — highest-weighted search field): 2-4 " +
-      "  CONCRETE contexts/queries where future-you should be reminded. " +
-      "  'about to write a Tailwind grid' beats 'CSS questions'. Without " +
-      "  good recall_when, the memory is dead weight.\n" +
-      "- Language: author title, summary and recall_when in the user's " +
-      "  primary language (settings language.primary / the injected " +
-      "  <memory-language> block); keep only genuine English tech terms " +
-      "  (daemon, deploy, hook, …) as anchors — this mixed style carries " +
-      "  cross-lingually.\n" +
-      "\n" +
-      "TAXONOMY CONVENTIONS (self-learning vault structure):\n" +
-      "- The vault can teach itself new categories. A convention is a " +
-      "  memory in the reserved scope 'taxonomy' that names a cluster " +
-      "  and fixes its axes: folder, topic_path shape, tags, body shape.\n" +
-      "- BEFORE saving into a recurring cluster (people, places, tools, " +
-      "  …): recall('taxonomy convention <cluster>') — if a convention " +
-      "  exists, FOLLOW it exactly (its folder/topic_path/tags), do not " +
-      "  invent variant tags that fragment recall.\n" +
-      "- When you notice the same ad-hoc cluster for the third time " +
-      "  without a convention, establish one: save a memory with " +
-      "  scope='taxonomy', tag 'convention', body = the rule (axes + " +
-      "  folder + body shape + one example), then apply it. Use the " +
-      "  `folder` arg so members get a real home (e.g. 'memories/people').\n" +
-      "- Re-filing: overwrite=true with a new folder MOVES the memory " +
-      "  (old file goes to the vault trash) — use this to migrate " +
-      "  existing memories under a new convention.\n" +
-      "\n" +
-      "AFTER SAVING: surface a single-line ack to the user, prefixed " +
-      "with `→`: `→ saved: <title> (id: <id>)`. Nothing more.\n\n" +
-      "CALL FORMAT: send every argument as its own native JSON property. " +
-      "Never embed XML tags such as <body> or <topic_path> inside summary.",
+      "Persist a new memory (markdown + YAML frontmatter). This is YOUR long-term memory — save autonomously when a memory-worthy moment occurs, do not wait to be asked.\n\n" +
+      "STRONG SIGNALS — save without confirmation, then a 1-line ack. Match the situation in whatever language the user writes, not sample words (#476):\n" +
+      "- repetition/frustration about a recurring issue ('not again', 'schon wieder', 'снова … опять', emphatic caps; the bare word 'again' alone is no signal) → lesson, emotion:'frustration', salience:0.8\n" +
+      "- an explicit durable rule ('always X', 'never Y', 'on this project we use Z') → preference / workflow\n" +
+      "- a correction of a recurring tendency in your behavior → meta-working\n" +
+      "- a decision finalized after weighing options → decision; a confirmed workflow → workflow\n" +
+      "- a bug fixed after >2 iterations with a non-obvious cause → lesson with the FAILED PATH too, emotion:'success', salience:0.7\n" +
+      "- the user marks something as important → salience:0.9\n" +
+      "Set salience/emotion only in these cases, never invent them (#217).\n\n" +
+      "DO NOT SAVE: one-off tasks, speculation, anything derivable from code/git/CLAUDE.md, sensitive personal data unless it is a stable preference, " +
+      "negative capability claims ('X is broken': capture the fix instead), short-lived progress (PR numbers, 'phase N done'). " +
+      "Write declarative facts ('User prefers concise replies'), not self-directives. When unsure, do not save.\n\n" +
+      "BEFORE SAVING: recall the topic and update an existing memory (overwrite=true) instead of duplicating it. " +
+      "For a recurring cluster (people, places, tools) recall 'taxonomy convention <cluster>' and follow its folder/topic_path/tags. " +
+      "Third time the same cluster without one: save a convention (scope 'taxonomy', tag 'convention', body = axes, folder, body shape, one example). " +
+      "overwrite=true with a new `folder` moves the memory.\n\n" +
+      "CLAIM GATE: a save whose recall_when claims another memory's situation is HELD and nothing is written; `claim_gate` names that memory, its body and `delta.new_terms`. " +
+      "Adds nothing → drop it. Adds a fact that belongs there → re-save THAT memory with overwrite=true and the combined body. " +
+      "Only a genuinely separate memory re-sends with replaces, conflict_with or sibling_of, or with a narrower recall_when — never unchanged.\n\n" +
+      "QUALITY: specific title; summary one sentence, core in the first 160 characters, max 400; body leads with the rule/fact, then **Why:** and **How to apply:**; " +
+      "recall_when (highest-weighted field) = 2-4 concrete situations ('about to write a Tailwind grid', not 'CSS questions'). " +
+      "Title, summary and recall_when in the user's primary language (<memory-language>), keeping English tech terms.\n\n" +
+      "AFTER SAVING: one line `→ saved: <title> (id: <id>)`. Send every argument as its own JSON property, never XML tags such as <body> inside summary. " +
+      "session_id / agent_id: pass them when transport attribution is absent, as Stop execution evidence (main omits agent_id); they are not memory metadata.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -425,26 +252,17 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
             "user-preference",
           ],
           description:
-            "Memory type. Use 'lesson' for fixes/gotchas, 'preference' " +
-            "for project-scoped style choices, 'user-preference' for " +
-            "the human's cross-project preferences, 'project-fact' for " +
-            "non-derivable project state, 'decision' for committed " +
-            "design decisions, 'workflow' for recurring procedures.",
+            "'lesson' fix/gotcha, 'preference' project style choice, 'user-preference' the human's cross-project preference, 'project-fact' non-derivable project state, 'decision' committed design decision, 'workflow' recurring procedure.",
         },
         summary: {
           type: "string",
           description:
-            "One sentence capturing the gist — appears in recall() hits. " +
-            "Aim ~250-300 chars; put the core in the first 160 (shown in lean " +
-            "recall). Over 400 is auto-truncated at a word boundary, never " +
-            "rejected.",
+            "One sentence; core in the first 160 characters (shown in lean recall). Over 400 is truncated at a word boundary.",
         },
         body: {
           type: "string",
           description:
-            "Full markdown body. Lead with the rule/fact, then explain " +
-            "*why* (the reason/incident) and *how to apply* (when this " +
-            "kicks in). Wikilinks like [[other-memory-id]] are supported.",
+            "Markdown. Lead with the rule/fact, then why and how to apply. [[other-memory-id]] wikilinks are supported.",
         },
         topic_path: {
           type: "array",
@@ -459,31 +277,18 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         scope: {
           type: "string",
           description:
-            "Project/area this memory belongs to, e.g. 'bastra-recall', " +
-            "'carnexus', 'user-preference', 'all-projects'. The scope " +
-            "'taxonomy' is reserved for convention memories (self-learned " +
-            "vault structure rules).",
+            "Project/area, e.g. 'bastra-recall', 'user-preference', 'all-projects'. 'taxonomy' is reserved for convention memories.",
         },
         folder: {
           type: "string",
           description:
-            "Optional target folder relative to the vault root (e.g. " +
-            "'memories/people'). Overrides the default scope/type routing — " +
-            "use it when a taxonomy convention assigns this cluster a home. " +
-            "With overwrite=true a changed folder MOVES the memory (old " +
-            "file is trashed, recoverable).",
+            "Optional folder relative to the vault root (e.g. 'memories/people'), overriding scope/type routing. With overwrite=true a changed folder moves the memory.",
         },
         recall_when: {
           type: "array",
           items: { type: "string" },
           description:
-            "Trigger phrases — situations where this memory should " +
-            "surface. Highest-weighted search field. Be specific: " +
-            "'about to write a Tailwind grid', not 'CSS questions'. " +
-            "Do NOT restate the summary here: this field is indexed at " +
-            "weight 5 and the summary already at weight 2, so a copy " +
-            "spends the strongest signal on text that is indexed anyway. " +
-            "Name the situation, not the content.",
+            "Situations where this memory should surface; the highest-weighted search field. Name the situation, not the content, and do not restate the summary.",
         },
         rulebook: RULEBOOK_INPUT,
         rule_categories: RULE_CATEGORIES_INPUT,
@@ -493,31 +298,12 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         verify_cmd: {
           type: "string",
           description:
-            "Optional anchor command that could PROVE this memory's claim — " +
-            "'test -f packages/daemon/src/reflex.ts', 'curl -s localhost:6723/health'. " +
-            "Worth adding on a project-fact that asserts a state of the world, because " +
-            "those age silently into false statements that keep being recalled as true. " +
-            "If the claim is a COUNT ('27 items'), the anchor must print that count " +
-            "('grep -cE <pattern> <file>'), not check that one item exists — a presence " +
-            "check stays green while the number goes stale. " +
-            "Nothing ever runs it automatically: it is stored and shown to whoever loads " +
-            "the memory, who decides under their own permission rules. Leave it out unless " +
-            "the claim is genuinely checkable by one short command.",
+            "Optional short command that proves the claim of a project-fact ('test -f src/x.ts'); for a count it must print the count. Stored and shown on load, never run automatically.",
         },
         derived_claims: {
           type: "array",
           description:
-            "Optional: claims this note states that were taken from a file. When the note " +
-            "is loaded later, each claim is re-checked read-only against its source and the " +
-            "reader is told whether it still holds; the note and the source keep their own " +
-            "bytes. Worth a line whenever you have just read a file and copied a number, a " +
-            "setting or a sentence out of it into the note — decisions, reasons and " +
-            "preferences stay as prose. A claim has an `id`, a `source` (path relative to " +
-            "the vault directory) and a `resolver`: `count.markdown-numbered-list.v1` (with " +
-            "`expect`, the number the note states) counts the numbered items of the source; " +
-            "`quote.v1` (with `exact`, the string exactly as it appears in the file) " +
-            "requires that string to occur once; `sha256.v1` (with `expect`, the digest of " +
-            "the source) covers the whole file.",
+            "Optional claims copied from a file (a number, setting or sentence); each is re-checked read-only against its source when the note is loaded. Resolvers: count.markdown-numbered-list.v1 (expect = the stated count), quote.v1 (exact = the string as in the file, must occur once), sha256.v1 (expect = digest of the whole file). source is relative to the vault.",
           items: {
             type: "object",
             properties: {
@@ -548,78 +334,51 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         replaces: {
           type: "string",
           description:
-            "Id of the memory this one is the new VERSION of. Use it when a " +
-            "fact changed and the old wording is now wrong — not for a memory " +
-            "that is merely similar (link those with [[wikilinks]] instead). " +
-            "The predecessor stays in the vault and stays loadable by its id: " +
-            "it becomes a previous version, not a deleted one, and both sides " +
-            "of the link are recorded. To retire a memory entirely, that is " +
-            "archive_memory — a different thing.",
+            "Id of the memory this one is the new VERSION of (the old wording is now wrong). The predecessor stays loadable as a previous version. Not for merely similar memories, and not a delete (that is archive_memory).",
         },
         conflict_with: {
           type: "string",
           description:
-            "Id of an existing memory this save CONTRADICTS (incompatible " +
-            "claim on the same fact — not a mere near-duplicate: those are " +
-            "overwrite or [[wikilink]] cases). The save is then diverted: " +
-            "nothing new is created and nothing is overwritten — a visible " +
-            "conflict block carrying both claims lands in the existing " +
-            "memory, and its recall hits carry `conflict: true` until " +
-            "someone resolves it. Resolve by deciding with the user which " +
-            "claim stands, then re-saving that memory with overwrite=true.",
+            "Id of a memory this save CONTRADICTS. Nothing new is written: a conflict block with both claims lands in that memory and its hits carry `conflict: true` until the user decides and it is re-saved with overwrite=true.",
         },
         sibling_of: {
           type: "array",
           items: { type: "string" },
           description:
-            "Ids this memory deliberately stands BESIDE. Answer to the claim " +
-            "gate: when a save's recall_when declares a situation another " +
-            "memory already declares, the save is held and nothing is " +
-            "written. Three things resolve it — replaces (the older one is " +
-            "out of date), conflict_with (both current, incompatible), or " +
-            "this field, for several entities that are permanently valid at " +
-            "once and only share wording (one memo per contributor, one per " +
-            "project). Use it only when both really do apply forever; " +
-            "quittances accumulate, so a pair is never asked about twice.",
+            "Ids this memory deliberately stands BESIDE: different entities that share wording and both apply forever (one memo per contributor). Resolves the claim gate for that pair once.",
         },
         related: {
           type: "array",
           items: { type: "string" },
-          description:
-            "Optional ids of related memories. Hinweis: `[[id]]`-Wikilinks " +
-            "im body werden automatisch ins related[] gespiegelt — du musst " +
-            "sie hier nicht doppelt aufzählen.",
+          description: "Optional related ids. [[id]] wikilinks in the body are added automatically.",
         },
         sensitivity: {
           type: "string",
           enum: ["private", "team", "public"],
-          description:
-            "Wer darf das Memory sehen? Default 'team' (lokale KI-Tools). " +
-            "'private' = nur Mac-App (für externe Caller nicht sichtbar).",
+          description: "Who may see it: 'team' (default, local AI tools), 'private' (Mac app only), 'public'.",
         },
         valid_until: {
           type: "string",
-          description: "Explizites Ablaufdatum (YYYY-MM-DD). Überschreibt expires_after_days.",
+          description: "Explicit expiry date (YYYY-MM-DD); overrides expires_after_days.",
         },
         expires_after_days: {
           type: "number",
           description:
-            "Tage nach 'updated', ab denen das Memory altert/expires. " +
-            "Überschreibt den Type-Default (lesson=180, decision=365, …).",
+            "Days after 'updated' until the memory ages; overrides the type default (lesson 180, decision 365, ...).",
         },
         last_reviewed_at: {
           type: "string",
-          description: "ISO-Datum des letzten 'noch aktuell'-Checks. Resetet Staleness.",
+          description: "ISO date of the last 'still current' check; resets staleness.",
         },
         affects_files: {
           type: "array",
           items: { type: "string" },
-          description: "Optionale Liste von Repo-Pfaden, die diese Lesson/Decision betrifft.",
+          description: "Optional repository paths this lesson or decision concerns.",
         },
         issues: {
           type: "array",
           items: { type: "string" },
-          description: "Optionale Liste verknüpfter Issue-IDs (z.B. '#42').",
+          description: "Optional linked issue ids (e.g. '#42').",
         },
         source: {
           type: "string",
@@ -632,30 +391,18 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         salience: {
           type: "number",
           description:
-            "0-1 (#217): how emotionally charged the capture moment was. " +
-            "Set ONLY when a capture rule fires (frustration 0.8, hard-won " +
-            "fix 0.7, 'merk dir das gut' 0.9). High salience ages slower. " +
-            "Omit for routine saves. On overwrite without this field, the " +
-            "existing value is preserved.",
+            "0-1 (#217), only when a capture rule fires (frustration 0.8, hard-won fix 0.7, marked important 0.9). Kept on overwrite when omitted.",
         },
         emotion: {
           type: "string",
           enum: ["frustration", "success", "risk", "neutral"],
-          description:
-            "Tone of the capture moment (#217): 'frustration' (recurring " +
-            "pain), 'success' (hard-won fix), 'risk' (near-miss / danger), " +
-            "'neutral'. Only alongside salience. On overwrite without this " +
-            "field, the existing value is preserved.",
+          description: "Tone of the capture moment (#217), only alongside salience. Kept on overwrite when omitted.",
         },
         recall_mode: {
           type: "string",
           enum: ["reflex", "deliberate"],
           description:
-            "#217: 'reflex' lets this memory self-inject (budgeted) when a " +
-            "recall_when trigger hard-matches a prompt — set 'reflex' ONLY " +
-            "after the user explicitly confirmed a promotion, never " +
-            "autonomously. Absent = 'deliberate'. On overwrite without this " +
-            "field, the existing value is preserved.",
+            "'reflex' self-injects on a hard recall_when match; set it ONLY after the user confirmed a promotion. Absent = 'deliberate'. Kept on overwrite when omitted.",
         },
         id: {
           type: "string",
@@ -663,25 +410,24 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         },
         overwrite: {
           type: "boolean",
-          description:
-            "If true, replace an existing memory with the same id. " + "Default false (errors on collision).",
+          description: "Replace an existing memory with the same id (default false: error on collision).",
         },
         write_origin: {
           type: "string",
           enum: ["user-directed", "agent-session", "capture-review"],
           description:
-            "Provenance (#158): set 'user-directed' ONLY when the human " +
-            "explicitly asked to remember this ('merk dir das') — such " +
-            "memories are exempt from automated lifecycle passes (curator, " +
-            "consolidation). Omit otherwise: 'agent-session' is the default " +
-            "for autonomous saves. On overwrite without this field, the " +
-            "existing provenance is preserved. This is the agent caller’s attestation, " +
-            "not authenticated human-origin proof; user-directed can immediately bind a new rule or validator.",
+            "Provenance (#158): 'user-directed' ONLY when the human explicitly asked to remember this; such memories are exempt from automated lifecycle passes and can immediately bind a new rule or validator. This is the agent caller’s attestation, not authenticated proof. Omit otherwise ('agent-session'); kept on overwrite when omitted.",
         },
         body_ends_with: {
           type: "string",
           description:
             "Optional: the last ~40 characters of `body`, copied verbatim — if the body arrives truncated the save fails with nothing written (#544).",
+        },
+        dry_run: {
+          type: "boolean",
+          description:
+            "Preview (#1484): true runs every check and returns the file content, save_quality, " +
+            "claim gate and delivery (rule, proposal or note) — nothing is written, indexed or audited.",
         },
       },
       required: ["title", "type", "summary", "body", "topic_path", "tags", "scope", "recall_when"],
@@ -691,41 +437,18 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
     name: "edit_memory",
     annotations: { readOnlyHint: false, destructiveHint: false },
     description:
-      "When transport attribution is absent, pass session_id and your worker agent_id (main omits agent_id) for current Stop execution evidence. These are not memory metadata. " +
-      "#519 — change PART of an existing memory without re-sending it. " +
-      "Use this for every ordinary update: a one-line addendum, a corrected " +
-      "sentence, a sharpened summary or an extra trigger. " +
-      "\n\n" +
-      "NEVER edit a vault .md file directly. A direct file edit skips the " +
-      "audit log, the `updated` stamp, the id lock, the atomic write and the " +
-      "index refresh — the change becomes unreconstructable and can be " +
-      "silently undone by a parallel writer or the cloud sync. This tool is " +
-      "the cheap, correct way; there is no longer a reason to take the other " +
-      "one.\n" +
-      "Use save_memory(overwrite: true) only when the memory is rewritten as " +
-      "a whole, or when you need a field this tool does not cover.\n" +
-      "\n" +
-      "OPERATIONS (combine freely, they apply as ONE atomic change):\n" +
-      "- str_replace: old_str -> new_str in the body. old_str must occur " +
-      "EXACTLY ONCE; if it is missing or ambiguous NOTHING is written and the " +
-      "error says which of the two it was. Copy the text verbatim from " +
-      "load_memory, whitespace included.\n" +
-      "- append: add text at the end of the body (it lands before the " +
-      "auto-related block, never inside it).\n" +
-      "- frontmatter: patch summary, recall_when, tags, issues, related, " +
-      "confidence, valid_until, rulebook, applies_when, rulebook_proposed or validator (agent changes to existing rules apply directly without confirmation, by Owner decision #1336). Nothing else — id, scope, type, sensitivity " +
-      "and write_origin are rejected here and belong to save_memory or a " +
-      "dedicated tool. A list field (recall_when, tags, issues, related) " +
-      "REPLACES the whole list: to add a trigger, send the existing entries " +
-      "plus the new one. Entries a patch removed are named in the response " +
-      "under `dropped` (#661).\n" +
-      "\n" +
-      "- rulebook_decision: after an explicit user chat decision, load the proposal then pass {decision:accept|reject, write_origin:user-directed} with expected_revision. This attests user direction, not independent authentication. Never self-confirm. Cannot combine with other edits. Accept binds the proposal; reject removes only the proposal and preserves any existing rule.\n" +
-      "expected_revision is optional optimistic concurrency for ordinary edits: pass the " +
-      "`revision` load_memory gave you, and the edit is refused if the file " +
-      "changed meanwhile — by another edit or by a hand edit in Obsidian. " +
-      "Do NOT pass the `updated` stamp: it has day precision, so two edits on " +
-      "the same day share it and the later one would silently win (#519).",
+      "Change PART of an existing memory without re-sending it (#519): an addendum, a corrected sentence, a sharper summary, an extra trigger. " +
+      "NEVER edit a vault .md file directly: that skips the audit log, the `updated` stamp, the id lock, the atomic write and the index, and a parallel writer or cloud sync can silently undo it. " +
+      "Use save_memory(overwrite: true) only for a full rewrite or a field this tool does not cover.\n\n" +
+      "OPERATIONS (combinable, applied as ONE atomic change):\n" +
+      "- str_replace: old_str must occur EXACTLY ONCE in the body (copy it verbatim from load_memory); otherwise nothing is written and the error says whether it was missing or ambiguous.\n" +
+      "- append: text added at the end of the body, before the auto-related block.\n" +
+      "- frontmatter: patch summary, recall_when, tags, issues, related, confidence, valid_until, rulebook, applies_when, rulebook_proposed or validator; agent changes to existing rules apply directly without confirmation (Owner decision #1336). " +
+      "id, scope, type, sensitivity and write_origin are rejected here. A list field REPLACES the whole list: send the old entries plus the new one; removed entries come back under `dropped` (#661).\n" +
+      "- rulebook_decision: only after an explicit user decision in chat. Load the proposal, then pass {decision: accept|reject, write_origin: user-directed} with expected_revision. " +
+      "It attests user direction, not authentication. Never self-confirm; not combinable with other edits. Accept binds the proposal; reject removes only the proposal and keeps an existing rule.\n" +
+      "expected_revision (optional): the `revision` from load_memory; the edit is refused if the file changed meanwhile. Never pass the `updated` stamp (day precision, #519). " +
+      "session_id / agent_id: pass them when transport attribution is absent, as Stop execution evidence (main omits agent_id); they are not memory metadata.",
     inputSchema: {
       type: "object",
       properties: {
@@ -756,17 +479,12 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         },
         append: {
           type: "string",
-          description:
-            "Text appended to the end of the body — the cheap way to add an " +
-            "addendum to a long memory without re-sending it.",
+          description: "Text appended to the end of the body.",
         },
         frontmatter: {
           type: "object",
           description:
-            "Patch for a small whitelist of fields. Any other key is " +
-            "REJECTED (not silently ignored). List fields REPLACE the " +
-            "existing list — include the old entries to keep them. Do not combine " +
-            "rulebook_proposed with rulebook or applies_when in the same patch.",
+            "Patch for a whitelist of fields; any other key is REJECTED. List fields replace the existing list. Do not combine rulebook_proposed with rulebook or applies_when.",
           properties: {
             summary: { type: "string" },
             recall_when: { type: "array", items: { type: "string" } },
@@ -796,9 +514,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         expected_revision: {
           type: "string",
           description:
-            "The `revision` load_memory returned for this memory — an opaque " +
-            "digest of the file, new after every write. The edit is refused " +
-            "if the file no longer carries it. Omit to edit the current state.",
+            "The `revision` load_memory returned; the edit is refused if the file no longer carries it. Omit to edit the current state.",
         },
       },
       required: ["id"],
@@ -808,16 +524,9 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
     name: "archive_memory",
     annotations: { readOnlyHint: false, destructiveHint: true },
     description:
-      "Move a memory into the vault trash (recoverable — never a hard " +
-      "delete). This is the closing step of INTAKE ADOPTION: after an " +
-      "imported intake memory has been converted into a full-format memory " +
-      "(save_memory with real type/scope/recall_when and source: " +
-      '"migrated:<label>:<original-id>"), archive the original so the ' +
-      "intake area shrinks and the vault holds ONE canonical version. " +
-      "Pass superseded_by with the new memory's id — it is stamped into " +
-      "the archived copy so the adoption stays auditable from both sides. " +
-      "Do NOT use this as a general delete: only archive intake originals " +
-      "you just adopted, or a memory the user explicitly asked to retire. Existing validator rules are archived directly too, without a proposal or confirmation, by explicit Owner decision (#1336).",
+      "Move a memory into the vault trash (recoverable, never a hard delete; restore_memory brings it back). Not a general delete — two uses only: " +
+      'closing an INTAKE ADOPTION (after save_memory wrote the full-format version with source "migrated:<label>:<original-id>", archive the original and pass superseded_by), ' +
+      "or a memory the user explicitly asked to retire. Existing validator rules are archived directly too, without proposal or confirmation (Owner decision #1336).",
     inputSchema: {
       type: "object",
       properties: {
@@ -827,9 +536,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         },
         superseded_by: {
           type: "string",
-          description:
-            "Id of the full-format memory that replaces it — stamped into " +
-            "the archived copy (obsolete: true, superseded_by) for audit.",
+          description: "Id of the memory that replaces it; stamped into the archived copy for audit.",
         },
       },
       required: ["id"],

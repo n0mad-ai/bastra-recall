@@ -1,10 +1,10 @@
 /** Import-time feature defaults for thin clients too: node stdlib only.
  * Read-only, no schema setup, no directory creation, no migrations. A new
  * process picks up changes; tasks/telemetry are marked restart-required. */
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { closeSync, constants, fstatSync, openSync, readFileSync } from "node:fs";
 import { readRuntimeSettingsRecord } from "@bastra-recall/core/runtime-settings";
+import { bastraDataDir } from "@bastra-recall/core/platform-paths";
 export { readRuntimeSettingsRecord } from "@bastra-recall/core/runtime-settings";
 
 /** Only a genuinely absent DB record permits this passive legacy read. Opening
@@ -23,40 +23,47 @@ export function readLegacySettings(path: string): string | null | undefined {
   }
 }
 
-const snapshots = new Map<string, { tasks?: boolean; telemetry?: boolean }>();
+type FeatureSnapshot = { tasks?: boolean; telemetry?: boolean };
+
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+
+/** The stored tasks switch: undefined = not stored (feature default), false for anything malformed. */
+function storedTasks(tasks: unknown): boolean | undefined {
+  if (tasks === undefined) return undefined;
+  if (!isRecord(tasks)) return false;
+  if (tasks.enabled === undefined) return undefined;
+  return typeof tasks.enabled === "boolean" ? tasks.enabled : false;
+}
+
+/** Missing settings (undefined) use feature defaults. Deleted, inaccessible (null) or malformed
+ * settings must not turn the new tasks default into an implicit opt-in. */
+function featureSnapshot(text: string | null | undefined): FeatureSnapshot {
+  if (text === undefined) return {};
+  let stored: unknown;
+  try {
+    stored = text === null ? null : JSON.parse(text);
+  } catch {
+    stored = null; // Corrupt settings keep tasks closed.
+  }
+  if (!isRecord(stored)) return { tasks: false };
+  const snapshot: FeatureSnapshot = {};
+  const tasks = storedTasks(stored.tasks);
+  if (tasks !== undefined) snapshot.tasks = tasks;
+  const telemetry = (stored.telemetry as { enabled?: unknown } | null | undefined)?.enabled;
+  if (typeof telemetry === "boolean") snapshot.telemetry = telemetry;
+  return snapshot;
+}
+
+const snapshots = new Map<string, FeatureSnapshot>();
 export function runtimeFeatureSetting(feature: "tasks" | "telemetry", fallback: boolean): boolean {
-  const data =
-    process.platform === "win32"
-      ? join(process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local"), "Bastra")
-      : join(homedir(), ".bastra");
+  const data = bastraDataDir();
   const path = resolve(process.env.BASTRA_DB_PATH ?? join(data, "recall.db"));
   const key = resolve(join(data, "cli-settings.json"));
   const cacheKey = `${path}\0${key}`;
   let settings = snapshots.get(cacheKey);
   if (!settings) {
-    settings = {};
     const record = readRuntimeSettingsRecord(key);
-    const text = record === undefined ? readLegacySettings(key) : record;
-    // Missing settings use feature defaults. Deleted, inaccessible or malformed
-    // settings must not turn the new tasks default into an implicit opt-in.
-    if (text !== undefined) {
-      settings.tasks = false;
-      if (text !== null) {
-        try {
-          const stored = JSON.parse(text);
-          if (stored && typeof stored === "object" && !Array.isArray(stored)) {
-            if (stored.tasks === undefined) delete settings.tasks;
-            else if (stored.tasks && typeof stored.tasks === "object" && !Array.isArray(stored.tasks)) {
-              if (stored.tasks.enabled === undefined) delete settings.tasks;
-              else if (typeof stored.tasks.enabled === "boolean") settings.tasks = stored.tasks.enabled;
-            }
-            if (typeof stored.telemetry?.enabled === "boolean") settings.telemetry = stored.telemetry.enabled;
-          }
-        } catch {
-          /* Corrupt settings keep tasks closed. */
-        }
-      }
-    }
+    settings = featureSnapshot(record === undefined ? readLegacySettings(key) : record);
     snapshots.set(cacheKey, settings);
   }
   return settings[feature] ?? fallback;

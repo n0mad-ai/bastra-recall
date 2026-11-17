@@ -313,6 +313,16 @@ Memories age: titles go stale, duplicates creep in, ghosts point at notes you ne
 
 In the memory browser of the web UI, a saved flag can be **edited** later: *Edit* opens its note in the same field, *Save* replaces exactly that entry in `vault-care.md` (kind, date and tick stay; a flag that was changed or removed meanwhile is reported, never overwritten). **Improve text** next to the note field hands a dictated note to your local generation model (Ollama, `generation.model`): fillers, repetitions and self-corrections go, names, numbers and IDs stay, the language stays the note's own. The result replaces the text in the field with *Undo* beside it; nothing is stored until you save.
 
+**Low-signal memories (#642).** The curator's `REPORT.md` has a section *Low-signal memories*: memories that take recall slots but carry little — no or one-word triggers, a trigger that only repeats the summary, almost no body, a title that is only a date. Each entry names its reasons; the list shows 30, most reasons first. Report only: nothing is changed.
+
+**Sync conflict copies (#1485).** When two machines change a memory at the same time, Syncthing keeps the other version next to it as `Alpha.sync-conflict-<date>-<time>-<device>.md` (its documented pattern). Such a file counts as a conflict copy when it also carries the same memory id as `Alpha.md`. The original stays in the index, the copy is left out, and `bastra doctor` lists every pair under *sync conflict copies*. Compare the two, keep what is right in the original, then remove the copy. Other sync services do not document their copy names, so they are not listed. Still, whenever two files in one folder carry the same memory id and one name extends the other (`Alpha (1).md`, `Alpha 2.md` next to `Alpha.md`), the shorter name — the original — keeps the index entry and the other is left out.
+
+**Preview a save (#1484).** `save_memory` with `dry_run: true` runs every check of a real save — credential redaction, quality hints, claim gate, the `replaces`/collision checks — and returns the file it would write (`content`) and whether it would become a rule, a proposal or a note (`delivery`). Nothing is written, indexed or audited.
+
+**Replaced claims (#643).** When a save closely matches a memory that was already replaced (`superseded_by`), `save_quality` says so and names the successor. The save still goes through; passing `replaces: <successor>` marks the change as intended and silences the hint.
+
+**Where a user instruction came from (#1496).** A save with `write_origin: user-directed` records the transport, client, session and time of the call in `write_origin_evidence`. The save receipt and `list_rules` show it. No extra approval step; outside a tool call nothing is recorded rather than guessed.
+
 ### Updating — what `bastra update` installs
 
 `bastra update` updates Bastra Recall the way you installed it, then registers it again with your AI clients and restarts the background service:
@@ -393,6 +403,12 @@ A `conversations.json` never stages raw chat history: only **your own messages**
 If a label move was interrupted, run `bastra import clients` again: it recognizes files already rewritten or renamed and finishes the move. If ownership or an old ID is ambiguous, it reports a skip instead of guessing or overwriting another note. Notes, attachments and symlinks in the old folder that this import did not write are left there and named in the output (#1048); only the imported Markdown and its marker move. A disappearing vault stops the move instead of recreating its root. You can move the leftovers wherever they belong.
 
 Link targets that live on another surface (say, your Claude Code skills) can be declared once with `bastra skills add <id>` — declared ids render as solid nodes in the map's own **skills ring** instead of "unwritten" ghosts, and the curator stops reporting them as dangling links. No path, no folder scan, no sync: the id is the whole declaration (also available on any ghost node in the map — "Mark as skill").
+
+### Search and save from the terminal (#1492)
+
+Without an agent, `bastra recall "<question>"` searches the vault and prints the matching memories (id, type and area, title, summary). `--limit N` caps the hits (1–20, default 5), `--scope` and `--type` narrow the search, `--json` prints the raw answer for scripts.
+
+`bastra save --title "…" --type lesson --scope my-project "The text."` saves a memory yourself. The text can also be piped in: `echo "The text." | bastra save --title … --type … --scope …`. Optional: `--summary`, `--recall-when` (repeatable; when the memory should come up), `--tag` (repeatable), `--topic a/b`. Left out, they are filled the same way as *Save as memory* in the web UI: summary from the text's first line, trigger from the title, tag and topic from the area. Both commands go through the running daemon's normal `recall` and `save_memory` paths, so a terminal save gets every check an agent's save gets (claim gate, credential redaction, audit, indexing). It is recorded as your own instruction (`write_origin: user-directed`). A save another memory already covers is held and that memory is named (exit 1); a memory with the same title is never overwritten.
 
 ### Feedback
 
@@ -1017,6 +1033,16 @@ Memories altern: Titel veralten, Dubletten schleichen sich ein, Ghosts zeigen au
 
 Im Memory-Browser der Weboberfläche lässt sich eine gespeicherte Markierung später **bearbeiten**: *Bearbeiten* öffnet ihre Notiz im selben Feld, *Speichern* ersetzt genau diesen Eintrag in `vault-care.md` (Art, Datum und Haken bleiben; wurde die Markierung inzwischen geändert oder entfernt, kommt eine Meldung statt eines Überschreibens). **Text verbessern** neben dem Notizfeld gibt eine eingesprochene Notiz an dein lokales Generierungsmodell (Ollama, `generation.model`): Füllwörter, Wiederholungen und Selbstkorrekturen fallen weg, Namen, Zahlen und IDs bleiben, die Sprache bleibt die der Notiz. Das Ergebnis ersetzt den Text im Feld, daneben steht *Rückgängig*; gespeichert wird erst, wenn du speicherst.
 
+**Memories mit wenig Inhalt (#642).** Der `REPORT.md` des Kurators hat einen Abschnitt *Low-signal memories*: Memories, die Plätze im Recall belegen, aber wenig tragen — keine oder einwortige Auslöser, ein Auslöser, der nur die Zusammenfassung wiederholt, fast kein Text, ein Titel, der nur ein Datum ist. Jeder Eintrag nennt seine Gründe; gezeigt werden 30, die mit den meisten Gründen zuerst. Nur ein Bericht: Es wird nichts geändert.
+
+**Konfliktkopien von Sync-Diensten (#1485).** Ändern zwei Rechner ein Memory gleichzeitig, legt Syncthing die andere Fassung daneben als `Alpha.sync-conflict-<Datum>-<Zeit>-<Gerät>.md` ab (sein dokumentiertes Muster). Trägt eine solche Datei außerdem dieselbe Memory-id wie `Alpha.md`, gilt sie als Konfliktkopie. Das Original bleibt im Index, die Kopie bleibt draußen, und `bastra doctor` listet jedes Paar unter *sync conflict copies*. Beide vergleichen, das Richtige ins Original übernehmen, dann die Kopie entfernen. Andere Sync-Dienste dokumentieren die Namen ihrer Kopien nicht und werden deshalb nicht gelistet. Trotzdem gilt: Tragen zwei Dateien im selben Ordner dieselbe Memory-id und verlängert ein Name den anderen (`Alpha (1).md`, `Alpha 2.md` neben `Alpha.md`), behält der kürzere Name — das Original — den Platz im Index, die andere Datei bleibt draußen.
+
+**Speichern als Vorschau (#1484).** `save_memory` mit `dry_run: true` durchläuft alle Prüfungen eines echten Speicherns — Schwärzen von Zugangsdaten, Qualitätshinweise, Claim-Gate, die Prüfungen zu `replaces` und Kollisionen — und liefert die Datei, die entstünde (`content`), und ob daraus eine Regel, ein Vorschlag oder eine Notiz würde (`delivery`). Nichts wird geschrieben, indexiert oder protokolliert.
+
+**Schon ersetzte Aussagen (#643).** Passt ein Speichern eng zu einem Memory, das bereits ersetzt wurde (`superseded_by`), sagt `save_quality` das und nennt den Nachfolger. Gespeichert wird trotzdem; mit `replaces: <Nachfolger>` ist die Änderung gewollt, und der Hinweis entfällt.
+
+**Woher eine Nutzeranweisung kam (#1496).** Ein Speichern mit `write_origin: user-directed` hält Transport, Client, Sitzung und Zeitpunkt des Aufrufs in `write_origin_evidence` fest. Die Quittung des Speicherns und `list_rules` zeigen es. Kein zusätzlicher Freigabeschritt; außerhalb eines Werkzeugaufrufs wird nichts festgehalten statt geraten.
+
 ### Aktualisieren — was `bastra update` installiert
 
 `bastra update` aktualisiert Bastra Recall auf dem Weg, auf dem du es installiert hast, registriert es danach neu bei deinen KI-Clients und startet den Hintergrunddienst neu:
@@ -1097,6 +1123,12 @@ Eine `conversations.json` staged nie rohe Chat-History: Nur **deine eigenen Mess
 Wurde ein Label-Umzug unterbrochen, führe `bastra import clients` erneut aus: Bereits geänderte oder umbenannte Dateien werden erkannt und der Umzug fortgesetzt. Sind Besitz oder eine alte ID nicht eindeutig, meldet der Befehl einen Skip, statt eine andere Notiz auf Verdacht zu überschreiben. Notizen, Anhänge und Symlinks im alten Ordner, die dieser Import nicht geschrieben hat, bleiben dort liegen und werden in der Ausgabe genannt (#1048); nur importiertes Markdown und sein Marker ziehen um. Verschwindet der Vault, stoppt der Umzug, statt seinen Root neu anzulegen. Die übrigen Dateien kannst du verschieben, wohin sie gehören.
 
 Link-Ziele, die auf einer anderen Surface leben (etwa deine Claude-Code-Skills), deklarierst du einmal mit `bastra skills add <id>` — deklarierte ids erscheinen als solide Knoten im eigenen **Skills-Ring** der Map statt als „unwritten"-Ghosts, und der Curator meldet sie nicht mehr als dangling links. Kein Pfad, kein Ordner-Scan, kein Sync: Die id ist die ganze Deklaration (auch auf jedem Ghost-Knoten in der Map — „Mark as skill").
+
+### Suchen und Speichern im Terminal (#1492)
+
+Ohne Agent durchsucht `bastra recall "<Frage>"` den Vault und zeigt die passenden Memories (ID, Typ und Bereich, Titel, Zusammenfassung). `--limit N` begrenzt die Treffer (1–20, Standard 5), `--scope` und `--type` grenzen die Suche ein, `--json` gibt die Antwort unverändert für Skripte aus.
+
+`bastra save --title "…" --type lesson --scope mein-projekt "Der Text."` speichert selbst ein Memory. Der Text kann auch per Pipe kommen: `echo "Der Text." | bastra save --title … --type … --scope …`. Optional: `--summary`, `--recall-when` (mehrfach; wann das Memory auftauchen soll), `--tag` (mehrfach), `--topic a/b`. Fehlen sie, werden sie wie bei *Als Memory speichern* in der Weboberfläche gefüllt: Zusammenfassung aus der ersten Zeile des Textes, Auslöser aus dem Titel, Tag und Thema aus dem Bereich. Beide Befehle laufen über die normalen Wege `recall` und `save_memory` des laufenden Daemons; ein Speichern im Terminal bekommt also dieselben Prüfungen wie das eines Agenten (Claim-Gate, Schwärzen von Zugangsdaten, Audit, Indexierung). Es wird als deine eigene Anweisung festgehalten (`write_origin: user-directed`). Deckt schon ein anderes Memory dieselbe Situation ab, wird nicht gespeichert und dieses Memory genannt (Exit 1); ein Memory mit demselben Titel wird nie überschrieben.
 
 ### Feedback
 

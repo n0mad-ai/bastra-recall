@@ -8,13 +8,7 @@ import { missingVaultReason } from "./vault-presence.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { scopeEquals } from "@bastra-recall/core/scope";
-import {
-  truncateSummaryTo,
-  hasUnresolvedConflict,
-  type StageListener,
-  type RecallStage,
-  type RecallHit,
-} from "@bastra-recall/core";
+import { hasUnresolvedConflict, type StageListener, type RecallStage, type RecallHit } from "@bastra-recall/core";
 import { envInt } from "./env.js";
 import { fireAndForget } from "./telemetry.js";
 import { telemetryCandidatePool, type TelemetryPoolCandidate } from "./training-signal.js"; // #1128-capture
@@ -27,12 +21,12 @@ import { armsOf, currentScoreVersion } from "./score-space.js";
 export { armsOf, SCORE_VERSION, currentScoreVersion } from "./score-space.js";
 import { computeSalienceShadow } from "./salience-shadow.js";
 import { computeTrustShadow, trustRankMode, usageForShadow } from "./trust-shadow.js";
-import { commonsRankFactor } from "./cli/commons.js";
+import { commonsRankFactor } from "./commons-store.js";
 import { fuseCommonsHits } from "./commons-fusion.js";
 import { expandQuery } from "./learned-recall/bridges.js";
 import { mergeBatchResults, dedupeQueries, batchDuplicateNote, withSupersession } from "./recall-batch.js";
 import { fitRecallWithReflexToBudget } from "./recall-budget.js";
-import { applyCallerScopeFilter, collectPoolReflexHits } from "./recall-pipeline.js";
+import { applyCallerScopeFilter, collectPoolReflexHits, truncateSummary } from "./recall-pipeline.js";
 import type { ToolDeps } from "./tool-deps.js";
 import type { PrivateAccess } from "./private-access.js";
 import { dimensionHints, type DimensionHints } from "./telemetry-dimensions.js";
@@ -253,13 +247,8 @@ function makeStageCollector(forward?: StageListener): {
  *  zurückgegeben. Spiegelt `SCORE_FLOOR` aus hook.ts + die SKILL.md-Linie. */
 const RECALL_FLOOR = envInt("BASTRA_RECALL_FLOOR", 30);
 
-/** Max-Länge der `summary` im lean-Modus (#50). Lang genug zum Validieren,
- *  kurz genug um Context zu sparen. `verbosity:"full"` umgeht das. */
-const LEAN_SUMMARY_MAX = 160;
-
-/** Kürzt auf max. `LEAN_SUMMARY_MAX` Zeichen an der letzten Wortgrenze und
- *  hängt „…" an. Nie mitten im Wort. Kürzere Summaries bleiben unverändert. */
-export const truncateSummary = (summary: string): string => truncateSummaryTo(summary, LEAN_SUMMARY_MAX);
+// truncateSummary (lean summary cut, #50) lives in recall-pipeline.ts (#1515 B1).
+export { truncateSummary };
 
 /** Schlanke Pro-Hit-Projektion (#50): nur die Felder, die das Modell zum
  *  Validieren braucht. Dropt `matched_terms` (größter variabler Fresser),

@@ -5,7 +5,7 @@ import { deliverTaskChats } from "./task-chat-delivery.js";
 import { watch, existsSync, statSync, type FSWatcher } from "node:fs";
 import { basename, dirname, relative, sep } from "node:path";
 import { emptyTaskStore, type TaskStore } from "./task-schema.js";
-import { readTaskStore } from "./task-store.js";
+import { readTaskStore, TaskStoreError } from "./task-store.js";
 import { appRecordDatabasePath } from "./app-record-store.js";
 import { observeTaskSources, reconcileTaskTime } from "./task-events.js";
 import { taskEventToAssess, taskCheckMaterial, assessTaskFreshness } from "./task-freshness.js";
@@ -116,6 +116,19 @@ export class TaskRuntime {
       throw new Error("Task store unavailable");
     }
   }
+  private async reconcileTime(): Promise<"capacity" | null> {
+    try {
+      this.snapshot = await reconcileTaskTime(this.ctx);
+      this.invalidBindings.clear();
+      return null;
+    } catch (error) {
+      if (!(error instanceof TaskStoreError) || error.code !== "capacity") throw error;
+      // Capacity refuses new evaluation writes. The persisted snapshot is
+      // still safe to read and can contain reminders waiting to be delivered.
+      await this.refresh();
+      return "capacity";
+    }
+  }
   get hasWork(): boolean {
     return (
       this.snapshot.controls.enabled &&
@@ -168,6 +181,7 @@ export class TaskRuntime {
     this.busy = (async () => {
       const started = Date.now();
       let assessed = new Map<string, string>();
+      let evaluationError: "capacity" | null = null;
       const selected = new Set<string>();
       const sources = new Set<string>();
       let visited = 0;
@@ -197,10 +211,7 @@ export class TaskRuntime {
           if (Date.now() - started < 5000)
             assessed = await assessTaskFreshness(this.ctx, selected, 5000 - (Date.now() - started));
         }
-        if (Date.now() - started < 5000) {
-          this.snapshot = await reconcileTaskTime(this.ctx);
-          this.invalidBindings.clear();
-        }
+        if (Date.now() - started < 5000) evaluationError = await this.reconcileTime();
         if (this.ctx.executionHost) {
           this.notificationsEnabled = (await taskNotificationStatus()).enabled;
           await notifyDueTasks(this.ctx);
@@ -209,7 +220,7 @@ export class TaskRuntime {
         }
         this.lastTick = now;
         this.backoff = 0;
-        this.lastError = null;
+        this.lastError = evaluationError;
         for (const id of selected) {
           const task = this.snapshot.tasks.find((t) => t.id === id);
           if (!task || !assessed.has(id)) continue;

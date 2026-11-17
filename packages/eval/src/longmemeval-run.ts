@@ -100,6 +100,7 @@ import {
   type SessionMemory,
   type TurnMode,
 } from "./longmemeval-dataset.js";
+import { archiveIfRequested, takeArchiveFlag } from "./run-archive.js";
 
 // ── CLI ────────────────────────────────────────────────────────
 
@@ -116,6 +117,8 @@ interface Args {
   near: number | null;
   limit: number;
   out: string | null;
+  /** #503: also file the --out artefact under ~/.bastra/longmemeval-run-runs/. */
+  archive: boolean;
 }
 
 const DEFAULT_CORPUS = path.resolve(import.meta.dirname, "../fixtures/longmemeval-sample.json");
@@ -130,12 +133,14 @@ function usage(): never {
       "  --k <n>           retrieval depth (default: 20)\n" +
       "  --near <x>        fixed near/far coverage cut (default: median split)\n" +
       "  --limit <n>       only the first n questions (0 = all)\n" +
-      "  --out <path>      write the run JSON here (nothing is written otherwise)\n"
+      "  --out <path>      write the run JSON here (nothing is written otherwise)\n" +
+      "  --archive         also file the --out JSON durably, with its sha256 (#503)\n"
   );
   process.exit(2);
 }
 
-function parseArgs(argv: string[]): Args {
+function parseArgs(all: string[]): Args {
+  const { archive, rest: argv } = takeArchiveFlag(all);
   const args: Args = {
     corpus: DEFAULT_CORPUS,
     arms: ["bm25", "hybrid"],
@@ -144,6 +149,7 @@ function parseArgs(argv: string[]): Args {
     near: null,
     limit: 0,
     out: null,
+    archive,
   };
   const req = (v: string | undefined, flag: string): string => {
     if (v === undefined) {
@@ -629,8 +635,9 @@ async function main(): Promise<void> {
   console.log(L.join("\n"));
 
   if (args.out) {
-    // The ONLY file this run writes. `~/.bastra/eval-runs` is the private
-    // archive the M1 tolerances cite by path (#446) and is never touched.
+    // The only file this run writes, plus its archived copy with --archive
+    // (#503). `~/.bastra/eval-runs` is the private archive the M1 tolerances
+    // cite by path (#446) and is never touched.
     await fs.writeFile(
       path.resolve(args.out),
       JSON.stringify(
@@ -662,6 +669,7 @@ async function main(): Promise<void> {
       )
     );
     console.error(`wrote ${args.out}`);
+    archiveIfRequested(args.archive, "longmemeval-run", [path.resolve(args.out)]);
   }
 }
 

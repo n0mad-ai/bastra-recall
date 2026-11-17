@@ -103,13 +103,31 @@ function flagItem(m, a, rerender, draft) {
   return item;
 }
 
+/** Match drafts by their entry during local edits, and by occurrence if the
+ *  entries were parsed again. A save can change the occurrence of its twin. */
+function savedFlags(m, open, draft, rerender) {
+  const previous = draft.flags;
+  const counts = new Map();
+  draft.flags = new Map();
+  return open.map((a) => {
+    const text = JSON.stringify([a.kind, a.date, a.note]);
+    const n = counts.get(text) ?? 0;
+    counts.set(text, n + 1);
+    const key = `${text}:${n}`;
+    const flag = draft.entries.get(a) ?? previous.get(key) ?? {};
+    draft.entries.set(a, flag);
+    draft.flags.set(key, flag);
+    return flagItem(m, a, rerender, flag);
+  });
+}
+
 /**
  * The care section of one memory. `care`: the loaded flag list (entries are
  * updated in place on edit); `add(entry)`: store a new flag; `rerender()`:
  * redraw the reader.
  */
 export function careBlock(m, { care, add, rerender }) {
-  if (!drafts.has(m.id)) drafts.set(m.id, { kind: null, compose: {}, flags: new Map() });
+  if (!drafts.has(m.id)) drafts.set(m.id, { kind: null, compose: {}, flags: new Map(), entries: new WeakMap() });
   const draft = drafts.get(m.id);
   draft.rerender = rerender;
   const open = care.filter((a) => a.id === m.id && !a.done);
@@ -147,20 +165,7 @@ export function careBlock(m, { care, add, rerender }) {
     null,
     h("div.mb-rd__k", { text: t("mb.care") }),
     h("div.mb-care__hint", { text: t("mb.careHint") }),
-    open.length
-      ? h(
-          "div.mb-care__open",
-          null,
-          open.map((a, i) => {
-            // identical entries are allowed: the occurrence keeps their drafts
-            // apart and survives a reopen with freshly parsed entries (#1554)
-            const same = open.slice(0, i).filter((b) => b.kind === a.kind && b.date === a.date && b.note === a.note);
-            const key = JSON.stringify([a.kind, a.date, a.note, same.length]);
-            if (!draft.flags.has(key)) draft.flags.set(key, {});
-            return flagItem(m, a, rerender, draft.flags.get(key));
-          })
-        )
-      : null,
+    open.length ? h("div.mb-care__open", null, savedFlags(m, open, draft, rerender)) : null,
     h("div.mb-care__kinds", null, kinds),
     compose.el
   );

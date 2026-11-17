@@ -13,6 +13,7 @@
  * an interval is not a finding — #118 is the standing reminder that a plausible
  * lever can move a mean and rescue nothing.
  */
+import { seededRandom } from "./seeded-random.js";
 
 /**
  * Reorder the first `n` of `pool` by `scoreOf`, leave the tail where it is.
@@ -55,21 +56,6 @@ export function firstExpectedRank(ranked: readonly string[], expected: ReadonlyS
 /** Mean of a numeric sample. Empty is 0 — a slice with no cases has no lift. */
 export function mean(xs: readonly number[]): number {
   return xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length;
-}
-
-/**
- * Deterministic PRNG (mulberry32), the same construction `goldset-run.ts` uses
- * for its control arm — a resampled interval that moves between runs on
- * unchanged data is not a reportable number.
- */
-export function seededRandom(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }
 
 export interface PairedResult {

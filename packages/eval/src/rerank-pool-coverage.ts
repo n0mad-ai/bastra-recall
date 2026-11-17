@@ -31,6 +31,7 @@ import type { RecallHit } from "@bastra-recall/core";
 import { loadGoldFiles } from "./goldset-dataset.js";
 import { PRODUCTION_K, SCORE_FLOOR, attachHybrid, gatedHybridRecaller } from "./goldset-run.js";
 import { partitionCases, vaultFingerprint } from "./rerank-replay.js";
+import { archiveIfRequested, takeArchiveFlag } from "./run-archive.js";
 
 /** The depths reported. 40 is `HOP_SEED_POOL` — the whole pool a rerank sees. */
 const DEPTHS = [1, 3, 5, 10, 20, 30, 40] as const;
@@ -57,7 +58,8 @@ function share(xs: readonly number[], pred: (x: number) => boolean): number {
 async function main(): Promise<void> {
   let goldDir = join(process.env.HOME ?? "", ".bastra", "eval-goldset");
   let out: string | null = null;
-  const argv = process.argv.slice(2);
+  // #503: also file the --out artefact under ~/.bastra/rerank-pool-coverage-runs/.
+  const { archive, rest: argv } = takeArchiveFlag(process.argv.slice(2));
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--gold-dir") goldDir = argv[++i];
     else if (argv[i] === "--out") out = argv[++i];
@@ -218,6 +220,7 @@ async function main(): Promise<void> {
       { mode: 0o600 }
     );
     console.error(`[pool-coverage] wrote ${out}`);
+    archiveIfRequested(archive, "rerank-pool-coverage", [out]);
   }
 
   await arm.cleanup();

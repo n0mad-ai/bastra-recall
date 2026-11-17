@@ -157,6 +157,40 @@ export function claimingTrigger(trigger: string, theirs: string[]): string | und
 const CODE_FIX_RE = /```|`[^`\n]+`/;
 
 /**
+ * #643 — a save that closely matches a memory which was already replaced
+ * re-asserts the old claim: the correction would not last, and the vault grows
+ * the claim back. Same similarity band as the duplicate check, advisory only;
+ * the claim gate stays the only thing that holds a save. Pushes its finding and
+ * returns the score penalty (0 when nothing matched).
+ *
+ * The save's own `replaces` chain never gets here — `excluded` dropped it — so
+ * `replaces: <successor>` is the explicit "yes, the old claim is right again".
+ * The losing side of a resolved #205 conflict is not covered: the resolution
+ * removes the conflict block, and the audit log keeps frontmatter only, so no
+ * record says which claim lost.
+ */
+function replacedClaimAdvisory(
+  deps: ToolDeps,
+  similar: ReadonlyArray<{ id: string; similarity: number }>,
+  issues: string[],
+  suggestions: string[]
+): number {
+  for (const candidate of similar) {
+    const successor = deps.vault.get(candidate.id)?.fm.superseded_by;
+    if (typeof successor !== "string" || successor === "") continue;
+    issues.push(
+      `re-asserts a replaced claim: ${candidate.id} (similarity ${candidate.similarity}) was superseded by ${successor}`
+    );
+    suggestions.push(
+      `load_memory('${successor}') first — drop this save if the correction still holds; ` +
+        `if the old claim is right again, save with replaces: '${successor}' so the change is on purpose`
+    );
+    return 15;
+  }
+  return 0;
+}
+
+/**
  * @param excludeId Die EFFEKTIVE id des Saves (`input.id ?? slugify(title)`).
  *   Muss vom Caller berechnet werden: `input.id` ist auf dem dokumentierten
  *   Normalpfad `undefined` (der Agent schickt nur den Titel), und ein Filter
@@ -322,7 +356,7 @@ export function scoreSaveQuality(
     recall_when: m.recall_when ?? [],
   });
   const self = asFields(input);
-  const duplicateCandidates = deps.search
+  const similar = deps.search
     .recall(duplicateQuery, { k: 10, scope: input.scope, type: input.type, allow_private: false })
     .filter((hit) => !excluded(hit.id))
     .map((hit) => {
@@ -345,8 +379,9 @@ export function scoreSaveQuality(
     })
     .filter((candidate) => candidate.similarity >= DUPLICATE_SIMILARITY_MIN)
     .sort((a, b) => b.similarity - a.similarity)
-    .slice(0, 3)
     .map((candidate) => ({ ...candidate, similarity: Math.round(candidate.similarity * 1000) / 1000 }));
+  const duplicateCandidates = similar.slice(0, 3);
+  score -= replacedClaimAdvisory(deps, similar, issues, suggestions);
   if (duplicateCandidates.length > 0) {
     const top = duplicateCandidates[0];
     issues.push(`possible duplicate: ${top.id} (similarity ${top.similarity})`);

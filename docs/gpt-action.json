@@ -20,7 +20,7 @@
       "post": {
         "operationId": "archive_memory",
         "summary": "archive memory",
-        "description": "Move a memory into the vault trash (recoverable — never a hard delete). This is the closing step of INTAKE ADOPTION: after an imported intake memory has been converted into a full-format memory (save_memory with real type/scope/recall_when and source: \"migrated:<label>:<original-id>\"), ...",
+        "description": "Move a memory into the vault trash (recoverable, never a hard delete; restore_memory brings it back). Not a general delete — two uses only: closing an INTAKE ADOPTION (after save_memory wrote the full-format version with source \"migrated:<label>:<original-id>\", archive the original and ...",
         "requestBody": {
           "required": true,
           "content": {
@@ -86,7 +86,7 @@
       "post": {
         "operationId": "edit_memory",
         "summary": "edit memory",
-        "description": "When transport attribution is absent, pass session_id and your worker agent_id (main omits agent_id) for current Stop execution evidence. These are not memory metadata. #519 — change PART of an existing memory without re-sending it. Use this for every ordinary update: a one-line addendu...",
+        "description": "Change PART of an existing memory without re-sending it (#519): an addendum, a corrected sentence, a sharper summary, an extra trigger. NEVER edit a vault .md file directly: that skips the audit log, the `updated` stamp, the id lock, the atomic write and the index, and a parallel writer...",
         "requestBody": {
           "required": true,
           "content": {
@@ -1066,7 +1066,7 @@
       "post": {
         "operationId": "list_rules",
         "summary": "list rules",
-        "description": "Read the complete scoped rulebook catalog without search or relevance filtering. Returns total, catalog_hash, rule IDs/titles/applies_when, next_cursor and an explicit end marker. Continue with the returned cursor until end=true. A changed catalog restarts at page one with restarted=tru...",
+        "description": "Read the complete scoped rulebook catalog, unfiltered. Returns total, catalog_hash, rule IDs/titles/applies_when, next_cursor and an end marker; continue with the cursor until end=true (a changed catalog restarts at page one with restarted=true). Decide applicability yourself and read b...",
         "requestBody": {
           "required": true,
           "content": {
@@ -1129,7 +1129,7 @@
       "post": {
         "operationId": "load_memory",
         "summary": "load memory",
-        "description": "Load the content (frontmatter + body) of a single memory by id. Step 2 of the recall flow — call this only for the candidates recall() surfaced that you actually need. Returns essential frontmatter + body by default; pass verbosity:'full' for the raw frontmatter (related_via cosines, so...",
+        "description": "Load one memory (frontmatter + body) by id: step 2 after recall, only for the hits you need. verbosity:'full' adds the raw frontmatter. The result's `revision` goes to edit_memory({ expected_revision }) so a change is refused if the memory moved on (#519). For an action-required load wi...",
         "requestBody": {
           "required": true,
           "content": {
@@ -1403,7 +1403,7 @@
       "post": {
         "operationId": "recall",
         "summary": "recall",
-        "description": "Search the memory vault. Returns top-k matching memorys (id, title, type, scope, summary, score). \n\nWHEN TO CALL (recall is part of acting, not a separate step):\n- At session start (once): query for active-project + user-preferences to load durable context.\n- Before writing/editing a fi...",
+        "description": "Search the memory vault. Returns lean CANDIDATES (id, title, type, scope, summary, score), no bodies: call load_memory only for the hits you need.\n\nWHEN TO CALL (recall is part of acting, not a separate step): at session start (active project, user preferences); before writing or editin...",
         "requestBody": {
           "required": true,
           "content": {
@@ -1827,7 +1827,7 @@
       "post": {
         "operationId": "rulebook_check",
         "summary": "rulebook check",
-        "description": "Record an honest self-report that you checked the rulebook index for this round. Read applicable rules with load_memory first. Pass applicable: [IDs] or applicable: [] when none applies. No approval, full-catalog receipt or action binding required. Valid only for the caller session, cur...",
+        "description": "Self-report that you checked the rulebook index this round. Load applicable rules with load_memory first, then pass applicable:[IDs] or applicable:[]. No approval, catalog receipt or action binding is required. Valid only for the caller's session, context and round. Workers pass their o...",
         "requestBody": {
           "required": true,
           "content": {
@@ -2078,7 +2078,7 @@
       "post": {
         "operationId": "save_memory",
         "summary": "save memory",
-        "description": "When transport attribution is absent, pass session_id and your worker agent_id (main omits agent_id) for current Stop execution evidence. These are not memory metadata. Persist a new memory into the vault as a markdown file with YAML frontmatter. This is YOUR long-term memory — save aut...",
+        "description": "Persist a new memory (markdown + YAML frontmatter). This is YOUR long-term memory — save autonomously when a memory-worthy moment occurs, do not wait to be asked.\n\nSTRONG SIGNALS — save without confirmation, then a 1-line ack. Match the situation in whatever language the user writes, no...",
         "requestBody": {
           "required": true,
           "content": {

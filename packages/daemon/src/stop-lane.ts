@@ -26,7 +26,7 @@ import { spoolRulebookFailure } from "./rulebook-spool.js";
  * changed: the daemon runs as the same user as the hook did.
  */
 import { appendFile, mkdir } from "node:fs/promises";
-import { request } from "node:http";
+import { getJson } from "./prompt-loopback.js";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { envFirst, envOff } from "./env.js";
@@ -38,7 +38,7 @@ import { enqueueForPath } from "./code-graph/service.js";
 import { boundaryNote } from "./code-graph/boundary-block.js";
 import { getPromptImpactEnabled } from "./code-graph/prompt-impact-settings.js";
 import { loadSessionState, mutateSessionState, parkBoundary } from "./session-state.js";
-import { noteSessionForHarvest } from "./session-harvest.js";
+import { bookPreCompact, noteSessionForHarvest } from "./session-harvest.js";
 import {
   emptyTranscriptReason,
   loadTranscript,
@@ -91,7 +91,8 @@ export async function runStopLane(
     });
     return "{}";
   }
-  if (payload.hook_event_name !== "Stop") return "{}";
+  // #1486: Claude Code's PreCompact rides the Stop client too; it only books the session for the next harvest pass.
+  if (payload.hook_event_name !== "Stop") return bookPreCompact(payload, hookClientEvidence(payload));
   // Read once: the rulebook boundary must see current-round structural evidence.
   let turns: TranscriptTurn[] | null = null;
   try {
@@ -475,49 +476,9 @@ function formatDriftBlock(clusters: DriftCluster[]): string {
 /** Loopback self-call to this same server (~1-3ms), like every other lane's
  *  daemon call — the base URL is passed in by the route, not read from the
  *  environment. */
-function fetchDrift(baseUrl: string, timeoutMs: number): Promise<DriftCluster[]> {
-  return new Promise((resolve_) => {
-    let url: URL;
-    try {
-      url = new URL("/hook/drift", baseUrl);
-    } catch {
-      resolve_([]);
-      return;
-    }
-    const req = request(
-      {
-        method: "GET",
-        hostname: url.hostname,
-        port: url.port || 80,
-        path: url.pathname,
-        timeout: timeoutMs,
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (c: Buffer) => chunks.push(c));
-        res.on("end", () => {
-          try {
-            const data = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
-              clusters?: DriftCluster[];
-            };
-            if ((res.statusCode ?? 500) === 200 && Array.isArray(data.clusters)) {
-              resolve_(data.clusters);
-              return;
-            }
-          } catch {
-            /* fallthrough */
-          }
-          resolve_([]);
-        });
-      }
-    );
-    req.on("timeout", () => {
-      req.destroy();
-      resolve_([]);
-    });
-    req.on("error", () => resolve_([]));
-    req.end();
-  });
+async function fetchDrift(baseUrl: string, timeoutMs: number): Promise<DriftCluster[]> {
+  const data = await getJson<{ clusters?: DriftCluster[] } | null>(baseUrl, "/hook/drift", timeoutMs);
+  return Array.isArray(data?.clusters) ? data.clusters : [];
 }
 
 interface StopHookTelemetry {

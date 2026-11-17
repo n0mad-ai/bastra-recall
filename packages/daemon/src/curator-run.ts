@@ -44,6 +44,7 @@ import {
   type VaultHealthData,
 } from "./vault-report.js";
 import { escapeAttr } from "./escape-attr.js";
+import { collectLowSignal } from "./low-signal.js";
 
 /** Floors older than this without a real affirm land in the report. */
 const FLOOR_REVIEW_WEEKS = 4;
@@ -690,6 +691,8 @@ async function runCuratorPassInner(
     // #360: the claim gate holds new saves; this is the same question asked of
     // everything written before the gate existed.
     claimedTwice: collectClaimedTwice(deps.vault, claimedTwiceReportLimit()),
+    // #642: on topic but carrying almost nothing — report only.
+    lowSignal: collectLowSignal(deps.vault.list()),
     demandGaps: events ? collectDemandGaps(events) : null,
     emptyFiles: await collectEmptyFiles(deps.vaultRoot),
     flagged: collectFlaggedCaptures(deps.vault),

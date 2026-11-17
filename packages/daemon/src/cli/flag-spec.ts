@@ -1,4 +1,5 @@
 import { TASK_VALUE_FLAGS } from "./task-friendly.js";
+import { MEMORY_VALUE_FLAGS } from "./memory-cmd.js";
 /**
  * Which options each command accepts — checked BEFORE anything runs (#536).
  *
@@ -28,6 +29,7 @@ import { TASK_VALUE_FLAGS } from "./task-friendly.js";
 /** Options that consume the next argv token as their value. */
 export const VALUE_FLAGS: ReadonlySet<string> = new Set([
   ...TASK_VALUE_FLAGS,
+  ...MEMORY_VALUE_FLAGS,
   "--exclude",
   "--since",
   "--source",
@@ -120,6 +122,8 @@ export const COMMAND_FLAGS: Record<string, readonly string[]> = {
   completion: [],
   archive: ["--json", "--yes", "-y"],
   trash: ["--json"],
+  recall: ["--json", "--limit", "--scope", "--type"],
+  save: ["--json", "--title", "--type", "--scope", "--summary", "--recall-when", "--tag", "--topic"],
   reconcile: ["--dry-run", "--yes", "-y", "--json", "--vault"],
   logs: ["--follow", "-f", "--since", "--source", "--lines", "--stats", "--conventions", "--include-eval"],
 };

@@ -29,12 +29,16 @@ export interface TaskChatDeliveryOptions {
 const digest = (text: string) => createHash("sha256").update(text).digest("hex");
 /** Claim to send takes seconds; a claim this old was left behind by a crash. */
 const ABANDONED_CLAIM_MS = 5 * 60 * 1000;
+// Older versions could send before recording an outcome. Only the versioned
+// event IDs certify that the client used the durable pre-send marker.
+const TRACKED_CLAIM_PREFIX = "claim-v2-";
 /** A claim that never reached send() (no submitted_at, no failed_at) and is
  * older than a few minutes was left behind by a crash between claim and send.
  * Nothing left the daemon, so it must not hide the reminder (#1600). */
 function abandonedTaskChatClaim(claim: Occurrence["chat_delivery"], now: number): boolean {
   return (
     !!claim &&
+    claim.event_id.startsWith(TRACKED_CLAIM_PREFIX) &&
     claim.submitted_at === undefined &&
     claim.failed_at === undefined &&
     now - claim.claimed_at > ABANDONED_CLAIM_MS
@@ -268,7 +272,7 @@ export async function deliverTaskChats(ctx: TaskServiceContext, options: TaskCha
     )
     .slice(0, 10);
   for (const candidate of candidates) {
-    const eventId = randomUUID();
+    const eventId = TRACKED_CLAIM_PREFIX + randomUUID();
     let content: string | undefined;
     await transactTaskStore(
       ctx.path,

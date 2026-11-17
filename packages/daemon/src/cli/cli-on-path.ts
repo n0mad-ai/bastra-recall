@@ -20,7 +20,7 @@
  * exists to surface, reintroduced at the entry point.
  */
 import { existsSync } from "node:fs";
-import { delimiter, dirname, resolve } from "node:path";
+import { delimiter, dirname, resolve, win32 } from "node:path";
 import { run, runCaptured } from "./exec.js";
 import { VERSION } from "./helpers.js";
 import { isEphemeralInstallPath } from "./stable-runtime.js";
@@ -72,14 +72,21 @@ export interface GlobalInstallOutcome {
  * would end with a confident "installed" and the user still typing `bastra`
  * into a command-not-found — #317 again, one layer down.
  */
-export function binDirOnPath(binPath: string, pathEnv: string = process.env.PATH ?? ""): boolean {
-  const dir = dirname(binPath);
+export function binDirOnPath(
+  binPath: string,
+  pathEnv: string = process.env.PATH ?? "",
+  platform: NodeJS.Platform = process.platform
+): boolean {
+  const paths = updatePaths(platform);
+  const windows = platform === "win32";
+  const dir = paths.dirname(paths.resolve(binPath));
   return pathEnv
-    .split(delimiter)
+    .split(windows ? win32.delimiter : delimiter)
     .filter(Boolean)
     .some((d) => {
       try {
-        return resolve(d) === dir;
+        const entry = paths.resolve(d);
+        return windows ? entry.toLowerCase() === dir.toLowerCase() : entry === dir;
       } catch {
         return false;
       }
@@ -134,7 +141,7 @@ export function installCliGlobally(io: UpdateRuntimeIo = {}): GlobalInstallOutco
   if (!r.ok) return { ok: false, detail: r.detail };
   const bin = globalBinPath(npm, io);
   if (!bin) return { ok: true, detail: "installed" };
-  return { ok: true, binPath: bin, offPath: !binDirOnPath(bin), detail: "installed" };
+  return { ok: true, binPath: bin, offPath: !binDirOnPath(bin, process.env.PATH, io.platform), detail: "installed" };
 }
 
 export interface CliOutcomeLine {

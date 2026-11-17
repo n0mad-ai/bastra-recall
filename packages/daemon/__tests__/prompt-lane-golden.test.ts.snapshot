@@ -1,0 +1,1263 @@
+exports[`#1511 golden master — daemon unreachable 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {},
+      "telemetry": [
+        {
+          "session_id": "golden-daemon-unreachable",
+          "client": "unknown",
+          "agent": null,
+          "detected_mode": "retrieval",
+          "prompt_chars": 29,
+          "daemon_url": "http://127.0.0.1:<port>",
+          "daemon_reachable": false,
+          "hint_count": 0,
+          "reflex_hint_count": 0,
+          "hinted_ids": [],
+          "hinted_types": [],
+          "hint_tokens_est": 0,
+          "top_score": null,
+          "backoff_streak": 0,
+          "scope_filter_mode": "shadow",
+          "dropped_scope_count": 0,
+          "project_confidence": "fallback",
+          "filter_project": null,
+          "scope_filter_skipped": "no-project",
+          "suppressed": false,
+          "suppressed_tokens_est": 0,
+          "status": "daemon-unreachable",
+          "error": null
+        }
+      ]
+    }
+  ],
+  "requests": [],
+  "state": {
+    "shown": {}
+  }
+}
+`;
+
+exports[`#1511 golden master — empty prompt 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {},
+      "telemetry": []
+    }
+  ],
+  "requests": [],
+  "state": {
+    "shown": {}
+  }
+}
+`;
+
+exports[`#1511 golden master — forced retrieval without a stored rule 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "UserPromptSubmit",
+          "additionalContext": "<recall-hints surface=\\"claude-code\\" trigger=\\"prompt-lookup\\" recall-step=\\"done\\" recall_id=\\"golden-recall\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nno stored rule matched; save one when the user explains\\nThe user prompt looks like a LOOKUP / retrieval query. bastra-recall:recall already ran for it — these candidates are its result: load_memory the fitting ones (and find_document if pdf-likely) BEFORE conversation_search / web_search. Pre-recalled candidates for this prompt:\\nOPTIONAL (score 50–99) — load only if title/summary directly relates:\\n- unrelated (lesson, score 60): Summary of unrelated\\n</recall-hints>"
+        }
+      },
+      "telemetry": [
+        {
+          "session_id": "golden-forced-retrieval-without-a-stored-rule",
+          "client": "unknown",
+          "agent": null,
+          "detected_mode": "retrieval",
+          "prompt_chars": 36,
+          "daemon_url": "http://127.0.0.1:<port>",
+          "daemon_reachable": true,
+          "hint_count": 1,
+          "reflex_hint_count": 0,
+          "hinted_ids": [
+            "unrelated"
+          ],
+          "hinted_types": [
+            "lesson"
+          ],
+          "hint_tokens_est": 178,
+          "top_score": 60,
+          "backoff_streak": 0,
+          "scope_filter_mode": "shadow",
+          "dropped_scope_count": 0,
+          "project_confidence": "fallback",
+          "filter_project": null,
+          "scope_filter_skipped": "no-project",
+          "suppressed": false,
+          "suppressed_tokens_est": 0,
+          "status": "ok",
+          "error": null
+        }
+      ]
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/reflex",
+      "body": {
+        "context": "Baue den Ablauf wie beim letzten Mal",
+        "project": null,
+        "session_id": "golden-forced-retrieval-without-a-stored-rule",
+        "client": "unknown"
+      }
+    },
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "Baue den Ablauf wie beim letzten Mal",
+        "project": null,
+        "k": 5,
+        "tool_name": "UserPromptSubmit",
+        "session_id": "golden-forced-retrieval-without-a-stored-rule",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "prompt"
+      }
+    },
+    {
+      "url": "/hook/hinted",
+      "body": {
+        "ids": [
+          "unrelated"
+        ],
+        "session_id": "golden-forced-retrieval-without-a-stored-rule"
+      }
+    }
+  ],
+  "state": {
+    "shown": {
+      "unrelated": {
+        "count": 1,
+        "at": "<ts>"
+      }
+    },
+    "sources": {
+      "prompt-lookup": {
+        "streak": 0,
+        "at": "<ts>",
+        "ids": [
+          "unrelated"
+        ],
+        "skipped": 0
+      }
+    }
+  }
+}
+`;
+
+exports[`#1511 golden master — generic prompt, sub-REQUIRED ordinary hit stays out 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {},
+      "telemetry": [
+        {
+          "session_id": "golden-generic-prompt-sub-REQUIRED-ordinary-hit-stays-out",
+          "client": "unknown",
+          "agent": null,
+          "detected_mode": "generic",
+          "prompt_chars": 45,
+          "daemon_url": "http://127.0.0.1:<port>",
+          "daemon_reachable": true,
+          "hint_count": 0,
+          "reflex_hint_count": 0,
+          "hinted_ids": [],
+          "hinted_types": [],
+          "hint_tokens_est": 0,
+          "top_score": 70,
+          "backoff_streak": 0,
+          "scope_filter_mode": "shadow",
+          "dropped_scope_count": 0,
+          "project_confidence": "fallback",
+          "filter_project": null,
+          "scope_filter_skipped": "no-project",
+          "suppressed": false,
+          "suppressed_tokens_est": 0,
+          "status": "no-hits",
+          "error": null
+        }
+      ]
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/reflex",
+      "body": {
+        "context": "please refactor the parser module for clarity",
+        "project": null,
+        "session_id": "golden-generic-prompt-sub-REQUIRED-ordinary-hit-stays-out",
+        "client": "unknown"
+      }
+    },
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "please refactor the parser module for clarity",
+        "project": null,
+        "k": 3,
+        "tool_name": "UserPromptSubmit",
+        "session_id": "golden-generic-prompt-sub-REQUIRED-ordinary-hit-stays-out",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "prompt"
+      }
+    }
+  ],
+  "state": {
+    "shown": {}
+  }
+}
+`;
+
+exports[`#1511 golden master — generic prompt, wired reflex memory keeps the normal floor 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "UserPromptSubmit",
+          "additionalContext": "<recall-hints surface=\\"claude-code\\" trigger=\\"prompt-lookup\\" recall-step=\\"done\\" recall_id=\\"golden-recall\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nPre-recall found memories both search paths agreed on for this prompt (score >=100). Load them via bastra-recall:load_memory before answering.\\nOPTIONAL (score 50–99) — load only if title/summary directly relates:\\n- wired (convention, score 60): Summary of wired\\n</recall-hints>"
+        }
+      },
+      "telemetry": [
+        {
+          "session_id": "golden-generic-prompt-wired-reflex-memory-keeps-the-normal-floor",
+          "client": "unknown",
+          "agent": null,
+          "detected_mode": "generic",
+          "prompt_chars": 45,
+          "daemon_url": "http://127.0.0.1:<port>",
+          "daemon_reachable": true,
+          "hint_count": 1,
+          "reflex_hint_count": 0,
+          "hinted_ids": [
+            "wired"
+          ],
+          "hinted_types": [
+            "convention"
+          ],
+          "hint_tokens_est": 130,
+          "top_score": 60,
+          "backoff_streak": 0,
+          "scope_filter_mode": "shadow",
+          "dropped_scope_count": 0,
+          "project_confidence": "fallback",
+          "filter_project": null,
+          "scope_filter_skipped": "no-project",
+          "suppressed": false,
+          "suppressed_tokens_est": 0,
+          "status": "ok",
+          "error": null
+        }
+      ]
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/reflex",
+      "body": {
+        "context": "please refactor the parser module for clarity",
+        "project": null,
+        "session_id": "golden-generic-prompt-wired-reflex-memory-keeps-the-normal-floor",
+        "client": "unknown"
+      }
+    },
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "please refactor the parser module for clarity",
+        "project": null,
+        "k": 3,
+        "tool_name": "UserPromptSubmit",
+        "session_id": "golden-generic-prompt-wired-reflex-memory-keeps-the-normal-floor",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "prompt"
+      }
+    },
+    {
+      "url": "/hook/hinted",
+      "body": {
+        "ids": [
+          "wired"
+        ],
+        "session_id": "golden-generic-prompt-wired-reflex-memory-keeps-the-normal-floor"
+      }
+    }
+  ],
+  "state": {
+    "shown": {
+      "wired": {
+        "count": 1,
+        "at": "<ts>"
+      }
+    },
+    "sources": {
+      "prompt-lookup": {
+        "streak": 0,
+        "at": "<ts>",
+        "ids": [
+          "wired"
+        ],
+        "skipped": 0
+      }
+    }
+  }
+}
+`;
+
+exports[`#1511 golden master — mode none recalls when a wired memory is eligible 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "UserPromptSubmit",
+          "additionalContext": "<recall-hints surface=\\"claude-code\\" trigger=\\"prompt-lookup\\" recall-step=\\"done\\" recall_id=\\"golden-recall\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nPre-recall found memories both search paths agreed on for this prompt (score >=100). Load them via bastra-recall:load_memory before answering.\\nOPTIONAL (score 50–99) — load only if title/summary directly relates:\\n- fresh-wired (lesson, score 90): Summary of fresh-wired\\n</recall-hints>"
+        }
+      },
+      "telemetry": [
+        {
+          "session_id": "golden-mode-none-recalls-when-a-wired-memory-is-eligible",
+          "client": "unknown",
+          "agent": null,
+          "detected_mode": "none",
+          "prompt_chars": 30,
+          "daemon_url": "http://127.0.0.1:<port>",
+          "daemon_reachable": true,
+          "hint_count": 1,
+          "reflex_hint_count": 0,
+          "hinted_ids": [
+            "fresh-wired"
+          ],
+          "hinted_types": [
+            "lesson"
+          ],
+          "hint_tokens_est": 132,
+          "top_score": 90,
+          "backoff_streak": 0,
+          "scope_filter_mode": "shadow",
+          "dropped_scope_count": 0,
+          "project_confidence": "fallback",
+          "filter_project": null,
+          "scope_filter_skipped": "no-project",
+          "suppressed": false,
+          "suppressed_tokens_est": 0,
+          "status": "ok",
+          "error": null
+        }
+      ]
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/reflex",
+      "body": {
+        "context": "lass uns über das design reden",
+        "project": null,
+        "session_id": "golden-mode-none-recalls-when-a-wired-memory-is-eligible",
+        "client": "unknown"
+      }
+    },
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "lass uns über das design reden",
+        "project": null,
+        "k": 5,
+        "tool_name": "UserPromptSubmit",
+        "session_id": "golden-mode-none-recalls-when-a-wired-memory-is-eligible",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "prompt"
+      }
+    },
+    {
+      "url": "/hook/hinted",
+      "body": {
+        "ids": [
+          "fresh-wired"
+        ],
+        "session_id": "golden-mode-none-recalls-when-a-wired-memory-is-eligible"
+      }
+    }
+  ],
+  "state": {
+    "shown": {
+      "fresh-wired": {
+        "count": 1,
+        "at": "<ts>"
+      }
+    },
+    "sources": {
+      "prompt-lookup": {
+        "streak": 0,
+        "at": "<ts>",
+        "ids": [
+          "fresh-wired"
+        ],
+        "skipped": 0
+      }
+    }
+  }
+}
+`;
+
+exports[`#1511 golden master — mode none with an empty reflex pool skips the recall 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {},
+      "telemetry": [
+        {
+          "session_id": "golden-mode-none-with-an-empty-reflex-pool-skips-the-recall",
+          "client": "unknown",
+          "agent": null,
+          "detected_mode": "none",
+          "prompt_chars": 30,
+          "daemon_url": "http://127.0.0.1:<port>",
+          "daemon_reachable": true,
+          "hint_count": 0,
+          "reflex_hint_count": 0,
+          "hinted_ids": [],
+          "hinted_types": [],
+          "hint_tokens_est": 0,
+          "top_score": null,
+          "backoff_streak": 0,
+          "scope_filter_mode": "shadow",
+          "dropped_scope_count": 0,
+          "project_confidence": "fallback",
+          "filter_project": null,
+          "scope_filter_skipped": "no-project",
+          "suppressed": false,
+          "suppressed_tokens_est": 0,
+          "status": "no-hits",
+          "error": null,
+          "recall_skipped": "reflex-pool-empty"
+        }
+      ]
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/reflex",
+      "body": {
+        "context": "lass uns über das design reden",
+        "project": null,
+        "session_id": "golden-mode-none-with-an-empty-reflex-pool-skips-the-recall",
+        "client": "unknown"
+      }
+    }
+  ],
+  "state": {
+    "shown": {}
+  }
+}
+`;
+
+exports[`#1511 golden master — mode none with every wired memory already shown skips the recall 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {},
+      "telemetry": [
+        {
+          "session_id": "golden-mode-none-with-every-wired-memory-already-shown-skips-the-recall",
+          "client": "unknown",
+          "agent": null,
+          "detected_mode": "none",
+          "prompt_chars": 30,
+          "daemon_url": "http://127.0.0.1:<port>",
+          "daemon_reachable": true,
+          "hint_count": 0,
+          "reflex_hint_count": 0,
+          "hinted_ids": [],
+          "hinted_types": [],
+          "hint_tokens_est": 0,
+          "top_score": null,
+          "backoff_streak": 0,
+          "scope_filter_mode": "shadow",
+          "dropped_scope_count": 0,
+          "project_confidence": "fallback",
+          "filter_project": null,
+          "scope_filter_skipped": "no-project",
+          "suppressed": false,
+          "suppressed_tokens_est": 0,
+          "status": "no-hits",
+          "error": null,
+          "recall_skipped": "reflex-all-suppressed"
+        }
+      ]
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/reflex",
+      "body": {
+        "context": "lass uns über das design reden",
+        "project": null,
+        "session_id": "golden-mode-none-with-every-wired-memory-already-shown-skips-the-recall",
+        "client": "unknown"
+      }
+    }
+  ],
+  "state": {
+    "shown": {
+      "shown-wired": {
+        "count": 1,
+        "at": "<ts>"
+      }
+    }
+  }
+}
+`;
+
+exports[`#1511 golden master — not a UserPromptSubmit event 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {},
+      "telemetry": []
+    }
+  ],
+  "requests": [],
+  "state": {
+    "shown": {}
+  }
+}
+`;
+
+exports[`#1511 golden master — recall answers HTTP 500 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {},
+      "telemetry": [
+        {
+          "session_id": "golden-recall-answers-HTTP-500",
+          "client": "unknown",
+          "agent": null,
+          "detected_mode": "retrieval",
+          "prompt_chars": 29,
+          "daemon_url": "http://127.0.0.1:<port>",
+          "daemon_reachable": true,
+          "hint_count": 0,
+          "reflex_hint_count": 0,
+          "hinted_ids": [],
+          "hinted_types": [],
+          "hint_tokens_est": 0,
+          "top_score": null,
+          "backoff_streak": 0,
+          "scope_filter_mode": "shadow",
+          "dropped_scope_count": 0,
+          "project_confidence": "fallback",
+          "filter_project": null,
+          "scope_filter_skipped": "no-project",
+          "suppressed": false,
+          "suppressed_tokens_est": 0,
+          "status": "error",
+          "error": "HTTP 500: {\\"error\\":\\"boom\\"}"
+        }
+      ]
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/reflex",
+      "body": {
+        "context": "where is the lease agreement?",
+        "project": null,
+        "session_id": "golden-recall-answers-HTTP-500",
+        "client": "unknown"
+      }
+    },
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "where is the lease agreement?",
+        "project": null,
+        "k": 5,
+        "tool_name": "UserPromptSubmit",
+        "session_id": "golden-recall-answers-HTTP-500",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "prompt"
+      }
+    }
+  ],
+  "state": {
+    "shown": {}
+  }
+}
+`;
+
+exports[`#1511 golden master — recall answers invalid JSON 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {},
+      "telemetry": [
+        {
+          "session_id": "golden-recall-answers-invalid-JSON",
+          "client": "unknown",
+          "agent": null,
+          "detected_mode": "retrieval",
+          "prompt_chars": 29,
+          "daemon_url": "http://127.0.0.1:<port>",
+          "daemon_reachable": true,
+          "hint_count": 0,
+          "reflex_hint_count": 0,
+          "hinted_ids": [],
+          "hinted_types": [],
+          "hint_tokens_est": 0,
+          "top_score": null,
+          "backoff_streak": 0,
+          "scope_filter_mode": "shadow",
+          "dropped_scope_count": 0,
+          "project_confidence": "fallback",
+          "filter_project": null,
+          "scope_filter_skipped": "no-project",
+          "suppressed": false,
+          "suppressed_tokens_est": 0,
+          "status": "error",
+          "error": "invalid JSON response from daemon"
+        }
+      ]
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/reflex",
+      "body": {
+        "context": "where is the lease agreement?",
+        "project": null,
+        "session_id": "golden-recall-answers-invalid-JSON",
+        "client": "unknown"
+      }
+    },
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "where is the lease agreement?",
+        "project": null,
+        "k": 5,
+        "tool_name": "UserPromptSubmit",
+        "session_id": "golden-recall-answers-invalid-JSON",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "prompt"
+      }
+    }
+  ],
+  "state": {
+    "shown": {}
+  }
+}
+`;
+
+exports[`#1511 golden master — reflex hit and recall hit with the same id 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "UserPromptSubmit",
+          "additionalContext": "<recall-hints surface=\\"claude-code\\" trigger=\\"reflex\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nReflex memories: the user wired these to fire when their trigger matches a prompt — this prompt matched. load_memory(id) before answering:\\n- lease (convention, trigger \\"lease\\"): wired lease rule\\n</recall-hints>\\n<recall-hints surface=\\"claude-code\\" trigger=\\"prompt-lookup\\" recall-step=\\"done\\" recall_id=\\"golden-recall\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nThe user prompt looks like a LOOKUP / retrieval query. bastra-recall:recall already ran for it — these candidates are its result: load_memory the fitting ones (and find_document if pdf-likely) BEFORE conversation_search / web_search. Pre-recalled candidates for this prompt:\\n\\nBoth search paths agreed on these for this prompt, both in their top 4 — that agreement is what a score ≥100 measures, not how similar the text is. These are candidates (id, title, summary), NOT the memories themselves — nothing here is in your context until you load_memory(id) and read it. A summary is a pointer, not the rule. load_memory(id) the relevant ones before responding (hints, not obligations; honor an explicit count or scope from the user):\\n- deposit (lesson, score 120): Summary of deposit\\n</recall-hints>"
+        }
+      },
+      "telemetry": [
+        {
+          "session_id": "golden-reflex-hit-and-recall-hit-with-the-same-id",
+          "client": "unknown",
+          "agent": null,
+          "detected_mode": "retrieval",
+          "prompt_chars": 29,
+          "daemon_url": "http://127.0.0.1:<port>",
+          "daemon_reachable": true,
+          "hint_count": 1,
+          "reflex_hint_count": 1,
+          "hinted_ids": [
+            "deposit",
+            "lease"
+          ],
+          "hinted_types": [
+            "lesson",
+            "convention"
+          ],
+          "hint_tokens_est": 360,
+          "top_score": 142,
+          "backoff_streak": 0,
+          "scope_filter_mode": "shadow",
+          "dropped_scope_count": 0,
+          "project_confidence": "fallback",
+          "filter_project": null,
+          "scope_filter_skipped": "no-project",
+          "suppressed": false,
+          "suppressed_tokens_est": 0,
+          "status": "ok",
+          "error": null
+        }
+      ]
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/reflex",
+      "body": {
+        "context": "where is the lease agreement?",
+        "project": null,
+        "session_id": "golden-reflex-hit-and-recall-hit-with-the-same-id",
+        "client": "unknown"
+      }
+    },
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "where is the lease agreement?",
+        "project": null,
+        "k": 5,
+        "tool_name": "UserPromptSubmit",
+        "session_id": "golden-reflex-hit-and-recall-hit-with-the-same-id",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "prompt"
+      }
+    },
+    {
+      "url": "/hook/hinted",
+      "body": {
+        "ids": [
+          "lease",
+          "deposit"
+        ],
+        "session_id": "golden-reflex-hit-and-recall-hit-with-the-same-id"
+      }
+    }
+  ],
+  "state": {
+    "shown": {
+      "lease": {
+        "count": 1,
+        "at": "<ts>"
+      },
+      "deposit": {
+        "count": 1,
+        "at": "<ts>"
+      }
+    },
+    "sources": {
+      "prompt-lookup": {
+        "streak": 0,
+        "at": "<ts>",
+        "ids": [
+          "deposit"
+        ],
+        "skipped": 0
+      }
+    }
+  }
+}
+`;
+
+exports[`#1511 golden master — repeated prompt in one session: dedup of recall and reflex 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "UserPromptSubmit",
+          "additionalContext": "<recall-hints surface=\\"claude-code\\" trigger=\\"reflex\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nReflex memories: the user wired these to fire when their trigger matches a prompt — this prompt matched. load_memory(id) before answering:\\n- wired-lease (convention, trigger \\"lease\\"): wired\\n</recall-hints>\\n<recall-hints surface=\\"claude-code\\" trigger=\\"prompt-lookup\\" recall-step=\\"done\\" recall_id=\\"golden-recall\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nThe user prompt looks like a LOOKUP / retrieval query. bastra-recall:recall already ran for it — these candidates are its result: load_memory the fitting ones (and find_document if pdf-likely) BEFORE conversation_search / web_search. Pre-recalled candidates for this prompt:\\n\\nBoth search paths agreed on these for this prompt, both in their top 4 — that agreement is what a score ≥100 measures, not how similar the text is. These are candidates (id, title, summary), NOT the memories themselves — nothing here is in your context until you load_memory(id) and read it. A summary is a pointer, not the rule. load_memory(id) the relevant ones before responding (hints, not obligations; honor an explicit count or scope from the user):\\n- lease (lesson, score 142): Summary of lease\\n</recall-hints>"
+        }
+      },
+      "telemetry": [
+        {
+          "session_id": "golden-repeated-prompt-in-one-session-dedup-of-recall-and-reflex",
+          "client": "unknown",
+          "agent": null,
+          "detected_mode": "retrieval",
+          "prompt_chars": 29,
+          "daemon_url": "http://127.0.0.1:<port>",
+          "daemon_reachable": true,
+          "hint_count": 1,
+          "reflex_hint_count": 1,
+          "hinted_ids": [
+            "lease",
+            "wired-lease"
+          ],
+          "hinted_types": [
+            "lesson",
+            "convention"
+          ],
+          "hint_tokens_est": 358,
+          "top_score": 142,
+          "backoff_streak": 0,
+          "scope_filter_mode": "shadow",
+          "dropped_scope_count": 0,
+          "project_confidence": "fallback",
+          "filter_project": null,
+          "scope_filter_skipped": "no-project",
+          "suppressed": false,
+          "suppressed_tokens_est": 0,
+          "status": "ok",
+          "error": null
+        }
+      ]
+    },
+    {
+      "stdout": {},
+      "telemetry": [
+        {
+          "session_id": "golden-repeated-prompt-in-one-session-dedup-of-recall-and-reflex",
+          "client": "unknown",
+          "agent": null,
+          "detected_mode": "retrieval",
+          "prompt_chars": 29,
+          "daemon_url": "http://127.0.0.1:<port>",
+          "daemon_reachable": true,
+          "hint_count": 0,
+          "reflex_hint_count": 0,
+          "reflex_deduped_ids": [
+            "wired-lease"
+          ],
+          "hinted_ids": [],
+          "hinted_types": [],
+          "hint_tokens_est": 0,
+          "top_score": 142,
+          "backoff_streak": 0,
+          "scope_filter_mode": "shadow",
+          "dropped_scope_count": 0,
+          "project_confidence": "fallback",
+          "filter_project": null,
+          "scope_filter_skipped": "no-project",
+          "suppressed": false,
+          "suppressed_tokens_est": 0,
+          "status": "no-hits",
+          "error": null
+        }
+      ]
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/reflex",
+      "body": {
+        "context": "where is the lease agreement?",
+        "project": null,
+        "session_id": "golden-repeated-prompt-in-one-session-dedup-of-recall-and-reflex",
+        "client": "unknown"
+      }
+    },
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "where is the lease agreement?",
+        "project": null,
+        "k": 5,
+        "tool_name": "UserPromptSubmit",
+        "session_id": "golden-repeated-prompt-in-one-session-dedup-of-recall-and-reflex",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "prompt"
+      }
+    },
+    {
+      "url": "/hook/hinted",
+      "body": {
+        "ids": [
+          "wired-lease",
+          "lease"
+        ],
+        "session_id": "golden-repeated-prompt-in-one-session-dedup-of-recall-and-reflex"
+      }
+    },
+    {
+      "url": "/hook/reflex",
+      "body": {
+        "context": "where is the lease agreement?",
+        "project": null,
+        "session_id": "golden-repeated-prompt-in-one-session-dedup-of-recall-and-reflex",
+        "client": "unknown"
+      }
+    },
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "where is the lease agreement?",
+        "project": null,
+        "k": 5,
+        "tool_name": "UserPromptSubmit",
+        "session_id": "golden-repeated-prompt-in-one-session-dedup-of-recall-and-reflex",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "prompt"
+      }
+    }
+  ],
+  "state": {
+    "shown": {
+      "wired-lease": {
+        "count": 1,
+        "at": "<ts>"
+      },
+      "lease": {
+        "count": 1,
+        "at": "<ts>"
+      }
+    },
+    "sources": {
+      "prompt-lookup": {
+        "streak": 0,
+        "at": "<ts>",
+        "ids": [
+          "lease"
+        ],
+        "skipped": 0
+      }
+    }
+  }
+}
+`;
+
+exports[`#1511 golden master — retrieval prompt with a strong hit 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "UserPromptSubmit",
+          "additionalContext": "<recall-hints surface=\\"claude-code\\" trigger=\\"prompt-lookup\\" recall-step=\\"done\\" recall_id=\\"golden-recall\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nThe user prompt looks like a LOOKUP / retrieval query. bastra-recall:recall already ran for it — these candidates are its result: load_memory the fitting ones (and find_document if pdf-likely) BEFORE conversation_search / web_search. Pre-recalled candidates for this prompt:\\n\\nBoth search paths agreed on these for this prompt, both in their top 4 — that agreement is what a score ≥100 measures, not how similar the text is. These are candidates (id, title, summary), NOT the memories themselves — nothing here is in your context until you load_memory(id) and read it. A summary is a pointer, not the rule. load_memory(id) the relevant ones before responding (hints, not obligations; honor an explicit count or scope from the user):\\n- lease (lesson, score 142): Summary of lease\\n</recall-hints>"
+        }
+      },
+      "telemetry": [
+        {
+          "session_id": "golden-retrieval-prompt-with-a-strong-hit",
+          "client": "unknown",
+          "agent": null,
+          "detected_mode": "retrieval",
+          "prompt_chars": 29,
+          "daemon_url": "http://127.0.0.1:<port>",
+          "daemon_reachable": true,
+          "hint_count": 1,
+          "reflex_hint_count": 0,
+          "hinted_ids": [
+            "lease"
+          ],
+          "hinted_types": [
+            "lesson"
+          ],
+          "hint_tokens_est": 259,
+          "top_score": 142,
+          "backoff_streak": 0,
+          "scope_filter_mode": "shadow",
+          "dropped_scope_count": 0,
+          "project_confidence": "fallback",
+          "filter_project": null,
+          "scope_filter_skipped": "no-project",
+          "suppressed": false,
+          "suppressed_tokens_est": 0,
+          "status": "ok",
+          "error": null
+        }
+      ]
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/reflex",
+      "body": {
+        "context": "where is the lease agreement?",
+        "project": null,
+        "session_id": "golden-retrieval-prompt-with-a-strong-hit",
+        "client": "unknown"
+      }
+    },
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "where is the lease agreement?",
+        "project": null,
+        "k": 5,
+        "tool_name": "UserPromptSubmit",
+        "session_id": "golden-retrieval-prompt-with-a-strong-hit",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "prompt"
+      }
+    },
+    {
+      "url": "/hook/hinted",
+      "body": {
+        "ids": [
+          "lease"
+        ],
+        "session_id": "golden-retrieval-prompt-with-a-strong-hit"
+      }
+    }
+  ],
+  "state": {
+    "shown": {
+      "lease": {
+        "count": 1,
+        "at": "<ts>"
+      }
+    },
+    "sources": {
+      "prompt-lookup": {
+        "streak": 0,
+        "at": "<ts>",
+        "ids": [
+          "lease"
+        ],
+        "skipped": 0
+      }
+    }
+  }
+}
+`;
+
+exports[`#1511 golden master — system-injected turn 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {},
+      "telemetry": [
+        {
+          "session_id": "golden-system-injected-turn",
+          "client": "unknown",
+          "agent": null,
+          "detected_mode": "none",
+          "gated": true,
+          "gated_reason": "system-injected",
+          "origin": "system",
+          "prompt_chars": 60,
+          "daemon_url": "http://127.0.0.1:<port>",
+          "daemon_reachable": true,
+          "hint_count": 0,
+          "hint_tokens_est": 0,
+          "top_score": null,
+          "status": "gated",
+          "error": null
+        }
+      ]
+    }
+  ],
+  "requests": [],
+  "state": {
+    "shown": {}
+  }
+}
+`;
+
+exports[`#1511 golden master — trivial prompt, nothing parked 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {},
+      "telemetry": [
+        {
+          "session_id": "golden-trivial-prompt-nothing-parked",
+          "client": "unknown",
+          "agent": null,
+          "detected_mode": "none",
+          "gated": true,
+          "prompt_chars": 2,
+          "daemon_url": "http://127.0.0.1:<port>",
+          "daemon_reachable": true,
+          "hint_count": 0,
+          "hint_tokens_est": 0,
+          "top_score": null,
+          "status": "gated",
+          "error": null
+        }
+      ]
+    }
+  ],
+  "requests": [],
+  "state": {
+    "shown": {}
+  }
+}
+`;
+
+exports[`#1511 golden master — unfused hit under a hot backoff window is suppressed 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {},
+      "telemetry": [
+        {
+          "session_id": "golden-unfused-hit-under-a-hot-backoff-window-is-suppressed",
+          "client": "unknown",
+          "agent": null,
+          "detected_mode": "generic",
+          "prompt_chars": 45,
+          "daemon_url": "http://127.0.0.1:<port>",
+          "daemon_reachable": true,
+          "hint_count": 0,
+          "reflex_hint_count": 0,
+          "hinted_ids": [],
+          "hinted_types": [],
+          "hint_tokens_est": 0,
+          "top_score": 20000,
+          "backoff_streak": 6,
+          "scope_filter_mode": "shadow",
+          "dropped_scope_count": 0,
+          "project_confidence": "fallback",
+          "filter_project": null,
+          "scope_filter_skipped": "no-project",
+          "unfused": true,
+          "suppressed": true,
+          "suppressed_tokens_est": 137,
+          "status": "suppressed",
+          "error": null
+        }
+      ]
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/reflex",
+      "body": {
+        "context": "please refactor the parser module for clarity",
+        "project": null,
+        "session_id": "golden-unfused-hit-under-a-hot-backoff-window-is-suppressed",
+        "client": "unknown"
+      }
+    },
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "please refactor the parser module for clarity",
+        "project": null,
+        "k": 3,
+        "tool_name": "UserPromptSubmit",
+        "session_id": "golden-unfused-hit-under-a-hot-backoff-window-is-suppressed",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "prompt"
+      }
+    }
+  ],
+  "state": {
+    "shown": {},
+    "sources": {
+      "prompt-lookup": {
+        "streak": 6,
+        "at": "<ts>",
+        "ids": [
+          "old-hit"
+        ],
+        "skipped": 1
+      }
+    }
+  }
+}
+`;
+
+exports[`#1511 golden master — unfused recall: ordinary hit dropped, wired needs strong anchor 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "UserPromptSubmit",
+          "additionalContext": "<recall-hints surface=\\"claude-code\\" trigger=\\"prompt-lookup\\" recall-step=\\"done\\" recall_id=\\"golden-recall\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nLexical matches for this prompt, ranked by term overlap alone — semantic search is ON but did not answer inside this lookup's deadline, so this ONE lookup ranked lexically — not a permanent limitation, so no second path confirmed any of them and the scores are on an open-ended scale (not the fused bands). Judge these by title and summary, not by the number.\\n\\n- raw-wired-strong (lesson): Summary of raw-wired-strong\\n</recall-hints>"
+        }
+      },
+      "telemetry": [
+        {
+          "session_id": "golden-unfused-recall-ordinary-hit-dropped-wired-needs-strong-anchor",
+          "client": "unknown",
+          "agent": null,
+          "detected_mode": "generic",
+          "prompt_chars": 45,
+          "daemon_url": "http://127.0.0.1:<port>",
+          "daemon_reachable": true,
+          "hint_count": 1,
+          "reflex_hint_count": 0,
+          "hinted_ids": [
+            "raw-wired-strong"
+          ],
+          "hinted_types": [
+            "lesson"
+          ],
+          "hint_tokens_est": 169,
+          "top_score": 40000,
+          "backoff_streak": 0,
+          "scope_filter_mode": "shadow",
+          "dropped_scope_count": 0,
+          "project_confidence": "fallback",
+          "filter_project": null,
+          "scope_filter_skipped": "no-project",
+          "unfused": true,
+          "degraded": "vector-arm-timeout",
+          "bridges_fired": [
+            "b1"
+          ],
+          "suppressed": false,
+          "suppressed_tokens_est": 0,
+          "status": "ok",
+          "error": null
+        }
+      ]
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/reflex",
+      "body": {
+        "context": "please refactor the parser module for clarity",
+        "project": null,
+        "session_id": "golden-unfused-recall-ordinary-hit-dropped-wired-needs-strong-anchor",
+        "client": "unknown"
+      }
+    },
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "please refactor the parser module for clarity",
+        "project": null,
+        "k": 3,
+        "tool_name": "UserPromptSubmit",
+        "session_id": "golden-unfused-recall-ordinary-hit-dropped-wired-needs-strong-anchor",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "prompt"
+      }
+    },
+    {
+      "url": "/hook/hinted",
+      "body": {
+        "ids": [
+          "raw-wired-strong"
+        ],
+        "session_id": "golden-unfused-recall-ordinary-hit-dropped-wired-needs-strong-anchor"
+      }
+    }
+  ],
+  "state": {
+    "shown": {
+      "raw-wired-strong": {
+        "count": 1,
+        "at": "<ts>"
+      }
+    },
+    "sources": {
+      "prompt-lookup": {
+        "streak": 0,
+        "at": "<ts>",
+        "ids": [
+          "raw-wired-strong"
+        ],
+        "skipped": 0
+      }
+    }
+  }
+}
+`;

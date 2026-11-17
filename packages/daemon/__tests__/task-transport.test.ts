@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mintTaskCredential } from "../src/task-auth.js";
 import { callTaskMcp, dispatchTaskHttp, taskFailure, taskTools } from "../src/task-transport.js";
-import { taskCliCall } from "../src/cli/tasks-cmd.js";
+import { taskCliCall } from "../src/cli/task-cli-call.js";
 import { dispatchApiSurface, type ApiSurfaceCtx } from "../src/http-api-surface.js";
 import { TASK_CRUD_OPERATIONS } from "../src/task-service.js";
 import { readTaskStore, transactTaskStore } from "../src/task-store.js";

@@ -18,11 +18,13 @@ export function hash(value: string): string {
 /**
  * One JSONL line as a record, or null. `null`, a number, a string and an
  * array are valid JSON and not records; reading a field off them threw.
+ * A byte-order mark in front of a file's first line is not part of the record
+ * (#1126): JSON.parse rejected it and the first record was lost.
  */
 export function parseRecord(line: string): Record<string, unknown> | null {
   if (!line.trim()) return null;
   try {
-    const parsed: unknown = JSON.parse(line);
+    const parsed: unknown = JSON.parse(line.charCodeAt(0) === 0xfeff ? line.slice(1) : line);
     return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
       ? (parsed as Record<string, unknown>)
       : null;
@@ -437,6 +439,18 @@ export interface RecallCallStats {
   withRecallId: number;
 }
 
+/**
+ * The records of the main thread. A subagent's records (`isSidechain`, #1126)
+ * are left out: its prompt is no owner intent, and its recalls and reads are
+ * not the main thread's steps.
+ */
+function* mainThreadRecords(jsonl: string): Generator<Record<string, unknown>> {
+  for (const line of jsonl.split("\n")) {
+    const record = parseRecord(line);
+    if (record !== null && record.isSidechain !== true) yield record;
+  }
+}
+
 export function extractReviewedMissChains(
   jsonl: string,
   session: string,
@@ -473,6 +487,25 @@ export function extractReviewedMissChains(
    * whose only step really is opaque still reports itself as opaque.
    */
   let opaque: ReviewedMissEvidence | null = null;
+  /**
+   * Recall calls that belong to no chain but still count as transcript recalls
+   * (#1126): one issued with no typed intent in front of it (after a slash
+   * command or an interrupt), and one issued in the same message as the
+   * evidence step after a first result — the step could not have seen its
+   * result, so its pool must not judge that step.
+   */
+  const strays = new Set<string>();
+  const countResult = (envelope: Envelope): void => {
+    if (!stats) return;
+    stats.recalls += 1;
+    if (envelope.recallIds.length > 0) stats.withRecallId += 1;
+  };
+  /** The evidence step is taken: recalls whose result has not arrived leave the chain. */
+  const freezeAtEvidence = (): void => {
+    if (!pending) return;
+    for (const id of pending.toolIds) if (!pending.resulted.has(id)) strays.add(id);
+    pending.toolIds = new Set(pending.resulted);
+  };
 
   const emit = (): void => {
     const found = evidence ?? opaque;
@@ -495,10 +528,17 @@ export function extractReviewedMissChains(
     opaque = null;
   };
 
-  for (const line of jsonl.split("\n")) {
-    const record = parseRecord(line);
-    if (record === null) continue;
+  /** Results of stray recalls only count; they join no chain. */
+  const countStrayResults = (record: Record<string, unknown>): void => {
+    for (const part of matchingResults(record, strays)) {
+      strays.delete(part.tool_use_id as string);
+      countResult(readEnvelope(resultText(part)));
+    }
+  };
+
+  for (const record of mainThreadRecords(jsonl)) {
     if (record.type === "user") {
+      countStrayResults(record);
       const turn = userTurn(record);
       if (turn.kind !== "none") {
         close();
@@ -511,10 +551,7 @@ export function extractReviewedMissChains(
           pending.resulted.add(toolId);
           pending.resultTs = typeof record.timestamp === "string" ? record.timestamp : pending.resultTs;
           const envelope = readEnvelope(resultText(part));
-          if (stats) {
-            stats.recalls += 1;
-            if (envelope.recallIds.length > 0) stats.withRecallId += 1;
-          }
+          countResult(envelope);
           if (envelope.explicitMiss) pending.misses += 1;
           for (const id of envelope.recallIds) if (!pending.recallIds.includes(id)) pending.recallIds.push(id);
           for (const id of envelope.servedIds) if (!pending.servedIds.includes(id)) pending.servedIds.push(id);
@@ -541,17 +578,25 @@ export function extractReviewedMissChains(
           };
         }
         if (typeof tool.id === "string") pending.toolIds.add(tool.id);
+      } else if (isRecall(tool) && typeof tool.id === "string") {
+        strays.add(tool.id);
       } else if (resultSeen && (isEvidenceRead(tool) || isLoadMemory(tool)) && evidence === null) {
         const found = evidenceOf(tool, cwd);
         if (found.kind === "opaque") opaque = opaque ?? found;
-        else evidence = found;
+        else {
+          evidence = found;
+          freezeAtEvidence();
+        }
       } else if (resultSeen && isBash(tool) && evidence === null) {
         // Most Bash calls are not evidence reads at all (uptime, find, ps…).
         // Unlike Read/load_memory, an unrecognized shape does not consume the
         // slot — it would otherwise freeze every chain on the first `find`.
         const input = (tool.input && typeof tool.input === "object" ? tool.input : {}) as Record<string, unknown>;
         const path = typeof input.command === "string" ? bashReadPath(input.command) : null;
-        if (path) evidence = { kind: "bash-read", path };
+        if (path) {
+          evidence = { kind: "bash-read", path };
+          freezeAtEvidence();
+        }
       }
     }
   }

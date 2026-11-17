@@ -26,6 +26,12 @@
  *     --gold ~/.bastra/eval-goldset/gold-blind.json \
  *     --gold ~/.bastra/eval-goldset/gold-tel-1.json \
  *     --hybrid --out ~/.bastra/eval-runs/<dir>/results.json
+ *
+ * The staleness step reads a FIXED reference time (#1568), so two runs on
+ * different days rank the same vault alike: `--reference-time <ISO>`, default
+ * {@link GOLDSET_REFERENCE_TIME}. The same main arm is scored a second time
+ * at the wall clock of the run and reported as `today`, so the effect of
+ * ageing stays visible beside the comparable number.
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -57,6 +63,8 @@ import {
   type GateRow,
 } from "./goldset-gate.js";
 import type { GoldCase } from "./goldset.js";
+import { seededRandom } from "./seeded-random.js";
+import { recordChecksums } from "./run-archive.js";
 
 /**
  * The k the product serves. Ranks are measured here and nowhere else.
@@ -75,6 +83,14 @@ export const PRODUCTION_K = 10;
  * the user and must be invisible to the number.
  */
 export const SCORE_FLOOR = 30;
+/**
+ * #1568: the default clock of the staleness step. A run that took today's date
+ * moved R@3 on unchanged candidate lists from 225 (45 days earlier) to 170
+ * (15.11.2026) to 150 (30 days later), so runs on different days were not
+ * comparable. Fixed at the day of that measurement; a change is a new
+ * registration, never a silent edit.
+ */
+export const GOLDSET_REFERENCE_TIME = "2026-11-15T00:00:00.000Z";
 /** Bound on a cold-store backfill; a stuck provider must fail, not hang. */
 const BACKFILL_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -338,17 +354,6 @@ export async function attachHybrid(
   };
 }
 
-/** Deterministic PRNG (mulberry32) so the control arm does not move between runs. */
-function seededRandom(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /**
  * The floor every real arm must clear: a random ranking of real ids. Without
  * it a Recall@3 has no scale — nobody can say whether it is retrieval or the
@@ -534,10 +539,18 @@ interface Args {
   hybrid: boolean;
   seed: number;
   gate: boolean;
+  referenceTime: Date;
 }
 
-function parseArgs(argv: string[]): Args {
-  const a: Args = { gold: [], out: "", hybrid: false, seed: 20260828, gate: false };
+export function parseArgs(argv: string[]): Args {
+  const a: Args = {
+    gold: [],
+    out: "",
+    hybrid: false,
+    seed: 20260828,
+    gate: false,
+    referenceTime: new Date(GOLDSET_REFERENCE_TIME),
+  };
   for (let i = 0; i < argv.length; i++) {
     const f = argv[i];
     if (f === "--gold") a.gold.push(argv[++i] ?? "");
@@ -545,10 +558,24 @@ function parseArgs(argv: string[]): Args {
     else if (f === "--hybrid") a.hybrid = true;
     else if (f === "--seed") a.seed = Number(argv[++i]);
     else if (f === "--gate") a.gate = true;
-    else throw new Error(`unknown flag: ${f}`);
+    else if (f === "--reference-time") {
+      const raw = argv[++i] ?? "";
+      a.referenceTime = new Date(raw);
+      if (Number.isNaN(a.referenceTime.getTime())) throw new Error(`--reference-time is not a date: ${raw}`);
+    } else throw new Error(`unknown flag: ${f}`);
   }
   if (!a.gold.length) throw new Error("--gold is required (repeatable)");
   return a;
+}
+
+/**
+ * The production recall call at a pinned staleness clock (#1568). Hybrid when
+ * the vector arm is attached, guarded against a per-query BM25 fallback.
+ */
+export function recallerAt(search: SearchIndex, referenceTime: Date): Recaller {
+  return search.hasEmbeddings()
+    ? gatedHybridRecaller((q, o) => search.recallHybrid(q, { ...o, reference_time: referenceTime }))
+    : async (q) => search.recall(q, { k: PRODUCTION_K, reference_time: referenceTime });
 }
 
 async function main(): Promise<void> {
@@ -593,9 +620,8 @@ async function main(): Promise<void> {
   // Never report BM25 under a hybrid label: the hybrid path is taken only when
   // the vector arm is actually attached, --hybrid aborts above if it is not,
   // and `gatedHybridRecaller` stops the run if the arm goes away mid-set.
-  const recaller: Recaller = search.hasEmbeddings()
-    ? gatedHybridRecaller((q, o) => search.recallHybrid(q, o))
-    : async (q) => search.recall(q, { k: PRODUCTION_K });
+  const runStarted = new Date();
+  const recaller = recallerAt(search, args.referenceTime);
 
   const hybridActive = search.hasEmbeddings();
   // #422: the same call the daemon makes in `http-hook-routes.ts` — the
@@ -677,6 +703,9 @@ async function main(): Promise<void> {
   const started = Date.now();
   const main = await scoreCases(cases, recaller, knownIds, hybridActive, decide, decideNoBody, narrow);
   const mainMs = Date.now() - started;
+  // #1568: the same arm at the wall clock of this run — the number that moves
+  // with the calendar, reported beside the comparable one, never instead of it.
+  const today = await scoreCases(cases, recallerAt(search, runStarted), knownIds, hybridActive);
   const control = await scoreCases(cases, controlRecaller([...knownIds], args.seed), knownIds, false);
   await cleanup?.();
 
@@ -686,13 +715,17 @@ async function main(): Promise<void> {
   const answerable = real.filter((r) => !r.no_answer);
   const noAnswer = real.filter((r) => r.no_answer);
   const ctrlAnswerable = control.filter((r) => !r.probe_group && !r.no_answer);
+  const todayReal = today.filter((r) => !r.probe_group);
 
   const results = {
     // 2: every row carries `top_k`, so the rank determination itself is
     // re-checkable and not only its result (#417). Version 1 artifacts stay
     // valid — they are the ones without the field.
-    schema_version: 2,
+    // 3: the staleness step runs at `reference_time`, and `today` repeats the
+    // main arm at the wall clock of the run (#1568).
+    schema_version: 3,
     run_date: new Date().toISOString(),
+    reference_time: args.referenceTime.toISOString(),
     arm: armLabel,
     vectors,
     production_k: PRODUCTION_K,
@@ -709,6 +742,11 @@ async function main(): Promise<void> {
     unknown_gold_ids: [...new Set(real.flatMap((r) => r.unknown_ids))],
     answerable: metricsFor(answerable),
     control_arm: metricsFor(ctrlAnswerable),
+    today: {
+      reference_time: runStarted.toISOString(),
+      answerable: metricsFor(todayReal.filter((r) => !r.no_answer)),
+      no_answer_abstained: todayReal.filter((r) => r.no_answer && r.abstained).length,
+    },
     by_kind: groupBy(answerable, (r) => r.kind),
     by_zone: groupBy(answerable, (r) => r.zone),
     by_origin: groupBy(answerable, (r) => r.origin),
@@ -740,6 +778,7 @@ async function main(): Promise<void> {
 
   const manifest = {
     run_date: results.run_date,
+    reference_time: results.reference_time,
     /**
      * Whether this artifact is a measurement or test debris (#420).
      *
@@ -790,7 +829,9 @@ async function main(): Promise<void> {
 
   const lines = [
     `[goldset-run] ${real.length} cases (+${probes.length} probes) · arm: ${armLabel}`,
+    `[goldset-run] reference time ${results.reference_time}`,
     `[goldset-run] answerable: ${JSON.stringify(results.answerable)}`,
+    `[goldset-run] today (${results.today.reference_time}): ${JSON.stringify(results.today.answerable)}`,
     `[goldset-run] control:    ${JSON.stringify(results.control_arm)}`,
     `[goldset-run] abstention: ${JSON.stringify(results.abstention)}`,
   ];
@@ -806,7 +847,11 @@ async function main(): Promise<void> {
     mkdirSync(dirname(args.out), { recursive: true });
     writeFileSync(args.out, JSON.stringify(results, null, 2) + "\n", { mode: 0o600 });
   }
+  // #503: the run directory is the durable copy; a sha256 per file makes it
+  // citable without trusting the directory listing.
+  const sums = recordChecksums(dir, ["manifest.json", "results.json", "stdout.txt", "stderr.txt", "command.txt"]);
   console.error(`[goldset-run] run artifact: ${dir}`);
+  for (const f of sums) console.error(`[goldset-run]   ${f.sha256}  ${f.path}`);
 }
 
 if (import.meta.filename === process.argv[1]) {

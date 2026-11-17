@@ -46,6 +46,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md#invariants) for when to add one.
 | INV-VAULT-07 | Of two concurrent creates of the same id exactly one wins; the other gets a visible conflict. | Two files under one id make the index load only one of them. | `packages/core/__tests__/save-concurrency.test.ts` |
 | INV-VAULT-08 | No write or restore leaves the vault root, also not through a symlink. | A path escape writes into the user's other files. | `packages/core/__tests__/file-identity-containment.test.ts`, `packages/core/__tests__/delete-restore-safety.test.ts` |
 | INV-VAULT-09 | A deleted memory goes to the trash with an audit entry and can be restored under its id. | Deleting must never make a memory evaporate. | `packages/core/__tests__/survival-by-id.test.ts` |
+| INV-VAULT-10 | `save_memory` with `dry_run: true` writes nothing (no file, no index entry, no audit entry) and is refused where the real save would be; its preview shows the same redaction. | A preview that writes, or that shows something other than what would be stored, makes the user approve the wrong thing. | `packages/daemon/__tests__/save-dry-run.invariant.test.ts` |
 
 ## Private memories
 

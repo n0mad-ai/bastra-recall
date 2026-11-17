@@ -54,6 +54,15 @@ async function main(): Promise<void> {
   try {
     emitOnce(await postLane(url, "/hook/session", { payload }, remainingMs));
   } catch (err) {
+    const status = classifyTransportError(err as NodeJS.ErrnoException);
+    // #1473: an unreachable daemon is said once per session, not answered
+    // silently empty. Imported lazily for the same reason as the telemetry.
+    if (status === "daemon-unreachable")
+      emitOnce(
+        await import("./hook-unreachable-notice.js")
+          .then((m) => m.unreachableAnswer("session", (payload as { session_id?: string })?.session_id))
+          .catch(() => "{}")
+      );
     emitOnce("{}");
     // #543: the row this lane's gate needs. Until now a transport failure
     // here left NO row at all, so the lane's denominator shrank by exactly
@@ -62,7 +71,6 @@ async function main(): Promise<void> {
     // (hook-client-telemetry.ts), so it folds into this lane's series and no
     // other. Imported lazily: it is only ever needed on a failure, and a
     // static import would be process-start cost on every call (#305).
-    const status = classifyTransportError(err as NodeJS.ErrnoException);
     const { writeClientTelemetry, sessionIdOf, THIN_CLIENT_VERSION } = await import("./hook-client-telemetry.js");
     await writeClientTelemetry(
       "session",

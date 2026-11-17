@@ -33,6 +33,8 @@ import {
   localParts,
   calendarSchedule,
   failureReason,
+  failureText,
+  reviewText,
   originLabel,
   canMove,
   isTerminal,
@@ -99,12 +101,6 @@ const verification = (task) => {
   const reason = t(`tk.ver.r.${v.reason}`);
   return `${t(`tk.ver.o.${v.outcome}`)}${v.reason && reason !== `tk.ver.r.${v.reason}` ? ` (${reason})` : ""}, ${t("tk.ver.checked", { at: fmtAt(v.checked_at, task.timezone) })}`;
 };
-const reviewReason = (v) =>
-  v === "Explicit owner review required"
-    ? t("tk.review.explicit")
-    : v === "Edited binding requires explicit owner review"
-      ? t("tk.review.edited")
-      : v;
 function authorizationOf(task) {
   const snap = S.snap || {};
   if (task.authorization) return task.authorization;
@@ -502,8 +498,8 @@ function detail(x) {
       })
     );
   tech.push(t("tk.tech.verify", { v: verification(task) }));
-  if (task.last_failure) tech.push(t("tk.tech.failure", { m: task.last_failure.message || task.last_failure.code }));
-  if (task.review_reason) tech.push(reviewReason(task.review_reason));
+  if (task.last_failure) tech.push(t("tk.tech.failure", { m: failureText(task.last_failure) }));
+  if (task.review_reason) tech.push(reviewText(task.review_reason));
 
   const stCls = task.state === "due" ? "is-amb" : term ? "is-mut" : "is-acc";
   return h(

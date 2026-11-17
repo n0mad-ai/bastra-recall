@@ -30,7 +30,7 @@ import { npmInvocation, type UpdateRuntimeIo } from "./update-npm.js";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join, relative, dirname } from "node:path";
-import { readdir, readFile, writeFile, mkdir, stat, cp } from "node:fs/promises";
+import { readdir, readFile, writeFile, mkdir, stat, unlink } from "node:fs/promises";
 
 export interface ManifestEntry {
   /** Path relative to the package root, POSIX separators. */
@@ -195,7 +195,12 @@ export async function backupDirty(m: UpdateManifest, dirty: DirtyFile[], home = 
     const to = join(dir, d.path);
     try {
       await mkdir(dirname(to), { recursive: true, mode: 0o700 });
-      await cp(from, to);
+      // Private from the first write (#1524): `cp` would keep the source mode.
+      // A re-run for the same version replaces its earlier copy, as before.
+      await unlink(to).catch((e: NodeJS.ErrnoException) => {
+        if (e.code !== "ENOENT") throw e;
+      });
+      await writeFile(to, await readFile(from), { flag: "wx", mode: 0o600 });
       saved++;
     } catch {
       failed.push(d.path);

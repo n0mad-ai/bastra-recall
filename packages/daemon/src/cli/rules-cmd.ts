@@ -63,10 +63,11 @@ async function install(projectDir: string, dryRun: boolean): Promise<number> {
     // predictable, so refusing to write through an existing path (or a symlink
     // planted at one) is the difference between a backup and an overwrite
     // primitive. A collision means something is already sitting there — that
-    // is a reason to stop, not to clobber.
+    // is a reason to stop, not to clobber. Mode 0600 from the first write,
+    // like every installer backup (#1524).
     const backup = `${target}.bak-${new Date().toISOString().replace(/[:.]/g, "-")}`;
     try {
-      await writeFile(backup, existing, { encoding: "utf8", flag: "wx" });
+      await writeFile(backup, existing, { encoding: "utf8", flag: "wx", mode: 0o600 });
     } catch (e) {
       process.stderr.write(
         `error: cannot back up the existing rules to ${backup}: ${(e as Error).message}\n` +

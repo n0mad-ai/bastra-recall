@@ -13,6 +13,7 @@ import { Telemetry } from "../src/telemetry.js";
 import { recallHandler, type ToolDeps } from "../src/tool-handlers.js";
 import { runHookRecall } from "../src/http-hook-routes.js";
 import { isReflexPoolMember } from "../src/reflex.js";
+import { assembleSessionSections, type SessionContextDeps } from "../src/session-assembler.js";
 
 function memo(o: { id: string; extra?: string[] }): string {
   return [
@@ -103,4 +104,29 @@ test("#1468 a reflex rule past valid_until no longer fires automatically", () =>
   assert.equal(isReflexPoolMember(rule({})), true);
   assert.equal(isReflexPoolMember(rule({ valid_until: "2026-01-01" })), false);
   assert.equal(isReflexPoolMember(rule({ valid_until: "2999-01-01" })), true);
+});
+
+test("#1468 session assembly omits expired memories from hints and pinned floors", async (t) => {
+  const deps = await makeDeps(t);
+  const hits = ["expired", "current", "aged"].map((id) => ({ id, score: 100, type: "decision", summary: id }));
+  const floors = hits.map(({ id }) => ({
+    memory_id: id,
+    condition: "fixture",
+    reason: "fixture floor",
+    floored_at: "2026-01-01",
+    last_affirmed: "2026-01-01",
+  }));
+  const response = { query: QUERY, vault_size: hits.length, hits, recall_id: "fixture-recall", latency_ms: 0 };
+  const stubs: SessionContextDeps = {
+    recallFn: async () => response,
+    listFloorsFn: async () => floors,
+    listConventionsFn: () => [],
+  };
+  const assembled = await assembleSessionSections(deps, deps.vault, {}, stubs);
+  assert.deepEqual(assembled.data.recalls[0]?.resp, { ...response, hits: hits.slice(1) });
+  assert.deepEqual(assembled.data.floors, floors.slice(1));
+  const lines = assembled.sections.flatMap(({ lines }) => lines);
+  assert.ok(lines.some((line) => /current/.test(line)));
+  assert.ok(lines.some((line) => /aged/.test(line)));
+  assert.ok(lines.every((line) => !/expired/.test(line)));
 });

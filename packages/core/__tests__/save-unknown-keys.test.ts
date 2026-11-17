@@ -202,6 +202,9 @@ test("jedes Feld, das der Save in `fm` schreibt, steht in SAVE_MANAGED_FRONTMATT
     og_image: "https://example.org/og.png",
     source_app: "safari",
     saved_at: "2026-09-01T00:00:00.000Z",
+    // #1496: the evidence is kept only while the stored origin is inherited.
+    write_origin: "user-directed",
+    write_origin_evidence: { transport: "stdio", client: "cli/1", session: null, at: "2026-09-01T00:00:00.000Z" },
   };
   const { fm } = buildFrontmatter(base({ type: "bookmark" }), prev, "deploy-runbook", "testproj");
   assert.deepEqual(

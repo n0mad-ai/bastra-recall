@@ -27,6 +27,18 @@ test("INV-SESSION-02: only necessary whole sections are deferred and named; kern
   assert.ok(r.text.includes(update));
   assert.deepEqual(r.deferred, ["vault-care"]);
 });
+test("INV-SESSION-02: protected overflow still names deferrals in delivered context", () => {
+  const kernel = `<rule-kernel>${"k".repeat(7000)}</rule-kernel>`;
+  const language = "<memory-language>de</memory-language>";
+  const soul = `<preferred-interaction>${"s".repeat(3500)}</preferred-interaction>`;
+  const taxonomy = "<vault-taxonomy>Recall topics.</vault-taxonomy>";
+  const protectedSections = [kernel, language, soul];
+  const mandatoryText = protectedSections.join("");
+  const result = capSessionContext(mandatoryText + taxonomy, protectedSections);
+  assert.ok(result.text.startsWith(mandatoryText));
+  assert.equal(result.text.slice(mandatoryText.length), "\nDeferred session sections: vault-taxonomy.");
+  assert.deepEqual(result.deferred, ["vault-taxonomy"]);
+});
 test("a fitting context remains byte-identical", () => {
   const text = "\n<rule-kernel>Whole text.</rule-kernel>\n<update>Some text.</update>\n";
   assert.deepEqual(capSessionContext(text, []), { text, deferred: [] });

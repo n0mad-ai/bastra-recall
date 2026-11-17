@@ -277,10 +277,41 @@ export function dueAt(task) {
   return task.snoozed_until ?? task.next_slot?.at ?? task.schedule?.at ?? task.next_check_at;
 }
 
+// Stored failure and review texts are English product text (#1602). Shown by their fixed code or,
+// where several texts share a code or there is none, by the exact stored text; anything else
+// (an unknown code, a text from an older version) stays as stored.
+const STORED = {
+  "Memory scan limit exceeded": "tk.reason.memory_scan",
+  "File source has several hard links; only files with a single link are observed": "tk.reason.source_hardlink",
+  "Execution failed or reconciliation required": "tk.reason.archive_failed",
+  "Explicit owner review required": "tk.review.explicit",
+  "Owner review required before arming": "tk.review.explicit",
+  "Edited binding requires explicit owner review": "tk.review.edited",
+  "Recovered snapshot requires owner review": "tk.review.recovered",
+  "Conversational reminders disabled; saved unarmed": "tk.review.remindersOff",
+  "Confirmed decision change pending; old watch disarmed": "tk.review.decisionPending",
+  "Kept decision; further premise changes require owner rebinding": "tk.review.decisionKept",
+  "Decision changed; old binding retained, new monitoring requires owner review": "tk.review.decisionChanged",
+  "Private binding retired; prepare again": "tk.review.bindingRetired",
+  "Reconciliation required: execution outcome unknown": "tk.card.reconcileUnknown",
+};
+function storedText(text, code) {
+  for (const key of [STORED[text], code && `tk.reason.${code}`]) {
+    if (!key) continue;
+    const s = t(key);
+    if (s !== key) return s;
+  }
+  return text || code || "";
+}
+/** last_failure ({ code, message }) in the UI language. */
+export const failureText = (f) => storedText(f.message, f.code);
+/** review_reason: a fixed sentence or, for a bound decision, its code. */
+export const reviewText = (v) => storedText(v, v);
+
 /** Old UI taskFailureReason(). */
 export function failureReason(task, snap) {
   if (task.state === "cancelled" || task.state === "expired") return t(`tk.state.${task.state}`);
-  if (task.archive_failure) return String(task.archive_failure);
+  if (task.archive_failure) return storedText(String(task.archive_failure));
   if (task.archived) return "";
   const i = (snap.intents || []).filter((x) => x.task_id === task.id).at(-1),
     r = (snap.receipts || []).filter((x) => x.task_id === task.id).at(-1);

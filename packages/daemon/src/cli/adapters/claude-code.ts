@@ -1,5 +1,6 @@
 import { ensureBootstrap, describeBootstrap } from "../bootstrap.js";
 import { windowsHookToken } from "./command-paths.js";
+import { clientMcpSurface } from "../doctor-delivery.js";
 import { existsSync } from "node:fs";
 import {
   CLAUDE_CODE_CONFIG,
@@ -491,6 +492,7 @@ async function claudeCodeDoctor(): Promise<DoctorResult> {
     skill: skillState.status !== "missing",
     ...(hooksDisabledBy ? { hooksDisabledBy } : {}),
     ...mcpEnvFeatures(servers[SERVER_KEY], configPath),
+    mcpSurface: clientMcpSurface(servers[SERVER_KEY]),
   };
   const broken =
     forwarderBroken ||

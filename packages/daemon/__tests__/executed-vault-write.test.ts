@@ -1,6 +1,6 @@
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beginRulebookRound, resetRulebookContext } from "../src/rulebook-check.js";
@@ -11,6 +11,7 @@ import { Telemetry } from "../src/telemetry.js";
 import { runStopLane } from "../src/stop-lane.js";
 import { normalizeTurns } from "../src/stop-transcript.js";
 import { createServer } from "node:http";
+import { createHash } from "node:crypto";
 import { dispatchApiSurface } from "../src/http-api-surface.js";
 import { readAppRecord } from "../src/app-record-store.js";
 
@@ -115,11 +116,19 @@ test("#1376 executed writes bind session, actor, context, round and completion o
   }
 });
 
-test("#1376 productive dispatcher executes nested saves; source strings and failed writes do not count", async (t) => {
+async function dispatcherFixture(t: TestContext) {
   const root = await mkdtemp(join(tmpdir(), "bastra-executed-dispatch-"));
-  const names = ["BASTRA_HOOK_STATE_DIR", "BASTRA_PENDING_SUGGESTIONS_PATH", "BASTRA_LOG_PATH"];
-  const old = names.map((n) => process.env[n]);
-  names.forEach((n, i) => (process.env[n] = join(root, String(i))));
+  const databasePath = join(root, "app.db");
+  const fixtureEnv = {
+    BASTRA_HOOK_STATE_DIR: join(root, "hook-state"),
+    BASTRA_PENDING_SUGGESTIONS_PATH: join(root, "pending-suggestions.json"),
+    BASTRA_LOG_PATH: join(root, "logs"),
+    BASTRA_DB_PATH: databasePath,
+    BASTRA_VAULT_ROOTS_PATH: join(root, "vault-roots.json"),
+    BASTRA_TELEMETRY: "1",
+  };
+  const old = Object.keys(fixtureEnv).map((name) => [name, process.env[name]] as const);
+  Object.assign(process.env, fixtureEnv);
   const vault = new Vault(join(root, "vault"));
   await vault.init();
   const search = new SearchIndex(vault);
@@ -127,10 +136,10 @@ test("#1376 productive dispatcher executes nested saves; source strings and fail
   t.after(async () => {
     search.stop();
     await vault.stop();
-    names.forEach((n, i) => {
-      if (old[i] === undefined) delete process.env[n];
-      else process.env[n] = old[i];
-    });
+    for (const [name, value] of old) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
     await rm(root, { recursive: true, force: true });
   });
   const p = { session_id: "invented-http-execution", agent_id: "worker", bastra_client: "codex" };
@@ -148,16 +157,38 @@ test("#1376 productive dispatcher executes nested saves; source strings and fail
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
-  const api = async (tool: string, body: Record<string, unknown>) => {
+  const api = async (tool: string, body: Record<string, unknown>, headers?: Record<string, string>) => {
     const response = await fetch(`http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1/${tool}`, {
       method: "POST",
-      headers: { authorization: "Bearer invented-test-token", "content-type": "application/json" },
+      headers: { authorization: "Bearer invented-test-token", "content-type": "application/json", ...headers },
       body: JSON.stringify(body),
     });
     const value = await response.json();
     if (!response.ok) throw Error(JSON.stringify(value));
     return value;
   };
+  return { api, root, vault, p, databasePath, telemetry: ctx.toolDeps.telemetry };
+}
+
+function saveInput(p: { session_id: string; agent_id: string }) {
+  return {
+    session_id: p.session_id,
+    agent_id: p.agent_id,
+    id: "invented-nested",
+    title: "Erfundene Architektur",
+    summary: "Erfundene Entscheidung für den Regressionstest",
+    body: "Für das erfundene Projekt gilt die Warteschlange.",
+    type: "decision",
+    scope: "fixture",
+    topic_path: ["fixture"],
+    tags: ["fixture"],
+    recall_when: ["Erfundene Architektur prüfen"],
+  };
+}
+
+test("#1376 productive dispatcher executes nested saves; source strings and failed writes do not count", async (t) => {
+  const { api, vault, p } = await dispatcherFixture(t);
+  const input = saveInput(p);
   const timestamp = new Date(Date.now() - 1000).toISOString();
   const transcript = [
     {
@@ -189,19 +220,7 @@ test("#1376 productive dispatcher executes nested saves; source strings and fail
   );
   await assert.rejects(api("save_memory", { session_id: p.session_id, agent_id: p.agent_id, title: "invalid" }));
   assert.deepEqual(await currentExecutedVaultWrites(p), []);
-  const saved = (await api("save_memory", {
-    session_id: p.session_id,
-    agent_id: p.agent_id,
-    id: "invented-nested",
-    title: "Erfundene Architektur",
-    summary: "Erfundene Entscheidung für den Regressionstest",
-    body: "Für das erfundene Projekt gilt die Warteschlange.",
-    type: "decision",
-    scope: "fixture",
-    topic_path: ["fixture"],
-    tags: ["fixture"],
-    recall_when: ["Erfundene Architektur prüfen"],
-  })) as { id: string };
+  const saved = (await api("save_memory", input)) as { id: string };
   assert.equal(saved.id, "invented-nested");
   assert.equal((await currentExecutedVaultWrites(p)).length, 1);
   assert.equal((vault.get(saved.id)!.fm as unknown as Record<string, unknown>).session_id, undefined);
@@ -219,6 +238,70 @@ test("#1376 productive dispatcher executes nested saves; source strings and fail
   assert.equal((await currentExecutedVaultWrites(p)).length, 2);
   assert.equal(await stop(), "{}");
   assert.deepEqual(await currentExecutedVaultWrites({ ...p, agent_id: "other" }), []);
+});
+
+test("save previews do not persist state through the HTTP dispatcher", async (t) => {
+  const { api, root, vault, p, databasePath, telemetry } = await dispatcherFixture(t);
+  const input = saveInput(p);
+  const fixtureFiles = async () => {
+    const files = await readdir(root, { recursive: true, withFileTypes: true });
+    return Object.fromEntries(
+      await Promise.all(
+        files
+          .filter((entry) => entry.isFile())
+          .map(async (entry) => {
+            const file = join(entry.parentPath, entry.name);
+            return [
+              file.slice(root.length + 1),
+              createHash("sha256")
+                .update(await readFile(file))
+                .digest("hex"),
+            ];
+          })
+      )
+    );
+  };
+  await t.test("preview does not initialize a cold AppDB", async () => {
+    process.env.BASTRA_DB_PATH = join(root, "cold-app.db");
+    try {
+      const before = await fixtureFiles();
+      const preview = (await api("save_memory", { ...input, dry_run: true })) as { dry_run?: boolean };
+      assert.equal(preview.dry_run, true);
+      assert.deepEqual(await fixtureFiles(), before);
+    } finally {
+      process.env.BASTRA_DB_PATH = databasePath;
+    }
+  });
+
+  await t.test("preview does not book a write or change persisted session bytes", async () => {
+    const before = await fixtureFiles();
+    const preview = (await api("save_memory", { ...input, dry_run: true })) as { id: string; dry_run?: boolean };
+    assert.equal(preview.id, input.id);
+    assert.equal(preview.dry_run, true);
+    assert.equal(vault.get(preview.id), undefined);
+    assert.deepEqual(await currentExecutedVaultWrites(p), [], "a preview cannot suppress a later save suggestion");
+    assert.deepEqual(await fixtureFiles(), before, "a preview leaves vault, AppDB, audit and training bytes unchanged");
+  });
+
+  await t.test("preview does not rotate the forwarder's training turn", async () => {
+    const headers = {
+      "x-bastra-cc-session": "fixture-forwarded-session",
+      "x-bastra-cc-turn": "1",
+      "x-bastra-client": "fixture-client%2F1.0",
+    };
+    await telemetry.flushNow();
+    const before = await fixtureFiles();
+    const preview = (await api("save_memory", { ...input, dry_run: true, write_origin: "user-directed" }, headers)) as {
+      dry_run?: boolean;
+      write_origin_evidence?: { session: string; client: string; transport: string };
+    };
+    assert.equal(preview.dry_run, true);
+    assert.equal(preview.write_origin_evidence?.session, "fixture-forwarded-session");
+    assert.equal(preview.write_origin_evidence?.client, "fixture-client/1.0");
+    assert.equal(preview.write_origin_evidence?.transport, "forwarder");
+    await telemetry.flushNow();
+    assert.deepEqual(await fixtureFiles(), before, "the telemetry join-state bytes must stay unchanged");
+  });
 });
 
 test("#1376 current custom exec output timestamps cannot turn aggregate output into a save", () => {

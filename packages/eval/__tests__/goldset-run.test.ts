@@ -3,9 +3,18 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { controlRecaller, gatedHybridRecaller, metricsFor, scoreCases, type CaseResult } from "../src/goldset-run.js";
+import {
+  GOLDSET_REFERENCE_TIME,
+  controlRecaller,
+  gatedHybridRecaller,
+  metricsFor,
+  parseArgs,
+  recallerAt,
+  scoreCases,
+  type CaseResult,
+} from "../src/goldset-run.js";
 import { datasetHash, loadGoldFiles, unknownGoldIds } from "../src/goldset-dataset.js";
-import type { RecallHit, StageListener } from "@bastra-recall/core";
+import type { RecallHit, RecallOptions, SearchIndex, StageListener } from "@bastra-recall/core";
 import { originRefHash, stagedId, type GoldCase } from "../src/goldset.js";
 
 const row = (over: Partial<CaseResult> = {}): CaseResult => ({
@@ -268,4 +277,39 @@ test("the row carries the served top-k, so the ranks can be re-derived (#417)", 
   assert.equal(rows[0].top_k.findIndex((h) => expected.has(h.id)) + 1, rows[0].rank_expected);
   assert.equal(rows[0].top_k.findIndex((h) => any.has(h.id)) + 1, rows[0].rank_any);
   assert.equal(rows[0].rank_expected, 3, "and the rank sits where only top_k can show it");
+});
+
+test("every run has a fixed reference time: the registered default or --reference-time (#1568)", () => {
+  assert.equal(parseArgs(["--gold", "g.json"]).referenceTime.toISOString(), GOLDSET_REFERENCE_TIME);
+  assert.equal(
+    parseArgs(["--gold", "g.json", "--reference-time", "2026-09-27"]).referenceTime.toISOString(),
+    "2026-09-27T00:00:00.000Z"
+  );
+  assert.throws(() => parseArgs(["--gold", "g.json", "--reference-time", "gestern"]), /not a date/);
+});
+
+test("the recaller hands its reference time to the staleness step on both paths (#1568)", async () => {
+  const seen: { path: string; opts: RecallOptions }[] = [];
+  const fakeSearch = (hybrid: boolean): SearchIndex =>
+    ({
+      hasEmbeddings: () => hybrid,
+      recall: (_q: string, opts: RecallOptions) => {
+        seen.push({ path: "bm25", opts });
+        return [];
+      },
+      recallHybrid: async (_q: string, opts: RecallOptions) => {
+        seen.push({ path: "hybrid", opts });
+        return [];
+      },
+    }) as unknown as SearchIndex;
+  const at = new Date("2026-11-15T00:00:00Z");
+  await recallerAt(fakeSearch(false), at)("q", "c1");
+  await recallerAt(fakeSearch(true), at)("q", "c1");
+  assert.deepEqual(
+    seen.map((s) => [s.path, s.opts.reference_time?.toISOString(), s.opts.k]),
+    [
+      ["bm25", "2026-11-15T00:00:00.000Z", 10],
+      ["hybrid", "2026-11-15T00:00:00.000Z", 10],
+    ]
+  );
 });

@@ -20,9 +20,17 @@ let pending: Promise<void> = Promise.resolve();
 /** Write `payload` to stdout and remember when it has been handed off. */
 export function emitStdout(payload: string): void {
   pending = new Promise<void>((resolve) => {
+    const stdout = process.stdout;
+    const failed = () => resolve();
+    // A broken pipe can emit "error" after the write callback has run.
+    stdout.once("error", failed);
     try {
-      process.stdout.write(payload, () => resolve());
+      stdout.write(payload, (error) => {
+        if (!error) stdout.off("error", failed);
+        resolve();
+      });
     } catch {
+      stdout.off("error", failed);
       resolve();
     }
   });

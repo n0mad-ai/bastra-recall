@@ -177,6 +177,11 @@ export async function cmdReconcile(
     return 2;
   }
   const plan = await planReconcile(await loadStore(here), await loadStore(there));
+  // Reconcile backups are exempt from the 0600 rule for installer backups
+  // (#1524): `applyReconcile` MOVES the replaced vault file into the store's
+  // own `.bastra/reconcile-backup/` (a rename, no copy), so the backup is the
+  // user's file with the mode it already had. Forcing 0600 would mean a chmod
+  // on that file, which is the opposite of keeping it unchanged.
   if (!args.yes) {
     if (args.json) console.log(JSON.stringify({ dry_run: true, ...(planJson(plan) as object) }));
     else {

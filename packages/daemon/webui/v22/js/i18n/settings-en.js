@@ -66,6 +66,8 @@ export default {
   "st.secret.new": "new value, replaces on apply",
   "st.secret.pending": "new value pending",
   "st.secret.unset": "not set",
+  "st.json.invalid": "Invalid JSON in the marked field. Correct it or clear the field.",
+  "st.json.invalidShort": "invalid JSON, not saved",
 
   "st.chip.modified": "MODIFIED",
   "st.chip.restart": "RESTART",

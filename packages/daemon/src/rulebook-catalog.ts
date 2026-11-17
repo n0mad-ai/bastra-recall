@@ -16,7 +16,7 @@ import { GLOBAL_SCOPES, isScopeCompatible, normalizeScopeKey } from "@bastra-rec
 import { listFloors, type FloorEntry } from "./floors.js";
 import { loadSessionState, type ActiveConvention } from "./session-state.js";
 import { callerSessionStore } from "./caller-session.js";
-import { sessionRulebookProject } from "./rulebook-check.js";
+import { sessionRulebookProject } from "./rulebook-round-state.js";
 import type { ToolDeps } from "./tool-deps.js";
 
 export type KernelGroup = "active-convention" | "floor" | "reflex" | "user-directed" | "explicit";
@@ -30,6 +30,8 @@ export interface KernelEntry {
   body: string;
   rule_categories?: Memory["fm"]["rule_categories"];
   write_origin?: Memory["fm"]["write_origin"];
+  /** #1496: where a user-directed rule's instruction arrived. */
+  write_origin_evidence?: Memory["fm"]["write_origin_evidence"];
   type?: string;
   summary?: string;
   rulebook?: "always" | "on-demand";
@@ -144,6 +146,7 @@ async function projectIndex(memories: Memory[], opts: RulebookCatalogOptions): P
       title: oneLine(m.fm.title),
       rule_categories: m.fm.rule_categories,
       write_origin: m.fm.write_origin,
+      write_origin_evidence: m.fm.write_origin_evidence,
       type: m.fm.type,
       summary: m.fm.summary,
       scope: m.fm.scope,
@@ -333,6 +336,7 @@ export function rulebookPage(c: KernelCandidates, cursor?: string, maxChars = RU
       applies_when: e.applies_when ?? "",
       ...(e.rule_categories ? { rule_categories: e.rule_categories } : {}),
       ...(e.applies_when_derived ? { applies_when_derived: true as const } : {}),
+      ...(e.write_origin_evidence ? { write_origin_evidence: e.write_origin_evidence } : {}),
       revision: e.revision,
       ...(e.source_unavailable ? { source_unavailable: true } : {}),
     })),

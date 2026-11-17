@@ -18,7 +18,9 @@
  *   relation   two texts that were compared, A against B in exactly the order
  *              the model is asked: quote/quote or quote/note
  *   verdict    what a model said about one item: verdict, model, prompt_version
- *   human      RESERVED for a later human label ({ key, label }); nothing writes it yet
+ *   human      a person's label for one item (#1578): { key, label, question, split },
+ *              written by `recordHumanLabel` from tools/draft-judge-eval/label.mts.
+ *              The latest one per key counts.
  */
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
@@ -68,6 +70,10 @@ type StoredItem = TrainingItem & { v: 1; key: string; ts: string };
 interface Store {
   items: Map<string, StoredItem>;
   judged: Set<string>;
+  /** The last model verdict recorded per key, in file order. */
+  lastVerdict: Map<string, string>;
+  /** The last human label recorded per key, in file order (#1578). */
+  human: Map<string, string>;
 }
 
 export function trainingCaptureEnabled(): boolean {
@@ -133,10 +139,9 @@ async function openStore(path: string, write: boolean): Promise<FileHandle | nul
 }
 
 async function readStore(path: string): Promise<Store> {
-  const items = new Map<string, StoredItem>(),
-    judged = new Set<string>();
+  const store: Store = { items: new Map(), judged: new Set(), lastVerdict: new Map(), human: new Map() };
   const handle = await openStore(path, false);
-  if (!handle) return { items, judged };
+  if (!handle) return store;
   let raw: string;
   try {
     raw = await handle.readFile("utf8");
@@ -153,16 +158,22 @@ async function readStore(path: string): Promise<Store> {
     } catch {
       continue;
     } // a torn last line
-    if (typeof row?.key !== "string") continue;
-    if (row.type === "verdict" && typeof row.model === "string" && typeof row.prompt_version === "string")
-      judged.add(judgedKey(row.key, row.model, row.prompt_version));
-    else if (
-      (row.type === "statement" && typeof row.quote === "string") ||
-      (row.type === "relation" && typeof row.a === "string" && typeof row.b === "string")
-    )
-      items.set(row.key, row as unknown as StoredItem);
+    if (typeof row?.key === "string") absorbRow(store, row as Record<string, unknown> & { key: string });
   }
-  return { items, judged };
+  return store;
+}
+
+/** One parsed line of the store into the in-memory view; unknown shapes are skipped. */
+function absorbRow(store: Store, row: Record<string, unknown> & { key: string }): void {
+  if (row.type === "verdict" && typeof row.model === "string" && typeof row.prompt_version === "string") {
+    store.judged.add(judgedKey(row.key, row.model, row.prompt_version));
+    if (typeof row.verdict === "string") store.lastVerdict.set(row.key, row.verdict);
+  } else if (row.type === "human" && typeof row.label === "string") store.human.set(row.key, row.label);
+  else if (
+    (row.type === "statement" && typeof row.quote === "string") ||
+    (row.type === "relation" && typeof row.a === "string" && typeof row.b === "string")
+  )
+    store.items.set(row.key, row as unknown as StoredItem);
 }
 
 /** One write call per batch, at the end of the file. */
@@ -376,4 +387,115 @@ export async function runTrainingCaptureTick(now: number): Promise<TrainingTick 
         await judgeTrainingBacklog(judge, { now });
       }),
   };
+}
+
+// ── #1578: human labels ──────────────────────────────────────────────────────
+//
+// The draft check is measured only on invented cases. A person confirms or
+// corrects captured examples here; the labels become the measurement set for
+// "is the local model good enough" (#1128). Local only: the labels go into the
+// same 0600 file as the texts, nothing leaves the machine.
+
+/** The three questions the draft check answers, as the model is asked them. */
+export type LabelQuestion = "statement" | "relation-statement" | "relation-note";
+export const LABEL_QUESTIONS: readonly LabelQuestion[] = ["statement", "relation-statement", "relation-note"];
+/** Share of statements whose items are held out of any later prompt or training work. */
+export const LABEL_HOLDOUT_SHARE = 0.2;
+/** Default target of labelled examples per question (#1578: roughly 200 to 300). */
+export const LABEL_TARGET_PER_QUESTION = 300;
+
+export interface LabelCandidate {
+  key: string;
+  question: LabelQuestion;
+  item: StoredItem;
+  /** The model's last verdict, the stratum of the selection; "none" if never judged. */
+  model_verdict: string;
+  split: "dev" | "holdout";
+  /** The person's label, when there is one. */
+  label?: string;
+}
+
+export function labelQuestionOf(item: TrainingItem): LabelQuestion {
+  return item.type === "statement" ? "statement" : item.b_is === "note" ? "relation-note" : "relation-statement";
+}
+
+export function labelChoices(question: LabelQuestion): readonly string[] {
+  return question === "statement" ? STATEMENT_KINDS : RELATIONS;
+}
+
+const unit = (text: string): number => parseInt(hash(text).slice(0, 8), 16) / 0x1_0000_0000;
+
+/** Assign each typed sentence to the same side, wherever it appears. */
+function statementSplit(statement: string): LabelCandidate["split"] {
+  return unit(`holdout\n${statement}`) < LABEL_HOLDOUT_SHARE ? "holdout" : "dev";
+}
+
+/** A comparison across the split is ineligible: including it on either side
+ * would expose a sentence from the other side. */
+export function labelSplit(item: TrainingItem): LabelCandidate["split"] | null {
+  if (item.type === "statement") return statementSplit(item.quote);
+  const split = statementSplit(item.a);
+  return item.b_is === "statement" && statementSplit(item.b) !== split ? null : split;
+}
+
+/** Every eligible captured item, with the model's verdict and any human label. */
+export async function readLabelCandidates(): Promise<LabelCandidate[]> {
+  const store = await unlessRefused<Store | null>(null, () => readStore(trainingCapturePath()));
+  if (!store) return [];
+  return [...store.items.values()].flatMap((item) => {
+    const split = labelSplit(item);
+    if (!split) return [];
+    return [
+      {
+        key: item.key,
+        question: labelQuestionOf(item),
+        item,
+        model_verdict: store.lastVerdict.get(item.key) ?? "none",
+        split,
+        ...(store.human.has(item.key) ? { label: store.human.get(item.key) } : {}),
+      },
+    ];
+  });
+}
+
+/**
+ * The fixed set to label for one question: the model's verdict classes take
+ * turns, so a rare class (11 contradictions in 815 comparisons) is taken whole
+ * instead of drowning in the common one. Within a class the order is a hash of
+ * the key — deterministic, and independent of what is already labelled, so the
+ * set does not drift while a person works through it.
+ */
+export function selectForLabelling(
+  candidates: readonly LabelCandidate[],
+  question: LabelQuestion,
+  target = LABEL_TARGET_PER_QUESTION
+): LabelCandidate[] {
+  const strata = new Map<string, LabelCandidate[]>();
+  for (const c of candidates)
+    if (c.question === question)
+      (strata.get(c.model_verdict) ?? strata.set(c.model_verdict, []).get(c.model_verdict)!).push(c);
+  const queues = [...strata.keys()]
+    .sort()
+    .map((k) => strata.get(k)!.sort((x, y) => unit(`order\n${x.key}`) - unit(`order\n${y.key}`)));
+  const picked: LabelCandidate[] = [];
+  for (let round = 0; picked.length < target && queues.some((q) => q.length > round); round++)
+    for (const q of queues) if (round < q.length && picked.length < target) picked.push(q[round]);
+  return picked;
+}
+
+/**
+ * Write a person's label for a stored item. Refused (false) for an unknown key,
+ * a cross-split pair, or a label outside the item's own question. Works with
+ * the capture switch off: labelling reads what was captured before.
+ */
+export async function recordHumanLabel(key: string, label: string, now = Date.now()): Promise<boolean> {
+  return transact(false, async (store, path) => {
+    const item = store.items.get(key);
+    if (!item) return false;
+    const question = labelQuestionOf(item);
+    const split = labelSplit(item);
+    if (!split || !labelChoices(question).includes(label)) return false;
+    await append(path, [{ v: 1, type: "human", key, ts: new Date(now).toISOString(), label, question, split }]);
+    return true;
+  });
 }

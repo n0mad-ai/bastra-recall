@@ -9,7 +9,7 @@ import { Vault, SearchIndex } from "@bastra-recall/core";
 import * as path from "node:path";
 import { existsSync } from "node:fs";
 import { getCommonsEnabled } from "./settings.js";
-import { commonsPath, loadVerificationCounts } from "./cli/commons.js";
+import { commonsPath, loadVerificationCounts } from "./commons-store.js";
 import { writeSharedVaultSize } from "./statusline-session.js";
 
 export async function openStorage(opts: { vaultPath: string }): Promise<{

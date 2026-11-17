@@ -252,6 +252,35 @@ export default {
   "tk.tech.failure": "Letzter Fehler: {m}",
   "tk.review.explicit": "Wartet auf deine Freigabe.",
   "tk.review.edited": "Nach der Änderung ist eine neue Freigabe nötig.",
+  "tk.review.recovered": "Aus einer Sicherung wiederhergestellt; bitte erneut prüfen.",
+  "tk.review.remindersOff": "Erinnerungen aus dem Chat sind ausgeschaltet; ohne Aktivieren gespeichert.",
+  "tk.review.decisionPending": "Eine bestätigte Entscheidungsänderung steht aus; die alte Überwachung ist aus.",
+  "tk.review.decisionKept":
+    "Entscheidung beibehalten; weitere Prämissenänderungen brauchen eine neue Bindung durch dich.",
+  "tk.review.decisionChanged":
+    "Entscheidung geändert; die alte Bindung bleibt, eine neue Überwachung braucht deine Prüfung.",
+  "tk.review.bindingRetired": "Die private Bindung ist beendet; bitte die Aufgabe neu vorbereiten.",
+  "tk.reason.history_capacity": "Der Verlauf der Aufgabe ist voll; bitte prüfe die Aufgabe.",
+  "tk.reason.calendar_gap": "Diese Uhrzeit gibt es an dem Tag wegen der Zeitumstellung nicht; bitte prüfe die Aufgabe.",
+  "tk.reason.schedule_error": "Der nächste Termin ließ sich nicht berechnen; bitte prüfe die Aufgabe.",
+  "tk.reason.source_timeout": "Die Prüfung der Quelle hat zu lange gedauert.",
+  "tk.reason.source_budget": "Die Quelle überschreitet ihre Größengrenze.",
+  "tk.reason.memory_scan": "Die Durchsicht der Memories hat ihre Grenze überschritten.",
+  "tk.reason.source_unavailable": "Die angemeldete Quelle lässt sich nicht beobachten.",
+  "tk.reason.source_hardlink": "Die Datei hat mehrere harte Links; beobachtet werden nur Dateien mit genau einem Link.",
+  "tk.reason.decision_reader_unavailable":
+    "Die verknüpfte Entscheidung lässt sich gerade nicht lesen; bitte prüfe die Aufgabe.",
+  "tk.reason.decision_binding_revised":
+    "Die verknüpfte Entscheidung oder Annahme wurde geändert; bitte prüfe die Aufgabe.",
+  "tk.reason.decision_sensitivity_changed":
+    "Die Vertraulichkeitsstufe der verknüpften Entscheidung hat sich geändert; bitte prüfe die Aufgabe.",
+  "tk.reason.decision_binding_inactive":
+    "Die verknüpfte Entscheidung gilt nicht mehr (beendet oder ersetzt); bitte prüfe die Aufgabe.",
+  "tk.reason.decision_binding_unavailable":
+    "Die verknüpfte Entscheidung ließ sich nicht finden oder lesen; bitte prüfe die Aufgabe.",
+  "tk.reason.decision_check_timeout":
+    "Die Prüfung der verknüpften Entscheidung hat zu lange gedauert; bitte prüfe die Aufgabe.",
+  "tk.reason.archive_failed": "Ausführung fehlgeschlagen oder Abgleich nötig",
   "tk.ver.none": "noch nicht geprüft",
   "tk.ver.waiting": "wartet auf erstes Ereignis",
   "tk.ver.checked": "geprüft {at}",

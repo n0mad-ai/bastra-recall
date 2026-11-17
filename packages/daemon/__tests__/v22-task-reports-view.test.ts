@@ -33,9 +33,11 @@ const REPORTS = [
 
 async function view(notes: unknown[] = []) {
   const calls: Array<[string, unknown]> = [];
-  const timers: Array<() => unknown> = [];
+  const timers = new Map<number, () => unknown>();
+  let timerId = 0;
   const said: Array<[string, unknown]> = [];
   const events: string[] = [];
+  const dataListeners: Array<() => void> = [];
   const source = strip(await read("sections/tasks-reports-model.js")) + strip(await read("sections/tasks-reports.js"));
   const context: Record<string, unknown> = {
     h,
@@ -44,7 +46,7 @@ async function view(notes: unknown[] = []) {
     state: { lensOpen: false },
     setState() {},
     data: { reports: [] },
-    onData() {},
+    onData: (fn: () => void) => dataListeners.push(fn),
     loadReports: async () => {},
     markdown: (text: string) => [h("p", null, text)],
     openMemoryBrowser() {},
@@ -84,8 +86,11 @@ async function view(notes: unknown[] = []) {
     },
     JSON,
     // a pause (the text search waits for typing to stop) runs when the test says so, never by the clock
-    setTimeout: (fn: () => unknown) => timers.push(fn),
-    clearTimeout() {},
+    setTimeout: (fn: () => unknown) => {
+      timers.set(++timerId, fn);
+      return timerId;
+    },
+    clearTimeout: (id: number) => timers.delete(id),
   };
   const hand = { fail: false };
   const knobs: { capacity: boolean; restore: string | null } = { capacity: false, restore: null };
@@ -99,10 +104,21 @@ async function view(notes: unknown[] = []) {
   host.clientWidth = 1000;
   const draw = v.reportsRenderer(host);
   context.emit = () => draw();
-  const flush = async () => {
-    while (timers.length) await timers.shift()!();
+  const runNextTimer = async () => {
+    const next = timers.entries().next().value;
+    if (!next) return;
+    const [id, fn] = next;
+    timers.delete(id);
+    await fn();
   };
-  return { v, host, draw, calls, said, events, hand, knobs, flush, context };
+  const flush = async () => {
+    while (timers.size) await runNextTimer();
+  };
+  const updateReports = (reports: unknown[]) => {
+    (context.data as { reports: unknown }).reports = v.reportRows({ reports });
+    for (const notify of dataListeners) notify();
+  };
+  return { v, host, draw, calls, said, events, hand, knobs, flush, context, updateReports, runNextTimer };
 }
 
 const byClass = (root: Node_, cls: string) => root.find(cls);
@@ -410,6 +426,67 @@ test("#1559: after Delete the next report shows an Undo notice; Undo brings the 
   assert.deepEqual(said.at(-1), ["tk.rep.restored", undefined]);
   assert.equal(v.R.sel, ID(1), "the restored report is shown again");
   assert.equal(byClass(host, "tk-rep__undo").length, 0);
+});
+
+test("#1559: the undo action is visible after deleting the last report on a narrow screen", async () => {
+  const { v, host, context, updateReports } = await view();
+  host.clientWidth = 500;
+  updateReports([REPORTS[0]]);
+  context.loadReports = async () => updateReports([]);
+  await v.openReport(ID(1));
+  await one(one(host, "tk-rep__acts"), "is-quiet").click();
+  const notice = one(host, "tk-rep__undo");
+  assert.ok(one(host, "tk-rv").classList.contains("is-reading"), "narrow layout must show the reader with undo");
+  await notice.children[2].click();
+  assert.ok(!one(host, "tk-rv").classList.contains("is-reading"), "dismissing undo returns to the empty list");
+});
+
+test("#1559: deleting a report hidden by the current search keeps its title and the undo action", async () => {
+  const { v, host, calls, context, updateReports } = await view();
+  context.loadReports = async () => updateReports(REPORTS.slice(1));
+  await v.openReport(ID(1));
+  type(host, "zzzz");
+  assert.equal(listRows(host).length, 0);
+  await one(one(host, "tk-rep__acts"), "is-quiet").click();
+  const notice = one(host, "tk-rep__undo");
+  assert.equal(notice.children[0].textContent, 'tk.rep.deletedNamed {"title":"Überblick: Förderung"}');
+  context.loadReports = async () => updateReports(REPORTS);
+  await notice.children[1].click();
+  assert.ok(calls.some(([name]) => name === "report_restore"));
+  assert.equal(one(host, "tk-rep__title").textContent, "Überblick: Förderung");
+});
+
+test("#1559: a search with no remaining matches keeps the undo action after refreshing the list", async () => {
+  const { v, host, context, updateReports } = await view();
+  context.loadReports = async () => updateReports(REPORTS.slice(1));
+  await v.openReport(ID(1));
+  type(host, "Überblick");
+  assert.equal(listRows(host).length, 1);
+  await one(one(host, "tk-rep__acts"), "is-quiet").click();
+  assert.equal(listRows(host).length, 0);
+  assert.equal(v.R.sel, null);
+  assert.equal(one(host, "tk-rep__undo").children[1].textContent, "tk.rep.undo");
+});
+
+test("#1597: an earlier response is ignored after switching away from and back to the same query", async () => {
+  const { v, host, context, flush, runNextTimer } = await view();
+  const api = context.api as (name: string, input: unknown) => Promise<unknown>;
+  let release!: () => void;
+  context.api = (name: string, payload: unknown) =>
+    name === "report_list"
+      ? new Promise((resolve) => (release = () => resolve({ reports: [REPORTS[2]] })))
+      : api(name, payload);
+  await v.openReport(ID(1));
+  type(host, "preise");
+  const first = runNextTimer();
+  type(host, "andere Wörter");
+  type(host, "preise");
+  release();
+  await first;
+  assert.equal(listRows(host).length, 0, "the first result does not stand for the latest search");
+  context.api = api;
+  await flush();
+  assert.equal(listRows(host).length, 1, "the current search still receives text hits");
 });
 
 test("#1559: the notice goes when the user moves on or closes it; an expired undo says so", async () => {

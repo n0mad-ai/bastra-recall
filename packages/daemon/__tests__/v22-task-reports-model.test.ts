@@ -112,3 +112,9 @@ test("search (#1597): title and project, case and Unicode form never decide, eve
   assert.deepEqual(ids("bastra förderung"), [], "every word has to match");
   assert.deepEqual(ids("projekt"), ["c"], "a report without a project is found by its title");
 });
+
+test("search (#1597): a compatibility uppercase in the title matches lowercase input", async () => {
+  const m = await model();
+  const rows = m.reportRows({ reports: [{ id: "a", title: "𝐀udit", created_at: 1 }] });
+  assert.equal(m.matchReports(rows, "audit")[0]?.id, "a");
+});

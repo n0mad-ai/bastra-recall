@@ -16,7 +16,7 @@ import { mergeSituations, situationLiterals } from "./draft-situation.js";
 import { bigramSet, dice } from "./stop-lane-repeat.js";
 import { withPathLock, tryWithPathLock } from "./path-lock.js";
 import { purgePendingSuggestions } from "./pending-suggestions.js";
-import { retainDraftSurfaces, draftUseProof } from "./draft-use.js";
+import { retainDraftSurfaces, draftUseProof } from "./draft-use-proof.js";
 
 export const DRAFT_STORE_VERSION = 1;
 export const DRAFT_MAX_ROWS = 500;
@@ -416,17 +416,7 @@ export function draftSearchSnapshot(now = Date.now()): { key: string; rows: read
   const store = cache?.path === path ? cache.store : undefined;
   if (!store || store.diagnostics.corrupt || store.diagnostics.unsupportedVersion)
     return { key: `${path}:cold`, rows: [] };
-  const rows = store.rows
-    .filter((row) => {
-      const age =
-        row.state !== "open"
-          ? DRAFT_RETAIN_AGE_MS
-          : row.evidence.length === 1 && !draftUseProof(row)
-            ? DRAFT_UNCONFIRMED_AGE_MS
-            : DRAFT_OPEN_AGE_MS;
-      return now - row.last_touched < age;
-    })
-    .slice(-DRAFT_MAX_ROWS);
+  const rows = store.rows.filter((row) => !expired(row, now)).slice(-DRAFT_MAX_ROWS);
   return { key: `${path}:${cache!.stamp}:${rows.map((row) => row.id).join(",")}`, rows };
 }
 

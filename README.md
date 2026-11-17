@@ -101,7 +101,7 @@ You can repeat the lookup in another connected client using the same vault. This
 
 | AI client | Status | Setup and behavior |
 |---|---|---|
-| **Claude Code** (CLI) | Tested | MCP, Skill, 12 hook registrations (10 without optional Stop/harvest). Stop is on by default; `--no-stop-hook` leaves it out. Required chat lifecycle cleanup at SessionEnd, save notices and statusline. [Hooks](./docs/hooks.md) |
+| **Claude Code** (CLI) | Tested | MCP, Skill, 13 hook registrations (10 without optional Stop/harvest). Stop is on by default; `--no-stop-hook` leaves it out. Required chat lifecycle cleanup at SessionEnd, save notices and statusline. [Hooks](./docs/hooks.md) |
 | **Claude Desktop** | Tested | MCP and memory guidance; session context on the first tool call. [Setup](https://github.com/n0mad-ai/bastra-recall/wiki/Claude-Desktop), including the macOS `.mcpb` extension |
 | **Codex CLI** | Tested | MCP, Skill and native hooks. [Setup](./docs/CODEX.md) |
 | **ChatGPT desktop app with Codex** | Tested | Shares the local Codex configuration with Codex CLI. [Setup and limitations](./docs/CODEX.md) |
@@ -287,7 +287,7 @@ Wiederhole die Abfrage bei Bedarf in einem anderen verbundenen Client mit demsel
 
 | KI-Client | Status | Einrichtung und Verhalten |
 |---|---|---|
-| **Claude Code** (CLI) | Getestet | MCP, Skill, 12 Hook-Registrierungen (10 ohne optionalen Stop/Harvest). Stop ist standardmäßig an; `--no-stop-hook` lässt ihn weg. Verpflichtendes Aufräumen der Chat-Registrierung bei SessionEnd, Speicherhinweise und Statusline. [Hooks](./docs/hooks.md#deutsch) |
+| **Claude Code** (CLI) | Getestet | MCP, Skill, 13 Hook-Registrierungen (10 ohne optionalen Stop/Harvest). Stop ist standardmäßig an; `--no-stop-hook` lässt ihn weg. Verpflichtendes Aufräumen der Chat-Registrierung bei SessionEnd, Speicherhinweise und Statusline. [Hooks](./docs/hooks.md#deutsch) |
 | **Claude Desktop** | Getestet | MCP und Memory-Anleitung; Sitzungskontext beim ersten Tool-Aufruf. [Einrichtung](https://github.com/n0mad-ai/bastra-recall/wiki/Claude-Desktop), einschließlich macOS-Extension `.mcpb` |
 | **Codex CLI** | Getestet | MCP, Skill und native Hooks. [Einrichtung](./docs/CODEX.md) |
 | **ChatGPT-Desktop-App mit Codex** | Getestet | Nutzt dieselbe lokale Codex-Konfiguration wie Codex CLI. [Einrichtung und Grenzen](./docs/CODEX.md) |

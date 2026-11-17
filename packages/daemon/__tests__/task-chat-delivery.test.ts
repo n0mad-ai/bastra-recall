@@ -1,5 +1,6 @@
 import "./tasks-opt-in.js";
 import { test } from "node:test";
+import { createHash, randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,7 +11,7 @@ import { readTaskStore, transactTaskStore } from "../src/task-store.js";
 import { reconcileTaskTime } from "../src/task-events.js";
 import { taskDueInput, taskDueProjection } from "../src/task-outbox.js";
 import { notifyDueTasks } from "../src/task-notification.js";
-import { deliverTaskChats, type TaskChatDeliveryOptions } from "../src/task-chat-delivery.js";
+import { deliverTaskChats, taskChatMessage, type TaskChatDeliveryOptions } from "../src/task-chat-delivery.js";
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "task-chat-delivery-"));
@@ -71,6 +72,7 @@ test("atomic chat claim survives concurrent dispatch and restart, without acknow
   const delivery = s.occurrences[0].chat_delivery!;
   assert.equal(delivery.session_id, f.target.sessionId);
   assert.equal(delivery.generation, f.target.generation);
+  assert.match(delivery.event_id, /^claim-v2-/);
   assert.ok(delivery.submitted_at);
   assert.equal(delivery.processed_at, undefined);
   assert.equal(s.occurrences[0].acknowledgement, undefined);
@@ -273,13 +275,14 @@ test("busy-session queued peer command has a receipt only for its visible assist
   await deliverTaskChats(f.ctx, f.options);
   assert.equal((await readTaskStore(f.ctx.path)).occurrences[0].chat_delivery?.processed_at, 3000);
 });
+const TRACKED_CRASHED_CLAIM = "claim-v2-af23ecdd-b557-4b02-8620-99aa0b72a6d3";
 test("#1600 a claim left behind by a crash before sending expires and the reminder comes back", async () => {
   for (const sendMayHaveStarted of [false, true]) {
     const f = await fixture();
     const crashedAt = 3000;
     await transactTaskStore(f.ctx.path, undefined, (s) => {
       s.occurrences[0].chat_delivery = {
-        event_id: "crashed-claim",
+        event_id: TRACKED_CRASHED_CLAIM,
         session_id: f.target.sessionId,
         generation: f.target.generation,
         content_hash: "0".repeat(64),
@@ -298,11 +301,11 @@ test("#1600 a claim left behind by a crash before sending expires and the remind
     const claim = (await readTaskStore(f.ctx.path)).occurrences[0].chat_delivery!;
     if (sendMayHaveStarted) {
       assert.equal(f.sent.length, 0, "a send that may have started is never announced twice");
-      assert.equal(claim.event_id, "crashed-claim");
+      assert.equal(claim.event_id, TRACKED_CRASHED_CLAIM);
       assert.equal(await visible(later), 0);
     } else {
       assert.equal(f.sent.length, 1, "the never-sent claim is announced again, once");
-      assert.notEqual(claim.event_id, "crashed-claim");
+      assert.notEqual(claim.event_id, TRACKED_CRASHED_CLAIM);
       assert.ok(claim.submitted_at);
       assert.equal(claim.failed_at, undefined);
     }
@@ -327,7 +330,7 @@ test("#1600 an abandoned claim is visible on next contact even when no chat is r
   const f = await fixture();
   await transactTaskStore(f.ctx.path, undefined, (s) => {
     s.occurrences[0].chat_delivery = {
-      event_id: "crashed-claim",
+      event_id: TRACKED_CRASHED_CLAIM,
       session_id: f.target.sessionId,
       generation: f.target.generation,
       content_hash: "0".repeat(64),
@@ -337,4 +340,36 @@ test("#1600 an abandoned claim is visible on next contact even when no chat is r
   const principal = await authenticateTask(f.auth, f.ctx.authPath);
   const s = await readTaskStore(f.ctx.path);
   assert.equal(taskDueProjection(s, principal, taskDueInput.parse({}), 3000 + 10 * 60 * 1000, true).cards.length, 1);
+});
+
+test("#1600 a v1.2.1 claim delivered before the final write is never replayed after upgrade", async () => {
+  const f = await fixture();
+  const eventId = randomUUID();
+  let delivered = "";
+  await transactTaskStore(f.ctx.path, undefined, (store) => {
+    const occurrence = store.occurrences[0];
+    delivered = taskChatMessage(store.tasks[0], occurrence, eventId);
+    occurrence.chat_delivery = {
+      event_id: eventId,
+      session_id: f.target.sessionId,
+      generation: f.target.generation,
+      content_hash: createHash("sha256").update(delivered).digest("hex"),
+      claimed_at: 3000,
+    };
+  });
+  // v1.2.1 sent before writing submitted_at or failed_at. The delivered
+  // frame and its receipt may survive even though the final write did not.
+  f.events.push(
+    { type: "user", uuid: "legacy-peer", origin: { kind: "peer" }, message: { content: delivered } },
+    { type: "assistant", uuid: "legacy-reply", parentUuid: "legacy-peer", message: { content: eventId } }
+  );
+  const later = 3000 + 10 * 60 * 1000;
+  f.ctx.now = () => later;
+  f.target.lastHumanAt = later - 1000;
+  await deliverTaskChats(f.ctx, f.options);
+
+  assert.equal(f.sent.length, 0, "a possible announcement predates the upgrade");
+  const claim = (await readTaskStore(f.ctx.path)).occurrences[0].chat_delivery;
+  assert.equal(claim?.event_id, eventId);
+  assert.equal(claim?.processed_at, later, "the existing receipt still counts");
 });

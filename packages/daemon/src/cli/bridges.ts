@@ -34,7 +34,8 @@ import {
   resolveGenerationModel,
 } from "../settings.js";
 import { envFirst } from "../env.js";
-import { commonsPath, COMMONS_REPO_URL, verifierId } from "./commons.js";
+import { commonsPath } from "../commons-store.js";
+import { COMMONS_REPO_URL, verifierId } from "./commons.js";
 import {
   BridgePool,
   distinctiveTerms,

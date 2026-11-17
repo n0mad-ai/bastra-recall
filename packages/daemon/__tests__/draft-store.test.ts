@@ -21,6 +21,8 @@ import {
   DRAFT_MAX_BYTES,
   DRAFT_OPEN_AGE_MS,
   DRAFT_RETAIN_AGE_MS,
+  DRAFT_UNCONFIRMED_AGE_MS,
+  draftSearchSnapshot,
   type Draft,
 } from "../src/draft-store.js";
 
@@ -111,6 +113,28 @@ test("expiry uses capture/use evidence, not a display; list never refreshes acce
     assert.equal(await expireDrafts({ now: now + DRAFT_OPEN_AGE_MS + 10 }), 1);
     assert.equal(await expireDrafts({ now: now + DRAFT_OPEN_AGE_MS + 20 }), 0);
     assert.deepEqual(JSON.parse(await readAppRecord("drafts", path)).rows, []);
+  }));
+
+test("#1520 D6: the search snapshot drops a row exactly when the store's expiry rule does", () =>
+  isolated(async () => {
+    const confirmed = draft(1);
+    confirmed.evidence.push({ session_id: "later", turn: 2, ts: now });
+    const firstCapture = draft(2);
+    const rejected = { ...draft(3), state: "rejected" as const };
+    for (const row of [confirmed, firstCapture, rejected]) await upsertDraft(row, now);
+    await listDrafts(now); // loads the in-memory snapshot the hook search reads
+    const visible = (at: number) =>
+      draftSearchSnapshot(at)
+        .rows.map((row) => row.id)
+        .sort();
+    for (const [row, age] of [
+      [confirmed, DRAFT_OPEN_AGE_MS],
+      [firstCapture, DRAFT_UNCONFIRMED_AGE_MS],
+      [rejected, DRAFT_RETAIN_AGE_MS],
+    ] as const) {
+      assert.ok(visible(now + age - 1).includes(row.id), `${row.id} visible one ms before its age`);
+      assert.ok(!visible(now + age).includes(row.id), `${row.id} gone at its age`);
+    }
   }));
 
 test("promoted/rejected retention and missing-note tombstone", () =>

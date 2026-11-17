@@ -8,7 +8,7 @@ import { domainToASCII } from "node:url";
 import { normalizeAssistantName } from "./assistant-address-name.js";
 import { managedAssistantHostsName } from "./assistant-address-files.js";
 import { gateLocalPost, isLoopback } from "./http-auth.js";
-import { readRuntimeSettingsRecord } from "./runtime-feature-settings.js";
+import { readRuntimeSettingsRecord } from "@bastra-recall/core/runtime-settings";
 
 export const ASSISTANT_SOCKET_PROTOCOL = 2;
 export interface AssistantGatewayOptions {

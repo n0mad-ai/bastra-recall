@@ -1,0 +1,138 @@
+{
+  "$comment": "Preregistration for #1567 (ageing policy) with the fixed reference time of #1568. Written BEFORE the runs. The policy itself is the owner's decision of 16.11.2026; this measurement does not decide it, it records what the switch does. The results are added in a separate `results` block under registration_version 2, never by editing this protocol.",
+  "schema_version": 1,
+  "registration_version": 2,
+  "registered_at": "2026-11-17",
+  "issue": 1567,
+  "related": [
+    1568,
+    1491
+  ],
+  "status": "numbers_registered",
+  "harness": "src/goldset-run.ts",
+  "arms": {
+    "before": "pre-#1567 policy: every staleness status at the explicit factors fresh 1.0 / aging 0.85 / stale 0.5 / expired 0.2, rules age like any note. Measurement variant of search-staleness.ts that differs from `after` only in `multiplierFor`.",
+    "after": "#1567 policy as shipped in search-staleness.ts: type-default ageing fresh 1.0 / aging 0.85 / stale 0.7 / expired 0.7; a note with a rulebook declaration (always / on-demand) gets no type-default ageing; an explicit valid_until or expires_after_days keeps the explicit factors."
+  },
+  "protocol": {
+    "path": "production SearchIndex.recallHybrid, k 10, score floor 30, default RRF vector weight, local embeddinggemma via Ollama",
+    "reference_time": "2026-11-15T00:00:00.000Z (GOLDSET_REFERENCE_TIME, #1568) for the primary numbers; each run also reports `today` at its own wall clock",
+    "vault": "copy of a real vault taken 2026-11-15 (~/.codex/worktrees/_vault-kopie-2026-11-15), copied again into a scratch directory so the run can write its own state; the original copy and the live vault are only read",
+    "dataset": "the 12 gold files of v1-baseline.json (dataset sha256 69e1475010c64a0a02eee0b2fbc6929f3a33de1029ffc14eea36b91316dced00), minus every case whose expected or acceptable id is not in the vault copy. Rule fixed before the run; it removes 7 answerable cases (3 ids no longer exist), leaving 577 answerable, 79 no-answer, 36 probes — the population of the 15.11.2026 measurement",
+    "gate_flag": "--gate (evidence decision, hook path) on both arms",
+    "code": "git eba66497 plus the working-tree files of this change; their sha256 is recorded with the results",
+    "primary": "strict R@3 on the 577 answerable cases, before vs after, at the reference time",
+    "secondary": [
+      "R@1, R@10, MRR on the answerable cases",
+      "no-answer cases whose top served score is >= 100 (the replay of 15.11.2026 saw 35 -> 43 of 79)",
+      "the same answerable metrics at `today`",
+      "per-case gains and losses at R@3 and R@10"
+    ],
+    "expectation_from_replay": "replay of 15.11.2026 on frozen candidate lists: R@3 170 -> 257 of 577, R@10 -> 324 of 577. Not a threshold; a large gap to it is a finding to explain",
+    "latency": "micro-benchmark of applyStaleness on the vault copy (all notes as one hit pool), before vs after, 7 repeats; the after median must not exceed the before median by more than 5 %",
+    "longmemeval": "LongMemEval notes are all type `reference` without an explicit deadline, so neither branch of the policy can fire there; recorded as a functional-identity check (count of notes the policy can touch), not as a second run",
+    "gate": "descriptive. No threshold decides the switch; the owner decided it on 16.11.2026. The review of 40 to 60 lifted notes is separate and not replaced by these numbers."
+  },
+  "$comment_version_2": "v2 (2026-11-17): ADDITIONS ONLY. Protocol of v1 unchanged (v1 sha256 21cd630994b8a2c235d1c2aff31b9911bf0cd5135c9c9ef3360be421e752d658). Adds the measured results of the runs the protocol describes.",
+  "measurement": {
+    "measured_at": "2026-11-17",
+    "code": {
+      "git_base": "eba66497",
+      "overlay_sha256": {
+        "packages/core/src/search-staleness.ts (after)": "0b1986073022a28ae5bbccbe1af6aee316c72f224a94a452cd99a805f4ab4f70",
+        "packages/core/src/search-staleness.ts (before variant)": "94d31a48c0337a1cab07a67485f8727fc6af1ca8fc6d185bf4314b02d500c9d4",
+        "packages/core/src/search-staleness.ts (after without rule exemption)": "906f814133d4531a13c1cc2120aa1809842de63d1bf3021b77fa472758c30530",
+        "packages/core/src/search-types.ts": "993fc9897f6b0c080e27a21f38aa7fbe76f471879691b1fe50ddeb3007da0541",
+        "packages/eval/src/goldset-run.ts": "7520195a9f0d41c69ad4f889d2cd097901f8e4298b8ab4c53c4db39343510c81"
+      },
+      "note": "each arm ran from a `git archive eba66497` tree with these files laid over it; core resolved from source via a tsconfig path, so no build of the working tree was involved"
+    },
+    "vault": {
+      "notes": 1631,
+      "fingerprint_sha256": "a9faad4103655f5abb377ff0f45b934d21de775dea94efd95929ab2c1bd40b5f"
+    },
+    "dataset": {
+      "sha256": "43612e62dd25dc153737db964197211cc7988575b1a4298583f018d2ec4cbf12",
+      "answerable": 577,
+      "no_answer": 79,
+      "probes": 36,
+      "dropped_by_rule": 7
+    },
+    "config_sha256": "2ffb775edd52ee52311ab70c720e5c2d80120084ade6c47e258e2a4039e166bb",
+    "artifacts_results_sha256": {
+      "before": "71d6eb19b1060c6523f537d12fdb66346ed649cc405fcc1345f1208ebaa824d1",
+      "after": "6a59fd55554316eaddda7885f002e7842614ec74d0c07e39b96b4fc22e0c89ef",
+      "after_without_rule_exemption": "cf6fc1eb157cce5085af48f89fd9567793cfbc6c433fecbbd3e98334b49d60db"
+    },
+    "artifacts_location": "private run directories of the measuring session (row level carries ids and queries of a private vault); the hashes above identify them"
+  },
+  "results": {
+    "at_reference_time": {
+      "R@1": {
+        "before": "105/577",
+        "after": "138/577",
+        "gains": 33,
+        "losses": 0
+      },
+      "R@3": {
+        "before": "170/577",
+        "after": "253/577",
+        "gains": 83,
+        "losses": 0
+      },
+      "R@10": {
+        "before": "260/577",
+        "after": "321/577",
+        "gains": 67,
+        "losses": 6
+      },
+      "MRR": {
+        "before": 0.2605,
+        "after": 0.349
+      },
+      "no_answer_top_score_ge_100": {
+        "before": "35/79",
+        "after": "37/79"
+      }
+    },
+    "today": {
+      "before": {
+        "reference_time": "2026-11-17T15:48:31Z",
+        "R@3": 0.2964,
+        "R@10": 0.4523
+      },
+      "after": {
+        "reference_time": "2026-11-17T15:51:03Z",
+        "R@3": 0.4385,
+        "R@10": 0.5563
+      }
+    },
+    "rule_exemption_alone": "after vs after-without-rule-exemption: 0 gains, 0 losses at R@1/3/10 and the same no-answer count — on this gold set the rule exemption moves nothing; the whole effect is the milder type-default factors",
+    "vs_replay_expectation": "replay of 15.11.2026 expected R@3 257 and R@10 324; measured 253 and 321 on the production path. The replay used frozen candidate pools from another harness configuration; the before arm reproduces its 170 exactly",
+    "latency": {
+      "what": "applyStaleness over all 1631 notes as one pool, warm cache, ms per call, median of 7 x 100 calls, two rounds",
+      "round_1": {
+        "before": 0.815,
+        "after": 0.76
+      },
+      "round_2": {
+        "before": 0.747,
+        "after": 0.765
+      },
+      "verdict": "within the registered 5 % in both rounds (+2.4 % worst case)"
+    },
+    "longmemeval": "functional identity by construction: longmemeval-run writes every session note as `type: reference` with no rulebook, valid_until or expires_after_days (longmemeval-run.ts writeQuestionVault), so neither branch of the policy can fire; no run needed",
+    "review_of_lifted_notes": {
+      "population": "128 notes newly in some served top 3 after the switch (72 project-fact expired, 40 project-fact stale, 14 lesson stale, 1 workflow stale, 1 project-fact fresh); 2 carry superseded_by",
+      "sample": "the 50 lifted into the most top-3 lists",
+      "by": "an agent reading each note and searching the vault copy for newer notes on the same subject; not the owner",
+      "result": {
+        "current": 30,
+        "outdated": 17,
+        "unclear": 3
+      },
+      "pattern": "the outdated ones are almost all dated snapshots: handovers, plans, release recipes and 'state of X' notes whose subject moved on; a newer note exists for most of them but is not linked as successor",
+      "note": "16 of the 17 outdated notes are expected ids of gold cases, and 14 of them are among the 65 distinct targets of the 83 R@3 gains: part of the gain rewards finding an outdated snapshot because the gold label was written when the snapshot was current"
+    }
+  }
+}

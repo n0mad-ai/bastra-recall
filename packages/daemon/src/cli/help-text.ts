@@ -137,6 +137,11 @@ Commands:
                              or let old entries go
   trash <list|restore ID>    Archived memories (archive_memory, the vault
                              trash): list them, or put one back where it lived
+  recall "<question>"        Search the vault from the terminal (same search
+                             agents use; needs the running daemon)
+  save --title T --type T --scope S [text]
+                             Save a memory yourself (same checks as an agent's
+                             save, recorded as your own instruction)
   reconcile [other-store]    Two copies of the same vault: which one is ahead,
                              per memory (dry run; --yes copies with backup,
                              conflicts are only listed); no argument lists
@@ -846,6 +851,41 @@ written to the vault's audit log. A memory with the same id that is live
 again is not overwritten: the restore is refused. Private memories are not
 listed or restored here; restore them in the memory browser.
 --json prints the list as JSON.
+`,
+
+  recall: `bastra recall — search the vault from the terminal
+
+Usage:
+  bastra recall "<question>" [--limit N] [--scope S] [--type T] [--json]
+
+Asks the running daemon the same recall agents use (MCP recall /
+REST /api/v1/recall) and prints the matching memories: id, type and area,
+title, summary. --limit caps the hits (1-20, default 5); --scope and --type
+narrow to one area or memory type. --json prints the daemon's answer as is,
+for scripts. Private memories are not shown here, the same as over REST.
+`,
+
+  save: `bastra save — save a memory yourself
+
+Usage:
+  bastra save --title T --type T --scope S [options] [text]
+  echo "text" | bastra save --title T --type T --scope S
+
+Options:
+  --summary S          one line for the hit list (default: the text's first line)
+  --recall-when W      when it should come up; repeatable (default: the title)
+  --tag X              repeatable (default: the scope)
+  --topic a/b          topic path (default: the scope)
+  --json               print the daemon's answer as is
+
+The text is the words after the options, or what is piped in. --type is one of
+reference, project-fact, decision, lesson, workflow, preference,
+user-preference, meta-working. The save goes through the running daemon's
+save_memory path with every check an agent's save gets (claim gate,
+credential redaction, audit, indexing) and is recorded as your own instruction
+(write_origin: user-directed). A save another memory already covers is held,
+not written: the command names that memory and exits 1. An existing memory
+with the same title is not overwritten.
 `,
 
   archive: `bastra archive — the archive behind the agent's rm

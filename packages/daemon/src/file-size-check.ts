@@ -15,6 +15,7 @@ import { bastraDataDir } from "./platform-paths.js";
  * note asks for a modularization review before substantial growth, never
  * an automatic split or a blanket growth ban.
  */
+import { constants } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { envOff } from "./env.js";
@@ -39,6 +40,7 @@ const CODE_EXTS = new Set([
 ]);
 /** Generated blobs / bundles are none of the convention's business. */
 const MAX_BYTES = 2 * 1024 * 1024;
+const NONBLOCKING_TEXT = { encoding: "utf8", flag: constants.O_RDONLY | (constants.O_NONBLOCK ?? 0) } as const;
 
 /**
  * Throwaway contexts the convention does not apply to (#280).
@@ -150,7 +152,7 @@ export async function readSizeSettings(
   try {
     const fromDatabase = readRuntimeSettingsRecord(settingsPath);
     const parsed = JSON.parse(
-      fromDatabase === undefined ? await readFile(settingsPath, "utf8") : (fromDatabase ?? "{}")
+      fromDatabase === undefined ? await readFile(settingsPath, NONBLOCKING_TEXT) : (fromDatabase ?? "{}")
     ) as {
       size?: { guide?: unknown; critical?: unknown; exemptPaths?: unknown };
     };
@@ -195,11 +197,11 @@ export async function fileSizeNote(
   cwd?: string,
   deadline = Infinity
 ): Promise<string | null> {
-  if (envOff("BASTRA_SIZE_CHECK")) return null;
+  if (envOff("BASTRA_SIZE_CHECK") || Date.now() >= deadline) return null;
   const note = async (): Promise<string | null> => {
     const t = thresholdsFor(filePath, await readSizeSettings(settingsPath), cwd);
-    if (!t) return null;
-    const raw = await readFile(filePath, "utf8");
+    if (!t || Date.now() >= deadline) return null;
+    const raw = await readFile(filePath, NONBLOCKING_TEXT);
     if (raw.length > MAX_BYTES || Date.now() >= deadline) return null;
     return formatSizeNote(filePath, countCodeLines(raw, extname(filePath).toLowerCase()), t);
   };

@@ -23,17 +23,7 @@
  * of 255 is measured against the first.
  */
 import type { GoldCase } from "./goldset.js";
-
-/** Deterministic 32-bit PRNG (mulberry32) — no dependency, same draw everywhere. */
-function seededRandom(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+import { seededRandom } from "./seeded-random.js";
 
 export interface SplitOptions {
   /** Registered as 20260828. Fixed BEFORE the run — a seed chosen after seeing

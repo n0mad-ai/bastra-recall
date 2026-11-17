@@ -11,7 +11,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cmdRules } from "../src/cli/rules-cmd.js";
@@ -124,6 +124,24 @@ test("rules: an edited file is backed up, never silently overwritten", async () 
     assert.match(kept, /my own wording/);
   });
 });
+
+test(
+  "rules: the backup of an edited file is private (0600) even when the original is 0644 (#1524)",
+  { skip: process.platform === "win32" },
+  async () => {
+    await withProject(async (dir) => {
+      const target = join(dir, CURSOR_RULES_RELATIVE);
+      await mkdir(join(dir, ".cursor", "rules"), { recursive: true });
+      await writeFile(target, "my own wording\n", { encoding: "utf8", mode: 0o644 });
+
+      assert.equal(await cmdRules(args(["rules", "cursor", dir])), 0);
+
+      const backup = (await readdir(join(dir, ".cursor", "rules"))).find((f) => f.includes(".bak-"));
+      assert.ok(backup);
+      assert.equal((await stat(join(dir, ".cursor", "rules", backup))).mode & 0o777, 0o600);
+    });
+  }
+);
 
 test("rules: refuses to replace an edited file when the backup cannot be made", async () => {
   await withProject(async (dir) => {

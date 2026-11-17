@@ -38,7 +38,14 @@ import {
 // ─── Hook helpers (claude-code-only surface) ─────────────────────
 
 type HookEventName =
-  "SessionStart" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "PostToolUseFailure" | "Stop" | "SessionEnd";
+  | "SessionStart"
+  | "UserPromptSubmit"
+  | "PreToolUse"
+  | "PostToolUse"
+  | "PostToolUseFailure"
+  | "Stop"
+  | "SessionEnd"
+  | "PreCompact";
 
 export interface HookDef {
   event: HookEventName;
@@ -80,6 +87,19 @@ const SESSION_END_HOOK_DEF: HookDef = {
   note: "bastra-recall SessionEnd hook (after-session harvest, #675)",
   stubSubcommand: "stop",
 };
+// #1486: harvest before compaction. Same client and route as Stop; the lane
+// books the session so the next harvest pass reads the turns the summary
+// replaces, instead of waiting 30 quiet minutes. No matcher: manual `/compact`
+// and auto-compaction alike (code.claude.com/docs/en/hooks, PreCompact). The
+// lane answers `{}`, which steers nothing in the summary. Kept with Stop, so
+// `--no-stop-hook` leaves it out too.
+const PRE_COMPACT_HOOK_DEF: HookDef = {
+  event: "PreCompact",
+  bin: STOP_HOOK_BIN,
+  timeout: 2,
+  note: "bastra-recall PreCompact hook (harvest before compaction, #1486)",
+  stubSubcommand: "stop",
+};
 const CHAT_SESSION_END_HOOK_DEF: HookDef = {
   event: "SessionEnd",
   bin: SESSION_HOOK_BIN,
@@ -89,7 +109,7 @@ const CHAT_SESSION_END_HOOK_DEF: HookDef = {
 };
 
 // Single source of truth for the reflex layer. `bastra install claude-code`
-// registers 12 entries by default (10 base + Stop + SessionEnd harvest);
+// registers 13 entries by default (10 base + Stop + SessionEnd and PreCompact harvest);
 // `--no-stop-hook` leaves 10. The Stop hook is on by default since the #48
 // redesign made it silent: suggestions go to
 // ~/.bastra/pending-suggestions.json (read by the next SessionStart as
@@ -200,7 +220,7 @@ export function hookDefinitions(opts: { includeStop?: boolean } = {}): HookDef[]
       stubSubcommand: "bash-fail",
     },
   ];
-  if (opts.includeStop) defs.push(STOP_HOOK_DEF, SESSION_END_HOOK_DEF);
+  if (opts.includeStop) defs.push(STOP_HOOK_DEF, SESSION_END_HOOK_DEF, PRE_COMPACT_HOOK_DEF);
   return defs;
 }
 
@@ -347,6 +367,7 @@ const HOOK_EVENTS: HookEventName[] = [
   "PostToolUseFailure",
   "Stop",
   "SessionEnd",
+  "PreCompact",
 ];
 
 /**
@@ -513,6 +534,7 @@ export function planHookEntries(
   const defs = hookDefinitions({ includeStop: opts.includeStop }).map(withBin);
   const stopDef = withBin(STOP_HOOK_DEF);
   const sessionEndDef = withBin(SESSION_END_HOOK_DEF);
+  const preCompactDef = withBin(PRE_COMPACT_HOOK_DEF);
   const stubPresent = opts.stubPresent ?? existsSync(HOOK_STUB_BIN);
   // #647: what wraps our runner for this lane today, kept on the rebuilt entry.
   const wrapOf = (def: HookDef): HookWrapper =>
@@ -555,6 +577,9 @@ export function planHookEntries(
     // #675: a preserved Stop opt-in brings its SessionEnd companion along.
     if (stopPreserved && !defs.some((d) => d.event === "SessionEnd" && d.bin === STOP_HOOK_BIN))
       after.SessionEnd.push(buildHookEntry(sessionEndDef, stubPresent, wrapOf(sessionEndDef), opts.platform));
+    // #1486: and its PreCompact companion.
+    if (stopPreserved && !defs.some((d) => d.event === "PreCompact"))
+      after.PreCompact.push(buildHookEntry(preCompactDef, stubPresent, wrapOf(preCompactDef), opts.platform));
   }
   return {
     before,
@@ -569,9 +594,9 @@ export function planHookEntries(
  *  on by default and only missing under `--no-stop-hook`. */
 export function installedLanes(includeStop: boolean, stopPreserved: boolean): string {
   const base = "SessionStart, SessionEnd (chat), UserPromptSubmit, PreToolUse×4, PostToolUse×2, PostToolUseFailure";
-  if (includeStop) return `${base}, Stop, SessionEnd (harvest)`;
-  if (stopPreserved) return `${base}; Stop + SessionEnd (harvest) kept at current path`;
-  return `${base}; Stop + SessionEnd (harvest) off: --no-stop-hook`;
+  if (includeStop) return `${base}, Stop, SessionEnd (harvest), PreCompact (harvest)`;
+  if (stopPreserved) return `${base}; Stop + SessionEnd + PreCompact (harvest) kept at current path`;
+  return `${base}; Stop + SessionEnd + PreCompact (harvest) off: --no-stop-hook`;
 }
 
 export async function patchClaudeCodeHooks(

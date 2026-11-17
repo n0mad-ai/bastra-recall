@@ -75,7 +75,7 @@ if (action !== "uninstall") {
 }
 
 const OWN_FILES = ["hook.js", "session-hook.js", "prompt-hook.js", "todo-hook.js", "bash-pre-hook.js", "bash-fail-hook.js", "stop-hook.js", "gate-hook.js"];
-const EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "SessionEnd"];
+const EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "SessionEnd", "PreCompact"];
 function runsOurRunner(cmd) {
   const words = cmd.match(/"[^"]*"|\x27[^\x27]*\x27|\S+/g) ?? [];
   const pathAt = (at) => (words[at] ?? "").replace(/^["\x27]|["\x27]$/g, "").replace(/\\/g, "/");
@@ -175,7 +175,7 @@ case "$ACTION" in
   install)
     echo "✓ bastra-recall reflex layer registered in ${SETTINGS_FILE}"
     if [[ "${WITH_STOP}" == "1" ]]; then
-      echo "  Hooks: SessionStart · UserPromptSubmit · PreToolUse(Write/Edit, TodoWrite|TaskCreate|ExitPlanMode, Bash, * gate) · PostToolUse(Bash, Recall write tools) · PostToolUseFailure(Bash) · Stop · SessionEnd"
+      echo "  Hooks: SessionStart · UserPromptSubmit · PreToolUse(Write/Edit, TodoWrite|TaskCreate|ExitPlanMode, Bash, * gate) · PostToolUse(Bash, Recall write tools) · PostToolUseFailure(Bash) · Stop · SessionEnd · PreCompact"
     else
       echo "  Hooks: SessionStart · UserPromptSubmit · PreToolUse(Write/Edit, TodoWrite|TaskCreate|ExitPlanMode, Bash, * gate) · PostToolUse(Bash, Recall write tools) · PostToolUseFailure(Bash)"
       echo "  Stop hook skipped (--no-stop-hook); an already-registered one is kept."

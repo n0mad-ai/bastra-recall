@@ -1,0 +1,1970 @@
+exports[`#1525 golden master — apply_patch with several targets 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "additionalContext": "<recall-hints surface=\\"codex\\" trigger=\\"first-touch\\" project=\\"golden-proj\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nFirst edit in this area this session — one vault candidate that may bear on it (a pointer, not the rule; load_memory(id) for the full body):\\n- patch-hit (lesson): Title patch-hit — Summary of patch-hit\\n</recall-hints>"
+        }
+      }
+    }
+  ],
+  "telemetry": [
+    {
+      "kind": "hook_call",
+      "session_id": "golden-apply-patch-with-several-targets",
+      "hook_version": "0.4.0",
+      "tool_name": "apply_patch",
+      "file_path": "<cwd>/src/a.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": true,
+      "hint_count": 1,
+      "required_count": 1,
+      "top_score": 140,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": "golden-proj",
+      "hint_tokens_est": 107,
+      "code_targets": [
+        "<cwd>/src/a.ts"
+      ],
+      "hinted_ids": [
+        "patch-hit"
+      ],
+      "hinted_types": [
+        "lesson"
+      ],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "compact",
+      "hint_reason": "first-touch",
+      "status": "ok",
+      "error": null,
+      "dimensions": {
+        "client": "codex",
+        "hook_source": "pre-tool",
+        "experiment_session": "59c335a55d10d54f",
+        "arm": "unassigned",
+        "agent": "main"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "apply_patch",
+        "tool_input_excerpt": "*** Begin Patch\\n*** Update File: src/a.ts\\n@@\\n-a\\n+b\\n*** Update File: src/b.ts\\n@@\\n-a\\n+b\\n*** End Patch",
+        "k": 3,
+        "session_id": "golden-apply-patch-with-several-targets",
+        "client": "codex",
+        "agent": "main",
+        "hook_source": "pre-tool"
+      }
+    },
+    {
+      "url": "/hook/hinted",
+      "body": {
+        "ids": [
+          "patch-hit"
+        ],
+        "session_id": "golden-apply-patch-with-several-targets"
+      }
+    }
+  ],
+  "state": {
+    "shown": {
+      "patch-hit": {
+        "count": 1,
+        "at": "<ts>"
+      },
+      "area:<cwd>:src": {
+        "count": 1,
+        "at": "<ts>"
+      }
+    },
+    "sources": {
+      "write-edit": {
+        "streak": 0,
+        "at": "<ts>",
+        "ids": [
+          "patch-hit"
+        ],
+        "skipped": 0
+      }
+    }
+  }
+}
+`;
+
+exports[`#1525 golden master — compact: first touch presents the top hit 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "additionalContext": "<recall-hints surface=\\"claude-code\\" trigger=\\"first-touch\\" project=\\"golden-proj\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nFirst edit in this area this session — one vault candidate that may bear on it (a pointer, not the rule; load_memory(id) for the full body):\\n- strong (lesson): Title strong — Summary of strong\\n</recall-hints>"
+        }
+      }
+    }
+  ],
+  "telemetry": [
+    {
+      "kind": "hook_call",
+      "session_id": "golden-compact-first-touch-presents-the-top-hit",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/parser.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": true,
+      "hint_count": 1,
+      "required_count": 1,
+      "top_score": 140,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": "golden-proj",
+      "hint_tokens_est": 107,
+      "code_targets": [
+        "<cwd>/src/parser.ts"
+      ],
+      "hinted_ids": [
+        "strong"
+      ],
+      "hinted_types": [
+        "lesson"
+      ],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "compact",
+      "hint_reason": "first-touch",
+      "status": "ok",
+      "error": null,
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "ad40cedbee689e81",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Edit",
+        "tool_input_excerpt": "b\\na",
+        "k": 3,
+        "session_id": "golden-compact-first-touch-presents-the-top-hit",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    },
+    {
+      "url": "/hook/hinted",
+      "body": {
+        "ids": [
+          "strong"
+        ],
+        "session_id": "golden-compact-first-touch-presents-the-top-hit"
+      }
+    }
+  ],
+  "state": {
+    "shown": {
+      "strong": {
+        "count": 1,
+        "at": "<ts>"
+      },
+      "area:<cwd>:src": {
+        "count": 1,
+        "at": "<ts>"
+      }
+    },
+    "sources": {
+      "write-edit": {
+        "streak": 0,
+        "at": "<ts>",
+        "ids": [
+          "strong"
+        ],
+        "skipped": 0
+      }
+    }
+  }
+}
+`;
+
+exports[`#1525 golden master — compact: repeat area without an anchored hit 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "additionalContext": "<recall-hints surface=\\"claude-code\\" trigger=\\"first-touch\\" project=\\"golden-proj\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nFirst edit in this area this session — one vault candidate that may bear on it (a pointer, not the rule; load_memory(id) for the full body):\\n- first (lesson): Title first — Summary of first\\n</recall-hints>"
+        }
+      }
+    },
+    {
+      "stdout": {}
+    }
+  ],
+  "telemetry": [
+    {
+      "kind": "hook_call",
+      "session_id": "golden-compact-repeat-area-without-an-anchored-hit",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/parser.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": true,
+      "hint_count": 1,
+      "required_count": 0,
+      "top_score": 90,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": "golden-proj",
+      "hint_tokens_est": 106,
+      "code_targets": [
+        "<cwd>/src/parser.ts"
+      ],
+      "hinted_ids": [
+        "first"
+      ],
+      "hinted_types": [
+        "lesson"
+      ],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "compact",
+      "hint_reason": "first-touch",
+      "status": "ok",
+      "error": null,
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "7389714a1f71c45d",
+        "arm": "unassigned"
+      }
+    },
+    {
+      "kind": "hook_call",
+      "session_id": "golden-compact-repeat-area-without-an-anchored-hit",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/parser.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": true,
+      "hint_count": 0,
+      "required_count": 0,
+      "top_score": 80,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": "golden-proj",
+      "hint_tokens_est": 0,
+      "code_targets": [
+        "<cwd>/src/parser.ts"
+      ],
+      "hinted_ids": [],
+      "hinted_types": [],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "compact",
+      "hint_reason": "repeat-area",
+      "status": "ok",
+      "error": null,
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "7389714a1f71c45d",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Edit",
+        "tool_input_excerpt": "b\\na",
+        "k": 3,
+        "session_id": "golden-compact-repeat-area-without-an-anchored-hit",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    },
+    {
+      "url": "/hook/hinted",
+      "body": {
+        "ids": [
+          "first"
+        ],
+        "session_id": "golden-compact-repeat-area-without-an-anchored-hit"
+      }
+    },
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Edit",
+        "tool_input_excerpt": "b\\na",
+        "k": 3,
+        "session_id": "golden-compact-repeat-area-without-an-anchored-hit",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    }
+  ],
+  "state": {
+    "shown": {
+      "first": {
+        "count": 1,
+        "at": "<ts>"
+      },
+      "area:<cwd>:src": {
+        "count": 1,
+        "at": "<ts>"
+      }
+    },
+    "sources": {
+      "write-edit": {
+        "streak": 0,
+        "at": "<ts>",
+        "ids": [
+          "first"
+        ],
+        "skipped": 0
+      }
+    }
+  }
+}
+`;
+
+exports[`#1525 golden master — compact: repeat area, then binding-anchored 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "additionalContext": "<recall-hints surface=\\"claude-code\\" trigger=\\"first-touch\\" project=\\"golden-proj\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nFirst edit in this area this session — one vault candidate that may bear on it (a pointer, not the rule; load_memory(id) for the full body):\\n- first (lesson): Title first — Summary of first\\n</recall-hints>"
+        }
+      }
+    },
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "additionalContext": "<recall-hints surface=\\"claude-code\\" trigger=\\"binding-anchored\\" project=\\"golden-proj\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nA rule whose own trigger matched this edit — load_memory(id) for the full body:\\n- anchored (lesson): Title anchored — Summary of anchored\\n</recall-hints>"
+        }
+      }
+    }
+  ],
+  "telemetry": [
+    {
+      "kind": "hook_call",
+      "session_id": "golden-compact-repeat-area-then-binding-anchored",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/parser.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": true,
+      "hint_count": 1,
+      "required_count": 0,
+      "top_score": 90,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": "golden-proj",
+      "hint_tokens_est": 106,
+      "code_targets": [
+        "<cwd>/src/parser.ts"
+      ],
+      "hinted_ids": [
+        "first"
+      ],
+      "hinted_types": [
+        "lesson"
+      ],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "compact",
+      "hint_reason": "first-touch",
+      "status": "ok",
+      "error": null,
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "e5dc35d5d6850883",
+        "arm": "unassigned"
+      }
+    },
+    {
+      "kind": "hook_call",
+      "session_id": "golden-compact-repeat-area-then-binding-anchored",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/parser.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": true,
+      "hint_count": 1,
+      "required_count": 1,
+      "top_score": 80,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": "golden-proj",
+      "hint_tokens_est": 94,
+      "code_targets": [
+        "<cwd>/src/parser.ts"
+      ],
+      "hinted_ids": [
+        "anchored"
+      ],
+      "hinted_types": [
+        "lesson"
+      ],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "compact",
+      "hint_reason": "binding-anchored",
+      "status": "ok",
+      "error": null,
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "e5dc35d5d6850883",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Edit",
+        "tool_input_excerpt": "b\\na",
+        "k": 3,
+        "session_id": "golden-compact-repeat-area-then-binding-anchored",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    },
+    {
+      "url": "/hook/hinted",
+      "body": {
+        "ids": [
+          "first"
+        ],
+        "session_id": "golden-compact-repeat-area-then-binding-anchored"
+      }
+    },
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Edit",
+        "tool_input_excerpt": "b\\na",
+        "k": 3,
+        "session_id": "golden-compact-repeat-area-then-binding-anchored",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    },
+    {
+      "url": "/hook/hinted",
+      "body": {
+        "ids": [
+          "anchored"
+        ],
+        "session_id": "golden-compact-repeat-area-then-binding-anchored"
+      }
+    }
+  ],
+  "state": {
+    "shown": {
+      "first": {
+        "count": 1,
+        "at": "<ts>"
+      },
+      "area:<cwd>:src": {
+        "count": 1,
+        "at": "<ts>"
+      },
+      "anchored": {
+        "count": 1,
+        "at": "<ts>"
+      }
+    },
+    "sources": {
+      "write-edit": {
+        "streak": 1,
+        "at": "<ts>",
+        "ids": [
+          "anchored"
+        ],
+        "skipped": 0
+      }
+    }
+  }
+}
+`;
+
+exports[`#1525 golden master — compact: weak result presents nothing 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {}
+    }
+  ],
+  "telemetry": [
+    {
+      "kind": "hook_call",
+      "session_id": "golden-compact-weak-result-presents-nothing",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/parser.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": true,
+      "hint_count": 0,
+      "required_count": 0,
+      "top_score": 90,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": "golden-proj",
+      "hint_tokens_est": 0,
+      "code_targets": [
+        "<cwd>/src/parser.ts"
+      ],
+      "hinted_ids": [],
+      "hinted_types": [],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "compact",
+      "hint_reason": "weak",
+      "status": "ok",
+      "error": null,
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "01eac8b0cf0bed61",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Edit",
+        "tool_input_excerpt": "b\\na",
+        "k": 3,
+        "session_id": "golden-compact-weak-result-presents-nothing",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    }
+  ],
+  "state": {
+    "shown": {}
+  }
+}
+`;
+
+exports[`#1525 golden master — daemon unreachable 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {}
+    }
+  ],
+  "telemetry": [
+    {
+      "kind": "hook_call",
+      "session_id": "golden-daemon-unreachable",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/parser.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": false,
+      "hint_count": 0,
+      "required_count": 0,
+      "top_score": null,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": null,
+      "scope_filter_skipped": "no-scope-evidence",
+      "hint_tokens_est": 0,
+      "code_targets": [
+        "<cwd>/src/parser.ts"
+      ],
+      "hinted_ids": [],
+      "hinted_types": [],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "compact",
+      "status": "daemon-unreachable",
+      "error": null,
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "b5d2bd91aa9cea42",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "requests": [],
+  "state": {
+    "shown": {}
+  }
+}
+`;
+
+exports[`#1525 golden master — foreign scope is dropped 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "additionalContext": "<recall-hints surface=\\"claude-code\\" project=\\"golden-proj\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nOPTIONAL — found by ONE search path only, or by both but ranked lower. Load only if the title/summary directly relates to the pending change:\\n- own (lesson, score 90): Summary of own\\n</recall-hints>"
+        }
+      }
+    }
+  ],
+  "telemetry": [
+    {
+      "kind": "hook_call",
+      "session_id": "golden-foreign-scope-is-dropped",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/parser.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": true,
+      "hint_count": 1,
+      "required_count": 0,
+      "top_score": 90,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 1,
+      "project_confidence": "git-root",
+      "filter_project": "golden-proj",
+      "dropped_scopes": [
+        "other-proj"
+      ],
+      "hint_tokens_est": 99,
+      "code_targets": [
+        "<cwd>/src/parser.ts"
+      ],
+      "hinted_ids": [
+        "own"
+      ],
+      "hinted_types": [
+        "lesson"
+      ],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "legacy",
+      "status": "ok",
+      "error": null,
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "8af18ac1c5ffa42f",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Edit",
+        "tool_input_excerpt": "b\\na",
+        "k": 3,
+        "session_id": "golden-foreign-scope-is-dropped",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    },
+    {
+      "url": "/hook/hinted",
+      "body": {
+        "ids": [
+          "own"
+        ],
+        "session_id": "golden-foreign-scope-is-dropped"
+      }
+    }
+  ],
+  "state": {
+    "shown": {
+      "own": {
+        "count": 1,
+        "at": "<ts>"
+      }
+    },
+    "sources": {
+      "write-edit": {
+        "streak": 0,
+        "at": "<ts>",
+        "ids": [
+          "own"
+        ],
+        "skipped": 0
+      }
+    }
+  }
+}
+`;
+
+exports[`#1525 golden master — hits below the floor only 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {}
+    }
+  ],
+  "telemetry": [
+    {
+      "kind": "hook_call",
+      "session_id": "golden-hits-below-the-floor-only",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/parser.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": true,
+      "hint_count": 0,
+      "required_count": 0,
+      "top_score": 12,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": "golden-proj",
+      "hint_tokens_est": 0,
+      "code_targets": [
+        "<cwd>/src/parser.ts"
+      ],
+      "hinted_ids": [],
+      "hinted_types": [],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "compact",
+      "status": "no-hits",
+      "error": null,
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "69967db3ab997eb1",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Edit",
+        "tool_input_excerpt": "b\\na",
+        "k": 3,
+        "session_id": "golden-hits-below-the-floor-only",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    }
+  ],
+  "state": {
+    "shown": {}
+  }
+}
+`;
+
+exports[`#1525 golden master — legacy: a hot backoff window suppresses optional hints 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {}
+    }
+  ],
+  "telemetry": [
+    {
+      "kind": "hook_call",
+      "session_id": "golden-legacy-a-hot-backoff-window-suppresses-optional-hints",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/parser.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": true,
+      "hint_count": 0,
+      "required_count": 0,
+      "top_score": 60,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": "golden-proj",
+      "hint_tokens_est": 0,
+      "code_targets": [
+        "<cwd>/src/parser.ts"
+      ],
+      "hinted_ids": [],
+      "hinted_types": [],
+      "backoff_streak": 6,
+      "suppressed": true,
+      "suppressed_tokens_est": 101,
+      "pretool_shape": "legacy",
+      "status": "suppressed",
+      "error": null,
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "aa5f60adf507192b",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Edit",
+        "tool_input_excerpt": "b\\na",
+        "k": 3,
+        "session_id": "golden-legacy-a-hot-backoff-window-suppresses-optional-hints",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    }
+  ],
+  "state": {
+    "shown": {},
+    "sources": {
+      "write-edit": {
+        "streak": 6,
+        "at": "<ts>",
+        "ids": [
+          "old-hit"
+        ],
+        "skipped": 1
+      }
+    }
+  }
+}
+`;
+
+exports[`#1525 golden master — legacy: required and optional bands 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "additionalContext": "<recall-hints surface=\\"claude-code\\" project=\\"golden-proj\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nBoth search paths agreed on these for what you're about to do, both in their top 4 — that agreement is what a score ≥100 measures, not how similar the text is. These are candidates (id, title, summary), NOT the memories themselves — nothing here is in your context until you load_memory(id) and read it. A summary is a pointer, not the rule. load_memory(id) the ones that bear on this edit. Hints, not obligations: load only what fits, don't batch-load the list.\\n- req (lesson, score 130): Summary of req\\n\\nOPTIONAL — found by ONE search path only, or by both but ranked lower. Load only if the title/summary directly relates to the pending change:\\n- opt (lesson, score 60): Summary of opt\\n</recall-hints>"
+        }
+      }
+    }
+  ],
+  "telemetry": [
+    {
+      "kind": "hook_call",
+      "session_id": "golden-legacy-required-and-optional-bands",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/parser.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": true,
+      "hint_count": 2,
+      "required_count": 1,
+      "top_score": 130,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": "golden-proj",
+      "hint_tokens_est": 225,
+      "code_targets": [
+        "<cwd>/src/parser.ts"
+      ],
+      "hinted_ids": [
+        "req",
+        "opt"
+      ],
+      "hinted_types": [
+        "lesson",
+        "lesson"
+      ],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "legacy",
+      "status": "ok",
+      "error": null,
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "e44ed1a057153c30",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Edit",
+        "tool_input_excerpt": "b\\na",
+        "k": 3,
+        "session_id": "golden-legacy-required-and-optional-bands",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    },
+    {
+      "url": "/hook/hinted",
+      "body": {
+        "ids": [
+          "req",
+          "opt"
+        ],
+        "session_id": "golden-legacy-required-and-optional-bands"
+      }
+    }
+  ],
+  "state": {
+    "shown": {
+      "req": {
+        "count": 1,
+        "at": "<ts>"
+      },
+      "opt": {
+        "count": 1,
+        "at": "<ts>"
+      }
+    },
+    "sources": {
+      "write-edit": {
+        "streak": 0,
+        "at": "<ts>",
+        "ids": [
+          "req",
+          "opt"
+        ],
+        "skipped": 0
+      }
+    }
+  }
+}
+`;
+
+exports[`#1525 golden master — legacy: the second run drops the shown hit 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "additionalContext": "<recall-hints surface=\\"claude-code\\" project=\\"golden-proj\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nOPTIONAL — found by ONE search path only, or by both but ranked lower. Load only if the title/summary directly relates to the pending change:\\n- again (lesson, score 70): Summary of again\\n</recall-hints>"
+        }
+      }
+    },
+    {
+      "stdout": {}
+    }
+  ],
+  "telemetry": [
+    {
+      "kind": "hook_call",
+      "session_id": "golden-legacy-the-second-run-drops-the-shown-hit",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/parser.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": true,
+      "hint_count": 1,
+      "required_count": 0,
+      "top_score": 70,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": "golden-proj",
+      "hint_tokens_est": 100,
+      "code_targets": [
+        "<cwd>/src/parser.ts"
+      ],
+      "hinted_ids": [
+        "again"
+      ],
+      "hinted_types": [
+        "lesson"
+      ],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "legacy",
+      "status": "ok",
+      "error": null,
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "546ad37d59dfe3dc",
+        "arm": "unassigned"
+      }
+    },
+    {
+      "kind": "hook_call",
+      "session_id": "golden-legacy-the-second-run-drops-the-shown-hit",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/parser.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": true,
+      "hint_count": 0,
+      "required_count": 0,
+      "top_score": 70,
+      "dropped_dedup_count": 1,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": "golden-proj",
+      "hint_tokens_est": 0,
+      "code_targets": [
+        "<cwd>/src/parser.ts"
+      ],
+      "hinted_ids": [],
+      "hinted_types": [],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "legacy",
+      "status": "no-hits",
+      "error": null,
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "546ad37d59dfe3dc",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Edit",
+        "tool_input_excerpt": "b\\na",
+        "k": 3,
+        "session_id": "golden-legacy-the-second-run-drops-the-shown-hit",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    },
+    {
+      "url": "/hook/hinted",
+      "body": {
+        "ids": [
+          "again"
+        ],
+        "session_id": "golden-legacy-the-second-run-drops-the-shown-hit"
+      }
+    },
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Edit",
+        "tool_input_excerpt": "b\\na",
+        "k": 3,
+        "session_id": "golden-legacy-the-second-run-drops-the-shown-hit",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    }
+  ],
+  "state": {
+    "shown": {
+      "again": {
+        "count": 1,
+        "at": "<ts>"
+      }
+    },
+    "sources": {
+      "write-edit": {
+        "streak": 0,
+        "at": "<ts>",
+        "ids": [
+          "again"
+        ],
+        "skipped": 0
+      }
+    }
+  }
+}
+`;
+
+exports[`#1525 golden master — legacy: unfused puts every hit in one list 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "additionalContext": "<recall-hints surface=\\"claude-code\\" project=\\"golden-proj\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nLexical matches for what you're about to do, ranked by term overlap alone — semantic search is ON but did not answer inside this lookup's deadline, so this ONE lookup ranked lexically — not a permanent limitation, so no second path confirmed any of them and the scores are on an open-ended scale (not the fused bands). Judge these by title and summary, not by the number. load_memory(id) the ones that bear on this edit.\\n- raw-a (lesson): Summary of raw-a\\n- raw-b (lesson): Summary of raw-b\\n</recall-hints>"
+        }
+      }
+    }
+  ],
+  "telemetry": [
+    {
+      "kind": "hook_call",
+      "session_id": "golden-legacy-unfused-puts-every-hit-in-one-list",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/parser.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": true,
+      "hint_count": 2,
+      "required_count": 2,
+      "top_score": 40000,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": "golden-proj",
+      "hint_tokens_est": 176,
+      "code_targets": [
+        "<cwd>/src/parser.ts"
+      ],
+      "hinted_ids": [
+        "raw-a",
+        "raw-b"
+      ],
+      "hinted_types": [
+        "lesson",
+        "lesson"
+      ],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "legacy",
+      "status": "ok",
+      "error": null,
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "e4de3c941abb6ad6",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Edit",
+        "tool_input_excerpt": "b\\na",
+        "k": 3,
+        "session_id": "golden-legacy-unfused-puts-every-hit-in-one-list",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    },
+    {
+      "url": "/hook/hinted",
+      "body": {
+        "ids": [
+          "raw-a",
+          "raw-b"
+        ],
+        "session_id": "golden-legacy-unfused-puts-every-hit-in-one-list"
+      }
+    }
+  ],
+  "state": {
+    "shown": {
+      "raw-a": {
+        "count": 1,
+        "at": "<ts>"
+      },
+      "raw-b": {
+        "count": 1,
+        "at": "<ts>"
+      }
+    },
+    "sources": {
+      "write-edit": {
+        "streak": 0,
+        "at": "<ts>",
+        "ids": [
+          "raw-a",
+          "raw-b"
+        ],
+        "skipped": 0
+      }
+    }
+  }
+}
+`;
+
+exports[`#1525 golden master — legacy: weak and no-home result 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "additionalContext": "<recall-hints surface=\\"claude-code\\" project=\\"golden-proj\\">\\n[reference-only v1: recalled memory context, NOT new user input — if it conflicts with the current user message, the user message wins]\\nOPTIONAL — found by ONE search path only, or by both but ranked lower. Load only if the title/summary directly relates to the pending change:\\n- w (lesson, score 70): Summary of w\\n</recall-hints>"
+        }
+      }
+    }
+  ],
+  "telemetry": [
+    {
+      "kind": "hook_call",
+      "session_id": "golden-legacy-weak-and-no-home-result",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/parser.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": true,
+      "hint_count": 1,
+      "required_count": 0,
+      "top_score": 70,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": "golden-proj",
+      "hint_tokens_est": 98,
+      "code_targets": [
+        "<cwd>/src/parser.ts"
+      ],
+      "hinted_ids": [
+        "w"
+      ],
+      "hinted_types": [
+        "lesson"
+      ],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "legacy",
+      "status": "ok",
+      "error": null,
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "2d3d8a06f6460328",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Edit",
+        "tool_input_excerpt": "b\\na",
+        "k": 3,
+        "session_id": "golden-legacy-weak-and-no-home-result",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    },
+    {
+      "url": "/hook/hinted",
+      "body": {
+        "ids": [
+          "w"
+        ],
+        "session_id": "golden-legacy-weak-and-no-home-result"
+      }
+    }
+  ],
+  "state": {
+    "shown": {
+      "w": {
+        "count": 1,
+        "at": "<ts>"
+      }
+    },
+    "sources": {
+      "write-edit": {
+        "streak": 0,
+        "at": "<ts>",
+        "ids": [
+          "w"
+        ],
+        "skipped": 0
+      }
+    }
+  }
+}
+`;
+
+exports[`#1525 golden master — memory-shaped markdown outside the vault 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "additionalContext": "<vault-location-check file=\\"lesson.md\\" type=\\"lesson\\">this file carries memory frontmatter but lives OUTSIDE the configured vault (<root>/vault) — it will never be indexed or recalled from here. If it is meant as a bastra memory, save it via save_memory (or move it under the vault root); if it is a plain document, ignore this note.</vault-location-check>"
+        }
+      }
+    }
+  ],
+  "telemetry": [
+    {
+      "kind": "hook_call",
+      "session_id": "golden-memory-shaped-markdown-outside-the-vault",
+      "hook_version": "0.4.0",
+      "tool_name": "Write",
+      "file_path": "<cwd>/notes/lesson.md",
+      "topics": [
+        "markdown",
+        "docs"
+      ],
+      "query_chars": 16,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": true,
+      "hint_count": 0,
+      "required_count": 0,
+      "top_score": null,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": "golden-proj",
+      "hint_tokens_est": 110,
+      "code_targets": [
+        "<cwd>/notes/lesson.md"
+      ],
+      "hinted_ids": [],
+      "hinted_types": [],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "compact",
+      "status": "no-hits",
+      "error": null,
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "e09a1d486d9ddfdd",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "md markdown docs",
+        "topics": [
+          "markdown",
+          "docs"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Write",
+        "tool_input_excerpt": "---\\ntype: lesson\\ntitle: A lesson\\nsummary: x\\n---\\nbody\\n",
+        "k": 3,
+        "session_id": "golden-memory-shaped-markdown-outside-the-vault",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    }
+  ],
+  "state": {
+    "shown": {}
+  }
+}
+`;
+
+exports[`#1525 golden master — no file path 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {}
+    }
+  ],
+  "telemetry": [],
+  "requests": [],
+  "state": {
+    "shown": {}
+  }
+}
+`;
+
+exports[`#1525 golden master — no hits 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {}
+    }
+  ],
+  "telemetry": [
+    {
+      "kind": "hook_call",
+      "session_id": "golden-no-hits",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/parser.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": true,
+      "hint_count": 0,
+      "required_count": 0,
+      "top_score": null,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": "golden-proj",
+      "hint_tokens_est": 0,
+      "code_targets": [
+        "<cwd>/src/parser.ts"
+      ],
+      "hinted_ids": [],
+      "hinted_types": [],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "compact",
+      "status": "no-hits",
+      "error": null,
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "34b7915835cbdbe9",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Edit",
+        "tool_input_excerpt": "b\\na",
+        "k": 3,
+        "session_id": "golden-no-hits",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    }
+  ],
+  "state": {
+    "shown": {}
+  }
+}
+`;
+
+exports[`#1525 golden master — not a PreToolUse event 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {}
+    }
+  ],
+  "telemetry": [],
+  "requests": [],
+  "state": {
+    "shown": {}
+  }
+}
+`;
+
+exports[`#1525 golden master — recall answers HTTP 500 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {}
+    }
+  ],
+  "telemetry": [
+    {
+      "kind": "hook_call",
+      "session_id": "golden-recall-answers-HTTP-500",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/parser.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": false,
+      "hint_count": 0,
+      "required_count": 0,
+      "top_score": null,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": null,
+      "scope_filter_skipped": "no-scope-evidence",
+      "hint_tokens_est": 0,
+      "code_targets": [
+        "<cwd>/src/parser.ts"
+      ],
+      "hinted_ids": [],
+      "hinted_types": [],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "compact",
+      "status": "error",
+      "error": "HTTP 500: {\\"error\\":\\"boom\\"}",
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "234b47c3d1047225",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Edit",
+        "tool_input_excerpt": "b\\na",
+        "k": 3,
+        "session_id": "golden-recall-answers-HTTP-500",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    }
+  ],
+  "state": {
+    "shown": {}
+  }
+}
+`;
+
+exports[`#1525 golden master — recall answers invalid JSON 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {}
+    }
+  ],
+  "telemetry": [
+    {
+      "kind": "hook_call",
+      "session_id": "golden-recall-answers-invalid-JSON",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/parser.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": false,
+      "hint_count": 0,
+      "required_count": 0,
+      "top_score": null,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": null,
+      "scope_filter_skipped": "no-scope-evidence",
+      "hint_tokens_est": 0,
+      "code_targets": [
+        "<cwd>/src/parser.ts"
+      ],
+      "hinted_ids": [],
+      "hinted_types": [],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "compact",
+      "status": "error",
+      "error": "invalid JSON response from daemon",
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "69e721d57f7671fd",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Edit",
+        "tool_input_excerpt": "b\\na",
+        "k": 3,
+        "session_id": "golden-recall-answers-invalid-JSON",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    }
+  ],
+  "state": {
+    "shown": {}
+  }
+}
+`;
+
+exports[`#1525 golden master — size note rides along without hits 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "additionalContext": "<file-size-check file=\\"big.ts\\" lines=\\"900\\" level=\\"critical\\">over the ~800 code-line review threshold (comments and blank lines excluded) — review whether coherent responsibilities should become separate modules before substantial growth; explain why splitting or keeping this file is appropriate. This is a review prompt, not a growth ban.</file-size-check>"
+        }
+      }
+    }
+  ],
+  "telemetry": [
+    {
+      "kind": "hook_call",
+      "session_id": "golden-size-note-rides-along-without-hits",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/big.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": true,
+      "hint_count": 0,
+      "required_count": 0,
+      "top_score": null,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": "golden-proj",
+      "hint_tokens_est": 90,
+      "code_targets": [
+        "<cwd>/src/big.ts"
+      ],
+      "hinted_ids": [],
+      "hinted_types": [],
+      "backoff_streak": 0,
+      "suppressed": false,
+      "suppressed_tokens_est": 0,
+      "pretool_shape": "compact",
+      "status": "no-hits",
+      "error": null,
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "2bbe6778929e44a4",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Edit",
+        "tool_input_excerpt": "",
+        "k": 3,
+        "session_id": "golden-size-note-rides-along-without-hits",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    }
+  ],
+  "state": {
+    "shown": {}
+  }
+}
+`;
+
+exports[`#1525 golden master — size note rides through suppression 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "additionalContext": "<file-size-check file=\\"big.ts\\" lines=\\"900\\" level=\\"critical\\">over the ~800 code-line review threshold (comments and blank lines excluded) — review whether coherent responsibilities should become separate modules before substantial growth; explain why splitting or keeping this file is appropriate. This is a review prompt, not a growth ban.</file-size-check>"
+        }
+      }
+    }
+  ],
+  "telemetry": [
+    {
+      "kind": "hook_call",
+      "session_id": "golden-size-note-rides-through-suppression",
+      "hook_version": "0.4.0",
+      "tool_name": "Edit",
+      "file_path": "<cwd>/src/big.ts",
+      "topics": [
+        "typescript"
+      ],
+      "query_chars": 13,
+      "daemon_url": "http://127.0.0.1:<port>",
+      "daemon_reachable": true,
+      "hint_count": 0,
+      "required_count": 0,
+      "top_score": 60,
+      "dropped_dedup_count": 0,
+      "dropped_scope_count": 0,
+      "project_confidence": "git-root",
+      "filter_project": "golden-proj",
+      "hint_tokens_est": 90,
+      "code_targets": [
+        "<cwd>/src/big.ts"
+      ],
+      "hinted_ids": [],
+      "hinted_types": [],
+      "backoff_streak": 6,
+      "suppressed": true,
+      "suppressed_tokens_est": 101,
+      "pretool_shape": "legacy",
+      "status": "suppressed",
+      "error": null,
+      "dimensions": {
+        "client": "unknown",
+        "hook_source": "pre-tool",
+        "experiment_session": "a6a373a26c6047f3",
+        "arm": "unassigned"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "url": "/hook/recall",
+      "body": {
+        "query": "ts typescript",
+        "topics": [
+          "typescript"
+        ],
+        "project": "golden-proj",
+        "tool_name": "Edit",
+        "tool_input_excerpt": "b\\na",
+        "k": 3,
+        "session_id": "golden-size-note-rides-through-suppression",
+        "client": "unknown",
+        "agent": null,
+        "hook_source": "pre-tool"
+      }
+    }
+  ],
+  "state": {
+    "shown": {},
+    "sources": {
+      "write-edit": {
+        "streak": 6,
+        "at": "<ts>",
+        "ids": [
+          "old-hit"
+        ],
+        "skipped": 1
+      }
+    }
+  }
+}
+`;
+
+exports[`#1525 golden master — unsupported tool 1`] = `
+{
+  "runs": [
+    {
+      "stdout": {}
+    }
+  ],
+  "telemetry": [],
+  "requests": [],
+  "state": {
+    "shown": {}
+  }
+}
+`;

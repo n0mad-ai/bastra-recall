@@ -10,7 +10,7 @@ async function model(fetch?: Function) {
       .replace(/^import .*;$/gm, "")
       .replace(/^export /gm, "")
       .replace(/^\{ state \};$/gm, "") +
-      "\n({GROUPS, store, groupKeys, entry, shown, setValue, revert, changeList, cliOf, matches, metaOf, apply, assistantName, locked})",
+      "\n({GROUPS, store, groupKeys, entry, shown, setValue, revert, discard, setInvalid, onStore, changeList, cliOf, matches, metaOf, apply, restart, assistantName, locked})",
     {
       state: {},
       setState() {},
@@ -205,4 +205,41 @@ test("v22 address note: honest state of http://<name>/ for the saved name", asyn
   assert.equal(none.text, 'st.addr.none {"url":"http://jürgen/ (http://xn--jrgen-kva/)"}');
   assert.equal(none.retry, false);
   assert.equal(addressNote("🤖", { name: null, targetName: null, systemSetupSupported: true }).text, "st.addr.noneYet");
+});
+
+test("v22 invalid daemon.env JSON blocks Apply and restart and never saves the older valid draft", async () => {
+  const writes: Record<string, unknown>[] = [];
+  const m = await model(async (path: string, options: any = {}) => {
+    if (path.endsWith("/session")) return { ok: true, json: async () => ({ csrf: "fixture" }) };
+    if (options.body) writes.push(JSON.parse(options.body));
+    return { ok: true, json: async () => ({ entries: [env], restartAvailable: true }) };
+  });
+  const env = { key: "daemon.env", kind: "json", secret: true, isSet: true, envOverride: [], restartRequired: true };
+  m.store.model = { entries: [env], restartAvailable: true };
+  const events: string[] = [];
+  m.onStore((what: string) => events.push(what));
+  // An earlier valid draft, then the visible text becomes invalid (what the secret field does on input).
+  m.store.changes.set("daemon.env", { A: "earlier" });
+  m.setInvalid("daemon.env", '{"A": "visible"');
+  await m.apply();
+  assert.deepEqual(writes, [], "nothing is saved while the visible text is invalid");
+  assert.equal(m.store.error, "st.json.invalid");
+  assert.equal(events.at(-1), "invalid", "the view is told to focus the invalid field");
+  assert.equal(m.store.busy, false);
+  await m.restart();
+  assert.deepEqual(writes, [], "restart stays blocked as well");
+  assert.equal(m.store.restarting, false);
+  // Correcting the text clears the block; the visible value is what gets saved.
+  m.setInvalid("daemon.env", null);
+  m.store.changes.set("daemon.env", { A: "visible" });
+  await m.apply();
+  assert.deepEqual(writes, [{ changes: { "daemon.env": { A: "visible" } } }]);
+  assert.equal(m.store.error, "");
+  // Revert and discard both drop an invalid draft.
+  m.setInvalid("daemon.env", "{");
+  m.revert("daemon.env");
+  assert.equal(m.store.invalid.size, 0);
+  m.setInvalid("daemon.env", "{");
+  m.discard();
+  assert.equal(m.store.invalid.size, 0);
 });

@@ -4,6 +4,7 @@
 // the report limit. task_report_list takes an optional query.
 import "./tasks-opt-in.js";
 import { test } from "node:test";
+import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
 import { z } from "zod";
@@ -13,7 +14,7 @@ import { mintTaskCredential } from "../src/task-auth.js";
 import { callTaskCrud, TASK_CRUD_OPERATIONS } from "../src/task-service.js";
 import { taskTools } from "../src/task-transport.js";
 import { RESTORE_WINDOW_MS, TASK_REPORT_LIMIT } from "../src/task-reports.js";
-import { readAppRecord } from "../src/app-record-store.js";
+import { readAppRecord, writeAppRecord } from "../src/app-record-store.js";
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "task-report-undo-"));
@@ -88,6 +89,46 @@ test("#1559: restore keeps the domain rule and the report limit; nothing is lost
   assert.equal((await f.call("task_report_restore", { id: saved.id })).id, saved.id, "room again: it comes back");
 });
 
+test("#1559: a full trash refuses a new delete without losing a report or a promised undo", async () => {
+  const f = await fixture();
+  const first = randomUUID();
+  const second = randomUUID();
+  const notes = Array.from({ length: 720 }, () => ({
+    id: randomUUID(),
+    anchor: { kind: "item", index: 1, excerpt: "Preise prüfen" },
+    text: "字".repeat(4000),
+    actor: "claude",
+    created_at: 1_000,
+    state: "open",
+  }));
+  const path = join(f.root, "task-reports.json");
+  const seed = (id: string) =>
+    writeAppRecord(
+      "task-reports",
+      path,
+      JSON.stringify({
+        version: 1,
+        reports: [{ ...report(), id, actor: "claude", created_at: 1_000, owner_domains: ["personal"], notes }],
+      })
+    );
+
+  // Each report fits on its own; the trash cannot hold both at once.
+  seed(first);
+  const gone = await f.call("task_report_delete", { id: first });
+  assert.equal(gone.restorable_until, 1_000 + RESTORE_WINDOW_MS);
+  seed(second);
+  f.setNow(2_000);
+
+  await assert.rejects(f.call("task_report_delete", { id: second }), { code: "capacity" });
+  assert.equal((await f.call("task_report_list", {})).reports[0]?.id, second, "the new report stays active");
+  assert.equal(f.trash().deleted[0]?.report.id, first, "the promised undo survives");
+  await assert.rejects(f.call("task_report_restore", { id: first }), { code: "capacity" }, "the first entry is found");
+
+  f.setNow(1_000 + RESTORE_WINDOW_MS);
+  assert.equal((await f.call("task_report_delete", { id: second })).deleted, true, "expiry makes room");
+  assert.equal((await f.call("task_report_restore", { id: second })).id, second);
+});
+
 test("#1559: restore is a task tool for agents; an invalid id is a validation error", async () => {
   const f = await fixture();
   assert.ok((TASK_CRUD_OPERATIONS as readonly string[]).includes("task_report_restore"));
@@ -115,4 +156,14 @@ test("#1597: the list query searches title, project and text; every word, any ca
   const listed = await f.call("task_report_list", { query: "preise" });
   assert.equal(listed.reports[0].body, undefined, "still metadata only");
   await assert.rejects(f.call("task_report_list", { query: "x".repeat(201) }), (e) => e instanceof z.ZodError);
+});
+
+test("#1597 compatibility forms and case are matched together in report text", async () => {
+  const f = await fixture();
+  const saved = await f.call("task_report_save", report({ body: "Results: 𝐏rices checked" }));
+  const result = await f.call("task_report_list", { query: "prices" });
+  assert.deepEqual(
+    result.reports.map((row: { id: string }) => row.id),
+    [saved.id]
+  );
 });

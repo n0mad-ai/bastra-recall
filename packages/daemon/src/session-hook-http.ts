@@ -7,9 +7,10 @@
  * Same discipline as the hook itself: hard per-call timeout, fail-silent on
  * every error path — an unreachable daemon must never break a session start.
  * The hook-CLI import rule (#305) applies here too: node stdlib and sibling
- * leafs only, never the @bastra-recall/core barrel.
+ * leafs only, never the @bastra-recall/core barrel. The transport itself is
+ * the shared loopback helper (#1508).
  */
-import { request } from "node:http";
+import { getJson, postJson } from "./prompt-loopback.js";
 import type { HookRecallResponse as RecallResponse } from "./hook-recall-response.js";
 import type { PinnedFloorLean } from "./pinned-block.js";
 import type { KernelCandidates } from "./rule-kernel.js";
@@ -75,94 +76,17 @@ export function postSessionContext(
   body: Record<string, unknown>,
   timeoutMs: number
 ): Promise<SessionContextResponse> {
-  return new Promise((resolve, reject) => {
-    let url: URL;
-    try {
-      url = new URL("/hook/session-context", baseUrl);
-    } catch (err) {
-      reject(err);
-      return;
-    }
-    const payload = Buffer.from(JSON.stringify({ ...body, assembly_only: true }), "utf8");
-    const req = request(
-      {
-        method: "POST",
-        hostname: url.hostname,
-        port: url.port || 80,
-        path: url.pathname,
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          "Content-Length": payload.byteLength.toString(),
-        },
-        timeout: timeoutMs,
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (c: Buffer) => chunks.push(c));
-        res.on("end", () => {
-          const raw = Buffer.concat(chunks).toString("utf8");
-          if ((res.statusCode ?? 500) >= 400) {
-            reject(new Error(`HTTP ${res.statusCode}: ${raw.slice(0, 200)}`));
-            return;
-          }
-          try {
-            resolve(JSON.parse(raw) as SessionContextResponse);
-          } catch {
-            reject(new Error("invalid JSON response from daemon"));
-          }
-        });
-      }
-    );
-    req.on("timeout", () => {
-      req.destroy(new Error("timeout"));
-    });
-    req.on("error", reject);
-    req.write(payload);
-    req.end();
-  });
+  return postJson<SessionContextResponse>(
+    baseUrl,
+    "/hook/session-context",
+    { ...body, assembly_only: true },
+    timeoutMs
+  );
 }
 
-export function fetchTaxonomy(baseUrl: string, timeoutMs: number): Promise<ConventionLean[]> {
-  return new Promise((resolve_) => {
-    let url: URL;
-    try {
-      url = new URL("/hook/taxonomy", baseUrl);
-    } catch {
-      resolve_([]);
-      return;
-    }
-    const req = request(
-      {
-        method: "GET",
-        hostname: url.hostname,
-        port: url.port || 80,
-        path: url.pathname,
-        timeout: timeoutMs,
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (c: Buffer) => chunks.push(c));
-        res.on("end", () => {
-          try {
-            const data = JSON.parse(Buffer.concat(chunks).toString("utf8")) as TaxonomyResponse;
-            if ((res.statusCode ?? 500) === 200 && Array.isArray(data.conventions)) {
-              resolve_(data.conventions);
-              return;
-            }
-          } catch {
-            /* fallthrough */
-          }
-          resolve_([]);
-        });
-      }
-    );
-    req.on("timeout", () => {
-      req.destroy();
-      resolve_([]);
-    });
-    req.on("error", () => resolve_([]));
-    req.end();
-  });
+export async function fetchTaxonomy(baseUrl: string, timeoutMs: number): Promise<ConventionLean[]> {
+  const data = await getJson<TaxonomyResponse | null>(baseUrl, "/hook/taxonomy", timeoutMs);
+  return Array.isArray(data?.conventions) ? data.conventions : [];
 }
 
 interface FloorsResponse {
@@ -175,89 +99,18 @@ interface FloorsResponse {
  * bereits serverseitig (/hook/floors), die Hook-CLI bleibt dumm. Mit Projekt
  * wird scope=<project> angefragt (Daemon liefert scoped + unscoped).
  */
-export function fetchFloors(baseUrl: string, project: string | null, timeoutMs: number): Promise<PinnedFloorLean[]> {
-  return new Promise((resolve_) => {
-    let url: URL;
-    try {
-      url = new URL("/hook/floors", baseUrl);
-      if (project) url.searchParams.set("scope", project);
-    } catch {
-      resolve_([]);
-      return;
-    }
-    const req = request(
-      {
-        method: "GET",
-        hostname: url.hostname,
-        port: url.port || 80,
-        path: url.pathname + url.search,
-        timeout: timeoutMs,
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (c: Buffer) => chunks.push(c));
-        res.on("end", () => {
-          try {
-            const data = JSON.parse(Buffer.concat(chunks).toString("utf8")) as FloorsResponse;
-            if ((res.statusCode ?? 500) === 200 && Array.isArray(data.floors)) {
-              resolve_(data.floors);
-              return;
-            }
-          } catch {
-            /* fallthrough */
-          }
-          resolve_([]);
-        });
-      }
-    );
-    req.on("timeout", () => {
-      req.destroy();
-      resolve_([]);
-    });
-    req.on("error", () => resolve_([]));
-    req.end();
-  });
+export async function fetchFloors(
+  baseUrl: string,
+  project: string | null,
+  timeoutMs: number
+): Promise<PinnedFloorLean[]> {
+  // URLSearchParams encodes like `url.searchParams.set` did before #1508.
+  const path = project ? `/hook/floors?${new URLSearchParams({ scope: project })}` : "/hook/floors";
+  const data = await getJson<FloorsResponse | null>(baseUrl, path, timeoutMs);
+  return Array.isArray(data?.floors) ? data.floors : [];
 }
 
-export function probeHealth(baseUrl: string, timeoutMs: number): Promise<HealthResponse | null> {
-  return new Promise((resolve_) => {
-    let url: URL;
-    try {
-      url = new URL("/health", baseUrl);
-    } catch {
-      resolve_(null);
-      return;
-    }
-    const req = request(
-      {
-        method: "GET",
-        hostname: url.hostname,
-        port: url.port || 80,
-        path: url.pathname,
-        timeout: timeoutMs,
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (c: Buffer) => chunks.push(c));
-        res.on("end", () => {
-          try {
-            const data = JSON.parse(Buffer.concat(chunks).toString("utf8")) as HealthResponse;
-            if ((res.statusCode ?? 500) === 200 && data && data.ok) {
-              resolve_(data);
-              return;
-            }
-          } catch {
-            /* fallthrough */
-          }
-          resolve_(null);
-        });
-      }
-    );
-    req.on("timeout", () => {
-      req.destroy();
-      resolve_(null);
-    });
-    req.on("error", () => resolve_(null));
-    req.end();
-  });
+export async function probeHealth(baseUrl: string, timeoutMs: number): Promise<HealthResponse | null> {
+  const data = await getJson<HealthResponse | null>(baseUrl, "/health", timeoutMs);
+  return data && data.ok ? data : null;
 }

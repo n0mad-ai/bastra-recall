@@ -15,6 +15,8 @@ import { readTaskStore } from "../src/task-store.js";
 import { evaluateTaskSnapshot, observeTaskSources, reconcileTaskTime, taskValueHash } from "../src/task-events.js";
 import { ambiguousTaskCalendar, localWall, resolveTaskCalendar } from "../src/task-clock.js";
 import { emptyTaskStore } from "../src/task-schema.js";
+import { cachedTaskSnapshot } from "../src/task-outbox.js";
+import { startTaskRuntime } from "../src/task-runtime.js";
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "task-events-"));
   let now = 1000;
@@ -729,6 +731,32 @@ test("#1599 the automatic evaluation does not use the owner's control reserve", 
     expected_revision: `${s.recovery_epoch}:${s.tasks[0].revision}`,
   });
   assert.equal((await readTaskStore(f.ctx.path)).tasks[0].state, "cancelled");
+});
+test("#1599 a full store does not hide an already scheduled reminder from next contact", async () => {
+  const f = await fixture();
+  await callTaskCrud(f.ctx, f.auth, "task_create", f.input);
+  await callTaskCrud(f.ctx, f.auth, "task_create", {
+    ...f.input,
+    idempotency_key: "later",
+    schedule: { kind: "instant", at: 4000 },
+  });
+  f.setNow(3000);
+  const before = await reconcileTaskTime(f.ctx);
+  assert.equal(before.occurrences.length, 1);
+  await padStore(f.ctx.path, before.tasks[1].id, NORMAL_LIMIT - 50);
+
+  f.setNow(5000);
+  const runtime = startTaskRuntime(f.ctx);
+  try {
+    await runtime.ready;
+    assert.equal(runtime.lastError, "capacity");
+    assert.equal(cachedTaskSnapshot(f.ctx.path)?.occurrences[0]?.id, before.occurrences[0].id);
+    assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 1, "the owner reserve stays unused");
+    assert.ok(storeBytes(f.ctx.path) <= NORMAL_LIMIT);
+  } finally {
+    runtime.stop();
+    await runtime.settle();
+  }
 });
 test("#1599 above the normal limit the evaluation still switches a full task off with one audit row", async () => {
   const { f, seriesId } = await fullHistoryFixture(9899);
