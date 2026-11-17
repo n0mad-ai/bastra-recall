@@ -107,3 +107,112 @@
 .tk-rep__tbl tr:last-child td {
   border-bottom: 0;
 }
+
+/* notes on single places of a report (js/sections/tasks-report-notes.js): the "note" button
+ * appears on hover or keyboard focus; saved notes sit below their block with the amber edge */
+.tk-an__btn {
+  margin-left: 8px;
+  padding: 0 6px;
+  border: 1px solid var(--line-22);
+  background: transparent;
+  color: var(--muted);
+  font: 9.5px var(--mono);
+  letter-spacing: 0.12em;
+  vertical-align: middle;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.tk-an:hover > .tk-an__btn,
+.tk-an:hover > .tk-an__cell > .tk-an__btn,
+.tk-an__btn:focus-visible,
+.tk-an.has-open > .tk-an__btn,
+.tk-an.has-open > .tk-an__cell > .tk-an__btn {
+  opacity: 1;
+}
+.tk-an__btn:hover,
+.tk-an__btn:focus-visible {
+  border-color: var(--amber);
+  color: var(--amber);
+  outline: 0;
+}
+.tk-rep__tbl .tk-an__cell {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+.tk-an__box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+li > .tk-an__box {
+  margin: 6px 0 4px;
+}
+.tk-an__note {
+  padding: 6px 10px;
+  border-left: 2px solid var(--amber);
+  font: 13px var(--sans);
+  color: var(--ink);
+}
+.tk-an__note.is-done {
+  border-left-color: var(--line-45);
+}
+.tk-an__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font: 10px var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+.tk-an__state {
+  color: var(--amber);
+}
+.tk-an__note.is-done .tk-an__state {
+  color: var(--muted);
+}
+.tk-an__acts {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.tk-an__act {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 9.5px;
+}
+.tk-an__text {
+  margin-top: 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tk-an__reply {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line-10);
+  white-space: pre-wrap;
+  color: var(--muted);
+}
+.tk-an__rk {
+  margin-right: 8px;
+  font: 10px var(--mono);
+  letter-spacing: 0.1em;
+}
+.tk-an__count {
+  color: var(--amber);
+}
+.tk-an__lost {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-12);
+}
+.tk-an__lh,
+.tk-an__excerpt {
+  margin-bottom: 6px;
+  font: 10px var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}

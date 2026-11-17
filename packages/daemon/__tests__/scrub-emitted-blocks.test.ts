@@ -22,6 +22,7 @@ import { ONBOARDING_BLOCK_TAG } from "../src/session-onboarding-block.js";
 import { formatSameTurnBlock } from "../src/stop-lane-same-turn.js";
 import { formatHarvestBlock } from "../src/session-harvest.js";
 import { buildSoulBlock } from "../src/soul.js";
+import { REPORT_NOTES_TAG } from "../src/task-report-notice.js";
 
 test("the Stop lane's same-turn block is scrubbed whole", () => {
   const block = formatSameTurnBlock([
@@ -53,10 +54,10 @@ test("the preferred interaction block is scrubbed whole, preserving surrounding 
 test("every hook block tag the daemon sources close is in INJECTED_BLOCK_TAGS", () => {
   // A hook block is emitted as `<tag …>` … `</tag>`, so the literal closing tag
   // in a source file names it. A new block whose tag is not added to the
-  // inventory turns this red. The vault-onboarding tag is built from a
-  // constant, so it is added by name.
+  // inventory turns this red. The vault-onboarding and report-notes tags are
+  // built from constants, so they are added by name.
   const srcDir = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
-  const emitted = new Set<string>([ONBOARDING_BLOCK_TAG]);
+  const emitted = new Set<string>([ONBOARDING_BLOCK_TAG, REPORT_NOTES_TAG]);
   for (const entry of readdirSync(srcDir, { recursive: true, encoding: "utf8" })) {
     if (!entry.endsWith(".ts")) continue;
     const text = readFileSync(join(srcDir, entry), "utf8");

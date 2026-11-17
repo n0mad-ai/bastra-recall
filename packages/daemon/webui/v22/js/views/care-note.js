@@ -1,7 +1,8 @@
 // Vault-care note field (memory browser, UI v2): the growing textarea with
 // "improve text" — the local model rewrites a dictated note without fillers
 // (POST /ui/improve-text) — and "undo" back to the original until the user
-// types on or saves. Used for a new flag and for editing a saved one.
+// types on or saves. Used for a new flag and for editing a saved one, and for
+// the notes on task reports (sections/tasks-report-notes.js).
 import { h, growTextarea } from "../dom.js";
 import { t } from "../i18n.js";
 
@@ -90,17 +91,27 @@ async function requestImprove(text) {
 /**
  * The note editor. `saveLabel` / `busyLabel` name the save button at rest and
  * while storing. `onSave(text)` resolves when stored or rejects with an
- * Error whose message is shown; `onCancel` adds a cancel button (editing).
+ * Error whose message is shown; `onCancel` adds a cancel button (editing);
+ * `placeholder` names what the field is for (default: the vault-care question).
  * Returns { el, focus, improve } — `improve()` starts "improve text" as if
  * its button was clicked (the saved flag's overview button uses it).
  */
-export function noteEditor({ value = "", required = false, saveLabel, busyLabel, onSave, onCancel, draft = {} }) {
+export function noteEditor({
+  value = "",
+  required = false,
+  saveLabel,
+  busyLabel,
+  onSave,
+  onCancel,
+  draft = {},
+  placeholder = t("mb.careNote"),
+}) {
   draft.state ||= noteInit(value);
   draft.saving ||= false;
   draft.saveError ||= "";
   const area = h("textarea.mb-care__note", {
     rows: "2",
-    placeholder: t("mb.careNote"),
+    placeholder,
     on: { input: () => step({ type: "input", text: area.value }) },
   });
   area.value = value;

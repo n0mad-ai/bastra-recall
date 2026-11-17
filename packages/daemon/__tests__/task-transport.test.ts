@@ -1,4 +1,5 @@
 import "./tasks-opt-in.js";
+import { OWNER_UI_REPORT_OPERATIONS } from "../src/task-reports.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -152,9 +153,10 @@ test("loopback skip and legacy API token cannot authorize task routes; foreign O
   }
 });
 test("every CRUD operation has a canonical strict MCP definition", () => {
+  // Writing report notes is the owner's UI alone, so it has no agent tool.
   assert.deepEqual(
     taskTools.map((t) => t.name),
-    [...TASK_CRUD_OPERATIONS]
+    TASK_CRUD_OPERATIONS.filter((name) => !(OWNER_UI_REPORT_OPERATIONS as readonly string[]).includes(name))
   );
   for (const def of taskTools) {
     const schema = def.inputSchema as any;

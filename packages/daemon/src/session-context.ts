@@ -13,6 +13,7 @@
  */
 import { taskAttachment, taskRequestAuth } from "./task-delivery.js";
 import { defaultTaskContext } from "./task-transport.js";
+import { reportNotesNotice } from "./task-report-notice.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Vault } from "@bastra-recall/core";
 import type { ToolDeps } from "./tool-handlers.js";
@@ -38,13 +39,19 @@ export async function buildSessionContext(
   toolDeps: ToolDeps,
   vault: Vault,
   deps: SessionContextDeps = {},
-  dueText?: string
+  dueText?: string,
+  reportNotesText?: string
 ): Promise<string> {
   // `expand_hops: 0` steht hier ausdrücklich: Der Forwarder-Vertrag kennt keine
   // Hops (mcp-forwarder.ts fragt sie ebenfalls nicht an), und der Default des
   // Assemblers ist die HOOK-Baseline `1`. Ohne diese Zeile bekäme eine hooklose
   // Oberfläche plötzlich mehr, weil anderswo ein Default umgezogen ist.
-  const assembled = await assembleSessionSections(toolDeps, vault, { project: null, expand_hops: 0, dueText }, deps);
+  const assembled = await assembleSessionSections(
+    toolDeps,
+    vault,
+    { project: null, expand_hops: 0, dueText, reportNotesText },
+    deps
+  );
   return renderSessionContext(assembled.sections, vault.size()) + buildSoulBlock(await readSoulPreference());
 }
 
@@ -56,8 +63,10 @@ export async function handleSessionContext(
   toolDeps: ToolDeps,
   vault: Vault
 ): Promise<void> {
-  const due = await taskAttachment(defaultTaskContext(toolDeps), taskRequestAuth(req), "unknown", "session");
-  const context = await buildSessionContext(toolDeps, vault, {}, due?.text);
+  const taskCtx = defaultTaskContext(toolDeps);
+  const due = await taskAttachment(taskCtx, taskRequestAuth(req), "unknown", "session");
+  const notes = await reportNotesNotice(taskCtx, taskRequestAuth(req));
+  const context = await buildSessionContext(toolDeps, vault, {}, due?.text, notes);
   if (due && context.includes(due.text)) res.once("finish", due.record);
   sendJsonPlain(res, 200, { context, vault_size: vault.size() });
 }
@@ -102,17 +111,10 @@ export async function handleSessionContextPost(
   const kernelPromise = kernelReq
     ? startupRulebookCatalog(vault, { project, active: activeFrom(kernelReq.active), budgetMs: num(budget.time_ms) })
     : null;
-  const due =
-    b.assembly_only === true
-      ? undefined
-      : await taskAttachment(
-          defaultTaskContext(toolDeps),
-          taskRequestAuth(req),
-          typeof b.session_id === "string" ? b.session_id : "unknown",
-          "session"
-        );
+  const { due, reportNotesText } = await taskNotices(req, toolDeps, b);
   const assembled = await assembleSessionSections(toolDeps, vault, {
     dueText: due?.text,
+    reportNotesText,
     project,
     source: typeof b.source === "string" ? b.source : null,
     session_id: typeof b.session_id === "string" ? b.session_id : null,
@@ -187,6 +189,18 @@ export async function handleSessionContextPost(
       ...(kernelPromise ? { kernel: await kernelPromise } : {}),
     },
   });
+}
+
+/** Due cards and report notes for this caller's task credential. The SessionStart
+ *  lane (assembly_only) adds both at its outer exit instead (http-local-routes.ts). */
+async function taskNotices(req: IncomingMessage, toolDeps: ToolDeps, b: Record<string, unknown>) {
+  if (b.assembly_only === true) return { due: undefined, reportNotesText: undefined };
+  const taskCtx = defaultTaskContext(toolDeps);
+  const session = typeof b.session_id === "string" ? b.session_id : "unknown";
+  return {
+    due: await taskAttachment(taskCtx, taskRequestAuth(req), session, "session"),
+    reportNotesText: await reportNotesNotice(taskCtx, taskRequestAuth(req)),
+  };
 }
 
 /** The active conventions the lane read from the session state — request data. */

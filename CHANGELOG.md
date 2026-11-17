@@ -6,6 +6,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Notes on task reports.** While reading a report under Tasks › Reports,
+  you can leave a note on a single place: a heading, a paragraph, a list item
+  or a table row ("research the prices again", "this is how it should be").
+  Hover or focus the place and choose **Note**; the field has the same
+  **Improve text** as the vault-care field in the memory browser. Saved notes
+  stand right below their place with an amber edge, can be edited and deleted,
+  and the report list shows how many notes are still open. Leaving a note does
+  not change the report's read state. The next agent session is told at
+  session start, the same way as open vault-care flags, which reports carry
+  open notes; the agent reads them with `task_report_read`, treats the note
+  texts as your instructions (the report text stays reference material), and
+  closes each one with `task_report_note_done` and a short reply that appears
+  under the note. Done notes are no longer announced; editing a note opens it
+  again. Notes are cleaned like report text, hold up to 4,000 characters each,
+  live inside their report and go with it when the report is deleted. Only the
+  Recall UI writes, edits and deletes notes; an agent's tool or `/api/v1` call
+  is refused, so no agent can leave an "instruction" in your name. New agent
+  tool: `task_report_note_done`.
+
 ## [1.2.1] — 2026-11-16
 
 ### Security

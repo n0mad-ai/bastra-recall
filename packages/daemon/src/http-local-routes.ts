@@ -2,6 +2,7 @@ import { indexedActionConventions } from "./action-conventions.js";
 import { createLaneDelivery } from "./lane-delivery.js";
 import { taskAttachment, taskRequestAuth } from "./task-delivery.js";
 import { defaultTaskContext } from "./task-transport.js";
+import { reportNotesNotice } from "./task-report-notice.js";
 import { takeDraftReview } from "./draft-review.js";
 import { draftVaultId } from "./draft-promote.js";
 import { recordDeliveredDraftHints } from "./draft-delivery.js";
@@ -335,22 +336,27 @@ export function dispatchLocalRoutes(
       async (out, payload, connected) => {
         const notices = await appendDraftNotice(out, payload, (id) => vault.get(id)?.fm, undefined, connected);
         if (url !== "/hook/session") return notices;
+        const taskCtx = defaultTaskContext(toolDeps);
         const due = await taskAttachment(
-          defaultTaskContext(toolDeps),
+          taskCtx,
           taskRequestAuth(req),
           String((payload as unknown as { session_id?: string }).session_id ?? "unknown"),
           "session"
         );
-        if (!due || !connected()) return notices;
+        // Notes the owner left on task reports: the vault-care way, same credential as the due cards.
+        const reportNotes = await reportNotesNotice(taskCtx, taskRequestAuth(req));
+        if ((!due && !reportNotes) || !connected()) return notices;
         const parsed = JSON.parse(notices) as {
           hookSpecificOutput?: { hookEventName?: string; additionalContext?: string };
         };
         parsed.hookSpecificOutput = {
           ...parsed.hookSpecificOutput,
           hookEventName: "SessionStart",
-          additionalContext: [parsed.hookSpecificOutput?.additionalContext, due.text].filter(Boolean).join("\n"),
+          additionalContext: [parsed.hookSpecificOutput?.additionalContext, due?.text, reportNotes]
+            .filter(Boolean)
+            .join("\n"),
         };
-        res.once("finish", due.record);
+        if (due) res.once("finish", due.record);
         return JSON.stringify(parsed);
       },
       async () => takeDraftReview(await draftVaultId(vault.root), toolDeps.primaryLanguage ?? "en"),

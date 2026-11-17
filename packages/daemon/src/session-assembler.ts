@@ -68,7 +68,16 @@ const DEFAULT_BUDGET_TOKENS = 0;
 /** Welche Abschnitte es gibt. Der Name landet in der Antwort, also ist er
  *  Vertrag und keine Beschriftung. */
 export type SectionKind =
-  "due" | "pinned" | "project" | "cross_project" | "hints" | "conventions" | "care" | "import" | "onboarding";
+  | "due"
+  | "pinned"
+  | "project"
+  | "cross_project"
+  | "hints"
+  | "conventions"
+  | "report_notes"
+  | "care"
+  | "import"
+  | "onboarding";
 
 /**
  * Reihenfolge im gerenderten Text. Entspricht exakt dem gewachsenen Aufbau;
@@ -82,6 +91,7 @@ const RENDER_ORDER: SectionKind[] = [
   "cross_project",
   "hints",
   "conventions",
+  "report_notes",
   "care",
   "import",
   "onboarding",
@@ -102,9 +112,11 @@ const PRIORITY: Record<SectionKind, number> = {
   cross_project: 3,
   hints: 4,
   conventions: 5,
-  care: 6,
-  import: 7,
-  onboarding: 8,
+  // The owner's own notes on task reports outrank vault care and import offers.
+  report_notes: 6,
+  care: 7,
+  import: 8,
+  onboarding: 9,
 };
 
 export interface SessionSection {
@@ -135,6 +147,8 @@ export interface SessionBudget {
 export interface AssembleOptions {
   /** Already authenticated cached projection supplied only by the transport. */
   dueText?: string;
+  /** Authenticated report-notes notice (task-report-notice.ts), supplied only by the transport. */
+  reportNotesText?: string;
   /** Das erkannte Projekt, oder `null` für den projektlosen Weg. */
   project?: string | null;
   /** `startup` | `resume` | `clear` | `compact` — durchgereicht an die
@@ -320,6 +334,16 @@ function clip(s: string, max: number): string {
  *  Re-exportiert, damit die bestehenden Aufrufer ihren Importpfad behalten. */
 export { estimateTokens } from "./context-governor.js";
 
+/** Sections the transport hands in already rendered and authenticated (due cards,
+ *  report notes); each only when it has something to say. */
+function transportSections(opts: AssembleOptions): Array<{ kind: SectionKind; run: () => Promise<string[]> }> {
+  const given: Array<[SectionKind, string | undefined]> = [
+    ["due", opts.dueText],
+    ["report_notes", opts.reportNotesText],
+  ];
+  return given.flatMap(([kind, text]) => (text ? [{ kind, run: async () => [text] }] : []));
+}
+
 /**
  * Alle Abschnitte erheben — nebenläufig, unter einer gemeinsamen Deadline.
  *
@@ -420,7 +444,7 @@ export async function assembleSessionSections(
   };
 
   const producers: Array<{ kind: SectionKind; run: () => Promise<string[]> }> = [
-    ...(opts.dueText ? [{ kind: "due" as const, run: async () => [opts.dueText!] }] : []),
+    ...transportSections(opts),
     {
       kind: "pinned",
       run: async () => {
@@ -569,7 +593,9 @@ export async function assembleSessionSections(
     lines: byKind.get(kind) ?? [],
   }));
 
-  const reports: SectionReport[] = RENDER_ORDER.filter((k) => k !== "due" || opts.dueText !== undefined).map((kind) => {
+  const offered = (k: SectionKind) =>
+    (k !== "due" || opts.dueText !== undefined) && (k !== "report_notes" || opts.reportNotesText !== undefined);
+  const reports: SectionReport[] = RENDER_ORDER.filter(offered).map((kind) => {
     const lines = byKind.get(kind) ?? [];
     const included = keep.has(kind);
     return {

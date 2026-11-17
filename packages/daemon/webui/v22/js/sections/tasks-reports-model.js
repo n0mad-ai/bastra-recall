@@ -1,6 +1,6 @@
 // Task reports — pure model (no DOM, no imports): validates the daemon's list
-// answer, orders it, counts unread reports and splits Markdown into prose and
-// pipe tables. Tested in __tests__/v22-task-reports-model.test.ts.
+// answer, orders it, counts unread reports, splits Markdown into prose and
+// pipe tables and validates the notes the owner left on a report. Tested in __tests__/v22-task-reports-model.test.ts.
 
 const str = (v) => typeof v === "string" && v.trim() !== "";
 const num = (v) => Number.isFinite(v) && v >= 0;
@@ -16,6 +16,7 @@ function row(x) {
     session: str(x.origin?.session) ? x.origin.session : "",
     createdAt: x.created_at,
     readAt: num(x.read_at) ? x.read_at : null,
+    notesOpen: Number.isInteger(x.notes_open) && x.notes_open > 0 ? x.notes_open : 0,
   };
 }
 
@@ -76,3 +77,44 @@ export function reportBlocks(md) {
   flush();
   return out;
 }
+
+// ── Notes on single places of a report (task_report_note_*). The anchor names
+// the block: its kind, its 1-based number among the annotatable blocks of the
+// rendered report and a short excerpt for an agent reading without the UI.
+const NOTE_KINDS = ["heading", "paragraph", "item", "row"];
+/** Longest excerpt the page sends; the daemon accepts up to 300 characters. */
+const EXCERPT_MAX = 160;
+
+/** Block text → one short line for the anchor. */
+export function excerptOf(text) {
+  const flat = String(text ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return flat.length > EXCERPT_MAX ? `${flat.slice(0, EXCERPT_MAX - 1)}…` : flat;
+}
+
+/** One stored note, or null when its shape is off (external input). */
+function note(x) {
+  const a = x?.anchor;
+  if (!str(x?.id) || !str(x.text) || !num(x.created_at) || !a || !NOTE_KINDS.includes(a.kind)) return null;
+  if (!Number.isInteger(a.index) || a.index < 1) return null;
+  return {
+    id: x.id,
+    kind: a.kind,
+    index: a.index,
+    excerpt: typeof a.excerpt === "string" ? a.excerpt : "",
+    text: x.text,
+    done: x.state === "done",
+    at: num(x.updated_at) ? x.updated_at : x.created_at,
+    doneAt: num(x.done_at) ? x.done_at : null,
+    reply: str(x.reply) ? x.reply : "",
+  };
+}
+
+/** task_report_read answer → its notes in the order they were left. */
+export function noteRows(answer) {
+  return (Array.isArray(answer?.notes) ? answer.notes : []).map(note).filter(Boolean);
+}
+
+/** The notes left on one block. */
+export const notesAt = (notes, kind, index) => notes.filter((n) => n.kind === kind && n.index === index);

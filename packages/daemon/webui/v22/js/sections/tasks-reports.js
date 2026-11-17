@@ -9,6 +9,8 @@
 // the nav dot and the header ticker see the same rows.
 // Report text is external data: rendered through the shared mini Markdown
 // renderer (text nodes only) plus a text-only table for pipe tables.
+// Notes on single places of a report: tasks-report-notes.js (Daniel 17.11.2026);
+// leaving one never changes the read state.
 import { h } from "../dom.js";
 import { t } from "../i18n.js";
 import { state, setState } from "../state.js";
@@ -17,14 +19,16 @@ import { markdown, openMemoryBrowser } from "../views/memory-browser.js";
 import { ago } from "../views/vault-data.js";
 import { S, emit, say, act } from "./tasks-store.js";
 import { api, fmtAt } from "./tasks-api.js";
-import { unreadCount, originText, reportBlocks } from "./tasks-reports-model.js";
+import { unreadCount, originText, reportBlocks, noteRows } from "./tasks-reports-model.js";
+import { annotateReport } from "./tasks-report-notes.js";
 
 // open: reading view replaces the calendar · sel: report shown · body: its text (null = loading)
+// notes: the shown report's notes · edit: the open note field { anchor, noteId (null = new), draft }
 // order: row order frozen while the view is open, so a row marked there does not jump away under the pointer
 // list: narrow view shows the list instead of the reader (memory browser: "← LISTE")
 // lens: the detail panel was open when the view opened; it is folded away meanwhile (a report needs
 // the width, the panel has nothing to show for it) and comes back when the view closes
-const R = { open: false, sel: null, body: null, order: [], list: false, lens: false };
+const R = { open: false, sel: null, body: null, notes: [], edit: null, order: [], list: false, lens: false };
 /** Below this slot width list and reader share one column (memory browser: 760 px for list + reader;
  *  the report list is narrower, so two columns still fit at 640). */
 const NARROW = 640;
@@ -99,11 +103,16 @@ export async function openReport(id) {
   enter();
   R.sel = id;
   R.body = null;
+  R.notes = [];
+  R.edit = null;
   R.list = false;
   emit();
   try {
     const r = await api("report_read", { id });
-    if (R.sel === id) R.body = typeof r?.body === "string" ? r.body : "";
+    if (R.sel === id) {
+      R.body = typeof r?.body === "string" ? r.body : "";
+      R.notes = noteRows(r);
+    }
   } catch (e) {
     if (R.sel === id) R.sel = null;
     say(e.code === "not_found" ? t("tk.rep.gone") : e.message, "error");
@@ -138,6 +147,59 @@ function remove(id) {
     return t("tk.rep.deleted");
   });
 }
+
+// ── notes: the open field, saving, deleting. The list reloads for its "open notes" count.
+/** The daemon's limit per note (task-reports.ts NOTE_MAX_CHARS). */
+const NOTE_MAX = 4000;
+const notesUi = {
+  get notes() {
+    return R.notes;
+  },
+  get editing() {
+    return R.edit;
+  },
+  open(anchor) {
+    R.edit = { anchor, noteId: null, draft: {} };
+    emit("reports");
+  },
+  edit(n) {
+    R.edit = { anchor: { kind: n.kind, index: n.index, excerpt: n.excerpt }, noteId: n.id, draft: {} };
+    emit("reports");
+  },
+  cancel() {
+    R.edit = null;
+    emit("reports");
+  },
+  /** Rejects with the error the note field shows; the field keeps the text. */
+  async save(text) {
+    const id = R.sel,
+      e = R.edit;
+    if (text.length > NOTE_MAX) throw new Error(t("tk.rep.note.tooLong", { max: NOTE_MAX }));
+    const r = e.noteId
+      ? await api("report_note_edit", { id, note_id: e.noteId, text })
+      : await api("report_note_add", { id, anchor: e.anchor, text });
+    const [saved] = noteRows({ notes: [r?.note] });
+    if (R.sel !== id || !saved) return;
+    R.notes = e.noteId ? R.notes.map((n) => (n.id === saved.id ? saved : n)) : [...R.notes, saved];
+    if (R.edit === e) R.edit = null;
+    emit("reports");
+    await loadReports();
+  },
+  remove(n) {
+    const id = R.sel;
+    return act(async () => {
+      try {
+        await api("report_note_delete", { id, note_id: n.id });
+      } catch (e) {
+        if (e.code !== "not_found") throw e;
+      }
+      if (R.sel === id) R.notes = R.notes.filter((x) => x.id !== n.id);
+      if (R.edit?.noteId === n.id) R.edit = null;
+      await loadReports();
+      return t("tk.rep.note.deleted");
+    });
+  },
+};
 
 /** Rows in the order they had when the view opened; reports that arrived since go on top. */
 function listed() {
@@ -176,6 +238,12 @@ function listRow(r) {
       "span.mb-row__meta",
       null,
       fresh ? h("span.mb-row__ai", { text: t("tk.rep.new") }) : null,
+      r.notesOpen
+        ? h("span.tk-an__count", {
+            text: t("tk.rep.note.count", { n: r.notesOpen }),
+            title: t("tk.rep.note.countTip", { n: r.notesOpen }),
+          })
+        : null,
       r.project ? h("span", { text: r.project }) : null,
       h("span", { text: r.client || t("tk.rep.unknown") })
     )
@@ -216,6 +284,8 @@ function table(b) {
 const follow = (id) => openMemoryBrowser("all", id);
 const bodyNodes = (text) =>
   reportBlocks(text).flatMap((b) => (b.kind === "table" ? [table(b)] : markdown(b.text, follow)));
+/** Set while the reader is built: puts the cursor into the open note field. */
+let focusNote = null;
 
 function reader(r, narrow) {
   const facts = [[t("tk.rep.origin"), originText(r) || t("tk.rep.unknown")]];
@@ -246,7 +316,11 @@ function reader(r, narrow) {
     h("h2.mb-rd__h", { text: r.title }),
     R.body === null
       ? h("div.mb-rd__text.is-wait", { text: t("tk.loading") })
-      : h("div.mb-rd__text.tk-rep__md", null, bodyNodes(R.body)),
+      : (() => {
+          const annotated = annotateReport(bodyNodes(R.body), notesUi);
+          focusNote = annotated.focus;
+          return h("div.mb-rd__text.tk-rep__md", null, annotated.nodes);
+        })(),
     h(
       "div.mb-rd__facts",
       null,
@@ -261,6 +335,23 @@ function reader(r, narrow) {
       h("button.mb-btn.is-quiet", { text: t("tk.rep.delete"), on: { click: () => remove(r.id) } })
     )
   );
+}
+
+/** Rebuilds the reader when its report, its notes or the open note field changed. A rebuilt
+ *  reader keeps its scroll place; an opened (or still open) note field gets the cursor. */
+function paintReader(read, rows, narrow, seen) {
+  const r = rows.find((x) => x.id === R.sel);
+  const key = JSON.stringify([r, narrow, R.notes, R.edit && [R.edit.anchor, R.edit.noteId]]);
+  if (key === seen.key && R.body === seen.body) return;
+  const top = read.scrollTop,
+    hadFocus = read.contains(document.activeElement);
+  focusNote = null;
+  read.replaceChildren(
+    r ? reader(r, narrow) : h("div.mb__nosel", { text: t(rows.length ? "tk.rep.pick" : "tk.rep.none") })
+  );
+  read.scrollTop = seen.sel !== R.sel ? 0 : top;
+  if (focusNote && (seen.edit !== R.edit || hadFocus)) focusNote();
+  Object.assign(seen, { key, body: R.body, edit: R.edit, sel: R.sel });
 }
 
 /** The reading view in the memory browser's frame: head (title, count, ESC), list | reader.
@@ -289,15 +380,14 @@ export function reportsRenderer(host) {
       ),
       body
     );
-  let listKey = "",
-    readKey = "",
-    readBody,
-    readSel = null;
+  let listKey = "";
+  // what the reader shows now (paintReader rebuilds it only on a real change)
+  const seen = { key: "", body: undefined, edit: null, sel: null };
   return () => {
     host.hidden = !R.open;
     if (!R.open) {
       host.replaceChildren();
-      listKey = readKey = "";
+      listKey = seen.key = "";
       return;
     }
     if (host.firstChild !== view) host.replaceChildren(view);
@@ -315,24 +405,16 @@ export function reportsRenderer(host) {
       if (focused >= 0) all()[focused]?.focus();
       listKey = lk;
     }
-    const r = rows.find((x) => x.id === R.sel);
-    const rk = JSON.stringify([r, narrow]);
-    if (rk !== readKey || R.body !== readBody) {
-      read.replaceChildren(
-        r ? reader(r, narrow) : h("div.mb__nosel", { text: t(rows.length ? "tk.rep.pick" : "tk.rep.none") })
-      );
-      if (readSel !== R.sel) read.scrollTop = 0;
-      readSel = R.sel;
-      readKey = rk;
-      readBody = R.body;
-    }
+    paintReader(read, rows, narrow, seen);
   };
 }
 
 /** Escape leaves the reading view (tasks.js key handler, after the pop-overs); true when it was open. */
 export function escapeReports() {
   if (!R.open) return false;
-  closeReports();
+  // an open note field closes first, so Escape never drops the report view with a draft in it
+  if (R.edit) notesUi.cancel();
+  else closeReports();
   return true;
 }
 

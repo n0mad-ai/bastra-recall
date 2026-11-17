@@ -141,6 +141,10 @@ export const TASK_CRUD_OPERATIONS = [
   "task_report_read",
   "task_report_mark",
   "task_report_delete",
+  "task_report_note_add",
+  "task_report_note_edit",
+  "task_report_note_delete",
+  "task_report_note_done",
 ] as const;
 export type TaskCrudOperation = (typeof TASK_CRUD_OPERATIONS)[number];
 export class TaskServiceError extends Error {
@@ -259,6 +263,8 @@ export interface TaskServiceContext {
   approvalRegistry?: Promise<ApprovalRegistry | undefined>;
   approvalRegistryPath?: string;
   executionHost?: boolean;
+  /** Set only by the owner's UI session route; see OWNER_UI_REPORT_OPERATIONS. */
+  ownerUi?: boolean;
   actionClock?: () => { boot_id: string; monotonic: number };
   memorySubscribe?: (listener: (id: string) => void) => () => void;
 }
