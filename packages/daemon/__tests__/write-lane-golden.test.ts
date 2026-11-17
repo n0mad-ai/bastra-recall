@@ -4,7 +4,7 @@
  * loopback daemon and snapshots what leaves it: the stdout document, the
  * `hook_call` telemetry row, the loopback requests in the order they were
  * sent, and the session state the lane saved. Only clock-derived values and
- * temp paths are normalized.
+ * temp paths (including their contribution to token estimates) are normalized.
  *
  * Update (only for an intended behaviour change):
  *   node --import tsx --import ./scripts/test-env.mjs --test --test-update-snapshots \
@@ -21,6 +21,10 @@ import { loadSessionState } from "../src/session-state.js";
 interface MockReply {
   status?: number;
   body: unknown;
+}
+
+interface HookOutput {
+  hookSpecificOutput?: { additionalContext: string };
 }
 
 interface Scenario {
@@ -251,15 +255,15 @@ async function workspace(sc: Scenario, sessionId: string) {
   return { root, cwd, stateDir, logDir: join(root, "logs"), vaultRoot };
 }
 
-async function hookCallRows(logDir: string): Promise<unknown[]> {
-  let rows: unknown[] = [];
+async function hookCallRows(logDir: string): Promise<Array<Record<string, unknown>>> {
+  let rows: Array<Record<string, unknown>> = [];
   try {
     for (const f of (await readdir(logDir)).filter((n) => n.startsWith("events-")).sort()) {
       rows = rows.concat(
         (await readFile(join(logDir, f), "utf8"))
           .split("\n")
           .filter((l) => l.trim())
-          .map((l) => JSON.parse(l) as { kind?: string })
+          .map((l) => JSON.parse(l) as Record<string, unknown>)
           .filter((r) => r.kind === "hook_call")
       );
     }
@@ -296,7 +300,7 @@ for (const sc of SCENARIOS) {
     });
     const env = { BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: ws.logDir, BASTRA_HOOK_STATE_DIR: ws.stateDir, ...sc.env };
     const snapshot = await withEnv(env, async () => {
-      const runs: unknown[] = [];
+      const runs: Array<{ stdout: HookOutput }> = [];
       for (let i = 0; i < (sc.runs ?? 1); i++) {
         const stdout = await runWriteLane(
           {
@@ -309,10 +313,19 @@ for (const sc of SCENARIOS) {
           daemon.url,
           ws.vaultRoot
         );
-        runs.push({ stdout: JSON.parse(stdout) as unknown });
+        runs.push({ stdout: JSON.parse(stdout) as HookOutput });
       }
       const state = await loadSessionState(sessionId);
-      return { runs, telemetry: await hookCallRows(ws.logDir), requests: daemon.requests, state };
+      const rows = await hookCallRows(ws.logDir);
+      if (rows.length > 0) t.assert.equal(rows.length, runs.length);
+      const telemetry = rows.map((row, i) => {
+        const context = runs[i].stdout.hookSpecificOutput?.additionalContext ?? "";
+        // Check the real emitted size before replacing temp paths. The snapshot
+        // then records the estimate of its canonical, platform-independent text.
+        t.assert.equal(row.hint_tokens_est, Math.ceil(context.length / 4));
+        return { ...row, hint_tokens_est: Math.ceil((normalize(context, ws.cwd, ws.root) as string).length / 4) };
+      });
+      return { runs, telemetry, requests: daemon.requests, state };
     });
     t.assert.snapshot(normalize(snapshot, ws.cwd, ws.root));
   });

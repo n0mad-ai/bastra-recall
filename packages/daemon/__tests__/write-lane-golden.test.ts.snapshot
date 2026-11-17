@@ -1496,7 +1496,7 @@ exports[`#1525 golden master — memory-shaped markdown outside the vault 1`] = 
       "dropped_scope_count": 0,
       "project_confidence": "git-root",
       "filter_project": "golden-proj",
-      "hint_tokens_est": 110,
+      "hint_tokens_est": 89,
       "code_targets": [
         "<cwd>/notes/lesson.md"
       ],
