@@ -35,13 +35,15 @@ export function mountNav(app, ctx) {
   app.append(navEl);
   scrollEl.addEventListener("scroll", () => measureInd(), { passive: true });
   document.addEventListener("recall:areas", () => render(ctx));
+  // an area changed which entry is lit without a view change (Tasks › Reports)
+  document.addEventListener("recall:nav", () => render(ctx));
   render(ctx);
 }
 
 function navButton({ id, label, title, iconPath, on, sub, onClick, badge, badgeAccent, dot }) {
   const ic = h("span.nav__icon", null, icon(iconPath));
   if (badge) ic.append(h(`span.nav__badge${badgeAccent ? ".nav__badge--accent" : ""}`, { text: String(badge) }));
-  // dot: a second, separate signal next to the count (Tasks: unread reports beside "due").
+  // dot: a second, separate signal next to the count.
   if (dot && dot()) ic.append(h("span.dot.nav__dot"));
   return h(
     "button.nav__btn",
@@ -106,6 +108,31 @@ function vaultButton(view, on) {
   return b;
 }
 
+/** One registered area in the rail: lit by its own rule (lit) or by its view being shown. */
+function areaButton(a, view, ctx) {
+  const label = a.label || t(a.labelKey);
+  const on = a.lit ? a.lit() : a.kind !== "action" && view === a.id;
+  const b = navButton({
+    id: a.id,
+    label,
+    title: a.tip ? a.tip() : a.titleKey ? t(a.titleKey) : label,
+    iconPath: a.icon,
+    on,
+    badge: a.badge ? a.badge() : a.id === "tasks" ? data.dueTasks.length : 0,
+    badgeAccent: a.badgeAccent,
+    dot: a.dot,
+    onClick: () => openArea(a, ctx),
+  });
+  if (on) b.dataset.active = "1";
+  return b;
+}
+
+function openArea(a, ctx) {
+  if (a.kind === "action") ctx.runAction(a);
+  else if (a.enter) a.enter();
+  else setState({ view: a.id, hover: null, tab: "areas" });
+}
+
 function render(ctx) {
   clear(scrollEl).append(indEl);
   const view = state.view;
@@ -116,24 +143,7 @@ function render(ctx) {
     if (group !== "vault" && !items.length) continue;
     scrollEl.append(h("div.nav__div"));
     if (group === "vault") scrollEl.append(vaultButton(view, inVault), browserButton(marks.browser));
-    for (const a of items) {
-      const label = a.label || t(a.labelKey);
-      const title = a.titleKey ? t(a.titleKey) : label;
-      const on = a.kind !== "action" && view === a.id;
-      const badge = a.badge ? a.badge() : a.id === "tasks" ? data.dueTasks.length : 0;
-      const b = navButton({
-        id: a.id,
-        label,
-        title,
-        iconPath: a.icon,
-        on,
-        badge,
-        dot: a.dot,
-        onClick: () => (a.kind === "action" ? ctx.runAction(a) : setState({ view: a.id, hover: null, tab: "areas" })),
-      });
-      if (on) b.dataset.active = "1";
-      scrollEl.append(b);
-    }
+    for (const a of items) scrollEl.append(areaButton(a, view, ctx));
   }
   const segs = inVault
     ? VAULT_VIEWS.map((v) => h("span.nav__seg", { cls: v === view ? "is-on" : "" }))

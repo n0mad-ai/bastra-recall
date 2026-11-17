@@ -12,16 +12,28 @@
 // Report text is external data: rendered through the shared mini Markdown
 // renderer (text nodes only) plus a text-only table for pipe tables.
 // Notes on single places of a report: tasks-report-notes.js (Daniel 17.11.2026);
-// leaving one never changes the read state.
+// leaving one never changes the read state. They are the owner's drafts until
+// "Hand over to agent" in the reader's head passes them on (Daniel 17.11.2026).
+// The rail has its own "Reports" entry right below "Tasks" (reportsArea): lit
+// while this view is open, with the unread count as its badge.
 import { h, searchIcon } from "../dom.js";
 import { t } from "../i18n.js";
+import { ICON } from "../areas.js";
 import { state, setState } from "../state.js";
 import { data, onData, loadReports } from "../data.js";
 import { markdown, openMemoryBrowser } from "../views/memory-browser.js";
 import { ago } from "../views/vault-data.js";
 import { S, emit, say, act } from "./tasks-store.js";
 import { api, fmtAt } from "./tasks-api.js";
-import { unreadCount, originText, reportBlocks, noteRows, matchReports } from "./tasks-reports-model.js";
+import {
+  unreadCount,
+  draftReports,
+  noteCounts,
+  originText,
+  reportBlocks,
+  noteRows,
+  matchReports,
+} from "./tasks-reports-model.js";
 import { annotateReport } from "./tasks-report-notes.js";
 
 // open: reading view replaces the calendar · sel: report shown · body: its text (null = loading)
@@ -46,9 +58,11 @@ onData(() => {
   else emit("reports");
 });
 
-export const hasUnreadReports = () => unreadCount(data.reports) > 0;
 /** True while the reading view stands in for the calendar (tasks.js). */
 export const reportsOpen = () => R.open;
+
+/** The rail lights "Reports" while this view is open, "Tasks" otherwise; it redraws on this event. */
+const railChanged = () => document.dispatchEvent(new CustomEvent("recall:nav"));
 
 function enter() {
   setState({ view: "tasks" });
@@ -57,6 +71,7 @@ function enter() {
   R.order = data.reports.map((r) => r.id);
   R.lens = state.lensOpen;
   if (R.lens) setState({ lensOpen: false });
+  railChanged();
 }
 
 /** Leaving the Tasks area ends the view, so the next visit starts on the calendar. */
@@ -65,6 +80,7 @@ export function resetReports() {
   R.open = false;
   R.q = "";
   if (R.lens) setState({ lensOpen: true });
+  railChanged();
 }
 
 export function closeReports() {
@@ -102,6 +118,40 @@ export function reportsButton() {
   );
 }
 
+/** Rail entry "Tasks": lit on the calendar only; clicked in the reading view it goes back to the calendar. */
+export const tasksLit = () => state.view === "tasks" && !R.open;
+export function showCalendar() {
+  if (R.open) closeReports();
+  else setState({ view: "tasks", hover: null, tab: "areas" });
+}
+
+/** Rail entry "Reports" right below "Tasks", a plain rail button like the others (Daniel 17.11.2026):
+ *  opens this view, lit while it is open, badge = unread reports (the cyan of unread reports). */
+export const reportsArea = {
+  id: "reports",
+  group: "work",
+  order: 2,
+  labelKey: "nav.reports",
+  icon: ICON.reports,
+  kind: "action",
+  lit: () => state.view === "tasks" && R.open,
+  badge: () => unreadCount(data.reports),
+  badgeAccent: true,
+  tip: () => {
+    const unread = unreadCount(data.reports),
+      drafts = draftReports(data.reports);
+    return [
+      t("nav.reports"),
+      unread ? t("nav.reportsUnread", { n: unread }) : "",
+      drafts ? t("nav.reportsDrafts", { n: drafts }) : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  },
+  // a second click keeps the view, like the other rail entries
+  onAction: () => (R.open ? undefined : openReports()),
+};
+
 /** Shows a report in the reading view (list row, header ticker); reading leaves its read state alone. */
 export async function openReport(id) {
   enter();
@@ -129,6 +179,25 @@ function mark(id, read) {
   return act(async () => {
     await api("report_mark", { id, read });
     await loadReports();
+  });
+}
+
+/** "Hand over to agent": the report's drafts reach the agents (session start, task_report_read).
+ *  A daemon from before the hand-over answers not_found while the report is still there. */
+function handOver(id) {
+  return act(async () => {
+    let r;
+    try {
+      r = await api("report_notes_hand", { id });
+    } catch (e) {
+      if (e.code !== "not_found") throw e;
+      await loadReports();
+      throw data.reports.some((x) => x.id === id) ? new Error(t("tk.rep.handOld")) : e;
+    }
+    if (R.sel === id) R.notes = noteRows(r);
+    emit("reports");
+    await loadReports();
+    return t("tk.rep.handDone", { n: Number.isInteger(r?.handed) ? r.handed : 0 });
   });
 }
 
@@ -229,6 +298,21 @@ function walk(e) {
   next.focus();
 }
 
+/** "✎ 2" drafts still with the owner (muted), "➜ 1" handed-over notes open with the agent (amber). */
+function noteMarks(c, tag) {
+  return [
+    c.drafts
+      ? h(`${tag}.is-draft`, {
+          text: t("tk.rep.note.drafts", { n: c.drafts }),
+          title: t("tk.rep.note.draftsTip", { n: c.drafts }),
+        })
+      : null,
+    c.handed
+      ? h(tag, { text: t("tk.rep.note.handed", { n: c.handed }), title: t("tk.rep.note.handedTip", { n: c.handed }) })
+      : null,
+  ];
+}
+
 // Rows and reader are the memory browser's (css/membrowser.css: mb-row, mb-rd); Daniel wants the
 // reports to look like it. Only the frame and the deltas live in css/tasks-reports.css.
 function listRow(r) {
@@ -249,12 +333,7 @@ function listRow(r) {
       "span.mb-row__meta",
       null,
       fresh ? h("span.mb-row__ai", { text: t("tk.rep.new") }) : null,
-      r.notesOpen
-        ? h("span.tk-an__count", {
-            text: t("tk.rep.note.count", { n: r.notesOpen }),
-            title: t("tk.rep.note.countTip", { n: r.notesOpen }),
-          })
-        : null,
+      noteMarks({ drafts: r.notesDraft, handed: r.notesOpen - r.notesDraft }, "span.tk-an__count"),
       r.project ? h("span", { text: r.project }) : null,
       h("span", { text: r.client || t("tk.rep.unknown") })
     )
@@ -298,8 +377,12 @@ const bodyNodes = (text) =>
 /** Set while the reader is built: puts the cursor into the open note field. */
 let focusNote = null;
 
-/** The reader's head: title, meta line and the actions; it stays on top while the report scrolls. */
+/** The reader's head: title, meta line and the actions; it stays on top while the report scrolls.
+ *  The note counts come from the shown notes, so head and cards always agree. With drafts,
+ *  "Hand over to agent" is the head's one primary action and "Read" steps back a level. */
 function readerHead(r, narrow) {
+  const c = noteCounts(R.notes),
+    unread = r.readAt === null;
   return h(
     "header.tk-rep__head",
     null,
@@ -324,20 +407,23 @@ function readerHead(r, narrow) {
         r.project ? h("span.tk-rep__proj", { text: r.project, title: t("tk.rep.project") }) : null,
         h("span", { text: fmtAt(r.createdAt), title: t("tk.rep.filed") }),
         h("span", { text: originText(r) || t("tk.rep.unknown"), title: t("tk.rep.origin") }),
-        r.notesOpen
-          ? h("span.tk-rep__open", {
-              text: t("tk.rep.note.count", { n: r.notesOpen }),
-              title: t("tk.rep.note.countTip", { n: r.notesOpen }),
-            })
-          : null
+        noteMarks(c, "span.tk-rep__open")
       )
     ),
     h(
       "div.mb-rd__acts.tk-rep__acts",
       null,
-      r.readAt === null
-        ? h("button.mb-btn.is-primary", { text: t("tk.rep.markRead"), on: { click: () => mark(r.id, true) } })
-        : h("button.mb-btn", { text: t("tk.rep.markUnread"), on: { click: () => mark(r.id, false) } }),
+      c.drafts
+        ? h("button.mb-btn.is-primary.tk-rep__hand", {
+            text: t("tk.rep.hand", { n: c.drafts }),
+            title: t("tk.rep.handTip"),
+            on: { click: () => handOver(r.id) },
+          })
+        : null,
+      h(`button.mb-btn${unread && !c.drafts ? ".is-primary" : ""}`, {
+        text: t(unread ? "tk.rep.markRead" : "tk.rep.markUnread"),
+        on: { click: () => mark(r.id, unread) },
+      }),
       h("button.mb-btn.is-quiet", { text: t("tk.rep.delete"), on: { click: () => remove(r.id) } })
     )
   );

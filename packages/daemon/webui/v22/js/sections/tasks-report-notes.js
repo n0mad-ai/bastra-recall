@@ -1,8 +1,10 @@
 // Tasks › Reports — notes on single places of a report (Daniel 17.11.2026):
 // while reading, the owner leaves a note on a heading, paragraph, list item or
-// table row ("research the prices again", "this is how it should be"). The
-// next agent session is told about open notes (daemon: task-report-notice.ts),
-// acts on them and marks each one done with a short reply shown here.
+// table row ("research the prices again", "this is how it should be"). A note
+// is a draft until the owner hands the report's drafts over ("Hand over to
+// agent" in the reader's head); the next agent session is then told about them
+// (daemon: task-report-notice.ts), acts on them and marks each one done with a
+// short reply shown here. Badge per note: draft · handed over, open · done.
 // A block without notes gets a small "note" button (shown on hover / focus only).
 // A block with notes, or with an open note field, becomes a framed card: the
 // report text on top, its notes below, "+ another note" at the bottom (Daniel
@@ -40,13 +42,14 @@ const sameAnchor = (edit, kind, index) => edit && edit.anchor.kind === kind && e
 
 /** One saved note: state badge, time, quiet text actions; the agent's reply under it once done. */
 function savedNote(n, ui) {
+  const state = n.done ? "done" : n.draft ? "draft" : "open";
   return h(
     "div.tk-an__note",
-    { cls: n.done ? "is-done" : "" },
+    { cls: `is-${state}` },
     h(
       "div.tk-an__head",
       null,
-      h("span.tk-an__state", { text: t(n.done ? "tk.rep.note.done" : "tk.rep.note.open") }),
+      h("span.tk-an__state", { text: t(`tk.rep.note.${state}`), title: t(`tk.rep.note.${state}Tip`) }),
       h("span.tk-an__at", { text: fmtAt(n.at) }),
       h(
         "span.tk-an__acts",
@@ -116,19 +119,23 @@ function addButton(b, ui, anchor) {
 
 /** A place with notes (or an open field) becomes a card: its text on top as the subject, the
  *  notes below. A list item is the card itself; a heading or paragraph is wrapped into one; a
- *  table row is marked and its notes follow in a full-width row, so the table stays intact. */
-function markPlace(b, box, out) {
+ *  table row is marked and its notes follow in a full-width row, so the table stays intact.
+ *  settled: every note there is done, so the card takes the done colour instead of amber. */
+function markPlace(b, box, out, settled) {
+  const cls = settled ? "is-done" : "";
   if (b.kind === "row") {
     b.el.classList.add("is-marked");
+    if (settled) b.el.classList.add(cls);
     b.el.append(h("td.tk-an__cell"));
-    b.el.after(h("tr.tk-an__tr", null, h("td.tk-an__tcell", { colspan: String(b.el.children.length) }, box)));
+    b.el.after(h("tr.tk-an__tr", { cls }, h("td.tk-an__tcell", { colspan: String(b.el.children.length) }, box)));
   } else if (b.kind === "item") {
     const subject = h("div.tk-an__subj", null, [...b.el.childNodes]);
     b.el.classList.add("tk-an__card");
+    if (settled) b.el.classList.add(cls);
     b.el.replaceChildren(subject, box);
   } else {
     b.el.classList.add("tk-an__subj");
-    out.nodes[out.nodes.indexOf(b.el)] = h("div.tk-an__card", null, b.el, box);
+    out.nodes[out.nodes.indexOf(b.el)] = h("div.tk-an__card", { cls }, b.el, box);
   }
 }
 
@@ -162,7 +169,8 @@ export function annotateReport(nodes, ui) {
     b.el.classList.add("tk-an");
     if (list.some((n) => !n.done)) b.el.classList.add("has-open");
     const box = notesBox(list, ui, anchor, out);
-    if (box) markPlace(b, box, out);
+    const adding = sameAnchor(ui.editing, b.kind, b.index) && ui.editing.noteId === null;
+    if (box) markPlace(b, box, out, list.length > 0 && !adding && list.every((n) => n.done));
     else addButton(b, ui, anchor);
   }
   // header rows get the empty cell the body rows got for their button

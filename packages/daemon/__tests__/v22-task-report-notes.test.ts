@@ -24,7 +24,7 @@ async function load(
   ]);
   return runInNewContext(
     [strip(model), strip(care), strip(notes)].join("\n") +
-      "\n({ reportRows, noteRows, excerptOf, notesAt, reportBlocksIn, annotateReport, noteEditor })",
+      "\n({ reportRows, noteRows, excerptOf, notesAt, noteCounts, draftReports, reportBlocksIn, annotateReport, noteEditor })",
     {
       h,
       growTextarea() {},
@@ -77,29 +77,35 @@ test("model: list rows carry the open-note count; notes are validated as externa
   const m = await load();
   const rows = m.reportRows({
     reports: [
-      { id: "r1", title: "A", created_at: 1, notes_open: 2 },
+      { id: "r1", title: "A", created_at: 1, notes_open: 2, notes_draft: 1 },
       { id: "r2", title: "B", created_at: 2 },
+      { id: "r3", title: "C", created_at: 0, notes_open: 1, notes_draft: 5 },
     ],
   });
-  assert.deepEqual(plain(rows.map((r: any) => [r.id, r.notesOpen])), [
-    ["r2", 0],
-    ["r1", 2],
+  assert.deepEqual(plain(rows.map((r: any) => [r.id, r.notesOpen, r.notesDraft])), [
+    ["r2", 0, 0],
+    ["r1", 2, 1],
+    ["r3", 1, 1],
   ]);
+  assert.equal(m.draftReports(rows), 2, "reports with notes not handed over");
   const notes = m.noteRows({
     notes: [
       stored({}),
       stored({ id: "x", state: "done", done_at: 20, reply: "erledigt", updated_at: 15 }),
+      stored({ id: "h", handed_at: 12 }),
       stored({ id: "bad-kind", anchor: { kind: "code", index: 1, excerpt: "" } }),
       stored({ id: "bad-index", anchor: { kind: "item", index: 0, excerpt: "" } }),
       stored({ id: "" }),
       null,
     ],
   });
-  assert.deepEqual(plain(notes.map((n: any) => [n.id, n.kind, n.index, n.done, n.at, n.reply])), [
-    ["00000000-0000-4000-8000-000000000001", "item", 2, false, 10, ""],
-    ["x", "item", 2, true, 15, "erledigt"],
+  assert.deepEqual(plain(notes.map((n: any) => [n.id, n.kind, n.index, n.done, n.draft, n.at, n.reply])), [
+    ["00000000-0000-4000-8000-000000000001", "item", 2, false, true, 10, ""],
+    ["x", "item", 2, true, false, 15, "erledigt"],
+    ["h", "item", 2, false, false, 10, ""],
   ]);
-  assert.equal(m.notesAt(notes, "item", 2).length, 2);
+  assert.deepEqual(plain(m.noteCounts(notes)), { drafts: 1, handed: 1 }, "without handed_at a note is a draft");
+  assert.equal(m.notesAt(notes, "item", 2).length, 3);
   assert.equal(m.notesAt(notes, "row", 2).length, 0);
   assert.equal(m.excerptOf("  a\n\n b  "), "a b");
   const long = m.excerptOf("x".repeat(400));
@@ -175,7 +181,9 @@ test("decoration: a button at plain blocks, a card at annotated ones, the open f
   assert.equal(within(item, "tk-an__btn").length, 0, "no note button behind an annotated place");
   assert.equal(item.children[0].textContent, "Preis- und Abrechnungsmodell für Pulse", "the item text is the subject");
   assert.match(item.find("tk-an__box")[0].textContent, /Preise verifizieren/);
-  assert.match(item.find("tk-an__state")[0].textContent, /tk\.rep\.note\.open/);
+  assert.match(item.find("tk-an__state")[0].textContent, /^tk\.rep\.note\.draft$/, "not handed over yet");
+  assert.ok(item.find("tk-an__note")[0].classList.contains("is-draft"));
+  assert.ok(!item.classList.contains("is-done"), "an open note keeps the amber card");
   const more = item.find("tk-an__more");
   assert.equal(more.length, 1, "a further note is added at the bottom of the card");
   assert.match(more[0].textContent, /tk\.rep\.note\.more/);
@@ -188,6 +196,7 @@ test("decoration: a button at plain blocks, a card at annotated ones, the open f
   const rows = table.querySelectorAll("tbody tr");
   assert.equal(rows.length, 3, "a note row follows the annotated table row");
   assert.ok(rows[1].classList.contains("is-marked"), "the annotated row is marked");
+  assert.ok(rows[1].classList.contains("is-done") && rows[2].classList.contains("is-done"), "all done: done colour");
   assert.equal(within(rows[1], "tk-an__btn").length, 0, "and has no note button");
   assert.equal(rows[1].children.length, 3, "but keeps the button column, so the table stays aligned");
   assert.ok(rows[2].classList.contains("tk-an__tr"));
@@ -201,6 +210,33 @@ test("decoration: a button at plain blocks, a card at annotated ones, the open f
   assert.equal(lost.find("tk-an__card").length, 1, "as a card of its own");
   assert.match(lost.find("tk-an__subj")[0].textContent, /alter Absatz/);
   assert.match(lost.textContent, /verloren\?/);
+});
+
+test("decoration: a handed-over note is 'handed over · open'; a place whose notes are all done turns green", async () => {
+  const m = await load();
+  const para = { kind: "paragraph", index: 4, excerpt: "Ein Absatz." };
+  const notes = m.noteRows({
+    notes: [
+      stored({ id: "handed", handed_at: 11 }),
+      stored({ id: "d1", anchor: para, state: "done", handed_at: 11, done_at: 12 }),
+      stored({ id: "d2", anchor: para, state: "done", handed_at: 11, done_at: 13 }),
+    ],
+  });
+  const ui = { notes, editing: null, open() {}, edit() {}, remove() {}, save: async () => {}, cancel() {} };
+  const out = m.annotateReport(rendered(), ui);
+  const item = out.nodes[1].children[0];
+  assert.match(item.find("tk-an__state")[0].textContent, /^tk\.rep\.note\.open$/);
+  assert.match(item.find("tk-an__state")[0].attrs.title, /tk\.rep\.note\.openTip/);
+  assert.ok(!item.classList.contains("is-done"));
+  const card = out.nodes[2];
+  assert.ok(card.classList.contains("tk-an__card") && card.classList.contains("is-done"), "all done: done colour");
+  assert.deepEqual(
+    card.find("tk-an__state").map((n: Node_) => n.textContent),
+    ["tk.rep.note.done", "tk.rep.note.done"]
+  );
+  // a new note being written there is not done yet: the card stays amber meanwhile
+  const adding = m.annotateReport(rendered(), { ...ui, editing: { anchor: para, noteId: null, draft: {} } });
+  assert.ok(!adding.nodes[2].classList.contains("is-done"));
 });
 
 test("decoration: editing a saved note keeps its card, without the second-note action", async () => {

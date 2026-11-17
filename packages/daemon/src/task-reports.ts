@@ -4,8 +4,11 @@
  * the body never changes that state, neither for the UI nor for an agent) and
  * deletes it when done. While reading, the owner can leave notes on single
  * places of a report (heading, paragraph, list item, table row); they live in
- * the report's record, go with it on delete, and an agent marks them done with
- * a short reply (session start names the open ones). Not bound to a task
+ * the report's record and go with it on delete. A note is the owner's draft
+ * until the owner hands the report's drafts over to the agents in one click;
+ * only then does an agent see it (session start names the handed-over open
+ * ones, read and list show nothing else) and mark it done with a short reply.
+ * Not bound to a task
  * run (executor reports are, see task-app-api.ts) and no action authority.
  * One app record next to the task snapshot; visibility follows the task
  * domain rule (every owner domain must belong to the caller). */
@@ -62,6 +65,7 @@ export const TASK_REPORT_INPUTS = {
   task_report_note_edit: noteEditInput,
   task_report_note_delete: noteDeleteInput,
   task_report_note_done: noteDoneInput,
+  task_report_notes_hand: idInput,
 };
 export type TaskReportOperation = keyof typeof TASK_REPORT_INPUTS;
 
@@ -73,6 +77,9 @@ const noteSchema = z.strictObject({
   created_at: z.number().int().nonnegative(),
   updated_at: z.number().int().nonnegative().optional(),
   state: z.enum(["open", "done"]),
+  /** When the owner handed the note over to the agents; absent = still the owner's draft
+   * (notes from before the hand-over existed count as drafts too). */
+  handed_at: z.number().int().nonnegative().optional(),
   done_at: z.number().int().nonnegative().optional(),
   reply: z.string().optional(),
   done_by: z.string().optional(),
@@ -104,12 +111,14 @@ export interface ReportContext {
 }
 
 /** Note texts reach later sessions as the user's own instructions, so only the
- * owner's UI writes them. The UI holds the same agent credential an agent has;
- * the route, not the credential, is the proof. Agents read notes and mark them done. */
+ * owner's UI writes them and hands them over. The UI holds the same agent credential
+ * an agent has; the route, not the credential, is the proof. Agents read handed-over
+ * notes and mark them done. */
 export const OWNER_UI_REPORT_OPERATIONS: readonly TaskReportOperation[] = [
   "task_report_note_add",
   "task_report_note_edit",
   "task_report_note_delete",
+  "task_report_notes_hand",
 ];
 
 const storePath = (ctx: ReportContext) => join(dirname(ctx.path), "task-reports.json");
@@ -153,10 +162,18 @@ function changeReports<T>(path: string, change: (reports: TaskReport[]) => T): P
   );
 }
 
-const openNotes = (r: TaskReport) => (r.notes ?? []).filter((n) => n.state === "open").length;
+/** A draft is the owner's alone: an agent neither sees it nor counts it nor closes it. */
+const isDraft = (n: ReportNote) => n.state === "open" && n.handed_at === undefined;
+/** The notes this caller sees: the owner's UI all of them, an agent the handed-over and done ones. */
+const notesFor = (r: TaskReport, owner: boolean) => (r.notes ?? []).filter((n) => owner || !isDraft(n));
+const handedOpen = (r: TaskReport) => (r.notes ?? []).filter((n) => n.state === "open" && !isDraft(n));
+const isOwner = (ctx: ReportContext) => ctx.ownerUi === true;
 
-function meta(r: TaskReport) {
-  const open = openNotes(r);
+/** notes_open: open notes the caller sees; notes_draft (owner's UI only): those not handed over yet. */
+function meta(r: TaskReport, owner: boolean) {
+  const notes = notesFor(r, owner);
+  const open = notes.filter((n) => n.state === "open").length;
+  const drafts = notes.filter(isDraft).length;
   return {
     id: r.id,
     title: r.title,
@@ -167,6 +184,7 @@ function meta(r: TaskReport) {
     ...(r.read_at === undefined ? {} : { read_at: r.read_at }),
     bytes: Buffer.byteLength(r.body),
     ...(open === 0 ? {} : { notes_open: open }),
+    ...(drafts === 0 ? {} : { notes_draft: drafts }),
   };
 }
 
@@ -193,7 +211,7 @@ function saveReport(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) 
     if (reports.length >= TASK_REPORT_LIMIT)
       throw Object.assign(new Error("Task report limit reached"), { code: "capacity" });
     reports.push(report);
-    return meta(report);
+    return meta(report, isOwner(ctx));
   });
 }
 
@@ -201,7 +219,8 @@ function saveReport(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) 
 function readReport(ctx: ReportContext, principal: TaskPrincipal, id: string) {
   const report = readReports(storePath(ctx)).find((r) => r.id === id && visible(r, principal));
   if (!report) throw notFound();
-  return { ...meta(report), body: report.body, notes: report.notes ?? [] };
+  const owner = isOwner(ctx);
+  return { ...meta(report, owner), body: report.body, notes: notesFor(report, owner) };
 }
 
 /** Idempotent: read=true keeps the first read time, read=false puts the report back to unread. */
@@ -211,7 +230,7 @@ function markReport(ctx: ReportContext, principal: TaskPrincipal, id: string, re
     if (!report) throw notFound();
     if (read) report.read_at ??= (ctx.now ?? Date.now)();
     else delete report.read_at;
-    return meta(report);
+    return meta(report, isOwner(ctx));
   });
 }
 
@@ -241,27 +260,31 @@ function addNote(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
   };
   return changeReport(ctx, principal, input.id, (report) => {
     (report.notes ??= []).push(note);
-    return { report: meta(report), note };
+    return { report: meta(report, true), note };
   });
 }
 
-/** The owner rewrites a note. A changed note is a new instruction: it opens again. */
+/** The owner rewrites a note. A changed note is a new instruction: it opens again as a draft
+ * and reaches an agent only once it is handed over again. */
 function editNote(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
   const input = noteEditInput.parse(raw);
   return changeNote(ctx, principal, input, (note) => {
     note.text = cleanBody(input.text);
     note.updated_at = (ctx.now ?? Date.now)();
     note.state = "open";
+    delete note.handed_at;
     delete note.done_at;
     delete note.reply;
     delete note.done_by;
   });
 }
 
-/** An agent finished what the note asked for; the short reply shows under the note. */
+/** An agent finished what the note asked for; the short reply shows under the note.
+ * A draft is not there for an agent, so it cannot be closed either. */
 function finishNote(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
   const input = noteDoneInput.parse(raw);
   return changeNote(ctx, principal, input, (note) => {
+    if (isDraft(note)) throw noteNotFound();
     note.state = "done";
     note.done_at = (ctx.now ?? Date.now)();
     note.done_by = principal.actor_id;
@@ -277,7 +300,19 @@ function deleteNote(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) 
     if (at < 0) throw noteNotFound();
     report.notes!.splice(at, 1);
     if (report.notes!.length === 0) delete report.notes;
-    return { deleted: true, id: input.note_id, report: meta(report) };
+    return { deleted: true, id: input.note_id, report: meta(report, true) };
+  });
+}
+
+/** "Hand over to agent": every draft of one report reaches the agents at once (the owner's
+ * click is the go-ahead; nothing further is asked). Returns all notes for the UI. */
+function handNotes(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
+  const { id } = idInput.parse(raw);
+  const at = (ctx.now ?? Date.now)();
+  return changeReport(ctx, principal, id, (report) => {
+    const drafts = (report.notes ?? []).filter(isDraft);
+    for (const note of drafts) note.handed_at = at;
+    return { handed: drafts.length, report: meta(report, true), notes: report.notes ?? [] };
   });
 }
 
@@ -301,23 +336,22 @@ function changeNote(
     const note = report.notes?.find((n) => n.id === ref.note_id);
     if (!note) throw noteNotFound();
     change(note);
-    return { report: meta(report), note };
+    return { report: meta(report, isOwner(ctx)), note };
   });
 }
 
-/** Reports in the caller's domains that carry open notes, newest open note first
- * (session start: what the owner left for an agent). */
-export function reportsWithOpenNotes(ctx: ReportContext, principal: TaskPrincipal) {
-  const newest = (r: TaskReport) =>
-    Math.max(...(r.notes ?? []).filter((n) => n.state === "open").map((n) => n.updated_at ?? n.created_at));
+/** Reports in the caller's domains with open notes the owner handed over, latest hand-over
+ * first (session start: what the owner gave an agent to do). Drafts are never named. */
+export function reportsWithHandedNotes(ctx: ReportContext, principal: TaskPrincipal) {
+  const latest = (r: TaskReport) => Math.max(...handedOpen(r).map((n) => n.handed_at!));
   return readReports(storePath(ctx))
-    .filter((r) => visible(r, principal) && openNotes(r) > 0)
-    .sort((a, b) => newest(b) - newest(a))
+    .filter((r) => visible(r, principal) && handedOpen(r).length > 0)
+    .sort((a, b) => latest(b) - latest(a))
     .map((r) => ({
       id: r.id,
       title: r.title,
       ...(r.project === undefined ? {} : { project: r.project }),
-      open: openNotes(r),
+      open: handedOpen(r).length,
     }));
 }
 
@@ -326,7 +360,8 @@ function listReports(ctx: ReportContext, principal: TaskPrincipal, raw: unknown)
   const reports = readReports(storePath(ctx))
     .filter((r) => visible(r, principal))
     .sort(order);
-  return { reports: reports.map(meta), unread: reports.filter((r) => r.read_at === undefined).length };
+  const owner = isOwner(ctx);
+  return { reports: reports.map((r) => meta(r, owner)), unread: reports.filter((r) => r.read_at === undefined).length };
 }
 
 const HANDLERS: Record<TaskReportOperation, (ctx: ReportContext, principal: TaskPrincipal, raw: unknown) => unknown> = {
@@ -342,6 +377,7 @@ const HANDLERS: Record<TaskReportOperation, (ctx: ReportContext, principal: Task
   task_report_note_edit: editNote,
   task_report_note_delete: deleteNote,
   task_report_note_done: finishNote,
+  task_report_notes_hand: handNotes,
 };
 
 export async function callTaskReport(

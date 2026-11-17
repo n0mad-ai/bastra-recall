@@ -36,6 +36,7 @@ export const ICON = {
   browser: "M4 4h16v16H4ZM10 4v16M13 8h4M13 12h4M13 16h3",
   telemetry: "M3 12h4l3-7l4 14l3-7h4",
   tasks: "M4 5h16v15H4ZM4 9h16M9 3v4M15 3v4M8 14l2.5 2.5L16 12",
+  reports: "M6 3h8l4 4v14H6ZM14 3v4h4M9 11h6M9 14h6M9 17h4",
   areas: "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2ZM12 11v6M9 14h6",
   import: "M12 3v10M8 9l4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2",
   settings: "M4 7h10M18 7h2M4 17h4M12 17h8M14 4v6M8 14v6",
@@ -67,7 +68,8 @@ const registry = new Map();
  * @param {{ id: string, group: string, order: number, labelKey?: string, label?: string,
  *           titleKey?: string, icon: string, kind?: "view"|"action", pinAgent?: boolean,
  *           mount?: (stage: HTMLElement, ctx: object) => (() => void) | void,
- *           onAction?: (ctx: object) => void, badge?: () => number,
+ *           onAction?: (ctx: object) => void, badge?: () => number, badgeAccent?: boolean,
+ *           lit?: () => boolean, enter?: () => void, tip?: () => string,
  *           section?: { frame?: boolean, fit?: boolean },
  *           greetingKey?: string, presetKeys?: string[],
  *           tabs?: { id: string, labelKey: string, badge?: () => number,
@@ -78,6 +80,11 @@ const registry = new Map();
  *             (Telemetry, Settings) or none (Tasks, Mail, Docs, …).
  *             fit: no scrolling; the content fills the stage height exactly.
  *             Without `section`, mount() gets the bare stage (vault views).
+ * lit       — when the rail entry is lit, if not simply "its view is shown" (Tasks and
+ *             Reports share the Tasks view; an action entry can be lit this way too).
+ * enter     — what a click on a view entry does instead of switching to its view.
+ * tip       — tooltip and aria-label built at draw time (counts); default titleKey or label.
+ * badgeAccent — the badge in the cyan accent instead of amber.
  * greetingKey / presetKeys — agent window greeting and suggestions
  *             (prototype *_GREETING / *_PRESETS). Default: the vault greeting.
  * tabs      — right panel tabs. The first tab must have id "areas" (it is the

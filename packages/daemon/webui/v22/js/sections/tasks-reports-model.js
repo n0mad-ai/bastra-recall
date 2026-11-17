@@ -4,10 +4,13 @@
 
 const str = (v) => typeof v === "string" && v.trim() !== "";
 const num = (v) => Number.isFinite(v) && v >= 0;
+/** A positive whole count, else 0. */
+const count = (v) => (Number.isInteger(v) && v > 0 ? v : 0);
 
 /** One list row from the daemon, or null when its shape is off (external input). */
 function row(x) {
   if (!x || typeof x !== "object" || !str(x.id) || !str(x.title) || !num(x.created_at)) return null;
+  const open = count(x.notes_open);
   return {
     id: x.id,
     title: x.title,
@@ -16,7 +19,9 @@ function row(x) {
     session: str(x.origin?.session) ? x.origin.session : "",
     createdAt: x.created_at,
     readAt: num(x.read_at) ? x.read_at : null,
-    notesOpen: Number.isInteger(x.notes_open) && x.notes_open > 0 ? x.notes_open : 0,
+    notesOpen: open,
+    // drafts: open notes not handed over to the agents yet (part of notesOpen)
+    notesDraft: Math.min(count(x.notes_draft), open),
   };
 }
 
@@ -30,6 +35,15 @@ export function reportRows(answer) {
 }
 
 export const unreadCount = (rows) => rows.filter((r) => r.readAt === null).length;
+
+/** Reports with notes the owner has not handed over yet (rail tooltip). */
+export const draftReports = (rows) => rows.filter((r) => r.notesDraft > 0).length;
+
+/** The two note counts of a report: drafts still with the owner, handed-over open ones with the agent. */
+export const noteCounts = (notes) => ({
+  drafts: notes.filter((n) => n.draft).length,
+  handed: notes.filter((n) => !n.done && !n.draft).length,
+});
 
 /** "claude-code · s-12" — who filed the report. */
 export const originText = (r) => [r.client, r.session].filter(Boolean).join(" · ");
@@ -98,6 +112,7 @@ export function reportBlocks(md) {
 // ── Notes on single places of a report (task_report_note_*). The anchor names
 // the block: its kind, its 1-based number among the annotatable blocks of the
 // rendered report and a short excerpt for an agent reading without the UI.
+// A note is the owner's draft until handed over (handed_at); only then an agent sees it.
 const NOTE_KINDS = ["heading", "paragraph", "item", "row"];
 /** Longest excerpt the page sends; the daemon accepts up to 300 characters. */
 const EXCERPT_MAX = 160;
@@ -115,13 +130,15 @@ function note(x) {
   const a = x?.anchor;
   if (!str(x?.id) || !str(x.text) || !num(x.created_at) || !a || !NOTE_KINDS.includes(a.kind)) return null;
   if (!Number.isInteger(a.index) || a.index < 1) return null;
+  const done = x.state === "done";
   return {
     id: x.id,
     kind: a.kind,
     index: a.index,
     excerpt: typeof a.excerpt === "string" ? a.excerpt : "",
     text: x.text,
-    done: x.state === "done",
+    done,
+    draft: !done && !num(x.handed_at),
     at: num(x.updated_at) ? x.updated_at : x.created_at,
     doneAt: num(x.done_at) ? x.done_at : null,
     reply: str(x.reply) ? x.reply : "",

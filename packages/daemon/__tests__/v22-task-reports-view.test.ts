@@ -2,8 +2,9 @@
 // fake DOM: the actions sit in the reader's head and nowhere below the report,
 // the search above the list filters by title and project (#1597) while the
 // shown report stays open, and Escape closes the note field, then empties the
-// search, then leaves the view. The real module runs in a VM context; its
-// imports are replaced by small stand-ins.
+// search, then leaves the view. With drafts among the notes, "Hand over to
+// agent" leads the head and "Read" steps back. The real module runs in a VM
+// context; its imports are replaced by small stand-ins.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -28,8 +29,10 @@ const REPORTS = [
   },
 ];
 
-async function view() {
+async function view(notes: unknown[] = []) {
   const calls: Array<[string, unknown]> = [];
+  const said: Array<[string, unknown]> = [];
+  const events: string[] = [];
   const source = strip(await read("sections/tasks-reports-model.js")) + strip(await read("sections/tasks-reports.js"));
   const context: Record<string, unknown> = {
     h,
@@ -45,20 +48,36 @@ async function view() {
     ago: (at: number) => `${at}m`,
     S: {},
     emit() {},
-    say() {},
-    act: (fn: () => unknown) => fn(),
+    say: (text: string, tone: unknown) => said.push([text, tone]),
+    act: async (fn: () => Promise<unknown>) => {
+      try {
+        const msg = await fn();
+        if (msg) said.push([msg as string, undefined]);
+      } catch (e) {
+        said.push([(e as Error).message, "error"]);
+      }
+    },
     api: async (name: string, input: unknown) => {
       calls.push([name, input]);
-      return name === "report_read" ? { body: "Erster Absatz.", notes: [] } : {};
+      if (name === "report_notes_hand") {
+        if (hand.fail) throw Object.assign(new Error("tk.err.not_found"), { code: "not_found" });
+        return { handed: 1, notes: notes.map((n: any) => ({ ...n, handed_at: 99 })) };
+      }
+      return name === "report_read" ? { body: "Erster Absatz.", notes } : {};
     },
     fmtAt: (at: number) => `@${at}`,
     annotateReport: (nodes: Node_[]) => ({ nodes, focus: null }),
-    document: { activeElement: null },
+    ICON: { reports: "M0 0" },
+    document: { activeElement: null, dispatchEvent: (e: { type: string }) => events.push(e.type) },
+    CustomEvent: class {
+      constructor(public type: string) {}
+    },
     JSON,
   };
+  const hand = { fail: false };
   const v = runInNewContext(
     source +
-      "\n({ R, notesUi, reportRows, openReport, openReports, reportsRenderer, escapeReports, reportsOpen, matchReports })",
+      "\n({ R, notesUi, reportRows, openReport, openReports, closeReports, reportsRenderer, escapeReports, reportsOpen, matchReports, reportsArea, tasksLit, showCalendar })",
     context
   );
   (context.data as { reports: unknown }).reports = v.reportRows({ reports: REPORTS });
@@ -66,7 +85,7 @@ async function view() {
   host.clientWidth = 1000;
   const draw = v.reportsRenderer(host);
   context.emit = () => draw();
-  return { v, host, draw, calls };
+  return { v, host, draw, calls, said, events, hand, context };
 }
 
 const byClass = (root: Node_, cls: string) => root.find(cls);
@@ -94,6 +113,7 @@ test("the reader's head holds title, meta line, open notes and the actions; none
     "project, filing time and origin"
   );
   assert.equal(byClass(head, "tk-rep__open").length, 0, "no notes, no badge");
+  assert.equal(byClass(head, "tk-rep__hand").length, 0, "no drafts, no hand-over");
   const acts = one(head, "tk-rep__acts");
   assert.deepEqual(
     acts.children.map((b) => b.textContent),
@@ -109,15 +129,28 @@ test("the reader's head holds title, meta line, open notes and the actions; none
   assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1))), ["report_mark", { id: ID(1), read: true }]);
 });
 
-test("a read report offers 'unread', shows its open notes in the head and its read time below", async () => {
-  const { v, host } = await view();
+const NOTE = (n: number, over: Record<string, unknown> = {}) => ({
+  id: ID(n),
+  anchor: { kind: "paragraph", index: 1, excerpt: "Erster Absatz." },
+  text: `Anmerkung ${n}`,
+  actor: "ui",
+  created_at: 5,
+  state: "open",
+  ...over,
+});
+
+test("a read report offers 'unread', shows its handed-over notes in the head and its read time below", async () => {
+  const { v, host } = await view([NOTE(1, { handed_at: 7 }), NOTE(2, { handed_at: 7 })]);
   await v.openReport(ID(3));
   const head = one(host, "tk-rep__head");
   assert.deepEqual(
     one(head, "tk-rep__acts").children.map((b) => b.textContent),
     ["tk.rep.markUnread", "tk.rep.delete"]
   );
-  assert.match(one(head, "tk-rep__open").textContent, /tk\.rep\.note\.count \{"n":2\}/);
+  const [handed] = byClass(head, "tk-rep__open");
+  assert.match(handed.textContent, /tk\.rep\.note\.handed \{"n":2\}/);
+  assert.match(handed.attrs.title, /tk\.rep\.note\.handedTip/);
+  assert.equal(byClass(head, "is-draft").length, 0, "no drafts");
   assert.equal(one(head, "tk-rep__meta").children[2].textContent, "codex · s-1");
   assert.equal(one(host, "mb-rd__facts").textContent, "tk.rep.readAt@40");
 });
@@ -201,4 +234,93 @@ test("Escape outside the search field leaves the view; the next visit starts wit
   await v.openReports();
   assert.equal(v.R.q, "");
   assert.equal(listRows(host).length, 3);
+});
+
+test("hand-over: with drafts the head leads with 'Hand over to agent', 'Read' steps back, one click hands them over", async () => {
+  const { v, host, calls, said } = await view([NOTE(1), NOTE(2, { handed_at: 7 })]);
+  await v.openReport(ID(1));
+  const head = one(host, "tk-rep__head");
+  const acts = one(head, "tk-rep__acts").children;
+  assert.deepEqual(
+    acts.map((b) => b.textContent),
+    ['tk.rep.hand {"n":1}', "tk.rep.markRead", "tk.rep.delete"]
+  );
+  assert.ok(acts[0].classList.contains("is-primary"), "the hand-over is the head's main action");
+  assert.ok(!acts[1].classList.contains("is-primary"), "never two equally loud main buttons side by side");
+  assert.match(acts[0].attrs.title, /tk\.rep\.handTip/);
+  assert.deepEqual(
+    byClass(head, "tk-rep__open").map((n) => [n.textContent, n.classList.contains("is-draft")]),
+    [
+      ['tk.rep.note.drafts {"n":1}', true],
+      ['tk.rep.note.handed {"n":1}', false],
+    ],
+    "drafts (still with you) and handed-over open notes (with the agent) apart"
+  );
+
+  await acts[0].click();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1))), ["report_notes_hand", { id: ID(1) }]);
+  assert.deepEqual(said.at(-1), ['tk.rep.handDone {"n":1}', undefined], "a short confirmation, no dialog");
+  const after = one(host, "tk-rep__head");
+  assert.equal(byClass(after, "tk-rep__hand").length, 0, "no drafts left, no button");
+  assert.ok(one(after, "tk-rep__acts").children[0].classList.contains("is-primary"), "'Read' leads again");
+  assert.match(one(after, "tk-rep__open").textContent, /tk\.rep\.note\.handed \{"n":2\}/);
+});
+
+test("hand-over against a Recall that predates it: a clear message, nothing breaks", async () => {
+  const { v, host, said, hand } = await view([NOTE(1)]);
+  hand.fail = true;
+  await v.openReport(ID(1));
+  await one(host, "tk-rep__hand").click();
+  assert.deepEqual(said.at(-1), ["tk.rep.handOld", "error"]);
+  assert.equal(byClass(host, "tk-rep__hand").length, 1, "the drafts stay drafts, the button stays");
+});
+
+test("list rows show drafts and handed-over notes apart", async () => {
+  const { v, host, context } = await view();
+  (context.data as { reports: unknown }).reports = v.reportRows({
+    reports: [{ ...REPORTS[0], notes_open: 3, notes_draft: 2 }, REPORTS[2]],
+  });
+  await v.openReports();
+  const marks = (row: Node_) =>
+    byClass(row, "tk-an__count").map((n) => [n.textContent, n.classList.contains("is-draft")]);
+  const [first, third] = listRows(host);
+  assert.deepEqual(marks(first), [
+    ['tk.rep.note.drafts {"n":2}', true],
+    ['tk.rep.note.handed {"n":1}', false],
+  ]);
+  assert.deepEqual(marks(third), [['tk.rep.note.handed {"n":2}', false]], "an older answer without drafts");
+});
+
+test("rail: 'Reports' is lit while the view is open and 'Tasks' otherwise; both redraw the rail", async () => {
+  const { v, events, context } = await view();
+  (context.state as { view: string }).view = "tasks";
+  const area = v.reportsArea;
+  assert.equal(area.kind, "action");
+  assert.equal(area.group, "work");
+  assert.equal(area.order, 2, "right below Tasks");
+  assert.equal(area.labelKey, "nav.reports");
+  assert.equal(area.icon, "M0 0");
+  assert.ok(v.tasksLit() && !area.lit(), "calendar: Tasks lit");
+  assert.equal(area.badge(), 2, "the badge counts the unread reports");
+  assert.equal(area.badgeAccent, true, "in the cyan of unread reports");
+  assert.equal(area.tip(), 'nav.reports · nav.reportsUnread {"n":2}');
+
+  await area.onAction();
+  assert.ok(area.lit() && !v.tasksLit(), "reports open: Reports lit, Tasks not");
+  assert.deepEqual(events, ["recall:nav"], "the rail is told");
+  const sel = v.R.sel;
+  area.onAction();
+  assert.equal(v.R.sel, sel, "a second click keeps the view");
+
+  v.showCalendar();
+  assert.ok(!v.reportsOpen() && v.tasksLit() && !area.lit(), "Tasks goes back to the calendar");
+  assert.deepEqual(events, ["recall:nav", "recall:nav"]);
+  (context.state as { view: string }).view = "ring";
+  assert.ok(!v.tasksLit() && !area.lit(), "elsewhere neither is lit");
+
+  (context.data as { reports: unknown }).reports = v.reportRows({
+    reports: REPORTS.map((r) => ({ ...r, read_at: 50, notes_open: 1, notes_draft: 1 })),
+  });
+  assert.equal(area.badge(), 0, "nothing unread, no badge");
+  assert.equal(area.tip(), 'nav.reports · nav.reportsDrafts {"n":3}', "reports with notes not handed over");
 });

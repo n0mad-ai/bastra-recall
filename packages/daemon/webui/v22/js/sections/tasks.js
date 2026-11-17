@@ -42,7 +42,9 @@ import {
   reportsOpen,
   resetReports,
   escapeReports,
-  hasUnreadReports,
+  reportsArea,
+  tasksLit,
+  showCalendar,
 } from "./tasks-reports.js";
 import en from "../i18n/tasks-en.js";
 import de from "../i18n/tasks-de.js";
@@ -348,7 +350,9 @@ registerArea({
   labelKey: "nav.tasks",
   icon: ICON.tasks,
   pinAgent: true,
-  dot: hasUnreadReports, // unread task reports: own dot next to the due badge (js/nav.js)
+  // the reading view has its own rail entry right below (reportsArea): Tasks is lit on the calendar
+  lit: tasksLit,
+  enter: showCalendar,
   section: { frame: false, fit: true },
   greetingKey: "agent.greeting.tasks",
   presetKeys: ["agent.sug.due", "agent.sug.remind"],
@@ -359,3 +363,4 @@ registerArea({
   ],
   mount,
 });
+registerArea(reportsArea);

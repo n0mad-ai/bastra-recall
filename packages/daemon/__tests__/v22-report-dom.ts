@@ -14,6 +14,7 @@ export class Node_ {
   disabled = false;
   hidden = false;
   scrollTop = 0;
+  dataset: Record<string, string> = {};
   clientWidth = 0;
   style = { setProperty() {}, height: "" };
   private set = new Set<string>();

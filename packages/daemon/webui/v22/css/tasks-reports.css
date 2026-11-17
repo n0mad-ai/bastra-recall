@@ -146,9 +146,23 @@
 .tk-rep__acts {
   flex: none;
 }
+/* note counts: drafts still with the owner step back (dashed, muted), handed-over open ones are amber */
+.tk-rep__open.is-draft {
+  border: 1px dashed var(--line-30);
+  background: transparent;
+  color: var(--muted);
+}
+.tk-an__count.is-draft {
+  color: var(--muted);
+}
 /* narrow view: the title takes the whole line, the actions go below it */
 .tk-rv.is-narrow .tk-rep__id {
   flex-basis: 100%;
+}
+/* with "Hand over to agent" the three actions may need a second line there */
+.tk-rv.is-narrow .tk-rep__acts {
+  flex: 1 1 100%;
+  min-width: 0;
 }
 
 /* rows: unread reports stand out, read ones step back */
@@ -318,6 +332,12 @@ li.tk-an__card > .tk-an__subj::before {
   background: rgba(95, 211, 154, 0.08);
   color: var(--ok);
 }
+/* a draft: still with the owner, no agent sees it yet */
+.tk-an__note.is-draft .tk-an__state {
+  border: 1px dashed var(--line-30);
+  background: transparent;
+  color: var(--muted);
+}
 .tk-an__at {
   white-space: nowrap;
 }
@@ -334,6 +354,7 @@ li.tk-an__card > .tk-an__subj::before {
   color: var(--muted);
   font: 10px var(--mono);
   letter-spacing: 0.12em;
+  white-space: nowrap;
   cursor: pointer;
 }
 .tk-an__act:hover {
@@ -409,6 +430,29 @@ li.tk-an__card > .tk-an__subj::before {
 
 .tk-an__count {
   color: var(--amber);
+}
+/* a place whose notes are all done: the card in the done colour instead of amber */
+.tk-an__card.is-done {
+  border-color: rgba(95, 211, 154, 0.35);
+  background: rgba(95, 211, 154, 0.04);
+  box-shadow: inset 0 2px 0 rgba(95, 211, 154, 0.7);
+}
+.tk-an__card.is-done > .tk-an__subj {
+  border-bottom-color: rgba(95, 211, 154, 0.2);
+}
+li.tk-an__card.is-done > .tk-an__subj::before {
+  background: var(--ok);
+}
+.tk-rep__tbl tr.is-marked.is-done > td {
+  background: rgba(95, 211, 154, 0.06);
+}
+.tk-rep__tbl tr.is-marked.is-done > td:first-child,
+.tk-rep__tbl tr.tk-an__tr.is-done > td.tk-an__tcell {
+  box-shadow: inset 3px 0 0 var(--ok);
+}
+.tk-rep__tbl tr.tk-an__tr.is-done > td.tk-an__tcell {
+  border-bottom-color: rgba(95, 211, 154, 0.3);
+  background: rgba(95, 211, 154, 0.04);
 }
 /* notes whose place is no longer found: the same cards, the stored excerpt as subject */
 .tk-an__lost {

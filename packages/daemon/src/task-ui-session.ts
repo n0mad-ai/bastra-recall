@@ -110,7 +110,7 @@ export function dispatchTaskUi(
       if ((await authenticateTask(session.authorization, ctx.authPath)).role !== "agent") reject("forbidden");
       const input = await readJsonBody(req, MAX_BODY_BYTES);
       session.lastUsed = Date.now();
-      // This route alone is the owner's UI: report notes may be written here only.
+      // This route alone is the owner's UI: report notes may be written and handed over here only.
       sendJson(res, 200, await callTaskCrud({ ...ctx, ownerUi: true }, session.authorization, operation as any, input));
     } catch (error) {
       const failure = taskFailure(error);

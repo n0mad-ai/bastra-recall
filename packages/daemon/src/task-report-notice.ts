@@ -1,13 +1,13 @@
 /** Session-start notice for report notes: the owner left notes on single places
- * of task reports in the Recall UI (Tasks › Reports), and the next agent session
- * learns about them the way it learns about open vault-care flags — a short
+ * of task reports in the Recall UI (Tasks › Reports) and handed them over to the
+ * agents; the next agent session learns about the handed-over open ones the way it learns about open vault-care flags — a short
  * standing block, no text of the notes themselves (task_report_read carries
  * them). Authenticated like the due cards: without a task credential, or with
  * one for other domains, nothing is said. Wording follows language.primary;
  * an unlisted language gets English. Text the product writes, never matched. */
 import { stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { authenticateTask } from "./task-auth.js";
-import { reportsWithOpenNotes, type ReportContext } from "./task-reports.js";
+import { reportsWithHandedNotes, type ReportContext } from "./task-reports.js";
 import { tasksEnabled } from "./tasks-enabled.js";
 import { getPrimaryLanguage } from "./settings.js";
 
@@ -16,7 +16,7 @@ export const REPORT_NOTES_TAG = "report-notes";
 const MAX_LISTED = 5;
 const TITLE_MAX = 80;
 
-type Listed = ReturnType<typeof reportsWithOpenNotes>;
+type Listed = ReturnType<typeof reportsWithHandedNotes>;
 
 interface Wording {
   head: (notes: number, reports: number) => string;
@@ -28,7 +28,7 @@ interface Wording {
 const WORDING_BY_LANGUAGE: Readonly<Record<string, Wording>> = {
   en: {
     head: (notes, reports) =>
-      `The user left ${notes} open note(s) on ${reports} task report(s) in the Recall UI (Tasks › Reports):`,
+      `The user left ${notes} open note(s) on ${reports} task report(s) in the Recall UI (Tasks › Reports) and handed them over to you:`,
     row: (title, id, open, project) => `- "${title}"${project ? ` [${project}]` : ""} — ${open} open, id ${id}`,
     more: (n) => `- … and ${n} more report(s) with open notes (task_report_list shows notes_open).`,
     body:
@@ -44,7 +44,7 @@ const WORDING_BY_LANGUAGE: Readonly<Record<string, Wording>> = {
   },
   de: {
     head: (notes, reports) =>
-      `Der Nutzer hat ${notes} offene Anmerkung(en) in ${reports} Aufgabenbericht(en) der Recall-Oberfläche (Aufgaben › Berichte) hinterlassen:`,
+      `Der Nutzer hat ${notes} offene Anmerkung(en) in ${reports} Aufgabenbericht(en) der Recall-Oberfläche (Aufgaben › Berichte) hinterlassen und an dich übergeben:`,
     row: (title, id, open, project) => `- „${title}“${project ? ` [${project}]` : ""} — ${open} offen, id ${id}`,
     more: (n) => `- … und ${n} weitere(r) Bericht(e) mit offenen Anmerkungen (task_report_list zeigt notes_open).`,
     body:
@@ -88,7 +88,7 @@ export async function reportNotesNotice(
   if (!tasksEnabled()) return undefined;
   try {
     const principal = await authenticateTask(authorization, ctx.authPath);
-    const text = formatReportNotesNotice(reportsWithOpenNotes(ctx, principal), await getPrimaryLanguage());
+    const text = formatReportNotesNotice(reportsWithHandedNotes(ctx, principal), await getPrimaryLanguage());
     return text || undefined;
   } catch {
     return undefined;
