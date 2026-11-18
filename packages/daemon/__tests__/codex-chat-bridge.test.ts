@@ -1,10 +1,10 @@
 import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, symlink, mkdir, chmod } from "node:fs/promises";
+import { mkdtemp, open, readFile, symlink, mkdir, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createConnection } from "node:net";
-import { once } from "node:events";
+import { on, once } from "node:events";
 import { WebSocket, WebSocketServer } from "ws";
 import { createServer } from "node:http";
 import { createCodexChatBridge, resolveCodexBackendSocket, type CodexBridgeSession } from "../src/codex-chat-bridge.js";
@@ -114,20 +114,36 @@ async function fixture(t: TestContext) {
     calls,
     frameTypes,
     socket: () => socket!,
-    complete: (text: string) => {
-      socket!.send(
-        JSON.stringify({
-          method: "item/completed",
-          params: { threadId: "thread-a", turnId: busy, item: { type: "agentMessage", id: "visible-item", text } },
-        })
-      );
-      socket!.send(
-        JSON.stringify({
-          method: "turn/completed",
-          params: { threadId: "thread-a", turn: { id: busy, status: "completed" } },
-        })
-      );
-      busy = undefined;
+    complete: async (text: string) => {
+      const turnId = busy;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2000);
+      const messages = on(ui, "message", { signal: controller.signal });
+      try {
+        socket!.send(
+          JSON.stringify({
+            method: "item/completed",
+            params: { threadId: "thread-a", turnId: busy, item: { type: "agentMessage", id: "visible-item", text } },
+          })
+        );
+        socket!.send(
+          JSON.stringify({
+            method: "turn/completed",
+            params: { threadId: "thread-a", turn: { id: busy, status: "completed" } },
+          })
+        );
+        busy = undefined;
+        // The bridge forwards completion only after all correlated receipts
+        // have been written and synced, so this also drains the journal queue.
+        for await (const [raw] of messages) {
+          const m = JSON.parse(String(raw));
+          if (m.method === "turn/completed" && m.params?.threadId === "thread-a" && m.params?.turn?.id === turnId)
+            return;
+        }
+      } finally {
+        clearTimeout(timer);
+        await messages.return?.();
+      }
     },
   };
 }
@@ -168,15 +184,12 @@ test("Codex bridge registers only the actual UI thread; idle/busy dispatch and c
     clientUserMessageId: "f85462ae-ab64-40f7-9039-aa8297fb3203",
     input: [{ type: "text", text: "typed" }],
   });
-  f.complete("human response");
-  await until(() => f.calls.includes("turn/start"));
-  await new Promise((r) => setTimeout(r, 15));
+  await f.complete("human response");
   assert.equal((await delivery(s, "deliver", "task-id-one")).ok, true);
   assert.equal(f.calls.at(-1), "turn/start");
   assert.equal((await delivery(s, "deliver", "task-id-two")).ok, true);
   assert.equal(f.calls.at(-1), "turn/steer");
-  f.complete("task-id-one task-id-two");
-  await new Promise((r) => setTimeout(r, 20));
+  await f.complete("task-id-one task-id-two");
   const events = (await readFile(s.transcriptPath, "utf8"))
     .trim()
     .split("\n")
@@ -192,6 +205,52 @@ test("Codex bridge registers only the actual UI thread; idle/busy dispatch and c
       .filter((e) => e.type === "assistant" && e.message.content[0].text.includes("task-id-two"))
       .every((e) => events.some((p) => p.uuid === e.parentUuid && p.origin.kind === "peer"))
   );
+});
+
+test("Codex completion waits for the second correlated receipt to persist", { timeout: 2000 }, async (t) => {
+  let release!: () => void;
+  let signalBlocked!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const blocked = new Promise<void>((resolve) => {
+    signalBlocked = resolve;
+  });
+  // Register first so a failed assertion cannot strand bridge.close() behind the gate.
+  t.after(() => release());
+  const f = await fixture(t);
+  const s = f.sessions[0];
+  const handle = await open(s.transcriptPath, "r");
+  const prototype = Object.getPrototypeOf(handle);
+  await handle.close();
+  const writeFile = prototype.writeFile;
+  let receipts = 0;
+  t.mock.method(prototype, "writeFile", async function (this: any, data: any, ...args: any[]) {
+    if (JSON.parse(String(data)).type === "assistant" && ++receipts === 2) {
+      signalBlocked();
+      await gate;
+    }
+    return writeFile.call(this, data, ...args);
+  });
+  assert.equal((await delivery(s, "deliver", "task-id-one")).ok, true);
+  assert.equal(f.calls.at(-1), "turn/start");
+  assert.equal((await delivery(s, "deliver", "task-id-two")).ok, true);
+  assert.equal(f.calls.at(-1), "turn/steer");
+  const listeners = f.ui.listenerCount("message");
+  let completed = false;
+  const completion = f.complete("task-id-one task-id-two").then(() => {
+    completed = true;
+  });
+  await blocked;
+  assert.equal(completed, false);
+  release();
+  await completion;
+  assert.equal(f.ui.listenerCount("message"), listeners);
+  const events = (await readFile(s.transcriptPath, "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.equal(events.filter((event) => event.type === "assistant").length, 2);
 });
 
 test("Codex bridge rejects wrong generation/token and closed UI; resume rotates endpoint generation", async (t) => {
