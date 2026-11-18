@@ -356,8 +356,11 @@ test("#1331: friendly agent notify defaults armed and help describes the actual 
       .arm,
     true
   );
-  assert.doesNotMatch(COMMAND_HELP.tasks, /--arm braucht Owner-Rolle/);
-  assert.match(COMMAND_HELP.tasks, /Aufgaben.*--agent.*scharf/s);
+  assert.doesNotMatch(COMMAND_HELP.tasks, /--arm requires (?:the )?owner role/i);
+  assert.match(
+    COMMAND_HELP.tasks,
+    /Instructed tasks are created armed directly with --agent;\s+--agent --arm is allowed for every task level without further owner approval\./
+  );
 });
 
 test("#1594 error texts are per-language data with English as the fallback", () => {
