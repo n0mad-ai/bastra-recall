@@ -492,6 +492,10 @@ export interface DaemonProbe {
  * The endpoint rides back in the result, so every caller can print the address
  * the number came from instead of assuming one. That is the whole guard: a
  * vault size and a URL in the same report are now provably the same instance.
+ *
+ * #1508: deliberately its own request rather than `getJson` (prompt-loopback.ts):
+ * its report names the HTTP status, the socket error code and the timeout
+ * apart, which a helper that folds every failure into null cannot give back.
  */
 export function probeDaemon(endpoint: DaemonEndpoint = resolveDaemonEndpoint()): Promise<DaemonProbe> {
   return new Promise((resolve_) => {

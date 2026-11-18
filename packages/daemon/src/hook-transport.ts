@@ -30,7 +30,7 @@ export function readStdin(): Promise<string> {
  * bracketed form through as `hostname` sent "[::1]" itself to the resolver,
  * which is not a hostname, and failed with EAI_AGAIN instead of connecting.
  */
-function unbracketHostname(hostname: string): string {
+export function unbracketHostname(hostname: string): string {
   return hostname.replace(/^\[|\]$/g, "");
 }
 

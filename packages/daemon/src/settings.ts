@@ -1,4 +1,3 @@
-import { EVIDENCE_GATE_DEFAULT } from "./settings-defaults.js";
 export { EVIDENCE_GATE_DEFAULT } from "./settings-defaults.js";
 import { SETTINGS_REGISTRY } from "./settings-registry.js";
 /**
@@ -38,13 +37,12 @@ import { randomBytes } from "node:crypto";
 import type { EmbeddingSource } from "./embedding-status.js";
 import { isOffValue, isOnValue } from "./env.js";
 import {
-  DEFAULT_DOCS_LANGUAGE,
-  DEFAULT_DOCS_MODE,
   GENERATION_MODEL_DEFAULT,
   mutateSettings,
   normalizeCorsOrigin,
   readSettings,
   settingsFilePath,
+  type CliSettings,
   type DocsMode,
   type EmbeddingProviderName,
   type UpdateMode,
@@ -71,9 +69,49 @@ export {
 } from "./settings-file.js";
 export type { UpdateMode, EmbeddingProviderName, DocsMode, CliSettings } from "./settings-file.js";
 
+// #1510: the get/set pairs below read and write through these three, so the
+// file shape and the defaults come from the registry instead of being
+// repeated per setting. Normalization and special shapes stay with the pair.
+type Group = keyof CliSettings;
+type Field<G extends Group> = keyof NonNullable<CliSettings[G]> & string;
+type Stored<G extends Group, F extends Field<G>> = Exclude<NonNullable<CliSettings[G]>[F], undefined>;
+
+/** The stored value of one setting, undefined when unset. */
+async function stored<G extends Group, F extends Field<G>>(
+  group: G,
+  field: F,
+  path?: string
+): Promise<Stored<G, F> | undefined> {
+  const block = (await readSettings(path))[group] as Partial<NonNullable<CliSettings[G]>> | undefined;
+  return block?.[field] as Stored<G, F> | undefined;
+}
+
+/** The stored value, or the registry's default for it. */
+async function storedOrDefault<G extends Group, F extends Field<G>>(
+  group: G,
+  field: F,
+  path?: string
+): Promise<Stored<G, F>> {
+  const fields = SETTINGS_REGISTRY[group] as Record<string, { default: unknown }>;
+  return (await stored(group, field, path)) ?? (fields[field]!.default as Stored<G, F>);
+}
+
+/** Persist one setting atomically; the group's other stored fields stay. */
+async function store<G extends Group, F extends Field<G>>(
+  group: G,
+  field: F,
+  value: Stored<G, F>,
+  path: string
+): Promise<void> {
+  await mutateSettings(
+    path,
+    (current) => ({ ...current, [group]: { ...current[group], [field]: value } }) as CliSettings
+  );
+}
+
 /** The stored update mode (env-agnostic). */
 export async function getUpdateMode(path?: string): Promise<UpdateMode> {
-  return (await readSettings(path)).update.mode;
+  return storedOrDefault("update", "mode", path);
 }
 
 /**
@@ -87,17 +125,17 @@ export async function effectiveUpdateMode(path?: string): Promise<UpdateMode> {
 
 /** Persists a new update mode atomically, merging into existing settings. */
 export async function setUpdateMode(mode: UpdateMode, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({ ...current, update: { ...current.update, mode } }));
+  await store("update", "mode", mode, path);
 }
 
 /** The stored embedding provider, or undefined when unset (no opinion). */
 export async function getEmbeddingProvider(path?: string): Promise<EmbeddingProviderName | undefined> {
-  return (await readSettings(path)).embedding?.provider;
+  return stored("embedding", "provider", path);
 }
 
 /** Persists the generation (doc2query + rerank) model, merging into existing settings. */
 export async function setGenerationModel(model: string, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({ ...current, generation: { model: model.trim() } }));
+  await store("generation", "model", model.trim(), path);
 }
 
 /**
@@ -195,22 +233,22 @@ export async function setEmbeddingProvider(
   provider: EmbeddingProviderName,
   path: string = settingsFilePath()
 ): Promise<void> {
-  await mutateSettings(path, (current) => ({ ...current, embedding: { provider } }));
+  await store("embedding", "provider", provider, path);
 }
 
 /** Whether Ollama should be kept running at login. Default true (if you use ollama, you want it up). */
 export async function getOllamaAutostart(path?: string): Promise<boolean> {
-  return (await readSettings(path)).ollama?.autostart ?? SETTINGS_REGISTRY.ollama.autostart.default;
+  return storedOrDefault("ollama", "autostart", path);
 }
 
 /** Persists the Ollama autostart preference atomically. */
 export async function setOllamaAutostart(on: boolean, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({ ...current, ollama: { autostart: on } }));
+  await store("ollama", "autostart", on, path);
 }
 
 /** The stored REST API token, or undefined when none has been issued. */
 export async function getApiToken(path?: string): Promise<string | undefined> {
-  return (await readSettings(path)).api?.token;
+  return stored("api", "token", path);
 }
 
 /**
@@ -243,29 +281,28 @@ export async function addCorsOrigin(url: string, path: string = settingsFilePath
   });
 }
 
-/** Persists an explicit API token atomically (merging into existing settings). */
 /** Bastra Commons enabled? Default false (opt-in). */
 export async function getCommonsEnabled(path?: string): Promise<boolean> {
-  return (await readSettings(path)).commons?.enabled ?? SETTINGS_REGISTRY.commons.enabled.default;
+  return storedOrDefault("commons", "enabled", path);
 }
 
 export async function setCommonsEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({ ...current, commons: { enabled: on } }));
+  await store("commons", "enabled", on, path);
 }
 
 /** Web UI (#207) enabled? A stored value wins; otherwise on where the account binding runs (macOS), off elsewhere. */
 export async function getUiEnabled(path?: string): Promise<boolean> {
-  return (await readSettings(path)).ui?.enabled ?? SETTINGS_REGISTRY.ui.enabled.default;
+  return storedOrDefault("ui", "enabled", path);
 }
 
 export async function setUiEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
   // Keep the other ui.* keys (background image) when the switch flips.
-  await mutateSettings(path, (current) => ({ ...current, ui: { ...current.ui, enabled: on } }));
+  await store("ui", "enabled", on, path);
 }
 
 /** Shared learned-recall bridges enabled? Default false (opt-in, privacy-respecting). */
 export async function getSharedRecallEnabled(path?: string): Promise<boolean> {
-  return (await readSettings(path)).sharedRecall?.enabled ?? SETTINGS_REGISTRY.sharedRecall.enabled.default;
+  return storedOrDefault("sharedRecall", "enabled", path);
 }
 
 /**
@@ -277,14 +314,11 @@ export async function getSharedRecallEnabled(path?: string): Promise<boolean> {
  * Whoever has a bridge that passes verify can switch it on here.
  */
 export async function getSharedRecallLive(path?: string): Promise<boolean> {
-  return (await readSettings(path)).sharedRecall?.live ?? SETTINGS_REGISTRY.sharedRecall.live.default;
+  return storedOrDefault("sharedRecall", "live", path);
 }
 
 export async function setSharedRecallLive(on: boolean, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({
-    ...current,
-    sharedRecall: { ...current.sharedRecall, live: on },
-  }));
+  await store("sharedRecall", "live", on, path);
 }
 
 /**
@@ -316,7 +350,7 @@ export async function getEvidenceGateEnabled(path?: string): Promise<boolean> {
         `one of 1|true|on|yes|0|false|off|no — ignored, using the settings value (#443)`
     );
   }
-  return (await readSettings(path)).evidenceGate?.enabled ?? EVIDENCE_GATE_DEFAULT;
+  return storedOrDefault("evidenceGate", "enabled", path);
 }
 
 /**
@@ -356,19 +390,16 @@ export async function getExperimentConfig(path?: string): Promise<{
 }
 
 export async function setSharedRecallEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({ ...current, sharedRecall: { ...current.sharedRecall, enabled: on } }));
+  await store("sharedRecall", "enabled", on, path);
 }
 
 /** Optional override for the auto-detected query language (e.g. "de"). undefined = auto-detect per query. */
 export async function getSharedRecallLanguage(path?: string): Promise<string | undefined> {
-  return (await readSettings(path)).sharedRecall?.language;
+  return stored("sharedRecall", "language", path);
 }
 
 export async function setSharedRecallLanguage(language: string, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({
-    ...current,
-    sharedRecall: { ...current.sharedRecall, language: language.trim().toLowerCase() },
-  }));
+  await store("sharedRecall", "language", language.trim().toLowerCase(), path);
 }
 
 /** Clears the query-language override, restoring per-query auto-detection. Writes
@@ -383,56 +414,52 @@ export async function clearSharedRecallLanguage(path: string = settingsFilePath(
 
 /** Product-docs capture mode. Default "off" (opt-in). */
 export async function getDocsMode(path?: string): Promise<DocsMode> {
-  return (await readSettings(path)).docs?.mode ?? DEFAULT_DOCS_MODE;
+  return storedOrDefault("docs", "mode", path);
 }
 
 export async function setDocsMode(mode: DocsMode, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({ ...current, docs: { ...current.docs, mode } }));
+  await store("docs", "mode", mode, path);
 }
 
 /** Language product docs are written in. Default "en". */
 export async function getDocsLanguage(path?: string): Promise<string> {
-  return (await readSettings(path)).docs?.language ?? DEFAULT_DOCS_LANGUAGE;
+  return storedOrDefault("docs", "language", path);
 }
 
 export async function setDocsLanguage(language: string, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({
-    ...current,
-    docs: { ...current.docs, language: language.trim().toLowerCase() },
-  }));
+  await store("docs", "language", language.trim().toLowerCase(), path);
 }
 
 /** Datei-Größen-Richtwert (Zeilen) für Quellcode; undefined = Default 500. */
 export async function getSizeGuide(path?: string): Promise<number | undefined> {
-  const v = (await readSettings(path)).size?.guide;
+  const v = await stored("size", "guide", path);
   return typeof v === "number" && Number.isFinite(v) && v >= 100 && v <= 5000 ? Math.round(v) : undefined;
 }
 
 export async function setSizeGuide(guide: number, path: string = settingsFilePath()): Promise<void> {
-  const n = Math.min(5000, Math.max(100, Math.round(guide)));
-  await mutateSettings(path, (current) => ({ ...current, size: { ...current.size, guide: n } }));
+  await store("size", "guide", Math.min(5000, Math.max(100, Math.round(guide))), path);
 }
 
 export async function getArchiveRetain(path?: string): Promise<string | undefined> {
-  return (await readSettings(path)).archive?.retain;
+  return stored("archive", "retain", path);
 }
 
 export async function setArchiveRetain(retain: string, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({ ...current, archive: { ...current.archive, retain } }));
+  await store("archive", "retain", retain, path);
 }
 
 /** #934: the archive's total cap as stored (`5GB`); undefined = the 10 GB default. */
 export async function getArchiveCap(path?: string): Promise<string | undefined> {
-  return (await readSettings(path)).archive?.cap;
+  return stored("archive", "cap", path);
 }
 
 export async function setArchiveCap(cap: string, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({ ...current, archive: { ...current.archive, cap } }));
+  await store("archive", "cap", cap, path);
 }
 
 /** #934: the per-target limit as stored; undefined = none. `null` removes it. */
 export async function getArchiveMaxItem(path?: string): Promise<string | undefined> {
-  return (await readSettings(path)).archive?.maxItem;
+  return stored("archive", "maxItem", path);
 }
 
 export async function setArchiveMaxItem(maxItem: string | null, path: string = settingsFilePath()): Promise<void> {
@@ -444,37 +471,30 @@ export async function setArchiveMaxItem(maxItem: string | null, path: string = s
 
 /** #650 opt-in: bastra's archiving rm and git snapshots. Default false. */
 export async function getArchiveEnabled(path?: string): Promise<boolean> {
-  return (await readSettings(path)).archive?.enabled ?? false;
+  return storedOrDefault("archive", "enabled", path);
 }
 
 export async function setArchiveEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({ ...current, archive: { ...current.archive, enabled: on } }));
+  await store("archive", "enabled", on, path);
 }
 
 /** #634: reflex memories on/off in the file (default on; BASTRA_REFLEX wins at runtime). */
 export async function getReflexEnabled(path?: string): Promise<boolean> {
-  return (await readSettings(path)).reflex?.enabled ?? SETTINGS_REGISTRY.reflex.enabled.default;
+  return storedOrDefault("reflex", "enabled", path);
 }
 
 export async function setReflexEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({ ...current, reflex: { ...current.reflex, enabled: on } }));
-}
-
-export async function setApiToken(token: string, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({ ...current, api: { token } }));
+  await store("reflex", "enabled", on, path);
 }
 
 /** The stored primary authoring language (2-letter ISO code), or undefined when unset. */
 export async function getPrimaryLanguage(path?: string): Promise<string | undefined> {
-  return (await readSettings(path)).language?.primary;
+  return stored("language", "primary", path);
 }
 
 /** Persists the primary authoring language, normalized to a lowercase 2-letter code. */
 export async function setPrimaryLanguage(code: string, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({
-    ...current,
-    language: { ...current.language, primary: code.trim().toLowerCase() },
-  }));
+  await store("language", "primary", code.trim().toLowerCase(), path);
 }
 
 /**
@@ -517,9 +537,9 @@ export async function clearApiToken(path: string = settingsFilePath()): Promise<
 
 /** #632: battery mode switch as stored in the file (env is applied by the caller). */
 export async function getBatterySaver(path?: string): Promise<boolean | undefined> {
-  return (await readSettings(path)).battery?.saver;
+  return stored("battery", "saver", path);
 }
 
 export async function setBatterySaver(on: boolean, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({ ...current, battery: { ...current.battery, saver: on } }));
+  await store("battery", "saver", on, path);
 }

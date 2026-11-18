@@ -254,7 +254,6 @@
     "[\"packages/daemon/src/http-health.ts\",\"[\\\"function:buildHealthPayload\\\"]\",\"complexity\"]": 26,
     "[\"packages/daemon/src/http-hook-routes.ts\",\"[\\\"function:handleHookRecall\\\",\\\"call:readJsonBody().then().catch:#1\\\",\\\"call:readJsonBody().then:#1\\\",\\\"function:argument:0#1\\\"]\",\"complexity\"]": 17,
     "[\"packages/daemon/src/http-hook-routes.ts\",\"[\\\"function:runHookRecall\\\"]\",\"complexity\"]": 32,
-    "[\"packages/daemon/src/http-local-routes.ts\",\"[\\\"function:dispatchLocalRoutes\\\"]\",\"complexity\"]": 51,
     "[\"packages/daemon/src/http-ui-routes.ts\",\"[\\\"function:dispatchUiRoutes\\\"]\",\"complexity\"]": 45,
     "[\"packages/daemon/src/http.ts\",\"[\\\"function:startHttpServer\\\",\\\"variable:handleRequest\\\",\\\"function:ArrowFunctionExpression#1\\\"]\",\"complexity\"]": 36,
     "[\"packages/daemon/src/import-mining.ts\",\"[\\\"function:parseConversationExport\\\"]\",\"complexity\"]": 16,

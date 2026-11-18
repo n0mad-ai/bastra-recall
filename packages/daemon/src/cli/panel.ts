@@ -7,7 +7,7 @@
  * "control surface" — flags and status. Browsing/editing memories lives in the
  * Pro Mac app.
  */
-import { request as httpRequest } from "node:http";
+import { getJson } from "../prompt-loopback.js";
 import { VERSION, VERSION_DRIFT_HINT } from "./helpers.js";
 import type { CodeStale } from "../code-staleness.js";
 import { probeOllama } from "./ollama.js";
@@ -41,34 +41,8 @@ interface HealthResponse {
 /** A rendered box row: label column, value column. */
 export type PanelRow = [label: string, value: string];
 
-function getJson<T>(url: string, timeoutMs: number): Promise<T | null> {
-  return new Promise((resolve_) => {
-    const req = httpRequest(url, { method: "GET", timeout: timeoutMs }, (res) => {
-      const chunks: Buffer[] = [];
-      res.on("data", (c: Buffer) => chunks.push(c));
-      res.on("end", () => {
-        try {
-          if (res.statusCode === 200) {
-            resolve_(JSON.parse(Buffer.concat(chunks).toString("utf8")) as T);
-            return;
-          }
-        } catch {
-          /* fallthrough */
-        }
-        resolve_(null);
-      });
-    });
-    req.on("timeout", () => {
-      req.destroy();
-      resolve_(null);
-    });
-    req.on("error", () => resolve_(null));
-    req.end();
-  });
-}
-
 function probeHealth(baseUrl: string): Promise<HealthResponse | null> {
-  return getJson<HealthResponse>(`${baseUrl}/health`, 1200).then((d) => (d && d.ok ? d : null));
+  return getJson<HealthResponse>(baseUrl, "/health", 1200).then((d) => (d && d.ok ? d : null));
 }
 
 /**
@@ -78,7 +52,7 @@ function probeHealth(baseUrl: string): Promise<HealthResponse | null> {
  * tree. Null on any failure; the panel then falls back to /health's size.
  */
 function probeCount(baseUrl: string): Promise<number | null> {
-  return getJson<{ count: number }>(`${baseUrl}/vault/count`, 4000).then((d) =>
+  return getJson<{ count: number }>(baseUrl, "/vault/count", 4000).then((d) =>
     d && typeof d.count === "number" ? d.count : null
   );
 }

@@ -3,9 +3,11 @@
  * lane's /hook/recall and /hook/reflex (split out of prompt-lane.ts, #680; why
  * it stays a loopback call is documented at the top of prompt-lane.ts), and
  * since #1508 the session lane's and Stop lane's calls and the hinted ping,
- * which each carried their own copy of this block.
+ * which each carried their own copy of this block — and the CLI's panel,
+ * update hint and replay, which did too.
  */
 import { request } from "node:http";
+import { unbracketHostname } from "./hook-transport.js";
 
 // ─── loopback self-call ─────────────────────────────────────────────────────
 
@@ -72,7 +74,9 @@ export function getJson<T>(baseUrl: string, path: string, timeoutMs: number): Pr
     const req = request(
       {
         method: "GET",
-        hostname: url.hostname,
+        // The CLI's GETs (panel, update hint) take a configured endpoint,
+        // which may be an IPv6 literal (#1508; see hook-transport.ts).
+        hostname: unbracketHostname(url.hostname),
         port: url.port || 80,
         path: url.pathname + url.search,
         timeout: timeoutMs,

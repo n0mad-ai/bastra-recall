@@ -35,7 +35,7 @@
  * the live usage sidecar.
  */
 import { open, readdir, readFile } from "node:fs/promises";
-import { request } from "node:http";
+import { postJson } from "../prompt-loopback.js";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
@@ -270,64 +270,24 @@ function postReplay(
   turn: ReplayTurn,
   sessionId: string
 ): Promise<{ stdout?: unknown; telemetry?: ReplayRow | null } | null> {
-  return new Promise((resolve) => {
-    let url: URL;
-    try {
-      url = new URL("/hook/prompt", baseUrl);
-    } catch {
-      resolve(null);
-      return;
-    }
-    const body = Buffer.from(
-      JSON.stringify({
-        replay: true,
-        payload: {
-          session_id: sessionId,
-          cwd: turn.cwd ?? undefined,
-          hook_event_name: "UserPromptSubmit",
-          prompt: turn.text,
-        },
-      }),
-      "utf8"
-    );
-    const req = request(
-      {
-        method: "POST",
-        hostname: url.hostname,
-        port: url.port || 80,
-        path: url.pathname,
-        headers: {
-          // No task token: nothing is due in a replayed turn, and a daemon
-          // from before #702 runs the live route for the probe — with a
-          // token it would mark due tasks as delivered to "replay-probe".
-          "Content-Type": "application/json; charset=utf-8",
-          "Content-Length": body.byteLength.toString(),
-        },
-        timeout: POST_TIMEOUT_MS,
+  // No task token: nothing is due in a replayed turn, and a daemon from
+  // before #702 runs the live route for the probe — with a token it would
+  // mark due tasks as delivered to "replay-probe". `postJson` sends none.
+  // Any failure (bad URL, refusal, timeout, HTTP >= 400, garbage) is null.
+  return postJson<{ stdout?: unknown; telemetry?: ReplayRow | null } | null>(
+    baseUrl,
+    "/hook/prompt",
+    {
+      replay: true,
+      payload: {
+        session_id: sessionId,
+        cwd: turn.cwd ?? undefined,
+        hook_event_name: "UserPromptSubmit",
+        prompt: turn.text,
       },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (c: Buffer) => chunks.push(c));
-        res.on("end", () => {
-          if ((res.statusCode ?? 500) >= 400) {
-            resolve(null);
-            return;
-          }
-          try {
-            resolve(
-              JSON.parse(Buffer.concat(chunks).toString("utf8")) as { stdout?: unknown; telemetry?: ReplayRow | null }
-            );
-          } catch {
-            resolve(null);
-          }
-        });
-      }
-    );
-    req.on("timeout", () => req.destroy());
-    req.on("error", () => resolve(null));
-    req.write(body);
-    req.end();
-  });
+    },
+    POST_TIMEOUT_MS
+  ).catch(() => null);
 }
 
 // ─── the report ──────────────────────────────────────────────────────────────

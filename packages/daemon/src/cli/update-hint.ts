@@ -11,7 +11,7 @@ import { bastraDataDir } from "../platform-paths.js";
  *
  * Never throws — every failure path is silently swallowed.
  */
-import { request as httpRequest } from "node:http";
+import { getJson } from "../prompt-loopback.js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { isOptedOut } from "../update-check.js";
@@ -74,31 +74,10 @@ async function markShownToday(path: string): Promise<boolean> {
 }
 
 function probeHealth(): Promise<HealthResponse | null> {
-  return new Promise((resolve_) => {
-    // #531 — THE configured endpoint, not a literal 6723.
-    const req = httpRequest(resolveDaemonEndpoint().healthUrl, { method: "GET", timeout: PROBE_TIMEOUT_MS }, (res) => {
-      const chunks: Buffer[] = [];
-      res.on("data", (c: Buffer) => chunks.push(c));
-      res.on("end", () => {
-        try {
-          const data = JSON.parse(Buffer.concat(chunks).toString("utf8")) as HealthResponse;
-          if (res.statusCode === 200 && data && data.ok) {
-            resolve_(data);
-            return;
-          }
-        } catch {
-          /* fallthrough */
-        }
-        resolve_(null);
-      });
-    });
-    req.on("timeout", () => {
-      req.destroy();
-      resolve_(null);
-    });
-    req.on("error", () => resolve_(null));
-    req.end();
-  });
+  // #531 — THE configured endpoint, not a literal 6723.
+  return getJson<HealthResponse>(resolveDaemonEndpoint().baseUrl, "/health", PROBE_TIMEOUT_MS).then((d) =>
+    d && d.ok ? d : null
+  );
 }
 
 /**

@@ -11,8 +11,8 @@ import { createLaneDelivery } from "./lane-delivery.js";
  * hookSpecificOutput envelope — and fail open to `{}` with 200. A client must
  * never see an error it would only translate back into `{}` anyway.
  *
- * The four older lane routes stayed in http.ts on purpose: moving them would
- * churn a shipped, tested route block for cosmetics. New lanes land here.
+ * The four older lane routes live in http-hook-lanes.ts, which also wires
+ * this dispatcher with its vault-backed extras. New lanes land here.
  *
  * The lanes take the server's own address for their loopback self-calls
  * (/hook/recall, /hook/floors, /hook/drift, …) — read off the socket, not the

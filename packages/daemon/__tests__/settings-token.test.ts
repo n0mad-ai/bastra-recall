@@ -2,7 +2,7 @@ import { readSettingsFixture } from "./fixtures/settings-db.js";
 import { appRecordDatabasePath } from "../src/app-record-store.js";
 /**
  * Tests für den API-Token-Lifecycle in cli-settings.json (ensureApiToken /
- * getApiToken / setApiToken). Alle gegen ein Temp-File, nie das echte
+ * getApiToken / clearApiToken). Alle gegen ein Temp-File, nie das echte
  * ~/.bastra/cli-settings.json.
  *
  * Runner: `tsx --test __tests__/settings-token.test.ts`
@@ -52,7 +52,7 @@ test("ensureApiToken: rotate issues a fresh token, invalidating the old", async 
   });
 });
 
-test("setApiToken/ensureApiToken merge: other settings survive", async () => {
+test("ensureApiToken merge: other settings survive", async () => {
   await withTempSettings(async (path) => {
     await setUpdateMode("auto", path);
     await ensureApiToken({}, path);
