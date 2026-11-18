@@ -255,11 +255,27 @@ scripts/      One-off telemetry / eval / backfill scripts
 - **Lower the baseline after cleanup:** run `npm run lint:prune` and commit the
   smaller baseline files with the cleanup. This command refuses new violations.
   Normal lint fails on obsolete entries; CI also compares all baselines against
-  the PR base (or previous push) and rejects additions/increased counts. A
-  justified new copy needs a separate explicit maintainer policy decision.
+  the PR merge base or the last successful ancestor CI run on `main`, and
+  rejects additions/increased counts. A cancelled or failed push cannot become
+  that trusted anchor. A justified new copy needs a separate explicit owner
+  policy decision, as described below.
   Area/public-interface boundaries will be added with the folder changes in #1519.
 - **No new dependencies without an issue first.** Every dependency is a
   long-term cost.
+
+### A justified lint exception
+
+Record the affected finding, its exact scope and the reason it is appropriate
+for the domain. The owner's instruction in chat is the authorization: record
+the session or message reference and the instruction with that reason in the
+issue and in a separate exception commit. Keep this policy change separate
+from the code change; do not infer permission from a failing lint run.
+
+The automatic guards still reject baseline growth and weaker configuration;
+they do not read chat. If the decision requires a guard or policy change,
+include that precise change in the reviewed exception commit rather than
+adding a general bypass or silently editing a baseline. This documentation
+grants no exception and adds no approval step beyond the owner's instruction.
 
 ## Commit messages
 
