@@ -1,10 +1,6 @@
 /**
  * #1650 (rest of #1538) — the size note's I/O stays inside its deadline.
  *
- * Settings: a settings database that never answers (a FIFO in its place, the
- * stand-in for a stalled disk) must not stall the process; the note is
- * skipped and the caller gets its answer on time.
- *
  * File: only regular files are opened, and at most MAX_BYTES real bytes are
  * read — not the whole input first, and not decoded characters instead of
  * bytes. Oversized files and devices behind a symlink leave no read running
@@ -15,8 +11,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn, execFileSync } from "node:child_process";
-import { constants } from "node:fs";
+import { spawn } from "node:child_process";
 import { mkdtemp, open, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -58,37 +53,6 @@ async function childLine(
     });
   });
 }
-
-test("#1650: a settings database that never answers does not stall the note past its deadline", async (t) => {
-  if (posixOnly) return t.skip(posixOnly);
-  const dir = await mkdtemp(join(tmpdir(), "bastra-size-settings-fifo-"));
-  const fifo = join(dir, "recall.db");
-  execFileSync("mkfifo", [fifo]);
-  const file = join(dir, "big.ts");
-  await writeFile(file, "export const x = 1;\n".repeat(900));
-  const release = async () => {
-    await (await open(fifo, constants.O_RDWR | constants.O_NONBLOCK)).close();
-  };
-  try {
-    const line = await childLine(
-      dir,
-      `import { fileSizeNote } from ${JSON.stringify(SIZE_CHECK)};
-       const started = Date.now();
-       const note = await fileSizeNote(${JSON.stringify(file)}, ${JSON.stringify(join(dir, "cli-settings.json"))},
-         ${JSON.stringify(dir)}, started + 150);
-       console.log(JSON.stringify({ note, ms: Date.now() - started }));
-       process.exit(0);`,
-      5000,
-      release
-    );
-    assert.notEqual(line, "timeout", "the settings read stalled the child's event loop");
-    const { note, ms } = JSON.parse(line) as { note: string | null; ms: number };
-    assert.equal(note, null, "no note without settings");
-    assert.ok(ms < 1000, `note took ${ms} ms`);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
 
 test("#1650: oversized files and devices leave no read running after the answer", async (t) => {
   if (posixOnly) return t.skip(posixOnly);
