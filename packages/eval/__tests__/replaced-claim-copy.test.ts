@@ -31,6 +31,23 @@ function run(args: string[], preload = true) {
   writeFileSync(sentinel, marker);
   env.BASTRA_DB_PATH = env.BASTRA_VAULT_ROOTS_PATH = sentinel;
   env.HOME = env.USERPROFILE = home;
+  // #1488: the harness records the repository state (git rev-parse/status). A throwaway
+  // repository gives it one, so the test also holds in a copy of this code without `.git`.
+  const repo = join(home, "repo");
+  mkdirSync(repo);
+  Object.assign(env, {
+    GIT_DIR: join(repo, ".git"),
+    GIT_WORK_TREE: repo,
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_NOSYSTEM: "1",
+  });
+  for (const args of [
+    ["init", "--quiet"],
+    ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "--quiet", "--allow-empty", "-m", "t"],
+  ]) {
+    const git = spawnSync("git", args, { cwd: repo, env, encoding: "utf8", timeout: 5000 });
+    assert.equal(git.status, 0, git.stdout + git.stderr);
+  }
   try {
     return spawnSync(
       process.execPath,
