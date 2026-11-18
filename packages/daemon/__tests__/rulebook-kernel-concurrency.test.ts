@@ -56,6 +56,7 @@ test("#1623: an expired worker reservation returns calls to its owner", async ()
   const owner = kernelWorker({ agent_id: "expired-owner" })!;
   const other = kernelWorker({ agent_id: "other-worker" })!;
   const state = {
+    shown: {},
     toolCalls: 7,
     agentToolCalls: { [owner]: 2, [other]: 3 },
     constants: { [KERNEL_DELIVERY]: JSON.stringify({ agent: owner, calls: 25, deadline: 0 }) },
