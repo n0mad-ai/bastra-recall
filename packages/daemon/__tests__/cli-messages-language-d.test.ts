@@ -193,7 +193,9 @@ test("bastra models follows language.primary from its settings file", async () =
     return out;
   };
   const de = await run("de");
-  assert.match(de, /^Generierungsmodell: .*\nRechner: 24 GB/m);
+  // The machine line shows the real hardware (deps.ramGB only steers the
+  // recommendation), so the amount differs between this machine and CI.
+  assert.match(de, /^Generierungsmodell: .*\nRechner: \d+ GB/m);
   assert.match(de, /empfohlen: /);
   const en = await run(null);
   assert.match(en, /^generation model: .*\nmachine: /m);
