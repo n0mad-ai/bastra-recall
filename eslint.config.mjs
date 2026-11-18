@@ -42,7 +42,7 @@ export default [
     },
   },
   {
-    files: ["**/*.{cjs,cts}"],
+    files: ["**/*.{[cC][jJ][sS],[cC][tT][sS]}"],
     languageOptions: { sourceType: "commonjs" },
   },
   {

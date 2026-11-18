@@ -6,11 +6,12 @@ import { analyzeFunctions, functionAt, legacyFingerprint } from "./lint-function
 import { assertSingleRootConfig, listCodeFiles } from "./lint-scope.mjs";
 
 const baselinePath = new URL("../eslint-structure-baseline.json", import.meta.url);
+const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 const structuralRules = new Set(["complexity", "max-depth"]);
 function rejectUnconfiguredFiles(results) {
   for (const result of results) {
     for (const message of result.messages) {
-      if (message.ruleId === null && message.message.includes("no matching configuration")) {
+      if (message.ruleId === null && /no matching configuration|File ignored/.test(message.message)) {
         message.severity = 2;
         message.message += " Unsupported source type: configure coverage before adding this code file.";
       }
@@ -18,10 +19,11 @@ function rejectUnconfiguredFiles(results) {
   }
 }
 
-export async function inspectStructure(paths = listCodeFiles(), { legacy = false } = {}) {
+export async function inspectStructure(paths = listCodeFiles(repositoryRoot), { legacy = false } = {}) {
   // Read raw findings: native file/rule counters cannot freeze individual functions.
-  assertSingleRootConfig();
+  assertSingleRootConfig(repositoryRoot);
   const eslint = new ESLint({
+    cwd: repositoryRoot,
     applySuppressions: false,
     allowInlineConfig: false,
     overrideConfigFile: fileURLToPath(new URL("../eslint.config.mjs", import.meta.url)),
@@ -34,7 +36,7 @@ export async function inspectStructure(paths = listCodeFiles(), { legacy = false
     const messages = result.messages.filter((message) => structuralRules.has(message.ruleId));
     if (!messages.length) continue;
     const source = result.source ?? readFileSync(result.filePath, "utf8");
-    const file = relative(process.cwd(), result.filePath).split("\\").join("/");
+    const file = relative(repositoryRoot, result.filePath).split("\\").join("/");
     const parsed = analyzeFunctions(source, result.filePath);
     for (const message of messages) {
       const owner = functionAt(message, source, parsed);

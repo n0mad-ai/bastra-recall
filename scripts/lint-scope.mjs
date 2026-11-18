@@ -6,7 +6,8 @@ import { existsSync } from "node:fs";
 // Keep root dot-files and hidden directories inside visible source trees in scope.
 const ROOT_HIDDEN_DIRECTORY = /^\.[^/]+\//;
 
-export const CODE_PATTERN = "**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}";
+export const CODE_PATTERN =
+  "**/*.{[tT][sS],[mM][tT][sS],[cC][tT][sS],[tT][sS][xX],[jJ][sS],[mM][jJ][sS],[cC][jJ][sS],[jJ][sS][xX]}";
 export const codeIgnores = [
   "**/node_modules/**",
   ".*/**",
@@ -50,7 +51,7 @@ export function isCodeIgnored(file) {
 }
 
 export function listCodeFiles(root = process.cwd()) {
-  return repositoryFiles(root).filter((file) => /\.(?:[cm]?[jt]s|[jt]sx)$/.test(file) && !isCodeIgnored(file));
+  return repositoryFiles(root).filter((file) => /\.(?:[cm]?[jt]s|[jt]sx)$/i.test(file) && !isCodeIgnored(file));
 }
 
 export function assertSingleRootConfig(root = process.cwd()) {

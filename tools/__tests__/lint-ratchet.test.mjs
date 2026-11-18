@@ -82,6 +82,11 @@ function nested(name, depth) {
   return `export function ${name}(value) { ${"if (value) {".repeat(depth)} return 1; ${"}".repeat(depth)} return 0; }\n`;
 }
 
+function assertComplexity(output, file) {
+  // Require the actual rule diagnostic, not a path inside an ignored-file warning.
+  assert.match(output, new RegExp(`${RegExp.escape(file)}\\n[^\\n]*\\bcomplexity\\b`));
+}
+
 async function freezeStructure(root) {
   const source = [
     'import { inspectStructure } from "./scripts/lint-structure.mjs";',
@@ -186,20 +191,51 @@ test("depth has an independent frozen maximum and new functions stay within four
 
 test("the root rules cover every JS/TS extension and arbitrary code directories", async (t) => {
   const root = await fixture(t);
-  for (const ext of ["js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx"]) {
+  const extensions = ["js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx", "MJS", "Ts", "CTS"];
+  for (const [index, ext] of extensions.entries()) {
+    const lower = ext.toLowerCase();
     let source = branches(`oversized_${ext}`, 15).replace("export ", "");
-    if (["jsx", "tsx"].includes(ext)) source = source.replace("return value;", "return <span>{value}</span>;");
-    if (["tsx", "cts"].includes(ext)) source = source.replace("(value)", "(value: number)");
-    source += ["cjs", "cts"].includes(ext) ? `module.exports = oversized_${ext};\n` : `oversized_${ext}(0);\n`;
-    await put(root, `outside/${ext}/over-limit.${ext}`, source);
+    if (["jsx", "tsx"].includes(lower)) source = source.replace("return value;", "return <span>{value}</span>;");
+    if (["tsx", "cts", "ts"].includes(lower)) source = source.replace("(value)", "(value: number)");
+    source += ["cjs", "cts"].includes(lower) ? `module.exports = oversized_${ext};\n` : `oversized_${ext}(0);\n`;
+    await put(root, `outside/${index}/over-limit.${ext}`, source);
   }
   const result = tool(root, "lint-structure.mjs");
   assert.equal(result.status, 1, result.output);
-  for (const ext of ["js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx"]) {
-    assert.ok(result.output.includes(`over-limit.${ext}`), result.output);
+  for (const [index, ext] of extensions.entries()) {
+    assertComplexity(result.output, `outside/${index}/over-limit.${ext}`);
   }
   assert.doesNotMatch(result.output, /no matching configuration/);
   assert.doesNotMatch(result.output, /Parsing error/);
+});
+
+test("an ignore glob cannot silently remove a discovered code file", async (t) => {
+  const root = await fixture(t);
+  const scope = join(root, "scripts/lint-scope.mjs");
+  const source = await readFile(scope, "utf8");
+  await writeFile(
+    scope,
+    source.replace("export const codeIgnores = [", 'export const codeIgnores = ["**/glob-hidden.*",')
+  );
+  await put(root, "outside/glob-hidden.ts", branches("mustNotDisappear", 15));
+  const result = tool(root, "lint-structure.mjs");
+  assert.equal(result.status, 1, result.output);
+  assert.match(result.output, /File ignored/);
+  assert.match(result.output, /configure coverage/);
+});
+
+test("structure checks use repository-root identities when invoked from a subfolder", async (t) => {
+  const root = await fixture(t);
+  await put(root, "packages/core/src/legacy.ts", branches("legacyFromSubfolder", 25));
+  await freezeStructure(root);
+  const script = join(root, "scripts/lint-structure.mjs");
+  const same = execute(join(root, "packages/core"), process.execPath, [script]);
+  assert.equal(same.status, 0, same.output);
+  await put(root, "packages/core/src/legacy.ts", branches("legacyFromSubfolder", 26));
+  const increased = execute(join(root, "packages/core"), process.execPath, [script]);
+  assert.equal(increased.status, 1, increased.output);
+  assert.match(increased.output, /packages\/core\/src\/legacy\.ts/);
+  assert.match(increased.output, /frozen maximum 26, actual 27/);
 });
 
 test("an explicitly requested unconfigured file is an error rather than an ignored warning", async (t) => {
@@ -220,7 +256,7 @@ test("generic generated-looking folder names cannot hide tracked application cod
   const result = tool(root, "lint-structure.mjs");
   assert.equal(result.status, 1, result.output);
   for (const folder of ["build", "coverage", "vendor", "goldset"]) {
-    assert.ok(result.output.includes(`${folder}/new.ts`), result.output);
+    assertComplexity(result.output, `${folder}/new.ts`);
   }
 });
 
@@ -252,7 +288,7 @@ test("only hidden root directories are excluded from every code check", async (t
   const visible = tool(root, "lint-structure.mjs");
   assert.equal(visible.status, 1, visible.output);
   for (const file of ["probe.mjs", "plugins/x.mjs", ".root-file.mjs", "packages/.hidden/source.ts"]) {
-    assert.ok(visible.output.includes(file), visible.output);
+    assertComplexity(visible.output, file);
   }
   await put(root, "probe.mjs", 'import "./.root-file.mjs";\n' + branches("visibleClone", 60));
   await put(root, ".root-file.mjs", 'import "./probe.mjs";\n' + branches("visibleClone", 60));
@@ -359,7 +395,7 @@ test("the Git guard refuses new or increased function, cycle and clone exception
 
 test("cycle exceptions shrink and workspace package names resolve to source", async (t) => {
   const root = await fixture(t);
-  for (const workspace of ["daemon", "eval"]) {
+  for (const workspace of ["daemon", "eval", "statusline"]) {
     await put(
       root,
       `packages/${workspace}/src/index.ts`,
@@ -368,13 +404,13 @@ test("cycle exceptions shrink and workspace package names resolve to source", as
     await put(
       root,
       `packages/${workspace}/src/peer.ts`,
-      `import { value } from "@bastra-recall/${workspace}"; export const peer = () => value;`
+      `import { value } from "@bastra-recall/${workspace}${workspace === "statusline" ? "/dist/index.js" : ""}"; export const peer = () => value;`
     );
   }
   const report = tool(root, "check-cycles.mjs", "--report");
   assert.equal(report.status, 0, report.output);
   const edges = JSON.parse(report.stdout);
-  assert.equal(edges.length, 4, report.output);
+  assert.equal(edges.length, 6, report.output);
   await put(root, ".lint-cycle-baseline.json", edges);
   assert.equal(tool(root, "check-cycles.mjs").status, 0);
   await put(root, "packages/core/src/index.ts", 'import "./loop.js"; export const core = 1;');
@@ -390,7 +426,7 @@ test("cycle exceptions shrink and workspace package names resolve to source", as
   assert.equal(stale.status, 1, stale.output);
   assert.match(stale.output, /obsolete edges/);
   assert.equal(tool(root, "check-cycles.mjs", "--prune").status, 0);
-  assert.equal(JSON.parse(await readFile(join(root, ".lint-cycle-baseline.json"), "utf8")).length, 2);
+  assert.equal(JSON.parse(await readFile(join(root, ".lint-cycle-baseline.json"), "utf8")).length, 4);
   await rm(join(root, "packages/eval/src/index.ts"));
   await put(root, "outside/invalid-workspace.ts", 'import "@bastra-recall/eval"; export const loaded = true;\n');
   const unresolved = tool(root, "check-cycles.mjs", "--report");
