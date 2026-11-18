@@ -34,6 +34,20 @@ Later owner decisions take precedence over this plan where the two differ (#1476
 - **Code awareness, 25.09.2026:** frozen in [milestone #29](https://github.com/n0mad-ai/bastra-recall/milestone/29)
   and marked experimental; bug fixes, further work only when time allows.
 - **V3 milestone, 14.11.2026:** milestone #31 was closed, because V2 and V3 are one plan.
+- **Decisions of 18.11.2026** (same list as tracker [#386](https://github.com/n0mad-ai/bastra-recall/issues/386)):
+  - **Version:** the next release stays **1.3.0** although Node 22 is no longer
+    supported (minimum **Node 24.16**, decided 17.11.2026); dropping Node 22 does not
+    make it a major version.
+  - **UI version:** the interface is **UI Version 2 (UI v2)** until the owner designs a
+    replacement; this name is independent of the product version.
+  - **One language setting:** English by default, German through the existing language
+    setting (#1602); this one setting covers both screen texts and the language of new
+    memories. Further languages come later through #1499 (v1.5.0), not in 1.3.0.
+  - **Reports:** reports are an area of their own in the web UI, separate from Tasks.
+  - **Knip:** Knip is a mandatory CI check with a frozen baseline that forbids new
+    findings (#1534).
+  - **Publication:** a release is published only after the owner has reviewed a new
+    final report and explicitly approved publication.
 
 ### One roadmap, three kinds of work
 
@@ -196,6 +210,20 @@ Spätere Entscheidungen des Product Owners gehen diesem Plan vor, wo beide sich 
 - **Code-Awareness, 25.09.2026:** eingefroren in [Milestone #29](https://github.com/n0mad-ai/bastra-recall/milestone/29)
   und als experimentell markiert; Fehlerbehebungen, Weiterbau nur bei Zeit.
 - **V3-Milestone, 14.11.2026:** Milestone #31 wurde geschlossen, weil V2 und V3 ein Plan sind.
+- **Entscheidungen vom 18.11.2026** (gleiche Liste wie im Tracker [#386](https://github.com/n0mad-ai/bastra-recall/issues/386)):
+  - **Version:** Das nächste Release bleibt **1.3.0**, obwohl Node 22 nicht mehr
+    unterstützt wird (Mindestversion **Node 24.16**, entschieden am 17.11.2026); der
+    Wegfall von Node 22 macht es nicht zur Hauptversion.
+  - **UI-Version:** Die Oberfläche heißt **UI Version 2 (UI v2)**, bis der Product Owner
+    eine neue entwirft; dieser Name ist unabhängig von der Produktversion.
+  - **Eine Spracheinstellung:** Englisch als Standard, Deutsch über die bestehende
+    Spracheinstellung (#1602); diese eine Einstellung gilt für Bildschirmtexte und die
+    Sprache neuer Memories. Weitere Sprachen kommen später über #1499 (v1.5.0), nicht in 1.3.0.
+  - **Berichte:** Berichte sind in der Web-Oberfläche ein eigener Bereich, getrennt von Aufgaben.
+  - **Knip:** Knip ist eine Pflicht-Prüfung in der CI mit eingefrorener Baseline, die
+    keine neuen Befunde zulässt (#1534).
+  - **Veröffentlichung:** Ein Release wird erst veröffentlicht, nachdem der Product Owner
+    einen neuen finalen Bericht geprüft und die Veröffentlichung ausdrücklich freigegeben hat.
 
 ### Eine Roadmap, drei Arten von Arbeit
 
