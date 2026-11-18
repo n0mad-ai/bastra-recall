@@ -35,6 +35,8 @@ import {
 } from "../src/session-state.js";
 import { runBashPreLane } from "../src/bash-pre-lane.js";
 import { openAppDatabase } from "../src/app-database.js";
+import { FAST_BUDGET_MS } from "../src/hook-budgets.js";
+import { withFixtureClock } from "./fixtures/fixture-clock.js";
 
 type Hook = {
   hookSpecificOutput?: {
@@ -240,9 +242,11 @@ describe("#1303 gate lane: parallel calls", () => {
 
   it("ten simultaneous matching calls produce exactly one reflex deny", async () => {
     const sid = session("parallel-reflex");
-    const outs = await Promise.all(
-      Array.from({ length: 10 }, () =>
-        runGateLane(call(sid, "ToolSearch", { query: "select:fixture_send_message" }), { reflexPool: pool(RULE) })
+    const outs = await withFixtureClock(() =>
+      Promise.all(
+        Array.from({ length: 10 }, () =>
+          runGateLane(call(sid, "ToolSearch", { query: "select:fixture_send_message" }), { reflexPool: pool(RULE) })
+        )
       )
     );
     assert.equal(outs.filter(denied).length, 1);
@@ -250,6 +254,24 @@ describe("#1303 gate lane: parallel calls", () => {
 });
 
 describe("#1303 gate lane: failed persistence fails open", () => {
+  it("ten simultaneous matching calls pass when their gate deadline expires", async (t) => {
+    const sid = session("parallel-reflex-timeout");
+    let now = Date.now();
+    t.mock.method(Date, "now", () => now);
+    const pending = Promise.all(
+      Array.from({ length: 10 }, () =>
+        runGateLane(call(sid, "ToolSearch", { query: "select:fixture_send_message" }), { reflexPool: pool(RULE) })
+      )
+    );
+    // Each call has recorded its start time before the queued work continues.
+    now += FAST_BUDGET_MS + 1;
+    assert.deepEqual(await pending, Array(10).fill("{}"));
+    const rows = await gateRows(sid);
+    assert.equal(rows.length, 10);
+    assert.ok(rows.every((row) => row.outcome === "pass" && row.non_conformance === "gate_timeout"));
+    assert.equal((await loadSessionState(sid)).deniedReflex, undefined);
+  });
+
   it("slow daemon processing passes with a timeout row and preserves undelivered claims", async (t) => {
     const sid = session("timeout");
     await book(sid, ["pref-a"]);
