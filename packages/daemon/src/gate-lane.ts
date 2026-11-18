@@ -53,7 +53,7 @@ import { FAST_BUDGET_MS } from "./hook-budgets.js";
 import { hookAgent, hookGateAvailable, hookClientEvidence } from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
 import { defaultLogDir } from "./telemetry.js";
-import { isReflexPoolMember, matchReflexPool, reflexConfig, reflexPool, type ReflexMatch } from "./reflex.js";
+import { reflexConfig, reflexPool, type ReflexMatch } from "./reflex.js";
 import {
   actionClaimable,
   claimActionRules,
@@ -77,18 +77,16 @@ import { projectForLane } from "./scope-filter.js";
 import { renderKernelReminder, RULE_KERNEL_TOOL_CALLS, renderRuleKernel } from "./rule-kernel.js";
 import { kernelSeen, kernelUnchanged, rememberKernel, type KernelSeen } from "./rule-kernel-seen.js";
 
+import { actionReflexPool, matchActionReflex } from "./gate-lane-reflex.js";
+export { actionContext, actionReflexPool, MAX_ACTION_CONTEXT_CHARS } from "./gate-lane-reflex.js";
+
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", FAST_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_VERSION = "0.1.0";
 // C gets only part of the hook budget; legacy gates must remain independent.
 const RULEBOOK_ACTION_BUDGET_MS = RULEBOOK_CATALOG_BUDGET_MS;
 
-/** The action context a reflex trigger is matched against stays below 8 KB. */
-export const MAX_ACTION_CONTEXT_CHARS = 8 * 1024 - 1;
 /** Body characters one deny may carry; past it a rule is named, not quoted. */
 export const REFLEX_BODY_BUDGET_CHARS = 4000;
-/** Reflex claims remembered per session. */
-/** Pool eligibility: only a rule the user dictated and rated as weighty. */
-const MIN_SALIENCE = 0.8;
 
 export interface GatePayload {
   session_id?: string;
@@ -162,20 +160,6 @@ export function isGateExempt(toolName: string, input: Record<string, unknown>): 
   return toolName === "ToolSearch" && typeof input.query === "string" && /bastra/i.test(input.query);
 }
 
-/**
- * Only a rule the user wired as reflex, dictated in person, rated salience >=
- * 0.8 and that nothing superseded may interrupt an action.
- */
-export function actionReflexPool(memories: readonly Memory[]): Memory[] {
-  return memories.filter(
-    (m) =>
-      isReflexPoolMember(m) &&
-      m.fm.write_origin === "user-directed" &&
-      typeof m.fm.salience === "number" &&
-      m.fm.salience >= MIN_SALIENCE
-  );
-}
-
 const poolCache = new WeakMap<Vault, Memory[]>();
 const watched = new WeakSet<Vault>();
 
@@ -191,22 +175,6 @@ export function cachedActionReflexPool(vault: Vault): Memory[] {
     }
   }
   return pool;
-}
-
-/**
- * What a reflex trigger is matched against: the tool name (and an MCP tool's
- * own name), the paths, the query and the Bash command. Never file contents —
- * a trigger word inside a written file is not the action.
- */
-export function actionContext(toolName: string, input: Record<string, unknown>): string {
-  const parts = [toolName];
-  const short = toolName.split("__").pop();
-  if (short && short !== toolName) parts.push(short);
-  for (const key of ["file_path", "notebook_path", "path", "query", "command"]) {
-    const value = input[key];
-    if (typeof value === "string" && value.trim()) parts.push(value);
-  }
-  return parts.join("\n").slice(0, MAX_ACTION_CONTEXT_CHARS);
 }
 
 type Outcome = "pass" | "deny";
@@ -682,11 +650,6 @@ async function redeliverKernel(
     void writeTelemetry(payload, startedAt, { outcome: "pass", non_conformance: "kernel_unavailable" });
     return "{}";
   }
-}
-
-function matchActionReflex(pool: readonly Memory[], toolName: string, input: Record<string, unknown>): ReflexMatch[] {
-  if (pool.length === 0) return [];
-  return matchReflexPool(pool, actionContext(toolName, input), pool.length).matched;
 }
 
 /** The kill switch and the per-turn budget of the prompt reflex apply here
