@@ -6,9 +6,7 @@
 // web addresses. HTML comments (auto-related markers) are bookkeeping and dropped.
 import { h } from "../dom.js";
 import { vault } from "./vault-data.js";
-
-const INLINE =
-  /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]|`([^`]+)`|\*\*([^*]+)\*\*|\[([^\]]+)\]\((https?:[^)\s]+)\)|(https?:\/\/[^\s<)]+)|(^|[^*\w])\*([^*\s][^*]*)\*/g;
+import { inlineMatches } from "./inline-scan.js";
 
 /** [[id]] or [[id|label]]: a span, not a button, as it has to wrap inside running text; a link
  *  that names no memory in the vault stays a dead mark without action. */
@@ -34,11 +32,9 @@ function wikiLink(raw, label, onLink) {
 
 function inline(text, onLink) {
   const out = [];
-  let last = 0,
-    m;
-  INLINE.lastIndex = 0;
-  while ((m = INLINE.exec(text))) {
-    let start = m.index;
+  let last = 0;
+  for (const { index, end, groups: m } of inlineMatches(text)) {
+    let start = index;
     if (m[9] !== undefined) {
       start += m[8].length;
     }
@@ -49,7 +45,7 @@ function inline(text, onLink) {
     else if (m[5] !== undefined) out.push(h("a", { href: m[6], target: "_blank", rel: "noopener", text: m[5] }));
     else if (m[7] !== undefined) out.push(h("a", { href: m[7], target: "_blank", rel: "noopener", text: m[7] }));
     else out.push(h("em", { text: m[9] }));
-    last = m.index + m[0].length;
+    last = end;
   }
   if (last < text.length) out.push(text.slice(last));
   return out;

@@ -319,6 +319,7 @@ async function realRenderer(): Promise<{ render: (md: string) => Node_[] }> {
   return runInNewContext(
     [
       strip(await read("sections/tasks-reports-model.js")),
+      strip(await read("views/inline-scan.js")),
       strip(await read("views/markdown.js")),
       pick(reports, /function table\(b\) \{[\s\S]*?\n\}/),
       "({ render: (md) => reportBlocks(md).flatMap((b) => (b.kind === 'table' ? [table(b)] : markdown(b.text, () => {}))) })",

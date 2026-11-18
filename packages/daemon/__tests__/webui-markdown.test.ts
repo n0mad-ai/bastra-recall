@@ -10,7 +10,8 @@ import { Node_, h } from "./webui-report-dom.js";
 const read = (path: string) => readFile(new URL(`../webui/app/js/${path}`, import.meta.url), "utf8");
 
 async function renderer(): Promise<(md: string, onLink: (id: string) => void) => Node_[]> {
-  const source = (await read("views/markdown.js")).replace(/^import [\s\S]*?;$/gm, "").replace(/^export /gm, "");
+  const strip = (src: string) => src.replace(/^import [\s\S]*?;$/gm, "").replace(/^export /gm, "");
+  const source = strip(await read("views/inline-scan.js")) + strip(await read("views/markdown.js"));
   const byId = new Map([["known-id", { title: "Known memory" }]]);
   return runInNewContext(`${source}\nmarkdown`, { h, vault: () => ({ byId }) });
 }

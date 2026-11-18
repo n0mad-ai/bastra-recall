@@ -10,6 +10,10 @@
  * follow-up's own state is taken from its notes alone (no second follow-up step), so a chain of
  * follow-ups can never loop. Questions are recognised by the fixed syntax only, never by words. */
 
+// One scanner for the reader and this status (#1656): the web reader's own module, which the daemon
+// finds next to its code as it finds the rest of the web UI (webui.ts).
+import { inlineMatches } from "../webui/app/js/views/inline-scan.js";
+
 export type ReportStatus = "new" | "read" | "in_progress" | "handed" | "question" | "done";
 
 export interface StatusNote {
@@ -38,16 +42,11 @@ const OPTION_MAX = 40;
 const FENCE = /^```/;
 const HEADING = /^#{1,6}\s/;
 const ITEM = /^\s*(?:[-*]|\d+\.)\s+(.*)$/;
-// the renderer's inline formatting (memory-browser.js INLINE): wiki links, code, bold, links, web
-// addresses, emphasis. An element that ends after the marker's start leaves the line plain text.
-const INLINE =
-  /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]|`([^`]+)`|\*\*([^*]+)\*\*|\[([^\]]+)\]\((https?:[^)\s]+)\)|(https?:\/\/[^\s<)]+)|(^|[^*\w])\*([^*\s][^*]*)\*/g;
-
-/** Where the last inline element of `text` ends (0 without one). */
+/** Where the last inline element of `text` ends (0 without one): the renderer's inline formatting
+ * (views/markdown.js, via inline-scan.js) — wiki links, code, bold, links, web addresses, emphasis. An
+ * element that ends after the marker's start leaves the line plain text. */
 function formattedUntil(text: string): number {
-  let end = 0;
-  for (const m of text.matchAll(INLINE)) end = m.index + m[0].length;
-  return end;
+  return inlineMatches(text).at(-1)?.end ?? 0;
 }
 
 /** The text of a list item or paragraph line: does it end with answer options? */

@@ -344,7 +344,9 @@ until a new design replaces it; this name is independent of the product version.
   concurrent-update conflict is reported as its own cause (#1659).
 - Report questions: the daemon's question status and the reader now share one
   answer-option contract (at most 40 characters per option; markers in code,
-  headings or with formatting inside stay text) (#1656).
+  headings or with formatting inside stay text) and one inline scanner, which
+  takes linear time, so a line full of unclosed brackets no longer stalls the
+  report list or the reader (#1656).
 - Report reader: an escaped marker `\[? … ]` stays text and is shown without
   the backslash (#1652).
 - Report reader: after resizing across the narrow width, the contents panel
