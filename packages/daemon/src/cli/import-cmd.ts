@@ -33,6 +33,7 @@ import { IMPORT_CLI_WRITER, writeCallerStore } from "../caller-session.js";
 import { resolveVault } from "./helpers.js";
 import type { ParsedArgs } from "./types.js";
 import { usageBlocks } from "./usage-block-words.js";
+import { importWords, type ImportWords } from "./import-words.js";
 
 /** JSON.parse peak memory is a multiple of the input — refuse absurd files
  *  instead of OOM-killing the CLI. Real exports are tens of MB. */
@@ -50,12 +51,14 @@ async function readStdin(): Promise<string> {
 }
 
 export async function cmdImport(args: ParsedArgs): Promise<number> {
-  if (args.surface === "rules") return cmdImportRules(args);
-  // #1469: the two surfaces that write memories name their writer in the audit.
-  if (args.surface === "vault") return writeCallerStore.run(IMPORT_CLI_WRITER, () => cmdImportVault(args));
-  if (args.surface === "clients") return writeCallerStore.run(IMPORT_CLI_WRITER, () => cmdImportClients(args));
+  // `mine` speaks to the AI session, in the English it always had.
   if (args.surface === "mine") return cmdImportMine();
-  if (args.surface === "clear") return cmdImportClear();
+  const w = await importWords();
+  if (args.surface === "rules") return cmdImportRules(args, w);
+  // #1469: the two surfaces that write memories name their writer in the audit.
+  if (args.surface === "vault") return writeCallerStore.run(IMPORT_CLI_WRITER, () => cmdImportVault(args, w));
+  if (args.surface === "clients") return writeCallerStore.run(IMPORT_CLI_WRITER, () => cmdImportClients(args, w));
+  if (args.surface === "clear") return cmdImportClear(w);
 
   const vault = await resolveVault({ dryRun: false, vaultPath: args.vaultPath });
   if ("error" in vault) {
@@ -66,7 +69,7 @@ export async function cmdImport(args: ParsedArgs): Promise<number> {
   const fileArg = args.surface; // bastra import <file|-> [source]
   const sourceOverride = args.positional[2] ?? null;
   if (sourceOverride && !(IMPORT_SOURCES as readonly string[]).includes(sourceOverride)) {
-    process.stderr.write(`error: unknown source '${sourceOverride}' — one of: ${IMPORT_SOURCES.join(", ")}\n`);
+    process.stderr.write(w.unknownSource(sourceOverride, IMPORT_SOURCES.join(", ")));
     return 2;
   }
 
@@ -86,9 +89,7 @@ export async function cmdImport(args: ParsedArgs): Promise<number> {
       try {
         const info = await fh.stat();
         if (info.size > MAX_IMPORT_FILE_BYTES) {
-          process.stderr.write(
-            `error: ${fileArg} is ${Math.round(info.size / 1024 / 1024)} MB — too large to parse safely (max 256 MB)\n`
-          );
+          process.stderr.write(w.tooLarge(fileArg, Math.round(info.size / 1024 / 1024)));
           return 1;
         }
         raw = await fh.readFile({ encoding: "utf8" });
@@ -97,11 +98,11 @@ export async function cmdImport(args: ParsedArgs): Promise<number> {
       }
       fileName = basename(fileArg);
     } catch (err) {
-      process.stderr.write(`error: cannot read ${fileArg}: ${(err as Error).message}\n`);
+      process.stderr.write(w.cannotRead(fileArg, (err as Error).message));
       return 1;
     }
     if (BASTRA_OWN_FILES.has(fileName.toLowerCase())) {
-      process.stderr.write(`error: ${fileName} is written by bastra itself — it is never an import source.\n`);
+      process.stderr.write(w.ownFile(fileName));
       return 1;
     }
   }
@@ -110,58 +111,43 @@ export async function cmdImport(args: ParsedArgs): Promise<number> {
   try {
     candidates = extractCandidates(raw);
   } catch (err) {
-    if (err instanceof ConversationExportError) return queueConversations(raw);
+    if (err instanceof ConversationExportError) return queueConversations(raw, w);
     if (err instanceof SelfImportError) {
-      process.stderr.write(`error: ${err.message}\n`);
+      process.stderr.write(w.error(err.message));
       return 1;
     }
     throw err;
   }
   if (candidates.length === 0) {
-    process.stdout.write("no candidates found — is this a memory list (one fact per line)?\n");
+    process.stdout.write(w.noCandidates);
     return 1;
   }
 
   const source = detectSource(fileName, sourceOverride);
   const result = await stageImport(vault.path, source, candidates);
-  printStaged(result, source);
+  printStaged(result, source, w);
   return 0;
 }
 
-function printStaged(result: StageResult, source: ImportSource): void {
-  process.stdout.write(
-    `✓ ${result.staged} candidate(s) staged in ${IMPORT_FILE} (source: ${source})` +
-      (result.skippedDuplicates > 0 ? ` · ${result.skippedDuplicates} duplicate(s) skipped` : "") +
-      `\n  ${result.openTotal} open in total — your next AI session will offer to distill them with you.\n` +
-      `  Nothing is saved to the vault without your accept.\n`
-  );
+function printStaged(result: StageResult, source: ImportSource, w: ImportWords): void {
+  process.stdout.write(w.staged(result.staged, IMPORT_FILE, source, result.skippedDuplicates, result.openTotal));
 }
 
 /** #211: a conversations.json landed on the P1 path — queue it for mining. */
-async function queueConversations(raw: string): Promise<number> {
+async function queueConversations(raw: string, w: ImportWords): Promise<number> {
   const parsed = parseConversationExport(raw);
   if (!parsed) {
-    process.stderr.write(
-      "error: unrecognized JSON shape — expected a memory list (JSON array of strings) " +
-        "or a ChatGPT/Claude conversations.json data export\n"
-    );
+    process.stderr.write(w.unrecognizedJson);
     return 2;
   }
   const result = await buildQueue(parsed.conversations);
   const st = await queueStatus();
-  process.stdout.write(
-    `✓ ${result.queued} conversation(s) queued for mining — ${result.messages} of YOUR messages kept, ` +
-      `assistant turns dropped (source: ${parsed.source})\n` +
-      `  Queue: ${result.queueFile} (${st.remaining} pending) — local only, never leaves this\n` +
-      `  machine, deleted when mining completes. Discard anytime: bastra import clear\n` +
-      `  In your AI session say "mine the imported chat history" — it combs the queue\n` +
-      `  chunk-wise via \`bastra import mine\` and stages candidate facts for your review.\n`
-  );
+  process.stdout.write(w.queued(result.queued, result.messages, parsed.source, result.queueFile, st.remaining));
   return 0;
 }
 
 /** #209: stage local rules files through the same review gate. */
-async function cmdImportRules(args: ParsedArgs): Promise<number> {
+async function cmdImportRules(args: ParsedArgs, w: ImportWords): Promise<number> {
   const vault = await resolveVault({ dryRun: false, vaultPath: args.vaultPath });
   if ("error" in vault) {
     process.stderr.write(`${vault.error}\n`);
@@ -169,10 +155,7 @@ async function cmdImportRules(args: ParsedArgs): Promise<number> {
   }
   const files = await findRulesFiles(process.cwd());
   if (files.length === 0) {
-    process.stdout.write(
-      "no rules files found — looked for CLAUDE.md, AGENTS.md, .cursorrules and .cursor/rules/ " +
-        "here, and ~/.claude/CLAUDE.md\n"
-    );
+    process.stdout.write(w.noRulesFiles);
     return 1;
   }
   const all: string[] = [];
@@ -182,18 +165,18 @@ async function cmdImportRules(args: ParsedArgs): Promise<number> {
     try {
       const r = extractRulesCandidates(await readFile(f.path, "utf8"));
       all.push(...r.candidates);
-      line = r.candidates.length > 0 ? `${r.candidates.length} candidate(s)` : `0 candidates: ${r.emptyReason}`;
+      line = r.candidates.length > 0 ? w.candidates(r.candidates.length) : w.noCandidatesBecause(r.emptyReason);
     } catch (err) {
-      line = `0 candidates: unreadable (${(err as Error).message})`;
+      line = w.unreadable((err as Error).message);
     }
     process.stdout.write(`  ${f.label} — ${line}\n`);
   }
   if (all.length === 0) {
-    process.stdout.write("nothing to stage — see the per-file reasons above\n");
+    process.stdout.write(w.nothingToStage);
     return 1;
   }
   const result = await stageImport(vault.path, "rules", all);
-  printStaged(result, "rules");
+  printStaged(result, "rules", w);
   return 0;
 }
 
@@ -203,7 +186,7 @@ async function cmdImportRules(args: ParsedArgs): Promise<number> {
  * isolated `memories/imported/<label>/` subtree; nothing existing is touched.
  *   bastra import vault <dir> [label] [--dry-run]
  */
-async function cmdImportVault(args: ParsedArgs): Promise<number> {
+async function cmdImportVault(args: ParsedArgs, w: ImportWords): Promise<number> {
   const dir = args.positional[2];
   if (!dir) {
     process.stderr.write((await usageBlocks()).importVault);
@@ -219,63 +202,57 @@ async function cmdImportVault(args: ParsedArgs): Promise<number> {
   try {
     result = await importVault(vault.path, dir, { label, dryRun: args.dryRun, exclude: args.exclude });
   } catch (err) {
-    process.stderr.write(`error: ${(err as Error).message}\n`);
+    process.stderr.write(w.error((err as Error).message));
     return 1;
   }
-  const verb = result.dryRun ? "would import" : "imported";
   // #530: Ein zweiter, identischer Lauf meldete früher erneut „imported 7/7“,
   // obwohl er keine einzige Datei anfasste. Die Zeile trennt jetzt, was wirklich
   // passiert ist — im Dry-Run bleibt sie weg, weil ohne Write niemand weiß, was
   // ein echter Lauf vorgefunden hätte.
   const changeBreakdown = result.dryRun
     ? ""
-    : `  ${result.written.created} created · ${result.written.updated} updated · ` +
-      `${result.written.unchanged} unchanged` +
-      (result.skipped.length > 0 ? ` · ${result.skipped.length} failed` : "") +
+    : `  ${w.written(result.written.created, result.written.updated, result.written.unchanged)}` +
+      (result.skipped.length > 0 ? w.failed(result.skipped.length) : "") +
       `\n`;
   process.stdout.write(
-    `✓ ${verb} ${result.imported}/${result.scanned} file(s) → ${result.folder}/ ` +
-      `(scope: ${result.scope})\n` +
+    w.imported(result.dryRun, result.imported, result.scanned, result.folder, result.scope) +
       changeBreakdown +
-      `  ${result.byAdapter.claudeCode} via Claude-Code adapter · ${result.byAdapter.generic} generic markdown` +
+      w.adapters(result.byAdapter.claudeCode, result.byAdapter.generic) +
       // #312: the synthetic index (#217) is part of the reported total, so it
       // has to appear here as well — otherwise the breakdown reads one short
       // of the number printed directly above it.
-      (result.byAdapter.index > 0 ? ` · ${result.byAdapter.index} curated index` : "") +
-      (result.skipped.length > 0 ? ` · ${result.skipped.length} skipped` : "") +
-      (result.orphaned.length > 0 ? ` · ${result.orphaned.length} orphaned` : "") +
+      (result.byAdapter.index > 0 ? w.curatedIndex(result.byAdapter.index) : "") +
+      (result.skipped.length > 0 ? w.skippedCount(result.skipped.length) : "") +
+      (result.orphaned.length > 0 ? w.orphanedCount(result.orphaned.length) : "") +
       `\n`
   );
   for (const s of result.skipped.slice(0, 10)) {
-    process.stdout.write(`  · skipped ${basename(s.path)}: ${s.reason}\n`);
+    process.stdout.write(w.skipped(basename(s.path), s.reason));
   }
   if (result.skipped.length > 10) {
-    process.stdout.write(`  · …and ${result.skipped.length - 10} more\n`);
+    process.stdout.write(w.andMore(result.skipped.length - 10));
   }
   // #710: imported, but a field was fixed on the way in — say so.
-  for (const w of result.warnings.slice(0, 10)) {
-    process.stdout.write(`  · warning ${basename(w.path)}: ${w.reason}\n`);
+  for (const warning of result.warnings.slice(0, 10)) {
+    process.stdout.write(w.warning(basename(warning.path), warning.reason));
   }
   if (result.warnings.length > 10) {
-    process.stdout.write(`  · …and ${result.warnings.length - 10} more warnings\n`);
+    process.stdout.write(w.andMoreWarnings(result.warnings.length - 10));
   }
   // #530 follow-up: a source file that disappeared since the last import never
   // takes its memory down with it — a vanished file can be a stuck cloud sync.
   // Nothing is removed; the human decides.
   for (const o of result.orphaned.slice(0, 10)) {
-    process.stdout.write(`  · source file gone — memory kept: ${o.sourcePath} (${result.folder}/${o.id}.md)\n`);
+    process.stdout.write(w.sourceGone(o.sourcePath, `${result.folder}/${o.id}.md`));
   }
   if (result.orphaned.length > 10) {
-    process.stdout.write(`  · …and ${result.orphaned.length - 10} more orphaned\n`);
+    process.stdout.write(w.andMoreOrphaned(result.orphaned.length - 10));
   }
   if (result.orphaned.length > 0) {
-    process.stdout.write(`  nothing was removed — review and delete by hand if that's what you want.\n`);
+    process.stdout.write(w.nothingRemoved);
   }
   if (!result.dryRun && result.imported > 0) {
-    process.stdout.write(
-      `  the running daemon indexes them automatically; delete the whole set anytime\n` +
-        `  by removing the ${result.folder}/ folder.\n`
-    );
+    process.stdout.write(w.indexesThem(result.folder));
   }
   return 0;
 }
@@ -285,7 +262,7 @@ async function cmdImportVault(args: ParsedArgs): Promise<number> {
  * under its own label, so a re-run only writes what changed (#530).
  *   bastra import clients [--dry-run]
  */
-async function cmdImportClients(args: ParsedArgs): Promise<number> {
+async function cmdImportClients(args: ParsedArgs, w: ImportWords): Promise<number> {
   const vault = await resolveVault({ dryRun: false, vaultPath: args.vaultPath });
   if ("error" in vault) {
     process.stderr.write(`${vault.error}\n`);
@@ -293,9 +270,7 @@ async function cmdImportClients(args: ParsedArgs): Promise<number> {
   }
   const dirs = await findClientMemoryDirs(vault.path);
   if (dirs.length === 0) {
-    process.stdout.write(
-      "no client memory notes found — looked in ~/.claude/projects/*/memory and ~/.codex/memories\n"
-    );
+    process.stdout.write(w.noClientNotes);
     return 0;
   }
   let failed = 0;
@@ -305,29 +280,22 @@ async function cmdImportClients(args: ParsedArgs): Promise<number> {
   try {
     for (const m of await migrateClientLabels(vault.path, dirs, { dryRun: args.dryRun })) {
       const where = `${IMPORT_ROOT}/${m.from}/ → ${IMPORT_ROOT}/${m.to}/`;
-      process.stdout.write(
-        m.skipped
-          ? `! ${where} not moved: ${m.skipped} — the import below writes beside it\n`
-          : `✓ ${where} — ${m.memories} memory id(s) ${args.dryRun ? "would be renamed" : "renamed"}\n`
-      );
+      process.stdout.write(m.skipped ? w.notMoved(where, m.skipped) : w.moved(where, m.memories, args.dryRun));
       for (const f of m.left ?? []) {
-        process.stdout.write(
-          `  · left untouched: ${f} — not written by this import; ` +
-            `it stays in ${IMPORT_ROOT}/${m.from}/; move it where it belongs, or leave it (a rerun does not touch it)\n`
-        );
+        process.stdout.write(w.leftUntouched(f, `${IMPORT_ROOT}/${m.from}/`));
       }
     }
   } catch (err) {
-    process.stdout.write(`✗ moving an earlier import to its new label failed: ${(err as Error).message}\n`);
+    process.stdout.write(w.moveFailed((err as Error).message));
     return 1;
   }
   for (const d of dirs) {
     try {
       const r = await importVault(vault.path, d.dir, { label: d.label, dryRun: args.dryRun });
       const counts = r.dryRun
-        ? `${r.imported}/${r.scanned} file(s) would be imported`
-        : `${r.written.created} created · ${r.written.updated} updated · ${r.written.unchanged} unchanged` +
-          (r.skipped.length > 0 ? ` · ${r.skipped.length} skipped` : "");
+        ? w.wouldImport(r.imported, r.scanned)
+        : w.written(r.written.created, r.written.updated, r.written.unchanged) +
+          (r.skipped.length > 0 ? w.skippedCount(r.skipped.length) : "");
       process.stdout.write(`✓ ${d.client} ${d.dir} → ${r.folder}/ — ${counts}\n`);
     } catch (err) {
       failed += 1;
@@ -335,7 +303,7 @@ async function cmdImportClients(args: ParsedArgs): Promise<number> {
     }
   }
   if (!args.dryRun) {
-    process.stdout.write("  the originals stay where they are; the running daemon indexes the imported copies.\n");
+    process.stdout.write(w.originalsStay);
   }
   return failed > 0 ? 1 : 0;
 }
@@ -364,13 +332,9 @@ async function cmdImportMine(): Promise<number> {
   return 0;
 }
 
-async function cmdImportClear(): Promise<number> {
+async function cmdImportClear(w: ImportWords): Promise<number> {
   const st = await queueStatus();
   await clearQueue();
-  process.stdout.write(
-    st.remaining > 0
-      ? `✓ mining queue cleared — ${st.remaining} pending conversation(s) discarded\n`
-      : "mining queue is already empty\n"
-  );
+  process.stdout.write(st.remaining > 0 ? w.cleared(st.remaining) : w.alreadyEmpty);
   return 0;
 }

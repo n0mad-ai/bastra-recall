@@ -13,12 +13,12 @@
  * stdout = the bare token (script-friendly); stderr = the human hint.
  */
 import { ensureApiToken, clearApiToken, addCorsOrigin, normalizeCorsOrigin } from "../settings.js";
+import { tokenWords } from "./token-words.js";
 
 export async function cmdToken(args: { sub: string | null; json: boolean; origin?: string | null }): Promise<number> {
+  const w = await tokenWords();
   if (args.sub && args.sub !== "rotate" && args.sub !== "show" && args.sub !== "clear") {
-    process.stderr.write(
-      `error: unknown 'token' subcommand '${args.sub}' — use 'bastra token', 'bastra token rotate', or 'bastra token clear'\n`
-    );
+    process.stderr.write(w.unknownSub(args.sub));
     return 2;
   }
 
@@ -29,10 +29,10 @@ export async function cmdToken(args: { sub: string | null; json: boolean; origin
       return 0;
     }
     if (cleared) {
-      process.stdout.write("✗ token cleared — browser/REST clients are now locked out.\n");
-      process.stderr.write("Restart the daemon so it drops the token (the next recall respawns it): bastra update\n");
+      process.stdout.write(w.cleared);
+      process.stderr.write(w.restartToDrop);
     } else {
-      process.stdout.write("no token was set — nothing to clear.\n");
+      process.stdout.write(w.noneSet);
     }
     return 0;
   }
@@ -57,11 +57,6 @@ export async function cmdToken(args: { sub: string | null; json: boolean; origin
     return 0;
   }
   process.stdout.write(token + "\n");
-  process.stderr.write(
-    (rotate ? "↻ rotated — the previous token no longer works.\n" : "") +
-      (allowedOrigin ? `✓ allowed origin ${allowedOrigin} for the browser bridge.\n` : "") +
-      "Paste into bastra.io → Settings → Recall, then restart the daemon so it\n" +
-      "loads the token (the next recall respawns it): bastra update\n"
-  );
+  process.stderr.write((rotate ? w.rotated : "") + (allowedOrigin ? w.allowedOrigin(allowedOrigin) : "") + w.paste);
   return 0;
 }

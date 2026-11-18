@@ -18,6 +18,7 @@ import { claudeDesktopAdapter } from "./adapters/claude-desktop.js";
 import { CLAUDE_DESKTOP_CONFIG } from "./paths.js";
 import { SERVER_KEY, fileExists, getServersBlock, readJsonConfig } from "./helpers.js";
 import { copySkill } from "./skill.js";
+import { extensionWords, type ExtensionWords } from "./extension-words.js";
 import { confirm, isInteractive } from "./prompt.js";
 import type { ParsedArgs } from "./types.js";
 
@@ -79,7 +80,7 @@ async function fetchChecksum(url: string): Promise<string | null> {
   }
 }
 
-async function download(url: string, dest: string): Promise<boolean> {
+async function download(url: string, dest: string, w: ExtensionWords): Promise<boolean> {
   try {
     const resp = await fetch(url);
     if (!resp.ok) return false;
@@ -93,12 +94,12 @@ async function download(url: string, dest: string): Promise<boolean> {
     if (expected) {
       const actual = createHash("sha256").update(buf).digest("hex");
       if (actual !== expected) {
-        process.stderr.write("✗ checksum mismatch for the downloaded bundle — discarding it\n");
+        process.stderr.write(w.checksumMismatch);
         return false;
       }
-      process.stdout.write("  · checksum verified (sha256)\n");
+      process.stdout.write(w.checksumVerified);
     } else {
-      process.stdout.write("  · no published checksum for this asset — skipping verification\n");
+      process.stdout.write(w.noChecksum);
     }
     // "wx": the destination lives in a fresh private mkdtemp dir, so it must
     // not exist — refusing to follow a pre-planted file/symlink.
@@ -110,18 +111,15 @@ async function download(url: string, dest: string): Promise<boolean> {
 }
 
 export async function cmdInstallExtension(args: ParsedArgs): Promise<number> {
+  const w = await extensionWords();
   if (platform() !== "darwin") {
-    process.stderr.write("error: the Desktop Extension install is macOS-only for now\n");
+    process.stderr.write(w.macOnly);
     return 2;
   }
   const version = await pkgVersion();
 
   if (args.dryRun) {
-    process.stdout.write(
-      `~ would install the skill, locate bastra-recall-${version}.mcpb (local build → release asset → ` +
-        `latest release), offer to remove an existing config registration, and open the bundle in ` +
-        `Claude Desktop (dry-run)\n`
-    );
+    process.stdout.write(w.dryRun(version));
     return 0;
   }
 
@@ -129,34 +127,30 @@ export async function cmdInstallExtension(args: ParsedArgs): Promise<number> {
   // is registered — the extension path needs it just like the config path.
   const skill = await copySkill({ dryRun: false });
   if (skill.status === "error") {
-    process.stderr.write(`✗ skill: ${skill.detail}\n`);
+    process.stderr.write(w.skillFailed(skill.detail));
     return 1;
   }
-  process.stdout.write(`  · skill: ${skill.detail}\n`);
+  process.stdout.write(w.skill(skill.detail));
 
   // Locate the bundle.
   let mcpbPath = localMcpbPath(version);
   if (await fileExists(mcpbPath)) {
-    process.stdout.write(`  · extension: using local build ${mcpbPath}\n`);
+    process.stdout.write(w.localBuild(mcpbPath));
   } else {
     // Private per-run mkdtemp dir (0700) — a predictable path in the shared
     // tmpdir could be pre-planted or swapped between write and `open`.
     mcpbPath = join(await mkdtemp(join(tmpdir(), "bastra-mcpb-")), `bastra-recall-${version}.mcpb`);
-    process.stdout.write(`  · extension: downloading v${version} from GitHub releases…\n`);
-    let ok = await download(releaseDownloadUrl(version), mcpbPath);
+    process.stdout.write(w.downloading(version));
+    let ok = await download(releaseDownloadUrl(version), mcpbPath, w);
     if (!ok) {
       const latest = await latestMcpbAssetUrl();
       if (latest) {
-        process.stdout.write(`  · v${version} asset not found — falling back to the latest release bundle\n`);
-        ok = await download(latest, mcpbPath);
+        process.stdout.write(w.fallback(version));
+        ok = await download(latest, mcpbPath, w);
       }
     }
     if (!ok) {
-      process.stderr.write(
-        "✗ could not fetch a .mcpb bundle from GitHub releases — build one locally with\n" +
-          "  `npm run build:mcpb:local --workspace=@bastra-recall/daemon` and re-run, or use the\n" +
-          "  config install instead: bastra install claude-desktop\n"
-      );
+      process.stderr.write(w.noBundle);
       return 1;
     }
   }
@@ -166,29 +160,17 @@ export async function cmdInstallExtension(args: ParsedArgs): Promise<number> {
   const read = await readJsonConfig(CLAUDE_DESKTOP_CONFIG);
   const hasConfigServer = !("error" in read) && SERVER_KEY in (getServersBlock(read.data) ?? {});
   if (hasConfigServer) {
-    const remove = args.yes
-      ? true
-      : isInteractive()
-        ? await confirm("Remove the existing config-file registration (avoids duplicate tools)?", { defaultYes: true })
-        : false;
+    const remove = args.yes ? true : isInteractive() ? await confirm(w.removeQuestion, { defaultYes: true }) : false;
     if (remove) {
       const un = await claudeDesktopAdapter.uninstall({ dryRun: false });
-      process.stdout.write(`  · config registration: ${un.message}\n`);
+      process.stdout.write(w.configRegistration(un.message));
     } else {
-      process.stdout.write(
-        "  · keeping the config-file registration — expect the tools twice until you remove one\n" +
-          "    (bastra uninstall claude-desktop)\n"
-      );
+      process.stdout.write(w.keeping);
     }
   }
 
   // Hand the bundle to Claude Desktop — its dialog owns the final Install click.
   spawn("open", [mcpbPath], { detached: true, stdio: "ignore" }).unref();
-  process.stdout.write(
-    `✓ handed ${mcpbPath} to Claude Desktop\n` +
-      `  Click "Install" in the Desktop dialog and pick your vault folder.\n` +
-      `  Then make Desktop use memory on its own (2 min): ` +
-      `https://github.com/${REPO}/wiki/Claude-Desktop\n`
-  );
+  process.stdout.write(w.handed(mcpbPath, `https://github.com/${REPO}/wiki/Claude-Desktop`));
   return 0;
 }

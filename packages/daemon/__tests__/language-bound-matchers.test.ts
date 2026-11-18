@@ -67,6 +67,12 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
     "#1602 German help output, not a matcher",
   "packages/daemon/src/cli/help-text-setup-de.ts :: name SETUP_COMMAND_HELP_DE":
     "#1602 German help output, not a matcher",
+  "packages/daemon/src/cli/install-words.ts :: name STATUS_DE":
+    "#1602 German install/doctor status labels, not a matcher",
+  "packages/daemon/src/cli/onboard-words.ts :: name PERSONAS_DE":
+    "#1602 German onboarding persona labels, not a matcher",
+  "packages/daemon/src/cli/onboard-words.ts :: name QUESTIONS_DE":
+    "#1602 German onboarding question texts, not a matcher",
   "packages/daemon/src/cli/help-text.ts :: name HELP_LANGUAGES":
     "#1602 the languages the help is written in; compared with the language.primary setting, never with user text",
   // ── #707: detection only FILES a bridge (bridges/<lang>/, else "und"); mint and fire are language-neutral ──

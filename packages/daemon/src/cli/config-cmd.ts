@@ -69,6 +69,7 @@ import { archiveCap, archiveMaxItem, formatSize, parseRetain, parseSize, retainD
 import { getPromptImpactEnabled, setPromptImpactEnabled } from "../code-graph/prompt-impact-settings.js";
 import { getCoverageMapEnabled, setCoverageMapEnabled } from "../code-graph/coverage-map-settings.js";
 import { usageWords } from "./usage-words.js";
+import { configWords, type ConfigWords } from "./config-words.js";
 
 const configKeys = [
   ...settingEntries()
@@ -87,19 +88,20 @@ export async function cmdConfig(args: ParsedArgs): Promise<number> {
   const key = args.positional[2] ?? null;
   const value = args.positional[3] ?? null;
 
+  const w = await configWords();
   if (action !== "get" && action !== "set") {
     process.stderr.write((await usageWords()).config);
-    process.stderr.write(`known keys: ${configKeys.join(", ")}\n`);
+    process.stderr.write(w.knownKeys(configKeys.join(", ")));
     return 2;
   }
 
   if (!isKnownKey(key)) {
-    process.stderr.write(`error: unknown config key '${key ?? ""}'\n`);
-    process.stderr.write(`known keys: ${configKeys.join(", ")}\n`);
+    process.stderr.write(w.unknownKey(key ?? ""));
+    process.stderr.write(w.knownKeys(configKeys.join(", ")));
     return 2;
   }
 
-  return action === "get" ? cmdConfigGet(key) : cmdConfigSet(key, value);
+  return action === "get" ? cmdConfigGet(key, w) : cmdConfigSet(key, value, w);
 }
 
 /** Confirmation after `config set assistant.name`: the name as saved and which address applies. */
@@ -115,18 +117,18 @@ async function assistantNameReport(value: string): Promise<string> {
 
 const out = (text: string) => process.stdout.write(text);
 const fail = (text: string): number => (process.stderr.write(text), 2);
-const storedIn = () => `  stored in ${settingsFilePath()}\n`;
+const storedIn = (w: ConfigWords) => w.storedIn(settingsFilePath());
 
 /** `get`: names an environment variable that overrides the stored value. */
-function envNote(name: string): void {
+function envNote(name: string, w: ConfigWords): void {
   const env = process.env[name];
-  if (env) out(`  note: ${name}=${env} (env) overrides this file at runtime\n`);
+  if (env) out(w.envNote(name, env));
 }
 
 /** `set`: warns that an environment variable overrides what was just stored. */
-function envWarning(name: string): void {
+function envWarning(name: string, w: ConfigWords): void {
   const env = process.env[name];
-  if (env) out(`  ⚠ ${name}=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`);
+  if (env) out(w.envWarning(name, env));
 }
 
 /** Keys whose `get` shows more than the registry value: a readable default or the env override. */
@@ -181,17 +183,17 @@ const GETTERS: Record<string, { read: () => Promise<string>; env?: string }> = {
   },
 };
 
-async function cmdConfigGet(key: KnownKey): Promise<number> {
+async function cmdConfigGet(key: KnownKey, w: ConfigWords): Promise<number> {
   if (envSettingSpec(key)) {
     const entry = envSettingsSnapshot(await readSettings()).find((item) => item.key === key)!;
     out(`${entry.value}\n`);
-    if (entry.readonly) out(`  note: ${entry.envName} overrides this setting at runtime\n`);
+    if (entry.readonly) out(w.overrides(entry.envName));
     return 0;
   }
   const special = GETTERS[key];
   if (special) {
     out(`${await special.read()}\n`);
-    if (special.env) envNote(special.env);
+    if (special.env) envNote(special.env, w);
     return 0;
   }
   const entry = settingEntry(key)!;
@@ -199,75 +201,67 @@ async function cmdConfigGet(key: KnownKey): Promise<number> {
   out(
     `${entry.secret && value ? "(configured — masked)" : typeof value === "object" ? JSON.stringify(value) : (value ?? "(unset)")}\n`
   );
-  if (entry.env && process.env[entry.env] !== undefined)
-    out(`  note: ${entry.env} overrides this setting at runtime\n`);
+  if (entry.env && process.env[entry.env] !== undefined) out(w.overrides(entry.env));
   return 0;
 }
 
-type Setter = (value: string | null) => Promise<number>;
+type Setter = (value: string | null, w: ConfigWords) => Promise<number>;
 
 /** An on/off key: parse, store, confirm with `after(on)`, then warn about an env override. */
 function booleanSetter(
   key: string,
   store: (on: boolean) => Promise<void>,
-  after: (on: boolean) => string,
+  after: (on: boolean, w: ConfigWords) => string,
   env?: string
 ): Setter {
-  return async (value) => {
+  return async (value, w) => {
     const on = parseBool(value);
-    if (on === null) return fail(`error: ${key} must be one of: true | false (also on|off)\n`);
+    if (on === null) return fail(w.mustBeBool(key));
     await store(on);
-    out(`✓ ${key} = ${on}\n${storedIn()}${after(on)}`);
-    if (env) envWarning(env);
+    out(`✓ ${key} = ${on}\n${storedIn(w)}${after(on, w)}`);
+    if (env) envWarning(env, w);
     return 0;
   };
 }
 
 /** Keys with their own validation and confirmation text; every other key goes through the registry. */
 const SETTERS: Record<string, Setter> = {
-  "assistant.name": async (value) => {
-    if (value === null || value === "") return fail("Name angeben; entfernen mit bastra address remove.\n");
+  "assistant.name": async (value, w) => {
+    if (value === null || value === "") return fail(w.nameMissing);
     await configureAssistantName(value);
     out(await assistantNameReport(value));
     return 0;
   },
-  "update.mode": async (value) => {
+  "update.mode": async (value, w) => {
     if (value === null || !(UPDATE_MODES as readonly string[]).includes(value))
-      return fail(`error: update.mode must be one of: ${UPDATE_MODES.join(" | ")} (default: ${DEFAULT_UPDATE_MODE})\n`);
+      return fail(w.updateModeOneOf(UPDATE_MODES.join(" | "), DEFAULT_UPDATE_MODE));
     await setUpdateMode(value as UpdateMode);
-    out(`✓ update.mode = ${value}\n${storedIn()}`);
-    if (value === "auto") out("  bastra will now stage updates at session start (no restart mid-session).\n");
+    out(`✓ update.mode = ${value}\n${storedIn(w)}`);
+    if (value === "auto") out(w.updateAuto);
     return 0;
   },
-  "embedding.provider": async (value) => {
-    if (!isEmbeddingProviderName(value))
-      return fail(`error: embedding.provider must be one of: ${EMBEDDING_PROVIDERS.join(" | ")}\n`);
+  "embedding.provider": async (value, w) => {
+    if (!isEmbeddingProviderName(value)) return fail(w.providerOneOf(EMBEDDING_PROVIDERS.join(" | ")));
     await setEmbeddingProvider(value);
-    out(`✓ embedding.provider = ${value}\n${storedIn()}`);
+    out(`✓ embedding.provider = ${value}\n${storedIn(w)}`);
     const env = process.env.BASTRA_EMBEDDING_PROVIDER;
-    if (env && env.toLowerCase() !== value) envWarning("BASTRA_EMBEDDING_PROVIDER");
-    out("  restart the daemon to apply (activates on next boot).\n");
-    if (value === "ollama")
-      out("  needs Ollama + the embeddinggemma model — run `bastra embeddings on` if not set up.\n");
+    if (env && env.toLowerCase() !== value) envWarning("BASTRA_EMBEDDING_PROVIDER", w);
+    out(w.restartOnBoot);
+    if (value === "ollama") out(w.needsOllama);
     return 0;
   },
   "ollama.autostart": booleanSetter("ollama.autostart", setOllamaAutostart, () => ""),
-  "docs.mode": async (value) => {
-    if (!isDocsMode(value))
-      return fail(`error: docs.mode must be one of: ${DOCS_MODES.join(" | ")} (default: ${DEFAULT_DOCS_MODE})\n`);
+  "docs.mode": async (value, w) => {
+    if (!isDocsMode(value)) return fail(w.docsModeOneOf(DOCS_MODES.join(" | "), DEFAULT_DOCS_MODE));
     await setDocsMode(value);
-    out(`✓ docs.mode = ${value}\n${storedIn()}`);
-    if (value !== "off")
-      out(
-        `  product docs land in dokumentationen/<project>/ in your vault ` +
-          `(${value === "auto" ? "written autonomously on feature completion" : "proposed first, written after you agree"}).\n`
-      );
+    out(`✓ docs.mode = ${value}\n${storedIn(w)}`);
+    if (value !== "off") out(w.docsLand(value === "auto"));
     return 0;
   },
-  "docs.language": async (value) => {
-    if (!isDocsLanguage(value)) return fail("error: docs.language must be a short tag like 'en', 'de', 'pt-br'\n");
+  "docs.language": async (value, w) => {
+    if (!isDocsLanguage(value)) return fail(w.docsLanguage);
     await setDocsLanguage(value);
-    out(`✓ docs.language = ${value.trim().toLowerCase()}\n${storedIn()}`);
+    out(`✓ docs.language = ${value.trim().toLowerCase()}\n${storedIn(w)}`);
     return 0;
   },
   // #531 — one line, naming THE configured endpoint.
@@ -277,116 +271,78 @@ const SETTERS: Record<string, Setter> = {
       await setUiEnabled(on);
       await notifyAssistantAddressDaemon();
     },
-    (on) => (on ? `  vault map: ${mapUrl()} (or just: bastra map — no daemon restart needed)\n` : "")
+    (on, w) => (on ? w.vaultMap(mapUrl()) : "")
   ),
   "archive.enabled": booleanSetter(
     "archive.enabled",
     setArchiveEnabled,
-    (on) =>
-      (on
-        ? `  Claude Code's rm -r and lossy git acts now run through bastra's archive and are allowed without a prompt (docs/hooks.md).\n`
-        : `  rm -r and the lossy git acts get the plain STOP again.\n`) +
-      `  the next Bash call uses it (no restart needed).\n`
+    (on, w) => (on ? w.archiveOn : w.archiveOff) + w.nextBash
   ),
-  "reflex.enabled": booleanSetter(
-    "reflex.enabled",
-    setReflexEnabled,
-    () => "  the next prompt uses it (no restart needed).\n",
-    "BASTRA_REFLEX"
-  ),
+  "reflex.enabled": booleanSetter("reflex.enabled", setReflexEnabled, (_on, w) => w.nextPrompt, "BASTRA_REFLEX"),
   "battery.saver": booleanSetter(
     "battery.saver",
     setBatterySaver,
-    (on) =>
-      (on
-        ? `  on battery, background paraphrasing waits for AC, model warm-ups are skipped and the model unloads after 60 s idle (macOS).\n`
-        : `  background model work runs the same on battery as on AC.\n`) + `  restart the daemon to apply.\n`,
+    (on, w) => (on ? w.batteryOn : w.batteryOff) + w.restart,
     "BASTRA_BATTERY_SAVER"
   ),
   "promptImpact.enabled": booleanSetter(
     "promptImpact.enabled",
     setPromptImpactEnabled,
-    () => "  the next prompt uses it (no restart needed).\n",
+    (_on, w) => w.nextPrompt,
     "BASTRA_PROMPT_IMPACT"
   ),
   "coverageMap.enabled": booleanSetter(
     "coverageMap.enabled",
     setCoverageMapEnabled,
-    (on) =>
-      on
-        ? "  test commands in repositories with code awareness now run with NODE_V8_COVERAGE; the next Bash call uses it (no restart needed).\n"
-        : "  test commands run untouched again.\n",
+    (on, w) => (on ? w.coverageOn : w.coverageOff),
     "BASTRA_COVERAGE_MAP"
   ),
-  "archive.retain": async (value) => {
+  "archive.retain": async (value, w) => {
     const parsed = value === null ? null : parseRetain(value);
-    if (!parsed || Object.keys(parsed).length === 0)
-      return fail("error: archive.retain is days per class, e.g. junk=1,in-git=2,user=2 (fractions allowed)\n");
+    if (!parsed || Object.keys(parsed).length === 0) return fail(w.retainFormat);
     await setArchiveRetain(value as string);
     const r = retainDays({}, value as string);
-    out(
-      `✓ archive.retain = junk=${r.junk},in-git=${r["in-git"]},user=${r.user}\n${storedIn()}` +
-        `  the next hourly reconcile uses it (no restart needed).\n`
-    );
+    out(`✓ archive.retain = junk=${r.junk},in-git=${r["in-git"]},user=${r.user}\n${storedIn(w)}` + w.nextReconcile);
     return 0;
   },
-  "archive.cap": async (value) => {
+  "archive.cap": async (value, w) => {
     const bytes = value === null ? null : parseSize(value);
-    if (bytes === null)
-      return fail(
-        `error: archive.cap is a size above zero, e.g. 5GB or 500MB (units KB, MB, GB, TB) — got '${value ?? ""}'\n`
-      );
+    if (bytes === null) return fail(w.capFormat(value ?? ""));
     await setArchiveCap(value as string);
-    out(
-      `✓ archive.cap = ${formatSize(bytes)}\n${storedIn()}` +
-        `  the next hourly reconcile uses it (no restart needed): over the cap, build junk goes first, then clean git-tracked files.\n`
-    );
-    envWarning("BASTRA_ARCHIVE_CAP");
+    out(`✓ archive.cap = ${formatSize(bytes)}\n${storedIn(w)}` + w.capNext);
+    envWarning("BASTRA_ARCHIVE_CAP", w);
     return 0;
   },
-  "archive.max-item": async (value) => {
+  "archive.max-item": async (value, w) => {
     const off = value === "off" || value === "none";
     const bytes = value === null || off ? null : parseSize(value);
-    if (bytes === null && !off)
-      return fail(
-        `error: archive.max-item is a size above zero, e.g. 2GB or 500MB (units KB, MB, GB, TB), or off for no limit — got '${value ?? ""}'\n`
-      );
+    if (bytes === null && !off) return fail(w.maxItemFormat(value ?? ""));
     await setArchiveMaxItem(off ? null : (value as string));
     out(
-      `✓ archive.max-item = ${bytes === null ? "off (no per-target limit)" : formatSize(bytes)}\n${storedIn()}` +
-        (bytes === null
-          ? `  rm archives a target of any size again.\n`
-          : `  a larger target is neither archived nor deleted: rm refuses and names /bin/rm and this setting.\n`) +
-        `  the next Bash call uses it (no restart needed).\n`
+      `✓ archive.max-item = ${bytes === null ? w.maxItemOff : formatSize(bytes)}\n${storedIn(w)}` +
+        (bytes === null ? w.maxItemAny : w.maxItemRefuses) +
+        w.nextBash
     );
-    envWarning("BASTRA_ARCHIVE_MAX_ITEM");
+    envWarning("BASTRA_ARCHIVE_MAX_ITEM", w);
     return 0;
   },
-  "size.guide": async (value) => {
+  "size.guide": async (value, w) => {
     const n = value === null ? NaN : Number(value);
-    if (!Number.isFinite(n) || n < 100 || n > 5000)
-      return fail("error: size.guide must be a line count between 100 and 5000 (default 500)\n");
+    if (!Number.isFinite(n) || n < 100 || n > 5000) return fail(w.sizeGuideRange);
     await setSizeGuide(n);
-    out(
-      `✓ size.guide = ${Math.round(n)}\n${storedIn()}` +
-        `  the PreToolUse hook now flags source files near/over this guide value (no restart needed).\n`
-    );
+    out(`✓ size.guide = ${Math.round(n)}\n${storedIn(w)}` + w.sizeGuideNext);
     return 0;
   },
-  "language.primary": async (value) => {
-    if (!isPrimaryLanguage(value))
-      return fail("error: language.primary must be a 2-letter ISO code like 'de', 'en', 'ru'\n");
+  "language.primary": async (value, w) => {
+    if (!isPrimaryLanguage(value)) return fail(w.languageCode);
     await setPrimaryLanguage(value);
-    out(
-      `✓ language.primary = ${value.trim().toLowerCase()}\n${storedIn()}` +
-        `  new memories are now authored in this language (English tech terms kept as anchors, no restart needed).\n`
-    );
+    out(`✓ language.primary = ${value.trim().toLowerCase()}\n${storedIn(w)}` + w.languageNext);
     return 0;
   },
 };
 
 /** Keys stored in daemon.env (settings-env.ts); typed by their default. */
-async function setEnvBacked(key: string, value: string | null): Promise<number> {
+async function setEnvBacked(key: string, value: string | null, w: ConfigWords): Promise<number> {
   const envEntry = envSettingSpec(key)!;
   try {
     if (value === null) throw new Error("Expected a value");
@@ -398,15 +354,15 @@ async function setEnvBacked(key: string, value: string | null): Promise<number> 
       refuseCorrupt: true,
       requireLock: true,
     });
-    out(`✓ ${key} updated in daemon.env; restart the daemon to apply\n`);
+    out(w.envUpdated(key));
     return 0;
   } catch {
-    return fail(`error: invalid or environment-controlled value for ${key}\n`);
+    return fail(w.envInvalid(key));
   }
 }
 
 /** Any other registry key, typed by its registry kind. */
-async function setRegistryValue(key: string, value: string | null): Promise<number> {
+async function setRegistryValue(key: string, value: string | null, w: ConfigWords): Promise<number> {
   const entry = settingEntry(key)!;
   try {
     if (value === null) throw new Error("Expected a value");
@@ -422,17 +378,17 @@ async function setRegistryValue(key: string, value: string | null): Promise<numb
       if (key === "daemon.env") validateEnvPinChanges(current, next);
       return next;
     });
-    out(`✓ ${key} updated${entry.restartRequired ? "; restart the daemon and clients to apply" : ""}\n`);
+    out(w.updated(key, entry.restartRequired === true));
     return 0;
   } catch {
-    return fail(`error: invalid value for ${key}\n`);
+    return fail(w.invalid(key));
   }
 }
 
-async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number> {
-  if (envSettingSpec(key)) return setEnvBacked(key, value);
+async function cmdConfigSet(key: KnownKey, value: string | null, w: ConfigWords): Promise<number> {
+  if (envSettingSpec(key)) return setEnvBacked(key, value, w);
   const special = SETTERS[key];
-  return special ? special(value) : setRegistryValue(key, value);
+  return special ? special(value, w) : setRegistryValue(key, value, w);
 }
 
 function parseBool(v: string | null): boolean | null {

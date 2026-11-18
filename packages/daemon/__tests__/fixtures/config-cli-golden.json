@@ -1220,7 +1220,7 @@
         ],
         "code": 2,
         "stdout": "",
-        "stderr": "error: language.primary must be a 2-letter ISO code like 'de', 'en', 'ru'\n"
+        "stderr": "Fehler: language.primary muss ein zweistelliger ISO-Code wie 'de', 'en', 'ru' sein\n"
       },
       {
         "argv": [
@@ -1259,7 +1259,7 @@
         ],
         "code": 2,
         "stdout": "",
-        "stderr": "Name angeben; entfernen mit bastra address remove.\n"
+        "stderr": "Give a name; remove it with bastra address remove.\n"
       },
       {
         "argv": [
@@ -1269,7 +1269,7 @@
         ],
         "code": 2,
         "stdout": "",
-        "stderr": "Name angeben; entfernen mit bastra address remove.\n"
+        "stderr": "Give a name; remove it with bastra address remove.\n"
       }
     ],
     "stored": null

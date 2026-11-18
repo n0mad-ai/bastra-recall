@@ -21,6 +21,7 @@ import {
 } from "../settings.js";
 import type { ParsedArgs } from "./types.js";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
+import { panelWords, panelWordsIn, type PanelWords } from "./panel-words.js";
 
 interface HealthUpdate {
   current: string;
@@ -69,19 +70,22 @@ function probeCount(baseUrl: string): Promise<number | null> {
  * since before the update check that consumes it, so it collapses into the
  * "no daemon version to compare" branch instead of earning its own state.
  */
-export function formatVersionRows(i: {
-  cliVersion: string;
-  /** The running daemon's build, or null when there is nothing to compare. */
-  daemonVersion: string | null;
-  /** Newer release the daemon knows about, or null. */
-  updateLatest: string | null;
-  /** Set when the daemon's code was replaced under it (#329). */
-  codeStale?: CodeStale | null;
-}): PanelRow[] {
+export function formatVersionRows(
+  i: {
+    cliVersion: string;
+    /** The running daemon's build, or null when there is nothing to compare. */
+    daemonVersion: string | null;
+    /** Newer release the daemon knows about, or null. */
+    updateLatest: string | null;
+    /** Set when the daemon's code was replaced under it (#329). */
+    codeStale?: CodeStale | null;
+  },
+  w: PanelWords = panelWordsIn("en")
+): PanelRow[] {
   if (i.daemonVersion === null) {
-    return [["version", `cli ${i.cliVersion}  (daemon offline — can't check)`]];
+    return [[w.version, w.offline(i.cliVersion)]];
   }
-  const status = i.updateLatest ? `↑ ${i.updateLatest} available` : "✓ up to date";
+  const status = i.updateLatest ? w.available(i.updateLatest) : w.upToDate;
   // #329 — a daemon whose code was swapped out reports the version it booted
   // with. Printing that as the version, next to "✓ up to date", is exactly the
   // sentence the user must not be given: the answer itself is out of date, and
@@ -92,19 +96,19 @@ export function formatVersionRows(i: {
     // then naming the version twice says nothing. The build time does.
     const detail =
       s.running === s.on_disk
-        ? `daemon ${s.running} — build on disk is newer (${s.built_at.slice(0, 16).replace("T", " ")})`
-        : `daemon ${s.running} (process), ${s.on_disk} on disk`;
+        ? w.buildNewer(s.running, s.built_at.slice(0, 16).replace("T", " "))
+        : w.processAndDisk(s.running, s.on_disk);
     return [
-      ["version", `cli ${i.cliVersion}  ⚠ daemon runs replaced code — restart it`],
+      [w.version, w.replaced(i.cliVersion)],
       ["", detail],
     ];
   }
   if (i.daemonVersion === i.cliVersion) {
-    return [["version", `${i.cliVersion}  ${status}`]];
+    return [[w.version, `${i.cliVersion}  ${status}`]];
   }
   return [
-    ["version", `cli ${i.cliVersion}  ⚠ version drift — ${VERSION_DRIFT_HINT}`],
-    ["", `daemon ${i.daemonVersion}  ${status}`],
+    [w.version, w.drift(i.cliVersion, VERSION_DRIFT_HINT)],
+    ["", w.daemonStatus(i.daemonVersion, status)],
   ];
 }
 
@@ -122,15 +126,18 @@ export function formatVersionRows(i: {
  * Reduced scope by design: the map banner and the one-time prompt are not part
  * of this.
  */
-export function semanticRecallRow(i: {
-  effectiveProvider: EmbeddingProviderName;
-  daemonSemanticRecall: "on" | "off" | "degraded" | undefined;
-  ollamaReachable: boolean;
-}): PanelRow | null {
+export function semanticRecallRow(
+  i: {
+    effectiveProvider: EmbeddingProviderName;
+    daemonSemanticRecall: "on" | "off" | "degraded" | undefined;
+    ollamaReachable: boolean;
+  },
+  w: PanelWords = panelWordsIn("en")
+): PanelRow | null {
   if (i.effectiveProvider !== "none") return null;
   if (i.daemonSemanticRecall === "on" || i.daemonSemanticRecall === "degraded") return null;
   if (!i.ollamaReachable) return null;
-  return ["semantic", "off — local Ollama detected, enable: bastra embeddings on"];
+  return [w.semantic, w.semanticOffer];
 }
 
 function renderBox(title: string, rows: Array<[string, string]>): string {
@@ -145,6 +152,7 @@ function renderBox(title: string, rows: Array<[string, string]>): string {
 export async function cmdPanel(_args: ParsedArgs): Promise<number> {
   // #531 — one endpoint for both probes; the panel used to derive its own.
   const endpoint = resolveDaemonEndpoint();
+  const w = await panelWords();
   // Fresh count (reconciles index vs. disk) + health + modes, in parallel.
   // The Ollama probe rides along unconditionally instead of waiting for the
   // provider lookup: sequencing the two would add its latency to the panel,
@@ -161,40 +169,46 @@ export async function cmdPanel(_args: ParsedArgs): Promise<number> {
     probeOllama(),
   ]);
 
-  const versionRows = formatVersionRows({
-    cliVersion: VERSION,
-    daemonVersion: health?.version ?? null,
-    updateLatest: health?.update_available?.latest ?? null,
-    codeStale: health?.code_stale ?? null,
-  });
-  const recallRow = semanticRecallRow({
-    effectiveProvider: embedding.provider,
-    daemonSemanticRecall: health?.semantic_recall,
-    ollamaReachable: ollama.ok,
-  });
+  const versionRows = formatVersionRows(
+    {
+      cliVersion: VERSION,
+      daemonVersion: health?.version ?? null,
+      updateLatest: health?.update_available?.latest ?? null,
+      codeStale: health?.code_stale ?? null,
+    },
+    w
+  );
+  const recallRow = semanticRecallRow(
+    {
+      effectiveProvider: embedding.provider,
+      daemonSemanticRecall: health?.semantic_recall,
+      ollamaReachable: ollama.ok,
+    },
+    w
+  );
 
-  const daemonRow = health ? `✓ running (${endpoint.label})` : "✗ not running (auto-spawns on next MCP call)";
+  const daemonRow = health ? w.running(endpoint.label) : w.notRunning;
   // Prefer the reconciled count; fall back to /health's (possibly stale) size.
   const count = freshCount ?? health?.vault_size ?? null;
-  const vaultRow = count != null ? `${count} memories` : "—";
+  const vaultRow = count != null ? w.memories(count) : "—";
 
   const box = renderBox("bastra-recall", [
     ...versionRows,
-    ["update", `mode: ${mode}`],
-    ["daemon", daemonRow],
-    ["vault", vaultRow],
-    ...(health?.vault_availability?.warning ? [["vault warning", health.vault_availability.warning] as PanelRow] : []),
+    [w.update, w.mode(mode)],
+    [w.daemon, daemonRow],
+    [w.vault, vaultRow],
+    ...(health?.vault_availability?.warning ? [[w.vaultWarning, health.vault_availability.warning] as PanelRow] : []),
     ...(recallRow ? [recallRow] : []),
-    ["docs", docsMode === "off" ? "off" : `${docsMode} (${docsLanguage})`],
-    ["api token", apiToken ? "set (browser/REST enabled)" : "not set (loopback only)"],
+    [w.docs, docsMode === "off" ? w.off : `${docsMode} (${docsLanguage})`],
+    [w.apiToken, apiToken ? w.tokenSet : w.tokenUnset],
   ]);
 
   process.stdout.write(box + "\n");
-  process.stdout.write("  bastra help                       all commands\n");
+  process.stdout.write(w.help);
   process.stdout.write("  bastra config set update.mode …   notify | auto | off\n");
-  process.stdout.write("  bastra config set docs.mode …     off | suggest | auto (product docs)\n");
+  process.stdout.write(w.docsMode);
   if (health?.update_available) {
-    process.stdout.write(`  bastra update                     get ${health.update_available.latest} now\n`);
+    process.stdout.write(w.updateNow(health.update_available.latest));
   }
   return 0;
 }

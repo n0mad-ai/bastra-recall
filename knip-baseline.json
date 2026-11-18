@@ -224,7 +224,6 @@
     "[\"exports\",\"packages/daemon/src/oauth-store.ts\",[\"\",\"REFRESH_TTL_MS\"]]": 1,
     "[\"exports\",\"packages/daemon/src/oauth-store.ts\",[\"\",\"newToken\"]]": 1,
     "[\"exports\",\"packages/daemon/src/oauth-store.ts\",[\"\",\"oauthStorePath\"]]": 1,
-    "[\"exports\",\"packages/daemon/src/onboarding.ts\",[\"\",\"QUESTIONS\"]]": 1,
     "[\"exports\",\"packages/daemon/src/patch-registry.ts\",[\"\",\"patchIndexPath\"]]": 1,
     "[\"exports\",\"packages/daemon/src/patch-registry.ts\",[\"\",\"retiredDir\"]]": 1,
     "[\"exports\",\"packages/daemon/src/patch-registry.ts\",[\"\",\"writeIndex\"]]": 1,

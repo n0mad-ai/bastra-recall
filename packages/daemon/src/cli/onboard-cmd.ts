@@ -27,8 +27,10 @@ import { resolveVault } from "./helpers.js";
 import { replayAfterOnboarding } from "./doctor-replay.js";
 import type { ParsedArgs } from "./types.js";
 import { usageBlocks } from "./usage-block-words.js";
+import { onboardWords, onboardWordsIn, type OnboardWords } from "./onboard-words.js";
 
 export async function cmdOnboard(args: ParsedArgs): Promise<number> {
+  const w = await onboardWords();
   const vault = await resolveVault({ dryRun: false, vaultPath: args.vaultPath });
   if ("error" in vault) {
     process.stderr.write(`${vault.error}\n`);
@@ -37,29 +39,23 @@ export async function cmdOnboard(args: ParsedArgs): Promise<number> {
 
   if (args.surface === "skip" || args.surface === "done") {
     await markOnboardingDone(vault.path, args.surface === "skip" ? "cli (skipped)" : "session");
-    process.stdout.write(
-      args.surface === "skip"
-        ? "✓ onboarding dismissed — run `bastra onboard` anytime to do the interview later\n"
-        : "✓ onboarding marked done\n"
-    );
+    process.stdout.write(args.surface === "skip" ? w.dismissed : w.markedDone);
     return 0;
   }
 
   if (args.answers !== null) {
-    const loaded = await loadAnswersFile(args.answers);
+    const loaded = await loadAnswersFile(args.answers, w);
     if ("error" in loaded) {
       process.stderr.write(`${loaded.error}\n`);
       return 2;
     }
     if (loaded.ignored.length > 0) {
-      process.stderr.write(
-        `ignored (not a ${loaded.persona} question): ${loaded.ignored.join(", ")} — ` +
-          `known ids: ${questionsFor(loaded.persona)
-            .map((q) => q.id)
-            .join(", ")}\n`
-      );
+      const known = questionsFor(loaded.persona)
+        .map((q) => q.id)
+        .join(", ");
+      process.stderr.write(w.ignored(loaded.persona, loaded.ignored.join(", "), known));
     }
-    return saveInterview(vault.path, loaded.persona, loaded.answers);
+    return saveInterview(vault.path, loaded.persona, loaded.answers, w);
   }
 
   if (!process.stdin.isTTY) {
@@ -68,15 +64,15 @@ export async function cmdOnboard(args: ParsedArgs): Promise<number> {
   }
 
   if (await isOnboardingDone(vault.path)) {
-    process.stdout.write("(you have onboarded before — answers overwrite your existing profile memories)\n\n");
+    process.stdout.write(w.onboardedBefore);
   }
 
-  const interview = await runInterview(process.stdin, process.stdout);
+  const interview = await runInterview(process.stdin, process.stdout, w);
   if (!interview) {
-    process.stderr.write("\ninput ended before the interview finished — nothing saved\n");
+    process.stderr.write(w.inputEnded);
     return 1;
   }
-  return saveInterview(vault.path, interview.persona, interview.answers);
+  return saveInterview(vault.path, interview.persona, interview.answers, w);
 }
 
 /**
@@ -89,13 +85,14 @@ export async function cmdOnboard(args: ParsedArgs): Promise<number> {
  * dropped is an error, because that file was meant to answer something.
  */
 export async function loadAnswersFile(
-  path: string
+  path: string,
+  w: OnboardWords = onboardWordsIn("en")
 ): Promise<{ persona: Persona; answers: Record<string, string>; ignored: string[] } | { error: string }> {
   let raw: string;
   try {
     raw = await readFile(path, "utf8");
   } catch (err) {
-    return { error: `cannot read answers file ${path}: ${(err as Error).message}` };
+    return { error: w.cannotRead(path, (err as Error).message) };
   }
   let data: unknown;
   try {
@@ -104,10 +101,10 @@ export async function loadAnswersFile(
     const text = raw.replace(/^\uFEFF/, "");
     data = extname(path).toLowerCase() === ".json" ? JSON.parse(text) : matter(`---\n${text}\n---\n`).data;
   } catch (err) {
-    return { error: `cannot parse answers file ${path}: ${(err as Error).message}` };
+    return { error: w.cannotParse(path, (err as Error).message) };
   }
   const parsed = parseOnboardingAnswers(data);
-  if ("error" in parsed) return { error: `answers file ${path}: ${parsed.error}` };
+  if ("error" in parsed) return { error: w.invalid(path, parsed.error) };
   const asked = new Set(questionsFor(parsed.persona).map((q) => q.id));
   const ignored = Object.keys(parsed.answers).filter((id) => !asked.has(id));
   // Entries parseOnboardingAnswers dropped because their value is not text.
@@ -123,17 +120,20 @@ export async function loadAnswersFile(
   const usable = Object.entries(parsed.answers).some(([id, text]) => asked.has(id) && text.trim() !== "");
   if (!usable && (ignored.length > 0 || notText.length > 0)) {
     const named = [
-      ...(ignored.length > 0 ? [`not a ${parsed.persona} question: ${ignored.join(", ")}`] : []),
-      ...(notText.length > 0 ? [`not text: ${notText.join(", ")}`] : []),
+      ...(ignored.length > 0 ? [w.notAQuestion(parsed.persona, ignored.join(", "))] : []),
+      ...(notText.length > 0 ? [w.notText(notText.join(", "))] : []),
     ];
-    return {
-      error: `answers file ${path}: no usable answer (${named.join("; ")}) — known ids: ${[...asked].join(", ")}`,
-    };
+    return { error: w.noUsable(path, named.join("; "), [...asked].join(", ")) };
   }
   return { ...parsed, ignored };
 }
 
-async function saveInterview(vaultPath: string, persona: Persona, answers: Record<string, string>): Promise<number> {
+async function saveInterview(
+  vaultPath: string,
+  persona: Persona,
+  answers: Record<string, string>,
+  w: OnboardWords
+): Promise<number> {
   const memories = buildOnboardingMemories(persona, answers);
   // Keep the completion marker after this call: a real write failure must
   // leave onboarding retryable instead of recording a partial interview as done.
@@ -141,11 +141,7 @@ async function saveInterview(vaultPath: string, persona: Persona, answers: Recor
   await persistConventionSettings(answers);
   await persistLanguageSetting(answers);
   await markOnboardingDone(vaultPath, "cli");
-  process.stdout.write(
-    `\n✓ ${memories.length} profile memories saved — your AI knows you from the next session on.\n` +
-      `  Refine anytime: just tell your AI, or re-run \`bastra onboard\` (answers overwrite).\n` +
-      `  Got memories in other AI tools? \`bastra import\` brings them along too.\n`
-  );
+  process.stdout.write(w.saved(memories.length));
   // #702 step 5: how recall will behave on this vault with this user's own
   // prompts — a replay when transcripts exist, otherwise when to come back.
   await replayAfterOnboarding(process.stdout);
@@ -163,7 +159,8 @@ async function saveInterview(vaultPath: string, persona: Persona, answers: Recor
  */
 export async function runInterview(
   input: Readable,
-  output: Writable
+  output: Writable,
+  w: OnboardWords = onboardWordsIn("en")
 ): Promise<{ persona: Persona; answers: Record<string, string> } | null> {
   const rl = createInterface({ input, output });
   // Create the iterator before the first prompt so no early line is lost.
@@ -178,24 +175,20 @@ export async function runInterview(
     return next.done ? null : String(next.value).trim();
   };
   try {
-    output.write(
-      "Seed your vault in ~5 minutes — a handful of questions, every answer becomes a memory\n" +
-        "your AI recalls from day one. Enter skips an optional question; Ctrl-C aborts.\n\n" +
-        "What will your memory mainly hold?\n"
-    );
-    PERSONAS.forEach((p, i) => output.write(`  ${i + 1}. ${PERSONA_LABELS[p]}\n`));
+    output.write(w.intro);
+    PERSONAS.forEach((p, i) => output.write(`  ${i + 1}. ${w.persona(p, PERSONA_LABELS[p])}\n`));
     let persona: Persona | null = null;
     while (persona === null) {
       const pick = await ask();
       if (pick === null) return null;
       const idx = parseInt(pick, 10) - 1;
       if (idx >= 0 && idx < PERSONAS.length) persona = PERSONAS[idx];
-      else output.write(`pick 1-${PERSONAS.length}\n`);
+      else output.write(w.pick(PERSONAS.length));
     }
 
     const answers: Record<string, string> = {};
     for (const q of questionsFor(persona)) {
-      output.write(`\n${q.ask}${q.optional ? "  (optional)" : ""}\n  ${q.hint}\n`);
+      output.write(`\n${w.ask(q)}${q.optional ? w.optional : ""}\n  ${w.hint(q)}\n`);
       const answer = await ask();
       if (answer === null) return null;
       if (answer) answers[q.id] = answer;

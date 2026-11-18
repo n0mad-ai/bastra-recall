@@ -15,12 +15,10 @@ import {
   VERSION,
   VERSION_DRIFT_HINT,
   probeDaemon,
-  formatStatus,
   resolveVault,
   decideFirstRunVaultAction,
   defaultVaultPath,
   createVaultAt,
-  DEFAULT_VAULT_DISPLAY,
   VAULT_REQUIRED_ERROR,
 } from "./helpers.js";
 import { installSemanticRecallStep, printEmbeddingDoctorNote } from "./embeddings-cmd.js";
@@ -35,6 +33,8 @@ import { ensureHookStub } from "./stub-install.js";
 import { confirm, isInteractive } from "./prompt.js";
 import { getEmbeddingProvider, getSharedRecallEnabled, getSharedRecallLive, readSettings } from "../settings.js";
 import { addressLanguage, addressWords } from "../assistant-address-words.js";
+import { installWords, installWordsIn, type InstallWords } from "./install-words.js";
+import { doctorWords, type DoctorWords } from "./doctor-words.js";
 import { canAutoSpawnAt } from "../forwarder-daemon-client.js";
 import { bridgeLearningLines, readMintRuns } from "./bridges-note.js";
 import { bridgesPath } from "../learned-recall/pool-path.js";
@@ -189,7 +189,7 @@ function resolveVaultPath(cliVault: string | null): string | null {
   return cliVault ?? process.env.BASTRA_VAULT_PATH ?? null;
 }
 
-export const FIRST_RUN_VAULT_QUESTION = `No memory vault configured yet. Create one at ${DEFAULT_VAULT_DISPLAY}?`;
+export const FIRST_RUN_VAULT_QUESTION = installWordsIn("en").firstRunQuestion;
 
 /**
  * First-run vault step (#178): on a fresh machine there is nothing to
@@ -198,14 +198,16 @@ export const FIRST_RUN_VAULT_QUESTION = `No memory vault configured yet. Create 
  * vault path (the caller feeds it through opts.vaultPath — the same route a
  * --vault value takes), or an exit code when install must stop (refusal or
  * failed creation → the unchanged non-zero error semantics). `io` is
- * injectable for tests only (there is no TTY on CI).
+ * injectable for tests only (there is no TTY on CI); `w` are the words in
+ * language.primary, English when not given.
  */
 export async function installVaultFirstRunStep(
   i: { vaultConfigured: boolean; interactive: boolean; yes: boolean; dryRun: boolean },
   io: {
     ask?: (question: string, opts: { defaultYes?: boolean }) => Promise<boolean>;
     create?: (path: string) => Promise<{ path: string } | { error: string }>;
-  } = {}
+  } = {},
+  w: InstallWords = installWordsIn("en")
 ): Promise<{ vaultPath: string | null; exit: number | null }> {
   const action = decideFirstRunVaultAction(i);
   // "error" = non-TTY/--yes without a vault: do nothing here — the per-surface
@@ -213,22 +215,22 @@ export async function installVaultFirstRunStep(
   // saw before.
   if (action === "proceed" || action === "error") return { vaultPath: null, exit: null };
   if (action === "would-create") {
-    process.stdout.write(`~ would prompt to create ${DEFAULT_VAULT_DISPLAY} (dry-run): no vault configured yet\n\n`);
+    process.stdout.write(w.wouldPromptVault);
     return { vaultPath: null, exit: null };
   }
   // action === "prompt" — ask once, default Yes.
-  const accepted = await (io.ask ?? confirm)(FIRST_RUN_VAULT_QUESTION, { defaultYes: true });
+  const accepted = await (io.ask ?? confirm)(w.firstRunQuestion, { defaultYes: true });
   if (!accepted) {
-    process.stderr.write(`error: ${VAULT_REQUIRED_ERROR}\n`);
+    process.stderr.write(w.vaultRequired(VAULT_REQUIRED_ERROR));
     return { vaultPath: null, exit: 1 };
   }
   const created = await (io.create ?? createVaultAt)(defaultVaultPath());
   if ("error" in created) {
-    process.stderr.write(`✗ could not create ${DEFAULT_VAULT_DISPLAY}: ${created.error}\n`);
-    process.stderr.write(`error: ${VAULT_REQUIRED_ERROR}\n`);
+    process.stderr.write(w.couldNotCreateDefault(created.error));
+    process.stderr.write(w.vaultRequired(VAULT_REQUIRED_ERROR));
     return { vaultPath: null, exit: 1 };
   }
-  process.stdout.write(`✓ created ${created.path} — your memories live here as plain markdown files\n\n`);
+  process.stdout.write(w.created(created.path));
   return { vaultPath: created.path, exit: null };
 }
 
@@ -247,7 +249,8 @@ export async function installVaultFirstRunStep(
  */
 export async function installVaultPresenceStep(
   i: { flagPath: string | null; resolvedPath: string | null; dryRun: boolean },
-  io: { create?: (path: string) => Promise<{ path: string } | { error: string }>; out?: (s: string) => void } = {}
+  io: { create?: (path: string) => Promise<{ path: string } | { error: string }>; out?: (s: string) => void } = {},
+  w: InstallWords = installWordsIn("en")
 ): Promise<number | null> {
   const out = io.out ?? ((t: string) => process.stdout.write(t));
   const path = i.resolvedPath;
@@ -255,20 +258,18 @@ export async function installVaultPresenceStep(
   if (!path || !reason) return null;
   if (i.flagPath && i.flagPath === path) {
     if (i.dryRun) {
-      out(`~ would create the vault at ${path} (dry-run): it does not exist yet\n\n`);
+      out(w.wouldCreateVault(path));
       return null;
     }
     const created = await (io.create ?? createVaultAt)(path);
     if ("error" in created) {
-      process.stderr.write(`✗ could not create the vault at ${path}: ${created.error}\n`);
+      process.stderr.write(w.couldNotCreateVault(path, created.error));
       return 1;
     }
-    out(`✓ created ${created.path} — your memories live here as plain markdown files\n\n`);
+    out(w.created(created.path));
     return null;
   }
-  out(
-    `⚠ ${reason}.\n  Not creating it: a path from the environment or an earlier registration that is missing is usually an unmounted drive.\n\n`
-  );
+  out(w.notCreating(reason));
   return null;
 }
 
@@ -286,7 +287,7 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
   // only; Desktop's own dialog owns the final Install click.
   if (args.extension) {
     if (args.surface !== "claude-desktop") {
-      process.stderr.write("error: --extension is only available for 'bastra install claude-desktop'\n");
+      process.stderr.write((await installWords()).extensionOnlyDesktop);
       return 2;
     }
     return cmdInstallExtension(args);
@@ -300,9 +301,10 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
     return runInstallWizard(args);
   }
 
+  const w = await installWords();
   const targets = resolveTargets(args.surface);
   if ("error" in targets) {
-    process.stderr.write(`error: ${targets.error}\n`);
+    process.stderr.write(w.error(targets.error));
     return 2;
   }
 
@@ -318,19 +320,27 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
   // First-run vault guard (#178) — before the loop, so the offer never
   // repeats per surface.
   const preResolve = await resolveVault(opts);
-  const firstRun = await installVaultFirstRunStep({
-    vaultConfigured: !("error" in preResolve),
-    interactive: isInteractive(),
-    yes: args.yes,
-    dryRun: args.dryRun,
-  });
+  const firstRun = await installVaultFirstRunStep(
+    {
+      vaultConfigured: !("error" in preResolve),
+      interactive: isInteractive(),
+      yes: args.yes,
+      dryRun: args.dryRun,
+    },
+    {},
+    w
+  );
   if (firstRun.exit !== null) return firstRun.exit;
   if (firstRun.vaultPath) opts.vaultPath = firstRun.vaultPath;
-  const vaultStep = await installVaultPresenceStep({
-    flagPath: args.vaultPath,
-    resolvedPath: opts.vaultPath ?? ("path" in preResolve ? preResolve.path : null),
-    dryRun: args.dryRun,
-  });
+  const vaultStep = await installVaultPresenceStep(
+    {
+      flagPath: args.vaultPath,
+      resolvedPath: opts.vaultPath ?? ("path" in preResolve ? preResolve.path : null),
+      dryRun: args.dryRun,
+    },
+    {},
+    w
+  );
   if (vaultStep !== null) return vaultStep;
 
   // #350/#15: the compiled hook client for Claude Code and Codex. Runs before the
@@ -344,21 +354,21 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
     // Codex hook on that binary anyway, because each adapter asked existsSync
     // instead of asking what was decided here.
     opts.useStub = stub.useStub;
-    process.stdout.write(`${stub.status === "failed" ? "⚠" : "·"} hook client: ${stub.detail}\n\n`);
+    process.stdout.write(w.hookClient(stub.status === "failed", stub.detail));
   }
 
   let hadError = false;
   for (const adapter of targets) {
     process.stdout.write(`→ ${adapter.surface} (${adapter.description})\n`);
-    process.stdout.write(`  config: ${adapter.configPath}\n`);
+    process.stdout.write(w.config(adapter.configPath));
     try {
       const r = await adapter.install(opts);
-      process.stdout.write(`  ${formatStatus(r.status)}: ${r.message}\n`);
-      if (r.backupPath) process.stdout.write(`  backup: ${r.backupPath}\n`);
+      process.stdout.write(`  ${w.status(r.status)}: ${r.message}\n`);
+      if (r.backupPath) process.stdout.write(w.backup(r.backupPath));
       if (r.status === "error") hadError = true;
     } catch (err) {
       hadError = true;
-      process.stdout.write(`  error: ${(err as Error).message}\n`);
+      process.stdout.write(w.surfaceError((err as Error).message));
     }
     process.stdout.write("\n");
   }
@@ -396,35 +406,33 @@ export async function cmdUninstall(
   args: ParsedArgs,
   io?: { address?: AssistantAddressOptions; notify?: () => Promise<void> }
 ): Promise<number> {
-  const w = await uninstallAddressWords(io);
+  const a = await uninstallAddressWords(io);
+  const w = await installWords();
   try {
     if (args.surface === "all" && (await hasManagedAssistantAddress(io?.address))) {
-      if (args.dryRun)
-        process.stdout.write(
-          "→ assistant address: would remove only owned hosts/browser/socket entries after system consent\n"
-        );
+      if (args.dryRun) process.stdout.write(w.addressDryRun);
       else {
         const needs = await addressRemovalNeedsConsent(io?.address);
-        if (needs && !(process.stdin.isTTY && process.stdout.isTTY && (await confirm(w.confirmUninstallRemove)))) {
-          process.stderr.write(w.removeFirst);
+        if (needs && !(process.stdin.isTTY && process.stdout.isTTY && (await confirm(a.confirmUninstallRemove)))) {
+          process.stderr.write(a.removeFirst);
           return 1;
         }
         try {
           await removeAssistantAddress({ ...io?.address, systemConsent: needs });
           await (io?.notify ?? notifyAssistantAddressDaemon)();
         } catch (e) {
-          process.stderr.write(w.notRemoved((e as Error).message));
+          process.stderr.write(a.notRemoved((e as Error).message));
           return 1;
         }
       }
     }
   } catch (e) {
-    process.stderr.write(w.notCheckedOrRemoved((e as Error).message));
+    process.stderr.write(a.notCheckedOrRemoved((e as Error).message));
     return 1;
   }
   const targets = resolveTargets(args.surface);
   if ("error" in targets) {
-    process.stderr.write(`error: ${targets.error}\n`);
+    process.stderr.write(w.error(targets.error));
     return 2;
   }
 
@@ -432,18 +440,18 @@ export async function cmdUninstall(
   const succeededSurfaces: string[] = [];
   for (const adapter of targets) {
     process.stdout.write(`→ ${adapter.surface} (${adapter.description})\n`);
-    process.stdout.write(`  config: ${adapter.configPath}\n`);
+    process.stdout.write(w.config(adapter.configPath));
     try {
       const r = await adapter.uninstall({ dryRun: args.dryRun });
-      process.stdout.write(`  ${formatStatus(r.status)}: ${r.message}\n`);
-      if (r.backupPath) process.stdout.write(`  backup: ${r.backupPath}\n`);
+      process.stdout.write(`  ${w.status(r.status)}: ${r.message}\n`);
+      if (r.backupPath) process.stdout.write(w.backup(r.backupPath));
       if (r.status === "error") hadError = true;
       if (r.status === "removed" || r.status === "would-remove" || r.status === "not-present") {
         succeededSurfaces.push(adapter.surface);
       }
     } catch (err) {
       hadError = true;
-      process.stdout.write(`  error: ${(err as Error).message}\n`);
+      process.stdout.write(w.surfaceError((err as Error).message));
     }
     process.stdout.write("\n");
   }
@@ -455,8 +463,8 @@ export async function cmdUninstall(
   // decision — a failed one counts as still registered.
   const sweep = await sweepSharedSkill({ surface: args.surface, dryRun: args.dryRun, succeededSurfaces });
   if (sweep.status === "removed" || sweep.status === "would-remove") {
-    process.stdout.write("→ skill (shared across Claude surfaces)\n");
-    process.stdout.write(`  ${formatStatus(sweep.status)}: ${sweep.detail}\n\n`);
+    process.stdout.write(w.sharedSkill);
+    process.stdout.write(`  ${w.status(sweep.status)}: ${sweep.detail}\n\n`);
   }
 
   // Full uninstall: nothing references the pinned npx runtimes anymore —
@@ -465,19 +473,15 @@ export async function cmdUninstall(
   // point into the runtime). A live daemon spawned from a runtime dir keeps
   // running via its open fds; the next install re-creates the dir.
   if (args.surface === "all" && !args.dryRun && !hadError && (await removeRuntimeBase())) {
-    process.stdout.write("→ runtime (pinned npx runtime, ~/.bastra/runtime)\n");
-    process.stdout.write(`  ${formatStatus("removed")}: no surface registration references it anymore\n\n`);
+    process.stdout.write(w.runtime);
+    process.stdout.write(w.runtimeRemoved(w.status("removed")));
   }
 
   // Ollama is global, not a surface. On a full uninstall, if bastra activated
   // it, the login service is still running — print a teardown hint (we don't
   // auto-stop: the user may run Ollama for other things).
   if (args.surface === "all" && (await getEmbeddingProvider()) === "ollama") {
-    process.stdout.write(
-      "→ semantic recall: Ollama stays configured and its login service may still run.\n" +
-        "  Disable recall: bastra embeddings off\n" +
-        "  Stop the service: brew services stop ollama\n\n"
-    );
+    process.stdout.write(w.ollamaStays);
   }
   return hadError ? 1 : 0;
 }
@@ -490,9 +494,10 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   // default 'all' we only repair surfaces that already exist, never silently
   // set up ones the user never asked for.
   const fixMissing = surface !== "all";
+  const w = await doctorWords();
   const targets = resolveTargets(surface);
   if ("error" in targets) {
-    process.stderr.write(`error: ${targets.error}\n`);
+    process.stderr.write(w.error(targets.error));
     return 2;
   }
 
@@ -500,10 +505,10 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   const clientFeatures: FeatureState["clients"] = [];
   for (const adapter of targets) {
     process.stdout.write(`→ ${adapter.surface} (${adapter.description})\n`);
-    process.stdout.write(`  config: ${adapter.configPath}\n`);
+    process.stdout.write(w.config(adapter.configPath));
     try {
       const r = await adapter.doctor();
-      process.stdout.write(`  ${formatStatus(r.status)}: ${r.message}\n`);
+      process.stdout.write(`  ${w.status(r.status)}: ${r.message}\n`);
       if (r.status === "broken" && !args.fix) hadBroken = true;
       if (r.features) clientFeatures.push({ surface: adapter.surface, features: r.features });
       if (r.details) {
@@ -519,13 +524,13 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
           withStopHook: args.withStopHook,
           withBootstrap: args.withBootstrap,
         });
-        process.stdout.write(`  fix: ${formatStatus(fix.status)}: ${fix.message}\n`);
-        if (fix.backupPath) process.stdout.write(`  backup: ${fix.backupPath}\n`);
+        process.stdout.write(w.fix(w.status(fix.status), fix.message));
+        if (fix.backupPath) process.stdout.write(w.backup(fix.backupPath));
         if (fix.status === "error" || fix.status === "not-implemented") hadBroken = true;
       }
     } catch (err) {
       hadBroken = true;
-      process.stdout.write(`  error: ${(err as Error).message}\n`);
+      process.stdout.write(w.surfaceError((err as Error).message));
     }
     process.stdout.write("\n");
   }
@@ -534,16 +539,16 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   // actionable ⚠), never as a failure: BM25-only recall is degraded, not
   // broken, so it never flips doctor's exit code (#79).
   await printEmbeddingDoctorNote();
-  await printVersionPairNote();
+  await printVersionPairNote(w);
   await printDaemonOriginNote();
-  await printAutostartNote();
+  await printAutostartNote(w);
   await printAssistantAddressNote();
-  await printStubBinaryNote();
+  await printStubBinaryNote(w);
   await printAffectsFilesNote(resolveVaultPath(args.vaultPath));
-  await printDerivedClaimsNote(resolveVaultPath(args.vaultPath));
-  await printCodeGraphNote();
-  await printBridgeLearningNote();
-  await printClientMemoryNote(resolveVaultPath(args.vaultPath));
+  await printDerivedClaimsNote(resolveVaultPath(args.vaultPath), w);
+  await printCodeGraphNote(w);
+  await printBridgeLearningNote(w);
+  await printClientMemoryNote(resolveVaultPath(args.vaultPath), w);
   const rulebookVault = await resolveVault({ dryRun: true, vaultPath: resolveVaultPath(args.vaultPath) });
   if (!("error" in rulebookVault)) {
     await printRulebookDoctorNote(rulebookVault.path);
@@ -600,12 +605,12 @@ async function printAffectsFilesNote(cliVault: string | null): Promise<void> {
  * Code's or Codex's file-based memory never reach the vault. Silent when those
  * folders are empty; a NOTE, never a failure.
  */
-async function printClientMemoryNote(cliVault: string | null): Promise<void> {
+async function printClientMemoryNote(cliVault: string | null, w: DoctorWords): Promise<void> {
   try {
     const vault = await resolveVault({ dryRun: true, vaultPath: cliVault });
     const lines = clientMemoryLines(await findClientMemoryDirs("error" in vault ? null : vault.path));
     if (lines.length === 0) return;
-    process.stdout.write("→ client memory folders\n");
+    process.stdout.write(w.clientMemory);
     for (const line of lines) process.stdout.write(`  ${line}\n`);
     process.stdout.write("\n");
   } catch {
@@ -618,13 +623,13 @@ async function printClientMemoryNote(cliVault: string | null): Promise<void> {
  * source. Wording and reading live in `derived-claims-note.ts`; silent when no
  * memory declares a claim, and like every global note never a failure.
  */
-async function printDerivedClaimsNote(cliVault: string | null): Promise<void> {
+async function printDerivedClaimsNote(cliVault: string | null, w: DoctorWords): Promise<void> {
   try {
     const vault = await resolveVault({ dryRun: true, vaultPath: cliVault });
     if ("error" in vault) return;
     const lines = await derivedClaimsLines(defaultDerivedClaimsIo(vault.path));
     if (lines.length === 0) return;
-    process.stdout.write("\u2192 derived claims\n");
+    process.stdout.write(w.derivedClaims);
     for (const line of lines) process.stdout.write(`  ${line}\n`);
     process.stdout.write("\n");
   } catch {
@@ -641,21 +646,21 @@ async function printDerivedClaimsNote(cliVault: string | null): Promise<void> {
  * missing or stale code graph is a degraded optional feature, not a broken
  * installation (C-090 is a release obligation, not a runtime one).
  */
-async function printCodeGraphNote(): Promise<void> {
+async function printCodeGraphNote(w: DoctorWords): Promise<void> {
   try {
     const repos = await enabledRepos();
     const tool = await probeTool();
     if (repos.length === 0 && tool.usable === null && tool.external === null) return;
 
-    process.stdout.write("\u2192 code awareness (experimental)\n");
+    process.stdout.write(w.codeAwareness);
     if (tool.usable !== null) {
-      process.stdout.write(`  graphify ${tool.usable.version} (pinned ${GRAPHIFY_PIN})\n`);
+      process.stdout.write(w.graphify(tool.usable.version, GRAPHIFY_PIN));
     } else if (repos.length > 0) {
-      process.stdout.write(`  \u26a0 graphify unavailable — ${tool.reason}\n`);
+      process.stdout.write(w.graphifyUnavailable(tool.reason));
     }
     if (tool.external !== null) {
       // Reported so an overlap is visible; Recall never changes it (#573).
-      process.stdout.write(`  note: your own Graphify at ${tool.external.path} is left untouched\n`);
+      process.stdout.write(w.ownGraphify(tool.external.path));
     }
     // #1148: whether the daemon has paused (busy lock) or stopped (failed
     // builds) its automatic refresh, and when it tries again. The manifest
@@ -664,18 +669,18 @@ async function printCodeGraphNote(): Promise<void> {
     for (const repo of repos) {
       const manifest = await readManifest(graphDirOf(repo));
       if (manifest === null) {
-        process.stdout.write(`  \u26a0 ${repo}: no graph yet — run 'bastra code index'\n`);
+        process.stdout.write(w.noGraph(repo));
         continue;
       }
       const state = await scanFileState(repo).catch(() => null);
       const paused = refresh?.get(repo)?.givenUp === true;
       const stale = isStale(manifest, state?.newestMtimeMs ?? 0);
-      process.stdout.write(`  ${stale || paused ? "\u26a0 " : ""}${repo}: built ${manifest.builtAt ?? "never"}`);
-      process.stdout.write(stale ? " (may be outdated)\n" : "\n");
+      process.stdout.write(w.built(stale || paused, repo, manifest.builtAt));
+      process.stdout.write(w.builtEnd(stale));
       if (manifest.lastError !== null) {
-        process.stdout.write(`    last error: ${manifest.lastError}\n`);
+        process.stdout.write(w.lastError(manifest.lastError));
       }
-      process.stdout.write(`    ${await coverageMapStatus(repo)} (experimental)\n`);
+      process.stdout.write(w.experimental(await coverageMapStatus(repo)));
       const refreshState = refresh?.get(repo);
       if (refreshState !== undefined) {
         for (const line of refreshStatusLines(refreshState)) process.stdout.write(`    ${line}\n`);
@@ -701,7 +706,7 @@ async function printCodeGraphNote(): Promise<void> {
  * and reading live in `bridges-note.ts`; silent when shared recall is off, and
  * like every global note never a failure.
  */
-async function printBridgeLearningNote(): Promise<void> {
+async function printBridgeLearningNote(w: DoctorWords): Promise<void> {
   try {
     const enabled = await getSharedRecallEnabled();
     if (!enabled) return;
@@ -709,7 +714,7 @@ async function printBridgeLearningNote(): Promise<void> {
     const runs = await readMintRuns(defaultLogDir(), await readLastMint(bridgesPath()), now);
     const lines = bridgeLearningLines({ enabled, live: await getSharedRecallLive(), runs, now });
     if (lines.length === 0) return;
-    process.stdout.write("→ learned bridges\n");
+    process.stdout.write(w.learnedBridges);
     for (const line of lines) process.stdout.write(`  ${line}\n`);
     process.stdout.write("\n");
   } catch {
@@ -717,14 +722,14 @@ async function printBridgeLearningNote(): Promise<void> {
   }
 }
 
-async function printStubBinaryNote(): Promise<void> {
+async function printStubBinaryNote(w: DoctorWords): Promise<void> {
   try {
     const report = await stubFreshness();
     const lines = stubFreshnessLines(report);
     // Silent when no registration runs a compiled stub at all: this host is on
     // the node thin client, which ships inside `dist` and cannot drift from it.
     if (lines.length === 0) return;
-    process.stdout.write("\u2192 hook binary\n");
+    process.stdout.write(w.hookBinary);
     for (const line of lines) process.stdout.write(`  ${line}\n`);
     process.stdout.write("\n");
   } catch {
@@ -742,10 +747,10 @@ async function printStubBinaryNote(): Promise<void> {
  * Agenten, der nicht startet, still liegen lässt. Wie die beiden Notes darüber:
  * niemals ein Fehlschlag, nur ein Hinweis mit einer Handlung dran.
  */
-async function printAutostartNote(): Promise<void> {
+async function printAutostartNote(w: DoctorWords): Promise<void> {
   try {
     const warning = await autostartWarning();
-    if (warning) process.stdout.write(`→ autostart\n  ⚠ ${warning}\n\n`);
+    if (warning) process.stdout.write(w.autostart(warning));
   } catch {
     /* a diagnostics NOTE must never break doctor */
   }
@@ -777,12 +782,12 @@ async function printDaemonOriginNote(): Promise<void> {
   }
 }
 
-async function printVersionPairNote(): Promise<void> {
+async function printVersionPairNote(w: DoctorWords): Promise<void> {
   try {
     const probe = await probeDaemon();
-    process.stdout.write("→ version\n");
+    process.stdout.write(w.version);
     if (!probe.ok || !probe.version) {
-      process.stdout.write(`  · cli ${VERSION} (no running daemon to compare against)\n\n`);
+      process.stdout.write(w.noDaemon(VERSION));
       return;
     }
     // #329 first: when the daemon's own code was replaced under it, the number
@@ -793,10 +798,10 @@ async function printVersionPairNote(): Promise<void> {
       return;
     }
     if (probe.version === VERSION) {
-      process.stdout.write(`  ${formatStatus("ok")}: cli and daemon both ${VERSION}\n\n`);
+      process.stdout.write(w.bothVersions(w.status("ok"), VERSION));
       return;
     }
-    process.stdout.write(`  ⚠ version drift: cli ${VERSION}, daemon ${probe.version} — ${VERSION_DRIFT_HINT}\n\n`);
+    process.stdout.write(w.versionDrift(VERSION, probe.version, VERSION_DRIFT_HINT));
   } catch {
     /* a diagnostics NOTE must never break doctor */
   }
