@@ -335,8 +335,8 @@ until a new design replaces it; this name is independent of the product version.
 - Tasks web UI: the Run button of a prepared change stays disabled after the
   run returned an outcome, so a re-rendered dialog cannot start it again
   (#1651).
-- Size note: settings are read off the event loop and bounded by the note's
-  deadline; only regular files are opened and at most 2 MiB of real bytes are
+- Size note: settings are read off the event loop by at most one background
+  reader and bounded by the note's deadline; only regular files are opened and at most 2 MiB of real bytes are
   read, so oversized files, devices behind symlinks and growing files no
   longer keep reading after the note returns (#1650, #1538).
 - Vault-root history: concurrent registrations of different vaults no longer
