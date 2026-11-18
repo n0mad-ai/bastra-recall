@@ -7,7 +7,6 @@ import { cleanDraftField } from "./draft-text.js";
  * Routing stays in http.ts; the handler logic lives here.
  * Split out of http.ts (file-size convention).
  */
-import { searchDrafts, withDraftBudget } from "./draft-search.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RecallHit, Vault, SearchIndex, RecallStage, StageListener } from "@bastra-recall/core";
 import { routeQueryArms, type QueryRoute } from "@bastra-recall/core";
@@ -21,13 +20,12 @@ import { type SupportedLanguage } from "./learned-recall/language.js";
 import { isWeakResult, isNoHome, decideHits, pastValidUntil } from "@bastra-recall/core";
 import { effectiveHintSuppressionMode, suppressRepeatedUnused } from "./hint-suppression.js";
 import { applyCallerScopeFilter } from "./recall-pipeline.js";
-import { measurePayload } from "./recall-budget.js";
 import { type DeadlineShadow } from "./latency-profile.js";
 import { MAX_BODY_BYTES, openSseHeaders, readJsonBody, sendJson, writeSseEvent } from "./http-util.js";
 import { readHookRecallInput } from "./hook-recall-input.js";
 import { runContentRecall } from "./hook-content-recall.js";
 import { applyEvidenceGate } from "./hook-recall-evidence.js";
-import { assembleHookRecallPayload } from "./hook-recall-payload.js";
+import { assembleHookRecallPayload, completeHookRecallPayload } from "./hook-recall-payload.js";
 import { createStageCollector, hookRecallRow, startLoopProbe } from "./hook-recall-measure.js";
 import { lateSettleRelay, lateSettleSink, shadowRouteFor, startDeadlineShadow } from "./hook-recall-shadow.js";
 
@@ -509,21 +507,15 @@ export async function runHookRecall(
     degradedReason: stages.degradedReason(),
     conventionSources,
   });
-  const draftHits = await searchDrafts(
+  const { payload, budgetSize, budgetDropped } = await completeHookRecallPayload({
+    budgeted,
     query,
-    hits.map((hit) => ({ ...hit, body: vault.get(hit.id)?.body })),
-    2,
-    hookSessionId ?? undefined
-  );
-  // #702: which bridges fired on this query — the replay report counts
-  // fires per bridge. Only on the wire when one did.
-  const payload = {
-    ...withDraftBudget(budgeted.payload, draftHits, maxTokens),
-    ...(expansion.fired.length > 0 ? { bridges_fired: expansion.fired } : {}),
-  };
-  // #487: Gemessen wird nur, wo ein Budget galt — die Serialisierung
-  // kostet, und dieser Endpunkt läuft an jedem Bash und jedem Edit.
-  const budgetSize = maxTokens > 0 ? measurePayload(payload) : null;
+    hits,
+    vault,
+    maxTokens,
+    hookSessionId,
+    bridgesFired: expansion.fired,
+  });
   fireAndForget(
     telemetry.logHookRecall(
       hookRecallRow({
@@ -561,7 +553,7 @@ export async function runHookRecall(
         weakResult,
         noHome,
         budgetSize,
-        budgetDropped: budgeted.dropped,
+        budgetDropped,
       })
     )
   );

@@ -10,7 +10,8 @@ import { vaultKnowsProject } from "./scope-filter.js";
 import { toLeanHit } from "./tool-handlers.js";
 import { armsOf, currentScoreVersion } from "./score-space.js";
 import { collectPoolReflexHits } from "./recall-pipeline.js";
-import { fitRecallWithReflexToBudget } from "./recall-budget.js";
+import { fitRecallWithReflexToBudget, measurePayload } from "./recall-budget.js";
+import { searchDrafts, withDraftBudget } from "./draft-search.js";
 import { withSupersession } from "./recall-batch.js";
 
 export interface HookRecallPayloadInput {
@@ -165,4 +166,31 @@ export function assembleHookRecallPayload(input: HookRecallPayloadInput) {
     })
   );
   return budgeted;
+}
+
+/** Complete the wire payload before telemetry measures the final draft/bridge shape. */
+export async function completeHookRecallPayload(input: {
+  budgeted: ReturnType<typeof assembleHookRecallPayload>;
+  hits: RecallHit[];
+  vault: Vault;
+  maxTokens: number;
+  query: string;
+  hookSessionId: string | null;
+  bridgesFired: string[];
+}) {
+  const { budgeted, hits, vault, query, hookSessionId, maxTokens, bridgesFired } = input;
+  const draftHits = await searchDrafts(
+    query,
+    hits.map((hit) => ({ ...hit, body: vault.get(hit.id)?.body })),
+    2,
+    hookSessionId ?? undefined
+  );
+  // #702: the replay report counts bridge fires; absent when none fired.
+  const payload = {
+    ...withDraftBudget(budgeted.payload, draftHits, maxTokens),
+    ...(bridgesFired.length > 0 ? { bridges_fired: bridgesFired } : {}),
+  };
+  // #487: serialize only when this call supplied a budget.
+  const budgetSize = maxTokens > 0 ? measurePayload(payload) : null;
+  return { payload, budgetSize, budgetDropped: budgeted.dropped };
 }
