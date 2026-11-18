@@ -38,6 +38,12 @@ async function fixture(t: test.TestContext) {
     ts.transpileModule(reader, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } })
       .outputText
   );
+  const status = createServer((_req, res) => {
+    res.setHeader("Connection", "close");
+    res.writeHead(503).end("fixture status unavailable");
+  });
+  await new Promise<void>((resolve) => status.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise<void>((resolve) => status.close(() => resolve())));
   const o = {
     runtimeDir: join(root, "runtime"),
     runtimeSourceDir: source,
@@ -49,6 +55,7 @@ async function fixture(t: test.TestContext) {
     hostsPath: join(root, "hosts"),
     helperPath: join(root, "helper"),
     firefoxRoot: join(root, "firefox"),
+    gatewayPort: (status.address() as import("node:net").AddressInfo).port,
     daemonUrl: "http://127.0.0.1:9",
   };
   await writeFile(o.settingsPath, JSON.stringify({ ui: { enabled: true }, assistant: { name: "jarvis" } }));

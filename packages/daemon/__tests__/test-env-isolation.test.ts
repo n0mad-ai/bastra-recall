@@ -295,3 +295,72 @@ test(
     }
   }
 );
+
+test("network guard blocks native HTTP, fetch and sockets before any real connect or DNS", () => {
+  const script = `
+    const assert = require("node:assert/strict"), net = require("node:net");
+    let nativeConnects = 0, nativeFetches = 0;
+    net.Socket.prototype.connect = function () { nativeConnects++; return this; };
+    globalThis.fetch = async () => { nativeFetches++; return new Response("fixture"); };
+    (async () => {
+      await import(${JSON.stringify(new URL("../../../scripts/test-network-guard.mjs", import.meta.url).href)});
+      for (const args of [[80,"127.0.0.1"],[6723,"::1"],[443,"203.0.113.1"],[443,"fixture.invalid"],
+                          [{port:443,host:"192.168.1.1"}], [[{port:80,host:"127.0.0.1"}]]]) {
+        const socket = new net.Socket();
+        const failed = require("node:events").once(socket,"error");
+        socket.connect(...args);
+        assert.match((await failed)[0].message,/test isolation/);
+      }
+      for (const url of ["http://127.0.0.1/", "http://[::1]:6723/", "https://fixture.invalid/", "https://203.0.113.1/"]) {
+        await assert.rejects(fetch(url), /test isolation/);
+      }
+      for (const url of ["http://127.0.0.1/", "http://fixture.invalid:12345/"]) {
+        await new Promise((resolve,reject) => require("node:http").get(url).on("error", error => {
+          try { assert.match(error.message,/test isolation/); resolve(); } catch (e) { reject(e); }
+        }));
+      }
+      assert.equal(nativeConnects,0); assert.equal(nativeFetches,0);
+      for (const host of ["127.0.0.1","127.0.0.2","::1","0:0:0:0:0:0:0:1","::ffff:127.0.0.1","localhost"]) {
+        new net.Socket().connect({port:12345,host});
+      }
+      new net.Socket().connect({path:"/fixture/ipc.sock"});
+      new net.Socket().connect("/fixture/ipc.sock");
+      assert.equal(nativeConnects,8);
+      await fetch("http://127.0.0.1:12345/"); assert.equal(nativeFetches,1);
+    })().catch(error => { console.error(error);process.exitCode=1; });
+  `;
+  const root = mkdtempSync(join(tmpdir(), "guard-probe-"));
+  try {
+    // Install fake native transports BEFORE importing the guard: forbidden
+    // destinations are never probed, even if the guard regresses.
+    const r = spawnSync(process.execPath, ["-e", script], {
+      env: { ...process.env, NODE_OPTIONS: "", BASTRA_TEST_RUN_ROOT: root },
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(existsSync(join(root, "blocked-daemon-connections.jsonl")));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("inherited guard permits an owned live loopback HTTP fixture", () => {
+  const script = `
+    const server=require("node:http").createServer((req,res)=>res.end("fixture"));
+    server.listen(0,"127.0.0.1",async()=>{
+      try {
+        const child=require("node:child_process").spawn(process.execPath,["-e",
+          'fetch('+JSON.stringify("http://127.0.0.1:"+server.address().port) +').then(r=>r.text()).then(s=>{if(s!=="fixture")process.exitCode=1}).catch(e=>{console.error(e);process.exitCode=1})'
+        ],{env:process.env,stdio:"inherit"});
+        child.on("exit",code=>{process.exitCode=code;server.close()});
+      }catch(error){console.error(error);process.exitCode=1;server.close()}
+    });
+  `;
+  const r = spawnSync(process.execPath, ["--import", TEST_ENV, "-e", script], {
+    env: outsideRun({}),
+    encoding: "utf8",
+    timeout: 10_000,
+  });
+  assert.equal(r.status, 0, r.stderr);
+});
