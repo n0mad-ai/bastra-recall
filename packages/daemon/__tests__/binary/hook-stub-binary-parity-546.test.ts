@@ -132,7 +132,7 @@ async function runClient(
   argv: string[],
   lane: ClientLane,
   sessionId: string,
-  port: number,
+  port: number
 ): Promise<Array<Record<string, unknown>>> {
   const logDir = await mkdtemp(join(tmpdir(), "bastra-546-"));
   await new Promise<void>((ok, ko) => {
@@ -171,7 +171,7 @@ function binaryBuildInfo(binary: string): Record<string, unknown> {
   const r = spawnSync(binary, ["version"], { encoding: "utf8" });
   assert.ok(
     !r.error && r.status === 0,
-    `\`${binary} version\` failed (${r.error?.message ?? `exit ${r.status}`}) — a binary that cannot say which sources it came from cannot be checked for staleness`,
+    `\`${binary} version\` failed (${r.error?.message ?? `exit ${r.status}`}) — a binary that cannot say which sources it came from cannot be checked for staleness`
   );
   return JSON.parse(r.stdout) as Record<string, unknown>;
 }
@@ -186,7 +186,7 @@ before(async () => {
     // is about: something that looks checked and is not.
     assert.ok(
       !process.env.CI,
-      "deno is missing on this runner — the compiled stub cannot be built, so nothing here is being checked. Add denoland/setup-deno to the workflow step that runs `npm run test:stub`.",
+      "deno is missing on this runner — the compiled stub cannot be built, so nothing here is being checked. Add denoland/setup-deno to the workflow step that runs `npm run test:stub`."
     );
     return;
   }
@@ -205,93 +205,115 @@ async function buildStub(): Promise<string> {
   return output;
 }
 
-test("#546: the built binary writes the same row as the node client, lane for lane", { skip: !denoAvailable && !process.env.CI ? "deno not installed" : false }, async () => {
-  // Drift guard: a lane the release gate reads but this table does not cover
-  // would go unmeasured on the binary the way all seven did before #546.
-  const covered = new Set(LANES.map((l) => l.kind));
-  for (const kind of Object.keys(GATE_LANE_BY_KIND)) {
-    assert.ok(covered.has(kind), `gate lane \`${GATE_LANE_BY_KIND[kind]}\` (${kind}) is not checked against the binary`);
-  }
-  assert.equal(LANES.length, Object.keys(CLIENT_ROW_BASE).length, "every client lane must be checked against the binary");
-
-  for (const { lane, kind, nodeClient } of LANES) {
-    const session = `s546-${lane}`;
-    // One dead port for both, so `daemon_url` is comparable: the two rows must
-    // agree about which endpoint did not answer, not merely about its shape.
-    const port = await closedPort();
-    const [binRows, nodeRows] = await Promise.all([
-      runClient(builtBinary, [lane], lane, session, port),
-      runClient("npx", ["tsx", join(SRC, nodeClient)], lane, session, port),
-    ]);
-
-    assert.equal(binRows.length, 1, `binary/${lane}: expected exactly one client row, got ${binRows.length}`);
-    assert.equal(nodeRows.length, 1, `node/${lane}: expected exactly one client row, got ${nodeRows.length}`);
-    const bin = binRows[0]!;
-    const node = nodeRows[0]!;
-
-    for (const [shape, row] of [["binary", bin], ["node", node]] as const) {
-      // The lane: a row filed under a foreign kind counts against a lane the
-      // failure did not happen in (`2b7d285`).
-      assert.equal(row.kind, kind, `${shape}/${lane}: wrong event kind — this row would land in another lane`);
-      // The session: the only thing that ties this row to the daemon row for
-      // the same call. A fresh UUID makes it unfoldable (`ea95691`).
-      assert.equal(row.session_id, session, `${shape}/${lane}: the payload's session must be stamped, not a fresh UUID`);
-      assert.match(
-        String(row.hook_version),
-        /-(stub|thin)$/,
-        `${shape}/${lane}: the row must declare itself a client row, or it cannot be folded`,
-      );
-      assert.equal(row.daemon_reachable, false, `${shape}/${lane}: the POST went out and got no answer`);
+test(
+  "#546: the built binary writes the same row as the node client, lane for lane",
+  { skip: !denoAvailable && !process.env.CI ? "deno not installed" : false },
+  async () => {
+    // Drift guard: a lane the release gate reads but this table does not cover
+    // would go unmeasured on the binary the way all seven did before #546.
+    const covered = new Set(LANES.map((l) => l.kind));
+    for (const kind of Object.keys(GATE_LANE_BY_KIND)) {
       assert.ok(
-        ["daemon-unreachable", "timeout", "error"].includes(String(row.status)),
-        `${shape}/${lane}: a dead daemon must be recorded as a failure, got ${String(row.status)}`,
+        covered.has(kind),
+        `gate lane \`${GATE_LANE_BY_KIND[kind]}\` (${kind}) is not checked against the binary`
       );
     }
+    assert.equal(
+      LANES.length,
+      Object.keys(CLIENT_ROW_BASE).length,
+      "every client lane must be checked against the binary"
+    );
 
-    // Full field parity. Written as one comparison rather than a list of named
-    // fields on purpose: `detected_mode` (#545) is only one of the fields that
-    // can drift, and a list only ever contains the ones that already have.
-    const compare = (row: Record<string, unknown>) =>
-      Object.fromEntries(Object.entries(row).filter(([k]) => !VOLATILE.has(k)));
-    assert.deepEqual(
-      compare(bin),
-      compare(node),
-      `${lane}: the compiled binary and the node client write different rows — the two halves of this lane's series would disagree`,
+    for (const { lane, kind, nodeClient } of LANES) {
+      const session = `s546-${lane}`;
+      // One dead port for both, so `daemon_url` is comparable: the two rows must
+      // agree about which endpoint did not answer, not merely about its shape.
+      const port = await closedPort();
+      const [binRows, nodeRows] = await Promise.all([
+        runClient(builtBinary, [lane], lane, session, port),
+        runClient("npx", ["tsx", join(SRC, nodeClient)], lane, session, port),
+      ]);
+
+      assert.equal(binRows.length, 1, `binary/${lane}: expected exactly one client row, got ${binRows.length}`);
+      assert.equal(nodeRows.length, 1, `node/${lane}: expected exactly one client row, got ${nodeRows.length}`);
+      const bin = binRows[0]!;
+      const node = nodeRows[0]!;
+
+      for (const [shape, row] of [
+        ["binary", bin],
+        ["node", node],
+      ] as const) {
+        // The lane: a row filed under a foreign kind counts against a lane the
+        // failure did not happen in (`2b7d285`).
+        assert.equal(row.kind, kind, `${shape}/${lane}: wrong event kind — this row would land in another lane`);
+        // The session: the only thing that ties this row to the daemon row for
+        // the same call. A fresh UUID makes it unfoldable (`ea95691`).
+        assert.equal(
+          row.session_id,
+          session,
+          `${shape}/${lane}: the payload's session must be stamped, not a fresh UUID`
+        );
+        assert.match(
+          String(row.hook_version),
+          /-(stub|thin)$/,
+          `${shape}/${lane}: the row must declare itself a client row, or it cannot be folded`
+        );
+        assert.equal(row.daemon_reachable, false, `${shape}/${lane}: the POST went out and got no answer`);
+        assert.ok(
+          ["daemon-unreachable", "timeout", "error"].includes(String(row.status)),
+          `${shape}/${lane}: a dead daemon must be recorded as a failure, got ${String(row.status)}`
+        );
+      }
+
+      // Full field parity. Written as one comparison rather than a list of named
+      // fields on purpose: `detected_mode` (#545) is only one of the fields that
+      // can drift, and a list only ever contains the ones that already have.
+      const compare = (row: Record<string, unknown>) =>
+        Object.fromEntries(Object.entries(row).filter(([k]) => !VOLATILE.has(k)));
+      assert.deepEqual(
+        compare(bin),
+        compare(node),
+        `${lane}: the compiled binary and the node client write different rows — the two halves of this lane's series would disagree`
+      );
+    }
+  }
+);
+
+test(
+  "#546: a compiled binary says which sources it was built from",
+  { skip: !denoAvailable && !process.env.CI ? "deno not installed" : false },
+  () => {
+    const info = binaryBuildInfo(builtBinary);
+    assert.equal(
+      info.source_digest,
+      stubSourceDigest(),
+      "the binary just built does not carry the digest of the sources it was built from — the staleness check below would be blind"
+    );
+    assert.equal(typeof info.built_at, "string", "the binary must record when it was built");
+    // #547: the statusline bundle ships inside this same binary, so the binary
+    // must also carry the digest of the bundle that went into it — otherwise a
+    // stale statusline in a fresh stub stays invisible to doctor.
+    assert.equal(
+      info.statusline_digest,
+      statuslineBundleDigest(),
+      "the binary just built does not carry the digest of the statusline bundle it embeds (#547)"
+    );
+    assert.match(String(info.stub_version), /-stub$/);
+
+    // Running from source is not a build, and must say so rather than claim a
+    // digest it cannot have (same distinction `ownBuildStamp()` makes for dist).
+    const fromSource = spawnSync("npx", ["tsx", join(PACKAGE_ROOT, "stub", "bastra-hook.ts"), "version"], {
+      cwd: PACKAGE_ROOT,
+      encoding: "utf8",
+    });
+    assert.equal(fromSource.status, 0, fromSource.stderr);
+    assert.equal(
+      (JSON.parse(fromSource.stdout) as { source_digest: string }).source_digest,
+      "",
+      "run from source there is no build, so there is no built revision to report"
     );
   }
-});
-
-test("#546: a compiled binary says which sources it was built from", { skip: !denoAvailable && !process.env.CI ? "deno not installed" : false }, () => {
-  const info = binaryBuildInfo(builtBinary);
-  assert.equal(
-    info.source_digest,
-    stubSourceDigest(),
-    "the binary just built does not carry the digest of the sources it was built from — the staleness check below would be blind",
-  );
-  assert.equal(typeof info.built_at, "string", "the binary must record when it was built");
-  // #547: the statusline bundle ships inside this same binary, so the binary
-  // must also carry the digest of the bundle that went into it — otherwise a
-  // stale statusline in a fresh stub stays invisible to doctor.
-  assert.equal(
-    info.statusline_digest,
-    statuslineBundleDigest(),
-    "the binary just built does not carry the digest of the statusline bundle it embeds (#547)",
-  );
-  assert.match(String(info.stub_version), /-stub$/);
-
-  // Running from source is not a build, and must say so rather than claim a
-  // digest it cannot have (same distinction `ownBuildStamp()` makes for dist).
-  const fromSource = spawnSync("npx", ["tsx", join(PACKAGE_ROOT, "stub", "bastra-hook.ts"), "version"], {
-    cwd: PACKAGE_ROOT,
-    encoding: "utf8",
-  });
-  assert.equal(fromSource.status, 0, fromSource.stderr);
-  assert.equal(
-    (JSON.parse(fromSource.stdout) as { source_digest: string }).source_digest,
-    "",
-    "run from source there is no build, so there is no built revision to report",
-  );
-});
+);
 
 test("#546: the digest covers the files a stub binary is made of, and reacts to any of them", () => {
   const files = stubSourceFiles().map((f: string) => relative(PACKAGE_ROOT, f).split(sep).join("/"));
@@ -307,12 +329,12 @@ test("#546: the digest covers the files a stub binary is made of, and reacts to 
     "src/hook-budgets.ts",
     "src/env.ts",
   ]) {
-    assert.ok(files.includes(expected), `${expected} is compiled into the stub but not covered by its digest — a change there would leave an old binary looking current. Covered: ${files.join(", ")}`);
+    assert.ok(
+      files.includes(expected),
+      `${expected} is compiled into the stub but not covered by its digest — a change there would leave an old binary looking current. Covered: ${files.join(", ")}`
+    );
   }
-  assert.ok(
-    !files.includes("stub/build-info.ts"),
-    "the stamp cannot be part of the digest it carries",
-  );
+  assert.ok(!files.includes("stub/build-info.ts"), "the stamp cannot be part of the digest it carries");
 
   // Deterministic, and sensitive to every file in the closure: flip one byte of
   // any one of them and the digest must move, or a stale binary passes.
@@ -326,26 +348,31 @@ test("#546: the digest covers the files a stub binary is made of, and reacts to 
   }
 });
 
-test("#546: the installed binary is the one today's sources describe", { skip: !existsSync(INSTALLED_BINARY) ? "no stub binary installed in this checkout" : false }, () => {
-  const info = binaryBuildInfo(INSTALLED_BINARY);
-  assert.equal(
-    info.source_digest,
-    stubSourceDigest(),
-    `${INSTALLED_BINARY} was built from different sources than the ones in this checkout` +
-      ` (built ${String(info.built_at ?? "unknown")} from ${String(info.revision ?? "unknown")}).` +
-      " This is the #546 finding itself: the binary every hook call runs is not the code that is here." +
-      " Rebuild it with `npm run build:stub -w @bastra-recall/daemon`.",
-  );
-});
+test(
+  "#546: the installed binary is the one today's sources describe",
+  { skip: !existsSync(INSTALLED_BINARY) ? "no stub binary installed in this checkout" : false },
+  () => {
+    const info = binaryBuildInfo(INSTALLED_BINARY);
+    assert.equal(
+      info.source_digest,
+      stubSourceDigest(),
+      `${INSTALLED_BINARY} was built from different sources than the ones in this checkout` +
+        ` (built ${String(info.built_at ?? "unknown")} from ${String(info.revision ?? "unknown")}).` +
+        " This is the #546 finding itself: the binary every hook call runs is not the code that is here." +
+        " Rebuild it with `npm run build:stub -w @bastra-recall/daemon`."
+    );
+  }
+);
 
 test(
   "#546: `dirty` is about the stub's own sources, not about whatever else lies in the checkout",
   {
-    skip: !denoAvailable && !process.env.CI
-      ? "deno not installed"
-      : stubSourcesDirty()
-        ? "the stub's sources are edited right now — this test needs a clean closure to prove that a clean build reports clean"
-        : false,
+    skip:
+      !denoAvailable && !process.env.CI
+        ? "deno not installed"
+        : stubSourcesDirty()
+          ? "the stub's sources are edited right now — this test needs a clean closure to prove that a clean build reports clean"
+          : false,
   },
   async () => {
     // The fault this replaces: `dirty` was taken from the porcelain status of
@@ -363,7 +390,7 @@ test(
       assert.equal(
         info.dirty,
         false,
-        "an untracked file elsewhere in the checkout made the stub call its own build dirty",
+        "an untracked file elsewhere in the checkout made the stub call its own build dirty"
       );
       // ...and the revision is the commit, not something the build's own output
       // moved: everything the stamp says is read before the stamp is written.
@@ -382,50 +409,62 @@ test(
     try {
       await writeFile(entry, original + "\n// uncommitted, and compiled in\n", "utf8");
       const info = binaryBuildInfo(await buildStub());
-      assert.equal(
-        info.dirty,
-        true,
-        "a binary built from an uncommitted change to its own sources must say so",
-      );
+      assert.equal(info.dirty, true, "a binary built from an uncommitted change to its own sources must say so");
       assert.equal(info.revision, headRevision(), "an uncommitted change does not move HEAD");
     } finally {
       await writeFile(entry, original, "utf8");
     }
     assert.equal(await readFile(entry, "utf8"), original, "the stub entry must be left exactly as it was found");
     assert.equal(stubSourcesDirty(), false, "the checkout must be left clean");
-  },
+  }
 );
 
 /** #1304: the compiled transport must preserve registration evidence too. */
-test("#1304 built stub forwards Codex client/version markers from env and Windows argv", { skip: !denoAvailable && !process.env.CI ? "deno not installed" : false }, async () => {
-  assert.ok(builtBinary);
-  const received: Array<{payload?: Record<string, unknown>}> = [];
-  const server = createServer(async (req, res) => {
-    let body = "";
-    for await (const chunk of req) body += chunk;
-    received.push(JSON.parse(body));
-    res.end("{}");
-  });
-  await new Promise<void>(ok => server.listen(0, "127.0.0.1", ok));
-  const addr = server.address();
-  assert.ok(addr && typeof addr !== "string");
-  try {
-    for (const argv of [false, true]) {
-      await new Promise<void>((ok, ko) => {
-        const child = spawn(builtBinary, ["gate", ...(argv ? ["--client=codex", "--codex-version=0.162.1"] : [])], {
-          env: {...process.env, BASTRA_DAEMON_URL: `http://127.0.0.1:${addr.port}`, BASTRA_HOOK_TIMEOUT_MS: "1500",
-            BASTRA_HOOK_CLIENT: argv ? "claude-code" : "codex", BASTRA_CODEX_VERSION: argv ? "0.162.0" : "0.162.1"},
-          stdio: ["pipe", "pipe", "pipe"],
+test(
+  "#1304 built stub forwards Codex client/version markers from env and Windows argv",
+  { skip: !denoAvailable && !process.env.CI ? "deno not installed" : false },
+  async () => {
+    assert.ok(builtBinary);
+    const received: Array<{ payload?: Record<string, unknown> }> = [];
+    const server = createServer(async (req, res) => {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      received.push(JSON.parse(body));
+      res.end("{}");
+    });
+    await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
+    const addr = server.address();
+    assert.ok(addr && typeof addr !== "string");
+    try {
+      for (const argv of [false, true]) {
+        await new Promise<void>((ok, ko) => {
+          const child = spawn(builtBinary, ["gate", ...(argv ? ["--client=codex", "--codex-version=0.162.1"] : [])], {
+            env: {
+              ...process.env,
+              BASTRA_DAEMON_URL: `http://127.0.0.1:${addr.port}`,
+              BASTRA_HOOK_TIMEOUT_MS: "1500",
+              BASTRA_HOOK_CLIENT: argv ? "claude-code" : "codex",
+              BASTRA_CODEX_VERSION: argv ? "0.162.0" : "0.162.1",
+            },
+            stdio: ["pipe", "pipe", "pipe"],
+          });
+          child.on("error", ko);
+          child.on("close", (code) => (code === 0 ? ok() : ko(new Error(`stub exit ${code}`))));
+          child.stdin.end(
+            JSON.stringify({
+              hook_event_name: "PreToolUse",
+              tool_name: "view_image",
+              session_id: "1304-compiled-markers",
+              tool_input: { path: "/tmp/a.png" },
+            })
+          );
         });
-        child.on("error", ko);
-        child.on("close", code => code === 0 ? ok() : ko(new Error(`stub exit ${code}`)));
-        child.stdin.end(JSON.stringify({hook_event_name: "PreToolUse", tool_name: "view_image", session_id: "1304-compiled-markers", tool_input: {path: "/tmp/a.png"}}));
-      });
-      assert.equal(received.at(-1)?.payload?.bastra_client, "codex");
-      assert.equal(received.at(-1)?.payload?.bastra_codex_version, "0.162.1");
+        assert.equal(received.at(-1)?.payload?.bastra_client, "codex");
+        assert.equal(received.at(-1)?.payload?.bastra_codex_version, "0.162.1");
+      }
+      assert.equal(received.length, 2);
+    } finally {
+      await new Promise<void>((ok) => server.close(() => ok()));
     }
-    assert.equal(received.length, 2);
-  } finally {
-    await new Promise<void>(ok => server.close(() => ok()));
   }
-});
+);

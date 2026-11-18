@@ -30,5 +30,3 @@ packages/eval/registrations/
 tools/probes/**/result*.json
 packages/eval/code-roi/scenarios.json
 tools/draft-judge-eval/cases.json
-# Wrapping the import detaches @ts-expect-error (TS2578/TS7016).
-packages/daemon/__tests__/binary/hook-stub-binary-parity-546.test.ts
