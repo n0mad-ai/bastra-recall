@@ -34,6 +34,7 @@ import { batterySaverEnabled } from "../power-source.js";
 import { archiveCap, archiveMaxItem, archiveRootProblem, formatSize } from "../rm-archive.js";
 import { isOffValue, isOnValue } from "../env.js";
 import { CODEX_GATE_VERIFIED_VERSIONS } from "../codex-gate-capability.js";
+import { featuresWordsIn, type FeaturesWords } from "./features-words.js";
 
 export interface FeatureState {
   /** Clients whose MCP server is registered, with their hook/skill state. */
@@ -81,185 +82,146 @@ function row(symbol: string, name: string, state: string, hint?: string): string
   return `  ${symbol} ${name}: ${state}${hint ? ` → ${hint}` : ""}`;
 }
 
-/** Pure formatter (exported for tests). */
-export function featureLines(s: FeatureState): string[] {
-  const lines = ["→ features"];
+/** Pure formatter (exported for tests); English unless language.primary says otherwise (#1602). */
+export function featureLines(s: FeatureState, language?: string): string[] {
+  const w = featuresWordsIn(language);
+  const lines = [w.header];
 
-  for (const { surface, features: f } of s.clients) {
-    if (f.hooksDisabledBy) {
-      lines.push(row(OFF, `${surface}: recall hooks`, `off (${f.hooksDisabledBy})`, "remove that setting"));
-    } else {
-      lines.push(
-        f.recallHooks
-          ? row(ON, `${surface}: recall hooks`, "on")
-          : row(OFF, `${surface}: recall hooks`, "off", `bastra install ${surface}`)
-      );
-    }
-    lines.push(
-      f.stopHook
-        ? row(ON, `${surface}: auto-save suggestions (Stop hook)`, "on")
-        : row(OFF, `${surface}: auto-save suggestions (Stop hook)`, "off", `bastra install ${surface}`)
-    );
-    lines.push(
-      f.skill ? row(ON, `${surface}: skill`, "on") : row(OFF, `${surface}: skill`, "off", `bastra install ${surface}`)
-    );
-    if (f.toolSurface === "search") {
-      lines.push(
-        row(
-          OFF,
-          `${surface}: saving from the agent`,
-          "off (BASTRA_TOOL_SURFACE=search: recall only, no save tools)",
-          `set BASTRA_TOOL_SURFACE=write in the bastra-recall entry of ${f.mcpConfig}`
-        )
-      );
-    }
-    lines.push(...rulebookGateLines(surface, f.rulebookGate));
-    if (f.sessionContextOff) {
-      lines.push(
-        row(
-          OFF,
-          `${surface}: session context on the first tool call`,
-          "off (BASTRA_MCP_SESSION_CONTEXT=0)",
-          `remove BASTRA_MCP_SESSION_CONTEXT from the bastra-recall entry of ${f.mcpConfig}`
-        )
-      );
-    }
-  }
+  for (const { surface, features: f } of s.clients) lines.push(...clientLines(surface, f, w));
 
   lines.push(
     s.primaryLanguage
-      ? row(ON, "memory language", s.primaryLanguage)
-      : row(
-          OFF,
-          "memory language",
-          "not set, memories are written in English",
-          "bastra config set language.primary <code>  (e.g. de)"
-        )
+      ? row(ON, w.memoryLanguage, s.primaryLanguage)
+      : row(OFF, w.memoryLanguage, w.languageUnset, w.languageHint)
   );
 
   if (s.onboardingDone === true) {
-    lines.push(row(ON, "onboarding", "done"));
+    lines.push(row(ON, w.onboarding, w.done));
   } else if (s.onboardingDone === false) {
     // The session hook only nudges a fresh vault; an established one without
     // the interview is worth knowing about, not a problem.
     const fresh = s.vaultSize !== undefined && s.vaultSize < FRESH_VAULT_MAX;
     lines.push(
       fresh
-        ? row(OFF, "onboarding", "never done", "bastra onboard")
-        : row(INFO, "onboarding", "never done (optional for a vault that already has memories)", "bastra onboard")
+        ? row(OFF, w.onboarding, w.neverDone, "bastra onboard")
+        : row(INFO, w.onboarding, w.neverDoneOptional, "bastra onboard")
     );
   }
 
   lines.push(
     s.semanticRecall.state === "on"
-      ? row(ON, "semantic recall", `on (${s.semanticRecall.detail})`)
-      : row(OFF, "semantic recall", `${s.semanticRecall.state} (${s.semanticRecall.detail})`, "bastra embeddings on")
+      ? row(ON, w.semanticRecall, w.semanticOn(s.semanticRecall.detail))
+      : row(
+          OFF,
+          w.semanticRecall,
+          w.semanticNotOn(s.semanticRecall.state, s.semanticRecall.detail),
+          "bastra embeddings on"
+        )
   );
 
-  const para = "background paraphrasing (doc2query)";
+  const para = w.paraphrasing;
   if (s.paraphrasing.state === "on" && s.paraphrasing.modelPulled === false) {
-    lines.push(
-      row(
-        OFF,
-        para,
-        `on, but ${s.paraphrasing.model} is not pulled, so every paraphrase fails`,
-        `ollama pull ${s.paraphrasing.model}  (or BASTRA_TRIGGER_EXPAND=0 in the daemon's environment)`
-      )
-    );
+    lines.push(row(OFF, para, w.paraphraseNotPulled(s.paraphrasing.model), w.paraphrasePullHint(s.paraphrasing.model)));
   } else if (s.paraphrasing.state === "on") {
-    lines.push(
-      row(
-        ON,
-        para,
-        `on (${s.paraphrasing.model} keeps rewriting memory triggers in the background; BASTRA_TRIGGER_EXPAND=0 stops it)`
-      )
-    );
+    lines.push(row(ON, para, w.paraphraseOn(s.paraphrasing.model)));
   } else if (s.paraphrasing.state === "off") {
-    lines.push(row(INFO, para, "off"));
+    lines.push(row(INFO, para, w.off));
   }
 
-  if (s.reflex.enabled) lines.push(row(ON, "reflex memories", "on"));
+  if (s.reflex.enabled) lines.push(row(ON, w.reflex, w.on));
   else
     lines.push(
       row(
         OFF,
-        "reflex memories",
-        `off (${s.reflex.offBy})`,
-        s.reflex.offBy?.startsWith("BASTRA_REFLEX") ? "unset BASTRA_REFLEX" : "bastra config set reflex.enabled true"
+        w.reflex,
+        w.offBecause(String(s.reflex.offBy)),
+        s.reflex.offBy?.startsWith("BASTRA_REFLEX") ? w.unsetReflex : "bastra config set reflex.enabled true"
       )
     );
 
-  lines.push("  optional, off by default on purpose:");
+  lines.push(w.optionalHeading, ...optionalLines(s, w));
+  return lines;
+}
+
+/** One client's rows; out of featureLines to keep that one's complexity. */
+function clientLines(surface: string, f: ClientFeatures, w: FeaturesWords): string[] {
+  const lines: string[] = [];
+  const install = `bastra install ${surface}`;
+  if (f.hooksDisabledBy) {
+    lines.push(row(OFF, w.recallHooks(surface), w.offBecause(f.hooksDisabledBy), w.removeSetting));
+  } else {
+    lines.push(
+      f.recallHooks ? row(ON, w.recallHooks(surface), w.on) : row(OFF, w.recallHooks(surface), w.off, install)
+    );
+  }
+  lines.push(f.stopHook ? row(ON, w.autoSave(surface), w.on) : row(OFF, w.autoSave(surface), w.off, install));
+  lines.push(f.skill ? row(ON, w.skill(surface), w.on) : row(OFF, w.skill(surface), w.off, install));
+  if (f.toolSurface === "search") {
+    lines.push(row(OFF, w.savingFromAgent(surface), w.searchSurfaceOff, w.searchSurfaceHint(f.mcpConfig)));
+  }
+  lines.push(...rulebookGateLines(surface, f.rulebookGate, w));
+  if (f.sessionContextOff) {
+    lines.push(
+      row(
+        OFF,
+        w.sessionContext(surface),
+        w.offBecause("BASTRA_MCP_SESSION_CONTEXT=0"),
+        w.sessionContextHint(f.mcpConfig)
+      )
+    );
+  }
+  return lines;
+}
+
+/** The rows under "optional, off by default on purpose". */
+function optionalLines(s: FeatureState, w: FeaturesWords): string[] {
+  const lines: string[] = [];
   if (s.proactive)
     lines.push(
       row(
         s.proactive.clientConfigured ? ON : INFO,
-        "proactive task cards",
-        s.proactive.clientConfigured
-          ? "client credential configured; next-contact only while daemon runs; validate: bastra tasks client-status"
-          : (s.proactive.accessHint ?? "no client credential; hooks cannot show task cards"),
+        w.proactive,
+        s.proactive.clientConfigured ? w.proactiveOn : (s.proactive.accessHint ?? w.proactiveOff),
         "bastra tasks setup-hooks"
       )
     );
   if (s.codeAwareness.offByEnv) {
-    lines.push(
-      row(INFO, "code awareness (experimental)", "off (BASTRA_CODE_AWARENESS=off)", "unset BASTRA_CODE_AWARENESS")
-    );
+    lines.push(row(INFO, w.codeAwareness, w.offBecause("BASTRA_CODE_AWARENESS=off"), w.unsetCodeAwareness));
   } else {
     lines.push(
       s.codeAwareness.repos > 0
-        ? row(
-            ON,
-            "code awareness (experimental)",
-            `on for ${s.codeAwareness.repos} ${s.codeAwareness.repos === 1 ? "repository" : "repositories"}`
-          )
-        : row(INFO, "code awareness (experimental)", "off", "bastra code enable  (inside a repository)")
+        ? row(ON, w.codeAwareness, w.codeAwarenessOn(s.codeAwareness.repos))
+        : row(INFO, w.codeAwareness, w.off, w.codeEnableHint)
     );
   }
   lines.push(
     s.promptImpact
-      ? row(ON, "change impact in prompts (experimental)", "on")
-      : row(
-          INFO,
-          "change impact in prompts (experimental)",
-          "off, not shown to help yet",
-          "bastra config set promptImpact.enabled true"
-        )
+      ? row(ON, w.promptImpact, w.on)
+      : row(INFO, w.promptImpact, w.promptImpactOff, "bastra config set promptImpact.enabled true")
   );
   lines.push(
     s.coverageMap
-      ? row(
-          ON,
-          "coverage map from test runs (experimental)",
-          "on — test commands run with NODE_V8_COVERAGE in enabled repositories"
-        )
-      : row(INFO, "coverage map from test runs (experimental)", "off", "bastra config set coverageMap.enabled true")
+      ? row(ON, w.coverageMap, w.coverageMapOn)
+      : row(INFO, w.coverageMap, w.off, "bastra config set coverageMap.enabled true")
   );
   lines.push(
     s.docsMode !== "off"
-      ? row(ON, "product docs", s.docsMode)
-      : row(INFO, "product docs", "off", "bastra config set docs.mode suggest")
+      ? row(ON, w.productDocs, s.docsMode)
+      : row(INFO, w.productDocs, w.off, "bastra config set docs.mode suggest")
   );
-  lines.push(s.commons ? row(ON, "Bastra Commons", "on") : row(INFO, "Bastra Commons", "off", "bastra commons enable"));
-  lines.push(
-    s.bridges
-      ? row(ON, "shared recall bridges", "on")
-      : row(INFO, "shared recall bridges", "off", "bastra bridges enable")
-  );
-  lines.push(s.ui ? row(ON, "vault map", "on") : row(INFO, "vault map", "off", "bastra config set ui.enabled true"));
-  lines.push(archiveLine(s));
-  lines.push(documentWriteLine(s.documentWrite));
-  const battery = "battery saver (macOS)";
-  if (!s.battery.saver) {
-    lines.push(row(INFO, battery, "off", "bastra config set battery.saver on"));
-  } else if (s.battery.live?.saving) {
-    lines.push(
-      row(ON, battery, "on, on battery now: paraphrasing waits for AC, no warm-ups, model unloads after 60 s idle")
-    );
-  } else {
-    lines.push(row(ON, battery, s.battery.live ? `on (power source: ${s.battery.live.source})` : "on"));
-  }
+  lines.push(s.commons ? row(ON, "Bastra Commons", w.on) : row(INFO, "Bastra Commons", w.off, "bastra commons enable"));
+  lines.push(s.bridges ? row(ON, w.bridges, w.on) : row(INFO, w.bridges, w.off, "bastra bridges enable"));
+  lines.push(s.ui ? row(ON, w.vaultMap, w.on) : row(INFO, w.vaultMap, w.off, "bastra config set ui.enabled true"));
+  lines.push(archiveLine(s, w));
+  lines.push(documentWriteLine(s.documentWrite, w));
+  lines.push(batteryLine(s.battery, w));
   return lines;
+}
+
+function batteryLine(battery: FeatureState["battery"], w: FeaturesWords): string {
+  if (!battery.saver) return row(INFO, w.battery, w.off, "bastra config set battery.saver on");
+  if (battery.live?.saving) return row(ON, w.battery, w.batterySaving);
+  return row(ON, w.battery, battery.live ? w.batteryLive(battery.live.source) : w.on);
 }
 
 /**
@@ -267,27 +229,16 @@ export function featureLines(s: FeatureState): string[] {
  * version, newer ones included, gets hints only; an update switches the
  * blocking check off without a word, so the row says which case applies.
  */
-function rulebookGateLines(surface: string, gate: ClientFeatures["rulebookGate"]): string[] {
+function rulebookGateLines(surface: string, gate: ClientFeatures["rulebookGate"], w: FeaturesWords): string[] {
   if (!gate) return [];
-  const name = `${surface}: rulebook gate`;
-  if (gate.verified) return [row(ON, name, `blocking (verified for Codex ${gate.version})`)];
-  return [
-    row(
-      OFF,
-      name,
-      `advisory only: Codex ${gate.version ?? "version unknown"} is not verified ` +
-        `(verified: ${CODEX_GATE_VERIFIED_VERSIONS.join(", ")})`,
-      "nothing to switch on; the gate blocks once this Codex version is verified"
-    ),
-  ];
+  const name = w.rulebookGate(surface);
+  if (gate.verified) return [row(ON, name, w.gateBlocking(gate.version))];
+  return [row(OFF, name, w.gateAdvisory(gate.version, CODEX_GATE_VERIFIED_VERSIONS.join(", ")), w.gateHint)];
 }
 
 /** #1474: Recall Pulse document writing, as this shell's environment sets it. */
-function documentWriteLine(on: boolean): string {
-  const name = "document writing (Recall Pulse)";
-  return on
-    ? row(ON, name, "on (this shell's environment; the daemon reads its own)")
-    : row(INFO, name, "off", "BASTRA_DOCUMENT_WRITE=1 in the daemon's environment");
+function documentWriteLine(on: boolean, w: FeaturesWords): string {
+  return on ? row(ON, w.documentWrite, w.documentWriteOn) : row(INFO, w.documentWrite, w.off, w.documentWriteHint);
 }
 
 /** Same switch and legacy alias as documentWriteEnabledFromEnv, but from the
@@ -297,20 +248,20 @@ function documentWriteFrom(env: NodeJS.ProcessEnv): boolean {
 }
 
 /** The archive's row; out of featureLines to keep that one's complexity. */
-function archiveLine(s: FeatureState): string {
-  const archive = "archiving rm + git snapshots (Claude Code)";
-  if (s.archive === "bastra" && s.archiveProblem) return row(OFF, archive, `on, but not usable: ${s.archiveProblem}`);
+function archiveLine(s: FeatureState, w: FeaturesWords): string {
+  if (s.archive === "bastra" && s.archiveProblem) return row(OFF, w.archive, w.archiveUnusable(s.archiveProblem));
   return s.archive === "bastra"
     ? row(
         ON,
-        archive,
-        "on (rm -r and lossy git acts run through ~/.bastra/archive without a prompt; " +
-          `cap ${formatSize(s.archiveLimits.cap)}, ` +
-          `per-target limit ${s.archiveLimits.maxItem === null ? "off" : formatSize(s.archiveLimits.maxItem)}; bastra archive list)`
+        w.archive,
+        w.archiveOn(
+          formatSize(s.archiveLimits.cap),
+          s.archiveLimits.maxItem === null ? null : formatSize(s.archiveLimits.maxItem)
+        )
       )
     : s.archive === "host"
-      ? row(ON, archive, "host (BASTRA_RM_ARCHIVES=host: the host's own archiving rm, receipt text only)")
-      : row(INFO, archive, "off", "bastra config set archive.enabled on  (docs/hooks.md)");
+      ? row(ON, w.archive, w.archiveHost)
+      : row(INFO, w.archive, w.off, "bastra config set archive.enabled on  (docs/hooks.md)");
 }
 
 /** The archive mode, and why its directory is refused when it is on (doctor). */
@@ -331,16 +282,16 @@ function reflexState(settings: CliSettings, env: NodeJS.ProcessEnv): FeatureStat
   return settings.reflex?.enabled === false ? { enabled: false, offBy: "reflex.enabled = false" } : { enabled: true };
 }
 
-async function semanticState(live: DaemonProbe | null): Promise<FeatureState["semanticRecall"]> {
+async function semanticState(live: DaemonProbe | null, w: FeaturesWords): Promise<FeatureState["semanticRecall"]> {
   // The running daemon is the stronger witness: a LaunchAgent can carry its
   // own embedding environment that this shell does not see (#79).
   if (live?.ok && live.semanticRecall) {
-    return { state: live.semanticRecall, detail: live.embeddingMode ?? "running daemon" };
+    return { state: live.semanticRecall, detail: live.embeddingMode ?? w.runningDaemon };
   }
   const choice = await resolveEmbeddingChoice();
   return choice.provider === "none"
-    ? { state: "off", detail: "keyword search only" }
-    : { state: "on", detail: `${choice.provider}, from ${choice.source}` };
+    ? { state: "off", detail: w.keywordOnly }
+    : { state: "on", detail: w.providerFrom(choice.provider, choice.source) };
 }
 
 export async function paraphrasingState(
@@ -374,12 +325,13 @@ export async function paraphrasingState(
 export async function collectFeatureState(
   clients: FeatureState["clients"],
   cliVault: string | null,
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  language?: string
 ): Promise<FeatureState> {
   const settings = await readSettings();
   const vault = await resolveVault({ dryRun: true, vaultPath: cliVault });
   const live = await probeDaemon().catch(() => null);
-  const semanticRecall = await semanticState(live);
+  const semanticRecall = await semanticState(live, featuresWordsIn(language));
   return {
     proactive: tasksEnabled(env)
       ? await taskAgentAccessStatus().then((s) => ({ clientConfigured: s.authorized, accessHint: s.hint }))
@@ -415,9 +367,13 @@ export async function collectFeatureState(
 }
 
 /** Doctor's printer: never throws, never changes the exit code. */
-export async function printFeaturesNote(clients: FeatureState["clients"], cliVault: string | null): Promise<void> {
+export async function printFeaturesNote(
+  clients: FeatureState["clients"],
+  cliVault: string | null,
+  language = "en"
+): Promise<void> {
   try {
-    const lines = featureLines(await collectFeatureState(clients, cliVault));
+    const lines = featureLines(await collectFeatureState(clients, cliVault, process.env, language), language);
     process.stdout.write(`${lines.join("\n")}\n\n`);
   } catch {
     /* a diagnostics NOTE must never break doctor */

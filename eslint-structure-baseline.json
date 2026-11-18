@@ -144,7 +144,6 @@
     "[\"packages/daemon/src/cli/exec.ts\",\"[\\\"function:findExecutable\\\"]\",\"complexity\"]": 22,
     "[\"packages/daemon/src/cli/exec.ts\",\"[\\\"function:findExecutable\\\"]\",\"max-depth\"]": 5,
     "[\"packages/daemon/src/cli/features-note.ts\",\"[\\\"function:collectFeatureState\\\"]\",\"complexity\"]": 22,
-    "[\"packages/daemon/src/cli/features-note.ts\",\"[\\\"function:featureLines\\\"]\",\"complexity\"]": 38,
     "[\"packages/daemon/src/cli/flag-spec.ts\",\"[\\\"function:validateArgs\\\"]\",\"complexity\"]": 21,
     "[\"packages/daemon/src/cli/helpers.ts\",\"[\\\"function:probeDaemon\\\",\\\"call:Promise:#1\\\",\\\"function:argument:0#1\\\",\\\"variable:req\\\",\\\"call:httpRequest:#1\\\",\\\"function:argument:2#1\\\",\\\"call:res.on:\\\\\\\"end\\\\\\\"#1\\\",\\\"function:argument:1#1\\\"]\",\"complexity\"]": 17,
     "[\"packages/daemon/src/cli/import-cmd.ts\",\"[\\\"function:cmdImportVault\\\"]\",\"complexity\"]": 18,

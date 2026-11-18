@@ -45,6 +45,14 @@ const en = {
   dryRunAgainst: (path: string) => `\ndry run against ${path}:\n`,
   nothingWritten: (path: string) => `\nnothing written. 'bastra reconcile ${path} --yes' copies the unambiguous ones.`,
   compareOne: `\ncompare one with 'bastra reconcile <store>'.`,
+  thisVault: "this vault:",
+  foundVia: (sources: string) => `found via: ${sources}`,
+  storeMissing: "missing",
+  auditLog: (memories: number, shared: number) =>
+    `audit log: ${memories} memor${memories === 1 ? "y" : "ies"}, ${shared} shared with this vault`,
+  alsoReached: (aliases: string) => `also reached as: ${aliases}`,
+  noOtherCopy: "no other copy of this vault found (settings, symlinks, sync folders).",
+  otherStores: (n: number) => `other stores: ${n}`,
 };
 export type ReconcileCmdWords = typeof en;
 
@@ -89,6 +97,14 @@ const de: ReconcileCmdWords = {
   nothingWritten: (path: string) =>
     `\nnichts geschrieben. 'bastra reconcile ${path} --yes' kopiert die eindeutigen Fälle.`,
   compareOne: `\neinen davon vergleichen mit 'bastra reconcile <speicher>'.`,
+  thisVault: "dieser Vault:",
+  foundVia: (sources) => `gefunden über: ${sources}`,
+  storeMissing: "fehlt",
+  auditLog: (memories, shared) =>
+    `Audit-Log: ${memories} ${memories === 1 ? "Memory" : "Memories"}, ${shared} gemeinsam mit diesem Vault`,
+  alsoReached: (aliases) => `auch erreichbar als: ${aliases}`,
+  noOtherCopy: "keine andere Kopie dieses Vaults gefunden (Einstellungen, Symlinks, Sync-Ordner).",
+  otherStores: (n) => `andere Speicher: ${n}`,
 };
 
 export const RECONCILE_CMD_WORDS: Readonly<Record<string, ReconcileCmdWords>> = { en, de };

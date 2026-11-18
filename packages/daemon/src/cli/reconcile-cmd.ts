@@ -215,7 +215,7 @@ async function listStores(here: string, env: StoreDiscoveryEnv, json: boolean, w
     console.log(JSON.stringify({ stores: found, ...(plan ? { dry_run: true, ...(planJson(plan) as object) } : {}) }));
     return 0;
   }
-  console.log(formatDiscovery(found));
+  console.log(formatDiscovery(found, w));
   if (plan) {
     console.log(w.dryRunAgainst(comparable[0].path));
     console.log(formatPlan(plan, w));

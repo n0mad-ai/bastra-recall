@@ -15,6 +15,7 @@
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 import { toolSurfaceFrom, type ToolSurface } from "../tool-defs.js";
 import { existingToolSurface } from "./helpers.js";
+import { doctorNotesWordsIn } from "./doctor-notes-words.js";
 
 /** The surface a client's MCP entry selects; no BASTRA_TOOL_SURFACE means the forwarder's default. */
 export function clientMcpSurface(entry: unknown): ToolSurface {
@@ -28,18 +29,19 @@ export type FetchTools = (surface: ToolSurface) => Promise<ToolListProbe>;
 
 const TIMEOUT_MS = 2_000;
 
-export function fetchToolsFromDaemon(baseUrl = resolveDaemonEndpoint().baseUrl): FetchTools {
+export function fetchToolsFromDaemon(baseUrl = resolveDaemonEndpoint().baseUrl, language = "en"): FetchTools {
+  const w = doctorNotesWordsIn(language);
   return async (surface) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     try {
       const resp = await fetch(`${baseUrl}/tools?surface=${encodeURIComponent(surface)}`, { signal: ctrl.signal });
-      if (!resp.ok) return { ok: false, detail: `daemon answered HTTP ${resp.status}` };
+      if (!resp.ok) return { ok: false, detail: w.deliveryHttp(resp.status) };
       const body = (await resp.json()) as { tools?: unknown };
-      if (!Array.isArray(body.tools)) return { ok: false, detail: "daemon sent no tool list" };
+      if (!Array.isArray(body.tools)) return { ok: false, detail: w.deliveryNoList };
       return { ok: true, tools: body.tools.length, bytes: JSON.stringify(body.tools).length };
     } catch (error) {
-      return { ok: false, detail: `daemon not reachable (${(error as Error).message})` };
+      return { ok: false, detail: w.deliveryUnreachable((error as Error).message) };
     } finally {
       clearTimeout(timer);
     }
@@ -51,15 +53,17 @@ const tokens = (bytes: number): number => Math.round(bytes / 4);
 
 /** Pure formatter (exported for tests). */
 export function deliveryLines(
-  rows: Array<{ surface: string; mcpSurface: ToolSurface; probe: ToolListProbe }>
+  rows: Array<{ surface: string; mcpSurface: ToolSurface; probe: ToolListProbe }>,
+  language = "en"
 ): string[] {
   if (rows.length === 0) return [];
-  const lines = ["→ delivery per client (what the daemon hands each client right now)"];
+  const w = doctorNotesWordsIn(language);
+  const lines = [w.deliveryHeader];
   for (const { surface, mcpSurface, probe } of rows) {
     lines.push(
       probe.ok
-        ? `  ✓ ${surface}: MCP lists ${probe.tools} tools (surface ${mcpSurface}), ~${tokens(probe.bytes)} tokens per session start`
-        : `  ⚠ ${surface}: MCP tool list not delivered by the daemon: ${probe.detail}; the client falls back to the bundled list until it is reachable`
+        ? w.deliveryOk(surface, probe.tools, mcpSurface, tokens(probe.bytes))
+        : w.deliveryMissing(surface, probe.detail)
     );
   }
   return lines;
@@ -68,7 +72,8 @@ export function deliveryLines(
 /** Doctor's printer: never throws, never changes the exit code. */
 export async function printDeliveryNote(
   clients: Array<{ surface: string; mcpSurface?: ToolSurface }>,
-  fetchTools: FetchTools = fetchToolsFromDaemon()
+  fetchTools: FetchTools = fetchToolsFromDaemon(),
+  language = "en"
 ): Promise<void> {
   try {
     const rows = [];
@@ -76,7 +81,7 @@ export async function printDeliveryNote(
       if (!mcpSurface) continue;
       rows.push({ surface, mcpSurface, probe: await fetchTools(mcpSurface) });
     }
-    const lines = deliveryLines(rows);
+    const lines = deliveryLines(rows, language);
     if (lines.length) process.stdout.write(`${lines.join("\n")}\n\n`);
   } catch {
     /* a diagnostics NOTE must never break doctor */

@@ -38,6 +38,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { UnresolvedEntry } from "./applies-to.js";
 import { isGitRepo } from "./git-paths.js";
+import { codeGraphWordsIn } from "./code-graph-words.js";
 
 const run = promisify(execFile);
 
@@ -211,9 +212,7 @@ export function renameOffers(unresolved: readonly UnresolvedEntry[], lookup: Ren
 }
 
 /** One line per offer, for the doctor report and the save-time prompt. */
-export function formatOffers(offers: readonly RenameOffer[]): string[] {
-  return offers.map((o) => {
-    const sim = o.similarity === null ? "" : ` (git: ${o.similarity}% similar)`;
-    return `${o.memoryId}: ${o.entry} → ${o.suggestedEntry}${sim} — offered, not applied`;
-  });
+export function formatOffers(offers: readonly RenameOffer[], language = "en"): string[] {
+  const w = codeGraphWordsIn(language);
+  return offers.map((o) => w.offer(o.memoryId, o.entry, o.suggestedEntry, o.similarity));
 }

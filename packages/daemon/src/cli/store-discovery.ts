@@ -37,6 +37,7 @@ import { AuditLog } from "@bastra-recall/core";
 import { CLAUDE_CODE_CONFIG, CLAUDE_DESKTOP_CONFIG, CURSOR_CONFIG } from "./paths.js";
 import { SERVER_KEY } from "./helpers.js";
 import { codexMcpGet, findCodexExecutable } from "./codex-cli.js";
+import { reconcileCmdWordsIn, type ReconcileCmdWords } from "./reconcile-cmd-words.js";
 
 export interface StoreDiscoveryEnv {
   home: string;
@@ -264,27 +265,24 @@ export async function discoverStores(vaultPath: string, env: StoreDiscoveryEnv):
   return { self, others: [...byReal.values()].filter((s) => s !== self) };
 }
 
-/** Human-readable listing for `bastra reconcile` without a store argument. */
-export function formatDiscovery(d: StoreDiscovery): string {
+/** Human-readable listing for `bastra reconcile` without a store argument, in the run's words (#1602). */
+export function formatDiscovery(d: StoreDiscovery, w: ReconcileCmdWords = reconcileCmdWordsIn("en")): string {
   const line = (s: DiscoveredStore): string[] => {
     const out = [`  ${s.path}${s.realPath !== s.path ? `  → ${s.realPath}` : ""}`];
     const facts: string[] = [];
-    if (s.sources.length) facts.push(`found via: ${s.sources.join(", ")}`);
-    if (!s.exists) facts.push("missing");
-    else
-      facts.push(
-        `audit log: ${s.auditMemories} memor${s.auditMemories === 1 ? "y" : "ies"}, ${s.sharedWithThis} shared with this vault`
-      );
+    if (s.sources.length) facts.push(w.foundVia(s.sources.join(", ")));
+    if (!s.exists) facts.push(w.storeMissing);
+    else facts.push(w.auditLog(s.auditMemories, s.sharedWithThis));
     out.push(`    ${facts.join("; ")}`);
-    if (s.aliases.length) out.push(`    also reached as: ${s.aliases.join(", ")}`);
+    if (s.aliases.length) out.push(`    ${w.alsoReached(s.aliases.join(", "))}`);
     return out;
   };
-  const lines = ["this vault:", ...line(d.self)];
+  const lines = [w.thisVault, ...line(d.self)];
   if (d.others.length === 0) {
-    lines.push("", "no other copy of this vault found (settings, symlinks, sync folders).");
+    lines.push("", w.noOtherCopy);
     return lines.join("\n");
   }
-  lines.push("", `other stores: ${d.others.length}`);
+  lines.push("", w.otherStores(d.others.length));
   for (const s of d.others) lines.push(...line(s));
   return lines.join("\n");
 }

@@ -35,6 +35,7 @@
 
 import type { SafeNode } from "./validate.js";
 import type { WorkspaceModules } from "./workspace-packages.js";
+import { codeGraphWordsIn } from "./code-graph-words.js";
 
 /** What an external node turned out to mean, once resolved. */
 export interface ResolvedExternals {
@@ -69,16 +70,11 @@ export interface ExternalStats {
  * workspace, the graph DOES carry external nodes, and not one of them
  * resolved.
  */
-export function externalRefLines(stats: ExternalStats): string[] {
+export function externalRefLines(stats: ExternalStats, language = "en"): string[] {
   if (stats.total === 0 && stats.workspaceModules === 0) return [];
-  const line = `${stats.total} external nodes, ${stats.resolved} resolved`;
-  if (stats.workspaceModules > 0 && stats.total > 0 && stats.resolved === 0) {
-    return [
-      `⚠ ${line} — this repository is a workspace, so cross-package ` +
-        `impact is not being found. Likely a Graphify id-format change: ` +
-        `rebuild with 'bastra code index', and if it stays 0 report it (#582).`,
-    ];
-  }
+  const w = codeGraphWordsIn(language);
+  const line = w.externalNodes(stats.total, stats.resolved);
+  if (stats.workspaceModules > 0 && stats.total > 0 && stats.resolved === 0) return [w.externalBlind(line)];
   return [line];
 }
 

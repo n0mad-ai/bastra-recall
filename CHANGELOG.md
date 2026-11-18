@@ -197,6 +197,9 @@ until a new design replaces it; this name is independent of the product version.
   reapply), `bastra patches status` and `bastra models` now follow
   `language.primary`; the map's onboarding dialog shows its questions in
   `language.primary` (#1602).
+- `bastra doctor` features/bridges/affects_files/delivery notes, the
+  code-graph status lines of `doctor` and `code status`, and the `bastra
+  reconcile` store listing follow `language.primary` (#1602).
 - Memory browser: changing type or recall mode of a memory whose rule status
   depends on them shows what changes for the rule before saving; saving
   takes one confirming click.

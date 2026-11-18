@@ -54,6 +54,7 @@ import { commitBefore, formatOffers, renameOffers, renamesSince } from "../code-
 import { loadGraph, type LoadedGraph } from "../code-graph/reader.js";
 import { isRepoEnabledSync } from "../code-graph/enabled-repos.js";
 import { projectForFilter } from "../scope-filter.js";
+import { doctorNotesWordsIn, type DoctorNotesWords } from "./doctor-notes-words.js";
 
 /** Findings listed by name before the rest becomes a count. */
 const MAX_LISTED = 5;
@@ -82,7 +83,8 @@ export interface AffectsFilesIo {
  * Pure apart from `io`, so the wording is testable without a vault, a repo or
  * a daemon.
  */
-export async function affectsFilesLines(io: AffectsFilesIo): Promise<string[]> {
+export async function affectsFilesLines(io: AffectsFilesIo, language = "en"): Promise<string[]> {
+  const w = doctorNotesWordsIn(language);
   const memories = await io.memories();
   const withEntries = memories.filter((m) => (m.affects_files ?? []).length > 0);
   if (withEntries.length === 0) return [];
@@ -91,9 +93,7 @@ export async function affectsFilesLines(io: AffectsFilesIo): Promise<string[]> {
   if (repoRoot === null) {
     // Honest blindness, not silence: the entries exist and could not be checked.
     const count = withEntries.reduce((n, m) => n + (m.affects_files ?? []).length, 0);
-    return [
-      `${count} entr${count === 1 ? "y" : "ies"} in ${withEntries.length} memor${withEntries.length === 1 ? "y" : "ies"} — not checked here (no git repository at this location)`,
-    ];
+    return [w.affectsNotChecked(count, withEntries.length)];
   }
 
   const project = io.project(repoRoot);
@@ -122,14 +122,11 @@ export async function affectsFilesLines(io: AffectsFilesIo): Promise<string[]> {
   const stillUnresolved = findings.filter((u) => !offered.has(key(u.memoryId, u.entry)));
 
   // Offers first: they are the ones with something to do about them.
-  const lines = capped([...formatOffers(offers), ...formatUnresolved(stillUnresolved)]);
+  const lines = capped([...formatOffers(offers, language), ...formatUnresolved(stillUnresolved, language)], w);
   // Only ever an aside next to a real finding. On its own it would be a note
   // about entries that are exactly as their author meant them.
   if (lines.length > 0 && notRepoPaths.length > 0) {
-    const n = notRepoPaths.length;
-    lines.push(
-      `${n} further entr${n === 1 ? "y names an absolute or home path" : "ies name absolute or home paths"} — not repository paths, nothing to resolve`
-    );
+    lines.push(w.affectsNotRepoPaths(notRepoPaths.length));
   }
   return lines;
 }
@@ -146,10 +143,9 @@ function belongsToProject(scope: string | undefined, project: string | null): bo
 }
 
 /** The first {@link MAX_LISTED} lines, then one line counting the rest. */
-function capped(lines: string[]): string[] {
+function capped(lines: string[], w: DoctorNotesWords): string[] {
   if (lines.length <= MAX_LISTED) return lines;
-  const rest = lines.length - MAX_LISTED;
-  return [...lines.slice(0, MAX_LISTED), `… and ${rest} more`];
+  return [...lines.slice(0, MAX_LISTED), w.andMore(lines.length - MAX_LISTED)];
 }
 
 async function offersFor(

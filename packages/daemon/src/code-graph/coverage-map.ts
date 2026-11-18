@@ -53,6 +53,7 @@ import { lstat, mkdir, open, readdir, realpath, rename, stat, unlink } from "nod
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { escapeAttr } from "../escape-attr.js";
+import { codeGraphWordsIn, type CodeGraphWords } from "./code-graph-words.js";
 import { coverageIndexStamp } from "./coverage-map-index.js";
 import { parseRawCoverage, sourceResolver, type RawScript } from "./coverage-map-raw.js";
 
@@ -762,23 +763,27 @@ export function coverageTestsLine(
   );
 }
 
-/** "2 h old", "3 d old" — enough to tell a fresh map from a forgotten one. */
-export function ageOf(iso: string, now = Date.now()): string {
+/**
+ * "2 h old", "3 d old" — enough to tell a fresh map from a forgotten one.
+ * English by default: the coverage-tests line above goes to the model; only
+ * the CLI status passes the screen's words (#1602).
+ */
+export function ageOf(iso: string, now = Date.now(), w: CodeGraphWords = codeGraphWordsIn("en")): string {
   const ms = now - Date.parse(iso);
-  if (!Number.isFinite(ms) || ms < 0) return "age unknown";
+  if (!Number.isFinite(ms) || ms < 0) return w.ageUnknown;
   const min = Math.round(ms / 60_000);
-  if (min < 60) return `${min} min old`;
+  if (min < 60) return w.ageMinutes(min);
   const h = Math.round(min / 60);
-  if (h < 48) return `${h} h old`;
-  return `${Math.round(h / 24)} d old`;
+  if (h < 48) return w.ageHours(h);
+  return w.ageDays(Math.round(h / 24));
 }
 
-/** What the CLI shows: present or not, how many tests, how old. */
-export async function coverageMapStatus(repoRoot: string, now = Date.now()): Promise<string> {
+/** What the CLI shows: present or not, how many tests, how old — in language.primary (#1602). */
+export async function coverageMapStatus(repoRoot: string, now = Date.now(), language = "en"): Promise<string> {
+  const w = codeGraphWordsIn(language);
   const map = await readCoverageMap(repoRoot);
   const raw = await rawBytesOf(repoRoot);
-  const pending = raw > 0 ? `, ${(raw / 1024 / 1024).toFixed(0)} MB of raw output waiting for the next fold` : "";
-  if (map === null) return `coverage map: none yet${pending}`;
-  const tests = Object.keys(map.tests).length;
-  return `coverage map: ${tests} test${tests === 1 ? "" : "s"}, ${map.runs} process${map.runs === 1 ? "" : "es"} folded, ${ageOf(map.foldedAt, now)}${pending}`;
+  const pending = raw > 0 ? w.coveragePending((raw / 1024 / 1024).toFixed(0)) : "";
+  if (map === null) return w.coverageNone(pending);
+  return w.coverageMap(Object.keys(map.tests).length, map.runs, ageOf(map.foldedAt, now, w), pending);
 }

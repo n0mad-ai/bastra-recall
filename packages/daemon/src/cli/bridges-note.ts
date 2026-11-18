@@ -20,6 +20,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { LastMintRecord } from "../learned-recall/mint-job.js";
+import { doctorNotesWordsIn, type DoctorNotesWords } from "./doctor-notes-words.js";
 
 /** The window the note looks back over — the unconfirmed-bridge TTL and the
  *  curator window, so "stalled" means "nothing learned in one full cycle". */
@@ -46,9 +47,17 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * a line saying so, and last a line saying whether query expansion is live or
  * shadow (owner decision 2026-09-29).
  */
-export function bridgeLearningLines(input: { enabled: boolean; live?: boolean; runs: MintRun[]; now: Date }): string[] {
+export function bridgeLearningLines(input: {
+  enabled: boolean;
+  live?: boolean;
+  runs: MintRun[];
+  now: Date;
+  /** language.primary of the doctor run; English when unset (#1602). */
+  language?: string;
+}): string[] {
   if (!input.enabled) return [];
-  const lines = learningLines(input);
+  const w = doctorNotesWordsIn(input.language);
+  const lines = learningLines(input, w);
   const cutoff = input.now.getTime() - BRIDGE_STALL_WINDOW_DAYS * DAY_MS;
   let demoted = 0;
   let archived = 0;
@@ -58,57 +67,36 @@ export function bridgeLearningLines(input: { enabled: boolean; live?: boolean; r
     archived += r.archived ?? 0;
   }
   if (demoted > 0 || archived > 0) {
-    lines.push(
-      `· ${demoted} bridge(s) demoted, ${archived} archived in the last ${BRIDGE_STALL_WINDOW_DAYS} days — ` +
-        "fired without leading to a load or acted-on episode (#129), or minted from machine text (#704); " +
-        "see bridges/archive/log.jsonl in the Commons clone, move a file back to restore it"
-    );
+    lines.push(w.bridgesChurn(demoted, archived, BRIDGE_STALL_WINDOW_DAYS));
   }
   // Owner decision 2026-09-29: say whether bridges change the ranking at all.
-  lines.push(
-    input.live
-      ? "· query expansion: live — bridges widen recall queries ('bastra bridges live off' returns to shadow)"
-      : "· query expansion: shadow — fires are logged (bridge_expansion, applied: false), the ranking is unchanged; " +
-          "'bastra bridges live on' once 'bastra bridges verify' passes a bridge"
-  );
+  lines.push(input.live ? w.bridgesLive : w.bridgesShadow);
   return lines;
 }
 
-function learningLines(input: { runs: MintRun[]; now: Date }): string[] {
+function learningLines(input: { runs: MintRun[]; now: Date }, w: DoctorNotesWords): string[] {
   const cutoff = input.now.getTime() - BRIDGE_STALL_WINDOW_DAYS * DAY_MS;
   const runs = input.runs
     .filter((r) => Number.isFinite(Date.parse(r.ts)) && Date.parse(r.ts) >= cutoff)
     .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
   const days = BRIDGE_STALL_WINDOW_DAYS;
   if (runs.length === 0) {
-    return [
-      `⚠ no bridge mint ran in the last ${days} days — the daemon mints after boot and then daily; start it or run 'bastra bridges mint'`,
-    ];
+    return [w.bridgesNoMint(days)];
   }
   const last = runs[runs.length - 1];
   const anyWritten = runs.some((r) => r.written > 0);
   if (anyWritten) {
-    return [
-      `✓ ok: bridges learned in the last ${days} days (${runs.length} mint run(s), last: ${last.written} written)`,
-    ];
+    return [w.bridgesLearned(days, runs.length, last.written)];
   }
   if (runs.some((r) => r.minted > 0)) {
-    return [
-      `⚠ bridge learning stalled: ${runs.length} mint run(s) in ${days} days minted candidates but wrote none (last: ${last.minted} minted, 0 written) — ` +
-        "builds before #672 held back single-reach bridges; update and run 'bastra bridges mint'",
-    ];
+    return [w.bridgesStalled(runs.length, days, last.minted)];
   }
   if (runs.every((r) => r.reaches === 0)) {
-    return [
-      `⚠ no bridge learned in ${days} days: ${runs.length} mint run(s) found no acted-on recalls in the telemetry log — ` +
-        "bridges learn from it, so check that BASTRA_TELEMETRY is not 'off'",
-    ];
+    return [w.bridgesNoReach(days, runs.length)];
   }
   // Reaches, but none far enough to mint from: recall already found every
   // memory with the words used. Nothing to learn is not a fault.
-  return [
-    `✓ ok: ${runs.length} mint run(s) in ${days} days, no recall needed a bridge (last: ${last.reaches} acted-on reach(es))`,
-  ];
+  return [w.bridgesNothingToLearn(runs.length, days, last.reaches)];
 }
 
 /**

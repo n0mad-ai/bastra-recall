@@ -49,7 +49,7 @@ import { affectsFilesLines, defaultAffectsFilesIo } from "./affects-files-note.j
 import { defaultDerivedClaimsIo, derivedClaimsLines } from "./derived-claims-note.js";
 import { clientMemoryLines, findClientMemoryDirs } from "./client-memory.js";
 import { printFeaturesNote, type FeatureState } from "./features-note.js";
-import { printDeliveryNote } from "./doctor-delivery.js";
+import { fetchToolsFromDaemon, printDeliveryNote } from "./doctor-delivery.js";
 import { cmdDoctorReplay } from "./doctor-replay.js";
 import { configuredState, daemonOriginLines } from "./daemon-origin-note.js";
 import { installCodeAwarenessStep } from "./code-cmd.js";
@@ -547,10 +547,10 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   await printAutostartNote(w, language);
   await printAssistantAddressNote();
   await printStubBinaryNote(w, language);
-  await printAffectsFilesNote(resolveVaultPath(args.vaultPath));
+  await printAffectsFilesNote(resolveVaultPath(args.vaultPath), language);
   await printDerivedClaimsNote(resolveVaultPath(args.vaultPath), w, language);
-  await printCodeGraphNote(w);
-  await printBridgeLearningNote(w);
+  await printCodeGraphNote(w, language);
+  await printBridgeLearningNote(w, language);
   await printClientMemoryNote(resolveVaultPath(args.vaultPath), w, language);
   const rulebookVault = await resolveVault({ dryRun: true, vaultPath: resolveVaultPath(args.vaultPath) });
   if (!("error" in rulebookVault)) {
@@ -558,10 +558,14 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
     await printConflictCopiesNote(rulebookVault.path, language);
   }
   // #1472: does the tool list reach each client, and what does it cost.
-  await printDeliveryNote(clientFeatures.map((c) => ({ surface: c.surface, mcpSurface: c.features.mcpSurface })));
+  await printDeliveryNote(
+    clientFeatures.map((c) => ({ surface: c.surface, mcpSurface: c.features.mcpSurface })),
+    fetchToolsFromDaemon(undefined, language),
+    language
+  );
   // What is switched off, as opposed to broken — never flips the exit code,
   // and --fix never turns a feature on.
-  await printFeaturesNote(clientFeatures, resolveVaultPath(args.vaultPath));
+  await printFeaturesNote(clientFeatures, resolveVaultPath(args.vaultPath), language);
 
   return hadBroken ? 1 : 0;
 }
@@ -587,13 +591,13 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
  * the four notes above it: silent when there is nothing to say, and never a
  * failure (a memory pointing at a moved file does not break anything).
  */
-async function printAffectsFilesNote(cliVault: string | null): Promise<void> {
+async function printAffectsFilesNote(cliVault: string | null, language: string): Promise<void> {
   try {
     // Same resolution as every other vault-touching command, so a machine
     // whose vault is only known from an existing registration is checked too.
     const vault = await resolveVault({ dryRun: true, vaultPath: cliVault });
     if ("error" in vault) return;
-    const lines = await affectsFilesLines(defaultAffectsFilesIo(vault.path));
+    const lines = await affectsFilesLines(defaultAffectsFilesIo(vault.path), language);
     if (lines.length === 0) return;
     process.stdout.write("→ affects_files\n");
     for (const line of lines) process.stdout.write(`  ${line}\n`);
@@ -649,7 +653,7 @@ async function printDerivedClaimsNote(cliVault: string | null, w: DoctorWords, l
  * missing or stale code graph is a degraded optional feature, not a broken
  * installation (C-090 is a release obligation, not a runtime one).
  */
-async function printCodeGraphNote(w: DoctorWords): Promise<void> {
+async function printCodeGraphNote(w: DoctorWords, language: string): Promise<void> {
   try {
     const repos = await enabledRepos();
     const tool = await probeTool();
@@ -683,17 +687,18 @@ async function printCodeGraphNote(w: DoctorWords): Promise<void> {
       if (manifest.lastError !== null) {
         process.stdout.write(w.lastError(manifest.lastError));
       }
-      process.stdout.write(w.experimental(await coverageMapStatus(repo)));
+      process.stdout.write(w.experimental(await coverageMapStatus(repo, Date.now(), language)));
       const refreshState = refresh?.get(repo);
       if (refreshState !== undefined) {
-        for (const line of refreshStatusLines(refreshState)) process.stdout.write(`    ${line}\n`);
+        for (const line of refreshStatusLines(refreshState, new Date(), language))
+          process.stdout.write(`    ${line}\n`);
       }
       // #582: the package boundary is the half of the graph Graphify does not
       // carry, and it fails SILENTLY — a changed id format costs every
       // cross-package answer while the graph still loads and looks fine.
       const loaded = await loadGraph(repo);
       if (loaded.ok) {
-        for (const line of externalRefLines(loaded.graph.externalStats)) {
+        for (const line of externalRefLines(loaded.graph.externalStats, language)) {
           process.stdout.write(`    ${line}\n`);
         }
       }
@@ -709,13 +714,13 @@ async function printCodeGraphNote(w: DoctorWords): Promise<void> {
  * and reading live in `bridges-note.ts`; silent when shared recall is off, and
  * like every global note never a failure.
  */
-async function printBridgeLearningNote(w: DoctorWords): Promise<void> {
+async function printBridgeLearningNote(w: DoctorWords, language: string): Promise<void> {
   try {
     const enabled = await getSharedRecallEnabled();
     if (!enabled) return;
     const now = new Date();
     const runs = await readMintRuns(defaultLogDir(), await readLastMint(bridgesPath()), now);
-    const lines = bridgeLearningLines({ enabled, live: await getSharedRecallLive(), runs, now });
+    const lines = bridgeLearningLines({ enabled, live: await getSharedRecallLive(), runs, now, language });
     if (lines.length === 0) return;
     process.stdout.write(w.learnedBridges);
     for (const line of lines) process.stdout.write(`  ${line}\n`);

@@ -55,11 +55,12 @@ export async function cmdCode(opts: { sub: string | null; positional?: string[];
   // enabling `packages/daemon/` stored a key nothing ever asked for. A linked
   // worktree is its own root on purpose — its own checkout, its own graph.
   const dir = repoRootSync(given) ?? given;
-  const w = codeCmdWordsIn(await taskCliLanguage().catch(() => "en"));
+  const language = await taskCliLanguage().catch(() => "en");
+  const w = codeCmdWordsIn(language);
 
   switch (sub) {
     case "status":
-      return await cmdStatus(w);
+      return await cmdStatus(w, language);
     case "enable":
       return await cmdEnable(dir, w);
     case "disable":
@@ -74,7 +75,7 @@ export async function cmdCode(opts: { sub: string | null; positional?: string[];
   }
 }
 
-async function cmdStatus(w: CodeCmdWords): Promise<number> {
+async function cmdStatus(w: CodeCmdWords, language: string): Promise<number> {
   const tool = await probeTool();
   out("→ graphify\n");
   if (tool.usable !== null) {
@@ -114,9 +115,10 @@ async function cmdStatus(w: CodeCmdWords): Promise<number> {
     out(size === null ? "\n" : `, ${size} MB\n`);
     if (manifest.lastError !== null) out(w.lastError(manifest.lastError));
     if (manifest.dirty) out(w.unfinished);
-    out(w.coverage(await coverageMapStatus(repo), await getCoverageMapEnabled()));
+    out(w.coverage(await coverageMapStatus(repo, Date.now(), language), await getCoverageMapEnabled()));
     const refreshState = refresh?.get(repo);
-    if (refreshState !== undefined) for (const line of refreshStatusLines(refreshState)) out(`    ${line}\n`);
+    if (refreshState !== undefined)
+      for (const line of refreshStatusLines(refreshState, new Date(), language)) out(`    ${line}\n`);
   }
   return 0;
 }

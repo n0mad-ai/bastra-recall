@@ -36,6 +36,7 @@
 
 import type { LoadedGraph } from "./reader.js";
 import { bareLabel, dependentFilesOf, symbolsOfFile } from "./reader.js";
+import { codeGraphWordsIn } from "./code-graph-words.js";
 
 /** One parsed `affects_files` entry. */
 export interface AppliesToRef {
@@ -270,19 +271,9 @@ export function unresolvedEntries(
 }
 
 /** One line per unresolved entry, for the doctor report. */
-export function formatUnresolved(entries: readonly UnresolvedEntry[]): string[] {
-  return entries.map((e) => `${e.memoryId}: ${e.entry} — ${wordingOf(e.reason)}`);
-}
-
-function wordingOf(reason: UnresolvedReason): string {
-  switch (reason) {
-    case "not-repo-relative":
-      return "not a repository path — nothing to resolve";
-    case "file-missing":
-      return "no such file in this repository";
-    case "symbol-missing":
-      return "file exists, symbol not found in the code graph";
-  }
+export function formatUnresolved(entries: readonly UnresolvedEntry[], language = "en"): string[] {
+  const w = codeGraphWordsIn(language);
+  return entries.map((e) => `${e.memoryId}: ${e.entry} — ${w.unresolved[e.reason]}`);
 }
 
 /**

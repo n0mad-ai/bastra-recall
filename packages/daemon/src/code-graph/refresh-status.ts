@@ -14,6 +14,7 @@
  */
 
 import type { RefreshReason, RepoStatus } from "./refresh.js";
+import { codeGraphWordsIn, type CodeGraphWords } from "./code-graph-words.js";
 
 /** The wire shape of one repository on `GET /code/refresh`. */
 export interface RefreshStatusRow {
@@ -80,26 +81,21 @@ export function parseRefreshStatusRows(body: unknown): RepoStatus[] {
  * names the command. Both say what the last attempt reported, so the user can
  * tell a stranded lock from a broken Graphify without opening the log.
  */
-export function refreshStatusLines(s: RepoStatus, now: Date = new Date()): string[] {
+export function refreshStatusLines(s: RepoStatus, now: Date = new Date(), language = "en"): string[] {
   if (!s.givenUp) return [];
+  const w = codeGraphWordsIn(language);
   const error = s.lastError === null ? "" : `: ${s.lastError}`;
   if (s.nextAttemptAt !== null) {
-    return [
-      `refresh paused${error}`,
-      `next automatic attempt ${describeDue(s.nextAttemptAt, now)} — 'bastra code index' tries now`,
-    ];
+    return [w.refreshPaused(error), w.refreshNext(describeDue(s.nextAttemptAt, now, w))];
   }
-  const failures = s.failures > 0 ? ` after ${s.failures} failed build${s.failures === 1 ? "" : "s"}` : "";
-  return [`refresh stopped${failures}${error}`, "no automatic retry — run 'bastra code index' to retry"];
+  return [w.refreshStopped(s.failures, error), w.refreshNoRetry];
 }
 
-function describeDue(iso: string, now: Date): string {
+function describeDue(iso: string, now: Date, w: CodeGraphWords): string {
   const due = Date.parse(iso);
-  if (!Number.isFinite(due)) return `at ${iso}`;
+  if (!Number.isFinite(due)) return w.dueAt(iso);
   const minutes = Math.round((due - now.getTime()) / 60_000);
-  if (minutes <= 0) return "any moment now";
-  if (minutes < 60) return `in ${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest === 0 ? `in ${hours} h` : `in ${hours} h ${rest} min`;
+  if (minutes <= 0) return w.dueNow;
+  if (minutes < 60) return w.dueMinutes(minutes);
+  return w.dueHours(Math.floor(minutes / 60), minutes % 60);
 }
