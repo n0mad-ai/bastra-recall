@@ -35,6 +35,10 @@ Later owner decisions take precedence over this plan where the two differ (#1476
   and marked experimental; bug fixes, further work only when time allows.
 - **V3 milestone, 14.11.2026:** milestone #31 was closed, because V2 and V3 are one plan.
 - **Decisions of 18.11.2026** (same list as tracker [#386](https://github.com/n0mad-ai/bastra-recall/issues/386)):
+  - **Map:** the WebGL rebuild of the Mindspace map (#324) happens only together with
+    the owner; the look of the map stays frozen until then.
+  - **Soul:** the owner reviews the Soul plan (#1504) first; nothing of it is built
+    before that.
   - **Version:** the next release stays **1.3.0** although Node 22 is no longer
     supported (minimum **Node 24.16**, decided 17.11.2026); dropping Node 22 does not
     make it a major version.
@@ -211,6 +215,10 @@ Spätere Entscheidungen des Product Owners gehen diesem Plan vor, wo beide sich 
   und als experimentell markiert; Fehlerbehebungen, Weiterbau nur bei Zeit.
 - **V3-Milestone, 14.11.2026:** Milestone #31 wurde geschlossen, weil V2 und V3 ein Plan sind.
 - **Entscheidungen vom 18.11.2026** (gleiche Liste wie im Tracker [#386](https://github.com/n0mad-ai/bastra-recall/issues/386)):
+  - **Karte:** Der WebGL-Umbau der Mindspace-Karte (#324) geschieht nur gemeinsam mit
+    dem Product Owner; das Aussehen der Karte bleibt bis dahin eingefroren.
+  - **Soul:** Der Product Owner prüft zuerst den Soul-Plan (#1504); vorher wird davon
+    nichts gebaut.
   - **Version:** Das nächste Release bleibt **1.3.0**, obwohl Node 22 nicht mehr
     unterstützt wird (Mindestversion **Node 24.16**, entschieden am 17.11.2026); der
     Wegfall von Node 22 macht es nicht zur Hauptversion.
