@@ -71,9 +71,13 @@ export function analyzeFunctions(source, filePath) {
   const functions = [];
   const ordinals = new Map();
   const identities = new Set();
-  function visit(node, parent, path) {
+  const scopes = new Map();
+  function visit(node, parent, path, scope) {
     const part = segment(node, parent, source);
     const next = part ? [...path, ordinalSegment(node, part, path, ordinals)] : path;
+    // Array positions and repeated lexical scopes cannot identify a callback after reordering.
+    const scopePart = part?.replace(/^function:element:\d+$/, "function:element");
+    const nextScope = part ? [...scope, scopePart] : scope;
     if (functionTypes.has(node.type)) {
       const owner = ["MethodDefinition", "Property", "VariableDeclarator"].includes(parent?.type) ? parent : node;
       const identity = JSON.stringify(next);
@@ -81,31 +85,39 @@ export function analyzeFunctions(source, filePath) {
         throw new Error(`Ambiguous function identity ${identity}; cannot share a lint budget.`);
       identities.add(identity);
       functions.push({ identity, range: owner.range });
+      const scopeKey = JSON.stringify(nextScope);
+      const siblings = scopes.get(scopeKey) ?? [];
+      siblings.push(identity);
+      scopes.set(scopeKey, siblings);
     }
     for (const key of visitorKeys[node.type] ?? []) {
       const children = Array.isArray(node[key]) ? node[key] : [node[key]];
       for (const child of children) {
-        if (child?.type) visit(child, node, next);
+        if (child?.type) visit(child, node, next, nextScope);
       }
     }
   }
-  visit(ast, null, []);
-  return { functions, tokens: ast.tokens, moduleStatements: ast.body.map((node) => node.range) };
+  visit(ast, null, [], []);
+  const ambiguousIdentities = new Set([...scopes.values()].filter((siblings) => siblings.length > 1).flat());
+  return { functions, ambiguousIdentities, tokens: ast.tokens, moduleStatements: ast.body.map((node) => node.range) };
 }
 
 export function functionAt(message, source, parsed) {
   const lines = source.split("\n");
   const offset = lines.slice(0, message.line - 1).reduce((sum, line) => sum + line.length + 1, 0);
   const position = offset + message.column - 1;
-  return (
-    parsed.functions
-      .filter(({ range: [start, end] }) => start <= position && position < end)
-      .sort((a, b) => a.range[1] - a.range[0] - (b.range[1] - b.range[0]))[0] ?? {
-      identity: "module",
-      range: [0, source.length],
-      statementRange: parsed.moduleStatements.find(([start, end]) => start <= position && position < end),
-    }
-  );
+  const owner = parsed.functions
+    .filter(({ range: [start, end] }) => start <= position && position < end)
+    .sort((a, b) => a.range[1] - a.range[0] - (b.range[1] - b.range[0]))[0] ?? {
+    identity: "module",
+    range: [0, source.length],
+    statementRange: parsed.moduleStatements.find(([start, end]) => start <= position && position < end),
+  };
+  const ambiguous = parsed.ambiguousIdentities.has(owner.identity);
+  const ambiguityNotice = ambiguous
+    ? " Ambiguous function identity: anonymous sibling scopes can exchange ordinal identities when reordered. Give callbacks distinct lexical names or stable call titles."
+    : "";
+  return { ...owner, ambiguous, ambiguityNotice };
 }
 
 export function legacyFingerprint(message, owner, parsed) {

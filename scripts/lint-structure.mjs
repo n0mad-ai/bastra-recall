@@ -51,6 +51,7 @@ export async function inspectStructure(paths = listCodeFiles(repositoryRoot), { 
         const oldKey = `${file}:${message.ruleId}:${legacyFingerprint(message, owner, parsed)}`;
         legacyFindings[oldKey] = (legacyFindings[oldKey] ?? 0) + 1;
       }
+      message.message += owner.ambiguityNotice;
     }
     // Preserve each numeric legacy module budget without lending it to a new top-level statement.
     if (moduleStatements.size > 1) {

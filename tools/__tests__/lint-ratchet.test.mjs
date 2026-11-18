@@ -134,6 +134,61 @@ test("a nested diagnostic belongs to the innermost function and duplicate names 
   assert.throws(() => analyzeFunctions("function same() {} function same() {}"), /Ambiguous function identity/);
 });
 
+test("reordered anonymous siblings report ambiguity instead of an ordinal function identity", () => {
+  const first = "() => { return 101; }";
+  const second = "() => { return 202; }";
+  for (const [left, right] of [
+    [first, second],
+    [second, first],
+  ]) {
+    for (const source of [
+      `invoke("same title", ${left}); invoke("same title", ${right});`,
+      `const callbacks = [${left}, ${right}];`,
+      `invoke("same title", () => { function named() { return 101; } }); invoke("same title", () => { function named() { return 202; } });`,
+    ]) {
+      const parsed = analyzeFunctions(source);
+      const diagnostic = { line: 1, column: source.indexOf("return 101") + 1 };
+      assert.equal(functionAt(diagnostic, source, parsed).ambiguous, true);
+    }
+  }
+});
+
+test("distinct callback names, owners and call titles remain unambiguous", () => {
+  for (const source of [
+    'invoke("same title", function first() { return 101; }); invoke("same title", function second() { return 202; });',
+    'invoke("first title", () => { return 101; }); invoke("second title", () => { return 202; });',
+    "const first = () => { return 101; }; const second = () => { return 202; };",
+    "const callbacks = [function first() { return 101; }, function second() { return 202; }];",
+  ]) {
+    const parsed = analyzeFunctions(source);
+    assert.equal(parsed.ambiguousIdentities.size, 0);
+    assert.ok(functionAt({ line: 1, column: source.indexOf("return 101") + 1 }, source, parsed).identity);
+  }
+});
+
+test("reordered anonymous sibling violations are marked ambiguous without changing frozen maxima", async (t) => {
+  const root = await fixture(t);
+  const large = branches("legacy", 25).replace("export function legacy", "function").trim();
+  const small = "function(value) { return value; }";
+  const original = `invoke("same title", ${large}); invoke("same title", ${small});`;
+  await put(root, "src/callbacks.ts", original);
+  await freezeStructure(root);
+  const baseline = await readFile(join(root, "eslint-structure-baseline.json"), "utf8");
+  assert.equal(tool(root, "lint-structure.mjs").status, 0);
+  for (const [left, right] of [
+    [small, large],
+    [large.replace("return value;", "if (value === 100) return 100; return value;"), small],
+  ]) {
+    await put(root, "src/callbacks.ts", `invoke("same title", ${left}); invoke("same title", ${right});`);
+    const result = tool(root, "lint-structure.mjs", "--prune");
+    assert.equal(result.status, 1, result.output);
+    assert.match(result.output, /Ambiguous function identity/);
+    assert.match(result.output, /can exchange ordinal identities when reordered/);
+    assert.doesNotMatch(result.output, /\n\s+at /);
+    assert.equal(await readFile(join(root, "eslint-structure-baseline.json"), "utf8"), baseline);
+  }
+});
+
 test("legacy complexity can stay equal, cannot grow and must ratchet down after cleanup", async (t) => {
   const root = await fixture(t);
   await put(root, "src/legacy.ts", branches("legacy", 25));
