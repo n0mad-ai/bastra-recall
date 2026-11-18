@@ -1,25 +1,25 @@
-/** Assistant-address lifecycle. Defaults are real paths; tests supply isolated paths/IO. */
-import { createHash, randomUUID } from "node:crypto";
-import { spawn, execFile, execFileSync } from "node:child_process";
-import { userInfo, homedir, hostname } from "node:os";
-import { join, dirname, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
-import { mkdir, readFile, writeFile, rename, rm, stat } from "node:fs/promises";
+/**
+ * Assistant-address lifecycle. Defaults are real paths; tests supply isolated paths/IO.
+ * #1532: the shared options and file reads live in assistant-address-options.ts,
+ * the Firefox profile edits in assistant-address-firefox.ts and the user-owned
+ * runtime in assistant-address-runtime.ts; this module keeps the name, the
+ * pending admin intent and setup/remove/status, and re-exports the moved
+ * public functions.
+ */
+import { randomUUID } from "node:crypto";
+import { spawn, execFileSync } from "node:child_process";
+import { hostname } from "node:os";
+import { join, dirname, sep } from "node:path";
+import { mkdir, rm, stat } from "node:fs/promises";
 import { withPathLock, PathLockUnavailableError } from "./path-lock.js";
-import { readSettings, settingsFilePath, SETTINGS_REGISTRY } from "./settings-file.js";
-import { appRecordDatabasePath } from "./app-record-store.js";
+import { readSettings, SETTINGS_REGISTRY } from "./settings-file.js";
 import {
   normalizeAssistantName,
   deriveAssistantAddress,
   requireAssistantAddress,
   assistantUrls,
 } from "./assistant-address-name.js";
-import {
-  patchAssistantHosts,
-  managedAssistantHostsName,
-  patchFirefoxUserJs,
-  retiredFirefoxPreference,
-} from "./assistant-address-files.js";
+import { patchAssistantHosts, managedAssistantHostsName } from "./assistant-address-files.js";
 import { getAssistantName, setAssistantName } from "./assistant-address-settings.js";
 import { AssistantAddressError } from "./assistant-address-name.js";
 import {
@@ -31,164 +31,34 @@ import {
   type AddressAdminPlan,
 } from "./assistant-address-admin.js";
 import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
-import { stableNodeBin } from "./cli/autostart.js";
+import {
+  assistantAddressOptions,
+  atomic,
+  companionPath,
+  optional,
+  ownCompanion,
+  ownHelper,
+  state,
+  type AssistantAddressOptions,
+} from "./assistant-address-options.js";
+import {
+  applyProfiles,
+  firefoxOwnership,
+  profileAllowed,
+  profileEdits,
+  requireFirefoxClosed,
+  restoreProfiles,
+} from "./assistant-address-firefox.js";
+import { assistantHelperLoaded, ensureAssistantAddressRuntime } from "./assistant-address-runtime.js";
 
-/** Compatibility only: admitted Node slots for old Wait=false jobs. New paired
- * Wait=true jobs are bounded by launchd before process creation. */
-const HELPER_SLOTS = 16;
-type RuntimeProcess = { pid: number; uid: number; command: string; started?: string };
-export interface AssistantAddressOptions {
-  runtimeProcesses?: () => Promise<RuntimeProcess[]>;
-  runtimeProcess?: (pid: number) => Promise<RuntimeProcess | null>;
-  retireRuntime?: (pid: number) => void;
-  runtimeSourceDir?: string;
-  runtimeNode?: string;
-  adminStagingRoot?: string;
-  usernameLookup?: () => string;
-  machineNames?: readonly string[];
-  helperLoaded?: () => Promise<boolean | null>;
-  settingsPath?: string;
-  hostsPath?: string;
-  runtimeDir?: string;
-  firefoxRoot?: string;
-  helperPath?: string;
-  uid?: string;
-  username?: string;
-  home?: string;
-  platform?: NodeJS.Platform;
-  daemonUrl?: string;
-  systemConsent?: boolean;
-  gatewayPort?: number;
-  firefoxRunning?: () => Promise<boolean>;
-  openBrowser?: (url: string) => Promise<void>;
-  runAdmin?: (plan: AddressAdminPlan) => Promise<void>;
-  ensureRuntime?: () => Promise<void>;
-}
-export function assistantAddressOptions(o: AssistantAddressOptions = {}) {
-  const home = o.home ?? homedir(),
-    uid = o.uid ?? String(process.getuid?.() ?? 0),
-    platform = o.platform ?? process.platform;
-  let username = o.username;
-  if (username === undefined)
-    try {
-      username = (o.usernameLookup ?? (() => userInfo().username))();
-    } catch {
-      username = "";
-    }
-  return {
-    ...o,
-    home,
-    uid,
-    platform,
-    username,
-    settingsPath: o.settingsPath ?? settingsFilePath(),
-    runtimeDir: o.runtimeDir ?? join(home, ".bastra", "assistant-address"),
-    hostsPath:
-      o.hostsPath ??
-      (platform === "win32"
-        ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "drivers", "etc", "hosts")
-        : "/etc/hosts"),
-    helperPath: o.helperPath ?? `/Library/LaunchDaemons/ai.n0mad.bastra-recall.address.${uid}.plist`,
-    firefoxRoot:
-      o.firefoxRoot ??
-      (platform === "darwin"
-        ? join(home, "Library", "Application Support", "Firefox")
-        : platform === "win32"
-          ? join(process.env.APPDATA ?? home, "Mozilla", "Firefox")
-          : join(home, ".mozilla", "firefox")),
-    daemonUrl: o.daemonUrl ?? resolveDaemonEndpoint().baseUrl,
-  };
-}
-async function optional(path: string): Promise<string | null> {
-  try {
-    return await readFile(path, "utf8");
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw e;
-  }
-}
-async function atomic(path: string, content: string) {
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const temp = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
-  await writeFile(temp, content, { mode: 0o600, flag: "wx" });
-  try {
-    await rename(temp, path);
-  } finally {
-    await rm(temp, { force: true });
-  }
-}
-const companionPath = (o: ReturnType<typeof assistantAddressOptions>) => o.helperPath + ".ipv6.plist";
-async function ownCompanion(o: ReturnType<typeof assistantAddressOptions>) {
-  const text = await optional(companionPath(o));
-  if (text !== null && !text.includes(`<key>BASTRA_ASSISTANT_ADDRESS_OWNER</key><string>${o.uid}</string>`))
-    throw new Error("foreign assistant IPv6 service — left unchanged");
-  return text;
-}
-async function ownHelper(o: ReturnType<typeof assistantAddressOptions>) {
-  const text = await optional(o.helperPath);
-  if (text !== null && !text.includes(`<key>BASTRA_ASSISTANT_ADDRESS_OWNER</key><string>${o.uid}</string>`))
-    throw new Error("foreign assistant socket service — left unchanged");
-  return text;
-}
-async function state(
-  o: ReturnType<typeof assistantAddressOptions>
-): Promise<{ name?: string; firefoxFiles?: string[]; firefoxOwnedPrefs?: Record<string, string[]> } | null> {
-  const raw = await optional(join(o.runtimeDir, "state.json"));
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    throw new Error("assistant address state is damaged");
-  }
-}
-function profileAllowed(path: string, root: string) {
-  const p = resolve(path),
-    r = resolve(root);
-  return p.startsWith(r + sep) && p.endsWith(sep + "user.js");
-}
-async function profileEdits(o: ReturnType<typeof assistantAddressOptions>, name: string | null) {
-  const previous = await state(o),
-    files = new Set((previous?.firefoxFiles ?? []).filter((p) => profileAllowed(p, o.firefoxRoot)));
-  const ini = await optional(join(o.firefoxRoot, "profiles.ini"));
-  if (ini)
-    for (const section of ini.split(/^\[/m)) {
-      const path = /^Path=(.+)$/m.exec(section)?.[1]?.trim();
-      if (!path) continue;
-      const relative = /^IsRelative=1\s*$/m.test(section),
-        file = join(relative ? resolve(o.firefoxRoot, path) : resolve(path), "user.js");
-      if (profileAllowed(file, o.firefoxRoot)) files.add(file);
-    }
-  const edits = [];
-  for (const path of files) {
-    const before = await optional(path);
-    edits.push({ path, before, after: patchFirefoxUserJs(before ?? "", name, o.uid) });
-    if (before && previous?.firefoxOwnedPrefs?.[path]?.includes(previous.name ?? "")) {
-      const prefs = join(dirname(path), "prefs.js"),
-        persisted = await optional(prefs);
-      if (persisted !== null) {
-        const after = retiredFirefoxPreference(persisted, before, name, o.uid, true);
-        if (after !== persisted) edits.push({ path: prefs, before: persisted, after });
-      }
-    }
-  }
-  return edits;
-}
-async function firefoxOwnership(
-  o: ReturnType<typeof assistantAddressOptions>,
-  name: string,
-  profiles: Array<{ path: string }>
-) {
-  const previous = await state(o),
-    result: Record<string, string[]> = {};
-  for (const { path } of profiles.filter((p) => p.path.endsWith(sep + "user.js"))) {
-    const persisted = (await optional(join(dirname(path), "prefs.js"))) ?? "";
-    const key = `browser.fixup.domainwhitelist.${name}`;
-    const alreadyOwned = previous?.firefoxOwnedPrefs?.[path]?.includes(name);
-    // A preference present before installation is user-owned, including false.
-    if (alreadyOwned || !persisted.includes(key)) result[path] = [name];
-  }
-  return result;
-}
+export { assistantAddressOptions, type AssistantAddressOptions } from "./assistant-address-options.js";
+export {
+  ensureAssistantAddressRuntime,
+  refreshAssistantAddressRuntime,
+  migrateAssistantAddressRuntime,
+  publishAssistantAddressEndpoint,
+} from "./assistant-address-runtime.js";
+
 function machineNames(o: ReturnType<typeof assistantAddressOptions>): readonly string[] {
   if (o.machineNames) return o.machineNames;
   const names = [hostname()];
@@ -209,339 +79,6 @@ function machineNames(o: ReturnType<typeof assistantAddressOptions>): readonly s
 /** The address name a typed name derives to on this machine (its own host names stay reserved), or null. */
 export function assistantAddressFor(value: string, options: AssistantAddressOptions = {}): string | null {
   return deriveAssistantAddress(value, machineNames(assistantAddressOptions(options)));
-}
-async function requireFirefoxClosed(
-  o: ReturnType<typeof assistantAddressOptions>,
-  edits: Array<{ before: string | null; after: string }>
-) {
-  if (!edits.some((e) => e.before !== e.after)) return;
-  const running = o.firefoxRunning
-    ? await o.firefoxRunning()
-    : await new Promise<boolean>((resolve, reject) => {
-        if (o.platform !== "darwin") {
-          resolve(false);
-          return;
-        }
-        execFile("/usr/bin/pgrep", ["-ix", "firefox"], (error) => {
-          if (!error) resolve(true);
-          else if ((error as { code?: number | string }).code === 1) resolve(false);
-          else reject(new Error("Firefox-Status unbekannt; Firefox schließen und erneut versuchen."));
-        });
-      });
-  if (running)
-    throw new Error(
-      "Firefox vor der Einrichtung oder Änderung schließen, damit eigene Browser-Einträge sicher entfernt werden können."
-    );
-}
-async function applyProfiles(edits: Array<{ path: string; before: string | null; after: string }>) {
-  for (const e of edits)
-    if (e.before !== e.after) {
-      await withPathLock(e.path, async () => {
-        if ((await optional(e.path)) !== e.before) throw new Error("Firefox preference changed during setup — retry");
-        if (!e.after) {
-          if (e.before !== null) await rm(e.path);
-        } else await atomic(e.path, e.after);
-      });
-    }
-}
-async function restoreProfiles(edits: Array<{ path: string; before: string | null; after: string }>) {
-  for (const e of [...edits].reverse())
-    await withPathLock(e.path, async () => {
-      // Never undo a user's concurrent edit; restore only our exact output.
-      if ((await optional(e.path)) !== e.after) return;
-      if (e.before === null) await rm(e.path, { force: true });
-      else await atomic(e.path, e.before);
-    });
-}
-/** Migrate listeners from before the runtime watcher existed. Only our exact
- * versioned gateway command, owned by this user and holding a listen socket,
- * can be retired. launchd keeps its socket; no privileged job is touched. */
-async function retireLegacyAssistantHelpers(o: ReturnType<typeof assistantAddressOptions>) {
-  if (!(await ownHelper(o))) return;
-  if (o.platform !== "darwin" && !o.runtimeProcesses) return;
-  const capture = (bin: string, args: string[]) =>
-    new Promise<string>((resolve, reject) =>
-      execFile(bin, args, { timeout: 2000, env: { ...process.env, LC_ALL: "C" } }, (error, out) =>
-        error ? reject(error) : resolve(out)
-      )
-    );
-  // Identity is uid, start time and exact command line, read in one ps call.
-  const inspect = async (pid: number): Promise<RuntimeProcess | null> => {
-    try {
-      const row = await capture("/bin/ps", ["-ww", "-p", String(pid), "-o", "uid=", "-o", "lstart=", "-o", "args="]),
-        match = /^\s*(\d+)\s+(\S+\s+\S+\s+\d+\s+[\d:]+\s+\d+)\s+([^\n]+)/.exec(row);
-      return match ? { pid, uid: Number(match[1]), started: match[2], command: match[3] } : null;
-    } catch {
-      return null; /* exited before inspection */
-    }
-  };
-  let processes: RuntimeProcess[];
-  if (o.runtimeProcesses) processes = await o.runtimeProcesses();
-  else {
-    let output: string;
-    try {
-      output = await capture("/usr/sbin/lsof", ["-nP", "-t", "-a", "-u", o.uid, "-iTCP:80", "-sTCP:LISTEN"]);
-    } catch (error) {
-      if ((error as { code?: number | string }).code === 1) return;
-      throw error;
-    }
-    processes = [];
-    for (const pid of new Set(
-      output
-        .split(/\s+/)
-        .map(Number)
-        .filter((n) => Number.isSafeInteger(n) && n > 1)
-    )) {
-      const p = await inspect(pid);
-      if (p) processes.push(p);
-    }
-  }
-  const reinspect =
-    o.runtimeProcess ??
-    (o.runtimeProcesses
-      ? async (pid: number) => (await o.runtimeProcesses!()).find((p) => p.pid === pid) ?? null
-      : inspect);
-  const node = o.runtimeNode ?? stableNodeBin(),
-    prefix = join(o.runtimeDir, "versions") + sep;
-  const prefixes = [node + " " + prefix, process.execPath + " " + prefix];
-  const owned = (p: RuntimeProcess) =>
-    Number.isSafeInteger(p.pid) &&
-    p.pid > 1 &&
-    p.pid !== process.pid &&
-    p.uid === Number(o.uid) &&
-    p.uid === (process.getuid?.() ?? p.uid) &&
-    prefixes.some(
-      (prefix) =>
-        p.command.startsWith(prefix) &&
-        /^[a-f0-9]{64}[\/\\]assistant-address-gateway\.js --assistant-address-inetd(?: |$)/.test(
-          p.command.slice(prefix.length)
-        )
-    );
-  for (const p of processes) {
-    if (!owned(p)) continue;
-    // Revalidate right before the signal: the PID may belong to another process by now (#1335).
-    const now = await reinspect(p.pid);
-    if (
-      !now ||
-      now.pid !== p.pid ||
-      !owned(now) ||
-      now.uid !== p.uid ||
-      now.command !== p.command ||
-      now.started !== p.started
-    )
-      continue;
-    try {
-      (
-        o.retireRuntime ??
-        ((pid) => {
-          process.kill(pid, "SIGTERM");
-        })
-      )(p.pid);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-    }
-  }
-}
-async function assistantRuntimeBundle(o: ReturnType<typeof assistantAddressOptions>) {
-  const source = o.runtimeSourceDir ?? dirname(fileURLToPath(import.meta.url));
-  const files = [
-    "assistant-address-bootstrap.js",
-    "assistant-address-gateway.js",
-    "local-account-access.js",
-    "assistant-address-name.js",
-    "assistant-address-files.js",
-    "http-auth.js",
-    "runtime-settings.js",
-  ];
-  const contents = await Promise.all(
-    files.map(async (name) => {
-      const path =
-        name === "runtime-settings.js" && !o.runtimeSourceDir
-          ? fileURLToPath(import.meta.resolve("@bastra-recall/core/runtime-settings"))
-          : join(source, name);
-      const text = await readFile(path, "utf8");
-      // The private launchd runtime has no node_modules; retain the shared reader
-      // implementation and resolve the gateway's exact package subpath locally.
-      return [
-        name,
-        name === "assistant-address-gateway.js"
-          ? text.replace(/(["'])@bastra-recall\/core\/runtime-settings\1/g, '"./runtime-settings.js"')
-          : text,
-      ] as const;
-    })
-  );
-  const digest = createHash("sha256")
-    .update(contents.map(([n, c]) => n + "\n" + c).join("\n"))
-    .digest("hex");
-  return { contents, digest };
-}
-export async function ensureAssistantAddressRuntime(options: AssistantAddressOptions = {}): Promise<void> {
-  const o = assistantAddressOptions(options),
-    { contents, digest } = await assistantRuntimeBundle(o);
-  const version = join(o.runtimeDir, "versions", digest);
-  await mkdir(version, { recursive: true, mode: 0o700 });
-  for (const [name, content] of contents)
-    if ((await optional(join(version, name))) !== content) await atomic(join(version, name), content);
-  await atomic(join(version, "package.json"), '{"type":"module"}\n');
-  await atomic(join(o.runtimeDir, "managed"), `bastra-assistant-address:${o.uid}\n`);
-  const node = o.runtimeNode ?? stableNodeBin(),
-    bootstrap = join(o.runtimeDir, "bootstrap.js");
-  await atomic(bootstrap, contents.find(([name]) => name === "assistant-address-bootstrap.js")![1]);
-  const errorBody = "Bastra-Adresse nicht verfügbar. Bitte bastra address setup --yes ausführen.\n";
-  const failure = `HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${Buffer.byteLength(errorBody)}\r\nConnection: close\r\n\r\n${errorBody}`;
-  const command = [node, bootstrap, "--assistant-address-bootstrap", "--runtime-dir", o.runtimeDir]
-    .map(shellQuote)
-    .join(" ");
-  await atomic(join(o.runtimeDir, "package.json"), '{"type":"module"}\n');
-  const path = join(o.runtimeDir, "current.json");
-  await withPathLock(
-    path,
-    async () => {
-      const previous = await optional(path).then((raw) => {
-        try {
-          return raw ? JSON.parse(raw) : null;
-        } catch {
-          return null;
-        }
-      });
-      const endpoint =
-        options.daemonUrl || resolveDaemonEndpoint().configured
-          ? o.daemonUrl
-          : previous?.protocol === 2
-            ? previous.daemonUrl
-            : o.daemonUrl;
-      await atomic(
-        path,
-        JSON.stringify({
-          protocol: 2,
-          generation: randomUUID(),
-          version: digest,
-          settingsPath: o.settingsPath,
-          databasePath: appRecordDatabasePath(o.settingsPath),
-          hostsPath: o.hostsPath,
-          daemonUrl: endpoint,
-          owner: o.uid,
-        }) + "\n"
-      );
-    },
-    { strictLocal: true }
-  );
-  const busyBody = "Bastra-Adresse gerade ausgelastet. Bitte gleich erneut versuchen.\n";
-  const busy = `HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${Buffer.byteLength(busyBody)}\r\nRetry-After: 1\r\nConnection: close\r\n\r\n${busyBody}`;
-  const slots = join(o.runtimeDir, "slots");
-  await mkdir(slots, { recursive: true, mode: 0o700 });
-  // Wait=false starts one helper per accepted connection. Each helper holds one of
-  // HELPER_SLOTS kernel file locks, released by the kernel when it exits (#1335).
-  const slot = `slot() { if [ -x /usr/bin/lockf ]; then /usr/bin/lockf -s -k -t 0 "$1" ${command}; elif [ -x /usr/bin/flock ]; then /usr/bin/flock -n -E 75 "$1" ${command}; else ${command}; fi; }\ni=0; rc=75\nwhile [ "$rc" -eq 75 ] && [ "$i" -lt ${HELPER_SLOTS} ]; do slot ${shellQuote(slots)}/"$i"; rc=$?; i=$((i+1)); done\nif [ "$rc" -eq 75 ]; then respond ${shellQuote(busy)}; exit 1; fi`;
-  await atomic(
-    join(o.runtimeDir, "launch.sh"),
-    `#!/bin/sh\n# Socket protocol 2: accepted connections; legacy Wait=true uses the bootstrap compatibility path.\nrespond() { /usr/bin/printf %s "$1"; }\nfail() { respond ${shellQuote(failure)}; }\nif [ "\${BASTRA_ASSISTANT_ADDRESS_PROTOCOL:-2}" != 2 ] || [ ! -x ${shellQuote(node)} ] || [ ! -r ${shellQuote(bootstrap)} ]; then fail; exit 1; fi\nif [ "\${BASTRA_ASSISTANT_ADDRESS_LISTEN:-0}" = 1 ]; then exec ${command}; fi\n${slot}\nif [ "$rc" -ne 0 ]; then fail; fi\nexit "$rc"\n`
-  );
-  await retireLegacyAssistantHelpers(o);
-}
-export async function refreshAssistantAddressRuntime(options: AssistantAddressOptions = {}): Promise<void> {
-  const o = assistantAddressOptions(options);
-  if ((await optional(join(o.runtimeDir, "managed"))) === `bastra-assistant-address:${o.uid}\n`)
-    await ensureAssistantAddressRuntime(o);
-}
-/** Old updaters cannot call new update hooks. A new daemon boot repairs
- * their user-owned launcher and refreshes changed runtime code before publishing its endpoint. The root-owned
- * Wait=true job remains valid through bootstrap's listening-socket compatibility. */
-export async function migrateAssistantAddressRuntime(options: AssistantAddressOptions = {}): Promise<void> {
-  const o = assistantAddressOptions(options);
-  if ((await optional(join(o.runtimeDir, "managed"))) !== `bastra-assistant-address:${o.uid}\n`) return;
-  await withPathLock(
-    join(o.runtimeDir, "protocol-migration"),
-    async () => {
-      const launcher = await optional(join(o.runtimeDir, "launch.sh"));
-      if (launcher === null) return; // Missing installations are repaired explicitly by address setup.
-      const current = await optional(join(o.runtimeDir, "current.json"));
-      const backup = join(o.runtimeDir, "protocol-1-backup.json"),
-        complete = join(o.runtimeDir, "protocol-2-migrated");
-      const previousBackup = await optional(backup);
-      let protocol: unknown, version: unknown, databasePath: unknown;
-      try {
-        const installed = current ? JSON.parse(current) : null;
-        protocol = installed?.protocol;
-        version = installed?.version;
-        databasePath = installed?.databasePath;
-      } catch {
-        /* incomplete old publication */
-      }
-      if (
-        protocol === 2 &&
-        launcher.includes("# Socket protocol 2:") &&
-        (previousBackup === null || (await optional(complete)) === "2\n")
-      ) {
-        const bundle = await assistantRuntimeBundle(o);
-        if (version !== bundle.digest || databasePath !== appRecordDatabasePath(o.settingsPath)) {
-          await ownHelper(o);
-          await ensureAssistantAddressRuntime(o);
-        }
-        return;
-      }
-      await ownHelper(o); // Never migrate a runtime associated with a foreign service.
-      if (previousBackup === null) await atomic(backup, JSON.stringify({ launcher, current }) + "\n");
-      // Code and state become durable before the launcher rename. An interruption
-      // before that rename leaves the old pinned launcher usable; a retry resumes.
-      await ensureAssistantAddressRuntime(o);
-      await atomic(complete, "2\n"); // Retirement must complete before a retry may skip migration.
-    },
-    { strictLocal: true }
-  );
-}
-/** Publish the endpoint and selected DB of an already managed runtime; never recopy code from an old daemon. */
-export async function publishAssistantAddressEndpoint(options: AssistantAddressOptions = {}): Promise<void> {
-  const o = assistantAddressOptions(options);
-  if ((await optional(join(o.runtimeDir, "managed"))) !== `bastra-assistant-address:${o.uid}\n`) return;
-  const path = join(o.runtimeDir, "current.json");
-  await withPathLock(
-    path,
-    async () => {
-      const raw = await optional(path);
-      if (!raw) return;
-      const current = JSON.parse(raw),
-        databasePath = appRecordDatabasePath(o.settingsPath);
-      if (
-        current.protocol !== 2 ||
-        !current.version ||
-        (current.daemonUrl === o.daemonUrl && current.databasePath === databasePath)
-      )
-        return;
-      await atomic(
-        path,
-        JSON.stringify({ ...current, generation: randomUUID(), daemonUrl: o.daemonUrl, databasePath }) + "\n"
-      );
-    },
-    { strictLocal: true }
-  );
-}
-async function assistantHelperLoaded(
-  o: ReturnType<typeof assistantAddressOptions>,
-  includeCompanion = false
-): Promise<boolean | null> {
-  if (o.helperLoaded) return o.helperLoaded();
-  if (o.runAdmin) return null; // Test/injected IO never inspects the live launchd domain.
-  if (o.platform !== "darwin") return null;
-  const labels = [`ai.n0mad.bastra-recall.address.${o.uid}`];
-  if (
-    includeCompanion ||
-    (await optional(companionPath(o))) !== null ||
-    (await optional(o.helperPath))?.includes("<key>BASTRA_ASSISTANT_ADDRESS_BOUND</key><string>2</string>")
-  )
-    labels.push(`ai.n0mad.bastra-recall.address.${o.uid}.ipv6`);
-  const loaded = await Promise.all(
-    labels.map(
-      (label) =>
-        new Promise<boolean | null>((resolve) =>
-          execFile("/bin/launchctl", ["print", `system/${label}`], { timeout: 1500 }, (error, _out, stderr) => {
-            if (!error) resolve(true);
-            else resolve(/Could not find service|service not found/i.test(stderr) ? false : null);
-          })
-        )
-    )
-  );
-  return loaded.includes(false) ? false : loaded.includes(null) ? null : true;
 }
 class AddressIntentError extends Error {}
 class AddressPendingError extends AssistantAddressError {}
