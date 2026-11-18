@@ -539,3 +539,22 @@ test("#1610: a rebuild while a note is typed keeps the cursor, the selection and
     [6, 9, "backward", 40]
   );
 });
+
+
+test("#1597: polling changed reports searches the active query again and preserves the open reader", async () => {
+  const { v, host, context, flush, updateReports, calls } = await view();
+  await v.openReport(ID(1));
+  type(host, "preise");
+  await flush();
+  assert.equal(one(listRows(host)[0], "mb-row__t").textContent, "Lint nachgezogen");
+  const api = context.api as (name: string, input: unknown) => Promise<unknown>;
+  context.api = (name: string, input: unknown) =>
+    name === "report_list" ? Promise.resolve({ reports: [REPORTS[1]] }) : api(name, input);
+  updateReports(REPORTS.map((r) => ({ ...r, notes_open: 1 })));
+  await flush();
+  assert.equal(listRows(host).length, 1);
+  assert.equal(one(listRows(host)[0], "mb-row__t").textContent, "Release-Prüfung");
+  assert.equal(v.R.sel, ID(1));
+  assert.equal(v.R.q, "preise");
+  assert.equal(calls.filter(([name]) => name === "report_read").length, 1);
+});
