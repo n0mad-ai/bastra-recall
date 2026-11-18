@@ -49,6 +49,8 @@ import {
   decideHits,
   rrfVectorWeight,
   tokenizeWithIdentifiers,
+  type Memory,
+  type RecallDecisionHit,
   type RecallHit,
   type StageListener,
 } from "@bastra-recall/core";
@@ -578,6 +580,29 @@ export function recallerAt(search: SearchIndex, referenceTime: Date): Recaller {
     : async (q) => search.recall(q, { k: PRODUCTION_K, reference_time: referenceTime });
 }
 
+/**
+ * The daemon's evidence call (`decideHits`) at a pinned clock (#1642): the
+ * original query terms, no scope, the vault for temporal status, and
+ * `valid_until` read at `at`. `noBody` blanks the memory body for the anchor
+ * counterfactual.
+ */
+export function evidenceDecider(
+  vault: { get(id: string): Memory | undefined },
+  at: Date,
+  opts: { noBody?: boolean } = {}
+): (hits: RecallHit[], query: string) => RecallDecisionHit[] {
+  return (hits, query) =>
+    decideHits(hits, {
+      queryTerms: tokenizeWithIdentifiers(query),
+      scope: null,
+      now: at.getTime(),
+      memoryOf: (id) => {
+        const m = vault.get(id);
+        return m && opts.noBody ? { ...m, body: "" } : m;
+      },
+    });
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const vaultPath = process.env.BASTRA_VAULT_PATH;
@@ -640,30 +665,19 @@ async function main(): Promise<void> {
   // crediting a scope match the search never filtered on would report a signal
   // that did no work. Whoever reads the figures should know the direction: with
   // a scope, more hits reach `required`, not fewer.
-  const decide = args.gate
-    ? (hits: RecallHit[], query: string): ReturnType<typeof decideHits> =>
-        decideHits(hits, {
-          queryTerms: tokenizeWithIdentifiers(query),
-          scope: null,
-          memoryOf: (id) => vault.get(id),
-        })
-    : undefined;
+  //
+  // #1642: the decision reads `valid_until` at the run's reference time, the
+  // same clock the ranking uses, so a deadline passing between two runs cannot
+  // flip a hit from `required` to `optional`. Production keeps the wall clock.
+  const shippedDecision = evidenceDecider(vault, args.referenceTime);
+  const decide = args.gate ? shippedDecision : undefined;
   // The counterfactual: the same call, with the memory's body blanked. That is
   // the ONLY input `hasExactIdentifier` loses — `temporalStatus` reads
   // `obsolete`/`valid_until`, `recallWhenCoverage` reads `recall_when`. So this
   // is the shipped predicate answering "what if the body did not anchor", not a
   // second implementation of it.
-  const decideNoBody = args.gate
-    ? (hits: RecallHit[], query: string): ReturnType<typeof decideHits> =>
-        decideHits(hits, {
-          queryTerms: tokenizeWithIdentifiers(query),
-          scope: null,
-          memoryOf: (id) => {
-            const m = vault.get(id);
-            return m ? { ...m, body: "" } : undefined;
-          },
-        })
-    : undefined;
+  const noBodyDecision = evidenceDecider(vault, args.referenceTime, { noBody: true });
+  const decideNoBody = args.gate ? noBodyDecision : undefined;
   // The narrowings of the two-of-three rule, solo and combined with the anchor
   // variant. Each is re-derived from the SHIPPED evidence of the run it belongs
   // to — `decide` for the solo column, `decideNoBody` for the combined one — and
@@ -677,19 +691,8 @@ async function main(): Promise<void> {
         anyIds: Set<string>
       ): Record<string, CaseGateResult> => {
         const terms = tokenizeWithIdentifiers(query).filter((t) => t.length >= 3);
-        const shipped = decideHits(served, {
-          queryTerms: tokenizeWithIdentifiers(query),
-          scope: null,
-          memoryOf: (id) => vault.get(id),
-        });
-        const noBody = decideHits(served, {
-          queryTerms: tokenizeWithIdentifiers(query),
-          scope: null,
-          memoryOf: (id) => {
-            const m = vault.get(id);
-            return m ? { ...m, body: "" } : undefined;
-          },
-        });
+        const shipped = shippedDecision(served, query);
+        const noBody = noBodyDecision(served, query);
         assertReproducesShipped(shipped, served, terms.length);
         const out: Record<string, CaseGateResult> = {};
         for (const [name, rule] of Object.entries(NARROWINGS)) {
@@ -771,7 +774,11 @@ async function main(): Promise<void> {
     }, {}),
     duration_ms: { main_arm: mainMs },
     ...(args.gate
-      ? { component_gates: gateVariants(main.map((r) => toGateRow(r, (id) => identifierQueries.has(id)))) }
+      ? {
+          // #1642: the clock the evidence decision read `valid_until` at.
+          evidence_time: args.referenceTime.toISOString(),
+          component_gates: gateVariants(main.map((r) => toGateRow(r, (id) => identifierQueries.has(id)))),
+        }
       : {}),
     rows: main,
   };

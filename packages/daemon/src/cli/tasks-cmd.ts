@@ -204,8 +204,9 @@ async function runTaskApiCommand(
 /** Which task operation the sub-command calls, and with which body. */
 function taskApiRequest(sub: string | null, input: any): [string, unknown] {
   if (sub === "due") return ["due", { include_acknowledged: true, max_bytes: 16384 }];
-  const control = sub === "resume" && input.id ? undefined : TASK_CONTROLS[sub ?? ""];
-  return control ? ["controls", control] : [sub ?? "list", input];
+  // #1644: own keys only, so `toString` or `__proto__` stay unknown commands.
+  const control = sub === "resume" && input.id ? undefined : Object.hasOwn(TASK_CONTROLS, sub ?? "");
+  return control ? ["controls", TASK_CONTROLS[sub!]] : [sub ?? "list", input];
 }
 
 /** The request body: an input file, the friendly create options, or empty. */

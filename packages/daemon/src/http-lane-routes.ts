@@ -22,6 +22,7 @@ import type { DraftReviewDelivery } from "./draft-review.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { runStopLane, type ClaudeStopPayload } from "./stop-lane.js";
 import { runSessionLane, type SessionPayload } from "./session-lane.js";
+import { runSubagentStartLane } from "./subagent-start-lane.js";
 import { runTodoLane, type ClaudeHookPayload as TodoPayload } from "./todo-lane.js";
 import { runGateLane, type GateDeps, type GatePayload } from "./gate-lane.js";
 import type { Memory } from "@bastra-recall/core";
@@ -86,12 +87,20 @@ export function dispatchLaneRoutes(
     return true;
   }
   // SessionStart: the recall + floors + taxonomy + care/import/update block.
+  // #1637: SubagentStart rides the same client and gets the rule kernel only,
+  // without the session notices (drafts, task cards) a session start carries.
   if (url === "/hook/session") {
+    const subagentStart = (payload: SessionPayload) => payload.hook_event_name === "SubagentStart";
     runLane<SessionPayload>(
       req,
       res,
-      (payload, self) => runSessionLane(payload, self, warmupEmbedding, undefined, draftReview),
-      notice
+      (payload, self) =>
+        subagentStart(payload)
+          ? runSubagentStartLane(payload, gateKernel)
+          : runSessionLane(payload, self, warmupEmbedding, undefined, draftReview),
+      notice &&
+        ((out, payload, connected) =>
+          subagentStart(payload as SessionPayload) ? Promise.resolve(out) : notice(out, payload, connected))
     );
     return true;
   }

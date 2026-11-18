@@ -11,10 +11,19 @@ function children(node) {
   return result;
 }
 
-function canonical(node) {
+/** What a node holds itself, outside its child nodes: identifier and literal
+ *  text (strings, template head/middle/tail, regular expressions) and a unary
+ *  operator. Anything lost here would pass as unchanged (#1646). */
+function own(node) {
   if (ts.isNumericLiteral(node)) return [node.kind, Number(node.text)];
-  if (ts.isIdentifier(node) || ts.isStringLiteralLike(node)) return [node.kind, node.text];
-  return [node.kind, children(node).map(canonical)];
+  if (ts.isIdentifier(node) || ts.isLiteralKind(node.kind) || ts.isTemplateLiteralKind(node.kind))
+    return [node.kind, node.text];
+  if (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) return [node.kind, node.operator];
+  return [node.kind];
+}
+
+function canonical(node) {
+  return [...own(node), children(node).map(canonical)];
 }
 
 function same(before, after) {
@@ -70,7 +79,7 @@ function allowed(before, after, key = "") {
   if (ts.isArrayLiteralExpression(before)) return arrayAllowed(before, after, key);
   const previous = children(before);
   const candidate = children(after);
-  if (!previous.length) return false;
+  if (!previous.length || JSON.stringify(own(before)) !== JSON.stringify(own(after))) return false;
   return previous.length === candidate.length && previous.every((node, index) => allowed(node, candidate[index], key));
 }
 

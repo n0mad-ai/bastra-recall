@@ -106,6 +106,9 @@ export interface DecisionInput {
   queryTerms: string[];
   /** Der angefragte Scope, falls die Anfrage einen nannte. */
   scope?: string | null;
+  /** Bezugszeit (ms) für `valid_until`. Fehlt sie, gilt die Wanduhr; nur eine
+   *  Messung mit fester Bezugszeit übergibt sie (#1642). */
+  now?: number;
 }
 
 /** Delimiter, an denen ein Identifier, ein Pfad oder ein Symbol erkennbar ist —
@@ -205,13 +208,13 @@ function recallWhenCoverage(input: DecisionInput): number {
   return Number((hits / terms.length).toFixed(4));
 }
 
-function temporalStatus(m: Memory | undefined): string {
+function temporalStatus(m: Memory | undefined, now = Date.now()): string {
   if (!m) return "unknown";
   if (m.fm.obsolete === true) return "obsolete";
   const until = (m.fm as { valid_until?: string }).valid_until;
   if (typeof until === "string" && until.length > 0) {
     const t = Date.parse(until);
-    if (Number.isFinite(t) && t < Date.now()) return "expired";
+    if (Number.isFinite(t) && t < now) return "expired";
   }
   return "valid";
 }
@@ -234,7 +237,7 @@ export function collectEvidence(input: DecisionInput): RecallEvidence {
     // erfunden.
     arm_agreement: rrf?.rank_bm25 != null && rrf?.rank_vector != null,
     scope_match: scope == null ? false : input.hit.scope === scope,
-    temporal_status: temporalStatus(input.memory),
+    temporal_status: temporalStatus(input.memory, input.now),
   };
 }
 
@@ -311,7 +314,7 @@ export function decideHit(input: DecisionInput): RecallDecisionHit {
  */
 export function decideHits(
   hits: RecallHit[],
-  ctx: { queryTerms: string[]; scope?: string | null; memoryOf?: (id: string) => Memory | undefined }
+  ctx: { queryTerms: string[]; scope?: string | null; memoryOf?: (id: string) => Memory | undefined; now?: number }
 ): RecallDecisionHit[] {
   return hits.map((hit) =>
     decideHit({
@@ -319,6 +322,7 @@ export function decideHits(
       memory: ctx.memoryOf?.(hit.id),
       queryTerms: ctx.queryTerms,
       scope: ctx.scope,
+      now: ctx.now,
     })
   );
 }

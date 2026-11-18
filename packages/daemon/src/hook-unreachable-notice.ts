@@ -20,9 +20,13 @@
  * The daemon is not there to ask for the user's language setting, so the
  * line follows the process locale; anything without its own text gets English.
  *
+ * #1640: the daemon's session sweep removes markers older than the session
+ * retention horizon, so they do not pile up one per session forever. Only
+ * regular files named like a marker go; anything else in the directory stays.
+ *
  * Stdlib-only: the compiled stub imports it (#344).
  */
-import { mkdir, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { defaultHookStateDir, privateDirState } from "./private-state-dir.js";
@@ -51,6 +55,13 @@ export function unreachableNoticeText(language: string = processLanguage()): str
   return NOTICE_BY_LANGUAGE[language] ?? NOTICE_BY_LANGUAGE.en;
 }
 
+/** A marker name: the first 24 hex digits of the session id's sha256. */
+const MARKER_NAME = /^[0-9a-f]{24}$/;
+
+function markerKey(sessionId: string): string {
+  return createHash("sha256").update(sessionId).digest("hex").slice(0, 24);
+}
+
 /** True exactly once per session id: the first caller creates the marker. */
 async function firstInSession(sessionId: string): Promise<boolean> {
   try {
@@ -60,8 +71,7 @@ async function firstInSession(sessionId: string): Promise<boolean> {
     if ((await privateDirState(base())) !== "private") return false;
     await mkdir(directory(), { recursive: true, mode: 0o700 });
     if ((await privateDirState(directory())) !== "private") return false;
-    const key = createHash("sha256").update(sessionId).digest("hex").slice(0, 24);
-    await writeFile(join(directory(), key), "", { mode: 0o600, flag: "wx" });
+    await writeFile(join(directory(), markerKey(sessionId)), "", { mode: 0o600, flag: "wx" });
     return true;
   } catch {
     return false;
@@ -76,4 +86,29 @@ export async function unreachableAnswer(lane: string, sessionId: string | null |
   if (!NOTICE_LANES.has(lane) || typeof sessionId !== "string" || !sessionId) return "{}";
   if (!(await firstInSession(sessionId))) return "{}";
   return JSON.stringify({ systemMessage: unreachableNoticeText() });
+}
+
+/**
+ * #1640: drop the markers last written before `maxAgeMs`. Best-effort and
+ * never throws. A session whose marker went may announce once more; the
+ * exclusive create still keeps that to one notice.
+ */
+export async function sweepUnreachableNotices(maxAgeMs: number, now: number = Date.now()): Promise<void> {
+  try {
+    if ((await privateDirState(base())) !== "private") return;
+    if ((await privateDirState(directory())) !== "private") return;
+    const cutoff = now - maxAgeMs;
+    for (const name of await readdir(directory())) {
+      if (!MARKER_NAME.test(name)) continue;
+      const path = join(directory(), name);
+      try {
+        const info = await lstat(path);
+        if (info.isFile() && info.mtimeMs < cutoff) await unlink(path);
+      } catch {
+        /* Gone already, or not ours to remove. */
+      }
+    }
+  } catch {
+    /* Cleanup is advisory. */
+  }
 }

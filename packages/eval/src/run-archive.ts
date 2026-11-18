@@ -14,11 +14,12 @@
  * `~/.bastra` as the root.
  *
  * An archived file is never overwritten: a second artefact of the same name on
- * the same day gets a time prefix. `SHA256SUMS` in the day directory gains one
+ * the same day gets a time prefix, a further one in the same second a counter
+ * after it (`<HHMMSS>-2-<name>`). `SHA256SUMS` in the day directory gains one
  * `<sha256>  <file>` line per archived file, the format `shasum -c` reads.
  */
 import { createHash } from "node:crypto";
-import { appendFileSync, copyFileSync, constants, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, constants, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
@@ -47,16 +48,28 @@ export function archiveArtifacts(
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const stamp = now.toISOString().slice(11, 19).replaceAll(":", "");
   const out: ArchivedFile[] = [];
-  for (const src of files) {
-    let name = basename(src);
-    if (name.toUpperCase() === CHECKSUM_FILE || existsSync(join(dir, name))) name = `${stamp}-${name}`;
-    const target = join(dir, name);
-    // COPYFILE_EXCL: a name collision that survived the prefix fails loudly
-    // instead of replacing filed evidence.
-    copyFileSync(src, target, constants.COPYFILE_EXCL);
-    out.push(...recordChecksums(dir, [name]));
-  }
+  for (const src of files) out.push(...recordChecksums(dir, [copyExclusive(src, dir, stamp)]));
   return { dir, files: out };
+}
+
+/**
+ * Copy `src` into `dir` under the first free name of `<name>`,
+ * `<stamp>-<name>`, `<stamp>-2-<name>`, … and return that name. The name is
+ * taken from the exclusive copy itself (EEXIST → next candidate), so two
+ * runners archiving at once cannot both claim it and no filed bytes are
+ * replaced (#1641).
+ */
+function copyExclusive(src: string, dir: string, stamp: string): string {
+  const base = basename(src);
+  for (let n = base.toUpperCase() === CHECKSUM_FILE ? 1 : 0; ; n++) {
+    const name = n === 0 ? base : n === 1 ? `${stamp}-${base}` : `${stamp}-${n}-${base}`;
+    try {
+      copyFileSync(src, join(dir, name), constants.COPYFILE_EXCL);
+      return name;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
+  }
 }
 
 /**

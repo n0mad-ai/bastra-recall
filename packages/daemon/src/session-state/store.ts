@@ -11,6 +11,7 @@ import {
   writeHookMarker,
   readHookMarker,
 } from "../hook-state-database.js";
+import { sweepUnreachableNotices } from "../hook-unreachable-notice.js";
 import { withPathLock, tryWithPathLock } from "../path-lock.js";
 import { decodeSessionState, encodeSessionState } from "./codec.js";
 import { STATE_MAX_AGE_MS, loadedMarkerFile, sessionFile, sessionStateDir, stateKey } from "./location.js";
@@ -130,7 +131,8 @@ export async function persistDraftHintClaims(sessionId: string, ids: string[], d
 /**
  * Cleanup: best-effort sweep of session files older than `maxAgeMs`. Runs
  * lazily from the hook (only when we already loaded a state, so we don't
- * pay for it on every cold call).
+ * pay for it on every cold call). #1640: the per-session offline notice
+ * markers share the same horizon.
  */
 export async function cleanupOldStates(maxAgeMs: number = STATE_MAX_AGE_MS): Promise<void> {
   try {
@@ -138,6 +140,7 @@ export async function cleanupOldStates(maxAgeMs: number = STATE_MAX_AGE_MS): Pro
   } catch {
     /* State cleanup is advisory. */
   }
+  await sweepUnreachableNotices(maxAgeMs);
 }
 
 /**

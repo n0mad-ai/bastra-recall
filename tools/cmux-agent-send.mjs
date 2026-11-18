@@ -56,6 +56,9 @@ function acquireTargetLock(targets, pause, lockRoot = join(tmpdir(), "bastra-cmu
     } catch (error) {
       if (error.code !== "EEXIST") throw error;
     }
+    // #1645: the deadline holds on every retry, whatever is at the lock path.
+    if (Date.now() - started > LOCK_WAIT_MS)
+      throw new Error("cmux target busy with another agent message; nothing was sent");
     let age;
     try {
       age = Date.now() - statSync(lock).mtimeMs;
@@ -65,13 +68,12 @@ function acquireTargetLock(targets, pause, lockRoot = join(tmpdir(), "bastra-cmu
     if (age > LOCK_STALE_MS) {
       try {
         rmdirSync(lock);
+        continue;
       } catch {
-        /* another waiter took the stale lock over first */
+        // Another waiter took it over first, or the path holds foreign contents
+        // (a file, a nonempty directory) that are never deleted: wait instead.
       }
-      continue;
     }
-    if (Date.now() - started > LOCK_WAIT_MS)
-      throw new Error("cmux target busy with another agent message; nothing was sent");
     pause(LOCK_POLL_MS);
   }
 }

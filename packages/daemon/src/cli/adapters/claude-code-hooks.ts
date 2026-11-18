@@ -39,6 +39,7 @@ import {
 
 type HookEventName =
   | "SessionStart"
+  | "SubagentStart"
   | "UserPromptSubmit"
   | "PreToolUse"
   | "PostToolUse"
@@ -109,8 +110,8 @@ const CHAT_SESSION_END_HOOK_DEF: HookDef = {
 };
 
 // Single source of truth for the reflex layer. `bastra install claude-code`
-// registers 13 entries by default (10 base + Stop + SessionEnd and PreCompact harvest);
-// `--no-stop-hook` leaves 10. The Stop hook is on by default since the #48
+// registers 14 entries by default (11 base + Stop + SessionEnd and PreCompact harvest);
+// `--no-stop-hook` leaves 11. The Stop hook is on by default since the #48
 // redesign made it silent: suggestions go to
 // ~/.bastra/pending-suggestions.json (read by the next SessionStart as
 // additionalContext) instead of systemMessage, which Claude Code rendered 1:1
@@ -126,6 +127,17 @@ export function hookDefinitions(opts: { includeStop?: boolean } = {}): HookDef[]
       bin: SESSION_HOOK_BIN,
       timeout: 3,
       note: "bastra-recall SessionStart hook",
+      stubSubcommand: "session",
+    },
+    // #1637: the rule kernel for a subagent before its first prompt — a short
+    // worker can finish before the per-agent 25-call cadence delivers it. No
+    // matcher: every agent type (code.claude.com/docs/en/hooks, SubagentStart).
+    // Same client and route as SessionStart; the daemon answers the kernel only.
+    {
+      event: "SubagentStart",
+      bin: SESSION_HOOK_BIN,
+      timeout: 3,
+      note: "bastra-recall SubagentStart hook (rule kernel for subagents, #1637)",
       stubSubcommand: "session",
     },
     {
@@ -361,6 +373,7 @@ const lookedOurs = (cmd: string): boolean =>
 
 const HOOK_EVENTS: HookEventName[] = [
   "SessionStart",
+  "SubagentStart",
   "UserPromptSubmit",
   "PreToolUse",
   "PostToolUse",
@@ -593,7 +606,8 @@ export function planHookEntries(
  *  entry, the chat SessionEnd included; Stop and the harvest SessionEnd are
  *  on by default and only missing under `--no-stop-hook`. */
 export function installedLanes(includeStop: boolean, stopPreserved: boolean): string {
-  const base = "SessionStart, SessionEnd (chat), UserPromptSubmit, PreToolUse×4, PostToolUse×2, PostToolUseFailure";
+  const base =
+    "SessionStart, SubagentStart, SessionEnd (chat), UserPromptSubmit, PreToolUse×4, PostToolUse×2, PostToolUseFailure";
   if (includeStop) return `${base}, Stop, SessionEnd (harvest), PreCompact (harvest)`;
   if (stopPreserved) return `${base}; Stop + SessionEnd + PreCompact (harvest) kept at current path`;
   return `${base}; Stop + SessionEnd + PreCompact (harvest) off: --no-stop-hook`;
