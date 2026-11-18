@@ -37,7 +37,7 @@ Socket.prototype.connect = function (...args) {
   // UNIX/named-pipe IPC carries no TCP port, including the public path form.
   if (
     (typeof first === "object" && first !== null && first.path) ||
-    (typeof first === "string" && !/^\d+$/.test(first))
+    (typeof first === "string" && !(Number(first) >= 0))
   )
     return original.apply(this, args);
   const port = typeof first === "object" && first !== null ? first.port : first;

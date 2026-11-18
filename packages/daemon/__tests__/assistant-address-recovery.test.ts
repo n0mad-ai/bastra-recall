@@ -1,3 +1,4 @@
+import { unavailableAddressStatusPort } from "./assistant-address-status-fixture.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
@@ -11,6 +12,7 @@ async function fixture(t: test.TestContext) {
   t.after(() => rm(root, { recursive: true, force: true }));
   const service = { loaded: false };
   const o = {
+    gatewayPort: await unavailableAddressStatusPort(t),
     settingsPath: join(root, "settings"),
     hostsPath: join(root, "hosts"),
     helperPath: join(root, "helper"),

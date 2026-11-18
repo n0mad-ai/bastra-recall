@@ -1,3 +1,4 @@
+import { unavailableAddressStatusPort } from "./assistant-address-status-fixture.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, readFile, mkdir, rm } from "node:fs/promises";
@@ -10,6 +11,7 @@ async function fixture(t: test.TestContext) {
   const root = await mkdtemp(join(tmpdir(), "address-diagnostics-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const o = {
+    gatewayPort: await unavailableAddressStatusPort(t),
     settingsPath: join(root, "settings"),
     hostsPath: join(root, "hosts"),
     helperPath: join(root, "helper"),

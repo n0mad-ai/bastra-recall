@@ -1,3 +1,4 @@
+import { unavailableAddressStatusPort } from "./assistant-address-status-fixture.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
@@ -298,6 +299,7 @@ test("#1332 review: a late admin completion is reconciled when status is checked
     runtimeDir = join(root, "runtime");
   await writeFile(hostsPath, "127.0.0.1 localhost\n");
   const options = {
+    gatewayPort: await unavailableAddressStatusPort(t),
     settingsPath,
     hostsPath,
     helperPath,
@@ -478,6 +480,7 @@ test("#1332 review: unchanged repair waits for its admin receipt and blocks a se
     runtimeDir = join(root, "runtime");
   await writeFile(hostsPath, "127.0.0.1 localhost\n");
   const options = {
+    gatewayPort: await unavailableAddressStatusPort(t),
     helperLoaded: async () => false,
     settingsPath,
     hostsPath,

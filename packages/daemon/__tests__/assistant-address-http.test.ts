@@ -1,3 +1,4 @@
+import { unavailableAddressStatusPort } from "./assistant-address-status-fixture.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
@@ -44,6 +45,7 @@ test("#1332: actual settings route preserves local CSRF and performs no system c
     documentWriteEnabled: false,
     embedding: { on: false, providerId: null, source: "none" },
     assistantAddress: {
+      gatewayPort: await unavailableAddressStatusPort(t),
       port: 0,
       settingsPath,
       hostsPath,

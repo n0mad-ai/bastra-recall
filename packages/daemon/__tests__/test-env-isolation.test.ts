@@ -205,7 +205,31 @@ test("run audit catches a grandchild attempting port 6723 without contacting a l
   const seen = JSON.parse(r.stdout.trim());
   assert.match(seen.error, /refusing the operator daemon/);
   assert.match(r.stderr, /test isolation audit failed/);
+  const target = JSON.parse(r.stderr.match(/test isolation blocked target (.+)/)![1]);
+  assert.equal(target.host, "127.0.0.1");
+  assert.equal(target.port, 6723);
+  assert.ok(Number.isSafeInteger(target.pid));
   assert.equal(existsSync(seen.root), false);
+});
+
+test("blocked target diagnostics are bounded and exclude paths and extra audit fields", () => {
+  const script = `
+    const row = {pid:process.pid,host:"https://fixture.invalid/private?token=secret",port:443,path:"/private",token:"secret"};
+    require("node:fs").writeFileSync(require("node:path").join(process.env.BASTRA_TEST_RUN_ROOT,"blocked-daemon-connections.jsonl"), (JSON.stringify(row)+"\\n").repeat(25));
+  `;
+  const r = spawnSync(process.execPath, ["--import", TEST_ENV, "-e", script], {
+    env: outsideRun({}),
+    encoding: "utf8",
+  });
+  assert.equal(r.status, 1);
+  const rows = [...r.stderr.matchAll(/test isolation blocked target (.+)/g)].map((m) => JSON.parse(m[1]));
+  assert.equal(rows.length, 20);
+  for (const row of rows) {
+    assert.deepEqual(Object.keys(row), ["pid", "host", "port"]);
+    assert.equal(row.host, null);
+    assert.equal(row.port, 443);
+  }
+  assert.doesNotMatch(r.stderr, /private|secret|token/);
 });
 
 test("whole-run home audit accepts Deno's fixture cache and rejects unexpected files", () => {
@@ -304,8 +328,11 @@ test("network guard blocks native HTTP, fetch and sockets before any real connec
     globalThis.fetch = async () => { nativeFetches++; return new Response("fixture"); };
     (async () => {
       await import(${JSON.stringify(new URL("../../../scripts/test-network-guard.mjs", import.meta.url).href)});
+      // Node normalizes these strings as TCP ports, never IPC paths.
+      for (const value of ["80 ","0x50","1e2"]) assert.equal(net._normalizeArgs([value])[0].port,value);
       for (const args of [[80,"127.0.0.1"],[6723,"::1"],[443,"203.0.113.1"],[443,"fixture.invalid"],
-                          [{port:443,host:"192.168.1.1"}], [[{port:80,host:"127.0.0.1"}]]]) {
+                          [{port:443,host:"192.168.1.1"}], [[{port:80,host:"127.0.0.1"}]],
+                          ["80 ","127.0.0.1"],["0x50","127.0.0.1"],["1e2","fixture.invalid"]]) {
         const socket = new net.Socket();
         const failed = require("node:events").once(socket,"error");
         socket.connect(...args);

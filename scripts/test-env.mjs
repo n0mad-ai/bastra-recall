@@ -29,7 +29,7 @@
  * test files guard against it by hand. Guarding the 27th is a convention nobody
  * can enforce; the pipe itself can be.
  */
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, parse } from "node:path";
 import { createServer } from "node:net";
@@ -91,6 +91,9 @@ if (!process.env.BASTRA_TEST_RUN_ROOT) {
   // alone cannot override those exports. Both spellings are valid npm inputs.
   process.env.npm_config_cache = process.env.NPM_CONFIG_CACHE = join(runHome, ".npm");
   process.env.npm_config_userconfig = process.env.NPM_CONFIG_USERCONFIG = join(runHome, ".npmrc");
+  // An empty fixture cache makes npm/npx check the public registry for npm
+  // updates even when executing the already installed local tsx binary.
+  process.env.npm_config_update_notifier = process.env.NPM_CONFIG_UPDATE_NOTIFIER = "false";
   process.env.BASTRA_BRIDGES_PATH = join(runHome, ".bastra", "bridges");
   process.env.BASTRA_COMMONS_PATH = join(runHome, ".bastra", "commons");
   // Obtain a currently unused loopback port; never probe the operator's daemon.
@@ -144,6 +147,28 @@ if (!process.env.BASTRA_TEST_RUN_ROOT) {
       process.stderr.write(
         `test isolation audit failed: unexpected home entries ${JSON.stringify(unexpected)}; blocked daemon connection ${blocked}\n`
       );
+      if (blocked) {
+        const fd = openSync(join(root, "blocked-daemon-connections.jsonl"), "r");
+        try {
+          const buffer = Buffer.alloc(16_384);
+          const bytes = readSync(fd, buffer, 0, buffer.length, 0);
+          for (const line of buffer.toString("utf8", 0, bytes).split("\n").slice(0, 20)) {
+            try {
+              const row = JSON.parse(line);
+              const target = {
+                pid: Number.isSafeInteger(row.pid) ? row.pid : null,
+                host: typeof row.host === "string" && /^[a-z0-9.:[\]_-]{1,253}$/i.test(row.host) ? row.host : null,
+                port: Number.isSafeInteger(row.port) ? row.port : null,
+              };
+              process.stderr.write(`test isolation blocked target ${JSON.stringify(target)}\n`);
+            } catch {
+              // A concurrent append or the bounded read may end in a partial row.
+            }
+          }
+        } finally {
+          closeSync(fd);
+        }
+      }
       process.exitCode = 1;
     }
     try {
