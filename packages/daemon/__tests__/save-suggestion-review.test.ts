@@ -171,10 +171,23 @@ test("same-turn and pending re-enqueue honor exact explicit rejection and projec
   }));
 test("CLI requires explicit origin/evidence and supports reviewable dry runs", async (t) => {
   let out = "";
-  t.mock.method(process.stdout, "write", (v: unknown) => {
-    out += String(v);
-    return true;
-  });
+  const write = process.stdout.write.bind(process.stdout);
+  t.mock.method(
+    process.stdout,
+    "write",
+    (
+      chunk: string | Uint8Array,
+      encoding?: BufferEncoding | ((error?: Error | null) => void),
+      callback?: (error?: Error | null) => void
+    ) => {
+      // The CLI writes JSON strings; Node's test runner writes binary frames.
+      if (typeof chunk !== "string") return Reflect.apply(write, process.stdout, [chunk, encoding, callback]);
+      out += chunk;
+      const done = typeof encoding === "function" ? encoding : callback;
+      done?.(null);
+      return true;
+    }
+  );
   t.mock.method(process.stderr, "write", () => true);
   const id = "a".repeat(64);
   assert.equal(await cmdSaveSuggestions(parseArgs(["suggestions", "reject", id, "user-directed"])), 1);
