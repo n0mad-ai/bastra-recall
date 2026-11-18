@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ALL_TOOL_DEFS } from "../src/tool-defs.js";
+import ts from "typescript";
 
 /**
  * Drift gate: every tool must exist on BOTH MCP surfaces (#576).
@@ -34,36 +35,106 @@ import { ALL_TOOL_DEFS } from "../src/tool-defs.js";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STDIO_TS = join(HERE, "..", "src", "boot-stdio.ts");
 
-/**
- * The tool-group identifiers mentioned inside the stdio ListTools handler.
- *
- * Matched as bare identifiers rather than as `...name`, because a group can be
- * spread conditionally — `...(documentWriteEnabled ? documentWriteTools : [])`
- * is a registration too. A gate that only understood the unconditional form
- * would report that one as missing, which is a false alarm about working code
- * and exactly the kind of noise that gets a gate switched off.
- */
-async function stdioToolArrays(): Promise<string[]> {
-  const source = await readFile(STDIO_TS, "utf8");
-  // The HANDLER, not the import of the same name at the top of the file.
-  // Anchoring on the bare symbol matched the import, which made the "block"
-  // span almost the whole file — and a gate that reads the whole file finds
-  // every identifier and can never fail. Verified by deleting the
-  // registration and watching this go red.
-  const start = source.indexOf("setRequestHandler(ListToolsRequestSchema");
-  assert.notEqual(start, -1, "could not find the stdio ListTools handler in boot-stdio.ts");
-  const end = source.indexOf("}));", start);
-  assert.notEqual(end, -1, "could not find the end of the stdio ListTools handler");
-  // Comments are stripped first. The block carries a comment that NAMES this
-  // very problem, and a gate that counted a mention in prose as a registration
-  // would pass on exactly the file it is meant to police.
-  const block = stripComments(source.slice(start, end));
-  return [...block.matchAll(/\b([A-Za-z_$][\w$]*)\b/g)].map((m) => m[1]!);
+function descendants(root: ts.Node): ts.Node[] {
+  const nodes: ts.Node[] = [];
+  function visit(node: ts.Node): void {
+    nodes.push(node);
+    ts.forEachChild(node, visit);
+  }
+  visit(root);
+  return nodes;
 }
 
-/** Source with `//` and block comments removed. */
-function stripComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
+/** Locate the actual registration call, excluding imports and comments. */
+function requestHandler(source: string, schema: string): ts.Node {
+  const file = ts.createSourceFile(STDIO_TS, source, ts.ScriptTarget.Latest, true);
+  const calls = descendants(file)
+    .filter(ts.isCallExpression)
+    .filter(
+      (node) =>
+        ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.name.text === "setRequestHandler" &&
+        ts.isIdentifier(node.arguments[0]!) &&
+        node.arguments[0].text === schema
+    );
+  assert.equal(calls.length, 1, `expected exactly one ${schema} handler`);
+  const handler = calls[0]!.arguments[1];
+  assert.ok(handler && (ts.isArrowFunction(handler) || ts.isFunctionExpression(handler)));
+  return handler.body;
+}
+
+/** Only the value branches of a spread register groups, never its condition. */
+function spreadGroups(expression: ts.Expression): string[] {
+  if (ts.isParenthesizedExpression(expression)) return spreadGroups(expression.expression);
+  if (ts.isIdentifier(expression)) return [expression.text];
+  if (ts.isConditionalExpression(expression)) {
+    return [...spreadGroups(expression.whenTrue), ...spreadGroups(expression.whenFalse)];
+  }
+  return [];
+}
+
+async function stdioToolArrays(source?: string): Promise<string[]> {
+  source ??= await readFile(STDIO_TS, "utf8");
+  return descendants(requestHandler(source, "ListToolsRequestSchema"))
+    .filter(ts.isPropertyAssignment)
+    .filter((node) => node.name.getText() === "tools" && ts.isArrayLiteralExpression(node.initializer))
+    .flatMap((node) => (node.initializer as ts.ArrayLiteralExpression).elements)
+    .filter(ts.isSpreadElement)
+    .flatMap((node) => spreadGroups(node.expression));
+}
+
+function isToolName(node: ts.Node): boolean {
+  if (ts.isIdentifier(node)) return node.text === "name";
+  return (
+    ts.isPropertyAccessExpression(node) &&
+    node.name.text === "name" &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    node.expression.name.text === "params" &&
+    ts.isIdentifier(node.expression.expression) &&
+    node.expression.expression.text === "req"
+  );
+}
+
+function directToolNames(condition: ts.Node): string[] {
+  return descendants(condition)
+    .filter(ts.isBinaryExpression)
+    .filter((node) => node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken)
+    .filter((node) => isToolName(node.left) && ts.isStringLiteral(node.right))
+    .map((node) => (node.right as ts.StringLiteral).text);
+}
+
+/** Task calls must be returned by the isTaskTool branch, not merely mentioned. */
+function dispatchesTasks(branch: ts.IfStatement): boolean {
+  const condition = branch.expression;
+  if (
+    !ts.isCallExpression(condition) ||
+    !ts.isIdentifier(condition.expression) ||
+    condition.expression.text !== "isTaskTool" ||
+    !condition.arguments[0] ||
+    !isToolName(condition.arguments[0])
+  )
+    return false;
+  return descendants(branch.thenStatement)
+    .filter(ts.isReturnStatement)
+    .some((node) => {
+      const call = node.expression;
+      return (
+        call &&
+        ts.isCallExpression(call) &&
+        ts.isIdentifier(call.expression) &&
+        call.expression.text === "callTaskMcp" &&
+        call.arguments[0] &&
+        isToolName(call.arguments[0])
+      );
+    });
+}
+
+function dispatchedTools(source: string): string[] {
+  const branches = descendants(requestHandler(source, "CallToolRequestSchema")).filter(ts.isIfStatement);
+  return [
+    ...branches.flatMap((node) => directToolNames(node.expression)),
+    ...(branches.some(dispatchesTasks) ? TASK_CRUD_OPERATIONS : []),
+  ];
 }
 
 /** The spread array names inside ALL_TOOL_DEFS. */
@@ -104,16 +175,33 @@ test("every tool in ALL_TOOL_DEFS has a CallTool branch in the stdio server", as
   // ListTools advertising a tool the CallTool chain cannot dispatch is the
   // other half of the same mistake: the client sees it and every call fails.
   const source = await readFile(STDIO_TS, "utf8");
+  const dispatched = dispatchedTools(source);
   const undispatched = (ALL_TOOL_DEFS as Array<{ name: string }>)
     .map((def) => def.name)
-    .filter(
-      (name) =>
-        !source.includes(`name === "${name}"`) &&
-        !(
-          (TASK_CRUD_OPERATIONS as readonly string[]).includes(name) &&
-          source.includes("if (isTaskTool(name)) return callTaskMcp(name, rawArgs")
-        )
-    );
+    .filter((name) => !dispatched.includes(name));
 
   assert.deepEqual(undispatched, [], `advertised over stdio but never dispatched there: ${undispatched.join(", ")}`);
+});
+
+test("registration and dispatch gates ignore imports, comments and formatting", async () => {
+  const source = await readFile(STDIO_TS, "utf8");
+  const file = ts.createSourceFile(STDIO_TS, source, ts.ScriptTarget.Latest, true);
+  const printed = ts.createPrinter().printFile(file);
+  assert.deepEqual(await stdioToolArrays(printed), await stdioToolArrays(source));
+  assert.deepEqual(dispatchedTools(printed), dispatchedTools(source));
+  const missingGroup = source.replace("...codeTools,", "...[] /* codeTools */, ");
+  assert.notEqual(missingGroup, source);
+  assert.ok(!(await stdioToolArrays(missingGroup)).includes("codeTools"));
+  const taskBranch = descendants(requestHandler(source, "CallToolRequestSchema"))
+    .filter(ts.isIfStatement)
+    .find(dispatchesTasks);
+  assert.ok(taskBranch);
+  const body = taskBranch.thenStatement;
+  const missingDispatch =
+    source.slice(0, body.getStart()) + "return undefined; /* callTaskMcp(name, rawArgs) */" + source.slice(body.end);
+  assert.ok(!dispatchedTools(missingDispatch).includes("task_create"));
+  const call = requestHandler(source, "CallToolRequestSchema").parent.parent as ts.CallExpression;
+  const schema = call.arguments[0]!;
+  const missingHandler = source.slice(0, schema.getStart()) + "OtherRequestSchema" + source.slice(schema.end);
+  assert.throws(() => dispatchedTools(missingHandler), /exactly one CallToolRequestSchema handler/);
 });
