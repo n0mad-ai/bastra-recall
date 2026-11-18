@@ -77,7 +77,7 @@
     "[\"packages/daemon/src/assistant-address-admin.ts\",\"[\\\"function:cleanupMacAddressAdminStaging\\\"]\",\"complexity\"]": 21,
     "[\"packages/daemon/src/assistant-address-admin.ts\",\"[\\\"function:makeAddressAdminScript\\\"]\",\"complexity\"]": 28,
     "[\"packages/daemon/src/assistant-address-gateway.ts\",\"[\\\"function:assistantGatewayHandler\\\",\\\"function:ArrowFunctionExpression#1\\\",\\\"call:ArrowFunctionExpression().catch:#1\\\",\\\"call:ArrowFunctionExpression:#1\\\",\\\"function:argument:-1#1\\\"]\",\"complexity\"]": 37,
-    "[\"packages/daemon/src/assistant-address.ts\",\"[\\\"function:assistantAddressStatusUnlocked\\\"]\",\"complexity\"]": 36,
+    "[\"packages/daemon/src/assistant-address.ts\",\"[\\\"function:assistantAddressStatusUnlocked\\\"]\",\"complexity\"]": 31,
     "[\"packages/daemon/src/assistant-address.ts\",\"[\\\"function:reconcileAssistantAddress\\\"]\",\"complexity\"]": 43,
     "[\"packages/daemon/src/assistant-address.ts\",\"[\\\"function:removeAssistantAddressUnlocked\\\"]\",\"complexity\"]": 20,
     "[\"packages/daemon/src/assistant-address.ts\",\"[\\\"function:setupAssistantAddressUnlocked\\\"]\",\"complexity\"]": 27,

@@ -13,7 +13,11 @@ import {
   assistantAddressFor,
   type AssistantAddressOptions,
 } from "./assistant-address.js";
-import { normalizeAssistantDisplayName, readableAssistantName } from "./assistant-address-name.js";
+import {
+  normalizeAssistantDisplayName,
+  readableAssistantName,
+  ASSISTANT_ADDRESS_PORT,
+} from "./assistant-address-name.js";
 import { managedAssistantHostsName } from "./assistant-address-files.js";
 import { addressWords } from "./assistant-address-words.js";
 import { getAssistantName, getAssistantDisplayName, setAssistantDisplayName } from "./assistant-address-settings.js";
@@ -149,7 +153,10 @@ export async function handleAssistantAddressUi(
       return;
     }
     const listener = await refresh();
-    const status = await assistantAddressStatus({ ...options, gatewayPort: listener.port ?? options.gatewayPort });
+    const status = await assistantAddressStatus({
+      ...options,
+      gatewayPort: listener.port ?? options.gatewayPort ?? ASSISTANT_ADDRESS_PORT,
+    });
     sendJson(res, 200, {
       warning,
       ...status,

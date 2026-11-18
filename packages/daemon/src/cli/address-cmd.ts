@@ -9,7 +9,12 @@ import {
   assistantAddressFor,
   type AssistantAddressOptions,
 } from "../assistant-address.js";
-import { requireAssistantAddress, normalizeAssistantDisplayName, assistantUrls } from "../assistant-address-name.js";
+import {
+  requireAssistantAddress,
+  normalizeAssistantDisplayName,
+  assistantUrls,
+  ASSISTANT_ADDRESS_PORT,
+} from "../assistant-address-name.js";
 import { getAssistantDisplayName, setAssistantDisplayName } from "../assistant-address-settings.js";
 import { hasAddressErrorCode } from "../assistant-address-name.js";
 import { confirm } from "./prompt.js";
@@ -25,7 +30,7 @@ export async function cmdAddress(args: ParsedArgs, options?: AssistantAddressOpt
       value = args.positional[2];
     if (action === "status") {
       const s = {
-        ...(await assistantAddressStatus(options)),
+        ...(await assistantAddressStatus({ gatewayPort: ASSISTANT_ADDRESS_PORT, ...options })),
         displayName: await getAssistantDisplayName(options.settingsPath),
       };
       process.stdout.write(

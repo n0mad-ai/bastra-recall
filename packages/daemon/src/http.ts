@@ -429,7 +429,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
         helperPath: addressOptions.helperPath,
         daemonUrl: `http://127.0.0.1:${handle.port}`,
       },
-      opts.assistantAddress?.port ?? 80
+      opts.assistantAddress?.port
     );
     await addressListener.refresh();
   }

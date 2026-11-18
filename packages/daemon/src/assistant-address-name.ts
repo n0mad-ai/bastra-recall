@@ -206,6 +206,9 @@ export function normalizeAssistantDisplayName(value: string, language?: string):
     throw new AssistantAddressError("invalid_name", DISPLAY_NAME_LIMITS[language ?? "en"] ?? DISPLAY_NAME_LIMITS.en);
   return name;
 }
+/** The port the address URLs below imply (plain http): the listener binds it and status checks probe it. */
+export const ASSISTANT_ADDRESS_PORT = 80;
+
 export function assistantUrls(value: string) {
   const name = normalizeAssistantName(value);
   return { local: `http://${name}.localhost/ui/`, bare: `http://${name}/ui/` };

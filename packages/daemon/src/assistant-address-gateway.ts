@@ -5,7 +5,7 @@ import { createServer, request, type IncomingMessage, type ServerResponse, type 
 import { Socket } from "node:net";
 import { readFile } from "node:fs/promises";
 import { domainToASCII } from "node:url";
-import { normalizeAssistantName } from "./assistant-address-name.js";
+import { normalizeAssistantName, ASSISTANT_ADDRESS_PORT } from "./assistant-address-name.js";
 import { managedAssistantHostsName } from "./assistant-address-files.js";
 import { gateLocalPost, isLoopback } from "./http-auth.js";
 import { readRuntimeSettingsRecord } from "@bastra-recall/core/runtime-settings";
@@ -181,7 +181,7 @@ export function assistantGatewayHandler(opts: AssistantGatewayOptions) {
   };
 }
 
-export function createAssistantAddressListener(opts: AssistantGatewayOptions, port = 80) {
+export function createAssistantAddressListener(opts: AssistantGatewayOptions, port = ASSISTANT_ADDRESS_PORT) {
   let server: Server | null = null;
   let serial: Promise<unknown> = Promise.resolve();
   const close = async () => {

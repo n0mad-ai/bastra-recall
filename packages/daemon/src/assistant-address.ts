@@ -504,6 +504,23 @@ async function removeAssistantAddressUnlocked(options: AssistantAddressOptions =
   }
   await cleanupAddressRuntime(o);
 }
+/** Whether this user's address listener answers for `name`: undefined when there is nothing to probe
+ * (no name or the UI is off), null when a probe is due but no port was given (#1653: only an explicit
+ * port is asked, never a silently assumed 80 that may belong to another local service). */
+async function probeListener(name: string | null, enabled: boolean, port: number | undefined) {
+  if (!name || !enabled) return undefined;
+  if (port === undefined) return null;
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/.well-known/bastra-assistant-address`, {
+      headers: { Host: `${name}.localhost:${port}` },
+      signal: AbortSignal.timeout(800),
+    });
+    const b = (await r.json()) as any;
+    return r.ok && b.service === "bastra-assistant-address" && b.name === name;
+  } catch {
+    return false;
+  }
+}
 async function assistantAddressStatusUnlocked(options: AssistantAddressOptions = {}) {
   const o = assistantAddressOptions(options),
     w = addressWords(o.language),
@@ -516,17 +533,8 @@ async function assistantAddressStatusUnlocked(options: AssistantAddressOptions =
   } catch (e) {
     error = (e as Error).message;
   }
-  let listener = false;
-  if (name && enabled) {
-    try {
-      const r = await fetch(`http://127.0.0.1:${o.gatewayPort ?? 80}/.well-known/bastra-assistant-address`, {
-        headers: { Host: `${name}.localhost:${o.gatewayPort ?? 80}` },
-        signal: AbortSignal.timeout(800),
-      });
-      const b = (await r.json()) as any;
-      listener = r.ok && b.service === "bastra-assistant-address" && b.name === name;
-    } catch {}
-  }
+  const probed = await probeListener(name, enabled, o.gatewayPort);
+  let listener = probed === true;
   const helper = await ownHelper(o),
     helperLoaded = helper ? await assistantHelperLoaded(o) : null;
   const companion = await ownCompanion(o),
@@ -538,7 +546,9 @@ async function assistantAddressStatusUnlocked(options: AssistantAddressOptions =
       companion.includes("<key>Wait</key><true/>")
     );
   if (helper && helperLoaded === false) listener = false;
-  const helperProblem = helper && !listener && !error && (helperLoaded !== true || enabled);
+  // An unchecked listener proves nothing: only a helper known to be unloaded is still a problem then.
+  const listenerKnown = probed !== null || helperLoaded === false;
+  const helperProblem = helper && !listener && !error && (helperLoaded !== true || enabled) && listenerKnown;
   if (helperProblem)
     error = helperLoaded === false ? w.helperNotLoaded : helperLoaded === true ? w.helperUnreachable : w.helperUnknown;
   const repair = error ? w.hostsRepairStatus(name ?? "<name>") : undefined;
@@ -553,6 +563,7 @@ async function assistantAddressStatusUnlocked(options: AssistantAddressOptions =
     urls: name ? assistantUrls(name) : null,
     registeredName: registered,
     ready: listener,
+    listenerChecked: typeof probed === "boolean",
     error,
     systemSetupSupported: o.platform === "darwin",
     firefoxProfiles: (await profileEdits(o, null)).filter((p) => p.path.endsWith(sep + "user.js")).length,
@@ -715,6 +726,7 @@ export async function assistantAddressStatus(options: AssistantAddressOptions = 
       urls: name ? assistantUrls(name) : null,
       registeredName: null,
       ready: false,
+      listenerChecked: false,
       error,
       pending: true,
       partial: false,

@@ -533,6 +533,10 @@ until a new design replaces it; this name is independent of the product version.
   as a code block (after a blank line, outside lists), and an indented
   fence counts as a fence everywhere; the report question status follows
   the same rule, so markers in such code never ask (#1665, #1662).
+- The assistant address status now probes only an explicitly given port;
+  doctor, `bastra address` and the web UI name port 80 (or the running
+  listener's port), and a status without a port reports
+  `listenerChecked: false` instead of silently probing port 80 (#1653).
 
 ### Internal
 

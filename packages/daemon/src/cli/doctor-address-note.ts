@@ -4,15 +4,16 @@
  * (error, repair, bare-name notice) already follow the same language.
  */
 import { assistantAddressStatus } from "../assistant-address.js";
+import { ASSISTANT_ADDRESS_PORT } from "../assistant-address-name.js";
 import { addressLanguage, addressWords } from "../assistant-address-words.js";
 
-/** `status` is replaceable for tests; doctor uses the real one. */
+/** `status` is replaceable for tests; doctor uses the real one and names the probed port (#1653). */
 export async function printAssistantAddressNote(
-  status: () => ReturnType<typeof assistantAddressStatus> = assistantAddressStatus
+  status: typeof assistantAddressStatus = assistantAddressStatus
 ): Promise<void> {
   const w = addressWords(await addressLanguage().catch(() => undefined));
   try {
-    const a = await status();
+    const a = await status({ gatewayPort: ASSISTANT_ADDRESS_PORT });
     if (a.error || a.pending) process.stdout.write(`${w.doctorLine(a.error ?? w.doctorPending)}  ${a.repair}\n`);
     if (a.name)
       process.stdout.write(
