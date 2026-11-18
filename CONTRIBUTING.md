@@ -239,6 +239,19 @@ scripts/      One-off telemetry / eval / backfill scripts
   are excluded. Inspect a finding for a suitable existing helper; do not merge
   code automatically. A domain-correct copy requires a documented, reviewed
   exception. Never manually expand a baseline to get a new violation through.
+- **Copy-detector limit and counter-review:** the current jscpd configuration
+  uses `mode: weak` without identifier normalization. Renaming variables,
+  functions or types can therefore hide a copy; passing lint does not establish
+  that two implementations are independent. In counter-review, compare their
+  control flow, data transformations and error paths even when the names differ,
+  and check for a suitable existing implementation before accepting a new one.
+  Keep the current mode for this change: jscpd's optional
+  [`ignoreIdentifiers`](https://jscpd.dev/reference/config-file) changes matching
+  semantics and clone fingerprints. Its additional findings and runtime cost
+  have not been compared for this repository, so enabling it needs that
+  comparison first. Switching among `weak`, `mild` and `strict` alone does not
+  enable identifier normalization. This limitation stays on the counter-review
+  checklist until a measured replacement is adopted.
 - **Lower the baseline after cleanup:** run `npm run lint:prune` and commit the
   smaller baseline files with the cleanup. This command refuses new violations.
   Normal lint fails on obsolete entries; CI also compares all baselines against
