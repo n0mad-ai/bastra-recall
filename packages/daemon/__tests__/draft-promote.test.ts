@@ -30,6 +30,34 @@ import { runSessionHarvestTick } from "../src/daemon-jobs.js";
 import { noteSessionForHarvest } from "../src/session-harvest.js";
 import { parseArgs } from "../src/cli/commands.js";
 import { cmdDrafts } from "../src/cli/drafts-cmd.js";
+import ts from "typescript";
+
+/** Mutate the initializer, independent of number spelling, spacing or comments. */
+function changeRepeatThreshold(source: string): string {
+  const file = ts.createSourceFile("draft-promote.ts", source, ts.ScriptTarget.Latest, true);
+  const declarations = file.statements
+    .filter(ts.isVariableStatement)
+    .flatMap((statement) => [...statement.declarationList.declarations])
+    .filter((declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === "DRAFT_REPEAT_COSINE_MIN");
+  assert.equal(declarations.length, 1, "expected exactly one repeat threshold declaration");
+  const initializer = declarations[0]!.initializer;
+  assert.ok(initializer && ts.isNumericLiteral(initializer), "repeat threshold must have a numeric initializer");
+  assert.equal(Number(initializer.text), 0.7, "the fixture must mutate the current threshold");
+  const changed = source.slice(0, initializer.getStart(file)) + "0.65" + source.slice(initializer.end);
+  assert.notEqual(changed, source, "the threshold mutation must actually change the source");
+  return changed;
+}
+
+test("D3 threshold mutation follows the numeric initializer across formatting", () => {
+  for (const initializer of ["0.70", "0.7", "\n  /* threshold */ 0.7"]) {
+    const source = `// DRAFT_REPEAT_COSINE_MIN = 0.70\nexport const DRAFT_REPEAT_COSINE_MIN = ${initializer};`;
+    const changed = changeRepeatThreshold(source);
+    assert.ok(changed.startsWith("// DRAFT_REPEAT_COSINE_MIN = 0.70"), "a comment is not the initializer");
+    assert.match(changed, /=\s*(?:\/\* threshold \*\/\s*)?0\.65;/);
+  }
+  assert.throws(() => changeRepeatThreshold("const OTHER = 0.7;"), /exactly one repeat threshold/);
+  assert.throws(() => changeRepeatThreshold("const DRAFT_REPEAT_COSINE_MIN = 0.6;"), /current threshold/);
+});
 
 /** Candidate metadata is expected in a dry run; every preexisting field stays identical. */
 function withoutCandidateMetadata(raw: string): unknown {
@@ -1323,7 +1351,7 @@ test("D3 a changed repeat threshold invalidates the completed-pass receipt", () 
     const options = { provider, ollama: local, judge, vault, vaultVectors: vectors(vault, provider), emit: () => {} };
     assert.equal((await runDraftPromote(options)).wouldPromote, 0);
     let source = await readFile(new URL("../src/draft-promote.ts", import.meta.url), "utf8");
-    source = source.replace("DRAFT_REPEAT_COSINE_MIN = 0.70", "DRAFT_REPEAT_COSINE_MIN = 0.65");
+    source = changeRepeatThreshold(source);
     source = source
       .replace(
         /from "\.\/([^"\n]+)\.js"/g,
