@@ -18,19 +18,20 @@
 //   vault care flags                  — GET /ui/annotations, POST /ui/annotate (membrowser-care.js)
 // The prototype's recall_when, version, file path, sessions, reflex mode and
 // per-day recall heat are not served by the daemon; those parts stay out.
+// The reader on the right lives in membrowser-reader.js, the recall heat of
+// rows and reader in membrowser-heat.js.
 import { h, clear, setVars, searchIcon } from "../dom.js";
 import { t, addStrings, numberFmt } from "../i18n.js";
 import { state, setState } from "../state.js";
-import { data, onData, loadGraph } from "../data.js";
+import { data, onData } from "../data.js";
 import { ask } from "../agent.js";
 import { cover } from "../cover.js";
 import { vault, areaCol, ago } from "./vault-data.js";
 import { TC, INK, ACC, MUT, dateStr, lastPress } from "./chrome.js";
 import { viewLocked, lastVaultView } from "./pro-views.js";
-import { careBlock } from "./membrowser-care.js";
-import { detailCache, readerKey, readerPlan } from "./membrowser-detail.js";
-import { readerEdit, archiveNotice, editing } from "./membrowser-edit.js";
-import { nextSelection } from "./membrowser-edit-model.js";
+import { detailCache } from "./membrowser-detail.js";
+import { memoryReader } from "./membrowser-reader.js";
+import { extras, heat, daysAgo, NO_DAYS } from "./membrowser-heat.js";
 import { markdown } from "./markdown.js";
 import en from "../i18n/membrowser-en.js";
 import de from "../i18n/membrowser-de.js";
@@ -139,51 +140,6 @@ const pressBox = () => {
   return p ? { left: p.x - 1, top: p.y - 1, right: p.x + 1, bottom: p.y + 1 } : null;
 };
 
-// ── data helpers ───────────────────────────────────────────────────────────
-let extraFor = null,
-  extra = new Map();
-/** Graph-node fields vault() does not keep (reach.last_at, tags, scope). */
-function extras() {
-  const g = data.graph;
-  if (g && g !== extraFor) {
-    extra = new Map();
-    for (const n of g.nodes)
-      if (n && typeof n.id === "string")
-        extra.set(n.id, {
-          lastAt: Date.parse(typeof n.reach?.last_at === "string" ? n.reach.last_at : ""),
-          tags: Array.isArray(n.tags) ? n.tags.filter((x) => typeof x === "string") : [],
-          scope: typeof n.scope === "string" ? n.scope : "",
-          days: days30(n.recall_days),
-        });
-    extraFor = g;
-  }
-  return extra;
-}
-
-/** `recall_days` ([daysAgo, loads] pairs from the daemon) → 30 bins, oldest first, today last. */
-function days30(list) {
-  const out = new Array(30).fill(0);
-  if (Array.isArray(list))
-    for (const x of list)
-      if (Array.isArray(x) && Number.isInteger(x[0]) && x[0] >= 0 && x[0] < 30 && Number.isFinite(x[1]))
-        out[29 - x[0]] += Math.max(0, x[1]);
-  return out;
-}
-/** Heat bars (prototype heatRow): scale 4 loads per bar, more fill the bar. */
-function heat(el, days, hot) {
-  const mx = Math.max(4, ...days);
-  el.append(
-    ...days.map((v) =>
-      h("span.mb-heat__b", {
-        cls: v ? "is-v" : "",
-        vars: { "--h": v ? `${Math.max(15, (v / mx) * 100).toFixed(0)}%` : "1px", "--c": hot },
-      })
-    )
-  );
-  return el;
-}
-const NO_DAYS = new Array(30).fill(0);
-
 // Node details for the reader: a new generation on every graph change and reopen (#1449).
 const details = detailCache();
 
@@ -198,13 +154,7 @@ async function loadCare() {
   }
 }
 
-const todayStart = () => {
-  const n = new Date();
-  return Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate());
-};
-const daysAgo = (ms) => (Number.isFinite(ms) ? Math.floor((todayStart() - ms) / DAY) : Infinity);
 const byRecent = (a, b) => (Number.isFinite(b.at) ? b.at : -Infinity) - (Number.isFinite(a.at) ? a.at : -Infinity);
-const str = (v) => (typeof v === "string" ? v : "");
 
 // The reader's mini Markdown lives in views/markdown.js; the task reports and the agent window
 // still take it from here.
@@ -269,8 +219,6 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     semT = 0,
     semSeq = 0,
     order = [],
-    readerFor = undefined, // readerKey of the drawn reader (membrowser-detail.js)
-    keepTop = null, // { id, top }: reader scroll to restore once a refreshed reader is filled
     seenGraph = data.graph,
     view = null,
     growing = false,
@@ -640,253 +588,6 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     select(id);
   }
 
-  // ── reader ──
-  function renderReader(force) {
-    const v = vault(),
-      m = M.sel && v ? v.byId.get(M.sel) : null;
-    const narrow = root.clientWidth > 0 && root.clientWidth < 760;
-    root.classList.toggle("is-narrow", narrow);
-    root.classList.toggle("is-reading", !!m && M.reader);
-    const key = readerKey(m, v, narrow, details.gen);
-    const plan = force ? "rebuild" : readerPlan(readerFor, key, readerBusy());
-    if (plan === "keep") {
-      updatePos();
-      return;
-    }
-    if (plan === "refresh") return refreshReader(key);
-    readerFor = key;
-    clear(reader);
-    reader.scrollTop = 0;
-    if (!m) {
-      const nosel = h("div.mb__nosel", null, t("mb.pick"), h("br"), t("mb.pickKeys"));
-      reader.append(...[archiveNotice(M.sel, editDeps), nosel].filter(Boolean));
-      return;
-    }
-    const c = TC[m.cls] || INK,
-      ex = extras().get(m.id) || { lastAt: NaN, tags: [], scope: "", days: NO_DAYS };
-    const text = h("div.mb-rd__text.is-wait", { text: t("mb.loading") });
-    const facts = h("div.mb-rd__facts");
-    const pos = h("span.mb-rd__pos");
-    // last load: the newest day of the 30-day series, else the usage clock
-    const lastBin = ex.days.findLastIndex((x) => x > 0);
-    const last = lastBin >= 0 ? 29 - lastBin : Number.isFinite(ex.lastAt) ? daysAgo(ex.lastAt) : null;
-    const box = h(
-      "div.mb-rd__box",
-      null,
-      h("div.mb-rd__boxk", { text: t("mb.summary") }),
-      h("div.mb-rd__boxv", { text: m.summary })
-    );
-    const reflex = h("span.mb-rd__flag", { text: "REFLEX", hidden: true });
-    const title = h("h2.mb-rd__h", { text: m.title });
-    const ed = readerEdit(m, { anchor: title, box, text, ...editDeps });
-    const stats = [
-      [numberFmt.format(m.recalled), "recalled", INK],
-      [numberFmt.format(m.acted), "acted", ACC],
-      [m.recalled ? `${Math.round((m.acted / m.recalled) * 100)}%` : "—", "rate", m.recalled ? ACC : MUT],
-      [last === null ? t("mb.never") : last <= 0 ? t("mb.today") : t("mb.dAgo", { n: last }), "last", INK],
-    ];
-    const links = m.links.map((l) => ({ l, o: v.byId.get(l.id) })).filter((x) => x.o);
-    const el = h(
-      "div.mb-rd",
-      null,
-      archiveNotice(M.sel, editDeps),
-      narrow
-        ? h("button.mb-rd__back", {
-            text: t("mb.back"),
-            on: {
-              click: () => {
-                M.reader = false;
-                renderReader(true);
-                scheduleReveal();
-              },
-            },
-          })
-        : null,
-      h(
-        "div.mb-rd__top",
-        null,
-        h("span.mb-rd__chip", { text: t(`vv.cls.${m.cls}`), vars: { "--tc": c } }),
-        h(
-          "button.mb-rd__area",
-          {
-            on: {
-              click: () => {
-                Object.assign(M, { scope: m.area, menu: false, limit: PAGE });
-                render();
-              },
-            },
-          },
-          h("span.mb-rd__adot", { vars: { "--ac": areaCol(m.area) } }),
-          m.area
-        ),
-        m.type ? h("span", { text: m.type }) : null,
-        ed.badge,
-        reflex,
-        pos
-      ),
-      title,
-      m.summary ? box : null,
-      text,
-      h(
-        "div.mb-rd__stats",
-        null,
-        stats.map(([val, k, col]) =>
-          h(
-            "div.mb-rd__stat",
-            null,
-            h("span.mb-rd__sv", { text: val, vars: { "--c": col } }),
-            h("span.mb-rd__sk", { text: t(`mb.st.${k}`) })
-          )
-        )
-      ),
-      h("div.mb-rd__hk", null, h("span", { text: t("mb.recalls30") }), h("span", { text: t("mb.todayK") })),
-      heat(h("div.mb-heat.mb-rd__heat"), ex.days, ACC),
-      links.length
-        ? [
-            h("div.mb-rd__k", { text: t("mb.linked", { n: links.length }) }),
-            h(
-              "div.mb-rd__links",
-              null,
-              links.map(({ l, o }) =>
-                h(
-                  "button.mb-rd__link",
-                  { on: { click: () => follow(o.id) } },
-                  h("span.mb-rd__rel", {
-                    text: `${t(`mb.rel.${l.rel}`)} →`,
-                    vars: { "--rc": l.rel === "linked" ? ACC : MUT },
-                  }),
-                  h("span.mb-rd__lt", { text: o.title }),
-                  h("span.mb-rd__la", null, h("span.mb-rd__ladot", { vars: { "--ac": areaCol(o.area) } }), o.area)
-                )
-              )
-            ),
-          ]
-        : null,
-      facts,
-      h(
-        "div.mb-rd__acts",
-        null,
-        h("button.mb-btn.is-primary", { text: t("mb.ask"), on: { click: () => ask(t("mb.askQ", { m: m.title })) } }),
-        showMemory
-          ? h("button.mb-btn", {
-              text: t(state.view === "ring" ? "mb.inRing" : "mb.inView"),
-              on: {
-                click: () => {
-                  const id = m.id;
-                  hide(() => showMemory(id));
-                },
-              },
-            })
-          : null,
-        ed.acts
-      ),
-      careBlock(m, careDeps())
-    );
-    reader.append(el);
-    const fill = (d) => {
-      const list = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
-      const mode = d ? (d.recall_mode === "reflex" ? t("mb.mode.reflex") : t("mb.mode.auto")) : "";
-      clear(facts).append(
-        ...[
-          ["file", str(d?.file)],
-          ["created", Number.isFinite(m.created) ? dateStr(m.created) : str(d?.created)],
-          ["updated", Number.isFinite(m.at) ? dateStr(m.at) : str(d?.updated)],
-          ["mode", mode],
-          ["id", m.id],
-          ["type", m.type],
-          ["scope", str(d?.scope) || ex.scope],
-          ["topic", list(d?.topic_path).join(" / ")],
-          ["tags", (d ? list(d.tags) : ex.tags).join(" · ")],
-          ["source", str(d?.source)],
-        ]
-          .filter(([, val]) => val)
-          .flatMap(([k, val]) => [h("span.mb-rd__fk", { text: t(`mb.f.${k}`) }), h("span.mb-rd__fv", { text: val })])
-      );
-    };
-    fill(null);
-    updatePos(pos);
-    details.load(m.id).then((d) => {
-      if (dead || readerFor !== key) return;
-      fill(d);
-      // RECALL WHEN (prototype box): the memory's own triggers
-      const when = Array.isArray(d?.recall_when) ? d.recall_when.filter((x) => typeof x === "string" && x.trim()) : [];
-      if (when.length) {
-        clear(box).append(
-          h("div.mb-rd__boxk", { text: t("mb.recallWhen") }),
-          h("div.mb-rd__boxv", { text: when.join(" · ") })
-        );
-        if (!box.isConnected) el.insertBefore(box, text);
-      }
-      reflex.hidden = d?.recall_mode !== "reflex";
-      const body = str(d?.body).trim();
-      text.classList.remove("is-wait");
-      if (body) clear(text).append(...markdown(body, follow));
-      else if (d && box.firstChild?.textContent === t("mb.recallWhen") && m.summary) text.textContent = m.summary;
-      else if (d) text.remove();
-      else {
-        text.classList.add("is-wait");
-        text.textContent = t("mb.noBody");
-      }
-      ed.attach(d);
-      restoreScroll(m.id);
-    });
-  }
-  /** After a refresh: back to where the reader stood (#1449). */
-  function restoreScroll(id) {
-    if (keepTop?.id !== id) return;
-    reader.scrollTop = keepTop.top;
-    keepTop = null;
-  }
-  /** An open editor or a field the user types in: a refresh waits for it. */
-  function readerBusy() {
-    const f = document.activeElement;
-    return editing(M.sel) || (reader.contains(f) && /^(TEXTAREA|INPUT|SELECT)$/.test(f.tagName));
-  }
-  /** Same memory, newer data (#1449): fetch first, then redraw at the same
-   *  scroll position — no flash of "loading", the selection stays. */
-  function refreshReader(key) {
-    readerFor = key;
-    details.load(key.id).then(() => {
-      if (dead || readerFor !== key) return;
-      // a refresh that overtook another keeps the position from before both
-      if (keepTop?.id !== key.id) keepTop = { id: key.id, top: reader.scrollTop };
-      renderReader(true);
-    });
-  }
-  function updatePos(el = reader.querySelector(".mb-rd__pos")) {
-    if (!el) return;
-    const i = order.indexOf(M.sel);
-    el.textContent = i >= 0 ? `${i + 1} / ${order.length}` : "";
-  }
-
-  // Editing in the reader (membrowser-edit.js): after a write the graph and
-  // this reader reload; an archived memory hands the selection to its neighbour.
-  function afterWrite() {
-    details.invalidate();
-    // the new graph redraws list, counts and reader (onData); without one, the reader alone
-    loadGraph().finally(() => {
-      if (!dead) renderReader();
-    });
-  }
-  const editDeps = {
-    refresh: afterWrite,
-    rerender: () => renderReader(),
-    reload: (id) => {
-      details.invalidate();
-      return details.load(id);
-    },
-    archived: (id) => {
-      M.sel = nextSelection(order, id);
-      M.reader = !!M.sel;
-      afterWrite();
-      return M.sel;
-    },
-    restored: (id) => {
-      Object.assign(M, { sel: id, reader: true, focus: true });
-      afterWrite();
-    },
-  };
-
   // Vault care block (membrowser-care.js): the loaded flags, how a new one is
   // kept, and the redraw after a save.
   const careDeps = () => ({
@@ -895,6 +596,25 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     rerender: () => {
       if (!dead) renderReader(true);
     },
+  });
+
+  // ── reader (membrowser-reader.js) ──
+  const renderReader = memoryReader(root, reader, {
+    M,
+    details,
+    alive: () => !dead,
+    order: () => order,
+    showArea: (area) => {
+      Object.assign(M, { scope: area, menu: false, limit: PAGE });
+      render();
+    },
+    follow,
+    hide,
+    scheduleReveal,
+    showMemory,
+    care: careDeps,
+    ask,
+    look: { TC, INK, ACC, MUT, dateStr },
   });
 
   // ── search: local filter at once, semantic recall (≥ 3 chars) after a pause ──
