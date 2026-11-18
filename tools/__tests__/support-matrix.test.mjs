@@ -28,6 +28,30 @@ import {
 
 const README = readRepoFile("README.md");
 
+function ciNodeVersions(source) {
+  const matrix = source.match(/^\s+node: \[([^\]\n]+)\]$/m);
+  assert.ok(matrix, "the CI Node matrix could not be read");
+  return matrix[1].split(",").map((entry) => {
+    const version = entry.trim().match(/^(["']?)(\d+(?:\.\d+\.\d+)?)\1$/);
+    assert.ok(version, `invalid CI Node version: ${entry.trim()}`);
+    return version[2];
+  });
+}
+
+function assertPublishNodeTested(ciSource, publishSource) {
+  const setupSteps = [...publishSource.matchAll(/^\s+(?:- )?uses: actions\/setup-node@/gm)];
+  const inputs = [...publishSource.matchAll(/^\s+node-version:\s*(.+)$/gm)];
+  assert.ok(setupSteps.length > 0, "publish has no setup-node steps");
+  assert.equal(inputs.length, setupSteps.length, "every publish setup-node step must pin Node");
+  const versions = inputs.map((input) => {
+    const version = input[1].trim().match(/^(["']?)(\d+\.\d+\.\d+)\1(?:\s+#.*)?$/);
+    assert.ok(version, `publish must pin an exact Node version: ${input[1]}`);
+    return version[2];
+  });
+  assert.equal(new Set(versions).size, 1, "publish Node versions differ between jobs");
+  assert.ok(ciNodeVersions(ciSource).includes(versions[0]), `CI does not test publish Node ${versions[0]}`);
+}
+
 test("the CLI's surface list is the four installable clients", () => {
   assert.deepEqual(installableSurfaces().sort(), ["claude-code", "claude-desktop", "codex", "cursor"]);
 });
@@ -132,9 +156,7 @@ test("INV-NODE-01: every statement of the Node.js floor names MIN_NODE_VERSION, 
   assert.match(readRepoFile("docs/INSTALL.md"), new RegExp(`Supported Node versions are ${shown}–`));
   assert.match(readRepoFile("packages/bastra-recall/README.md"), new RegExp(`Node ${shown} or newer`));
 
-  const ci = readRepoFile(".github/workflows/ci.yml").match(/^\s+node: \[(.+)\]$/m);
-  assert.ok(ci, "the CI Node matrix could not be read");
-  const tested = ci[1].split(",").map((v) => Number(v.trim().replace(/'/g, "")));
+  const tested = ciNodeVersions(readRepoFile(".github/workflows/ci.yml")).map((v) => Number(v.split(".")[0]));
   assert.ok(!tested.includes(22), "CI still tests Node 22");
   assert.ok(Math.min(...tested) >= Number(major), "CI tests a Node major below the floor");
   for (const workflow of ["publish-npm.yml", "formula-drift.yml"]) {
@@ -142,6 +164,34 @@ test("INV-NODE-01: every statement of the Node.js floor names MIN_NODE_VERSION, 
       assert.ok(Number(m[1]) >= Number(major), `${workflow} runs Node ${m[1]}, below the floor`);
     }
   }
+});
+
+test("CI tests the exact Node version pinned by every publish job (#1590)", () => {
+  assertPublishNodeTested(readRepoFile(".github/workflows/ci.yml"), readRepoFile(".github/workflows/publish-npm.yml"));
+});
+
+test("the Node matrix accepts major or exact versions and rejects malformed entries", () => {
+  assert.deepEqual(ciNodeVersions("  node: ['24.20.0', '26']"), ["24.20.0", "26"]);
+  for (const invalid of ["24garbage", "24.20", "24.20.0garbage", "", "NaN"]) {
+    assert.throws(() => ciNodeVersions(`  node: ['${invalid}', '26']`), /invalid CI Node version/);
+  }
+});
+
+test("the publish Node drift guard rejects an untested pin, job drift, or a missing pin", () => {
+  const ci = "  node: ['24.20.0', '26']";
+  const setup = '  - uses: actions/setup-node@fixture\n    with:\n      node-version: "24.20.0"\n';
+  const publish = setup.repeat(2);
+  assertPublishNodeTested(ci, publish);
+  assert.throws(() => assertPublishNodeTested(ci.replace("24.20.0", "24"), publish), /CI does not test publish Node/);
+  assert.throws(
+    () => assertPublishNodeTested(ci, publish.replace('node-version: "24.20.0"', 'node-version: "24.21.0"')),
+    /publish Node versions differ/
+  );
+  assert.throws(
+    () => assertPublishNodeTested(ci, publish.replace('      node-version: "24.20.0"\n', "")),
+    /every publish setup-node step must pin Node/
+  );
+  assert.throws(() => assertPublishNodeTested(ci, publish.replaceAll("24.20.0", "24")), /publish must pin an exact/);
 });
 
 test("the platform matrix matches configured hook-client targets and their validation boundaries", () => {
