@@ -30,3 +30,7 @@ packages/eval/registrations/
 tools/probes/**/result*.json
 packages/eval/code-roi/scenarios.json
 tools/draft-judge-eval/cases.json
+
+# Local eval working artifacts, never tracked sources or regression tests.
+packages/eval/scratch/
+packages/eval/.scratch/
