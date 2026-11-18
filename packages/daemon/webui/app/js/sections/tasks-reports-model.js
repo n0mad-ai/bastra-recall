@@ -34,6 +34,37 @@ export function reportRows(answer) {
   return list.map(row).filter(Boolean).sort(byUnread);
 }
 
+/** The deletes that can still be undone (task_report_list `deleted`, owner's UI only) as list rows
+ *  with `until`, the end of their undo; a Recall without them or a broken entry gives none. */
+export function deletedRows(answer) {
+  const list = Array.isArray(answer?.deleted) ? answer.deleted : [];
+  return list
+    .map((x) => {
+      const r = row(x);
+      return r && num(x?.restorable_until) ? { ...r, until: x.restorable_until } : null;
+    })
+    .filter(Boolean);
+}
+
+/** The undo time left, split for the countdown in the list. */
+export function leftParts(ms) {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return { d: Math.floor(s / 86400), h: Math.floor(s / 3600) % 24, m: Math.floor(s / 60) % 60, s: s % 60 };
+}
+
+/** "In progress" instead of "New": the owner left open notes on it (Daniel 18.11.2026). */
+export const inWork = (r) => r.notesOpen > 0;
+
+/** The projects in the list, by name, each with its number of reports (the project filter). */
+export function projectsOf(rows) {
+  const n = new Map();
+  for (const r of rows) if (r.project) n.set(r.project, (n.get(r.project) ?? 0) + 1);
+  return [...n].sort(([a], [b]) => a.localeCompare(b)).map(([name, count]) => ({ name, count }));
+}
+
+/** The rows of one project; null keeps all. */
+export const inProject = (rows, project) => (project === null ? rows : rows.filter((r) => r.project === project));
+
 export const unreadCount = (rows) => rows.filter((r) => r.readAt === null).length;
 
 /** Reports with notes the owner has not handed over yet (rail tooltip). */
@@ -150,6 +181,24 @@ function note(x) {
 /** task_report_read answer → its notes in the order they were left. */
 export function noteRows(answer) {
   return (Array.isArray(answer?.notes) ? answer.notes : []).map(note).filter(Boolean);
+}
+
+// ── Questions with answer options (Daniel 18.11.2026): an agent ends a list item or a paragraph with
+// "[? Option A | Option B]", e.g. "- Ship it now? [? Yes | No]". The marker is fixed syntax, never
+// recognised by words, so it works in every language and still reads as plain text without the UI.
+// 2 to 6 distinct options of at most 80 characters, separated by "|"; anything else stays text.
+const ASK = /\[\?([^[\]]*)\]\s*$/;
+const ASK_MAX = 6;
+const OPTION_MAX = 80;
+
+/** Block text → { question, options, at } (at: where the marker starts), or null. */
+export function askOf(text) {
+  const m = ASK.exec(String(text ?? ""));
+  if (!m) return null;
+  const options = m[1].split("|").map((o) => o.trim());
+  const question = text.slice(0, m.index).trim();
+  const fits = options.length >= 2 && options.length <= ASK_MAX && options.every((o) => o && o.length <= OPTION_MAX);
+  return fits && question && new Set(options).size === options.length ? { question, options, at: m.index } : null;
 }
 
 /** The notes left on one block: kind and number name the place, and the stored excerpt must still be

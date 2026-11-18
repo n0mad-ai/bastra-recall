@@ -279,6 +279,9 @@ export default {
   "st.k.tasks.chatActiveMinutes": "Chat gilt als aktiv",
   "st.k.tasks.chatActiveMinutes.d":
     "Wie lange nach deiner letzten Nachricht ein Chat noch als „aktiv“ gilt. Nur dann liefert Recall fällige Aufgaben direkt in den Chat. Kürzer = seltener Unterbrechungen, länger = Aufgaben erreichen dich auch nach Pausen. Standard: 30 Minuten.",
+  "st.k.tasks.reportUndo": "Rückgängig für gelöschte Berichte",
+  "st.k.tasks.reportUndo.d":
+    "Wie lange ein gelöschter Aufgabenbericht in der Berichtsliste bleibt und sich wiederherstellen lässt. Wähle Minuten, Stunden oder Tage oder schalte Rückgängig ab: Dann ist ein gelöschter Bericht sofort weg. Eigene Werte: eine ganze Zahl mit m, h oder d, z. B. 45m, 6h oder 3d (1 Minute bis 30 Tage). Standard: 10 Minuten.",
   "st.k.tasks.chatConsent": "Zustellung in den Claude-Chat",
   "st.k.tasks.chatConsent.d":
     "Deine Antwort darauf, ob Aufgaben in den Claude-Chat zugestellt werden dürfen (angenommen, abgelehnt oder blockiert). Kommt aus der Einrichtung, nur zur Ansicht.",
@@ -366,6 +369,12 @@ export default {
   "st.o.ollama.keepAlive.30m": "30 Minuten",
   "st.o.ollama.keepAlive.1h": "1 Stunde",
   "st.o.ollama.keepAlive.24h": "24 Stunden",
+  "st.o.tasks.reportUndo.off": "Aus (sofort gelöscht)",
+  "st.o.tasks.reportUndo.10m": "10 Minuten",
+  "st.o.tasks.reportUndo.1h": "1 Stunde",
+  "st.o.tasks.reportUndo.1d": "1 Tag",
+  "st.o.tasks.reportUndo.7d": "7 Tage",
+  "st.o.tasks.reportUndo.30d": "30 Tage",
   "st.o.archive.retain.r0": "Kurz: 1 · 1 · 1 Tage",
   "st.o.archive.retain.r1": "1 · 2 · 2 Tage",
   "st.o.archive.retain.r2": "3 · 7 · 7 Tage",

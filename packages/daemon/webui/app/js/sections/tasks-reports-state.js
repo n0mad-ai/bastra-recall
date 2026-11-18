@@ -13,6 +13,7 @@ import { api } from "./tasks-api.js";
 // q: the search over the list; the shown report stays open even when the search hides its row
 // hits: { q, ids } the daemon's text search found for q · undo: { id, title, next } the last delete, undoable
 // while `next` (the report shown after it, null for none) is on screen
+// project: the project filter in the head (null = all projects) · menu: its pick list is open
 export const R = {
   open: false,
   sel: null,
@@ -25,6 +26,8 @@ export const R = {
   q: "",
   hits: null,
   undo: null,
+  project: null,
+  menu: false,
 };
 
 /** A change the report store can refuse when it is full (#1609): then the message says so and how to

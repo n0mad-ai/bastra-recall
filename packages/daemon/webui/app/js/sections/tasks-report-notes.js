@@ -14,11 +14,15 @@
 // A note whose block is no longer found (another renderer: kind, number or
 // excerpt differ, #1608) is listed at the end as a card of its own, never lost. Report and note texts are external data:
 // text nodes only.
+// A list item or paragraph that ends with answer options "[? Yes | No]" (askOf, Daniel 18.11.2026)
+// shows them as buttons instead of the "note" button, plus "own answer" (the note field) and "needs
+// clarification". A click saves the choice as an ordinary note on that place; once answered, the
+// place is a card like any other and the options step back.
 import { h } from "../dom.js";
 import { t } from "../i18n.js";
 import { noteEditor } from "../views/care-note.js";
 import { fmtAt } from "./tasks-api.js";
-import { excerptOf, notesAt } from "./tasks-reports-model.js";
+import { excerptOf, notesAt, askOf } from "./tasks-reports-model.js";
 
 /** The annotatable blocks of the rendered report in reading order (as markdown() and the
  *  table renderer build them): headings, paragraphs, list items, table body rows. */
@@ -117,6 +121,35 @@ function addButton(b, ui, anchor) {
   b.el.append(b.kind === "row" ? h("td.tk-an__cell", null, btn) : btn);
 }
 
+/** A question with answer options on a list item or paragraph: the marker leaves the shown text (it
+ *  has to stand in the last text node; formatting inside it leaves the line as plain text) and the
+ *  options are returned. The anchor's excerpt keeps the marker, so an agent sees the options too. */
+function takeAsk(b) {
+  if (b.kind !== "item" && b.kind !== "paragraph") return null;
+  const ask = askOf(b.el.textContent),
+    last = [...b.el.childNodes].at(-1);
+  if (!ask || last?.nodeType !== 3) return null;
+  const marker = b.el.textContent.slice(ask.at);
+  if (!last.textContent.endsWith(marker)) return null;
+  last.textContent = last.textContent.slice(0, -marker.length).trimEnd();
+  return ask;
+}
+
+/** The answer buttons: one per option, then "own answer" and "needs clarification". */
+function askButtons(ask, ui, anchor) {
+  const btn = (cls, text, title, click) =>
+    h(`button.tk-ask__opt${cls}`, { type: "button", text, title, on: { click } });
+  return h(
+    "div.tk-ask",
+    { role: "group", "aria-label": t("tk.rep.ask.label") },
+    ask.options.map((o) => btn("", o, t("tk.rep.ask.pickTip"), () => ui.answer(anchor, o))),
+    btn(".is-free", t("tk.rep.ask.free"), t("tk.rep.ask.freeTip"), () => ui.open(anchor)),
+    btn(".is-clarify", t("tk.rep.ask.clarify"), t("tk.rep.ask.clarifyTip"), () =>
+      ui.answer(anchor, t("tk.rep.ask.clarifyNote"))
+    )
+  );
+}
+
 /** A place with notes (or an open field) becomes a card: its text on top as the subject, the
  *  notes below. A list item is the card itself; a heading or paragraph is wrapped into one; a
  *  table row is marked and its notes follow in a full-width row, so the table stays intact.
@@ -156,9 +189,10 @@ function lostNotes(lost, ui, out) {
   );
 }
 
-/** Adds the note button or the note card to every block of the rendered report.
+/** Adds the note button, the answer buttons or the note card to every block of the rendered report.
  *  ui: { notes, editing: null | { anchor, noteId, draft }, open(anchor), edit(note), remove(note),
- *  save(text), cancel() }. Returns { nodes, focus } — focus() puts the cursor into an open note field. */
+ *  save(text), answer(anchor, text), cancel() }. Returns { nodes, focus } — focus() puts the cursor
+ *  into an open note field. */
 export function annotateReport(nodes, ui) {
   const out = { nodes: [...nodes], focus: null };
   const placed = new Set();
@@ -168,9 +202,11 @@ export function annotateReport(nodes, ui) {
     for (const n of list) placed.add(n.id);
     b.el.classList.add("tk-an");
     if (list.some((n) => !n.done)) b.el.classList.add("has-open");
+    const ask = takeAsk(b);
     const box = notesBox(list, ui, anchor, out);
     const adding = sameAnchor(ui.editing, b.kind, b.index) && ui.editing.noteId === null;
     if (box) markPlace(b, box, out, list.length > 0 && !adding && list.every((n) => n.done));
+    else if (ask) b.el.append(askButtons(ask, ui, anchor));
     else addButton(b, ui, anchor);
   }
   // header rows get the empty cell the body rows got for their button

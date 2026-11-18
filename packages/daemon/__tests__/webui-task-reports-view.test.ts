@@ -38,6 +38,8 @@ async function view(notes: unknown[] = []) {
   const said: Array<[string, unknown]> = [];
   const events: string[] = [];
   const dataListeners: Array<() => void> = [];
+  const docListeners: Record<string, (e: unknown) => void> = {};
+  const ticks: { fn: (() => unknown) | null } = { fn: null };
   const source = (
     await Promise.all(
       [
@@ -45,6 +47,7 @@ async function view(notes: unknown[] = []) {
         "sections/tasks-reports-state.js",
         "sections/tasks-reports-search.js",
         "sections/tasks-reports-undo.js",
+        "sections/tasks-reports-head.js",
         "sections/tasks-reports.js",
       ].map(read)
     )
@@ -57,7 +60,7 @@ async function view(notes: unknown[] = []) {
     t: (key: string, vars?: Record<string, unknown>) => (vars ? `${key} ${JSON.stringify(vars)}` : key),
     state: { lensOpen: false },
     setState() {},
-    data: { reports: [] },
+    data: { reports: [], deletedReports: [] },
     onData: (fn: () => void) => dataListeners.push(fn),
     loadReports: async () => {},
     markdown: (text: string) => [h("p", null, text)],
@@ -92,7 +95,11 @@ async function view(notes: unknown[] = []) {
     fmtAt: (at: number) => `@${at}`,
     annotateReport: (nodes: Node_[]) => ({ nodes, focus: null }),
     ICON: { reports: "M0 0" },
-    document: { activeElement: null, dispatchEvent: (e: { type: string }) => events.push(e.type) },
+    document: {
+      activeElement: null,
+      dispatchEvent: (e: { type: string }) => events.push(e.type),
+      addEventListener: (type: string, fn: (e: unknown) => void) => (docListeners[type] = fn),
+    },
     CustomEvent: class {
       constructor(public type: string) {}
     },
@@ -103,12 +110,18 @@ async function view(notes: unknown[] = []) {
       return timerId;
     },
     clearTimeout: (id: number) => timers.delete(id),
+    // the countdown's one-second tick runs when the test says so
+    setInterval: (fn: () => unknown) => {
+      ticks.fn = fn;
+      return 1;
+    },
+    clearInterval: () => (ticks.fn = null),
   };
   const hand = { fail: false };
   const knobs: { capacity: boolean; restore: string | null } = { capacity: false, restore: null };
   const v = runInNewContext(
     source +
-      "\n({ R, notesUi, reportRows, openReport, openReports, closeReports, reportsRenderer, escapeReports, reportsOpen, matchReports, reportsArea, tasksLit, showCalendar })",
+      "\n({ R, notesUi, reportRows, deletedRows, openReport, openReports, closeReports, reportsRenderer, escapeReports, reportsOpen, matchReports, reportsArea, tasksLit, showCalendar })",
     context
   );
   (context.data as { reports: unknown }).reports = v.reportRows({ reports: REPORTS });
@@ -130,7 +143,28 @@ async function view(notes: unknown[] = []) {
     (context.data as { reports: unknown }).reports = v.reportRows({ reports });
     for (const notify of dataListeners) notify();
   };
-  return { v, host, draw, calls, said, events, hand, knobs, flush, context, updateReports, runNextTimer };
+  /** The daemon's list after a change: present reports and the deletes still undoable. */
+  const updateAll = (reports: unknown[], deleted: unknown[]) => {
+    (context.data as { deletedReports: unknown }).deletedReports = v.deletedRows({ deleted });
+    updateReports(reports);
+  };
+  return {
+    v,
+    host,
+    draw,
+    calls,
+    said,
+    events,
+    hand,
+    knobs,
+    flush,
+    context,
+    updateReports,
+    updateAll,
+    runNextTimer,
+    ticks,
+    docListeners,
+  };
 }
 
 const byClass = (root: Node_, cls: string) => root.find(cls);
@@ -212,14 +246,14 @@ test("search: title and project, any case, any Unicode form; the open report sta
   const { v, host } = await view();
   await v.openReport(ID(2));
   assert.equal(listRows(host).length, 3);
-  assert.equal(one(host, "tk-rv__find").textContent, "", "no count while nothing is searched");
+  assert.equal(one(host, "mb__search").textContent, "", "no count while nothing is searched");
 
   type(host, "ÜBERBLICK");
   assert.deepEqual(
     listRows(host).map((r) => r.children[1].textContent),
     ["Überblick: Förderung"]
   );
-  assert.match(one(host, "tk-rv__find").textContent, /tk\.rep\.find\.count \{"n":1,"m":3\}/);
+  assert.match(one(host, "mb__search").textContent, /tk\.rep\.find\.count \{"n":1,"m":3\}/);
   assert.equal(one(host, "tk-rep__title").textContent, "Release-Prüfung", "the shown report stays open");
 
   type(host, "förderung"); // "ö" written as o + combining diaeresis
@@ -568,4 +602,153 @@ test("#1597: polling changed reports searches the active query again and preserv
   assert.equal(v.R.sel, ID(1));
   assert.equal(v.R.q, "preise");
   assert.equal(calls.filter(([name]) => name === "report_read").length, 1);
+});
+
+const TEN_MIN = 10 * 60 * 1000;
+
+test("N1: moving on to another report keeps the undo; the deleted report stays in the list with its time left", async () => {
+  const { v, host, calls, said, context, updateAll, ticks } = await view();
+  const until = Date.now() + TEN_MIN;
+  context.loadReports = async () => updateAll(REPORTS.slice(1), [{ ...REPORTS[0], restorable_until: until }]);
+  await v.openReport(ID(1));
+  await one(one(host, "tk-rep__acts"), "is-quiet").click();
+  await v.openReport(ID(3)); // moved on: before, the undo was gone here
+
+  const deleted = listRows(host).filter((r) => r.classList.contains("is-deleted"));
+  assert.equal(deleted.length, 1, "the deleted report is still listed");
+  const row = deleted[0];
+  assert.equal(row.tagName, "DIV", "not a button: it holds one");
+  assert.equal(one(row, "mb-row__t").textContent, "Überblick: Förderung");
+  assert.equal(listRows(host).indexOf(row), 0, "at the place it had in the list");
+  assert.match(one(row, "tk-rv__left").textContent, /^tk\.rep\.del\.left \{"time":"(9:59|10:00)"\}$/);
+  assert.equal(typeof ticks.fn, "function", "a countdown ticks while a deleted report is shown");
+
+  await one(row, "tk-rv__restore").click();
+  assert.ok(calls.some(([name, input]) => name === "report_restore" && (input as any).id === ID(1)));
+  assert.deepEqual(said.at(-1), ["tk.rep.restored", undefined]);
+  assert.equal(v.R.sel, ID(1), "the restored report is shown again");
+});
+
+test("N1: the countdown runs down in place, and an expired delete leaves the list", async () => {
+  const { v, host, context, updateAll, ticks } = await view();
+  let now = Date.now();
+  context.Date = { now: () => now }; // the view reads the clock through Date.now only
+  updateAll(REPORTS.slice(1), [{ ...REPORTS[0], restorable_until: now + 2 * 3_600_000 + 5 * 60_000 }]);
+  await v.openReport(ID(2));
+  const left = () => one(host, "tk-rv__left");
+  assert.equal(left().textContent, 'tk.rep.del.left {"time":"tk.rep.del.hm {\\"h\\":2,\\"m\\":5}"}');
+  const el = left();
+  now += 2 * 3_600_000;
+  ticks.fn!();
+  assert.equal(el.textContent, 'tk.rep.del.left {"time":"5:00"}', "rewritten in place, the row is not rebuilt");
+  assert.equal(left(), el);
+  now += 5 * 60_000;
+  let reloaded = false;
+  context.loadReports = async () => {
+    reloaded = true;
+  };
+  ticks.fn!();
+  assert.ok(reloaded, "the list reloads once a countdown ran out");
+  assert.equal(listRows(host).filter((r) => r.classList.contains("is-deleted")).length, 0);
+  assert.equal(ticks.fn, null, "no countdown, no tick");
+});
+
+test("N1: a delete from an earlier visit is listed at the end; days and hours for a long window", async () => {
+  const { v, host, updateAll } = await view();
+  updateAll(REPORTS.slice(0, 2), [
+    { id: ID(5), title: "Alt", created_at: 5, restorable_until: Date.now() + 3 * 86_400_000 + 4 * 3_600_000 + 1 },
+  ]);
+  await v.openReports();
+  const rows = listRows(host);
+  assert.equal(rows.length, 3);
+  assert.ok(rows[2].classList.contains("is-deleted"));
+  assert.match(one(rows[2], "tk-rv__left").textContent, /tk\.rep\.del\.dh \{\\"d\\":3,\\"h\\":4\}/);
+});
+
+test("search and project pick list sit in the head like the memory browser's; the list column holds only the rows", async () => {
+  const { v, host } = await view();
+  await v.openReports();
+  const head = one(host, "mb__head");
+  assert.equal(byClass(head, "mb__search").length, 1, "the search field is in the head");
+  assert.equal(byClass(head, "tk-rv__input").length, 1);
+  assert.equal(byClass(one(host, "tk-rv__side"), "mb__search").length, 0, "no search above the list");
+  const kids = head.children.map((n) => n.className.split(" ")[0]);
+  assert.deepEqual(kids, ["mb__title", "mb__slash", "mb__scope", "mb__search", "mb__hits", "mb__esc"]);
+});
+
+test("project filter: like the memory browser's pick list; it narrows the list together with the search", async () => {
+  const { v, host, docListeners } = await view();
+  await v.openReports();
+  const btn = one(host, "tk-rv__projbtn");
+  assert.equal(one(btn, "mb__scopename").textContent, "tk.rep.proj.all");
+  assert.equal(one(host, "mb__menu").hidden, true);
+  await btn.click();
+  const opts = byClass(host, "mb__opt");
+  assert.deepEqual(
+    opts.map((o) => [one(o, "mb__optname").textContent, one(o, "mb__mut").textContent]),
+    [
+      ["tk.rep.proj.all", "3"],
+      ["bastra-io", "1"],
+      ["bastra-recall", "1"],
+      ["FÖRDERUNG", "1"],
+    ],
+    "every project once, with its count"
+  );
+  assert.ok(opts[0].classList.contains("is-on"));
+  await opts[2].click();
+  assert.equal(v.R.project, "bastra-recall");
+  assert.equal(one(host, "mb__menu").hidden, true, "picking closes the list");
+  assert.equal(one(btn, "mb__scopename").textContent, "bastra-recall");
+  assert.deepEqual(
+    listRows(host).map((r) => one(r, "mb-row__t").textContent),
+    ["Release-Prüfung"]
+  );
+  type(host, "lint");
+  assert.equal(listRows(host).length, 0, "search and project filter together");
+  await one(one(host, "tk-rv__nohit"), "mb-btn").click();
+  assert.equal(v.R.project, null, "clearing resets the project as well");
+  assert.equal(listRows(host).length, 3);
+
+  await btn.click();
+  docListeners.pointerdown({ target: { closest: () => null } });
+  assert.equal(v.R.menu, false, "a click outside closes the list");
+  await btn.click();
+  assert.equal(v.escapeReports(h("button", null)), true);
+  assert.equal(v.R.menu, false, "Escape closes the list first");
+  assert.ok(v.reportsOpen(), "and keeps the view");
+});
+
+test("N6/N29: picking an answer option saves it at once as an ordinary note at that place", async () => {
+  const { v, calls, said, context } = await view();
+  const api = context.api as (name: string, input: any) => Promise<unknown>;
+  context.api = (name: string, input: any) =>
+    name === "report_note_add"
+      ? (calls.push([name, input]), Promise.resolve({ note: { ...NOTE(7), anchor: input.anchor, text: input.text } }))
+      : api(name, input);
+  await v.openReport(ID(1));
+  const anchor = { kind: "item", index: 2, excerpt: "Ship it? [? Yes | No]" };
+  await v.notesUi.answer(anchor, "Yes");
+  assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1))), ["report_note_add", { id: ID(1), anchor, text: "Yes" }]);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(v.R.notes.map((n: any) => [n.kind, n.index, n.text, n.draft]))),
+    [["item", 2, "Yes", true]],
+    "a draft like any other note, handed over with the rest"
+  );
+  assert.equal(v.R.edit, null, "no note field opened on the way");
+  assert.equal(said.length, 0, "no message: the card shows the answer");
+});
+
+test("N4: a report with open notes reads 'In progress' instead of 'New', in the notes' amber", async () => {
+  const { v, host, context } = await view();
+  (context.data as { reports: unknown }).reports = v.reportRows({
+    reports: [{ ...REPORTS[0], notes_open: 1, notes_draft: 1 }, REPORTS[1], { ...REPORTS[2], notes_open: 0 }],
+  });
+  await v.openReports();
+  const [work, fresh, read] = listRows(host);
+  assert.ok(work.classList.contains("is-work"));
+  assert.equal(one(work, "mb-row__ai").textContent, "tk.rep.inWork");
+  assert.ok(one(work, "mb-row__ai").classList.contains("tk-rv__work"));
+  assert.equal(one(fresh, "mb-row__ai").textContent, "tk.rep.new", "without notes an unread report stays 'New'");
+  assert.ok(!fresh.classList.contains("is-work"));
+  assert.equal(byClass(read, "mb-row__ai").length, 0);
 });

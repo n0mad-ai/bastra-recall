@@ -1,9 +1,10 @@
-// Task reports — the list's order and the search above it (#1597): title and project filter at once,
-// the daemon's text search joins in after a short pause, the latest search wins.
+// Task reports — the list's order, the search in the view's head (#1597) and the project filter beside
+// it: title and project filter at once, the daemon's text search joins in after a short pause, the
+// latest search wins.
 import { data } from "../data.js";
 import { emit } from "./tasks-store.js";
 import { api } from "./tasks-api.js";
-import { reportRows, matchReports } from "./tasks-reports-model.js";
+import { reportRows, matchReports, inProject } from "./tasks-reports-model.js";
 import { R } from "./tasks-reports-state.js";
 
 /** Rows in the order they had when the view opened; reports that arrived since go on top. */
@@ -13,8 +14,8 @@ export function listed() {
 }
 /** The daemon's text hits, while they belong to the current search. */
 export const hitsNow = () => (R.hits && R.hits.q === R.q.trim() ? R.hits.ids : null);
-/** The rows the search leaves in the list. */
-export const shown = () => matchReports(listed(), R.q, hitsNow());
+/** The rows the search and the project filter leave in the list. */
+export const shown = () => inProject(matchReports(listed(), R.q, hitsNow()), R.project);
 
 /** The daemon searches the report text too (#1597); a short pause after typing, the latest search wins.
  *  A Recall without the text search refuses the query: then title and project stay the search. */

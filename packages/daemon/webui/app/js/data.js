@@ -1,6 +1,6 @@
 // Daemon data for the shell. Every answer is external input: shapes are
 // checked before use and failures leave the previous value in place.
-import { reportRows } from "./sections/tasks-reports-model.js";
+import { reportRows, deletedRows } from "./sections/tasks-reports-model.js";
 const listeners = new Set();
 
 export const data = {
@@ -12,6 +12,7 @@ export const data = {
   dueTasks: [], // tasks in state "due"
   tasks: [], // open tasks (pending | due | snoozed), for the dashboard
   reports: [], // task reports (task_report_list rows, unread first): nav dot, ticker, Tasks › Reports
+  deletedReports: [], // deleted reports still undoable (rows + until), listed in Tasks › Reports
   newSince: 0, // live updates since page load (all kinds, incl. reads)
   newMemories: 0, // memories created since page load (kind "add" only)
   weather: null, // { temp, city }
@@ -167,9 +168,12 @@ export async function loadTasks() {
 export async function loadReports() {
   if (document.documentElement.dataset.tasksEnabled !== "true") return;
   try {
-    const next = reportRows(await taskApi("report_list"));
-    if (JSON.stringify(next) === JSON.stringify(data.reports)) return;
+    const answer = await taskApi("report_list"),
+      next = reportRows(answer),
+      deleted = deletedRows(answer);
+    if (JSON.stringify([next, deleted]) === JSON.stringify([data.reports, data.deletedReports])) return;
     data.reports = next;
+    data.deletedReports = deleted;
     emit();
   } catch {
     /* keep last; an older daemon has no reports */

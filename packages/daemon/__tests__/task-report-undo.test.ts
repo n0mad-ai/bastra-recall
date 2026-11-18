@@ -15,18 +15,37 @@ import { callTaskCrud, TASK_CRUD_OPERATIONS } from "../src/task-service.js";
 import { taskTools } from "../src/task-transport.js";
 import { RESTORE_WINDOW_MS, TASK_REPORT_LIMIT } from "../src/task-reports.js";
 import { readAppRecord, writeAppRecord } from "../src/app-record-store.js";
+import { mutateSettings } from "../src/settings-file.js";
+import { applySettingChanges, parseSettingValue, settingEntry } from "../src/settings-registry.js";
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "task-report-undo-"));
   let now = 1_000;
-  const ctx = { path: join(root, "tasks.json"), authPath: join(root, "auth.json"), now: () => now };
+  const ctx = {
+    path: join(root, "tasks.json"),
+    authPath: join(root, "auth.json"),
+    settingsPath: join(root, "settings.json"),
+    now: () => now,
+  };
   const agent = await mintTaskCredential(ctx.authPath, { actor_id: "claude", domains: ["personal"], role: "agent" });
   const other = await mintTaskCredential(ctx.authPath, { actor_id: "other", domains: ["other"], role: "agent" });
   const auth = `Bearer ${agent.token}`;
   const call = (op: string, input: unknown, authorization = auth) =>
     callTaskCrud({ ...ctx, ownerUi: true }, authorization, op as any, input) as Promise<any>;
   const trash = () => JSON.parse(readAppRecord("task-report-trash", join(root, "task-report-trash.json")));
-  return { ctx, root, call, trash, other: `Bearer ${other.token}`, setNow: (v: number) => (now = v) };
+  const undoSetting = (value: string) =>
+    mutateSettings(ctx.settingsPath, (current) => applySettingChanges(current, { "tasks.reportUndo": value }));
+  const agentCall = (op: string, input: unknown) => callTaskCrud(ctx, auth, op as any, input) as Promise<any>;
+  return {
+    ctx,
+    root,
+    call,
+    agentCall,
+    trash,
+    undoSetting,
+    other: `Bearer ${other.token}`,
+    setNow: (v: number) => (now = v),
+  };
 }
 const report = (extra: Record<string, unknown> = {}) => ({
   title: "Umbau der Suche abgeschlossen",
@@ -188,4 +207,56 @@ test("#1614: an expired undo entry leaves the disk on the next list or restore, 
   f.setNow(1_000 + 2 * RESTORE_WINDOW_MS);
   await assert.rejects(f.call("task_report_restore", { id: b.id }), { code: "not_found" });
   assert.deepEqual(f.trash().deleted, [], "a refused restore drops the expired entry as well");
+});
+
+test("Daniel 18.11.2026: a deleted report stays in the owner's list with its time left; agents see no trash", async () => {
+  const f = await fixture();
+  const a = await f.call("task_report_save", report({ title: "a", project: "recall" }));
+  const b = await f.call("task_report_save", report({ title: "b" }));
+  await f.call("task_report_delete", { id: a.id });
+  f.setNow(5_000);
+  await f.call("task_report_delete", { id: b.id });
+  const listed = await f.call("task_report_list", {});
+  assert.deepEqual(
+    listed.deleted.map((d: any) => [d.id, d.title, d.deleted_at, d.restorable_until]),
+    [
+      [b.id, "b", 5_000, 5_000 + RESTORE_WINDOW_MS],
+      [a.id, "a", 1_000, 1_000 + RESTORE_WINDOW_MS],
+    ],
+    "newest delete first, each with its own end"
+  );
+  assert.equal(listed.deleted[1].project, "recall");
+  assert.equal(listed.deleted[0].body, undefined, "list rows only, never the text");
+  assert.equal((await f.call("task_report_list", {}, f.other)).deleted.length, 0, "the domain rule holds");
+  assert.equal((await f.agentCall("task_report_list", {})).deleted, undefined, "an agent's list is unchanged");
+  assert.equal((await f.call("task_report_list", { query: "a" })).deleted, undefined, "a search lists no trash");
+  f.setNow(1_000 + RESTORE_WINDOW_MS);
+  assert.deepEqual(
+    (await f.call("task_report_list", {})).deleted.map((d: any) => d.id),
+    [b.id],
+    "an expired delete leaves the list"
+  );
+});
+
+test("N13: tasks.reportUndo sets the undo window in minutes, hours or days, or turns undo off", async () => {
+  assert.equal(settingEntry("tasks.reportUndo")?.default, "10m");
+  for (const ok of ["off", "1m", "90m", "2h", "30d", " 3D "])
+    assert.doesNotThrow(() => parseSettingValue("tasks.reportUndo", ok));
+  for (const bad of ["0m", "31d", "721h", "10", "1.5h", "10s", "-1m", "", 10, "on", "10 m"])
+    assert.throws(() => parseSettingValue("tasks.reportUndo", bad), `${JSON.stringify(bad)} is refused`);
+
+  const f = await fixture();
+  await f.undoSetting("2h");
+  const a = await f.call("task_report_save", report());
+  const gone = await f.call("task_report_delete", { id: a.id });
+  assert.equal(gone.restorable_until, 1_000 + 2 * 3_600_000);
+  f.setNow(1_000 + 3_600_000);
+  assert.equal((await f.call("task_report_restore", { id: a.id })).id, a.id, "an hour later it still comes back");
+
+  await f.undoSetting("off");
+  const off = await f.call("task_report_delete", { id: a.id });
+  assert.deepEqual(off, { deleted: true, id: a.id }, "off: no undo is promised");
+  assert.deepEqual(f.trash().deleted, [], "and nothing is kept");
+  await assert.rejects(f.call("task_report_restore", { id: a.id }), { code: "not_found" });
+  assert.deepEqual((await f.call("task_report_list", {})).deleted, []);
 });

@@ -2,7 +2,7 @@
  * autonomous work instead of a long chat answer. The owner reads it in the
  * Tasks area of the Recall UI, marks it read or unread there by hand (reading
  * the body never changes that state, neither for the UI nor for an agent) and
- * deletes it when done (undone within RESTORE_WINDOW_MS). While reading, the owner can leave notes on single
+ * deletes it when done (undone within the tasks.reportUndo window). While reading, the owner can leave notes on single
  * places of a report (heading, paragraph, list item, table row); they live in
  * the report's record and go with it on delete. A note is the owner's draft
  * until the owner hands the report's drafts over to the agents in one click;
@@ -22,6 +22,8 @@ import { withPathLock } from "./path-lock.js";
 import { authenticateTask, type TaskPrincipal } from "./task-auth.js";
 import { cleanText } from "./task-store.js";
 import { MAX_BODY_BYTES } from "./http-util.js";
+import { readSettings } from "./settings-file.js";
+import { parseReportUndo, REPORT_UNDO_DEFAULT } from "./task-report-undo-window.js";
 
 /** Nothing piles up silently: past this the agent is told, nothing is dropped. */
 export const TASK_REPORT_LIMIT = 200;
@@ -119,6 +121,8 @@ export interface ReportContext {
   now?: () => number;
   /** Set only by the owner's UI session route (task-ui-session.ts), never from request data. */
   ownerUi?: boolean;
+  /** Where tasks.reportUndo is read; the user's settings when absent. */
+  settingsPath?: string;
 }
 
 /** Note texts reach later sessions as the user's own instructions, so only the
@@ -177,11 +181,32 @@ function changeReports<T>(path: string, change: (reports: TaskReport[]) => T, wr
   );
 }
 
-// ── Undo for delete (#1559): a deleted report waits in a record of its own for RESTORE_WINDOW_MS,
-// then restore puts it back with text, read state and notes. Apart from the report store, so an
-// older daemon still reads that store; never listed or read. Expired entries leave the disk on the
-// next list, delete or restore (#1614). Written only under the report store's lock.
-export const RESTORE_WINDOW_MS = 10 * 60 * 1000;
+// ── Undo for delete (#1559): a deleted report waits in a record of its own for the undo window
+// (setting tasks.reportUndo, default 10 minutes; "off" keeps nothing), then restore puts it back
+// with text, read state and notes. Apart from the report store, so an older daemon still reads that
+// store; never read, and listed for the owner's UI only (its list row, no text). The window is read
+// on every call, so a changed setting applies to reports deleted before as well. Expired entries
+// leave the disk on the next list, delete or restore (#1614). Written only under the store's lock.
+/** The default window; tasks.reportUndo changes it. */
+export const RESTORE_WINDOW_MS = parseReportUndo(REPORT_UNDO_DEFAULT)!;
+/** The undo window in force now; an unreadable setting falls back to the default. */
+async function undoWindow(ctx: ReportContext): Promise<number> {
+  try {
+    const stored = (await readSettings(ctx.settingsPath)).tasks?.reportUndo;
+    return parseReportUndo(stored ?? REPORT_UNDO_DEFAULT) ?? RESTORE_WINDOW_MS;
+  } catch {
+    return RESTORE_WINDOW_MS;
+  }
+}
+/** now and the undo window in force, read once per call. */
+interface Clock {
+  now: number;
+  window: number;
+}
+const clock = async (ctx: ReportContext): Promise<Clock> => ({
+  now: (ctx.now ?? Date.now)(),
+  window: await undoWindow(ctx),
+});
 const TRASH_NAMESPACE = "task-report-trash";
 /** The latest deletes that can be undone; older ones are gone for good. */
 const TRASH_MAX = 20;
@@ -206,15 +231,15 @@ function readTrashRecord(path: string): Deleted[] {
   return parsed.data.deleted;
 }
 
-const live = (d: Deleted, now: number) => d.deleted_at + RESTORE_WINDOW_MS > now;
+const live = (d: Deleted, at: Clock) => d.deleted_at + at.window > at.now;
 
 /** The deletes still in their window. */
-const readTrash = (path: string, now: number) => readTrashRecord(path).filter((d) => live(d, now));
+const readTrash = (path: string, at: Clock) => readTrashRecord(path).filter((d) => live(d, at));
 
 /** True when the trash holds an entry past its window; an unreadable trash counts as nothing to drop. */
-function hasExpired(path: string, now: number): boolean {
+function hasExpired(path: string, at: Clock): boolean {
   try {
-    return readTrashRecord(path).some((d) => !live(d, now));
+    return readTrashRecord(path).some((d) => !live(d, at));
   } catch {
     return false;
   }
@@ -223,14 +248,14 @@ function hasExpired(path: string, now: number): boolean {
 /** #1614: an expired entry (report text, notes) leaves the disk instead of waiting for the next
  * delete. Checked without the lock, rewritten under the store's lock only when something expired.
  * Cleanup never fails the call it runs in; an unreadable trash stays untouched. */
-async function pruneTrash(ctx: ReportContext, now: number): Promise<void> {
+async function pruneTrash(ctx: ReportContext, at: Clock): Promise<void> {
   const path = trashPath(ctx);
-  if (!hasExpired(path, now)) return;
+  if (!hasExpired(path, at)) return;
   try {
     await withPathLock(
       storePath(ctx),
       async () => {
-        if (hasExpired(path, now)) writeTrash(path, readTrash(path, now));
+        if (hasExpired(path, at)) writeTrash(path, readTrash(path, at));
       },
       { crossProcess: true, requireLock: true }
     );
@@ -248,9 +273,9 @@ function writeTrash(path: string, deleted: Deleted[]) {
 
 /** Keeps a deleted report for undo. An unreadable trash stays untouched and does
  * not block deletion, but exceeding the byte limit leaves the report active. */
-function keepDeleted(path: string, report: TaskReport, now: number): boolean {
+function keepDeleted(path: string, report: TaskReport, at: Clock): boolean {
   try {
-    writeTrash(path, [...readTrash(path, now), { deleted_at: now, report }]);
+    writeTrash(path, [...readTrash(path, at), { deleted_at: at.now, report }]);
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "capacity") throw error;
@@ -333,15 +358,16 @@ function markReport(ctx: ReportContext, principal: TaskPrincipal, id: string, re
   });
 }
 
-/** restorable_until: until when task_report_restore brings the report back (absent: no undo). */
-function deleteReport(ctx: ReportContext, principal: TaskPrincipal, id: string) {
-  const now = (ctx.now ?? Date.now)();
+/** restorable_until: until when task_report_restore brings the report back (absent: no undo,
+ * also when tasks.reportUndo is "off" and the report is gone at once). */
+async function deleteReport(ctx: ReportContext, principal: TaskPrincipal, id: string) {
+  const at = await clock(ctx);
   return changeReports(storePath(ctx), (reports) => {
     const index = reports.findIndex((r) => r.id === id && visible(r, principal));
     if (index < 0) throw notFound();
     const [gone] = reports.splice(index, 1);
-    const kept = keepDeleted(trashPath(ctx), gone!, now);
-    return { deleted: true, id, ...(kept ? { restorable_until: now + RESTORE_WINDOW_MS } : {}) };
+    const kept = at.window > 0 && keepDeleted(trashPath(ctx), gone!, at);
+    return { deleted: true, id, ...(kept ? { restorable_until: at.now + at.window } : {}) };
   });
 }
 
@@ -349,11 +375,11 @@ function deleteReport(ctx: ReportContext, principal: TaskPrincipal, id: string) 
  * too. The trash entry leaves only once the report is back in the store. */
 async function restoreReport(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
   const { id } = idInput.parse(raw);
-  const now = (ctx.now ?? Date.now)();
+  const at = await clock(ctx);
   const path = trashPath(ctx);
-  const trash = () => readTrash(path, now);
+  const trash = () => readTrash(path, at);
   // An expired entry is refused below; its data leaves the disk first (#1614).
-  await pruneTrash(ctx, now);
+  await pruneTrash(ctx, at);
   return changeReports(
     storePath(ctx),
     (reports) => {
@@ -504,14 +530,35 @@ function matches(r: TaskReport, query: string | undefined) {
   return words.every((w) => hay.includes(w));
 }
 
+/** The owner's UI lists the deletes it can still undo, newest delete first, so a deleted report
+ * stays in the list with its time left (Daniel 18.11.2026). List rows only, never the text; an
+ * unreadable trash lists nothing. */
+function undoable(ctx: ReportContext, principal: TaskPrincipal, at: Clock) {
+  let trash: Deleted[];
+  try {
+    trash = readTrash(trashPath(ctx), at);
+  } catch {
+    return [];
+  }
+  return trash
+    .filter((d) => visible(d.report, principal))
+    .sort((a, b) => b.deleted_at - a.deleted_at)
+    .map((d) => ({ ...meta(d.report, true), deleted_at: d.deleted_at, restorable_until: d.deleted_at + at.window }));
+}
+
 async function listReports(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
   const { query } = listInput.parse(raw);
-  await pruneTrash(ctx, (ctx.now ?? Date.now)());
+  const at = await clock(ctx);
+  await pruneTrash(ctx, at);
   const reports = readReports(storePath(ctx))
     .filter((r) => visible(r, principal) && matches(r, query))
     .sort(order);
   const owner = isOwner(ctx);
-  return { reports: reports.map((r) => meta(r, owner)), unread: reports.filter((r) => r.read_at === undefined).length };
+  return {
+    reports: reports.map((r) => meta(r, owner)),
+    unread: reports.filter((r) => r.read_at === undefined).length,
+    ...(owner && query === undefined ? { deleted: undoable(ctx, principal, at) } : {}),
+  };
 }
 
 const HANDLERS: Record<TaskReportOperation, (ctx: ReportContext, principal: TaskPrincipal, raw: unknown) => unknown> = {

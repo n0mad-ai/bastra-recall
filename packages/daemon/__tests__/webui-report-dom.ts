@@ -30,6 +30,10 @@ export class Node_ {
   constructor(tag: string) {
     this.tagName = tag.toUpperCase();
   }
+  /** 3 for a text node, 1 for an element, as in the browser. */
+  get nodeType() {
+    return this.tagName === "#TEXT" ? 3 : 1;
+  }
   get className() {
     return [...this.set].join(" ");
   }

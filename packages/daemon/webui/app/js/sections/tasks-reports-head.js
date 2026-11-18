@@ -1,0 +1,95 @@
+// Task reports — the view's head, built like the memory browser's head and with its classes
+// (css/membrowser.css: mb__head, mb__scope, mb__menu, mb__search; Daniel 18.11.2026): title, the
+// project pick list (the memory browser's area pick list), the search field (#1597) with its
+// count, the unread count and ESC. A project filter and the search narrow the list together.
+import { h, searchIcon } from "../dom.js";
+import { t } from "../i18n.js";
+import { emit } from "./tasks-store.js";
+import { projectsOf } from "./tasks-reports-model.js";
+import { R } from "./tasks-reports-state.js";
+import { setQuery } from "./tasks-reports-search.js";
+
+/** Picks a project (null: all) and closes the pick list. */
+function pick(project) {
+  R.project = project;
+  R.menu = false;
+  emit("reports");
+}
+
+function option(id, name, n) {
+  return h(
+    "button.mb__opt",
+    { type: "button", cls: id === R.project ? "is-on" : "", on: { click: () => pick(id) } },
+    h("span.mb__optdot", { vars: { "--c": id === null ? "var(--accent)" : "var(--ink-soft)" } }),
+    h("span.mb__optname", { text: name }),
+    h("span.mb__mut", { text: String(n) })
+  );
+}
+
+/** The head; `paint(rows, shownCount, unread, live)` brings it up to date: rows = every report in the
+ *  list (deleted ones still undoable included), shownCount = how many search and filter leave,
+ *  unread and live = the unread and the present (not deleted) reports. */
+export function reportsHead(onClose) {
+  const input = h("input.mb__input.tk-rv__input", {
+      type: "text",
+      spellcheck: "false",
+      placeholder: t("tk.rep.find.ph"),
+      "aria-label": t("tk.rep.find.label"),
+      on: { input: () => setQuery(input.value) },
+    }),
+    found = h("span.mb__hits"),
+    count = h("span.mb__hits.tk-rv__hits"),
+    btn = h("button.mb__scopebtn.tk-rv__projbtn", {
+      type: "button",
+      title: t("tk.rep.proj.tip"),
+      "aria-haspopup": "true",
+      on: {
+        click: () => {
+          R.menu = !R.menu;
+          emit("reports");
+        },
+      },
+    }),
+    menu = h("div.mb__menu", { hidden: true }),
+    el = h(
+      "div.mb__head",
+      null,
+      h("span.mb__title", { text: t("tk.rep.title") }),
+      h("span.mb__slash", { text: "/" }),
+      h("div.mb__scope.tk-rv__proj", null, btn, menu),
+      h("label.mb__search", null, searchIcon(), input, found),
+      count,
+      h("button.mb__esc", {
+        text: t("tk.rep.esc"),
+        title: t("tk.rep.back"),
+        "aria-label": t("tk.rep.back"),
+        on: { click: onClose },
+      })
+    );
+  let seen = "";
+  function paint(rows, shownCount, unread, live) {
+    const projects = projectsOf(rows),
+      n = R.project === null ? rows.length : (projects.find((p) => p.name === R.project)?.count ?? 0),
+      key = JSON.stringify([projects, R.project, R.menu, rows.length]);
+    if (input.value !== R.q) input.value = R.q;
+    found.textContent = R.q.trim() ? t("tk.rep.find.count", { n: shownCount, m: rows.length }) : "";
+    count.textContent = t("tk.rep.count", { u: unread, n: live });
+    if (key === seen) return;
+    seen = key;
+    btn.replaceChildren(
+      h("span.mb__scopesq"),
+      h("span.mb__scopename", { text: R.project ?? t("tk.rep.proj.all") }),
+      h("span.mb__mut", { text: String(n) }),
+      h("span.mb__mut", { text: "▾" })
+    );
+    btn.classList.toggle("is-open", R.menu);
+    btn.setAttribute("aria-expanded", String(R.menu));
+    menu.hidden = !R.menu;
+    menu.replaceChildren(
+      ...(R.menu
+        ? [option(null, t("tk.rep.proj.all"), rows.length), ...projects.map((p) => option(p.name, p.name, p.count))]
+        : [])
+    );
+  }
+  return { el, input, paint };
+}

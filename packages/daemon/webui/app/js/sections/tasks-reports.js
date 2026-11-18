@@ -6,9 +6,13 @@
 // narrow detail panel). Opening a report does not mark it read: "Gelesen" /
 // "Ungelesen" set that state by hand, "Löschen" removes it (Daniel 16.11.2026);
 // the three sit in the reader's head, which stays on top while a long report
-// scrolls. A search field above the list filters it by title and project at once and by the
-// report text as soon as the daemon answers (#1597). After "Löschen" a notice offers "Rückgängig"
-// while the report shown next is on screen (#1559, like archiving in the memory browser).
+// scrolls. The view's head holds, as in the memory browser, a project pick list and a search field
+// that filters by title and project at once and by the report text as soon as the daemon answers
+// (#1597; head: tasks-reports-head.js). After "Löschen" a notice offers "Rückgängig" while the report
+// shown next is on screen (#1559), and the deleted report stays in the list, struck through, with
+// its time left and "Wiederherstellen" until its undo window ends (Daniel 18.11.2026).
+// A report with open notes of the owner reads "In progress" in the list instead of "New", in the
+// notes' amber (Daniel 18.11.2026).
 // The search lives in tasks-reports-search.js, delete and Undo in tasks-reports-undo.js, the
 // state all three share in tasks-reports-state.js.
 // The list itself is data.reports (js/data.js, rides on the shell polling), so
@@ -20,7 +24,7 @@
 // "Hand over to agent" in the reader's head passes them on (Daniel 17.11.2026).
 // The rail has its own "Reports" entry right below "Tasks" (reportsArea): lit
 // while this view is open, with the unread count as its badge.
-import { h, searchIcon } from "../dom.js";
+import { h } from "../dom.js";
 import { t } from "../i18n.js";
 import { ICON } from "../areas.js";
 import { state, setState } from "../state.js";
@@ -37,19 +41,23 @@ import {
   reportBlocks,
   noteRows,
   matchReports,
+  inWork,
+  inProject,
 } from "./tasks-reports-model.js";
 import { annotateReport } from "./tasks-report-notes.js";
 import { R, write } from "./tasks-reports-state.js";
 import { listed, hitsNow, shown, searchText, setQuery } from "./tasks-reports-search.js";
-import { remove, undoNotice } from "./tasks-reports-undo.js";
+import { remove, undoNotice, undoable, deletedRow, resetClocks, runClocks } from "./tasks-reports-undo.js";
+import { reportsHead } from "./tasks-reports-head.js";
 
 /** Below this slot width list and reader share one column (memory browser: 760 px for list + reader;
  *  the report list is narrower, so two columns still fit at 640). */
 const NARROW = 640;
 
-let lastKey = JSON.stringify(data.reports);
+const dataKey = () => JSON.stringify([data.reports, data.deletedReports]);
+let lastKey = dataKey();
 onData(() => {
-  const key = JSON.stringify(data.reports);
+  const key = dataKey();
   if (key === lastKey) return;
   lastKey = key;
   if (R.q.trim()) searchText(); // new or changed reports: the text search runs again
@@ -77,9 +85,9 @@ function enter() {
 /** Leaving the Tasks area ends the view, so the next visit starts on the calendar. */
 export function resetReports() {
   if (!R.open) return;
-  R.open = false;
+  R.open = R.menu = false;
   R.q = "";
-  R.hits = R.undo = null;
+  R.hits = R.undo = R.project = null;
   if (R.lens) setState({ lensOpen: true });
   railChanged();
 }
@@ -206,6 +214,18 @@ function handOver(id) {
 // ── notes: the open field, saving, deleting. The list reloads for its "open notes" count.
 /** The daemon's limit per note (task-reports.ts NOTE_MAX_CHARS). */
 const NOTE_MAX = 4000;
+/** Stores a new note at `anchor` (noteId null) or rewrites note `noteId`; the shown notes follow.
+ *  False when the reader moved on to another report meanwhile. */
+async function storeNote(anchor, noteId, text) {
+  const id = R.sel;
+  const r = noteId
+    ? await write("report_note_edit", { id, note_id: noteId, text })
+    : await write("report_note_add", { id, anchor, text });
+  const [saved] = noteRows({ notes: [r?.note] });
+  if (R.sel !== id || !saved) return false;
+  R.notes = noteId ? R.notes.map((n) => (n.id === saved.id ? saved : n)) : [...R.notes, saved];
+  return true;
+}
 const notesUi = {
   get notes() {
     return R.notes;
@@ -227,18 +247,20 @@ const notesUi = {
   },
   /** Rejects with the error the note field shows; the field keeps the text. */
   async save(text) {
-    const id = R.sel,
-      e = R.edit;
+    const e = R.edit;
     if (text.length > NOTE_MAX) throw new Error(t("tk.rep.note.tooLong", { max: NOTE_MAX }));
-    const r = e.noteId
-      ? await write("report_note_edit", { id, note_id: e.noteId, text })
-      : await write("report_note_add", { id, anchor: e.anchor, text });
-    const [saved] = noteRows({ notes: [r?.note] });
-    if (R.sel !== id || !saved) return;
-    R.notes = e.noteId ? R.notes.map((n) => (n.id === saved.id ? saved : n)) : [...R.notes, saved];
+    if (!(await storeNote(e.anchor, e.noteId, text))) return;
     if (R.edit === e) R.edit = null;
     emit("reports");
     await loadReports();
+  },
+  /** An answer option, or "needs clarification", picked on a question: saved at once as a note there. */
+  answer(anchor, text) {
+    return act(async () => {
+      if (!(await storeNote(anchor, null, text))) return;
+      emit("reports");
+      await loadReports();
+    });
   },
   remove(n) {
     const id = R.sel;
@@ -259,7 +281,7 @@ const notesUi = {
 /** Arrow keys walk the rows (as in the memory browser); Enter / Space open the focused one (native button). */
 function walk(e) {
   if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-  const rows = [...e.currentTarget.querySelectorAll(".mb-row")],
+  const rows = [...e.currentTarget.querySelectorAll("button.mb-row")],
     at = rows.indexOf(document.activeElement);
   const next = rows[e.key === "ArrowDown" ? Math.min(at + 1, rows.length - 1) : Math.max(at - 1, 0)];
   if (!next) return;
@@ -284,24 +306,31 @@ function noteMarks(c, tag) {
 
 // Rows and reader are the memory browser's (css/membrowser.css: mb-row, mb-rd); Daniel wants the
 // reports to look like it. Only the frame and the deltas live in css/tasks-reports.css.
+// A report with open notes of the owner is "In progress" and amber like the notes in the report.
 function listRow(r) {
   const on = R.sel === r.id,
-    fresh = r.readAt === null;
+    fresh = r.readAt === null,
+    work = inWork(r);
+  const tone = work ? "var(--amber)" : fresh ? "var(--accent)" : "var(--line-45)";
   return h(
     "button.mb-row",
     {
-      cls: [fresh ? "is-new" : "", on ? "is-sel" : ""].join(" "),
+      cls: [fresh ? "is-new" : "", work ? "is-work" : "", on ? "is-sel" : ""].join(" "),
       "aria-current": on ? "true" : null,
       title: fmtAt(r.createdAt),
       on: { click: () => openReport(r.id) },
     },
-    h("span.mb-row__sq", { vars: { "--tc": fresh ? "var(--accent)" : "var(--line-45)" } }),
+    h("span.mb-row__sq", { vars: { "--tc": tone } }),
     h("span.mb-row__t", { text: r.title }),
     h("span.mb-row__ago", { text: ago(r.createdAt) }),
     h(
       "span.mb-row__meta",
       null,
-      fresh ? h("span.mb-row__ai", { text: t("tk.rep.new") }) : null,
+      work
+        ? h("span.mb-row__ai.tk-rv__work", { text: t("tk.rep.inWork"), title: t("tk.rep.inWorkTip") })
+        : fresh
+          ? h("span.mb-row__ai", { text: t("tk.rep.new") })
+          : null,
       noteMarks({ drafts: r.notesDraft, handed: r.notesOpen - r.notesDraft }, "span.tk-an__count"),
       r.project ? h("span", { text: r.project }) : null,
       h("span", { text: r.client || t("tk.rep.unknown") })
@@ -458,47 +487,35 @@ function paintReader(read, rows, narrow, seen) {
   Object.assign(seen, { key, body: R.body, edit: R.edit, sel: R.sel });
 }
 
-/** The reading view in the memory browser's frame: head (title, count, ESC), list with its search |
+/** The live rows and the deleted ones still undoable, in the order the list had when the view opened;
+ *  a delete from an earlier visit goes to the end. */
+function withDeleted(live, gone) {
+  const at = (r) => {
+    const i = R.order.indexOf(r.id);
+    return i >= 0 ? i : r.until === undefined ? -1 : Infinity;
+  };
+  return [...live, ...gone].sort((a, b) => at(a) - at(b));
+}
+
+/** Closes the project pick list on a click outside it, as in the memory browser. */
+function closeMenuOutside(e) {
+  if (!R.menu || e.target?.closest?.(".tk-rv__proj")) return;
+  R.menu = false;
+  emit("reports");
+}
+
+/** The reading view in the memory browser's frame: head (title, project, search, count, ESC), list |
  *  reader. Mounted into its own slot (tasks.js); list and reader keep their scroll position across
  *  polling because only a real change rebuilds them. */
 export function reportsRenderer(host) {
-  const hits = h("span.mb__hits.tk-rv__hits"),
-    input = h("input.mb__input.tk-rv__input", {
-      type: "text",
-      spellcheck: "false",
-      placeholder: t("tk.rep.find.ph"),
-      "aria-label": t("tk.rep.find.label"),
-      on: { input: () => setQuery(input.value) },
-    }),
-    found = h("span.mb__hits"),
+  const head = reportsHead(closeReports),
     list = h("nav.mb__list", { "aria-label": t("tk.rep.title"), on: { keydown: walk } }),
-    side = h(
-      "div.tk-rv__side",
-      null,
-      h("div.tk-rv__find", null, h("label.mb__search", null, searchIcon(), input, found)),
-      list
-    ),
+    side = h("div.tk-rv__side", null, list),
     read = h("div.mb__reader"),
     body = h("div.mb__body", null, side, read),
-    view = h(
-      "section.tk-rv",
-      { "aria-label": t("tk.rep.title") },
-      h("span.mb__ticks"),
-      h(
-        "div.mb__head",
-        null,
-        h("span.mb__title", { text: t("tk.rep.title") }),
-        hits,
-        h("button.mb__esc", {
-          text: t("tk.rep.esc"),
-          title: t("tk.rep.back"),
-          "aria-label": t("tk.rep.back"),
-          on: { click: closeReports },
-        })
-      ),
-      body
-    );
-  /** No reports at all, or none the search leaves (then with a way back to the full list). */
+    view = h("section.tk-rv", { "aria-label": t("tk.rep.title") }, h("span.mb__ticks"), head.el, body);
+  document.addEventListener("pointerdown", closeMenuOutside);
+  /** No reports at all, or none search and filter leave (then with a way back to the full list). */
   const empty = (any) =>
     any
       ? h(
@@ -509,13 +526,15 @@ export function reportsRenderer(host) {
             text: t("tk.rep.find.clear"),
             on: {
               click: () => {
+                R.project = null;
                 setQuery("");
-                input.focus();
+                head.input.focus();
               },
             },
           })
         )
       : h("div.mb__empty", { text: t("tk.rep.none") });
+  const rowEl = (r) => (r.until === undefined ? listRow(r) : deletedRow(r, openReport));
   let listKey = "";
   // what the reader shows now (paintReader rebuilds it only on a real change)
   const seen = { key: "", body: undefined, edit: null, sel: null };
@@ -524,23 +543,27 @@ export function reportsRenderer(host) {
     if (!R.open) {
       host.replaceChildren();
       listKey = seen.key = "";
+      resetClocks();
+      runClocks();
       return;
     }
     if (host.firstChild !== view) host.replaceChildren(view);
     const all = listed(),
-      rows = matchReports(all, R.q, hitsNow()),
+      gone = undoable(),
+      every = withDeleted(all, gone),
+      rows = inProject(withDeleted(matchReports(all, R.q, hitsNow()), matchReports(gone, R.q)), R.project),
       narrow = host.clientWidth > 0 && host.clientWidth < NARROW;
     if (!narrow || !R.sel) R.list = !R.sel && !R.undo;
     view.classList.toggle("is-narrow", narrow);
     view.classList.toggle("is-reading", !R.list);
-    hits.textContent = t("tk.rep.count", { u: unreadCount(all), n: all.length });
-    if (input.value !== R.q) input.value = R.q;
-    found.textContent = R.q.trim() ? t("tk.rep.find.count", { n: rows.length, m: all.length }) : "";
-    const lk = JSON.stringify([rows, R.sel, all.length > 0]);
+    head.paint(every, rows.length, unreadCount(all), all.length);
+    const lk = JSON.stringify([rows, R.sel, every.length > 0]);
     if (lk !== listKey) {
       const rowEls = () => [...list.querySelectorAll(".mb-row")],
         focused = rowEls().indexOf(document.activeElement);
-      list.replaceChildren(...(rows.length ? rows.map(listRow) : [empty(all.length > 0)]));
+      resetClocks();
+      list.replaceChildren(...(rows.length ? rows.map(rowEl) : [empty(every.length > 0)]));
+      runClocks();
       if (focused >= 0) rowEls()[focused]?.focus();
       listKey = lk;
     }
@@ -549,12 +572,16 @@ export function reportsRenderer(host) {
 }
 
 /** Escape leaves the reading view (tasks.js key handler, after the pop-overs); true when it was open.
- *  `target` is the key event's target: in the search field Escape first empties the search. */
+ *  An open note field closes first, then an open project list; `target` is the key event's target:
+ *  in the search field Escape then empties the search. */
 export function escapeReports(target) {
   if (!R.open) return false;
   // an open note field closes first, so Escape never drops the report view with a draft in it
   if (R.edit) notesUi.cancel();
-  else if (R.q && target?.classList?.contains("tk-rv__input")) setQuery("");
+  else if (R.menu) {
+    R.menu = false;
+    emit("reports");
+  } else if (R.q && target?.classList?.contains("tk-rv__input")) setQuery("");
   else closeReports();
   return true;
 }

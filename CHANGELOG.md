@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Answer a question in a task report.** Questions ending with answer
+  options such as `[? Yes | No]` offer answer buttons, a free answer and a
+  request for clarification. The answer is saved as a note on that line,
+  through the existing owner note workflow (#1607).
 - `bastra logs --stats` counts harvest passes booked before compaction
   separately from SessionEnd passes; older logs keep their existing totals
   (#1628).
@@ -143,6 +147,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Deleted task reports stay in the list.** A deleted report is struck
+  through, with an undo countdown and **Restore**. The new `tasks.reportUndo`
+  setting keeps the 10-minute default and accepts whole minutes, hours or
+  days up to 30 days, or `off` (#1559).
+- **Report search and project filter in the view header.** Reports with
+  open notes show **In progress** in amber; hovering a report line and
+  choosing **Note** is clearer (#1607).
 - Claude Code subagents receive the full rule kernel at `SubagentStart`.
   Installing or updating registers 14 hooks (11 without Stop/harvest).
   Native delivery, resume and the minimum Claude Code version remain
@@ -244,6 +255,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Switching to another task report keeps undo available for a deleted
+  report (#1559).
 - Eval archives choose an unused name through the exclusive copy, including
   a counter for further same-name artefacts in the same second; existing bytes
   are never replaced (#1641).

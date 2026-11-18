@@ -53,7 +53,8 @@
   grid-template-columns: minmax(260px, 32%) minmax(0, 1fr);
 }
 
-/* list column: the search on top (#1597, the memory browser's field), the rows below scroll on their own */
+/* list column: the rows scroll on their own; project filter and search sit in the head (#1597,
+ * the memory browser's pick list and field) */
 .tk-rv__side {
   min-width: 0;
   min-height: 0;
@@ -64,11 +65,6 @@
 .tk-rv__side > .mb__list {
   flex: 1;
   border-right: 0;
-}
-.tk-rv__find {
-  flex: none;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--line-10);
 }
 .tk-rv__nohit {
   display: flex;
@@ -172,6 +168,51 @@
 .tk-rv .mb-row:not(.is-new) .mb-row__t {
   color: #b9c6d8;
 }
+/* "In progress": the owner left open notes; the row takes the notes' amber (Daniel 18.11.2026) */
+.tk-rv .mb-row.is-work {
+  background: rgba(217, 164, 65, 0.06);
+  box-shadow: inset 2px 0 0 var(--amber);
+}
+.tk-rv .mb-row.is-work:hover {
+  background: rgba(217, 164, 65, 0.1);
+}
+.tk-rv .mb-row.is-work.is-sel {
+  box-shadow:
+    inset 2px 0 0 var(--amber),
+    inset 0 1px 0 var(--accent),
+    inset 0 -1px 0 rgba(56, 217, 245, 0.35);
+}
+.tk-rv .mb-row.is-work .mb-row__t {
+  color: #f2f7fd;
+}
+.tk-rv__work {
+  padding: 1px 6px 0;
+  border: 1px solid rgba(217, 164, 65, 0.45);
+  background: rgba(217, 164, 65, 0.16);
+  color: var(--amber);
+}
+/* in the list the drafts count in amber as well: they are your notes on that report */
+.tk-rv .mb-row .tk-an__count.is-draft {
+  color: var(--amber);
+}
+/* a deleted report while its undo runs: struck through, its time left and "Restore" */
+.tk-rv .mb-row.is-deleted {
+  cursor: default;
+}
+.tk-rv .mb-row.is-deleted:hover {
+  background: transparent;
+}
+.tk-rv .mb-row.is-deleted .mb-row__t {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.tk-rv__left {
+  color: var(--danger);
+  letter-spacing: 0.1em;
+}
+.tk-rv__restore {
+  padding: 2px 8px;
+}
 
 /* report text: the memory reader's text block plus what reports add */
 .tk-rep__md > :last-child {
@@ -226,15 +267,30 @@
   opacity: 0;
   transition: opacity 0.15s ease;
 }
+/* the place under the pointer stands out (Daniel 18.11.2026) by colour alone: background, a spread
+ * shadow in the same colour and an outline take no room, so no text moves */
+.mb-rd__text .tk-an:not(tr):not(.tk-an__subj):not(.tk-an__card):hover {
+  background: var(--accent-06);
+  box-shadow: 0 0 0 4px var(--accent-06);
+  outline: 1px solid var(--line-18);
+  outline-offset: 4px;
+}
+.tk-rep__tbl tr.tk-an:not(.is-marked):hover > td {
+  background: var(--accent-06);
+}
 .tk-an:hover > .tk-an__btn,
 .tk-an:hover > .tk-an__cell > .tk-an__btn,
 .tk-an__btn:focus-visible {
   opacity: 1;
+  border-color: rgba(217, 164, 65, 0.6);
+  background: rgba(217, 164, 65, 0.12);
+  color: var(--amber);
 }
 .tk-an__btn:hover,
 .tk-an__btn:focus-visible {
   border-color: var(--amber);
-  color: var(--amber);
+  background: rgba(217, 164, 65, 0.22);
+  color: #f2f7fd;
   outline: 0;
 }
 /* no hover on touch screens: the button stays faintly visible there */
@@ -242,6 +298,44 @@
   .tk-an__btn {
     opacity: 0.7;
   }
+}
+/* a question with answer options: the options as buttons below the question, always visible, then
+ * "own answer" and "needs clarification" quieter */
+.tk-ask {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 2px;
+}
+.tk-ask__opt {
+  padding: 3px 10px 2px;
+  border: 1px solid rgba(217, 164, 65, 0.6);
+  background: rgba(217, 164, 65, 0.12);
+  color: var(--amber);
+  font: 11px var(--mono);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.tk-ask__opt:hover,
+.tk-ask__opt:focus-visible {
+  border-color: var(--amber);
+  background: rgba(217, 164, 65, 0.22);
+  color: #f2f7fd;
+  outline: 0;
+}
+.tk-ask__opt.is-free,
+.tk-ask__opt.is-clarify {
+  border-color: var(--line-22);
+  background: transparent;
+  color: var(--muted);
+  letter-spacing: 0.12em;
+}
+.tk-ask__opt.is-free:hover,
+.tk-ask__opt.is-clarify:hover,
+.tk-ask__opt.is-free:focus-visible,
+.tk-ask__opt.is-clarify:focus-visible {
+  border-color: var(--line-45);
+  color: var(--ink);
 }
 .tk-rep__tbl .tk-an__cell {
   width: 1%;

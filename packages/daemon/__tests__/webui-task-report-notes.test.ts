@@ -24,7 +24,7 @@ async function load(
   ]);
   return runInNewContext(
     [strip(model), strip(care), strip(notes)].join("\n") +
-      "\n({ reportRows, noteRows, excerptOf, notesAt, noteCounts, draftReports, reportBlocksIn, annotateReport, noteEditor })",
+      "\n({ reportRows, noteRows, excerptOf, notesAt, noteCounts, draftReports, reportBlocksIn, annotateReport, noteEditor, askOf })",
     {
       h,
       growTextarea() {},
@@ -312,12 +312,12 @@ test("texts: every key the notes use exists in German and English", async () => 
   assert.deepEqual(await noteKeys("de"), await noteKeys("en"), "the note texts exist in both languages");
 });
 
-test("numbering with the real renderer: nested lists, quotes, code, blank lines and a table with head", async () => {
-  const m = await load();
+/** The reading view's real Markdown renderer (memory browser's markdown() plus the table renderer). */
+async function realRenderer(): Promise<{ render: (md: string) => Node_[] }> {
   const mb = await read("views/memory-browser.js");
   const reports = await read("sections/tasks-reports.js");
   const pick = (src: string, re: RegExp) => re.exec(src)?.[0] ?? assert.fail(`not found: ${re}`);
-  const renderer = runInNewContext(
+  return runInNewContext(
     [
       strip(await read("sections/tasks-reports-model.js")),
       pick(mb, /const INLINE =[\s\S]*?;\n/),
@@ -328,6 +328,11 @@ test("numbering with the real renderer: nested lists, quotes, code, blank lines 
     ].join("\n"),
     { h, vault: () => null }
   );
+}
+
+test("numbering with the real renderer: nested lists, quotes, code, blank lines and a table with head", async () => {
+  const m = await load();
+  const renderer = await realRenderer();
   const md = [
     "# Titel",
     "",
@@ -392,4 +397,107 @@ test("#1608: a note sits at its place only while the place still holds the store
   assert.match(lost.textContent, /gehört woanders hin/, "it is collected at the end instead");
   assert.equal(plain(m.notesAt(notes, "item", 2, "Preis- und Abrechnungsmodell für Pulse")).length, 1);
   assert.equal(plain(m.notesAt(notes, "item", 3, "Name")).length, 0);
+});
+
+test("N6/N29: answer options are fixed syntax at the end of a line, in any language; anything else stays text", async () => {
+  const m = await load();
+  const ask = (s: string) => plain(m.askOf(s));
+  assert.deepEqual(ask("Ship it now? [? Yes | No]"), { question: "Ship it now?", options: ["Yes", "No"], at: 13 });
+  assert.deepEqual(ask("Jetzt ausliefern? [?Ja|Nein|Später]  ").options, ["Ja", "Nein", "Später"]);
+  assert.deepEqual(ask("现在发布吗？ [? 是 | 否]").options, ["是", "否"], "no word lists: every language works");
+  for (const text of [
+    "Ship it? Yes or no",
+    "Ship it? [? Yes]",
+    "Ship it? [? Yes | ]",
+    "Ship it? [? Yes | Yes]",
+    "Ship it? [? a | b | c | d | e | f | g]",
+    `Ship it? [? ${"x".repeat(81)} | No]`,
+    "[? Yes | No]",
+    "Ship it? [? Yes | No] later",
+    "Ship it? [Yes | No]",
+    "Ship it? [? [a] | b]",
+  ])
+    assert.equal(m.askOf(text), null, text);
+});
+
+test("N6/N29: the tool agents file reports with teaches the syntax the reading view understands", async () => {
+  const m = await load();
+  const { taskTools } = await import("../src/task-transport.js");
+  const desc = taskTools.find((x) => x.name === "task_report_save")!.description;
+  const examples = [...desc.matchAll(/\[\?[^\]]*\]/g)].map((x) => x[0]);
+  assert.ok(examples.length >= 2, "the description shows the syntax");
+  for (const marker of examples) assert.ok(m.askOf(`Question? ${marker}`), `${marker} is understood`);
+  for (const doc of ["Proactive Tasks.md", "Proaktive Aufgaben.md"]) {
+    const text = await readFile(new URL(`../../../docs/${doc}`, import.meta.url), "utf8");
+    const lines = [...text.matchAll(/^- .*\[\?[^\]]*\]$/gm)].map((x) => x[0].slice(2));
+    assert.equal(lines.length, 2, `${doc}: two examples`);
+    for (const line of lines) assert.ok(m.askOf(line), `${doc}: ${line}`);
+  }
+});
+
+test("N6/N29: a question shows its options, own answer and clarification; a click saves a note at that place", async () => {
+  const m = await load();
+  const renderer = await realRenderer();
+  const nodes = renderer.render(
+    [
+      "- Keep the compatibility note? [? Keep | Remove]",
+      "- Plain item [? only one]",
+      "- With code `[? a | b]`",
+      "",
+      "Release now? [? Yes | No]",
+    ].join("\n")
+  );
+  const answered: unknown[] = [],
+    opened: unknown[] = [];
+  const ui = {
+    notes: [],
+    editing: null,
+    open: (a: unknown) => opened.push(a),
+    answer: (a: unknown, text: string) => answered.push([a, text]),
+    edit() {},
+    remove() {},
+    save: async () => {},
+    cancel() {},
+  };
+  const out = m.annotateReport(nodes, ui);
+  const [list, para] = out.nodes;
+  const [question, single, code] = list.children;
+  assert.equal(question.children[0].textContent, "Keep the compatibility note?", "the marker leaves the text");
+  const group: Node_ = question.find("tk-ask")[0] ?? assert.fail("no answer buttons");
+  assert.equal(group.attrs.role, "group");
+  assert.deepEqual(
+    group.children.map((b) => b.textContent),
+    ["Keep", "Remove", "tk.rep.ask.free", "tk.rep.ask.clarify"]
+  );
+  assert.equal(question.find("tk-an__btn").length, 0, "the options replace the plain note button");
+  for (const [el, text] of [
+    [single, "Plain item [? only one]"],
+    [code, "With code [? a | b]"],
+  ] as const) {
+    assert.equal(el.find("tk-ask").length, 0, `${text}: no question`);
+    assert.match(el.textContent, /\[\?/, "the text stays as it was");
+    assert.equal(el.find("tk-an__btn").length, 1);
+  }
+  assert.equal(para.find("tk-ask").length, 1, "a paragraph can ask too");
+
+  await group.children[1].click();
+  await group.children[3].click();
+  await group.children[2].click();
+  const anchor = { kind: "item", index: 1, excerpt: "Keep the compatibility note? [? Keep | Remove]" };
+  assert.deepEqual(plain(answered), [
+    [anchor, "Remove"],
+    [anchor, "tk.rep.ask.clarifyNote"],
+  ]);
+  assert.deepEqual(plain(opened), [anchor], "own answer opens the note field there");
+
+  // answered: the place is a card with the answer as its note, the options step back
+  const again = m.annotateReport(renderer.render("- Keep the compatibility note? [? Keep | Remove]"), {
+    ...ui,
+    notes: m.noteRows({ notes: [stored({ anchor, text: "Remove" })] }),
+  });
+  const card = again.nodes[0].children[0];
+  assert.ok(card.classList.contains("tk-an__card"));
+  assert.equal(card.find("tk-ask").length, 0);
+  assert.equal(card.find("tk-an__subj")[0].textContent, "Keep the compatibility note?");
+  assert.equal(card.find("tk-an__text")[0].textContent, "Remove");
 });

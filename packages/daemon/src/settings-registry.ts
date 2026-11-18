@@ -21,6 +21,7 @@ import { isDaemonEnvKey, type DaemonEnvKey } from "./daemon-spawn-env.js";
 import { isSupportedLanguage } from "./learned-recall/language.js";
 import { SOUL_DIRECTIONS, SOUL_TEXT_MAX } from "./soul.js";
 import { webUiOnByDefault } from "./local-account-access.js";
+import { parseReportUndo, REPORT_UNDO_DEFAULT } from "./task-report-undo-window.js";
 
 export const UPDATE_MODES = ["notify", "auto", "off"] as const;
 export const EMBEDDING_PROVIDERS = ["ollama", "openai", "none"] as const;
@@ -410,6 +411,14 @@ export const SETTINGS_REGISTRY = {
       label: "Chat aktiv nach letzter Nutzernachricht (Minuten)",
       default: 30,
     }),
+    reportUndo: setting(
+      z
+        .string()
+        .trim()
+        .toLowerCase()
+        .refine((v) => parseReportUndo(v) !== null),
+      { area: "tasks", label: "Berichte: Rückgängig nach dem Löschen", default: REPORT_UNDO_DEFAULT }
+    ),
     chatConsent: setting(z.enum(["accepted", "declined", "blocked"]), {
       area: "tasks",
       label: "Claude-Chat-Empfang (Einrichtungsantwort)",

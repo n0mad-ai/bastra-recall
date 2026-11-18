@@ -15,8 +15,8 @@ const keysIn = (source: string, prefix: RegExp) =>
 test("report texts exist in German and English", async () => {
   const reports = (
     await Promise.all(
-      ["tasks-reports", "tasks-reports-state", "tasks-reports-search", "tasks-reports-undo"].map((f) =>
-        read(`js/sections/${f}.js`)
+      ["tasks-reports", "tasks-reports-state", "tasks-reports-search", "tasks-reports-undo", "tasks-reports-head"].map(
+        (f) => read(`js/sections/${f}.js`)
       )
     )
   ).join("\n");

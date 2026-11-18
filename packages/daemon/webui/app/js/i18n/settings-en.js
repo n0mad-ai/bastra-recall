@@ -276,6 +276,9 @@ export default {
   "st.k.tasks.chatActiveMinutes": "Chat active window",
   "st.k.tasks.chatActiveMinutes.d":
     "How long after your last message a chat still counts as “active”. Only then does Recall deliver due tasks straight into the chat. Shorter = fewer interruptions, longer = tasks reach you after breaks too. Default: 30 minutes.",
+  "st.k.tasks.reportUndo": "Undo for deleted reports",
+  "st.k.tasks.reportUndo.d":
+    "How long a deleted task report stays in the report list and can be restored. Choose minutes, hours or days, or turn undo off: then a deleted report is gone at once. Custom values: a whole number with m, h or d, e.g. 45m, 6h or 3d (1 minute to 30 days). Default: 10 minutes.",
   "st.k.tasks.chatConsent": "Claude chat delivery",
   "st.k.tasks.chatConsent.d":
     "Your answer on whether tasks may be delivered into the Claude chat (accepted, declined or blocked). Comes from setup, view only.",
@@ -361,6 +364,12 @@ export default {
   "st.o.ollama.keepAlive.30m": "30 minutes",
   "st.o.ollama.keepAlive.1h": "1 hour",
   "st.o.ollama.keepAlive.24h": "24 hours",
+  "st.o.tasks.reportUndo.off": "Off (deleted at once)",
+  "st.o.tasks.reportUndo.10m": "10 minutes",
+  "st.o.tasks.reportUndo.1h": "1 hour",
+  "st.o.tasks.reportUndo.1d": "1 day",
+  "st.o.tasks.reportUndo.7d": "7 days",
+  "st.o.tasks.reportUndo.30d": "30 days",
   "st.o.archive.retain.r0": "Short: 1 · 1 · 1 days",
   "st.o.archive.retain.r1": "1 · 2 · 2 days",
   "st.o.archive.retain.r2": "3 · 7 · 7 days",
