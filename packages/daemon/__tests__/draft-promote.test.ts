@@ -951,13 +951,22 @@ test("D fix: 480 drafts/100 candidates/2000 notes yield and do not hold the draf
           return { provider: provider.id, dim, vectors };
         },
       };
+      const runStart = performance.now();
       const result = await runDraftPromote(options);
+      const runMs = performance.now() - runStart;
       await writer;
       assert.equal(result.wouldPromote, 100);
       assert.equal(result.errors, 0);
-      t.diagnostic(`event-loop max lag ${maxLag.toFixed(1)}ms; scheduled writer ${writerMs.toFixed(1)}ms`);
-      assert.ok(maxLag < 500, `event loop ${maxLag}ms`);
-      assert.ok(writerMs < 500, `writer ${writerMs}ms`);
+      t.diagnostic(
+        `event-loop max lag ${maxLag.toFixed(1)}ms; scheduled writer ${writerMs.toFixed(1)}ms; run ${runMs.toFixed(1)}ms`
+      );
+      // Measured against the run's own duration, not a fixed wall-clock limit:
+      // a loaded machine stretches both alike (#1667). A pass that does not
+      // yield holds the loop and the writer for nearly the whole run; one that
+      // yields holds them for a few percent of it.
+      const share = runMs / 10;
+      assert.ok(maxLag < share, `event loop held ${maxLag}ms of a ${runMs}ms run`);
+      assert.ok(writerMs < share, `writer waited ${writerMs}ms of a ${runMs}ms run`);
       await runDraftPromote(options); // Any concurrent writer's changed state settles.
       const originalPrepare = DatabaseSync.prototype.prepare;
       let vectorReads = 0;
