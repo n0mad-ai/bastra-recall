@@ -80,7 +80,7 @@ const de: InstallWords = {
   runtime: "→ Laufzeit (fest verdrahtete npx-Laufzeit, ~/.bastra/runtime)\n",
   runtimeRemoved: (label) => `  ${label}: keine Registrierung einer Oberfläche verweist mehr darauf\n\n`,
   ollamaStays:
-    "→ semantischer Recall: Ollama bleibt eingerichtet, sein Anmeldedienst läuft womöglich weiter.\n" +
+    "→ semantische Suche: Ollama bleibt eingerichtet, sein Anmeldedienst läuft womöglich weiter.\n" +
     "  Recall abschalten: bastra embeddings off\n" +
     "  Dienst stoppen: brew services stop ollama\n\n",
   vaultPathRequired:

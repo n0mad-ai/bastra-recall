@@ -223,3 +223,8 @@ test("Ollama provisioning, the doctor's semantic-recall block and the autostart 
   await refreshWindowsAutostart((s) => (said += s), { target, reload: true }, service, autostartWordsIn("de"));
   assert.equal(said, "  ✓ verwalteter Dienst der Aufgabenplanung mit der installierten Laufzeit neu gestartet\n");
 });
+
+test("German names the feature „Semantische Suche“ throughout, also in the uninstall note", () => {
+  assert.match(installWordsIn("de").ollamaStays, /^→ semantische Suche: Ollama bleibt eingerichtet/);
+  assert.match(installWordsIn("en").ollamaStays, /^→ semantic recall: Ollama stays configured/);
+});
