@@ -17,6 +17,7 @@ import {
   changed,
   cliOf,
   entry,
+  invalidText,
   matches,
 } from "./settings-model.js";
 import { nameOf, descOf, fmt } from "./settings.js";
@@ -145,7 +146,7 @@ export function changesTab(body) {
           })
         ),
         c.invalid
-          ? h("div.st-ch__v", { text: t("st.json.invalidShort") })
+          ? h("div.st-ch__v", { text: invalidText(c.key, true) })
           : [
               h(
                 "div.st-ch__v",

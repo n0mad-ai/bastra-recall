@@ -139,7 +139,7 @@ export const store = {
   model: null, // GET /ui/settings snapshot
   error: "", // load / save error text (server message)
   changes: new Map(), // key → pending value (null = back to default)
-  invalid: new Map(), // key → raw text of a draft that is not valid JSON; blocks Apply and restart
+  invalid: new Map(), // key → raw text of a draft that is not valid (JSON, custom number); blocks Apply and restart
   query: "",
   sel: "appearance", // group shown as current in the Find tab
   saved: "", // "HH:MM" of the last successful apply
@@ -279,10 +279,14 @@ export async function loadModels() {
   }
 }
 
+/** Text for an invalid draft: JSON fields say JSON, other fields (custom number) say value. */
+export const invalidText = (key, short = false) =>
+  t(`st.${entry(key)?.kind === "json" ? "json" : "value"}.invalid${short ? "Short" : ""}`);
+
 /** An invalid draft blocks Apply and restart: the error names it and the view focuses its field. */
 function blockedByInvalid() {
   if (!store.invalid.size) return false;
-  store.error = t("st.json.invalid");
+  store.error = invalidText([...store.invalid.keys()][0]);
   emit("invalid");
   return true;
 }
@@ -422,7 +426,7 @@ onStore(() => {
   setBackdrop(patch);
 });
 
-/** Records (raw text) or clears (null) a draft that is not valid JSON. */
+/** Records (raw text) or clears (null) a draft that is not valid (JSON, custom number). */
 export function setInvalid(key, raw) {
   if (raw !== null) {
     store.invalid.set(key, raw);
@@ -432,7 +436,8 @@ export function setInvalid(key, raw) {
 }
 
 function clearInvalidError() {
-  if (!store.invalid.size && store.error === t("st.json.invalid")) store.error = "";
+  const texts = [t("st.json.invalid"), t("st.value.invalid")];
+  if (!store.invalid.size && texts.includes(store.error)) store.error = "";
 }
 
 export function revert(key) {

@@ -3,12 +3,18 @@
 import { mkdir, writeFile, readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { defaultHookStateDir, privateDirState, readPrivateFile } from "./private-state-dir.js";
+import { defaultHookStateDir, legacyHookStateDir, privateDirState, readPrivateFile } from "./private-state-dir.js";
 const base = () => process.env.BASTRA_HOOK_STATE_DIR || defaultHookStateDir();
-const directory = () => join(base(), "rulebook-failures");
+const spoolOf = (root: string) => join(root, "rulebook-failures");
+const directory = () => spoolOf(base());
 /** Linux shares tmpdir: a spool another account owns or may write is not used. */
-const privateSpool = async (): Promise<boolean> =>
-  (await privateDirState(base())) === "private" && (await privateDirState(directory())) === "private";
+const privateSpool = async (root = base()): Promise<boolean> =>
+  (await privateDirState(root)) === "private" && (await privateDirState(spoolOf(root))) === "private";
+/** #1638: observations an earlier version spooled in the old tmpdir location before the Linux
+ * state moved (#1569) still count. The default store drains that spool too, under the same
+ * private-directory checks; there is nothing to move, and an unread file stays where it is. */
+const drainRoots = (): string[] =>
+  process.env.BASTRA_HOOK_STATE_DIR ? [base()] : [...new Set([defaultHookStateDir(), legacyHookStateDir()])];
 const key = (sid: string | null) =>
   createHash("sha256")
     .update(sid ?? "unattributed")
@@ -33,9 +39,14 @@ export async function spoolRulebookFailure(sid: string | null, count = 1): Promi
 }
 export async function drainRulebookFailures(sid: string): Promise<number> {
   let count = 0;
+  for (const root of drainRoots()) count += await drainSpool(root, sid);
+  return count;
+}
+async function drainSpool(root: string, sid: string): Promise<number> {
+  let count = 0;
   try {
-    const dir = directory();
-    if (!(await privateSpool())) return 0;
+    const dir = spoolOf(root);
+    if (!(await privateSpool(root))) return 0;
     for (const name of await readdir(dir)) {
       if (!name.startsWith(key(sid) + "-") && !name.startsWith(key(null) + "-")) continue;
       if (!/^[a-f0-9]{24}-[a-f0-9-]{36}\.json$/.test(name)) continue;

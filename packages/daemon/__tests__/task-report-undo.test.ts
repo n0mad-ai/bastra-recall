@@ -167,3 +167,25 @@ test("#1597 compatibility forms and case are matched together in report text", a
     [saved.id]
   );
 });
+
+test("#1614: an expired undo entry leaves the disk on the next list or restore, not only on a delete", async () => {
+  const f = await fixture();
+  const text = "Expired report text";
+  const a = await f.call("task_report_save", report({ title: "a", body: text }));
+  await f.call("task_report_delete", { id: a.id });
+
+  f.setNow(1_000 + RESTORE_WINDOW_MS - 1);
+  await f.call("task_report_list", {});
+  assert.equal(f.trash().deleted.length, 1, "inside its window the entry stays");
+
+  f.setNow(1_000 + RESTORE_WINDOW_MS);
+  await f.call("task_report_list", {});
+  assert.deepEqual(f.trash().deleted, [], "a list drops the expired entry");
+  assert.ok(!JSON.stringify(f.trash()).includes(text));
+
+  const b = await f.call("task_report_save", report({ title: "b", body: text }));
+  await f.call("task_report_delete", { id: b.id });
+  f.setNow(1_000 + 2 * RESTORE_WINDOW_MS);
+  await assert.rejects(f.call("task_report_restore", { id: b.id }), { code: "not_found" });
+  assert.deepEqual(f.trash().deleted, [], "a refused restore drops the expired entry as well");
+});

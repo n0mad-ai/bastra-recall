@@ -234,6 +234,7 @@ Options:
   --recall-when W      when it should come up; repeatable (default: the title)
   --tag X              repeatable (default: the scope)
   --topic a/b          topic path (default: the scope)
+  --dry-run            show what would be saved (file, rule or note); writes nothing
   --json               print the daemon's answer as is
 
 The text is the words after the options, or what is piped in. --type is one of

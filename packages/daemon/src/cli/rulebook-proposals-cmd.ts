@@ -1,9 +1,21 @@
 /** Chat decisions use the same explicit user-direction attestation as MCP.
  * A CLI invocation is not independent proof of a human's consent. */
+import { getJson } from "../prompt-loopback.js";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 import { projectForFilter } from "../scope-filter.js";
 import { getApiToken } from "../settings.js";
 import { DAEMON_VERSION } from "../version.js";
+
+/** Older daemons may ignore dry_run; check their served schema before any write. */
+async function requireSavePreviewSupport(): Promise<void> {
+  const listed = await getJson<{
+    tools?: { name?: string; inputSchema?: { properties?: { dry_run?: { type?: string } } } }[];
+  }>(resolveDaemonEndpoint().baseUrl, "/tools?surface=write", 2000);
+  const save = Array.isArray(listed?.tools) && listed.tools.find((entry) => entry.name === "save_memory");
+  if (!save || save.inputSchema?.properties?.dry_run?.type !== "boolean") {
+    throw new Error("daemon does not advertise save_memory dry_run support; nothing was sent to save_memory");
+  }
+}
 
 export async function rulebookCliCall(
   tool:
@@ -16,6 +28,9 @@ export async function rulebookCliCall(
     | "save_memory",
   input: unknown
 ): Promise<any> {
+  if (tool === "save_memory" && (input as { dry_run?: unknown } | null)?.dry_run === true) {
+    await requireSavePreviewSupport();
+  }
   const token = process.env.BASTRA_API_TOKEN || (await getApiToken());
   const response = await fetch(`${resolveDaemonEndpoint().baseUrl}/api/v1/${tool}`, {
     method: "POST",

@@ -179,8 +179,8 @@ function changeReports<T>(path: string, change: (reports: TaskReport[]) => T, wr
 
 // ── Undo for delete (#1559): a deleted report waits in a record of its own for RESTORE_WINDOW_MS,
 // then restore puts it back with text, read state and notes. Apart from the report store, so an
-// older daemon still reads that store; never listed or read. Expired entries leave on the next
-// delete or restore. Written only under the report store's lock.
+// older daemon still reads that store; never listed or read. Expired entries leave the disk on the
+// next list, delete or restore (#1614). Written only under the report store's lock.
 export const RESTORE_WINDOW_MS = 10 * 60 * 1000;
 const TRASH_NAMESPACE = "task-report-trash";
 /** The latest deletes that can be undone; older ones are gone for good. */
@@ -192,8 +192,8 @@ const trashSchema = z.looseObject({
 type Deleted = z.infer<typeof trashSchema>["deleted"][number];
 const trashPath = (ctx: ReportContext) => join(dirname(ctx.path), "task-report-trash.json");
 
-/** The deletes still in their window. */
-function readTrash(path: string, now: number): Deleted[] {
+/** Every entry as stored, expired ones included. */
+function readTrashRecord(path: string): Deleted[] {
   let text: string;
   try {
     text = readAppRecord(TRASH_NAMESPACE, path);
@@ -203,7 +203,40 @@ function readTrash(path: string, now: number): Deleted[] {
   }
   const parsed = trashSchema.safeParse(JSON.parse(text));
   if (!parsed.success) throw Object.assign(new Error("Task report trash unreadable"), { code: "corrupt" });
-  return parsed.data.deleted.filter((d) => d.deleted_at + RESTORE_WINDOW_MS > now);
+  return parsed.data.deleted;
+}
+
+const live = (d: Deleted, now: number) => d.deleted_at + RESTORE_WINDOW_MS > now;
+
+/** The deletes still in their window. */
+const readTrash = (path: string, now: number) => readTrashRecord(path).filter((d) => live(d, now));
+
+/** True when the trash holds an entry past its window; an unreadable trash counts as nothing to drop. */
+function hasExpired(path: string, now: number): boolean {
+  try {
+    return readTrashRecord(path).some((d) => !live(d, now));
+  } catch {
+    return false;
+  }
+}
+
+/** #1614: an expired entry (report text, notes) leaves the disk instead of waiting for the next
+ * delete. Checked without the lock, rewritten under the store's lock only when something expired.
+ * Cleanup never fails the call it runs in; an unreadable trash stays untouched. */
+async function pruneTrash(ctx: ReportContext, now: number): Promise<void> {
+  const path = trashPath(ctx);
+  if (!hasExpired(path, now)) return;
+  try {
+    await withPathLock(
+      storePath(ctx),
+      async () => {
+        if (hasExpired(path, now)) writeTrash(path, readTrash(path, now));
+      },
+      { crossProcess: true, requireLock: true }
+    );
+  } catch {
+    /* the next list, delete or restore tries again */
+  }
 }
 
 /** Keep the latest deletes. A byte-capacity failure leaves earlier undo entries intact. */
@@ -314,11 +347,13 @@ function deleteReport(ctx: ReportContext, principal: TaskPrincipal, id: string) 
 
 /** Undo a delete within its window: the report returns as it was. The report limit holds here
  * too. The trash entry leaves only once the report is back in the store. */
-function restoreReport(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
+async function restoreReport(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
   const { id } = idInput.parse(raw);
   const now = (ctx.now ?? Date.now)();
   const path = trashPath(ctx);
   const trash = () => readTrash(path, now);
+  // An expired entry is refused below; its data leaves the disk first (#1614).
+  await pruneTrash(ctx, now);
   return changeReports(
     storePath(ctx),
     (reports) => {
@@ -469,8 +504,9 @@ function matches(r: TaskReport, query: string | undefined) {
   return words.every((w) => hay.includes(w));
 }
 
-function listReports(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
+async function listReports(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
   const { query } = listInput.parse(raw);
+  await pruneTrash(ctx, (ctx.now ?? Date.now)());
   const reports = readReports(storePath(ctx))
     .filter((r) => visible(r, principal) && matches(r, query))
     .sort(order);

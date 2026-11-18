@@ -4,10 +4,11 @@
  * terminal is recorded as the user's instruction (write_origin: user-directed).
  */
 import { test } from "node:test";
+import { createServer } from "node:http";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { Readable } from "node:stream";
 import { setImmediate } from "node:timers/promises";
 import matter from "gray-matter";
@@ -21,8 +22,21 @@ import type { ToolDeps } from "../src/tool-deps.js";
 import { DAEMON_VERSION } from "../src/version.js";
 
 process.env.BASTRA_API_TOKEN = "test-token-1492-abcdef0123456789";
+// A credential the save path redacts (built in parts so no scanner flags this file).
+const GITHUB_TOKEN = ["gh", "p_", "a1B2c3D4e5F6", "g7H8i9J0k1L2", "m3N4o5P6q7R8"].join("");
 
 const noStdin = { stdin: async () => undefined };
+
+/** Every vault file with its bytes, including audit, locks and any index files. */
+async function vaultBytes(root: string): Promise<Map<string, Buffer>> {
+  const files = new Map<string, Buffer>();
+  for (const entry of await readdir(root, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const file = join(entry.parentPath, entry.name);
+    files.set(relative(root, file), await readFile(file));
+  }
+  return files;
+}
 
 function quiet(t: { mock: { method: (o: object, m: string, f: (...a: unknown[]) => void) => unknown } }) {
   const out: string[] = [];
@@ -62,6 +76,56 @@ test("#1492 bastra save writes a user-directed memory through the daemon, bastra
     await rm(vaultRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   });
   const out = quiet(t);
+
+  // Seed real audit/index state before comparing every existing file byte.
+  assert.equal(
+    await cmdSave(
+      ["save", "--title", "Audit seed", "--type", "reference", "--scope", "household", "Check smoke alarms annually."],
+      undefined,
+      noStdin
+    ),
+    0
+  );
+  out.length = 0;
+  const beforePreview = await vaultBytes(vaultRoot);
+  // --dry-run: the daemon's preview of the same save; nothing lands in the vault (INV-VAULT-10).
+  const preview = ["save", "--title", "Release token note", "--type", "lesson", "--scope", "household"];
+  assert.equal(await cmdSave([...preview, "--dry-run", `Export ${GITHUB_TOKEN} first.`], undefined, noStdin), 0);
+  const shown = out.join("\n");
+  assert.match(shown, /^preview only: nothing was saved$/m);
+  assert.match(shown, /id: +release-token-note$/m);
+  assert.match(shown, /kind: +note only/m);
+  assert.match(shown, /redacted: summary \(1\), body \(1\)$/m);
+  assert.ok(!shown.includes(GITHUB_TOKEN), "the preview never echoes the credential");
+  const previewFile = /file: +(.+)$/m.exec(shown)?.[1];
+  assert.ok(previewFile, shown);
+  await assert.rejects(access(previewFile), "the preview writes no file");
+  assert.equal(vault.get("release-token-note"), undefined);
+  out.length = 0;
+  assert.equal(await cmdSave([...preview, "--dry-run", "--json", "Plain text."], undefined, noStdin), 0);
+  const raw = JSON.parse(out[0]);
+  assert.equal(raw.dry_run, true);
+  assert.match(raw.content, /Plain text\./, "--json passes the daemon's preview through, file content included");
+  assert.equal(vault.get("release-token-note"), undefined);
+  assert.deepEqual(await vaultBytes(vaultRoot), beforePreview, "CLI previews preserve all existing vault bytes");
+  out.length = 0;
+  assert.equal(
+    await cmdSave([...preview, "--dry-run", "--json", `Export ${GITHUB_TOKEN} first.`], undefined, noStdin),
+    0
+  );
+  const redactedPreview = JSON.parse(out[0]);
+  assert.deepEqual(await vaultBytes(vaultRoot), beforePreview);
+  out.length = 0;
+  assert.equal(await cmdSave([...preview, "--json", `Export ${GITHUB_TOKEN} first.`], undefined, noStdin), 0);
+  const written = JSON.parse(out[0]);
+  const planned = matter(redactedPreview.content);
+  const actual = matter(await readFile(written.file_path, "utf8"));
+  assert.equal(actual.content, planned.content, "preview and write have the same redacted body");
+  // Independent requests carry independent attribution times; all other fields must match.
+  delete actual.data.write_origin_evidence.at;
+  delete planned.data.write_origin_evidence.at;
+  assert.deepEqual(actual.data, planned.data, "preview and write have identical frontmatter");
+  out.length = 0;
 
   const code = await cmdSave(
     [
@@ -116,6 +180,28 @@ test("#1492 bastra save writes a user-directed memory through the daemon, bastra
     out.join("\n")
   );
 
+  out.length = 0;
+  const beforeRefusal = await vaultBytes(vaultRoot);
+  assert.equal(
+    await cmdSave(
+      [
+        "save",
+        "--title",
+        "Kettle descaling interval",
+        "--type",
+        "lesson",
+        "--scope",
+        "household",
+        "--dry-run",
+        "Again.",
+      ],
+      undefined,
+      noStdin
+    ),
+    1
+  );
+  assert.match(out.join("\n"), /already exists/);
+  assert.deepEqual(await vaultBytes(vaultRoot), beforeRefusal, "a refused CLI preview preserves every vault byte");
   out.length = 0;
   assert.equal(
     await cmdSave(
@@ -256,4 +342,113 @@ test("#1492 the options are validated per command before dispatch", () => {
     "option '--title' is not valid for 'bastra recall'",
   ]);
   assert.deepEqual(validateArgs(["save", "--title"]), ["option '--title' needs a value"]);
+  assert.deepEqual(validateArgs(["save", "--dry-run=false"]), [
+    "option '--dry-run' takes no value — write '--dry-run'",
+  ]);
+  assert.deepEqual(validateArgs(["save", "--title", "T", "--type", "lesson", "--scope", "s", "--dry-run", "x"]), []);
+  assert.deepEqual(validateArgs(["recall", "q", "--dry-run"]), ["option '--dry-run' is not valid for 'bastra recall'"]);
 });
+
+test("bastra save --dry-run sends dry_run: true and names a held save as not to be saved", async (t) => {
+  const out = quiet(t);
+  const inputs: unknown[] = [];
+  const call = async (_tool: string, input: unknown) => {
+    inputs.push(input);
+    return { id: "x", dry_run: true, claim_gate: { claimed: [{ id: "older" }] } };
+  };
+  const argv = ["save", "--title", "T", "--type", "lesson", "--scope", "s", "--dry-run", "text"];
+  assert.equal(await cmdSave(argv, call as never, noStdin), 1);
+  assert.equal((inputs[0] as { dry_run?: boolean }).dry_run, true);
+  assert.match(out.join("\n"), /would not be saved: another memory already covers this situation/);
+});
+
+test("dry-run payload preserves stdin and every optional field, adding only dry_run", async (t) => {
+  quiet(t);
+  const calls: Record<string, unknown>[] = [];
+  const call = async (_tool: string, input: unknown) => {
+    calls.push(input as Record<string, unknown>);
+    return { id: "x", dry_run: true };
+  };
+  const argv = [
+    "save",
+    "--title",
+    "T",
+    "--type",
+    "lesson",
+    "--scope",
+    "s",
+    "--summary",
+    "One line",
+    "--recall-when",
+    "first",
+    "--recall-when",
+    "second",
+    "--tag",
+    "tag",
+    "--topic",
+    "p/q",
+    "--json",
+  ];
+  const io = { stdin: async () => "Piped\r\nbody" };
+  assert.equal(await cmdSave(argv, call as never, io), 0);
+  assert.equal(await cmdSave([...argv, "--dry-run"], call as never, io), 0);
+  assert.deepEqual(calls[1], { ...calls[0], dry_run: true });
+  assert.equal(Object.hasOwn(calls[0], "dry_run"), false);
+});
+
+for (const schema of ["missing-endpoint", "missing-field", "wrong-type", "invalid-json", "confirmed"] as const) {
+  test(`dry-run checks daemon schema before a potentially writing POST: ${schema}`, async (t) => {
+    const out = quiet(t);
+    const requests: string[] = [];
+    const legacyWrites: string[] = [];
+    const server = createServer((req, res) => {
+      requests.push(`${req.method} ${req.url}`);
+      res.setHeader("Content-Type", "application/json");
+      if (req.method === "GET" && req.url === "/tools?surface=write") {
+        res.statusCode = schema === "missing-endpoint" ? 404 : 200;
+        const properties =
+          schema === "missing-field" ? {} : { dry_run: { type: schema === "wrong-type" ? "string" : "boolean" } };
+        res.end(
+          schema === "invalid-json"
+            ? "{"
+            : JSON.stringify({ tools: [{ name: "save_memory", inputSchema: { properties } }] })
+        );
+        return;
+      }
+      let text = "";
+      req.on("data", (chunk) => (text += chunk));
+      req.on("end", () => {
+        // Older handler ignores unknown fields; confirmed-but-malformed response is caught too.
+        legacyWrites.push(text);
+        res.end(JSON.stringify({ id: "legacy-save", created: true }));
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const oldUrl = process.env.BASTRA_DAEMON_URL;
+    process.env.BASTRA_DAEMON_URL = `http://127.0.0.1:${address.port}`;
+    t.after(async () => {
+      if (oldUrl === undefined) delete process.env.BASTRA_DAEMON_URL;
+      else process.env.BASTRA_DAEMON_URL = oldUrl;
+      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    });
+    assert.equal(
+      await cmdSave(
+        ["save", "--title", "T", "--type", "lesson", "--scope", "s", "--dry-run", "text"],
+        undefined,
+        noStdin
+      ),
+      1
+    );
+    assert.equal(requests[0], "GET /tools?surface=write");
+    assert.equal(
+      legacyWrites.length,
+      schema === "confirmed" ? 1 : 0,
+      "unconfirmed schema must never dispatch save_memory"
+    );
+    if (schema === "confirmed") assert.match(out.join("\n"), /may have saved/);
+    else assert.match(out.join("\n"), /nothing was sent to save_memory/);
+    assert.doesNotMatch(out.join("\n"), /nothing was saved|^saved /m);
+  });
+}

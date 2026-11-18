@@ -68,6 +68,8 @@ export default {
   "st.secret.unset": "nicht gesetzt",
   "st.json.invalid": "Ungültiges JSON im markierten Feld. Bitte korrigieren oder das Feld leeren.",
   "st.json.invalidShort": "ungültiges JSON, wird nicht gespeichert",
+  "st.value.invalid": "Ungültiger Wert im markierten Feld. Bitte korrigieren oder das Feld leeren.",
+  "st.value.invalidShort": "ungültiger Wert, wird nicht gespeichert",
 
   "st.chip.modified": "GEÄNDERT",
   "st.chip.restart": "NEUSTART",

@@ -123,7 +123,7 @@ export const COMMAND_FLAGS: Record<string, readonly string[]> = {
   archive: ["--json", "--yes", "-y"],
   trash: ["--json"],
   recall: ["--json", "--limit", "--scope", "--type"],
-  save: ["--json", "--title", "--type", "--scope", "--summary", "--recall-when", "--tag", "--topic"],
+  save: ["--json", "--dry-run", "--title", "--type", "--scope", "--summary", "--recall-when", "--tag", "--topic"],
   reconcile: ["--dry-run", "--yes", "-y", "--json", "--vault"],
   logs: ["--follow", "-f", "--since", "--source", "--lines", "--stats", "--conventions", "--include-eval"],
 };

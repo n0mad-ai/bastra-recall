@@ -8,6 +8,10 @@
  * A save typed in the terminal is the user's own instruction, so it carries
  * `write_origin: user-directed` — the same as "Save as memory" in the web UI,
  * and with the same derived fields (user-save-input.ts).
+ *
+ * `bastra save --dry-run` sends the same input with `dry_run: true`: the
+ * daemon runs every check and writes nothing (INV-VAULT-10); the terminal
+ * shows what would be stored.
  */
 import { readStdin } from "../hook-transport.js";
 import { USER_SAVE_TYPES, userDirectedSaveInput, type UserSaveType } from "../user-save-input.js";
@@ -29,13 +33,14 @@ const REPEATABLE = new Set(["--recall-when", "--tag"]);
 
 const RECALL_USAGE = 'usage: bastra recall "<question>" [--limit N] [--scope S] [--type T] [--json]';
 const SAVE_USAGE =
-  "usage: bastra save --title T --type T --scope S [--summary S] [--recall-when W]... [--tag X]... [--topic a/b] [text | stdin] [--json]";
+  "usage: bastra save --title T --type T --scope S [--summary S] [--recall-when W]... [--tag X]... [--topic a/b] [text | stdin] [--dry-run] [--json]";
 
 type Call = typeof rulebookCliCall;
 
 interface Options {
   values: Map<string, string[]>;
   json: boolean;
+  dryRun: boolean;
   words: string[];
 }
 
@@ -45,11 +50,13 @@ function readOptions(argv: string[]): Options {
   const values = new Map<string, string[]>();
   const words: string[] = [];
   let json = false;
+  let dryRun = false;
   for (let i = 1; i < argv.length; i++) {
     const token = argv[i];
     const eq = token.indexOf("=");
     const name = token.startsWith("--") && eq > 0 ? token.slice(0, eq) : token;
     if (name === "--json") json = true;
+    else if (name === "--dry-run") dryRun = true;
     else if ((MEMORY_VALUE_FLAGS as readonly string[]).includes(name)) {
       const value = name === token ? argv[++i] : token.slice(eq + 1);
       const list = values.get(name) ?? [];
@@ -57,7 +64,7 @@ function readOptions(argv: string[]): Options {
       values.set(name, [...list, value]);
     } else words.push(token);
   }
-  return { values, json, words };
+  return { values, json, dryRun, words };
 }
 
 const one = (o: Options, name: string): string | undefined => o.values.get(name)?.[0]?.trim() || undefined;
@@ -138,6 +145,46 @@ interface SaveOutcome {
   created?: boolean;
   summary_note?: string;
   claim_gate?: { claimed: { id: string; title?: string }[] };
+  /** Set on a preview (--dry-run): nothing was written. */
+  dry_run?: true;
+  /** Rule state of the memory: rule, proposal or note (rulebook-status.ts). */
+  delivery?: string;
+  /** Credential values replaced per field before writing. */
+  secrets_redacted?: Record<string, number>;
+}
+
+/** Prints the daemon's answer; exit code 1 when the save was held at the claim gate. */
+function printSaveOutcome(out: SaveOutcome, o: Options): number {
+  if (o.dryRun && out.dry_run !== true) {
+    console.error("bastra save: daemon did not confirm a dry-run; it may have saved the memory");
+    return 1;
+  }
+  if (o.json) {
+    console.log(JSON.stringify(out));
+    return out.claim_gate ? 1 : 0;
+  }
+  if (out.claim_gate) {
+    console.error(`${o.dryRun ? "would not be saved" : "not saved"}: another memory already covers this situation`);
+    for (const c of out.claim_gate.claimed) console.error(`  ${c.id}${c.title ? `  ${c.title}` : ""}`);
+    return 1;
+  }
+  if (o.dryRun) printPreview(out);
+  else {
+    console.log(`saved ${out.id}${out.file_path ? ` → ${out.file_path}` : ""}`);
+    if (out.summary_note) console.log(out.summary_note);
+  }
+  return 0;
+}
+
+/** What a preview would store: target, rule state and redactions. */
+function printPreview(out: SaveOutcome): void {
+  console.log("preview only: nothing was saved");
+  console.log(`  id:       ${out.id}`);
+  if (out.file_path) console.log(`  file:     ${out.file_path}`);
+  if (out.delivery) console.log(`  kind:     ${out.delivery}`);
+  const redacted = Object.entries(out.secrets_redacted ?? {}).map(([field, n]) => `${field} (${n})`);
+  console.log(`  redacted: ${redacted.length ? redacted.join(", ") : "nothing"}`);
+  if (out.summary_note) console.log(out.summary_note);
 }
 
 /** The save_memory input, or a usage problem to print. */
@@ -183,22 +230,9 @@ export async function cmdSave(argv: string[], call: Call = rulebookCliCall, io: 
     console.error(`${input}\n${SAVE_USAGE}`);
     return 2;
   }
-  const json = o.json;
   try {
-    const out = (await call("save_memory", input)) as SaveOutcome;
-    if (json) console.log(JSON.stringify(out));
-    if (out.claim_gate) {
-      if (!json) {
-        console.error("not saved: another memory already covers this situation");
-        for (const c of out.claim_gate.claimed) console.error(`  ${c.id}${c.title ? `  ${c.title}` : ""}`);
-      }
-      return 1;
-    }
-    if (!json) {
-      console.log(`saved ${out.id}${out.file_path ? ` → ${out.file_path}` : ""}`);
-      if (out.summary_note) console.log(out.summary_note);
-    }
-    return 0;
+    const out = (await call("save_memory", o.dryRun ? { ...input, dry_run: true } : input)) as SaveOutcome;
+    return printSaveOutcome(out, o);
   } catch (e) {
     console.error(`bastra save: ${(e as Error).message}`);
     return 1;

@@ -68,6 +68,8 @@ export default {
   "st.secret.unset": "not set",
   "st.json.invalid": "Invalid JSON in the marked field. Correct it or clear the field.",
   "st.json.invalidShort": "invalid JSON, not saved",
+  "st.value.invalid": "Invalid value in the marked field. Correct it or clear the field.",
+  "st.value.invalidShort": "invalid value, not saved",
 
   "st.chip.modified": "MODIFIED",
   "st.chip.restart": "RESTART",

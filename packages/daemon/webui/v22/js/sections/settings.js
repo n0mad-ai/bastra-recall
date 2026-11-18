@@ -202,6 +202,7 @@ function selectCtl(e) {
     customMode = false;
     custom.hidden = true;
     custom.classList.remove("is-bad");
+    setInvalid(e.key, null);
     const o = opts[Number(sel.value)];
     setValue(e.key, o.std ? null : o.v);
   });
@@ -209,20 +210,33 @@ function selectCtl(e) {
     const raw = custom.value.trim(),
       n = Number(raw);
     custom.classList.remove("is-bad");
-    if (raw === "") {
-      setValue(e.key, null);
-      return;
-    }
-    if (isNum && (!Number.isFinite(n) || n < (m.min ?? -Infinity) || n > (m.max ?? Infinity))) {
+    if (isNum && raw !== "" && (!Number.isFinite(n) || n < (m.min ?? -Infinity) || n > (m.max ?? Infinity))) {
+      // The visible text is what Apply must save; until it is a valid number, Apply stays blocked.
       custom.classList.add("is-bad");
+      setInvalid(e.key, custom.value);
+      emit("value");
       return;
     }
-    setValue(e.key, isNum ? n : raw);
+    setInvalid(e.key, null);
+    setValue(e.key, raw === "" ? null : isNum ? n : raw);
   });
+  // A rebuild of the rows keeps an invalid draft visible instead of the earlier value.
+  const syncDraft = () => {
+    const draft = store.invalid.get(e.key);
+    custom.classList.toggle("is-bad", draft !== undefined);
+    if (draft === undefined) return false;
+    customMode = true;
+    sel.value = "custom";
+    custom.hidden = false;
+    if (document.activeElement !== custom) custom.value = draft;
+    return true;
+  };
   return {
     nodes: [h("span.st-selw", null, sel), custom],
     wide: true,
+    focus: () => custom.focus(),
     sync: () => {
+      if (syncDraft()) return;
       const v = shown(e),
         cur = v === undefined || v === null ? e.default : v;
       const i = opts.findIndex((o) => same(o.v, cur));

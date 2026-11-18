@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 
-async function model(fetch?: Function) {
+async function model(fetch?: Function, globals: Record<string, unknown> = {}) {
   const source = await readFile(new URL("../webui/v22/js/sections/settings-model.js", import.meta.url), "utf8");
   return runInNewContext(
     source
@@ -17,6 +17,7 @@ async function model(fetch?: Function) {
       setBackdrop() {},
       t: (key: string) => key,
       fetch,
+      ...globals,
     }
   );
 }
@@ -242,4 +243,27 @@ test("v22 invalid daemon.env JSON blocks Apply and restart and never saves the o
   m.setInvalid("daemon.env", "{");
   m.discard();
   assert.equal(m.store.invalid.size, 0);
+});
+
+test("v22 settings: unsaved changes block the daemon restart until they are applied or discarded", async () => {
+  const calls: string[] = [];
+  const entries = [{ key: "logs.retention", value: 90, restartRequired: true, envOverride: [] }];
+  const m = await model(
+    async (path: string) => {
+      calls.push(path);
+      if (path.endsWith("/session")) return { ok: true, json: async () => ({ csrf: "fixture" }) };
+      return { ok: true, json: async () => ({ entries, restartAvailable: true }) };
+    },
+    // The restart waits for the daemon to come back; no real wait in the test.
+    { setTimeout: (fn: () => void) => fn() }
+  );
+  m.store.model = { entries, restartAvailable: true };
+  m.setValue("logs.retention", 100);
+  await m.restart();
+  assert.equal(calls.length, 0, "a restart with unsaved changes would drop them, so nothing is sent");
+  assert.equal(m.store.restarting, false);
+  m.discard();
+  await m.restart();
+  assert.ok(calls.includes("/ui/settings/restart"), "without pending changes the restart goes through");
+  assert.equal(m.store.restarting, false);
 });
