@@ -630,7 +630,9 @@ test("bastra models switch: the verified switch, the answer recorded with it, th
     });
     const { out, result } = await run(path, ["switch", "test-rec-1", "new:4b"], { enable: sw.enable });
     assert.equal(result, 0);
-    assert.deepEqual(sw.calls, [["new:4b", { dryRun: false, verify: true, recommendationId: "test-rec-1" }, path]]);
+    assert.deepEqual(sw.calls, [
+      ["new:4b", { dryRun: false, verify: true, recommendationId: "test-rec-1", language: "en" }, path],
+    ]);
     assert.equal(
       out,
       "Switching the generation model to new:4b (about 3.3 GB download if it is not present yet) …\n" +
@@ -747,7 +749,7 @@ test("bastra update, on a terminal: asks, and each answer does what it says", as
     await ask("s");
     assert.deepEqual(
       sw.calls,
-      [["new:4b", { dryRun: false, verify: true, recommendationId: "test-rec-1" }, path]],
+      [["new:4b", { dryRun: false, verify: true, recommendationId: "test-rec-1", language: "en" }, path]],
       "the switch is for the offer that was on screen"
     );
     assert.equal(await answerOf(path), "switched");

@@ -3,8 +3,9 @@
  *  two languages (#1602). Text the product writes — never matched against user text. */
 import { getPrimaryLanguage } from "../settings.js";
 
-export async function taskCliLanguage(): Promise<string> {
-  return (await getPrimaryLanguage()) ?? "en";
+/** language.primary from the settings file at `settingsPath` (the default one when not given). */
+export async function taskCliLanguage(settingsPath?: string): Promise<string> {
+  return (await getPrimaryLanguage(settingsPath)) ?? "en";
 }
 /** One CLI text by language; an unlisted language gets English. */
 export type TaskCliText = Readonly<{ en: string } & Record<string, string>>;

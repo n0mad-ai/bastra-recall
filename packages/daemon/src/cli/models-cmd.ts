@@ -39,6 +39,8 @@ import {
   type OfferOptions,
 } from "../model-recommendation.js";
 import { usageWords } from "./usage-words.js";
+import { taskCliLanguage } from "./task-cli-words.js";
+import { modelsCmdWordsIn, type ModelsCmdWords } from "./models-cmd-words.js";
 
 function write(line: string): void {
   process.stdout.write(line + "\n");
@@ -62,9 +64,12 @@ export async function cmdModels(opts: {
   deps?: ModelsDeps;
 }): Promise<number> {
   const deps: ModelsDeps = { ...opts.deps, settingsPath: opts.settingsPath };
+  // language.primary, read once for the whole command.
+  const language = await taskCliLanguage(opts.settingsPath).catch(() => "en");
+  const w = modelsCmdWordsIn(language);
   switch (opts.sub ?? "status") {
     case "status":
-      return cmdStatus(deps);
+      return cmdStatus(deps, w);
     case "recommend":
       return cmdRecommend();
     case "set": {
@@ -75,28 +80,28 @@ export async function cmdModels(opts: {
         process.stderr.write((await usageWords()).modelsSet);
         return 2;
       }
-      return cmdSet(model, opts.settingsPath);
+      return cmdSet(model, w, language, opts.settingsPath);
     }
     case "switch":
     case "later":
     case "dismiss":
-      return cmdAnswer(opts.sub as Choice, opts.positional?.[2], opts.positional?.[3], deps);
+      return cmdAnswer(opts.sub as Choice, opts.positional?.[2], opts.positional?.[3], deps, w, language);
     case "ask":
-      return cmdAsk(deps);
+      return cmdAsk(deps, w, language);
     default:
       process.stderr.write((await usageWords()).models);
       return 2;
   }
 }
 
-async function cmdStatus(deps: ModelsDeps): Promise<number> {
+async function cmdStatus(deps: ModelsDeps, w: ModelsCmdWords): Promise<number> {
   const active = await resolveGenerationModel(deps.settingsPath);
   const hw = detectHardware();
   const rec = recommendTextModel(deps.ramGB ?? hw.ramGB, deps.recommendation);
-  write(`generation model: ${active}${active === GENERATION_MODEL_DEFAULT ? " (default)" : ""}`);
-  write(`machine: ${hw.ramGB} GB${hw.chip ? `, ${hw.chip}` : ""} (${hw.platform})`);
-  write(`recommended: ${rec.model ?? "— none —"}  [${rec.tier}]`);
-  if (rec.alt) write(`  opt-in alternative: ${rec.alt.model} — ${rec.alt.note}`);
+  write(w.generationModel(active, active === GENERATION_MODEL_DEFAULT));
+  write(w.machine(`${hw.ramGB}`, hw.chip ?? "", hw.platform));
+  write(w.recommended(rec.model, rec.tier));
+  if (rec.alt) write(w.optInAlternative(rec.alt.model, rec.alt.note));
   write(rec.note);
   const offer = await currentModelOffer(deps);
   if (offer) {
@@ -105,8 +110,8 @@ async function cmdStatus(deps: ModelsDeps): Promise<number> {
   } else if (rec.model && active !== rec.model && rec.tier !== "keyword-only") {
     // The command for the model named on the `recommended:` line. The heavier
     // alternative gets its own line, labelled as what it is.
-    write(`\nto switch: bastra models set ${rec.model}`);
-    if (rec.alt && active !== rec.alt.model) write(`alternative: bastra models set ${rec.alt.model}`);
+    write(w.toSwitch(rec.model));
+    if (rec.alt && active !== rec.alt.model) write(w.alternative(rec.alt.model));
   }
   return 0;
 }
@@ -120,9 +125,9 @@ async function cmdRecommend(): Promise<number> {
   return 0;
 }
 
-async function cmdSet(model: string, settingsPath?: string): Promise<number> {
-  write(`Setting the generation model to ${model} …`);
-  const r = await enableGenerationModel(model, { dryRun: false }, settingsPath);
+async function cmdSet(model: string, w: ModelsCmdWords, language: string, settingsPath?: string): Promise<number> {
+  write(w.setting(model));
+  const r = await enableGenerationModel(model, { dryRun: false, language }, settingsPath);
   write((r.activated ? "✓ " : "✗ ") + r.message);
   return r.activated ? 0 : 1;
 }
@@ -146,33 +151,31 @@ async function cmdAnswer(
   choice: Choice,
   id: string | undefined,
   model: string | undefined,
-  deps: ModelsDeps
+  deps: ModelsDeps,
+  w: ModelsCmdWords,
+  language: string
 ): Promise<number> {
   const offer = await machineRecommendation(deps);
   const answered = id ? `${id}${model ? ` (${model})` : ""}` : null;
   if (!offer) {
     if (!answered) {
-      write("Nothing to decide: there is no model recommendation open for this machine.");
+      write(w.nothingToDecide);
       return 0;
     }
-    write(`✗ ${answered} is not a recommendation of this bastra version for this machine.`);
-    write("Nothing was changed.");
+    write(w.notOfThisVersion(answered));
+    write(w.nothingChanged);
     return 1;
   }
   if (!id || (choice === "switch" && !model)) {
-    process.stderr.write(
-      `Say which recommendation you are answering — the full command is:\n  ${decisionCommand(choice, offer)}\nNothing was changed.\n`
-    );
+    process.stderr.write(w.sayWhich(decisionCommand(choice, offer)));
     return 2;
   }
   if (id !== offer.id || (choice === "switch" && model !== offer.model)) {
-    write(
-      `✗ ${answered} is not the current recommendation. This bastra version recommends ${offer.model} (${offer.id}, about ${offer.sizeGB} GB download).`
-    );
-    write("Nothing was changed. 'bastra models' shows the current recommendation and its commands.");
+    write(w.notCurrent(`${answered}`, offer.model, offer.id, `${offer.sizeGB}`));
+    write(w.nothingChangedSee);
     return 1;
   }
-  return answer(choice, offer, deps);
+  return answer(choice, offer, deps, w, language);
 }
 
 /**
@@ -180,48 +183,50 @@ async function cmdAnswer(
  * shown, never one recomputed here. A failed switch records nothing — the
  * setting is unchanged, so the question is still open.
  */
-async function answer(choice: Choice, offer: ModelOffer, deps: ModelsDeps): Promise<number> {
+async function answer(
+  choice: Choice,
+  offer: ModelOffer,
+  deps: ModelsDeps,
+  w: ModelsCmdWords,
+  language: string
+): Promise<number> {
   if (choice !== "switch") {
     try {
       await recordModelAnswer(offer.id, choice === "later" ? "later" : "dismissed", deps.settingsPath, deps.now);
     } catch (e) {
       write(`✗ ${(e as Error).message}`);
-      write("Nothing was changed.");
+      write(w.nothingChanged);
       return 1;
     }
     if (choice === "later") {
-      write(
-        `OK — the generation model stays ${offer.current}. You will be asked again in 7 days; until then 'bastra models' shows the recommendation.`
-      );
+      write(w.later(offer.current));
     } else {
-      write(`OK — the generation model stays ${offer.current}. From now on ${DISMISS_WARNING}.`);
-      write(`Still open to you: ${DISMISS_STILL_OPEN}.`);
+      write(w.dismissed(offer.current, DISMISS_WARNING));
+      write(w.stillOpen(DISMISS_STILL_OPEN));
     }
     return 0;
   }
   // What `bastra models set <previous>` has to name: the stored choice, not a
   // model an env variable currently pins over it.
   const previous = (await readSettings(deps.settingsPath)).generation?.model ?? GENERATION_MODEL_DEFAULT;
-  write(
-    `Switching the generation model to ${offer.model} (about ${offer.sizeGB} GB download if it is not present yet) …`
-  );
+  write(w.switching(offer.model, `${offer.sizeGB}`));
   // The model and the answer "switched" are stored together, inside enable.
   const r = await (deps.enable ?? enableGenerationModel)(
     offer.model,
-    { dryRun: false, verify: true, recommendationId: offer.id },
+    { dryRun: false, verify: true, recommendationId: offer.id, language },
     deps.settingsPath
   );
   if (!r.activated) {
     write(`✗ ${r.message}`);
-    write(`Nothing was changed — the generation model stays ${offer.current}.`);
+    write(w.switchFailed(offer.current));
     return 1;
   }
   write(`✓ ${r.message}`);
   if (previous !== offer.model) {
-    write(`The previous model ${previous} is still installed. Switch back any time: bastra models set ${previous}`);
+    write(w.previousKept(previous));
   }
   const env = envOverrideNote(offer);
-  if (env) write(`Note: ${env}`);
+  if (env) write(w.note(env));
   return 0;
 }
 
@@ -235,19 +240,17 @@ async function answer(choice: Choice, offer: ModelOffer, deps: ModelsDeps): Prom
  * Without that note, a user who waves the question away would get it again
  * after every command.
  */
-async function askQuestion(offer: ModelOffer, deps: ModelsDeps): Promise<number> {
+async function askQuestion(offer: ModelOffer, deps: ModelsDeps, w: ModelsCmdWords, language: string): Promise<number> {
   write("");
   for (const line of modelOfferFacts(offer)) write(line);
   const env = envOverrideNote(offer);
-  if (env) write(`Note: ${env}`);
-  write(`About [n]: ${DISMISS_WARNING}; ${DISMISS_STILL_OPEN}.`);
-  const reply = await (deps.ask ?? ask)(
-    "[s] switch now   [l] later (ask again in 7 days)   [n] never ask again for this recommendation — your choice [s/l/n]: "
-  );
+  if (env) write(w.note(env));
+  write(w.aboutNever(DISMISS_WARNING, DISMISS_STILL_OPEN));
+  const reply = await (deps.ask ?? ask)(w.question);
   if (reply === null) return 0;
-  if (/^s(witch)?$/i.test(reply)) return answer("switch", offer, deps);
-  if (/^n(o|ever)?$/i.test(reply)) return answer("dismiss", offer, deps);
-  return answer("later", offer, deps);
+  if (/^s(witch)?$/i.test(reply)) return answer("switch", offer, deps, w, language);
+  if (/^n(o|ever)?$/i.test(reply)) return answer("dismiss", offer, deps, w, language);
+  return answer("later", offer, deps, w, language);
 }
 
 /**
@@ -255,7 +258,7 @@ async function askQuestion(offer: ModelOffer, deps: ModelsDeps): Promise<number>
  * answered yet. On a terminal it asks; anywhere else it only prints the notice
  * and never waits.
  */
-async function cmdAsk(deps: ModelsDeps): Promise<number> {
+async function cmdAsk(deps: ModelsDeps, w: ModelsCmdWords, language: string): Promise<number> {
   const offer = await pendingModelNotice(deps);
   if (!offer) return 0;
   if (!(deps.interactive ?? isInteractive())) {
@@ -274,7 +277,7 @@ async function cmdAsk(deps: ModelsDeps): Promise<number> {
     return 0; // the settings file cannot take a note — asking would ask forever
   }
   if (!claimed && !(await pendingModelNotice(deps))) return 0;
-  return askQuestion(offer, deps);
+  return askQuestion(offer, deps, w, language);
 }
 
 /**
@@ -303,7 +306,8 @@ export async function maybeAskModelCatchUp(deps: ModelsDeps = {}): Promise<boole
   } catch {
     return false; // the settings file cannot take a note — asking would ask forever
   }
-  await askQuestion(offer, deps);
+  const language = await taskCliLanguage(deps.settingsPath).catch(() => "en");
+  await askQuestion(offer, deps, modelsCmdWordsIn(language), language);
   return true;
 }
 

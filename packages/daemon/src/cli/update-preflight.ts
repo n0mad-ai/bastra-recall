@@ -27,6 +27,7 @@ import { bastraDataDir } from "../platform-paths.js";
  */
 import { createHash } from "node:crypto";
 import { npmInvocation, type UpdateRuntimeIo } from "./update-npm.js";
+import { updatePreflightWordsIn } from "./update-preflight-words.js";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join, relative, dirname } from "node:path";
@@ -467,21 +468,22 @@ export async function preflight(opts: PreflightOptions): Promise<PreflightResult
 
 /** Human-readable rendering of a verdict — one place, so the interactive and
  *  the unattended path cannot drift in what they tell the user. */
-export function formatPreflight(r: PreflightResult): string {
+export function formatPreflight(r: PreflightResult, language = "en"): string {
+  const w = updatePreflightWordsIn(language);
   const lines: string[] = [];
-  for (const n of r.notes) lines.push(`  note: ${n}`);
+  for (const n of r.notes) lines.push(w.note(n));
   if (r.dirty.length > 0) {
-    lines.push(`  locally modified (${r.dirty.length}):`);
-    for (const d of r.dirty.slice(0, 20)) lines.push(`    ${d.kind === "missing" ? "missing " : "changed "} ${d.path}`);
-    if (r.dirty.length > 20) lines.push(`    … and ${r.dirty.length - 20} more`);
+    lines.push(w.modified(r.dirty.length));
+    for (const d of r.dirty.slice(0, 20)) lines.push(`    ${d.kind === "missing" ? w.missing : w.changed} ${d.path}`);
+    if (r.dirty.length > 20) lines.push(w.andMore(r.dirty.length - 20));
   }
-  if (r.backupDir) lines.push(`  backed up to: ${r.backupDir}`);
+  if (r.backupDir) lines.push(w.backedUp(r.backupDir));
   // Printed right under the backup line so "backed up to: …" is never read as
   // "all of it" — these files have no copy anywhere.
   if (r.backupFailed && r.backupFailed.length > 0) {
-    lines.push(`  NOT backed up (${r.backupFailed.length}) — no copy exists of:`);
-    for (const p of r.backupFailed.slice(0, 20)) lines.push(`    failed   ${p}`);
-    if (r.backupFailed.length > 20) lines.push(`    … and ${r.backupFailed.length - 20} more`);
+    lines.push(w.notBackedUp(r.backupFailed.length));
+    for (const p of r.backupFailed.slice(0, 20)) lines.push(w.failed(p));
+    if (r.backupFailed.length > 20) lines.push(w.andMore(r.backupFailed.length - 20));
   }
   if (r.refusal) lines.push(`✗ ${r.refusal}`);
   return lines.join("\n");

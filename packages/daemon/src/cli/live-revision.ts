@@ -20,6 +20,7 @@
 import { probeDaemon, type DaemonProbe } from "./helpers.js";
 import { shortRevision, type SourceBuildState } from "./source-build.js";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
+import { sourceBuildWordsIn } from "./source-build-words.js";
 
 export type LiveRevision = "live" | "other-build" | "unknown-build" | "no-daemon" | "unprovable";
 
@@ -37,52 +38,33 @@ export function decideLiveRevision(i: {
   return i.daemonRevision === i.provenHead ? "live" : "other-build";
 }
 
-const RESTART_CLIENTS =
-  "Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\n";
-
-/** The restart-step report and the closing line, as ONE story. */
+/** The restart-step report and the closing line, as ONE story, in `language`
+ *  (language.primary; English when not given, #1602). */
 export function describeLiveRevision(
   v: LiveRevision,
-  i: { state: SourceBuildState; daemonRevision: string | null }
+  i: { state: SourceBuildState; daemonRevision: string | null },
+  language = "en"
 ): { report: string; closing: string } {
-  const head = i.state.revision;
-  const running = shortRevision(i.daemonRevision) ?? "an unknown build";
+  const w = sourceBuildWordsIn(language);
+  const head = `${i.state.revision}`;
+  const running = shortRevision(i.daemonRevision) ?? w.unknownBuild;
   switch (v) {
     case "live":
-      return {
-        report: `  ✓ the running daemon answers from HEAD ${head}\n\n`,
-        closing: `→ done — HEAD ${head} is live in the running daemon. ${RESTART_CLIENTS}`,
-      };
+      return { report: w.liveReport(head), closing: w.liveClosing(head) + w.restartClients };
     case "no-daemon":
-      return {
-        report: "  · no daemon is answering — nothing is holding old code either\n\n",
-        closing: `→ done — HEAD ${head} is registered everywhere and goes live on the next daemon start.\n  ${RESTART_CLIENTS}`,
-      };
+      return { report: w.noDaemonReport, closing: w.noDaemonClosing(head) + w.restartClients };
     case "other-build":
       return {
-        report: `  ✗ the running daemon still answers from ${running}, not from HEAD ${head}\n\n`,
-        closing:
-          `→ registered, NOT live — the daemon in memory is ${running}, HEAD is ${head}.\n` +
-          "  Restart it, then re-check with 'bastra status':\n" +
-          `    lsof -i :${resolveDaemonEndpoint().port}             # find the daemon pid\n` +
-          "    kill <pid>                 # forwarder respawns it with the new code\n",
+        report: w.otherReport(running, head),
+        closing: w.otherClosing(running, head, `${resolveDaemonEndpoint().port}`),
       };
     case "unknown-build":
-      return {
-        report: "  ? the running daemon does not report which revision it was built from\n\n",
-        closing:
-          `→ registered — HEAD ${head} is built here, but the running daemon cannot say which\n` +
-          "  revision it serves (a daemon predating #528). Restart it to be sure.\n",
-      };
+      return { report: w.unknownBuildReport, closing: w.unknownBuildClosing(head) };
     case "unprovable":
       // The local build was accepted but not tied to a commit (a dirty tree, or
       // a tree with no workspace sources). Naming a revision here would be the
       // exact overstatement this module exists to remove.
-      return {
-        report: "",
-        closing:
-          "→ done — no revision is claimed: this checkout's build is not tied to a commit.\n" + `  ${RESTART_CLIENTS}`,
-      };
+      return { report: "", closing: w.unprovableClosing + w.restartClients };
   }
 }
 

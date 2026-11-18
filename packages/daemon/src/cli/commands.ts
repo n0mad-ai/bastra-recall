@@ -546,16 +546,16 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   await printDaemonOriginNote();
   await printAutostartNote(w, language);
   await printAssistantAddressNote();
-  await printStubBinaryNote(w);
+  await printStubBinaryNote(w, language);
   await printAffectsFilesNote(resolveVaultPath(args.vaultPath));
-  await printDerivedClaimsNote(resolveVaultPath(args.vaultPath), w);
+  await printDerivedClaimsNote(resolveVaultPath(args.vaultPath), w, language);
   await printCodeGraphNote(w);
   await printBridgeLearningNote(w);
-  await printClientMemoryNote(resolveVaultPath(args.vaultPath), w);
+  await printClientMemoryNote(resolveVaultPath(args.vaultPath), w, language);
   const rulebookVault = await resolveVault({ dryRun: true, vaultPath: resolveVaultPath(args.vaultPath) });
   if (!("error" in rulebookVault)) {
     await printRulebookDoctorNote(rulebookVault.path);
-    await printConflictCopiesNote(rulebookVault.path);
+    await printConflictCopiesNote(rulebookVault.path, language);
   }
   // #1472: does the tool list reach each client, and what does it cost.
   await printDeliveryNote(clientFeatures.map((c) => ({ surface: c.surface, mcpSurface: c.features.mcpSurface })));
@@ -608,10 +608,10 @@ async function printAffectsFilesNote(cliVault: string | null): Promise<void> {
  * Code's or Codex's file-based memory never reach the vault. Silent when those
  * folders are empty; a NOTE, never a failure.
  */
-async function printClientMemoryNote(cliVault: string | null, w: DoctorWords): Promise<void> {
+async function printClientMemoryNote(cliVault: string | null, w: DoctorWords, language: string): Promise<void> {
   try {
     const vault = await resolveVault({ dryRun: true, vaultPath: cliVault });
-    const lines = clientMemoryLines(await findClientMemoryDirs("error" in vault ? null : vault.path));
+    const lines = clientMemoryLines(await findClientMemoryDirs("error" in vault ? null : vault.path), language);
     if (lines.length === 0) return;
     process.stdout.write(w.clientMemory);
     for (const line of lines) process.stdout.write(`  ${line}\n`);
@@ -626,11 +626,11 @@ async function printClientMemoryNote(cliVault: string | null, w: DoctorWords): P
  * source. Wording and reading live in `derived-claims-note.ts`; silent when no
  * memory declares a claim, and like every global note never a failure.
  */
-async function printDerivedClaimsNote(cliVault: string | null, w: DoctorWords): Promise<void> {
+async function printDerivedClaimsNote(cliVault: string | null, w: DoctorWords, language: string): Promise<void> {
   try {
     const vault = await resolveVault({ dryRun: true, vaultPath: cliVault });
     if ("error" in vault) return;
-    const lines = await derivedClaimsLines(defaultDerivedClaimsIo(vault.path));
+    const lines = await derivedClaimsLines(defaultDerivedClaimsIo(vault.path), language);
     if (lines.length === 0) return;
     process.stdout.write(w.derivedClaims);
     for (const line of lines) process.stdout.write(`  ${line}\n`);
@@ -725,10 +725,10 @@ async function printBridgeLearningNote(w: DoctorWords): Promise<void> {
   }
 }
 
-async function printStubBinaryNote(w: DoctorWords): Promise<void> {
+async function printStubBinaryNote(w: DoctorWords, language: string): Promise<void> {
   try {
     const report = await stubFreshness();
-    const lines = stubFreshnessLines(report);
+    const lines = stubFreshnessLines(report, language);
     // Silent when no registration runs a compiled stub at all: this host is on
     // the node thin client, which ships inside `dist` and cannot drift from it.
     if (lines.length === 0) return;

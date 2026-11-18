@@ -27,6 +27,7 @@ import { IMPORT_WORDS, importWordsIn } from "../src/cli/import-words.js";
 import { cmdOnboard } from "../src/cli/onboard-cmd.js";
 import { ONBOARD_WORDS, onboardWordsIn } from "../src/cli/onboard-words.js";
 import { QUESTIONS } from "../src/onboarding.js";
+import { ONBOARDING_WORDS } from "../src/onboarding-words.js";
 import { cmdToken } from "../src/cli/token.js";
 import { TOKEN_WORDS, tokenWordsIn } from "../src/cli/token-words.js";
 import { cmdOAuth } from "../src/cli/oauth-cmd.js";
@@ -93,7 +94,7 @@ test("every words table has each text in English and German, and English for an 
   const en = onboardWordsIn("en"),
     de = onboardWordsIn("de");
   for (const q of QUESTIONS) {
-    assert.ok(ONBOARD_WORDS.de.questions[q.id], `onboard: no German text for question '${q.id}'`);
+    assert.ok(ONBOARDING_WORDS.de.questions[q.id], `onboard: no German text for question '${q.id}'`);
     assert.equal(en.ask(q), q.ask);
     assert.equal(en.hint(q), q.hint);
     assert.notEqual(de.ask(q), q.ask, `onboard: '${q.id}' asks in English`);

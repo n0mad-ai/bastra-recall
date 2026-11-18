@@ -14,6 +14,7 @@
  */
 import { Vault, type DerivedClaim } from "@bastra-recall/core";
 import { resolveDerivedClaims, type DerivedClaimResult } from "../derived-claims.js";
+import { doctorNotesWordsIn, type DoctorNotesWords } from "./doctor-notes-words.js";
 
 /** Findings listed by name before the rest becomes a count. */
 const MAX_LISTED = 5;
@@ -29,8 +30,10 @@ export interface DerivedClaimsIo {
   resolve: (claims: readonly DerivedClaim[]) => Promise<DerivedClaimResult[]>;
 }
 
-/** The lines the note prints, or an empty array when no memory declares a claim. */
-export async function derivedClaimsLines(io: DerivedClaimsIo): Promise<string[]> {
+/** The lines the note prints in `language` (language.primary; English when not
+ *  given, #1602), or an empty array when no memory declares a claim. */
+export async function derivedClaimsLines(io: DerivedClaimsIo, language = "en"): Promise<string[]> {
+  const w = doctorNotesWordsIn(language);
   const memories = (await io.memories()).filter((m) => m.claims.length > 0);
   if (memories.length === 0) return [];
 
@@ -42,32 +45,22 @@ export async function derivedClaimsLines(io: DerivedClaimsIo): Promise<string[]>
       total += 1;
       if (result.status === "unverifiable") unverifiable += 1;
       if (result.status === "differs" || result.status === "gone" || result.status === "ambiguous") {
-        findings.push(`⚠ ${memory.id} → ${result.id}: ${describe(result)}`);
+        findings.push(`⚠ ${memory.id} → ${result.id}: ${describe(result, w)}`);
       }
     }
   }
 
-  const lines = [
-    `${total} claim${total === 1 ? "" : "s"} in ${memories.length} memor${memories.length === 1 ? "y" : "ies"}` +
-      (findings.length === 0
-        ? " — none out of step with its source"
-        : `, ${findings.length} out of step with its source`),
-    ...findings.slice(0, MAX_LISTED),
-  ];
-  if (findings.length > MAX_LISTED) lines.push(`… and ${findings.length - MAX_LISTED} more`);
-  if (unverifiable > 0) {
-    lines.push(
-      `${unverifiable} claim${unverifiable === 1 ? "" : "s"} could not be checked (source missing, outside the vault, not a file or over 1 MB)`
-    );
-  }
+  const lines = [w.claimsSummary(total, memories.length, findings.length), ...findings.slice(0, MAX_LISTED)];
+  if (findings.length > MAX_LISTED) lines.push(w.andMore(findings.length - MAX_LISTED));
+  if (unverifiable > 0) lines.push(w.claimsUnverifiable(unverifiable));
   return lines;
 }
 
-function describe(result: DerivedClaimResult): string {
-  if (result.status === "gone") return `quoted string no longer in ${result.source}`;
-  if (result.status === "ambiguous") return `quoted string occurs ${result.value} times in ${result.source}`;
-  if (result.resolver === "sha256.v1") return `${result.source} changed since the digest was recorded`;
-  return `note says ${result.expect}, ${result.source} says ${result.value}`;
+function describe(result: DerivedClaimResult, w: DoctorNotesWords): string {
+  if (result.status === "gone") return w.claimGone(result.source);
+  if (result.status === "ambiguous") return w.claimAmbiguous(`${result.value}`, result.source);
+  if (result.resolver === "sha256.v1") return w.claimDigest(result.source);
+  return w.claimDiffers(`${result.expect}`, result.source, `${result.value}`);
 }
 
 /** The default io: the configured vault, resolved with the load_memory resolvers. */

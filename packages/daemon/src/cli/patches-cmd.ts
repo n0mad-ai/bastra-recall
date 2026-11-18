@@ -39,7 +39,8 @@ export async function cmdPatches(args: ParsedArgs): Promise<number> {
   // argument along with the sub-command.
   const sub = args.positional[1] ?? "list";
   const arg = args.positional[2];
-  const w = patchesCmdWordsIn(await taskCliLanguage().catch(() => "en"));
+  const language = await taskCliLanguage().catch(() => "en");
+  const w = patchesCmdWordsIn(language);
 
   if (sub === "help" || args.showHelp) {
     out((await usageBlocks()).patches);
@@ -126,7 +127,7 @@ export async function cmdPatches(args: ParsedArgs): Promise<number> {
     // which ones would be retired, in the order they would actually run.
     const plan = applySeries(root, { dryRun: true, version: installedVersion(root) });
     if (plan.retired.length || plan.applied.length || plan.setAside.length) {
-      out(`${w.nextUpdate}${formatApplyOutcome(plan)}`);
+      out(`${w.nextUpdate}${formatApplyOutcome(plan, language)}`);
     }
     return conflicts > 0 ? 1 : 0;
   }

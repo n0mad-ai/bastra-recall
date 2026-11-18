@@ -19,7 +19,8 @@ import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SaveMemoryInput } from "@bastra-recall/core";
 import { sendJsonPlain } from "./webui.js";
-import { getUiEnabled, setSizeGuide, setPrimaryLanguage } from "./settings.js";
+import { getUiEnabled, setSizeGuide, setPrimaryLanguage, getPrimaryLanguage } from "./settings.js";
+import { onboardingWordsIn } from "./onboarding-words.js";
 import { detectLanguage } from "./learned-recall/language.js";
 import { saveMemoryWithAuditTrail } from "./audit-trail.js";
 
@@ -149,6 +150,23 @@ export const QUESTIONS: OnboardingQuestion[] = [
 
 export function questionsFor(persona: Persona): OnboardingQuestion[] {
   return QUESTIONS.filter((q) => q.personas === null || q.personas.includes(persona));
+}
+
+/**
+ * The catalog as the map's dialog shows it, in `language` (language.primary,
+ * #1602; English — the catalog above — when unset or unlisted). Only the
+ * shown texts change: ids, `optional` and `personas` stay, and the answers
+ * come back keyed by those ids, so nothing saved depends on the language.
+ */
+function onboardingCatalog(language: string | undefined): {
+  personas: { id: Persona; label: string }[];
+  questions: OnboardingQuestion[];
+} {
+  const w = onboardingWordsIn(language);
+  return {
+    personas: PERSONAS.map((p) => ({ id: p, label: w.persona(p, PERSONA_LABELS[p]) })),
+    questions: QUESTIONS.map((q) => ({ ...q, ask: w.ask(q), hint: w.hint(q) })),
+  };
 }
 
 interface Template {
@@ -556,8 +574,7 @@ export async function handleUiOnboarding(
   if (req.method === "GET") {
     sendJsonPlain(res, 200, {
       needed: await isOnboardingNeeded(vaultPath, vaultSize),
-      personas: PERSONAS.map((p) => ({ id: p, label: PERSONA_LABELS[p] })),
-      questions: QUESTIONS,
+      ...onboardingCatalog(await getPrimaryLanguage(settingsPath).catch(() => undefined)),
     });
     return;
   }

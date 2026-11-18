@@ -40,6 +40,7 @@ import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { DAEMON_PACKAGE_ROOT, HOOK_STUB_BIN } from "./paths.js";
 import { hostPaths } from "../platform-paths.js";
+import { stubFreshnessWordsIn, type StubFreshnessWords } from "./stub-freshness-words.js";
 
 /** What `bastra-hook version` prints (stub/build-info.ts plus the version). */
 export interface StubStamp {
@@ -374,13 +375,13 @@ export async function stubFreshness(io: StubFreshnessIo = {}): Promise<StubFresh
 
 // ─── how it reads ────────────────────────────────────────────────
 
-function builtFrom(stamp: StubStamp | null): string {
+function builtFrom(stamp: StubStamp | null, w: StubFreshnessWords): string {
   if (!stamp) return "";
   const at = typeof stamp.built_at === "string" ? stamp.built_at.slice(0, 10) : null;
   const rev = typeof stamp.revision === "string" ? stamp.revision.slice(0, 7) : null;
-  if (at && rev) return ` (built ${at} from ${rev}${stamp.dirty ? ", uncommitted" : ""})`;
-  if (at) return ` (built ${at})`;
-  if (rev) return ` (from ${rev})`;
+  if (at && rev) return w.builtAtFrom(at, rev, Boolean(stamp.dirty));
+  if (at) return w.builtAt(at);
+  if (rev) return w.from(rev);
   return "";
 }
 
@@ -393,45 +394,31 @@ function builtFrom(stamp: StubStamp | null): string {
  * Homebrew user to run a workspace npm script would be advice they cannot
  * take, and advice that cannot be taken teaches people to skip the message.
  */
-export function stubFreshnessLines(report: StubFreshnessReport): string[] {
+export function stubFreshnessLines(report: StubFreshnessReport, language = "en"): string[] {
+  const w = stubFreshnessWordsIn(language);
   const lines: string[] = [];
   for (const f of report.findings) {
     const who = f.surfaces.join(", ");
-    const rebuild = report.sourcesAvailable && !f.foreign ? ` — rebuild it with \`${STUB_REBUILD_HINT}\`` : "";
+    const surface = `${f.surfaces[0]}`;
+    const rebuild = report.sourcesAvailable && !f.foreign ? w.rebuild(STUB_REBUILD_HINT) : "";
     switch (f.state) {
       case "ok":
-        lines.push(`✓ ok: ${f.binary} matches the stub sources in this checkout${builtFrom(f.stamp)}`);
+        lines.push(w.ok(f.binary, builtFrom(f.stamp, w)));
         break;
       case "stale":
-        lines.push(
-          `⚠ stale hook binary: ${f.binary}${builtFrom(f.stamp)} was built from different sources than the ones` +
-            ` in this checkout. Every hook call on ${who} runs that older code — this is how a two-week-old` +
-            ` binary wrote telemetry nobody could fold (#546)${rebuild}`
-        );
+        lines.push(w.stale(f.binary, builtFrom(f.stamp, w), who, rebuild));
         break;
       case "unstamped":
-        lines.push(
-          `⚠ unstamped hook binary: ${f.binary} answers \`version\` without a source digest, so it predates` +
-            ` #546 and cannot say which sources it came from. That is not the same as current${rebuild}`
-        );
+        lines.push(w.unstamped(f.binary, rebuild));
         break;
       case "unknown-sources":
-        lines.push(
-          `· ${f.binary}${builtFrom(f.stamp)} — this installation ships no stub sources, so whether the binary` +
-            ` is still current cannot be decided here. Check it in a source checkout.`
-        );
+        lines.push(w.unknownSources(f.binary, builtFrom(f.stamp, w)));
         break;
       case "missing":
-        lines.push(
-          `⚠ missing hook binary: ${who} registers ${f.binary}, and no such file exists —` +
-            ` those hook lanes run nothing. Re-run \`bastra install ${f.surfaces[0]}\``
-        );
+        lines.push(w.missing(who, f.binary, surface));
         break;
       case "unreadable":
-        lines.push(
-          `⚠ unusable hook binary: ${f.binary} is there but \`${basename(f.binary)} version\` did not answer` +
-            ` — an interrupted download or a binary for another architecture. Re-run \`bastra install ${f.surfaces[0]}\``
-        );
+        lines.push(w.unreadable(f.binary, basename(f.binary), surface));
         break;
     }
     // The statusline half, and only where it adds something (#547): when the
@@ -439,24 +426,13 @@ export function stubFreshnessLines(report: StubFreshnessReport): string[] {
     // the very same fix, and a second line would only say "rebuild" twice.
     if (f.state === "ok") {
       if (f.statusline === "stale") {
-        lines.push(
-          `⚠ stale statusline in an otherwise current hook binary: ${f.binary} carries a statusline bundle built` +
-            ` from different sources than \`packages/statusline/dist\` here. The hook lanes are fine; \`${basename(f.binary)}` +
-            ` statusline\` renders older code (#547)${rebuild}`
-        );
+        lines.push(w.staleStatusline(f.binary, basename(f.binary), rebuild));
       } else if (f.statusline === "unstamped") {
-        lines.push(
-          `⚠ ${f.binary} matches the stub sources but carries no statusline digest, so it predates #547 and cannot` +
-            ` say which statusline bundle is inside it. That is not the same as current${rebuild}`
-        );
+        lines.push(w.unstampedStatusline(f.binary, rebuild));
       }
     }
     if (f.foreign) {
-      lines.push(
-        `⚠ ${who} runs ${f.binary}, not this installation's ${report.own} —` +
-          ` the hooks execute a different build than the one you are looking at.` +
-          ` \`bastra install ${f.surfaces[0]}\` re-registers this one`
-      );
+      lines.push(w.foreign(who, f.binary, report.own, surface));
     }
   }
   return lines;

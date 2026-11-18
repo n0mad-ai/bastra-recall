@@ -15,6 +15,7 @@ import {
   type LastRun,
 } from "./patch-registry.js";
 import { clearPatchProvenance } from "./patch-provenance.js";
+import { patchReportWordsIn } from "./patch-report-words.js";
 
 export function writeLastRun(o: ApplyOutcome, home = homedir()): void {
   try {
@@ -99,24 +100,25 @@ export function pendingPatchNotice(home = homedir()): string | null {
 }
 
 /** One-line-per-fact rendering, shared by `bastra patches status` and the
- *  update path so both report a series the same way. */
-export function formatApplyOutcome(o: ApplyOutcome): string {
+ *  update path so both report a series the same way; in `language`
+ *  (language.primary, English when not given, #1602). */
+export function formatApplyOutcome(o: ApplyOutcome, language?: string): string {
   if (o.skipped) return `  ${o.skipped}\n`;
+  const w = patchReportWordsIn(language);
   const lines: string[] = [];
-  for (const e of o.applied) lines.push(`  ✓ applied   ${e.id} — ${e.subject}`);
-  for (const e of o.kept ?? [])
-    lines.push(`  = kept      ${e.id} — already present on this install; kept in the series`);
-  for (const e of o.retired) lines.push(`  ↩ retired   ${e.id} — merged upstream, dropped from the series`);
+  for (const e of o.applied) lines.push(w.applied(e.id, e.subject));
+  for (const e of o.kept ?? []) lines.push(w.kept(e.id));
+  for (const e of o.retired) lines.push(w.retired(e.id));
   for (const s of o.setAside) {
-    lines.push(`  ⚠ set aside ${s.entry.id} — ${s.entry.subject}`);
+    lines.push(w.setAside(s.entry.id, s.entry.subject));
     const first = s.detail.split("\n")[0]?.trim();
     if (first) lines.push(`              ${first}`);
   }
   if (o.rolledBack) {
-    lines.push(`  ✗ the patched install did not boot — every patch from this run was reversed`);
+    lines.push(w.rolledBack);
     if (o.smokeError) lines.push(`    ${o.smokeError.split("\n")[0]}`);
   } else if (o.unrestored?.length) {
-    lines.push(`  ✗ the patched install did not boot, and the reversal did not put everything back:`);
+    lines.push(w.unrestored);
     for (const u of o.unrestored) lines.push(`    · ${u}`);
     if (o.smokeError) lines.push(`    ${o.smokeError.split("\n")[0]}`);
   }

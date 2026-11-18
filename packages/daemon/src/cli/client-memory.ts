@@ -21,6 +21,7 @@ import { recordAudit } from "../audit-trail.js";
 import { KNOWN_ADAPTERS, safeParse } from "../import/adapters.js";
 import { escapeRe, uniqueId } from "../import/identity.js";
 import { IMPORT_ROOT, listSourceMarkdown } from "../import-vault.js";
+import { doctorNotesWordsIn } from "./doctor-notes-words.js";
 
 export interface ClientMemoryDir {
   client: "claude-code" | "codex";
@@ -145,21 +146,14 @@ export async function findClientMemoryDirs(
   return out;
 }
 
-/** Doctor lines; empty when no client folder holds a note. */
-export function clientMemoryLines(dirs: ClientMemoryDir[]): string[] {
+/** Doctor lines in `language` (language.primary; English when not given,
+ *  #1602); empty when no client folder holds a note. */
+export function clientMemoryLines(dirs: ClientMemoryDir[], language = "en"): string[] {
   if (dirs.length === 0) return [];
+  const w = doctorNotesWordsIn(language);
   const pending = dirs.reduce((n, d) => n + d.pending, 0);
-  const lines = dirs.map(
-    (d) =>
-      `${d.pending > 0 ? "⚠ " : ""}${d.client}: ${d.dir} — ${d.notes} note(s)` +
-      (d.pending > 0 ? `, ${d.pending} not in the vault yet` : ", all imported")
-  );
-  if (pending > 0) {
-    lines.push(
-      `recall never reads these folders — import them with 'bastra import clients' ` +
-        `(add --dry-run to preview; re-running only picks up what changed)`
-    );
-  }
+  const lines = dirs.map((d) => w.clientFolder(d.client, d.dir, d.notes, d.pending));
+  if (pending > 0) lines.push(w.clientImport);
   return lines;
 }
 

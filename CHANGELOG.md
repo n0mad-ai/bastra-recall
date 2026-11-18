@@ -192,6 +192,11 @@ until a new design replaces it; this name is independent of the product version.
 - `bastra embeddings`, `bastra autostart`, Ollama setup messages and the
   semantic-recall/autostart notes of `install`, `doctor` and `update` follow
   `language.primary` (German complete, English unchanged) (#1602).
+- `bastra doctor` (conflict copies, derived claims, client memory folders, hook
+  binary), `bastra update` (source build, live revision, preflight, patch
+  reapply), `bastra patches status` and `bastra models` now follow
+  `language.primary`; the map's onboarding dialog shows its questions in
+  `language.primary` (#1602).
 - Memory browser: changing type or recall mode of a memory whose rule status
   depends on them shows what changes for the rule before saving; saving
   takes one confirming click.

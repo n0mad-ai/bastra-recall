@@ -272,11 +272,12 @@ export function verifySourceCheckout(
   cliPath: string,
   rebuild: string,
   write: (s: string) => void,
-  w: UpdateWords = updateWordsIn("en")
+  w: UpdateWords = updateWordsIn("en"),
+  language = "en"
 ): { rc: number; state: SourceBuildState } {
   write(w.verifyingSource);
   const state = sourceBuildState(cliPath);
-  write(describeSourceBuild(state, rebuild));
+  write(describeSourceBuild(state, rebuild, language));
   if (!state.ok) {
     write(`\n${w.leftAlone}`);
     return { rc: 1, state };
@@ -290,12 +291,13 @@ export function verifySourceCheckout(
 export async function verifySourceStubs(
   write: (s: string) => void,
   io: StubFreshnessIo = {},
-  w: UpdateWords = updateWordsIn("en")
+  w: UpdateWords = updateWordsIn("en"),
+  language = "en"
 ): Promise<number> {
   const report = await stubFreshness({ ...io, includeOwn: true });
   const invalid = report.findings.some((f) => f.state !== "ok" || f.statusline !== "ok");
   if (!invalid) return 0;
-  for (const line of stubFreshnessLines(report)) write(`  ${line}\n`);
+  for (const line of stubFreshnessLines(report, language)) write(`  ${line}\n`);
   if (report.findings.some((f) => !f.foreign && (f.state !== "ok" || f.statusline !== "ok"))) {
     write(w.buildTogether);
   }
@@ -378,6 +380,8 @@ export function reapplyPatchSeries(
     version?: (root: string) => string;
     out?: (s: string) => void;
     words?: UpdateWords;
+    /** language.primary for the outcome lines; English when not given. */
+    language?: string;
   } = {}
 ): void {
   const w = io.words ?? updateWordsIn("en");
@@ -395,7 +399,7 @@ export function reapplyPatchSeries(
   try {
     const outcome = (io.apply ?? applySeries)(root, { version: (io.version ?? installedVersion)(root) });
     (io.record ?? writeLastRun)(outcome);
-    out(formatApplyOutcome(outcome));
+    out(formatApplyOutcome(outcome, io.language));
     if (outcome.setAside.length > 0) {
       out(w.setAside);
     }
@@ -528,7 +532,7 @@ export async function cmdUpdate(args: ParsedArgs, io: UpdateIo = {}): Promise<nu
   const w = updateWordsIn(language);
   try {
     if (await refuseOnUnsupportedNode(args, io, w)) return 1;
-    return await performUpdate(args, io, w, autostartWordsIn(language));
+    return await performUpdate(args, io, w, autostartWordsIn(language), language);
   } catch (error) {
     process.stderr.write(w.stopped((error as Error).message));
     return 1;
@@ -549,13 +553,16 @@ interface UpdateRun {
   w: UpdateWords;
   /** The autostart refresh's words, in the same language. */
   autostartWords: AutostartWords;
+  /** language.primary itself, for the reports formatted outside update-words. */
+  language: string;
 }
 
 async function performUpdate(
   args: ParsedArgs,
   io: UpdateIo,
   w: UpdateWords,
-  autostartWords: AutostartWords
+  autostartWords: AutostartWords,
+  language: string
 ): Promise<number> {
   const platform = io.platform ?? process.platform;
   const mode = detectInstallMode(io.cliPath);
@@ -581,6 +588,7 @@ async function performUpdate(
     runsInstaller: mode.mode === "brew" || mode.mode === "npm-global",
     w,
     autostartWords,
+    language,
   };
 
   // Everything below the dry-run runs for real only: the plan returns here.
@@ -615,7 +623,7 @@ async function performUpdate(
   //     "reapplied onto the fresh install after every update". The keg to patch
   //     is the one the installer just linked, asked from brew, never this
   //     process's own (superseded) path.
-  (io.reapply ?? reapplyPatchSeries)(mode, u.packageRoot, { words: w });
+  (io.reapply ?? reapplyPatchSeries)(mode, u.packageRoot, { words: w, language: u.language });
 
   // 1b. Baseline for the NEXT update (#268). Without this write the dirty check
   //     above can never say more than "unknown" — this is the step that starts
@@ -708,7 +716,7 @@ async function finishUpdate(
   const { io } = u;
   if (sourceState !== null) {
     const { verdict, daemonRevision } = await liveRevisionOfDaemon(provenRevision(sourceState));
-    const said = describeLiveRevision(verdict, { state: sourceState, daemonRevision });
+    const said = describeLiveRevision(verdict, { state: sourceState, daemonRevision }, u.language);
     process.stdout.write(said.report);
     process.stdout.write(said.closing);
     (io.ask ?? askModelRecommendation)(installed);
@@ -764,7 +772,7 @@ async function runPreflightStep(u: UpdateRun): Promise<boolean> {
     checkProvenance: mode.mode === "npm-global",
     verify: u.platform === "win32" ? (root) => verifyProvenance(root, io, io.spawn) : undefined,
   });
-  const rendered = formatPreflight(verdict);
+  const rendered = formatPreflight(verdict, u.language);
   // Printed on the way through as well, not only on refusal: a backup nobody
   // was told about is a backup nobody restores from.
   process.stdout.write(rendered ? `${rendered}\n\n` : w.nothingLocal);
@@ -831,7 +839,7 @@ function installBrewUpdate(w: UpdateWords): boolean {
  */
 async function verifySourceStep(u: UpdateRun): Promise<{ rc: number; sourceState: SourceBuildState | null }> {
   const { mode, packageRoot, platform, w } = u;
-  const verdict = verifySourceCheckout(mode.cliPath, mode.updateCommand, (s) => process.stdout.write(s), w);
+  const verdict = verifySourceCheckout(mode.cliPath, mode.updateCommand, (s) => process.stdout.write(s), w, u.language);
   if (verdict.rc !== 0) return { rc: verdict.rc, sourceState: null };
   if (
     (await verifySourceStubs(
@@ -840,7 +848,8 @@ async function verifySourceStep(u: UpdateRun): Promise<{ rc: number; sourceState
         packageRoot,
         ownBinary: resolve(packageRoot, "stub", platform === "win32" ? "bastra-hook.exe" : "bastra-hook"),
       },
-      w
+      w,
+      u.language
     )) !== 0
   )
     return { rc: 1, sourceState: null };

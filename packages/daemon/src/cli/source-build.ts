@@ -56,6 +56,7 @@ import { existsSync, readFileSync, readdirSync, statSync, type Dirent } from "no
 import { dirname, join, resolve } from "node:path";
 
 import { readBuildStamp, type BuildStamp } from "../build-stamp.js";
+import { sourceBuildWordsIn } from "./source-build-words.js";
 
 export type SourceBuildReason =
   "current" | "dirty" | "unbuilt" | "stale" | "unstamped" | "mismatch" | "unverifiable" | "unknown";
@@ -135,49 +136,35 @@ export function decideSourceBuild(i: {
   return { ...base, ok: true, reason: "current" };
 }
 
-/** What the user is told, and what to do about it. `rebuild` is the manual command. */
-export function describeSourceBuild(s: SourceBuildState, rebuild: string): string {
+/** What the user is told, and what to do about it. `rebuild` is the manual
+ *  command; `language` is language.primary (English when not given, #1602). */
+export function describeSourceBuild(s: SourceBuildState, rebuild: string, language = "en"): string {
+  const w = sourceBuildWordsIn(language);
   const rev = s.revision ? ` (HEAD ${s.revision})` : "";
-  const built = shortRevision(s.builtRevision) ?? "unknown";
-  const buildFirst = `    Build it first, then re-run 'bastra update':\n      ${rebuild}\n`;
+  const built = shortRevision(s.builtRevision) ?? w.unknownRevision;
+  const buildFirst = w.buildFirst(rebuild);
   switch (s.reason) {
     case "current":
-      return `  ✓ the build in this checkout was produced from HEAD ${s.revision}\n`;
+      return w.current(`${s.revision}`);
     case "dirty":
-      return (
-        `  ✓ the build in this checkout was produced from HEAD ${s.revision} plus uncommitted changes\n` +
-        `    That build is what will be re-registered — but it is not any commit,\n` +
-        `    so this command will not claim a verified revision for it.\n`
-      );
+      return w.dirty(`${s.revision}`);
     case "unknown":
-      return "  ⚠ no workspace sources found here — the build could not be verified\n";
+      return w.unknown;
     case "unbuilt":
-      return `  ✗ this checkout${rev} has no build output — nothing to re-register.\n` + buildFirst;
-    case "stale":
-      return (
-        `  ✗ the build in this checkout${rev} is older than its sources` +
-        `${s.newestSourceMs !== null && s.newestBuildMs !== null ? ` (built ${new Date(s.newestBuildMs).toISOString()}, newest source ${new Date(s.newestSourceMs).toISOString()})` : ""}.\n` +
-        `    Re-registering now would pin every surface to the OLD code.\n` +
-        buildFirst
-      );
+      return w.unbuilt(rev) + buildFirst;
+    case "stale": {
+      const times =
+        s.newestSourceMs !== null && s.newestBuildMs !== null
+          ? w.staleTimes(new Date(s.newestBuildMs).toISOString(), new Date(s.newestSourceMs).toISOString())
+          : "";
+      return w.stale(rev, times) + buildFirst;
+    }
     case "unstamped":
-      return (
-        `  ✗ the build in this checkout${rev} does not say which revision it came from.\n` +
-        `    Its timestamps look current, and a timestamp proves nothing: output copied\n` +
-        `    from another checkout, or simply touched, looks exactly the same (#528).\n` +
-        buildFirst
-      );
+      return w.unstamped(rev) + buildFirst;
     case "mismatch":
-      return (
-        `  ✗ the build in this checkout was produced from ${built}, not from HEAD ${s.revision}.\n` +
-        `    Re-registering now would pin every surface to that OTHER revision.\n` +
-        buildFirst
-      );
+      return w.mismatch(built, `${s.revision}`) + buildFirst;
     case "unverifiable":
-      return (
-        `  ✗ git could not be asked for HEAD, so the built revision (${built}) cannot be checked.\n` +
-        `    Put git on PATH and re-run 'bastra update'.\n`
-      );
+      return w.unverifiable(built);
   }
 }
 
