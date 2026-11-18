@@ -46,12 +46,14 @@
     "lint:prune": "npm run lint:structure:prune && npm run lint:cycles:prune && npm run lint:clones:prune",
     "lint:structure:prune": "node scripts/lint-structure.mjs --prune",
     "lint:cycles:prune": "node scripts/check-cycles.mjs --prune",
-    "lint:clones:prune": "node scripts/check-clones.mjs --prune"
+    "lint:clones:prune": "node scripts/check-clones.mjs --prune",
+    "lint:knip": "node scripts/lint-knip.mjs"
   },
   "devDependencies": {
     "dependency-cruiser": "18.7.2",
     "eslint": "10.15.0",
     "jscpd": "5.4.3",
+    "knip": "6.45.1",
     "prettier": "3.10.1",
     "typescript": "^6.0.3",
     "typescript-eslint": "8.72.2"

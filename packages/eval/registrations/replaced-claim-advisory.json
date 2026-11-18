@@ -21,6 +21,12 @@
     "not_covered": "the losing side of a resolved #205 conflict (no record of it exists); memories archived with archive_memory; hybrid/dense arms; real-vault population"
   },
   "command": "node --import tsx --import ./scripts/test-env.mjs packages/eval/src/replaced-claim-advisory.ts --out <artifact>",
+  "existing_copy_protocol": {
+    "command": "node --import ./scripts/test-env.mjs --import tsx packages/eval/src/replaced-claim-advisory.ts --vault-copy <absolute-private-temp-root>/vault --out <absolute-private-temp-root>/aggregate.json",
+    "isolation": "Copy root is a new 0700 bastra-eval643-copy-* directory under physical system temp, with regular independently copied Markdown files only. Output is a new sibling outside vault. Set AppDB and vault-root registry after test-env, before core/daemon imports; never read application settings or open the operator database.",
+    "metrics": "Aggregate replay warning frequencies and routing on explicit complete accessible replacement chains; null for empty denominators. No semantic precision/recall or ordinary-save false-warning claim from unlabelled stored text.",
+    "retrieval": "Lexical-only BM25 and weighted field Jaccard, no embedding provider. Historical synthetic results below remain separate and unchanged."
+  },
   "measurement": {
     "engine": {
       "repo_commit": "6e07d05e0e139429b2184c97b88b3a5f1db63c24",

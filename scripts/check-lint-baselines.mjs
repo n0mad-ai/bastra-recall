@@ -179,3 +179,11 @@ for (const file of [
     process.exitCode = 1;
   }
 }
+
+try {
+  const { verifyKnipContract } = await import("./lint-knip-contract.mjs");
+  verifyKnipContract((file) => readFileSync(file, "utf8"), readBase);
+} catch (error) {
+  console.error(`Knip contract failed against ${base}: ${error.message}`);
+  process.exitCode = 1;
+}

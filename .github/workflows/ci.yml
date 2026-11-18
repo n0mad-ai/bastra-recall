@@ -72,6 +72,11 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Unused code (Knip, shrinking baseline)
+        env:
+          LINT_BASE_REF: ${{ steps.lint-baseline.outputs.sha }}
+        run: npm run lint:knip
+
       - name: OpenAPI artifacts in sync
         run: npm run openapi:check
 

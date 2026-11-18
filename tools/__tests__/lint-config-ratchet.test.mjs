@@ -49,7 +49,12 @@ function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), "bastra-config-ratchet-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, "scripts"));
-  for (const name of ["check-lint-baselines.mjs", "lint-config-ratchet.mjs"]) {
+  for (const name of [
+    "check-lint-baselines.mjs",
+    "lint-config-ratchet.mjs",
+    "lint-knip-contract.mjs",
+    "lint-knip-findings.mjs",
+  ]) {
     const source = join(repository, "scripts", name);
     if (existsSync(source)) copyFileSync(source, join(root, "scripts", name));
   }

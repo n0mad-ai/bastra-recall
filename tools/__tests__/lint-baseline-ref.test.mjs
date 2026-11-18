@@ -33,7 +33,12 @@ async function history(t) {
   t.after(() => rm(root, { recursive: true, force: true }));
   git(root, "init", "-q");
   await mkdir(join(root, "scripts"));
-  for (const name of ["check-lint-baselines.mjs", "lint-baseline-ref.mjs"]) {
+  for (const name of [
+    "check-lint-baselines.mjs",
+    "lint-baseline-ref.mjs",
+    "lint-knip-contract.mjs",
+    "lint-knip-findings.mjs",
+  ]) {
     await copyFile(join(repository, "scripts", name), join(root, "scripts", name));
   }
   await mkdir(join(root, "node_modules"));

@@ -1,4 +1,6 @@
 import ts from "typescript";
+import { digest } from "./lint-knip-findings.mjs";
+import { knipPackageAllowed } from "./lint-knip-contract.mjs";
 
 const exclusions = new Set(["ignore", "ignorePattern", "ignores", "exclude"]);
 const limits = new Set(["max", "max-depth", "minLines", "minTokens", "threshold"]);
@@ -125,7 +127,9 @@ function scopeAllowed(before, after) {
 // This is a deliberately narrow contract: unknown operational rewrites need review.
 // It accepts proven lower limits/removals rather than freezing file hashes.
 export function lintConfigurationAllowed(file, before, after) {
+  if (file === "knip.json") return digest(JSON.parse(before)) === digest(JSON.parse(after));
   if (file === "package.json") {
+    if (JSON.parse(before).devDependencies?.knip && !knipPackageAllowed(before, after)) return false;
     const previous = lintScripts(before);
     const candidate = lintScripts(after);
     return Object.entries(previous).every(([key, value]) => candidate[key] === value);

@@ -1,0 +1,131 @@
+{
+  "includeEntryExports": false,
+  "includeSubpathExports": false,
+  "workspaces": {
+    ".": {
+      "entry": [
+        "*.mjs",
+        "scripts/**/*.{ts,mts,js,mjs}",
+        "tools/__tests__/**/*.test.mjs",
+        "tools/probes/**/*.{ts,mts,js,mjs}"
+      ],
+      "project": ["*.mjs", "scripts/**/*.{ts,mts,js,mjs}", "tools/**/*.{ts,mts,js,mjs}"]
+    },
+    "packages/core": {
+      "entry": [
+        "__tests__/**/*.{test,spec}.{ts,mts,js,mjs}",
+        "scripts/**/*.{ts,mts,js,mjs}",
+        "src/index.ts",
+        "src/platform-paths.ts",
+        "src/rrf.ts",
+        "src/runtime-settings.ts",
+        "src/scope.ts",
+        "src/scrub.ts",
+        "src/topics.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,mts,js,mjs}",
+        "__tests__/**/*.{ts,mts,js,mjs}",
+        "scripts/**/*.{ts,mts,js,mjs}",
+        "test/**/*.{ts,mts,js,mjs}",
+        "bin/*",
+        "webui/**/*.{js,html}",
+        "shims/**/*.{js,mjs}"
+      ]
+    },
+    "packages/daemon": {
+      "entry": [
+        "__tests__/**/*.{test,spec}.{ts,mts,js,mjs}",
+        "scripts/**/*.{ts,mts,js,mjs}",
+        "shims/**/*.{js,mjs}",
+        "src/bash-fail-hook.ts",
+        "src/bash-pre-hook.ts",
+        "src/bridge.ts",
+        "src/cli.ts",
+        "src/gate-hook.ts",
+        "src/hook.ts",
+        "src/index.ts",
+        "src/mcp-forwarder.ts",
+        "src/prompt-hook.ts",
+        "src/session-hook.ts",
+        "src/stop-hook.ts",
+        "src/todo-hook.ts",
+        "webui/**/*.html",
+        "webui/**/*.js"
+      ],
+      "project": [
+        "src/**/*.{ts,mts,js,mjs}",
+        "__tests__/**/*.{ts,mts,js,mjs}",
+        "scripts/**/*.{ts,mts,js,mjs}",
+        "test/**/*.{ts,mts,js,mjs}",
+        "bin/*",
+        "webui/**/*.{js,html}",
+        "shims/**/*.{js,mjs}"
+      ]
+    },
+    "packages/statusline": {
+      "entry": [
+        "__tests__/**/*.{test,spec}.{ts,mts,js,mjs}",
+        "bin/*",
+        "scripts/**/*.{ts,mts,js,mjs}",
+        "src/**/*.{ts,mts,js,mjs}",
+        "test/**/*.{ts,mts,js,mjs}"
+      ],
+      "project": [
+        "src/**/*.{ts,mts,js,mjs}",
+        "__tests__/**/*.{ts,mts,js,mjs}",
+        "scripts/**/*.{ts,mts,js,mjs}",
+        "test/**/*.{ts,mts,js,mjs}",
+        "bin/*",
+        "webui/**/*.{js,html}",
+        "shims/**/*.{js,mjs}"
+      ]
+    },
+    "packages/bastra-recall": {
+      "entry": ["__tests__/**/*.{test,spec}.{ts,mts,js,mjs}", "bin/*.mjs", "scripts/**/*.{ts,mts,js,mjs}"],
+      "project": [
+        "src/**/*.{ts,mts,js,mjs}",
+        "__tests__/**/*.{ts,mts,js,mjs}",
+        "scripts/**/*.{ts,mts,js,mjs}",
+        "test/**/*.{ts,mts,js,mjs}",
+        "bin/*",
+        "webui/**/*.{js,html}",
+        "shims/**/*.{js,mjs}"
+      ]
+    },
+    "packages/eval": {
+      "entry": [
+        "__tests__/**/*.{test,spec}.{ts,mts,js,mjs}",
+        "scripts/**/*.{ts,mts,js,mjs}",
+        "src/absence-honesty.ts",
+        "src/bm25-expansion.ts",
+        "src/bridge-transfer.ts",
+        "src/candidate-union.ts",
+        "src/doc2query-lift.ts",
+        "src/evidence-windows-run.ts",
+        "src/hook-context-load.ts",
+        "src/longmemeval-run.ts",
+        "src/marginal-lift.ts",
+        "src/persona-lift.ts",
+        "src/pool-depth.ts",
+        "src/rerank-longmemeval.ts",
+        "src/rerank-pool-coverage.ts",
+        "src/rerank-replay.ts",
+        "src/router-lift.ts",
+        "src/rrf-k-beir.ts",
+        "src/salience-lift.ts",
+        "src/tripwire-usage.ts",
+        "src/trust-lift.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,mts,js,mjs}",
+        "__tests__/**/*.{ts,mts,js,mjs}",
+        "scripts/**/*.{ts,mts,js,mjs}",
+        "test/**/*.{ts,mts,js,mjs}",
+        "bin/*",
+        "webui/**/*.{js,html}",
+        "shims/**/*.{js,mjs}"
+      ]
+    }
+  }
+}
