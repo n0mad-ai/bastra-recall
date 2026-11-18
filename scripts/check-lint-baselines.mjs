@@ -27,11 +27,11 @@ const newProbe = "tools/probes/webui-memory-browser.mjs";
 let verifiedUiRename;
 
 function baseSource(file) {
-  return execFileSync("git", ["show", `${base}:${file}`], { encoding: "utf8" });
+  return execFileSync("git", ["show", `${base}:${file}`]);
 }
 
 function executableSource(source, file) {
-  const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const parsed = ts.createSourceFile(file, source.toString(), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   if (parsed.parseDiagnostics.length) throw new Error(`Cannot verify UI rename: invalid source ${file}`);
   return ts.createPrinter({ removeComments: true }).printFile(parsed);
 }
@@ -53,7 +53,7 @@ function renamedSnapshot() {
     )
       .trim()
       .split("\n");
-    return { paths, source: (file) => execFileSync("git", ["show", `${revision}:${file}`], { encoding: "utf8" }) };
+    return { paths, source: (file) => execFileSync("git", ["show", `${revision}:${file}`]) };
   }
   const paths = existsSync(newUi)
     ? readdirSync(newUi, { recursive: true })
@@ -63,7 +63,24 @@ function renamedSnapshot() {
   if (existsSync(oldUi)) paths.push(oldUi);
   if (existsSync(oldProbe)) paths.push(oldProbe);
   if (existsSync(newProbe)) paths.push(newProbe);
-  return { paths, source: (file) => readFileSync(file, "utf8") };
+  return { paths, source: (file) => readFileSync(file) };
+}
+
+function renamedAssetSource(source, file) {
+  if (!file.endsWith(".css")) return source;
+  const text = source.toString();
+  if (!Buffer.from(text).equals(source)) return source;
+  // Only the known introductory CSS branding changed in #1572. Preserve every other byte.
+  const renamed = text.replace(
+    /^((?:@import "[^"\n]*";\n)*)(\/\*[\s\S]*?\*\/)/,
+    (_, imports, header) =>
+      imports +
+      header
+        .replaceAll("Recall UI v22", "Recall web UI")
+        .replace("the v22 tokens.", "the web UI tokens.")
+        .replace("the v22 saturation/lightness", "the web UI saturation/lightness")
+  );
+  return Buffer.from(renamed);
 }
 
 function verifyUiRename() {
@@ -79,11 +96,15 @@ function verifyUiRename() {
   const snapshot = renamedSnapshot();
   const expected = previous.map((file) => file.replace(oldUi, newUi)).concat(newProbe);
   if (JSON.stringify(snapshot.paths.sort()) !== JSON.stringify(expected.sort())) return false;
-  for (const file of previous.filter((file) => file.endsWith(".js"))) {
-    const candidate = file.replace(oldUi, newUi);
-    if (executableSource(baseSource(file), file) !== executableSource(snapshot.source(candidate), file)) return false;
+  for (const file of previous) {
+    const before = baseSource(file);
+    const after = snapshot.source(file.replace(oldUi, newUi));
+    const identical = file.endsWith(".js")
+      ? executableSource(before, file) === executableSource(after, file)
+      : renamedAssetSource(before, file).equals(after);
+    if (!identical) return false;
   }
-  const probe = baseSource(oldProbe).replace('"v22-mb-probe-"', '"webui-mb-probe-"');
+  const probe = baseSource(oldProbe).toString().replace('"v22-mb-probe-"', '"webui-mb-probe-"');
   verifiedUiRename = executableSource(probe, oldProbe) === executableSource(snapshot.source(newProbe), oldProbe);
   return verifiedUiRename;
 }
@@ -91,7 +112,7 @@ function verifyUiRename() {
 function readBase(file) {
   const tree = execFileSync("git", ["ls-tree", base, "--", file], { encoding: "utf8" });
   if (!tree.trim()) return null; // First introduction of this gate is the bootstrap.
-  const source = baseSource(file);
+  const source = baseSource(file).toString();
   if (!source.includes(oldUi) && !source.includes(oldProbe)) return source;
   if (!verifyUiRename()) return source;
   return source.replaceAll(oldUi, newUi).replaceAll(oldProbe, newProbe);

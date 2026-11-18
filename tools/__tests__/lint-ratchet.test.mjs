@@ -575,6 +575,13 @@ async function uiRenameFixture(t) {
   const newFile = oldFile.replace("webui/v22/", "webui/app/");
   const literals = 'export const literals = ["original", /original/i, `original ${42}`];\n';
   await put(root, oldFile, branches("legacy", 25) + literals);
+  await put(root, "packages/daemon/webui/v22/index.html", "<html>original</html>");
+  await put(
+    root,
+    "packages/daemon/webui/v22/css/base.css",
+    '@import "./Recall UI v22.css";\n/* Recall UI v22 — reset. */\nbody { color: red; content: "Recall UI v22 /* literal */"; }\n'
+  );
+  await writeFile(join(root, "packages/daemon/webui/v22/asset.bin"), Buffer.from([0xff, 0x00, 0xfe]));
   await put(root, "tools/probes/v22-memory-browser.mjs", 'export const prefix = "v22-mb-probe-";');
   for (const file of [".jscpd.json", "scripts/lint-scope.mjs"]) {
     await put(root, file, (await readFile(join(root, file), "utf8")).replaceAll("webui/app/", "webui/v22/"));
@@ -592,6 +599,8 @@ async function uiRenameFixture(t) {
   }
   await put(root, newFile, "// renamed UI\n" + branches("legacy", 25) + literals);
   await put(root, "tools/probes/webui-memory-browser.mjs", 'export const prefix = "webui-mb-probe-";');
+  const css = "packages/daemon/webui/app/css/base.css";
+  await put(root, css, (await readFile(join(root, css), "utf8")).replace("/* Recall UI v22", "/* Recall web UI"));
   return { root, newFile };
 }
 
@@ -650,4 +659,46 @@ test("UI rename proof preserves string, regexp and template literal contents", a
     const result = tool(root, "check-lint-baselines.mjs");
     assert.equal(result.status, 1, result.output);
   }
+  await put(root, newFile, original + "export const broken = ;");
+  const invalid = tool(root, "check-lint-baselines.mjs");
+  assert.equal(invalid.status, 1, invalid.output);
+  assert.match(invalid.output, /invalid source/);
+});
+
+test("UI rename rejects HTML script injection", async (t) => {
+  const { root } = await uiRenameFixture(t);
+  await put(root, "packages/daemon/webui/app/index.html", "<html><script>globalThis.changed=true</script></html>");
+  const result = tool(root, "check-lint-baselines.mjs");
+  assert.equal(result.status, 1, result.output);
+});
+
+test("UI rename rejects CSS behavior changes alongside the permitted header rename", async (t) => {
+  const { root } = await uiRenameFixture(t);
+  const css = "packages/daemon/webui/app/css/base.css";
+  await put(root, css, (await readFile(join(root, css), "utf8")).replace("color: red", "display: none"));
+  const result = tool(root, "check-lint-baselines.mjs");
+  assert.equal(result.status, 1, result.output);
+});
+
+test("UI rename preserves CSS literal values and comments beyond the introductory branding", async (t) => {
+  const { root } = await uiRenameFixture(t);
+  const css = "packages/daemon/webui/app/css/base.css";
+  const original = await readFile(join(root, css), "utf8");
+  for (const changed of [
+    original.replace('"Recall UI v22 /* literal */"', '"Recall web UI /* literal */"'),
+    original.replace("/* literal */", "/* changed */"),
+    original.replace("./Recall UI v22.css", "./Recall web UI.css"),
+    original.replace("reset.", "reset. */ body { display: none; } /*"),
+  ]) {
+    await put(root, css, changed);
+    const result = tool(root, "check-lint-baselines.mjs");
+    assert.equal(result.status, 1, result.output);
+  }
+});
+
+test("UI rename compares asset bytes without lossy UTF-8 decoding", async (t) => {
+  const { root } = await uiRenameFixture(t);
+  await writeFile(join(root, "packages/daemon/webui/app/asset.bin"), Buffer.from([0xfe, 0x00, 0xff]));
+  const result = tool(root, "check-lint-baselines.mjs");
+  assert.equal(result.status, 1, result.output);
 });
