@@ -452,7 +452,7 @@ test("#441: the staged path is wired to the same refresh as the interactive one"
   // unconditional caller and the helper contract: relative order alone misses
   // staged skipping refresh, forcing a reload, or ignoring a failed refresh.
   assert.ok(
-    /^  if \(!\(await pointAutostart\(u, installed\)\)\) return 1;\s*\/\/ 4\.[\s\S]*?^  if \(args\.staged\) \{\s*describeStagedRestart\(\);/m.test(
+    /^  if \(!\(await pointAutostart\(u, installed\)\)\) return 1;\s*\/\/ 4\.[\s\S]*?^  if \(args\.staged\) \{\n[^\n]*\n    return 0;\n  \}/m.test(
       src
     ),
     "the refresh must run unconditionally (not skipped for --staged)"
@@ -465,7 +465,9 @@ test("#441: the staged path is wired to the same refresh as the interactive one"
     "a failed refresh must not be ignored"
   );
   const refreshAt = src.indexOf("if (!(await pointAutostart(u, installed))) return 1;");
-  const stagedReturnAt = src.indexOf("describeStagedRestart();");
+  // The staged branch's report wording is localized (#1602); anchor on the
+  // branch itself, which reports and returns success without a restart.
+  const stagedReturnAt = src.search(/^  if \(args\.staged\) \{\n[^\n]*\n    return 0;\n  \}/m);
   assert.ok(refreshAt > 0 && stagedReturnAt > 0, "both anchors must exist");
   assert.ok(refreshAt < stagedReturnAt, "the managed-service refresh must run BEFORE --staged reports success (#441)");
 });
