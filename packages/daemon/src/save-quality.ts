@@ -30,6 +30,7 @@ import {
   type SimilarityFields,
 } from "./save-similarity.js";
 import type { ToolDeps } from "./tool-deps.js";
+import { hiddenFromCaller } from "./private-access.js";
 
 /** #239: upper bound for the collision scan. The pool decides `k`, but a
  *  pathological scope must not turn an advisory into a full-index sweep on
@@ -201,16 +202,18 @@ function replacedClaimAdvisory(
   return 0;
 }
 
-/** The `superseded_by` edges from `id` onward, oldest successor first. `seen`
- *  guards a hand-written cycle; a successor missing from the vault ends it. */
+/** The public `superseded_by` edges, oldest successor first. A private or missing
+ *  node suppresses the advisory; `seen` guards a hand-written cycle. */
 function successorChain(deps: ToolDeps, id: string): string[] {
   const chain: string[] = [];
   const seen = new Set<string>([id]);
   let next: unknown = deps.vault.get(id)?.fm.superseded_by;
   while (typeof next === "string" && next !== "" && !seen.has(next)) {
+    const memory = deps.vault.get(next);
+    if (!memory || hiddenFromCaller(undefined, memory.fm)) return [];
     chain.push(next);
     seen.add(next);
-    next = deps.vault.get(next)?.fm.superseded_by;
+    next = memory.fm.superseded_by;
   }
   return chain;
 }

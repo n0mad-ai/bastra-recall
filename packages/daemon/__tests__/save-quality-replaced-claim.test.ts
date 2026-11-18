@@ -8,12 +8,13 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Vault, SearchIndex } from "@bastra-recall/core";
+import { Vault, SearchIndex, type SaveMemoryInput } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
 import { resetSaveFailures, saveMemoryHandler, type SaveMemoryResult } from "../src/save-memory-handler.js";
 import { resetAuditLogCache } from "../src/audit-trail.js";
 import { editMemoryHandler, type EditMemoryResult } from "../src/edit-memory-handler.js";
 import type { ToolDeps } from "../src/tool-deps.js";
+import { scoreSaveQuality } from "../src/save-quality.js";
 
 async function fixture(t: { after: (fn: () => unknown) => void }) {
   resetAuditLogCache();
@@ -137,3 +138,36 @@ test("an unrelated save gets no replaced-claim advisory", async (t) => {
   )) as SaveMemoryResult;
   assert.equal(replacedIssue(result), undefined);
 });
+
+for (const privateId of ["private-middle", "private-current"]) {
+  test(`a public replacement advisory does not traverse the private node ${privateId}`, () => {
+    const input = memo("Ingest worker batch size", OLD, "tuning the ingest worker flush") as SaveMemoryInput;
+    const memory = (id: string, extra: Record<string, unknown> = {}) => ({
+      fm: { ...input, id, sensitivity: id === privateId ? "private" : "team", ...extra },
+      body: input.body,
+    });
+    const rows = new Map([
+      ["public-old", memory("public-old", { superseded_by: "private-middle" })],
+      ["private-middle", memory("private-middle", { superseded_by: "private-current" })],
+      ["private-current", memory("private-current")],
+    ]);
+    const deps = {
+      vault: { get: (id: string) => rows.get(id), list: () => [...rows.values()] },
+      search: {
+        recall: (_query: string, options: { allow_private?: boolean }) => {
+          assert.equal(options.allow_private, false);
+          return [{ id: "public-old", title: input.title, summary: input.summary }];
+        },
+      },
+    } as unknown as ToolDeps;
+    const result = scoreSaveQuality(deps, input, "new-save");
+    assert.equal(
+      result.issues.find((issue) => issue.startsWith("re-asserts a replaced claim")),
+      undefined
+    );
+    assert.ok(
+      !JSON.stringify(result).includes(privateId),
+      "private successor IDs stay out of every public result field"
+    );
+  });
+}
