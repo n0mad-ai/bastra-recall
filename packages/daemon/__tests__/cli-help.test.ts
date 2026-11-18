@@ -154,7 +154,7 @@ test("every dispatched command has its own help section (drift gate)", async () 
   assert.deepEqual(
     missing,
     [],
-    `these commands dispatch but have no help section — add them to COMMAND_HELP in cli/help-text.ts: ${missing.join(", ")}`
+    `these commands dispatch but have no help section — add them to the matching cli/help-text-*.ts group of COMMAND_HELP: ${missing.join(", ")}`
   );
 });
 
