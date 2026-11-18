@@ -27,6 +27,10 @@
  *     --gold ~/.bastra/eval-goldset/gold-tel-1.json \
  *     --hybrid --out ~/.bastra/eval-runs/<dir>/results.json
  *
+ * `--archive` (needs `--out`) also files the `--out` artefact under
+ * `~/.bastra/goldset-run-runs/<date>/` with a `SHA256SUMS` line (#503); the
+ * run directory under `eval-runs` is written as before.
+ *
  * The staleness step reads a FIXED reference time (#1568), so two runs on
  * different days rank the same vault alike: `--reference-time <ISO>`, default
  * {@link GOLDSET_REFERENCE_TIME}. The same main arm is scored a second time
@@ -66,7 +70,7 @@ import {
 } from "./goldset-gate.js";
 import type { GoldCase } from "./goldset.js";
 import { seededRandom } from "./seeded-random.js";
-import { recordChecksums } from "./run-archive.js";
+import { archiveIfRequested, recordChecksums, takeArchiveFlag } from "./run-archive.js";
 
 /**
  * The k the product serves. Ranks are measured here and nowhere else.
@@ -542,9 +546,12 @@ interface Args {
   seed: number;
   gate: boolean;
   referenceTime: Date;
+  archive: boolean;
 }
 
-export function parseArgs(argv: string[]): Args {
+export function parseArgs(raw: string[]): Args {
+  // #503: also file the --out artefact under ~/.bastra/goldset-run-runs/.
+  const { archive, rest: argv } = takeArchiveFlag(raw);
   const a: Args = {
     gold: [],
     out: "",
@@ -552,6 +559,7 @@ export function parseArgs(argv: string[]): Args {
     seed: 20260828,
     gate: false,
     referenceTime: new Date(GOLDSET_REFERENCE_TIME),
+    archive,
   };
   for (let i = 0; i < argv.length; i++) {
     const f = argv[i];
@@ -859,6 +867,7 @@ async function main(): Promise<void> {
   const sums = recordChecksums(dir, ["manifest.json", "results.json", "stdout.txt", "stderr.txt", "command.txt"]);
   console.error(`[goldset-run] run artifact: ${dir}`);
   for (const f of sums) console.error(`[goldset-run]   ${f.sha256}  ${f.path}`);
+  archiveIfRequested(args.archive, "goldset-run", [args.out]);
 }
 
 if (import.meta.filename === process.argv[1]) {

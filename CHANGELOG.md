@@ -13,6 +13,11 @@ until a new design replaces it; this name is independent of the product version.
 
 - Add a mandatory post-build Knip check with a frozen per-finding budget; new or increased unused-code findings fail CI (#1534).
 
+- `goldset-run` takes `--archive` like the other eval runners (#503).
+
+- `scripts/ast-equivalence.mjs`: the one-time Prettier commit changed no
+  syntax tree (10/10 formatter-case files, 1,494/1,494 JS/TS files) (#1536).
+
 - The #643 advisory harness accepts an existing physical temporary vault copy,
   isolates its application state, and reports aggregate replay and explicit
   replacement-chain routing counts without exposing stored text or IDs.

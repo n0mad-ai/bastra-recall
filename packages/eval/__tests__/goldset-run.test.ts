@@ -1,8 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   GOLDSET_REFERENCE_TIME,
   controlRecaller,
@@ -331,4 +333,51 @@ test("the --gate evidence decision reads the run's reference time, not the wall 
   assert.equal(at("2026-10-02T00:00:00Z").evidence.temporal_status, "expired");
   const noBody = evidenceDecider(vault, new Date("2026-09-01T00:00:00Z"), { noBody: true })(served, "deployen")[0];
   assert.equal(noBody.decision, "required", "the no-body counterfactual reads the same clock");
+});
+
+test("--archive files the --out artefact with its sha256 and prints the path; without it nothing is filed (#503)", () => {
+  const evalRoot = resolve(import.meta.dirname, "..");
+  const work = mkdtempSync(join(tmpdir(), "bastra-goldset-archive-"));
+  // A copy, so the run cannot touch the shared fixture.
+  const vaultPath = join(work, "vault");
+  cpSync(join(evalRoot, "fixtures", "eval-vault"), vaultPath, { recursive: true });
+  const goldPath = goldFile("gold.json", [
+    gold("thundering herd when a service recovers", { expected_ids: ["backoff-jitter"], lang: "en" }),
+  ]);
+  const archiveRoot = join(work, "archive");
+  const run = (out: string, extra: string[] = []): string => {
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      BASTRA_VAULT_PATH: vaultPath,
+      BASTRA_EVAL_RUNS_DIR: join(work, "eval-runs"),
+      BASTRA_EVAL_ARCHIVE_DIR: archiveRoot,
+    };
+    delete env.NODE_TEST_CONTEXT;
+    const args = ["--import", "tsx", "src/goldset-run.ts", "--gold", goldPath, "--out", out, ...extra];
+    const res = spawnSync(process.execPath, args, { cwd: evalRoot, env, encoding: "utf8", timeout: 60_000 });
+    assert.equal(res.status, 0, res.stderr);
+    return res.stderr;
+  };
+
+  const plain = run(join(work, "plain.json"));
+  assert.doesNotMatch(plain, /archived/);
+  assert.equal(existsSync(archiveRoot), false, "without --archive nothing is filed");
+
+  const out = join(work, "results.json");
+  const log = run(out, ["--archive"]);
+  const [day] = readdirSync(join(archiveRoot, "goldset-run-runs"));
+  const dir = join(archiveRoot, "goldset-run-runs", day);
+  const body = readFileSync(out);
+  const sha = createHash("sha256").update(body).digest("hex");
+  assert.deepEqual(readFileSync(join(dir, "results.json")), body);
+  assert.equal(readFileSync(join(dir, "SHA256SUMS"), "utf8"), `${sha}  results.json\n`);
+  assert.ok(log.includes(`[goldset-run] archived ${join(dir, "results.json")} sha256 ${sha}`), log);
+  // The reserved run directory is still written as before.
+  assert.match(log, /\[goldset-run\] run artifact: /);
+});
+
+test("--archive without --out is refused before the run starts (#503)", () => {
+  assert.throws(() => parseArgs(["--gold", "g.json", "--archive"]), /needs --out/);
+  assert.equal(parseArgs(["--gold", "g.json", "--out", "o.json", "--archive"]).archive, true);
+  assert.equal(parseArgs(["--gold", "g.json"]).archive, false);
 });

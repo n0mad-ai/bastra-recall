@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "issue": 1536,
+  "purpose": "AST equivalence of the one-time Prettier commit for the files its fingerprint breaks hash",
+  "command": "node packages/eval/scripts/ast-equivalence.mjs",
+  "scope": "files of the formatter_breaks in fingerprint-map-1536.json",
+  "formatter_commit": "0f9f06045626232114100592fca7dd533a5eb6cb",
+  "parent_commit": "82abb7bd5bb54054adf9d63d7cf6fb5c721e8c64",
+  "parser": "typescript 6.0.3",
+  "method": "TypeScript parse tree without trivia (comments, whitespace); string and template literals by value (templates by raw text), numbers by numeric value, regex flags sorted, parentheses unwrapped, ||/&&/?? chains flattened, let/const/namespace/optional-chain flags kept",
+  "script_sha256": "656da0926c965c10b342c986b2f5d604d4c6dac531f2897c6643a5cc2ccb942f",
+  "summary": {
+    "files": 10,
+    "equal": 10,
+    "differing": []
+  },
+  "files": [
+    {
+      "file": "packages/eval/src/chunk-maxsim-run.ts",
+      "before_sha256": "0dd679321964ab1f602ee8b7628a8b54fcc66b6b73d2f4b215333daa7f7d55ae",
+      "after_sha256": "c4b18bbb81e2ea0aad634031195167d563203b0b8ce1632eca257c1a0b6c2ec2",
+      "byte_identical": false,
+      "ast_sha256": "09aca118f6288fdbf5e8028e06a60bab3cb5fedc77ddca4f1cc46ce5791367e4",
+      "equal": true
+    },
+    {
+      "file": "packages/eval/src/chunk-maxsim.ts",
+      "before_sha256": "2ed0074ecacbcba864b45e82c08551f68a53b74eba6c0d9e20b8297f9a32f11a",
+      "after_sha256": "17e44ee5e16672bb41c0383ad6633c355099b7bb1da2a8c6e042ff873a09c279",
+      "byte_identical": false,
+      "ast_sha256": "eb9268efeb3d2d6afbe9368b40826454e32535eed03b3d659f1d93f1660ee4e4",
+      "equal": true
+    },
+    {
+      "file": "packages/eval/src/longmemeval-run.ts",
+      "before_sha256": "7a4fb6cf2ba538c99f08e4e712707ff3af0b7664ae1bf234b5357505f4aa7d89",
+      "after_sha256": "0d823611850cfb17f08142d9ea5a45833d8c6cdbfc2730c9a23b39dcab39229c",
+      "byte_identical": false,
+      "ast_sha256": "95bc235a881af0cb00bed212abdb9af44c3755f6b3a3c66dd91767e46751e501",
+      "equal": true
+    },
+    {
+      "file": "packages/eval/src/longmemeval-dataset.ts",
+      "before_sha256": "28a732a424b314712bae4a27325f15e6b1ef48e37be8f5d4f91f310e5fc64dbf",
+      "after_sha256": "df50378490bd69838f06f0d5cf5feab13a70cff2a5acbe902fb7ccb77dd7d86e",
+      "byte_identical": false,
+      "ast_sha256": "41d341e5e046e8d1423d60732041119664461a15fdd9b56cac1a674a9920a2c1",
+      "equal": true
+    },
+    {
+      "file": "packages/eval/src/chunk-vault-coverage.ts",
+      "before_sha256": "50f2affd8a02f485fdef416be27e234ff6a25f14973c0d18ae326f9d5570a4ea",
+      "after_sha256": "a85d983b05e9c285418a0aa87b03ac312fb1dc436a7aa0de019f96fd83e9d26b",
+      "byte_identical": false,
+      "ast_sha256": "4ee023cc03df4b5efa87bae5c177a6beb10fc2e158380d99762091b2364f5dcf",
+      "equal": true
+    },
+    {
+      "file": "packages/eval/src/correction-sequences.ts",
+      "before_sha256": "152c9139f2ada830ccc056a99c5d35727d360edb42c800097aaf140151243935",
+      "after_sha256": "e19a367dcb8e9eae1ab3774d5b75bf1317a40874daaf157118627f1f32a7ee53",
+      "byte_identical": false,
+      "ast_sha256": "e5695880cf82b29ea049a012227d616211dc02356b6ef58f5bf530b08fdd63b3",
+      "equal": true
+    },
+    {
+      "file": "packages/eval/scripts/draft-csls.mjs",
+      "before_sha256": "c6905bbdf1fdd72cca613767ae27d324fd43632ae7396672a1b87a2662268363",
+      "after_sha256": "b1e4de0ba38d86790a873f39f579f84230009ffe38f66d5587dcc9abefef2969",
+      "byte_identical": false,
+      "ast_sha256": "d8b2c1cbf8a17b1fddf178a850a99b75d2e6e15d62de7c33f3bfbcf0dedd9f55",
+      "equal": true
+    },
+    {
+      "file": "packages/eval/src/flat-scale-subset.ts",
+      "before_sha256": "8dd41255dc388f8f2526dc17e138ff8eada0231acab51eb586ebe3421ca12d41",
+      "after_sha256": "24705450ac665f3d20e485969e328e0c570000ed87f065be5deff3941d9fe16c",
+      "byte_identical": false,
+      "ast_sha256": "3dfdc886e935ea108d8378f401501f05671e609963c5751304a074a66cbb53a6",
+      "equal": true
+    },
+    {
+      "file": "packages/eval/src/supersession-durability.ts",
+      "before_sha256": "337c08041d912585f6feeaadd828e1aa2c9d60a62a1a7efb9620ae4077517dd5",
+      "after_sha256": "dcd0af8c723ec9ac2d7f2db0ae13eb578d50ac1b5f9bdb189f352977fb762124",
+      "byte_identical": false,
+      "ast_sha256": "e1b94f33861698f25d7b22763adacee66d2b3ae1bbb3b6864f8f7121036013ae",
+      "equal": true
+    },
+    {
+      "file": "packages/eval/src/supersession-hybrid.ts",
+      "before_sha256": "2605605c3bdb62b2d588df3f8db5d810b35c17cc3ae14bb22be2f3bc06818959",
+      "after_sha256": "99f60c249771fd426dc6bf4e719e75687130997eab99f96fa4ae9d18a9942843",
+      "byte_identical": false,
+      "ast_sha256": "b1d15fce70204784dcdadabb44ce0a42060e37cad43fce70ab155c11b37ce157",
+      "equal": true
+    }
+  ]
+}

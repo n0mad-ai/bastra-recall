@@ -475,7 +475,7 @@ otherwise, and scores the main arm a second time at the wall clock of the run.
 the reference time.
 
 The run directory under `BASTRA_EVAL_RUNS_DIR` (default `~/.bastra/eval-runs`)
-gets a `SHA256SUMS` file. The other runners (`longmemeval-run`,
+gets a `SHA256SUMS` file. All five runners (`goldset-run`, `longmemeval-run`,
 `rerank-replay`, `rerank-longmemeval`, `rerank-pool-coverage`) take `--archive`:
 the `--out` artefact is copied to `~/.bastra/<harness>-runs/<date>/`
 (root: `BASTRA_EVAL_ARCHIVE_DIR`), never overwriting an archived file, with a
@@ -484,4 +484,7 @@ the `--out` artefact is copied to `~/.bastra/<harness>-runs/<date>/`
 Source fingerprints: runners that hash their own source are matched to git
 history by `node scripts/fingerprint-history.mjs [<sha256>]`;
 `registrations/fingerprint-map-1536.json` maps the hashes the one-time
-reformatting changed (#1536).
+reformatting changed (#1536). `node scripts/ast-equivalence.mjs` compares the
+syntax trees of those files before and after that commit (`--all`: every JS/TS
+file it touched) and exits non-zero on any difference; its result is
+registered as `registrations/ast-equivalence-0f9f0604.json`.
