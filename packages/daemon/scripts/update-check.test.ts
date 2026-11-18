@@ -7,7 +7,7 @@
  * Run: npx tsx --test packages/daemon/scripts/update-check.test.ts
  *      (or: npm run test:update --workspace=@bastra-recall/daemon)
  */
-import { test } from "node:test";
+import { afterEach, beforeEach, test } from "node:test";
 import { strict as assert } from "node:assert";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, symlink, writeFile, mkdir } from "node:fs/promises";
@@ -24,6 +24,18 @@ import {
   renderPlist,
   stableNodeBin,
 } from "../src/cli/autostart.js";
+
+// The shared test bootstrap disables incidental daemon update checks. These
+// tests exercise the updater itself with injected fetches and isolated caches.
+let previousUpdateCheck: string | undefined;
+beforeEach(() => {
+  previousUpdateCheck = process.env.BASTRA_UPDATE_CHECK;
+  delete process.env.BASTRA_UPDATE_CHECK;
+});
+afterEach(() => {
+  if (previousUpdateCheck === undefined) delete process.env.BASTRA_UPDATE_CHECK;
+  else process.env.BASTRA_UPDATE_CHECK = previousUpdateCheck;
+});
 
 async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-update-check-"));

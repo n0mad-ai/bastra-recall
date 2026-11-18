@@ -87,6 +87,9 @@ if (!process.env.BASTRA_TEST_RUN_ROOT) {
   process.env.USERPROFILE = runHome;
   process.env.HOMEDRIVE = parse(runHome).root.replace(/[\\/]$/, "");
   process.env.HOMEPATH = runHome.slice(process.env.HOMEDRIVE.length);
+  // Real fixture daemons must not perform unrelated GitHub release checks.
+  // Dedicated updater tests clear this default while injecting their fetches.
+  process.env.BASTRA_UPDATE_CHECK ??= "off";
   // npm exports its resolved cache/userconfig into npx children; changing HOME
   // alone cannot override those exports. Both spellings are valid npm inputs.
   process.env.npm_config_cache = process.env.NPM_CONFIG_CACHE = join(runHome, ".npm");

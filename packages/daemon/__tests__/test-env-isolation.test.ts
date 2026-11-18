@@ -33,6 +33,7 @@ console.log(JSON.stringify({
   nexusVault: process.env.NEXUS_VAULT_PATH ?? null,
   daemonUrl: process.env.BASTRA_DAEMON_URL ?? null,
   token: process.env.BASTRA_API_TOKEN ?? null,
+  updateCheck: process.env.BASTRA_UPDATE_CHECK ?? null,
   ollama: process.env.BASTRA_OLLAMA_URL ?? null,
   hookState: process.env.BASTRA_HOOK_STATE_DIR ?? null,
   logs: process.env.BASTRA_LOG_PATH,
@@ -79,6 +80,7 @@ const DEVELOPER_SHELL = {
   BASTRA_API_TOKEN: "real-token",
   BASTRA_OLLAMA_URL: "http://gpu-box:11434",
   BASTRA_HOOK_STATE_DIR: "/home/someone/.bastra/hook-state",
+  BASTRA_UPDATE_CHECK: "on",
 };
 
 test("a developer's vault, daemon, token, model and state settings do not reach a test process", () => {
@@ -89,6 +91,7 @@ test("a developer's vault, daemon, token, model and state settings do not reach 
   );
   assert.match(seen.daemonUrl!, /^http:\/\/127\.0\.0\.1:\d+$/);
   assert.notEqual(new URL(seen.daemonUrl!).port, "6723");
+  assert.equal(seen.updateCheck, "off");
 });
 
 test("everything the run put under tmpdir() is removed when it exits", () => {
@@ -130,8 +133,11 @@ test("an output directory the caller chose is kept and never removed (#420)", ()
 });
 
 test("BASTRA_TEST_KEEP_ENV=1 keeps a deliberately chosen vault", () => {
-  const seen = probe(outsideRun({ BASTRA_VAULT_PATH: "/tmp/chosen-vault", BASTRA_TEST_KEEP_ENV: "1" }));
+  const seen = probe(
+    outsideRun({ BASTRA_VAULT_PATH: "/tmp/chosen-vault", BASTRA_UPDATE_CHECK: "on", BASTRA_TEST_KEEP_ENV: "1" })
+  );
   assert.equal(seen.vault, "/tmp/chosen-vault");
+  assert.equal(seen.updateCheck, "on");
 });
 
 test("inside a run, what a test hands its child is not stripped", () => {
@@ -139,9 +145,16 @@ test("inside a run, what a test hands its child is not stripped", () => {
     ...process.env,
     BASTRA_TEST_RUN_ROOT: tmpdir(),
     BASTRA_VAULT_PATH: "/tmp/fixture-vault",
+    BASTRA_UPDATE_CHECK: "on",
     NODE_TEST_CONTEXT: "",
   });
   assert.equal(seen.vault, "/tmp/fixture-vault");
+  assert.equal(seen.updateCheck, "on");
+});
+
+test("ordinary children inherit the incidental update-check opt-out", () => {
+  const seen = probe({ ...process.env, NODE_TEST_CONTEXT: "" });
+  assert.equal(seen.updateCheck, "off");
 });
 
 test("the consuming relay queue is isolated even when a developer configured a real path", () => {
