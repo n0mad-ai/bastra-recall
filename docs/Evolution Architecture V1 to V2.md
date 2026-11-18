@@ -7537,7 +7537,9 @@ not current development blockers.
   or beta delivery. Mixed issues separate implementation from measurement evidence.
   Version/configuration changes are recorded; restart an affected measurement window
   where necessary rather than stop delivery.
-- Intermediate releases with outstanding evidence use `2.0.0-beta.N`. Pending,
+- The earlier `2.0.0-beta.N` convention is superseded: incremental releases stay
+  on 1.x, and the next planned product release is 1.3.0 (owner decision,
+  2026-11-18; see the unified evolution plan). Pending,
   failed and not-evaluable evidence stays visible. Beta neither claims demonstrated
   utility nor automatically enables an unconfirmed learned policy by default:
   opt-in, shadow and fallback modes are documented per feature.

@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+The next planned product release is **1.3.0**. The interface remains **UI Version 2**
+until a new design replaces it; this name is independent of the product version.
+
 ### Added
 
 - Task reports show one state in the list and the head: New, In progress,
@@ -189,6 +192,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   minimum (#1225).
 
 - **Node 22 is no longer supported; Node 24.16 or newer is required.**
+  This supersedes the earlier next-major plan: the target release remains 1.3.0.
   Supported versions are Node 24.16 to 26. Update Node before updating
   Bastra Recall; `node --version` shows what you run. On an older Node,
   every `bastra` command now warns, and `bastra update` installs nothing

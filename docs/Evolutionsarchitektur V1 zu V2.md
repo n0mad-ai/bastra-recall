@@ -7711,7 +7711,9 @@ Entscheidungsgeschichte erhalten; sie sind keine aktuellen Entwicklungsblockaden
   Entwicklung oder Beta-Auslieferung. Gemischte Issues werden in Implementierung
   und Messnachweis getrennt. Ein Versions-/Konfigurationswechsel wird dokumentiert;
   bei Bedarf beginnt ein betroffenes Messfenster neu, statt den Release anzuhalten.
-- Zwischenreleases mit offenen Nachweisen sind `2.0.0-beta.N`. Offene, gescheiterte
+- Die frühere Konvention `2.0.0-beta.N` ist abgelöst: Zwischenreleases bleiben
+  bei 1.x, das nächste geplante Produktrelease ist 1.3.0 (Inhaberentscheidung
+  vom 18.11.2026; siehe gemeinsamer Evolutionsplan). Offene, gescheiterte
   oder nicht auswertbare Nachweise werden sichtbar als solche geführt. Beta ist
   keine Behauptung bestätigten Nutzens und keine automatische Standardaktivierung
   eines unbestätigten Lernverfahrens; Opt-in, Shadow und Fallback werden pro Funktion erklärt.
