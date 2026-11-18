@@ -101,7 +101,6 @@
     "[\"exports\",\"packages/daemon/src/cli/log-stats.ts\",[\"\",\"foldClientDuplicates\"]]": 1,
     "[\"exports\",\"packages/daemon/src/cli/log-stats.ts\",[\"\",\"renderCodeAwareness\"]]": 1,
     "[\"exports\",\"packages/daemon/src/cli/log-stats.ts\",[\"\",\"renderCodeRoi\"]]": 1,
-    "[\"exports\",\"packages/daemon/src/cli/reconcile-cmd.ts\",[\"\",\"formatPlan\"]]": 1,
     "[\"exports\",\"packages/daemon/src/cli/source-build.ts\",[\"\",\"headState\"]]": 1,
     "[\"exports\",\"packages/daemon/src/cli/stable-runtime.ts\",[\"\",\"copyRuntimeTree\"]]": 1,
     "[\"exports\",\"packages/daemon/src/cli/stable-runtime.ts\",[\"\",\"pruneOldRuntimes\"]]": 1,
