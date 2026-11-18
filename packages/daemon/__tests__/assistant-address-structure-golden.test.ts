@@ -37,6 +37,7 @@ async function fixture(t: test.TestContext) {
     helperLoaded: async () => true,
     runAdmin: async (p: AddressAdminPlan) => applyPlan(p),
   };
+  await writeFile(o.settingsPath, JSON.stringify({ ui: { enabled: true } }));
   t.mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
     assert.equal(String(url), "http://127.0.0.1:0/.well-known/bastra-assistant-address");
     return Response.json({ service: "bastra-assistant-address", name: "jarvis" });
