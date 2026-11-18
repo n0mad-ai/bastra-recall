@@ -5,7 +5,9 @@
  *
  * Runs src/bridge.ts in a child process against a temp vault. Paths, times and
  * ids are replaced by placeholders. Expected replies: fixtures/bridge-rpc-golden.json;
- * record again after a deliberate change with BASTRA_GOLDEN_WRITE=1.
+ * record replies again after a deliberate change with BASTRA_GOLDEN_WRITE=1.
+ * Watcher duplicates have no fixed count: their full payload and position are
+ * checked separately from each mutation's mandatory notification before reply.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -62,6 +64,39 @@ const REQUESTS: Array<Record<string, unknown> | string> = [
   { method: "task_list", params: {} },
 ];
 
+interface NotificationWindow {
+  request: Record<string, unknown>;
+  reply: Record<string, unknown>;
+  events: unknown[];
+}
+
+function checkNotifications(windows: NotificationWindow[], trailing: unknown[] = []): void {
+  let present = false;
+  const batches: NotificationWindow[] = [...windows, { request: {}, reply: {}, events: trailing }];
+  for (const { request, reply, events } of batches) {
+    const mutation =
+      !reply.error && ["save_memory", "delete_memory", "restore_memory"].includes(String(request.method));
+    const required = mutation ? (request.method === "delete_memory" ? "remove" : "add") : undefined;
+    let seen = false;
+    for (const event of events) {
+      assert.ok(event && typeof event === "object", "notification is an object");
+      const kind = (event as Record<string, unknown>).kind;
+      assert.deepEqual(event, { event: "vault_changed", kind, memory_id: "bridge-golden-memory" });
+      assert.ok(kind === "add" || kind === "remove" || kind === "change", "known vault event kind");
+      if (kind === "change") {
+        assert.ok(present, "watcher change requires an existing memory");
+      } else {
+        assert.equal(kind, required, "notification belongs to this mutation");
+        assert.equal(seen, false, "one primary notification per mutation");
+        assert.equal(present, kind === "remove", "add/remove follow memory lifetime order");
+        present = kind === "add";
+        seen = true;
+      }
+    }
+    if (required) assert.ok(seen, `${String(request.method)} notification must precede its reply`);
+  }
+}
+
 async function run(): Promise<unknown[]> {
   const root = await mkdtemp(join(tmpdir(), "bastra-bridge-golden-"));
   const vault = join(root, "vault");
@@ -95,6 +130,8 @@ async function run(): Promise<unknown[]> {
   try {
     await until(() => err.includes("] ready"), "bridge did not become ready");
     const replies: unknown[] = [];
+    const windows: NotificationWindow[] = [];
+    let consumed = 0;
     let id = 0;
     for (const request of REQUESTS) {
       if (typeof request === "string") {
@@ -105,14 +142,21 @@ async function run(): Promise<unknown[]> {
       child.stdin.write(JSON.stringify({ id, ...request }) + "\n");
       const want = `"id":${id},`;
       await until(() => out.split("\n").some((l) => l.startsWith(`{${want}`)), `no reply to ${request.method}`);
-      const line = out.split("\n").find((l) => l.startsWith(`{${want}`))!;
-      replies.push({ request, reply: JSON.parse(line) });
+      const lines = out.split("\n").filter(Boolean);
+      const at = lines.findIndex((l) => l.startsWith(`{${want}`));
+      const reply = JSON.parse(lines[at]) as Record<string, unknown>;
+      windows.push({ request, reply, events: lines.slice(consumed, at).map((l) => JSON.parse(l)) });
+      consumed = at + 1;
+      replies.push({ request, reply });
     }
-    const unexpected = out
-      .split("\n")
-      .filter(Boolean)
-      .filter((l) => !/^\{"id":\d+,/.test(l));
-    replies.push({ unsolicited: unexpected.map((l) => JSON.parse(l).event ?? l).sort() });
+    checkNotifications(
+      windows,
+      out
+        .split("\n")
+        .filter(Boolean)
+        .slice(consumed)
+        .map((l) => JSON.parse(l))
+    );
     const text = JSON.stringify(replies)
       .split(vault)
       .join("<VAULT>")
@@ -133,9 +177,57 @@ const golden = new URL("./fixtures/bridge-rpc-golden.json", import.meta.url);
 
 test("#1529: bridge replies per method are unchanged", { timeout: 60000 }, async () => {
   const actual = await run();
+  const expected = JSON.parse(await readFile(golden, "utf8")) as unknown[];
+  // The legacy last row records only a timing-dependent watcher event count.
+  // Every actual event is checked above, including kind, id and reply boundary.
+  assert.deepEqual(expected.at(-1), { unsolicited: Array(4).fill("vault_changed") });
   if (process.env.BASTRA_GOLDEN_WRITE === "1") {
-    await writeFile(golden, JSON.stringify(actual, null, 2) + "\n");
+    await writeFile(golden, JSON.stringify([...actual, expected.at(-1)], null, 2) + "\n");
     return;
   }
-  assert.deepEqual(actual, JSON.parse(await readFile(golden, "utf8")));
+  assert.deepEqual(actual, expected.slice(0, -1));
+});
+
+test("#1529: notification checks require ordered mutation events and validate optional watcher duplicates", () => {
+  const event = (kind: string) => ({ event: "vault_changed", kind, memory_id: "bridge-golden-memory" });
+  const window = (method: string, ...kinds: string[]): NotificationWindow => ({
+    request: { method },
+    reply: { result: {} },
+    events: kinds.map(event),
+  });
+  const sequence = () => [
+    window("save_memory", "add"),
+    window("delete_memory", "remove"),
+    window("restore_memory", "add"),
+  ];
+  checkNotifications(sequence()); // Watcher suppressed/delayed: primary events are sufficient.
+  checkNotifications(
+    [
+      window("save_memory", "add", "change"),
+      window("vault_status", "change"),
+      window("delete_memory", "change", "remove"),
+      window("restore_memory", "add", "change"),
+    ],
+    [event("change")]
+  );
+  for (const index of [0, 1, 2]) {
+    const missing = sequence();
+    missing[index].events = [];
+    assert.throws(() => checkNotifications(missing), /notification must precede/);
+  }
+  for (const bad of [
+    { ...event("add"), memory_id: "wrong" },
+    { ...event("add"), event: "unexpected" },
+    { ...event("add"), extra: true },
+    event("wrong"),
+    event("remove"),
+  ]) {
+    const wrong = sequence();
+    wrong[0].events = [bad];
+    assert.throws(() => checkNotifications(wrong));
+  }
+  assert.throws(() => checkNotifications([window("save_memory", "change", "add")]), /existing memory/);
+  assert.throws(() => checkNotifications([window("vault_status", "add")]), /belongs to this mutation/);
+  assert.throws(() => checkNotifications([window("save_memory", "add", "add")]), /one primary/);
+  assert.throws(() => checkNotifications(sequence(), [event("remove")]));
 });

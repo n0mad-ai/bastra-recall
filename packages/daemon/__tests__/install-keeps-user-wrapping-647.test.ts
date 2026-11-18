@@ -188,6 +188,7 @@ test("Claude Code: a wrapped registration on the stub is still seen as registere
   });
   const hooks = {
     SessionStart: [wrap("session-hook.js", "startup|resume|clear|compact")],
+    SubagentStart: [wrap("session-hook.js")],
     SessionEnd: [wrap("session-hook.js")],
     UserPromptSubmit: [wrap("prompt-hook.js")],
     PreToolUse: [
