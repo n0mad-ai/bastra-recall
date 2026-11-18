@@ -28,7 +28,6 @@ import {
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { defaultLogDir } from "../learned-recall/harvest.js";
-import { taskCliLanguage } from "./task-cli-words.js";
 
 const DAEMON_STDOUT = ["/tmp/bastra-daemon.out", "/tmp/bastra-daemon.err"];
 const EVENT_FILE = /^events-(\d{4}-\d{2}-\d{2})\.jsonl$/;
@@ -64,6 +63,8 @@ export interface LogsOpts {
   sinceMs: number;
   source: "daemon" | "hook" | "all";
   lines: number;
+  /** language.primary, read once by the `bastra logs` entry (cli.ts), which also prints its usage errors. */
+  language: string;
 }
 
 interface Line {
@@ -307,7 +308,7 @@ export async function cmdLogs(opts: LogsOpts): Promise<number> {
   const logDir = defaultLogDir();
   const cutoff = Date.now() - opts.sinceMs;
   const write = (s: string): void => void process.stdout.write(`${s}\n`);
-  const w = logsWordsIn(await taskCliLanguage().catch(() => "en"));
+  const w = logsWordsIn(opts.language);
 
   const lines: Line[] = [];
   if (opts.source !== "daemon") lines.push(...(await readHookLines(logDir, cutoff)));

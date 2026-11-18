@@ -283,7 +283,6 @@ test("commands print their own lines in language.primary; the English output is 
   });
   await new Promise<void>((ok) => failing.listen(0, "127.0.0.1", ok));
   const { port } = failing.address() as { port: number };
-  const noLogs = join(homes.unset, "no-logs-here");
   t.after(async () => {
     failing.close();
     for (const home of Object.values(homes)) await rm(home, { recursive: true, force: true });
@@ -293,13 +292,6 @@ test("commands print their own lines in language.primary; the English output is 
   };
   const save = ["save", "--title", "T", "--type", "lesson", "--scope", "s", "text"];
   const runs: [string, () => Promise<unknown>, Record<string, string>, string, string][] = [
-    [
-      "logs",
-      () => cmdLogs({ follow: false, sinceMs: 300_000, source: "hook", lines: 200 }),
-      { BASTRA_LOG_PATH: noLogs },
-      `(no log entries in the last 5min — try --since 1d)\n  note: ${noLogs} does not exist yet; nothing has been logged.\n`,
-      `(keine Log-Einträge in den letzten 5min — versuch --since 1d)\n  Hinweis: ${noLogs} gibt es noch nicht; bisher wurde nichts geloggt.\n`,
-    ],
     [
       "codex",
       () => cmdCodexChat(["--"], () => null),
@@ -372,5 +364,34 @@ test("bastra logs: the usage errors for --since, --source and --lines follow lan
     for (const home of [homes.unset, homes.other])
       assert.deepEqual(run(home, args), { status: 2, stdout: "", stderr: english }, args.join(" "));
     assert.deepEqual(run(homes.de, args), { status: 2, stdout: "", stderr: german }, args.join(" "));
+  }
+});
+
+test("bastra logs reads language.primary once at its entry and prints its lines in it", async (t) => {
+  const cli = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
+  const homes = { de: await homeWith("de"), unset: await homeWith(null) };
+  const noLogs = join(homes.unset, "no-logs-here");
+  t.after(async () => {
+    for (const home of Object.values(homes)) await rm(home, { recursive: true, force: true });
+  });
+  const english = `(no log entries in the last 5min — try --since 1d)\n  note: ${noLogs} does not exist yet; nothing has been logged.\n`,
+    german = `(keine Log-Einträge in den letzten 5min — versuch --since 1d)\n  Hinweis: ${noLogs} gibt es noch nicht; bisher wurde nichts geloggt.\n`;
+  // cmdLogs takes the language it is given and reads no settings itself: a German home changes nothing
+  const opts = { follow: false, sinceMs: 300_000, source: "hook", lines: 200 } as const;
+  const env = { BASTRA_LOG_PATH: noLogs };
+  assert.equal(await captured(homes.de, () => cmdLogs({ ...opts, language: "en" }), env), english);
+  assert.equal(await captured(homes.unset, () => cmdLogs({ ...opts, language: "de" }), env), german);
+  assert.equal(await captured(homes.unset, () => cmdLogs({ ...opts, language: "ru" }), env), english);
+  // the command line hands the language from the settings through
+  for (const [home, want] of [
+    [homes.unset, english],
+    [homes.de, german],
+  ]) {
+    const r = spawnSync(process.execPath, [cli, "logs", "--source", "hook"], {
+      env: { ...process.env, HOME: home, USERPROFILE: home, BASTRA_UPDATE_CHECK: "off", ...env },
+      encoding: "utf8",
+      timeout: 15_000,
+    });
+    assert.deepEqual({ status: r.status, stdout: r.stdout, stderr: r.stderr }, { status: 0, stdout: want, stderr: "" });
   }
 });

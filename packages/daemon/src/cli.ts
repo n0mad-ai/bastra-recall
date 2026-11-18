@@ -178,7 +178,8 @@ async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
 async function cmdLogsCommand(args: ReturnType<typeof parseArgs>): Promise<number> {
   const sinceMs = args.since === null ? 5 * 60_000 : parseSince(args.since);
   // the usage errors follow language.primary (#1602); English stays as it was
-  const w = logsWordsIn(await taskCliLanguage().catch(() => "en"));
+  const language = await taskCliLanguage().catch(() => "en"),
+    w = logsWordsIn(language);
   if (sinceMs === null) {
     process.stderr.write(w.badSince(String(args.since)));
     return 2;
@@ -205,7 +206,7 @@ async function cmdLogsCommand(args: ReturnType<typeof parseArgs>): Promise<numbe
     const statsSince = args.since === null ? 7 * 86_400_000 : sinceMs;
     return cmdLogStats({ sinceMs: statsSince, includeEval: args.includeEval });
   }
-  return cmdLogs({ follow: args.follow, sinceMs, source, lines: Math.floor(lines) });
+  return cmdLogs({ follow: args.follow, sinceMs, source, lines: Math.floor(lines), language });
 }
 
 /**
