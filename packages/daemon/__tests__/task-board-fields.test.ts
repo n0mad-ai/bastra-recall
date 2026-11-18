@@ -1,4 +1,4 @@
-// Board fields of the v22 Aufgaben view (Daniel 12.11.2026): waits_on, source,
+// Board fields of the web UI Aufgaben view (Daniel 12.11.2026): waits_on, source,
 // agent_note, assignee. Area stays scope.name. All optional and backward compatible.
 import "./tasks-opt-in.js";
 import { test } from "node:test";

@@ -16,7 +16,7 @@ export const codeIgnores = [
   "packages/statusline/dist/**",
   "packages/daemon/mcpb/build/**",
   "packages/daemon/vendor/**",
-  "packages/daemon/webui/v22/vendor/**",
+  "packages/daemon/webui/app/vendor/**",
   "packages/eval/fixtures/**",
   "packages/eval/goldset/**",
   "packages/daemon/__fixtures__/**",

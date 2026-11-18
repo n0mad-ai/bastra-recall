@@ -12,7 +12,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const jsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "webui", "v22", "js");
+const jsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "webui", "app", "js");
 const i18nDir = join(jsDir, "i18n");
 
 type Catalog = Record<string, string>;

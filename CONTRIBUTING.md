@@ -210,7 +210,7 @@ scripts/      One-off telemetry / eval / backfill scripts
   (Prettier) and `npm run lint` (ESLint). Run `npm run format` before you
   commit; don't reformat files your change doesn't touch.
 - **Structure limits:** `npm run lint` checks classic cyclomatic complexity ≤15
-  and nesting depth ≤4, including `webui/v22`. Functions above 100 code lines
+  and nesting depth ≤4, including `webui/app`. Functions above 100 code lines
   (comments and blank lines excluded) produce a warning only. Import cycles
   are forbidden everywhere; type-only and dynamic imports are excluded.
   Existing violations are frozen by stable function identity and individual metric

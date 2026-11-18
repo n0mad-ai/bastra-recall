@@ -204,8 +204,8 @@ test("package: the npm package ships the UI v2 with its engines and nothing of t
   const paths = (JSON.parse(stdout) as Array<{ files: Array<{ path: string }> }>)[0].files.map((f) => f.path);
   const ui = paths.filter((p) => p.startsWith("webui/"));
   for (const p of [
-    "webui/v22/index.html",
-    "webui/v22/js/main.js",
+    "webui/app/index.html",
+    "webui/app/js/main.js",
     "webui/js/renderer.js",
     "webui/js/managers/orbit-view.js",
   ])
@@ -219,9 +219,9 @@ test("package: the npm package ships the UI v2 with its engines and nothing of t
   ])
     assert.ok(!ui.includes(p), `${p} belongs to the first UI and must not ship`);
   assert.deepEqual(
-    ui.filter((p) => !p.startsWith("webui/v22/") && !p.startsWith("webui/js/")),
+    ui.filter((p) => !p.startsWith("webui/app/") && !p.startsWith("webui/js/")),
     [],
-    "the daemon serves webui/v22/ and the engines in webui/js/, nothing else"
+    "the daemon serves webui/app/ and the engines in webui/js/, nothing else"
   );
 });
 

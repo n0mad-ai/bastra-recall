@@ -1,0 +1,1109 @@
+/* Recall web UI — Dashboard (prototype isDash block, renderValsDark › dashboard).
+ * Values are the prototype's inline styles. */
+
+/* ── board ─────────────────────────────────────────────────────────────── */
+.db {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.db__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 24px;
+  padding: 2px 0 16px;
+}
+.db__hl {
+  min-width: 0;
+}
+.db__kicker {
+  font: 10px var(--mono);
+  letter-spacing: 0.24em;
+  color: var(--accent);
+}
+.db__title {
+  margin-top: 7px;
+  font-size: 27px;
+  font-weight: 400;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+.db__sum {
+  color: var(--muted);
+}
+.db__acts {
+  display: flex;
+  gap: 8px;
+}
+.db-btn {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--line-30);
+  background: transparent;
+  color: var(--ink);
+  font: 500 10.5px var(--mono);
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.2s,
+    border-color 0.2s,
+    color 0.2s;
+}
+.db-btn:hover {
+  border-color: var(--accent);
+}
+.db-btn.is-on {
+  border-color: var(--accent);
+  background: var(--accent-14);
+  color: var(--accent);
+}
+
+.db__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 18px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border: 1px solid rgba(56, 217, 245, 0.3);
+  background: var(--accent-05);
+  font: 10.5px var(--mono);
+  color: var(--muted);
+}
+.db__bar-t {
+  color: var(--accent);
+  letter-spacing: 0.2em;
+}
+.db__bar-n {
+  margin-left: auto;
+  color: var(--ink);
+}
+
+.db__grid {
+  position: relative;
+  box-sizing: border-box;
+  min-height: var(--minh, 0px);
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 12), minmax(0, 1fr));
+  grid-auto-rows: var(--rows, 84px);
+  grid-auto-flow: row dense;
+  gap: 12px;
+  padding-bottom: var(--pb, 24px);
+}
+.db__guides {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: var(--pb, 24px);
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 12), minmax(0, 1fr));
+  gap: 12px;
+  pointer-events: none;
+}
+.db__guides span {
+  background: rgba(56, 217, 245, 0.03);
+  box-shadow:
+    inset 1px 0 0 var(--accent-13),
+    inset -1px 0 0 var(--accent-13);
+}
+.db__empty {
+  grid-column: 1 / -1;
+  padding: 24px 0;
+  font: 10.5px var(--mono);
+  color: var(--muted);
+}
+
+/* ── widget frame ──────────────────────────────────────────────────────── */
+.dw {
+  position: relative;
+  z-index: 1;
+  grid-column: span var(--cs, 4);
+  grid-row: span var(--rs, 2);
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(9, 15, 27, 0.82);
+  border: 1px solid var(--line-16);
+  transition:
+    border-color 0.2s,
+    box-shadow 0.25s,
+    opacity 0.2s;
+}
+.dw.is-fit {
+  contain: size;
+}
+.dw.is-edit {
+  background:
+    linear-gradient(rgba(56, 217, 245, 0.045) 1px, transparent 1px) 0 0 / 100% 12px,
+    rgba(9, 15, 27, 0.92);
+  border-color: rgba(56, 217, 245, 0.32);
+}
+.dw.is-hot,
+.dw.is-over {
+  border-color: rgba(56, 217, 245, 0.8);
+}
+.dw.is-flash {
+  box-shadow:
+    0 0 0 1px var(--accent-35),
+    0 0 28px var(--accent-20);
+}
+.dw.is-over.is-before {
+  box-shadow:
+    -9px 0 0 -7px var(--accent),
+    -9px 0 14px -8px var(--accent);
+}
+.dw.is-over.is-after {
+  box-shadow:
+    9px 0 0 -7px var(--accent),
+    9px 0 14px -8px var(--accent);
+}
+.dw.is-dragged {
+  opacity: 0.35;
+}
+.dw__corners {
+  position: absolute;
+  inset: -1px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--accent), var(--accent)) left top / 10px 1px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) left top / 1px 10px no-repeat,
+    linear-gradient(var(--muted), var(--muted)) right bottom / 10px 1px no-repeat,
+    linear-gradient(var(--muted), var(--muted)) right bottom / 1px 10px no-repeat;
+}
+.dw__head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 12px 0 14px;
+}
+.dw__grip {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 24px;
+  margin-left: -6px;
+  color: var(--accent);
+  cursor: grab;
+}
+.dw__grip svg {
+  width: 8px;
+  height: 14px;
+}
+.dw__code {
+  flex: none;
+  font: 500 9.5px var(--mono);
+  letter-spacing: 0.14em;
+  color: var(--accent);
+}
+.dw__title {
+  min-width: 0;
+  font: 600 11px var(--sans);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dw__meta {
+  margin-left: auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  font: 10px var(--mono);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dw__meta.is-btn {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: right;
+  cursor: pointer;
+}
+.dw__meta.is-btn:hover {
+  color: var(--accent);
+}
+.dw__meta.is-amber {
+  color: var(--amber);
+}
+.dw__meta.is-accent {
+  color: var(--accent);
+}
+.dw__size {
+  flex: none;
+  height: 20px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--accent-45);
+  font: 10px var(--mono);
+  color: var(--accent);
+}
+.dw__x {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 15px;
+  cursor: pointer;
+}
+.dw__x:hover {
+  color: var(--ink);
+}
+.dw__body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0 14px 12px;
+  transition: opacity 0.2s;
+}
+.dw.is-edit .dw__body {
+  opacity: 0.5;
+}
+.dw__rz {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  touch-action: none;
+}
+.dw__rz--x {
+  top: 10px;
+  bottom: 10px;
+  right: -7px;
+  width: 13px;
+  cursor: ew-resize;
+}
+.dw__rz--x span {
+  width: 3px;
+  height: 30px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+.dw__rz--y {
+  left: 10px;
+  right: 10px;
+  bottom: -7px;
+  height: 13px;
+  cursor: ns-resize;
+}
+.dw__rz--y span {
+  width: 30px;
+  height: 3px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+.dw__rz--xy {
+  z-index: 4;
+  right: -7px;
+  bottom: -7px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+}
+.dw__rz--xy span {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+}
+
+.dw-empty {
+  padding: 8px 4px;
+  font: 10.5px var(--mono);
+  color: var(--muted);
+}
+/* Place picker (js/weather-place.js, .vt__wx styles in engine.css). */
+.dw-wx__pick {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 420px;
+  min-height: 0;
+  overflow-y: auto;
+  font-size: 13px;
+}
+
+/* ── W-00 Today ────────────────────────────────────────────────────────── */
+.dw-brief {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dw-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line-12);
+  border: 1px solid var(--line-12);
+}
+.dw-stats.is-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.dw-stat {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: 10px 12px;
+  border: 0;
+  background: #0b111d;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.dw-stat:hover {
+  background: var(--accent-07);
+}
+.dw-stat__v {
+  font: 300 24px var(--mono);
+  line-height: 1;
+  color: var(--c);
+  white-space: nowrap;
+}
+.dw-stat__k {
+  font: 9.5px var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dw-day {
+  position: relative;
+  height: 40px;
+  margin: 2px 6px 0;
+}
+.dw-day__line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 14px;
+  height: 1px;
+  background: var(--line-25);
+}
+.dw-day__done {
+  position: absolute;
+  left: 0;
+  width: var(--now);
+  top: 14px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--accent-00), var(--accent));
+}
+.dw-day__ev {
+  position: absolute;
+  left: var(--x);
+  top: 8px;
+  width: 7px;
+  height: 13px;
+  margin-left: -3px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.dw-day__ev span {
+  width: 1px;
+  height: 13px;
+  background: var(--c);
+  box-shadow: 0 0 6px var(--c);
+}
+.dw-day__now {
+  position: absolute;
+  left: var(--now);
+  top: 8px;
+  width: 13px;
+  height: 13px;
+  margin-left: -6px;
+  border: 1px solid var(--accent);
+  background: var(--bg);
+  box-shadow: 0 0 12px var(--accent-60);
+}
+.dw-day__scale {
+  position: absolute;
+  left: -6px;
+  right: -6px;
+  top: 26px;
+  display: flex;
+  justify-content: space-between;
+  font: 9.5px var(--mono);
+  color: var(--muted);
+}
+.dw-ask {
+  margin-top: auto;
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--accent-45);
+  background: var(--accent-08);
+  color: var(--accent);
+  font: 500 10px var(--mono);
+  letter-spacing: 0.14em;
+  cursor: pointer;
+}
+.dw-ask:hover {
+  background: var(--accent-16);
+}
+
+/* ── W-01 Weather ──────────────────────────────────────────────────────── */
+.dw-wx {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.dw-wx__top {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px 28px;
+}
+.dw-wx__now {
+  flex: none;
+}
+.dw-wx__t {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+.dw-wx__deg {
+  font: 200 54px var(--sans);
+  line-height: 0.85;
+  letter-spacing: -0.03em;
+}
+.dw-wx__t.is-big .dw-wx__deg {
+  font-size: 76px;
+}
+.dw-wx__unit {
+  margin-top: 4px;
+  font: 15px var(--mono);
+  color: var(--muted);
+}
+.dw-wx__cond {
+  margin-top: 8px;
+  font-size: 13.5px;
+  white-space: nowrap;
+}
+.dw-wx__hilo {
+  margin-top: 3px;
+  font: 10.5px var(--mono);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.dw-wx__arc {
+  flex: 1 1 170px;
+  min-width: 150px;
+  max-width: 280px;
+  margin-left: auto;
+}
+.dw-wx__arc svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 104px;
+  overflow: visible;
+}
+.dw-wx__arc.is-tall svg {
+  max-height: 150px;
+}
+.dw-wx__arc-dash {
+  fill: none;
+  stroke: var(--line-30);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+.dw-wx__arc-sun {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.2;
+}
+.dw-wx__arc-base {
+  stroke: var(--line-25);
+  stroke-width: 1;
+}
+.dw-wx__halo {
+  fill: var(--accent-12);
+}
+.dw-wx__sun {
+  fill: var(--bg);
+  stroke: var(--accent);
+  stroke-width: 1.4;
+}
+.dw-wx__arc-k {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  font: 10px var(--mono);
+  color: var(--muted);
+}
+.dw-wx__facts {
+  flex: none;
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 6px 14px;
+  padding-left: 18px;
+  border-left: 1px solid var(--line-14);
+  font: 11px var(--mono);
+  color: var(--ink);
+}
+.dw-wx__fk {
+  color: var(--muted);
+  letter-spacing: 0.12em;
+}
+.dw-wx__hours {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dw-wx__hours svg {
+  display: block;
+  width: 100%;
+  height: 38px;
+}
+.dw-wx__area {
+  fill: var(--accent-08);
+}
+.dw-wx__curve {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.2;
+}
+.dw-wx__hgrid {
+  display: grid;
+  grid-template-columns: repeat(var(--n, 12), minmax(0, 1fr));
+  text-align: center;
+}
+.dw-wx__h {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dw-wx__ht {
+  font: 10.5px var(--mono);
+  color: var(--ink);
+}
+.dw-wx__hh {
+  font: 9px var(--mono);
+  color: var(--muted);
+}
+.dw-wx__days {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line-12);
+  border: 1px solid var(--line-12);
+}
+.dw-wx__day {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 10px;
+  background: #0b111d;
+}
+.dw-wx__dh {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font: 9.5px var(--mono);
+  letter-spacing: 0.14em;
+  color: var(--ink);
+}
+.dw-wx__dc {
+  color: var(--muted);
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dw-wx__bar {
+  position: relative;
+  display: block;
+  height: 3px;
+  background: var(--line-14);
+}
+.dw-wx__bar span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--l);
+  width: var(--w);
+  background: linear-gradient(90deg, var(--accent-45), var(--accent));
+}
+.dw-wx__dt {
+  display: flex;
+  justify-content: space-between;
+  font: 10.5px var(--mono);
+  color: var(--muted);
+}
+.dw-wx__dhi {
+  color: var(--ink);
+}
+
+/* ── W-02 Tasks (rows with dashed separators) ──────────────────────────── */
+.dw-rows {
+  display: flex;
+  flex-direction: column;
+}
+.dw-row {
+  display: grid;
+  grid-template-columns: 6px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 39px;
+  padding: 0 4px;
+  border: 0;
+  border-top: 1px dashed var(--line-22);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.dw-row:hover {
+  background: var(--accent-05);
+}
+.dw-row__dot {
+  width: 6px;
+  height: 6px;
+  background: var(--dot);
+  box-shadow: 0 0 6px var(--dot);
+}
+.dw-row__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dw-row__t {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dw-row__s {
+  font: 10px var(--mono);
+  color: var(--when, var(--muted));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dw-row__tag {
+  font: 9.5px var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* ── W-04 Deadlines ────────────────────────────────────────────────────── */
+.dw-dls {
+  display: flex;
+  flex-direction: column;
+}
+.dw-dl {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  padding: 8px 0 9px;
+  border: 0;
+  border-bottom: 1px dashed var(--line-22);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.dw-dl.is-last {
+  border-bottom-color: transparent;
+}
+.dw-dl:hover {
+  color: var(--accent);
+}
+.dw-dl__top {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+}
+.dw-dl__t {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dw-dl__n {
+  flex: none;
+  font: 300 20px var(--mono);
+  line-height: 1;
+  color: var(--c);
+}
+.dw-dl__n span {
+  margin-left: 3px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.dw-dl__bar {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 3px;
+  background: var(--line-14);
+}
+.dw-dl__bar span {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--p);
+  background: var(--c);
+  box-shadow: 0 0 6px var(--c);
+}
+.dw-dl__s {
+  width: 100%;
+  font: 10px var(--mono);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── W-07 Memory ───────────────────────────────────────────────────────── */
+.dw-mem {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dw-mem__top {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+}
+.dw-mem__total {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.dw-mem__n {
+  font: 200 44px var(--sans);
+  line-height: 0.85;
+}
+.dw-mem__wk {
+  font: 10px var(--mono);
+  color: var(--accent);
+}
+.dw-mem__chart {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dw-mem__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 44px;
+}
+.dw-mem__bars span {
+  flex: 1;
+  height: var(--h);
+  background: rgba(56, 217, 245, 0.4);
+}
+.dw-mem__bars span.is-today {
+  background: var(--accent);
+}
+.dw-mem__k {
+  display: flex;
+  justify-content: space-between;
+  font: 9px var(--mono);
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+.dw-mem__areas {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.dw-mem__area {
+  display: grid;
+  grid-template-columns: minmax(0, 110px) minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 10px;
+  font: 10.5px var(--mono);
+}
+.dw-mem__an {
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dw-mem__ab {
+  height: 3px;
+  background: var(--line-14);
+}
+.dw-mem__ab span {
+  display: block;
+  height: 3px;
+  width: var(--w);
+  background: var(--accent-70);
+}
+.dw-mem__ac {
+  color: var(--muted);
+  text-align: right;
+}
+
+/* ── right panel: Widgets + Layout ─────────────────────────────────────── */
+.dbp__h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.dbp__h--lay {
+  margin-bottom: 12px;
+}
+.dbp__t {
+  font-size: 16px;
+  font-weight: 600;
+}
+.dbp__n {
+  font: 10.5px var(--mono);
+  color: var(--muted);
+}
+.dbp__p {
+  margin-bottom: 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+.dbp__lib {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dbp__item {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line-18);
+  background: rgba(9, 15, 27, 0.6);
+  transition: border-color 0.2s;
+}
+.dbp__item.is-on {
+  border-color: var(--accent-35);
+  background: var(--accent-05);
+}
+.dbp__ico {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line-30);
+  color: var(--muted);
+}
+.dbp__item.is-on .dbp__ico {
+  border-color: var(--accent-60);
+  color: var(--accent);
+}
+.dbp__ico svg {
+  width: 17px;
+  height: 17px;
+}
+.dbp__ico path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.dbp__txt {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.dbp__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.dbp__it {
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.dbp__sz {
+  font: 9.5px var(--mono);
+  color: var(--muted);
+}
+.dbp__d {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+.dbp__btn {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--accent);
+  background: var(--accent-12);
+  color: var(--accent);
+  font: 500 9.5px var(--mono);
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dbp__item.is-on .dbp__btn {
+  border-color: var(--line-30);
+  background: transparent;
+  color: var(--muted);
+}
+.dbp__btn:hover,
+.dbp__item.is-on .dbp__btn:hover {
+  border-color: var(--accent);
+}
+.dbp__k {
+  margin-bottom: 8px;
+  font: 9.5px var(--mono);
+  letter-spacing: 0.2em;
+  color: var(--muted);
+}
+.dbp__k--gap {
+  margin-top: 18px;
+}
+.dbp__map {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-rows: 7px;
+  grid-auto-flow: row dense;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--line-18);
+  background: rgba(6, 10, 19, 0.6);
+}
+.dbp__map span {
+  grid-column: span var(--w);
+  grid-row: span var(--h);
+  background: var(--accent-12);
+  box-shadow: inset 0 0 0 1px var(--accent-35);
+}
+.dbp__map span.is-hot {
+  background: var(--accent-28);
+  box-shadow: inset 0 0 0 1px var(--accent-70);
+}
+.dbp__seg {
+  display: flex;
+  border: 1px solid var(--line-25);
+}
+.dbp__seg button {
+  flex: 1;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: 12px var(--mono);
+  cursor: pointer;
+}
+.dbp__seg button + button {
+  border-left: 1px solid var(--line-14);
+}
+.dbp__seg button:hover {
+  color: var(--accent);
+}
+.dbp__seg button.is-on {
+  background: var(--accent-14);
+  color: var(--accent);
+}
+.dbp__pres {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dbp__pre {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line-18);
+  background: rgba(9, 15, 27, 0.6);
+}
+.dbp__pre-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dbp__pre-t {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dbp__apply {
+  flex: none;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--accent-45);
+  background: var(--accent-08);
+  color: var(--accent);
+  font: 500 9.5px var(--mono);
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+.dbp__apply:hover {
+  background: var(--accent-16);
+}
+.dbp__reset {
+  margin-top: 16px;
+  width: 100%;
+  height: 32px;
+  border: 1px solid var(--line-30);
+  background: transparent;
+  color: var(--muted);
+  font: 500 10px var(--mono);
+  letter-spacing: 0.14em;
+  cursor: pointer;
+}
+.dbp__reset:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}

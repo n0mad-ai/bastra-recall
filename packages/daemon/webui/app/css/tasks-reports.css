@@ -1,0 +1,486 @@
+/* Recall web UI — Tasks › reports (js/sections/tasks-reports.js): head button
+ * and the reading view in the main area. The view is built like the memory
+ * browser (Daniel 16.11.2026) and reuses its row and reader classes from
+ * css/membrowser.css (mb__head, mb__body, mb-row, mb-rd …); only the frame,
+ * the narrow layout and the report deltas live here. */
+
+/* head button: the "FÄLLIG" button with an accent dot while reports are unread */
+.tk-duebtn__dot.tk-repbtn__dot {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+.tk-duebtn__dot.tk-repbtn__dot.is-off {
+  background: var(--line-45);
+  box-shadow: none;
+}
+.tk-duebtn.tk-repbtn.is-on {
+  border-color: var(--accent);
+  background: var(--accent-12);
+  color: var(--accent);
+}
+
+/* slots: the reading view stands in for the calendar */
+.tk-repslot {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.tk-repslot[hidden],
+.tk-calslot[hidden] {
+  display: none;
+}
+
+/* frame: the memory browser window (.mb) without its open animation */
+.tk-rv {
+  --mba: var(--accent);
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(90% 60% at 50% 0%, var(--accent-06), transparent 60%), rgba(7, 11, 20, 0.97);
+  border: 1px solid var(--line-18);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+  font-family: var(--sans);
+  color: var(--ink);
+}
+.tk-rv__hits {
+  margin-right: auto;
+}
+/* a narrower list than the memory browser's 42 %: titles are short, the report gets the room */
+.tk-rv .mb__body {
+  grid-template-columns: minmax(260px, 32%) minmax(0, 1fr);
+}
+
+/* list column: the search on top (#1597, the memory browser's field), the rows below scroll on their own */
+.tk-rv__side {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line-14);
+}
+.tk-rv__side > .mb__list {
+  flex: 1;
+  border-right: 0;
+}
+.tk-rv__find {
+  flex: none;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line-10);
+}
+.tk-rv__nohit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+/* narrow: list or reader, as in the memory browser */
+.tk-rv.is-narrow .mb__body {
+  grid-template-columns: minmax(0, 1fr);
+}
+.tk-rv.is-narrow .tk-rv__side {
+  border-right: 0;
+}
+.tk-rv.is-narrow.is-reading .tk-rv__side,
+.tk-rv.is-narrow:not(.is-reading) .mb__reader {
+  display: none;
+}
+
+/* reader head: title, meta line and the actions stay on top while the report scrolls; it spans the
+ * reader edge to edge (over .mb-rd's padding) and covers the text that scrolls under it */
+.tk-rep__head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin: -20px -26px 20px;
+  padding: 14px 26px 12px;
+  border-bottom: 1px solid var(--line-14);
+  background: var(--bg);
+}
+.tk-rep__head > .mb-rd__back {
+  flex-basis: 100%;
+  margin: 0;
+  text-align: left;
+}
+/* the title gives way first; below about 240 px beside the actions, the actions wrap under it */
+.tk-rep__id {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.tk-rep__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tk-rep__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 5px;
+  font: 10.5px var(--mono);
+  color: var(--muted);
+}
+.tk-rep__proj {
+  color: var(--ink);
+}
+.tk-rep__open {
+  padding: 2px 7px 1px;
+  border: 1px solid rgba(217, 164, 65, 0.45);
+  background: rgba(217, 164, 65, 0.16);
+  color: var(--amber);
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+.tk-rep__acts {
+  flex: none;
+}
+/* note counts: drafts still with the owner step back (dashed, muted), handed-over open ones are amber */
+.tk-rep__open.is-draft {
+  border: 1px dashed var(--line-30);
+  background: transparent;
+  color: var(--muted);
+}
+.tk-an__count.is-draft {
+  color: var(--muted);
+}
+/* narrow view: the title takes the whole line, the actions go below it */
+.tk-rv.is-narrow .tk-rep__id {
+  flex-basis: 100%;
+}
+/* with "Hand over to agent" the three actions may need a second line there */
+.tk-rv.is-narrow .tk-rep__acts {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+/* rows: unread reports stand out, read ones step back */
+.tk-rv .mb-row.is-new .mb-row__t {
+  font-weight: 500;
+}
+.tk-rv .mb-row:not(.is-new) .mb-row__t {
+  color: #b9c6d8;
+}
+
+/* report text: the memory reader's text block plus what reports add */
+.tk-rep__md > :last-child {
+  margin-bottom: 0;
+}
+.tk-rep__md strong {
+  font-weight: 600;
+}
+.tk-rep__tbl {
+  margin: 0 0 10px;
+  overflow-x: auto;
+  border: 1px solid var(--line-14);
+}
+.tk-rep__tbl table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 12px var(--mono);
+  line-height: 1.45;
+  overflow-wrap: normal;
+}
+.tk-rep__tbl th,
+.tk-rep__tbl td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line-10);
+  text-align: left;
+  vertical-align: top;
+}
+.tk-rep__tbl th {
+  font-weight: 500;
+  color: var(--muted);
+  background: var(--surface-tile);
+}
+.tk-rep__tbl tr:last-child td {
+  border-bottom: 0;
+}
+
+/* notes on single places of a report (js/sections/tasks-report-notes.js). A place without notes
+ * shows the "note" button on hover or keyboard focus only; it keeps its room while hidden, so the
+ * text never moves. A place with notes (or an open note field) becomes an amber card: the report
+ * text on top as the subject, the notes as their own indented surfaces below (Daniel 17.11.2026). */
+.tk-an__btn {
+  margin-left: 8px;
+  padding: 0 6px;
+  border: 1px solid var(--line-22);
+  background: transparent;
+  color: var(--muted);
+  font: 9.5px var(--mono);
+  letter-spacing: 0.12em;
+  vertical-align: middle;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.tk-an:hover > .tk-an__btn,
+.tk-an:hover > .tk-an__cell > .tk-an__btn,
+.tk-an__btn:focus-visible {
+  opacity: 1;
+}
+.tk-an__btn:hover,
+.tk-an__btn:focus-visible {
+  border-color: var(--amber);
+  color: var(--amber);
+  outline: 0;
+}
+/* no hover on touch screens: the button stays faintly visible there */
+@media (hover: none) {
+  .tk-an__btn {
+    opacity: 0.7;
+  }
+}
+.tk-rep__tbl .tk-an__cell {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* the card: the annotated place and its notes as one framed unit, set apart from the report */
+.tk-an__card {
+  margin: 18px 0 20px;
+  padding: 12px 14px 14px;
+  border: 1px solid rgba(217, 164, 65, 0.4);
+  background: rgba(217, 164, 65, 0.05);
+  box-shadow: inset 0 2px 0 rgba(217, 164, 65, 0.8);
+}
+/* a list item is the card itself: it spans the text width, its marker moves into the card */
+.mb-rd__text li.tk-an__card {
+  margin-left: -18px;
+  list-style: none;
+}
+li.tk-an__card > .tk-an__subj::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin: 0 9px 0 1px;
+  vertical-align: middle;
+  background: var(--amber);
+}
+/* the subject: the place the notes are about */
+.tk-an__card > .tk-an__subj {
+  margin: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(217, 164, 65, 0.22);
+  color: #f2f7fd;
+}
+.tk-an__card > p.tk-an__subj,
+.tk-an__card > div.tk-an__subj {
+  font-weight: 500;
+}
+.tk-an__box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 0 14px;
+  min-width: 0;
+}
+
+/* one note: its own dark surface, warmer text than the report */
+.tk-an__note {
+  min-width: 0;
+  padding: 10px 12px 11px;
+  border: 1px solid var(--line-14);
+  background: var(--surface-tile);
+  font: 14px var(--sans);
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: 0;
+  color: #f1e4c8;
+  text-align: left;
+}
+.tk-an__note.is-done {
+  color: #d3c8b2;
+}
+.tk-an__note.is-editing {
+  color: var(--ink);
+}
+.tk-an__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font: 10px var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+.tk-an__state {
+  padding: 3px 7px 2px;
+  border: 1px solid rgba(217, 164, 65, 0.45);
+  background: rgba(217, 164, 65, 0.16);
+  color: var(--amber);
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  white-space: nowrap;
+}
+.tk-an__note.is-done .tk-an__state {
+  border-color: rgba(95, 211, 154, 0.3);
+  background: rgba(95, 211, 154, 0.08);
+  color: var(--ok);
+}
+/* a draft: still with the owner, no agent sees it yet */
+.tk-an__note.is-draft .tk-an__state {
+  border: 1px dashed var(--line-30);
+  background: transparent;
+  color: var(--muted);
+}
+.tk-an__at {
+  white-space: nowrap;
+}
+.tk-an__acts {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.tk-an__act,
+.tk-an__more {
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: 10px var(--mono);
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.tk-an__act:hover {
+  color: var(--ink);
+}
+.tk-an__act:last-child:hover {
+  color: var(--danger);
+}
+.tk-an__act:focus-visible,
+.tk-an__more:focus-visible {
+  outline: 1px solid var(--amber);
+  outline-offset: 1px;
+  color: var(--ink);
+}
+.tk-an__text {
+  margin-top: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* the agent's reply to a done note: its own block with the cyan accent */
+.tk-an__reply {
+  margin: 10px 0 0 10px;
+  padding: 8px 10px 9px;
+  border-left: 2px solid var(--accent-60);
+  background: var(--accent-05);
+  font-size: 13.5px;
+}
+.tk-an__rk {
+  margin-bottom: 4px;
+  font: 9.5px var(--mono);
+  letter-spacing: 0.16em;
+  color: var(--accent);
+}
+.tk-an__rtext {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+.tk-an__more {
+  align-self: flex-start;
+  padding-left: 0;
+  color: rgba(217, 164, 65, 0.8);
+}
+.tk-an__more:hover {
+  color: var(--amber);
+}
+/* the note field inside the card: buttons in one row, the error below them */
+.tk-an__note .mb-care__compose {
+  margin-top: 0;
+}
+.tk-an__note .cn__msg {
+  order: 1;
+}
+
+/* table rows: the row is marked, its notes follow in a full-width row in the card's style */
+.tk-rep__tbl tr.is-marked > td {
+  border-bottom: 0;
+  background: rgba(217, 164, 65, 0.08);
+  color: #f2f7fd;
+}
+.tk-rep__tbl tr.is-marked > td:first-child,
+.tk-rep__tbl td.tk-an__tcell {
+  box-shadow: inset 3px 0 0 var(--amber);
+}
+.tk-rep__tbl td.tk-an__tcell {
+  padding: 0 10px 12px;
+  border-bottom: 1px solid rgba(217, 164, 65, 0.35);
+  background: rgba(217, 164, 65, 0.05);
+}
+.tk-an__tcell .tk-an__box {
+  margin: 10px 0 0 4px;
+}
+
+.tk-an__count {
+  color: var(--amber);
+}
+/* a place whose notes are all done: the card in the done colour instead of amber */
+.tk-an__card.is-done {
+  border-color: rgba(95, 211, 154, 0.35);
+  background: rgba(95, 211, 154, 0.04);
+  box-shadow: inset 0 2px 0 rgba(95, 211, 154, 0.7);
+}
+.tk-an__card.is-done > .tk-an__subj {
+  border-bottom-color: rgba(95, 211, 154, 0.2);
+}
+li.tk-an__card.is-done > .tk-an__subj::before {
+  background: var(--ok);
+}
+.tk-rep__tbl tr.is-marked.is-done > td {
+  background: rgba(95, 211, 154, 0.06);
+}
+.tk-rep__tbl tr.is-marked.is-done > td:first-child,
+.tk-rep__tbl tr.tk-an__tr.is-done > td.tk-an__tcell {
+  box-shadow: inset 3px 0 0 var(--ok);
+}
+.tk-rep__tbl tr.tk-an__tr.is-done > td.tk-an__tcell {
+  border-bottom-color: rgba(95, 211, 154, 0.3);
+  background: rgba(95, 211, 154, 0.04);
+}
+/* notes whose place is no longer found: the same cards, the stored excerpt as subject */
+.tk-an__lost {
+  margin-top: 22px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-12);
+}
+.tk-an__lh {
+  font: 10px var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+.tk-an__card > .tk-an__excerpt {
+  font: 12px var(--mono);
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+@media (max-width: 640px) {
+  .tk-an__card {
+    padding: 10px 10px 12px;
+  }
+  .tk-an__box {
+    margin-left: 0;
+  }
+}
+
+/* After "Delete": the undo notice above the next report (#1559), aligned with the reader's text. */
+.tk-rep__undo {
+  margin: 16px 26px 0;
+}

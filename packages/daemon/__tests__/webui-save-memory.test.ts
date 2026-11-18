@@ -1,5 +1,5 @@
 /**
- * POST /ui/save-memory (#1445) — "Save as memory" under an answer in the v22
+ * POST /ui/save-memory (#1445) — "Save as memory" under an answer in the web UI
  * agent window. The route only feeds the normal save_memory path: exactly one
  * memory per confirmed preview, `write_origin: user-directed`, findable by
  * recall at once. Held or refused saves come back as a clear 409 naming the

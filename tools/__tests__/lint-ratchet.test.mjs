@@ -568,3 +568,86 @@ test("clone exceptions count repeated content and prune only after copies disapp
   assert.deepEqual(lowered.production.fingerprints, {});
   assert.deepEqual(lowered.tests.fingerprints, {});
 });
+
+async function uiRenameFixture(t) {
+  const root = await fixture(t);
+  const oldFile = "packages/daemon/webui/v22/js/legacy.js";
+  const newFile = oldFile.replace("webui/v22/", "webui/app/");
+  const literals = 'export const literals = ["original", /original/i, `original ${42}`];\n';
+  await put(root, oldFile, branches("legacy", 25) + literals);
+  await put(root, "tools/probes/v22-memory-browser.mjs", 'export const prefix = "v22-mb-probe-";');
+  for (const file of [".jscpd.json", "scripts/lint-scope.mjs"]) {
+    await put(root, file, (await readFile(join(root, file), "utf8")).replaceAll("webui/app/", "webui/v22/"));
+  }
+  await freezeStructure(root);
+  assert.equal(execute(root, "git", ["add", "."]).status, 0);
+  await commitBaselines(root);
+  for (const [before, after] of [
+    ["packages/daemon/webui/v22", "packages/daemon/webui/app"],
+    ["tools/probes/v22-memory-browser.mjs", "tools/probes/webui-memory-browser.mjs"],
+  ])
+    assert.equal(execute(root, "git", ["mv", before, after]).status, 0);
+  for (const file of ["eslint-structure-baseline.json", ".jscpd.json", "scripts/lint-scope.mjs"]) {
+    await put(root, file, (await readFile(join(root, file), "utf8")).replaceAll("webui/v22/", "webui/app/"));
+  }
+  await put(root, newFile, "// renamed UI\n" + branches("legacy", 25) + literals);
+  await put(root, "tools/probes/webui-memory-browser.mjs", 'export const prefix = "webui-mb-probe-";');
+  return { root, newFile };
+}
+
+test("UI rename proves the complete file mapping and unchanged code before carrying exact maxima", async (t) => {
+  const { root, newFile } = await uiRenameFixture(t);
+  assert.equal(tool(root, "check-lint-baselines.mjs").status, 0);
+  await put(root, newFile, branches("legacy", 26));
+  assert.equal(tool(root, "check-lint-baselines.mjs").status, 1);
+  assert.equal(tool(root, "lint-structure.mjs", newFile).status, 1);
+  await put(root, newFile, branches("replacement", 25));
+  assert.equal(tool(root, "check-lint-baselines.mjs").status, 1);
+  await put(root, newFile, branches("legacy", 25));
+  await put(root, "packages/daemon/webui/app/js/extra.js", "export const added = true;");
+  assert.equal(tool(root, "check-lint-baselines.mjs").status, 1);
+});
+
+test("UI rename never permits increased budgets or extra vendor exclusions", async (t) => {
+  const { root } = await uiRenameFixture(t);
+  const baseline = await readFile(join(root, "eslint-structure-baseline.json"), "utf8");
+  const expanded = JSON.parse(baseline);
+  const key = Object.keys(expanded.functions)[0];
+  expanded.functions[key] += 1;
+  await put(root, "eslint-structure-baseline.json", expanded);
+  assert.equal(tool(root, "check-lint-baselines.mjs").status, 1);
+  await put(root, "eslint-structure-baseline.json", baseline);
+  const config = JSON.parse(await readFile(join(root, ".jscpd.json"), "utf8"));
+  config.ignore.push("packages/daemon/webui/app/js/**");
+  await put(root, ".jscpd.json", config);
+  assert.equal(tool(root, "check-lint-baselines.mjs").status, 1);
+});
+
+test("committed UI rename proof survives later refactoring while new functions remain bounded", async (t) => {
+  const { root, newFile } = await uiRenameFixture(t);
+  const base = execute(root, "git", ["rev-parse", "HEAD"]).stdout.trim();
+  assert.equal(execute(root, "git", ["add", "."]).status, 0);
+  await commitBaselines(root);
+  await put(root, newFile, branches("legacy", 25) + branches("newFunction", 15));
+  const guard = execute(root, process.execPath, ["scripts/check-lint-baselines.mjs"], { LINT_BASE_REF: base });
+  assert.equal(guard.status, 0, guard.output);
+  const structure = tool(root, "lint-structure.mjs", newFile);
+  assert.equal(structure.status, 1, structure.output);
+  assert.match(structure.output, /maximum 15, actual 16/);
+  const snapshot = JSON.parse(await readFile(join(root, "eslint-structure-baseline.json"), "utf8"));
+  snapshot.functions[JSON.stringify([newFile, '["function:newFunction"]', "complexity"])] = 16;
+  await put(root, "eslint-structure-baseline.json", snapshot);
+  const expanded = execute(root, process.execPath, ["scripts/check-lint-baselines.mjs"], { LINT_BASE_REF: base });
+  assert.equal(expanded.status, 1, expanded.output);
+});
+
+test("UI rename proof preserves string, regexp and template literal contents", async (t) => {
+  const { root, newFile } = await uiRenameFixture(t);
+  // Literal changes must never disappear in executable-code normalization.
+  const original = await readFile(join(root, newFile), "utf8");
+  for (const literal of ['"original"', "/original/i", "`original ${42}`"]) {
+    await put(root, newFile, original.replace(literal, literal.replace("original", "changed")));
+    const result = tool(root, "check-lint-baselines.mjs");
+    assert.equal(result.status, 1, result.output);
+  }
+});

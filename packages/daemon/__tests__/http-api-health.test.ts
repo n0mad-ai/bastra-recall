@@ -189,7 +189,7 @@ test("api health: a probe must not keep the daemon awake", async () => {
   });
 });
 
-test("ui health: pro_preview follows BASTRA_PRO_PREVIEW, read at start (web UI v22 Pro views)", async () => {
+test("ui health: pro_preview follows BASTRA_PRO_PREVIEW, read at start (web UI Pro views)", async () => {
   const before = process.env.BASTRA_PRO_PREVIEW;
   try {
     delete process.env.BASTRA_PRO_PREVIEW;

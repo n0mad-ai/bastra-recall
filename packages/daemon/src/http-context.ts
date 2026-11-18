@@ -114,7 +114,7 @@ export async function createHttpServerContext(opts: HttpOptions): Promise<HttpSe
   // runs, and /health is polled about once a second by the statusline.
   const buildRevision = ownBuildStamp()?.revision ?? null;
 
-  // Web UI v22 Pro views (Ring, Chronos, lenses) for a preview install; read once.
+  // Web UI Pro views (Ring, Chronos, lenses) for a preview install; read once.
   const proPreview = isOnValue(envFirst("BASTRA_PRO_PREVIEW"));
 
   return {

@@ -57,7 +57,7 @@ const QUERIES_MAX = 3;
 const HITS_PER_QUERY = 6;
 const HITS_TOTAL = 8;
 
-/** Actual v22 view IDs (areas.js/registerArea and views/pro-views.js).
+/** Actual web UI view IDs (areas.js/registerArea and views/pro-views.js).
  * Action entries such as import/areas are dialogs, not navigable views. */
 export const CHAT_NAVIGATION = [
   "dashboard",

@@ -138,7 +138,7 @@ export const taskSchema = z
     }),
     evidence: z.array(taskReferenceSchema).max(100),
     decision: taskDecisionSchema.optional(),
-    // Board fields (Daniel 12.11.2026, UI v22 › Aufgaben). All optional, so rows
+    // Board fields (Daniel 12.11.2026, UI web UI › Aufgaben). All optional, so rows
     // written before them stay valid. The "area" of the UI is scope.name.
     waits_on: z.array(z.string().min(1).max(256)).min(1).max(20).optional(),
     source: z.strictObject({ kind: z.enum(["mail", "memory"]), ref: z.string().min(1).max(512) }).optional(),

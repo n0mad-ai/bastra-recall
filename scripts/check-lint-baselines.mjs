@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import ts from "typescript";
 
 if (process.env.GITHUB_ACTIONS === "true" && !process.env.LINT_BASE_REF) {
   console.error("CI requires an explicit trusted LINT_BASE_REF; refusing to compare against the current checkout.");
@@ -18,10 +19,82 @@ try {
 
 const files = ["eslint-structure-baseline.json", ".lint-cycle-baseline.json", "clone-baseline.json"];
 
+// #1572 is a single mechanical tree rename, not transferable function debt.
+const oldUi = "packages/daemon/webui/v22/";
+const newUi = "packages/daemon/webui/app/";
+const oldProbe = "tools/probes/v22-memory-browser.mjs";
+const newProbe = "tools/probes/webui-memory-browser.mjs";
+let verifiedUiRename;
+
+function baseSource(file) {
+  return execFileSync("git", ["show", `${base}:${file}`], { encoding: "utf8" });
+}
+
+function executableSource(source, file) {
+  const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  if (parsed.parseDiagnostics.length) throw new Error(`Cannot verify UI rename: invalid source ${file}`);
+  return ts.createPrinter({ removeComments: true }).printFile(parsed);
+}
+
+function renamedSnapshot() {
+  // Preserve the proof after a later, independently ratcheted refactoring commit.
+  const revision = execFileSync("git", ["log", "--reverse", "--format=%H", `${base}..HEAD`, "--", newUi], {
+    encoding: "utf8",
+  })
+    .trim()
+    .split("\n")[0];
+  if (revision) {
+    const paths = execFileSync(
+      "git",
+      ["ls-tree", "-r", "--name-only", revision, "--", oldUi, newUi, oldProbe, newProbe],
+      {
+        encoding: "utf8",
+      }
+    )
+      .trim()
+      .split("\n");
+    return { paths, source: (file) => execFileSync("git", ["show", `${revision}:${file}`], { encoding: "utf8" }) };
+  }
+  const paths = existsSync(newUi)
+    ? readdirSync(newUi, { recursive: true })
+        .map((file) => newUi + file)
+        .filter((file) => statSync(file).isFile())
+    : [];
+  if (existsSync(oldUi)) paths.push(oldUi);
+  if (existsSync(oldProbe)) paths.push(oldProbe);
+  if (existsSync(newProbe)) paths.push(newProbe);
+  return { paths, source: (file) => readFileSync(file, "utf8") };
+}
+
+function verifyUiRename() {
+  if (verifiedUiRename !== undefined) return verifiedUiRename;
+  verifiedUiRename = false;
+  const previous = execFileSync("git", ["ls-tree", "-r", "--name-only", base, "--", oldUi], {
+    encoding: "utf8",
+  })
+    .trim()
+    .split("\n")
+    .filter(Boolean);
+  if (!previous.length) return false;
+  const snapshot = renamedSnapshot();
+  const expected = previous.map((file) => file.replace(oldUi, newUi)).concat(newProbe);
+  if (JSON.stringify(snapshot.paths.sort()) !== JSON.stringify(expected.sort())) return false;
+  for (const file of previous.filter((file) => file.endsWith(".js"))) {
+    const candidate = file.replace(oldUi, newUi);
+    if (executableSource(baseSource(file), file) !== executableSource(snapshot.source(candidate), file)) return false;
+  }
+  const probe = baseSource(oldProbe).replace('"v22-mb-probe-"', '"webui-mb-probe-"');
+  verifiedUiRename = executableSource(probe, oldProbe) === executableSource(snapshot.source(newProbe), oldProbe);
+  return verifiedUiRename;
+}
+
 function readBase(file) {
   const tree = execFileSync("git", ["ls-tree", base, "--", file], { encoding: "utf8" });
   if (!tree.trim()) return null; // First introduction of this gate is the bootstrap.
-  return execFileSync("git", ["show", `${base}:${file}`], { encoding: "utf8" });
+  const source = baseSource(file);
+  if (!source.includes(oldUi) && !source.includes(oldProbe)) return source;
+  if (!verifyUiRename()) return source;
+  return source.replaceAll(oldUi, newUi).replaceAll(oldProbe, newProbe);
 }
 
 function counts(value) {

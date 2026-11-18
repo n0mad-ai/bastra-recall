@@ -2,7 +2,7 @@ import { tasksEnabled } from "./tasks-enabled.js";
 /**
  * Web UI (#207) — static file serving for /ui.
  *
- * Serves the self-contained UI v2 bundled in `packages/daemon/webui/v22/`
+ * Serves the self-contained UI v2 bundled in `packages/daemon/webui/app/`
  * (plain HTML/CSS/JS, vendored assets only) at /ui/, and the unchanged map
  * engines it hosts (Mindspace, Clouds, Semantic) from `webui/js/` at
  * /ui/engines/. Opt-in:
@@ -88,9 +88,9 @@ const CONTENT_TYPES: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
-/** dist/webui.js → ../webui/v22 — the asset folder ships at the package root. */
+/** dist/webui.js → ../webui/app — the asset folder ships at the package root. */
 export function resolveWebUiDir(): string {
-  return join(dirname(fileURLToPath(import.meta.url)), "..", "webui", "v22");
+  return join(dirname(fileURLToPath(import.meta.url)), "..", "webui", "app");
 }
 
 /** dist/webui.js → ../webui/js — the map engines, served at /ui/engines/. */

@@ -1,5 +1,5 @@
 /**
- * "Save as memory" under an answer in the v22 agent window (#1445).
+ * "Save as memory" under an answer in the web UI agent window (#1445).
  *
  * The user turns a useful answer into a vault memory by hand: one click, an
  * editable preview (title, type, scope, text), one confirmation. This route

@@ -115,7 +115,7 @@ export function buildHealthPayload(deps: HealthDeps): Record<string, unknown> {
     ...(deps.power ? { power: deps.power() } : {}),
     ...(deps.origin ? { started_by: deps.origin.startedBy, env_origin: deps.origin.envOrigin } : {}),
     ...(deps.origin?.configFingerprint ? { config_fingerprint: deps.origin.configFingerprint } : {}),
-    // Web UI v22: Pro vault views unlocked for a preview (BASTRA_PRO_PREVIEW).
+    // Web UI: Pro vault views unlocked for a preview (BASTRA_PRO_PREVIEW).
     pro_preview: deps.proPreview === true,
     update_available:
       updateState && updateState.hasUpdate
