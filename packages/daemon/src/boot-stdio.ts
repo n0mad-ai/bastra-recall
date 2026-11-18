@@ -15,10 +15,7 @@ import { draftReviewTools, reviewDraftHandler } from "./draft-review-handler.js"
 import { validateArtifactTools, validateArtifactHandler } from "./validate-artifact-handler.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import {
   Vault,
   SearchIndex,
@@ -42,7 +39,7 @@ import {
   type ToolDeps,
 } from "./tool-handlers.js";
 import { editMemoryHandler } from "./edit-memory-handler.js";
-import { withExecutedVaultWrite } from './executed-vault-write.js';
+import { withExecutedVaultWrite } from "./executed-vault-write.js";
 import {
   documentTools,
   FindDocumentArgs,
@@ -54,11 +51,7 @@ import {
 } from "./documents-handler.js";
 import { codeTools, FindCodeArgs, findCode, sharedCodeGraphCache } from "./code-graph/find-code.js";
 import { findAffectedFilesEvent, findCodeEvent } from "./code-graph/tool-telemetry.js";
-import {
-  affectedTools,
-  FindAffectedFilesArgs,
-  findAffectedFiles,
-} from "./code-graph/find-affected-files.js";
+import { affectedTools, FindAffectedFilesArgs, findAffectedFiles } from "./code-graph/find-affected-files.js";
 import {
   documentWriteTools,
   SaveDocumentArgs,
@@ -84,10 +77,7 @@ export async function startStdioServer(opts: {
   const { vault, search, toolDeps, documentWriteEnabled, markActivity } = opts;
   const ownsVault = await processOwnsVault(vault.root);
 
-  const server = new Server(
-    { name: "bastra-recall", version: DAEMON_VERSION },
-    { capabilities: { tools: {} } },
-  );
+  const server = new Server({ name: "bastra-recall", version: DAEMON_VERSION }, { capabilities: { tools: {} } });
 
   server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: [
@@ -108,7 +98,6 @@ export async function startStdioServer(opts: {
     ],
   }));
 
-
   // Banter-Lang: nutzt BASTRA_BANTER_LANG (de|en), default `en` —
   // MCP-Clients sind heterogen, ein deutsches "Stichwörter durchforsten"
   // im englischen Chat-Verlauf wirkt fremd. Deutsche Mac-App-User setzen
@@ -121,268 +110,319 @@ export async function startStdioServer(opts: {
     // its MCP client. `enterWith`, not `run`: the SDK starts each handler in its
     // own promise job, so the store covers exactly this call, and the tool chain
     // below keeps its shape (frozen complexity budget, #1507).
-    writeCallerStore.enterWith({ transport: "stdio", client: mcpClientLabel(server.getClientVersion()), session: null });
+    writeCallerStore.enterWith({
+      transport: "stdio",
+      client: mcpClientLabel(server.getClientVersion()),
+      session: null,
+    });
     // #1471: beside the tool chain for the same reason.
     if (req.params.name === "restore_memory") {
       markActivity();
       return restoreMemoryMcp(toolDeps, req.params.arguments, undefined); // public transport (#464)
     }
     const result = await (async () => {
-    markActivity();
-    const { name, arguments: rawArgs } = req.params;
+      markActivity();
+      const { name, arguments: rawArgs } = req.params;
 
-    if (isTaskTool(name) && !tasksEnabled()) return { isError: true, content: [{ type: "text" as const, text: "Tasks disabled; enable in Settings or with BASTRA_TASKS=1" }] };
-    if (name.startsWith("task_") && !ownsVault) return errorResult("Vault account required");
-    if (isTaskExecution(name)) return forwardTaskExecutionMcp(name, rawArgs ?? {}, await taskClientAuthorization());
-    if (isTaskTool(name)) return callTaskMcp(name, rawArgs ?? {}, await taskClientAuthorization(), defaultTaskContext(toolDeps));
-
-    // #482: same check as the REST boundary — the standalone stdio surface is
-    // the other place tool arguments arrive, and the client bug does not care
-    // which transport it corrupts.
-    const args = recoverCallArguments(name, rawArgs, TOOL_ARG_EXPECTATIONS) as
-      | Record<string, unknown>
-      | undefined;
-
-    if (name === "recall") {
-      try {
-        // MCP-Progress-Notification (#38): wenn der Caller einen
-        // progressToken mitschickt, leiten wir Stage-Events als
-        // `notifications/progress` weiter. Claude Code rendert die als
-        // Live-Stage-Lines unter dem Tool-Aufruf. Banter-Phrase landet
-        // im `message`-Feld der Notification.
-        const progressToken = (req.params as { _meta?: { progressToken?: string | number } })._meta
-          ?.progressToken;
-        const onStage: StageListener | undefined = progressToken !== undefined
-          ? (s: RecallStage) => {
-              // Nur Stop-Events (mit durationMs) als Progress-Tick
-              // emittieren — Start-Events würden Claude Code mit
-              // doppelten Lines fluten.
-              if (s.durationMs === undefined && s.name !== "cache.hit" && s.name !== "done") return;
-              const phrase = pickPhrase(s, banterMode, banterLang);
-              const message = phrase
-                ? `${s.name} — ${phrase}${s.durationMs !== undefined ? ` (${s.durationMs}ms)` : ""}`
-                : `${s.name}${s.durationMs !== undefined ? ` (${s.durationMs}ms)` : ""}`;
-              // Fire-and-forget — Notification-Failures dürfen den
-              // Recall nicht kippen.
-              void extra.sendNotification({
-                method: "notifications/progress",
-                params: {
-                  progressToken,
-                  progress: progressIndexFor(s.name),
-                  total: RECALL_STAGE_ORDER.length,
-                  message,
-                },
-              }).catch(() => undefined);
-            }
-          : undefined;
-        // #421: Das Projekt dieses stdio-Clients (sein cwd, durch dasselbe
-        // Konfidenz-Gate wie in den Lanes) — ohne es liefe der Scope-Filter
-        // der gemeinsamen Pipeline für einen Client ohne Hooks nie.
-        const result = await recallHandler(toolDeps, args, { onStage, project: projectForFilter(process.cwd()) });
+      if (isTaskTool(name) && !tasksEnabled())
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          isError: true,
+          content: [{ type: "text" as const, text: "Tasks disabled; enable in Settings or with BASTRA_TASKS=1" }],
         };
-      } catch (err) {
-        return errorResult((err as Error).message);
-      }
-    }
+      if (name.startsWith("task_") && !ownsVault) return errorResult("Vault account required");
+      if (isTaskExecution(name)) return forwardTaskExecutionMcp(name, rawArgs ?? {}, await taskClientAuthorization());
+      if (isTaskTool(name))
+        return callTaskMcp(name, rawArgs ?? {}, await taskClientAuthorization(), defaultTaskContext(toolDeps));
 
-    if (name === "rulebook_check") {
-      try { return { content: [{ type: "text", text: JSON.stringify(await rulebookCheckHandler(toolDeps, args, { project: projectForFilter(process.cwd()) })) }] }; }
-      catch (err) { return errorResult((err as Error).message); }
-    }
-    if (name === "list_rules") {
-      try { return { content: [{ type: "text", text: JSON.stringify(await listRulesHandler(toolDeps, args, { project: projectForFilter(process.cwd()) })) }] }; }
-      catch (err) { return errorResult((err as Error).message); }
-    }
-    if (name === "load_memory") {
-      try {
-        const result = await loadMemoryHandler(toolDeps, args);
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      } catch (err) {
-        return errorResult((err as Error).message);
-      }
-    }
+      // #482: same check as the REST boundary — the standalone stdio surface is
+      // the other place tool arguments arrive, and the client bug does not care
+      // which transport it corrupts.
+      const args = recoverCallArguments(name, rawArgs, TOOL_ARG_EXPECTATIONS) as Record<string, unknown> | undefined;
 
-    if (name === "review_save_suggestion") {
-      try { return { content: [{type:"text",text:JSON.stringify(await reviewSaveSuggestion(projectForFilter(process.cwd()),args))}] }; }
-      catch(err) {return errorResult((err as Error).message);}
-    }
-    if (name === "review_draft") {
-      try { return { content: [{ type: "text", text: JSON.stringify(await reviewDraftHandler(toolDeps, args ?? {})) }] }; }
-      catch (err) { return errorResult((err as Error).message); }
-    }
-
-    if (name === "validate_artifact") {
-      try { return { content: [{ type: "text", text: JSON.stringify(await validateArtifactHandler(args ?? {}, toolDeps), null, 2) }] }; }
-      catch (err) { return errorResult((err as Error).message); }
-    }
-
-    if (name === "save_memory") {
-      try {
-        const result = await withExecutedVaultWrite(name, {}, () => saveMemoryHandler(toolDeps, args), args ?? {});
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      } catch (err) {
-        return errorResult((err as Error).message);
-      }
-    }
-
-    if (name === "edit_memory") {
-      try {
-        // #519/#464: ohne Capability — der stdio-Server ist ein öffentlicher
-        // Transport (siehe private-access.ts).
-        const result = await withExecutedVaultWrite(name, {}, () => editMemoryHandler(toolDeps, args ?? {}), args ?? {});
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      } catch (err) {
-        return errorResult((err as Error).message);
-      }
-    }
-
-    if (name === "archive_memory") {
-      try {
-        const result = await archiveMemoryHandler(toolDeps, args ?? {});
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      } catch (err) {
-        return errorResult((err as Error).message);
-      }
-    }
-
-    if (name === "save_product_doc") {
-      try {
-        const result = await saveProductDocHandler(toolDeps, args);
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      } catch (err) {
-        return errorResult((err as Error).message);
-      }
-    }
-
-    // #576: code awareness. Synchronous by construction — a cold graph
-    // answers "unavailable" rather than blocking on a 20-26 ms load.
-    if (name === "find_code") {
-      const parsed = FindCodeArgs.safeParse(args);
-      if (!parsed.success) return errorResult(parsed.error.message);
-      const cache = sharedCodeGraphCache();
-      const result = findCode(cache, parsed.data);
-      // #579: the call itself, as a countable shape. Never awaited — a
-      // telemetry write must not sit inside a tool the hook budget depends on.
-      void toolDeps.telemetry
-        .logCodeToolCall(findCodeEvent(cache, parsed.data, result, { surface: "mcp" }))
-        .catch(() => {});
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
-    }
-
-    // #582: change impact from the changed SYMBOLS, across package boundaries.
-    if (name === "find_affected_files") {
-      const parsed = FindAffectedFilesArgs.safeParse(args);
-      if (!parsed.success) return errorResult(parsed.error.message);
-      const cache = sharedCodeGraphCache();
-      const result = await findAffectedFiles(cache, parsed.data);
-      void toolDeps.telemetry
-        .logCodeToolCall(findAffectedFilesEvent(cache, parsed.data, result, { surface: "mcp" }))
-        .catch(() => {});
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
-    }
-
-    if (name === "find_document") {
-      const parsed = FindDocumentArgs.safeParse(args);
-      if (!parsed.success) return errorResult(parsed.error.message);
-      const result = findDocument(search, vault, parsed.data);
-      return {
-        content: [
-          { type: "text", text: JSON.stringify(result, null, 2) },
-        ],
-      };
-    }
-
-    if (name === "read_document") {
-      const parsed = ReadDocumentArgs.safeParse(args);
-      if (!parsed.success) return errorResult(parsed.error.message);
-      const doc = readDocument(vault, parsed.data);
-      // #457: derselbe Größen-Eintrag wie auf dem HTTP-Pfad.
-      void toolDeps.telemetry.logReadDocument({
-        id: parsed.data.id,
-        found: doc !== null,
-        ...(doc
-          ? {
-              delivered_chars: JSON.stringify(doc, null, 2).length,
-              delivered_tokens_est: Math.ceil(JSON.stringify(doc, null, 2).length / 4),
-              body_chars: doc.body.length,
-            }
-          : {}),
-        caller_session: null,
-      }).catch(() => {});
-      if (!doc) return errorResult(`document not found: ${parsed.data.id}`);
-      return {
-        content: [
-          { type: "text", text: JSON.stringify(doc, null, 2) },
-        ],
-      };
-    }
-
-    if (name === "open_document") {
-      const parsed = OpenDocumentArgs.safeParse(args);
-      if (!parsed.success) return errorResult(parsed.error.message);
-      const result = await openDocument(vault, parsed.data);
-      if ("ok" in result && !result.ok) {
-        return errorResult(result.message);
-      }
-      return {
-        content: [
-          { type: "text", text: JSON.stringify(result, null, 2) },
-        ],
-      };
-    }
-
-    if (name === "save_document" || name === "recategorize_document" || name === "move_document") {
-      if (!documentWriteEnabled) {
-        return errorResult(
-          `${name} is a Recall Pulse feature and not enabled on this daemon — set BASTRA_DOCUMENT_WRITE=1 to enable.`,
-        );
-      }
-      try {
-        if (name === "save_document") {
-          const parsed = SaveDocumentArgs.safeParse(args);
-          if (!parsed.success) return errorResult(parsed.error.message);
-          const result = await saveDocument(vault, parsed.data);
+      if (name === "recall") {
+        try {
+          // MCP-Progress-Notification (#38): wenn der Caller einen
+          // progressToken mitschickt, leiten wir Stage-Events als
+          // `notifications/progress` weiter. Claude Code rendert die als
+          // Live-Stage-Lines unter dem Tool-Aufruf. Banter-Phrase landet
+          // im `message`-Feld der Notification.
+          const progressToken = (req.params as { _meta?: { progressToken?: string | number } })._meta?.progressToken;
+          const onStage: StageListener | undefined =
+            progressToken !== undefined
+              ? (s: RecallStage) => {
+                  // Nur Stop-Events (mit durationMs) als Progress-Tick
+                  // emittieren — Start-Events würden Claude Code mit
+                  // doppelten Lines fluten.
+                  if (s.durationMs === undefined && s.name !== "cache.hit" && s.name !== "done") return;
+                  const phrase = pickPhrase(s, banterMode, banterLang);
+                  const message = phrase
+                    ? `${s.name} — ${phrase}${s.durationMs !== undefined ? ` (${s.durationMs}ms)` : ""}`
+                    : `${s.name}${s.durationMs !== undefined ? ` (${s.durationMs}ms)` : ""}`;
+                  // Fire-and-forget — Notification-Failures dürfen den
+                  // Recall nicht kippen.
+                  void extra
+                    .sendNotification({
+                      method: "notifications/progress",
+                      params: {
+                        progressToken,
+                        progress: progressIndexFor(s.name),
+                        total: RECALL_STAGE_ORDER.length,
+                        message,
+                      },
+                    })
+                    .catch(() => undefined);
+                }
+              : undefined;
+          // #421: Das Projekt dieses stdio-Clients (sein cwd, durch dasselbe
+          // Konfidenz-Gate wie in den Lanes) — ohne es liefe der Scope-Filter
+          // der gemeinsamen Pipeline für einen Client ohne Hooks nie.
+          const result = await recallHandler(toolDeps, args, { onStage, project: projectForFilter(process.cwd()) });
           return {
             content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
           };
+        } catch (err) {
+          return errorResult((err as Error).message);
         }
-        if (name === "recategorize_document") {
-          const parsed = RecategorizeDocumentArgs.safeParse(args);
-          if (!parsed.success) return errorResult(parsed.error.message);
-          const result = await recategorizeDocument(vault, parsed.data);
+      }
+
+      if (name === "rulebook_check") {
+        try {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  await rulebookCheckHandler(toolDeps, args, { project: projectForFilter(process.cwd()) })
+                ),
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult((err as Error).message);
+        }
+      }
+      if (name === "list_rules") {
+        try {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  await listRulesHandler(toolDeps, args, { project: projectForFilter(process.cwd()) })
+                ),
+              },
+            ],
+          };
+        } catch (err) {
+          return errorResult((err as Error).message);
+        }
+      }
+      if (name === "load_memory") {
+        try {
+          const result = await loadMemoryHandler(toolDeps, args);
           return {
             content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
           };
+        } catch (err) {
+          return errorResult((err as Error).message);
         }
-        // move_document
-        const parsed = MoveDocumentArgs.safeParse(args);
+      }
+
+      if (name === "review_save_suggestion") {
+        try {
+          return {
+            content: [
+              { type: "text", text: JSON.stringify(await reviewSaveSuggestion(projectForFilter(process.cwd()), args)) },
+            ],
+          };
+        } catch (err) {
+          return errorResult((err as Error).message);
+        }
+      }
+      if (name === "review_draft") {
+        try {
+          return { content: [{ type: "text", text: JSON.stringify(await reviewDraftHandler(toolDeps, args ?? {})) }] };
+        } catch (err) {
+          return errorResult((err as Error).message);
+        }
+      }
+
+      if (name === "validate_artifact") {
+        try {
+          return {
+            content: [
+              { type: "text", text: JSON.stringify(await validateArtifactHandler(args ?? {}, toolDeps), null, 2) },
+            ],
+          };
+        } catch (err) {
+          return errorResult((err as Error).message);
+        }
+      }
+
+      if (name === "save_memory") {
+        try {
+          const result = await withExecutedVaultWrite(name, {}, () => saveMemoryHandler(toolDeps, args), args ?? {});
+          return {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err) {
+          return errorResult((err as Error).message);
+        }
+      }
+
+      if (name === "edit_memory") {
+        try {
+          // #519/#464: ohne Capability — der stdio-Server ist ein öffentlicher
+          // Transport (siehe private-access.ts).
+          const result = await withExecutedVaultWrite(
+            name,
+            {},
+            () => editMemoryHandler(toolDeps, args ?? {}),
+            args ?? {}
+          );
+          return {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err) {
+          return errorResult((err as Error).message);
+        }
+      }
+
+      if (name === "archive_memory") {
+        try {
+          const result = await archiveMemoryHandler(toolDeps, args ?? {});
+          return {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err) {
+          return errorResult((err as Error).message);
+        }
+      }
+
+      if (name === "save_product_doc") {
+        try {
+          const result = await saveProductDocHandler(toolDeps, args);
+          return {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err) {
+          return errorResult((err as Error).message);
+        }
+      }
+
+      // #576: code awareness. Synchronous by construction — a cold graph
+      // answers "unavailable" rather than blocking on a 20-26 ms load.
+      if (name === "find_code") {
+        const parsed = FindCodeArgs.safeParse(args);
         if (!parsed.success) return errorResult(parsed.error.message);
-        const result = await moveDocument(vault, parsed.data);
+        const cache = sharedCodeGraphCache();
+        const result = findCode(cache, parsed.data);
+        // #579: the call itself, as a countable shape. Never awaited — a
+        // telemetry write must not sit inside a tool the hook budget depends on.
+        void toolDeps.telemetry
+          .logCodeToolCall(findCodeEvent(cache, parsed.data, result, { surface: "mcp" }))
+          .catch(() => {});
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
-      } catch (err) {
-        return errorResult((err as Error).message);
       }
-    }
 
-    return errorResult(`unknown tool: ${name}`);
+      // #582: change impact from the changed SYMBOLS, across package boundaries.
+      if (name === "find_affected_files") {
+        const parsed = FindAffectedFilesArgs.safeParse(args);
+        if (!parsed.success) return errorResult(parsed.error.message);
+        const cache = sharedCodeGraphCache();
+        const result = await findAffectedFiles(cache, parsed.data);
+        void toolDeps.telemetry
+          .logCodeToolCall(findAffectedFilesEvent(cache, parsed.data, result, { surface: "mcp" }))
+          .catch(() => {});
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      if (name === "find_document") {
+        const parsed = FindDocumentArgs.safeParse(args);
+        if (!parsed.success) return errorResult(parsed.error.message);
+        const result = findDocument(search, vault, parsed.data);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      if (name === "read_document") {
+        const parsed = ReadDocumentArgs.safeParse(args);
+        if (!parsed.success) return errorResult(parsed.error.message);
+        const doc = readDocument(vault, parsed.data);
+        // #457: derselbe Größen-Eintrag wie auf dem HTTP-Pfad.
+        void toolDeps.telemetry
+          .logReadDocument({
+            id: parsed.data.id,
+            found: doc !== null,
+            ...(doc
+              ? {
+                  delivered_chars: JSON.stringify(doc, null, 2).length,
+                  delivered_tokens_est: Math.ceil(JSON.stringify(doc, null, 2).length / 4),
+                  body_chars: doc.body.length,
+                }
+              : {}),
+            caller_session: null,
+          })
+          .catch(() => {});
+        if (!doc) return errorResult(`document not found: ${parsed.data.id}`);
+        return {
+          content: [{ type: "text", text: JSON.stringify(doc, null, 2) }],
+        };
+      }
+
+      if (name === "open_document") {
+        const parsed = OpenDocumentArgs.safeParse(args);
+        if (!parsed.success) return errorResult(parsed.error.message);
+        const result = await openDocument(vault, parsed.data);
+        if ("ok" in result && !result.ok) {
+          return errorResult(result.message);
+        }
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      if (name === "save_document" || name === "recategorize_document" || name === "move_document") {
+        if (!documentWriteEnabled) {
+          return errorResult(
+            `${name} is a Recall Pulse feature and not enabled on this daemon — set BASTRA_DOCUMENT_WRITE=1 to enable.`
+          );
+        }
+        try {
+          if (name === "save_document") {
+            const parsed = SaveDocumentArgs.safeParse(args);
+            if (!parsed.success) return errorResult(parsed.error.message);
+            const result = await saveDocument(vault, parsed.data);
+            return {
+              content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+            };
+          }
+          if (name === "recategorize_document") {
+            const parsed = RecategorizeDocumentArgs.safeParse(args);
+            if (!parsed.success) return errorResult(parsed.error.message);
+            const result = await recategorizeDocument(vault, parsed.data);
+            return {
+              content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+            };
+          }
+          // move_document
+          const parsed = MoveDocumentArgs.safeParse(args);
+          if (!parsed.success) return errorResult(parsed.error.message);
+          const result = await moveDocument(vault, parsed.data);
+          return {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err) {
+          return errorResult((err as Error).message);
+        }
+      }
+
+      return errorResult(`unknown tool: ${name}`);
     })();
     if (req.params.name === "task_due" || !ownsVault) return result;
     return finalizeTaskMcp(result, defaultTaskContext(toolDeps), await taskClientAuthorization());
