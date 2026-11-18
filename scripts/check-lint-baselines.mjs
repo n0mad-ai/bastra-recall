@@ -21,7 +21,7 @@ const files = ["eslint-structure-baseline.json", ".lint-cycle-baseline.json", "c
 function readBase(file) {
   const tree = execFileSync("git", ["ls-tree", base, "--", file], { encoding: "utf8" });
   if (!tree.trim()) return null; // First introduction of this gate is the bootstrap.
-  return JSON.parse(execFileSync("git", ["show", `${base}:${file}`], { encoding: "utf8" }));
+  return execFileSync("git", ["show", `${base}:${file}`], { encoding: "utf8" });
 }
 
 function counts(value) {
@@ -51,8 +51,9 @@ async function isVerifiedMigration(file, previous, candidate) {
 }
 
 for (const file of files) {
-  const previous = readBase(file);
-  if (!previous) continue;
+  const source = readBase(file);
+  if (!source) continue;
+  const previous = JSON.parse(source);
   const candidate = JSON.parse(readFileSync(file, "utf8"));
   if (await isVerifiedMigration(file, previous, candidate)) continue;
   const before = counts(previous);
@@ -63,4 +64,24 @@ for (const file of files) {
     `${file}: ${added.length} new/increased exceptions against ${base}. Fix the code; baselines may only shrink. A justified copy needs explicit review, not a silent baseline expansion.`
   );
   process.exitCode = 1;
+}
+
+for (const file of [
+  "eslint.config.mjs",
+  ".jscpd.json",
+  ".dependency-cruiser.mjs",
+  "package.json",
+  "scripts/lint-scope.mjs",
+]) {
+  const previous = readBase(file);
+  if (!previous) continue;
+  try {
+    const { lintConfigurationAllowed } = await import("./lint-config-ratchet.mjs");
+    const candidate = readFileSync(file, "utf8");
+    if (lintConfigurationAllowed(file, previous, candidate)) continue;
+    throw new Error("weakened or unverified operational change");
+  } catch (error) {
+    console.error(`${file}: lint configuration weakened or unverified against ${base}: ${error.message}`);
+    process.exitCode = 1;
+  }
 }
