@@ -22,7 +22,7 @@ import { renderRuleKernel } from "./rule-kernel.js";
 import type { CatalogProvider } from "./rulebook-check.js";
 import { withRulebookDeadline } from "./rulebook-catalog.js";
 import { projectForLane } from "./scope-filter.js";
-import { loadSessionState } from "./session-state.js";
+import { peekActiveConventions } from "./session-state.js";
 
 export interface SubagentStartPayload {
   hook_event_name?: string;
@@ -36,7 +36,7 @@ export async function runSubagentStartLane(payload: SubagentStartPayload, kernel
   if (payload.hook_event_name !== "SubagentStart" || !kernel || hookAgent(payload) !== "subagent") return "{}";
   try {
     const sessionId = typeof payload.session_id === "string" ? payload.session_id : "";
-    const active = sessionId ? [...((await loadSessionState(sessionId)).activeConventions ?? [])] : [];
+    const active = await peekActiveConventions(sessionId);
     const project = projectForLane(typeof payload.cwd === "string" && payload.cwd ? payload.cwd : process.cwd());
     const candidates = await withRulebookDeadline(() => kernel(active, project, "content"));
     const rendered = renderRuleKernel(candidates, { trigger: "subagent start" });

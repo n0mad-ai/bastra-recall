@@ -46,6 +46,7 @@ export {
   cleanupOldStates,
   getLoadedMarkerMtime,
   loadSessionState,
+  peekActiveConventions,
   mutateSessionState,
   persistDraftHintClaims,
   saveSessionState,

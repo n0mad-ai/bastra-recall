@@ -149,15 +149,20 @@ function decodeConventionSections(parsed: Parsed, state: SessionState): void {
       .slice(-200);
   if (typeof parsed.userValidatorChannel === "string" && parsed.userValidatorChannel)
     state.userValidatorChannel = parsed.userValidatorChannel;
-  if (Array.isArray(parsed.activeConventions)) {
-    state.activeConventions = parsed.activeConventions.filter(
-      (e): e is ActiveConvention =>
-        !!e &&
-        typeof e.id === "string" &&
-        (typeof e.revision === "string" || e.revision === null) &&
-        typeof e.setAt === "number"
-    );
-  }
+  if (Array.isArray(parsed.activeConventions))
+    state.activeConventions = decodeActiveConventions(parsed.activeConventions);
+}
+
+/** Shared by ordinary hydration and the nonmutating SubagentStart read. */
+export function decodeActiveConventions(raw: unknown): ActiveConvention[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (e): e is ActiveConvention =>
+      !!e &&
+      typeof e.id === "string" &&
+      (typeof e.revision === "string" || e.revision === null) &&
+      typeof e.setAt === "number"
+  );
 }
 
 /** #1306/#1310/#1311: the correspondence task, its receipts and repair bookkeeping. */

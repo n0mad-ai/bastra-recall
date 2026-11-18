@@ -1765,7 +1765,10 @@ Claude Code subagents also get the full kernel at `SubagentStart` (#1637), as
 `additionalContext` before their first prompt, so a short worker that ends
 before its 25th tool call still sees the rules. That answer carries only the
 kernel, writes no session state (no fingerprint, no cadence change) and leaves
-the main agent's and the worker's own cadence as they were. Resumed subagents
+the main agent's and the worker's own cadence as they were. Reading existing
+state never initializes or migrates storage; SQLite may update its reader
+coordination sidecars (WAL/SHM), without changing application records or schema.
+Resumed subagents
 and the minimum Claude Code version for this delivery are not verified; other
 clients are unchanged. See [the rulebook contract](rulebook.md) for membership, privacy, budgets, bounded
 action/Stop checking and host limitations.
@@ -3742,7 +3745,10 @@ Subagenten von Claude Code bekommen den vollständigen Kern zusätzlich bei
 sieht auch ein kurzer Worker die Regeln, der vor seinem 25. Toolaufruf endet.
 Diese Antwort enthält nur den Kern, schreibt keinen Sitzungszustand (keinen
 Fingerabdruck, keine Änderung am Takt) und lässt den Takt des Hauptagenten und
-des Workers unverändert. Wiederaufgenommene Subagenten und die Mindestversion
+des Workers unverändert. Das Lesen vorhandenen Zustands initialisiert oder
+migriert keinen Speicher; SQLite kann seine Lesekoordination (WAL/SHM)
+aktualisieren, ohne Anwendungsdaten oder Schema zu ändern. Wiederaufgenommene
+Subagenten und die Mindestversion
 von Claude Code für diese Zustellung sind nicht geprüft; andere Clients bleiben
 unverändert. Der [Regelbuch-Vertrag](rulebook.md) beschreibt Mitgliedschaft, Datenschutz, Budgets,
 begrenzte Aktions-/Stop-Prüfung und Host-Grenzen.

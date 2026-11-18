@@ -6,6 +6,7 @@
 import * as path from "node:path";
 import {
   readHookState,
+  peekHookState,
   updateHookState,
   cleanupHookState,
   writeHookMarker,
@@ -13,9 +14,9 @@ import {
 } from "../hook-state-database.js";
 import { sweepUnreachableNotices } from "../hook-unreachable-notice.js";
 import { withPathLock, tryWithPathLock } from "../path-lock.js";
-import { decodeSessionState, encodeSessionState } from "./codec.js";
+import { decodeActiveConventions, decodeSessionState, encodeSessionState } from "./codec.js";
 import { STATE_MAX_AGE_MS, loadedMarkerFile, sessionFile, sessionStateDir, stateKey } from "./location.js";
-import type { ReadonlySessionState, SessionState } from "./types.js";
+import type { ActiveConvention, ReadonlySessionState, SessionState } from "./types.js";
 
 /**
  * Load the session state. Never throws — on any error (missing file,
@@ -24,6 +25,18 @@ import type { ReadonlySessionState, SessionState } from "./types.js";
  */
 export async function loadSessionState(sessionId: string): Promise<ReadonlySessionState> {
   return readSessionState(sessionId);
+}
+
+/** #1637: read parent membership without hydration or draft-hint claims. */
+export async function peekActiveConventions(sessionId: string): Promise<ActiveConvention[]> {
+  if (!sessionId) return [];
+  try {
+    const dir = sessionStateDir();
+    const parsed = JSON.parse((await peekHookState(dir, stateKey(sessionId, dir))) ?? "{}");
+    return parsed?.shown ? decodeActiveConventions(parsed.activeConventions) : [];
+  } catch {
+    return [];
+  }
 }
 
 /** The same read, typed mutable. Only `mutateSessionState` may have it — a

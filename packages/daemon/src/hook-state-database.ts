@@ -1,7 +1,8 @@
 /** Persistent hook state with immutable, process-local read snapshots.
  * Lanes only mutate through a short SQLite transaction; no vault I/O occurs.
  * Legacy tmpdir files are imported once and retained for downgrade recovery. */
-import { readdir, rename, writeFile } from "node:fs/promises";
+import { lstat, readdir, rename, writeFile } from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
 import { createHash, randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import { defaultAppDatabasePath, openAppDatabase, type AppDatabase } from "./app-database.js";
@@ -192,6 +193,52 @@ function getSnapshot(dir: string): Promise<HookSnapshot> {
 
 export async function readHookState(dir: string, session: string): Promise<string | undefined> {
   return (await getSnapshot(dir)).sessions.get(session)?.raw;
+}
+
+/** #1637: no hydration, migrations, imports or cache initialization. SQLite
+ * may coordinate readers through its WAL/SHM sidecars; no application rows
+ * or schema are written. A missing database is never opened. */
+export async function peekHookState(dir: string, session: string): Promise<string | undefined> {
+  const dbPath = databasePath(dir);
+  const pending = snapshots.get(`${dbPath}\0${storeIdentity(dir)}`);
+  if (pending) return (await pending).sessions.get(session)?.raw;
+  try {
+    if ((await lstat(dbPath)).isFile()) {
+      const db = new DatabaseSync(dbPath, { readOnly: true });
+      try {
+        const suffix = createHash("sha256").update(storeIdentity(dir)).digest("hex");
+        const row = db
+          .prepare("SELECT value FROM app_records WHERE namespace=? AND key=?")
+          .get(`hook-session:${suffix}`, session);
+        const stored: unknown = row ? JSON.parse(String(row.value)) : undefined;
+        if (stored && typeof stored === "object" && "raw" in stored && typeof stored.raw === "string")
+          return stored.raw;
+      } finally {
+        db.close();
+      }
+    }
+  } catch {
+    // Missing, busy or corrupt storage is never repaired by a read.
+  }
+  return readLegacySession(dir, session);
+}
+
+/** Use the same private descriptors and source precedence as migration,
+ * reading only this session, without retaining or importing any file. */
+async function readLegacySession(dir: string, session: string): Promise<string | undefined> {
+  if (!/^[a-zA-Z0-9_-]+$/.test(session)) return undefined;
+  for (const source of legacySources(dir)) {
+    if ((await privateDirState(source)) !== "private") continue;
+    try {
+      const { bytes } = await readPrivateFile(join(source, `${session}.json`), MAX_LEGACY_BYTES);
+      const raw = bytes.toString("utf8");
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && "shown" in parsed) return raw;
+    } catch {
+      // Leave malformed or unsafe legacy files untouched.
+    }
+  }
+  return undefined;
 }
 
 /** Read the latest committed state inside the writer transaction; cross-process
