@@ -29,6 +29,7 @@ import { getOllamaAutostart, setEmbeddingProvider, setGenerationModel } from "..
 import { settingsFileRefusal, settingsFileState } from "../settings-file.js";
 import { recordModelAnswer } from "../model-recommendation.js";
 import { PathLockUnavailableError } from "../path-lock.js";
+import { ollamaWordsIn, type OllamaWords } from "./ollama-words.js";
 
 const OLLAMA_URL = (process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434").replace(/\/+$/, "");
 const EMBED_MODEL = process.env.BASTRA_EMBEDDING_MODEL ?? "embeddinggemma";
@@ -41,13 +42,20 @@ export interface EnsureResult {
 
 // mode is deliberately NOT nullable: "auto" acts without asking, so every
 // caller must have collected consent (flag, prompt, or the subcommand itself).
-export async function ensureOllama(opts: { dryRun: boolean; mode: "auto" | "skip" }): Promise<EnsureResult> {
+// `language` is the CLI's language.primary for the messages; English when absent.
+export async function ensureOllama(opts: {
+  dryRun: boolean;
+  mode: "auto" | "skip";
+  language?: string;
+}): Promise<EnsureResult> {
+  const w = ollamaWordsIn(opts.language);
+  const err = (message: string): EnsureResult => ({ status: "error", activated: false, message: w.staysOff(message) });
   try {
     if (opts.mode === "skip") {
       return {
         status: "skipped",
         activated: false,
-        message: "skipped (--no-ollama) — semantic recall uses BM25 keyword search",
+        message: w.skipped,
       };
     }
     // env wins over the file at runtime — don't burn a 620 MB download on a
@@ -58,7 +66,7 @@ export async function ensureOllama(opts: { dryRun: boolean; mode: "auto" | "skip
       return {
         status: "env-override",
         activated: false,
-        message: `BASTRA_EMBEDDING_PROVIDER=${envProvider} (env) overrides the config file — not setting up Ollama. Unset it (or set it to ollama) first.`,
+        message: w.envOverride(envProvider),
       };
     }
 
@@ -74,7 +82,7 @@ export async function ensureOllama(opts: { dryRun: boolean; mode: "auto" | "skip
       return {
         status: "already-active",
         activated: !opts.dryRun,
-        message: `Ollama ready (${serverUp})${opts.dryRun ? "; would enable semantic recall" : "; semantic recall ON"}`,
+        message: w.ready(`${serverUp}`, opts.dryRun),
       };
     }
 
@@ -83,21 +91,20 @@ export async function ensureOllama(opts: { dryRun: boolean; mode: "auto" | "skip
       return {
         status: "unsupported",
         activated: false,
-        message:
-          "automatic Ollama setup is macOS-only today; Windows has no bundled Ollama (#84). Manual: install + start external Ollama (https://ollama.com), run `ollama pull embeddinggemma`, then re-run: bastra embeddings on. Alternatively configure embedding.provider=openai with an API key. Until a provider works, recall is keyword-only (BM25).",
+        message: w.unsupported,
       };
     }
     if (opts.dryRun) {
       return {
         status: "would-install",
         activated: false,
-        message: "would: brew install ollama (if missing) → start service → pull embeddinggemma (~620 MB) → activate",
+        message: w.wouldInstall,
       };
     }
 
     // Cost disclosure on the acting path (the caller's prompt already named
     // the download; this line marks the moment work actually starts).
-    process.stdout.write("  → setting up Ollama: Homebrew install (if needed) + ~620 MB model + local login service\n");
+    process.stdout.write(w.settingUp);
 
     const autostart = await getOllamaAutostart();
     const brewBin = findExecutable("brew");
@@ -109,29 +116,28 @@ export async function ensureOllama(opts: { dryRun: boolean; mode: "auto" | "skip
         return {
           status: "unsupported",
           activated: false,
-          message:
-            "Ollama not found and Homebrew unavailable — install Ollama from https://ollama.com, then `bastra config set embedding.provider ollama`",
+          message: w.noBrew,
         };
       }
       const r = run(brewBin, ["install", "ollama"], { timeoutMs: 300_000, showProgress: true });
-      if (!r.ok) return err(`brew install ollama failed (${r.detail})`);
+      if (!r.ok) return err(w.brewFailed(r.detail));
       ollamaPath = findExecutable("ollama");
-      if (!ollamaPath) return err("brew reported success but `ollama` is not on PATH — restart your shell, then retry");
+      if (!ollamaPath) return err(w.notOnPath);
     }
 
     // 2. server
     const serve = await ensureServing(autostart, brewBin, ollamaPath);
     if (!serve.ok) {
-      return err(`Ollama installed but the server didn't start (${serve.detail}) — try \`ollama serve\` manually`);
+      return err(w.serverDidNotStart(serve.detail));
     }
 
     // 3. model
     if (!(await modelPresent())) {
       const r = run(ollamaPath, ["pull", EMBED_MODEL], { timeoutMs: 1_800_000, showProgress: true });
-      if (r.signal) return err(`model download was interrupted — re-run \`bastra embeddings on\` when ready`);
-      if (!r.ok) return err(`\`ollama pull ${EMBED_MODEL}\` failed (${r.detail})`);
+      if (r.signal) return err(w.downloadInterrupted);
+      if (!r.ok) return err(w.pullFailed(EMBED_MODEL, r.detail));
       // Interrupted pulls can exit 0 with an incomplete model — verify.
-      if (!(await modelPresent())) return err(`model not present after pull — re-run \`ollama pull ${EMBED_MODEL}\``);
+      if (!(await modelPresent())) return err(w.embedModelMissing(EMBED_MODEL));
     }
 
     // 4. persist — only now, model verified present
@@ -139,19 +145,11 @@ export async function ensureOllama(opts: { dryRun: boolean; mode: "auto" | "skip
     return {
       status: "activated",
       activated: true,
-      message: `Ollama ready (${serve.detail}); semantic recall ON — restart the daemon to apply (first recall re-indexes the vault once, may take a minute on large vaults)`,
+      message: w.activated(serve.detail),
     };
   } catch (e) {
-    return err(`Ollama setup error: ${(e as Error).message}`);
+    return err(w.setupError((e as Error).message));
   }
-}
-
-function err(message: string): EnsureResult {
-  return {
-    status: "error",
-    activated: false,
-    message: `${message} — semantic recall stays OFF (BM25 keyword search still works)`,
-  };
 }
 
 /**
@@ -162,7 +160,7 @@ function err(message: string): EnsureResult {
  * injectable for tests only.
  */
 export async function enableSemanticRecall(
-  opts: { dryRun: boolean },
+  opts: { dryRun: boolean; language?: string },
   settingsPath?: string
 ): Promise<EnsureResult & { persisted: boolean }> {
   let persisted = false;
@@ -173,7 +171,7 @@ export async function enableSemanticRecall(
     await setEmbeddingProvider("ollama", settingsPath);
     persisted = true;
   }
-  const result = await ensureOllama({ dryRun: opts.dryRun, mode: "auto" });
+  const result = await ensureOllama({ dryRun: opts.dryRun, mode: "auto", language: opts.language });
   return { ...result, persisted };
 }
 
@@ -221,15 +219,16 @@ export async function ollamaModelPresent(name: string, local?: string): Promise<
  */
 export async function enableGenerationModel(
   model: string,
-  opts: { dryRun: boolean; verify?: boolean; recommendationId?: string } = { dryRun: false },
+  opts: { dryRun: boolean; verify?: boolean; recommendationId?: string; language?: string } = { dryRun: false },
   settingsPath?: string,
   cli: { find: () => string | null; pull: (ollamaPath: string, model: string) => RunResult } = {
     find: () => findExecutable("ollama"),
     pull: (ollamaPath, m) => run(ollamaPath, ["pull", m], { timeoutMs: 1_800_000, showProgress: true }),
   }
 ): Promise<EnsureResult> {
+  const w = ollamaWordsIn(opts.language);
   if (opts.dryRun) {
-    return { status: "would-install", activated: false, message: `would pull ${model} + persist generation.model` };
+    return { status: "would-install", activated: false, message: w.wouldPull(model) };
   }
   // The safe switch talks to ONE address, fixed before the first request: the
   // local, credential-free, query-free form of the configured URL. The probes
@@ -240,12 +239,12 @@ export async function enableGenerationModel(
   if (opts.verify) {
     const refusal = settingsFileRefusal(await settingsFileState(settingsPath), { refuseCorrupt: true });
     if (refusal) return { status: "error", activated: false, message: refusal };
-    const target = localOllamaTarget(OLLAMA_URL);
+    const target = localOllamaTarget(OLLAMA_URL, w);
     if (!target.ok) {
       return {
         status: "error",
         activated: false,
-        message: `${model} cannot be checked with a test call: ${target.reason} — use 'bastra models set ${model}' to switch without it`,
+        message: w.cannotCheck(model, target.reason),
       };
     }
     local = target.url;
@@ -255,30 +254,29 @@ export async function enableGenerationModel(
     return {
       status: "error",
       activated: false,
-      message: `Ollama isn't running — enable semantic recall first (that installs + starts it), then set the text model`,
+      message: w.serverNotRunning,
     };
   }
   if (!(await ollamaModelPresent(model, local))) {
-    process.stdout.write(`  → pulling ${model} (text model for doc2query + rerank)\n`);
+    process.stdout.write(w.pulling(model));
     const r = cli.pull(ollamaPath, model);
-    if (r.signal)
-      return { status: "error", activated: false, message: `pull of ${model} was interrupted — re-run when ready` };
-    if (!r.ok) return { status: "error", activated: false, message: `\`ollama pull ${model}\` failed (${r.detail})` };
+    if (r.signal) return { status: "error", activated: false, message: w.pullInterrupted(model) };
+    if (!r.ok) return { status: "error", activated: false, message: w.pullFailed(model, r.detail) };
     if (!(await ollamaModelPresent(model, local)))
       return {
         status: "error",
         activated: false,
-        message: `${model} not present after pull — re-run \`ollama pull ${model}\``,
+        message: w.textModelMissing(model),
       };
   }
   if (local) {
-    process.stdout.write(`  → checking ${model} with a short test call\n`);
+    process.stdout.write(w.checking(model));
     const failure = await testCallFailure(model, local);
     if (failure) {
       return {
         status: "error",
         activated: false,
-        message: `${model} is downloaded but did not answer a test call (${failure})`,
+        message: w.noTestAnswer(model, failure),
       };
     }
   }
@@ -293,7 +291,7 @@ export async function enableGenerationModel(
       return {
         status: "error",
         activated: false,
-        message: `${model} is ready, but the setting could not be saved (${reason})`,
+        message: w.notSaved(model, reason),
       };
     }
   } else {
@@ -302,7 +300,7 @@ export async function enableGenerationModel(
   return {
     status: "activated",
     activated: true,
-    message: `text model ${model} ready + saved — restart the daemon to apply`,
+    message: w.textModelReady(model),
   };
 }
 
@@ -322,23 +320,25 @@ export async function enableGenerationModel(
  * what the parser produced cannot disagree with it. What does not parse is
  * not shown at all.
  */
-export function localOllamaTarget(configured: string): { ok: true; url: string } | { ok: false; reason: string } {
+export function localOllamaTarget(
+  configured: string,
+  w: OllamaWords = ollamaWordsIn("en")
+): { ok: true; url: string } | { ok: false; reason: string } {
   let url: URL;
   try {
     url = new URL(configured);
   } catch {
-    return { ok: false, reason: "the configured Ollama URL cannot be read" };
+    return { ok: false, reason: w.urlUnreadable };
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:")
-    return { ok: false, reason: "the configured Ollama URL is not an http(s) URL" };
+  if (url.protocol !== "http:" && url.protocol !== "https:") return { ok: false, reason: w.urlNotHttp };
   // fetch refuses a URL with credentials — and quotes it in full when it does.
   if (url.username !== "" || url.password !== "") {
-    return { ok: false, reason: "the configured Ollama URL carries credentials, which the test call cannot use" };
+    return { ok: false, reason: w.urlCredentials };
   }
   // Origin and path only: no credentials, no query, no fragment.
   const target = `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
   if (!isLoopbackOllamaURL(target)) {
-    return { ok: false, reason: `the test call only runs against a local Ollama, not ${url.host}` };
+    return { ok: false, reason: w.urlNotLocal(url.host) };
   }
   return { ok: true, url: target };
 }
@@ -447,14 +447,15 @@ export async function ensureOllamaServerForDaemon(baseURL: string): Promise<{ st
   }
 }
 
-/** Public, read-only probe for `bastra doctor`/`status`. Never throws. */
-export async function probeOllama(): Promise<{ ok: boolean; detail: string; hasModel: boolean }> {
+/** Public, read-only probe for `bastra doctor`/`status`; `detail` in `language` (English when absent). Never throws. */
+export async function probeOllama(language?: string): Promise<{ ok: boolean; detail: string; hasModel: boolean }> {
+  const w = ollamaWordsIn(language);
   const bin = findExecutable("ollama");
-  if (!bin) return { ok: false, detail: "ollama not installed", hasModel: false };
+  if (!bin) return { ok: false, detail: w.notInstalled, hasModel: false };
   const ver = await serverVersion();
-  if (!ver) return { ok: false, detail: "installed but server not running", hasModel: false };
+  if (!ver) return { ok: false, detail: w.installedNotRunning, hasModel: false };
   const model = await modelPresent();
-  return { ok: true, detail: `running (${ver})`, hasModel: model };
+  return { ok: true, detail: w.running(ver), hasModel: model };
 }
 
 // ── server lifecycle ─────────────────────────────────────────────────────────

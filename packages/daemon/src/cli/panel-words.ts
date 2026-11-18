@@ -5,6 +5,7 @@
  * never matched against user text.
  */
 import { taskCliLanguage } from "./task-cli-words.js";
+import { VERSION_DRIFT_HINT } from "./helpers.js";
 
 const en = {
   version: "version",
@@ -15,6 +16,7 @@ const en = {
   processAndDisk: (running: string, onDisk: string) => `daemon ${running} (process), ${onDisk} on disk`,
   replaced: (cli: string) => `cli ${cli}  ⚠ daemon runs replaced code — restart it`,
   drift: (cli: string, hint: string) => `cli ${cli}  ⚠ version drift — ${hint}`,
+  driftHint: VERSION_DRIFT_HINT,
   daemonStatus: (daemon: string, status: string) => `daemon ${daemon}  ${status}`,
   semantic: "semantic",
   semanticOffer: "off — local Ollama detected, enable: bastra embeddings on",
@@ -46,6 +48,7 @@ const de: PanelWords = {
   processAndDisk: (running, onDisk) => `Daemon ${running} (Prozess), ${onDisk} auf der Platte`,
   replaced: (cli) => `CLI ${cli}  ⚠ der Daemon läuft mit ersetztem Code — neu starten`,
   drift: (cli, hint) => `CLI ${cli}  ⚠ Versionen weichen ab — ${hint}`,
+  driftHint: "KI-Client neu starten, damit der Daemon neu geladen wird",
   daemonStatus: (daemon, status) => `Daemon ${daemon}  ${status}`,
   semantic: "semantisch",
   semanticOffer: "aus — lokales Ollama erkannt, einschalten: bastra embeddings on",

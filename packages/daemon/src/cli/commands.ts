@@ -13,18 +13,16 @@ import { missingVaultReason } from "../vault-presence.js";
 import { resolveTargets } from "./registry.js";
 import {
   VERSION,
-  VERSION_DRIFT_HINT,
   probeDaemon,
   resolveVault,
   decideFirstRunVaultAction,
   defaultVaultPath,
   createVaultAt,
-  VAULT_REQUIRED_ERROR,
 } from "./helpers.js";
 import { installSemanticRecallStep, printEmbeddingDoctorNote } from "./embeddings-cmd.js";
 import { sweepSharedSkill } from "./skill.js";
 import { removeRuntimeBase } from "./stable-runtime.js";
-import { CLI_DECLINED_NOTE, decideCliOnPath } from "./cli-on-path.js";
+import { decideCliOnPath } from "./cli-on-path.js";
 import { FORWARDER_SCRIPT_PATH } from "./paths.js";
 import { findExecutable } from "./exec.js";
 import { runInstallWizard, shouldRunWizard } from "./wizard.js";
@@ -34,7 +32,9 @@ import { confirm, isInteractive } from "./prompt.js";
 import { getEmbeddingProvider, getSharedRecallEnabled, getSharedRecallLive, readSettings } from "../settings.js";
 import { addressLanguage, addressWords } from "../assistant-address-words.js";
 import { installWords, installWordsIn, type InstallWords } from "./install-words.js";
-import { doctorWords, type DoctorWords } from "./doctor-words.js";
+import { doctorWordsIn, type DoctorWords } from "./doctor-words.js";
+import { taskCliLanguage } from "./task-cli-words.js";
+import { autostartWordsIn } from "./autostart-words.js";
 import { canAutoSpawnAt } from "../forwarder-daemon-client.js";
 import { bridgeLearningLines, readMintRuns } from "./bridges-note.js";
 import { bridgesPath } from "../learned-recall/pool-path.js";
@@ -221,13 +221,13 @@ export async function installVaultFirstRunStep(
   // action === "prompt" — ask once, default Yes.
   const accepted = await (io.ask ?? confirm)(w.firstRunQuestion, { defaultYes: true });
   if (!accepted) {
-    process.stderr.write(w.vaultRequired(VAULT_REQUIRED_ERROR));
+    process.stderr.write(w.vaultRequired(w.vaultPathRequired));
     return { vaultPath: null, exit: 1 };
   }
   const created = await (io.create ?? createVaultAt)(defaultVaultPath());
   if ("error" in created) {
     process.stderr.write(w.couldNotCreateDefault(created.error));
-    process.stderr.write(w.vaultRequired(VAULT_REQUIRED_ERROR));
+    process.stderr.write(w.vaultRequired(w.vaultPathRequired));
     return { vaultPath: null, exit: 1 };
   }
   process.stdout.write(w.created(created.path));
@@ -301,7 +301,8 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
     return runInstallWizard(args);
   }
 
-  const w = await installWords();
+  const language = await taskCliLanguage().catch(() => "en");
+  const w = installWordsIn(language);
   const targets = resolveTargets(args.surface);
   if ("error" in targets) {
     process.stderr.write(w.error(targets.error));
@@ -378,7 +379,7 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
   // it runs ONCE at the end of a successful install — not per surface (#79).
   // Prompts only on a TTY without --yes and only when no provider is effective;
   // an Ollama failure never fails the install: surface registration is the job.
-  await installSemanticRecallStep({ dryRun: args.dryRun, yes: args.yes, ollama: args.ollama });
+  await installSemanticRecallStep({ dryRun: args.dryRun, yes: args.yes, ollama: args.ollama, language });
   // Code awareness (#573): an optional companion, asked once, never blocking.
   await installCodeAwarenessStep({ dryRun: args.dryRun, yes: args.yes });
 
@@ -391,7 +392,7 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
     !args.dryRun &&
     decideCliOnPath({ cliPath: FORWARDER_SCRIPT_PATH, resolvedBastra: findExecutable("bastra") }) === "offer"
   ) {
-    process.stdout.write(`→ ${CLI_DECLINED_NOTE}\n\n`);
+    process.stdout.write(`→ ${w.cliDeclined}\n\n`);
   }
   return 0;
 }
@@ -494,7 +495,9 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   // default 'all' we only repair surfaces that already exist, never silently
   // set up ones the user never asked for.
   const fixMissing = surface !== "all";
-  const w = await doctorWords();
+  // language.primary, read once for the whole run (English when unset or unreadable).
+  const language = await taskCliLanguage().catch(() => "en");
+  const w = doctorWordsIn(language);
   const targets = resolveTargets(surface);
   if ("error" in targets) {
     process.stderr.write(w.error(targets.error));
@@ -538,10 +541,10 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   // Semantic recall is global, not a surface — reported as a NOTE (or an
   // actionable ⚠), never as a failure: BM25-only recall is degraded, not
   // broken, so it never flips doctor's exit code (#79).
-  await printEmbeddingDoctorNote();
+  await printEmbeddingDoctorNote(language);
   await printVersionPairNote(w);
   await printDaemonOriginNote();
-  await printAutostartNote(w);
+  await printAutostartNote(w, language);
   await printAssistantAddressNote();
   await printStubBinaryNote(w);
   await printAffectsFilesNote(resolveVaultPath(args.vaultPath));
@@ -747,9 +750,9 @@ async function printStubBinaryNote(w: DoctorWords): Promise<void> {
  * Agenten, der nicht startet, still liegen lässt. Wie die beiden Notes darüber:
  * niemals ein Fehlschlag, nur ein Hinweis mit einer Handlung dran.
  */
-async function printAutostartNote(w: DoctorWords): Promise<void> {
+async function printAutostartNote(w: DoctorWords, language: string): Promise<void> {
   try {
-    const warning = await autostartWarning();
+    const warning = await autostartWarning(undefined, undefined, undefined, undefined, autostartWordsIn(language));
     if (warning) process.stdout.write(w.autostart(warning));
   } catch {
     /* a diagnostics NOTE must never break doctor */
@@ -801,7 +804,7 @@ async function printVersionPairNote(w: DoctorWords): Promise<void> {
       process.stdout.write(w.bothVersions(w.status("ok"), VERSION));
       return;
     }
-    process.stdout.write(w.versionDrift(VERSION, probe.version, VERSION_DRIFT_HINT));
+    process.stdout.write(w.versionDrift(VERSION, probe.version, w.driftHint));
   } catch {
     /* a diagnostics NOTE must never break doctor */
   }

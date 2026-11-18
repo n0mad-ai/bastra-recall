@@ -15,10 +15,11 @@
  *
  * Also home of the install-end prompt (installSemanticRecallStep) and the
  * doctor note (printEmbeddingDoctorNote) so every surface points at the same
- * one-liner.
+ * one-liner. The words live in embeddings-words.ts, by language.primary (#1602).
  */
 import {
   getEmbeddingProvider,
+  getPrimaryLanguage,
   setEmbeddingProvider,
   resolveEmbeddingChoice,
   resolveGenerationModel,
@@ -30,20 +31,12 @@ import { enableSemanticRecall, ensureOllama, ollamaModelPulled, probeOllama } fr
 import { probeDaemon } from "./helpers.js";
 import { confirm, isInteractive } from "./prompt.js";
 import { usageWords } from "./usage-words.js";
+import { embeddingsWordsIn, type EmbeddingsWords } from "./embeddings-words.js";
 
-const ENABLE_HINT = "bastra embeddings on";
+/** The English words: the exported constants below keep their wording. */
+const EN = embeddingsWordsIn("en");
 
-/** #520: what the EXPLICIT cloud choice actually does with your data — stated
- *  plainly wherever the effective provider is reported. */
-const CLOUD_EGRESS_NOTE = "your recall queries and the memory text being indexed are sent to api.openai.com";
-/** #520: why a bare OPENAI_API_KEY no longer turns cloud embeddings on, and
- *  the two ways out (local by default, cloud only on purpose). */
-const CLOUD_CONSENT_NOTE =
-  "OPENAI_API_KEY is set, but a generic key is not consent to send vault text to OpenAI — " +
-  "cloud embeddings stay OFF. Local semantic recall: `bastra embeddings on`. " +
-  "OpenAI on purpose: `bastra config set embedding.provider openai`";
-
-/** What the user gives up by leaving it off, in one clause.
+/** The one OFF wording every surface shares (doctor, install hint, status).
  *
  *  #103 measured all three arms on a real 811-memory vault, 180 simulated-user
  *  queries: keyword-only found the right note in 61.1% of cases, with the
@@ -52,22 +45,12 @@ const CLOUD_CONSENT_NOTE =
  *  nothing (86.7% → 96.7%), someone who describes it in their own words loses
  *  most of their recall (26.7% → 66.7%). Stated as measured, not as a promise:
  *  it is one vault, and the wording says so. */
-const OFF_COST = "keyword-only finds 61% of notes where semantic recall finds 80% (#103)";
-
-/** The one OFF wording every surface shares (doctor, install hint, status). */
-export const RECALL_OFF_NOTE = `Semantic recall is OFF — recall is keyword-only (BM25). Measured on a real vault: ${OFF_COST}, and the gap is widest when your wording differs from the note's. Enable: ${ENABLE_HINT}`;
-/** Same message behind the install step's "→ semantic recall:" prefix. */
-const INSTALL_OFF_HINT = `→ semantic recall: OFF — recall is keyword-only (BM25). Measured: ${OFF_COST}. Enable: ${ENABLE_HINT}`;
+export const RECALL_OFF_NOTE = EN.recallOff;
 
 // Benefit first, price second. The old wording asked for 620 MB and a Homebrew
 // install without once saying what they buy, so the only informed answer was
 // "no" (#103, install-prompt review 2026-08-14).
-export const INSTALL_PROMPT_QUESTION =
-  "Enable semantic recall (multilingual vector search)? It finds notes when your wording has drifted from theirs — " +
-  "on a real vault 80% of notes found, against 61% keyword-only (#103). " +
-  "Downloads the embeddinggemma model (~620 MB) via Ollama (installed with Homebrew if missing). " +
-  "It also starts background paraphrasing (doc2query): a local generation model rewrites every memory's triggers, " +
-  "hours of CPU on a machine without a GPU — BASTRA_TRIGGER_EXPAND=0 in the daemon's environment leaves it off.";
+export const INSTALL_PROMPT_QUESTION = EN.installQuestion;
 
 /**
  * #646: Ollama embeddings start the doc2query paraphraser on their own
@@ -78,17 +61,9 @@ export const INSTALL_PROMPT_QUESTION =
  * pulled before the first 404. `pulled` null = Ollama did not answer: unknown,
  * so no pull hint (same rule as doctor's row).
  */
-export function paraphrasingNotice(model: string, pulled: boolean | null): string[] {
-  const lines = [
-    `→ background paraphrasing (doc2query): starts with Ollama embeddings — ${model} rewrites every memory's triggers in the background`,
-    "  (a generation model, not the embedding model: hours of CPU on a machine without a GPU).",
-    "  Leave it off: BASTRA_TRIGGER_EXPAND=0 in the daemon's environment, then restart the daemon.",
-  ];
-  if (pulled === false) {
-    lines.push(
-      `  ⚠ ${model} is not pulled, so every paraphrase would fail: ollama pull ${model}  (or switch it off as above)`
-    );
-  }
+export function paraphrasingNotice(model: string, pulled: boolean | null, w: EmbeddingsWords = EN): string[] {
+  const lines = w.paraphrasing(model);
+  if (pulled === false) lines.push(w.paraphraseModelMissing(model));
   return lines;
 }
 
@@ -102,64 +77,68 @@ export async function cmdEmbeddings(opts: {
   /** Injectable for tests — the real probe hits the configured endpoint (#531). */
   probe?: typeof probeDaemon;
 }): Promise<number> {
+  const language = await getPrimaryLanguage(opts.settingsPath).catch(() => undefined);
+  const w = embeddingsWordsIn(language);
   switch (opts.sub) {
     case "on":
-      return cmdOn(opts.settingsPath);
+      return cmdOn(w, language, opts.settingsPath);
     case "off":
-      return cmdOff(opts.settingsPath);
+      return cmdOff(w, opts.settingsPath);
     case "status":
-      return cmdStatus(opts.settingsPath, opts.probe ?? probeDaemon);
+      return cmdStatus(w, language, opts.settingsPath, opts.probe ?? probeDaemon);
     default:
       process.stderr.write((await usageWords()).embeddings);
-      process.stderr.write(`  on      enable semantic recall (persists the setting + sets up Ollama/embeddinggemma)\n`);
-      process.stderr.write(`  off     disable semantic recall (recall = BM25 keyword search only)\n`);
-      process.stderr.write(`  status  show the effective provider, how it was resolved, and model presence\n`);
+      process.stderr.write(w.usageLines);
       return 2;
   }
 }
 
-async function cmdOn(settingsPath?: string): Promise<number> {
-  const r = await enableSemanticRecall({ dryRun: false }, settingsPath);
+async function cmdOn(w: EmbeddingsWords, language: string | undefined, settingsPath?: string): Promise<number> {
+  const r = await enableSemanticRecall({ dryRun: false, language }, settingsPath);
   write(`✓ embedding.provider = ollama`);
-  write(`  stored in ${settingsPath ?? settingsFilePath()}`);
-  write(`→ semantic recall: ${r.message}`);
+  write(w.storedIn(settingsPath ?? settingsFilePath()));
+  write(w.semanticResult(r.message));
   if (r.status === "already-active") {
-    write("  restart the daemon to apply (restart your AI client, or it applies on the next boot).");
+    write(w.restartAlreadyActive);
   }
   // Only when Ollama embeddings are what the daemon will actually run: an env
   // override to another provider means the paraphraser cannot start.
   if ((await resolveEmbeddingChoice({ path: settingsPath })).provider === "ollama") {
     const model = await resolveGenerationModel(settingsPath);
-    for (const line of paraphrasingNotice(model, await ollamaModelPulled(model))) write(line);
+    for (const line of paraphrasingNotice(model, await ollamaModelPulled(model), w)) write(line);
   }
   if (r.status === "error" || r.status === "unsupported") {
-    write("  setting saved — semantic recall turns ON once Ollama + the embeddinggemma model are ready;");
-    write(`  recall stays keyword-only (BM25) until then. Finish setup, then re-run: ${ENABLE_HINT}`);
+    write(w.onPending);
     return 1;
   }
   return 0;
 }
 
-async function cmdOff(settingsPath?: string): Promise<number> {
+async function cmdOff(w: EmbeddingsWords, settingsPath?: string): Promise<number> {
   await setEmbeddingProvider("none", settingsPath);
   write(`✓ embedding.provider = none`);
-  write(`  stored in ${settingsPath ?? settingsFilePath()}`);
-  write(`  semantic recall OFF — recall is keyword-only (BM25). Re-enable: ${ENABLE_HINT}`);
+  write(w.storedIn(settingsPath ?? settingsFilePath()));
+  write(w.offDone);
   const env = process.env.BASTRA_EMBEDDING_PROVIDER;
   if (env && env.toLowerCase() !== "none") {
-    write(`  ⚠ BASTRA_EMBEDDING_PROVIDER=${env} (env) overrides this — unset it for the setting to take effect.`);
+    write(w.envOverridesOff(env));
   }
-  write("  restart the daemon to apply (activates on next boot).");
+  write(w.restartOff);
   return 0;
 }
 
-async function cmdStatus(settingsPath?: string, probe: typeof probeDaemon = probeDaemon): Promise<number> {
+async function cmdStatus(
+  w: EmbeddingsWords,
+  language: string | undefined,
+  settingsPath?: string,
+  probe: typeof probeDaemon = probeDaemon
+): Promise<number> {
   const choice = await resolveEmbeddingChoice({ path: settingsPath });
   const fileProvider = await getEmbeddingProvider(settingsPath);
   const envRaw = process.env.BASTRA_EMBEDDING_PROVIDER;
 
-  write(`effective provider: ${choice.provider}`);
-  write(`  resolved via: ${sourceLabel(choice, fileProvider, envRaw, settingsPath)}`);
+  write(w.effectiveProvider(choice.provider));
+  write(w.resolvedVia(sourceLabel(w, choice, fileProvider, envRaw, settingsPath)));
 
   // The RUNNING daemon can differ from this shell's view: a LaunchAgent/plist
   // env sets the provider without the CLI ever seeing it (host-test find,
@@ -172,13 +151,11 @@ async function cmdStatus(settingsPath?: string, probe: typeof probeDaemon = prob
       // #531 — name the instance this came from; "the running daemon" used to
       // mean "whatever answered 6723", which need not be the configured one.
       write(
-        `  running daemon at ${p.endpoint?.label ?? "the configured endpoint"}: semantic recall ${p.semanticRecall}` +
-          (p.embeddingMode ? ` (${p.embeddingMode}, source: ${p.embeddingSource ?? "?"})` : "")
+        w.runningDaemon(p.endpoint?.label ?? w.configuredEndpoint, p.semanticRecall) +
+          (p.embeddingMode ? w.runningMode(p.embeddingMode, p.embeddingSource ?? "?") : "")
       );
       if (choice.provider === "none" && daemonOn) {
-        write(
-          "  note: the daemon runs with its own environment (e.g. LaunchAgent plist) — this shell's view only governs newly spawned daemons."
-        );
+        write(w.daemonOwnEnv);
       }
     }
   } catch {
@@ -186,42 +163,37 @@ async function cmdStatus(settingsPath?: string, probe: typeof probeDaemon = prob
   }
 
   if (choice.source === "api-key") {
-    write(`  ⚠ ${CLOUD_CONSENT_NOTE}`);
+    write(`  ⚠ ${w.cloudConsent}`);
   } else if (choice.requested === "openai" && choice.provider === "none") {
-    write(
-      "  ⚠ openai is requested but no API key is set (OPENAI_API_KEY / BASTRA_EMBEDDING_KEY) — falling back to none"
-    );
+    write(w.openaiNoKey);
   }
   if (choice.provider === "openai") {
-    write(`  egress: ${CLOUD_EGRESS_NOTE}`);
+    write(w.egress(w.cloudEgress));
   } else if (choice.provider === "ollama") {
-    write("  egress: none — embeddings run on your machine via Ollama (loopback only)");
+    write(w.egressLocal);
   }
   if (choice.source === "env" && fileProvider && envRaw && envRaw.toLowerCase() !== fileProvider) {
-    write(
-      `  note: BASTRA_EMBEDDING_PROVIDER=${envRaw} (env) overrides embedding.provider=${fileProvider} (cli-settings)`
-    );
+    write(w.envOverridesFile(envRaw, fileProvider));
   }
 
   if (choice.provider === "ollama") {
-    const o = await probeOllama();
+    const o = await probeOllama(language);
     if (!o.ok) {
-      write(`  ⚠ ${o.detail} — recall falls back to BM25. Fix: ${ENABLE_HINT}`);
+      write(w.ollamaDown(o.detail));
     } else {
       write(`  ollama: ${o.detail}`);
-      write(
-        `  model embeddinggemma: ${o.hasModel ? "present" : `MISSING — recall falls back to BM25. Fix: ${ENABLE_HINT}`}`
-      );
+      write(w.modelLine(o.hasModel));
     }
   } else if (choice.provider === "none" && !daemonOn) {
     // Suppressed when the running daemon is semantic — an OFF hint right
     // after "running daemon: on" would contradict itself.
-    write(`  ${RECALL_OFF_NOTE}`);
+    write(`  ${w.recallOff}`);
   }
   return 0;
 }
 
 function sourceLabel(
+  w: EmbeddingsWords,
   choice: EmbeddingChoice,
   fileProvider: EmbeddingProviderName | undefined,
   envRaw: string | undefined,
@@ -229,13 +201,13 @@ function sourceLabel(
 ): string {
   switch (choice.source) {
     case "env":
-      return `BASTRA_EMBEDDING_PROVIDER=${envRaw} (env — wins over cli-settings)`;
+      return w.sourceEnv(`${envRaw}`);
     case "cli-settings":
       return `embedding.provider=${fileProvider} (${settingsPath ?? settingsFilePath()})`;
     case "api-key":
-      return "default (OPENAI_API_KEY present, but no explicit provider chosen — #520)";
+      return w.sourceApiKey;
     case "none":
-      return "default (nothing configured)";
+      return w.sourceNone;
   }
 }
 
@@ -278,7 +250,10 @@ export async function installSemanticRecallStep(args: {
   dryRun: boolean;
   yes: boolean;
   ollama: "auto" | "skip" | null;
+  /** language.primary, read once by the install command; English when absent. */
+  language?: string;
 }): Promise<void> {
+  const w = embeddingsWordsIn(args.language);
   const choice = await resolveEmbeddingChoice();
   // Best-effort probe of the RUNNING daemon: a LaunchAgent/plist env can turn
   // semantic recall on without the CLI shell ever seeing it (host-test find,
@@ -303,30 +278,30 @@ export async function installSemanticRecallStep(args: {
 
   if (action === "silent") return;
   if (action === "skip") {
-    const r = await ensureOllama({ dryRun: args.dryRun, mode: "skip" });
-    write(`→ semantic recall: ${r.message}`);
+    const r = await ensureOllama({ dryRun: args.dryRun, mode: "skip", language: args.language });
+    write(w.semanticResult(r.message));
     return;
   }
   if (action === "hint") {
-    write(INSTALL_OFF_HINT);
+    write(w.installOffHint);
     return;
   }
   if (action === "prompt") {
-    const accepted = await confirm(INSTALL_PROMPT_QUESTION, { defaultYes: true });
+    const accepted = await confirm(w.installQuestion, { defaultYes: true });
     if (!accepted) {
-      write(INSTALL_OFF_HINT);
+      write(w.installOffHint);
       return;
     }
   }
   // "provision", or the prompt was accepted — same path as `bastra embeddings on`.
-  const r = await enableSemanticRecall({ dryRun: args.dryRun });
-  write(`→ semantic recall: ${r.message}`);
+  const r = await enableSemanticRecall({ dryRun: args.dryRun, language: args.language });
+  write(w.semanticResult(r.message));
   if (r.persisted && (await resolveEmbeddingChoice()).provider === "ollama") {
     const model = await resolveGenerationModel();
-    for (const line of paraphrasingNotice(model, await ollamaModelPulled(model))) write(line);
+    for (const line of paraphrasingNotice(model, await ollamaModelPulled(model), w)) write(line);
   }
   if (r.persisted && (r.status === "error" || r.status === "unsupported")) {
-    write(`  setting saved — finish setup, then re-run: ${ENABLE_HINT}`);
+    write(w.installSaved);
   }
 }
 
@@ -357,67 +332,52 @@ export function formatEmbeddingDoctorLines(i: {
     embeddingMode?: string;
     embeddingSource?: string;
   } | null;
+  /** The words to print in; English when not given. */
+  words?: EmbeddingsWords;
 }): string[] {
-  const lines: string[] = ["→ semantic recall"];
+  const w = i.words ?? EN;
+  const lines: string[] = [w.doctorHeader];
   const { choice } = i;
 
   if (choice.provider === "none") {
     if (i.daemon?.semanticRecall === "on") {
-      lines.push(
-        `  ✓ ok: running daemon uses ${i.daemon.embeddingMode ?? "semantic recall"}` +
-          ` (source: ${i.daemon.embeddingSource ?? "daemon environment"})`
-      );
+      lines.push(w.doctorDaemonOn(i.daemon.embeddingMode, i.daemon.embeddingSource));
     } else {
-      lines.push(`  note: ${RECALL_OFF_NOTE}`);
+      lines.push(w.note(w.recallOff));
     }
     if (choice.source === "api-key") {
-      lines.push(`  note: ${CLOUD_CONSENT_NOTE}`);
+      lines.push(w.note(w.cloudConsent));
     } else if (choice.requested === "openai") {
-      lines.push(
-        `  note: openai is requested (source: ${choice.source}) but no API key is set (OPENAI_API_KEY / BASTRA_EMBEDDING_KEY)`
-      );
+      lines.push(w.doctorOpenaiNoKey(choice.source));
     }
   } else if (choice.provider === "ollama") {
     if (i.probe && !i.probe.ok) {
-      lines.push(
-        `  ⚠ configured (ollama, source: ${choice.source}) but ${i.probe.detail} — recall falls back to BM25. Fix: ${ENABLE_HINT}`
-      );
+      lines.push(w.doctorOllamaDown(choice.source, i.probe.detail));
     } else if (i.probe && !i.probe.hasModel) {
-      lines.push(
-        `  ⚠ configured (ollama, source: ${choice.source}) but the embeddinggemma model is missing — recall falls back to BM25. Fix: ${ENABLE_HINT}`
-      );
+      lines.push(w.doctorModelMissing(choice.source));
     } else {
-      lines.push(
-        `  ✓ ok: ollama ${i.probe?.detail ?? "configured"}, model embeddinggemma present (source: ${choice.source})`
-      );
+      lines.push(w.doctorOllamaOk(i.probe?.detail, choice.source));
     }
   } else {
-    lines.push(`  ✓ ok: openai (source: ${choice.source}) — ${CLOUD_EGRESS_NOTE}`);
+    lines.push(w.doctorOpenaiOk(choice.source, w.cloudEgress));
   }
 
   if ((i.platform ?? process.platform) === "win32") {
-    lines.push(
-      "  note: Windows includes no bundled Ollama or automatic model setup (#84). " +
-        "Install and start external Ollama, run `ollama pull embeddinggemma`, then `bastra embeddings on`; " +
-        "or explicitly configure OpenAI with `bastra config set embedding.provider openai` and OPENAI_API_KEY / BASTRA_EMBEDDING_KEY. " +
-        "Without a working embedding provider, recall is keyword-only (BM25)."
-    );
+    lines.push(w.doctorWindows);
   }
 
   if (i.envValue && i.fileProvider && i.envValue.toLowerCase() !== i.fileProvider) {
-    lines.push(
-      `  note: BASTRA_EMBEDDING_PROVIDER=${i.envValue} (env) overrides embedding.provider=${i.fileProvider} (cli-settings)`
-    );
+    lines.push(w.envOverridesFile(i.envValue, i.fileProvider));
   }
   return lines;
 }
 
-/** Doctor's semantic-recall block: gathers state, prints, never throws. */
-export async function printEmbeddingDoctorNote(): Promise<void> {
+/** Doctor's semantic-recall block in `language` (English when absent): gathers state, prints, never throws. */
+export async function printEmbeddingDoctorNote(language?: string): Promise<void> {
   try {
     const choice = await resolveEmbeddingChoice();
     const fileProvider = await getEmbeddingProvider();
-    const probe = choice.provider === "ollama" ? await probeOllama() : null;
+    const probe = choice.provider === "ollama" ? await probeOllama(language) : null;
     let daemon: {
       semanticRecall?: string;
       embeddingMode?: string;
@@ -443,6 +403,7 @@ export async function printEmbeddingDoctorNote(): Promise<void> {
       envValue: process.env.BASTRA_EMBEDDING_PROVIDER,
       probe,
       daemon,
+      words: embeddingsWordsIn(language),
     });
     for (const line of lines) write(line);
     write("");

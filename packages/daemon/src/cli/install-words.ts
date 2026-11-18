@@ -4,7 +4,8 @@
  * German complete. The adapters' own result messages keep their wording. Text
  * the product writes — never matched against user text.
  */
-import { DEFAULT_VAULT_DISPLAY, formatStatus } from "./helpers.js";
+import { DEFAULT_VAULT_DISPLAY, VAULT_REQUIRED_ERROR, formatStatus } from "./helpers.js";
+import { CLI_DECLINED_NOTE, CLI_PACKAGE, NPX_FALLBACK_HINT } from "./cli-on-path.js";
 import { taskCliLanguage } from "./task-cli-words.js";
 
 const en = {
@@ -33,6 +34,10 @@ const en = {
     "→ semantic recall: Ollama stays configured and its login service may still run.\n" +
     "  Disable recall: bastra embeddings off\n" +
     "  Stop the service: brew services stop ollama\n\n",
+  /** The vault-required message (#1602 part C); resolveVault's own return stays English. */
+  vaultPathRequired: VAULT_REQUIRED_ERROR,
+  /** The npx-run note (#1602 part C), also shown by the setup wizard. */
+  cliDeclined: CLI_DECLINED_NOTE,
 };
 export type InstallWords = typeof en;
 
@@ -77,6 +82,12 @@ const de: InstallWords = {
     "→ semantischer Recall: Ollama bleibt eingerichtet, sein Anmeldedienst läuft womöglich weiter.\n" +
     "  Recall abschalten: bastra embeddings off\n" +
     "  Dienst stoppen: brew services stop ollama\n\n",
+  vaultPathRequired:
+    "Vault-Pfad nötig — --vault <pfad> angeben, BASTRA_VAULT_PATH setzen oder zuerst für eine andere Oberfläche einrichten (der Vault wird aus vorhandenen Registrierungen erkannt)",
+  cliDeclined:
+    `Es wurde kein 'bastra'-Befehl installiert — dieser Lauf kam aus dem npx-Zwischenspeicher.\n` +
+    `  Befehle ausführen mit: ${NPX_FALLBACK_HINT}\n` +
+    `  Jederzeit installieren: npm install -g ${CLI_PACKAGE}`,
 };
 
 export const INSTALL_WORDS: Readonly<Record<string, InstallWords>> = { en, de };

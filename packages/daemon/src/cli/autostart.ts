@@ -57,6 +57,8 @@ import { probeDaemon, resolveVault } from "./helpers.js";
 import { endpointToPersist, portOfEndpoint, resolveDaemonEndpoint } from "../daemon-endpoint.js";
 import type { ParsedArgs } from "./types.js";
 import { isOnValue } from "../env.js";
+import { autostartWordsIn, type AutostartWords } from "./autostart-words.js";
+import { taskCliLanguage } from "./task-cli-words.js";
 import {
   LAUNCH_AGENT_LABEL,
   MANAGED_AUTOSTART_MARKER as MANAGED_MARKER,
@@ -303,7 +305,8 @@ export function autostartEnv(
   platform: NodeJS.Platform = process.platform,
   existing: Record<string, string> = {},
   shell: NodeJS.ProcessEnv = process.env,
-  write?: (s: string) => void
+  write?: (s: string) => void,
+  w: AutostartWords = EN
 ): Record<string, string> {
   const env: Record<string, string> = {
     [MANAGED_MARKER]: "1",
@@ -323,7 +326,7 @@ export function autostartEnv(
   const merged: Record<string, string> = {
     ...bastraShellEnv(shell),
     ...env,
-    ...cleanManagedEnv(existing, write),
+    ...cleanManagedEnv(existing, write, w),
     [MANAGED_MARKER]: "1",
     BASTRA_VAULT_PATH: vaultPath,
   };
@@ -405,12 +408,12 @@ export function autostartService(platform: NodeJS.Platform = process.platform): 
     },
   };
 }
-function unsupported(write: (s: string) => void): boolean {
+/** The English words: the browser settings path and the defaults print these. */
+const EN = autostartWordsIn("en");
+
+function unsupported(write: (s: string) => void, w: AutostartWords): boolean {
   if (autostartService()) return false;
-  write(
-    "bastra autostart supports macOS LaunchAgents and Windows Task Scheduler.\n" +
-      "On Linux use on-demand start or a systemd user unit.\n"
-  );
+  write(w.unsupported);
   return true;
 }
 async function serviceState(): Promise<AutostartState> {
@@ -421,32 +424,25 @@ async function serviceState(): Promise<AutostartState> {
 
 export async function autostartOn(
   args: Pick<ParsedArgs, "dryRun" | "force" | "vaultPath">,
-  stageOnly = false
+  stageOnly = false,
+  w: AutostartWords = EN
 ): Promise<number> {
   const write = (s: string) => process.stdout.write(s);
-  if (unsupported(write)) return 1;
+  if (unsupported(write, w)) return 1;
 
   const state = await serviceState();
   if (state.exists && !state.managed && !args.force) {
-    process.stderr.write(
-      `error: ${state.path} already exists and was not written by bastra.\n` +
-        (state.program.length > 0 ? `  it starts: ${state.program.join(" ")}\n` : "") +
-        `  Leaving it alone — a user-defined autostart service usually points somewhere on purpose\n` +
-        `  (a source checkout, a custom model setup). Replace it with --force, or remove it first.\n`
-    );
+    process.stderr.write(w.foreign(state.path, state.program.length > 0 ? state.program.join(" ") : null));
     return 1;
   }
 
   const vault = await resolveVault({ dryRun: false, vaultPath: args.vaultPath });
   if ("error" in vault) {
-    process.stderr.write(`error: ${vault.error}\n`);
+    process.stderr.write(w.error(vault.error));
     return 2;
   }
   if (!existsSync(DAEMON_SCRIPT_PATH)) {
-    process.stderr.write(
-      `error: the daemon entry point is missing: ${DAEMON_SCRIPT_PATH}\n` +
-        `  Run the build (or reinstall) before enabling autostart.\n`
-    );
+    process.stderr.write(w.scriptMissing(DAEMON_SCRIPT_PATH));
     return 2;
   }
 
@@ -464,34 +460,28 @@ export async function autostartOn(
     process.platform,
     state.managed ? state.env : {},
     process.env,
-    write
+    write,
+    w
   );
 
   if (args.dryRun) {
-    write(`(dry-run — writing nothing)\n\n  would write ${state.path}\n`);
-    write(`  would start: ${program.join(" ")}\n  vault: ${vault.path}\n`);
-    if (endpoint !== null) write(`  endpoint: ${endpoint}\n`);
+    write(w.dryRunWrite(state.path));
+    write(w.dryRunStart(program.join(" "), vault.path));
+    if (endpoint !== null) write(w.dryRunEndpoint(endpoint));
     return 0;
   }
 
   const started = await autostartService()!.install(env, program, { reload: !stageOnly, force: args.force });
 
-  write(started.ok ? "✓ autostart on\n" : "✗ autostart could not be enabled\n");
-  write(`  service: ${state.path}\n`);
-  write(`  starts: ${program.join(" ")}\n`);
-  write(`  vault:  ${vault.path}\n`);
-  if (endpoint !== null) write(`  endpoint: ${endpoint} (persisted in the service)\n`);
+  write(w.onResult(started.ok));
+  write(w.service(state.path));
+  write(w.starts(program.join(" ")));
+  write(w.vault(vault.path));
+  if (endpoint !== null) write(w.endpointPersisted(endpoint));
   if (started.ok) {
-    write(
-      stageOnly
-        ? "  ✓ registered for the next login\n"
-        : "  ✓ loaded — the daemon stays up from now on (idle shutdown disabled)\n"
-    );
+    write(stageOnly ? w.registered : w.loaded);
   } else {
-    write(
-      `  ✗ autostart service failed: ${started.detail}\n` +
-        `    Run bastra autostart status for details and retry bastra autostart on.\n`
-    );
+    write(w.serviceFailed(started.detail));
     return 1;
   }
   return 0;
@@ -499,25 +489,25 @@ export async function autostartOn(
 
 // ─── off ────────────────────────────────────────────────────────
 
-export async function autostartOff(args: Pick<ParsedArgs, "dryRun" | "force">, stageOnly = false): Promise<number> {
+export async function autostartOff(
+  args: Pick<ParsedArgs, "dryRun" | "force">,
+  stageOnly = false,
+  w: AutostartWords = EN
+): Promise<number> {
   const write = (s: string) => process.stdout.write(s);
-  if (unsupported(write)) return 1;
+  if (unsupported(write, w)) return 1;
 
   const state = await serviceState();
   if (!state.exists) {
-    write("autostart is already off — no autostart service installed.\n");
-    write("  The daemon still starts on demand when an AI client calls it.\n");
+    write(w.alreadyOff);
     return 0;
   }
   if (!state.managed && !args.force) {
-    process.stderr.write(
-      `error: ${state.path} was not written by bastra — leaving it alone.\n` +
-        `  Remove it with --force, or delete the file yourself.\n`
-    );
+    process.stderr.write(w.notOurs(state.path));
     return 1;
   }
   if (args.dryRun) {
-    write(`(dry-run — writing nothing)\n\n  would unload and remove ${state.path}\n`);
+    write(w.dryRunRemove(state.path));
     return 0;
   }
 
@@ -527,23 +517,18 @@ export async function autostartOff(args: Pick<ParsedArgs, "dryRun" | "force">, s
     ? await unlink(state.path).then(() => ({ ok: true, detail: "" }))
     : await autostartService()!.uninstall({ force: args.force });
   if (!removed.ok) {
-    process.stderr.write(`error: ${removed.detail}\n`);
+    process.stderr.write(w.error(removed.detail));
     return 1;
   }
-  write("✓ autostart off\n");
-  write(`  removed ${state.path}\n`);
-  write(
-    stageOnly
-      ? "  Login registration removed; the running daemon is unchanged.\n"
-      : "  The daemon still starts on demand through the MCP forwarder,\n"
-  );
-  if (!stageOnly) write("  and shuts down again after 30 minutes idle.\n");
+  write(w.off);
+  write(w.removed(state.path));
+  write(stageOnly ? w.offStaged : w.offOnDemand);
   return 0;
 }
 
 // ─── status ─────────────────────────────────────────────────────
 
-async function autostartStatus(args: ParsedArgs): Promise<number> {
+async function autostartStatus(args: ParsedArgs, w: AutostartWords): Promise<number> {
   const state = await serviceState();
   const probe = await probeDaemon();
 
@@ -576,40 +561,32 @@ async function autostartStatus(args: ParsedArgs): Promise<number> {
   }
 
   const write = (s: string) => process.stdout.write(s);
-  write("→ autostart\n");
+  write(w.statusHeader);
   if (!autostartService()) {
-    write("  · unsupported platform — this system uses on-demand start through the MCP forwarder\n\n");
+    write(w.statusUnsupported);
     return 0;
   }
   if (!state.exists) {
-    write("  off — the daemon starts on demand and shuts down after 30 min idle\n");
-    write(`  turn it on with: bastra autostart on\n\n`);
+    write(w.statusOff);
     return 0;
   }
-  write(`  ${state.loaded ? "on" : "installed but NOT loaded"} — ${state.path}\n`);
-  write(`  owner:  ${state.managed ? "bastra" : "hand-written (bastra will not touch it)"}\n`);
-  if (state.program.length > 0) write(`  starts: ${state.program.join(" ")}\n`);
+  write(w.statusState(state.loaded, state.path));
+  write(w.owner(state.managed));
+  if (state.program.length > 0) write(w.starts(state.program.join(" ")));
   if (state.danglingProgram) {
-    write(
-      `  ⚠ ${state.missingProgramPath} does not exist any more — the autostart points at a\n` +
-        `    runtime that was moved or removed. Fix it with: bastra autostart on\n`
-    );
+    write(w.dangling(`${state.missingProgramPath}`));
   }
   const endpoint = probe.endpoint ?? resolveDaemonEndpoint();
   write(
     probe.ok
-      ? `  daemon: running at ${endpoint.label}${probe.version ? ` (${probe.version})` : ""}\n`
-      : `  daemon: not reachable at ${endpoint.label}\n`
+      ? w.daemonRunning(endpoint.label, probe.version ? ` (${probe.version})` : "")
+      : w.daemonDown(endpoint.label)
   );
   // #531: a LaunchAgent that starts a daemon on one port while this CLI probes
   // another is exactly the split that made status describe two machines as one.
   const plistPort = portOfEndpoint(state.endpoint);
   if (state.managed && plistPort !== null && plistPort !== endpoint.port) {
-    write(
-      `  ⚠ the autostart service starts the daemon on port ${plistPort}, but this shell is\n` +
-        `    configured for ${endpoint.label} — the line above describes ${endpoint.label}, not the\n` +
-        `    autostarted daemon. Re-run 'bastra autostart on' to agree on one endpoint.\n`
-    );
+    write(w.portSplit(plistPort, endpoint.label));
   }
   write("\n");
   return 0;
@@ -677,10 +654,12 @@ export async function refreshManagedAutostart(
     launchctl?: string;
     plutil?: string;
     platform?: NodeJS.Platform;
-  }
+  },
+  /** The words to print in (language.primary of the update run); English when absent. */
+  w: AutostartWords = EN
 ): Promise<RefreshOutcome> {
   if ((opts.platform ?? process.platform) === "win32") {
-    return refreshWindowsAutostart(write, opts, windowsService());
+    return refreshWindowsAutostart(write, opts, windowsService(), w);
   }
   if ((opts.platform ?? process.platform) !== "darwin") return { ok: true, detail: "unsupported platform" };
   const launchctl = opts.launchctl ?? LAUNCHCTL;
@@ -690,10 +669,7 @@ export async function refreshManagedAutostart(
   if (!state.exists || !state.managed) return { ok: true, detail: "no managed autostart" };
 
   if (!opts.target) {
-    write(
-      `  ✗ could not resolve where the installer put the daemon — leaving the autostart at\n` +
-        `    ${state.program[1] ?? "an unknown path"}. Run 'bastra autostart on' from the new install.\n`
-    );
+    write(w.notResolved(state.program[1] ?? w.unknownPath));
     return { ok: false, detail: "installed runtime not resolved" };
   }
 
@@ -710,26 +686,26 @@ export async function refreshManagedAutostart(
     // Create private from the first write; chmod after copy leaves an exposure window.
     await writeFile(snapshot, await safeLaunchAgentSnapshot(path, state.env, plutil), { mode: 0o600, flag: "wx" });
     await chmod(path, 0o600);
-    write(`  ✓ LaunchAgent snapshot: ${snapshot}\n`);
+    write(w.snapshot(snapshot));
   } catch (err) {
-    write(`  ✗ could not snapshot ${path}: ${(err as Error).message}\n`);
+    write(w.snapshotFailed(path, (err as Error).message));
     return { ok: false, detail: "LaunchAgent snapshot failed" };
   }
 
   const program = [opts.target.node, opts.target.script];
   const pointsAtInstall = state.program.length === program.length && state.program.every((p, i) => p === program[i]);
-  const env = { ...bastraShellEnv(opts.env ?? process.env), ...cleanManagedEnv(state.env, write) };
+  const env = { ...bastraShellEnv(opts.env ?? process.env), ...cleanManagedEnv(state.env, write, w) };
   const envChanged =
     Object.keys(env).length !== Object.keys(state.env).length ||
     Object.keys(env).some((key) => env[key] !== state.env[key]);
   if (!pointsAtInstall || envChanged) {
-    write(`→ autostart points at ${state.program[1] ?? "an unknown path"} — repointing it at the installed runtime\n`);
+    write(w.repointing(state.program[1] ?? w.unknownPath));
     try {
       // The existing environment is authoritative. Reconstructing defaults here
       // loses provider, retention and other settings before the next boot.
       await writePlistAtomically(path, renderPlist(env, program));
     } catch (err) {
-      write(`  ✗ could not rewrite ${path}: ${(err as Error).message}\n`);
+      write(w.rewriteFailed(path, (err as Error).message));
       return { ok: false, detail: (err as Error).message };
     }
   }
@@ -738,7 +714,7 @@ export async function refreshManagedAutostart(
     const uid = String(process.getuid?.() ?? 0);
     if (state.loaded) {
       if (!bootout(uid, launchctl)) {
-        write("  ✗ bootout failed; service was not reloaded\n");
+        write(w.bootoutFailed);
         return { ok: false, detail: "bootout failed; service was not reloaded" };
       }
       await delay(2000);
@@ -748,7 +724,7 @@ export async function refreshManagedAutostart(
       const detail = state.loaded
         ? `bootstrap failed after bootout; service is stopped: ${started.detail}`
         : `bootstrap failed; service is not running: ${started.detail}`;
-      write(`  ✗ ${detail}\n  Recover with: launchctl bootstrap gui/${uid} "${path}"\n`);
+      write(w.bootstrapFailed(state.loaded, started.detail, uid, path));
       return { ok: false, detail };
     }
   }
@@ -757,29 +733,22 @@ export async function refreshManagedAutostart(
   // nennt und die auch auf der Platte liegt, darf das hier Erfolg melden.
   const after = await readState(path, launchctl, plutil);
   if (after.program[0] !== opts.target.node || after.program[1] !== opts.target.script) {
-    write(
-      `  ✗ the autostart still names ${after.program.join(" ") || "nothing"} — expected ` +
-        `${opts.target.node} ${opts.target.script}\n`
-    );
+    write(w.stillNames(after.program.join(" "), `${opts.target.node} ${opts.target.script}`));
     return { ok: false, detail: "verification failed" };
   }
   if (after.danglingProgram) {
-    write(`  ✗ the autostart names ${after.missingProgramPath}, which is not on disk\n`);
+    write(w.namesMissing(`${after.missingProgramPath}`));
     return { ok: false, detail: "verification failed" };
   }
   // Existieren reicht beim Binary nicht: launchd exec()t es, ein kaputter
   // Symlink oder ein nicht ausführbarer Rest eines aufgeräumten Kegs ist genau
   // so tot wie ein fehlender Pfad.
   if (!isRunnableNode(after.program[0])) {
-    write(`  ✗ ${after.program[0]} does not run as node — the autostart would not come up\n`);
+    write(w.notNode(after.program[0]));
     return { ok: false, detail: "node binary not runnable" };
   }
   const version = opts.target.version ? ` (${opts.target.version})` : "";
-  write(
-    opts.reload
-      ? `  ✓ autostart now runs ${opts.target.script}${version}\n`
-      : `  ✓ autostart now names ${opts.target.script}${version} — staged, so the running agent was left alone\n`
-  );
+  write(w.nowRuns(opts.reload, opts.target.script, version));
   return { ok: true, detail: opts.target.script };
 }
 
@@ -787,7 +756,8 @@ export async function refreshManagedAutostart(
 export async function refreshWindowsAutostart(
   write: (s: string) => void,
   opts: { target: InstalledRuntime | null; reload: boolean },
-  service: AutostartService
+  service: AutostartService,
+  w: AutostartWords = EN
 ): Promise<RefreshOutcome> {
   const state = await service.status();
   if (!state.exists || !state.managed) return { ok: true, detail: "no managed autostart" };
@@ -804,51 +774,44 @@ export async function refreshWindowsAutostart(
     after.danglingProgram
   )
     return { ok: false, detail: "verification failed" };
-  write(
-    opts.reload
-      ? "  ✓ managed Task Scheduler service restarted with the installed runtime\n"
-      : "  ✓ managed Task Scheduler service updated; running daemon left alone (staged)\n"
-  );
+  write(w.windowsRefreshed(opts.reload));
   return { ok: true, detail: opts.target.script };
 }
 
-/** Was `bastra doctor` über den Autostart zu sagen hat — `null`, wenn nichts. */
+/** Was `bastra doctor` über den Autostart zu sagen hat — `null`, wenn nichts. `w`: die Sprache des Doctor-Laufs. */
 export async function autostartWarning(
   service = autostartService(),
   clientEnv: NodeJS.ProcessEnv = process.env,
   backupDir = join(homedir(), ".bastra", "backups"),
-  launchAgentsDir = dirname(plistPath())
+  launchAgentsDir = dirname(plistPath()),
+  w: AutostartWords = EN
 ): Promise<string | null> {
   const warnings = await Promise.all([
-    managedServiceWarning(service, clientEnv),
-    legacySnapshotWarning(backupDir),
-    launchAgentBackupWarning(launchAgentsDir, LAUNCH_AGENT_LABEL),
+    managedServiceWarning(service, clientEnv, w),
+    legacySnapshotWarning(backupDir, w),
+    launchAgentBackupWarning(launchAgentsDir, LAUNCH_AGENT_LABEL, w),
   ]);
   return warnings.filter(Boolean).join("; ") || null;
 }
 
 async function managedServiceWarning(
   service: AutostartService | null,
-  clientEnv: NodeJS.ProcessEnv
+  clientEnv: NodeJS.ProcessEnv,
+  w: AutostartWords
 ): Promise<string | null> {
   if (!service) return null;
   let state: AutostartState;
   try {
     state = await service.status();
   } catch (error) {
-    return `could not query autostart service: ${(error as Error).message}`;
+    return w.queryFailed((error as Error).message);
   }
   if (!state.exists) return null;
   if (state.danglingProgram) {
-    return (
-      `autostart names ${state.missingProgramPath}, which does not exist any more — ` +
-      (state.managed
-        ? `run 'bastra autostart on' to repoint it.`
-        : `it is hand-written, so fix it yourself or replace it with 'bastra autostart on --force'.`)
-    );
+    return w.danglingWarning(`${state.missingProgramPath}`, state.managed);
   }
   if (state.exists && !state.loaded) {
-    return `an autostart service is installed at ${state.path} but not running — run 'bastra autostart on'.`;
+    return w.notRunningWarning(state.path);
   }
   if (state.managed && state.loaded) {
     // All snapshots belong to this account's settings. tasksEnabled deliberately
@@ -860,26 +823,27 @@ async function managedServiceWarning(
       env.BASTRA_TASKS === undefined ? storedTasks : tasksEnabled(env);
     const loaded = state.loadedEnv;
     if (loaded && effectiveTasks(loaded) !== effectiveTasks(state.env)) {
-      return "BASTRA_TASKS in the plist differs from launchd: reload with bootout + bootstrap (kickstart does not reload plist env).";
+      return w.tasksPlistDrift;
     }
     if (effectiveTasks(clientEnv) !== effectiveTasks(loaded ?? state.env)) {
-      return "BASTRA_TASKS differs between this client environment and the managed daemon service — align the task setting and reload the service with bootout + bootstrap.";
+      return w.tasksClientDrift;
     }
   }
   return null;
 }
 
 export async function cmdAutostart(args: ParsedArgs): Promise<number> {
+  const w = autostartWordsIn(await taskCliLanguage().catch(() => "en"));
   switch (args.surface) {
     case "on":
-      return autostartOn(args);
+      return autostartOn(args, false, w);
     case "off":
-      return autostartOff(args);
+      return autostartOff(args, false, w);
     case "status":
     case null:
-      return autostartStatus(args);
+      return autostartStatus(args, w);
     default:
-      process.stderr.write(`error: unknown autostart subcommand '${args.surface}' — use on, off or status\n`);
+      process.stderr.write(w.unknownSub(`${args.surface}`));
       return 2;
   }
 }

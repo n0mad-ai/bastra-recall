@@ -6,7 +6,6 @@
  * for the next session stays English. Text the product writes — never matched
  * against user text.
  */
-import { taskCliLanguage } from "./task-cli-words.js";
 
 const patches = (n: number) => `${n} local patch${n === 1 ? "" : "es"}`;
 const patchesDe = (n: number) => `${n} lokale${n === 1 ? "r Patch" : " Patches"}`;
@@ -249,8 +248,4 @@ export const UPDATE_WORDS: Readonly<Record<string, UpdateWords>> = { en, de };
 /** The words in `language`; English for an unset or unlisted one. */
 export function updateWordsIn(language: string | undefined): UpdateWords {
   return UPDATE_WORDS[language ?? "en"] ?? en;
-}
-/** The words in language.primary, read once per run (English when unset or unreadable). */
-export async function updateWords(): Promise<UpdateWords> {
-  return updateWordsIn(await taskCliLanguage().catch(() => "en"));
 }

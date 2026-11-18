@@ -8,7 +8,7 @@
  * Pro Mac app.
  */
 import { getJson } from "../prompt-loopback.js";
-import { VERSION, VERSION_DRIFT_HINT } from "./helpers.js";
+import { VERSION } from "./helpers.js";
 import type { CodeStale } from "../code-staleness.js";
 import { probeOllama } from "./ollama.js";
 import {
@@ -107,7 +107,7 @@ export function formatVersionRows(
     return [[w.version, `${i.cliVersion}  ${status}`]];
   }
   return [
-    [w.version, w.drift(i.cliVersion, VERSION_DRIFT_HINT)],
+    [w.version, w.drift(i.cliVersion, w.driftHint)],
     ["", w.daemonStatus(i.daemonVersion, status)],
   ];
 }

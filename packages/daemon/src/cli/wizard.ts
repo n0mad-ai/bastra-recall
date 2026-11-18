@@ -38,14 +38,9 @@ import { FORWARDER_SCRIPT_PATH } from "./paths.js";
 import { ensureDaemonRunning, type DaemonStartOutcome } from "./daemon-start.js";
 import { mapUrl } from "./map-cmd.js";
 import { findExecutable } from "./exec.js";
-import {
-  CLI_DECLINED_NOTE,
-  CLI_PACKAGE,
-  decideCliOnPath,
-  formatGlobalInstallOutcome,
-  installCliGlobally,
-} from "./cli-on-path.js";
-import { RECALL_OFF_NOTE } from "./embeddings-cmd.js";
+import { CLI_PACKAGE, decideCliOnPath, formatGlobalInstallOutcome, installCliGlobally } from "./cli-on-path.js";
+import { embeddingsWordsIn } from "./embeddings-words.js";
+import { installWordsIn } from "./install-words.js";
 import { enableSemanticRecall, enableGenerationModel, probeOllama, ollamaModelPresent } from "./ollama.js";
 import { detectHardware, recommendTextModel } from "./hardware.js";
 import { cmdCommons } from "./commons.js";
@@ -746,7 +741,7 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
     // No spinner here on purpose: brew/ollama stream their own progress to
     // stdout (a ~620 MB download deserves a real progress bar, not a spinner).
     p.log.step(w.semanticSetup);
-    const r = await enableSemanticRecall({ dryRun: false });
+    const r = await enableSemanticRecall({ dryRun: false, language: language.language });
     if (r.status === "error" || r.status === "unsupported") {
       p.log.warn(w.semanticSaved(r.message));
     } else if (r.activated) {
@@ -758,7 +753,7 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
       p.log.warn(w.semanticResult(r.message));
     }
   } else if (semantic === "later") {
-    p.log.info(RECALL_OFF_NOTE);
+    p.log.info(embeddingsWordsIn(language.language).recallOff);
   }
 
   // Text model rides on the Ollama server semantic recall uses. Skip it on the
@@ -767,7 +762,7 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   // download would be dead weight. The "already" path was gated up front.
   if (textModel && semanticOk) {
     p.log.step(w.pulling(textModel));
-    const gr = await enableGenerationModel(textModel, { dryRun: false });
+    const gr = await enableGenerationModel(textModel, { dryRun: false, language: language.language });
     if (gr.activated) p.log.success(w.textModelResult(gr.message));
     else p.log.warn(w.textModelLater(gr.message, textModel));
   }
@@ -816,7 +811,7 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
       if (line.level === "success") p.log.success(line.text);
       else p.log.warn(line.text);
     } else {
-      p.log.info(CLI_DECLINED_NOTE);
+      p.log.info(installWordsIn(language.language).cliDeclined);
     }
   }
 

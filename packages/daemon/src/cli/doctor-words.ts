@@ -6,7 +6,7 @@
  * never matched against user text.
  */
 import { installWordsIn, type InstallWords } from "./install-words.js";
-import { taskCliLanguage } from "./task-cli-words.js";
+import { VERSION_DRIFT_HINT } from "./helpers.js";
 
 const en = {
   fix: (label: string, message: string) => `  fix: ${label}: ${message}\n`,
@@ -30,6 +30,7 @@ const en = {
   bothVersions: (label: string, version: string) => `  ${label}: cli and daemon both ${version}\n\n`,
   versionDrift: (cli: string, daemon: string, hint: string) =>
     `  ⚠ version drift: cli ${cli}, daemon ${daemon} — ${hint}\n\n`,
+  driftHint: VERSION_DRIFT_HINT,
 };
 type DoctorOwnWords = typeof en;
 export type DoctorWords = DoctorOwnWords & InstallWords;
@@ -54,14 +55,11 @@ const de: DoctorOwnWords = {
   noDaemon: (version) => `  · CLI ${version} (kein laufender Daemon zum Vergleich)\n\n`,
   bothVersions: (label, version) => `  ${label}: CLI und Daemon beide ${version}\n\n`,
   versionDrift: (cli, daemon, hint) => `  ⚠ Versionen weichen ab: CLI ${cli}, Daemon ${daemon} — ${hint}\n\n`,
+  driftHint: "KI-Client neu starten, damit der Daemon neu geladen wird",
 };
 
 export const DOCTOR_WORDS: Readonly<Record<string, DoctorOwnWords>> = { en, de };
 /** The words in `language`, with the install lines; English for an unset or unlisted one. */
 export function doctorWordsIn(language: string | undefined): DoctorWords {
   return { ...installWordsIn(language), ...(DOCTOR_WORDS[language ?? "en"] ?? en) };
-}
-/** The words in language.primary, read once per run (English when unset or unreadable). */
-export async function doctorWords(): Promise<DoctorWords> {
-  return doctorWordsIn(await taskCliLanguage().catch(() => "en"));
 }

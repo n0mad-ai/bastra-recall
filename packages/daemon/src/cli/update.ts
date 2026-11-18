@@ -34,7 +34,9 @@ import { describeLiveRevision, liveRevisionOfDaemon } from "./live-revision.js";
 import { clearBlockedUpdate, recordBlockedUpdate } from "../update-blocked.js";
 import { unsupportedNode } from "../node-support.js";
 import type { ParsedArgs } from "./types.js";
-import { updateWords, updateWordsIn, type UpdateWords } from "./update-words.js";
+import { updateWordsIn, type UpdateWords } from "./update-words.js";
+import { taskCliLanguage } from "./task-cli-words.js";
+import { autostartWordsIn, type AutostartWords } from "./autostart-words.js";
 
 /** The hand-off note of the npx re-registration; English when no words are given. */
 function sayHandingOff(bin: string, w: UpdateWords = updateWordsIn("en")): void {
@@ -521,10 +523,12 @@ async function refuseOnUnsupportedNode(args: ParsedArgs, io: UpdateIo, w: Update
 }
 
 export async function cmdUpdate(args: ParsedArgs, io: UpdateIo = {}): Promise<number> {
-  const w = await updateWords();
+  // language.primary, read once per run (English when unset or unreadable).
+  const language = await taskCliLanguage().catch(() => "en");
+  const w = updateWordsIn(language);
   try {
     if (await refuseOnUnsupportedNode(args, io, w)) return 1;
-    return await performUpdate(args, io, w);
+    return await performUpdate(args, io, w, autostartWordsIn(language));
   } catch (error) {
     process.stderr.write(w.stopped((error as Error).message));
     return 1;
@@ -543,9 +547,16 @@ interface UpdateRun {
   runsInstaller: boolean;
   /** The words in language.primary, read once at the start. */
   w: UpdateWords;
+  /** The autostart refresh's words, in the same language. */
+  autostartWords: AutostartWords;
 }
 
-async function performUpdate(args: ParsedArgs, io: UpdateIo, w: UpdateWords): Promise<number> {
+async function performUpdate(
+  args: ParsedArgs,
+  io: UpdateIo,
+  w: UpdateWords,
+  autostartWords: AutostartWords
+): Promise<number> {
   const platform = io.platform ?? process.platform;
   const mode = detectInstallMode(io.cliPath);
   if (args.staged) {
@@ -569,6 +580,7 @@ async function performUpdate(args: ParsedArgs, io: UpdateIo, w: UpdateWords): Pr
     preflightSupported: hasInPlacePreflight(mode.mode),
     runsInstaller: mode.mode === "brew" || mode.mode === "npm-global",
     w,
+    autostartWords,
   };
 
   // Everything below the dry-run runs for real only: the plan returns here.
@@ -668,11 +680,15 @@ async function guardInstall(u: UpdateRun): Promise<boolean> {
 
 /** Step 3: point the managed autostart at the new runtime; false = it could not. */
 async function pointAutostart(u: UpdateRun, installed: InstalledRuntime | null): Promise<boolean> {
-  const autostart = await (u.io.refresh ?? refreshManagedAutostart)((s) => process.stdout.write(s), {
-    target: installed,
-    reload: !u.args.staged,
-    platform: u.platform,
-  });
+  const autostart = await (u.io.refresh ?? refreshManagedAutostart)(
+    (s) => process.stdout.write(s),
+    {
+      target: installed,
+      reload: !u.args.staged,
+      platform: u.platform,
+    },
+    u.autostartWords
+  );
   if (autostart.ok) return true;
   process.stdout.write(u.w.autostartFailed);
   return false;

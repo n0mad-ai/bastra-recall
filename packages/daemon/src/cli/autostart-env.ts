@@ -2,14 +2,22 @@
 import { spawnSync } from "node:child_process";
 import { lstat, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { autostartWordsIn, type AutostartWords } from "./autostart-words.js";
+
+/** English unless the caller passes the words of its run (#1602). */
+const EN = autostartWordsIn("en");
 
 export const LEGACY_AUTOSTART_CREDENTIALS = ["BASTRA_API_TOKEN", "BASTRA_EMBEDDING_KEY", "BASTRA_TASK_TOKEN"] as const;
 
-export function cleanManagedEnv(env: Record<string, string>, write?: (s: string) => void): Record<string, string> {
+export function cleanManagedEnv(
+  env: Record<string, string>,
+  write?: (s: string) => void,
+  w: AutostartWords = EN
+): Record<string, string> {
   const clean = { ...env };
   const removed = LEGACY_AUTOSTART_CREDENTIALS.filter((key) => Object.hasOwn(clean, key));
   for (const key of removed) delete clean[key];
-  if (removed.length) write?.(`  ⚠ omitting legacy credential keys from managed environment: ${removed.join(", ")}\n`);
+  if (removed.length) write?.(w.legacyKeys(removed.join(", ")));
   return clean;
 }
 
@@ -42,7 +50,7 @@ export async function safeLaunchAgentSnapshot(
 }
 
 /** Never chmod, rewrite or inspect contents of historical backups. */
-export async function legacySnapshotWarning(backupDir: string): Promise<string | null> {
+export async function legacySnapshotWarning(backupDir: string, w: AutostartWords = EN): Promise<string | null> {
   const files = await readdir(backupDir).catch(() => []);
   let readable = 0;
   for (const name of files) {
@@ -50,9 +58,7 @@ export async function legacySnapshotWarning(backupDir: string): Promise<string |
     const info = await lstat(join(backupDir, name)).catch(() => null);
     if (info?.isFile() && (info.mode & 0o077) !== 0) readable++;
   }
-  return readable
-    ? `${readable} legacy LaunchAgent snapshot(s) are readable beyond the owner; old snapshots were left unchanged. Review their permissions and any legacy credentials separately.`
-    : null;
+  return readable ? w.legacySnapshots(readable) : null;
 }
 
 /**
@@ -62,7 +68,11 @@ export async function legacySnapshotWarning(backupDir: string): Promise<string |
  * them. Read-only like the check above: report path and a repair command,
  * never chmod, delete or read the contents.
  */
-export async function launchAgentBackupWarning(launchAgentsDir: string, label: string): Promise<string | null> {
+export async function launchAgentBackupWarning(
+  launchAgentsDir: string,
+  label: string,
+  w: AutostartWords = EN
+): Promise<string | null> {
   const files = await readdir(launchAgentsDir).catch(() => []);
   const exposed: string[] = [];
   for (const name of files.sort()) {
@@ -73,5 +83,5 @@ export async function launchAgentBackupWarning(launchAgentsDir: string, label: s
   }
   if (!exposed.length) return null;
   const quoted = exposed.map((p) => `'${p.replaceAll("'", `'\\''`)}'`).join(" ");
-  return `${exposed.length} LaunchAgent backup copy(ies) are readable beyond the owner and may hold environment values: ${exposed.join(", ")}. Restrict them with: chmod 600 ${quoted}`;
+  return w.exposedBackups(exposed.length, exposed.join(", "), quoted);
 }
