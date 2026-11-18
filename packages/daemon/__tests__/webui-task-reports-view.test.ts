@@ -588,3 +588,26 @@ test("N4: a report with open notes reads 'In progress' instead of 'New', in the 
   assert.ok(!fresh.classList.contains("is-work"));
   assert.equal(byClass(read, "mb-row__ai").length, 0);
 });
+
+test("state: 'Question' in the list opens the follow-up; its head leads back; 'Done' is calm", async () => {
+  const { v, host, context } = await view();
+  (context.data as { reports: unknown }).reports = v.reportRows({
+    reports: [
+      { ...REPORTS[0], status: "question", follow_up: { id: ID(2), title: REPORTS[1].title } },
+      { ...REPORTS[1], status: "new", follow_up_of: { id: ID(1), title: REPORTS[0].title } },
+      { ...REPORTS[2], status: "done" },
+    ],
+  });
+  await v.openReports();
+  const [asked, , done] = listRows(host);
+  assert.ok(asked.classList.contains("is-work"), "a question is amber");
+  assert.ok(!done.classList.contains("is-work"));
+  assert.equal(one(done, "mb-row__ai").textContent, "tk.rep.doneState");
+  await one(asked, "tk-rv__ask").click();
+  assert.equal(v.R.sel, ID(2), "the follow-up is open");
+  const back = one(one(host, "tk-rep__head"), "tk-rep__about");
+  assert.equal(back.textContent, `tk.rep.askedAbout {"t":"${REPORTS[0].title}"}`);
+  await back.click();
+  assert.equal(v.R.sel, ID(1));
+  assert.equal(one(one(host, "tk-rep__head"), "tk-rep__state").textContent, "tk.rep.question");
+});

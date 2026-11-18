@@ -779,3 +779,39 @@ li.tk-an__card.is-done > .tk-an__subj::before {
 .tk-rep__undo {
   margin: 16px 26px 0;
 }
+
+/* The report's state (Daniel 18.11.2026; js/sections/tasks-reports-status.js). "Done" is calm: the
+   "ok" green, no fill. "Question" is amber like the other open states and jumps to the follow-up. */
+.tk-rv__done {
+  color: var(--ok);
+  opacity: 0.8;
+}
+.tk-rv__ask {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.tk-rep__state {
+  padding: 2px 7px 1px;
+  font: inherit;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+/* a follow-up's head: "Question about: …" on one line, shortened, a button back to that report */
+.tk-rep__about {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--amber);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.tk-rep__about:hover,
+.tk-rep__about:focus-visible {
+  text-decoration: underline;
+}

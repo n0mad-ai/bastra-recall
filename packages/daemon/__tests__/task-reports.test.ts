@@ -54,8 +54,10 @@ test("save → list → read → mark → delete keeps the report text exactly; 
     "id",
     "origin",
     "project",
+    "status",
     "title",
   ]);
+  assert.equal(listed.reports[0].status, "new");
   assert.equal(listed.reports[0].actor, "claude");
   assert.deepEqual(listed.reports[0].origin, { client: "claude-code", session: "s-1" });
 
@@ -127,6 +129,8 @@ test("INV-TASK-05: invalid input is rejected, never shortened or stored", async 
     report({ origin: undefined }),
     report({ project: "" }),
     report({ html: "<b>x</b>" }),
+    report({ follow_up_of: "" }),
+    report({ follow_up_of: "not-a-report-id" }),
   ];
   for (const input of bad) await assert.rejects(f.call("task_report_save", input), (e) => e instanceof z.ZodError);
   await assert.rejects(f.call("task_report_read", { id: "../../etc" }), (e) => e instanceof z.ZodError);

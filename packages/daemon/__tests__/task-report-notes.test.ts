@@ -47,7 +47,7 @@ async function fixture() {
 }
 const anchor = { kind: "item", index: 2, excerpt: "Preis- und Abrechnungsmodell für Pulse" };
 
-test("add → hand over → read → done → edit → delete; the read state never moves", async () => {
+test("add → hand over → read → done → edit → delete; only the sign-off moves the read state", async () => {
   const f = await fixture();
   f.setNow(2_000);
   const added = await f.call("task_report_note_add", {
@@ -115,7 +115,9 @@ test("add → hand over → read → done → edit → delete; the read state ne
   await assert.rejects(f.call("task_report_note_delete", { id: f.report.id, note_id: added.note.id }), {
     code: "not_found",
   });
-  assert.equal((await f.call("task_report_list", {})).unread, 1, "still unread after all of it");
+  // Notes never move the read state; the agent's sign-off on the last handed-over note (done above)
+  // does, and editing or deleting the note afterwards does not undo it (Daniel 18.11.2026).
+  assert.equal((await f.call("task_report_list", {})).unread, 0, "read since the sign-off");
 });
 
 test("INV-TASK-03: an agent sees handed-over and done notes only; an edited note is a draft again", async () => {

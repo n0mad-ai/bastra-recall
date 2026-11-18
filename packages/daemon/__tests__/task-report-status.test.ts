@@ -1,0 +1,257 @@
+// The one state a report shows in the owner's list (Daniel 18.11.2026): New, In progress, Handed
+// over, Done, Question. Derivation rules as a table, the agent's sign-off (closing the last
+// handed-over note marks the report read), and the follow-up link a question report carries.
+import "./tasks-opt-in.js";
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { mintTaskCredential } from "../src/task-auth.js";
+import { callTaskCrud } from "../src/task-service.js";
+import { asksOwner, reportStatus, type StatusNote, type StatusReport } from "../src/task-report-status.js";
+
+type R = StatusReport & { notes: StatusNote[] };
+const draft: StatusNote = { state: "open" };
+const handed: StatusNote = { state: "open", handed_at: 5 };
+const done: StatusNote = { state: "done", handed_at: 5 };
+const ASK = "- Ship it now? [? Yes | No]";
+const base = (extra: Partial<R> = {}): R => ({ id: "a", title: "A", body: "text", created_at: 1, notes: [], ...extra });
+const followUp = (extra: Partial<R> = {}): R =>
+  base({ id: "f", title: "F", body: ASK, created_at: 2, follow_up_of: "a", ...extra });
+
+test("status: every derivation rule", () => {
+  const rows: [string, R, R[], ReturnType<typeof reportStatus>][] = [
+    ["unread, no notes → new", base(), [], { status: "new" }],
+    ["read, no notes → read", base({ read_at: 3 }), [], { status: "read" }],
+    ["a draft → in_progress", base({ notes: [draft, done] }), [], { status: "in_progress" }],
+    ["a draft beside a handed note → in_progress", base({ notes: [draft, handed] }), [], { status: "in_progress" }],
+    ["all handed, one open → handed", base({ notes: [handed, done] }), [], { status: "handed" }],
+    ["all notes closed → done", base({ notes: [done] }), [], { status: "done" }],
+    ["all closed, put back to unread → done", base({ notes: [done], read_at: undefined }), [], { status: "done" }],
+    [
+      "follow-up with a question → question",
+      base({ notes: [done], read_at: 3 }),
+      [followUp()],
+      { status: "question", follow_up: { id: "f", title: "F" } },
+    ],
+    [
+      "question without any notes on the report",
+      base(),
+      [followUp()],
+      { status: "question", follow_up: { id: "f", title: "F" } },
+    ],
+    ["follow-up done → back to done", base({ notes: [done] }), [followUp({ notes: [done] })], { status: "done" }],
+    [
+      "follow-up handed over still asks",
+      base({ notes: [done] }),
+      [followUp({ notes: [handed] })],
+      { status: "question", follow_up: { id: "f", title: "F" } },
+    ],
+    [
+      "follow-up without answer options is no question",
+      base({ notes: [done] }),
+      [followUp({ body: "Just info." })],
+      { status: "done" },
+    ],
+    [
+      "a report about another one is no question here",
+      base({ notes: [done] }),
+      [followUp({ follow_up_of: "x" })],
+      { status: "done" },
+    ],
+    ["own drafts come before a question", base({ notes: [draft] }), [followUp()], { status: "in_progress" }],
+    ["handed notes come before a question", base({ notes: [handed] }), [followUp()], { status: "handed" }],
+    [
+      "the newest open follow-up is named",
+      base(),
+      [followUp(), followUp({ id: "g", title: "G", created_at: 9 })],
+      { status: "question", follow_up: { id: "g", title: "G" } },
+    ],
+  ];
+  for (const [name, report, others, want] of rows)
+    assert.deepEqual(
+      reportStatus(report, [report, ...others], (r) => r.notes),
+      want,
+      name
+    );
+});
+
+test("status: questions are recognised by the fixed syntax, never by words", () => {
+  const rows: [string, boolean][] = [
+    [ASK, true],
+    ["Paragraph line one\nWhich one? [? A | B | C ]  ", true],
+    ["Frage? [? Ja | Nein]", true],
+    ["Ship it? [? Yes]", false],
+    ["Ship it? [? Yes | Yes]", false],
+    ["[? Yes | No]", false],
+    ["Ship it? [? Yes | No] and more", false],
+    [`Ship it? [? ${"x".repeat(81)} | No]`, false],
+    ["Ship it? [? A | B | C | D | E | F | G]", false],
+    ["Should we ship it? Yes or no?", false],
+    ["## Ship it? [? Yes | No]", false],
+    ["| Ship it? [? Yes | No]", false],
+  ];
+  for (const [body, want] of rows) assert.equal(asksOwner(body), want, body);
+});
+
+async function fixture() {
+  const root = await mkdtemp(join(tmpdir(), "task-report-status-"));
+  let now = 1_000;
+  const ctx = { path: join(root, "tasks.json"), authPath: join(root, "auth.json"), now: () => now };
+  const agent = await mintTaskCredential(ctx.authPath, { actor_id: "claude", domains: ["personal"], role: "agent" });
+  const other = await mintTaskCredential(ctx.authPath, { actor_id: "other", domains: ["other"], role: "agent" });
+  const auth = `Bearer ${agent.token}`;
+  const owner = (op: string, input: unknown) =>
+    callTaskCrud({ ...ctx, ownerUi: true }, auth, op as any, input) as Promise<any>;
+  const agentCall = (op: string, input: unknown, authorization = auth) =>
+    callTaskCrud(ctx, authorization, op as any, input) as Promise<any>;
+  const save = (extra: Record<string, unknown> = {}, authorization = auth) =>
+    agentCall(
+      "task_report_save",
+      { title: "Bericht", body: "## Ergebnis\n\n- Punkt eins\n", origin: { client: "claude-code" }, ...extra },
+      authorization
+    );
+  const note = (id: string, index = 1) =>
+    owner("task_report_note_add", {
+      id,
+      anchor: { kind: "item", index, excerpt: "Punkt eins" },
+      text: "Bitte prüfen.",
+    });
+  const list = async (call = owner) => {
+    const answer = await call("task_report_list", {});
+    return { ...answer, byId: (id: string) => answer.reports.find((r: any) => r.id === id) };
+  };
+  return { save, note, owner, agentCall, list, other: `Bearer ${other.token}`, setNow: (v: number) => (now = v) };
+}
+
+test("sign-off: closing the last handed-over note marks the report read; the list says done", async () => {
+  const f = await fixture();
+  const report = await f.save();
+  assert.equal((await f.list()).byId(report.id).status, "new");
+  const first = (await f.note(report.id)).note;
+  const second = (await f.note(report.id, 2)).note;
+  assert.equal((await f.list()).byId(report.id).status, "in_progress");
+  await f.owner("task_report_notes_hand", { id: report.id });
+  assert.equal((await f.list()).byId(report.id).status, "handed");
+  assert.equal((await f.agentCall("task_report_read", { id: report.id })).status, "handed");
+
+  f.setNow(2_000);
+  await f.agentCall("task_report_note_done", { id: report.id, note_id: first.id });
+  let listed = await f.list();
+  assert.equal(listed.byId(report.id).status, "handed", "one note is still open");
+  assert.equal(listed.byId(report.id).read_at, undefined, "no sign-off before the last note");
+  assert.equal(listed.unread, 1);
+
+  f.setNow(3_000);
+  const closed = await f.agentCall("task_report_note_done", { id: report.id, note_id: second.id, reply: "erledigt" });
+  assert.equal(closed.report.read_at, 3_000, "the last note is the sign-off");
+  listed = await f.list();
+  assert.equal(listed.byId(report.id).status, "done");
+  assert.equal(listed.unread, 0, "a signed-off report no longer counts as unread");
+});
+
+test("sign-off: an earlier read time stays; an owner's draft still shows in progress", async () => {
+  const f = await fixture();
+  const report = await f.save();
+  await f.owner("task_report_mark", { id: report.id, read: true });
+  const handedNote = (await f.note(report.id)).note;
+  await f.owner("task_report_notes_hand", { id: report.id });
+  await f.note(report.id, 2); // a new draft beside the handed-over note
+  f.setNow(5_000);
+  const closed = await f.agentCall("task_report_note_done", { id: report.id, note_id: handedNote.id });
+  assert.equal(closed.report.read_at, 1_000, "the first read time is kept");
+  assert.equal((await f.list()).byId(report.id).status, "in_progress", "the owner is still writing");
+  assert.equal((await f.list(f.agentCall)).byId(report.id).status, "done", "an agent never hears of drafts");
+});
+
+test("sign-off: only handed-over notes; an agent can neither close a draft nor write a note", async () => {
+  const f = await fixture();
+  const report = await f.save();
+  const draftNote = (await f.note(report.id)).note;
+  await assert.rejects(f.agentCall("task_report_note_done", { id: report.id, note_id: draftNote.id }), {
+    code: "not_found",
+  });
+  await assert.rejects(
+    f.agentCall("task_report_note_add", {
+      id: report.id,
+      anchor: { kind: "item", index: 1, excerpt: "Punkt eins" },
+      text: "von einem Agenten",
+    }),
+    { code: "forbidden" }
+  );
+  await assert.rejects(
+    f.agentCall("task_report_note_done", { id: report.id, note_id: "00000000-0000-4000-8000-000000000000" }),
+    { code: "not_found" }
+  );
+  await assert.rejects(
+    f.agentCall("task_report_note_done", { id: "00000000-0000-4000-8000-000000000000", note_id: draftNote.id }),
+    { code: "not_found" }
+  );
+  const listed = await f.list();
+  assert.equal(listed.byId(report.id).status, "in_progress");
+  assert.equal(listed.byId(report.id).read_at, undefined);
+});
+
+test("follow-up: the link must name a report the agent sees; it is kept and shown both ways", async () => {
+  const f = await fixture();
+  const original = await f.save();
+  await assert.rejects(f.save({ follow_up_of: "00000000-0000-4000-8000-000000000000" }), { code: "not_found" });
+  await assert.rejects(f.save({ follow_up_of: original.id }, f.other), { code: "not_found" }, "other domains");
+  await assert.rejects(f.save({ follow_up_of: "kein-bericht" }), { name: "ZodError" });
+  assert.equal((await f.list()).reports.length, 1, "nothing stored on a refused link");
+
+  const ask = await f.save({ title: "Rückfrage", body: `Kurz erklärt.\n\n${ASK}\n`, follow_up_of: original.id });
+  const listed = await f.list();
+  assert.deepEqual(listed.byId(original.id).follow_up, { id: ask.id, title: "Rückfrage" });
+  assert.equal(listed.byId(original.id).status, "question");
+  assert.deepEqual(listed.byId(ask.id).follow_up_of, { id: original.id, title: "Bericht" });
+  assert.equal(listed.byId(ask.id).status, "new", "the follow-up shows its own state");
+  assert.deepEqual((await f.owner("task_report_read", { id: ask.id })).follow_up_of, {
+    id: original.id,
+    title: "Bericht",
+  });
+});
+
+test("follow-up: answered and signed off, the original falls back to done", async () => {
+  const f = await fixture();
+  const original = await f.save();
+  const n = (await f.note(original.id)).note;
+  await f.owner("task_report_notes_hand", { id: original.id });
+  await f.agentCall("task_report_note_done", { id: original.id, note_id: n.id });
+  assert.equal((await f.list()).byId(original.id).status, "done");
+
+  const ask = await f.save({ title: "Rückfrage", body: `${ASK}\n`, follow_up_of: original.id });
+  assert.equal((await f.list()).byId(original.id).status, "question");
+  // The owner answers on the follow-up's question and hands it over; the agent signs off.
+  const answer = (
+    await f.owner("task_report_note_add", {
+      id: ask.id,
+      anchor: { kind: "item", index: 1, excerpt: "Ship it now?" },
+      text: "Yes",
+    })
+  ).note;
+  await f.owner("task_report_notes_hand", { id: ask.id });
+  assert.equal((await f.list()).byId(original.id).status, "question", "handed over, not signed off yet");
+  await f.agentCall("task_report_note_done", { id: ask.id, note_id: answer.id });
+  const listed = await f.list();
+  assert.equal(listed.byId(original.id).status, "done");
+  assert.equal(listed.byId(original.id).follow_up, undefined);
+  assert.equal(listed.byId(ask.id).status, "done");
+  assert.equal(listed.unread, 0);
+});
+
+test("follow-up: a chain never loops, and a deleted original only drops the link from answers", async () => {
+  const f = await fixture();
+  const a = await f.save({ title: "A" });
+  const b = await f.save({ title: "B", body: `${ASK}\n`, follow_up_of: a.id });
+  const c = await f.save({ title: "C", body: `${ASK}\n`, follow_up_of: b.id });
+  let listed = await f.list();
+  assert.equal(listed.byId(a.id).follow_up.id, b.id);
+  assert.equal(listed.byId(b.id).follow_up.id, c.id);
+  assert.equal(listed.byId(c.id).status, "new");
+  await f.owner("task_report_delete", { id: a.id });
+  listed = await f.list();
+  assert.equal(listed.byId(b.id).follow_up_of, undefined, "the gone report is not named");
+  assert.equal(listed.byId(b.id).status, "question");
+});

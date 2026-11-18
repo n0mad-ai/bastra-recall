@@ -48,6 +48,7 @@ export async function view(notes: unknown[] = [], stored = new Map<string, strin
         "sections/tasks-reports-head.js",
         "sections/tasks-reports-size.js",
         "sections/tasks-reports-toc.js",
+        "sections/tasks-reports-status.js",
         "sections/tasks-reports.js",
       ].map(read)
     )

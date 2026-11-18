@@ -43,6 +43,9 @@ test("rows: unread first, newest first, broken entries dropped", async () => {
     readAt: null,
     notesOpen: 0,
     notesDraft: 0,
+    status: null,
+    followUp: null,
+    followUpOf: null,
   });
   assert.equal(m.originText(rows[1]), "claude-code · s1");
   assert.equal(m.originText(rows[0]), "x");

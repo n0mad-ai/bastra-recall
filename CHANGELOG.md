@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Task reports show one state in the list and the head: New, In progress,
+  Handed over, Done, Question. An agent closing the last handed-over note
+  signs the report off and marks it read; a follow-up report with questions
+  (`task_report_save` `follow_up_of`) shows as Question on the original
+  until it is done.
+
 - **Answer a question in a task report.** Questions ending with answer
   options such as `[? Yes | No]` offer answer buttons, a free answer and a
   request for clarification. The answer is saved as a note on that line,
@@ -348,10 +354,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   later version adds instead of refusing the whole store, so going back one
   version no longer locks you out of your reports from now on. Going back to
   1.2.1 itself is the exception, because its store check is still strict:
-  while any report carries a note (done notes included), a 1.2.1 daemon
+  while any report carries a note (done notes included) or `follow_up_of`,
+  a 1.2.1 daemon
   refuses the whole report store ("Task report store unreadable"). Nothing is
   overwritten or lost, and this release reads the store as before; removing
-  the notes, or the reports that carry them, before going back avoids it
+  the notes and `follow_up_of` links, or the reports that carry them, before
+  going back avoids it
   (#1611). Search
   handles Unicode compatibility letters regardless of case, and older search
   responses cannot replace results for the current input (#1597).

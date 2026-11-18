@@ -13,7 +13,7 @@
 // shown next is on screen (#1559), and the deleted report stays in the list, struck through, with
 // its time left and "Wiederherstellen" until its undo window ends (Daniel 18.11.2026).
 // A report with open notes of the owner reads "In progress" in the list instead of "New", in the
-// notes' amber (Daniel 18.11.2026).
+// notes' amber (Daniel 18.11.2026); every state and its jumps: tasks-reports-status.js.
 // The search lives in tasks-reports-search.js, delete and Undo in tasks-reports-undo.js, the
 // state all three share in tasks-reports-state.js.
 // The list itself is data.reports (js/data.js, rides on the shell polling), so
@@ -48,6 +48,7 @@ import {
   inWork,
   inProject,
 } from "./tasks-reports-model.js";
+import { stateMark, askedAbout } from "./tasks-reports-status.js";
 import { annotateReport } from "./tasks-report-notes.js";
 import { R, write } from "./tasks-reports-state.js";
 import { listed, hitsNow, shown, searchText, setQuery } from "./tasks-reports-search.js";
@@ -316,11 +317,7 @@ function listRow(r) {
     h(
       "span.mb-row__meta",
       null,
-      work
-        ? h("span.mb-row__ai.tk-rv__work", { text: t("tk.rep.inWork"), title: t("tk.rep.inWorkTip") })
-        : fresh
-          ? h("span.mb-row__ai", { text: t("tk.rep.new") })
-          : null,
+      stateMark(r, false, openReport),
       noteMarks({ drafts: r.notesDraft, handed: r.notesOpen - r.notesDraft }, "span.tk-an__count"),
       r.project ? h("span", { text: r.project }) : null,
       h("span", { text: r.client || t("tk.rep.unknown") })
@@ -403,7 +400,9 @@ function readerHead(r, narrow, asks) {
               text: t("tk.rep.asks", { n: answered, m: asks.length }),
             })
           : null,
-        noteMarks(c, "span.tk-rep__open")
+        noteMarks(c, "span.tk-rep__open"),
+        stateMark(r, true, openReport),
+        askedAbout(r, openReport)
       )
     ),
     sizeSwitch(() => emit("reports")),

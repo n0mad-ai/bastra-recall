@@ -22,6 +22,7 @@ function row(x) {
     notesOpen: open,
     // drafts: open notes not handed over to the agents yet (part of notesOpen)
     notesDraft: Math.min(count(x.notes_draft), open),
+    ...stateFields(x),
   };
 }
 
@@ -52,8 +53,8 @@ export function leftParts(ms) {
   return { d: Math.floor(s / 86400), h: Math.floor(s / 3600) % 24, m: Math.floor(s / 60) % 60, s: s % 60 };
 }
 
-/** "In progress" instead of "New": the owner left open notes on it (Daniel 18.11.2026). */
-export const inWork = (r) => r.notesOpen > 0;
+/** The amber states: notes with the owner or the agents, or a question waiting (Daniel 18.11.2026). */
+export const inWork = (r) => ["in_progress", "handed", "question"].includes(stateOf(r));
 
 /** The projects in the list, by name, each with its number of reports (the project filter). */
 export function projectsOf(rows) {
@@ -228,4 +229,28 @@ export function hereIndex(tops, line) {
     if (top <= line) at = i;
   });
   return at;
+}
+
+// ── The one state a report shows (Daniel 18.11.2026). The daemon derives it (task-report-status.ts);
+// the UI only shows it. A Recall from before it sends none: then the state follows the old rule.
+const STATES = ["new", "read", "in_progress", "handed", "question", "done"];
+/** { id, title } of a linked report, or null when the shape is off (external input). */
+const linkOf = (x) => (x && typeof x === "object" && str(x.id) && str(x.title) ? { id: x.id, title: x.title } : null);
+
+/** The state fields of one list entry: status, the follow-up a question waits on, the report a
+ *  follow-up asks about. */
+function stateFields(x) {
+  const status = STATES.includes(x.status) ? x.status : null;
+  return {
+    status,
+    followUp: status === "question" ? linkOf(x.follow_up) : null,
+    followUpOf: linkOf(x.follow_up_of),
+  };
+}
+
+/** The state to show: the daemon's, else open notes → in_progress, unread → new, else read. */
+export function stateOf(r) {
+  if (r.status) return r.status;
+  if (r.notesOpen > 0) return "in_progress";
+  return r.readAt === null ? "new" : "read";
 }

@@ -8,6 +8,9 @@
  * until the owner hands the report's drafts over to the agents in one click;
  * only then does an agent see it (session start names the handed-over open
  * ones, read and list show nothing else) and mark it done with a short reply.
+ * Closing the last handed-over note is the agent's sign-off and marks the report
+ * read. List and read carry one derived state (task-report-status.ts); a report
+ * may name the report it asks about (follow_up_of, a follow-up with questions).
  * Not bound to a task
  * run (executor reports are, see task-app-api.ts) and no action authority.
  * One app record next to the task snapshot; visibility follows the task
@@ -24,6 +27,7 @@ import { cleanText } from "./task-store.js";
 import { MAX_BODY_BYTES } from "./http-util.js";
 import { readSettings } from "./settings-file.js";
 import { parseReportUndo, REPORT_UNDO_DEFAULT } from "./task-report-undo-window.js";
+import { followUpOf, reportStatus } from "./task-report-status.js";
 
 /** Nothing piles up silently: past this the agent is told, nothing is dropped. */
 export const TASK_REPORT_LIMIT = 200;
@@ -36,6 +40,8 @@ export const taskReportSaveInput = z.strictObject({
   body: line(MAX_BODY_BYTES),
   project: line(120).optional(),
   origin: z.strictObject({ client: line(120), session: line(200).optional() }),
+  /** A follow-up that asks the owner about an earlier report names that report here. */
+  follow_up_of: z.string().uuid().optional(),
 });
 const idInput = z.strictObject({ id: z.string().uuid() });
 /** Words to find in title, project and text (#1597); every word must occur. */
@@ -110,6 +116,8 @@ const reportSchema = z.looseObject({
   read_at: z.number().int().nonnegative().optional(),
   /** Optional: reports from before notes existed have none. */
   notes: z.array(noteSchema).optional(),
+  /** The report this follow-up asks about; set once when it is filed, never changed. */
+  follow_up_of: z.string().uuid().optional(),
 });
 type TaskReport = z.infer<typeof reportSchema>;
 const storeSchema = z.looseObject({ version: z.literal(1), reports: z.array(reportSchema) });
@@ -312,6 +320,14 @@ function meta(r: TaskReport, owner: boolean) {
   };
 }
 
+/** List and read answers add the shown state (task-report-status.ts) and the follow-up link, both
+ * taken from the reports the caller sees. */
+const withStatus = (r: TaskReport, reports: readonly TaskReport[], owner: boolean) => ({
+  ...meta(r, owner),
+  ...reportStatus(r, reports, (x) => notesFor(x, owner)),
+  ...followUpOf(r, reports),
+});
+
 /** Unread first, newest first within each group. */
 const order = (a: TaskReport, b: TaskReport) =>
   Number(a.read_at !== undefined) - Number(b.read_at !== undefined) || b.created_at - a.created_at;
@@ -330,10 +346,14 @@ function saveReport(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) 
     actor: principal.actor_id,
     owner_domains: [...principal.domains],
     created_at: (ctx.now ?? Date.now)(),
+    ...(input.follow_up_of === undefined ? {} : { follow_up_of: input.follow_up_of }),
   };
   return changeReports(storePath(ctx), (reports) => {
     if (reports.length >= TASK_REPORT_LIMIT)
       throw Object.assign(new Error("Task report limit reached"), { code: "capacity" });
+    // The link points at a report already there, so never at itself and never in a circle.
+    if (input.follow_up_of !== undefined && !reports.some((r) => r.id === input.follow_up_of && visible(r, principal)))
+      throw notFound();
     reports.push(report);
     return meta(report, isOwner(ctx));
   });
@@ -341,10 +361,11 @@ function saveReport(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) 
 
 /** Reading is side-effect free: an agent opening a report must not mark it read for the owner. */
 function readReport(ctx: ReportContext, principal: TaskPrincipal, id: string) {
-  const report = readReports(storePath(ctx)).find((r) => r.id === id && visible(r, principal));
+  const reports = readReports(storePath(ctx)).filter((r) => visible(r, principal));
+  const report = reports.find((r) => r.id === id);
   if (!report) throw notFound();
   const owner = isOwner(ctx);
-  return { ...meta(report, owner), body: report.body, notes: notesFor(report, owner) };
+  return { ...withStatus(report, reports, owner), body: report.body, notes: notesFor(report, owner) };
 }
 
 /** Idempotent: read=true keeps the first read time, read=false puts the report back to unread. */
@@ -446,13 +467,15 @@ function editNote(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
  * A draft is not there for an agent, so it cannot be closed either. */
 function finishNote(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
   const input = noteDoneInput.parse(raw);
-  return changeNote(ctx, principal, input, (note) => {
+  return changeNote(ctx, principal, input, (note, report) => {
     if (isDraft(note)) throw noteNotFound();
     note.state = "done";
     note.done_at = (ctx.now ?? Date.now)();
     note.done_by = principal.actor_id;
     if (input.reply === undefined) delete note.reply;
     else note.reply = cleanBody(input.reply);
+    // The agent's sign-off on the last handed-over note: the report counts as read (Daniel 18.11.2026).
+    if (handedOpen(report).length === 0) report.read_at ??= note.done_at;
   });
 }
 
@@ -493,12 +516,12 @@ function changeNote(
   ctx: ReportContext,
   principal: TaskPrincipal,
   ref: { id: string; note_id: string },
-  change: (note: ReportNote) => void
+  change: (note: ReportNote, report: TaskReport) => void
 ) {
   return changeReport(ctx, principal, ref.id, (report) => {
     const note = report.notes?.find((n) => n.id === ref.note_id);
     if (!note) throw noteNotFound();
-    change(note);
+    change(note, report);
     return { report: meta(report, isOwner(ctx)), note: shownNote(note) };
   });
 }
@@ -550,12 +573,11 @@ async function listReports(ctx: ReportContext, principal: TaskPrincipal, raw: un
   const { query } = listInput.parse(raw);
   const at = await clock(ctx);
   await pruneTrash(ctx, at);
-  const reports = readReports(storePath(ctx))
-    .filter((r) => visible(r, principal) && matches(r, query))
-    .sort(order);
+  const all = readReports(storePath(ctx)).filter((r) => visible(r, principal));
+  const reports = all.filter((r) => matches(r, query)).sort(order);
   const owner = isOwner(ctx);
   return {
-    reports: reports.map((r) => meta(r, owner)),
+    reports: reports.map((r) => withStatus(r, all, owner)),
     unread: reports.filter((r) => r.read_at === undefined).length,
     ...(owner && query === undefined ? { deleted: undoable(ctx, principal, at) } : {}),
   };
