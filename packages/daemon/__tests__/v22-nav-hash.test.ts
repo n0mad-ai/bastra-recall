@@ -73,6 +73,9 @@ async function shell(hash: string, view = "chronos") {
     strip(await read("areas.js")),
     strip(await read("nav.js")),
     strip(await read("sections/tasks-reports-model.js")),
+    strip(await read("sections/tasks-reports-state.js")),
+    strip(await read("sections/tasks-reports-search.js")),
+    strip(await read("sections/tasks-reports-undo.js")),
     strip(await read("sections/tasks-reports.js")),
   ].join("\n");
   const v = runInNewContext(

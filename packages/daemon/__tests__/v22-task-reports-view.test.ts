@@ -38,7 +38,19 @@ async function view(notes: unknown[] = []) {
   const said: Array<[string, unknown]> = [];
   const events: string[] = [];
   const dataListeners: Array<() => void> = [];
-  const source = strip(await read("sections/tasks-reports-model.js")) + strip(await read("sections/tasks-reports.js"));
+  const source = (
+    await Promise.all(
+      [
+        "sections/tasks-reports-model.js",
+        "sections/tasks-reports-state.js",
+        "sections/tasks-reports-search.js",
+        "sections/tasks-reports-undo.js",
+        "sections/tasks-reports.js",
+      ].map(read)
+    )
+  )
+    .map(strip)
+    .join("");
   const context: Record<string, unknown> = {
     h,
     searchIcon: () => h("svg", null),
@@ -539,7 +551,6 @@ test("#1610: a rebuild while a note is typed keeps the cursor, the selection and
     [6, 9, "backward", 40]
   );
 });
-
 
 test("#1597: polling changed reports searches the active query again and preserves the open reader", async () => {
   const { v, host, context, flush, updateReports, calls } = await view();

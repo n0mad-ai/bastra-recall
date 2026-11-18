@@ -13,7 +13,13 @@ const keysIn = (source: string, prefix: RegExp) =>
   [...source.matchAll(/"([a-z]+\.[\w.]+)"/g)].map((m) => m[1]).filter((k) => prefix.test(k));
 
 test("report texts exist in German and English", async () => {
-  const reports = await read("js/sections/tasks-reports.js");
+  const reports = (
+    await Promise.all(
+      ["tasks-reports", "tasks-reports-state", "tasks-reports-search", "tasks-reports-undo"].map((f) =>
+        read(`js/sections/${f}.js`)
+      )
+    )
+  ).join("\n");
   const widgets = await read("js/sections/dashboard-widgets.js");
   const used = {
     tasks: [...new Set(keysIn(reports, /^tk\./))],

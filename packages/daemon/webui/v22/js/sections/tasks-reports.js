@@ -9,6 +9,8 @@
 // scrolls. A search field above the list filters it by title and project at once and by the
 // report text as soon as the daemon answers (#1597). After "Löschen" a notice offers "Rückgängig"
 // while the report shown next is on screen (#1559, like archiving in the memory browser).
+// The search lives in tasks-reports-search.js, delete and Undo in tasks-reports-undo.js, the
+// state all three share in tasks-reports-state.js.
 // The list itself is data.reports (js/data.js, rides on the shell polling), so
 // the nav dot and the header ticker see the same rows.
 // Report text is external data: rendered through the shared mini Markdown
@@ -28,7 +30,6 @@ import { ago } from "../views/vault-data.js";
 import { S, emit, say, act } from "./tasks-store.js";
 import { api, fmtAt } from "./tasks-api.js";
 import {
-  reportRows,
   unreadCount,
   draftReports,
   noteCounts,
@@ -38,29 +39,10 @@ import {
   matchReports,
 } from "./tasks-reports-model.js";
 import { annotateReport } from "./tasks-report-notes.js";
+import { R, write } from "./tasks-reports-state.js";
+import { listed, hitsNow, shown, searchText, setQuery } from "./tasks-reports-search.js";
+import { remove, undoNotice } from "./tasks-reports-undo.js";
 
-// open: reading view replaces the calendar · sel: report shown · body: its text (null = loading)
-// notes: the shown report's notes · edit: the open note field { anchor, noteId (null = new), draft }
-// order: row order frozen while the view is open, so a row marked there does not jump away under the pointer
-// list: narrow view shows the list instead of the reader (memory browser: "← LISTE")
-// lens: the detail panel was open when the view opened; it is folded away meanwhile (a report needs
-// the width, the panel has nothing to show for it) and comes back when the view closes
-// q: the search over the list; the shown report stays open even when the search hides its row
-// hits: { q, ids } the daemon's text search found for q · undo: { id, title, next } the last delete, undoable
-// while `next` (the report shown after it, null for none) is on screen
-const R = {
-  open: false,
-  sel: null,
-  body: null,
-  notes: [],
-  edit: null,
-  order: [],
-  list: false,
-  lens: false,
-  q: "",
-  hits: null,
-  undo: null,
-};
 /** Below this slot width list and reader share one column (memory browser: 760 px for list + reader;
  *  the report list is narrower, so two columns still fit at 640). */
 const NARROW = 640;
@@ -194,16 +176,6 @@ export async function openReport(id) {
   emit();
 }
 
-/** A change the report store can refuse when it is full (#1609): then the message says so and how to
- *  make room, instead of the generic one. */
-async function write(name, input) {
-  try {
-    return await api(name, input);
-  } catch (e) {
-    throw e.code === "capacity" ? Object.assign(new Error(t("tk.rep.full")), { code: e.code }) : e;
-  }
-}
-
 /** "Gelesen" / "Ungelesen": counters, nav dot and ticker follow with the reloaded list. */
 function mark(id, read) {
   return act(async () => {
@@ -229,74 +201,6 @@ function handOver(id) {
     await loadReports();
     return t("tk.rep.handDone", { n: Number.isInteger(r?.handed) ? r.handed : 0 });
   });
-}
-
-/** Deletes the report and moves on to the row below it (or above, at the end of the list). While that
- *  one is on screen, a notice offers to undo the delete (the daemon keeps it for a while). */
-function remove(id) {
-  const filtered = shown(),
-    rows = filtered.some((r) => r.id === id) ? filtered : listed(),
-    at = rows.findIndex((r) => r.id === id),
-    next = at < 0 ? null : (rows[at + 1] ?? rows[at - 1]),
-    title = rows[at]?.title ?? "";
-  return act(async () => {
-    let r = null;
-    try {
-      r = await api("report_delete", { id });
-    } catch (e) {
-      if (e.code !== "not_found") throw e;
-    }
-    R.undo = Number.isFinite(r?.restorable_until) ? { id, title, next: next?.id ?? null } : null;
-    if (R.sel === id) {
-      R.sel = null;
-      if (R.open && next) openReport(next.id);
-    }
-    emit("reports");
-    await loadReports();
-    return R.undo ? "" : t("tk.rep.deleted");
-  });
-}
-
-/** "Rückgängig": the report comes back with text, read state and notes and is shown again. */
-function undoDelete(u) {
-  return act(async () => {
-    try {
-      await write("report_restore", { id: u.id });
-    } catch (e) {
-      if (e.code !== "not_found") throw e;
-      R.undo = null;
-      emit("reports");
-      throw new Error(t("tk.rep.undoGone"));
-    }
-    R.undo = null;
-    await loadReports();
-    openReport(u.id);
-    return t("tk.rep.restored");
-  });
-}
-
-/** The notice after a delete, while the report shown next (or the empty reader) is on screen. */
-function undoNotice() {
-  const u = R.undo;
-  if (!u || (R.sel && u.next !== R.sel)) return null;
-  return h(
-    "div.mb-ed__notice.tk-rep__undo",
-    { role: "status" },
-    h("span.mb-ed__done", { text: t("tk.rep.deletedNamed", { title: u.title }) }),
-    h("button.mb-btn.is-quiet", { type: "button", text: t("tk.rep.undo"), on: { click: () => undoDelete(u) } }),
-    h("button.mb-ed__x", {
-      type: "button",
-      text: "×",
-      title: t("tk.rep.undoDismiss"),
-      "aria-label": t("tk.rep.undoDismiss"),
-      on: {
-        click: () => {
-          R.undo = null;
-          emit("reports");
-        },
-      },
-    })
-  );
 }
 
 // ── notes: the open field, saving, deleting. The list reloads for its "open notes" count.
@@ -351,46 +255,6 @@ const notesUi = {
     });
   },
 };
-
-/** Rows in the order they had when the view opened; reports that arrived since go on top. */
-function listed() {
-  const at = (r) => R.order.indexOf(r.id);
-  return [...data.reports].sort((a, b) => at(a) - at(b));
-}
-/** The daemon's text hits, while they belong to the current search. */
-const hitsNow = () => (R.hits && R.hits.q === R.q.trim() ? R.hits.ids : null);
-/** The rows the search leaves in the list. */
-const shown = () => matchReports(listed(), R.q, hitsNow());
-
-/** The daemon searches the report text too (#1597); a short pause after typing, the latest search wins.
- *  A Recall without the text search refuses the query: then title and project stay the search. */
-const SEARCH_MS = 250;
-const QUERY_MAX = 200;
-let searchTimer = 0,
-  searchSeq = 0;
-function searchText() {
-  clearTimeout(searchTimer);
-  const seq = ++searchSeq;
-  const q = R.q.trim();
-  if (!q || q.length > QUERY_MAX) return;
-  searchTimer = setTimeout(async () => {
-    try {
-      const r = await api("report_list", { query: q });
-      if (seq !== searchSeq || R.q.trim() !== q) return;
-      R.hits = { q, ids: new Set(reportRows(r).map((x) => x.id)) };
-      emit("reports");
-    } catch {
-      /* the title and project match stays */
-    }
-  }, SEARCH_MS);
-}
-
-function setQuery(q) {
-  if (R.q.trim() !== q.trim()) R.hits = null;
-  R.q = q;
-  searchText();
-  emit("reports");
-}
 
 /** Arrow keys walk the rows (as in the memory browser); Enter / Space open the focused one (native button). */
 function walk(e) {
@@ -529,7 +393,7 @@ function readerHead(r, narrow) {
         text: t(unread ? "tk.rep.markRead" : "tk.rep.markUnread"),
         on: { click: () => mark(r.id, unread) },
       }),
-      h("button.mb-btn.is-quiet", { text: t("tk.rep.delete"), on: { click: () => remove(r.id) } })
+      h("button.mb-btn.is-quiet", { text: t("tk.rep.delete"), on: { click: () => remove(r.id, openReport) } })
     )
   );
 }
@@ -582,7 +446,7 @@ function paintReader(read, rows, narrow, seen) {
   focusNote = null;
   read.replaceChildren(
     ...[
-      undoNotice(),
+      undoNotice(openReport),
       r ? reader(r, narrow) : h("div.mb__nosel", { text: t(rows.length ? "tk.rep.pick" : "tk.rep.none") }),
     ].filter(Boolean)
   );
