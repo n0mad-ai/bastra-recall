@@ -1,3 +1,4 @@
+import { withFixtureClock } from "./fixtures/fixture-clock.js";
 import { rulebookStopRequested } from "./fixtures/rulebook-stop.js";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -125,7 +126,8 @@ test("full rule load answers only its own session/round; compact invalidates it"
 
 test("concurrent calls cannot exceed the denial cap and Codex main can answer its receipt", async () => {
   const sid = "parallel";
-  const results = await Promise.all(Array.from({ length: 8 }, () => gate(sid)));
+  // Count semantic denials independently of runner stalls; expiry has separate controls.
+  const results = await withFixtureClock(() => Promise.all(Array.from({ length: 8 }, () => gate(sid))));
   assert.equal(results.filter(denied).length, 2);
   await checks.recordRulebookCheck(sid, { applicable: [] }, catalog);
   const unknown = { ...payload(sid), bastra_client: "codex", bastra_codex_version: "0.162.1" };

@@ -1,0 +1,1277 @@
+exports[`#1529: every loopback route answers as recorded before the route table 1`] = `
+{
+  "bare GET /nope": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /nope": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare GET /": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare GET /health": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "30"
+    },
+    "body": "{\\"ok\\":true,\\"fixture\\":\\"health\\"}"
+  },
+  "bare POST /health": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare GET /health?x=1": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare GET /tools": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": "<served tool definitions, surface full>"
+  },
+  "bare GET /tools?surface=search": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": "<served tool definitions, surface search>"
+  },
+  "bare GET /tools?surface=write": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": "<served tool definitions, surface write>"
+  },
+  "bare GET /tools?surface=unknown": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": "<served tool definitions, surface full>"
+  },
+  "bare GET /toolsx": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /tools": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare GET /vault/count": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "11"
+    },
+    "body": "{\\"count\\":0}"
+  },
+  "bare POST /vault/count": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /hook/action-conventions {not json": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "30"
+    },
+    "body": "{\\"hits\\":[],\\"unavailable\\":true}"
+  },
+  "bare POST /hook/action-conventions {}": {
+    "handled": true,
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "39"
+    },
+    "body": "{\\"error\\":\\"Unknown structural category\\"}"
+  },
+  "bare POST /hook/action-conventions {\\"category\\":\\"github-issues-prs\\"}": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "44"
+    },
+    "body": "{\\"hits\\":[],\\"rule_ids\\":[],\\"score_kind\\":\\"rrf\\"}"
+  },
+  "bare GET /hook/action-conventions": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /hook/recall {not json": {
+    "handled": true,
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "29"
+    },
+    "body": "{\\"error\\":\\"invalid JSON body\\"}"
+  },
+  "bare GET /hook/recall": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /hook/reflex {not json": {
+    "handled": true,
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{\\"error\\":\\"context is required\\"}"
+  },
+  "bare GET /hook/reflex": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /hook/prompt {not json": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "bare POST /hook/prompt": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "bare GET /hook/prompt": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /hook/write {not json": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "bare POST /hook/write": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "bare GET /hook/write": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /hook/bash-pre {not json": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "bare GET /hook/bash-pre": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /hook/bash-fail {not json": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "bare GET /hook/bash-fail": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /hook/stop {not json": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "bare GET /hook/stop": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /hook/session {not json": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "bare GET /hook/session": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /hook/todo {not json": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "bare GET /hook/todo": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /hook/gate {not json": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "bare GET /hook/gate": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /hook/act {not json": {
+    "handled": true,
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "29"
+    },
+    "body": "{\\"error\\":\\"invalid JSON body\\"}"
+  },
+  "bare GET /hook/act": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /hook/hinted {not json": {
+    "handled": true,
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "24"
+    },
+    "body": "{\\"error\\":\\"invalid body\\"}"
+  },
+  "bare POST /hook/hinted {\\"ids\\":[\\"missing\\",3]}": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "23"
+    },
+    "body": "{\\"ok\\":true,\\"counted\\":1}"
+  },
+  "bare GET /hook/hinted": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare GET /curator/state": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /curator/state": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare GET /curator/run": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /curator/run {\\"dryRun\\":true,\\"force\\":false}": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare GET /code/refresh": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /code/refresh {not json": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /code/refresh {}": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /code/refresh {\\"repo\\":\\"/elsewhere\\"}": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /code/refresh {\\"repo\\":\\"/repo\\"}": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare PUT /code/refresh": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare DELETE /code/refresh": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare GET /code/refresh?x=1": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare GET /hook/taxonomy": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "18"
+    },
+    "body": "{\\"conventions\\":[]}"
+  },
+  "bare POST /hook/taxonomy": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare GET /hook/drift": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "15"
+    },
+    "body": "{\\"clusters\\":[]}"
+  },
+  "bare POST /hook/drift": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare GET /hook/care": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{\\"open\\":0,\\"file\\":\\"vault-care.md\\"}"
+  },
+  "bare POST /hook/care": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare GET /hook/floors": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "13"
+    },
+    "body": "{\\"floors\\":[]}"
+  },
+  "bare GET /hook/floors?scope=fixture": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "13"
+    },
+    "body": "{\\"floors\\":[]}"
+  },
+  "bare GET /hook/floorsx": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare POST /hook/floors": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "bare GET /settings/docs": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "30"
+    },
+    "body": "{\\"mode\\":\\"off\\",\\"language\\":\\"en\\"}"
+  },
+  "bare POST /settings/docs {not json": {
+    "handled": true,
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "29"
+    },
+    "body": "{\\"error\\":\\"invalid JSON body\\"}"
+  },
+  "bare POST /settings/docs {\\"mode\\":\\"nope\\"}": {
+    "handled": true,
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "53"
+    },
+    "body": "{\\"error\\":\\"mode must be one of: off | suggest | auto\\"}"
+  },
+  "bare POST /settings/docs {\\"language\\":\\"not a tag!\\"}": {
+    "handled": true,
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "65"
+    },
+    "body": "{\\"error\\":\\"language must be a short tag like 'en', 'de', 'pt-br'\\"}"
+  },
+  "bare POST /settings/docs {}": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "30"
+    },
+    "body": "{\\"mode\\":\\"off\\",\\"language\\":\\"en\\"}"
+  },
+  "bare PUT /settings/docs": {
+    "handled": true,
+    "status": 405,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "30"
+    },
+    "body": "{\\"error\\":\\"method not allowed\\"}"
+  },
+  "bare DELETE /settings/docs": {
+    "handled": true,
+    "status": 405,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "30"
+    },
+    "body": "{\\"error\\":\\"method not allowed\\"}"
+  },
+  "bare GET /settings/docs?x=1": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full GET /nope": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full POST /nope": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full GET /": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full GET /health": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "30"
+    },
+    "body": "{\\"ok\\":true,\\"fixture\\":\\"health\\"}"
+  },
+  "full POST /health": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full GET /health?x=1": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full GET /tools": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": "<served tool definitions, surface full>"
+  },
+  "full GET /tools?surface=search": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": "<served tool definitions, surface search>"
+  },
+  "full GET /tools?surface=write": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": "<served tool definitions, surface write>"
+  },
+  "full GET /tools?surface=unknown": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": "<served tool definitions, surface full>"
+  },
+  "full GET /toolsx": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full POST /tools": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full GET /vault/count": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "11"
+    },
+    "body": "{\\"count\\":0}"
+  },
+  "full POST /vault/count": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full POST /hook/action-conventions {not json": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "30"
+    },
+    "body": "{\\"hits\\":[],\\"unavailable\\":true}"
+  },
+  "full POST /hook/action-conventions {}": {
+    "handled": true,
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "39"
+    },
+    "body": "{\\"error\\":\\"Unknown structural category\\"}"
+  },
+  "full POST /hook/action-conventions {\\"category\\":\\"github-issues-prs\\"}": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "44"
+    },
+    "body": "{\\"hits\\":[],\\"rule_ids\\":[],\\"score_kind\\":\\"rrf\\"}"
+  },
+  "full GET /hook/action-conventions": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full POST /hook/recall {not json": {
+    "handled": true,
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "29"
+    },
+    "body": "{\\"error\\":\\"invalid JSON body\\"}"
+  },
+  "full GET /hook/recall": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full POST /hook/reflex {not json": {
+    "handled": true,
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{\\"error\\":\\"context is required\\"}"
+  },
+  "full GET /hook/reflex": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full POST /hook/prompt {not json": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "full POST /hook/prompt": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "full GET /hook/prompt": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full POST /hook/write {not json": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "full POST /hook/write": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "full GET /hook/write": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full POST /hook/bash-pre {not json": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "full GET /hook/bash-pre": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full POST /hook/bash-fail {not json": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "full GET /hook/bash-fail": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full POST /hook/stop {not json": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "full GET /hook/stop": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full POST /hook/session {not json": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "full GET /hook/session": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full POST /hook/todo {not json": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "full GET /hook/todo": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full POST /hook/gate {not json": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{}"
+  },
+  "full GET /hook/gate": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full POST /hook/act {not json": {
+    "handled": true,
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "29"
+    },
+    "body": "{\\"error\\":\\"invalid JSON body\\"}"
+  },
+  "full GET /hook/act": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full POST /hook/hinted {not json": {
+    "handled": true,
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "24"
+    },
+    "body": "{\\"error\\":\\"invalid body\\"}"
+  },
+  "full POST /hook/hinted {\\"ids\\":[\\"missing\\",3]}": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "23"
+    },
+    "body": "{\\"ok\\":true,\\"counted\\":1}"
+  },
+  "full GET /hook/hinted": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full GET /curator/state": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "content-length": "47"
+    },
+    "body": "{\\"last_run_at\\":null,\\"stale_count\\":0,\\"stale\\":{}}"
+  },
+  "full POST /curator/state": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full GET /curator/run": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full POST /curator/run {\\"dryRun\\":true,\\"force\\":false}": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "content-length": "152"
+    },
+    "body": "{\\"ran\\":true,\\"mode\\":\\"dry-run\\",\\"dryRun\\":true,\\"demoted\\":[],\\"reactivated\\":[],\\"pendingObservation\\":[],\\"staleTotal\\":0,\\"reportWritten\\":true,\\"journalMonths\\":[]}"
+  },
+  "full GET /code/refresh": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "165"
+    },
+    "body": "{\\"repos\\":[{\\"repo_root\\":\\"/repo\\",\\"state\\":\\"idle\\",\\"pending\\":false,\\"failures\\":0,\\"last_error\\":null,\\"given_up\\":false,\\"last_reason\\":null,\\"builds\\":0,\\"next_attempt_at\\":null}]}"
+  },
+  "full POST /code/refresh {not json": {
+    "handled": true,
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "29"
+    },
+    "body": "{\\"error\\":\\"invalid JSON body\\"}"
+  },
+  "full POST /code/refresh {}": {
+    "handled": true,
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "52"
+    },
+    "body": "{\\"error\\":\\"repo must be an absolute repository path\\"}"
+  },
+  "full POST /code/refresh {\\"repo\\":\\"/elsewhere\\"}": {
+    "handled": true,
+    "status": 404,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "61"
+    },
+    "body": "{\\"error\\":\\"code awareness is not enabled for this repository\\"}"
+  },
+  "full POST /code/refresh {\\"repo\\":\\"/repo\\"}": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "175"
+    },
+    "body": "{\\"ok\\":true,\\"repos\\":[{\\"repo_root\\":\\"/repo\\",\\"state\\":\\"idle\\",\\"pending\\":false,\\"failures\\":0,\\"last_error\\":null,\\"given_up\\":false,\\"last_reason\\":null,\\"builds\\":0,\\"next_attempt_at\\":null}]}"
+  },
+  "full PUT /code/refresh": {
+    "handled": true,
+    "status": 405,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "30"
+    },
+    "body": "{\\"error\\":\\"method not allowed\\"}"
+  },
+  "full DELETE /code/refresh": {
+    "handled": true,
+    "status": 405,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "30"
+    },
+    "body": "{\\"error\\":\\"method not allowed\\"}"
+  },
+  "full GET /code/refresh?x=1": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full GET /hook/taxonomy": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "18"
+    },
+    "body": "{\\"conventions\\":[]}"
+  },
+  "full POST /hook/taxonomy": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full GET /hook/drift": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "15"
+    },
+    "body": "{\\"clusters\\":[]}"
+  },
+  "full POST /hook/drift": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full GET /hook/care": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "transfer-encoding": "chunked"
+    },
+    "body": "{\\"open\\":0,\\"file\\":\\"vault-care.md\\"}"
+  },
+  "full POST /hook/care": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full GET /hook/floors": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "13"
+    },
+    "body": "{\\"floors\\":[]}"
+  },
+  "full GET /hook/floors?scope=fixture": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "13"
+    },
+    "body": "{\\"floors\\":[]}"
+  },
+  "full GET /hook/floorsx": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full POST /hook/floors": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  },
+  "full GET /settings/docs": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "30"
+    },
+    "body": "{\\"mode\\":\\"off\\",\\"language\\":\\"en\\"}"
+  },
+  "full POST /settings/docs {not json": {
+    "handled": true,
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "29"
+    },
+    "body": "{\\"error\\":\\"invalid JSON body\\"}"
+  },
+  "full POST /settings/docs {\\"mode\\":\\"nope\\"}": {
+    "handled": true,
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "53"
+    },
+    "body": "{\\"error\\":\\"mode must be one of: off | suggest | auto\\"}"
+  },
+  "full POST /settings/docs {\\"language\\":\\"not a tag!\\"}": {
+    "handled": true,
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "65"
+    },
+    "body": "{\\"error\\":\\"language must be a short tag like 'en', 'de', 'pt-br'\\"}"
+  },
+  "full POST /settings/docs {}": {
+    "handled": true,
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "30"
+    },
+    "body": "{\\"mode\\":\\"off\\",\\"language\\":\\"en\\"}"
+  },
+  "full PUT /settings/docs": {
+    "handled": true,
+    "status": 405,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "30"
+    },
+    "body": "{\\"error\\":\\"method not allowed\\"}"
+  },
+  "full DELETE /settings/docs": {
+    "handled": true,
+    "status": 405,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": "30"
+    },
+    "body": "{\\"error\\":\\"method not allowed\\"}"
+  },
+  "full GET /settings/docs?x=1": {
+    "handled": false,
+    "status": 599,
+    "headers": {
+      "transfer-encoding": "chunked"
+    },
+    "body": ""
+  }
+}
+`;

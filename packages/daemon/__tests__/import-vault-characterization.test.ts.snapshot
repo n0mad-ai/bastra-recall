@@ -1,0 +1,738 @@
+exports[`#1514 importVault: every pass, dry-run, re-run and a removed source stay byte-identical 1`] = `
+{
+  "dry": {
+    "sourceDir": "<root>/notes",
+    "label": "notes",
+    "folder": "memories/imported/notes",
+    "scope": "notes",
+    "scanned": 7,
+    "imported": 8,
+    "byAdapter": {
+      "claudeCode": 2,
+      "generic": 5,
+      "index": 1
+    },
+    "written": {
+      "created": 8,
+      "updated": 0,
+      "unchanged": 0
+    },
+    "skipped": [],
+    "warnings": [],
+    "ids": [
+      "notes-feedback-borders",
+      "notes-hub",
+      "notes-no-frontmatter",
+      "notes-plain",
+      "notes-project-windows",
+      "notes-sub-dir-plain",
+      "notes-taken-483693a8",
+      "notes-index"
+    ],
+    "indexNode": "notes-index",
+    "migrated": [],
+    "orphaned": [],
+    "dryRun": true
+  },
+  "afterDry": {
+    "memories/imported/notes/notes-taken.md": "---\\nid: notes-taken\\ntitle: Mine\\ntype: lesson\\nsummary: Hand-authored.\\nscope: notes\\n---\\nHand-authored body.\\n"
+  },
+  "first": {
+    "sourceDir": "<root>/notes",
+    "label": "notes",
+    "folder": "memories/imported/notes",
+    "scope": "notes",
+    "scanned": 7,
+    "imported": 8,
+    "byAdapter": {
+      "claudeCode": 2,
+      "generic": 5,
+      "index": 1
+    },
+    "written": {
+      "created": 8,
+      "updated": 0,
+      "unchanged": 0
+    },
+    "skipped": [],
+    "warnings": [],
+    "ids": [
+      "notes-feedback-borders",
+      "notes-hub",
+      "notes-no-frontmatter",
+      "notes-plain",
+      "notes-project-windows",
+      "notes-sub-dir-plain",
+      "notes-taken-483693a8",
+      "notes-index"
+    ],
+    "indexNode": "notes-index",
+    "migrated": [],
+    "orphaned": [],
+    "dryRun": false
+  },
+  "afterFirst": {
+    "memories/imported/notes/.bastra-imported": "{\\n  \\"tool\\": \\"bastra-recall import vault\\",\\n  \\"label\\": \\"notes\\",\\n  \\"source\\": \\"<root>/notes\\",\\n  \\"imported\\": 8,\\n  \\"at\\": \\"<time>\\",\\n  \\"note\\": \\"Machine-imported copy of an external folder — safe for external tools to skip.\\"\\n}\\n",
+    "memories/imported/notes/notes-feedback-borders.md": "---\\nid: notes-feedback-borders\\ntitle: No double borders\\ntype: meta-working\\nsummary: Always check borders\\ntopic_path:\\n  - imported\\n  - notes\\n  - rules\\ntags:\\n  - imported\\n  - notes\\n  - feedback\\n  - rules\\nscope: notes\\nrecall_when:\\n  - Always check borders\\n  - No double borders\\nrelated:\\n  - notes-project-windows\\n  - notes-ghost\\nrelated_via: []\\nsensitivity: team\\nwrite_origin: user-directed\\nsource: 'claude-code-memory:notes:feedback_borders.md'\\nconfidence: 1\\ncreated: '<date>'\\nupdated: '<date>'\\naffects_files: []\\nissues: []\\n---\\n\\nSee [[notes-project-windows]] and [[notes-ghost]].\\n",
+    "memories/imported/notes/notes-hub.md": "---\\nid: notes-hub\\ntitle: Hub\\ntype: reference\\nsummary: '- [[plain]] - [[feedback_borders]] - [[project_windows]]'\\ntopic_path:\\n  - imported\\n  - notes\\ntags:\\n  - imported\\n  - notes\\n  - reference\\nscope: notes\\nrecall_when:\\n  - '- [[plain]] - [[feedback_borders]] - [[project_windows]]'\\n  - Hub\\nrelated:\\n  - notes-plain\\n  - notes-feedback-borders\\n  - notes-project-windows\\nrelated_via: []\\nsensitivity: team\\nwrite_origin: user-directed\\nsource: 'markdown:notes:hub.md'\\nconfidence: 1\\ncreated: '<date>'\\nupdated: '<date>'\\naffects_files: []\\nissues: []\\n---\\n\\n# Hub\\n\\n- [[notes-plain]]\\n- [[notes-feedback-borders]]\\n- [[notes-project-windows]]\\n",
+    "memories/imported/notes/notes-index.md": "---\\nid: notes-index\\ntitle: notes — Index\\ntype: reference\\nsummary: 'Navigations-Index für den Import „notes\\" (3 Notizen, 2 Bereiche).'\\ntopic_path:\\n  - imported\\n  - notes\\ntags:\\n  - imported\\n  - notes\\n  - index\\nscope: notes\\nrecall_when:\\n  - notes index\\n  - notes übersicht\\nrelated:\\n  - notes-feedback-borders\\n  - notes-project-windows\\n  - notes-plain\\nrelated_via: []\\nsensitivity: team\\nwrite_origin: user-directed\\nsource: 'index:notes'\\nconfidence: 1\\ncreated: '<date>'\\nupdated: '<date>'\\naffects_files: []\\nissues: []\\n---\\n\\nKuratierter Index des importierten Ordners „notes\\" — die Verbindungsstruktur aus dem Quell-Index.\\n\\n## Rules\\n- [[notes-feedback-borders]]\\n- [[notes-project-windows]]\\n\\n## Notes\\n- [[notes-plain]]\\n",
+    "memories/imported/notes/notes-no-frontmatter.md": "---\\nid: notes-no-frontmatter\\ntitle: No frontmatter\\ntype: reference\\nsummary: Just text without a heading.\\ntopic_path:\\n  - imported\\n  - notes\\ntags:\\n  - imported\\n  - notes\\n  - reference\\nscope: notes\\nrecall_when:\\n  - Just text without a heading.\\n  - No frontmatter\\nrelated: []\\nrelated_via: []\\nsensitivity: team\\nwrite_origin: user-directed\\nsource: 'markdown:notes:no-frontmatter.md'\\nconfidence: 1\\ncreated: '<date>'\\nupdated: '<date>'\\naffects_files: []\\nissues: []\\n---\\n\\nJust text without a heading.\\n",
+    "memories/imported/notes/notes-plain.md": "---\\nid: notes-plain\\ntitle: Plain note\\ntype: reference\\nsummary: a plain note\\ntopic_path:\\n  - imported\\n  - notes\\n  - notes\\ntags:\\n  - imported\\n  - notes\\n  - reference\\nscope: notes\\nrecall_when:\\n  - a plain note\\n  - Plain note\\nrelated: []\\nrelated_via: []\\nsensitivity: team\\nwrite_origin: user-directed\\nsource: 'markdown:notes:plain.md'\\nconfidence: 1\\ncreated: '<date>'\\nupdated: '<date>'\\naffects_files: []\\nissues: []\\n---\\n\\n# Plain note\\n\\nFirst paragraph of a plain note.\\n\\nSecond paragraph.\\n",
+    "memories/imported/notes/notes-project-windows.md": "---\\nid: notes-project-windows\\ntitle: Windows strategy\\ntype: project-fact\\nsummary: Ship the windows build via CI\\ntopic_path:\\n  - imported\\n  - notes\\n  - rules\\ntags:\\n  - imported\\n  - notes\\n  - project\\n  - rules\\nscope: notes\\nrecall_when:\\n  - Ship the windows build via CI\\n  - Windows strategy\\nrelated: []\\nrelated_via: []\\nsensitivity: team\\nwrite_origin: user-directed\\nsource: 'claude-code-memory:notes:project_windows.md'\\nconfidence: 1\\ncreated: '<date>'\\nupdated: '<date>'\\naffects_files: []\\nissues: []\\n---\\n\\nDetails.\\n",
+    "memories/imported/notes/notes-sub-dir-plain.md": "---\\nid: notes-sub-dir-plain\\ntitle: Nested plain\\ntype: reference\\nsummary: a plain note\\ntopic_path:\\n  - imported\\n  - notes\\n  - sub\\n  - dir\\ntags:\\n  - imported\\n  - notes\\n  - reference\\nscope: notes\\nrecall_when:\\n  - a plain note\\n  - Nested plain\\nrelated: []\\nrelated_via: []\\nsensitivity: team\\nwrite_origin: user-directed\\nsource: 'markdown:notes:sub/dir/plain.md'\\nconfidence: 1\\ncreated: '<date>'\\nupdated: '<date>'\\naffects_files: []\\nissues: []\\n---\\n\\n# Nested plain\\n\\nSame basename, deeper.\\n",
+    "memories/imported/notes/notes-taken-483693a8.md": "---\\nid: notes-taken-483693a8\\ntitle: Taken\\ntype: reference\\nsummary: Collides with a hand-authored memory.\\ntopic_path:\\n  - imported\\n  - notes\\ntags:\\n  - imported\\n  - notes\\n  - reference\\nscope: notes\\nrecall_when:\\n  - Collides with a hand-authored memory.\\n  - Taken\\nrelated: []\\nrelated_via: []\\nsensitivity: team\\nwrite_origin: user-directed\\nsource: 'markdown:notes:taken.md'\\nconfidence: 1\\ncreated: '<date>'\\nupdated: '<date>'\\naffects_files: []\\nissues: []\\n---\\n\\n# Taken\\n\\nCollides with a hand-authored memory.\\n",
+    "memories/imported/notes/notes-taken.md": "---\\nid: notes-taken\\ntitle: Mine\\ntype: lesson\\nsummary: Hand-authored.\\nscope: notes\\n---\\nHand-authored body.\\n"
+  },
+  "again": {
+    "sourceDir": "<root>/notes",
+    "label": "notes",
+    "folder": "memories/imported/notes",
+    "scope": "notes",
+    "scanned": 7,
+    "imported": 8,
+    "byAdapter": {
+      "claudeCode": 2,
+      "generic": 5,
+      "index": 1
+    },
+    "written": {
+      "created": 0,
+      "updated": 0,
+      "unchanged": 8
+    },
+    "skipped": [],
+    "warnings": [],
+    "ids": [
+      "notes-feedback-borders",
+      "notes-hub",
+      "notes-no-frontmatter",
+      "notes-plain",
+      "notes-project-windows",
+      "notes-sub-dir-plain",
+      "notes-taken-483693a8",
+      "notes-index"
+    ],
+    "indexNode": "notes-index",
+    "migrated": [],
+    "orphaned": [],
+    "dryRun": false
+  },
+  "shrunk": {
+    "sourceDir": "<root>/notes",
+    "label": "notes",
+    "folder": "memories/imported/notes",
+    "scope": "notes",
+    "scanned": 6,
+    "imported": 7,
+    "byAdapter": {
+      "claudeCode": 2,
+      "generic": 4,
+      "index": 1
+    },
+    "written": {
+      "created": 0,
+      "updated": 3,
+      "unchanged": 4
+    },
+    "skipped": [],
+    "warnings": [],
+    "ids": [
+      "notes-feedback-borders",
+      "notes-hub",
+      "notes-no-frontmatter",
+      "notes-project-windows",
+      "notes-sub-dir-plain",
+      "notes-taken-483693a8",
+      "notes-index"
+    ],
+    "indexNode": "notes-index",
+    "migrated": [],
+    "orphaned": [
+      {
+        "id": "notes-plain",
+        "path": "<root>/vault/memories/imported/notes/notes-plain.md",
+        "sourcePath": "plain.md"
+      }
+    ],
+    "dryRun": false
+  },
+  "afterShrunk": {
+    "memories/imported/notes/.bastra-imported": "{\\n  \\"tool\\": \\"bastra-recall import vault\\",\\n  \\"label\\": \\"notes\\",\\n  \\"source\\": \\"<root>/notes\\",\\n  \\"imported\\": 7,\\n  \\"at\\": \\"<time>\\",\\n  \\"note\\": \\"Machine-imported copy of an external folder — safe for external tools to skip.\\"\\n}\\n",
+    "memories/imported/notes/notes-feedback-borders.md": "---\\nid: notes-feedback-borders\\ntitle: No double borders\\ntype: meta-working\\nsummary: Always check borders\\ntopic_path:\\n  - imported\\n  - notes\\n  - rules\\ntags:\\n  - imported\\n  - notes\\n  - feedback\\n  - rules\\nscope: notes\\nrecall_when:\\n  - Always check borders\\n  - No double borders\\nrelated:\\n  - notes-project-windows\\n  - notes-ghost\\nrelated_via: []\\nsensitivity: team\\nwrite_origin: user-directed\\nsource: 'claude-code-memory:notes:feedback_borders.md'\\nconfidence: 1\\ncreated: '<date>'\\nupdated: '<date>'\\naffects_files: []\\nissues: []\\n---\\n\\nSee [[notes-project-windows]] and [[notes-ghost]].\\n",
+    "memories/imported/notes/notes-hub.md": "---\\nid: notes-hub\\ntitle: Hub\\ntype: reference\\nsummary: '- [[plain]] - [[feedback_borders]] - [[project_windows]]'\\ntopic_path:\\n  - imported\\n  - notes\\ntags:\\n  - imported\\n  - notes\\n  - reference\\nscope: notes\\nrecall_when:\\n  - '- [[plain]] - [[feedback_borders]] - [[project_windows]]'\\n  - Hub\\nrelated:\\n  - notes-plain\\n  - notes-feedback-borders\\n  - notes-project-windows\\n  - notes-sub-dir-plain\\nrelated_via: []\\nsensitivity: team\\nwrite_origin: user-directed\\nsource: 'markdown:notes:hub.md'\\nconfidence: 1\\ncreated: '<date>'\\nupdated: '<date>'\\naffects_files: []\\nissues: []\\n---\\n\\n# Hub\\n\\n- [[notes-sub-dir-plain]]\\n- [[notes-feedback-borders]]\\n- [[notes-project-windows]]\\n",
+    "memories/imported/notes/notes-index.md": "---\\nid: notes-index\\ntitle: notes — Index\\ntype: reference\\nsummary: 'Navigations-Index für den Import „notes\\" (3 Notizen, 2 Bereiche).'\\ntopic_path:\\n  - imported\\n  - notes\\ntags:\\n  - imported\\n  - notes\\n  - index\\nscope: notes\\nrecall_when:\\n  - notes index\\n  - notes übersicht\\nrelated:\\n  - notes-feedback-borders\\n  - notes-project-windows\\n  - notes-plain\\n  - notes-sub-dir-plain\\nrelated_via: []\\nsensitivity: team\\nwrite_origin: user-directed\\nsource: 'index:notes'\\nconfidence: 1\\ncreated: '<date>'\\nupdated: '<date>'\\naffects_files: []\\nissues: []\\n---\\n\\nKuratierter Index des importierten Ordners „notes\\" — die Verbindungsstruktur aus dem Quell-Index.\\n\\n## Rules\\n- [[notes-feedback-borders]]\\n- [[notes-project-windows]]\\n\\n## Notes\\n- [[notes-sub-dir-plain]]\\n",
+    "memories/imported/notes/notes-no-frontmatter.md": "---\\nid: notes-no-frontmatter\\ntitle: No frontmatter\\ntype: reference\\nsummary: Just text without a heading.\\ntopic_path:\\n  - imported\\n  - notes\\ntags:\\n  - imported\\n  - notes\\n  - reference\\nscope: notes\\nrecall_when:\\n  - Just text without a heading.\\n  - No frontmatter\\nrelated: []\\nrelated_via: []\\nsensitivity: team\\nwrite_origin: user-directed\\nsource: 'markdown:notes:no-frontmatter.md'\\nconfidence: 1\\ncreated: '<date>'\\nupdated: '<date>'\\naffects_files: []\\nissues: []\\n---\\n\\nJust text without a heading.\\n",
+    "memories/imported/notes/notes-plain.md": "---\\nid: notes-plain\\ntitle: Plain note\\ntype: reference\\nsummary: a plain note\\ntopic_path:\\n  - imported\\n  - notes\\n  - notes\\ntags:\\n  - imported\\n  - notes\\n  - reference\\nscope: notes\\nrecall_when:\\n  - a plain note\\n  - Plain note\\nrelated: []\\nrelated_via: []\\nsensitivity: team\\nwrite_origin: user-directed\\nsource: 'markdown:notes:plain.md'\\nconfidence: 1\\ncreated: '<date>'\\nupdated: '<date>'\\naffects_files: []\\nissues: []\\n---\\n\\n# Plain note\\n\\nFirst paragraph of a plain note.\\n\\nSecond paragraph.\\n",
+    "memories/imported/notes/notes-project-windows.md": "---\\nid: notes-project-windows\\ntitle: Windows strategy\\ntype: project-fact\\nsummary: Ship the windows build via CI\\ntopic_path:\\n  - imported\\n  - notes\\n  - rules\\ntags:\\n  - imported\\n  - notes\\n  - project\\n  - rules\\nscope: notes\\nrecall_when:\\n  - Ship the windows build via CI\\n  - Windows strategy\\nrelated: []\\nrelated_via: []\\nsensitivity: team\\nwrite_origin: user-directed\\nsource: 'claude-code-memory:notes:project_windows.md'\\nconfidence: 1\\ncreated: '<date>'\\nupdated: '<date>'\\naffects_files: []\\nissues: []\\n---\\n\\nChanged details.\\n",
+    "memories/imported/notes/notes-sub-dir-plain.md": "---\\nid: notes-sub-dir-plain\\ntitle: Nested plain\\ntype: reference\\nsummary: a plain note\\ntopic_path:\\n  - imported\\n  - notes\\n  - sub\\n  - dir\\ntags:\\n  - imported\\n  - notes\\n  - reference\\nscope: notes\\nrecall_when:\\n  - a plain note\\n  - Nested plain\\nrelated: []\\nrelated_via: []\\nsensitivity: team\\nwrite_origin: user-directed\\nsource: 'markdown:notes:sub/dir/plain.md'\\nconfidence: 1\\ncreated: '<date>'\\nupdated: '<date>'\\naffects_files: []\\nissues: []\\n---\\n\\n# Nested plain\\n\\nSame basename, deeper.\\n",
+    "memories/imported/notes/notes-taken-483693a8.md": "---\\nid: notes-taken-483693a8\\ntitle: Taken\\ntype: reference\\nsummary: Collides with a hand-authored memory.\\ntopic_path:\\n  - imported\\n  - notes\\ntags:\\n  - imported\\n  - notes\\n  - reference\\nscope: notes\\nrecall_when:\\n  - Collides with a hand-authored memory.\\n  - Taken\\nrelated: []\\nrelated_via: []\\nsensitivity: team\\nwrite_origin: user-directed\\nsource: 'markdown:notes:taken.md'\\nconfidence: 1\\ncreated: '<date>'\\nupdated: '<date>'\\naffects_files: []\\nissues: []\\n---\\n\\n# Taken\\n\\nCollides with a hand-authored memory.\\n",
+    "memories/imported/notes/notes-taken.md": "---\\nid: notes-taken\\ntitle: Mine\\ntype: lesson\\nsummary: Hand-authored.\\nscope: notes\\n---\\nHand-authored body.\\n"
+  },
+  "audit": [
+    {
+      "memory_id": "notes-feedback-borders",
+      "operation": "create",
+      "actor": "import",
+      "actor_detail": "import:vault",
+      "file_path": "<root>/vault/memories/imported/notes/notes-feedback-borders.md",
+      "session_id": "<uuid>",
+      "diff_before": null,
+      "diff_after": {
+        "id": "notes-feedback-borders",
+        "title": "No double borders",
+        "type": "meta-working",
+        "summary": "Always check borders",
+        "topic_path": [
+          "imported",
+          "notes",
+          "rules"
+        ],
+        "tags": [
+          "imported",
+          "notes",
+          "feedback",
+          "rules"
+        ],
+        "scope": "notes",
+        "recall_when": [
+          "Always check borders",
+          "No double borders"
+        ],
+        "related": [
+          "notes-project-windows",
+          "notes-ghost"
+        ],
+        "related_via": [],
+        "sensitivity": "team",
+        "write_origin": "user-directed",
+        "source": "claude-code-memory:notes:feedback_borders.md",
+        "confidence": 1,
+        "created": "<date>",
+        "updated": "<date>",
+        "affects_files": [],
+        "issues": []
+      }
+    },
+    {
+      "memory_id": "notes-hub",
+      "operation": "create",
+      "actor": "import",
+      "actor_detail": "import:vault",
+      "file_path": "<root>/vault/memories/imported/notes/notes-hub.md",
+      "session_id": "<uuid>",
+      "diff_before": null,
+      "diff_after": {
+        "id": "notes-hub",
+        "title": "Hub",
+        "type": "reference",
+        "summary": "- [[plain]] - [[feedback_borders]] - [[project_windows]]",
+        "topic_path": [
+          "imported",
+          "notes"
+        ],
+        "tags": [
+          "imported",
+          "notes",
+          "reference"
+        ],
+        "scope": "notes",
+        "recall_when": [
+          "- [[plain]] - [[feedback_borders]] - [[project_windows]]",
+          "Hub"
+        ],
+        "related": [
+          "notes-plain",
+          "notes-feedback-borders",
+          "notes-project-windows"
+        ],
+        "related_via": [],
+        "sensitivity": "team",
+        "write_origin": "user-directed",
+        "source": "markdown:notes:hub.md",
+        "confidence": 1,
+        "created": "<date>",
+        "updated": "<date>",
+        "affects_files": [],
+        "issues": []
+      }
+    },
+    {
+      "memory_id": "notes-no-frontmatter",
+      "operation": "create",
+      "actor": "import",
+      "actor_detail": "import:vault",
+      "file_path": "<root>/vault/memories/imported/notes/notes-no-frontmatter.md",
+      "session_id": "<uuid>",
+      "diff_before": null,
+      "diff_after": {
+        "id": "notes-no-frontmatter",
+        "title": "No frontmatter",
+        "type": "reference",
+        "summary": "Just text without a heading.",
+        "topic_path": [
+          "imported",
+          "notes"
+        ],
+        "tags": [
+          "imported",
+          "notes",
+          "reference"
+        ],
+        "scope": "notes",
+        "recall_when": [
+          "Just text without a heading.",
+          "No frontmatter"
+        ],
+        "related": [],
+        "related_via": [],
+        "sensitivity": "team",
+        "write_origin": "user-directed",
+        "source": "markdown:notes:no-frontmatter.md",
+        "confidence": 1,
+        "created": "<date>",
+        "updated": "<date>",
+        "affects_files": [],
+        "issues": []
+      }
+    },
+    {
+      "memory_id": "notes-plain",
+      "operation": "create",
+      "actor": "import",
+      "actor_detail": "import:vault",
+      "file_path": "<root>/vault/memories/imported/notes/notes-plain.md",
+      "session_id": "<uuid>",
+      "diff_before": null,
+      "diff_after": {
+        "id": "notes-plain",
+        "title": "Plain note",
+        "type": "reference",
+        "summary": "a plain note",
+        "topic_path": [
+          "imported",
+          "notes",
+          "notes"
+        ],
+        "tags": [
+          "imported",
+          "notes",
+          "reference"
+        ],
+        "scope": "notes",
+        "recall_when": [
+          "a plain note",
+          "Plain note"
+        ],
+        "related": [],
+        "related_via": [],
+        "sensitivity": "team",
+        "write_origin": "user-directed",
+        "source": "markdown:notes:plain.md",
+        "confidence": 1,
+        "created": "<date>",
+        "updated": "<date>",
+        "affects_files": [],
+        "issues": []
+      }
+    },
+    {
+      "memory_id": "notes-project-windows",
+      "operation": "create",
+      "actor": "import",
+      "actor_detail": "import:vault",
+      "file_path": "<root>/vault/memories/imported/notes/notes-project-windows.md",
+      "session_id": "<uuid>",
+      "diff_before": null,
+      "diff_after": {
+        "id": "notes-project-windows",
+        "title": "Windows strategy",
+        "type": "project-fact",
+        "summary": "Ship the windows build via CI",
+        "topic_path": [
+          "imported",
+          "notes",
+          "rules"
+        ],
+        "tags": [
+          "imported",
+          "notes",
+          "project",
+          "rules"
+        ],
+        "scope": "notes",
+        "recall_when": [
+          "Ship the windows build via CI",
+          "Windows strategy"
+        ],
+        "related": [],
+        "related_via": [],
+        "sensitivity": "team",
+        "write_origin": "user-directed",
+        "source": "claude-code-memory:notes:project_windows.md",
+        "confidence": 1,
+        "created": "<date>",
+        "updated": "<date>",
+        "affects_files": [],
+        "issues": []
+      }
+    },
+    {
+      "memory_id": "notes-sub-dir-plain",
+      "operation": "create",
+      "actor": "import",
+      "actor_detail": "import:vault",
+      "file_path": "<root>/vault/memories/imported/notes/notes-sub-dir-plain.md",
+      "session_id": "<uuid>",
+      "diff_before": null,
+      "diff_after": {
+        "id": "notes-sub-dir-plain",
+        "title": "Nested plain",
+        "type": "reference",
+        "summary": "a plain note",
+        "topic_path": [
+          "imported",
+          "notes",
+          "sub",
+          "dir"
+        ],
+        "tags": [
+          "imported",
+          "notes",
+          "reference"
+        ],
+        "scope": "notes",
+        "recall_when": [
+          "a plain note",
+          "Nested plain"
+        ],
+        "related": [],
+        "related_via": [],
+        "sensitivity": "team",
+        "write_origin": "user-directed",
+        "source": "markdown:notes:sub/dir/plain.md",
+        "confidence": 1,
+        "created": "<date>",
+        "updated": "<date>",
+        "affects_files": [],
+        "issues": []
+      }
+    },
+    {
+      "memory_id": "notes-taken-483693a8",
+      "operation": "create",
+      "actor": "import",
+      "actor_detail": "import:vault",
+      "file_path": "<root>/vault/memories/imported/notes/notes-taken-483693a8.md",
+      "session_id": "<uuid>",
+      "diff_before": null,
+      "diff_after": {
+        "id": "notes-taken-483693a8",
+        "title": "Taken",
+        "type": "reference",
+        "summary": "Collides with a hand-authored memory.",
+        "topic_path": [
+          "imported",
+          "notes"
+        ],
+        "tags": [
+          "imported",
+          "notes",
+          "reference"
+        ],
+        "scope": "notes",
+        "recall_when": [
+          "Collides with a hand-authored memory.",
+          "Taken"
+        ],
+        "related": [],
+        "related_via": [],
+        "sensitivity": "team",
+        "write_origin": "user-directed",
+        "source": "markdown:notes:taken.md",
+        "confidence": 1,
+        "created": "<date>",
+        "updated": "<date>",
+        "affects_files": [],
+        "issues": []
+      }
+    },
+    {
+      "memory_id": "notes-index",
+      "operation": "create",
+      "actor": "import",
+      "actor_detail": "import:vault",
+      "file_path": "<root>/vault/memories/imported/notes/notes-index.md",
+      "session_id": "<uuid>",
+      "diff_before": null,
+      "diff_after": {
+        "id": "notes-index",
+        "title": "notes — Index",
+        "type": "reference",
+        "summary": "Navigations-Index für den Import „notes\\" (3 Notizen, 2 Bereiche).",
+        "topic_path": [
+          "imported",
+          "notes"
+        ],
+        "tags": [
+          "imported",
+          "notes",
+          "index"
+        ],
+        "scope": "notes",
+        "recall_when": [
+          "notes index",
+          "notes übersicht"
+        ],
+        "related": [
+          "notes-feedback-borders",
+          "notes-project-windows",
+          "notes-plain"
+        ],
+        "related_via": [],
+        "sensitivity": "team",
+        "write_origin": "user-directed",
+        "source": "index:notes",
+        "confidence": 1,
+        "created": "<date>",
+        "updated": "<date>",
+        "affects_files": [],
+        "issues": []
+      }
+    },
+    {
+      "memory_id": "notes-hub",
+      "operation": "update",
+      "actor": "import",
+      "actor_detail": "import:vault",
+      "file_path": "<root>/vault/memories/imported/notes/notes-hub.md",
+      "session_id": "<uuid>",
+      "diff_before": {
+        "id": "notes-hub",
+        "title": "Hub",
+        "type": "reference",
+        "summary": "- [[plain]] - [[feedback_borders]] - [[project_windows]]",
+        "topic_path": [
+          "imported",
+          "notes"
+        ],
+        "tags": [
+          "imported",
+          "notes",
+          "reference"
+        ],
+        "scope": "notes",
+        "recall_when": [
+          "- [[plain]] - [[feedback_borders]] - [[project_windows]]",
+          "Hub"
+        ],
+        "related": [
+          "notes-plain",
+          "notes-feedback-borders",
+          "notes-project-windows"
+        ],
+        "related_via": [],
+        "sensitivity": "team",
+        "write_origin": "user-directed",
+        "source": "markdown:notes:hub.md",
+        "confidence": 1,
+        "created": "<date>",
+        "updated": "<date>",
+        "affects_files": [],
+        "issues": []
+      },
+      "diff_after": {
+        "id": "notes-hub",
+        "title": "Hub",
+        "type": "reference",
+        "summary": "- [[plain]] - [[feedback_borders]] - [[project_windows]]",
+        "topic_path": [
+          "imported",
+          "notes"
+        ],
+        "tags": [
+          "imported",
+          "notes",
+          "reference"
+        ],
+        "scope": "notes",
+        "recall_when": [
+          "- [[plain]] - [[feedback_borders]] - [[project_windows]]",
+          "Hub"
+        ],
+        "related": [
+          "notes-plain",
+          "notes-feedback-borders",
+          "notes-project-windows",
+          "notes-sub-dir-plain"
+        ],
+        "related_via": [],
+        "sensitivity": "team",
+        "write_origin": "user-directed",
+        "source": "markdown:notes:hub.md",
+        "confidence": 1,
+        "created": "<date>",
+        "updated": "<date>",
+        "affects_files": [],
+        "issues": []
+      }
+    },
+    {
+      "memory_id": "notes-project-windows",
+      "operation": "update",
+      "actor": "import",
+      "actor_detail": "import:vault",
+      "file_path": "<root>/vault/memories/imported/notes/notes-project-windows.md",
+      "session_id": "<uuid>",
+      "diff_before": {
+        "id": "notes-project-windows",
+        "title": "Windows strategy",
+        "type": "project-fact",
+        "summary": "Ship the windows build via CI",
+        "topic_path": [
+          "imported",
+          "notes",
+          "rules"
+        ],
+        "tags": [
+          "imported",
+          "notes",
+          "project",
+          "rules"
+        ],
+        "scope": "notes",
+        "recall_when": [
+          "Ship the windows build via CI",
+          "Windows strategy"
+        ],
+        "related": [],
+        "related_via": [],
+        "sensitivity": "team",
+        "write_origin": "user-directed",
+        "source": "claude-code-memory:notes:project_windows.md",
+        "confidence": 1,
+        "created": "<date>",
+        "updated": "<date>",
+        "affects_files": [],
+        "issues": []
+      },
+      "diff_after": {
+        "id": "notes-project-windows",
+        "title": "Windows strategy",
+        "type": "project-fact",
+        "summary": "Ship the windows build via CI",
+        "topic_path": [
+          "imported",
+          "notes",
+          "rules"
+        ],
+        "tags": [
+          "imported",
+          "notes",
+          "project",
+          "rules"
+        ],
+        "scope": "notes",
+        "recall_when": [
+          "Ship the windows build via CI",
+          "Windows strategy"
+        ],
+        "related": [],
+        "related_via": [],
+        "sensitivity": "team",
+        "write_origin": "user-directed",
+        "source": "claude-code-memory:notes:project_windows.md",
+        "confidence": 1,
+        "created": "<date>",
+        "updated": "<date>",
+        "affects_files": [],
+        "issues": []
+      }
+    },
+    {
+      "memory_id": "notes-index",
+      "operation": "update",
+      "actor": "import",
+      "actor_detail": "import:vault",
+      "file_path": "<root>/vault/memories/imported/notes/notes-index.md",
+      "session_id": "<uuid>",
+      "diff_before": {
+        "id": "notes-index",
+        "title": "notes — Index",
+        "type": "reference",
+        "summary": "Navigations-Index für den Import „notes\\" (3 Notizen, 2 Bereiche).",
+        "topic_path": [
+          "imported",
+          "notes"
+        ],
+        "tags": [
+          "imported",
+          "notes",
+          "index"
+        ],
+        "scope": "notes",
+        "recall_when": [
+          "notes index",
+          "notes übersicht"
+        ],
+        "related": [
+          "notes-feedback-borders",
+          "notes-project-windows",
+          "notes-plain"
+        ],
+        "related_via": [],
+        "sensitivity": "team",
+        "write_origin": "user-directed",
+        "source": "index:notes",
+        "confidence": 1,
+        "created": "<date>",
+        "updated": "<date>",
+        "affects_files": [],
+        "issues": []
+      },
+      "diff_after": {
+        "id": "notes-index",
+        "title": "notes — Index",
+        "type": "reference",
+        "summary": "Navigations-Index für den Import „notes\\" (3 Notizen, 2 Bereiche).",
+        "topic_path": [
+          "imported",
+          "notes"
+        ],
+        "tags": [
+          "imported",
+          "notes",
+          "index"
+        ],
+        "scope": "notes",
+        "recall_when": [
+          "notes index",
+          "notes übersicht"
+        ],
+        "related": [
+          "notes-feedback-borders",
+          "notes-project-windows",
+          "notes-plain",
+          "notes-sub-dir-plain"
+        ],
+        "related_via": [],
+        "sensitivity": "team",
+        "write_origin": "user-directed",
+        "source": "index:notes",
+        "confidence": 1,
+        "created": "<date>",
+        "updated": "<date>",
+        "affects_files": [],
+        "issues": []
+      }
+    }
+  ]
+}
+`;
+
+exports[`#1514 importVault: refusals keep their messages 1`] = `
+[
+  "not a directory: <root>/missing",
+  "import source (<root>/vault/inner) overlaps the vault (<root>/vault) — refusing to self-ingest. The vault indexes its own files natively; importing it into itself would write a duplicate slugified copy under memories/imported/. Point \\"import vault\\" at a folder OUTSIDE the vault (or copy the notes out first).",
+  "import source (<root>/vault) overlaps the vault (<root>/vault/inner) — refusing to self-ingest. The vault indexes its own files natively; importing it into itself would write a duplicate slugified copy under memories/imported/. Point \\"import vault\\" at a folder OUTSIDE the vault (or copy the notes out first)."
+]
+`;

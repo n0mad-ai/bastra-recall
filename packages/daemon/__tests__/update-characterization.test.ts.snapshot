@@ -1,0 +1,3542 @@
+exports[`#1514 bastra update: output, seam order and exit codes per scenario 1`] = `
+[
+  {
+    "scenario": "dry-run npm",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "(dry-run — describing what would happen, writing nothing)\\n\\n"
+      ],
+      [
+        "out",
+        "→ install source: npm-global\\n"
+      ],
+      [
+        "out",
+        "  update command: npm install -g @bastra-recall/daemon@latest\\n\\n"
+      ],
+      [
+        "out",
+        "  would: 0) preflight: back up locally modified files, then refuse or proceed\\n"
+      ],
+      [
+        "out",
+        "  would: 1) run the update command above\\n"
+      ],
+      [
+        "out",
+        "         2) re-register every surface (idempotent)\\n"
+      ],
+      [
+        "out",
+        "         3) restart the daemon\\n"
+      ]
+    ]
+  },
+  {
+    "scenario": "dry-run npm staged",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ staged update: swapping files only, no daemon restart\\n"
+      ],
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "(dry-run — describing what would happen, writing nothing)\\n\\n"
+      ],
+      [
+        "out",
+        "→ install source: npm-global\\n"
+      ],
+      [
+        "out",
+        "  update command: npm install -g @bastra-recall/daemon@latest\\n\\n"
+      ],
+      [
+        "out",
+        "  would: 0) preflight: back up locally modified files, then refuse or proceed\\n"
+      ],
+      [
+        "out",
+        "  would: 1) run the update command above\\n"
+      ],
+      [
+        "out",
+        "         2) re-register every surface (idempotent)\\n"
+      ],
+      [
+        "out",
+        "         3) leave the daemon running (staged — no restart mid-session)\\n"
+      ]
+    ]
+  },
+  {
+    "scenario": "dry-run brew",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via Homebrew\\n"
+      ],
+      [
+        "out",
+        "  cli path: /opt/homebrew/Cellar/bastra-recall/1.2.0/libexec/packages/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "(dry-run — describing what would happen, writing nothing)\\n\\n"
+      ],
+      [
+        "out",
+        "→ install source: brew\\n"
+      ],
+      [
+        "out",
+        "  update command: brew upgrade bastra-recall\\n\\n"
+      ],
+      [
+        "out",
+        "  would: 0) skip the preflight — Homebrew installs each version into its own\\n            Cellar directory, so there is no in-place file to modify or back up\\n"
+      ],
+      [
+        "out",
+        "  would: 1) run the update command above\\n"
+      ],
+      [
+        "out",
+        "         2) re-register every surface (idempotent)\\n"
+      ],
+      [
+        "out",
+        "         3) restart the daemon\\n"
+      ]
+    ]
+  },
+  {
+    "scenario": "dry-run unknown",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: unable to determine install mode\\n"
+      ],
+      [
+        "out",
+        "  cli path: /nowhere-1514/bastra/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "(dry-run — describing what would happen, writing nothing)\\n\\n"
+      ],
+      [
+        "out",
+        "→ install source: unknown\\n"
+      ],
+      [
+        "out",
+        "  update command: see https://github.com/n0mad-ai/bastra-recall/releases\\n\\n"
+      ],
+      [
+        "out",
+        "  would: 1) install nothing — the install mode is unknown\\n"
+      ],
+      [
+        "out",
+        "         2) re-register every surface (idempotent)\\n"
+      ],
+      [
+        "out",
+        "         3) restart the daemon\\n"
+      ]
+    ]
+  },
+  {
+    "scenario": "npm plain, no autostart service",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "unattended": false,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "undefined"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "/usr/local/bin/npm",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "/usr/local/lib/node_modules/@bastra-recall/daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — /usr/local/lib/node_modules/@bastra-recall/daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "install",
+        {
+          "command": "install",
+          "surface": "all",
+          "yes": false,
+          "ollama": "skip",
+          "withStopHook": false,
+          "staged": false,
+          "force": false
+        }
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      "refreshAddress",
+      [
+        "refresh",
+        {
+          "target": {
+            "node": "/usr/local/bin/node",
+            "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+            "version": "9.0.0"
+          },
+          "reload": true,
+          "platform": "darwin"
+        }
+      ],
+      [
+        "out",
+        "→ restarting daemon\\n"
+      ],
+      [
+        "service",
+        "darwin"
+      ],
+      [
+        "out",
+        "  no running autostart service registered — restart a running daemon manually\\n"
+      ],
+      [
+        "out",
+        "  Restart it manually if the check below says it is needed:\\n"
+      ],
+      [
+        "out",
+        "    lsof -i :<port>             # find the daemon pid\\n"
+      ],
+      [
+        "out",
+        "    kill <pid>                 # forwarder respawns it with new code on next call\\n\\n"
+      ],
+      [
+        "out",
+        "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\\n"
+      ],
+      [
+        "ask",
+        {
+          "node": "/usr/local/bin/node",
+          "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+          "version": "9.0.0"
+        }
+      ]
+    ]
+  },
+  {
+    "scenario": "npm staged",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ staged update: swapping files only, no daemon restart\\n"
+      ],
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "unattended": true,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "undefined"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "/usr/local/bin/npm",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "/usr/local/lib/node_modules/@bastra-recall/daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — /usr/local/lib/node_modules/@bastra-recall/daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "install",
+        {
+          "command": "install",
+          "surface": "all",
+          "yes": true,
+          "ollama": "skip",
+          "withStopHook": false,
+          "staged": true,
+          "force": false
+        }
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      "refreshAddress",
+      [
+        "refresh",
+        {
+          "target": {
+            "node": "/usr/local/bin/node",
+            "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+            "version": "9.0.0"
+          },
+          "reload": false,
+          "platform": "darwin"
+        }
+      ],
+      [
+        "out",
+        "→ staged — daemon left running on old code (no restart mid-session)\\n"
+      ],
+      [
+        "out",
+        "  The managed autostart already names the new runtime, so a logout/reboot starts it (#441).\\n"
+      ],
+      [
+        "out",
+        "  New code goes live on the next daemon restart:\\n"
+      ],
+      [
+        "out",
+        "    · automatically after 30 min idle (forwarder mode — an autostart daemon stays warm, #78), or\\n"
+      ],
+      [
+        "out",
+        "    · now — run 'bastra update' without --staged (restarts the managed autostart daemon), or restart your AI clients\\n"
+      ]
+    ]
+  },
+  {
+    "scenario": "npm --yes --force",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "unattended": false,
+          "force": true,
+          "checkProvenance": true,
+          "verify": "undefined"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "/usr/local/bin/npm",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "/usr/local/lib/node_modules/@bastra-recall/daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — /usr/local/lib/node_modules/@bastra-recall/daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "install",
+        {
+          "command": "install",
+          "surface": "all",
+          "yes": true,
+          "ollama": "skip",
+          "withStopHook": false,
+          "staged": false,
+          "force": true
+        }
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      "refreshAddress",
+      [
+        "refresh",
+        {
+          "target": {
+            "node": "/usr/local/bin/node",
+            "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+            "version": "9.0.0"
+          },
+          "reload": true,
+          "platform": "darwin"
+        }
+      ],
+      [
+        "out",
+        "→ restarting daemon\\n"
+      ],
+      [
+        "service",
+        "darwin"
+      ],
+      [
+        "out",
+        "  no running autostart service registered — restart a running daemon manually\\n"
+      ],
+      [
+        "out",
+        "  Restart it manually if the check below says it is needed:\\n"
+      ],
+      [
+        "out",
+        "    lsof -i :<port>             # find the daemon pid\\n"
+      ],
+      [
+        "out",
+        "    kill <pid>                 # forwarder respawns it with new code on next call\\n\\n"
+      ],
+      [
+        "out",
+        "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\\n"
+      ],
+      [
+        "ask",
+        {
+          "node": "/usr/local/bin/node",
+          "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+          "version": "9.0.0"
+        }
+      ]
+    ]
+  },
+  {
+    "scenario": "preflight refuses, interactive",
+    "rc": 1,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "out",
+        "  note: a note\\n✗ local changes found\\n\\n"
+      ],
+      [
+        "out",
+        "  Nothing was installed — the current version is untouched.\\n"
+      ]
+    ]
+  },
+  {
+    "scenario": "preflight refuses, staged",
+    "rc": 1,
+    "events": [
+      [
+        "out",
+        "→ staged update: swapping files only, no daemon restart\\n"
+      ],
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "out",
+        "✗ local changes found\\n\\n"
+      ],
+      [
+        "out",
+        "  Nothing was installed — the current version is untouched.\\n"
+      ]
+    ]
+  },
+  {
+    "scenario": "preflight passes with notes",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "out",
+        "  note: backed up 2 files\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "/usr/local/bin/npm",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "/usr/local/lib/node_modules/@bastra-recall/daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — /usr/local/lib/node_modules/@bastra-recall/daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "install",
+        {
+          "command": "install",
+          "surface": "all",
+          "yes": false,
+          "ollama": "skip",
+          "withStopHook": false,
+          "staged": false,
+          "force": false
+        }
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      "refreshAddress",
+      [
+        "refresh",
+        {
+          "target": {
+            "node": "/usr/local/bin/node",
+            "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+            "version": "9.0.0"
+          },
+          "reload": true,
+          "platform": "darwin"
+        }
+      ],
+      [
+        "out",
+        "→ restarting daemon\\n"
+      ],
+      [
+        "service",
+        "darwin"
+      ],
+      [
+        "out",
+        "  no running autostart service registered — restart a running daemon manually\\n"
+      ],
+      [
+        "out",
+        "  Restart it manually if the check below says it is needed:\\n"
+      ],
+      [
+        "out",
+        "    lsof -i :<port>             # find the daemon pid\\n"
+      ],
+      [
+        "out",
+        "    kill <pid>                 # forwarder respawns it with new code on next call\\n\\n"
+      ],
+      [
+        "out",
+        "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\\n"
+      ],
+      [
+        "ask",
+        {
+          "node": "/usr/local/bin/node",
+          "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+          "version": "9.0.0"
+        }
+      ]
+    ]
+  },
+  {
+    "scenario": "npm install fails",
+    "rc": 1,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "unattended": false,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "undefined"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "/usr/local/bin/npm",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n✗ npm install failed (exit 1)\\n  Update by hand:\\n    npm install -g @bastra-recall/daemon@latest\\n  If you installed with 'npm install -g bastra-recall', update with this instead:\\n    npm install -g bastra-recall@latest\\n  Then run 'bastra update' again.\\n"
+      ]
+    ]
+  },
+  {
+    "scenario": "baseline written",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "unattended": false,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "undefined"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "/usr/local/bin/npm",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "/usr/local/lib/node_modules/@bastra-recall/daemon"
+        ]
+      ],
+      [
+        "writeManifest",
+        1
+      ],
+      [
+        "out",
+        "  ✓ baseline recorded (1 files) — the next update can tell local changes apart\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "install",
+        {
+          "command": "install",
+          "surface": "all",
+          "yes": false,
+          "ollama": "skip",
+          "withStopHook": false,
+          "staged": false,
+          "force": false
+        }
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      "refreshAddress",
+      [
+        "refresh",
+        {
+          "target": {
+            "node": "/usr/local/bin/node",
+            "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+            "version": "9.0.0"
+          },
+          "reload": true,
+          "platform": "darwin"
+        }
+      ],
+      [
+        "out",
+        "→ restarting daemon\\n"
+      ],
+      [
+        "service",
+        "darwin"
+      ],
+      [
+        "out",
+        "  no running autostart service registered — restart a running daemon manually\\n"
+      ],
+      [
+        "out",
+        "  Restart it manually if the check below says it is needed:\\n"
+      ],
+      [
+        "out",
+        "    lsof -i :<port>             # find the daemon pid\\n"
+      ],
+      [
+        "out",
+        "    kill <pid>                 # forwarder respawns it with new code on next call\\n\\n"
+      ],
+      [
+        "out",
+        "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\\n"
+      ],
+      [
+        "ask",
+        {
+          "node": "/usr/local/bin/node",
+          "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+          "version": "9.0.0"
+        }
+      ]
+    ]
+  },
+  {
+    "scenario": "baseline throws",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "unattended": false,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "undefined"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "/usr/local/bin/npm",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "/usr/local/lib/node_modules/@bastra-recall/daemon"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ baseline not written (disk full) — the next update reports 'unknown' instead\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "install",
+        {
+          "command": "install",
+          "surface": "all",
+          "yes": false,
+          "ollama": "skip",
+          "withStopHook": false,
+          "staged": false,
+          "force": false
+        }
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      "refreshAddress",
+      [
+        "refresh",
+        {
+          "target": {
+            "node": "/usr/local/bin/node",
+            "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+            "version": "9.0.0"
+          },
+          "reload": true,
+          "platform": "darwin"
+        }
+      ],
+      [
+        "out",
+        "→ restarting daemon\\n"
+      ],
+      [
+        "service",
+        "darwin"
+      ],
+      [
+        "out",
+        "  no running autostart service registered — restart a running daemon manually\\n"
+      ],
+      [
+        "out",
+        "  Restart it manually if the check below says it is needed:\\n"
+      ],
+      [
+        "out",
+        "    lsof -i :<port>             # find the daemon pid\\n"
+      ],
+      [
+        "out",
+        "    kill <pid>                 # forwarder respawns it with new code on next call\\n\\n"
+      ],
+      [
+        "out",
+        "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\\n"
+      ],
+      [
+        "ask",
+        {
+          "node": "/usr/local/bin/node",
+          "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+          "version": "9.0.0"
+        }
+      ]
+    ]
+  },
+  {
+    "scenario": "re-register fails",
+    "rc": 2,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "unattended": false,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "undefined"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "/usr/local/bin/npm",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "/usr/local/lib/node_modules/@bastra-recall/daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — /usr/local/lib/node_modules/@bastra-recall/daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "out",
+        "✗ re-register failed — fix the surface errors above, then re-run\\n"
+      ]
+    ]
+  },
+  {
+    "scenario": "address refresh throws",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "unattended": false,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "undefined"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "/usr/local/bin/npm",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "/usr/local/lib/node_modules/@bastra-recall/daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — /usr/local/lib/node_modules/@bastra-recall/daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "install",
+        {
+          "command": "install",
+          "surface": "all",
+          "yes": false,
+          "ollama": "skip",
+          "withStopHook": false,
+          "staged": false,
+          "force": false
+        }
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      [
+        "err",
+        "warning: assistant address runtime refresh failed: address broken. Run bastra address setup --yes from the updated installation.\\n"
+      ],
+      [
+        "refresh",
+        {
+          "target": {
+            "node": "/usr/local/bin/node",
+            "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+            "version": "9.0.0"
+          },
+          "reload": true,
+          "platform": "darwin"
+        }
+      ],
+      [
+        "out",
+        "→ restarting daemon\\n"
+      ],
+      [
+        "service",
+        "darwin"
+      ],
+      [
+        "out",
+        "  no running autostart service registered — restart a running daemon manually\\n"
+      ],
+      [
+        "out",
+        "  Restart it manually if the check below says it is needed:\\n"
+      ],
+      [
+        "out",
+        "    lsof -i :<port>             # find the daemon pid\\n"
+      ],
+      [
+        "out",
+        "    kill <pid>                 # forwarder respawns it with new code on next call\\n\\n"
+      ],
+      [
+        "out",
+        "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\\n"
+      ],
+      [
+        "ask",
+        {
+          "node": "/usr/local/bin/node",
+          "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+          "version": "9.0.0"
+        }
+      ]
+    ]
+  },
+  {
+    "scenario": "address refresh through the installed runtime",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "unattended": false,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "undefined"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "/usr/local/bin/npm",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "/usr/local/lib/node_modules/@bastra-recall/daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — /usr/local/lib/node_modules/@bastra-recall/daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "install",
+        {
+          "command": "install",
+          "surface": "all",
+          "yes": false,
+          "ollama": "skip",
+          "withStopHook": false,
+          "staged": false,
+          "force": false
+        }
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      [
+        "spawn",
+        [
+          "/usr/local/bin/node",
+          "--input-type=module",
+          "-e",
+          "const {pathToFileURL}=await import('node:url');const {dirname,join}=await import('node:path');const m=await import(pathToFileURL(join(dirname(process.argv[1]),'assistant-address.js')).href);await m.refreshAssistantAddressRuntime();",
+          "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js"
+        ]
+      ],
+      [
+        "refresh",
+        {
+          "target": {
+            "node": "/usr/local/bin/node",
+            "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+            "version": "9.0.0"
+          },
+          "reload": true,
+          "platform": "darwin"
+        }
+      ],
+      [
+        "out",
+        "→ restarting daemon\\n"
+      ],
+      [
+        "service",
+        "darwin"
+      ],
+      [
+        "out",
+        "  no running autostart service registered — restart a running daemon manually\\n"
+      ],
+      [
+        "out",
+        "  Restart it manually if the check below says it is needed:\\n"
+      ],
+      [
+        "out",
+        "    lsof -i :<port>             # find the daemon pid\\n"
+      ],
+      [
+        "out",
+        "    kill <pid>                 # forwarder respawns it with new code on next call\\n\\n"
+      ],
+      [
+        "out",
+        "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\\n"
+      ],
+      [
+        "ask",
+        {
+          "node": "/usr/local/bin/node",
+          "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+          "version": "9.0.0"
+        }
+      ]
+    ]
+  },
+  {
+    "scenario": "address refresh without an installed runtime",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "unattended": false,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "undefined"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "/usr/local/bin/npm",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "/usr/local/lib/node_modules/@bastra-recall/daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — /usr/local/lib/node_modules/@bastra-recall/daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "install",
+        {
+          "command": "install",
+          "surface": "all",
+          "yes": false,
+          "ollama": "skip",
+          "withStopHook": false,
+          "staged": false,
+          "force": false
+        }
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      [
+        "err",
+        "warning: assistant address runtime refresh failed: new installed runtime could not be located. Run bastra address setup --yes from the updated installation.\\n"
+      ],
+      [
+        "refresh",
+        {
+          "target": null,
+          "reload": true,
+          "platform": "darwin"
+        }
+      ],
+      [
+        "out",
+        "→ restarting daemon\\n"
+      ],
+      [
+        "service",
+        "darwin"
+      ],
+      [
+        "out",
+        "  no running autostart service registered — restart a running daemon manually\\n"
+      ],
+      [
+        "out",
+        "  Restart it manually if the check below says it is needed:\\n"
+      ],
+      [
+        "out",
+        "    lsof -i :<port>             # find the daemon pid\\n"
+      ],
+      [
+        "out",
+        "    kill <pid>                 # forwarder respawns it with new code on next call\\n\\n"
+      ],
+      [
+        "out",
+        "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\\n"
+      ],
+      [
+        "ask",
+        null
+      ]
+    ]
+  },
+  {
+    "scenario": "autostart cannot be re-pointed",
+    "rc": 1,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "unattended": false,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "undefined"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "/usr/local/bin/npm",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "/usr/local/lib/node_modules/@bastra-recall/daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — /usr/local/lib/node_modules/@bastra-recall/daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "install",
+        {
+          "command": "install",
+          "surface": "all",
+          "yes": false,
+          "ollama": "skip",
+          "withStopHook": false,
+          "staged": false,
+          "force": false
+        }
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      "refreshAddress",
+      [
+        "refresh",
+        {
+          "target": {
+            "node": "/usr/local/bin/node",
+            "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+            "version": "9.0.0"
+          },
+          "reload": true,
+          "platform": "darwin"
+        }
+      ],
+      [
+        "out",
+        "\\n✗ the managed autostart could not be pointed at the new install — fix it before relying on it\\n"
+      ]
+    ]
+  },
+  {
+    "scenario": "darwin managed autostart",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "unattended": false,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "undefined"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "/usr/local/bin/npm",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "/usr/local/lib/node_modules/@bastra-recall/daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — /usr/local/lib/node_modules/@bastra-recall/daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "install",
+        {
+          "command": "install",
+          "surface": "all",
+          "yes": false,
+          "ollama": "skip",
+          "withStopHook": false,
+          "staged": false,
+          "force": false
+        }
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      "refreshAddress",
+      [
+        "refresh",
+        {
+          "target": {
+            "node": "/usr/local/bin/node",
+            "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+            "version": "9.0.0"
+          },
+          "reload": true,
+          "platform": "darwin"
+        }
+      ],
+      [
+        "out",
+        "→ restarting daemon\\n"
+      ],
+      [
+        "service",
+        "darwin"
+      ],
+      [
+        "service.status",
+        {
+          "managed": true,
+          "loaded": true
+        }
+      ],
+      [
+        "out",
+        "  managed LaunchAgent restart handled by autostart refresh (bootout + bootstrap)\\n\\n"
+      ],
+      [
+        "out",
+        "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\\n"
+      ],
+      [
+        "ask",
+        {
+          "node": "/usr/local/bin/node",
+          "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+          "version": "9.0.0"
+        }
+      ]
+    ]
+  },
+  {
+    "scenario": "darwin loaded autostart, kickstart ok",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "unattended": false,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "undefined"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "/usr/local/bin/npm",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "/usr/local/lib/node_modules/@bastra-recall/daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — /usr/local/lib/node_modules/@bastra-recall/daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "install",
+        {
+          "command": "install",
+          "surface": "all",
+          "yes": false,
+          "ollama": "skip",
+          "withStopHook": false,
+          "staged": false,
+          "force": false
+        }
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      "refreshAddress",
+      [
+        "refresh",
+        {
+          "target": {
+            "node": "/usr/local/bin/node",
+            "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+            "version": "9.0.0"
+          },
+          "reload": true,
+          "platform": "darwin"
+        }
+      ],
+      [
+        "out",
+        "→ restarting daemon\\n"
+      ],
+      [
+        "service",
+        "darwin"
+      ],
+      [
+        "service.status",
+        {
+          "managed": false,
+          "loaded": true
+        }
+      ],
+      "service.kickstart",
+      [
+        "out",
+        "  ✓ autostart service kicked — daemon restarted with new code\\n\\n"
+      ],
+      [
+        "out",
+        "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\\n"
+      ],
+      [
+        "ask",
+        {
+          "node": "/usr/local/bin/node",
+          "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+          "version": "9.0.0"
+        }
+      ]
+    ]
+  },
+  {
+    "scenario": "darwin loaded autostart, kickstart fails",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "unattended": false,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "undefined"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "/usr/local/bin/npm",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "/usr/local/lib/node_modules/@bastra-recall/daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — /usr/local/lib/node_modules/@bastra-recall/daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "install",
+        {
+          "command": "install",
+          "surface": "all",
+          "yes": false,
+          "ollama": "skip",
+          "withStopHook": false,
+          "staged": false,
+          "force": false
+        }
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      "refreshAddress",
+      [
+        "refresh",
+        {
+          "target": {
+            "node": "/usr/local/bin/node",
+            "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+            "version": "9.0.0"
+          },
+          "reload": true,
+          "platform": "darwin"
+        }
+      ],
+      [
+        "out",
+        "→ restarting daemon\\n"
+      ],
+      [
+        "service",
+        "darwin"
+      ],
+      [
+        "service.status",
+        {
+          "managed": false,
+          "loaded": true
+        }
+      ],
+      "service.kickstart",
+      [
+        "out",
+        "  ✗ kickstart failed — restart the daemon manually\\n\\n"
+      ],
+      [
+        "out",
+        "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\\n"
+      ],
+      [
+        "ask",
+        {
+          "node": "/usr/local/bin/node",
+          "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+          "version": "9.0.0"
+        }
+      ]
+    ]
+  },
+  {
+    "scenario": "linux without autostart",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "unattended": false,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "undefined"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "/usr/local/bin/npm",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "/usr/local/lib/node_modules/@bastra-recall/daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "/usr/local/lib/node_modules/@bastra-recall/daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — /usr/local/lib/node_modules/@bastra-recall/daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "install",
+        {
+          "command": "install",
+          "surface": "all",
+          "yes": false,
+          "ollama": "skip",
+          "withStopHook": false,
+          "staged": false,
+          "force": false
+        }
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      "refreshAddress",
+      [
+        "refresh",
+        {
+          "target": {
+            "node": "/usr/local/bin/node",
+            "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+            "version": "9.0.0"
+          },
+          "reload": true,
+          "platform": "linux"
+        }
+      ],
+      [
+        "out",
+        "→ restarting daemon\\n"
+      ],
+      [
+        "service",
+        "linux"
+      ],
+      [
+        "out",
+        "  no running autostart service registered — restart a running daemon manually\\n"
+      ],
+      [
+        "out",
+        "  Restart it manually if the check below says it is needed:\\n"
+      ],
+      [
+        "out",
+        "    lsof -i :<port>             # find the daemon pid\\n"
+      ],
+      [
+        "out",
+        "    kill <pid>                 # forwarder respawns it with new code on next call\\n\\n"
+      ],
+      [
+        "out",
+        "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\\n"
+      ],
+      [
+        "ask",
+        {
+          "node": "/usr/local/bin/node",
+          "script": "/usr/local/lib/node_modules/@bastra-recall/daemon/dist/index.js",
+          "version": "9.0.0"
+        }
+      ]
+    ]
+  },
+  {
+    "scenario": "npx hands the re-registration to the installed CLI",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ staged update: swapping files only, no daemon restart\\n"
+      ],
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /Users/jane/.npm/_npx/abc/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "/Users/jane/.npm/_npx/abc/node_modules/@bastra-recall/daemon",
+          "unattended": true,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "undefined"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "/usr/local/bin/npm",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "/Users/jane/.npm/_npx/abc/node_modules/@bastra-recall/daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "/Users/jane/.npm/_npx/abc/node_modules/@bastra-recall/daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — /Users/jane/.npm/_npx/abc/node_modules/@bastra-recall/daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      [
+        "out",
+        "  → handing the re-registration to /usr/local/bin/bastra\\n"
+      ],
+      [
+        "out",
+        "    (registration must use the newly installed CLI, not this old process)\\n\\n"
+      ],
+      [
+        "spawn",
+        [
+          "/usr/local/bin/bastra",
+          "install",
+          "all",
+          "--no-ollama",
+          "--no-stop-hook",
+          "--yes"
+        ]
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      "refreshAddress",
+      [
+        "refresh",
+        {
+          "target": null,
+          "reload": false,
+          "platform": "darwin"
+        }
+      ],
+      [
+        "out",
+        "→ staged — daemon left running on old code (no restart mid-session)\\n"
+      ],
+      [
+        "out",
+        "  The managed autostart already names the new runtime, so a logout/reboot starts it (#441).\\n"
+      ],
+      [
+        "out",
+        "  New code goes live on the next daemon restart:\\n"
+      ],
+      [
+        "out",
+        "    · automatically after 30 min idle (forwarder mode — an autostart daemon stays warm, #78), or\\n"
+      ],
+      [
+        "out",
+        "    · now — run 'bastra update' without --staged (restarts the managed autostart daemon), or restart your AI clients\\n"
+      ]
+    ]
+  },
+  {
+    "scenario": "npx without an installed CLI registers inline",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /Users/jane/.npm/_npx/abc/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "/Users/jane/.npm/_npx/abc/node_modules/@bastra-recall/daemon",
+          "unattended": false,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "undefined"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "/usr/local/bin/npm",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "/Users/jane/.npm/_npx/abc/node_modules/@bastra-recall/daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "/Users/jane/.npm/_npx/abc/node_modules/@bastra-recall/daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — /Users/jane/.npm/_npx/abc/node_modules/@bastra-recall/daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ could not locate the newly installed 'bastra' — registering from this (old) process.\\n    The surfaces may stay pinned to the previous version; run 'bastra doctor' afterwards.\\n\\n"
+      ],
+      [
+        "install",
+        {
+          "command": "install",
+          "surface": "all",
+          "yes": false,
+          "ollama": "skip",
+          "withStopHook": false,
+          "staged": false,
+          "force": false
+        }
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      "refreshAddress",
+      [
+        "refresh",
+        {
+          "target": null,
+          "reload": true,
+          "platform": "darwin"
+        }
+      ],
+      [
+        "out",
+        "→ restarting daemon\\n"
+      ],
+      [
+        "service",
+        "darwin"
+      ],
+      [
+        "out",
+        "  no running autostart service registered — restart a running daemon manually\\n"
+      ],
+      [
+        "out",
+        "  Restart it manually if the check below says it is needed:\\n"
+      ],
+      [
+        "out",
+        "    lsof -i :<port>             # find the daemon pid\\n"
+      ],
+      [
+        "out",
+        "    kill <pid>                 # forwarder respawns it with new code on next call\\n\\n"
+      ],
+      [
+        "out",
+        "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\\n"
+      ],
+      [
+        "ask",
+        null
+      ]
+    ]
+  },
+  {
+    "scenario": "npx hand-off spawn fails",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: /Users/jane/.npm/_npx/abc/node_modules/@bastra-recall/daemon/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "/Users/jane/.npm/_npx/abc/node_modules/@bastra-recall/daemon",
+          "unattended": false,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "undefined"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "/usr/local/bin/npm",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "/Users/jane/.npm/_npx/abc/node_modules/@bastra-recall/daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "/Users/jane/.npm/_npx/abc/node_modules/@bastra-recall/daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — /Users/jane/.npm/_npx/abc/node_modules/@bastra-recall/daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      [
+        "out",
+        "  → handing the re-registration to /usr/local/bin/bastra\\n"
+      ],
+      [
+        "out",
+        "    (registration must use the newly installed CLI, not this old process)\\n\\n"
+      ],
+      [
+        "spawn",
+        [
+          "/usr/local/bin/bastra",
+          "install",
+          "all",
+          "--no-ollama",
+          "--no-stop-hook"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ could not locate the newly installed 'bastra' — registering from this (old) process.\\n    The surfaces may stay pinned to the previous version; run 'bastra doctor' afterwards.\\n\\n"
+      ],
+      [
+        "install",
+        {
+          "command": "install",
+          "surface": "all",
+          "yes": false,
+          "ollama": "skip",
+          "withStopHook": false,
+          "staged": false,
+          "force": false
+        }
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "/usr/local/bin/npm",
+          "prefix",
+          "-g"
+        ]
+      ],
+      "refreshAddress",
+      [
+        "refresh",
+        {
+          "target": null,
+          "reload": true,
+          "platform": "darwin"
+        }
+      ],
+      [
+        "out",
+        "→ restarting daemon\\n"
+      ],
+      [
+        "service",
+        "darwin"
+      ],
+      [
+        "out",
+        "  no running autostart service registered — restart a running daemon manually\\n"
+      ],
+      [
+        "out",
+        "  Restart it manually if the check below says it is needed:\\n"
+      ],
+      [
+        "out",
+        "    lsof -i :<port>             # find the daemon pid\\n"
+      ],
+      [
+        "out",
+        "    kill <pid>                 # forwarder respawns it with new code on next call\\n\\n"
+      ],
+      [
+        "out",
+        "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\\n"
+      ],
+      [
+        "ask",
+        null
+      ]
+    ]
+  },
+  {
+    "scenario": "unknown install mode",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: unable to determine install mode\\n"
+      ],
+      [
+        "out",
+        "  cli path: /nowhere-1514/bastra/dist/cli/update.js\\n\\n"
+      ],
+      [
+        "out",
+        "⚠ install mode unknown — install manually from:\\n"
+      ],
+      [
+        "out",
+        "    see https://github.com/n0mad-ai/bastra-recall/releases\\n\\n"
+      ],
+      [
+        "reapply",
+        [
+          "unknown",
+          "/nowhere-1514/bastra"
+        ]
+      ],
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "install",
+        {
+          "command": "install",
+          "surface": "all",
+          "yes": false,
+          "ollama": "skip",
+          "withStopHook": false,
+          "staged": false,
+          "force": false
+        }
+      ],
+      "refreshAddress",
+      [
+        "refresh",
+        {
+          "target": null,
+          "reload": true,
+          "platform": "darwin"
+        }
+      ],
+      [
+        "out",
+        "→ restarting daemon\\n"
+      ],
+      [
+        "service",
+        "darwin"
+      ],
+      [
+        "out",
+        "  no running autostart service registered — restart a running daemon manually\\n"
+      ],
+      [
+        "out",
+        "  Restart it manually if the check below says it is needed:\\n"
+      ],
+      [
+        "out",
+        "    lsof -i :<port>             # find the daemon pid\\n"
+      ],
+      [
+        "out",
+        "    kill <pid>                 # forwarder respawns it with new code on next call\\n\\n"
+      ],
+      [
+        "out",
+        "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\\n"
+      ],
+      [
+        "ask",
+        null
+      ]
+    ]
+  },
+  {
+    "scenario": "windows npm staged",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ staged update: swapping files only, no daemon restart\\n"
+      ],
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon\\\\dist\\\\cli\\\\update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon",
+          "unattended": true,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "function"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+          "C:\\\\Program Files\\\\nodejs\\\\node_modules\\\\npm\\\\bin\\\\npm-cli.js",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+          "C:\\\\Program Files\\\\nodejs\\\\node_modules\\\\npm\\\\bin\\\\npm-cli.js",
+          "prefix",
+          "-g"
+        ]
+      ],
+      [
+        "out",
+        "  → handing the re-registration to C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon\\\\dist\\\\cli.js\\n"
+      ],
+      [
+        "out",
+        "    (registration must use the newly installed CLI, not this old process)\\n\\n"
+      ],
+      [
+        "spawn",
+        [
+          "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+          "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon\\\\dist\\\\cli.js",
+          "install",
+          "all",
+          "--no-ollama",
+          "--no-stop-hook",
+          "--yes"
+        ]
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+          "C:\\\\Program Files\\\\nodejs\\\\node_modules\\\\npm\\\\bin\\\\npm-cli.js",
+          "prefix",
+          "-g"
+        ]
+      ],
+      "refreshAddress",
+      [
+        "refresh",
+        {
+          "target": {
+            "node": "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+            "script": "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon\\\\dist\\\\index.js",
+            "version": "9.0.0"
+          },
+          "reload": false,
+          "platform": "win32"
+        }
+      ],
+      [
+        "out",
+        "→ staged — daemon left running on old code (no restart mid-session)\\n"
+      ],
+      [
+        "out",
+        "  The managed autostart already names the new runtime, so a logout/reboot starts it (#441).\\n"
+      ],
+      [
+        "out",
+        "  New code goes live on the next daemon restart:\\n"
+      ],
+      [
+        "out",
+        "    · automatically after 30 min idle (forwarder mode — an autostart daemon stays warm, #78), or\\n"
+      ],
+      [
+        "out",
+        "    · now — run 'bastra update' without --staged (restarts the managed autostart daemon), or restart your AI clients\\n"
+      ]
+    ]
+  },
+  {
+    "scenario": "windows managed autostart",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon\\\\dist\\\\cli\\\\update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon",
+          "unattended": false,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "function"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+          "C:\\\\Program Files\\\\nodejs\\\\node_modules\\\\npm\\\\bin\\\\npm-cli.js",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+          "C:\\\\Program Files\\\\nodejs\\\\node_modules\\\\npm\\\\bin\\\\npm-cli.js",
+          "prefix",
+          "-g"
+        ]
+      ],
+      [
+        "out",
+        "  → handing the re-registration to C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon\\\\dist\\\\cli.js\\n"
+      ],
+      [
+        "out",
+        "    (registration must use the newly installed CLI, not this old process)\\n\\n"
+      ],
+      [
+        "spawn",
+        [
+          "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+          "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon\\\\dist\\\\cli.js",
+          "install",
+          "all",
+          "--no-ollama",
+          "--no-stop-hook"
+        ]
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+          "C:\\\\Program Files\\\\nodejs\\\\node_modules\\\\npm\\\\bin\\\\npm-cli.js",
+          "prefix",
+          "-g"
+        ]
+      ],
+      "refreshAddress",
+      [
+        "refresh",
+        {
+          "target": {
+            "node": "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+            "script": "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon\\\\dist\\\\index.js",
+            "version": "9.0.0"
+          },
+          "reload": true,
+          "platform": "win32"
+        }
+      ],
+      [
+        "out",
+        "→ restarting daemon\\n"
+      ],
+      [
+        "service",
+        "win32"
+      ],
+      [
+        "service.status",
+        {
+          "managed": true,
+          "loaded": true
+        }
+      ],
+      [
+        "out",
+        "  managed Task Scheduler restart handled by autostart refresh\\n\\n"
+      ],
+      [
+        "out",
+        "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\\n"
+      ],
+      [
+        "ask",
+        {
+          "node": "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+          "script": "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon\\\\dist\\\\index.js",
+          "version": "9.0.0"
+        }
+      ]
+    ]
+  },
+  {
+    "scenario": "windows without autostart",
+    "rc": 0,
+    "events": [
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon\\\\dist\\\\cli\\\\update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon",
+          "unattended": false,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "function"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+          "C:\\\\Program Files\\\\nodejs\\\\node_modules\\\\npm\\\\bin\\\\npm-cli.js",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+          "C:\\\\Program Files\\\\nodejs\\\\node_modules\\\\npm\\\\bin\\\\npm-cli.js",
+          "prefix",
+          "-g"
+        ]
+      ],
+      [
+        "out",
+        "  → handing the re-registration to C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon\\\\dist\\\\cli.js\\n"
+      ],
+      [
+        "out",
+        "    (registration must use the newly installed CLI, not this old process)\\n\\n"
+      ],
+      [
+        "spawn",
+        [
+          "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+          "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon\\\\dist\\\\cli.js",
+          "install",
+          "all",
+          "--no-ollama",
+          "--no-stop-hook"
+        ]
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+          "C:\\\\Program Files\\\\nodejs\\\\node_modules\\\\npm\\\\bin\\\\npm-cli.js",
+          "prefix",
+          "-g"
+        ]
+      ],
+      "refreshAddress",
+      [
+        "refresh",
+        {
+          "target": {
+            "node": "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+            "script": "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon\\\\dist\\\\index.js",
+            "version": "9.0.0"
+          },
+          "reload": true,
+          "platform": "win32"
+        }
+      ],
+      [
+        "out",
+        "→ restarting daemon\\n"
+      ],
+      [
+        "service",
+        "win32"
+      ],
+      [
+        "out",
+        "  no running autostart service registered — restart a running daemon manually\\n"
+      ],
+      [
+        "out",
+        "  Restart it manually if the check below says it is needed:\\n"
+      ],
+      [
+        "out",
+        "    Get-NetTCPConnection -LocalPort <port> | Select-Object OwningProcess\\n"
+      ],
+      [
+        "out",
+        "    Stop-Process -Id <pid>     # forwarder respawns it on the next call\\n\\n"
+      ],
+      [
+        "out",
+        "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\\n"
+      ],
+      [
+        "ask",
+        {
+          "node": "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+          "script": "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon\\\\dist\\\\index.js",
+          "version": "9.0.0"
+        }
+      ]
+    ]
+  },
+  {
+    "scenario": "windows hand-off cannot find the new CLI",
+    "rc": 1,
+    "events": [
+      [
+        "out",
+        "→ staged update: swapping files only, no daemon restart\\n"
+      ],
+      [
+        "out",
+        "→ install mode: installed via npm (global)\\n"
+      ],
+      [
+        "out",
+        "  cli path: C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon\\\\dist\\\\cli\\\\update.js\\n\\n"
+      ],
+      [
+        "out",
+        "→ preflight: locally modified files + npm provenance (#226)\\n"
+      ],
+      [
+        "preflight",
+        {
+          "root": "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon",
+          "unattended": true,
+          "force": false,
+          "checkProvenance": true,
+          "verify": "function"
+        }
+      ],
+      [
+        "out",
+        "  ✓ nothing local to protect\\n\\n"
+      ],
+      [
+        "out",
+        "→ npm install -g @bastra-recall/daemon@latest\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "run",
+        [
+          "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+          "C:\\\\Program Files\\\\nodejs\\\\node_modules\\\\npm\\\\bin\\\\npm-cli.js",
+          "install",
+          "-g",
+          "@bastra-recall/daemon@latest"
+        ]
+      ],
+      [
+        "out",
+        "\\n"
+      ],
+      [
+        "reapply",
+        [
+          "npm-global",
+          "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon"
+        ]
+      ],
+      [
+        "manifest",
+        [
+          "C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon",
+          "1.2.1"
+        ]
+      ],
+      [
+        "out",
+        "  ⚠ no baseline written — C:\\\\Users\\\\Jane Doe\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@bastra-recall\\\\daemon is empty now (install root moved?)\\n\\n"
+      ],
+      "clearBlocked",
+      [
+        "out",
+        "→ re-registering with every supported surface (idempotent)\\n\\n"
+      ],
+      [
+        "find",
+        "npm"
+      ],
+      [
+        "captured",
+        [
+          "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+          "C:\\\\Program Files\\\\nodejs\\\\node_modules\\\\npm\\\\bin\\\\npm-cli.js",
+          "prefix",
+          "-g"
+        ]
+      ],
+      [
+        "err",
+        "error: cannot locate or run the newly installed Windows CLI; refusing re-registration from this old process. Update manually and run bastra install all from the new installation.\\n"
+      ]
+    ]
+  }
+]
+`;

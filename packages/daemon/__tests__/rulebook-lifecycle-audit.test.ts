@@ -1,3 +1,4 @@
+import { withFixtureClock } from "./fixtures/fixture-clock.js";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -65,17 +66,18 @@ before(async () => {
 });
 after(() => rm(root, { recursive: true, force: true }));
 
-test("audit 6: clearShown rearms real reflex denial after context loss", async () => {
-  const sid = "reflex-context",
-    deps = { reflexPool: () => [reflex] };
-  assert.equal(denied(await runGateLane(p(sid), deps)), true);
-  assert.equal(await runGateLane(p(sid), deps), "{}");
-  await mutateSessionState(sid, (s) => {
-    s.shown = { fixture: { count: 1, at: Date.now() } };
-  });
-  await clearShown(sid);
-  assert.equal(denied(await runGateLane(p(sid), deps)), true);
-});
+test("audit 6: clearShown rearms real reflex denial after context loss", async () =>
+  withFixtureClock(async () => {
+    const sid = "reflex-context",
+      deps = { reflexPool: () => [reflex] };
+    assert.equal(denied(await runGateLane(p(sid), deps)), true);
+    assert.equal(await runGateLane(p(sid), deps), "{}");
+    await mutateSessionState(sid, (s) => {
+      s.shown = { fixture: { count: 1, at: Date.now() } };
+    });
+    await clearShown(sid);
+    assert.equal(denied(await runGateLane(p(sid), deps)), true);
+  }));
 
 test("audit 6: deniedReflex alone prevents clearShown early return", async () => {
   const sid = "reflex-only";
