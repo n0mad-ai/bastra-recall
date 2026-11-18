@@ -1,0 +1,793 @@
+{
+  "about": "#643 synthetic corpus: invented bilingual correction chains, living neighbours and fresh saves. No real vault content.",
+  "chains": [
+    {
+      "id": "c01",
+      "language": "en",
+      "scope": "ingest",
+      "type": "project-fact",
+      "topic_path": ["ingest", "worker"],
+      "tags": ["ingest-worker", "batch-size"],
+      "versions": [
+        {
+          "title": "Ingest worker batch size",
+          "summary": "The ingest worker flushes 500 records per batch.",
+          "trigger": "tuning the ingest worker flush"
+        },
+        {
+          "title": "Ingest worker batch size raised",
+          "summary": "The ingest worker flushes 800 records per batch since the queue rewrite.",
+          "trigger": "changing how many records the ingest worker flushes"
+        }
+      ],
+      "reassert": {
+        "title": "Ingest worker flush size",
+        "summary": "Each ingest worker batch carries 500 records before it flushes.",
+        "trigger": "sizing a flush of the ingest worker"
+      }
+    },
+    {
+      "id": "c02",
+      "language": "en",
+      "scope": "billing",
+      "type": "decision",
+      "topic_path": ["billing", "invoices"],
+      "tags": ["invoice-run", "schedule"],
+      "versions": [
+        {
+          "title": "Invoice run schedule",
+          "summary": "The monthly invoice run starts on the first business day at 06:00.",
+          "trigger": "planning the monthly invoice run"
+        },
+        {
+          "title": "Invoice run moved to the third",
+          "summary": "The monthly invoice run starts on the third business day at 06:00 so late usage is included.",
+          "trigger": "deciding when invoices are generated each month"
+        }
+      ],
+      "reassert": {
+        "title": "When the invoice run starts",
+        "summary": "Invoices are generated in the monthly run on the first business day, 06:00.",
+        "trigger": "checking the invoice run date"
+      }
+    },
+    {
+      "id": "c03",
+      "language": "en",
+      "scope": "infra",
+      "type": "project-fact",
+      "topic_path": ["infra", "database"],
+      "tags": ["postgres", "connection-pool"],
+      "versions": [
+        {
+          "title": "Postgres connection pool size",
+          "summary": "The API service keeps a Postgres connection pool of 20 connections.",
+          "trigger": "configuring the API Postgres pool"
+        },
+        {
+          "title": "Postgres pool size after the PgBouncer move",
+          "summary": "The API service keeps a Postgres connection pool of 5 connections behind PgBouncer.",
+          "trigger": "sizing database connections for the API service"
+        },
+        {
+          "title": "Postgres pool size per API replica",
+          "summary": "Each API replica keeps a Postgres connection pool of 8 connections behind PgBouncer.",
+          "trigger": "setting the connection pool per API replica"
+        }
+      ],
+      "reassert": {
+        "title": "API database pool",
+        "summary": "The API service holds 20 Postgres connections in its pool.",
+        "trigger": "looking up the API Postgres pool size"
+      }
+    },
+    {
+      "id": "c04",
+      "language": "en",
+      "scope": "infra",
+      "type": "lesson",
+      "topic_path": ["infra", "deploy"],
+      "tags": ["deploy", "migrations"],
+      "versions": [
+        {
+          "title": "Run migrations after the deploy",
+          "summary": "Database migrations run after the new containers are live.",
+          "trigger": "ordering migrations and the container rollout"
+        },
+        {
+          "title": "Run migrations before the deploy",
+          "summary": "Database migrations run before the new containers go live; running them afterwards broke the checkout twice.",
+          "trigger": "about to roll out containers that need a schema migration"
+        }
+      ],
+      "reassert": {
+        "title": "Migrations go after the rollout",
+        "summary": "Run the database migrations once the new containers are live.",
+        "trigger": "sequencing a deploy with database migrations"
+      }
+    },
+    {
+      "id": "c05",
+      "language": "en",
+      "scope": "frontend",
+      "type": "decision",
+      "topic_path": ["frontend", "state"],
+      "tags": ["state-management", "dashboard"],
+      "versions": [
+        {
+          "title": "Dashboard state lives in Redux",
+          "summary": "The dashboard keeps its filter and selection state in the Redux store.",
+          "trigger": "adding filter state to the dashboard"
+        },
+        {
+          "title": "Dashboard state moved to the URL",
+          "summary": "The dashboard keeps its filter and selection state in URL search params so views can be shared.",
+          "trigger": "deciding where dashboard filters are stored"
+        }
+      ],
+      "reassert": {
+        "title": "Dashboard filters in the store",
+        "summary": "Filter and selection state of the dashboard is held in Redux.",
+        "trigger": "wiring a new dashboard filter"
+      }
+    },
+    {
+      "id": "c06",
+      "language": "en",
+      "scope": "ops",
+      "type": "project-fact",
+      "topic_path": ["ops", "on-call"],
+      "tags": ["on-call", "rotation"],
+      "versions": [
+        {
+          "title": "On-call rotation length",
+          "summary": "The on-call rotation hands over every Monday, one week per person.",
+          "trigger": "planning the on-call rotation"
+        },
+        {
+          "title": "On-call rotation now two weeks",
+          "summary": "The on-call rotation hands over every second Monday, two weeks per person.",
+          "trigger": "asking who is on call and for how long"
+        },
+        {
+          "title": "On-call rotation handover on Wednesday",
+          "summary": "The on-call rotation hands over every second Wednesday, two weeks per person.",
+          "trigger": "scheduling the on-call handover day"
+        }
+      ],
+      "reassert": {
+        "title": "On-call handover",
+        "summary": "Every Monday the on-call rotation moves to the next person, one week each.",
+        "trigger": "checking the on-call handover rhythm"
+      }
+    },
+    {
+      "id": "c07",
+      "language": "en",
+      "scope": "personal",
+      "type": "project-fact",
+      "topic_path": ["home", "car"],
+      "tags": ["car", "tyres"],
+      "versions": [
+        {
+          "title": "Winter tyres stored at the garage",
+          "summary": "The winter tyres are stored at the Mueller garage on Hauptstrasse.",
+          "trigger": "looking for the winter tyres"
+        },
+        {
+          "title": "Winter tyres moved to the basement",
+          "summary": "The winter tyres are stored in the basement storage room since October.",
+          "trigger": "fetching the tyres for the seasonal change"
+        }
+      ],
+      "reassert": {
+        "title": "Where the winter tyres are",
+        "summary": "Winter tyres are kept at the Mueller garage on Hauptstrasse.",
+        "trigger": "changing to winter tyres"
+      }
+    },
+    {
+      "id": "c08",
+      "language": "en",
+      "scope": "search",
+      "type": "lesson",
+      "topic_path": ["search", "ranking"],
+      "tags": ["bm25", "title-boost"],
+      "versions": [
+        {
+          "title": "Title boost of 3 works best",
+          "summary": "A BM25 title boost of 3 gave the best recall on the gold set.",
+          "trigger": "tuning the BM25 title boost"
+        },
+        {
+          "title": "Title boost of 2 after the gold set grew",
+          "summary": "A BM25 title boost of 2 gives the best recall once the gold set covers paraphrases.",
+          "trigger": "choosing field weights for lexical ranking"
+        }
+      ],
+      "reassert": {
+        "title": "Best BM25 title weight",
+        "summary": "The gold set recall peaks with a BM25 title boost of 3.",
+        "trigger": "setting the title weight in BM25"
+      }
+    },
+    {
+      "id": "c09",
+      "language": "de",
+      "scope": "haushalt",
+      "type": "project-fact",
+      "topic_path": ["haushalt", "vertraege"],
+      "tags": ["stromvertrag", "abschlag"],
+      "versions": [
+        {
+          "title": "Stromabschlag monatlich",
+          "summary": "Der monatliche Stromabschlag beträgt 85 Euro.",
+          "trigger": "Stromrechnung prüfen"
+        },
+        {
+          "title": "Stromabschlag nach Preiserhöhung",
+          "summary": "Der monatliche Stromabschlag beträgt seit März 112 Euro.",
+          "trigger": "Abschlag beim Stromanbieter anpassen"
+        }
+      ],
+      "reassert": {
+        "title": "Höhe des Stromabschlags",
+        "summary": "Für Strom werden jeden Monat 85 Euro Abschlag gezahlt.",
+        "trigger": "monatliche Fixkosten zusammenrechnen"
+      }
+    },
+    {
+      "id": "c10",
+      "language": "de",
+      "scope": "haushalt",
+      "type": "project-fact",
+      "topic_path": ["haushalt", "termine"],
+      "tags": ["muellabfuhr", "abholtag"],
+      "versions": [
+        {
+          "title": "Abholtag Restmüll",
+          "summary": "Die Restmülltonne wird jeden Dienstag geleert.",
+          "trigger": "Mülltonne rausstellen"
+        },
+        {
+          "title": "Abholtag Restmüll verschoben",
+          "summary": "Die Restmülltonne wird seit Januar jeden Donnerstag geleert.",
+          "trigger": "Wochentag der Müllabfuhr nachsehen"
+        }
+      ],
+      "reassert": {
+        "title": "Wann der Restmüll abgeholt wird",
+        "summary": "Geleert wird die Restmülltonne dienstags.",
+        "trigger": "Abfuhrtermin Restmüll"
+      }
+    },
+    {
+      "id": "c11",
+      "language": "de",
+      "scope": "buchhaltung",
+      "type": "decision",
+      "topic_path": ["buchhaltung", "steuer"],
+      "tags": ["umsatzsteuer", "voranmeldung"],
+      "versions": [
+        {
+          "title": "Umsatzsteuer-Voranmeldung quartalsweise",
+          "summary": "Die Umsatzsteuer-Voranmeldung wird quartalsweise abgegeben.",
+          "trigger": "Umsatzsteuer-Voranmeldung vorbereiten"
+        },
+        {
+          "title": "Umsatzsteuer-Voranmeldung monatlich",
+          "summary": "Die Umsatzsteuer-Voranmeldung wird seit dem Umsatzsprung monatlich abgegeben.",
+          "trigger": "Frist für die Voranmeldung planen"
+        },
+        {
+          "title": "Umsatzsteuer-Voranmeldung monatlich mit Dauerfristverlängerung",
+          "summary": "Die Umsatzsteuer-Voranmeldung wird monatlich mit Dauerfristverlängerung abgegeben.",
+          "trigger": "Abgabedatum der Umsatzsteuer festlegen"
+        }
+      ],
+      "reassert": {
+        "title": "Rhythmus der Voranmeldung",
+        "summary": "Abgegeben wird die Umsatzsteuer-Voranmeldung einmal im Quartal.",
+        "trigger": "Steuertermine fürs Jahr eintragen"
+      }
+    },
+    {
+      "id": "c12",
+      "language": "de",
+      "scope": "infra",
+      "type": "lesson",
+      "topic_path": ["infra", "backup"],
+      "tags": ["backup", "restic"],
+      "versions": [
+        {
+          "title": "Backup läuft nachts um zwei",
+          "summary": "Das restic-Backup des Servers läuft jede Nacht um 02:00.",
+          "trigger": "Backup-Zeitplan des Servers ändern"
+        },
+        {
+          "title": "Backup läuft um vier wegen Lastspitze",
+          "summary": "Das restic-Backup des Servers läuft jede Nacht um 04:00, weil um zwei der Import Last erzeugt.",
+          "trigger": "nächtliche Last auf dem Server untersuchen"
+        }
+      ],
+      "reassert": {
+        "title": "Uhrzeit des Server-Backups",
+        "summary": "Jede Nacht um 02:00 startet das restic-Backup des Servers.",
+        "trigger": "Wartungsfenster für den Server suchen"
+      }
+    },
+    {
+      "id": "c13",
+      "language": "de",
+      "scope": "familie",
+      "type": "project-fact",
+      "topic_path": ["familie", "schule"],
+      "tags": ["schule", "elternabend"],
+      "versions": [
+        {
+          "title": "Elternabend Klasse 3b",
+          "summary": "Der Elternabend der Klasse 3b ist am 12. Oktober um 19 Uhr.",
+          "trigger": "Termine der Schule eintragen"
+        },
+        {
+          "title": "Elternabend Klasse 3b verlegt",
+          "summary": "Der Elternabend der Klasse 3b ist auf den 19. Oktober um 19 Uhr verlegt.",
+          "trigger": "Einladung zum Elternabend beantworten"
+        }
+      ],
+      "reassert": {
+        "title": "Termin Elternabend 3b",
+        "summary": "Elternabend der 3b findet am 12. Oktober um 19 Uhr statt.",
+        "trigger": "Abend mit der Klassenlehrerin planen"
+      }
+    },
+    {
+      "id": "c14",
+      "language": "de",
+      "scope": "frontend",
+      "type": "decision",
+      "topic_path": ["frontend", "styling"],
+      "tags": ["css", "tailwind"],
+      "versions": [
+        {
+          "title": "Styling mit CSS-Modulen",
+          "summary": "Neue Komponenten werden mit CSS-Modulen gestaltet.",
+          "trigger": "Komponente neu gestalten"
+        },
+        {
+          "title": "Styling mit Tailwind",
+          "summary": "Neue Komponenten werden mit Tailwind-Klassen gestaltet; CSS-Module nur noch für Altbestand.",
+          "trigger": "Styling-Ansatz für neue Komponenten wählen"
+        }
+      ],
+      "reassert": {
+        "title": "Wie neue Komponenten gestylt werden",
+        "summary": "Für neue Komponenten werden CSS-Module verwendet.",
+        "trigger": "Stylesheet für eine neue Komponente anlegen"
+      }
+    },
+    {
+      "id": "c15",
+      "language": "de",
+      "scope": "auto",
+      "type": "project-fact",
+      "topic_path": ["auto", "wartung"],
+      "tags": ["inspektion", "werkstatt"],
+      "versions": [
+        {
+          "title": "Nächste Inspektion bei 60000 km",
+          "summary": "Die nächste Inspektion des Kombis ist bei 60000 Kilometern fällig.",
+          "trigger": "Werkstatttermin für den Kombi"
+        },
+        {
+          "title": "Nächste Inspektion bei 90000 km",
+          "summary": "Die nächste Inspektion des Kombis ist nach dem Ölwechsel erst bei 90000 Kilometern fällig.",
+          "trigger": "Kilometerstand mit dem Serviceheft vergleichen"
+        },
+        {
+          "title": "Nächste Inspektion im Mai",
+          "summary": "Die nächste Inspektion des Kombis ist im Mai fällig, egal bei welchem Kilometerstand.",
+          "trigger": "Inspektionstermin des Kombis planen"
+        }
+      ],
+      "reassert": {
+        "title": "Inspektion Kombi fällig",
+        "summary": "Bei 60000 Kilometern muss der Kombi zur Inspektion.",
+        "trigger": "Serviceintervall des Autos prüfen"
+      }
+    },
+    {
+      "id": "c16",
+      "language": "de",
+      "scope": "ingest",
+      "type": "lesson",
+      "topic_path": ["ingest", "parser"],
+      "tags": ["csv-import", "encoding"],
+      "versions": [
+        {
+          "title": "CSV-Import erwartet Latin-1",
+          "summary": "Der CSV-Import der Bank liest Dateien als Latin-1.",
+          "trigger": "Kontoauszug als CSV importieren"
+        },
+        {
+          "title": "CSV-Import erwartet UTF-8",
+          "summary": "Der CSV-Import der Bank liest Dateien seit dem Portalwechsel als UTF-8 mit BOM.",
+          "trigger": "Umlaute im Bankimport kaputt"
+        }
+      ],
+      "reassert": {
+        "title": "Zeichensatz des Bank-CSV",
+        "summary": "Bank-CSV-Dateien werden beim Import als Latin-1 gelesen.",
+        "trigger": "Encoding des Kontoauszugs einstellen"
+      }
+    }
+  ],
+  "living": [
+    {
+      "language": "en",
+      "scope": "ingest",
+      "type": "project-fact",
+      "topic_path": ["ingest", "worker"],
+      "tags": ["ingest-worker", "retries"],
+      "title": "Ingest worker retry policy",
+      "summary": "The ingest worker retries a failed batch three times with exponential backoff.",
+      "trigger": "a batch fails in the ingest worker"
+    },
+    {
+      "language": "en",
+      "scope": "ingest",
+      "type": "project-fact",
+      "topic_path": ["ingest", "worker"],
+      "tags": ["ingest-worker", "metrics"],
+      "title": "Ingest worker lag metric",
+      "summary": "Ingest worker lag is exported as ingest_lag_seconds to Prometheus.",
+      "trigger": "alerting on ingest backlog"
+    },
+    {
+      "language": "en",
+      "scope": "billing",
+      "type": "decision",
+      "topic_path": ["billing", "invoices"],
+      "tags": ["invoice-run", "currency"],
+      "title": "Invoices in customer currency",
+      "summary": "Invoices are issued in the customer's contract currency, converted at the run date.",
+      "trigger": "issuing an invoice to a foreign customer"
+    },
+    {
+      "language": "en",
+      "scope": "billing",
+      "type": "decision",
+      "topic_path": ["billing", "dunning"],
+      "tags": ["dunning", "reminders"],
+      "title": "Dunning reminder cadence",
+      "summary": "Payment reminders go out 7, 14 and 30 days after the due date.",
+      "trigger": "a customer has not paid"
+    },
+    {
+      "language": "en",
+      "scope": "infra",
+      "type": "project-fact",
+      "topic_path": ["infra", "database"],
+      "tags": ["postgres", "replication"],
+      "title": "Postgres read replica",
+      "summary": "Reports read from the Postgres read replica in the second availability zone.",
+      "trigger": "routing report queries to the replica"
+    },
+    {
+      "language": "en",
+      "scope": "infra",
+      "type": "project-fact",
+      "topic_path": ["infra", "database"],
+      "tags": ["postgres", "vacuum"],
+      "title": "Autovacuum settings for the events table",
+      "summary": "The events table uses an autovacuum scale factor of 0.02.",
+      "trigger": "events table bloat grows"
+    },
+    {
+      "language": "en",
+      "scope": "infra",
+      "type": "lesson",
+      "topic_path": ["infra", "deploy"],
+      "tags": ["deploy", "rollback"],
+      "title": "Rollback keeps the previous image tag",
+      "summary": "A rollback redeploys the previous image tag; database migrations are not reverted automatically.",
+      "trigger": "rolling back a failed deploy"
+    },
+    {
+      "language": "en",
+      "scope": "frontend",
+      "type": "decision",
+      "topic_path": ["frontend", "state"],
+      "tags": ["state-management", "forms"],
+      "title": "Forms use local component state",
+      "summary": "Form drafts stay in local component state until submit.",
+      "trigger": "building a multi-step form"
+    },
+    {
+      "language": "en",
+      "scope": "ops",
+      "type": "project-fact",
+      "topic_path": ["ops", "on-call"],
+      "tags": ["on-call", "escalation"],
+      "title": "Escalation after fifteen minutes",
+      "summary": "An unacknowledged page escalates to the secondary after fifteen minutes.",
+      "trigger": "a page is not acknowledged"
+    },
+    {
+      "language": "en",
+      "scope": "personal",
+      "type": "project-fact",
+      "topic_path": ["home", "car"],
+      "tags": ["car", "insurance"],
+      "title": "Car insurance renewal",
+      "summary": "The car insurance renews on 1 January and can be cancelled until 30 November.",
+      "trigger": "comparing car insurance offers"
+    },
+    {
+      "language": "en",
+      "scope": "search",
+      "type": "lesson",
+      "topic_path": ["search", "ranking"],
+      "tags": ["bm25", "stemming"],
+      "title": "Stemming hurts German compounds",
+      "summary": "Aggressive stemming split German compounds badly and lowered recall on the German gold set.",
+      "trigger": "enabling a stemmer for German text"
+    },
+    {
+      "language": "en",
+      "scope": "search",
+      "type": "lesson",
+      "topic_path": ["search", "ranking"],
+      "tags": ["bm25", "title-boost", "gold-set"],
+      "title": "Gold set needs paraphrased queries",
+      "summary": "A gold set built only from title words overstates BM25 recall; paraphrased queries are required.",
+      "trigger": "building a gold set for ranking changes"
+    },
+    {
+      "language": "de",
+      "scope": "haushalt",
+      "type": "project-fact",
+      "topic_path": ["haushalt", "vertraege"],
+      "tags": ["gasvertrag", "abschlag"],
+      "title": "Gasabschlag monatlich",
+      "summary": "Der monatliche Gasabschlag beträgt 64 Euro.",
+      "trigger": "Gasrechnung prüfen"
+    },
+    {
+      "language": "de",
+      "scope": "haushalt",
+      "type": "project-fact",
+      "topic_path": ["haushalt", "vertraege"],
+      "tags": ["internet", "kuendigung"],
+      "title": "Internetvertrag Kündigungsfrist",
+      "summary": "Der Internetvertrag ist mit einem Monat Frist kündbar.",
+      "trigger": "Internetanbieter wechseln"
+    },
+    {
+      "language": "de",
+      "scope": "haushalt",
+      "type": "project-fact",
+      "topic_path": ["haushalt", "termine"],
+      "tags": ["muellabfuhr", "papier"],
+      "title": "Abholtag Papiertonne",
+      "summary": "Die Papiertonne wird jeden zweiten Freitag geleert.",
+      "trigger": "Altpapier entsorgen"
+    },
+    {
+      "language": "de",
+      "scope": "buchhaltung",
+      "type": "decision",
+      "topic_path": ["buchhaltung", "steuer"],
+      "tags": ["einkommensteuer", "steuerberater"],
+      "title": "Einkommensteuer über den Steuerberater",
+      "summary": "Die Einkommensteuererklärung macht der Steuerberater, Frist ist damit Ende Februar des übernächsten Jahres.",
+      "trigger": "Unterlagen für die Steuererklärung sammeln"
+    },
+    {
+      "language": "de",
+      "scope": "infra",
+      "type": "lesson",
+      "topic_path": ["infra", "backup"],
+      "tags": ["backup", "restore-test"],
+      "title": "Restore-Test einmal im Quartal",
+      "summary": "Ein Restore-Test aus dem restic-Repository läuft einmal im Quartal auf der Testmaschine.",
+      "trigger": "Wiederherstellung aus dem Backup üben"
+    },
+    {
+      "language": "de",
+      "scope": "familie",
+      "type": "project-fact",
+      "topic_path": ["familie", "schule"],
+      "tags": ["schule", "ferien"],
+      "title": "Herbstferien",
+      "summary": "Die Herbstferien gehen vom 20. bis 31. Oktober.",
+      "trigger": "Urlaub in den Ferien planen"
+    },
+    {
+      "language": "de",
+      "scope": "frontend",
+      "type": "decision",
+      "topic_path": ["frontend", "styling"],
+      "tags": ["css", "farben"],
+      "title": "Farben als CSS-Variablen",
+      "summary": "Alle Farben liegen als CSS-Variablen im Theme und werden für den Dunkelmodus überschrieben.",
+      "trigger": "Dunkelmodus für eine Seite umsetzen"
+    },
+    {
+      "language": "de",
+      "scope": "auto",
+      "type": "project-fact",
+      "topic_path": ["auto", "wartung"],
+      "tags": ["tuev", "werkstatt"],
+      "title": "TÜV des Kombis",
+      "summary": "Die Hauptuntersuchung des Kombis ist im August fällig.",
+      "trigger": "Termin für die Hauptuntersuchung"
+    },
+    {
+      "language": "de",
+      "scope": "ingest",
+      "type": "lesson",
+      "topic_path": ["ingest", "parser"],
+      "tags": ["csv-import", "trennzeichen"],
+      "title": "Bank-CSV mit Semikolon",
+      "summary": "Das Bank-CSV trennt Felder mit Semikolon und nutzt Komma als Dezimalzeichen.",
+      "trigger": "Spalten im Bankimport verrutscht"
+    }
+  ],
+  "fresh": [
+    {
+      "kind": "unrelated",
+      "language": "en",
+      "scope": "ingest",
+      "type": "project-fact",
+      "topic_path": ["ingest", "scheduler"],
+      "tags": ["scheduler", "cron"],
+      "title": "Ingest scheduler timezone",
+      "summary": "The ingest scheduler runs its cron expressions in UTC.",
+      "trigger": "scheduling a new ingest job"
+    },
+    {
+      "kind": "unrelated",
+      "language": "en",
+      "scope": "billing",
+      "type": "decision",
+      "topic_path": ["billing", "tax"],
+      "tags": ["vat", "reverse-charge"],
+      "title": "Reverse charge for EU business customers",
+      "summary": "EU business customers with a valid VAT ID are invoiced under reverse charge.",
+      "trigger": "invoicing an EU business customer"
+    },
+    {
+      "kind": "same-topic",
+      "language": "en",
+      "scope": "infra",
+      "type": "project-fact",
+      "topic_path": ["infra", "database"],
+      "tags": ["postgres", "timeouts"],
+      "title": "Postgres statement timeout",
+      "summary": "The API sets a Postgres statement timeout of 5 seconds for each connection.",
+      "trigger": "a slow query blocks the API"
+    },
+    {
+      "kind": "same-topic",
+      "language": "en",
+      "scope": "ops",
+      "type": "project-fact",
+      "topic_path": ["ops", "on-call"],
+      "tags": ["on-call", "compensation"],
+      "title": "On-call compensation",
+      "summary": "Each on-call week is compensated with one extra day off.",
+      "trigger": "booking time off after on-call"
+    },
+    {
+      "kind": "same-topic",
+      "language": "en",
+      "scope": "frontend",
+      "type": "decision",
+      "topic_path": ["frontend", "state"],
+      "tags": ["state-management", "cache"],
+      "title": "Server data cached with React Query",
+      "summary": "Server data on the dashboard is cached with React Query, not copied into a store.",
+      "trigger": "fetching server data for a dashboard widget"
+    },
+    {
+      "kind": "near-duplicate-living",
+      "language": "en",
+      "scope": "billing",
+      "type": "decision",
+      "topic_path": ["billing", "dunning"],
+      "tags": ["dunning", "reminders"],
+      "title": "Payment reminder schedule",
+      "summary": "Reminders for unpaid invoices are sent 7, 14 and 30 days after the due date.",
+      "trigger": "chasing an unpaid invoice"
+    },
+    {
+      "kind": "near-duplicate-living",
+      "language": "en",
+      "scope": "infra",
+      "type": "lesson",
+      "topic_path": ["infra", "deploy"],
+      "tags": ["deploy", "rollback"],
+      "title": "Rollback uses the previous image",
+      "summary": "Rolling back redeploys the previous image tag and leaves database migrations in place.",
+      "trigger": "undoing a deploy"
+    },
+    {
+      "kind": "unrelated",
+      "language": "de",
+      "scope": "haushalt",
+      "type": "project-fact",
+      "topic_path": ["haushalt", "versicherung"],
+      "tags": ["hausrat", "versicherung"],
+      "title": "Hausratversicherung Beitrag",
+      "summary": "Die Hausratversicherung kostet 9 Euro im Monat.",
+      "trigger": "Versicherungen vergleichen"
+    },
+    {
+      "kind": "same-topic",
+      "language": "de",
+      "scope": "haushalt",
+      "type": "project-fact",
+      "topic_path": ["haushalt", "vertraege"],
+      "tags": ["wasser", "abschlag"],
+      "title": "Wasserabschlag",
+      "summary": "Der Wasserabschlag beträgt 30 Euro alle zwei Monate.",
+      "trigger": "Nebenkosten nachrechnen"
+    },
+    {
+      "kind": "same-topic",
+      "language": "de",
+      "scope": "buchhaltung",
+      "type": "decision",
+      "topic_path": ["buchhaltung", "steuer"],
+      "tags": ["gewerbesteuer", "vorauszahlung"],
+      "title": "Gewerbesteuer-Vorauszahlung",
+      "summary": "Die Gewerbesteuer wird vierteljährlich vorausgezahlt.",
+      "trigger": "Gewerbesteuer einplanen"
+    },
+    {
+      "kind": "same-topic",
+      "language": "de",
+      "scope": "infra",
+      "type": "lesson",
+      "topic_path": ["infra", "backup"],
+      "tags": ["backup", "aufbewahrung"],
+      "title": "Aufbewahrung der Backups",
+      "summary": "restic behält 7 tägliche, 4 wöchentliche und 12 monatliche Stände.",
+      "trigger": "Speicherplatz im Backup-Repository knapp"
+    },
+    {
+      "kind": "near-duplicate-living",
+      "language": "de",
+      "scope": "haushalt",
+      "type": "project-fact",
+      "topic_path": ["haushalt", "termine"],
+      "tags": ["muellabfuhr", "papier"],
+      "title": "Papiertonne Leerung",
+      "summary": "Geleert wird die Papiertonne alle zwei Wochen freitags.",
+      "trigger": "Papiermüll rausstellen"
+    },
+    {
+      "kind": "near-duplicate-living",
+      "language": "de",
+      "scope": "auto",
+      "type": "project-fact",
+      "topic_path": ["auto", "wartung"],
+      "tags": ["tuev", "werkstatt"],
+      "title": "Hauptuntersuchung Kombi",
+      "summary": "Im August muss der Kombi zur Hauptuntersuchung.",
+      "trigger": "TÜV-Plakette läuft ab"
+    },
+    {
+      "kind": "unrelated",
+      "language": "de",
+      "scope": "familie",
+      "type": "project-fact",
+      "topic_path": ["familie", "sport"],
+      "tags": ["schwimmkurs", "kinder"],
+      "title": "Schwimmkurs dienstags",
+      "summary": "Der Schwimmkurs der Kinder ist dienstags um 16 Uhr im Hallenbad.",
+      "trigger": "Nachmittage der Kinder planen"
+    }
+  ]
+}

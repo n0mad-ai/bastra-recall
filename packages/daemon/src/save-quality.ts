@@ -168,26 +168,51 @@ const CODE_FIX_RE = /```|`[^`\n]+`/;
  * The losing side of a resolved #205 conflict is not covered: the resolution
  * removes the conflict block, and the audit log keeps frontmatter only, so no
  * record says which claim lost.
+ *
+ * Measured with `eval/src/replaced-claim-advisory.ts`, two cases this skips:
+ * a save that IS a later version of the matched claim (an edit or overwrite of
+ * the successor matched its own predecessor and was told it re-asserts it), and
+ * the advice for a chain of three: it named the direct successor, so following
+ * `replaces: <that>` forked the chain beside the newer version. The advice now
+ * names the current version at the end of the chain.
  */
 function replacedClaimAdvisory(
   deps: ToolDeps,
   similar: ReadonlyArray<{ id: string; similarity: number }>,
+  excluded: (id: string) => boolean,
   issues: string[],
   suggestions: string[]
 ): number {
   for (const candidate of similar) {
-    const successor = deps.vault.get(candidate.id)?.fm.superseded_by;
-    if (typeof successor !== "string" || successor === "") continue;
+    const successors = successorChain(deps, candidate.id);
+    if (successors.length === 0 || successors.some(excluded)) continue;
+    const [direct] = successors;
+    const current = successors[successors.length - 1];
     issues.push(
-      `re-asserts a replaced claim: ${candidate.id} (similarity ${candidate.similarity}) was superseded by ${successor}`
+      `re-asserts a replaced claim: ${candidate.id} (similarity ${candidate.similarity}) was superseded by ${direct}` +
+        (current === direct ? "" : ` (current version: ${current})`)
     );
     suggestions.push(
-      `load_memory('${successor}') first — drop this save if the correction still holds; ` +
-        `if the old claim is right again, save with replaces: '${successor}' so the change is on purpose`
+      `load_memory('${current}') first — drop this save if the correction still holds; ` +
+        `if the old claim is right again, save with replaces: '${current}' so the change is on purpose`
     );
     return 15;
   }
   return 0;
+}
+
+/** The `superseded_by` edges from `id` onward, oldest successor first. `seen`
+ *  guards a hand-written cycle; a successor missing from the vault ends it. */
+function successorChain(deps: ToolDeps, id: string): string[] {
+  const chain: string[] = [];
+  const seen = new Set<string>([id]);
+  let next: unknown = deps.vault.get(id)?.fm.superseded_by;
+  while (typeof next === "string" && next !== "" && !seen.has(next)) {
+    chain.push(next);
+    seen.add(next);
+    next = deps.vault.get(next)?.fm.superseded_by;
+  }
+  return chain;
 }
 
 /**
@@ -381,7 +406,7 @@ export function scoreSaveQuality(
     .sort((a, b) => b.similarity - a.similarity)
     .map((candidate) => ({ ...candidate, similarity: Math.round(candidate.similarity * 1000) / 1000 }));
   const duplicateCandidates = similar.slice(0, 3);
-  score -= replacedClaimAdvisory(deps, similar, issues, suggestions);
+  score -= replacedClaimAdvisory(deps, similar, excluded, issues, suggestions);
   if (duplicateCandidates.length > 0) {
     const top = duplicateCandidates[0];
     issues.push(`possible duplicate: ${top.id} (similarity ${top.similarity})`);

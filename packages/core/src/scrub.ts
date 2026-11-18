@@ -459,11 +459,11 @@ function markAuthorization(scan: SecretScan, index: number, start: number): numb
   return parsed.end;
 }
 
-/** Marks a PSK binding; returns where it ends, or undefined when it is a
- * protocol comparison or question rather than a disclosed value. */
-function markPskAssignment(scan: SecretScan, index: number, start: number): number | undefined {
+/** Marks a PSK binding; returns where it ends. The words before the key do not
+ * decide (INV-LANG-01): a protocol-mode value (`WPA2`, `true`) is left by
+ * `markPsk`, in every language. */
+function markPskAssignment(scan: SecretScan, index: number, start: number): number {
   const text = scan.text;
-  if (/(?:\bist|\bzum)[ \t]+$/i.test(text.slice(Math.max(0, index - 12), index))) return undefined;
   const query = /[?&]/.test(text[index - 1] ?? "");
   return query ? scan.markValue(start, true, true) : scan.markPsk(start);
 }

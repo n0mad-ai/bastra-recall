@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "issue": 643,
+  "status": "baseline_registered",
+  "harness": "src/replaced-claim-advisory.ts",
+  "corpus": "fixtures/replaced-claim-advisory.json",
+  "protocol": {
+    "arm": "production saveMemoryHandler (dry_run for new saves and overwrites) and editMemoryHandler, read from daemon/dist; BM25 candidate generation as in save_quality",
+    "index_scope": "one temporary vault, built through saveMemoryHandler so superseded_by is stamped by the real replaces path; removed afterwards",
+    "corpus": "16 invented correction chains (8 en, 8 de; 4 of them three versions long), 21 living neighbours in the same scopes, 14 fresh saves; no real vault content",
+    "positives": "reassert-paraphrase and reassert-verbatim: a new save of the first version's claim; correct = the advisory names a member of that chain",
+    "negatives": "fresh saves (unrelated, same topic, near duplicate of a living memory), save_memory(overwrite) and edit_memory(append, undone) of every non-superseded memory",
+    "separate_class": "agrees-with-correction: a new save restating the chain head; counted as a false warning in the overall figure and excluded from ordinary_saves",
+    "primary": [
+      "precision and recall of the advisory over the positives",
+      "false-warning rate over ordinary saves (issue target: below 2%)"
+    ],
+    "secondary": ["advice names the current chain head", "per-language and per-probe slices"],
+    "seed": "none; deterministic corpus order, no random draw",
+    "baseline": "descriptive, no post-hoc threshold; the similarity band (DUPLICATE_SIMILARITY_MIN) is not tuned here",
+    "not_covered": "the losing side of a resolved #205 conflict (no record of it exists); memories archived with archive_memory; hybrid/dense arms; real-vault population"
+  },
+  "command": "node --import tsx --import ./scripts/test-env.mjs packages/eval/src/replaced-claim-advisory.ts --out <artifact>",
+  "measurement": {
+    "engine": {
+      "repo_commit": "6e07d05e0e139429b2184c97b88b3a5f1db63c24",
+      "repo_dirty": true,
+      "note": "uncommitted working tree = this commit plus the #643 follow-up in daemon/src/save-quality.ts and this harness"
+    },
+    "results": "registrations/replaced-claim-advisory-results.json",
+    "corpus_sha256": "1a193cc42bd33d5eb33c4857605cd1c70bd249b752ac41bebb5648d9feb8b1f9",
+    "verdict_sha256": "2f9a7a214c55f1425fcbdf5cdc070be84b2c26c63430921f580eb80e3b6f7abc",
+    "repeat_identical": true,
+    "before_follow_up": {
+      "note": "same corpus on the unchanged 6e07d05e save-quality.ts",
+      "precision": 0.639,
+      "recall": 0.719,
+      "positives_naming_head": "18 of 23 warnings",
+      "ordinary_false_warning_rate": 0.057,
+      "edit_false_warnings": "4 of 37 (three of them an edit of the successor warned about its own predecessor)"
+    },
+    "after_follow_up": {
+      "precision": 0.697,
+      "recall": 0.719,
+      "recall_paraphrase": { "en": "7 of 8", "de": "0 of 8" },
+      "recall_verbatim": "16 of 16",
+      "positives_naming_head": "23 of 23 warnings",
+      "ordinary_false_warning_rate": 0.023,
+      "ordinary_false_warnings": "2 of 88, both the same living neighbour (a gas instalment next to a replaced electricity instalment), once on overwrite and once on edit",
+      "agrees_with_correction_warned": "8 of 16"
+    }
+  }
+}

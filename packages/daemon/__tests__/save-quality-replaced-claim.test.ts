@@ -12,6 +12,7 @@ import { Vault, SearchIndex } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
 import { resetSaveFailures, saveMemoryHandler, type SaveMemoryResult } from "../src/save-memory-handler.js";
 import { resetAuditLogCache } from "../src/audit-trail.js";
+import { editMemoryHandler, type EditMemoryResult } from "../src/edit-memory-handler.js";
 import type { ToolDeps } from "../src/tool-deps.js";
 
 async function fixture(t: { after: (fn: () => unknown) => void }) {
@@ -87,6 +88,40 @@ test("replaces: <successor> is the explicit answer and silences the advisory", a
     })
   )) as SaveMemoryResult;
   assert.equal(replacedIssue(result), undefined);
+});
+
+test("editing the successor itself gets no replaced-claim advisory", async (t) => {
+  const deps = await fixture(t);
+  await correctedVault(deps);
+  const result = await editMemoryHandler(deps, { id: "ingest-worker-batch-size-2", append: "Checked again." });
+  assert.equal(
+    (result as EditMemoryResult).save_quality.issues.find((i) => i.startsWith("re-asserts a replaced claim")),
+    undefined,
+    "the successor is the correction, not a re-assertion of what it replaced"
+  );
+});
+
+test("in a chain of three the advice names the current version, not the direct successor", async (t) => {
+  const deps = await fixture(t);
+  await correctedVault(deps);
+  await saveMemoryHandler(
+    deps,
+    memo(
+      "Ingest worker batch size 3",
+      "The ingest worker batch size is 1000 records per flush.",
+      "raising the ingest worker batch",
+      {
+        replaces: "ingest-worker-batch-size-2",
+      }
+    )
+  );
+  const result = (await saveMemoryHandler(
+    deps,
+    memo("Ingest worker batch size again", OLD, "sizing a flush of the ingest worker", { dry_run: true })
+  )) as SaveMemoryResult;
+  assert.match(replacedIssue(result) ?? "", /\(current version: ingest-worker-batch-size-3\)$/);
+  // `replaces: <direct successor>` would fork the chain beside version 3.
+  assert.ok(result.save_quality?.suggestions.some((s) => s.includes("replaces: 'ingest-worker-batch-size-3'")));
 });
 
 test("an unrelated save gets no replaced-claim advisory", async (t) => {
