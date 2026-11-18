@@ -229,15 +229,15 @@ test(
     // A fresh mutation guard is a writer inside its synchronous section. By
     // design it is bounded by age (four seconds) even for a live owner, so the
     // read logic must not cut that short: the contender waits it out.
-    const guards = Object.entries(bodies).map(async ([what, body], i) => {
+    const guards = Object.entries(bodies).map(([what, body], i) => async () => {
       const state = join(dir, `guard-${i}.json`);
       await writeFile(`${pathLockFilePath(state)}.mutation`, body);
       const { status, ms } = await lockInChild(state, "withPathLock(state,async()=>true,{crossProcess:true})");
       assert.equal(status, RAN, what);
       assert.ok(ms >= 3_500, `${what} guard was treated as dead after ${ms} ms`);
     });
-    await Promise.all([
-      ...cases.map(async ({ what, body, entry, opts, age }, i) => {
+    const checks = [
+      ...cases.map(({ what, body, entry, opts, age }, i) => async () => {
         const state = join(dir, `${i}.json`);
         const path = entry === "lease" ? pathLockFilePath(state) : `${pathLockFilePath(state)}.mutation`;
         await writeFile(path, body);
@@ -247,7 +247,13 @@ test(
         assert.equal(await readFile(path, "utf8"), body, `${what} ${entry} ${opts} was kept`);
       }),
       ...guards,
-    ]);
+    ];
+    // These paths are independent fixtures against this still-live process,
+    // not competing consumers of one lock. Bound child startup on CI runners;
+    // create each fresh guard only when its own check starts.
+    for (let i = 0; i < checks.length; i += 2) {
+      await Promise.all(checks.slice(i, i + 2).map((check) => check()));
+    }
   }
 );
 
