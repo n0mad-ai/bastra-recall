@@ -43,6 +43,8 @@ import { MAX_TRANSCRIPT_BYTES, normalizeTurns } from "../stop-transcript.js";
 import type { PromptHookTelemetry } from "../prompt-lane-telemetry.js";
 import { probeDaemon } from "./helpers.js";
 import type { ParsedArgs } from "./types.js";
+import { doctorReplayWordsIn } from "./doctor-replay-words.js";
+import { taskCliLanguage } from "./task-cli-words.js";
 
 export const REPLAY_DEFAULT_DAYS = 14;
 /** The onboarding replay stops at this many turns — hundreds would keep the
@@ -567,9 +569,10 @@ export async function replayAndReport(opts: {
 }
 
 export async function cmdDoctorReplay(args: ParsedArgs): Promise<number> {
+  const w = doctorReplayWordsIn(await taskCliLanguage().catch(() => "en"));
   const days = parseDays(args.days);
   if (typeof days !== "number") {
-    process.stderr.write(`error: ${days.error}\n`);
+    process.stderr.write(w.badDays(String(args.days)));
     return 2;
   }
   let saved: ReplayReport | null = null;
@@ -577,12 +580,12 @@ export async function cmdDoctorReplay(args: ParsedArgs): Promise<number> {
     try {
       const parsed = JSON.parse(await readFile(args.compare, "utf8")) as ReplayReport | ReplayNotEvaluable;
       if (parsed.evaluable !== true) {
-        process.stderr.write(`error: ${args.compare} holds no evaluable replay report\n`);
+        process.stderr.write(w.notEvaluableReport(args.compare));
         return 2;
       }
       saved = parsed;
     } catch (err) {
-      process.stderr.write(`error: cannot read ${args.compare}: ${(err as Error).message}\n`);
+      process.stderr.write(w.cannotRead(args.compare, (err as Error).message));
       return 2;
     }
   }
@@ -595,7 +598,7 @@ export async function cmdDoctorReplay(args: ParsedArgs): Promise<number> {
     return code;
   }
   if (!report.evaluable) {
-    process.stdout.write(`replay: not evaluable — ${report.reason}\n`);
+    process.stdout.write(w.notEvaluable(report.reason));
     return code;
   }
   process.stdout.write(formatReplayReport(report));
@@ -609,6 +612,7 @@ export async function cmdDoctorReplay(args: ParsedArgs): Promise<number> {
  * onboarding has already saved, and nothing here may change its outcome.
  */
 export async function replayAfterOnboarding(out: { write: (s: string) => unknown }): Promise<void> {
+  const w = doctorReplayWordsIn(await taskCliLanguage().catch(() => "en"));
   try {
     const { report } = await replayAndReport({
       days: REPLAY_DEFAULT_DAYS,
@@ -616,12 +620,12 @@ export async function replayAfterOnboarding(out: { write: (s: string) => unknown
       progress: (line) => out.write(`${line}\n`),
     });
     if (!report.evaluable) {
-      out.write(`\nrecall replay: not evaluable — ${report.reason}\n`);
+      out.write(w.onboardNotEvaluable(report.reason));
       return;
     }
-    out.write("\nHow recall answers your own prompts on this vault (shadow replay, nothing written):\n");
+    out.write(w.onboardHeader);
     out.write(formatReplayReport(report));
   } catch (err) {
-    out.write(`\nrecall replay skipped: ${(err as Error).message} — run \`bastra doctor --replay\` later\n`);
+    out.write(w.onboardSkipped((err as Error).message));
   }
 }

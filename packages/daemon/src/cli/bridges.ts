@@ -56,7 +56,9 @@ import { ollamaChat, listOllamaModels, resolveRerankModel } from "../learned-rec
 import { isSupportedLanguage, SUPPORTED_LANGUAGES } from "../learned-recall/language.js";
 import { recordRerankVerdicts, type RerankVerdict } from "../training-signal.js"; // #1128-capture
 import { bridgesPath, migrateBridgesPool } from "../learned-recall/pool-path.js";
-import { usageWords } from "./usage-words.js";
+import { usageWordsIn } from "./usage-words.js";
+import { bridgesWordsIn } from "./bridges-words.js";
+import { taskCliLanguage } from "./task-cli-words.js";
 
 /** #129: how deep the held-out check reads the ranking. Beyond it a gold
  *  counts as not found (reciprocal rank 0). */
@@ -99,64 +101,57 @@ function stageContribution(bridges: Bridge[]): Bridge[] {
 
 export async function cmdBridges(opts: { sub: string | null; positional?: string[] }): Promise<number> {
   const sub = opts.sub ?? "status";
+  const language = await taskCliLanguage().catch(() => "en");
+  const w = bridgesWordsIn(language);
   // #648: a CLI mint before the first daemon start after the upgrade must not
   // start a fresh pool next to the old one.
   try {
     migrateBridgesPool();
   } catch (err) {
-    process.stderr.write(
-      `! could not copy the bridges pool from ${commonsPath()} to ${bridgesPath()} (${(err as Error).message})\n`
-    );
+    process.stderr.write(w.migrateFailed(commonsPath(), bridgesPath(), (err as Error).message));
   }
   switch (sub) {
     case "enable": {
       await setSharedRecallEnabled(true);
       const cloned = existsSync(join(commonsPath(), ".git"));
       const hasPool = existsSync(join(bridgesPath(), "bridges"));
-      process.stdout.write("✓ shared learned-recall enabled — restart the daemon to load it\n");
+      process.stdout.write(w.enabled);
       if (!cloned) {
-        process.stdout.write(
-          "  note: bridges live in the Commons repo — run 'bastra commons enable' to clone it first\n"
-        );
+        process.stdout.write(w.noClone);
       } else if (!hasPool) {
-        process.stdout.write(
-          "  note: the Commons repo has no bridges/ yet; the pool is empty (recall unchanged) until bridges are added\n"
-        );
+        process.stdout.write(w.noPool);
       }
       return 0;
     }
     case "disable": {
       await setSharedRecallEnabled(false);
-      process.stdout.write("✓ shared learned-recall disabled — restart the daemon to apply\n");
+      process.stdout.write(w.disabled);
       return 0;
     }
     case "update": {
       // Bridges sync with the Commons repo; there is no separate remote to pull.
-      process.stdout.write("bridges sync with the Commons repo — run 'bastra commons update' to pull the latest\n");
+      process.stdout.write(w.update);
       return 0;
     }
     case "language": {
       const lang = opts.positional?.[2] ?? null;
       if (!lang) {
-        const cur = await getSharedRecallLanguage();
-        process.stdout.write(`query-language override: ${cur ?? "(auto — every language folder)"}\n`);
+        process.stdout.write(w.languageOverride(await getSharedRecallLanguage()));
         return 0;
       }
       if (lang === "auto") {
         await clearSharedRecallLanguage();
-        process.stdout.write("✓ query-language override cleared — queries consult every language folder\n");
+        process.stdout.write(w.languageCleared);
         return 0;
       }
       // Validate against the SAME set the daemon enforces at boot (SUPPORTED_LANGUAGES),
       // so the CLI never confirms an override the daemon would silently discard.
       if (!isSupportedLanguage(lang.toLowerCase())) {
-        process.stderr.write(
-          `✗ unsupported language '${lang}' — the override accepts: ${SUPPORTED_LANGUAGES.join(", ")} (or 'auto' to clear; without an override every language folder is consulted, #707)\n`
-        );
+        process.stderr.write(w.languageUnsupported(lang, SUPPORTED_LANGUAGES.join(", ")));
         return 2;
       }
       await setSharedRecallLanguage(lang);
-      process.stdout.write(`✓ query-language override set to '${lang.toLowerCase()}'\n`);
+      process.stdout.write(w.languageSet(lang.toLowerCase()));
       return 0;
     }
     case "live": {
@@ -164,19 +159,11 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       // on here; by default they run in shadow (logged, ranking unchanged).
       const arg = opts.positional?.[2];
       if (arg !== "on" && arg !== "off") {
-        const live = await getSharedRecallLive();
-        process.stdout.write(
-          `query expansion: ${live ? "live — bridges widen recall queries" : "shadow — fires are logged (bridge_expansion, applied: false), ranking unchanged"}\n` +
-            (await usageWords()).bridgesLive
-        );
+        process.stdout.write(w.liveState(await getSharedRecallLive()) + usageWordsIn(language).bridgesLive);
         return arg === undefined ? 0 : 2;
       }
       await setSharedRecallLive(arg === "on");
-      process.stdout.write(
-        arg === "on"
-          ? "✓ query expansion live — bridges widen recall queries; restart the daemon to apply\n"
-          : "✓ query expansion back to shadow — restart the daemon to apply\n"
-      );
+      process.stdout.write(w.liveSwitched(arg === "on"));
       return 0;
     }
     case "mint": {
@@ -188,7 +175,7 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       const days = daysArg ? parseInt(daysArg, 10) : null;
       const vaultPath = envFirst("BASTRA_VAULT_PATH", "NEXUS_VAULT_PATH");
       if (!vaultPath) {
-        process.stderr.write("✗ BASTRA_VAULT_PATH not set — cannot read memory vocabulary to mint bridges\n");
+        process.stderr.write(w.noVaultMint);
         return 1;
       }
       const vault = new Vault(vaultPath);
@@ -200,12 +187,14 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
         days: days != null && Number.isFinite(days) ? days : null,
       });
       if (outcome.reaches === 0) {
-        process.stdout.write("no acted-on reaches found in telemetry — nothing to mint yet\n");
+        process.stdout.write(w.nothingToMint);
         return 0;
       }
       process.stdout.write(
-        `✓ minted ${outcome.minted} bridge(s) from ${outcome.reaches} acted-on reach(es) — ${outcome.written} written to ${join(bridgesPath(), "bridges")}, ${outcome.pruned} unconfirmed expired, ${outcome.demoted ?? 0} demoted, ${outcome.archived ?? 0} archived\n` +
-          "  a running daemon picks them up with its next scheduled mint, or restart it to load them now\n"
+        w.minted(
+          { ...outcome, demoted: outcome.demoted ?? 0, archived: outcome.archived ?? 0 },
+          join(bridgesPath(), "bridges")
+        )
       );
       return 0;
     }
@@ -217,14 +206,12 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       // #704: the far harvest learns from the same origins as the in-band mint.
       const pools = extractCandidatePools(bridgeTeachingEvents(events));
       if (pools.length === 0) {
-        process.stdout.write(
-          "no candidate pools in telemetry yet (needs #121 logging + some recalls) — nothing to harvest\n"
-        );
+        process.stdout.write(w.noPools);
         return 0;
       }
       const vaultPath = envFirst("BASTRA_VAULT_PATH", "NEXUS_VAULT_PATH");
       if (!vaultPath) {
-        process.stderr.write("✗ BASTRA_VAULT_PATH not set — cannot read memory vocabulary\n");
+        process.stderr.write(w.noVaultHarvest);
         return 1;
       }
       const vault = new Vault(vaultPath);
@@ -261,33 +248,21 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       try {
         installed = await listOllamaModels();
       } catch (err) {
-        process.stderr.write(
-          `✗ local reranker unavailable — Ollama not reachable at ${ollamaURL} (${(err as Error).message}).\n` +
-            "  start Ollama, or run 'bastra models on' to set it up.\n" +
-            // #353: "Ollama is up" and "the harvest can reach it" are two different
-            // facts when the address is a configured remote — name the gap.
-            (process.env.BASTRA_OLLAMA_URL
-              ? "  note: BASTRA_OLLAMA_URL points at a configured remote — if the reranker runs on THIS box, unset it to dial loopback.\n"
-              : "")
-        );
+        // #353: "Ollama is up" and "the harvest can reach it" are two different
+        // facts when the address is a configured remote — name the gap.
+        process.stderr.write(w.ollamaDown(ollamaURL, (err as Error).message, Boolean(process.env.BASTRA_OLLAMA_URL)));
         return 1;
       }
       const choice = resolveRerankModel(installed, preferred);
       if (!choice.model) {
-        process.stderr.write(
-          `✗ reranker model '${preferred}' is not pulled and no other chat model is installed.\n` +
-            `  run 'ollama pull ${preferred}' (or 'bastra models set <tag>' to pick a model you already have).\n`
-        );
+        process.stderr.write(w.modelMissing(preferred));
         return 1;
       }
       if (choice.fellBack) {
-        process.stderr.write(
-          `  note: '${preferred}' is not pulled — falling back to '${choice.model}'. ` +
-            `run 'ollama pull ${preferred}' or 'bastra models set <tag>' to pin one.\n`
-        );
+        process.stderr.write(w.fellBack(preferred, choice.model));
       }
       const model = choice.model;
-      process.stdout.write(`harvesting far slice with local reranker (${model}) over ${pools.length} pools…\n`);
+      process.stdout.write(w.harvesting(model, pools.length));
       // 8192 statt des 4096-Defaults (#366): der Rerank-Prompt ist der größte
       // im Repo. Der geloggte candidate_pool ist `Math.max(k*4, 20)` groß
       // (core/src/search.ts:310), k geht bis 20 (recall-handler.ts:33) → bis zu
@@ -298,7 +273,7 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       // stillschweigend aus der beschnittenen Liste.
       const verdicts: RerankVerdict[] = []; // #1128-capture
       const result = await harvestFarBridges(pools, getMemoryInfo, ollamaChat({ model, numCtx: 8192 }), {
-        onProgress: (done, total) => process.stderr.write(`  judged ${done}/${total}\r`),
+        onProgress: (done, total) => process.stderr.write(w.judging(done, total)),
         onVerdict: (verdict) => verdicts.push(verdict), // #1128-capture
       });
       await recordRerankVerdicts(verdicts, model); // #1128-capture
@@ -311,10 +286,7 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       // #705: the doctor's bridge note reads bridges_mint events; without one a
       // pool the harvest filled reported "written 0".
       await recordHarvestRun({ minted: result.minted, reaches: result.judged, written });
-      process.stdout.write(
-        `\n✓ judged ${result.judged} far case(s) → minted ${result.minted} bridge(s) — ${written} written to ${join(bridgesPath(), "bridges")}\n` +
-          "  restart the daemon to load them\n"
-      );
+      process.stdout.write(w.harvested(result.judged, result.minted, written, join(bridgesPath(), "bridges")));
       return 0;
     }
     case "verify":
@@ -330,7 +302,7 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       const days = daysArg ? parseInt(daysArg, 10) : null;
       const vaultPath = envFirst("BASTRA_VAULT_PATH", "NEXUS_VAULT_PATH");
       if (!vaultPath) {
-        process.stderr.write("✗ BASTRA_VAULT_PATH not set — the held-out check ranks against the vault\n");
+        process.stderr.write(w.noVaultVerify);
         return 1;
       }
       const local = (await listLocalBridgeFiles(bridgesPath()))
@@ -375,12 +347,11 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
         );
         if (verdict.eligible) eligible.push(b);
       }
-      process.stdout.write(`${eligible.length} of ${local.length} local bridge(s) pass the #129 gate\n`);
+      process.stdout.write(w.passGate(eligible.length, local.length));
       if (sub === "verify" || eligible.length === 0) return 0;
       const staged = stageContribution(eligible);
       process.stdout.write(
-        `✓ staged ${staged.length} scrubbed bridge(s) in ${join(bridgesPath(), "contribute")}\n` +
-          `  review them, then open a PR adding them under bridges/<lang>/ to ${COMMONS_REPO_URL.replace(/\.git$/, "")}\n`
+        w.staged(staged.length, join(bridgesPath(), "contribute"), COMMONS_REPO_URL.replace(/\.git$/, ""))
       );
       return 0;
     }
@@ -392,30 +363,22 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       // never built — so status must not imply a live pool either.
       const pool = enabled ? BridgePool.load(bridgesPath()) : null;
       const poolStr = pool
-        ? `${pool.size()} bridges (${
+        ? w.poolCount(
+            pool.size(),
             pool
               .languages()
               .map((l) => `${l}:${pool.size(l)}`)
-              .join(" ") || "none"
-          })`
-        : "(not loaded — disabled)";
+              .join(" ") || w.poolNone
+          )
+        : w.poolOff;
       // #353: a frozen pool must be visible without counting files on disk.
       const lastMint = await readLastMint(bridgesPath());
-      const mintStr = lastMint
-        ? `last mint: ${lastMint.ts} — ${lastMint.minted} bridge(s) from ${lastMint.reaches} reach(es) (${lastMint.trigger}, ${lastMint.host})`
-        : "last mint: never ran on this box";
-      process.stdout.write(
-        `shared learned-recall: ${enabled ? "enabled" : "disabled"} · language: ${langOverride ?? "auto"} · ` +
-          `query expansion: ${live ? "live" : "shadow"} · ` +
-          `pool: ${poolStr} · repo: ${join(bridgesPath(), "bridges")}\n` +
-          `${mintStr}\n`
-      );
+      const mintStr = lastMint ? w.lastMint(lastMint) : w.neverMinted;
+      process.stdout.write(w.status(enabled, langOverride, live, poolStr, join(bridgesPath(), "bridges"), mintStr));
       return 0;
     }
     default:
-      process.stderr.write(
-        `unknown bridges subcommand '${sub}' — use enable|disable|status|language|live|mint|harvest|update|verify|contribute\n`
-      );
+      process.stderr.write(w.unknownSub(sub));
       return 2;
   }
 }

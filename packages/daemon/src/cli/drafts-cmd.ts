@@ -6,41 +6,41 @@ import { resolveVault } from "./helpers.js";
 import { DRAFT_MAX_ROWS, listDrafts, purgeDrafts } from "../draft-store.js";
 import { rejectDrafts } from "../draft-review.js";
 import type { ParsedArgs } from "./types.js";
-import { usageWords } from "./usage-words.js";
+import { usageWordsIn } from "./usage-words.js";
+import { draftsCmdWordsIn, type DraftsCmdWords } from "./drafts-cmd-words.js";
+import { taskCliLanguage } from "./task-cli-words.js";
 
 /** #1592: at the row cap a new first capture is the row the store drops;
  *  say so where the user looks at the store. */
-function writeFullStoreNotice(rows: number): void {
+function writeFullStoreNotice(rows: number, w: DraftsCmdWords): void {
   if (rows < DRAFT_MAX_ROWS) return;
-  process.stdout.write(
-    `Draft store is full (${rows} of ${DRAFT_MAX_ROWS} rows): new first captures are dropped until older drafts expire or are rejected (bastra drafts reject <id>).\n`
-  );
+  process.stdout.write(w.storeFull(rows, DRAFT_MAX_ROWS));
 }
 
 export async function cmdDrafts(args: ParsedArgs): Promise<number> {
   const sub = args.positional[1] ?? "list";
+  const language = await taskCliLanguage().catch(() => "en");
+  const w = draftsCmdWordsIn(language);
   if (
     !["list", "purge", "undo", "reject"].includes(sub) ||
     (sub !== "reject" && args.positional.length > (sub === "undo" ? 3 : 2)) ||
     ((sub === "undo" || sub === "reject") && !args.positional[2])
   ) {
-    process.stderr.write((await usageWords()).drafts);
+    process.stderr.write(usageWordsIn(language).drafts);
     return 2;
   }
   try {
     if (sub === "undo") {
       const resolved = await resolveVault(args);
       if ("error" in resolved) {
-        process.stderr.write("error: configure a vault or pass --vault\n");
+        process.stderr.write(w.noVault);
         return 1;
       }
       const vault = new Vault(resolved.path);
       try {
         await vault.init();
         const memoryId = await undoDraftPromotion(vault, args.positional[2], Date.now(), args.force);
-        process.stdout.write(
-          args.json ? JSON.stringify({ undone: memoryId }) + "\n" : `Draft promotion undone: ${memoryId}\n`
-        );
+        process.stdout.write(args.json ? JSON.stringify({ undone: memoryId }) + "\n" : w.undone(memoryId));
       } finally {
         await vault.stop();
       }
@@ -49,11 +49,10 @@ export async function cmdDrafts(args: ParsedArgs): Promise<number> {
       if (args.json) process.stdout.write(JSON.stringify({ results }) + "\n");
       else
         for (const r of results) {
-          if (r.outcome === "rejected") process.stdout.write(`Draft rejected: ${r.id}\n`);
-          else if (r.outcome === "already_rejected") process.stdout.write(`Draft already rejected: ${r.id}\n`);
-          else if (r.outcome === "promoted")
-            process.stderr.write(`Draft already promoted, not rejected: ${r.id}; use bastra drafts undo ${r.id}\n`);
-          else process.stderr.write(`No open draft with this id: ${r.id}\n`);
+          if (r.outcome === "rejected") process.stdout.write(w.rejected(r.id));
+          else if (r.outcome === "already_rejected") process.stdout.write(w.alreadyRejected(r.id));
+          else if (r.outcome === "promoted") process.stderr.write(w.alreadyPromoted(r.id));
+          else process.stderr.write(w.noOpenDraft(r.id));
         }
       // An already rejected draft is closed; only promoted and unknown ids fail.
       return results.every((r) => r.outcome === "rejected" || r.outcome === "already_rejected") ? 0 : 1;
@@ -63,19 +62,19 @@ export async function cmdDrafts(args: ParsedArgs): Promise<number> {
       process.stdout.write(
         args.json
           ? JSON.stringify({ purged: true, cleared, ...(!pendingRelay ? { pending_relay: "absent" } : {}) }) + "\n"
-          : `Local drafts, vectors and decision receipts cleared; pending relay ${pendingRelay ? "cleared" : "not present"}.\n`
+          : w.purged(pendingRelay)
       );
     } else {
       const rows = await listDrafts();
       if (args.json) process.stdout.write(JSON.stringify(rows) + "\n");
-      else if (!rows.length) process.stdout.write("No local drafts.\n");
+      else if (!rows.length) process.stdout.write(w.noDrafts);
       else {
         for (const row of rows) {
           process.stdout.write(
             `${row.id}  ${row.state}  ${new Date(row.last_touched).toISOString()}\n  ${row.quote.replace(/[\r\n\x00-\x1f\x7f]/g, " ")}\n`
           );
         }
-        writeFullStoreNotice(rows.length);
+        writeFullStoreNotice(rows.length, w);
       }
     }
     return 0;
@@ -90,7 +89,11 @@ export async function cmdDrafts(args: ParsedArgs): Promise<number> {
       "note changed since promotion; review it and use --force to undo",
     ];
     process.stderr.write(
-      `error: ${error instanceof PendingRelayAccessError || (sub === "undo" && known.includes(message)) ? message : "cannot access local drafts"}\n`
+      w.error(
+        error instanceof PendingRelayAccessError || (sub === "undo" && known.includes(message))
+          ? message
+          : w.cannotAccess
+      )
     );
     return 1;
   }

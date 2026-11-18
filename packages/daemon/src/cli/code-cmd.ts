@@ -40,6 +40,8 @@ import { findExecutable, run } from "./exec.js";
 import { GRAPHIFY_PIN, installArgv, probeTool } from "../code-graph/graphify-tool.js";
 import { refreshStatusLines } from "../code-graph/refresh-status.js";
 import { fetchRefreshStatus, resumeRefreshIfGivenUp } from "./code-refresh-client.js";
+import { codeCmdWordsIn, type CodeCmdWords } from "./code-cmd-words.js";
+import { taskCliLanguage } from "./task-cli-words.js";
 
 const out = (s: string): void => void process.stdout.write(s);
 
@@ -53,44 +55,45 @@ export async function cmdCode(opts: { sub: string | null; positional?: string[];
   // enabling `packages/daemon/` stored a key nothing ever asked for. A linked
   // worktree is its own root on purpose — its own checkout, its own graph.
   const dir = repoRootSync(given) ?? given;
+  const w = codeCmdWordsIn(await taskCliLanguage().catch(() => "en"));
 
   switch (sub) {
     case "status":
-      return await cmdStatus();
+      return await cmdStatus(w);
     case "enable":
-      return await cmdEnable(dir);
+      return await cmdEnable(dir, w);
     case "disable":
-      return await cmdDisable(dir, given);
+      return await cmdDisable(dir, given, w);
     case "index":
-      return await cmdIndex(dir, false, opts.yes === true);
+      return await cmdIndex(dir, false, opts.yes === true, w);
     case "rebuild":
-      return await cmdIndex(dir, true, opts.yes === true);
+      return await cmdIndex(dir, true, opts.yes === true, w);
     default:
-      out(`unknown subcommand '${sub}' — try: status, enable, disable, index, rebuild\n`);
+      out(w.unknownSub(sub));
       return 1;
   }
 }
 
-async function cmdStatus(): Promise<number> {
+async function cmdStatus(w: CodeCmdWords): Promise<number> {
   const tool = await probeTool();
   out("→ graphify\n");
   if (tool.usable !== null) {
-    out(`  ✓ ${tool.usable.version} (pinned ${GRAPHIFY_PIN})\n`);
-    out(`  path: ${tool.usable.path}\n`);
+    out(w.pinned(tool.usable.version, GRAPHIFY_PIN));
+    out(w.path(tool.usable.path));
   } else {
-    out(`  ✗ unavailable: ${reasonWording(tool.reason)}\n`);
+    out(w.unavailable(reasonWording(tool.reason, w)));
   }
   if (tool.external !== null) {
     // Reported, never touched (#573).
-    out(`  note: you have your own Graphify at ${tool.external.path}`);
+    out(w.ownGraphify(tool.external.path));
     out(tool.external.version !== null ? ` (${tool.external.version})` : "");
-    out(" — Recall leaves it alone and uses its own pinned copy\n");
+    out(w.ownGraphifyLeft);
   }
 
   const repos = await enabledRepos();
-  out("\n→ repositories\n");
+  out(w.repositories);
   if (repos.length === 0) {
-    out("  none enabled — run 'bastra code enable' inside a repository\n");
+    out(w.noneEnabled);
     return 0;
   }
   // The running daemon's view (#1148): a paused or stopped refresh is state
@@ -100,108 +103,98 @@ async function cmdStatus(): Promise<number> {
     out(`  ${repo}\n`);
     const manifest = await readManifest(graphDirOf(repo));
     if (manifest === null) {
-      out("    no graph yet — run 'bastra code index'\n");
+      out(w.noGraphYet);
       continue;
     }
     const size = await graphSizeMB(repo);
     const state = await scanFileState(repo).catch(() => null);
     const stale = isStale(manifest, state?.newestMtimeMs ?? 0);
-    out(`    built: ${manifest.builtAt ?? "never"}${stale ? "  (may be outdated)" : ""}\n`);
-    out(`    graphify ${manifest.graphifyVersion}, ${manifest.fileState.count} files`);
+    out(w.built(manifest.builtAt, stale));
+    out(w.graphFiles(manifest.graphifyVersion, manifest.fileState.count));
     out(size === null ? "\n" : `, ${size} MB\n`);
-    if (manifest.lastError !== null) out(`    last error: ${manifest.lastError}\n`);
-    if (manifest.dirty) out("    a build did not finish — it will be retried\n");
-    out(
-      `    ${await coverageMapStatus(repo)} (experimental${(await getCoverageMapEnabled()) ? "" : ", collection off: bastra config set coverageMap.enabled true"})\n`
-    );
+    if (manifest.lastError !== null) out(w.lastError(manifest.lastError));
+    if (manifest.dirty) out(w.unfinished);
+    out(w.coverage(await coverageMapStatus(repo), await getCoverageMapEnabled()));
     const refreshState = refresh?.get(repo);
     if (refreshState !== undefined) for (const line of refreshStatusLines(refreshState)) out(`    ${line}\n`);
   }
   return 0;
 }
 
-async function cmdEnable(dir: string): Promise<number> {
+async function cmdEnable(dir: string, w: CodeCmdWords): Promise<number> {
   const tool = await probeTool();
   if (tool.usable === null) {
-    out(`✗ code awareness unavailable: ${reasonWording(tool.reason)}\n`);
+    out(w.enableUnavailable(reasonWording(tool.reason, w)));
     if (tool.reason === "not-installed") {
-      out(`  run 'bastra install' and say yes to code awareness, which installs graphifyy==${GRAPHIFY_PIN}\n`);
+      out(w.enableInstallHint(GRAPHIFY_PIN));
     }
     return 1;
   }
 
   const changed = await setRepoEnabled(dir, true);
-  out(changed ? `✓ code awareness enabled for ${dir}\n` : `code awareness was already enabled for ${dir}\n`);
-  out(
-    "  experimental: it can help an agent find its way into an unfamiliar or large repository. " +
-      'For "what breaks if I change this" it did not beat plain search in our measurements, and it costs ' +
-      "context (the dependents block before edits) and background CPU (graph refreshes). " +
-      "'bastra code disable' turns it off.\n"
-  );
-  await ensureExcluded(dir);
-  return await cmdIndex(dir, false, true);
+  out(w.enabled(dir, changed));
+  out(w.experimental);
+  await ensureExcluded(dir, w);
+  return await cmdIndex(dir, false, true, w);
 }
 
-async function cmdDisable(dir: string, given: string): Promise<number> {
+async function cmdDisable(dir: string, given: string, w: CodeCmdWords): Promise<number> {
   // Also the literal directory: before #586, enabling from a subdirectory
   // stored that subdirectory, and it must stay possible to switch it off.
   const changed = (await setRepoEnabled(dir, false)) || (given !== dir && (await setRepoEnabled(given, false)));
   if (!changed) {
-    out(`code awareness was not enabled for ${dir}\n`);
+    out(w.notEnabled(dir));
     return 0;
   }
   // Files stay: deleting them as a side effect of a settings change is not
   // what the user asked for, and re-enabling would cost a full rebuild.
-  out(`✓ code awareness disabled for ${dir}\n`);
+  out(w.disabled(dir));
   if (existsSync(graphDirOf(dir))) {
-    out(`  the graph is kept at ${graphDirOf(dir)} — delete it yourself if you want it gone\n`);
+    out(w.graphKept(graphDirOf(dir)));
   }
   return 0;
 }
 
-async function cmdIndex(dir: string, rebuild: boolean, yes: boolean): Promise<number> {
+async function cmdIndex(dir: string, rebuild: boolean, yes: boolean, w: CodeCmdWords): Promise<number> {
   if (!(await isRepoEnabled(dir))) {
-    out(`${dir} is not enabled — run 'bastra code enable' first\n`);
+    out(w.enableFirst(dir));
     return 1;
   }
 
   if (rebuild && !yes) {
     // --force overrides Graphify's own refusal to replace a good graph with a
     // smaller one. Naming what it overrides is the point of the question.
-    const ok = await confirm(
-      "Rebuild with --force? This overrides Graphify's refusal to replace a larger graph with a smaller one.",
-      { defaultYes: false }
-    );
+    const ok = await confirm(w.confirmForce, { defaultYes: false });
     if (!ok) {
-      out("cancelled — nothing was changed\n");
+      out(w.cancelled);
       return 1;
     }
   }
 
-  out(rebuild ? "rebuilding (forced)…\n" : "indexing…\n");
+  out(w.building(rebuild));
   const started = Date.now();
   const result = await buildCodeGraph({ repoRoot: dir, rebuild });
   const secs = ((Date.now() - started) / 1000).toFixed(2);
 
   if (!result.ok) {
-    out(`✗ build failed after ${secs}s (${result.reason}): ${result.detail}\n`);
+    out(w.buildFailed(secs, result.reason, result.detail));
     // Graphify replaces the graph atomically, so a failed run never leaves a
     // half-written one behind.
-    out("  the previous graph is untouched\n");
+    out(w.previousUntouched);
     return 1;
   }
   if (result.tookOverLock) {
-    out("  note: took over a lock left by a daemon that died mid-build\n");
+    out(w.tookOverLock);
   }
   const size = await graphSizeMB(dir);
-  out(`✓ indexed in ${secs}s${size === null ? "" : ` (${size} MB)`}\n`);
+  out(w.indexed(secs, size));
   // The daemon's automatic refresh may be paused on a busy lock or stopped
   // after failed builds (#1148). The user asking is the one signal that clears
   // that, so a running daemon that gave up on this repository is told to resume.
   // A healthy daemon is left alone: a manual request would start a second build
   // on the graph that was just made.
   if (await resumeRefreshIfGivenUp(dir)) {
-    out("  the daemon resumes automatic refreshes for this repository\n");
+    out(w.resumes);
   }
   return 0;
 }
@@ -211,7 +204,7 @@ async function cmdIndex(dir: string, rebuild: boolean, yes: boolean): Promise<nu
  * tracks. `.gitignore` is the project's; `.git/info/exclude` is this
  * checkout's, and it never shows up as a change.
  */
-async function ensureExcluded(repoRoot: string): Promise<void> {
+async function ensureExcluded(repoRoot: string, w: CodeCmdWords): Promise<void> {
   if (!(await isGitRepo(repoRoot))) return;
   const entry = `${GRAPH_DIR_NAME}/`;
 
@@ -235,9 +228,9 @@ async function ensureExcluded(repoRoot: string): Promise<void> {
     if (current.split(/\r?\n/).some((l) => l.trim() === entry)) return;
     const prefix = current.length > 0 && !current.endsWith("\n") ? "\n" : "";
     await appendFile(exclude, `${prefix}${entry}\n`, "utf8");
-    out(`  added ${entry} to ${relative(repoRoot, exclude) || exclude}\n`);
+    out(w.excludeAdded(entry, relative(repoRoot, exclude) || exclude));
   } catch {
-    out(`  could not write the exclude file — add ${entry} to .gitignore yourself\n`);
+    out(w.excludeFailed(entry));
   }
 }
 
@@ -249,16 +242,16 @@ async function graphSizeMB(repoRoot: string): Promise<string | null> {
   }
 }
 
-function reasonWording(reason: string): string {
+function reasonWording(reason: string, w: CodeCmdWords): string {
   switch (reason) {
     case "not-installed":
-      return "Graphify is not installed for Recall";
+      return w.notInstalled;
     case "version-mismatch":
-      return `the installed Graphify is not the pinned ${GRAPHIFY_PIN}`;
+      return w.versionMismatch(GRAPHIFY_PIN);
     case "unsupported-platform":
-      return "this platform is not supported yet (macOS and Linux only)";
+      return w.unsupportedPlatform;
     case "unreadable":
-      return "the Graphify binary did not report a version";
+      return w.unreadable;
     default:
       return reason;
   }
@@ -284,8 +277,9 @@ export async function installCodeAwarenessStep(args: { dryRun: boolean; yes: boo
 
   const tool = await probeTool();
   if (tool.reason === "unsupported-platform") return; // nothing to offer here yet
+  const w = codeCmdWordsIn(await taskCliLanguage().catch(() => "en"));
   if (tool.usable !== null) {
-    out(`→ code awareness: already installed (graphify ${tool.usable.version})\n`);
+    out(w.alreadyInstalled(tool.usable.version));
     return;
   }
 
@@ -293,24 +287,16 @@ export async function installCodeAwarenessStep(args: { dryRun: boolean; yes: boo
   // opt-in feature that arrives because someone passed --yes is not opt-in.
   if (!isInteractive() || args.yes) return;
 
-  const accepted = await confirm(
-    "Enable code awareness (experimental)? It uses Graphify to build a code map of a repository " +
-      "and shows an agent what depends on a file before it edits one. It can help an agent find its way " +
-      'into an unfamiliar or large repository; for "what breaks if I change this" it did not beat plain ' +
-      "search in our measurements, and it costs context and background CPU. " +
-      `This installs graphifyy==${GRAPHIFY_PIN} (Apache-2.0) into Recall's own tool directory. ` +
-      "Nothing is indexed until you enable a repository, and no code is sent anywhere.",
-    { defaultYes: false }
-  );
+  const accepted = await confirm(w.offer(GRAPHIFY_PIN), { defaultYes: false });
   if (!accepted) {
-    out("→ code awareness: skipped — enable it later with 'bastra code enable'\n");
+    out(w.skipped);
     return;
   }
 
   const uv = findExecutable("uv");
   if (uv === null) {
     // Explained, not failed: the user may not want another toolchain.
-    out("→ code awareness: needs `uv` (https://docs.astral.sh/uv/) — install it, then run 'bastra code enable'\n");
+    out(w.needsUv);
     return;
   }
 
@@ -321,11 +307,11 @@ export async function installCodeAwarenessStep(args: { dryRun: boolean; yes: boo
   for (const [k, v] of Object.entries({ ...process.env, ...env })) {
     if (typeof v === "string") merged[k] = v;
   }
-  out(`→ code awareness: installing graphifyy==${GRAPHIFY_PIN}…\n`);
+  out(w.installing(GRAPHIFY_PIN));
   const result = await run(uv, installArgs, { timeoutMs: 5 * 60_000, env: merged });
   if (!result.ok) {
-    out(`  could not install it (${result.detail ?? "failed"}) — Recall works without it\n`);
+    out(w.installFailed(result.detail));
     return;
   }
-  out("  ✓ installed — run 'bastra code enable' inside a repository to switch it on\n");
+  out(w.installed);
 }

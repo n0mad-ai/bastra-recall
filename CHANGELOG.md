@@ -174,6 +174,9 @@ until a new design replaces it; this name is independent of the product version.
   import, feedback, recall, save, completion) and the messages of recall/save,
   archive, trash, skills and doctor's assistant-address lines follow
   `language.primary`: English by default, German complete (#1602).
+- CLI messages of `bastra code`, `patches`, `commons`, `bridges`, `reconcile`,
+  `rules`, `map`, `drafts` and `doctor --replay` follow `language.primary`
+  (English default, German complete) (#1602).
 - Memory browser: changing type or recall mode of a memory whose rule status
   depends on them shows what changes for the rule before saving; saving
   takes one confirming click.

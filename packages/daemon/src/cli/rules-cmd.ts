@@ -17,13 +17,15 @@ import { dirname, resolve } from "node:path";
 import { CURSOR_RULES_RELATIVE, CURSOR_RULES_SOURCE_PATH } from "./paths.js";
 import { fileExists } from "./helpers.js";
 import type { ParsedArgs } from "./types.js";
-import { usageBlocks } from "./usage-block-words.js";
+import { usageBlocksIn } from "./usage-block-words.js";
+import { rulesCmdWordsIn, type RulesCmdWords } from "./rules-cmd-words.js";
+import { taskCliLanguage } from "./task-cli-words.js";
 
 const SURFACES = ["cursor"] as const;
 
-async function install(projectDir: string, dryRun: boolean): Promise<number> {
+async function install(projectDir: string, dryRun: boolean, w: RulesCmdWords): Promise<number> {
   if (!CURSOR_RULES_SOURCE_PATH) {
-    process.stderr.write("error: cursor rules template missing from this installation\n");
+    process.stderr.write(w.templateMissing);
     return 1;
   }
   const target = resolve(projectDir, CURSOR_RULES_RELATIVE);
@@ -32,11 +34,11 @@ async function install(projectDir: string, dryRun: boolean): Promise<number> {
   if (await fileExists(target)) {
     const existing = await readFile(target, "utf8");
     if (existing === source) {
-      process.stdout.write(`✓ already installed: ${target}\n`);
+      process.stdout.write(w.alreadyInstalled(target));
       return 0;
     }
     if (dryRun) {
-      process.stdout.write(`~ would update ${target} (differs from the shipped rules)\n`);
+      process.stdout.write(w.wouldUpdate(target));
       return 0;
     }
     // The file is ours by name, but a user may have edited it. Keep a copy
@@ -52,43 +54,36 @@ async function install(projectDir: string, dryRun: boolean): Promise<number> {
     try {
       await writeFile(backup, existing, { encoding: "utf8", flag: "wx", mode: 0o600 });
     } catch (e) {
-      process.stderr.write(
-        `error: cannot back up the existing rules to ${backup}: ${(e as Error).message}\n` +
-          "  refusing to overwrite your version without one\n"
-      );
+      process.stderr.write(w.backupFailed(backup, (e as Error).message));
       return 1;
     }
     await writeFile(target, source, "utf8");
-    process.stdout.write(`✓ updated ${target}\n  previous version kept at ${backup}\n`);
+    process.stdout.write(w.updated(target, backup));
     return 0;
   }
 
   if (dryRun) {
-    process.stdout.write(`~ would write ${target}\n`);
+    process.stdout.write(w.wouldWrite(target));
     return 0;
   }
   await mkdir(dirname(target), { recursive: true });
   await writeFile(target, source, "utf8");
-  process.stdout.write(
-    `✓ wrote ${target}\n` +
-      "  Cursor picks it up on the next chat — the rule applies to every session in this project.\n" +
-      "  It is a normal project file: commit it and your team gets the same behaviour.\n"
-  );
+  process.stdout.write(w.wrote(target));
   return 0;
 }
 
-async function remove(projectDir: string, dryRun: boolean): Promise<number> {
+async function remove(projectDir: string, dryRun: boolean, w: RulesCmdWords): Promise<number> {
   const target = resolve(projectDir, CURSOR_RULES_RELATIVE);
   if (!(await fileExists(target))) {
-    process.stdout.write(`✓ not present: ${target}\n`);
+    process.stdout.write(w.notPresent(target));
     return 0;
   }
   if (dryRun) {
-    process.stdout.write(`~ would remove ${target}\n`);
+    process.stdout.write(w.wouldRemove(target));
     return 0;
   }
   await rm(target, { force: true });
-  process.stdout.write(`✓ removed ${target}\n`);
+  process.stdout.write(w.removed(target));
   return 0;
 }
 
@@ -100,24 +95,23 @@ export async function cmdRules(args: ParsedArgs): Promise<number> {
   const removing = second === "remove";
   const surface = removing ? third : second;
   const pathArg = removing ? fourth : third;
+  const language = await taskCliLanguage().catch(() => "en");
+  const w = rulesCmdWordsIn(language);
 
   if (!surface) {
-    process.stderr.write((await usageBlocks()).rules);
+    process.stderr.write(usageBlocksIn(language).rules);
     return 2;
   }
   if (!(SURFACES as readonly string[]).includes(surface)) {
-    process.stderr.write(
-      `error: no rules layer for '${surface}' — supported: ${SURFACES.join(", ")}\n` +
-        "  (Claude Code and Claude Desktop use the skill, installed by 'bastra install'.)\n"
-    );
+    process.stderr.write(w.noLayer(surface, SURFACES.join(", ")));
     return 2;
   }
 
   const projectDir = resolve(pathArg ?? process.cwd());
   if (!(await fileExists(projectDir))) {
-    process.stderr.write(`error: no such directory: ${projectDir}\n`);
+    process.stderr.write(w.noSuchDir(projectDir));
     return 2;
   }
 
-  return removing ? remove(projectDir, args.dryRun) : install(projectDir, args.dryRun);
+  return removing ? remove(projectDir, args.dryRun, w) : install(projectDir, args.dryRun, w);
 }

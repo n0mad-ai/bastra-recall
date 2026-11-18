@@ -17,7 +17,9 @@ import { findExecutable, run } from "./exec.js";
 import { getCommonsEnabled, setCommonsEnabled } from "../settings.js";
 import { isOnValue } from "../env.js";
 import { buildVerificationRecord, commonsPath, verificationRecordPath } from "../commons-store.js";
-import { usageWords } from "./usage-words.js";
+import { usageWordsIn } from "./usage-words.js";
+import { commonsWordsIn, type CommonsWords } from "./commons-words.js";
+import { taskCliLanguage } from "./task-cli-words.js";
 
 export const COMMONS_REPO_URL = process.env.BASTRA_COMMONS_REPO ?? "https://github.com/n0mad-ai/bastra-commons.git";
 
@@ -62,63 +64,65 @@ function parseRemote(rawUrl: string): { host: string; owner: string; repo: strin
 /** Null when this target may be used; otherwise the reason to print and abort.
  *  Fail-closed on purpose: git would happily clone a path or an odd URL, so an
  *  unrecognized shape must not fall through the way the Ollama guard does. */
-export function commonsRepoRefusal(rawUrl: string): string | null {
+export function commonsRepoRefusal(rawUrl: string, language?: string): string | null {
+  const w = commonsWordsIn(language);
   if (isOnValue(process.env[COMMONS_OPT_IN_ENV])) return null;
   const parsed = parseRemote(rawUrl);
   if (parsed && parsed.host === COMMONS_ALLOWED_HOST && parsed.owner.toLowerCase() === COMMONS_ALLOWED_OWNER)
     return null;
-  const shown = parsed ? `${parsed.host}/${parsed.owner}/${parsed.repo}` : rawUrl || "(empty)";
-  return (
-    `refusing commons target "${shown}" — expected ${COMMONS_ALLOWED_HOST}/${COMMONS_ALLOWED_OWNER}/…\n` +
-    `  The contribution path (\`bastra commons verify\`) opens a PR against this repo, so a redirected\n` +
-    `  target would receive your verification records. Set ${COMMONS_OPT_IN_ENV}=1 to use it on purpose.`
-  );
+  const shown = parsed ? `${parsed.host}/${parsed.owner}/${parsed.repo}` : rawUrl || w.empty;
+  return w.refusal(shown, COMMONS_ALLOWED_HOST, COMMONS_ALLOWED_OWNER, COMMONS_OPT_IN_ENV);
 }
 
 /** Print the one-line warning that an override is in effect (#260). Called at
  *  each egress point so the operator sees the target they redirected to, every
  *  time, not just when they set the variable. */
-function noteCommonsOverride(action: string): void {
+function noteCommonsOverride(action: string, w: CommonsWords): void {
   if (!isOnValue(process.env[COMMONS_OPT_IN_ENV])) return;
   if (COMMONS_REPO_URL === "https://github.com/n0mad-ai/bastra-commons.git") return;
-  process.stdout.write(`! commons target overridden (${COMMONS_OPT_IN_ENV}=1): ${action} → ${COMMONS_REPO_URL}\n`);
+  process.stdout.write(w.overridden(COMMONS_OPT_IN_ENV, action, COMMONS_REPO_URL));
 }
 
 export async function cmdCommons(opts: { sub: string | null; positional?: string[] }): Promise<number> {
   const sub = opts.sub ?? "status";
+  const language = await taskCliLanguage().catch(() => "en");
+  const w = commonsWordsIn(language);
   switch (sub) {
     case "verify":
       // bastra commons verify <recipe-id> <works|fails> ["environment note"]
-      return await cmdVerify(opts.positional?.[2] ?? null, opts.positional?.[3] ?? null, opts.positional?.[4] ?? null);
+      return await cmdVerify(
+        opts.positional?.[2] ?? null,
+        opts.positional?.[3] ?? null,
+        opts.positional?.[4] ?? null,
+        language
+      );
     case "enable": {
-      const rc = await cloneOrPull();
+      const rc = await cloneOrPull(language);
       if (rc !== 0) return rc;
       await setCommonsEnabled(true);
-      process.stdout.write("✓ commons enabled — restart the daemon (or your AI client) to load it\n");
+      process.stdout.write(w.enabled);
       return 0;
     }
     case "update": {
       if (!existsSync(commonsPath())) {
-        process.stdout.write("commons not cloned yet — run 'bastra commons enable' first\n");
+        process.stdout.write(w.notClonedYet);
         return 1;
       }
-      return await cloneOrPull();
+      return await cloneOrPull(language);
     }
     case "disable": {
       await setCommonsEnabled(false);
-      process.stdout.write("✓ commons disabled (clone kept at " + commonsPath() + ") — restart the daemon to apply\n");
+      process.stdout.write(w.disabled(commonsPath()));
       return 0;
     }
     case "status": {
       const enabled = await getCommonsEnabled();
       const cloned = existsSync(join(commonsPath(), "recipes"));
-      process.stdout.write(
-        `commons: ${enabled ? "enabled" : "disabled"} · clone: ${cloned ? commonsPath() : "not cloned"}\n`
-      );
+      process.stdout.write(w.status(enabled, cloned ? commonsPath() : null));
       return 0;
     }
     default:
-      process.stderr.write(`unknown commons subcommand '${sub}' — use enable|update|disable|status|verify\n`);
+      process.stderr.write(w.unknownSub(sub));
       return 2;
   }
 }
@@ -134,18 +138,24 @@ export function verifierId(): string {
   return createHash("sha256").update(seed).digest("hex").slice(0, 12);
 }
 
-async function cmdVerify(recipeId: string | null, result: string | null, note: string | null): Promise<number> {
+async function cmdVerify(
+  recipeId: string | null,
+  result: string | null,
+  note: string | null,
+  language: string
+): Promise<number> {
+  const w = commonsWordsIn(language);
   if (!recipeId || (result !== "works" && result !== "fails")) {
-    process.stderr.write((await usageWords()).commons);
+    process.stderr.write(usageWordsIn(language).commons);
     return 2;
   }
   const root = commonsPath();
   if (!existsSync(join(root, ".git"))) {
-    process.stderr.write("commons not cloned — run 'bastra commons enable' first\n");
+    process.stderr.write(w.notCloned);
     return 1;
   }
   if (!findRecipeFile(root, recipeId)) {
-    process.stderr.write(`✗ recipe '${recipeId}' not found in ${join(root, "recipes")}\n`);
+    process.stderr.write(w.recipeMissing(recipeId, join(root, "recipes")));
     return 1;
   }
 
@@ -154,27 +164,27 @@ async function cmdVerify(recipeId: string | null, result: string | null, note: s
   const recordPath = verificationRecordPath(root, recipeId, verifier);
   mkdirSync(join(root, "verifications", recipeId), { recursive: true });
   writeFileSync(recordPath, JSON.stringify(record, null, 2) + "\n", "utf8");
-  process.stdout.write(`✓ verification recorded: ${recipeId} → ${result} (${basename(recordPath)})\n`);
+  process.stdout.write(w.recorded(recipeId, result, basename(recordPath)));
 
   // Submission als Mini-PR — best-effort: gelingt git/gh nicht, bleibt der
   // Record lokal liegen und der Pfad wird ausgegeben (manuell einreichbar).
   const git = findExecutable("git");
   const gh = findExecutable("gh");
   if (!git) {
-    process.stdout.write(`→ submit manually: open a PR adding ${recordPath}\n`);
+    process.stdout.write(w.submitManually(recordPath));
     return 0;
   }
   // #260: the gate sits BEFORE the push, not just before `gh pr create` — the
   // push already ships the record to whatever origin the clone carries. The
   // record itself stays on disk either way, so refusing here costs nothing but
   // the automatic submission.
-  const refusal = commonsRepoRefusal(COMMONS_REPO_URL);
+  const refusal = commonsRepoRefusal(COMMONS_REPO_URL, language);
   if (refusal) {
     process.stderr.write(`✗ ${refusal}\n`);
-    process.stdout.write(`→ record kept at ${recordPath} — submit manually if you meant to\n`);
+    process.stdout.write(w.recordKept(recordPath));
     return 1;
   }
-  noteCommonsOverride("verification PR");
+  noteCommonsOverride(w.actionPr, w);
   const branch = `verify/${recipeId}-${verifier}-${result}`;
   const steps: [string[], string][] = [
     [["-C", root, "checkout", "-B", branch], "branch"],
@@ -185,7 +195,7 @@ async function cmdVerify(recipeId: string | null, result: string | null, note: s
   for (const [args, label] of steps) {
     const r = run(git, args, { timeoutMs: 60_000 });
     if (!r.ok) {
-      process.stdout.write(`→ ${label} failed (${r.detail}) — record kept at ${recordPath}; submit manually\n`);
+      process.stdout.write(w.stepFailed(label, r.detail, recordPath));
       run(git, ["-C", root, "checkout", "main"], { timeoutMs: 15_000 });
       return 0;
     }
@@ -208,10 +218,10 @@ async function cmdVerify(recipeId: string | null, result: string | null, note: s
       ],
       { stdio: ["ignore", "pipe", "pipe"], timeout: 30_000 }
     );
-    if (pr.status === 0) process.stdout.write(`✓ verification PR opened: ${String(pr.stdout).trim()}\n`);
-    else process.stdout.write(`→ branch '${branch}' pushed — open the PR manually (gh pr create failed)\n`);
+    if (pr.status === 0) process.stdout.write(w.prOpened(String(pr.stdout).trim()));
+    else process.stdout.write(w.prFailed(branch));
   } else {
-    process.stdout.write(`→ branch '${branch}' pushed — open a PR to submit your verification\n`);
+    process.stdout.write(w.pushed(branch));
   }
   run(git, ["-C", root, "checkout", "main"], { timeoutMs: 15_000 });
   return 0;
@@ -231,39 +241,40 @@ function findRecipeFile(rootDir: string, recipeId: string): string | null {
   return null;
 }
 
-async function cloneOrPull(): Promise<number> {
+async function cloneOrPull(language: string): Promise<number> {
+  const w = commonsWordsIn(language);
   const git = findExecutable("git");
   if (!git) {
-    process.stderr.write("✗ git not found on a trusted PATH\n");
+    process.stderr.write(w.noGit);
     return 1;
   }
   const path = commonsPath();
   if (existsSync(join(path, ".git"))) {
-    process.stdout.write(`→ updating commons (${path})\n`);
+    process.stdout.write(w.updating(path));
     const r = run(git, ["-C", path, "pull", "--ff-only"], {
       timeoutMs: 120_000,
       showProgress: true,
       env: { GIT_TERMINAL_PROMPT: "0" },
     });
     if (!r.ok) {
-      process.stderr.write(`✗ git pull failed (${r.detail})\n`);
+      process.stderr.write(w.pullFailed(r.detail));
       return 1;
     }
   } else {
-    const refusal = commonsRepoRefusal(COMMONS_REPO_URL);
+    const refusal = commonsRepoRefusal(COMMONS_REPO_URL, language);
     if (refusal) {
       process.stderr.write(`✗ ${refusal}\n`);
       return 1;
     }
-    noteCommonsOverride("clone");
-    process.stdout.write(`→ cloning ${COMMONS_REPO_URL} → ${path}\n`);
-    const r = cloneIntoRoot(git, COMMONS_REPO_URL, path);
+    noteCommonsOverride(w.actionClone, w);
+    process.stdout.write(w.cloning(COMMONS_REPO_URL, path));
+    const r = cloneIntoRoot(git, COMMONS_REPO_URL, path, {}, language);
     if (!r.ok) {
       process.stderr.write(`✗ ${r.detail}\n`);
       return 1;
     }
   }
-  process.stdout.write("✓ commons up to date\n");
+  process.stdout.write(w.upToDate);
   return 0;
 }
 
@@ -281,9 +292,11 @@ export function cloneIntoRoot(
   git: string,
   url: string,
   path: string,
-  io: { move?: typeof renameSync } = {}
+  io: { move?: typeof renameSync } = {},
+  language?: string
 ): { ok: true } | { ok: false; detail: string } {
-  const unreachable = " — is the repo reachable (public, or your account has access)?";
+  const w = commonsWordsIn(language);
+  const unreachable = w.unreachable;
   const occupied = existsSync(path) && readdirSync(path).length > 0;
   if (!occupied) {
     const r = run(git, ["clone", "--depth", "1", url, path], {
@@ -291,7 +304,7 @@ export function cloneIntoRoot(
       showProgress: true,
       env: { GIT_TERMINAL_PROMPT: "0" },
     });
-    return r.ok ? { ok: true } : { ok: false, detail: `git clone failed (${r.detail})${unreachable}` };
+    return r.ok ? { ok: true } : { ok: false, detail: `${w.cloneFailed(r.detail)}${unreachable}` };
   }
   const staging = mkdtempSync(join(dirname(path), `.${basename(path)}-clone-`));
   let preserveStaging = false;
@@ -302,14 +315,11 @@ export function cloneIntoRoot(
       showProgress: true,
       env: { GIT_TERMINAL_PROMPT: "0" },
     });
-    if (!r.ok) return { ok: false, detail: `git clone failed (${r.detail})${unreachable}` };
+    if (!r.ok) return { ok: false, detail: `${w.cloneFailed(r.detail)}${unreachable}` };
     const entries = readdirSync(checkout);
     const clash = entries.filter((name) => existsSync(join(path, name)));
     if (clash.length > 0) {
-      return {
-        ok: false,
-        detail: `${path} already holds ${clash.join(", ")}, which the Commons checkout also has — move them aside and run 'bastra commons enable' again`,
-      };
+      return { ok: false, detail: w.clash(path, clash.join(", ")) };
     }
     // `.git` last: the root only counts as cloned once `.git` is in, so a move that stops
     // midway leaves visible clashes for the next run instead of a half tree it would pull into.
@@ -346,8 +356,8 @@ export function cloneIntoRoot(
       return {
         ok: false,
         detail: preserveStaging
-          ? `clone move failed (${(err as Error).message}); partial checkout in ${path}, remaining staging in ${staging}; inspect ${stuck.join(", ")} before retrying`
-          : `clone move failed (${(err as Error).message}); checkout move rolled back, local files unchanged`,
+          ? w.moveStuck((err as Error).message, path, staging, stuck.join(", "))
+          : w.moveRolledBack((err as Error).message),
       };
     }
     return { ok: true };
