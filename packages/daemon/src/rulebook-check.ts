@@ -1,12 +1,19 @@
 /** Round self-report, not a proof of semantic compliance. No prompt classification. */
-import { ConventionValidatorSchema } from "@bastra-recall/core";
 import { expireReceipts } from "./receipt-store.js";
 import { getPrimaryLanguage } from "./settings.js";
 import { recordRulebookEvent } from "./rulebook-events.js";
 import { randomUUID } from "node:crypto";
 import { compactContextNotice, resetContextNotices } from "./context-notice.js";
 import { z } from "zod";
-import { readCheckState, sessionRulebookProject, type CheckState } from "./rulebook-round-state.js";
+import {
+  readCheckState,
+  roundActor as actor,
+  roundIdentity as identity,
+  sessionRulebookProject,
+  writeCheckState as put,
+  type CheckState,
+  type RulebookPayload,
+} from "./rulebook-round-state.js";
 import {
   loadSessionState,
   mutateSessionState,
@@ -16,7 +23,7 @@ import {
   taskIdFor,
 } from "./session-state.js";
 import { callerSessionStore } from "./caller-session.js";
-import { hookAgent, hookClientEvidence, hookGateAvailable } from "./hook-surface.js";
+import { hookClientEvidence, hookGateAvailable } from "./hook-surface.js";
 import {
   collectRulebookCatalog,
   cachedRulebookCatalog,
@@ -30,47 +37,17 @@ import type { ToolDeps } from "./tool-deps.js";
 import { drainRulebookFailures, spoolRulebookFailure } from "./rulebook-spool.js";
 import { hasCorrespondenceEvidence, isCorrespondenceTool } from "./stop-evidence.js";
 import type { TranscriptTurn } from "./stop-transcript.js";
+import { hasReportedTask, isCorrespondenceRule } from "./rulebook-correspondence.js";
 
-export interface RulebookPayload {
-  session_id?: string;
-  agent_id?: string;
-  bastra_client?: string;
-  bastra_codex_version?: string;
-  cwd?: string;
-  stop_hook_active?: boolean;
-  tool_name?: string;
-  tool_input?: unknown;
-}
-function put(state: SessionState, value: CheckState) {
-  state.rulebookCheck = JSON.stringify(value);
-}
-function actor(state: CheckState, key: string) {
-  let found = state.actors.find((a) => a.key === key);
-  if (!found) {
-    found = {
-      key,
-      correspondenceEvidence: false,
-      roundApplied: [],
-      roundDismissed: [],
-      repairs: 0,
-      repairProse: false,
-      checked: false,
-      ids: [],
-      denies: 0,
-      stops: 0,
-      deferredStop: false,
-      required: [],
-      loaded: [],
-      dismissed: [],
-    };
-    state.actors.push(found);
-  }
-  return found;
-}
-function identity(p: RulebookPayload): string {
-  if (p.agent_id) return `agent:${p.agent_id}`;
-  return hookAgent(p) === "main" ? "main" : "unattributed";
-}
+// #1532: the correspondence round lives in rulebook-correspondence.ts, the
+// stored round state and actor lookup in rulebook-round-state.ts.
+export type { RulebookPayload } from "./rulebook-round-state.js";
+export {
+  isCorrespondenceRule,
+  roundCorrespondence,
+  claimRoundRepair,
+  refreshRoundValidators,
+} from "./rulebook-correspondence.js";
 // Pending work and actual loads survive a round reset; non-applicability is round-only.
 const deferredActors = (s: CheckState) =>
   s.actors
@@ -787,89 +764,4 @@ export async function takeDeferredRulebookStop(p: RulebookPayload): Promise<bool
     put(s, state);
   });
   return persisted && pending;
-}
-
-/** Validators imply correspondence structurally, including legacy rules. */
-export function isCorrespondenceRule(e: { validator?: unknown; rule_categories?: readonly string[] }): boolean {
-  return !!e.validator || !!e.rule_categories?.includes("correspondence");
-}
-function hasReportedTask(state: Pick<import("./session-state.js").ReadonlySessionState, "activeTask">): boolean {
-  return !!state.activeTask && state.activeTask.kind !== "none";
-}
-export function roundCorrespondence(
-  state: Pick<
-    import("./session-state.js").ReadonlySessionState,
-    "rulebookCheck" | "loadedConventions" | "activeConventions" | "activeTask"
-  >,
-  p: RulebookPayload = { bastra_client: "claude-code" }
-) {
-  const value = readCheckState(state),
-    a = value.actors.find((a) => a.key === identity(p));
-  const rules = [...(a?.roundApplied ?? [])];
-  if (identity(p) === "main" && hasReportedTask(state))
-    for (const loaded of [...(state.loadedConventions ?? []), ...(state.activeConventions ?? [])]) {
-      const validator = ConventionValidatorSchema.safeParse(loaded.validator);
-      if (
-        validator.success &&
-        !a?.roundDismissed.some((r) => r.id === loaded.id) &&
-        !rules.some((r) => r.id === loaded.id)
-      )
-        rules.push({ id: loaded.id, revision: loaded.revision, validator: validator.data });
-    }
-  return {
-    key: `${value.context}:${value.round}:${identity(p)}`,
-    round: value.round,
-    rules,
-    dismissed: (a?.roundDismissed ?? []).map((r) => r.id),
-    repairs: a?.repairs ?? 0,
-    repairProse: a?.repairProse ?? false,
-  };
-}
-/** Called only under the existing bounded Stop state claim. */
-export function claimRoundRepair(
-  state: SessionState,
-  p: RulebookPayload,
-  key: string,
-  observeOnly = false,
-  minimum = 0,
-  proseIsCopy = true
-): number | null {
-  const current = roundCorrespondence(state, p);
-  if (current.key !== key || current.repairs > 2) return null;
-  const value = readCheckState(state),
-    a = actor(value, identity(p)),
-    count = Math.max(a.repairs, minimum);
-  if (count > 2) return null;
-  if (a.repairs === 0) a.repairProse = proseIsCopy;
-  a.repairs = observeOnly ? 3 : count + 1;
-  if (observeOnly || count === 2) {
-    value.copyViolations++;
-    value.unchecked++;
-  }
-  put(state, value);
-  return count;
-}
-export function refreshRoundValidators(
-  state: SessionState,
-  before: { readonly rulebookCheck?: string },
-  sources: ReadonlyMap<string, import("./convention-source.js").ConventionSource>
-): void {
-  const value = readCheckState(state),
-    old = readCheckState(before);
-  if (value.context !== old.context || value.round !== old.round) return;
-  for (const a of value.actors)
-    for (const rule of a.roundApplied) {
-      if (
-        !old.actors
-          .find((prior) => prior.key === a.key)
-          ?.roundApplied.some((r) => r.id === rule.id && r.revision === rule.revision)
-      )
-        continue;
-      const source = sources.get(rule.id);
-      if (!source) continue;
-      rule.revision = source.revision;
-      if (source.validator && !source.hiddenFromPublic) rule.validator = source.validator;
-      else delete rule.validator;
-    }
-  put(state, value);
 }
