@@ -341,6 +341,7 @@ inside recipes: CC0 1.0 (paste into any codebase, no attribution).
 - `packages/daemon/src/commons-store.ts` — clone path, verification records, rank factor (read by the daemon)
 - `packages/daemon/src/cli/bridges.ts` — bridges CLI (enable/mint/harvest/contribute)
 - `packages/daemon/src/learned-recall/bridges.ts` — Bridge type, mint, scrub, pool
+- `packages/daemon/src/learned-recall/pool-path.ts` — local bridge pool path and its one-time move out of the Commons clone
 - `packages/daemon/src/learned-recall/harvest.ts` — reach reconstruction + harvest
 - `packages/daemon/src/settings.ts` — `getCommonsEnabled` / `getSharedRecallEnabled`
 - `packages/daemon/src/tool-handlers.ts:244` — recall fusion + id-collision rule
@@ -693,6 +694,7 @@ in Rezepten: CC0 1.0 (in jede Codebasis einfügbar, ohne Namensnennung).
 - `packages/daemon/src/commons-store.ts` — Klon-Pfad, Verifikationseinträge, Rangfaktor (liest der Daemon)
 - `packages/daemon/src/cli/bridges.ts` — Bridges-CLI (enable/mint/harvest/contribute)
 - `packages/daemon/src/learned-recall/bridges.ts` — Bridge-Typ, Erzeugen, Bereinigen, Pool
+- `packages/daemon/src/learned-recall/pool-path.ts` — Pfad des lokalen Bridge-Pools und sein einmaliger Umzug aus dem Commons-Klon
 - `packages/daemon/src/learned-recall/harvest.ts` — Rekonstruktion der Treffer + Ernte
 - `packages/daemon/src/settings.ts` — `getCommonsEnabled` / `getSharedRecallEnabled`
 - `packages/daemon/src/tool-handlers.ts:244` — Recall-Fusion + ID-Kollisionsregel

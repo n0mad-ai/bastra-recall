@@ -153,7 +153,7 @@ wordings are frozen per version in `packages/core/src/scrub.ts`
 (`FROZEN_FRAME_NOTES`), which is also what the ingest scrub (#149) uses to drop
 quoted note lines from transcripts before capture heuristics run.
 
-`bastra install claude-code` writes thirteen Claude Code hook registrations by default: ten required entries plus Stop and its two harvest companions, SessionEnd and PreCompact, which are on by default and can be left out. The required SessionEnd entry only closes the chat endpoint registration. Several share a binary; registrations and binary counts are different. `--no-stop-hook` leaves ten. The re-registration that `bastra update` runs adds no Stop hook that was not there before; it keeps one that was. The PostToolUse write-tool entry supplies save notices.
+`bastra install claude-code` writes fourteen Claude Code hook registrations by default: eleven required entries plus Stop and its two harvest companions, SessionEnd and PreCompact, which are on by default and can be left out. The required SessionEnd entry only closes the chat endpoint registration. Several share a binary; registrations and binary counts are different. `--no-stop-hook` leaves eleven. The re-registration that `bastra update` runs adds no Stop hook that was not there before; it keeps one that was. The PostToolUse write-tool entry supplies save notices.
 
 ### Installed binaries
 
@@ -162,6 +162,7 @@ After `npm run build` the daemon package exposes these bin entries:
 | Bin name                          | Event              | Matcher                                   | Purpose                                                   |
 | --------------------------------- | ------------------ | ----------------------------------------- | --------------------------------------------------------- |
 | `bastra-recall-session-hook`      | `SessionStart` / `SessionEnd` | — (every session)                 | Preload context at start; close the private chat registration at end (#1421) |
+| `bastra-recall-session-hook`      | `SubagentStart`    | — (every agent type)                      | Rule kernel for a subagent before its first prompt (#1637) |
 | `bastra-recall-hook`              | `PreToolUse`       | `Write`/`Edit`/`MultiEdit`/`NotebookEdit` | Topic-aware recall before file mutations (#20 #28 #32)    |
 | `bastra-recall-prompt-hook`       | `UserPromptSubmit` | — (every user message)                    | Lookup-mode reflex (#33)                                  |
 | `bastra-recall-todo-hook`         | `PreToolUse`       | `TodoWrite`/`TaskCreate`/`ExitPlanMode`   | Topology recall before multi-step plans (#36 #506 #698)   |
@@ -181,6 +182,11 @@ Default shape written by `bastra install claude-code`:
     "SessionStart": [
       {
         "matcher": "startup|resume|clear|compact|fork",
+        "hooks": [{ "type": "command", "command": "bastra-recall-session-hook", "timeout": 3 }]
+      }
+    ],
+    "SubagentStart": [
+      {
         "hooks": [{ "type": "command", "command": "bastra-recall-session-hook", "timeout": 3 }]
       }
     ],
@@ -1753,8 +1759,15 @@ redelivery as a deny. HTTP completion confirms transport through the daemon
 response. The hook can still lose its stdout connection to the host, so HTTP
 hooks send the full kernel at every due interval. In-process callers observing
 the lane output directly can receive a short reminder when the same agent and
-context have already received the identical kernel (#1461). See
-[the rulebook contract](rulebook.md) for membership, privacy, budgets, bounded
+context have already received the identical kernel (#1461).
+
+Claude Code subagents also get the full kernel at `SubagentStart` (#1637), as
+`additionalContext` before their first prompt, so a short worker that ends
+before its 25th tool call still sees the rules. That answer carries only the
+kernel, writes no session state (no fingerprint, no cadence change) and leaves
+the main agent's and the worker's own cadence as they were. Resumed subagents
+and the minimum Claude Code version for this delivery are not verified; other
+clients are unchanged. See [the rulebook contract](rulebook.md) for membership, privacy, budgets, bounded
 action/Stop checking and host limitations.
 
 The kernel arrives only through these hooks. Clients without Bastra hooks
@@ -2098,7 +2111,7 @@ eingefroren. Darauf greift auch der Ingest-Scrub (#149) zurück, um zitierte
 Notizzeilen aus Transkripten zu entfernen, bevor die Capture-Heuristiken
 laufen.
 
-`bastra install claude-code` schreibt standardmäßig dreizehn Claude-Code-Hook-Registrierungen: zehn Pflichteinträge plus Stop und dessen zwei Harvest-Begleiter SessionEnd und PreCompact, die standardmäßig an sind und sich weglassen lassen. Der verpflichtende SessionEnd-Eintrag schließt nur die Chat-Endpunktregistrierung. Mehrere teilen ein Programm; Registrierungen und Programmzahl sind verschieden. `--no-stop-hook` lässt zehn. Die Neuregistrierung durch `bastra update` fügt keinen Stop-Hook hinzu, der vorher fehlte; einen vorhandenen behält sie. Der PostToolUse-Eintrag für Schreibwerkzeuge liefert Speicherhinweise.
+`bastra install claude-code` schreibt standardmäßig vierzehn Claude-Code-Hook-Registrierungen: elf Pflichteinträge plus Stop und dessen zwei Harvest-Begleiter SessionEnd und PreCompact, die standardmäßig an sind und sich weglassen lassen. Der verpflichtende SessionEnd-Eintrag schließt nur die Chat-Endpunktregistrierung. Mehrere teilen ein Programm; Registrierungen und Programmzahl sind verschieden. `--no-stop-hook` lässt elf. Die Neuregistrierung durch `bastra update` fügt keinen Stop-Hook hinzu, der vorher fehlte; einen vorhandenen behält sie. Der PostToolUse-Eintrag für Schreibwerkzeuge liefert Speicherhinweise.
 
 ### Installierte Programme
 
@@ -2107,6 +2120,7 @@ Nach `npm run build` stellt das Daemon-Paket diese Bin-Einträge bereit:
 | Bin-Name                          | Event              | Matcher                                   | Zweck                                                     |
 | --------------------------------- | ------------------ | ----------------------------------------- | --------------------------------------------------------- |
 | `bastra-recall-session-hook`      | `SessionStart` / `SessionEnd` | — (jede Session)                  | Lädt beim Start Kontext; schließt am Ende die private Chat-Registrierung (#1421) |
+| `bastra-recall-session-hook`      | `SubagentStart`    | — (jeder Agententyp)                      | Regelkern für einen Subagenten vor seinem ersten Prompt (#1637) |
 | `bastra-recall-hook`              | `PreToolUse`       | `Write`/`Edit`/`MultiEdit`/`NotebookEdit` | Themenbezogener Recall vor Dateiänderungen (#20 #28 #32)  |
 | `bastra-recall-prompt-hook`       | `UserPromptSubmit` | — (jede Nutzernachricht)                  | Lookup-Reflex (#33)                                       |
 | `bastra-recall-todo-hook`         | `PreToolUse`       | `TodoWrite`/`TaskCreate`/`ExitPlanMode`   | Topologie-Recall vor mehrstufigen Plänen (#36 #506 #698)  |
@@ -2126,6 +2140,11 @@ Standardform, die `bastra install claude-code` schreibt:
     "SessionStart": [
       {
         "matcher": "startup|resume|clear|compact|fork",
+        "hooks": [{ "type": "command", "command": "bastra-recall-session-hook", "timeout": 3 }]
+      }
+    ],
+    "SubagentStart": [
+      {
         "hooks": [{ "type": "command", "command": "bastra-recall-session-hook", "timeout": 3 }]
       }
     ],
@@ -3716,8 +3735,16 @@ bestätigt den Versand der Daemon-Antwort. Die Ausgabeverbindung des Hooks zum
 Host kann danach noch verloren gehen. HTTP-Hooks liefern deshalb bei jeder
 Wiederholung den Volltext. Aufrufer im selben Prozess sehen die Lane-Ausgabe
 direkt und können eine kurze Erinnerung erhalten, wenn derselbe Agent den
-identischen Kern im selben Kontext bereits erhalten hat (#1461). Der
-[Regelbuch-Vertrag](rulebook.md) beschreibt Mitgliedschaft, Datenschutz, Budgets,
+identischen Kern im selben Kontext bereits erhalten hat (#1461).
+
+Subagenten von Claude Code bekommen den vollständigen Kern zusätzlich bei
+`SubagentStart` (#1637), als `additionalContext` vor ihrem ersten Prompt. So
+sieht auch ein kurzer Worker die Regeln, der vor seinem 25. Toolaufruf endet.
+Diese Antwort enthält nur den Kern, schreibt keinen Sitzungszustand (keinen
+Fingerabdruck, keine Änderung am Takt) und lässt den Takt des Hauptagenten und
+des Workers unverändert. Wiederaufgenommene Subagenten und die Mindestversion
+von Claude Code für diese Zustellung sind nicht geprüft; andere Clients bleiben
+unverändert. Der [Regelbuch-Vertrag](rulebook.md) beschreibt Mitgliedschaft, Datenschutz, Budgets,
 begrenzte Aktions-/Stop-Prüfung und Host-Grenzen.
 
 Der Kern kommt nur über diese Hooks an. Clients ohne Bastra-Hooks (etwa Claude

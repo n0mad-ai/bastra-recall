@@ -49,8 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   hits join a moment later. Right after **Delete**, a notice above the next
   report offers **Undo**, including when the list is empty or the open report
   changes. Recall keeps a deleted report for 10 minutes and brings it back
-  with its text, read state and notes. If the trash would run out of space,
-  the new deletion is refused so earlier undo entries remain usable. For agents,
+  with its text, read state and notes. Only the 20 latest deletions can be
+  undone; if the trash would exceed its byte limit, the new deletion is
+  refused and earlier undo entries stay. For agents,
   `task_report_list` takes an optional `query`, `task_report_delete` answers
   with `restorable_until`, and the new tool `task_report_restore` undoes a
   delete when you ask for it (#1597, #1559).
@@ -142,6 +143,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Claude Code subagents receive the full rule kernel at `SubagentStart`.
+  Installing or updating registers 14 hooks (11 without Stop/harvest).
+  Native delivery, resume and the minimum Claude Code version remain
+  unverified (#1637).
 - Node.js type definitions now track Node 24, and literal regex patterns use
   its built-in `RegExp.escape`; install instructions state the macOS 13.5
   minimum (#1225).
@@ -201,7 +206,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   (#1470).
 - **An expired memory is no longer shown automatically.** Once a memory's own
   `valid_until` has passed, the hooks (prompt, session start, reflex rules)
-  leave it out; `recall` still finds it and marks it `expired_on`. The
+  leave it out; a rule marked `always` still stays in the automatically
+  delivered rule kernel, marked `stale_status=expired`. `recall` still finds
+  it and marks it `expired_on`. The
   type's default lifetime still affects ranking without hiding the memory
   from the hooks (#1468).
 - **Hints cannot hide text or pose as host markup.** Memory text that a hook
@@ -210,22 +217,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   anything shaped like a tag or a chat-template token keeps its words but
   loses its angle brackets (`‹system›`). New invariant INV-SCRUB-04 (#1467).
 
-- **Shorter tool descriptions: about a quarter fewer catalogue bytes without task tools.**
+- **Shorter tool descriptions.**
   The texts of `save_memory`, `edit_memory`, `recall`, `load_memory`,
   `archive_memory`, `list_rules` and `rulebook_check` say the same in fewer
   words, and the rulebook field descriptions are no longer sent a second time
-  inside `rulebook_proposed`. Without the task tools the catalogue a client
-  lists shrinks from about 57 kB to 42 kB (`save_memory` alone from 20.9 kB to
-  12.6 kB). A test now caps each description, each tool and the catalogue
-  (#1462).
+  inside `rulebook_proposed`. In the test's definition comparison without
+  task tools (document write on, UTF-16 units) the catalogue shrank from
+  59.7k to 44.5k; real client lists were not measured. A test now caps each
+  description, each tool and the catalogue (#1462).
 
 - **Search: age alone now costs a note at most 30 % of its score, and rules
-  do not age in search.** A project fact or lesson that nobody replaced used
+  without their own deadline do not age in search.** A project fact or lesson
+  that nobody replaced used
   to lose half or four fifths of its score just by passing its type's default
   lifetime (90 days for project facts), and dropped out of the first results
   although it was still the answer. Now the type default ages a note mildly
-  (stale and expired keep 70 %), a note with a rulebook declaration does not
-  age in search at all, and the strong demotion stays where you set the
+  (stale and expired keep 70 %), a note with a rulebook declaration and no
+  deadline of its own does not age in search at all, and the strong demotion
+  stays where you set the
   deadline yourself (`valid_until`, `expires_after_days`). Replaced notes still
   yield to their successor. The staleness label a note shows is unchanged.
   Measured on a copy of a real vault (577 gold questions, fixed reference
@@ -235,6 +244,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Eval archives choose an unused name through the exclusive copy, including
+  a counter for further same-name artefacts in the same second; existing bytes
+  are never replaced (#1641).
+- Gold-set `--gate` reads evidence deadlines at the run's reference time and
+  records it as `evidence_time`; production keeps the wall clock (#1642).
+- Hook offline notice markers expire with the session retention horizon;
+  notices still appear at most once per session within that horizon (#1640).
+- `bastra tasks` treats inherited property names such as `toString` and
+  `__proto__` as unknown commands instead of calling `task_controls` (#1644).
+- The cmux sender observes its wait deadline when a stale lock cannot be
+  removed and keeps foreign lock contents (#1645).
+- The lint configuration guard compares template and regular-expression text,
+  rejecting unverified path and regex changes (#1646, #1535 S2).
 - Invalid custom numeric settings keep their entered text and block Apply and
   restart until repaired; clearing or choosing a listed value repairs the draft.
 - Rule-kernel cadence counts each agent separately. A failed or expired
@@ -303,7 +325,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   note (a live update), the cursor, the selection and the field's scroll
   place stay where they were (#1610). The report store now keeps fields a
   later version adds instead of refusing the whole store, so going back one
-  version no longer locks you out of your reports from now on (#1611). Search
+  version no longer locks you out of your reports from now on. Going back to
+  1.2.1 itself is the exception, because its store check is still strict:
+  while any report carries a note (done notes included), a 1.2.1 daemon
+  refuses the whole report store ("Task report store unreadable"). Nothing is
+  overwritten or lost, and this release reads the store as before; removing
+  the notes, or the reports that carry them, before going back avoids it
+  (#1611). Search
   handles Unicode compatibility letters regardless of case, and older search
   responses cannot replace results for the current input (#1597).
 - Web UI: changing the time window while the lens is covered by the memory
@@ -395,6 +423,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Internal
 
+- Split gold-set selection from stratification without changing seeded
+  results; remove its complexity baseline exception (#1643).
+- Move the bridge pool path and migration to `learned-recall/pool-path.ts`;
+  backend modules no longer import them from `cli/` (#1518).
+- Restore tests of task execution, calendar and board drops, session renewal
+  around writes and honest telemetry display using real UI modules in a
+  synthetic DOM/VM fixture; no native browser run (#1615).
+- Pin secret-redaction outputs to a frozen seeded pre-split fixture, with
+  explicit exceptions for the later intentional PSK fix (#1528).
 - Import/update execution steps, loopback CLI calls, settings registry access
   and HTTP hook routing reuse existing boundaries under characterization tests
   (#1514, #1508, #1510, #1529). Wizard and draft-promotion cuts remain open.

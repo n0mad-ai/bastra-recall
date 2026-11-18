@@ -65,7 +65,7 @@ https://github.com/user-attachments/assets/58e68703-8b0d-46c3-b468-33063e8ebf83
 
 1.1.8 adds the rulebook. With hooks (on supported hook hosts), your saved rules reach the assistant at session start, with bounded checks: always-rules in full, the others as a list. Clients without hooks get the rules only when the assistant calls `list_rules`. It also adds remote MCP with OAuth, Windows setup improvements and English status panels. Reliability targets remain unmeasured. `bastra update` registers the clients again by itself; no separate `bastra install` is needed. [Changelog](./CHANGELOG.md) · [rulebook](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [remote access](./docs/REMOTE-ACCESS.md).
 
-Since 1.2.0, users confirm rule proposals in chat, and rule saves and edits request a review of the complete lasting guidance, without classifying wording. [Rulebook guide](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook). Explicitly rejected save suggestions can be suppressed individually per project and restored by their proposal ID (`review_save_suggestion` with `decision: reset`, or `bastra suggestions reset`); there is no list of suppressed suggestions yet. [Suggestion controls](https://github.com/n0mad-ai/bastra-recall/wiki/Pending-Relay). On macOS, local UI and task access are bound to the vault owner account. [Account boundary](https://github.com/n0mad-ai/bastra-recall/wiki/Local-Account-Boundary).
+Since 1.2.0, users confirm rule proposals in chat, and rule saves and edits request a review of the complete lasting guidance, without classifying wording. [Rulebook guide](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook). Explicitly rejected save suggestions can be suppressed individually per project and restored by their proposal ID (`review_save_suggestion` with `decision: reset`, or `bastra suggestions reset <proposal_id> user-directed`); there is no list of suppressed suggestions yet. [Suggestion controls](https://github.com/n0mad-ai/bastra-recall/wiki/Pending-Relay). On macOS, local UI and task access are bound to the vault owner account. [Account boundary](https://github.com/n0mad-ai/bastra-recall/wiki/Local-Account-Boundary).
 
 ### Install
 
@@ -101,7 +101,7 @@ You can repeat the lookup in another connected client using the same vault. This
 
 | AI client | Status | Setup and behavior |
 |---|---|---|
-| **Claude Code** (CLI) | Tested | MCP, Skill, 13 hook registrations (10 without optional Stop/harvest). Stop is on by default; `--no-stop-hook` leaves it out. Required chat lifecycle cleanup at SessionEnd, save notices and statusline. [Hooks](./docs/hooks.md) |
+| **Claude Code** (CLI) | Tested | MCP, Skill, 14 hook registrations (11 without optional Stop/harvest). Stop is on by default; `--no-stop-hook` leaves it out. Required chat lifecycle cleanup at SessionEnd, save notices and statusline. [Hooks](./docs/hooks.md) |
 | **Claude Desktop** | Tested | MCP and memory guidance; session context on the first tool call. [Setup](https://github.com/n0mad-ai/bastra-recall/wiki/Claude-Desktop), including the macOS `.mcpb` extension |
 | **Codex CLI** | Tested | MCP, Skill and native hooks. [Setup](./docs/CODEX.md) |
 | **ChatGPT desktop app with Codex** | Tested | Shares the local Codex configuration with Codex CLI. [Setup and limitations](./docs/CODEX.md) |
@@ -251,7 +251,7 @@ https://github.com/user-attachments/assets/58e68703-8b0d-46c3-b468-33063e8ebf83
 
 1.1.8 bringt das Regelbuch. Mit Hooks (auf unterstützten Hook-Hosts) erreichen deine gespeicherten Regeln den Assistenten beim Sitzungsstart, mit begrenzten Prüfungen: Always-Regeln vollständig, die übrigen als Liste. Clients ohne Hooks bekommen die Regeln nur, wenn der Assistent `list_rules` aufruft. Dazu kommen Remote-MCP mit OAuth, eine verbesserte Windows-Einrichtung und englische Status-Panels. Zuverlässigkeitsziele sind weiterhin ungemessen. `bastra update` richtet die Clients selbst neu ein; ein eigenes `bastra install` ist nicht nötig. [Changelog](./CHANGELOG.md) · [Regelbuch](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch).
 
-Seit 1.2.0 bestätigen Nutzer Regelvorschläge im Chat; Regel-Saves und -Edits bitten um Prüfung der vollständigen dauerhaften Vorgabe, ohne Wortlauterkennung. [Regelbuch-Anleitung](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook). Ausdrücklich abgelehnte Speichervorschläge lassen sich einzeln je Projekt ausblenden und über ihre Vorschlags-ID wieder freigeben (`review_save_suggestion` mit `decision: reset` oder `bastra suggestions reset`); eine Liste ausgeblendeter Vorschläge gibt es noch nicht. [Vorschlagssteuerung](https://github.com/n0mad-ai/bastra-recall/wiki/Pending-Relay#deutsch). Auf macOS sind lokale Oberfläche und Aufgaben-Zugriff an das Besitzerkonto des Vaults gebunden. [Kontogrenze](https://github.com/n0mad-ai/bastra-recall/wiki/Local-Account-Boundary#deutsch).
+Seit 1.2.0 bestätigen Nutzer Regelvorschläge im Chat; Regel-Saves und -Edits bitten um Prüfung der vollständigen dauerhaften Vorgabe, ohne Wortlauterkennung. [Regelbuch-Anleitung](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook). Ausdrücklich abgelehnte Speichervorschläge lassen sich einzeln je Projekt ausblenden und über ihre Vorschlags-ID wieder freigeben (`review_save_suggestion` mit `decision: reset` oder `bastra suggestions reset <proposal_id> user-directed`); eine Liste ausgeblendeter Vorschläge gibt es noch nicht. [Vorschlagssteuerung](https://github.com/n0mad-ai/bastra-recall/wiki/Pending-Relay#deutsch). Auf macOS sind lokale Oberfläche und Aufgaben-Zugriff an das Besitzerkonto des Vaults gebunden. [Kontogrenze](https://github.com/n0mad-ai/bastra-recall/wiki/Local-Account-Boundary#deutsch).
 
 ### Installation
 
@@ -287,7 +287,7 @@ Wiederhole die Abfrage bei Bedarf in einem anderen verbundenen Client mit demsel
 
 | KI-Client | Status | Einrichtung und Verhalten |
 |---|---|---|
-| **Claude Code** (CLI) | Getestet | MCP, Skill, 13 Hook-Registrierungen (10 ohne optionalen Stop/Harvest). Stop ist standardmäßig an; `--no-stop-hook` lässt ihn weg. Verpflichtendes Aufräumen der Chat-Registrierung bei SessionEnd, Speicherhinweise und Statusline. [Hooks](./docs/hooks.md#deutsch) |
+| **Claude Code** (CLI) | Getestet | MCP, Skill, 14 Hook-Registrierungen (11 ohne optionalen Stop/Harvest). Stop ist standardmäßig an; `--no-stop-hook` lässt ihn weg. Verpflichtendes Aufräumen der Chat-Registrierung bei SessionEnd, Speicherhinweise und Statusline. [Hooks](./docs/hooks.md#deutsch) |
 | **Claude Desktop** | Getestet | MCP und Memory-Anleitung; Sitzungskontext beim ersten Tool-Aufruf. [Einrichtung](https://github.com/n0mad-ai/bastra-recall/wiki/Claude-Desktop), einschließlich macOS-Extension `.mcpb` |
 | **Codex CLI** | Getestet | MCP, Skill und native Hooks. [Einrichtung](./docs/CODEX.md) |
 | **ChatGPT-Desktop-App mit Codex** | Getestet | Nutzt dieselbe lokale Codex-Konfiguration wie Codex CLI. [Einrichtung und Grenzen](./docs/CODEX.md) |
