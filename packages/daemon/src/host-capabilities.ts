@@ -43,6 +43,8 @@ const claude = "https://code.claude.com/docs/en/hooks";
 const codex = "https://learn.chatgpt.com/docs/hooks";
 const gate166Evidence =
   "https://github.com/n0mad-ai/bastra-recall/blob/main/tools/probes/codex-native-gate/result-0.166.0.json";
+const gate167Evidence =
+  "https://github.com/n0mad-ai/bastra-recall/blob/main/tools/probes/codex-native-gate/result-0.167.0.json";
 const spike = `${issue(1300)}#issuecomment-6497445090`;
 const source = (file: string) => `https://github.com/n0mad-ai/bastra-recall/blob/main/${file}`;
 const cap = (status: CapabilityStatus, sources: string[], note: string, bastra = status): Capability => ({
@@ -146,8 +148,8 @@ function codexRow(verified: boolean, eligible: boolean, version = CODEX_GATE_MIN
       ),
       pre_tool_deny: cap(
         verified ? "supported" : "unverified",
-        [spike, gate166Evidence, `${codex}#tool-coverage`],
-        "CLI 0.162.1 and 0.166.0 were separately runtime-probed for exec_command and view_image denial. apply_patch boundary was observed separately, its deny and MCP support remain unverified; no universal enforcement claim.",
+        [spike, gate166Evidence, gate167Evidence, `${codex}#tool-coverage`],
+        "CLI 0.162.1, 0.166.0 and 0.167.0 were separately runtime-probed for exec_command and view_image denial. apply_patch boundary was observed separately, its deny and MCP support remain unverified; no universal enforcement claim.",
         verified ? "supported" : "preparation-only"
       ),
       stop_additional_context: cap(
@@ -162,8 +164,9 @@ function codexRow(verified: boolean, eligible: boolean, version = CODEX_GATE_MIN
           `${codex}#stop`,
           source("docs/rulebook-host-probes.md"),
           source("tools/probes/codex-rulebook-stop/result-0.166.0.json"),
+          source("tools/probes/codex-rulebook-stop/result-0.167.0.json"),
         ],
-        "CLI 0.162.1 and 0.166.0 Stop block/continuation and continue:false precedence were separately verified with a local scripted provider. Bastra enables one rulebook block per round on those exact versions; no approved-copy Stop repair on Codex (#1311). No before-display guarantee.",
+        "CLI 0.162.1, 0.166.0 and 0.167.0 Stop block/continuation and continue:false precedence were separately verified with a local scripted provider. Bastra enables one rulebook block per round on those exact versions; no approved-copy Stop repair on Codex (#1311). No before-display guarantee.",
         eligible ? "supported" : "unsupported"
       ),
       session_fork: cap(
@@ -201,11 +204,11 @@ function codexRow(verified: boolean, eligible: boolean, version = CODEX_GATE_MIN
         "Hosted WebSearch is documented unsupported and was not runtime-tested.",
         "Bastra read/check tools and Bastra ToolSearch are exempt; Bastra writing tools now require round checking when the rulebook is present.",
       ],
-      sources: [spike, gate166Evidence, `${codex}#tool-coverage`, issue(1303)],
+      sources: [spike, gate166Evidence, gate167Evidence, `${codex}#tool-coverage`, issue(1303)],
     },
     prerequisites: [
       "Project layer trusted; review/re-trust the exact changed hook definition via /hooks; installed and enabled hooks required.",
-      "Only CLI 0.162.1 and 0.166.0 are eligible for gate registration. The minimum records the smallest verified version, not a supported range or IDE/Desktop certification.",
+      "Only CLI 0.162.1, 0.166.0 and 0.167.0 are eligible for gate registration. The minimum records the smallest verified version, not a supported range or IDE/Desktop certification.",
       ...toolPrerequisites,
     ],
   };

@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import type { DoctorResult } from "../src/cli/types.js";
 
-async function doctor(scenario: string): Promise<DoctorResult> {
+async function doctor(scenario: string, version?: string): Promise<DoctorResult> {
   const home = await mkdtemp(join(tmpdir(), "codex-doctor-notice-"));
   try {
     const bin = join(home, "bin");
@@ -16,7 +16,7 @@ async function doctor(scenario: string): Promise<DoctorResult> {
     await writeFile(forwarder, "// fixture\n");
     await writeFile(
       join(bin, "codex"),
-      `#!${process.execPath}\nprocess.stdout.write(process.env.CODEX_MCP_FIXTURE);\n`,
+      `#!${process.execPath}\nprocess.stdout.write(process.argv.includes("--version") && process.env.CODEX_VERSION_FIXTURE ? "codex-cli " + process.env.CODEX_VERSION_FIXTURE + "\\n" : process.env.CODEX_MCP_FIXTURE);\n`,
       { mode: 0o700 }
     );
     const adapter = new URL("../src/cli/adapters/codex.ts", import.meta.url).href;
@@ -31,6 +31,7 @@ async function doctor(scenario: string): Promise<DoctorResult> {
       await writeFile(CODEX_CONFIG, ${JSON.stringify("[tools.update_plan]\nenabled = true\n")});
       const scenario = process.env.DOCTOR_SCENARIO;
       const hooks = planCodexHooks('install', {}, {
+        codexVersion: process.env.CODEX_VERSION_FIXTURE,
         includeStop: scenario !== 'optional-stop', stubPresent: false,
         mapBin: path => join(process.env.HOME, basename(path)),
       }).after;
@@ -49,6 +50,7 @@ async function doctor(scenario: string): Promise<DoctorResult> {
         USERPROFILE: home,
         PATH: `${bin}${delimiter}${process.env.PATH}`,
         DOCTOR_SCENARIO: scenario,
+        CODEX_VERSION_FIXTURE: version ?? "",
         BASTRA_DAEMON_URL: "http://127.0.0.1:1",
         CODEX_MCP_FIXTURE: JSON.stringify({
           name: "bastra-recall",
@@ -100,5 +102,19 @@ test(
       assert.equal(result.status, "broken");
       assert.equal(result.features.recallHooks, false);
     }
+  }
+);
+
+test(
+  "0.167.0 doctor recognizes the exact runtime and still rejects missing required hooks",
+  { skip: process.platform === "win32" },
+  async () => {
+    const healthy = await doctor("healthy", "0.167.0");
+    assert.equal(healthy.status, "ok", JSON.stringify(healthy));
+    assert.deepEqual(healthy.features?.rulebookGate, { version: "0.167.0", verified: true });
+    assert.match(healthy.details?.["must-load-gate"] ?? "", /runtime evidence: 0\.167\.0/);
+    const broken = await doctor("missing-recall", "0.167.0");
+    assert.equal(broken.status, "broken");
+    assert.equal(broken.features?.recallHooks, false);
   }
 );

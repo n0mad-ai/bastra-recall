@@ -1,0 +1,92 @@
+{
+  "version": "codex-cli 0.167.0",
+  "results": [
+    {
+      "case": "block_once",
+      "exit": 0,
+      "responses": 2,
+      "events": [
+        {
+          "hook_event_name": "UserPromptSubmit",
+          "session_id": "01a1ecbc-a897-7481-9c1c-d40411a8c53a",
+          "turn_id": "01a1ecbc-a8a9-7c31-b7fd-7278bc40d3b6",
+          "agent_id": null,
+          "stop_hook_active": null
+        },
+        {
+          "hook_event_name": "Stop",
+          "session_id": "01a1ecbc-a897-7481-9c1c-d40411a8c53a",
+          "turn_id": "01a1ecbc-a8a9-7c31-b7fd-7278bc40d3b6",
+          "agent_id": null,
+          "stop_hook_active": false
+        },
+        {
+          "hook_event_name": "Stop",
+          "session_id": "01a1ecbc-a897-7481-9c1c-d40411a8c53a",
+          "turn_id": "01a1ecbc-a8a9-7c31-b7fd-7278bc40d3b6",
+          "agent_id": null,
+          "stop_hook_active": true
+        }
+      ],
+      "continued": true,
+      "installed_startup_hooks_ran": false,
+      "diagnostic": []
+    },
+    {
+      "case": "continue_false",
+      "exit": 0,
+      "responses": 1,
+      "events": [
+        {
+          "hook_event_name": "UserPromptSubmit",
+          "session_id": "01a1ecbc-ac2f-7142-86c8-10177487ed5d",
+          "turn_id": "01a1ecbc-ac37-7b01-a628-71f6758886b0",
+          "agent_id": null,
+          "stop_hook_active": null
+        },
+        {
+          "hook_event_name": "Stop",
+          "session_id": "01a1ecbc-ac2f-7142-86c8-10177487ed5d",
+          "turn_id": "01a1ecbc-ac37-7b01-a628-71f6758886b0",
+          "agent_id": null,
+          "stop_hook_active": false
+        }
+      ],
+      "continued": false,
+      "installed_startup_hooks_ran": false,
+      "diagnostic": []
+    },
+    {
+      "case": "bastra_rulebook",
+      "exit": 0,
+      "responses": 2,
+      "events": [
+        {
+          "hook_event_name": "UserPromptSubmit",
+          "session_id": "01a1ecbc-ad97-7100-9fe8-0abeb11b1aab",
+          "turn_id": "01a1ecbc-ad9f-7923-bcee-b727e53a56a1",
+          "agent_id": null,
+          "stop_hook_active": null
+        },
+        {
+          "hook_event_name": "Stop",
+          "session_id": "01a1ecbc-ad97-7100-9fe8-0abeb11b1aab",
+          "turn_id": "01a1ecbc-ad9f-7923-bcee-b727e53a56a1",
+          "agent_id": null,
+          "stop_hook_active": false
+        },
+        {
+          "hook_event_name": "Stop",
+          "session_id": "01a1ecbc-ad97-7100-9fe8-0abeb11b1aab",
+          "turn_id": "01a1ecbc-ad9f-7923-bcee-b727e53a56a1",
+          "agent_id": null,
+          "stop_hook_active": true
+        }
+      ],
+      "continued": true,
+      "installed_startup_hooks_ran": false,
+      "diagnostic": []
+    }
+  ],
+  "artifact_dir": "/var/folders/_3/hkt_q4254rxdpbbmbwn6jz5h0000gn/T/bastra-codex-stop-probe-bu3de1a9"
+}

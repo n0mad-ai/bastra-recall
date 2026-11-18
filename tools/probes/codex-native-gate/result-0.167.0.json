@@ -1,0 +1,572 @@
+{
+  "version": "codex-cli 0.167.0",
+  "artifact_dir": "/var/folders/_3/hkt_q4254rxdpbbmbwn6jz5h0000gn/T/bastra-codex-gate-probe-mmank6d3",
+  "results": [
+    {
+      "tool": "exec_command",
+      "mode": "allow",
+      "exit": 0,
+      "responses": 2,
+      "requests": [
+        {
+          "request": 1,
+          "tool_names": [
+            "exec_command",
+            "write_stdin",
+            "request_user_input",
+            "view_image",
+            "close_agent",
+            "resume_agent",
+            "send_input",
+            "spawn_agent",
+            "wait_agent",
+            "get_goal",
+            "create_goal",
+            "update_goal"
+          ],
+          "tool_outputs": [],
+          "image_count": 0
+        },
+        {
+          "request": 2,
+          "tool_names": [
+            "exec_command",
+            "write_stdin",
+            "request_user_input",
+            "view_image",
+            "close_agent",
+            "resume_agent",
+            "send_input",
+            "spawn_agent",
+            "wait_agent",
+            "get_goal",
+            "create_goal",
+            "update_goal"
+          ],
+          "tool_outputs": [
+            {
+              "type": "function_call_output",
+              "id": "fco_01a1ecbc-6c47-7771-8a67-07a11199001a",
+              "call_id": "call_probe_1",
+              "output": "Chunk ID: a56777\nWall time: 0.0000 seconds\nProcess exited with code 0\nOriginal token count: 5\nOutput:\nCODEX_GATE_EXECUTED"
+            }
+          ],
+          "image_count": 0
+        }
+      ],
+      "payloads": [
+        {
+          "native": {
+            "session_id": "01a1ecbc-6b84-7953-8ef9-5308a923143d",
+            "turn_id": "01a1ecbc-6b96-7742-8547-666d9ef62de1",
+            "transcript_path": null,
+            "cwd": "/var/folders/_3/hkt_q4254rxdpbbmbwn6jz5h0000gn/T/bastra-codex-gate-probe-mmank6d3/exec_command-allow",
+            "hook_event_name": "PreToolUse",
+            "model": "native-hook-fixture",
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {
+              "command": "printf CODEX_GATE_EXECUTED"
+            },
+            "tool_use_id": "call_probe_1"
+          },
+          "returned": {}
+        }
+      ]
+    },
+    {
+      "tool": "exec_command",
+      "mode": "deny",
+      "exit": 0,
+      "responses": 2,
+      "requests": [
+        {
+          "request": 1,
+          "tool_names": [
+            "exec_command",
+            "write_stdin",
+            "request_user_input",
+            "view_image",
+            "close_agent",
+            "resume_agent",
+            "send_input",
+            "spawn_agent",
+            "wait_agent",
+            "get_goal",
+            "create_goal",
+            "update_goal"
+          ],
+          "tool_outputs": [],
+          "image_count": 0
+        },
+        {
+          "request": 2,
+          "tool_names": [
+            "exec_command",
+            "write_stdin",
+            "request_user_input",
+            "view_image",
+            "close_agent",
+            "resume_agent",
+            "send_input",
+            "spawn_agent",
+            "wait_agent",
+            "get_goal",
+            "create_goal",
+            "update_goal"
+          ],
+          "tool_outputs": [
+            {
+              "type": "function_call_output",
+              "id": "fco_01a1ecbc-6dfd-7bd2-a4a2-2fd6c1f24942",
+              "call_id": "call_probe_1",
+              "output": "Command blocked by PreToolUse hook: SYNTHETIC_GATE_DENIED. Command: printf CODEX_GATE_EXECUTED"
+            }
+          ],
+          "image_count": 0
+        }
+      ],
+      "payloads": [
+        {
+          "native": {
+            "session_id": "01a1ecbc-6d9a-7442-a3dc-949be3a12557",
+            "turn_id": "01a1ecbc-6da2-7f22-843a-435b6eae649f",
+            "transcript_path": null,
+            "cwd": "/var/folders/_3/hkt_q4254rxdpbbmbwn6jz5h0000gn/T/bastra-codex-gate-probe-mmank6d3/exec_command-deny",
+            "hook_event_name": "PreToolUse",
+            "model": "native-hook-fixture",
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {
+              "command": "printf CODEX_GATE_EXECUTED"
+            },
+            "tool_use_id": "call_probe_1"
+          },
+          "returned": {
+            "hookSpecificOutput": {
+              "hookEventName": "PreToolUse",
+              "permissionDecision": "deny",
+              "permissionDecisionReason": "SYNTHETIC_GATE_DENIED"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tool": "exec_command",
+      "mode": "bastra",
+      "exit": 0,
+      "responses": 3,
+      "requests": [
+        {
+          "request": 1,
+          "tool_names": [
+            "exec_command",
+            "write_stdin",
+            "request_user_input",
+            "view_image",
+            "close_agent",
+            "resume_agent",
+            "send_input",
+            "spawn_agent",
+            "wait_agent",
+            "get_goal",
+            "create_goal",
+            "update_goal"
+          ],
+          "tool_outputs": [],
+          "image_count": 0
+        },
+        {
+          "request": 2,
+          "tool_names": [
+            "exec_command",
+            "write_stdin",
+            "request_user_input",
+            "view_image",
+            "close_agent",
+            "resume_agent",
+            "send_input",
+            "spawn_agent",
+            "wait_agent",
+            "get_goal",
+            "create_goal",
+            "update_goal"
+          ],
+          "tool_outputs": [
+            {
+              "type": "function_call_output",
+              "id": "fco_01a1ecbc-70bd-7622-a711-2f224c280493",
+              "call_id": "call_probe_1",
+              "output": "Command blocked by PreToolUse hook: bastra-recall must-load: invented-probe-rule \u2014 shown as must-load and not loaded yet. load_memory(id) or dismiss via load_memory(id, verbosity:'lean'). This call was interrupted once; retrying it goes through.. Command: printf CODEX_GATE_EXECUTED"
+            }
+          ],
+          "image_count": 0
+        },
+        {
+          "request": 3,
+          "tool_names": [
+            "exec_command",
+            "write_stdin",
+            "request_user_input",
+            "view_image",
+            "close_agent",
+            "resume_agent",
+            "send_input",
+            "spawn_agent",
+            "wait_agent",
+            "get_goal",
+            "create_goal",
+            "update_goal"
+          ],
+          "tool_outputs": [
+            {
+              "type": "function_call_output",
+              "id": "fco_01a1ecbc-70bd-7622-a711-2f224c280493",
+              "call_id": "call_probe_1",
+              "output": "Command blocked by PreToolUse hook: bastra-recall must-load: invented-probe-rule \u2014 shown as must-load and not loaded yet. load_memory(id) or dismiss via load_memory(id, verbosity:'lean'). This call was interrupted once; retrying it goes through.. Command: printf CODEX_GATE_EXECUTED"
+            },
+            {
+              "type": "function_call_output",
+              "id": "fco_01a1ecbc-71ee-7bd1-a107-6620ce130716",
+              "call_id": "call_probe_2",
+              "output": "Chunk ID: e6301c\nWall time: 0.0000 seconds\nProcess exited with code 0\nOriginal token count: 5\nOutput:\nCODEX_GATE_EXECUTED"
+            }
+          ],
+          "image_count": 0
+        }
+      ],
+      "payloads": [
+        {
+          "native": {
+            "session_id": "01a1ecbc-6f05-76e0-856b-6bdbcd165f15",
+            "turn_id": "01a1ecbc-6f0d-7520-afd4-4c8848f226ee",
+            "transcript_path": null,
+            "cwd": "/var/folders/_3/hkt_q4254rxdpbbmbwn6jz5h0000gn/T/bastra-codex-gate-probe-mmank6d3/exec_command-bastra",
+            "hook_event_name": "PreToolUse",
+            "model": "native-hook-fixture",
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {
+              "command": "printf CODEX_GATE_EXECUTED"
+            },
+            "tool_use_id": "call_probe_1"
+          },
+          "returned": {
+            "hookSpecificOutput": {
+              "hookEventName": "PreToolUse",
+              "permissionDecision": "deny",
+              "permissionDecisionReason": "bastra-recall must-load: invented-probe-rule \u2014 shown as must-load and not loaded yet. load_memory(id) or dismiss via load_memory(id, verbosity:'lean'). This call was interrupted once; retrying it goes through."
+            }
+          }
+        },
+        {
+          "native": {
+            "session_id": "01a1ecbc-6f05-76e0-856b-6bdbcd165f15",
+            "turn_id": "01a1ecbc-6f0d-7520-afd4-4c8848f226ee",
+            "transcript_path": null,
+            "cwd": "/var/folders/_3/hkt_q4254rxdpbbmbwn6jz5h0000gn/T/bastra-codex-gate-probe-mmank6d3/exec_command-bastra",
+            "hook_event_name": "PreToolUse",
+            "model": "native-hook-fixture",
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {
+              "command": "printf CODEX_GATE_EXECUTED"
+            },
+            "tool_use_id": "call_probe_2"
+          },
+          "returned": {}
+        }
+      ]
+    },
+    {
+      "tool": "view_image",
+      "mode": "allow",
+      "exit": 0,
+      "responses": 2,
+      "requests": [
+        {
+          "request": 1,
+          "tool_names": [
+            "exec_command",
+            "write_stdin",
+            "request_user_input",
+            "view_image",
+            "close_agent",
+            "resume_agent",
+            "send_input",
+            "spawn_agent",
+            "wait_agent",
+            "get_goal",
+            "create_goal",
+            "update_goal"
+          ],
+          "tool_outputs": [],
+          "image_count": 0
+        },
+        {
+          "request": 2,
+          "tool_names": [
+            "exec_command",
+            "write_stdin",
+            "request_user_input",
+            "view_image",
+            "close_agent",
+            "resume_agent",
+            "send_input",
+            "spawn_agent",
+            "wait_agent",
+            "get_goal",
+            "create_goal",
+            "update_goal"
+          ],
+          "tool_outputs": [
+            {
+              "type": "function_call_output",
+              "id": "fco_01a1ecbc-7364-7e73-b1c7-b51681d285ef",
+              "call_id": "call_probe_1",
+              "output": [
+                {
+                  "type": "input_image",
+                  "image_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP4z8AARAwQCgAf7gP9i18U1AAAAABJRU5ErkJggg==",
+                  "detail": "high"
+                }
+              ]
+            }
+          ],
+          "image_count": 1
+        }
+      ],
+      "payloads": [
+        {
+          "native": {
+            "session_id": "01a1ecbc-7304-77f2-8703-45372bb6381b",
+            "turn_id": "01a1ecbc-730c-7a80-aa5c-ec6d6c92c1f0",
+            "transcript_path": null,
+            "cwd": "/var/folders/_3/hkt_q4254rxdpbbmbwn6jz5h0000gn/T/bastra-codex-gate-probe-mmank6d3/view_image-allow",
+            "hook_event_name": "PreToolUse",
+            "model": "native-hook-fixture",
+            "permission_mode": "bypassPermissions",
+            "tool_name": "view_image",
+            "tool_input": {
+              "path": "/var/folders/_3/hkt_q4254rxdpbbmbwn6jz5h0000gn/T/bastra-codex-gate-probe-mmank6d3/view_image-allow/image.png"
+            },
+            "tool_use_id": "call_probe_1"
+          },
+          "returned": {}
+        }
+      ]
+    },
+    {
+      "tool": "view_image",
+      "mode": "deny",
+      "exit": 0,
+      "responses": 2,
+      "requests": [
+        {
+          "request": 1,
+          "tool_names": [
+            "exec_command",
+            "write_stdin",
+            "request_user_input",
+            "view_image",
+            "close_agent",
+            "resume_agent",
+            "send_input",
+            "spawn_agent",
+            "wait_agent",
+            "get_goal",
+            "create_goal",
+            "update_goal"
+          ],
+          "tool_outputs": [],
+          "image_count": 0
+        },
+        {
+          "request": 2,
+          "tool_names": [
+            "exec_command",
+            "write_stdin",
+            "request_user_input",
+            "view_image",
+            "close_agent",
+            "resume_agent",
+            "send_input",
+            "spawn_agent",
+            "wait_agent",
+            "get_goal",
+            "create_goal",
+            "update_goal"
+          ],
+          "tool_outputs": [
+            {
+              "type": "function_call_output",
+              "id": "fco_01a1ecbc-751c-76e2-b549-d289d009f89f",
+              "call_id": "call_probe_1",
+              "output": "Tool call blocked by PreToolUse hook: SYNTHETIC_GATE_DENIED. Tool: view_image"
+            }
+          ],
+          "image_count": 0
+        }
+      ],
+      "payloads": [
+        {
+          "native": {
+            "session_id": "01a1ecbc-74bd-7573-8bd9-f4efef30b67d",
+            "turn_id": "01a1ecbc-74c5-74f1-8861-ce605394d68e",
+            "transcript_path": null,
+            "cwd": "/var/folders/_3/hkt_q4254rxdpbbmbwn6jz5h0000gn/T/bastra-codex-gate-probe-mmank6d3/view_image-deny",
+            "hook_event_name": "PreToolUse",
+            "model": "native-hook-fixture",
+            "permission_mode": "bypassPermissions",
+            "tool_name": "view_image",
+            "tool_input": {
+              "path": "/var/folders/_3/hkt_q4254rxdpbbmbwn6jz5h0000gn/T/bastra-codex-gate-probe-mmank6d3/view_image-deny/image.png"
+            },
+            "tool_use_id": "call_probe_1"
+          },
+          "returned": {
+            "hookSpecificOutput": {
+              "hookEventName": "PreToolUse",
+              "permissionDecision": "deny",
+              "permissionDecisionReason": "SYNTHETIC_GATE_DENIED"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tool": "view_image",
+      "mode": "bastra",
+      "exit": 0,
+      "responses": 3,
+      "requests": [
+        {
+          "request": 1,
+          "tool_names": [
+            "exec_command",
+            "write_stdin",
+            "request_user_input",
+            "view_image",
+            "close_agent",
+            "resume_agent",
+            "send_input",
+            "spawn_agent",
+            "wait_agent",
+            "get_goal",
+            "create_goal",
+            "update_goal"
+          ],
+          "tool_outputs": [],
+          "image_count": 0
+        },
+        {
+          "request": 2,
+          "tool_names": [
+            "exec_command",
+            "write_stdin",
+            "request_user_input",
+            "view_image",
+            "close_agent",
+            "resume_agent",
+            "send_input",
+            "spawn_agent",
+            "wait_agent",
+            "get_goal",
+            "create_goal",
+            "update_goal"
+          ],
+          "tool_outputs": [
+            {
+              "type": "function_call_output",
+              "id": "fco_01a1ecbc-7756-7e00-9b1d-0d2ed5a7e288",
+              "call_id": "call_probe_1",
+              "output": "Tool call blocked by PreToolUse hook: bastra-recall must-load: invented-probe-rule \u2014 shown as must-load and not loaded yet. load_memory(id) or dismiss via load_memory(id, verbosity:'lean'). This call was interrupted once; retrying it goes through.. Tool: view_image"
+            }
+          ],
+          "image_count": 0
+        },
+        {
+          "request": 3,
+          "tool_names": [
+            "exec_command",
+            "write_stdin",
+            "request_user_input",
+            "view_image",
+            "close_agent",
+            "resume_agent",
+            "send_input",
+            "spawn_agent",
+            "wait_agent",
+            "get_goal",
+            "create_goal",
+            "update_goal"
+          ],
+          "tool_outputs": [
+            {
+              "type": "function_call_output",
+              "id": "fco_01a1ecbc-7756-7e00-9b1d-0d2ed5a7e288",
+              "call_id": "call_probe_1",
+              "output": "Tool call blocked by PreToolUse hook: bastra-recall must-load: invented-probe-rule \u2014 shown as must-load and not loaded yet. load_memory(id) or dismiss via load_memory(id, verbosity:'lean'). This call was interrupted once; retrying it goes through.. Tool: view_image"
+            },
+            {
+              "type": "function_call_output",
+              "id": "fco_01a1ecbc-7854-74d1-be1f-0bb9c6e8f32d",
+              "call_id": "call_probe_2",
+              "output": [
+                {
+                  "type": "input_image",
+                  "image_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP4z8AARAwQCgAf7gP9i18U1AAAAABJRU5ErkJggg==",
+                  "detail": "high"
+                }
+              ]
+            }
+          ],
+          "image_count": 1
+        }
+      ],
+      "payloads": [
+        {
+          "native": {
+            "session_id": "01a1ecbc-763c-74b0-8efd-786e0ae38b83",
+            "turn_id": "01a1ecbc-7644-7e23-bb8a-868f2c8e38ef",
+            "transcript_path": null,
+            "cwd": "/var/folders/_3/hkt_q4254rxdpbbmbwn6jz5h0000gn/T/bastra-codex-gate-probe-mmank6d3/view_image-bastra",
+            "hook_event_name": "PreToolUse",
+            "model": "native-hook-fixture",
+            "permission_mode": "bypassPermissions",
+            "tool_name": "view_image",
+            "tool_input": {
+              "path": "/var/folders/_3/hkt_q4254rxdpbbmbwn6jz5h0000gn/T/bastra-codex-gate-probe-mmank6d3/view_image-bastra/image.png"
+            },
+            "tool_use_id": "call_probe_1"
+          },
+          "returned": {
+            "hookSpecificOutput": {
+              "hookEventName": "PreToolUse",
+              "permissionDecision": "deny",
+              "permissionDecisionReason": "bastra-recall must-load: invented-probe-rule \u2014 shown as must-load and not loaded yet. load_memory(id) or dismiss via load_memory(id, verbosity:'lean'). This call was interrupted once; retrying it goes through."
+            }
+          }
+        },
+        {
+          "native": {
+            "session_id": "01a1ecbc-763c-74b0-8efd-786e0ae38b83",
+            "turn_id": "01a1ecbc-7644-7e23-bb8a-868f2c8e38ef",
+            "transcript_path": null,
+            "cwd": "/var/folders/_3/hkt_q4254rxdpbbmbwn6jz5h0000gn/T/bastra-codex-gate-probe-mmank6d3/view_image-bastra",
+            "hook_event_name": "PreToolUse",
+            "model": "native-hook-fixture",
+            "permission_mode": "bypassPermissions",
+            "tool_name": "view_image",
+            "tool_input": {
+              "path": "/var/folders/_3/hkt_q4254rxdpbbmbwn6jz5h0000gn/T/bastra-codex-gate-probe-mmank6d3/view_image-bastra/image.png"
+            },
+            "tool_use_id": "call_probe_2"
+          },
+          "returned": {}
+        }
+      ]
+    }
+  ]
+}
