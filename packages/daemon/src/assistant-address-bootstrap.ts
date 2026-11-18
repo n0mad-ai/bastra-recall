@@ -65,13 +65,14 @@ if (process.argv.includes("--assistant-address-bootstrap")) {
   } catch {
     // Wait=false jobs arrive with an already accepted socket. Compatibility for
     // earlier Wait=true installs drains queued requests with a persistent error page.
+    // Self-contained without the settings, so it speaks the default language, English (#1602).
     server = createServer((_req, res) => {
       res.writeHead(503, {
         "Content-Type": "text/plain; charset=utf-8",
         Connection: "close",
         "Cache-Control": "no-store",
       });
-      res.end("Bastra-Adresse derzeit nicht verfügbar. Bitte bastra address setup --yes ausführen.\n");
+      res.end("Bastra address currently unavailable. Please run bastra address setup --yes.\n");
     });
     if (listening) {
       server.on("error", () => {

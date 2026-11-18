@@ -817,3 +817,31 @@ test("graph reads in progress use the visibility in effect when they answer", { 
     await f.close();
   }
 });
+
+test("rule state names, per type and recall mode, where those fields decide the rule", async () => {
+  const f = await fixture();
+  try {
+    const port = await f.start();
+    // a user-directed lesson: a note now, a rule as a preference or in reflex mode
+    const user = (await f.node(port, "user-note")).rule;
+    assert.equal(user.state, "note");
+    assert.equal(user.by_type_mode["lesson deliberate"], false);
+    assert.equal(user.by_type_mode["user-preference deliberate"], true);
+    assert.equal(user.by_type_mode["lesson reflex"], true);
+    // a declared rule and an agent's note: type and recall mode change nothing
+    assert.equal((await f.node(port, "rule")).rule.by_type_mode, undefined);
+    assert.equal((await f.node(port, "note")).rule.by_type_mode, undefined);
+    // the save answers with the new state, the map still there
+    const { revision } = await f.node(port, "user-note");
+    const saved = await call(port, "POST", "/ui/memory/edit", {
+      id: "user-note",
+      expected_revision: revision,
+      type: "user-preference",
+    });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    assert.equal(saved.body.rule.state, "rule", "the type change made it a rule");
+    assert.equal(saved.body.rule.by_type_mode["lesson deliberate"], false);
+  } finally {
+    await f.close();
+  }
+});

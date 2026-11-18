@@ -13,6 +13,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import { withPathLock } from "./path-lock.js";
 import { appRecordDatabasePath } from "./app-record-store.js";
 import { shellQuote } from "./assistant-address-admin.js";
+import { addressLanguage, addressWords } from "./assistant-address-words.js";
 import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
 import { stableNodeBin } from "./cli/autostart.js";
 import {
@@ -172,7 +173,8 @@ export async function ensureAssistantAddressRuntime(options: AssistantAddressOpt
   const node = o.runtimeNode ?? stableNodeBin(),
     bootstrap = join(o.runtimeDir, "bootstrap.js");
   await atomic(bootstrap, contents.find(([name]) => name === "assistant-address-bootstrap.js")![1]);
-  const errorBody = "Bastra-Adresse nicht verfügbar. Bitte bastra address setup --yes ausführen.\n";
+  const w = addressWords(o.language ?? (await addressLanguage(o.settingsPath)));
+  const errorBody = w.unavailablePage;
   const failure = `HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${Buffer.byteLength(errorBody)}\r\nConnection: close\r\n\r\n${errorBody}`;
   const command = [node, bootstrap, "--assistant-address-bootstrap", "--runtime-dir", o.runtimeDir]
     .map(shellQuote)
@@ -211,7 +213,7 @@ export async function ensureAssistantAddressRuntime(options: AssistantAddressOpt
     },
     { strictLocal: true }
   );
-  const busyBody = "Bastra-Adresse gerade ausgelastet. Bitte gleich erneut versuchen.\n";
+  const busyBody = w.busyPage;
   const busy = `HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${Buffer.byteLength(busyBody)}\r\nRetry-After: 1\r\nConnection: close\r\n\r\n${busyBody}`;
   const slots = join(o.runtimeDir, "slots");
   await mkdir(slots, { recursive: true, mode: 0o700 });

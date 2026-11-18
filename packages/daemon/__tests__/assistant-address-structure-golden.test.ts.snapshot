@@ -9,7 +9,7 @@ exports[`#1532 assistant lifecycle preserves installer, runtime and status bytes
   "runtime": {
     "bootstrap.js": "// fixture assistant-address-bootstrap.js\\n",
     "current.json": "{\\"protocol\\":2,\\"generation\\":\\"<uuid>\\",\\"version\\":\\"e1519e0de6ec945837bff5e299b511eb1cd44b3ae09f6cbf2f6ad18e8e8e5b9a\\",\\"settingsPath\\":\\"<root>/settings\\",\\"databasePath\\":\\"<root>/recall.db\\",\\"hostsPath\\":\\"<root>/hosts\\",\\"daemonUrl\\":\\"http://127.0.0.1:9\\",\\"owner\\":\\"501\\"}\\n",
-    "launch.sh": "#!/bin/sh\\n# Socket protocol 2: accepted connections; legacy Wait=true uses the bootstrap compatibility path.\\nrespond() { /usr/bin/printf %s \\"$1\\"; }\\nfail() { respond 'HTTP/1.1 503 Service Unavailable\\r\\nContent-Type: text/plain; charset=utf-8\\r\\nContent-Length: 78\\r\\nConnection: close\\r\\n\\r\\nBastra-Adresse nicht verfügbar. Bitte bastra address setup --yes ausführen.\\n'; }\\nif [ \\"\${BASTRA_ASSISTANT_ADDRESS_PROTOCOL:-2}\\" != 2 ] || [ ! -x '/fixture/node' ] || [ ! -r '<root>/runtime/bootstrap.js' ]; then fail; exit 1; fi\\nif [ \\"\${BASTRA_ASSISTANT_ADDRESS_LISTEN:-0}\\" = 1 ]; then exec '/fixture/node' '<root>/runtime/bootstrap.js' '--assistant-address-bootstrap' '--runtime-dir' '<root>/runtime'; fi\\nslot() { if [ -x /usr/bin/lockf ]; then /usr/bin/lockf -s -k -t 0 \\"$1\\" '/fixture/node' '<root>/runtime/bootstrap.js' '--assistant-address-bootstrap' '--runtime-dir' '<root>/runtime'; elif [ -x /usr/bin/flock ]; then /usr/bin/flock -n -E 75 \\"$1\\" '/fixture/node' '<root>/runtime/bootstrap.js' '--assistant-address-bootstrap' '--runtime-dir' '<root>/runtime'; else '/fixture/node' '<root>/runtime/bootstrap.js' '--assistant-address-bootstrap' '--runtime-dir' '<root>/runtime'; fi; }\\ni=0; rc=75\\nwhile [ \\"$rc\\" -eq 75 ] && [ \\"$i\\" -lt 16 ]; do slot '<root>/runtime/slots'/\\"$i\\"; rc=$?; i=$((i+1)); done\\nif [ \\"$rc\\" -eq 75 ]; then respond 'HTTP/1.1 503 Service Unavailable\\r\\nContent-Type: text/plain; charset=utf-8\\r\\nContent-Length: 66\\r\\nRetry-After: 1\\r\\nConnection: close\\r\\n\\r\\nBastra-Adresse gerade ausgelastet. Bitte gleich erneut versuchen.\\n'; exit 1; fi\\nif [ \\"$rc\\" -ne 0 ]; then fail; fi\\nexit \\"$rc\\"\\n",
+    "launch.sh": "#!/bin/sh\\n# Socket protocol 2: accepted connections; legacy Wait=true uses the bootstrap compatibility path.\\nrespond() { /usr/bin/printf %s \\"$1\\"; }\\nfail() { respond 'HTTP/1.1 503 Service Unavailable\\r\\nContent-Type: text/plain; charset=utf-8\\r\\nContent-Length: 69\\r\\nConnection: close\\r\\n\\r\\nBastra address not available. Please run bastra address setup --yes.\\n'; }\\nif [ \\"\${BASTRA_ASSISTANT_ADDRESS_PROTOCOL:-2}\\" != 2 ] || [ ! -x '/fixture/node' ] || [ ! -r '<root>/runtime/bootstrap.js' ]; then fail; exit 1; fi\\nif [ \\"\${BASTRA_ASSISTANT_ADDRESS_LISTEN:-0}\\" = 1 ]; then exec '/fixture/node' '<root>/runtime/bootstrap.js' '--assistant-address-bootstrap' '--runtime-dir' '<root>/runtime'; fi\\nslot() { if [ -x /usr/bin/lockf ]; then /usr/bin/lockf -s -k -t 0 \\"$1\\" '/fixture/node' '<root>/runtime/bootstrap.js' '--assistant-address-bootstrap' '--runtime-dir' '<root>/runtime'; elif [ -x /usr/bin/flock ]; then /usr/bin/flock -n -E 75 \\"$1\\" '/fixture/node' '<root>/runtime/bootstrap.js' '--assistant-address-bootstrap' '--runtime-dir' '<root>/runtime'; else '/fixture/node' '<root>/runtime/bootstrap.js' '--assistant-address-bootstrap' '--runtime-dir' '<root>/runtime'; fi; }\\ni=0; rc=75\\nwhile [ \\"$rc\\" -eq 75 ] && [ \\"$i\\" -lt 16 ]; do slot '<root>/runtime/slots'/\\"$i\\"; rc=$?; i=$((i+1)); done\\nif [ \\"$rc\\" -eq 75 ]; then respond 'HTTP/1.1 503 Service Unavailable\\r\\nContent-Type: text/plain; charset=utf-8\\r\\nContent-Length: 61\\r\\nRetry-After: 1\\r\\nConnection: close\\r\\n\\r\\nBastra address busy right now. Please try again in a moment.\\n'; exit 1; fi\\nif [ \\"$rc\\" -ne 0 ]; then fail; fi\\nexit \\"$rc\\"\\n",
     "managed": "bastra-assistant-address:501\\n",
     "package.json": "{\\"type\\":\\"module\\"}\\n",
     "state.json": "{\\"version\\":2,\\"name\\":\\"jarvis\\",\\"firefoxOwnedPrefs\\":{\\"<root>/firefox/profile/user.js\\":[\\"jarvis\\"]},\\"firefoxFiles\\":[\\"<root>/firefox/profile/user.js\\"]}\\n",
@@ -42,7 +42,7 @@ exports[`#1532 assistant lifecycle preserves installer, runtime and status bytes
     "ready": true,
     "systemSetupSupported": true,
     "firefoxProfiles": 1,
-    "bareNameNotice": "Einzelne Wörter können je nach Browser als Suche gelten. Adresse einmal öffnen; Firefox nach Einrichtung neu starten. <name>/ oder <name>.localhost bleibt die eindeutige Eingabe.",
+    "bareNameNotice": "Depending on the browser, a single word may count as a search. Open the address once; restart Firefox after the setup. <name>/ or <name>.localhost stays the unambiguous entry.",
     "pending": false,
     "partial": false
   }
@@ -50,7 +50,7 @@ exports[`#1532 assistant lifecycle preserves installer, runtime and status bytes
 `;
 
 exports[`#1532 assistant lifecycle preserves installer, runtime and status bytes 3`] = `
-"jarvis\\nhttp://jarvis.localhost/ui/\\nhttp://jarvis/ui/\\nAdresse erreichbar\\nEinzelne Wörter können je nach Browser als Suche gelten. Adresse einmal öffnen; Firefox nach Einrichtung neu starten. <name>/ oder <name>.localhost bleibt die eindeutige Eingabe.\\n\\n"
+"jarvis\\nhttp://jarvis.localhost/ui/\\nhttp://jarvis/ui/\\nAddress reachable\\nDepending on the browser, a single word may count as a search. Open the address once; restart Firefox after the setup. <name>/ or <name>.localhost stays the unambiguous entry.\\n\\n"
 `;
 
 exports[`#1532 assistant lifecycle preserves installer, runtime and status bytes 4`] = `
@@ -70,7 +70,7 @@ exports[`#1532 assistant lifecycle preserves installer, runtime and status bytes
     "ready": false,
     "systemSetupSupported": true,
     "firefoxProfiles": 1,
-    "bareNameNotice": "Einzelne Wörter können je nach Browser als Suche gelten. Adresse einmal öffnen; Firefox nach Einrichtung neu starten. <name>/ oder <name>.localhost bleibt die eindeutige Eingabe.",
+    "bareNameNotice": "Depending on the browser, a single word may count as a search. Open the address once; restart Firefox after the setup. <name>/ or <name>.localhost stays the unambiguous entry.",
     "pending": false,
     "partial": false
   }
@@ -79,7 +79,7 @@ exports[`#1532 assistant lifecycle preserves installer, runtime and status bytes
 
 exports[`#1532 late admin recovery preserves resulting files and diagnostics 1`] = `
 {
-  "repair": "Admin-PID nicht gesichert; laufenden Dialog und tatsächlichen Abschluss zuerst prüfen. Automatische Freigabe ist ohne Prozessnachweis gesperrt; bastra address status erneut ausführen.",
+  "repair": "Admin PID not secured; check the open dialog and its actual completion first. Automatic release is blocked without proof of the process; run bastra address status again.",
   "helperLoaded": null,
   "processBound": false,
   "name": null,
@@ -89,7 +89,7 @@ exports[`#1532 late admin recovery preserves resulting files and diagnostics 1`]
   "ready": false,
   "systemSetupSupported": true,
   "firefoxProfiles": 1,
-  "bareNameNotice": "Einzelne Wörter können je nach Browser als Suche gelten. Adresse einmal öffnen; Firefox nach Einrichtung neu starten. <name>/ oder <name>.localhost bleibt die eindeutige Eingabe.",
+  "bareNameNotice": "Depending on the browser, a single word may count as a search. Open the address once; restart Firefox after the setup. <name>/ or <name>.localhost stays the unambiguous entry.",
   "pending": true,
   "partial": false
 }
@@ -100,7 +100,7 @@ exports[`#1532 late admin recovery preserves resulting files and diagnostics 2`]
   "runtime": {
     "bootstrap.js": "// fixture assistant-address-bootstrap.js\\n",
     "current.json": "{\\"protocol\\":2,\\"generation\\":\\"<uuid>\\",\\"version\\":\\"e1519e0de6ec945837bff5e299b511eb1cd44b3ae09f6cbf2f6ad18e8e8e5b9a\\",\\"settingsPath\\":\\"<root>/settings\\",\\"databasePath\\":\\"<root>/recall.db\\",\\"hostsPath\\":\\"<root>/hosts\\",\\"daemonUrl\\":\\"http://127.0.0.1:9\\",\\"owner\\":\\"501\\"}\\n",
-    "launch.sh": "#!/bin/sh\\n# Socket protocol 2: accepted connections; legacy Wait=true uses the bootstrap compatibility path.\\nrespond() { /usr/bin/printf %s \\"$1\\"; }\\nfail() { respond 'HTTP/1.1 503 Service Unavailable\\r\\nContent-Type: text/plain; charset=utf-8\\r\\nContent-Length: 78\\r\\nConnection: close\\r\\n\\r\\nBastra-Adresse nicht verfügbar. Bitte bastra address setup --yes ausführen.\\n'; }\\nif [ \\"\${BASTRA_ASSISTANT_ADDRESS_PROTOCOL:-2}\\" != 2 ] || [ ! -x '/fixture/node' ] || [ ! -r '<root>/runtime/bootstrap.js' ]; then fail; exit 1; fi\\nif [ \\"\${BASTRA_ASSISTANT_ADDRESS_LISTEN:-0}\\" = 1 ]; then exec '/fixture/node' '<root>/runtime/bootstrap.js' '--assistant-address-bootstrap' '--runtime-dir' '<root>/runtime'; fi\\nslot() { if [ -x /usr/bin/lockf ]; then /usr/bin/lockf -s -k -t 0 \\"$1\\" '/fixture/node' '<root>/runtime/bootstrap.js' '--assistant-address-bootstrap' '--runtime-dir' '<root>/runtime'; elif [ -x /usr/bin/flock ]; then /usr/bin/flock -n -E 75 \\"$1\\" '/fixture/node' '<root>/runtime/bootstrap.js' '--assistant-address-bootstrap' '--runtime-dir' '<root>/runtime'; else '/fixture/node' '<root>/runtime/bootstrap.js' '--assistant-address-bootstrap' '--runtime-dir' '<root>/runtime'; fi; }\\ni=0; rc=75\\nwhile [ \\"$rc\\" -eq 75 ] && [ \\"$i\\" -lt 16 ]; do slot '<root>/runtime/slots'/\\"$i\\"; rc=$?; i=$((i+1)); done\\nif [ \\"$rc\\" -eq 75 ]; then respond 'HTTP/1.1 503 Service Unavailable\\r\\nContent-Type: text/plain; charset=utf-8\\r\\nContent-Length: 66\\r\\nRetry-After: 1\\r\\nConnection: close\\r\\n\\r\\nBastra-Adresse gerade ausgelastet. Bitte gleich erneut versuchen.\\n'; exit 1; fi\\nif [ \\"$rc\\" -ne 0 ]; then fail; fi\\nexit \\"$rc\\"\\n",
+    "launch.sh": "#!/bin/sh\\n# Socket protocol 2: accepted connections; legacy Wait=true uses the bootstrap compatibility path.\\nrespond() { /usr/bin/printf %s \\"$1\\"; }\\nfail() { respond 'HTTP/1.1 503 Service Unavailable\\r\\nContent-Type: text/plain; charset=utf-8\\r\\nContent-Length: 69\\r\\nConnection: close\\r\\n\\r\\nBastra address not available. Please run bastra address setup --yes.\\n'; }\\nif [ \\"\${BASTRA_ASSISTANT_ADDRESS_PROTOCOL:-2}\\" != 2 ] || [ ! -x '/fixture/node' ] || [ ! -r '<root>/runtime/bootstrap.js' ]; then fail; exit 1; fi\\nif [ \\"\${BASTRA_ASSISTANT_ADDRESS_LISTEN:-0}\\" = 1 ]; then exec '/fixture/node' '<root>/runtime/bootstrap.js' '--assistant-address-bootstrap' '--runtime-dir' '<root>/runtime'; fi\\nslot() { if [ -x /usr/bin/lockf ]; then /usr/bin/lockf -s -k -t 0 \\"$1\\" '/fixture/node' '<root>/runtime/bootstrap.js' '--assistant-address-bootstrap' '--runtime-dir' '<root>/runtime'; elif [ -x /usr/bin/flock ]; then /usr/bin/flock -n -E 75 \\"$1\\" '/fixture/node' '<root>/runtime/bootstrap.js' '--assistant-address-bootstrap' '--runtime-dir' '<root>/runtime'; else '/fixture/node' '<root>/runtime/bootstrap.js' '--assistant-address-bootstrap' '--runtime-dir' '<root>/runtime'; fi; }\\ni=0; rc=75\\nwhile [ \\"$rc\\" -eq 75 ] && [ \\"$i\\" -lt 16 ]; do slot '<root>/runtime/slots'/\\"$i\\"; rc=$?; i=$((i+1)); done\\nif [ \\"$rc\\" -eq 75 ]; then respond 'HTTP/1.1 503 Service Unavailable\\r\\nContent-Type: text/plain; charset=utf-8\\r\\nContent-Length: 61\\r\\nRetry-After: 1\\r\\nConnection: close\\r\\n\\r\\nBastra address busy right now. Please try again in a moment.\\n'; exit 1; fi\\nif [ \\"$rc\\" -ne 0 ]; then fail; fi\\nexit \\"$rc\\"\\n",
     "managed": "bastra-assistant-address:501\\n",
     "package.json": "{\\"type\\":\\"module\\"}\\n",
     "state.json": "{\\"version\\":2,\\"name\\":\\"jarvis\\",\\"firefoxOwnedPrefs\\":{\\"<root>/firefox/profile/user.js\\":[\\"jarvis\\"]},\\"firefoxFiles\\":[\\"<root>/firefox/profile/user.js\\"]}\\n",
@@ -133,7 +133,7 @@ exports[`#1532 late admin recovery preserves resulting files and diagnostics 2`]
     "ready": true,
     "systemSetupSupported": true,
     "firefoxProfiles": 1,
-    "bareNameNotice": "Einzelne Wörter können je nach Browser als Suche gelten. Adresse einmal öffnen; Firefox nach Einrichtung neu starten. <name>/ oder <name>.localhost bleibt die eindeutige Eingabe.",
+    "bareNameNotice": "Depending on the browser, a single word may count as a search. Open the address once; restart Firefox after the setup. <name>/ or <name>.localhost stays the unambiguous entry.",
     "pending": false,
     "partial": false
   }

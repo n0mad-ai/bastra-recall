@@ -73,17 +73,36 @@ export interface RuleInfo {
   delivered?: boolean;
   /** A pending proposal to archive the memory — accepting it needs archive. */
   archive?: boolean;
+  /** Whether the memory is a rule under each "type recall_mode" pair. Present
+   *  only when changing those two fields in the editor would change that (a
+   *  rule without its own declaration), so the editor can warn before a save. */
+  by_type_mode?: Record<string, boolean>;
+}
+
+const RECALL_MODES = ["deliberate", "reflex"] as const;
+
+/** The rule membership per type × recall mode, or undefined when it is the
+ *  same for every pair (a declared rule, an agent's note). */
+function ruleByTypeMode(fm: Memory["fm"]): Record<string, boolean> | undefined {
+  const out: Record<string, boolean> = {};
+  for (const type of MemoryTypeEnum.options)
+    for (const recall_mode of RECALL_MODES)
+      out[`${type} ${recall_mode}`] = !!catalogDeclaration({ ...fm, type, recall_mode });
+  return new Set(Object.values(out)).size > 1 ? out : undefined;
 }
 
 export function ruleInfo(fm: Memory["fm"]): RuleInfo {
   if (fm.obsolete || fm.superseded_by) return { state: "inactive" };
   const declaration = catalogDeclaration(fm);
+  const byTypeMode = ruleByTypeMode(fm);
+  const follows = byTypeMode ? { by_type_mode: byTypeMode } : {};
   if (declaration)
     return {
       state: "rule",
       rulebook: declaration.rulebook,
       ...(fm.applies_when !== undefined ? { applies_when: fm.applies_when } : {}),
       delivered: fm.sensitivity !== "private",
+      ...follows,
     };
   const proposed = fm.rulebook_proposed;
   if (proposed)
@@ -92,8 +111,9 @@ export function ruleInfo(fm: Memory["fm"]): RuleInfo {
       rulebook: proposed.rulebook,
       applies_when: proposed.applies_when,
       ...(proposed.archive ? { archive: true } : {}),
+      ...follows,
     };
-  return { state: "note" };
+  return { state: "note", ...follows };
 }
 
 /** The node detail's edit fields: the revision the shown body belongs to

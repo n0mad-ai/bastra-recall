@@ -203,6 +203,16 @@ const en = {
     `${update ? "Change" : "Register"} this local target? Execution stops, old proposals become outdated.`,
   targetDone: (id: string, update: boolean) =>
     `Target ${id} ${update ? "changed" : "registered"}. Execution stopped. The instruction in chat is the approval.`,
+  chatConsentQuestion:
+    "May Recall announce due tasks in your active Claude Code chat? Enabling crossSessionInbound=accept allows incoming session messages from all programs under your Mac account.",
+  chatConsentResult: {
+    accepted:
+      "Claude chat delivery enabled for new sessions. Messages are task data, never execution approval; macOS notification and the board remain available.",
+    blocked:
+      "Claude chat delivery stays off: existing hold/refuse, unknown inbound value or managed settings were preserved. macOS notification and the board remain available; this setup will not ask again.",
+    declined:
+      "Claude chat delivery declined and saved; this setup will not ask again. macOS notification and the board remain available.",
+  } as Record<"accepted" | "blocked" | "declined", string>,
 };
 export type TaskCliWords = typeof en;
 
@@ -399,6 +409,16 @@ const de: TaskCliWords = {
     `Dieses lokale Ziel ${update ? "ändern" : "registrieren"}? Ausführung wird gestoppt, alte Vorschläge veralten.`,
   targetDone: (id, update) =>
     `Ziel ${id} ${update ? "geändert" : "registriert"}. Ausführung gestoppt. Die Anweisung im Chat ist die Freigabe.`,
+  chatConsentQuestion:
+    "Darf Recall fällige Aufgaben in deinem aktiven Claude-Code-Chat ankündigen? Das Einschalten von crossSessionInbound=accept erlaubt eingehende Sitzungsnachrichten von allen Programmen unter deinem Mac-Benutzerkonto.",
+  chatConsentResult: {
+    accepted:
+      "Zustellung in den Claude-Chat für neue Sitzungen eingeschaltet. Nachrichten sind Aufgabendaten, nie eine Ausführungsfreigabe; macOS-Mitteilung und Board bleiben verfügbar.",
+    blocked:
+      "Zustellung in den Claude-Chat bleibt aus: ein bestehendes hold/refuse, ein unbekannter Inbound-Wert oder verwaltete Einstellungen wurden beibehalten. macOS-Mitteilung und Board bleiben verfügbar; diese Einrichtung fragt nicht noch einmal.",
+    declined:
+      "Zustellung in den Claude-Chat abgelehnt und gespeichert; diese Einrichtung fragt nicht noch einmal. macOS-Mitteilung und Board bleiben verfügbar.",
+  },
 };
 
 const WORDS: Readonly<Record<string, TaskCliWords>> = { en, de };

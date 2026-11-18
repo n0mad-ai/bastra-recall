@@ -9,6 +9,9 @@
 // the draft kept aside (`stash`), useStash puts it back. cancel → "view".
 // Title, type, sensitivity and recall mode are fields too (#1558); the area
 // is not (it follows the folder), so it is not a field at all.
+// A change of type or recall mode that makes a memory a rule or ends one
+// (a rule without its own declaration) is shown before the save; the first
+// save click then asks once more ("confirm") and the second one saves.
 
 // The daemon's auto-related block (core save-text.ts AUTO_RELATED_START) is
 // generated; the editor shows and replaces only the text above it.
@@ -80,6 +83,7 @@ export const editInit = () => ({
   draft: null,
   stash: null,
   error: null,
+  confirm: false,
 });
 
 const open = (s) => s.mode === "edit" || s.mode === "conflict";
@@ -93,9 +97,15 @@ const STEPS = {
       : s,
   edit: (s) =>
     s.mode === "view" && s.base && s.revision ? { ...s, mode: "edit", draft: { ...s.base }, error: null } : s,
-  input: (s, ev) => (open(s) ? { ...s, draft: { ...s.draft, [ev.field]: ev.value } } : s),
-  cancel: (s) => (open(s) ? { ...s, mode: "view", draft: null, stash: null, error: null } : s),
-  save: (s) => (s.mode === "edit" ? { ...s, mode: "saving", error: null } : s),
+  input: (s, ev) => (open(s) ? { ...s, draft: { ...s.draft, [ev.field]: ev.value }, confirm: false } : s),
+  cancel: (s) => (open(s) ? { ...s, mode: "view", draft: null, stash: null, error: null, confirm: false } : s),
+  // a change to the rule effect asks once in the same place before it is saved
+  save: (s) =>
+    s.mode !== "edit"
+      ? s
+      : ruleShift(s) && !s.confirm
+        ? { ...s, confirm: true }
+        : { ...s, mode: "saving", error: null, confirm: false },
   saved: (s, ev) =>
     s.mode === "saving"
       ? { ...s, mode: "view", base: s.draft, revision: ev.revision, rule: ev.rule ?? s.rule, draft: null, stash: null }
@@ -103,7 +113,7 @@ const STEPS = {
   failed: (s, ev) => (s.mode === "saving" ? { ...s, mode: "edit", error: ev.error } : s),
   conflict: (s) => (s.mode === "saving" ? { ...s, mode: "conflict", error: "mb.ed.conflict" } : s),
   reloaded: (s, ev) => reloaded(s, ev.detail),
-  useStash: (s) => (s.mode === "edit" && s.stash ? { ...s, draft: s.stash, stash: null } : s),
+  useStash: (s) => (s.mode === "edit" && s.stash ? { ...s, draft: s.stash, stash: null, confirm: false } : s),
 };
 
 /** One step of the editor. */
@@ -123,6 +133,7 @@ function reloaded(s, d) {
     draft: { ...base },
     stash: s.draft,
     error: null,
+    confirm: false,
   };
 }
 
@@ -179,6 +190,21 @@ export function editPatch(s, id) {
   return { payload: Object.keys(changes).length ? { id, expected_revision: s.revision, ...changes } : null };
 }
 
+/** How a save would change the rule effect through type or recall mode:
+ *  "gain" (becomes an on-demand rule), "loss" (is no longer a rule) or null.
+ *  The daemon sends the membership per pair (`rule.by_type_mode`) only where
+ *  those two fields decide it; an explicit rule edit in the same save wins. */
+export function ruleShift(s) {
+  const map = s.rule?.by_type_mode;
+  if (!map || !s.draft || !s.base) return null;
+  if (ruleChanges(s.draft, s.base).out?.rule) return null;
+  const key = (f) => `${f.type} ${f.recall_mode}`;
+  const before = map[key(s.base)],
+    after = map[key(s.draft)];
+  if (typeof before !== "boolean" || typeof after !== "boolean" || before === after) return null;
+  return after ? "gain" : "loss";
+}
+
 /** What the controls show. */
 export function editView(s, id) {
   const patch = open(s) ? editPatch(s, id) : { payload: null };
@@ -191,6 +217,8 @@ export function editView(s, id) {
     invalid: patch.error ?? null,
     error: s.error,
     stash: !!s.stash,
+    ruleShift: s.mode === "edit" && patch.payload ? ruleShift(s) : null,
+    confirm: s.mode === "edit" && s.confirm,
   };
 }
 

@@ -9,6 +9,8 @@
 // another memory and closing the browser (held per memory below); leaving
 // the page with one asks first. "ARCHIVE" moves the memory into the vault
 // trash (archive_memory) in one click; "undo" restores it from there.
+// A type / recall mode change that makes the memory a rule or ends one is
+// named above the buttons; saving it then takes one more click.
 // Pure state and change set: membrowser-edit-model.js.
 import { h, growTextarea } from "../dom.js";
 import { t } from "../i18n.js";
@@ -162,6 +164,8 @@ function editorForm(rule, type, act) {
       )
     : null;
   const msg = h("div.cn__msg", { role: "status" });
+  // what a type / recall mode change does to the rule, before the save
+  const ruleNote = h("div.mb-care__hint", { role: "status", hidden: true });
   const save = h("button.mb-btn.is-primary", { type: "button", on: { click: act.save } });
   const cancel = h("button.mb-btn.is-quiet", { type: "button", text: t("mb.ed.cancel"), on: { click: act.cancel } });
   const reload = h("button.mb-btn", { type: "button", text: t("mb.ed.reload"), on: { click: act.reload } });
@@ -183,6 +187,7 @@ function editorForm(rule, type, act) {
     h("label.mb-ed__f", null, h("span.mb-rd__k", { text: t("mb.ed.tags") }), tags),
     ruleField,
     h("div.mb-care__hint.mb-ed__fixed", { text: t("mb.ed.fixed") }),
+    ruleNote,
     msg,
     row
   );
@@ -207,7 +212,9 @@ function editorForm(rule, type, act) {
       level.disabled = v.saving;
       props.lock(v.saving);
       save.disabled = !v.canSave;
-      save.textContent = t(v.saving ? "mb.ed.saving" : "mb.ed.save");
+      save.textContent = t(v.saving ? "mb.ed.saving" : v.confirm ? "mb.ed.saveConfirm" : "mb.ed.save");
+      ruleNote.hidden = !v.ruleShift;
+      ruleNote.textContent = v.ruleShift ? t(v.ruleShift === "gain" ? "mb.ed.ruleGain" : "mb.ed.ruleLoss") : "";
       reload.hidden = !v.conflict;
       stash.hidden = !v.stash;
       msg.textContent = v.error ? t(v.error) : v.invalid ? t(v.invalid) : "";
@@ -311,6 +318,7 @@ export function readerEdit(m, { anchor, box, text, refresh, rerender, reload, ar
     const { payload } = editPatch(s, m.id);
     if (!payload || s.mode !== "edit") return;
     go({ type: "save" });
+    if (s.mode !== "saving") return; // a change to the rule asked for a second click
     const r = await post("/ui/memory/edit", payload);
     if (r.ok) {
       go({ type: "saved", revision: r.revision, rule: r.rule });

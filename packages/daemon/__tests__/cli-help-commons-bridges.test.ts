@@ -13,7 +13,7 @@ import { strict as assert } from "node:assert";
 
 import { COMMAND_HELP, showHelp } from "../src/cli/help-text.js";
 
-function captureShowHelp(command?: string): string {
+async function captureShowHelp(command?: string): Promise<string> {
   let out = "";
   const original = process.stdout.write;
   process.stdout.write = ((chunk: string | Uint8Array) => {
@@ -21,7 +21,7 @@ function captureShowHelp(command?: string): string {
     return true;
   }) as typeof process.stdout.write;
   try {
-    showHelp(command);
+    await showHelp(command);
   } finally {
     process.stdout.write = original;
   }
@@ -39,13 +39,13 @@ test("commons help lists verify and says what verify sends", () => {
   assert.doesNotMatch(help, /nothing of yours is sent anywhere/);
 });
 
-test("the top-level help lists commons verify", () => {
-  assert.match(captureShowHelp(), /commons <enable\|update\|disable\|status\|verify>/);
+test("the top-level help lists commons verify", async () => {
+  assert.match(await captureShowHelp(), /commons <enable\|update\|disable\|status\|verify>/);
 });
 
-test("bridges help no longer calls the pool language-partitioned", () => {
+test("bridges help no longer calls the pool language-partitioned", async () => {
   assert.doesNotMatch(COMMAND_HELP.bridges, /language-partitioned/);
-  assert.doesNotMatch(captureShowHelp(), /language-partitioned/);
+  assert.doesNotMatch(await captureShowHelp(), /language-partitioned/);
   // The setting does change which bridges fire: with an override, expandQuery
   // consults only that folder.
   assert.match(

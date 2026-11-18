@@ -75,14 +75,14 @@ async function beforeDispatch(args: ReturnType<typeof parseArgs>): Promise<numbe
   // Binding it to "no command given" is what made `bastra update --help`
   // restart the daemon as its answer to what update does.
   if (args.showHelp) {
-    showHelp(args.command);
+    await showHelp(args.command);
     return 0;
   }
   if (!args.command) {
     return cmdPanel(args);
   }
   if (args.command === "help") {
-    showHelp(args.surface);
+    await showHelp(args.surface);
     return 0;
   }
   return null;

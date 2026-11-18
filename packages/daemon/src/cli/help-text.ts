@@ -11,13 +11,21 @@
  * lines and never mentions --staged or --force. COMMAND_HELP is diffed against
  * the dispatch table in `__tests__/cli-help.test.ts`, the same drift gate
  * `completion.ts` carries, so a new command cannot land without its section.
+ *
+ * Language (#1602): the help follows language.primary like the rest of the CLI,
+ * English when unset or for a language without its own help; German is complete.
  */
 
 import { ADAPTERS } from "./registry.js";
 import { VERSION } from "./helpers.js";
 import { AGENT_COMMAND_HELP } from "./help-text-agents.js";
+import { AGENT_COMMAND_HELP_DE } from "./help-text-agents-de.js";
 import { MEMORY_COMMAND_HELP } from "./help-text-memory.js";
+import { MEMORY_COMMAND_HELP_DE } from "./help-text-memory-de.js";
 import { SETUP_COMMAND_HELP } from "./help-text-setup.js";
+import { SETUP_COMMAND_HELP_DE } from "./help-text-setup-de.js";
+import { globalHelpDe } from "./help-text-global-de.js";
+import { taskCliLanguage } from "./task-cli-words.js";
 
 function globalHelp(): string {
   const supportedSurfaces = Object.keys(ADAPTERS).join(", ");
@@ -42,8 +50,8 @@ Commands:
                              re-register + daemon restart. From a source checkout: run it
                              after pulling AND building (it verifies the build,
                              it never runs one).
-  address <status|setup [name]|remove>  Eigener Assistentenname als Browser-Adresse.
-                             System-/Browser-Einrichtung nur mit Zustimmung.
+  address <status|setup [name]|remove>  Your own assistant name as a browser address.
+                             System/browser setup only with your consent.
   autostart <on|off|status>  Keep the daemon running permanently (off by
                              default — it otherwise starts on demand and shuts
                              down after 30 min idle). 'on' installs a service;
@@ -224,54 +232,79 @@ Supported surfaces (this build): ${supportedSurfaces}
  * the drift gate enforces it. Aliases (map/ui) carry their own key so that
  * whichever spelling the user typed is the one echoed back.
  */
-export const COMMAND_HELP: Record<string, string> = {
-  codex: AGENT_COMMAND_HELP.codex,
-  address: SETUP_COMMAND_HELP.address,
-  tasks: AGENT_COMMAND_HELP.tasks,
-  suggestions: MEMORY_COMMAND_HELP.suggestions,
-  drafts: MEMORY_COMMAND_HELP.drafts,
-  code: AGENT_COMMAND_HELP.code,
-  install: SETUP_COMMAND_HELP.install,
-  uninstall: SETUP_COMMAND_HELP.uninstall,
-  doctor: SETUP_COMMAND_HELP.doctor,
-  status: SETUP_COMMAND_HELP.status,
-  logs: SETUP_COMMAND_HELP.logs,
-  autostart: SETUP_COMMAND_HELP.autostart,
-  update: SETUP_COMMAND_HELP.update,
-  config: SETUP_COMMAND_HELP.config,
-  embeddings: SETUP_COMMAND_HELP.embeddings,
-  models: SETUP_COMMAND_HELP.models,
-  token: SETUP_COMMAND_HELP.token,
-  oauth: SETUP_COMMAND_HELP.oauth,
-  commons: MEMORY_COMMAND_HELP.commons,
-  bridges: MEMORY_COMMAND_HELP.bridges,
-  map: MEMORY_COMMAND_HELP.map,
-  ui: MEMORY_COMMAND_HELP.ui,
-  import: MEMORY_COMMAND_HELP.import,
-  onboard: MEMORY_COMMAND_HELP.onboard,
-  skills: MEMORY_COMMAND_HELP.skills,
-  rules: MEMORY_COMMAND_HELP.rules,
-  patches: SETUP_COMMAND_HELP.patches,
-  feedback: SETUP_COMMAND_HELP.feedback,
-  trash: MEMORY_COMMAND_HELP.trash,
-  recall: MEMORY_COMMAND_HELP.recall,
-  save: MEMORY_COMMAND_HELP.save,
-  archive: AGENT_COMMAND_HELP.archive,
-  reconcile: MEMORY_COMMAND_HELP.reconcile,
-  completion: SETUP_COMMAND_HELP.completion,
-  help: SETUP_COMMAND_HELP.help,
-  version: SETUP_COMMAND_HELP.version,
+const GROUPS = {
+  en: { agent: AGENT_COMMAND_HELP, memory: MEMORY_COMMAND_HELP, setup: SETUP_COMMAND_HELP },
+  de: { agent: AGENT_COMMAND_HELP_DE, memory: MEMORY_COMMAND_HELP_DE, setup: SETUP_COMMAND_HELP_DE },
 };
+export type HelpLanguage = keyof typeof GROUPS;
+export const HELP_LANGUAGES = Object.keys(GROUPS) as HelpLanguage[];
+
+/** The section catalog in one language: the group each command's section lives in. */
+export function commandHelp(language: HelpLanguage): Record<string, string> {
+  const { agent, memory, setup } = GROUPS[language];
+  return {
+    codex: agent.codex,
+    address: setup.address,
+    tasks: agent.tasks,
+    suggestions: memory.suggestions,
+    drafts: memory.drafts,
+    code: agent.code,
+    install: setup.install,
+    uninstall: setup.uninstall,
+    doctor: setup.doctor,
+    status: setup.status,
+    logs: setup.logs,
+    autostart: setup.autostart,
+    update: setup.update,
+    config: setup.config,
+    embeddings: setup.embeddings,
+    models: setup.models,
+    token: setup.token,
+    oauth: setup.oauth,
+    commons: memory.commons,
+    bridges: memory.bridges,
+    map: memory.map,
+    ui: memory.ui,
+    import: memory.import,
+    onboard: memory.onboard,
+    skills: memory.skills,
+    rules: memory.rules,
+    patches: setup.patches,
+    feedback: setup.feedback,
+    trash: memory.trash,
+    recall: memory.recall,
+    save: memory.save,
+    archive: agent.archive,
+    reconcile: memory.reconcile,
+    completion: setup.completion,
+    help: setup.help,
+    version: setup.version,
+  };
+}
+
+/** The English catalog — the drift gate in cli-help.test.ts reads this one. */
+export const COMMAND_HELP: Record<string, string> = commandHelp("en");
+
+const MORE: Record<HelpLanguage, string> = { en: "More", de: "Mehr" };
+
+/** What `bastra help [command]` / `bastra <command> --help` prints in `language`. */
+export function helpText(command: string | null | undefined, language: HelpLanguage): string {
+  const section = command ? commandHelp(language)[command] : undefined;
+  if (section) return `${section}\n${MORE[language]}: bastra help\n`;
+  return language === "de" ? globalHelpDe(VERSION, Object.keys(ADAPTERS).join(", ")) : globalHelp();
+}
+
+/** language.primary when it has its own help, English otherwise. An unreadable
+ *  settings file never keeps --help from answering: it answers in English. */
+export async function helpLanguage(): Promise<HelpLanguage> {
+  const code = await taskCliLanguage().catch(() => "en");
+  return HELP_LANGUAGES.find((language) => language === code) ?? "en";
+}
 
 /**
  * Print help: the section for `command` when there is one, the global listing
  * otherwise. Never has a side effect — that is the whole point of #330.
  */
-export function showHelp(command?: string | null): void {
-  const section = command ? COMMAND_HELP[command] : undefined;
-  if (section) {
-    process.stdout.write(`${section}\nMore: bastra help\n`);
-    return;
-  }
-  process.stdout.write(globalHelp());
+export async function showHelp(command?: string | null): Promise<void> {
+  process.stdout.write(helpText(command, await helpLanguage()));
 }

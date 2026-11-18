@@ -1,19 +1,25 @@
 import * as p from "@clack/prompts";
 import { applyTaskChatConsent, inspectTaskChatSetup, type TaskChatSetupPaths } from "../task-chat-settings.js";
+import { taskCliLanguage, taskCliWords } from "./task-cli-words.js";
 
-export const TASK_CHAT_CONSENT_QUESTION =
-  "May Recall announce due tasks in your active Claude Code chat? Enabling crossSessionInbound=accept allows incoming session messages from all programs under your Mac account.";
-/** Dedicated consent: --yes, install flags and an existing accept never imply yes. */
-export async function askTaskChatConsent(paths: TaskChatSetupPaths = {}): Promise<boolean | undefined | symbol> {
-  if (!process.stdin.isTTY) return undefined;
+/** Dedicated consent: --yes, install flags and an existing accept never imply yes.
+ *  Worded in `language` (#1602; the wizard passes the one just chosen), else
+ *  language.primary. `wanted` false (Claude Code not chosen): not asked. */
+export async function askTaskChatConsent(
+  paths: TaskChatSetupPaths = {},
+  language?: string,
+  wanted = true
+): Promise<boolean | undefined | symbol> {
+  if (!wanted || !process.stdin.isTTY) return undefined;
   if (!(await inspectTaskChatSetup(paths)).ask) return undefined;
-  return p.confirm({ message: TASK_CHAT_CONSENT_QUESTION, initialValue: false });
+  const words = taskCliWords(language ?? (await taskCliLanguage()));
+  return p.confirm({ message: words.chatConsentQuestion, initialValue: false });
 }
-export async function finishTaskChatConsent(answer: boolean, paths: TaskChatSetupPaths = {}): Promise<string> {
+export async function finishTaskChatConsent(
+  answer: boolean,
+  paths: TaskChatSetupPaths = {},
+  language?: string
+): Promise<string> {
   const result = await applyTaskChatConsent(answer, paths);
-  if (result.answer === "accepted")
-    return "Claude chat delivery enabled for new sessions. Messages are task data, never execution approval; macOS notification and the board remain available.";
-  if (result.answer === "blocked")
-    return "Claude chat delivery stays off: existing hold/refuse, unknown inbound value or managed settings were preserved. macOS notification and the board remain available; this setup will not ask again.";
-  return "Claude chat delivery declined and saved; this setup will not ask again. macOS notification and the board remain available.";
+  return taskCliWords(language ?? (await taskCliLanguage())).chatConsentResult[result.answer];
 }

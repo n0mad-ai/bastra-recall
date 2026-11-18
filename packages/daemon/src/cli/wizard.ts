@@ -65,6 +65,10 @@ import {
 import type { InstallResult, ParsedArgs } from "./types.js";
 import { askTaskChatConsent, finishTaskChatConsent } from "./task-chat-setup.js";
 import { webUiOnByDefault } from "../local-account-access.js";
+import { askSetupLanguage, saveSetupLanguage } from "./wizard-language.js";
+import { wizardWords, type WizardWords } from "./wizard-words.js";
+
+const EN = wizardWords("en");
 
 /**
  * Pure gate — exported for tests. The wizard replaces the bare-`install`
@@ -115,14 +119,17 @@ export interface SurfaceChoice {
  * after first app launch) everything is preselected so plain-Enter still
  * yields a complete install.
  */
-export function buildSurfaceChoices(present: Record<string, boolean>): {
+export function buildSurfaceChoices(
+  present: Record<string, boolean>,
+  w: WizardWords = EN
+): {
   options: SurfaceChoice[];
   initialValues: string[];
 } {
   const options = Object.entries(ADAPTERS).map(([surface, adapter]) => ({
     value: surface,
     label: adapter.description.replace(/\s*\(.*\)$/, ""),
-    hint: present[surface] ? "detected" : "not detected",
+    hint: present[surface] ? w.detected : w.notDetected,
   }));
   const detected = options.filter((o) => present[o.value]).map((o) => o.value);
   return { options, initialValues: detected.length > 0 ? detected : options.map((o) => o.value) };
@@ -134,32 +141,35 @@ export function buildSurfaceChoices(present: Record<string, boolean>): {
  * suggestion first and preselected, the heavier alternative where the tier has
  * one, and Skip. Null below the 16 GB tier — the step is not shown there.
  */
-export function buildTextModelChoices(ramGB: number): {
+export function buildTextModelChoices(
+  ramGB: number,
+  w: WizardWords = EN
+): {
   options: { value: string; label: string; hint?: string }[];
   initialValue: string;
 } | null {
   const rec = recommendTextModel(ramGB);
   if (!rec.model) return null;
   const options: { value: string; label: string; hint?: string }[] = [
-    { value: rec.model, label: `${rec.model} — recommended for ${ramGB} GB`, hint: `~${rec.sizeGB} GB download` },
+    { value: rec.model, label: w.textModelRecommended(rec.model, ramGB), hint: w.download(rec.sizeGB) },
   ];
   if (rec.alt) {
     options.push({
       value: rec.alt.model,
       label: `${rec.alt.model} — ${rec.alt.note}`,
-      hint: `~${rec.alt.sizeGB} GB download`,
+      hint: w.download(rec.alt.sizeGB),
     });
   }
   options.push({
     value: "",
-    label: "Skip — keyword + semantic recall only",
-    hint: "add later: bastra models set <model>",
+    label: w.textModelSkip,
+    hint: w.textModelSkipHint,
   });
   return { options, initialValue: rec.model };
 }
 
-export function memoryCountPhrase(n: number): string {
-  return `${n} ${n === 1 ? "memory" : "memories"}`;
+export function memoryCountPhrase(n: number, w: WizardWords = EN): string {
+  return w.memories(n);
 }
 
 export interface VaultOption {
@@ -177,11 +187,15 @@ export interface VaultOption {
  * there instead. An empty or absent folder really is created, so "Create"
  * stays right for that case.
  */
-export function defaultVaultOption(presence: VaultPresence, display: string = DEFAULT_VAULT_DISPLAY): VaultOption {
+export function defaultVaultOption(
+  presence: VaultPresence,
+  display: string = DEFAULT_VAULT_DISPLAY,
+  w: WizardWords = EN
+): VaultOption {
   if (!presence.exists || presence.memoryCount === 0) {
-    return { label: `Create ${display}`, hint: "recommended" };
+    return { label: w.createVault(display), hint: w.recommended };
   }
-  return { label: `Use ${display}`, hint: `${memoryCountPhrase(presence.memoryCount)} already there` };
+  return { label: w.useVault(display), hint: w.alreadyThere(memoryCountPhrase(presence.memoryCount, w)) };
 }
 
 /** `~`/relative → absolute, for the custom-vault text input. Exported for tests. */
@@ -221,30 +235,26 @@ function bailed(value: unknown): value is symbol {
   return p.isCancel(value);
 }
 
-const CANCEL_MSG = "Setup cancelled — nothing was changed.";
-
 /**
  * The vault-map question — pure, exported for tests. The preselection is the
  * map's current state: a fresh macOS install starts on (the web UI is bound to
  * the vault owner's account there), elsewhere off, and a stored choice is kept
  * when the user just presses Enter.
  */
-export function vaultMapQuestion(url: string, currentlyOn: boolean, accountBound: boolean) {
-  const enableLater = "enable later: bastra config set ui.enabled true";
+export function vaultMapQuestion(url: string, currentlyOn: boolean, accountBound: boolean, w: WizardWords = EN) {
+  const enableLater = w.mapEnableLater;
   return {
-    message: `Enable the vault map? (interactive graph of your memory at ${url} — local only)`,
+    message: w.map(url),
     options: [
       {
         value: "on",
-        label: "On — serve the map on /ui",
-        ...(accountBound ? { hint: "only your user account can open it" } : {}),
+        label: w.mapOn,
+        ...(accountBound ? { hint: w.mapOnHint } : {}),
       },
       {
         value: "off",
-        label: "Off",
-        hint: accountBound
-          ? enableLater
-          : `the binding to your user account exists only on macOS so far — ${enableLater}`,
+        label: w.off,
+        hint: accountBound ? enableLater : w.mapNotBound(enableLater),
       },
     ],
     initialValue: currentlyOn ? "on" : "off",
@@ -258,17 +268,13 @@ export function vaultMapQuestion(url: string, currentlyOn: boolean, accountBound
  */
 export function vaultMapOutcomeLine(
   daemon: DaemonStartOutcome,
-  url: string
+  url: string,
+  w: WizardWords = EN
 ): { level: "success" | "warn"; text: string } {
   if (daemon.ok) {
-    return { level: "success", text: `Vault map: ${url} (read per request — no restart needed)` };
+    return { level: "success", text: w.mapReady(url) };
   }
-  return {
-    level: "warn",
-    text:
-      `Vault map: enabled, but the daemon did not start (${daemon.detail}).\n` +
-      `The map needs it — open it later with: bastra map`,
-  };
+  return { level: "warn", text: w.mapNoDaemon(daemon.detail) };
 }
 
 /** Injectable for tests only — the real ones write settings and start a daemon. */
@@ -289,7 +295,8 @@ export interface VaultMapStepIO {
  */
 export async function vaultMapSetupStep(
   opts: { vaultPath?: string; onStarting?: () => void } = {},
-  io: Partial<VaultMapStepIO> = {}
+  io: Partial<VaultMapStepIO> = {},
+  w: WizardWords = EN
 ): Promise<{ level: "success" | "warn"; text: string }> {
   // Only an off map is switched on: a map that is on by default stays a default.
   const enableMap =
@@ -302,28 +309,38 @@ export async function vaultMapSetupStep(
 
   await enableMap();
   const daemon = await ensureDaemon({ vaultPath: opts.vaultPath, onStarting: opts.onStarting });
-  return vaultMapOutcomeLine(daemon, url());
+  return vaultMapOutcomeLine(daemon, url(), w);
 }
 
 /** Applies the vault-map answer. Off is stored only where the map is on (by
  *  default or by an earlier choice); On goes through the setup step. */
-async function applyVaultMapChoice(on: boolean, wasOn: boolean, vaultPath: string | undefined): Promise<void> {
+async function applyVaultMapChoice(
+  on: boolean,
+  wasOn: boolean,
+  vaultPath: string | undefined,
+  w: WizardWords
+): Promise<void> {
   if (!on) {
     if (!wasOn) return;
     await setUiEnabled(false);
-    p.log.info("Vault map: off — enable later: bastra config set ui.enabled true");
+    p.log.info(w.mapOff);
     return;
   }
-  const line = await vaultMapSetupStep({
-    vaultPath,
-    onStarting: () => p.log.step("Starting the daemon so the vault map is reachable…"),
-  });
+  const line = await vaultMapSetupStep({ vaultPath, onStarting: () => p.log.step(w.mapStarting) }, {}, w);
   if (line.level === "success") p.log.success(line.text);
   else p.log.warn(line.text);
 }
 
 export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   p.intro(`bastra-recall ${VERSION} — guided setup`);
+
+  // ── 0. language (#1602) — asked only while none is stored ─────────────────
+  const language = await askSetupLanguage();
+  if (bailed(language)) {
+    p.cancel(EN.cancel);
+    return 1;
+  }
+  const w = wizardWords(language.language);
 
   // ── 1. vault ──────────────────────────────────────────────────────────────
   // Same resolution order as every other path: --vault flag > env > detected
@@ -336,68 +353,66 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   const preResolved = await resolveVault({ dryRun: false, vaultPath: args.vaultPath });
   if ("path" in preResolved) {
     vaultPath = preResolved.path;
-    p.log.info(`Memory vault: ${vaultPath} (already configured)`);
+    p.log.info(w.vaultConfigured(vaultPath));
   } else {
     // Look before offering to create it (#318): an existing vault gets named,
     // never re-offered as a fresh folder.
     vaultPresence = await probeVaultPresence(defaultVaultPath());
     const where = await p.select({
-      message: "Where should your memories live? (plain markdown files you can read and back up)",
+      message: w.vaultWhere,
       options: [
-        { value: "default", ...defaultVaultOption(vaultPresence) },
-        { value: "custom", label: "Pick a custom folder…" },
+        { value: "default", ...defaultVaultOption(vaultPresence, DEFAULT_VAULT_DISPLAY, w) },
+        { value: "custom", label: w.vaultCustom },
       ],
       initialValue: "default",
     });
     if (bailed(where)) {
-      p.cancel(CANCEL_MSG);
+      p.cancel(w.cancel);
       return 1;
     }
     if (where === "default") {
       vaultPath = defaultVaultPath();
     } else {
       const custom = await p.text({
-        message: "Vault folder (created if missing)",
+        message: w.vaultFolder,
         placeholder: DEFAULT_VAULT_DISPLAY,
-        validate: (v) => (v && v.trim().length > 0 ? undefined : "enter a folder path"),
+        validate: (v) => (v && v.trim().length > 0 ? undefined : w.vaultFolderNeeded),
       });
       if (bailed(custom)) {
-        p.cancel(CANCEL_MSG);
+        p.cancel(w.cancel);
         return 1;
       }
       vaultPath = expandUserPath(custom);
       // Echo the expanded absolute path NOW — a typo ('~/Documets/…') or a
       // CWD-relative surprise must be visible before anything acts on it
       // (Ctrl-C on the next question still aborts with nothing written).
-      p.log.info(`Vault folder: ${vaultPath}`);
+      p.log.info(w.vaultFolderIs(vaultPath));
       // A typed path deserves the same honesty as the default one (#318).
       vaultPresence = await probeVaultPresence(vaultPath);
       if (vaultPresence.memoryCount > 0) {
-        p.log.info(
-          `${memoryCountPhrase(vaultPresence.memoryCount)} already there — they stay, nothing is overwritten.`
-        );
+        p.log.info(w.vaultKept(memoryCountPhrase(vaultPresence.memoryCount, w)));
       }
     }
     vaultNeedsCreate = true;
   }
 
   // ── 2. clients ────────────────────────────────────────────────────────────
-  const { options, initialValues } = buildSurfaceChoices(detectSurfaces());
+  const { options, initialValues } = buildSurfaceChoices(detectSurfaces(), w);
   const chosen = await p.multiselect({
-    message: "Which AI clients should get the memory tool? (space to toggle, enter to confirm)",
+    message: w.clients,
     options,
     initialValues,
     required: true,
   });
   if (bailed(chosen)) {
-    p.cancel(CANCEL_MSG);
+    p.cancel(w.cancel);
     return 1;
   }
 
   // Independent, explicit account-wide messaging consent; all writes wait until execute.
-  const chatConsent = (chosen as string[]).includes("claude-code") ? await askTaskChatConsent() : undefined;
+  const chatConsent = await askTaskChatConsent({}, language.language, (chosen as string[]).includes("claude-code"));
   if (typeof chatConsent === "symbol") {
-    p.cancel(CANCEL_MSG);
+    p.cancel(w.cancel);
     return 1;
   }
 
@@ -409,19 +424,21 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   const hookSurfaces = (chosen as string[]).filter((surface) => surface === "claude-code" || surface === "codex");
   if (hookSurfaces.length > 0) {
     const hookAns = await p.select({
-      message: `Stop-hook for ${hookSurfaces.map((surface) => (surface === "codex" ? "Codex/ChatGPT" : "Claude Code")).join(" + ")}? (at the end of a turn, suggests what's worth saving to memory)`,
+      message: w.stopHook(
+        hookSurfaces.map((surface) => (surface === "codex" ? "Codex/ChatGPT" : "Claude Code")).join(" + ")
+      ),
       options: [
         {
           value: "on",
-          label: "Enable — recommended",
-          hint: "silently writes save-suggestions to a file; no chat noise",
+          label: w.stopHookOn,
+          hint: w.stopHookOnHint,
         },
-        { value: "off", label: "Off", hint: `enable later: bastra install ${hookSurfaces[0]} --with-stop-hook` },
+        { value: "off", label: w.off, hint: w.stopHookOffHint(hookSurfaces[0]) },
       ],
       initialValue: "on",
     });
     if (bailed(hookAns)) {
-      p.cancel(CANCEL_MSG);
+      p.cancel(w.cancel);
       return 1;
     }
     stopHook = hookAns === "on";
@@ -448,30 +465,26 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
     daemonSemanticOn: daemonOn,
   });
   if (semantic === "already") {
-    p.log.info(
-      choice.provider !== "none"
-        ? `Semantic recall: already configured (${choice.provider}, source: ${choice.source})`
-        : "Semantic recall: already ON in the running daemon"
-    );
+    p.log.info(choice.provider !== "none" ? w.semanticConfigured(choice.provider, choice.source) : w.semanticDaemon);
   } else if (semantic === "ask") {
     const answer = await p.select({
-      message: "Semantic recall? (multilingual vector search on top of keyword search)",
+      message: w.semantic,
       options: [
         {
           value: "on",
-          label: "Enable — best recall quality",
-          hint: "downloads the embeddinggemma model (~620 MB) via Ollama, installed with Homebrew if missing",
+          label: w.semanticOn,
+          hint: w.semanticOnHint,
         },
         {
           value: "later",
-          label: "Not now — keyword search only (BM25)",
-          hint: "enable anytime: bastra embeddings on",
+          label: w.semanticLater,
+          hint: w.semanticLaterHint,
         },
       ],
       initialValue: "on",
     });
     if (bailed(answer)) {
-      p.cancel(CANCEL_MSG);
+      p.cancel(w.cancel);
       return 1;
     }
     semantic = answer as "on" | "later";
@@ -496,14 +509,14 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
     }
   }
   if (offerTextModel) {
-    const choices = buildTextModelChoices(detectHardware().ramGB);
+    const choices = buildTextModelChoices(detectHardware().ramGB, w);
     if (choices) {
       const ans = await p.select({
-        message: "Text model for memory rewriting (doc2query + rerank)?",
+        message: w.textModel,
         ...choices,
       });
       if (bailed(ans)) {
-        p.cancel(CANCEL_MSG);
+        p.cancel(w.cancel);
         return 1;
       }
       textModel = (ans as string) || null;
@@ -516,15 +529,15 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   let commonsOn = false;
   {
     const ans = await p.select({
-      message: "Bastra Commons? (community-curated engineering recipes, folded into recall read-only)",
+      message: w.commons,
       options: [
-        { value: "off", label: "Not now", hint: "enable anytime: bastra commons enable" },
-        { value: "on", label: "Enable", hint: "clones a public recipe repo (read-only); nothing of yours is shared" },
+        { value: "off", label: w.notNow, hint: w.commonsLaterHint },
+        { value: "on", label: w.enable, hint: w.commonsOnHint },
       ],
       initialValue: "off",
     });
     if (bailed(ans)) {
-      p.cancel(CANCEL_MSG);
+      p.cancel(w.cancel);
       return 1;
     }
     commonsOn = ans === "on";
@@ -537,19 +550,15 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   let bridgesOn = false;
   if (commonsOn) {
     const ans = await p.select({
-      message: "Shared learned-recall bridges? (widen recall with a community vocabulary pool from Commons)",
+      message: w.bridges,
       options: [
-        { value: "off", label: "Not now", hint: "enable anytime: bastra bridges enable" },
-        {
-          value: "on",
-          label: "Enable",
-          hint: "loads shared bridges read-only; sharing your own is separate & PR-gated",
-        },
+        { value: "off", label: w.notNow, hint: w.bridgesLaterHint },
+        { value: "on", label: w.enable, hint: w.bridgesOnHint },
       ],
       initialValue: "off",
     });
     if (bailed(ans)) {
-      p.cancel(CANCEL_MSG);
+      p.cancel(w.cancel);
       return 1;
     }
     bridgesOn = ans === "on";
@@ -559,16 +568,16 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   let updateMode: UpdateMode = DEFAULT_UPDATE_MODE;
   {
     const ans = await p.select({
-      message: "Auto-update behavior?",
+      message: w.update,
       options: [
-        { value: "notify", label: "Notify me when an update is available", hint: "recommended" },
-        { value: "auto", label: "Auto — install updates in the background" },
-        { value: "off", label: "Off — never check" },
+        { value: "notify", label: w.updateNotify, hint: w.recommended },
+        { value: "auto", label: w.updateAuto },
+        { value: "off", label: w.updateOff },
       ],
       initialValue: DEFAULT_UPDATE_MODE,
     });
     if (bailed(ans)) {
-      p.cancel(CANCEL_MSG);
+      p.cancel(w.cancel);
       return 1;
     }
     updateMode = ans as UpdateMode;
@@ -578,16 +587,16 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   let docsMode: DocsMode = DEFAULT_DOCS_MODE;
   {
     const ans = await p.select({
-      message: "Auto-capture product docs? (keep a user-facing doc current when a feature area is finished)",
+      message: w.docs,
       options: [
-        { value: "off", label: "Off", hint: "recommended to start" },
-        { value: "suggest", label: "Suggest — propose the doc, you confirm" },
-        { value: "auto", label: "Auto — write docs without asking" },
+        { value: "off", label: w.off, hint: w.docsOffHint },
+        { value: "suggest", label: w.docsSuggest },
+        { value: "auto", label: w.docsAuto },
       ],
       initialValue: DEFAULT_DOCS_MODE,
     });
     if (bailed(ans)) {
-      p.cancel(CANCEL_MSG);
+      p.cancel(w.cancel);
       return 1;
     }
     docsMode = ans as DocsMode;
@@ -597,9 +606,9 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   const uiBefore = await getUiEnabled();
   let uiOn = uiBefore;
   {
-    const ans = await p.select(vaultMapQuestion(mapUrl(), uiBefore, webUiOnByDefault()));
+    const ans = await p.select(vaultMapQuestion(mapUrl(), uiBefore, webUiOnByDefault(), w));
     if (bailed(ans)) {
-      p.cancel(CANCEL_MSG);
+      p.cancel(w.cancel);
       return 1;
     }
     uiOn = ans === "on";
@@ -618,30 +627,31 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   let installCli = false;
   if (cliVerdict === "offer") {
     const ans = await p.select({
-      message: "Install the 'bastra' command? (this run came from the npx cache — nothing is on your PATH yet)",
+      message: w.cli,
       options: [
         {
           value: "on",
-          label: `Yes — npm install -g ${CLI_PACKAGE}@${VERSION}`,
-          hint: "recommended: doctor, map, import and onboard are all 'bastra …' commands",
+          label: w.cliYes(`${CLI_PACKAGE}@${VERSION}`),
+          hint: w.cliYesHint,
         },
-        { value: "off", label: "No", hint: `run them with: npx ${CLI_PACKAGE} <command>` },
+        { value: "off", label: w.no, hint: w.cliNoHint(CLI_PACKAGE) },
       ],
       initialValue: "on",
     });
     if (bailed(ans)) {
-      p.cancel(CANCEL_MSG);
+      p.cancel(w.cancel);
       return 1;
     }
     installCli = ans === "on";
   }
 
   // ── execute ───────────────────────────────────────────────────────────────
+  await saveSetupLanguage(language);
   if (vaultNeedsCreate) {
     const created = await createVaultAt(vaultPath!);
     if ("error" in created) {
-      p.log.error(`Could not create ${vaultPath}: ${created.error}`);
-      p.outro("Setup failed — nothing else was changed.");
+      p.log.error(w.vaultFailed(vaultPath!, created.error));
+      p.outro(w.setupFailed);
       return 1;
     }
     // createVaultAt is idempotent, so this line also runs over a vault that was
@@ -649,8 +659,8 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
     // about, one step later. Report what actually happened.
     p.log.success(
       vaultPresence.memoryCount > 0
-        ? `Vault: ${created.path} (${memoryCountPhrase(vaultPresence.memoryCount)} already there — nothing overwritten)`
-        : `Vault created: ${created.path}`
+        ? w.vaultUsed(created.path, memoryCountPhrase(vaultPresence.memoryCount, w))
+        : w.vaultCreated(created.path)
     );
   }
 
@@ -677,22 +687,22 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
         }
       );
       useStub = stub.useStub;
-      if (stub.status === "failed") p.log.warn(`hook client: ${stub.detail}`);
-      else p.log.info(`hook client: ${stub.detail}`);
+      if (stub.status === "failed") p.log.warn(w.hookClient(stub.detail));
+      else p.log.info(w.hookClient(stub.detail));
     } catch (err) {
       if (err !== CANCELLED) throw err;
-      p.cancel(CANCEL_MSG);
+      p.cancel(w.cancel);
       return 1;
     }
   }
 
   const results: { surface: string; r: InstallResult }[] = [];
   const s = p.spinner();
-  s.start("Registering the memory tool…");
+  s.start(w.registering);
   let hadError = false;
   for (const surface of surfaces) {
     const adapter = ADAPTERS[surface];
-    s.message(`Registering ${adapter.description}…`);
+    s.message(w.registeringOne(adapter.description));
     try {
       const r = await adapter.install({
         dryRun: false,
@@ -709,9 +719,9 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
       hadError = true;
     }
   }
-  s.stop(hadError ? "Registration finished with errors" : "Clients registered");
+  s.stop(hadError ? w.registeredWithErrors : w.registered);
   for (const { surface, r } of results) {
-    const line = `${surface}: ${r.message}${r.backupPath ? ` (backup: ${r.backupPath})` : ""}`;
+    const line = `${surface}: ${r.message}${r.backupPath ? w.backup(r.backupPath) : ""}`;
     if (r.status === "error") p.log.error(line);
     else p.log.success(line);
   }
@@ -721,13 +731,13 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
     // Same contract as the classic path: semantic recall runs only at the end
     // of a SUCCESSFUL install — never bolt a ~620 MB download onto a failure.
     if (semantic === "on") {
-      p.log.warn("Skipping semantic recall setup (registration failed) — after fixing, run: bastra embeddings on");
+      p.log.warn(w.semanticSkipped);
     }
-    p.outro(`Finished with errors — fix the issue, then re-run: bastra install (log lines above)`);
+    p.outro(w.finishedWithErrors);
     return 1;
   }
 
-  if (typeof chatConsent === "boolean") p.log.info(await finishTaskChatConsent(chatConsent));
+  if (typeof chatConsent === "boolean") p.log.info(await finishTaskChatConsent(chatConsent, {}, language.language));
 
   // Tracks whether recall is actually usable before we bolt a text-model download
   // on top. Only the fresh-enable path can fail here; "already"/"later" start true.
@@ -735,17 +745,17 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   if (semantic === "on") {
     // No spinner here on purpose: brew/ollama stream their own progress to
     // stdout (a ~620 MB download deserves a real progress bar, not a spinner).
-    p.log.step("Setting up semantic recall — Ollama + embeddinggemma model (~620 MB)…");
+    p.log.step(w.semanticSetup);
     const r = await enableSemanticRecall({ dryRun: false });
     if (r.status === "error" || r.status === "unsupported") {
-      p.log.warn(`${r.message}\nSetting saved — finish setup, then re-run: bastra embeddings on`);
+      p.log.warn(w.semanticSaved(r.message));
     } else if (r.activated) {
       semanticOk = true;
-      p.log.success(`Semantic recall: ${r.message}`);
+      p.log.success(w.semanticResult(r.message));
     } else {
       // e.g. "env-override": nothing was provisioned — a green success here
       // would misreport a state where recall stays keyword-only.
-      p.log.warn(`Semantic recall: ${r.message}`);
+      p.log.warn(w.semanticResult(r.message));
     }
   } else if (semantic === "later") {
     p.log.info(RECALL_OFF_NOTE);
@@ -756,21 +766,21 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   // embedding-model pull failed — recall is then broken, so a multi-GB text-model
   // download would be dead weight. The "already" path was gated up front.
   if (textModel && semanticOk) {
-    p.log.step(`Pulling the text model ${textModel}…`);
+    p.log.step(w.pulling(textModel));
     const gr = await enableGenerationModel(textModel, { dryRun: false });
-    if (gr.activated) p.log.success(`Text model: ${gr.message}`);
-    else p.log.warn(`Text model: ${gr.message}\nAdd it later: bastra models set ${textModel}`);
+    if (gr.activated) p.log.success(w.textModelResult(gr.message));
+    else p.log.warn(w.textModelLater(gr.message, textModel));
   }
 
   // Bastra Commons — clone + enable (read-only recall enrichment). cmdCommons
   // streams git progress to stdout (like the ollama pull above), so no spinner.
   let commonsOk = false;
   if (commonsOn) {
-    p.log.step("Enabling Bastra Commons — cloning the community recipe repo…");
+    p.log.step(w.commonsCloning);
     const rc = await cmdCommons({ sub: "enable" });
     commonsOk = rc === 0;
-    if (commonsOk) p.log.success("Bastra Commons: enabled (restart the daemon to load it)");
-    else p.log.warn("Bastra Commons: could not enable — try later: bastra commons enable");
+    if (commonsOk) p.log.success(w.commonsOn);
+    else p.log.warn(w.commonsFailed);
   }
 
   // Shared learned-recall bridges — a settings toggle only (the pool lives IN the
@@ -778,24 +788,22 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   // report shared-recall ON with an empty pool and the state would misrepresent disk.
   if (bridgesOn && commonsOk) {
     await setSharedRecallEnabled(true);
-    p.log.success("Shared learned-recall: enabled (restart the daemon to load the bridge pool)");
+    p.log.success(w.bridgesOn);
   } else if (bridgesOn) {
-    p.log.warn(
-      "Shared learned-recall: skipped (Commons couldn't be enabled) — after fixing: bastra commons enable && bastra bridges enable"
-    );
+    p.log.warn(w.bridgesSkipped);
   }
 
   // Auto-update + product-doc capture: plain settings writes, applied on next boot.
   // Only persist a non-default choice (a default pick needs no file change).
   if (updateMode !== DEFAULT_UPDATE_MODE) {
     await setUpdateMode(updateMode);
-    p.log.success(`Auto-update: ${updateMode}`);
+    p.log.success(w.updateSaved(updateMode));
   }
   if (docsMode !== DEFAULT_DOCS_MODE) {
     await setDocsMode(docsMode);
-    p.log.success(`Product-doc capture: ${docsMode}`);
+    p.log.success(w.docsSaved(docsMode));
   }
-  await applyVaultMapChoice(uiOn, uiBefore, vaultPath ?? undefined);
+  await applyVaultMapChoice(uiOn, uiBefore, vaultPath ?? undefined, w);
 
   // The CLI itself (#317) — last, because its absence is the one thing the user
   // would otherwise discover only after the setup declared success. Runs solely
@@ -803,7 +811,7 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   // and so does a failed npm install.
   if (cliVerdict === "offer") {
     if (installCli) {
-      p.log.step(`Installing the 'bastra' command — npm install -g ${CLI_PACKAGE}@${VERSION}…`);
+      p.log.step(w.cliInstalling(`${CLI_PACKAGE}@${VERSION}`));
       const line = formatGlobalInstallOutcome(installCliGlobally());
       if (line.level === "success") p.log.success(line.text);
       else p.log.warn(line.text);
@@ -812,6 +820,6 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
     }
   }
 
-  p.outro(`Done. Restart ${restart} to pick up the memory tool.`);
+  p.outro(w.done(restart));
   return 0;
 }

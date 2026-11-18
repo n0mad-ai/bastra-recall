@@ -22,6 +22,7 @@ import {
 import { patchAssistantHosts, managedAssistantHostsName } from "./assistant-address-files.js";
 import { getAssistantName, setAssistantName } from "./assistant-address-settings.js";
 import { AssistantAddressError } from "./assistant-address-name.js";
+import { addressWords, withAddressLanguage } from "./assistant-address-words.js";
 import {
   renderAssistantSocketPair,
   runMacAddressAdmin,
@@ -83,8 +84,11 @@ export function assistantAddressFor(value: string, options: AssistantAddressOpti
 class AddressIntentError extends Error {}
 class AddressPendingError extends AssistantAddressError {}
 class AddressSettingsConflictError extends AssistantAddressError {
-  constructor(readonly settled: boolean) {
-    super("settings_conflict", "Einstellung während Systemfreigabe geändert.");
+  constructor(
+    readonly settled: boolean,
+    language: string | undefined
+  ) {
+    super("settings_conflict", addressWords(language).settingsConflict);
   }
 }
 
@@ -131,9 +135,9 @@ function validatePending(o: ReturnType<typeof assistantAddressOptions>, p: Pendi
           (profileAllowed(join(dirname(e.path), "user.js"), o.firefoxRoot) && e.path.endsWith(sep + "prefs.js"))
       )
     )
-      throw new AddressIntentError("Adress-Abgleich beschädigt; keine Systemänderung wiederholen.");
+      throw new AddressIntentError(addressWords(o.language).intentDamaged);
   } catch {
-    throw new AddressIntentError("Adress-Abgleich beschädigt; keine Systemänderung wiederholen.");
+    throw new AddressIntentError(addressWords(o.language).intentDamaged);
   }
 }
 async function captureRecovery(o: ReturnType<typeof assistantAddressOptions>) {
@@ -143,8 +147,7 @@ async function captureRecovery(o: ReturnType<typeof assistantAddressOptions>) {
   validatePending(o, p);
   if (p.recoveryOf) {
     validatePending(o, p.recoveryOf.intent);
-    if (p.recoveryOf.intent.recoveryOf)
-      throw new AddressIntentError("Verschachtelter Wiederherstellungsauftrag beschädigt.");
+    if (p.recoveryOf.intent.recoveryOf) throw new AddressIntentError(addressWords(o.language).nestedRecoveryDamaged);
     return p.recoveryOf;
   }
   return { intent: p, receipt: await optional(receiptPath(o, p.id)) };
@@ -156,7 +159,7 @@ async function discardAttempt(o: ReturnType<typeof assistantAddressOptions>, p: 
   }
   const origin = p.recoveryOf;
   validatePending(o, origin.intent);
-  if (origin.intent.recoveryOf) throw new AddressIntentError("Verschachtelter Wiederherstellungsauftrag beschädigt.");
+  if (origin.intent.recoveryOf) throw new AddressIntentError(addressWords(o.language).nestedRecoveryDamaged);
   if (origin.receipt !== null) await atomic(receiptPath(o, origin.intent.id), origin.receipt);
   await atomic(pendingPath(o), JSON.stringify(origin.intent) + "\n");
   await rm(receiptPath(o, p.id), { force: true });
@@ -171,12 +174,11 @@ async function finishIntent(o: ReturnType<typeof assistantAddressOptions>, p: Pe
   await forgetPending(o, p);
 }
 async function partialDescription(o: ReturnType<typeof assistantAddressOptions>) {
-  const loaded = await assistantHelperLoaded(o);
-  if (loaded === false)
-    return "Helfer derzeit nicht geladen; Dateien oder lokaler Zustand noch nicht vollständig abgeglichen.";
-  if (loaded === true)
-    return "Helfer derzeit geladen; Dateien oder lokaler Zustand noch nicht vollständig abgeglichen.";
-  return "Aktueller Dienstzustand unbekannt; Dateien oder lokaler Zustand noch nicht vollständig abgeglichen.";
+  const loaded = await assistantHelperLoaded(o),
+    w = addressWords(o.language);
+  if (loaded === false) return w.partialHelperUnloaded;
+  if (loaded === true) return w.partialHelperLoaded;
+  return w.partialHelperUnknown;
 }
 async function replacePending(o: ReturnType<typeof assistantAddressOptions>, p: PendingAddress) {
   const raw = await optional(pendingPath(o)),
@@ -226,7 +228,7 @@ async function reconcileAssistantAddress(
   ) {
     if (settled && loaded !== null && loaded !== (p.name !== null)) return "partial";
     const current = await getAssistantName(o.settingsPath);
-    if (current !== p.previousName && current !== p.name) throw new AddressSettingsConflictError(settled);
+    if (current !== p.previousName && current !== p.name) throw new AddressSettingsConflictError(settled, o.language);
     await requireFirefoxClosed(o, p.profiles);
     // Recovery is idempotent if the process died between individual user writes.
     const edits = [];
@@ -278,15 +280,12 @@ async function changeAssistantNameUnlocked(
   recovering = false
 ): Promise<void> {
   const o = assistantAddressOptions(options),
-    name = requireAssistantAddress(value, machineNames(o)),
+    name = requireAssistantAddress(value, machineNames(o), o.language),
     before = await getAssistantName(o.settingsPath);
   patchAssistantHosts((await optional(o.hostsPath)) ?? "", name, o.uid); // check conflicts before saving
   if (recovering || (before !== name && (await hasSystem(o)))) {
     if (!o.systemConsent)
-      throw new AssistantAddressError(
-        "system_consent_required",
-        "Systemänderung braucht Zustimmung (system consent); bastra address setup <name> --yes"
-      );
+      throw new AssistantAddressError("system_consent_required", addressWords(o.language).changeNeedsConsent);
     await setupAssistantAddressUnlocked({ ...o, name } as AssistantAddressOptions & { name: string });
     return;
   }
@@ -294,19 +293,13 @@ async function changeAssistantNameUnlocked(
 }
 async function setupAssistantAddressUnlocked(options: AssistantAddressOptions & { name?: string } = {}) {
   const o = assistantAddressOptions(options),
+    w = addressWords(o.language),
     name =
       options.name === undefined
-        ? normalizeAssistantName((await getAssistantName(o.settingsPath)) ?? "", machineNames(o))
-        : requireAssistantAddress(options.name, machineNames(o));
-  if (!o.systemConsent)
-    throw new AssistantAddressError(
-      "system_consent_required",
-      "Systemeinrichtung braucht ausdrückliche Zustimmung (system consent)"
-    );
-  if (o.platform !== "darwin")
-    throw new Error(
-      "Automatische Systemeinrichtung ist nur auf macOS verfügbar; hosts/Port-80-Freigabe unter Windows/Linux durch den Administrator einrichten."
-    );
+        ? normalizeAssistantName((await getAssistantName(o.settingsPath)) ?? "", machineNames(o), o.language)
+        : requireAssistantAddress(options.name, machineNames(o), o.language);
+  if (!o.systemConsent) throw new AssistantAddressError("system_consent_required", w.setupNeedsConsent);
+  if (o.platform !== "darwin") throw new Error(w.macOnly);
   const hostsBefore = await optional(o.hostsPath);
   if (hostsBefore === null) throw new Error("hosts file missing");
   const hostsAfter = patchAssistantHosts(hostsBefore, name, o.uid),
@@ -360,6 +353,7 @@ async function setupAssistantAddressUnlocked(options: AssistantAddressOptions & 
   try {
     await (o.runAdmin ?? runMacAddressAdmin)({
       ...plan,
+      language: o.language,
       onStarted: async (pid) => {
         pending.adminPid = pid;
         await atomic(pendingPath(o), JSON.stringify(pending) + "\n");
@@ -372,25 +366,15 @@ async function setupAssistantAddressUnlocked(options: AssistantAddressOptions & 
     if (result === "none")
       throw new Error(
         cancelled
-          ? "Systemeinrichtung abgebrochen, nichts geändert."
+          ? w.setupCancelled
           : pending.helperLoadedBefore === false && helperBefore !== null
-            ? "Einrichtung fehlgeschlagen; Helfer war bereits entladen und ist weiterhin nicht geladen. Dateien unverändert."
-            : "Systemeinrichtung fehlgeschlagen, nichts geändert."
+            ? w.setupFailedHelperUnloaded
+            : w.setupFailed
       );
     if (result === "partial")
-      throw new Error(
-        cancelled
-          ? "Systemeinrichtung abgebrochen; bestehender Teilzustand bleibt erhalten."
-          : `Einrichtung nur teilweise ausgeführt: ${await partialDescription(o)} bastra address setup ${name} --yes stellt die Adresse wieder her; bastra address remove --yes setzt das Entfernen fort.`
-      );
-    if (result === "completed")
-      return {
-        browserOpened: false,
-        warning: "Admin-Rückmeldung fehlte; tatsächliche Systemeinrichtung geprüft und übernommen.",
-      };
-    throw new Error(
-      "Systemeinrichtung nicht abschließend bestätigt, möglicherweise noch ausstehend. bastra address status prüft den tatsächlichen Zustand; Einrichtung nicht parallel wiederholen."
-    );
+      throw new Error(cancelled ? w.setupCancelledPartial : w.setupPartial(await partialDescription(o), name));
+    if (result === "completed") return { browserOpened: false, warning: w.adminAnswerMissing };
+    throw new Error(w.setupUnconfirmed);
   }
   try {
     await requireFirefoxClosed(o, profiles);
@@ -421,10 +405,7 @@ async function setupAssistantAddressUnlocked(options: AssistantAddressOptions & 
     } catch {
       rollbackError = true;
     }
-    if (rollbackError)
-      throw new Error(
-        "Einrichtung fehlgeschlagen; Rücknahme nicht vollständig bestätigt. bastra address status prüfen."
-      );
+    if (rollbackError) throw new Error(w.rollbackUnconfirmed);
     await discardAttempt(o, pending);
     throw error;
   }
@@ -447,6 +428,7 @@ async function cleanupAddressRuntime(o: ReturnType<typeof assistantAddressOption
 }
 async function removeAssistantAddressUnlocked(options: AssistantAddressOptions = {}): Promise<void> {
   const o = assistantAddressOptions(options),
+    w = addressWords(o.language),
     hostsBefore = (await optional(o.hostsPath)) ?? "",
     helperBefore = await optional(o.helperPath),
     profiles = await profileEdits(o, null);
@@ -456,12 +438,8 @@ async function removeAssistantAddressUnlocked(options: AssistantAddressOptions =
     ownedHelper = helperBefore?.includes(`<key>BASTRA_ASSISTANT_ADDRESS_OWNER</key><string>${o.uid}</string>`) ?? false;
   let pending: PendingAddress | undefined;
   if (hostsAfter !== hostsBefore || ownedHelper || companionBefore !== null) {
-    if (!o.systemConsent)
-      throw new AssistantAddressError(
-        "system_consent_required",
-        "Entfernen der Systemadresse braucht Zustimmung (system consent)"
-      );
-    if (o.platform !== "darwin") throw new Error("Systemadresse durch den Administrator entfernen");
+    if (!o.systemConsent) throw new AssistantAddressError("system_consent_required", w.removeNeedsConsent);
+    if (o.platform !== "darwin") throw new Error(w.removeByAdministrator);
     const plan: AddressAdminPlan = {
       hostsPath: o.hostsPath,
       hostsBefore,
@@ -498,6 +476,7 @@ async function removeAssistantAddressUnlocked(options: AssistantAddressOptions =
     try {
       await (o.runAdmin ?? runMacAddressAdmin)({
         ...plan,
+        language: o.language,
         onStarted: async (pid) => {
           pending!.adminPid = pid;
           await atomic(pendingPath(o), JSON.stringify(pending) + "\n");
@@ -507,14 +486,9 @@ async function removeAssistantAddressUnlocked(options: AssistantAddressOptions =
     } catch {
       const result = await reconcileAssistantAddress(o);
       if (result === "completed") return;
-      if (result === "partial")
-        throw new Error(
-          `Entfernen nur teilweise ausgeführt: ${await partialDescription(o)} bastra address setup <name> --yes stellt die Adresse wieder her.`
-        );
-      if (result === "none") throw new Error("Entfernen abgebrochen oder fehlgeschlagen, nichts geändert.");
-      throw new Error(
-        "Entfernen nicht abschließend bestätigt; bastra address status prüft den tatsächlichen Zustand. Nicht parallel wiederholen."
-      );
+      if (result === "partial") throw new Error(w.removePartial(await partialDescription(o)));
+      if (result === "none") throw new Error(w.removeFailed);
+      throw new Error(w.removeUnconfirmed);
     }
   }
   await applyProfiles(profiles);
@@ -532,6 +506,7 @@ async function removeAssistantAddressUnlocked(options: AssistantAddressOptions =
 }
 async function assistantAddressStatusUnlocked(options: AssistantAddressOptions = {}) {
   const o = assistantAddressOptions(options),
+    w = addressWords(o.language),
     name = await getAssistantName(o.settingsPath),
     enabled = (await readSettings(o.settingsPath)).ui?.enabled ?? SETTINGS_REGISTRY.ui.enabled.default;
   let registered: string | null = null,
@@ -565,18 +540,9 @@ async function assistantAddressStatusUnlocked(options: AssistantAddressOptions =
   if (helper && helperLoaded === false) listener = false;
   const helperProblem = helper && !listener && !error && (helperLoaded !== true || enabled);
   if (helperProblem)
-    error =
-      helperLoaded === false
-        ? "Adress-Helfer eingerichtet, aber nicht geladen."
-        : helperLoaded === true
-          ? "Adress-Helfer geladen, aber Adresse nicht erreichbar; Laufzeit prüfen."
-          : "Adress-Helfer eingerichtet; Ladezustand unbekannt und Adresse nicht erreichbar.";
-  const repair = error
-    ? `hosts zuerst sichern (Backup). Den veränderten Block zwischen den eigenen bastra-recall assistant-address-Markierungen prüfen; eigene Anpassungen außerhalb des Blocks bewahren. Nur den vollständigen eigenen Block als Administrator entfernen, dann bastra address setup ${name ?? "<name>"} --yes erneut ausführen. Keine fremden Zeilen löschen.`
-    : undefined;
-  const helperRepair = helperProblem
-    ? `Adress-Helfer mit bastra address setup ${name ?? "<name>"} --yes prüfen und erneut laden. Direkter UI-Zugang: ${o.daemonUrl}/ui/.`
-    : undefined;
+    error = helperLoaded === false ? w.helperNotLoaded : helperLoaded === true ? w.helperUnreachable : w.helperUnknown;
+  const repair = error ? w.hostsRepairStatus(name ?? "<name>") : undefined;
+  const helperRepair = helperProblem ? w.helperRepair(name ?? "<name>", o.daemonUrl) : undefined;
   return {
     repair: helperRepair ?? repair,
     helperLoaded,
@@ -590,8 +556,7 @@ async function assistantAddressStatusUnlocked(options: AssistantAddressOptions =
     error,
     systemSetupSupported: o.platform === "darwin",
     firefoxProfiles: (await profileEdits(o, null)).filter((p) => p.path.endsWith(sep + "user.js")).length,
-    bareNameNotice:
-      "Einzelne Wörter können je nach Browser als Suche gelten. Adresse einmal öffnen; Firefox nach Einrichtung neu starten. <name>/ oder <name>.localhost bleibt die eindeutige Eingabe.",
+    bareNameNotice: w.bareNameNotice,
   };
 }
 
@@ -666,16 +631,10 @@ async function addressOperation<T>(
         } else throw error;
       }
       if (result === "pending" && !allowPending)
-        throw new AddressPendingError(
-          "address_pending",
-          "Systemeinrichtung noch ausstehend; laufenden Dialog abwarten und bastra address status erneut prüfen."
-        );
+        throw new AddressPendingError("address_pending", addressWords(o.language).pendingSetup);
       if (result === "partial" && !allowPending) {
         if (!o.systemConsent && !(kind === "remove" && !(await addressRemovalNeedsConsent(o))))
-          throw new AddressPendingError(
-            "partial_needs_consent",
-            "Abgeschlossener Teilzustand: Wiederherstellen oder Entfernen braucht ausdrückliche Systemfreigabe."
-          );
+          throw new AddressPendingError("partial_needs_consent", addressWords(o.language).partialNeedsConsent);
         recovering = true; // keep the original marker until a replacement transaction succeeds
       }
       const value = await operation(recovering);
@@ -685,14 +644,17 @@ async function addressOperation<T>(
     { strictLocal: true, noQueue: allowPending }
   );
 }
-export function changeAssistantName(value: string, options: AssistantAddressOptions = {}): Promise<void> {
-  return addressOperation(options, (recovering) => changeAssistantNameUnlocked(value, options, recovering));
+export async function changeAssistantName(value: string, options: AssistantAddressOptions = {}): Promise<void> {
+  const o = await withAddressLanguage(options);
+  return addressOperation(o, (recovering) => changeAssistantNameUnlocked(value, o, recovering));
 }
-export function setupAssistantAddress(options: AssistantAddressOptions & { name?: string } = {}) {
-  return addressOperation(options, () => setupAssistantAddressUnlocked(options));
+export async function setupAssistantAddress(options: AssistantAddressOptions & { name?: string } = {}) {
+  const o = await withAddressLanguage(options);
+  return addressOperation(o, () => setupAssistantAddressUnlocked(o));
 }
-export function removeAssistantAddress(options: AssistantAddressOptions = {}): Promise<void> {
-  return addressOperation(options, () => removeAssistantAddressUnlocked(options), false, "remove");
+export async function removeAssistantAddress(options: AssistantAddressOptions = {}): Promise<void> {
+  const o = await withAddressLanguage(options);
+  return addressOperation(o, () => removeAssistantAddressUnlocked(o), false, "remove");
 }
 
 function addressRepair(
@@ -702,25 +664,22 @@ function addressRepair(
   cause?: unknown,
   kind?: "hosts" | "partial"
 ) {
-  const command = `bastra address setup ${name ?? "<name>"} --yes`;
-  if (cause instanceof PathLockUnavailableError || cause instanceof AddressPendingError)
-    return `Laufenden Vorgang zuerst beenden oder warten. Danach bastra address status erneut ausführen; keine hosts-Einträge ändern.`;
+  const command = `bastra address setup ${name ?? "<name>"} --yes`,
+    w = addressWords(o.language);
+  if (cause instanceof PathLockUnavailableError || cause instanceof AddressPendingError) return w.repairBusy;
   if (cause instanceof AddressSettingsConflictError)
-    return cause.settled
-      ? `Einstellung/Namen prüfen: bastra config get assistant.name. Danach den gewünschten Namen ausdrücklich mit ${command} bestätigen.`
-      : `Einstellung wurde geändert. Laufende Systemfreigabe erst abwarten; danach bastra address status erneut ausführen und den Namen prüfen.`;
+    return cause.settled ? w.repairSettingsSettled(command) : w.repairSettingsChanged;
 
-  if (/Firefox/i.test(error)) return `Firefox vollständig schließen; dann ${command} ausführen.`;
+  if (/Firefox/i.test(error)) return w.repairFirefox(command);
   if (cause instanceof SyntaxError || cause instanceof AddressIntentError)
-    return `Zuerst einen noch laufenden Admin-Dialog beenden und dessen Abschluss prüfen. Beschädigten Auftrag sichern: mv ${shellQuote(pendingPath(o))} ${shellQuote(pendingPath(o) + ".backup")}. Danach ${command} ausführen. hosts vorher sichern; keine fremden Einträge löschen.`;
-  if (kind === "hosts")
-    return `hosts zuerst sichern. Veränderten eigenen bastra-recall assistant-address-Block prüfen und nur diesen als Administrator entfernen; fremde Anpassungen bewahren. Dann ${command} ausführen.`;
-  if (kind === "partial")
-    return `Abgeschlossenen Teilzustand mit ${command} wiederherstellen oder mit bastra address remove --yes fortsetzen. Keine hosts-Einträge manuell löschen.`;
-  return `Fehlerursache prüfen und bastra address status erneut ausführen. Nach bestätigtem Abschluss kann ${command} die Adresse wiederherstellen; keine hosts-Einträge löschen.`;
+    return w.repairIntent(`mv ${shellQuote(pendingPath(o))} ${shellQuote(pendingPath(o) + ".backup")}`, command);
+  if (kind === "hosts") return w.repairHosts(command);
+  if (kind === "partial") return w.repairPartial(command);
+  return w.repairDefault(command);
 }
 export async function assistantAddressStatus(options: AssistantAddressOptions = {}) {
-  const o = assistantAddressOptions(options);
+  const o = assistantAddressOptions(await withAddressLanguage(options)),
+    w = addressWords(o.language);
   try {
     return await addressOperation(
       o,
@@ -728,7 +687,7 @@ export async function assistantAddressStatus(options: AssistantAddressOptions = 
         const s = await assistantAddressStatusUnlocked(o),
           pending = !!(await optional(pendingPath(o)));
         const partial = pending && (await reconcileAssistantAddress(o)) === "partial";
-        const error = partial ? `Teilzustand: ${await partialDescription(o)}` : s.error;
+        const error = partial ? w.partialState(await partialDescription(o)) : s.error;
         const raw = pending ? await optional(pendingPath(o)) : null;
         const pidUnknown = raw && addressAdminProcessAlive((JSON.parse(raw) as PendingAddress).adminPid) === null;
         let repair = error
@@ -736,12 +695,10 @@ export async function assistantAddressStatus(options: AssistantAddressOptions = 
             ? addressRepair(o, s.name, error, undefined, "partial")
             : (s.repair ?? addressRepair(o, s.name, error, undefined, "hosts"))
           : pending
-            ? `Admin-Einrichtung noch ausstehend. Laufenden Dialog zuerst beenden; bastra address status erneut prüfen. Erst nach bestätigtem Abschluss bastra address setup ${s.name ?? "<name>"} --yes ausführen.`
+            ? w.adminPending(s.name ?? "<name>")
             : s.repair;
         if (pending && !partial && pidUnknown)
-          repair =
-            "Admin-PID nicht gesichert; laufenden Dialog und tatsächlichen Abschluss zuerst prüfen. Automatische Freigabe ist ohne Prozessnachweis gesperrt; bastra address status erneut ausführen." +
-            (error ? ` Nach geklärtem Abschluss: ${repair}` : "");
+          repair = w.adminPidUnsecured + (error ? w.afterClarified(String(repair)) : "");
         return { ...s, pending, partial, error, repair };
       },
       true

@@ -12,6 +12,7 @@ import { notifyAssistantAddressDaemon, assistantAddressFor } from "../assistant-
 import { configureAssistantName } from "./address-cmd.js";
 import { getAssistantDisplayName, getAssistantName } from "../assistant-address-settings.js";
 import { assistantUrls } from "../assistant-address-name.js";
+import { addressLanguage, addressWords } from "../assistant-address-words.js";
 /**
  * `bastra config get|set <key> [value]` — settings access from the CLI.
  *
@@ -67,6 +68,7 @@ import { mapUrl } from "./map-cmd.js";
 import { archiveCap, archiveMaxItem, formatSize, parseRetain, parseSize, retainDays } from "../rm-archive.js";
 import { getPromptImpactEnabled, setPromptImpactEnabled } from "../code-graph/prompt-impact-settings.js";
 import { getCoverageMapEnabled, setCoverageMapEnabled } from "../code-graph/coverage-map-settings.js";
+import { usageWords } from "./usage-words.js";
 
 const configKeys = [
   ...settingEntries()
@@ -86,7 +88,7 @@ export async function cmdConfig(args: ParsedArgs): Promise<number> {
   const value = args.positional[3] ?? null;
 
   if (action !== "get" && action !== "set") {
-    process.stderr.write("usage: bastra config get <key> | bastra config set <key> <value>\n");
+    process.stderr.write((await usageWords()).config);
     process.stderr.write(`known keys: ${configKeys.join(", ")}\n`);
     return 2;
   }
@@ -105,10 +107,10 @@ async function assistantNameReport(value: string): Promise<string> {
   const derived = assistantAddressFor(value),
     name = await getAssistantName(),
     head = `✓ assistant.name = ${await getAssistantDisplayName()}\n`;
-  if (derived !== null)
-    return `${head}  ${assistantUrls(derived).local}\n  Einmalige Einrichtung: bastra address setup --yes\n`;
-  const current = name ? `es gilt weiter ${assistantUrls(name).local}` : "es ist keine Adresse eingerichtet";
-  return `${head}  Aus diesem Namen lässt sich keine Browser-Adresse bilden; ${current}.\n`;
+  const w = addressWords(await addressLanguage());
+  if (derived !== null) return `${head}  ${assistantUrls(derived).local}\n  ${w.oneTimeSetup}\n`;
+  const current = name ? w.stillApplies(assistantUrls(name).local) : w.noAddressSet;
+  return `${head}  ${w.noBrowserAddress(current)}\n`;
 }
 
 const out = (text: string) => process.stdout.write(text);

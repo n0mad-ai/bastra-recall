@@ -2,7 +2,7 @@
  * `--help` sections for installing bastra-recall into the AI clients and
  * running it: registration, health checks, the daemon and its settings,
  * models, tokens, updates and local patches. Part of the COMMAND_HELP catalog
- * assembled in help-text.ts.
+ * assembled in help-text.ts; the German sections are in help-text-setup-de.ts (#1602).
  */
 
 const SURFACE_ARG = `Surfaces:
@@ -14,17 +14,17 @@ const SURFACE_ARG = `Surfaces:
 `;
 
 export const SETUP_COMMAND_HELP: Record<string, string> = {
-  address: `bastra address — lokale Assistenten-Adresse
+  address: `bastra address — local assistant address
 Usage:
   bastra config set assistant.name Jarvis
   bastra address status [--json]
   bastra address setup [name] [--yes] [--dry-run]
   bastra address remove [--yes] [--dry-run]
-Auf macOS: einmalige Admin-Freigabe für eigenen Loopback-Port-80-Helfer und hosts.
-Node läuft als normaler Nutzer. Eigene Firefox-Pref für den Namen; Firefox vorher schließen und danach neu starten.
-Nach Einrichtung wird http://<name>/ einmal im Standardbrowser geöffnet.
-Pur <name> ist Such-/Verlaufsheuristik: <name>/ oder <name>.localhost ist eindeutig.
-Windows/Linux: Port-80-/hosts-Einrichtung durch Administrator; keine automatische Elevation.
+On macOS: one-time admin approval for bastra's own loopback port-80 helper and hosts.
+Node runs as a normal user. Its own Firefox pref for the name; close Firefox first and restart it afterwards.
+After setup, http://<name>/ opens once in the default browser.
+A bare <name> is up to the browser's search/history heuristics: <name>/ or <name>.localhost is unambiguous.
+Windows/Linux: port-80/hosts setup by an administrator; no automatic elevation.
 `,
 
   install: `bastra install — register bastra-recall with an AI client

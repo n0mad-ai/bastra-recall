@@ -39,6 +39,8 @@ export interface AssistantAddressOptions {
   openBrowser?: (url: string) => Promise<void>;
   runAdmin?: (plan: AddressAdminPlan) => Promise<void>;
   ensureRuntime?: () => Promise<void>;
+  /** language.primary for messages to people (#1602); the public lifecycle calls resolve it once. */
+  language?: string;
 }
 function lookupUsername(o: AssistantAddressOptions): string {
   try {

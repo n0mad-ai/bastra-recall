@@ -41,6 +41,7 @@ import {
   mutateSettings,
   normalizeCorsOrigin,
   readSettings,
+  peekSettings,
   settingsFilePath,
   type CliSettings,
   type DocsMode,
@@ -489,7 +490,7 @@ export async function setReflexEnabled(on: boolean, path: string = settingsFileP
 
 /** The stored primary authoring language (2-letter ISO code), or undefined when unset. */
 export async function getPrimaryLanguage(path?: string): Promise<string | undefined> {
-  return stored("language", "primary", path);
+  return (await peekSettings(path)).language?.primary;
 }
 
 /** Persists the primary authoring language, normalized to a lowercase 2-letter code. */

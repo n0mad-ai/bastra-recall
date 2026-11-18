@@ -10,6 +10,7 @@ import { rm } from "node:fs/promises";
 import { withPathLock } from "./path-lock.js";
 import { patchFirefoxUserJs, retiredFirefoxPreference } from "./assistant-address-files.js";
 import { assistantAddressOptions, atomic, optional, state } from "./assistant-address-options.js";
+import { addressWords } from "./assistant-address-words.js";
 
 type AddressState = Awaited<ReturnType<typeof state>>;
 
@@ -81,13 +82,10 @@ export async function requireFirefoxClosed(
         execFile("/usr/bin/pgrep", ["-ix", "firefox"], (error) => {
           if (!error) resolve(true);
           else if ((error as { code?: number | string }).code === 1) resolve(false);
-          else reject(new Error("Firefox-Status unbekannt; Firefox schließen und erneut versuchen."));
+          else reject(new Error(addressWords(o.language).firefoxUnknown));
         });
       });
-  if (running)
-    throw new Error(
-      "Firefox vor der Einrichtung oder Änderung schließen, damit eigene Browser-Einträge sicher entfernt werden können."
-    );
+  if (running) throw new Error(addressWords(o.language).firefoxOpen);
 }
 export async function applyProfiles(edits: Array<{ path: string; before: string | null; after: string }>) {
   for (const e of edits)

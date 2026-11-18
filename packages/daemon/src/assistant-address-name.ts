@@ -132,8 +132,12 @@ const RESERVED = new Set([
 const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 /** Strict check of an address name (an ASCII DNS label, A-labels `xn--…` included). Only such a label
  * reaches hosts, Firefox preferences and the gateway's Host check. */
-const NO_ADDRESS =
-  "Assistentenname: Aus diesem Namen lässt sich keine lokale Adresse bilden (Buchstaben oder Ziffern nötig, höchstens 63 Zeichen in Adressform, kein reservierter Name).";
+/** #1602: by language.primary, English when unset or unlisted. Display text only: callers decide on `invalid_name`. */
+const NO_ADDRESS: Readonly<{ en: string } & Record<string, string>> = {
+  en: "Assistant name: no local address can be formed from this name (letters or digits needed, at most 63 characters in address form, no reserved name).",
+  de: "Assistentenname: Aus diesem Namen lässt sich keine lokale Adresse bilden (Buchstaben oder Ziffern nötig, höchstens 63 Zeichen in Adressform, kein reservierter Name).",
+};
+const noAddress = (language?: string) => NO_ADDRESS[language ?? "en"] ?? NO_ADDRESS.en;
 /** Hyphens in positions 3 and 4 are reserved (RFC 5890 §2.3.1, RFC 5891 §4.2.3.1); only a valid A-label
  * may carry them: it decodes to a different label that encodes back to exactly itself. Checked by round
  * trip because Node versions disagree on invalid `xn--` labels: Ada before 4 (Node 22, early 24) maps them
@@ -144,7 +148,7 @@ function reservedLabel(name: string): boolean {
   const unicode = domainToUnicode(name);
   return unicode === name || domainToASCII(unicode) !== name;
 }
-export function normalizeAssistantName(value: string, machineNames: readonly string[] = []): string {
+export function normalizeAssistantName(value: string, machineNames: readonly string[] = [], language?: string): string {
   const name = value.trim().toLowerCase();
   if (
     !LABEL.test(name) ||
@@ -154,7 +158,7 @@ export function normalizeAssistantName(value: string, machineNames: readonly str
     reservedLabel(name) ||
     machineNames.some((host) => host.toLowerCase().replace(/\.$/, "").split(".")[0] === name)
   ) {
-    throw new AssistantAddressError("invalid_name", NO_ADDRESS);
+    throw new AssistantAddressError("invalid_name", noAddress(language));
   }
   return name;
 }
@@ -173,9 +177,13 @@ export function deriveAssistantAddress(value: string, machineNames: readonly str
   }
 }
 /** deriveAssistantAddress for a step that needs an address (setup): no address is an error there. */
-export function requireAssistantAddress(value: string, machineNames: readonly string[] = []): string {
+export function requireAssistantAddress(
+  value: string,
+  machineNames: readonly string[] = [],
+  language?: string
+): string {
   const name = deriveAssistantAddress(value, machineNames);
-  if (name === null) throw new AssistantAddressError("invalid_name", NO_ADDRESS);
+  if (name === null) throw new AssistantAddressError("invalid_name", noAddress(language));
   return name;
 }
 /** The form a person types and reads (xn--jrgen-kva → jürgen). */

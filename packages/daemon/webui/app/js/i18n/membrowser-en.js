@@ -122,6 +122,11 @@ export default {
   "mb.sens.public": "public",
   "mb.sens.team": "team",
   "mb.sens.private": "private",
+  "mb.ed.ruleGain":
+    "Note on rules: with this type or recall mode this memory becomes a rule (on demand). Agents then see it in their rule list and follow it when it applies.",
+  "mb.ed.ruleLoss":
+    "Note on rules: with this type or recall mode this memory is no longer a rule. Agents no longer see it in their rule list; it stays findable as a note.",
+  "mb.ed.saveConfirm": "SAVE ANYWAY",
   "mb.ed.save": "SAVE",
   "mb.ed.saving": "saving…",
   "mb.ed.cancel": "CANCEL",

@@ -38,6 +38,7 @@ import {
   type ModelOffer,
   type OfferOptions,
 } from "../model-recommendation.js";
+import { usageWords } from "./usage-words.js";
 
 function write(line: string): void {
   process.stdout.write(line + "\n");
@@ -71,7 +72,7 @@ export async function cmdModels(opts: {
       // matching cmdBridges / cmdCommons.
       const model = opts.positional?.[2];
       if (!model) {
-        process.stderr.write("usage: bastra models set <ollama-model-tag>   (e.g. gemma4:12b)\n");
+        process.stderr.write((await usageWords()).modelsSet);
         return 2;
       }
       return cmdSet(model, opts.settingsPath);
@@ -83,9 +84,7 @@ export async function cmdModels(opts: {
     case "ask":
       return cmdAsk(deps);
     default:
-      process.stderr.write(
-        "usage: bastra models [status | recommend | set <tag> | switch <id> <model> | later <id> | dismiss <id>]\n"
-      );
+      process.stderr.write((await usageWords()).models);
       return 2;
   }
 }

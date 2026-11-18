@@ -106,7 +106,7 @@ test("address derivation: any language yields an IDNA A-label or no address, nev
   assert.equal(readableAssistantName("xn--jrgen-kva"), "jürgen");
   assert.equal(readableAssistantName("jarvis"), "jarvis");
   assert.equal(assistantUrls("xn--jrgen-kva").bare, "http://xn--jrgen-kva/ui/");
-  assert.throws(() => assistantUrls("Jürgen"), /Assistentenname/, "URLs only from a checked address name");
+  assert.throws(() => assistantUrls("Jürgen"), /Assistant name/, "URLs only from a checked address name");
 });
 test("A-labels: only a lossless round trip counts, whatever this Node version's domainToASCII does", () => {
   // Node 22 maps invalid xn-- labels to "", Node 24.22+/26 (Ada 4) return them unchanged; the result must not differ.
@@ -206,7 +206,7 @@ test("address CLI: setup takes names with special characters through the same de
   assert.match(idn.out, /http:\/\/xn--jrgen-kva\.localhost\/ui\//);
   const none = await run("🤖");
   assert.equal(none.code, 1, "setup needs an address");
-  assert.match(none.out, /keine lokale Adresse bilden/);
+  assert.match(none.out, /no local address can be formed/);
 });
 
 test("release D: UID prefixes in foreign hosts and Firefox markers remain foreign", () => {

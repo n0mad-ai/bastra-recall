@@ -14,9 +14,12 @@ import { getAssistantDisplayName, setAssistantDisplayName } from "../assistant-a
 import { hasAddressErrorCode } from "../assistant-address-name.js";
 import { confirm } from "./prompt.js";
 import { getPrimaryLanguage } from "../settings.js";
+import { addressLanguage, addressWords } from "../assistant-address-words.js";
 import type { ParsedArgs } from "./types.js";
 export async function cmdAddress(args: ParsedArgs, options?: AssistantAddressOptions): Promise<number> {
   options ??= {};
+  const language = options.language ?? (await addressLanguage(options.settingsPath)),
+    w = addressWords(language);
   try {
     const action = args.surface ?? "status",
       value = args.positional[2];
@@ -28,29 +31,21 @@ export async function cmdAddress(args: ParsedArgs, options?: AssistantAddressOpt
       process.stdout.write(
         args.json
           ? JSON.stringify(s) + "\n"
-          : `${s.displayName ?? "Kein Assistentenname gesetzt"}\n${s.urls ? `${s.urls.local}\n${s.urls.bare}\n` : ""}${s.ready ? "Adresse erreichbar" : "Adresse noch nicht eingerichtet oder Dienst nicht erreichbar"}\n${s.bareNameNotice}\n${s.repair ?? ""}\n${s.processBoundUpgrade ? `Für die Prozessgrenze einmal bestätigt neu einrichten: ${s.processBoundUpgrade}\n` : ""}`
+          : `${s.displayName ?? w.noName}\n${s.urls ? `${s.urls.local}\n${s.urls.bare}\n` : ""}${s.ready ? w.reachable : w.notReachable}\n${s.bareNameNotice}\n${s.repair ?? ""}\n${s.processBoundUpgrade ? w.processBoundUpgrade(s.processBoundUpgrade) : ""}`
       );
       return 0;
     }
     if (!["setup", "remove"].includes(action))
       throw new Error("bastra address status | setup [name] [--yes] | remove [--yes]");
     if (args.dryRun) {
-      const name = value ? requireAssistantAddress(value) : null;
-      process.stdout.write(
-        `Würde lokale Adresse ${action === "remove" ? "entfernen" : "einrichten"}: ${name ? JSON.stringify(assistantUrls(name)) : "gespeicherter Name"}. hosts und eigener Socket-Helfer brauchen Systemfreigabe; nur eigene Firefox-Prefs werden verändert.\n`
-      );
+      const name = value ? requireAssistantAddress(value, [], language) : null;
+      process.stdout.write(w.dryRun(action === "remove", name ? JSON.stringify(assistantUrls(name)) : null));
       return 0;
     }
     const needs = action === "setup" || (await addressRemovalNeedsConsent(options));
     const allowed =
-      !needs ||
-      args.yes ||
-      (process.stdin.isTTY &&
-        process.stdout.isTTY &&
-        (await confirm(
-          "Lokalen Assistentennamen, eigenen Adress-Helfer und Firefox-Eintrag ändern? macOS fragt einmal nach Administratorrechten. Keine fremden Einträge werden überschrieben."
-        )));
-    if (!allowed) throw new Error("Nicht bestätigt; nichts geändert. Nach Prüfung mit --yes ausführen.");
+      !needs || args.yes || (process.stdin.isTTY && process.stdout.isTTY && (await confirm(w.confirmChange)));
+    if (!allowed) throw new Error(w.notConfirmed);
     if (action === "setup") {
       const result = await setupAssistantAddress({
         ...options,
@@ -61,11 +56,7 @@ export async function cmdAddress(args: ParsedArgs, options?: AssistantAddressOpt
       if (result.warning) process.stdout.write(result.warning + "\n");
     } else await removeAssistantAddress({ ...options, systemConsent: !!allowed });
     await notifyAssistantAddressDaemon();
-    process.stdout.write(
-      action === "setup"
-        ? "Lokale Adresse eingerichtet. Adresse einmal im Browser öffnen; Firefox ggf. neu starten. Ein purer Name bleibt browserabhängig.\n"
-        : "Eigene Adresse und Browser-Einträge entfernt.\n"
-    );
+    process.stdout.write(action === "setup" ? w.setupDone : w.removed);
     return 0;
   } catch (e) {
     process.stderr.write(`${(e as Error).message}\n`);
@@ -88,7 +79,7 @@ async function changeAddressName(name: string): Promise<void> {
       hasAddressErrorCode(e, "system_consent_required") &&
       process.stdin.isTTY &&
       process.stdout.isTTY &&
-      (await confirm("Eigene Systemadresse für den neuen Namen ändern? macOS fragt nach Administratorrechten."))
+      (await confirm(addressWords(await getPrimaryLanguage()).confirmRename))
     )
       await changeAssistantName(name, { systemConsent: true, openBrowser: openAssistantAddress });
     else throw e;

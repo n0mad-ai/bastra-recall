@@ -60,6 +60,15 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
     "#1307 user-extensible per-language data; unlisted languages retain ordinary score-gated recall",
   "packages/daemon/src/lexicon.ts :: keyed DEFAULT_PREVIOUS_CONVENTION_CUES_BY_LANGUAGE":
     "#1307 per-language data with a neutral path (score-gated recall)",
+  // ── #1602: CLI help the product prints by language.primary (English fallback); never matched against user text ──
+  "packages/daemon/src/cli/help-text-agents-de.ts :: name AGENT_COMMAND_HELP_DE":
+    "#1602 German help output, not a matcher",
+  "packages/daemon/src/cli/help-text-memory-de.ts :: name MEMORY_COMMAND_HELP_DE":
+    "#1602 German help output, not a matcher",
+  "packages/daemon/src/cli/help-text-setup-de.ts :: name SETUP_COMMAND_HELP_DE":
+    "#1602 German help output, not a matcher",
+  "packages/daemon/src/cli/help-text.ts :: name HELP_LANGUAGES":
+    "#1602 the languages the help is written in; compared with the language.primary setting, never with user text",
   // ── #707: detection only FILES a bridge (bridges/<lang>/, else "und"); mint and fire are language-neutral ──
   "packages/daemon/src/learned-recall/language.ts :: name SUPPORTED_LANGUAGES":
     "#707 names the filing folder and the override values; an unknown language files under und and still mints/fires",

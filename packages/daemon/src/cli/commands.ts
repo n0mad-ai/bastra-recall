@@ -34,6 +34,7 @@ import { cmdInstallExtension } from "./extension-install.js";
 import { ensureHookStub } from "./stub-install.js";
 import { confirm, isInteractive } from "./prompt.js";
 import { getEmbeddingProvider, getSharedRecallEnabled, getSharedRecallLive, readSettings } from "../settings.js";
+import { addressLanguage, addressWords } from "../assistant-address-words.js";
 import { canAutoSpawnAt } from "../forwarder-daemon-client.js";
 import { bridgeLearningLines, readMintRuns } from "./bridges-note.js";
 import { bridgesPath } from "../learned-recall/pool-path.js";
@@ -277,7 +278,7 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
   // dispatch() now guards every command the same way (#330); this stays as the
   // direct-call guard, since cmdInstall is also reached from cmdUpdate.
   if (args.showHelp) {
-    showHelp("install");
+    await showHelp("install");
     return 0;
   }
 
@@ -385,10 +386,17 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
   return 0;
 }
 
+/** The address messages of `uninstall` in language.primary (#1602), from the injected options' settings. */
+async function uninstallAddressWords(io?: { address?: AssistantAddressOptions }) {
+  const o = io?.address ?? {};
+  return addressWords(o.language ?? (await addressLanguage(o.settingsPath)));
+}
+
 export async function cmdUninstall(
   args: ParsedArgs,
   io?: { address?: AssistantAddressOptions; notify?: () => Promise<void> }
 ): Promise<number> {
+  const w = await uninstallAddressWords(io);
   try {
     if (args.surface === "all" && (await hasManagedAssistantAddress(io?.address))) {
       if (args.dryRun)
@@ -397,32 +405,21 @@ export async function cmdUninstall(
         );
       else {
         const needs = await addressRemovalNeedsConsent(io?.address);
-        if (
-          needs &&
-          !(
-            process.stdin.isTTY &&
-            process.stdout.isTTY &&
-            (await confirm("Eigene Assistenten-Systemadresse entfernen? macOS fragt nach Administratorrechten."))
-          )
-        ) {
-          process.stderr.write(
-            "Eigene Systemadresse zuerst mit bastra address remove --yes entfernen. Nichts deinstalliert.\n"
-          );
+        if (needs && !(process.stdin.isTTY && process.stdout.isTTY && (await confirm(w.confirmUninstallRemove)))) {
+          process.stderr.write(w.removeFirst);
           return 1;
         }
         try {
           await removeAssistantAddress({ ...io?.address, systemConsent: needs });
           await (io?.notify ?? notifyAssistantAddressDaemon)();
         } catch (e) {
-          process.stderr.write(`Assistenten-Adresse nicht entfernt: ${(e as Error).message}\n`);
+          process.stderr.write(w.notRemoved((e as Error).message));
           return 1;
         }
       }
     }
   } catch (e) {
-    process.stderr.write(
-      `Assistenten-Adresse nicht geprüft/entfernt: ${(e as Error).message}. bastra address status prüfen.\n`
-    );
+    process.stderr.write(w.notCheckedOrRemoved((e as Error).message));
     return 1;
   }
   const targets = resolveTargets(args.surface);

@@ -6,6 +6,7 @@ import { resolveVault } from "./helpers.js";
 import { DRAFT_MAX_ROWS, listDrafts, purgeDrafts } from "../draft-store.js";
 import { rejectDrafts } from "../draft-review.js";
 import type { ParsedArgs } from "./types.js";
+import { usageWords } from "./usage-words.js";
 
 /** #1592: at the row cap a new first capture is the row the store drops;
  *  say so where the user looks at the store. */
@@ -23,9 +24,7 @@ export async function cmdDrafts(args: ParsedArgs): Promise<number> {
     (sub !== "reject" && args.positional.length > (sub === "undo" ? 3 : 2)) ||
     ((sub === "undo" || sub === "reject") && !args.positional[2])
   ) {
-    process.stderr.write(
-      "usage: bastra drafts [list|purge|undo <id>|reject <id>...] [--json] [--vault <path>] [--force]\n"
-    );
+    process.stderr.write((await usageWords()).drafts);
     return 2;
   }
   try {

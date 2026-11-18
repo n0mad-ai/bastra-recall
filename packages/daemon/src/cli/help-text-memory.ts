@@ -2,7 +2,8 @@
  * `--help` sections for the commands that read, seed or curate the vault:
  * saving and searching, imports and onboarding, drafts and save proposals, the
  * map, Commons and bridges, the trash and reconciling two copies. Part of the
- * COMMAND_HELP catalog assembled in help-text.ts.
+ * COMMAND_HELP catalog assembled in help-text.ts; the German sections are in
+ * help-text-memory-de.ts (#1602).
  */
 
 export const MEMORY_COMMAND_HELP: Record<string, string> = {

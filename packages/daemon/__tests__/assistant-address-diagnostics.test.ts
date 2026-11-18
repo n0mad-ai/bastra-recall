@@ -11,6 +11,7 @@ async function fixture(t: test.TestContext) {
   const root = await mkdtemp(join(tmpdir(), "address-diagnostics-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const o = {
+    language: "de",
     gatewayPort: await unavailableAddressStatusPort(t),
     settingsPath: join(root, "settings"),
     hostsPath: join(root, "hosts"),

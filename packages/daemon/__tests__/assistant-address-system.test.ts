@@ -375,7 +375,7 @@ test("#1332 review: Doctor status supplies a repair path for a modified owned ho
     firefoxRoot: join(root, "firefox"),
     uid: "501",
   });
-  assert.match((status as any).repair ?? "", /hosts.*(sichern|backup)/i);
+  assert.match((status as any).repair ?? "", /hosts.*(sichern|backup)|back up hosts/i);
   assert.match((status as any).repair ?? "", /bastra address setup/);
 });
 
@@ -419,7 +419,7 @@ test("#1332 review: timeout preserves the late native admin completion receipt",
         spawn: () => spawn(process.execPath, ["-e", "setTimeout(()=>process.exit(0),150)"], { stdio: "ignore" }),
       }
     ),
-    /möglicherweise|noch/
+    /möglicherweise|noch|may still/
   );
   await completion;
   assert.equal(completed, true, "late successful admin must be observed, never killed by the reporting timeout");
@@ -511,7 +511,7 @@ test("#1332 review: unchanged repair waits for its admin receipt and blocks a se
     })
   );
   assert.equal((await assistantAddressStatus(options)).pending, true);
-  await assert.rejects(changeAssistantName("Jarvis", options), /ausstehend/);
+  await assert.rejects(changeAssistantName("Jarvis", options), /ausstehend|pending/);
   assert.ok(settled);
   await settled(false);
   assert.equal((await assistantAddressStatus(options)).pending, false);
@@ -686,9 +686,9 @@ test("admin hardening: failed PID persistence is visible and keeps a timed-out p
         spawn: () => spawn(process.execPath, ["-e", "setTimeout(()=>process.exit(0),100)"], { stdio: "ignore" }),
       }
     ),
-    /PID.*nicht gesichert/
+    /PID.*(nicht gesichert|not secured)/
   );
-  assert.match(warning, /PID.*nicht gesichert/);
+  assert.match(warning, /PID.*(nicht gesichert|not secured)/);
   await completed;
 });
 

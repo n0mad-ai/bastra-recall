@@ -17,6 +17,7 @@ import { findExecutable, run } from "./exec.js";
 import { getCommonsEnabled, setCommonsEnabled } from "../settings.js";
 import { isOnValue } from "../env.js";
 import { buildVerificationRecord, commonsPath, verificationRecordPath } from "../commons-store.js";
+import { usageWords } from "./usage-words.js";
 
 export const COMMONS_REPO_URL = process.env.BASTRA_COMMONS_REPO ?? "https://github.com/n0mad-ai/bastra-commons.git";
 
@@ -135,7 +136,7 @@ export function verifierId(): string {
 
 async function cmdVerify(recipeId: string | null, result: string | null, note: string | null): Promise<number> {
   if (!recipeId || (result !== "works" && result !== "fails")) {
-    process.stderr.write('usage: bastra commons verify <recipe-id> <works|fails> ["environment note"]\n');
+    process.stderr.write((await usageWords()).commons);
     return 2;
   }
   const root = commonsPath();

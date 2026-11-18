@@ -15,6 +15,7 @@ import {
 } from "./assistant-address.js";
 import { normalizeAssistantDisplayName, readableAssistantName } from "./assistant-address-name.js";
 import { managedAssistantHostsName } from "./assistant-address-files.js";
+import { addressWords } from "./assistant-address-words.js";
 import { getAssistantName, getAssistantDisplayName, setAssistantDisplayName } from "./assistant-address-settings.js";
 import { AssistantAddressError, hasAddressErrorCode } from "./assistant-address-name.js";
 const change = z.strictObject({ name: z.string().min(1), systemConsent: z.boolean().optional() });
@@ -126,7 +127,7 @@ export async function handleAssistantAddressUi(
         if (input.systemConsent !== true)
           throw new AssistantAddressError(
             "system_consent_required",
-            "Systemeinrichtung braucht ausdrückliche Zustimmung (system consent)"
+            addressWords(await getPrimaryLanguage(options.settingsPath)).setupNeedsConsent
           );
         const result = await setupAssistantAddress({
           ...options,

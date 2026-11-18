@@ -1,7 +1,8 @@
 /**
  * `--help` sections for the commands around agent work in a project: the task
  * board and the attached Codex chat, code awareness, and the archive behind the
- * agent's rm. Part of the COMMAND_HELP catalog assembled in help-text.ts.
+ * agent's rm. Part of the COMMAND_HELP catalog assembled in help-text.ts; the
+ * German sections are in help-text-agents-de.ts (#1602).
  */
 
 export const AGENT_COMMAND_HELP: Record<string, string> = {
@@ -21,54 +22,55 @@ with App Server Unix transport and --remote support on macOS/Linux.
 Codex options pass through unchanged; an alternative --remote is refused.
 More: https://github.com/n0mad-ai/bastra-recall/wiki/Active-Chat-Notifications`,
 
-  tasks: `Ab v1.2.0 standardmäßig an. Abschalten: tasks.enabled=false oder BASTRA_TASKS=0; Daemon und Clients/Hooks neu starten.
+  tasks: `On by default since v1.2.0. Turn off: tasks.enabled=false or BASTRA_TASKS=0; restart the daemon and the clients/hooks.
 
-bastra tasks — Aufgaben und Erinnerungen (bei nächstem Kontakt)
+bastra tasks — tasks and reminders (on next contact)
 Usage: bastra tasks <create|list|due|status|setup-hooks|client-status|ui> [options]
-Erster Zugang: tasks auth mint owner ich personal ~/.bastra/owner-task.token.
-Token im lokalen Editor kopieren, nur verborgen im Terminal/Browser eingeben.
-Optional tasks owner-login: private Ablage nur für interaktive Owner-CLI, nie Hooks/MCP.
-Dann tasks setup-hooks, tasks client-status, tasks create --goal "Test" --after 1m --arm.
-Nach Fälligkeit: tasks due, tasks acknowledge ID --occurrence VORKOMMEN, tasks resolve ID.
-Scharf schalten = review; rearm stellt ausdrücklich UNSCHARF zur neuen Prüfung.
-  bastra tasks create --goal "Nach sieben Tagen auswerten" --after 7d --domain personal --timezone Europe/Madrid --arm
-  bastra tasks create --goal "Täglich prüfen" --when 2026-10-12T18:00 --timezone Europe/Madrid --every 1d --count 3
-  bastra tasks create --goal "Termin prüfen" --when 2026-10-12T18:00 --timezone Europe/Madrid --expires 2026-10-13T18:00
-  bastra tasks edit ID --expires none   (Gültigkeitsende entfernen)
+First access: tasks auth mint owner me personal ~/.bastra/owner-task.token.
+Copy the token in a local editor; enter it only hidden, in the terminal/browser.
+Optional tasks owner-login: private storage only for the interactive owner CLI, never hooks/MCP.
+Then tasks setup-hooks, tasks client-status, tasks create --goal "Test" --after 1m --arm.
+Once due: tasks due, tasks acknowledge ID --occurrence OCCURRENCE, tasks resolve ID.
+Arming = review; rearm explicitly sets it back to UNARMED for a new review.
+  bastra tasks create --goal "Evaluate after seven days" --after 7d --domain personal --timezone Europe/Madrid --arm
+  bastra tasks create --goal "Check daily" --when 2026-10-12T18:00 --timezone Europe/Madrid --every 1d --count 3
+  bastra tasks create --goal "Check appointment" --when 2026-10-12T18:00 --timezone Europe/Madrid --expires 2026-10-13T18:00
+  bastra tasks edit ID --expires none   (remove the end of validity)
   bastra tasks list | due | status [--json] [--agent]
-  bastra tasks mute|unmute|off|on|stop|resume  Globale Owner-Steuerung
+  bastra tasks mute|unmute|off|on|stop|resume  Global owner controls
   bastra tasks get|review|resolve|cancel|rearm|delete <id>
-  bastra tasks pause|resume|end-series <id>  Pausieren, fortsetzen oder Serie beenden
-  Wiederholung: --every 1d auch ohne --count/--end; resolve erledigt nur einen Termin.
+  bastra tasks pause|resume|end-series <id>  Pause, resume or end a series
+  Repetition: --every 1d also without --count/--end; resolve completes one occurrence only.
   bastra tasks acknowledge <id> --occurrence <occurrence-id>
   bastra tasks snooze <id> --until 2026-10-13T18:00
   bastra tasks targets register demo --root DIRECTORY --path artifact.txt --domain personal
   bastra tasks targets update ID --root DIR --path FILE --domain DOMAIN
-  bastra tasks targets remove ID --agent  Beauftragtes Ziel entfernen, Ausführung stoppen
-  bastra tasks targets list       Vorhandene lokale reversible Ziele, kein Anbieter
-  bastra tasks archive ID         Nur abgeschlossene Arbeit; vorher tasks stop
-  bastra tasks archive-restore ARCHIV_ID  Verlauf/Rollback aufnehmen, unscharf
-  bastra tasks recover [--lock]   Owner offline: Prozesse stoppen, Backup/Original sichern
-  bastra tasks setup-hooks        Owner richtet lokale Hook-Karten mit eigener Agent-Kennung ein
-  bastra tasks client-status      Zeigt fehlende/revokte Client-Kennung ehrlich
-  bastra tasks <operation> --input input.json  Erweiterte/Maschinen-Eingabe
-Owner-Kennung wird verborgen am Terminal abgefragt; --agent verwendet zugewiesene
-Client-Kennung. Beauftragte Aufgaben werden mit --agent direkt scharf angelegt;
---agent --arm ist für alle Aufgabenstufen ohne weitere Owner-Freigabe erlaubt. Ohne Agent-Auftrag bleibt
-Anlegen ohne Auftrag standardmäßig unscharf. Auch bei execute gilt die Nutzeranweisung im Chat als Freigabe.
---after 7d ist eine verstrichene Dauer; --when ohne Offset nutzt die genannte Zeitzone.
-Quittiert heißt gesehen, nicht erledigt. Kleine Hook-Karten: bastra tasks due.
+  bastra tasks targets remove ID --agent  Remove an instructed target, stop execution
+  bastra tasks targets list       Existing local reversible targets, no provider
+  bastra tasks archive ID         Completed work only; run tasks stop first
+  bastra tasks archive-restore ARCHIVE_ID  Bring back history/rollback, unarmed
+  bastra tasks recover [--lock]   Owner offline: stop processes, keep backup/original
+  bastra tasks setup-hooks        Owner sets up local hook cards with their own agent credential
+  bastra tasks client-status      Shows a missing/revoked client credential honestly
+  bastra tasks <operation> --input input.json  Advanced/machine input
+The owner credential is asked for hidden on the terminal; --agent uses the assigned
+client credential. Instructed tasks are created armed directly with --agent;
+--agent --arm is allowed for every task level without further owner approval. Without
+an agent instruction, creating stays unarmed by default. For execute too, the user's
+instruction in chat is the approval.
+--after 7d is an elapsed duration; --when without an offset uses the named time zone.
+Acknowledged means seen, not done. Small hook cards: bastra tasks due.
   bastra tasks auth mint|rotate owner|agent actor domain[,domain] new-token-file [old-id]
   bastra tasks auth revoke credential-id
-  bastra tasks execution-enable --agent  Beauftragt lokalen Adapter aktivieren, Stopp aufheben
-  bastra tasks release LEASE_ID   Eigene Reservierung freigeben; keine Freigabe erneuern
+  bastra tasks execution-enable --agent  Enable an instructed local adapter, lift the stop
+  bastra tasks release LEASE_ID   Release your own reservation; renews no approval
   bastra tasks prepare --agent --input input.json
-Maschineneingabe: authorization {write_origin:"user-directed", session_id, program,
-user_request, at}. Der Agent übergibt die Nutzeranweisung, Recall wertet den Wortlaut
-nicht aus. Für eigene folgenreiche Vorschläge einmal im Chat fragen und das Ja
-genauso erfassen. Keine Schlüssel, Passphrase oder zweite Bestätigung.
-Historische Signaturbefehle sind nur für Altbestände erhalten. Kein Hintergrund-Wakeup;
-BASTRA_TASK_TOKEN überschreibt die private lokale Hook-Konfiguration.`,
+Machine input: authorization {write_origin:"user-directed", session_id, program,
+user_request, at}. The agent passes on the user's instruction; Recall does not
+evaluate its wording. For its own consequential proposals, ask once in chat and
+record the yes the same way. No keys, passphrase or second confirmation.
+Historical signature commands are kept for old data only. No background wakeup;
+BASTRA_TASK_TOKEN overrides the private local hook configuration.`,
 
   code: `bastra code — code awareness for a repository (experimental)
 

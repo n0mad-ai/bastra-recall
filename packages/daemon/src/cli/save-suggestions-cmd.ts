@@ -1,6 +1,7 @@
 import type { ParsedArgs } from "./types.js";
 import { rulebookCliCall } from "./rulebook-proposals-cmd.js";
 import { ReviewSaveSuggestionArgs } from "../save-suggestion-review.js";
+import { usageWords } from "./usage-words.js";
 /** Like rule confirmation, CLI user direction is an attestation by the agent. */
 export async function cmdSaveSuggestions(args: ParsedArgs): Promise<number> {
   try {
@@ -18,9 +19,7 @@ export async function cmdSaveSuggestions(args: ParsedArgs): Promise<number> {
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
     return 0;
   } catch {
-    process.stderr.write(
-      'usage: bastra suggestions reject <proposal_id> user-directed "explicit user rejection" | reset <proposal_id> user-directed\n'
-    );
+    process.stderr.write((await usageWords()).suggestions);
     return 1;
   }
 }

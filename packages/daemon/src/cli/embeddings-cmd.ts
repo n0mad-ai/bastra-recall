@@ -29,6 +29,7 @@ import {
 import { enableSemanticRecall, ensureOllama, ollamaModelPulled, probeOllama } from "./ollama.js";
 import { probeDaemon } from "./helpers.js";
 import { confirm, isInteractive } from "./prompt.js";
+import { usageWords } from "./usage-words.js";
 
 const ENABLE_HINT = "bastra embeddings on";
 
@@ -109,7 +110,7 @@ export async function cmdEmbeddings(opts: {
     case "status":
       return cmdStatus(opts.settingsPath, opts.probe ?? probeDaemon);
     default:
-      process.stderr.write("usage: bastra embeddings <on|off|status>\n");
+      process.stderr.write((await usageWords()).embeddings);
       process.stderr.write(`  on      enable semantic recall (persists the setting + sets up Ollama/embeddinggemma)\n`);
       process.stderr.write(`  off     disable semantic recall (recall = BM25 keyword search only)\n`);
       process.stderr.write(`  status  show the effective provider, how it was resolved, and model presence\n`);

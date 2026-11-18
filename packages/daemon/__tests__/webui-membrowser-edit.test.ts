@@ -8,7 +8,7 @@ import { runInNewContext } from "node:vm";
 import { AUTO_RELATED_START, MemoryTypeEnum, SUMMARY_MAX } from "@bastra-recall/core";
 
 const NAMES =
-  "AUTO_RELATED_START, SUMMARY_MAX, TYPES, SENSITIVITIES, authoredBody, editFields, editInit, editStep, editPatch, editView, writeOutcome, nextSelection, ruleEditable, splitTags, typeEditable";
+  "AUTO_RELATED_START, SUMMARY_MAX, TYPES, SENSITIVITIES, authoredBody, editFields, editInit, editStep, editPatch, editView, writeOutcome, nextSelection, ruleEditable, ruleShift, splitTags, typeEditable";
 
 async function load() {
   const source = await readFile(new URL("../webui/app/js/views/membrowser-edit-model.js", import.meta.url), "utf8");
@@ -219,4 +219,63 @@ test("a conflict keeps the changed title aside; reload shows the current one, th
   s = m.editStep(s, { type: "useStash" });
   assert.equal(s.draft.title, "My title");
   assert.equal(m.editPatch(s, "m1").payload.expected_revision, "sha256:0000000000000002");
+});
+
+// ── a type / recall mode change that changes the rule effect ──
+
+/** The daemon's membership per "type recall_mode" for a user-directed memory
+ *  without its own declaration: preferences, meta-working, workflow and reflex are rules. */
+const BY_PAIR = (() => {
+  const out: Record<string, boolean> = {};
+  for (const type of MemoryTypeEnum.options)
+    for (const mode of ["deliberate", "reflex"])
+      out[`${type} ${mode}`] = mode === "reflex" || ["user-preference", "meta-working", "workflow"].includes(type);
+  return out;
+})();
+
+async function editing(rule: Record<string, unknown>, over: Record<string, unknown> = {}) {
+  const m = await load();
+  const d = detail({ type: "user-preference", recall_mode: null, rule, ...over });
+  return { m, s: m.editStep(m.editStep(m.editInit(), { type: "load", detail: d }), { type: "edit" }) };
+}
+
+test("rule effect: a type change that ends a rule is named and asks once more before the save", async () => {
+  const { m, s: start } = await editing({ state: "rule", rulebook: "on-demand", by_type_mode: BY_PAIR });
+  assert.equal(m.editView(start, "m1").ruleShift, null, "nothing changed yet");
+  let s = m.editStep(start, { type: "input", field: "type", value: "lesson" });
+  assert.equal(m.editView(s, "m1").ruleShift, "loss", "shown before saving");
+  s = m.editStep(s, { type: "save" });
+  assert.equal(s.mode, "edit", "the first click only asks");
+  assert.equal(m.editView(s, "m1").confirm, true);
+  s = m.editStep(s, { type: "save" });
+  assert.equal(s.mode, "saving", "the second click saves");
+  assert.equal(m.editPatch(s, "m1").payload.type, "lesson", "saving stays possible");
+});
+
+test("rule effect: a note that becomes a rule through recall mode is named; a new input asks again", async () => {
+  const { m, s: start } = await editing({ state: "note", by_type_mode: BY_PAIR }, { type: "lesson" });
+  let s = m.editStep(start, { type: "input", field: "recall_mode", value: "reflex" });
+  assert.equal(m.editView(s, "m1").ruleShift, "gain");
+  s = m.editStep(s, { type: "save" });
+  assert.equal(m.editView(s, "m1").confirm, true);
+  s = m.editStep(s, { type: "input", field: "title", value: "Changed again" });
+  assert.equal(m.editView(s, "m1").confirm, false, "a further change is confirmed anew");
+  assert.equal(m.editStep(s, { type: "save" }).mode, "edit");
+});
+
+test("rule effect: no note where type and recall mode do not decide the rule", async () => {
+  // a declared rule: the daemon sends no per-pair membership
+  let { m, s } = await editing({ state: "rule", rulebook: "always", applies_when: "x" });
+  s = m.editStep(s, { type: "input", field: "type", value: "lesson" });
+  assert.equal(m.editView(s, "m1").ruleShift, null);
+  assert.equal(m.editStep(s, { type: "save" }).mode, "saving", "saved in one click");
+  // a change that keeps the membership (one rule type to another)
+  ({ m, s } = await editing({ state: "rule", rulebook: "on-demand", by_type_mode: BY_PAIR }));
+  s = m.editStep(s, { type: "input", field: "type", value: "workflow" });
+  assert.equal(m.editView(s, "m1").ruleShift, null);
+  // the same save declares the rule itself: the declaration decides, not the type
+  ({ m, s } = await editing({ state: "rule", rulebook: "on-demand", by_type_mode: BY_PAIR }));
+  s = m.editStep(s, { type: "input", field: "type", value: "lesson" });
+  s = m.editStep(s, { type: "input", field: "applies_when", value: "When fixtures change." });
+  assert.equal(m.editView(s, "m1").ruleShift, null);
 });

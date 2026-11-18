@@ -8,7 +8,7 @@ export async function cmdCodexChat(args: string[]): Promise<number> {
   const separator = args.indexOf("--"),
     options = separator < 0 ? args : args.slice(0, separator);
   if (options.includes("--help") || options.includes("-h")) {
-    showHelp("codex");
+    await showHelp("codex");
     return 0;
   }
   const binary = findCodexExecutable();

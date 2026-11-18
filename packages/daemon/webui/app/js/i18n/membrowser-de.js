@@ -123,6 +123,11 @@ export default {
   "mb.sens.public": "öffentlich",
   "mb.sens.team": "Team",
   "mb.sens.private": "privat",
+  "mb.ed.ruleGain":
+    "Hinweis zur Regel: Mit diesem Typ oder Abrufmodus wird dieses Memory zur Regel (bei Bedarf). Agenten sehen es dann in ihrer Regelliste und halten sich daran, wenn es zutrifft.",
+  "mb.ed.ruleLoss":
+    "Hinweis zur Regel: Mit diesem Typ oder Abrufmodus ist dieses Memory keine Regel mehr. Agenten sehen es nicht mehr in ihrer Regelliste; als Notiz bleibt es auffindbar.",
+  "mb.ed.saveConfirm": "TROTZDEM SPEICHERN",
   "mb.ed.save": "SPEICHERN",
   "mb.ed.saving": "speichere …",
   "mb.ed.cancel": "ABBRECHEN",

@@ -160,9 +160,12 @@ test("doctor names all always overflows and the unconfirmed count without promot
     memory("legacy", { rulebook: undefined, type: "meta-working", write_origin: "agent-session" }),
   ]);
   const lines = rulebookDoctorLines(c).join("\n");
-  assert.match(lines, /1 mögliche Regeln ohne Bestätigung/);
+  assert.match(lines, /1 possible rules without confirmation/, "English by default (#1602)");
   assert.match(lines, /overflow/);
   assert.match(lines, /on-demand/);
+  const german = rulebookDoctorLines(c, "de").join("\n");
+  assert.match(german, /1 mögliche Regeln ohne Bestätigung/, "language.primary=de");
+  assert.match(german, /overflow/);
   assert.equal(c.entries.length, 1);
 });
 

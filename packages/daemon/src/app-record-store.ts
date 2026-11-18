@@ -12,6 +12,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { openAppDatabase, type AppDatabase } from "./app-database.js";
 
@@ -156,6 +157,36 @@ export function readAppRecord(
   } finally {
     db.close();
   }
+}
+
+/** Read without initialization, migrations, backups or completing legacy renames.
+ * Existing committed records (including tombstones) take precedence over legacy
+ * files. SQLite may coordinate readers through WAL/SHM; no application rows or
+ * schema are written. Never open a missing database, even in read-only mode. */
+export function peekAppRecord(namespace: string, legacyPath: string): string {
+  const path = resolve(legacyPath);
+  assertLocalSource(path);
+  const dbPath = appRecordDatabasePath(path);
+  assertLocalSource(dbPath);
+  const info = localEntry(dbPath);
+  if (info) {
+    if (!info.isFile()) throw new Error("Local app database is not a regular file");
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const table = db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='app_records'").get();
+      const entry = table
+        ? db.prepare("SELECT value FROM app_records WHERE namespace=? AND key=?").get(namespace, path)
+        : undefined;
+      if (entry) {
+        const value = JSON.parse(String(entry.value)) as RecordValue;
+        if (value.text === null) throw missing(path);
+        return value.text;
+      }
+    } finally {
+      db.close();
+    }
+  }
+  return readLocalStateText(path);
 }
 
 /** Caller holds the store's cross-process RMW lock across read and write. */

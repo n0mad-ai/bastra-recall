@@ -12,6 +12,7 @@ async function fixture(t: test.TestContext) {
   t.after(() => rm(root, { recursive: true, force: true }));
   const service = { loaded: false };
   const o = {
+    language: "de",
     gatewayPort: await unavailableAddressStatusPort(t),
     settingsPath: join(root, "settings"),
     hostsPath: join(root, "hosts"),

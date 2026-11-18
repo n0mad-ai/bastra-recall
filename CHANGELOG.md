@@ -153,6 +153,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- CLI help (`bastra help`, every `--help`) and chat delivery consent follow
+  `language.primary`: English by default, German when selected. The guided
+  `bastra install` asks for the language first when none is stored, then uses
+  that language throughout (#1602). Help reads current or legacy settings
+  without creating or migrating application state (#330).
+- CLI address messages (`bastra address`, `config set assistant.name`,
+  `uninstall`), the web UI's address answers and several usage errors follow
+  `language.primary` (#1602).
+- Memory browser: changing type or recall mode of a memory whose rule status
+  depends on them shows what changes for the rule before saving; saving
+  takes one confirming click.
+
 - **Reports have their own reading area.** The Tasks head and its Reports
   button are removed from this view; Escape keeps the area open. The right
   panel shows headings and questions with an answered count and keeps its

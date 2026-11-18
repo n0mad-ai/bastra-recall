@@ -5,6 +5,7 @@ import { constants, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtemp, writeFile, rm, lstat, open, readdir, rename } from "node:fs/promises";
+import { addressWords } from "./assistant-address-words.js";
 const xml = (s: string) =>
   s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 export const shellQuote = (s: string) => "'" + s.replaceAll("'", "'\"'\"'") + "'";
@@ -56,6 +57,8 @@ export interface AddressAdminPlan {
   rootOwnership?: boolean;
   onSettled?: (success: boolean) => Promise<void>;
   onStarted?: (pid: number) => Promise<void>;
+  /** language.primary for the dialog and messages (#1602); passed per call, never stored with the plan. */
+  language?: string;
 }
 export function makeAddressAdminScript(p: AddressAdminPlan, payloads?: ReadonlyMap<string, string>): string {
   const q = shellQuote,
@@ -213,7 +216,8 @@ export async function runMacAddressAdmin(
 ): Promise<void> {
   io ??= {};
   let stage: string | undefined,
-    finished = false;
+    finished = false,
+    reportTimedOut = false;
   const settle = async (success: boolean) => {
     if (finished) return;
     finished = true;
@@ -244,7 +248,8 @@ export async function runMacAddressAdmin(
       await writeFile(path, content, { mode: 0o600, flag: "wx" });
       payloads.set(digest(content), path);
     }
-    const script = makeAddressAdminScript(plan, payloads);
+    const script = makeAddressAdminScript(plan, payloads),
+      w = addressWords(plan.language);
     await new Promise<void>((resolve, reject) => {
       let child: ChildProcess;
       try {
@@ -252,12 +257,12 @@ export async function runMacAddressAdmin(
           "/usr/bin/osascript",
           [
             "-e",
-            `do shell script ${JSON.stringify(script)} with administrator privileges with prompt "Bastra: lokalen Assistentennamen und Port 80 einrichten"`,
+            `do shell script ${JSON.stringify(script)} with administrator privileges with prompt ${JSON.stringify(w.adminPrompt)}`,
           ],
           { stdio: ["ignore", "pipe", "pipe"] }
         );
       } catch {
-        void settle(false).then(() => reject(new Error("Systemfreigabe konnte nicht gestartet werden.")), reject);
+        void settle(false).then(() => reject(new Error(w.adminNotStarted)), reject);
         return;
       }
       let stderr = "";
@@ -281,19 +286,12 @@ export async function runMacAddressAdmin(
           await plan.onStarted?.(child.pid);
         } catch {
           pidUnsecured = true;
-          process.stderr.write(
-            "Warnung: Admin-PID nicht gesichert; kein automatisches Freigeben ohne bestätigten Abschluss. bastra address status prüfen.\n"
-          );
+          process.stderr.write(w.adminPidWarning);
         }
       })();
       const timer = setTimeout(() => {
-        reject(
-          new Error(
-            pidUnsecured
-              ? "Admin-PID nicht gesichert; Systemeinrichtung läuft möglicherweise noch. Dialogabschluss prüfen; bastra address status bleibt konservativ ausstehend."
-              : "Systemeinrichtung läuft möglicherweise noch; bastra address status prüft und gleicht den tatsächlichen Zustand ab."
-          )
-        );
+        reportTimedOut = true;
+        reject(new Error(pidUnsecured ? w.adminPidStillRunning : w.adminStillRunning));
       }, io.timeoutMs ?? 180000);
       const complete = (success: boolean, message: string) => {
         clearTimeout(timer);
@@ -301,22 +299,15 @@ export async function runMacAddressAdmin(
           .then(() => settle(success))
           .then(
             () => (success ? resolve() : reject(new Error(message))),
-            () => reject(new Error("Admin-Ergebnis nicht gespeichert; bastra address status prüfen."))
+            () => reject(new Error(w.adminResultLost))
           );
       };
-      child.once("error", () => complete(false, "Systemfreigabe konnte nicht gestartet werden."));
-      child.once("exit", (code) =>
-        complete(
-          code === 0,
-          /-128/.test(stderr)
-            ? "Systemeinrichtung abgebrochen, nichts geändert."
-            : "Systemeinrichtung fehlgeschlagen; bastra address status prüfen."
-        )
-      );
+      child.once("error", () => complete(false, w.adminNotStarted));
+      child.once("exit", (code) => complete(code === 0, /-128/.test(stderr) ? w.setupCancelled : w.adminFailed));
     });
   } catch (error) {
     // A reporting timeout leaves the process and its staged payloads intact.
-    if (!finished && !/möglicherweise/.test((error as Error).message)) await settle(false);
+    if (!finished && !reportTimedOut) await settle(false);
     throw error;
   }
 }

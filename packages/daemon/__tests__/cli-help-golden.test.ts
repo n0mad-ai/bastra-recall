@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { COMMAND_HELP, showHelp } from "../src/cli/help-text.js";
 import { VERSION } from "../src/cli/helpers.js";
 
-function printed(command?: string | null): string {
+async function printed(command?: string | null): Promise<string> {
   const write = process.stdout.write;
   let text = "";
   process.stdout.write = ((chunk: string | Uint8Array) => {
@@ -21,28 +21,28 @@ function printed(command?: string | null): string {
     return true;
   }) as typeof process.stdout.write;
   try {
-    showHelp(command);
+    await showHelp(command);
   } finally {
     process.stdout.write = write;
   }
   return text.split(`bastra ${VERSION} `).join("bastra <version> ");
 }
 
-test("#1532 golden master — commands with a help section", (t) => {
+test("#1532 golden master — commands with a help section", async (t) => {
   t.assert.snapshot(Object.keys(COMMAND_HELP));
 });
 
-test("#1532 golden master — bastra --help", (t) => {
-  t.assert.snapshot(printed());
+test("#1532 golden master — bastra --help", async (t) => {
+  t.assert.snapshot(await printed());
 });
 
-test("#1532 golden master — unknown command falls back to the listing", (t) => {
-  t.assert.snapshot(printed("no-such-command") === printed());
-  assert.equal(printed(null), printed());
+test("#1532 golden master — unknown command falls back to the listing", async (t) => {
+  t.assert.snapshot((await printed("no-such-command")) === (await printed()));
+  assert.equal(await printed(null), await printed());
 });
 
 for (const command of Object.keys(COMMAND_HELP).sort()) {
-  test(`#1532 golden master — bastra ${command} --help`, (t) => {
-    t.assert.snapshot(printed(command));
+  test(`#1532 golden master — bastra ${command} --help`, async (t) => {
+    t.assert.snapshot(await printed(command));
   });
 }

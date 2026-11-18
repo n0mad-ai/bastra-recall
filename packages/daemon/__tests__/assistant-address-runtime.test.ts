@@ -487,7 +487,7 @@ test(
     assert.equal(results.length, 4);
     for (const r of results) {
       assert.equal(r.status, 503);
-      assert.match(r.body, /ausgelastet/);
+      assert.match(r.body, /busy/);
     }
     for (const done of release.splice(0)) done();
     const all = await Promise.all(pending);
@@ -800,7 +800,7 @@ test(
       socket.on("error", reject);
       socket.on("data", (chunk) => {
         body += chunk;
-        if (body.includes("ausgelastet")) {
+        if (body.includes("busy")) {
           clearTimeout(timer);
           clearInterval(trickle);
           socket.destroy();

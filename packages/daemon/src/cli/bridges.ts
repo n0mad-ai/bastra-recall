@@ -56,6 +56,7 @@ import { ollamaChat, listOllamaModels, resolveRerankModel } from "../learned-rec
 import { isSupportedLanguage, SUPPORTED_LANGUAGES } from "../learned-recall/language.js";
 import { recordRerankVerdicts, type RerankVerdict } from "../training-signal.js"; // #1128-capture
 import { bridgesPath, migrateBridgesPool } from "../learned-recall/pool-path.js";
+import { usageWords } from "./usage-words.js";
 
 /** #129: how deep the held-out check reads the ranking. Beyond it a gold
  *  counts as not found (reciprocal rank 0). */
@@ -166,7 +167,7 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
         const live = await getSharedRecallLive();
         process.stdout.write(
           `query expansion: ${live ? "live — bridges widen recall queries" : "shadow — fires are logged (bridge_expansion, applied: false), ranking unchanged"}\n` +
-            "  usage: bastra bridges live <on|off> — switch on only after 'bastra bridges verify' passes a bridge\n"
+            (await usageWords()).bridgesLive
         );
         return arg === undefined ? 0 : 2;
       }

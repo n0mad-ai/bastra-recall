@@ -5,6 +5,7 @@ import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 import { projectForFilter } from "../scope-filter.js";
 import { getApiToken } from "../settings.js";
 import { DAEMON_VERSION } from "../version.js";
+import { usageWords } from "./usage-words.js";
 
 /** Older daemons may ignore dry_run; check their served schema before any write. */
 async function requireSavePreviewSupport(): Promise<void> {
@@ -53,7 +54,7 @@ export async function cmdRulebookProposals(words: string[], dryRun: boolean): Pr
     const [operation, id, revision, origin, ...extra] = words;
     if (!["proposals", "confirm", "reject"].includes(operation)) throw new Error("Unknown rulebook proposal operation");
     if (operation === "proposals") {
-      if (id) throw new Error("usage: bastra rules proposals");
+      if (id) throw new Error((await usageWords()).rulesProposals);
       const proposals = [];
       let cursor: string | undefined;
       do {
@@ -66,9 +67,7 @@ export async function cmdRulebookProposals(words: string[], dryRun: boolean): Pr
       return 0;
     }
     if (!id || !revision || origin !== "user-directed" || extra.length) {
-      throw new Error(
-        "usage: bastra rules confirm|reject <id> <revision> user-directed — only after the user's explicit decision on the displayed proposal"
-      );
+      throw new Error((await usageWords()).rulesDecide);
     }
     const input = {
       id,

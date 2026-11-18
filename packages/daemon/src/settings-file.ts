@@ -2,7 +2,7 @@
 import { bastraDataDir } from "./platform-paths.js";
 import { join } from "node:path";
 import { withPathLock } from "./path-lock.js";
-import { readAppRecord, writeAppRecord } from "./app-record-store.js";
+import { peekAppRecord, readAppRecord, writeAppRecord } from "./app-record-store.js";
 import {
   SETTINGS_REGISTRY,
   parseStoredSettings,
@@ -141,6 +141,16 @@ export function settingsFileRefusal(state: SettingsFileState, opts: { refuseCorr
  */
 export async function readSettings(path: string = settingsFilePath()): Promise<CliSettings> {
   return (await readSettingsSnapshot(path)).settings;
+}
+
+/** Settings for observational paths such as --help: no migration or repair.
+ * Uses the same persisted key and validation as normal settings readers. */
+export async function peekSettings(path: string = settingsFilePath()): Promise<CliSettings> {
+  try {
+    return parseSettingsText(peekAppRecord("settings", path), path).settings;
+  } catch {
+    return { update: { mode: DEFAULT_UPDATE_MODE } };
+  }
 }
 
 /** Validates the file's text into settings. `corrupt` = not JSON at all (and

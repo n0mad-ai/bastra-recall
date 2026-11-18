@@ -133,7 +133,7 @@ test("settings save: a failed address setup still applies the display name and s
   const hosts = await readFile(hostsPath, "utf8");
   admin.fail = true;
   const result = await renameAssistant("Ruby", { ...options, systemConsent: true });
-  assert.match(result.warning ?? "", /abgebrochen/);
+  assert.match(result.warning ?? "", /cancelled/);
   assert.equal(await getAssistantDisplayName(options.settingsPath), "Ruby");
   assert.equal(await getAssistantName(options.settingsPath), "jarvis", "the set-up address stays in place");
   assert.equal(await readFile(hostsPath, "utf8"), hosts);
