@@ -100,14 +100,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   in) saves a memory yourself through the daemon's normal `save_memory` path,
   with every check an agent's save gets, recorded as your own instruction
   (`write_origin: user-directed`) and attributed to the CLI. Fields left out
-  are filled like *Save as memory* in the web UI. Both need the running daemon
+  are filled like _Save as memory_ in the web UI. Both need the running daemon
   (#1492, #1496).
 - **Harvest before compaction (Claude Code).** A `PreCompact` hook, registered
   with the Stop hook (`--no-stop-hook` leaves it out), books the session so the
   next harvest pass reads the turns the compaction summary replaces instead of
   waiting 30 quiet minutes. Same rules as the after-session harvest; the hook
   adds nothing to the summary. Run `bastra update` or `bastra install
-  claude-code` to register it (#1486).
+claude-code` to register it (#1486).
 - **Preview a save.** `save_memory` takes `dry_run: true`: it runs every
   check of a real save (credential redaction, quality hints, claim gate,
   `replaces` and collision checks) and returns the file it would write and
@@ -128,14 +128,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   (`Alpha.sync-conflict-<date>-<time>-<device>.md` with the same memory id as
   `Alpha.md`). Other services do not document their copy names and are not
   matched by name (#1485).
-- `REPORT.md` has a *Low-signal memories* section: memories with no or
+- `REPORT.md` has a _Low-signal memories_ section: memories with no or
   one-word triggers, a trigger that only repeats the summary, almost no body
   or a date-only title, with the reasons per entry. Report only (#642).
 - **An unreachable Recall service is said once, not answered silently
   empty.** When a hook cannot reach the daemon, the first prompt or session
   start of that session shows one line: "bastra-recall: the Recall service is
   not reachable, so this session gets no memories. Check it with `bastra
-  doctor`." (German on a German system). Later calls in the same session stay
+doctor`." (German on a German system). Later calls in the same session stay
   silent; tool calls are never interrupted by it. Works in Claude Code and
   Codex, once the installed hook program is the one from this release
   (#1473).
@@ -210,7 +210,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   anything shaped like a tag or a chat-template token keeps its words but
   loses its angle brackets (`‹system›`). New invariant INV-SCRUB-04 (#1467).
 
-- **Shorter tool descriptions: about a quarter less context per session.**
+- **Shorter tool descriptions: about a quarter fewer catalogue bytes without task tools.**
   The texts of `save_memory`, `edit_memory`, `recall`, `load_memory`,
   `archive_memory`, `list_rules` and `rulebook_check` say the same in fewer
   words, and the rulebook field descriptions are no longer sent a second time
@@ -476,13 +476,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   unverified. This is not a live-installation certification.
 - **Abstention figures registered** (#1463):
   `packages/eval/registrations/abstention-1463.json` reads the 79 unanswerable
-  gold-set questions from the registered September runs. The preregistered
-  follow-up run is still open.
+  gold-set questions from the registered September runs. A partial current-code
+  follow-up on an isolated vault copy adds hybrid and BM25 results; the full
+  preregistered gate on/off and scoped/full-hook matrix remains open.
 - **The passive-delivery bridge test no longer hangs on a bridge that already
   exited** (for example a missing `dist/bridge.js`): cleanup returns at once,
   is bounded and keeps the test's own error (#1324).
 - **Hook context load can be measured again.** `npm run hook-context-load
-  --workspace @bastra-recall/eval` reports from the event log what each hook
+--workspace @bastra-recall/eval` reports from the event log what each hook
   lane injected, the draft quotes, the rule-kernel re-deliveries and the plan
   lane's follow-through. The #1371 measurement report is checked in under
   `packages/eval/reports/` (its transcript scripts were lost and are marked as
@@ -816,7 +817,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   local Mindspace lab pages). Its views live on in the UI v2. Three of its
   actions have no place in the UI v2 yet: setting a vault image for the ring
   centre, marking a ghost as a skill from the map (`bastra skills add` still
-  declares skills) and flagging a ghost with *write* for vault care (#1561).
+  declares skills) and flagging a ghost with _write_ for vault care (#1561).
 
 ### Security
 
@@ -859,7 +860,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
 ### Fixed
 
 - `bastra update` now works for installs made with `npm install -g
-  bastra-recall`, the npm install the README shows. It used to install
+bastra-recall`, the npm install the README shows. It used to install
   `@bastra-recall/daemon` on top, which npm refuses because both packages
   bring the `bastra` command, so the update stopped with an error and changed
   nothing. It now updates `bastra-recall` itself and finds the new version
@@ -867,7 +868,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   install under Homebrew's Node (`/opt/homebrew/lib/node_modules`) is no
   longer mistaken for a Homebrew install. Installs of `@bastra-recall/daemon`
   update as before. Coming from 1.1.8 or older with `npm install -g
-  bastra-recall`: the old version still runs the update, so run
+bastra-recall`: the old version still runs the update, so run
   `npm install -g bastra-recall@latest` once, then `bastra update`.
 - Under the user's own `deny` rule an archiving `rm` no longer gets an allow,
   a rewrite or "No confirmation needed"; it keeps the STOP and one line naming
@@ -1051,7 +1052,6 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
 - Disposable owner demo, final fourteen-case functional matrix and EN/DE instructions.
   Functional results are separate from pending longitudinal confirmation.
 
-
 ### Fixed
 
 - CI now builds and tests on Node 22, 24 and 26. Node 22 to 26 are supported; Homebrew installs, which follow the newest Node, already run on 26. Support for Node 22 is planned to end in early 2027 with the next major release, before its upstream end of life on 2027-04-30.
@@ -1073,7 +1073,6 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
 - Bash-fail reads status only from structured fields or the official error/Codex header, caps repeated memory hints per session and skips leading `cd`/`pushd` in the recall query; thanks @zzallirog (#1152).
 - Statusline installation and updates preserve a user-chosen refresh interval (default remains 1s). Each tick gets Git status and ahead/behind counts from one fresh status query, while the parent PID is reused across ticks of the same process ancestry. Thanks @zzallirog for the measurements and analysis (#1227).
 - Without fusion, wired prompt-recall hits outside recognized lookups require a strong trigger anchor; fused recall and literal reflex remain unchanged; thanks @zzallirog (#1188).
-
 
 ## [1.1.0] — 2026-10-11
 
@@ -1280,7 +1279,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   settings still need repair (Refs #1094).
 - **A settings file that cannot be read is no longer written over — a
   behaviour change for every command that stores a setting** (`bastra config
-  set`, `embeddings on|off`, `models set`, `token`, the installer, the
+set`, `embeddings on|off`, `models set`, `token`, the installer, the
   daemon's own setters). With `~/.bastra/cli-settings.json` present but
   unreadable (wrong permissions, a transient I/O error), they used to replace
   it with defaults plus the one changed value. They now read the file once,
@@ -1441,21 +1440,21 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   design and implementation by @zzallirog — PR #692 is the design doc;
   opt-in, see the archiving `rm` below). With the opt-in on, a Claude Code
   command made only of `git clean -f`, `reset --hard`, `checkout [<tree>] --
-  <paths>`, `restore`, `branch -D`, `stash drop|clear` (plus `cd`, `rm`) runs
+<paths>`, `restore`, `branch -D`, `stash drop|clear` (plus `cd`, `rm`) runs
   through bastra's `shims/git`: clean moves its files into the archive, the
   others pin what they discard under `refs/bastra-archive/` and then run as
   typed; an untracked file the act would overwrite goes into the archive
   first. The receipt names each pin and its restore command; `bastra archive
-  restore <ref>`. Refused where the repository would run its own code on
+restore <ref>`. Refused where the repository would run its own code on
   the act, or where no snapshot can hold what it discards. The pins show up
   in `git log --all` (and a `git push --mirror` would publish them) until
   they expire. With the opt-in on, `BASTRA_GIT_SHIM=0` leaves only this part
   out.
 - Tripwire rows: `git checkout <tree> -- <paths>` and `git restore
-  --source=<tree>` / `--staged --worktree` (they write the index too, and
+--source=<tree>` / `--staged --worktree` (they write the index too, and
   overwrite untracked files). A flag in front no longer hides an act from
   its row: `git checkout -q -- <paths>`, `git reset -q --hard`, `git branch
-  -q -D`, and `git branch -d -f` / `--delete --force`.
+-q -D`, and `git branch -d -f` / `--delete --force`.
 - **`rm` in Claude Code's Bash can be an archive, not a loss** (#650) —
   design and implementation by @zzallirog (PRs #689, #690 are the design
   docs; landed via #696 as a squash, so his commits are not in `main`'s history) —
@@ -1708,7 +1707,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
 - **Learned bridges are written on their first reach and expire unless
   confirmed** (#672). On a normal-volume vault the same reach rarely repeats:
   one contributor's month minted 3,435 bridge candidates and wrote none. A
-  bridge is now written on its first reach but stays *unconfirmed* until a
+  bridge is now written on its first reach but stays _unconfirmed_ until a
   second reach confirms it: it widens a query only at reduced weight (at least
   half its trigger terms must match, at most 3 expansion terms, after confirmed
   bridges), and it is deleted by the next mint pass if no second reach comes
@@ -2042,17 +2041,17 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   registered matcher never matched. It is now `TodoWrite|TaskCreate|ExitPlanMode`:
   a plan presented from plan mode is read line by line (code fences left
   out) and recalls like a task list. The old names stay. Re-run `bastra
-  install claude-code` (or `bastra update`) to register it; until then doctor
+install claude-code` (or `bastra update`) to register it; until then doctor
   reports the plan hook as not registered. A wrapper the user put around the
   old entry is kept.
 - **The archiving `rm` on a full disk refuses clearly** (#695). Archiving is
   a move and frees no space; when the move or its manifest line fails with
   `ENOSPC`, `rm` now exits 1 with a message that names the ways out
   (`bastra archive reconcile --yes`, `/bin/rm`, `bastra config set
-  archive.enabled off`). The target stays where it was, nothing is deleted,
+archive.enabled off`). The target stays where it was, nothing is deleted,
   and the empty dated directory made for the move is removed again.
 - **An `rm` redefinition inside a compound command is seen** (#694). `{ hash
-  -p /x rm; }`, `if …; then alias rm=/x; fi`, `! hash -p …`, `time hash -p …`
+-p /x rm; }`, `if …; then alias rm=/x; fi`, `! hash -p …`, `time hash -p …`
   before an `rm -rf` got the archive receipt although `rm` was no longer the
   archiving one; the word after `{ ! if then else elif do while until time`
   is now read as a command, so these keep the STOP.
@@ -2105,7 +2104,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   as the prompt lane already did.
 - **Bash tripwire: the #657 and #658 checks cover their other spellings.**
   `hash -p <path> rm` keeps the STOP next to an archiving `rm`, like `alias
-  rm=` already did (`hash -p` for another name does not). The verb is read at
+rm=` already did (`hash -p` for another name does not). The verb is read at
   command position past `builtin` / `command`, so `builtin hash` counts and
   `echo hash …` or `sudo hash …` (a child shell) do not. An `eval` body is
   read again as shell: an `rm()` definition, `hash -p`, `alias` or `PATH=`
@@ -2334,7 +2333,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   Expected effect from the shadow stream: about 27 % of the decisions legacy
   served in the optional band fall silent (one signature: no evidence at all).
   `BASTRA_EVIDENCE_GATE=0` is the instant off-switch; `evidenceGate.enabled:
-  false` in the CLI settings the durable one — that settings block was written
+false` in the CLI settings the durable one — that settings block was written
   but never read back before, so the file could not switch the gate; it can
   now. The daemon prints the gate state at startup either way.
 
@@ -2363,7 +2362,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   leaves every other line byte-for-byte intact, and a second run reports
   `already true` and writes nothing. A value the user deliberately set to
   `false` is a decision: it is reported, never overwritten. `bastra uninstall
-  codex` removes exactly the block bastra wrote — a setting the user made
+codex` removes exactly the block bastra wrote — a setting the user made
   themselves, or a managed block they edited, stays. `bastra doctor codex`
   reports the key as MISSING (repairable by re-running install) when it is
   absent, and names an explicit `false` as the reason the plan lane is silent.
@@ -2387,7 +2386,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   and the darwin log line still names brew services as the missing supervisor.
   **Still open in #496:** the unit carries no `Restart=` and no idle teardown, so
   it is named, visible and stoppable — not supervised. The idle-unload half (the
-  Linux equivalent of the macOS story in #78, which unloads the *model*, not the
+  Linux equivalent of the macOS story in #78, which unloads the _model_, not the
   server) remains unsolved. So does the environment: `systemd-run` starts the
   unit in the user manager's environment, so `OLLAMA_*` variables a plain spawn
   would have inherited do not reach it. That costs a slow start rather than a
@@ -2478,7 +2477,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   the LaunchAgent finally has an owner in the code.** A user reported that after
   a plain `brew upgrade` neither the plist was updated nor the daemon restarted.
   The investigation found an uncomfortable reason: nothing in this repository
-  ever *wrote* a LaunchAgent plist. There were only places that read one,
+  ever _wrote_ a LaunchAgent plist. There were only places that read one,
   kickstarted it, or removed it on uninstall — `daemon-start.ts` says so
   verbatim: "no install path registers one". Whoever had one had written it by
   hand, and what was never written cannot be maintained by an update.
@@ -2488,7 +2487,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   is all Claude Code, Claude Desktop and Cursor need. Turning autostart on
   disables the idle shutdown.
 
-  The real gain is ownership. `bastra update` now repoints its *own* autostart
+  The real gain is ownership. `bastra update` now repoints its _own_ autostart
   at the new installation after an upgrade — Homebrew puts every version in its
   own directory, and a plist holds an absolute path. `bastra doctor` reports one
   that points at nothing, or one that is installed but not loaded. Both were
@@ -2509,7 +2508,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
 ### Performance
 
 - **Recall got roughly twice as fast, with an identical ranking.** MiniSearch
-  searched every *occurrence* of a term separately — a trie walk plus prefix and
+  searched every _occurrence_ of a term separately — a trie walk plus prefix and
   fuzzy expansion, per occurrence. A long prompt repeats half its words (1186
   emitted against 649 unique in the median), so half the work was repetition.
   Each unique term is now searched once and weighted by how often it was asked
@@ -2549,14 +2548,14 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   a temp file and a rename; a rename running through that window left the save
   publishing into the old shelf, and both existed afterwards. Twelve parallel
   attempts at `carnexus → target-a` versus `carnexus → target-b` produced, in
-  twelve of twelve runs, a tombstone pointing at the *loser's* target — an old
+  twelve of twelve runs, a tombstone pointing at the _loser's_ target — an old
   client would have been redirected somewhere that does not exist.
 
   There is now a reader-writer lock beside the tombstone: saves take a shared
   claim (they do not exclude each other), while create, rename and delete take an
   exclusive one, for both source and target name, acquired in sorted order. The
   lock order across the whole vault is area claim before id claim. The key comes
-  from the *resolved path*, not from the frontmatter scope, because an explicit
+  from the _resolved path_, not from the frontmatter scope, because an explicit
   `folder` can point at an entirely different shelf.
 
 - **Rollbacks no longer delete someone else's version.** In the document hub the
@@ -2570,7 +2569,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   Both now compare file identity against the state captured right after
   publishing, claim their target paths atomically (`link` instead of
   `exists` + `rename`) and report per file what stayed behind. `true` only when
-  original *and* sidecar are verifiably back where they were.
+  original _and_ sidecar are verifiably back where they were.
 
 - **An id claim now proves which file it belongs to.** `moveToTrashUnderClaim`
   took the caller's path on trust: with a genuine claim for A and the path of B,
@@ -2582,7 +2581,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
 
 - **Audit records describe what actually happened.** Conflict marking took its
   "before" image from the vault cache while the disk held something else;
-  restore logged the state from *before* the delete as `diff_after`, so a trash
+  restore logged the state from _before_ the delete as `diff_after`, so a trash
   file edited in between was recorded as something that was never restored. Both
   now come from the mutation itself. And a failed audit append no longer turns an
   already committed mutation into an error — it returns `audit_warning` telling
@@ -2614,7 +2613,6 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   publishing needs npm >= 11.5.1, and the global `npm install -g npm@…` that
   provided it could not be pinned by hash — Scorecard flagged it. The step is
   gone; the npm that publishes is the one the pinned Node release brought.
-
 
 ### Fixed
 
@@ -2819,7 +2817,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   removed, so no document leaves the candidate set. In isolation that held
   (540 → 238 ms on the real vault, every baseline top-10 hit still inside the
   top 50). Through the production path it does not: `npm run bm25-expansion
-  --workspace @bastra-recall/eval` runs 30 real prompts (2000–8000 chars) over
+--workspace @bastra-recall/eval` runs 30 real prompts (2000–8000 chars) over
   the full hybrid pipeline and reports 1137 → 966 ms p50 at best, with one
   injectable id lost at every threshold that saves anything. Only `df ≤ 400`
   passes the ship rule, and it saves ~8 % against a ~3 % noise floor measured
@@ -2859,7 +2857,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   749 ms, 25 % timeouts (19.–21.08.), while the prompt lane holds the ceiling
   at 191 ms median. The cold embedding model was the measured source of that
   variance before the per-arm deadline landed (#342: cold ~860 ms → 341 ms),
-  and the deadline made a cold call *cheap*, not *good* — past 150 ms the
+  and the deadline made a cold call _cheap_, not _good_ — past 150 ms the
   dense arm is dropped (`degraded: "vector-arm-timeout"`) and the hit list
   comes back BM25-only. The lane arrives on time and says less.
 
@@ -2929,7 +2927,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   caller receives up to 2k hits — k seeds plus up to k one-hop neighbours,
   each scored `seed.score * 0.5 * link.score`, half a seed at best. On a
   649-memory vault at k=3 that is the whole difference between `dropped <30 =
-  0.0%` and `2.6%`, and every dropped hit is a neighbour. No seed can reach the
+0.0%` and `2.6%`, and every dropped hit is a neighbour. No seed can reach the
   floor through that endpoint at all: `http.ts` clamps it to `k <= 10` and the
   k-th fused score is bounded below by `RRF_SCALE / (RRF_K + k)` = 32.79. So
   the floor at 30 is not inert, as #302 said it was — its job is narrow and
@@ -2958,7 +2956,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   no data dependency (`fuseRRF` consumes both rank lists only after both
   return) — the wall clock paid their SUM instead of their MAX. Measured over
   n=1545 `hook_recall` events (19.–24.08.): `latency_ms_recall − (bm25 +
-  vector)` sat at p50 1 ms / p90 2 ms, i.e. the stage timers summed exactly to
+vector)` sat at p50 1 ms / p90 2 ms, i.e. the stage timers summed exactly to
   the total and nothing overlapped. The dense arm is now dispatched first and
   awaited only after the BM25 pass, dropping the wall clock from p50 157 ms to
   p50 137 ms (prompt lane: 200 ms → 144 ms). Pure reordering — identical
@@ -2970,7 +2968,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
 
 - **`mode: none` only pays for a recall that could contribute — the wired pool
   and its 4h dedup are checked first** (#371). Since a50f849 (#217), `mode:
-  none` — 91 % of prompts — ran a full-vault recall over ~955 memories and
+none` — 91 % of prompts — ran a full-vault recall over ~955 memories and
   threw away everything not reflex-wired: p50 210 ms against p50 10 ms before
   19.08., with 83.5 % of those recalls injecting nothing. The lane now asks
   two query-independent questions first — is any memory wired reflex at all,
@@ -3036,7 +3034,7 @@ Fixes reported in a contributor audit of the 1.2.0 hardening.
   `strip-trigger-expand.ts` re-expand) would have replaced the vault's ~4300
   phrases with empty arrays and frozen them there, silently.
 
-  An empty *reply* is now treated as the failure it is: nothing written, nothing
+  An empty _reply_ is now treated as the failure it is: nothing written, nothing
   stamped, a log line naming the memory, and the next sweep retries it. The test
   is the raw reply, not the parse result — text that parses to nothing (the
   model echoed the existing triggers, or wrote only over-long lines) is a real
@@ -3207,13 +3205,13 @@ them.
   checkout addresses files from the repo root — and one variable stood for
   both. `git apply` run from a subdirectory does not fail on a path outside it:
   it prints `Skipped patch`, changes nothing, and exits 0, which the apply path
-  recorded as *applied*. The skip guard that already existed on `--check` now
+  recorded as _applied_. The skip guard that already existed on `--check` now
   covers the apply calls as well.
 
   `git apply --3way` was the second half. It is not a probe: when it cannot
-  merge it writes `<<<<<<<` into the tree and stages it, and only *then* exits
+  merge it writes `<<<<<<<` into the tree and stages it, and only _then_ exits
   non-zero — so "it failed, therefore nothing happened" was false, and a patch
-  reported *set aside* could leave a tree that no longer parsed. It now
+  reported _set aside_ could leave a tree that no longer parsed. It now
   snapshots every file the patch addresses, restores them byte-for-byte on a
   failed merge, and runs against a copy of the index so a conflict cannot stage
   anything real. That snapshot includes the source side of a rename, which the
@@ -3254,7 +3252,7 @@ them.
   1861 on a real vault, so the floor passed the whole pool by construction and
   the penalty landed on almost every save — citing memories with no topical
   relation. A collision is now defined as what the field actually promises:
-  another memory declaring *the same situation*, measured as containment
+  another memory declaring _the same situation_, measured as containment
   between single `recall_when` sentences. Against 2516 scans on 661 memories
   with 33 verbatim-duplicate triggers as the gold set, the false rate drops
   from 90.4% to 0.9% at an unchanged 100% hit rate. Scans that fire at all:
@@ -3316,14 +3314,14 @@ follows once they are verified against a real release.
 - **An update from an npx-started process installed the new version and left
   every surface running the old one** (#304). `ensureStableForwarder` pins
   `~/.bastra/runtime/<version>/` using `VERSION` — a constant compiled into the
-  *running* process. `bastra update` performed the npm upgrade and then
+  _running_ process. `bastra update` performed the npm upgrade and then
   re-registered in that same, old process, so it re-pinned its own old version,
   found last run's marker, reported `reused`, and the freshly installed code was
   referenced by nobody. Nothing failed: the installer succeeded, `bastra
-  version` printed the new number, and the update was simply not in effect.
+version` printed the new number, and the update was simply not in effect.
   The re-registration is now handed to the newly installed binary, and `bastra
-  doctor` reports a stale pin — the quiet third case next to *missing* and
-  *ephemeral*, which never breaks and just runs replaced code.
+doctor` reports a stale pin — the quiet third case next to _missing_ and
+  _ephemeral_, which never breaks and just runs replaced code.
 
 - **`npx bastra-recall install` left no `bastra` command** (#317). The guided
   setup completed, three clients were registered, the runtime was pinned — and
@@ -3457,7 +3455,7 @@ follows once they are verified against a real release.
 - **Three things the code did but the docs never said.** From a field report on
   a mixed Russian/English vault: the bridge layer is latin-alphabet only, so a
   non-latin vault gets ordinary recall but no vocabulary expansion; reflex
-  `recall_when` phrases must match *every* content word, which makes a
+  `recall_when` phrases must match _every_ content word, which makes a
   sentence-length trigger a dead one, and the stopword list that softens that
   is German and English only; and the event log lives at `~/.bastra/logs/`,
   not inside the vault. Docs only — nothing behaved differently. (#257)
@@ -3536,7 +3534,7 @@ disappear without anyone being told. Those do not wait for a feature release.
   text that is already indexed at a lower weight, and leaves the trigger that
   should fire carrying no distinct signal. Rewriting those into real triggers
   moved that vault's recall@5 from 0.457 to 0.565 while making the notes
-  *smaller*. `save_quality` now points at the ones that restate, and the
+  _smaller_. `save_quality` now points at the ones that restate, and the
   guidance says it plainly: name the situation, not the content. Advisory only —
   it never blocks a save. Found and measured by zzallirog. (#238)
 
@@ -3696,8 +3694,9 @@ several findings were destructive, and they are the reason this release exists.
 ## [0.8.5] — 2026-07-19
 
 ### Added
+
 - **Intake adoption** (#217): imported memories start as lean "intake" nodes and
-  are *adopted* into the full memory format when Claude actually uses one —
+  are _adopted_ into the full memory format when Claude actually uses one —
   adopt-on-touch (one per turn), adopt-merge when a duplicate check hits, or in
   bulk on request. A new **`archive_memory`** MCP tool retires the original
   (vault trash + forget) and stamps `superseded_by` on the archived copy, so the
@@ -3728,7 +3727,7 @@ several findings were destructive, and they are the reason this release exists.
   switch `BASTRA_HOOK_QUERY=english` restores the old action-verb template.
 - **Score transparency** (#230): with `verbosity: "full"`, each recall hit now
   carries the RRF rank pair its score is built from — `rrf: { rank_bm25,
-  rank_vector, raw }`. `recall` also returns a top-level `weak_result: true` when
+rank_vector, raw }`. `recall` also returns a top-level `weak_result: true` when
   no returned hit actually matched a `recall_when` or title on the hybrid path —
   an explicit "nothing really matched here" signal that rides alongside the
   structurally-high rank score and filters nothing.
@@ -3740,13 +3739,14 @@ several findings were destructive, and they are the reason this release exists.
   800 critical; test files 700 / 1000). Kill switch `BASTRA_SIZE_CHECK=off`.
 
 ### Fixed
+
 - **Ring view — PROJECTS stays instance-browsing**: the PROJECTS ring now always
   shows one project at a time with the sidebar switcher, independent of the
   project count, instead of flipping to fan-out mode once the cluster count
   crossed the instance threshold under the user's feet.
 - **Import: cleaner graphs from real vaults** (zzallirog 0.8.4 verification
-  round): wikilinks written *inside* code spans no longer parse as edges (shared
-  `stripCodeSpans` helper) — no more phantom edges/ghosts from prose *about*
+  round): wikilinks written _inside_ code spans no longer parse as edges (shared
+  `stripCodeSpans` helper) — no more phantom edges/ghosts from prose _about_
   links; a file other notes link to is imported as a real hub, never skipped as a
   nav file; and `MEMORY.md` indexes are harvested into sections + per-file
   descriptions, tied together by a single navigation-hub node (a native
@@ -3776,6 +3776,7 @@ several findings were destructive, and they are the reason this release exists.
 ## [0.8.4] — 2026-07-18
 
 ### Fixed
+
 - **`import vault` slug-twin ghosts** (#219, zzallirog field report): body
   wikilink targets now go through the SAME slugify as the minted node ids —
   `[[feedback_gate_catalog]]` resolves onto `<label>-feedback-gate-catalog`
@@ -3792,10 +3793,11 @@ several findings were destructive, and they are the reason this release exists.
 ## [0.8.3] — 2026-07-18
 
 ### Fixed
+
 - **`import vault` self-ingest guard** (zzallirog field report): importing a
   folder that overlaps the vault — the vault itself, a subfolder, or a parent
   directory — now refuses with a clear message instead of writing a slugified
-  copy of the vault into itself. For users whose memory directory *is* the
+  copy of the vault into itself. For users whose memory directory _is_ the
   vault this was the default first run; the daemon hid the echo (it scopes
   cleanly), but every other tool on the shared folder saw a half-duplicate
   corpus. Symlinks are resolved before the check.
@@ -3805,6 +3807,7 @@ several findings were destructive, and they are the reason this release exists.
   recognize and skip the machine-imported set.
 
 ### Added
+
 - **Semantic view: depth mode** (zzallirog idea — "a wire between two things
   you've already made"): the server-side PCA now ships the third principal
   component as `z`, and the semantic view gets a flat/depth toggle in the
@@ -3816,6 +3819,7 @@ several findings were destructive, and they are the reason this release exists.
 ## [0.8.2] — 2026-07-18
 
 ### Added
+
 - **Mindspace view** (#216): the map's new default view — a real universe over
   your vault: volume-spread galaxies, subgalaxies, solar systems, dwarfs,
   nebulae, background stars and shooting stars, fully mouse-navigable
@@ -3853,6 +3857,7 @@ several findings were destructive, and they are the reason this release exists.
   the day Desktop renders them.
 
 ### Changed
+
 - The map's CSS moved from one `app.css` to 15 module files (aggregator only
   `@import`s); the renderer uses glow sprites and viewport culling instead of
   per-frame gradients (#216).
@@ -3860,6 +3865,7 @@ several findings were destructive, and they are the reason this release exists.
 ## [0.8.1] — 2026-07-17
 
 ### Added
+
 - **Onboarding interview** (#212): a fresh vault offers to seed itself — pick
   what your memory will mainly hold (developer / business / personal / mixed)
   and answer a handful of persona-aware questions; every answer becomes a
@@ -3920,6 +3926,7 @@ several findings were destructive, and they are the reason this release exists.
   sync — the id is the whole declaration.
 
 ### Fixed
+
 - **Search copilot** (`/ui/chat`): a truncated model response no longer leaks
   raw JSON into the chat (reply-value rescue), and the copilot never claims a
   memory "does not exist" — it says the search didn't surface it.
@@ -3927,6 +3934,7 @@ several findings were destructive, and they are the reason this release exists.
 ## [0.8.0] — 2026-07-16
 
 ### Added
+
 - **Vault map** (#207): an interactive, local-only map of the vault at
   `http://127.0.0.1:6723/ui` — opt-in via `ui.enabled`, opened with the new
   **`bastra map`** command (also surfaced in `bastra status` and the install
@@ -3935,7 +3943,7 @@ several findings were destructive, and they are the reason this release exists.
   **Ring** (a drill-down wheel over the six memory building blocks — projects,
   people, self, knowledge, rules, artifacts — with per-project emblems and an
   instance switcher), and **Semantic** (positions from a PCA projection of the
-  embedding vectors, plus dashed strands for *connections you never wrote*:
+  embedding vectors, plus dashed strands for _connections you never wrote_:
   semantically close pairs with no explicit link). Ghost nodes mark unwritten
   wikilink targets, bridge halos mark cross-cluster connectors. Renders from
   three open, token-gated endpoints (`GET /api/v1/graph`, `/graph/node`,
@@ -3947,8 +3955,8 @@ several findings were destructive, and they are the reason this release exists.
   highlighted on top of the result list. Runs on the same local Ollama
   generation model as doc2query (`POST /ui/chat`, loopback-only); nothing
   leaves the machine.
-- **Vault care** (#207): flag memories straight from the map (*delete*,
-  *edit*, *write*, *note*) into an open `vault-care.md` checklist; the next
+- **Vault care** (#207): flag memories straight from the map (_delete_,
+  _edit_, _write_, _note_) into an open `vault-care.md` checklist; the next
   AI session sees the open flags via the session hook and works the list off
   with you.
 - **Capture admission rules** (#159): SKILL.md, the `save_memory` description,
@@ -3961,6 +3969,7 @@ several findings were destructive, and they are the reason this release exists.
   automated lifecycle passes (curator).
 
 ### Fixed
+
 - **`reconcile()` heals in-place edits** (#199): files edited by external
   processes — Obsidian, scripts, a second machine, especially on cloud-storage
   mounts — no longer serve stale content until a daemon restart. Reconcile now
@@ -3969,9 +3978,10 @@ several findings were destructive, and they are the reason this release exists.
 ## [0.7.9] — 2026-07-07
 
 ### Fixed
+
 - **`bastra-recall install` always reaches the guided wizard now.** Package-
   manager bin resolution (`npx` / `npm exec`) could route `bastra-recall
-  <command>` to the daemon entry point, which then died with
+<command>` to the daemon entry point, which then died with
   `FATAL: BASTRA_VAULT_PATH is not set` instead of running the CLI. The daemon
   entry now detects a CLI command (`install`, `doctor`, `status`, …) and
   delegates to the CLI — so `npx bastra-recall install` runs the install wizard
@@ -3981,6 +3991,7 @@ several findings were destructive, and they are the reason this release exists.
 ## [0.7.8] — 2026-07-07
 
 ### Fixed
+
 - **`npx bastra-recall install` now launches the guided wizard** instead of
   crashing with `FATAL: BASTRA_VAULT_PATH is not set`. The unscoped wrapper
   package only exposed a `bastra` bin, so the `bastra-recall` command resolved
@@ -3993,6 +4004,7 @@ several findings were destructive, and they are the reason this release exists.
 ## [0.7.7] — 2026-07-07
 
 ### Added
+
 - **Guided-install wizard, expanded to 8 steps**: beyond vault / clients /
   semantic recall / text model, the wizard now offers the Claude Code **Stop
   hook** (default on), **Bastra Commons** (community recipe vault, read-only,
@@ -4005,6 +4017,7 @@ several findings were destructive, and they are the reason this release exists.
   cli-settings.json so Windows/Linux installs carry it too.
 
 ### Changed
+
 - **Stop save-eval hook is now registered by default** (live-validated #48; it
   has been silent since the file-relay redesign — suggestions go to
   `pending-suggestions.json`, read by the next session, no chat noise). Opt out
@@ -4018,6 +4031,7 @@ several findings were destructive, and they are the reason this release exists.
   GitHub login required.
 
 ### Fixed
+
 - **Commons clone can no longer hang on a git login prompt**: clone/pull run
   with `GIT_TERMINAL_PROMPT=0`, so an unreachable/private repo fails fast and
   the wizard continues instead of blocking.
@@ -4031,6 +4045,7 @@ several findings were destructive, and they are the reason this release exists.
 > leading `0.` (pre-1.0) already signals beta status per SemVer.
 
 ### Added
+
 - **Prompt-injection capture scan (#147)**: incoming third-party content
   (document/OCR ingest, bridge captures, externally-sourced saves) is scanned
   for injection markers — instructions addressed to the AI, authority framing,
@@ -4066,6 +4081,7 @@ several findings were destructive, and they are the reason this release exists.
   rejected over `aliases`.
 
 ### Fixed
+
 - **`uninstall all` removes the shared skill (#181)**: a final sweep deletes
   `~/.claude/skills/bastra-recall/` when no skill-sharing registration
   remains (surfaces whose uninstall failed count as still registered).
@@ -4073,6 +4089,7 @@ several findings were destructive, and they are the reason this release exists.
 ## [0.7.0-beta.5] — 2026-07-04
 
 ### Added
+
 - **Guided install wizard (#185)**: bare `bastra install` on a terminal runs
   a guided setup with selection lists — memory vault (create `~/BastraVault`
   or pick a folder), AI clients (multiselect, detected ones preselected),
@@ -4080,16 +4097,16 @@ several findings were destructive, and they are the reason this release exists.
   writing anything; all scripted flows (`install all`, `--yes`, `--dry-run`,
   non-TTY) are unchanged and `--ollama`/`--no-ollama` are honored.
 - **Self-improving lifecycle, Wave C (#186)**:
-  - *Usage sidecar (#154)* — durable per-memory aggregate of
+  - _Usage sidecar (#154)_ — durable per-memory aggregate of
     surfaced/loaded/acted_on under `<vault>/.bastra/usage/`; "surfaced"
     counts only hints the hooks actually injected (post-filter feedback via
     `POST /hook/hinted`).
-  - *Staleness curator, phase A (#155)* — deterministic score-only demotion
+  - _Staleness curator, phase A (#155)_ — deterministic score-only demotion
     of memories that keep surfacing without engagement. Review-first pass,
     ≥30 days of usage data required, floored/doc/taxonomy memories protected,
     any real load reactivates; survival-by-id now CI-pinned for curator
     demotions too.
-  - *Vault-health report (#156)* — each curator run projects `REPORT.md`
+  - _Vault-health report (#156)_ — each curator run projects `REPORT.md`
     into the vault: stale candidates with usage numbers, floors awaiting
     re-affirmation, same-topic clusters, dangling wikilinks, 0-byte files.
     Manual trigger: `POST /curator/run` (dry-run by default).
@@ -4099,6 +4116,7 @@ several findings were destructive, and they are the reason this release exists.
   (pure decision function, unit-tested).
 
 ### Fixed
+
 - **Daemon-aware embeddings status (#177)**: `bastra embeddings status` and
   the install-end prompt respect a RUNNING daemon whose environment already
   enables semantic recall — no more contradictory OFF notes or re-prompts.
@@ -4112,6 +4130,7 @@ several findings were destructive, and they are the reason this release exists.
 ## [0.7.0-beta.4] — 2026-07-03
 
 ### Fixed
+
 - **Stale version-string constants**: `scripts/bump.mjs` now rewrites the
   hardcoded version constants (CLI `VERSION`, daemon `DAEMON_VERSION`,
   forwarder serverInfo) and fails loudly on a pattern miss — `/health` no
@@ -4124,15 +4143,16 @@ several findings were destructive, and they are the reason this release exists.
 ## [0.7.0-beta.3] — 2026-07-03
 
 ### Added
+
 - **Floor/pin primitive (#141, #142)**: push-by-state memories with an
   opaque per-entry handle `{memory_id, condition, reason, last_affirmed,
-  affirmed_by, why}`; keyed `release(condition)`; `affirm` is an explicit
+affirmed_by, why}`; keyed `release(condition)`; `affirm` is an explicit
   call requiring `affirmed_by` + a fresh `why` (no why → the clock does not
   move). Expired floors drop back to ranked — unpin ≠ remove. Exposed via
   loopback REST (`/api/v1/floors`) and injected as a pinned block with an
   audit line.
 - **Discoverable semantic recall (#79)**: new `bastra embeddings
-  <on|off|status>` command, a one-time install-end prompt, and a doctor note
+<on|off|status>` command, a one-time install-end prompt, and a doctor note
   — turning the embedding layer on is a single line instead of an env dance.
 - **Wave A ingest hygiene (#149–#152)**: central pre-ingest scrubber strips
   bastra's own injected context blocks before heuristics/doc2query; injected
@@ -4152,6 +4172,7 @@ several findings were destructive, and they are the reason this release exists.
   `docs/survival.md`.
 
 ### Fixed
+
 - **Strong cross-scope recall hints (#148)**: a hit passes the #110
   foreign-scope filter only when it matched its hand-written `recall_when`
   AND sits in the REQUIRED band — deliberate cross-project relevance gets
@@ -4163,6 +4184,7 @@ several findings were destructive, and they are the reason this release exists.
 ## [0.7.0-beta.2] — 2026-06-28
 
 ### Added
+
 - **doc2query slug-filter + corpus prune (#145, #143)**: a structural
   `isSlugChain` gate (plus a sharpened write-time prompt) drops slug-chains
   (`panel-close-fix`) and hallucinated tag-strings from `recall_when_expanded`
@@ -4170,11 +4192,11 @@ several findings were destructive, and they are the reason this release exists.
   prompt, and they poison recall with noise terms. The gate keeps real search
   tokens (`z-index`, `gpt-4`, and idioms like `left-to-right` via a function-word
   seam heuristic). The new `prune-slug-expansions` maintenance script applies the
-  same gate to *existing* expansions (340 slug entries removed across the vault,
+  same gate to _existing_ expansions (340 slug entries removed across the vault,
   the good paraphrases and the clean files left untouched), so the stored corpus
   matches what new writes get.
 - **doc2query trigger expansion (#117)**: a local Ollama model paraphrases each
-  memory's `title`/`summary`/`recall_when` into *different* words at write time
+  memory's `title`/`summary`/`recall_when` into _different_ words at write time
   and indexes them (new `recall_when_expanded` frontmatter field, BM25 weight 2
   vs `recall_when`'s 5), so a reworded ("far") query weeks later still fires on
   the lexical layer with zero query-time model cost. The new `TriggerExpander`
@@ -4210,7 +4232,7 @@ several findings were destructive, and they are the reason this release exists.
   earned through independent verification records, never declared — see the
   wiki page "Bastra Commons".
 - **Commons verify loop**: `bastra commons verify <recipe-id> <works|fails>
-  ["env note"]` writes an append-only verification record
+["env note"]` writes an append-only verification record
   (`verifications/<recipe>/<verifier>.json`, one per user+solution, history
   via git) and submits it as a mini pull request. The daemon counts merged
   records on boot and feeds them into the fusion ranking
@@ -4231,6 +4253,7 @@ several findings were destructive, and they are the reason this release exists.
   dropped recall to BM25.
 
 ### Changed
+
 - Stop hook redesigned to be silent (#48): save-eval suggestions are written
   to `~/.bastra/pending-suggestions.json` and injected as additionalContext by
   the next SessionStart (consume-once, 7-day expiry) instead of `systemMessage`
@@ -4277,6 +4300,7 @@ several findings were destructive, and they are the reason this release exists.
   instead of being pulled toward the save machinery first.
 
 ### Security
+
 - CORS is deny-by-default (#95): with `BASTRA_CORS_ORIGIN` unset no browser
   origin is allowed; `*` is an explicit opt-in and warns when combined with a
   minted API token.
@@ -4284,6 +4308,7 @@ several findings were destructive, and they are the reason this release exists.
   timeouts; a spawn killed by signal/timeout no longer counts as success (#91).
 
 ### Fixed
+
 - **Telemetry join-state across daemon boots**: the recall→action correlation
   state lived only in memory and reset on every daemon restart, skewing the
   `recall_episode`/USE-rate join. It now persists across boots, so the acted-on
@@ -4314,6 +4339,7 @@ several findings were destructive, and they are the reason this release exists.
 ## [0.6.5-beta.1] — 2026-06-01
 
 ### Added
+
 - Auto-update (opt-in): a new `update.mode` setting (`notify` default / `auto` /
   `off`) stored in `~/.bastra/cli-settings.json`. In `auto`, a new Claude Code
   session stages an update in the background (file swap, no daemon restart),
@@ -4334,6 +4360,7 @@ several findings were destructive, and they are the reason this release exists.
 - OpenAPI starter spec for REST / ChatGPT Actions integrations.
 
 ### Changed
+
 - Smoke tests now run against the public sample vault.
 - npm packaging is hardened for public workspaces and packaged Skill assets.
 - Homebrew formula builds the full monorepo so daemon hooks and statusline are
@@ -4342,6 +4369,7 @@ several findings were destructive, and they are the reason this release exists.
   multi-line suggestions can add terminal noise.
 
 ### Fixed
+
 - Lockfile: restored the `@esbuild/*` platform-binary entries that a prior
   `npm update` had dropped. Without them `npm ci` (and the tsx test runner)
   failed on a clean install on the affected platform.
@@ -4353,6 +4381,7 @@ the `-beta` tag means it's feature-complete enough to use but may have rough
 edges. Dogfooded daily against a real vault.
 
 ### Core
+
 - **Memory vault** over plain markdown files with YAML frontmatter — your
   data stays as readable files you own.
 - **Hybrid recall** — BM25 keyword search fused with optional embeddings
@@ -4365,6 +4394,7 @@ edges. Dogfooded daily against a real vault.
 - **Documents** — `find_document` / `read_document` over PDFs, scans, notes.
 
 ### Daemon
+
 - Single shared daemon (MCP over stdio + HTTP REST), spawned on demand by a
   forwarder so every AI client shares one vault/index — no N-copies sync bug.
 - **Idle self-shutdown** (default 30 min, env-tunable) — keeps the process
@@ -4372,19 +4402,23 @@ edges. Dogfooded daily against a real vault.
 - Background update-check against GitHub releases.
 
 ### Reflex layer (hooks)
+
 - SessionStart + PreToolUse hooks surface relevant memories automatically,
   before you write code or start a session.
 
 ### CLI & distribution
+
 - `bastra install | uninstall | doctor | update` across Claude Code,
   Claude Desktop, and Cursor.
 - Homebrew formula (head build) + double-click installer.
 
 ### Statusline
+
 - Optional powerline-style statusline with a native `bastra` segment
   (live recall stats + vault size).
 
 ### Tooling
+
 - CI (GitHub Actions): `npm ci` → build → type-check → test on a Node 20/22
   matrix, on every push and PR.
 
