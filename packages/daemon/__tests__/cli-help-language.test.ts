@@ -19,6 +19,21 @@ import { fileURLToPath } from "node:url";
 import { HELP_LANGUAGES, commandHelp, helpText, showHelp } from "../src/cli/help-text.js";
 import { settingsFilePath } from "../src/settings-file.js";
 import { USAGE_WORDS, usageWords, usageWordsIn } from "../src/cli/usage-words.js";
+import { USAGE_BLOCK_WORDS, usageBlocksIn, type UsageBlockWords } from "../src/cli/usage-block-words.js";
+import { MEMORY_CMD_WORDS } from "../src/cli/memory-cmd-words.js";
+import { COMPLETION_WORDS, cmdCompletion, completionWordsIn } from "../src/cli/completion.js";
+import { ARCHIVE_WORDS, archiveWordsIn, cmdArchive } from "../src/cli/archive-cmd.js";
+import { TRASH_WORDS, cmdTrash, trashWordsIn } from "../src/cli/trash-cmd.js";
+import { SKILLS_WORDS, cmdSkills, skillsWordsIn } from "../src/cli/skills-cmd.js";
+import { cmdRecall, cmdSave } from "../src/cli/memory-cmd.js";
+import { cmdRules } from "../src/cli/rules-cmd.js";
+import { cmdPatches } from "../src/cli/patches-cmd.js";
+import { cmdOnboard } from "../src/cli/onboard-cmd.js";
+import { cmdImport } from "../src/cli/import-cmd.js";
+import { cmdFeedback } from "../src/cli/feedback-cmd.js";
+import { cmdReconcile } from "../src/cli/reconcile-cmd.js";
+import { parseArgs } from "../src/cli/commands.js";
+import { printAssistantAddressNote } from "../src/cli/doctor-address-note.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = resolve(here, "..", "src", "cli.ts");
@@ -163,5 +178,222 @@ test("the one-line usage errors exist in English and German and follow language.
   } finally {
     Object.assign(process.env, saved);
     for (const home of Object.values(homes)) await rm(home, { recursive: true, force: true });
+  }
+});
+
+/** Every text of a words table, functions called with sample arguments. */
+function texts(words: object): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const [key, value] of Object.entries(words)) {
+    if (typeof value === "function") out.set(key, String((value as (...a: unknown[]) => unknown)("X1", "Y2")));
+    else out.set(key, String(value));
+  }
+  return out;
+}
+
+const WORD_TABLES: [string, Readonly<Record<string, object>>, (language: string | undefined) => object][] = [
+  ["usage blocks", USAGE_BLOCK_WORDS, usageBlocksIn],
+  ["recall/save", MEMORY_CMD_WORDS, (l) => MEMORY_CMD_WORDS[l ?? "en"] ?? MEMORY_CMD_WORDS.en],
+  ["completion", COMPLETION_WORDS, completionWordsIn],
+  ["archive", ARCHIVE_WORDS, archiveWordsIn],
+  ["trash", TRASH_WORDS, trashWordsIn],
+  ["skills", SKILLS_WORDS, skillsWordsIn],
+];
+
+test("every CLI words table has each text in English and German, and English for an unlisted language", () => {
+  for (const [name, table, pick] of WORD_TABLES) {
+    assert.deepEqual(Object.keys(table).sort(), ["de", "en"], `${name}: languages`);
+    const en = texts(table.en),
+      de = texts(table.de);
+    assert.deepEqual([...de.keys()], [...en.keys()], `${name}: the same texts in both languages`);
+    for (const [key, english] of en) {
+      assert.ok(english.trim(), `${name}.${key}: no English text`);
+      assert.ok(de.get(key)?.trim(), `${name}.${key}: no German text`);
+      assert.notEqual(de.get(key), english, `${name}.${key}: the German text is the English one`);
+      assert.doesNotMatch(english, /[äöüÄÖÜß]/, `${name}.${key}: the English text carries German`);
+    }
+    assert.equal(pick("ru"), table.en, `${name}: unlisted language → English`);
+    assert.equal(pick(undefined), table.en, `${name}: unset → English`);
+    assert.equal(pick("de"), table.de, `${name}: German`);
+  }
+  const en = texts(USAGE_BLOCK_WORDS.en),
+    de = texts(USAGE_BLOCK_WORDS.de);
+  for (const [key, english] of en) {
+    assert.match(english, /^usage: bastra /, `${key}: the English block is the usage block it always was`);
+    assert.match(de.get(key) ?? "", /^Aufruf: bastra /, `${key}: no German usage block`);
+  }
+});
+
+/** stdout + stderr (console included) of `run` with the home pointed at `home`. */
+async function captured(home: string, run: () => Promise<unknown>): Promise<string> {
+  const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+  const writes = { out: process.stdout.write, err: process.stderr.write };
+  let text = "";
+  const sink = ((chunk: string) => ((text += String(chunk)), true)) as typeof process.stdout.write;
+  process.env.HOME = process.env.USERPROFILE = home;
+  process.stdout.write = sink;
+  process.stderr.write = sink;
+  try {
+    await run();
+  } finally {
+    process.stdout.write = writes.out;
+    process.stderr.write = writes.err;
+    Object.assign(process.env, saved);
+  }
+  return text;
+}
+
+const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+type Expected = (blocks: UsageBlockWords, lines: ReturnType<typeof usageWordsIn>, language: string) => string;
+
+test("each command's usage error follows language.primary; the English one is the line it was", async () => {
+  const vault = await mkdtemp(join(tmpdir(), "usage-language-vault-"));
+  const homes = { de: await homeWith("de"), unset: await homeWith(null), other: await homeWith("ru") };
+  const stdinTty = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+  const repo = "https://github.com/n0mad-ai/bastra-recall";
+  const cases: [string, () => Promise<unknown>, Expected, string][] = [
+    [
+      "archive",
+      () => cmdArchive(parseArgs(["archive", "put"])),
+      (b) => `${b.archive}\n`,
+      "usage: bastra archive put <path>... ",
+    ],
+    ["trash", () => cmdTrash(parseArgs(["trash", "restore"])), (b) => `${b.trash}\n`, "usage: bastra trash list "],
+    ["skills", () => cmdSkills(parseArgs(["skills", "add"])), (b) => b.skills, "usage: bastra skills list\n"],
+    ["rules", () => cmdRules(parseArgs(["rules"])), (b) => b.rules, "usage: bastra rules proposals "],
+    ["patches", () => cmdPatches(parseArgs(["patches", "help"])), (b) => b.patches, "usage: bastra patches [list|"],
+    ["onboard", () => cmdOnboard(parseArgs(["onboard", "--vault", vault])), (b) => b.onboard, "usage: bastra onboard "],
+    [
+      "import vault",
+      () => cmdImport(parseArgs(["import", "vault"])),
+      (b) => b.importVault,
+      "usage: bastra import vault <dir>",
+    ],
+    [
+      "feedback",
+      () => cmdFeedback(parseArgs(["feedback"])),
+      (b) => b.feedback(repo),
+      "usage: bastra feedback <bug|idea>\n",
+    ],
+    ["recall", () => cmdRecall(["recall"]), (_b, u) => `${u.recall}\n`, 'usage: bastra recall "<question>" '],
+    [
+      "completion",
+      () => cmdCompletion(null),
+      (_b, _u, l) => completionWordsIn(l).whichShell("bash|zsh|fish"),
+      "error: which shell? usage: bastra completion <bash|zsh|fish>\n",
+    ],
+  ];
+  try {
+    Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+    for (const [name, run, expected, englishStart] of cases) {
+      const german = expected(usageBlocksIn("de"), usageWordsIn("de"), "de");
+      const english = expected(usageBlocksIn("en"), usageWordsIn("en"), "en");
+      assert.ok(english.startsWith(englishStart), `${name}: the English line changed`);
+      assert.equal(await captured(homes.de, run), german, `${name}: not German with language.primary=de`);
+      assert.equal(await captured(homes.unset, run), english, `${name}: not English without a language`);
+      assert.equal(await captured(homes.other, run), english, `${name}: not English for 'ru'`);
+    }
+    // the plain import's block shows only on a terminal
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
+    const plainImport = () => cmdImport(parseArgs(["import", "--vault", vault]));
+    assert.equal(await captured(homes.de, plainImport), usageBlocksIn("de").import);
+    assert.equal(await captured(homes.unset, plainImport), usageBlocksIn("en").import);
+    assert.ok(usageBlocksIn("en").import.startsWith("usage: bastra import <file|-> [chatgpt|claude|gemini|text]\n"));
+    // reconcile: the reason line comes first, the usage block follows the language
+    const reconcile = () => cmdReconcile(parseArgs(["reconcile", "--yes"]));
+    assert.match(await captured(homes.de, reconcile), new RegExp(`\\n${escapeRe(usageBlocksIn("de").reconcile)}\\n$`));
+    assert.match(
+      await captured(homes.unset, reconcile),
+      new RegExp(`\\n${escapeRe(usageBlocksIn("en").reconcile)}\\n$`)
+    );
+    assert.ok(usageBlocksIn("en").reconcile.startsWith("usage: bastra reconcile [--vault <this-store>] "));
+  } finally {
+    if (stdinTty) Object.defineProperty(process.stdin, "isTTY", stdinTty);
+    else delete (process.stdin as { isTTY?: boolean }).isTTY;
+    for (const home of [...Object.values(homes), vault]) await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("recall/save, completion, archive and skills messages follow language.primary; English unchanged", async () => {
+  const homes = { de: await homeWith("de"), unset: await homeWith(null) };
+  const scratch = await mkdtemp(join(tmpdir(), "usage-language-skills-"));
+  const savedSkills = process.env.BASTRA_SKILLS_PATH;
+  process.env.BASTRA_SKILLS_PATH = join(scratch, "skills.json");
+  const noDaemon = (async () => assert.fail("must not call the daemon")) as never;
+  const noStdin = { stdin: async () => undefined };
+  const cases: [string, () => Promise<unknown>, string, string][] = [
+    [
+      "recall --limit",
+      () => cmdRecall(["recall", "q", "--limit", "0"], noDaemon),
+      `--limit muss eine ganze Zahl von 1 bis 20 sein\n${usageWordsIn("de").recall}\n`,
+      `--limit must be a whole number from 1 to 20\n${usageWordsIn("en").recall}\n`,
+    ],
+    [
+      "save required",
+      () => cmdSave(["save", "--type", "lesson", "x"], noDaemon, noStdin),
+      `--title, --type und --scope sind Pflicht\n${usageWordsIn("de").save}\n`,
+      `--title, --type and --scope are required\n${usageWordsIn("en").save}\n`,
+    ],
+    [
+      "recall no hits",
+      () => cmdRecall(["recall", "q"], (async () => ({ hits: [] })) as never),
+      "keine passenden Memories\n",
+      "no matching memories\n",
+    ],
+    [
+      "completion unknown",
+      () => cmdCompletion("tcsh"),
+      "Fehler: keine Vervollständigung für 'tcsh' — unterstützte Shells: bash, zsh, fish\n",
+      "error: no completion for 'tcsh' — supported shells: bash, zsh, fish\n",
+    ],
+    [
+      "skills remove",
+      () => cmdSkills(parseArgs(["skills", "remove", "never-declared"])),
+      "nicht deklariert: never-declared\n",
+      "not declared: never-declared\n",
+    ],
+  ];
+  try {
+    for (const [name, run, german, english] of cases) {
+      assert.equal(await captured(homes.de, run), german, `${name}: German`);
+      assert.equal(await captured(homes.unset, run), english, `${name}: English as before`);
+    }
+  } finally {
+    if (savedSkills === undefined) delete process.env.BASTRA_SKILLS_PATH;
+    else process.env.BASTRA_SKILLS_PATH = savedSkills;
+    for (const dir of [...Object.values(homes), scratch]) await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("doctor's assistant address lines follow language.primary (the pending one was German-only)", async () => {
+  const homes = { de: await homeWith("de"), unset: await homeWith(null) };
+  const pending = async () => ({ pending: true, repair: "REPAIR" });
+  const named = async () => ({
+    name: "ember",
+    ready: false,
+    urls: { local: "http://ember.localhost" },
+    registeredName: "ember",
+    firefoxProfiles: 2,
+    bareNameNotice: "NOTICE",
+  });
+  const note = (status: () => Promise<object>) => () => printAssistantAddressNote(status as never);
+  try {
+    assert.equal(
+      await captured(homes.de, note(pending)),
+      "→ Assistenten-Adresse: Systemeinrichtung ausstehend\n  REPAIR\n"
+    );
+    assert.equal(await captured(homes.unset, note(pending)), "→ assistant address: system setup pending\n  REPAIR\n");
+    assert.equal(
+      await captured(homes.de, note(named)),
+      "→ Assistenten-Adresse: nicht bereit — bastra address setup ember --yes ausführen\n  http://ember.localhost\n" +
+        "  hosts: aktuell; 2 Firefox-Profil(e)\n  NOTICE\n"
+    );
+    assert.equal(
+      await captured(homes.unset, note(named)),
+      "→ assistant address: not ready — run bastra address setup ember --yes\n  http://ember.localhost\n" +
+        "  hosts: current; 2 Firefox profile(s)\n  NOTICE\n"
+    );
+  } finally {
+    for (const dir of Object.values(homes)) await rm(dir, { recursive: true, force: true });
   }
 });

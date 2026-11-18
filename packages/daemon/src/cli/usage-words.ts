@@ -18,6 +18,8 @@ const en = {
   rulesProposals: "usage: bastra rules proposals",
   rulesDecide:
     "usage: bastra rules confirm|reject <id> <revision> user-directed — only after the user's explicit decision on the displayed proposal",
+  recall: 'usage: bastra recall "<question>" [--limit N] [--scope S] [--type T] [--json]',
+  save: "usage: bastra save --title T --type T --scope S [--summary S] [--recall-when W]... [--tag X]... [--topic a/b] [text | stdin] [--dry-run] [--json]",
 };
 export type UsageWords = typeof en;
 
@@ -35,6 +37,8 @@ const de: UsageWords = {
   rulesProposals: "Aufruf: bastra rules proposals",
   rulesDecide:
     "Aufruf: bastra rules confirm|reject <id> <revision> user-directed — erst nach der ausdrücklichen Entscheidung des Nutzers zum angezeigten Vorschlag",
+  recall: 'Aufruf: bastra recall "<frage>" [--limit N] [--scope S] [--type T] [--json]',
+  save: "Aufruf: bastra save --title T --type T --scope S [--summary S] [--recall-when W]... [--tag X]... [--topic a/b] [text | stdin] [--dry-run] [--json]",
 };
 
 export const USAGE_WORDS: Readonly<Record<string, UsageWords>> = { en, de };

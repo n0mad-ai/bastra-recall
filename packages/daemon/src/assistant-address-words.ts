@@ -111,6 +111,13 @@ const en = {
   notRemoved: (message: string) => `Assistant address not removed: ${message}\n`,
   notCheckedOrRemoved: (message: string) =>
     `Assistant address not checked/removed: ${message}. Check bastra address status.\n`,
+  // doctor (cli/doctor-address-note.ts)
+  doctorLine: (text: string) => `→ assistant address: ${text}\n`,
+  doctorPending: "system setup pending",
+  doctorReachable: "reachable",
+  doctorNotReady: (name: string) => `not ready — run bastra address setup ${name} --yes`,
+  doctorHosts: (current: boolean, profiles: number) =>
+    `hosts: ${current ? "current" : "missing/stale"}; ${profiles} Firefox profile(s)`,
 };
 export type AddressWords = typeof en;
 
@@ -216,6 +223,11 @@ const de: AddressWords = {
   notRemoved: (message) => `Assistenten-Adresse nicht entfernt: ${message}\n`,
   notCheckedOrRemoved: (message) =>
     `Assistenten-Adresse nicht geprüft/entfernt: ${message}. bastra address status prüfen.\n`,
+  doctorLine: (text) => `→ Assistenten-Adresse: ${text}\n`,
+  doctorPending: "Systemeinrichtung ausstehend",
+  doctorReachable: "erreichbar",
+  doctorNotReady: (name) => `nicht bereit — bastra address setup ${name} --yes ausführen`,
+  doctorHosts: (current, profiles) => `hosts: ${current ? "aktuell" : "fehlt/veraltet"}; ${profiles} Firefox-Profil(e)`,
 };
 
 export const ADDRESS_WORDS: Readonly<Record<string, AddressWords>> = { en, de };

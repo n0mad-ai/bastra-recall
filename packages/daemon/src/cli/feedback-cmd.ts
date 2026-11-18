@@ -10,6 +10,7 @@ import { release, arch } from "node:os";
 import { VERSION } from "./helpers.js";
 import { openInBrowser, mapUrl } from "./map-cmd.js";
 import type { ParsedArgs } from "./types.js";
+import { usageBlocks } from "./usage-block-words.js";
 
 const REPO = "https://github.com/n0mad-ai/bastra-recall";
 
@@ -83,12 +84,7 @@ async function collectDiagnostics(): Promise<DiagnosticsParts> {
 export async function cmdFeedback(args: ParsedArgs): Promise<number> {
   const kind = args.surface;
   if (kind !== "bug" && kind !== "idea") {
-    process.stdout.write(
-      "usage: bastra feedback <bug|idea>\n" +
-        "  bug   open a prefilled bug report (includes the diagnostics below — nothing else)\n" +
-        "  idea  open a feature-request form\n\n" +
-        `Other channels: ${REPO}/discussions (questions) · ${REPO}/issues (all reports)\n`
-    );
+    process.stdout.write((await usageBlocks()).feedback(REPO));
     return 2;
   }
   if (kind === "idea") {

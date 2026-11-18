@@ -28,11 +28,7 @@ import {
   type StoreDiscoveryEnv,
 } from "./store-discovery.js";
 import type { ParsedArgs } from "./types.js";
-
-const USAGE =
-  "usage: bastra reconcile [--vault <this-store>]                  list the copies of this vault\n" +
-  "       bastra reconcile <other-store> [--vault <this-store>]   show which copy is ahead (dry run)\n" +
-  "       bastra reconcile <other-store> --yes                     copy the unambiguous ones, with backup";
+import { usageBlocks } from "./usage-block-words.js";
 
 const REASON: Record<string, string> = {
   "both-changed": "both sides have audited writes the other lacks",
@@ -155,7 +151,7 @@ export async function cmdReconcile(
   }
   if (!otherArg && args.yes) {
     console.error("bastra reconcile: --yes needs the other store as an argument");
-    console.error(USAGE);
+    console.error((await usageBlocks()).reconcile);
     return 2;
   }
   const vault = await resolveVault({ dryRun: true, vaultPath: args.vaultPath });

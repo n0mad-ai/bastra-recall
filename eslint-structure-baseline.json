@@ -127,7 +127,7 @@
     "[\"packages/daemon/src/cli/bridges.ts\",\"[\\\"function:cmdBridges\\\"]\",\"complexity\"]": 64,
     "[\"packages/daemon/src/cli/client-memory.ts\",\"[\\\"function:migrateOne\\\"]\",\"complexity\"]": 48,
     "[\"packages/daemon/src/cli/code-cmd.ts\",\"[\\\"function:cmdStatus\\\"]\",\"complexity\"]": 18,
-    "[\"packages/daemon/src/cli/commands.ts\",\"[\\\"function:cmdDoctor\\\"]\",\"complexity\"]": 27,
+    "[\"packages/daemon/src/cli/commands.ts\",\"[\\\"function:cmdDoctor\\\"]\",\"complexity\"]": 20,
     "[\"packages/daemon/src/cli/commands.ts\",\"[\\\"function:cmdInstall\\\"]\",\"complexity\"]": 21,
     "[\"packages/daemon/src/cli/commands.ts\",\"[\\\"function:cmdUninstall\\\"]\",\"complexity\"]": 32,
     "[\"packages/daemon/src/cli/commands.ts\",\"[\\\"function:parseArgs\\\"]\",\"complexity\"]": 61,

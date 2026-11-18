@@ -17,26 +17,9 @@ import { dirname, resolve } from "node:path";
 import { CURSOR_RULES_RELATIVE, CURSOR_RULES_SOURCE_PATH } from "./paths.js";
 import { fileExists } from "./helpers.js";
 import type { ParsedArgs } from "./types.js";
+import { usageBlocks } from "./usage-block-words.js";
 
 const SURFACES = ["cursor"] as const;
-
-function usage(): void {
-  process.stderr.write(
-    [
-      "usage: bastra rules proposals            show pending proposals with full text and revision",
-      "       bastra rules confirm|reject <id> <revision> user-directed",
-      "       bastra rules cursor [path]        install the rules file into a project",
-      "       bastra rules cursor [path] --dry-run",
-      "       bastra rules remove cursor [path] remove it again",
-      "",
-      "  path defaults to the current directory.",
-      "",
-      "Cursor keeps project rules in the repo (.cursor/rules/*.mdc) and has no",
-      "global rules file, so this runs once per project you want memory in.",
-      "",
-    ].join("\n")
-  );
-}
 
 async function install(projectDir: string, dryRun: boolean): Promise<number> {
   if (!CURSOR_RULES_SOURCE_PATH) {
@@ -119,7 +102,7 @@ export async function cmdRules(args: ParsedArgs): Promise<number> {
   const pathArg = removing ? fourth : third;
 
   if (!surface) {
-    usage();
+    process.stderr.write((await usageBlocks()).rules);
     return 2;
   }
   if (!(SURFACES as readonly string[]).includes(surface)) {

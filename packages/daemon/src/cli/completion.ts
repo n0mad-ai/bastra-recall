@@ -8,6 +8,7 @@
  * COMMANDS against the dispatch table in cli.ts, so the drift fails the build
  * instead of reaching a user's shell.
  */
+import { taskCliLanguage } from "./task-cli-words.js";
 
 /** Top-level subcommands, in the order `bastra help` lists them. */
 export const COMMANDS = [
@@ -211,13 +212,28 @@ export function completionScript(shell: Shell): string {
   }
 }
 
-export function cmdCompletion(shell: string | null): number {
-  if (!shell) {
-    process.stderr.write(`error: which shell? usage: bastra completion <${SHELLS.join("|")}>\n`);
-    return 2;
-  }
-  if (!isShell(shell)) {
-    process.stderr.write(`error: no completion for '${shell}' — supported shells: ${SHELLS.join(", ")}\n`);
+/** The errors of `bastra completion` by language.primary (#1602), English when
+ *  unset or unlisted. Text the product writes — never matched against user text. */
+export const COMPLETION_WORDS = {
+  en: {
+    whichShell: (shells: string) => `error: which shell? usage: bastra completion <${shells}>\n`,
+    unknownShell: (shell: string, shells: string) =>
+      `error: no completion for '${shell}' — supported shells: ${shells}\n`,
+  },
+  de: {
+    whichShell: (shells: string) => `Fehler: welche Shell? Aufruf: bastra completion <${shells}>\n`,
+    unknownShell: (shell: string, shells: string) =>
+      `Fehler: keine Vervollständigung für '${shell}' — unterstützte Shells: ${shells}\n`,
+  },
+};
+export const completionWordsIn = (language: string | undefined) =>
+  COMPLETION_WORDS[(language ?? "en") as keyof typeof COMPLETION_WORDS] ?? COMPLETION_WORDS.en;
+
+/** The settings are read only on an error: the script itself is the same in every language. */
+export async function cmdCompletion(shell: string | null): Promise<number> {
+  if (!shell || !isShell(shell)) {
+    const w = completionWordsIn(await taskCliLanguage().catch(() => "en"));
+    process.stderr.write(shell ? w.unknownShell(shell, SHELLS.join(", ")) : w.whichShell(SHELLS.join("|")));
     return 2;
   }
   process.stdout.write(completionScript(shell));

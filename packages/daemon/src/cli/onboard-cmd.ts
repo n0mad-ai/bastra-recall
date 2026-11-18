@@ -26,6 +26,7 @@ import {
 import { resolveVault } from "./helpers.js";
 import { replayAfterOnboarding } from "./doctor-replay.js";
 import type { ParsedArgs } from "./types.js";
+import { usageBlocks } from "./usage-block-words.js";
 
 export async function cmdOnboard(args: ParsedArgs): Promise<number> {
   const vault = await resolveVault({ dryRun: false, vaultPath: args.vaultPath });
@@ -62,11 +63,7 @@ export async function cmdOnboard(args: ParsedArgs): Promise<number> {
   }
 
   if (!process.stdin.isTTY) {
-    process.stderr.write(
-      "usage: bastra onboard                   run the interview (interactive)\n" +
-        "       bastra onboard --answers <file>  save answers from a JSON/YAML file (no TTY needed)\n" +
-        "       bastra onboard skip             stop the onboarding nudge without answering\n"
-    );
+    process.stderr.write((await usageBlocks()).onboard);
     return 2;
   }
 

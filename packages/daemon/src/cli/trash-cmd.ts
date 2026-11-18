@@ -6,10 +6,27 @@
  */
 import { rulebookCliCall } from "./rulebook-proposals-cmd.js";
 import type { ParsedArgs } from "./types.js";
+import { taskCliLanguage } from "./task-cli-words.js";
+import { usageBlocksIn } from "./usage-block-words.js";
 
-const USAGE =
-  "usage: bastra trash list              archived memories that can be restored (newest first)\n" +
-  "       bastra trash restore <id>      put an archived memory back where it lived";
+/** The words `bastra trash` prints by language.primary (#1602), English when
+ *  unset or unlisted. Text the product writes — never matched against user text. */
+export const TRASH_WORDS = {
+  en: {
+    empty: "nothing archived to restore",
+    more: (n: number) => `… ${n} more not shown`,
+    restoreWith: "restore with: bastra trash restore <id>",
+    restored: (id: string, to: string) => `restored ${id} → ${to}`,
+  },
+  de: {
+    empty: "nichts Archiviertes zum Wiederherstellen",
+    more: (n: number) => `… ${n} weitere nicht angezeigt`,
+    restoreWith: "wiederherstellen mit: bastra trash restore <id>",
+    restored: (id: string, to: string) => `wiederhergestellt ${id} → ${to}`,
+  },
+};
+export const trashWordsIn = (language: string | undefined) =>
+  TRASH_WORDS[(language ?? "en") as keyof typeof TRASH_WORDS] ?? TRASH_WORDS.en;
 
 interface Listed {
   archived: { id: string; title: string; archived_at: string; from: string | null }[];
@@ -18,27 +35,30 @@ interface Listed {
 
 export async function cmdTrash(args: ParsedArgs): Promise<number> {
   const sub = args.surface;
+  const language = await taskCliLanguage().catch(() => "en");
+  const w = trashWordsIn(language);
+  const usage = usageBlocksIn(language).trash;
   try {
     if (sub === "list") {
       const out = (await rulebookCliCall("restore_memory", { limit: 100 })) as Listed;
       if (args.json) console.log(JSON.stringify(out));
-      else if (out.archived.length === 0) console.log("nothing archived to restore");
+      else if (out.archived.length === 0) console.log(w.empty);
       else {
         for (const m of out.archived)
           console.log(`${m.archived_at.slice(0, 16).replace("T", " ")}  ${m.id}  ${m.title}`);
-        if (out.total > out.archived.length) console.log(`… ${out.total - out.archived.length} more not shown`);
-        console.log("restore with: bastra trash restore <id>");
+        if (out.total > out.archived.length) console.log(w.more(out.total - out.archived.length));
+        console.log(w.restoreWith);
       }
       return 0;
     }
     if (sub === "restore") {
       const id = args.positional[2];
       if (!id) {
-        console.error(USAGE);
+        console.error(usage);
         return 2;
       }
       const out = (await rulebookCliCall("restore_memory", { id })) as { restored_to: string; warning?: string };
-      console.log(`restored ${id} → ${out.restored_to}`);
+      console.log(w.restored(id, out.restored_to));
       if (out.warning) console.error(out.warning);
       return 0;
     }
@@ -46,6 +66,6 @@ export async function cmdTrash(args: ParsedArgs): Promise<number> {
     console.error(`bastra trash ${sub}: ${(e as Error).message}`);
     return 1;
   }
-  console.error(USAGE);
+  console.error(usage);
   return 2;
 }

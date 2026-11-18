@@ -9,11 +9,46 @@ import { Vault, extractWikilinks } from "@bastra-recall/core";
 import { addSkill, listSkills, removeSkill, skillsFilePath } from "../skills-registry.js";
 import { resolveVault } from "./helpers.js";
 import type { ParsedArgs } from "./types.js";
+import { taskCliLanguage } from "./task-cli-words.js";
+import { usageBlocksIn } from "./usage-block-words.js";
 
-const USAGE =
-  "usage: bastra skills list\n" +
-  "       bastra skills add <id> [label…]     declare a skill (id = the ghost node it should adopt)\n" +
-  "       bastra skills remove <id>           back to ordinary ghost behavior\n";
+/** The words `bastra skills` prints by language.primary (#1602), English when
+ *  unset or unlisted. Text the product writes — never matched against user text. */
+export const SKILLS_WORDS = {
+  en: {
+    none: "no skills declared — ",
+    count: (n: number, file: string) => `${n} skill(s) · ${file}\n`,
+    ambiguous: (id: string, n: number) => `✗ "${id}" matches ${n} ghosts — declare the one you mean:\n`,
+    declared: (id: string, label: string) => `✓ declared skill ${id}${label}\n`,
+    resolved: (input: string, id: string) => `  resolved "${input}" → ${id} (the id your notes actually link).\n`,
+    adopted: `  that ghost now renders in the map's skills ring instead of as an unwritten one.\n`,
+    unmatched: (id: string) =>
+      `  note: no ghost with this id exists yet — nothing was adopted. It will render as a skill\n` +
+      `  as soon as a note links [[${id}]]. Check the id with: bastra map (or 'Mark as skill' there).\n`,
+    unchecked: `  note: no vault could be read, so the id was declared verbatim and not checked against your ghosts.\n`,
+    error: (message: string) => `error: ${message}\n`,
+    removed: (id: string) => `✓ removed ${id}\n`,
+    notDeclared: (id: string) => `not declared: ${id}\n`,
+  },
+  de: {
+    none: "keine Skills deklariert — ",
+    count: (n: number, file: string) => `${n} Skill(s) · ${file}\n`,
+    ambiguous: (id: string, n: number) => `✗ "${id}" passt auf ${n} Geisterknoten — deklariere den, den du meinst:\n`,
+    declared: (id: string, label: string) => `✓ Skill deklariert: ${id}${label}\n`,
+    resolved: (input: string, id: string) =>
+      `  "${input}" aufgelöst → ${id} (die id, auf die deine Notizen tatsächlich verlinken).\n`,
+    adopted: `  dieser Geisterknoten erscheint jetzt im Skill-Ring der Karte statt als ungeschriebener.\n`,
+    unmatched: (id: string) =>
+      `  Hinweis: Es gibt noch keinen Geisterknoten mit dieser id — nichts wurde übernommen. Er erscheint als Skill,\n` +
+      `  sobald eine Notiz [[${id}]] verlinkt. Die id prüfen mit: bastra map (oder dort 'Als Skill markieren').\n`,
+    unchecked: `  Hinweis: Kein Vault lesbar; die id wurde wörtlich deklariert und nicht gegen deine Geisterknoten geprüft.\n`,
+    error: (message: string) => `Fehler: ${message}\n`,
+    removed: (id: string) => `✓ entfernt ${id}\n`,
+    notDeclared: (id: string) => `nicht deklariert: ${id}\n`,
+  },
+};
+export const skillsWordsIn = (language: string | undefined) =>
+  SKILLS_WORDS[(language ?? "en") as keyof typeof SKILLS_WORDS] ?? SKILLS_WORDS.en;
 
 /** #223: what `skills add <input>` actually resolved to.
  *  - `exact`      the input IS a ghost node id
@@ -71,22 +106,25 @@ async function collectGhostIds(vaultPath: string | null): Promise<string[] | nul
 
 export async function cmdSkills(args: ParsedArgs): Promise<number> {
   const sub = args.surface;
+  const language = await taskCliLanguage().catch(() => "en");
+  const w = skillsWordsIn(language);
+  const usage = usageBlocksIn(language).skills;
   if (sub === "list" || sub === null) {
     const entries = await listSkills();
     if (entries.length === 0) {
-      process.stdout.write(`no skills declared — ${USAGE}`);
+      process.stdout.write(`${w.none}${usage}`);
       return 0;
     }
     for (const e of entries) {
       process.stdout.write(`  ${e.id}${e.label ? ` — ${e.label}` : ""}${e.note ? ` (${e.note})` : ""}\n`);
     }
-    process.stdout.write(`${entries.length} skill(s) · ${skillsFilePath()}\n`);
+    process.stdout.write(w.count(entries.length, skillsFilePath()));
     return 0;
   }
   if (sub === "add") {
     const id = args.positional[2];
     if (!id) {
-      process.stderr.write(USAGE);
+      process.stderr.write(usage);
       return 2;
     }
     const label = args.positional.slice(3).join(" ") || undefined;
@@ -100,7 +138,7 @@ export async function cmdSkills(args: ParsedArgs): Promise<number> {
     const resolution = ghosts ? resolveSkillTarget(id, ghosts) : null;
     if (resolution?.kind === "ambiguous") {
       process.stderr.write(
-        `✗ "${id}" matches ${resolution.candidates.length} ghosts — declare the one you mean:\n` +
+        w.ambiguous(id, resolution.candidates.length) +
           resolution.candidates.map((c) => `    bastra skills add ${c}\n`).join("")
       );
       return 1;
@@ -108,45 +146,32 @@ export async function cmdSkills(args: ParsedArgs): Promise<number> {
     const targetId = resolution?.id ?? id;
     try {
       const entry = await addSkill({ id: targetId, label });
-      const head = `✓ declared skill ${entry.id}${entry.label ? ` — ${entry.label}` : ""}\n`;
+      const head = w.declared(entry.id, entry.label ? ` — ${entry.label}` : "");
       if (resolution?.kind === "namespaced") {
-        process.stdout.write(
-          head +
-            `  resolved "${resolution.input}" → ${entry.id} (the id your notes actually link).\n` +
-            `  that ghost now renders in the map's skills ring instead of as an unwritten one.\n`
-        );
+        process.stdout.write(head + w.resolved(resolution.input, entry.id) + w.adopted);
       } else if (resolution?.kind === "exact") {
-        process.stdout.write(
-          head + `  that ghost now renders in the map's skills ring instead of as an unwritten one.\n`
-        );
+        process.stdout.write(head + w.adopted);
       } else if (resolution?.kind === "unmatched") {
-        process.stdout.write(
-          head +
-            `  note: no ghost with this id exists yet — nothing was adopted. It will render as a skill\n` +
-            `  as soon as a note links [[${entry.id}]]. Check the id with: bastra map (or 'Mark as skill' there).\n`
-        );
+        process.stdout.write(head + w.unmatched(entry.id));
       } else {
-        process.stdout.write(
-          head +
-            `  note: no vault could be read, so the id was declared verbatim and not checked against your ghosts.\n`
-        );
+        process.stdout.write(head + w.unchecked);
       }
       return 0;
     } catch (err) {
-      process.stderr.write(`error: ${(err as Error).message}\n`);
+      process.stderr.write(w.error((err as Error).message));
       return 1;
     }
   }
   if (sub === "remove") {
     const id = args.positional[2];
     if (!id) {
-      process.stderr.write(USAGE);
+      process.stderr.write(usage);
       return 2;
     }
     const removed = await removeSkill(id);
-    process.stdout.write(removed ? `✓ removed ${id}\n` : `not declared: ${id}\n`);
+    process.stdout.write(removed ? w.removed(id) : w.notDeclared(id));
     return removed ? 0 : 1;
   }
-  process.stderr.write(USAGE);
+  process.stderr.write(usage);
   return 2;
 }

@@ -170,6 +170,10 @@ until a new design replaces it; this name is independent of the product version.
 - CLI address messages (`bastra address`, `config set assistant.name`,
   `uninstall`), the web UI's address answers and several usage errors follow
   `language.primary` (#1602).
+- CLI usage errors (archive, trash, skills, reconcile, rules, patches, onboard,
+  import, feedback, recall, save, completion) and the messages of recall/save,
+  archive, trash, skills and doctor's assistant-address lines follow
+  `language.primary`: English by default, German complete (#1602).
 - Memory browser: changing type or recall mode of a memory whose rule status
   depends on them shows what changes for the rule before saving; saving
   takes one confirming click.

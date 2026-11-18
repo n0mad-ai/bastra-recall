@@ -15,6 +15,7 @@
  */
 import { readStdin } from "../hook-transport.js";
 import { USER_SAVE_TYPES, userDirectedSaveInput, type UserSaveType } from "../user-save-input.js";
+import { memoryCmdWords, type MemoryCmdWords } from "./memory-cmd-words.js";
 import { rulebookCliCall } from "./rulebook-proposals-cmd.js";
 
 /** Value options of these two commands (flag-spec.ts registers them). */
@@ -31,10 +32,6 @@ export const MEMORY_VALUE_FLAGS = [
 
 const REPEATABLE = new Set(["--recall-when", "--tag"]);
 
-const RECALL_USAGE = 'usage: bastra recall "<question>" [--limit N] [--scope S] [--type T] [--json]';
-const SAVE_USAGE =
-  "usage: bastra save --title T --type T --scope S [--summary S] [--recall-when W]... [--tag X]... [--topic a/b] [text | stdin] [--dry-run] [--json]";
-
 type Call = typeof rulebookCliCall;
 
 interface Options {
@@ -46,7 +43,7 @@ interface Options {
 
 /** argv as the user typed it after `bastra` (argv[0] is the command). Unknown
  *  options never get here: validateArgs rejects them before dispatch. */
-function readOptions(argv: string[]): Options {
+function readOptions(argv: string[], w: MemoryCmdWords): Options {
   const values = new Map<string, string[]>();
   const words: string[] = [];
   let json = false;
@@ -60,7 +57,7 @@ function readOptions(argv: string[]): Options {
     else if ((MEMORY_VALUE_FLAGS as readonly string[]).includes(name)) {
       const value = name === token ? argv[++i] : token.slice(eq + 1);
       const list = values.get(name) ?? [];
-      if (list.length && !REPEATABLE.has(name)) throw new Error(`${name} given twice`);
+      if (list.length && !REPEATABLE.has(name)) throw new Error(w.givenTwice(name));
       values.set(name, [...list, value]);
     } else words.push(token);
   }
@@ -79,24 +76,23 @@ interface Hit {
 }
 
 /** The recall input, or a usage problem to print. */
-function recallInput(o: Options): Record<string, unknown> | string {
+function recallInput(o: Options, w: MemoryCmdWords): Record<string, unknown> | string {
   const query = o.words.join(" ").trim();
-  if (!query) return RECALL_USAGE;
+  if (!query) return w.usage.recall;
   const limit = one(o, "--limit");
   const k = limit === undefined ? undefined : Number(limit);
-  if (k !== undefined && !(Number.isInteger(k) && k >= 1 && k <= 20))
-    return `--limit must be a whole number from 1 to 20\n${RECALL_USAGE}`;
+  if (k !== undefined && !(Number.isInteger(k) && k >= 1 && k <= 20)) return `${w.limitRange}\n${w.usage.recall}`;
   const scope = one(o, "--scope");
   const type = one(o, "--type");
   return { query, ...(k !== undefined ? { k } : {}), ...(scope ? { scope } : {}), ...(type ? { type } : {}) };
 }
 
-function printHits(out: { hits: Hit[]; weak_result?: boolean }): void {
+function printHits(out: { hits: Hit[]; weak_result?: boolean }, w: MemoryCmdWords): void {
   if (out.hits.length === 0) {
-    console.log("no matching memories");
+    console.log(w.noMatches);
     return;
   }
-  if (out.weak_result) console.log("(weak result: no hit matches the question's words or triggers)");
+  if (out.weak_result) console.log(w.weakResult);
   for (const h of out.hits) {
     const where = [h.type, h.scope].filter(Boolean).join(" · ");
     console.log(`${h.id}${where ? `  [${where}]` : ""}`);
@@ -106,14 +102,15 @@ function printHits(out: { hits: Hit[]; weak_result?: boolean }): void {
 }
 
 export async function cmdRecall(argv: string[], call: Call = rulebookCliCall): Promise<number> {
+  const w = await memoryCmdWords();
   let input: Record<string, unknown> | string;
   let json = false;
   try {
-    const o = readOptions(argv);
+    const o = readOptions(argv, w);
     json = o.json;
-    input = recallInput(o);
+    input = recallInput(o, w);
   } catch (e) {
-    input = `${(e as Error).message}\n${RECALL_USAGE}`;
+    input = `${(e as Error).message}\n${w.usage.recall}`;
   }
   if (typeof input === "string") {
     console.error(input);
@@ -122,7 +119,7 @@ export async function cmdRecall(argv: string[], call: Call = rulebookCliCall): P
   try {
     const out = (await call("recall", input)) as { hits: Hit[]; weak_result?: boolean };
     if (json) console.log(JSON.stringify(out));
-    else printHits(out);
+    else printHits(out, w);
     return 0;
   } catch (e) {
     console.error(`bastra recall: ${(e as Error).message}`);
@@ -154,9 +151,9 @@ interface SaveOutcome {
 }
 
 /** Prints the daemon's answer; exit code 1 when the save was held at the claim gate. */
-function printSaveOutcome(out: SaveOutcome, o: Options): number {
+function printSaveOutcome(out: SaveOutcome, o: Options, w: MemoryCmdWords): number {
   if (o.dryRun && out.dry_run !== true) {
-    console.error("bastra save: daemon did not confirm a dry-run; it may have saved the memory");
+    console.error(w.dryRunUnconfirmed);
     return 1;
   }
   if (o.json) {
@@ -164,40 +161,43 @@ function printSaveOutcome(out: SaveOutcome, o: Options): number {
     return out.claim_gate ? 1 : 0;
   }
   if (out.claim_gate) {
-    console.error(`${o.dryRun ? "would not be saved" : "not saved"}: another memory already covers this situation`);
+    console.error(w.claimed(o.dryRun));
     for (const c of out.claim_gate.claimed) console.error(`  ${c.id}${c.title ? `  ${c.title}` : ""}`);
     return 1;
   }
-  if (o.dryRun) printPreview(out);
+  if (o.dryRun) printPreview(out, w);
   else {
-    console.log(`saved ${out.id}${out.file_path ? ` → ${out.file_path}` : ""}`);
+    console.log(w.saved(out.id, out.file_path));
     if (out.summary_note) console.log(out.summary_note);
   }
   return 0;
 }
 
 /** What a preview would store: target, rule state and redactions. */
-function printPreview(out: SaveOutcome): void {
-  console.log("preview only: nothing was saved");
-  console.log(`  id:       ${out.id}`);
-  if (out.file_path) console.log(`  file:     ${out.file_path}`);
-  if (out.delivery) console.log(`  kind:     ${out.delivery}`);
+function printPreview(out: SaveOutcome, w: MemoryCmdWords): void {
+  console.log(w.previewOnly);
+  console.log(`${w.previewId}${out.id}`);
+  if (out.file_path) console.log(`${w.previewFile}${out.file_path}`);
+  if (out.delivery) console.log(`${w.previewKind}${out.delivery}`);
   const redacted = Object.entries(out.secrets_redacted ?? {}).map(([field, n]) => `${field} (${n})`);
-  console.log(`  redacted: ${redacted.length ? redacted.join(", ") : "nothing"}`);
+  console.log(`${w.previewRedacted}${redacted.length ? redacted.join(", ") : w.nothing}`);
   if (out.summary_note) console.log(out.summary_note);
 }
 
 /** The save_memory input, or a usage problem to print. */
-async function saveInput(o: Options, io: SaveIo): Promise<ReturnType<typeof userDirectedSaveInput> | string> {
+async function saveInput(
+  o: Options,
+  io: SaveIo,
+  w: MemoryCmdWords
+): Promise<ReturnType<typeof userDirectedSaveInput> | string> {
   const title = one(o, "--title");
   const type = one(o, "--type");
   const scope = one(o, "--scope");
-  if (!title || !type || !scope) return "--title, --type and --scope are required";
-  if (!(USER_SAVE_TYPES as readonly string[]).includes(type))
-    return `--type must be one of ${USER_SAVE_TYPES.join(", ")}`;
+  if (!title || !type || !scope) return w.required;
+  if (!(USER_SAVE_TYPES as readonly string[]).includes(type)) return w.typeOneOf(USER_SAVE_TYPES.join(", "));
   const typed = o.words.join(" ");
   const body = (typed || (await io.stdin()) || "").replace(/\r\n?/g, "\n").trim();
-  if (!body) return "the memory text is missing: give it as words or pipe it in";
+  if (!body) return w.textMissing;
   const list = (name: string) => (o.values.get(name) ?? []).map((v) => v.trim()).filter(Boolean);
   const topic = one(o, "--topic");
   return userDirectedSaveInput({
@@ -218,21 +218,22 @@ async function saveInput(o: Options, io: SaveIo): Promise<ReturnType<typeof user
 }
 
 export async function cmdSave(argv: string[], call: Call = rulebookCliCall, io: SaveIo = processIo): Promise<number> {
+  const w = await memoryCmdWords();
   let o: Options;
   try {
-    o = readOptions(argv);
+    o = readOptions(argv, w);
   } catch (e) {
-    console.error(`${(e as Error).message}\n${SAVE_USAGE}`);
+    console.error(`${(e as Error).message}\n${w.usage.save}`);
     return 2;
   }
-  const input = await saveInput(o, io);
+  const input = await saveInput(o, io, w);
   if (typeof input === "string") {
-    console.error(`${input}\n${SAVE_USAGE}`);
+    console.error(`${input}\n${w.usage.save}`);
     return 2;
   }
   try {
     const out = (await call("save_memory", o.dryRun ? { ...input, dry_run: true } : input)) as SaveOutcome;
-    return printSaveOutcome(out, o);
+    return printSaveOutcome(out, o, w);
   } catch (e) {
     console.error(`bastra save: ${(e as Error).message}`);
     return 1;

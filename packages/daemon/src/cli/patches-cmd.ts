@@ -9,6 +9,7 @@
  */
 import { homedir } from "node:os";
 import type { ParsedArgs } from "./types.js";
+import { usageBlocks } from "./usage-block-words.js";
 import { detectInstallMode, installedVersion, packageRootFromCliPath } from "./update.js";
 import {
   activePatches,
@@ -24,19 +25,6 @@ import {
 import { formatApplyOutcome } from "../patch-report.js";
 
 const out = (s: string) => process.stdout.write(s);
-
-function usage(): void {
-  out(
-    "usage: bastra patches [list|add <file>|remove <id>|status]\n" +
-      "  list            the series, in apply order (default)\n" +
-      "  add <file>      register a git-format patch\n" +
-      "  remove <id>     drop a patch from the series\n" +
-      "  status          probe every patch against the current installation\n\n" +
-      "Registered patches are reapplied automatically after 'bastra update'.\n" +
-      "A patch upstream has absorbed is retired; one that no longer applies is\n" +
-      "set aside and reported, never forced.\n"
-  );
-}
 
 const STATE_LABEL: Record<PatchState, string> = {
   clean: "✓ applies cleanly",
@@ -60,7 +48,7 @@ export async function cmdPatches(args: ParsedArgs): Promise<number> {
   const arg = args.positional[2];
 
   if (sub === "help" || args.showHelp) {
-    usage();
+    out((await usageBlocks()).patches);
     return 0;
   }
 
@@ -152,7 +140,7 @@ export async function cmdPatches(args: ParsedArgs): Promise<number> {
   }
 
   process.stderr.write(`error: unknown sub-command '${sub}'\n\n`);
-  usage();
+  out((await usageBlocks()).patches);
   return 2;
 }
 

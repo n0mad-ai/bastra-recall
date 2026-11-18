@@ -32,6 +32,7 @@ import { findClientMemoryDirs, migrateClientLabels } from "./client-memory.js";
 import { IMPORT_CLI_WRITER, writeCallerStore } from "../caller-session.js";
 import { resolveVault } from "./helpers.js";
 import type { ParsedArgs } from "./types.js";
+import { usageBlocks } from "./usage-block-words.js";
 
 /** JSON.parse peak memory is a multiple of the input — refuse absurd files
  *  instead of OOM-killing the CLI. Real exports are tens of MB. */
@@ -73,21 +74,7 @@ export async function cmdImport(args: ParsedArgs): Promise<number> {
   let fileName: string | null = null;
   if (!fileArg || fileArg === "-") {
     if (process.stdin.isTTY) {
-      process.stderr.write(
-        "usage: bastra import <file|-> [chatgpt|claude|gemini|text]\n" +
-          "       bastra import rules    scan local rules files (CLAUDE.md, AGENTS.md,\n" +
-          "                              .cursorrules, .cursor/rules/, ~/.claude/CLAUDE.md)\n" +
-          "       bastra import clients  Claude Code's and Codex's own memory folders\n" +
-          "       bastra import mine     next chunk of a queued conversations.json export\n" +
-          "       bastra import clear    discard the mining queue\n" +
-          "  <file>  an exported memory list (one fact per line, or a JSON array of strings) —\n" +
-          "          or a ChatGPT/Claude conversations.json data export (queued for mining)\n" +
-          "  -       read the list from stdin (paste + Ctrl-D)\n\n" +
-          "Where to get the list:\n" +
-          "  ChatGPT  Settings → Personalization → Manage memories → copy\n" +
-          "  Claude   Settings → memory text → copy\n" +
-          "  Gemini   Settings → Saved Info → copy\n"
-      );
+      process.stderr.write((await usageBlocks()).import);
       return 2;
     }
     raw = await readStdin();
@@ -219,14 +206,7 @@ async function cmdImportRules(args: ParsedArgs): Promise<number> {
 async function cmdImportVault(args: ParsedArgs): Promise<number> {
   const dir = args.positional[2];
   if (!dir) {
-    process.stderr.write(
-      "usage: bastra import vault <dir> [label] [--dry-run] [--exclude <dir>]…\n" +
-        "  imports a folder of memory files (e.g. a Claude Code memory dir) into\n" +
-        "  memories/imported/<label>/ — deterministic, no per-item review.\n" +
-        "  label      namespace for this batch (default: the folder's name)\n" +
-        "  --exclude  skip a directory name anywhere in the tree (repeatable);\n" +
-        "             dotdirs, _archive/ and archive/ are always skipped\n"
-    );
+    process.stderr.write((await usageBlocks()).importVault);
     return 2;
   }
   const vault = await resolveVault({ dryRun: false, vaultPath: args.vaultPath });
