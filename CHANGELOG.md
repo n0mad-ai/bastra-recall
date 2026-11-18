@@ -217,8 +217,8 @@ until a new design replaces it; this name is independent of the product version.
   setting keeps the 10-minute default and accepts whole minutes, hours or
   days up to 30 days, or `off` (#1559).
 - **Report search and project filter in the view header.** Reports with
-  open notes show **In progress** in amber; hovering a report line and
-  choosing **Note** is clearer (#1607).
+  open notes not yet handed over show **In progress** in amber; hovering a
+  report line and choosing **Note** is clearer (#1607).
 - Claude Code subagents receive the full rule kernel at `SubagentStart`.
   Installing or updating registers 14 hooks (11 without Stop/harvest).
   Native delivery, resume and the minimum Claude Code version remain
@@ -529,6 +529,10 @@ until a new design replaces it; this name is independent of the product version.
   the development/holdout boundary by excluding pairs that cross it. Run
   archiving keeps an output named `SHA256SUMS` separate from its checksum
   list (#1578, #503).
+- Report and memory readers render code indented by four spaces or a tab
+  as a code block (after a blank line, outside lists), and an indented
+  fence counts as a fence everywhere; the report question status follows
+  the same rule, so markers in such code never ask (#1665, #1662).
 
 ### Internal
 

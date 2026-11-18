@@ -1,12 +1,14 @@
 // Mini Markdown (old map inspector), built as DOM nodes, text only via textContent. One renderer
 // for every reader: the memory browser (views/memory-browser.js, which re-exports it), the task
 // reports (sections/tasks-reports.js) and the agent window's answers (agent.js). Headings become
-// h3, list items one flat ul, fenced code a pre, a free-standing ---/***/___ line a thin rule; inside
-// a line: [[wiki links]] to memories, `code`, **bold**, *emphasis*, [links](https://…) and bare
-// web addresses. HTML comments (auto-related markers) are bookkeeping and dropped.
+// h3, list items one flat ul, fenced and indented code a pre (which lines are code: code-lines.js), a
+// free-standing ---/***/___ line a thin rule; inside a line: [[wiki links]] to memories, `code`,
+// **bold**, *emphasis*, [links](https://…) and bare web addresses. HTML comments (auto-related
+// markers) are bookkeeping and dropped.
 import { h } from "../dom.js";
 import { vault } from "./vault-data.js";
 import { inlineMatches } from "./inline-scan.js";
+import { codeLines } from "./code-lines.js";
 
 /** [[id]] or [[id|label]]: a span, not a button, as it has to wrap inside running text; a link
  *  that names no memory in the vault stays a dead mark without action. */
@@ -54,27 +56,33 @@ function inline(text, onLink) {
 export function markdown(md, onLink) {
   const out = [];
   let list = null,
-    fence = null,
+    code = null,
     afterBlank = true;
+  const flush = () => {
+    if (code) out.push(h("pre", { text: code.join("\n") }));
+    code = null;
+  };
   // HTML comments (auto-related markers) are bookkeeping, not text
-  for (const raw of md.replace(/<!--[\s\S]*?-->/g, "").split("\n")) {
+  const lines = md.replace(/<!--[\s\S]*?-->/g, "").split("\n"),
+    kinds = codeLines(lines);
+  for (const [i, raw] of lines.entries()) {
     const line = raw.trimEnd(),
-      blankBefore = afterBlank;
+      blankBefore = afterBlank,
+      kind = kinds[i];
     afterBlank = !line.trim();
-    if (/^```/.test(line)) {
-      if (fence) {
-        out.push(h("pre", { text: fence.join("\n") }));
-        fence = null;
-      } else {
-        list = null;
-        fence = [];
-      }
+    if (kind?.fence) {
+      flush();
+      if (kind.fence === "open") code = [];
+      list = null;
       continue;
     }
-    if (fence) {
-      fence.push(raw);
+    if (kind) {
+      if (!code) code = [];
+      code.push(kind.code);
+      list = null;
       continue;
     }
+    flush();
     const hd = /^(#{1,6})\s+(.*)$/.exec(line),
       li = /^\s*(?:[-*]|\d+\.)\s+(.*)$/.exec(line);
     // a thematic break only where it stands free: right under a text line, --- stays that text
@@ -96,6 +104,6 @@ export function markdown(md, onLink) {
       out.push(h("p", null, inline(line, onLink)));
     }
   }
-  if (fence) out.push(h("pre", { text: fence.join("\n") }));
+  flush();
   return out;
 }

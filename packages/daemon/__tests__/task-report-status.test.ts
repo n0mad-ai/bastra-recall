@@ -121,6 +121,38 @@ test("#1656/#1652: code and an escaped marker stay text for the status as in the
   for (const [body, want] of rows) assert.equal(asksOwner(body), want, body);
 });
 
+test("#1665/#1662: indented code and an indented fence are code for the status, list text is not", () => {
+  const ask = "Ship it? [? Yes | No]";
+  const rows: [string, boolean][] = [
+    [`Text\n\n    ${ask}`, false],
+    [`    ${ask}`, false],
+    [`Text\n\n\t${ask}`, false],
+    [`Text\n\n    code\n\n    ${ask}`, false],
+    [`- step\n  \`\`\`\n  ${ask}\n  \`\`\``, false],
+    [`   \`\`\`\n${ask}\n   \`\`\``, false],
+    // not code: right under a paragraph, inside a list, after the code
+    [`Text\n    ${ask}`, true],
+    [`- item\n\n    ${ask}`, true],
+    [`1. item\n    ${ask}`, true],
+    [`Text\n\n    code\n${ask}`, true],
+    [`Text\n\n  ${ask}`, true],
+  ];
+  for (const [body, want] of rows) assert.equal(asksOwner(body), want, body);
+});
+
+test("#1665: the prose around a pipe table is read in the reader's pieces", () => {
+  const ask = "Ship it? [? Yes | No]",
+    table = "| a | b |\n|---|---|\n| 1 | 2 |";
+  const rows: [string, boolean][] = [
+    // the reader starts a new piece under the table, so the indented line is code there
+    [`Intro\n\n${table}\n    ${ask}`, false],
+    [`- item\n${table.replace(/^/gm, "  ")}\n\n    ${ask}`, false],
+    [`${table}\n${ask}`, true],
+    [`Intro\n\n${table}\n\n- ${ask}`, true],
+  ];
+  for (const [body, want] of rows) assert.equal(asksOwner(body), want, body);
+});
+
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "task-report-status-"));
   let now = 1_000;

@@ -4,9 +4,10 @@ import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 
 async function model() {
-  const source = await readFile(new URL("../webui/app/js/sections/tasks-reports-model.js", import.meta.url), "utf8");
+  const read = (path: string) => readFile(new URL(`../webui/app/js/${path}`, import.meta.url), "utf8");
+  const source = (await read("views/code-lines.js")) + (await read("sections/tasks-reports-model.js"));
   return runInNewContext(
-    source.replace(/^export /gm, "") +
+    source.replace(/^import .*$/gm, "").replace(/^export /gm, "") +
       "\n({ reportRows, unreadCount, originText, reportBlocks, byUnread, matchReports })",
     {}
   );
@@ -91,6 +92,22 @@ test("blocks: pipe tables become table blocks, prose and code stay for the Markd
     },
   ]);
   assert.deepEqual(plain(m.reportBlocks("")), [{ kind: "md", text: "" }]);
+});
+
+test("blocks (#1662/#1665): code is found as the reader finds it, so no table is cut out of it", async () => {
+  const m = await model();
+  const kinds = (md: string) => plain(m.reportBlocks(md)).map((b: any) => b.kind);
+  const table = "| a | b |\n|---|---|\n| 1 | 2 |";
+  const indent = (s: string, by: string) => s.replace(/^/gm, by);
+  assert.deepEqual(kinds(table), ["table"]);
+  // an indented fence (in a list or not) protects its table, as markdown() renders it as code
+  assert.deepEqual(kinds(`- step\n  \`\`\`\n${indent(table, "  ")}\n  \`\`\``), ["md"]);
+  assert.deepEqual(kinds(`Text\n   \`\`\`\n${table}\n   \`\`\``), ["md"]);
+  // indented code after a blank line outside a list: code, not a table
+  assert.deepEqual(kinds(`Text\n\n${indent(table, "    ")}`), ["md"]);
+  // the same lines inside a list or right under a paragraph stay a table, as before
+  assert.deepEqual(kinds(`- item\n\n${indent(table, "    ")}`), ["md", "table"]);
+  assert.deepEqual(kinds(`Text\n${indent(table, "    ")}`), ["md", "table"]);
 });
 
 test("search (#1597): title and project, case and Unicode form never decide, every word must match", async () => {

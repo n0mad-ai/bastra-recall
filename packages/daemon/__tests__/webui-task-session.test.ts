@@ -43,7 +43,7 @@ async function shell() {
   }
   const document = { documentElement: { dataset: { tasksEnabled: "true" } }, hidden: false };
   const source =
-    modelSrc.replace(/^export /gm, "") +
+    modelSrc.replace(/^import .*$/gm, "").replace(/^export /gm, "") +
     "\n" +
     dataSrc.replace(/^import .*$/gm, "").replace(/^export /gm, "") +
     "\n({ data, loadTasks, loadReports })";

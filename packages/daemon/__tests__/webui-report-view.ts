@@ -41,6 +41,7 @@ export async function view(notes: unknown[] = [], stored = new Map<string, strin
   const source = (
     await Promise.all(
       [
+        "views/code-lines.js",
         "sections/tasks-reports-model.js",
         "sections/tasks-reports-state.js",
         "sections/tasks-reports-search.js",

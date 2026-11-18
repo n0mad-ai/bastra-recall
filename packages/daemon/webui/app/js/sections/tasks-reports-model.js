@@ -1,6 +1,8 @@
-// Task reports — pure model (no DOM, no imports): validates the daemon's list
-// answer, orders it, counts unread reports, filters it by a search, splits Markdown into prose and
-// pipe tables and validates the notes the owner left on a report. Tested in __tests__/webui-task-reports-model.test.ts.
+// Task reports — pure model (no DOM; its one import is the reader's pure code-line rule): validates
+// the daemon's list answer, orders it, counts unread reports, filters it by a search, splits Markdown
+// into prose and pipe tables and validates the notes the owner left on a report. Tested in
+// __tests__/webui-task-reports-model.test.ts.
+import { codeLines } from "../views/code-lines.js";
 
 const str = (v) => typeof v === "string" && v.trim() !== "";
 const num = (v) => Number.isFinite(v) && v >= 0;
@@ -101,7 +103,8 @@ export function matchReports(rows, query, hits = null) {
 
 // ── Markdown blocks: the shared mini renderer has no tables, so pipe tables
 // are cut out here and rendered as a text-only table; everything else stays
-// one prose block for that renderer. Fenced code is never searched for tables.
+// one prose block for that renderer. Code (fenced or indented, as the renderer reads it:
+// views/code-lines.js) is never searched for tables.
 const PIPE = /^\s*\|.*\|\s*$/;
 const RULE = /^\s*\|(\s*:?-{3,}:?\s*\|)+\s*$/;
 const cells = (line) =>
@@ -123,16 +126,15 @@ function takeTable(lines, i) {
 /** Markdown → [{ kind: "md", text } | { kind: "table", head, rows }] in order. */
 export function reportBlocks(md) {
   const lines = String(md ?? "").split("\n"),
+    code = codeLines(lines),
     out = [];
-  let prose = [],
-    fence = false;
+  let prose = [];
   const flush = () => {
     if (prose.length) out.push({ kind: "md", text: prose.join("\n") });
     prose = [];
   };
   for (let i = 0; i < lines.length;) {
-    if (/^\s*```/.test(lines[i])) fence = !fence;
-    const table = fence ? null : takeTable(lines, i);
+    const table = code[i] ? null : takeTable(lines, i);
     if (table) {
       flush();
       out.push(table.block);

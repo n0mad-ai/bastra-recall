@@ -318,6 +318,7 @@ async function realRenderer(): Promise<{ render: (md: string) => Node_[] }> {
   const pick = (src: string, re: RegExp) => re.exec(src)?.[0] ?? assert.fail(`not found: ${re}`);
   return runInNewContext(
     [
+      strip(await read("views/code-lines.js")),
       strip(await read("sections/tasks-reports-model.js")),
       strip(await read("views/inline-scan.js")),
       strip(await read("views/markdown.js")),
@@ -738,6 +739,17 @@ test("#1656/#1652: the daemon's question status and the reader's answer buttons 
     ["Ship it? [? **Yes** | No]", false],
     ["Literal \\[? Yes | No]", false],
     ["Ship it? [? Yes | No] <!-- marker -->", true],
+    // #1665/#1662: indented code and an indented fence are code; list text and a lazy line are not
+    ["Text\n\n    Ship it? [? Yes | No]", false],
+    ["Text\n\n\tShip it? [? Yes | No]", false],
+    ["- step\n  ```\n  Ship it? [? Yes | No]\n  ```", false],
+    ["Text\n    Ship it? [? Yes | No]", true],
+    ["- item\n\n    Ship it? [? Yes | No]", true],
+    ["Text\n\n    code\nShip it? [? Yes | No]", true],
+    // #1665: the prose under a pipe table is a piece of its own for the reader and the status
+    ["Intro\n\n| a | b |\n|---|---|\n| 1 | 2 |\n    Ship it? [? Yes | No]", false],
+    ["- item\n  | a | b |\n  |---|---|\n  | 1 | 2 |\n\n    Ship it? [? Yes | No]", false],
+    ["| a | b |\n|---|---|\n| 1 | 2 |\nShip it? [? Yes | No]", true],
   ];
   for (const [body, want] of corpus) {
     const shown = m.annotateReport(renderer.render(body), noUi).toc.asks.length > 0;

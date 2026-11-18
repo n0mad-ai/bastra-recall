@@ -72,6 +72,7 @@ async function shell(hash: string, view = "chronos") {
   const source = [
     strip(await read("areas.js")),
     strip(await read("nav.js")),
+    strip(await read("views/code-lines.js")),
     strip(await read("sections/tasks-reports-model.js")),
     strip(await read("sections/tasks-reports-state.js")),
     strip(await read("sections/tasks-reports-search.js")),

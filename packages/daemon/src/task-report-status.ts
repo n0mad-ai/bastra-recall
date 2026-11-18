@@ -13,6 +13,8 @@
 // One scanner for the reader and this status (#1656): the web reader's own module, which the daemon
 // finds next to its code as it finds the rest of the web UI (webui.ts).
 import { inlineMatches } from "../webui/app/js/views/inline-scan.js";
+import { codeLines } from "../webui/app/js/views/code-lines.js";
+import { reportBlocks } from "../webui/app/js/sections/tasks-reports-model.js";
 
 export type ReportStatus = "new" | "read" | "in_progress" | "handed" | "question" | "done";
 
@@ -32,14 +34,14 @@ export interface StatusReport {
 // The marker the UI shows as answer buttons (tasks-reports-model.js askOf, tasks-report-notes.js
 // takeAsk): 2 to 6 distinct options of at most 40 characters after a question, at the end of a list
 // item or paragraph line. One contract with the reader (#1656): the lines are taken apart as its
-// renderer (webui views/memory-browser.js markdown()) does, so a marker in code, in a heading, behind
-// a backslash (#1652) or with formatting inside it stays text here as well.
+// renderer (webui views/markdown.js markdown()) does, so a marker in code (fenced or indented, the
+// reader's own rule in code-lines.js), in a heading, behind a backslash (#1652) or with formatting
+// inside it stays text here as well.
 const ASK = /\[\?([^[\]]*)\]\s*$/;
 const ASK_MIN = 2;
 const ASK_MAX = 6;
 const OPTION_MAX = 40;
 
-const FENCE = /^```/;
 const HEADING = /^#{1,6}\s/;
 const ITEM = /^\s*(?:[-*]|\d+\.)\s+(.*)$/;
 /** Where the last inline element of `text` ends (0 without one): the renderer's inline formatting
@@ -63,16 +65,22 @@ function asksIn(text: string): boolean {
   );
 }
 
-/** True when the report text holds at least one question with answer options. */
-export function asksOwner(body: string): boolean {
-  let fence = false;
+/** True when one piece of prose (a markdown() call of the reader) holds a question. */
+function proseAsks(md: string): boolean {
   // HTML comments are bookkeeping the reader drops before it reads the lines
-  for (const raw of body.replace(/<!--[\s\S]*?-->/g, "").split("\n")) {
+  const lines = md.replace(/<!--[\s\S]*?-->/g, "").split("\n"),
+    code = codeLines(lines);
+  return lines.some((raw, i) => {
     const line = raw.trimEnd();
-    if (FENCE.test(line)) fence = !fence;
-    else if (!fence && !HEADING.test(line) && asksIn(ITEM.exec(line)?.[1] ?? line)) return true;
-  }
-  return false;
+    return !code[i] && !HEADING.test(line) && asksIn(ITEM.exec(line)?.[1] ?? line);
+  });
+}
+
+/** True when the report text holds at least one question with answer options. The reader renders
+ *  the prose between pipe tables piece by piece (tasks-reports.js bodyNodes), so a line right under
+ *  a table starts a new piece there; this status reads the same pieces (#1665). */
+export function asksOwner(body: string): boolean {
+  return reportBlocks(body).some((b) => b.kind === "md" && proseAsks(b.text));
 }
 
 /** The state from the notes alone (the first four rules without the follow-up). */
