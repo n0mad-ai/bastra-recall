@@ -4,7 +4,6 @@
  * complete. `bastra import mine` is read by the AI session and keeps its
  * English instructions. Text the product writes — never matched against user text.
  */
-import { taskCliLanguage } from "./task-cli-words.js";
 
 const en = {
   error: (message: string) => `error: ${message}\n`,
@@ -135,8 +134,4 @@ export const IMPORT_WORDS: Readonly<Record<string, ImportWords>> = { en, de };
 /** The words in `language`; English for an unset or unlisted one. */
 export function importWordsIn(language: string | undefined): ImportWords {
   return IMPORT_WORDS[language ?? "en"] ?? en;
-}
-/** The words in language.primary, read once per command (English when unset or unreadable). */
-export async function importWords(): Promise<ImportWords> {
-  return importWordsIn(await taskCliLanguage().catch(() => "en"));
 }

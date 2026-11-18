@@ -26,11 +26,14 @@ import {
 import { resolveVault } from "./helpers.js";
 import { replayAfterOnboarding } from "./doctor-replay.js";
 import type { ParsedArgs } from "./types.js";
-import { usageBlocks } from "./usage-block-words.js";
-import { onboardWords, onboardWordsIn, type OnboardWords } from "./onboard-words.js";
+import { usageBlocksIn } from "./usage-block-words.js";
+import { onboardWordsIn, type OnboardWords } from "./onboard-words.js";
+import { taskCliLanguage } from "./task-cli-words.js";
 
 export async function cmdOnboard(args: ParsedArgs): Promise<number> {
-  const w = await onboardWords();
+  // The language is read once per command: one the answers save applies from the next command (#1602).
+  const language = await taskCliLanguage().catch(() => "en");
+  const w = onboardWordsIn(language);
   const vault = await resolveVault({ dryRun: false, vaultPath: args.vaultPath });
   if ("error" in vault) {
     process.stderr.write(`${vault.error}\n`);
@@ -55,11 +58,11 @@ export async function cmdOnboard(args: ParsedArgs): Promise<number> {
         .join(", ");
       process.stderr.write(w.ignored(loaded.persona, loaded.ignored.join(", "), known));
     }
-    return saveInterview(vault.path, loaded.persona, loaded.answers, w);
+    return saveInterview(vault.path, loaded.persona, loaded.answers, w, language);
   }
 
   if (!process.stdin.isTTY) {
-    process.stderr.write((await usageBlocks()).onboard);
+    process.stderr.write(usageBlocksIn(language).onboard);
     return 2;
   }
 
@@ -72,7 +75,7 @@ export async function cmdOnboard(args: ParsedArgs): Promise<number> {
     process.stderr.write(w.inputEnded);
     return 1;
   }
-  return saveInterview(vault.path, interview.persona, interview.answers, w);
+  return saveInterview(vault.path, interview.persona, interview.answers, w, language);
 }
 
 /**
@@ -132,7 +135,8 @@ async function saveInterview(
   vaultPath: string,
   persona: Persona,
   answers: Record<string, string>,
-  w: OnboardWords
+  w: OnboardWords,
+  language: string
 ): Promise<number> {
   const memories = buildOnboardingMemories(persona, answers);
   // Keep the completion marker after this call: a real write failure must
@@ -144,7 +148,7 @@ async function saveInterview(
   process.stdout.write(w.saved(memories.length));
   // #702 step 5: how recall will behave on this vault with this user's own
   // prompts — a replay when transcripts exist, otherwise when to come back.
-  await replayAfterOnboarding(process.stdout);
+  await replayAfterOnboarding(process.stdout, language);
   return 0;
 }
 

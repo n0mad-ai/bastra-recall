@@ -68,8 +68,9 @@ import { mapUrl } from "./map-cmd.js";
 import { archiveCap, archiveMaxItem, formatSize, parseRetain, parseSize, retainDays } from "../rm-archive.js";
 import { getPromptImpactEnabled, setPromptImpactEnabled } from "../code-graph/prompt-impact-settings.js";
 import { getCoverageMapEnabled, setCoverageMapEnabled } from "../code-graph/coverage-map-settings.js";
-import { usageWords } from "./usage-words.js";
-import { configWords, type ConfigWords } from "./config-words.js";
+import { usageWordsIn } from "./usage-words.js";
+import { configWordsIn, type ConfigWords } from "./config-words.js";
+import { taskCliLanguage } from "./task-cli-words.js";
 
 const configKeys = [
   ...settingEntries()
@@ -88,9 +89,11 @@ export async function cmdConfig(args: ParsedArgs): Promise<number> {
   const key = args.positional[2] ?? null;
   const value = args.positional[3] ?? null;
 
-  const w = await configWords();
+  // The language is read once per command (#1602).
+  const language = await taskCliLanguage().catch(() => "en");
+  const w = configWordsIn(language);
   if (action !== "get" && action !== "set") {
-    process.stderr.write((await usageWords()).config);
+    process.stderr.write(usageWordsIn(language).config);
     process.stderr.write(w.knownKeys(configKeys.join(", ")));
     return 2;
   }

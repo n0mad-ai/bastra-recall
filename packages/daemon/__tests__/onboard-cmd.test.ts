@@ -327,3 +327,41 @@ test("cmdOnboard ends with the shadow replay (#702), capped at the latest turns 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("cmdOnboard speaks one language for the whole command: a language saved by the answers applies from the next command", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-onboard-language-"));
+  const vault = join(dir, "vault");
+  const saved = { home: process.env.HOME, url: process.env.BASTRA_DAEMON_URL, cfg: process.env.CLAUDE_CONFIG_DIR };
+  process.env.HOME = join(dir, "home");
+  delete process.env.CLAUDE_CONFIG_DIR;
+  // No daemon behind this address: the replay at the end must not reach the user's.
+  process.env.BASTRA_DAEMON_URL = "http://127.0.0.1:9";
+  let stdout = "";
+  const original = process.stdout.write.bind(process.stdout);
+  try {
+    const file = join(dir, "answers.yaml");
+    await writeFile(file, "persona: personal\nanswers:\n  identity: Kim · Deutsch, Du-Form\n", "utf8");
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      stdout += String(chunk);
+      return true;
+    }) as typeof process.stdout.write;
+    const code = await cmdOnboard(parseArgs(["onboard", "--vault", vault, "--answers", file]));
+    process.stdout.write = original;
+    assert.equal(code, 0);
+    const settings = await readSettingsFixture(join(dir, "home", ".bastra", "cli-settings.json"), "utf8");
+    assert.match(settings, /"de"/, "the answers saved German as the language");
+    assert.match(
+      stdout,
+      /\nrecall replay(?: skipped|: not evaluable)/,
+      "the replay still speaks the command's English"
+    );
+    assert.doesNotMatch(stdout, /Recall-Replay/);
+  } finally {
+    process.stdout.write = original;
+    process.env.HOME = saved.home;
+    if (saved.url === undefined) delete process.env.BASTRA_DAEMON_URL;
+    else process.env.BASTRA_DAEMON_URL = saved.url;
+    if (saved.cfg !== undefined) process.env.CLAUDE_CONFIG_DIR = saved.cfg;
+    await rm(dir, { recursive: true, force: true });
+  }
+});

@@ -7,7 +7,6 @@
  * user text (answers are saved as typed).
  */
 import type { OnboardingQuestion, Persona } from "../onboarding.js";
-import { taskCliLanguage } from "./task-cli-words.js";
 
 const en = {
   dismissed: "✓ onboarding dismissed — run `bastra onboard` anytime to do the interview later\n",
@@ -140,8 +139,4 @@ export const ONBOARD_WORDS: Readonly<Record<string, OnboardWords>> = { en, de };
 /** The words in `language`; English for an unset or unlisted one. */
 export function onboardWordsIn(language: string | undefined): OnboardWords {
   return ONBOARD_WORDS[language ?? "en"] ?? en;
-}
-/** The words in language.primary, read once per command (English when unset or unreadable). */
-export async function onboardWords(): Promise<OnboardWords> {
-  return onboardWordsIn(await taskCliLanguage().catch(() => "en"));
 }

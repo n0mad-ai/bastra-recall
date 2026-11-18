@@ -32,8 +32,9 @@ import { findClientMemoryDirs, migrateClientLabels } from "./client-memory.js";
 import { IMPORT_CLI_WRITER, writeCallerStore } from "../caller-session.js";
 import { resolveVault } from "./helpers.js";
 import type { ParsedArgs } from "./types.js";
-import { usageBlocks } from "./usage-block-words.js";
-import { importWords, type ImportWords } from "./import-words.js";
+import { usageBlocksIn } from "./usage-block-words.js";
+import { importWordsIn, type ImportWords } from "./import-words.js";
+import { taskCliLanguage } from "./task-cli-words.js";
 
 /** JSON.parse peak memory is a multiple of the input — refuse absurd files
  *  instead of OOM-killing the CLI. Real exports are tens of MB. */
@@ -53,10 +54,12 @@ async function readStdin(): Promise<string> {
 export async function cmdImport(args: ParsedArgs): Promise<number> {
   // `mine` speaks to the AI session, in the English it always had.
   if (args.surface === "mine") return cmdImportMine();
-  const w = await importWords();
+  // The language is read once per command (#1602).
+  const language = await taskCliLanguage().catch(() => "en");
+  const w = importWordsIn(language);
   if (args.surface === "rules") return cmdImportRules(args, w);
   // #1469: the two surfaces that write memories name their writer in the audit.
-  if (args.surface === "vault") return writeCallerStore.run(IMPORT_CLI_WRITER, () => cmdImportVault(args, w));
+  if (args.surface === "vault") return writeCallerStore.run(IMPORT_CLI_WRITER, () => cmdImportVault(args, w, language));
   if (args.surface === "clients") return writeCallerStore.run(IMPORT_CLI_WRITER, () => cmdImportClients(args, w));
   if (args.surface === "clear") return cmdImportClear(w);
 
@@ -77,7 +80,7 @@ export async function cmdImport(args: ParsedArgs): Promise<number> {
   let fileName: string | null = null;
   if (!fileArg || fileArg === "-") {
     if (process.stdin.isTTY) {
-      process.stderr.write((await usageBlocks()).import);
+      process.stderr.write(usageBlocksIn(language).import);
       return 2;
     }
     raw = await readStdin();
@@ -186,10 +189,10 @@ async function cmdImportRules(args: ParsedArgs, w: ImportWords): Promise<number>
  * isolated `memories/imported/<label>/` subtree; nothing existing is touched.
  *   bastra import vault <dir> [label] [--dry-run]
  */
-async function cmdImportVault(args: ParsedArgs, w: ImportWords): Promise<number> {
+async function cmdImportVault(args: ParsedArgs, w: ImportWords, language: string): Promise<number> {
   const dir = args.positional[2];
   if (!dir) {
-    process.stderr.write((await usageBlocks()).importVault);
+    process.stderr.write(usageBlocksIn(language).importVault);
     return 2;
   }
   const vault = await resolveVault({ dryRun: false, vaultPath: args.vaultPath });

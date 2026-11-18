@@ -610,9 +610,10 @@ export async function cmdDoctorReplay(args: ParsedArgs): Promise<number> {
  * The end of `bastra onboard` (#702 step 5): a user with transcripts gets the
  * replay on day one; a fresh install is told when to come back. Best-effort —
  * onboarding has already saved, and nothing here may change its outcome.
+ * `language` is the onboarding command's own, read at its start (#1602).
  */
-export async function replayAfterOnboarding(out: { write: (s: string) => unknown }): Promise<void> {
-  const w = doctorReplayWordsIn(await taskCliLanguage().catch(() => "en"));
+export async function replayAfterOnboarding(out: { write: (s: string) => unknown }, language: string): Promise<void> {
+  const w = doctorReplayWordsIn(language);
   try {
     const { report } = await replayAndReport({
       days: REPLAY_DEFAULT_DAYS,

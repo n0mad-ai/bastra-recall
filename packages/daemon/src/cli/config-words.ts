@@ -4,7 +4,6 @@
  * before), German complete. The value line of `config get` stays as it is —
  * scripts read it. Text the product writes — never matched against user text.
  */
-import { taskCliLanguage } from "./task-cli-words.js";
 
 const en = {
   knownKeys: (keys: string) => `known keys: ${keys}\n`,
@@ -126,8 +125,4 @@ export const CONFIG_WORDS: Readonly<Record<string, ConfigWords>> = { en, de };
 /** The words in `language`; English for an unset or unlisted one. */
 export function configWordsIn(language: string | undefined): ConfigWords {
   return CONFIG_WORDS[language ?? "en"] ?? en;
-}
-/** The words in language.primary, read once per command (English when unset or unreadable). */
-export async function configWords(): Promise<ConfigWords> {
-  return configWordsIn(await taskCliLanguage().catch(() => "en"));
 }

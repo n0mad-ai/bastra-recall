@@ -187,7 +187,8 @@ until a new design replaces it; this name is independent of the product version.
 - install, uninstall, doctor, update, config, import, onboard (including the
   interview), token, oauth, the Desktop extension install and the status panel
   now print their messages in `language.primary` (German complete, English
-  default) (#1602).
+  default); each command reads the language once, so a language the onboarding
+  answers save applies from the next command (#1602).
 - `bastra embeddings`, `bastra autostart`, Ollama setup messages and the
   semantic-recall/autostart notes of `install`, `doctor` and `update` follow
   `language.primary` (German complete, English unchanged) (#1602).
