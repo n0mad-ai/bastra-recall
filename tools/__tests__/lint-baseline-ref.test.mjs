@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,6 +36,13 @@ async function history(t) {
   for (const name of ["check-lint-baselines.mjs", "lint-baseline-ref.mjs"]) {
     await copyFile(join(repository, "scripts", name), join(root, "scripts", name));
   }
+  await mkdir(join(root, "node_modules"));
+  await symlink(
+    await realpath(join(repository, "node_modules", "typescript")),
+    join(root, "node_modules", "typescript"),
+    process.platform === "win32" ? "junction" : "dir"
+  );
+  await writeFile(join(root, ".gitignore"), "node_modules/\n");
   await writeFile(join(root, ".lint-cycle-baseline.json"), "[]");
   await writeFile(join(root, "clone-baseline.json"), "{}");
   const baseline = (value) =>
