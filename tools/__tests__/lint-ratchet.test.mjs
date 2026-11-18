@@ -189,6 +189,32 @@ test("depth has an independent frozen maximum and new functions stay within four
   assert.match(previouslyCompliant.output, /maximum 15, actual 21/);
 });
 
+test("independent deep module statements cannot share an existing frozen depth", async (t) => {
+  const root = await fixture(t);
+  const deep = (name, depth) =>
+    `let ${name} = true; ${`if (${name}) {`.repeat(depth)} ${name} = false; ${"}".repeat(depth)}\n`;
+  const original = deep("original", 5);
+  await put(root, "src/module-depth.ts", original);
+  await freezeStructure(root);
+  const baseline = await readFile(join(root, "eslint-structure-baseline.json"), "utf8");
+  assert.equal(JSON.parse(baseline).functions[JSON.stringify(["src/module-depth.ts", "module", "max-depth"])], 5);
+  assert.equal(tool(root, "lint-structure.mjs").status, 0);
+  for (const source of [original + deep("added", 5), deep("added", 5) + original]) {
+    await put(root, "src/module-depth.ts", source);
+    const added = tool(root, "lint-structure.mjs");
+    assert.equal(added.status, 1, added.output);
+    assert.match(added.output, /independent module statements|separate module statements/);
+    assert.equal(tool(root, "lint-structure.mjs", "--prune").status, 1);
+    assert.equal(await readFile(join(root, "eslint-structure-baseline.json"), "utf8"), baseline);
+  }
+  await put(root, "src/module-depth.ts", original + deep("shallow", 4));
+  assert.equal(tool(root, "lint-structure.mjs").status, 0);
+  await put(root, "src/module-depth.ts", deep("original", 6));
+  const deeper = tool(root, "lint-structure.mjs");
+  assert.equal(deeper.status, 1, deeper.output);
+  assert.match(deeper.output, /frozen maximum 5, actual 6/);
+});
+
 test("the root rules cover every JS/TS extension and arbitrary code directories", async (t) => {
   const root = await fixture(t);
   const extensions = ["js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx", "MJS", "Ts", "CTS"];

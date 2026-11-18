@@ -38,8 +38,10 @@ export async function inspectStructure(paths = listCodeFiles(repositoryRoot), { 
     const source = result.source ?? readFileSync(result.filePath, "utf8");
     const file = relative(repositoryRoot, result.filePath).split("\\").join("/");
     const parsed = analyzeFunctions(source, result.filePath);
+    const moduleStatements = new Set();
     for (const message of messages) {
       const owner = functionAt(message, source, parsed);
+      if (owner.statementRange) moduleStatements.add(owner.statementRange.join(":"));
       const key = JSON.stringify([file, owner.identity, message.ruleId]);
       const metric = message.message.match(/(?:complexity of |too deeply \()(\d+)/);
       if (!metric) throw new Error(`Unrecognized structural finding: ${message.message}`);
@@ -49,6 +51,12 @@ export async function inspectStructure(paths = listCodeFiles(repositoryRoot), { 
         const oldKey = `${file}:${message.ruleId}:${legacyFingerprint(message, owner, parsed)}`;
         legacyFindings[oldKey] = (legacyFindings[oldKey] ?? 0) + 1;
       }
+    }
+    // Preserve each numeric legacy module budget without lending it to a new top-level statement.
+    if (moduleStatements.size > 1) {
+      throw new Error(
+        `${file}: independent module statements cannot share a frozen depth budget. Refactor the separate module statements; do not expand the baseline.`
+      );
     }
   }
   return {

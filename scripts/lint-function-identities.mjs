@@ -90,7 +90,7 @@ export function analyzeFunctions(source, filePath) {
     }
   }
   visit(ast, null, []);
-  return { functions, tokens: ast.tokens };
+  return { functions, tokens: ast.tokens, moduleStatements: ast.body.map((node) => node.range) };
 }
 
 export function functionAt(message, source, parsed) {
@@ -103,6 +103,7 @@ export function functionAt(message, source, parsed) {
       .sort((a, b) => a.range[1] - a.range[0] - (b.range[1] - b.range[0]))[0] ?? {
       identity: "module",
       range: [0, source.length],
+      statementRange: parsed.moduleStatements.find(([start, end]) => start <= position && position < end),
     }
   );
 }
