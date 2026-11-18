@@ -78,7 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `mcp-http`), `client` (the MCP client's name and version, or the OAuth client
   of a remote connector) and `caller_session` (the Claude Code session the
   forwarder reports). A record for tracing, not an access rule: nothing is
-  refused or asked because of it (#1469).
+  refused or asked because of it. Folder imports also identify the CLI or web
+  UI writer, retaining the import run ID and an absent client session (#1469).
 
 - **`bastra doctor` shows more of what is really in effect.** Per installed
   client it now asks the daemon for that client's MCP tool list, as the client
@@ -112,10 +113,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `replaces` and collision checks) and returns the file it would write and
   whether it would become a rule, a proposal or a note. The preview leaves
   the vault, audit and session state untouched. The stdio app bridge
-  declines preview requests with an explicit error (#1484).
+  declines preview requests with an explicit error. `bastra save --dry-run`
+  exposes the same preview in the terminal, requiring advertised daemon schema
+  support before sending a save request (#1484, #1492).
 - `save_quality` warns when a save re-asserts a claim that was already
-  replaced and names the successor; advisory only, `replaces: <successor>`
-  silences it (#643).
+  replaced and names its current public successor; advisory only,
+  `replaces: <successor>` silences it. Editing the successor does not warn
+  against its own predecessor; chains with a private successor are omitted
+  (#643).
 - A `write_origin: user-directed` save records transport, client, session and
   time of the call in `write_origin_evidence`, shown in the save receipt and
   in `list_rules`. No extra approval step (#1496).
@@ -229,6 +234,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   (#1567).
 
 ### Fixed
+
+- Invalid custom numeric settings keep their entered text and block Apply and
+  restart until repaired; clearing or choosing a listed value repairs the draft.
+- Rule-kernel cadence counts each agent separately. A failed or expired
+  delivery returns its calls to the owning agent without consuming another
+  worker's due reminder (#1623).
+- Expired task-report undo entries leave disk on list or restore, preserving
+  the existing undo window and entry limit (#1614).
+- Pending rulebook-failure observations in an account-private legacy tmpdir
+  spool are drained after hook-state migration; unreadable or unsafe files
+  remain untouched (#1638).
+- PSK assignment redaction no longer skips values based on the words before
+  the key; the existing syntax scanner still handles protocol-mode values
+  (#1625).
 
 - Concurrent `tools/cmux-agent-send.mjs` senders to the same terminal target
   take turns from message text through Return, keeping submissions separate
@@ -376,6 +395,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Internal
 
+- Import/update execution steps, loopback CLI calls, settings registry access
+  and HTTP hook routing reuse existing boundaries under characterization tests
+  (#1514, #1508, #1510, #1529). Wizard and draft-promotion cuts remain open.
+- Semantic gate-denial tests use the existing fixture clock so scheduler stalls
+  do not consume production deadlines; independent timeout controls remain
+  unchanged (#1303, #1506).
+
 - Task-tool descriptions keep a shorter credential and chat-authorization
   contract at every entry, with tighter description and catalogue budgets;
   tool names, schemas and operational rules stay unchanged (#1462).
@@ -444,7 +470,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   matches the tested adapter.
 - **The Codex gate probe takes `--expected-version`** (#1541), like the Stop
   probe, and `docs/rulebook-host-probes.md` lists the steps to check a new
-  Codex release. Codex CLI 0.167.0 is not probed yet and stays advisory.
+  Codex release. Codex CLI 0.167.0 now has native-gate and Stop probe evidence
+  for the measured paths, beside 0.162.1 and 0.166.0. Fork remains verified only
+  on 0.162.1; apply_patch/MCP denial and other unmeasured paths remain
+  unverified. This is not a live-installation certification.
 - **Abstention figures registered** (#1463):
   `packages/eval/registrations/abstention-1463.json` reads the 79 unanswerable
   gold-set questions from the registered September runs. The preregistered
