@@ -20,6 +20,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   build-and-test:
@@ -45,9 +46,15 @@ jobs:
       - name: Install (clean, from lockfile)
         run: npm ci
 
+      - name: Resolve trusted lint baseline
+        id: lint-baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/lint-baseline-ref.mjs >> "$GITHUB_OUTPUT"
+
       - name: Lint (structure, cycles, copies, shrinking baselines)
         env:
-          LINT_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD^' }}
+          LINT_BASE_REF: ${{ steps.lint-baseline.outputs.sha }}
         run: npm run lint
 
       - name: Formatting

@@ -1,6 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
+if (process.env.GITHUB_ACTIONS === "true" && !process.env.LINT_BASE_REF) {
+  console.error("CI requires an explicit trusted LINT_BASE_REF; refusing to compare against the current checkout.");
+  process.exit(1);
+}
+
 const base = process.env.LINT_BASE_REF || "HEAD";
 try {
   execFileSync("git", ["rev-parse", "--verify", `${base}^{commit}`], { stdio: ["ignore", "pipe", "pipe"] });
