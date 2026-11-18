@@ -25,7 +25,7 @@ import { CONFIG_WORDS, configWordsIn } from "../src/cli/config-words.js";
 import { cmdImport } from "../src/cli/import-cmd.js";
 import { IMPORT_WORDS, importWordsIn } from "../src/cli/import-words.js";
 import { cmdOnboard } from "../src/cli/onboard-cmd.js";
-import { ONBOARD_WORDS, QUESTIONS_DE, onboardWordsIn } from "../src/cli/onboard-words.js";
+import { ONBOARD_WORDS, onboardWordsIn } from "../src/cli/onboard-words.js";
 import { QUESTIONS } from "../src/onboarding.js";
 import { cmdToken } from "../src/cli/token.js";
 import { TOKEN_WORDS, tokenWordsIn } from "../src/cli/token-words.js";
@@ -53,7 +53,9 @@ function texts(words: object): Map<string, string> {
       typeof value === "function"
         ? (value as (...a: unknown[]) => unknown)(...(SAMPLES[key] ?? ["X1", "Y2", 3]))
         : value;
-    out.set(key, Array.isArray(text) ? text.join("") : String(text));
+    // A label table (object) compares by its contents.
+    const flat = Array.isArray(text) ? text.join("") : typeof text === "object" ? JSON.stringify(text) : String(text);
+    out.set(key, flat);
   }
   return out;
 }
@@ -91,7 +93,7 @@ test("every words table has each text in English and German, and English for an 
   const en = onboardWordsIn("en"),
     de = onboardWordsIn("de");
   for (const q of QUESTIONS) {
-    assert.ok(QUESTIONS_DE[q.id], `onboard: no German text for question '${q.id}'`);
+    assert.ok(ONBOARD_WORDS.de.questions[q.id], `onboard: no German text for question '${q.id}'`);
     assert.equal(en.ask(q), q.ask);
     assert.equal(en.hint(q), q.hint);
     assert.notEqual(de.ask(q), q.ask, `onboard: '${q.id}' asks in English`);

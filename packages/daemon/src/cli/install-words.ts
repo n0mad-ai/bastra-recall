@@ -9,6 +9,8 @@ import { CLI_DECLINED_NOTE, CLI_PACKAGE, NPX_FALLBACK_HINT } from "./cli-on-path
 import { taskCliLanguage } from "./task-cli-words.js";
 
 const en = {
+  /** Status labels by adapter status; English takes helpers' formatStatus instead. */
+  statusNames: {} as Readonly<Record<string, string>>,
   /** The status label of an adapter result (helpers' formatStatus in English). */
   status: (status: string): string => formatStatus(status),
   firstRunQuestion: `No memory vault configured yet. Create one at ${DEFAULT_VAULT_DISPLAY}?`,
@@ -41,23 +43,22 @@ const en = {
 };
 export type InstallWords = typeof en;
 
-const STATUS_DE: Readonly<Record<string, string>> = {
-  installed: "✓ eingerichtet",
-  "already-installed": "= schon eingerichtet",
-  "would-install": "~ würde einrichten (Probelauf)",
-  removed: "✓ entfernt",
-  "not-present": "= nicht vorhanden",
-  "would-remove": "~ würde entfernen (Probelauf)",
-  ok: "✓ ok",
-  missing: "✗ fehlt",
-  broken: "✗ defekt",
-  "not-implemented": "… noch nicht umgesetzt",
-  error: "✗ Fehler",
-  warn: "! Hinweis",
-};
-
 const de: InstallWords = {
-  status: (status) => STATUS_DE[status] ?? status,
+  statusNames: {
+    installed: "✓ eingerichtet",
+    "already-installed": "= schon eingerichtet",
+    "would-install": "~ würde einrichten (Probelauf)",
+    removed: "✓ entfernt",
+    "not-present": "= nicht vorhanden",
+    "would-remove": "~ würde entfernen (Probelauf)",
+    ok: "✓ ok",
+    missing: "✗ fehlt",
+    broken: "✗ defekt",
+    "not-implemented": "… noch nicht umgesetzt",
+    error: "✗ Fehler",
+    warn: "! Hinweis",
+  },
+  status: (status) => de.statusNames[status] ?? status,
   firstRunQuestion: `Noch kein Memory-Vault eingerichtet. Einen unter ${DEFAULT_VAULT_DISPLAY} anlegen?`,
   wouldPromptVault: `~ würde fragen, ob ${DEFAULT_VAULT_DISPLAY} angelegt werden soll (Probelauf): noch kein Vault eingerichtet\n\n`,
   couldNotCreateDefault: (error) => `✗ ${DEFAULT_VAULT_DISPLAY} konnte nicht angelegt werden: ${error}\n`,
