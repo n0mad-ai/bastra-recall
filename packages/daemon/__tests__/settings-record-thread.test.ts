@@ -22,7 +22,9 @@ test("a stuck settings reader is the only one until it exits; later requests ret
   const terminate = t.mock.method(Worker.prototype, "terminate", async () => 0);
   // Stuck means stuck in a read: a reader still starting is not (see
   // settings-record-thread-start.test.ts).
+  const open = setInterval(() => {}, 1000); // the starting reader does not hold the process open
   await warmSettingsReader();
+  clearInterval(open);
 
   const first = Date.now();
   await assert.rejects(readSettingsRecordOffThread("/nonexistent/cli-settings.json", first + 50), SettingsReadLate);
@@ -39,6 +41,11 @@ test("a stuck settings reader is the only one until it exits; later requests ret
   const exited = new Promise((resolve) => stuck.once("exit", resolve));
   await Reflect.apply(realTerminate, stuck, []);
   await exited;
+  // A reader is sent requests only once it is ready; wait for that here, so
+  // a slow start-up does not hide the replacement from the count below.
+  const hold = setInterval(() => {}, 1000);
+  await warmSettingsReader();
+  clearInterval(hold);
   await assert.rejects(
     readSettingsRecordOffThread("/nonexistent/cli-settings.json", Date.now() + 50),
     SettingsReadLate

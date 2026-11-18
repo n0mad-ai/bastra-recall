@@ -291,8 +291,13 @@ async function withEnv<T>(env: Record<string, string>, fn: () => Promise<T>): Pr
 }
 
 // As the daemon does at boot: the settings reader's start-up must not count
-// against the size note's deadline, or a slow machine loses the note.
-test.before(() => warmSettingsReader());
+// against the size note's deadline, or a slow machine loses the note. The
+// reader does not hold the process open while it starts; this hook does.
+test.before(async () => {
+  const open = setInterval(() => {}, 1000);
+  await warmSettingsReader();
+  clearInterval(open);
+});
 
 for (const sc of SCENARIOS) {
   test(`#1525 golden master — ${sc.name}`, async (t) => {

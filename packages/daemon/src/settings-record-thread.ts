@@ -12,10 +12,12 @@
  * so a lasting stall costs one thread, not one per request.
  *
  * A worker that has not finished starting (thread, modules) is not stuck: it
- * has not begun any read. A deadline that passes before it reports ready
- * fails only that request; the worker stays. The daemon starts the worker at
- * boot ({@link warmSettingsReader}) so the first edit does not pay the
- * start-up inside its deadline.
+ * has not begun any read. Requests wait in the parent until it reports
+ * ready and are only then sent, so a request whose deadline passes first
+ * leaves no work behind; it fails alone and the worker stays. A worker
+ * without a pending request never keeps the process alive, not even while
+ * it starts. The daemon starts the worker at boot ({@link warmSettingsReader})
+ * so the first edit does not pay the start-up inside its deadline.
  *
  * Same answer as the direct call: undefined = no record, null = record
  * deleted or database unavailable. The environment is shared with the worker
@@ -50,7 +52,7 @@ export class SettingsReadLate extends Error {}
 
 type Reader = {
   worker: Worker;
-  pending: Map<number, (reply: Reply | Error) => void>;
+  pending: Map<number, { legacyPath: string; answer: (reply: Reply | Error) => void }>;
   /** Settles once the worker is ready or gone. */
   started: Promise<void>;
   ready: boolean;
@@ -76,21 +78,24 @@ function startReader(): Reader {
   worker.on("message", (reply: Reply | typeof READY) => {
     if (reply !== READY) return settle(current, reply.id, reply);
     current.ready = true;
-    // From here an idle reader never keeps the process alive; see settle().
-    if (current.pending.size === 0) worker.unref();
+    // Only requests still within their deadline reach the worker.
+    for (const [id, { legacyPath }] of current.pending) worker.postMessage({ id, legacyPath } satisfies Request);
     markStarted();
   });
   worker.on("error", () => fail("settings reader failed"));
   worker.on("exit", () => fail("settings reader exited"));
+  // An idle reader never keeps the process alive; see settle(). After the
+  // listeners: adding a "message" listener references the worker again.
+  worker.unref();
   return current;
 }
 
 /** Answers one request; the worker holds the process open only while one is pending. */
 function settle(current: Reader, id: number, reply: Reply | Error): void {
-  const answer = current.pending.get(id);
+  const entry = current.pending.get(id);
   current.pending.delete(id);
   if (current.pending.size === 0) current.worker.unref();
-  answer?.(reply);
+  entry?.answer(reply);
 }
 
 function request(legacyPath: string, deadline: number): Promise<string | null | undefined> {
@@ -98,17 +103,20 @@ function request(legacyPath: string, deadline: number): Promise<string | null | 
   const id = nextId++;
   return new Promise((resolve, reject) => {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    current.pending.set(id, (reply) => {
-      clearTimeout(timer);
-      if (reply instanceof Error) reject(reply);
-      else resolve(reply.text);
+    current.pending.set(id, {
+      legacyPath,
+      answer: (reply) => {
+        clearTimeout(timer);
+        if (reply instanceof Error) reject(reply);
+        else resolve(reply.text);
+      },
     });
     if (deadline !== Infinity) {
       timer = setTimeout(
         () => {
           const late = new SettingsReadLate("settings read missed its deadline");
-          // Still starting: no read is running, so the worker is not stuck.
-          // It answers this request later, to nobody.
+          // Still starting: no read is running, so the worker is not stuck,
+          // and the request was never sent.
           if (!current.ready) return settle(current, id, late);
           // The worker may be stuck in the read: drop it with everything it
           // owes, since later requests queue behind that read.
@@ -121,12 +129,13 @@ function request(legacyPath: string, deadline: number): Promise<string | null | 
       );
     }
     current.worker.ref();
-    current.worker.postMessage({ id, legacyPath } satisfies Request);
+    if (current.ready) current.worker.postMessage({ id, legacyPath } satisfies Request);
   });
 }
 
 /** Starts the reader ahead of the first deadline-bound request; resolves
- * once it is ready (or could not start). */
+ * once it is ready (or could not start). The reader does not keep the
+ * process alive meanwhile: a caller that awaits this must hold it open. */
 export function warmSettingsReader(): Promise<void> {
   if (stuck) return Promise.resolve();
   return (reader ??= startReader()).started;
