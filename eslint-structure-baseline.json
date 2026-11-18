@@ -487,7 +487,6 @@
     "[\"packages/eval/src/goldset-label.ts\",\"[\\\"function:main\\\"]\",\"complexity\"]": 23,
     "[\"packages/eval/src/goldset-label.ts\",\"[\\\"function:parseArgs\\\"]\",\"complexity\"]": 23,
     "[\"packages/eval/src/goldset-run.ts\",\"[\\\"function:main\\\"]\",\"complexity\"]": 16,
-    "[\"packages/eval/src/goldset-split.ts\",\"[\\\"function:splitGoldCases\\\"]\",\"complexity\"]": 17,
     "[\"packages/eval/src/goldset.ts\",\"[\\\"function:checkGoldShape\\\",\\\"call:cases.forEach:#1\\\",\\\"function:argument:0#1\\\"]\",\"complexity\"]": 24,
     "[\"packages/eval/src/goldset.ts\",\"[\\\"function:checkLabels\\\"]\",\"complexity\"]": 16,
     "[\"packages/eval/src/longmemeval-dataset.ts\",\"[\\\"function:checkLongMemEvalQuestions\\\"]\",\"complexity\"]": 21,

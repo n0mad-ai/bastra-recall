@@ -36,7 +36,7 @@ import { confirm, isInteractive } from "./prompt.js";
 import { getEmbeddingProvider, getSharedRecallEnabled, getSharedRecallLive, readSettings } from "../settings.js";
 import { canAutoSpawnAt } from "../forwarder-daemon-client.js";
 import { bridgeLearningLines, readMintRuns } from "./bridges-note.js";
-import { bridgesPath } from "./bridges.js";
+import { bridgesPath } from "../learned-recall/pool-path.js";
 import { readLastMint } from "../learned-recall/mint-job.js";
 import { defaultLogDir } from "../learned-recall/harvest.js";
 import { showHelp } from "./help-text.js";

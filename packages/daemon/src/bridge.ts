@@ -47,7 +47,7 @@ import { getSharedRecallEnabled, getSharedRecallLanguage, getSharedRecallLive } 
 import { BridgePool } from "./learned-recall/bridges.js";
 import { createBridgeMethods, type BridgeMethod } from "./bridge-methods.js";
 import { isSupportedLanguage, type SupportedLanguage } from "./learned-recall/language.js";
-import { bridgesPath, migrateBridgesPool } from "./cli/bridges.js";
+import { bridgesPath, migrateBridgesPool } from "./learned-recall/pool-path.js";
 import { startVaultReconcile } from "./daemon-jobs.js";
 import { ensureLocalTaskAgent } from "./task-auto-setup.js";
 import { startProactiveTaskJob } from "./daemon-jobs.js";

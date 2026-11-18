@@ -154,11 +154,43 @@ export function splitGoldCases(cases: readonly GoldCase[], opts: SplitOptions): 
   const probes = cases.filter((c) => c.probe_group).length;
   const noAnswer = cases.filter((c) => !c.probe_group && c.no_answer).length;
   const eligible = cases.filter((c) => !c.probe_group && !c.no_answer);
+  const groups = stratify(eligible, opts);
 
-  // A field that does not vary over the pool names a factor that is not there:
-  // it passes the length check above and still leaves a seeded draw with
-  // nothing to balance (#444). Checked on the ELIGIBLE pool, because that is
-  // what gets split — a field can vary over the file and be constant here.
+  const selection: GoldCase[] = [];
+  const holdout: GoldCase[] = [];
+  const strata: StratumReport[] = [];
+
+  // Sorted so the iteration order does not depend on insertion order.
+  for (const key of [...groups.keys()].sort()) {
+    const merged = groups.get(key) ?? { cases: [], from: [] };
+    const group = shuffleStratum(merged.cases, key, opts.seed);
+    const take = Math.round(group.length * opts.selectionShare);
+    selection.push(...group.slice(0, take));
+    holdout.push(...group.slice(take));
+    strata.push({
+      key,
+      total: group.length,
+      selection: take,
+      holdout: group.length - take,
+      ...(merged.from.length ? { coalesced_from: [...merged.from].sort() } : {}),
+    });
+  }
+
+  return { selection, holdout, strata, excluded: { probes, no_answer: noAnswer } };
+}
+
+/**
+ * Group the eligible pool into strata that each reach both halves, or refuse.
+ *
+ * A field that does not vary over the pool names a factor that is not there:
+ * it passes the `stratifyBy` length check and still leaves a seeded draw with
+ * nothing to balance (#444). Checked on the ELIGIBLE pool, because that is
+ * what gets split — a field can vary over the file and be constant here.
+ */
+function stratify(
+  eligible: readonly GoldCase[],
+  opts: SplitOptions
+): Map<string, { cases: GoldCase[]; from: string[] }> {
   if (eligible.length > 0) {
     for (const f of opts.stratifyBy) {
       const values = new Set(eligible.map((c) => String(c[f])));
@@ -188,37 +220,23 @@ export function splitGoldCases(cases: readonly GoldCase[], opts: SplitOptions): 
         "the pool is too small for this split, and a seed does not fix that"
     );
   }
+  return groups;
+}
 
-  const selection: GoldCase[] = [];
-  const holdout: GoldCase[] = [];
-  const strata: StratumReport[] = [];
-
-  // Sorted so the iteration order does not depend on insertion order, and the
-  // ids inside a stratum are sorted too: the same cases in a different file
-  // order must produce the same split.
-  for (const key of [...groups.keys()].sort()) {
-    const merged = groups.get(key);
-    const group = [...(merged?.cases ?? [])].sort((a, b) => a.id.localeCompare(b.id));
-    // One generator per stratum, seeded from the run seed and the stratum name,
-    // so adding a stratum cannot reshuffle the ones beside it.
-    let h = 0;
-    for (let i = 0; i < key.length; i++) h = (Math.imul(h, 31) + key.charCodeAt(i)) | 0;
-    const rnd = seededRandom(opts.seed ^ h);
-    for (let i = group.length - 1; i > 0; i--) {
-      const j = Math.floor(rnd() * (i + 1));
-      [group[i], group[j]] = [group[j], group[i]];
-    }
-    const take = Math.round(group.length * opts.selectionShare);
-    selection.push(...group.slice(0, take));
-    holdout.push(...group.slice(take));
-    strata.push({
-      key,
-      total: group.length,
-      selection: take,
-      holdout: group.length - take,
-      ...(merged?.from.length ? { coalesced_from: [...merged.from].sort() } : {}),
-    });
+/**
+ * The seeded draw order of one stratum. The ids are sorted first, so the same
+ * cases in a different file order produce the same split, and the generator
+ * is seeded from the run seed and the stratum name, so adding a stratum cannot
+ * reshuffle the ones beside it.
+ */
+function shuffleStratum(cases: readonly GoldCase[], key: string, seed: number): GoldCase[] {
+  const group = [...cases].sort((a, b) => a.id.localeCompare(b.id));
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (Math.imul(h, 31) + key.charCodeAt(i)) | 0;
+  const rnd = seededRandom(seed ^ h);
+  for (let i = group.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [group[i], group[j]] = [group[j], group[i]];
   }
-
-  return { selection, holdout, strata, excluded: { probes, no_answer: noAnswer } };
+  return group;
 }

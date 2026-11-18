@@ -18,7 +18,7 @@ import type { ToolDeps } from "./tool-deps.js";
 import { reapStaleForwarderProcesses } from "./reap-forwarders.js";
 import { runInBandMint } from "./learned-recall/mint-job.js";
 import { BridgePool } from "./learned-recall/bridges.js";
-import { bridgesPath } from "./cli/bridges.js";
+import { bridgesPath } from "./learned-recall/pool-path.js";
 import { unloadOllamaModel } from "./ollama-lifecycle.js";
 import { BATTERY_UNLOAD_MS, type PowerMonitor } from "./power-source.js";
 import { runCuratorPass } from "./curator-run.js";
