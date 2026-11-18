@@ -76,14 +76,14 @@ test("jump list: the right panel's tab shows headings, then the questions with s
   const body = h("div", null);
   v.outlineTab.render(body);
   const [heads, asks] = body.children;
+  // as in the draft Daniel chose: a small label per block, a count only for the questions (amber)
+  assert.equal(one(heads, "tk-toc__h-t").textContent, "tk.rep.toc.heads");
+  assert.equal(byClass(heads, "tk-toc__h-n").length, 0, "the headings have no count");
   assert.deepEqual(
-    [one(heads, "lens__h-t").textContent, one(heads, "lens__h-n").textContent],
-    ["tk.rep.toc.heads", "2"]
-  );
-  assert.deepEqual(
-    [one(asks, "lens__h-t").textContent, one(asks, "lens__h-n").textContent],
+    [one(asks, "tk-toc__h-t").textContent, one(asks, "tk-toc__h-n").textContent],
     ["tk.rep.toc.asks", 'tk.rep.toc.answered {"n":1,"m":2}']
   );
+  assert.ok(one(asks, "tk-toc__h-n").classList.contains("is-amber"), "amber while some are open");
   assert.deepEqual(
     byClass(body, "tk-toc__j").map((r) => [r.textContent, r.className]),
     [
@@ -117,6 +117,21 @@ test("jump list: a click scrolls to the place; scrolling marks the place being r
   );
   assert.equal(rows[1].attrs["aria-current"], "location");
   assert.equal(rows[0].attrs["aria-current"], undefined);
+  // the panel's active line on its outer right edge (js/panel-indicator.js) follows the place too
+  assert.deepEqual(
+    rows.map((r) => r.attrs["data-lsel"]),
+    [undefined, "1", undefined, undefined]
+  );
+});
+
+test("jump list: rows stand in the panel's own list, like its other lists", async () => {
+  const { v, knobs } = await view();
+  knobs.toc = outline(false);
+  await v.openReports();
+  const body = h("div", null);
+  v.outlineTab.render(body);
+  for (const list of byClass(body, "tk-toc__list")) assert.ok(list.classList.contains("lens__list"));
+  assert.equal(byClass(body, "tk-toc__j")[0].attrs["data-lsel"], "1", "the place being read carries the marker");
 });
 
 test("jump list: without a report, and for a report without headings or questions, a short note", async () => {

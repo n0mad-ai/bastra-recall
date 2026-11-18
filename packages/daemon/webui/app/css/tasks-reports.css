@@ -11,7 +11,8 @@
   display: flex;
 }
 .tk-repslot[hidden],
-.tk-calslot[hidden] {
+.tk-calslot[hidden],
+.tk-headslot[hidden] {
   display: none;
 }
 
@@ -82,7 +83,7 @@
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 10px 16px;
+  gap: 10px 12px;
   height: var(--rv-row);
   margin: -20px -26px 20px;
   padding: 0 26px;
@@ -103,27 +104,35 @@
   margin: 0;
   text-align: left;
 }
-/* the title gives way first: title and meta line stay one line each (cut with "…", the full title on
- * hover), so the head keeps the row height */
+/* the title takes all the room the switch and the actions leave; a long one wraps onto a second line
+ * and is cut with "…" after it (the full title on hover). Two title lines and the meta line still fit
+ * the row height, so the head never grows */
 .tk-rep__id {
   flex: 1 1 240px;
   min-width: 0;
 }
 .tk-rep__title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   margin: 0;
-  font-size: 16px;
-  font-weight: 500;
-  line-height: 1.25;
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+/* the actions as compact as the memory browser's buttons allow, to leave the title more room */
+.tk-rep__head .mb-btn {
+  padding: 0 10px;
 }
 .tk-rep__meta {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
   gap: 4px 12px;
-  margin-top: 4px;
+  margin-top: 3px;
   overflow: hidden;
   font: 10.5px var(--mono);
   white-space: nowrap;
@@ -298,6 +307,16 @@
   background: var(--accent-12);
   color: var(--accent);
 }
+/* the meta line keeps every part whole except the origin at its end, which is cut with "…" */
+.tk-rep__meta > * {
+  flex: none;
+}
+.tk-rep__meta > .tk-rep__origin {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 /* "2 of 5 questions answered": amber while some are open */
 .tk-rep__asks {
   white-space: nowrap;
@@ -306,42 +325,58 @@
   color: var(--amber);
 }
 
-/* the jump list in the right panel (js/sections/tasks-reports-toc.js), inside the panel's own
- * sections: headings with a grey square, questions with an empty accent square (open) or a filled
- * amber one (answered); the place being read is marked like a selected row */
+/* the jump list in the right panel (js/sections/tasks-reports-toc.js), as in the draft Daniel chose
+ * (18.11.2026): a small mono label per block ("REPORT", "QUESTIONS" with its count in amber), below it
+ * the rows in the panel's own list (.lens__list): headings with a grey square, questions with an
+ * empty accent square (open) or a filled amber one (answered), the text in reading size and wrapping,
+ * never cut. Hover and the place being read fill the whole row; the active line sits on the panel's
+ * outer right edge (data-lsel → .ls-ind, his rule for every such list), never a stripe on the left */
+.tk-toc__h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  font: 10.5px var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.tk-toc__h-n {
+  white-space: nowrap;
+}
+.tk-toc__h-n.is-amber {
+  color: var(--amber);
+}
 .tk-toc__list {
   display: flex;
   flex-direction: column;
-  margin: 0 -18px;
 }
 .tk-toc__j {
   display: grid;
   grid-template-columns: 7px minmax(0, 1fr);
-  gap: 10px;
   align-items: baseline;
+  gap: 12px;
   width: 100%;
-  padding: 6px 18px 6px 16px;
+  padding: 8px 8px;
   border: 0;
-  border-left: 2px solid transparent;
   background: transparent;
   color: var(--ink-soft);
-  font: 13.5px var(--sans);
-  line-height: 1.35;
+  font: 15px/1.4 var(--sans);
   text-align: left;
   cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
-.tk-toc__j:hover {
-  background: var(--accent-06);
+.tk-toc__j:hover,
+.tk-toc__j.is-here {
+  background: var(--accent-10);
   color: var(--ink);
 }
 .tk-toc__j:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
-}
-.tk-toc__j.is-here {
-  border-left-color: var(--accent);
-  background: var(--accent-12);
-  color: var(--ink);
 }
 .tk-toc__sq {
   width: 7px;
@@ -358,15 +393,10 @@
   background: var(--amber);
 }
 .tk-toc__t {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
   overflow-wrap: anywhere;
 }
 .tk-toc + .tk-toc {
-  border-top: 1px solid var(--line-14);
+  padding-top: 6px;
 }
 .tk-toc__none {
   margin: 0;
@@ -456,41 +486,54 @@
   }
 }
 /* a question with answer options (Daniel 18.11.2026: "set apart more clearly"): one framed answer
- * area right under the question, always open, on its own dark surface with the accent edge; the
- * options as buttons with their short names, below them "own answer" and "needs clarification"
- * quieter. The choice is amber, the colour of the owner's notes. Every state keeps the same border
- * width and padding, so hover and choice never move anything. Sizes in em follow the text size. */
+ * area right under the question, always open, on its own dark surface with the accent edge. Inside,
+ * one row of equal answer fields across the whole width (draft D, flatter): the agent's options, then
+ * "own answer" and "clarify" in the same form; each field its key in a small frame on top, its name
+ * below (two lines where room is short). Many options or a narrow window wrap into a second row of
+ * fields just as wide. The choice is amber, the colour of the owner's notes. Every state keeps the
+ * same border width and padding, so hover and choice never move anything. Sizes in em follow the
+ * text size. */
 .tk-ask {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6em;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5em, 1fr));
+  gap: 0.5em;
   margin: 0.7em 0 0.3em;
-  padding: 0.75em 0.85em 0.7em;
+  padding: 0.75em 0.85em;
   border: 1px solid var(--line-22);
   border-left: 2px solid var(--accent-60);
   background: var(--surface-tile);
   font-size: 0.93em;
-  line-height: 1.35;
-}
-.tk-ask__opts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45em;
-}
-.tk-ask__alt {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3em 1em;
+  line-height: 1.3;
 }
 .tk-ask__opt {
-  padding: 0.4em 0.9em;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4em;
+  padding: 0.55em 0.75em 0.6em;
   border: 1px solid var(--line-30);
   background: rgba(6, 10, 19, 0.6);
   color: var(--ink);
   font: inherit;
-  font-weight: 500;
   text-align: left;
   cursor: pointer;
+}
+.tk-ask__key {
+  padding: 0 0.45em;
+  border: 1px solid var(--accent-35);
+  color: var(--accent);
+  font: 0.78em/1.5 var(--mono);
+}
+.tk-ask__name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+/* the two fixed fields: the same form, only their sign is quieter than an option's letter */
+.tk-ask__opt.is-free .tk-ask__key,
+.tk-ask__opt.is-clarify .tk-ask__key {
+  border-color: var(--line-35);
+  color: var(--muted);
 }
 .tk-ask__opt:hover,
 .tk-ask__opt:focus-visible {
@@ -502,7 +545,7 @@
 .tk-ask__opt.is-on {
   border-color: var(--amber);
   background: rgba(217, 164, 65, 0.18);
-  box-shadow: inset 3px 0 0 var(--amber);
+  box-shadow: inset 0 0 0 1px var(--amber);
   color: #f2f7fd;
 }
 .tk-ask__opt.is-on:hover,
@@ -510,28 +553,8 @@
   border-color: var(--amber);
   background: rgba(217, 164, 65, 0.24);
 }
-.tk-ask__opt.is-free,
-.tk-ask__opt.is-clarify {
-  padding: 0.2em 0.5em;
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted);
-  font: 10px var(--mono);
-  letter-spacing: 0.12em;
-}
-.tk-ask__opt.is-free:hover,
-.tk-ask__opt.is-clarify:hover,
-.tk-ask__opt.is-free:focus-visible,
-.tk-ask__opt.is-clarify:focus-visible {
-  border-color: var(--line-45);
-  background: transparent;
-  color: var(--ink);
-}
-.tk-ask__opt.is-free.is-on,
-.tk-ask__opt.is-clarify.is-on {
-  border-color: rgba(217, 164, 65, 0.6);
-  background: rgba(217, 164, 65, 0.12);
-  box-shadow: none;
+.tk-ask__opt.is-on .tk-ask__key {
+  border-color: var(--amber);
   color: var(--amber);
 }
 /* inside a note card the answer area sits between the question and the notes */

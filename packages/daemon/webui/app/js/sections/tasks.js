@@ -270,6 +270,9 @@ function draw() {
   // tasks' title, status tiles, "Due" and "New task"
   clear(headSlot);
   if (!reportsOpen()) headSlot.append(head());
+  // an empty slot would still take the column's gap (.sx--fit .sx__in) and push the reading view
+  // 8 px below the other areas' windows
+  headSlot.hidden = reportsOpen();
   drawOverlays();
   drawReports();
   calSlot.hidden = reportsOpen();

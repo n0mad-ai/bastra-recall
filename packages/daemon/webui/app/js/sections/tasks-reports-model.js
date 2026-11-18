@@ -207,6 +207,14 @@ export function askOf(text) {
   return fits && question && new Set(options).size === options.length ? { question, options, at: m.index } : null;
 }
 
+/** An option as its answer field shows it (Daniel 18.11.2026, draft D): the key in a small frame on
+ *  top, the name below. "A – Keep" names its own key (one to three characters, then a dash, the
+ *  syntax the agents are told); any other option gets the letter of its place (A, B, …). */
+export function optionParts(option, i) {
+  const m = /^(\S{1,3})\s+[–—-]\s+(\S[\s\S]*)$/.exec(option);
+  return m ? { key: m[1], name: m[2] } : { key: String.fromCharCode(65 + i), name: option };
+}
+
 /** The notes left on one block: kind and number name the place, and the stored excerpt must still be
  *  the block's text (#1608). Should the rendering of a report ever change, a note whose block now holds
  *  other text is collected at the end instead of sitting silently at a wrong place. */

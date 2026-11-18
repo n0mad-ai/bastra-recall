@@ -26,7 +26,7 @@ import { h } from "../dom.js";
 import { t } from "../i18n.js";
 import { noteEditor } from "../views/care-note.js";
 import { fmtAt } from "./tasks-api.js";
-import { excerptOf, notesAt, askOf, answerAt } from "./tasks-reports-model.js";
+import { excerptOf, notesAt, askOf, answerAt, optionParts } from "./tasks-reports-model.js";
 
 /** The annotatable blocks of the rendered report in reading order (as markdown() and the
  *  table renderer build them): headings, paragraphs, list items, table body rows. */
@@ -139,35 +139,33 @@ function takeAsk(b) {
   return ask;
 }
 
-/** The answer area: one button per option, then "own answer" and "needs clarification"; what the
- *  owner chose is pressed (amber). A pressed option does nothing on a second click; another option
- *  or clarification rewrites the earlier choice. */
+/** The answer area (Daniel 18.11.2026, draft D): one row of equal answer fields across its whole
+ *  width, first the agent's options, then "own answer" and "clarify" in the same form; each field
+ *  shows its key in a small frame and its name below (the two fixed ones a sign instead of a letter).
+ *  What the owner chose is pressed (amber). A pressed option does nothing on a second click; another
+ *  option or clarification rewrites the earlier choice. */
 function askButtons(ask, ui, anchor, list) {
   const clarify = t("tk.rep.ask.clarifyNote"),
     a = answerAt(ask.options, list, clarify);
   const choose = (text) => () => (a.picked === text ? undefined : ui.answer(anchor, text, a.pick?.id ?? null));
-  const btn = (cls, text, title, on, click) =>
-    h(`button.tk-ask__opt${cls}`, {
-      type: "button",
-      text,
-      title,
-      cls: on ? "is-on" : "",
-      "aria-pressed": String(on),
-      on: { click },
-    });
+  const btn = (cls, { key, name }, title, on, click) =>
+    h(
+      `button.tk-ask__opt${cls}`,
+      { type: "button", title, cls: on ? "is-on" : "", "aria-pressed": String(on), on: { click } },
+      h("span.tk-ask__key", { text: key, "aria-hidden": "true" }),
+      h("span.tk-ask__name", { text: name })
+    );
   return h(
     "div.tk-ask",
     { role: "group", "aria-label": t("tk.rep.ask.label") },
-    h(
-      "div.tk-ask__opts",
-      null,
-      ask.options.map((o) => btn("", o, t("tk.rep.ask.pickTip"), a.picked === o, choose(o)))
-    ),
-    h(
-      "div.tk-ask__alt",
-      null,
-      btn(".is-free", t("tk.rep.ask.free"), t("tk.rep.ask.freeTip"), a.own, () => ui.open(anchor)),
-      btn(".is-clarify", t("tk.rep.ask.clarify"), t("tk.rep.ask.clarifyTip"), a.picked === clarify, choose(clarify))
+    ask.options.map((o, i) => btn("", optionParts(o, i), t("tk.rep.ask.pickTip"), a.picked === o, choose(o))),
+    btn(".is-free", { key: "…", name: t("tk.rep.ask.free") }, t("tk.rep.ask.freeTip"), a.own, () => ui.open(anchor)),
+    btn(
+      ".is-clarify",
+      { key: "?", name: t("tk.rep.ask.clarify") },
+      t("tk.rep.ask.clarifyTip"),
+      a.picked === clarify,
+      choose(clarify)
     )
   );
 }
@@ -217,8 +215,28 @@ function lostNotes(lost, ui, out) {
  *  save(text), answer(anchor, text, noteId), cancel() }. Returns { nodes, focus, toc } — focus() puts
  *  the cursor into an open note field; toc = { heads, asks }, each entry { text, el, index } in reading
  *  order (index: the block's number), a question with `answered` (a note is at its place). */
+/** The report's outline for the jump list, filled block by block in reading order. A question is
+ *  named after the nearest heading before it that no earlier question took (Daniel 18.11.2026: not
+ *  "Your answer" three times), else "Question n – " and its own text; by structure, never by words. */
+function outlineOf() {
+  const toc = { heads: [], asks: [] };
+  let headFree = null;
+  function add(b, ask, answered) {
+    if (b.kind === "heading") {
+      toc.heads.push({ text: b.el.textContent, el: b.el, index: b.index });
+      headFree = b.el.textContent.trim() || null;
+    }
+    if (!ask) return;
+    const text = headFree ?? t("tk.rep.toc.askAt", { n: toc.asks.length + 1, q: ask.question });
+    toc.asks.push({ text, el: b.el, index: b.index, answered });
+    headFree = null;
+  }
+  return { toc, add };
+}
+
 export function annotateReport(nodes, ui) {
-  const out = { nodes: [...nodes], focus: null, toc: { heads: [], asks: [] } };
+  const outline = outlineOf();
+  const out = { nodes: [...nodes], focus: null, toc: outline.toc };
   const placed = new Set();
   for (const b of reportBlocksIn(nodes)) {
     const anchor = { kind: b.kind, index: b.index, excerpt: b.excerpt };
@@ -227,8 +245,7 @@ export function annotateReport(nodes, ui) {
     b.el.classList.add("tk-an");
     if (list.some((n) => !n.done)) b.el.classList.add("has-open");
     const ask = takeAsk(b);
-    if (b.kind === "heading") out.toc.heads.push({ text: b.el.textContent, el: b.el, index: b.index });
-    if (ask) out.toc.asks.push({ text: ask.question, el: b.el, index: b.index, answered: list.length > 0 });
+    outline.add(b, ask, list.length > 0);
     const answers = ask ? askButtons(ask, ui, anchor, list) : null;
     const box = notesBox(list, ui, anchor, out);
     const adding = sameAnchor(ui.editing, b.kind, b.index) && ui.editing.noteId === null;

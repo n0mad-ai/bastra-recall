@@ -24,7 +24,7 @@ async function load(
   ]);
   return runInNewContext(
     [strip(model), strip(care), strip(notes)].join("\n") +
-      "\n({ reportRows, noteRows, excerptOf, notesAt, noteCounts, draftReports, reportBlocksIn, annotateReport, noteEditor, askOf, answerAt, hereIndex })",
+      "\n({ reportRows, noteRows, excerptOf, notesAt, noteCounts, draftReports, reportBlocksIn, annotateReport, noteEditor, askOf, answerAt, hereIndex, optionParts })",
     {
       h,
       growTextarea() {},
@@ -469,10 +469,18 @@ test("N6/N29: a question shows its options, own answer and clarification; a clic
   const group: Node_ = question.find("tk-ask")[0] ?? assert.fail("no answer buttons");
   assert.equal(group.attrs.role, "group");
   const buttons = group.find("tk-ask__opt");
+  // one row of equal fields (draft D): the options with the letter of their place, then own answer
+  // and clarification in the same form with a sign instead of a letter
   assert.deepEqual(
-    buttons.map((b) => b.textContent),
-    ["Keep", "Remove", "tk.rep.ask.free", "tk.rep.ask.clarify"]
+    group.children.map((b) => [b.find("tk-ask__key")[0].textContent, b.find("tk-ask__name")[0].textContent]),
+    [
+      ["A", "Keep"],
+      ["B", "Remove"],
+      ["…", "tk.rep.ask.free"],
+      ["?", "tk.rep.ask.clarify"],
+    ]
   );
+  assert.equal(buttons.length, 4, "every field is a button straight in the group");
   assert.ok(
     buttons.every((b) => b.attrs["aria-pressed"] === "false"),
     "nothing chosen yet"
@@ -529,7 +537,7 @@ test("an answered question keeps its answer area in the card with the choice pre
   assert.equal(card.find("tk-an__text")[0].textContent, "Remove");
   const opts = card.find("tk-ask__opt");
   assert.deepEqual(
-    opts.map((b) => [b.textContent, b.attrs["aria-pressed"], b.classList.contains("is-on")]),
+    opts.map((b) => [b.find("tk-ask__name")[0].textContent, b.attrs["aria-pressed"], b.classList.contains("is-on")]),
     [
       ["Keep", "false", false],
       ["Remove", "true", true],
@@ -593,11 +601,55 @@ test("outline: annotateReport lists headings and questions with their answered s
   assert.deepEqual(
     plain(out.toc.asks.map((e: { text: string; index: number; answered: boolean }) => [e.text, e.index, e.answered])),
     [
-      ["质量?", 4, false],
-      ["Ship?", 5, true],
+      ["Questions", 4, false],
+      ['tk.rep.toc.askAt {"n":2,"q":"Ship?"}', 5, true],
     ]
   );
   for (const e of [...out.toc.heads, ...out.toc.asks]) assert.ok(e.el, "every entry knows its place");
+});
+
+test("outline: a question is named after the nearest heading before it that no earlier question took", async () => {
+  // Daniel 18.11.2026: not "Your answer" three times. By structure only: the answer line starts with
+  // the same words under every question, so its own text names nothing
+  const m = await load();
+  const renderer = await realRenderer();
+  const nodes = renderer.render(
+    [
+      "Intro: [? Yes | No]",
+      "## Rules",
+      "### F2 – What happens to an **expired** rule?",
+      "Some text.",
+      "- **Your answer:** [? A – Hide | B – Keep]",
+      "### F5 – Why the length again?",
+      "Your answer: [? A | B]",
+      "Your answer: [? C | D]",
+    ].join("\n\n")
+  );
+  const ui = {
+    notes: [],
+    editing: null,
+    open() {},
+    answer() {},
+    edit() {},
+    remove() {},
+    save: async () => {},
+    cancel() {},
+  };
+  const out = m.annotateReport(nodes, ui);
+  assert.deepEqual(plain(out.toc.asks.map((e: { text: string }) => e.text)), [
+    'tk.rep.toc.askAt {"n":1,"q":"Intro:"}',
+    "F2 – What happens to an expired rule?",
+    "F5 – Why the length again?",
+    'tk.rep.toc.askAt {"n":4,"q":"Your answer:"}',
+  ]);
+});
+
+test("model: optionParts takes an option's own key ('A – Keep'), else the letter of its place", async () => {
+  const m = await load();
+  assert.deepEqual(plain(m.optionParts("A – Ja, ausblenden", 0)), { key: "A", name: "Ja, ausblenden" });
+  assert.deepEqual(plain(m.optionParts("B2 - Wait", 0)), { key: "B2", name: "Wait" });
+  assert.deepEqual(plain(m.optionParts("是", 1)), { key: "B", name: "是" });
+  assert.deepEqual(plain(m.optionParts("Ship – now or later", 2)), { key: "C", name: "Ship – now or later" });
 });
 
 test("model: answerAt finds the choice and own answers; hereIndex picks the place being read", async () => {

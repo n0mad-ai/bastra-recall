@@ -269,6 +269,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Reports: the reading pane lines up with the other areas again; the jump list uses the side panel's own rows with the active marker on the outer edge and names questions by their heading; answer options, own answer and clarify are equal fields across the full width.
+
 - Switching to another task report keeps undo available for a deleted
   report (#1559).
 - Eval archives choose an unused name through the exclusive copy, including

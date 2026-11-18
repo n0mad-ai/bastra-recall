@@ -391,9 +391,8 @@ function readerHead(r, narrow, asks) {
       h(
         "div.tk-rep__meta",
         null,
-        r.project ? h("span.tk-rep__proj", { text: r.project, title: t("tk.rep.project") }) : null,
-        h("span", { text: fmtAt(r.createdAt), title: t("tk.rep.filed") }),
-        h("span", { text: originText(r) || t("tk.rep.unknown"), title: t("tk.rep.origin") }),
+        // what asks for the owner first (questions count, notes, state), then where the report comes
+        // from: next to the text size switch and the actions the line is short, and it cuts at its end
         asks.length
           ? h("span.tk-rep__asks", {
               cls: answered < asks.length ? "is-open" : "",
@@ -402,7 +401,14 @@ function readerHead(r, narrow, asks) {
           : null,
         noteMarks(c, "span.tk-rep__open"),
         stateMark(r, true, openReport),
-        askedAbout(r, openReport)
+        askedAbout(r, openReport),
+        r.project ? h("span.tk-rep__proj", { text: r.project, title: t("tk.rep.project") }) : null,
+        h("span", { text: fmtAt(r.createdAt), title: t("tk.rep.filed") }),
+        // last and the one that gives way: agent and session id are long and matter least
+        h("span.tk-rep__origin", {
+          text: originText(r) || t("tk.rep.unknown"),
+          title: `${t("tk.rep.origin")}: ${originText(r) || t("tk.rep.unknown")}`,
+        })
       )
     ),
     sizeSwitch(() => emit("reports")),

@@ -27,6 +27,17 @@ test("the Tasks head has no reports button; the reading view shows no tasks head
     assert.doesNotMatch(await read(`js/i18n/tasks-${lang}.js`), /"tk\.rep\.(btn|esc|back|unreadTip)"/, lang);
 });
 
+test("the reading view's window starts where the other areas' windows start: no empty head slot above it", async () => {
+  // Daniel 18.11.2026: the window sat 8 px lower than the agent panel and the Tasks window. The area
+  // is a column with a gap (.sx--fit .sx__in), and an empty head slot still took that gap.
+  const gap = pick(await read("css/sections.css"), /\.sx--fit \.sx__in \{[^}]*\}/);
+  assert.match(gap, /gap: \d+px/, "the column the slots stand in has a gap");
+  const draw = pick(await read("js/sections/tasks.js"), /function draw\(\) \{[\s\S]*?\n\}/);
+  assert.match(draw, /headSlot\.hidden = reportsOpen\(\);/, "the slot leaves the column while the view is open");
+  const css = await read("css/tasks-reports.css");
+  assert.match(pick(css, /[^}]*\.tk-headslot\[hidden\][^{]*\{[^}]*\}/), /display: none/);
+});
+
 test("the right panel: the jump list in the reading view, Details / View / Control on the calendar", async () => {
   const tasks = await read("js/sections/tasks.js");
   assert.match(tasks, /tabs: \(\) => \(reportsOpen\(\) \? \[outlineTab\] : CALENDAR_TABS\),/);

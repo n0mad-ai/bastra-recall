@@ -63,7 +63,12 @@ test("a read report offers 'unread', shows its handed-over notes in the head and
   assert.match(handed.textContent, /tk\.rep\.note\.handed \{"n":2\}/);
   assert.match(handed.attrs.title, /tk\.rep\.note\.handedTip/);
   assert.equal(byClass(head, "is-draft").length, 0, "no drafts");
-  assert.equal(one(head, "tk-rep__meta").children[2].textContent, "codex · s-1");
+  assert.equal(one(head, "tk-rep__origin").textContent, "codex · s-1");
+  assert.deepEqual(
+    one(head, "tk-rep__meta").children.map((n) => n.className.split(" ")[0]),
+    ["tk-rep__open", "mb-row__ai", "tk-rep__proj", "", "tk-rep__origin"],
+    "marks first; the long origin comes last, so the line cuts it and not the marks"
+  );
   assert.equal(one(host, "mb-rd__facts").textContent, "tk.rep.readAt@40");
 });
 

@@ -34,14 +34,21 @@ export function trackOutline() {
       outlineRows.map((r) => r.el.getBoundingClientRect().top - top),
       OUTLINE_LINE
     );
+  // the whole row is marked, and data-lsel puts the panel's active line on its outer right edge
+  // (js/panel-indicator.js), as in every other list of the panel
   outlineRows.forEach((r, i) => {
     r.btn.classList.toggle("is-here", i === here);
-    if (i === here) r.btn.setAttribute("aria-current", "location");
-    else r.btn.removeAttribute("aria-current");
+    if (i === here) {
+      r.btn.setAttribute("aria-current", "location");
+      r.btn.setAttribute("data-lsel", "1");
+    } else {
+      r.btn.removeAttribute("aria-current");
+      r.btn.removeAttribute("data-lsel");
+    }
   });
 }
 
-/** One row: the square, the text (two lines at most, the full text on hover). */
+/** One row: the square, the text (it wraps, never cut; Daniel 18.11.2026). */
 function outlineRow(e, cls) {
   const btn = h(
     `button.tk-toc__j.${cls}`,
@@ -61,19 +68,20 @@ function outlineRow(e, cls) {
   return { btn, el: e.el, index: e.index };
 }
 
-/** A block of the panel in the panel's own section style (css/panels.css: lens__sec, lens__h). */
+/** A block of the panel (css/panels.css: lens__sec, lens__list) under a small label with its count
+ *  on the right (Daniel 18.11.2026, the draft's jump list: "REPORT", "QUESTIONS · 0 OF 7"). */
 const outlineSection = (title, count, list, amber) =>
   h(
     "div.lens__sec.tk-toc",
     null,
     h(
-      "div.lens__h",
+      "div.tk-toc__h",
       null,
-      h("span.lens__h-t", { text: title }),
-      h("span.lens__h-n", { cls: amber ? "is-amber" : "", text: count })
+      h("span.tk-toc__h-t", { text: title }),
+      count ? h("span.tk-toc__h-n", { cls: amber ? "is-amber" : "", text: count }) : null
     ),
     h(
-      "nav.tk-toc__list",
+      "nav.lens__list.tk-toc__list",
       { "aria-label": title },
       list.map((r) => r.btn)
     )
@@ -93,7 +101,8 @@ function renderOutline(body) {
   const headRows = heads.map((e) => outlineRow(e, "is-head")),
     askRows = asks.map((e) => outlineRow(e, e.answered ? "is-ask.is-done" : "is-ask")),
     answered = asks.filter((e) => e.answered).length;
-  if (heads.length) body.append(outlineSection(t("tk.rep.toc.heads"), String(heads.length), headRows, false));
+  // the headings without a count, as in the draft; only the questions count what is left to do
+  if (heads.length) body.append(outlineSection(t("tk.rep.toc.heads"), "", headRows, false));
   if (asks.length)
     body.append(
       outlineSection(
