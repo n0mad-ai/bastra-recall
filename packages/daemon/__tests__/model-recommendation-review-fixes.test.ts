@@ -9,7 +9,9 @@ import { maybeEmitModelHint } from "../src/cli/update-hint.js";
 import { pendingModelNotice } from "../src/model-recommendation.js";
 import { runSessionLane } from "../src/session-lane.js";
 import { pathLockFilePath } from "../src/path-lock.js";
-import { setEmbeddingProvider, setGenerationModel } from "../src/settings.js";
+import { setEmbeddingProvider, setGenerationModel, setPrimaryLanguage } from "../src/settings.js";
+import { MODELS_CMD_WORDS } from "../src/cli/models-cmd-words.js";
+import { USAGE_WORDS } from "../src/cli/usage-words.js";
 
 async function fixture(work: (dir: string, settingsPath: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "model-rec-review-"));
@@ -201,4 +203,39 @@ test("review K4: a stale day lock is reclaimed promptly, then the day stays clai
     const again = await captured(() => maybeEmitModelHint({ ramGB: 24, settingsPath, shownPath }));
     assert.equal(again.result, false);
     assert.equal(again.out + again.err, "");
+  }));
+
+test("#1602: the catch-up question speaks the language the command started in", () =>
+  fixture(async (_dir, settingsPath) => {
+    // The command (e.g. `bastra onboard`) saved German during its run; the
+    // question after it still speaks the language read at the entry.
+    await setPrimaryLanguage("de", settingsPath);
+    const prompts: string[] = [];
+    const asked = await captured(() =>
+      maybeAskModelCatchUp({
+        ramGB: 24,
+        settingsPath,
+        interactive: true,
+        language: "en",
+        ask: async (prompt: string) => {
+          prompts.push(prompt);
+          return null;
+        },
+      })
+    );
+    assert.equal(asked.result, true);
+    assert.deepEqual(prompts, [MODELS_CMD_WORDS.en.question]);
+  }));
+
+test("#1602: bastra models' usage errors follow the settings file the command uses", () =>
+  fixture(async (_dir, settingsPath) => {
+    // HOME points at the fixture, whose default settings file has no language:
+    // a second read without the command's settings path would print English.
+    await setPrimaryLanguage("de", settingsPath);
+    const set = await captured(() => cmdModels({ sub: "set", positional: ["models", "set"], settingsPath }));
+    assert.equal(set.result, 2);
+    assert.equal(set.err, USAGE_WORDS.de.modelsSet);
+    const unknown = await captured(() => cmdModels({ sub: "bogus", settingsPath }));
+    assert.equal(unknown.result, 2);
+    assert.equal(unknown.err, USAGE_WORDS.de.models);
   }));

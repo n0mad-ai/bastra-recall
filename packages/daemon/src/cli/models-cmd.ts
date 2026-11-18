@@ -38,7 +38,7 @@ import {
   type ModelOffer,
   type OfferOptions,
 } from "../model-recommendation.js";
-import { usageWords } from "./usage-words.js";
+import { usageWordsIn } from "./usage-words.js";
 import { taskCliLanguage } from "./task-cli-words.js";
 import { modelsCmdWordsIn, type ModelsCmdWords } from "./models-cmd-words.js";
 
@@ -55,6 +55,10 @@ export interface ModelsDeps extends OfferOptions {
   ask?: typeof ask;
   /** The CLI hint's day marker (update-hint.ts). */
   shownPath?: string;
+  /** language.primary as read at the command's entry, so a language the
+   *  command itself saves applies from the next one (#1602). Read from
+   *  `settingsPath` when not given. */
+  language?: string;
 }
 
 export async function cmdModels(opts: {
@@ -77,7 +81,7 @@ export async function cmdModels(opts: {
       // matching cmdBridges / cmdCommons.
       const model = opts.positional?.[2];
       if (!model) {
-        process.stderr.write((await usageWords()).modelsSet);
+        process.stderr.write(usageWordsIn(language).modelsSet);
         return 2;
       }
       return cmdSet(model, w, language, opts.settingsPath);
@@ -89,7 +93,7 @@ export async function cmdModels(opts: {
     case "ask":
       return cmdAsk(deps, w, language);
     default:
-      process.stderr.write((await usageWords()).models);
+      process.stderr.write(usageWordsIn(language).models);
       return 2;
   }
 }
@@ -306,7 +310,7 @@ export async function maybeAskModelCatchUp(deps: ModelsDeps = {}): Promise<boole
   } catch {
     return false; // the settings file cannot take a note — asking would ask forever
   }
-  const language = await taskCliLanguage(deps.settingsPath).catch(() => "en");
+  const language = deps.language ?? (await taskCliLanguage(deps.settingsPath).catch(() => "en"));
   await askQuestion(offer, deps, modelsCmdWordsIn(language), language);
   return true;
 }

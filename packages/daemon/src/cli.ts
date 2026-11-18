@@ -45,6 +45,7 @@ import { cmdPanel } from "./cli/panel.js";
 import { cmdAutostart } from "./cli/autostart.js";
 import { maybeEmitUpdateHint } from "./cli/update-hint.js";
 import { warnOnUnsupportedNode } from "./node-support.js";
+import { taskCliLanguage } from "./cli/task-cli-words.js";
 
 // A reader such as `head` intentionally closes its pipe. Stop producing output
 // quietly, but never turn a failure into success: a closed stderr leaves the
@@ -205,6 +206,25 @@ async function cmdLogsCommand(args: ReturnType<typeof parseArgs>): Promise<numbe
   return cmdLogs({ follow: args.follow, sinceMs, source, lines: Math.floor(lines) });
 }
 
+/**
+ * After every subcommand: optionally emit a dim update hint to stderr.
+ * Skip for `bastra update` itself (the user is already mid-update), for
+ * help/version (low-noise commands; users hit them often), and for the
+ * no-arg panel + config (the panel already shows update status inline).
+ */
+function skipsNoticesAfter(args: ReturnType<typeof parseArgs>): boolean {
+  return (
+    !args.command ||
+    args.command === "update" ||
+    args.command === "config" ||
+    args.command === "token" ||
+    args.command === "help" ||
+    args.command === "version" ||
+    args.showHelp ||
+    args.showVersion
+  );
+}
+
 async function main(): Promise<number> {
   // This launcher passes Codex's own option grammar through byte-for-byte.
   if (process.argv[2] === "codex") return cmdCodexChat(process.argv.slice(3));
@@ -224,23 +244,15 @@ async function main(): Promise<number> {
   }
 
   warnOnUnsupportedNode(args.command);
+  const skipHint = skipsNoticesAfter(args);
+  // The notice after the command speaks the language the command started in:
+  // a language the command saves (onboarding answers) applies from the next
+  // command, not from the question that follows this one (#1602).
+  const language = skipHint ? "en" : await taskCliLanguage().catch(() => "en");
   const code = await dispatch(args);
   // Known from here on, also to a reader-gone exit during the update hint.
   process.exitCode = code;
 
-  // After every subcommand: optionally emit a dim update hint to stderr.
-  // Skip for `bastra update` itself (the user is already mid-update), for
-  // help/version (low-noise commands; users hit them often), and for the
-  // no-arg panel + config (the panel already shows update status inline).
-  const skipHint =
-    !args.command ||
-    args.command === "update" ||
-    args.command === "config" ||
-    args.command === "token" ||
-    args.command === "help" ||
-    args.command === "version" ||
-    args.showHelp ||
-    args.showVersion;
   if (!skipHint) {
     try {
       await maybeEmitUpdateHint();
@@ -251,7 +263,7 @@ async function main(): Promise<number> {
     // on a terminal, else a dim hint. After the command's own output, and never
     // touching its exit code (set above).
     try {
-      await modelNoticeAfterCommand(args);
+      await modelNoticeAfterCommand(args, { language });
     } catch {
       /* never break the CLI over this */
     }

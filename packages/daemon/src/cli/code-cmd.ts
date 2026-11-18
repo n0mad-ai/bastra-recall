@@ -274,12 +274,17 @@ function reasonWording(reason: string, w: CodeCmdWords): string {
  *   - Silence is not consent. A non-interactive install asks nothing and does
  *     nothing, matching `confirm()`'s own posture on downloads.
  */
-export async function installCodeAwarenessStep(args: { dryRun: boolean; yes: boolean }): Promise<void> {
+export async function installCodeAwarenessStep(args: {
+  dryRun: boolean;
+  yes: boolean;
+  /** language.primary as `bastra install` read it at its entry (#1602). */
+  language: string;
+}): Promise<void> {
   if (args.dryRun) return;
 
   const tool = await probeTool();
   if (tool.reason === "unsupported-platform") return; // nothing to offer here yet
-  const w = codeCmdWordsIn(await taskCliLanguage().catch(() => "en"));
+  const w = codeCmdWordsIn(args.language);
   if (tool.usable !== null) {
     out(w.alreadyInstalled(tool.usable.version));
     return;

@@ -98,7 +98,6 @@
     "[\"packages/daemon/src/claim-gate.ts\",\"[\\\"function:unansweredClaims\\\"]\",\"complexity\"]": 22,
     "[\"packages/daemon/src/claimed-twice.ts\",\"[\\\"function:collectClaimedTwice\\\"]\",\"complexity\"]": 35,
     "[\"packages/daemon/src/cli.ts\",\"[\\\"function:dispatch\\\"]\",\"complexity\"]": 37,
-    "[\"packages/daemon/src/cli.ts\",\"[\\\"function:main\\\"]\",\"complexity\"]": 16,
     "[\"packages/daemon/src/cli/adapters/claude-code-hooks.ts\",\"[\\\"function:patchClaudeCodeHooks\\\"]\",\"complexity\"]": 19,
     "[\"packages/daemon/src/cli/adapters/claude-code-hooks.ts\",\"[\\\"function:registeredHookCommands\\\"]\",\"max-depth\"]": 5,
     "[\"packages/daemon/src/cli/adapters/claude-code.ts\",\"[\\\"function:claudeCodeDoctor\\\"]\",\"complexity\"]": 43,

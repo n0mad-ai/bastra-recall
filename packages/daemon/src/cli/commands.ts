@@ -381,7 +381,7 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
   // an Ollama failure never fails the install: surface registration is the job.
   await installSemanticRecallStep({ dryRun: args.dryRun, yes: args.yes, ollama: args.ollama, language });
   // Code awareness (#573): an optional companion, asked once, never blocking.
-  await installCodeAwarenessStep({ dryRun: args.dryRun, yes: args.yes });
+  await installCodeAwarenessStep({ dryRun: args.dryRun, yes: args.yes, language });
 
   // #317 — `npx bastra-recall install all` registers everything correctly and
   // still leaves no `bastra` on PATH, because npx installs nothing. This path
