@@ -28,6 +28,7 @@ import type { MemoryLocator, SaveMemoryInput } from "@bastra-recall/core";
 import { sendJsonPlain } from "./webui.js";
 import { getUiEnabled } from "./settings.js";
 import { saveMemoryWithAuditTrail } from "./audit-trail.js";
+import { IMPORT_WEBUI_WRITER, writeCallerStore } from "./caller-session.js";
 import { linkKey, pathHash, safeSlug, uniqueId } from "./import/identity.js";
 import { harvestIndex, looksLikeIndexHub, type IndexEntry } from "./import/index-harvest.js";
 import { KNOWN_ADAPTERS, looksLikeClaudeCode, mapFile, safeParse } from "./import/adapters.js";
@@ -748,7 +749,9 @@ export async function handleUiImportVault(
   const label = typeof body.label === "string" && body.label.trim().length > 0 ? body.label.trim() : undefined;
   let result: ImportVaultResult;
   try {
-    result = await importVault(vaultPath, dir, { label, dryRun: body.dryRun === true });
+    result = await writeCallerStore.run(IMPORT_WEBUI_WRITER, () =>
+      importVault(vaultPath, dir, { label, dryRun: body.dryRun === true })
+    );
   } catch (err) {
     sendJsonPlain(res, 400, { error: (err as Error).message });
     return;

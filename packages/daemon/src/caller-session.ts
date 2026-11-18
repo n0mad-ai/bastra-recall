@@ -39,9 +39,12 @@ export function callerSessionField(): { caller_session?: string | null } {
  * for a finding aid, never an access filter: nothing is refused or asked here.
  *
  * Outside a tool call (web UI, CLI, background jobs) the store is empty and
- * the audit entry carries `actor`/`actor_detail` only, as before.
+ * the audit entry carries `actor`/`actor_detail` only, as before. The import
+ * write paths are the exception the issue names: `bastra import vault|clients`
+ * runs inside `cli` and the map's folder import inside `webui` (see
+ * `IMPORT_CLI_WRITER` / `IMPORT_WEBUI_WRITER`).
  */
-export type WriteTransport = "stdio" | "forwarder" | "http" | "mcp-http";
+export type WriteTransport = "stdio" | "forwarder" | "http" | "mcp-http" | "cli" | "webui";
 export interface WriteCaller {
   transport: WriteTransport;
   /** MCP client (`name/version`) or OAuth client (`name [client_id]`); null = unknown. */
@@ -50,6 +53,11 @@ export interface WriteCaller {
   session: string | null;
 }
 export const writeCallerStore = new AsyncLocalStorage<WriteCaller>();
+
+/** #1469: the import write paths outside a tool call. Neither carries a client
+ *  session of its own; the import run id already sits in `session_id`. */
+export const IMPORT_CLI_WRITER: WriteCaller = { transport: "cli", client: "bastra-cli", session: null };
+export const IMPORT_WEBUI_WRITER: WriteCaller = { transport: "webui", client: "bastra-web-ui", session: null };
 
 /** Client-supplied labels go into an append-only log: one line, bounded. */
 export function clientLabel(value: unknown): string | null {

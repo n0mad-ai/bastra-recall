@@ -29,6 +29,7 @@ import { findRulesFiles, extractRulesCandidates } from "../import-rules.js";
 import { parseConversationExport, buildQueue, readNextChunk, clearQueue, queueStatus } from "../import-mining.js";
 import { importVault, IMPORT_ROOT } from "../import-vault.js";
 import { findClientMemoryDirs, migrateClientLabels } from "./client-memory.js";
+import { IMPORT_CLI_WRITER, writeCallerStore } from "../caller-session.js";
 import { resolveVault } from "./helpers.js";
 import type { ParsedArgs } from "./types.js";
 
@@ -49,8 +50,9 @@ async function readStdin(): Promise<string> {
 
 export async function cmdImport(args: ParsedArgs): Promise<number> {
   if (args.surface === "rules") return cmdImportRules(args);
-  if (args.surface === "vault") return cmdImportVault(args);
-  if (args.surface === "clients") return cmdImportClients(args);
+  // #1469: the two surfaces that write memories name their writer in the audit.
+  if (args.surface === "vault") return writeCallerStore.run(IMPORT_CLI_WRITER, () => cmdImportVault(args));
+  if (args.surface === "clients") return writeCallerStore.run(IMPORT_CLI_WRITER, () => cmdImportClients(args));
   if (args.surface === "mine") return cmdImportMine();
   if (args.surface === "clear") return cmdImportClear();
 

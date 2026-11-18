@@ -54,7 +54,7 @@ export interface AuditEntry {
   reason?: string;
   /** Korreliert mit Telemetry-session-id (UUID v4). */
   session_id?: string;
-  /** #1469: transport of the tool call that wrote — `stdio`, `forwarder`, `http`, `mcp-http`. */
+  /** #1469: transport of the tool call that wrote — `stdio`, `forwarder`, `http`, `mcp-http`; `cli` / `webui` for the import paths. */
   transport?: string;
   /** #1469: the writing client (MCP `name/version` or OAuth client); null = transport knows none. */
   client?: string | null;
