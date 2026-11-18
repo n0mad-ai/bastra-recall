@@ -58,10 +58,10 @@ function fixture(t) {
   return { root, modules };
 }
 
-async function history(t) {
+async function history(t, overrides = {}) {
   const { root, modules } = fixture(t);
   symlinkSync(modules, join(root, "node_modules"), process.platform === "win32" ? "junction" : "dir");
-  for (const [file, source] of Object.entries(configs)) writeFileSync(join(root, file), source);
+  for (const [file, source] of Object.entries({ ...configs, ...overrides })) writeFileSync(join(root, file), source);
   for (const file of ["eslint-structure-baseline.json", "clone-baseline.json"]) writeFileSync(join(root, file), "{}");
   writeFileSync(join(root, ".lint-cycle-baseline.json"), "[]");
   for (const args of [
@@ -126,6 +126,44 @@ test("S2 permits lower thresholds, removed exclusions, formatting and broader ca
   change(root, "scripts/lint-scope.mjs", '["old/**"]', "[]");
   change(root, "scripts/lint-scope.mjs", "**/*.{ts,js}", "**/*.{[tT][sS],[jJ][sS]}");
   change(root, "eslint.config.mjs", "export default", "// formatting is not a policy change\nexport default");
+  const result = guard(root);
+  assert.equal(result.status, 0, result.output);
+});
+
+/** #1646: the repository's own cycle config, whose template and regex text steer the check. */
+const realCruiser = { ".dependency-cruiser.mjs": readFileSync(join(repository, ".dependency-cruiser.mjs"), "utf8") };
+
+const literalRewrites = [
+  ["a never-matching prefix in the workspace path template head", "path: `^(?:${", "path: `(?!)^(?:${"],
+  ["a never-matching suffix in the workspace path template tail", "(?:/|$)` }", "(?:/|$)(?!)` }"],
+  ["a never-matching alternative that ends the template tail early", '.join("|")})', '.join("|")}|(?!)$)'],
+  ["a never-matching source-entry regex", "/^\\.\\/dist\\//", "/(?!)/"],
+];
+
+for (const [name, before, after] of literalRewrites) {
+  test(`#1646 rejects ${name} in the real .dependency-cruiser.mjs`, async (t) => {
+    const root = await history(t, realCruiser);
+    assert.equal(guard(root).status, 0);
+    change(root, ".dependency-cruiser.mjs", before, after);
+    const result = guard(root);
+    assert.equal(result.status, 1, result.output);
+    assert.match(result.output, /lint configuration.*(?:weakened|unverified)/i);
+  });
+}
+
+test("#1646 rejects a changed unary operator, which is no child node", async (t) => {
+  const eslint = configs["eslint.config.mjs"].replace('"max-depth":["error",4]', '"max-depth":["error",4],offset:-1');
+  const root = await history(t, { "eslint.config.mjs": eslint });
+  assert.equal(guard(root).status, 0);
+  change(root, "eslint.config.mjs", "offset:-1", "offset:+1");
+  const result = guard(root);
+  assert.equal(result.status, 1, result.output);
+});
+
+test("#1646 still permits removing the real cycle exclusion and reformatting", async (t) => {
+  const root = await history(t, realCruiser);
+  change(root, ".dependency-cruiser.mjs", "exclude: { dynamic: true, path: cycleIgnorePatterns },", "");
+  change(root, ".dependency-cruiser.mjs", "export default {", "// formatting only\nexport default {");
   const result = guard(root);
   assert.equal(result.status, 0, result.output);
 });

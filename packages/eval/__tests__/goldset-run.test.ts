@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   GOLDSET_REFERENCE_TIME,
   controlRecaller,
+  evidenceDecider,
   gatedHybridRecaller,
   metricsFor,
   parseArgs,
@@ -14,7 +15,7 @@ import {
   type CaseResult,
 } from "../src/goldset-run.js";
 import { datasetHash, loadGoldFiles, unknownGoldIds } from "../src/goldset-dataset.js";
-import type { RecallHit, RecallOptions, SearchIndex, StageListener } from "@bastra-recall/core";
+import type { Memory, RecallHit, RecallOptions, SearchIndex, StageListener } from "@bastra-recall/core";
 import { originRefHash, stagedId, type GoldCase } from "../src/goldset.js";
 
 const row = (over: Partial<CaseResult> = {}): CaseResult => ({
@@ -312,4 +313,22 @@ test("the recaller hands its reference time to the staleness step on both paths 
       ["hybrid", "2026-11-15T00:00:00.000Z", 10],
     ]
   );
+});
+
+test("the --gate evidence decision reads the run's reference time, not the wall clock (#1642)", () => {
+  // A deadline between the reference time and today: at the reference time the
+  // hit is a fully covered trigger and therefore `required`, whatever day the
+  // suite runs on. The same decider at a later clock sees it expired.
+  const deadline = {
+    fm: { id: "m1", recall_when: ["wenn wir deployen"], valid_until: "2026-10-01" },
+    body: "Text.",
+  } as unknown as Memory;
+  const vault = { get: (id: string) => (id === "m1" ? deadline : undefined) };
+  const served = [{ id: "m1", score: 150, matched_terms: [] } as unknown as RecallHit];
+  const at = (iso: string) => evidenceDecider(vault, new Date(iso))(served, "deployen")[0];
+  assert.equal(at("2026-09-01T00:00:00Z").decision, "required");
+  assert.equal(at("2026-09-01T00:00:00Z").evidence.temporal_status, "valid");
+  assert.equal(at("2026-10-02T00:00:00Z").evidence.temporal_status, "expired");
+  const noBody = evidenceDecider(vault, new Date("2026-09-01T00:00:00Z"), { noBody: true })(served, "deployen")[0];
+  assert.equal(noBody.decision, "required", "the no-body counterfactual reads the same clock");
 });

@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { splitGoldCases } from "../src/goldset-split.js";
 import type { GoldCase } from "../src/goldset.js";
 
@@ -157,3 +158,48 @@ test("a pool too small for the split is refused rather than coalesced into a lot
   ];
   assert.throws(() => splitGoldCases(tiny, REGISTERED), /cannot reach both halves even after coalescing/);
 });
+
+test("the registered seed yields exactly these ids, strata and counts (#1643 characterization)", () => {
+  // Pinned before splitting selection from accounting: any structural change to
+  // splitGoldCases must reproduce this output byte for byte.
+  const cases = [
+    ...corpus(),
+    c("e0", { origin_type: "user_query", lang: "en" }),
+    c("p0", { probe_group: "gibberish-probe" }),
+    c("n0", { no_answer: true }),
+    c("n1", { no_answer: true }),
+  ];
+  const r = splitGoldCases(cases, REGISTERED);
+  assert.deepEqual(
+    r.selection.map((x) => x.id),
+    ["b15", "b9", "b7", "b27", "b6", "b2", "b29", "b11", "b24", "c0", "c4", "c3", "c12", "c2", "c18"].concat([
+      "a21",
+      "a28",
+      "a12",
+      "a9",
+      "a38",
+      "a27",
+      "a13",
+      "a35",
+      "a32",
+      "a26",
+      "a33",
+      "a17",
+      "d1",
+      "d3",
+      "d6",
+    ])
+  );
+  const holdout = r.holdout.map((x) => x.id).join(",");
+  assert.equal(createHash("sha256").update(holdout).digest("hex"), HOLDOUT_SHA256, holdout);
+  assert.equal(r.holdout.length, 71);
+  assert.deepEqual(r.strata, [
+    { key: "second_person|de", total: 30, selection: 9, holdout: 21 },
+    { key: "second_person|en", total: 20, selection: 6, holdout: 14 },
+    { key: "session_transcript|neutral", total: 40, selection: 12, holdout: 28 },
+    { key: "user_query|neutral", total: 11, selection: 3, holdout: 8, coalesced_from: ["user_query|en"] },
+  ]);
+  assert.deepEqual(r.excluded, { probes: 1, no_answer: 2 });
+});
+
+const HOLDOUT_SHA256 = "4e512f86e6f3e2a5310906e7feec270e3ddd7e46f1340e67430afc2f78cf2424";

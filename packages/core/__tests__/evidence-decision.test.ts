@@ -224,6 +224,29 @@ test("ein abgelaufenes Ziel wird nie required", () => {
   assert.equal(d.abstain_reason, "stale");
 });
 
+test("eine übergebene Uhr legt die Frist fest, ohne Uhr gilt die Wanduhr (#1642)", () => {
+  // Frist zwischen der Bezugszeit und heute: Mit fester Uhr hängt das Ergebnis
+  // nicht davon ab, an welchem Tag der Test läuft.
+  const input = {
+    hit: hit({ rrf: bothArms }),
+    memory: memory({ recall_when: ["wenn wir deployen"], valid_until: "2026-10-01" } as never),
+    queryTerms: ["deployen"],
+  };
+  const before = decideHit({ ...input, now: Date.parse("2026-09-01T00:00:00Z") });
+  assert.equal(before.evidence.temporal_status, "valid");
+  assert.equal(before.decision, "required");
+  const after = decideHit({ ...input, now: Date.parse("2026-10-02T00:00:00Z") });
+  assert.equal(after.evidence.temporal_status, "expired");
+  assert.equal(after.decision, "optional");
+  assert.equal(decideHit(input).evidence.temporal_status, "expired", "Produktion liest weiter die Wanduhr");
+  const listed = decideHits([input.hit], {
+    queryTerms: input.queryTerms,
+    memoryOf: () => input.memory,
+    now: Date.parse("2026-09-01T00:00:00Z"),
+  });
+  assert.equal(listed[0].decision, "required", "die Liste reicht die Uhr durch");
+});
+
 test("ein als überholt markiertes Ziel ebenso", () => {
   const d = decideHit({
     hit: hit(),

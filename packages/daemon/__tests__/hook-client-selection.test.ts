@@ -128,7 +128,7 @@ function codexCommands(useStub: boolean): string[] {
 
 test("#537 — with the client deselected, every Claude Code command runs on node", () => {
   const cmds = claudeCommands(false);
-  assert.equal(cmds.length, 13); // #1303: the gate lane; #675/#1486: Stop, SessionEnd and PreCompact share the stop client; Bash ×2 and the save notice share the post-tool client
+  assert.equal(cmds.length, 14); // #1303: the gate lane; #675/#1486: Stop, SessionEnd and PreCompact share the stop client; Bash ×2 and the save notice share the post-tool client; #1637: SubagentStart shares the session client
   for (const cmd of cmds) {
     assert.ok(cmd.startsWith("BASTRA_HOOK_CLIENT=claude-code node "), `not on the node client: ${cmd}`);
     assert.ok(!cmd.includes(HOOK_STUB_BIN), `still points at the compiled binary: ${cmd}`);
@@ -142,7 +142,7 @@ test("#537 — with the client deselected, every Claude Code command runs on nod
 
 test("#537 — with the client selected, every Claude Code command runs on the binary", () => {
   const cmds = claudeCommands(true);
-  assert.equal(cmds.length, 13);
+  assert.equal(cmds.length, 14);
   for (const cmd of cmds)
     assert.ok(cmd.startsWith(`BASTRA_HOOK_CLIENT=claude-code ${HOOK_STUB_BIN} `), `not on the compiled client: ${cmd}`);
   assert.equal(

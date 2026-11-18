@@ -265,3 +265,68 @@ test("#1636 a failed send releases the target; a lock left by a dead sender is t
   assert.deepEqual(pauses, [ENTER_PAUSE_MS]);
   assert.deepEqual(fs.readdirSync(lockRoot), []);
 });
+
+/** Runs in a worker so an unbounded retry loop can be stopped from outside.
+ *  Its clock advances only by the pauses the sender asks for (#1645). */
+const STUCK_SENDER = `
+const { workerData, parentPort } = require("node:worker_threads");
+let offset = 0;
+const realNow = Date.now;
+Date.now = () => realNow() + offset;
+import(workerData.moduleUrl).then(({ sendAgentMessage }) => {
+  let transport = 0;
+  try {
+    sendAgentMessage(workerData.options, () => (transport++, { status: 0 }), (ms) => (offset += ms));
+    parentPort.postMessage({ sent: true, transport });
+  } catch (error) {
+    parentPort.postMessage({ error: error.message, transport, waited: offset });
+  }
+});
+`;
+
+test("#1645 an unremovable stale lock ends in 'busy' within the wait, is kept, and nothing is sent", async () => {
+  const fixtures = {
+    "nonempty directory": (lock) => {
+      fs.mkdirSync(lock);
+      fs.writeFileSync(join(lock, "sentinel"), "foreign");
+      return join(lock, "sentinel");
+    },
+    "regular file": (lock) => {
+      fs.writeFileSync(lock, "foreign");
+      return lock;
+    },
+  };
+  for (const [name, plant] of Object.entries(fixtures)) {
+    const lockRoot = join(fs.mkdtempSync(join(scratch, "pane-")), "locks");
+    let lockName;
+    sendAgentMessage(
+      { ...options, lockRoot },
+      () => {
+        [lockName] = fs.readdirSync(lockRoot);
+        return { status: 0 };
+      },
+      noPause
+    );
+    const lock = join(lockRoot, lockName);
+    const sentinel = plant(lock);
+    const stale = new Date(Date.now() - 60_000);
+    fs.utimesSync(lock, stale, stale);
+    const worker = new Worker(STUCK_SENDER, {
+      eval: true,
+      workerData: {
+        moduleUrl: new URL("../cmux-agent-send.mjs", import.meta.url).href,
+        options: { ...options, lockRoot },
+      },
+    });
+    // Only a broken (unbounded) loop ever reaches this real timeout.
+    const timer = setTimeout(() => worker.terminate(), 5_000);
+    const [result] = await Promise.race([once(worker, "message"), once(worker, "exit").then(() => [undefined])]);
+    clearTimeout(timer);
+    await worker.terminate();
+    assert.ok(result, `${name}: the sender never returned`);
+    assert.match(result.error ?? "", /cmux target busy/, name);
+    assert.equal(result.transport, 0, `${name}: nothing reaches cmux`);
+    assert.ok(result.waited > 0 && result.waited <= 21_000, `${name}: bounded by the wait (${result.waited} ms)`);
+    assert.equal(fs.readFileSync(sentinel, "utf8"), "foreign", `${name}: foreign contents stay`);
+  }
+});

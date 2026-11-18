@@ -66,3 +66,26 @@ test("an artefact named SHA256SUMS stays separate from the checksum list", () =>
   assert.equal(readFileSync(archived.path, "utf8"), body, "archiving must preserve the exact bytes");
   assert.equal(readFileSync(join(dir, "SHA256SUMS"), "utf8"), `${sha(body)}  ${basename(archived.path)}\n`);
 });
+
+test("three same-name artefacts in one second get three names and three checksum lines (#1641)", () => {
+  const work = mkdtempSync(join(tmpdir(), "bastra-archive-test-"));
+  const out = join(work, "result.json");
+  const root = join(work, "root");
+  const now = new Date("2026-11-17T10:20:30Z");
+  const bodies = ["first\n", "second\n", "third\n"];
+  const archived = bodies.map((body) => {
+    writeFileSync(out, body);
+    return archiveArtifacts("h", [out], { root, now }).files[0];
+  });
+  const dir = join(root, "h-runs", "2026-11-17");
+  const names = ["result.json", "102030-result.json", "102030-2-result.json"];
+  assert.deepEqual(
+    archived,
+    names.map((name, i) => ({ path: join(dir, name), sha256: sha(bodies[i]) }))
+  );
+  names.forEach((name, i) => assert.equal(readFileSync(join(dir, name), "utf8"), bodies[i]));
+  assert.equal(
+    readFileSync(join(dir, "SHA256SUMS"), "utf8"),
+    names.map((name, i) => `${sha(bodies[i])}  ${name}\n`).join("")
+  );
+});

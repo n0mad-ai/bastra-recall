@@ -59,16 +59,16 @@ function allCommands(stubPresent: boolean): string[] {
 
 // ─── every lane is on the stub ───────────────────────────────────────────────
 
-test("all eight lanes register across all thirteen hook entries when the binary is there", () => {
+test("all eight lanes register across all fourteen hook entries when the binary is there", () => {
   const cmds = allCommands(true);
-  assert.equal(cmds.length, 13, `expected thirteen hook entries, got ${cmds.length}`);
+  assert.equal(cmds.length, 14, `expected fourteen hook entries, got ${cmds.length}`);
   for (const cmd of cmds) {
     assert.ok(cmd.startsWith(`${CC}${HOOK_STUB_BIN} `), `still on node: ${cmd}`);
   }
   const subs = cmds.map((c) => c.slice(CC.length + HOOK_STUB_BIN.length + 1)).sort();
   // #675/#1486: SessionEnd and PreCompact ride the stop lane, so "stop" appears three times. The save
   // notice rides the post-tool client beside the two Bash entries.
-  // #1303: the catch-all gate is the eighth lane.
+  // #1303: the catch-all gate is the eighth lane. #1637: SubagentStart rides the session lane.
   assert.deepEqual(subs, [
     "bash-fail",
     "bash-fail",
@@ -76,6 +76,7 @@ test("all eight lanes register across all thirteen hook entries when the binary 
     "bash-pre",
     "gate",
     "prompt",
+    "session",
     "session",
     "session",
     "stop",
@@ -88,7 +89,7 @@ test("all eight lanes register across all thirteen hook entries when the binary 
 
 test("without the binary every lane falls back to its node client", () => {
   const cmds = allCommands(false);
-  assert.equal(cmds.length, 13);
+  assert.equal(cmds.length, 14);
   for (const cmd of cmds) assert.ok(cmd.startsWith(`${CC}node /`), `not the node client: ${cmd}`);
 });
 

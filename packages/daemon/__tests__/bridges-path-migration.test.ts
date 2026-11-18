@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { bridgesPath, migrateBridgesPool } from "../src/cli/bridges.js";
+import { bridgesPath, migrateBridgesPool } from "../src/learned-recall/pool-path.js";
 import { commonsPath } from "../src/commons-store.js";
 
 function restoreEnv(saved: { c: string | undefined; b: string | undefined }): void {

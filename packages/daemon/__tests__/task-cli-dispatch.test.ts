@@ -23,7 +23,7 @@ type Call = { operation: string; body: unknown; authorization: string | undefine
 async function body(req: IncomingMessage): Promise<unknown> {
   let raw = "";
   for await (const chunk of req) raw += chunk;
-  return JSON.parse(raw);
+  return raw ? JSON.parse(raw) : undefined; // #1644: a bodyless call is recorded, not a crash
 }
 
 test("#1514 task CLI sub-commands keep their daemon calls, output and exit codes", async () => {
@@ -201,6 +201,14 @@ test("#1514 task CLI sub-commands keep their daemon calls, output and exit codes
     assert.equal(r.code, 1);
     assert.equal(JSON.parse(r.stderr).code, "validation");
     assert.deepEqual(r.calls, []);
+
+    // #1644: inherited property names are unknown commands, never a task_controls call.
+    for (const sub of ["toString", "constructor", "__proto__", "hasOwnProperty"]) {
+      r = await run(sub, []);
+      assert.equal(r.code, 1, sub);
+      assert.equal(JSON.parse(r.stderr).code, "validation", sub);
+      assert.deepEqual(r.calls, [], sub);
+    }
 
     r = await run("list", ["--nope"]);
     assert.equal(r.code, 1);

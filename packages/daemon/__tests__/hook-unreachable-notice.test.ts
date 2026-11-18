@@ -5,12 +5,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { chmod, mkdtemp, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, mkdtemp, readdir, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { unreachableAnswer, unreachableNoticeText } from "../src/hook-unreachable-notice.js";
+import { cleanupOldStates } from "../src/session-state.js";
 
 const DAEMON = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -56,6 +58,34 @@ test(
     assert.equal(await unreachableAnswer("prompt", "second"), "{}");
   }
 );
+
+test("#1640: the session sweep drops markers past the retention horizon and keeps fresh ones", async (t) => {
+  const dir = await withStateDir(t);
+  const markers = join(dir, "state", "unreachable-notice");
+  for (const session of ["old-1", "old-2", "fresh"]) assert.equal(await unreachableAnswer("prompt", session), notice());
+  const before = await readdir(markers);
+  assert.equal(before.length, 3);
+  // A marker is named by the hashed session id; age every marker but "fresh".
+  const yearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+  const freshKey = createHash("sha256").update("fresh").digest("hex").slice(0, 24);
+  for (const name of before) if (name !== freshKey) await utimes(join(markers, name), yearAgo, yearAgo);
+  // Things the sweep did not create stay untouched, however old.
+  const outside = join(dir, "outside");
+  await writeFile(outside, "keep");
+  await utimes(outside, yearAgo, yearAgo);
+  await symlink(outside, join(markers, "a".repeat(24)));
+  await writeFile(join(markers, "foreign.txt"), "keep");
+  await utimes(join(markers, "foreign.txt"), yearAgo, yearAgo);
+
+  await cleanupOldStates();
+
+  assert.deepEqual((await readdir(markers)).sort(), ["a".repeat(24), freshKey, "foreign.txt"].sort());
+  // At most once still holds for the session whose marker survived …
+  assert.equal(await unreachableAnswer("prompt", "fresh"), "{}");
+  // … and an expired session may announce again, exclusively once.
+  assert.equal(await unreachableAnswer("prompt", "old-1"), notice());
+  assert.equal(await unreachableAnswer("prompt", "old-1"), "{}");
+});
 
 test("the line follows the language, English for anything without its own text", () => {
   assert.match(unreachableNoticeText("de"), /nicht erreichbar.*`bastra doctor`/);
