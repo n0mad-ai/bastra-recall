@@ -16,13 +16,17 @@
 // text nodes only.
 // A list item or paragraph that ends with answer options "[? Yes | No]" (askOf, Daniel 18.11.2026)
 // shows them as buttons instead of the "note" button, plus "own answer" (the note field) and "needs
-// clarification". A click saves the choice as an ordinary note on that place; once answered, the
-// place is a card like any other and the options step back.
+// clarification", together one framed answer area. A click saves the choice as an ordinary note on
+// that place; once answered, the place is a card like any other and the answer area stays in it
+// with the choice marked in amber (Daniel 18.11.2026: everything stays open, the options stay
+// visible). Another option then rewrites that note instead of adding a second one.
+// annotateReport also returns the report's outline for the jump list in the right panel
+// (tasks-reports-toc.js): its headings and its questions with their answered state.
 import { h } from "../dom.js";
 import { t } from "../i18n.js";
 import { noteEditor } from "../views/care-note.js";
 import { fmtAt } from "./tasks-api.js";
-import { excerptOf, notesAt, askOf } from "./tasks-reports-model.js";
+import { excerptOf, notesAt, askOf, answerAt } from "./tasks-reports-model.js";
 
 /** The annotatable blocks of the rendered report in reading order (as markdown() and the
  *  table renderer build them): headings, paragraphs, list items, table body rows. */
@@ -135,17 +139,35 @@ function takeAsk(b) {
   return ask;
 }
 
-/** The answer buttons: one per option, then "own answer" and "needs clarification". */
-function askButtons(ask, ui, anchor) {
-  const btn = (cls, text, title, click) =>
-    h(`button.tk-ask__opt${cls}`, { type: "button", text, title, on: { click } });
+/** The answer area: one button per option, then "own answer" and "needs clarification"; what the
+ *  owner chose is pressed (amber). A pressed option does nothing on a second click; another option
+ *  or clarification rewrites the earlier choice. */
+function askButtons(ask, ui, anchor, list) {
+  const clarify = t("tk.rep.ask.clarifyNote"),
+    a = answerAt(ask.options, list, clarify);
+  const choose = (text) => () => (a.picked === text ? undefined : ui.answer(anchor, text, a.pick?.id ?? null));
+  const btn = (cls, text, title, on, click) =>
+    h(`button.tk-ask__opt${cls}`, {
+      type: "button",
+      text,
+      title,
+      cls: on ? "is-on" : "",
+      "aria-pressed": String(on),
+      on: { click },
+    });
   return h(
     "div.tk-ask",
     { role: "group", "aria-label": t("tk.rep.ask.label") },
-    ask.options.map((o) => btn("", o, t("tk.rep.ask.pickTip"), () => ui.answer(anchor, o))),
-    btn(".is-free", t("tk.rep.ask.free"), t("tk.rep.ask.freeTip"), () => ui.open(anchor)),
-    btn(".is-clarify", t("tk.rep.ask.clarify"), t("tk.rep.ask.clarifyTip"), () =>
-      ui.answer(anchor, t("tk.rep.ask.clarifyNote"))
+    h(
+      "div.tk-ask__opts",
+      null,
+      ask.options.map((o) => btn("", o, t("tk.rep.ask.pickTip"), a.picked === o, choose(o)))
+    ),
+    h(
+      "div.tk-ask__alt",
+      null,
+      btn(".is-free", t("tk.rep.ask.free"), t("tk.rep.ask.freeTip"), a.own, () => ui.open(anchor)),
+      btn(".is-clarify", t("tk.rep.ask.clarify"), t("tk.rep.ask.clarifyTip"), a.picked === clarify, choose(clarify))
     )
   );
 }
@@ -153,8 +175,9 @@ function askButtons(ask, ui, anchor) {
 /** A place with notes (or an open field) becomes a card: its text on top as the subject, the
  *  notes below. A list item is the card itself; a heading or paragraph is wrapped into one; a
  *  table row is marked and its notes follow in a full-width row, so the table stays intact.
- *  settled: every note there is done, so the card takes the done colour instead of amber. */
-function markPlace(b, box, out, settled) {
+ *  settled: every note there is done, so the card takes the done colour instead of amber.
+ *  answers: a question's answer area, kept between the question and its notes (null otherwise). */
+function markPlace(b, box, out, settled, answers) {
   const cls = settled ? "is-done" : "";
   if (b.kind === "row") {
     b.el.classList.add("is-marked");
@@ -165,10 +188,10 @@ function markPlace(b, box, out, settled) {
     const subject = h("div.tk-an__subj", null, [...b.el.childNodes]);
     b.el.classList.add("tk-an__card");
     if (settled) b.el.classList.add(cls);
-    b.el.replaceChildren(subject, box);
+    b.el.replaceChildren(subject, ...[answers, box].filter(Boolean));
   } else {
     b.el.classList.add("tk-an__subj");
-    out.nodes[out.nodes.indexOf(b.el)] = h("div.tk-an__card", { cls }, b.el, box);
+    out.nodes[out.nodes.indexOf(b.el)] = h("div.tk-an__card", { cls }, b.el, answers, box);
   }
 }
 
@@ -191,10 +214,11 @@ function lostNotes(lost, ui, out) {
 
 /** Adds the note button, the answer buttons or the note card to every block of the rendered report.
  *  ui: { notes, editing: null | { anchor, noteId, draft }, open(anchor), edit(note), remove(note),
- *  save(text), answer(anchor, text), cancel() }. Returns { nodes, focus } — focus() puts the cursor
- *  into an open note field. */
+ *  save(text), answer(anchor, text, noteId), cancel() }. Returns { nodes, focus, toc } — focus() puts
+ *  the cursor into an open note field; toc = { heads, asks }, each entry { text, el, index } in reading
+ *  order (index: the block's number), a question with `answered` (a note is at its place). */
 export function annotateReport(nodes, ui) {
-  const out = { nodes: [...nodes], focus: null };
+  const out = { nodes: [...nodes], focus: null, toc: { heads: [], asks: [] } };
   const placed = new Set();
   for (const b of reportBlocksIn(nodes)) {
     const anchor = { kind: b.kind, index: b.index, excerpt: b.excerpt };
@@ -203,10 +227,13 @@ export function annotateReport(nodes, ui) {
     b.el.classList.add("tk-an");
     if (list.some((n) => !n.done)) b.el.classList.add("has-open");
     const ask = takeAsk(b);
+    if (b.kind === "heading") out.toc.heads.push({ text: b.el.textContent, el: b.el, index: b.index });
+    if (ask) out.toc.asks.push({ text: ask.question, el: b.el, index: b.index, answered: list.length > 0 });
+    const answers = ask ? askButtons(ask, ui, anchor, list) : null;
     const box = notesBox(list, ui, anchor, out);
     const adding = sameAnchor(ui.editing, b.kind, b.index) && ui.editing.noteId === null;
-    if (box) markPlace(b, box, out, list.length > 0 && !adding && list.every((n) => n.done));
-    else if (ask) b.el.append(askButtons(ask, ui, anchor));
+    if (box) markPlace(b, box, out, list.length > 0 && !adding && list.every((n) => n.done), answers);
+    else if (answers) b.el.append(answers);
     else addButton(b, ui, anchor);
   }
   // header rows get the empty cell the body rows got for their button

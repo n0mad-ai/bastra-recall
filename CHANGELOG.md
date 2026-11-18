@@ -46,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   built like every other entry, opens the reports view and is lit while it is
   open. Its cyan badge counts the unread reports (it replaces the dot that sat
   on **Tasks**); its tooltip also names reports with notes not handed over
-  yet. The **Reports** button in the Tasks head stays.
+  yet.
 - **Search inside the report text, and undo for delete.** The search field
   over the reports list now also finds words in the text of a report, not
   only in its title and project; title and project still filter at once, text
@@ -146,6 +146,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   (#1473).
 
 ### Changed
+
+- **Reports have their own reading area.** The Tasks head and its Reports
+  button are removed from this view; Escape keeps the area open. The right
+  panel shows headings and questions with an answered count and keeps its
+  open or closed state across areas. Readers can choose small, medium or
+  large text. Answer options stay in one framed area, with the selected
+  choice in amber, and hold at most 40 characters. `task_report_save` asks
+  agents to put the report first and questions after it.
 
 - **Deleted task reports stay in the list.** A deleted report is struck
   through, with an undo countdown and **Restore**. The new `tasks.reportUndo`

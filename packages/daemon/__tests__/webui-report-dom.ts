@@ -100,7 +100,19 @@ export class Node_ {
   setSelectionRange(start: number, end: number, direction = "none") {
     Object.assign(this, { selectionStart: start, selectionEnd: end, selectionDirection: direction });
   }
-  scrollIntoView() {}
+  /** Where the element stands (getBoundingClientRect().top), set by a test. */
+  top = 0;
+  /** How often scrollIntoView() was called. */
+  scrolled = 0;
+  getBoundingClientRect() {
+    return { top: this.top };
+  }
+  removeAttribute(k: string) {
+    delete this.attrs[k];
+  }
+  scrollIntoView() {
+    this.scrolled++;
+  }
   focus() {}
 }
 

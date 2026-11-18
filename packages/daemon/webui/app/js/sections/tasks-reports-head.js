@@ -1,7 +1,8 @@
 // Task reports — the view's head, built like the memory browser's head and with its classes
 // (css/membrowser.css: mb__head, mb__scope, mb__menu, mb__search; Daniel 18.11.2026): title, the
 // project pick list (the memory browser's area pick list), the search field (#1597) with its
-// count, the unread count and ESC. A project filter and the search narrow the list together.
+// count and the unread count. A project filter and the search narrow the list together. No ESC:
+// reports are an area of their own, left through the rail (Daniel 18.11.2026).
 import { h, searchIcon } from "../dom.js";
 import { t } from "../i18n.js";
 import { emit } from "./tasks-store.js";
@@ -29,7 +30,7 @@ function option(id, name, n) {
 /** The head; `paint(rows, shownCount, unread, live)` brings it up to date: rows = every report in the
  *  list (deleted ones still undoable included), shownCount = how many search and filter leave,
  *  unread and live = the unread and the present (not deleted) reports. */
-export function reportsHead(onClose) {
+export function reportsHead() {
   const input = h("input.mb__input.tk-rv__input", {
       type: "text",
       spellcheck: "false",
@@ -58,13 +59,7 @@ export function reportsHead(onClose) {
       h("span.mb__slash", { text: "/" }),
       h("div.mb__scope.tk-rv__proj", null, btn, menu),
       h("label.mb__search", null, searchIcon(), input, found),
-      count,
-      h("button.mb__esc", {
-        text: t("tk.rep.esc"),
-        title: t("tk.rep.back"),
-        "aria-label": t("tk.rep.back"),
-        on: { click: onClose },
-      })
+      count
     );
   let seen = "";
   function paint(rows, shownCount, unread, live) {

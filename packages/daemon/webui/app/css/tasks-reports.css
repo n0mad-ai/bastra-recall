@@ -1,23 +1,8 @@
-/* Recall web UI — Tasks › reports (js/sections/tasks-reports.js): head button
- * and the reading view in the main area. The view is built like the memory
+/* Recall web UI — Tasks › reports (js/sections/tasks-reports.js): the reading
+ * view in the main area and its jump list in the right panel. The view is built like the memory
  * browser (Daniel 16.11.2026) and reuses its row and reader classes from
  * css/membrowser.css (mb__head, mb__body, mb-row, mb-rd …); only the frame,
  * the narrow layout and the report deltas live here. */
-
-/* head button: the "FÄLLIG" button with an accent dot while reports are unread */
-.tk-duebtn__dot.tk-repbtn__dot {
-  background: var(--accent);
-  box-shadow: 0 0 6px var(--accent);
-}
-.tk-duebtn__dot.tk-repbtn__dot.is-off {
-  background: var(--line-45);
-  box-shadow: none;
-}
-.tk-duebtn.tk-repbtn.is-on {
-  border-color: var(--accent);
-  background: var(--accent-12);
-  color: var(--accent);
-}
 
 /* slots: the reading view stands in for the calendar */
 .tk-repslot {
@@ -33,6 +18,9 @@
 /* frame: the memory browser window (.mb) without its open animation */
 .tk-rv {
   --mba: var(--accent);
+  /* one height for the view's head, every list row and the open report's head, so their bottom
+   * lines align (Daniel 18.11.2026): the memory browser's 52 px head plus room for a row's two lines */
+  --rv-row: 56px;
   position: relative;
   flex: 1;
   min-width: 0;
@@ -92,40 +80,53 @@
   top: 0;
   z-index: 2;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 10px 16px;
+  height: var(--rv-row);
   margin: -20px -26px 20px;
-  padding: 14px 26px 12px;
+  padding: 0 26px;
   border-bottom: 1px solid var(--line-14);
   background: var(--bg);
+}
+/* the view's head and the list rows take the same height (rows: two lines, centred) */
+.tk-rv .mb__head {
+  height: var(--rv-row);
+}
+.tk-rv .mb-row {
+  height: var(--rv-row);
+  padding-block: 0;
+  align-content: center;
 }
 .tk-rep__head > .mb-rd__back {
   flex-basis: 100%;
   margin: 0;
   text-align: left;
 }
-/* the title gives way first; below about 240 px beside the actions, the actions wrap under it */
+/* the title gives way first: title and meta line stay one line each (cut with "…", the full title on
+ * hover), so the head keeps the row height */
 .tk-rep__id {
   flex: 1 1 240px;
   min-width: 0;
 }
 .tk-rep__title {
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 500;
-  line-height: 1.3;
+  line-height: 1.25;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .tk-rep__meta {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 4px 12px;
-  margin-top: 5px;
+  margin-top: 4px;
+  overflow: hidden;
   font: 10.5px var(--mono);
+  white-space: nowrap;
   color: var(--muted);
 }
 .tk-rep__proj {
@@ -151,7 +152,12 @@
 .tk-an__count.is-draft {
   color: var(--muted);
 }
-/* narrow view: the title takes the whole line, the actions go below it */
+/* narrow view: the head may wrap; the title takes the whole line, the actions go below it */
+.tk-rv.is-narrow .tk-rep__head {
+  flex-wrap: wrap;
+  height: auto;
+  padding: 12px 26px 10px;
+}
 .tk-rv.is-narrow .tk-rep__id {
   flex-basis: 100%;
 }
@@ -217,6 +223,156 @@
 /* report text: the memory reader's text block plus what reports add */
 .tk-rep__md > :last-child {
   margin-bottom: 0;
+}
+/* text size (js/sections/tasks-reports-size.js): small is the memory reader's 14.5 px; medium and
+ * large are bigger and airier. Only the report text: notes keep their own size. */
+.tk-rep__md.is-size-m {
+  font-size: 16.5px;
+  line-height: 1.7;
+}
+.tk-rep__md.is-size-l {
+  font-size: 19px;
+  line-height: 1.72;
+}
+.tk-rep__md.is-size-m h3,
+.tk-rep__md.is-size-l h3 {
+  margin: 1.4em 0 0.5em;
+  font-size: 1.15em;
+  line-height: 1.3;
+}
+.tk-rep__md.is-size-m p,
+.tk-rep__md.is-size-m ul,
+.tk-rep__md.is-size-l p,
+.tk-rep__md.is-size-l ul {
+  margin-bottom: 0.8em;
+}
+.tk-rep__md.is-size-m li,
+.tk-rep__md.is-size-l li {
+  margin-bottom: 0.3em;
+}
+/* a jump from the jump list stops below the reader's sticky head */
+.tk-rep__md h3,
+.tk-rep__md p,
+.tk-rep__md li,
+.tk-rep__md .tk-an__card {
+  scroll-margin-top: 96px;
+}
+
+/* head: the text size switch next to the actions, three "A" growing in size */
+.tk-rep__size {
+  flex: none;
+  display: flex;
+  height: 30px;
+  border: 1px solid var(--line-30);
+}
+.tk-rep__sz {
+  min-width: 30px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: var(--sans);
+  line-height: 1;
+  cursor: pointer;
+}
+.tk-rep__sz + .tk-rep__sz {
+  border-left: 1px solid var(--line-30);
+}
+.tk-rep__sz.is-s {
+  font-size: 12px;
+}
+.tk-rep__sz.is-m {
+  font-size: 15px;
+}
+.tk-rep__sz.is-l {
+  font-size: 19px;
+}
+.tk-rep__sz:hover {
+  color: var(--ink);
+}
+.tk-rep__sz:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -2px;
+}
+.tk-rep__sz.is-on {
+  background: var(--accent-12);
+  color: var(--accent);
+}
+/* "2 of 5 questions answered": amber while some are open */
+.tk-rep__asks {
+  white-space: nowrap;
+}
+.tk-rep__asks.is-open {
+  color: var(--amber);
+}
+
+/* the jump list in the right panel (js/sections/tasks-reports-toc.js), inside the panel's own
+ * sections: headings with a grey square, questions with an empty accent square (open) or a filled
+ * amber one (answered); the place being read is marked like a selected row */
+.tk-toc__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0 -18px;
+}
+.tk-toc__j {
+  display: grid;
+  grid-template-columns: 7px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  width: 100%;
+  padding: 6px 18px 6px 16px;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--ink-soft);
+  font: 13.5px var(--sans);
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+.tk-toc__j:hover {
+  background: var(--accent-06);
+  color: var(--ink);
+}
+.tk-toc__j:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.tk-toc__j.is-here {
+  border-left-color: var(--accent);
+  background: var(--accent-12);
+  color: var(--ink);
+}
+.tk-toc__sq {
+  width: 7px;
+  height: 7px;
+  transform: translateY(-1px);
+  background: var(--line-45);
+}
+.tk-toc__j.is-ask .tk-toc__sq {
+  border: 1px solid var(--accent);
+  background: transparent;
+}
+.tk-toc__j.is-ask.is-done .tk-toc__sq {
+  border-color: var(--amber);
+  background: var(--amber);
+}
+.tk-toc__t {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.tk-toc + .tk-toc {
+  border-top: 1px solid var(--line-14);
+}
+.tk-toc__none {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
 }
 .tk-rep__md strong {
   font-weight: 600;
@@ -299,35 +455,68 @@
     opacity: 0.7;
   }
 }
-/* a question with answer options: the options as buttons below the question, always visible, then
- * "own answer" and "needs clarification" quieter */
+/* a question with answer options (Daniel 18.11.2026: "set apart more clearly"): one framed answer
+ * area right under the question, always open, on its own dark surface with the accent edge; the
+ * options as buttons with their short names, below them "own answer" and "needs clarification"
+ * quieter. The choice is amber, the colour of the owner's notes. Every state keeps the same border
+ * width and padding, so hover and choice never move anything. Sizes in em follow the text size. */
 .tk-ask {
   display: flex;
+  flex-direction: column;
+  gap: 0.6em;
+  margin: 0.7em 0 0.3em;
+  padding: 0.75em 0.85em 0.7em;
+  border: 1px solid var(--line-22);
+  border-left: 2px solid var(--accent-60);
+  background: var(--surface-tile);
+  font-size: 0.93em;
+  line-height: 1.35;
+}
+.tk-ask__opts {
+  display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin: 8px 0 2px;
+  gap: 0.45em;
+}
+.tk-ask__alt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3em 1em;
 }
 .tk-ask__opt {
-  padding: 3px 10px 2px;
-  border: 1px solid rgba(217, 164, 65, 0.6);
-  background: rgba(217, 164, 65, 0.12);
-  color: var(--amber);
-  font: 11px var(--mono);
-  letter-spacing: 0.06em;
+  padding: 0.4em 0.9em;
+  border: 1px solid var(--line-30);
+  background: rgba(6, 10, 19, 0.6);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
   cursor: pointer;
 }
 .tk-ask__opt:hover,
 .tk-ask__opt:focus-visible {
-  border-color: var(--amber);
-  background: rgba(217, 164, 65, 0.22);
+  border-color: var(--accent);
+  background: var(--accent-06);
   color: #f2f7fd;
   outline: 0;
 }
+.tk-ask__opt.is-on {
+  border-color: var(--amber);
+  background: rgba(217, 164, 65, 0.18);
+  box-shadow: inset 3px 0 0 var(--amber);
+  color: #f2f7fd;
+}
+.tk-ask__opt.is-on:hover,
+.tk-ask__opt.is-on:focus-visible {
+  border-color: var(--amber);
+  background: rgba(217, 164, 65, 0.24);
+}
 .tk-ask__opt.is-free,
 .tk-ask__opt.is-clarify {
-  border-color: var(--line-22);
+  padding: 0.2em 0.5em;
+  border-color: transparent;
   background: transparent;
   color: var(--muted);
+  font: 10px var(--mono);
   letter-spacing: 0.12em;
 }
 .tk-ask__opt.is-free:hover,
@@ -335,7 +524,19 @@
 .tk-ask__opt.is-free:focus-visible,
 .tk-ask__opt.is-clarify:focus-visible {
   border-color: var(--line-45);
+  background: transparent;
   color: var(--ink);
+}
+.tk-ask__opt.is-free.is-on,
+.tk-ask__opt.is-clarify.is-on {
+  border-color: rgba(217, 164, 65, 0.6);
+  background: rgba(217, 164, 65, 0.12);
+  box-shadow: none;
+  color: var(--amber);
+}
+/* inside a note card the answer area sits between the question and the notes */
+.tk-an__card > .tk-ask {
+  margin: 10px 0 0;
 }
 .tk-rep__tbl .tk-an__cell {
   width: 1%;

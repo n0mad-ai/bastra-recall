@@ -31,6 +31,8 @@ export function mountHeader(root, ctx) {
   app = root;
   ctxRef = ctx;
   crumbEl = h("div.htab-l__body");
+  // an area switching between its own views (Tasks ⇄ Reports) announces it like the rail does
+  document.addEventListener("recall:nav", renderCrumb);
   leftTab = h(
     "header.htab-l",
     null,

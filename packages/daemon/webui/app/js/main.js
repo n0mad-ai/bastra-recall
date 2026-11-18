@@ -23,7 +23,8 @@ let prev = { ...state };
 const ctx = {
   viewLabel: (v) => {
     const a = getArea(v);
-    return a ? a.label || t(a.labelKey) : t(`view.${v}`);
+    // crumb: an area showing one of its own views names that view (Tasks: its reports)
+    return a ? a.crumb?.() || a.label || t(a.labelKey) : t(`view.${v}`);
   },
   areaColor: (k) => lens.color(k),
   weather: () => readWeather(),

@@ -2,180 +2,13 @@
 // fake DOM: the actions sit in the reader's head and nowhere below the report,
 // the search above the list filters by title and project (#1597) while the
 // shown report stays open, the daemon's text hits join in once they arrive, and Escape closes the note field, then empties the
-// search, then leaves the view. With drafts among the notes, "Hand over to
+// search, but never leaves the view (an area of its own). With drafts among the notes, "Hand over to
 // agent" leads the head and "Read" steps back. The real module runs in a VM
-// context; its imports are replaced by small stand-ins.
+// context (webui-report-view.ts); its imports are replaced by small stand-ins.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import { runInNewContext } from "node:vm";
 import { Node_, h } from "./webui-report-dom.js";
-
-const read = (path: string) => readFile(new URL(`../webui/app/js/${path}`, import.meta.url), "utf8");
-const strip = (source: string) => source.replace(/^import [\s\S]*?;$/gm, "").replace(/^export /gm, "");
-const ID = (n: number) => `00000000-0000-4000-8000-00000000000${n}`;
-/** Report texts the stand-in daemon searches (task_report_list with query). */
-const BODIES: Record<string, string> = { [ID(3)]: "die preise steigen weiter." };
-
-const REPORTS = [
-  { id: ID(1), title: "Überblick: Förderung", project: "FÖRDERUNG", origin: { client: "codex" }, created_at: 30 },
-  { id: ID(2), title: "Release-Prüfung", project: "bastra-recall", origin: { client: "claude-code" }, created_at: 20 },
-  {
-    id: ID(3),
-    title: "Lint nachgezogen",
-    project: "bastra-io",
-    origin: { client: "codex", session: "s-1" },
-    created_at: 10,
-    read_at: 40,
-    notes_open: 2,
-  },
-];
-
-async function view(notes: unknown[] = []) {
-  const calls: Array<[string, unknown]> = [];
-  const timers = new Map<number, () => unknown>();
-  let timerId = 0;
-  const said: Array<[string, unknown]> = [];
-  const events: string[] = [];
-  const dataListeners: Array<() => void> = [];
-  const docListeners: Record<string, (e: unknown) => void> = {};
-  const ticks: { fn: (() => unknown) | null } = { fn: null };
-  const source = (
-    await Promise.all(
-      [
-        "sections/tasks-reports-model.js",
-        "sections/tasks-reports-state.js",
-        "sections/tasks-reports-search.js",
-        "sections/tasks-reports-undo.js",
-        "sections/tasks-reports-head.js",
-        "sections/tasks-reports.js",
-      ].map(read)
-    )
-  )
-    .map(strip)
-    .join("");
-  const context: Record<string, unknown> = {
-    h,
-    searchIcon: () => h("svg", null),
-    t: (key: string, vars?: Record<string, unknown>) => (vars ? `${key} ${JSON.stringify(vars)}` : key),
-    state: { lensOpen: false },
-    setState() {},
-    data: { reports: [], deletedReports: [] },
-    onData: (fn: () => void) => dataListeners.push(fn),
-    loadReports: async () => {},
-    markdown: (text: string) => [h("p", null, text)],
-    openMemoryBrowser() {},
-    ago: (at: number) => `${at}m`,
-    S: {},
-    emit() {},
-    say: (text: string, tone: unknown) => said.push([text, tone]),
-    act: async (fn: () => Promise<unknown>) => {
-      try {
-        const msg = await fn();
-        if (msg) said.push([msg as string, undefined]);
-      } catch (e) {
-        said.push([(e as Error).message, "error"]);
-      }
-    },
-    api: async (name: string, input: any) => {
-      calls.push([name, input]);
-      if (knobs.capacity && name !== "report_read" && name !== "report_list")
-        throw Object.assign(new Error("tk.err.generic"), { code: "capacity" });
-      if (name === "report_list")
-        return { reports: REPORTS.filter((r) => (BODIES[r.id] ?? "").includes(input.query.toLowerCase())) };
-      if (name === "report_delete") return { deleted: true, id: input.id, restorable_until: 99 };
-      if (name === "report_restore" && knobs.restore)
-        throw Object.assign(new Error(`tk.err.${knobs.restore}`), { code: knobs.restore });
-      if (name === "report_notes_hand") {
-        if (hand.fail) throw Object.assign(new Error("tk.err.not_found"), { code: "not_found" });
-        return { handed: 1, notes: notes.map((n: any) => ({ ...n, handed_at: 99 })) };
-      }
-      return name === "report_read" ? { body: "Erster Absatz.", notes } : {};
-    },
-    fmtAt: (at: number) => `@${at}`,
-    annotateReport: (nodes: Node_[]) => ({ nodes, focus: null }),
-    ICON: { reports: "M0 0" },
-    document: {
-      activeElement: null,
-      dispatchEvent: (e: { type: string }) => events.push(e.type),
-      addEventListener: (type: string, fn: (e: unknown) => void) => (docListeners[type] = fn),
-    },
-    CustomEvent: class {
-      constructor(public type: string) {}
-    },
-    JSON,
-    // a pause (the text search waits for typing to stop) runs when the test says so, never by the clock
-    setTimeout: (fn: () => unknown) => {
-      timers.set(++timerId, fn);
-      return timerId;
-    },
-    clearTimeout: (id: number) => timers.delete(id),
-    // the countdown's one-second tick runs when the test says so
-    setInterval: (fn: () => unknown) => {
-      ticks.fn = fn;
-      return 1;
-    },
-    clearInterval: () => (ticks.fn = null),
-  };
-  const hand = { fail: false };
-  const knobs: { capacity: boolean; restore: string | null } = { capacity: false, restore: null };
-  const v = runInNewContext(
-    source +
-      "\n({ R, notesUi, reportRows, deletedRows, openReport, openReports, closeReports, reportsRenderer, escapeReports, reportsOpen, matchReports, reportsArea, tasksLit, showCalendar })",
-    context
-  );
-  (context.data as { reports: unknown }).reports = v.reportRows({ reports: REPORTS });
-  const host = h("div", null);
-  host.clientWidth = 1000;
-  const draw = v.reportsRenderer(host);
-  context.emit = () => draw();
-  const runNextTimer = async () => {
-    const next = timers.entries().next().value;
-    if (!next) return;
-    const [id, fn] = next;
-    timers.delete(id);
-    await fn();
-  };
-  const flush = async () => {
-    while (timers.size) await runNextTimer();
-  };
-  const updateReports = (reports: unknown[]) => {
-    (context.data as { reports: unknown }).reports = v.reportRows({ reports });
-    for (const notify of dataListeners) notify();
-  };
-  /** The daemon's list after a change: present reports and the deletes still undoable. */
-  const updateAll = (reports: unknown[], deleted: unknown[]) => {
-    (context.data as { deletedReports: unknown }).deletedReports = v.deletedRows({ deleted });
-    updateReports(reports);
-  };
-  return {
-    v,
-    host,
-    draw,
-    calls,
-    said,
-    events,
-    hand,
-    knobs,
-    flush,
-    context,
-    updateReports,
-    updateAll,
-    runNextTimer,
-    ticks,
-    docListeners,
-  };
-}
-
-const byClass = (root: Node_, cls: string) => root.find(cls);
-const one = (root: Node_, cls: string) => byClass(root, cls)[0] ?? assert.fail(`no .${cls}`);
-const input = (host: Node_) => one(host, "tk-rv__input");
-function type(host: Node_, text: string) {
-  const el = input(host);
-  el.value = text;
-  for (const fn of el.listeners.input ?? []) fn();
-}
-const listRows = (host: Node_) => one(host, "mb__list").children.filter((n) => n.classList.contains("mb-row"));
+import { ID, REPORTS, view, byClass, one, input, type, listRows } from "./webui-report-view.js";
 
 test("the reader's head holds title, meta line, open notes and the actions; none are left below the report", async () => {
   const { v, host, calls } = await view();
@@ -299,17 +132,19 @@ test("Escape: the open note field first, then the search (in the search field), 
   assert.equal(field.value, "");
   assert.ok(v.reportsOpen());
 
-  assert.equal(v.escapeReports(field), true);
-  assert.ok(!v.reportsOpen(), "then the view closes");
-  assert.equal(v.escapeReports(field), false, "a closed view leaves Escape to others");
+  // Reports are an area of their own (Daniel 18.11.2026): with nothing left to close, Escape stays
+  assert.equal(v.escapeReports(field), false, "nothing open: Escape is left to the rest of the page");
+  assert.ok(v.reportsOpen(), "and never leaves the view");
 });
 
-test("Escape outside the search field leaves the view; the next visit starts without a search", async () => {
+test("Escape outside the search field keeps the search and the view; the next visit starts without a search", async () => {
   const { v, host } = await view();
   await v.openReports();
   type(host, "bastra");
-  assert.equal(v.escapeReports(h("button", null)), true);
-  assert.ok(!v.reportsOpen());
+  assert.equal(v.escapeReports(h("button", null)), false);
+  assert.ok(v.reportsOpen());
+  assert.equal(v.R.q, "bastra");
+  v.closeReports();
   await v.openReports();
   assert.equal(v.R.q, "");
   assert.equal(listRows(host).length, 3);
@@ -562,10 +397,11 @@ test("#1610: a rebuild while a note is typed keeps the cursor, the selection and
   const { v, draw, context } = await view();
   const doc = context.document as { activeElement: unknown };
   context.annotateReport = (nodes: Node_[], ui: any) => {
-    if (!ui.editing) return { nodes, focus: null };
+    const toc = { heads: [], asks: [] };
+    if (!ui.editing) return { nodes, focus: null, toc };
     const area = h("textarea", null);
     area.value = "Bitte die Preise nochmal prüfen";
-    return { nodes: [...nodes, area], focus: () => (doc.activeElement = area) };
+    return { nodes: [...nodes, area], focus: () => (doc.activeElement = area), toc };
   };
   await v.openReport(ID(1));
   v.notesUi.open({ kind: "paragraph", index: 1, excerpt: "Erster Absatz." });
@@ -673,7 +509,7 @@ test("search and project pick list sit in the head like the memory browser's; th
   assert.equal(byClass(head, "tk-rv__input").length, 1);
   assert.equal(byClass(one(host, "tk-rv__side"), "mb__search").length, 0, "no search above the list");
   const kids = head.children.map((n) => n.className.split(" ")[0]);
-  assert.deepEqual(kids, ["mb__title", "mb__slash", "mb__scope", "mb__search", "mb__hits", "mb__esc"]);
+  assert.deepEqual(kids, ["mb__title", "mb__slash", "mb__scope", "mb__search", "mb__hits"], "no ESC button");
 });
 
 test("project filter: like the memory browser's pick list; it narrows the list together with the search", async () => {

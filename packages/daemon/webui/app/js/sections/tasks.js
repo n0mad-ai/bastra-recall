@@ -37,7 +37,6 @@ import { splitPanel, weekDays, monthStart, rangeOf } from "./tasks-ledger.js";
 import { overlayRenderer } from "./tasks-overlays.js";
 import { detailTab, viewTab, controlTab, statusTiles, dueList } from "./tasks-panel.js";
 import {
-  reportsButton,
   reportsRenderer,
   reportsOpen,
   resetReports,
@@ -46,6 +45,7 @@ import {
   tasksLit,
   showCalendar,
 } from "./tasks-reports.js";
+import { outlineTab } from "./tasks-reports-toc.js";
 import en from "../i18n/tasks-en.js";
 import de from "../i18n/tasks-de.js";
 
@@ -62,7 +62,6 @@ function head() {
     title: S.W >= 700 ? t("tk.title") : "",
     side: [
       ...(S.W >= 760 ? hudPills(statusTiles()) : []),
-      reportsButton(),
       h(
         "button.tk-duebtn",
         {
@@ -267,7 +266,10 @@ function draw() {
       : null;
   // first answer pending: a run indicator instead of an empty calendar
   const wait = !content && !S.snap ? loadingBlock(t("ld.tasks")) : null;
-  clear(headSlot).append(head());
+  // Reports stand on their own (Daniel 18.11.2026): their view has its own head, without the
+  // tasks' title, status tiles, "Due" and "New task"
+  clear(headSlot);
+  if (!reportsOpen()) headSlot.append(head());
   drawOverlays();
   drawReports();
   calSlot.hidden = reportsOpen();
@@ -343,6 +345,12 @@ function mount(el, ctx) {
   };
 }
 
+const CALENDAR_TABS = [
+  { id: "areas", labelKey: "lens.details", render: detailTab },
+  { id: "view", labelKey: "lens.view", render: viewTab },
+  { id: "control", labelKey: "lens.control", render: controlTab },
+];
+
 registerArea({
   id: "tasks",
   group: "work",
@@ -356,11 +364,11 @@ registerArea({
   section: { frame: false, fit: true },
   greetingKey: "agent.greeting.tasks",
   presetKeys: ["agent.sug.due", "agent.sug.remind"],
-  tabs: [
-    { id: "areas", labelKey: "lens.details", render: detailTab },
-    { id: "view", labelKey: "lens.view", render: viewTab },
-    { id: "control", labelKey: "lens.control", render: controlTab },
-  ],
+  // the right panel: Details / View / Control on the calendar, the reports' jump list while the
+  // reading view is open (Daniel 18.11.2026: the existing panel, no second one)
+  tabs: () => (reportsOpen() ? [outlineTab] : CALENDAR_TABS),
+  // the header's crumb names the reports while their view is open
+  crumb: () => (reportsOpen() ? t("nav.reports") : null),
   mount,
 });
 registerArea(reportsArea);

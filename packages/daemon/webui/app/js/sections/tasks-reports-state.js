@@ -8,8 +8,6 @@ import { api } from "./tasks-api.js";
 // notes: the shown report's notes · edit: the open note field { anchor, noteId (null = new), draft }
 // order: row order frozen while the view is open, so a row marked there does not jump away under the pointer
 // list: narrow view shows the list instead of the reader (memory browser: "← LISTE")
-// lens: the detail panel was open when the view opened; it is folded away meanwhile (a report needs
-// the width, the panel has nothing to show for it) and comes back when the view closes
 // q: the search over the list; the shown report stays open even when the search hides its row
 // hits: { q, ids } the daemon's text search found for q · undo: { id, title, next } the last delete, undoable
 // while `next` (the report shown after it, null for none) is on screen
@@ -22,7 +20,6 @@ export const R = {
   edit: null,
   order: [],
   list: false,
-  lens: false,
   q: "",
   hits: null,
   undo: null,

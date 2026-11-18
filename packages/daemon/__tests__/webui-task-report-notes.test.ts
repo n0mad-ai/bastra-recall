@@ -24,7 +24,7 @@ async function load(
   ]);
   return runInNewContext(
     [strip(model), strip(care), strip(notes)].join("\n") +
-      "\n({ reportRows, noteRows, excerptOf, notesAt, noteCounts, draftReports, reportBlocksIn, annotateReport, noteEditor, askOf })",
+      "\n({ reportRows, noteRows, excerptOf, notesAt, noteCounts, draftReports, reportBlocksIn, annotateReport, noteEditor, askOf, answerAt, hereIndex })",
     {
       h,
       growTextarea() {},
@@ -412,12 +412,15 @@ test("N6/N29: answer options are fixed syntax at the end of a line, in any langu
     "Ship it? [? Yes | Yes]",
     "Ship it? [? a | b | c | d | e | f | g]",
     `Ship it? [? ${"x".repeat(81)} | No]`,
+    // a long explanation as an option: the line stays text, nothing is cut (Daniel 18.11.2026)
+    `Ship it? [? ${"x".repeat(41)} | No]`,
     "[? Yes | No]",
     "Ship it? [? Yes | No] later",
     "Ship it? [Yes | No]",
     "Ship it? [? [a] | b]",
   ])
     assert.equal(m.askOf(text), null, text);
+  assert.equal(ask(`Ship it? [? A – ${"x".repeat(36)} | No]`).options[0].length, 40, "40 characters still fit");
 });
 
 test("N6/N29: the tool agents file reports with teaches the syntax the reading view understands", async () => {
@@ -453,7 +456,7 @@ test("N6/N29: a question shows its options, own answer and clarification; a clic
     notes: [],
     editing: null,
     open: (a: unknown) => opened.push(a),
-    answer: (a: unknown, text: string) => answered.push([a, text]),
+    answer: (a: unknown, text: string, id: unknown) => answered.push([a, text, id]),
     edit() {},
     remove() {},
     save: async () => {},
@@ -465,9 +468,14 @@ test("N6/N29: a question shows its options, own answer and clarification; a clic
   assert.equal(question.children[0].textContent, "Keep the compatibility note?", "the marker leaves the text");
   const group: Node_ = question.find("tk-ask")[0] ?? assert.fail("no answer buttons");
   assert.equal(group.attrs.role, "group");
+  const buttons = group.find("tk-ask__opt");
   assert.deepEqual(
-    group.children.map((b) => b.textContent),
+    buttons.map((b) => b.textContent),
     ["Keep", "Remove", "tk.rep.ask.free", "tk.rep.ask.clarify"]
+  );
+  assert.ok(
+    buttons.every((b) => b.attrs["aria-pressed"] === "false"),
+    "nothing chosen yet"
   );
   assert.equal(question.find("tk-an__btn").length, 0, "the options replace the plain note button");
   for (const [el, text] of [
@@ -480,24 +488,127 @@ test("N6/N29: a question shows its options, own answer and clarification; a clic
   }
   assert.equal(para.find("tk-ask").length, 1, "a paragraph can ask too");
 
-  await group.children[1].click();
-  await group.children[3].click();
-  await group.children[2].click();
+  await buttons[1].click();
+  await buttons[3].click();
+  await buttons[2].click();
   const anchor = { kind: "item", index: 1, excerpt: "Keep the compatibility note? [? Keep | Remove]" };
   assert.deepEqual(plain(answered), [
-    [anchor, "Remove"],
-    [anchor, "tk.rep.ask.clarifyNote"],
+    [anchor, "Remove", null],
+    [anchor, "tk.rep.ask.clarifyNote", null],
   ]);
   assert.deepEqual(plain(opened), [anchor], "own answer opens the note field there");
+});
 
-  // answered: the place is a card with the answer as its note, the options step back
+test("an answered question keeps its answer area in the card with the choice pressed; another choice rewrites it", async () => {
+  // Daniel 18.11.2026: everything stays open, the options stay visible
+  const m = await load();
+  const renderer = await realRenderer();
+  const answered: unknown[] = [];
+  const ui = {
+    notes: [],
+    editing: null,
+    open() {},
+    answer: (a: unknown, text: string, id: unknown) => answered.push([a, text, id]),
+    edit() {},
+    remove() {},
+    save: async () => {},
+    cancel() {},
+  };
+  const anchor = { kind: "item", index: 1, excerpt: "Keep the compatibility note? [? Keep | Remove]" };
   const again = m.annotateReport(renderer.render("- Keep the compatibility note? [? Keep | Remove]"), {
     ...ui,
     notes: m.noteRows({ notes: [stored({ anchor, text: "Remove" })] }),
   });
-  const card = again.nodes[0].children[0];
+  const card: Node_ = again.nodes[0].children[0];
   assert.ok(card.classList.contains("tk-an__card"));
-  assert.equal(card.find("tk-ask").length, 0);
+  assert.deepEqual(
+    card.children.map((n) => n.className.split(" ")[0]),
+    ["tk-an__subj", "tk-ask", "tk-an__box"]
+  );
   assert.equal(card.find("tk-an__subj")[0].textContent, "Keep the compatibility note?");
   assert.equal(card.find("tk-an__text")[0].textContent, "Remove");
+  const opts = card.find("tk-ask__opt");
+  assert.deepEqual(
+    opts.map((b) => [b.textContent, b.attrs["aria-pressed"], b.classList.contains("is-on")]),
+    [
+      ["Keep", "false", false],
+      ["Remove", "true", true],
+      ["tk.rep.ask.free", "false", false],
+      ["tk.rep.ask.clarify", "false", false],
+    ]
+  );
+  await opts[1].click();
+  assert.deepEqual(answered, [], "the chosen option again changes nothing");
+  await opts[0].click();
+  await opts[3].click();
+  assert.deepEqual(
+    plain(answered),
+    [
+      [anchor, "Keep", "00000000-0000-4000-8000-000000000001"],
+      [anchor, "tk.rep.ask.clarifyNote", "00000000-0000-4000-8000-000000000001"],
+    ],
+    "another choice rewrites the earlier one instead of adding a second note"
+  );
+
+  // an own answer marks "own answer"; clarification marks itself
+  const own = m.annotateReport(renderer.render("- Keep the compatibility note? [? Keep | Remove]"), {
+    ...ui,
+    notes: m.noteRows({ notes: [stored({ anchor, text: "Only for one more release." })] }),
+  });
+  assert.deepEqual(
+    (own.nodes[0] as Node_).find("tk-ask__opt").map((b) => b.attrs["aria-pressed"]),
+    ["false", "false", "true", "false"]
+  );
+});
+
+test("outline: annotateReport lists headings and questions with their answered state, by structure only", async () => {
+  const m = await load();
+  const renderer = await realRenderer();
+  const nodes = renderer.render(
+    [
+      "# Summary",
+      "Text.",
+      "## Questions",
+      "- 质量? [? 是 | 否]",
+      "- Ship? [? A – Ship now | B – Wait]",
+      "- Not a question [? only]",
+    ].join("\n")
+  );
+  const anchor = { kind: "item", index: 5, excerpt: "Ship? [? A – Ship now | B – Wait]" };
+  const ui = {
+    notes: m.noteRows({ notes: [stored({ anchor, text: "B – Wait" })] }),
+    editing: null,
+    open() {},
+    answer() {},
+    edit() {},
+    remove() {},
+    save: async () => {},
+    cancel() {},
+  };
+  const out = m.annotateReport(nodes, ui);
+  assert.deepEqual(plain(out.toc.heads.map((e: { text: string; index: number }) => [e.text, e.index])), [
+    ["Summary", 1],
+    ["Questions", 3],
+  ]);
+  assert.deepEqual(
+    plain(out.toc.asks.map((e: { text: string; index: number; answered: boolean }) => [e.text, e.index, e.answered])),
+    [
+      ["质量?", 4, false],
+      ["Ship?", 5, true],
+    ]
+  );
+  for (const e of [...out.toc.heads, ...out.toc.asks]) assert.ok(e.el, "every entry knows its place");
+});
+
+test("model: answerAt finds the choice and own answers; hereIndex picks the place being read", async () => {
+  const m = await load();
+  const notes = (...texts: string[]) => texts.map((text) => ({ text, id: text }));
+  const at = (n: ReturnType<typeof notes>) => plain(m.answerAt(["A", "B"], n, "?!"));
+  assert.deepEqual(at([]), { picked: null, pick: null, own: false });
+  assert.deepEqual(at(notes("A", "B")), { picked: "B", pick: { text: "B", id: "B" }, own: false }, "the latest");
+  assert.deepEqual(at(notes("?!")).picked, "?!");
+  assert.deepEqual(at(notes("my own")), { picked: null, pick: null, own: true });
+  assert.equal(m.hereIndex([], 100), -1);
+  assert.equal(m.hereIndex([300, 500], 100), 0, "the first place before any has passed");
+  assert.equal(m.hereIndex([-400, 40, 90, 300], 100), 2);
 });

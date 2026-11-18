@@ -44,7 +44,7 @@ async function rail() {
     act: (fn: () => unknown) => fn(),
     api: async () => ({ body: "", notes: [] }),
     fmtAt: () => "",
-    annotateReport: (nodes: Node_[]) => ({ nodes, focus: null }),
+    annotateReport: (nodes: Node_[]) => ({ nodes, focus: null, toc: { heads: [], asks: [] } }),
     requestAnimationFrame() {},
     window: {},
     document: {
@@ -64,6 +64,8 @@ async function rail() {
     strip(await read("sections/tasks-reports-state.js")),
     strip(await read("sections/tasks-reports-search.js")),
     strip(await read("sections/tasks-reports-undo.js")),
+    strip(await read("sections/tasks-reports-size.js")),
+    strip(await read("sections/tasks-reports-toc.js")),
     strip(await read("sections/tasks-reports.js")),
   ].join("\n");
   const v = runInNewContext(

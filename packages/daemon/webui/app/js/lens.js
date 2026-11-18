@@ -25,7 +25,12 @@ const VAULT_TABS = [
   { id: "view", labelKey: "lens.view", render: (b) => viewTab(b) },
   liveTab,
 ];
-const tabsOf = (view) => getArea(view)?.tabs || VAULT_TABS;
+/** An area's tabs: a list, or a function when they depend on what the area shows (Tasks: the
+ *  reports' jump list while its reading view is open). */
+const tabsOf = (view) => {
+  const tabs = getArea(view)?.tabs;
+  return (typeof tabs === "function" ? tabs() : tabs) || VAULT_TABS;
+};
 
 function viewTab(body) {
   const cur = state.view;

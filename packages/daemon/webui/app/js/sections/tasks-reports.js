@@ -1,7 +1,8 @@
 // Tasks area — reports (Daniel 16.11.2026): agents file their final report
 // with task_report_save instead of a long chat answer; here the user reads it.
-// Head button "BERICHTE · n" next to "FÄLLIG" switches the main area from the
-// calendar to the reading view, built like the memory browser: the list on
+// The rail entry "Reports" (Daniel 18.11.2026: no head button in the Tasks area any more, no ESC)
+// switches the main area from the calendar to the reading view, an area of its own without the
+// tasks' head, built like the memory browser: the list on
 // the left, the chosen report at full width on the right (Daniel: not in the
 // narrow detail panel). Opening a report does not mark it read: "Gelesen" /
 // "Ungelesen" set that state by hand, "Löschen" removes it (Daniel 16.11.2026);
@@ -24,6 +25,9 @@
 // "Hand over to agent" in the reader's head passes them on (Daniel 17.11.2026).
 // The rail has its own "Reports" entry right below "Tasks" (reportsArea): lit
 // while this view is open, with the unread count as its badge.
+// Reading aids (Daniel 18.11.2026): the text size in the reader's head (tasks-reports-size.js), the
+// answered questions counted in its meta line, and the jump list as the right panel's tab while this
+// view is open (tasks-reports-toc.js); the panel keeps its own open/closed state and button.
 import { h } from "../dom.js";
 import { t } from "../i18n.js";
 import { ICON } from "../areas.js";
@@ -49,6 +53,8 @@ import { R, write } from "./tasks-reports-state.js";
 import { listed, hitsNow, shown, searchText, setQuery } from "./tasks-reports-search.js";
 import { remove, undoNotice, undoable, deletedRow, resetClocks, runClocks } from "./tasks-reports-undo.js";
 import { reportsHead } from "./tasks-reports-head.js";
+import { textSize, sizeSwitch } from "./tasks-reports-size.js";
+import { setOutline, trackOutline } from "./tasks-reports-toc.js";
 
 /** Below this slot width list and reader share one column (memory browser: 760 px for list + reader;
  *  the report list is narrower, so two columns still fit at 640). */
@@ -72,13 +78,13 @@ export const reportsOpen = () => R.open;
 /** The rail lights "Reports" while this view is open, "Tasks" otherwise; it redraws on this event. */
 const railChanged = () => document.dispatchEvent(new CustomEvent("recall:nav"));
 
+/** Opens the view; the right panel, open or closed as the user left it, turns to the jump list. */
 function enter() {
   setState({ view: "tasks" });
   if (R.open) return;
   R.open = true;
   R.order = data.reports.map((r) => r.id);
-  R.lens = state.lensOpen;
-  if (R.lens) setState({ lensOpen: false });
+  setState({ tab: "toc" });
   railChanged();
 }
 
@@ -88,7 +94,7 @@ export function resetReports() {
   R.open = R.menu = false;
   R.q = "";
   R.hits = R.undo = R.project = null;
-  if (R.lens) setState({ lensOpen: true });
+  setOutline(null, null);
   railChanged();
 }
 
@@ -108,23 +114,6 @@ export async function openReports() {
   if (data.reports.length) openReport(data.reports[0].id);
   else emit();
   await loadReports();
-}
-
-/** Head button in the style of "FÄLLIG · n": n counts the UNREAD reports, so new ones stand out at once
- *  (#1553); the dot glows while there are any. */
-export function reportsButton() {
-  const unread = unreadCount(data.reports);
-  return h(
-    "button.tk-duebtn.tk-repbtn",
-    {
-      cls: R.open ? "is-on" : "",
-      "aria-pressed": String(R.open),
-      title: unread ? t("tk.rep.unreadTip", { n: unread }) : null,
-      on: { click: () => (R.open ? closeReports() : openReports()) },
-    },
-    h("span.tk-duebtn__dot.tk-repbtn__dot", { cls: unread ? "" : "is-off" }),
-    t("tk.rep.btn", { n: unread })
-  );
 }
 
 /** Rail entry "Tasks": lit on the calendar only; clicked in the reading view it goes back to the calendar. */
@@ -254,10 +243,11 @@ const notesUi = {
     emit("reports");
     await loadReports();
   },
-  /** An answer option, or "needs clarification", picked on a question: saved at once as a note there. */
-  answer(anchor, text) {
+  /** An answer option, or "needs clarification", picked on a question: saved at once as a note there;
+   *  noteId names the earlier choice there, which the new one rewrites. */
+  answer(anchor, text, noteId = null) {
     return act(async () => {
-      if (!(await storeNote(anchor, null, text))) return;
+      if (!(await storeNote(anchor, noteId, text))) return;
       emit("reports");
       await loadReports();
     });
@@ -377,10 +367,12 @@ let focusNote = null;
 
 /** The reader's head: title, meta line and the actions; it stays on top while the report scrolls.
  *  The note counts come from the shown notes, so head and cards always agree. With drafts,
- *  "Hand over to agent" is the head's one primary action and "Read" steps back a level. */
-function readerHead(r, narrow) {
+ *  "Hand over to agent" is the head's one primary action and "Read" steps back a level.
+ *  asks: the report's questions (annotateReport); with any, the meta line counts the answered ones. */
+function readerHead(r, narrow, asks) {
   const c = noteCounts(R.notes),
-    unread = r.readAt === null;
+    unread = r.readAt === null,
+    answered = asks.filter((a) => a.answered).length;
   return h(
     "header.tk-rep__head",
     null,
@@ -405,9 +397,16 @@ function readerHead(r, narrow) {
         r.project ? h("span.tk-rep__proj", { text: r.project, title: t("tk.rep.project") }) : null,
         h("span", { text: fmtAt(r.createdAt), title: t("tk.rep.filed") }),
         h("span", { text: originText(r) || t("tk.rep.unknown"), title: t("tk.rep.origin") }),
+        asks.length
+          ? h("span.tk-rep__asks", {
+              cls: answered < asks.length ? "is-open" : "",
+              text: t("tk.rep.asks", { n: answered, m: asks.length }),
+            })
+          : null,
         noteMarks(c, "span.tk-rep__open")
       )
     ),
+    sizeSwitch(() => emit("reports")),
     h(
       "div.mb-rd__acts.tk-rep__acts",
       null,
@@ -427,19 +426,18 @@ function readerHead(r, narrow) {
   );
 }
 
-/** Origin, project and filing time stand in the head; below the text only the read time remains. */
+/** Origin, project and filing time stand in the head; below the text only the read time remains.
+ *  Returns the article and the report's outline for the jump list (null while the text loads). */
 function reader(r, narrow) {
-  return h(
+  const annotated = R.body === null ? null : annotateReport(bodyNodes(R.body), notesUi);
+  focusNote = annotated?.focus ?? null;
+  const el = h(
     "article.mb-rd",
     null,
-    readerHead(r, narrow),
-    R.body === null
-      ? h("div.mb-rd__text.is-wait", { text: t("tk.loading") })
-      : (() => {
-          const annotated = annotateReport(bodyNodes(R.body), notesUi);
-          focusNote = annotated.focus;
-          return h("div.mb-rd__text.tk-rep__md", null, annotated.nodes);
-        })(),
+    readerHead(r, narrow, annotated?.toc.asks ?? []),
+    annotated
+      ? h("div.mb-rd__text.tk-rep__md", { cls: `is-size-${textSize()}` }, annotated.nodes)
+      : h("div.mb-rd__text.is-wait", { text: t("tk.loading") }),
     r.readAt === null
       ? null
       : h(
@@ -449,6 +447,7 @@ function reader(r, narrow) {
           h("span.mb-rd__fv", { text: fmtAt(r.readAt) })
         )
   );
+  return { el, outline: annotated?.toc ?? null };
 }
 
 /** Where the cursor stands in the note field being typed in, so a rebuild can put it back (#1610). */
@@ -462,23 +461,23 @@ function putCaret(el, c) {
   el.scrollTop = c.top;
 }
 
-/** Rebuilds the reader when its report, its notes, the open note field or the undo notice changed.
+/** Rebuilds the reader when its report, its notes, the open note field, the undo notice or the text
+ *  size changed, and hands the jump list the new outline.
  *  A rebuilt reader keeps its scroll place; an opened (or still open) note field gets the cursor, and
  *  a field typed in during the rebuild (a live update) keeps selection and scroll place. */
 function paintReader(read, rows, narrow, seen) {
   const r = rows.find((x) => x.id === R.sel);
-  const key = JSON.stringify([r, narrow, R.notes, R.edit && [R.edit.anchor, R.edit.noteId], R.undo]);
+  const key = JSON.stringify([r, narrow, R.notes, R.edit && [R.edit.anchor, R.edit.noteId], R.undo, textSize()]);
   if (key === seen.key && R.body === seen.body) return;
   const top = read.scrollTop,
     hadFocus = read.contains(document.activeElement),
     caret = hadFocus && seen.edit === R.edit ? caretOf(document.activeElement) : null;
   focusNote = null;
-  read.replaceChildren(
-    ...[
-      undoNotice(openReport),
-      r ? reader(r, narrow) : h("div.mb__nosel", { text: t(rows.length ? "tk.rep.pick" : "tk.rep.none") }),
-    ].filter(Boolean)
-  );
+  const shown = r
+    ? reader(r, narrow)
+    : { el: h("div.mb__nosel", { text: t(rows.length ? "tk.rep.pick" : "tk.rep.none") }), outline: null };
+  read.replaceChildren(...[undoNotice(openReport), shown.el].filter(Boolean));
+  setOutline(shown.outline, read);
   read.scrollTop = seen.sel !== R.sel ? 0 : top;
   if (focusNote && (seen.edit !== R.edit || hadFocus)) {
     focusNote();
@@ -508,10 +507,10 @@ function closeMenuOutside(e) {
  *  reader. Mounted into its own slot (tasks.js); list and reader keep their scroll position across
  *  polling because only a real change rebuilds them. */
 export function reportsRenderer(host) {
-  const head = reportsHead(closeReports),
+  const head = reportsHead(),
     list = h("nav.mb__list", { "aria-label": t("tk.rep.title"), on: { keydown: walk } }),
     side = h("div.tk-rv__side", null, list),
-    read = h("div.mb__reader"),
+    read = h("div.mb__reader", { on: { scroll: trackOutline } }),
     body = h("div.mb__body", null, side, read),
     view = h("section.tk-rv", { "aria-label": t("tk.rep.title") }, h("span.mb__ticks"), head.el, body);
   document.addEventListener("pointerdown", closeMenuOutside);
@@ -571,18 +570,18 @@ export function reportsRenderer(host) {
   };
 }
 
-/** Escape leaves the reading view (tasks.js key handler, after the pop-overs); true when it was open.
- *  An open note field closes first, then an open project list; `target` is the key event's target:
- *  in the search field Escape then empties the search. */
+/** Escape in the reading view (tasks.js key handler, after the pop-overs) closes what is open there:
+ *  the note field, else the project list, else — in the search field (`target`) — the search. It never
+ *  leaves the view, which is an area of its own reached from the rail (Daniel 18.11.2026). True when
+ *  it closed something; false leaves Escape to the rest of the page. */
 export function escapeReports(target) {
   if (!R.open) return false;
-  // an open note field closes first, so Escape never drops the report view with a draft in it
   if (R.edit) notesUi.cancel();
   else if (R.menu) {
     R.menu = false;
     emit("reports");
   } else if (R.q && target?.classList?.contains("tk-rv__input")) setQuery("");
-  else closeReports();
+  else return false;
   return true;
 }
 

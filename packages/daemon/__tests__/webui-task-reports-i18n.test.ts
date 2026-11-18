@@ -15,9 +15,15 @@ const keysIn = (source: string, prefix: RegExp) =>
 test("report texts exist in German and English", async () => {
   const reports = (
     await Promise.all(
-      ["tasks-reports", "tasks-reports-state", "tasks-reports-search", "tasks-reports-undo", "tasks-reports-head"].map(
-        (f) => read(`js/sections/${f}.js`)
-      )
+      [
+        "tasks-reports",
+        "tasks-reports-state",
+        "tasks-reports-search",
+        "tasks-reports-undo",
+        "tasks-reports-head",
+        "tasks-reports-size",
+        "tasks-reports-toc",
+      ].map((f) => read(`js/sections/${f}.js`))
     )
   ).join("\n");
   const widgets = await read("js/sections/dashboard-widgets.js");
@@ -52,12 +58,11 @@ test("the reports widget is a built-in widget that joins only boards the user ha
   assert.doesNotMatch(/const DEFAULT = \[[\s\S]*?\];/.exec(board)![0], /reports/, "a saved layout is never rewritten");
 });
 
-test("#1553: the head button counts unread reports, like the docs say", async () => {
+test("#1553: the rail entry counts unread reports (the Tasks head has no reports button any more)", async () => {
   const reports = await read("js/sections/tasks-reports.js");
-  const button = /export function reportsButton\(\) \{[\s\S]*?\n\}/.exec(reports)?.[0] ?? "";
-  assert.match(button, /const unread = unreadCount\(data\.reports\);/);
-  assert.match(button, /t\("tk\.rep\.btn", \{ n: unread \}\)/);
-  assert.doesNotMatch(button, /data\.reports\.length/, "the total belongs to the list header, not the button");
+  const area = /export const reportsArea = \{[\s\S]*?\n\};/.exec(reports)?.[0] ?? "";
+  assert.match(area, /badge: \(\) => unreadCount\(data\.reports\),/);
+  assert.doesNotMatch(reports, /reportsButton/);
 });
 
 test("#1597: the search texts and all other report texts exist in both languages", async () => {

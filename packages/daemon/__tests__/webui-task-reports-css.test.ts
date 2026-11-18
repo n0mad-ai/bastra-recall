@@ -57,6 +57,40 @@ test("N6: the place under the pointer gets a background and the note button a cl
   assert.ok(btn[1].background, "a filled button, not a faint outline");
 });
 
+const rule = (sel: string) => rules.find(([s]) => s === sel)?.[1] ?? assert.fail(`no rule ${sel}`);
+
+test("answer area: one framed unit set apart from the text; hover and choice change paint only", () => {
+  const area = rule(".tk-ask");
+  assert.ok(area.border && area["border-left"] && area.background && area.padding, "a framed surface of its own");
+  const hover = rules.filter(([sel]) => /tk-ask/.test(sel) && /:hover|:focus-visible|\.is-on/.test(sel));
+  assert.ok(hover.length >= 4);
+  for (const [sel, decls] of hover)
+    for (const prop of Object.keys(decls)) assert.ok(PAINT_ONLY.has(prop), `${sel} sets ${prop}, which takes room`);
+  const chosen = rule(".tk-ask__opt.is-on");
+  assert.equal(chosen["border-color"], "var(--amber)", "the choice is amber");
+  assert.match(chosen["box-shadow"], /var\(--amber\)/);
+});
+
+test("text size: medium and large are bigger and airier than small (the reader's 14.5 px)", () => {
+  const px = (sel: string) => parseFloat(rule(sel)["font-size"]);
+  assert.ok(px(".tk-rep__md.is-size-m") >= 16 && px(".tk-rep__md.is-size-l") > px(".tk-rep__md.is-size-m"));
+  assert.ok(parseFloat(rule(".tk-rep__md.is-size-m")["line-height"]) > 1.6);
+});
+
+test("one height for the view's head, the list rows and the report's head; title and meta one line each", () => {
+  assert.match(rule(".tk-rv")["--rv-row"], /^\d+px$/);
+  for (const sel of [".tk-rv .mb__head", ".tk-rv .mb-row", ".tk-rep__head"])
+    assert.equal(rule(sel).height, "var(--rv-row)", sel);
+  assert.equal(rule(".tk-rep__head")["flex-wrap"], "nowrap");
+  assert.equal(rule(".tk-rv .mb-row")["padding-block"], "0");
+  const title = rule(".tk-rep__title");
+  assert.deepEqual([title["white-space"], title["text-overflow"]], ["nowrap", "ellipsis"]);
+  const meta = rule(".tk-rep__meta");
+  assert.deepEqual([meta["white-space"], meta["flex-wrap"], meta.overflow], ["nowrap", "nowrap", "hidden"]);
+  const narrow = rule(".tk-rv.is-narrow .tk-rep__head");
+  assert.deepEqual([narrow["flex-wrap"], narrow.height], ["wrap", "auto"], "narrow screens may wrap");
+});
+
 test("N4/N2: rows with open notes are amber like the notes in the report", () => {
   const work = rules.find(([sel]) => sel === ".tk-rv .mb-row.is-work");
   assert.ok(work);
