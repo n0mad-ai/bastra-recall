@@ -107,7 +107,17 @@ export function recordClaimedMustLoad(state: SessionState, ids: readonly string[
   state.claimedMustLoad = [...set].slice(-CLAIMED_MUST_LOAD_CAP);
 }
 
+/** #1623: whether a kernel reservation marker belongs to a subagent. */
+function subagentDelivery(marker: string | undefined): boolean {
+  try {
+    return typeof (JSON.parse(marker ?? "null") as { agent?: unknown } | null)?.agent === "string";
+  } catch {
+    return false;
+  }
+}
+
 /** #1305: a user prompt starts a new count for the rule kernel's re-delivery.
+ *  #1623: the main agent's count only — subagents keep theirs.
  *  One read when nothing is counted, never throws. */
 export async function resetToolCalls(sessionId: string): Promise<void> {
   if (!sessionId) return;
@@ -122,7 +132,8 @@ export async function resetToolCalls(sessionId: string): Promise<void> {
     await mutateSessionState(sessionId, (state) => {
       delete state.toolCalls;
       if (state.constants) {
-        delete state.constants["rule-kernel-delivery"];
+        // #1623: a subagent's reservation keeps its own count; the prompt reaches only the main agent.
+        if (!subagentDelivery(state.constants["rule-kernel-delivery"])) delete state.constants["rule-kernel-delivery"];
         delete state.constants["rule-kernel-retry-at"];
       }
     });

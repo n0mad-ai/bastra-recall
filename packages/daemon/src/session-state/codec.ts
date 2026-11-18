@@ -99,6 +99,15 @@ function decodeTouchedSections(parsed: Parsed, state: SessionState): void {
 
 const isString = (id: unknown): id is string => typeof id === "string";
 
+/** #1623: per-subagent kernel counts, keyed by the agent_id hash only. */
+function decodeAgentToolCalls(raw: unknown): Record<string, number> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const counts: Record<string, number> = {};
+  for (const [agent, calls] of Object.entries(raw))
+    if (/^[0-9a-f]{64}$/.test(agent) && typeof calls === "number" && Number.isFinite(calls)) counts[agent] = calls;
+  return counts;
+}
+
 /** Save-eval deliveries, session-start constants and the gate lane's conventions. */
 function decodeConventionSections(parsed: Parsed, state: SessionState): void {
   if (Array.isArray(parsed.saveEvalDelivered)) {
@@ -123,6 +132,8 @@ function decodeConventionSections(parsed: Parsed, state: SessionState): void {
     state.deniedReflex = parsed.deniedReflex.filter(isString);
   }
   if (typeof parsed.toolCalls === "number") state.toolCalls = parsed.toolCalls;
+  const agentToolCalls = decodeAgentToolCalls(parsed.agentToolCalls);
+  if (agentToolCalls) state.agentToolCalls = agentToolCalls;
   if (Array.isArray(parsed.claimedMustLoad)) {
     state.claimedMustLoad = parsed.claimedMustLoad.filter(isString);
   }

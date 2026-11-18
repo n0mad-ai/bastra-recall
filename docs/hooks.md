@@ -788,7 +788,10 @@ usual. Two jobs, one locked state write per call:
   `BASTRA_REFLEX=off` silences it like the prompt reflex.
 - **Rule kernel (#1305).** After 25 tool calls without a user prompt the gate
   answers the rule kernel as `additionalContext`, never as a deny (see "Rule
-  kernel" below). HTTP hooks repeat the full kernel at that cadence. A short
+  kernel" below). Each agent counts its own calls: the main agent's count
+  restarts with a user prompt, and every subagent keeps a count of its own,
+  so parallel subagents do not drive each other's reminder (#1623). HTTP hooks
+  repeat the full kernel at that cadence. A short
   reminder with the catalog hash and lookup tools (`list_rules`, `load_memory`)
   requires direct delivery of the identical kernel to the same agent in the
   same context (#1461).
@@ -2723,7 +2726,10 @@ State-Schreibvorgang pro Aufruf:
   Prompt-Reflex.
 - **Regelkern (#1305).** Nach 25 Toolaufrufen ohne Prompt des Nutzers liefert
   das Gate den Regelkern als `additionalContext`, nie als Deny (siehe
-  „Regelkern" unten). HTTP-Hooks wiederholen den Volltext in diesem Takt.
+  „Regelkern" unten). Jeder Agent zählt seine eigenen Aufrufe: Beim
+  Hauptagenten beginnt die Zählung mit einem Nutzerprompt neu, jeder Subagent
+  zählt für sich, sodass parallele Subagenten die Erinnerung nicht gegenseitig
+  auslösen (#1623). HTTP-Hooks wiederholen den Volltext in diesem Takt.
   Eine kurze Erinnerung mit Katalog-Hash und den Abrufwerkzeugen
   (`list_rules`, `load_memory`) setzt voraus, dass derselbe Agent den
   identischen Kern im selben Kontext direkt erhalten hat (#1461).

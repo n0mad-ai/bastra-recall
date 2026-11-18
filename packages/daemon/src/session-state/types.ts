@@ -127,8 +127,13 @@ export interface SessionState {
   deniedReflex?: string[];
   /** #1303: tool calls the gate lane has seen in this session. #1305: since
    *  the last user prompt — the prompt lane resets it, and the gate lane
-   *  resets it when it re-delivers the rule kernel. */
+   *  resets it when it re-delivers the rule kernel. #1623: the main agent's
+   *  count (and unattributed callers'); subagents count in `agentToolCalls`. */
   toolCalls?: number;
+  /** #1623: each subagent's own rule-kernel count, keyed by a hash of its
+   *  agent_id and capped (gate-lane-claims.ts). A user prompt reaches only the
+   *  main agent, so it does not reset these. */
+  agentToolCalls?: Record<string, number>;
   /** #1305: must-load ids the gate denied a call for, waiting for the load
    *  that answers them. A load moves the id into `activeConventions`. */
   claimedMustLoad?: string[];
@@ -257,6 +262,7 @@ export interface ReadonlySessionState {
   readonly pendingMustLoad?: readonly Readonly<PendingMustLoad>[];
   readonly deniedReflex?: readonly string[];
   readonly toolCalls?: number;
+  readonly agentToolCalls?: Readonly<Record<string, number>>;
   readonly claimedMustLoad?: readonly string[];
   readonly activeConventions?: readonly Readonly<ActiveConvention>[];
   readonly loadedConventions?: readonly Readonly<{

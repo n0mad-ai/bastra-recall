@@ -15,6 +15,7 @@ import {
   type SessionState,
 } from "./session-state.js";
 import { RULE_KERNEL_TOOL_CALLS } from "./rule-kernel.js";
+import { kernelWorker } from "./rule-kernel-seen.js";
 
 export const DENIED_REFLEX_CAP = 200;
 export const KERNEL_DELIVERY = "rule-kernel-delivery";
@@ -30,17 +31,58 @@ export interface ActionMustLoad {
   onClaim?: (ids: readonly string[]) => void;
 }
 
+/** #1623: subagents whose kernel cadence a session keeps; the one counted longest ago is forgotten first. */
+export const AGENT_TOOL_CALLS_CAP = 50;
+
 interface KernelDelivery {
   token?: string;
   calls?: number;
   deadline: number;
+  /** #1623: the subagent whose calls the reservation took; absent = main. */
+  agent?: string;
 }
 
-/** Count this tool call and expire a kernel delivery reservation whose
- *  deadline passed: its calls go back on the counter. Returns the delivery
- *  still in flight, if any. */
-export function countAndExpireDelivery(state: SessionState, countTool: boolean): KernelDelivery | null {
-  if (countTool) state.toolCalls = (state.toolCalls ?? 0) + 1;
+/** Whose count this call advances, and the kernel delivery still in flight. */
+export interface KernelCadence {
+  agent: string | null;
+  inFlight: KernelDelivery | null;
+}
+
+/** #1623: the tool calls one agent made since its count started. The main
+ *  agent and unattributed callers share `toolCalls`; each subagent counts
+ *  its own, so parallel workers do not drive each other's reminder. */
+function callsOf(state: SessionState, agent: string | null): number {
+  return (agent === null ? state.toolCalls : state.agentToolCalls?.[agent]) ?? 0;
+}
+
+function setCalls(state: SessionState, agent: string | null, calls: number): void {
+  if (agent === null) {
+    state.toolCalls = calls;
+    return;
+  }
+  const counts = (state.agentToolCalls ??= {});
+  delete counts[agent];
+  counts[agent] = calls;
+  const keys = Object.keys(counts);
+  for (const old of keys.slice(0, Math.max(0, keys.length - AGENT_TOOL_CALLS_CAP))) delete counts[old];
+}
+
+/** A reservation that was not delivered gives its calls back to its agent. */
+export function returnKernelCalls(state: SessionState, delivery: KernelDelivery): void {
+  const agent = delivery.agent ?? null;
+  setCalls(state, agent, callsOf(state, agent) + (delivery.calls ?? RULE_KERNEL_TOOL_CALLS));
+}
+
+/** Count this tool call for its agent and expire a kernel delivery
+ *  reservation whose deadline passed: its calls go back on its agent's
+ *  counter. Returns the counting agent and the delivery still in flight. */
+export function countAndExpireDelivery(
+  state: SessionState,
+  countTool: boolean,
+  payload: { agent_id?: unknown }
+): KernelCadence {
+  const agent = kernelWorker(payload);
+  if (countTool) setCalls(state, agent, callsOf(state, agent) + 1);
   let delivery: KernelDelivery | null | undefined;
   try {
     delivery = JSON.parse(state.constants?.[KERNEL_DELIVERY] ?? "null");
@@ -49,10 +91,10 @@ export function countAndExpireDelivery(state: SessionState, countTool: boolean):
   }
   if (delivery && Date.now() >= delivery.deadline) {
     delete state.constants![KERNEL_DELIVERY];
-    state.toolCalls = (state.toolCalls ?? 0) + (delivery.calls ?? RULE_KERNEL_TOOL_CALLS);
+    returnKernelCalls(state, delivery);
     delivery = null;
   }
-  return delivery ?? null;
+  return { agent, inFlight: delivery ?? null };
 }
 
 /** The pending must-load ids this call claims — none for a subagent, which
@@ -201,27 +243,28 @@ export function claimReflex(
 /**
  * Reserve the rule kernel's re-delivery when it is due: nothing else is said
  * in this call (a deny or action context carries its own message; the kernel
- * waits), no delivery is in flight, the retry pause is over and enough tool
- * calls have passed. Returns the active conventions to deliver, or null.
+ * waits), no delivery is in flight, the retry pause is over and this agent
+ * made enough tool calls. Returns the active conventions to deliver, or null.
  */
 export function reserveKernel(
   state: SessionState,
   quiet: boolean,
-  delivery: KernelDelivery | null,
+  cadence: KernelCadence,
   token: string,
   deadline: number
 ): ActiveConvention[] | null {
+  const { agent } = cadence;
   if (
     !quiet ||
-    delivery ||
+    cadence.inFlight ||
     Date.now() < Number(state.constants?.[KERNEL_RETRY_AT] ?? 0) ||
-    (state.toolCalls ?? 0) < RULE_KERNEL_TOOL_CALLS
+    callsOf(state, agent) < RULE_KERNEL_TOOL_CALLS
   )
     return null;
   const active = [...(state.activeConventions ?? [])];
-  const calls = state.toolCalls ?? 0;
-  state.toolCalls = 0;
-  (state.constants ??= {})[KERNEL_DELIVERY] = JSON.stringify({ token, calls, deadline });
+  const calls = callsOf(state, agent);
+  setCalls(state, agent, 0);
+  (state.constants ??= {})[KERNEL_DELIVERY] = JSON.stringify({ token, calls, deadline, ...(agent ? { agent } : {}) });
   delete state.constants[KERNEL_RETRY_AT];
   return active;
 }

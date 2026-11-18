@@ -12,7 +12,9 @@ exports[`#1525 gate state golden — a subagent leaves the pending must-load alo
         "at": 1800000000000
       }
     ],
-    "toolCalls": 1
+    "agentToolCalls": {
+      "3a8aa594c18aa6bee4f11772ebf152fc23671537ea0b12d4bdacf9a22205bd26": 1
+    }
   }
 }
 `;

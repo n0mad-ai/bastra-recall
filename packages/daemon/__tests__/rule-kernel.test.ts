@@ -30,6 +30,8 @@ import {
   type KernelCandidates,
 } from "../src/rule-kernel.js";
 import { runGateLane, actionReflexPool } from "../src/gate-lane.js";
+import { AGENT_TOOL_CALLS_CAP } from "../src/gate-lane-claims.js";
+import { kernelWorker } from "../src/rule-kernel-seen.js";
 import { dispatchLaneRoutes } from "../src/http-lane-routes.js";
 import { runPromptLane } from "../src/prompt-lane.js";
 import { runSessionLane } from "../src/session-lane.js";
@@ -454,7 +456,9 @@ describe("#1305 rule kernel: re-delivery by the gate lane", () => {
     const sid = "kernel-actor-receipts";
     const atCadence = async (actor: { agent_id?: string; bastra_client?: string }) => {
       await mutateSessionState(sid, (state) => {
-        state.toolCalls = RULE_KERNEL_TOOL_CALLS - 1;
+        const worker = kernelWorker(actor);
+        if (worker === null) state.toolCalls = RULE_KERNEL_TOOL_CALLS - 1;
+        else (state.agentToolCalls ??= {})[worker] = RULE_KERNEL_TOOL_CALLS - 1;
       });
       const out = parse(await runGateLane({ ...call(sid), ...actor }, deps));
       return out.hookSpecificOutput?.additionalContext ?? "";
@@ -467,6 +471,51 @@ describe("#1305 rule kernel: re-delivery by the gate lane", () => {
     assert.match(await atCadence({ bastra_client: undefined }), /Rule index/);
     assert.match(await atCadence({ bastra_client: undefined }), /Rule index/);
     assert.match(await atCadence({}), /unchanged=/);
+  });
+
+  it("INV-RULE-05: main and subagents each count their own calls to the kernel (#1623)", async () => {
+    const sid = "kernel-gate-per-agent";
+    const actors = [{}, { agent_id: "worker-a" }, { agent_id: "worker-b" }];
+    const due = actors.map(() => [] as number[]);
+    // Interleaved: main, worker-a, worker-b, main, ... — 3 × 2 × cadence calls.
+    for (let i = 0; i < RULE_KERNEL_TOOL_CALLS * 2 * actors.length; i++) {
+      const who = i % actors.length;
+      const out = parse(await runGateLane({ ...call(sid), ...actors[who] }, deps));
+      if (out.hookSpecificOutput?.additionalContext?.includes("<rule-kernel"))
+        due[who]!.push(Math.floor(i / actors.length) + 1);
+      assert.equal(out.hookSpecificOutput?.permissionDecision, undefined, "never a permission decision");
+    }
+    // Each agent gets it exactly on its own 25th and 50th call, never earlier.
+    for (const calls of due) assert.deepEqual(calls, [RULE_KERNEL_TOOL_CALLS, RULE_KERNEL_TOOL_CALLS * 2]);
+
+    // A user prompt reaches only the main agent: it resets main's count, not a worker's.
+    for (let i = 0; i < RULE_KERNEL_TOOL_CALLS - 1; i++) {
+      await runGateLane(call(sid), deps);
+      await runGateLane({ ...call(sid), agent_id: "worker-a" }, deps);
+    }
+    await runPromptLane(
+      { hook_event_name: "UserPromptSubmit", session_id: sid, prompt: "ok", cwd: "/tmp" } as never,
+      null,
+      "http://127.0.0.1:9"
+    );
+    const afterPrompt = await loadSessionState(sid);
+    assert.equal(afterPrompt.toolCalls, undefined);
+    assert.equal(afterPrompt.agentToolCalls?.[kernelWorker({ agent_id: "worker-a" })!], RULE_KERNEL_TOOL_CALLS - 1);
+    assert.equal(parse(await runGateLane(call(sid), deps)).hookSpecificOutput, undefined);
+    assert.match(
+      parse(await runGateLane({ ...call(sid), agent_id: "worker-a" }, deps)).hookSpecificOutput?.additionalContext ??
+        "",
+      /<rule-kernel/
+    );
+  });
+
+  it("a session keeps the counts of at most AGENT_TOOL_CALLS_CAP subagents (#1623)", async () => {
+    const sid = "kernel-gate-agent-cap";
+    for (let i = 0; i <= AGENT_TOOL_CALLS_CAP; i++) await runGateLane({ ...call(sid), agent_id: `w-${i}` }, deps);
+    const counts = (await loadSessionState(sid)).agentToolCalls ?? {};
+    assert.equal(Object.keys(counts).length, AGENT_TOOL_CALLS_CAP);
+    assert.equal(counts[kernelWorker({ agent_id: "w-0" })!], undefined, "the oldest worker is forgotten");
+    assert.equal(counts[kernelWorker({ agent_id: `w-${AGENT_TOOL_CALLS_CAP}` })!], 1);
   });
 
   it("a user prompt resets the count", async () => {

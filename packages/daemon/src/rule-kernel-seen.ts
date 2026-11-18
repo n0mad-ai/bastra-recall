@@ -1,7 +1,8 @@
 /**
  * #1461: which agent already holds which rule kernel.
  *
- * The gate lane re-delivers the kernel after 25 tool calls without a prompt.
+ * The gate lane re-delivers the kernel after 25 tool calls without a prompt,
+ * counted per agent (#1623, gate-lane-claims.ts).
  * With direct context delivery it remembers, per session and agent, the
  * fingerprint of the last full kernel and sends a reminder for identical
  * text. HTTP finish confirms transport only, so HTTP hooks repeat the kernel.
@@ -26,14 +27,20 @@ export interface KernelSeen {
   fingerprint: string;
 }
 
+/** #1623: a subagent's stable identity within a session (a hash of its
+ *  agent_id), or null for the main agent and unattributed callers. */
+export function kernelWorker(payload: { agent_id?: unknown }): string | null {
+  if (hookAgent(payload) !== "subagent") return null;
+  return createHash("sha256").update(JSON.stringify(payload.agent_id)).digest("hex");
+}
+
 /** Receipt identity for an attributed actor with direct context delivery. */
 export function kernelSeen(payload: { agent_id?: unknown }, text: string): KernelSeen {
   const fingerprint = kernelFingerprint(text);
   if (!observesLaneContextDirectly()) return { fingerprint };
   const actor = hookAgent(payload);
   if (actor === null) return { fingerprint };
-  const agent =
-    actor === "main" ? "main" : "worker:" + createHash("sha256").update(JSON.stringify(payload.agent_id)).digest("hex");
+  const agent = actor === "main" ? "main" : "worker:" + kernelWorker(payload)!;
   return { key: SEEN_PREFIX + "v3:" + agent, fingerprint };
 }
 

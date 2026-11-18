@@ -61,6 +61,7 @@ import {
   claimReflex,
   countAndExpireDelivery,
   reserveKernel,
+  returnKernelCalls,
   KERNEL_DELIVERY,
   KERNEL_RETRY_AT,
   type ActionMustLoad,
@@ -295,7 +296,7 @@ async function gate(
       delete state.constants![KERNEL_DELIVERY];
       if (delivered && seen) rememberKernel(state.constants!, seen);
       if (!delivered) {
-        state.toolCalls = (state.toolCalls ?? 0) + (marker.calls ?? RULE_KERNEL_TOOL_CALLS);
+        returnKernelCalls(state, marker);
         if (backoff) state.constants![KERNEL_RETRY_AT] = String(Date.now() + 5000);
       }
     }).catch(() => {});
@@ -387,7 +388,7 @@ async function gate(
       // #1525: the decisions are named steps (gate-lane-claims.ts), run here in
       // one locked mutation in their original order.
       (state) => {
-        const delivery = countAndExpireDelivery(state, deps.countTool !== false);
+        const delivery = countAndExpireDelivery(state, deps.countTool !== false, payload);
         claimedMustLoad = [];
         claimedReflex = [];
         kernelActive = null;
