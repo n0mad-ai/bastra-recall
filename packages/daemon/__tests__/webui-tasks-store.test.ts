@@ -185,6 +185,24 @@ test("execute: a double click on the run button starts one reservation and one e
   assert.equal(button.disabled, true);
 });
 
+test("execute: after a completed run the re-rendered button stays disabled and starts no second run (#1651)", async () => {
+  const s = await store([task()], {
+    lease: () => ({ body: LEASE }),
+    execute: () => ({ body: { state: "succeeded", intent_id: "i1", receipt: { id: "r1" } } }),
+  });
+  await s.m.showProposal(PROPOSAL);
+  await click(runButton(s.m.overlays()));
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(s.names(), ["lease", "execute", "status", "release"], "the first run releases its own holder");
+  // The outcome line changes the overlay signature: the dialog is rebuilt.
+  const rebuilt = runButton(s.m.overlays());
+  assert.equal(rebuilt.attrs.disabled, "true");
+  await click(rebuilt);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(s.names().filter((n) => n === "lease").length, 1, "no second reservation");
+  assert.equal(s.names().filter((n) => n === "execute").length, 1, "no second execution");
+});
+
 test("execute: the run button is disabled while the change is not approved or its binding is not current", async () => {
   const s = await store();
   for (const data of [

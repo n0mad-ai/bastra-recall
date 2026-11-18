@@ -296,6 +296,9 @@ export async function executeProposal() {
       intent: r.intent_id ?? "—",
       receipt: r.receipt?.id || t("tk.prop.noReceipt"),
     });
+    // #1651: the outcome belongs to the proposal, so a rebuilt dialog does not
+    // offer the finished write again under a fresh idempotency key.
+    if (S.proposal === data) S.proposal = { ...data, executed: true };
     emit();
     await refresh();
   } catch (e) {

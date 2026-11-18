@@ -431,7 +431,7 @@
     "[\"packages/daemon/webui/app/js/sections/tasks-api.js\",\"[\\\"function:boardPatch\\\"]\",\"complexity\"]": 18,
     "[\"packages/daemon/webui/app/js/sections/tasks-api.js\",\"[\\\"function:createInput\\\"]\",\"complexity\"]": 18,
     "[\"packages/daemon/webui/app/js/sections/tasks-overlays.js\",\"[\\\"function:dueCard\\\"]\",\"complexity\"]": 18,
-    "[\"packages/daemon/webui/app/js/sections/tasks-overlays.js\",\"[\\\"function:proposal\\\"]\",\"complexity\"]": 22,
+    "[\"packages/daemon/webui/app/js/sections/tasks-overlays.js\",\"[\\\"function:proposal\\\"]\",\"complexity\"]": 20,
     "[\"packages/daemon/webui/app/js/sections/tasks-panel.js\",\"[\\\"function:controlTab\\\"]\",\"complexity\"]": 35,
     "[\"packages/daemon/webui/app/js/sections/tasks-panel.js\",\"[\\\"function:detail\\\"]\",\"complexity\"]": 55,
     "[\"packages/daemon/webui/app/js/sections/tasks-panel.js\",\"[\\\"function:editForm\\\"]\",\"complexity\"]": 16,

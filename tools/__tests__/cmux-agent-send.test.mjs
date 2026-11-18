@@ -330,3 +330,38 @@ test("#1645 an unremovable stale lock ends in 'busy' within the wait, is kept, a
     assert.equal(fs.readFileSync(sentinel, "utf8"), "foreign", `${name}: foreign contents stay`);
   }
 });
+
+test("#1648 a broken symlink at the lock pauses between retries, ends 'busy' and stays", async () => {
+  const lockRoot = join(fs.mkdtempSync(join(scratch, "pane-")), "locks");
+  let lockName;
+  sendAgentMessage(
+    { ...options, lockRoot },
+    () => {
+      [lockName] = fs.readdirSync(lockRoot);
+      return { status: 0 };
+    },
+    noPause
+  );
+  const lock = join(lockRoot, lockName);
+  const target = join(lockRoot, "missing-target");
+  fs.symlinkSync(target, lock);
+  const worker = new Worker(STUCK_SENDER, {
+    eval: true,
+    workerData: {
+      moduleUrl: new URL("../cmux-agent-send.mjs", import.meta.url).href,
+      options: { ...options, lockRoot },
+    },
+  });
+  // The clock only moves by requested pauses: a loop that never pauses cannot
+  // reach the deadline and is stopped by this real timeout instead.
+  const timer = setTimeout(() => worker.terminate(), 5_000);
+  const [result] = await Promise.race([once(worker, "message"), once(worker, "exit").then(() => [undefined])]);
+  clearTimeout(timer);
+  await worker.terminate();
+  assert.ok(result, "the sender spun without pausing");
+  assert.match(result.error ?? "", /cmux target busy/);
+  assert.equal(result.transport, 0, "nothing reaches cmux");
+  assert.ok(result.waited > 0 && result.waited <= 21_000, `bounded by the wait (${result.waited} ms)`);
+  assert.equal(fs.readlinkSync(lock), target, "the foreign link stays");
+  assert.equal(fs.existsSync(target), false, "its target is not created");
+});

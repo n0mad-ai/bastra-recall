@@ -311,6 +311,11 @@ until a new design replaces it; this name is independent of the product version.
   `__proto__` as unknown commands instead of calling `task_controls` (#1644).
 - The cmux sender observes its wait deadline when a stale lock cannot be
   removed and keeps foreign lock contents (#1645).
+- cmux agent sender pauses between retries when a broken symlink occupies the
+  target lock instead of spinning until the deadline (#1648).
+- Tasks web UI: the Run button of a prepared change stays disabled after the
+  run returned an outcome, so a re-rendered dialog cannot start it again
+  (#1651).
 - The lint configuration guard compares template and regular-expression text,
   rejecting unverified path and regex changes (#1646, #1535 S2).
 - Invalid custom numeric settings keep their entered text and block Apply and

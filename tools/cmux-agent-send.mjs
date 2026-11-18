@@ -49,6 +49,7 @@ function acquireTargetLock(targets, pause, lockRoot = join(tmpdir(), "bastra-cmu
   const key = createHash("sha256").update(`${targets.workspace_id}\n${targets.surface_id}`.toLowerCase()).digest("hex");
   const lock = join(lockRoot, key.slice(0, 32));
   const started = Date.now();
+  let quickRetry = true;
   for (;;) {
     try {
       mkdirSync(lock, { mode: 0o700 });
@@ -63,7 +64,12 @@ function acquireTargetLock(targets, pause, lockRoot = join(tmpdir(), "bastra-cmu
     try {
       age = Date.now() - statSync(lock).mtimeMs;
     } catch {
-      continue; // released between mkdir and stat: try again at once
+      // Released between mkdir and stat: try again at once. A path that keeps
+      // failing (#1648: a broken symlink) waits like a held lock instead.
+      if (quickRetry) {
+        quickRetry = false;
+        continue;
+      }
     }
     if (age > LOCK_STALE_MS) {
       try {

@@ -390,6 +390,10 @@ function authText(a) {
   return `${lab} · ${a.program ?? ""} · ${t("tk.session")} ${a.session_id ?? ""} · ${fmtAt(a.at)} · ${a.write_origin ?? ""}: ${a.user_request ?? ""}`;
 }
 
+function approvedAndCurrent(d, stale) {
+  return !stale && d.approved === true && (!d.binding_status || d.binding_status === "current");
+}
+
 /** Prepared change: exact before/after, execute (old UI showProposal). */
 function proposal() {
   const d = S.proposal,
@@ -405,7 +409,8 @@ function proposal() {
       : null) ||
     d.authorization ||
     p.authorization;
-  const canRun = !stale && d.approved === true && (!d.binding_status || d.binding_status === "current");
+  const ready = approvedAndCurrent(d, stale);
+  const canRun = ready && d.executed !== true;
   return h(
     "div.tk-pop.tk-pop--prop",
     { role: "dialog", "aria-label": t("tk.prop.title") },
@@ -436,7 +441,7 @@ function proposal() {
             )
           ),
           auth ? h("p.tk-prop__p", { text: authText(auth) }) : null,
-          canRun ? null : h("p.tk-prop__p.is-warn", { text: t("tk.prop.missing") }),
+          ready ? null : h("p.tk-prop__p.is-warn", { text: t("tk.prop.missing") }),
           S.propNote ? h("p.tk-prop__p.is-ok", { text: S.propNote }) : null,
         ],
     stale
