@@ -24,6 +24,10 @@ const en = {
     `error: no rules layer for '${surface}' — supported: ${supported}\n` +
     "  (Claude Code and Claude Desktop use the skill, installed by 'bastra install'.)\n",
   noSuchDir: (dir: string) => `error: no such directory: ${dir}\n`,
+  /** `bastra rules proposals | confirm | reject`; the daemon's own error text stays as it came. */
+  proposalError: (message: string) => `error: ${message}\n`,
+  unknownProposalOperation: "Unknown rulebook proposal operation",
+  proposalsChanged: "Proposal list changed; run bastra rules proposals again.",
 };
 export type RulesCmdWords = typeof en;
 
@@ -47,6 +51,9 @@ const de: RulesCmdWords = {
     `Fehler: keine Regelschicht für '${surface}' — unterstützt: ${supported}\n` +
     "  (Claude Code und Claude Desktop nutzen den Skill, den 'bastra install' einrichtet.)\n",
   noSuchDir: (dir: string) => `Fehler: kein solcher Ordner: ${dir}\n`,
+  proposalError: (message: string) => `Fehler: ${message}\n`,
+  unknownProposalOperation: "Unbekannte Aktion für Regelvorschläge",
+  proposalsChanged: "Die Liste der Vorschläge hat sich geändert; bastra rules proposals erneut ausführen.",
 };
 
 export const RULES_CMD_WORDS: Readonly<Record<string, RulesCmdWords>> = { en, de };

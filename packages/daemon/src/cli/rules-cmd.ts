@@ -88,14 +88,14 @@ async function remove(projectDir: string, dryRun: boolean, w: RulesCmdWords): Pr
 }
 
 export async function cmdRules(args: ParsedArgs): Promise<number> {
+  const language = await taskCliLanguage().catch(() => "en");
   if (["proposals", "confirm", "reject"].includes(args.positional[1]))
-    return cmdRulebookProposals(args.positional.slice(1), args.dryRun);
+    return cmdRulebookProposals(args.positional.slice(1), args.dryRun, language);
   // `rules cursor [path]` and `rules remove cursor [path]`
   const [, second, third, fourth] = args.positional;
   const removing = second === "remove";
   const surface = removing ? third : second;
   const pathArg = removing ? fourth : third;
-  const language = await taskCliLanguage().catch(() => "en");
   const w = rulesCmdWordsIn(language);
 
   if (!surface) {

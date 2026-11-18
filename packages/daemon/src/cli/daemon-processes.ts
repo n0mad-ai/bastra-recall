@@ -14,6 +14,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
+import { statusWordsIn } from "./status-words.js";
 
 const run = promisify(execFile);
 
@@ -90,14 +91,10 @@ export async function listDaemonProcesses(port: number = daemonPort()): Promise<
  * One line for `status` / `doctor`. `null` when there is nothing worth saying —
  * exactly one daemon, or none (the daemon line already covers that case).
  */
-export function formatExtraDaemons(procs: DaemonProcess[]): string | null {
+export function formatExtraDaemons(procs: DaemonProcess[], language?: string): string | null {
   if (procs.length <= 1) return null;
   const others = procs.filter((p) => !p.primary);
   if (others.length === 0) return null;
   const list = others.map((p) => `pid ${p.pid} (${p.elapsed})`).join(", ");
-  return (
-    `${others.length} further daemon process(es) running on other ports: ${list}. ` +
-    `Harmless for recall — the port keeps them apart — but they hold a vault index in memory. ` +
-    `Stop with: kill ${others.map((p) => p.pid).join(" ")}`
-  );
+  return statusWordsIn(language).extraDaemons(others.length, list, others.map((p) => p.pid).join(" "));
 }

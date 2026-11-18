@@ -4,7 +4,7 @@
  * running daemon's restore_memory. Not `bastra archive`: that one is the
  * archive behind the agent's `rm`, files outside the vault.
  */
-import { rulebookCliCall } from "./rulebook-proposals-cmd.js";
+import { rulebookCliCall } from "./helpers.js";
 import type { ParsedArgs } from "./types.js";
 import { taskCliLanguage } from "./task-cli-words.js";
 import { usageBlocksIn } from "./usage-block-words.js";
@@ -17,12 +17,14 @@ export const TRASH_WORDS = {
     more: (n: number) => `… ${n} more not shown`,
     restoreWith: "restore with: bastra trash restore <id>",
     restored: (id: string, to: string) => `restored ${id} → ${to}`,
+    failed: (sub: string | null, message: string) => `bastra trash ${sub}: ${message}`,
   },
   de: {
     empty: "nichts Archiviertes zum Wiederherstellen",
     more: (n: number) => `… ${n} weitere nicht angezeigt`,
     restoreWith: "wiederherstellen mit: bastra trash restore <id>",
     restored: (id: string, to: string) => `wiederhergestellt ${id} → ${to}`,
+    failed: (sub: string | null, message: string) => `bastra trash ${sub}: Fehler: ${message}`,
   },
 };
 export const trashWordsIn = (language: string | undefined) =>
@@ -63,7 +65,7 @@ export async function cmdTrash(args: ParsedArgs): Promise<number> {
       return 0;
     }
   } catch (e) {
-    console.error(`bastra trash ${sub}: ${(e as Error).message}`);
+    console.error(w.failed(sub, (e as Error).message));
     return 1;
   }
   console.error(usage);

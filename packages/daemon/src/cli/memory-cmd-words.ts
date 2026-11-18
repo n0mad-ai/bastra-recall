@@ -25,6 +25,8 @@ const en = {
   previewKind: "  kind:     ",
   previewRedacted: "  redacted: ",
   nothing: "nothing",
+  recallFailed: (message: string) => `bastra recall: ${message}`,
+  saveFailed: (message: string) => `bastra save: ${message}`,
 };
 export type MemoryCmdWords = typeof en & { usage: ReturnType<typeof usageWordsIn> };
 
@@ -47,6 +49,8 @@ const de: typeof en = {
   previewKind: "  Art:       ",
   previewRedacted: "  geschwärzt: ",
   nothing: "nichts",
+  recallFailed: (message: string) => `bastra recall: Fehler: ${message}`,
+  saveFailed: (message: string) => `bastra save: Fehler: ${message}`,
 };
 
 export const MEMORY_CMD_WORDS: Readonly<Record<string, typeof en>> = { en, de };

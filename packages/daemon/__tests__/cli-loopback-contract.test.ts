@@ -8,6 +8,9 @@
  * after every command (GET /health, 700 ms), and the replay of `bastra doctor
  * --replay` (POST /hook/prompt). `probeDaemon` (cli/helpers.ts) keeps its own
  * request — see the reason there — and is pinned by its existing callers.
+ * The memory commands' REST call (`rulebookCliCall`: recall, save, trash,
+ * rules proposals, save suggestions) is pinned here too, before it moved out
+ * of the rulebook command into the shared CLI helpers (#1508).
  *
  * Runner: npm test (scripts/test-env.mjs isolates HOME and the logs).
  */
@@ -20,6 +23,11 @@ import { join } from "node:path";
 import { cmdPanel } from "../src/cli/panel.js";
 import { maybeEmitUpdateHint } from "../src/cli/update-hint.js";
 import { daemonSupportsReplay, postReplayTurn } from "../src/cli/doctor-replay.js";
+import { rulebookCliCall } from "../src/cli/helpers.js";
+import { cmdTrash } from "../src/cli/trash-cmd.js";
+import { parseArgs } from "../src/cli/commands.js";
+import { projectForFilter } from "../src/scope-filter.js";
+import { DAEMON_VERSION } from "../src/version.js";
 
 interface Seen {
   method: string;
@@ -271,4 +279,111 @@ test("panel and update hint reach an IPv6 literal endpoint", async (t) => {
   let shown = false;
   await withDaemon(base, () => capture(t, process.stderr, async () => (shown = await maybeEmitUpdateHint())));
   assert.equal(shown, true);
+});
+
+// ─── the memory commands' REST call (#1508) ──────────────────────────────────
+
+/** Run `fn` with BASTRA_API_TOKEN set to `token` (unset for undefined). */
+async function withToken<T>(token: string | undefined, fn: () => Promise<T>): Promise<T> {
+  const before = process.env.BASTRA_API_TOKEN;
+  if (token === undefined) delete process.env.BASTRA_API_TOKEN;
+  else process.env.BASTRA_API_TOKEN = token;
+  try {
+    return await fn();
+  } finally {
+    if (before === undefined) delete process.env.BASTRA_API_TOKEN;
+    else process.env.BASTRA_API_TOKEN = before;
+  }
+}
+
+test("memory REST call: POST /api/v1/<tool> with JSON, the CLI agent, the project and the bearer", async (t) => {
+  const d = await server(() => ({ status: 200, body: JSON.stringify({ archived: [], total: 0 }) }));
+  t.after(() => close(d.s));
+  const answer = await withDaemon(d.base, () =>
+    withToken("tok-1508", () => rulebookCliCall("restore_memory", { limit: 100 }))
+  );
+  assert.deepEqual(answer, { archived: [], total: 0 });
+  await withDaemon(d.base, () => withToken(undefined, () => rulebookCliCall("recall", { query: "q" })));
+  const project = encodeURIComponent(projectForFilter(process.cwd()) ?? "");
+  const agent = `bastra-cli/${DAEMON_VERSION}`;
+  assert.deepEqual(
+    d.seen.map((r) => [
+      r.method,
+      r.url,
+      r.headers["content-type"],
+      r.headers["user-agent"],
+      r.headers["x-bastra-project"],
+      r.headers.authorization,
+      r.body,
+    ]),
+    [
+      ["POST", "/api/v1/restore_memory", "application/json", agent, project, "Bearer tok-1508", '{"limit":100}'],
+      ["POST", "/api/v1/recall", "application/json", agent, project, undefined, '{"query":"q"}'],
+    ]
+  );
+});
+
+test("memory REST call: the daemon's error text, else the HTTP status, is thrown", async (t) => {
+  for (const [reply, message] of [
+    [{ status: 400, body: JSON.stringify({ error: "no such id" }) }, { message: "no such id" }],
+    [{ status: 500, body: "{}" }, { message: "HTTP 500" }],
+  ] as const) {
+    const d = await server(() => reply);
+    t.after(() => close(d.s));
+    await assert.rejects(
+      withDaemon(d.base, () => withToken(undefined, () => rulebookCliCall("restore_memory", { id: "x" }))),
+      message
+    );
+  }
+  const refused = await refusedBase();
+  await assert.rejects(withDaemon(refused, () => withToken(undefined, () => rulebookCliCall("recall", {}))));
+});
+
+test("memory REST call: a save preview checks the served schema first and sends nothing without dry_run", async (t) => {
+  const schema = (dryRun: boolean) =>
+    JSON.stringify({
+      tools: [{ name: "save_memory", inputSchema: { properties: dryRun ? { dry_run: { type: "boolean" } } : {} } }],
+    });
+  const old = await server((url) => (url.startsWith("/tools") ? { status: 200, body: schema(false) } : null));
+  t.after(() => close(old.s));
+  await assert.rejects(
+    withDaemon(old.base, () => withToken(undefined, () => rulebookCliCall("save_memory", { dry_run: true }))),
+    /daemon does not advertise save_memory dry_run support; nothing was sent to save_memory/
+  );
+  assert.deepEqual(
+    old.seen.map((r) => [r.method, r.url]),
+    [["GET", "/tools?surface=write"]]
+  );
+  const now = await server((url) =>
+    url.startsWith("/tools") ? { status: 200, body: schema(true) } : { status: 200, body: '{"ok":true}' }
+  );
+  t.after(() => close(now.s));
+  await withDaemon(now.base, () => withToken(undefined, () => rulebookCliCall("save_memory", { dry_run: true })));
+  assert.deepEqual(
+    now.seen.map((r) => [r.method, r.url, r.body]),
+    [
+      ["GET", "/tools?surface=write", ""],
+      ["POST", "/api/v1/save_memory", '{"dry_run":true}'],
+    ]
+  );
+});
+
+test("bastra trash list and restore reach restore_memory through the same call", async (t) => {
+  const reply = { archived: [], total: 0, restored_to: "/v/a.md" };
+  const d = await server(() => ({ status: 200, body: JSON.stringify(reply) }));
+  t.after(() => close(d.s));
+  await withDaemon(d.base, () =>
+    withToken(undefined, async () => {
+      await capture(t, process.stdout, () => cmdTrash(parseArgs(["trash", "list"])));
+      await capture(t, process.stdout, () => cmdTrash(parseArgs(["trash", "restore", "m-1"])));
+    })
+  );
+  const agent = `bastra-cli/${DAEMON_VERSION}`;
+  assert.deepEqual(
+    d.seen.map((r) => [r.method, r.url, r.headers["user-agent"], r.body]),
+    [
+      ["POST", "/api/v1/restore_memory", agent, '{"limit":100}'],
+      ["POST", "/api/v1/restore_memory", agent, '{"id":"m-1"}'],
+    ]
+  );
 });

@@ -28,6 +28,7 @@ export const ARCHIVE_WORDS = {
     removed: "removed",
     wouldRemove: "would remove",
     fine: "archive is fine: nothing to let go",
+    restoreFailed: (message: string) => `bastra archive restore: ${message}`,
   },
   de: {
     putBack: "zurücklegen mit: bastra archive restore <pfad>",
@@ -36,6 +37,7 @@ export const ARCHIVE_WORDS = {
     removed: "entfernt",
     wouldRemove: "würde entfernen",
     fine: "Archiv ist in Ordnung: nichts freizugeben",
+    restoreFailed: (message: string) => `bastra archive restore: Fehler: ${message}`,
   },
 };
 export const archiveWordsIn = (language: string | undefined) =>
@@ -88,7 +90,7 @@ export async function cmdArchive(args: ParsedArgs): Promise<number> {
       console.log(w.restored(restore(target)));
       return 0;
     } catch (e) {
-      console.error(`bastra archive restore: ${(e as Error).message}`);
+      console.error(w.restoreFailed((e as Error).message));
       return 1;
     }
   }

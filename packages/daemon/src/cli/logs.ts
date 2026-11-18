@@ -28,9 +28,36 @@ import {
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { defaultLogDir } from "../learned-recall/harvest.js";
+import { taskCliLanguage } from "./task-cli-words.js";
 
 const DAEMON_STDOUT = ["/tmp/bastra-daemon.out", "/tmp/bastra-daemon.err"];
 const EVENT_FILE = /^events-(\d{4}-\d{2}-\d{2})\.jsonl$/;
+
+/** The words `bastra logs` prints around the log lines, by language.primary
+ *  (#1602), English when unset or unlisted. The log lines themselves stay as
+ *  they were recorded. */
+export const LOGS_WORDS = {
+  en: {
+    noEntries: (since: string) => `(no log entries in the last ${since} — try --since 1d)`,
+    noLogDir: (dir: string) => `  note: ${dir} does not exist yet; nothing has been logged.`,
+    hidden: (n: number) => `… ${n} earlier line(s) hidden — raise with --lines`,
+    following: "— following (ctrl-c to stop) —",
+    badSince: (value: string) => `error: cannot read --since '${value}' — try 30s, 10min, 2h, 1d\n`,
+    badSource: (value: string) => `error: --source must be daemon, hook or all (got '${value}')\n`,
+    badLines: (value: string) => `error: --lines must be a positive number (got '${value}')\n`,
+  },
+  de: {
+    noEntries: (since: string) => `(keine Log-Einträge in den letzten ${since} — versuch --since 1d)`,
+    noLogDir: (dir: string) => `  Hinweis: ${dir} gibt es noch nicht; bisher wurde nichts geloggt.`,
+    hidden: (n: number) => `… ${n} frühere Zeile(n) ausgeblendet — mehr mit --lines`,
+    following: "— folge dem Log (Strg-C beendet) —",
+    badSince: (value: string) => `Fehler: --since '${value}' ist nicht lesbar — versuch 30s, 10min, 2h, 1d\n`,
+    badSource: (value: string) => `Fehler: --source muss daemon, hook oder all sein (war '${value}')\n`,
+    badLines: (value: string) => `Fehler: --lines muss eine positive Zahl sein (war '${value}')\n`,
+  },
+};
+export const logsWordsIn = (language: string | undefined) =>
+  LOGS_WORDS[(language ?? "en") as keyof typeof LOGS_WORDS] ?? LOGS_WORDS.en;
 
 export interface LogsOpts {
   follow: boolean;
@@ -280,6 +307,7 @@ export async function cmdLogs(opts: LogsOpts): Promise<number> {
   const logDir = defaultLogDir();
   const cutoff = Date.now() - opts.sinceMs;
   const write = (s: string): void => void process.stdout.write(`${s}\n`);
+  const w = logsWordsIn(await taskCliLanguage().catch(() => "en"));
 
   const lines: Line[] = [];
   if (opts.source !== "daemon") lines.push(...(await readHookLines(logDir, cutoff)));
@@ -289,11 +317,11 @@ export async function cmdLogs(opts: LogsOpts): Promise<number> {
   const shown = lines.slice(-opts.lines);
 
   if (shown.length === 0) {
-    write(`(no log entries in the last ${humanizeMs(opts.sinceMs)} — try --since 1d)`);
-    if (!existsSync(logDir)) write(`  note: ${logDir} does not exist yet; nothing has been logged.`);
+    write(w.noEntries(humanizeMs(opts.sinceMs)));
+    if (!existsSync(logDir)) write(w.noLogDir(logDir));
   } else {
     if (lines.length > shown.length) {
-      write(`… ${lines.length - shown.length} earlier line(s) hidden — raise with --lines`);
+      write(w.hidden(lines.length - shown.length));
     }
     for (const l of shown) write(render(l));
   }
@@ -301,7 +329,7 @@ export async function cmdLogs(opts: LogsOpts): Promise<number> {
   if (!opts.follow) return 0;
 
   // Follow mode: today's event file, plus daemon stdout when one exists.
-  write("— following (ctrl-c to stop) —");
+  write(w.following);
   const stops: (() => void)[] = [];
 
   if (opts.source !== "daemon") {

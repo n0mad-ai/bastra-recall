@@ -542,8 +542,8 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   // actionable ⚠), never as a failure: BM25-only recall is degraded, not
   // broken, so it never flips doctor's exit code (#79).
   await printEmbeddingDoctorNote(language);
-  await printVersionPairNote(w);
-  await printDaemonOriginNote();
+  await printVersionPairNote(w, language);
+  await printDaemonOriginNote(language);
   await printAutostartNote(w, language);
   await printAssistantAddressNote();
   await printStubBinaryNote(w, language);
@@ -775,7 +775,7 @@ async function printAutostartNote(w: DoctorWords, language: string): Promise<voi
 /** #684: who started the running daemon, and with whose env. #719: and
  *  whether its behaviour config is the configured one — compared only for a
  *  daemon on this machine; another host's is configured there. */
-async function printDaemonOriginNote(): Promise<void> {
+async function printDaemonOriginNote(language: string): Promise<void> {
   try {
     const probe = await probeDaemon();
     let configured: ReturnType<typeof configuredState> | undefined;
@@ -783,14 +783,14 @@ async function printDaemonOriginNote(): Promise<void> {
       const agent = await autostartService()?.status();
       configured = configuredState((await readSettings()).daemon?.env, agent?.managed ? agent.env : null);
     }
-    const lines = daemonOriginLines(probe, configured);
+    const lines = daemonOriginLines(probe, configured, process.platform, language);
     if (lines.length > 0) process.stdout.write(`${lines.join("\n")}\n\n`);
   } catch {
     /* a diagnostics NOTE must never break doctor */
   }
 }
 
-async function printVersionPairNote(w: DoctorWords): Promise<void> {
+async function printVersionPairNote(w: DoctorWords, language: string): Promise<void> {
   try {
     const probe = await probeDaemon();
     process.stdout.write(w.version);
@@ -802,7 +802,7 @@ async function printVersionPairNote(w: DoctorWords): Promise<void> {
     // it reports describes the process, not the installation — and "both
     // 0.9.0" would be the most misleading thing to print at that moment.
     if (probe.codeStale) {
-      process.stdout.write(`  ⚠ ${describeStale(probe.codeStale)}\n\n`);
+      process.stdout.write(`  ⚠ ${describeStale(probe.codeStale, language)}\n\n`);
       return;
     }
     if (probe.version === VERSION) {

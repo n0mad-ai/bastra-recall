@@ -1,10 +1,13 @@
-import { probeDaemon, formatStatus, type DaemonProbe } from "./helpers.js";
+import { probeDaemon, type DaemonProbe } from "./helpers.js";
 import { ADAPTERS } from "./registry.js";
 import { probeOllama } from "./ollama.js";
 import { getEmbeddingProvider, getApiToken, getUiEnabled, type EmbeddingProviderName } from "../settings.js";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 import { listDaemonProcesses, formatExtraDaemons } from "./daemon-processes.js";
 import { patchesSummaryLine } from "./patches-cmd.js";
+import { installWordsIn } from "./install-words.js";
+import { statusWordsIn, type StatusWords } from "./status-words.js";
+import { taskCliLanguage } from "./task-cli-words.js";
 
 interface StatusOptions {
   json?: boolean;
@@ -42,13 +45,19 @@ function printLine(message: string) {
  * that cannot load (#322). status is a read-only diagnostic and starts nothing;
  * it names `bastra map`, which does.
  */
-export function formatVaultMapLine(uiOn: boolean, daemonOk: boolean, url: string): string {
-  if (!uiOn) return "· off (open + enable: bastra map)";
-  return daemonOk ? `✓ ${url}` : `· ${url} (daemon down — open it with: bastra map)`;
+export function formatVaultMapLine(uiOn: boolean, daemonOk: boolean, url: string, language?: string): string {
+  const w = statusWordsIn(language);
+  if (!uiOn) return w.mapOff;
+  return daemonOk ? `✓ ${url}` : w.mapDown(url);
 }
 
 export async function cmdStatus(options: StatusOptions): Promise<number> {
   let hasError = false;
+  // language.primary, read once for the whole run (English when unset or unreadable).
+  const language = await taskCliLanguage().catch(() => "en");
+  const w = statusWordsIn(language);
+  const label = (name: keyof StatusWords["label"]) => w.label[name].padEnd(15);
+  const status = installWordsIn(language).status;
 
   // Resolved ONCE and handed to everything below — the probe, the map URL and
   // process discovery all describe this one instance (#531).
@@ -67,35 +76,36 @@ export async function cmdStatus(options: StatusOptions): Promise<number> {
   if (daemonInfo.ok) {
     statusResult.daemon = { status: "ok", message: daemonInfo.detail };
     if (!options.quiet && !options.json) {
-      printLine(`${"daemon".padEnd(15)} ${formatStatus("ok")}: ${daemonInfo.detail}`);
+      printLine(`${label("daemon")} ${status("ok")}: ${daemonInfo.detail}`);
     }
   } else {
     hasError = true;
     statusResult.daemon = { status: "error", message: daemonInfo.detail };
     if (!options.quiet && !options.json) {
-      printLine(`${"daemon".padEnd(15)} ${formatStatus("error")}: ${daemonInfo.detail}`);
+      printLine(`${label("daemon")} ${status("error")}: ${daemonInfo.detail}`);
     }
   }
 
   // A daemon on another port is invisible to /health — it answers on an
   // address nobody probes. Only reported, never stopped: a second one is
   // sometimes deliberate (a measurement harness, a second vault).
-  const extra = formatExtraDaemons(await listDaemonProcesses(endpoint.port));
+  const extra = formatExtraDaemons(await listDaemonProcesses(endpoint.port), language);
   if (extra !== null && !options.quiet && !options.json) {
-    printLine(`${"daemons".padEnd(15)} ${formatStatus("warn")}: ${extra}`);
+    printLine(`${label("daemons")} ${status("warn")}: ${extra}`);
   }
 
   // Semantic recall — daemon-level + global, so one line (not per adapter).
   // It NEVER flips the exit code: BM25-only is degraded, not broken.
+  // The JSON detail stays English; the screen line is in language.primary.
   const configured = await getEmbeddingProvider();
-  const srDetail = await formatSemanticRecall(configured, daemonInfo);
+  const semantic = await semanticRecallTexts(configured, daemonInfo, language);
   statusResult.semanticRecall = {
     configured: configured ?? "unset",
     active: daemonInfo.semanticRecall ?? "unknown",
-    detail: srDetail,
+    detail: semantic.detail,
   };
   if (!options.quiet && !options.json) {
-    printLine(`${"semantic recall".padEnd(15)} ${srDetail}`);
+    printLine(`${label("semanticRecall")} ${semantic.shown}`);
   }
 
   // REST API token — local setting, never shows the token itself. "not set" is
@@ -104,7 +114,7 @@ export async function cmdStatus(options: StatusOptions): Promise<number> {
   const tokenSet = (await getApiToken()) !== undefined;
   statusResult.apiToken = { set: tokenSet };
   if (!options.quiet && !options.json) {
-    printLine(`${"api token".padEnd(15)} ${tokenSet ? "✓ set (browser/REST enabled)" : "· not set (loopback only)"}`);
+    printLine(`${label("apiToken")} ${tokenSet ? w.tokenSet : w.tokenUnset}`);
   }
 
   // Local patch series (#269). Only reported when there is one — a user without
@@ -114,7 +124,7 @@ export async function cmdStatus(options: StatusOptions): Promise<number> {
   if (patchLine) {
     statusResult.localPatches = patchLine;
     if (!options.quiet && !options.json) {
-      printLine(`${"local patches".padEnd(15)} · ${patchLine}`);
+      printLine(`${label("localPatches")} · ${patchLine}`);
     }
   }
 
@@ -132,7 +142,7 @@ export async function cmdStatus(options: StatusOptions): Promise<number> {
   // answered" (#531).
   statusResult.vaultMap = { enabled: uiOn, url: endpoint.mapUrl, reachable: uiOn && daemonInfo.ok };
   if (!options.quiet && !options.json) {
-    printLine(`${"vault map".padEnd(15)} ${formatVaultMapLine(uiOn, daemonInfo.ok, endpoint.mapUrl)}`);
+    printLine(`${label("vaultMap")} ${formatVaultMapLine(uiOn, daemonInfo.ok, endpoint.mapUrl, language)}`);
   }
 
   for (const [name, adapter] of Object.entries(ADAPTERS)) {
@@ -142,7 +152,7 @@ export async function cmdStatus(options: StatusOptions): Promise<number> {
       statusResult.surfaces[name] = { status: r.status, message: r.message };
 
       if (!options.quiet && !options.json) {
-        printLine(`${name.padEnd(15)} ${formatStatus(r.status)}: ${r.message}`);
+        printLine(`${name.padEnd(15)} ${status(r.status)}: ${r.message}`);
       }
 
       if (r.status === "broken") {
@@ -153,7 +163,7 @@ export async function cmdStatus(options: StatusOptions): Promise<number> {
       const errMsg = (err as Error).message;
       statusResult.surfaces[name] = { status: "error", message: errMsg };
       if (!options.quiet && !options.json) {
-        printLine(`${name.padEnd(15)} ${formatStatus("error")}: failed to check: ${errMsg}`);
+        printLine(`${name.padEnd(15)} ${status("error")}: ${w.failedToCheck(errMsg)}`);
       }
     }
   }
@@ -167,55 +177,73 @@ export async function cmdStatus(options: StatusOptions): Promise<number> {
   return hasError ? 1 : 0;
 }
 
+/** Ollama is probed only where the semantic-recall line names it. */
+function needsOllamaProbe(configured: EmbeddingProviderName | undefined, d: DaemonProbe): boolean {
+  if (!d.ok) return configured === "ollama";
+  return d.semanticRecall === "on" && (d.embeddingMode ?? "").startsWith("ollama");
+}
+
+/** The semantic-recall detail: English for `--json`, and the screen line in
+ *  `language` (#1602; Ollama's own detail comes in that language too). */
+async function semanticRecallTexts(
+  configured: EmbeddingProviderName | undefined,
+  d: DaemonProbe,
+  language: string
+): Promise<{ detail: string; shown: string }> {
+  if (!needsOllamaProbe(configured, d)) {
+    return {
+      detail: formatSemanticRecall(configured, d, undefined),
+      shown: formatSemanticRecall(configured, d, undefined, language),
+    };
+  }
+  const ollama = await probeOllama();
+  const shownOllama = language === "en" ? ollama : await probeOllama(language);
+  return {
+    detail: formatSemanticRecall(configured, d, ollama),
+    shown: formatSemanticRecall(configured, d, shownOllama, language),
+  };
+}
+
 /**
  * Reconciles the *configured* provider (cli-settings) with the *active* one
  * (live /health). Distinguishes the drift classes so a just-installed user
  * isn't alarmed by a scary ✗, and so the env-override footgun is diagnosable.
+ * Pure (exported for tests): `ollama` is the probe `needsOllamaProbe` asked for.
  */
-async function formatSemanticRecall(configured: EmbeddingProviderName | undefined, d: DaemonProbe): Promise<string> {
+export function formatSemanticRecall(
+  configured: EmbeddingProviderName | undefined,
+  d: DaemonProbe,
+  ollama: { ok: boolean; detail: string; hasModel: boolean } | undefined,
+  language?: string
+): string {
+  const w = statusWordsIn(language);
   if (!d.ok) {
-    // Daemon down → can't read the active mode. If ollama is configured, probe
-    // it directly so "installed but daemon down" vs "model missing" is visible.
-    if (configured === "ollama") {
-      const o = await probeOllama();
-      const detail = o.ok
-        ? o.hasModel
-          ? "ollama ready"
-          : "model embeddinggemma MISSING — fix: bastra embeddings on"
-        : o.detail;
-      return `· daemon not reachable; configured=ollama (${detail})`;
+    // Daemon down → can't read the active mode. If ollama is configured, it
+    // was probed directly so "installed but daemon down" vs "model missing" is visible.
+    if (ollama) {
+      const detail = ollama.ok ? (ollama.hasModel ? w.ollamaReady : w.modelMissing) : ollama.detail;
+      return w.downWithOllama(detail);
     }
-    return `· daemon not reachable; configured=${configured ?? "unset"}`;
+    return w.down(configured ?? "unset");
   }
   const active = d.semanticRecall;
-  if (active === undefined) return "· (daemon predates this field — restart it to report)";
+  if (active === undefined) return w.predates;
   if (active === "on") {
     // /health reports "on" from the configured provider — but verify Ollama is
     // actually reachable + the model pulled, else recall silently degrades to
     // BM25 at runtime and "✓ on" would be a lie.
-    if ((d.embeddingMode ?? "").startsWith("ollama")) {
-      const o = await probeOllama();
-      if (o.ok && !o.hasModel) {
-        return `⚠ on (${d.embeddingMode}) but the embeddinggemma model is MISSING — recall falls back to BM25. Fix: bastra embeddings on`;
-      }
-      if (!o.ok) {
-        return `⚠ on (${d.embeddingMode}) but Ollama is unreachable (${o.detail}) — recall falls back to BM25`;
-      }
-    }
-    return `✓ on (${d.embeddingMode ?? "?"}${d.embeddingSource ? `, source: ${d.embeddingSource}` : ""})`;
+    if (ollama && !ollama.ok) return w.onOllamaDown(d.embeddingMode ?? "?", ollama.detail);
+    if (ollama && !ollama.hasModel) return w.onModelMissing(d.embeddingMode ?? "?");
+    return w.on(d.embeddingMode ?? "?", d.embeddingSource);
   }
   if (active === "degraded") {
     // Daemon-side runtime health (#92): the last provider call failed after
     // boot (model deleted / server died) — recall is silently BM25-only.
-    const why = d.embeddingError ? ` — last error: ${d.embeddingError}` : "";
-    return `⚠ degraded (${d.embeddingMode ?? "?"})${why} — recall falls back to BM25. Check: ollama list / ollama serve`;
+    return w.degraded(d.embeddingMode ?? "?", d.embeddingError);
   }
   // active is off
   if (configured === "ollama") {
-    if (d.embeddingSource === "env") {
-      return "· off — BASTRA_EMBEDDING_PROVIDER (env) overrides your config=ollama; unset it";
-    }
-    return "· off — configured=ollama, daemon hasn't picked it up yet; restart pending (restart your AI client, or auto after idle)";
+    return d.embeddingSource === "env" ? w.offEnvOverride : w.offPending;
   }
-  return "· off — BM25 keyword search only. Enable: bastra embeddings on";
+  return w.off;
 }

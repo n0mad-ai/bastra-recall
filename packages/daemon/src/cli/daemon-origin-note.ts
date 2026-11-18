@@ -15,6 +15,7 @@
  */
 import { configFingerprint } from "../daemon-spawn-env.js";
 import type { DaemonProbe } from "./helpers.js";
+import { daemonOriginWordsIn } from "./daemon-origin-words.js";
 
 /** #719: what the running daemon's fingerprint is held against. */
 export interface ConfiguredState {
@@ -48,62 +49,41 @@ export function configuredState(
 
 /** Pure formatter (exported for tests). `configured` is null when there is
  *  nothing to compare with, undefined when the comparison does not apply (a
- *  daemon on another host). */
+ *  daemon on another host). `language` is doctor's language.primary (#1602). */
 export function daemonOriginLines(
   probe: DaemonProbe,
   configured?: ConfiguredState | null,
-  platform: NodeJS.Platform = process.platform
+  platform: NodeJS.Platform = process.platform,
+  language?: string
 ): string[] {
   if (!probe.ok || !probe.startedBy) return [];
-  const lines = ["→ daemon origin"];
+  const w = daemonOriginWordsIn(language);
+  const lines = [w.heading];
   if (probe.startedBy === "forwarder") {
     const settingsPath =
       platform === "win32" ? "%LOCALAPPDATA%\\Bastra\\cli-settings.json" : "~/.bastra/cli-settings.json";
-    const env =
-      probe.envOrigin === "client+settings"
-        ? `the spawning client's env plus daemon.env from ${settingsPath}`
-        : `the spawning client's env (no daemon.env pins in ${settingsPath})`;
-    lines.push(`  · started by an MCP client's forwarder (auto-spawn); env: ${env}`);
+    const env = probe.envOrigin === "client+settings" ? w.envWithPins(settingsPath) : w.envWithoutPins(settingsPath);
+    lines.push(w.byForwarder(env));
     if (
       configured?.sources.some(
         (source) => source === "the bastra LaunchAgent env" || source === "the bastra Task Scheduler env"
       )
     ) {
-      lines.push(
-        "    a managed service is installed, but a client daemon holds the port; the service can take over after that daemon exits (normally after 30 minutes idle)"
-      );
+      lines.push(w.serviceWaits);
     }
-    lines.push(
-      "    settings a service (systemd unit, LaunchAgent, Task Scheduler) sets only in its own env do not apply here — " +
-        "pin them under daemon.env in cli-settings.json, or set BASTRA_FORWARDER_SPAWN=0 in the client entry (docs/architecture.md, MCP Forwarder)"
-    );
+    lines.push(w.serviceEnvIgnored);
   } else {
-    const who =
-      probe.startedBy === "launchagent"
-        ? "the bastra LaunchAgent"
-        : probe.startedBy === "scheduled-task"
-          ? "the bastra Task Scheduler task"
-          : probe.startedBy === "systemd"
-            ? "systemd (INVOCATION_ID set)"
-            : "a shell or service, directly";
-    lines.push(`  · started by ${who}; env: its own`);
+    lines.push(w.startedBy(w.starter(probe.startedBy)));
   }
   const running = probe.configFingerprint;
+  const sources = configured?.sources.map(w.source).join(" + ") ?? "";
   if (running && configured === null) {
-    lines.push(
-      `  · config fingerprint: ${running} (no daemon.env pins and no managed ${platform === "win32" ? "Task Scheduler task" : "LaunchAgent"} to compare with)`
-    );
+    lines.push(w.nothingToCompare(running, platform === "win32"));
   } else if (running && configured && running === configured.fingerprint) {
-    lines.push(`  · config fingerprint: ${running} — matches ${configured.sources.join(" + ")}`);
+    lines.push(w.matches(running, sources));
   } else if (running && configured) {
-    lines.push(
-      `  ⚠ config fingerprint: running ${running}, configured ${configured.fingerprint} — ` +
-        `this daemon's behaviour settings differ from ${configured.sources.join(" + ")}`
-    );
-    lines.push(
-      "    a service runs with its own env, a forwarder spawn with the client's env plus daemon.env — " +
-        "set the same BASTRA_* behaviour settings for both, then restart the daemon (docs/architecture.md, MCP Forwarder)"
-    );
+    lines.push(w.differs(running, configured.fingerprint, sources));
+    lines.push(w.differsAdvice);
   }
   return lines;
 }

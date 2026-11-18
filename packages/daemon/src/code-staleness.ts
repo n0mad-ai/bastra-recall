@@ -72,10 +72,28 @@ export function decideStale(i: {
   return null;
 }
 
-export function describeStale(s: CodeStale): string {
-  return s.reason === "rebuilt"
-    ? `code on disk was replaced after this process started (running ${s.running}, on disk ${s.on_disk}, built ${s.built_at}) — restart the daemon to run it`
-    : `package.json says ${s.on_disk}, this process runs ${s.running}, and the build has not moved (built ${s.built_at}) — run 'npm run build', then restart the daemon`;
+/** The stale-code sentence by language.primary (#1602): `bastra doctor` shows
+ *  it in the user's language; the daemon's own log line stays English. */
+export const STALE_WORDS = {
+  en: {
+    rebuilt: (s: CodeStale) =>
+      `code on disk was replaced after this process started (running ${s.running}, on disk ${s.on_disk}, built ${s.built_at}) — restart the daemon to run it`,
+    notBuilt: (s: CodeStale) =>
+      `package.json says ${s.on_disk}, this process runs ${s.running}, and the build has not moved (built ${s.built_at}) — run 'npm run build', then restart the daemon`,
+  },
+  de: {
+    rebuilt: (s: CodeStale) =>
+      `der Code auf der Platte wurde nach dem Start dieses Prozesses ersetzt (läuft ${s.running}, auf der Platte ${s.on_disk}, gebaut ${s.built_at}) — den Daemon neu starten, damit er ihn ausführt`,
+    notBuilt: (s: CodeStale) =>
+      `package.json nennt ${s.on_disk}, dieser Prozess läuft mit ${s.running}, und der Build ist unverändert (gebaut ${s.built_at}) — 'npm run build' ausführen, dann den Daemon neu starten`,
+  },
+};
+export const staleWordsIn = (language: string | undefined) =>
+  STALE_WORDS[(language ?? "en") as keyof typeof STALE_WORDS] ?? STALE_WORDS.en;
+
+export function describeStale(s: CodeStale, language?: string): string {
+  const w = staleWordsIn(language);
+  return s.reason === "rebuilt" ? w.rebuilt(s) : w.notBuilt(s);
 }
 
 export interface StalenessMonitor {

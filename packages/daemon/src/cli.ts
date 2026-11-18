@@ -31,7 +31,7 @@ import { cmdArchive } from "./cli/archive-cmd.js";
 import { cmdTrash } from "./cli/trash-cmd.js";
 import { cmdRecall, cmdSave } from "./cli/memory-cmd.js";
 import { cmdReconcile } from "./cli/reconcile-cmd.js";
-import { cmdLogs, parseSince } from "./cli/logs.js";
+import { cmdLogs, logsWordsIn, parseSince } from "./cli/logs.js";
 import { cmdConventions } from "./cli/log-conventions.js";
 import { cmdLogStats } from "./cli/log-stats.js";
 import { cmdCompletion } from "./cli/completion.js";
@@ -177,18 +177,20 @@ async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
  *  dispatch table stays within its complexity budget (#1507). */
 async function cmdLogsCommand(args: ReturnType<typeof parseArgs>): Promise<number> {
   const sinceMs = args.since === null ? 5 * 60_000 : parseSince(args.since);
+  // the usage errors follow language.primary (#1602); English stays as it was
+  const w = logsWordsIn(await taskCliLanguage().catch(() => "en"));
   if (sinceMs === null) {
-    process.stderr.write(`error: cannot read --since '${args.since}' — try 30s, 10min, 2h, 1d\n`);
+    process.stderr.write(w.badSince(String(args.since)));
     return 2;
   }
   const source = args.source ?? "all";
   if (source !== "daemon" && source !== "hook" && source !== "all") {
-    process.stderr.write(`error: --source must be daemon, hook or all (got '${source}')\n`);
+    process.stderr.write(w.badSource(source));
     return 2;
   }
   const lines = args.lines === null ? 200 : Number(args.lines);
   if (!Number.isFinite(lines) || lines <= 0) {
-    process.stderr.write(`error: --lines must be a positive number (got '${args.lines}')\n`);
+    process.stderr.write(w.badLines(String(args.lines)));
     return 2;
   }
   // --stats reads the same files, but aggregated instead of line by line.

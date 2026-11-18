@@ -1,4 +1,5 @@
-/** Shared installer helpers, including Codex vault discovery (#15). */
+/** Shared installer helpers, including Codex vault discovery (#15), and the
+ *  CLI's calls to the running daemon (`probeDaemon`, `rulebookCliCall`). */
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -12,6 +13,10 @@ import type { CodeStale } from "../code-staleness.js";
 import type { InstallOpts } from "./types.js";
 import { isOffValue } from "../env.js";
 import { assertVaultRootHistory, ensureVaultDir, vaultRootFirstSeen } from "@bastra-recall/core";
+import { getJson } from "../prompt-loopback.js";
+import { projectForFilter } from "../scope-filter.js";
+import { getApiToken } from "../settings.js";
+import { DAEMON_VERSION } from "../version.js";
 
 // Read from package.json at runtime (see ../version.ts) instead of a literal.
 // The literals drifted: this one said 0.8.9 while index.ts still said 0.8.8,
@@ -564,6 +569,55 @@ export function probeDaemon(endpoint: DaemonEndpoint = resolveDaemonEndpoint()):
     );
     req.end();
   });
+}
+
+/** Older daemons may ignore dry_run; check their served schema before any write. */
+async function requireSavePreviewSupport(): Promise<void> {
+  const listed = await getJson<{
+    tools?: { name?: string; inputSchema?: { properties?: { dry_run?: { type?: string } } } }[];
+  }>(resolveDaemonEndpoint().baseUrl, "/tools?surface=write", 2000);
+  const save = Array.isArray(listed?.tools) && listed.tools.find((entry) => entry.name === "save_memory");
+  if (!save || save.inputSchema?.properties?.dry_run?.type !== "boolean") {
+    throw new Error("daemon does not advertise save_memory dry_run support; nothing was sent to save_memory");
+  }
+}
+
+/**
+ * The memory commands' REST call to the running daemon (recall, save, trash,
+ * rules proposals, save suggestions): one JSON POST to `/api/v1/<tool>` with
+ * the CLI's user agent, the project header and the API token when one is set;
+ * the daemon's error text (else the HTTP status) is thrown. #1508: it lives
+ * here, beside `probeDaemon`, so no command imports another command for it.
+ */
+export async function rulebookCliCall(
+  tool:
+    | "list_rules"
+    | "load_memory"
+    | "edit_memory"
+    | "review_save_suggestion"
+    | "restore_memory"
+    | "recall"
+    | "save_memory",
+  input: unknown
+): Promise<any> {
+  if (tool === "save_memory" && (input as { dry_run?: unknown } | null)?.dry_run === true) {
+    await requireSavePreviewSupport();
+  }
+  const token = process.env.BASTRA_API_TOKEN || (await getApiToken());
+  const response = await fetch(`${resolveDaemonEndpoint().baseUrl}/api/v1/${tool}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": `bastra-cli/${DAEMON_VERSION}`,
+      "x-bastra-project": encodeURIComponent(projectForFilter(process.cwd()) ?? ""),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(input),
+    signal: AbortSignal.timeout(10000),
+  });
+  const body = (await response.json()) as any;
+  if (!response.ok) throw new Error(body.error ?? `HTTP ${response.status}`);
+  return body;
 }
 
 export function getServersBlock(data: Record<string, unknown>): Record<string, unknown> | null {

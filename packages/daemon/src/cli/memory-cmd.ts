@@ -16,7 +16,7 @@
 import { readStdin } from "../hook-transport.js";
 import { USER_SAVE_TYPES, userDirectedSaveInput, type UserSaveType } from "../user-save-input.js";
 import { memoryCmdWords, type MemoryCmdWords } from "./memory-cmd-words.js";
-import { rulebookCliCall } from "./rulebook-proposals-cmd.js";
+import { rulebookCliCall } from "./helpers.js";
 
 /** Value options of these two commands (flag-spec.ts registers them). */
 export const MEMORY_VALUE_FLAGS = [
@@ -122,7 +122,7 @@ export async function cmdRecall(argv: string[], call: Call = rulebookCliCall): P
     else printHits(out, w);
     return 0;
   } catch (e) {
-    console.error(`bastra recall: ${(e as Error).message}`);
+    console.error(w.recallFailed((e as Error).message));
     return 1;
   }
 }
@@ -235,7 +235,7 @@ export async function cmdSave(argv: string[], call: Call = rulebookCliCall, io: 
     const out = (await call("save_memory", o.dryRun ? { ...input, dry_run: true } : input)) as SaveOutcome;
     return printSaveOutcome(out, o, w);
   } catch (e) {
-    console.error(`bastra save: ${(e as Error).message}`);
+    console.error(w.saveFailed((e as Error).message));
     return 1;
   }
 }

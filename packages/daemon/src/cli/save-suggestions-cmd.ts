@@ -1,5 +1,5 @@
 import type { ParsedArgs } from "./types.js";
-import { rulebookCliCall } from "./rulebook-proposals-cmd.js";
+import { rulebookCliCall } from "./helpers.js";
 import { ReviewSaveSuggestionArgs } from "../save-suggestion-review.js";
 import { usageWords } from "./usage-words.js";
 /** Like rule confirmation, CLI user direction is an attestation by the agent. */

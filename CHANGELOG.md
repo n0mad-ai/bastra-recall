@@ -318,6 +318,10 @@ until a new design replaces it; this name is independent of the product version.
   date): the right note among the first three rose from 170 to 253, with no
   question lost there (`packages/eval/registrations/staleness-policy-1567.json`)
   (#1567).
+- `bastra status`, `bastra logs`, doctor's daemon-origin and stale-code
+  notes, `bastra codex`, `bastra feedback` and the error prefixes of
+  recall/save/archive/trash/rules proposals follow `language.primary`;
+  English output is unchanged, `--json` stays English (#1602).
 
 ### Fixed
 
@@ -689,6 +693,8 @@ until a new design replaces it; this name is independent of the product version.
   unsplit code (`write-lane-golden`, `gate-lane-state-golden`,
   `hook-recall-golden`, `hook-transport-contract`,
   `loopback-helpers-contract`).
+- The memory commands' REST call moved to the shared CLI helpers; no
+  command imports another for it (#1508).
 
 ## [1.2.1] — 2026-11-16
 

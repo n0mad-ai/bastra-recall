@@ -10,9 +10,32 @@ import { release, arch } from "node:os";
 import { VERSION } from "./helpers.js";
 import { openInBrowser, mapUrl } from "./map-cmd.js";
 import type { ParsedArgs } from "./types.js";
-import { usageBlocks } from "./usage-block-words.js";
+import { taskCliLanguage } from "./task-cli-words.js";
+import { usageBlocksIn } from "./usage-block-words.js";
 
 const REPO = "https://github.com/n0mad-ai/bastra-recall";
+
+/** The words `bastra feedback` prints by language.primary (#1602), English when
+ *  unset or unlisted. The diagnostics block itself stays English: it goes into
+ *  the GitHub issue, not only onto the screen. */
+export const FEEDBACK_WORDS = {
+  en: {
+    openingIdea: "opening feature-request form…\n",
+    bugIntro:
+      "This diagnostics block is prefilled into the report — and nothing else\n" +
+      "(no vault content, no paths). Edit or remove it in the form as you like:\n\n",
+    openingBug: "\n\nopening bug-report form…\n",
+  },
+  de: {
+    openingIdea: "öffne das Formular für einen Funktionswunsch…\n",
+    bugIntro:
+      "Dieser Diagnoseblock wird in den Bericht vorausgefüllt — und sonst nichts\n" +
+      "(keine Vault-Inhalte, keine Pfade). Im Formular kannst du ihn ändern oder entfernen:\n\n",
+    openingBug: "\n\nöffne das Formular für einen Fehlerbericht…\n",
+  },
+};
+export const feedbackWordsIn = (language: string | undefined) =>
+  FEEDBACK_WORDS[(language ?? "en") as keyof typeof FEEDBACK_WORDS] ?? FEEDBACK_WORDS.en;
 
 export interface DiagnosticsParts {
   version: string;
@@ -83,23 +106,20 @@ async function collectDiagnostics(): Promise<DiagnosticsParts> {
 
 export async function cmdFeedback(args: ParsedArgs): Promise<number> {
   const kind = args.surface;
+  const language = await taskCliLanguage().catch(() => "en");
   if (kind !== "bug" && kind !== "idea") {
-    process.stdout.write((await usageBlocks()).feedback(REPO));
+    process.stdout.write(usageBlocksIn(language).feedback(REPO));
     return 2;
   }
+  const w = feedbackWordsIn(language);
   if (kind === "idea") {
     const url = buildFeedbackUrl("idea");
-    process.stdout.write(`opening feature-request form…\n${url}\n`);
+    process.stdout.write(`${w.openingIdea}${url}\n`);
     openInBrowser(url);
     return 0;
   }
   const diagnostics = await collectDiagnostics();
-  process.stdout.write(
-    "This diagnostics block is prefilled into the report — and nothing else\n" +
-      "(no vault content, no paths). Edit or remove it in the form as you like:\n\n" +
-      formatDiagnostics(diagnostics) +
-      "\n\nopening bug-report form…\n"
-  );
+  process.stdout.write(w.bugIntro + formatDiagnostics(diagnostics) + w.openingBug);
   openInBrowser(buildFeedbackUrl("bug", diagnostics));
   return 0;
 }
