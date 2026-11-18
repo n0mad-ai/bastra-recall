@@ -10,6 +10,7 @@ const baselinePath = resolve("clone-baseline.json");
 const previous = JSON.parse(readFileSync(baselinePath, "utf8"));
 const config = JSON.parse(readFileSync(".jscpd.json", "utf8"));
 const temporary = mkdtempSync(join(tmpdir(), "bastra-clones-"));
+const scanConfig = join(temporary, "config.json");
 const prune = process.argv.includes("--prune");
 const groups = ["production", "tests"];
 const current = { version: 1 };
@@ -17,11 +18,6 @@ let failed = false;
 
 function scan(group) {
   const nativeBaseline = join(temporary, `${group}-baseline.json`);
-  const scanConfig = join(temporary, "config.json");
-  writeFileSync(
-    scanConfig,
-    JSON.stringify({ ...config, path: listCodeFiles().map((file) => resolve(file)), gitignore: false })
-  );
   writeFileSync(nativeBaseline, JSON.stringify(previous[group]));
   const extra =
     group === "production"
@@ -82,6 +78,10 @@ function compare(group, report, baseline) {
 }
 
 try {
+  writeFileSync(
+    scanConfig,
+    JSON.stringify({ ...config, path: listCodeFiles().map((file) => resolve(file)), gitignore: false })
+  );
   for (const group of groups) {
     const { report, baseline } = scan(group);
     current[group] = baseline;
