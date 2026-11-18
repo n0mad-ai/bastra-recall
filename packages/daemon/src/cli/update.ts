@@ -525,6 +525,19 @@ export async function cmdUpdate(args: ParsedArgs, io: UpdateIo = {}): Promise<nu
     return 1;
   }
 }
+/** What every step of one `bastra update` run reads. */
+interface UpdateRun {
+  args: ParsedArgs;
+  io: UpdateIo;
+  platform: NodeJS.Platform;
+  mode: InstallMode;
+  packageRoot: string;
+  /** See `hasInPlacePreflight`. */
+  preflightSupported: boolean;
+  /** Only brew and npm-global actually run an installer here. */
+  runsInstaller: boolean;
+}
+
 async function performUpdate(args: ParsedArgs, io: UpdateIo): Promise<number> {
   const platform = io.platform ?? process.platform;
   const mode = detectInstallMode(io.cliPath);
@@ -540,149 +553,27 @@ async function performUpdate(args: ParsedArgs, io: UpdateIo): Promise<number> {
   // nothing here overwrites it), and the "unknown" branch installs nothing at
   // all — guarding those would mean a dirty tree could veto a re-registration
   // that never touched a single package file.
-  const packageRoot = packageRootFromCliPath(mode.cliPath, platform);
-  const preflightSupported = hasInPlacePreflight(mode.mode);
-  const runsInstaller = mode.mode === "brew" || mode.mode === "npm-global";
+  const u: UpdateRun = {
+    args,
+    io,
+    platform,
+    mode,
+    packageRoot: packageRootFromCliPath(mode.cliPath, platform),
+    preflightSupported: hasInPlacePreflight(mode.mode),
+    runsInstaller: mode.mode === "brew" || mode.mode === "npm-global",
+  };
 
-  if (args.dryRun) {
-    process.stdout.write("(dry-run — describing what would happen, writing nothing)\n\n");
-    process.stdout.write(`→ install source: ${mode.mode}\n`);
-    process.stdout.write(
-      mode.mode === "source"
-        ? `  rebuild command (yours to run, never run by 'bastra update'): ${mode.updateCommand}\n\n`
-        : `  update command: ${mode.updateCommand}\n\n`
-    );
-    if (preflightSupported) {
-      process.stdout.write("  would: 0) preflight: back up locally modified files, then refuse or proceed\n");
-    } else if (mode.mode === "brew") {
-      process.stdout.write(
-        "  would: 0) skip the preflight — Homebrew installs each version into its own\n" +
-          "            Cellar directory, so there is no in-place file to modify or back up\n"
-      );
-    }
-    // The plan names the reapply wherever the real run performs it (#528).
-    const pending = mode.mode === "npm-global" || mode.mode === "brew" ? activePatches() : [];
-    if (pending.length > 0) {
-      process.stdout.write(
-        `  would: 1a) reapply ${pending.length} registered local patch${pending.length === 1 ? "" : "es"} ` +
-          `(#269) — 'bastra patches status' shows what each would do\n`
-      );
-    }
-    // #528 — the plan has to be the action. Only brew/npm-global actually run
-    // an update command here; source and unknown never did, however confidently
-    // the old text said "would: run the update command above".
-    if (runsInstaller) {
-      process.stdout.write("  would: 1) run the update command above\n");
-    } else if (mode.mode === "source") {
-      process.stdout.write("  would: 1) verify this checkout's build is current, and stop here if it is not\n");
-      process.stdout.write("            (no pull, no install, no build — 'bastra update' never runs those)\n");
-    } else {
-      process.stdout.write("  would: 1) install nothing — the install mode is unknown\n");
-    }
-    process.stdout.write("         2) re-register every surface (idempotent)\n");
-    process.stdout.write(
-      args.staged
-        ? "         3) leave the daemon running (staged — no restart mid-session)\n"
-        : "         3) restart the daemon\n"
-    );
-    return 0;
-  }
+  // Everything below the dry-run runs for real only: the plan returns here.
+  if (args.dryRun) return describeUpdatePlan(u);
 
-  // Runs ONCE, in front of both install branches — two guards that can each veto
-  // the same action is how auto-updates die (see update-preflight.ts).
-  if (preflightSupported) {
-    process.stdout.write(
-      `→ preflight: locally modified files${mode.mode === "npm-global" ? " + npm provenance (#226)" : ""}\n`
-    );
-    const verdict = await (io.preflight ?? preflight)({
-      root: packageRoot,
-      // --staged is the detached SessionStart path: it cannot ask, so a finding
-      // ends it rather than being silently overridden.
-      unattended: args.staged === true,
-      force: args.force === true,
-      // brew and source carry no registry attestation — only npm publishes one.
-      checkProvenance: mode.mode === "npm-global",
-      verify: platform === "win32" ? (root) => verifyProvenance(root, io, io.spawn) : undefined,
-    });
-    const rendered = formatPreflight(verdict);
-    // Printed on the way through as well, not only on refusal: a backup nobody
-    // was told about is a backup nobody restores from.
-    process.stdout.write(rendered ? `${rendered}\n\n` : "  ✓ nothing local to protect\n\n");
-    if (!verdict.ok) {
-      // #268 — on the staged path this stdout goes to /dev/null (detached,
-      // stdio:"ignore") while the SessionStart hook already announced the
-      // update as happening. Leave the verdict on disk so the next session
-      // reports the refusal instead of repeating that claim. Only unattended:
-      // an interactive refusal is being read right now, and recording it would
-      // pause the automatic path over a decision the user already saw.
-      if (args.staged) await recordBlockedUpdate(verdict, installedVersion(packageRoot));
-      process.stdout.write("  Nothing was installed — the current version is untouched.\n");
-      return 1;
-    }
-  } else if (mode.mode === "brew") {
-    // Honest note instead of a check that can only ever skip itself.
-    process.stdout.write("→ preflight: not applicable to a Homebrew install\n");
-    process.stdout.write("  Homebrew never replaces this directory: 'brew upgrade' builds a new keg under\n");
-    process.stdout.write("  Cellar/bastra-recall/<version>/ and re-points the symlinks, so a locally modified\n");
-    process.stdout.write("  file here is left behind with the old keg rather than overwritten.\n");
-    process.stdout.write("  No baseline is recorded either — the path it would be taken from is version-pinned\n");
-    process.stdout.write("  and gone from the next version's point of view. Keep local patches outside the keg.\n\n");
-  }
+  if (!(await guardInstall(u))) return 1;
 
-  // #528 — set by the source branch below. The closing line may only name a
+  // 1. Update the binary itself.
+  const step = await installStep(u);
+  if (step.rc !== 0) return step.rc;
+  // #528 — set by the source branch. The closing line may only name a
   // revision this state PROVED, and only once the daemon confirms it serves it.
-  let sourceState: SourceBuildState | null = null;
-
-  // 1. Update the binary itself
-  // Resolved absolute paths + hard timeouts (#91): the staged path runs
-  // unattended from the SessionStart hook (detached, stdio:"ignore"), so a
-  // bare-name spawn would inherit the stripped GUI PATH (the #79 root cause)
-  // and a network-stalled brew/npm would hang unbounded. ETIMEDOUT/ENOENT/
-  // signal all surface as failure via run() — never as silent success.
-  if (mode.mode === "brew") {
-    process.stdout.write(`→ ${mode.updateCommand}\n`);
-    if (!args.dryRun) {
-      const brewBin = findExecutable("brew");
-      if (!brewBin) {
-        process.stdout.write("\n✗ brew not found on a trusted PATH — run 'brew upgrade bastra-recall' manually\n");
-        return 1;
-      }
-      const r = run(brewBin, ["upgrade", "bastra-recall"], { timeoutMs: 300_000, showProgress: true });
-      if (!r.ok) {
-        process.stdout.write(`\n✗ brew upgrade failed (${r.detail}) — fix it manually, then re-run 'bastra update'\n`);
-        return 1;
-      }
-    } else {
-      process.stdout.write(`  would run: ${mode.updateCommand}\n`);
-    }
-    process.stdout.write("\n");
-  } else if (mode.mode === "npm-global") {
-    process.stdout.write(`→ ${mode.updateCommand}\n`);
-    if (!args.dryRun) {
-      if (!installNpmUpdate(mode, io)) return 1;
-    } else {
-      process.stdout.write(`  would run: ${mode.updateCommand}\n`);
-    }
-    process.stdout.write("\n");
-  } else if (mode.mode === "source") {
-    // #528 — this branch installs nothing (see source-build.ts for why), so the
-    // one thing it owes the user is certainty that what gets re-registered and
-    // restarted is the code that is actually in this checkout. An unbuilt or
-    // stale tree ends here: no re-registration, no restart, exit 1.
-    const verdict = verifySourceCheckout(mode.cliPath, mode.updateCommand, (s) => process.stdout.write(s));
-    if (verdict.rc !== 0) return verdict.rc;
-    if (
-      (await verifySourceStubs((s) => process.stdout.write(s), {
-        packageRoot,
-        ownBinary: resolve(packageRoot, "stub", platform === "win32" ? "bastra-hook.exe" : "bastra-hook"),
-      })) !== 0
-    )
-      return 1;
-    sourceState = verdict.state;
-  } else {
-    process.stdout.write("⚠ install mode unknown — install manually from:\n");
-    process.stdout.write(`    ${mode.updateCommand}\n\n`);
-  }
+  const sourceState = step.sourceState;
 
   // 1a. Reapply the registered local patch series (#269) onto what the
   //     installer just wrote. This is the repair half of #268: that one detects
@@ -704,7 +595,7 @@ async function performUpdate(args: ParsedArgs, io: UpdateIo): Promise<number> {
   //     "reapplied onto the fresh install after every update". The keg to patch
   //     is the one the installer just linked, asked from brew, never this
   //     process's own (superseded) path.
-  (io.reapply ?? reapplyPatchSeries)(mode, packageRoot);
+  (io.reapply ?? reapplyPatchSeries)(mode, u.packageRoot);
 
   // 1b. Baseline for the NEXT update (#268). Without this write the dirty check
   //     above can never say more than "unknown" — this is the step that starts
@@ -713,37 +604,283 @@ async function performUpdate(args: ParsedArgs, io: UpdateIo): Promise<number> {
   //     writing one from a Homebrew keg would pin it to a path the next version
   //     no longer runs from, and every later preflight would skip on
   //     `manifest.root !== opts.root` while claiming a baseline had been taken.
-  if (preflightSupported) {
-    try {
-      const manifest = await (io.manifest ?? buildManifest)(packageRoot, installedVersion(packageRoot));
-      if (manifest.files.length === 0) {
-        // The install root we hashed from is empty — an npm prefix that moved,
-        // a partially written install. An empty manifest would read as "clean"
-        // on every future update, which is strictly worse than no manifest: that
-        // at least reports itself as an unknown.
-        process.stdout.write(`  ⚠ no baseline written — ${packageRoot} is empty now (install root moved?)\n\n`);
-      } else {
-        await (io.writeManifest ?? writeManifest)(manifest);
-        process.stdout.write(
-          `  ✓ baseline recorded (${manifest.files.length} files) — the next update can tell local changes apart\n\n`
-        );
-      }
-    } catch (e) {
-      // A baseline that cannot be written must never fail an update that already
-      // succeeded; the next preflight just reports "could not check".
-      process.stdout.write(
-        `  ⚠ baseline not written (${(e as Error).message}) — the next update reports 'unknown' instead\n\n`
-      );
-    }
-  }
+  if (u.preflightSupported) await recordBaseline(u);
 
   // 1c. An installer that ran is the one event that resolves a held-back
   //     automatic update (#268), whatever the recorded reason was. Drop the
   //     record so the next SessionStart stops reporting a block that no longer
   //     stands, and the unattended path is allowed to stage again.
-  if (runsInstaller) await (io.clearBlocked ?? clearBlockedUpdate)();
+  if (u.runsInstaller) await (io.clearBlocked ?? clearBlockedUpdate)();
 
   // 2. Re-register every surface (idempotent — refreshes skill content if SKILL.md changed)
+  const registered = await reRegisterSurfaces(u);
+  if (registered !== 0) return registered;
+
+  const installed = resolveInstalledRuntime(mode, io);
+  // Refresh from the newly installed package, never the old updater's module cache.
+  await refreshAddressStep(u, installed);
+
+  // 3. Der verwaltete Dienst, BEVOR irgendetwas Erfolg meldet.
+  //
+  //    Ein Update verschiebt die Installation (Homebrew legt jede Version in ein
+  //    eigenes Verzeichnis), und ein LaunchAgent zeigt auf einen ABSOLUTEN Pfad.
+  //    Zeigt er noch auf die alte, startet er danach entweder nichts mehr oder
+  //    weiter den alten Code. Fremde plists bleiben unangetastet.
+  //
+  //    Beide Update-Wege laufen hier durch — das ist der Kern von #441: „jetzt
+  //    nicht neu starten" ist eine andere Entscheidung als „den plist nicht
+  //    umbiegen". Staged biegt um (`reload: false`), kickstartet aber nicht.
+  //    Und die Laufzeit, auf die umgebogen wird, kommt vom Installer, nicht von
+  //    diesem Prozess (#435) — siehe resolveInstalledRuntime.
+  if (!(await pointAutostart(u, installed))) return 1;
+
+  // 4. Daemon restart.
+  //    --staged deliberately skips the kickstart: the running daemon keeps the
+  //    old code in memory and a current session stays intact. The new code goes
+  //    live on the next daemon boot (idle-shutdown after 30 min → forwarder
+  //    respawns with the new code), or immediately when the user restarts.
+  if (args.staged) {
+    describeStagedRestart();
+    return 0;
+  }
+  await restartDaemon(u);
+  return finishUpdate(u, sourceState, installed);
+}
+
+/**
+ * The preflight runs ONCE, in front of both install branches — two guards that
+ * can each veto the same action is how auto-updates die (see
+ * update-preflight.ts). False = refused, nothing installed.
+ */
+async function guardInstall(u: UpdateRun): Promise<boolean> {
+  if (u.preflightSupported) return runPreflightStep(u);
+  if (u.mode.mode === "brew") describeBrewPreflight();
+  return true;
+}
+
+/** Step 3: point the managed autostart at the new runtime; false = it could not. */
+async function pointAutostart(u: UpdateRun, installed: InstalledRuntime | null): Promise<boolean> {
+  const autostart = await (u.io.refresh ?? refreshManagedAutostart)((s) => process.stdout.write(s), {
+    target: installed,
+    reload: !u.args.staged,
+    platform: u.platform,
+  });
+  if (autostart.ok) return true;
+  process.stdout.write(
+    "\n✗ the managed autostart could not be pointed at the new install — fix it before relying on it\n"
+  );
+  return false;
+}
+
+/**
+ * #528 — the closing line and the restart report have to tell one story. In
+ * source mode the daemon itself is asked which build it serves; in every
+ * other mode there is no local revision to compare against and the line stays
+ * the plain one.
+ */
+async function finishUpdate(
+  u: UpdateRun,
+  sourceState: SourceBuildState | null,
+  installed: InstalledRuntime | null
+): Promise<number> {
+  const { io } = u;
+  if (sourceState !== null) {
+    const { verdict, daemonRevision } = await liveRevisionOfDaemon(provenRevision(sourceState));
+    const said = describeLiveRevision(verdict, { state: sourceState, daemonRevision });
+    process.stdout.write(said.report);
+    process.stdout.write(said.closing);
+    (io.ask ?? askModelRecommendation)(installed);
+    return 0;
+  }
+
+  process.stdout.write(
+    "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\n"
+  );
+  (io.ask ?? askModelRecommendation)(installed);
+  return 0;
+}
+
+/** `bastra update --dry-run`: the plan, written as the action (#528). */
+function describeUpdatePlan(u: UpdateRun): number {
+  const { args, mode } = u;
+  process.stdout.write("(dry-run — describing what would happen, writing nothing)\n\n");
+  process.stdout.write(`→ install source: ${mode.mode}\n`);
+  process.stdout.write(
+    mode.mode === "source"
+      ? `  rebuild command (yours to run, never run by 'bastra update'): ${mode.updateCommand}\n\n`
+      : `  update command: ${mode.updateCommand}\n\n`
+  );
+  if (u.preflightSupported) {
+    process.stdout.write("  would: 0) preflight: back up locally modified files, then refuse or proceed\n");
+  } else if (mode.mode === "brew") {
+    process.stdout.write(
+      "  would: 0) skip the preflight — Homebrew installs each version into its own\n" +
+        "            Cellar directory, so there is no in-place file to modify or back up\n"
+    );
+  }
+  // The plan names the reapply wherever the real run performs it (#528).
+  const pending = u.runsInstaller ? activePatches() : [];
+  if (pending.length > 0) {
+    process.stdout.write(
+      `  would: 1a) reapply ${pending.length} registered local patch${pending.length === 1 ? "" : "es"} ` +
+        `(#269) — 'bastra patches status' shows what each would do\n`
+    );
+  }
+  // #528 — the plan has to be the action. Only brew/npm-global actually run
+  // an update command here; source and unknown never did, however confidently
+  // the old text said "would: run the update command above".
+  if (u.runsInstaller) {
+    process.stdout.write("  would: 1) run the update command above\n");
+  } else if (mode.mode === "source") {
+    process.stdout.write("  would: 1) verify this checkout's build is current, and stop here if it is not\n");
+    process.stdout.write("            (no pull, no install, no build — 'bastra update' never runs those)\n");
+  } else {
+    process.stdout.write("  would: 1) install nothing — the install mode is unknown\n");
+  }
+  process.stdout.write("         2) re-register every surface (idempotent)\n");
+  process.stdout.write(
+    args.staged
+      ? "         3) leave the daemon running (staged — no restart mid-session)\n"
+      : "         3) restart the daemon\n"
+  );
+  return 0;
+}
+
+/** The preflight in front of an in-place install; false = refused, nothing installed. */
+async function runPreflightStep(u: UpdateRun): Promise<boolean> {
+  const { args, io, mode } = u;
+  process.stdout.write(
+    `→ preflight: locally modified files${mode.mode === "npm-global" ? " + npm provenance (#226)" : ""}\n`
+  );
+  const verdict = await (io.preflight ?? preflight)({
+    root: u.packageRoot,
+    // --staged is the detached SessionStart path: it cannot ask, so a finding
+    // ends it rather than being silently overridden.
+    unattended: args.staged === true,
+    force: args.force === true,
+    // brew and source carry no registry attestation — only npm publishes one.
+    checkProvenance: mode.mode === "npm-global",
+    verify: u.platform === "win32" ? (root) => verifyProvenance(root, io, io.spawn) : undefined,
+  });
+  const rendered = formatPreflight(verdict);
+  // Printed on the way through as well, not only on refusal: a backup nobody
+  // was told about is a backup nobody restores from.
+  process.stdout.write(rendered ? `${rendered}\n\n` : "  ✓ nothing local to protect\n\n");
+  if (verdict.ok) return true;
+  // #268 — on the staged path this stdout goes to /dev/null (detached,
+  // stdio:"ignore") while the SessionStart hook already announced the
+  // update as happening. Leave the verdict on disk so the next session
+  // reports the refusal instead of repeating that claim. Only unattended:
+  // an interactive refusal is being read right now, and recording it would
+  // pause the automatic path over a decision the user already saw.
+  if (args.staged) await recordBlockedUpdate(verdict, installedVersion(u.packageRoot));
+  process.stdout.write("  Nothing was installed — the current version is untouched.\n");
+  return false;
+}
+
+/** Honest note instead of a check that can only ever skip itself. */
+function describeBrewPreflight(): void {
+  process.stdout.write("→ preflight: not applicable to a Homebrew install\n");
+  process.stdout.write("  Homebrew never replaces this directory: 'brew upgrade' builds a new keg under\n");
+  process.stdout.write("  Cellar/bastra-recall/<version>/ and re-points the symlinks, so a locally modified\n");
+  process.stdout.write("  file here is left behind with the old keg rather than overwritten.\n");
+  process.stdout.write("  No baseline is recorded either — the path it would be taken from is version-pinned\n");
+  process.stdout.write("  and gone from the next version's point of view. Keep local patches outside the keg.\n\n");
+}
+
+/**
+ * Step 1, per install mode. `rc` non-zero ends the update with that code;
+ * `sourceState` is what a source checkout proved about its build.
+ *
+ * Resolved absolute paths + hard timeouts (#91): the staged path runs
+ * unattended from the SessionStart hook (detached, stdio:"ignore"), so a
+ * bare-name spawn would inherit the stripped GUI PATH (the #79 root cause)
+ * and a network-stalled brew/npm would hang unbounded. ETIMEDOUT/ENOENT/
+ * signal all surface as failure via run() — never as silent success.
+ */
+async function installStep(u: UpdateRun): Promise<{ rc: number; sourceState: SourceBuildState | null }> {
+  const { mode } = u;
+  if (mode.mode === "brew") {
+    process.stdout.write(`→ ${mode.updateCommand}\n`);
+    if (!installBrewUpdate()) return { rc: 1, sourceState: null };
+    process.stdout.write("\n");
+  } else if (mode.mode === "npm-global") {
+    process.stdout.write(`→ ${mode.updateCommand}\n`);
+    if (!installNpmUpdate(mode, u.io)) return { rc: 1, sourceState: null };
+    process.stdout.write("\n");
+  } else if (mode.mode === "source") {
+    return verifySourceStep(u);
+  } else {
+    process.stdout.write("⚠ install mode unknown — install manually from:\n");
+    process.stdout.write(`    ${mode.updateCommand}\n\n`);
+  }
+  return { rc: 0, sourceState: null };
+}
+
+/** Step 1 for Homebrew installs. */
+function installBrewUpdate(): boolean {
+  const brewBin = findExecutable("brew");
+  if (!brewBin) {
+    process.stdout.write("\n✗ brew not found on a trusted PATH — run 'brew upgrade bastra-recall' manually\n");
+    return false;
+  }
+  const r = run(brewBin, ["upgrade", "bastra-recall"], { timeoutMs: 300_000, showProgress: true });
+  if (!r.ok) {
+    process.stdout.write(`\n✗ brew upgrade failed (${r.detail}) — fix it manually, then re-run 'bastra update'\n`);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * #528 — the source branch installs nothing (see source-build.ts for why), so
+ * the one thing it owes the user is certainty that what gets re-registered and
+ * restarted is the code that is actually in this checkout. An unbuilt or stale
+ * tree ends here: no re-registration, no restart, exit 1.
+ */
+async function verifySourceStep(u: UpdateRun): Promise<{ rc: number; sourceState: SourceBuildState | null }> {
+  const { mode, packageRoot, platform } = u;
+  const verdict = verifySourceCheckout(mode.cliPath, mode.updateCommand, (s) => process.stdout.write(s));
+  if (verdict.rc !== 0) return { rc: verdict.rc, sourceState: null };
+  if (
+    (await verifySourceStubs((s) => process.stdout.write(s), {
+      packageRoot,
+      ownBinary: resolve(packageRoot, "stub", platform === "win32" ? "bastra-hook.exe" : "bastra-hook"),
+    })) !== 0
+  )
+    return { rc: 1, sourceState: null };
+  return { rc: 0, sourceState: verdict.state };
+}
+
+/** Step 1b: the hash baseline the next update's preflight compares against. */
+async function recordBaseline(u: UpdateRun): Promise<void> {
+  const { io, packageRoot } = u;
+  try {
+    const manifest = await (io.manifest ?? buildManifest)(packageRoot, installedVersion(packageRoot));
+    if (manifest.files.length === 0) {
+      // The install root we hashed from is empty — an npm prefix that moved,
+      // a partially written install. An empty manifest would read as "clean"
+      // on every future update, which is strictly worse than no manifest: that
+      // at least reports itself as an unknown.
+      process.stdout.write(`  ⚠ no baseline written — ${packageRoot} is empty now (install root moved?)\n\n`);
+    } else {
+      await (io.writeManifest ?? writeManifest)(manifest);
+      process.stdout.write(
+        `  ✓ baseline recorded (${manifest.files.length} files) — the next update can tell local changes apart\n\n`
+      );
+    }
+  } catch (e) {
+    // A baseline that cannot be written must never fail an update that already
+    // succeeded; the next preflight just reports "could not check".
+    process.stdout.write(
+      `  ⚠ baseline not written (${(e as Error).message}) — the next update reports 'unknown' instead\n\n`
+    );
+  }
+}
+
+/** Step 2: re-register every surface. Returns the exit code; 0 = go on. */
+async function reRegisterSurfaces(u: UpdateRun): Promise<number> {
+  const { args, io, mode, platform } = u;
   process.stdout.write("→ re-registering with every supported surface (idempotent)\n\n");
   // --staged runs unattended (spawned from the SessionStart hook), so never block
   // on a confirmation prompt.
@@ -781,9 +918,8 @@ async function performUpdate(args: ParsedArgs, io: UpdateIo): Promise<number> {
   // needs the hand-off, so only the ephemeral case pays for a second process.
   let installRC: number | null = null;
   if (
-    runsInstaller &&
-    (isEphemeralInstallPath(mode.cliPath) || (platform === "win32" && mode.mode === "npm-global")) &&
-    !args.dryRun
+    u.runsInstaller &&
+    (isEphemeralInstallPath(mode.cliPath) || (platform === "win32" && mode.mode === "npm-global"))
   ) {
     installRC = reRegisterViaInstalledBinary(args, mode.npmPackage === CLI_PACKAGE, io, io.spawn);
     if (installRC === null) {
@@ -805,118 +941,70 @@ async function performUpdate(args: ParsedArgs, io: UpdateIo): Promise<number> {
   if (installRC === null) installRC = await (io.install ?? cmdInstall)(installArgs);
   if (installRC !== 0) {
     process.stdout.write("✗ re-register failed — fix the surface errors above, then re-run\n");
-    return installRC;
   }
+  return installRC;
+}
 
-  const installed = args.dryRun ? null : resolveInstalledRuntime(mode, io);
-  // Refresh from the newly installed package, never the old updater's module cache.
-  if (!args.dryRun) {
-    try {
-      if (io.refreshAddress) await io.refreshAddress();
-      else if (runsInstaller) {
-        if (!installed) throw Error("new installed runtime could not be located");
-        await refreshAddressFromInstalledRuntime(installed, io);
-      } else await refreshAssistantAddressRuntime();
-    } catch (error) {
-      process.stderr.write(
-        `warning: assistant address runtime refresh failed: ${(error as Error).message}. Run bastra address setup --yes from the updated installation.\n`
-      );
-    }
-  }
-
-  // 3. Der verwaltete Dienst, BEVOR irgendetwas Erfolg meldet.
-  //
-  //    Ein Update verschiebt die Installation (Homebrew legt jede Version in ein
-  //    eigenes Verzeichnis), und ein LaunchAgent zeigt auf einen ABSOLUTEN Pfad.
-  //    Zeigt er noch auf die alte, startet er danach entweder nichts mehr oder
-  //    weiter den alten Code. Fremde plists bleiben unangetastet.
-  //
-  //    Beide Update-Wege laufen hier durch — das ist der Kern von #441: „jetzt
-  //    nicht neu starten" ist eine andere Entscheidung als „den plist nicht
-  //    umbiegen". Staged biegt um (`reload: false`), kickstartet aber nicht.
-  //    Und die Laufzeit, auf die umgebogen wird, kommt vom Installer, nicht von
-  //    diesem Prozess (#435) — siehe resolveInstalledRuntime.
-  if (!args.dryRun) {
-    const autostart = await (io.refresh ?? refreshManagedAutostart)((s) => process.stdout.write(s), {
-      target: installed,
-      reload: !args.staged,
-      platform,
-    });
-    if (!autostart.ok) {
-      process.stdout.write(
-        "\n✗ the managed autostart could not be pointed at the new install — fix it before relying on it\n"
-      );
-      return 1;
-    }
-  }
-
-  // 4. Daemon restart.
-  //    --staged deliberately skips the kickstart: the running daemon keeps the
-  //    old code in memory and a current session stays intact. The new code goes
-  //    live on the next daemon boot (idle-shutdown after 30 min → forwarder
-  //    respawns with the new code), or immediately when the user restarts.
-  if (args.staged) {
-    process.stdout.write("→ staged — daemon left running on old code (no restart mid-session)\n");
-    process.stdout.write(
-      "  The managed autostart already names the new runtime, so a logout/reboot starts it (#441).\n"
+/** The assistant address runtime, refreshed from the newly installed package. */
+async function refreshAddressStep(u: UpdateRun, installed: InstalledRuntime | null): Promise<void> {
+  const { io } = u;
+  try {
+    if (io.refreshAddress) await io.refreshAddress();
+    else if (u.runsInstaller) {
+      if (!installed) throw Error("new installed runtime could not be located");
+      await refreshAddressFromInstalledRuntime(installed, io);
+    } else await refreshAssistantAddressRuntime();
+  } catch (error) {
+    process.stderr.write(
+      `warning: assistant address runtime refresh failed: ${(error as Error).message}. Run bastra address setup --yes from the updated installation.\n`
     );
-    process.stdout.write("  New code goes live on the next daemon restart:\n");
-    process.stdout.write(
-      "    · automatically after 30 min idle (forwarder mode — an autostart daemon stays warm, #78), or\n"
-    );
-    process.stdout.write(
-      "    · now — run 'bastra update' without --staged (restarts the managed autostart daemon), or restart your AI clients\n"
-    );
-    return 0;
   }
+}
 
+/** The staged path's closing note: the daemon keeps running the old code. */
+function describeStagedRestart(): void {
+  process.stdout.write("→ staged — daemon left running on old code (no restart mid-session)\n");
+  process.stdout.write("  The managed autostart already names the new runtime, so a logout/reboot starts it (#441).\n");
+  process.stdout.write("  New code goes live on the next daemon restart:\n");
+  process.stdout.write(
+    "    · automatically after 30 min idle (forwarder mode — an autostart daemon stays warm, #78), or\n"
+  );
+  process.stdout.write(
+    "    · now — run 'bastra update' without --staged (restarts the managed autostart daemon), or restart your AI clients\n"
+  );
+}
+
+/** Step 4: restart the daemon where an autostart service can, else say how. */
+async function restartDaemon(u: UpdateRun): Promise<void> {
+  const { io, platform } = u;
   process.stdout.write("→ restarting daemon\n");
   const service = (io.service ?? autostartService)(platform);
   const state = await service?.status();
   if (platform === "darwin" && state?.managed) {
     process.stdout.write("  managed LaunchAgent restart handled by autostart refresh (bootout + bootstrap)\n\n");
   } else if (service && state?.loaded && platform === "darwin") {
-    if (args.dryRun) {
-      process.stdout.write("  would kickstart autostart service\n\n");
-    } else {
-      const kick = await service.kickstart();
-      if (kick.ok) process.stdout.write("  ✓ autostart service kicked — daemon restarted with new code\n\n");
-      else process.stdout.write("  ✗ kickstart failed — restart the daemon manually\n\n");
-    }
+    const kick = await service.kickstart();
+    if (kick.ok) process.stdout.write("  ✓ autostart service kicked — daemon restarted with new code\n\n");
+    else process.stdout.write("  ✗ kickstart failed — restart the daemon manually\n\n");
   } else if (platform === "win32" && state?.managed) {
     process.stdout.write("  managed Task Scheduler restart handled by autostart refresh\n\n");
   } else {
-    // #528 — no claim about what is in memory here: this branch cannot restart
-    // anything, so what a running daemon holds is asked below, not guessed.
-    process.stdout.write("  no running autostart service registered — restart a running daemon manually\n");
-    process.stdout.write("  Restart it manually if the check below says it is needed:\n");
-    if (platform === "win32") {
-      process.stdout.write(
-        `    Get-NetTCPConnection -LocalPort ${resolveDaemonEndpoint().port} | Select-Object OwningProcess\n`
-      );
-      process.stdout.write("    Stop-Process -Id <pid>     # forwarder respawns it on the next call\n\n");
-    } else {
-      process.stdout.write(`    lsof -i :${resolveDaemonEndpoint().port}             # find the daemon pid\n`);
-      process.stdout.write("    kill <pid>                 # forwarder respawns it with new code on next call\n\n");
-    }
+    describeManualRestart(platform);
   }
+}
 
-  // #528 — the closing line and the restart report have to tell one story. In
-  // source mode the daemon itself is asked which build it serves; in every
-  // other mode there is no local revision to compare against and the line stays
-  // the plain one.
-  if (sourceState !== null) {
-    const { verdict, daemonRevision } = await liveRevisionOfDaemon(provenRevision(sourceState));
-    const said = describeLiveRevision(verdict, { state: sourceState, daemonRevision });
-    process.stdout.write(said.report);
-    process.stdout.write(said.closing);
-    (io.ask ?? askModelRecommendation)(installed);
-    return 0;
+/** #528 — no claim about what is in memory here: this branch cannot restart
+ *  anything, so what a running daemon holds is asked afterwards, not guessed. */
+function describeManualRestart(platform: NodeJS.Platform): void {
+  process.stdout.write("  no running autostart service registered — restart a running daemon manually\n");
+  process.stdout.write("  Restart it manually if the check below says it is needed:\n");
+  if (platform === "win32") {
+    process.stdout.write(
+      `    Get-NetTCPConnection -LocalPort ${resolveDaemonEndpoint().port} | Select-Object OwningProcess\n`
+    );
+    process.stdout.write("    Stop-Process -Id <pid>     # forwarder respawns it on the next call\n\n");
+  } else {
+    process.stdout.write(`    lsof -i :${resolveDaemonEndpoint().port}             # find the daemon pid\n`);
+    process.stdout.write("    kill <pid>                 # forwarder respawns it with new code on next call\n\n");
   }
-
-  process.stdout.write(
-    "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\n"
-  );
-  (io.ask ?? askModelRecommendation)(installed);
-  return 0;
 }
