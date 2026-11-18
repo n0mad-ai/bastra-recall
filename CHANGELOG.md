@@ -376,6 +376,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Internal
 
+- CI tests the exact Node version pinned by publishing, alongside Node 26,
+  and checks that those versions do not drift apart (#1590).
+- The lint ratchet compares CI changes with the last successful ancestor run
+  on `main` or the PR merge base, and checks for weaker lint configuration.
+  Ignored source files cannot count as checked; mixed-case source extensions
+  and workspace `/dist` imports are covered. Independent top-level statements
+  cannot share a frozen module-depth budget, and structure diagnostics mark
+  ambiguous anonymous siblings explicitly (#1535).
+- Clone checks reuse one explicit Git file list for both scan groups without
+  changing their filters or thresholds. The paired measurement did not establish
+  an end-to-end speedup. CONTRIBUTING documents renamed-copy detection limits,
+  the manual counter-review checklist and the recorded owner-decision path for
+  a justified exception (#1535).
+- The remaining stdio bootstrap, draft-promotion and binary-parity test files
+  are mechanically formatted after formatter-independent tests or type checks;
+  their syntax trees remain equivalent. Format checks ignore local evaluation
+  scratch output while retaining evaluation sources and tests (#1539, #1616).
 - The architecture reference describes audited document writes and their
   sidecar-only, best-effort limits (#1633).
 - The interrupted stub-staging ignore test isolates Git's global configuration
