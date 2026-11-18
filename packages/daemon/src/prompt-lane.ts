@@ -29,7 +29,6 @@ import { beginRulebookRound, catalogFor, type CatalogProvider, type RulebookPayl
  */
 import { appendLaneDrafts } from "./draft-search.js";
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
-import { projectConfidence } from "./scope-filter.js";
 
 import { recordBudgetShadow } from "./session-budget.js";
 import { claudeSessionPidFrom, sessionFeedPath, STATUSLINE_DIR } from "./statusline-session.js";
@@ -39,8 +38,6 @@ import { hookGateAvailable, hookClient, hookAgent, hookClientEvidence } from "./
 import { ownerPromptText } from "./system-turn.js";
 import type { DeliveredPromptImpact } from "./code-graph/prompt-impact.js";
 import { getPromptImpactEnabled } from "./code-graph/prompt-impact-settings.js";
-import { repoRootSync } from "./code-graph/git-paths.js";
-import { logDeliveredBlock } from "./code-delivered-telemetry.js";
 import type { Prewarmer, PrewarmOutcome } from "./embedding-prewarm.js";
 import {
   bumpShown,
@@ -60,7 +57,13 @@ import {
 import { isGatedHint } from "./hook-recall-response.js";
 import { MUST_LOAD_SCORE, extractPrompt, isTrivialPrompt, type ClaudeHookPayload } from "./prompt-classify.js";
 import { formatHintBlock, formatReflexBlock, type PromptReflexHit, type RecallHit } from "./prompt-format.js";
-import { writeTelemetry, type PromptHookTelemetry } from "./prompt-lane-telemetry.js";
+import {
+  emitTelemetry,
+  gatedRow,
+  recallTurnRow,
+  logBoundaryDelivery,
+  type PromptHookTelemetry,
+} from "./prompt-lane-telemetry.js";
 import {
   laneBudgetMs,
   runPromptSearch,
@@ -254,34 +257,6 @@ function openTurn(payload: ClaudeHookPayload, selfBaseUrl: string, opts: PromptL
     agent: hookAgent(payload),
     replay: clientEvidence === "replay",
     prewarmOutcome: undefined,
-  };
-}
-
-async function emitTelemetry(turn: PromptTurn, row: PromptHookTelemetry): Promise<void> {
-  row.hint_tokens_est = (row.hint_tokens_est ?? 0) + Math.ceil((turn.opts.roundNotice?.length ?? 0) / 4);
-  await writeTelemetry(row);
-  turn.opts.onTelemetry?.(row);
-}
-
-/** The telemetry row of a turn that ran no recall. */
-function gatedRow(turn: PromptTurn, promptChars: number, extra: Partial<PromptHookTelemetry>): PromptHookTelemetry {
-  return {
-    session_id: turn.payload.session_id ?? null,
-    client: turn.clientEvidence,
-    agent: turn.agent,
-    detected_mode: "none",
-    gated: true,
-    ...extra,
-    prompt_chars: promptChars,
-    daemon_url: turn.selfBaseUrl,
-    daemon_reachable: true,
-    hint_count: 0,
-    hint_tokens_est: 0,
-    top_score: null,
-    latency_ms_total: Date.now() - turn.startedAt,
-    status: "gated",
-    error: null,
-    prewarm: turn.prewarmOutcome,
   };
 }
 
@@ -670,109 +645,4 @@ async function bookPromptTurn(
   // control flow does not follow — without the cast it narrows `boundary` to
   // the `null` it was declared with.
   return boundary as TakenBoundary | null;
-}
-
-/** The `prompt_hook_call` row of a turn that reached the search stage. */
-function recallTurnRow(
-  turn: PromptTurn,
-  prompt: string,
-  search: PromptSearch,
-  selection: PromptHintSelection,
-  emit: RecallEmit,
-  blocks: string[],
-  impact: DeliveredPromptImpact
-): PromptHookTelemetry {
-  const { resp } = search;
-  const shown = emit.suppressed ? [] : [...emit.recallHits, ...emit.reflexKept];
-  return {
-    session_id: turn.payload.session_id ?? null,
-    client: turn.clientEvidence,
-    agent: turn.agent,
-    detected_mode: search.detectedMode,
-    prompt_chars: prompt.length,
-    daemon_url: turn.selfBaseUrl,
-    // A skipped recall (#371) is not an unreachable daemon: the lane IS the
-    // daemon and the vault answered the question locally.
-    daemon_reachable: resp !== null || search.reflexResp !== null || search.recallSkipped !== undefined,
-    hint_count: emit.suppressed ? 0 : emit.recallHits.length,
-    reflex_hint_count: emit.reflexKept.length,
-    ...(selection.reflexDeduped.length > 0 ? { reflex_deduped_ids: selection.reflexDeduped } : {}),
-    // #354: which memories this lane actually injected, and of what type.
-    // The prompt lane was the one hint source the context-tax evaluation could
-    // not see per memory — it reported only counts. Suppressed emits stay
-    // empty: nothing reached the transcript, so nothing was taxed.
-    hinted_ids: shown.map((h) => h.id),
-    hinted_types: shown.map((h) => h.type),
-    hint_tokens_est: blocks.length === 0 ? 0 : Math.ceil(blocks.join("\n").length / 4),
-    // #606: the code block's own cost and reach, separate from the memory
-    // hints — the ROI question is what the CODE context costs, and
-    // `hint_tokens_est` counts the whole injected document.
-    ...(impact.block !== null
-      ? {
-          code_block_tokens_est: impact.tokensEst,
-          code_basis: impact.basis === null ? [] : [impact.basis],
-        }
-      : {}),
-    top_score: resp?.hits?.[0]?.score ?? null,
-    latency_ms_total: Date.now() - turn.startedAt,
-    backoff_streak: emit.backoffStreak,
-    ...scopeFilterFields(selection.scopeFilter, search.cwd),
-    ...recallQualityFields(resp),
-    suppressed: emit.suppressed,
-    suppressed_tokens_est: emit.suppressedTokensEst,
-    status: emit.suppressed ? "suppressed" : selection.status,
-    error: search.errMsg,
-    prewarm: turn.prewarmOutcome,
-    recall_skipped: search.recallSkipped,
-  };
-}
-
-/**
- * §20.5 Shadow-Messung: was ein Scope-Filter hier verwerfen WÜRDE, plus der
- * Kontext, in dem die Entscheidung fällt — Modus (shadow/enforce),
- * Projekt-Scope, Retrieval-Modus (steht schon als detected_mode in der Zeile)
- * und `unfused`. Die Scope-Namen kommen mit, damit sich auswerten lässt, ob
- * dieselben zwei Fremdprojekte alles ausmachen oder ob es breit streut.
- */
-function scopeFilterFields(scopeFilter: PromptHintSelection["scopeFilter"], cwd: string) {
-  return {
-    scope_filter_mode: scopeFilter.mode,
-    dropped_scope_count: scopeFilter.droppedCount,
-    project_confidence: projectConfidence(cwd),
-    filter_project: scopeFilter.filterProject,
-    ...(scopeFilter.skipped ? { scope_filter_skipped: scopeFilter.skipped } : {}),
-    ...(scopeFilter.droppedScopes.length > 0 ? { dropped_scopes: scopeFilter.droppedScopes } : {}),
-  };
-}
-
-/** How the recall degraded (#302/#342) and which bridges fired (#702); absent when not. */
-function recallQualityFields(resp: PromptSearch["resp"]) {
-  return {
-    ...(resp?.unfused === true ? { unfused: true } : {}),
-    ...(resp?.degraded ? { degraded: resp.degraded } : {}),
-    ...(resp?.bridges_fired?.length ? { bridges_fired: resp.bridges_fired } : {}),
-  };
-}
-
-/**
- * #572/#579: one `code_tool_call` row per task-boundary block that reached the
- * transcript — the same shape and the same call the write lane
- * (`write-lane.ts`) and `prompt-impact.ts` use, so all three deliveries group
- * by `delivered_lane` in one readout instead of joining two event kinds.
- *
- * A block the session-dedupe held back is booked as a dedupe hit, the same
- * "which kind of nothing" the other two lanes tell apart. Fire-and-forget: the
- * row is the measurement, never part of the answer.
- */
-function logBoundaryDelivery(sessionId: string | null, cwd: string, taken: TakenBoundary): void {
-  void logDeliveredBlock({
-    sessionId,
-    lane: "boundary",
-    repo: repoRootSync(cwd) ?? cwd,
-    dedupeHit: taken.note === null,
-    // No `basis`: a boundary block has one per dependent (edit-time or
-    // whole-file-now), not one for the answer, and inventing a single value
-    // would put a number in that column that describes nothing.
-    ...(taken.note !== null ? { files: taken.files, tokensEst: Math.ceil(taken.note.length / 4) } : {}),
-  });
 }
