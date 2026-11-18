@@ -25,19 +25,36 @@ export interface StatusReport {
   follow_up_of?: string;
 }
 
-// The marker the UI shows as answer buttons (tasks-reports-model.js askOf): 2 to 6 distinct options
-// of at most 80 characters after a question, at the end of a line.
+// The marker the UI shows as answer buttons (tasks-reports-model.js askOf, tasks-report-notes.js
+// takeAsk): 2 to 6 distinct options of at most 40 characters after a question, at the end of a list
+// item or paragraph line. One contract with the reader (#1656): the lines are taken apart as its
+// renderer (webui views/memory-browser.js markdown()) does, so a marker in code, in a heading, behind
+// a backslash (#1652) or with formatting inside it stays text here as well.
 const ASK = /\[\?([^[\]]*)\]\s*$/;
 const ASK_MIN = 2;
 const ASK_MAX = 6;
-const OPTION_MAX = 80;
+const OPTION_MAX = 40;
 
-/** A heading or table row is never a question in the UI either. */
-const NOT_ASKED = /^\s*[#|]/;
+const FENCE = /^```/;
+const HEADING = /^#{1,6}\s/;
+const ITEM = /^\s*(?:[-*]|\d+\.)\s+(.*)$/;
+// the renderer's inline formatting (memory-browser.js INLINE): wiki links, code, bold, links, web
+// addresses, emphasis. An element that ends after the marker's start leaves the line plain text.
+const INLINE =
+  /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]|`([^`]+)`|\*\*([^*]+)\*\*|\[([^\]]+)\]\((https?:[^)\s]+)\)|(https?:\/\/[^\s<)]+)|(^|[^*\w])\*([^*\s][^*]*)\*/g;
 
-function asksOnLine(line: string): boolean {
-  const m = ASK.exec(line);
-  if (!m || NOT_ASKED.test(line) || !line.slice(0, m.index).trim()) return false;
+/** Where the last inline element of `text` ends (0 without one). */
+function formattedUntil(text: string): number {
+  let end = 0;
+  for (const m of text.matchAll(INLINE)) end = m.index + m[0].length;
+  return end;
+}
+
+/** The text of a list item or paragraph line: does it end with answer options? */
+function asksIn(text: string): boolean {
+  const m = ASK.exec(text);
+  if (!m || text[m.index - 1] === "\\" || !text.slice(0, m.index).trim()) return false;
+  if (formattedUntil(text) > m.index) return false;
   const options = m[1]!.split("|").map((o) => o.trim());
   return (
     options.length >= ASK_MIN &&
@@ -48,7 +65,16 @@ function asksOnLine(line: string): boolean {
 }
 
 /** True when the report text holds at least one question with answer options. */
-export const asksOwner = (body: string) => body.split("\n").some(asksOnLine);
+export function asksOwner(body: string): boolean {
+  let fence = false;
+  // HTML comments are bookkeeping the reader drops before it reads the lines
+  for (const raw of body.replace(/<!--[\s\S]*?-->/g, "").split("\n")) {
+    const line = raw.trimEnd();
+    if (FENCE.test(line)) fence = !fence;
+    else if (!fence && !HEADING.test(line) && asksIn(ITEM.exec(line)?.[1] ?? line)) return true;
+  }
+  return false;
+}
 
 /** The state from the notes alone (the first four rules without the follow-up). */
 function notesStatus(notes: readonly StatusNote[]): ReportStatus | null {

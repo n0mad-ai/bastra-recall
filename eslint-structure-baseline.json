@@ -450,7 +450,6 @@
     "[\"packages/daemon/webui/app/js/views/lens-draw.js\",\"[\\\"function:spiral\\\"]\",\"complexity\"]": 21,
     "[\"packages/daemon/webui/app/js/views/lens-draw.js\",\"[\\\"function:weave\\\"]\",\"complexity\"]": 26,
     "[\"packages/daemon/webui/app/js/views/live-feed.js\",\"[\\\"function:createFeed\\\",\\\"property:ingest\\\",\\\"function:FunctionExpression#1\\\"]\",\"complexity\"]": 18,
-    "[\"packages/daemon/webui/app/js/views/memory-browser.js\",\"[\\\"function:inline\\\"]\",\"complexity\"]": 18,
     "[\"packages/daemon/webui/app/js/views/memory-browser.js\",\"[\\\"function:mountMemoryBrowser\\\",\\\"function:renderReader\\\"]\",\"complexity\"]": 23,
     "[\"packages/daemon/webui/app/js/views/signals.js\",\"[\\\"function:signalsTab\\\",\\\"variable:draw\\\",\\\"function:ArrowFunctionExpression#1\\\"]\",\"complexity\"]": 18,
     "[\"packages/daemon/webui/app/js/views/vault-data.js\",\"[\\\"function:vault\\\"]\",\"complexity\"]": 32,

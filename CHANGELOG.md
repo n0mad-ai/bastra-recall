@@ -323,6 +323,13 @@ until a new design replaces it; this name is independent of the product version.
 - Vault-root history: concurrent registrations of different vaults no longer
   lose an entry or falsely block a save as `unwritable`; a persistent
   concurrent-update conflict is reported as its own cause (#1659).
+- Report questions: the daemon's question status and the reader now share one
+  answer-option contract (at most 40 characters per option; markers in code,
+  headings or with formatting inside stay text) (#1656).
+- Report reader: an escaped marker `\[? … ]` stays text and is shown without
+  the backslash (#1652).
+- Report reader: after resizing across the narrow width, the contents panel
+  jumps to and tracks the text on screen (#1655).
 - The lint configuration guard compares template and regular-expression text,
   rejecting unverified path and regex changes (#1646, #1535 S2).
 - Invalid custom numeric settings keep their entered text and block Apply and

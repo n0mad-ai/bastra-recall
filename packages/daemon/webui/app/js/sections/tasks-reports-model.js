@@ -192,7 +192,9 @@ export function noteRows(answer) {
 // the long answers, only a short summary"); the explanation belongs in the question's own text. 40
 // characters hold a letter, a dash and a name of four or five words and still fit one button line
 // on a phone. A longer option is never cut: the whole line stays plain text, as with any other
-// broken marker, so no part of what the agent wrote disappears.
+// broken marker, so no part of what the agent wrote disappears. A backslash before the marker
+// ("\[? Yes | No]") makes it text too (#1652); the reader then shows it without the backslash.
+// The daemon's question status (task-report-status.ts) keeps the same contract (#1656).
 const ASK = /\[\?([^[\]]*)\]\s*$/;
 const ASK_MAX = 6;
 const OPTION_MAX = 40;
@@ -200,12 +202,15 @@ const OPTION_MAX = 40;
 /** Block text → { question, options, at } (at: where the marker starts), or null. */
 export function askOf(text) {
   const m = ASK.exec(String(text ?? ""));
-  if (!m) return null;
+  if (!m || text[m.index - 1] === "\\") return null;
   const options = m[1].split("|").map((o) => o.trim());
   const question = text.slice(0, m.index).trim();
   const fits = options.length >= 2 && options.length <= ASK_MAX && options.every((o) => o && o.length <= OPTION_MAX);
   return fits && question && new Set(options).size === options.length ? { question, options, at: m.index } : null;
 }
+
+/** Text ending in an escaped marker "\[? … ]" → the same text without that backslash. */
+export const unescapeAsk = (text) => text.replace(/\\(\[\?[^[\]]*\]\s*)$/, "$1");
 
 /** An option as its answer field shows it (Daniel 18.11.2026, draft D): the key in a small frame on
  *  top, the name below. "A – Keep" names its own key (one to three characters, then a dash, the

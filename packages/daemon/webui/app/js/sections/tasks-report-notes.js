@@ -26,7 +26,7 @@ import { h } from "../dom.js";
 import { t } from "../i18n.js";
 import { noteEditor } from "../views/care-note.js";
 import { fmtAt } from "./tasks-api.js";
-import { excerptOf, notesAt, askOf, answerAt, optionParts } from "./tasks-reports-model.js";
+import { excerptOf, notesAt, askOf, unescapeAsk, answerAt, optionParts } from "./tasks-reports-model.js";
 
 /** The annotatable blocks of the rendered report in reading order (as markdown() and the
  *  table renderer build them): headings, paragraphs, list items, table body rows. */
@@ -127,12 +127,17 @@ function addButton(b, ui, anchor) {
 
 /** A question with answer options on a list item or paragraph: the marker leaves the shown text (it
  *  has to stand in the last text node; formatting inside it leaves the line as plain text) and the
- *  options are returned. The anchor's excerpt keeps the marker, so an agent sees the options too. */
+ *  options are returned. The anchor's excerpt keeps the marker, so an agent sees the options too.
+ *  An escaped marker "\[? … ]" stays text and loses only its backslash (#1652). */
 function takeAsk(b) {
   if (b.kind !== "item" && b.kind !== "paragraph") return null;
   const ask = askOf(b.el.textContent),
     last = [...b.el.childNodes].at(-1);
-  if (!ask || last?.nodeType !== 3) return null;
+  if (last?.nodeType !== 3) return null;
+  if (!ask) {
+    last.textContent = unescapeAsk(last.textContent);
+    return null;
+  }
   const marker = b.el.textContent.slice(ask.at);
   if (!last.textContent.endsWith(marker)) return null;
   last.textContent = last.textContent.slice(0, -marker.length).trimEnd();

@@ -24,6 +24,10 @@ let shownOutline = null,
 export function setOutline(next, reader) {
   shownOutline = next;
   outlineScroller = reader;
+  // a rebuilt reader (e.g. a resize across the narrow width, #1655) has new nodes for the same
+  // places: the rows the panel shows follow them, so a click and the reading mark use the text on screen
+  const now = new Map([...(next?.heads ?? []), ...(next?.asks ?? [])].map((e) => [e.index, e.el]));
+  for (const r of outlineRows) r.el = now.get(r.index) ?? r.el;
 }
 
 /** Marks the row of the place being read (the reader's scroll event, a rebuilt panel). */
@@ -50,14 +54,15 @@ export function trackOutline() {
 
 /** One row: the square, the text (it wraps, never cut; Daniel 18.11.2026). */
 function outlineRow(e, cls) {
-  const btn = h(
+  const row = { btn: null, el: e.el, index: e.index };
+  row.btn = h(
     `button.tk-toc__j.${cls}`,
     {
       type: "button",
       title: e.text,
       on: {
         click: () => {
-          e.el.scrollIntoView({ block: "start" });
+          row.el.scrollIntoView({ block: "start" });
           trackOutline();
         },
       },
@@ -65,7 +70,7 @@ function outlineRow(e, cls) {
     h("span.tk-toc__sq", { "aria-hidden": "true" }),
     h("span.tk-toc__t", { text: e.text })
   );
-  return { btn, el: e.el, index: e.index };
+  return row;
 }
 
 /** A block of the panel (css/panels.css: lens__sec, lens__list) under a small label with its count

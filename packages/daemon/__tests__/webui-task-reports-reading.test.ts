@@ -124,6 +124,41 @@ test("jump list: a click scrolls to the place; scrolling marks the place being r
   );
 });
 
+test("#1655: after a rebuild across the narrow width the jump list points at the text on screen", async () => {
+  const { v, host, context, draw } = await view();
+  // every build of the reader makes new nodes for the same places, as the real renderer does
+  let built: Toc = outline(false);
+  context.annotateReport = (nodes: Node_[]) => {
+    built = outline(false);
+    return { nodes, focus: null, toc: built };
+  };
+  await v.openReport(ID(1));
+  const body = h("div", null);
+  v.outlineTab.render(body);
+  const rows = byClass(body, "tk-toc__j");
+  for (const width of [500, 800]) {
+    const before = built;
+    host.clientWidth = width;
+    draw();
+    assert.notEqual(built, before, `${width}: the reader was rebuilt`);
+    const old = before.asks[1].el.scrolled;
+    await rows[3].click();
+    assert.equal(built.asks[1].el.scrolled, 1, `${width}: the click scrolls the place now on screen`);
+    assert.equal(before.asks[1].el.scrolled, old, `${width}: not the removed one`);
+    // the reading mark measures the current nodes: "Keep it?" has passed the line
+    built.heads[0].el.top = -900;
+    built.heads[1].el.top = -500;
+    built.asks[0].el.top = 60;
+    built.asks[1].el.top = 400;
+    for (const fn of one(host, "mb__reader").listeners.scroll ?? []) fn();
+    assert.deepEqual(
+      rows.map((r) => r.classList.contains("is-here")),
+      [false, false, true, false],
+      `${width}: the mark follows the text on screen`
+    );
+  }
+});
+
 test("jump list: rows stand in the panel's own list, like its other lists", async () => {
   const { v, knobs } = await view();
   knobs.toc = outline(false);

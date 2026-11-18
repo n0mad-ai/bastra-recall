@@ -90,7 +90,33 @@ test("status: questions are recognised by the fixed syntax, never by words", () 
     ["Ship it? [? A | B | C | D | E | F | G]", false],
     ["Should we ship it? Yes or no?", false],
     ["## Ship it? [? Yes | No]", false],
-    ["| Ship it? [? Yes | No]", false],
+    // a lone pipe line is no table: the reader shows it as a paragraph that asks (#1656: one contract)
+    ["| Ship it? [? Yes | No]", true],
+  ];
+  for (const [body, want] of rows) assert.equal(asksOwner(body), want, body);
+});
+
+test("#1656: an option longer than the reader's 40 characters asks nothing, as in the reader", () => {
+  // the trace from the issue: report A, then follow-up B whose only marker has a 41-character option
+  const a = base({ notes: [done], read_at: 3 });
+  const long = followUp({ body: `Frage? [? ${"x".repeat(41)} | Nein]` });
+  assert.deepEqual(
+    reportStatus(a, [a, long], (r) => r.notes),
+    { status: "done" }
+  );
+  const fits = followUp({ body: `Frage? [? ${"x".repeat(40)} | Nein]` });
+  assert.equal(reportStatus(a, [a, fits], (r) => r.notes).status, "question", "40 characters still ask");
+});
+
+test("#1656/#1652: code and an escaped marker stay text for the status as in the reader", () => {
+  const rows: [string, boolean][] = [
+    ["```\nShip it? [? Yes | No]\n```", false],
+    ["```\ncode\n```\nShip it? [? Yes | No]", true],
+    ["Ship it? `[? Yes | No]`", false],
+    ["Ship it? [? `Yes` | No]", false],
+    ["Literal \\[? Yes | No]", false],
+    ["- Literal \\[? Yes | No]", false],
+    ["- [? Yes | No]", false],
   ];
   for (const [body, want] of rows) assert.equal(asksOwner(body), want, body);
 });

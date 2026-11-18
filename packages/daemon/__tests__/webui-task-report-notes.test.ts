@@ -312,17 +312,14 @@ test("texts: every key the notes use exists in German and English", async () => 
   assert.deepEqual(await noteKeys("de"), await noteKeys("en"), "the note texts exist in both languages");
 });
 
-/** The reading view's real Markdown renderer (memory browser's markdown() plus the table renderer). */
+/** The reading view's real Markdown renderer (views/markdown.js plus the table renderer). */
 async function realRenderer(): Promise<{ render: (md: string) => Node_[] }> {
-  const mb = await read("views/memory-browser.js");
   const reports = await read("sections/tasks-reports.js");
   const pick = (src: string, re: RegExp) => re.exec(src)?.[0] ?? assert.fail(`not found: ${re}`);
   return runInNewContext(
     [
       strip(await read("sections/tasks-reports-model.js")),
-      pick(mb, /const INLINE =[\s\S]*?;\n/),
-      pick(mb, /function inline\(text, onLink\) \{[\s\S]*?\n\}/),
-      pick(mb, /export function markdown\(md, onLink\) \{[\s\S]*?\n\}/).replace(/^export /, ""),
+      strip(await read("views/markdown.js")),
       pick(reports, /function table\(b\) \{[\s\S]*?\n\}/),
       "({ render: (md) => reportBlocks(md).flatMap((b) => (b.kind === 'table' ? [table(b)] : markdown(b.text, () => {}))) })",
     ].join("\n"),
@@ -711,4 +708,57 @@ test("model: answerAt finds the choice and own answers; hereIndex picks the plac
   assert.equal(m.hereIndex([], 100), -1);
   assert.equal(m.hereIndex([300, 500], 100), 0, "the first place before any has passed");
   assert.equal(m.hereIndex([-400, 40, 90, 300], 100), 2);
+});
+
+const noUi = { notes: [], editing: null, open() {}, edit() {}, remove() {}, save: async () => {}, cancel() {} };
+
+test("#1656/#1652: the daemon's question status and the reader's answer buttons follow one contract", async () => {
+  const m = await load();
+  const renderer = await realRenderer();
+  const { asksOwner } = await import("../src/task-report-status.js");
+  const corpus: [string, boolean][] = [
+    ["Ship it? [? Yes | No]", true],
+    [`Ship it? [? ${"x".repeat(40)} | No]`, true],
+    [`Ship it? [? ${"x".repeat(41)} | No]`, false],
+    ["Ship it? [? Yes | Yes]", false],
+    ["Ship it? [? Yes]", false],
+    ["- Ship it? [? Yes | No]", true],
+    ["1. Ship it? [? Yes | No]", true],
+    ["- [? Yes | No]", false],
+    ["## Ship it? [? Yes | No]", false],
+    ["#Ship it? [? Yes | No]", true],
+    ["| Ship it? [? Yes | No]", true],
+    ["| Ship it? | Yes or no |\n|---|---|\n| [? Yes | No] | b |", false],
+    ["```\nShip it? [? Yes | No]\n```", false],
+    ["```\ncode\n```\nShip it? [? Yes | No]", true],
+    ["Ship it? `[? Yes | No]`", false],
+    ["Ship it? `code` [? Yes | No]", true],
+    ["Ship it? [? `Yes` | No]", false],
+    ["Ship it? [? **Yes** | No]", false],
+    ["Literal \\[? Yes | No]", false],
+    ["Ship it? [? Yes | No] <!-- marker -->", true],
+  ];
+  for (const [body, want] of corpus) {
+    const shown = m.annotateReport(renderer.render(body), noUi).toc.asks.length > 0;
+    assert.equal(shown, want, `reader: ${body}`);
+    assert.equal(asksOwner(body), want, `daemon: ${body}`);
+  }
+});
+
+test("#1652: an escaped marker stays text, shown without its backslash; a normal one still asks", async () => {
+  const m = await load();
+  const renderer = await realRenderer();
+  const out = m.annotateReport(
+    renderer.render(["Literal \\[? Yes | No]", "", "- Item \\[? A | B]", "", "Ship it? [? Yes | No]"].join("\n")),
+    noUi
+  );
+  const [literal, list, asked] = out.nodes;
+  assert.equal(literal.find("tk-ask").length, 0, "no answer buttons");
+  assert.match(literal.textContent, /^Literal \[\? Yes \| No\]tk\.rep\.note\.add$/, "shown as written, no backslash");
+  assert.equal(literal.find("tk-an__btn").length, 1, "a plain place with the note button");
+  assert.match(list.children[0].textContent, /^Item \[\? A \| B\]tk\.rep\.note\.add$/);
+  assert.equal(list.find("tk-ask").length, 0);
+  assert.equal(asked.find("tk-ask").length, 1, "a normal marker still asks");
+  assert.equal(out.toc.asks.length, 1);
+  assert.equal(m.askOf("Literal \\[? Yes | No]"), null);
 });

@@ -76,6 +76,7 @@ async function browser(start) {
       Object.assign(context.state, p);
     },
     addStrings() {},
+    markdown: () => [],
     en: {},
     de: {},
     detailCache: () => ({}),
