@@ -51,7 +51,7 @@ const de: typeof en = {
 
 export const MEMORY_CMD_WORDS: Readonly<Record<string, typeof en>> = { en, de };
 /** The words in `language`, with its usage lines; English for an unset or unlisted one. */
-export function memoryCmdWordsIn(language: string | undefined): MemoryCmdWords {
+function memoryCmdWordsIn(language: string | undefined): MemoryCmdWords {
   return { ...(MEMORY_CMD_WORDS[language ?? "en"] ?? en), usage: usageWordsIn(language) };
 }
 /** The words in language.primary, read once per command (English when unset or unreadable). */
