@@ -376,6 +376,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Internal
 
+- Task-tool descriptions keep a shorter credential and chat-authorization
+  contract at every entry, with tighter description and catalogue budgets;
+  tool names, schemas and operational rules stay unchanged (#1462).
 - CI tests the exact Node version pinned by publishing, alongside Node 26,
   and checks that those versions do not drift apart (#1590).
 - The lint ratchet compares CI changes with the last successful ancestor run

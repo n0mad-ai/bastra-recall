@@ -263,6 +263,19 @@ test("#1594 task tool texts never tell the model to answer in a fixed language",
   assert.match(taskTools.find((t) => t.name === "task_create")!.description, /in the user's language/);
 });
 
+test("#1462: every task tool carries its credential, management and chat authorization contract", () => {
+  for (const { name, description } of taskTools) {
+    assert.match(description, /persisted commitment/i, name);
+    assert.match(description, /mapped credential required/i, name);
+    assert.match(description, /agents.*manage.*(?:every|all).*level/i, name);
+    assert.match(description, /rearm (?:remains|stays) unarmed/i, name);
+    assert.match(description, /user(?:\s+chat)?\s+instruction.*Yes.*authoriz/i, name);
+    for (const field of ["user-directed provenance", "program", "session", "wording"])
+      assert.ok(description.includes(field), `${name}: missing authorization ${field}`);
+    assert.match(description, /no extra approval/i, name);
+  }
+});
+
 test("agent delete shares MCP, HTTP DELETE and CLI revision semantics", async () => {
   const f = await fixture();
   try {

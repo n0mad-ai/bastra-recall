@@ -5,9 +5,10 @@
  * because the rulebook field descriptions were sent four times per tool.
  *
  * These are ceilings, not targets: a new tool or a longer text that crosses one
- * fails here, and the fix is to shorten — or to raise the number on purpose in
- * the same change, where a reviewer sees it. Sizes are the serialized tool
- * entries as `tools/list` sends them; ~4 characters make one token.
+ * fails here; shorten the text rather than raising a ceiling to admit it.
+ * Sizes are the serialized tool
+ * entries as `tools/list` sends them. The legacy *_BYTES ceilings below use
+ * JSON.stringify(...).length (UTF-16 code units), not UTF-8 bytes or tokens.
  *
  * Runner: node --import tsx --import ./scripts/test-env.mjs --test packages/daemon/__tests__/tool-catalog-budget.test.ts
  */
@@ -31,8 +32,10 @@ const MAX_DESCRIPTION_CHARS = 3_000;
 const MAX_TOOL_BYTES = 13_500;
 /** Everything except the task tools, document write on (44.5k after #1462, was 59.7k). */
 const MAX_CORE_CATALOGUE_BYTES = 47_000;
-/** The task tools (61.5k at #1462; not shortened there). */
-const MAX_TASK_CATALOGUE_BYTES = 64_000;
+/** Task descriptions carry the shared credential/authorization contract at every tool. */
+const MAX_TASK_DESCRIPTION_CHARS = 1_800;
+/** The task tools, including unchanged schemas (61.5k before the shared-text reduction). */
+const MAX_TASK_CATALOGUE_BYTES = 56_000;
 
 test("#1462: no tool description exceeds its budget", () => {
   const over = defs
@@ -44,6 +47,13 @@ test("#1462: no tool description exceeds its budget", () => {
 test("#1462: no single tool entry exceeds its budget", () => {
   const over = defs.filter((d) => size([d]) > MAX_TOOL_BYTES).map((d) => `${d.name}=${size([d])}`);
   assert.deepEqual(over, [], `tool entries over ${MAX_TOOL_BYTES} bytes`);
+});
+
+test("#1462: task descriptions stay inside their tighter budget", () => {
+  const over = taskTools
+    .filter((d) => d.description.length > MAX_TASK_DESCRIPTION_CHARS)
+    .map((d) => `${d.name}=${d.description.length}`);
+  assert.deepEqual(over, [], `task descriptions over ${MAX_TASK_DESCRIPTION_CHARS} characters`);
 });
 
 test("#1462: the catalogue stays inside its budget, with and without the task tools", () => {
