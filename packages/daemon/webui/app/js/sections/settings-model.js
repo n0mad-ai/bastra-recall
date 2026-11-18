@@ -9,6 +9,25 @@ import { state, setState } from "../state.js";
 import { t } from "../i18n.js";
 import { setBackdrop } from "../backdrop.js";
 
+/** t() with a fallback when the key is missing (server label for unknown keys). */
+export function tx(key, fallback, vars) {
+  const s = t(key, vars);
+  return s === key ? fallback : s;
+}
+export const nameOf = (e) => tx(`st.k.${e.key}`, e.label || e.key);
+export const descOf = (e) => tx(`st.k.${e.key}.d`, "");
+export const groupTitle = (g) => t(`st.g.${g.id}`);
+
+/** Display text of a value (Changes: old → new). */
+export function fmt(e, v) {
+  if (v === null || v === undefined) return t("st.v.default");
+  if (e.secret) return "••••••••";
+  if (typeof v === "boolean") return t(v ? "st.v.on" : "st.v.off");
+  if (Array.isArray(v)) return v.length ? v.join(", ") : t("st.v.none");
+  if (typeof v === "object") return JSON.stringify(v);
+  return v === "" ? "—" : String(v);
+}
+
 export const SETTINGS_FILE = "~/.bastra/cli-settings.json";
 
 /** Groups in prototype order (settings-spec-v20.js SECTIONS), mapped onto real keys. */

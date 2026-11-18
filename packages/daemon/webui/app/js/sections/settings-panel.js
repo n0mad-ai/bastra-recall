@@ -19,8 +19,10 @@ import {
   entry,
   invalidText,
   matches,
+  nameOf,
+  descOf,
+  fmt,
 } from "./settings-model.js";
-import { nameOf, descOf, fmt } from "./settings.js";
 
 const CHIPS = ["env", "restart", "experimental", "ollama", "token"];
 

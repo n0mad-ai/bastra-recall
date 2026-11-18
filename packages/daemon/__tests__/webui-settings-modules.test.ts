@@ -1,4 +1,4 @@
-// Characterize the real browser module graph, including both directions of the settings cycle.
+// Characterize the real browser module graph and the shared settings display output.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -13,7 +13,8 @@ for (const lang of ["en", "de"]) {
       globalThis.requestAnimationFrame = () => 1;
       globalThis.localStorage = { getItem: () => null };
       globalThis.fetch = () => { throw new Error("module initialization must not request data"); };
-      const settings = await import(${JSON.stringify(settings)});
+      await import(${JSON.stringify(settings)});
+      const settings = await import(new URL("settings-model.js", ${JSON.stringify(settings)}));
       const panel = await import(new URL("settings-panel.js", ${JSON.stringify(settings)}));
       const { getArea } = await import(new URL("../areas.js", ${JSON.stringify(settings)}));
       const { t } = await import(new URL("../i18n.js", ${JSON.stringify(settings)}));

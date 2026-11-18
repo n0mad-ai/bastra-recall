@@ -20,8 +20,6 @@
   ["packages/daemon/src/task-store.ts", "packages/daemon/src/task-private-comparison.ts"],
   ["packages/daemon/webui/app/js/agent.js", "packages/daemon/webui/app/js/views/chrome.js"],
   ["packages/daemon/webui/app/js/agent.js", "packages/daemon/webui/app/js/views/memory-browser.js"],
-  ["packages/daemon/webui/app/js/sections/settings-panel.js", "packages/daemon/webui/app/js/sections/settings.js"],
-  ["packages/daemon/webui/app/js/sections/settings.js", "packages/daemon/webui/app/js/sections/settings-panel.js"],
   ["packages/daemon/webui/app/js/views/chrome.js", "packages/daemon/webui/app/js/agent.js"],
   ["packages/daemon/webui/app/js/views/chrome.js", "packages/daemon/webui/app/js/views/memory-browser.js"],
   ["packages/daemon/webui/app/js/views/memory-browser.js", "packages/daemon/webui/app/js/agent.js"],
