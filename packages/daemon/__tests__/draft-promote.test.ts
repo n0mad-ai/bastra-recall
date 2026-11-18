@@ -960,13 +960,15 @@ test("D fix: 480 drafts/100 candidates/2000 notes yield and do not hold the draf
       t.diagnostic(
         `event-loop max lag ${maxLag.toFixed(1)}ms; scheduled writer ${writerMs.toFixed(1)}ms; run ${runMs.toFixed(1)}ms`
       );
-      // Measured against the run's own duration, not a fixed wall-clock limit:
-      // a loaded machine stretches both alike (#1667). A pass that does not
-      // yield holds the loop and the writer for nearly the whole run; one that
-      // yields holds them for a few percent of it.
-      const share = runMs / 10;
-      assert.ok(maxLag < share, `event loop held ${maxLag}ms of a ${runMs}ms run`);
-      assert.ok(writerMs < share, `writer waited ${writerMs}ms of a ${runMs}ms run`);
+      // Measured against the run's own duration: a loaded machine stretches
+      // both alike (#1667). A pass that does not yield holds the loop and the
+      // writer for nearly the whole run; one that yields, for a few percent
+      // of it. The fixed ceiling keeps a long run from excusing a long stall;
+      // it sits above the slowest stall seen on a loaded CI runner (568.9 ms
+      // of an 8957 ms run), not at the old 500 ms that runner exceeded.
+      const limit = Math.min(runMs / 10, 1000);
+      assert.ok(maxLag < limit, `event loop held ${maxLag}ms of a ${runMs}ms run`);
+      assert.ok(writerMs < limit, `writer waited ${writerMs}ms of a ${runMs}ms run`);
       await runDraftPromote(options); // Any concurrent writer's changed state settles.
       const originalPrepare = DatabaseSync.prototype.prepare;
       let vectorReads = 0;
