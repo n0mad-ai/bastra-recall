@@ -36,7 +36,7 @@ import {
   pendingModelNotice,
   type ModelOffer,
 } from "../src/model-recommendation.js";
-import { readSettings } from "../src/settings.js";
+import { effectiveUpdateMode, readSettings } from "../src/settings.js";
 
 const rec = (id: string, model: string, sizeGB = 1): ModelRecommendation => {
   const entry = { model, sizeGB, improves: `Synthetic ${id}.` };
@@ -45,6 +45,7 @@ const rec = (id: string, model: string, sizeGB = 1): ModelRecommendation => {
 const REC_A = rec("release-A", "shown-A:4b");
 const REC_B = rec("release-B", "unseen-B:12b", 8);
 const EXISTING = JSON.stringify({
+  update: { mode: "notify" },
   embedding: { provider: "ollama" },
   generation: { model: "old:4b" },
   api: { token: "invented-token" },
@@ -58,6 +59,7 @@ let dir: string;
 let cmdModels: typeof import("../src/cli/models-cmd.js").cmdModels;
 let enableGenerationModel: typeof import("../src/cli/ollama.js").enableGenerationModel;
 let ollamaUrl: string;
+let previousUpdateCheck: string | undefined;
 const fakeCli = {
   find: () => "/fake/bin/ollama",
   pull: () => {
@@ -66,6 +68,8 @@ const fakeCli = {
 };
 
 before(async () => {
+  previousUpdateCheck = process.env.BASTRA_UPDATE_CHECK;
+  delete process.env.BASTRA_UPDATE_CHECK;
   redirectTarget = createServer((req, res) => {
     req.resume();
     req.on("end", () => {
@@ -108,6 +112,8 @@ before(async () => {
 });
 
 after(async () => {
+  if (previousUpdateCheck === undefined) delete process.env.BASTRA_UPDATE_CHECK;
+  else process.env.BASTRA_UPDATE_CHECK = previousUpdateCheck;
   delete process.env.BASTRA_OLLAMA_URL;
   for (const s of [server, redirectTarget]) {
     s.closeAllConnections();
@@ -120,6 +126,12 @@ let n = 0;
 async function settingsFile(content: string = EXISTING): Promise<string> {
   const path = join(dir, `settings-${n++}.json`);
   await writeSettingsFixture(path, content);
+  if (content === EXISTING)
+    assert.equal(
+      await effectiveUpdateMode(path),
+      "notify",
+      "the fixture enables model notices over the test-run opt-out"
+    );
   return path;
 }
 

@@ -6,6 +6,7 @@
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { strict as assert } from "node:assert";
 import type { ModelRecommendation } from "../../src/cli/hardware.js";
 import type { ModelsDeps } from "../../src/cli/models-cmd.js";
 
@@ -19,9 +20,16 @@ export async function withDir(fn: (dir: string, path: string) => Promise<void>):
   const dir = await mkdtemp(join(tmpdir(), "bastra-model-delta-"));
   const path = join(dir, "settings.json");
   await writeFile(path, ORIGINAL);
+  const previousUpdateCheck = process.env.BASTRA_UPDATE_CHECK;
+  delete process.env.BASTRA_UPDATE_CHECK;
   try {
+    // Reading settings here would migrate away the raw file before tests can
+    // exercise unreadable/corrupt-file handling.
+    assert.equal(process.env.BASTRA_UPDATE_CHECK, undefined, "the notify fixture clears the test-run opt-out");
     await fn(dir, path);
   } finally {
+    if (previousUpdateCheck === undefined) delete process.env.BASTRA_UPDATE_CHECK;
+    else process.env.BASTRA_UPDATE_CHECK = previousUpdateCheck;
     await chmod(path, 0o600).catch(() => {});
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
