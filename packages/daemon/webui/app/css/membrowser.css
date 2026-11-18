@@ -604,6 +604,11 @@
 .mb-rd__text a {
   color: var(--accent);
 }
+.mb-rd__text hr {
+  margin: 18px 0;
+  border: 0;
+  border-top: 1px solid var(--line-14);
+}
 .mb-wl {
   display: inline;
   text-align: left;

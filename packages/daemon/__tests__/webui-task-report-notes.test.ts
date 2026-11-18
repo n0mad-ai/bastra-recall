@@ -378,6 +378,54 @@ test("numbering with the real renderer: nested lists, quotes, code, blank lines 
   assert.deepEqual(plain(again.map((b: any) => b.excerpt)), plain(blocks.map((b: any) => b.excerpt)));
 });
 
+test("a free-standing ---, *** or ___ line is a thin rule: no note place, no question, no jump target", async () => {
+  const m = await load();
+  const renderer = await realRenderer();
+  const md = [
+    "---",
+    "Intro.",
+    "",
+    "---",
+    "",
+    "## Frage",
+    "",
+    "Ship it? [? Yes | No]",
+    "",
+    "***",
+    "",
+    "  _ _ _  ",
+    "",
+    "Text right above",
+    "---",
+    "- - -x",
+  ].join("\n");
+  const nodes = renderer.render(md);
+  assert.deepEqual(
+    plain(nodes.map((n) => [n.tagName, n.textContent])),
+    [
+      ["HR", ""],
+      ["P", "Intro."],
+      ["HR", ""],
+      ["H3", "Frage"],
+      ["P", "Ship it? [? Yes | No]"],
+      ["HR", ""],
+      ["HR", ""],
+      ["P", "Text right above"],
+      ["P", "---"],
+      ["UL", "- -x"],
+    ],
+    "only a rule line after a blank line (or at the start) becomes a line; under a text line it stays text"
+  );
+  const ui = { notes: [], editing: null, open() {}, edit() {}, remove() {}, save: async () => {}, cancel() {} };
+  const out = m.annotateReport(nodes, ui);
+  assert.ok(
+    out.nodes.filter((n: Node_) => n.tagName === "HR").every((n: Node_) => !n.classList.contains("tk-an")),
+    "a rule is no note place"
+  );
+  assert.deepEqual(plain(out.toc.heads.map((x: any) => x.text)), ["Frage"]);
+  assert.deepEqual(plain(out.toc.asks.map((x: any) => x.index)), [3], "the question keeps its number");
+});
+
 test("#1608: a note sits at its place only while the place still holds the stored excerpt", async () => {
   const m = await load();
   const notes = m.noteRows({

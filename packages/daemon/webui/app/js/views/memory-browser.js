@@ -254,10 +254,13 @@ function inline(text, onLink) {
 export function markdown(md, onLink) {
   const out = [];
   let list = null,
-    fence = null;
+    fence = null,
+    afterBlank = true;
   // HTML comments (auto-related markers) are bookkeeping, not text
   for (const raw of md.replace(/<!--[\s\S]*?-->/g, "").split("\n")) {
-    const line = raw.trimEnd();
+    const line = raw.trimEnd(),
+      blankBefore = afterBlank;
+    afterBlank = !line.trim();
     if (/^```/.test(line)) {
       if (fence) {
         out.push(h("pre", { text: fence.join("\n") }));
@@ -274,7 +277,11 @@ export function markdown(md, onLink) {
     }
     const hd = /^(#{1,6})\s+(.*)$/.exec(line),
       li = /^\s*(?:[-*]|\d+\.)\s+(.*)$/.exec(line);
-    if (hd) {
+    // a thematic break only where it stands free: right under a text line, --- stays that text
+    if (blankBefore && /^ {0,3}([-*_])(?:[ \t]*\1){2,}$/.test(line)) {
+      list = null;
+      out.push(h("hr"));
+    } else if (hd) {
       list = null;
       out.push(h("h3", null, inline(hd[2], onLink)));
     } else if (li) {

@@ -291,6 +291,8 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Fixed
 
+- Report and memory reader: a free-standing `---`/`***`/`___` line now renders as a thin divider instead of literal dashes.
+
 - Vault and client imports redact credentials before saving content and new
   audit snapshots, and report changed fields in import warnings.
 
