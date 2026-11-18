@@ -23,7 +23,7 @@ interface Result {
 
 const tree = (src: string, file = "x.ts"): string =>
   (serializeTree as (s: string, f: string) => { text: string })(src, file).text;
-const same = (a: string, b: string): boolean => tree(a) === tree(b);
+const same = (a: string, b: string, file = "x.ts"): boolean => tree(a, file) === tree(b, file);
 
 test("layout-only rewrites leave the tree equal (#1536)", () => {
   assert.ok(same(`const a = 'x' // note\n`, `const a = "x";\n`), "quotes, semicolon, comment");
@@ -44,6 +44,19 @@ test("a real change is a different tree (#1536)", () => {
   assert.ok(!same(`y = a || b && c`, `y = (a || b) && c`), "mixed operators keep their grouping");
   assert.ok(!same(`r = /a/g`, `r = /a/gi`), "regex flags");
   assert.ok(!same("t = String.raw`a\\n`", "t = String.raw`a\\\\n`"), "template raw text");
+});
+
+test("a directive prologue keeps its meaning: strict mode is not a layout detail (#1536 review)", () => {
+  const strict = 'function f(){"use strict"; return this;}';
+  // Parenthesised, it is an ordinary expression statement: the function is not strict.
+  assert.ok(!same(strict, 'function f(){("use strict"); return this;}', "x.js"), "parenthesised directive");
+  // An escape in the raw text is no "use strict" directive either, although the value is equal.
+  assert.ok(!same(strict, 'function f(){"use\\x20strict"; return this;}', "x.js"), "escaped directive");
+  assert.ok(!same('"use strict"; x = 1;', '("use strict"); x = 1;', "x.js"), "file prologue");
+  // Quote style of a directive is layout: both are the same directive.
+  assert.ok(same(strict, "function f(){'use strict'; return this;}", "x.js"), "directive quote style");
+  // Only the leading strings are a prologue; a later string statement stays a value.
+  assert.ok(same('f(); "use strict";', "f(); ('use strict');", "x.js"), "string statement after the prologue");
 });
 
 test("compareFile reports a changed tree as unequal (#1536)", () => {

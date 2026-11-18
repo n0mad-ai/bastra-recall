@@ -10,7 +10,9 @@
  * not part of a tree; quote style, number spelling and redundant parentheses
  * are compared by what they mean (the string value, the numeric value, the
  * grouping the tree already encodes, regex flags in sorted order, `||`/`&&`/`??`
- * chains as one flat chain), so only a real change shows up.
+ * chains as one flat chain), so only a real change shows up. Directive
+ * prologues ("use strict") are kept by their raw text before any of that: a
+ * parenthesised or escaped string there is no directive and reads differently.
  *
  *   node packages/eval/scripts/ast-equivalence.mjs               # formatter cases, JSON to stdout
  *   node packages/eval/scripts/ast-equivalence.mjs --out <file>  # same, written to <file>
@@ -100,13 +102,42 @@ function chainOperands(node, op) {
   return [n];
 }
 
+/**
+ * The directive statements of the file and of every function body: the leading
+ * statements that are a bare string literal. A parenthesised string is an
+ * ordinary expression there, and the parser leaves it a ParenthesizedExpression.
+ */
+function directives(sf) {
+  const found = new Set();
+  const prologue = (statements) => {
+    for (const s of statements) {
+      if (!ts.isExpressionStatement(s) || !ts.isStringLiteral(s.expression)) break;
+      found.add(s);
+    }
+  };
+  const walk = (node) => {
+    if (ts.isSourceFile(node)) prologue(node.statements);
+    else if (ts.isFunctionLike(node) && node.body && ts.isBlock(node.body)) prologue(node.body.statements);
+    ts.forEachChild(node, walk);
+  };
+  walk(sf);
+  return found;
+}
+
 /** The tree as one line per node, parentheses unwrapped (the tree keeps the grouping). */
 export function serializeTree(source, fileName) {
   const kind = KINDS[extname(fileName)];
   if (kind === undefined) throw new Error(`not a JS/TS file: ${fileName}`);
   const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, false, kind);
+  const prologue = directives(sf);
   const lines = [];
   const visit = (node, depth) => {
+    if (prologue.has(node)) {
+      // A directive means what its raw text says ("use strict" only unescaped); the quotes are layout.
+      const literal = node.expression;
+      lines.push(`${depth} Directive ${JSON.stringify(sf.text.slice(literal.getStart(sf) + 1, literal.end - 1))}`);
+      return;
+    }
     if (node.kind === ts.SyntaxKind.ParenthesizedExpression || node.kind === ts.SyntaxKind.ParenthesizedType) {
       visit(node.expression ?? node.type, depth);
       return;
@@ -196,7 +227,7 @@ export function run({ all = false } = {}) {
     method:
       "TypeScript parse tree without trivia (comments, whitespace); string and template literals by value " +
       "(templates by raw text), numbers by numeric value, regex flags sorted, parentheses unwrapped, " +
-      "||/&&/?? chains flattened, let/const/namespace/optional-chain flags kept",
+      "||/&&/?? chains flattened, let/const/namespace/optional-chain flags kept, directive prologues by raw text",
     script_sha256: sha256(readFileSync(fileURLToPath(import.meta.url))),
     summary: { files: rows.length, equal: rows.length - differing.length, differing },
     files: rows,

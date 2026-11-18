@@ -9,9 +9,10 @@
 - comments and whitespace are not part of the tree;
 - string and template literals are compared by value (templates by raw text, which `String.raw` sees), numbers by numeric value, regex flags in sorted order;
 - parentheses are unwrapped, because the tree already encodes the grouping; `||`, `&&` and `??` chains are compared flat, because these operators are associative in value and evaluation order;
-- `let`/`const`/`using`, namespace form and the extent of `?.` chains are kept (node flags).
+- `let`/`const`/`using`, namespace form and the extent of `?.` chains are kept (node flags);
+- directive prologues (the leading bare strings of the file and of each function body, such as `"use strict"`) are compared by their raw text before parentheses are unwrapped or strings are read by value: a parenthesised or escaped `"use strict"` is no directive and leaves the code non-strict, so it must not compare equal. Added after review: the first version of the script unwrapped and decoded these as well and would have called `"use strict"` and `("use strict")` equal.
 
-`__tests__/ast-equivalence.test.ts` shows both directions: quote style, semicolons, comments, trailing commas, number spelling, re-nested `||`/`&&` chains, regex flag order and redundant parentheses compare equal; `let`→`const`, changed grouping, a changed `?.` extent, another string, number, regex flag or raw template compare unequal. It also reproduces the registered artefact from git.
+`__tests__/ast-equivalence.test.ts` shows both directions: quote style, semicolons, comments, trailing commas, number spelling, re-nested `||`/`&&` chains, regex flag order and redundant parentheses compare equal; `let`→`const`, changed grouping, a changed `?.` extent, another string, number, regex flag or raw template, and a parenthesised or escaped `"use strict"` directive (in a function and at file level) compare unequal; the quote style of a directive compares equal. It also reproduces the registered artefact from git.
 
 ## Commands
 
@@ -32,6 +33,8 @@ Exit code 0 means every compared tree is equal, 1 means a file differs or does n
 
 The ten files: `chunk-maxsim-run.ts`, `chunk-maxsim.ts`, `longmemeval-run.ts`, `longmemeval-dataset.ts`, `chunk-vault-coverage.ts`, `correction-sequences.ts`, `flat-scale-subset.ts`, `supersession-durability.ts`, `supersession-hybrid.ts` (under `packages/eval/src/`) and `packages/eval/scripts/draft-csls.mjs`. All ten changed bytes (their sha256 before and after are in the artefact) and none changed its tree.
 
+Rerun after the directive rule (script sha256 in the artefact): unchanged, 10/10 and 1,494/1,494. None of the 1,494 files has a directive prologue at the formatter commit (nor, as the trees are equal, at its parent), so the gap had no effect on this result.
+
 The first `--all` pass, before the chain and regex rules existed, reported three files. Each was a layout change Prettier makes, now covered by a rule with a test:
 
 - `packages/core/src/scrub.ts`: regex flags `gmi` written as `gim`;
@@ -40,5 +43,5 @@ The first `--all` pass, before the chain and regex rules existed, reported three
 ## Limits
 
 - Not compared: 26 non-code files of the commit (20 CSS, 5 JSON, 1 YAML) and the two added files `.prettierignore`, `.prettierrc.json`. Python sources were not part of the commit.
-- The comparison is syntactic. It shows the reformatting did not change the program text a parser reads; it does not execute anything.
+- The comparison is syntactic and only as strong as its normalisation rules. It shows that the trees before and after are equal under exactly the rules listed under Method, which the test backs with equal and unequal controls; it is not a general proof of semantic equivalence and does not execute anything. A rule that equates two differently behaving spellings (as the directive case did before review) would hide such a change.
 - `fingerprint-map-1536.json` is unchanged (frozen); its `$comment` still points at #1506 for the proof, which is this artefact.

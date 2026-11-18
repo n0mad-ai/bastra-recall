@@ -7,8 +7,8 @@
   "formatter_commit": "0f9f06045626232114100592fca7dd533a5eb6cb",
   "parent_commit": "82abb7bd5bb54054adf9d63d7cf6fb5c721e8c64",
   "parser": "typescript 6.0.3",
-  "method": "TypeScript parse tree without trivia (comments, whitespace); string and template literals by value (templates by raw text), numbers by numeric value, regex flags sorted, parentheses unwrapped, ||/&&/?? chains flattened, let/const/namespace/optional-chain flags kept",
-  "script_sha256": "656da0926c965c10b342c986b2f5d604d4c6dac531f2897c6643a5cc2ccb942f",
+  "method": "TypeScript parse tree without trivia (comments, whitespace); string and template literals by value (templates by raw text), numbers by numeric value, regex flags sorted, parentheses unwrapped, ||/&&/?? chains flattened, let/const/namespace/optional-chain flags kept, directive prologues by raw text",
+  "script_sha256": "69e73e4b4796e282ceed2bd2470a52a6527bd12fec0d40b84ebd090a0d774dc4",
   "summary": {
     "files": 10,
     "equal": 10,
