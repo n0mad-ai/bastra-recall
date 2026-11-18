@@ -147,30 +147,30 @@ if (!process.env.BASTRA_TEST_RUN_ROOT) {
       process.stderr.write(
         `test isolation audit failed: unexpected home entries ${JSON.stringify(unexpected)}; blocked daemon connection ${blocked}\n`
       );
-      if (blocked) {
-        const fd = openSync(join(root, "blocked-daemon-connections.jsonl"), "r");
-        try {
-          const buffer = Buffer.alloc(16_384);
-          const bytes = readSync(fd, buffer, 0, buffer.length, 0);
-          for (const line of buffer.toString("utf8", 0, bytes).split("\n").slice(0, 20)) {
-            try {
-              const row = JSON.parse(line);
-              const target = {
-                pid: Number.isSafeInteger(row.pid) ? row.pid : null,
-                host: typeof row.host === "string" && /^[a-z0-9.:[\]_-]{1,253}$/i.test(row.host) ? row.host : null,
-                port: Number.isSafeInteger(row.port) ? row.port : null,
-              };
-              process.stderr.write(`test isolation blocked target ${JSON.stringify(target)}\n`);
-            } catch {
-              // A concurrent append or the bounded read may end in a partial row.
-            }
-          }
-        } finally {
-          closeSync(fd);
-        }
-      }
-      process.exitCode = 1;
     }
+    if (blocked) {
+      const fd = openSync(join(root, "blocked-daemon-connections.jsonl"), "r");
+      try {
+        const buffer = Buffer.alloc(16_384);
+        const bytes = readSync(fd, buffer, 0, buffer.length, 0);
+        for (const line of buffer.toString("utf8", 0, bytes).split("\n").slice(0, 20)) {
+          try {
+            const row = JSON.parse(line);
+            const target = {
+              pid: Number.isSafeInteger(row.pid) ? row.pid : null,
+              host: typeof row.host === "string" && /^[a-z0-9.:[\]_-]{1,253}$/i.test(row.host) ? row.host : null,
+              port: Number.isSafeInteger(row.port) ? row.port : null,
+            };
+            process.stderr.write(`test isolation blocked target ${JSON.stringify(target)}\n`);
+          } catch {
+            // A concurrent append or the bounded read may end in a partial row.
+          }
+        }
+      } finally {
+        closeSync(fd);
+      }
+    }
+    if (unexpected.length || blocked) process.exitCode = 1;
     try {
       rmSync(root, { recursive: true, force: true, maxRetries: 3 });
     } catch {
