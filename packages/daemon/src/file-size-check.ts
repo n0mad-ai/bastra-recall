@@ -1,4 +1,4 @@
-import { readRuntimeSettingsRecord } from "./runtime-feature-settings.js";
+import { SettingsReadLate, readSettingsRecordOffThread } from "./settings-record-thread.js";
 import { bastraDataDir } from "./platform-paths.js";
 /**
  * Deterministic file-size check in the PreToolUse hook (Daniel, 19.07.2026).
@@ -16,7 +16,7 @@ import { bastraDataDir } from "./platform-paths.js";
  * an automatic split or a blanket growth ban.
  */
 import { constants } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { open, readFile, stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { envOff } from "./env.js";
 import { escapeAttr } from "./escape-attr.js";
@@ -143,14 +143,23 @@ function envNum(name: string, fallback: number): number {
   return Number.isFinite(v) && v > 0 ? Math.round(v) : fallback;
 }
 
+type SizeSettings = { guide?: number; critical?: number; exemptPaths?: string[] };
+
 /** Der User-Richtwert aus ~/.bastra/cli-settings.json — bewusst ein eigener
  *  Mini-Read (pure stdlib, DB zuerst) statt settings.ts-Import: der Hook hat 250 ms
  *  Budget und braucht exakt zwei Zahlen. Fehler → leeres Objekt. */
-export async function readSizeSettings(
-  settingsPath: string = join(bastraDataDir(), "cli-settings.json")
-): Promise<{ guide?: number; critical?: number; exemptPaths?: string[] }> {
+export async function readSizeSettings(settingsPath?: string): Promise<SizeSettings> {
+  return (await sizeSettingsBefore(settingsPath, Infinity)) ?? {};
+}
+
+/** {@link readSizeSettings} within a deadline (#1650): the database read runs
+ *  off the event loop; null when it has not answered by `deadline`. */
+async function sizeSettingsBefore(
+  settingsPath: string = join(bastraDataDir(), "cli-settings.json"),
+  deadline: number
+): Promise<SizeSettings | null> {
   try {
-    const fromDatabase = readRuntimeSettingsRecord(settingsPath);
+    const fromDatabase = await readSettingsRecordOffThread(settingsPath, deadline);
     const parsed = JSON.parse(
       fromDatabase === undefined ? await readFile(settingsPath, NONBLOCKING_TEXT) : (fromDatabase ?? "{}")
     ) as {
@@ -166,8 +175,8 @@ export async function readSizeSettings(
       ...(typeof parsed.size?.critical === "number" ? { critical: parsed.size.critical } : {}),
       ...(exemptPaths.length > 0 ? { exemptPaths } : {}),
     };
-  } catch {
-    return {};
+  } catch (error) {
+    return error instanceof SettingsReadLate ? null : {};
   }
 }
 
@@ -183,13 +192,45 @@ export function formatSizeNote(filePath: string, lines: number, t: SizeThreshold
   return `<file-size-check file="${escapeAttr(basename(filePath))}" lines="${lines}" level="${level}">${msg}</file-size-check>`;
 }
 
+/** Read size for each step of {@link readBoundedText}; between steps the deadline is checked. */
+const READ_CHUNK = 256 * 1024;
+
+/**
+ * #1650: the text of a regular file of at most MAX_BYTES bytes, else null.
+ * Anything else (FIFO, device, directory — also behind a symlink) is never
+ * opened. The opened descriptor is checked again, and the byte limit holds
+ * even if the file grows after that check. Past `deadline` reading stops; the
+ * handle is closed in every case.
+ */
+async function readBoundedText(filePath: string, deadline: number): Promise<string | null> {
+  if (!(await stat(filePath)).isFile()) return null;
+  const handle = await open(filePath, NONBLOCKING_TEXT.flag);
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || info.size > MAX_BYTES) return null;
+    // One byte more than expected: filling it means the file grew meanwhile.
+    const buf = Buffer.allocUnsafe(info.size + 1);
+    let filled = 0;
+    while (filled < buf.length) {
+      if (Date.now() >= deadline) return null;
+      const { bytesRead } = await handle.read(buf, filled, Math.min(READ_CHUNK, buf.length - filled), filled);
+      if (bytesRead === 0) return buf.toString("utf8", 0, filled);
+      filled += bytesRead;
+    }
+    return null;
+  } finally {
+    await handle.close();
+  }
+}
+
 /** Measure + format in one step — the hook's entry point. Never throws:
  *  a new/unreadable file simply has nothing to warn about. */
 /**
  * #1538: `deadline` (epoch ms) bounds the note inside a hook budget. Past it the
  * answer is null — the lane continues without the note, as on any error. The
- * waits (settings, file read) are raced against it; the synchronous line scan
- * starts only before it and is itself bounded by MAX_BYTES.
+ * waits (settings, file read) are raced against it and stop at it (#1650);
+ * the synchronous line scan starts only before it and is itself bounded by
+ * MAX_BYTES.
  */
 export async function fileSizeNote(
   filePath: string,
@@ -199,10 +240,11 @@ export async function fileSizeNote(
 ): Promise<string | null> {
   if (envOff("BASTRA_SIZE_CHECK") || Date.now() >= deadline) return null;
   const note = async (): Promise<string | null> => {
-    const t = thresholdsFor(filePath, await readSizeSettings(settingsPath), cwd);
+    const settings = await sizeSettingsBefore(settingsPath, deadline);
+    const t = settings && thresholdsFor(filePath, settings, cwd);
     if (!t || Date.now() >= deadline) return null;
-    const raw = await readFile(filePath, NONBLOCKING_TEXT);
-    if (raw.length > MAX_BYTES || Date.now() >= deadline) return null;
+    const raw = await readBoundedText(filePath, deadline);
+    if (raw === null || Date.now() >= deadline) return null;
     return formatSizeNote(filePath, countCodeLines(raw, extname(filePath).toLowerCase()), t);
   };
   if (deadline === Infinity) return note().catch(() => null);

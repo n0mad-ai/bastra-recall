@@ -56,7 +56,7 @@ export class VaultRootMissingError extends Error {
   }
 }
 
-export type VaultRootHistoryCause = "corrupt" | "unwritable" | "unknown";
+export type VaultRootHistoryCause = "corrupt" | "unwritable" | "conflict" | "unknown";
 
 /** Two sentences: the marker file, the cause (when known) and the repair. */
 export class VaultRootHistoryError extends Error {
@@ -71,7 +71,9 @@ export class VaultRootHistoryError extends Error {
         ? `Bastra refuses every vault write: the vault-root history ${markerPath} is empty or corrupt. If the vault is mounted, delete that file; it is rewritten on the next save.`
         : cause === "unwritable"
           ? `Bastra refuses every vault write: the vault-root history ${markerPath} cannot be written. Fix the permissions of ${dir}; the file is rewritten on the next save.`
-          : `Bastra refuses every vault write: the vault-root history ${markerPath} is empty or corrupt, or ${dir} is not writable. If the vault is mounted, delete that file (it is rewritten on the next save); otherwise fix the permissions of ${dir}.`
+          : cause === "conflict"
+            ? `Bastra refused this vault write: other processes kept replacing the vault-root history ${markerPath} while this vault was being recorded. Retry the save; the file itself is intact.`
+            : `Bastra refuses every vault write: the vault-root history ${markerPath} is empty or corrupt, or ${dir} is not writable. If the vault is mounted, delete that file (it is rewritten on the next save); otherwise fix the permissions of ${dir}.`
     );
     this.name = "VaultRootHistoryError";
   }
@@ -199,26 +201,44 @@ export function vaultRootFirstSeen(vaultRoot: string): string | null {
  * guard had before the marker existed.
  */
 export function noteVaultRootPresent(vaultRoot: string): void {
+  recordVaultRoot(vaultRoot);
+}
+
+/** #1659: how often a registration re-merges after another process replaced
+ * the history with a copy that lacks this root. */
+const RECORD_ATTEMPTS = 5;
+
+/**
+ * {@link noteVaultRootPresent} with its outcome. The history has no
+ * cross-process lock: a writer that read before another one renamed can
+ * replace that writer's copy with a stale one. So after each rename the file
+ * is read again; if this root is gone, the current history is merged and
+ * written again, a bounded number of times. "conflict" means the root kept
+ * disappearing although every write succeeded.
+ */
+function recordVaultRoot(vaultRoot: string): "recorded" | "failed" | "conflict" {
   const key = resolve(vaultRoot);
   seen.add(key);
-  if (persisted.has(key)) return;
-  if (!persistsRoot(key)) return;
+  if (persisted.has(key) || !persistsRoot(key)) return "recorded";
+  const firstSeen = new Date().toISOString();
   try {
-    const roots = readRoots();
-    if (!roots) return; // never overwrite a corrupt history with one entry
-    if (roots.has(key)) {
-      persisted.add(key);
-      return;
+    for (let writes = 0; ; writes++) {
+      const roots = readRoots();
+      if (!roots) return "failed"; // never overwrite a corrupt history with one entry
+      if (roots.has(key)) {
+        persisted.add(key);
+        return "recorded";
+      }
+      if (writes === RECORD_ATTEMPTS) return "conflict";
+      roots.set(key, { first_seen: firstSeen });
+      const path = vaultRootsPath();
+      mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+      const tmp = `${path}.tmp-${process.pid}`;
+      writeFileSync(tmp, JSON.stringify(Object.fromEntries(roots), null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
+      renameSync(tmp, path);
     }
-    roots.set(key, { first_seen: new Date().toISOString() });
-    const path = vaultRootsPath();
-    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-    const tmp = `${path}.tmp-${process.pid}`;
-    writeFileSync(tmp, JSON.stringify(Object.fromEntries(roots), null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
-    renameSync(tmp, path);
-    persisted.add(key);
   } catch {
-    /* best-effort, see above */
+    return "failed"; // best-effort, see noteVaultRootPresent
   }
 }
 
@@ -311,6 +331,12 @@ export async function ensureVaultDir(
   if (!(await stat(root).catch(() => null))?.isDirectory()) {
     throw new VaultRootMissingError(vaultRoot, vaultRootFirstSeen(vaultRoot));
   }
-  noteVaultRootPresent(root);
-  if (persistsRoot(root) && !readRoots()?.has(root)) throw new VaultRootHistoryError(vaultRootsPath(), "unwritable");
+  assertRootRecorded(root);
+}
+
+/** A writer under a persisted root proceeds only once the history lists it. */
+function assertRootRecorded(root: string): void {
+  const recorded = recordVaultRoot(root);
+  if (persistsRoot(root) && !readRoots()?.has(root))
+    throw new VaultRootHistoryError(vaultRootsPath(), recorded === "conflict" ? "conflict" : "unwritable");
 }

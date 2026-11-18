@@ -40,7 +40,7 @@
     "[\"packages/core/src/store-reconcile.ts\",\"[\\\"function:planReconcile\\\"]\",\"complexity\"]": 21,
     "[\"packages/core/src/topics.ts\",\"[\\\"function:detectTopics\\\"]\",\"complexity\"]": 21,
     "[\"packages/core/src/topics.ts\",\"[\\\"function:extractContentExcerpt\\\"]\",\"complexity\"]": 17,
-    "[\"packages/core/src/vault-root-guard.ts\",\"[\\\"function:ensureVaultDir\\\"]\",\"complexity\"]": 21,
+    "[\"packages/core/src/vault-root-guard.ts\",\"[\\\"function:ensureVaultDir\\\"]\",\"complexity\"]": 18,
     "[\"packages/core/src/vault.ts\",\"[\\\"class:Vault\\\",\\\"property:init\\\",\\\"function:FunctionExpression#1\\\"]\",\"max-depth\"]": 5,
     "[\"packages/core/src/word-form.ts\",\"[\\\"function:sameNormalizedWordForm\\\"]\",\"complexity\"]": 22,
     "[\"packages/daemon/__tests__/claim-gate.test.ts\",\"[\\\"call:test:\\\\\\\"#360: the inverted index finds every pair a brute-force sweep finds\\\\\\\"#1\\\",\\\"function:argument:1#1\\\"]\",\"complexity\"]": 16,
