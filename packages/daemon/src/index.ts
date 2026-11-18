@@ -30,6 +30,7 @@ import { startTelemetry } from "./boot-telemetry.js";
 import { startEmbeddings } from "./boot-embeddings.js";
 import { buildToolDeps } from "./boot-tool-deps.js";
 import { startHttp } from "./boot-http.js";
+import { warmSettingsReader } from "./settings-record-thread.js";
 import { startStdioServer } from "./boot-stdio.js";
 import { registerShutdown } from "./boot-shutdown.js";
 import { daemonOrigin } from "./daemon-spawn-env.js";
@@ -200,6 +201,10 @@ async function main(): Promise<void> {
   const markActivity = (): void => {
     lastActivityMs = Date.now();
   };
+
+  // The size note reads its settings off-thread within a short deadline;
+  // start that reader now so the first edit does not pay its start-up.
+  void warmSettingsReader();
 
   const { httpHandle } = await startHttp({
     httpDisabled: HTTP_DISABLED,

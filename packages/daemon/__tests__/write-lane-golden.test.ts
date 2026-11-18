@@ -17,6 +17,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { runWriteLane } from "../src/write-lane.js";
 import { loadSessionState } from "../src/session-state.js";
+import { warmSettingsReader } from "../src/settings-record-thread.js";
 
 interface MockReply {
   status?: number;
@@ -288,6 +289,10 @@ async function withEnv<T>(env: Record<string, string>, fn: () => Promise<T>): Pr
     }
   }
 }
+
+// As the daemon does at boot: the settings reader's start-up must not count
+// against the size note's deadline, or a slow machine loses the note.
+test.before(() => warmSettingsReader());
 
 for (const sc of SCENARIOS) {
   test(`#1525 golden master — ${sc.name}`, async (t) => {

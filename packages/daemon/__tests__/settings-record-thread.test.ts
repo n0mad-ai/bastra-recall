@@ -11,7 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Worker } from "node:worker_threads";
-import { SettingsReadLate, readSettingsRecordOffThread } from "../src/settings-record-thread.js";
+import { SettingsReadLate, readSettingsRecordOffThread, warmSettingsReader } from "../src/settings-record-thread.js";
 
 test("a stuck settings reader is the only one until it exits; later requests return at once", async (t) => {
   const started = new Set<Worker>();
@@ -20,6 +20,9 @@ test("a stuck settings reader is the only one until it exits; later requests ret
     started.add(this);
   });
   const terminate = t.mock.method(Worker.prototype, "terminate", async () => 0);
+  // Stuck means stuck in a read: a reader still starting is not (see
+  // settings-record-thread-start.test.ts).
+  await warmSettingsReader();
 
   const first = Date.now();
   await assert.rejects(readSettingsRecordOffThread("/nonexistent/cli-settings.json", first + 50), SettingsReadLate);

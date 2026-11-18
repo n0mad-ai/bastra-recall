@@ -541,6 +541,10 @@ until a new design replaces it; this name is independent of the product version.
   doctor, `bastra address` and the web UI name port 80 (or the running
   listener's port), and a status without a port reports
   `listenerChecked: false` instead of silently probing port 80 (#1653).
+- The file-size note no longer drops out on the first edits after the
+  daemon starts on a slow machine: the daemon starts its settings reader at
+  boot, and a reader that is still starting is no longer mistaken for one
+  stuck in a read and stopped (#1650 follow-up).
 
 ### Internal
 
