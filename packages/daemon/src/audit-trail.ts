@@ -33,6 +33,7 @@
  */
 import {
   AuditLog,
+  assertBodyTail,
   saveMemory,
   newOperationId,
   reportMutationIncident,
@@ -44,6 +45,7 @@ import {
   type WriteOriginEvidence,
 } from "@bastra-recall/core";
 import { writeCallerStore } from "./caller-session.js";
+import { redactSaveInput, withRedactionReceipt, WriteRedaction, type RedactionReceipt } from "./save-redaction.js";
 
 /** One AuditLog per vault — it caches reads, and re-creating it per write
  *  would throw that cache away on every save. */
@@ -167,6 +169,29 @@ export async function recordAudit(input: AuditTrailInput): Promise<string | unde
   return undefined;
 }
 
+/** Sanitize only the NEW audit append, retaining the authoritative result and
+ * identity/provenance fields verbatim. Update snapshots are evidence, not a
+ * rollback payload (restore reads delete entries and the actual trash file).
+ * Existing ledger bytes and the preimage used for CAS are never rewritten.
+ */
+function auditContentSnapshot(
+  snapshot: Record<string, unknown> | null,
+  prefix: string,
+  redaction: WriteRedaction
+): Record<string, unknown> | null {
+  if (snapshot === null) return null;
+  const copy = { ...snapshot };
+  for (const field of ["title", "summary", "applies_when", "verify_cmd"]) {
+    if (typeof copy[field] === "string") copy[field] = redaction.text(`${prefix}.${field}`, copy[field]);
+  }
+  if (Array.isArray(copy.recall_when)) {
+    copy.recall_when = copy.recall_when.map((value: unknown) =>
+      typeof value === "string" ? redaction.text(`${prefix}.recall_when`, value) : value
+    );
+  }
+  return copy;
+}
+
 export interface SaveMemoryWithAuditTrailInput {
   vaultRoot: string;
   input: SaveMemoryInput;
@@ -194,31 +219,43 @@ export interface SaveMemoryWithAuditTrailInput {
  * `sessionId` is caller-owned deliberately: batch callers allocate it once per
  * invocation and reuse it across every memory in that run.
  */
-export async function saveMemoryWithAuditTrail(args: SaveMemoryWithAuditTrailInput): Promise<SaveMemoryResult> {
+export async function saveMemoryWithAuditTrail(
+  args: SaveMemoryWithAuditTrailInput
+): Promise<SaveMemoryResult & RedactionReceipt["fields"] & { warning?: string }> {
+  // Verify the caller's original tail before redaction removes the sentinel.
+  // Only redact content: importer-owned IDs, sources and CAS stay unchanged.
+  assertBodyTail(args.input.body, args.input.body_ends_with);
+  const input = { ...args.input };
+  const redacted = redactSaveInput(input);
   // Codex-Gegenreview (P1): Das Vorbild wurde hier aus dem aufgelösten
   // ZIELPFAD gelesen. Bei einem Re-File existiert dieses Ziel aber noch gar
   // nicht — die Vorlage ist die Quelldatei. Nachgestellt: ein gewöhnliches
   // Re-File protokollierte `operation: update` mit `diff_before: null`, also
   // eine Änderung ohne Vorzustand. Vor- und Nachbild kommen deshalb aus der
   // Mutation selbst, die beide unter ihrem Claim gelesen bzw. geschrieben hat.
-  const result = await saveMemory(args.vaultRoot, args.input, args.commit);
+  const result = withRedactionReceipt(await saveMemory(args.vaultRoot, input, args.commit), redacted);
   // #530: Ein Save, der nichts geschrieben hat, hat auch nichts zu belegen.
   // Ein wiederholter Import hängte sonst je unveränderter Datei ein
   // `update`-Ereignis mit identischem `diff_before`/`diff_after` an das
   // append-only Log — ein Beleg für eine Änderung, die es nicht gab.
   if (result.unchanged) return result;
+  const auditRedaction = new WriteRedaction();
+  const diffBefore = auditContentSnapshot(result.audit_before, "audit_before", auditRedaction);
+  const diffAfter = auditContentSnapshot(result.audit_after, "audit_after", auditRedaction);
   await recordAudit({
     vaultRoot: args.vaultRoot,
     memoryId: result.id,
     operation: result.created ? "create" : "update",
     actor: args.actor,
     actorDetail: args.actorDetail,
-    diffBefore: result.audit_before,
-    diffAfter: result.audit_after,
+    diffBefore,
+    diffAfter,
     filePath: result.file_path,
     sessionId: args.sessionId,
   });
-  return result;
+  const auditReceipt = auditRedaction.receipt();
+  auditReceipt.fields.secrets_redacted = { ...result.secrets_redacted, ...auditReceipt.fields.secrets_redacted };
+  return withRedactionReceipt(result, auditReceipt);
 }
 
 /** Test seam — the module-level cache would otherwise leak between vaults. */

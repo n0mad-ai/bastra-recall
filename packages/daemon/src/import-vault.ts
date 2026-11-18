@@ -512,6 +512,7 @@ async function saveImportedFile(
       sessionId: run.runId,
       commit: { expectedTarget: check.target, locator: run.vaultIds, skipUnchanged: true },
     });
+    if (saved.warning) run.warnings.push({ path: filePath, reason: saved.warning });
     countWrite(run, saved);
     return true;
   } catch (err) {
@@ -630,6 +631,7 @@ async function saveIndexNode(
       sessionId: run.runId,
       commit: { expectedTarget, locator: run.vaultIds, skipUnchanged: true },
     });
+    if (savedIndex.warning) run.warnings.push({ path: "MEMORY.md", reason: savedIndex.warning });
     countWrite(run, savedIndex);
     return true;
   } catch {
