@@ -31,7 +31,7 @@ import {
   parseManifest,
   under,
   type ManifestRow,
-} from "./rm-archive.js";
+} from "./rm-archive-store.js";
 
 export type Kind = "junk" | "in-git" | "user";
 export type Retain = Record<Kind, number>;

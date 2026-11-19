@@ -27,6 +27,7 @@ import {
   appendManifest,
   archiveDir,
   archiveRoot,
+  localIso,
   manifestRows,
   ownArchiveDir,
   ownArchivePath,
@@ -53,14 +54,12 @@ import { fileURLToPath } from "node:url";
 // re-exported so every importer keeps `from "./rm-archive.js"`.
 export {
   appendManifest,
-  archiveDir,
   archiveRoot,
   archiveRootProblem,
+  localIso,
   manifestFiles,
   manifestRows,
   ownArchiveDir,
-  parseManifest,
-  under,
   type ManifestRow,
 } from "./rm-archive-store.js";
 
@@ -360,10 +359,6 @@ function archiveRootFor(parent: string, archive: string): string | null {
     return null;
   }
 }
-
-const pad = (n: number, w = 2): string => String(n).padStart(w, "0");
-export const localIso = (d: Date): string =>
-  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
 export interface ShimIo {
   env?: NodeJS.ProcessEnv;

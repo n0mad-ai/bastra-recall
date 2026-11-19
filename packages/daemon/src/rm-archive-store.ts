@@ -109,6 +109,11 @@ export function appendManifest(archive: string, line: string): void {
 export const under = (path: string, root: string): boolean =>
   path === root || path.startsWith(root.replace(/\/$/, "") + "/");
 
+// A manifest row's `ts` and the dated archive directories: local time, no zone.
+const pad = (n: number, w = 2): string => String(n).padStart(w, "0");
+export const localIso = (d: Date): string =>
+  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+
 export interface ManifestRow {
   ts: string;
   /** `pinned`: a git snapshot (git-archive.ts) — orig is the repository,
