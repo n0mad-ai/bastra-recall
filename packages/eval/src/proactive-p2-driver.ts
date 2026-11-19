@@ -553,18 +553,28 @@ const driver: FeatureDriver = {
       );
       throw error;
     } finally {
-      for (const p of processes.reverse()) await stop(p);
-      writeFileSync(join(root, "process-logs.json"), JSON.stringify(logs, null, 2), { mode: 0o600 });
-      evidence.push({
-        process_logs: logs,
-        all_children_stopped: processes.every((p) => p.exitCode !== null || p.signalCode !== null),
-        blocked_network: existsSync(join(root, "blocked-network.jsonl"))
-          ? readFileSync(join(root, "blocked-network.jsonl"), "utf8")
-          : "",
-      });
+      await closeRun(root, processes, logs, evidence);
     }
   },
 };
+
+/** Last phase of every run: stop the children newest first, keep their logs privately, record the cleanup audit. */
+async function closeRun(
+  root: string,
+  processes: ChildProcessWithoutNullStreams[],
+  logs: Record<string, string>,
+  evidence: unknown[]
+) {
+  for (const p of processes.reverse()) await stop(p);
+  writeFileSync(join(root, "process-logs.json"), JSON.stringify(logs, null, 2), { mode: 0o600 });
+  evidence.push({
+    process_logs: logs,
+    all_children_stopped: processes.every((p) => p.exitCode !== null || p.signalCode !== null),
+    blocked_network: existsSync(join(root, "blocked-network.jsonl"))
+      ? readFileSync(join(root, "blocked-network.jsonl"), "utf8")
+      : "",
+  });
+}
 /** P2 authority: agent versus owner rights, domain isolation, foreign origin, credential rotation and revocation. */
 async function p2AuthBoundaries(s: P2Run) {
   const { authPath, http, input, create, tokens } = s;
