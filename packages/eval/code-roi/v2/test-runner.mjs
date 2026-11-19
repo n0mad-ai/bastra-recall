@@ -13,6 +13,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { join, relative } from "node:path";
+import { dropCallerGitEnv } from "../../../../scripts/caller-git-env.mjs";
 import "./test-truth.mjs"; // Preserve module initialization.
 
 /** Default ceiling for ONE suite run. A slower repository raises it explicitly. */
@@ -153,7 +154,11 @@ export async function runSuite(dir, runner, { files = [], timeoutMs = DEFAULT_TI
     // marker, decides it is a recursive run, and prints "skipping running
     // files" instead of any results. A truth built from that is a truth built
     // from an empty suite.
-    const env = { ...process.env, CI: "1", FORCE_COLOR: "0", NO_COLOR: "1" };
+    //
+    // The caller's repository-steering git variables are dropped as well
+    // (#1670): started from a git hook, GIT_DIR/GIT_WORK_TREE would send every
+    // git the target suite runs to the caller's repository, not its checkout.
+    const env = dropCallerGitEnv({ ...process.env, CI: "1", FORCE_COLOR: "0", NO_COLOR: "1" });
     delete env.NODE_TEST_CONTEXT;
     delete env.NODE_OPTIONS;
     const child = spawn(cmd, args, { cwd: dir, env });

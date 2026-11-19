@@ -727,6 +727,9 @@ until a new design replaces it; this name is independent of the product version.
   git variables themselves (`scripts/caller-git-env.mjs`, the list
   `test-env.mjs` now shares), so a single file started without `test-env.mjs`
   cannot touch the caller's repository either (#1669).
+- Eval: the code-roi test runner starts the suites of other repositories
+  without the caller's repository-steering git variables; registered
+  measurements are unaffected (#1670).
 
 ## [1.2.1] — 2026-11-16
 
