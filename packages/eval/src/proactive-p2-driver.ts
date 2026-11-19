@@ -696,69 +696,7 @@ const driver: FeatureDriver = {
           }
         }
       } else if (c.id === "p3-source-key-tuple-boundary") {
-        const sources = [
-          {
-            id: "collision:a",
-            kind: "event",
-            producer_actor: "fixture-owner",
-            owner_domains: ["personal"],
-            sensitivity: "private",
-            max_age_ms: 100000,
-            enabled: true,
-          },
-          {
-            id: "collision",
-            kind: "event",
-            producer_actor: "other-owner",
-            owner_domains: ["other"],
-            sensitivity: "private",
-            max_age_ms: 100000,
-            enabled: true,
-          },
-        ];
-        for (const [i, source] of sources.entries()) {
-          const r = await http("POST", "/api/v1/tasks/sources", source, i === 0 ? "owner" : "other");
-          if (r.status !== 200) throw new Error("valid tuple source registration failed");
-        }
-        const results: Array<{ status: number; data: any }> = [],
-          submitted: any[] = [];
-        for (const [i, source] of sources.entries()) {
-          const body = {
-            source_id: source.id,
-            source_revision: 0,
-            dedup_key: i === 0 ? "b" : "a:b",
-            value: "same-invented-value",
-            state_updated_at: Date.now(),
-          };
-          submitted.push(body);
-          results.push(await http("POST", "/api/v1/tasks/events", body, i === 0 ? "owner" : "other"));
-        }
-        const retries = await Promise.all(
-          submitted.map((body, i) => http("POST", "/api/v1/tasks/events", body, i === 0 ? "owner" : "other"))
-        );
-        const drift = await http("POST", "/api/v1/tasks/events", {
-          ...submitted[0],
-          value: "different-invented-value",
-        });
-        const snapshot = JSON.parse(readFileSync(taskPath, "utf8"));
-        const eventB = snapshot.events.find((e: any) => e.id === results[1].data.event_id);
-        values = {
-          exact_event_retry_ids_stable: retries.every(
-            (r, i) => r.status === 200 && r.data.event_id === results[i].data.event_id
-          ),
-          event_drift_denied: drift.status === 409,
-          accepted_submissions: results.filter((r) => r.status === 200).length,
-          journal_events: snapshot.events.length,
-          distinct_event_ids: new Set(results.map((r) => r.data.event_id)).size,
-          source_actor_bindings_exact: sources.every((s) =>
-            snapshot.events.some(
-              (e: any) =>
-                e.source_id === s.id && e.actor === s.producer_actor && equal(e.owner_domains, s.owner_domains)
-            )
-          ),
-          foreign_domain_receipt_reused: Boolean(eventB && eventB.source_id !== sources[1].id),
-        };
-        evidence.push({ registered_sources: sources, submission_results: results, journal: snapshot.events });
+        await p3SourceKeyTupleBoundary(s);
       } else if (c.id === "p3-automatic-evaluation") {
         const t0 = Date.parse("2026-10-24T12:00:00Z");
         const setClock = (at: number) => {
@@ -827,75 +765,7 @@ const driver: FeatureDriver = {
           manual_reconcile_calls: evidence.filter((e) => e.path?.includes("reconcile")).length,
         };
       } else if (c.id === "p3-returning-source-transitions") {
-        const repo = join(root, "fixture-repository");
-        mkdirSync(repo, { mode: 0o700 });
-        const artifact = join(root, "source.txt");
-        writeFileSync(artifact, "A", { mode: 0o600 });
-        const git = (...args: string[]) =>
-          execFileSync("git", ["-C", repo, ...args], {
-            encoding: "utf8",
-            env: { ...env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" },
-          }).trim();
-        git("init", "-b", "fixture");
-        const commitFixture = (name: string) =>
-          git(
-            "-c",
-            "user.name=Fixture",
-            "-c",
-            "user.email=fixture@example.invalid",
-            "-c",
-            "commit.gpgsign=false",
-            "commit",
-            "--allow-empty",
-            "-m",
-            name
-          );
-        commitFixture("A");
-        const a = git("rev-parse", "HEAD");
-        commitFixture("B");
-        const b = git("rev-parse", "HEAD");
-        git("update-ref", "refs/heads/observed", a);
-        const common = {
-          producer_actor: "task-source-reader",
-          owner_domains: ["personal"],
-          sensitivity: "private",
-          max_age_ms: 100000,
-          enabled: true,
-        };
-        for (const source of [
-          { ...common, id: "file-watch", kind: "file", root, path: "source.txt" },
-          { ...common, id: "git-watch", kind: "git", root: repo, ref: "refs/heads/observed" },
-        ]) {
-          const r = await http("POST", "/api/v1/tasks/sources", source);
-          if (r.status !== 200) throw new Error("returning source registration failed");
-        }
-        await stop(daemon!);
-        let quiet = true;
-        const ctx = { path: taskPath, authPath, now: () => Number(readFileSync(clockPath, "utf8")) };
-        for (const [i, value] of ["A", "B", "A", "B"].entries()) {
-          writeFileSync(clockPath, String(Date.parse("2026-10-24T12:00:00Z") + i * 1000));
-          writeFileSync(artifact, value);
-          git("update-ref", "refs/heads/observed", value === "A" ? a : b);
-          await sourceApi!.observeTaskSources(ctx);
-          const first = JSON.parse(readFileSync(taskPath, "utf8"));
-          await sourceApi!.observeTaskSources(ctx);
-          const second = JSON.parse(readFileSync(taskPath, "utf8"));
-          quiet &&= first.events.length === second.events.length;
-          evidence.push({
-            transition: i + 1,
-            file_value: value,
-            git_ref: value === "A" ? a : b,
-            first_snapshot: first,
-            unchanged_snapshot: second,
-          });
-        }
-        const events = JSON.parse(readFileSync(taskPath, "utf8")).events;
-        values = {
-          file_events: events.filter((e: any) => e.source_id === "file-watch").length,
-          git_events: events.filter((e: any) => e.source_id === "git-watch").length,
-          unchanged_polls_quiet: quiet,
-          distinct_event_ids: new Set(events.map((e: any) => e.id)).size,
-        };
+        await p3ReturningSourceTransitions(s);
       } else if (c.id === "p2-auth-boundaries") {
         await p2AuthBoundaries(s);
       } else if (c.id === "p2-transport-parity") {
@@ -907,99 +777,7 @@ const driver: FeatureDriver = {
       } else if (c.id === "p2-concurrency-cas") {
         await p2ConcurrencyCas(s);
       } else if (c.id === "dst-recurrence-rollback") {
-        const setClock = (iso: string | number) => {
-          const at = typeof iso === "number" ? iso : Date.parse(iso);
-          writeFileSync(clockPath, String(at));
-          evidence.push({ frozen_clock: at });
-        };
-        const reconcile = async () => {
-          const r = await http("POST", "/api/v1/tasks/reconcile", {});
-          if (r.status !== 200) throw new Error("reconcile fixture failed");
-        };
-        const snapshot = () => JSON.parse(readFileSync(taskPath, "utf8"));
-        const cal = (local_time: string) => ({
-          kind: "calendar",
-          local_time,
-          timezone: "Europe/Madrid",
-          gap: "reject",
-          overlap: "earlier",
-          at: 0,
-          offset_minutes: 0,
-        });
-        const gap = await http("POST", "/api/v1/tasks", {
-          ...input("gap"),
-          arm: true,
-          schedule: cal("2026-03-29T02:30:00"),
-        });
-        const overlap = await http("POST", "/api/v1/tasks", {
-          ...input("overlap"),
-          arm: true,
-          schedule: cal("2026-10-25T02:30:00"),
-          recurrence: { kind: "calendar", interval: 1, count: 2, catch_up: "latest" },
-        });
-        if (overlap.status !== 200) throw new Error("overlap creation failed");
-        setClock("2026-10-25T00:29:59Z");
-        await reconcile();
-        const before = snapshot().occurrences.length;
-        setClock("2026-10-25T00:30:00Z");
-        await reconcile();
-        const first = snapshot();
-        setClock("2026-10-25T01:30:00Z");
-        await reconcile();
-        const second = snapshot();
-        await stop(daemon!);
-        await start();
-        await reconcile();
-        const restarted = snapshot();
-        setClock("2026-10-24T12:00:00Z");
-        await reconcile();
-        const rolled = snapshot();
-        setClock("2026-10-26T01:30:00Z");
-        await reconcile();
-        const calendarDone = snapshot();
-        const at = Date.parse("2026-11-01T00:00:00Z");
-        setClock(at - 1000);
-        const recurrence = await http("POST", "/api/v1/tasks", {
-          ...input("elapsed"),
-          arm: true,
-          schedule: { kind: "duration", reference_at: at - 1000, duration_ms: 1000, at },
-          recurrence: { kind: "elapsed", interval: 1000, count: 5, catch_up: "latest" },
-        });
-        setClock(at + 2500);
-        await reconcile();
-        const catchup = snapshot();
-        setClock(at + 10000);
-        await reconcile();
-        await reconcile();
-        const done = snapshot();
-        const calTask = first.tasks.find((t: any) => t.id === overlap.data.id);
-        const caught = catchup.occurrences.filter((o: any) => o.task_id === recurrence.data.id);
-        const finalElapsed = done.occurrences.filter((o: any) => o.task_id === recurrence.data.id);
-        const calendarOccurrences = calendarDone.occurrences.filter((o: any) => o.task_id === overlap.data.id);
-        const correct =
-          gap.status === 400 &&
-          overlap.data.schedule.at === Date.parse("2026-10-25T00:30:00Z") &&
-          overlap.data.schedule.offset_minutes === 120 &&
-          before === 0 &&
-          first.occurrences.length === 1 &&
-          calTask.next_slot.at === Date.parse("2026-10-26T01:30:00Z") &&
-          second.occurrences.length === 1 &&
-          restarted.occurrences.length === 1 &&
-          rolled.occurrences.length === 1 &&
-          calendarOccurrences.length === 2 &&
-          calendarOccurrences[1].due_at - calendarOccurrences[0].due_at === 25 * 3600000 &&
-          recurrence.status === 200 &&
-          caught.length === 1 &&
-          caught[0].due_at === at + 2000 &&
-          caught[0].missed_count === 2 &&
-          finalElapsed.length === 2 &&
-          finalElapsed[1].due_at === at + 4000 &&
-          done.tasks.find((t: any) => t.id === recurrence.data.id).next_slot === undefined;
-        values = {
-          declared_policy_followed_all_subruns: correct,
-          duplicate_occurrences: done.occurrences.length - new Set(done.occurrences.map((o: any) => o.id)).size,
-        };
-        evidence.push({ gap, overlap, before, first, second, restarted, rolled, calendarDone, catchup, done });
+        await dstRecurrenceRollback(s);
       } else if (c.id === "p1-p2-corruption-recovery") {
         await p1P2CorruptionRecovery(s);
       } else throw new Error("unsupported published-stage fixture");
@@ -1255,6 +1033,245 @@ async function p1P2CorruptionRecovery(s: P2Run) {
     recovery: recovered,
     quarantine_sha256: createHash("sha256").update(readFileSync(recovered.quarantine)).digest("hex"),
   });
+}
+
+/** P3 source keys: colon-bearing source IDs of two domains stay two events with their own actor binding; retries keep IDs, drift is denied. */
+async function p3SourceKeyTupleBoundary(s: P2Run) {
+  const { taskPath, evidence, http } = s;
+  const sources = [
+    {
+      id: "collision:a",
+      kind: "event",
+      producer_actor: "fixture-owner",
+      owner_domains: ["personal"],
+      sensitivity: "private",
+      max_age_ms: 100000,
+      enabled: true,
+    },
+    {
+      id: "collision",
+      kind: "event",
+      producer_actor: "other-owner",
+      owner_domains: ["other"],
+      sensitivity: "private",
+      max_age_ms: 100000,
+      enabled: true,
+    },
+  ];
+  for (const [i, source] of sources.entries()) {
+    const r = await http("POST", "/api/v1/tasks/sources", source, i === 0 ? "owner" : "other");
+    if (r.status !== 200) throw new Error("valid tuple source registration failed");
+  }
+  const results: Array<{ status: number; data: any }> = [],
+    submitted: any[] = [];
+  for (const [i, source] of sources.entries()) {
+    const body = {
+      source_id: source.id,
+      source_revision: 0,
+      dedup_key: i === 0 ? "b" : "a:b",
+      value: "same-invented-value",
+      state_updated_at: Date.now(),
+    };
+    submitted.push(body);
+    results.push(await http("POST", "/api/v1/tasks/events", body, i === 0 ? "owner" : "other"));
+  }
+  const retries = await Promise.all(
+    submitted.map((body, i) => http("POST", "/api/v1/tasks/events", body, i === 0 ? "owner" : "other"))
+  );
+  const drift = await http("POST", "/api/v1/tasks/events", {
+    ...submitted[0],
+    value: "different-invented-value",
+  });
+  const snapshot = JSON.parse(readFileSync(taskPath, "utf8"));
+  const eventB = snapshot.events.find((e: any) => e.id === results[1].data.event_id);
+  s.record({
+    exact_event_retry_ids_stable: retries.every(
+      (r, i) => r.status === 200 && r.data.event_id === results[i].data.event_id
+    ),
+    event_drift_denied: drift.status === 409,
+    accepted_submissions: results.filter((r) => r.status === 200).length,
+    journal_events: snapshot.events.length,
+    distinct_event_ids: new Set(results.map((r) => r.data.event_id)).size,
+    source_actor_bindings_exact: sources.every((s) =>
+      snapshot.events.some(
+        (e: any) => e.source_id === s.id && e.actor === s.producer_actor && equal(e.owner_domains, s.owner_domains)
+      )
+    ),
+    foreign_domain_receipt_reused: Boolean(eventB && eventB.source_id !== sources[1].id),
+  });
+  evidence.push({ registered_sources: sources, submission_results: results, journal: snapshot.events });
+}
+
+/** P3 returning sources: a real file and Git ref going A, B, A, B yield one event per transition and stay quiet when unchanged. */
+async function p3ReturningSourceTransitions(s: P2Run) {
+  const { root, env, taskPath, authPath, clockPath, evidence, http, stopDaemon } = s;
+  const repo = join(root, "fixture-repository");
+  mkdirSync(repo, { mode: 0o700 });
+  const artifact = join(root, "source.txt");
+  writeFileSync(artifact, "A", { mode: 0o600 });
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-C", repo, ...args], {
+      encoding: "utf8",
+      env: { ...env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" },
+    }).trim();
+  git("init", "-b", "fixture");
+  const commitFixture = (name: string) =>
+    git(
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "--allow-empty",
+      "-m",
+      name
+    );
+  commitFixture("A");
+  const a = git("rev-parse", "HEAD");
+  commitFixture("B");
+  const b = git("rev-parse", "HEAD");
+  git("update-ref", "refs/heads/observed", a);
+  const common = {
+    producer_actor: "task-source-reader",
+    owner_domains: ["personal"],
+    sensitivity: "private",
+    max_age_ms: 100000,
+    enabled: true,
+  };
+  for (const source of [
+    { ...common, id: "file-watch", kind: "file", root, path: "source.txt" },
+    { ...common, id: "git-watch", kind: "git", root: repo, ref: "refs/heads/observed" },
+  ]) {
+    const r = await http("POST", "/api/v1/tasks/sources", source);
+    if (r.status !== 200) throw new Error("returning source registration failed");
+  }
+  await stopDaemon();
+  let quiet = true;
+  const ctx = { path: taskPath, authPath, now: () => Number(readFileSync(clockPath, "utf8")) };
+  for (const [i, value] of ["A", "B", "A", "B"].entries()) {
+    writeFileSync(clockPath, String(Date.parse("2026-10-24T12:00:00Z") + i * 1000));
+    writeFileSync(artifact, value);
+    git("update-ref", "refs/heads/observed", value === "A" ? a : b);
+    await sourceApi!.observeTaskSources(ctx);
+    const first = JSON.parse(readFileSync(taskPath, "utf8"));
+    await sourceApi!.observeTaskSources(ctx);
+    const second = JSON.parse(readFileSync(taskPath, "utf8"));
+    quiet &&= first.events.length === second.events.length;
+    evidence.push({
+      transition: i + 1,
+      file_value: value,
+      git_ref: value === "A" ? a : b,
+      first_snapshot: first,
+      unchanged_snapshot: second,
+    });
+  }
+  const events = JSON.parse(readFileSync(taskPath, "utf8")).events;
+  s.record({
+    file_events: events.filter((e: any) => e.source_id === "file-watch").length,
+    git_events: events.filter((e: any) => e.source_id === "git-watch").length,
+    unchanged_polls_quiet: quiet,
+    distinct_event_ids: new Set(events.map((e: any) => e.id)).size,
+  });
+}
+
+/** P3 schedules: Madrid DST gap and overlap, calendar versus elapsed recurrence, latest catch-up, restart and clock rollback through reconcile. */
+async function dstRecurrenceRollback(s: P2Run) {
+  const { taskPath, clockPath, evidence, http, input, start, stopDaemon } = s;
+  const setClock = (iso: string | number) => {
+    const at = typeof iso === "number" ? iso : Date.parse(iso);
+    writeFileSync(clockPath, String(at));
+    evidence.push({ frozen_clock: at });
+  };
+  const reconcile = async () => {
+    const r = await http("POST", "/api/v1/tasks/reconcile", {});
+    if (r.status !== 200) throw new Error("reconcile fixture failed");
+  };
+  const snapshot = () => JSON.parse(readFileSync(taskPath, "utf8"));
+  const cal = (local_time: string) => ({
+    kind: "calendar",
+    local_time,
+    timezone: "Europe/Madrid",
+    gap: "reject",
+    overlap: "earlier",
+    at: 0,
+    offset_minutes: 0,
+  });
+  const gap = await http("POST", "/api/v1/tasks", {
+    ...input("gap"),
+    arm: true,
+    schedule: cal("2026-03-29T02:30:00"),
+  });
+  const overlap = await http("POST", "/api/v1/tasks", {
+    ...input("overlap"),
+    arm: true,
+    schedule: cal("2026-10-25T02:30:00"),
+    recurrence: { kind: "calendar", interval: 1, count: 2, catch_up: "latest" },
+  });
+  if (overlap.status !== 200) throw new Error("overlap creation failed");
+  setClock("2026-10-25T00:29:59Z");
+  await reconcile();
+  const before = snapshot().occurrences.length;
+  setClock("2026-10-25T00:30:00Z");
+  await reconcile();
+  const first = snapshot();
+  setClock("2026-10-25T01:30:00Z");
+  await reconcile();
+  const second = snapshot();
+  await stopDaemon();
+  await start();
+  await reconcile();
+  const restarted = snapshot();
+  setClock("2026-10-24T12:00:00Z");
+  await reconcile();
+  const rolled = snapshot();
+  setClock("2026-10-26T01:30:00Z");
+  await reconcile();
+  const calendarDone = snapshot();
+  const at = Date.parse("2026-11-01T00:00:00Z");
+  setClock(at - 1000);
+  const recurrence = await http("POST", "/api/v1/tasks", {
+    ...input("elapsed"),
+    arm: true,
+    schedule: { kind: "duration", reference_at: at - 1000, duration_ms: 1000, at },
+    recurrence: { kind: "elapsed", interval: 1000, count: 5, catch_up: "latest" },
+  });
+  setClock(at + 2500);
+  await reconcile();
+  const catchup = snapshot();
+  setClock(at + 10000);
+  await reconcile();
+  await reconcile();
+  const done = snapshot();
+  const calTask = first.tasks.find((t: any) => t.id === overlap.data.id);
+  const caught = catchup.occurrences.filter((o: any) => o.task_id === recurrence.data.id);
+  const finalElapsed = done.occurrences.filter((o: any) => o.task_id === recurrence.data.id);
+  const calendarOccurrences = calendarDone.occurrences.filter((o: any) => o.task_id === overlap.data.id);
+  const correct =
+    gap.status === 400 &&
+    overlap.data.schedule.at === Date.parse("2026-10-25T00:30:00Z") &&
+    overlap.data.schedule.offset_minutes === 120 &&
+    before === 0 &&
+    first.occurrences.length === 1 &&
+    calTask.next_slot.at === Date.parse("2026-10-26T01:30:00Z") &&
+    second.occurrences.length === 1 &&
+    restarted.occurrences.length === 1 &&
+    rolled.occurrences.length === 1 &&
+    calendarOccurrences.length === 2 &&
+    calendarOccurrences[1].due_at - calendarOccurrences[0].due_at === 25 * 3600000 &&
+    recurrence.status === 200 &&
+    caught.length === 1 &&
+    caught[0].due_at === at + 2000 &&
+    caught[0].missed_count === 2 &&
+    finalElapsed.length === 2 &&
+    finalElapsed[1].due_at === at + 4000 &&
+    done.tasks.find((t: any) => t.id === recurrence.data.id).next_slot === undefined;
+  s.record({
+    declared_policy_followed_all_subruns: correct,
+    duplicate_occurrences: done.occurrences.length - new Set(done.occurrences.map((o: any) => o.id)).size,
+  });
+  evidence.push({ gap, overlap, before, first, second, restarted, rolled, calendarDone, catchup, done });
 }
 
 export default driver;
