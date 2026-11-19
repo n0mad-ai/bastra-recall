@@ -550,159 +550,9 @@ const driver: FeatureDriver = {
           stopDaemon: () => stop(daemon!),
         });
       } else if (deliveryCases.includes(c.id)) {
-        const t0 = Date.parse("2026-10-24T12:00:00Z");
-        const snapshot = () => JSON.parse(readFileSync(taskPath, "utf8"));
-        const setClock = (at: number) => {
-          writeFileSync(clockPath, String(at));
-          evidence.push({ frozen_clock: at });
-        };
-        const wait = async (predicate: (s: any) => boolean) => {
-          const end = Date.now() + 5000;
-          while (!predicate(snapshot()) && Date.now() < end) await delay(50);
-          return snapshot();
-        };
-        const make = async (key: string, at: number) => {
-          const r = await http("POST", "/api/v1/tasks", {
-            ...input(key),
-            arm: true,
-            schedule: { kind: "instant", at },
-          });
-          if (r.status !== 200) throw new Error("delivery fixture creation failed");
-          return r.data;
-        };
-        const due = async (more: object = {}, persona = "owner") =>
-          (await http("POST", "/api/v1/task_due", { session: "delivery-fixture", ...more }, persona)).data;
-        const countAttempts = (s: any) =>
-          s.occurrences.reduce(
-            (n: number, o: any) =>
-              n + o.attempts.reduce((n: number, a: any) => n + (a.count ?? 1), 0) + (o.compacted_attempts ?? 0),
-            0
-          );
-        const counts = (s: any) => ({
-          ack: s.occurrences.filter((o: any) => o.acknowledgement).length,
-          resolution: s.occurrences.filter((o: any) => o.resolution).length,
-        });
-        const contact = () =>
-          http("GET", "/api/v1/health", undefined, "legacy", {
-            "x-bastra-task-authorization": `Bearer ${owner.token}`,
-          });
-        if (c.id === "relay-overflow-disabled-purged") {
-          for (let i = 0; i < 5; i++) await make(`overflow-${i}`, t0 + 1000);
-          await delay(5500);
-          setClock(t0 + 1000);
-          await stop(daemon!);
-          await start();
-          await wait((s) => s.occurrences.length === 5);
-          const originalIds = snapshot()
-            .occurrences.map((o: any) => o.id)
-            .sort();
-          const overflow = await due({ max_bytes: 256 });
-          const normal = await due({ max_bytes: 16384 });
-          const states = [snapshot()];
-          await stop(daemon!);
-          env.BASTRA_PENDING_RELAY = "0";
-          await start();
-          const disabled = await due({ max_bytes: 16384 });
-          states.push(snapshot());
-          const purge = child("relay-purge", "cli.js", ["drafts", "purge"]);
-          let output = "";
-          purge.stdout.on("data", (d) => (output += d));
-          const [exit] = await once(purge, "exit");
-          if (exit !== 0) throw new Error("isolated relay purge command failed");
-          evidence.push({ relay_purge_exit: exit, output });
-          const purged = await due({ max_bytes: 16384 });
-          states.push(snapshot());
-          values = {
-            due_retained_all_subruns:
-              overflow.overflow === 5 &&
-              overflow.cards.every(
-                (card: any) => card.kind === "availability" && !card.occurrence_id && !card.task_id
-              ) &&
-              states[0].occurrences.every((o: any) => o.attempts.length <= 1) &&
-              [normal, disabled, purged].every((r) => r.pending === 5 && r.cards.length === 3) &&
-              states.every((s) => s.occurrences.length === 5 && s.tasks.every((t: any) => t.state === "due")),
-            fabricated_acknowledgements: states.reduce((n, s) => n + counts(s).ack, 0),
-            stable_retry_ids_all_subruns: states.every((s) =>
-              equal(s.occurrences.map((o: any) => o.id).sort(), originalIds)
-            ),
-          };
-          evidence.push({ overflow, normal, disabled, purged, states });
-        } else {
-          const after = c.id === "seven-day-evaluation" ? 7 * 86400000 : 1000;
-          const task = await make(c.id, t0 + after);
-          await delay(5500);
-          const before = snapshot();
-          if (before.occurrences.length) throw new Error("future delivery task fired early");
-          const offline = c.id !== "active-session-deadline" && c.id !== "multi-client-occurrence";
-          if (offline) await stop(daemon!);
-          setClock(t0 + after);
-          if (offline) await start();
-          await http("GET", `/api/v1/tasks/${task.id}`);
-          await wait((s) => s.occurrences.length === 1);
-          if (c.id === "active-session-deadline") {
-            // Ordinary successful contact, empty vault, no recall/reconcile/task_due call.
-            const response = await contact();
-            const s = await wait((s) => countAttempts(s) === 1);
-            values = {
-              logical_firings: s.occurrences.length,
-              delivery_attempts: countAttempts(s),
-              acknowledgement_receipts: counts(s).ack,
-            };
-            evidence.push({
-              passive_attachment_received: response.data.proactive_due?.cards?.length === 1,
-              empty_vault: true,
-            });
-            if (response.data.proactive_due?.cards?.length !== 1) values.delivery_attempts = 0;
-          } else if (c.id === "multi-client-occurrence") {
-            const second = await auth.mintTaskCredential(authPath, {
-              actor_id: "second-client",
-              domains: ["personal"],
-              role: "owner",
-            });
-            tokens.second = second.token;
-            const replies = await Promise.all([due({}, "owner"), due({}, "second")]);
-            const retry = await due();
-            const s = snapshot();
-            values = {
-              logical_firings: s.occurrences.length,
-              stable_retry_ids: [...replies, retry].every(
-                (r) => r.cards.length === 1 && r.cards[0].occurrence_id === s.occurrences[0].id
-              ),
-              duplicate_resolutions: counts(s).resolution,
-            };
-          } else if (c.id === "acknowledged-unfinished") {
-            const shown = await due();
-            const current = (await http("GET", `/api/v1/tasks/${task.id}`)).data;
-            const ack = await op("acknowledge", current, { occurrence_id: shown.cards[0].occurrence_id });
-            if (ack.status !== 200) throw new Error("fixture acknowledge failed");
-            await stop(daemon!);
-            await start();
-            const shownAck = await due({ include_acknowledged: true });
-            const s = snapshot();
-            values = {
-              acknowledgement_receipts: counts(s).ack,
-              remains_open:
-                s.tasks[0].state === "due" && shownAck.cards.length === 1 && shownAck.cards[0].acknowledged === true,
-              resolution_receipts: counts(s).resolution,
-            };
-          } else {
-            const shown = await due();
-            const s = snapshot();
-            values =
-              c.id === "seven-day-evaluation"
-                ? {
-                    durable_before_fire: before.tasks.length === 1 && before.tasks[0].armed,
-                    logical_firings: s.occurrences.length,
-                    gate_claimed_passed: false,
-                  }
-                : {
-                    logical_firings: s.occurrences.length,
-                    due_retained: s.tasks[0].state === "due" && shown.cards.length === 1,
-                    background_claimed: shown.coverage !== "next-contact-only",
-                  };
-            evidence.push({ pre_fire_snapshot: before, shown, synthetic_clock_is_not_seven_day_window: true });
-          }
-        }
+        const d = deliveryFixture(s);
+        if (c.id === "relay-overflow-disabled-purged") await relayOverflowDisabledPurged(s, d);
+        else await singleTaskDelivery(s, d);
       } else if (c.id === "p3-source-key-tuple-boundary") {
         await p3SourceKeyTupleBoundary(s);
       } else if (c.id === "p3-automatic-evaluation") {
@@ -1283,6 +1133,198 @@ async function p3AutomaticEvaluation(s: P2Run) {
     poll_logical_firings: pollCount,
     manual_reconcile_calls: evidence.filter((e) => e.path?.includes("reconcile")).length,
   });
+}
+
+/** Delivery fixtures shared by the delivery cases: frozen clock, durable snapshots, due and contact calls. */
+function deliveryFixture(run: P2Run) {
+  const { taskPath, clockPath, evidence, http, input, owner } = run;
+  const t0 = Date.parse("2026-10-24T12:00:00Z");
+  const snapshot = () => JSON.parse(readFileSync(taskPath, "utf8"));
+  const setClock = (at: number) => {
+    writeFileSync(clockPath, String(at));
+    evidence.push({ frozen_clock: at });
+  };
+  const wait = async (predicate: (s: any) => boolean) => {
+    const end = Date.now() + 5000;
+    while (!predicate(snapshot()) && Date.now() < end) await delay(50);
+    return snapshot();
+  };
+  const make = async (key: string, at: number) => {
+    const r = await http("POST", "/api/v1/tasks", {
+      ...input(key),
+      arm: true,
+      schedule: { kind: "instant", at },
+    });
+    if (r.status !== 200) throw new Error("delivery fixture creation failed");
+    return r.data;
+  };
+  const due = async (more: object = {}, persona = "owner") =>
+    (await http("POST", "/api/v1/task_due", { session: "delivery-fixture", ...more }, persona)).data;
+  const countAttempts = (s: any) =>
+    s.occurrences.reduce(
+      (n: number, o: any) =>
+        n + o.attempts.reduce((n: number, a: any) => n + (a.count ?? 1), 0) + (o.compacted_attempts ?? 0),
+      0
+    );
+  const counts = (s: any) => ({
+    ack: s.occurrences.filter((o: any) => o.acknowledgement).length,
+    resolution: s.occurrences.filter((o: any) => o.resolution).length,
+  });
+  const contact = () =>
+    http("GET", "/api/v1/health", undefined, "legacy", {
+      "x-bastra-task-authorization": `Bearer ${owner!.token}`,
+    });
+  return { t0, snapshot, setClock, wait, make, due, countAttempts, counts, contact };
+}
+type DeliveryFixture = ReturnType<typeof deliveryFixture>;
+
+/** Delivery: five overflowing reminders across restart, a disabled relay and a purge keep their IDs and stay unacknowledged. */
+async function relayOverflowDisabledPurged(run: P2Run, d: DeliveryFixture) {
+  const { env, evidence, child, start, stopDaemon } = run;
+  const { t0, snapshot, setClock, wait, make, due, counts } = d;
+  for (let i = 0; i < 5; i++) await make(`overflow-${i}`, t0 + 1000);
+  await delay(5500);
+  setClock(t0 + 1000);
+  await stopDaemon();
+  await start();
+  await wait((s) => s.occurrences.length === 5);
+  const originalIds = snapshot()
+    .occurrences.map((o: any) => o.id)
+    .sort();
+  const overflow = await due({ max_bytes: 256 });
+  const normal = await due({ max_bytes: 16384 });
+  const states = [snapshot()];
+  await stopDaemon();
+  env.BASTRA_PENDING_RELAY = "0";
+  await start();
+  const disabled = await due({ max_bytes: 16384 });
+  states.push(snapshot());
+  const purge = child("relay-purge", "cli.js", ["drafts", "purge"]);
+  let output = "";
+  purge.stdout.on("data", (d) => (output += d));
+  const [exit] = await once(purge, "exit");
+  if (exit !== 0) throw new Error("isolated relay purge command failed");
+  evidence.push({ relay_purge_exit: exit, output });
+  const purged = await due({ max_bytes: 16384 });
+  states.push(snapshot());
+  const values: CaseValues = {
+    due_retained_all_subruns:
+      overflow.overflow === 5 &&
+      overflow.cards.every((card: any) => card.kind === "availability" && !card.occurrence_id && !card.task_id) &&
+      states[0].occurrences.every((o: any) => o.attempts.length <= 1) &&
+      [normal, disabled, purged].every((r) => r.pending === 5 && r.cards.length === 3) &&
+      states.every((s) => s.occurrences.length === 5 && s.tasks.every((t: any) => t.state === "due")),
+    fabricated_acknowledgements: states.reduce((n, s) => n + counts(s).ack, 0),
+    stable_retry_ids_all_subruns: states.every((s) => equal(s.occurrences.map((o: any) => o.id).sort(), originalIds)),
+  };
+  run.record(values);
+  evidence.push({ overflow, normal, disabled, purged, states });
+}
+
+/** Delivery of one task due after a frozen-clock jump, live or across an offline restart, then observed per case. */
+async function singleTaskDelivery(run: P2Run, d: DeliveryFixture) {
+  const { c, http, start, stopDaemon } = run;
+  const { t0, snapshot, setClock, wait, make } = d;
+  const after = c.id === "seven-day-evaluation" ? 7 * 86400000 : 1000;
+  const task = await make(c.id, t0 + after);
+  await delay(5500);
+  const before = snapshot();
+  if (before.occurrences.length) throw new Error("future delivery task fired early");
+  const offline = c.id !== "active-session-deadline" && c.id !== "multi-client-occurrence";
+  if (offline) await stopDaemon();
+  setClock(t0 + after);
+  if (offline) await start();
+  await http("GET", `/api/v1/tasks/${task.id}`);
+  await wait((s) => s.occurrences.length === 1);
+  if (c.id === "active-session-deadline") await activeSessionDeadline(run, d);
+  else if (c.id === "multi-client-occurrence") await multiClientOccurrence(run, d);
+  else if (c.id === "acknowledged-unfinished") await acknowledgedUnfinished(run, d, task);
+  else await nextContactDelivery(run, d, before);
+}
+
+/** Active session: one ordinary contact delivers the due card passively and counts one attempt. */
+async function activeSessionDeadline(run: P2Run, d: DeliveryFixture) {
+  const { evidence } = run;
+  const { wait, countAttempts, counts, contact } = d;
+  // Ordinary successful contact, empty vault, no recall/reconcile/task_due call.
+  const response = await contact();
+  const s = await wait((s) => countAttempts(s) === 1);
+  const values: CaseValues = {
+    logical_firings: s.occurrences.length,
+    delivery_attempts: countAttempts(s),
+    acknowledgement_receipts: counts(s).ack,
+  };
+  run.record(values);
+  evidence.push({
+    passive_attachment_received: response.data.proactive_due?.cards?.length === 1,
+    empty_vault: true,
+  });
+  if (response.data.proactive_due?.cards?.length !== 1) values.delivery_attempts = 0;
+}
+
+/** Two clients and a retry see one occurrence with one stable ID. */
+async function multiClientOccurrence(run: P2Run, d: DeliveryFixture) {
+  const { authPath, tokens } = run;
+  const { snapshot, due, counts } = d;
+  const second = await auth.mintTaskCredential(authPath, {
+    actor_id: "second-client",
+    domains: ["personal"],
+    role: "owner",
+  });
+  tokens.second = second.token;
+  const replies = await Promise.all([due({}, "owner"), due({}, "second")]);
+  const retry = await due();
+  const s = snapshot();
+  const values: CaseValues = {
+    logical_firings: s.occurrences.length,
+    stable_retry_ids: [...replies, retry].every(
+      (r) => r.cards.length === 1 && r.cards[0].occurrence_id === s.occurrences[0].id
+    ),
+    duplicate_resolutions: counts(s).resolution,
+  };
+  run.record(values);
+}
+
+/** An acknowledged occurrence survives a restart unresolved. */
+async function acknowledgedUnfinished(run: P2Run, d: DeliveryFixture, task: any) {
+  const { http, op, start, stopDaemon } = run;
+  const { snapshot, due, counts } = d;
+  const shown = await due();
+  const current = (await http("GET", `/api/v1/tasks/${task.id}`)).data;
+  const ack = await op("acknowledge", current, { occurrence_id: shown.cards[0].occurrence_id });
+  if (ack.status !== 200) throw new Error("fixture acknowledge failed");
+  await stopDaemon();
+  await start();
+  const shownAck = await due({ include_acknowledged: true });
+  const s = snapshot();
+  const values: CaseValues = {
+    acknowledgement_receipts: counts(s).ack,
+    remains_open: s.tasks[0].state === "due" && shownAck.cards.length === 1 && shownAck.cards[0].acknowledged === true,
+    resolution_receipts: counts(s).resolution,
+  };
+  run.record(values);
+}
+
+/** Seven-day evaluation and offline restart: the occurrence is delivered on the next contact. */
+async function nextContactDelivery(run: P2Run, d: DeliveryFixture, before: any) {
+  const { c, evidence } = run;
+  const { snapshot, due } = d;
+  const shown = await due();
+  const s = snapshot();
+  const values: CaseValues =
+    c.id === "seven-day-evaluation"
+      ? {
+          durable_before_fire: before.tasks.length === 1 && before.tasks[0].armed,
+          logical_firings: s.occurrences.length,
+          gate_claimed_passed: false,
+        }
+      : {
+          logical_firings: s.occurrences.length,
+          due_retained: s.tasks[0].state === "due" && shown.cards.length === 1,
+          background_claimed: shown.coverage !== "next-contact-only",
+        };
+  run.record(values);
+  evidence.push({ pre_fire_snapshot: before, shown, synthetic_clock_is_not_seven_day_window: true });
 }
 
 export default driver;
