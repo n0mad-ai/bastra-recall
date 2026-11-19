@@ -714,6 +714,9 @@ until a new design replaces it; this name is independent of the product version.
   shared helpers (manifest timestamp, pinned-ref helpers, shim path, archive
   restore, task store path/write, TaskStoreError, task-row removal) into leaf
   modules; no behaviour change (#1517).
+- `runGitShim` (git snapshots) split into named steps per act;
+  characterization tests pin its decisions, messages and exit codes;
+  complexity 76 → 12, no behaviour change (#1527).
 
 ## [1.2.1] — 2026-11-16
 
