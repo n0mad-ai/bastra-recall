@@ -174,7 +174,6 @@
     "[\"exports\",\"packages/daemon/src/forwarder-daemon-client.ts\",[\"\",\"probeHealth\"]]": 1,
     "[\"exports\",\"packages/daemon/src/forwarder-daemon-client.ts\",[\"\",\"sleep\"]]": 1,
     "[\"exports\",\"packages/daemon/src/gate-lane-claims.ts\",[\"\",\"DENIED_REFLEX_CAP\"]]": 1,
-    "[\"exports\",\"packages/daemon/src/git-archive.ts\",[\"\",\"realGit\"]]": 1,
     "[\"exports\",\"packages/daemon/src/hook-recall-measure.ts\",[\"\",\"LOOP_PROBE_EVERY_MS\"]]": 1,
     "[\"exports\",\"packages/daemon/src/hook-recall-measure.ts\",[\"\",\"eventLoopFields\"]]": 1,
     "[\"exports\",\"packages/daemon/src/hook-recall-response.ts\",[\"\",\"GATED_HINT_TYPES\"]]": 1,
