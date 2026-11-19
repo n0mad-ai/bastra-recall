@@ -12,7 +12,7 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { manifestRows } from "../src/rm-archive.js";
@@ -205,16 +205,26 @@ describe("#1527 runGitShim characterization — where the act runs", () => {
 describe("#1527 runGitShim characterization — what git decides itself", () => {
   it("a tree, path, branch or stash git cannot find: git's own error and exit code, nothing pinned", () => {
     const t = fixture();
-    const cases: Array<[string[], number]> = [
-      [["reset", "-q", "--hard", "nosuch"], 128],
-      [["checkout", "nosuch", "--", "a"], 128],
-      [["restore", "--source=nosuch", "a"], 128],
-      [["checkout", "--", "nosuch"], 1],
-      [["branch", "-D", "nosuch"], 1],
-      [["stash", "drop", "-q", "stash@{5}"], 1],
+    // The exit code is git's own and differs between git versions (a missing
+    // stash is 1 in one, 128 in another), so each form is asked of the plain
+    // git first: these forms fail before they change anything.
+    const cases: string[][] = [
+      ["reset", "-q", "--hard", "nosuch"],
+      ["checkout", "nosuch", "--", "a"],
+      ["restore", "--source=nosuch", "a"],
+      ["checkout", "--", "nosuch"],
+      ["branch", "-D", "nosuch"],
+      ["stash", "drop", "-q", "stash@{5}"],
     ];
-    for (const [argv, rc] of cases) {
+    for (const argv of cases) {
       t.edit();
+      const rc = spawnSync(realGit(t.env) ?? "git", argv, {
+        cwd: t.dir,
+        env: { ...t.env, LC_ALL: "C" },
+        stdio: "ignore",
+      }).status;
+      assert.ok(rc === 1 || rc === 128, `plain git ${argv.join(" ")}: ${rc}`);
+      assert.equal(t.read("a"), "unsaved\n", `plain git ${argv.join(" ")} changed nothing`);
       const r = t.run(argv);
       assert.equal(r.rc, rc, argv.join(" "));
       assert.deepEqual([r.out, r.err], [[], []], argv.join(" "));
