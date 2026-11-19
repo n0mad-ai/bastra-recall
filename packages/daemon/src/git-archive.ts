@@ -741,9 +741,24 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
   const p = parseGit(argv);
   const act = p && !p.otherGlobals ? gitAct(p) : null;
   if (!p || !act) return notAnAct(argv, env, err, passThrough);
+  return actInRepo({ argv, env, cwd0, now: io.now, out, err, real, childEnv, passThrough }, p, act);
+}
 
-  const cwd = p.dirs.reduce((d, x) => resolve(d, x), cwd0);
-  const plumb = plumbing(real, cwd, { ...childEnv, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" });
+/** The act in the repository its `-C` options lead to: passed through, refused,
+ *  or its saving steps and then the real git. */
+function actInRepo(
+  c: Pick<Shim, "argv" | "env" | "out" | "err" | "passThrough"> & {
+    cwd0: string;
+    now: Date | undefined;
+    real: string;
+    childEnv: NodeJS.ProcessEnv;
+  },
+  p: ParsedGit,
+  act: GitAct
+): number {
+  const { argv, env, out, err, passThrough } = c;
+  const cwd = p.dirs.reduce((d, x) => resolve(d, x), c.cwd0);
+  const plumb = plumbing(c.real, cwd, { ...c.childEnv, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" });
   const { git, raw } = plumb;
   const top = git(["rev-parse", "--show-toplevel"]);
   // A bare repository has branches and no worktree: `-C <its directory>` restores there.
@@ -754,7 +769,7 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
     err(`bastra: ${ready.refused}. ${ASK_USER}`);
     return 1;
   }
-  const now = io.now ?? new Date();
+  const now = c.now ?? new Date();
   const ts = localIso(now);
   const s: Shim = {
     argv,

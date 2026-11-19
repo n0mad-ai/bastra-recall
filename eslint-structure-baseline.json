@@ -236,7 +236,6 @@
     "[\"packages/daemon/src/git-archive.ts\",\"[\\\"function:readArgs\\\"]\",\"complexity\"]": 19,
     "[\"packages/daemon/src/git-archive.ts\",\"[\\\"function:refusal\\\"]\",\"complexity\"]": 31,
     "[\"packages/daemon/src/git-archive.ts\",\"[\\\"function:restoreShape\\\"]\",\"complexity\"]": 19,
-    "[\"packages/daemon/src/git-archive.ts\",\"[\\\"function:runGitShim\\\"]\",\"complexity\"]": 76,
     "[\"packages/daemon/src/github-conventions-lane.ts\",\"[\\\"function:githubConventionGate\\\"]\",\"complexity\"]": 26,
     "[\"packages/daemon/src/github-shell-actions.ts\",\"[\\\"function:ghAction\\\"]\",\"complexity\"]": 52,
     "[\"packages/daemon/src/github-shell-actions.ts\",\"[\\\"function:githubWriteActions\\\",\\\"block#1\\\",\\\"variable:parse\\\",\\\"function:ArrowFunctionExpression#1\\\",\\\"block#1\\\",\\\"variable:visit\\\",\\\"function:ArrowFunctionExpression#1\\\"]\",\"complexity\"]": 49,
