@@ -4,7 +4,6 @@
   ["packages/daemon/src/task-archive.ts", "packages/daemon/src/task-store.ts"],
   ["packages/daemon/src/task-database.ts", "packages/daemon/src/task-store.ts"],
   ["packages/daemon/src/task-delete.ts", "packages/daemon/src/task-archive.ts"],
-  ["packages/daemon/src/task-delete.ts", "packages/daemon/src/task-store.ts"],
   ["packages/daemon/src/task-private-comparison.ts", "packages/daemon/src/task-database.ts"],
   ["packages/daemon/src/task-private-comparison.ts", "packages/daemon/src/task-store.ts"],
   ["packages/daemon/src/task-store.ts", "packages/daemon/src/task-archive.ts"],

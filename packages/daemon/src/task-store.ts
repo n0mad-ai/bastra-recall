@@ -20,22 +20,16 @@ import {
   type Task,
 } from "./task-schema.js";
 import { atomicWrite, tasksPath } from "./task-store-file.js";
+import { TaskStoreError } from "./task-store-error.js";
 
-// The store's location and its durable file write live in task-store-file.ts;
-// re-exported so every importer keeps `from "./task-store.js"`.
+// The store's location and its durable file write live in task-store-file.ts,
+// its error type in task-store-error.ts; re-exported so every importer keeps
+// `from "./task-store.js"`.
 export { atomicWrite, tasksPath } from "./task-store-file.js";
+export { TaskStoreError } from "./task-store-error.js";
 
 /** History rows a normal mutation may reach; the rest is kept for control operations. */
 export const TASK_HISTORY_RESERVE = 9900;
-export class TaskStoreError extends Error {
-  constructor(
-    public readonly code: "corrupt" | "unsupported_version" | "conflict" | "capacity" | "invalid_backup",
-    message: string
-  ) {
-    super(message);
-    this.name = "TaskStoreError";
-  }
-}
 
 export function decodeTaskStore(raw: string): TaskStore {
   if (Buffer.byteLength(raw) > TASK_MAX_BYTES)

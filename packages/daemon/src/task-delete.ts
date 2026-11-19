@@ -1,7 +1,7 @@
 /** Explicit task deletion preserves global spent proofs and execution fences. */
 import { readTaskArchive } from "./task-archive.js";
 import type { TaskStore } from "./task-schema.js";
-import { TaskStoreError } from "./task-store.js";
+import { TaskStoreError } from "./task-store-error.js";
 import { canonicalTaskValue } from "./task-canonical.js";
 
 export function deleteTaskRows(store: TaskStore, ids: Set<string>): void {
