@@ -10,6 +10,7 @@ import { runMigration } from "./proactive-migration-driver.js";
 import { PREMISE_CASES, runPremises } from "./proactive-premise-driver.js";
 import { ACTION_CASES, actionFixture, runActions } from "./proactive-action-driver.js";
 import type { FeatureDriver } from "./proactive-measurement-run.js";
+import type { ProactiveCase } from "./proactive-measurement.js";
 const arg = process.argv.indexOf("--feature-root");
 if (arg < 0) throw new Error("feature-root required");
 const feature = resolve(process.argv[arg + 1]);
@@ -33,6 +34,47 @@ async function stop(child: ChildProcessWithoutNullStreams) {
     child.kill("SIGKILL");
     await done;
   }
+}
+
+type CaseValues = Record<string, boolean | number | string>;
+type HttpReply = { status: number; data: any };
+interface FixtureCredential {
+  token: string;
+  credential_id: string;
+}
+/**
+ * One case run as its steps see it: the isolated paths, the invented credentials, the
+ * transports into the feature daemon and the evidence list. `record` sets the row's
+ * values; whatever was recorded when a step throws goes into the incomplete evidence.
+ */
+interface P2Run {
+  c: ProactiveCase;
+  repetition: number;
+  root: string;
+  taskPath: string;
+  authPath: string;
+  clockPath: string;
+  env: NodeJS.ProcessEnv;
+  evidence: any[];
+  tokens: Record<string, string | undefined>;
+  owner?: FixtureCredential;
+  agent?: FixtureCredential;
+  http(
+    method: string,
+    path: string,
+    body?: unknown,
+    persona?: string,
+    headers?: Record<string, string>
+  ): Promise<HttpReply>;
+  input(key?: string): Record<string, unknown>;
+  create(key?: string, persona?: string): Promise<any>;
+  op(name: string, task: any, more?: object, persona?: string): Promise<HttpReply>;
+  cli(sub: string, body: unknown): Promise<any>;
+  mcpCall(name: string, args: object): Promise<any>;
+  child(name: string, entry: string, args?: string[], extra?: NodeJS.ProcessEnv): ChildProcessWithoutNullStreams;
+  start(): Promise<void>;
+  stopDaemon(): Promise<void>;
+  record(values: CaseValues): void;
 }
 
 const legacyRoot = resolve(feature, "../messung-a-p2c-20261011");
@@ -408,6 +450,31 @@ const driver: FeatureDriver = {
       );
     }
     let values: Record<string, boolean | number | string> = {};
+    const s: P2Run = {
+      c,
+      repetition,
+      root,
+      taskPath,
+      authPath,
+      clockPath,
+      env,
+      evidence,
+      tokens,
+      owner,
+      agent,
+      http,
+      input,
+      create,
+      op,
+      cli,
+      mcpCall,
+      child,
+      start,
+      stopDaemon: () => stop(daemon!),
+      record: (next) => {
+        values = next;
+      },
+    };
     try {
       await start();
       const deliveryCases = [
@@ -830,178 +897,15 @@ const driver: FeatureDriver = {
           distinct_event_ids: new Set(events.map((e: any) => e.id)).size,
         };
       } else if (c.id === "p2-auth-boundaries") {
-        const t = await create();
-        const checks = await Promise.all([
-          http("GET", "/api/v1/tasks", undefined, "absent"),
-          http("GET", "/api/v1/tasks", undefined, "legacy"),
-          http("POST", "/api/v1/task_review", { id: t.id, expected_revision: t.expected_revision }, "agent"),
-          http(
-            "POST",
-            "/api/v1/tasks",
-            {
-              ...input("allowed-notify"),
-              arm: true,
-              origin: {
-                kind: "user-request",
-                client: "measurement",
-                session: "auth-case",
-                context: "Confirmed invented reminder",
-              },
-            },
-            "agent"
-          ),
-          http(
-            "POST",
-            "/api/v1/tasks",
-            { ...input("spoof"), source: "user", approved: true, actor: "fixture-owner" },
-            "agent"
-          ),
-          http("POST", "/api/v1/tasks", { ...input("cross-domain"), owner_domains: ["other"] }, "agent"),
-          ...["prepare", "execute"].map((action_level) =>
-            http("POST", "/api/v1/tasks", { ...input("protected-" + action_level), arm: true, action_level }, "agent")
-          ),
-        ]);
-        const hidden = await http("GET", `/api/v1/tasks/${t.id}`, undefined, "other");
-        const list = await http("GET", "/api/v1/tasks", undefined, "other");
-        const origin = await http("GET", "/api/v1/tasks", undefined, "owner", { Origin: "https://foreign.invalid" });
-        const rotated = await auth.mintTaskCredential(
-          authPath,
-          { actor_id: "fixture-agent", domains: ["personal"], role: "agent" },
-          agent!.credential_id
-        );
-        const old = await http("GET", "/api/v1/tasks", undefined, "agent");
-        tokens.agent = rotated.token;
-        const fresh = await http("GET", "/api/v1/tasks", undefined, "agent");
-        await auth.revokeTaskCredential(authPath, rotated.credential_id);
-        const revoked = await http("GET", "/api/v1/tasks", undefined, "agent");
-        values = {
-          unauthorised_successes: checks.filter((r, i) => i !== 3 && r.status === 200).length,
-          agent_notify_arm_allowed: checks[3].status === 200 && checks[3].data.armed === true,
-          cross_domain_visible: hidden.status !== 404 || list.data.tasks.length !== 0,
-          spoofed_authority: checks[4].status === 200,
-          revocation_immediate: old.status === 401 && fresh.status === 200 && revoked.status === 401,
-          foreign_origin_denied: origin.status === 403,
-        };
+        await p2AuthBoundaries(s);
       } else if (c.id === "p2-transport-parity") {
-        const conversationInput = {
-          ...input(),
-          arm: true,
-          origin: {
-            kind: "user-request",
-            client: "measurement",
-            session: "transport-case",
-            context: "Confirmed invented reminder",
-          },
-        };
-        const t = (await http("POST", "/api/v1/tasks", conversationInput, "agent")).data;
-        const tool = await http("POST", "/api/v1/task_create", conversationInput, "agent");
-        const viaMcp = await mcpCall("task_create", conversationInput);
-        const viaCli = await cli("create", conversationInput);
-        const readMcp = await mcpCall("task_get", { id: t.id });
-        const readCli = await cli("get", { id: t.id });
-        const lists = [
-          (await http("GET", "/api/v1/tasks", undefined, "agent")).data,
-          await mcpCall("task_list", {}),
-          await cli("list", {}),
-        ];
-        const denied = { id: t.id, expected_revision: t.expected_revision };
-        const a = await http("POST", "/api/v1/task_review", denied, "agent"),
-          b = await mcpCall("task_review", denied),
-          d = await cli("review", denied);
-        values = {
-          same_task_all_transports:
-            [tool.data, viaMcp, viaCli, readMcp, readCli].every((v) => equal(v, t)) &&
-            lists.every((v) => equal(v.tasks, [t])),
-          stored_tasks: JSON.parse(readFileSync(taskPath, "utf8")).tasks.length,
-          agent_notify_armed: t.armed,
-          denial_codes_match: a.status === 403 && a.data.code === b.code && b.code === d.code,
-        };
+        await p2TransportParity(s);
       } else if (c.id === "p2-owner-lifecycle") {
-        let t = await create();
-        const reviewed = await op("review", t);
-        t = reviewed.data;
-        const armed = t.armed === true && t.action_level === "notify";
-        const denied = await op("rearm", t, {}, "agent");
-        const missing = await op("acknowledge", t, { occurrence_id: "nonexistent" });
-        const now = Date.now();
-        t = (await op("snooze", t, { until: now + 3600000 }, "agent")).data;
-        const bound = await op("snooze", t, { until: now + 30 * 86400000 }, "agent");
-        t = bound.data;
-        const repeated = await op("snooze", t, { until: now + 60 * 86400000 }, "agent");
-        t = repeated.data;
-        const gen = t.generation;
-        const until = t.snoozed_until;
-        const cosmetic = await http("PATCH", `/api/v1/tasks/${t.id}`, {
-          expected_revision: t.expected_revision,
-          patch: { goal: "Cosmetic fixture change" },
-        });
-        t = cosmetic.data;
-        const cosmeticOk = !t.armed && t.generation === gen && t.snoozed_until === until;
-        const trigger = await http("PATCH", `/api/v1/tasks/${t.id}`, {
-          expected_revision: t.expected_revision,
-          patch: { schedule: { kind: "instant", at: now + 9000000 } },
-        });
-        t = trigger.data;
-        const editOk =
-          cosmeticOk && !t.armed && t.state === "pending" && t.generation === gen + 1 && t.snoozed_until === undefined;
-        const resolvedByAgent = await op("resolve", t, {}, "agent");
-        t = resolvedByAgent.data;
-        const terminal = await op("review", t);
-        const oldGen = t.generation;
-        t = (await op("rearm", t)).data;
-        const rearmOk = t.state === "pending" && !t.armed && t.generation === oldGen + 1;
-        t = (await op("cancel", t)).data;
-        const cancelReview = await op("review", t);
-        values = {
-          owner_notify_armed: armed,
-          agent_rearm_denied: denied.status === 403,
-          agent_notify_resolve_allowed: resolvedByAgent.status === 200,
-          missing_occurrence_ack_denied: missing.status === 404,
-          notify_snooze_unbounded:
-            bound.status === 200 && repeated.status === 200 && repeated.data.agent_snooze_deadline === undefined,
-          edits_disarm: editOk,
-          terminal_not_resurrected: terminal.status === 409 && cancelReview.status === 409,
-          rearm_unarmed_new_generation: rearmOk,
-        };
+        await p2OwnerLifecycle(s);
       } else if (c.id === "p2-durable-restart") {
-        let t = await create();
-        t = (await op("review", t)).data;
-        const before = JSON.parse(readFileSync(taskPath, "utf8"));
-        await stop(daemon!);
-        await start();
-        const r = await http("GET", `/api/v1/tasks/${t.id}`),
-          m = await mcpCall("task_get", { id: t.id }),
-          cl = await cli("get", { id: t.id });
-        const after = JSON.parse(readFileSync(taskPath, "utf8"));
-        values = {
-          task_equal_after_restart: [r.data, m, cl].every((v) => equal(v, t)),
-          history_retained: equal(before.tasks[0].history, after.tasks[0].history),
-          private_modes: [taskPath, `${taskPath}.backup`, authPath].every((p) => (statSync(p).mode & 0o777) === 0o600),
-          fabricated_occurrences: after.occurrences.length,
-        };
+        await p2DurableRestart(s);
       } else if (c.id === "p2-concurrency-cas") {
-        const t = await create();
-        const original = JSON.parse(readFileSync(taskPath, "utf8")).tasks[0].history;
-        const raced = await Promise.all(
-          ["a", "b"].map((goal) =>
-            http("PATCH", `/api/v1/tasks/${t.id}`, { expected_revision: t.expected_revision, patch: { goal } })
-          )
-        );
-        const duplicates = await Promise.all(
-          [1, 2, 3, 4].map(() => http("POST", "/api/v1/tasks", input("concurrent")))
-        );
-        const drift = await http("POST", "/api/v1/tasks", { ...input("concurrent"), goal: "Changed payload" });
-        const after = JSON.parse(readFileSync(taskPath, "utf8")).tasks.find((x: any) => x.id === t.id);
-        values = {
-          cas_winners: raced.filter((r) => r.status === 200).length,
-          cas_conflicts: raced.filter((r) => r.status === 409).length,
-          idempotent_ids: duplicates.every((r) => r.status === 200)
-            ? new Set(duplicates.map((r) => r.data.id)).size
-            : -1,
-          idempotency_drift_denied: drift.status === 409,
-          history_append_only:
-            equal(original, after.history.slice(0, original.length)) && after.history.length === original.length + 1,
-        };
+        await p2ConcurrencyCas(s);
       } else if (c.id === "dst-recurrence-rollback") {
         const setClock = (iso: string | number) => {
           const at = typeof iso === "number" ? iso : Date.parse(iso);
@@ -1158,4 +1062,193 @@ const driver: FeatureDriver = {
     }
   },
 };
+/** P2 authority: agent versus owner rights, domain isolation, foreign origin, credential rotation and revocation. */
+async function p2AuthBoundaries(s: P2Run) {
+  const { authPath, http, input, create, tokens } = s;
+  const t = await create();
+  const checks = await Promise.all([
+    http("GET", "/api/v1/tasks", undefined, "absent"),
+    http("GET", "/api/v1/tasks", undefined, "legacy"),
+    http("POST", "/api/v1/task_review", { id: t.id, expected_revision: t.expected_revision }, "agent"),
+    http(
+      "POST",
+      "/api/v1/tasks",
+      {
+        ...input("allowed-notify"),
+        arm: true,
+        origin: {
+          kind: "user-request",
+          client: "measurement",
+          session: "auth-case",
+          context: "Confirmed invented reminder",
+        },
+      },
+      "agent"
+    ),
+    http(
+      "POST",
+      "/api/v1/tasks",
+      { ...input("spoof"), source: "user", approved: true, actor: "fixture-owner" },
+      "agent"
+    ),
+    http("POST", "/api/v1/tasks", { ...input("cross-domain"), owner_domains: ["other"] }, "agent"),
+    ...["prepare", "execute"].map((action_level) =>
+      http("POST", "/api/v1/tasks", { ...input("protected-" + action_level), arm: true, action_level }, "agent")
+    ),
+  ]);
+  const hidden = await http("GET", `/api/v1/tasks/${t.id}`, undefined, "other");
+  const list = await http("GET", "/api/v1/tasks", undefined, "other");
+  const origin = await http("GET", "/api/v1/tasks", undefined, "owner", { Origin: "https://foreign.invalid" });
+  const rotated = await auth.mintTaskCredential(
+    authPath,
+    { actor_id: "fixture-agent", domains: ["personal"], role: "agent" },
+    s.agent!.credential_id
+  );
+  const old = await http("GET", "/api/v1/tasks", undefined, "agent");
+  tokens.agent = rotated.token;
+  const fresh = await http("GET", "/api/v1/tasks", undefined, "agent");
+  await auth.revokeTaskCredential(authPath, rotated.credential_id);
+  const revoked = await http("GET", "/api/v1/tasks", undefined, "agent");
+  s.record({
+    unauthorised_successes: checks.filter((r, i) => i !== 3 && r.status === 200).length,
+    agent_notify_arm_allowed: checks[3].status === 200 && checks[3].data.armed === true,
+    cross_domain_visible: hidden.status !== 404 || list.data.tasks.length !== 0,
+    spoofed_authority: checks[4].status === 200,
+    revocation_immediate: old.status === 401 && fresh.status === 200 && revoked.status === 401,
+    foreign_origin_denied: origin.status === 403,
+  });
+}
+
+/** P2 transports: HTTP, the MCP stdio forwarder and the CLI see the same task and deny alike. */
+async function p2TransportParity(s: P2Run) {
+  const { taskPath, http, input, mcpCall, cli } = s;
+  const conversationInput = {
+    ...input(),
+    arm: true,
+    origin: {
+      kind: "user-request",
+      client: "measurement",
+      session: "transport-case",
+      context: "Confirmed invented reminder",
+    },
+  };
+  const t = (await http("POST", "/api/v1/tasks", conversationInput, "agent")).data;
+  const tool = await http("POST", "/api/v1/task_create", conversationInput, "agent");
+  const viaMcp = await mcpCall("task_create", conversationInput);
+  const viaCli = await cli("create", conversationInput);
+  const readMcp = await mcpCall("task_get", { id: t.id });
+  const readCli = await cli("get", { id: t.id });
+  const lists = [
+    (await http("GET", "/api/v1/tasks", undefined, "agent")).data,
+    await mcpCall("task_list", {}),
+    await cli("list", {}),
+  ];
+  const denied = { id: t.id, expected_revision: t.expected_revision };
+  const a = await http("POST", "/api/v1/task_review", denied, "agent"),
+    b = await mcpCall("task_review", denied),
+    d = await cli("review", denied);
+  s.record({
+    same_task_all_transports:
+      [tool.data, viaMcp, viaCli, readMcp, readCli].every((v) => equal(v, t)) &&
+      lists.every((v) => equal(v.tasks, [t])),
+    stored_tasks: JSON.parse(readFileSync(taskPath, "utf8")).tasks.length,
+    agent_notify_armed: t.armed,
+    denial_codes_match: a.status === 403 && a.data.code === b.code && b.code === d.code,
+  });
+}
+
+/** P2 owner lifecycle: review, snooze, edits, agent resolve, terminal states and rearm. */
+async function p2OwnerLifecycle(s: P2Run) {
+  const { http, op, create } = s;
+  let t = await create();
+  const reviewed = await op("review", t);
+  t = reviewed.data;
+  const armed = t.armed === true && t.action_level === "notify";
+  const denied = await op("rearm", t, {}, "agent");
+  const missing = await op("acknowledge", t, { occurrence_id: "nonexistent" });
+  const now = Date.now();
+  t = (await op("snooze", t, { until: now + 3600000 }, "agent")).data;
+  const bound = await op("snooze", t, { until: now + 30 * 86400000 }, "agent");
+  t = bound.data;
+  const repeated = await op("snooze", t, { until: now + 60 * 86400000 }, "agent");
+  t = repeated.data;
+  const gen = t.generation;
+  const until = t.snoozed_until;
+  const cosmetic = await http("PATCH", `/api/v1/tasks/${t.id}`, {
+    expected_revision: t.expected_revision,
+    patch: { goal: "Cosmetic fixture change" },
+  });
+  t = cosmetic.data;
+  const cosmeticOk = !t.armed && t.generation === gen && t.snoozed_until === until;
+  const trigger = await http("PATCH", `/api/v1/tasks/${t.id}`, {
+    expected_revision: t.expected_revision,
+    patch: { schedule: { kind: "instant", at: now + 9000000 } },
+  });
+  t = trigger.data;
+  const editOk =
+    cosmeticOk && !t.armed && t.state === "pending" && t.generation === gen + 1 && t.snoozed_until === undefined;
+  const resolvedByAgent = await op("resolve", t, {}, "agent");
+  t = resolvedByAgent.data;
+  const terminal = await op("review", t);
+  const oldGen = t.generation;
+  t = (await op("rearm", t)).data;
+  const rearmOk = t.state === "pending" && !t.armed && t.generation === oldGen + 1;
+  t = (await op("cancel", t)).data;
+  const cancelReview = await op("review", t);
+  s.record({
+    owner_notify_armed: armed,
+    agent_rearm_denied: denied.status === 403,
+    agent_notify_resolve_allowed: resolvedByAgent.status === 200,
+    missing_occurrence_ack_denied: missing.status === 404,
+    notify_snooze_unbounded:
+      bound.status === 200 && repeated.status === 200 && repeated.data.agent_snooze_deadline === undefined,
+    edits_disarm: editOk,
+    terminal_not_resurrected: terminal.status === 409 && cancelReview.status === 409,
+    rearm_unarmed_new_generation: rearmOk,
+  });
+}
+
+/** P2 durability: a reviewed task survives a daemon restart unchanged on every transport. */
+async function p2DurableRestart(s: P2Run) {
+  const { taskPath, authPath, http, op, create, mcpCall, cli, start, stopDaemon } = s;
+  let t = await create();
+  t = (await op("review", t)).data;
+  const before = JSON.parse(readFileSync(taskPath, "utf8"));
+  await stopDaemon();
+  await start();
+  const r = await http("GET", `/api/v1/tasks/${t.id}`),
+    m = await mcpCall("task_get", { id: t.id }),
+    cl = await cli("get", { id: t.id });
+  const after = JSON.parse(readFileSync(taskPath, "utf8"));
+  s.record({
+    task_equal_after_restart: [r.data, m, cl].every((v) => equal(v, t)),
+    history_retained: equal(before.tasks[0].history, after.tasks[0].history),
+    private_modes: [taskPath, `${taskPath}.backup`, authPath].every((p) => (statSync(p).mode & 0o777) === 0o600),
+    fabricated_occurrences: after.occurrences.length,
+  });
+}
+
+/** P2 concurrency: compare-and-swap edits, idempotent creation and append-only history. */
+async function p2ConcurrencyCas(s: P2Run) {
+  const { taskPath, http, input, create } = s;
+  const t = await create();
+  const original = JSON.parse(readFileSync(taskPath, "utf8")).tasks[0].history;
+  const raced = await Promise.all(
+    ["a", "b"].map((goal) =>
+      http("PATCH", `/api/v1/tasks/${t.id}`, { expected_revision: t.expected_revision, patch: { goal } })
+    )
+  );
+  const duplicates = await Promise.all([1, 2, 3, 4].map(() => http("POST", "/api/v1/tasks", input("concurrent"))));
+  const drift = await http("POST", "/api/v1/tasks", { ...input("concurrent"), goal: "Changed payload" });
+  const after = JSON.parse(readFileSync(taskPath, "utf8")).tasks.find((x: any) => x.id === t.id);
+  s.record({
+    cas_winners: raced.filter((r) => r.status === 200).length,
+    cas_conflicts: raced.filter((r) => r.status === 409).length,
+    idempotent_ids: duplicates.every((r) => r.status === 200) ? new Set(duplicates.map((r) => r.data.id)).size : -1,
+    idempotency_drift_denied: drift.status === 409,
+    history_append_only:
+      equal(original, after.history.slice(0, original.length)) && after.history.length === original.length + 1,
+  });
+}
+
 export default driver;
