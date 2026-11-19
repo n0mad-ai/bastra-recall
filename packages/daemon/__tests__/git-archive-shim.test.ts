@@ -25,7 +25,10 @@ function fixture() {
   const dir = join(root, "w");
   mkdirSync(dir);
   // The suite runs with the shim switched off (scripts/test-env.mjs); here it is on.
-  const { BASTRA_GIT_SHIM: _off, ...base } = process.env;
+  // No GIT_* of the caller's (GIT_DIR, GIT_WORK_TREE from a hook, say): every
+  // git here works on the temp repository only.
+  const { BASTRA_GIT_SHIM: _off, ...rest } = process.env;
+  const base = Object.fromEntries(Object.entries(rest).filter(([k]) => !k.startsWith("GIT_")));
   const env: NodeJS.ProcessEnv = {
     ...base,
     GIT_CONFIG_NOSYSTEM: "1",
