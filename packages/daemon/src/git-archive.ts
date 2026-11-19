@@ -633,6 +633,41 @@ function overwritten(s: Shim, act: SnapshotAct): string[] | null {
   return over;
 }
 
+/** Pin the uncommitted work `sha` holds with its way back; why that failed, or null. */
+function pinSnapshot(s: Shim, act: SnapshotAct, sha: string): string | null {
+  const what = `git ${act.what}`;
+  if (act.what === "reset --hard") {
+    if (!pin(s, "reset", sha, what, [["-C", s.top as string, "stash", "apply", "--index", sha]]))
+      return "could not pin the uncommitted changes";
+  } else {
+    // What the act discards in its paths: where the snapshot differs from
+    // the tree the act writes. Named file by file, so the way back is
+    // exact whatever the pathspec was, and a path that loses nothing is
+    // not in it.
+    const from = act.source ?? `${sha}^2`;
+    const index = act.staged ? differ(s, act.paths, from, `${sha}^2`, "AMT") : [];
+    const files = act.worktree ? differ(s, act.paths, from, sha, "AMT") : [];
+    if (index === null || files === null) return "could not list what the act would discard";
+    const back = (src: string, where: string, names: string[]): string[] => [
+      "-C",
+      s.top as string,
+      "--literal-pathspecs",
+      "restore",
+      `--source=${src}`,
+      where,
+      "--",
+      ...names,
+    ];
+    const restore = [
+      ...(index.length > 0 ? [back(`${sha}^2`, "--staged", index)] : []),
+      ...(files.length > 0 ? [back(sha, "--worktree", files)] : []),
+    ];
+    if (restore.length > 0 && !pin(s, act.what === "restore" ? "restore" : "checkout", sha, what, restore))
+      return "could not pin the uncommitted changes";
+  }
+  return null;
+}
+
 /** `git` with the system's behaviour, saving what the act would lose first. */
 export function runGitShim(argv: string[], io: ShimIo = {}): number {
   const env = io.env ?? process.env;
@@ -723,36 +758,8 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
     const over = overwritten(s, act);
     if (over === null) return refuse(s, "could not list what the act would overwrite");
     if (sha) {
-      const what = `git ${act.what}`;
-      if (act.what === "reset --hard") {
-        if (!pin(s, "reset", sha, what, [["-C", top as string, "stash", "apply", "--index", sha]]))
-          return refuse(s, "could not pin the uncommitted changes");
-      } else {
-        // What the act discards in its paths: where the snapshot differs from
-        // the tree the act writes. Named file by file, so the way back is
-        // exact whatever the pathspec was, and a path that loses nothing is
-        // not in it.
-        const from = act.source ?? `${sha}^2`;
-        const index = act.staged ? differ(s, act.paths, from, `${sha}^2`, "AMT") : [];
-        const files = act.worktree ? differ(s, act.paths, from, sha, "AMT") : [];
-        if (index === null || files === null) return refuse(s, "could not list what the act would discard");
-        const back = (src: string, where: string, names: string[]): string[] => [
-          "-C",
-          top as string,
-          "--literal-pathspecs",
-          "restore",
-          `--source=${src}`,
-          where,
-          "--",
-          ...names,
-        ];
-        const restore = [
-          ...(index.length > 0 ? [back(`${sha}^2`, "--staged", index)] : []),
-          ...(files.length > 0 ? [back(sha, "--worktree", files)] : []),
-        ];
-        if (restore.length > 0 && !pin(s, act.what === "restore" ? "restore" : "checkout", sha, what, restore))
-          return refuse(s, "could not pin the uncommitted changes");
-      }
+      const why = pinSnapshot(s, act, sha);
+      if (why) return refuse(s, why);
     }
     for (const [i, at] of over.entries()) {
       if (!archived(s, at, `git ${act.what}`)) {
