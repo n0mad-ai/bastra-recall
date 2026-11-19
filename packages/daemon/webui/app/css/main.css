@@ -1,0 +1,29 @@
+/* Recall web UI — all styles, linked once from index.html.
+ * Aggregator only: one file per module or area, imported here in cascade
+ * order; this file holds no rules of its own, and the module files import
+ * nothing. A later file wins over an earlier one at equal specificity, so a
+ * new file goes where its rules must win, an area's file after sections.css. */
+@import "./tokens.css";
+@import "./base.css";
+@import "./header-weather.css";
+@import "./shell.css";
+@import "./agent-save.css";
+@import "./panels.css";
+@import "./footer.css";
+@import "./card-actions.css";
+@import "./views.css";
+@import "./engine.css";
+@import "./sections.css";
+@import "./settings-soul.css";
+@import "./settings-assistant.css";
+@import "./settings.css";
+@import "./backdrop.css";
+@import "./dashboard.css";
+@import "./dialogs.css";
+@import "./telemetry.css";
+@import "./tasks-reports.css";
+@import "./tasks.css";
+@import "./membrowser.css";
+@import "./care-note.css";
+@import "./membrowser-edit.css";
+@import "./live.css";

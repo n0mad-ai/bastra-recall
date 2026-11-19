@@ -6,7 +6,7 @@
 // the docking point, it carries no Pro code.
 //
 // ── Adding an area (Dashboard, Telemetry, Tasks, Settings, …) ─────────────
-// Files: js/sections/<name>.js (code), css/<name>.css (linked in index.html),
+// Files: js/sections/<name>.js (code), css/<name>.css (imported in css/main.css),
 // js/i18n/<name>-en.js + <name>-de.js (strings, merged via addStrings()).
 // Import js/sections/<name>.js from js/sections/index.js. Then in <name>.js:
 //

@@ -6,7 +6,7 @@
 //   1. js/sections/<name>.js — registerArea({ id, …, section, greetingKey,
 //      presetKeys, tabs, mount }) (field reference: js/areas.js) and import it
 //      from js/sections/index.js. Registering an existing id replaces it.
-//   2. css/<name>.css — area styles, linked in index.html after sections.css.
+//   2. css/<name>.css — area styles, imported in css/main.css after sections.css.
 //      No style attributes (CSP style-src 'self'): dynamic values go through
 //      setVars()/vars: {"--x": …} and are read in CSS.
 //   3. js/i18n/<name>-en.js + <name>-de.js — every visible text; merged with
