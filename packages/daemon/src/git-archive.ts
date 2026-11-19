@@ -478,7 +478,11 @@ interface Shim {
   /** Part of every ref this run pins. */
   stamp: string;
   git: Plumbing["git"];
+  raw: Plumbing["raw"];
+  out: (s: string) => void;
   err: (s: string) => void;
+  /** The act itself: the real git with the caller's argv, its exit code. */
+  passThrough: () => number;
 }
 
 /** Pin `sha` under a new ref and record it with its way back; false: neither stays. */
@@ -531,6 +535,26 @@ function archived(s: Shim, path: string, via: string): boolean {
       via,
     }) === 0
   );
+}
+
+/** `git clean -f…`: what its dry run names goes through the archiving rm; the real git does not run. */
+function cleanAct(s: Shim, act: Extract<GitAct, { kind: "clean" }>): number {
+  const listed = s.git(["-c", "core.quotePath=false", "clean", "-n", ...act.dry]);
+  if (listed === null) return s.passThrough(); // git's own error, as it would print it
+  const paths: Array<[shown: string, path: string]> = [];
+  for (const line of listed.split("\n").filter(Boolean)) {
+    if (line.startsWith("Would skip repository ")) continue;
+    const m = /^Would remove (.+)$/.exec(line);
+    const path = m && cUnquote(m[1]);
+    if (!m || !path) return refuse(s, `cannot read what git clean would remove (${line.slice(0, 80)})`);
+    paths.push([m[1], path]);
+  }
+  let rc = 0;
+  for (const [shown, rel] of paths) {
+    if (!archived(s, rel.replace(/\/$/, ""), "git clean")) rc = 1;
+    else if (!act.quiet) s.out(`Removing ${shown}`);
+  }
+  return rc;
 }
 
 /** `git` with the system's behaviour, saving what the act would lose first. */
@@ -594,27 +618,13 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
     call: env.BASTRA_RM_CALL ?? "",
     stamp: `${ts.replace(/[-:]/g, "").replace("T", "-")}-${process.pid}`,
     git,
+    raw,
+    out,
     err,
+    passThrough,
   };
 
-  if (act.kind === "clean") {
-    const listed = git(["-c", "core.quotePath=false", "clean", "-n", ...act.dry]);
-    if (listed === null) return passThrough(); // git's own error, as it would print it
-    const paths: Array<[shown: string, path: string]> = [];
-    for (const line of listed.split("\n").filter(Boolean)) {
-      if (line.startsWith("Would skip repository ")) continue;
-      const m = /^Would remove (.+)$/.exec(line);
-      const path = m && cUnquote(m[1]);
-      if (!m || !path) return refuse(s, `cannot read what git clean would remove (${line.slice(0, 80)})`);
-      paths.push([m[1], path]);
-    }
-    let rc = 0;
-    for (const [shown, rel] of paths) {
-      if (!archived(s, rel.replace(/\/$/, ""), "git clean")) rc = 1;
-      else if (!act.quiet) out(`Removing ${shown}`);
-    }
-    return rc;
-  }
+  if (act.kind === "clean") return cleanAct(s, act);
 
   if (act.kind === "snapshot") {
     const sha = git(["stash", "create"]);
