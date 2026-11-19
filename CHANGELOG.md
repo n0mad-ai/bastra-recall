@@ -710,6 +710,10 @@ until a new design replaces it; this name is independent of the product version.
 - Eval: the P2 proactive driver's `run` is split into named case steps
   (complexity 125 → 25); the deterministic P2 characterization output is
   byte-identical (#1531).
+- Archive and task store: resolved 9 of 19 import-cycle edges by moving
+  shared helpers (manifest timestamp, pinned-ref helpers, shim path, archive
+  restore, task store path/write, TaskStoreError, task-row removal) into leaf
+  modules; no behaviour change (#1517).
 
 ## [1.2.1] — 2026-11-16
 
