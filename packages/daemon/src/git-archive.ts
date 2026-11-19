@@ -633,6 +633,17 @@ function overwritten(s: Shim, act: SnapshotAct): string[] | null {
   return over;
 }
 
+/** Why `git stash create` could not save the uncommitted work. */
+function unsaved(s: Shim): string {
+  if (s.git(["rev-parse", "--verify", "-q", "HEAD^{commit}"]) === null)
+    return "there is no commit yet, so nothing can hold a snapshot of the staged files";
+  if (s.git(["ls-files", "-u"]))
+    return "the index has unmerged paths (a merge, rebase or cherry-pick in progress), which a snapshot cannot hold";
+  const ita = s.raw(["diff-files", "--name-only", "-z", "--diff-filter=A"])?.split("\0").filter(Boolean) ?? [];
+  if (ita.length > 0) return `${ita[0]} was added with \`git add -N\` (intent to add), which git stash cannot save`;
+  return "could not save the uncommitted changes first";
+}
+
 /** Pin the uncommitted work `sha` holds with its way back; why that failed, or null. */
 function pinSnapshot(s: Shim, act: SnapshotAct, sha: string): string | null {
   const what = `git ${act.what}`;
@@ -739,19 +750,7 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
 
   if (act.kind === "snapshot") {
     const sha = git(["stash", "create"]);
-    if (sha === null) {
-      if (git(["rev-parse", "--verify", "-q", "HEAD^{commit}"]) === null)
-        return refuse(s, "there is no commit yet, so nothing can hold a snapshot of the staged files");
-      if (git(["ls-files", "-u"]))
-        return refuse(
-          s,
-          "the index has unmerged paths (a merge, rebase or cherry-pick in progress), which a snapshot cannot hold"
-        );
-      const ita = raw(["diff-files", "--name-only", "-z", "--diff-filter=A"])?.split("\0").filter(Boolean) ?? [];
-      if (ita.length > 0)
-        return refuse(s, `${ita[0]} was added with \`git add -N\` (intent to add), which git stash cannot save`);
-      return refuse(s, "could not save the uncommitted changes first");
-    }
+    if (sha === null) return refuse(s, unsaved(s));
     // A tree the act names and git cannot find: git says so itself, and changes nothing.
     if (act.source !== undefined && git(["rev-parse", "--verify", "-q", `${act.source}^{tree}`]) === null)
       return passThrough();
