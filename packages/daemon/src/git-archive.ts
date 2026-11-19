@@ -459,6 +459,80 @@ function plumbing(real: string, cwd: string, gitEnv: NodeJS.ProcessEnv): Plumbin
   return { git, raw, plain, hash };
 }
 
+const ASK_USER = "Ask the user to run it, or BASTRA_GIT_SHIM=0 for the normal permission prompt.";
+
+/** What an act's saving steps need: where the act runs, the archive, the caller's call. */
+interface Shim {
+  argv: string[];
+  sub: string;
+  env: NodeJS.ProcessEnv;
+  cwd: string;
+  /** The worktree's top; null in a bare repository. */
+  top: string | null;
+  /** Where the way back runs: the top, or a bare repository's git directory. */
+  home: string;
+  archive: string;
+  now: Date;
+  ts: string;
+  call: string;
+  /** Part of every ref this run pins. */
+  stamp: string;
+  git: Plumbing["git"];
+  err: (s: string) => void;
+}
+
+/** Pin `sha` under a new ref and record it with its way back; false: neither stays. */
+function pin(s: Shim, slug: string, sha: string, what: string, restore: string[][]): boolean {
+  // A new ref every time (the empty old value: "must not exist yet") — two
+  // stashes dropped by one `clear`, or two acts in one second, never share one.
+  let ref = "";
+  for (let n = 0; ; n++) {
+    if (n > 50) return false;
+    ref = `refs/bastra-archive/${slug}/${s.stamp}-${n}`;
+    if (s.git(["update-ref", ref, sha, ""]) !== null) break;
+  }
+  const [first, ...then] = restore;
+  const row = {
+    ts: s.ts,
+    action: "pinned",
+    orig: s.home,
+    dest: ref,
+    sha,
+    act: what,
+    restore: first,
+    ...(then.length > 0 ? { then } : {}),
+    kind: "user",
+    cwd: s.cwd,
+    argv: s.argv,
+    call: s.call,
+  };
+  try {
+    appendManifest(s.archive, JSON.stringify(row) + "\n");
+  } catch {
+    s.git(["update-ref", "-d", ref, sha]);
+    return false;
+  }
+  return true;
+}
+
+function refuse(s: Shim, why: string, changed = "nothing changed"): number {
+  s.err(`bastra: ${why} — \`git ${s.sub}\` not run (${changed}). ${ASK_USER}`);
+  return 1;
+}
+
+/** `path` through the archiving rm, its receipt naming the git act; true when archived. */
+function archived(s: Shim, path: string, via: string): boolean {
+  return (
+    runRmShim(["-rf", "--", path], {
+      env: { ...s.env, BASTRA_RM_CALL: s.call },
+      cwd: s.cwd,
+      now: s.now,
+      err: s.err,
+      via,
+    }) === 0
+  );
+}
+
 /** `git` with the system's behaviour, saving what the act would lose first. */
 export function runGitShim(argv: string[], io: ShimIo = {}): number {
   const env = io.env ?? process.env;
@@ -500,55 +574,28 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
   // A bare repository has branches and no worktree: `-C <its directory>` restores there.
   const home = top ?? (act.kind === "branch" ? git(["rev-parse", "--absolute-git-dir"]) : null);
   if (home === null) return passThrough(); // not a repository, or no worktree: git says so itself
-  const out1 = "Ask the user to run it, or BASTRA_GIT_SHIM=0 for the normal permission prompt.";
   const ready = readyToAct(refusal(plumb, act, cwd, top), p.sub, env);
   if ("refused" in ready) {
-    err(`bastra: ${ready.refused}. ${out1}`);
+    err(`bastra: ${ready.refused}. ${ASK_USER}`);
     return 1;
   }
-  const archive = ready.archive;
   const now = io.now ?? new Date();
   const ts = localIso(now);
-  const call = env.BASTRA_RM_CALL ?? "";
-  const stamp = `${ts.replace(/[-:]/g, "").replace("T", "-")}-${process.pid}`;
-  const pin = (slug: string, sha: string, what: string, restore: string[][]): boolean => {
-    // A new ref every time (the empty old value: "must not exist yet") — two
-    // stashes dropped by one `clear`, or two acts in one second, never share one.
-    let ref = "";
-    for (let n = 0; ; n++) {
-      if (n > 50) return false;
-      ref = `refs/bastra-archive/${slug}/${stamp}-${n}`;
-      if (git(["update-ref", ref, sha, ""]) !== null) break;
-    }
-    const [first, ...then] = restore;
-    const row = {
-      ts,
-      action: "pinned",
-      orig: home,
-      dest: ref,
-      sha,
-      act: what,
-      restore: first,
-      ...(then.length > 0 ? { then } : {}),
-      kind: "user",
-      cwd,
-      argv,
-      call,
-    };
-    try {
-      appendManifest(archive, JSON.stringify(row) + "\n");
-    } catch {
-      git(["update-ref", "-d", ref, sha]);
-      return false;
-    }
-    return true;
+  const s: Shim = {
+    argv,
+    sub: p.sub,
+    env,
+    cwd,
+    top,
+    home,
+    archive: ready.archive,
+    now,
+    ts,
+    call: env.BASTRA_RM_CALL ?? "",
+    stamp: `${ts.replace(/[-:]/g, "").replace("T", "-")}-${process.pid}`,
+    git,
+    err,
   };
-  const refuse = (why: string, changed = "nothing changed"): number => {
-    err(`bastra: ${why} — \`git ${p.sub}\` not run (${changed}). ${out1}`);
-    return 1;
-  };
-  const archived = (path: string, via: string): boolean =>
-    runRmShim(["-rf", "--", path], { env: { ...env, BASTRA_RM_CALL: call }, cwd, now, err, via }) === 0;
 
   if (act.kind === "clean") {
     const listed = git(["-c", "core.quotePath=false", "clean", "-n", ...act.dry]);
@@ -558,12 +605,12 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
       if (line.startsWith("Would skip repository ")) continue;
       const m = /^Would remove (.+)$/.exec(line);
       const path = m && cUnquote(m[1]);
-      if (!m || !path) return refuse(`cannot read what git clean would remove (${line.slice(0, 80)})`);
+      if (!m || !path) return refuse(s, `cannot read what git clean would remove (${line.slice(0, 80)})`);
       paths.push([m[1], path]);
     }
     let rc = 0;
     for (const [shown, rel] of paths) {
-      if (!archived(rel.replace(/\/$/, ""), "git clean")) rc = 1;
+      if (!archived(s, rel.replace(/\/$/, ""), "git clean")) rc = 1;
       else if (!act.quiet) out(`Removing ${shown}`);
     }
     return rc;
@@ -573,15 +620,16 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
     const sha = git(["stash", "create"]);
     if (sha === null) {
       if (git(["rev-parse", "--verify", "-q", "HEAD^{commit}"]) === null)
-        return refuse("there is no commit yet, so nothing can hold a snapshot of the staged files");
+        return refuse(s, "there is no commit yet, so nothing can hold a snapshot of the staged files");
       if (git(["ls-files", "-u"]))
         return refuse(
+          s,
           "the index has unmerged paths (a merge, rebase or cherry-pick in progress), which a snapshot cannot hold"
         );
       const ita = raw(["diff-files", "--name-only", "-z", "--diff-filter=A"])?.split("\0").filter(Boolean) ?? [];
       if (ita.length > 0)
-        return refuse(`${ita[0]} was added with \`git add -N\` (intent to add), which git stash cannot save`);
-      return refuse("could not save the uncommitted changes first");
+        return refuse(s, `${ita[0]} was added with \`git add -N\` (intent to add), which git stash cannot save`);
+      return refuse(s, "could not save the uncommitted changes first");
     }
     // A tree the act names and git cannot find: git says so itself, and changes nothing.
     if (act.source !== undefined && git(["rev-parse", "--verify", "-q", `${act.source}^{tree}`]) === null)
@@ -608,7 +656,7 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
     const over: string[] = [];
     if (act.worktree && act.source !== undefined) {
       const added = differ(act.source, "", "D", true);
-      if (added === null) return refuse("could not list what the act would overwrite");
+      if (added === null) return refuse(s, "could not list what the act would overwrite");
       for (const rel of added) {
         const at = inTheWay(top as string, rel);
         if (at && !over.includes(at) && git(["ls-files", "-z", "--", at]) === "") over.push(at);
@@ -617,8 +665,8 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
     if (sha) {
       const what = `git ${act.what}`;
       if (act.what === "reset --hard") {
-        if (!pin("reset", sha, what, [["-C", top as string, "stash", "apply", "--index", sha]]))
-          return refuse("could not pin the uncommitted changes");
+        if (!pin(s, "reset", sha, what, [["-C", top as string, "stash", "apply", "--index", sha]]))
+          return refuse(s, "could not pin the uncommitted changes");
       } else {
         // What the act discards in its paths: where the snapshot differs from
         // the tree the act writes. Named file by file, so the way back is
@@ -627,7 +675,7 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
         const from = act.source ?? `${sha}^2`;
         const index = act.staged ? differ(from, `${sha}^2`, "AMT") : [];
         const files = act.worktree ? differ(from, sha, "AMT") : [];
-        if (index === null || files === null) return refuse("could not list what the act would discard");
+        if (index === null || files === null) return refuse(s, "could not list what the act would discard");
         const back = (src: string, where: string, names: string[]): string[] => [
           "-C",
           top as string,
@@ -642,13 +690,14 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
           ...(index.length > 0 ? [back(`${sha}^2`, "--staged", index)] : []),
           ...(files.length > 0 ? [back(sha, "--worktree", files)] : []),
         ];
-        if (restore.length > 0 && !pin(act.what === "restore" ? "restore" : "checkout", sha, what, restore))
-          return refuse("could not pin the uncommitted changes");
+        if (restore.length > 0 && !pin(s, act.what === "restore" ? "restore" : "checkout", sha, what, restore))
+          return refuse(s, "could not pin the uncommitted changes");
       }
     }
     for (const [i, at] of over.entries()) {
-      if (!archived(at, `git ${act.what}`)) {
+      if (!archived(s, at, `git ${act.what}`)) {
         return refuse(
+          s,
           `could not move ${at} to the archive (git would overwrite it)`,
           i === 0 ? "nothing changed" : `${i} untracked file(s) already moved to the archive — see the receipt`
         );
@@ -665,13 +714,14 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
       const back = act.remote ? ["-C", home, "update-ref", ref, sha] : ["-C", home, "branch", name, sha];
       if (
         !pin(
+          s,
           `${act.remote ? "remote-branch" : "branch"}/${name}`,
           sha,
           `git branch -D ${act.remote ? "-r " : ""}${name}`,
           [back]
         )
       )
-        return refuse(`could not pin ${name}`);
+        return refuse(s, `could not pin ${name}`);
     }
     return passThrough();
   }
@@ -684,11 +734,11 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
     if (!sha) continue; // git reports the missing stash itself
     const msg = git(["log", "-1", "--format=%s", sha]) ?? "bastra-restored stash";
     if (
-      !pin("stash", sha, `git stash ${act.refs === "clear" ? "clear" : "drop"} (${r})`, [
+      !pin(s, "stash", sha, `git stash ${act.refs === "clear" ? "clear" : "drop"} (${r})`, [
         ["-C", home, "stash", "store", "-m", msg, sha],
       ])
     ) {
-      return refuse(`could not pin ${r}`);
+      return refuse(s, `could not pin ${r}`);
     }
   }
   return passThrough();
