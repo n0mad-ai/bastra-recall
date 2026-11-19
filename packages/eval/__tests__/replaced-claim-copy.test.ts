@@ -14,6 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const cwd = resolve(import.meta.dirname, "../../..");
 const harness = "packages/eval/src/replaced-claim-advisory.ts";
@@ -35,12 +36,17 @@ function run(args: string[], preload = true) {
   // repository gives it one, so the test also holds in a copy of this code without `.git`.
   const repo = join(home, "repo");
   mkdirSync(repo);
-  Object.assign(env, {
+  const gitContext = {
     GIT_DIR: join(repo, ".git"),
     GIT_WORK_TREE: repo,
     GIT_CONFIG_GLOBAL: "/dev/null",
     GIT_CONFIG_NOSYSTEM: "1",
-  });
+  };
+  Object.assign(env, gitContext);
+  // #1668: this child is the first process to load test-env.mjs, which drops a caller's
+  // GIT_* variables. The throwaway repository is therefore handed over after it, too.
+  const gitPreload = join(home, "git-context.mjs");
+  writeFileSync(gitPreload, `Object.assign(process.env, ${JSON.stringify(gitContext)});\n`);
   for (const args of [
     ["init", "--quiet"],
     ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "--quiet", "--allow-empty", "-m", "t"],
@@ -51,7 +57,15 @@ function run(args: string[], preload = true) {
   try {
     return spawnSync(
       process.execPath,
-      [...(preload ? ["--import", "./scripts/test-env.mjs"] : []), "--import", "tsx", harness, ...args],
+      [
+        ...(preload ? ["--import", "./scripts/test-env.mjs"] : []),
+        "--import",
+        pathToFileURL(gitPreload).href,
+        "--import",
+        "tsx",
+        harness,
+        ...args,
+      ],
       { cwd, env, encoding: "utf8", timeout: 60_000 }
     );
   } finally {

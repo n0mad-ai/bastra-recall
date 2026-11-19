@@ -9,13 +9,24 @@
  *     signal too. Runs used to leave thousands of directories behind.
  *  3. What a test deliberately hands a child, and an output directory a caller
  *     chose (#420), is left alone.
+ *  4. A caller's git repository variables (GIT_DIR from a hook, say) do not
+ *     steer the git a test runs in its temp repository (#1668).
  *
  * Run: node --import tsx --test packages/daemon/__tests__/test-env-isolation.test.ts
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -150,6 +161,77 @@ test("inside a run, what a test hands its child is not stripped", () => {
   });
   assert.equal(seen.vault, "/tmp/fixture-vault");
   assert.equal(seen.updateCheck, "on");
+});
+
+const GIT_STEERING = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_GLOBAL"];
+
+/** A decoy repository standing in for the caller's own, with one commit. */
+function decoyRepository() {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "git-decoy-")));
+  const git = (...a: string[]) =>
+    execFileSync("git", ["-c", "user.name=d", "-c", "user.email=d@d", ...a], {
+      cwd: root,
+      encoding: "utf8",
+      env: Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_"))),
+    }).trim();
+  git("init", "-q");
+  git("commit", "-q", "--allow-empty", "-m", "decoy");
+  return {
+    root,
+    head: () => git("rev-parse", "HEAD"),
+    env: {
+      GIT_DIR: join(root, ".git"),
+      GIT_WORK_TREE: root,
+      GIT_INDEX_FILE: join(root, ".git", "index"),
+      GIT_CONFIG_PARAMETERS: "'user.name'='caller'",
+      GIT_CONFIG_GLOBAL: join(root, "caller.gitconfig"),
+    },
+  };
+}
+
+test("a caller's GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE do not steer a test's own repository (#1668)", () => {
+  const decoy = decoyRepository();
+  try {
+    const before = decoy.head();
+    // What a git-using test does: a temp repository, a commit, then which repository git saw.
+    const script = `
+      const { execFileSync } = require("node:child_process");
+      const fs = require("node:fs"), os = require("node:os"), path = require("node:path");
+      const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "own-repo-")));
+      const git = (...a) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], { cwd: repo, encoding: "utf8" }).trim();
+      git("init", "-q");
+      git("commit", "-q", "--allow-empty", "-m", "own");
+      console.log(JSON.stringify({
+        own: path.join(repo, ".git"),
+        seen: fs.realpathSync(git("rev-parse", "--absolute-git-dir")),
+        env: ${JSON.stringify(GIT_STEERING)}.map((k) => process.env[k] ?? null),
+      }));`;
+    const r = spawnSync(process.execPath, ["--import", TEST_ENV, "-e", script], {
+      env: outsideRun(decoy.env),
+      encoding: "utf8",
+    });
+    assert.equal(r.status, 0, r.stderr);
+    const seen = JSON.parse(r.stdout.trim().split("\n").pop()!) as { own: string; seen: string; env: unknown[] };
+    assert.equal(seen.seen, seen.own, "git worked on the caller's repository");
+    assert.deepEqual(
+      seen.env,
+      GIT_STEERING.map(() => null)
+    );
+    assert.equal(decoy.head(), before, "the caller's repository got a commit");
+  } finally {
+    rmSync(decoy.root, { recursive: true, force: true });
+  }
+});
+
+test("inside a run, the GIT_* a test hands its child are not stripped (#1668)", () => {
+  const env = { GIT_DIR: "/tmp/fixture-repo/.git", GIT_WORK_TREE: "/tmp/fixture-repo" };
+  const r = spawnSync(
+    process.execPath,
+    ["--import", TEST_ENV, "-e", "console.log(JSON.stringify([process.env.GIT_DIR, process.env.GIT_WORK_TREE]))"],
+    { env: { ...process.env, ...env, BASTRA_TEST_RUN_ROOT: tmpdir(), NODE_TEST_CONTEXT: "" }, encoding: "utf8" }
+  );
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout.trim()), [env.GIT_DIR, env.GIT_WORK_TREE]);
 });
 
 test("ordinary children inherit the incidental update-check opt-out", () => {

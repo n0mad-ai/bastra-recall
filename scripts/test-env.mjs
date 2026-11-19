@@ -43,6 +43,8 @@ import "./test-network-guard.mjs";
  * a lone `node --import … -e`. It exports BASTRA_TEST_RUN_ROOT, so every test
  * child it spawns (and whatever those spawn) sees the setup as already done:
  * a variable a child has at that point was put there by a test on purpose.
+ * The same holds for the caller's git repository variables dropped below
+ * (#1668): inside a run, a GIT_DIR a child sees was set by its test.
  *
  * The temp root. TMPDIR/TEMP/TMP point into a directory this process removes
  * when it exits, on a signal as well, so every `mkdtemp(tmpdir())` anywhere in
@@ -75,6 +77,28 @@ if (!process.env.BASTRA_TEST_RUN_ROOT) {
     if (
       ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "CODEX_THREAD_ID", "APPDATA", "LOCALAPPDATA"].includes(key) ||
       key.startsWith("XDG_")
+    )
+      delete process.env[key];
+  }
+  // #1668: git's repository-steering variables. A git hook (`pre-commit`,
+  // `pre-push`) or a tool that runs `npm test` exports GIT_DIR, GIT_WORK_TREE,
+  // GIT_INDEX_FILE, …; every `git` a test runs in its temp repository then
+  // works on the caller's repository instead. Measured with them aimed at a
+  // decoy: 193 of 781 tests in the git-using files failed, and the decoy got
+  // commits, a new branch and lost its uncommitted change. Dropped: what
+  // `git rev-parse --local-env-vars` lists (git clears these itself when it
+  // enters another repository), the KEY/VALUE pairs behind GIT_CONFIG_COUNT,
+  // GIT_NAMESPACE and GIT_CEILING_DIRECTORIES. GIT_CONFIG_GLOBAL is a tool
+  // home like the ones above: HOME is the run home, so no user git config is
+  // read. GIT_CONFIG_SYSTEM/NOSYSTEM stay: machine-wide, not the caller's, and
+  // Git for Windows keeps required settings there. A child that should use a
+  // throwaway repository gets it from its test — after this file ran, if it is
+  // the first process (packages/eval/__tests__/replaced-claim-copy.test.ts).
+  for (const key of Object.keys(process.env)) {
+    if (
+      /^GIT_(DIR|WORK_TREE|IMPLICIT_WORK_TREE|INDEX_FILE|COMMON_DIR|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|GRAFT_FILE|NO_REPLACE_OBJECTS|REPLACE_REF_BASE|SHALLOW_FILE|PREFIX|NAMESPACE|CEILING_DIRECTORIES|CONFIG|CONFIG_PARAMETERS|CONFIG_COUNT|CONFIG_KEY_\d+|CONFIG_VALUE_\d+|CONFIG_GLOBAL)$/.test(
+        key
+      )
     )
       delete process.env[key];
   }
