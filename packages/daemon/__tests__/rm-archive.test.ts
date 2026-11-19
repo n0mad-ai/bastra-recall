@@ -34,7 +34,6 @@ import {
   manifestRows,
   ownArchiveDir,
   reconcilePlan,
-  restore,
   runRmShim,
   sameFile,
   shimRewrite,
@@ -47,6 +46,7 @@ import {
   stampReconcile,
   type Retain,
 } from "../src/rm-archive.js";
+import { restore } from "../src/rm-archive-restore.js";
 import { getArchiveEnabled, getArchiveRetain, setArchiveEnabled, setArchiveRetain } from "../src/settings.js";
 import { archiveMode, rmShimSwitchedOff } from "../src/bash-pre-patterns.js";
 import { matchPattern, runBashPreLane } from "../src/bash-pre-lane.js";

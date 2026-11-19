@@ -19,15 +19,8 @@ import {
 import { execFileSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import {
-  SHIM_DIR,
-  callReport,
-  manifestRows,
-  reconcilePlan,
-  applyReconcile,
-  restore,
-  runRmShim,
-} from "../src/rm-archive.js";
+import { SHIM_DIR, callReport, manifestRows, reconcilePlan, applyReconcile, runRmShim } from "../src/rm-archive.js";
+import { restore } from "../src/rm-archive-restore.js";
 import { cUnquote, gitAct, parseGit, runGitShim, unpin } from "../src/git-archive.js";
 import { matchPattern, runBashPreLane } from "../src/bash-pre-lane.js";
 

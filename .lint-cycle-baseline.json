@@ -1,6 +1,4 @@
 [
-  ["packages/daemon/src/git-archive.ts", "packages/daemon/src/rm-archive.ts"],
-  ["packages/daemon/src/rm-archive.ts", "packages/daemon/src/git-archive.ts"],
   ["packages/daemon/src/task-archive.ts", "packages/daemon/src/task-auth.ts"],
   ["packages/daemon/src/task-archive.ts", "packages/daemon/src/task-delete.ts"],
   ["packages/daemon/src/task-archive.ts", "packages/daemon/src/task-private-comparison.ts"],

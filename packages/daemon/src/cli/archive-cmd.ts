@@ -9,10 +9,10 @@ import {
   archiveMaxItem,
   manifestRows,
   reconcilePlan,
-  restore,
   retainDays,
   runRmShim,
 } from "../rm-archive.js";
+import { restore } from "../rm-archive-restore.js";
 import { getArchiveCap, getArchiveMaxItem, getArchiveRetain } from "../settings.js";
 import type { ParsedArgs } from "./types.js";
 import { taskCliLanguage } from "./task-cli-words.js";
