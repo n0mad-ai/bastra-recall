@@ -12,9 +12,10 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { readFileSync, realpathSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   CHARACTERIZED_CASES,
@@ -91,4 +92,36 @@ test("transport provenance is split from the comparable observation without touc
     { transport: "http", path: "/api/v1/tasks", result: { file: "<root>/data/tasks.json" } },
     { all_children_stopped: true },
   ]);
+});
+
+test("a feature root from outside is refused before anything of it is loaded", () => {
+  // A complete-looking feature checkout whose daemon module leaves a marker when imported.
+  const outside = mkdtempSync(join(tmpdir(), "p2-characterization-outside-"));
+  try {
+    const dist = join(outside, "packages/daemon/dist");
+    mkdirSync(join(outside, "docs/design"), { recursive: true });
+    mkdirSync(dist, { recursive: true });
+    writeFileSync(join(outside, "docs/design/proactive-tasks.md"), "# outside\n");
+    const marker = join(outside, "imported.txt");
+    writeFileSync(
+      join(dist, "daemon-spawn-env.js"),
+      `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(marker)}, "imported");\nexport const configFingerprint = () => "";\n`
+    );
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", outside, "-c", "user.name=t", "-c", "user.email=t@t", ...args], { stdio: "ignore" });
+    git("init", "-q");
+    git("commit", "-q", "--allow-empty", "-m", "outside");
+
+    const r = spawnSync(
+      process.execPath,
+      ["--import", "tsx", "src/proactive-p2-characterization.ts", "--summary", "--feature-root", outside],
+      { cwd: EVAL_DIR, encoding: "utf8" }
+    );
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /unsupported argument.*--feature-root/);
+    assert.equal(r.stdout, "");
+    assert.ok(!existsSync(marker), "the outside feature module was imported");
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+  }
 });

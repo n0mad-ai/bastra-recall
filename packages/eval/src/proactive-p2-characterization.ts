@@ -200,7 +200,19 @@ async function characterize(): Promise<CharacterizationDocument> {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const summary = process.argv.includes("--summary");
-  const document = await characterize();
-  process.stdout.write(JSON.stringify(summary ? characterizationSummary(document) : document, null, 2) + "\n");
+  // The mode is closed: it always drives its own stand-in feature root. Any other argument, above
+  // all a `--feature-root` taken over from a real measurement command, is refused before the
+  // driver (which takes the first `--feature-root` and imports that checkout's modules) loads.
+  const unsupported = process.argv.slice(2).filter((a) => a !== "--summary");
+  if (unsupported.length) {
+    process.stderr.write(
+      `proactive-p2-characterization: unsupported argument(s): ${unsupported.join(" ")}. ` +
+        "The fixed mode takes only --summary and always uses its own stand-in feature root.\n"
+    );
+    process.exitCode = 2;
+  } else {
+    const summary = process.argv.includes("--summary");
+    const document = await characterize();
+    process.stdout.write(JSON.stringify(summary ? characterizationSummary(document) : document, null, 2) + "\n");
+  }
 }
