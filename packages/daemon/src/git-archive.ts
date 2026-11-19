@@ -557,6 +557,27 @@ function cleanAct(s: Shim, act: Extract<GitAct, { kind: "clean" }>): number {
   return rc;
 }
 
+/** `git branch -D`: each branch that is there is pinned, then the act runs. */
+function branchAct(s: Shim, act: Extract<GitAct, { kind: "branch" }>): number {
+  for (const name of act.names) {
+    const ref = act.remote ? `refs/remotes/${name}` : `refs/heads/${name}`;
+    const sha = s.git(["rev-parse", "--verify", "-q", `${ref}^{commit}`]);
+    if (!sha) continue; // git reports the missing branch itself
+    const back = act.remote ? ["-C", s.home, "update-ref", ref, sha] : ["-C", s.home, "branch", name, sha];
+    if (
+      !pin(
+        s,
+        `${act.remote ? "remote-branch" : "branch"}/${name}`,
+        sha,
+        `git branch -D ${act.remote ? "-r " : ""}${name}`,
+        [back]
+      )
+    )
+      return refuse(s, `could not pin ${name}`);
+  }
+  return s.passThrough();
+}
+
 /** `git` with the system's behaviour, saving what the act would lose first. */
 export function runGitShim(argv: string[], io: ShimIo = {}): number {
   const env = io.env ?? process.env;
@@ -716,25 +737,7 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
     return passThrough();
   }
 
-  if (act.kind === "branch") {
-    for (const name of act.names) {
-      const ref = act.remote ? `refs/remotes/${name}` : `refs/heads/${name}`;
-      const sha = git(["rev-parse", "--verify", "-q", `${ref}^{commit}`]);
-      if (!sha) continue; // git reports the missing branch itself
-      const back = act.remote ? ["-C", home, "update-ref", ref, sha] : ["-C", home, "branch", name, sha];
-      if (
-        !pin(
-          s,
-          `${act.remote ? "remote-branch" : "branch"}/${name}`,
-          sha,
-          `git branch -D ${act.remote ? "-r " : ""}${name}`,
-          [back]
-        )
-      )
-        return refuse(s, `could not pin ${name}`);
-    }
-    return passThrough();
-  }
+  if (act.kind === "branch") return branchAct(s, act);
 
   // stash drop / clear
   const refs =
