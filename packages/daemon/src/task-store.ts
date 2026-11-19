@@ -1,15 +1,13 @@
 import { deleteTaskRows, validateTaskDeletePrune } from "./task-delete.js";
-import { bastraDataDir } from "./platform-paths.js";
 import { dropLegacyTaskComparisons, migrateTaskComparisons } from "./task-private-comparison.js";
 import { discoverTaskArchiveExports, validateTaskArchivePrune } from "./task-archive.js";
 import { canonicalTaskValue } from "./task-canonical.js";
 /** Versioned, fail-closed commitment snapshots; no transport or action authority. */
 import { publishTaskSnapshot } from "./task-runtime-signal.js";
 import { randomUUID } from "node:crypto";
-import { renameSync } from "node:fs";
-import { mkdir, open, unlink } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { readTaskSnapshotText, writeTaskSnapshotText } from "./task-database.js";
-import { dirname, join, resolve } from "node:path";
+import { dirname } from "node:path";
 import { homedir } from "node:os";
 import { redactSecrets, scrubInjectedBlocks } from "@bastra-recall/core/scrub";
 import { withPathLock } from "./path-lock.js";
@@ -21,6 +19,11 @@ import {
   type TaskStore,
   type Task,
 } from "./task-schema.js";
+import { atomicWrite, tasksPath } from "./task-store-file.js";
+
+// The store's location and its durable file write live in task-store-file.ts;
+// re-exported so every importer keeps `from "./task-store.js"`.
+export { atomicWrite, tasksPath } from "./task-store-file.js";
 
 /** History rows a normal mutation may reach; the rest is kept for control operations. */
 export const TASK_HISTORY_RESERVE = 9900;
@@ -32,10 +35,6 @@ export class TaskStoreError extends Error {
     super(message);
     this.name = "TaskStoreError";
   }
-}
-
-export function tasksPath(): string {
-  return resolve(process.env.BASTRA_TASKS_PATH ?? join(bastraDataDir(), "proactive-tasks.json"));
 }
 
 export function decodeTaskStore(raw: string): TaskStore {
@@ -231,30 +230,6 @@ function assertTaskProgress(before: TaskStore, after: TaskStore): void {
       throw new TaskStoreError("conflict", "generation changes require explicit unarmed re-arm");
     if (["resolved", "cancelled", "expired"].includes(old.state) && (next.state !== old.state || next.armed) && !rearm)
       throw new TaskStoreError("conflict", "terminal task cannot silently re-arm");
-  }
-}
-
-export async function atomicWrite(path: string, payload: string, assertOwnership: () => void): Promise<void> {
-  const tmp = `${path}.${randomUUID()}.tmp`;
-  const handle = await open(tmp, "wx", 0o600);
-  try {
-    await handle.writeFile(payload, "utf8");
-    await handle.sync();
-    await handle.close();
-    assertOwnership();
-    // Strict live-owner lock cannot be age-displaced; no await before commit.
-    renameSync(tmp, path);
-  } finally {
-    await handle.close().catch(() => undefined);
-    await unlink(tmp).catch((err: NodeJS.ErrnoException) => {
-      if (err.code !== "ENOENT") throw err;
-    });
-  }
-  const directory = await open(dirname(path), "r");
-  try {
-    await directory.sync();
-  } finally {
-    await directory.close();
   }
 }
 

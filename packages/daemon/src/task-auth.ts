@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { randomBytes, randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
 import { withPathLock } from "./path-lock.js";
-import { atomicWrite, tasksPath } from "./task-store.js";
+import { atomicWrite, tasksPath } from "./task-store-file.js";
 import { taskIdentitySchema as identity } from "./task-schema.js";
 import { safeEqual } from "./http-auth.js";
 
