@@ -597,6 +597,42 @@ function stashAct(s: Shim, act: Extract<GitAct, { kind: "stash" }>): number {
   return s.passThrough();
 }
 
+type SnapshotAct = Extract<GitAct, { kind: "snapshot" }>;
+
+/** Paths (from the top) that differ between two trees, inside the act's paths. */
+function differ(s: Shim, paths: string[], from: string, to: string, filter: string, cached = false): string[] | null {
+  const listed = s.raw([
+    "diff",
+    ...(cached ? ["--cached"] : []),
+    "--name-only",
+    "-z",
+    "--no-renames",
+    "--no-ext-diff",
+    `--diff-filter=${filter}`,
+    from,
+    ...(cached ? [] : [to]),
+    "--",
+    ...paths,
+  ]);
+  return listed === null ? null : listed.split("\0").filter(Boolean);
+}
+
+/** What stands untracked where the act writes a tracked file; null: git could not list it. */
+function overwritten(s: Shim, act: SnapshotAct): string[] | null {
+  // Untracked, and the act writes a tracked file there: in the tree it takes
+  // its content from, not in the index, present on disk.
+  const over: string[] = [];
+  if (act.worktree && act.source !== undefined) {
+    const added = differ(s, act.paths, act.source, "", "D", true);
+    if (added === null) return null;
+    for (const rel of added) {
+      const at = inTheWay(s.top as string, rel);
+      if (at && !over.includes(at) && s.git(["ls-files", "-z", "--", at]) === "") over.push(at);
+    }
+  }
+  return over;
+}
+
 /** `git` with the system's behaviour, saving what the act would lose first. */
 export function runGitShim(argv: string[], io: ShimIo = {}): number {
   const env = io.env ?? process.env;
@@ -684,34 +720,8 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
     // A tree the act names and git cannot find: git says so itself, and changes nothing.
     if (act.source !== undefined && git(["rev-parse", "--verify", "-q", `${act.source}^{tree}`]) === null)
       return passThrough();
-    /** Paths (from the top) that differ between two trees, inside the act's paths. */
-    const differ = (from: string, to: string, filter: string, cached = false): string[] | null => {
-      const listed = raw([
-        "diff",
-        ...(cached ? ["--cached"] : []),
-        "--name-only",
-        "-z",
-        "--no-renames",
-        "--no-ext-diff",
-        `--diff-filter=${filter}`,
-        from,
-        ...(cached ? [] : [to]),
-        "--",
-        ...act.paths,
-      ]);
-      return listed === null ? null : listed.split("\0").filter(Boolean);
-    };
-    // Untracked, and the act writes a tracked file there: in the tree it takes
-    // its content from, not in the index, present on disk.
-    const over: string[] = [];
-    if (act.worktree && act.source !== undefined) {
-      const added = differ(act.source, "", "D", true);
-      if (added === null) return refuse(s, "could not list what the act would overwrite");
-      for (const rel of added) {
-        const at = inTheWay(top as string, rel);
-        if (at && !over.includes(at) && git(["ls-files", "-z", "--", at]) === "") over.push(at);
-      }
-    }
+    const over = overwritten(s, act);
+    if (over === null) return refuse(s, "could not list what the act would overwrite");
     if (sha) {
       const what = `git ${act.what}`;
       if (act.what === "reset --hard") {
@@ -723,8 +733,8 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
         // exact whatever the pathspec was, and a path that loses nothing is
         // not in it.
         const from = act.source ?? `${sha}^2`;
-        const index = act.staged ? differ(from, `${sha}^2`, "AMT") : [];
-        const files = act.worktree ? differ(from, sha, "AMT") : [];
+        const index = act.staged ? differ(s, act.paths, from, `${sha}^2`, "AMT") : [];
+        const files = act.worktree ? differ(s, act.paths, from, sha, "AMT") : [];
         if (index === null || files === null) return refuse(s, "could not list what the act would discard");
         const back = (src: string, where: string, names: string[]): string[] => [
           "-C",
