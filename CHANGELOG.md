@@ -720,8 +720,9 @@ until a new design replaces it; this name is independent of the product version.
 - Tests: `scripts/test-env.mjs` drops the caller's repository-steering git
   variables (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`, the rest of
   `git rev-parse --local-env-vars`, `GIT_NAMESPACE`, `GIT_CEILING_DIRECTORIES`,
-  `GIT_CONFIG_GLOBAL`), so `npm test` run from a git hook can no longer commit
-  into or reset the caller's repository (#1668).
+  `GIT_CONFIG_GLOBAL`) in every test process and in any spelling, so
+  `npm test` run from a git hook can no longer commit into or reset the
+  caller's repository (#1668).
 
 ## [1.2.1] — 2026-11-16
 

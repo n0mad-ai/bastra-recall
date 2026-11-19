@@ -10,7 +10,8 @@
  *  3. What a test deliberately hands a child, and an output directory a caller
  *     chose (#420), is left alone.
  *  4. A caller's git repository variables (GIT_DIR from a hook, say) do not
- *     steer the git a test runs in its temp repository (#1668).
+ *     steer the git a test runs in its temp repository (#1668) — in any
+ *     spelling, and with or without a run marker.
  *
  * Run: node --import tsx --test packages/daemon/__tests__/test-env-isolation.test.ts
  */
@@ -163,8 +164,6 @@ test("inside a run, what a test hands its child is not stripped", () => {
   assert.equal(seen.updateCheck, "on");
 });
 
-const GIT_STEERING = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_GLOBAL"];
-
 /** A decoy repository standing in for the caller's own, with one commit. */
 function decoyRepository() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "git-decoy-")));
@@ -189,49 +188,69 @@ function decoyRepository() {
   };
 }
 
+/**
+ * What a git-using test does — a temp repository, a commit — in a child that
+ * loaded test-env with the caller's `extra` on top: which repository git saw,
+ * and which of `extra`'s names the child still has.
+ */
+function gitInChild(extra: Record<string, string>) {
+  const script = `
+    const { execFileSync } = require("node:child_process");
+    const fs = require("node:fs"), os = require("node:os"), path = require("node:path");
+    const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "own-repo-")));
+    const git = (...a) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], { cwd: repo, encoding: "utf8" }).trim();
+    git("init", "-q");
+    git("commit", "-q", "--allow-empty", "-m", "own");
+    console.log(JSON.stringify({
+      own: path.join(repo, ".git"),
+      seen: fs.realpathSync(git("rev-parse", "--absolute-git-dir")),
+      left: ${JSON.stringify(Object.keys(extra))}.filter((k) => k in process.env),
+    }));`;
+  const r = spawnSync(process.execPath, ["--import", TEST_ENV, "-e", script], {
+    env: outsideRun(extra),
+    encoding: "utf8",
+  });
+  assert.equal(r.status, 0, r.stderr);
+  return JSON.parse(r.stdout.trim().split("\n").pop()!) as { own: string; seen: string; left: string[] };
+}
+
 test("a caller's GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE do not steer a test's own repository (#1668)", () => {
   const decoy = decoyRepository();
   try {
     const before = decoy.head();
-    // What a git-using test does: a temp repository, a commit, then which repository git saw.
-    const script = `
-      const { execFileSync } = require("node:child_process");
-      const fs = require("node:fs"), os = require("node:os"), path = require("node:path");
-      const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "own-repo-")));
-      const git = (...a) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], { cwd: repo, encoding: "utf8" }).trim();
-      git("init", "-q");
-      git("commit", "-q", "--allow-empty", "-m", "own");
-      console.log(JSON.stringify({
-        own: path.join(repo, ".git"),
-        seen: fs.realpathSync(git("rev-parse", "--absolute-git-dir")),
-        env: ${JSON.stringify(GIT_STEERING)}.map((k) => process.env[k] ?? null),
-      }));`;
-    const r = spawnSync(process.execPath, ["--import", TEST_ENV, "-e", script], {
-      env: outsideRun(decoy.env),
-      encoding: "utf8",
-    });
-    assert.equal(r.status, 0, r.stderr);
-    const seen = JSON.parse(r.stdout.trim().split("\n").pop()!) as { own: string; seen: string; env: unknown[] };
+    const seen = gitInChild({ ...decoy.env, GIT_CONFIG_NOSYSTEM: "1" });
     assert.equal(seen.seen, seen.own, "git worked on the caller's repository");
-    assert.deepEqual(
-      seen.env,
-      GIT_STEERING.map(() => null)
-    );
+    assert.deepEqual(seen.left, ["GIT_CONFIG_NOSYSTEM"], "only the machine-wide switch stays");
     assert.equal(decoy.head(), before, "the caller's repository got a commit");
   } finally {
     rmSync(decoy.root, { recursive: true, force: true });
   }
 });
 
-test("inside a run, the GIT_* a test hands its child are not stripped (#1668)", () => {
-  const env = { GIT_DIR: "/tmp/fixture-repo/.git", GIT_WORK_TREE: "/tmp/fixture-repo" };
-  const r = spawnSync(
-    process.execPath,
-    ["--import", TEST_ENV, "-e", "console.log(JSON.stringify([process.env.GIT_DIR, process.env.GIT_WORK_TREE]))"],
-    { env: { ...process.env, ...env, BASTRA_TEST_RUN_ROOT: tmpdir(), NODE_TEST_CONTEXT: "" }, encoding: "utf8" }
-  );
-  assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual(JSON.parse(r.stdout.trim()), [env.GIT_DIR, env.GIT_WORK_TREE]);
+test("a run marker the caller brings along does not keep its git repository (#1668)", () => {
+  // An exported BASTRA_TEST_RUN_ROOT, or a run started from inside another run:
+  // the marker skips the setup, but says nothing about where GIT_DIR came from.
+  const decoy = decoyRepository();
+  try {
+    const before = decoy.head();
+    const seen = gitInChild({ ...decoy.env, BASTRA_TEST_RUN_ROOT: tmpdir() });
+    assert.equal(seen.seen, seen.own, "git worked on the caller's repository");
+    assert.deepEqual(seen.left, ["BASTRA_TEST_RUN_ROOT"]);
+    assert.equal(decoy.head(), before, "the caller's repository got a commit");
+  } finally {
+    rmSync(decoy.root, { recursive: true, force: true });
+  }
+});
+
+test("git variable names are dropped in any spelling — on Windows git_dir is GIT_DIR (#1668)", () => {
+  // Only the filter is observable here: on macOS/Linux git ignores these names.
+  const seen = gitInChild({
+    git_dir: "/tmp/caller-repo/.git",
+    Git_Work_Tree: "/tmp/caller-repo",
+    git_Index_File: "/tmp/caller-repo/.git/index",
+    git_config_global: "/tmp/caller.gitconfig",
+  });
+  assert.deepEqual(seen.left, []);
 });
 
 test("ordinary children inherit the incidental update-check opt-out", () => {
