@@ -707,6 +707,9 @@ until a new design replaces it; this name is independent of the product version.
   (#1662).
 - Web UI: styles load through one pure aggregator, `css/main.css`, in the
   unchanged cascade order. No visible change (#1520 D4).
+- Eval: the P2 proactive driver's `run` is split into named case steps
+  (complexity 125 → 25); the deterministic P2 characterization output is
+  byte-identical (#1531).
 
 ## [1.2.1] — 2026-11-16
 
