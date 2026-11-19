@@ -578,6 +578,25 @@ function branchAct(s: Shim, act: Extract<GitAct, { kind: "branch" }>): number {
   return s.passThrough();
 }
 
+/** `git stash drop|clear`: each stash that is there is pinned, then the act runs. */
+function stashAct(s: Shim, act: Extract<GitAct, { kind: "stash" }>): number {
+  const refs =
+    act.refs === "clear" ? (s.git(["stash", "list", "--format=%gd"]) ?? "").split("\n").filter(Boolean) : act.refs;
+  for (const r of refs) {
+    const sha = s.git(["rev-parse", "--verify", "-q", `${r}^{commit}`]);
+    if (!sha) continue; // git reports the missing stash itself
+    const msg = s.git(["log", "-1", "--format=%s", sha]) ?? "bastra-restored stash";
+    if (
+      !pin(s, "stash", sha, `git stash ${act.refs === "clear" ? "clear" : "drop"} (${r})`, [
+        ["-C", s.home, "stash", "store", "-m", msg, sha],
+      ])
+    ) {
+      return refuse(s, `could not pin ${r}`);
+    }
+  }
+  return s.passThrough();
+}
+
 /** `git` with the system's behaviour, saving what the act would lose first. */
 export function runGitShim(argv: string[], io: ShimIo = {}): number {
   const env = io.env ?? process.env;
@@ -739,22 +758,7 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
 
   if (act.kind === "branch") return branchAct(s, act);
 
-  // stash drop / clear
-  const refs =
-    act.refs === "clear" ? (git(["stash", "list", "--format=%gd"]) ?? "").split("\n").filter(Boolean) : act.refs;
-  for (const r of refs) {
-    const sha = git(["rev-parse", "--verify", "-q", `${r}^{commit}`]);
-    if (!sha) continue; // git reports the missing stash itself
-    const msg = git(["log", "-1", "--format=%s", sha]) ?? "bastra-restored stash";
-    if (
-      !pin(s, "stash", sha, `git stash ${act.refs === "clear" ? "clear" : "drop"} (${r})`, [
-        ["-C", home, "stash", "store", "-m", msg, sha],
-      ])
-    ) {
-      return refuse(s, `could not pin ${r}`);
-    }
-  }
-  return passThrough();
+  return stashAct(s, act);
 }
 
 /**
