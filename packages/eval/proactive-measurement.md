@@ -112,6 +112,33 @@ Previously failed P3 artifacts keep their original protocol hashes/verdicts.
 Latest eval typechecks and six evaluator tests pass. Initial registration/evaluator
 verification passed 37 tests. CI is tracked separately for each pushed eval head.
 
+## Deterministic P2 characterization (#1649)
+
+A fixed comparison baseline for restructuring the P2 driver (#1531). It runs the
+unchanged `src/proactive-p2-driver.ts` for the 16 cases whose logic lives in its own
+`run` (three repetitions each) against an in-process stand-in feature on a virtual
+clock. Root layout, port, reference instant, credentials and commit IDs are fixed;
+there is no wall clock, no random draw, no socket and no model call, so the same
+driver source gives byte-identical output. The output records what the driver does
+(requests and their virtual times, clock steps, computed values, evidence). The
+stand-in proves nothing about the feature: this is not a measurement and never
+replaces a run against a pinned feature head. The cases in the conversation,
+migration, premise and action drivers are outside this baseline.
+
+The comparison surface is each row without its transport provenance (data root,
+loopback port, child process logs), with the row's root written as `<root>`;
+`splitP2Observation` does that split without changing the raw row. The measurement
+runner, the driver and the registrations are not changed by this mode.
+
+```sh
+node --import tsx packages/eval/src/proactive-p2-characterization.ts            # full document
+node --import tsx packages/eval/src/proactive-p2-characterization.ts --summary  # frozen form
+node --import tsx --test packages/eval/__tests__/proactive-p2-characterization.test.ts
+```
+
+The frozen summary is `fixtures/proactive-p2-characterization.json`. Regenerate it
+only for an intended driver behaviour change, never to make a restructuring pass.
+
 ## Later stages
 
 P5/P8 published heads have been pulled into clean measurement worktrees and

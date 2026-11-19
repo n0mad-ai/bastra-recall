@@ -166,6 +166,9 @@ until a new design replaces it; this name is independent of the product version.
   silent; tool calls are never interrupted by it. Works in Claude Code and
   Codex, once the installed hook program is the one from this release
   (#1473).
+- Eval: deterministic P2 characterization mode – the unchanged P2 driver
+  against an in-process stand-in on a virtual clock, with a frozen baseline
+  for the planned driver restructuring (#1649).
 
 ### Changed
 
