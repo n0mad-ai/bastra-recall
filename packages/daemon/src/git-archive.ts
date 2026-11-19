@@ -705,6 +705,20 @@ function snapshotAct(s: Shim, act: SnapshotAct): number {
   return s.passThrough();
 }
 
+/** A form that is no act: the real git outside an allowed command, refused inside one. */
+function notAnAct(argv: string[], env: NodeJS.ProcessEnv, err: (s: string) => void, passThrough: () => number): number {
+  // The lane allowed the command as written; this is what the shell made of
+  // it. `git restore {-p,a}`, or `git restore *` next to a file named `-p`,
+  // reads as an act there and arrives here as another form. Inside an
+  // allowed command (the rewrite sets BASTRA_RM_CALL) nothing but an act runs.
+  if (!env.BASTRA_RM_CALL) return passThrough();
+  err(
+    `bastra: \`git ${argv.join(" ").slice(0, 120)}\` is not an act bastra's allow covers (as the shell expanded it) — not run (nothing changed). ` +
+      `Ask the user to run it, or BASTRA_GIT_SHIM=0 for the normal permission prompt.`
+  );
+  return 1;
+}
+
 /** `git` with the system's behaviour, saving what the act would lose first. */
 export function runGitShim(argv: string[], io: ShimIo = {}): number {
   const env = io.env ?? process.env;
@@ -726,18 +740,7 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
   if (isOffValue(env.BASTRA_GIT_SHIM)) return passThrough();
   const p = parseGit(argv);
   const act = p && !p.otherGlobals ? gitAct(p) : null;
-  if (!p || !act) {
-    // The lane allowed the command as written; this is what the shell made of
-    // it. `git restore {-p,a}`, or `git restore *` next to a file named `-p`,
-    // reads as an act there and arrives here as another form. Inside an
-    // allowed command (the rewrite sets BASTRA_RM_CALL) nothing but an act runs.
-    if (!env.BASTRA_RM_CALL) return passThrough();
-    err(
-      `bastra: \`git ${argv.join(" ").slice(0, 120)}\` is not an act bastra's allow covers (as the shell expanded it) — not run (nothing changed). ` +
-        `Ask the user to run it, or BASTRA_GIT_SHIM=0 for the normal permission prompt.`
-    );
-    return 1;
-  }
+  if (!p || !act) return notAnAct(argv, env, err, passThrough);
 
   const cwd = p.dirs.reduce((d, x) => resolve(d, x), cwd0);
   const plumb = plumbing(real, cwd, { ...childEnv, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" });
