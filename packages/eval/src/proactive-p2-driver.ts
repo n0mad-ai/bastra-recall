@@ -1010,7 +1010,8 @@ async function dstRecurrenceRollback(s: P2Run) {
   const caught = catchup.occurrences.filter((o: any) => o.task_id === recurrence.data.id);
   const finalElapsed = done.occurrences.filter((o: any) => o.task_id === recurrence.data.id);
   const calendarOccurrences = calendarDone.occurrences.filter((o: any) => o.task_id === overlap.data.id);
-  const correct =
+  // One short-circuit chain in two halves, evaluated in the same order: calendar replay, then elapsed recurrence.
+  const calendarFollowed = () =>
     gap.status === 400 &&
     overlap.data.schedule.at === Date.parse("2026-10-25T00:30:00Z") &&
     overlap.data.schedule.offset_minutes === 120 &&
@@ -1021,7 +1022,8 @@ async function dstRecurrenceRollback(s: P2Run) {
     restarted.occurrences.length === 1 &&
     rolled.occurrences.length === 1 &&
     calendarOccurrences.length === 2 &&
-    calendarOccurrences[1].due_at - calendarOccurrences[0].due_at === 25 * 3600000 &&
+    calendarOccurrences[1].due_at - calendarOccurrences[0].due_at === 25 * 3600000;
+  const elapsedFollowed = () =>
     recurrence.status === 200 &&
     caught.length === 1 &&
     caught[0].due_at === at + 2000 &&
@@ -1029,6 +1031,7 @@ async function dstRecurrenceRollback(s: P2Run) {
     finalElapsed.length === 2 &&
     finalElapsed[1].due_at === at + 4000 &&
     done.tasks.find((t: any) => t.id === recurrence.data.id).next_slot === undefined;
+  const correct = calendarFollowed() && elapsedFollowed();
   s.record({
     declared_policy_followed_all_subruns: correct,
     duplicate_occurrences: done.occurrences.length - new Set(done.occurrences.map((o: any) => o.id)).size,
