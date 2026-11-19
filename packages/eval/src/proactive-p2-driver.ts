@@ -1001,44 +1001,7 @@ const driver: FeatureDriver = {
         };
         evidence.push({ gap, overlap, before, first, second, restarted, rolled, calendarDone, catchup, done });
       } else if (c.id === "p1-p2-corruption-recovery") {
-        const empty = await http("GET", "/api/v1/tasks");
-        let t = await create();
-        t = (await op("review", t)).data;
-        const saved = readFileSync(taskPath, "utf8");
-        const old = t.expected_revision;
-        // Save an explicitly supported v1 round-trip as the recoverable snapshot, then corrupt only while stopped.
-        t = (await op("snooze", t, { until: Date.now() + 60000 })).data;
-        await stop(daemon!);
-        writeFileSync(taskPath, '{"schema_version":1,', { mode: 0o600 });
-        await start();
-        const corrupt = await http("GET", "/api/v1/tasks");
-        await stop(daemon!);
-        const corruptBytes = readFileSync(taskPath, "utf8");
-        const future = JSON.stringify({ ...JSON.parse(saved), schema_version: 999 });
-        writeFileSync(taskPath, future);
-        await start();
-        const unsupported = await http("GET", "/api/v1/tasks");
-        await stop(daemon!);
-        const preserved = readFileSync(taskPath, "utf8") === future;
-        const recovered = await storeApi.recoverTaskStore(taskPath, "fixture-owner");
-        const originals = recovered.quarantine && readFileSync(recovered.quarantine, "utf8") === future;
-        await start();
-        const get = await http("GET", `/api/v1/tasks/${t.id}`);
-        const stale = await http("POST", "/api/v1/task_review", { id: t.id, expected_revision: old });
-        values = {
-          first_run_empty: empty.status === 200 && empty.data.tasks.length === 0,
-          corruption_503: corrupt.status === 503 && corrupt.data.code === "corrupt",
-          future_version_503: unsupported.status === 503 && unsupported.data.code === "unsupported_version",
-          original_bytes_preserved: corruptBytes === '{"schema_version":1,' && preserved && Boolean(originals),
-          recovery_disarmed: get.status === 200 && get.data.armed === false,
-          old_revision_denied: stale.status === 409,
-          private_modes: [taskPath, authPath, recovered.quarantine].every((p) => (statSync(p).mode & 0o777) === 0o600),
-        };
-        evidence.push({
-          published_storage_primitive: "recoverTaskStore",
-          recovery: recovered,
-          quarantine_sha256: createHash("sha256").update(readFileSync(recovered.quarantine)).digest("hex"),
-        });
+        await p1P2CorruptionRecovery(s);
       } else throw new Error("unsupported published-stage fixture");
       evidence.push({ task_snapshot: existsSync(taskPath) ? JSON.parse(readFileSync(taskPath, "utf8")) : null });
       return { case_id: c.id, repetition, values, evidence };
@@ -1248,6 +1211,49 @@ async function p2ConcurrencyCas(s: P2Run) {
     idempotency_drift_denied: drift.status === 409,
     history_append_only:
       equal(original, after.history.slice(0, original.length)) && after.history.length === original.length + 1,
+  });
+}
+
+/** P1/P2 storage: corrupt and future-version stores answer 503, keep their bytes and recover disarmed through the published primitive. */
+async function p1P2CorruptionRecovery(s: P2Run) {
+  const { taskPath, authPath, evidence, http, op, create, start, stopDaemon } = s;
+  const empty = await http("GET", "/api/v1/tasks");
+  let t = await create();
+  t = (await op("review", t)).data;
+  const saved = readFileSync(taskPath, "utf8");
+  const old = t.expected_revision;
+  // Save an explicitly supported v1 round-trip as the recoverable snapshot, then corrupt only while stopped.
+  t = (await op("snooze", t, { until: Date.now() + 60000 })).data;
+  await stopDaemon();
+  writeFileSync(taskPath, '{"schema_version":1,', { mode: 0o600 });
+  await start();
+  const corrupt = await http("GET", "/api/v1/tasks");
+  await stopDaemon();
+  const corruptBytes = readFileSync(taskPath, "utf8");
+  const future = JSON.stringify({ ...JSON.parse(saved), schema_version: 999 });
+  writeFileSync(taskPath, future);
+  await start();
+  const unsupported = await http("GET", "/api/v1/tasks");
+  await stopDaemon();
+  const preserved = readFileSync(taskPath, "utf8") === future;
+  const recovered = await storeApi.recoverTaskStore(taskPath, "fixture-owner");
+  const originals = recovered.quarantine && readFileSync(recovered.quarantine, "utf8") === future;
+  await start();
+  const get = await http("GET", `/api/v1/tasks/${t.id}`);
+  const stale = await http("POST", "/api/v1/task_review", { id: t.id, expected_revision: old });
+  s.record({
+    first_run_empty: empty.status === 200 && empty.data.tasks.length === 0,
+    corruption_503: corrupt.status === 503 && corrupt.data.code === "corrupt",
+    future_version_503: unsupported.status === 503 && unsupported.data.code === "unsupported_version",
+    original_bytes_preserved: corruptBytes === '{"schema_version":1,' && preserved && Boolean(originals),
+    recovery_disarmed: get.status === 200 && get.data.armed === false,
+    old_revision_denied: stale.status === 409,
+    private_modes: [taskPath, authPath, recovered.quarantine].every((p) => (statSync(p).mode & 0o777) === 0o600),
+  });
+  evidence.push({
+    published_storage_primitive: "recoverTaskStore",
+    recovery: recovered,
+    quarantine_sha256: createHash("sha256").update(readFileSync(recovered.quarantine)).digest("hex"),
   });
 }
 
