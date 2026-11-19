@@ -243,14 +243,23 @@ test("a run marker the caller brings along does not keep its git repository (#16
 });
 
 test("git variable names are dropped in any spelling — on Windows git_dir is GIT_DIR (#1668)", () => {
-  // Only the filter is observable here: on macOS/Linux git ignores these names.
-  const seen = gitInChild({
-    git_dir: "/tmp/caller-repo/.git",
-    Git_Work_Tree: "/tmp/caller-repo",
-    git_Index_File: "/tmp/caller-repo/.git/index",
-    git_config_global: "/tmp/caller.gitconfig",
-  });
-  assert.deepEqual(seen.left, []);
+  // On macOS/Linux git ignores these names, so there only the filter is observable.
+  // A fresh decoy all the same: should the filter regress, a Windows git hits it, nothing else.
+  const decoy = decoyRepository();
+  try {
+    const before = decoy.head();
+    const seen = gitInChild({
+      git_dir: decoy.env.GIT_DIR,
+      Git_Work_Tree: decoy.env.GIT_WORK_TREE,
+      git_Index_File: decoy.env.GIT_INDEX_FILE,
+      git_config_global: decoy.env.GIT_CONFIG_GLOBAL,
+    });
+    assert.deepEqual(seen.left, []);
+    assert.equal(seen.seen, seen.own, "git worked on the caller's repository");
+    assert.equal(decoy.head(), before, "the caller's repository got a commit");
+  } finally {
+    rmSync(decoy.root, { recursive: true, force: true });
+  }
 });
 
 test("ordinary children inherit the incidental update-check opt-out", () => {
