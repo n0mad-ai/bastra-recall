@@ -702,6 +702,11 @@ until a new design replaces it; this name is independent of the product version.
   `loopback-helpers-contract`).
 - The memory commands' REST call moved to the shared CLI helpers; no
   command imports another for it (#1508).
+- Web UI: the memory browser's reader moved into its own module;
+  `memory-browser.js` is down to about 610 lines of code. No visible change
+  (#1662).
+- Web UI: styles load through one pure aggregator, `css/main.css`, in the
+  unchanged cascade order. No visible change (#1520 D4).
 
 ## [1.2.1] — 2026-11-16
 
