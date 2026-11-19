@@ -336,6 +336,133 @@ describe("#1527 runGitShim characterization — when saving fails, the act does 
   });
 });
 
+/** A `git` first in PATH that fails the call matching `when` the way `then`
+ *  says (a sh case body), logs every call, and otherwise runs the real git. */
+function failing(t: ReturnType<typeof fixture>, when: string, then: string) {
+  const real = realGit(process.env);
+  assert.ok(real);
+  const bin = join(t.root, "failing");
+  mkdirSync(bin);
+  const log = join(t.root, "calls");
+  writeFileSync(
+    join(bin, "git"),
+    `#!/bin/sh\nprintf '%s\\n' "$*" >> '${log}'\ncase "$*" in\n  ${when}) ${then};;\nesac\nexec '${real}' "$@"\n`
+  );
+  chmodSync(join(bin, "git"), 0o755);
+  return {
+    env: { ...t.env, PATH: [bin, t.env.PATH].join(":") },
+    calls: () => readFileSync(log, "utf8").trimEnd().split("\n"),
+  };
+}
+
+describe("#1527 runGitShim characterization — when the shim's own git calls fail: git clean", () => {
+  it("git clean: a dry run git refuses hands the act to the real git, with its exit code", () => {
+    const t = fixture();
+    writeFileSync(join(t.dir, "u"), "u\n");
+    const f = failing(t, "*' clean -n'*|'clean -f'", "exit 3");
+    const r = t.run(["clean", "-f"], { env: f.env });
+    assert.equal(r.rc, 3);
+    assert.deepEqual([r.out, r.err], [[], []]);
+    assert.equal(f.calls().at(-1), "clean -f", "the act went to the real git");
+    assert.equal(t.read("u"), "u\n");
+    assert.deepEqual(t.rows(), []);
+  });
+
+  it("git clean: a dry-run line the shim cannot read is refused, nothing removed", () => {
+    const t = fixture();
+    writeFileSync(join(t.dir, "u"), "u\n");
+    const f = failing(t, "*' clean -n'*", "printf 'Would remove u\\nSomething odd\\n'; exit 0");
+    const r = t.run(["clean", "-f"], { env: f.env });
+    assert.equal(r.rc, 1);
+    assert.deepEqual(r.err, [
+      `bastra: cannot read what git clean would remove (Something odd) — \`git clean\` not run (nothing changed). ${ASK}`,
+    ]);
+    assert.deepEqual(r.out, []);
+    assert.equal(t.read("u"), "u\n");
+    assert.deepEqual(t.rows(), []);
+  });
+
+  it("git clean: a path the archiving rm refuses gives exit 1; the others are archived and printed", () => {
+    const t = fixture();
+    writeFileSync(join(t.dir, "u"), "u\n");
+    const f = failing(t, "*' clean -n'*", "printf 'Would remove u\\nWould remove ./\\n'; exit 0");
+    const r = t.run(["clean", "-f"], { env: f.env });
+    assert.equal(r.rc, 1);
+    assert.deepEqual(r.out, ["Removing u"]);
+    assert.deepEqual(r.err, ["rm: refusing to remove '.' or '..' directory: skipping '.'"]);
+    assert.equal(t.read("u"), null);
+    assert.deepEqual(
+      t.rows().map((x) => [x.action, x.orig]),
+      [["archived", join(t.dir, "u")]]
+    );
+    assert.ok(!f.calls().includes("clean -f"), "the real git clean never runs");
+  });
+});
+
+describe("#1527 runGitShim characterization — when the shim's own git calls fail: the other acts", () => {
+  it("git stash create failing for no reason the shim names: today's fallback message, nothing run", () => {
+    const t = fixture();
+    t.edit();
+    const f = failing(t, "*' stash create'", "exit 1");
+    const r = t.run(["reset", "--hard"], { env: f.env });
+    assert.equal(r.rc, 1);
+    assert.deepEqual(r.err, [
+      `bastra: could not save the uncommitted changes first — \`git reset\` not run (nothing changed). ${ASK}`,
+    ]);
+    assert.deepEqual(r.out, []);
+    assert.equal(t.read("a"), "unsaved\n");
+    assert.equal(t.pins(), "");
+  });
+
+  it("git diff failing: what the act would overwrite or discard cannot be listed, so it does not run", () => {
+    const cases: Array<[string[], string, string]> = [
+      [["reset", "--hard", "HEAD"], "*--diff-filter=D*", "could not list what the act would overwrite — `git reset`"],
+      [["restore", "a"], "*--diff-filter=AMT*", "could not list what the act would discard — `git restore`"],
+      [
+        ["checkout", "HEAD", "--", "a"],
+        "*--diff-filter=AMT*",
+        "could not list what the act would discard — `git checkout`",
+      ],
+    ];
+    for (const [argv, when, why] of cases) {
+      const t = fixture();
+      t.edit();
+      const f = failing(t, when, "exit 1");
+      const r = t.run(argv, { env: f.env });
+      assert.equal(r.rc, 1, argv.join(" "));
+      assert.deepEqual(r.err, [`bastra: ${why} not run (nothing changed). ${ASK}`], argv.join(" "));
+      assert.deepEqual(r.out, []);
+      assert.equal(t.read("a"), "unsaved\n", argv.join(" "));
+      assert.equal(t.pins(), "", argv.join(" "));
+    }
+  });
+
+  it("a pin ref that cannot be created: 51 tries, then refused, nothing recorded", () => {
+    const t = fixture();
+    t.edit();
+    const f = failing(t, "*' update-ref refs/bastra-archive/'*", "exit 1");
+    const r = t.run(["reset", "--hard"], { env: f.env });
+    assert.equal(r.rc, 1);
+    assert.deepEqual(r.err, [
+      `bastra: could not pin the uncommitted changes — \`git reset\` not run (nothing changed). ${ASK}`,
+    ]);
+    assert.equal(f.calls().filter((c) => c.includes(" update-ref refs/bastra-archive/")).length, 51);
+    assert.equal(t.read("a"), "unsaved\n");
+    assert.deepEqual(t.rows(), []);
+  });
+
+  it("the real git killed by a signal: exit 1", () => {
+    const t = fixture();
+    const env = { ...t.env, BASTRA_RM_CALL: "" };
+    for (const argv of [["frobnicate"], ["reset", "-q", "--hard"]]) {
+      const f = failing({ ...t, root: mkdtempSync(join(t.root, "k-")) }, `'${argv.join(" ")}'`, "kill -9 $$");
+      const r = t.run(argv, { env: { ...env, PATH: f.env.PATH } });
+      assert.equal(r.rc, 1, argv.join(" "));
+      assert.deepEqual([r.out, r.err], [[], []], argv.join(" "));
+    }
+  });
+});
+
 describe("#1527 runGitShim characterization — the order: save, record, then the real git", () => {
   /** A `git` first in PATH that, when the act itself arrives, copies the manifest
    *  and the pinned refs as they are at that moment, then runs the real git. */
