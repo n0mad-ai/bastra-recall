@@ -25,6 +25,10 @@ import { gunzipSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { dropCallerGitEnv } from "../../scripts/caller-git-env.mjs";
+
+// #1669: started without test-env.mjs, this file's git must still not reach a caller's GIT_DIR/GIT_WORK_TREE.
+dropCallerGitEnv();
 
 const GEN = fileURLToPath(new URL("../anno-symbols-gen-ts.mjs", import.meta.url));
 

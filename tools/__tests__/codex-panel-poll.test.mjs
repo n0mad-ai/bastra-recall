@@ -14,6 +14,10 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { CodexLiveSource } from "../../packages/statusline/src/panel/codex-data.ts";
+import { dropCallerGitEnv } from "../../scripts/caller-git-env.mjs";
+
+// #1669: started without test-env.mjs, this file's git must still not reach a caller's GIT_DIR/GIT_WORK_TREE.
+dropCallerGitEnv();
 
 const NOW = Date.parse("2026-11-17T10:00:00.000Z");
 const CWD = "/nirgendwo/codex-project";

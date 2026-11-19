@@ -22,6 +22,10 @@ import {
   DIRTY,
   parseCli,
 } from "../test-map.mjs";
+import { dropCallerGitEnv } from "../../scripts/caller-git-env.mjs";
+
+// #1669: started without test-env.mjs, this file's git must still not reach a caller's GIT_DIR/GIT_WORK_TREE.
+dropCallerGitEnv();
 
 // Revert-checks added below, one per bug found in review (each names what to break to
 // go red): INERT swallowing real code after a same-line block comment or a bare leading

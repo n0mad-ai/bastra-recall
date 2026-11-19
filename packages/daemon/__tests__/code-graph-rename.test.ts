@@ -15,6 +15,11 @@ import {
   renamesSince,
   resolvePath,
 } from "../src/code-graph/rename-evidence.js";
+// @ts-expect-error — plain .mjs script, no declarations
+import { dropCallerGitEnv } from "../../../scripts/caller-git-env.mjs";
+
+// #1669: started without test-env.mjs, this file's git must still not reach a caller's GIT_DIR/GIT_WORK_TREE.
+dropCallerGitEnv();
 
 const run = promisify(execFile);
 

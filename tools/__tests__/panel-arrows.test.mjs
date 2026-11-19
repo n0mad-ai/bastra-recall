@@ -8,6 +8,10 @@ import path from "node:path";
 import { PanelGitReader } from "../../packages/statusline/src/panel/git-status.ts";
 import { gitLabel } from "../../packages/statusline/src/panel/details.ts";
 import { renderNeural, NEURAL_DEMO } from "../../packages/statusline/src/panel/neural.ts";
+import { dropCallerGitEnv } from "../../scripts/caller-git-env.mjs";
+
+// #1669: started without test-env.mjs, this file's git must still not reach a caller's GIT_DIR/GIT_WORK_TREE.
+dropCallerGitEnv();
 const exec = promisify(execFile);
 
 test("#1135 only independently positive counts appear in every Neural design for both clients", () => {

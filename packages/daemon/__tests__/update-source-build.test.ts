@@ -34,6 +34,11 @@ import { decideSourceBuild, inspectSourceBuild, provenRevision, type HeadState }
 import { parseBuildStamp, readBuildStamp } from "../src/build-stamp.js";
 import { buildHealthPayload } from "../src/http-health.js";
 import { decideLiveRevision, describeLiveRevision, liveRevisionOfDaemon } from "../src/cli/live-revision.js";
+// @ts-expect-error — plain .mjs script, no declarations
+import { dropCallerGitEnv } from "../../../scripts/caller-git-env.mjs";
+
+// #1669: started without test-env.mjs, this file's git must still not reach a caller's GIT_DIR/GIT_WORK_TREE.
+dropCallerGitEnv();
 
 const REBUILD = "git pull && npm ci && npm run build";
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");

@@ -27,6 +27,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { packEntry } from "../../scripts/npm-pack-json.mjs";
+import { dropCallerGitEnv } from "../../scripts/caller-git-env.mjs";
+
+// #1669: started without test-env.mjs, this file's git must still not reach a caller's GIT_DIR/GIT_WORK_TREE.
+dropCallerGitEnv();
 
 const SCRIPT_SRC = fileURLToPath(new URL("../../scripts/write-build-revision.mjs", import.meta.url));
 

@@ -42,6 +42,11 @@ import {
 } from "../code-roi/v2/build-pin.mjs";
 // @ts-expect-error — plain .mjs script, no declarations (#542).
 import { armMetaRows, mixedBuildsReport } from "../code-roi/v2/evaluate-v4.mjs";
+// @ts-expect-error — plain .mjs script, no declarations
+import { dropCallerGitEnv } from "../../../scripts/caller-git-env.mjs";
+
+// #1669: started without test-env.mjs, this file's git must still not reach a caller's GIT_DIR/GIT_WORK_TREE.
+dropCallerGitEnv();
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const WRITE_BUILD_REVISION = join(REPO_ROOT, "scripts", "write-build-revision.mjs");

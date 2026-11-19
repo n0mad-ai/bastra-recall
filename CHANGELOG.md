@@ -723,6 +723,10 @@ until a new design replaces it; this name is independent of the product version.
   `GIT_CONFIG_GLOBAL`) in every test process and in any spelling, so
   `npm test` run from a git hook can no longer commit into or reset the
   caller's repository (#1668).
+- Tests: the 39 test files that run git drop the caller's repository-steering
+  git variables themselves (`scripts/caller-git-env.mjs`, the list
+  `test-env.mjs` now shares), so a single file started without `test-env.mjs`
+  cannot touch the caller's repository either (#1669).
 
 ## [1.2.1] — 2026-11-16
 

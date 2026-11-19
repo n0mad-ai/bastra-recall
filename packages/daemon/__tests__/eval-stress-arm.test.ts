@@ -21,6 +21,11 @@ import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+// @ts-expect-error — plain .mjs script, no declarations
+import { dropCallerGitEnv } from "../../../scripts/caller-git-env.mjs";
+
+// #1669: started without test-env.mjs, this file's git must still not reach a caller's GIT_DIR/GIT_WORK_TREE.
+dropCallerGitEnv();
 
 const SCRIPT = resolve(import.meta.dirname, "..", "scripts", "eval-stress.ts");
 const FIXTURE_VAULT = resolve(import.meta.dirname, "..", "..", "eval", "fixtures", "eval-vault");

@@ -7,6 +7,10 @@ import { parseGitStatus, PanelGitReader } from "../../packages/statusline/src/pa
 import { gitLabel, timingLabel, sessionLabel } from "../../packages/statusline/src/panel/details.ts";
 import { ClaudeLiveSource, publishNative } from "../../packages/statusline/src/panel/claude-data.ts";
 import { CodexLiveSource } from "../../packages/statusline/src/panel/codex-data.ts";
+import { dropCallerGitEnv } from "../../scripts/caller-git-env.mjs";
+
+// #1669: started without test-env.mjs, this file's git must still not reach a caller's GIT_DIR/GIT_WORK_TREE.
+dropCallerGitEnv();
 
 test("Git porcelain handles staged, modified, rename source, new files and conflicts separately", () => {
   const g = parseGitStatus(

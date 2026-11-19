@@ -6,6 +6,10 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { GitService } from "../../packages/statusline/src/segments/git.ts";
+import { dropCallerGitEnv } from "../../scripts/caller-git-env.mjs";
+
+// #1669: started without test-env.mjs, this file's git must still not reach a caller's GIT_DIR/GIT_WORK_TREE.
+dropCallerGitEnv();
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const temporary = () => fs.mkdtempSync(path.join(os.tmpdir(), "statusline-1227-"));

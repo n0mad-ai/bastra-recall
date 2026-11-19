@@ -10,6 +10,11 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { startCodeAwareness, codeGraphRefresher } from "../src/code-graph/service.js";
 import { GRAPH_DIR_NAME } from "../src/code-graph/reader.js";
 import { CodeGraphRefresher } from "../src/code-graph/refresh.js";
+// @ts-expect-error — plain .mjs script, no declarations
+import { dropCallerGitEnv } from "../../../scripts/caller-git-env.mjs";
+
+// #1669: started without test-env.mjs, this file's git must still not reach a caller's GIT_DIR/GIT_WORK_TREE.
+dropCallerGitEnv();
 
 async function until(check: () => boolean): Promise<void> {
   const deadline = Date.now() + 5000;

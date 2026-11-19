@@ -23,6 +23,11 @@ import { SHIM_DIR, callReport, manifestRows, reconcilePlan, applyReconcile, runR
 import { restore } from "../src/rm-archive-restore.js";
 import { cUnquote, gitAct, parseGit, runGitShim, unpin } from "../src/git-archive.js";
 import { matchPattern, runBashPreLane } from "../src/bash-pre-lane.js";
+// @ts-expect-error — plain .mjs script, no declarations
+import { dropCallerGitEnv } from "../../../scripts/caller-git-env.mjs";
+
+// #1669: started without test-env.mjs, this file's git must still not reach a caller's GIT_DIR/GIT_WORK_TREE.
+dropCallerGitEnv();
 
 // The lane tests in this file run opted in (#650); the default-off test sets it back.
 process.env.BASTRA_RM_ARCHIVES = "1";

@@ -17,6 +17,11 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { manifestRows } from "../src/rm-archive.js";
 import { realGit, runGitShim } from "../src/git-archive.js";
+// @ts-expect-error — plain .mjs script, no declarations
+import { dropCallerGitEnv } from "../../../scripts/caller-git-env.mjs";
+
+// #1669: started without test-env.mjs, this file's git must still not reach a caller's GIT_DIR/GIT_WORK_TREE.
+dropCallerGitEnv();
 
 const ASK = "Ask the user to run it, or BASTRA_GIT_SHIM=0 for the normal permission prompt.";
 

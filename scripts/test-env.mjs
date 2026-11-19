@@ -35,6 +35,7 @@ import { join, parse } from "node:path";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import "./test-network-guard.mjs";
+import { dropCallerGitEnv } from "./caller-git-env.mjs";
 
 /**
  * One temp root per test run, and the developer's own bastra settings kept out.
@@ -80,22 +81,14 @@ const CALLER_CHOSEN_OUTPUTS = new Set(["BASTRA_LOG_PATH", "BASTRA_EVAL_RUNS_DIR"
  * THROUGH this file; one that wants to does it after it, with its own
  * `--import` (packages/eval/__tests__/replaced-claim-copy.test.ts).
  *
- * Dropped: what `git rev-parse --local-env-vars` lists (git clears these itself
- * when it enters another repository), the KEY/VALUE pairs behind
- * GIT_CONFIG_COUNT, GIT_NAMESPACE and GIT_CEILING_DIRECTORIES. GIT_CONFIG_GLOBAL
- * is a tool home like CLAUDE_CONFIG_DIR: HOME is the run home, so no user git
- * config is read. GIT_CONFIG_SYSTEM/NOSYSTEM stay: machine-wide, not the
- * caller's, and Git for Windows keeps required settings there. Names compare
- * case-insensitively: on Windows `git_dir` IS GIT_DIR.
+ * Dropped: the list in `caller-git-env.mjs`, which the git fixtures of single
+ * test files share (#1669). GIT_CONFIG_GLOBAL is a tool home like
+ * CLAUDE_CONFIG_DIR: HOME is the run home, so no user git config is read.
+ * GIT_CONFIG_SYSTEM/NOSYSTEM stay: machine-wide, not the caller's, and Git for
+ * Windows keeps required settings there. Names compare case-insensitively: on
+ * Windows `git_dir` IS GIT_DIR.
  */
-for (const key of Object.keys(process.env)) {
-  if (
-    /^GIT_(DIR|WORK_TREE|IMPLICIT_WORK_TREE|INDEX_FILE|COMMON_DIR|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|GRAFT_FILE|NO_REPLACE_OBJECTS|REPLACE_REF_BASE|SHALLOW_FILE|PREFIX|NAMESPACE|CEILING_DIRECTORIES|CONFIG|CONFIG_PARAMETERS|CONFIG_COUNT|CONFIG_KEY_\d+|CONFIG_VALUE_\d+|CONFIG_GLOBAL)$/i.test(
-      key
-    )
-  )
-    delete process.env[key];
-}
+dropCallerGitEnv();
 
 if (!process.env.BASTRA_TEST_RUN_ROOT) {
   if (process.env.BASTRA_TEST_KEEP_ENV !== "1") {
