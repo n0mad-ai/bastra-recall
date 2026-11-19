@@ -485,14 +485,6 @@ const driver: FeatureDriver = {
     };
     try {
       await start();
-      const deliveryCases = [
-        "seven-day-evaluation",
-        "active-session-deadline",
-        "offline-restart",
-        "relay-overflow-disabled-purged",
-        "multi-client-occurrence",
-        "acknowledged-unfinished",
-      ];
       if (CONVERSATION_CASES.includes(c.id)) {
         values = await runConversation(c, {
           root,
@@ -549,31 +541,8 @@ const driver: FeatureDriver = {
           crashPath,
           stopDaemon: () => stop(daemon!),
         });
-      } else if (deliveryCases.includes(c.id)) {
-        const d = deliveryFixture(s);
-        if (c.id === "relay-overflow-disabled-purged") await relayOverflowDisabledPurged(s, d);
-        else await singleTaskDelivery(s, d);
-      } else if (c.id === "p3-source-key-tuple-boundary") {
-        await p3SourceKeyTupleBoundary(s);
-      } else if (c.id === "p3-automatic-evaluation") {
-        await p3AutomaticEvaluation(s);
-      } else if (c.id === "p3-returning-source-transitions") {
-        await p3ReturningSourceTransitions(s);
-      } else if (c.id === "p2-auth-boundaries") {
-        await p2AuthBoundaries(s);
-      } else if (c.id === "p2-transport-parity") {
-        await p2TransportParity(s);
-      } else if (c.id === "p2-owner-lifecycle") {
-        await p2OwnerLifecycle(s);
-      } else if (c.id === "p2-durable-restart") {
-        await p2DurableRestart(s);
-      } else if (c.id === "p2-concurrency-cas") {
-        await p2ConcurrencyCas(s);
-      } else if (c.id === "dst-recurrence-rollback") {
-        await dstRecurrenceRollback(s);
-      } else if (c.id === "p1-p2-corruption-recovery") {
-        await p1P2CorruptionRecovery(s);
-      } else throw new Error("unsupported published-stage fixture");
+      } else if (Object.hasOwn(IN_DRIVER_CASES, c.id)) await IN_DRIVER_CASES[c.id](s);
+      else throw new Error("unsupported published-stage fixture");
       evidence.push({ task_snapshot: existsSync(taskPath) ? JSON.parse(readFileSync(taskPath, "utf8")) : null });
       return { case_id: c.id, repetition, values, evidence };
     } catch (error) {
@@ -1326,5 +1295,25 @@ async function nextContactDelivery(run: P2Run, d: DeliveryFixture, before: any) 
   run.record(values);
   evidence.push({ pre_fire_snapshot: before, shown, synthetic_clock_is_not_seven_day_window: true });
 }
+
+/** The cases whose steps live in this driver; the other drivers' cases are dispatched in `run`. */
+const IN_DRIVER_CASES: Record<string, (s: P2Run) => Promise<void>> = {
+  "seven-day-evaluation": (s) => singleTaskDelivery(s, deliveryFixture(s)),
+  "active-session-deadline": (s) => singleTaskDelivery(s, deliveryFixture(s)),
+  "offline-restart": (s) => singleTaskDelivery(s, deliveryFixture(s)),
+  "relay-overflow-disabled-purged": (s) => relayOverflowDisabledPurged(s, deliveryFixture(s)),
+  "multi-client-occurrence": (s) => singleTaskDelivery(s, deliveryFixture(s)),
+  "acknowledged-unfinished": (s) => singleTaskDelivery(s, deliveryFixture(s)),
+  "p3-source-key-tuple-boundary": p3SourceKeyTupleBoundary,
+  "p3-automatic-evaluation": p3AutomaticEvaluation,
+  "p3-returning-source-transitions": p3ReturningSourceTransitions,
+  "p2-auth-boundaries": p2AuthBoundaries,
+  "p2-transport-parity": p2TransportParity,
+  "p2-owner-lifecycle": p2OwnerLifecycle,
+  "p2-durable-restart": p2DurableRestart,
+  "p2-concurrency-cas": p2ConcurrencyCas,
+  "dst-recurrence-rollback": dstRecurrenceRollback,
+  "p1-p2-corruption-recovery": p1P2CorruptionRecovery,
+};
 
 export default driver;
