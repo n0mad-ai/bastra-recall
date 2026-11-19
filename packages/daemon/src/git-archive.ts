@@ -432,6 +432,33 @@ function readyToAct(no: string | null, sub: string, env: NodeJS.ProcessEnv): { r
   }
 }
 
+/** The shim's own git calls in `cwd`: the real git, output read, stderr dropped. */
+function plumbing(real: string, cwd: string, gitEnv: NodeJS.ProcessEnv): Plumbing {
+  const run = (args: string[], input?: string): string | null => {
+    try {
+      return execFileSync(real, args, {
+        cwd,
+        env: gitEnv,
+        encoding: "utf8",
+        input,
+        stdio: [input === undefined ? "ignore" : "pipe", "pipe", "ignore"],
+        timeout: 10_000,
+        maxBuffer: 64 << 20,
+      });
+    } catch {
+      return null;
+    }
+  };
+  const raw = (args: string[]): string | null => run([...SAFE, ...args]);
+  const git = (args: string[]): string | null => raw(args)?.trimEnd() ?? null;
+  const plain = (args: string[]): string | null => run(args);
+  const hash = (files: string[]): string[] | null =>
+    run([...SAFE, "hash-object", "--stdin-paths"], files.join("\n") + "\n")
+      ?.trimEnd()
+      .split("\n") ?? null;
+  return { git, raw, plain, hash };
+}
+
 /** `git` with the system's behaviour, saving what the act would lose first. */
 export function runGitShim(argv: string[], io: ShimIo = {}): number {
   const env = io.env ?? process.env;
@@ -467,35 +494,14 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
   }
 
   const cwd = p.dirs.reduce((d, x) => resolve(d, x), cwd0);
-  const gitEnv = { ...childEnv, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" };
-  const run = (args: string[], input?: string): string | null => {
-    try {
-      return execFileSync(real, args, {
-        cwd,
-        env: gitEnv,
-        encoding: "utf8",
-        input,
-        stdio: [input === undefined ? "ignore" : "pipe", "pipe", "ignore"],
-        timeout: 10_000,
-        maxBuffer: 64 << 20,
-      });
-    } catch {
-      return null;
-    }
-  };
-  const raw = (args: string[]): string | null => run([...SAFE, ...args]);
-  const git = (args: string[]): string | null => raw(args)?.trimEnd() ?? null;
-  const plain = (args: string[]): string | null => run(args);
-  const hash = (files: string[]): string[] | null =>
-    run([...SAFE, "hash-object", "--stdin-paths"], files.join("\n") + "\n")
-      ?.trimEnd()
-      .split("\n") ?? null;
+  const plumb = plumbing(real, cwd, { ...childEnv, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" });
+  const { git, raw } = plumb;
   const top = git(["rev-parse", "--show-toplevel"]);
   // A bare repository has branches and no worktree: `-C <its directory>` restores there.
   const home = top ?? (act.kind === "branch" ? git(["rev-parse", "--absolute-git-dir"]) : null);
   if (home === null) return passThrough(); // not a repository, or no worktree: git says so itself
   const out1 = "Ask the user to run it, or BASTRA_GIT_SHIM=0 for the normal permission prompt.";
-  const ready = readyToAct(refusal({ git, raw, plain, hash }, act, cwd, top), p.sub, env);
+  const ready = readyToAct(refusal(plumb, act, cwd, top), p.sub, env);
   if ("refused" in ready) {
     err(`bastra: ${ready.refused}. ${out1}`);
     return 1;
