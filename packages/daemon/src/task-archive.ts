@@ -1,5 +1,5 @@
 /** Private cold snapshots retain idempotency and audit; nothing unresolved is evicted. */
-import { deleteTaskRows } from "./task-delete.js";
+import { deleteTaskRows } from "./task-delete-rows.js";
 import { exportTaskComparisons } from "./task-private-comparison.js";
 import { constants } from "node:fs";
 import { mkdir, open } from "node:fs/promises";
