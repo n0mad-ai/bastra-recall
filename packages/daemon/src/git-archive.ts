@@ -679,6 +679,32 @@ function pinSnapshot(s: Shim, act: SnapshotAct, sha: string): string | null {
   return null;
 }
 
+/** `git reset --hard`, `checkout … -- <paths>`, `restore`: the uncommitted work is
+ *  pinned, an untracked file in the way archived, then the act runs. */
+function snapshotAct(s: Shim, act: SnapshotAct): number {
+  const sha = s.git(["stash", "create"]);
+  if (sha === null) return refuse(s, unsaved(s));
+  // A tree the act names and git cannot find: git says so itself, and changes nothing.
+  if (act.source !== undefined && s.git(["rev-parse", "--verify", "-q", `${act.source}^{tree}`]) === null)
+    return s.passThrough();
+  const over = overwritten(s, act);
+  if (over === null) return refuse(s, "could not list what the act would overwrite");
+  if (sha) {
+    const why = pinSnapshot(s, act, sha);
+    if (why) return refuse(s, why);
+  }
+  for (const [i, at] of over.entries()) {
+    if (!archived(s, at, `git ${act.what}`)) {
+      return refuse(
+        s,
+        `could not move ${at} to the archive (git would overwrite it)`,
+        i === 0 ? "nothing changed" : `${i} untracked file(s) already moved to the archive — see the receipt`
+      );
+    }
+  }
+  return s.passThrough();
+}
+
 /** `git` with the system's behaviour, saving what the act would lose first. */
 export function runGitShim(argv: string[], io: ShimIo = {}): number {
   const env = io.env ?? process.env;
@@ -748,29 +774,7 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
 
   if (act.kind === "clean") return cleanAct(s, act);
 
-  if (act.kind === "snapshot") {
-    const sha = git(["stash", "create"]);
-    if (sha === null) return refuse(s, unsaved(s));
-    // A tree the act names and git cannot find: git says so itself, and changes nothing.
-    if (act.source !== undefined && git(["rev-parse", "--verify", "-q", `${act.source}^{tree}`]) === null)
-      return passThrough();
-    const over = overwritten(s, act);
-    if (over === null) return refuse(s, "could not list what the act would overwrite");
-    if (sha) {
-      const why = pinSnapshot(s, act, sha);
-      if (why) return refuse(s, why);
-    }
-    for (const [i, at] of over.entries()) {
-      if (!archived(s, at, `git ${act.what}`)) {
-        return refuse(
-          s,
-          `could not move ${at} to the archive (git would overwrite it)`,
-          i === 0 ? "nothing changed" : `${i} untracked file(s) already moved to the archive — see the receipt`
-        );
-      }
-    }
-    return passThrough();
-  }
+  if (act.kind === "snapshot") return snapshotAct(s, act);
 
   if (act.kind === "branch") return branchAct(s, act);
 
