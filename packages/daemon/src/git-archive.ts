@@ -775,12 +775,14 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
     passThrough,
   };
 
+  return runAct(s, act);
+}
+
+/** The act's own saving steps by its kind; each ends in the real git or a refusal. */
+function runAct(s: Shim, act: GitAct): number {
   if (act.kind === "clean") return cleanAct(s, act);
-
   if (act.kind === "snapshot") return snapshotAct(s, act);
-
   if (act.kind === "branch") return branchAct(s, act);
-
   return stashAct(s, act);
 }
 
