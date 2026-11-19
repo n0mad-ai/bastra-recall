@@ -41,6 +41,11 @@ import { accessSync, constants, existsSync, lstatSync, readdirSync, realpathSync
 import { delimiter, join, resolve } from "node:path";
 import { SHIM_DIR, appendManifest, archiveRoot, localIso, runRmShim, type ShimIo } from "./rm-archive.js";
 import { isOffValue } from "./env.js";
+import { SAFE } from "./git-archive-pins.js";
+import { withoutShims } from "./shim-path.js";
+
+// The pinned refs live in git-archive-pins.ts; re-exported for importers of this module.
+export { unpin } from "./git-archive-pins.js";
 
 export type GitAct =
   | { kind: "clean"; /** The same arguments without `-q`, for the dry run. */ dry: string[]; quiet: boolean }
@@ -223,26 +228,6 @@ export function gitAct(p: ParsedGit): GitAct | null {
   return null;
 }
 
-/** PATH with bastra's shims/ taken out. */
-export function withoutShims(path: string | undefined): string {
-  let shims = SHIM_DIR;
-  try {
-    shims = realpathSync(SHIM_DIR);
-  } catch {
-    /* as configured */
-  }
-  return (path ?? "")
-    .split(delimiter)
-    .filter((d) => {
-      try {
-        return realpathSync(d) !== shims;
-      } catch {
-        return d !== SHIM_DIR;
-      }
-    })
-    .join(delimiter);
-}
-
 /** The git after ours in PATH. */
 export function realGit(env: NodeJS.ProcessEnv = process.env): string | null {
   let shims: string;
@@ -264,8 +249,6 @@ export function realGit(env: NodeJS.ProcessEnv = process.env): string | null {
   }
   return null;
 }
-
-const SAFE = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-c", "diff.relative=false"];
 
 /** Set by the repository or the environment, not by the user's own files. */
 const REPO_SCOPES = new Set(["local", "worktree", "command"]);
@@ -396,8 +379,6 @@ function refusal(g: Plumbing, act: GitAct, cwd: string, top: string | null): str
   }
   return null;
 }
-
-const shq = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 
 /** A path as `git clean -n` prints it: C-quoted when it holds a control
  *  character, a quote or a backslash (core.quotePath=false keeps the rest). */
@@ -707,17 +688,6 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
   return passThrough();
 }
 
-/** The restore command of a pinned row, for the receipt (shell-quoted). */
-export function restoreCommand(args: string[]): string {
-  return `git ${args.map((a) => (/^[\w@%+=:,./{}^-]+$/.test(a) ? a : shq(a))).join(" ")}`;
-}
-
-/** A ref the shim made. The manifest is a plain file: a torn or foreign line
- *  must not aim `update-ref -d` at a branch. */
-export function isPin(ref: string | undefined): ref is string {
-  return typeof ref === "string" && /^refs\/bastra-archive\/[^\s~^:?*[\\]+$/.test(ref) && !ref.includes("..");
-}
-
 /**
  * Is this one of the commands the shim records as a way back, for this row's
  * commit? `bastra archive restore` runs what the manifest says, so it runs
@@ -743,29 +713,4 @@ export function restoreShape(sha: string | undefined, cmd: string[]): boolean {
   // As 631e5af recorded a path act.
   if (is("restore", `--source=${sha}`, "--worktree")) return paths(3);
   return false;
-}
-
-/** Whether a pinned ref still exists (reconcile only lets live ones go). */
-export function pinLive(repo: string, ref: string): boolean {
-  if (!isPin(ref) || !existsSync(repo)) return false;
-  try {
-    execFileSync("git", [...SAFE, "-C", repo, "rev-parse", "--verify", "-q", ref], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function unpin(repo: string, ref: string, sha: string): void {
-  if (!isPin(ref)) return;
-  try {
-    execFileSync("git", [...SAFE, "-C", repo, "update-ref", "-d", ref, sha], { stdio: "ignore" });
-  } catch {
-    /* already gone, or moved: leave it */
-  }
-}
-
-/** `bastra archive restore <ref|sha>` for a pinned row: runs its restore command. */
-export function restorePin(args: string[]): void {
-  execFileSync("git", args, { stdio: "inherit" });
 }

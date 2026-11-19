@@ -20,7 +20,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { pinLive, unpin } from "./git-archive.js";
+import { pinLive, unpin } from "./git-archive-pins.js";
 import { isOffValue } from "./env.js";
 import {
   archiveDir,

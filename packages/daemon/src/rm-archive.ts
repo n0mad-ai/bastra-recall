@@ -21,7 +21,9 @@
  * in PATH of that one command. The user's shell, build scripts and makepkg
  * keep the system `rm`.
  */
-import { isPin, pinLive, restoreCommand, restorePin, restoreShape, withoutShims } from "./git-archive.js";
+import { restoreShape } from "./git-archive.js";
+import { isPin, pinLive, restoreCommand, restorePin } from "./git-archive-pins.js";
+import { SHIM_DIR, withoutShims } from "./shim-path.js";
 import { archiveMaxItem, formatSize } from "./rm-archive-reconcile.js";
 import {
   appendManifest,
@@ -48,7 +50,6 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
 // The archive directory and its manifest live in rm-archive-store.ts;
 // re-exported so every importer keeps `from "./rm-archive.js"`.
@@ -63,7 +64,8 @@ export {
   type ManifestRow,
 } from "./rm-archive-store.js";
 
-export const SHIM_DIR = fileURLToPath(new URL("../shims", import.meta.url));
+// Where the shims live: shim-path.ts; re-exported for the same reason.
+export { SHIM_DIR } from "./shim-path.js";
 
 const shq = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 
