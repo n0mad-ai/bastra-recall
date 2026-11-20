@@ -67,6 +67,30 @@ The differential harness (`node --import tsx diff1528.mts <checkout>`) loads `sr
 ## Limits
 
 - After the fact: the old code is the exact source from git, so the comparison is the same one a recorded run would have made; what cannot be shown is that it was made before the restructuring.
-- Timing: no golden covers time points or deadlines (#1511, #1512, #1513, #1525 name them).
+- Timing: no golden covers time points or deadlines (#1511, #1512, #1513, #1525 name them). For #1512, #1513 and #1525 this is closed by the timing tests in the addendum below; #1511 is not covered.
 - #1513 differs by the #1567 ranking change from the same batch. Isolating it would need the old daemon code with the new staleness multipliers, which is a code change and was not done.
 - #1526 has no golden file; the replay uses the task tests that existed at both commits.
+
+## Addendum 2026-11-20: timing
+
+Four test files pin the clock-derived values the goldens normalize. They mock `Date` (and `setTimeout` where the deadline is a plain timer), inject elapsed time through seams the lanes already have, and let a socket timeout expire through a spy on `node:http`'s `request` (`packages/daemon/__tests__/loopback-request-spy.ts`). No assertion depends on the wall clock.
+
+| Issue | File | What is pinned |
+|---|---|---|
+| #1512 | `session-lane-timing.test.ts` | health probe 200 ms capped / 80 ms floor; context call timeout and `budget.time_ms` 1500 − elapsed, 60 ms floor; `vector_deadline_ms` 350, `lexical_only` when cold; `hook_budget_ms` 1500; `latency_ms_total`; probe started before the context call; a timed-out context call or probe answers like the failed or healthy case |
+| #1513 | `hook-recall-timing.test.ts` | dense-arm deadline 150 ms default, clamped 50..10000; content recall after the prompt recall with the same deadline; `lexical_only` without a dense arm; `latency_ms_recall`, `latency_ms_total`, payload `latency_ms`, content `latency_ms`; shadow-router budget; a stuck dense arm abandoned at exactly its deadline, served lexically, `degraded: vector-arm-timeout` |
+| #1525 | `write-lane-timing.test.ts` | recall awaited at 599 ms, given up at exactly 600 ms with the same answer as no daemon (size note alone), status `timeout`; a recall answered at 599 ms is used; `latency_ms_total` |
+| #1525 | `gate-lane-timing.test.ts` | pending must-load claimed into a deny at 499 ms of the 500 ms budget; from 500 ms (or at a caller's absolute deadline) the call passes, nothing is claimed, the ids are reported unclaimed |
+
+Each file was also run with its lane module replaced by the source of `eba66497` (the old file copied next to today's modules under a temporary name, the test's import pointed at it, both removed afterwards). Only the lane file itself is old; the modules it imports are today's.
+
+| File | Today's code | Lane file of `eba66497` |
+|---|---|---|
+| `session-lane-timing.test.ts` | 7/7 | 7/7 |
+| `hook-recall-timing.test.ts` | 6/6 | 6/6 |
+| `write-lane-timing.test.ts` | 3/3 | 3/3 |
+| `gate-lane-timing.test.ts` | 3/3 | 3/3 |
+
+Stability: all four files 10 runs in a row with six busy-loop processes beside them, 190/190; once more in a copy of the tree without git metadata, 19/19.
+
+Not covered: the write lane's 50 ms floor for the recall and the size note's quarter-budget deadline (no seam moves the clock before them without a code change; #1538 has its own test), the gate's late-response branch after a successful write, and the draft band's deadline.
