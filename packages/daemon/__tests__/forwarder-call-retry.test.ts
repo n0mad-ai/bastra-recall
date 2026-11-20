@@ -7,6 +7,11 @@
  * timers this file fires by hand, so every expectation is a count or an
  * exact delay. Other timers (the health probe's) run as usual.
  *
+ * Since #1676 the deadline covers the body too, and a call whose response
+ * had begun is reported, not repeated. A call the daemon received but never
+ * answered is still repeated (and again through the hold-the-call gate):
+ * those tests pin today's behaviour, they do not endorse it.
+ *
  * Runner: npm test (scripts/test-env.mjs isolates HOME and the logs).
  */
 import { test, type TestContext } from "node:test";
@@ -197,22 +202,55 @@ test("#1676 (b) an error status is reported once, never repeated", async (t) => 
   assert.equal(timers.scheduled.includes(RETRY_PAUSE_MS), false);
 });
 
-test("#1676 (c) headers arrive, the body stalls: today the call never settles", async (t) => {
+test("#1676 (c) headers arrive, the body stalls: the deadline ends it with the abort text, the call is not repeated", async (t) => {
   reset(t, "stall-body");
   const timers = handTimers(t);
   const seen = watchHeaders(t);
   const call = track(callDaemon("save_memory", { body: "x" }));
   await until(() => seen.headers === 1, "response headers");
-  // The deadline was cleared with the headers: no timer is left to end the wait.
-  assert.deepEqual(timers.pending, []);
-  for (let turn = 0; turn < 1000; turn++) await new Promise((ok) => setImmediate(ok));
+  // The deadline outlives the headers now; before #1676 it was cleared with them.
   assert.equal(call.done, false);
+  await timers.fire(REQUEST_TIMEOUT_MS);
+  await until(() => call.done, "the call settles");
+  assert.equal(call.error?.message, "This operation was aborted");
   assert.equal(arrivals, 1);
-  stalled?.socket?.destroy();
-  await until(() => call.done, "the call settles once the socket is gone");
+  assert.deepEqual(timers.scheduled, [REQUEST_TIMEOUT_MS]);
+  // Nothing left that keeps the forwarder process alive: no timer, no open read.
+  assert.deepEqual(timers.pending, []);
+  await until(() => sockets.size === 0, "the stalled connection is closed");
 });
 
-test("#1676 (d) the connection drops after the headers: reported once as 'terminated', not repeated", async (t) => {
+test("#1676 (c) …and through the hold-the-call gate, a write tool still reaches the daemon once", async (t) => {
+  reset(t, "stall-body");
+  const timers = handTimers(t);
+  const seen = watchHeaders(t);
+  const call = track(holdForDaemon(() => callDaemon("save_memory", { body: "x" })));
+  await until(() => seen.headers === 1, "response headers");
+  await timers.fire(REQUEST_TIMEOUT_MS);
+  await until(() => call.done, "the call settles");
+  assert.equal(call.error?.message, "This operation was aborted");
+  assert.equal(arrivals, 1);
+});
+
+test("#1676 (c) a body that stalls on the retry ends the call there, it is not handed on as 'unreachable'", async (t) => {
+  reset(t, "silent");
+  const timers = handTimers(t);
+  const seen = watchHeaders(t);
+  const call = track(holdForDaemon(() => callDaemon("save_memory", { body: "x" })));
+  await until(() => arrivals === 1, "first arrival");
+  mode = "stall-body";
+  await timers.fire(REQUEST_TIMEOUT_MS);
+  await timers.fire(RETRY_PAUSE_MS);
+  await until(() => seen.headers === 1, "headers of the retry");
+  await timers.fire(REQUEST_TIMEOUT_MS);
+  await until(() => call.done, "the call settles");
+  assert.equal(call.error?.message, "This operation was aborted");
+  // The unanswered first attempt is repeated as before (#1676 keeps that); the
+  // stalled answer of the second is not — before #1676 the gate made it four.
+  assert.equal(arrivals, 2);
+});
+
+test("#1676 (d) the connection drops after the headers: reported once as 'terminated', not repeated, no timer left", async (t) => {
   reset(t, "stall-body");
   const timers = handTimers(t);
   const seen = watchHeaders(t);
@@ -223,6 +261,7 @@ test("#1676 (d) the connection drops after the headers: reported once as 'termin
   assert.equal(call.error?.message, "terminated");
   assert.equal(arrivals, 1);
   assert.equal(timers.scheduled.includes(RETRY_PAUSE_MS), false);
+  assert.deepEqual(timers.pending, []);
 });
 
 test("#1676 (d) the connection drops after the daemon received the call, before any header: it reaches the daemon twice", async (t) => {

@@ -18,6 +18,7 @@ import {
   REQUEST_TIMEOUT_MS,
   FORWARDER_HOOK_BUDGET_MS,
   fetchWithTimeout,
+  responseStarted,
 } from "./forwarder-daemon-client.js";
 import { liveStatusline } from "./mcp-forwarder-statusline.js";
 
@@ -72,12 +73,17 @@ export async function callDaemon(tool: string, args: unknown): Promise<unknown> 
   try {
     resp = await doFetch();
   } catch (err) {
+    // #1676: once the response had begun, the daemon received the call and
+    // may have run a write tool; repeating it could save twice. Report the
+    // failure as it is: without "unreachable", or holdForDaemon() repeats it.
+    if (responseStarted(err)) throw err;
     // Netzwerk-Fehler: einmaliger Retry — vielleicht ist der Daemon gerade
     // restartet. Beim zweiten Fehler durchreichen.
     await new Promise((r) => setTimeout(r, 300));
     try {
       resp = await doFetch();
     } catch (err2) {
+      if (responseStarted(err2)) throw err2;
       throw new Error(`daemon unreachable at ${DAEMON_URL}: ${(err2 as Error).message}`);
     }
   }

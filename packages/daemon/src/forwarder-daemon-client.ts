@@ -57,14 +57,37 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * #1676: headers AND body under one deadline. The body is read here, so a
+ * daemon that sends its headers and then stalls ends in the same abort as one
+ * that never answers, and no timer or read outlives the call. A failure while
+ * reading the body is marked {@link responseStarted}: the daemon received the
+ * call and answered, so repeating it could run a write tool twice.
+ */
 export async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...init, signal: ctrl.signal });
+    const resp = await fetch(url, { ...init, signal: ctrl.signal });
+    let body: ArrayBuffer;
+    try {
+      body = await resp.arrayBuffer();
+    } catch (err) {
+      throw Object.assign(err as Error, { responseStarted: true });
+    }
+    return new Response(body.byteLength > 0 ? body : null, {
+      status: resp.status,
+      statusText: resp.statusText,
+      headers: resp.headers,
+    });
   } finally {
     clearTimeout(tid);
   }
+}
+
+/** True for a {@link fetchWithTimeout} failure after the response had begun. */
+export function responseStarted(err: unknown): boolean {
+  return (err as { responseStarted?: unknown } | null)?.responseStarted === true;
 }
 
 export async function probeHealth(timeoutMs = 1500): Promise<boolean> {
