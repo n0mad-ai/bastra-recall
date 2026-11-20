@@ -21,7 +21,7 @@ import { warmSettingsReader } from "../src/settings-record-thread.js";
 const T0 = Date.UTC(2026, 10, 20, 9, 0, 0);
 // #1674: the monotonic clock follows the mocked `Date`, so the time each test
 // injects reaches a remainder measured on either clock.
-test.beforeEach((t) => t.mock.method(performance, "now", () => Date.now() - T0));
+test.beforeEach((t) => (t as TestContext).mock.method(performance, "now", () => Date.now() - T0));
 const BIG = Array.from({ length: 900 }, (_, i) => `export const v${i} = ${i};`).join("\n");
 const HIT = { id: "own", title: "Title own", type: "lesson", scope: "timing-proj", summary: "Summary own", score: 150 };
 
