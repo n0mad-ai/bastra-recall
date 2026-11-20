@@ -18,6 +18,9 @@ import { runGateLane, type GateDeps } from "../src/gate-lane.js";
 import { bookPendingMustLoad, loadSessionState, mutateSessionState } from "../src/session-state.js";
 
 const T0 = 1_800_000_000_000;
+// #1674: the monotonic clock follows the mocked `Date`, so the time each test
+// injects reaches a remainder measured on either clock.
+test.beforeEach((t) => t.mock.method(performance, "now", () => Date.now() - T0));
 
 interface Run {
   output: Record<string, unknown>;

@@ -20,6 +20,9 @@ import { Telemetry } from "../src/telemetry.js";
 import { runHookRecall } from "../src/http-hook-routes.js";
 
 const T0 = Date.UTC(2026, 10, 20, 9, 0, 0);
+// #1674: the monotonic clock follows the mocked `Date`, so the time each test
+// injects reaches a remainder measured on either clock.
+test.beforeEach((t) => t.mock.method(performance, "now", () => Date.now() - T0));
 const Q = "how do we deploy the release branch after the tag";
 
 function memo(id: string, body: string): string {
