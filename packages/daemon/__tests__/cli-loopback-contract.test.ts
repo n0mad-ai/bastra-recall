@@ -7,7 +7,8 @@
  * Covered: `bastra panel` (GET /health + GET /vault/count), the update hint
  * after every command (GET /health, 700 ms), and the replay of `bastra doctor
  * --replay` (POST /hook/prompt). `probeDaemon` (cli/helpers.ts) keeps its own
- * request — see the reason there — and is pinned by its existing callers.
+ * request — see the reason there — and its report is pinned here too, except
+ * its fixed 1.5 s socket timeout, which a test could only show by waiting.
  * The memory commands' REST call (`rulebookCliCall`: recall, save, trash,
  * rules proposals, save suggestions) is pinned here too, before it moved out
  * of the rulebook command into the shared CLI helpers (#1508).
@@ -23,7 +24,8 @@ import { join } from "node:path";
 import { cmdPanel } from "../src/cli/panel.js";
 import { maybeEmitUpdateHint } from "../src/cli/update-hint.js";
 import { daemonSupportsReplay, postReplayTurn } from "../src/cli/doctor-replay.js";
-import { rulebookCliCall } from "../src/cli/helpers.js";
+import { probeDaemon, rulebookCliCall } from "../src/cli/helpers.js";
+import { resolveDaemonEndpoint } from "../src/daemon-endpoint.js";
 import { cmdTrash } from "../src/cli/trash-cmd.js";
 import { parseArgs } from "../src/cli/commands.js";
 import { projectForFilter } from "../src/scope-filter.js";
@@ -385,5 +387,41 @@ test("bastra trash list and restore reach restore_memory through the same call",
       ["POST", "/api/v1/restore_memory", agent, '{"limit":100}'],
       ["POST", "/api/v1/restore_memory", agent, '{"id":"m-1"}'],
     ]
+  );
+});
+
+// ─── probeDaemon (status, doctor, panel's own request) ──────────────────────
+
+test("probeDaemon: one GET /health; the report names the HTTP status and the socket code apart", async (t) => {
+  const replies: Reply[] = [
+    { status: 200, body: JSON.stringify({ ok: true, vault_size: 7, version: "0.0.0-fixture" }) },
+    { status: 503, body: JSON.stringify({ ok: true }) },
+    { status: 200, body: JSON.stringify({ ok: false }) },
+    { status: 200, body: "not json" },
+  ];
+  let i = 0;
+  const d = await server(() => replies[i++]);
+  t.after(() => close(d.s));
+  const endpoint = resolveDaemonEndpoint({ BASTRA_DAEMON_URL: d.base });
+  const ok = await probeDaemon(endpoint);
+  assert.deepEqual(
+    [ok.ok, ok.detail, ok.version, ok.vaultSize],
+    [true, `vault_size=7 at ${endpoint.label}`, "0.0.0-fixture", 7]
+  );
+  const unexpected = (status: number) =>
+    `daemon at ${endpoint.label} answered but health unexpected (status=${status})`;
+  for (const status of [503, 200, 200]) {
+    const r = await probeDaemon(endpoint);
+    assert.deepEqual([r.ok, r.detail], [false, unexpected(status)]);
+  }
+  assert.deepEqual(
+    d.seen.map((r) => [r.method, r.url, r.headers.authorization, r.body]),
+    Array.from({ length: 4 }, () => ["GET", "/health", undefined, ""])
+  );
+  const refused = resolveDaemonEndpoint({ BASTRA_DAEMON_URL: await refusedBase() });
+  const down = await probeDaemon(refused);
+  assert.deepEqual(
+    [down.ok, down.detail],
+    [false, `not reachable at ${refused.label}: ECONNREFUSED (forwarder will auto-spawn on first MCP call)`]
   );
 });

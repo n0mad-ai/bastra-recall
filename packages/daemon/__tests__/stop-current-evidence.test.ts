@@ -424,6 +424,60 @@ test("#1390 drift requests only clusters containing a successfully written curre
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   }));
+test("#1508 drift: GET /hook/drift; non-200, garbage, wrong shape, stall and refusal mean no drift", async () =>
+  sandbox(async (sid) => {
+    const clusters = JSON.stringify({
+      clusters: [{ key: "current", kind: "tag", count: 5, examples: ["written-id"] }],
+    });
+    let reply: { status: number; body: string } | null = null;
+    const seen: string[] = [];
+    const server = createServer((req, res) => {
+      req.resume();
+      seen.push(`${req.method} ${req.url}`);
+      if (!reply) return;
+      res.writeHead(reply.status, { "Content-Type": "application/json" });
+      res.end(reply.body);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const base = "http://127.0.0.1:" + (server.address() as { port: number }).port;
+    const saved = [
+      user("Work"),
+      call("mcp__bastra_recall__save_memory"),
+      result(JSON.stringify({ id: "written-id", file_path: "/invented/written-id.md" })),
+      assistant("Saved"),
+    ];
+    const run = (url: string) =>
+      runStopLane({ session_id: sid, bastra_client: "claude-code", hook_event_name: "Stop", transcript: saved }, url);
+    const pending = () => {
+      try {
+        return readAppRecord("pending-suggestions", process.env.BASTRA_PENDING_SUGGESTIONS_PATH!);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
+        throw error;
+      }
+    };
+    try {
+      for (const r of [
+        { status: 500, body: clusters },
+        { status: 200, body: "not json" },
+        { status: 200, body: JSON.stringify({ clusters: "x" }) },
+        null,
+      ]) {
+        reply = r;
+        await run(base);
+        assert.doesNotMatch(pending(), /written-id/, JSON.stringify(r));
+      }
+      assert.deepEqual(
+        seen,
+        Array.from({ length: 4 }, () => "GET /hook/drift")
+      );
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+    await run(base);
+    assert.doesNotMatch(pending(), /written-id/);
+  }));
 test("#1390 native question answers require their successful matching result", () => {
   const question = {
     type: "assistant",

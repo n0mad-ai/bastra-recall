@@ -2,18 +2,23 @@
  * #1508 — characterization of the daemon's loopback self-calls, pinned BEFORE
  * they share `prompt-loopback.ts`: the request each one makes (method, path
  * with query, body) and its answer for 200, non-200, garbage, a stalled
- * server and a refused connection.
+ * server and a refused connection. Also the write and plan lanes' shared
+ * `/hook/recall` call (`postHookRecall`, which sends the task header) and
+ * what each transport does with a large answer and a long error body.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import { fetchFloors, fetchTaxonomy, postSessionContext, probeHealth } from "../src/session-hook-http.js";
 import { reportHinted } from "../src/hook-hinted.js";
+import { postHookRecall } from "../src/hook-recall-post.js";
+import type { HookRecallRequest } from "../src/hook-surface.js";
 
 interface Seen {
   method: string;
   url: string;
   type: string | undefined;
+  task: string | string[] | undefined;
   body: string;
 }
 
@@ -30,6 +35,7 @@ async function server(
         method: req.method ?? "",
         url: req.url ?? "",
         type: req.headers["content-type"],
+        task: req.headers["x-bastra-task-authorization"],
         body: Buffer.concat(chunks).toString("utf8"),
       });
       if (!reply) return;
@@ -151,4 +157,81 @@ test("reportHinted: one POST with ids and drafts, resolves on every outcome", as
   await reportHinted(stalled.base, ["a"], null, 100);
   await reportHinted(await refusedBase(), ["a"]);
   await reportHinted("not a url", ["a"]);
+});
+
+// ─── the write and plan lanes' /hook/recall (hook-recall-post.ts) ───────────
+
+const RECALL_BODY = {
+  query: "q",
+  topics: ["t"],
+  project: null,
+  tool_name: "Write",
+  k: 3,
+  hook_source: "write",
+} as unknown as HookRecallRequest;
+
+async function withEnv<T>(values: Record<string, string | undefined>, fn: () => Promise<T>): Promise<T> {
+  const before = new Map(Object.keys(values).map((k) => [k, process.env[k]]));
+  for (const [k, v] of Object.entries(values)) {
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+  try {
+    return await fn();
+  } finally {
+    for (const [k, v] of before) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
+
+test("postHookRecall: POSTs the body as is, with the task header only when one is configured", async (t) => {
+  const d = await server({ status: 200, body: JSON.stringify({ hits: [{ id: "h" }] }) });
+  t.after(() => close(d.s));
+  const token = "a".repeat(43);
+  assert.deepEqual(
+    await withEnv({ BASTRA_TASKS: "1", BASTRA_TASK_TOKEN: token }, () => postHookRecall(d.base, RECALL_BODY, 500)),
+    { hits: [{ id: "h" }] }
+  );
+  await withEnv({ BASTRA_TASKS: "0", BASTRA_TASK_TOKEN: token }, () => postHookRecall(d.base, RECALL_BODY, 500));
+  assert.deepEqual(
+    d.seen.map((r) => [r.method, r.url, r.type, r.task, r.body]),
+    [
+      ["POST", "/hook/recall", "application/json; charset=utf-8", `Bearer ${token}`, JSON.stringify(RECALL_BODY)],
+      ["POST", "/hook/recall", "application/json; charset=utf-8", undefined, JSON.stringify(RECALL_BODY)],
+    ]
+  );
+});
+
+test("postHookRecall: rejects with the daemon's text, invalid JSON, a timeout and a refusal", async (t) => {
+  const bad = await server({ status: 503, body: "busy" });
+  const garbage = await server({ status: 200, body: "nope" });
+  const stalled = await server(null);
+  t.after(async () => {
+    for (const d of [bad, garbage, stalled]) await close(d.s);
+  });
+  await assert.rejects(postHookRecall(bad.base, RECALL_BODY, 500), /^Error: HTTP 503: busy$/);
+  await assert.rejects(postHookRecall(garbage.base, RECALL_BODY, 500), /^Error: invalid JSON response from daemon$/);
+  const started = Date.now();
+  await assert.rejects(postHookRecall(stalled.base, RECALL_BODY, 150), /^Error: timeout$/);
+  assert.ok(Date.now() - started < 1500);
+  await assert.rejects(postHookRecall(await refusedBase(), RECALL_BODY, 500), { code: "ECONNREFUSED" });
+});
+
+// ─── response size ───────────────────────────────────────────────────────────
+
+test("response size: a large answer arrives whole, an error names only its first 200 characters", async (t) => {
+  const large = "x".repeat(1024 * 1024);
+  const big = await server({ status: 200, body: JSON.stringify({ ok: true, data: large }) });
+  const long = await server({ status: 503, body: "e".repeat(300) });
+  t.after(async () => {
+    for (const d of [big, long]) await close(d.s);
+  });
+  assert.equal(((await postSessionContext(big.base, {}, 2000)) as { data: string }).data, large);
+  assert.equal(((await postHookRecall(big.base, RECALL_BODY, 2000)) as { data: string }).data, large);
+  assert.equal(((await probeHealth(big.base, 2000)) as unknown as { data: string }).data, large);
+  const cut = new RegExp(`^Error: HTTP 503: e{200}$`);
+  await assert.rejects(postSessionContext(long.base, {}, 500), cut);
+  await assert.rejects(postHookRecall(long.base, RECALL_BODY, 500), cut);
 });
