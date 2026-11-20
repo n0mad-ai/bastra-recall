@@ -45,9 +45,9 @@ async function deadlines(
   const realRequest = http.request;
   const prevTelemetry = process.env.BASTRA_TELEMETRY;
   process.env.BASTRA_TELEMETRY = "off";
-  globalThis.setTimeout = ((fn: () => void, ms?: number, ...args: unknown[]) => {
+  globalThis.setTimeout = ((fn: () => void, ms?: number) => {
     lastDelay = Number(ms ?? 0);
-    return realSetTimeout(fn, ms, ...args);
+    return realSetTimeout(fn, ms);
   }) as typeof setTimeout;
   http.request = ((...args: Parameters<typeof http.request>) => {
     const options = args[0] as { path?: string };
