@@ -64,7 +64,7 @@ async function gateCall(t: TestContext, o: { spentBefore?: number; deadline?: nu
       output: JSON.parse(out) as Record<string, unknown>,
       telemetry,
       pending: (state.pendingMustLoad ?? []).map((e) => e.id),
-      claimed: state.claimedMustLoad ?? [],
+      claimed: [...(state.claimedMustLoad ?? [])],
     };
   } finally {
     if (prev.state === undefined) delete process.env.BASTRA_HOOK_STATE_DIR;
