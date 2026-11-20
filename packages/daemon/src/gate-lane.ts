@@ -383,6 +383,7 @@ async function gate(
   };
   const undoAction = () => finishAction(false);
   try {
+    const writeDeadline = Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity);
     const persisted = await mutateSessionState(
       sessionId,
       // #1525: the decisions are named steps (gate-lane-claims.ts), run here in
@@ -434,7 +435,7 @@ async function gate(
           Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity)
         );
       },
-      { deadline: Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity) }
+      { deadline: writeDeadline }
     );
     const elapsed = Date.now() - startedAt;
     if (!persisted) {
@@ -447,9 +448,11 @@ async function gate(
           : subagent
             ? []
             : ((await loadSessionState(sessionId)).pendingMustLoad ?? []).map((e) => e.id);
+      // #1672: label by the write's own deadline and comparison (`>=`, as the
+      // store gives up), so a write abandoned at exactly the budget is a timeout.
       await emitTelemetry({
         outcome: "pass",
-        non_conformance: expired() ? "gate_timeout" : "state_write_failed",
+        non_conformance: Date.now() >= writeDeadline ? "gate_timeout" : "state_write_failed",
         ...(unclaimedMustLoadIds.length > 0 ? { unclaimed_must_load_ids: unclaimedMustLoadIds } : {}),
         ...(claimedReflex.length > 0 ? { unclaimed_reflex_ids: claimedReflex.map((m) => m.memory.fm.id) } : {}),
       });

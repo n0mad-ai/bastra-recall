@@ -79,12 +79,11 @@ const denied = (r: Run) =>
   (r.output.hookSpecificOutput as { permissionDecision?: string } | undefined)?.permissionDecision === "deny";
 
 /**
- * Today's label at exactly 500 ms is `state_write_failed`, not `gate_timeout`:
- * the locked write gives up at `>=` its deadline (session-state/store.ts),
- * while the gate's own expiry check counts `> 500` ms for its budget. Past
- * the boundary both agree. Pinned as found; the answer is fail-open either way.
+ * #1672: at exactly 500 ms the locked write gives up (`>=` its deadline,
+ * session-state/store.ts) and the label counts the same deadline, so it says
+ * `gate_timeout`. The answer is fail-open either way.
  */
-function assertPassedUnclaimed(r: Run, label: "gate_timeout" | "state_write_failed"): void {
+function assertPassedUnclaimed(r: Run, label: "gate_timeout"): void {
   assert.deepEqual(r.output, {});
   assert.deepEqual(r.claimed, []);
   assert.deepEqual(r.pending, ["m1", "m2"]);
@@ -102,7 +101,7 @@ test("#1525 timing: 1 ms inside the 500 ms gate budget the pending hints are cla
 });
 
 test("#1525 fail-open: once the 500 ms gate budget is spent the call passes and nothing is claimed", async (t) => {
-  assertPassedUnclaimed(await gateCall(t, { spentBefore: 500 }), "state_write_failed");
+  assertPassedUnclaimed(await gateCall(t, { spentBefore: 500 }), "gate_timeout");
   assertPassedUnclaimed(await gateCall(t, { spentBefore: 501 }), "gate_timeout");
   assertPassedUnclaimed(await gateCall(t, { spentBefore: 2000 }), "gate_timeout");
 });
@@ -112,6 +111,6 @@ test("#1525 fail-open: a caller's absolute deadline counts the same way, at exac
   assert.equal(denied(inTime), true);
   assertPassedUnclaimed(await gateCall(t, { deadline: T0 }), "gate_timeout");
   // The earlier of the two limits wins: a far deadline does not extend the 500 ms.
-  assertPassedUnclaimed(await gateCall(t, { deadline: T0 + 10_000, spentBefore: 500 }), "state_write_failed");
+  assertPassedUnclaimed(await gateCall(t, { deadline: T0 + 10_000, spentBefore: 500 }), "gate_timeout");
   assertPassedUnclaimed(await gateCall(t, { deadline: T0 + 10_000, spentBefore: 501 }), "gate_timeout");
 });

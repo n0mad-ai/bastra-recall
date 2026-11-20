@@ -562,6 +562,9 @@ until a new design replaces it; this name is independent of the product version.
   collecting it in memory; the answer is never read (#1508).
 - A hook's deadline runs from the start of its call again: a slow read of the
   task credential no longer adds a full deadline on top (#1508).
+- The gate's telemetry now says `gate_timeout` when its budget runs out at
+  exactly 500 ms, as it does a millisecond later; the call still passes and
+  claims nothing (#1672).
 
 ### Internal
 
