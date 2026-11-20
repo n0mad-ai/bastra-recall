@@ -24,6 +24,10 @@ export function postJson<T>(baseUrl: string, path: string, body: unknown, timeou
     const req = request(
       {
         method: "POST",
+        // node:http throws ERR_INVALID_PROTOCOL for any other scheme before a
+        // socket opens: an https:// endpoint is refused, never spoken to in
+        // plain HTTP (#1508 review). Without it the scheme was ignored.
+        protocol: url.protocol,
         hostname: url.hostname,
         port: url.port || 80,
         path: url.pathname,
@@ -61,7 +65,8 @@ export function postJson<T>(baseUrl: string, path: string, body: unknown, timeou
 
 /** GET `path` (a query string included); resolve with the parsed body on
  *  HTTP 200, `null` on anything else — non-200, unparsable body, timeout,
- *  connection error. Never rejects: its callers are fail-silent lookups. */
+ *  connection error. Rejects only for a scheme other than http: (an https://
+ *  endpoint, ERR_INVALID_PROTOCOL), as the CLI's own GETs did before #1508. */
 export function getJson<T>(baseUrl: string, path: string, timeoutMs: number): Promise<T | null> {
   return new Promise((resolve) => {
     let url: URL;
@@ -74,6 +79,8 @@ export function getJson<T>(baseUrl: string, path: string, timeoutMs: number): Pr
     const req = request(
       {
         method: "GET",
+        // Refuses an https:// endpoint before a socket opens — see postJson.
+        protocol: url.protocol,
         // The CLI's GETs (panel, update hint) take a configured endpoint,
         // which may be an IPv6 literal (#1508; see hook-transport.ts).
         hostname: unbracketHostname(url.hostname),

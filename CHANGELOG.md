@@ -554,6 +554,10 @@ until a new design replaces it; this name is independent of the product version.
 - On loading the web UI the content area no longer slides in under the
   Jarvis panel for about 0.2 s: it starts in its place, and an address such
   as `/ui/#tasks` is followed before the first draw (#1663).
+- `bastra panel`, the update hint, the save preview and `bastra doctor
+  --replay` refuse an `https://` daemon address again instead of speaking
+  plain HTTP to it (port 80 when none is given), as before the shared
+  loopback helpers (#1508).
 
 ### Internal
 

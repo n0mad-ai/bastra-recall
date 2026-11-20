@@ -283,6 +283,30 @@ test("panel and update hint reach an IPv6 literal endpoint", async (t) => {
   assert.equal(shown, true);
 });
 
+test("an https:// endpoint is refused before any socket, never spoken to in plain HTTP", async (t) => {
+  // Before #1508 panel and update hint handed the whole URL to node:http,
+  // which throws ERR_INVALID_PROTOCOL for https: without opening a socket.
+  // The plain-HTTP server behind the https:// address must see nothing.
+  const d = await server((url) =>
+    url === "/health" ? { status: 200, body: JSON.stringify(HEALTH) } : { status: 200, body: '{"count":3}' }
+  );
+  t.after(() => close(d.s));
+  const base = d.base.replace(/^http:/, "https:");
+  const refused = { code: "ERR_INVALID_PROTOCOL" };
+  await assert.rejects(
+    withDaemon(base, () => capture(t, process.stdout, () => cmdPanel({} as never))),
+    refused
+  );
+  await assert.rejects(withDaemon(base, maybeEmitUpdateHint), refused);
+  await assert.rejects(
+    withDaemon(base, () => withToken(undefined, () => rulebookCliCall("save_memory", { dry_run: true }))),
+    refused
+  );
+  assert.equal(await daemonSupportsReplay(base), false);
+  assert.equal(await postReplayTurn(base)(TURN, "replay-s"), null);
+  assert.deepEqual(d.seen, []);
+});
+
 // ─── the memory commands' REST call (#1508) ──────────────────────────────────
 
 /** Run `fn` with BASTRA_API_TOKEN set to `token` (unset for undefined). */
