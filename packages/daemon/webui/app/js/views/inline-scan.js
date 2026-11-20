@@ -4,7 +4,7 @@
  * expression
  *
  *   /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]|`([^`]+)`|\*\*([^*]+)\*\*|\[([^\]]+)\]\((https?:[^)\s]+)\)|
- *    (https?:\/\/[^\s<)]+)|(^|[^*\w])\*([^*\s][^*]*)\*\/g
+ *    (https?:\/\/[^\s<)]*[^\s<)?!.,:;*_~])|(^|[^*\w])\*([^*\s][^*]*)\*\/g
  *
  * over the line (same elements, same groups), but an opener without its closer no longer makes every
  * later start position search to the end of the line again: "where is the next `]`, `*`, …" is
@@ -20,6 +20,8 @@
 
 const SPACE = /\s/;
 const WORD = /\w/;
+/** What a bare address does not end with (#1671, GFM's extended autolinks plus ";"); it stays text. */
+const TRAILING = /[?!.,:;*_~]/;
 
 /** For every position p, the first position ≥ p whose character is a stop (text.length when none). */
 function nextStop(text, stop) {
@@ -27,6 +29,13 @@ function nextStop(text, stop) {
   next[text.length] = text.length;
   for (let p = text.length - 1; p >= 0; p--) next[p] = stop(text[p]) ? p : next[p + 1];
   return next;
+}
+
+/** For every end e, the end without the trailing characters before it: e, or less when text[e - 1] is one. */
+function withoutTrailing(text) {
+  const end = new Int32Array(text.length + 1);
+  for (let e = 1; e <= text.length; e++) end[e] = TRAILING.test(text[e - 1]) ? end[e - 1] : e;
+  return end;
 }
 
 function match(line, index, end, at) {
@@ -85,12 +94,12 @@ function boldAt(line, i) {
   return match(line, i, k + 2, { 4: text.slice(i + 2, k) });
 }
 
-/** a bare http:// or https:// address */
+/** a bare http:// or https:// address, without trailing punctuation */
 function bareAt(line, i) {
   const p = afterScheme(line.text, i, true);
   if (p < 0) return null;
-  const e = line.bareEnd[p];
-  return e === p ? null : match(line, i, e, { 7: line.text.slice(i, e) });
+  const e = line.bareTrim[line.bareEnd[p]];
+  return e <= p ? null : match(line, i, e, { 7: line.text.slice(i, e) });
 }
 
 /** *emphasis*, at the line start or after a character that is neither * nor a word character */
@@ -129,6 +138,7 @@ export function inlineMatches(text) {
     star: nextStop(text, (c) => c === "*"),
     urlEnd: nextStop(text, (c) => c === ")" || SPACE.test(c)),
     bareEnd: nextStop(text, (c) => c === ")" || c === "<" || SPACE.test(c)),
+    bareTrim: withoutTrailing(text),
   };
   const out = [];
   for (let i = 0; i < text.length;) {

@@ -750,6 +750,10 @@ test("#1656/#1652: the daemon's question status and the reader's answer buttons 
     ["Intro\n\n| a | b |\n|---|---|\n| 1 | 2 |\n    Ship it? [? Yes | No]", false],
     ["- item\n  | a | b |\n  |---|---|\n  | 1 | 2 |\n\n    Ship it? [? Yes | No]", false],
     ["| a | b |\n|---|---|\n| 1 | 2 |\nShip it? [? Yes | No]", true],
+    // #1671: a bare address before the marker ends before its trailing punctuation, for both alike
+    ["Open http://127.0.0.1:6723/ui/, then: ship it? [? Yes | No]", true],
+    ["Ship it, see http://a/b? [? Yes | No]", true],
+    ["Ship it? http://a/b[? Yes | No]", false],
   ];
   for (const [body, want] of corpus) {
     const shown = m.annotateReport(renderer.render(body), noUi).toc.asks.length > 0;

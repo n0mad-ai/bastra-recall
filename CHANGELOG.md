@@ -548,6 +548,9 @@ until a new design replaces it; this name is independent of the product version.
   daemon starts on a slow machine: the daemon starts its settings reader at
   boot, and a reader that is still starting is no longer mistaken for one
   stuck in a read and stopped (#1650 follow-up).
+- A bare web address in the report and memory readers no longer takes a
+  following `.` `,` `;` `:` `!` `?` (or `*` `_` `~`) into the link; the
+  character stays text, and inside the address it still belongs to it (#1671).
 
 ### Internal
 

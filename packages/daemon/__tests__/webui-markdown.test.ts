@@ -69,7 +69,7 @@ const FROZEN = [
   "<h3>Heading one</h3>",
   "<h3>Heading six with <code>code</code></h3>",
   "<p>#not a heading</p>",
-  '<p>Paragraph with <strong>bold</strong>, <em>em</em>, <code>code</code>, a <a href="https://example.org/a" rel="noopener" target="_blank">link</a> and <a href="https://example.org/b." rel="noopener" target="_blank">https://example.org/b.</a></p>',
+  '<p>Paragraph with <strong>bold</strong>, <em>em</em>, <code>code</code>, a <a href="https://example.org/a" rel="noopener" target="_blank">link</a> and <a href="https://example.org/b" rel="noopener" target="_blank">https://example.org/b</a>.</p>', // #1671: the full stop stays text
   "<p>Snake_case and 2*3*4 stay text; <em>an em </em> too.</p>",
   '<p>Links: <span class="mb-wl" role="link" tabindex="0" title="known-id" on="click,keydown">Known memory</span> <span class="mb-wl" role="link" tabindex="0" title="known-id" on="click,keydown">own label</span> <span class="mb-wl is-dead" title="missing-id">missing-id</span>.</p>',
   "<ul><li>item one</li><li>nested item</li><li>star item</li><li>ordered item</li></ul>",
