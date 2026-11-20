@@ -71,10 +71,14 @@ test("thin client: timeoutMs is a deadline — a dripping response is cut off", 
   assert.ok(took < 1500, `rejected after ${took}ms, the drip runs 2000ms`);
 });
 
-test("thin client: the deadline runs from the call; a slow credential read does not extend it", async (t) => {
-  // Before #1508 the deadline timer was armed before the task credential was
-  // read, so a read that took longer than the deadline left it already due.
-  // Virtual clock: the credential read advances it by 100 ms, the deadline is 20.
+/**
+ * Before #1508 the deadline timer was armed before the task credential was
+ * read, so a read that took longer than the deadline left it already due —
+ * whatever the system clock did meanwhile. Virtual clocks: the read takes
+ * 100 ms of monotonic and timer time, the system clock moves by
+ * `systemClockMs` (a negative value is a clock set back); the deadline is 20.
+ */
+async function deadlineAfterSlowRead(t: test.TestContext, systemClockMs: number): Promise<string> {
   const s = createServer(() => {}); // never answers
   await new Promise<void>((ok) => s.listen(0, "127.0.0.1", () => ok()));
   t.after(() => close(s));
@@ -93,12 +97,18 @@ test("thin client: the deadline runs from the call; a slow credential read does 
     });
     await rm(dir, { recursive: true, force: true });
   });
-  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let monotonic = 0;
+  let system = 1_000_000;
+  t.mock.method(performance, "now", () => monotonic);
+  t.mock.method(Date, "now", () => system);
   let reads = 0;
   const openSync = fs.openSync;
   t.mock.method(fs, "openSync", (...args: Parameters<typeof fs.openSync>) => {
     if (String(args[0]).endsWith("task-hook-token.json")) {
       reads++;
+      monotonic += 100;
+      system += systemClockMs;
       t.mock.timers.tick(100);
     }
     return openSync(...args);
@@ -114,8 +124,15 @@ test("thin client: the deadline runs from the call; a slow credential read does 
   );
   assert.equal(reads, 1, "the credential was read during the call");
   t.mock.timers.tick(0);
-  const settled = await Promise.race([outcome, new Promise((ok) => setImmediate(() => ok("pending")))]);
-  assert.equal(settled, "timeout");
+  return Promise.race([outcome, new Promise<string>((ok) => setImmediate(() => ok("pending")))]);
+}
+
+test("thin client: the deadline runs from the call; a slow credential read does not extend it", async (t) => {
+  assert.equal(await deadlineAfterSlowRead(t, 100), "timeout");
+});
+
+test("thin client: a system clock set back during the credential read does not extend the deadline", async (t) => {
+  assert.equal(await deadlineAfterSlowRead(t, -10_000), "timeout");
 });
 
 test("thin client: an https:// URL speaks TLS, a plain-HTTP server never sees a request", async (t) => {
