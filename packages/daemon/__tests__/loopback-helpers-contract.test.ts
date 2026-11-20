@@ -159,6 +159,26 @@ test("reportHinted: one POST with ids and drafts, resolves on every outcome", as
   await reportHinted("not a url", ["a"]);
 });
 
+test("reportHinted: the answer is drained, never collected", async (t) => {
+  // Before #1508 the ping called res.resume() and read nothing; collecting
+  // the answer (Buffer.concat of every chunk) is what it must not do.
+  const size = 1024 * 1024;
+  const big = await server({ status: 200, body: "x".repeat(size) });
+  t.after(() => close(big.s));
+  let largest = 0;
+  const concat = Buffer.concat;
+  t.mock.method(Buffer, "concat", (list: readonly Uint8Array[], length?: number) => {
+    largest = Math.max(
+      largest,
+      list.reduce((n, c) => n + c.byteLength, 0)
+    );
+    return concat(list, length);
+  });
+  await reportHinted(big.base, ["a"], "s", 2000);
+  assert.equal(big.seen.length, 1);
+  assert.ok(largest < size, `the ping collected ${largest} bytes of the answer`);
+});
+
 // ─── the write and plan lanes' /hook/recall (hook-recall-post.ts) ───────────
 
 const RECALL_BODY = {

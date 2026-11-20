@@ -558,6 +558,8 @@ until a new design replaces it; this name is independent of the product version.
   --replay` refuse an `https://` daemon address again instead of speaking
   plain HTTP to it (port 80 when none is given), as before the shared
   loopback helpers (#1508).
+- The hooks' surfaced-hits ping drains the daemon's answer again instead of
+  collecting it in memory; the answer is never read (#1508).
 
 ### Internal
 

@@ -11,7 +11,7 @@
  * Best-effort by contract: hard timeout, never throws, resolves always.
  * Loopback POST like the bash hooks' act-signal.
  */
-import { postJson } from "./prompt-loopback.js";
+import { request } from "node:http";
 
 export function reportHinted(
   baseUrl: string,
@@ -25,15 +25,51 @@ export function reportHinted(
   timeoutMs = 120,
   drafts?: { ids: string[]; input: string }
 ): Promise<void> {
-  if (!Array.isArray(ids) || (ids.length === 0 && !drafts?.ids.length)) return Promise.resolve();
-  const body = {
-    ids,
-    session_id: sessionId,
-    ...(drafts?.ids.length ? { draft_ids: drafts.ids.slice(0, 2), draft_input: drafts.input } : {}),
-  };
-  // The answer is never read: every outcome, a failure included, resolves.
-  return postJson(baseUrl, "/hook/hinted", body, timeoutMs).then(
-    () => undefined,
-    () => undefined
-  );
+  // #1508 review: deliberately its own request rather than `postJson`
+  // (prompt-loopback.ts). The answer is never read, so it is drained with
+  // res.resume() — postJson would collect and parse every byte of it.
+  return new Promise((resolve) => {
+    if (!Array.isArray(ids) || (ids.length === 0 && !drafts?.ids.length)) {
+      resolve();
+      return;
+    }
+    let url: URL;
+    try {
+      url = new URL("/hook/hinted", baseUrl);
+    } catch {
+      resolve();
+      return;
+    }
+    const payload = Buffer.from(
+      JSON.stringify({
+        ids,
+        session_id: sessionId,
+        ...(drafts?.ids.length ? { draft_ids: drafts.ids.slice(0, 2), draft_input: drafts.input } : {}),
+      }),
+      "utf8"
+    );
+    const req = request(
+      {
+        method: "POST",
+        hostname: url.hostname,
+        port: url.port || 80,
+        path: url.pathname,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Content-Length": payload.byteLength.toString(),
+        },
+        timeout: timeoutMs,
+      },
+      (res) => {
+        res.resume();
+        res.on("end", () => resolve());
+      }
+    );
+    req.on("timeout", () => {
+      req.destroy();
+      resolve();
+    });
+    req.on("error", () => resolve());
+    req.end(payload);
+  });
 }

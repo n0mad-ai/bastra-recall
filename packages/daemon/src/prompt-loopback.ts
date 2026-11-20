@@ -2,9 +2,10 @@
  * The daemon lanes' loopback self-calls to this same server: the prompt
  * lane's /hook/recall and /hook/reflex (split out of prompt-lane.ts, #680; why
  * it stays a loopback call is documented at the top of prompt-lane.ts), and
- * since #1508 the session lane's and Stop lane's calls and the hinted ping,
- * which each carried their own copy of this block — and the CLI's panel,
- * update hint and replay, which did too.
+ * since #1508 the session lane's and Stop lane's calls, which each carried
+ * their own copy of this block — and the CLI's panel, update hint and replay,
+ * which did too. The hinted ping keeps its own request (hook-hinted.ts): it
+ * drains an answer it never reads.
  */
 import { request } from "node:http";
 import { unbracketHostname } from "./hook-transport.js";
