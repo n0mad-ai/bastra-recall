@@ -57,6 +57,11 @@ async function deadlines(
   syncBuiltinESMExports();
   let system = 1_800_000_000_000;
   t.mock.method(Date, "now", () => (system += stepMs));
+  // The monotonic clock is given too (a millisecond per reading), so the
+  // remainder is the same on a loaded machine: a slow run would otherwise
+  // use up the budget for real and get the 50 ms floor.
+  let monotonic = 1_000;
+  t.mock.method(performance, "now", () => (monotonic += 1));
   try {
     await lane(baseUrl);
   } finally {
