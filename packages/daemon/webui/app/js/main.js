@@ -114,6 +114,13 @@ document.addEventListener(
   { passive: true }
 );
 
+// /ui/#tasks opens Tasks (#1560) before the first draw, so the stored view is never drawn first
+followHash(ctx);
 update(new Set(["init", "view", "vw", "data"]));
-followHash(ctx); // /ui/#tasks opens Tasks (#1560)
+// Mounting the agent panel measured the page before the first draw, so the stage had its default edge
+// to slide from, under the panel while it faded in (#1663): the first draw puts it in place.
+const stageEl = app.querySelector(".stage");
+stageEl.style.transition = "none";
+void stageEl.offsetLeft;
+stageEl.style.transition = "";
 startPolling();

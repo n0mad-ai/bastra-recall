@@ -551,6 +551,9 @@ until a new design replaces it; this name is independent of the product version.
 - A bare web address in the report and memory readers no longer takes a
   following `.` `,` `;` `:` `!` `?` (or `*` `_` `~`) into the link; the
   character stays text, and inside the address it still belongs to it (#1671).
+- On loading the web UI the content area no longer slides in under the
+  Jarvis panel for about 0.2 s: it starts in its place, and an address such
+  as `/ui/#tasks` is followed before the first draw (#1663).
 
 ### Internal
 
