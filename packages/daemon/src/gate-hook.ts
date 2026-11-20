@@ -26,6 +26,8 @@ function emitOnce(payload: string): void {
 }
 
 const startedAt = Date.now();
+// #1674: the budget's remainder runs on a monotonic clock; startedAt stays the telemetry stamp.
+const startedMono = performance.now();
 let sessionId: string | null = null;
 let failureWrite: Promise<void> | undefined;
 
@@ -55,7 +57,7 @@ async function main(): Promise<void> {
   const { sessionIdOf } = await import("./hook-client-telemetry.js");
   sessionId = sessionIdOf(payload);
   const url = daemonBaseUrl();
-  const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
+  const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (performance.now() - startedMono));
   try {
     emitOnce(await postLane(url, "/hook/gate", { payload }, remainingMs));
   } catch (err) {

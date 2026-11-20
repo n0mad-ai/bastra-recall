@@ -103,6 +103,9 @@ interface HookPayload {
 let stdoutEmitted = false;
 /** #1303: what the kill switch needs to leave the gate's failure row. */
 let callStartedAt = Date.now();
+// #1674: the budget's remainder runs on a monotonic clock; callStartedAt stays
+// the telemetry stamp.
+const callStartedMono = performance.now();
 let callSessionId: string | null = null;
 let failureWrite: Promise<void> | undefined;
 function emitOnce(payload: string): void {
@@ -185,7 +188,7 @@ async function main(): Promise<void> {
     body = { payload };
   }
 
-  const remainingMs = Math.max(50, laneBudgetMs(lane) - (Date.now() - startedAt));
+  const remainingMs = Math.max(50, laneBudgetMs(lane) - (performance.now() - callStartedMono));
   try {
     const out = await postHookBody(url, path, body, remainingMs);
     emitOnce(out);

@@ -66,6 +66,8 @@ function emitEmpty(): void {
 
 async function main(): Promise<void> {
   const startedAt = Date.now();
+  // #1674: the budget's remainder runs on a monotonic clock; startedAt stays the telemetry stamp.
+  const startedMono = performance.now();
 
   const raw = await readStdin();
   let payload: ClaudeHookPayload;
@@ -106,7 +108,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
+  const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (performance.now() - startedMono));
   try {
     const body = await postHookBody(url, "/hook/write", { payload }, remainingMs);
     emitOnce(body);

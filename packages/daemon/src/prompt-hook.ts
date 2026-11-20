@@ -115,6 +115,8 @@ async function writeClientTelemetry(
 
 async function main(): Promise<void> {
   const startedAt = Date.now();
+  // #1674: the budget's remainder runs on a monotonic clock; startedAt stays the telemetry stamp.
+  const startedMono = performance.now();
 
   const raw = await readStdin();
   let payload: unknown;
@@ -134,7 +136,7 @@ async function main(): Promise<void> {
   // the forwarder. This block used to ignore BASTRA_DAEMON_URL, which is the
   // variable the installer writes into a client registration.
   const url = resolveDaemonEndpoint().baseUrl;
-  const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
+  const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (performance.now() - startedMono));
 
   try {
     const body = await postLane(url, "/hook/prompt", { payload, client_ppid: process.ppid }, remainingMs);

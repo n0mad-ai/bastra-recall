@@ -39,6 +39,8 @@ function emitOnce(payload: string): void {
 
 async function main(): Promise<void> {
   const startedAt = Date.now();
+  // #1674: the budget's remainder runs on a monotonic clock; startedAt stays the telemetry stamp.
+  const startedMono = performance.now();
   const raw = await readStdin();
   let payload: unknown;
   try {
@@ -50,7 +52,7 @@ async function main(): Promise<void> {
   await registerChatHook(payload).catch(() => {});
   if ((payload as { hook_event_name?: string })?.hook_event_name === "SessionEnd") return emitOnce("{}");
   const url = daemonBaseUrl();
-  const remainingMs = Math.max(60, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
+  const remainingMs = Math.max(60, HOOK_TIMEOUT_MS - (performance.now() - startedMono));
   try {
     emitOnce(await postLane(url, "/hook/session", { payload }, remainingMs));
   } catch (err) {
