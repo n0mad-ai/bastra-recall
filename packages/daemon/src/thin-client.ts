@@ -33,5 +33,9 @@ export function daemonBaseUrl(): string {
 export async function postLane(baseUrl: string, path: string, body: unknown, timeoutMs: number): Promise<string> {
   const record = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
   const wireBody = record && "payload" in record ? { ...record, payload: decorateHookPayload(record.payload) } : body;
-  return postHookBody(baseUrl, path, wireBody, timeoutMs, taskClientHeaders());
+  // The deadline runs from here, as it did when the timer was armed before
+  // the credential read: a slow read leaves only what remains of it.
+  const started = Date.now();
+  const headers = taskClientHeaders();
+  return postHookBody(baseUrl, path, wireBody, Math.max(0, timeoutMs - (Date.now() - started)), headers);
 }

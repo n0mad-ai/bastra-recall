@@ -15,7 +15,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer, type Server } from "node:http";
+import fs from "node:fs";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,6 +69,53 @@ test("thin client: timeoutMs is a deadline — a dripping response is cut off", 
   await assert.rejects(postLane(`http://127.0.0.1:${d.port}`, "/hook/stop", { payload: {} }, 400), /timeout/);
   const took = Date.now() - started;
   assert.ok(took < 1500, `rejected after ${took}ms, the drip runs 2000ms`);
+});
+
+test("thin client: the deadline runs from the call; a slow credential read does not extend it", async (t) => {
+  // Before #1508 the deadline timer was armed before the task credential was
+  // read, so a read that took longer than the deadline left it already due.
+  // Virtual clock: the credential read advances it by 100 ms, the deadline is 20.
+  const s = createServer(() => {}); // never answers
+  await new Promise<void>((ok) => s.listen(0, "127.0.0.1", () => ok()));
+  t.after(() => close(s));
+  const addr = s.address();
+  const base = `http://127.0.0.1:${typeof addr === "object" && addr ? addr.port : 0}`;
+  const dir = await mkdtemp(join(tmpdir(), "bastra-deadline-"));
+  const keys = ["BASTRA_TASKS", "BASTRA_TASKS_PATH", "BASTRA_TASK_TOKEN"] as const;
+  const before = keys.map((k) => process.env[k]);
+  process.env.BASTRA_TASKS = "1";
+  process.env.BASTRA_TASKS_PATH = join(dir, "proactive-tasks.json");
+  delete process.env.BASTRA_TASK_TOKEN;
+  t.after(async () => {
+    keys.forEach((k, i) => {
+      if (before[i] === undefined) delete process.env[k];
+      else process.env[k] = before[i];
+    });
+    await rm(dir, { recursive: true, force: true });
+  });
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  let reads = 0;
+  const openSync = fs.openSync;
+  t.mock.method(fs, "openSync", (...args: Parameters<typeof fs.openSync>) => {
+    if (String(args[0]).endsWith("task-hook-token.json")) {
+      reads++;
+      t.mock.timers.tick(100);
+    }
+    return openSync(...args);
+  });
+  syncBuiltinESMExports();
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+  const outcome = postLane(base, "/hook/stop", { payload: {} }, 20).then(
+    () => "answered",
+    (e: Error) => e.message
+  );
+  assert.equal(reads, 1, "the credential was read during the call");
+  t.mock.timers.tick(0);
+  const settled = await Promise.race([outcome, new Promise((ok) => setImmediate(() => ok("pending")))]);
+  assert.equal(settled, "timeout");
 });
 
 test("thin client: an https:// URL speaks TLS, a plain-HTTP server never sees a request", async (t) => {
