@@ -101,11 +101,13 @@ async function spawnDaemon(): Promise<void> {
   child.unref();
 }
 
-async function waitForHealth(timeoutMs = HEALTH_TIMEOUT_MS): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (await probeHealth(Math.min(1500, deadline - Date.now()))) return true;
-    const remaining = deadline - Date.now();
+/** #1674: the wait runs on a monotonic clock; a system clock set back cannot
+ *  extend it (it used to poll on as long as the clock stayed behind). */
+export async function waitForHealth(timeoutMs = HEALTH_TIMEOUT_MS): Promise<boolean> {
+  const deadline = performance.now() + timeoutMs;
+  while (performance.now() < deadline) {
+    if (await probeHealth(Math.min(1500, deadline - performance.now()))) return true;
+    const remaining = deadline - performance.now();
     if (remaining > 0) await sleep(Math.min(HEALTH_POLL_INTERVAL_MS, remaining));
   }
   return false;

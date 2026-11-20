@@ -567,6 +567,9 @@ until a new design replaces it; this name is independent of the product version.
   claims nothing (#1672).
 - `bastra import clients`: the audit rows of the label rename now carry a
   run id in `session_id`, shared by all rows of one call (#1673).
+- Hook clients, the Bash and TodoWrite lanes and the MCP forwarder's wait
+  for a healthy daemon measure the time left on a monotonic clock: a system
+  clock set back during a call no longer stretches the deadline (#1674).
 
 ### Internal
 
