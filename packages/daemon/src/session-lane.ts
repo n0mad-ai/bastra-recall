@@ -203,6 +203,8 @@ export async function runSessionLane(
   draftReview?: () => Promise<DraftReviewDelivery>
 ): Promise<string> {
   const startedAt = Date.now();
+  // #1674: the budget's remainder runs on a monotonic clock; startedAt stays the telemetry stamp.
+  const startedMono = performance.now();
   if (payload.hook_event_name !== "SessionStart") return "{}";
   const start = openSessionStart(payload, selfBaseUrl, startedAt, warmup);
   const kernelActive = await resetForLifecycle(payload);
@@ -219,7 +221,7 @@ export async function runSessionLane(
   // still admits for scoping. Confidence is read here for the doku gate.
   const projectConfidence = detectProjectDetailed(cwd).confidence;
 
-  const fetched = await fetchSessionContext(payload, start.url, startedAt, project, {
+  const fetched = await fetchSessionContext(payload, start.url, startedMono, project, {
     denseCold: start.denseCold,
     sessionStartCallId: start.sessionStartCallId,
     kernelActive,
@@ -510,7 +512,8 @@ interface FetchedContext {
 async function fetchSessionContext(
   payload: SessionPayload,
   url: string,
-  startedAt: number,
+  /** `performance.now()` at the lane's start (#1674). */
+  startedMono: number,
   project: string | null,
   call: { denseCold: boolean; sessionStartCallId: string; kernelActive: ActiveConvention[] }
 ): Promise<FetchedContext> {
@@ -529,9 +532,9 @@ async function fetchSessionContext(
   // er hängt aber an keiner seiner Ausgaben. Also läuft er NEBEN dem
   // Assembler-Aufruf und nicht danach; sonst hätte der Umbau die Nebenläufigkeit
   // aus Teilpaket 1 gegen einen zweiten Round Trip eingetauscht.
-  const probeBudget = Math.min(200, Math.max(80, HOOK_TIMEOUT_MS - (Date.now() - startedAt)));
+  const probeBudget = Math.min(200, Math.max(80, HOOK_TIMEOUT_MS - (performance.now() - startedMono)));
   const healthPromise = probeHealth(url, probeBudget).catch(() => null);
-  const remainingMs = Math.max(60, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
+  const remainingMs = Math.max(60, HOOK_TIMEOUT_MS - (performance.now() - startedMono));
   try {
     const resp = await postSessionContext(
       url,

@@ -21,11 +21,14 @@ import { runBashPreLane } from "../src/bash-pre-lane.js";
 import { runBashFailLane } from "../src/bash-fail-lane.js";
 import { runTodoLane } from "../src/todo-lane.js";
 import { runWriteLane } from "../src/write-lane.js";
+import { runSessionLane } from "../src/session-lane.js";
+import { spyLoopbackRequests } from "./loopback-request-spy.js";
 
 /** The lanes' default budgets (BASTRA_HOOK_TIMEOUT_MS unset). */
 const BASH_BUDGET_MS = 500;
 const TODO_BUDGET_MS = 600;
 const WRITE_BUDGET_MS = 600;
+const SESSION_BUDGET_MS = 1500;
 
 /** Run `lane` against a loopback daemon while the system clock moves by
  *  `stepMs` on every read; returns each loopback path with its deadline. */
@@ -171,4 +174,66 @@ test("#1674 bash-fail lane: a system clock set forward does not cut the act sign
 test("#1674 todo lane: a system clock set back does not extend the recall's budget", async (t) => {
   const ms = deadlineOf(await deadlines(t, -1000, todo), "/hook/recall");
   assert.ok(ms > 0 && ms <= TODO_BUDGET_MS, `recall deadline ${ms} ms, budget ${TODO_BUDGET_MS} ms`);
+});
+
+/** Run the SessionStart lane while the system clock moves by `stepMs` on every
+ *  read; returns the socket timeout of each loopback call and the budget sent. */
+async function sessionDeadlines(
+  t: TestContext,
+  stepMs: number
+): Promise<{ probe: number | undefined; context: number | undefined; timeMs: unknown }> {
+  let budget: unknown;
+  const server = createServer((req, res) => {
+    let body = "";
+    req.on("data", (c: Buffer) => (body += c.toString()));
+    req.on("end", () => {
+      if (req.url === "/hook/session-context") budget = (JSON.parse(body) as { budget?: unknown }).budget;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(req.url === "/health" ? JSON.stringify({ ok: true }) : "{}");
+    });
+  });
+  await new Promise<void>((ok) => server.listen(0, "127.0.0.1", () => ok()));
+  const port = (server.address() as { port: number }).port;
+  const spy = spyLoopbackRequests(port);
+  const dir = await mkdtemp(join(tmpdir(), "bastra-1674-session-"));
+  const env = { BASTRA_TELEMETRY: "off", BASTRA_HOOK_STATE_DIR: join(dir, "state") };
+  const prev = Object.fromEntries(Object.keys(env).map((k) => [k, process.env[k]]));
+  Object.assign(process.env, env);
+  let system = 1_800_000_000_000;
+  t.mock.method(Date, "now", () => (system += stepMs));
+  let monotonic = 1_000;
+  t.mock.method(performance, "now", () => (monotonic += 1));
+  try {
+    await runSessionLane(
+      { hook_event_name: "SessionStart", source: "startup", cwd: dir, session_id: "s1674-session" },
+      `http://127.0.0.1:${port}`,
+      undefined,
+      async () => null
+    );
+  } finally {
+    t.mock.restoreAll();
+    spy.restore();
+    for (const [k, v] of Object.entries(prev)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    server.closeAllConnections();
+    await new Promise<void>((ok) => server.close(() => ok()));
+    await rm(dir, { recursive: true, force: true });
+  }
+  const timeoutOf = (path: string) => spy.seen.find((s) => s.path === path)?.timeout;
+  return { probe: timeoutOf("/health"), context: timeoutOf("/hook/session-context"), timeMs: budget };
+}
+
+test("#1674 session lane: a system clock set back does not extend the context call's budget", async (t) => {
+  const r = await sessionDeadlines(t, -1000);
+  assert.ok(r.context !== undefined && r.context <= SESSION_BUDGET_MS, `context timeout ${r.context} ms`);
+  assert.deepEqual(r.timeMs, { time_ms: r.context });
+});
+
+test("#1674 session lane: a system clock set forward does not cut both calls to their floors", async (t) => {
+  // Floors: 80 ms for the health probe, 60 ms for the context call.
+  const r = await sessionDeadlines(t, 10_000);
+  assert.ok(r.probe !== undefined && r.probe > 80 && r.probe <= 200, `probe timeout ${r.probe} ms`);
+  assert.ok(r.context !== undefined && r.context > 60, `context timeout ${r.context} ms`);
 });
