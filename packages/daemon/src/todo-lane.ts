@@ -278,6 +278,8 @@ export function isLowConfidence(extraction: TopicExtraction): boolean {
  */
 export async function runTodoLane(payload: ClaudeHookPayload, selfBaseUrl: string): Promise<string> {
   const startedAt = Date.now();
+  // #1674: the budget's remainder runs on a monotonic clock; startedAt stays the telemetry stamp.
+  const startedMono = performance.now();
   const client = hookClient(payload);
   // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt
   // der surface-Default fürs Hint-Block-Attribut und den Recall-Loopback.
@@ -320,7 +322,7 @@ export async function runTodoLane(payload: ClaudeHookPayload, selfBaseUrl: strin
   // The self-call target is passed in by the route (this server's own
   // address), not read from the environment: the lane IS the daemon.
   const url = selfBaseUrl;
-  const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
+  const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (performance.now() - startedMono));
 
   let resp: RecallResponse | null = null;
   let status: "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error" | "low-confidence" = "ok";

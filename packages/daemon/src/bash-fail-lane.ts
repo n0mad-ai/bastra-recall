@@ -149,6 +149,8 @@ function reconcileInBackground(): void {
 
 async function bashPostLane(payload: BashFailPayload, selfBaseUrl: string): Promise<string> {
   const startedAt = Date.now();
+  // #1674: the budget's remainder runs on a monotonic clock; startedAt stays the telemetry stamp.
+  const startedMono = performance.now();
   const client = hookClient(payload);
   // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt
   // der surface-Default fürs Hint-Block-Attribut und den Recall-Loopback.
@@ -199,7 +201,7 @@ async function bashPostLane(payload: BashFailPayload, selfBaseUrl: string): Prom
       ...hookCaller(payload),
       hook_source: "bash-fail",
     },
-    Math.min(120, Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt)))
+    Math.min(120, Math.max(50, HOOK_TIMEOUT_MS - (performance.now() - startedMono)))
   );
 
   // Success path ends here — the act-signal was the only job.
@@ -213,7 +215,7 @@ async function bashPostLane(payload: BashFailPayload, selfBaseUrl: string): Prom
   const errKeywords = extractErrorKeywords(errorContext);
   const query = `${commandHead} ${errKeywords}`.trim().slice(0, 300);
 
-  const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
+  const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (performance.now() - startedMono));
 
   let resp: RecallResponse | null = null;
   let status: "ok" | "no-hits" | "deduped" | "daemon-unreachable" | "timeout" | "error" = "ok";

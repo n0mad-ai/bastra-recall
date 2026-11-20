@@ -115,6 +115,8 @@ async function runBashPreLaneOriginal(
   draftNotes?: (query: string) => DraftNote[]
 ): Promise<string> {
   const startedAt = Date.now();
+  // #1674: the budget's remainder runs on a monotonic clock; startedAt stays the telemetry stamp.
+  const startedMono = performance.now();
   const client = hookClient(payload);
   // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt
   // der surface-Default fürs Hint-Block-Attribut und den Recall-Loopback.
@@ -182,7 +184,7 @@ async function runBashPreLaneOriginal(
     );
   }
 
-  const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
+  const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (performance.now() - startedMono));
 
   // The query is the command itself, not a label padded with filler words.
   // `${label} safety workflow user-preference` matched generic meta-working
