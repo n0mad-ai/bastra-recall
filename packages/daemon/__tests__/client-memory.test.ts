@@ -394,6 +394,34 @@ test("#885 — ~/home leaves claude-code-home first, then the home directory mov
   }
 });
 
+// #1673: the rename's audit rows carry a run id in session_id, one per call,
+// its own and not an import run's. Revert-check: drop `sessionId: runId` in
+// migrateOne → the rows have no session_id.
+test("#1673 — every audit row of one label migration call shares its own run id", async () => {
+  const { root, env, vault, mem } = await homeFixture();
+  try {
+    await seed(mem(""));
+    await seed(mem("home"));
+    const dirs = await findClientMemoryDirs(vault, env);
+    for (const d of dirs) await importVault(vault, d.dir, { label: d.previousLabel });
+    await migrateClientLabels(vault, dirs);
+    const rows = (await readFile(join(vault, ".bastra", "audit-log.ndjson"), "utf8"))
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { actor_detail?: string; session_id?: string });
+    const renames = rows.filter((r) => r.actor_detail === "cli:import clients");
+    assert.equal(renames.length, 6, "three memories in each of the two labels");
+    const ids = new Set(renames.map((r) => r.session_id));
+    assert.equal(ids.size, 1, JSON.stringify([...ids]));
+    const [runId] = ids;
+    assert.equal(typeof runId, "string");
+    const importRuns = new Set(rows.filter((r) => r.actor_detail === "import:vault").map((r) => r.session_id));
+    assert.equal(importRuns.has(runId), false, "not an import run's id");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 const FOREIGN = "# My own note\n\nWritten by hand into the import folder.\n";
 
 test("label migration leaves attachments and symlinks byte-for-byte in the old folder", async () => {

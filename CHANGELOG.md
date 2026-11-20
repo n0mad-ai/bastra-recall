@@ -565,6 +565,8 @@ until a new design replaces it; this name is independent of the product version.
 - The gate's telemetry now says `gate_timeout` when its budget runs out at
   exactly 500 ms, as it does a millisecond later; the call still passes and
   claims nothing (#1672).
+- `bastra import clients`: the audit rows of the label rename now carry a
+  run id in `session_id`, shared by all rows of one call (#1673).
 
 ### Internal
 

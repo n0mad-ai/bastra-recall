@@ -13,6 +13,7 @@
  * existing folder import (`importVault`, Claude Code adapter included), which
  * is idempotent (#530) and writes through the audit trail.
  */
+import { randomUUID } from "node:crypto";
 import { lstat, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, extname, join, relative } from "node:path";
@@ -193,6 +194,8 @@ export async function migrateClientLabels(
 ): Promise<LabelMigration[]> {
   const moved: LabelMigration[] = [];
   let skipped: LabelMigration[] = [];
+  // #1673: one run id for every audit row of this call, like an import run's.
+  const runId = randomUUID();
   let todo = dirs.filter((d) => d.previousLabel);
   // `~/home` has to leave `claude-code-home` before the home directory can
   // move in, so repeat while a pass still moved something.
@@ -201,7 +204,7 @@ export async function migrateClientLabels(
     skipped = [];
     const left: ClientMemoryDir[] = [];
     for (const d of todo) {
-      const m = await migrateOne(vaultRoot, d, dryRun);
+      const m = await migrateOne(vaultRoot, d, dryRun, runId);
       if (m && !m.skipped) {
         moved.push(m);
         again = !dryRun;
@@ -215,7 +218,12 @@ export async function migrateClientLabels(
   return [...moved, ...skipped];
 }
 
-async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean): Promise<LabelMigration | null> {
+async function migrateOne(
+  vaultRoot: string,
+  d: ClientMemoryDir,
+  dryRun: boolean,
+  runId: string
+): Promise<LabelMigration | null> {
   const from = d.previousLabel!;
   const to = d.label;
   const oldDir = join(vaultRoot, IMPORT_ROOT, from);
@@ -368,6 +376,7 @@ async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean
       operation: "update",
       actor: "import",
       actorDetail: "cli:import clients",
+      sessionId: runId,
       diffBefore: { id: p.oldId },
       diffAfter: { id: p.newId },
       filePath: p.dest,
