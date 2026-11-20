@@ -571,6 +571,9 @@ until a new design replaces it; this name is independent of the product version.
   the MCP forwarder's wait for a healthy daemon measure the time left on a
   monotonic clock: a system clock set back during a call no longer stretches
   the deadline (#1674).
+- The MCP forwarder no longer waits forever when the daemon sends its response
+  headers and then stalls; the call ends at the request deadline and is
+  reported, not repeated, so a write tool is not sent twice (#1676).
 
 ### Internal
 
