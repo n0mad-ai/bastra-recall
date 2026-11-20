@@ -19,7 +19,8 @@ import assert from "node:assert/strict";
 import { createServer, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 
-type Mode = "ok" | "refuse" | "silent" | "status-500" | "status-404" | "reset-before-headers" | "stall-body";
+type Mode =
+  "ok" | "refuse" | "silent" | "status-500" | "status-404" | "status-600" | "reset-before-headers" | "stall-body";
 
 let mode: Mode = "ok";
 let arrivals = 0;
@@ -45,6 +46,10 @@ const server = createServer((req, res) => {
   } else if (mode === "status-404") {
     res.writeHead(404);
     res.end();
+  } else if (mode === "status-600") {
+    // A complete answer fetch can read but `new Response` refuses (200–599 only).
+    res.writeHead(600, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "odd" }));
   } else if (mode === "reset-before-headers") {
     req.socket.destroy();
   } else if (mode === "stall-body") {
@@ -199,6 +204,14 @@ test("#1676 (b) an error status is reported once, never repeated", async (t) => 
   mode = "status-404";
   await assert.rejects(callDaemon("save_memory", { body: "x" }), { message: "HTTP 404" });
   assert.equal(arrivals, 2);
+  assert.equal(timers.scheduled.includes(RETRY_PAUSE_MS), false);
+});
+
+test("#1676 (b) a complete answer the forwarder cannot rebuild is reported once, never repeated", async (t) => {
+  reset(t, "status-600");
+  const timers = handTimers(t);
+  await assert.rejects(callDaemon("save_memory", { body: "x" }), (err: Error) => !/unreachable/.test(err.message));
+  assert.equal(arrivals, 1);
   assert.equal(timers.scheduled.includes(RETRY_PAUSE_MS), false);
 });
 

@@ -69,17 +69,19 @@ export async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs
   const tid = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const resp = await fetch(url, { ...init, signal: ctrl.signal });
-    let body: ArrayBuffer;
+    // Everything from here on happens after the daemon answered: reading the
+    // body and rebuilding the response (a status outside 200–599 makes the
+    // constructor throw). Any failure is marked, so the call is not repeated.
     try {
-      body = await resp.arrayBuffer();
+      const body = await resp.arrayBuffer();
+      return new Response(body.byteLength > 0 ? body : null, {
+        status: resp.status,
+        statusText: resp.statusText,
+        headers: resp.headers,
+      });
     } catch (err) {
       throw Object.assign(err as Error, { responseStarted: true });
     }
-    return new Response(body.byteLength > 0 ? body : null, {
-      status: resp.status,
-      statusText: resp.statusText,
-      headers: resp.headers,
-    });
   } finally {
     clearTimeout(tid);
   }
