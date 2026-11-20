@@ -102,6 +102,8 @@ export async function runWriteLane(
   vaultRoot: string | null = null
 ): Promise<string> {
   const startedAt = Date.now();
+  // #1674: the budget's remainder runs on a monotonic clock; startedAt stays the telemetry stamp.
+  const startedMono = performance.now();
   const call = writeCall(payload);
   if (!call) return "{}";
   const { toolName, toolInput, filePath } = call;
@@ -120,7 +122,7 @@ export async function runWriteLane(
   // Beide Namen kommen aus derselben Konfidenz-Regel, unterscheiden sich aber
   // in der Projektion: `key` (kanonisch) zum Vergleichen, `raw` zum Anzeigen.
   const filterProject = projectForFilter(cwd);
-  const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
+  const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (performance.now() - startedMono));
 
   const recall = await recallForWrite(
     selfBaseUrl,

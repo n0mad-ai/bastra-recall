@@ -1,5 +1,5 @@
 /**
- * #1674 — the Bash and TodoWrite lanes give their loopback recall what remains
+ * #1674 — the Bash, TodoWrite and Write/Edit lanes give their loopback recall what remains
  * of their budget, measured on a monotonic clock. Measured with `Date.now()`,
  * a system clock set back during the lane made the remainder larger than the
  * budget itself; one set forward cut it to its floor.
@@ -14,13 +14,18 @@ import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import http, { createServer } from "node:http";
 import { syncBuiltinESMExports } from "node:module";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { runBashPreLane } from "../src/bash-pre-lane.js";
 import { runBashFailLane } from "../src/bash-fail-lane.js";
 import { runTodoLane } from "../src/todo-lane.js";
+import { runWriteLane } from "../src/write-lane.js";
 
 /** The lanes' default budgets (BASTRA_HOOK_TIMEOUT_MS unset). */
 const BASH_BUDGET_MS = 500;
 const TODO_BUDGET_MS = 600;
+const WRITE_BUDGET_MS = 600;
 
 /** Run `lane` against a loopback daemon while the system clock moves by
  *  `stepMs` on every read; returns each loopback path with its deadline. */
@@ -122,6 +127,29 @@ const todo = (baseUrl: string) =>
     } as never,
     baseUrl
   );
+
+const write = async (baseUrl: string) => {
+  const cwd = await mkdtemp(join(tmpdir(), "bastra-1674-write-"));
+  try {
+    return await runWriteLane(
+      {
+        hook_event_name: "PreToolUse",
+        tool_name: "Edit",
+        session_id: "s1674-write",
+        cwd,
+        tool_input: { file_path: join(cwd, "src", "deploy.ts"), old_string: "a", new_string: "b" },
+      },
+      baseUrl
+    );
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+};
+
+test("#1674 write lane: a system clock set back does not extend the recall's budget", async (t) => {
+  const ms = deadlineOf(await deadlines(t, -1000, write), "/hook/recall");
+  assert.ok(ms > 0 && ms <= WRITE_BUDGET_MS, `recall deadline ${ms} ms, budget ${WRITE_BUDGET_MS} ms`);
+});
 
 test("#1674 bash-pre lane: a system clock set back does not extend the recall's budget", async (t) => {
   const ms = deadlineOf(await deadlines(t, -1000, bashPre), "/hook/recall");
