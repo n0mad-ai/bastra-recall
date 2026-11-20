@@ -8,8 +8,9 @@
 // now, ctx, go(patch), redraw() }. tone: "amber" | "accent" | "muted" (meta colour).
 import { h, s } from "../dom.js";
 import { t, LANG, numberFmt } from "../i18n.js";
-import { data, dueAt } from "../data.js";
+import { data } from "../data.js";
 import { openTask } from "./tasks-store.js";
+import { dueAt } from "./tasks-api.js";
 import { openReport, openReports } from "./tasks-reports.js";
 import { unreadCount } from "./tasks-reports-model.js";
 import { loadingInline } from "./loading.js";

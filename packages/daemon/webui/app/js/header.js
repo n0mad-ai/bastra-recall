@@ -3,8 +3,9 @@
 import { h, s, clear, setVars } from "./dom.js";
 import { t, numberFmt } from "./i18n.js";
 import { state, setState } from "./state.js";
-import { data, dueAt } from "./data.js";
+import { data } from "./data.js";
 import { openTask } from "./sections/tasks-store.js";
+import { dueAt } from "./sections/tasks-api.js";
 import { reportTickerItems } from "./sections/tasks-reports.js";
 import { unreadCount } from "./sections/tasks-reports-model.js";
 import { getArea } from "./areas.js";

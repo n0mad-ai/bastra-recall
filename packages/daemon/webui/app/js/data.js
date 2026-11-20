@@ -180,10 +180,6 @@ export async function loadReports() {
   }
 }
 
-export function dueAt(t) {
-  return t.snoozed_until ?? t.next_slot?.at ?? t.schedule?.at ?? t.next_check_at;
-}
-
 let seq = null;
 const updateListeners = new Set();
 /** Fresh vault events from GET /ui/updates (add | change | delete | read), as delivered. */
