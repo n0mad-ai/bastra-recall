@@ -26,6 +26,11 @@ import {
 } from "../scripts/stress-slices.js";
 import { computeHashes, hashVault, runDirFor, writeRunArtifact, type RunManifest } from "../scripts/stress-artifact.js";
 import type { Vault } from "@bastra-recall/core";
+// @ts-expect-error — plain .mjs script, no declarations
+import { dropCallerGitEnv } from "../../../scripts/caller-git-env.mjs";
+
+// #1669: started without test-env.mjs, this file's git must still not reach a caller's GIT_DIR/GIT_WORK_TREE.
+dropCallerGitEnv();
 
 const IDS = Array.from({ length: 20 }, (_, i) => `m${i}`);
 const fakeVault = { list: () => IDS.map((id) => ({ fm: { id } })) } as unknown as Vault;

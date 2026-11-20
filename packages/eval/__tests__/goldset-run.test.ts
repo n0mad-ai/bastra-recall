@@ -19,6 +19,11 @@ import {
 import { datasetHash, loadGoldFiles, unknownGoldIds } from "../src/goldset-dataset.js";
 import type { Memory, RecallHit, RecallOptions, SearchIndex, StageListener } from "@bastra-recall/core";
 import { originRefHash, stagedId, type GoldCase } from "../src/goldset.js";
+// @ts-expect-error — plain .mjs script, no declarations
+import { dropCallerGitEnv } from "../../../scripts/caller-git-env.mjs";
+
+// #1669: started without test-env.mjs, this file's git must still not reach a caller's GIT_DIR/GIT_WORK_TREE.
+dropCallerGitEnv();
 
 const row = (over: Partial<CaseResult> = {}): CaseResult => ({
   id: "c1",

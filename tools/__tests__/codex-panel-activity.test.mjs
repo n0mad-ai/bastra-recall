@@ -6,6 +6,10 @@ import os from "node:os";
 import { CodexProjection } from "../../packages/statusline/src/codex/state.ts";
 import { CodexLiveSource } from "../../packages/statusline/src/panel/codex-data.ts";
 import { renderNeural } from "../../packages/statusline/src/panel/neural.ts";
+import { dropCallerGitEnv } from "../../scripts/caller-git-env.mjs";
+
+// #1669: started without test-env.mjs, this file's git must still not reach a caller's GIT_DIR/GIT_WORK_TREE.
+dropCallerGitEnv();
 
 const row = (payload, at = 100000) => ({ type: "event_msg", timestamp: new Date(at).toISOString(), payload });
 const message = (turn, phase) =>

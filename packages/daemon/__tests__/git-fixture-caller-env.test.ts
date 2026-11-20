@@ -12,12 +12,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error — plain .mjs script, no declarations
 import { dropCallerGitEnv } from "../../../scripts/caller-git-env.mjs";
+
+// #1669: started without test-env.mjs, this file's git must still not reach a caller's GIT_DIR/GIT_WORK_TREE.
+dropCallerGitEnv();
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -47,7 +50,6 @@ test("a git test file run without test-env leaves the caller's repository byte-i
     const git = (...args: string[]) =>
       execFileSync("git", ["-c", "user.name=d", "-c", "user.email=d@example.invalid", ...args], {
         cwd: decoy,
-        env: dropCallerGitEnv({ ...process.env }),
         stdio: "ignore",
       });
     git("init", "-q");
@@ -81,4 +83,58 @@ test("a git test file run without test-env leaves the caller's repository byte-i
   } finally {
     rmSync(decoy, { recursive: true, force: true });
   }
+});
+
+/**
+ * A git the file's own code starts: a literal "git" handed to a process
+ * starter, passed on as a command argument (`run("git", [...])`,
+ * `execute(root, "git", args)`), looked up (`findExecutable("git")`), kept in
+ * a constant, or simple-git. Git reached only through product code is not
+ * visible here; that is what the decoy runs above are for.
+ */
+const STARTS_GIT = [
+  /\b(?:execFileSync|execFile|spawnSync|spawn|execa|execaSync)\(\s*["'`]git["'`]/,
+  /\b(?:execSync|exec)\(\s*["'`]git\s/,
+  /[(,][ \t]*["'`]git["'`][ \t]*,[ \t]*[[\w]/,
+  /\(\s*["'`]git["'`]\s*\)/,
+  /=\s*["'`]git["'`]\s*;/,
+  /["'`]simple-git["'`]/,
+];
+
+/** Test files and the helpers beside them; test-env-less starts reach all of them. */
+function testSources(): string[] {
+  const found: string[] = [];
+  const walk = (rel: string) => {
+    for (const entry of readdirSync(join(REPO, rel), { withFileTypes: true })) {
+      const child = `${rel}/${entry.name}`;
+      if (entry.isDirectory()) {
+        if (entry.name !== "node_modules") walk(child);
+      } else if (/\.[cm]?[jt]s$/.test(entry.name)) found.push(child);
+    }
+  };
+  for (const pkg of readdirSync(join(REPO, "packages"))) {
+    if (existsSync(join(REPO, "packages", pkg, "__tests__"))) walk(`packages/${pkg}/__tests__`);
+    const scripts = join(REPO, "packages", pkg, "scripts");
+    if (existsSync(scripts))
+      for (const name of readdirSync(scripts))
+        if (/\.test\.[cm]?[jt]s$/.test(name)) found.push(`packages/${pkg}/scripts/${name}`);
+  }
+  walk("tools/__tests__");
+  return found.sort();
+}
+
+test("every test file that starts git drops the caller's git variables first (#1669)", () => {
+  const sources = testSources();
+  const starting = sources.filter((rel) =>
+    STARTS_GIT.some((pattern) => pattern.test(readFileSync(join(REPO, rel), "utf8")))
+  );
+  const unprotected = starting.filter((rel) => {
+    const source = readFileSync(join(REPO, rel), "utf8");
+    return (
+      !/^import \{ dropCallerGitEnv \} from "[./]+\/scripts\/caller-git-env\.mjs";$/m.test(source) ||
+      !/^dropCallerGitEnv\(\);$/m.test(source)
+    );
+  });
+  assert.ok(starting.length >= 30, `the scan found only ${starting.length} git-starting files`);
+  assert.deepEqual(unprotected, [], "import dropCallerGitEnv and call it right after the imports");
 });

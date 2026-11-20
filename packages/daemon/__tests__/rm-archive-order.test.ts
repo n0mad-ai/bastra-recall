@@ -13,6 +13,11 @@ import { createRequire, syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { archiveRoot, runRmShim } from "../src/rm-archive.js";
+// @ts-expect-error — plain .mjs script, no declarations
+import { dropCallerGitEnv } from "../../../scripts/caller-git-env.mjs";
+
+// #1669: started without test-env.mjs, this file's git must still not reach a caller's GIT_DIR/GIT_WORK_TREE.
+dropCallerGitEnv();
 
 const WATCHED = ["mkdirSync", "renameSync", "rmSync", "rmdirSync", "appendFileSync", "chmodSync", "unlinkSync"];
 
