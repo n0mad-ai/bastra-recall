@@ -6171,18 +6171,7 @@
                   "id"
                 ],
                 "additionalProperties": false,
-                "anyOf": [
-                  {
-                    "required": [
-                      "read"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "outdated"
-                    ]
-                  }
-                ]
+                "minProperties": 2
               }
             }
           }

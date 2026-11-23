@@ -334,13 +334,13 @@ test("UI: report operations sit behind the local task session and its CSRF token
 test("#1678: the tool schema of task_report_mark carries the rule that read or outdated is named", () => {
   const schema = taskTools.find((tool) => tool.name === "task_report_mark")!.inputSchema as {
     required?: string[];
-    anyOf?: Array<{ required?: string[] }>;
+    minProperties?: number;
     additionalProperties?: boolean;
+    properties?: Record<string, unknown>;
   };
+  // id is required and nothing but id, read and outdated is allowed: two fields means one of the two
   assert.deepEqual(schema.required, ["id"]);
-  assert.deepEqual(
-    schema.anyOf?.map((shape) => shape.required),
-    [["read"], ["outdated"]]
-  );
+  assert.deepEqual(Object.keys(schema.properties ?? {}).sort(), ["id", "outdated", "read"]);
   assert.equal(schema.additionalProperties, false);
+  assert.equal(schema.minProperties, 2);
 });
