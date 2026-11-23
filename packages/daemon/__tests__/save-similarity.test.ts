@@ -184,3 +184,56 @@ test("#238: stopwords do not carry containment", () => {
   // Only function words in common — must not read as a restatement.
   assert.equal(triggerRestatesSummary("und das ist eine von den Sachen", SUMMARY), false);
 });
+
+// ── #1679: scripts written without spaces ──────────────────────────────────
+// Reported from a Chinese vault: a spaceless run stayed ONE token, so two notes
+// saying the same thing shared almost nothing and the advisory never fired.
+
+const CHECKIN = mem({
+  title: "每日签到改为每晚执行",
+  summary: "每日签到从早上改到下班回家后执行，晨间签到已取消。",
+  tags: ["签到", "工作流"],
+  recall_when: ["安排每日签到的时间", "晨间签到是否还需要"],
+});
+
+test("#1679: a reworded Chinese near-duplicate clears the threshold", () => {
+  const reworded = mem({
+    title: "签到职责：每晚执行每日签到",
+    summary: "每日签到在下班回家后执行，早上的晨间签到已取消。",
+    tags: ["签到", "复盘"],
+    recall_when: ["每日签到的时间安排", "还需要晨间签到吗"],
+  });
+  const sim = fieldSimilarity(CHECKIN, reworded);
+  assert.ok(sim >= DUPLICATE_SIMILARITY_MIN, `near-duplicate must be flagged, got ${sim.toFixed(3)}`);
+});
+
+test("#1679: an unrelated Chinese note stays below the threshold", () => {
+  const unrelated = mem({
+    title: "服务器部署拓扑与代理配置",
+    summary: "网关部署在云主机上，通过本地代理访问上游接口，证书每月更新。",
+    tags: ["部署", "代理"],
+    recall_when: ["排查网关连接超时", "更新代理证书"],
+  });
+  const sim = fieldSimilarity(CHECKIN, unrelated);
+  assert.ok(sim < DUPLICATE_SIMILARITY_MIN, `different subject must not be flagged, got ${sim.toFixed(3)}`);
+});
+
+test("#1679: a word ICU splits into single ideographs still counts", () => {
+  // `签到` segments into `签` + `到`; with both dropped as too short these two
+  // one-word notes shared nothing.
+  assert.equal(fieldSimilarity(mem({ title: "签到" }), mem({ title: "签到" })), 1);
+  assert.equal(fieldSimilarity(mem({ title: "签到" }), mem({ title: "复盘" })), 0);
+  // 每晚|签|到 against 签|到|提醒: two of four words shared.
+  assert.equal(fieldSimilarity(mem({ title: "每晚签到" }), mem({ title: "签到提醒" })), 0.5);
+});
+
+test("#1679: a single kana or Latin letter is still no content word", () => {
+  assert.equal(fieldSimilarity(mem({ title: "の" }), mem({ title: "の" })), 0);
+  assert.equal(fieldSimilarity(mem({ title: "a" }), mem({ title: "a" })), 0);
+});
+
+test("#1679: the trigger checks keep comparing whole runs", () => {
+  // The claim gate (#360) and #238/#300 are calibrated on whole tokens; the
+  // segmentation is for `fieldSimilarity` only.
+  assert.equal(containedIn("每日签到", "每日签到从早上改到下班回家后执行"), 0);
+});

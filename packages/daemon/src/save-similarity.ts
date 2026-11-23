@@ -27,7 +27,7 @@
  * summary" advisory, which needs the same primitive. Two competing similarity
  * measures inside one scoring function would be worse than either.
  */
-import { FUNCTION_WORDS, foldTerm, normalizeText } from "@bastra-recall/core";
+import { FUNCTION_WORDS, foldTerm, normalizeText, segmentWords } from "@bastra-recall/core";
 
 /** Case-folded tokens in ANY script — the Unicode class matters, an ASCII
  *  `\w` regex shreds exactly the tokens that carry the signal on a non-English
@@ -86,10 +86,42 @@ export function foldUmlauts(token: string): string {
  *  The stopword list is folded too — otherwise "für" survives as "fuer", is no
  *  longer recognised as a function word, and starts making any two German
  *  notes look similar, which is the failure mode STOPWORDS exists to prevent. */
-function contentToken(raw: string): string | null {
+function contentToken(raw: string, minLength = MIN_TOKEN_LENGTH): string | null {
   const token = foldUmlauts(raw);
-  if (token.length < MIN_TOKEN_LENGTH || FOLDED_FUNCTION_WORDS.has(token)) return null;
+  if (token.length < minLength || FOLDED_FUNCTION_WORDS.has(token)) return null;
   return token;
+}
+
+/** One Han ideograph. ICU splits many Chinese words into single characters
+ *  (`签到` → `签` + `到`, `复盘` → `复` + `盘`), and each is a morpheme that
+ *  carries meaning, so dropping it as "too short" removes the topic word
+ *  (#1679). A property of the script, as in `core/segment.ts`. Kana stays
+ *  under the length rule: a single kana is almost always a particle. */
+const SINGLE_IDEOGRAPH_RE = /^\p{Script=Han}$/u;
+
+/**
+ * The content words `fieldSimilarity` compares (#1679).
+ *
+ * `tokens()` keeps a run written without spaces as ONE token, so two Chinese
+ * notes that say the same thing shared almost nothing and the duplicate
+ * advisory never fired on such a vault (reported: 1 of 3486 pairs reached the
+ * threshold). Here a spaceless run is split by the same ICU segmentation the
+ * BM25 index uses (#711); every other token passes through unchanged, so the
+ * measure does not move on a vault without such a script.
+ *
+ * Only here, not inside `tokens()` or `contentTokens()`: those also feed the
+ * claim gate (#360), the trigger checks (#238/#300) and the acted-on tokens in
+ * telemetry, which are calibrated on whole tokens and are not this question.
+ */
+function similarityWords(text: string): string[] {
+  const out: string[] = [];
+  for (const run of tokens(text)) {
+    for (const word of segmentWords(run)) {
+      const token = contentToken(word, SINGLE_IDEOGRAPH_RE.test(word) ? 1 : MIN_TOKEN_LENGTH);
+      if (token !== null) out.push(token);
+    }
+  }
+  return out;
 }
 
 /** Function words carry no topical signal, so leaving them in would make any
@@ -128,9 +160,7 @@ function weighTokens(fields: SimilarityFields): Map<string, number> {
   for (const [field, weight] of FIELD_WEIGHTS) {
     const raw = fields[field];
     const text = Array.isArray(raw) ? raw.join(" ") : (raw ?? "");
-    for (const raw of tokens(text)) {
-      const token = contentToken(raw);
-      if (token === null) continue;
+    for (const token of similarityWords(text)) {
       const prev = out.get(token);
       if (prev === undefined || weight > prev) out.set(token, weight);
     }

@@ -329,6 +329,8 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Fixed
 
+- Save quality: the duplicate advisory now compares words, not whole runs, in scripts written without spaces (Chinese, Japanese, Thai and others), so a reworded note on such a vault is reported as a possible duplicate; a single Han ideograph counts as a word. Vaults without such a script score exactly as before. Reported and measured by @apollo600 (#1679).
+
 - Report and memory reader: a free-standing `---`/`***`/`___` line now renders as a thin divider instead of literal dashes.
 
 - Vault and client imports redact credentials before saving content and new
