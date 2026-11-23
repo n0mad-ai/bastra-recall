@@ -6170,7 +6170,19 @@
                 "required": [
                   "id"
                 ],
-                "additionalProperties": false
+                "additionalProperties": false,
+                "anyOf": [
+                  {
+                    "required": [
+                      "read"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "outdated"
+                    ]
+                  }
+                ]
               }
             }
           }

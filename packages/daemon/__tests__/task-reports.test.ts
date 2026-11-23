@@ -330,3 +330,17 @@ test("UI: report operations sit behind the local task session and its CSRF token
     else process.env.BASTRA_TASK_TOKEN = previousToken;
   }
 });
+
+test("#1678: the tool schema of task_report_mark carries the rule that read or outdated is named", () => {
+  const schema = taskTools.find((tool) => tool.name === "task_report_mark")!.inputSchema as {
+    required?: string[];
+    anyOf?: Array<{ required?: string[] }>;
+    additionalProperties?: boolean;
+  };
+  assert.deepEqual(schema.required, ["id"]);
+  assert.deepEqual(
+    schema.anyOf?.map((shape) => shape.required),
+    [["read"], ["outdated"]]
+  );
+  assert.equal(schema.additionalProperties, false);
+});

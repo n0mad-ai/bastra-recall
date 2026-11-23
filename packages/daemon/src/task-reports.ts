@@ -48,9 +48,11 @@ export const taskReportSaveInput = z.strictObject({
 const idInput = z.strictObject({ id: z.string().uuid() });
 /** Words to find in title, project and text (#1597); every word must occur. */
 const listInput = z.strictObject({ query: z.string().max(200).optional() });
-/** read, outdated (#1678) or both; a mark that names neither changes nothing and is refused. */
+/** read, outdated (#1678) or both; a mark that names neither changes nothing and is refused. The
+ * rule is checked here and stated in the schema the tools and OpenAPI carry (anyOf of required). */
 const markInput = z
   .strictObject({ id: z.string().uuid(), read: z.boolean().optional(), outdated: z.boolean().optional() })
+  .meta({ anyOf: [{ required: ["read"] }, { required: ["outdated"] }] })
   .refine((m) => m.read !== undefined || m.outdated !== undefined, { message: "read or outdated is required" });
 /** A note is the owner's own text (external input): bounded, never shortened. */
 export const NOTE_MAX_CHARS = 4000;

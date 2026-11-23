@@ -7,10 +7,13 @@ import { api } from "./tasks-api.js";
 import { reportRows, matchReports, inProject } from "./tasks-reports-model.js";
 import { R } from "./tasks-reports-state.js";
 
+/** 1 for a report marked outdated: it leaves the place the list opened with and goes behind the
+ *  current ones at once (#1678). */
+export const behind = (r) => Number((r.outdatedAt ?? null) !== null);
 /** Rows in the order they had when the view opened; reports that arrived since go on top. */
 export function listed() {
   const at = (r) => R.order.indexOf(r.id);
-  return [...data.reports].sort((a, b) => at(a) - at(b));
+  return [...data.reports].sort((a, b) => behind(a) - behind(b) || at(a) - at(b));
 }
 /** The daemon's text hits, while they belong to the current search. */
 export const hitsNow = () => (R.hits && R.hits.q === R.q.trim() ? R.hits.ids : null);

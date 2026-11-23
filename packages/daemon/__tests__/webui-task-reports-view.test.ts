@@ -667,3 +667,21 @@ test("#1678: an unread outdated report is not offered as the first to read and l
   const oldActs = one(one(host, "tk-rep__head"), "tk-rep__acts").children;
   assert.ok(!oldActs[0].classList.contains("is-primary"), "an outdated report asks for nothing");
 });
+
+test("#1678: a report marked outdated while the list is open goes behind the current ones at once", async () => {
+  const { v, host, context } = await view();
+  await v.openReports();
+  const ids = () => listRows(host).map((row) => one(row, "mb-row__t").textContent);
+  const before = ids();
+  (context.data as { reports: unknown }).reports = v.reportRows({
+    reports: [REPORTS[1], REPORTS[2], { ...REPORTS[0], status: "outdated", outdated_at: 50 }],
+  });
+  (context.emit as () => void)();
+  assert.deepEqual(ids(), [before[1], before[2], before[0]], "the outdated report left its place from the opening");
+  // a plain read change keeps the place the list opened with
+  (context.data as { reports: unknown }).reports = v.reportRows({
+    reports: [REPORTS[2], { ...REPORTS[1], read_at: 60 }, { ...REPORTS[0], status: "outdated", outdated_at: 50 }],
+  });
+  (context.emit as () => void)();
+  assert.deepEqual(ids(), [before[1], before[2], before[0]]);
+});

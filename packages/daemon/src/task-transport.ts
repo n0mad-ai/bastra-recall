@@ -34,8 +34,7 @@ const TASK_HELP: Partial<Record<TaskCrudOperation, string>> = {
     "Reports visible in your domains, unread first, metadata only (no body). Use it to confirm a report arrived. notes_open counts the open notes the user handed over to agents; status: new|read|in_progress|handed|question|done|outdated.Optional query (up to 200 characters) keeps the reports whose title, project or text hold every word of it, ignoring case.",
   task_report_read:
     "Open one report with its full body. Reading never changes its read state, so opening a report does not mark it read for the user. Meant for the Recall UI: agents open a report only when the user asks. Its notes are those the user handed over to agents (open or done); notes the user is still drafting are not shown.",
-  task_report_mark:
-    "Set read=true|false and/or outdated=true|false. Idempotent: keeps the first time. Agents mark only when the user asks.",
+  task_report_mark: "read and/or outdated=true|false. Agents mark only when the user asks.",
   task_report_delete:
     "Delete one report by id when the user asks for it. The Recall UI deletes on the user's click. The answer's restorable_until says until when task_report_restore can undo it (setting tasks.reportUndo, default 10 minutes; absent when the user turned undo off).",
   task_report_restore:

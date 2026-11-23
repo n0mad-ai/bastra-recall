@@ -52,7 +52,7 @@ import {
 import { stateMark, askedAbout } from "./tasks-reports-status.js";
 import { annotateReport } from "./tasks-report-notes.js";
 import { R, write } from "./tasks-reports-state.js";
-import { listed, hitsNow, shown, searchText, setQuery } from "./tasks-reports-search.js";
+import { behind, listed, hitsNow, shown, searchText, setQuery } from "./tasks-reports-search.js";
 import { remove, undoNotice, undoable, deletedRow, resetClocks, runClocks } from "./tasks-reports-undo.js";
 import { reportsHead } from "./tasks-reports-head.js";
 import { textSize, sizeSwitch } from "./tasks-reports-size.js";
@@ -508,7 +508,7 @@ function withDeleted(live, gone) {
     const i = R.order.indexOf(r.id);
     return i >= 0 ? i : r.until === undefined ? -1 : Infinity;
   };
-  return [...live, ...gone].sort((a, b) => at(a) - at(b));
+  return [...live, ...gone].sort((a, b) => behind(a) - behind(b) || at(a) - at(b));
 }
 
 /** Closes the project pick list on a click outside it, as in the memory browser. */
