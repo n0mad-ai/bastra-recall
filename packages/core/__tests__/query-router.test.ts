@@ -85,13 +85,27 @@ test("#1681: überwiegend Bezeichner bleibt BM25, auch mit einem Wort ohne Leerz
   assert.equal(route.reason, "identifier");
 });
 
-test("#1681: ein Bezeichner direkt an einer Wendung ohne Leerzeichen behält seinen Kleber", () => {
-  // Der Abschnitt ohne Leerzeichen wird zerlegt, `foo/bar` bleibt ein Term.
-  for (const q of ["中文foo/bar", "中文 foo/bar", "中文foo\\bar", "中文prompt-lane.ts"]) {
+test("#1681: ein Bezeichner behält seinen Kleber, auch über eine Schriftgrenze", () => {
+  for (const q of [
+    "中文foo/bar",
+    "中文 foo/bar",
+    "中文foo\\bar",
+    "中文prompt-lane.ts",
+    "src/部署 cleanup",
+    "src/部署.py cleanup",
+  ]) {
     const route = routeQueryArms(q);
     assert.equal(route.identifier_terms, 1, q);
     assert.equal(route.arms, "bm25", q);
   }
   assert.equal(routeQueryArms("中文foo/bar baz/qux").identifier_terms, 2);
-  assert.deepEqual(routeQueryArms("中文foo/bar baz/qux"), routeQueryArms("中文 foo/bar baz/qux"));
+});
+
+test("#1681: ein einzelnes Wort ohne Leerzeichen zählt als ein Term", () => {
+  // サーバー und アプリケーション sind je ein Wort; das Längenzeichen ー trennt nicht.
+  for (const q of ["foo/bar サーバー", "foo/bar アプリケーション"]) {
+    const route = routeQueryArms(q);
+    assert.equal(route.arms, "bm25", q);
+    assert.equal(route.reason, "identifier", q);
+  }
 });

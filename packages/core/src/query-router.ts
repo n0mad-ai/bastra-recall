@@ -33,7 +33,7 @@
  * schreibt nur die Entscheidung und die Zeit, die er gespart hätte).
  */
 
-import { hasSpacelessScript, segmentWords } from "./segment.js";
+import { hasSpacelessScript } from "./segment.js";
 
 export type QueryArms = "bm25" | "hybrid";
 export type QueryRouteReason = "short" | "identifier" | "default";
@@ -73,28 +73,18 @@ export function isIdentifierTerm(term: string): boolean {
 }
 
 /**
- * Die Stücke eines Leerzeichen-Terms, an denen die `identifier`-Regel misst
- * (#1681). Nur die Abschnitte in einer Schrift ohne Leerzeichen werden in
- * Wörter zerlegt; alles dazwischen bleibt ganz, samt innerem Kleber —
- * `中文foo/bar` ist `中`, `文` … und `foo/bar`, nicht `foo` und `bar`.
+ * Wie viele Wörter ein Leerzeichen-Term im Nenner der `identifier`-Regel
+ * zählt (#1681). Ein Bezeichner ist ein Term, in jeder Schrift. Eine Wendung
+ * in einer Schrift ohne Leerzeichen zählt als ihre Wörter (dieselbe
+ * Segmentierung wie für `short`): `sub2api 部署拓扑` ist ein Bezeichner unter
+ * mehreren Wörtern, nicht „einer von zwei". Der Term selbst bleibt ganz, sein
+ * innerer Kleber also auch (`src/部署`, `中文foo/bar`).
  */
-function identifierPieces(raw: string): string[] {
-  if (!hasSpacelessScript(raw)) return [raw];
-  const out: string[] = [];
-  let span = "";
-  let spaceless = false;
-  const flush = () => {
-    if (span) out.push(...(spaceless ? segmentWords(span) : [span]));
-    span = "";
-  };
-  for (const ch of raw) {
-    const is = hasSpacelessScript(ch);
-    if (is !== spaceless) flush();
-    spaceless = is;
-    span += ch;
-  }
-  flush();
-  return out;
+function termWeight(term: string): number {
+  if (isIdentifierTerm(term) || !hasSpacelessScript(term)) return 1;
+  let n = 0;
+  for (const seg of WORDS.segment(term)) if (seg.isWordLike) n++;
+  return Math.max(1, n);
 }
 
 export function routeQueryArms(query: string): QueryRoute {
@@ -107,29 +97,26 @@ export function routeQueryArms(query: string): QueryRoute {
   // ohne Leerraum — die Wortsegmentierung würde `prompt-lane.ts` zerteilen.
   // Eindeutig nach Kleinschreibung, beurteilt in Originalschreibweise — die
   // Binnenmajuskel ist genau das, was ein `toLowerCase` zerstören würde.
-  // #1681: Ein Lauf in einer Schrift ohne Leerzeichen ist kein einzelner Term,
-  // sondern eine Wendung. Als ein Term gezählt, machte er den Anteil der
-  // Bezeichner zu groß: `sub2api 部署拓扑` war „einer von zwei" und verlor den
-  // dichten Arm. Nur solche Abschnitte werden zerlegt (wie im Index, #711);
-  // jeder andere Term und jeder andere Abschnitt bleibt ganz.
   const terms = new Map<string, string>();
   for (const raw of query.split(/[\s\p{Z}]+/u)) {
-    for (const piece of identifierPieces(raw)) {
-      const term = piece.replace(EDGE_PUNCT, "");
-      if (!term || !HAS_WORD_CHAR.test(term)) continue;
-      const key = term.toLowerCase();
-      if (!terms.has(key)) terms.set(key, term);
-    }
+    const term = raw.replace(EDGE_PUNCT, "");
+    if (!term || !HAS_WORD_CHAR.test(term)) continue;
+    const key = term.toLowerCase();
+    if (!terms.has(key)) terms.set(key, term);
   }
   const unique = words.size;
   let identifiers = 0;
-  for (const term of terms.values()) if (isIdentifierTerm(term)) identifiers++;
+  let weight = 0;
+  for (const term of terms.values()) {
+    if (isIdentifierTerm(term)) identifiers++;
+    weight += termWeight(term);
+  }
   // Eine leere Anfrage hat nichts zu routen; sie bleibt beim heutigen Weg.
   if (unique === 0) return { arms: "hybrid", reason: "default", unique_terms: 0, identifier_terms: 0 };
   if (unique <= ROUTER_SHORT_MAX_TERMS) {
     return { arms: "bm25", reason: "short", unique_terms: unique, identifier_terms: identifiers };
   }
-  if (identifiers * 2 >= terms.size) {
+  if (identifiers * 2 >= weight) {
     return { arms: "bm25", reason: "identifier", unique_terms: unique, identifier_terms: identifiers };
   }
   return { arms: "hybrid", reason: "default", unique_terms: unique, identifier_terms: identifiers };
