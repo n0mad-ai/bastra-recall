@@ -33,7 +33,7 @@
  * schreibt nur die Entscheidung und die Zeit, die er gespart hätte).
  */
 
-import { segmentWords } from "./segment.js";
+import { hasSpacelessScript, segmentWords } from "./segment.js";
 
 export type QueryArms = "bm25" | "hybrid";
 export type QueryRouteReason = "short" | "identifier" | "default";
@@ -72,6 +72,31 @@ export function isIdentifierTerm(term: string): boolean {
   return INNER_GLUE.test(term) || CAMEL.test(term) || LETTER_DIGIT.test(term);
 }
 
+/**
+ * Die Stücke eines Leerzeichen-Terms, an denen die `identifier`-Regel misst
+ * (#1681). Nur die Abschnitte in einer Schrift ohne Leerzeichen werden in
+ * Wörter zerlegt; alles dazwischen bleibt ganz, samt innerem Kleber —
+ * `中文foo/bar` ist `中`, `文` … und `foo/bar`, nicht `foo` und `bar`.
+ */
+function identifierPieces(raw: string): string[] {
+  if (!hasSpacelessScript(raw)) return [raw];
+  const out: string[] = [];
+  let span = "";
+  let spaceless = false;
+  const flush = () => {
+    if (span) out.push(...(spaceless ? segmentWords(span) : [span]));
+    span = "";
+  };
+  for (const ch of raw) {
+    const is = hasSpacelessScript(ch);
+    if (is !== spaceless) flush();
+    spaceless = is;
+    span += ch;
+  }
+  flush();
+  return out;
+}
+
 export function routeQueryArms(query: string): QueryRoute {
   // Wörter für `short`: eindeutig nach Kleinschreibung.
   const words = new Set<string>();
@@ -85,11 +110,11 @@ export function routeQueryArms(query: string): QueryRoute {
   // #1681: Ein Lauf in einer Schrift ohne Leerzeichen ist kein einzelner Term,
   // sondern eine Wendung. Als ein Term gezählt, machte er den Anteil der
   // Bezeichner zu groß: `sub2api 部署拓扑` war „einer von zwei" und verlor den
-  // dichten Arm. `segmentWords` zerlegt nur solche Läufe (wie im Index, #711);
-  // jeder andere Term bleibt ganz.
+  // dichten Arm. Nur solche Abschnitte werden zerlegt (wie im Index, #711);
+  // jeder andere Term und jeder andere Abschnitt bleibt ganz.
   const terms = new Map<string, string>();
   for (const raw of query.split(/[\s\p{Z}]+/u)) {
-    for (const piece of segmentWords(raw)) {
+    for (const piece of identifierPieces(raw)) {
       const term = piece.replace(EDGE_PUNCT, "");
       if (!term || !HAS_WORD_CHAR.test(term)) continue;
       const key = term.toLowerCase();
