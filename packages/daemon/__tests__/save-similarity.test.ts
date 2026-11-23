@@ -10,6 +10,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { segmentWords } from "@bastra-recall/core";
 import {
   fieldSimilarity,
   foldUmlauts,
@@ -189,6 +190,12 @@ test("#238: stopwords do not carry containment", () => {
 // Reported from a Chinese vault: a spaceless run stayed ONE token, so two notes
 // saying the same thing shared almost nothing and the advisory never fired.
 
+// `segmentWords` falls back to whole runs when `Intl.Segmenter` is missing
+// (core/segment.ts). The tests that need real word breaks say so and skip
+// there; the ones below them hold with and without it.
+const ICU_SPLITS = segmentWords("每晚签到").length > 1;
+const needsIcu = { skip: ICU_SPLITS ? false : "Intl.Segmenter does not split this run" };
+
 const CHECKIN = mem({
   title: "每日签到改为每晚执行",
   summary: "每日签到从早上改到下班回家后执行，晨间签到已取消。",
@@ -196,7 +203,7 @@ const CHECKIN = mem({
   recall_when: ["安排每日签到的时间", "晨间签到是否还需要"],
 });
 
-test("#1679: a reworded Chinese near-duplicate clears the threshold", () => {
+test("#1679: a reworded Chinese near-duplicate clears the threshold", needsIcu, () => {
   const reworded = mem({
     title: "签到职责：每晚执行每日签到",
     summary: "每日签到在下班回家后执行，早上的晨间签到已取消。",
@@ -218,13 +225,22 @@ test("#1679: an unrelated Chinese note stays below the threshold", () => {
   assert.ok(sim < DUPLICATE_SIMILARITY_MIN, `different subject must not be flagged, got ${sim.toFixed(3)}`);
 });
 
-test("#1679: a word ICU splits into single ideographs still counts", () => {
-  // `签到` segments into `签` + `到`; with both dropped as too short these two
-  // one-word notes shared nothing.
-  assert.equal(fieldSimilarity(mem({ title: "签到" }), mem({ title: "签到" })), 1);
-  assert.equal(fieldSimilarity(mem({ title: "签到" }), mem({ title: "复盘" })), 0);
-  // 每晚|签|到 against 签|到|提醒: two of four words shared.
-  assert.equal(fieldSimilarity(mem({ title: "每晚签到" }), mem({ title: "签到提醒" })), 0.5);
+test("#1679: a single Han ideograph is a content word", () => {
+  // Needs no segmentation: the run is one character already.
+  assert.equal(fieldSimilarity(mem({ title: "签" }), mem({ title: "签" })), 1);
+  assert.equal(fieldSimilarity(mem({ title: "签" }), mem({ title: "盘" })), 0);
+});
+
+test("#1679: two runs that share words are similar, two that share none are not", needsIcu, () => {
+  // Whole-run comparison scored the first pair 0. No exact value: where ICU
+  // puts the breaks is its dictionary's business.
+  const shared = fieldSimilarity(mem({ title: "每晚签到" }), mem({ title: "签到提醒" }));
+  assert.ok(shared > 0 && shared < 1, `expected a partial overlap, got ${shared}`);
+  assert.equal(fieldSimilarity(mem({ title: "每晚签到" }), mem({ title: "部署拓扑" })), 0);
+});
+
+test("#1679: a mixed run keeps its Latin identifier", needsIcu, () => {
+  assert.ok(fieldSimilarity(mem({ title: "sub2api部署" }), mem({ title: "sub2api 拓扑" })) > 0);
 });
 
 test("#1679: a single kana or Latin letter is still no content word", () => {
