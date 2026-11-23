@@ -9,7 +9,9 @@
  * only then does an agent see it (session start names the handed-over open
  * ones, read and list show nothing else) and mark it done with a short reply.
  * Closing the last handed-over note is the agent's sign-off and marks the report
- * read. List and read carry one derived state (task-report-status.ts); a report
+ * read. Any report can be marked outdated (#1678): it then no longer counts as unread, sorts last
+ * and shows only that state; handed-over notes on it still reach the agents.
+ * List and read carry one derived state (task-report-status.ts); a report
  * may name the report it asks about (follow_up_of, a follow-up with questions).
  * Not bound to a task
  * run (executor reports are, see task-app-api.ts) and no action authority.
@@ -46,7 +48,10 @@ export const taskReportSaveInput = z.strictObject({
 const idInput = z.strictObject({ id: z.string().uuid() });
 /** Words to find in title, project and text (#1597); every word must occur. */
 const listInput = z.strictObject({ query: z.string().max(200).optional() });
-const markInput = z.strictObject({ id: z.string().uuid(), read: z.boolean() });
+/** read, outdated (#1678) or both; a mark that names neither changes nothing and is refused. */
+const markInput = z
+  .strictObject({ id: z.string().uuid(), read: z.boolean().optional(), outdated: z.boolean().optional() })
+  .refine((m) => m.read !== undefined || m.outdated !== undefined, { message: "read or outdated is required" });
 /** A note is the owner's own text (external input): bounded, never shortened. */
 export const NOTE_MAX_CHARS = 4000;
 const REPLY_MAX_CHARS = 1000;
@@ -114,6 +119,8 @@ const reportSchema = z.looseObject({
   owner_domains: z.array(z.string()).min(1),
   created_at: z.number().int().nonnegative(),
   read_at: z.number().int().nonnegative().optional(),
+  /** When the report was marked outdated (#1678), e.g. superseded by a later one; absent = current. */
+  outdated_at: z.number().int().nonnegative().optional(),
   /** Optional: reports from before notes existed have none. */
   notes: z.array(noteSchema).optional(),
   /** The report this follow-up asks about; set once when it is filed, never changed. */
@@ -314,6 +321,7 @@ function meta(r: TaskReport, owner: boolean) {
     actor: r.actor,
     created_at: r.created_at,
     ...(r.read_at === undefined ? {} : { read_at: r.read_at }),
+    ...(r.outdated_at === undefined ? {} : { outdated_at: r.outdated_at }),
     bytes: Buffer.byteLength(r.body),
     ...(open === 0 ? {} : { notes_open: open }),
     ...(drafts === 0 ? {} : { notes_draft: drafts }),
@@ -328,9 +336,11 @@ const withStatus = (r: TaskReport, reports: readonly TaskReport[], owner: boolea
   ...followUpOf(r, reports),
 });
 
-/** Unread first, newest first within each group. */
-const order = (a: TaskReport, b: TaskReport) =>
-  Number(a.read_at !== undefined) - Number(b.read_at !== undefined) || b.created_at - a.created_at;
+/** An outdated report (#1678) no longer waits to be read, whatever its read state. */
+const unread = (r: TaskReport) => r.read_at === undefined && r.outdated_at === undefined;
+/** Unread first, then read, then outdated; newest first within each group. */
+const group = (r: TaskReport) => (r.outdated_at !== undefined ? 2 : r.read_at === undefined ? 0 : 1);
+const order = (a: TaskReport, b: TaskReport) => group(a) - group(b) || b.created_at - a.created_at;
 
 function saveReport(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
   const input = taskReportSaveInput.parse(raw);
@@ -368,13 +378,16 @@ function readReport(ctx: ReportContext, principal: TaskPrincipal, id: string) {
   return { ...withStatus(report, reports, owner), body: report.body, notes: notesFor(report, owner) };
 }
 
-/** Idempotent: read=true keeps the first read time, read=false puts the report back to unread. */
-function markReport(ctx: ReportContext, principal: TaskPrincipal, id: string, read: boolean) {
-  return changeReports(storePath(ctx), (reports) => {
-    const report = reports.find((r) => r.id === id && visible(r, principal));
-    if (!report) throw notFound();
-    if (read) report.read_at ??= (ctx.now ?? Date.now)();
-    else delete report.read_at;
+/** Idempotent: read=true keeps the first read time, read=false puts the report back to unread;
+ * outdated=true keeps the first time it was marked, outdated=false clears it. The two are apart. */
+function markReport(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
+  const { id, read, outdated } = markInput.parse(raw);
+  const at = (ctx.now ?? Date.now)();
+  return changeReport(ctx, principal, id, (report) => {
+    if (read === true) report.read_at ??= at;
+    else if (read === false) delete report.read_at;
+    if (outdated === true) report.outdated_at ??= at;
+    else if (outdated === false) delete report.outdated_at;
     return meta(report, isOwner(ctx));
   });
 }
@@ -578,7 +591,7 @@ async function listReports(ctx: ReportContext, principal: TaskPrincipal, raw: un
   const owner = isOwner(ctx);
   return {
     reports: reports.map((r) => withStatus(r, all, owner)),
-    unread: reports.filter((r) => r.read_at === undefined).length,
+    unread: reports.filter(unread).length,
     ...(owner && query === undefined ? { deleted: undoable(ctx, principal, at) } : {}),
   };
 }
@@ -587,10 +600,7 @@ const HANDLERS: Record<TaskReportOperation, (ctx: ReportContext, principal: Task
   task_report_save: saveReport,
   task_report_list: listReports,
   task_report_read: (ctx, p, raw) => readReport(ctx, p, idInput.parse(raw).id),
-  task_report_mark: (ctx, p, raw) => {
-    const input = markInput.parse(raw);
-    return markReport(ctx, p, input.id, input.read);
-  },
+  task_report_mark: markReport,
   task_report_delete: (ctx, p, raw) => deleteReport(ctx, p, idInput.parse(raw).id),
   task_report_restore: restoreReport,
   task_report_note_add: addNote,

@@ -29,7 +29,7 @@ test("the reader's head holds title, meta line, open notes and the actions; none
   const acts = one(head, "tk-rep__acts");
   assert.deepEqual(
     acts.children.map((b) => b.textContent),
-    ["tk.rep.markRead", "tk.rep.delete"]
+    ["tk.rep.markRead", "tk.rep.markOutdated", "tk.rep.delete"]
   );
   const outside = article.children.slice(1).flatMap((n) => [n, ...n.all()]);
   assert.equal(outside.filter((n) => n.classList.contains("mb-btn")).length, 0, "no actions below the report");
@@ -57,7 +57,7 @@ test("a read report offers 'unread', shows its handed-over notes in the head and
   const head = one(host, "tk-rep__head");
   assert.deepEqual(
     one(head, "tk-rep__acts").children.map((b) => b.textContent),
-    ["tk.rep.markUnread", "tk.rep.delete"]
+    ["tk.rep.markUnread", "tk.rep.markOutdated", "tk.rep.delete"]
   );
   const [handed] = byClass(head, "tk-rep__open");
   assert.match(handed.textContent, /tk\.rep\.note\.handed \{"n":2\}/);
@@ -162,7 +162,7 @@ test("hand-over: with drafts the head leads with 'Hand over to agent', 'Read' st
   const acts = one(head, "tk-rep__acts").children;
   assert.deepEqual(
     acts.map((b) => b.textContent),
-    ['tk.rep.hand {"n":1}', "tk.rep.markRead", "tk.rep.delete"]
+    ['tk.rep.hand {"n":1}', "tk.rep.markRead", "tk.rep.markOutdated", "tk.rep.delete"]
   );
   assert.ok(acts[0].classList.contains("is-primary"), "the hand-over is the head's main action");
   assert.ok(!acts[1].classList.contains("is-primary"), "never two equally loud main buttons side by side");
@@ -615,4 +615,55 @@ test("state: 'Question' in the list opens the follow-up; its head leads back; 'D
   await back.click();
   assert.equal(v.R.sel, ID(1));
   assert.equal(one(one(host, "tk-rep__head"), "tk-rep__state").textContent, "tk.rep.question");
+});
+
+test("#1678: an outdated report reads 'Outdated' muted in list and head; the head sets and clears it", async () => {
+  const { v, host, context, calls } = await view();
+  (context.data as { reports: unknown }).reports = v.reportRows({
+    reports: [REPORTS[0], REPORTS[1], { ...REPORTS[2], status: "outdated", outdated_at: 50, notes_open: 0 }],
+  });
+  await v.openReports();
+  const [fresh, , old] = listRows(host);
+  assert.ok(old.classList.contains("is-old"));
+  assert.ok(!old.classList.contains("is-new"));
+  assert.equal(one(old, "mb-row__ai").textContent, "tk.rep.outdated");
+  assert.ok(one(old, "mb-row__ai").classList.contains("tk-rv__old"));
+  assert.ok(!fresh.classList.contains("is-old"));
+
+  const freshActs = one(one(host, "tk-rep__head"), "tk-rep__acts").children;
+  await freshActs[1].click();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1))), ["report_mark", { id: ID(1), outdated: true }]);
+
+  await v.openReport(ID(3));
+  const head = one(host, "tk-rep__head");
+  assert.equal(one(head, "tk-rep__state").textContent, "tk.rep.outdated");
+  const acts = one(head, "tk-rep__acts").children;
+  assert.deepEqual(
+    acts.map((b) => b.textContent),
+    ["tk.rep.markUnread", "tk.rep.markCurrent", "tk.rep.delete"]
+  );
+  await acts[1].click();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1))), ["report_mark", { id: ID(3), outdated: false }]);
+});
+
+test("#1678: an unread outdated report is not offered as the first to read and leaves rail and ticker", async () => {
+  const { v, host, context } = await view();
+  (context.data as { reports: unknown }).reports = v.reportRows({
+    reports: [{ ...REPORTS[0], status: "outdated", outdated_at: 50 }, REPORTS[1]],
+  });
+  assert.equal(v.reportsArea.badge(), 1);
+  assert.deepEqual(
+    v.reportTickerItems().map((i: { text: string }) => i.text),
+    [REPORTS[1].title]
+  );
+  await v.openReports();
+  assert.equal(v.R.sel, ID(2), "the unread one opens first");
+  const [fresh, old] = listRows(host);
+  assert.ok(fresh.classList.contains("is-new"));
+  assert.ok(old.classList.contains("is-old"));
+  const acts = one(one(host, "tk-rep__head"), "tk-rep__acts").children;
+  assert.ok(acts[0].classList.contains("is-primary"), "'Read' leads on the unread report");
+  await v.openReport(ID(1));
+  const oldActs = one(one(host, "tk-rep__head"), "tk-rep__acts").children;
+  assert.ok(!oldActs[0].classList.contains("is-primary"), "an outdated report asks for nothing");
 });

@@ -12,7 +12,7 @@ import { data } from "../data.js";
 import { openTask } from "./tasks-store.js";
 import { dueAt } from "./tasks-api.js";
 import { openReport, openReports } from "./tasks-reports.js";
-import { unreadCount } from "./tasks-reports-model.js";
+import { unreadCount, isUnread } from "./tasks-reports-model.js";
 import { loadingInline } from "./loading.js";
 import { placeWeather, weatherPicker } from "../weather-place.js";
 
@@ -648,7 +648,7 @@ function renderReports(body, env) {
         null,
         rows.slice(0, Math.max(1, env.item.h * 2 - 1)).map((r) => {
           const d = new Date(r.createdAt),
-            fresh = r.readAt === null;
+            fresh = isUnread(r);
           return h(
             "button.dw-row",
             {

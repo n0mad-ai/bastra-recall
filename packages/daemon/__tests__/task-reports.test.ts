@@ -17,6 +17,7 @@ import { dispatchTaskUi } from "../src/task-ui-session.js";
 import { ensureLocalTaskAgent } from "../src/task-auto-setup.js";
 import { setUiEnabled } from "../src/settings.js";
 import { TASK_REPORT_LIMIT } from "../src/task-reports.js";
+import { readAppRecord } from "../src/app-record-store.js";
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "task-reports-"));
@@ -97,6 +98,82 @@ test("list puts unread reports first, newest first within each group", async () 
   await f.call("task_report_mark", { id: ids[2], read: true });
   const titles = (await f.call("task_report_list", {})).reports.map((r: any) => r.title);
   assert.deepEqual(titles, ["mitte", "alt", "neu"]);
+});
+
+test("#1678: outdated is set and cleared apart from the read state; idempotent; read and list carry it", async () => {
+  const f = await fixture();
+  const saved = await f.call("task_report_save", report());
+  f.setNow(2_000);
+  const marked = await f.call("task_report_mark", { id: saved.id, outdated: true });
+  assert.equal(marked.outdated_at, 2_000);
+  assert.equal(marked.read_at, undefined, "outdated leaves the read state alone");
+  f.setNow(3_000);
+  assert.equal((await f.call("task_report_mark", { id: saved.id, outdated: true })).outdated_at, 2_000, "idempotent");
+  const read = await f.call("task_report_read", { id: saved.id });
+  assert.equal(read.outdated_at, 2_000);
+  assert.equal(read.status, "outdated");
+  let listed = await f.call("task_report_list", {});
+  assert.equal(listed.reports[0].outdated_at, 2_000);
+  assert.equal(listed.reports[0].status, "outdated");
+  assert.equal(listed.unread, 0, "an outdated report is not waiting to be read");
+
+  const both = await f.call("task_report_mark", { id: saved.id, read: true, outdated: false });
+  assert.equal(both.read_at, 3_000, "both fields in one call");
+  assert.equal(both.outdated_at, undefined, "false clears it");
+  assert.equal((await f.call("task_report_mark", { id: saved.id, outdated: false })).outdated_at, undefined);
+  listed = await f.call("task_report_list", {});
+  assert.equal(listed.reports[0].status, "read");
+  assert.equal("outdated_at" in listed.reports[0], false);
+
+  f.setNow(4_000);
+  const again = await f.call("task_report_mark", { id: saved.id, read: false, outdated: true });
+  assert.equal(again.read_at, undefined);
+  assert.equal(again.outdated_at, 4_000);
+  assert.equal((await f.call("task_report_mark", { id: saved.id, read: true })).outdated_at, 4_000, "read keeps it");
+  await assert.rejects(f.call("task_report_mark", { id: saved.id }), (e) => e instanceof z.ZodError);
+  await assert.rejects(f.call("task_report_mark", { id: saved.id, outdated: "yes" }), (e) => e instanceof z.ZodError);
+  await assert.rejects(f.call("task_report_mark", { id: saved.id, outdated: true }, f.other), { code: "not_found" });
+});
+
+test("#1678: outdated reports sit behind all others and leave the unread count", async () => {
+  const f = await fixture();
+  const ids: string[] = [];
+  for (const [i, title] of ["alt", "mitte", "neu", "jüngst"].entries()) {
+    f.setNow(1_000 + i * 1_000);
+    ids.push((await f.call("task_report_save", report({ title }))).id);
+  }
+  await f.call("task_report_mark", { id: ids[1], read: true });
+  await f.call("task_report_mark", { id: ids[3], outdated: true });
+  await f.call("task_report_mark", { id: ids[2], read: true, outdated: true });
+  const listed = await f.call("task_report_list", {});
+  assert.deepEqual(
+    listed.reports.map((r: any) => r.title),
+    ["alt", "mitte", "jüngst", "neu"],
+    "unread, then read, then outdated; newest first within each group"
+  );
+  assert.equal(listed.unread, 1);
+  assert.equal((await f.call("task_report_list", { query: "grün" })).unread, 1, "a search counts the same way");
+});
+
+test("#1678: the tool descriptions name the outdated state and flag; agents still mark only on request", () => {
+  const list = taskTools.find((t) => t.name === "task_report_list")!.description;
+  assert.match(list, /status: new\|read\|in_progress\|handed\|question\|done\|outdated/);
+  const mark = taskTools.find((t) => t.name === "task_report_mark")!;
+  assert.match(mark.description, /outdated=true/);
+  assert.match(mark.description, /Agents mark only when the user asks/);
+  const props = (mark.inputSchema as any).properties;
+  assert.deepEqual(Object.keys(props).sort(), ["id", "outdated", "read"]);
+});
+
+test("#1678: a record from before the field reads as before", async () => {
+  const f = await fixture();
+  const saved = await f.call("task_report_save", report());
+  const stored = JSON.parse(readAppRecord("task-reports", join(f.ctx.path, "..", "task-reports.json")));
+  assert.equal("outdated_at" in stored.reports[0], false, "nothing is written until it is set");
+  const listed = await f.call("task_report_list", {});
+  assert.equal(listed.reports[0].status, "new");
+  assert.equal("outdated_at" in listed.reports[0], false);
+  assert.equal("outdated_at" in (await f.call("task_report_read", { id: saved.id })), false);
 });
 
 test("INV-SCRUB-03: #1553: the body is cleaned before storage, and the tool description says so", async () => {

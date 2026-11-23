@@ -270,6 +270,17 @@ test("INV-SESSION-03: session notice: names reports with open notes, counts them
   assert.equal(await reportNotesNotice(f.ctx, f.auth), undefined, "done notes are not announced again");
 });
 
+test("#1678: a handed-over note on an outdated report is still an instruction and is still announced", async () => {
+  const f = await fixture();
+  await f.call("task_report_note_add", { id: f.report.id, anchor, text: "Preise prüfen" });
+  await f.hand();
+  await f.agentCall("task_report_mark", { id: f.report.id, outdated: true });
+  assert.equal((await f.agentCall("task_report_read", { id: f.report.id })).status, "outdated");
+  const text = (await reportNotesNotice(f.ctx, f.auth))!;
+  assert.match(text, /1 open note\(s\) on 1 task report/);
+  assert.match(text, new RegExp(f.report.id));
+});
+
 test("session start: the hook routes carry the notice with the task credential only", async () => {
   const { Vault, SearchIndex } = await import("@bastra-recall/core");
   const { startHttpServer } = await import("../src/http.js");

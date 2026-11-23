@@ -6162,11 +6162,13 @@
                   },
                   "read": {
                     "type": "boolean"
+                  },
+                  "outdated": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
-                  "id",
-                  "read"
+                  "id"
                 ],
                 "additionalProperties": false
               }

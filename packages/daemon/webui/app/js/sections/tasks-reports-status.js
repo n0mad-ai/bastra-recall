@@ -1,6 +1,6 @@
 // Task reports — the one state a report shows in the list and in the reader's head (Daniel
 // 18.11.2026): New (cyan), In progress and Handed over (amber), Done (muted green), Question (amber,
-// jumps to the follow-up that asks). A follow-up's head names the report it asks about and leads
+// jumps to the follow-up that asks), Outdated (muted, #1678). A follow-up's head names the report it asks about and leads
 // back. The daemon derives the state (task-report-status.ts); this only shows it. `open` is the
 // view's openReport, passed in so this module needs nothing from tasks-reports.js.
 import { h } from "../dom.js";
@@ -15,6 +15,8 @@ const MARKS = {
   done: { text: "tk.rep.doneState", tip: "tk.rep.doneStateTip", cls: ".tk-rv__done" },
   // its tooltip names the follow-up (below)
   question: { text: "tk.rep.question", cls: ".tk-rv__work.tk-rv__ask" },
+  // #1678: muted, so outdated reports step back
+  outdated: { text: "tk.rep.outdated", tip: "tk.rep.outdatedTip", cls: ".tk-rv__old" },
 };
 
 /** The state label. A question jumps to its follow-up: in the head as a button; in the list as a

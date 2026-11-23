@@ -5,7 +5,9 @@
  * - question: a follow-up report asks the owner something ([? … | …] answer options) and that
  *   follow-up is not done itself; `follow_up` names it;
  * - done: there are notes and an agent closed every one (task_report_note_done);
- * - new: unread, no notes; read: read, no notes.
+ * - new: unread, no notes; read: read, no notes;
+ * - outdated (#1678): marked outdated by the owner or an agent; wins over every other state, and an
+ *   outdated follow-up asks nothing any more.
  * Only the notes the caller may see count, so an agent never learns of the owner's drafts. A
  * follow-up's own state is taken from its notes alone (no second follow-up step), so a chain of
  * follow-ups can never loop. Questions are recognised by the fixed syntax only, never by words. */
@@ -16,7 +18,7 @@ import { inlineMatches } from "../webui/app/js/views/inline-scan.js";
 import { codeLines } from "../webui/app/js/views/code-lines.js";
 import { reportBlocks } from "../webui/app/js/sections/tasks-reports-model.js";
 
-export type ReportStatus = "new" | "read" | "in_progress" | "handed" | "question" | "done";
+export type ReportStatus = "new" | "read" | "in_progress" | "handed" | "question" | "done" | "outdated";
 
 export interface StatusNote {
   state: "open" | "done";
@@ -28,6 +30,7 @@ export interface StatusReport {
   body: string;
   created_at: number;
   read_at?: number;
+  outdated_at?: number;
   follow_up_of?: string;
 }
 
@@ -97,7 +100,8 @@ function openQuestion<R extends StatusReport>(
   notesOf: (r: R) => readonly StatusNote[]
 ): R | undefined {
   return reports
-    .filter((r) => r.follow_up_of === report.id && r.id !== report.id && asksOwner(r.body))
+    .filter((r) => r.follow_up_of === report.id && r.id !== report.id && r.outdated_at === undefined)
+    .filter((r) => asksOwner(r.body))
     .filter((r) => notesStatus(notesOf(r)) !== "done")
     .sort((a, b) => b.created_at - a.created_at)[0];
 }
@@ -108,6 +112,7 @@ export function reportStatus<R extends StatusReport>(
   reports: readonly R[],
   notesOf: (r: R) => readonly StatusNote[]
 ): { status: ReportStatus; follow_up?: { id: string; title: string } } {
+  if (report.outdated_at !== undefined) return { status: "outdated" };
   const own = notesStatus(notesOf(report));
   if (own === "in_progress" || own === "handed") return { status: own };
   const asked = openQuestion(report, reports, notesOf);

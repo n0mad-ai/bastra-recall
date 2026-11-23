@@ -809,6 +809,13 @@ li.tk-an__card.is-done > .tk-an__subj::before {
   color: var(--ok);
   opacity: 0.8;
 }
+/* "Outdated" (#1678) is muted, so the report steps back in list and head */
+.tk-rv__old {
+  color: var(--muted);
+}
+.tk-rv .mb-row.is-old .mb-row__t {
+  color: var(--muted);
+}
 .tk-rv__ask {
   cursor: pointer;
   text-decoration: underline dotted;

@@ -96,3 +96,20 @@ test("the follow-up's head names the report it asks about and leads back", async
   assert.deepEqual(opened, [ID(1)]);
   assert.equal(followUp.followUp, null, "only a question carries a follow-up to jump to");
 });
+
+test("#1678: 'Outdated' is muted in list and head; a Recall without status shows it from the time alone", async () => {
+  const v = await load();
+  const [old, legacy] = v.reportRows({
+    reports: [
+      { ...base, id: ID(1), status: "outdated", outdated_at: 20 },
+      { ...base, id: ID(2), created_at: 9, outdated_at: 20 },
+    ],
+  });
+  const inList = v.stateMark(old, false, () => {}) as Node_;
+  assert.equal(inList.textContent, "tk.rep.outdated");
+  assert.equal(inList.className, "mb-row__ai tk-rv__old");
+  assert.equal(inList.attrs.title, "tk.rep.outdatedTip");
+  const inHead = v.stateMark(old, true, () => {}) as Node_;
+  assert.equal(inHead.className, "mb-row__ai tk-rv__old tk-rep__state");
+  assert.equal(v.stateMark(legacy, false, () => {}).textContent, "tk.rep.outdated");
+});

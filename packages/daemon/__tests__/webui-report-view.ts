@@ -139,7 +139,7 @@ export async function view(notes: unknown[] = [], stored = new Map<string, strin
   };
   const v = runInNewContext(
     source +
-      "\n({ R, notesUi, reportRows, deletedRows, openReport, openReports, closeReports, reportsRenderer, escapeReports, reportsOpen, matchReports, reportsArea, tasksLit, showCalendar, outlineTab, trackOutline })",
+      "\n({ R, notesUi, reportRows, deletedRows, openReport, openReports, closeReports, reportsRenderer, escapeReports, reportsOpen, matchReports, reportsArea, tasksLit, showCalendar, outlineTab, trackOutline, reportTickerItems })",
     context
   );
   (context.data as { reports: unknown }).reports = v.reportRows({ reports: REPORTS });

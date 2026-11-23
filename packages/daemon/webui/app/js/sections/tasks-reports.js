@@ -39,6 +39,7 @@ import { S, emit, say, act } from "./tasks-store.js";
 import { api, fmtAt } from "./tasks-api.js";
 import {
   unreadCount,
+  isUnread,
   draftReports,
   noteCounts,
   originText,
@@ -174,10 +175,11 @@ export async function openReport(id) {
   emit();
 }
 
-/** "Gelesen" / "Ungelesen": counters, nav dot and ticker follow with the reloaded list. */
-function mark(id, read) {
+/** "Gelesen" / "Ungelesen" ({ read }) and "Veraltet" / "Nicht veraltet" ({ outdated }, #1678):
+ *  counters, nav dot and ticker follow with the reloaded list. */
+function mark(id, change) {
   return act(async () => {
-    await write("report_mark", { id, read });
+    await write("report_mark", { id, ...change });
     await loadReports();
   });
 }
@@ -298,15 +300,17 @@ function noteMarks(c, tag) {
 // Rows and reader are the memory browser's (css/membrowser.css: mb-row, mb-rd); Daniel wants the
 // reports to look like it. Only the frame and the deltas live in css/tasks-reports.css.
 // A report with open notes of the owner is "In progress" and amber like the notes in the report.
+// An outdated report (#1678) steps back: muted row, no unread look.
 function listRow(r) {
   const on = R.sel === r.id,
-    fresh = r.readAt === null,
-    work = inWork(r);
+    fresh = isUnread(r),
+    work = inWork(r),
+    old = r.outdatedAt !== null;
   const tone = work ? "var(--amber)" : fresh ? "var(--accent)" : "var(--line-45)";
   return h(
     "button.mb-row",
     {
-      cls: [fresh ? "is-new" : "", work ? "is-work" : "", on ? "is-sel" : ""].join(" "),
+      cls: [fresh ? "is-new" : "", work ? "is-work" : "", old ? "is-old" : "", on ? "is-sel" : ""].join(" "),
       "aria-current": on ? "true" : null,
       title: fmtAt(r.createdAt),
       on: { click: () => openReport(r.id) },
@@ -369,6 +373,7 @@ let focusNote = null;
 function readerHead(r, narrow, asks) {
   const c = noteCounts(R.notes),
     unread = r.readAt === null,
+    old = r.outdatedAt !== null,
     answered = asks.filter((a) => a.answered).length;
   return h(
     "header.tk-rep__head",
@@ -422,9 +427,14 @@ function readerHead(r, narrow, asks) {
             on: { click: () => handOver(r.id) },
           })
         : null,
-      h(`button.mb-btn${unread && !c.drafts ? ".is-primary" : ""}`, {
+      h(`button.mb-btn${unread && !old && !c.drafts ? ".is-primary" : ""}`, {
         text: t(unread ? "tk.rep.markRead" : "tk.rep.markUnread"),
-        on: { click: () => mark(r.id, unread) },
+        on: { click: () => mark(r.id, { read: unread }) },
+      }),
+      h("button.mb-btn", {
+        text: t(old ? "tk.rep.markCurrent" : "tk.rep.markOutdated"),
+        title: t(old ? "tk.rep.markCurrentTip" : "tk.rep.markOutdatedTip"),
+        on: { click: () => mark(r.id, { outdated: !old }) },
       }),
       h("button.mb-btn.is-quiet", { text: t("tk.rep.delete"), on: { click: () => remove(r.id, openReport) } })
     )
@@ -592,23 +602,21 @@ export function escapeReports(target) {
 
 /** Header ticker: one entry per unread report, in the ticker's own item shape (js/header.js). */
 export function reportTickerItems() {
-  return data.reports
-    .filter((r) => r.readAt === null)
-    .map((r) => ({
-      tag: t("tk.rep.kicker"),
-      color: "var(--accent)",
-      text: r.title,
-      meta: ago(r.createdAt),
-      pv: {
-        tag: t("tk.rep.tkTag"),
-        title: r.title,
-        sub: [originText(r) || t("tk.rep.unknown"), r.project, fmtAt(r.createdAt)].filter(Boolean).join(" · "),
-        body: "",
-        whyLabel: t("tk.rep.tkWhy"),
-        why: t("tk.rep.tkWhyText"),
-        openLabel: t("tk.rep.tkOpen"),
-        ask: t("tk.rep.tkAsk", { title: r.title }),
-      },
-      onClick: () => openReport(r.id),
-    }));
+  return data.reports.filter(isUnread).map((r) => ({
+    tag: t("tk.rep.kicker"),
+    color: "var(--accent)",
+    text: r.title,
+    meta: ago(r.createdAt),
+    pv: {
+      tag: t("tk.rep.tkTag"),
+      title: r.title,
+      sub: [originText(r) || t("tk.rep.unknown"), r.project, fmtAt(r.createdAt)].filter(Boolean).join(" · "),
+      body: "",
+      whyLabel: t("tk.rep.tkWhy"),
+      why: t("tk.rep.tkWhyText"),
+      openLabel: t("tk.rep.tkOpen"),
+      ask: t("tk.rep.tkAsk", { title: r.title }),
+    },
+    onClick: () => openReport(r.id),
+  }));
 }

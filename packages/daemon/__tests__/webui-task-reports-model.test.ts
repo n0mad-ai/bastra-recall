@@ -8,7 +8,7 @@ async function model() {
   const source = (await read("views/code-lines.js")) + (await read("sections/tasks-reports-model.js"));
   return runInNewContext(
     source.replace(/^import .*$/gm, "").replace(/^export /gm, "") +
-      "\n({ reportRows, unreadCount, originText, reportBlocks, byUnread, matchReports })",
+      "\n({ reportRows, unreadCount, isUnread, stateOf, originText, reportBlocks, byUnread, matchReports })",
     {}
   );
 }
@@ -42,6 +42,7 @@ test("rows: unread first, newest first, broken entries dropped", async () => {
     session: "",
     createdAt: 900,
     readAt: null,
+    outdatedAt: null,
     notesOpen: 0,
     notesDraft: 0,
     status: null,
@@ -50,6 +51,29 @@ test("rows: unread first, newest first, broken entries dropped", async () => {
   });
   assert.equal(m.originText(rows[1]), "claude-code · s1");
   assert.equal(m.originText(rows[0]), "x");
+});
+
+test("#1678: outdated rows go last, count as unread nowhere and show the outdated state", async () => {
+  const m = await model();
+  const rows = m.reportRows({
+    reports: [
+      { id: "a", title: "veraltet neu", origin: {}, created_at: 900, outdated_at: 950, status: "outdated" },
+      { id: "b", title: "gelesen", origin: {}, created_at: 100, read_at: 200 },
+      { id: "c", title: "veraltet gelesen", origin: {}, created_at: 300, read_at: 400, outdated_at: 500 },
+      { id: "d", title: "ungelesen", origin: {}, created_at: 50 },
+      { id: "e", title: "kaputt", origin: {}, created_at: 60, outdated_at: "gestern" },
+    ],
+  });
+  assert.deepEqual(
+    rows.map((r: any) => r.id),
+    ["e", "d", "b", "a", "c"]
+  );
+  assert.equal(rows[3].outdatedAt, 950);
+  assert.equal(rows[0].outdatedAt, null, "a broken time is no mark");
+  assert.equal(m.unreadCount(rows), 2);
+  assert.equal(m.isUnread(rows[3]), false);
+  assert.equal(m.stateOf(rows[3]), "outdated");
+  assert.equal(m.stateOf(rows[4]), "outdated", "a Recall without status: the time alone decides");
 });
 
 test("rows: a missing or malformed answer is an empty list, not an error", async () => {

@@ -77,6 +77,49 @@ test("status: every derivation rule", () => {
     );
 });
 
+test("#1678: outdated wins over every other state; an outdated follow-up asks nothing", () => {
+  const old = { outdated_at: 9 };
+  const rows: [string, R, R[], ReturnType<typeof reportStatus>][] = [
+    ["unread → outdated", base(old), [], { status: "outdated" }],
+    ["read → outdated", base({ ...old, read_at: 3 }), [], { status: "outdated" }],
+    ["drafts → outdated", base({ ...old, notes: [draft] }), [], { status: "outdated" }],
+    ["handed notes → outdated", base({ ...old, notes: [handed] }), [], { status: "outdated" }],
+    ["all done → outdated", base({ ...old, notes: [done] }), [], { status: "outdated" }],
+    ["an open question → outdated", base(old), [followUp()], { status: "outdated" }],
+    ["the only asking follow-up outdated → no question", base({ read_at: 3 }), [followUp(old)], { status: "read" }],
+    ["… and with closed notes → done", base({ notes: [done] }), [followUp(old)], { status: "done" }],
+    [
+      "an outdated newer follow-up leaves the older open one named",
+      base(),
+      [followUp(), followUp({ ...old, id: "g", title: "G", created_at: 9 })],
+      { status: "question", follow_up: { id: "f", title: "F" } },
+    ],
+  ];
+  for (const [name, report, others, want] of rows)
+    assert.deepEqual(
+      reportStatus(report, [report, ...others], (r) => r.notes),
+      want,
+      name
+    );
+});
+
+test("#1678: through the store, outdating the follow-up takes its parent out of question", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-report-outdated-"));
+  const ctx = { path: join(root, "tasks.json"), authPath: join(root, "auth.json"), now: () => 5 };
+  const agent = await mintTaskCredential(ctx.authPath, { actor_id: "claude", domains: ["personal"], role: "agent" });
+  const call = (op: string, input: unknown) => callTaskCrud(ctx, `Bearer ${agent.token}`, op as any, input) as any;
+  const origin = { client: "codex" };
+  const parent = await call("task_report_save", { title: "A", body: "text", origin });
+  const asking = await call("task_report_save", { title: "F", body: ASK, origin, follow_up_of: parent.id });
+  const status = async (id: string) => (await call("task_report_read", { id })).status;
+  assert.equal(await status(parent.id), "question");
+  await call("task_report_mark", { id: asking.id, outdated: true });
+  assert.equal(await status(parent.id), "new");
+  assert.equal(await status(asking.id), "outdated");
+  await call("task_report_mark", { id: asking.id, outdated: false });
+  assert.equal(await status(parent.id), "question", "cleared, it asks again");
+});
+
 test("status: questions are recognised by the fixed syntax, never by words", () => {
   const rows: [string, boolean][] = [
     [ASK, true],

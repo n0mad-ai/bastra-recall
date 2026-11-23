@@ -21,6 +21,8 @@ function row(x) {
     session: str(x.origin?.session) ? x.origin.session : "",
     createdAt: x.created_at,
     readAt: num(x.read_at) ? x.read_at : null,
+    // marked outdated (#1678): no longer waits to be read, listed last
+    outdatedAt: num(x.outdated_at) ? x.outdated_at : null,
     notesOpen: open,
     // drafts: open notes not handed over to the agents yet (part of notesOpen)
     notesDraft: Math.min(count(x.notes_draft), open),
@@ -28,8 +30,11 @@ function row(x) {
   };
 }
 
-/** Unread first, newest first within each group. */
-export const byUnread = (a, b) => Number(a.readAt !== null) - Number(b.readAt !== null) || b.createdAt - a.createdAt;
+/** Waits to be read: unread and not outdated (#1678). */
+export const isUnread = (r) => r.readAt === null && r.outdatedAt === null;
+const group = (r) => (r.outdatedAt !== null ? 2 : r.readAt === null ? 0 : 1);
+/** Unread first, then read, then outdated; newest first within each group. */
+export const byUnread = (a, b) => group(a) - group(b) || b.createdAt - a.createdAt;
 
 /** task_report_list answer → ordered rows; a broken answer yields an empty list. */
 export function reportRows(answer) {
@@ -68,7 +73,7 @@ export function projectsOf(rows) {
 /** The rows of one project; null keeps all. */
 export const inProject = (rows, project) => (project === null ? rows : rows.filter((r) => r.project === project));
 
-export const unreadCount = (rows) => rows.filter((r) => r.readAt === null).length;
+export const unreadCount = (rows) => rows.filter(isUnread).length;
 
 /** Reports with notes the owner has not handed over yet (rail tooltip). */
 export const draftReports = (rows) => rows.filter((r) => r.notesDraft > 0).length;
@@ -248,7 +253,7 @@ export function hereIndex(tops, line) {
 
 // ── The one state a report shows (Daniel 18.11.2026). The daemon derives it (task-report-status.ts);
 // the UI only shows it. A Recall from before it sends none: then the state follows the old rule.
-const STATES = ["new", "read", "in_progress", "handed", "question", "done"];
+const STATES = ["new", "read", "in_progress", "handed", "question", "done", "outdated"];
 /** { id, title } of a linked report, or null when the shape is off (external input). */
 const linkOf = (x) => (x && typeof x === "object" && str(x.id) && str(x.title) ? { id: x.id, title: x.title } : null);
 
@@ -263,9 +268,10 @@ function stateFields(x) {
   };
 }
 
-/** The state to show: the daemon's, else open notes → in_progress, unread → new, else read. */
+/** The state to show: the daemon's, else outdated, open notes → in_progress, unread → new, else read. */
 export function stateOf(r) {
   if (r.status) return r.status;
+  if (r.outdatedAt !== null) return "outdated";
   if (r.notesOpen > 0) return "in_progress";
   return r.readAt === null ? "new" : "read";
 }
