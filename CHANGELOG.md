@@ -11,6 +11,7 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Added
 
+- Reports can be marked outdated (`task_report_mark` `outdated`, a switch in the Reports reader): an outdated report shows a muted Outdated tag, leaves the unread count, sorts last and no longer puts its parent into Question (#1678).
 - Add a mandatory post-build Knip check with a frozen per-finding budget; new or increased unused-code findings fail CI (#1534).
 
 - `goldset-run` takes `--archive` like the other eval runners (#503).
