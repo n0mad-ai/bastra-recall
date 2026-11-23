@@ -33,6 +33,8 @@
  * schreibt nur die Entscheidung und die Zeit, die er gespart hätte).
  */
 
+import { segmentWords } from "./segment.js";
+
 export type QueryArms = "bm25" | "hybrid";
 export type QueryRouteReason = "short" | "identifier" | "default";
 
@@ -80,12 +82,19 @@ export function routeQueryArms(query: string): QueryRoute {
   // ohne Leerraum — die Wortsegmentierung würde `prompt-lane.ts` zerteilen.
   // Eindeutig nach Kleinschreibung, beurteilt in Originalschreibweise — die
   // Binnenmajuskel ist genau das, was ein `toLowerCase` zerstören würde.
+  // #1681: Ein Lauf in einer Schrift ohne Leerzeichen ist kein einzelner Term,
+  // sondern eine Wendung. Als ein Term gezählt, machte er den Anteil der
+  // Bezeichner zu groß: `sub2api 部署拓扑` war „einer von zwei" und verlor den
+  // dichten Arm. `segmentWords` zerlegt nur solche Läufe (wie im Index, #711);
+  // jeder andere Term bleibt ganz.
   const terms = new Map<string, string>();
   for (const raw of query.split(/[\s\p{Z}]+/u)) {
-    const term = raw.replace(EDGE_PUNCT, "");
-    if (!term || !HAS_WORD_CHAR.test(term)) continue;
-    const key = term.toLowerCase();
-    if (!terms.has(key)) terms.set(key, term);
+    for (const piece of segmentWords(raw)) {
+      const term = piece.replace(EDGE_PUNCT, "");
+      if (!term || !HAS_WORD_CHAR.test(term)) continue;
+      const key = term.toLowerCase();
+      if (!terms.has(key)) terms.set(key, term);
+    }
   }
   const unique = words.size;
   let identifiers = 0;

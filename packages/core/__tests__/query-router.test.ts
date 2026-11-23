@@ -64,3 +64,23 @@ test("#362: leer und reine Satzzeichen bleiben beim heutigen Weg", () => {
   assert.deepEqual(routeQueryArms(""), { arms: "hybrid", reason: "default", unique_terms: 0, identifier_terms: 0 });
   assert.equal(routeQueryArms("?! …").arms, "hybrid");
 });
+
+test("#1681: ein Produktname neben einer Wendung ohne Leerzeichen nimmt der Anfrage nicht den dichten Arm", () => {
+  // Vorher: zwei Leerzeichen-Terme, einer bezeichnerförmig → `identifier`.
+  for (const q of [
+    "sub2api 部署拓扑与常见问题",
+    "V4-Flash 输出退化 MXFP4 fallback",
+    "h264 の設定を東京のサーバーで確認する",
+  ]) {
+    const route = routeQueryArms(q);
+    assert.equal(route.arms, "hybrid", q);
+    assert.equal(route.reason, "default", q);
+    assert.ok(route.identifier_terms >= 1, `${q}: der Bezeichner wird weiter gezählt`);
+  }
+});
+
+test("#1681: überwiegend Bezeichner bleibt BM25, auch mit einem Wort ohne Leerzeichen", () => {
+  const route = routeQueryArms("sub2api prompt-lane.ts routeRetrieval 部署");
+  assert.equal(route.arms, "bm25");
+  assert.equal(route.reason, "identifier");
+});

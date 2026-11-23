@@ -329,6 +329,8 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Fixed
 
+- Recall: a query that pairs one identifier-shaped product name with a phrase in a script written without spaces (`sub2api 部署拓扑`) keeps its vector arm; the phrase now counts as its words, not as one term, when the router weighs identifiers. Queries in scripts written with spaces route as before. Reported by @apollo600 (#1681).
+
 - Save quality: the duplicate advisory now compares words, not whole runs, in scripts written without spaces (Chinese, Japanese, Thai and others), so a reworded note on such a vault is reported as a possible duplicate; a single Han ideograph counts as a word. Vaults without such a script score exactly as before. Reported and measured by @apollo600 (#1679).
 
 - Report and memory reader: a free-standing `---`/`***`/`___` line now renders as a thin divider instead of literal dashes.
