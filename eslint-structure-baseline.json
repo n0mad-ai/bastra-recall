@@ -263,7 +263,7 @@
     "[\"packages/daemon/src/learned-recall/harvest.ts\",\"[\\\"function:queryOrigin\\\"]\",\"complexity\"]": 20,
     "[\"packages/daemon/src/learned-recall/harvest.ts\",\"[\\\"function:writeBridges\\\"]\",\"complexity\"]": 28,
     "[\"packages/daemon/src/learned-recall/harvest.ts\",\"[\\\"function:writeBridges\\\"]\",\"max-depth\"]": 5,
-    "[\"packages/daemon/src/learned-recall/reviewed-miss-engines.ts\",\"[\\\"function:loadTelemetry\\\"]\",\"complexity\"]": 38,
+    "[\"packages/daemon/src/learned-recall/reviewed-miss-engines.ts\",\"[\\\"function:loadTelemetry\\\"]\",\"complexity\"]": 35,
     "[\"packages/daemon/src/learned-recall/reviewed-miss-engines.ts\",\"[\\\"function:resolveTarget\\\"]\",\"complexity\"]": 19,
     "[\"packages/daemon/src/learned-recall/reviewed-miss-evidence.ts\",\"[\\\"function:heatmap\\\"]\",\"complexity\"]": 21,
     "[\"packages/daemon/src/learned-recall/reviewed-miss-harvest.ts\",\"[\\\"function:extractReviewedMissChains\\\"]\",\"complexity\"]": 39,

@@ -58,10 +58,11 @@ export interface TelemetryPool {
   /**
    * How many recalls the daemon ran for the call this one belongs to: 1 for a
    * plain recall, for a batch the phrasings that were searched (see
-   * `phrasingsRun`). The count is all an event says about its batch: no field
-   * names the other phrasings.
+   * `phrasingsRun`).
    */
   phrasingsRun: number;
+  /** Shared by the executed phrasings of a batch, when recorded. */
+  batchId: string | null;
 }
 
 /**
@@ -102,6 +103,8 @@ export interface TelemetryLoad {
 
 export interface Telemetry {
   pools: Map<string, TelemetryPool>;
+  /** All observed rows per batch, including rows without a usable pool or id. */
+  batches: Map<string, Array<string | null>>;
   loads: TelemetryLoad[];
 }
 
@@ -153,16 +156,44 @@ export async function telemetryFiles(dir: string): Promise<string[]> {
   return (await readdir(dir)).filter((f) => f.startsWith("events-") && f.endsWith(".jsonl")).sort();
 }
 
+function readPool(
+  event: Record<string, unknown>,
+  lane: TelemetryPool["lane"],
+  ts: string,
+  recallId: string,
+  batchId: string | null
+): TelemetryPool | null {
+  const scoreSpace = scoreSpaceOf(event);
+  const orderedIds = idsOf(event.candidate_pool);
+  if (!scoreSpace || (orderedIds.length === 0 && !provesEmptyPool(event))) return null;
+  if (scoreSpace.kind === "rrf" && scoreSpace.formulaVersion === null) return null;
+  return {
+    recallId,
+    ts,
+    lane,
+    session: clientSessionOf(event),
+    query: typeof event.query === "string" && event.query ? redactSecrets(event.query).text : null,
+    orderedIds,
+    servedIds: idsOf(event.hits),
+    scoreSpace,
+    vaultSize: typeof event.vault_size === "number" ? event.vault_size : 0,
+    k: typeof event.k === "number" ? event.k : null,
+    phrasingsRun: phrasingsRun(event),
+    batchId,
+  };
+}
+
 /** Read every recall-class event with a `recall_id` and a candidate pool — recorded, or proven empty — and every `load_memory` event. */
 export async function loadTelemetry(dir: string, options: { sinceMs?: number } = {}): Promise<Telemetry> {
   const pools = new Map<string, TelemetryPool>();
+  const batches = new Map<string, Array<string | null>>();
   const loads: TelemetryLoad[] = [];
   const since = options.sinceMs ?? 0;
   let files: string[];
   try {
     files = await telemetryFiles(dir);
   } catch {
-    return { pools, loads };
+    return { pools, batches, loads };
   }
   for (const file of files) {
     const raw = await readFile(join(dir, file), "utf8");
@@ -186,32 +217,23 @@ export async function loadTelemetry(dir: string, options: { sinceMs?: number } =
         continue;
       }
       if (event.kind !== "recall" && event.kind !== "hook_recall") continue;
-      if (typeof event.recall_id !== "string" || !event.recall_id) continue;
-      const scoreSpace = scoreSpaceOf(event);
-      const orderedIds = idsOf(event.candidate_pool);
-      if (!scoreSpace || (orderedIds.length === 0 && !provesEmptyPool(event))) continue;
-      const scoreSpaceFormulaOk = scoreSpace.kind === "bm25" || scoreSpace.formulaVersion !== null;
-      if (!scoreSpaceFormulaOk) continue;
-      pools.set(event.recall_id, {
-        recallId: event.recall_id,
-        ts: event.ts,
-        lane: event.kind,
-        session: clientSessionOf(event),
-        query: typeof event.query === "string" && event.query ? redactSecrets(event.query).text : null,
-        orderedIds,
-        servedIds: idsOf(event.hits),
-        scoreSpace,
-        vaultSize: typeof event.vault_size === "number" ? event.vault_size : 0,
-        k: typeof event.k === "number" ? event.k : null,
-        phrasingsRun: phrasingsRun(event),
-      });
+      const recallId = typeof event.recall_id === "string" && event.recall_id ? event.recall_id : null;
+      const batchId = typeof event.batch_id === "string" && event.batch_id ? event.batch_id : null;
+      if (batchId) {
+        const members = batches.get(batchId) ?? [];
+        members.push(recallId);
+        batches.set(batchId, members);
+      }
+      if (!recallId) continue;
+      const pool = readPool(event, event.kind, event.ts, recallId, batchId);
+      if (pool) pools.set(recallId, pool);
     }
   }
   for (const load of loads) {
     const recallId = load.fromHookRecall ?? load.followsRecall;
     load.session = (recallId ? pools.get(recallId)?.session : null) ?? null;
   }
-  return { pools, loads };
+  return { pools, batches, loads };
 }
 
 function clientSessionOf(event: Record<string, unknown>): string | null {
@@ -498,7 +520,10 @@ function sameScoreSpace(a: CandidatePoolScoreSpace, b: CandidatePoolScoreSpace):
  * spaces differ: "not in the pool" is only a proof over the whole pool, and
  * one index identity cannot be derived from two score spaces.
  */
-export function joinedPool(chain: ReviewedMissChain, pools: Map<string, TelemetryPool> | null): TelemetryPool | null {
+export function joinedPool(
+  chain: Pick<ReviewedMissChain, "recallIds" | "servedIds">,
+  pools: Map<string, TelemetryPool> | null
+): TelemetryPool | null {
   if (!pools || chain.recallIds.length === 0) return null;
   const joined: TelemetryPool[] = [];
   for (const recallId of chain.recallIds) {

@@ -28,6 +28,7 @@ import { deriveCueProposals, type CueProposal, type ObservedPair } from "./revie
 import {
   frozenIdsOf,
   frozenPoolOf,
+  joinedPool,
   observeChain,
   resolveTarget,
   type ObservationEngines,
@@ -94,10 +95,48 @@ export function loadKey(recallId: string, memoryId: string): string {
   return recallId + "\0" + memoryId;
 }
 
+function batchRecallIds(linked: TelemetryPool, telemetry: Telemetry): string[] | null {
+  if (!linked.batchId) return linked.phrasingsRun > 1 ? null : [linked.recallId];
+  const members = telemetry.batches.get(linked.batchId);
+  if (
+    !members ||
+    members.length !== linked.phrasingsRun ||
+    !members.includes(linked.recallId) ||
+    new Set(members).size !== members.length
+  )
+    return null;
+
+  // Keep the linked recall's identity, query and timestamp for the observation.
+  const ids = [linked.recallId];
+  for (const id of members) {
+    if (id === linked.recallId) continue;
+    const sibling = id ? telemetry.pools.get(id) : undefined;
+    if (
+      !sibling ||
+      sibling.batchId !== linked.batchId ||
+      sibling.phrasingsRun !== linked.phrasingsRun ||
+      sibling.session !== linked.session ||
+      sibling.lane !== linked.lane
+    )
+      return null;
+    ids.push(sibling.recallId);
+  }
+  return ids;
+}
+
+function hookLanePool(
+  linked: TelemetryPool,
+  telemetry: Telemetry
+): { pool: TelemetryPool; recallIds: string[] } | null {
+  const recallIds = batchRecallIds(linked, telemetry);
+  if (!recallIds) return null;
+  const pool = recallIds.length === 1 ? linked : joinedPool({ recallIds, servedIds: [] }, telemetry.pools);
+  return pool ? { pool, recallIds } : null;
+}
+
 /**
- * Observe every daemon-joined load against its pool. A load the daemon did
- * not link, or whose recall has no recorded pool, is a gap — counted, never
- * classified.
+ * Observe every daemon-joined load against its recall or batch pool.
+ * Without a complete pool, count a gap and leave the load unclassified.
  */
 export function observeHookLane(
   telemetry: Telemetry,
@@ -124,19 +163,13 @@ export function observeHookLane(
       covered += 1;
       continue;
     }
-    const pool = telemetry.pools.get(recallId);
-    if (!pool) {
+    const linked = telemetry.pools.get(recallId);
+    if (!linked) {
       gaps.push({ kind: "link-without-pool", witness });
       continue;
     }
-    // The daemon runs a batch's phrasings in parallel and links the load to
-    // whichever recall id it drew last. The hit may have come from any
-    // phrasing, and the events do not say which recalls were one batch: each
-    // carries the width (`query_count`), none a batch id. One phrasing's pool
-    // is not the pool the session was served from, so nothing is judged. A
-    // batch the daemon collapsed to one phrasing has no sibling: its pool is
-    // the whole pool.
-    if (pool.phrasingsRun > 1) {
+    const joined = hookLanePool(linked, telemetry);
+    if (!joined) {
       gaps.push({ kind: "batch-link-without-sibling-pools", witness });
       continue;
     }
@@ -148,13 +181,14 @@ export function observeHookLane(
       gaps.push({ kind: "no-vault-snapshot", witness });
       continue;
     }
+    const { pool, recallIds } = joined;
     const frozen = frozenIdsOf(pool, engines.snapshot);
     const frozenPool = frozenPoolOf(pool);
     const chain: ReviewedMissChain = {
       query: pool.query ?? "",
       session: load.session ?? UNKNOWN_SESSION,
       recallId,
-      recallIds: [recallId],
+      recallIds,
       explicitMiss: pool.servedIds.length === 0,
       servedIds: pool.servedIds,
       resultTs: pool.ts,
@@ -347,7 +381,7 @@ const GAP_EXITS: Record<GapKind, string> = {
   "link-without-pool":
     "load links a recall_id with no recorded candidate_pool — event outside the window or pool not captured on that path",
   "batch-link-without-sibling-pools":
-    "load links one of several phrasings a batch recall ran (query_count minus batch_collapsed > 1); telemetry names that count, not the other phrasings — the session's transcript carries them (recall_ids), a batch id on the events would",
+    "batch identity or complete sibling pools in one score space could not be proven; the session transcript can link the recall_ids",
   "load-not-found": "load_memory for an id the vault did not hold — moved or deleted memory; nothing to classify",
   "unresolved-evidence":
     "the evidence step had no inspectable identity (Grep/Glob/find_document) — nothing to check against the vault",
@@ -369,8 +403,7 @@ const GAP_RECOUNT: Record<GapKind, string> = {
   "load-without-recall-link":
     "grep -h '\"kind\":\"load_memory\"' {events}/events-*.jsonl | grep -vc 'from_hook_recall\\|follows_recall'",
   "link-without-pool": "harvester only: linked recall_id with no candidate_pool event in the window",
-  "batch-link-without-sibling-pools":
-    "harvester only: linked recall_id whose event has query_count - batch_collapsed > 1",
+  "batch-link-without-sibling-pools": "harvester only: linked batch without a complete, unambiguous pool union",
   "load-not-found": 'grep -h \'"kind":"load_memory"\' {events}/events-*.jsonl | grep -c \'"found":false\'',
   "unresolved-evidence": "harvester only: chains whose evidence step had no file_path or memory id",
   "chain-without-pool": "harvester only: chains with a load_memory or an in-vault read whose recalls joined no pool",

@@ -127,7 +127,7 @@ and a verdict: `den` when at least 2 witnesses showed it, `noise` for fewer,
 | `envelope-without-recall-id` | A recall result carried no `recall_id`. |
 | `load-without-recall-link` | Hook lane: the daemon linked the load to no recall. |
 | `link-without-pool` | Hook lane: the linked recall has no pool in the telemetry read. |
-| `batch-link-without-sibling-pools` | Hook lane: the linked recall is one of several phrasings a batch ran. Not judged, see limits. |
+| `batch-link-without-sibling-pools` | Hook lane: the batch's complete set of comparable pools could not be proven. The load stays unclassified. |
 | `load-not-found` | Hook lane: the vault did not hold the loaded id. |
 | `unresolved-evidence` | The step after the recall named nothing inspectable (a search, for example). |
 | `chain-without-pool` | The step named a vault object, but the chain's recalls joined no pool. |
@@ -140,11 +140,11 @@ and a verdict: `den` when at least 2 witnesses showed it, `noise` for fewer,
   `external-source`, also a file that lies in the vault.
 - **Out of pool means out of the recorded pool.** The harvester does not
   re-run the search; a memory that would have appeared deeper is not seen.
-- **Hook lane, one recall per load: it can propose wrongly.** A load is
+- **Hook lane, separate recall calls can yield a wrong proposal.** A load is
   judged only against the recall the daemon linked it to last — its hook hint,
-  or the most recent recall within five minutes. Several recalls for one
-  question are not grouped there. A hit that an earlier recall served
-  therefore comes out `genuine-out-of-pool` and is proposed when a later
+  or the most recent recall within five minutes — and its batch, if proven.
+  Separate recall calls for one question are not grouped. A hit that an earlier
+  recall served therefore comes out `genuine-out-of-pool` and is proposed when a later
   recall did not hold it — also when that later recall returned nothing at
   all. This is a known error of the hook lane, not yet fixed. A transcript of
   the same session avoids it: loads the transcript lane observed are left out
@@ -152,11 +152,13 @@ and a verdict: `den` when at least 2 witnesses showed it, `noise` for fewer,
   all others.
 - **Hook lane, batch recalls.** The daemon drops near-duplicate queries of a
   batch before searching. Each phrasing that ran records how many queries were
-  submitted (`query_count`) and how many were dropped (`batch_collapsed`), and
-  nothing that names the other phrasings. When more than one phrasing ran
-  (`query_count` minus `batch_collapsed` is above 1), a load linked to one of
-  them is reported as a gap and not classified. A batch that was collapsed to
-  a single phrasing is judged like a plain recall.
+  submitted (`query_count`) and how many were dropped (`batch_collapsed`).
+  The harvester uses the shared `batch_id` to join the recorded pools and
+  served hits of all executed phrasings. It needs one distinct recall event
+  with a usable pool per executed phrasing, all in the same score space.
+  Older multi-phrasing events without a `batch_id` and batches with missing or
+  ambiguous evidence remain unclassified. A batch collapsed to one phrasing
+  needs only its own pool.
 - **A step in the same message as the recall** is not taken as evidence; only
   steps after the recall's result count. When a first result is already in and
   the same message holds a second recall and the step, the step is judged
@@ -304,7 +306,7 @@ mindestens 2 Zeugen sie gezeigt haben, `noise` bei weniger, `none` bei null.
 | `envelope-without-recall-id` | Ein Recall-Ergebnis trug keine `recall_id`. |
 | `load-without-recall-link` | Telemetrie-Spur: Der Daemon hat den Load keinem Recall zugeordnet. |
 | `link-without-pool` | Telemetrie-Spur: Der zugeordnete Recall hat in der gelesenen Telemetrie keinen Pool. |
-| `batch-link-without-sibling-pools` | Telemetrie-Spur: Der zugeordnete Recall ist eine von mehreren Formulierungen, die ein Batch ausgeführt hat. Wird nicht beurteilt, siehe Grenzen. |
+| `batch-link-without-sibling-pools` | Telemetrie-Spur: Die vollständige Menge vergleichbarer Pools des Batches ist nicht belegt. Der Load bleibt ohne Einstufung. |
 | `load-not-found` | Telemetrie-Spur: Der Vault kannte die geladene Id nicht. |
 | `unresolved-evidence` | Der Schritt nach dem Recall hat nichts Prüfbares benannt (zum Beispiel eine Suche). |
 | `chain-without-pool` | Der Schritt hat ein Vault-Objekt benannt, aber die Recalls der Kette ergaben keinen Pool. |
@@ -318,12 +320,13 @@ mindestens 2 Zeugen sie gezeigt haben, `noise` bei weniger, `none` bei null.
 - **Außerhalb des Pools heißt außerhalb des aufgezeichneten Pools.** Der
   Harvester führt die Suche nicht erneut aus; eine Erinnerung, die tiefer
   aufgetaucht wäre, sieht er nicht.
-- **Telemetrie-Spur, ein Recall je Load: sie kann falsch vorschlagen.** Ein
-  Load wird nur gegen den Recall beurteilt, dem der Daemon ihn zuletzt
+- **Telemetrie-Spur, getrennte Recall-Aufrufe können falsche Vorschläge erzeugen.** Ein
+  Load wird gegen den Recall beurteilt, dem der Daemon ihn zuletzt
   zugeordnet hat — seinen Hook-Hinweis oder den jüngsten Recall innerhalb von
-  fünf Minuten. Mehrere Recalls zu einer Frage werden dort nicht
-  zusammengefasst. Ein Treffer, den ein früherer Recall geliefert hat, kommt
-  deshalb als `genuine-out-of-pool` heraus und wird vorgeschlagen, wenn ein
+  fünf Minuten — und gegen dessen Batch, sofern er belegt ist. Getrennte
+  Recall-Aufrufe zu einer Frage werden dort nicht zusammengefasst. Ein Treffer,
+  den ein früherer Recall geliefert hat, kommt deshalb als `genuine-out-of-pool`
+  heraus und wird vorgeschlagen, wenn ein
   späterer Recall ihn nicht enthielt — auch dann, wenn dieser spätere Recall
   gar nichts geliefert hat. Das ist ein bekannter, noch nicht behobener Fehler
   der Telemetrie-Spur. Ein Protokoll derselben Sitzung vermeidet ihn: Loads,
@@ -333,12 +336,13 @@ mindestens 2 Zeugen sie gezeigt haben, `noise` bei weniger, `none` bei null.
 - **Telemetrie-Spur, Batch-Recalls.** Der Daemon streicht fast gleiche
   Formulierungen eines Batches vor der Suche. Jede ausgeführte Formulierung
   hält fest, wie viele Formulierungen eingereicht (`query_count`) und wie viele
-  gestrichen wurden (`batch_collapsed`), und nichts, was die anderen
-  Formulierungen benennt. Wurde mehr als eine Formulierung ausgeführt
-  (`query_count` minus `batch_collapsed` ist größer als 1), wird ein Load, der
-  einer von ihnen zugeordnet ist, als Lücke gemeldet und nicht eingeordnet. Ein
-  Batch, der auf eine einzige Formulierung zusammengestrichen wurde, wird wie
-  ein einfacher Recall beurteilt.
+  gestrichen wurden (`batch_collapsed`). Der Harvester nutzt die gemeinsame
+  `batch_id`, um die aufgezeichneten Pools und gelieferten Treffer aller
+  ausgeführten Formulierungen zu vereinen. Er braucht je ausgeführter
+  Formulierung ein eigenes Recall-Ereignis mit verwertbarem Pool, alle im
+  selben Score-Raum. Ältere Ereignisse mit mehreren Formulierungen ohne
+  `batch_id` und Batches mit fehlenden oder mehrdeutigen Belegen bleiben ohne
+  Einstufung. Wurde ein Batch auf eine Formulierung gekürzt, genügt deren Pool.
 - **Ein Schritt in derselben Nachricht wie der Recall** gilt nicht als Beleg;
   es zählen nur Schritte nach dem Ergebnis des Recalls. Liegt ein erstes
   Ergebnis schon vor und stehen ein zweiter Recall und der Schritt in derselben

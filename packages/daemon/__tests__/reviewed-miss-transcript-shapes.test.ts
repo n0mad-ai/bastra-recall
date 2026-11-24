@@ -173,19 +173,22 @@ test("batch recall: one phrasing without a recorded pool proves nothing about th
   }
 });
 
-test("hook lane: a load after a batch recall is not judged against the one phrasing it is linked to", async () => {
-  // The daemon's own shapes: each phrasing's event carries the batch width, and
-  // the load is linked to one of them — here the one that did not serve it.
-  const loadEvent = line({
-    kind: "load_memory",
-    ts: later(1),
-    session_id: "run-1",
-    id: "served-one",
-    found: true,
-    follows_recall: "r2",
-  });
-  const hookLane = async (recalls: string[]): Promise<{ classes: string[]; targets: string[]; gaps: string[] }> => {
-    const { dir, eventsDir, engines } = await world([...recalls, loadEvent]);
+test("hook lane: a complete batch joins the served hits and candidate pools of its phrasings (#1126)", async () => {
+  // The daemon links the load to one phrasing, here the one that did not serve it.
+  const loadEvent = (id: string): string =>
+    line({
+      kind: "load_memory",
+      ts: later(1),
+      session_id: "run-1",
+      id,
+      found: true,
+      follows_recall: "r2",
+    });
+  const hookLane = async (
+    recalls: string[],
+    id = "served-one"
+  ): Promise<{ classes: string[]; targets: string[]; gaps: string[] }> => {
+    const { dir, eventsDir, engines } = await world([...recalls, loadEvent(id)]);
     try {
       const lanes = observeLanes([], await loadTelemetry(eventsDir), engines, { hookLane: true, hubSessions: 3 });
       return {
@@ -197,8 +200,32 @@ test("hook lane: a load after a batch recall is not judged against the one phras
       await rm(dir, { recursive: true, force: true });
     }
   };
-  const batch = TWO_POOLS.map((event) => line({ ...JSON.parse(event), query_count: 2 }));
-  assert.deepEqual(await hookLane(batch), { classes: [], targets: [], gaps: ["batch-link-without-sibling-pools"] });
+  const legacyBatch = TWO_POOLS.map((event) => line({ ...JSON.parse(event), query_count: 2 }));
+  const batch = legacyBatch.map((event) => line({ ...JSON.parse(event), batch_id: "batch-a" }));
+  assert.deepEqual(await hookLane(batch), { classes: ["served-hit"], targets: [], gaps: [] });
+  assert.deepEqual(await hookLane(batch, "third"), { classes: ["in-pool-not-selected"], targets: ["third"], gaps: [] });
+  const collapsed = batch.map((event) => line({ ...JSON.parse(event), query_count: 3, batch_collapsed: 1 }));
+  assert.deepEqual(await hookLane(collapsed), { classes: ["served-hit"], targets: [], gaps: [] });
+
+  const siblingWith = (fields: Record<string, unknown>): string => line({ ...JSON.parse(batch[0]), ...fields });
+  const unproven: Array<[string, string[]]> = [
+    ["older events without a batch id", legacyBatch],
+    ["missing sibling", [batch[1]]],
+    ["sibling from another batch", [siblingWith({ batch_id: "batch-b" }), batch[1]]],
+    ["sibling without a usable pool", [siblingWith({ candidate_pool: undefined }), batch[1]]],
+    ["sibling in a different score space", [siblingWith({ candidate_pool_score_arms: ["another-arm"] }), batch[1]]],
+    ["sibling from another client session", [siblingWith({ dimensions: { experiment_session: "other" } }), batch[1]]],
+    ["disagreeing batch widths", [siblingWith({ query_count: 3 }), batch[1]]],
+    ["extra sibling", [...batch, siblingWith({ recall_id: "r3" })]],
+    ["duplicate recall event", [...batch, batch[0]]],
+  ];
+  for (const [name, recalls] of unproven) {
+    assert.deepEqual(
+      await hookLane(recalls),
+      { classes: [], targets: [], gaps: ["batch-link-without-sibling-pools"] },
+      name
+    );
+  }
   // Control: the same two recalls, not a batch — the linked pool is the pool, and the load is judged.
   assert.deepEqual(await hookLane(TWO_POOLS), { classes: ["genuine-out-of-pool"], targets: ["served-one"], gaps: [] });
 });
@@ -233,6 +260,7 @@ test("hook lane: only a batch that ran more than one phrasing has sibling pools 
     ["a plain recall", {}],
     // The daemon's own event for `queries: [q, q]`: two submitted, one collapsed, one recall run.
     ["two identical queries, collapsed to one", { query_count: 2, batch_overlap: 1, batch_collapsed: 1 }],
+    ["single executed phrasing with a batch id", { query_count: 2, batch_collapsed: 1, batch_id: "batch-a" }],
     ["four submitted, three collapsed", { query_count: 4, batch_overlap: 0.9, batch_collapsed: 3 }],
     ["a width of one", { query_count: 1 }],
     ["a width of zero", { query_count: 0 }],
