@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Telemetry } from "../src/telemetry.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 import { distinctiveTokensForActedOn } from "../src/tool-handlers.js";
 
 // Der Telemetry-Konstruktor liest jetzt join-state.json (Boot-Restore). Jeder
@@ -233,6 +234,76 @@ test("join-state restore drops entries past their follow-up window", async () =>
     else process.env.BASTRA_TELEMETRY = prevTelemetry;
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
+});
+
+test("#1688: legacy join-state resumes and flushes only the log's conversation codes", async () => {
+  const session = "079a63d9-942d-4f8a-8b1a-f542ae906d55";
+  const prefixShapedSession = `s1_${"a".repeat(32)}`;
+  const startedAt = Date.now();
+  const turn = (id: string, sessionId: string) => ({ turn_id: id, session_id: sessionId, started_at: startedAt });
+  const turnA = turn("turn-a", session);
+  const turnB = turn("turn-b", prefixShapedSession);
+  const loaded = {
+    distinctive_tokens: ["persistedalpha", "persistedbeta"],
+    turn_source: "session",
+    recall_id: null,
+    surfaced_score: null,
+    band: "not_hinted",
+    surfaced: false,
+    ts: startedAt,
+    closed: false,
+  };
+  const path = join(testDir, "join-state.json");
+  await writeFile(
+    path,
+    JSON.stringify({
+      version: 1,
+      sessionHookHints: [[`${session}\0mem-a`, { recall_id: "rec-a", rank: 1, score: 140, ts: startedAt }]],
+      turns: [
+        [session, turnA],
+        [prefixShapedSession, turnB],
+      ],
+      latestTurn: turnB,
+      adoptedTurnKeys: [[session, 7]],
+      loadedMemories: [
+        { ...loaded, memory_id: "mem-a", session_id: session, turn_id: "turn-a" },
+        { ...loaded, memory_id: "mem-b", hint_only: true, hint_session_id: prefixShapedSession, turn_id: "turn-b" },
+      ],
+    })
+  );
+  const restored = new Telemetry();
+  assert.equal(restored.findHookHintFor("mem-a", session)?.recall_id, "rec-a");
+  await restored.flushNow();
+  const raw = await readFile(path, "utf8");
+  assert.ok(!raw.includes(session) && !raw.includes(prefixShapedSession), "the snapshot still exposes an input id");
+  const snapshot = JSON.parse(raw);
+  const code = telemetrySession(session);
+  const prefixCode = telemetrySession(prefixShapedSession);
+  assert.equal(snapshot.sessionHookHints[0][0], `${code}\0mem-a`);
+  assert.deepEqual(snapshot.turns, [
+    [code, turn("turn-a", code)],
+    [prefixCode, turn("turn-b", prefixCode)],
+  ]);
+  assert.deepEqual(snapshot.latestTurn, turn("turn-b", prefixCode));
+  assert.deepEqual(snapshot.adoptedTurnKeys, [[code, 7]]);
+  assert.equal(snapshot.loadedMemories[0].session_id, code);
+  assert.equal(snapshot.loadedMemories[1].hint_session_id, prefixCode);
+
+  const restarted = new Telemetry();
+  assert.equal(restarted.findHookHintFor("mem-a", session)?.recall_id, "rec-a");
+  restarted.ensureTurn(session, 7);
+  const match = (sessionId: string) =>
+    restarted.matchLoadedMemories({
+      tool_name: "Edit",
+      tool_input_excerpt: "persistedalpha persistedbeta",
+      session_id: sessionId,
+    });
+  assert.deepEqual(match("different-session"), []);
+  assert.equal(match(session)[0]?.turn_id, "turn-a");
+  match(prefixShapedSession);
+  await restarted.flushNow();
+  const closed = JSON.parse(await readFile(path, "utf8"));
+  assert.deepEqual(closed.loadedMemories, []);
 });
 
 test("recall_episode (#77): direct load without a hint is marked surfaced=false", () => {

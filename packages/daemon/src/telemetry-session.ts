@@ -22,6 +22,7 @@ import { bastraDataDir } from "./platform-paths.js";
 const KEY_FILE = "telemetry-session.key";
 const PREFIX = "s1_";
 const REPLAY = "replay-";
+const SESSION_CODE = /^(?:replay-)?s1_[a-f0-9]{32}$/;
 
 let cached: { dir: string; key: Buffer } | null = null;
 
@@ -70,6 +71,28 @@ export function telemetrySession(value: string): string;
 export function telemetrySession<T extends null | undefined>(value: string | T): string | T;
 export function telemetrySession(value: string | null | undefined): string | null | undefined {
   if (typeof value !== "string" || value === "") return value;
-  const code = PREFIX + createHmac("sha256", sessionKey()).update(value).digest("hex").slice(0, 32);
+  return codeWithKey(value, sessionKey());
+}
+
+function codeWithKey(value: string, key: Buffer): string {
+  const code = PREFIX + createHmac("sha256", key).update(value).digest("hex").slice(0, 32);
   return value.startsWith(REPLAY) ? REPLAY + code : code;
+}
+
+/** Pair historical IDs with their code if both occur in the report window.
+ * Reading copied logs must work without the original key or creating a new one. */
+export function groupTelemetrySessions(values: Iterable<string | null>): (id: string) => string {
+  const ids = new Set(values);
+  const aliases = new Map<string, string>();
+  if ([...ids].some((id) => id && SESSION_CODE.test(id))) {
+    const key = readKey(join(bastraDataDir(), KEY_FILE));
+    if (key) {
+      for (const id of ids) {
+        if (!id) continue;
+        const code = codeWithKey(id, key);
+        if (ids.has(code)) aliases.set(id, code);
+      }
+    }
+  }
+  return (id) => aliases.get(id) ?? id;
 }

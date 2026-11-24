@@ -211,7 +211,7 @@ test("event log and join-state snapshot keep their byte format (#1039)", async (
     const snapshot = JSON.parse(joinState);
     assert.deepEqual(snapshot.sessionHookHints, []);
     delete snapshot.sessionHookHints;
-    assert.equal(snapshot.loadedMemories[0].session_id, "sess-a");
+    assert.equal(snapshot.loadedMemories[0].session_id, "<session:sess-a>");
     for (const memory of snapshot.loadedMemories) delete memory.session_id;
     assert.equal(JSON.stringify(snapshot), EXPECTED_JOIN_STATE);
   } finally {
@@ -246,4 +246,4 @@ const EXPECTED_LOG: string[] = [
 
 // The debounced join-state snapshot, flushed by `flushNow`.
 const EXPECTED_JOIN_STATE =
-  '{"version":1,"lastRecall":null,"hookHints":[["m1",{"recall_id":"rec-1","rank":1,"score":120,"ts":1791115200000}],["m2",{"recall_id":"rec-1","rank":2,"score":40,"ts":1791115200000}],["m3",{"recall_id":"rec-1","rank":3,"score":null,"ts":1791115200000}]],"turns":[["sess-a",{"turn_id":"<turn-1>","session_id":"sess-a","started_at":1791115200000}],["sess-b",{"turn_id":"<turn-3>","session_id":"sess-b","started_at":1791115200000}]],"latestTurn":{"turn_id":"<turn-3>","session_id":"sess-b","started_at":1791115200000},"adoptedTurnKeys":[["sess-b",7]],"loadedMemories":[{"memory_id":"m2","distinctive_tokens":["delta","epsilon"],"turn_id":"<turn-1>","turn_source":"session","recall_id":null,"surfaced_score":null,"band":"not_hinted","surfaced":false,"ts":1791115200000,"closed":false},{"memory_id":"m5","distinctive_tokens":["omega"],"turn_id":"<turn-3>","turn_source":"session","recall_id":null,"surfaced_score":null,"band":"not_hinted","surfaced":true,"ts":1791115200000,"closed":false,"hint_only":true,"hint_session_id":"sess-b"}]}';
+  '{"version":2,"lastRecall":null,"hookHints":[["m1",{"recall_id":"rec-1","rank":1,"score":120,"ts":1791115200000}],["m2",{"recall_id":"rec-1","rank":2,"score":40,"ts":1791115200000}],["m3",{"recall_id":"rec-1","rank":3,"score":null,"ts":1791115200000}]],"turns":[["<session:sess-a>",{"turn_id":"<turn-1>","session_id":"<session:sess-a>","started_at":1791115200000}],["<session:sess-b>",{"turn_id":"<turn-3>","session_id":"<session:sess-b>","started_at":1791115200000}]],"latestTurn":{"turn_id":"<turn-3>","session_id":"<session:sess-b>","started_at":1791115200000},"adoptedTurnKeys":[["<session:sess-b>",7]],"loadedMemories":[{"memory_id":"m2","distinctive_tokens":["delta","epsilon"],"turn_id":"<turn-1>","turn_source":"session","recall_id":null,"surfaced_score":null,"band":"not_hinted","surfaced":false,"ts":1791115200000,"closed":false},{"memory_id":"m5","distinctive_tokens":["omega"],"turn_id":"<turn-3>","turn_source":"session","recall_id":null,"surfaced_score":null,"band":"not_hinted","surfaced":true,"ts":1791115200000,"closed":false,"hint_only":true,"hint_session_id":"<session:sess-b>"}]}';

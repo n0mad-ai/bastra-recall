@@ -21,8 +21,11 @@
  * Tokens genau braucht, misst sie nach dem Modell und ersetzt den Schätzer
  * an EINER Stelle: `CONTEXT_LEDGER_ESTIMATOR`.
  *
- * Reine Funktion über Ereignisse, keine Persistenz, kein Rohtext.
+ * Liest beim Gruppieren gegebenenfalls den vorhandenen lokalen Sitzungsschlüssel.
+ * Keine Schreibzugriffe, kein Rohtext.
  */
+
+import { groupTelemetrySessions } from "./telemetry-session.js";
 
 const CONTEXT_LEDGER_VERSION = 1;
 export const CONTEXT_LEDGER_ESTIMATOR = "chars/4";
@@ -112,10 +115,14 @@ const numberOrNull = (v: unknown): number | null => (typeof v === "number" && Nu
  *  Hook-Lanes tragen die echte Client-Session in `session_id`; die
  *  Daemon-Ereignisse tragen dort die Boot-Id und die Client-Session (wenn
  *  bekannt) in `caller_session`. */
-function ledgerSessionKey(e: LedgerEvent): string {
+export function ledgerSessionKey(e: LedgerEvent): string | null {
   if (typeof e.caller_session === "string" && e.caller_session) return e.caller_session;
   if (typeof e.session_id === "string" && e.session_id) return e.session_id;
-  return "(none)";
+  return null;
+}
+
+export function groupLedgerSessions(events: LedgerEvent[]): (id: string) => string {
+  return groupTelemetrySessions(events.map(ledgerSessionKey));
 }
 
 function fold(into: SessionLedger, e: LedgerEvent): void {
@@ -148,11 +155,16 @@ const sumTokens = (l: SessionLedger): number =>
 const sumUnknown = (l: SessionLedger): number =>
   [...Object.values(l.lanes), ...Object.values(l.tools)].reduce((s, p) => s + p.unknown, 0);
 
-export function buildContextLedger(events: Iterable<LedgerEvent>): ContextLedger {
+export function buildContextLedger(
+  events: Iterable<LedgerEvent>,
+  groupSession?: (id: string) => string
+): ContextLedger {
+  const rows = Array.isArray(events) ? events : [...events];
+  const group = groupSession ?? groupLedgerSessions(rows);
   const sessions = new Map<string, SessionLedger>();
   const total = emptyLedger("(all)");
-  for (const e of events) {
-    const key = ledgerSessionKey(e);
+  for (const e of rows) {
+    const key = group(ledgerSessionKey(e) ?? "(none)");
     let l = sessions.get(key);
     if (!l) {
       l = emptyLedger(key);

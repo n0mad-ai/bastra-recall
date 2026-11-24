@@ -1121,10 +1121,12 @@ a conversation's session id as the client sent it. Every row that carries one
 in `session_id` or `caller_session` holds its code instead: `s1_` and 32 hex
 digits, an HMAC of the id under a key that stays on this machine
 (`telemetry-session.key` in the Bastra data directory, outside the log
-directory). The same conversation always gets the same code, so the join above
-and every grouping by session work as before; without the key a code leads
-back to nothing. The daemon's own telemetry id stays as it is; a replay keeps
-its `replay-` prefix. Rows written before stay unchanged.
+directory). The same conversation always gets the same code in new rows and in
+the daemon's `join-state.json` snapshot. The context ledger and token reports
+group historical IDs with their matching codes when the local key is present.
+Copied logs can still be read without the key and keep those groups separate.
+The daemon's own telemetry id stays as it is; a replay keeps its `replay-`
+prefix. Rows written before stay unchanged.
 
 #### After-session harvest (#675)
 
@@ -3130,11 +3132,13 @@ sie geschickt hat. Jede Zeile, die eine in `session_id` oder `caller_session`
 trägt, enthält stattdessen ihren Ersatzcode: `s1_` und 32 Hex-Ziffern, ein HMAC
 der Kennung mit einem Schlüssel, der auf diesem Rechner bleibt
 (`telemetry-session.key` im Bastra-Datenverzeichnis, außerhalb des
-Protokollordners). Dasselbe Gespräch bekommt immer denselben Code; die
-Verknüpfung oben und jede Gruppierung nach Sitzung funktionieren wie bisher.
-Ohne den Schlüssel führt ein Code zu nichts zurück. Die eigene Telemetrie-ID
-des Daemons bleibt, wie sie ist; ein Replay behält sein Präfix `replay-`.
-Früher geschriebene Zeilen bleiben unverändert.
+Protokollordners). Dasselbe Gespräch bekommt in neuen Zeilen und in der
+Daemon-Datei `join-state.json` denselben Code. Kontext-Ledger und Token-Berichte
+gruppieren frühere Kennungen mit ihren passenden Codes, wenn der lokale
+Schlüssel vorhanden ist. Kopierte Protokolle sind auch ohne Schlüssel lesbar
+und zeigen diese Gruppen getrennt. Die eigene Telemetrie-ID des Daemons bleibt,
+wie sie ist; ein Replay behält sein Präfix `replay-`. Früher geschriebene Zeilen
+bleiben unverändert.
 
 #### Harvest nach der Session (#675)
 

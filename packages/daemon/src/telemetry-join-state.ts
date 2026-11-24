@@ -6,6 +6,7 @@ import { tokens as words } from "./save-similarity.js";
 import { fireAndForget, type EventSink } from "./telemetry-sink.js";
 import type { UsageSink } from "./telemetry.js";
 import type { RecallBand, RecallEpisodeEvent, TurnSource } from "./telemetry-events.js";
+import { telemetrySession } from "./telemetry-session.js";
 
 /**
  * The correlation ("join") state of `Telemetry`, split out of telemetry.ts
@@ -75,8 +76,8 @@ export function bandForScore(score: number | null): RecallBand {
   return "below_floor";
 }
 
-/** Bump bei inkompatibler Snapshot-Shape — alte Snapshots werden dann verworfen. */
-const JOIN_STATE_VERSION = 1;
+/** Same snapshot shape; version 1 stores raw ids and version 2 stores log codes. */
+const JOIN_STATE_VERSION = 2;
 /** Debounce-Fenster für den Disk-Flush des Korrelations-States. */
 const JOIN_FLUSH_DEBOUNCE_MS = 1000;
 
@@ -92,8 +93,22 @@ interface JoinStateSnapshot {
   loadedMemories: Array<Omit<LoadedMemoryTrace, "distinctive_tokens"> & { distinctive_tokens: string[] }>;
 }
 
+const unchanged = <T>(value: T): T => value;
+
+function snapshotSessionCodec(version: number | undefined): typeof telemetrySession | null {
+  if (version === 1) return telemetrySession;
+  if (version === JOIN_STATE_VERSION) return unchanged;
+  return null;
+}
+
+function codeSessionHintKey(key: string, code: typeof telemetrySession): string {
+  const separator = key.indexOf("\0");
+  return separator < 0 ? key : code(key.slice(0, separator)) + key.slice(separator);
+}
+
 export class JoinState {
   private readonly enabled: boolean;
+  private readonly encodeSession: typeof telemetrySession;
   private readonly sessionId: string;
   private readonly sink: EventSink;
   private lastRecall: { id: string; ts: number } | null = null;
@@ -129,6 +144,7 @@ export class JoinState {
     onUsage?: UsageSink;
   }) {
     this.enabled = deps.enabled;
+    this.encodeSession = this.enabled ? telemetrySession : unchanged;
     this.sessionId = deps.sessionId;
     this.sink = deps.sink;
     this.joinStatePath = deps.joinStatePath;
@@ -179,11 +195,13 @@ export class JoinState {
     }
     for (const [key, trace] of this.sessionHookHints)
       if (ts - trace.ts > HOOK_HINT_WINDOW_MS) this.sessionHookHints.delete(key);
-    if (session_id)
+    if (session_id) {
+      const sessionCode = this.encodeSession(session_id);
       for (const hit of hits) {
         const trace = this.hookHints.get(hit.id);
-        if (trace) this.sessionHookHints.set(`${session_id}\0${hit.id}`, trace);
+        if (trace) this.sessionHookHints.set(`${sessionCode}\0${hit.id}`, trace);
       }
+    }
     // Deliberately NO usage emission here: these are the engine's raw top-k.
     // The hook CLIs drop hits client-side (score floors, #110/#148 scope
     // filter, per-session dedup) — counting them as "surfaced" would let
@@ -278,6 +296,7 @@ export class JoinState {
     // closable by a parallel session, so it must not exist.
     if (turn.turn_source !== "session") return;
     const now = Date.now();
+    const sessionCode = this.encodeSession(session_id);
     this.loadedMemories = this.loadedMemories.filter((entry) => !entry.closed && now - entry.ts <= ACTED_ON_WINDOW_MS);
     for (const hint of hints) {
       const tokens = new Set(hint.distinctive_tokens);
@@ -311,7 +330,7 @@ export class JoinState {
         ts: now,
         closed: false,
         hint_only: true,
-        hint_session_id: session_id,
+        hint_session_id: sessionCode,
       });
     }
     this.scheduleFlush();
@@ -327,7 +346,7 @@ export class JoinState {
   ): { recall_id: string; rank: number; score: number | null } | null {
     // Omitted argument preserves the legacy API; explicit null means unknown.
     const map = session_id === undefined ? this.hookHints : this.sessionHookHints;
-    const key = session_id ? `${session_id}\0${id}` : id;
+    const key = session_id ? `${this.encodeSession(session_id)}\0${id}` : id;
     if (session_id === null) return null;
     const t = map.get(key);
     if (!t) return null;
@@ -340,12 +359,16 @@ export class JoinState {
 
   rotateTurn(sessionId: string | null): string | null {
     if (!sessionId) return null;
+    return this.rotateCodedTurn(this.encodeSession(sessionId));
+  }
+
+  private rotateCodedTurn(sessionCode: string): string {
     const trace: TurnTrace = {
       turn_id: randomUUID(),
-      session_id: sessionId,
+      session_id: sessionCode,
       started_at: Date.now(),
     };
-    this.turns.set(sessionId, trace);
+    this.turns.set(sessionCode, trace);
     this.latestTurn = trace;
     this.scheduleFlush();
     return trace.turn_id;
@@ -363,14 +386,15 @@ export class JoinState {
    */
   ensureTurn(sessionId: string | null, turnKey: number | null): void {
     if (!sessionId || !turnKey || !Number.isFinite(turnKey)) return;
-    if (this.adoptedTurnKeys.get(sessionId) === turnKey) return;
-    this.adoptedTurnKeys.set(sessionId, turnKey);
-    this.rotateTurn(sessionId);
+    const sessionCode = this.encodeSession(sessionId);
+    if (this.adoptedTurnKeys.get(sessionCode) === turnKey) return;
+    this.adoptedTurnKeys.set(sessionCode, turnKey);
+    this.rotateCodedTurn(sessionCode);
   }
 
   currentTurn(sessionId: string | null): { turn_id: string; turn_source: TurnSource } {
     if (sessionId) {
-      const exact = this.turns.get(sessionId);
+      const exact = this.turns.get(this.encodeSession(sessionId));
       if (exact) return { turn_id: exact.turn_id, turn_source: "session" };
     }
     if (this.latestTurn) return { turn_id: this.latestTurn.turn_id, turn_source: "inferred" };
@@ -434,12 +458,13 @@ export class JoinState {
     // them may still claim "followed without ever being loaded".
     const loadingSession = payload.session_id ?? null;
     this.rememberLoad(payload.memory_id, loadingSession);
+    const sessionCode = this.encodeSession(loadingSession);
     this.loadedMemories = this.loadedMemories.filter(
       (entry) =>
         !(
           entry.hint_only &&
           entry.memory_id === payload.memory_id &&
-          (loadingSession === null || entry.hint_session_id === loadingSession)
+          (sessionCode === null || entry.hint_session_id === sessionCode)
         )
     );
     if (tokens.size === 0) return;
@@ -448,7 +473,7 @@ export class JoinState {
     this.loadedMemories = this.loadedMemories.filter((entry) => !entry.closed && now - entry.ts <= ACTED_ON_WINDOW_MS);
     this.loadedMemories.push({
       memory_id: payload.memory_id,
-      session_id: loadingSession,
+      session_id: sessionCode,
       distinctive_tokens: tokens,
       turn_id: turn.turn_id,
       turn_source: turn.turn_source,
@@ -476,6 +501,7 @@ export class JoinState {
     const closeOnMiss = payload.closeOnMiss !== false;
     const now = Date.now();
     const current = this.currentTurn(payload.session_id ?? null);
+    const sessionCode = this.encodeSession(payload.session_id ?? null);
     // The tokenizer the memory side derives `distinctive_tokens` with
     // (tool-handlers.ts): an ASCII one here never matched a Cyrillic or CJK token.
     const inputTokens = new Set(words(payload.tool_input_excerpt));
@@ -483,7 +509,7 @@ export class JoinState {
 
     for (const entry of this.loadedMemories) {
       if (entry.closed) continue;
-      if (entry.session_id && entry.session_id !== payload.session_id) continue;
+      if (entry.session_id && entry.session_id !== sessionCode) continue;
       if (now - entry.ts > ACTED_ON_WINDOW_MS) {
         entry.closed = true;
         continue;
@@ -494,7 +520,7 @@ export class JoinState {
       // foreign session, which then matches the guard above and closes that
       // session's hint window. Only the session the hint was shown to may
       // close it; anyone else leaves it open.
-      if (entry.hint_only && entry.hint_session_id !== (payload.session_id ?? null)) continue;
+      if (entry.hint_only && entry.hint_session_id !== sessionCode) continue;
 
       let matchStrength = 0;
       // Seed exact matches, then augment the bipartite assignment. A token
@@ -604,7 +630,8 @@ export class JoinState {
     const raw = readJoinStateSync(this.joinStatePath);
     if (!raw || typeof raw !== "object") return;
     const snap = raw as Partial<JoinStateSnapshot>;
-    if (snap.version !== JOIN_STATE_VERSION) return;
+    const code = snapshotSessionCodec(snap.version);
+    if (!code) return;
     const now = Date.now();
 
     if (snap.lastRecall && now - snap.lastRecall.ts <= RECALL_FOLLOWUP_WINDOW_MS) {
@@ -617,13 +644,19 @@ export class JoinState {
     }
     if (Array.isArray(snap.sessionHookHints)) {
       for (const [key, trace] of snap.sessionHookHints) {
-        if (trace && now - trace.ts <= HOOK_HINT_WINDOW_MS) this.sessionHookHints.set(key, trace);
+        if (trace && now - trace.ts <= HOOK_HINT_WINDOW_MS)
+          this.sessionHookHints.set(codeSessionHintKey(key, code), trace);
       }
     }
     if (Array.isArray(snap.loadedMemories)) {
       for (const m of snap.loadedMemories) {
         if (!m || m.closed || now - m.ts > ACTED_ON_WINDOW_MS) continue;
-        this.loadedMemories.push({ ...m, distinctive_tokens: new Set(m.distinctive_tokens) });
+        this.loadedMemories.push({
+          ...m,
+          session_id: code(m.session_id),
+          hint_session_id: code(m.hint_session_id),
+          distinctive_tokens: new Set(m.distinctive_tokens),
+        });
       }
     }
     // turns/latestTurn/adoptedTurnKeys hängen an den loadedMemories-/hint-
@@ -631,17 +664,23 @@ export class JoinState {
     const turnTtl = Math.max(HOOK_HINT_WINDOW_MS, ACTED_ON_WINDOW_MS);
     if (Array.isArray(snap.turns)) {
       for (const [sid, t] of snap.turns) {
-        if (t && now - t.started_at <= turnTtl) this.turns.set(sid, t);
+        if (t && now - t.started_at <= turnTtl) this.turns.set(code(sid), { ...t, session_id: code(t.session_id) });
       }
     }
     if (snap.latestTurn && now - snap.latestTurn.started_at <= turnTtl) {
-      this.latestTurn = snap.latestTurn;
+      this.latestTurn = { ...snap.latestTurn, session_id: code(snap.latestTurn.session_id) };
     }
     if (Array.isArray(snap.adoptedTurnKeys)) {
       for (const [sid, key] of snap.adoptedTurnKeys) {
-        if (this.turns.has(sid)) this.adoptedTurnKeys.set(sid, key);
+        const session = code(sid);
+        if (this.turns.has(session)) this.adoptedTurnKeys.set(session, key);
       }
     }
+    this.replaceLegacySnapshot(snap.version);
+  }
+
+  private replaceLegacySnapshot(version: number | undefined): void {
+    if (version === 1) this.scheduleFlush();
   }
 
   /** Debounced Disk-Flush — fasst mehrere Mutationen zu einem Write zusammen. */

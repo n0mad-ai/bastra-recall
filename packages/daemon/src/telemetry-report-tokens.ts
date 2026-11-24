@@ -6,11 +6,14 @@
 import {
   buildContextLedger,
   CONTEXT_LEDGER_ESTIMATOR,
+  groupLedgerSessions,
   HOOK_LANE_KINDS,
+  ledgerSessionKey,
   TOOL_PAYLOAD_KINDS,
   type LedgerEvent,
 } from "./context-ledger.js";
 import { bump, day, isSurfaced, median, num, type ReportEvent } from "./telemetry-report-shared.js";
+import { groupTelemetrySessions } from "./telemetry-session.js";
 
 // ─── Kontextsteuer ───────────────────────────────────────────────
 
@@ -49,7 +52,9 @@ export interface ContextTaxSection {
 export const DIRECTIVE_TYPES = new Set(["preference", "user-preference", "meta-working", "workflow"]);
 
 export function summarizeContextTax(events: ReportEvent[]): ContextTaxSection {
-  const ledger = buildContextLedger(events as LedgerEvent[]);
+  const ledgerRows = events as LedgerEvent[];
+  const group = groupLedgerSessions(ledgerRows);
+  const ledger = buildContextLedger(ledgerRows, group);
   const t = ledger.total;
   const row = (kind: string, p: { emissions: number; tokens: number; unknown: number }): LedgerRow => ({
     kind,
@@ -78,9 +83,8 @@ export function summarizeContextTax(events: ReportEvent[]): ContextTaxSection {
     const r = perDay.get(d) ?? { lanes: 0, tools: 0, unknown: 0, sessions: new Set<string>() };
     if (size === null) r.unknown++;
     else r[side] += size;
-    const sid =
-      typeof e.caller_session === "string" && e.caller_session ? e.caller_session : String(e.session_id ?? "");
-    if (sid) r.sessions.add(sid);
+    const sid = ledgerSessionKey(e as LedgerEvent);
+    if (sid) r.sessions.add(group(sid));
     perDay.set(d, r);
   }
   const daily = [...perDay]
@@ -170,6 +174,8 @@ export interface BudgetShadowSection {
 export function summarizeBudgetShadow(events: ReportEvent[]): BudgetShadowSection | null {
   const rows = events.filter((e) => e.kind === "budget_shadow");
   if (rows.length === 0) return null;
+  const session = (e: ReportEvent) => String(e.session_id ?? "");
+  const group = groupTelemetrySessions(rows.map(session));
   const budgets = new Set<number>();
   const sessions = new Set<string>();
   const affected = new Set<string>();
@@ -183,7 +189,7 @@ export function summarizeBudgetShadow(events: ReportEvent[]): BudgetShadowSectio
   for (const e of rows) {
     const t = num(e.tokens) ?? 0;
     const lane = String(e.lane ?? "unknown");
-    const sid = String(e.session_id ?? "");
+    const sid = group(session(e));
     const drop = e.would_drop === true;
     const b = num(e.budget);
     if (b !== null) budgets.add(b);

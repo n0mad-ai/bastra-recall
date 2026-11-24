@@ -6,13 +6,15 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer, request } from "node:http";
+import { buildContextLedger } from "../src/context-ledger.js";
 import {
   buildTelemetryReport,
   readEventWindow,
+  summarizeBudgetShadow,
   summarizeContextTax,
   summarizeEvidence,
   summarizeHintSuppression,
@@ -24,9 +26,64 @@ import {
 } from "../src/telemetry-report.js";
 import { handleUiTelemetry, parseDays } from "../src/webui-telemetry.js";
 import { setUiEnabled } from "../src/settings.js";
+import { bastraDataDir } from "../src/platform-paths.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 const T = { mustLoadScore: 100, scoreFloor: 30 };
 const ts = (day: string, hh = "10") => `${day}T${hh}:00:00.000Z`;
+
+test("#1689: reports group both generations locally and leave copied rows readable without the key", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-telemetry-cutover-"));
+  const previousHome = process.env.HOME;
+  const previousLocal = process.env.LOCALAPPDATA;
+  process.env.HOME = dir;
+  process.env.LOCALAPPDATA = dir;
+  t.after(async () => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousLocal === undefined) delete process.env.LOCALAPPDATA;
+    else process.env.LOCALAPPDATA = previousLocal;
+    await rm(dir, { recursive: true, force: true });
+  });
+  const session = `s1_${"b".repeat(32)}`;
+  const code = telemetrySession(session);
+  const boot = "different-daemon-run";
+  const at = ts("2026-11-24");
+  const rows = [
+    { kind: "hook_call", ts: at, session_id: session, hint_tokens_est: 10 },
+    { kind: "recall", ts: at, session_id: boot, caller_session: code, payload_tokens_est: 20 },
+    { kind: "load_memory", ts: at, session_id: boot, delivered_tokens_est: 3 },
+  ];
+  const original = JSON.stringify(rows);
+  const ledger = buildContextLedger(rows);
+  assert.deepEqual([...ledger.sessions.keys()], [code, boot]);
+  assert.equal(ledger.sessions.get(code)?.totalTokens, 30);
+  const tax = summarizeContextTax(rows);
+  assert.deepEqual(
+    tax.topSessions.map(({ session, tokens }) => [session, tokens]),
+    [
+      [code, 30],
+      [boot, 3],
+    ]
+  );
+  assert.equal(tax.daily[0]?.sessions, 2);
+  const budget = [session, code].map((id) => ({
+    kind: "budget_shadow",
+    ts: at,
+    session_id: id,
+    tokens: 10,
+    would_drop: true,
+  }));
+  assert.equal(summarizeBudgetShadow(budget)?.sessionsAffected, 1);
+
+  const keyPath = join(bastraDataDir(), "telemetry-session.key");
+  await unlink(keyPath);
+  assert.deepEqual([...buildContextLedger(rows).sessions.keys()], [session, code, boot]);
+  assert.equal(summarizeContextTax(rows).daily[0]?.sessions, 3);
+  assert.equal(summarizeBudgetShadow(budget)?.sessionsAffected, 2);
+  await assert.rejects(access(keyPath), { code: "ENOENT" });
+  assert.equal(JSON.stringify(rows), original, "reporting leaves the source rows unchanged");
+});
 
 test("#463 quality: bands from hook hits, loaded/acted from surfaced episodes, direct loads excluded", () => {
   const events: ReportEvent[] = [
