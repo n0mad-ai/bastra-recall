@@ -18,8 +18,8 @@
  *
  *  1. **Parity.** For each of the seven client lanes, does a binary built from
  *     today's sources write the same row as the node thin client when the
- *     daemon is unreachable — same `kind`, the payload's `session_id`, a
- *     client `hook_version`, and the same lane fields down to the last key?
+ *     daemon is unreachable — same `kind`, the payload's coded `session_id`,
+ *     a client `hook_version`, and the same lane fields down to the last key?
  *     All four faults this lane class has had are exactly this shape.
  *  2. **Staleness.** Does an INSTALLED binary still match the sources it must
  *     have been built from? A compiled binary has no sources beside it, so it
@@ -44,6 +44,7 @@ import { fileURLToPath } from "node:url";
 
 import { GATE_LANE_BY_KIND } from "../../src/cli/log-stats.js";
 import { CLIENT_ROW_BASE, type ClientLane } from "../../src/hook-client-telemetry.js";
+import { telemetrySession } from "../../src/telemetry-session.js";
 // The digest rule lives with the build script that stamps it, so the guard and
 // the build can never disagree about what "the stub's sources" means.
 // @ts-expect-error — plain .mjs script, no declarations (#542).
@@ -231,6 +232,7 @@ test(
 
     for (const { lane, kind, nodeClient } of LANES) {
       const session = `s546-${lane}`;
+      const sessionCode = telemetrySession(session);
       // One dead port for both, so `daemon_url` is comparable: the two rows must
       // agree about which endpoint did not answer, not merely about its shape.
       const port = await closedPort();
@@ -251,12 +253,12 @@ test(
         // The lane: a row filed under a foreign kind counts against a lane the
         // failure did not happen in (`2b7d285`).
         assert.equal(row.kind, kind, `${shape}/${lane}: wrong event kind — this row would land in another lane`);
-        // The session: the only thing that ties this row to the daemon row for
-        // the same call. A fresh UUID makes it unfoldable (`ea95691`).
+        // The code ties the client and daemon rows for this session (#436).
+        // A fresh UUID would break that join (`ea95691`).
         assert.equal(
           row.session_id,
-          session,
-          `${shape}/${lane}: the payload's session must be stamped, not a fresh UUID`
+          sessionCode,
+          `${shape}/${lane}: expected the stable code for the payload's session`
         );
         assert.match(
           String(row.hook_version),
