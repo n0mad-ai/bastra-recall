@@ -1,7 +1,7 @@
 // Editing a memory directly in the memory browser's reader (#1446).
 //
 // "EDIT" swaps the title, the summary and the text for fields in the same
-// place (type, sensitivity and recall mode beside them, #1558); save
+// place (type, area, sensitivity and recall mode beside them, #1558); save
 // goes to POST /ui/memory/edit (the daemon's edit_memory path) with the
 // revision the reader showed, so a change made meanwhile is refused (409):
 // the draft stays in the fields and "reload" fetches the current version,
@@ -83,10 +83,16 @@ function choice(name, options, act) {
   return el;
 }
 
-/** Title, type, sensitivity and recall mode (#1558). */
+/** Title, type, area, sensitivity and recall mode (#1558). */
 function propFields(type, act) {
   const title = h("input.st-text.mb-ed__title", { type: "text", name: "title" });
+  const scope = h("input.st-text.mb-ed__title", {
+    type: "text",
+    name: "scope",
+    "aria-describedby": "mb-ed-scope-hint",
+  });
   title.addEventListener("input", () => act.input("title", title.value));
+  scope.addEventListener("input", () => act.input("scope", scope.value));
   // documents and bookmarks keep their type: shown, not offered
   const types = typeEditable(type) ? TYPES : [type];
   const selects = [
@@ -114,6 +120,12 @@ function propFields(type, act) {
     h("label.mb-ed__f", null, h("span.mb-rd__k", { text: t(key) }), h("span.st-selw", null, el));
   return {
     title: h("label.mb-ed__f", null, h("span.mb-rd__k", { text: t("mb.ed.title") }), title),
+    scope: h(
+      "div.mb-ed__f",
+      null,
+      h("label.mb-ed__f", null, h("span.mb-rd__k", { text: t("mb.f.scope") }), scope),
+      h("span.mb-care__hint.mb-ed__fixed", { id: "mb-ed-scope-hint", text: t("mb.ed.scopeHint") })
+    ),
     props: h(
       "div.mb-ed__props",
       null,
@@ -123,10 +135,11 @@ function propFields(type, act) {
     ),
     fill(d) {
       title.value = d.title;
+      scope.value = d.scope;
       for (const el of selects) el.value = d[el.name];
     },
     lock(saving) {
-      title.readOnly = saving;
+      title.readOnly = scope.readOnly = saving;
       for (const el of selects) el.disabled = saving || (el === typeSel && types.length < 2);
     },
   };
@@ -176,6 +189,7 @@ function editorForm(rule, type, act) {
     "div.mb-ed",
     null,
     props.title,
+    props.scope,
     props.props,
     h(
       "label.mb-ed__f",
@@ -186,7 +200,6 @@ function editorForm(rule, type, act) {
     h("label.mb-ed__f", null, h("span.mb-rd__k", { text: t("mb.ed.body") }), body),
     h("label.mb-ed__f", null, h("span.mb-rd__k", { text: t("mb.ed.tags") }), tags),
     ruleField,
-    h("div.mb-care__hint.mb-ed__fixed", { text: t("mb.ed.fixed") }),
     ruleNote,
     msg,
     row

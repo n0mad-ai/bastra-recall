@@ -147,7 +147,7 @@ test("edit: access — UI off is 404, a foreign browser origin is refused, a for
   try {
     const port = await f.start();
     const { revision } = await f.node(port, "note");
-    const edit = { id: "note", expected_revision: revision, summary: "Changed" };
+    const edit = { id: "note", expected_revision: revision, scope: "other-area" };
     for (const path of ["/ui/memory/edit", "/ui/memory/archive", "/ui/memory/restore"]) {
       const foreign = await call(port, "POST", path, edit, { origin: "https://attacker.example" });
       assert.equal(foreign.status, 403, `${path} from a foreign origin`);
@@ -156,7 +156,7 @@ test("edit: access — UI off is 404, a foreign browser origin is refused, a for
     }
     await mutateSettings(settingsFilePath(), (s) => ({ ...s, ui: { ...s.ui, enabled: false } }));
     assert.equal((await call(port, "POST", "/ui/memory/edit", edit)).status, 404);
-    assert.match(await f.file("note"), /summary: Summary of note/, "nothing written");
+    assert.match(await f.file("note"), /scope: edit-fixture/, "nothing written");
   } finally {
     await f.close();
   }
@@ -175,7 +175,11 @@ test("edit: strict validation — nothing written, nothing shortened", async () 
       [{ id: "note", expected_revision: revision, write_origin: "user-directed" }, /Unrecognized/],
       [{ id: "note", expected_revision: revision, title: "  " }, /title/],
       [{ id: "note", expected_revision: revision, title: "Two\nlines" }, /title/],
-      [{ id: "note", expected_revision: revision, scope: "other-area" }, /Unrecognized/],
+      [{ id: "note", expected_revision: revision, scope: "   " }, /scope/],
+      [{ id: "note", expected_revision: revision, scope: "../other-area" }, /scope/],
+      [{ id: "note", expected_revision: revision, scope: "two\nlines" }, /scope/],
+      [{ id: "note", expected_revision: revision, scope: " edit-fixture " }, /nothing to change/],
+      [{ id: "note", expected_revision: revision, rule_decision: "accept", scope: "other-area" }, /stands alone/],
       [{ id: "note", expected_revision: revision, type: "doc" }, /type/],
       [{ id: "note", expected_revision: revision, type: "novel" }, /type/],
       [{ id: "note", expected_revision: revision, sensitivity: "secret" }, /sensitivity/],
@@ -266,13 +270,15 @@ test("edit: a stale revision is a conflict — nothing overwritten", async () =>
     assert.match(await f.file("user-note"), /First writer wins\./);
     // An edit on disk the index has not seen yet is refused the same way.
     const fresh = (await f.node(port, "user-note")).revision;
-    await writeFile(
-      join(f.dir, "user-note.md"),
-      memory("user-note", ["write_origin: user-directed"], "Edited in Obsidian.\n")
-    );
-    const third = await call(port, "POST", "/ui/memory/edit", { id: "user-note", expected_revision: fresh, body: "x" });
+    const newer = memory("user-note", ["write_origin: user-directed"], "Edited in Obsidian.\n");
+    await writeFile(join(f.dir, "user-note.md"), newer);
+    const third = await call(port, "POST", "/ui/memory/edit", {
+      id: "user-note",
+      expected_revision: fresh,
+      scope: "other-area",
+    });
     assert.equal(third.status, 409);
-    assert.match(await f.file("user-note"), /Edited in Obsidian\./);
+    assert.equal(await f.file("user-note"), newer);
     const archive = await call(port, "POST", "/ui/memory/archive", { id: "note", expected_revision: revision });
     assert.equal(archive.status, 409, "archive with a revision of another state is refused");
     assert.ok(existsSync(join(f.dir, "note.md")));
@@ -557,9 +563,37 @@ test("rule memories: state shown, a rule's applies_when edits directly, the user
   }
 });
 
-// ── #1558: title, type, sensitivity and recall mode from the reader ──
+// ── #1558: the user's fields from the reader ──
 
 const GITHUB_TOKEN = ["gh", "p_", "a1B2c3D4e5F6", "g7H8i9J0k1L2", "m3N4o5P6q7R8"].join("");
+
+test("user fields: editing the area updates the reader and recall at the same file path", async () => {
+  const f = await fixture();
+  try {
+    const port = await f.start();
+    const node = await f.node(port, "note");
+    const r = await call(port, "POST", "/ui/memory/edit", {
+      id: "note",
+      expected_revision: node.revision,
+      scope: "  Neue Planung  ",
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const after = await f.node(port, "note");
+    assert.equal(after.revision, r.body.revision);
+    assert.equal(after.scope, "Neue Planung");
+    assert.equal(after.file, node.file);
+    assert.deepEqual(after.topic_path, node.topic_path);
+    const text = await f.file("note");
+    assert.match(text, /scope: Neue Planung\n/);
+    assert.match(text, /write_origin: agent-session\n/);
+    const hits = await f.search.recallHybrid("Fixture note", { scope: "Neue Planung" });
+    assert.equal(hits.find((h) => h.id === "note")?.scope, "Neue Planung");
+    const old = await f.search.recallHybrid("Fixture note", { scope: node.scope });
+    assert.ok(!old.some((h) => h.id === "note"));
+  } finally {
+    await f.close();
+  }
+});
 
 test("user fields: title, type and recall mode land in the file and in recall; the file stays put", async () => {
   const f = await fixture();
@@ -674,10 +708,12 @@ test("user fields: to private leaves the unproven views at once; from private on
       id: "secret",
       expected_revision: secret.revision,
       sensitivity: "public",
+      scope: "other-area",
     });
     assert.equal(blind.status, 404);
     assert.doesNotMatch(JSON.stringify(blind.body), /Summary of secret/);
     assert.match(await f.file("secret"), /sensitivity: private/);
+    assert.equal((await f.node(owner, "secret")).scope, secret.scope);
     const shown = await call(owner, "POST", "/ui/memory/edit", {
       id: "secret",
       expected_revision: secret.revision,
@@ -841,6 +877,68 @@ test("rule state names, per type and recall mode, where those fields decide the 
     assert.equal(saved.status, 200, JSON.stringify(saved.body));
     assert.equal(saved.body.rule.state, "rule", "the type change made it a rule");
     assert.equal(saved.body.rule.by_type_mode["lesson deliberate"], false);
+  } finally {
+    await f.close();
+  }
+});
+
+test("#1469/#1496: the web UI's save, edit, rule decision, archive and restore name the web UI", async () => {
+  const f = await fixture();
+  try {
+    const port = await f.start();
+    const webui = { transport: "webui", client: "bastra-web-ui", session: null };
+    const evidenceOf = (id: string) => {
+      const { at, ...rest } = f.vault.get(id)!.fm.write_origin_evidence ?? ({} as { at?: string });
+      assert.ok(!Number.isNaN(Date.parse(at ?? "")), "with the time of the call");
+      return rest;
+    };
+    const saved = await call(port, "POST", "/ui/save-memory", {
+      title: "Weekly planning on Monday",
+      type: "reference",
+      scope: "planning",
+      body: "## Weekly planning\n\nPlan the week on Monday morning.",
+    });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    assert.equal(f.vault.get(saved.body.id)!.fm.write_origin, "user-directed");
+    assert.deepEqual(evidenceOf(saved.body.id), webui, "the UI save carries its origin evidence");
+
+    const edited = await call(port, "POST", "/ui/memory/edit", {
+      id: "note",
+      expected_revision: (await f.node(port, "note")).revision,
+      summary: "Edited in the reader",
+    });
+    assert.equal(edited.status, 200, JSON.stringify(edited.body));
+    const accepted = await call(port, "POST", "/ui/memory/edit", {
+      id: "proposal",
+      expected_revision: (await f.node(port, "proposal")).revision,
+      rule_decision: "accept",
+    });
+    assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
+    assert.equal(f.vault.get("proposal")!.fm.write_origin, "user-directed");
+    assert.deepEqual(evidenceOf("proposal"), webui, "an accepted proposal carries the evidence of the decision");
+
+    const archived = await call(port, "POST", "/ui/memory/archive", {
+      id: "note",
+      expected_revision: (await f.node(port, "note")).revision,
+    });
+    assert.equal(archived.status, 200, JSON.stringify(archived.body));
+    assert.equal((await call(port, "POST", "/ui/memory/restore", { id: "note" })).status, 200);
+
+    const rows = (await readFile(join(f.dir, ".bastra", "audit-log.ndjson"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    assert.deepEqual(
+      rows.map((r) => [r.memory_id, r.transport, r.client, r.caller_session]),
+      [
+        [saved.body.id, "webui", "bastra-web-ui", null],
+        ["note", "webui", "bastra-web-ui", null],
+        ["proposal", "webui", "bastra-web-ui", null],
+        ["note", "webui", "bastra-web-ui", null],
+        ["note", "webui", "bastra-web-ui", null],
+      ],
+      "save, edit, decision, archive and restore: one row each, all from the web UI"
+    );
   } finally {
     await f.close();
   }

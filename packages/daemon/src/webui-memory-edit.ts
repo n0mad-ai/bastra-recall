@@ -10,13 +10,11 @@
  *
  * - `expected_revision` is required: the browser always edits a known state,
  *   and a concurrent change answers 409 instead of being overwritten.
- * - Title, type, sensitivity and recall mode (#1558) are the user's own
+ * - Title, type, scope, sensitivity and recall mode (#1558) are the user's own
  *   fields: they ride the same edit as `userFields` (not part of the
  *   edit_memory tool), the file stays where it is. Documents and bookmarks
- *   keep their type (their own tools file them). The area is not changed
- *   here: the browser's area follows the folder, so it would mean moving
- *   the file (owner decision open). Any other field is refused loudly by
- *   `.strict()`.
+ *   keep their type (their own tools file them). An area edit only updates
+ *   `scope`. Any other field is refused loudly by `.strict()`.
  * - Nothing is shortened silently: an over-long summary is refused (the edit
  *   path would clamp it), the request body has the general /ui size limit.
  * - Private memories: the same visibility as GET /ui/graph — only when the
@@ -35,6 +33,7 @@ import {
   RulebookSchema,
   SUMMARY_MAX,
   auditedRestore,
+  isPathSafeComponent,
   latestTrashPathFor,
   type Memory,
 } from "@bastra-recall/core";
@@ -42,7 +41,7 @@ import { editMemoryHandler, splitAuthoredBody, type EditMemoryArgs, type UserFie
 import { archiveMemoryHandler } from "./tool-handlers.js";
 import { catalogDeclaration } from "./rulebook-catalog.js";
 import { TRUSTED_LOCAL_APP, hiddenFromCaller, hiddenOnDisk, type PrivateAccess } from "./private-access.js";
-import type { AuditOrigin } from "./audit-trail.js";
+import { writerFields, type AuditOrigin } from "./audit-trail.js";
 import type { ToolDeps } from "./tool-deps.js";
 import { getUiEnabled } from "./settings.js";
 import { MAX_BODY_BYTES, readJsonBody } from "./http-util.js";
@@ -139,6 +138,15 @@ export const UiEditRequest = z
     // #1558: the user's own fields (see userFieldsOf)
     title: z.string().optional(),
     type: MemoryTypeEnum.optional(),
+    scope: z
+      .string()
+      .trim()
+      .min(1)
+      .refine(
+        (scope) => isPathSafeComponent(scope) && !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(scope),
+        "must be a plain area name"
+      )
+      .optional(),
     sensitivity: z.enum(["public", "team", "private"]).optional(),
     recall_mode: z.enum(["reflex", "deliberate"]).optional(),
   })
@@ -233,6 +241,7 @@ export function userFieldsOf(mem: Memory, r: UiEditRequest): UserFields | undefi
   const next: UserFields = {
     ...(r.title !== undefined ? { title: titleOf(r.title) } : {}),
     ...(r.type !== undefined ? { type: typeOf(mem, r.type) } : {}),
+    ...(r.scope !== undefined ? { scope: r.scope } : {}),
     ...(r.sensitivity !== undefined ? { sensitivity: r.sensitivity } : {}),
     ...(r.recall_mode !== undefined ? { recall_mode: r.recall_mode } : {}),
   };
@@ -256,7 +265,7 @@ function frontmatterPatch(mem: Memory, r: UiEditRequest): Patch | undefined {
   return Object.keys(patch).length ? patch : undefined;
 }
 
-const USER_FIELDS = ["title", "type", "sensitivity", "recall_mode"] as const;
+const USER_FIELDS = ["title", "type", "scope", "sensitivity", "recall_mode"] as const;
 
 /** The edit_memory arguments for one browser save (with the user's own
  *  fields apart, #1558), or 400 when nothing changes. */
@@ -345,7 +354,7 @@ async function restore(ctx: MemoryEditCtx, r: z.infer<typeof UiRestoreRequest>) 
     vaultRoot: vaultPath,
     memoryID: r.id,
     vault,
-    context: { actor: "user", actor_detail: "ui:memory-browser" },
+    context: { actor: "user", actor_detail: "ui:memory-browser", ...writerFields() },
   }).catch((err: Error) => {
     throw new UiEditError(409, err.message, true);
   });

@@ -63,10 +63,11 @@ import {
   mutateMemoryFile,
   type Memory,
   type SaveMemoryInput,
+  type WriteOriginEvidence,
   clampSummary,
   SUMMARY_MAX,
 } from "@bastra-recall/core";
-import { auditOrigin, recordAudit, type AuditOrigin } from "./audit-trail.js";
+import { auditOrigin, recordAudit, writeOriginEvidence, type AuditOrigin } from "./audit-trail.js";
 import { WriteRedaction, withRedactionReceipt, type RedactionReceipt, type SecretsRedacted } from "./save-redaction.js";
 import { claimGateResult, unansweredClaims, GENERATED_TRIGGER_TYPES, type ClaimGateResult } from "./claim-gate.js";
 import { hiddenFromCaller, hiddenOnDisk, type PrivateAccess } from "./private-access.js";
@@ -165,12 +166,12 @@ export type EditMemoryArgs = z.infer<typeof EditMemoryArgs>;
 
 /**
  * #1558: what the user may change in the web UI's reader beyond the patch —
- * title, type, sensitivity and recall mode. Deliberately NOT part of
+ * title, type, scope, sensitivity and recall mode. Deliberately NOT part of
  * the edit_memory tool's whitelist: an agent keeps save_memory for these. The
  * UI route validates the values; here they ride the same claim, revision
  * check, audit and reindex as every other edit. The file stays where it is.
  */
-export type UserFields = Partial<Pick<Memory["fm"], "title" | "type" | "sensitivity" | "recall_mode">>;
+export type UserFields = Partial<Pick<Memory["fm"], "title" | "type" | "scope" | "sensitivity" | "recall_mode">>;
 
 /** A credential in the user's new title is redacted like the patch's text (#1470). */
 function redactUserFields(redaction: WriteRedaction, fields: UserFields | undefined): UserFields | undefined {
@@ -203,9 +204,16 @@ export interface EditMemoryResult {
   secrets_redacted?: SecretsRedacted;
   /** #1385: rule state after the edit — rule, proposal or note only. */
   delivery?: string;
+  /** #1496: transport, client, session and time of this call, when it carried the user's
+   *  decision (rulebook_decision) or made the note user-directed. */
+  write_origin_evidence?: WriteOriginEvidence;
   note: string;
   warning?: string;
 }
+
+/** #1496: the receipt names the evidence only when this call carried the user's decision. */
+const evidenceField = (evidence: WriteOriginEvidence | undefined) =>
+  evidence ? { write_origin_evidence: evidence } : {};
 
 /** #661: die Frontmatter-Listen, die ein Patch ERSETZT (nicht ergänzt). */
 const LIST_FIELDS = ["recall_when", "tags", "issues", "related"] as const;
@@ -407,6 +415,16 @@ export async function editMemoryHandler(
   let bodyAfter = 0;
   // #661: gegen die Bytes unter dem Claim ermittelt, nicht gegen den Index.
   let dropped: EditMemoryResult["dropped"];
+  // #1496: the evidence of this call, when it carries the user's decision. A note this edit makes
+  // user-directed stores it like save_memory does — or drops an older one, which would name the
+  // wrong instruction, when the call has no transport to read.
+  let evidence: WriteOriginEvidence | undefined;
+  const declareUserDirected = (next: Record<string, unknown>) => {
+    next.write_origin = "user-directed";
+    evidence = writeOriginEvidence();
+    if (evidence) next.write_origin_evidence = evidence;
+    else delete next.write_origin_evidence;
+  };
   const outcome = await mutateMemoryFile(
     mem.filePath,
     mem.fm.id,
@@ -469,7 +487,7 @@ export async function editMemoryHandler(
             throw new Error("rulebook edits require rulebook and applies_when (or existing values)");
           if (bindsDirectly) {
             Object.assign(next, proposal.data);
-            if (origin?.actor === "user") next.write_origin = "user-directed";
+            if (origin?.actor === "user") declareUserDirected(next);
             // #1386: binding supersedes the pending proposal it answers.
             if (fm.rulebook === undefined) {
               const rest = remainingProposal(
@@ -525,9 +543,10 @@ export async function editMemoryHandler(
                 "archive proposal requires archive_memory on the user's instruction — NOTHING was written"
               );
             const { archive: _archive, ...binding } = proposed.data;
-            Object.assign(next, binding, { write_origin: "user-directed" });
+            Object.assign(next, binding);
+            declareUserDirected(next);
             if (next.superseded_by === null) delete next.superseded_by;
-          }
+          } else evidence = writeOriginEvidence();
           delete next.rulebook_proposed;
         }
         if (next.validator === null) delete next.validator;
@@ -615,6 +634,7 @@ export async function editMemoryHandler(
     // #1395: from the frontmatter this write committed, the same outcome as `revision` —
     // the index may already hold a later writer's state.
     delivery: rulebookDelivery(outcome.after as Memory["fm"]),
+    ...evidenceField(evidence),
     note: "Edit complete — do not repeat this edit_memory call.",
     ...(warning ? { warning } : {}),
   };

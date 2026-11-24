@@ -120,6 +120,31 @@ test("a detail refresh does not touch an open editor", async () => {
   assert.equal(after, s);
 });
 
+test("area takes its value from scope and survives reloading after a conflict", async () => {
+  const m = await load();
+  let s = m.editStep(m.editInit(), { type: "load", detail: detail({ scope: "Old area", area: "Folder" }) });
+  s = m.editStep(s, { type: "edit" });
+  assert.equal(s.draft.scope, "Old area");
+  s = m.editStep(s, { type: "input", field: "scope", value: "  " });
+  assert.equal(m.editPatch(s, "m1").error, "mb.ed.needScope");
+  s = m.editStep(s, { type: "input", field: "scope", value: "  My area  " });
+  s = m.editStep(m.editStep(s, { type: "save" }), { type: "conflict" });
+  s = m.editStep(s, {
+    type: "reloaded",
+    detail: detail({ scope: "Saved elsewhere", revision: "sha256:0000000000000009" }),
+  });
+  assert.equal(s.draft.scope, "Saved elsewhere");
+  s = m.editStep(s, { type: "useStash" });
+  assert.deepEqual(
+    { ...m.editPatch(s, "m1").payload },
+    {
+      id: "m1",
+      expected_revision: "sha256:0000000000000009",
+      scope: "My area",
+    }
+  );
+});
+
 test("validation: empty or long summary, no tags, a rule without 'applies when' are refused, nothing cut", async () => {
   const m = await load();
   const open = (field: string, value: string, d = detail()) =>

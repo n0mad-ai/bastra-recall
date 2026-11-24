@@ -38,6 +38,7 @@ import { getUiEnabled } from "./settings.js";
 import { dispatchUiBackdrop } from "./ui-backdrop.js";
 import { dispatchUiGraph, type GraphReadCtx } from "./http-graph-reads.js";
 import { hiddenFromCaller } from "./private-access.js";
+import { IMPORT_WEBUI_WRITER, writeCallerStore } from "./caller-session.js";
 
 export interface UiRouteCtx extends GraphReadCtx {
   vault: Vault;
@@ -257,19 +258,30 @@ function dispatchVaultImage(
   return false;
 }
 
+type UiRoute = (req: IncomingMessage, res: ServerResponse, ctx: UiRouteCtx) => Promise<void>;
+/** #1469/#1496: a vault write from the web UI runs as the web UI, so its audit entry and the
+ *  write_origin evidence of a user-directed save name the web UI instead of nobody. */
+const asWebUi =
+  (route: UiRoute): UiRoute =>
+  (req, res, ctx) =>
+    writeCallerStore.run(IMPORT_WEBUI_WRITER, () => route(req, res, ctx));
+
 /** Exact "METHOD /path" routes (no prefix, no query). Add new simple routes
  *  here: the dispatcher's complexity stays the same however many there are. */
 // A Map, not an object: a request-chosen key can only ever find one of these
 // entries, never an inherited property such as "constructor".
-const EXACT_UI_ROUTES = new Map<string, (req: IncomingMessage, res: ServerResponse, ctx: UiRouteCtx) => Promise<void>>([
+const EXACT_UI_ROUTES = new Map<string, UiRoute>([
   // "Improve text" on a vault-care note: same local chat client, nothing stored.
   ["POST /ui/improve-text", (req, res, ctx) => handleUiImproveText(req, res, ctx.uiChat ?? null)],
   // "Save as memory" under an agent answer (#1445): the normal save_memory path, user-directed.
-  ["POST /ui/save-memory", (req, res, ctx) => handleUiSaveMemory(req, res, ctx.toolDeps, undefined, ctx.privateGraph)],
+  [
+    "POST /ui/save-memory",
+    asWebUi((req, res, ctx) => handleUiSaveMemory(req, res, ctx.toolDeps, undefined, ctx.privateGraph)),
+  ],
   // Memory browser edits in the reader (#1446): edit_memory / archive_memory / restore, revision-checked.
-  ["POST /ui/memory/edit", handleUiMemoryEdit],
-  ["POST /ui/memory/archive", handleUiMemoryArchive],
-  ["POST /ui/memory/restore", handleUiMemoryRestore],
+  ["POST /ui/memory/edit", asWebUi(handleUiMemoryEdit)],
+  ["POST /ui/memory/archive", asWebUi(handleUiMemoryArchive)],
+  ["POST /ui/memory/restore", asWebUi(handleUiMemoryRestore)],
 ]);
 
 function dispatchExactUi(

@@ -70,8 +70,9 @@ export function writerFields(): { transport?: string; client?: string | null; ca
 /**
  * #1496: the evidence a `write_origin: user-directed` save carries in its
  * frontmatter — the same transport facts as the audit entry, plus the time.
- * Outside a tool call (web UI, CLI, background jobs) there is no transport to
- * read, and the save carries none rather than a guess.
+ * The web UI's own writes run as `IMPORT_WEBUI_WRITER` (#1469). Outside a tool call
+ * and the web UI (CLI, background jobs) there is no transport to read, and the
+ * save carries none rather than a guess.
  */
 export function writeOriginEvidence(now: Date = new Date()): WriteOriginEvidence | undefined {
   const caller = writeCallerStore.getStore();

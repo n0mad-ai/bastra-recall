@@ -7,8 +7,7 @@
 //                                                   | conflict "conflict"
 // "conflict" keeps the draft; reloaded → "edit" on the current version with
 // the draft kept aside (`stash`), useStash puts it back. cancel → "view".
-// Title, type, sensitivity and recall mode are fields too (#1558); the area
-// is not (it follows the folder), so it is not a field at all.
+// Title, type, scope, sensitivity and recall mode are fields too (#1558).
 // A change of type or recall mode that makes a memory a rule or ends one
 // (a rule without its own declaration) is shown before the save; the first
 // save click then asks once more ("confirm") and the second one saves.
@@ -56,11 +55,12 @@ export function editFields(d) {
   };
 }
 
-/** Title, type, sensitivity and recall mode of a node detail (#1558). */
+/** Title, type, scope, sensitivity and recall mode of a node detail (#1558). */
 function ownFields(d) {
   return {
     title: str(d?.title),
     type: str(d?.type),
+    scope: str(d?.scope),
     sensitivity: str(d?.sensitivity) || "team", // the schema's default
     recall_mode: d?.recall_mode === "reflex" ? "reflex" : "deliberate",
   };
@@ -163,12 +163,17 @@ function ruleChanges(d, b) {
   return { out: { rule: { rulebook: d.rulebook, applies_when: d.applies_when.trim() } } };
 }
 
-/** Title, type, sensitivity and recall mode (#1558): only what changed. */
+/** The user's fields (#1558): only what changed. */
 function fieldChanges(d, b) {
   const out = {};
   if (d.title.trim() !== b.title.trim()) {
     if (!d.title.trim()) return { error: "mb.ed.needTitle" };
     out.title = d.title.trim();
+  }
+  const scope = d.scope.trim();
+  if (scope !== b.scope.trim()) {
+    if (!scope) return { error: "mb.ed.needScope" };
+    out.scope = scope;
   }
   for (const k of ["type", "sensitivity", "recall_mode"]) if (d[k] !== b[k]) out[k] = d[k];
   return { out };
