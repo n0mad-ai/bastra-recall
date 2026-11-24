@@ -262,6 +262,16 @@ test("#1677 (a) a daemon that receives a write call and never answers: it arrive
   assert.equal(arrivals, 1);
 });
 
+test("#1677 a rulebook check that has arrived is not repeated", async (t) => {
+  await reset(t, "reset-before-headers");
+  const result = holdForDaemon(() => callDaemon("rulebook_check", { applicable: [] }));
+  await assert.rejects(result, (error: Error) => {
+    assert.equal(arrivals, 1);
+    assert.match(error.message, unclear("rulebook_check", "fetch failed"));
+    return true;
+  });
+});
+
 test("#1677 a task action that may have run answers with the check-first message, not `unavailable, retryable`", async (t) => {
   await reset(t, "silent");
   const timers = handTimers(t);

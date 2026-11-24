@@ -56,7 +56,9 @@ function throwIfNotRepeatable(tool: string, err: unknown): void {
   // #1676: once the response had begun, the daemon received the call and
   // may have run a write tool. Report the failure as it is.
   if (responseStarted(err)) throw err;
-  if (TOOL_ARG_EXPECTATIONS.get(tool)?.readOnly === true) return;
+  // rulebook_check keeps its client permission hint, but it records a check
+  // in the current round and can update the session's reported workflow stage.
+  if (tool !== "rulebook_check" && TOOL_ARG_EXPECTATIONS.get(tool)?.readOnly === true) return;
   if ((err as { cause?: { code?: unknown } } | null)?.cause?.code === "ECONNREFUSED") return;
   throw Object.assign(
     new Error(
