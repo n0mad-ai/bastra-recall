@@ -85,6 +85,19 @@ function currentPackage(read, packageBefore, required) {
   }
 }
 
+function assertReviewedKnipContract(before, after, previousConfig, config, reviewedContract) {
+  if (before && before === after) return;
+  if (
+    before &&
+    approvedMkfifoConfig(previousConfig, config) &&
+    digest(before) === reviewedContract?.before &&
+    digest(after) === reviewedContract?.after
+  ) {
+    return;
+  }
+  throw new Error("Knip bootstrap/contract changes need explicit review");
+}
+
 export function verifyKnipContract(read, readBase, reviewedContract) {
   const before = readBase("knip-baseline.json");
   const configBefore = readBase("knip.json");
@@ -105,13 +118,11 @@ export function verifyKnipContract(read, readBase, reviewedContract) {
   if (!before) return;
   const oldLock = assertKnipLock(JSON.parse(readBase("package-lock.json")));
   if (digest(lock) !== digest(oldLock)) throw new Error("Knip locked tool changed without review");
-  const contractBefore = readBase("scripts/lint-knip-contract.mjs");
-  const contractAfter = read("scripts/lint-knip-contract.mjs");
-  const exactReview =
-    approvedMkfifoConfig(previousConfig, config) &&
-    digest(contractBefore) === reviewedContract?.before &&
-    digest(contractAfter) === reviewedContract?.after;
-  if (!contractBefore || (contractBefore !== contractAfter && !exactReview)) {
-    throw new Error("Knip bootstrap/contract changes need explicit review");
-  }
+  assertReviewedKnipContract(
+    readBase("scripts/lint-knip-contract.mjs"),
+    read("scripts/lint-knip-contract.mjs"),
+    previousConfig,
+    config,
+    reviewedContract
+  );
 }
