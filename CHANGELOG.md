@@ -620,6 +620,13 @@ until a new design replaces it; this name is independent of the product version.
 - The MCP forwarder no longer waits forever when the daemon sends its response
   headers and then stalls; the call ends at the request deadline and is
   reported, not repeated, so a write tool is not sent twice (#1676).
+- The MCP forwarder repeats a tool call the daemon may have received only for
+  a read-only tool (`readOnlyHint`). A write call (and any tool without the
+  hint) is repeated only when the connection was refused, for example while
+  the daemon restarts; after a timeout or a dropped connection it arrives
+  once and ends with an error saying it is unclear whether it was saved, to
+  check before calling it again. Before, it could arrive up to four times
+  (#1677).
 
 ### Internal
 

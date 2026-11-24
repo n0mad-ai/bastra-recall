@@ -5,7 +5,7 @@
  * hookless clients.
  */
 import { taskClientHeaders } from "./task-client-auth.js";
-import { isTaskTool, taskClientAuthorization } from "./task-transport.js";
+import { isTaskTool, taskClientAuthorization, taskFailure } from "./task-transport.js";
 import { type RecallStage } from "@bastra-recall/core";
 import { mergeBatchResults, projectRecallResult } from "./recall-batch.js";
 import { withDraftBudget } from "./draft-search.js";
@@ -21,6 +21,7 @@ import {
   responseStarted,
 } from "./forwarder-daemon-client.js";
 import { liveStatusline } from "./mcp-forwarder-statusline.js";
+import { TOOL_ARG_EXPECTATIONS } from "./tool-defs.js";
 
 /** #1469: the MCP client this forwarder serves (`name/version` from the
  *  initialize handshake), sent so the daemon's audit names the writer. */
@@ -40,6 +41,41 @@ function ccTurnHeaders(): Record<string, string> {
     if (liveStatusline.turn_id > 0) h["x-bastra-cc-turn"] = String(liveStatusline.turn_id);
   }
   return h;
+}
+
+/**
+ * #1677 (owner decision B): a call the daemon may have received is repeated
+ * only for a tool that declares `readOnlyHint` (tool-defs.ts); a tool without
+ * the hint, or one this build does not know, counts as writing. A write call
+ * is repeated only when it provably never arrived: the connection was refused,
+ * so no request was sent (the daemon is down or restarting). Anything else
+ * (a timeout, a reset, a dropped connection) leaves open whether the daemon
+ * ran it, and the call ends with an error that says so.
+ */
+function throwIfNotRepeatable(tool: string, err: unknown): void {
+  // #1676: once the response had begun, the daemon received the call and
+  // may have run a write tool. Report the failure as it is.
+  if (responseStarted(err)) throw err;
+  if (TOOL_ARG_EXPECTATIONS.get(tool)?.readOnly === true) return;
+  if ((err as { cause?: { code?: unknown } } | null)?.cause?.code === "ECONNREFUSED") return;
+  throw Object.assign(
+    new Error(
+      `daemon did not answer ${tool} at ${DAEMON_URL}: ${(err as Error).message}. ` +
+        `It is unclear whether it was saved or carried out, so it was not repeated. ` +
+        `Check whether it took effect before calling ${tool} again.`
+    ),
+    { outcomeUnknown: true }
+  );
+}
+
+/**
+ * The text a failed non-streaming tool call answers with. #1677: a task tool
+ * answers with its task failure body, which says `unavailable, retryable`; a
+ * task action that may have run gets the message that says to check first.
+ */
+export function toolErrorText(tool: string, err: unknown): string {
+  const outcomeUnknown = (err as { outcomeUnknown?: unknown } | null)?.outcomeUnknown === true;
+  return isTaskTool(tool) && !outcomeUnknown ? JSON.stringify(taskFailure(err).body) : (err as Error).message;
 }
 
 export async function callDaemon(tool: string, args: unknown): Promise<unknown> {
@@ -73,17 +109,16 @@ export async function callDaemon(tool: string, args: unknown): Promise<unknown> 
   try {
     resp = await doFetch();
   } catch (err) {
-    // #1676: once the response had begun, the daemon received the call and
-    // may have run a write tool; repeating it could save twice. Report the
-    // failure as it is: without "unreachable", or holdForDaemon() repeats it.
-    if (responseStarted(err)) throw err;
+    throwIfNotRepeatable(tool, err);
     // Netzwerk-Fehler: einmaliger Retry — vielleicht ist der Daemon gerade
     // restartet. Beim zweiten Fehler durchreichen.
     await new Promise((r) => setTimeout(r, 300));
     try {
       resp = await doFetch();
     } catch (err2) {
-      if (responseStarted(err2)) throw err2;
+      throwIfNotRepeatable(tool, err2);
+      // "unreachable" is what makes holdForDaemon() restart the daemon and
+      // repeat the call, so only a repeatable failure may carry it.
       throw new Error(`daemon unreachable at ${DAEMON_URL}: ${(err2 as Error).message}`);
     }
   }

@@ -200,13 +200,18 @@ export function awaitDaemonReady(): Promise<boolean> {
  * ausführen. Scheitert er mit "daemon unreachable" (Idle-Self-Terminate oder
  * Crash NACH dem ersten Boot), wird der Daemon einmal respawnt und der Call
  * wiederholt — statt dem Client "no access to the MCP server" zu zeigen.
+ *
+ * #1677: only a failure that starts with "daemon unreachable at" is repeated.
+ * callDaemon() gives that text only to a call that may run again: a read-only
+ * tool, or a write call whose connection was refused. A daemon error that
+ * merely mentions "unreachable" is an answer and is not repeated.
  */
 export async function holdForDaemon<T>(fn: () => Promise<T>): Promise<T> {
   await daemonReady.catch(() => false);
   try {
     return await fn();
   } catch (err) {
-    if (!String((err as Error).message).includes("unreachable")) throw err;
+    if (!String((err as Error).message).startsWith("daemon unreachable at ")) throw err;
     daemonReady = ensureDaemonRunning();
     const ok = await daemonReady;
     if (!ok) throw err;

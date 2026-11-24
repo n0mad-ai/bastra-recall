@@ -273,7 +273,7 @@
     "[\"packages/daemon/src/load-memory-handler.ts\",\"[\\\"function:loadMemoryHandler\\\"]\",\"complexity\"]": 43,
     "[\"packages/daemon/src/mcp-forwarder-calls.ts\",\"[\\\"function:callRecallStreaming\\\"]\",\"complexity\"]": 36,
     "[\"packages/daemon/src/mcp-forwarder-calls.ts\",\"[\\\"function:callRecallStreaming\\\"]\",\"max-depth\"]": 5,
-    "[\"packages/daemon/src/mcp-forwarder.ts\",\"[\\\"function:main\\\",\\\"call:server.setRequestHandler:#2\\\",\\\"function:argument:1#1\\\"]\",\"complexity\"]": 18,
+    "[\"packages/daemon/src/mcp-forwarder.ts\",\"[\\\"function:main\\\",\\\"call:server.setRequestHandler:#2\\\",\\\"function:argument:1#1\\\"]\",\"complexity\"]": 17,
     "[\"packages/daemon/src/model-session-notice.ts\",\"[\\\"function:appendModelSessionNotice\\\"]\",\"complexity\"]": 19,
     "[\"packages/daemon/src/oauth-server.ts\",\"[\\\"function:handleAuthorizeGet\\\"]\",\"complexity\"]": 17,
     "[\"packages/daemon/src/oauth-server.ts\",\"[\\\"function:handleRegister\\\"]\",\"complexity\"]": 17,

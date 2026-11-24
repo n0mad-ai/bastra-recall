@@ -8,9 +8,11 @@
  * exact delay. Other timers (the health probe's) run as usual.
  *
  * Since #1676 the deadline covers the body too, and a call whose response
- * had begun is reported, not repeated. A call the daemon received but never
- * answered is still repeated (and again through the hold-the-call gate):
- * those tests pin today's behaviour, they do not endorse it.
+ * had begun is reported, not repeated. Since #1677 (owner decision B) a call
+ * that may have reached the daemon is repeated only for a read-only tool
+ * (`readOnlyHint`); a write call is repeated only when the connection was
+ * refused, and otherwise ends with an error that says to check first.
+ * `load_memory` stands for the read-only tools, `save_memory` for the others.
  *
  * Runner: npm test (scripts/test-env.mjs isolates HOME and the logs).
  */
@@ -20,7 +22,15 @@ import { createServer, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 
 type Mode =
-  "ok" | "refuse" | "silent" | "status-500" | "status-404" | "status-600" | "reset-before-headers" | "stall-body";
+  | "ok"
+  | "refuse"
+  | "reset-on-connect"
+  | "silent"
+  | "status-500"
+  | "status-404"
+  | "status-600"
+  | "reset-before-headers"
+  | "stall-body";
 
 let mode: Mode = "ok";
 let arrivals = 0;
@@ -61,7 +71,7 @@ const server = createServer((req, res) => {
   // "silent": never answer.
 });
 server.on("connection", (socket) => {
-  if (mode === "refuse") {
+  if (mode === "reset-on-connect") {
     socket.destroy();
     return;
   }
@@ -72,10 +82,34 @@ await new Promise<void>((ok) => server.listen(0, "127.0.0.1", () => ok()));
 const port = (server.address() as { port: number }).port;
 process.env.BASTRA_DAEMON_URL = `http://127.0.0.1:${port}`;
 // The endpoint is resolved at import, so the import follows the env.
-const { callDaemon } = await import("../src/mcp-forwarder-calls.js");
+const { callDaemon, toolErrorText } = await import("../src/mcp-forwarder-calls.js");
 const { holdForDaemon, REQUEST_TIMEOUT_MS } = await import("../src/forwarder-daemon-client.js");
+const { TOOL_ARG_EXPECTATIONS } = await import("../src/tool-defs.js");
 const RETRY_PAUSE_MS = 300;
 const UNREACHABLE = new RegExp(`^daemon unreachable at http://127\\.0\\.0\\.1:${port}: `);
+const READ = "load_memory";
+const WRITE = "save_memory";
+
+/** The error of a write call that may have run and was not repeated (#1677). */
+function unclear(tool: string, cause: string): RegExp {
+  return new RegExp(
+    `^daemon did not answer ${tool} at http://127\\.0\\.0\\.1:${port}: ${cause}\\. ` +
+      `It is unclear whether it was saved or carried out, so it was not repeated\\. ` +
+      `Check whether it took effect before calling ${tool} again\\.$`
+  );
+}
+
+/** Nobody listens on the port: a real connection refusal (ECONNREFUSED). */
+async function stopListening(): Promise<void> {
+  server.closeAllConnections();
+  await new Promise<void>((ok) => server.close(() => ok()));
+}
+
+/** The daemon is back on the same port. */
+async function listenAgain(next: Mode): Promise<void> {
+  mode = next;
+  await new Promise<void>((ok) => server.listen(port, "127.0.0.1", () => ok()));
+}
 
 /** Yield to the event loop (I/O included) until `cond` holds; counted turns, no clock. */
 async function until(cond: () => boolean, what: string): Promise<void> {
@@ -142,12 +176,14 @@ function watchHeaders(t: TestContext) {
   return seen;
 }
 
-function reset(t: TestContext, next: Mode): void {
+async function reset(t: TestContext, next: Mode): Promise<void> {
   mode = next;
   arrivals = 0;
-  t.after(() => {
+  if (next === "refuse") await stopListening();
+  t.after(async () => {
     stalled = null;
     for (const s of sockets) s.destroy();
+    if (!server.listening) await listenAgain("ok");
   });
 }
 
@@ -156,21 +192,104 @@ test.after(() => {
   server.close();
 });
 
-test("#1676 (a) a daemon that takes no connection: one retry after 300 ms, then 'daemon unreachable'", async (t) => {
-  reset(t, "refuse");
-  const timers = handTimers(t);
-  const call = track(callDaemon("save_memory", { body: "x" }));
-  await timers.fire(RETRY_PAUSE_MS);
-  await until(() => call.done, "the call settles");
-  assert.match(String(call.error?.message), new RegExp(UNREACHABLE.source + "fetch failed$"));
-  assert.deepEqual(timers.scheduled, [REQUEST_TIMEOUT_MS, RETRY_PAUSE_MS, REQUEST_TIMEOUT_MS]);
-  assert.equal(arrivals, 0);
+test("#1677 the tools under test: load_memory declares readOnlyHint, save_memory does not", () => {
+  assert.equal(TOOL_ARG_EXPECTATIONS.get(READ)?.readOnly, true);
+  assert.equal(TOOL_ARG_EXPECTATIONS.get(WRITE)?.readOnly, false);
 });
 
-test("#1676 (a) a daemon that receives the call and never answers: the call reaches it twice", async (t) => {
-  reset(t, "silent");
+for (const tool of [WRITE, READ]) {
+  test(`#1677 (a) connection refused (${tool}): one retry after 300 ms, then 'daemon unreachable'`, async (t) => {
+    await reset(t, "refuse");
+    const timers = handTimers(t);
+    const call = track(callDaemon(tool, { body: "x" }));
+    await timers.fire(RETRY_PAUSE_MS);
+    await until(() => call.done, "the call settles");
+    assert.match(String(call.error?.message), new RegExp(UNREACHABLE.source + "fetch failed$"));
+    assert.deepEqual(timers.scheduled, [REQUEST_TIMEOUT_MS, RETRY_PAUSE_MS, REQUEST_TIMEOUT_MS]);
+    assert.equal(arrivals, 0);
+  });
+
+  test(`#1677 (a) connection refused, the daemon is back for the retry (${tool}): it arrives once`, async (t) => {
+    await reset(t, "refuse");
+    const timers = handTimers(t);
+    const call = track(callDaemon(tool, { body: "x" }));
+    await until(() => timers.pending.some((p) => p.ms === RETRY_PAUSE_MS), "the retry pause");
+    await listenAgain("ok");
+    await timers.fire(RETRY_PAUSE_MS);
+    await until(() => call.done, "the call settles");
+    assert.deepEqual(call.value, { saved: true });
+    assert.equal(arrivals, 1);
+  });
+
+  test(`#1677 (a) the daemon restarts, through the hold-the-call gate (${tool}): it arrives once`, async (t) => {
+    await reset(t, "refuse");
+    const timers = handTimers(t);
+    // The gate's health probe finds the restarted daemon.
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (...a: Parameters<typeof fetch>) => {
+      if (String(a[0]).endsWith("/health") && !server.listening) await listenAgain("ok");
+      return await real(...a);
+    }) as typeof fetch;
+    t.after(() => {
+      globalThis.fetch = real;
+    });
+    const call = track(holdForDaemon(() => callDaemon(tool, { body: "x" })));
+    await timers.fire(RETRY_PAUSE_MS);
+    await until(() => call.done, "the call settles");
+    assert.deepEqual(call.value, { saved: true });
+    assert.equal(arrivals, 1);
+  });
+}
+
+test("#1677 (a) a reset on connect is not a refusal: a write call is not repeated", async (t) => {
+  await reset(t, "reset-on-connect");
   const timers = handTimers(t);
-  const call = track(callDaemon("save_memory", { body: "x" }));
+  const call = track(holdForDaemon(() => callDaemon(WRITE, { body: "x" })));
+  await until(() => call.done, "the call settles");
+  assert.match(String(call.error?.message), unclear(WRITE, "fetch failed"));
+  assert.deepEqual(timers.scheduled, [REQUEST_TIMEOUT_MS]);
+});
+
+test("#1677 (a) a daemon that receives a write call and never answers: it arrives once, the error says to check first", async (t) => {
+  await reset(t, "silent");
+  const timers = handTimers(t);
+  const call = track(callDaemon(WRITE, { body: "x" }));
+  await until(() => arrivals === 1, "first arrival");
+  await timers.fire(REQUEST_TIMEOUT_MS);
+  await until(() => call.done, "the call settles");
+  assert.match(String(call.error?.message), unclear(WRITE, "This operation was aborted"));
+  assert.deepEqual(timers.scheduled, [REQUEST_TIMEOUT_MS]);
+  assert.equal(arrivals, 1);
+});
+
+test("#1677 a task action that may have run answers with the check-first message, not `unavailable, retryable`", async (t) => {
+  await reset(t, "silent");
+  const timers = handTimers(t);
+  const call = track(callDaemon("task_create", {}));
+  await until(() => arrivals === 1, "first arrival");
+  await timers.fire(REQUEST_TIMEOUT_MS);
+  await until(() => call.done, "the call settles");
+  assert.match(toolErrorText("task_create", call.error), unclear("task_create", "This operation was aborted"));
+  assert.equal(arrivals, 1);
+  // Any other task failure keeps its task failure body.
+  assert.equal(JSON.parse(toolErrorText("task_create", new Error("x"))).code, "unavailable");
+});
+
+test("#1677 (a) a tool this build does not know counts as writing: it arrives once", async (t) => {
+  await reset(t, "silent");
+  const timers = handTimers(t);
+  const call = track(holdForDaemon(() => callDaemon("no_such_tool", {})));
+  await until(() => arrivals === 1, "first arrival");
+  await timers.fire(REQUEST_TIMEOUT_MS);
+  await until(() => call.done, "the call settles");
+  assert.match(String(call.error?.message), unclear("no_such_tool", "This operation was aborted"));
+  assert.equal(arrivals, 1);
+});
+
+test("#1677 (a) a read-only call the daemon never answers: it reaches it twice, as before", async (t) => {
+  await reset(t, "silent");
+  const timers = handTimers(t);
+  const call = track(callDaemon(READ, { id: "x" }));
   await until(() => arrivals === 1, "first arrival");
   await timers.fire(REQUEST_TIMEOUT_MS);
   await timers.fire(RETRY_PAUSE_MS);
@@ -182,10 +301,21 @@ test("#1676 (a) a daemon that receives the call and never answers: the call reac
   assert.equal(arrivals, 2);
 });
 
-test("#1676 (a) through the hold-the-call gate: a never-answering, healthy daemon receives the call four times", async (t) => {
-  reset(t, "silent");
+test("#1677 (a) through the hold-the-call gate: a write call to a never-answering, healthy daemon arrives once", async (t) => {
+  await reset(t, "silent");
   const timers = handTimers(t);
-  const call = track(holdForDaemon(() => callDaemon("save_memory", { body: "x" })));
+  const call = track(holdForDaemon(() => callDaemon(WRITE, { body: "x" })));
+  await until(() => arrivals === 1, "first arrival");
+  await timers.fire(REQUEST_TIMEOUT_MS);
+  await until(() => call.done, "the call settles");
+  assert.match(String(call.error?.message), unclear(WRITE, "This operation was aborted"));
+  assert.equal(arrivals, 1);
+});
+
+test("#1677 (a) through the hold-the-call gate: a read-only call to a never-answering, healthy daemon arrives four times, as before", async (t) => {
+  await reset(t, "silent");
+  const timers = handTimers(t);
+  const call = track(holdForDaemon(() => callDaemon(READ, { id: "x" })));
   for (let n = 1; n <= 4; n++) {
     await until(() => arrivals === n, `arrival ${n}`);
     await timers.fire(REQUEST_TIMEOUT_MS);
@@ -197,7 +327,7 @@ test("#1676 (a) through the hold-the-call gate: a never-answering, healthy daemo
 });
 
 test("#1676 (b) an error status is reported once, never repeated", async (t) => {
-  reset(t, "status-500");
+  await reset(t, "status-500");
   const timers = handTimers(t);
   await assert.rejects(callDaemon("save_memory", { body: "x" }), { message: "boom" });
   assert.equal(arrivals, 1);
@@ -208,7 +338,7 @@ test("#1676 (b) an error status is reported once, never repeated", async (t) => 
 });
 
 test("#1676 (b) a complete answer the forwarder cannot rebuild is reported once, never repeated", async (t) => {
-  reset(t, "status-600");
+  await reset(t, "status-600");
   const timers = handTimers(t);
   await assert.rejects(callDaemon("save_memory", { body: "x" }), (err: Error) => !/unreachable/.test(err.message));
   assert.equal(arrivals, 1);
@@ -216,7 +346,7 @@ test("#1676 (b) a complete answer the forwarder cannot rebuild is reported once,
 });
 
 test("#1676 (c) headers arrive, the body stalls: the deadline ends it with the abort text, the call is not repeated", async (t) => {
-  reset(t, "stall-body");
+  await reset(t, "stall-body");
   const timers = handTimers(t);
   const seen = watchHeaders(t);
   const call = track(callDaemon("save_memory", { body: "x" }));
@@ -234,7 +364,7 @@ test("#1676 (c) headers arrive, the body stalls: the deadline ends it with the a
 });
 
 test("#1676 (c) …and through the hold-the-call gate, a write tool still reaches the daemon once", async (t) => {
-  reset(t, "stall-body");
+  await reset(t, "stall-body");
   const timers = handTimers(t);
   const seen = watchHeaders(t);
   const call = track(holdForDaemon(() => callDaemon("save_memory", { body: "x" })));
@@ -246,10 +376,11 @@ test("#1676 (c) …and through the hold-the-call gate, a write tool still reache
 });
 
 test("#1676 (c) a body that stalls on the retry ends the call there, it is not handed on as 'unreachable'", async (t) => {
-  reset(t, "silent");
+  // Since #1677 only a read-only call reaches a retry after it was sent.
+  await reset(t, "silent");
   const timers = handTimers(t);
   const seen = watchHeaders(t);
-  const call = track(holdForDaemon(() => callDaemon("save_memory", { body: "x" })));
+  const call = track(holdForDaemon(() => callDaemon(READ, { id: "x" })));
   await until(() => arrivals === 1, "first arrival");
   mode = "stall-body";
   await timers.fire(REQUEST_TIMEOUT_MS);
@@ -258,13 +389,13 @@ test("#1676 (c) a body that stalls on the retry ends the call there, it is not h
   await timers.fire(REQUEST_TIMEOUT_MS);
   await until(() => call.done, "the call settles");
   assert.equal(call.error?.message, "This operation was aborted");
-  // The unanswered first attempt is repeated as before (#1676 keeps that); the
-  // stalled answer of the second is not — before #1676 the gate made it four.
+  // The unanswered first attempt is repeated; the stalled answer of the
+  // second is not — before #1676 the gate made it four.
   assert.equal(arrivals, 2);
 });
 
 test("#1676 (d) the connection drops after the headers: reported once as 'terminated', not repeated, no timer left", async (t) => {
-  reset(t, "stall-body");
+  await reset(t, "stall-body");
   const timers = handTimers(t);
   const seen = watchHeaders(t);
   const call = track(holdForDaemon(() => callDaemon("save_memory", { body: "x" })));
@@ -277,10 +408,20 @@ test("#1676 (d) the connection drops after the headers: reported once as 'termin
   assert.deepEqual(timers.pending, []);
 });
 
-test("#1676 (d) the connection drops after the daemon received the call, before any header: it reaches the daemon twice", async (t) => {
-  reset(t, "reset-before-headers");
+test("#1677 (d) the connection drops after the daemon received a write call, before any header: it arrives once", async (t) => {
+  await reset(t, "reset-before-headers");
   const timers = handTimers(t);
-  const call = track(callDaemon("save_memory", { body: "x" }));
+  const call = track(callDaemon(WRITE, { body: "x" }));
+  await until(() => call.done, "the call settles");
+  assert.match(String(call.error?.message), unclear(WRITE, "fetch failed"));
+  assert.deepEqual(timers.scheduled, [REQUEST_TIMEOUT_MS]);
+  assert.equal(arrivals, 1);
+});
+
+test("#1677 (d) …a read-only call: it reaches the daemon twice, as before", async (t) => {
+  await reset(t, "reset-before-headers");
+  const timers = handTimers(t);
+  const call = track(callDaemon(READ, { id: "x" }));
   await until(() => arrivals === 1, "first arrival");
   await timers.fire(RETRY_PAUSE_MS);
   await until(() => call.done, "the call settles");
@@ -288,10 +429,19 @@ test("#1676 (d) the connection drops after the daemon received the call, before 
   assert.equal(arrivals, 2);
 });
 
-test("#1676 (d) …and through the hold-the-call gate, four times", async (t) => {
-  reset(t, "reset-before-headers");
+test("#1677 (d) …through the hold-the-call gate: a write call arrives once", async (t) => {
+  await reset(t, "reset-before-headers");
+  handTimers(t);
+  const call = track(holdForDaemon(() => callDaemon(WRITE, { body: "x" })));
+  await until(() => call.done, "the call settles");
+  assert.match(String(call.error?.message), unclear(WRITE, "fetch failed"));
+  assert.equal(arrivals, 1);
+});
+
+test("#1677 (d) …through the hold-the-call gate: a read-only call arrives four times, as before", async (t) => {
+  await reset(t, "reset-before-headers");
   const timers = handTimers(t);
-  const call = track(holdForDaemon(() => callDaemon("save_memory", { body: "x" })));
+  const call = track(holdForDaemon(() => callDaemon(READ, { id: "x" })));
   await until(() => arrivals === 1, "first arrival");
   await timers.fire(RETRY_PAUSE_MS);
   await until(() => arrivals === 3, "third arrival");
@@ -302,7 +452,7 @@ test("#1676 (d) …and through the hold-the-call gate, four times", async (t) =>
 });
 
 test("#1676 a healthy answer: one arrival, no timer left behind", async (t) => {
-  reset(t, "ok");
+  await reset(t, "ok");
   const timers = handTimers(t);
   assert.deepEqual(await callDaemon("save_memory", { body: "x" }), { saved: true });
   assert.equal(arrivals, 1);
