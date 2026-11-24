@@ -583,7 +583,9 @@ export class SegmentRenderer {
     const icon = this.leadingIcon(this.symbols.bastra, config);
     let text: string;
 
-    if (info.state === "idle" || info.recallCount === 0) {
+    if (info.state === "offline") {
+      text = `${icon}${info.label}`;
+    } else if (info.state === "idle" || info.recallCount === 0) {
       text = `${icon}bastra · ${info.vaultSize} memories`;
     } else if (info.currentStage && info.currentStageStartedAt) {
       // Active recall: live total = accumulated + the running recall's elapsed.

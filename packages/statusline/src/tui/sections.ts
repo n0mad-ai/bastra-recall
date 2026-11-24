@@ -189,8 +189,7 @@ export function collectFooterParts(
   const envText = formatEnvSegment(config);
   if (envText) parts.push(colorize(envText, colors.envFg, reset, colors.envBold));
 
-  // #53: bastra parity with the powerline path — shown whenever the
-  // per-session feed answers (BastraProvider fail-opens to null).
+  // #53: bastra parity with the powerline path.
   const bastraText = formatBastraText(data);
   if (bastraText) {
     parts.push(colorize(bastraText, colors.bastraFg, reset, colors.bastraBold));
@@ -199,11 +198,11 @@ export function collectFooterParts(
   return parts;
 }
 
-/** #53: compact TUI mirror of renderBastra's three states (idle / running /
- *  done snapshot); banter phrases stay powerline-only to keep the panel calm. */
+/** Compact TUI mirror of renderBastra. Banter phrases stay powerline-only. */
 function formatBastraText(data: TuiData): string | null {
   const info = data.bastraInfo;
   if (!info) return null;
+  if (info.state === "offline") return info.label;
   if (info.state === "idle" || info.recallCount === 0) {
     return `bastra · ${info.vaultSize} memories`;
   }

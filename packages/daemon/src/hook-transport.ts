@@ -34,6 +34,22 @@ export function unbracketHostname(hostname: string): string {
   return hostname.replace(/^\[|\]$/g, "");
 }
 
+function statuslineSession(path: string, body: unknown): string | undefined {
+  if (path !== "/hook/session" && path !== "/hook/prompt") return undefined;
+  const payload = (body as { payload?: { session_id?: unknown; bastra_client?: unknown } } | null)?.payload;
+  if (payload?.bastra_client !== undefined && payload.bastra_client !== "claude-code") return undefined;
+  return typeof payload?.session_id === "string" && payload.session_id ? payload.session_id : undefined;
+}
+
+async function updateStatusline(sessionId: string, reachable: boolean): Promise<void> {
+  try {
+    const { recordStatuslineReachability } = await import("./hook-unreachable-notice.js");
+    await recordStatuslineReachability(sessionId, reachable);
+  } catch {
+    // Statusline state is advisory. Preserve the transport result.
+  }
+}
+
 /** POST `body` as JSON with `headers` added; resolve with the response body
  *  VERBATIM (the daemon returns the exact stdout document). Rejects on
  *  HTTP >= 400 / transport errors / the deadline. */
@@ -44,7 +60,8 @@ export function postHookBody(
   timeoutMs: number,
   headers: Record<string, string> = {}
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
+  const sessionId = statuslineSession(path, body);
+  const result = new Promise<string>((resolve, reject) => {
     let url: URL;
     try {
       url = new URL(path, baseUrl);
@@ -107,6 +124,17 @@ export function postHookBody(
     req.write(payload);
     req.end();
   });
+  if (!sessionId) return result;
+  return result.then(
+    async (data) => {
+      await updateStatusline(sessionId, true);
+      return data;
+    },
+    async (error: NodeJS.ErrnoException) => {
+      if (classifyTransportError(error) === "daemon-unreachable") await updateStatusline(sessionId, false);
+      throw error;
+    }
+  );
 }
 
 export function classifyTransportError(e: NodeJS.ErrnoException): "daemon-unreachable" | "timeout" | "error" {

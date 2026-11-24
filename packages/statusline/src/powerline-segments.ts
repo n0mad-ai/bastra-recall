@@ -208,7 +208,7 @@ export class PowerlineSegments {
     }
 
     if (segment.type === "bastra") {
-      const info = this.bastraProvider.getBastraInfo();
+      const info = this.bastraProvider.getBastraInfo(hookData.session_id);
       return this.segmentRenderer.renderBastra(info, colors, segment.config as BastraSegmentConfig);
     }
 

@@ -26,9 +26,9 @@
  *
  * Stdlib-only: the compiled stub imports it (#344).
  */
-import { lstat, mkdir, readdir, unlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { defaultHookStateDir, privateDirState } from "./private-state-dir.js";
 
 /** Text the product writes — never matched against anything. */
@@ -55,22 +55,28 @@ export function unreachableNoticeText(language: string = processLanguage()): str
   return NOTICE_BY_LANGUAGE[language] ?? NOTICE_BY_LANGUAGE.en;
 }
 
-/** A marker name: the first 24 hex digits of the session id's sha256. */
-const MARKER_NAME = /^[0-9a-f]{24}$/;
+/** One-time markers, statusline markers and any interrupted statusline writes. */
+const MARKER_NAME = /^(?:(?:offline-)?[0-9a-f]{24}|offline-[0-9a-f-]{36}\.tmp)$/;
 
 function markerKey(sessionId: string): string {
   return createHash("sha256").update(sessionId).digest("hex").slice(0, 24);
 }
 
+async function ensureNoticeDir(): Promise<boolean> {
+  // Check the base before creating anything below it: a recursive mkdir
+  // through a planted symlink would create the marker wherever it points.
+  const root = base();
+  await mkdir(root, { recursive: true, mode: 0o700 });
+  if ((await privateDirState(root)) !== "private") return false;
+  const dir = directory();
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  return (await privateDirState(dir)) === "private";
+}
+
 /** True exactly once per session id: the first caller creates the marker. */
 async function firstInSession(sessionId: string): Promise<boolean> {
   try {
-    // Check the base before creating anything below it: a recursive mkdir
-    // through a planted symlink would create the marker wherever it points.
-    await mkdir(base(), { recursive: true, mode: 0o700 });
-    if ((await privateDirState(base())) !== "private") return false;
-    await mkdir(directory(), { recursive: true, mode: 0o700 });
-    if ((await privateDirState(directory())) !== "private") return false;
+    if (!(await ensureNoticeDir())) return false;
     await writeFile(join(directory(), markerKey(sessionId)), "", { mode: 0o600, flag: "wx" });
     return true;
   } catch {
@@ -110,5 +116,29 @@ export async function sweepUnreachableNotices(maxAgeMs: number, now: number = Da
     }
   } catch {
     /* Cleanup is advisory. */
+  }
+}
+
+/** Publish the last confirmed outage for the Claude footer. Recovery never
+ * resets the separate one-time notice. */
+export async function recordStatuslineReachability(sessionId: string, reachable: boolean): Promise<void> {
+  const dir = directory();
+  const marker = join(dir, `offline-${markerKey(sessionId)}`);
+  try {
+    if (reachable) {
+      if ((await privateDirState(base())) === "private" && (await privateDirState(dir)) === "private")
+        await unlink(marker);
+      return;
+    }
+    if (!(await ensureNoticeDir())) return;
+    const next = join(dir, `offline-${randomUUID()}.tmp`);
+    await writeFile(next, "", { mode: 0o600, flag: "wx" });
+    try {
+      await rename(next, marker);
+    } catch {
+      await unlink(next);
+    }
+  } catch {
+    // The footer is optional and must never interfere with the hook result.
   }
 }

@@ -63,6 +63,7 @@ const STRINGS = {
   "stage.waitingNative": { de: "Warte auf native Sitzungsdaten", en: "Waiting for native session data" },
   "stage.nativeStale": { de: "Native Daten veraltet", en: "Native data is stale" },
   "stage.transcriptUnreachable": { de: "Transcript nicht erreichbar", en: "Transcript unreachable" },
+  "stage.recallOffline": { de: "Recall nicht erreichbar", en: "Recall offline" },
   "stage.failedCalls": { de: "{n} fehlgeschlagene Aufrufe", en: "{n} failed calls" },
   "stage.ready": { de: "Recall bereit", en: "Recall ready" },
   "stage.recent": { de: "Zuletzt: {tool}", en: "Last: {tool}" },

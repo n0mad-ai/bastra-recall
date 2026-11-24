@@ -1,7 +1,11 @@
 import { bastraDataDir } from "@bastra-recall/core/platform-paths";
 import fs from "node:fs";
+import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { t } from "../panel/i18n";
+import { readPrimaryLanguage } from "../panel/lang-setting";
 import { pidAlive, readTickCache, writeTickCache } from "../utils/tick-cache";
 
 /**
@@ -20,8 +24,11 @@ import { pidAlive, readTickCache, writeTickCache } from "../utils/tick-cache";
  */
 
 const STATUSLINE_DIR = path.join(bastraDataDir(), "statusline");
+const OFFLINE_MARKER_TTL_MS = 5 * 60_000;
 
-export interface BastraInfo {
+export type BastraInfo = BastraFeedInfo | { state: "offline"; label: string };
+
+interface BastraFeedInfo {
   state: "idle" | "running";
   vaultSize: number;
   recallCount: number;
@@ -83,7 +90,9 @@ function claudeSessionPid(): number {
 }
 
 export class BastraProvider {
-  getBastraInfo(): BastraInfo | null {
+  getBastraInfo(sessionId?: string): BastraInfo | null {
+    const label = readOfflineLabel(sessionId);
+    if (label) return { state: "offline", label };
     const feed = path.join(STATUSLINE_DIR, `${claudeSessionPid()}.json`);
     try {
       const raw = fs.readFileSync(feed, "utf8");
@@ -108,6 +117,39 @@ export class BastraProvider {
       return null;
     }
   }
+}
+
+/** Read only the current session's observation from the hook transport.
+ * Missing, unsafe or expired markers leave the ordinary statusline intact. */
+function readOfflineLabel(sessionId?: string): string | null {
+  if (typeof sessionId !== "string" || !sessionId) return null;
+  try {
+    if (!isRecentOfflineMarker(sessionId)) return null;
+    const language = readPrimaryLanguage() ?? Intl.DateTimeFormat().resolvedOptions().locale;
+    return t(language.split("-")[0]?.toLowerCase() === "de" ? "de" : "en", "stage.recallOffline");
+  } catch {
+    return null;
+  }
+}
+
+function isRecentOfflineMarker(sessionId: string): boolean {
+  // Mirror the private hook-state layout in hook-unreachable-notice.ts.
+  const base =
+    process.env.BASTRA_HOOK_STATE_DIR ||
+    (process.platform === "darwin" || process.platform === "win32"
+      ? path.join(tmpdir(), "bastra-hook")
+      : path.join(bastraDataDir(), "hook-state"));
+  const dir = path.join(base, "unreachable-notice");
+  const uid = process.getuid?.();
+  const privateEntry = (info: fs.Stats) => uid === undefined || (info.uid === uid && (info.mode & 0o022) === 0);
+  for (const dirPath of [base, dir]) {
+    const info = fs.lstatSync(dirPath);
+    if (!info.isDirectory() || !privateEntry(info)) return false;
+  }
+  const key = createHash("sha256").update(sessionId).digest("hex").slice(0, 24);
+  const marker = fs.lstatSync(path.join(dir, `offline-${key}`));
+  const age = Date.now() - marker.mtimeMs;
+  return marker.isFile() && privateEntry(marker) && age >= 0 && age < OFFLINE_MARKER_TTL_MS;
 }
 
 /**

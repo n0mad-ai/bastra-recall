@@ -206,7 +206,7 @@ export class PowerlineRenderer {
       metricsInfo,
       gitInfo,
       cacheTimerInfo,
-      bastraInfo: this.segments.bastraProvider.getBastraInfo(), // #53: TUI parity
+      bastraInfo: this.segments.bastraProvider.getBastraInfo(hookData.session_id), // #53: TUI parity
       tmuxSessionId,
       colors,
     };
