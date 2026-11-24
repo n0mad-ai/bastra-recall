@@ -1,7 +1,7 @@
 /** Task snapshots only. Private keys and portable archive exports stay files. */
 import { lstatSync } from "node:fs";
 import { appRecordDatabasePath, readAppRecord, writeAppRecord } from "./app-record-store.js";
-import { decodeTaskStore } from "./task-store.js";
+import { decodeTaskStore } from "./task-store-codec.js";
 
 export function readTaskSnapshotText(path: string, validate = true): string {
   const absent = (candidate: string): boolean => {

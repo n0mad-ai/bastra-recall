@@ -12,9 +12,9 @@ import {
   transactTaskStore,
   recoverTaskStore,
   transitionTask,
-  decodeTaskStore,
   TaskStoreError,
 } from "../src/task-store.js";
+import { decodeTaskStore } from "../src/task-store-codec.js";
 import { emptyTaskStore, taskSchema, TASK_MAX_BYTES, type Task } from "../src/task-schema.js";
 import { withPathLock, pathLockFilePath, PathLockUnavailableError } from "../src/path-lock.js";
 

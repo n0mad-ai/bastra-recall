@@ -5,7 +5,9 @@ import { dirname, join } from "node:path";
 import { createHmac, createHash, randomBytes } from "node:crypto";
 import { withPathLock } from "./path-lock.js";
 import { readPrivateFile } from "./private-state-dir.js";
-import { atomicWrite, TaskStoreError, decodeTaskStore } from "./task-store.js";
+import { atomicWrite } from "./task-store-file.js";
+import { TaskStoreError } from "./task-store-error.js";
+import { decodeTaskStore, dropLegacyTaskComparisons } from "./task-store-codec.js";
 import { canonicalTaskValue } from "./task-canonical.js";
 import { readTaskSnapshotText, writeTaskSnapshotText } from "./task-database.js";
 const prefix = "hmac-v1:";
@@ -144,14 +146,6 @@ function privateBaseline(store: any, schedule: any): boolean {
   return !store.sources?.some(
     (source: any) => source.id === schedule.source_id && ["file", "git", "memory"].includes(source.kind)
   );
-}
-/** Drop unsafe legacy verifiers; raw secrets cannot be recovered for migration. */
-export function dropLegacyTaskComparisons(store: any): void {
-  for (const t of store.tasks ?? []) {
-    if (typeof t.reminder_fingerprint === "string" && /^[a-f0-9]{64}$/.test(t.reminder_fingerprint))
-      delete t.reminder_fingerprint;
-    if (typeof t.creation_hash === "string" && /^[a-f0-9]{64}$/.test(t.creation_hash)) delete t.creation_hash;
-  }
 }
 export function publicTaskResult<T>(value: T): T {
   if (Array.isArray(value)) return value.map(publicTaskResult) as T;

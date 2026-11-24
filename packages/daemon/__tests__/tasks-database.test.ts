@@ -4,7 +4,8 @@ import { test } from "node:test";
 import { mkdtemp, readFile, writeFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readTaskStore, decodeTaskStore, transactTaskStore } from "../src/task-store.js";
+import { readTaskStore, transactTaskStore } from "../src/task-store.js";
+import { decodeTaskStore } from "../src/task-store-codec.js";
 import { readAppRecord, exportAppRecord } from "../src/app-record-store.js";
 
 // Frozen schema-v3 snapshot from the pre-database contract at e1191a2a.

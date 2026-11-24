@@ -8,7 +8,8 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { mintTaskCredential } from "../src/task-auth.js";
 import { callTaskCrud } from "../src/task-service.js";
-import { transactTaskStore, readTaskStore, decodeTaskStore } from "../src/task-store.js";
+import { transactTaskStore, readTaskStore } from "../src/task-store.js";
+import { decodeTaskStore } from "../src/task-store-codec.js";
 import {
   newOwnerKey,
   unlockOwnerKey,
