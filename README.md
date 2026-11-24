@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="./assets/github-banner.jpg" alt="Bastra Recall — persistent memory for AI coding agents: connects over MCP, stores memories as readable Markdown, open source" width="100%" />
-</p>
-
 # Bastra Recall
 
 [English](#english) · [Deutsch](#deutsch)
