@@ -20,6 +20,9 @@ import { retainDraftSurfaces, draftUseProof } from "./draft-use-proof.js";
 
 export const DRAFT_STORE_VERSION = 1;
 export const DRAFT_MAX_ROWS = 500;
+/** #1592: places of the row cap that confirmed drafts and tombstones never take
+ * from new first captures (the number suggested in the issue, unmeasured). */
+export const DRAFT_FIRST_CAPTURE_SLOTS = 100;
 export const DRAFT_MAX_BYTES = 1024 * 1024;
 export const DRAFT_OPEN_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 /** Unmeasured: early expiry for an unshown draft with only one evidence row. */
@@ -216,12 +219,21 @@ function expired(row: Draft, now: number): boolean {
         : DRAFT_OPEN_AGE_MS;
   return !(now - row.last_touched < age);
 }
+/** #1592: an open draft seen once and never shown — the row a repetition confirms. */
+function firstCapture(d: Draft): boolean {
+  return d.state === "open" && d.evidence.length === 1 && d.surfaced.length === 0;
+}
 function bounded(rows: Draft[], now: number, metadata: Record<string, unknown> = {}): Draft[] {
   const kept = rows.filter((row) => !expired(row, now));
-  // Preserve tombstones and confirmed drafts before disposable first captures.
-  const priority = (d: Draft): number =>
-    d.state !== "open" ? 2 : d.evidence.length === 1 && d.surfaced.length === 0 ? 0 : 1;
-  kept.sort((a, b) => priority(a) - priority(b) || a.last_touched - b.last_touched);
+  // #1592 eviction order, front first, each class oldest first: first captures
+  // beyond the newest DRAFT_FIRST_CAPTURE_SLOTS, then confirmed (or shown) open
+  // drafts, then tombstones, then the reserved first captures. A full store thus
+  // drops its oldest confirmed draft rather than the capture just written, and a
+  // rejection outlives every open draft.
+  const firsts = kept.filter(firstCapture).sort((a, b) => a.last_touched - b.last_touched);
+  const reserved = new Set(firsts.slice(-DRAFT_FIRST_CAPTURE_SLOTS));
+  const rank = (d: Draft): number => (reserved.has(d) ? 3 : firstCapture(d) ? 0 : d.state === "open" ? 1 : 2);
+  kept.sort((a, b) => rank(a) - rank(b) || a.last_touched - b.last_touched);
   if (kept.length > DRAFT_MAX_ROWS) kept.splice(0, kept.length - DRAFT_MAX_ROWS);
   let bytes =
     Buffer.byteLength(JSON.stringify(documentOf([], metadata))) +
@@ -230,6 +242,16 @@ function bounded(rows: Draft[], now: number, metadata: Record<string, unknown> =
   if (bytes > DRAFT_MAX_BYTES) throw new Error("draft metadata exceeds store byte limit");
   return kept.sort((a, b) => a.last_touched - b.last_touched);
 }
+
+/** #1114: the draft store never runs a mutation without its cross-process
+ * lease. A lease is taken over only once its owner provably ended; a live but
+ * frozen writer (sleep, debugger) is waited for and never written over. After
+ * the wait the mutation is refused instead (PathLockUnavailableError): at most a
+ * capture or hint is lost, never an acknowledged rejection or undo tombstone.
+ * Hook feedback (`tryOnly`) keeps skipping a busy lease without waiting.
+ * Every holder of this lease must use these options: one age-only holder could
+ * remove a live owner's lease. */
+export const DRAFT_STORE_LOCK = { crossProcess: true, strictLocal: true } as const;
 
 // Atomic rename gives readers a complete snapshot without waiting for a writer.
 let cache: { path: string; stamp: string; store: StoreSnapshot } | undefined;
@@ -437,7 +459,7 @@ export async function upsertDraft(input: Draft, now = Date.now()): Promise<Draft
       await write(path, kept, store.metadata, now);
       return structuredClone(kept.find((row) => row.id === draft.id) ?? null);
     },
-    { crossProcess: true }
+    DRAFT_STORE_LOCK
   );
 }
 
@@ -560,7 +582,7 @@ async function captureBatch(
       }
       return { ...result, matches: matchedIds.map((id) => (id === null ? null : (byId.get(id) ?? null))) };
     },
-    { crossProcess: true }
+    DRAFT_STORE_LOCK
   );
 }
 
@@ -605,7 +627,7 @@ export async function expireDrafts(
         await write(path, kept, store.metadata, now);
       return rows.length - kept.length;
     },
-    { crossProcess: true }
+    DRAFT_STORE_LOCK
   );
 }
 
@@ -623,7 +645,7 @@ export async function purgeDrafts(): Promise<{ pendingRelay: boolean }> {
         });
         return { pendingRelay };
       },
-      { crossProcess: true, requireLock: true }
+      DRAFT_STORE_LOCK
     )
   );
 }
@@ -658,7 +680,7 @@ export async function updateRetrievedDrafts(
         if (changed)
           await write(path, bounded(rows, now, store.metadata), store.metadata, now, tryOnly ? 0 : undefined);
       },
-      { crossProcess: true }
+      DRAFT_STORE_LOCK
     );
   } catch (error) {
     if (!tryOnly || !sqliteBusy(error)) throw error;
@@ -695,7 +717,7 @@ export async function transactDrafts<T>(
           await write(path, bounded(rows, now, store.metadata), store.metadata, now, tryOnly ? 0 : undefined);
         return result;
       },
-      { crossProcess: true, noQueue }
+      { ...DRAFT_STORE_LOCK, noQueue }
     );
   } catch (error) {
     if (tryOnly && sqliteBusy(error)) return undefined;
@@ -806,6 +828,6 @@ export async function rejectInjectedDrafts(now = Date.now()): Promise<number> {
       if (count) await write(path, store.rows, store.metadata, now);
       return count;
     },
-    { crossProcess: true }
+    DRAFT_STORE_LOCK
   );
 }

@@ -130,7 +130,7 @@ test("reject without an id prints usage", (t) =>
     assert.match(out.stderr, /reject <id>\.\.\./);
   }));
 
-test("#1592: list says when the store is full and new first captures are dropped", (t) =>
+test("#1592: list says when the store is full and the oldest confirmed drafts make room", (t) =>
   fixture(t, async (dir, out) => {
     const rows = Array.from({ length: 500 }, (_, i) => ({
       ...row(i),
@@ -141,7 +141,11 @@ test("#1592: list says when the store is full and new first captures are dropped
     }));
     await writeFile(join(dir, "drafts.json"), JSON.stringify({ version: 1, rows }));
     assert.equal(await cmdDrafts(parseArgs(["drafts", "list"])), 0);
-    assert.match(out.stdout, /Draft store is full \(500 of 500 rows\): new first captures are dropped/);
+    assert.match(
+      out.stdout,
+      /Draft store is full \(500 of 500 rows\): new captures still come in; the oldest confirmed drafts make room/
+    );
+    assert.doesNotMatch(out.stdout, /dropped/);
   }));
 
 test("#1592: list stays quiet below the cap", (t) =>

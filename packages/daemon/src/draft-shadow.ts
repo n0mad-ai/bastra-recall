@@ -5,7 +5,7 @@ import { readAppRecord, writeAppRecord, deleteAppRecord } from "./app-record-sto
 import { join } from "node:path";
 import { setImmediate } from "node:timers/promises";
 import { cosine, isLoopbackHost, type EmbeddingProvider, type Vault } from "@bastra-recall/core";
-import { draftsPath, draftVectorsPath, listDrafts, type Draft } from "./draft-store.js";
+import { DRAFT_STORE_LOCK, draftsPath, draftVectorsPath, listDrafts, type Draft } from "./draft-store.js";
 import { bigramSet, dice } from "./stop-lane-repeat.js";
 import { withPathLock } from "./path-lock.js";
 import { storedQuoteScorer } from "./harvest-vault-match.js";
@@ -175,7 +175,7 @@ async function persistCache(path: string, cache: VectorCache, now?: number): Pro
       }
       await saveCache(path, cache);
     },
-    { crossProcess: true }
+    DRAFT_STORE_LOCK
   );
 }
 

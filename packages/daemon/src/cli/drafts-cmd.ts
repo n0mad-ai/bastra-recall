@@ -10,8 +10,8 @@ import { usageWordsIn } from "./usage-words.js";
 import { draftsCmdWordsIn, type DraftsCmdWords } from "./drafts-cmd-words.js";
 import { taskCliLanguage } from "./task-cli-words.js";
 
-/** #1592: at the row cap a new first capture is the row the store drops;
- *  say so where the user looks at the store. */
+/** #1592: at the row cap the oldest confirmed drafts make room for new
+ *  captures; say so where the user looks at the store. */
 function writeFullStoreNotice(rows: number, w: DraftsCmdWords): void {
   if (rows < DRAFT_MAX_ROWS) return;
   process.stdout.write(w.storeFull(rows, DRAFT_MAX_ROWS));

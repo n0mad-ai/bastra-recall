@@ -8,7 +8,7 @@ import { draftFingerprint, draftId, listDrafts, type Draft } from "../src/draft-
 import { noteSessionForHarvest, runSessionHarvest } from "../src/session-harvest.js";
 import { parseTranscriptFile } from "../src/stop-transcript.js";
 
-test("B2: a closed-only full store keeps tombstones and reports five evicted new rows", async () => {
+test("B2 / #1592: a closed-only full store takes five new rows into the reserved places", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-b2-closed-"));
   const paths = {
     BASTRA_DRAFTS_PATH: join(dir, "drafts.json"),
@@ -63,11 +63,16 @@ test("B2: a closed-only full store keeps tombstones and reports five evicted new
       .split("\n")
       .map((line) => JSON.parse(line))
       .find((row) => row.kind === "session_harvest");
-    assert.equal(event.draft_count, 0);
-    assert.equal(event.draft_evicted_count, 5);
+    // #1592: before, every new capture was dropped in the write that stored it
+    // (draft_count 0, draft_evicted_count 5) and the store stayed unchanged.
+    assert.equal(event.draft_count, 5);
+    assert.equal(event.draft_evicted_count, 0);
     assert.equal(event.draft_error, false);
-    assert.equal((await listDrafts(now + 1)).length, 500);
-    assert.equal(await readAppRecord("drafts", paths.BASTRA_DRAFTS_PATH), before);
+    const kept = await listDrafts(now + 1);
+    assert.equal(kept.length, 500);
+    assert.equal(kept.filter((row) => row.state === "open").length, 5);
+    assert.equal(kept.filter((row) => row.state !== "open").length, 495);
+    assert.notEqual(await readAppRecord("drafts", paths.BASTRA_DRAFTS_PATH), before);
   } finally {
     for (const [key, value] of previous) {
       if (value === undefined) delete process.env[key];

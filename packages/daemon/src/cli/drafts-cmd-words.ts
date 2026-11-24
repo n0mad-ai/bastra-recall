@@ -6,7 +6,7 @@
  */
 const en = {
   storeFull: (rows: number, max: number) =>
-    `Draft store is full (${rows} of ${max} rows): new first captures are dropped until older drafts expire or are rejected (bastra drafts reject <id>).\n`,
+    `Draft store is full (${rows} of ${max} rows): new captures still come in; the oldest confirmed drafts make room for them.\n`,
   noVault: "error: configure a vault or pass --vault\n",
   undone: (id: string) => `Draft promotion undone: ${id}\n`,
   rejected: (id: string) => `Draft rejected: ${id}\n`,
@@ -23,7 +23,7 @@ export type DraftsCmdWords = typeof en;
 
 const de: DraftsCmdWords = {
   storeFull: (rows: number, max: number) =>
-    `Der Entwurfsspeicher ist voll (${rows} von ${max} Zeilen): neue Ersterfassungen werden verworfen, bis ältere Entwürfe ablaufen oder abgelehnt werden (bastra drafts reject <id>).\n`,
+    `Der Entwurfsspeicher ist voll (${rows} von ${max} Zeilen): Neue Erfassungen kommen weiter hinein, dafür fallen die ältesten bestätigten Entwürfe heraus.\n`,
   noVault: "Fehler: einen Vault einrichten oder --vault angeben\n",
   undone: (id: string) => `Übernahme des Entwurfs rückgängig gemacht: ${id}\n`,
   rejected: (id: string) => `Entwurf abgelehnt: ${id}\n`,

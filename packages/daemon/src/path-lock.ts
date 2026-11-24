@@ -44,8 +44,8 @@
  * a paused live process can therefore still own a stale snapshot. A writer that cannot get the lock
  * within {@link LOCK_WAIT_MS} proceeds WITHOUT the cross-process lock and says
  * so on stderr. That fail-open is deliberate: the worst case is exactly the
- * behaviour from before this module (including an acknowledged update or
- * rejected/undone draft tombstone lost to a later stale rename), while a setting that can no longer be
+ * behaviour from before this module (an acknowledged update lost to a later
+ * stale rename; the draft store opts out with `strictLocal`, #1114), while a setting that can no longer be
  * saved — or a Stop hook that hangs on a wedged lock — would be the more
  * expensive failure.
  *
@@ -75,11 +75,12 @@ import {
   lstatSync,
   fstatSync,
   readFileSync,
+  linkSync,
   constants,
   type Stats,
 } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { lstat, mkdir, open, stat, unlink } from "node:fs/promises";
+import { lstat, mkdir, stat, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -132,10 +133,10 @@ export class PathLockUnavailableError extends Error {
   }
 }
 
-/** Strict-local stores (tasks, assistant addresses) are not the settings file
- * (#1587). No path: strict diagnostics never name the private store. */
+/** Strict-local stores (tasks, assistant addresses, drafts #1114) are not the
+ * settings file (#1587). No path: strict diagnostics never name the private store. */
 const STRICT_LOCK_UNAVAILABLE =
-  "could not get the lock on a private bastra store (tasks or assistant addresses) — another bastra process holds it, or one was interrupted; nothing was written. Try again in a few seconds. A lock whose process has ended, or that dates from before the last restart of this computer, is taken over automatically";
+  "could not get the lock on a private bastra store (tasks, assistant addresses or drafts) — another bastra process holds it, or one was interrupted; nothing was written. Try again in a few seconds. A lock whose process has ended, or that dates from before the last restart of this computer, is taken over automatically";
 
 export function pathLockFilePath(path: string): string {
   return `${path}.lock`;
@@ -223,12 +224,7 @@ async function acquireFileLock(
         if (acquired) return token;
         throw Object.assign(new Error("lock mutation busy"), { code: "EEXIST" });
       }
-      const handle = await open(lockPath, "wx", 0o600);
-      try {
-        await handle.writeFile(body, "utf8");
-      } finally {
-        await handle.close();
-      }
+      createLease(lockPath, body);
       return token;
     } catch (err) {
       if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") {
@@ -249,6 +245,34 @@ async function acquireFileLock(
       return null;
     }
     await delay(5 + Math.floor(Math.random() * 10));
+  }
+}
+
+/** #1114: a lease appears with its whole body or not at all. `link` fails with
+ * EEXIST exactly like an O_EXCL create, so a writer that dies while creating
+ * the lease never leaves an empty one that no owner check can ever release
+ * (strict leases are freed only on proof that their owner ended). Where the
+ * filesystem has no hard links, the plain exclusive create remains. */
+function createLease(lockPath: string, body: string): void {
+  const tmp = `${lockPath}.${randomUUID()}.tmp`;
+  writeFileSync(tmp, body, { encoding: "utf8", mode: 0o600, flag: "wx" });
+  try {
+    linkSync(tmp, lockPath);
+    return;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") throw err;
+  } finally {
+    try {
+      unlinkSync(tmp);
+    } catch {
+      /* already gone */
+    }
+  }
+  const fd = openSync(lockPath, "wx", 0o600);
+  try {
+    writeFileSync(fd, body, "utf8");
+  } finally {
+    closeSync(fd);
   }
 }
 
@@ -668,12 +692,7 @@ function tryFileLock(path: string, takeOverStale: boolean): string | null {
           }
         }
         const token = randomUUID();
-        const fd = openSync(lockPath, "wx", 0o600);
-        try {
-          writeFileSync(fd, JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token }), "utf8");
-        } finally {
-          closeSync(fd);
-        }
+        createLease(lockPath, JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token }));
         return token;
       }) ?? null
     );
