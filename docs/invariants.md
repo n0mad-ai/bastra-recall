@@ -88,7 +88,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md#invariants) for when to add one.
 | --- | --- | --- | --- |
 | INV-RECALL-01 | A recall whose embedding provider fails mid-call says so in the answer (`score_kind`, `unfused`). | Raw BM25 scores read as fused scores make every hit look required. | `packages/daemon/__tests__/recall-degraded-during-call.test.ts` |
 | INV-RECALL-02 | `k` is a hard upper bound; a larger `max_tokens` never returns more hits. | Callers size their context by `k`. | `packages/daemon/__tests__/recall-max-tokens.test.ts` |
-| INV-RECALL-03 | With a positive `max_tokens`, whole hits are removed until the estimated serialized payload fits the hard budget, and the answer says what it dropped. If the envelope alone exceeds the budget, it is returned with no hits. | The budget protects the caller's context window; a silent cut hides memories. | `packages/daemon/__tests__/recall-max-tokens.test.ts` |
+| INV-RECALL-03 | With a positive `max_tokens`, the answer includes whole hits in rank order within the hard budget for the estimated serialized payload. If adding the next whole hit would exceed the budget, the answer omits it and all later hits and reports how many it dropped. If the envelope alone exceeds the budget, it is returned with no hits. | The budget protects the caller's context window; a silent cut hides memories. | `packages/daemon/__tests__/recall-max-tokens.test.ts` |
 
 ## Tasks and reports
 
