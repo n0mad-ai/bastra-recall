@@ -60,13 +60,15 @@ function throwIfNotRepeatable(tool: string, err: unknown): void {
   // in the current round and can update the session's reported workflow stage.
   if (tool !== "rulebook_check" && TOOL_ARG_EXPECTATIONS.get(tool)?.readOnly === true) return;
   if ((err as { cause?: { code?: unknown } } | null)?.cause?.code === "ECONNREFUSED") return;
-  throw Object.assign(
-    new Error(
-      `daemon did not answer ${tool} at ${DAEMON_URL}: ${(err as Error).message}. ` +
-        `It is unclear whether it was saved or carried out, so it was not repeated. ` +
-        `Check whether it took effect before calling ${tool} again.`
-    ),
-    { outcomeUnknown: true }
+  throw Object.assign(new Error(unknownOutcomeText(tool, err)), { outcomeUnknown: true });
+}
+
+function unknownOutcomeText(tool: string, err: unknown): string {
+  const action = responseStarted(err) ? "daemon answer was interrupted for" : "daemon did not answer";
+  return (
+    `${action} ${tool} at ${DAEMON_URL}: ${(err as Error).message}. ` +
+    `It is unclear whether it was saved or carried out, so it was not repeated. ` +
+    `Check whether it took effect before calling ${tool} again.`
   );
 }
 
@@ -77,7 +79,11 @@ function throwIfNotRepeatable(tool: string, err: unknown): void {
  */
 export function toolErrorText(tool: string, err: unknown): string {
   const outcomeUnknown = (err as { outcomeUnknown?: unknown } | null)?.outcomeUnknown === true;
-  return isTaskTool(tool) && !outcomeUnknown ? JSON.stringify(taskFailure(err).body) : (err as Error).message;
+  if (!isTaskTool(tool) || outcomeUnknown) return (err as Error).message;
+  if (responseStarted(err) && TOOL_ARG_EXPECTATIONS.get(tool)?.readOnly !== true) {
+    return unknownOutcomeText(tool, err);
+  }
+  return JSON.stringify(taskFailure(err).body);
 }
 
 export async function callDaemon(tool: string, args: unknown): Promise<unknown> {

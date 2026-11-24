@@ -418,6 +418,24 @@ test("#1676 (d) the connection drops after the headers: reported once as 'termin
   assert.deepEqual(timers.pending, []);
 });
 
+test("#1677 an interrupted task write response asks to check whether the action took effect", async (t) => {
+  await reset(t, "stall-body");
+  const seen = watchHeaders(t);
+  const tool = "task_report_save";
+  const call = track(holdForDaemon(() => callDaemon(tool, {})));
+  await until(() => seen.headers === 1, "response headers");
+  stalled?.socket?.destroy();
+  await until(() => call.done, "the call settles");
+  assert.equal(arrivals, 1);
+  assert.ok(call.error);
+  assert.match(toolErrorText(tool, call.error), /Check whether it took effect before calling task_report_save again/);
+});
+
+test("#1677 an interrupted read-only task response keeps the structured retryable error", () => {
+  const error = Object.assign(new Error("terminated"), { responseStarted: true });
+  assert.equal(JSON.parse(toolErrorText("task_report_read", error)).retryable, true);
+});
+
 test("#1677 (d) the connection drops after the daemon received a write call, before any header: it arrives once", async (t) => {
   await reset(t, "reset-before-headers");
   const timers = handTimers(t);
