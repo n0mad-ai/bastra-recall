@@ -1,6 +1,6 @@
 import { ownerTaskAuthorization } from "./task-owner-access.js";
 import { recoverTasks, quarantineOfflineTaskLock } from "../task-maintenance.js";
-import { archiveTasks, restoreTaskArchive } from "../task-archive.js";
+import { archiveTasks, restoreTaskArchive } from "../task-archive-service.js";
 import { tasksPath, readTaskStore } from "../task-store.js";
 import { taskAuthPath } from "../task-auth.js";
 import { confirm } from "./prompt.js";

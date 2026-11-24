@@ -5,14 +5,8 @@ import { callTaskReport, isTaskReportOperation, TASK_REPORT_INPUTS } from "./tas
 import { reminderDuplicate, reminderFingerprint } from "./task-conversation.js";
 import { privateContentComparison, privateTaskComparison, publicTaskResult } from "./task-private-comparison.js";
 import { recoverTasks, taskRecoverInput } from "./task-maintenance.js";
-import {
-  archiveTasks,
-  deleteArchivedTask,
-  restoreTaskArchive,
-  archivedTask,
-  readTaskArchive,
-  taskArchiveInput,
-} from "./task-archive.js";
+import { archivedTask, readTaskArchive } from "./task-archive.js";
+import { archiveTasks, deleteArchivedTask, restoreTaskArchive, taskArchiveInput } from "./task-archive-service.js";
 import { executeTaskAction, TASK_EXECUTION_INPUTS, isTaskExecution } from "./task-execution.js";
 import { taskStatus, taskControls, taskStatusInput, taskControlsInput } from "./task-status.js";
 import { callTaskAction, TASK_ACTION_INPUTS } from "./task-actions.js";
