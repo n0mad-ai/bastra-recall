@@ -36,6 +36,10 @@ arbitrary shell/C evaluation; word-only PSK values in ordinary prose keep their
 existing readable boundary. Unquoted `WiFi.begin` password values and other
 vendor grammars can remain visible.
 
+Explicit PSK assignments also redact placeholder phrases such as
+`PSK: see the password manager` (#1625). A path or environment reference can
+still be used to point to a secret without storing it in the note.
+
 ## Suggestion relay
 
 The pending suggestion relay uses this same filter on its text blocks before
@@ -168,6 +172,10 @@ Angehängte curl-Bündel wie `-sufixture:pw` sowie HTTPie `http -a user:pw` werd
 erkannt. Die bisherigen Pfad-/Variablenreferenzen und Platzhalter bleiben erhalten.
 Erkannt werden diese skalaren Grammatiken, keine beliebige Shell-/C-Ausführung;
 reine Wort-Passphrasen in gewöhnlicher PSK-Prosa bleiben wie bisher lesbar.
+
+Ausdrückliche PSK-Zuweisungen schwärzen auch Platzhalter wie
+`PSK: siehe Passwortmanager` (#1625). Ein Pfad oder eine Umgebungsreferenz
+kann weiterhin auf ein Geheimnis verweisen, ohne es in der Notiz zu speichern.
 Unquotierte `WiFi.begin`-Passwortwerte und andere Hersteller-Grammatiken können
 lesbar bleiben.
 

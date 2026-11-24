@@ -106,6 +106,9 @@ applies-to blocks, lower-ranked plan hints and draft quotes are left out whole,
 never cut. Mandatory text (tripwire warnings, the file-size and location notes,
 rules wired to the action) is never dropped for it.
 
+The Bash hook searches for draft quotes only when it flags a command for risk
+review. The prompt hook continues to search user messages (#1460).
+
 `#305`'s original framing was "cut the ceiling to 200 ms" for everything. That
 target now applies to the fast lanes, which hold it (measured p90 87 ms), and
 not to the assertion lane, which never could.
@@ -1113,6 +1116,16 @@ tab print the join as "save suggestions — N session(s) got one, M of them
 saved, K after the suggestion", with how many saves carry a `caller_session`:
 below all of them the saved count is a lower bound.
 
+**Session ids are coded in the log (#436).** Since 1.3.0 the log never holds
+a conversation's session id as the client sent it. Every row that carries one
+in `session_id` or `caller_session` holds its code instead: `s1_` and 32 hex
+digits, an HMAC of the id under a key that stays on this machine
+(`telemetry-session.key` in the Bastra data directory, outside the log
+directory). The same conversation always gets the same code, so the join above
+and every grouping by session work as before; without the key a code leads
+back to nothing. The daemon's own telemetry id stays as it is; a replay keeps
+its `replay-` prefix. Rows written before stay unchanged.
+
 #### After-session harvest (#675)
 
 Most of what a user states — answers to the agent's questions, corrections,
@@ -1334,8 +1347,14 @@ removed from derived legacy literal/novel/matched fields when their source conte
 identifies them; the comparison ignores case, because derived tokens are stored
 lower-cased. Bare old secrets without recognizable source context remain a
 limit. Existing promoted notes and audit history are not rewritten.
-Both limits evict unshown single-evidence open drafts first, then other open
-drafts, and closed tombstones last; oldest within each group goes first.
+Both limits (#1592) evict, oldest first within each group: unshown
+single-evidence open drafts beyond the newest 100 (the places reserved for new
+captures), then other open drafts, then closed tombstones, and the reserved
+new captures last. When the store is full of confirmed drafts, the oldest
+confirmed draft makes room for the new capture. `bastra drafts list` says when
+the store is full.
+Draft writes respect a live writer's lock. If a writer cannot acquire the lock,
+it skips the new write and preserves existing decisions (#1114).
 Capture writes at most once per session; cleanup writes only when it changes
 the stored rows.
 Within one session, equal normalized fingerprints or bigram Dice >= 0.6 append
@@ -1350,7 +1369,7 @@ a credential does not create another draft. Telemetry reports retained new
 rows as `draft_count` and additional retained evidence as `draft_evidence_count`.
 `draft_ids` contains at most 20 affected retained row IDs; `draft_ids_omitted`
 counts the rest. `draft_evicted_count` counts newly captured rows evicted by
-the store bounds, including when closed tombstones occupy the whole store.
+the store bounds (in practice only when one write brings more than 100 new captures).
 `draft_stored_count` and `draft_error` remain text-free.
 A draft-store error leaves the relay working and records `draft_error: true`; that session's failed
 draft capture is not retried automatically.
@@ -2060,6 +2079,10 @@ Code-Auswirkungs- und Applies-to-Blöcke, niedriger gerankte Plan-Hinweise und
 Entwurfszitate fallen ganz weg, nie abgeschnitten. Pflichttext (Tripwire-Warnungen,
 Dateigrößen- und Ablagehinweis, an die Aktion gebundene Regeln) wird dafür nie
 weggelassen.
+
+Der Bash-Hook sucht nur nach Entwurfszitaten, wenn er einen Befehl zur
+Risikoprüfung markiert. Der Prompt-Hook durchsucht weiterhin Nutzernachrichten
+(#1460).
 
 Die ursprüngliche Formulierung von `#305` war „die Obergrenze auf 200 ms
 senken“, für alles. Dieses Ziel gilt jetzt für die schnellen Lanes, die es
@@ -3099,6 +3122,18 @@ Verknüpfung als „save suggestions — N session(s) got one, M of them saved,
 K after the suggestion" und dazu, wie viele Saves eine `caller_session`
 tragen: Tragen sie nicht alle eine, ist die Zahl der Saves eine Untergrenze.
 
+**Sitzungskennungen stehen als Ersatzcode im Protokoll (#436).** Seit 1.3.0
+steht die Sitzungskennung eines Gesprächs nie so im Protokoll, wie der Client
+sie geschickt hat. Jede Zeile, die eine in `session_id` oder `caller_session`
+trägt, enthält stattdessen ihren Ersatzcode: `s1_` und 32 Hex-Ziffern, ein HMAC
+der Kennung mit einem Schlüssel, der auf diesem Rechner bleibt
+(`telemetry-session.key` im Bastra-Datenverzeichnis, außerhalb des
+Protokollordners). Dasselbe Gespräch bekommt immer denselben Code; die
+Verknüpfung oben und jede Gruppierung nach Sitzung funktionieren wie bisher.
+Ohne den Schlüssel führt ein Code zu nichts zurück. Die eigene Telemetrie-ID
+des Daemons bleibt, wie sie ist; ein Replay behält sein Präfix `replay-`.
+Früher geschriebene Zeilen bleiben unverändert.
+
 #### Harvest nach der Session (#675)
 
 Das meiste, was Nutzer sagen — Antworten auf Fragen des Agenten, Korrekturen,
@@ -3262,10 +3297,16 @@ Die Buchstabenschwelle ist ungemessen. Passt eine Form, bezeichnet sie den
 Entwurf; sonst heißt seine Art `typed`. Beim Zusammenführen ersetzt die erste
 passende Form `typed` und bleibt danach erhalten. Die Ablage schwärzt
 Zugangsdaten und speichert lokal außerhalb des Vaults. Es gibt keine Erfassungsgrenze je Session;
-die Grenzen von 500 Zeilen und 1 MiB für die Ablage gelten weiterhin. Beide
-Grenzen verdrängen zuerst offene Entwürfe mit einem Beleg ohne Anzeige, dann
-andere offene Entwürfe und zuletzt geschlossene Grabsteine, jeweils die
-ältesten zuerst. Die Erfassung schreibt höchstens einmal je Session; das
+die Grenzen von 500 Zeilen und 1 MiB für die Ablage gelten weiterhin. Bei
+beiden Grenzen weichen jeweils zuerst die ältesten Entwürfe einer Gruppe
+(#1592). Zuerst kommen noch nicht gezeigte offene Entwürfe mit einem Beleg
+jenseits der neuesten 100, dann die übrigen offenen Entwürfe, danach
+abgeschlossene Entwürfe und zuletzt die 100 reservierten Erfassungen. Ist die
+Ablage voll mit bestätigten Entwürfen, macht der älteste Platz für die neue
+Erfassung. `bastra drafts list` zeigt an, wenn die Ablage voll ist.
+Solange ein anderer Prozess die Schreibsperre hält, kann ein neuer
+Schreibversuch ausfallen. Gespeicherte Entscheidungen bleiben erhalten (#1114).
+Die Erfassung schreibt höchstens einmal je Session; das
 Aufräumen schreibt nur, wenn es gespeicherte Zeilen verändert.
 Innerhalb einer Session hängen gleiche normalisierte Fingerprints oder eine
 Bigramm-Dice-Ähnlichkeit ab 0,6 einen Beleg an dieselbe Zeile. Zwischen Sessions

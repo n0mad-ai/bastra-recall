@@ -29,6 +29,8 @@ set your Claude Code `statusLine` command to run the Node.js script:
 
 Installation and updates preserve an existing `refreshInterval`; the default is one second. Each tick reads Git status and ahead/behind counts together, with a fallback for Git before 2.17. Resumed Claude sessions resolve terminal width, tty and feed PID per parent process.
 
+After a session-start or prompt hook confirms a connection failure, that Claude Code session shows **Recall offline**. The message clears at the next successful hook or after five minutes without another failure.
+
 ### Codex Powerline panel
 
 `bastra-codex-statusline --cmux` opens a compact live Powerline panel below the
@@ -233,6 +235,8 @@ Einrichtung setzt du Claudes `statusLine`-Befehl auf den Aufruf des Node.js-Skri
 ```
 
 Installation und Updates behalten ein vorhandenes `refreshInterval`; der Standard ist eine Sekunde. Jeder Tick liest Git-Status und voraus/zurück gemeinsam, mit einem Fallback für Git vor 2.17. Fortgesetzte Claude-Sitzungen bestimmen Terminalbreite, tty und Feed-PID je Elternprozess neu.
+
+Wenn der Start- oder Prompt-Hook einen Verbindungsfehler feststellt, zeigt die betroffene Claude-Code-Sitzung **Recall nicht erreichbar**. Die Meldung verschwindet beim nächsten erfolgreichen Hook oder nach fünf Minuten ohne weiteren Fehler.
 
 ### Codex-Powerline-Panel
 

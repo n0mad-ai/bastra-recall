@@ -29,7 +29,8 @@ until a new design replaces it; this name is independent of the product version.
   Handed over, Done, Question. An agent closing the last handed-over note
   signs the report off and marks it read; a follow-up report with questions
   (`task_report_save` `follow_up_of`) shows as Question on the original
-  until it is done.
+  while any follow-up with questions in its chain remains open. Marking a
+  follow-up outdated removes its branch from this check (#1657).
 
 - **Answer a question in a task report.** Questions ending with answer
   options such as `[? Yes | No]` offer answer buttons, a free answer and a
@@ -82,13 +83,13 @@ until a new design replaces it; this name is independent of the product version.
   `task_report_list` takes an optional `query`, `task_report_delete` answers
   with `restorable_until`, and the new tool `task_report_restore` undoes a
   delete when you ask for it (#1597, #1559).
-- **Title, type, sensitivity and recall mode in the memory browser.** The
-  editor in the reader now also changes a memory's title, type, sensitivity
-  and recall mode, through the same revision-checked `edit_memory` path as
-  the other fields: a change made meanwhile is refused and your draft stays.
+- **Title, type, area, sensitivity and recall mode in the memory browser.**
+  The editor in the reader changes these fields through the same
+  revision-checked `edit_memory` path as the other fields. If the memory
+  changes meanwhile, your draft stays in the editor and you can reload.
   The file stays in its folder; documents and bookmarks keep their type. A
   memory set to private leaves the views that may not show private memories
-  at once. The area cannot be changed here yet (#1558).
+  at once. The area label is editable independently of the folder (#1558).
 - **`/ui/#tasks` opens the Tasks area.** The web UI reads the area from the
   address (`#tasks`, `#reports`, a vault view such as `#chronos`) on load and
   when it changes; unknown names are ignored. The address follows the area
@@ -97,7 +98,7 @@ until a new design replaces it; this name is independent of the product version.
   shows the memories archived into the vault trash (newest first), and
   `bastra trash restore <id>` puts one back where it lived. Agents get the
   same as the new tool `restore_memory` (without `id` it lists, with `id` it
-  restores), on the full tool surface like `archive_memory`. The restore is
+  restores), on the `write` and `full` tool surfaces. The restore is
   written to the audit log; a memory that is live again under the same id is
   never overwritten, and private memories stay with the memory browser (#1471).
 - **The audit log says who wrote.** Every write through a tool call
@@ -107,13 +108,18 @@ until a new design replaces it; this name is independent of the product version.
   of a remote connector) and `caller_session` (the Claude Code session the
   forwarder reports). A record for tracing, not an access rule: nothing is
   refused or asked because of it. Folder imports also identify the CLI or web
-  UI writer, retaining the import run ID and an absent client session (#1469).
+  UI writer, retaining the import run ID and an absent client session. Saving,
+  editing, archiving and restoring memories in the web UI record `webui` as
+  their transport and `bastra-web-ui` as their client (#1469).
 
 - **`bastra doctor` shows more of what is really in effect.** Per installed
   client it now asks the daemon for that client's MCP tool list, as the client
   itself does, and prints how many tools arrive and roughly how many tokens
   they cost at every session start; when the daemon does not answer, it says
-  so, because the client then works from the bundled list (#1472). The
+  so, because the client then works from the bundled list. It also runs an
+  isolated SessionStart probe for supported Claude Code and Codex CLI
+  registrations, checking that synthetic Recall context reaches model input
+  without opening a real Recall session (#1472). The
   features block shows whether Codex's rulebook gate blocks or only gives
   hints: it names the installed Codex version and the verified ones, since
   every unverified version, newer ones included, runs advisory only. It also
@@ -123,9 +129,11 @@ until a new design replaces it; this name is independent of the product version.
   doctor itself changes nothing (#1523).
 - **Search and save from the terminal: `bastra recall` and `bastra save`.**
   `bastra recall "<question>"` searches the vault without an agent and prints
-  the matching memories; `--limit`, `--scope`, `--type` and `--json` for
-  scripts. `bastra save --title … --type … --scope … "text"` (or the text piped
-  in) saves a memory yourself through the daemon's normal `save_memory` path,
+  the matching memories. Search supports `--limit`, `--scope` and `--type`.
+  `bastra recall --load <id>` prints the complete Markdown body of a memory.
+  With `--json`, it returns the daemon's full response, including metadata.
+  `bastra save --title … --type … --scope … "text"` (or the text piped in)
+  saves a memory through the daemon's normal `save_memory` path,
   with every check an agent's save gets, recorded as your own instruction
   (`write_origin: user-directed`) and attributed to the CLI. Fields left out
   are filled like *Save as memory* in the web UI. Both need the running daemon
@@ -149,13 +157,13 @@ until a new design replaces it; this name is independent of the product version.
   `replaces: <successor>` silences it. Editing the successor does not warn
   against its own predecessor; chains with a private successor are omitted
   (#643).
-- A `write_origin: user-directed` save records transport, client, session and
-  time of the call in `write_origin_evidence`, shown in the save receipt and
-  in `list_rules`. No extra approval step (#1496).
-- `bastra doctor` lists Syncthing conflict copies
-  (`Alpha.sync-conflict-<date>-<time>-<device>.md` with the same memory id as
-  `Alpha.md`). Other services do not document their copy names and are not
-  matched by name (#1485).
+- The connection supplies transport, client, session and time for
+  user-directed saves and rule decisions. Rule acceptance records the
+  evidence on the rule and in its receipt and audit entry. Rejection records
+  it in the receipt and audit entry. Routine edits preserve the original
+  evidence (#1496).
+- `bastra doctor` lists recognized Syncthing, Dropbox and Nextcloud conflict
+  copies that sit next to the original and carry the same memory ID (#1485).
 - `REPORT.md` has a *Low-signal memories* section: memories with no or
   one-word triggers, a trigger that only repeats the summary, almost no body
   or a date-only title, with the reasons per entry. Report only (#642).
@@ -165,14 +173,28 @@ until a new design replaces it; this name is independent of the product version.
   not reachable, so this session gets no memories. Check it with `bastra
   doctor`." (German on a German system). Later calls in the same session stay
   silent; tool calls are never interrupted by it. Works in Claude Code and
-  Codex, once the installed hook program is the one from this release
-  (#1473).
+  Codex, once the installed hook program is the one from this release. A
+  confirmed connection failure also shows “Recall offline” in the Claude
+  Code statusline for that session (#1473).
 - Eval: deterministic P2 characterization mode – the unchanged P2 driver
   against an in-process stand-in on a virtual clock, with a frozen baseline
   for the planned driver restructuring (#1649).
 
 ### Changed
 
+- Human-readable setup, removal and Doctor details follow `language.primary`.
+  The terminal model recommendation has German wording. `status --json` and
+  piped `models recommend` retain English output for scripts (#1602).
+- First-use onboarding offers the full interview at most once per local day
+  and three times in total, then uses a short reminder. Choosing Later
+  postpones the offer and keeps onboarding open (#1603).
+- A confirmed `rulebook_check` continues to apply while the catalog is
+  unchanged. Adding, editing, removing or expiring a rule requires a new
+  check. Recall's own tools can still run. A directly delivered session-start
+  rule kernel can be followed by a short reminder at the gate (#1591, #1622).
+- New telemetry log rows replace conversation IDs with stable codes derived
+  with a local key. Logs retain the ability to group rows by conversation
+  (#436).
 - CLI help (`bastra help`, every `--help`) and chat delivery consent follow
   `language.primary`: English by default, German when selected. The guided
   `bastra install` asks for the language first when none is stored, then uses
@@ -271,7 +293,8 @@ until a new design replaces it; this name is independent of the product version.
   code-impact blocks, lower-ranked plan hints and draft quotes are left out
   whole when they would cross it. Warnings, the file-size note and rules wired
   to the action are never left out. The draft quote now also counts inside the
-  prompt hook's 10,000 characters (#1460).
+  prompt hook's 10,000 characters. The Bash hook searches for draft quotes
+  only when it flags a command for risk review (#1460).
 - **On Linux, hook state no longer lives in the shared temp directory.** It
   moved to `~/.bastra/hook-state`, so another account on the same machine
   cannot occupy its directory or lock names. Stored state is found as before,
@@ -285,13 +308,12 @@ until a new design replaces it; this name is independent of the product version.
   in `warning`. Text without a credential is written byte for byte; paths and
   `$VARIABLE` references stay. Memories written earlier are not rewritten
   (#1470).
-- **An expired memory is no longer shown automatically.** Once a memory's own
-  `valid_until` has passed, the hooks (prompt, session start, reflex rules)
-  leave it out; a rule marked `always` still stays in the automatically
-  delivered rule kernel, marked `stale_status=expired`. `recall` still finds
-  it and marks it `expired_on`. The
-  type's default lifetime still affects ranking without hiding the memory
-  from the hooks (#1468).
+- **Expired rules and unanswered reminders stay visible.** Rules past their
+  own `valid_until` leave the active rule kernel and appear in a separate
+  decision block at session start. `list_rules` marks them `expired_on`.
+  Overdue, unanswered tasks and reminders remain eligible at session start
+  after their ordinary delivery-attempt limit. The normal pause between
+  notices still applies (#1468).
 - **Hints cannot hide text or pose as host markup.** Memory text that a hook
   shows loses invisible characters (zero-width, bidi controls, Unicode tag
   characters, control characters; joiners inside words and emoji stay), and
@@ -317,17 +339,30 @@ until a new design replaces it; this name is independent of the product version.
   deadline of its own does not age in search at all, and the strong demotion
   stays where you set the
   deadline yourself (`valid_until`, `expires_after_days`). Replaced notes still
-  yield to their successor. The staleness label a note shows is unchanged.
-  Measured on a copy of a real vault (577 gold questions, fixed reference
-  date): the right note among the first three rose from 170 to 253, with no
-  question lost there (`packages/eval/registrations/staleness-policy-1567.json`)
+  yield to their successor. The staleness label a note shows is unchanged
   (#1567).
 - `bastra status`, `bastra logs`, doctor's daemon-origin and stale-code
   notes, `bastra codex`, `bastra feedback` and the error prefixes of
   recall/save/archive/trash/rules proposals follow `language.primary`;
   English output is unchanged, `--json` stays English (#1602).
 
+### Removed
+
+- Removed the retired `bastra tasks keys`, `approve` and `deny` subcommands.
+  They now return the normal unknown-subcommand error (#1514).
+- Removed the README banner (#1565).
+
 ### Fixed
+
+- Task reports and report notes preserve joiners inside compound emoji when
+  cleaning text (#1563).
+- Draft-store writes respect a live writer's lock. A competing write can be
+  skipped, preserving existing decisions. The full store reserves room for
+  new captures and evicts the oldest confirmed draft when all entries are
+  confirmed (#1114, #1592).
+- Parallel browser requests share session renewal for the same UI session,
+  so late errors from an older request do not discard a renewed session
+  (#1509, #1675).
 
 - Recall: a query that pairs one identifier-shaped product name with a phrase in a script written without spaces (`sub2api 部署拓扑`) keeps its vector arm; the phrase now counts as its words, not as one term, when the router weighs identifiers. Queries in scripts written with spaces route as before. Reported by @apollo600 (#1681).
 
@@ -388,7 +423,8 @@ until a new design replaces it; this name is independent of the product version.
   remain untouched (#1638).
 - PSK assignment redaction no longer skips values based on the words before
   the key; the existing syntax scanner still handles protocol-mode values
-  (#1625).
+  and now redacts the value in placeholders such as `PSK: see the password
+  manager` (#1625).
 
 - Concurrent `tools/cmux-agent-send.mjs` senders to the same terminal target
   take turns from message text through Return, keeping submissions separate
@@ -509,7 +545,8 @@ until a new design replaces it; this name is independent of the product version.
   skipped; a load in the same message as a second recall is judged only
   against the results it could see; a recall after a slash command counts in
   `transcript_recalls`; and `hit_count` above zero next to an empty `hits`
-  list is no longer read as an empty pool (#1126).
+  list is no longer read as an empty pool. The harvester evaluates complete
+  sets of related hook queries together using their recorded batch ID (#1126).
 - **Invalid JSON in the `daemon.env` setting blocks Apply again.** Since the
   new web UI, an invalid edit was only marked red, and Apply stored the last
   valid text typed before it instead of what the field showed. Apply and the
