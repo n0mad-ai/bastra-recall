@@ -25,10 +25,15 @@ const BASTRA_READ = new Set([
   "task_list",
   "task_status",
 ]);
+const BASTRA_TOOL = /^(?:mcp__(?:plugin_.+_)?bastra[-_]recall__|mcp__codex_apps__bastra_recall_)(.+)$/;
 export function bastraReadTool(name: string): boolean {
   if (BASTRA_READ.has(name)) return true;
-  const match = /^(?:mcp__(?:plugin_.+_)?bastra[-_]recall__|mcp__codex_apps__bastra_recall_)(.+)$/.exec(name);
+  const match = BASTRA_TOOL.exec(name);
   return !!match && BASTRA_READ.has(match[1]);
+}
+/** #1591 (owner decision B): any tool of Recall's own MCP server. */
+export function bastraTool(name: string): boolean {
+  return BASTRA_TOOL.test(name);
 }
 export async function rulebookMutates(name: string, input: Record<string, unknown>): Promise<boolean> {
   if (READ_TOOLS.has(name) || bastraReadTool(name)) return false;

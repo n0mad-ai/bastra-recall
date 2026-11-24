@@ -13,6 +13,7 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runTodoLane } from "../src/todo-lane.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -100,7 +101,7 @@ test("#373: todo_hook_call carries the payload session_id, hook_version and the 
     });
     const ev = (await readEvents(logDir)).find((e) => e.kind === "todo_hook_call");
     assert.ok(ev, "a todo_hook_call event must be written");
-    assert.equal(ev.session_id, "todo-373", "the payload session, not a synthetic one (#372)");
+    assert.equal(ev.session_id, telemetrySession("todo-373"), "the payload session, not a synthetic one (#372)");
     assert.equal(typeof ev.hook_version, "string");
     assert.equal(ev.daemon_reachable, true);
     assert.equal(ev.todo_count, 3);
@@ -197,7 +198,7 @@ test("#373: a low-confidence todo list is recorded as gated, with the payload se
     assert.equal(out, "{}");
     const ev = (await readEvents(logDir)).find((e) => e.kind === "todo_hook_call");
     assert.ok(ev, "the gate branch still writes its row");
-    assert.equal(ev.session_id, "todo-thin");
+    assert.equal(ev.session_id, telemetrySession("todo-thin"));
     assert.equal(ev.daemon_reachable, null, "#352: null = never asked");
     assert.equal(ev.hint_tokens_est, 0);
   } finally {

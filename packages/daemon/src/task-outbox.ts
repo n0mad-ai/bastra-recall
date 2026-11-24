@@ -17,6 +17,15 @@ export const taskDueInput = z.strictObject({
   include_acknowledged: z.boolean().default(false),
 });
 export type DueInput = z.infer<typeof taskDueInput>;
+/**
+ * The delivery cap of the notification policy. #1468/P259 (owner decision
+ * 24.11.2026): an overdue item the user has not answered (acknowledged,
+ * snoozed, resolved or cancelled) is presented at every session start until
+ * he does — the session channel has no cap. Other channels keep it.
+ */
+function attemptsExhausted(attempts: readonly { count?: number }[], max: number, channel: DueInput["channel"]) {
+  return channel !== "session" && attempts.reduce((total, a) => total + (a.count ?? 1), 0) >= max;
+}
 export function taskDueProjection(
   store: TaskStore,
   principal: TaskPrincipal,
@@ -104,7 +113,7 @@ export function taskDueProjection(
     if (
       principal.role !== "owner" &&
       !unseenReview &&
-      (attempts.reduce((total, a) => total + (a.count ?? 1), 0) >= task.notification_policy.max_attempts ||
+      (attemptsExhausted(attempts, task.notification_policy.max_attempts, input.channel) ||
         (attempts.length > 0 && now - attempts.at(-1)!.at < task.notification_policy.retry_interval_ms))
     ) {
       retryBlocked++;

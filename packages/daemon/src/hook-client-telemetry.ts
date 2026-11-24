@@ -45,6 +45,7 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { envFirst, envOff, testRunLogDir } from "./env.js";
+import { telemetrySession } from "./telemetry-session.js";
 
 /** Every lane a client can run. One entry per hook registration. */
 export type ClientLane = "prompt" | "write" | "bash-pre" | "bash-fail" | "stop" | "session" | "todo" | "gate";
@@ -189,7 +190,7 @@ export async function writeClientTelemetry(
       // — `bastra logs --stats` folds the two on it. Stamping a fresh UUID
       // here made every client row unmatchable and left the readout pairing
       // rows by timestamp alone, across sessions.
-      session_id: sessionId ?? randomUUID(),
+      session_id: telemetrySession(sessionId) ?? randomUUID(),
       ...(lane === "gate" ? { session_known: sessionId !== null } : {}),
       hook_version: hookVersion,
       // #352: null = never asked (skip-gate) — false is reserved for a path

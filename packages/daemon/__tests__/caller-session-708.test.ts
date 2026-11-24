@@ -27,6 +27,7 @@ import { Vault, SearchIndex } from "@bastra-recall/core";
 import { saveMemoryHandler, type ToolDeps } from "../src/tool-handlers.js";
 import { dispatchApi } from "../src/http-api-routes.js";
 import { Telemetry } from "../src/telemetry.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 import { aggregateSaveSuggestions } from "../src/save-suggestion-stats.js";
 import { aggregate, renderStats } from "../src/cli/log-stats.js";
 
@@ -91,12 +92,12 @@ test("#708: a forwarded call with the header stamps caller_session on save_memor
   await dispatchApi("recall", { query: "session join probe" }, ctx);
 
   const [save] = await rowsOf(logDir, "save_memory");
-  assert.equal(save.caller_session, "cc-session-1");
-  assert.notEqual(save.session_id, "cc-session-1", "session_id stays the daemon's telemetry id");
+  assert.equal(save.caller_session, telemetrySession("cc-session-1"));
+  assert.notEqual(save.session_id, telemetrySession("cc-session-1"), "session_id stays the daemon's telemetry id");
   assert.equal(typeof save.session_id, "string");
 
   const [recall] = await rowsOf(logDir, "recall");
-  assert.equal(recall.caller_session, "cc-session-1");
+  assert.equal(recall.caller_session, telemetrySession("cc-session-1"));
 });
 
 test("#708: a forwarded call without the header records caller_session: null, no guess", async (t) => {
@@ -120,12 +121,12 @@ test("#708: a call that is not forwarded (stdio MCP, Mac app) leaves the field o
 test("#708: one forwarded save and one hook event of the same session join", async (t) => {
   const { deps, logDir } = await harness(t);
   const day = new Date().toISOString().slice(0, 10);
-  // The Stop lane's row, as stop-lane.ts writes it: the Claude Code id in
-  // session_id, one second in the past so the save comes after it.
+  // The Stop lane's row, as stop-lane.ts writes it: the Claude Code id's code
+  // (#436) in session_id, one second in the past so the save comes after it.
   const suggestion = {
     kind: "save_eval_call",
     ts: new Date(Date.now() - 1000).toISOString(),
-    session_id: "cc-session-9",
+    session_id: telemetrySession("cc-session-9"),
     suggested_count: 1,
   };
   await writeFile(join(logDir, `events-${day}.jsonl`), JSON.stringify(suggestion) + "\n", "utf8");

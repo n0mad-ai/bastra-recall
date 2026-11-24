@@ -43,6 +43,7 @@ import { emitStdout, exitAfterStdout } from "./hook-stdout.js";
 // #1508: the shared transport — postLane decorates the payload and adds the
 // task authorization header, which is what this client always sent.
 import { classifyTransportError, postLane, readStdin } from "./thin-client.js";
+import { telemetrySession } from "./telemetry-session.js";
 
 // #305: the trigger class is decided daemon-side, AFTER this POST, so the
 // client cannot know whether it is serving the 600ms quiet path or the 1000ms
@@ -84,7 +85,7 @@ async function writeClientTelemetry(
       ts,
       // The session_id from the Claude payload is real session state — fall
       // back to a synthetic UUID only if no payload session was given (#356).
-      session_id: sessionId ?? randomUUID(),
+      session_id: telemetrySession(sessionId) ?? randomUUID(),
       hook_version: HOOK_VERSION,
       // #545: "unknown", not "none" — the same word the stub writes
       // (`hook-client-telemetry.ts`). The trigger class is decided daemon-side

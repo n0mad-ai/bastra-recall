@@ -2,6 +2,7 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { TelemetryEvent } from "./telemetry-events.js";
 import { evalRunMark } from "./training-signal.js"; // #1128-capture
+import { telemetrySession } from "./telemetry-session.js";
 
 /**
  * The event log sink of `Telemetry`: one `events-YYYY-MM-DD.jsonl` per UTC day
@@ -29,10 +30,13 @@ export function eventLogFile(
 
 export class EventSink {
   private readonly logDir: string;
+  /** #436: the daemon run id stays as it is; every other session id is coded. */
+  private readonly runId: string | null;
   private initPromise: Promise<void> | null = null;
 
-  constructor(logDir: string) {
+  constructor(logDir: string, runId: string | null = null) {
     this.logDir = logDir;
+    this.runId = runId;
   }
 
   private async ensureDir(): Promise<void> {
@@ -42,9 +46,10 @@ export class EventSink {
     await this.initPromise;
   }
 
-  async write(event: TelemetryEvent): Promise<void> {
+  async write(raw: TelemetryEvent): Promise<void> {
     try {
       await this.ensureDir();
+      const event = this.coded(raw);
       const file = eventLogFile(this.logDir, event.ts, event);
       // #1128-capture: a row a measurement run wrote says so.
       await appendFile(file, JSON.stringify({ ...event, ...evalRunMark(event) }) + "\n", "utf8");
@@ -52,6 +57,15 @@ export class EventSink {
       // Telemetry must never break a tool call.
       console.error(`[bastra-recall] telemetry write failed: ${(err as Error).message}`);
     }
+  }
+
+  /** #436: the caller's session (`caller_session`, or a hook's `session_id`) as its code. */
+  private coded(event: TelemetryEvent): TelemetryEvent {
+    const row = { ...event } as TelemetryEvent & { session_id?: unknown; caller_session?: unknown };
+    if (typeof row.session_id === "string" && row.session_id !== this.runId)
+      row.session_id = telemetrySession(row.session_id);
+    if (typeof row.caller_session === "string") row.caller_session = telemetrySession(row.caller_session);
+    return row;
   }
 }
 

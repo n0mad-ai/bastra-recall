@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { Vault, SearchIndex } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
 import { runHookRecall } from "../src/http-hook-routes.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 function memo(id: string, scope: string, body: string): string {
   return [
@@ -83,6 +84,9 @@ async function hookRecallRows(logDir: string): Promise<Record<string, unknown>[]
   return [];
 }
 
+/** The conversation of every scenario; its log code (#436) reads as `<session:RAW>`. */
+const SESSION = "golden-session";
+
 const DROP = new Set(["ts", "event_loop_block_ms", "event_loop_block_source", "boot_id", "pid"]);
 
 function normalize(value: unknown, key = ""): unknown {
@@ -90,7 +94,10 @@ function normalize(value: unknown, key = ""): unknown {
   // The content hash covers the temp vault's file identity, not the content alone.
   if (key === "content_hash") return "<hash>";
   if (typeof value === "string") {
-    return value.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, "<uuid>");
+    return value
+      .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, "<uuid>")
+      .split(telemetrySession(SESSION))
+      .join(`<session:${SESSION}>`);
   }
   if (Array.isArray(value)) return value.map((v) => normalize(v, key));
   if (value && typeof value === "object") {
@@ -150,7 +157,7 @@ for (const sc of SCENARIOS) {
     else delete process.env.BASTRA_QUERY_ROUTER;
     const stages: string[] = [];
     try {
-      const body = { session_id: "golden-session", ...sc.body };
+      const body = { session_id: SESSION, ...sc.body };
       const payload = await runHookRecall(body, String(sc.body.query), Date.now(), s.deps, (st) =>
         stages.push(st.name)
       );

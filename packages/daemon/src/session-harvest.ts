@@ -53,6 +53,7 @@ import { captureTypedDrafts, INTERRUPT_PREFIX, PASTE_MIN_CHARS } from "./draft-c
 import { normalizeOwnerTurn, type TranscriptTurn } from "./stop-transcript.js";
 import { restatementIndices } from "./stop-lane-repeat.js";
 import { escapeAttr } from "./escape-attr.js";
+import { telemetrySession } from "./telemetry-session.js";
 
 /** Without a SessionEnd, a session counts as finished once no Stop arrived for this long. */
 export const HARVEST_IDLE_MS = 30 * 60 * 1000;
@@ -467,7 +468,7 @@ async function writeHarvestTelemetry(
     const event = {
       kind: "session_harvest",
       ts,
-      session_id: e.session_id,
+      session_id: telemetrySession(e.session_id),
       client: e.client ?? null,
       turn_count: turnCount,
       candidate_count: candidates.length,

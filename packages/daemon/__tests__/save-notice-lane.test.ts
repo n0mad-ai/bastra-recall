@@ -40,6 +40,7 @@ import { formatSaveNotice } from "../src/save-notice.js";
 import { hookDefinitions, missingRequiredHookRegistrations, planHookEntries } from "../src/cli/adapters/claude-code.js";
 import { MAX_BODY_BYTES } from "../src/http-util.js";
 import { dispatchLocalRoutes, type LocalRouteCtx } from "../src/http-local-routes.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 const SERVER = "mcp__bastra-recall__";
 const ID = "staging-deploy-braucht-vpn";
@@ -344,7 +345,7 @@ test("telemetry: one save_notice_call row per write-tool call, without the title
         ["edit_memory", null, false],
       ]
     );
-    assert.equal(calls[0].session_id, "save-notice-test");
+    assert.equal(calls[0].session_id, telemetrySession("save-notice-test"));
     assert.deepEqual(
       [
         (calls[0].dimensions as Record<string, unknown>).client,

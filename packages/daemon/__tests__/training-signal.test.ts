@@ -26,6 +26,7 @@ import {
 import { callerSessionStore } from "../src/caller-session.js";
 import { recallHandler, loadMemoryHandler, type ToolDeps } from "../src/tool-handlers.js";
 import { Telemetry } from "../src/telemetry.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 import { writeDraftEvent } from "../src/draft-events.js";
 import { harvestFarBridges, type MemoryInfo } from "../src/learned-recall/harvest.js";
 import {
@@ -511,8 +512,8 @@ test("E — a forwarded call's session links recall and load without being passe
       // Telemetry writes are fire-and-forget; arrival order is not call order.
       assert.equal(loads.length, 2);
       assert.deepEqual(Object.fromEntries(loads.map((row) => [row.caller_session, row.from_recall])), {
-        "forwarded-session": served.recall_id,
-        "other-session": null,
+        [telemetrySession("forwarded-session")]: served.recall_id,
+        [telemetrySession("other-session")]: null,
       });
     } finally {
       search.stop();
@@ -544,10 +545,10 @@ test("E — two sessions served the same note are never linked to each other's r
       const loads = await loadRows(dir);
       assert.equal(loads.length, 4);
       assert.deepEqual(Object.fromEntries(loads.map((row) => [row.caller_session, row.from_recall])), {
-        "session-A": a.recall_id,
-        "session-B": b.recall_id,
+        [telemetrySession("session-A")]: a.recall_id,
+        [telemetrySession("session-B")]: b.recall_id,
         null: null,
-        "session-C": null,
+        [telemetrySession("session-C")]: null,
       });
       assert.ok(
         loads.every((row) => row.follows_recall === b.recall_id),

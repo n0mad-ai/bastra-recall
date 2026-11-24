@@ -5,6 +5,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { matchPattern, formatHintBlock, runBashPreLane } from "../src/bash-pre-lane.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 describe("bash-pre-hook: matchPattern", () => {
   it("matches rm -rf as destructive", () => {
@@ -317,7 +318,7 @@ describe("bash-pre-hook: telemetry session (#356)", () => {
       );
       const ev = (await readTelemetryEvents(logDir)).find((e) => e.kind === "bash_hook_call");
       assert.ok(ev, "a bash_hook_call event must be written");
-      assert.equal(ev.session_id, "bashpre-sess-356");
+      assert.equal(ev.session_id, telemetrySession("bashpre-sess-356"));
     } finally {
       await daemon.close();
       await rm(logDir, { recursive: true, force: true });
@@ -394,7 +395,8 @@ describe("bash-pre-hook: telemetry session (#356)", () => {
       await runHook({ ...base, session_id: "agent-sub", agent_id: "a1b2c3", agent_type: "Explore" }, env);
       const evs = (await readTelemetryEvents(logDir)).filter((e) => e.kind === "bash_hook_call");
       const agentOf = (sid: string) =>
-        (evs.find((e) => e.session_id === sid)?.dimensions as Record<string, unknown> | undefined)?.agent;
+        (evs.find((e) => e.session_id === telemetrySession(sid))?.dimensions as Record<string, unknown> | undefined)
+          ?.agent;
       assert.equal(agentOf("agent-main"), "main");
       assert.equal(agentOf("agent-sub"), "subagent");
     } finally {

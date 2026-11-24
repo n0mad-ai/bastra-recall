@@ -18,6 +18,7 @@ import test from "node:test";
 import { runWriteLane } from "../src/write-lane.js";
 import { loadSessionState } from "../src/session-state.js";
 import { warmSettingsReader } from "../src/settings-record-thread.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 interface MockReply {
   status?: number;
@@ -177,24 +178,27 @@ const SCENARIOS: Scenario[] = [
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-function normalize(value: unknown, cwd: string, root: string): unknown {
+/** `session`: the conversation of the scenario; its log code (#436) reads as `<session:RAW>`. */
+function normalize(value: unknown, cwd: string, root: string, session: string): unknown {
   if (typeof value === "number") return value > 1e12 ? "<ts>" : value;
   if (typeof value === "string") {
     // The area key is case-folded (pretool-shape.ts), so the paths are matched
     // without regard to case.
     return value
+      .split(telemetrySession(session))
+      .join(`<session:${session}>`)
       .replace(new RegExp(escape(cwd), "gi"), "<cwd>")
       .replace(new RegExp(escape(root), "gi"), "<root>")
       .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z/g, "<iso>")
       .replace(/127\.0\.0\.1:\d+/g, "127.0.0.1:<port>");
   }
-  if (Array.isArray(value)) return value.map((v) => normalize(v, cwd, root));
-  if (value instanceof Map) return normalize(Object.fromEntries(value), cwd, root);
+  if (Array.isArray(value)) return value.map((v) => normalize(v, cwd, root, session));
+  if (value instanceof Map) return normalize(Object.fromEntries(value), cwd, root, session);
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
       if (k === "latency_ms_total" || k === "ts") continue;
-      out[k.replace(new RegExp(escape(cwd), "gi"), "<cwd>")] = normalize(v, cwd, root);
+      out[k.replace(new RegExp(escape(cwd), "gi"), "<cwd>")] = normalize(v, cwd, root, session);
     }
     return out;
   }
@@ -333,10 +337,10 @@ for (const sc of SCENARIOS) {
         // Check the real emitted size before replacing temp paths. The snapshot
         // then records the estimate of its canonical, platform-independent text.
         t.assert.equal(row.hint_tokens_est, Math.ceil(context.length / 4));
-        return { ...row, hint_tokens_est: Math.ceil((normalize(context, ws.cwd, ws.root) as string).length / 4) };
+        return { ...row, hint_tokens_est: Math.ceil((normalize(context, ws.cwd, ws.root, sessionId) as string).length / 4) };
       });
       return { runs, telemetry, requests: daemon.requests, state };
     });
-    t.assert.snapshot(normalize(snapshot, ws.cwd, ws.root));
+    t.assert.snapshot(normalize(snapshot, ws.cwd, ws.root, sessionId));
   });
 }

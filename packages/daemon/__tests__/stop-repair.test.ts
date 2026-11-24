@@ -34,6 +34,7 @@ import {
   taskIdFor,
   type ActiveConvention,
 } from "../src/session-state.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 const TRANSCRIPT = [
   { role: "user", content: "passt so, schick es raus" },
@@ -157,7 +158,7 @@ test("#1311 — approved-copy without receipt: request 1, request 2, then {} + r
     const rows = await nonConformance(dir);
     assert.equal(rows.length, 1);
     assert.equal(rows[0].reason, "repair_exhausted");
-    assert.equal(rows[0].session_id, "rp-loop");
+    assert.equal(rows[0].session_id, telemetrySession("rp-loop"));
     assert.equal(rows[0].task_id, taskId);
     assert.equal(rows[0].attempts, 2);
     // Terminated: further Stops of the same task neither ask nor log again.

@@ -47,6 +47,7 @@ const { dispatchLocalRoutes } = await import("../src/http-local-routes.js");
 const { setRepoEnabled } = await import("../src/code-graph/enabled-repos.js");
 const { codeGraphCache } = await import("../src/code-graph/dependents-block.js");
 const { graphDirOf, GRAPH_FILE_NAME } = await import("../src/code-graph/reader.js");
+const { telemetrySession } = await import("../src/telemetry-session.js");
 type LocalRouteCtx = import("../src/http-local-routes.js").LocalRouteCtx;
 
 const HOOK = fileURLToPath(new URL("../dist/hook.js", import.meta.url));
@@ -192,7 +193,7 @@ async function hookCallRow(sessionId: string): Promise<Record<string, unknown> |
   for (const f of (await readdir(logDir).catch(() => [] as string[])).filter((n) => n.startsWith("events-")))
     for (const line of (await readFile(join(logDir, f), "utf8")).split("\n"))
       if (line.trim()) rows.push(JSON.parse(line) as Record<string, unknown>);
-  return rows.find((r) => r.kind === "hook_call" && r.session_id === sessionId);
+  return rows.find((r) => r.kind === "hook_call" && r.session_id === telemetrySession(sessionId));
 }
 
 const impactFiles = (context: string) =>

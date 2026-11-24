@@ -136,7 +136,8 @@ export async function runProbe(): Promise<ProbeResult> {
           const sid=`boundary-${client}-${lang}`; await prompt(sid,client,t.question);
           for(const [name,input] of [['Read',{}],['Grep',{}],['Bash',{command:'git status --short'}],['exec_command',{cmd:'rg fixture src'}],['mcp__bastra_recall__list_rules',{}]] as const)
             assert.equal(denied(await gate(sid,client,name,input)),false,name);
-          for(const [i,name] of ['Write','apply_patch','mcp__bastra_recall__save_memory','mcp__mail__send'].entries()){
+          assert.equal(denied(await gate(sid,client,'mcp__bastra_recall__save_memory')),false,'Recall can save before a rulebook check');
+          for(const [i,name] of ['Write','apply_patch','mcp__mail__send'].entries()){
             const own=sid+i;assert.equal(denied(await gate(own,client,name)),true,name);
             assert.equal((await check(own,{applicable:[]})).ok,true);
             assert.equal(denied(await gate(own,client,name)),false,name);
@@ -242,7 +243,7 @@ export async function runProbe(): Promise<ProbeResult> {
             assert.notEqual(rulebookStopRequested(out),true);assert.ok(!JSON.stringify(out).includes('<copy-repair'));
             assert.notEqual((await loadSessionState(sid)).activeTask?.kind,'approved-copy');
           }
-          return '5 harmless rounds including translation/code: one explicit check per round, no Stop blocks and no copy repairs';
+          return '5 harmless prompts in fresh sessions including translation/code: one explicit check per session, no Stop blocks and no copy repairs';
         });
         await attempt(lang,client,'harmless-prompts',async()=>{
           for(const [i,text]of [t.question,t.calculation,t.ok,t.code].entries()){
@@ -283,14 +284,18 @@ export async function runProbe(): Promise<ProbeResult> {
           const roundLanguage=Object.values(languages)[round%5];
           const notice=await live.post('/hook/prompt',{payload:{...common(sid,client),hook_event_name:'UserPromptSubmit',prompt:roundLanguage.calculation}});
           if(round===2)assert.match(context(notice),/unchecked boundary|ungeprüft/,'real hook failure spool must surface on recovery');
-          const first=await live.post('/hook/gate',{payload:p});assert.equal(denied(first),true);
-          assert.equal((await live.post('/api/v1/rulebook_check',{applicable:[],not_applicable:correspondenceIds.map(id=>({id,reason:'This calculation round does not prepare correspondence.'})),session_id:sid},sid)).ok,true);
-          assert.equal(denied(await live.post('/hook/gate',{payload:p})),false);
+          const needsCheck=round===0||round===3;
+          const first=await live.post('/hook/gate',{payload:p});
+          assert.equal(denied(first),needsCheck,`round ${round}: check required at start and after compact only`);
+          if(needsCheck){
+            assert.equal((await live.post('/api/v1/rulebook_check',{applicable:[],not_applicable:correspondenceIds.map(id=>({id,reason:'This calculation round does not prepare correspondence.'})),session_id:sid},sid)).ok,true);
+            assert.equal(denied(await live.post('/hook/gate',{payload:p})),false);
+          }
           const answer=await live.post('/hook/stop',{payload:{...common(sid,client),hook_event_name:'Stop',transcript:[{role:'assistant',content:'42'}]}});
           assert.notEqual(rulebookStopRequested(answer),true);
         }
       }finally{await live.close();}
-      return '6 scripted rounds, real thin-client failure exits 0, recovery notice, context reset, continued HTTP tools/answers without user input';
+      return '6 scripted rounds, one check at startup and one after compact; real thin-client failure exits 0, reports recovery and keeps the check while the rule catalog stays unchanged';
     });
   } finally {await server.close();await f.vault.stop();await rm(f.root,{recursive:true,force:true});}
   return {rows,rules:125,duration_ms:performance.now()-started,costs};

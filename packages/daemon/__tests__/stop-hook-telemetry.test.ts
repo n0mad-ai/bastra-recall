@@ -13,6 +13,7 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runStopLane } from "../src/stop-lane.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 /** Env the lane reads at call time — restored after each test. */
 async function withEnv<T>(env: Record<string, string>, fn: () => Promise<T>): Promise<T> {
@@ -64,7 +65,7 @@ test("#356 — save_eval_call carries the payload session_id, not a synthetic on
       .map((l) => JSON.parse(l) as Record<string, unknown>);
     const ev = events.find((e) => e.kind === "save_eval_call");
     assert.ok(ev, "a save_eval_call event must be written");
-    assert.equal(ev.session_id, "stop-sess-356");
+    assert.equal(ev.session_id, telemetrySession("stop-sess-356"));
   } finally {
     await rm(logDir, { recursive: true, force: true });
   }

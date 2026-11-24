@@ -27,6 +27,7 @@ import { request } from "node:http";
 import { Vault, SearchIndex } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
 import { startHttpServer } from "../src/http.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 function memoryMarkdown(id: string, title: string): string {
   const ts = new Date().toISOString();
@@ -184,7 +185,7 @@ test("#363: /hook/recall stempelt die Claude-Session-id aufs hook_recall-Event, 
     assert.ok(row, "ein hook_recall-Event sollte geschrieben sein");
     assert.equal(
       row!.session_id,
-      "claude-session-363",
+      telemetrySession("claude-session-363"),
       "ohne das ist keine Auswertung auf Recall-Ebene nach Session oder Turn gruppierbar (#305, #361)"
     );
     assert.notEqual(

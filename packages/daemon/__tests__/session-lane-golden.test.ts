@@ -18,6 +18,7 @@ import test from "node:test";
 import { runSessionLane, type SessionPayload } from "../src/session-lane.js";
 import { budgetShadowWritesSettled } from "../src/session-budget.js";
 import { loadSessionState } from "../src/session-state.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 interface Scenario {
   name: string;
@@ -156,7 +157,8 @@ const VOLATILE = new Set(["ts", "latency_ms_total", "session_start_call_id", "ho
 /** Remaining-time budgets the lane sends: present, but clock-derived. */
 const REMAINING = new Set(["time_ms"]);
 
-function normalize(value: unknown): unknown {
+/** `session`: the conversation of the scenario; its log code (#436) reads as `<session:RAW>`. */
+function normalize(value: unknown, session: string): unknown {
   if (typeof value === "number") return value > 1e12 ? "<ts>" : value;
   if (typeof value === "string") {
     return value
@@ -164,14 +166,16 @@ function normalize(value: unknown): unknown {
       .replace(/@\d{13}\b/g, "@<ts>")
       .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, "<uuid>")
       .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z/g, "<iso>")
-      .replace(/127\.0\.0\.1:\d+/g, "127.0.0.1:<port>");
+      .replace(/127\.0\.0\.1:\d+/g, "127.0.0.1:<port>")
+      .split(telemetrySession(session))
+      .join(`<session:${session}>`);
   }
-  if (Array.isArray(value)) return value.map(normalize);
+  if (Array.isArray(value)) return value.map((v) => normalize(v, session));
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
       if (VOLATILE.has(k)) continue;
-      out[k] = REMAINING.has(k) && typeof v === "number" ? "<remaining-ms>" : normalize(v);
+      out[k] = REMAINING.has(k) && typeof v === "number" ? "<remaining-ms>" : normalize(v, session);
     }
     return out;
   }
@@ -263,7 +267,7 @@ for (const sc of SCENARIOS) {
       }
       await budgetShadowWritesSettled();
       const state = await loadSessionState(sessionId);
-      t.assert.snapshot(normalize({ outputs, telemetry: await sessionRows(logDir), requests, state }));
+      t.assert.snapshot(normalize({ outputs, telemetry: await sessionRows(logDir), requests, state }, sessionId));
     } finally {
       for (const [k, v] of Object.entries(prev)) {
         if (v === undefined) delete process.env[k];

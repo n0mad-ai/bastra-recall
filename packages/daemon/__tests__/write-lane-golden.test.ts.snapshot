@@ -13,7 +13,7 @@ exports[`#1525 golden master — apply_patch with several targets 1`] = `
   "telemetry": [
     {
       "kind": "hook_call",
-      "session_id": "golden-apply-patch-with-several-targets",
+      "session_id": "<session:golden-apply-patch-with-several-targets>",
       "hook_version": "0.4.0",
       "tool_name": "apply_patch",
       "file_path": "<cwd>/src/a.ts",
@@ -124,7 +124,7 @@ exports[`#1525 golden master — compact: first touch presents the top hit 1`] =
   "telemetry": [
     {
       "kind": "hook_call",
-      "session_id": "golden-compact-first-touch-presents-the-top-hit",
+      "session_id": "<session:golden-compact-first-touch-presents-the-top-hit>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/parser.ts",
@@ -237,7 +237,7 @@ exports[`#1525 golden master — compact: repeat area without an anchored hit 1`
   "telemetry": [
     {
       "kind": "hook_call",
-      "session_id": "golden-compact-repeat-area-without-an-anchored-hit",
+      "session_id": "<session:golden-compact-repeat-area-without-an-anchored-hit>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/parser.ts",
@@ -280,7 +280,7 @@ exports[`#1525 golden master — compact: repeat area without an anchored hit 1`
     },
     {
       "kind": "hook_call",
-      "session_id": "golden-compact-repeat-area-without-an-anchored-hit",
+      "session_id": "<session:golden-compact-repeat-area-without-an-anchored-hit>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/parser.ts",
@@ -411,7 +411,7 @@ exports[`#1525 golden master — compact: repeat area, then binding-anchored 1`]
   "telemetry": [
     {
       "kind": "hook_call",
-      "session_id": "golden-compact-repeat-area-then-binding-anchored",
+      "session_id": "<session:golden-compact-repeat-area-then-binding-anchored>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/parser.ts",
@@ -454,7 +454,7 @@ exports[`#1525 golden master — compact: repeat area, then binding-anchored 1`]
     },
     {
       "kind": "hook_call",
-      "session_id": "golden-compact-repeat-area-then-binding-anchored",
+      "session_id": "<session:golden-compact-repeat-area-then-binding-anchored>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/parser.ts",
@@ -589,7 +589,7 @@ exports[`#1525 golden master — compact: weak result presents nothing 1`] = `
   "telemetry": [
     {
       "kind": "hook_call",
-      "session_id": "golden-compact-weak-result-presents-nothing",
+      "session_id": "<session:golden-compact-weak-result-presents-nothing>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/parser.ts",
@@ -662,7 +662,7 @@ exports[`#1525 golden master — daemon unreachable 1`] = `
   "telemetry": [
     {
       "kind": "hook_call",
-      "session_id": "golden-daemon-unreachable",
+      "session_id": "<session:golden-daemon-unreachable>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/parser.ts",
@@ -722,7 +722,7 @@ exports[`#1525 golden master — foreign scope is dropped 1`] = `
   "telemetry": [
     {
       "kind": "hook_call",
-      "session_id": "golden-foreign-scope-is-dropped",
+      "session_id": "<session:golden-foreign-scope-is-dropped>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/parser.ts",
@@ -825,7 +825,7 @@ exports[`#1525 golden master — hits below the floor only 1`] = `
   "telemetry": [
     {
       "kind": "hook_call",
-      "session_id": "golden-hits-below-the-floor-only",
+      "session_id": "<session:golden-hits-below-the-floor-only>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/parser.ts",
@@ -897,7 +897,7 @@ exports[`#1525 golden master — legacy: a hot backoff window suppresses optiona
   "telemetry": [
     {
       "kind": "hook_call",
-      "session_id": "golden-legacy-a-hot-backoff-window-suppresses-optional-hints",
+      "session_id": "<session:golden-legacy-a-hot-backoff-window-suppresses-optional-hints>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/parser.ts",
@@ -984,7 +984,7 @@ exports[`#1525 golden master — legacy: required and optional bands 1`] = `
   "telemetry": [
     {
       "kind": "hook_call",
-      "session_id": "golden-legacy-required-and-optional-bands",
+      "session_id": "<session:golden-legacy-required-and-optional-bands>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/parser.ts",
@@ -1100,7 +1100,7 @@ exports[`#1525 golden master — legacy: the second run drops the shown hit 1`] 
   "telemetry": [
     {
       "kind": "hook_call",
-      "session_id": "golden-legacy-the-second-run-drops-the-shown-hit",
+      "session_id": "<session:golden-legacy-the-second-run-drops-the-shown-hit>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/parser.ts",
@@ -1142,7 +1142,7 @@ exports[`#1525 golden master — legacy: the second run drops the shown hit 1`] 
     },
     {
       "kind": "hook_call",
-      "session_id": "golden-legacy-the-second-run-drops-the-shown-hit",
+      "session_id": "<session:golden-legacy-the-second-run-drops-the-shown-hit>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/parser.ts",
@@ -1260,7 +1260,7 @@ exports[`#1525 golden master — legacy: unfused puts every hit in one list 1`] 
   "telemetry": [
     {
       "kind": "hook_call",
-      "session_id": "golden-legacy-unfused-puts-every-hit-in-one-list",
+      "session_id": "<session:golden-legacy-unfused-puts-every-hit-in-one-list>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/parser.ts",
@@ -1373,7 +1373,7 @@ exports[`#1525 golden master — legacy: weak and no-home result 1`] = `
   "telemetry": [
     {
       "kind": "hook_call",
-      "session_id": "golden-legacy-weak-and-no-home-result",
+      "session_id": "<session:golden-legacy-weak-and-no-home-result>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/parser.ts",
@@ -1478,7 +1478,7 @@ exports[`#1525 golden master — memory-shaped markdown outside the vault 1`] = 
   "telemetry": [
     {
       "kind": "hook_call",
-      "session_id": "golden-memory-shaped-markdown-outside-the-vault",
+      "session_id": "<session:golden-memory-shaped-markdown-outside-the-vault>",
       "hook_version": "0.4.0",
       "tool_name": "Write",
       "file_path": "<cwd>/notes/lesson.md",
@@ -1567,7 +1567,7 @@ exports[`#1525 golden master — no hits 1`] = `
   "telemetry": [
     {
       "kind": "hook_call",
-      "session_id": "golden-no-hits",
+      "session_id": "<session:golden-no-hits>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/parser.ts",
@@ -1654,7 +1654,7 @@ exports[`#1525 golden master — recall answers HTTP 500 1`] = `
   "telemetry": [
     {
       "kind": "hook_call",
-      "session_id": "golden-recall-answers-HTTP-500",
+      "session_id": "<session:golden-recall-answers-HTTP-500>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/parser.ts",
@@ -1727,7 +1727,7 @@ exports[`#1525 golden master — recall answers invalid JSON 1`] = `
   "telemetry": [
     {
       "kind": "hook_call",
-      "session_id": "golden-recall-answers-invalid-JSON",
+      "session_id": "<session:golden-recall-answers-invalid-JSON>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/parser.ts",
@@ -1805,7 +1805,7 @@ exports[`#1525 golden master — size note rides along without hits 1`] = `
   "telemetry": [
     {
       "kind": "hook_call",
-      "session_id": "golden-size-note-rides-along-without-hits",
+      "session_id": "<session:golden-size-note-rides-along-without-hits>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/big.ts",
@@ -1882,7 +1882,7 @@ exports[`#1525 golden master — size note rides through suppression 1`] = `
   "telemetry": [
     {
       "kind": "hook_call",
-      "session_id": "golden-size-note-rides-through-suppression",
+      "session_id": "<session:golden-size-note-rides-through-suppression>",
       "hook_version": "0.4.0",
       "tool_name": "Edit",
       "file_path": "<cwd>/src/big.ts",

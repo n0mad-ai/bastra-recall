@@ -27,6 +27,7 @@ import { defaultLogDir } from "./telemetry.js";
 import { shortRepo } from "./code-graph/unavailable-note.js";
 import type { AffectedBasis } from "./code-graph/find-affected-files.js";
 import type { CodeDeliveredLane } from "./telemetry-events-code.js";
+import { telemetrySession } from "./telemetry-session.js";
 
 export interface DeliveredBlockRow {
   sessionId: string | null;
@@ -53,7 +54,7 @@ export async function logDeliveredBlock(row: DeliveredBlockRow): Promise<void> {
     const event = {
       kind: "code_tool_call",
       ts,
-      session_id: row.sessionId ?? randomUUID(),
+      session_id: telemetrySession(row.sessionId) ?? randomUUID(),
       tool: "find_affected_files",
       // A dedupe hit answered nothing this turn — `no_answer` is the honest
       // status for it, and `dedupe_hit` says which kind of nothing it was.

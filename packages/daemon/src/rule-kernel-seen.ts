@@ -14,9 +14,9 @@
  */
 import { createHash } from "node:crypto";
 import { hookAgent } from "./hook-surface.js";
-import { observesLaneContextDirectly } from "./lane-delivery.js";
+import { confirmLaneDelivery, observesLaneContextDirectly } from "./lane-delivery.js";
 import { kernelFingerprint } from "./rule-kernel.js";
-import { loadSessionState } from "./session-state.js";
+import { loadSessionState, mutateSessionState } from "./session-state.js";
 
 const SEEN_PREFIX = "rule-kernel-seen:";
 /** Agents a session remembers; the one delivered to longest ago is forgotten first. */
@@ -50,6 +50,29 @@ export async function kernelUnchanged(sessionId: string, seen: KernelSeen): Prom
   return (await loadSessionState(sessionId)).constants?.[seen.key] === seen.fingerprint;
 }
 
+/**
+ * #1622: the session start delivers the full kernel too. Once that delivery is
+ * confirmed, it counts as this agent's last full kernel, so an unchanged
+ * kernel later in the same context is answered with the short reminder. A
+ * kernel the context cap dropped, or a fallback text, is not recorded.
+ */
+export async function rememberSessionStartKernel(
+  payload: { session_id?: string; agent_id?: unknown },
+  text: string,
+  injected: string
+): Promise<void> {
+  const sessionId = payload.session_id ?? "";
+  if (!sessionId || !text.startsWith("<rule-kernel") || !injected.includes(text.trim())) return;
+  const seen = kernelSeen(payload, text);
+  if (!seen.key) return;
+  await confirmLaneDelivery(
+    async (delivered) => {
+      if (delivered) await mutateSessionState(sessionId, (s) => rememberKernel((s.constants ??= {}), seen));
+    },
+    Date.now() + 5000,
+    "context"
+  );
+}
 /** Record a confirmed full delivery (mutates in place, inside the session lock). */
 export function rememberKernel(constants: Record<string, string>, seen: KernelSeen): void {
   if (!seen.key) return;

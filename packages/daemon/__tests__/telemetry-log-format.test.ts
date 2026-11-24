@@ -7,7 +7,8 @@
  * drives every writer of `Telemetry` once, in a fixed sequence, under a frozen
  * clock, and compares the resulting lines verbatim against the output the
  * unsplit class produced. Only the per-run random ids (boot id, turn ids) are
- * replaced by placeholders before the comparison.
+ * replaced by placeholders before the comparison, and the log's per-machine
+ * session codes (#436) by `<session:RAW>` naming the conversation they code.
  *
  * Run: node --import tsx --import ./scripts/test-env.mjs --test packages/daemon/__tests__/telemetry-log-format.test.ts
  */
@@ -18,6 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Telemetry } from "../src/telemetry.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 type Arg<K extends keyof Telemetry> = Telemetry[K] extends (p: infer P, ...rest: never[]) => unknown ? P : never;
 
@@ -160,6 +162,7 @@ async function drive(t: Telemetry): Promise<string[]> {
 function normalize(text: string, ids: string[]): string {
   const [run, ...turns] = ids;
   let out = text.split(run!).join("<run>");
+  for (const session of ["sess-a", "sess-b"]) out = out.split(telemetrySession(session)).join(`<session:${session}>`);
   turns.forEach((id, i) => {
     out = out.split(id).join(`<turn-${i + 1}>`);
   });
@@ -188,14 +191,14 @@ test("event log and join-state snapshot keep their byte format (#1039)", async (
         {
           kind: "convention_shown",
           ts: "2026-10-04T12:00:00.000Z",
-          session_id: "sess-a",
+          session_id: "<session:sess-a>",
           session_known: true,
           memory_ids: ["m4"],
         },
         {
           kind: "convention_shown",
           ts: "2026-10-04T12:00:00.000Z",
-          session_id: "sess-b",
+          session_id: "<session:sess-b>",
           session_known: true,
           memory_ids: ["m5"],
         },
@@ -224,17 +227,17 @@ const EXPECTED_LOG: string[] = [
   '{"kind":"save_memory","ts":"2026-10-04T12:00:00.000Z","session_id":"<run>","id":"m9","type":"lesson","scope":"s","title":"T","tag_count":1,"recall_when_count":2,"body_chars":30,"overwrite":false,"created":true,"follows_recall":null}',
   '{"kind":"save_hold","ts":"2026-10-04T12:00:00.000Z","session_id":"<run>","reason":"duplicate","id":"m9","type":"lesson","scope":"s","claimed_count":1,"overwrite":false,"follows_recall":null}',
   '{"kind":"id_scan","ts":"2026-10-04T12:00:00.000Z","session_id":"<run>","id":"m9","op":"save","ms":3,"files":4,"bytes":5,"dirs":1,"blind_spots":0,"cloud_mount":false}',
-  '{"kind":"hook_recall","ts":"2026-10-04T12:00:00.000Z","session_id":"sess-b","recall_id":"rec-3","query":"fix the build","hits":[{"id":"m2","score":40}],"origin":"owner","turn_id":"<turn-3>","turn_source":"session","dimensions":{"client":"claude-code","hook_source":"prompt","experiment_session":"5168f725717aee47","arm":"unassigned"}}',
+  '{"kind":"hook_recall","ts":"2026-10-04T12:00:00.000Z","session_id":"<session:sess-b>","recall_id":"rec-3","query":"fix the build","hits":[{"id":"m2","score":40}],"origin":"owner","turn_id":"<turn-3>","turn_source":"session","dimensions":{"client":"claude-code","hook_source":"prompt","experiment_session":"5168f725717aee47","arm":"unassigned"}}',
   '{"kind":"hook_recall","ts":"2026-10-04T12:00:00.000Z","session_id":"<run>","recall_id":"rec-4","query":"no session","hits":[],"turn_id":"<turn-3>","turn_source":"inferred","dimensions":{"client":"unknown","hook_source":"unknown","experiment_session":null,"arm":"unassigned"}}',
-  '{"kind":"evidence_decision","ts":"2026-10-04T12:00:00.000Z","session_id":"sess-b","recall_id":"rec-3","shadow":true,"degraded":false,"decisions":[],"counts":{"required":0,"optional":1,"no_answer":0},"dimensions":{"client":"unknown","hook_source":"prompt","experiment_session":"5168f725717aee47","arm":"unassigned"}}',
-  '{"kind":"hook_reflex","ts":"2026-10-04T12:00:00.000Z","session_id":"sess-a","reflex":"x"}',
-  '{"kind":"hook_act","ts":"2026-10-04T12:00:00.000Z","session_id":"sess-a","tool_name":"Bash","dimensions":{"client":"unknown","hook_source":"bash-pre","experiment_session":"e808f6286c95f856","arm":"unassigned"}}',
+  '{"kind":"evidence_decision","ts":"2026-10-04T12:00:00.000Z","session_id":"<session:sess-b>","recall_id":"rec-3","shadow":true,"degraded":false,"decisions":[],"counts":{"required":0,"optional":1,"no_answer":0},"dimensions":{"client":"unknown","hook_source":"prompt","experiment_session":"5168f725717aee47","arm":"unassigned"}}',
+  '{"kind":"hook_reflex","ts":"2026-10-04T12:00:00.000Z","session_id":"<session:sess-a>","reflex":"x"}',
+  '{"kind":"hook_act","ts":"2026-10-04T12:00:00.000Z","session_id":"<session:sess-a>","tool_name":"Bash","dimensions":{"client":"unknown","hook_source":"bash-pre","experiment_session":"e808f6286c95f856","arm":"unassigned"}}',
   '{"kind":"mutation_incident","ts":"2026-10-04T12:00:00.000Z","session_id":"<run>","operation_id":"op-1","op":"save","status":"failed","phase":"write","memory_id":null,"rollback":null,"detail":null}',
   '{"kind":"code_tool_call","ts":"2026-10-04T12:00:00.000Z","session_id":"<run>","tool":"find_code","ms":4}',
   '{"kind":"code_graph_refresh","ts":"2026-10-04T12:00:00.000Z","session_id":"<run>","outcome":"started"}',
   '{"kind":"ollama_lifecycle","ts":"2026-10-04T12:00:00.000Z","session_id":null,"run_id":"<run>","action":"prewarm"}',
   '{"kind":"warmup_settle","ts":"2026-10-04T12:00:00.000Z","session_id":null,"run_id":"<run>","session_start_call_id":"c1"}',
-  '{"kind":"vector_late_settle","ts":"2026-10-04T12:00:00.000Z","session_id":"sess-b","late":true,"recall_id":"rec-3","dimensions":{"client":"unknown","hook_source":"prompt","experiment_session":"5168f725717aee47","arm":"unassigned"}}',
+  '{"kind":"vector_late_settle","ts":"2026-10-04T12:00:00.000Z","session_id":"<session:sess-b>","late":true,"recall_id":"rec-3","dimensions":{"client":"unknown","hook_source":"prompt","experiment_session":"5168f725717aee47","arm":"unassigned"}}',
   '{"kind":"vector_late_settle","ts":"2026-10-04T12:00:00.000Z","session_id":"<run>","late":true,"recall_id":"rec-4","dimensions":{"client":"unknown","hook_source":"unknown","experiment_session":null,"arm":"unassigned"}}',
   '{"kind":"recall_episode","ts":"2026-10-04T12:00:00.000Z","session_id":"<run>","turn_id":"<turn-3>","turn_source":"session","recall_id":"rec-1","memory_id":"m1","surfaced_score":120,"band":"required","surfaced":true,"acted_on":true,"match_strength":2,"tool_name":"Edit"}',
   '{"kind":"hint_followed_shadow","ts":"2026-10-04T12:00:00.000Z","session_id":"<run>","memory_id":"m4","turn_id":"<turn-1>","turn_source":"session","followed":true,"match_strength":2,"tool_name":"Bash","age_ms":0}',

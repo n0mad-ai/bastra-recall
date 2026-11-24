@@ -150,36 +150,22 @@ test("uppercase or incomplete injected band is never captured", () =>
     }
   }));
 
-test("harmless Bash does not run note lookup without a matching draft", () =>
+// #1460 F6 (owner decision "Nein"): a harmless command no longer searches drafts at all.
+test("harmless Bash runs no draft lookup", () =>
   isolated(async (_dir, row) => {
-    let calls = 0;
-    const notes = () => {
-      calls++;
-      return [];
-    };
-    await runBashPreLane(
-      {
-        hook_event_name: "PreToolUse",
-        tool_name: "Bash",
-        tool_input: { command: "echo unrelated physics" },
-        session_id: "empty",
-      },
-      "http://127.0.0.1:1",
-      notes
-    );
-    assert.equal(calls, 0);
+    const bash = (session_id: string) =>
+      runBashPreLane(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          tool_input: { command: "echo unrelated physics" },
+          session_id,
+        },
+        "http://127.0.0.1:1"
+      );
+    assert.equal(await bash("empty"), "{}");
     await captureDrafts([row]);
-    await runBashPreLane(
-      {
-        hook_event_name: "PreToolUse",
-        tool_name: "Bash",
-        tool_input: { command: "echo unrelated physics" },
-        session_id: "miss",
-      },
-      "http://127.0.0.1:1",
-      notes
-    );
-    assert.equal(calls, 0);
+    assert.equal(await bash("miss"), "{}");
   }));
 
 async function heldLock(path: string) {

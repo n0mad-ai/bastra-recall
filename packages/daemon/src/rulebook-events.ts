@@ -3,6 +3,7 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { envFirst, envOff } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
+import { telemetrySession } from "./telemetry-session.js";
 export async function recordRulebookEvent(sessionId: string | null, fields: Record<string, unknown>): Promise<void> {
   if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
@@ -14,7 +15,7 @@ export async function recordRulebookEvent(sessionId: string | null, fields: Reco
       JSON.stringify({
         kind: "rulebook_check",
         ts,
-        session_id: sessionId?.slice(0, 200) ?? null,
+        session_id: telemetrySession(sessionId) ?? null,
         session_known: !!sessionId,
         ...fields,
       }) + "\n",

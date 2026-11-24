@@ -15,6 +15,7 @@ import { isSystemInjectedTurn, ownerPromptText } from "../src/system-turn.js";
 import { mutateSessionState, parkBoundary } from "../src/session-state.js";
 import { normalizeTurns } from "../src/stop-transcript.js";
 import { queryOrigin } from "../src/learned-recall/harvest.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 function startMockDaemon(handler: (req: IncomingMessage, res: ServerResponse) => void) {
   const server = createServer(handler);
@@ -157,7 +158,7 @@ for (const [shape, prompt] of SYSTEM_TURNS) {
       assert.equal(ev.origin, "system");
       assert.equal(ev.hint_count, 0);
       assert.equal(ev.hint_tokens_est, 0);
-      assert.equal(ev.session_id, "s703");
+      assert.equal(ev.session_id, telemetrySession("s703"));
     } finally {
       await daemon.close();
       await rm(stateDir, { recursive: true, force: true });

@@ -25,6 +25,7 @@ import { runPromptLane } from "../src/prompt-lane.js";
 import { runSessionLane } from "../src/session-lane.js";
 import { runTodoLane } from "../src/todo-lane.js";
 import { runWriteLane } from "../src/write-lane.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 async function withEnv<T>(env: Record<string, string>, fn: () => Promise<T>): Promise<T> {
   const before = new Map(Object.keys(env).map((k) => [k, process.env[k]]));
@@ -195,7 +196,7 @@ describe("hook agent dimension on every lane's own row", () => {
         });
         const rows = (await readEvents(logDir)).filter((e) => e.kind === lane.kind);
         const agentOf = (sid: string) => {
-          const row = rows.find((e) => e.session_id === sid);
+          const row = rows.find((e) => e.session_id === telemetrySession(sid));
           assert.ok(row, `${lane.kind} row for ${sid} must be written`);
           return (row.dimensions as Record<string, unknown>).agent;
         };
@@ -222,7 +223,9 @@ describe("hook agent dimension: Codex thread attribution", () => {
           LANES[0].run({ session_id: "agent-codex", bastra_client: "codex" }, base)
         );
       });
-      const row = (await readEvents(logDir)).find((e) => e.kind === "bash_hook_call" && e.session_id === "agent-codex");
+      const row = (await readEvents(logDir)).find(
+        (e) => e.kind === "bash_hook_call" && e.session_id === telemetrySession("agent-codex")
+      );
       assert.ok(row, "bash_hook_call row must be written");
       const dims = row.dimensions as Record<string, unknown>;
       assert.equal(dims.client, "codex", "precondition: the row is booked as Codex");

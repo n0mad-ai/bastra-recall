@@ -21,6 +21,7 @@ import { editMemoryHandler } from "../src/edit-memory-handler.js";
 import { checkStopRepair } from "../src/stop-repair.js";
 import { indexedConventionSource } from "../src/convention-source.js";
 import { loadSessionState } from "../src/session-state.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 const validator = { tool: "validate_artifact", channel: "fixture-copy", limit: 12, unit: "utf16" } as const;
 let root: string, vault: Vault, live: Awaited<ReturnType<typeof serve>>;
 before(async () => {
@@ -93,7 +94,7 @@ async function events(sid: string) {
     if (name.startsWith("events-"))
       for (const line of (await readFile(join(root, "logs", name), "utf8")).trim().split("\n").filter(Boolean)) {
         const row = JSON.parse(line);
-        if (row.session_id === sid) out.push(row);
+        if (row.session_id === telemetrySession(sid)) out.push(row);
       }
   return out;
 }
@@ -275,6 +276,9 @@ test("declared-but-unloaded validator refresh follows the index without reading 
   await check(sid, { applicable: ["copy-rule"], not_applicable: [skip("correspondence-rule")] });
   assert.equal((await loadSessionState(sid)).loadedConventions, undefined);
   await editMemoryHandler(live.deps, { id: "copy-rule", frontmatter: { validator: { ...validator, limit: 50 } } });
+  // #1591: the changed rule ends the check at once; the new check answers it.
+  assert.equal(rulebookStopRequested(await stop(sid, "short")), true);
+  await check(sid, { applicable: ["copy-rule"], not_applicable: [skip("correspondence-rule")] });
   const file = vault.get("copy-rule")!.filePath,
     original = fs.readFile;
   let reads = 0;

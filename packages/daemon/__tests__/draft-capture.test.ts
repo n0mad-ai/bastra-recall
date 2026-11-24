@@ -13,6 +13,7 @@ import {
 } from "../src/session-harvest.js";
 import { listDrafts, expireDrafts, upsertDraft, captureDraft } from "../src/draft-store.js";
 import { parseTranscriptFile } from "../src/stop-transcript.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 const now = 1_800_000_000_000;
 const day = 24 * 60 * 60 * 1000;
@@ -232,7 +233,7 @@ test("B1 capture writes redacted bounded text and telemetry contains only counts
       .trim()
       .split("\n")
       .map((l) => JSON.parse(l))
-      .find((e) => e.session_id === "privacy-repeat");
+      .find((e) => e.session_id === telemetrySession("privacy-repeat"));
     assert.equal(repeated.draft_count, 0);
     assert.equal(repeated.draft_evidence_count, 1);
     assert.deepEqual(repeated.draft_ids, [rows[0].id]);

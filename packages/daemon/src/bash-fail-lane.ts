@@ -54,6 +54,7 @@ import {
   shouldDropHit,
   wasEmitConsumed,
 } from "./session-state.js";
+import { telemetrySession } from "./telemetry-session.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 500, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_VERSION = "0.2.0"; // 0.2.0 = daemon-side lane (#343)
@@ -625,7 +626,7 @@ async function writeTelemetry(payload: BashFailHookTelemetry): Promise<void> {
     const event = {
       kind: "bash_fail_hook_call",
       ts,
-      session_id: payloadSessionId ?? randomUUID(),
+      session_id: telemetrySession(payloadSessionId) ?? randomUUID(),
       hook_version: HOOK_VERSION,
       ...rest,
       // #507: bash-fail is this lane's own hook_source — it never varies per call.

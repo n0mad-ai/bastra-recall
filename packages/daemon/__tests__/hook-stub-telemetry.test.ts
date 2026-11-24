@@ -30,6 +30,7 @@ import { fileURLToPath } from "node:url";
 
 import { aggregate, renderStats, GATE_LANE_BY_KIND } from "../src/cli/log-stats.js";
 import { CLIENT_ROW_BASE } from "../src/hook-client-telemetry.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STUB_PATH = resolve(HERE, "..", "stub", "bastra-hook.ts");
@@ -87,8 +88,8 @@ test("#305: a client-side Bash failure is written into the Bash lane, not the wr
 
   assert.equal(pre.kind, "bash_hook_call", "a PreToolUse Bash failure is not a Write/Edit call");
   assert.equal(post.kind, "bash_fail_hook_call", "a PostToolUse Bash failure is not a Write/Edit call");
-  assert.equal(pre.session_id, "session-bash-pre");
-  assert.equal(post.session_id, "session-bash-post");
+  assert.equal(pre.session_id, telemetrySession("session-bash-pre"));
+  assert.equal(post.session_id, telemetrySession("session-bash-post"));
   for (const row of [pre, post]) {
     assert.match(
       String(row.hook_version),

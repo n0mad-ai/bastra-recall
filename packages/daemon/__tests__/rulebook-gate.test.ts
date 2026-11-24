@@ -39,6 +39,10 @@ const payload = (sid: string, tool_name = "Write", tool_input = {}) => ({
 });
 const gate = async (sid: string, name = "Write", input = {}) =>
   JSON.parse(await runGateLane(payload(sid, name, input), deps));
+// #1591: the same rule at a new revision — a changed catalog.
+const changed: KernelCandidates = { ...catalog, entries: catalog.entries.map((e) => ({ ...e, rule_hash: "rev-2" })) };
+const changedGate = async (sid: string) =>
+  JSON.parse(await runGateLane(payload(sid), { ...deps, kernel: async () => changed }));
 const denied = (out: any) => out.hookSpecificOutput?.permissionDecision === "deny";
 let root: string;
 before(async () => {
@@ -77,16 +81,14 @@ test("read tools and Bastra read/check tools are never held; own and foreign wri
     ["rulebook_check", {}],
     ["mcp__bastra_recall__list_rules", {}],
     ["mcp__bastra_recall__rulebook_check", {}],
+    // #1591 (owner decision B): Recall's own writes are never held.
+    ["mcp__bastra_recall__save_memory", {}],
+    ["mcp__bastra-recall__edit_memory", {}],
+    ["mcp__codex_apps__bastra_recall_edit_memory", {}],
   ] as const) {
     assert.equal(denied(await gate(`read-${name}`, name, input)), false, name);
   }
-  for (const name of [
-    "Write",
-    "apply_patch",
-    "mcp__bastra_recall__save_memory",
-    "mcp__codex_apps__bastra_recall_edit_memory",
-    "mcp__mail__send",
-  ]) {
+  for (const name of ["Write", "apply_patch", "mcp__mail__send"]) {
     assert.equal(denied(await gate(`write-${name}`, name)), true, name);
   }
   assert.equal(denied(await gate("shell-write", "Bash", { command: "cat a > b" })), true);
@@ -107,7 +109,9 @@ test("a check is an honest round self-report; none accepted without an approval 
   );
   assert.equal(denied(await runAgentGate(sid, "child")), false);
   await checks.beginRulebookRound(payload(sid), catalog);
-  assert.equal(denied(await gate(sid)), true, "next round expires receipt");
+  assert.equal(denied(await gate(sid)), false, "#1591: an unchanged catalog keeps the receipt");
+  await checks.beginRulebookRound(payload(sid), changed);
+  assert.equal(denied(await changedGate(sid)), true, "a changed rule expires it");
   assert.equal((await checks.recordRulebookCheck(sid, { applicable: ["missing"] }, catalog)).ok, false);
 });
 async function runAgentGate(sid: string, agent_id: string) {
@@ -256,9 +260,9 @@ test("real load and HTTP handlers record the receipt; lean loads and another cal
   );
   await loadMemoryHandler(deps, { id: "invented-correspondence" }, { sessionId: "handler", agentId: null });
   assert.equal(denied(await gate("handler")), false);
-  await checks.beginRulebookRound(payload("handler"), catalog);
+  await checks.beginRulebookRound(payload("handler"), changed);
   await loadMemoryHandler(deps, { id: "invented-correspondence" }, { sessionId: "elsewhere" });
-  assert.equal(denied(await gate("handler")), true);
+  assert.equal(denied(await changedGate("handler")), true);
   await loadMemoryHandler(deps, { id: "invented-correspondence" }, { sessionId: "unknown-load" });
   assert.equal(denied(await gate("unknown-load")), false, "missing actor is main for its known session");
   const receipt = (await dispatchApi(
@@ -267,7 +271,7 @@ test("real load and HTTP handlers record the receipt; lean loads and another cal
     { toolDeps: deps, documentWriteEnabled: false, ccSessionId: "handler" }
   )) as { ok: boolean };
   assert.equal(receipt.ok, true);
-  assert.equal(denied(await gate("handler")), false, "transport session wins over supplied session id");
+  assert.equal(denied(await changedGate("handler")), false, "transport session wins over supplied session id");
   await checks.beginRulebookRound(payload("stale-handler"), catalog);
   const raw = await readFile(saved.file_path, "utf8");
   await writeFile(
@@ -370,7 +374,7 @@ test("review: legacy pending and reflex gates still run after a rulebook receipt
   );
 });
 
-test("review: read classification avoids catalog I/O; task_controls remains a write", async () => {
+test("review: read classification avoids catalog I/O; task_controls is Recall's own tool", async () => {
   let scans = 0;
   const kernel = async () => {
     scans++;
@@ -378,7 +382,8 @@ test("review: read classification avoids catalog I/O; task_controls remains a wr
   };
   assert.equal(await runGateLane(payload("cheap-read", "Read"), { ...deps, kernel }), "{}");
   assert.equal(scans, 0);
-  assert.equal(denied(await gate("controls-write", "mcp__bastra_recall__task_controls")), true);
+  // #1591 (owner decision B): Recall's own tools are never held, task_controls included.
+  assert.equal(denied(await gate("controls-write", "mcp__bastra_recall__task_controls")), false);
 });
 
 test("review: an always-only catalog also gets the prompt check notice", async () => {

@@ -131,7 +131,7 @@ export class Telemetry {
     // (Daniel hat existing logs, die wir nicht orphanen wollen).
     this.logDir = opts.logDir ?? envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? defaultLogDir();
     this.sessionId = randomUUID();
-    this.sink = new EventSink(this.logDir);
+    this.sink = new EventSink(this.logDir, this.sessionId);
     // Korrelations-State boot-übergreifend wiederherstellen (Audit 26.6.):
     // ohne das gehen follows_recall/from_hook_recall/recall_episode bei jedem
     // Idle-Respawn verloren. `events-*.jsonl` matcht join-state.json nicht,

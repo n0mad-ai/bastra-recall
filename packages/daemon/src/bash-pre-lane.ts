@@ -17,7 +17,7 @@ import { githubConventionGate } from "./github-conventions-lane.js";
  * empty-streak backoff. The tripwire is a safety warning — the warning itself
  * is the point, and it must emit unconditionally.
  */
-import { appendLaneDrafts, type DraftNote } from "./draft-search.js";
+import { appendLaneDrafts } from "./draft-search.js";
 import { PRE_TOOL_CONTEXT_CHAR_BUDGET } from "./pretool-budget.js";
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -64,6 +64,7 @@ import { archiveMaxItem, shimRewrite } from "./rm-archive.js";
 import { getArchiveEnabled, getArchiveMaxItem } from "./settings.js";
 import { coverageRewrite } from "./bash-pre-coverage.js";
 import { bashVerdict, settingsFiles } from "./cc-permissions.js";
+import { telemetrySession } from "./telemetry-session.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 500, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_VERSION = "0.2.0"; // 0.2.0 = daemon-side lane (#343)
@@ -90,14 +91,10 @@ type RecallResponse = HookRecallResponse;
  * Run the tripwire pipeline; return the exact stdout document for the thin
  * client. Never throws — every failure degrades to `{}` plus telemetry.
  */
-export async function runBashPreLane(
-  payload: BashHookPayload,
-  selfBaseUrl: string,
-  draftNotes?: (query: string) => DraftNote[]
-): Promise<string> {
+export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: string): Promise<string> {
   const github = await githubConventionGate(payload, selfBaseUrl, Date.now() + HOOK_TIMEOUT_MS);
   if (github && JSON.parse(github).hookSpecificOutput?.permissionDecision === "deny") return github;
-  const original = await runBashPreLaneOriginal(payload, selfBaseUrl, draftNotes);
+  const original = await runBashPreLaneOriginal(payload, selfBaseUrl);
   if (!github) return original;
   const output = JSON.parse(original),
     extra = JSON.parse(github).hookSpecificOutput.additionalContext;
@@ -109,11 +106,7 @@ export async function runBashPreLane(
   return JSON.stringify(output);
 }
 
-async function runBashPreLaneOriginal(
-  payload: BashHookPayload,
-  selfBaseUrl: string,
-  draftNotes?: (query: string) => DraftNote[]
-): Promise<string> {
+async function runBashPreLaneOriginal(payload: BashHookPayload, selfBaseUrl: string): Promise<string> {
   const startedAt = Date.now();
   // #1674: the budget's remainder runs on a monotonic clock; startedAt stays the telemetry stamp.
   const startedMono = performance.now();
@@ -161,27 +154,17 @@ async function runBashPreLaneOriginal(
         }),
       });
     }
-    const stdout =
-      rewritten === null
-        ? "{}"
-        : JSON.stringify({
-            hookSpecificOutput: {
-              hookEventName: "PreToolUse",
-              updatedInput: { ...toolInput, command: rewritten },
-            },
-          });
-    return appendLaneDrafts(
-      stdout,
-      "PreToolUse",
-      command,
-      payload.session_id,
-      [],
-      1,
-      false,
-      draftNotes ? () => draftNotes(command) : undefined,
-      startedAt + HOOK_TIMEOUT_MS,
-      PRE_TOOL_CONTEXT_CHAR_BUDGET
-    );
+    // #1460 F6 (owner decision "Nein"): a command the tripwire does not
+    // weigh searches no drafts — its words say almost nothing about what the
+    // user once meant. Draft quotes stay on risk-checked commands and prompts.
+    return rewritten === null
+      ? "{}"
+      : JSON.stringify({
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            updatedInput: { ...toolInput, command: rewritten },
+          },
+        });
   }
 
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (performance.now() - startedMono));
@@ -570,7 +553,13 @@ async function writeShadow(kind: string, fields: Record<string, unknown>): Promi
     const ts = new Date().toISOString();
     await appendFile(
       join(logDir, `events-${ts.slice(0, 10)}.jsonl`),
-      JSON.stringify({ kind, ts, hook_version: HOOK_VERSION, ...fields }) + "\n",
+      JSON.stringify({
+        kind,
+        ts,
+        hook_version: HOOK_VERSION,
+        ...fields,
+        session_id: telemetrySession(fields.session_id as string | null | undefined),
+      }) + "\n",
       "utf8"
     );
   } catch {
@@ -590,7 +579,7 @@ async function writeTelemetry(payload: BashHookCallTelemetry): Promise<void> {
     const event = {
       kind: "bash_hook_call",
       ts,
-      session_id: payloadSessionId ?? randomUUID(),
+      session_id: telemetrySession(payloadSessionId) ?? randomUUID(),
       hook_version: HOOK_VERSION,
       ...rest,
       // #507: bash-pre is this lane's own hook_source — it never varies per call.

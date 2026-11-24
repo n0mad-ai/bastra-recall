@@ -1,4 +1,5 @@
 import { readAppRecord } from "../src/app-record-store.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 /**
  * #662: a save suggestion reaches the Claude Code session that produced it, in
  * the running turn, instead of the next session (which has nothing left to
@@ -84,7 +85,7 @@ test("#662 — a Claude Code Stop hands the suggestion to the running turn, not 
     assert.equal(existsSync(join(dir, "pending.json")), false, "nothing is parked for the next session");
     const [row] = await events(dir);
     assert.equal(row.delivery, "same-turn");
-    assert.equal(row.session_id, "cc-662-a");
+    assert.equal(row.session_id, telemetrySession("cc-662-a"));
   });
 });
 

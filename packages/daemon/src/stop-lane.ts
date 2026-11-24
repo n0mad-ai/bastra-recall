@@ -58,6 +58,7 @@ import { checkStopRepair, REPAIR_MAX_ATTEMPTS } from "./stop-repair.js";
 import { currentVaultWriteIds } from "./stop-evidence.js";
 import { currentExecutedVaultWrites } from "./executed-vault-write.js";
 import { dropSuggestionsAfterExecutedSave } from "./stop-heuristics.js";
+import { telemetrySession } from "./telemetry-session.js";
 
 // 0.1.0 = unchanged event contract; the lane moved, the shape did not (#369).
 const HOOK_VERSION = "0.1.0";
@@ -530,7 +531,7 @@ async function appendStopEvent(kind: string, payload: StopHookTelemetry | StopNo
     const event = {
       kind,
       ts,
-      session_id: payloadSessionId ?? randomUUID(),
+      session_id: telemetrySession(payloadSessionId) ?? randomUUID(),
       hook_version: HOOK_VERSION,
       ...rest,
     };

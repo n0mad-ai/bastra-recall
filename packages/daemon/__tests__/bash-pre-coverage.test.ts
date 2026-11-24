@@ -8,6 +8,7 @@ import { strict as assert } from "node:assert";
 import { mkdtemp, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 // HOME first: the settings file and the enabled list resolve under it, and
 // this test enables a repository — that must not land in ~/.bastra.
@@ -97,7 +98,7 @@ describe("bash-pre lane: coverage rewrite (#629)", () => {
       .map((l) => JSON.parse(l) as { kind: string; session_id: string | null; dimensions?: { client?: string } });
     const rewrites = rows.filter((r) => r.kind === "coverage_rewrite");
     assert.equal(rewrites.length, 1);
-    assert.equal(rewrites[0]!.session_id, "s-cov");
+    assert.equal(rewrites[0]!.session_id, telemetrySession("s-cov"));
     assert.equal(rewrites[0]!.dimensions?.client, "claude-code");
   });
 

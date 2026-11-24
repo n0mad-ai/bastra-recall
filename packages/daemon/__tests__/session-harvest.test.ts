@@ -1,4 +1,5 @@
 import { readAppRecord } from "../src/app-record-store.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 /**
  * #675: after-session harvest — the Stop lane books a session, a daemon job
  * reads its transcript once it has gone quiet and relays what the user said
@@ -248,7 +249,7 @@ test("end to end: Stop books, the job waits for quiet, relays once, and never re
       .filter((e) => e.kind === "session_harvest");
     assert.equal(events.length, 2);
     assert.equal(events[0].candidate_count, 1);
-    assert.equal(events[0].session_id, "harvest-e2e-1");
+    assert.equal(events[0].session_id, telemetrySession("harvest-e2e-1"));
   });
 });
 
@@ -292,7 +293,7 @@ test("a booked session whose transcript this host cannot read leaves a harvest r
     await runSessionHarvest({ loadTurns: async () => [], now: Date.now() });
     const rows = await logRows(dir, "session_harvest");
     assert.equal(rows.length, 1, "the skipped session is visible in telemetry");
-    assert.equal(rows[0].session_id, "remote-1");
+    assert.equal(rows[0].session_id, telemetrySession("remote-1"));
     assert.equal(rows[0].candidate_count, 0);
     // #887 follow-up: the reason is `skipped_reason`, not `error` — the job
     // did not fail, the transcript is on another host.
@@ -313,7 +314,9 @@ test("the Stop lane writes a row for a transcript it cannot read, with the reaso
       "http://127.0.0.1:1"
     );
     assert.equal(out, "{}");
-    const rows = (await logRows(dir, "save_eval_call")).filter((e) => e.session_id === "stop-unreadable");
+    const rows = (await logRows(dir, "save_eval_call")).filter(
+      (e) => e.session_id === telemetrySession("stop-unreadable")
+    );
     assert.equal(rows.length, 1, "the Stop lane ran and says so");
     assert.equal(rows[0].turn_count, 0);
     // #887 follow-up: `skipped_reason`, not `error` — `error` is the fail-open
@@ -328,7 +331,9 @@ test("the Stop lane writes a row for a transcript it cannot read, with the reaso
       { hook_event_name: "Stop", session_id: "stop-empty", transcript_path: empty, cwd: "/work" },
       "http://127.0.0.1:1"
     );
-    const emptyRows = (await logRows(dir, "save_eval_call")).filter((e) => e.session_id === "stop-empty");
+    const emptyRows = (await logRows(dir, "save_eval_call")).filter(
+      (e) => e.session_id === telemetrySession("stop-empty")
+    );
     assert.equal(emptyRows.length, 1);
     assert.equal(emptyRows[0].error, undefined);
     assert.equal(emptyRows[0].skipped_reason, undefined);
@@ -349,7 +354,7 @@ test("#993: the Stop lane records a transcript that exists but cannot be opened 
     } finally {
       await chmod(locked, 0o600);
     }
-    const rows = (await logRows(dir, "save_eval_call")).filter((e) => e.session_id === "stop-locked");
+    const rows = (await logRows(dir, "save_eval_call")).filter((e) => e.session_id === telemetrySession("stop-locked"));
     assert.equal(rows.length, 1);
     assert.match(String(rows[0].skipped_reason), /not readable on this host: EACCES/);
     assert.equal(rows[0].error, undefined);

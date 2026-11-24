@@ -55,6 +55,7 @@ import {
   wasEmitConsumed,
 } from "./session-state.js";
 import { escapeAttr } from "./escape-attr.js";
+import { telemetrySession } from "./telemetry-session.js";
 
 // 600ms — same recall path, same reasoning as hook.ts.
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 600, "NEXUS_HOOK_TIMEOUT_MS");
@@ -599,7 +600,7 @@ async function writeTelemetry(payload: TodoHookTelemetry): Promise<void> {
     const event = {
       kind: "todo_hook_call",
       ts,
-      session_id: payloadSessionId ?? randomUUID(),
+      session_id: telemetrySession(payloadSessionId) ?? randomUUID(),
       hook_version: HOOK_VERSION,
       ...rest,
       // #507: todo is this lane's own hook_source — it never varies per call.

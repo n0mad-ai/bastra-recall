@@ -18,7 +18,7 @@ exports[`#1513 golden master — MCP caller with scope filter and budget 1`] = `
   "rows": [
     {
       "kind": "hook_recall",
-      "session_id": "golden-session",
+      "session_id": "<session:golden-session>",
       "recall_id": "<uuid>",
       "query": "how do we deploy the release branch after the tag",
       "topics": [],
@@ -169,7 +169,7 @@ exports[`#1513 golden master — caller asks lexical only 1`] = `
   "rows": [
     {
       "kind": "hook_recall",
-      "session_id": "golden-session",
+      "session_id": "<session:golden-session>",
       "recall_id": "<uuid>",
       "query": "how do we deploy the release branch after the tag",
       "topics": [],
@@ -296,7 +296,7 @@ exports[`#1513 golden master — hybrid machine, ordinary query 1`] = `
   "rows": [
     {
       "kind": "hook_recall",
-      "session_id": "golden-session",
+      "session_id": "<session:golden-session>",
       "recall_id": "<uuid>",
       "query": "how do we deploy the release branch after the tag",
       "topics": [],
@@ -438,7 +438,7 @@ exports[`#1513 golden master — hybrid machine, short query in router shadow 1`
   "rows": [
     {
       "kind": "hook_recall",
-      "session_id": "golden-session",
+      "session_id": "<session:golden-session>",
       "recall_id": "<uuid>",
       "query": "deploy",
       "topics": [],
@@ -587,7 +587,7 @@ exports[`#1513 golden master — hybrid machine, short query routed live 1`] = `
   "rows": [
     {
       "kind": "hook_recall",
-      "session_id": "golden-session",
+      "session_id": "<session:golden-session>",
       "recall_id": "<uuid>",
       "query": "deploy",
       "topics": [],
@@ -720,7 +720,7 @@ exports[`#1513 golden master — lexical machine, prompt lane 1`] = `
   "rows": [
     {
       "kind": "hook_recall",
-      "session_id": "golden-session",
+      "session_id": "<session:golden-session>",
       "recall_id": "<uuid>",
       "query": "how do we deploy the release branch after the tag",
       "topics": [],
@@ -821,7 +821,7 @@ exports[`#1513 golden master — nothing matches 1`] = `
   "rows": [
     {
       "kind": "hook_recall",
-      "session_id": "golden-session",
+      "session_id": "<session:golden-session>",
       "recall_id": "<uuid>",
       "query": "zzqx unmatched",
       "topics": [],
@@ -917,7 +917,7 @@ exports[`#1513 golden master — write lane with a tool input excerpt and topics
   "rows": [
     {
       "kind": "hook_recall",
-      "session_id": "golden-session",
+      "session_id": "<session:golden-session>",
       "recall_id": "<uuid>",
       "query": "how do we deploy the release branch after the tag",
       "topics": [

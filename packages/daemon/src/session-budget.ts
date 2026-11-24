@@ -41,6 +41,7 @@ import { fitsBudget } from "./context-governor.js";
 import type { HookLaneKind } from "./context-ledger.js";
 import { defaultLogDir } from "./telemetry.js";
 import { envFirst, envOff } from "./env.js";
+import { telemetrySession } from "./telemetry-session.js";
 
 /**
  * Vorläufige Budgethöhe, aus dem #457-Ledger abgelesen (04.09.2026, dieser
@@ -233,6 +234,7 @@ async function writeBudgetShadow(decision: BudgetShadowDecision): Promise<void> 
       kind: "budget_shadow",
       ts,
       ...rest,
+      session_id: telemetrySession(rest.session_id),
       // JSON kennt kein Infinity: unbegrenzt = null.
       remaining_before: Number.isFinite(remaining_before) ? remaining_before : null,
     };

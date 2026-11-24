@@ -7,6 +7,7 @@ import test from "node:test";
 import { runPromptLane } from "../src/prompt-lane.js";
 import { loadSessionState } from "../src/session-state.js";
 import type { PromptHookTelemetry } from "../src/prompt-lane-telemetry.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 for (const scenario of ["trivial", "system"] as const) {
   test(`prompt telemetry contract: ${scenario} persists before callback and preserves bookings`, async () => {
@@ -42,7 +43,7 @@ for (const scenario of ["trivial", "system"] as const) {
             for (const [key, value] of Object.entries(fields)) {
               if (value !== undefined) assert.deepEqual(event[key], value, key);
             }
-            assert.equal(event.session_id, "telemetry-contract");
+            assert.equal(event.session_id, telemetrySession("telemetry-contract"));
             assert.equal(event.dimensions.client, "unknown");
             assert.equal(event.dimensions.hook_source, "prompt");
             rows.push(row);

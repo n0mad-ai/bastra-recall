@@ -141,17 +141,14 @@ export function handleHookWrite(req: IncomingMessage, res: ServerResponse, ctx: 
  * pattern tables and invokesOwnBinary are gate logic that must stay
  * hot-swappable, so they live in the lane.
  */
-export function handleHookBashPre(req: IncomingMessage, res: ServerResponse, ctx: HookLaneCtx): void {
-  const { toolDeps } = ctx;
-  const { search } = toolDeps;
+export function handleHookBashPre(req: IncomingMessage, res: ServerResponse): void {
   const delivery = createLaneDelivery(res);
   void delivery.run(async () => {
     try {
       const body = await readJsonBody(req, MAX_BODY_BYTES);
       const out = await runBashPreLane(
         (body.payload ?? {}) as BashHookPayload,
-        `http://127.0.0.1:${req.socket.localPort ?? 6723}`,
-        (query) => search.recall(query, { k: 5 }).map((hit) => ({ ...hit, body: toolDeps.vault.get(hit.id)?.body }))
+        `http://127.0.0.1:${req.socket.localPort ?? 6723}`
       );
       delivery.answer(out);
     } catch {

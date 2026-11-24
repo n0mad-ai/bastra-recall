@@ -10,6 +10,7 @@ import { defaultLogDir } from "./telemetry.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
 import type { HookAgent, HookClientEvidence } from "./hook-surface.js";
 import type { PretoolHintReason } from "./pretool-shape.js";
+import { telemetrySession } from "./telemetry-session.js";
 
 const HOOK_VERSION = "0.4.0"; // 0.4.0 = daemon-side lane (#343)
 
@@ -104,7 +105,7 @@ export async function writeTelemetry(payload: HookCallTelemetry): Promise<void> 
     const event = {
       kind: "hook_call",
       ts,
-      session_id: payloadSessionId ?? randomUUID(),
+      session_id: telemetrySession(payloadSessionId) ?? randomUUID(),
       hook_version: HOOK_VERSION,
       ...rest,
       // #507: pre-tool is this lane's own hook_source — it never varies per

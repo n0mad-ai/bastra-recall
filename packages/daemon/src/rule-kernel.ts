@@ -26,7 +26,10 @@ export const RULE_KERNEL_LEXICAL_LINE = "Rulebook membership is independent of s
  * {@link renderKernelReminder} instead of the full text.
  */
 export function kernelFingerprint(text: string): string {
-  return createHash("sha256").update(text).digest("hex").slice(0, 16);
+  // #1622: the trigger only says why the kernel was sent; the session start
+  // and the gate deliver the same kernel under different triggers.
+  const body = text.replace(/^<rule-kernel trigger="[^"]*">/, "<rule-kernel>");
+  return createHash("sha256").update(body).digest("hex").slice(0, 16);
 }
 
 /**
@@ -56,9 +59,62 @@ export interface RenderedKernel {
   next_cursor?: string;
   paged_index?: number;
 }
+/** #1468: how many expired rules the kernel names before it counts the rest. */
+const EXPIRED_NAMED = 10;
+/**
+ * #1468 (owner decision 24.11.2026): an expired rule is not hidden and not in
+ * force. It stays out of the Always texts and the index and is named here
+ * until the user decides (end date changed or removed, or rule archived).
+ */
+function expiredBlock(entries: readonly { id: string; title: string; expired_on?: string }[], de: boolean): string[] {
+  const expired = entries.filter((e) => e.expired_on);
+  if (!expired.length) return [];
+  const rows = expired
+    .slice(0, EXPIRED_NAMED)
+    .map(
+      (e) => `- ${e.id} — ${e.title.slice(0, 55)} — ${de ? "abgelaufen am" : "expired on"} ${oneLine(e.expired_on!)}`
+    );
+  const more = expired.length - rows.length;
+  return [
+    de
+      ? `Abgelaufen – bitte mit dem Nutzer entscheiden (${expired.length}): Diese Regeln gelten nicht mehr als Regel. Lege sie dem Nutzer kurz vor und frage, ob das Enddatum geändert oder entfernt oder die Regel archiviert werden soll.`
+      : `Expired – please decide with the user (${expired.length}): these rules are no longer in force. Present them to the user briefly and ask whether to change or remove the end date or archive the rule.`,
+    ...rows,
+    ...(more > 0 ? [de ? `(+${more} weitere; alle in list_rules)` : `(+${more} more; all in list_rules)`] : []),
+  ];
+}
+/** The rule index lines that fit; `offset` is the next catalog position. */
+function fillIndex(
+  entries: readonly KernelCandidates["entries"][number][],
+  lines: string[],
+  full: readonly string[],
+  measured: (lines: string[], offset: number) => number
+): { offset: number; degraded: string[] } {
+  const degraded: string[] = [];
+  let offset = 0,
+    indexUsed = 0;
+  for (const e of entries) {
+    // #1468: the cursor counts catalog positions, so an expired entry still advances it.
+    if (e.expired_on) {
+      offset++;
+      continue;
+    }
+    const line = ruleIndexLine(e);
+    if (
+      indexUsed + line.length + 1 > RULEBOOK_INDEX_CHAR_BUDGET ||
+      measured([...lines, line], offset + 1) > RULE_KERNEL_CHAR_BUDGET
+    )
+      break;
+    lines.push(line);
+    indexUsed += line.length + 1;
+    offset++;
+    if (!full.includes(e.id)) degraded.push(e.id);
+  }
+  return { offset, degraded };
+}
 export function renderRuleKernel(
   candidates: KernelCandidates,
-  opts: { trigger: string; lexicalOnly?: boolean }
+  opts: { trigger: string; lexicalOnly?: boolean; language?: string }
 ): RenderedKernel {
   if (candidates.ids_only) throw new Error("IDs-only catalog cannot render a rule kernel");
   const entries = candidates.entries.map((e) => ({
@@ -93,7 +149,8 @@ export function renderRuleKernel(
     header.push(
       `Catalog source check incomplete: ${candidates.unavailable_sources} sources unavailable; listed entries do not prove full restoration.`
     );
-  const always = entries.filter((e) => (e.rulebook ?? "always") === "always");
+  const expired = expiredBlock(entries, opts.language === "de");
+  const always = entries.filter((e) => (e.rulebook ?? "always") === "always" && !e.expired_on);
   const full: string[] = [],
     bodies: string[] = [],
     overflow: string[] = [];
@@ -135,6 +192,7 @@ export function renderRuleKernel(
           `Catalog incomplete from source: ${candidates.omitted} entries unavailable; complete restoration is not established.`,
         ]
       : []),
+    ...expired,
     "Rule index (all tiers; descriptions are facts):",
   ];
   const tail = ["</recall-hints>", RULE_KERNEL_ASK_LINE, "</rule-kernel>"];
@@ -163,22 +221,8 @@ export function renderRuleKernel(
     always_overflow: always.map((e) => e.id),
   });
   if (measured(base(), 0) > RULE_KERNEL_CHAR_BUDGET) return minimal();
-  const lines = base(),
-    degraded: string[] = [];
-  let offset = 0,
-    indexUsed = 0;
-  for (const e of entries) {
-    const line = ruleIndexLine(e);
-    if (
-      indexUsed + line.length + 1 > RULEBOOK_INDEX_CHAR_BUDGET ||
-      measured([...lines, line], offset + 1) > RULE_KERNEL_CHAR_BUDGET
-    )
-      break;
-    lines.push(line);
-    indexUsed += line.length + 1;
-    offset++;
-    if (!full.includes(e.id)) degraded.push(e.id);
-  }
+  const lines = base();
+  const { offset, degraded } = fillIndex(entries, lines, full, measured);
   const next_cursor = offset < total ? rulebookCursor(candidates, offset) : undefined;
   const text = [...lines, footer(offset), ...tail].join("\n");
   // Hard boundary, independent of metadata/cursor lengths.

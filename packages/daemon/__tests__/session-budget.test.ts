@@ -21,6 +21,7 @@ import {
 } from "../src/session-budget.js";
 import { fitsBudget, governContext } from "../src/context-governor.js";
 import { HOOK_LANE_KINDS } from "../src/context-ledger.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 test("#458: emissions across all six lanes accumulate into one session total, and the block that no longer fits is the one flagged", () => {
   const ledger = new SessionBudgetLedger();
@@ -122,7 +123,7 @@ test("#458: recordBudgetShadow writes a budget_shadow event that reconciles with
     assert.equal(ev.budget, 400);
     assert.equal(ev.would_drop, true);
     assert.equal(ev.remaining_before, 400);
-    assert.equal(ev.session_id, "sess");
+    assert.equal(ev.session_id, telemetrySession("sess"));
   } finally {
     if (prev === undefined) delete process.env.BASTRA_LOG_PATH;
     else process.env.BASTRA_LOG_PATH = prev;

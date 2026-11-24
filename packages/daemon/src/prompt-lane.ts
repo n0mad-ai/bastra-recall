@@ -180,7 +180,7 @@ export async function runPromptLane(
       notice = await beginRulebookRound(payload, await catalogFor(payload, opts.kernel));
     } catch {
       // Even a catalog outage must expire the previous round's receipt.
-      notice = await beginRulebookRound(payload, { entries: [], omitted: 0 }).catch(() => "");
+      notice = await beginRulebookRound(payload, { entries: [], omitted: 0 }, { unavailable: true }).catch(() => "");
     }
   }
   const budgetNotice =

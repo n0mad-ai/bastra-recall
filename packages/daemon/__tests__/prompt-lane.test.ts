@@ -31,6 +31,7 @@ import {
 } from "../src/prompt-lane.js";
 import { classifyPromptMode, detectPreviousConvention } from "../src/prompt-classify.js";
 import { clearShown, decideBackoff, touchLoadedMarker, type SourceBackoff } from "../src/session-state.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 // ─── Pure unit tests ─────────────────────────────────────────────────────
 
@@ -830,7 +831,11 @@ test("#356 — prompt_hook_call carries the payload session_id and the injected 
 
     const ev = (await readTelemetryEvents(logDir)).find((e) => e.kind === "prompt_hook_call");
     assert.ok(ev, "a prompt_hook_call event must be written");
-    assert.equal(ev.session_id, "prompt-sess-356", "the event carries the payload's session, not a synthetic one");
+    assert.equal(
+      ev.session_id,
+      telemetrySession("prompt-sess-356"),
+      "the event carries the payload's session, not a synthetic one"
+    );
     assert.equal(typeof ev.hint_tokens_est, "number");
     assert.ok((ev.hint_tokens_est as number) > 0, "injected block must be counted");
   } finally {

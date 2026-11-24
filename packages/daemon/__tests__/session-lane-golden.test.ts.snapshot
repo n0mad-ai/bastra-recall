@@ -11,7 +11,7 @@ exports[`#1512 golden master — daemon unreachable 1`] = `
   "telemetry": [
     {
       "kind": "session_hook_call",
-      "session_id": "golden-daemon-unreachable",
+      "session_id": "<session:golden-daemon-unreachable>",
       "hook_version": "0.3.0",
       "source": "startup",
       "project": null,
@@ -88,7 +88,7 @@ exports[`#1512 golden master — hits from two scopes, pinned overlap, every sta
   "telemetry": [
     {
       "kind": "session_hook_call",
-      "session_id": "golden-hits-from-two-scopes-pinned-overlap-every-standing-block",
+      "session_id": "<session:golden-hits-from-two-scopes-pinned-overlap-every-standing-block>",
       "hook_version": "0.3.0",
       "source": "startup",
       "project": null,
@@ -234,7 +234,7 @@ exports[`#1512 golden master — nothing to say 1`] = `
   "telemetry": [
     {
       "kind": "session_hook_call",
-      "session_id": "golden-nothing-to-say",
+      "session_id": "<session:golden-nothing-to-say>",
       "hook_version": "0.3.0",
       "source": "startup",
       "project": null,
@@ -335,7 +335,7 @@ exports[`#1512 golden master — nothing to say, empty rule kernel 1`] = `
   "telemetry": [
     {
       "kind": "session_hook_call",
-      "session_id": "golden-nothing-to-say-empty-rule-kernel",
+      "session_id": "<session:golden-nothing-to-say-empty-rule-kernel>",
       "hook_version": "0.3.0",
       "source": "startup",
       "project": null,
@@ -441,7 +441,7 @@ exports[`#1512 golden master — only pinned entries, no recall hits 1`] = `
   "telemetry": [
     {
       "kind": "session_hook_call",
-      "session_id": "golden-only-pinned-entries-no-recall-hits",
+      "session_id": "<session:golden-only-pinned-entries-no-recall-hits>",
       "hook_version": "0.3.0",
       "source": "startup",
       "project": null,
@@ -547,7 +547,7 @@ exports[`#1512 golden master — rule kernel with one rule and a hit 1`] = `
   "telemetry": [
     {
       "kind": "session_hook_call",
-      "session_id": "golden-rule-kernel-with-one-rule-and-a-hit",
+      "session_id": "<session:golden-rule-kernel-with-one-rule-and-a-hit>",
       "hook_version": "0.3.0",
       "source": "resume",
       "project": null,
@@ -674,7 +674,7 @@ exports[`#1512 golden master — session context answers HTTP 500 1`] = `
   "telemetry": [
     {
       "kind": "session_hook_call",
-      "session_id": "golden-session-context-answers-HTTP-500",
+      "session_id": "<session:golden-session-context-answers-HTTP-500>",
       "hook_version": "0.3.0",
       "source": "startup",
       "project": null,
@@ -792,7 +792,7 @@ exports[`#1512 golden master — startup then resume then compact: cadence and r
   "telemetry": [
     {
       "kind": "session_hook_call",
-      "session_id": "golden-startup-then-resume-then-compact-cadence-and-released-dedup",
+      "session_id": "<session:golden-startup-then-resume-then-compact-cadence-and-released-dedup>",
       "hook_version": "0.3.0",
       "source": "startup",
       "project": null,
@@ -853,7 +853,7 @@ exports[`#1512 golden master — startup then resume then compact: cadence and r
     },
     {
       "kind": "session_hook_call",
-      "session_id": "golden-startup-then-resume-then-compact-cadence-and-released-dedup",
+      "session_id": "<session:golden-startup-then-resume-then-compact-cadence-and-released-dedup>",
       "hook_version": "0.3.0",
       "source": "resume",
       "project": null,
@@ -916,7 +916,7 @@ exports[`#1512 golden master — startup then resume then compact: cadence and r
     },
     {
       "kind": "session_hook_call",
-      "session_id": "golden-startup-then-resume-then-compact-cadence-and-released-dedup",
+      "session_id": "<session:golden-startup-then-resume-then-compact-cadence-and-released-dedup>",
       "hook_version": "0.3.0",
       "source": "compact",
       "project": null,
@@ -1123,7 +1123,7 @@ exports[`#1512 golden master — unfused and degraded recall 1`] = `
   "telemetry": [
     {
       "kind": "session_hook_call",
-      "session_id": "golden-unfused-and-degraded-recall",
+      "session_id": "<session:golden-unfused-and-degraded-recall>",
       "hook_version": "0.3.0",
       "source": "startup",
       "project": null,

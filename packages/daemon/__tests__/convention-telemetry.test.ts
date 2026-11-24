@@ -10,6 +10,7 @@ import { callerSessionStore } from "../src/caller-session.js";
 import { mutateSessionState } from "../src/session-state.js";
 import { Telemetry } from "../src/telemetry.js";
 import { readEvents } from "../src/cli/log-stats.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 test("hook joins preserve legacy access while isolating session slots across persistence", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-convention-joins-"));
@@ -106,7 +107,7 @@ test("validator logs passing, failed and unattributed attempts without raw artif
         ["pass", false, false],
       ]
     );
-    assert.equal(rows[0].caller_session, "validator-session");
+    assert.equal(rows[0].caller_session, telemetrySession("validator-session"));
     assert.equal(rows[0].task_kind, "approved-copy");
     assert.equal(rows[0].rule_revision, "rev");
     assert.equal(rows[0].generation, 2);

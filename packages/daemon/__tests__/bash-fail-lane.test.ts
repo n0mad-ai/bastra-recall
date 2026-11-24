@@ -13,6 +13,7 @@ import {
   markThrottle,
   runBashFailLane,
 } from "../src/bash-fail-lane.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 const SESSION = "test-session-fail-hook";
 
@@ -524,12 +525,13 @@ describe("bash-fail-hook: telemetry session (#356)", () => {
       applied[k] = process.env[k];
       process.env[k] = v;
     }
+    const sid = `bashfail-sess-356-${Date.now()}`;
     try {
       await runBashFailLane(
         {
           hook_event_name: "PostToolUse",
           tool_name: "Bash",
-          session_id: `bashfail-sess-356-${Date.now()}`,
+          session_id: sid,
           tool_input: { command: "npm test" },
           tool_response: { exit_code: 1 },
         } as Parameters<typeof runBashFailLane>[0],
@@ -537,7 +539,7 @@ describe("bash-fail-hook: telemetry session (#356)", () => {
       );
       const ev = (await readTelemetryEvents(logDir)).find((e) => e.kind === "bash_fail_hook_call");
       assert.ok(ev, "a bash_fail_hook_call event must be written");
-      assert.match(String(ev.session_id), /^bashfail-sess-356-/);
+      assert.equal(ev.session_id, telemetrySession(sid));
     } finally {
       for (const [k, v] of Object.entries(applied)) {
         if (v === undefined) delete process.env[k];

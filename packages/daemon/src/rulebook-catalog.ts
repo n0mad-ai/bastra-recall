@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
   computeStaleness,
+  pastValidUntil,
   resolveRulebook,
   stripAutoRelatedSection,
   type Memory,
@@ -41,6 +42,12 @@ export interface KernelEntry {
   binding_hash?: string;
   scope?: string;
   validator?: Memory["fm"]["validator"];
+  /** #1591: the rule's own source revision, equal in both catalog modes. Its
+   *  tier may follow session state (an active convention); this does not. */
+  rule_hash?: string;
+  /** #1468: the owner's own `valid_until` has passed (as written). The rule
+   *  kernel lists it apart, for a decision with the user, not as in force. */
+  expired_on?: string;
 }
 export interface KernelCandidates {
   entries: KernelEntry[];
@@ -106,6 +113,12 @@ export function catalogDeclaration(
       : undefined)
   );
 }
+/** #1468: the end date as written, once it has passed. */
+function expiredOn(fm: Memory["fm"]): { expired_on?: string } {
+  if (!pastValidUntil(fm as Record<string, unknown>)) return {};
+  const raw: unknown = fm.valid_until;
+  return { expired_on: raw instanceof Date ? raw.toISOString().slice(0, 10) : String(raw) };
+}
 async function projectIndex(memories: Memory[], opts: RulebookCatalogOptions): Promise<KernelCandidates> {
   const active = new Set(opts.active.map((a) => a.id));
   const floors = await (opts.floors ? opts.floors(opts.project) : listFloors(opts.project ?? undefined)).catch(
@@ -124,14 +137,19 @@ async function projectIndex(memories: Memory[], opts: RulebookCatalogOptions): P
     if (!inScope(m)) continue;
     const declaration = catalogDeclaration(m.fm, { activeConvention: active.has(m.fm.id), floor: pinned.has(m.fm.id) });
     if (!declaration) continue;
+    const expired = expiredOn(m.fm);
+    const source = m.revision ?? [m.fm, m.body];
+    const ruleHash = hash(source);
     if (opts.mode === "ids") {
       entries.push({
         id: m.fm.id,
+        ...expired,
         rulebook: declaration.rulebook,
         title: "",
         body: "",
         group: "explicit",
-        binding_hash: hash([m.revision ?? [m.fm, m.body], declaration]),
+        binding_hash: hash([source, declaration]),
+        rule_hash: ruleHash,
         revision: null,
         updated: null,
         stale_status: "unknown",
@@ -168,6 +186,8 @@ async function projectIndex(memories: Memory[], opts: RulebookCatalogOptions): P
       body: declaration.rulebook === "always" ? body : "",
       binding_hash: hash([m.fm.id, m.fm.title, m.fm.scope, declaration, body, m.fm.validator, m.fm.rule_categories]),
       ...declaration,
+      ...expired,
+      rule_hash: ruleHash,
     });
   }
   entries.sort(
@@ -339,6 +359,7 @@ export function rulebookPage(c: KernelCandidates, cursor?: string, maxChars = RU
       ...(e.write_origin_evidence ? { write_origin_evidence: e.write_origin_evidence } : {}),
       revision: e.revision,
       ...(e.source_unavailable ? { source_unavailable: true } : {}),
+      ...(e.expired_on ? { expired_on: e.expired_on } : {}),
     })),
     ...(offset < c.entries.length ? { next_cursor: rulebookCursor(c, offset) } : {}),
     end: offset === c.entries.length,

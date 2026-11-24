@@ -335,7 +335,7 @@ const LOCAL_ROUTES: readonly LocalRoute[] = [
   },
   { method: "POST", path: "/hook/prompt", handle: ({ req, res, ctx }) => handleHookPrompt(req, res, ctx) },
   { method: "POST", path: "/hook/write", handle: ({ req, res, ctx }) => handleHookWrite(req, res, ctx) },
-  { method: "POST", path: "/hook/bash-pre", handle: ({ req, res, ctx }) => handleHookBashPre(req, res, ctx) },
+  { method: "POST", path: "/hook/bash-pre", handle: ({ req, res }) => handleHookBashPre(req, res) },
   { method: "POST", path: "/hook/bash-fail", handle: ({ req, res, ctx }) => handleHookBashFail(req, res, ctx) },
   // #144: lightweight act-signal (PostToolUse:Bash). No recall, no injection —
   // only matches the excerpt against open loadedMemories episodes so

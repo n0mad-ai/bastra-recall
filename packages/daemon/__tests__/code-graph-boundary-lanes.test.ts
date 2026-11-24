@@ -25,6 +25,7 @@ import { mkdtemp, mkdir, readFile, rm, utimes, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openAppDatabase } from "../src/app-database.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 // HOME first: `settingsFilePath()` and the pending file resolve under it, and
 // this test enables a repository — that must not land in the developer's own
@@ -394,7 +395,7 @@ test("writes one delivered-block row for the block it hands over", async () => {
     assert.equal(rows[0]!.kind, "code_tool_call");
     assert.equal(rows[0]!.status, "ok");
     assert.equal(rows[0]!.files, 3);
-    assert.equal(rows[0]!.session_id, id);
+    assert.equal(rows[0]!.session_id, telemetrySession(id));
     assert.ok((rows[0]!.tokens_est as number) > 0);
   } finally {
     process.env.BASTRA_TELEMETRY = "off";

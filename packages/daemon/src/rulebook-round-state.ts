@@ -7,7 +7,7 @@
  * and the correspondence round (rulebook-correspondence.ts).
  */
 import { ConventionValidatorSchema } from "@bastra-recall/core";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { hookAgent } from "./hook-surface.js";
 
@@ -24,6 +24,9 @@ const Actor = z.object({
   dismissed: z.array(RuleRef).default([]),
   key: z.string(),
   checked: z.boolean().default(false),
+  // #1591: the catalog fingerprint the actor's last check answered. The check
+  // stays valid across rounds while the catalog keeps this fingerprint.
+  checkedCatalog: z.string().optional(),
   ids: z.array(z.string()).default([]),
   denies: z.number().default(0),
   stops: z.number().default(0),
@@ -36,6 +39,8 @@ const State = z.object({
   blockedDismissals: z.array(z.string()).default([]),
   context: z.string(),
   round: z.number(),
+  // #1591: fingerprint of the catalog the hooks saw last (round start or boundary).
+  catalog: z.string().optional(),
   actors: z.array(Actor),
   unchecked: z.number(),
   exceptions: z.array(z.string()).default([]),
@@ -97,6 +102,26 @@ export function roundActor(state: CheckState, key: string) {
     state.actors.push(found);
   }
   return found;
+}
+/**
+ * #1591 (owner decision B): what a rulebook check answered — every entry's
+ * identity, source revision and expiry plus the omitted count. A new, changed,
+ * removed or newly expired rule changes it. A tier that follows session state
+ * (a loaded rule becoming an active convention) does not.
+ */
+export function rulebookFingerprint(c: {
+  entries: readonly { id: string; rule_hash?: string; expired_on?: string }[];
+  omitted: number;
+}): string {
+  return createHash("sha256")
+    .update(JSON.stringify([c.entries.map((e) => [e.id, e.rule_hash, e.expired_on]), c.omitted]))
+    .digest("hex")
+    .slice(0, 24);
+}
+/** #1591: a check holds while the catalog it answered is unchanged. A check
+ *  recorded before any fingerprint existed holds for its own round only. */
+export function checkHolds(a: { checked: boolean; checkedCatalog?: string }, state: { catalog?: string }): boolean {
+  return a.checkedCatalog === undefined ? a.checked : a.checkedCatalog === state.catalog;
 }
 export function roundIdentity(p: RulebookPayload): string {
   if (p.agent_id) return `agent:${p.agent_id}`;

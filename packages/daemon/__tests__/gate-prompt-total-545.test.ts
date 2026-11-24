@@ -43,6 +43,7 @@ import {
   MIN_CALLS_FOR_VERDICT,
 } from "../src/cli/log-stats.js";
 import { CLIENT_ROW_BASE } from "../src/hook-client-telemetry.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = resolve(HERE, "..", "src");
@@ -143,7 +144,11 @@ test("#545: both prompt clients write `unknown`, with the payload's own lane and
       "unknown",
       `${shape}: a client that never reached the daemon cannot know the trigger class`
     );
-    assert.equal(row.session_id, session, `${shape}: the payload's session must be stamped, not a fresh UUID`);
+    assert.equal(
+      row.session_id,
+      telemetrySession(session),
+      `${shape}: the payload's session must be stamped, not a fresh UUID`
+    );
     assert.match(String(row.hook_version), /-(stub|thin)$/, `${shape}: the row must declare itself a client row`);
     assert.equal(row.status, "daemon-unreachable", `${shape}: a dead daemon is a failure, not a quiet turn`);
     assert.equal(row.daemon_reachable, false);

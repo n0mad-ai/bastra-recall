@@ -29,6 +29,7 @@ import { runPromptLane } from "../src/prompt-lane.js";
 import { runSessionLane } from "../src/session-lane.js";
 import { loadSessionState } from "../src/session-state.js";
 import { recordRulebookLoad } from "../src/rulebook-check.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = resolve(HERE, "..", "src");
@@ -130,7 +131,7 @@ describe("#1303 gate clients fail open with a non-conformance row", () => {
         assert.equal(r.stdout, "{}", shape);
         assert.equal(r.rows.length, 1, `${shape}: one client row ${JSON.stringify(r)}`);
         assert.equal(r.rows[0]!.kind, "gate_hook_call", shape);
-        assert.equal(r.rows[0]!.session_id, `gate-timeout-${shape}`, shape);
+        assert.equal(r.rows[0]!.session_id, telemetrySession(`gate-timeout-${shape}`), shape);
         assert.equal(r.rows[0]!.status, "timeout", shape);
         assert.equal(r.rows[0]!.non_conformance, "gate_timeout", shape);
         assert.equal(r.rows[0]!.outcome, "pass", shape);
@@ -155,7 +156,7 @@ describe("#1303 gate clients fail open with a non-conformance row", () => {
           assert.equal(r.code, 0, evidence);
           assert.equal(r.stdout, "{}", evidence);
           assert.equal(r.rows.length, 1, evidence);
-          assert.equal(r.rows[0]!.session_id, `gate-overlap-${shape}`, evidence);
+          assert.equal(r.rows[0]!.session_id, telemetrySession(`gate-overlap-${shape}`), evidence);
           assert.equal(r.rows[0]!.status, "timeout", evidence);
           assert.equal(r.rows[0]!.non_conformance, "gate_timeout", evidence);
           assert.equal(r.rows[0]!.error, null, evidence);

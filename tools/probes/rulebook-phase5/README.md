@@ -34,16 +34,19 @@ is allowed, then unchecked passage is reported. Claude Code gets at most two
 copy repairs; Codex records violations without same-turn length repair (#1311).
 The model can still lie in its explicit decision; there is no semantic checker.
 
-Cost controls measure 50 harmless scripted rounds (question, calculation, ack,
-code, translation): one check each and no additional Stop blocks/repairs. The
+Cost controls measure 50 harmless scripted prompts (question, calculation, ack,
+code, translation) in fresh sessions, with one initial check each and no Stop
+blocks or repairs. The
 40 deliberately unchecked harmless rounds each get the bounded first block.
 Both SessionStart and UserPromptSubmit output are measured against 10,000 characters, including the round notice. Payload bytes are measured, not LLM tokens or real-model frequency. Both former
 GAP cases are now PASS for all five languages and both host identifiers.
 
-All assertions have finite loops and HTTP deadlines; the daemon-outage probe
-launches only the repository's thin gate client, with isolated environment
-and a five-second process deadline. It shuts down/restarts only disposable
-servers. The tests cannot certify installed Claude/Codex hook enforcement,
+All assertions have finite loops and HTTP deadlines. The daemon-outage probe
+launches the repository's thin gate client in an isolated environment with a
+five-second process deadline and restarts a disposable daemon. It checks that
+the hook fails open, reports the outage after recovery, and reuses the confirmed
+check while the catalog is unchanged. Compact requires a new check (#1591).
+The tests cannot certify installed Claude/Codex hook enforcement,
 agent semantic judgement, arbitrary language coverage or arbitrary wording.
 
 Tracking: [#1340](https://github.com/n0mad-ai/bastra-recall/issues/1340) and

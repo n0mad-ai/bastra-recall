@@ -150,23 +150,26 @@ test("display once per session across concurrent lanes, preserving state and ref
     );
   }));
 
-test("harmless Bash lookup is in-process and before the tripwire return", () =>
+test("#1460 F6: a harmless Bash command searches no drafts; a risk-checked one still does", () =>
   isolated(async () => {
     const rows = Array.from({ length: 20 }, (_, i) => draft(i, `other text topic${i}`));
-    rows[0].situation.lits = ["ssh", "amber-box.invalid"];
+    rows[0].situation.lits = ["ssh", "rm", "amber-box.invalid"];
     await writeFile(process.env.BASTRA_DRAFTS_PATH!, JSON.stringify({ version: 1, rows }));
     await listDrafts();
-    const payload = {
+    const bash = (command: string, session_id: string) => ({
       hook_event_name: "PreToolUse",
       tool_name: "Bash",
-      tool_input: { command: "ssh amber-box.invalid" },
-      session_id: "bash-new",
-    };
-    const out = await runBashPreLane(payload, "http://127.0.0.1:1");
-    assert.match(out, /draft-hints/);
-    assert.equal(await runBashPreLane(payload, "http://127.0.0.1:1"), "{}");
+      tool_input: { command },
+      session_id,
+    });
+    assert.equal(await runBashPreLane(bash("ssh amber-box.invalid", "bash-new"), "http://127.0.0.1:1"), "{}");
+    const risky = await runBashPreLane(bash("rm -rf amber-box.invalid", "bash-new"), "http://127.0.0.1:1");
+    assert.match(risky, /draft-hints/);
     process.env.BASTRA_DRAFT_HINTS = "0";
-    assert.equal(await runBashPreLane({ ...payload, session_id: "disabled" }, "http://127.0.0.1:1"), "{}");
+    assert.doesNotMatch(
+      await runBashPreLane(bash("rm -rf amber-box.invalid", "disabled"), "http://127.0.0.1:1"),
+      /draft-hints/
+    );
   }));
 
 async function fixtureServer(fn: (url: string) => Promise<void>) {

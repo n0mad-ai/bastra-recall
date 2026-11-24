@@ -1,6 +1,6 @@
 import { requireActionRules, actionRulebookScope } from "./rulebook-check.js";
 import { catalogFor, rulebookBoundary, type RulebookDenialReceipt, type CatalogProvider } from "./rulebook-check.js";
-import { rulebookMutates, bastraReadTool } from "./rulebook-effects.js";
+import { rulebookMutates, bastraReadTool, bastraTool } from "./rulebook-effects.js";
 import { withRulebookDeadline, RULEBOOK_CATALOG_BUDGET_MS } from "./rulebook-catalog.js";
 import { spoolRulebookFailure } from "./rulebook-spool.js";
 import { confirmLaneDelivery } from "./lane-delivery.js";
@@ -77,8 +77,10 @@ import { recordBudgetShadow } from "./session-budget.js";
 import { projectForLane } from "./scope-filter.js";
 import { renderKernelReminder, RULE_KERNEL_TOOL_CALLS, renderRuleKernel } from "./rule-kernel.js";
 import { kernelSeen, kernelUnchanged, rememberKernel, type KernelSeen } from "./rule-kernel-seen.js";
+import { getPrimaryLanguage } from "./settings.js";
 
 import { actionReflexPool, matchActionReflex } from "./gate-lane-reflex.js";
+import { telemetrySession } from "./telemetry-session.js";
 export { actionContext, actionReflexPool, MAX_ACTION_CONTEXT_CHARS } from "./gate-lane-reflex.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", FAST_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
@@ -155,9 +157,11 @@ export function actionConventionFrame(
   ].join("\n");
 }
 
-/** Read/check tools always pass; Bastra writes participate in round checking. */
+/** Read/check tools always pass. #1591 (owner decision B): every tool of
+ *  Recall's own server passes too — saving must always work; a pending
+ *  must-load waits for the next other tool. */
 export function isGateExempt(toolName: string, input: Record<string, unknown>): boolean {
-  if (bastraReadTool(toolName)) return true;
+  if (bastraReadTool(toolName) || bastraTool(toolName)) return true;
   return toolName === "ToolSearch" && typeof input.query === "string" && /bastra/i.test(input.query);
 }
 
@@ -608,7 +612,10 @@ async function redeliverKernel(
       Math.min(deadline, Date.now() + RULEBOOK_CATALOG_BUDGET_MS)
     );
     const trigger = `${RULE_KERNEL_TOOL_CALLS} tool calls without a prompt`;
-    const rendered = renderRuleKernel(candidates, { trigger });
+    const rendered = renderRuleKernel(candidates, {
+      trigger,
+      language: await getPrimaryLanguage().catch(() => undefined),
+    });
     if (Date.now() >= deadline) {
       finishKernel(false);
       return "{}";
@@ -706,7 +713,7 @@ async function writeTelemetry(
     const event = {
       kind: "gate_hook_call",
       ts,
-      session_id: sessionId ?? randomUUID(),
+      session_id: telemetrySession(sessionId) ?? randomUUID(),
       hook_version: HOOK_VERSION,
       tool_name: typeof payload.tool_name === "string" ? payload.tool_name : null,
       latency_ms_total: Date.now() - startedAt,

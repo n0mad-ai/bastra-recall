@@ -17,6 +17,7 @@ import { buildContextLedger, type LedgerEvent } from "../src/context-ledger.js";
 import { runSessionLane } from "../src/session-lane.js";
 import { budgetShadowWritesSettled } from "../src/session-budget.js";
 import { loadSessionState } from "../src/session-state.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -118,7 +119,7 @@ test("#373: session_hook_call carries the payload session_id, hook_version and t
     });
     const ev = (await readEvents(logDir)).find((e) => e.kind === "session_hook_call");
     assert.ok(ev, "a session_hook_call event must be written");
-    assert.equal(ev.session_id, "sess-373", "the payload session, not a synthetic one (#372)");
+    assert.equal(ev.session_id, telemetrySession("sess-373"), "the payload session, not a synthetic one (#372)");
     assert.equal(typeof ev.hook_version, "string");
     assert.equal(ev.source, "startup");
     assert.equal(ev.daemon_reachable, true);
@@ -217,7 +218,7 @@ test("#373: an unreachable daemon still yields a row with the payload session an
     assert.doesNotThrow(() => JSON.parse(out), "fail-open: always a JSON document");
     const ev = (await readEvents(logDir)).find((e) => e.kind === "session_hook_call");
     assert.ok(ev);
-    assert.equal(ev.session_id, "sess-down");
+    assert.equal(ev.session_id, telemetrySession("sess-down"));
     assert.equal(ev.daemon_reachable, false);
     assert.equal(ev.status, "daemon-unreachable");
     // Local parts (language hint, banners) can still be injected without a
@@ -255,7 +256,7 @@ test("#458 (shadow): the SessionStart lane charges its emitted block to the sess
     await budgetShadowWritesSettled();
     const events = await readEvents(logDir);
     const calls = events.filter((e) => e.kind === "session_hook_call");
-    const shadow = events.filter((e) => e.kind === "budget_shadow" && e.session_id === "sess-458");
+    const shadow = events.filter((e) => e.kind === "budget_shadow" && e.session_id === telemetrySession("sess-458"));
     assert.equal(calls.length, 3);
     assert.equal(shadow.length, 3, "one decision per emission");
     for (let i = 0; i < 3; i++) {

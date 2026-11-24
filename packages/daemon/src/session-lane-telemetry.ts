@@ -11,6 +11,7 @@ import { defaultLogDir } from "./telemetry.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
 import type { HookAgent, HookClientEvidence } from "./hook-surface.js";
 import type { Residency, ResidencySource } from "./embedding-warmup.js";
+import { telemetrySession } from "./telemetry-session.js";
 
 const HOOK_VERSION = "0.3.0";
 
@@ -138,7 +139,7 @@ export async function writeTelemetry(payload: SessionHookTelemetry): Promise<voi
     const event = {
       kind: "session_hook_call",
       ts,
-      session_id: payloadSessionId ?? randomUUID(),
+      session_id: telemetrySession(payloadSessionId) ?? randomUUID(),
       hook_version: HOOK_VERSION,
       ...rest,
       // #507: session is this lane's own hook_source — it never varies per

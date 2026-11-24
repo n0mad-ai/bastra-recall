@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { runStopLane, type ClaudeStopPayload } from "../src/stop-lane.js";
 import { loadSessionState, mutateSessionState, recordTouched, taskIdFor } from "../src/session-state.js";
 import { setRepoEnabled } from "../src/code-graph/enabled-repos.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 const TRANSCRIPT = [
   { role: "assistant", content: "Which architecture?\n1. Polling\n2. Queue" },
@@ -111,7 +112,7 @@ async function assertOrdinaryWork(dir: string, sid: string): Promise<void> {
   assert.match((await loadSessionState(sid)).boundary?.note ?? "", /src\/audit\.ts/);
   const evaluated = (await rows(dir)).filter((row) => row.kind === "save_eval_call");
   assert.equal(evaluated.length, 1, "initial Stop runs save evaluation exactly once");
-  assert.equal(evaluated[0].session_id, sid);
+  assert.equal(evaluated[0].session_id, telemetrySession(sid));
   assert.equal(evaluated[0].delivery, "same-turn");
 }
 
@@ -160,7 +161,7 @@ test("#1311 hook-active repairs stay bounded and log session_known without evalu
     const exhausted = (await rows(dir)).filter((row) => row.reason === "repair_exhausted");
     assert.equal(exhausted.length, 1);
     assert.equal(exhausted[0].session_known, true);
-    assert.equal(exhausted[0].session_id, sid);
+    assert.equal(exhausted[0].session_id, telemetrySession(sid));
     await assertOrdinaryWork(dir, sid);
   });
 });

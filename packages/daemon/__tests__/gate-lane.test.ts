@@ -37,6 +37,7 @@ import { runBashPreLane } from "../src/bash-pre-lane.js";
 import { openAppDatabase } from "../src/app-database.js";
 import { FAST_BUDGET_MS } from "../src/hook-budgets.js";
 import { withFixtureClock } from "./fixtures/fixture-clock.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 type Hook = {
   hookSpecificOutput?: {
@@ -131,7 +132,7 @@ async function gateRows(sessionId: string): Promise<Array<Record<string, unknown
     for (const line of (await readFile(join(logDir, name), "utf8")).split("\n")) {
       if (!line.trim()) continue;
       const row = JSON.parse(line) as Record<string, unknown>;
-      if (row.kind === "gate_hook_call" && row.session_id === sessionId) rows.push(row);
+      if (row.kind === "gate_hook_call" && row.session_id === telemetrySession(sessionId)) rows.push(row);
     }
   }
   return rows;

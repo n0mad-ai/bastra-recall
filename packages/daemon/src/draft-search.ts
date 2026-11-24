@@ -13,6 +13,7 @@ import { recordDraftHints } from "./draft-use.js";
 import { envOff } from "./env.js";
 import { logDirFor } from "./telemetry.js";
 import { draftVocabularySnapshot, type DraftVocabulary } from "./draft-vocabulary.js";
+import { telemetrySession } from "./telemetry-session.js";
 
 /** Unmeasured on real data; measured against the fixed 200-draft DE/EN corpus. */
 export const DRAFT_TEXT_MIN_SHARED = 2;
@@ -206,7 +207,7 @@ export function deferDraftFeedback(
           JSON.stringify({
             kind: "draft_hint",
             ts,
-            session_id: sessionId,
+            session_id: telemetrySession(sessionId),
             hook_event: event,
             draft_ids: hits.map((hit) => hit.id),
             draft_count: hits.length,

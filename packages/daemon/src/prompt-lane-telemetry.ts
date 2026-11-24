@@ -21,6 +21,7 @@ import type { PromptSearch, PromptHintSelection } from "./prompt-lane-search.js"
 import type { RecallHit, PromptReflexHit } from "./prompt-format.js";
 import type { TakenBoundary } from "./session-state.js";
 import type { DeliveredPromptImpact } from "./code-graph/prompt-impact.js";
+import { telemetrySession } from "./telemetry-session.js";
 
 const HOOK_VERSION = "0.3.0"; // 0.3.0 = daemon-side lane (#343)
 
@@ -148,7 +149,7 @@ export async function writeTelemetry(payload: PromptHookTelemetry): Promise<void
     const event = {
       kind: "prompt_hook_call",
       ts,
-      session_id: payloadSessionId ?? randomUUID(),
+      session_id: telemetrySession(payloadSessionId) ?? randomUUID(),
       hook_version: HOOK_VERSION,
       ...rest,
       // #507: prompt is this lane's own hook_source — it never varies per call.

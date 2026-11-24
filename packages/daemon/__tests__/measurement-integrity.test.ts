@@ -35,6 +35,7 @@ import { createLatencyProfile, type DeadlineShadow } from "../src/latency-profil
 import { createEmbeddingWarmup, RESIDENT_WINDOW_MS } from "../src/embedding-warmup.js";
 import { computeHostProfileId } from "../src/host-profile.js";
 import { FORWARDER_HOOK_BUDGET_MS, REQUEST_TIMEOUT_MS } from "../src/forwarder-daemon-client.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 // #362: these tests measure the dense arm on short hook queries ("deployen");
 // the query router, live by default since v1.0.1, would skip that arm.
@@ -400,7 +401,7 @@ test("#493: die Gruppierungs-ID verbindet das Sitzungsereignis mit JEDEM seiner 
   assert.ok(recalls.length >= 2, `ein Start feuert mehrere Recalls, waren ${recalls.length}`);
   for (const r of recalls) {
     assert.equal(r.session_start_call_id, GRUPPE, "jeder Teil-Recall trägt die Klammer");
-    assert.equal(r.session_id, "sess-493", "die Session bleibt daneben stehen");
+    assert.equal(r.session_id, telemetrySession("sess-493"), "die Session bleibt daneben stehen");
   }
   // Zählbar: EIN Start, egal wie viele Recalls er auslöst.
   assert.equal(new Set(recalls.map((r) => r.session_start_call_id)).size, 1);

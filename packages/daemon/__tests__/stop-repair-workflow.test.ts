@@ -1,5 +1,6 @@
 import { recordRulebookCheck } from "../src/rulebook-check.js";
 import { checkStopRepair } from "../src/stop-repair.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 /** #1311 R3: invented DM through real prompt, validation, receipt and Stop lanes.
  * Only retrieval responses are fixtures; metadata comes from a real vault file.
  * P2: a later edited artifact still accepts the prior task/generation receipt;
@@ -166,7 +167,12 @@ async function exhaustion(sid: string): Promise<Record<string, unknown>[]> {
     if (!name.startsWith("events-")) continue;
     for (const line of (await readFile(join(root, "logs", name), "utf8")).split("\n").filter(Boolean)) {
       const row = JSON.parse(line) as Record<string, unknown>;
-      if (row.kind === "non_conformance" && row.reason === "repair_exhausted" && row.session_id === sid) rows.push(row);
+      if (
+        row.kind === "non_conformance" &&
+        row.reason === "repair_exhausted" &&
+        row.session_id === telemetrySession(sid)
+      )
+        rows.push(row);
     }
   }
   return rows;

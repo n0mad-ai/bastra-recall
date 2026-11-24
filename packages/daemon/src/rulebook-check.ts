@@ -6,7 +6,9 @@ import { randomUUID } from "node:crypto";
 import { compactContextNotice, resetContextNotices } from "./context-notice.js";
 import { z } from "zod";
 import {
+  checkHolds,
   readCheckState,
+  rulebookFingerprint,
   roundActor as actor,
   roundIdentity as identity,
   sessionRulebookProject,
@@ -48,10 +50,11 @@ export {
   claimRoundRepair,
   refreshRoundValidators,
 } from "./rulebook-correspondence.js";
-// Pending work and actual loads survive a round reset; non-applicability is round-only.
+// Pending work, actual loads and #1591's catalog-bound check survive a round
+// reset; non-applicability is round-only.
 const deferredActors = (s: CheckState) =>
   s.actors
-    .filter((a) => a.deferredStop || a.required.length || a.loaded.length)
+    .filter((a) => a.deferredStop || a.required.length || a.loaded.length || a.checkedCatalog !== undefined)
     .map((a) => ({
       ...a,
       correspondenceEvidence: false,
@@ -74,27 +77,61 @@ export async function resetRulebookContext(sessionId: string): Promise<void> {
         project: old.project,
         context: randomUUID(),
         round: old.round,
-        actors: deferredActors(old).map((a) => ({ ...a, loaded: [], dismissed: [] })),
+        // #1591: a compact/clear drops what the check answered; it no longer holds.
+        actors: deferredActors(old).map((a) => ({ ...a, loaded: [], dismissed: [], checkedCatalog: undefined })),
         unchecked: old.unchecked,
         copyViolations: old.copyViolations,
         blockedDismissals: old.blockedDismissals,
         exceptions: old.exceptions,
+        catalog: old.catalog,
       });
     });
 }
-export async function beginRulebookRound(p: RulebookPayload, catalog: KernelCandidates): Promise<string> {
+/**
+ * #1591 (owner decision B): record the new round's catalog and say whether
+ * `key`'s last confirmed check still holds. An unchanged catalog keeps it; a
+ * new, changed or expired rule ends it at once. An unreadable catalog keeps
+ * the last fingerprint (an outage is no rule change) and asks as before.
+ */
+function carryCheck(next: CheckState, catalog: KernelCandidates, unavailable: boolean | undefined, key: string) {
+  if (unavailable) return false;
+  next.catalog = rulebookFingerprint(catalog);
+  const own = next.actors.find((a) => a.key === key);
+  return !!own && checkHolds(own, next);
+}
+/** #1591: the round's request to check, left out while the last check still holds. */
+function checkAsk(count: number, held: boolean, de: boolean, example: string): { full: string; short: string } {
+  if (!count || held) return { full: "", short: "" };
+  return de
+    ? {
+        full: `Regelbuch: ${count} Regeln im Index; vor der Antwort prüfen (load_memory oder ${example}, wenn keine zutrifft).`,
+        short: `Regelbuch unverändert: vor dieser Antwort prüfen; keine passende Regel: ${example}.`,
+      }
+    : {
+        full: `Rulebook: ${count} rules in the index; check before answering (load_memory or ${example} if none applies).`,
+        short: `Rulebook unchanged: check before this answer; no applicable rule: ${example}.`,
+      };
+}
+/** `unavailable`: the catalog could not be read; the round still resets, but
+ *  the last known fingerprint stays (an outage is no rule change, #1591). */
+export async function beginRulebookRound(
+  p: RulebookPayload,
+  catalog: KernelCandidates,
+  opts: { unavailable?: boolean } = {}
+): Promise<string> {
   if (!p.session_id || hookClientEvidence(p) === "replay") return "";
   let unchecked = await drainRulebookFailures(p.session_id);
   let exceptions: string[] = [],
     blockedDismissals: string[] = [];
   let copyViolations = 0;
+  let stillChecked = false;
   const persisted = await mutateSessionState(p.session_id, (s) => {
     const old = readCheckState(s);
     unchecked += old.unchecked;
     exceptions = old.exceptions;
     blockedDismissals = old.blockedDismissals;
     copyViolations = old.copyViolations;
-    put(s, {
+    const next: CheckState = {
       project: catalog.project !== undefined ? catalog.project : old.project,
       context: old.context,
       round: old.round + 1,
@@ -103,7 +140,10 @@ export async function beginRulebookRound(p: RulebookPayload, catalog: KernelCand
       copyViolations: 0,
       blockedDismissals: [],
       exceptions: [],
-    });
+      catalog: old.catalog,
+    };
+    stillChecked = carryCheck(next, catalog, opts.unavailable, identity(p));
+    put(s, next);
   });
   if (!persisted && unchecked) await spoolRulebookFailure(p.session_id, unchecked);
   const de = (await getPrimaryLanguage().catch(() => undefined)) === "de";
@@ -115,21 +155,9 @@ export async function beginRulebookRound(p: RulebookPayload, catalog: KernelCand
       ? `Korrespondenz: Nur wenn diese Runde tatsächlich eine Nachricht bearbeitet (gemeldete Aufgabenstufe, Kopierstruktur unter geltendem Validator oder externer Nachrichten-Toolaufruf), jede ID ausdrücklich erklären: ${correspondence.slice(0, 40).join(", ")}${correspondence.length > 40 ? ` (+${correspondence.length - 40}; vollständige IDs mit list_rules)` : ""}. Alternativ alle ungeschützten Korrespondenzregeln mit not_applicable:[{category:"correspondence",reason}] erklären. In dieser Runde geladene oder als anwendbar erklärte Regeln bleiben verbindlich. Ein rulebook_check genügt: anwendbare IDs in applicable, jede übrige ID in not_applicable:[{id,reason}] mit mindestens 10 Zeichen Begründung. applicable:[] allein genügt nicht. Laden zählt als anwendbar; erklärte Validatoren prüfen die Antwort auch ohne Task. Die Aufgabenstufe ist eine Selbstauskunft des Agenten, kein Nachweis einer Nutzerfreigabe oder Versandberechtigung.`
       : `Correspondence: only when this round actually handles a message (reported task stage, copy structure under an applied validator, or external messaging tool call), explicitly decide every ID: ${correspondence.slice(0, 40).join(", ")}${correspondence.length > 40 ? ` (+${correspondence.length - 40}; get all IDs with list_rules)` : ""}. Alternatively cover all unprotected correspondence rules with not_applicable:[{category:"correspondence",reason}]. Rules loaded/applied this round remain binding. One rulebook_check suffices: applicable IDs plus every remaining ID in not_applicable:[{id,reason}], at least 10 substantive characters. applicable:[] alone is insufficient. Loading counts as applicable; declared validators check the answer even without task. The workflow stage is an agent self-report, not evidence of user approval or sending permission.`
     : "";
-  const fullProcedure = [
-    count
-      ? de
-        ? `Regelbuch: ${count} Regeln im Index; vor der Antwort prüfen (load_memory oder ${example}, wenn keine zutrifft).`
-        : `Rulebook: ${count} rules in the index; check before answering (load_memory or ${example} if none applies).`
-      : "",
-    taskNote,
-  ]
-    .filter(Boolean)
-    .join("\n");
-  const reminder = count
-    ? de
-      ? `Regelbuch unverändert: vor dieser Antwort prüfen; keine passende Regel: ${example}.`
-      : `Rulebook unchanged: check before this answer; no applicable rule: ${example}.`
-    : "";
+  const ask = checkAsk(count, stillChecked, de, example);
+  const fullProcedure = [ask.full, taskNote].filter(Boolean).join("\n");
+  const reminder = ask.short;
   const correspondenceReminder = correspondence.length
     ? de
       ? " Korrespondenzpflicht nur bei tatsächlicher Nachrichtenarbeit; ungeschützte Regeln dürfen begründet abgemeldet werden, geladene/angewandte bleiben bindend; Stage erlaubt keinen Versand."
@@ -350,6 +378,7 @@ export async function recordRulebookCheck(
       a.roundDismissed = a.roundDismissed.filter((r) => r.id !== entry.id);
     }
     a.checked = true;
+    a.checkedCatalog = state.catalog;
     a.ids = [...new Set(input.applicable)];
     context = state.context;
     round = state.round;
@@ -496,8 +525,10 @@ export async function recordRulebookLoad(
       source?.rulebookMetadata?.rule_categories?.includes("correspondence") ||
       obligated ||
       !source
-    )
+    ) {
       a.checked = true;
+      a.checkedCatalog = state.catalog;
+    }
     if (!a.ids.includes(id)) a.ids.push(id);
     if (
       source &&
@@ -583,6 +614,11 @@ export async function catalogFor(p: RulebookPayload, kernel: CatalogProvider) {
     throw error;
   }
 }
+/** #1591: a rule changed mid-round ends the check at the next boundary. An
+ *  action's own obligation list is no catalog and leaves the fingerprint alone. */
+function observeCatalog(state: CheckState, catalog: KernelCandidates, requiredOnly: boolean | undefined): void {
+  if (!requiredOnly) state.catalog = rulebookFingerprint(catalog);
+}
 /** Undefined means C did not apply; {} permits the legacy lanes to run.
  * Legacy denials retain their own once-per-claim/session contract. */
 export type RulebookDenialReceipt = (delivered: boolean) => Promise<void>;
@@ -618,6 +654,7 @@ export async function rulebookBoundary(
         a = actor(state, identity(p));
       context = state.context;
       round = state.round;
+      observeCatalog(state, catalog, options.requiredOnly);
       // The catch-all native PreToolUse payload proves a real requested operation,
       // including subtools whose execution is opaque in a custom-exec transcript.
       if (
@@ -650,7 +687,7 @@ export async function rulebookBoundary(
               .filter(isCorrespondenceRule)
               .filter((e) => !a.roundApplied.some((r) => r.id === e.id) && !a.roundDismissed.some((r) => r.id === e.id))
               .map((e) => e.id);
-      if ((!options.requiredOnly && !a.checked) || requiredIds.length) {
+      if ((!options.requiredOnly && !checkHolds(a, state)) || requiredIds.length) {
         const field = boundary === "action" ? "denies" : "stops",
           cap = boundary === "action" ? 2 : 1;
         if (a[field] < cap && !(boundary === "stop" && p.stop_hook_active === true)) {

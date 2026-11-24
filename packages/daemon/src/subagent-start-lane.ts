@@ -23,6 +23,7 @@ import type { CatalogProvider } from "./rulebook-check.js";
 import { withRulebookDeadline } from "./rulebook-catalog.js";
 import { projectForLane } from "./scope-filter.js";
 import { peekActiveConventions } from "./session-state.js";
+import { getPrimaryLanguage } from "./settings.js";
 
 export interface SubagentStartPayload {
   hook_event_name?: string;
@@ -39,7 +40,10 @@ export async function runSubagentStartLane(payload: SubagentStartPayload, kernel
     const active = await peekActiveConventions(sessionId);
     const project = projectForLane(typeof payload.cwd === "string" && payload.cwd ? payload.cwd : process.cwd());
     const candidates = await withRulebookDeadline(() => kernel(active, project, "content"));
-    const rendered = renderRuleKernel(candidates, { trigger: "subagent start" });
+    const rendered = renderRuleKernel(candidates, {
+      trigger: "subagent start",
+      language: await getPrimaryLanguage().catch(() => undefined),
+    });
     if (rendered.text === "") return "{}";
     return JSON.stringify({ hookSpecificOutput: { hookEventName: "SubagentStart", additionalContext: rendered.text } });
   } catch {

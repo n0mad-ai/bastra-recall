@@ -31,6 +31,7 @@ import { fileURLToPath } from "node:url";
 
 import { aggregate, renderStats, GATE_LANE_BY_KIND } from "../src/cli/log-stats.js";
 import { CLIENT_ROW_BASE, type ClientLane } from "../src/hook-client-telemetry.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = resolve(HERE, "..", "src");
@@ -153,7 +154,11 @@ test("#543: every gate lane writes one client row on both client shapes, with it
     assert.equal(GATE_LANE_BY_KIND[String(row.kind)], GATE_LANE_BY_KIND[kind]);
     // The session: the only thing that ties this row to the daemon row for the
     // same call. A synthetic one makes the row unfoldable (#356/#305).
-    assert.equal(row.session_id, session, `${shape}/${lane}: the payload's session must be stamped, not a fresh UUID`);
+    assert.equal(
+      row.session_id,
+      telemetrySession(session),
+      `${shape}/${lane}: the payload's session must be stamped, not a fresh UUID`
+    );
     assert.match(
       String(row.hook_version),
       /-(stub|thin)$/,

@@ -42,6 +42,7 @@ import {
   type SaveNotice,
   type SaveNoticeAction,
 } from "./save-notice.js";
+import { telemetrySession } from "./telemetry-session.js";
 
 const HOOK_VERSION = "0.1.0";
 
@@ -265,7 +266,7 @@ async function writeTelemetry(payload: SaveNoticeTelemetry): Promise<void> {
     const event = {
       kind: "save_notice_call",
       ts,
-      session_id: payloadSessionId ?? randomUUID(),
+      session_id: telemetrySession(payloadSessionId) ?? randomUUID(),
       hook_version: HOOK_VERSION,
       ...rest,
       dimensions: dimensionsFrom({ client, hook_source: "save-notice", session_id: payloadSessionId, agent }),

@@ -15,6 +15,7 @@ import { request } from "node:http";
 import { Vault, SearchIndex } from "@bastra-recall/core";
 import { startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
+import { telemetrySession } from "../src/telemetry-session.js";
 
 function memoryMarkdown(id: string, title: string): string {
   const ts = new Date().toISOString();
@@ -208,7 +209,7 @@ test("/hook/act logs the CLAUDE session id on the hook_act event, not the daemon
         exit_code: number | null;
         dimensions: { client: string; hook_source: string; experiment_session: string | null };
       };
-      assert.equal(event.session_id, "claude-session-cross-check");
+      assert.equal(event.session_id, telemetrySession("claude-session-cross-check"));
       assert.equal(event.exit_code, null); // act ohne Exit-Code zählt trotzdem
       assert.equal(event.dimensions.client, "claude-code");
       assert.equal(event.dimensions.hook_source, "bash-fail");

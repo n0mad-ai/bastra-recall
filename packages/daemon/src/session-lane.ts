@@ -68,6 +68,8 @@ import {
 } from "./session-state.js";
 import { renderRuleKernel, type RenderedKernel } from "./rule-kernel.js";
 import { isGatedHint } from "./hook-recall-response.js";
+import { rememberSessionStartKernel } from "./rule-kernel-seen.js";
+import { getPrimaryLanguage } from "./settings.js";
 import { formatPinnedBlock, dropPinnedFromRanked, type PinnedFloorLean } from "./pinned-block.js";
 import { reportHinted } from "./hook-hinted.js";
 import { hookGateAvailable, hookCaller, hookClient, hookAgent, hookClientEvidence } from "./hook-surface.js";
@@ -228,7 +230,12 @@ export async function runSessionLane(
   });
   const ranked = rankSessionHits(fetched.responses, fetched.sideData, project);
   const standing = await collectStandingBlocks(payload, fetched, project, projectConfidence, draftReview);
-  const kernel = renderKernel(fetched.sideData, payload.source, start.denseCold);
+  const kernel = renderKernel(
+    fetched.sideData,
+    payload.source,
+    start.denseCold,
+    await getPrimaryLanguage().catch(() => undefined)
+  );
   const soulBlock = buildSoulBlock(await readSoulPreference());
 
   // #1303/#1304: only deny-capable registrations book must-load hints.
@@ -246,6 +253,7 @@ export async function runSessionLane(
     protectedParts: [kernel.text, standing.language, soulBlock],
   });
   const retained = (part: string) => (part.trim() && injected.includes(part.trim()) ? part : "");
+  await rememberSessionStartKernel(payload, kernel.text, injected).catch(() => {});
   const deliveredTop = retained(assembled.recallBlock) ? ranked.top : [];
 
   // #458 (shadow): den fertigen Block ans Sitzungsbudget anrechnen und den
@@ -747,10 +755,15 @@ async function applyConstantCadence(sessionId: string, blocks: StandingBlocks): 
 function renderKernel(
   sideData: SessionContextResponse["data"],
   source: SessionPayload["source"],
-  denseCold: boolean
+  denseCold: boolean,
+  language: string | undefined
 ): RenderedKernel {
   if (sideData?.kernel) {
-    return renderRuleKernel(sideData.kernel, { trigger: `after ${source ?? "startup"}`, lexicalOnly: denseCold });
+    return renderRuleKernel(sideData.kernel, {
+      trigger: `after ${source ?? "startup"}`,
+      lexicalOnly: denseCold,
+      language,
+    });
   }
   return {
     text: "Rulebook unavailable at session start; the complete catalog remains available through list_rules().\n",
