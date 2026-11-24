@@ -37,8 +37,8 @@ import { adapterWordsIn } from "./adapter-words.js";
 const REPO = "n0mad-ai/bastra-recall";
 /** Shown in the prompt — the deno runtime plus ~150 KB of our code; the arm64
  *  macOS binary is 68 MB, the others are in the same range. */
-export const STUB_SIZE_HINT = "~70 MB";
-export const STUB_QUESTION = `Download the compiled hook client (${STUB_SIZE_HINT}, one-time) so hooks start faster than on node?`;
+const STUB_SIZE_HINT = "~70 MB";
+const STUB_QUESTION = `Download the compiled hook client (${STUB_SIZE_HINT}, one-time) so hooks start faster than on node?`;
 
 /** The deno target triples the release workflow builds (publish-npm.yml). */
 export const STUB_TARGETS = [
@@ -110,7 +110,7 @@ export function stubAssetUrl(version: string, file: string): string {
 
 // ─── the remembered answer ───────────────────────────────────────
 
-export function stubMarkerPath(): string {
+function stubMarkerPath(): string {
   return process.env.BASTRA_HOOK_STUB_MARKER_PATH ?? join(bastraDataDir(), "hook-stub.json");
 }
 
@@ -199,7 +199,7 @@ export function decideStubAction(i: {
 /** Streams the asset to `<dest>.partial`, hashing as it goes; only a digest
  *  that matches the manifest is renamed into place. Anything else — HTTP
  *  error, mismatch, a dropped connection — leaves no file behind. */
-export async function downloadVerified(
+async function downloadVerified(
   url: string,
   expectedSha256: string,
   dest: string,

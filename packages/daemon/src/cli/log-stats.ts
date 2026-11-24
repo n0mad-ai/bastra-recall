@@ -125,14 +125,14 @@ export interface LogStats {
   sessionStart: SessionStartSection;
 }
 
-export interface SaveStats {
+interface SaveStats {
   written: number;
   held: number;
   /** Held saves per exit reason, biggest first. */
   byReason: Array<{ reason: string; count: number }>;
 }
 
-export interface HintSuppressionStats {
+interface HintSuppressionStats {
   calls: number;
   hints: number;
   tokens: number;

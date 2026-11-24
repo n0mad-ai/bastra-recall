@@ -4,7 +4,7 @@ import { defaultLogDir } from "../telemetry.js";
 import { isEvalTraffic } from "../telemetry-dimensions.js";
 
 type Event = Record<string, unknown>;
-export interface ConventionMemory {
+interface ConventionMemory {
   id: string;
   shown: boolean;
   loaded: boolean;

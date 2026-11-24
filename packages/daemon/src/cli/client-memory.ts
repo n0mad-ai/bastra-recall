@@ -43,7 +43,7 @@ export interface ClientMemoryEnv {
   codexHome?: string;
 }
 
-export function defaultClientMemoryEnv(): ClientMemoryEnv {
+function defaultClientMemoryEnv(): ClientMemoryEnv {
   return {
     home: homedir(),
     claudeConfigDir: process.env.CLAUDE_CONFIG_DIR || undefined,

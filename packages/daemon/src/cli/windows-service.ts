@@ -13,7 +13,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { bastraDataDir } from "../platform-paths.js";
 import type { AutostartState } from "./autostart.js";
 
-export interface ServiceResult {
+interface ServiceResult {
   ok: boolean;
   detail: string;
 }

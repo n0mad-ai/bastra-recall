@@ -46,13 +46,13 @@ import type { ParsedArgs } from "./types.js";
 import { doctorReplayWordsIn } from "./doctor-replay-words.js";
 import { taskCliLanguage } from "./task-cli-words.js";
 
-export const REPLAY_DEFAULT_DAYS = 14;
+const REPLAY_DEFAULT_DAYS = 14;
 /** The onboarding replay stops at this many turns — hundreds would keep the
  *  end of `bastra onboard` busy for minutes. `doctor --replay` has no cap. */
 export const ONBOARD_REPLAY_MAX_TURNS = 200;
 
 /** The `max` most recent turns, back in corpus order (session, then time). */
-export function latestTurns(corpus: ReplayCorpus, max: number): ReplayCorpus {
+function latestTurns(corpus: ReplayCorpus, max: number): ReplayCorpus {
   const kept = [...corpus.turns].sort((a, b) => b.at - a.at).slice(0, max);
   kept.sort((a, b) => (a.session < b.session ? -1 : a.session > b.session ? 1 : a.at - b.at));
   return { ...corpus, turns: kept, sessions: new Set(kept.map((t) => t.session)).size };
@@ -88,7 +88,7 @@ export interface ReplayCorpus {
   sessions: number;
 }
 
-export function claudeProjectsDir(env: NodeJS.ProcessEnv = process.env): string {
+function claudeProjectsDir(env: NodeJS.ProcessEnv = process.env): string {
   return join(env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "projects");
 }
 
@@ -214,7 +214,7 @@ export type ReplayRow = Pick<
 
 export type ReplayPost = (turn: ReplayTurn, sessionId: string) => Promise<ReplayRow | null>;
 
-export function replaySessionId(original: string, run: string): string {
+function replaySessionId(original: string, run: string): string {
   return `replay-${run}-${original}`;
 }
 

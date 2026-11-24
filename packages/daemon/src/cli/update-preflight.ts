@@ -33,7 +33,7 @@ import { homedir } from "node:os";
 import { join, relative, dirname } from "node:path";
 import { readdir, readFile, writeFile, mkdir, stat, unlink } from "node:fs/promises";
 
-export interface ManifestEntry {
+interface ManifestEntry {
   /** Path relative to the package root, POSIX separators. */
   path: string;
   /** SHA-256 of the file contents, hex. */
@@ -168,7 +168,7 @@ export async function detectDirty(m: UpdateManifest): Promise<DirtyFile[]> {
 }
 
 /** What a backup run actually achieved — never just "where it was attempted". */
-export interface BackupOutcome {
+interface BackupOutcome {
   /** The backup directory, present only when at least one file really landed
    *  in it. A directory nobody could write to is not a backup. */
   dir?: string;
@@ -185,7 +185,7 @@ export interface BackupOutcome {
  * told "backed up to: …" about an empty directory and then overwrite the
  * original. Per file, so one failure still lets the rest be saved.
  */
-export async function backupDirty(m: UpdateManifest, dirty: DirtyFile[], home = homedir()): Promise<BackupOutcome> {
+async function backupDirty(m: UpdateManifest, dirty: DirtyFile[], home = homedir()): Promise<BackupOutcome> {
   const present = dirty.filter((d) => d.kind === "modified");
   if (present.length === 0) return { failed: [] };
   const dir = join(backupRoot(home), m.version);

@@ -47,7 +47,7 @@ export interface StoreDiscoveryEnv {
   syncRoots: string[];
 }
 
-export interface DiscoveredStore {
+interface DiscoveredStore {
   path: string;
   realPath: string;
   /** Where it was found: "claude-code registration", "sync folder …", … */

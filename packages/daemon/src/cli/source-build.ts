@@ -58,7 +58,7 @@ import { dirname, join, resolve } from "node:path";
 import { readBuildStamp, type BuildStamp } from "../build-stamp.js";
 import { sourceBuildWordsIn } from "./source-build-words.js";
 
-export type SourceBuildReason =
+type SourceBuildReason =
   "current" | "dirty" | "unbuilt" | "stale" | "unstamped" | "mismatch" | "unverifiable" | "unknown";
 
 /** HEAD as git reports it right now. */

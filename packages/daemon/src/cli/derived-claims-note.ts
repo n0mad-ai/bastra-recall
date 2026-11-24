@@ -19,7 +19,7 @@ import { doctorNotesWordsIn, type DoctorNotesWords } from "./doctor-notes-words.
 /** Findings listed by name before the rest becomes a count. */
 const MAX_LISTED = 5;
 
-export interface ClaimedMemory {
+interface ClaimedMemory {
   id: string;
   claims: readonly DerivedClaim[];
 }

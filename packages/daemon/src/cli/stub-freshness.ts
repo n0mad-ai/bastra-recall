@@ -43,7 +43,7 @@ import { hostPaths } from "../platform-paths.js";
 import { stubFreshnessWordsIn, type StubFreshnessWords } from "./stub-freshness-words.js";
 
 /** What `bastra-hook version` prints (stub/build-info.ts plus the version). */
-export interface StubStamp {
+interface StubStamp {
   stub_version?: string;
   source_digest?: string;
   revision?: string | null;
@@ -73,7 +73,7 @@ export interface StubStamp {
  *  · `unreadable`      — the file is there but `version` failed (not
  *                        executable, wrong architecture, truncated download).
  */
-export type StubState = "ok" | "stale" | "unstamped" | "unknown-sources" | "missing" | "unreadable";
+type StubState = "ok" | "stale" | "unstamped" | "unknown-sources" | "missing" | "unreadable";
 
 /**
  * The same three questions, one level in: the statusline bundle the binary
@@ -98,7 +98,7 @@ export type StubState = "ok" | "stale" | "unstamped" | "unknown-sources" | "miss
  */
 export type StatuslineState = "ok" | "stale" | "unstamped" | "unknown-bundle" | "unchecked";
 
-export interface StubFinding {
+interface StubFinding {
   /** The absolute path the client registrations execute. */
   binary: string;
   /** Which surfaces register it, sorted — `claude-code`, `codex`. */
@@ -254,7 +254,7 @@ export async function localStubSourceDigest(root: string = DAEMON_PACKAGE_ROOT):
  * uses it: two definitions of "the bundle" is how a check goes green against a
  * binary that carries something else.
  */
-export async function localStatuslineDigest(root: string = DAEMON_PACKAGE_ROOT): Promise<string | null> {
+async function localStatuslineDigest(root: string = DAEMON_PACKAGE_ROOT): Promise<string | null> {
   const digest = (await digestModule(root))?.statuslineBundleDigest?.();
   return typeof digest === "string" && digest.length > 0 ? digest : null;
 }
@@ -284,7 +284,7 @@ async function digestModule(root: string): Promise<StubDigestModule | null> {
  * `null` means it could not be asked at all; a stamp without `source_digest`
  * means it was asked and predates the stamp (#546).
  */
-export function readStubStamp(binary: string, timeoutMs = 5_000): StubStamp | null {
+function readStubStamp(binary: string, timeoutMs = 5_000): StubStamp | null {
   const r = spawnSync(binary, ["version"], {
     encoding: "utf8",
     timeout: timeoutMs,

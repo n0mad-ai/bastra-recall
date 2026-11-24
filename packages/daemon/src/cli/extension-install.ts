@@ -53,7 +53,7 @@ export function releaseDownloadUrl(version: string): string {
 
 /** Fallback when this CLI version's release carries no bundle (yet): the
  *  newest release's .mcpb asset, whatever version it is. */
-export async function latestMcpbAssetUrl(): Promise<string | null> {
+async function latestMcpbAssetUrl(): Promise<string | null> {
   const resp = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
     headers: { Accept: "application/vnd.github+json" },
   });

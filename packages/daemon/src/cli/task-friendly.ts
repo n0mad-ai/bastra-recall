@@ -141,10 +141,10 @@ export function friendlyTaskCreate(options: Record<string, string | boolean>, no
     arm: (options.arm === true || agentNotify) && !ambiguous,
   };
 }
-export const friendlyWhyNow = (why: string, language?: string) =>
+const friendlyWhyNow = (why: string, language?: string) =>
   why.startsWith("Registered condition") ? taskCliWords(language).whyNowRegistered : localTaskCardText(why, language);
 const quote = (value: unknown) => JSON.stringify(String(value ?? ""));
-export function taskDisplayTime(value: number | undefined, timezone = "Europe/Madrid", language?: string) {
+function taskDisplayTime(value: number | undefined, timezone = "Europe/Madrid", language?: string) {
   const w = taskCliWords(language);
   return value === undefined
     ? w.noneYet
@@ -318,7 +318,7 @@ export function friendlyTaskError(code: string, sub: string | null, reason?: str
   const reasonText = reason ? TASK_ERROR_REASONS[reason] : undefined;
   return `${prefix}: ${inLanguage(reasonText ?? TASK_ERRORS[code] ?? TASK_ERROR_FALLBACK, language)}`;
 }
-export function friendlyVerification(t: any, language?: string): string {
+function friendlyVerification(t: any, language?: string): string {
   const w = taskCliWords(language);
   const reason = w.verificationReason[t.verification?.reason];
   return t.verification

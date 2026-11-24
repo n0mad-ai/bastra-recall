@@ -120,11 +120,7 @@ export function resolveNodeModulesRoot(packageRoot: string): string | null {
  * dir + rename, so a killed install never leaves a half-copied tree at the
  * final path.
  */
-export async function copyRuntimeTree(
-  sourceNodeModules: string,
-  target: RuntimeTarget,
-  version: string
-): Promise<void> {
+async function copyRuntimeTree(sourceNodeModules: string, target: RuntimeTarget, version: string): Promise<void> {
   const staging = `${target.rootDir}.tmp-${process.pid}`;
   try {
     await rm(staging, { recursive: true, force: true });

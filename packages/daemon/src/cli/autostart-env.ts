@@ -7,7 +7,7 @@ import { autostartWordsIn, type AutostartWords } from "./autostart-words.js";
 /** English unless the caller passes the words of its run (#1602). */
 const EN = autostartWordsIn("en");
 
-export const LEGACY_AUTOSTART_CREDENTIALS = ["BASTRA_API_TOKEN", "BASTRA_EMBEDDING_KEY", "BASTRA_TASK_TOKEN"] as const;
+const LEGACY_AUTOSTART_CREDENTIALS = ["BASTRA_API_TOKEN", "BASTRA_EMBEDDING_KEY", "BASTRA_TASK_TOKEN"] as const;
 
 export function cleanManagedEnv(
   env: Record<string, string>,

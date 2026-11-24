@@ -296,7 +296,7 @@ export function helpText(command: string | null | undefined, language: HelpLangu
 
 /** language.primary when it has its own help, English otherwise. An unreadable
  *  settings file never keeps --help from answering: it answers in English. */
-export async function helpLanguage(): Promise<HelpLanguage> {
+async function helpLanguage(): Promise<HelpLanguage> {
   const code = await taskCliLanguage().catch(() => "en");
   return HELP_LANGUAGES.find((language) => language === code) ?? "en";
 }

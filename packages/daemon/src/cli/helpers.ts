@@ -122,7 +122,7 @@ export function serverBlockEndpoint(existing: unknown): string | null {
 }
 
 /** `BASTRA_DAEMON_URL` as an existing registration spells it, or null. */
-export function existingDaemonUrl(existing: unknown): string | null {
+function existingDaemonUrl(existing: unknown): string | null {
   if (typeof existing !== "object" || existing === null) return null;
   const env = (existing as { env?: unknown }).env;
   if (typeof env !== "object" || env === null) return null;

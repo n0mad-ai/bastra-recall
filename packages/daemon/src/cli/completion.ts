@@ -54,7 +54,7 @@ export const COMMANDS = [
 export const SURFACES = ["claude-desktop", "claude-code", "codex", "cursor", "all"] as const;
 
 /** Flags worth completing — the ones with a stable meaning across commands. */
-export const FLAGS = [
+const FLAGS = [
   "--help",
   "--version",
   "--dry-run",

@@ -39,7 +39,7 @@ const MANAGED_BLOCK = `\n[tools.update_plan]\n${MANAGED_LINES}`;
 const SUBTABLE_HEADER =
   /^\s*\[\s*(?:tools|"tools"|'tools')\s*\.\s*(?:update_plan|"update_plan"|'update_plan')\s*\]\s*$/;
 
-export type PlanToolState =
+type PlanToolState =
   | "enabled" // the key is true — the lane can fire
   | "disabled" // the key is explicitly false — a user decision
   | "absent" // no key at all — the default, and the dead lane

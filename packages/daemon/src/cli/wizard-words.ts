@@ -207,7 +207,7 @@ const de: WizardWords = {
   done: (clients: string) => `Fertig. ${clients} neu starten, damit das Gedächtnis geladen wird.`,
 };
 
-export const WIZARD_WORDS: Readonly<Record<string, WizardWords>> = { en, de };
+const WIZARD_WORDS: Readonly<Record<string, WizardWords>> = { en, de };
 /** The wizard's words in `language`; English for an unset or unlisted one. */
 export function wizardWords(language: string | undefined): WizardWords {
   return WIZARD_WORDS[language ?? "en"] ?? en;
