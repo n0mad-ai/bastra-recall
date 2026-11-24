@@ -15,13 +15,13 @@ import { noteJudgeText } from "./draft-judge.js"; // #1128-capture
 import type { TrainingItem } from "./training-capture.js"; // #1128-capture
 import { evalRunMark } from "./training-signal.js"; // #1128-capture
 
-export const DRAFT_SHADOW_DICE_MIN = 0.6;
+const DRAFT_SHADOW_DICE_MIN = 0.6;
 /** Unmeasured, logging only: low enough to expose the cosine distribution. */
-export const DRAFT_SHADOW_COSINE_MIN = 0.35;
+const DRAFT_SHADOW_COSINE_MIN = 0.35;
 const VECTOR_MAX_BYTES = 16 * 1024 * 1024;
 const EMBED_BATCH_SIZE = 16;
 
-export interface DraftVectorEntry {
+interface DraftVectorEntry {
   fp: string;
   quoteHash: string;
   vector: Float32Array;
@@ -34,7 +34,7 @@ interface VectorCache {
   entries: Map<string, DraftVectorEntry>;
   decisions: Map<string, string>;
 }
-export interface VaultVectorSnapshot {
+interface VaultVectorSnapshot {
   provider: string;
   dim: number;
   vectors: ReadonlyMap<string, Float32Array>;
@@ -180,7 +180,7 @@ async function persistCache(path: string, cache: VectorCache, now?: number): Pro
 }
 
 /** Pure comparisons, yielding between rows so background math does not monopolize hooks. */
-export async function compareDraftPairs(
+async function compareDraftPairs(
   drafts: Draft[],
   entries: ReadonlyMap<string, DraftVectorEntry>,
   pending: ReadonlySet<string>,

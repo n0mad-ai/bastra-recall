@@ -16,17 +16,17 @@ import { draftVocabularySnapshot, type DraftVocabulary } from "./draft-vocabular
 import { telemetrySession } from "./telemetry-session.js";
 
 /** Unmeasured on real data; measured against the fixed 200-draft DE/EN corpus. */
-export const DRAFT_TEXT_MIN_SHARED = 2;
-export const DRAFT_TEXT_MIN_RARE = 2;
-export const DRAFT_TEXT_MIN_ANCHOR_CHARS = 4;
-export const DRAFT_TEXT_STRONG_CHARS = 10;
-export const DRAFT_RARE_MAX_ROWS = 2;
+const DRAFT_TEXT_MIN_SHARED = 2;
+const DRAFT_TEXT_MIN_RARE = 2;
+const DRAFT_TEXT_MIN_ANCHOR_CHARS = 4;
+const DRAFT_TEXT_STRONG_CHARS = 10;
+const DRAFT_RARE_MAX_ROWS = 2;
 /** Unmeasured: below 50 notes the vocabulary is only a fallback sample. */
-export const DRAFT_VOCABULARY_MIN_NOTES = 50;
+const DRAFT_VOCABULARY_MIN_NOTES = 50;
 /** Unmeasured: a rare anchor occurs in at most 2% of this user's notes. */
-export const DRAFT_VAULT_RARE_MAX_FRACTION = 0.02;
+const DRAFT_VAULT_RARE_MAX_FRACTION = 0.02;
 /** Unmeasured advisory ceiling, always bounded by the normal lane deadline. */
-export const DRAFT_BAND_MAX_MS = 50;
+const DRAFT_BAND_MAX_MS = 50;
 export interface DraftHit {
   id: string;
   quote: string;
@@ -175,7 +175,7 @@ export function formatDraftHints(hits: DraftHit[]): string {
 
 /** Runs after the completed stdout/HTTP response is handed to its caller.
  * Local bookings serialize off the response path; foreign busy/unwritable stores lose only this booking. */
-export function deferDraftFeedback(
+function deferDraftFeedback(
   hits: DraftHit[],
   input: string,
   sessionId: string,

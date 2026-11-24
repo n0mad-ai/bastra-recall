@@ -10,9 +10,9 @@ export const PASTE_MIN_CHARS = 2000;
 export const INTERRUPT_PREFIX = "[Request interrupted by user";
 
 /** Unmeasured: use the existing answer threshold until broad capture is measured. */
-export const DRAFT_MIN_LETTERS = 20;
+const DRAFT_MIN_LETTERS = 20;
 /** Bound each telemetry event independently of session length and store size. */
-export const DRAFT_TELEMETRY_MAX_IDS = 20;
+const DRAFT_TELEMETRY_MAX_IDS = 20;
 
 export async function captureTypedDrafts(
   turns: HarvestTurn[],
