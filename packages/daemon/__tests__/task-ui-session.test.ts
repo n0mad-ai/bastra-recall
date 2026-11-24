@@ -151,8 +151,6 @@ test("tokenless task UI session is local/CSRF-protected Agent access, never Owne
     assert.equal(before.controls.execution_stopped, true);
     await revokeTaskCredential(ctx.authPath, agent.credential_id);
     assert.equal((await post("/ui/tasks/api/task_status", {}, headers)).status, 401);
-    assert.equal((await post("/ui/tasks/logout", {}, headers)).status, 200);
-    assert.equal((await post("/ui/tasks/api/task_status", {}, headers)).status, 401);
     await setUiEnabled(false);
     assert.equal((await post("/ui/tasks/session")).status, 403);
   } finally {
@@ -270,8 +268,10 @@ test("#1410: new browsers reclaim abandoned sessions while authenticated activit
       200,
       "capacity never displaces active grants"
     );
-    assert.equal((await post("/ui/tasks/logout", active)).status, 200);
-    assert.equal((await post("/ui/tasks/api/task_status", active)).status, 401, "logout invalidates copied cookies");
+    const obsolete = await post("/ui/tasks/logout", active);
+    assert.equal(obsolete.status, 404);
+    assert.equal(obsolete.headers.get("set-cookie"), null);
+    assert.equal((await post("/ui/tasks/api/task_status", active)).status, 200);
   } finally {
     Date.now = realNow;
     await new Promise<void>((r) => server.close(() => r()));

@@ -31,8 +31,8 @@ const ttl = 15 * 60_000,
 // long; sessions used within the window keep the capacity guard (429).
 const capacity = 100,
   reclaimIdleMs = 10 * 60_000;
-const cookie = (id: string, age: number) =>
-  `${cookieName}=${id}; HttpOnly; SameSite=Strict; Path=/ui/settings; Max-Age=${age}`;
+const cookie = (id: string) =>
+  `${cookieName}=${id}; HttpOnly; SameSite=Strict; Path=/ui/settings; Max-Age=${ttl / 1000}`;
 export interface SettingsUiOptions {
   path?: string;
   oauthPath?: string;
@@ -136,7 +136,7 @@ export function dispatchSettingsUi(
         const id = randomBytes(32).toString("base64url"),
           csrf = randomBytes(32).toString("base64url");
         sessions.set(id, { csrf, expires: Date.now() + ttl, path, host: req.headers.host!, lastUsed: Date.now() });
-        res.setHeader("Set-Cookie", cookie(id, ttl / 1000));
+        res.setHeader("Set-Cookie", cookie(id));
         sendJson(res, 200, { csrf, expiresIn: ttl / 1000 });
         return;
       }
@@ -221,12 +221,6 @@ export function dispatchSettingsUi(
         if (!options.restart) failure(409);
         sendJson(res, 202, { restarting: true });
         setImmediate(() => void options.restart!().catch(() => {}));
-        return;
-      }
-      if (url === "/ui/settings/logout") {
-        sessions.delete(id!);
-        res.setHeader("Set-Cookie", cookie("", 0));
-        sendJson(res, 200, { loggedOut: true });
         return;
       }
       failure(404);

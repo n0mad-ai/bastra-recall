@@ -89,9 +89,10 @@ test("#1332: actual settings route preserves local CSRF and performs no system c
   assert.equal(savedBody.name, "jarvis", "address name");
   assert.equal(savedBody.displayName, "Jarvis", "the name as typed");
   assert.equal(admins, 0);
-  assert.equal((await post("/ui/assistant-address/setup", { systemConsent: false })).status, 409);
+  const obsolete = await post("/ui/assistant-address/setup", { systemConsent: true });
+  assert.equal(obsolete.status, 404);
   assert.equal(admins, 0);
-  const setup = await post("/ui/assistant-address/setup", { systemConsent: true });
+  const setup = await post("/ui/assistant-address", { name: "Jarvis", systemConsent: true });
   assert.equal(setup.status, 200, await setup.text());
   assert.equal(admins, 1);
   assert.match(await readFile(hostsPath, "utf8"), /jarvis/);

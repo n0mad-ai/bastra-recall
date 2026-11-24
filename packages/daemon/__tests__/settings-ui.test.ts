@@ -56,6 +56,9 @@ test("local settings session/CSRF, atomic validation and secret masking", async 
     Cookie: cookie,
     "X-Bastra-Settings-CSRF": token,
   };
+  const obsolete = await fetch(origin + "/ui/settings/logout", { method: "POST", headers, body: "{}" });
+  assert.equal(obsolete.status, 404);
+  assert.equal(obsolete.headers.get("set-cookie"), null);
   const read = await fetch(origin + "/ui/settings", { headers });
   const text = await read.text();
   assert.equal(read.status, 200);

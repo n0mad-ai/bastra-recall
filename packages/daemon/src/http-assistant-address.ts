@@ -19,11 +19,9 @@ import {
   ASSISTANT_ADDRESS_PORT,
 } from "./assistant-address-name.js";
 import { managedAssistantHostsName } from "./assistant-address-files.js";
-import { addressWords } from "./assistant-address-words.js";
 import { getAssistantName, getAssistantDisplayName, setAssistantDisplayName } from "./assistant-address-settings.js";
-import { AssistantAddressError, hasAddressErrorCode } from "./assistant-address-name.js";
+import { hasAddressErrorCode } from "./assistant-address-name.js";
 const change = z.strictObject({ name: z.string().min(1), systemConsent: z.boolean().optional() });
-const consent = z.strictObject({ systemConsent: z.boolean().optional() });
 
 /** A direct rename that only the system step can complete (#1556: decided by code, never by message text):
  * a set-up address needs consent, a finished partial setup needs it to be restored, or the setting moved
@@ -126,20 +124,7 @@ export async function handleAssistantAddressUi(
     let warning: string | undefined;
     if (method === "POST") {
       const body = await readJsonBody(req, 4096);
-      if (path === "/ui/assistant-address/setup") {
-        const input = consent.parse(body);
-        if (input.systemConsent !== true)
-          throw new AssistantAddressError(
-            "system_consent_required",
-            addressWords(await getPrimaryLanguage(options.settingsPath)).setupNeedsConsent
-          );
-        const result = await setupAssistantAddress({
-          ...options,
-          systemConsent: input.systemConsent,
-          openBrowser: options.openBrowser ?? openAssistantAddress,
-        });
-        warning = result.warning;
-      } else if (path === "/ui/assistant-address") {
+      if (path === "/ui/assistant-address") {
         const input = change.parse(body);
         ({ warning } = await renameAssistant(input.name, { ...options, systemConsent: input.systemConsent }));
       } else if (path === "/ui/assistant-address/refresh") {

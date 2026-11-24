@@ -122,13 +122,7 @@ for (const existing of [false, true])
       assert.ok(ready, errors);
       const tools = (await (await fetch(base + "/tools")).json()) as any;
       assert.ok(!JSON.stringify(tools).includes("task_create"));
-      for (const route of [
-        "/api/v1/tasks",
-        "/api/v1/task_list",
-        "/ui/tasks/session",
-        "/ui/tasks/logout",
-        "/ui/tasks/api/task_list",
-      ]) {
+      for (const route of ["/api/v1/tasks", "/api/v1/task_list", "/ui/tasks/session", "/ui/tasks/api/task_list"]) {
         const response = await fetch(base + route, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

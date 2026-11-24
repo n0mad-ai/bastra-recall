@@ -19,8 +19,7 @@ const sessions = new Map<string, { authorization: string; csrf: string; path: st
 const capacity = 100;
 const reclaimIdleMs = 10 * 60 * 1000;
 const cookie = "bastra_task_session";
-const cookieHeader = (value: string) =>
-  `${cookie}=${value}; HttpOnly; SameSite=Strict; Path=/ui/tasks/${value ? "" : "; Max-Age=0"}`;
+const cookieHeader = (value: string) => `${cookie}=${value}; HttpOnly; SameSite=Strict; Path=/ui/tasks/`;
 function reject(code: string): never {
   throw Object.assign(new Error("Task UI access denied"), { code });
 }
@@ -97,13 +96,6 @@ export function dispatchTaskUi(
         !timingSafeEqual(Buffer.from(csrf), Buffer.from(session.csrf))
       )
         reject("forbidden");
-      if (url === "/ui/tasks/logout") {
-        await readJsonBody(req, 256);
-        sessions.delete(id!);
-        res.setHeader("Set-Cookie", cookieHeader(""));
-        sendJson(res, 200, { logged_out: true });
-        return;
-      }
       const operation = url.slice("/ui/tasks/api/".length);
       if (!url.startsWith("/ui/tasks/api/") || !isTaskTool(operation)) reject("not_found");
       // Recheck revocation/role on every request; API never inherits an Owner.
