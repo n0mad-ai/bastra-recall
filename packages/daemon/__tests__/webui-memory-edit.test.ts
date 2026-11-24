@@ -946,14 +946,23 @@ test("#1469/#1496: the web UI's save, edit, rule decision, archive and restore n
 });
 
 test("#1496: a Web UI save records its stored conversation in the memory and audit", async (t) => {
-  const f = await fixture();
+  const dbDir = await mkdtemp(join(tmpdir(), "ui-save-chat-db-"));
   const previousDbPath = process.env.BASTRA_DB_PATH;
-  const dbPath = join(f.dir, "chat-fixture.db");
+  const dbPath = join(dbDir, "recall.db");
   process.env.BASTRA_DB_PATH = dbPath;
-  try {
-    assert.equal(storedConversationId("not-a-conversation"), null);
-    assert.equal(existsSync(dbPath), false, "a malformed id must not open the chat store");
+  t.after(async () => {
+    if (previousDbPath === undefined) delete process.env.BASTRA_DB_PATH;
+    else process.env.BASTRA_DB_PATH = previousDbPath;
+    await rm(dbDir, { recursive: true, force: true });
+  });
+  assert.equal(storedConversationId("not-a-conversation"), null);
+  assert.equal(existsSync(dbPath), false, "a malformed id must not open the chat store");
 
+  // Settings use the app database too. Enable the UI in the same database
+  // as the chat history so the platform's default does not affect this test.
+  const f = await fixture();
+  try {
+    assert.equal((await readSettings()).ui?.enabled, true);
     const port = await f.start();
     async function assertSave(title: string, conversation_id: string, expectedSession: string | null) {
       const saved = await call(port, "POST", "/ui/save-memory", {
@@ -981,8 +990,6 @@ test("#1496: a Web UI save records its stored conversation in the memory and aud
     });
     await assertSave("Planning routine", conversationId, null);
   } finally {
-    if (previousDbPath === undefined) delete process.env.BASTRA_DB_PATH;
-    else process.env.BASTRA_DB_PATH = previousDbPath;
     await f.close();
   }
 });
