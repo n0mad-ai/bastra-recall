@@ -122,5 +122,7 @@ update(new Set(["init", "view", "vw", "data"]));
 const stageEl = app.querySelector(".stage");
 stageEl.style.transition = "none";
 void stageEl.offsetLeft;
+// nor does it wait hidden for the panel, as on an area switch (panels.css › Stage)
+stageEl.getAnimations().forEach((a) => a.finish());
 stageEl.style.transition = "";
 startPolling();

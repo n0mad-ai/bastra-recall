@@ -26,6 +26,7 @@ async function boot(hash: string, saved = "chronos") {
       steps.push("measured");
       return 0;
     },
+    getAnimations: () => [{ finish: () => steps.push("animation finished") }],
   };
   const el = () => ({
     append() {},
@@ -84,13 +85,13 @@ test("#1663: without a hash the first draw is the stored view, as before", async
   assert.deepEqual([...new Set(drawn)], ["chronos"]);
 });
 
-test("#1663: after the first draw the stage takes its place without a transition, then gets it back", async () => {
+test("#1663: after the first draw the stage takes its place without a transition or a wait, then gets it back", async () => {
   for (const hash of ["tasks", ""]) {
     const { steps } = await boot(hash);
     const after = steps.slice(steps.lastIndexOf("layout") + 1);
     assert.deepEqual(
       after,
-      ["transition=none", "measured", "transition="],
+      ["transition=none", "measured", "animation finished", "transition="],
       `${hash || "no hash"}: ${steps.join(", ")}`
     );
   }
