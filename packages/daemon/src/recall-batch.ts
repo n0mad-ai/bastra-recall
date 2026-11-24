@@ -83,7 +83,7 @@ export function batchDuplicateNote(collapsedCount: number, total: number): strin
   );
 }
 
-export type BatchHit = { id: string; score: number } & Record<string, unknown>;
+type BatchHit = { id: string; score: number } & Record<string, unknown>;
 
 export interface BatchSubResult {
   hits?: BatchHit[];

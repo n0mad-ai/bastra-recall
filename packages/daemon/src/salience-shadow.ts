@@ -15,7 +15,7 @@ import { envFirst, isOffValue } from "./env.js";
 
 export type SalienceRankMode = "off" | "shadow" | "live";
 
-export interface SalienceShadowHit {
+interface SalienceShadowHit {
   id: string;
   salience: number | null;
   rank: number;

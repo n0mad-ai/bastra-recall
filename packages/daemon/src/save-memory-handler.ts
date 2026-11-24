@@ -78,7 +78,7 @@ export interface SaveMemoryResult {
 }
 
 /** #1484: what a preview tells the model instead of the success marker. */
-export const SAVE_PREVIEW_NOTE =
+const SAVE_PREVIEW_NOTE =
   "Preview only (dry_run) — NOTHING was written, indexed or audited. " + "To save, repeat the call without dry_run.";
 
 // ─── #150: anti-thrash — consecutive-failure cap on save_memory ─────────
@@ -95,7 +95,7 @@ export const SAVE_FAILURE_WINDOW_MS = 10 * 60_000;
 const saveFailures = new Map<string, { count: number; lastAt: number }>();
 
 /** #1593: which save is being retried — only identity fields, never content. */
-export function saveFailureKey(rawArgs: unknown): string {
+function saveFailureKey(rawArgs: unknown): string {
   if (!rawArgs || typeof rawArgs !== "object") return "";
   const args = rawArgs as Record<string, unknown>;
   const text = (value: unknown): string => (typeof value === "string" ? value : "");

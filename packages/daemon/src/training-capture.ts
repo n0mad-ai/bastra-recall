@@ -46,7 +46,7 @@ import {
 
 export const TRAINING_CAPTURE_FILE = "training-capture.jsonl";
 /** Model calls per harvest tick; the rest waits for the next tick. */
-export const TRAINING_JUDGE_MAX_PER_TICK = 20;
+const TRAINING_JUDGE_MAX_PER_TICK = 20;
 
 export type TrainingItem =
   | { type: "statement"; quote: string; draft_kind?: string; context?: string }
@@ -76,7 +76,7 @@ interface Store {
   human: Map<string, string>;
 }
 
-export function trainingCaptureEnabled(): boolean {
+function trainingCaptureEnabled(): boolean {
   return isOnValue(process.env.BASTRA_TRAINING_CAPTURE);
 }
 
@@ -400,7 +400,7 @@ export async function runTrainingCaptureTick(now: number): Promise<TrainingTick 
 export type LabelQuestion = "statement" | "relation-statement" | "relation-note";
 export const LABEL_QUESTIONS: readonly LabelQuestion[] = ["statement", "relation-statement", "relation-note"];
 /** Share of statements whose items are held out of any later prompt or training work. */
-export const LABEL_HOLDOUT_SHARE = 0.2;
+const LABEL_HOLDOUT_SHARE = 0.2;
 /** Default target of labelled examples per question (#1578: roughly 200 to 300). */
 export const LABEL_TARGET_PER_QUESTION = 300;
 
@@ -415,7 +415,7 @@ export interface LabelCandidate {
   label?: string;
 }
 
-export function labelQuestionOf(item: TrainingItem): LabelQuestion {
+function labelQuestionOf(item: TrainingItem): LabelQuestion {
   return item.type === "statement" ? "statement" : item.b_is === "note" ? "relation-note" : "relation-statement";
 }
 

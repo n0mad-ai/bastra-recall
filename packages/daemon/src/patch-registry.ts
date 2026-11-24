@@ -175,11 +175,11 @@ export function patchesDir(home = homedir()): string {
   return join(baseDir(home), "patches");
 }
 
-export function patchIndexPath(home = homedir()): string {
+function patchIndexPath(home = homedir()): string {
   return join(patchesDir(home), "index.json");
 }
 
-export function retiredDir(home = homedir()): string {
+function retiredDir(home = homedir()): string {
   return join(patchesDir(home), "retired");
 }
 

@@ -65,7 +65,7 @@ export interface FloorEntry {
  */
 export const MAX_FLOORS = 12;
 
-export function floorsFilePath(): string {
+function floorsFilePath(): string {
   return process.env.BASTRA_FLOORS_PATH ?? join(bastraDataDir(), "floors.json");
 }
 

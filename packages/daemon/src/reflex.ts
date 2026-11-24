@@ -57,7 +57,7 @@ const ALTERNATIVE_SPLIT_RE = new RegExp(
   "iu"
 );
 
-export interface ReflexHit {
+interface ReflexHit {
   /** Byte revision retained with this matched memory in the Vault index. */
   revision?: string | null;
   validator?: import("@bastra-recall/core").ConventionValidator;

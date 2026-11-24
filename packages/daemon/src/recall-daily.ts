@@ -17,7 +17,7 @@ import { join } from "node:path";
 
 import { isEvalTraffic } from "./telemetry-dimensions.js";
 
-export const RECALL_DAYS = 30;
+const RECALL_DAYS = 30;
 const FILE = /^events-(\d{4}-\d{2}-\d{2})\.jsonl$/;
 const KIND = '"kind":"load_memory"';
 const DAY = 864e5;

@@ -19,7 +19,7 @@ import { tokens, triggerRestatesSummary } from "./save-similarity.js";
 export const LOW_SIGNAL_REPORT_LIMIT = 30;
 
 /** A body below this many non-space characters says next to nothing. */
-export const LOW_SIGNAL_BODY_MIN_CHARS = 40;
+const LOW_SIGNAL_BODY_MIN_CHARS = 40;
 
 /** Digits and date/time separators only — `2026-11-17`, `17.11.2026 14:00`. */
 const DATE_ONLY = /^[\p{N}\s./:-]+$/u;

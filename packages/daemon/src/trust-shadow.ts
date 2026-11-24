@@ -19,7 +19,7 @@ import { readUsage, type UsageAggregate, type UsageEntry } from "./usage-sidecar
 
 export type TrustRankMode = "off" | "shadow" | "live";
 
-export interface TrustShadowHit {
+interface TrustShadowHit {
   id: string;
   trust: number;
   rank: number;
@@ -40,7 +40,7 @@ export function trustRankMode(): TrustRankMode {
 /** The step. One surfaced-but-never-loaded hit moves trust down by twice this
  *  much (see `trustScore`); since #469 nothing moves it up — `acted_on` was
  *  the up-step and is a token-overlap proxy without a gradient. */
-export function trustStep(): number {
+function trustStep(): number {
   return Math.max(0, envFloat("BASTRA_TRUST_STEP", 0.02));
 }
 

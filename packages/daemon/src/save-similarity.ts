@@ -242,11 +242,11 @@ export function contentTokens(text: string): Set<string> {
  * indexed — but a trigger that merely shares vocabulary with the summary is
  * normal and must not be flagged. Only near-total containment is evidence.
  */
-export const TRIGGER_RESTATES_SUMMARY_MIN = 0.85;
+const TRIGGER_RESTATES_SUMMARY_MIN = 0.85;
 
 /** Below this many content words a coverage ratio is noise: three of three
  *  shared words is a coincidence, not a restatement. */
-export const TRIGGER_MIN_CONTENT_TOKENS = 4;
+const TRIGGER_MIN_CONTENT_TOKENS = 4;
 
 /** True when this trigger reads as a paraphrase of the summary. */
 export function triggerRestatesSummary(trigger: string, summary: string): boolean {

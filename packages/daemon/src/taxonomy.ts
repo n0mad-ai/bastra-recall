@@ -24,7 +24,7 @@ export interface ConventionLean {
   updated: string;
 }
 
-export const TAXONOMY_SCOPE = "taxonomy";
+const TAXONOMY_SCOPE = "taxonomy";
 
 /** #360-D: Bestands-Frontmatter kann von Hand geschrieben sein — ein
  *  "Taxonomy" hätte die Konventionen still aus der Session-Injektion fallen

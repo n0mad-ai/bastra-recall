@@ -26,7 +26,7 @@ export interface DemandGap {
 }
 
 export const DEMAND_GAP_MIN_OCCASIONS = 2;
-export const DEMAND_GAP_REPORT_LIMIT = 20;
+const DEMAND_GAP_REPORT_LIMIT = 20;
 
 function normalize(query: string): string {
   return query.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();

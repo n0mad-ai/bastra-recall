@@ -45,7 +45,7 @@ export function twoArmedRankFor(cut: number, k: number, scale: number): number {
  * The surrounding sentence must stay true without it: agreement is still what
  * was measured, only its sharpness goes unstated.
  */
-export function agreementSuffix(cut: number, rrf: RrfConstants | null): string {
+function agreementSuffix(cut: number, rrf: RrfConstants | null): string {
   if (!rrf) return "";
   const rank = twoArmedRankFor(cut, rrf.k, rrf.scale);
   return rank >= 1 ? `, both in their top ${rank}` : "";

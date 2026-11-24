@@ -26,7 +26,7 @@ const MAX_MESSAGE_CHARS = 2000;
 const MAX_MESSAGES_PER_CONVERSATION = 80;
 const CHUNK_CHAR_BUDGET = 16_000;
 
-export function defaultQueueDir(): string {
+function defaultQueueDir(): string {
   return bastraDataDir();
 }
 

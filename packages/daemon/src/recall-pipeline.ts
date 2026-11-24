@@ -82,7 +82,7 @@ export function collectPoolReflexHits(
 /** Warum der Scope-Filter für einen Aufruf nicht lief. `explicit-scope`: Der
  *  Aufrufer hat selbst einen Scope verlangt — die Suche ist dann bereits auf
  *  ihn beschränkt, und ein Projektfilter würde genau das Verlangte verwerfen. */
-export type CallerScopeFilterSkip = "no-project" | "no-scope-evidence" | "explicit-scope";
+type CallerScopeFilterSkip = "no-project" | "no-scope-evidence" | "explicit-scope";
 
 /** Die Telemetriefelder des Filters — dieselben Namen wie in der
  *  `prompt_hook_call`-Zeile der Prompt-Lane, damit eine Auswertung beide

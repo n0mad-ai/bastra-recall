@@ -73,7 +73,7 @@ export interface PendingSuggestion {
  * (#997): to at least twice the size it had at retirement. A count moving by
  * one or two is the live vault breathing, not news.
  */
-export const TREND_CLUSTER_GROWTH_FACTOR = 2;
+const TREND_CLUSTER_GROWTH_FACTOR = 2;
 
 /** #997: a re-write is news when it names a cluster key the row has not seen,
  *  or a known cluster grew to {@link TREND_CLUSTER_GROWTH_FACTOR} times its
@@ -97,7 +97,7 @@ function laneOf(e: PendingSuggestion): PendingLane {
  */
 export const PENDING_TRENDS_SESSIONS_DEFAULT = 6;
 
-export function pendingTrendsSessions(): number {
+function pendingTrendsSessions(): number {
   const n = envInt("BASTRA_PENDING_TRENDS_SESSIONS", PENDING_TRENDS_SESSIONS_DEFAULT);
   return n >= 1 ? n : PENDING_TRENDS_SESSIONS_DEFAULT;
 }
@@ -142,7 +142,7 @@ function reportLoss(detail: string): void {
 
 export const PENDING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
-export function pendingSuggestionsPath(): string {
+function pendingSuggestionsPath(): string {
   return process.env.BASTRA_PENDING_SUGGESTIONS_PATH ?? join(bastraDataDir(), "pending-suggestions.json");
 }
 

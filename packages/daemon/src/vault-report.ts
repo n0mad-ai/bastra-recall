@@ -28,7 +28,7 @@ export interface ReportStaleCandidate {
 }
 
 /** Would-be candidate whose observation window has not matured yet. */
-export interface ReportPendingCandidate {
+interface ReportPendingCandidate {
   id: string;
   title?: string;
   usage?: UsageEntry;
@@ -74,7 +74,7 @@ export function claimedTwiceReportLimit(): number {
 
 /** #360: two active memories declaring one situation, with no answer on
  *  either side (`replaces` / `superseded_by` / `siblings`). */
-export interface ReportClaimedTwicePair {
+interface ReportClaimedTwicePair {
   fromId: string;
   toId: string;
   trigger: string;

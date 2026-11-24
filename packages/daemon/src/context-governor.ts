@@ -89,7 +89,7 @@ export interface GovernedItem {
   detail?: "summary" | "full";
 }
 
-export type DropReason =
+type DropReason =
   /** Das Token-Budget war erschöpft. */
   | "token_budget"
   /** Die Höchstzahl war erreicht. */

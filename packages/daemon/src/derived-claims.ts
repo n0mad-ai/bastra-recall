@@ -26,7 +26,7 @@ export const claimSourceIo = { open, realpath, stat };
  * `observed` is the pre-#609 shape: a value with nothing to compare it to.
  * The other four are verdicts on a claim that says what it expects.
  */
-export type DerivedClaimStatus = "observed" | "matches" | "differs" | "gone" | "ambiguous" | "unverifiable";
+type DerivedClaimStatus = "observed" | "matches" | "differs" | "gone" | "ambiguous" | "unverifiable";
 
 export interface DerivedClaimResult {
   id: string;

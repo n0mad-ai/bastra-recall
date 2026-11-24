@@ -79,7 +79,7 @@ export interface LiveIntent {
   source: "log" | "registry_fallback";
 }
 
-export function floorActsPath(): string {
+function floorActsPath(): string {
   return process.env.BASTRA_FLOOR_ACTS_PATH ?? join(bastraDataDir(), "floor-acts.jsonl");
 }
 
