@@ -148,7 +148,8 @@ function isRecentOfflineMarker(sessionId: string): boolean {
   }
   const key = createHash("sha256").update(sessionId).digest("hex").slice(0, 24);
   const marker = fs.lstatSync(path.join(dir, `offline-${key}`));
-  const age = Date.now() - marker.mtimeMs;
+  // Filesystems can report sub-millisecond times; Date.now() cannot.
+  const age = Date.now() - Math.floor(marker.mtimeMs);
   return marker.isFile() && privateEntry(marker) && age >= 0 && age < OFFLINE_MARKER_TTL_MS;
 }
 

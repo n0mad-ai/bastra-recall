@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, rm, utimes } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, rm, utimes } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -79,10 +80,17 @@ test("the Claude footer shows a confirmed outage for its session and clears on r
 
   await close(server);
   await assert.rejects(call("prompt", "session"), { code: "ECONNREFUSED" });
-  const markerDir = join(dir, "unreachable-notice");
-  const [marker] = await readdir(markerDir);
-  const expired = new Date(Date.now() - 3_600_000);
+  const key = createHash("sha256").update("session").digest("hex").slice(0, 24);
+  const marker = join(dir, "unreachable-notice", `offline-${key}`);
+  const now = Date.now();
+  const sameMillisecond = (now + 0.5) / 1_000;
+  await utimes(marker, sameMillisecond, sameMillisecond);
+  t.mock.method(Date, "now", () => now);
   assert.match(await render("session"), /Recall nicht erreichbar/);
-  await utimes(join(markerDir, marker), expired, expired);
+  const future = new Date(now + 2);
+  await utimes(marker, future, future);
+  assert.doesNotMatch(await render("session"), /Recall nicht erreichbar/);
+  const expired = new Date(now - 3_600_000);
+  await utimes(marker, expired, expired);
   assert.doesNotMatch(await render("session"), /Recall nicht erreichbar/);
 });
