@@ -24,7 +24,6 @@ import { pidAlive, readTickCache, writeTickCache } from "../utils/tick-cache";
  */
 
 const STATUSLINE_DIR = path.join(bastraDataDir(), "statusline");
-const OFFLINE_MARKER_TTL_MS = 5 * 60_000;
 
 export type BastraInfo = BastraFeedInfo | { state: "offline"; label: string };
 
@@ -120,11 +119,11 @@ export class BastraProvider {
 }
 
 /** Read only the current session's observation from the hook transport.
- * Missing, unsafe or expired markers leave the ordinary statusline intact. */
+ * A successful hook clears the marker; rendering never probes the daemon. */
 function readOfflineLabel(sessionId?: string): string | null {
   if (typeof sessionId !== "string" || !sessionId) return null;
   try {
-    if (!isRecentOfflineMarker(sessionId)) return null;
+    if (!hasOfflineMarker(sessionId)) return null;
     const language = readPrimaryLanguage() ?? Intl.DateTimeFormat().resolvedOptions().locale;
     return t(language.split("-")[0]?.toLowerCase() === "de" ? "de" : "en", "stage.recallOffline");
   } catch {
@@ -132,7 +131,7 @@ function readOfflineLabel(sessionId?: string): string | null {
   }
 }
 
-function isRecentOfflineMarker(sessionId: string): boolean {
+function hasOfflineMarker(sessionId: string): boolean {
   // Mirror the private hook-state layout in hook-unreachable-notice.ts.
   const base =
     process.env.BASTRA_HOOK_STATE_DIR ||
@@ -149,8 +148,7 @@ function isRecentOfflineMarker(sessionId: string): boolean {
   const key = createHash("sha256").update(sessionId).digest("hex").slice(0, 24);
   const marker = fs.lstatSync(path.join(dir, `offline-${key}`));
   // Filesystems can report sub-millisecond times; Date.now() cannot.
-  const age = Date.now() - Math.floor(marker.mtimeMs);
-  return marker.isFile() && privateEntry(marker) && age >= 0 && age < OFFLINE_MARKER_TTL_MS;
+  return marker.isFile() && privateEntry(marker) && Math.floor(marker.mtimeMs) <= Date.now();
 }
 
 /**

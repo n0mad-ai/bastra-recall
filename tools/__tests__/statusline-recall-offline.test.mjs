@@ -90,7 +90,11 @@ test("the Claude footer shows a confirmed outage for its session and clears on r
   const future = new Date(now + 2);
   await utimes(marker, future, future);
   assert.doesNotMatch(await render("session"), /Recall nicht erreichbar/);
-  const expired = new Date(now - 3_600_000);
-  await utimes(marker, expired, expired);
+  const prolongedOutage = new Date(now - 3_600_000);
+  await utimes(marker, prolongedOutage, prolongedOutage);
+  assert.match(await render("session"), /Recall nicht erreichbar/);
+
+  await listen(server, port);
+  assert.equal(await call("prompt", "session"), "{}");
   assert.doesNotMatch(await render("session"), /Recall nicht erreichbar/);
 });
