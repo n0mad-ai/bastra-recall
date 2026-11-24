@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { cmdDoctor, cmdInstall, cmdUninstall, parseArgs } from "../src/cli/commands.js";
 import { ADAPTERS } from "../src/cli/registry.js";
 import { cmdStatus } from "../src/cli/status.js";
 import { settingsFilePath } from "../src/settings.js";
@@ -48,4 +49,36 @@ test("the installer and remover can render adapter messages in German", async ()
   const install = await cursor.install({ dryRun: true, vaultPath }, "de");
   assert.equal(install.status, "would-install");
   assert.match(install.message, /würde 'bastra-recall' registrieren/);
+});
+
+test("install, uninstall and doctor retain English adapter errors for redirected output", async (t) => {
+  await writeSettingsFixture(settingsFilePath(), JSON.stringify({ language: { primary: "de" } }));
+  const descriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+  t.after(() => {
+    if (descriptor) Object.defineProperty(process.stdout, "isTTY", descriptor);
+    else Reflect.deleteProperty(process.stdout, "isTTY");
+  });
+
+  let stderr = "";
+  t.mock.method(process.stderr, "write", (chunk: string | Uint8Array) => {
+    stderr += String(chunk);
+    return true;
+  });
+
+  for (const [name, run] of [
+    ["install", cmdInstall],
+    ["uninstall", cmdUninstall],
+    ["doctor", cmdDoctor],
+  ] as const) {
+    const args = parseArgs([name, "unknown-client"]);
+    for (const [tty, detail] of [
+      [false, "unknown surface 'unknown-client' — supported:"],
+      [true, "unbekannter Client 'unknown-client' — unterstützt:"],
+    ] as const) {
+      Object.defineProperty(process.stdout, "isTTY", { value: tty, configurable: true });
+      stderr = "";
+      assert.equal(await run(args), 2, name);
+      assert.ok(stderr.startsWith(`Fehler: ${detail}`), `${name}: ${stderr}`);
+    }
+  }
 });

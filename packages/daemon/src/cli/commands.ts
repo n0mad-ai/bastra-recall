@@ -275,6 +275,10 @@ export async function installVaultPresenceStep(
   return null;
 }
 
+function terminalAdapterLanguage(language: string, scriptOutput = false): string | undefined {
+  return adapterDisplayLanguage(language, scriptOutput || !process.stdout.isTTY);
+}
+
 export async function cmdInstall(args: ParsedArgs): Promise<number> {
   // `bastra install --help` must document, never act — without this it would
   // fall through to the wizard (TTY) or the missing-surface error (script).
@@ -305,7 +309,8 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
 
   const language = await taskCliLanguage().catch(() => "en");
   const w = installWordsIn(language);
-  const targets = resolveTargets(args.surface, language);
+  const screenLanguage = terminalAdapterLanguage(language);
+  const targets = resolveTargets(args.surface, screenLanguage);
   if ("error" in targets) {
     process.stderr.write(w.error(targets.error));
     return 2;
@@ -355,7 +360,7 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
       dryRun: args.dryRun,
       mode: args.stub ?? "ask",
       interactive: isInteractive(),
-      language,
+      language: screenLanguage,
     });
     // #537: the ADAPTERS must not re-derive this from the disk. `--no-stub`
     // against an already downloaded binary used to register every Claude and
@@ -367,10 +372,10 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
 
   let hadError = false;
   for (const adapter of targets) {
-    process.stdout.write(`→ ${adapter.surface} (${adapterDescription(adapter, language)})\n`);
+    process.stdout.write(`→ ${adapter.surface} (${adapterDescription(adapter, screenLanguage)})\n`);
     process.stdout.write(w.config(adapter.configPath));
     try {
-      const r = await adapter.install(opts, language);
+      const r = await adapter.install(opts, screenLanguage);
       process.stdout.write(`  ${w.status(r.status)}: ${r.message}\n`);
       if (r.backupPath) process.stdout.write(w.backup(r.backupPath));
       if (r.status === "error") hadError = true;
@@ -438,7 +443,8 @@ export async function cmdUninstall(
     process.stderr.write(a.notCheckedOrRemoved((e as Error).message));
     return 1;
   }
-  const targets = resolveTargets(args.surface, language);
+  const screenLanguage = terminalAdapterLanguage(language);
+  const targets = resolveTargets(args.surface, screenLanguage);
   if ("error" in targets) {
     process.stderr.write(w.error(targets.error));
     return 2;
@@ -447,10 +453,10 @@ export async function cmdUninstall(
   let hadError = false;
   const succeededSurfaces: string[] = [];
   for (const adapter of targets) {
-    process.stdout.write(`→ ${adapter.surface} (${adapterDescription(adapter, language)})\n`);
+    process.stdout.write(`→ ${adapter.surface} (${adapterDescription(adapter, screenLanguage)})\n`);
     process.stdout.write(w.config(adapter.configPath));
     try {
-      const r = await adapter.uninstall({ dryRun: args.dryRun }, language);
+      const r = await adapter.uninstall({ dryRun: args.dryRun }, screenLanguage);
       process.stdout.write(`  ${w.status(r.status)}: ${r.message}\n`);
       if (r.backupPath) process.stdout.write(w.backup(r.backupPath));
       if (r.status === "error") hadError = true;
@@ -469,7 +475,12 @@ export async function cmdUninstall(
   // so a full uninstall leaves nothing behind (#181). Silent when kept or
   // already absent. Only surfaces whose uninstall SUCCEEDED enter the
   // decision — a failed one counts as still registered.
-  const sweep = await sweepSharedSkill({ surface: args.surface, dryRun: args.dryRun, succeededSurfaces, language });
+  const sweep = await sweepSharedSkill({
+    surface: args.surface,
+    dryRun: args.dryRun,
+    succeededSurfaces,
+    language: screenLanguage,
+  });
   if (sweep.status === "removed" || sweep.status === "would-remove") {
     process.stdout.write(w.sharedSkill);
     process.stdout.write(`  ${w.status(sweep.status)}: ${sweep.detail}\n\n`);
@@ -505,7 +516,7 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   // language.primary, read once for the whole run (English when unset or unreadable).
   const language = await taskCliLanguage().catch(() => "en");
   const w = doctorWordsIn(language);
-  const screenLanguage = adapterDisplayLanguage(language, args.json);
+  const screenLanguage = terminalAdapterLanguage(language, args.json);
   const targets = resolveTargets(surface, screenLanguage);
   if ("error" in targets) {
     process.stderr.write(w.error(targets.error));
