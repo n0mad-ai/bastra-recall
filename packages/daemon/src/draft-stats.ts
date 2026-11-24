@@ -40,7 +40,7 @@ export function aggregateDrafts(events: Record<string, unknown>[]): DraftStats |
       observed = true;
       stats.captured += count(event.draft_count);
       stats.evidenceAdded += count(event.draft_evidence_count);
-      stats.evicted += count(event.draft_evicted_count);
+      stats.evicted += count(event.draft_evicted_count) + count(event.draft_evicted_existing_count);
       stats.captureErrors += event.draft_error === true ? 1 : 0;
     } else if (event.kind === "draft_expired") {
       observed = true;

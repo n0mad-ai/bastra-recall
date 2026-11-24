@@ -1355,7 +1355,7 @@ confirmed draft makes room for the new capture. `bastra drafts list` says when
 the store is full.
 Draft writes respect a live writer's lock. If a writer cannot acquire the lock,
 it skips the new write and preserves existing decisions (#1114).
-Capture writes at most once per session; cleanup writes only when it changes
+Capture writes at most once per session in each pass. Cleanup writes only when it changes
 the stored rows.
 Within one session, equal normalized fingerprints or bigram Dice >= 0.6 append
 evidence to one row. Across sessions only equal fingerprints merge for now.
@@ -1368,8 +1368,10 @@ harvest-tick cleanup. Fingerprints use secret-redacted text, so changing only
 a credential does not create another draft. Telemetry reports retained new
 rows as `draft_count` and additional retained evidence as `draft_evidence_count`.
 `draft_ids` contains at most 20 affected retained row IDs; `draft_ids_omitted`
-counts the rest. `draft_evicted_count` counts newly captured rows evicted by
-the store bounds (in practice only when one write brings more than 100 new captures).
+counts the rest. `draft_evicted_count` counts new rows that do not fit in the current write.
+`draft_evicted_existing_count` counts previously stored rows displaced by the bounds.
+When new evidence does not fit, `draft_retry_turn` identifies where the next pass
+resumes from the transcript, within the existing harvest queue limits.
 `draft_stored_count` and `draft_error` remain text-free.
 A draft-store error leaves the relay working and records `draft_error: true`; that session's failed
 draft capture is not retried automatically.
@@ -3306,7 +3308,7 @@ Ablage voll mit bestätigten Entwürfen, macht der älteste Platz für die neue
 Erfassung. `bastra drafts list` zeigt an, wenn die Ablage voll ist.
 Solange ein anderer Prozess die Schreibsperre hält, kann ein neuer
 Schreibversuch ausfallen. Gespeicherte Entscheidungen bleiben erhalten (#1114).
-Die Erfassung schreibt höchstens einmal je Session; das
+Die Erfassung schreibt höchstens einmal je Session und Durchlauf. Das
 Aufräumen schreibt nur, wenn es gespeicherte Zeilen verändert.
 Innerhalb einer Session hängen gleiche normalisierte Fingerprints oder eine
 Bigramm-Dice-Ähnlichkeit ab 0,6 einen Beleg an dieselbe Zeile. Zwischen Sessions
@@ -3321,8 +3323,10 @@ aus geschwärztem Text; ein geänderter Zugangswert allein ergibt deshalb keinen
 weiteren Entwurf. Die Telemetrie zählt behaltene neue Zeilen in `draft_count`
 und zusätzlich behaltene Belege in `draft_evidence_count`. `draft_ids` enthält
 höchstens 20 betroffene behaltene Zeilen-IDs, `draft_ids_omitted` zählt die übrigen.
-`draft_evicted_count` zählt neue Zeilen, die die Ablagegrenzen verdrängen, auch
-wenn geschlossene Grabsteine die ganze Ablage belegen. `draft_stored_count`
+`draft_evicted_count` zählt neue Zeilen, die im laufenden Schreibvorgang keinen Platz finden.
+`draft_evicted_existing_count` zählt zuvor gespeicherte Zeilen, die die Ablagegrenzen verdrängen.
+Passt ein neuer Beleg nicht hinein, setzt der nächste Durchlauf bei `draft_retry_turn`
+im Transkript an, solange der Eintrag in der Harvest-Warteschlange liegt. `draft_stored_count`
 und `draft_error` enthalten weiterhin keinen Zitattext.
 Bei einem Fehler der Ablage arbeitet das Relay weiter und meldet
 `draft_error: true`; die fehlgeschlagene Erfassung dieser Session wird nicht

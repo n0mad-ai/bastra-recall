@@ -223,17 +223,27 @@ function expired(row: Draft, now: number): boolean {
 function firstCapture(d: Draft): boolean {
   return d.state === "open" && d.evidence.length === 1 && d.surfaced.length === 0;
 }
-function bounded(rows: Draft[], now: number, metadata: Record<string, unknown> = {}): Draft[] {
+function bounded(
+  rows: Draft[],
+  now: number,
+  metadata: Record<string, unknown> = {},
+  capturedAt = new Map<string, number>()
+): Draft[] {
   const kept = rows.filter((row) => !expired(row, now));
   // #1592 eviction order, front first, each class oldest first: first captures
   // beyond the newest DRAFT_FIRST_CAPTURE_SLOTS, then confirmed (or shown) open
   // drafts, then tombstones, then the reserved first captures. A full store thus
   // drops its oldest confirmed draft rather than the capture just written, and a
   // rejection outlives every open draft.
-  const firsts = kept.filter(firstCapture).sort((a, b) => a.last_touched - b.last_touched);
+  // Within one capture, keep the earliest turn first so the harvest cursor can
+  // move forward. An untouched row with the same clock still predates this write.
+  const oldestFirst = (a: Draft, b: Draft): number =>
+    a.last_touched - b.last_touched ||
+    (capturedAt.get(b.id) ?? Number.MAX_SAFE_INTEGER) - (capturedAt.get(a.id) ?? Number.MAX_SAFE_INTEGER);
+  const firsts = kept.filter(firstCapture).sort(oldestFirst);
   const reserved = new Set(firsts.slice(-DRAFT_FIRST_CAPTURE_SLOTS));
   const rank = (d: Draft): number => (reserved.has(d) ? 3 : firstCapture(d) ? 0 : d.state === "open" ? 1 : 2);
-  kept.sort((a, b) => rank(a) - rank(b) || a.last_touched - b.last_touched);
+  kept.sort((a, b) => rank(a) - rank(b) || oldestFirst(a, b));
   if (kept.length > DRAFT_MAX_ROWS) kept.splice(0, kept.length - DRAFT_MAX_ROWS);
   let bytes =
     Buffer.byteLength(JSON.stringify(documentOf([], metadata))) +
@@ -469,6 +479,10 @@ export interface DraftCaptureResult {
   appended: number;
   /** Newly captured rows removed by the final row or byte bound. */
   evicted: number;
+  /** Previously stored rows removed by the final row or byte bound. */
+  evictedExisting: number;
+  /** Earliest input whose newly recorded evidence did not fit. */
+  retryIndex?: number;
   ids: string[];
 }
 
@@ -476,6 +490,40 @@ export interface DraftAfterUpdate {
   session_id: string;
   turn: number;
   after: string[];
+}
+
+function summarizeCapture(
+  original: Map<string, Draft>,
+  retained: Map<string, Draft>,
+  capturedAt: Map<string, number>,
+  affected: (string | null)[]
+): DraftCaptureResult {
+  const result: DraftCaptureResult = {
+    count: 0,
+    appended: 0,
+    evicted: 0,
+    evictedExisting: [...original.keys()].filter((id) => !retained.has(id)).length,
+    ids: [],
+  };
+  for (const [id, index] of capturedAt) {
+    if (retained.has(id)) continue;
+    result.retryIndex = index;
+    break;
+  }
+  for (const id of new Set(affected)) {
+    if (id === null) continue;
+    const row = retained.get(id);
+    if (!row) {
+      if (!original.has(id)) result.evicted++;
+      continue;
+    }
+    if (row.state !== "open") continue;
+    const prior = original.get(id);
+    if (!prior) result.count++;
+    result.appended += row.evidence.length - (prior?.evidence.length ?? 1);
+    if (!prior || JSON.stringify(row) !== JSON.stringify(prior)) result.ids.push(id);
+  }
+  return result;
 }
 
 /** One session, one lock and at most one write. Exact fingerprints match across
@@ -490,6 +538,7 @@ async function captureBatch(
     count: 0,
     appended: 0,
     evicted: 0,
+    evictedExisting: 0,
     ids: [] as string[],
     matches: inputs.map(() => null) as (Draft | null)[],
   };
@@ -503,13 +552,14 @@ async function captureBatch(
       const before = JSON.stringify(store.rows);
       const rows = bounded(store.rows, now, store.metadata);
       const original = new Map(rows.map((row) => [row.id, structuredClone(row)]));
+      const capturedAt = new Map<string, number>();
       const byFingerprint = new Map(rows.map((row) => [row.fp, row]));
       const grams = new Map<string, Set<string> | null>();
       const gramsOf = (row: Draft): Set<string> | null => {
         if (!grams.has(row.id)) grams.set(row.id, bigramSet(row.quote));
         return grams.get(row.id)!;
       };
-      const matchedIds = drafts.map((draft) => {
+      const matchedIds = drafts.map((draft, index) => {
         if (!draft) return null;
         const session = draft.evidence[0].session_id;
         const current = gramsOf(draft);
@@ -536,10 +586,14 @@ async function captureBatch(
               hit.last_touched = Math.max(hit.last_touched, now);
             }
           }
-          if (appended) hit.situation = mergeSituations(hit.situation, draft.situation);
+          if (appended) {
+            hit.situation = mergeSituations(hit.situation, draft.situation);
+            if (!capturedAt.has(hit.id)) capturedAt.set(hit.id, index);
+          }
         } else {
           rows.push(draft);
           byFingerprint.set(draft.fp, draft);
+          capturedAt.set(draft.id, index);
         }
         return (hit ?? draft).id;
       });
@@ -563,23 +617,10 @@ async function captureBatch(
         row.last_touched = Math.max(row.last_touched, now);
         updatedIds.push(row.id);
       }
-      const kept = bounded(rows, now, store.metadata);
+      const kept = bounded(rows, now, store.metadata, capturedAt);
       if (JSON.stringify(kept) !== before) await write(path, kept, store.metadata, now);
       const byId = new Map(kept.map((row) => [row.id, row]));
-      const result: DraftCaptureResult = { count: 0, appended: 0, evicted: 0, ids: [] };
-      for (const id of new Set([...matchedIds, ...updatedIds])) {
-        if (id === null) continue;
-        const row = byId.get(id);
-        if (!row) {
-          if (!original.has(id)) result.evicted++;
-          continue;
-        }
-        if (row.state !== "open") continue;
-        const prior = original.get(id);
-        if (!prior) result.count++;
-        result.appended += row.evidence.length - (prior?.evidence.length ?? 1);
-        if (!prior || JSON.stringify(row) !== JSON.stringify(prior)) result.ids.push(id);
-      }
+      const result = summarizeCapture(original, byId, capturedAt, [...matchedIds, ...updatedIds]);
       return { ...result, matches: matchedIds.map((id) => (id === null ? null : (byId.get(id) ?? null))) };
     },
     DRAFT_STORE_LOCK

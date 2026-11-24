@@ -315,6 +315,13 @@ function isFinished(e: QueueEntry, now: number): boolean {
   return dueNow(e) !== null || now - e.last_stop >= HARVEST_IDLE_MS;
 }
 
+function draftHarvestProgress(entry: QueueEntry, retryTurn: number | undefined, length: number, now: number) {
+  // A partial capture stays due even when the ended/compacting session never
+  // sends another Stop. The cursor advances only over booked turns.
+  if (retryTurn !== undefined) return { upto: retryTurn, at: entry.harvested_at };
+  return { upto: length, at: now };
+}
+
 /**
  * The daemon job: harvest every booked session that has been quiet for
  * {@link HARVEST_IDLE_MS}. `loadTurns` reads and normalizes a transcript
@@ -347,9 +354,10 @@ export async function runSessionHarvest(opts: {
         (e) => isFinished(e, now) && (e.harvested_at === undefined || e.harvested_at < e.last_stop)
       );
     });
-    const progress = new Map<string, { upto: number; at: number }>();
+    const progress = new Map<string, { upto: number; at?: number }>();
     let storedIn: ((quote: string) => string | null) | null = null;
     for (const e of due) {
+      const previousTurn = e.harvested_upto ?? 0;
       const trigger = dueNow(e) ?? "idle";
       try {
         const st = await stat(e.transcript_path);
@@ -360,7 +368,7 @@ export async function runSessionHarvest(opts: {
         // with no telemetry row, identical to "nothing worth harvesting" in
         // the log. The row is written now and carries `skipped_reason`: the
         // session was not read, and that is not a failure of the job.
-        progress.set(e.session_id, { upto: e.harvested_upto ?? 0, at: now }); // gone — never retry
+        progress.set(e.session_id, { upto: previousTurn, at: now }); // gone — never retry
         await writeHarvestTelemetry(
           e,
           0,
@@ -375,7 +383,7 @@ export async function runSessionHarvest(opts: {
       // Every candidate is checked against the vault before the cap, so a
       // stored one does not take the place of a new one.
       // Saved turns still receive their shape in draft capture; only the relay excludes them.
-      const shapes = harvestCandidates(turns, e.harvested_upto ?? 0, Infinity, true);
+      const shapes = harvestCandidates(turns, previousTurn, Infinity, true);
       let candidates = shapes.filter((c) => !savedAfter(turns, c.turn));
       let stored = 0;
       const storedMemoryIds: string[] = [];
@@ -392,7 +400,16 @@ export async function runSessionHarvest(opts: {
         candidates = fresh;
       }
       // Draft capture is independent of shape selection and the relay cap.
-      let drafts = { count: 0, appended: 0, evicted: 0, ids: [] as string[], omitted: 0, stored: 0, error: false };
+      let drafts: Awaited<ReturnType<typeof captureTypedDrafts>> & { error: boolean } = {
+        count: 0,
+        appended: 0,
+        evicted: 0,
+        evictedExisting: 0,
+        ids: [],
+        omitted: 0,
+        stored: 0,
+        error: false,
+      };
       try {
         drafts = {
           ...(await captureTypedDrafts(
@@ -409,12 +426,13 @@ export async function runSessionHarvest(opts: {
         // A malformed/newer draft store must not stop the existing relay.
         drafts.error = true;
       }
-      candidates = candidates.slice(0, HARVEST_MAX_CANDIDATES);
+      const booking = draftHarvestProgress(e, drafts.retryTurn, turns.length, now);
+      candidates = candidates.filter((candidate) => candidate.turn < booking.upto).slice(0, HARVEST_MAX_CANDIDATES);
       if (candidates.length > 0) {
         if (opts.relay) await opts.relay(e, candidates, !drafts.error);
         else await writePendingSuggestion(formatHarvestBlock(e, candidates));
       }
-      progress.set(e.session_id, { upto: turns.length, at: now });
+      progress.set(e.session_id, booking);
       result.harvested += 1;
       result.candidates += candidates.length;
       result.stored += stored;
@@ -447,15 +465,7 @@ async function writeHarvestTelemetry(
   stored: number,
   trigger: "session_end" | "pre_compact" | "idle",
   skippedReason?: string,
-  drafts?: {
-    count: number;
-    appended: number;
-    evicted: number;
-    ids: string[];
-    omitted: number;
-    stored: number;
-    error: boolean;
-  },
+  drafts?: Awaited<ReturnType<typeof captureTypedDrafts>> & { error: boolean },
   storedMemoryIds: string[] = []
 ): Promise<void> {
   if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
@@ -480,6 +490,8 @@ async function writeHarvestTelemetry(
         ? {
             draft_count: drafts.count,
             draft_evicted_count: drafts.evicted,
+            draft_evicted_existing_count: drafts.evictedExisting,
+            ...(drafts.retryTurn === undefined ? {} : { draft_retry_turn: drafts.retryTurn }),
             draft_evidence_count: drafts.appended,
             draft_ids_omitted: drafts.omitted,
             draft_ids: drafts.ids,

@@ -311,7 +311,7 @@
     "[\"packages/daemon/src/session-context.ts\",\"[\\\"function:handleSessionContextPost\\\"]\",\"complexity\"]": 26,
     "[\"packages/daemon/src/session-format.ts\",\"[\\\"function:formatBlock\\\"]\",\"complexity\"]": 17,
     "[\"packages/daemon/src/session-harvest.ts\",\"[\\\"function:harvestCandidates\\\"]\",\"complexity\"]": 16,
-    "[\"packages/daemon/src/session-harvest.ts\",\"[\\\"function:runSessionHarvest\\\"]\",\"complexity\"]": 20,
+    "[\"packages/daemon/src/session-harvest.ts\",\"[\\\"function:runSessionHarvest\\\"]\",\"complexity\"]": 19,
     "[\"packages/daemon/src/settings-effective.ts\",\"[\\\"function:effectiveSetting\\\"]\",\"complexity\"]": 55,
     "[\"packages/daemon/src/settings-env.ts\",\"[\\\"function:decode\\\"]\",\"complexity\"]": 19,
     "[\"packages/daemon/src/settings-env.ts\",\"[\\\"function:validateEnvPinChanges\\\"]\",\"complexity\"]": 17,

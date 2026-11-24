@@ -148,7 +148,14 @@ test("F expiry records committed removals once without text", () =>
   }));
 test("F lifecycle stats separate recorded notes, deliveries and dry decisions", () => {
   const events = [
-    { kind: "session_harvest", draft_count: 4, draft_evidence_count: 2, draft_evicted_count: 1, draft_error: true },
+    {
+      kind: "session_harvest",
+      draft_count: 4,
+      draft_evidence_count: 2,
+      draft_evicted_count: 1,
+      draft_evicted_existing_count: 2,
+      draft_error: true,
+    },
     { kind: "draft_expired", count: 3 },
     { kind: "draft_hint", draft_count: 2 },
     { kind: "draft_promoted", draft_ids: ["d-a", "d-b"] },
@@ -161,6 +168,7 @@ test("F lifecycle stats separate recorded notes, deliveries and dry decisions", 
   const stats = aggregateDrafts(events)!;
   assert.equal(stats.captured, 4);
   assert.equal(stats.expired, 3);
+  assert.equal(stats.evicted, 3);
   assert.equal(stats.promoted, 1);
   assert.equal(stats.shown, 2);
   assert.equal(stats.wouldPromote, 1);

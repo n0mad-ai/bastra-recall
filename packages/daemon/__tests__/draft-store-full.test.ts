@@ -68,6 +68,7 @@ test("#1592: 500 confirmed drafts — a new capture stays and the oldest confirm
       // Before: { count: 0, evicted: 1 } — the capture was dropped in its own write.
       assert.equal(result.count, 1);
       assert.equal(result.evicted, 0);
+      assert.equal(result.evictedExisting, 1);
       const kept = await listDrafts(now);
       assert.equal(kept.length, DRAFT_MAX_ROWS);
       assert.ok(kept.some((d) => d.quote === fresh().quote));
@@ -122,5 +123,22 @@ test("#1592: rejections outlive confirmed drafts when the store is full", () =>
       assert.equal(kept.filter((d) => d.state === "rejected").length, 250);
       assert.ok(!kept.some((d) => d.id === row(0, "confirmed").id));
       assert.ok(kept.some((d) => d.quote === fresh().quote));
+    }
+  ));
+
+test("#1693: a confirmation written at the same time as new rows keeps its new evidence", () =>
+  seeded(
+    [row(0, "first", now - 1), ...Array.from({ length: DRAFT_MAX_ROWS - 1 }, (_, i) => row(i + 1, "confirmed", now))],
+    async () => {
+      const first = row(0, "first", now);
+      const result = await captureDrafts(
+        [{ ...first, evidence: [{ session_id: "confirming", turn: 0, ts: now }] }, fresh()],
+        now
+      );
+      const kept = await listDrafts(now);
+      assert.equal(result.appended, 1);
+      assert.equal(result.evictedExisting, 1);
+      assert.equal(kept.find((d) => d.id === first.id)?.evidence.length, 2);
+      assert.ok(!kept.some((d) => d.id === row(1, "confirmed").id));
     }
   ));

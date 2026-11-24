@@ -171,7 +171,7 @@ test("B1 fixes: telemetry counts only retained new rows and appended evidence, w
     assert.ok(result.ids.length <= 20);
     assert.equal(result.ids.length + result.omitted, kept.length);
     assert.ok(result.ids.every((id) => kept.some((row) => row.id === id)));
-    const more = await captureTypedDrafts([turns[599], turns[599]], { session_id: "evidence" }, now + 1, []);
+    const more = await captureTypedDrafts([turns[0], turns[0]], { session_id: "evidence" }, now + 1, []);
     assert.equal(more.count, 0);
     assert.equal(more.appended, 2);
   }));

@@ -21,7 +21,16 @@ export async function captureTypedDrafts(
   candidates: HarvestCandidate[],
   storedIn?: (quote: string) => string | null,
   vaultId?: string
-): Promise<{ count: number; appended: number; evicted: number; ids: string[]; omitted: number; stored: number }> {
+): Promise<{
+  count: number;
+  appended: number;
+  evicted: number;
+  evictedExisting: number;
+  retryTurn?: number;
+  ids: string[];
+  omitted: number;
+  stored: number;
+}> {
   turns = turns.map(normalizeOwnerTurn);
   const drafts: Draft[] = [];
   let stored = 0;
@@ -41,11 +50,12 @@ export async function captureTypedDrafts(
   // into the existing Claude situation-capture contract.
   const situation = (index: number) =>
     entry.client === "codex" ? { before: [], after: [], reads: [], lits: [] } : situationForTurn(turns, index, typed);
-  for (let i = entry.harvested_upto ?? 0; i < turns.length; i++) {
+  const from = entry.harvested_upto ?? 0;
+  for (let i = from; i < turns.length; i++) {
     const turn = turns[i];
     const text = textBeforeDraftBand(turn.content).trim();
     if (!typed(turn) || (text.match(/\p{L}/gu) ?? []).length < DRAFT_MIN_LETTERS) continue;
-    if (storedIn && storedIn(text) !== null) {
+    if (storedIn?.(text) != null) {
       stored++;
       continue;
     }
@@ -75,15 +85,16 @@ export async function captureTypedDrafts(
   }
   const afterUpdates: DraftAfterUpdate[] = [];
   // The queue cursor already identifies the old/new boundary; no queue change.
-  let previous = Math.min(entry.harvested_upto ?? 0, turns.length) - 1;
+  let previous = Math.min(from, turns.length) - 1;
   while (previous >= 0 && !typed(turns[previous])) previous--;
   if (previous >= 0) {
     const after = situation(previous).after;
     if (after.length > 0) afterUpdates.push({ session_id: entry.session_id, turn: previous, after });
   }
-  const result = await captureDrafts(drafts, now, afterUpdates);
+  const { retryIndex, ...result } = await captureDrafts(drafts, now, afterUpdates);
   return {
     ...result,
+    ...(retryIndex === undefined ? {} : { retryTurn: drafts[retryIndex].evidence[0].turn }),
     ids: result.ids.slice(0, DRAFT_TELEMETRY_MAX_IDS),
     omitted: Math.max(0, result.ids.length - DRAFT_TELEMETRY_MAX_IDS),
     stored,
