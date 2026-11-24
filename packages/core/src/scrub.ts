@@ -316,7 +316,7 @@ class SecretScan {
     const tail = text.slice(start);
     if (tail.startsWith("[REDACTED]")) return start + "[REDACTED]".length;
     if (valueSpans(text, start).spans.length > 1) return this.markValue(start, true);
-    if (/^(?:true|false|[01]|WPA[23])(?=\s|[,;}]|$)/i.test(tail) || /^(?:bitte|siehe)\b/i.test(tail)) return start;
+    if (/^(?:true|false|[01]|WPA[23])(?=\s|[,;}]|$)/i.test(tail)) return start;
     if (/^["'`$|>\\]/.test(tail) || isReference(/^\S*/.exec(tail)![0])) return this.markValue(start, true);
     const value = text.slice(start, pskLineEnd(text, start)).trimEnd();
     if (value && value !== "[REDACTED]") this.mark(start, value.length);

@@ -35,12 +35,21 @@ test("PSK mode flags, questions, prose and references survive", () => {
     "psk: true",
     "use_psk=1",
     "Ist PSK = WPA2 Personal oder brauche ich Enterprise?",
-    "Zum PSK: bitte nie im Klartext speichern",
     "PSK=$VPN_PSK",
     "PSK=/etc/fixture/key",
-    "PSK: siehe Passwortmanager",
   ])
     assert.equal(redactSecrets(text).text, text, text);
+});
+// #1625 Sprachlisten 1 (owner decision A): no fixed hint-word list. A PSK binding
+// is redacted in every language alike, even when the value is only a pointer.
+test("PSK hint text after a binding is redacted the same in every language", () => {
+  for (const [text, expected] of [
+    ["PSK: siehe Passwortmanager", "PSK: [REDACTED]"],
+    ["Zum PSK: bitte nie im Klartext speichern", "Zum PSK: [REDACTED]"],
+    ["PSK: see password manager", "PSK: [REDACTED]"],
+    ["PSK: voir le gestionnaire", "PSK: [REDACTED]"],
+  ])
+    assert.equal(redactSecrets(text).text, expected, text);
 });
 test("PSK continuations remain covered while mode prose is not a binding", () => {
   assert.equal(
