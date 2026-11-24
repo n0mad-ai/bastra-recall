@@ -97,6 +97,7 @@ test("v1 round-trip retains identity, recurrence, history and pending receipts",
 });
 
 test("#1517: persisted snapshots and their legacy versions decode to the same task store", async () => {
+  const compiledStore = await import(new URL("../dist/task-store.js", import.meta.url).href);
   const path = await fixture();
   const before = await transactTaskStore(path, undefined, (store) => {
     store.tasks.push(task());
@@ -109,6 +110,7 @@ test("#1517: persisted snapshots and their legacy versions decode to the same ta
     [readAppRecord("tasks", `${path}.backup`), before],
   ] as const) {
     assert.deepEqual(decodeTaskStore(raw), expected);
+    assert.deepEqual(compiledStore.decodeTaskStore(raw), expected);
     const persisted = JSON.parse(raw);
     for (const schema_version of [1, 2, 3, 4]) {
       assert.deepEqual(

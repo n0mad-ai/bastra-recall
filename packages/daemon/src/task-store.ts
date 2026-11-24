@@ -28,6 +28,8 @@ import { TaskStoreError } from "./task-store-error.js";
 // `from "./task-store.js"`.
 export { atomicWrite, tasksPath } from "./task-store-file.js";
 export { TaskStoreError } from "./task-store-error.js";
+// The migration evaluation loads this export from the compiled task store.
+export { decodeTaskStore };
 
 /** History rows a normal mutation may reach; the rest is kept for control operations. */
 export const TASK_HISTORY_RESERVE = 9900;
