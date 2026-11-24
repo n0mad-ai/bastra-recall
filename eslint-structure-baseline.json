@@ -361,7 +361,7 @@
     "[\"packages/daemon/src/task-local-state.ts\",\"[\\\"function:structured\\\",\\\"variable:visit\\\",\\\"function:ArrowFunctionExpression#1\\\"]\",\"max-depth\"]": 5,
     "[\"packages/daemon/src/task-outbox.ts\",\"[\\\"function:recordTaskDelivery\\\",\\\"call:transactTaskStore:#1\\\",\\\"function:argument:2#1\\\"]\",\"complexity\"]": 18,
     "[\"packages/daemon/src/task-outbox.ts\",\"[\\\"function:taskDueProjection\\\",\\\"variable:candidates\\\",\\\"call:store.occurrences.filter:#1\\\",\\\"function:argument:0#1\\\"]\",\"complexity\"]": 22,
-    "[\"packages/daemon/src/task-outbox.ts\",\"[\\\"function:taskDueProjection\\\"]\",\"complexity\"]": 44,
+    "[\"packages/daemon/src/task-outbox.ts\",\"[\\\"function:taskDueProjection\\\"]\",\"complexity\"]": 43,
     "[\"packages/daemon/src/task-private-comparison.ts\",\"[\\\"function:migrateContentComparisons\\\"]\",\"complexity\"]": 25,
     "[\"packages/daemon/src/task-private-comparison.ts\",\"[\\\"function:migrateTaskComparisons\\\",\\\"call:withPathLock:#1\\\",\\\"function:argument:1#1\\\"]\",\"complexity\"]": 49,
     "[\"packages/daemon/src/task-private-comparison.ts\",\"[\\\"function:retireLegacyTaskProposals\\\"]\",\"complexity\"]": 16,

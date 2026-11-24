@@ -64,7 +64,7 @@ export async function handleSessionContext(
   vault: Vault
 ): Promise<void> {
   const taskCtx = defaultTaskContext(toolDeps);
-  const due = await taskAttachment(taskCtx, taskRequestAuth(req), "unknown", "session");
+  const due = await taskAttachment(taskCtx, taskRequestAuth(req), "unknown", "session", toolDeps.primaryLanguage);
   const notes = await reportNotesNotice(taskCtx, taskRequestAuth(req));
   const context = await buildSessionContext(toolDeps, vault, {}, due?.text, notes);
   if (due && context.includes(due.text)) res.once("finish", due.record);
@@ -198,7 +198,7 @@ async function taskNotices(req: IncomingMessage, toolDeps: ToolDeps, b: Record<s
   const taskCtx = defaultTaskContext(toolDeps);
   const session = typeof b.session_id === "string" ? b.session_id : "unknown";
   return {
-    due: await taskAttachment(taskCtx, taskRequestAuth(req), session, "session"),
+    due: await taskAttachment(taskCtx, taskRequestAuth(req), session, "session", toolDeps.primaryLanguage),
     reportNotesText: await reportNotesNotice(taskCtx, taskRequestAuth(req)),
   };
 }

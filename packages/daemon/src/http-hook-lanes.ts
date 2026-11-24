@@ -220,7 +220,8 @@ export function dispatchHookLanes(
         taskCtx,
         taskRequestAuth(req),
         String((payload as unknown as { session_id?: string }).session_id ?? "unknown"),
-        "session"
+        "session",
+        toolDeps.primaryLanguage
       );
       // Notes the owner left on task reports: the vault-care way, same credential as the due cards.
       const reportNotes = await reportNotesNotice(taskCtx, taskRequestAuth(req));

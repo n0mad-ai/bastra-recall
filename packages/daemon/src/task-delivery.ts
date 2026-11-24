@@ -16,7 +16,8 @@ export async function taskAttachment(
   ctx: TaskServiceContext,
   authorization: string | undefined,
   session: string,
-  channel: "mcp" | "http" | "session" | "prompt"
+  channel: "mcp" | "http" | "session" | "prompt",
+  language?: string
 ) {
   if (!tasksEnabled()) return undefined;
   try {
@@ -29,7 +30,7 @@ export async function taskAttachment(
       channel,
     });
     const now = (ctx.now ?? Date.now)();
-    const projection = taskDueProjection(store, principal, input, now, true);
+    const projection = taskDueProjection(store, principal, input, now, true, language);
     for (const [key, until] of passiveQuiet) if (until <= now) passiveQuiet.delete(key);
     const contactKeys: string[] = [];
     const checkKeys = projection.occurrenceIds.map((id, index) => {

@@ -1,6 +1,6 @@
 import { reconsiderationCard } from "./task-reconsideration.js";
 import { isTaskExpiryNotice } from "./task-validity.js";
-import { TASK_CARD_TEXT } from "./task-card-text.js";
+import { localTaskCardText, TASK_CARD_TEXT } from "./task-card-text.js";
 import { liveTaskChatClaim } from "./task-chat-delivery.js";
 /** Durable occurrences own delivery attempts; relay consumption owns nothing here. */
 import { createHash, randomUUID } from "node:crypto";
@@ -47,12 +47,28 @@ function hasPriorDelivery(
   return !ownerInspect && !unseenReview && liveTaskChatClaim(occurrence.chat_delivery, now);
 }
 
+function dueCardStatus(
+  task: TaskStore["tasks"][number],
+  occurrence: Occurrence,
+  now: number,
+  presentAtStart: boolean,
+  language: string | undefined
+): Record<string, unknown> {
+  if (isTaskExpiryNotice(task, occurrence))
+    return { state: "expired", why_now: TASK_CARD_TEXT.expired, controls: ["inspect", "acknowledge"] };
+  // Overdue describes this presentation. The task stays due and actionable.
+  if (presentAtStart && occurrence.due_at < now && task.action_level === "notify")
+    return { state: "overdue", decision_hint: localTaskCardText(TASK_CARD_TEXT.overdueDecision, language) };
+  return {};
+}
+
 export function taskDueProjection(
   store: TaskStore,
   principal: TaskPrincipal,
   input: DueInput,
   now: number,
-  passive = false
+  passive = false,
+  language?: string
 ) {
   const client = createHash("sha256")
     .update(JSON.stringify(["task-client-v2", principal.actor_id, principal.role]))
@@ -132,6 +148,7 @@ export function taskDueProjection(
       retryBlocked++;
       continue;
     }
+    const status = dueCardStatus(task, occurrence, now, presentAtStart, language);
     let card: Record<string, unknown> = {
       occurrence_id: occurrence.id,
       task_id: task.id,
@@ -180,6 +197,7 @@ export function taskDueProjection(
           ? "owner-inspection-delivery-paused"
           : "active",
       controls: ["acknowledge", "snooze", "resolve", "cancel"],
+      ...status,
     };
     if (unseenReview && Buffer.byteLength(JSON.stringify(card)) > input.max_bytes - 256)
       card = {
@@ -192,6 +210,7 @@ export function taskDueProjection(
         why_now: TASK_CARD_TEXT.reconcileUnknown,
         action_outcome: { intent_id: action!.id, state: action!.state, review_hint: TASK_CARD_TEXT.reconcile },
         controls: ["inspect", "reconcile"],
+        ...status,
       };
     const encodedBytes = (value: unknown) =>
       Buffer.byteLength(JSON.stringify(value).replaceAll("<", "\\u003c").replaceAll(">", "\\u003e"));
@@ -233,6 +252,7 @@ export function taskDueProjection(
           : {}),
         ...(card.action_outcome ? { action_outcome: card.action_outcome } : {}),
         controls: ["inspect", "acknowledge", "snooze", "resolve"],
+        ...status,
       };
       if (encodedBytes(card) > limit)
         card = {
@@ -245,12 +265,8 @@ export function taskDueProjection(
           compact: true,
           why_now: r ? TASK_CARD_TEXT.premiseShort : TASK_CARD_TEXT.dueShort,
           detail_command: `bastra tasks get ${task.id}`,
+          ...status,
         };
-    }
-    if (isTaskExpiryNotice(task, occurrence)) {
-      card.state = "expired";
-      card.why_now = TASK_CARD_TEXT.expired;
-      card.controls = ["inspect", "acknowledge"];
     }
     const size = encodedBytes(card);
     if (cards.length >= 3 || bytes + size > input.max_bytes - 256) {

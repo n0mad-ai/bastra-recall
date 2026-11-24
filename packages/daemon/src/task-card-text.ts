@@ -1,5 +1,5 @@
-/** Fixed card texts. Cards are model context and carry the English text (#1594);
- * a person sees the same entry in their language through localTaskCardText(). */
+/** Fixed card texts. Standard card reasons carry the English text (#1594).
+ * Text presented to a person uses localTaskCardText(). */
 const english = {
   reconcile: "Reconciliation required",
   reconcileUnknown: "Reconciliation required: execution outcome unknown",
@@ -9,6 +9,7 @@ const english = {
   dueShort: "Due; check details.",
   shortened: "Shortened data; check details. No alternative chosen.",
   expired: "Validity ended; the task was not confirmed as done.",
+  overdueDecision: "Overdue – please decide what to do.",
   waiting: "Due tasks are waiting for review.",
 } as const;
 type TaskCardTextKey = keyof typeof english;
@@ -27,6 +28,7 @@ const TASK_CARD_TEXT_BY_LANGUAGE: Readonly<Record<string, Readonly<Record<TaskCa
     dueShort: "Fällig; Details prüfen.",
     shortened: "Gekürzte Daten; Details prüfen. Keine Alternative gewählt.",
     expired: "Die Gültigkeit ist abgelaufen; die Aufgabe wurde nicht als erledigt bestätigt.",
+    overdueDecision: "Überfällig – bitte entscheiden, was damit geschehen soll.",
     waiting: "Fällige Aufgaben warten auf Prüfung.",
   },
 };

@@ -124,7 +124,7 @@ test("real session assembler and ongoing prompt deliver with mapped credentials,
     search,
     telemetry,
     version: "fixture",
-    toolDeps: { vault, search, telemetry, vaultPath: f.vaultPath },
+    toolDeps: { vault, search, telemetry, vaultPath: f.vaultPath, primaryLanguage: "de" },
     documentWriteEnabled: false,
     embedding: { on: false, providerId: null, source: "none" },
     origin: { startedBy: "direct", envOrigin: "own", configFingerprint: "0123456789ab" },
@@ -154,6 +154,8 @@ test("real session assembler and ongoing prompt deliver with mapped credentials,
       const body = (await response.json()) as any;
       const text = body.context ?? body.hookSpecificOutput?.additionalContext ?? "";
       assert.match(text, /bastra-due/, route);
+      if (route === "prompt") assert.doesNotMatch(text, /Überfällig/, route);
+      else assert.match(text, /Überfällig.*bitte entscheiden/, route);
       if (route === "session-context") assert.ok(body.blocks.some((b: any) => b.kind === "due" && b.included));
     }
     for (const tokens of [40, 400]) {
@@ -289,10 +291,12 @@ test("#1468: overdue reminders are visible in successive starts without repeatin
   try {
     const { taskAttachment } = await import("../src/task-delivery.js");
     const auth = `Bearer ${f.owner.token}`;
-    assert.ok(await taskAttachment(f.ctx, auth, "start-one", "session"));
+    const german = await taskAttachment(f.ctx, auth, "start-one", "session", "de");
+    assert.match(german?.text ?? "", /Überfällig.*bitte entscheiden/);
     assert.equal(await taskAttachment(f.ctx, auth, "start-one", "session"), undefined);
     assert.equal(await taskAttachment(f.ctx, auth, "start-one", "prompt"), undefined);
-    assert.ok(await taskAttachment(f.ctx, auth, "start-two", "session"));
+    const english = await taskAttachment(f.ctx, auth, "start-two", "session", "en");
+    assert.match(english?.text ?? "", /Overdue.*please decide/);
   } finally {
     f.job.stop();
     await f.job.runtime.settle();
