@@ -96,6 +96,70 @@ test("v1 round-trip retains identity, recurrence, history and pending receipts",
   assert.equal(result.occurrences[0].acknowledgement, undefined);
 });
 
+test("#1517: persisted snapshots and their legacy versions decode to the same task store", async () => {
+  const path = await fixture();
+  const before = await transactTaskStore(path, undefined, (store) => {
+    store.tasks.push(task());
+  });
+  const after = await transactTaskStore(path, before, (store) => {
+    store.tasks[0] = transitionTask(store.tasks[0], "resolve", "owner", 2);
+  });
+  for (const [raw, expected] of [
+    [readAppRecord("tasks", path), after],
+    [readAppRecord("tasks", `${path}.backup`), before],
+  ] as const) {
+    assert.deepEqual(decodeTaskStore(raw), expected);
+    const persisted = JSON.parse(raw);
+    for (const schema_version of [1, 2, 3, 4]) {
+      assert.deepEqual(
+        decodeTaskStore(JSON.stringify({ ...persisted, schema_version })),
+        expected,
+        `v${schema_version}`
+      );
+    }
+  }
+  assert.equal(after.tasks[0].state, "resolved");
+  assert.equal(before.tasks[0].state, "pending");
+});
+
+test("#1517: malformed snapshots keep the same rejection codes and precedence", () => {
+  const valid = emptyTaskStore();
+  for (const [raw, code, message] of [
+    ["é".repeat(TASK_MAX_BYTES / 2 + 1), "capacity", "task snapshot exceeds its hard limit; original preserved"],
+    ["{", "corrupt", "invalid task JSON; original preserved"],
+    [
+      JSON.stringify({ ...valid, schema_version: "4" }),
+      "unsupported_version",
+      "unsupported task schema; original preserved",
+    ],
+    [JSON.stringify({ schema_version: 5 }), "unsupported_version", "unsupported task schema; original preserved"],
+    [JSON.stringify({ ...valid, schema_version: 1, approvals: [{}] }), "corrupt", "v1 actions must be empty"],
+    [JSON.stringify({ ...valid, schema_version: 2, receipts: [{}] }), "corrupt", "v2 execution state must be empty"],
+    [JSON.stringify({ schema_version: 1 }), "corrupt", "v1 actions must be empty"],
+    [JSON.stringify({ schema_version: 2 }), "corrupt", "v2 execution state must be empty"],
+    [JSON.stringify({ schema_version: 3 }), "corrupt", "invalid task schema or references; original preserved"],
+    [
+      JSON.stringify({ ...valid, tasks: [task(), task()] }),
+      "corrupt",
+      "invalid task schema or references; original preserved",
+    ],
+    ["null", "corrupt", "invalid task schema or references; original preserved"],
+    ["[]", "corrupt", "invalid task schema or references; original preserved"],
+  ]) {
+    assert.throws(() => decodeTaskStore(raw), { name: "TaskStoreError", code, message });
+  }
+  assert.throws(() => decodeTaskStore(JSON.stringify({ ...valid, tasks: {} })), TypeError);
+  assert.throws(() => decodeTaskStore(JSON.stringify({ ...valid, tasks: [null] })), TypeError);
+});
+
+test("#1517: decoding discards legacy comparison digests and preserves keyed comparisons", () => {
+  const store = emptyTaskStore();
+  const fingerprint = "hmac-v1:" + "a".repeat(64);
+  store.tasks.push({ ...task(), creation_hash: fingerprint });
+  const legacy = { ...store, tasks: [{ ...store.tasks[0], reminder_fingerprint: "b".repeat(64) }] };
+  assert.deepEqual(decodeTaskStore(JSON.stringify(legacy)), store);
+});
+
 test("INV-TASK-06: corrupt and unsupported snapshots reject mutations and preserve exact originals", async () => {
   for (const raw of [
     "{not json",
